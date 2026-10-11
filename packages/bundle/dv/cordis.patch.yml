@@ -109,6 +109,9 @@
     - id: dv-ui-mcp-presets
       name: '@dv/ui-mcp-presets'
 
+    - id: dv-ui-skills
+      name: '@dv/ui-skills'
+
 # The video-directing skill ships in this bundle's skills directory; skill-filesystem discovers it beside the user's own.
 # The model and timeline skills are registered by their plugins through ctx.skills.
 - id: skill-filesystem
@@ -223,10 +226,6 @@
 
 # The model is fixed by agent-default-model; the composer shows no model picker and no /model command.
 - id: ui-model-selection
-  disabled: true
-
-# The agent's skills are its own procedures; the composer's / menu does not list them to creators.
-- id: ui-skill
   disabled: true
 
 # Completed turns show no token-usage pill; the composer statistics are hidden by @dv/ui-shell.

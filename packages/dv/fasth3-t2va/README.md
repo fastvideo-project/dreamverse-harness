@@ -73,7 +73,7 @@ The streaming_v2 client of `@dreamverse/generation-client` does the HTTP work: `
 
 #### What the model sees
 
-While the skill registry is mounted, the skill catalog that `dsh-tool-skill` renders lists the catalog entry below. When the agent calls the `skill` tool with `fasth3-t2va-prompting`, the tool result carries `skills/fasth3-t2va-prompting.md`: a DreamVerse connection section (use the guide's T2VA mode, so the prompt begins directly with the three fields `integrated_multimodal_description`, `overall_soundscape` and `non_diegetic_music`; one DreamVerse shot is one target video; describe everything in words; `duration_sec` from 5 to 15), followed by the official MiniMax-H3 prompt guide `VIDEO_PROMPT_WRITING_GUIDE_base_en.md` copied unchanged.
+While the skill registry is mounted, the skill catalog that `dsh-tool-skill` renders lists the catalog entry below. When the agent calls the `skill` tool with `fasth3-t2va-prompting`, the tool result carries `skills/fasth3-t2va-prompting.md`: a DreamVerse connection section (use the guide's T2VA mode, so the prompt begins directly with the three fields `integrated_multimodal_description`, `overall_soundscape` and `non_diegetic_music`; one DreamVerse shot is one target video; describe everything in words; `duration_sec` from 5 to 15), followed by the official MiniMax-H3 prompt guide `VIDEO_PROMPT_WRITING_GUIDE_base_en.md` copied unchanged. Users cannot invoke the skill with `/fasth3-t2va-prompting`; only the agent loads it.
 
 ##### Catalog entry
 

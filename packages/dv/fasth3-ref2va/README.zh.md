@@ -72,7 +72,7 @@ HTTP 工作由 `@dreamverse/generation-client` 的 streaming_v2 客户端完成�
 
 #### 模型看到什么
 
-skill 注册表挂载期间，`dsh-tool-skill` 渲染的 skill 目录列出下面的目录条目。智能体用 `fasth3-ref2va-prompting` 调用 `skill` 工具时，工具结果带有 `skills/fasth3-ref2va-prompting.md`：一段 DreamVerse 对接说明（一个 DreamVerse 镜头就是一个目标视频；六个改写部分组成 `prompt`；只用 `<Picture N>` 和 `<Subject N>` 引用；图片编号且首帧排在参考图之后；至少一张、最多 8 张参考图；`duration_sec` 为 5 到 15），后接原样复制的 MiniMax-H3 官方全参考提示词指南 `VIDEO_PROMPT_WRITING_GUIDE_ref_en.md`。
+skill 注册表挂载期间，`dsh-tool-skill` 渲染的 skill 目录列出下面的目录条目。智能体用 `fasth3-ref2va-prompting` 调用 `skill` 工具时，工具结果带有 `skills/fasth3-ref2va-prompting.md`：一段 DreamVerse 对接说明（一个 DreamVerse 镜头就是一个目标视频；六个改写部分组成 `prompt`；只用 `<Picture N>` 和 `<Subject N>` 引用；图片编号且首帧排在参考图之后；至少一张、最多 8 张参考图；`duration_sec` 为 5 到 15），后接原样复制的 MiniMax-H3 官方全参考提示词指南 `VIDEO_PROMPT_WRITING_GUIDE_ref_en.md`。用户不能用 `/fasth3-ref2va-prompting` 调用该 skill；只有智能体加载它。
 
 ##### 目录条目
 

@@ -33,6 +33,7 @@
     "@dv/ui-composer": "workspace:*",
     "@dv/ui-history": "workspace:*",
     "@dv/ui-mcp-presets": "workspace:*",
+    "@dv/ui-skills": "workspace:*",
     "@dv/ui-shell": "workspace:*",
     "@dv/ui-timeline": "workspace:*"
   },

@@ -35,6 +35,8 @@ const PROMPT_SKILL = {
     + 'names them, and how a shot continues the previous one.',
   content: readFileSync(new URL('../skills/fasth3-ref2va-prompting.md', import.meta.url), 'utf8'),
   source: 'runtime',
+  // The agent's own procedure: the model loads it, and the composer's / menu and the Skills page do not list it.
+  invocation: { modelInvocable: true, userInvocable: false },
 }
 
 /** Renders `ref2va` shots with a FastH3 Ref2VA model served by FastVideo streaming_v2. */

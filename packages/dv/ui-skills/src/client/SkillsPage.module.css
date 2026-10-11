@@ -1,0 +1,123 @@
+/* The Skills page in the main column: a centered column of the page's width, then a grid of skill cards. */
+.page {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 960px;
+  height: 100%;
+  margin-inline: auto;
+  padding: 48px 32px;
+  overflow-y: auto;
+  color: var(--dv-text);
+  font-family: var(--dv-font-sans);
+}
+
+.head {
+  margin-bottom: 24px;
+}
+
+.title {
+  margin: 0 0 8px;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+}
+
+.intro,
+.note {
+  margin: 0;
+  color: var(--dv-text-2);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.textButton {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--dv-accent-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--dv-line);
+  border-radius: var(--dv-radius-lg);
+  background: var(--dv-surface-2);
+}
+
+.name {
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Three lines of the description; the full text is the title tooltip. */
+.description {
+  display: -webkit-box;
+  flex: 1;
+  overflow: hidden;
+  color: var(--dv-text-2);
+  font-size: 13px;
+  line-height: 20px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.command {
+  overflow: hidden;
+  color: var(--dv-text-2);
+  font-family: var(--dv-font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A soft button: the page has no solid accent button. */
+.useButton {
+  flex: none;
+  height: 28px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--dv-radius-md);
+  background: var(--dv-accent-soft);
+  color: var(--dv-accent-text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.useButton:hover {
+  background: var(--dv-surface-4);
+}
+
+.useButton:focus-visible {
+  outline: 2px solid var(--dv-accent);
+  outline-offset: 2px;
+}

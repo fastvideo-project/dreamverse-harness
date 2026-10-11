@@ -72,7 +72,7 @@ The streaming_v2 client of `@dreamverse/generation-client` does the HTTP work: `
 
 #### What the model sees
 
-While the skill registry is mounted, the skill catalog that `dsh-tool-skill` renders lists the catalog entry below. When the agent calls the `skill` tool with `fasth3-ref2va-prompting`, the tool result carries `skills/fasth3-ref2va-prompting.md`: a DreamVerse connection section (one DreamVerse shot is one target video; the six rewrite sections form the `prompt`; only `<Picture N>` and `<Subject N>` references; picture numbering with the first frame after the reference images; at least one and at most 8 reference images; `duration_sec` from 5 to 15), followed by the official MiniMax-H3 full-reference prompt guide `VIDEO_PROMPT_WRITING_GUIDE_ref_en.md` copied unchanged.
+While the skill registry is mounted, the skill catalog that `dsh-tool-skill` renders lists the catalog entry below. When the agent calls the `skill` tool with `fasth3-ref2va-prompting`, the tool result carries `skills/fasth3-ref2va-prompting.md`: a DreamVerse connection section (one DreamVerse shot is one target video; the six rewrite sections form the `prompt`; only `<Picture N>` and `<Subject N>` references; picture numbering with the first frame after the reference images; at least one and at most 8 reference images; `duration_sec` from 5 to 15), followed by the official MiniMax-H3 full-reference prompt guide `VIDEO_PROMPT_WRITING_GUIDE_ref_en.md` copied unchanged. Users cannot invoke the skill with `/fasth3-ref2va-prompting`; only the agent loads it.
 
 ##### Catalog entry
 

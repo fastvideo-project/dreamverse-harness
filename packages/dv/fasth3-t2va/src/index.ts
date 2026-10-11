@@ -35,6 +35,8 @@ const PROMPT_SKILL = {
     + 'camera motion, speakers and dialogue, sound and music.',
   content: readFileSync(new URL('../skills/fasth3-t2va-prompting.md', import.meta.url), 'utf8'),
   source: 'runtime',
+  // The agent's own procedure: the model loads it, and the composer's / menu and the Skills page do not list it.
+  invocation: { modelInvocable: true, userInvocable: false },
 }
 
 /** Renders `t2va` shots with the FastH3 8-Step V2 text-to-video model served by FastVideo streaming_v2. */
