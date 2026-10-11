@@ -17,7 +17,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
-import type { PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { DV_CURRENT_TIMELINE_EVENT, getTimelineOf, publishCurrentTimeline, useCurrentTimeline } from '@dv/ui-kit/current-timeline.ts'
 import { pickText, useText } from '@dv/ui-kit/locale.ts'
 import { useProjectState } from '@dv/ui-kit/useProject.ts'
@@ -27,6 +27,7 @@ import {
 import type { WireProjectSummary, WireWorkspaces } from '@dv/ui-kit/types.ts'
 import type { ShellActions } from './actions.ts'
 import { CoverFrame, editedText, useProjectSummaries } from './cover.tsx'
+import { useExploreTabs } from './explore.ts'
 import { SidebarRightIcon } from './icons.tsx'
 import { SessionSwitcher } from './SessionSwitcher.tsx'
 import type { ShellLocation } from './store.ts'
@@ -43,7 +44,7 @@ export interface ShellInjected {
 }
 
 /** Props of the center entry. */
-export type CenterProps = PropsRuntime<'main.conversation'> & PropsRenderFactories & ShellInjected
+export type CenterProps = PropsRuntime<'main.conversation'> & PropsRenderFactories & PropsRenderSlots<'dv.explore'> & ShellInjected
 
 /** The one client the shell's own reads share. */
 const client = shellClient
@@ -229,6 +230,7 @@ function EntryPage(props: CenterProps): ReactNode {
       </div>
       {blank && <TemplateChips />}
       {blank && <RecentProjects shell={shell} />}
+      {blank && <Explore renderSlot={props.renderSlot} />}
     </div>
   )
 }
@@ -281,6 +283,46 @@ function RecentProjects({ shell }: ShellInjected): ReactNode {
           />
         ))}
       </div>
+    </section>
+  )
+}
+
+/**
+ * The 探索 section, expanded until 收起 folds it: a tab per `dv.explore` entry that other plugins register, such as MCP
+ * tools, and the selected tab's body. The section is absent while no plugin registers an entry.
+ * @param props - the center's slot props.
+ * @returns the section, or nothing without entries.
+ */
+function Explore({ renderSlot }: Pick<CenterProps, 'renderSlot'>): ReactNode {
+  const t = useText()
+  const tabs = useExploreTabs()
+  const [open, setOpen] = useState(true)
+  const [chosen, setChosen] = useState<string | null>(null)
+  if (tabs.length === 0) return null
+  const selected = tabs.find(tab => tab.id === chosen)?.id ?? tabs[0]?.id
+  return (
+    <section className={css.recent} aria-labelledby="dv-explore">
+      <div className={css.recentHeader}>
+        <h2 id="dv-explore" className={css.recentTitle}>{t('探索', 'Explore')}</h2>
+        <button type="button" className={css.textButton} aria-expanded={open} onClick={() => { setOpen(value => !value) }}>
+          {open ? t('收起', 'Show less') : t('展开', 'Show more')}
+        </button>
+      </div>
+      {open && (
+        <>
+          <div className={css.exploreTabs} role="tablist" aria-label={t('探索分类', 'Explore categories')}>
+            {tabs.map(tab => (
+              <button
+                key={tab.id} type="button" role="tab" className={css.exploreTab} aria-selected={tab.id === selected}
+                data-active={tab.id === selected ? '' : undefined} onClick={() => { setChosen(tab.id) }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div role="tabpanel">{selected !== undefined && renderSlot('dv.explore', {}, { only: selected })}</div>
+        </>
+      )}
     </section>
   )
 }

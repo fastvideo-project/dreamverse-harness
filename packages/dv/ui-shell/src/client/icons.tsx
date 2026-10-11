@@ -65,3 +65,8 @@ export function MoreIcon(): ReactNode {
 export function PluginsIcon(): ReactNode {
   return <Icon><rect x="4" y="4" width="7" height="7" rx="1.5" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><rect x="13" y="13" width="7" height="7" rx="1.5" /></Icon>
 }
+
+/** A plug: the MCP page and MCP servers. */
+export function PlugIcon({ size = 16 }: { size?: number } = {}): ReactNode {
+  return <Icon size={size}><path d="M9 3v4M15 3v4M6.5 7h11v4a5.5 5.5 0 0 1-11 0V7Z" /><path d="M12 16.5V21" /></Icon>
+}

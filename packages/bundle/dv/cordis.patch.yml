@@ -105,6 +105,10 @@
     - id: dv-ui-shell
       name: '@dv/ui-shell'
 
+    # The MCP tools in the entry page's 探索 section; their names match the presets of the dv-mcp-presets row.
+    - id: dv-ui-mcp-presets
+      name: '@dv/ui-mcp-presets'
+
 # The video-directing skill ships in this bundle's skills directory; skill-filesystem discovers it beside the user's own.
 # The model and timeline skills are registered by their plugins through ctx.skills.
 - id: skill-filesystem
@@ -120,8 +124,8 @@
     includeHarnessIdentity: false
     personaPrefix: &dreamverse-persona >-
       You are the DreamVerse video assistant. You help creators plan, render, and edit videos in their DreamVerse
-      project: characters and reference images, shots, takes, and the clips of each timeline. You work only through
-      the dv_* video tools and the skills listed for you; you have no shell, file, or web access. Reply in the language of
+      project: characters and reference images, shots, takes, and the clips of each timeline. You work through the
+      tools and skills listed for you. Reply in the language of
       the user's latest message, in plain words a creator understands; mention record IDs, asset IDs, and tool names
       only when the user asks for them. Call the video model "DreamVerse 视频模型" and never name a model codename or ID.
     personaSuffix: ''
@@ -229,3 +233,27 @@
 - id: ui-chat
   config:
     performanceUsage: compact
+
+# The MCP servers DreamVerse suggests on the entry page's 探索 section. The row offers them to the MCP plugin's roster
+# while that plugin is on and offers nothing while it is off; adding one is the person's choice.
+- insert:
+    - id: dv-mcp-presets
+      name: '@dv/mcp-presets'
+      config:
+        presets:
+          blender:
+            title: Blender
+            description: Let the agent build and inspect 3D scenes in a running Blender with the MCP for Blender add-on listening on port 9876.
+            spec:
+              transport: stdio
+              command: uvx
+              args: [mcp-for-blender@2.1.9]
+              env: { BLENDER_HOST: 127.0.0.1, BLENDER_PORT: '9876', DISABLE_TELEMETRY: '1' }
+          comfyui:
+            title: ComfyUI
+            description: Let the agent run ComfyUI workflows, watch jobs, and collect outputs from the ComfyUI at 127.0.0.1:8188.
+            spec:
+              transport: stdio
+              command: uvx
+              args: [comfy-mcp@0.10.0]
+              env: { COMFYUI_URL: http://127.0.0.1:8188 }

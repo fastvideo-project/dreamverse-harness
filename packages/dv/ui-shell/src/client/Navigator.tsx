@@ -1,6 +1,6 @@
 /**
  * The DreamVerse left navigator, shadowing the DSH sidebar's Workspace browser: 新建项目, 首页, the DSH sidebar pages
- * (插件, …), and the project → session tree. Each project lists the chat sessions of its Workspace and the sessions bound to it, with a
+ * (插件, MCP, …), and the project → session tree. Each project lists the chat sessions of its Workspace and the sessions bound to it, with a
  * row menu to rename or delete the project or a session.
  *
  * @module @dv/ui-shell/Navigator
@@ -13,7 +13,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { pickText, useText } from '@dv/ui-kit/locale.ts'
 import type { ShellInjected } from './Center.tsx'
-import { ChevronDownIcon, ChevronRightIcon, HomeIcon, PluginsIcon, PlusIcon } from './icons.tsx'
+import { ChevronDownIcon, ChevronRightIcon, HomeIcon, PlugIcon, PluginsIcon, PlusIcon } from './icons.tsx'
 import { InlineRename, RowMenu } from './InlineRename.tsx'
 import type { WireProjectLink } from '@dv/ui-kit/types.ts'
 import { usePanelEntries } from './panels.ts'
@@ -25,7 +25,7 @@ import css from './shell.module.css'
 export type NavigatorProps = PropsRuntime<'sidebar.workspaces'> & ShellInjected
 
 /** Icons of the DSH sidebar pages the shell knows; any other page shows the Plugins icon. */
-const PAGE_ICONS: Readonly<Record<string, () => ReactNode>> = { plugins: PluginsIcon }
+const PAGE_ICONS: Readonly<Record<string, () => ReactNode>> = { plugins: PluginsIcon, mcp: PlugIcon }
 
 /** How many projects the tree lists before 项目 expands it to all. */
 const SHOWN_PROJECTS = 12

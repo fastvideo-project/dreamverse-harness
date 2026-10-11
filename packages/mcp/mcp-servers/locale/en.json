@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "MCP servers",
+    "description": "Saves the servers you add and connects each one; their tools join the agent's tool list"
+  }
+}

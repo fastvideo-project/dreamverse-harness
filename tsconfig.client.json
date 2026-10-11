@@ -122,6 +122,7 @@
     { "path": "./packages/client/ui-settings-general/tsconfig.client.json" },
     { "path": "./packages/client/ui-settings-models" },
     { "path": "./packages/client/ui-plugin-manager/tsconfig.client.json" },
+    { "path": "./packages/client/ui-mcp-servers" },
     { "path": "./packages/client/ui-settings-plugin-inventory" },
     { "path": "./packages/client/locale/tsconfig.client.json" },
     { "path": "./packages/client/ui-renderer" },
@@ -142,6 +143,7 @@
     { "path": "./packages/dv/ui-timeline" },
     { "path": "./packages/dv/ui-asset-pool" },
     { "path": "./packages/dv/ui-history" },
+    { "path": "./packages/dv/ui-mcp-presets" },
     { "path": "./packages/dv/ui-shell" },
     { "path": "./packages/dv/ui-composer" },
     { "path": "./apps/web" }

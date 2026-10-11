@@ -14,6 +14,7 @@ import { DV_TRAJECTORY_FOCUS_EVENT, type DvWorkspaceEventMap } from '@dv/ui-kit/
 import { createActions } from './actions.ts'
 import { CenterPanel, type ShellInjected } from './Center.tsx'
 import { applyChrome } from './chrome.tsx'
+import { followExploreEntries } from './explore.ts'
 import { BrandName, Navigator } from './Navigator.tsx'
 import { followPanelEntries } from './panels.ts'
 import { applyRightPanelWidth } from './right-panel.ts'
@@ -39,7 +40,10 @@ export function apply(ctx: ClientContext): void {
   applyTheme(ctx)
   const injected: ShellInjected = { shell: createActions(ctx) }
   ctx.effect(() => ctx.slots.inject('main.conversation', () => ctx.slots.register(
-    { name: 'main.conversation', priority: -1, inject: () => injected }, CenterPanel,
+    {
+      name: 'main.conversation', priority: -1, inject: () => injected,
+      children: { 'dv.explore': { kind: 'list', scope: 'root' } },
+    }, CenterPanel,
   )), 'ui-shell: center')
   ctx.effect(() => ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register(
     { name: 'sidebar.workspaces', priority: -1, inject: () => injected }, Navigator,
@@ -49,6 +53,7 @@ export function apply(ctx: ClientContext): void {
   )), 'ui-shell: brand')
   applyChrome(ctx)
   followPanelEntries(ctx)
+  followExploreEntries(ctx)
   ctx.inject(['layout'], (scope) => {
     scope.effect(() => {
       applyRightPanelWidth(scope.get('layout') as object)

@@ -761,6 +761,7 @@
 .menuItem:focus-visible,
 .toggleItem:focus-visible,
 .textButton:focus-visible,
+.exploreTab:focus-visible,
 .card:focus-visible {
   outline: 2px solid var(--dv-accent);
   outline-offset: 2px;
@@ -777,4 +778,36 @@
   .treeRow {
     transition: none;
   }
+}
+
+/* 探索: one tab per `dv.explore` entry, above the selected tab's body. */
+.exploreTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.exploreTab {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--dv-line);
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--dv-text-2);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.exploreTab:hover {
+  color: var(--dv-text);
+}
+
+.exploreTab[data-active] {
+  border-color: var(--dv-line-strong);
+  background: var(--dv-surface-3);
+  color: var(--dv-text);
+  font-weight: 500;
 }

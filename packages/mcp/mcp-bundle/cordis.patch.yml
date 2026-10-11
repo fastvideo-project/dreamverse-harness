@@ -1,0 +1,8 @@
+# MCP servers a person adds on this bundle's plugin page. `mcp-servers` saves the roster into its own profile entry
+# and mounts one `@deepseek-ai/dsh-mcp-client` per server on the host, so every agent sees the servers' tools;
+# `ui-mcp-servers` draws the roster on the page. Presets come from other plugins through `ctx.mcpServers.offerPresets()`.
+- insert:
+    - id: mcp-servers
+      name: '@deepseek-ai/dsh-mcp-servers'
+    - id: ui-mcp-servers
+      name: '@deepseek-ai/dsh-client-ui-mcp-servers'

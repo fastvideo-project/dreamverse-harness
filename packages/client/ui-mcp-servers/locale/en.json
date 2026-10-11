@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "MCP server dashboard",
+    "description": "Lists the servers on this page and adds, removes, or reconnects them"
+  }
+}

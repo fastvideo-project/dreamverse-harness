@@ -22,6 +22,7 @@
     "@dv/fasth3-t2va": "workspace:*",
     "@dv/ffmpeg": "workspace:*",
     "@dv/inspector": "workspace:*",
+    "@dv/mcp-presets": "workspace:*",
     "@dv/project": "workspace:*",
     "@dv/shot-plan": "workspace:*",
     "@dv/shot-render": "workspace:*",
@@ -31,6 +32,7 @@
     "@dv/ui-canvas": "workspace:*",
     "@dv/ui-composer": "workspace:*",
     "@dv/ui-history": "workspace:*",
+    "@dv/ui-mcp-presets": "workspace:*",
     "@dv/ui-shell": "workspace:*",
     "@dv/ui-timeline": "workspace:*"
   },

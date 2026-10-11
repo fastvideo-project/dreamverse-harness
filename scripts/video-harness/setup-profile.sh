@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Create the two video-harness dsh profiles in $DSH_HOME/profiles: `video-harness` stacks the bundle on dsh-base and
 # dsh-web-app (the chat page), `video-harness-headless` on dsh-base and dsh-headless (one task per process). Each gets
-# a manifest, an empty profile patch (kept when it already exists), and a node_modules link to this checkout's
+# a manifest and an empty profile patch (each kept when it already exists, so bundles switched on in the Plugins page
+# survive a restart), and a node_modules link to this checkout's
 # packages/bundle/dv.
 set -euo pipefail
 
@@ -12,7 +13,7 @@ make_profile() {
   local name="$1" surface="$2"
   local profile_dir="$DSH_HOME/profiles/$name"
   mkdir -p "$profile_dir/node_modules/@dv"
-  echo "{\"name\":\"dsh-profile-$name\",\"private\":true,\"dsh\":{\"profile\":{\"bundles\":[\"@deepseek-ai/dsh-base\",\"$surface\",\"@dv/bundle\"]}}}" \
+  [[ -e "$profile_dir/package.json" ]] || echo "{\"name\":\"dsh-profile-$name\",\"private\":true,\"dsh\":{\"profile\":{\"bundles\":[\"@deepseek-ai/dsh-base\",\"$surface\",\"@dv/bundle\"]}}}" \
     > "$profile_dir/package.json"
   [[ -e "$profile_dir/cordis.patch.yml" ]] || echo '[]' > "$profile_dir/cordis.patch.yml"
   ln -sfn "$fork_root/packages/bundle/dv" "$profile_dir/node_modules/@dv/bundle"

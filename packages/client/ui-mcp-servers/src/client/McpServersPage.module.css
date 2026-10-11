@@ -1,0 +1,69 @@
+/* Section and rows follow the plugin page's own section and row metrics, so the roster reads as part of that page. */
+.section { display: flex; flex-direction: column; gap: 12px; }
+.head { display: flex; align-items: baseline; gap: 10px; }
+.title { margin: 0; font-size: 14px; line-height: 20px; font-weight: 500; }
+.count { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); margin-left: 6px; }
+.head .count { margin-left: 0; }
+.addButton { margin-left: auto; align-self: center; }
+.intro { margin: 0; font-size: 12.5px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
+.status { margin: 0; font-size: 12.5px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
+
+.rows { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.row { padding: 12px 2px; border-bottom: 0.5px solid var(--dsw-alias-border-l2); }
+.row:last-child { border-bottom: 0; }
+.rowLine { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.rowIcon {
+  display: inline-flex; flex: none; align-items: center; justify-content: center; width: 40px; height: 40px;
+  border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 10px; color: var(--dsw-alias-label-secondary);
+}
+.rowMain { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+.rowName { font-size: 13.5px; line-height: 20px; font-weight: 500; color: var(--dsw-alias-label-primary); overflow-wrap: anywhere; }
+.rowSpec {
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 11.5px; line-height: 16px;
+  color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere;
+}
+.rowState {
+  display: inline-flex; flex: none; align-items: center; gap: 6px; font-size: 12.5px; line-height: 18px;
+  color: var(--dsw-alias-label-secondary); white-space: nowrap;
+}
+.row[data-state='failed'] .rowState { color: var(--dsw-alias-state-error-primary); }
+.rowActions { display: inline-flex; flex: none; gap: 4px; }
+.rowFailure {
+  margin: 4px 0 0 56px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-state-error-primary); overflow-wrap: anywhere;
+}
+
+.tools { margin: 6px 0 0 56px; }
+.toolsToggle {
+  display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; cursor: pointer;
+  font: inherit; font-size: 12.5px; line-height: 18px; color: var(--dsw-alias-label-secondary);
+}
+.toolsToggle:hover { color: var(--dsw-alias-label-primary); }
+.toolList { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; font-size: 12px; line-height: 17px; }
+.toolList li { display: flex; flex-direction: column; gap: 1px; }
+.toolList code { font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); color: var(--dsw-alias-label-primary); }
+.toolList span {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+  color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere;
+}
+
+.form { display: flex; flex-direction: column; gap: 14px; width: 100%; min-width: 0; }
+.field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.field > span { font-weight: 500; }
+.field small { font-size: 11.5px; color: var(--dsw-alias-label-tertiary); }
+.textarea {
+  box-sizing: border-box; width: 100%; padding: 6px 10px; border: 0.5px solid var(--dsw-alias-border-l1); border-radius: 8px; background: transparent; color: inherit;
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 12px; line-height: 18px; resize: vertical;
+}
+.formActions { display: flex; justify-content: flex-end; gap: 8px; }
+.formError { margin: 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-state-error-primary); overflow-wrap: anywhere; }
+
+/* MCP page in the main column: the plugin page's centred column and heading metrics. */
+.page {
+  display: flex; flex-direction: column; align-items: center; gap: 32px; box-sizing: border-box; height: 100%; overflow: auto;
+  padding: 28px clamp(24px, 4vw, 48px) 48px; color: var(--dsw-alias-label-primary);
+}
+.page > * { width: 100%; max-width: 960px; }
+.pageHead { display: flex; flex-direction: column; box-sizing: border-box; }
+:global([data-platform='darwin']) .pageHead { padding-top: var(--dsh-frame-top-clearance, 0px); }
+.pageTitle { margin: 0; font-size: 20px; font-weight: 500; line-height: 28px; }
+.pageIntro { margin: 4px 0 0; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary); }

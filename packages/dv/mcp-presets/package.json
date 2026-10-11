@@ -1,0 +1,24 @@
+{
+  "name": "@dv/mcp-presets",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP presets of DreamVerse: offers configured MCP servers (Blender, ComfyUI) for one-step adding while the MCP plugin is on.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-mcp-servers": "workspace:*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/schemastery": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/schemastery": "workspace:~",
+    "@deepseek-ai/dsh-system-prompt": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*"
+  }
+}
