@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
-/** The plugin's page and navigator entry, the skill list read through the chat session, 使用, and removal on dispose. */
+/**
+ * The plugin's page, navigator entry, and 探索 tab, the skill list read through the chat session, 使用, and removal on
+ * dispose.
+ */
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { DV_COMPOSE_EVENT, type DvComposeDetail } from '@dv/ui-kit/compose.ts'
 import type { SkillsInjected } from '../src/client/SkillsPage.tsx'
-import { SkillsPage, SkillsPanelIcon } from '../src/client/SkillsPage.tsx'
+import { SkillsPage, SkillsPanelIcon, SkillsShelf } from '../src/client/SkillsPage.tsx'
 import { apply, inject, SKILLS_PANEL_ID } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
 
@@ -21,15 +24,18 @@ interface Recorded {
 const SKILL = { name: 'storyboard', description: 'Storyboard', modelInvocable: true }
 
 /**
- * Boot the client plugin over a recording `ctx.slots` registry, a scripted `skills` Remote, and a recording layout.
+ * Boot the client plugin over a recording `ctx.slots` registry, a scripted `skills` Remote, a recording layout, and a
+ * recording session input.
  * @param mounted - the session the right panel's seat shows.
- * @returns the entries registered through `ctx.slots`, the Remote calls, the selected panels, and the plugin fiber.
+ * @returns the registered entries, the Remote calls, the selected panels, the input calls, and the plugin fiber.
  */
 async function boot(mounted: string | undefined) {
   const ctx = new Context()
   const registered: Recorded[] = []
   const calls: unknown[] = []
   const selected: unknown[] = []
+  const inputs: string[] = []
+  const input = { setDraft: (draft: string) => { inputs.push(`draft ${draft}`) }, focus: () => { inputs.push('focus') } }
   const slots = {
     inject: vi.fn((_name: string, register: () => () => void) => register()),
     register: vi.fn((options: Omit<Recorded, 'component'>, component: unknown) => {
@@ -47,12 +53,17 @@ async function boot(mounted: string | undefined) {
   ctx.provide('slots', slots as never)
   ctx.provide('remote', { skills } as never)
   ctx.provide('remote.skills', skills as never)
-  ctx.provide('sessions', { list: { getSnapshot: () => ({ byId: { s0: { id: 's0', updatedAt: 1 }, s2: { id: 's2', updatedAt: 2 } } }) } } as never)
+  ctx.provide('sessions', {
+    list: { getSnapshot: () => ({ byId: { s0: { id: 's0', updatedAt: 1 }, s2: { id: 's2', updatedAt: 2 } } }) },
+    scope: (sessionId: string) => ({
+      get: (name: string) => (name === 'conversation' ? { input: { for: () => { inputs.push(`session ${sessionId}`); return input } } } : undefined),
+    }),
+  } as never)
   ctx.provide('sidebarRight', { mounted: { getSnapshot: () => mounted } } as never)
   ctx.provide('layout', { selectPanel: (id: unknown) => { selected.push(id) } } as never)
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
-  return { registered, calls, selected, fiber }
+  return { registered, calls, selected, inputs, fiber }
 }
 
 describe('ui-skills apply', () => {
@@ -60,14 +71,17 @@ describe('ui-skills apply', () => {
     expect(hostApply).not.toThrow()
   })
 
-  it('registers the page under the skills panel and the navigator entry after Plugins', async () => {
+  it('registers the page under the skills panel, the navigator entry after Plugins, and the 探索 tab after MCP', async () => {
     const { registered } = await boot('s1')
     expect(registered.map(entry => [entry.name, entry.key ?? entry.id, entry.component])).toEqual([
       ['main', SKILLS_PANEL_ID, SkillsPage],
       ['sidebar.panellist', SKILLS_PANEL_ID, SkillsPanelIcon],
+      ['dv.explore', 'skills', SkillsShelf],
     ])
     expect(registered[1]?.order).toBe(2)
     expect(registered[1]?.label?.()).toMatch(/^(技能|Skills)$/)
+    expect(registered[2]?.order).toBe(1)
+    expect(registered[2]?.label?.()).toMatch(/^(技能|Skills)$/)
   })
 
   it('lists the skills of the chat session, else of the newest session', async () => {
@@ -90,7 +104,19 @@ describe('ui-skills apply', () => {
     expect(composed).toEqual([{ text: '/storyboard', refs: [] }])
   })
 
-  it('removes the page and the entry when the plugin is disposed', async () => {
+  it('writes /name into the entry page session on 使用 in the 探索 tab, without dv:compose', async () => {
+    const { registered, selected, inputs } = await boot('s1')
+    const composed: DvComposeDetail[] = []
+    const listen = (event: Event): void => { composed.push((event as CustomEvent<DvComposeDetail>).detail) }
+    window.addEventListener(DV_COMPOSE_EVENT, listen)
+    registered[2]?.inject?.().use('storyboard')
+    window.removeEventListener(DV_COMPOSE_EVENT, listen)
+    expect(inputs).toEqual(['session s1', 'draft /storyboard ', 'focus'])
+    expect(selected).toEqual([])
+    expect(composed).toEqual([])
+  })
+
+  it('removes the page, the entry, and the tab when the plugin is disposed', async () => {
     const { registered, fiber } = await boot('s1')
     await fiber.dispose()
     expect(registered).toEqual([])

@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-/** The Skills page over a scripted list: the cards, 使用, the empty note, and a failed read with 重试. */
+/** The Skills page and the 探索 tab over a scripted list: the cards, 使用, the empty note, and a failed read with 重试. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { SkillEntry } from '@deepseek-ai/dsh-api-remotes/client'
-import { SkillsPage } from '../src/client/SkillsPage.tsx'
+import { SkillsPage, SkillsShelf } from '../src/client/SkillsPage.tsx'
 
 afterEach(() => { cleanup() })
 
@@ -36,5 +36,14 @@ describe('SkillsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /重试|Retry/ }))
     expect(await screen.findByText('/storyboard')).toBeTruthy()
     expect(list).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows the same cards in the 探索 tab, and 使用 passes the skill name', async () => {
+    const use = vi.fn()
+    render(<SkillsShelf list={() => Promise.resolve(SKILLS)} use={use} />)
+    const commands = await screen.findAllByText(/^\/[a-z-]+$/)
+    expect(commands.map(node => node.textContent)).toEqual(['/storyboard', '/trailer'])
+    fireEvent.click(screen.getByRole('button', { name: /storyboard/ }))
+    expect(use).toHaveBeenCalledWith('storyboard')
   })
 })

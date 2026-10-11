@@ -18,6 +18,9 @@
       "path": "../../api/session-controller/tsconfig.client.json"
     },
     {
+      "path": "../../client/ui-conversation/tsconfig.client.json"
+    },
+    {
       "path": "../../client/ui-layout"
     },
     {
@@ -37,6 +40,9 @@
     },
     {
       "path": "../ui-kit"
+    },
+    {
+      "path": "../ui-shell"
     }
   ]
 }

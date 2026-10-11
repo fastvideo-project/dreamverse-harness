@@ -1,6 +1,6 @@
 /**
  * The DreamVerse left navigator, shadowing the DSH sidebar's Workspace browser: 新建项目, 首页, the DSH sidebar pages
- * (插件, MCP, 技能, …), and the project → session tree. Each project lists the chat sessions of its Workspace and the sessions bound to it, with a
+ * (插件, MCP, …), and the project → session tree. Each project lists the chat sessions of its Workspace and the sessions bound to it, with a
  * row menu to rename or delete the project or a session.
  *
  * @module @dv/ui-shell/Navigator
