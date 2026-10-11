@@ -1,27 +1,31 @@
 /**
- * The DreamVerse left navigator, shadowing the DSH sidebar's Workspace browser: 新建项目, the 首页 / 项目 entries, and the
- * project → session tree. Each project lists the chat sessions of its Workspace and the sessions bound to it, with a
+ * The DreamVerse left navigator, shadowing the DSH sidebar's Workspace browser: 新建项目, 首页, the DSH sidebar pages
+ * (插件, …), and the project → session tree. Each project lists the chat sessions of its Workspace and the sessions bound to it, with a
  * row menu to rename or delete the project or a session.
  *
  * @module @dv/ui-shell/Navigator
  */
 import type { ReactNode } from 'react'
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { pickText, useText } from '@dv/ui-kit/locale.ts'
 import type { ShellInjected } from './Center.tsx'
-import { ChevronDownIcon, ChevronRightIcon, HomeIcon, PlusIcon } from './icons.tsx'
+import { ChevronDownIcon, ChevronRightIcon, HomeIcon, PluginsIcon, PlusIcon } from './icons.tsx'
 import { InlineRename, RowMenu } from './InlineRename.tsx'
 import type { WireProjectLink } from '@dv/ui-kit/types.ts'
+import { usePanelEntries } from './panels.ts'
 import { useProjectSessions } from './sessions.ts'
 import { NO_PROJECTS, useShell } from './store.ts'
 import css from './shell.module.css'
 
 /** Props of the navigator entry. */
 export type NavigatorProps = PropsRuntime<'sidebar.workspaces'> & ShellInjected
+
+/** Icons of the DSH sidebar pages the shell knows; any other page shows the Plugins icon. */
+const PAGE_ICONS: Readonly<Record<string, () => ReactNode>> = { plugins: PluginsIcon }
 
 /** How many projects the tree lists before 项目 expands it to all. */
 const SHOWN_PROJECTS = 12
@@ -40,9 +44,11 @@ function run(work: () => Promise<void>): void {
  * @returns the navigator, or nothing in the collapsed rail.
  */
 export function Navigator(props: NavigatorProps): ReactNode {
-  const { wide, shell } = props
+  const { wide, shell, usePanelInfo } = props
   const t = useText()
   const projectId = useShell(s => s.projectId)
+  const pages = usePanelEntries()
+  const activePage = usePanelInfo(info => info.activePanelId)
   const projects = useShell(s => s.links?.projects ?? NO_PROJECTS)
   const [showAll, setShowAll] = useState(false)
   const loaded = useShell(s => s.links !== null)
@@ -63,7 +69,11 @@ export function Navigator(props: NavigatorProps): ReactNode {
       <button type="button" className={css.navSecondary} onClick={() => { run(() => shell.newProject()) }}>
         <PlusIcon />{t('新建项目', 'Create project')}
       </button>
-      {nav(t('首页', 'Home'), projectId === null, () => { run(() => shell.goHome()) }, <HomeIcon />)}
+      {nav(t('首页', 'Home'), projectId === null && activePage === null, () => { run(() => shell.goHome()) }, <HomeIcon />)}
+      {pages.map((page) => {
+        const PageIcon = PAGE_ICONS[page.id] ?? PluginsIcon
+        return <Fragment key={page.id}>{nav(page.label, activePage === page.id, () => { shell.openPage(page.id) }, <PageIcon />)}</Fragment>
+      })}
       {sorted.length > SHOWN_PROJECTS && nav(showAll ? t('收起项目', 'Fewer projects') : t('全部项目', 'All projects'), false, () => { setShowAll(value => !value) })}
       <div className={css.section}>{t('项目', 'Projects')}</div>
       {loaded && sorted.length === 0 && (

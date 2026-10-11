@@ -15,6 +15,7 @@ import { createActions } from './actions.ts'
 import { CenterPanel, type ShellInjected } from './Center.tsx'
 import { applyChrome } from './chrome.tsx'
 import { BrandName, Navigator } from './Navigator.tsx'
+import { followPanelEntries } from './panels.ts'
 import { applyRightPanelWidth } from './right-panel.ts'
 import { getShell, refreshLinks } from './store.ts'
 import { applyTheme } from './theme.ts'
@@ -47,6 +48,7 @@ export function apply(ctx: ClientContext): void {
     { name: 'sidebar.brand.name', priority: -1 }, BrandName,
   )), 'ui-shell: brand')
   applyChrome(ctx)
+  followPanelEntries(ctx)
   ctx.inject(['layout'], (scope) => {
     scope.effect(() => {
       applyRightPanelWidth(scope.get('layout') as object)

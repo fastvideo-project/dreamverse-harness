@@ -1,6 +1,6 @@
 /**
  * DSH chrome that DreamVerse hides or replaces: the internal-testing welcome notice, the sidebar's New Session button,
- * Plugins entry, and New-Session brand click, the right-panel guide that offers DSH tab types (workspace files,
+ * page list in the expanded sidebar, and New-Session brand click, the right-panel guide that offers DSH tab types (workspace files,
  * terminal, the canvas and timeline tabs the center already shows), right-panel tab titles frozen in the language of the
  * moment they opened, a few DSH strings that name DeepSeek or Workspaces, and the developer details of the composer
  * (statistics, context meter, host slash commands).
@@ -27,7 +27,8 @@ const HISTORY_ID = '@dv/ui-history'
 /**
  * Sidebar controls DreamVerse hides. The DSH sidebar draws them without a DSH UI slot, so the shell hides them by their CSS
  * Module class names, whose hashed prefix varies and whose `_name` suffix does not: the New Session button (expanded
- * and rail), the global panel list (its only entry is Plugins, whose page would replace the project center), and the
+ * and rail), the page list while the sidebar is expanded (the navigator lists 插件, MCP, … below 首页; the collapsed rail
+ * keeps the DSH icons, where the navigator draws nothing; only the expanded rows carry a `_panelTitle` label), and the
  * brand's New Session click. The composer's context-occupancy meter has no DSH UI slot either; its button is found by its
  * accessible label. Composer menu rows show their localized label only, without the internal name (`file`) beside it.
  * The brand mark slot holds an empty entry (no DSH whale), so its empty wrappers collapse, and the collapsed rail shows
@@ -35,7 +36,7 @@ const HISTORY_ID = '@dv/ui-history'
  */
 const HIDDEN_CHROME_CSS = `
 button[class$="_newSession"] { display: none !important; }
-nav[class$="_panelList"] { display: none !important; }
+nav[class$="_panelList"]:has(span[class*="_panelTitle"]) { display: none !important; }
 button[class*="_brand "] { pointer-events: none; cursor: default; }
 button[aria-label^="上下文已用"], button[aria-label$=" of context used"] { display: none !important; }
 [data-trigger-menu] span[class$="_itemAlias"] { display: none !important; }

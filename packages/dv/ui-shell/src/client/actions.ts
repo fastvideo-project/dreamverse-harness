@@ -10,6 +10,7 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -52,6 +53,8 @@ export interface ShellActions {
    * this browser tab's blank chat session in the entry Workspace.
    */
   goHome(sessionId?: string): Promise<void>
+  /** Open a DSH sidebar page (Plugins, MCP, or another `sidebar.panellist` entry) in the main column. */
+  openPage(panelId: string): void
   /** Store a unique project title and rename the project's Workspace to match. */
   renameProject(projectId: string, title: string): Promise<void>
   /** Move a project to the trash, drop its Workspace registration, and leave it when it is open. */
@@ -250,12 +253,20 @@ export function createActions(ctx: ClientContext): ShellActions {
     ctx.uiWorkspace.openSession(sessionId)
   }
 
+  // A DSH sidebar page (Plugins, MCP) replaces the shell's center while it is selected; every shell navigation closes it,
+  // also when the navigation keeps the main session (首页 from a page opened on the entry page).
+  const leavePage = (): void => {
+    ctx.get('layout')?.selectPanel(null)
+  }
+
   const openSession = (sessionId: string): void => {
+    leavePage()
     markSessionChoice()
     showSession(sessionId as SessionId)
   }
 
   const goHome = async (sessionId?: string): Promise<void> => {
+    leavePage()
     setShell({ projectId: null })
     const links = getShell().links ?? await refreshLinks()
     await Promise.all([whenReady(ctx.sessions.list), whenReady(ctx.workspaces.list)])
@@ -274,6 +285,7 @@ export function createActions(ctx: ClientContext): ShellActions {
   }
 
   const openProject = async (projectId: string, sessionId?: string): Promise<void> => {
+    leavePage()
     setShell({ projectId })
     const workspaceId = await projectWorkspace(projectId)
     const sessions = await projectSessions(projectId, workspaceId)
@@ -309,6 +321,7 @@ export function createActions(ctx: ClientContext): ShellActions {
 
   return {
     async newProject() {
+      leavePage()
       const links = getShell().links ?? await refreshLinks()
       const base = pickText('未命名项目', 'Untitled project')
       const titles = new Set(links.projects.map(p => p.title))
@@ -324,6 +337,7 @@ export function createActions(ctx: ClientContext): ShellActions {
     openProject,
     openSession,
     async newSession(projectId) {
+      leavePage()
       setShell({ projectId })
       const workspaceId = await projectWorkspace(projectId)
       if (getShell().projectId !== projectId) return
@@ -331,6 +345,9 @@ export function createActions(ctx: ClientContext): ShellActions {
       await openBlank(workspaceId, () => getShell().projectId === projectId)
     },
     goHome,
+    openPage(panelId) {
+      ctx.get('layout')?.selectPanel(panelId as MainPanelId)
+    },
     async renameProject(projectId, title) {
       const renamed = await shellClient.renameProject(projectId, title)
       const links = await refreshLinks()
