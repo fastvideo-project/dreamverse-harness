@@ -16,8 +16,8 @@ describe('actionRows', () => {
   it('folds the loaded records an approval scheduled under its row, in scheduled order', () => {
     const rows = actionRows([
       entry({ id: 'tl', actor: 'system', operation: 'timeline.update' }),
-      entry({ id: 'g2', actor: 'system', operation: 'shot.render_ref2va' }),
-      entry({ id: 'g1', actor: 'system', operation: 'shot.render_ref2va' }),
+      entry({ id: 'g2', actor: 'system', operation: 'shot.render' }),
+      entry({ id: 'g1', actor: 'system', operation: 'shot.render' }),
       entry({ id: 'ap', turn: 't2', operation: 'plan.approve', report: { plan: 'p1', version: 2, scheduled: ['g1', 'g2', 'tl', 'gone'] } }),
       entry({ id: 'h1', operation: 'timeline.clip_move' }),
     ])
@@ -27,7 +27,7 @@ describe('actionRows', () => {
   })
 
   it('keeps scheduled records as rows of their own while their approval is not loaded', () => {
-    expect(actionRows([entry({ id: 'g1', actor: 'system', operation: 'shot.render_ref2va' })]).map(row => row.entry.record.id)).toEqual(['g1'])
+    expect(actionRows([entry({ id: 'g1', actor: 'system', operation: 'shot.render' })]).map(row => row.entry.record.id)).toEqual(['g1'])
   })
 })
 
@@ -41,9 +41,9 @@ describe('labels, thumbnails and times', () => {
       .toEqual(['修改分镜计划 p1 → v2', 'Update plan p1 → v2'])
     expect(actionLabel(record({ id: 'd', operation: 'plan.approve', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } })))
       .toEqual(['批准分镜计划 p1 v2', 'Approve plan p1 v2'])
-    expect(actionLabel(record({ id: 'e', operation: 'shot.render_ref2va', params: { plan: 'p1', plan_version: 2, shot: 7 } })))
-      .toEqual(['参考图生成镜头 7', 'Render shot from references 7'])
-    expect(actionLabel(record({ id: 'f', operation: 'shot.render_t2va', params: { prompt: 'x' } }))).toEqual(['文字生成镜头', 'Render shot from text'])
+    expect(actionLabel(record({ id: 'e', operation: 'shot.render', params: { plan: 'p1', plan_version: 2, shot: 7 } })))
+      .toEqual(['渲染镜头 7', 'Render shot 7'])
+    expect(actionLabel(record({ id: 'f', operation: 'shot.render', params: { prompt: 'x' } }))).toEqual(['渲染镜头', 'Render shot'])
     expect(actionLabel(record({ id: 'tc', operation: 'timeline.create', params: { timeline: 't2' } }))).toEqual(['新建时间线', 'Create timeline'])
     expect(actionLabel(record({ id: 'tu', operation: 'timeline.update', params: { timeline: 't2' } }))).toEqual(['修改时间线', 'Update timeline'])
     expect(actionLabel(record({ id: 'g', component: 'bible', operation: 'bible.character_create', params: { character: 'c1', name: '阿明' } })))

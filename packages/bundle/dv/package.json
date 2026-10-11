@@ -18,11 +18,11 @@
     "@dv/asset-pool": "workspace:*",
     "@dv/chat-references": "workspace:*",
     "@dv/deliver": "workspace:*",
-    "@dv/fasth3-ref2va": "workspace:*",
-    "@dv/fasth3-t2va": "workspace:*",
+    "@dv/fastvideo": "workspace:*",
     "@dv/ffmpeg": "workspace:*",
     "@dv/inspector": "workspace:*",
     "@dv/mcp-presets": "workspace:*",
+    "@dv/models": "workspace:*",
     "@dv/project": "workspace:*",
     "@dv/shot-plan": "workspace:*",
     "@dv/shot-render": "workspace:*",
@@ -43,7 +43,6 @@
     "@deepseek-ai/cordis-plugin-loader": "workspace:~",
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-system-prompt": "workspace:*",
-    "@deepseek-ai/dsh-tools": "workspace:*",
-    "@dv/render-modes": "workspace:*"
+    "@deepseek-ai/dsh-tools": "workspace:*"
   }
 }

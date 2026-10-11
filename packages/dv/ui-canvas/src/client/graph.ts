@@ -85,7 +85,7 @@ const COLUMN = 240
 /** Row pitch; it leaves room for a take card (147 at 100%) whose text has grown at a low zoom. */
 export const ROW = 200
 
-/** A `shot.render_ref2va` or `shot.render_t2va` record, whose outputs are the takes the creator judges. */
+/** A `shot.render` record, whose outputs are the takes the creator judges. */
 function isRender(record: ProjectRecord): boolean {
   return isRenderOperation(record.operation)
 }

@@ -233,8 +233,8 @@ describe('TimelineView', () => {
   it('places a placeholder clip at its render length, marks it rendering or failed, and holds export until it is ready', async () => {
     const state = twoTimelines()
     state.components.proj.records.push(
-      record({ id: 'r8', operation: 'shot.render_ref2va', status: 'running', params: { duration_sec: 2 } }),
-      record({ id: 'r9', operation: 'shot.render_ref2va', status: 'failed', params: {} }),
+      record({ id: 'r8', operation: 'shot.render', status: 'running', params: { duration_sec: 2 } }),
+      record({ id: 'r9', operation: 'shot.render', status: 'failed', params: {} }),
     )
     const timeline = state.components.timeline.timelines[0]
     timeline?.clips.push(

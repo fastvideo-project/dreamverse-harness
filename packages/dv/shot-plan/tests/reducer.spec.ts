@@ -3,6 +3,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ProjectRecord, ProjectState, RecordId } from '@dv/project'
 import { describe, expect, it } from 'vitest'
 import { planReducer } from '../src/reducer.ts'
+import type { Shot } from '../src/types.ts'
 
 let counter = 0
 
@@ -16,6 +17,11 @@ function record(operation: string | null, params: Record<string, unknown> = {}, 
   }
 }
 
+/** A shot of the model `fake` in mode `text` with the given prompt. */
+function shot(prompt: string): Shot {
+  return { model: 'fake', mode: 'text', prompt }
+}
+
 /** Reduce records in order from the initial slice. */
 function reduceAll(records: ProjectRecord[]) {
   return records.reduce((slice, next) => planReducer.reduce(slice, next), planReducer.initial())
@@ -24,13 +30,13 @@ function reduceAll(records: ProjectRecord[]) {
 describe('plan reducer', () => {
   it('adds version 1 at plan.create, the next version at plan.update, and marks the version a finished approval names', () => {
     const failed = record('plan.create', { shots: [] }, { status: 'failed' })
-    const created = record('plan.create', { title: 't', shots: [{ prompt: 'a' }] }, { report: { plan: 'p1', version: 1 } })
-    const revised = record('plan.update', { plan: 'p1', shots: [{ prompt: 'b' }] }, { report: { plan: 'p1', version: 2 } })
+    const created = record('plan.create', { title: 't', shots: [shot('a')] }, { report: { plan: 'p1', version: 1 } })
+    const revised = record('plan.update', { plan: 'p1', shots: [shot('b')] }, { report: { plan: 'p1', version: 2 } })
     const running = record('plan.approve', { plan: 'p1' }, { status: 'running' })
     const latest = record('plan.approve', { plan: 'p1' }, { report: { plan: 'p1', version: 2, scheduled: [] } })
     const first = record('plan.approve', { plan: 'p1', version: 1 })
-    const v1 = { title: 't', shots: [{ prompt: 'a' }], version: 1, created_by: created.id, approved_by: null }
-    const v2 = { shots: [{ prompt: 'b' }], version: 2, created_by: revised.id, approved_by: null }
+    const v1 = { title: 't', shots: [shot('a')], version: 1, created_by: created.id, approved_by: null }
+    const v2 = { shots: [shot('b')], version: 2, created_by: revised.id, approved_by: null }
     expect(reduceAll([failed, created, revised, running]).plans).toEqual({ p1: [v1, v2] })
     expect(reduceAll([created, revised, latest, first]).plans).toEqual({
       p1: [{ ...v1, approved_by: first.id }, { ...v2, approved_by: latest.id }],
@@ -40,22 +46,22 @@ describe('plan reducer', () => {
   })
 
   it('ignores other components\' records, unknown plans and versions, and creates without a plan ID', () => {
-    const created = record('plan.create', { shots: [{ prompt: 'a' }] }, { report: { plan: 'p1', version: 1 } })
+    const created = record('plan.create', { shots: [shot('a')] }, { report: { plan: 'p1', version: 1 } })
     const slice = reduceAll([created])
     expect(planReducer.reduce(slice, record('timeline.create', { plan: 'p1' }, { component: 'timeline' }))).toBe(slice)
     expect(planReducer.reduce(slice, record('plan.approve', {}))).toBe(slice)
     expect(planReducer.reduce(slice, record('plan.approve', { plan: 'p9' }))).toBe(slice)
     expect(planReducer.reduce(slice, record('plan.approve', { plan: 'p1', version: 3 }))).toBe(slice)
-    expect(planReducer.reduce(slice, record('plan.update', { plan: 'p9', shots: [{ prompt: 'b' }] }))).toBe(slice)
-    expect(planReducer.reduce(slice, record('plan.create', { shots: [{ prompt: 'b' }] }))).toBe(slice)
+    expect(planReducer.reduce(slice, record('plan.update', { plan: 'p9', shots: [shot('b')] }))).toBe(slice)
+    expect(planReducer.reduce(slice, record('plan.create', { shots: [shot('b')] }))).toBe(slice)
     expect(planReducer.reduce(slice, record('plan.create', { shots: [] }, { report: { plan: 'p1', version: 1 } }))).toBe(slice)
   })
 
   it('lists each plan once in the agent summary with its latest version, approved version and shot count', () => {
-    const created = record('plan.create', { title: 'dance', shots: [{ prompt: 'a' }] }, { report: { plan: 'p1', version: 1 } })
+    const created = record('plan.create', { title: 'dance', shots: [shot('a')] }, { report: { plan: 'p1', version: 1 } })
     const approved = record('plan.approve', { plan: 'p1' })
-    const revised = record('plan.update', { plan: 'p1', title: 'dance', shots: [{ prompt: 'a' }, { prompt: 'b' }] })
-    const other = record('plan.create', { shots: [{ prompt: 'c' }] }, { report: { plan: 'p2', version: 1 } })
+    const revised = record('plan.update', { plan: 'p1', title: 'dance', shots: [shot('a'), shot('b')] })
+    const other = record('plan.create', { shots: [shot('c')] }, { report: { plan: 'p2', version: 1 } })
     const slice = reduceAll([created, approved, revised, other])
     expect(planReducer.agentSummary?.(slice, { url: asset => asset }, {} as ProjectState)).toEqual({
       plans: [

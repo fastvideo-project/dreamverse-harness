@@ -101,7 +101,7 @@ describe('CanvasView', () => {
     const { view, node } = mount(true, (state) => {
       if (!started) return
       state.components.proj.records.push(record({
-        id: 'n1', operation: 'shot.render_ref2va', deterministic: false, based_on: 'g1', params: { prompt: 'hero runs' }, status: 'running',
+        id: 'n1', operation: 'shot.render', deterministic: false, based_on: 'g1', params: { prompt: 'hero runs' }, status: 'running',
       }))
     }, true)
     await waitFor(() => { node('g1') })
@@ -216,12 +216,12 @@ describe('CanvasView', () => {
     fireEvent.pointerDown(node('g1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
     fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
     const editor = await view.findByTestId('dv-canvas-node-editor')
-    expect(view.getByTestId('dv-canvas-render-mode').textContent).toBe(zh['mode.ref2va'])
+    expect(view.getByTestId('dv-canvas-render-mode').textContent).toBe(`fasth3 · ${zh['mode.reference']}`)
     fireEvent.change(editor.querySelector('textarea') as HTMLTextAreaElement, { target: { value: 'hero runs' } })
     fireEvent.click(view.getByText(zh['editor.renderTake']))
     await waitFor(() => { expect(writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
     expect(writes.find(write => write.path === '/api/dv/operation')?.body).toMatchObject({
-      project: 'p1', operation: 'shot.render_ref2va', surface: 'canvas', based_on: 'g1', params: { prompt: 'hero runs' },
+      project: 'p1', operation: 'shot.render', surface: 'canvas', based_on: 'g1', params: { model: 'fasth3', mode: 'reference', prompt: 'hero runs' },
       inputs: [{ role: 'reference', ref: 'hero@1' }],
     })
     fireEvent.pointerDown(node('bible:hero'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
@@ -265,8 +265,8 @@ describe('CanvasView', () => {
     fireEvent.click(view.getAllByRole('button', { name: zh['node.retry'] })[0] as HTMLElement)
     await waitFor(() => { expect(writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
     expect(writes.find(write => write.path === '/api/dv/operation')?.body).toMatchObject({
-      project: 'p1', operation: 'shot.render_ref2va', surface: 'canvas', based_on: 'g1', session: 's5',
-      params: { prompt: 'hero walks through the rain at night in the city' }, inputs: [{ role: 'reference', ref: 'hero@1' }],
+      project: 'p1', operation: 'shot.render', surface: 'canvas', based_on: 'g1', session: 's5',
+      params: { model: 'fasth3', mode: 'reference', prompt: 'hero walks through the rain at night in the city' }, inputs: [{ role: 'reference', ref: 'hero@1' }],
     })
     fireEvent.pointerDown(node('g1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
     fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
@@ -371,7 +371,7 @@ describe('CanvasView', () => {
       if (v1 === undefined) throw new Error('fixture lacks plan p1')
       const v3 = {
         ...v1, version: 3, approved_by: null, references: ['hero@1'],
-        shots: [{ prompt: '<Picture 1> walks in the rain', mode: 'ref2va' as const }, { prompt: 'the sky clears', mode: 't2va' as const }],
+        shots: [{ prompt: '<Picture 1> walks in the rain', model: 'fasth3', mode: 'reference' as const }, { prompt: 'the sky clears', model: 'fasth3', mode: 'text' as const }],
       }
       state.components.plan.plans['p1'] = [v1, { ...v1, version: 2, approved_by: null }, v3]
     })
@@ -391,10 +391,10 @@ describe('CanvasView', () => {
     expect(shot?.textContent).toContain('Picture 1 · Hero')
     expect(shot?.querySelector('p')?.textContent).toBe(' walks in the rain')
     expect(shot?.textContent).toContain(zh['editor.firstFrameNone'])
-    // A text shot shows its render mode and no reference images.
+    // A text shot shows its model and mode and no reference images.
     const textShot = editor.querySelector('li[data-shot="2"]')
     expect(textShot?.querySelectorAll('img')).toHaveLength(0)
-    expect(textShot?.querySelector('[data-testid="dv-canvas-shot-mode"]')?.textContent).toBe(zh['mode.t2va'])
+    expect(textShot?.querySelector('[data-testid="dv-canvas-shot-mode"]')?.textContent).toBe(`fasth3 · ${zh['mode.text']}`)
     expect(textShot?.textContent).toContain(zh['editor.textOnlyReferences'])
   })
 

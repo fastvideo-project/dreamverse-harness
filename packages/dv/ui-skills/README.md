@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to show creators the skills of DreamVerse, the written procedures the agent follows. The package adds 技能 / Skills to the left navigator below 首页 / Home; the page lists every skill a creator can start with `/name`, one card each, and the 技能 / Skills tab of 探索 / Explore on the entry page shows the same cards. 使用 / Use closes the page and puts `/name` into the chat composer. Skills that the agent uses only for itself (such as `fasth3-t2va-prompting`) declare that users cannot invoke them, so the page does not list them.
+Use this package to show creators the skills of DreamVerse, the written procedures the agent follows. The package adds 技能 / Skills to the left navigator below 首页 / Home; the page lists every skill a creator can start with `/name`, one card each, and the 技能 / Skills tab of 探索 / Explore on the entry page shows the same cards. 使用 / Use closes the page and puts `/name` into the chat composer. Skills that the agent uses only for itself (such as `fasth3-text-prompting`) declare that users cannot invoke them, so the page does not list them.
 
 ## Table of Contents
 

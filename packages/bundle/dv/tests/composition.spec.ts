@@ -25,10 +25,10 @@ import DvStoryBible from '@dv/story-bible'
 import DvTimeline from '@dv/timeline'
 import DvApi from '@dv/api'
 import DvChatReferences from '@dv/chat-references'
-import { T2vaRenderer, type RenderModelFacts, type RenderStreamEvent } from '@dv/render-modes'
+import DvModels from '@dv/models'
 import * as yaml from 'js-yaml'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { FakeRef2vaRenderer, FFMPEG, FFPROBE } from '../../../dv/api/tests/support.ts'
+import { FakeModel, FFMPEG, FFPROBE } from '../../../dv/api/tests/support.ts'
 
 const disposers: Array<() => Promise<void> | void> = []
 
@@ -36,31 +36,32 @@ afterEach(async () => {
   for (const dispose of disposers.splice(0).reverse()) await dispose()
 })
 
-/** A `t2va` provider that fails every call; the composition only checks whether its row mounts it. */
-class FakeT2vaRenderer extends T2vaRenderer {
-  model(): Promise<RenderModelFacts> {
-    return Promise.reject(new Error('the composition test renders no t2va shot'))
-  }
+/** The `models` config the stand-in FastVideo plugin received from the bundle row. */
+let fastVideoConfig: unknown = null
 
-  ready(): Promise<{ ready: boolean; detail: string | null }> {
-    return Promise.resolve({ ready: false, detail: 'composition test' })
-  }
+/** The model the stand-in FastVideo plugin registered. */
+const fasth3 = new FakeModel()
 
-  render(): AsyncIterable<RenderStreamEvent> {
-    throw new Error('the composition test renders no t2va shot')
-  }
+/** A stand-in for `@dv/fastvideo`: it keeps the row's config and registers the fake model `fasth3` in mode reference. */
+const FakeFastVideo = {
+  name: 'fake-fastvideo',
+  inject: ['dvModels'],
+  apply(ctx: Context, config: { models: unknown }): void {
+    fastVideoConfig = config.models
+    ctx.effect(() => ctx.dvModels.register(fasth3))
+  },
 }
 
 /**
  * The plugin of each package a bundle row names, resolved through `globalThis` because Node imports the rows outside
- * Vite. Each render mode provider row loads a fake provider of its render mode.
+ * Vite. The FastVideo row loads a stand-in that registers a fake model.
  */
 const PLUGINS: Record<string, object> = {
   '@deepseek-ai/dsh-system-prompt': SystemPrompt, '@deepseek-ai/dsh-tools': ToolRuntime, '@dv/project': DvProject,
   '@dv/ffmpeg': DvFfmpeg, '@dv/asset-pool': DvAssetPool, '@dv/inspector': DvInspector, '@dv/story-bible': DvStoryBible,
   '@dv/shot-plan': DvShotPlan, '@dv/shot-render': DvShotRender, '@dv/timeline': DvTimeline, '@dv/deliver': DvDeliver,
   '@dv/api': DvApi, '@dv/chat-references': DvChatReferences,
-  '@dv/fasth3-ref2va': FakeRef2vaRenderer, '@dv/fasth3-t2va': FakeT2vaRenderer,
+  '@dv/models': DvModels, '@dv/fastvideo': FakeFastVideo,
 }
 
 /** One row of a Loader entry list. */
@@ -84,15 +85,16 @@ describe('DreamVerse bundle composition', () => {
     vi.stubEnv('DV_STATE_ROOT', dir)
     vi.stubEnv('DV_FFMPEG', FFMPEG)
     vi.stubEnv('DV_FFPROBE', FFPROBE)
-    // Without a t2va backend URL the `dv-fasth3-t2va` row stays disabled.
+    // Without a t2va backend URL the `dv-fastvideo` row serves fasth3 in mode reference only.
     vi.stubEnv('DV_T2VA_BACKEND_URL', '')
+    vi.stubEnv('DV_BACKEND_URL', '')
     disposers.push(() => { vi.unstubAllEnvs() })
     const globals = globalThis as typeof globalThis & { __dvComposition?: Record<string, object> }
     globals.__dvComposition = PLUGINS
     disposers.push(() => { delete globals.__dvComposition })
     const rows = bundleRows()
     expect(rows.map(row => row.id)).toEqual(expect.arrayContaining([
-      'dv-fasth3-ref2va', 'dv-fasth3-t2va', 'dv-project', 'dv-shot-plan', 'dv-shot-render', 'dv-timeline', 'dv-chat-references', 'dv-api',
+      'dv-models', 'dv-fastvideo', 'dv-project', 'dv-shot-plan', 'dv-shot-render', 'dv-timeline', 'dv-chat-references', 'dv-api',
     ]))
     // Each row keeps its id and `!!js` config; its package name points at a module that re-exports the plugin class.
     const entries = [
@@ -116,12 +118,13 @@ describe('DreamVerse bundle composition', () => {
     expect(ctx.get('dvChatReferences')).toBeDefined()
     expect(ctx.get('dvApi')).toBeDefined()
     expect(ctx.get('dvProject')?.listOperations().map(spec => spec.name))
-      .toEqual(expect.arrayContaining(['plan.create', 'shot.render_ref2va', 'timeline.create', 'timeline.update']))
-    expect(ctx.get('tools')?.get('dv_shot_render_ref2va')).toBeDefined()
-    // The disabled t2va row mounts no provider, so Shot render registers no t2va operation and the agent has no t2va tool.
-    expect(ctx.get('dvT2va')).toBeUndefined()
-    expect(ctx.get('tools')?.get('dv_shot_render_t2va')).toBeUndefined()
-    const renderer = ctx.dvRef2va as FakeRef2vaRenderer
+      .toEqual(expect.arrayContaining(['plan.create', 'shot.render', 'timeline.create', 'timeline.update']))
+    expect(ctx.get('tools')?.get('dv_shot_render')).toBeDefined()
+    expect(ctx.get('tools')?.get('dv_models_get')).toBeDefined()
+    // The bundle's `!!js` config names fasth3 in mode reference only, because no t2va backend URL is set.
+    expect(fastVideoConfig).toEqual({ fasth3: { reference: { baseUrl: 'http://127.0.0.1:8029', gpuSecondsPerVideoSecond: 4 } } })
+    expect(ctx.dvModels.list().map(model => model.id)).toEqual(['fasth3'])
+    const renderer = fasth3
 
     const signal = new AbortController().signal
     const call = async (name: string, args: Record<string, unknown>) => {
@@ -135,8 +138,8 @@ describe('DreamVerse bundle composition', () => {
     await call('dv_asset_import', { reason: 'reference', path: join(dir, 'ref.png'), mime: 'image/png' })
     const reference = ctx.dvAssetPool.list().map(asset => asset.id)
     await call('dv_bible_character_create', { reason: 'lead', character: 'c1', name: 'Lead', inputs: { reference } })
-    const shot = await call('dv_shot_render_ref2va', {
-      reason: 'the opening shot', prompt: 'Picture 1 looks up', duration_sec: 1, inputs: { reference: 'c1@1' },
+    const shot = await call('dv_shot_render', {
+      model: 'fasth3', mode: 'reference', reason: 'the opening shot', prompt: 'Picture 1 looks up', duration_sec: 1, inputs: { reference: 'c1@1' },
     })
     const shotValue = shot.value as OperationToolValue
     expect(shotValue.status).toBe('done')
@@ -146,7 +149,7 @@ describe('DreamVerse bundle composition', () => {
     expect(text?.type === 'text' ? text.text : '').toContain('/dv/assets/')
     // Durable: the project's history holds the record with its outputs, and the asset pool holds the bytes.
     const record = ctx.dvProject.getRecord(projectId, shotValue.record as RecordId)
-    expect(record).toMatchObject({ status: 'done', intent: 'the opening shot', operation: 'shot.render_ref2va', actor: 'agent' })
+    expect(record).toMatchObject({ status: 'done', intent: 'the opening shot', operation: 'shot.render', actor: 'agent' })
     expect(record.outputs).toHaveLength(2)
     const [video] = record.outputs
     expect(video !== undefined && ctx.dvAssetPool.has(video)).toBe(true)
@@ -156,6 +159,6 @@ describe('DreamVerse bundle composition', () => {
     expect(clips?.map(clip => [clip.id, clip.asset])).toEqual([['cl1', video]])
     expect(Object.keys(ctx.dvProject.getState(projectId).components.proj.created_by)).toHaveLength(3)
     // The bundle's `!!js` configuration put the project records under the state root the test set.
-    expect(readFileSync(join(dir, 'projects', projectId, 'records.jsonl'), 'utf8')).toContain('shot.render_ref2va')
+    expect(readFileSync(join(dir, 'projects', projectId, 'records.jsonl'), 'utf8')).toContain('"shot.render"')
   })
 })

@@ -1,10 +1,10 @@
 /**
- * The pure helpers of the Shot render operations: the frame size and frame count a shot asks the render mode for, the
- * prompt labels of a `ref2va` request's images, and the GPU time the backend reported.
+ * The pure helpers of the Shot render operation: the frame size and frame count a shot asks the model for, the prompt
+ * labels of a request's images, and the GPU time the backend reported.
  *
  * @module @dv/shot-render/render
  */
-import type { RenderModelFacts } from '@dv/render-modes'
+import type { RenderModelFacts } from '@dv/models'
 
 /** A params field as text, or the fallback when it is absent or not a string. */
 export function text(value: unknown, fallback = ''): string {
@@ -29,7 +29,7 @@ export interface ShotGeometry {
 /**
  * Resolve a shot's geometry from its params and the served model's facts. Omitted params take the model's first
  * aspect ratio, first resolution, and shortest duration.
- * @param facts - the served model.
+ * @param facts - the model's facts in the mode.
  * @param params - the record params.
  * @returns the geometry.
  * @throws Error naming the allowed values when a param is outside the model's facts.
@@ -49,7 +49,7 @@ export function shotGeometry(facts: RenderModelFacts, params: Record<string, unk
   return { aspectRatio, resolution, width: size[0], height: size[1], durationSec, numFrames }
 }
 
-/** The prompt labels of a `ref2va` request's images, as the record report keeps them (`image_labels`). */
+/** The prompt labels of a request's images, as the record report keeps them (`image_labels`). */
 export interface ImageLabels {
   /** Labels of the reference images, in input order. */
   referenceLabels: string[]
@@ -58,9 +58,9 @@ export interface ImageLabels {
 }
 
 /**
- * Name the images of a `ref2va` request: the reference images take the first labels in input order, and the first
- * frame takes the next one.
- * @param facts - the served model.
+ * Name the images of a request: the reference images take the first labels in input order, and the first frame takes
+ * the next one.
+ * @param facts - the model's facts in the mode.
  * @param referenceCount - the number of reference images.
  * @param firstFrame - whether the request carries a first frame.
  * @returns the labels; an image beyond the model's labels gets none.

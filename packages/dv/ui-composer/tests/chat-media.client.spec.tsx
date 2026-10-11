@@ -182,9 +182,9 @@ function state(assets: Array<[string, string]>, records: StateRecord[] = []) {
   }
 }
 
-/** A take record of `shot.render_ref2va` with the given `shot` param and outputs. */
+/** A take record of `shot.render` with the given `shot` param and outputs. */
 const take = (shot: number | undefined, ...outputs: string[]): StateRecord => ({
-  operation: 'shot.render_ref2va', params: shot === undefined ? {} : { shot }, outputs,
+  operation: 'shot.render', params: shot === undefined ? {} : { shot }, outputs,
 })
 
 /** Serve `/api/dv/state` from `states`, keyed by project; other projects fail. */

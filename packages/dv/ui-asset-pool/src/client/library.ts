@@ -15,7 +15,7 @@ export interface AssetLibrary {
   images: ProjectAsset[]
   /** Assets whose media type is `video/*`. */
   videos: ProjectAsset[]
-  /** Images that a `shot.render_ref2va` or `shot.render_t2va` record made. */
+  /** Images that a `shot.render` record made. */
   extracted: ProjectAsset[]
 }
 

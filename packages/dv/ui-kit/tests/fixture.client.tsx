@@ -52,18 +52,18 @@ export function fixtureState(): WireState {
     record({ id: 'u1', operation: 'asset.import', params: { name: 'ref.png' }, outputs: ['ref.png'] }),
     record({ id: 'e1', operation: 'bible.character_create', params: { character: 'hero', name: 'Hero' } }),
     record({
-      id: 'p1', turn: 't2', actor: 'agent', operation: 'plan.create', params: { shots: [{ prompt: 'hero walks', mode: 'ref2va' }, { prompt: 'hero turns', mode: 'ref2va' }] },
+      id: 'p1', turn: 't2', actor: 'agent', operation: 'plan.create', params: { shots: [{ prompt: 'hero walks', model: 'fasth3', mode: 'reference' }, { prompt: 'hero turns', model: 'fasth3', mode: 'reference' }] },
       report: { plan: 'p1', version: 1 },
     }),
     record({ id: 'a1', turn: 't3', operation: 'plan.approve', params: { plan: 'p1' } }),
     record({
-      id: 'g1', turn: 't3', actor: 'agent', operation: 'shot.render_ref2va', deterministic: false, inputs: [hero],
-      params: { prompt: 'hero walks through the rain at night in the city' }, outputs: ['shot1.mp4', 'shot1-last.png'],
+      id: 'g1', turn: 't3', actor: 'agent', operation: 'shot.render', deterministic: false, inputs: [hero],
+      params: { model: 'fasth3', mode: 'reference', prompt: 'hero walks through the rain at night in the city' }, outputs: ['shot1.mp4', 'shot1-last.png'],
     }),
     record({
-      id: 'g2', turn: 't3', actor: 'agent', operation: 'shot.render_ref2va', deterministic: false,
+      id: 'g2', turn: 't3', actor: 'agent', operation: 'shot.render', deterministic: false,
       inputs: [hero, { role: 'first_frame', ref: { record: 'g1', output: 1 }, resolved_asset: 'shot1-last.png' }],
-      params: { prompt: 'hero turns' }, outputs: ['shot2.mp4', 'shot2-last.png'],
+      params: { model: 'fasth3', mode: 'reference', prompt: 'hero turns' }, outputs: ['shot2.mp4', 'shot2-last.png'],
     }),
     record({ id: 's1', turn: 't3', actor: 'agent', operation: 'timeline.create', params: { assets: ['shot1.mp4', 'shot2.mp4'] } }),
     record({
@@ -76,8 +76,8 @@ export function fixtureState(): WireState {
       outputs: ['export-last.png'],
     }),
     record({
-      id: 'g3', turn: 't5', session: 's5', actor: 'agent', operation: 'shot.render_ref2va', deterministic: false, based_on: 'g1',
-      inputs: [hero], params: { prompt: 'hero walks, wider' }, status: 'running',
+      id: 'g3', turn: 't5', session: 's5', actor: 'agent', operation: 'shot.render', deterministic: false, based_on: 'g1',
+      inputs: [hero], params: { model: 'fasth3', mode: 'reference', prompt: 'hero walks, wider' }, status: 'running',
     }),
   ]
   return {
@@ -99,7 +99,7 @@ export function fixtureState(): WireState {
         locations: {},
         styles: {},
       },
-      plan: { plans: { p1: [{ version: 1, shots: [{ prompt: 'hero walks', mode: 'ref2va' }, { prompt: 'hero turns', mode: 'ref2va', continue_previous: true }], created_by: 'p1', approved_by: 'a1' }] } },
+      plan: { plans: { p1: [{ version: 1, shots: [{ prompt: 'hero walks', model: 'fasth3', mode: 'reference' }, { prompt: 'hero turns', model: 'fasth3', mode: 'reference', continue_previous: true }], created_by: 'p1', approved_by: 'a1' }] } },
       shot: { takes: { g1: ['g1', 'g3'] }, roots: { g3: 'g1' } },
       asset: { placed: [] },
       timeline: {
@@ -113,10 +113,10 @@ export function fixtureState(): WireState {
     },
     assets: [
       asset('ref.png', 'image/png', 'u1', null, 'asset.import'),
-      asset('shot1.mp4', 'video/mp4', 'g1', 4, 'shot.render_ref2va'),
-      asset('shot1-last.png', 'image/png', 'g1', null, 'shot.render_ref2va'),
-      asset('shot2.mp4', 'video/mp4', 'g2', 6, 'shot.render_ref2va'),
-      asset('shot2-last.png', 'image/png', 'g2', null, 'shot.render_ref2va'),
+      asset('shot1.mp4', 'video/mp4', 'g1', 4, 'shot.render'),
+      asset('shot1-last.png', 'image/png', 'g1', null, 'shot.render'),
+      asset('shot2.mp4', 'video/mp4', 'g2', 6, 'shot.render'),
+      asset('shot2-last.png', 'image/png', 'g2', null, 'shot.render'),
       asset('export.mp4', 'video/mp4', 'c1', 3, 'deliver.timeline_export'),
       asset('export-last.png', 'image/png', 'x1', null, 'asset.grab_still'),
     ],
@@ -126,7 +126,7 @@ export function fixtureState(): WireState {
 /** The operation declarations the fixture's records use. */
 export const OPERATIONS: WireOperation[] = [
   {
-    name: 'shot.render_ref2va', version: '1', description: 'One shot.', inputs: { reference: { type: 'image', description: 'reference images', many: true, bible: true } },
+    name: 'shot.render', version: '1', description: 'One shot.', inputs: { reference: { type: 'image', description: 'reference images', many: true, bible: true } },
     params: {
       prompt: { type: 'string', required: true, description: 'What happens.' }, seed: { type: 'integer', description: 'Seed.' },
       aspect: { type: 'string', enum: ['16:9', '9:16'] }, loop: { type: 'boolean' }, extra: { type: 'object' },

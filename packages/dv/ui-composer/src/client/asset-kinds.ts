@@ -16,8 +16,8 @@ export type AssetKind = 'video' | 'image'
 export interface AssetEntry {
   readonly kind: AssetKind
   /**
-   * The `shot` param of the `shot.render_ref2va` or `shot.render_t2va` record whose outputs include the asset, the
-   * number that the canvas titles the take 镜头 N / Shot N by; null for other assets and for a take without one.
+   * The `shot` param of the `shot.render` record whose outputs include the asset, the number that the canvas titles the
+   * take 镜头 N / Shot N by; null for other assets and for a take without one.
    */
   readonly shot: number | null
 }

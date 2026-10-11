@@ -5,15 +5,15 @@
  */
 import type { Asset, WireState } from './types.ts'
 
-/** The render operations, one per render mode; their records are the takes. */
-export const RENDER_OPERATIONS: readonly string[] = ['shot.render_ref2va', 'shot.render_t2va']
+/** The render operation; its records are the takes. */
+export const RENDER_OPERATION = 'shot.render'
 
 /**
  * @param operation - a record's operation, or null for a record without one.
  * @returns whether the record renders a take.
  */
 export function isRenderOperation(operation: string | null | undefined): boolean {
-  return operation !== null && operation !== undefined && RENDER_OPERATIONS.includes(operation)
+  return operation === RENDER_OPERATION
 }
 
 /**

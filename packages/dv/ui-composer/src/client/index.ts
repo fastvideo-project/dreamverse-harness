@@ -4,7 +4,7 @@
  * - a 引用 row in the composer's ＋ menu that opens that `@` list at the end of the draft;
  * - an invisible `conversation.input.left` entry that makes each session's composer a `dv:compose` target;
  * - thumbnail cards for the project's video and image assets in settled chat Markdown (`chat-media.ts`);
- * - the `dv_shot_render_ref2va` and `dv_shot_render_t2va` tool cards, which show the prompt, status, and rendered video;
+ * - the `dv_shot_render` tool card, which shows the model and generation mode, the prompt, status, and rendered video;
  * - creator-facing names for the other `dv_*` tools in their chat rows and in the running group title;
  * - 在历史中查看 on every settled row whose tool is not read-only, including failed calls, which dispatches
  *   `dv:history-focus`;
@@ -40,8 +40,8 @@ export { uriOf } from './compose.ts'
 /** The branded session ID the session-scoped DSH UI slots receive. */
 type SessionId = ToolCallViewProps['sessionId']
 
-/** The agent tools of the Shot render operations `shot.render_ref2va` and `shot.render_t2va`. */
-const RENDER_TOOLS: ReadonlySet<string> = new Set(['dv_shot_render_ref2va', 'dv_shot_render_t2va'])
+/** The agent tool of the Shot render operation `shot.render`. */
+const RENDER_TOOLS: ReadonlySet<string> = new Set(['dv_shot_render'])
 
 /** Required services: the trigger registry, the sessions, the slots, and the right sidebar that holds 对话. */
 export const inject = ['inputTriggers', 'sessions', 'slots', 'sidebarRight']

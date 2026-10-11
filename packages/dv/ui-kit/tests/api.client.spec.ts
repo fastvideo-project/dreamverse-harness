@@ -13,7 +13,7 @@ describe('DvClient', () => {
     expect(await client.listProjects(undefined, 's1')).toEqual([PROJECT])
     expect(await client.createProject('Demo 2', 'canvas')).toMatchObject({ record: { id: 'b1' } })
     expect((await client.getState('p1')).project.id).toBe('p1')
-    expect((await client.listOperations()).map(operation => operation.name)).toContain('shot.render_ref2va')
+    expect((await client.listOperations()).map(operation => operation.name)).toContain('shot.render')
     const record = await client.runOperation({ project: 'p1', operation: 'timeline.clip_move', params: { clip: 'cl2', to: 1 }, surface: 'timeline' })
     expect(record.operation).toBe('timeline.clip_move')
     expect(await client.undo('p1')).toEqual({ tip: 'g3', at: 'g3' })

@@ -1,7 +1,7 @@
 /**
  * The History panel: the edit history of a project, read through `POST /api/dv/history`, like the History panel of an
  * image editor. It lists the steps of the history list, newest first. Each row shows the action with its subject
- * (修改分镜计划 p1 → v2, 参考图生成镜头 7), who did it (你, 智能体, 自动), how long ago, its status, a thumbnail on render rows, and for an
+ * (修改分镜计划 p1 → v2, 渲染镜头 7), who did it (你, 智能体, 自动), how long ago, its status, a thumbnail on render rows, and for an
  * agent action the intent the agent gave for the call. The renders a plan approval scheduled fold under the approval's
  * row. The step at the current position carries 当前; the steps after it, which redo brings back, are greyed. Every other
  * row's ⋮ menu offers 回到这一步, which moves the current position to that step. Selecting a row plays its output under
@@ -424,7 +424,7 @@ function Row(props: RowContext & { row: ActionRow; expanded: boolean; onToggle: 
   const { row, expanded } = props
   const t = useText()
   const children = row.children
-  const renders = children.filter(child => child.record.operation === 'shot.render_ref2va' || child.record.operation === 'shot.render_t2va')
+  const renders = children.filter(child => isRenderOperation(child.record.operation))
   const doneRenders = renders.filter(child => child.record.status === 'done').length
   const foldText = renders.length === 0
     ? t(...actionLabel(children[0]?.record ?? row.entry.record))

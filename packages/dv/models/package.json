@@ -1,17 +1,18 @@
 {
-  "name": "@dv/fasth3-t2va",
+  "name": "@dv/models",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Service Provider of the DreamVerse t2va render mode (dvT2va) for the FastH3 8-Step V2 text-to-video model behind a FastVideo streaming_v2 server, with its prompt skill fasth3-t2va-prompting.",
+  "description": "Model catalog of DreamVerse: the dvModels service that company plugins register their models into, each with the generation modes it supports, plus the dv:models prompt section (the model list) and the dv_models_get tool.",
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {
-    "@deepseek-ai/dsh-skill": "workspace:*",
-    "@dreamverse/generation-client": "workspace:*",
-    "@dv/render-modes": "workspace:*"
+    "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-system-prompt": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-util-values": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",

@@ -6,6 +6,7 @@
  * @module @dv/shot-plan/types
  */
 import type { Branded } from '@deepseek-ai/dsh-brand'
+import type { ModeId } from '@dv/models'
 import type { RecordId } from '@dv/project'
 
 /**
@@ -20,19 +21,27 @@ export interface Shot {
   prompt: string
   /** Seconds; the render uses the model minimum when absent. */
   duration_sec?: number
-  /** Character, location or style versions (`c1@1`) or asset IDs this shot uses instead of the plan's references. */
+  /**
+   * Character, location or style versions (`c1@1`) or asset IDs this shot uses instead of the plan's references; only in a
+   * mode that takes references.
+   */
   references?: string[]
   seed?: number
-  /** The render mode: `plan.approve` renders the shot with the operation `shot.render_<mode>`. */
-  mode: 'ref2va' | 't2va'
-  /** The shot starts from the previous shot's last still (its `first_frame` input); `ref2va` only, never on shot 1. */
+  /** The model from the model catalog that renders the shot. */
+  model: string
+  /** The generation mode the model renders the shot in, such as `reference` or `text`. */
+  mode: ModeId
+  /**
+   * The shot starts from the previous shot's last still (its `first_frame` input), when the model takes a first frame in
+   * the mode; never on shot 1.
+   */
   continue_previous?: boolean
 }
 
 /** The shots and settings of one plan version, which `plan.approve` turns into shot renders. */
 export interface Plan {
   title?: string
-  /** References every `ref2va` shot carries unless it names its own: `<id>@<version>` or asset IDs. */
+  /** References every shot in a mode that takes references carries unless it names its own: `<id>@<version>` or asset IDs. */
   references?: string[]
   aspect_ratio?: string
   resolution?: string

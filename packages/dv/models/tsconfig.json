@@ -15,13 +15,16 @@
       "path": "../../../vendor/schemastery"
     },
     {
-      "path": "../../dreamverse/generation-client"
+      "path": "../../core/system-prompt"
     },
     {
-      "path": "../../skill/skill"
+      "path": "../../core/tools"
     },
     {
-      "path": "../render-modes"
+      "path": "../../llm/llm"
+    },
+    {
+      "path": "../../util/values"
     }
   ]
 }

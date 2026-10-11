@@ -21,7 +21,7 @@ export interface ChatMessage {
 /** One recorded request body. */
 export interface ChatRequest {
   messages: ChatMessage[]
-  tools?: Array<{ function?: { name?: string } }>
+  tools?: Array<{ function?: { name?: string; parameters?: { properties?: Record<string, { enum?: unknown[] }> } } }>
   [key: string]: unknown
 }
 

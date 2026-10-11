@@ -1,6 +1,6 @@
 /**
- * The composer's visible additions: the card of a `dv_shot_render_ref2va` or `dv_shot_render_t2va` call in the chat,
- * and the 在历史中查看 link of settled tool rows.
+ * The composer's visible additions: the card of a `dv_shot_render` call in the chat, and the 在历史中查看 link of
+ * settled tool rows.
  *
  * @module @dv/ui-composer/views
  */
@@ -48,7 +48,7 @@ function HistoryLink(props: { sessionId: string; callId: string }) {
 
 /** What the render card reads from the tool-call owner props. */
 export interface RenderCardProps {
-  /** The render tool, `dv_shot_render_ref2va` or `dv_shot_render_t2va`. */
+  /** The render tool, `dv_shot_render`. */
   toolName: string
   /** The tool's [Chinese, English] name. */
   label: readonly [string, string]
@@ -67,8 +67,8 @@ function outputsOf(block: object): Array<{ role: string; url: string; mime: stri
 }
 
 /**
- * The card of one render call (`dv_shot_render_ref2va` or `dv_shot_render_t2va`): the tool's name, the prompt, the
- * status, and the rendered video.
+ * The card of one render call (`dv_shot_render`): the tool's name, the model and generation mode, the prompt, the status,
+ * and the rendered video.
  * @param props - the call.
  * @returns the card.
  */
@@ -79,6 +79,10 @@ export function RenderCard(props: RenderCardProps) {
     : 'call' in block && typeof block.call === 'object' && block.call !== null && 'argsRaw' in block.call ? String(block.call.argsRaw) : ''
   const args = argsOf(raw)
   const prompt = typeof args['prompt'] === 'string' ? args['prompt'] : ''
+  const model = typeof args['model'] === 'string' ? args['model'] : ''
+  const mode = args['mode'] === 'reference' ? t('参考图生成', 'From references')
+    : args['mode'] === 'text' ? t('文字生成', 'From text') : typeof args['mode'] === 'string' ? args['mode'] : ''
+  const modelLine = [model, mode].filter(part => part !== '').join(' · ')
   const failed = 'isError' in block && block.isError === true
   const video = outputsOf(block).find(output => output.mime.startsWith('video/'))
   const status = props.phase === 'result' ? (failed ? t('未渲染', 'Not rendered') : t('已渲染', 'Rendered')) : t('渲染中…', 'Rendering…')
@@ -87,6 +91,7 @@ export function RenderCard(props: RenderCardProps) {
       <span className={css.title}>{t(props.label[0], props.label[1])}</span>
       <span className={css.status} data-failed={props.phase === 'result' && failed ? '' : undefined}>{status}</span>
     </div>
+    {modelLine !== '' && <div className={css.model} data-testid="dv-composer-render-model">{modelLine}</div>}
     {prompt !== '' && <div className={css.prompt}>{prompt}</div>}
     {video !== undefined && <video src={video.url} controls muted className={css.video} />}
     {props.phase === 'result' && <div className={css.cardFooter}><HistoryLink sessionId={props.sessionId} callId={props.callId} /></div>}

@@ -14,18 +14,19 @@
 #   GROQ_API_KEY          key of the documented fallback route
 
 - insert:
-    # The render mode providers; Shot render registers dv_shot_render_<mode> only for the modes mounted here.
-    - id: dv-fasth3-ref2va
-      name: '@dv/fasth3-ref2va'
-      config:
-        baseUrl: !!js process.env.DV_BACKEND_URL || 'http://127.0.0.1:8029'
+    # The model catalog: the video model list the agent reads, and the models dv_shot_render and plans can name.
+    - id: dv-models
+      name: '@dv/models'
 
-    # Mounted only when DV_T2VA_BACKEND_URL names a t2va backend; without it the agent has no dv_shot_render_t2va tool.
-    - id: dv-fasth3-t2va
-      name: '@dv/fasth3-t2va'
-      disabled: !!js "!process.env.DV_T2VA_BACKEND_URL"
+    # Models on local FastVideo servers: fasth3 in mode reference on DV_BACKEND_URL, and in mode text on
+    # DV_T2VA_BACKEND_URL when it is set. A model or mode left out of `models` is not registered.
+    - id: dv-fastvideo
+      name: '@dv/fastvideo'
       config:
-        baseUrl: !!js process.env.DV_T2VA_BACKEND_URL
+        models:
+          fasth3: !!js >-
+            ({ reference: { baseUrl: process.env.DV_BACKEND_URL || 'http://127.0.0.1:8029', gpuSecondsPerVideoSecond: 4 },
+            ...process.env.DV_T2VA_BACKEND_URL ? { text: { baseUrl: process.env.DV_T2VA_BACKEND_URL, gpuSecondsPerVideoSecond: 1.5 } } : {} })
 
     - id: dv-ffmpeg
       name: '@dv/ffmpeg'

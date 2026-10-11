@@ -31,6 +31,13 @@
   color: var(--dv-danger);
 }
 
+.model {
+  margin-top: 2px;
+  color: var(--dv-text-2);
+  font-size: 12px;
+  line-height: 16px;
+}
+
 .prompt {
   margin-top: 4px;
   color: var(--dv-text-2);

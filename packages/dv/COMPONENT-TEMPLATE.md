@@ -55,7 +55,7 @@ export default class DvTimeline extends Service {
 }
 ```
 
-Every registration is inside `ctx.effect`, so disposal removes it. An operation that needs an optional service (the model, a render mode service such as `dvRef2va`) is registered inside `ctx.inject([...], child => child.effect(...))`, as `inspect.image` is. Service methods named by registry verbs (`insertClip`, `renderShot`, `exportTimeline`) do the work; each operation's `execute` calls one of them.
+Every registration is inside `ctx.effect`, so disposal removes it. An operation that needs an optional service (the model) is registered inside `ctx.inject([...], child => child.effect(...))`, as `inspect.image` is. Service methods named by registry verbs (`insertClip`, `renderShot`, `exportTimeline`) do the work; each operation's `execute` calls one of them.
 
 **Operation spec** (`OperationSpec` of `@dv/project`; read its JSDoc in `packages/dv/project/src/types.ts`):
 
@@ -69,12 +69,12 @@ Every registration is inside `ctx.effect`, so disposal removes it. An operation 
 | `inputs`          | role → `{type, description, required?, many?, bible?}`; `bible: true` accepts `<id>@<version>`        |
 | `outputs`         | the roles of the assets `execute` returns, in order                                                   |
 | `summarize`       | one line for chat cards and canvas nodes, from a finished record                                      |
-| `confirm`         | `never`, `always` (`plan.approve`) or `over_gpu_budget` (`shot.render_ref2va`); with `confirmSummary` |
+| `confirm`         | `never`, `always` (`plan.approve`) or `over_gpu_budget` (`shot.render`); with `confirmSummary`        |
 | `deterministic`   | true when the same params and inputs give the same outputs (the runner then reuses outputs)           |
 | `resource`        | `gpu`, `cpu` or `none`; `estimate(params)` for `gpu` operations                                       |
 | `readOnly`        | true for reads; no record, no confirmation, the answer is `report`                                    |
 | `supersedes`      | the records a call replaces (a character update replaces the record of the previous version)          |
-| `toolParams`      | tool-only arguments, removed from `params` before the run (`continue_from` of `shot.render_ref2va`)   |
+| `toolParams`      | tool-only arguments, removed from `params` before the run (`continue_from` of `shot.render`)          |
 | `precondition`    | refuses a call of any caller before a record is written (the reference-image rule)                    |
 | `prepareToolCall` | component logic before an agent call (`continue_from`); Project applies `confirm` after it            |
 | `execute`         | does the work; creates files only through `context.importAsset`; throws to fail the record            |
@@ -118,7 +118,7 @@ At most one registered reducer defines `createdBy` and at most one defines `asse
 
 **Unit tests** in `packages/dv/<dir>/tests`, run from `packages/dv` with `../../node_modules/.bin/vitest run --config vitest.config.ts <dir>`:
 
-- one Loader composition test (copy `inspector/tests/inspector.spec.ts`): a test-only `cordis.yml` with `system-prompt`, `tools`, the asset pool, `dv-project`, `dv-ffmpeg` when used, and your plugin; fakes only for outside services (model, render mode provider). Assert through the agent tool (`ctx.tools.execute` with an agent) and through `dvProject.run`: the record (actor, component, operation, params, inputs, outputs), the state slice, the tool result, and that disposing your plugin removes its operations and tools;
+- one Loader composition test (copy `inspector/tests/inspector.spec.ts`): a test-only `cordis.yml` with `system-prompt`, `tools`, the asset pool, `dv-project`, `dv-ffmpeg` when used, and your plugin; fakes only for outside services (model, a video model registered in `dvModels`). Assert through the agent tool (`ctx.tools.execute` with an agent) and through `dvProject.run`: the record (actor, component, operation, params, inputs, outputs), the state slice, the tool result, and that disposing your plugin removes its operations and tools;
 - one test per operation for its failures (`execute` throws → record `failed` with the message; invalid params → `invalid_params` before any record);
 - pure reducer tests: every operation's effect on the slice, records of other components ignored, `createdBy`, `assetsOf` and `agentSummary` where present.
 

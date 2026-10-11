@@ -17,12 +17,12 @@ describe('referenceImages', () => {
 })
 
 describe('shotReferences', () => {
-  it('uses the shot\'s own references, else the plan version\'s, as plan.approve does; a t2va shot has none', () => {
-    expect(shotReferences({ references: ['hero@1'] }, { mode: 'ref2va', references: ['a.png'] })).toEqual(['a.png'])
-    expect(shotReferences({ references: ['hero@1'] }, { mode: 'ref2va' })).toEqual(['hero@1'])
-    expect(shotReferences({ references: ['hero@1'] }, { mode: 'ref2va', references: [] })).toEqual([])
-    expect(shotReferences({}, { mode: 'ref2va' })).toEqual([])
-    expect(shotReferences({ references: ['hero@1'] }, { mode: 't2va' })).toEqual([])
+  it('uses the shot\'s own references, else the plan version\'s, as plan.approve does; a shot in mode text has none', () => {
+    expect(shotReferences({ references: ['hero@1'] }, { mode: 'reference', references: ['a.png'] })).toEqual(['a.png'])
+    expect(shotReferences({ references: ['hero@1'] }, { mode: 'reference' })).toEqual(['hero@1'])
+    expect(shotReferences({ references: ['hero@1'] }, { mode: 'reference', references: [] })).toEqual([])
+    expect(shotReferences({}, { mode: 'reference' })).toEqual([])
+    expect(shotReferences({ references: ['hero@1'] }, { mode: 'text' })).toEqual([])
   })
 })
 

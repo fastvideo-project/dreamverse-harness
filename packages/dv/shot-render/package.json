@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Shot render component of DreamVerse: shot.render_ref2va and shot.render_t2va render one take of a shot with the render mode services of @dv/render-modes, and the shot reducer groups the takes of each shot.",
+  "description": "Shot render component of DreamVerse: shot.render renders one take of a shot with the model and generation mode the call names, from the model catalog of @dv/models, and the shot reducer groups the takes of each shot.",
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json"
@@ -13,7 +13,7 @@
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@dv/asset-pool": "workspace:*",
     "@dv/project": "workspace:*",
-    "@dv/render-modes": "workspace:*"
+    "@dv/models": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",

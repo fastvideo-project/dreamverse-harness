@@ -103,8 +103,7 @@ export function actionLabel(record: ProjectRecord): readonly [string, string] {
       if (plan === null) return [zh, en]
       return version === null ? [`${zh} ${plan}`, `${en} ${plan}`] : [`${zh} ${plan} v${version}`, `${en} ${plan} v${version}`]
     }
-    case 'shot.render_ref2va':
-    case 'shot.render_t2va': {
+    case 'shot.render': {
       const shot = field(record.params, 'shot')
       return shot === null ? [zh, en] : [`${zh} ${shot}`, `${en} ${shot}`]
     }

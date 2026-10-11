@@ -27,8 +27,8 @@ function planCall(view: TurnView, title: string): ScriptedStep {
   return { calls: [{ name: 'dv_plan_create', args: {
     reason: '规划', title, references: [assetIdOf(view.toolResults[0], 'asset')],
     shots: [
-      { prompt: 'Picture 1 产品特写', duration_sec: 1, mode: 'ref2va' },
-      { prompt: 'Picture 1 产品使用场景', duration_sec: 2, mode: 'ref2va' },
+      { prompt: 'Picture 1 产品特写', duration_sec: 1, model: 'fasth3', mode: 'reference' },
+      { prompt: 'Picture 1 产品使用场景', duration_sec: 2, model: 'fasth3', mode: 'reference' },
     ],
   } }] }
 }
@@ -65,8 +65,8 @@ const RULES: ScriptedRule[] = [
     match: '点名渲染一段',
     steps: [
       { calls: [{ name: 'dv_asset_import', args: { reason: '产品图', base64: PNG_BASE64, mime: 'image/png', name: 'named.png' } }] },
-      view => ({ calls: [{ name: 'dv_shot_render_ref2va', args: {
-        reason: '用户点名', prompt: '点名的镜头', duration_sec: 1, user_requested: true,
+      view => ({ calls: [{ name: 'dv_shot_render', args: {
+        reason: '用户点名', model: 'fasth3', mode: 'reference', prompt: '点名的镜头', duration_sec: 1, user_requested: true,
         inputs: { reference: assetIdOf(view.toolResults[0], 'asset') },
       } }] }),
     ],
@@ -117,8 +117,8 @@ const RULES: ScriptedRule[] = [
     match: '两段渲染',
     steps: [
       { calls: [{ name: 'dv_asset_import', args: { reason: '产品图', base64: PNG_BASE64, mime: 'image/png', name: 'product.png' } }] },
-      view => ({ calls: [1, 2].map(segment => ({ name: 'dv_shot_render_ref2va', args: {
-        reason: `第${String(segment)}段`, prompt: segment === 1 ? '第一段画面' : '第二段画面', duration_sec: segment,
+      view => ({ calls: [1, 2].map(segment => ({ name: 'dv_shot_render', args: {
+        reason: `第${String(segment)}段`, model: 'fasth3', mode: 'reference', prompt: segment === 1 ? '第一段画面' : '第二段画面', duration_sec: segment,
         inputs: { reference: assetIdOf(view.toolResults[0], 'asset') },
       } })) }),
     ],
@@ -299,9 +299,10 @@ describe('chat with the agent', () => {
     // Creators get the video tools, not the developer tool set.
     const tools = (requestFor('只回复一')?.tools ?? []).map(tool => tool.function?.name ?? '')
     expect(tools.filter(name => ['bash', 'glob', 'grep', 'edit', 'write', 'web_fetch', 'web_search'].includes(name))).toEqual([])
-    // The e2e profile mounts only the ref2va render mode, so its render tool is the only one the agent gets.
-    expect(tools).toContain('dv_shot_render_ref2va')
-    expect(tools).not.toContain('dv_shot_render_t2va')
+    // The agent gets one render tool, and the model catalog offers fasth3 in it.
+    expect(tools).toContain('dv_shot_render')
+    const render = requestFor('只回复一')?.tools?.find(tool => tool.function?.name === 'dv_shot_render')
+    expect(render?.function?.parameters?.properties?.['model']?.enum).toContain('fasth3')
     expect(errors).toEqual([])
   })
 
@@ -331,7 +332,7 @@ describe('chat with the agent', () => {
     const state = await harness.api.get(`/api/dv/state?project=${projectId}`) as WireState
     const agentRecords = state.components.proj.records.filter(record => record.actor === 'agent' && record.operation !== 'proj.create')
     expect(agentRecords.map(record => record.operation))
-      .toEqual(['asset.import', 'bible.character_create', 'asset.import', 'shot.render_ref2va'])
+      .toEqual(['asset.import', 'bible.character_create', 'asset.import', 'shot.render'])
     expect(new Set(agentRecords.map(record => record.turn)).size).toBe(2)
     // One line: each record follows the record written just before it.
     const records = state.components.proj.records
@@ -482,8 +483,8 @@ describe('chat with the agent', () => {
     const currentState = async (): Promise<WireState> => await harness.api.get(`/api/dv/state?project=${projectId}`) as WireState
     const waiting = await currentState()
     expect(waiting.components.plan.plans['p1']?.[0]?.approved_by).toBeNull()
-    expect(waiting.components.proj.records.filter(record => record.operation === 'shot.render_ref2va')).toHaveLength(0)
-    // The canvas plan editor lists each shot with its reference image, the image in place of the bare Picture 1, and its render mode.
+    expect(waiting.components.proj.records.filter(record => record.operation === 'shot.render')).toHaveLength(0)
+    // The canvas plan editor lists each shot with its reference image, the image in place of the bare Picture 1, and its mode.
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
     await waitFor(async () => {
       // The canvas fits its view after the nodes load; a click during that move can miss, so click until it opens.
@@ -499,13 +500,13 @@ describe('chat with the agent', () => {
       // The 参考图 row names the image as Picture 1; the prompt text shows the image instead of the bare token.
       expect(await shot.innerText()).toContain('Picture 1 · ask-first.png')
       expect(await shot.locator('p').innerText()).not.toContain('Picture 1')
-      expect(await shot.locator('[data-testid="dv-canvas-shot-mode"]').textContent()).toBe('参考图生成')
+      expect(await shot.locator('[data-testid="dv-canvas-shot-mode"]').textContent()).toBe('fasth3 · 参考图生成')
     }
     await page.keyboard.press('Escape')
     // The user agrees in the conversation; the agent approves with user_approved and both shots render.
     await send(page, '可以渲染')
     await waitChat(page, '两个镜头已渲染', 60_000)
-    const rendered = (await currentState()).components.proj.records.filter(record => record.operation === 'shot.render_ref2va')
+    const rendered = (await currentState()).components.proj.records.filter(record => record.operation === 'shot.render')
     expect(rendered.map(record => [record.params['shot'], record.status])).toEqual([[1, 'done'], [2, 'done']])
     expect(errors).toEqual([])
   })
@@ -595,12 +596,12 @@ describe('chat with the agent', () => {
   it('问 agent on a canvas take prefills the open project\'s chat composer with a reference the agent can resolve', async () => {
     const { projectId, assetId } = await seedProject('改片段', 'ref.png')
     const plan = await runOperation(projectId, 'plan.create', {
-      title: '改片段', references: [assetId], shots: [{ prompt: '镜头甲', duration_sec: 1, mode: 'ref2va' }],
+      title: '改片段', references: [assetId], shots: [{ prompt: '镜头甲', duration_sec: 1, model: 'fasth3', mode: 'reference' }],
     })
     await runOperation(projectId, 'plan.approve', { plan: plan.report?.['plan'] })
     const done = await waitFor(async () => {
       const state = await harness.api.get(`/api/dv/state?project=${projectId}`) as WireState
-      return state.components.proj.records.find(record => record.operation === 'shot.render_ref2va' && record.status === 'done')
+      return state.components.proj.records.find(record => record.operation === 'shot.render' && record.status === 'done')
     }, 'the take to render', 60_000)
     // Visit another project first, so a stale composer from it would be a wrong target.
     const { page, errors } = await openPage()
@@ -722,11 +723,11 @@ describe('chat with the agent', () => {
     expect.soft(await composer(page).getAttribute('data-placeholder') ?? '').not.toContain('files or sessions')
     // A finished turn folds its tool rows, so the labels are read from the page text rather than from what is on screen.
     expect(await chat(page).locator('[data-tool="dv_asset_import"]').first().textContent()).toContain('Import asset')
-    const cards = chat(page).locator('[data-tool="dv_shot_render_ref2va"]')
+    const cards = chat(page).locator('[data-tool="dv_shot_render"]')
     expect(await cards.count()).toBe(2)
     for (const card of await cards.all()) {
       // The card header starts with the tool's label, followed by the status.
-      expect(await card.locator('span').first().textContent()).toBe('Render shot from references')
+      expect(await card.locator('span').first().textContent()).toBe('Render shot')
       expect(await card.textContent()).toContain('Rendered')
     }
     expect(errors).toEqual([])

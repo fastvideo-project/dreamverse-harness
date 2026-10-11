@@ -70,7 +70,7 @@ describe('dvTimeline timeline-editing skill', () => {
     expect(skill).toMatchObject({ name: 'timeline-editing', source: 'runtime', invocation: { modelInvocable: true } })
     expect(skill?.whenToUse).toContain('existing shot or timeline')
     expect(skill?.content.startsWith('# Timeline editing\n')).toBe(true)
-    expect(skill?.content).toContain('`dv_shot_render_ref2va` or `dv_shot_render_t2va`')
+    expect(skill?.content).toContain('A retake keeps the base record\'s `model` and `mode`.')
     const entry = [...ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-timeline.mjs'))
     await entry?.fiber?.dispose()
     expect(await ctx.skills.get('timeline-editing')).toBeUndefined()

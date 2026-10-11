@@ -1,9 +1,9 @@
 {
-  "name": "@dv/fasth3-ref2va",
+  "name": "@dv/fastvideo",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Service Provider of the DreamVerse ref2va render mode (dvRef2va) for a FastH3 Ref2VA model behind a FastVideo streaming_v2 server, with its prompt skill fasth3-ref2va-prompting.",
+  "description": "Company plugin of DreamVerse for models on local FastVideo streaming_v2 servers: registers each configured model (fasth3) into dvModels with the modes the config gives a server for, plus the prompt skill of each model and mode.",
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json"
@@ -11,7 +11,7 @@
   "dependencies": {
     "@deepseek-ai/dsh-skill": "workspace:*",
     "@dreamverse/generation-client": "workspace:*",
-    "@dv/render-modes": "workspace:*"
+    "@dv/models": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",

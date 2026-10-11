@@ -73,7 +73,7 @@ async function seedProject(prefix: string): Promise<Seeded> {
   const renders: ProjectRecord[] = []
   for (const prompt of [`${prefix} shot 1`, `${prefix} shot 2`]) {
     const reference = [{ role: 'reference', ref: imported.outputs[0] ?? '' }]
-    const render = await runOperation(id, 'shot.render_ref2va', { prompt, duration_sec: 1 }, reference)
+    const render = await runOperation(id, 'shot.render', { model: 'fasth3', mode: 'reference', prompt, duration_sec: 1 }, reference)
     expect(render.status).toBe('done')
     renders.push(render)
   }
@@ -270,7 +270,7 @@ describe('History panel', () => {
     expect(await render.getAttribute('data-actor')).toBe('user')
     expect(await render.getAttribute('data-status')).toBe('done')
     const text = await render.innerText()
-    for (const word of ['你', '参考图生成镜头']) expect(text).toContain(word)
+    for (const word of ['你', '渲染镜头']) expect(text).toContain(word)
     // One thumbnail per row: the take's still, which the browser loads.
     const thumb = render.locator('[data-testid="dv-history-thumb"]')
     expect(await thumb.count()).toBe(1)
@@ -343,7 +343,7 @@ describe('History panel', () => {
   it('a plan approval folds the renders it scheduled under its row; the toggle shows them', async () => {
     const id = await createProject('history-fold')
     const imported = await runOperation(id, 'asset.import', { base64: PNG_BASE64, mime: 'image/png', name: 'ref.png' })
-    const shots = [1, 2].map(shot => ({ prompt: `history-fold shot ${String(shot)}`, duration_sec: 1, mode: 'ref2va' }))
+    const shots = [1, 2].map(shot => ({ prompt: `history-fold shot ${String(shot)}`, duration_sec: 1, model: 'fasth3', mode: 'reference' }))
     const plan = await runOperation(id, 'plan.create', { title: '折叠', references: [imported.outputs[0] ?? ''], shots })
     expect(plan.report?.['plan']).toBe('p1')
     const approval = await runOperation(id, 'plan.approve', { plan: 'p1' })
@@ -361,11 +361,11 @@ describe('History panel', () => {
     await expect.poll(() => fold.innerText(), { timeout: 30_000 }).toMatch(/^▸ 渲染 2 个镜头$/)
     await fold.click()
     await expect.poll(() => fold.getAttribute('aria-expanded')).toBe('true')
-    // The folded rows follow the approval's scheduled order: 参考图生成镜头 1, 参考图生成镜头 2, then 新建时间线.
+    // The folded rows follow the approval's scheduled order: 渲染镜头 1, 渲染镜头 2, then 新建时间线.
     expect(await shownRecords(page)).toEqual([approval.id, ...scheduled, plan.id, imported.id, expect.any(String)])
     expect(await rowOf(page, scheduled[2] ?? '').innerText()).toContain('新建时间线')
     const firstShot = rowOf(page, scheduled[0] ?? '')
-    expect(await firstShot.innerText()).toContain('参考图生成镜头 1')
+    expect(await firstShot.innerText()).toContain('渲染镜头 1')
     expect(await firstShot.getAttribute('data-actor')).toBe('system')
     expect(await firstShot.innerText()).toContain('自动')
     // Only render rows show a thumbnail: the approval row has none, and its first render shows the take's still.
@@ -417,7 +417,7 @@ describe('History panel', () => {
     await expect.poll(() => rowOf(page, imported.id).getAttribute('data-status'), { timeout: 15_000 }).toBe('done')
     expect(await historyPanel(page).locator('[data-testid="dv-history-empty"]').count()).toBe(0)
     const reference = [{ role: 'reference', ref: imported.outputs[0] ?? '' }]
-    const render = await runOperation(id, 'shot.render_ref2va', { prompt: 'history-live shot', duration_sec: 1 }, reference)
+    const render = await runOperation(id, 'shot.render', { model: 'fasth3', mode: 'reference', prompt: 'history-live shot', duration_sec: 1 }, reference)
     await expect.poll(() => rowOf(page, render.id).getAttribute('data-status'), { timeout: 30_000 }).toBe('done')
     await expect.poll(() => rowOf(page, render.id).locator('[data-testid="dv-history-thumb"]').count()).toBe(1)
     expect(page.errors).toEqual([])

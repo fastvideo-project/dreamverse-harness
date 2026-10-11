@@ -30,7 +30,7 @@
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
     "@dv/ffmpeg": "workspace:*",
-    "@dv/render-modes": "workspace:*",
+    "@dv/models": "workspace:*",
     "@types/node": "^22.20.0"
   }
 }

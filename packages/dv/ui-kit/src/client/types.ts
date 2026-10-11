@@ -55,7 +55,7 @@ export interface ProjectRecord {
   kind: 'operation'
   /** The component key that owns the operation, for example `timeline`. */
   component: string
-  /** The operation name, for example `shot.render_ref2va`. */
+  /** The operation name, for example `shot.render`. */
   operation: string | null
   operation_version: string | null
   actor: Actor
@@ -151,15 +151,26 @@ export interface Timeline {
   clips: Clip[]
 }
 
+/**
+ * A generation mode of `shot.render`: `reference` renders from reference images and the prompt, `text` from the prompt
+ * alone.
+ */
+export type RenderMode = 'reference' | 'text'
+
 /** One shot of a plan version; its number is its 1-based position in the version. */
 export interface Shot {
   prompt: string
   duration_sec?: number
-  /** Character, location or style versions (`c1@1`) or asset IDs this shot uses instead of the plan's references. */
+  /**
+   * Character, location or style versions (`c1@1`) or asset IDs this shot uses instead of the plan's references; only
+   * in mode `reference`.
+   */
   references?: string[]
   seed?: number
-  /** The render mode (`ref2va` from references, `t2va` from text), which picks `shot.render_ref2va` or `shot.render_t2va`. */
-  mode: 'ref2va' | 't2va'
+  /** The model from the model catalog that renders the shot, such as `fasth3`. */
+  model: string
+  /** The generation mode the model renders the shot in. */
+  mode: RenderMode
   /** Whether the shot starts from the last still of the previous shot's take. */
   continue_previous?: boolean
 }

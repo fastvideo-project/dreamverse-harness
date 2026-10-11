@@ -112,7 +112,7 @@ Each result is appended to the conversation after its call; the cached prefix st
 
 #### What the model sees
 
-The skill catalog lists `timeline-editing` with its description and when to use it. When the agent loads the skill, it reads a table from the user's editing phrasings (trims, retakes, reference and style changes, reordering, deletion, going back to an earlier take, undo, redo, export) to the `dv_*` calls in order and their required arguments, and the rules that apply to every row. A retake calls the render tool of the clip's render mode (`dv_shot_render_ref2va` or `dv_shot_render_t2va`).
+The skill catalog lists `timeline-editing` with its description and when to use it. When the agent loads the skill, it reads a table from the user's editing phrasings (trims, retakes, reference and style changes, reordering, deletion, going back to an earlier take, undo, redo, export) to the `dv_*` calls in order and their required arguments, and the rules that apply to every row. A retake calls `dv_shot_render` with the model and mode of the record that produced the clip.
 
 #### Token effect
 

@@ -17,7 +17,7 @@ describe('assetLibrary over a synthetic state', () => {
    */
   const stateOf = (assets: ProjectAsset[]): WireState => ({ ...fixtureState(), assets })
   const assets = [
-    asset('img', 'image/png', 'asset.import', '2026-10-05T09:00:00.000Z'), asset('vid', 'video/mp4', 'shot.render_ref2va', '2026-10-05T09:01:00.000Z'),
+    asset('img', 'image/png', 'asset.import', '2026-10-05T09:00:00.000Z'), asset('vid', 'video/mp4', 'shot.render', '2026-10-05T09:01:00.000Z'),
     asset('out', 'video/mp4', 'deliver.timeline_export', '2026-10-05T09:03:00.000Z'),
   ]
 
@@ -32,10 +32,10 @@ describe('assetLibrary over a synthetic state', () => {
 
   it('lists the images that shot renders made under extracted, and grabbed stills and referenced images under images', () => {
     const library = assetLibrary(stateOf([
-      ...assets, asset('t2v-last', 'image/png', 'shot.render_t2va'), asset('r2v-last', 'image/png', 'shot.render_ref2va'),
+      ...assets, asset('shot1-last', 'image/png', 'shot.render'), asset('shot2-last', 'image/png', 'shot.render'),
       asset('grabbed', 'image/png', 'asset.grab_still'), asset('referenced', 'image/png', null),
     ]))
-    expect(library.extracted.map(row => row.id).sort()).toEqual(['r2v-last', 't2v-last'])
+    expect(library.extracted.map(row => row.id).sort()).toEqual(['shot1-last', 'shot2-last'])
     expect(library.images.map(row => row.id).sort()).toEqual(['grabbed', 'img', 'referenced'])
   })
 

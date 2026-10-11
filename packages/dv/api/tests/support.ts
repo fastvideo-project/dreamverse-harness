@@ -1,7 +1,7 @@
 /**
  * Mounting for the API, chat references, stream, bundle and e2e specs: the real Project service, asset pool, `dvFfmpeg`,
  * the Story bible, Shot plan, Shot render and Timeline components, and optionally the DSH tool registry, over a temporary
- * root, with a fake `ref2va` render mode provider.
+ * root, with the model catalog and a fake model `fasth3` in mode reference.
  */
 import { execFile } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -15,7 +15,7 @@ import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvProject from '@dv/project'
-import { Ref2vaRenderer, type Ref2vaRequest, type RenderModelFacts, type RenderStreamEvent } from '@dv/render-modes'
+import DvModels, { type ModelEntry, type ModeId, type RenderModelFacts, type RenderRequest, type RenderStreamEvent } from '@dv/models'
 import DvShotPlan from '@dv/shot-plan'
 import DvShotRender from '@dv/shot-render'
 import DvStoryBible from '@dv/story-bible'
@@ -33,12 +33,12 @@ function framesByDuration(min: number, max: number): Record<string, number> {
 }
 
 /**
- * A reference-image model with small frames so the fake provider renders quickly.
+ * A reference-image model with small frames so the fake model renders quickly.
  * @returns the facts.
  */
 export function testFacts(): RenderModelFacts {
   return {
-    modelId: 'test-ref2va', name: 'Test Ref2VA', aspectRatios: ['16:9', '9:16'], resolutions: ['720p'],
+    modelId: 'test-ref2va', aspectRatios: ['16:9', '9:16'], resolutions: ['720p'],
     frameSizes: { '16:9': { '720p': [192, 112] }, '9:16': { '720p': [112, 192] } }, minDurationSec: 1, maxDurationSec: 5,
     numFramesByDurationSec: framesByDuration(1, 5), maxReferenceImages: 2, imageLabels: ['Picture 1', 'Picture 2', 'Picture 3'],
     gpuSecondsPerVideoSecond: 4,
@@ -62,21 +62,27 @@ export async function encodeClip(dir: string, width: number, height: number, num
   return { video: readFileSync(video), lastFrame: readFileSync(frame) }
 }
 
-/** A `ref2va` provider (`dvRef2va`) that renders a solid-color clip for every request and remembers the requests. */
-export class FakeRef2vaRenderer extends Ref2vaRenderer {
-  facts = testFacts()
-  readonly requests: Ref2vaRequest[] = []
+/**
+ * The catalog entry of a fake model `fasth3` in mode reference (1 to 2 reference images and an optional first frame):
+ * it renders a solid-color clip for every request and remembers the requests.
+ */
+export class FakeModel implements ModelEntry {
+  readonly id = 'fasth3'
+  readonly company = 'test'
+  readonly summary = 'Solid-color clips'
+  readonly modes: ModelEntry['modes'] = { reference: { inputs: { reference: { min: 1 }, first_frame: { min: 0 } }, extra: {} } }
+  readonly requests: RenderRequest[] = []
 
-  model(): Promise<RenderModelFacts> {
-    return Promise.resolve(this.facts)
-  }
-
-  ready(): Promise<{ ready: boolean; detail: string | null }> {
-    return Promise.resolve({ ready: true, detail: null })
+  /**
+   * Read the facts; the same in every mode.
+   * @returns the facts.
+   */
+  facts(_mode: ModeId): Promise<RenderModelFacts> {
+    return Promise.resolve(testFacts())
   }
 
   /** Render the request's frames as a solid clip, then stream its last frame, its bytes in two chunks, and completion. */
-  async *render(request: Ref2vaRequest): AsyncIterable<RenderStreamEvent> {
+  async *render(_mode: ModeId, request: RenderRequest): AsyncIterable<RenderStreamEvent> {
     this.requests.push(request)
     const dir = mkdtempSync(join(tmpdir(), 'dv-fake-render-'))
     try {
@@ -105,8 +111,8 @@ export interface BaseFixture {
   context: Context
   project: DvProject
   assets: DvAssetPool
-  /** The fake `ref2va` provider, or null when the fixture mounts none. */
-  renderer: FakeRef2vaRenderer | null
+  /** The fake model, or null when the fixture registers none. */
+  renderer: FakeModel | null
   root: string
   /** Write a file with the given content and return its path, for imports. */
   writeFile(name: string, content?: string | Buffer): string
@@ -118,7 +124,7 @@ export interface BaseFixture {
 /** What a fixture mounts beside the components. */
 export interface BaseFixtureOptions {
   root?: string
-  /** `fake` mounts the fake `ref2va` provider; `none` mounts no render mode provider. */
+  /** `fake` registers the fake model; `none` registers no model. */
   generation?: 'fake' | 'none'
   /** Whether the DSH system prompt and tool registry are mounted. */
   dsh?: boolean
@@ -134,10 +140,12 @@ export interface BaseFixtureOptions {
 export async function startBase(options: BaseFixtureOptions = {}): Promise<BaseFixture> {
   const root = options.root ?? mkdtempSync(join(tmpdir(), 'dv-base-'))
   const context = new Context()
-  let renderer: FakeRef2vaRenderer | null = null
+  let renderer: FakeModel | null = null
+  await context.plugin(DvModels, { promptSectionOrder: 4890 }).await()
   if ((options.generation ?? 'fake') === 'fake') {
-    await context.plugin(FakeRef2vaRenderer).await()
-    renderer = context.dvRef2va as FakeRef2vaRenderer
+    const fake = new FakeModel()
+    context.effect(() => context.dvModels.register(fake))
+    renderer = fake
   }
   if (options.dsh !== false) {
     await context.plugin(SystemPrompt, {}).await()

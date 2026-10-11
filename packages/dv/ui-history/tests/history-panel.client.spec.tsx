@@ -30,7 +30,7 @@ const ENTRIES: HistoryEntry[] = [
   { record: record({ id: 'm1', turn: null, surface: 'timeline', operation: 'timeline.clip_move', params: { clip: 'cl1', to: 2 }, intent: 'move clip 1' }), place: 'current' },
   {
     record: record({
-      id: 'g1', turn: 't3', actor: 'agent', session: 's5', tool_call: 'call-g1', operation: 'shot.render_ref2va', outputs: ['shot1.mp4'],
+      id: 'g1', turn: 't3', actor: 'agent', session: 's5', tool_call: 'call-g1', operation: 'shot.render', outputs: ['shot1.mp4'],
       intent: 'render the hero',
       inputs: [{ role: 'reference', ref: { asset: 'ref.png' }, resolved_asset: 'ref.png' }],
     }),
@@ -102,8 +102,8 @@ describe('HistoryPanel', () => {
 
   it('folds the renders a plan approval scheduled under its row until the toggle opens them', async () => {
     const approval: HistoryEntry[] = [
-      { record: record({ id: 'g2', actor: 'system', operation: 'shot.render_ref2va', params: { plan: 'p1', shot: 2 }, status: 'running' }), place: 'current' },
-      { record: record({ id: 'g1', actor: 'system', operation: 'shot.render_ref2va', params: { plan: 'p1', shot: 1 }, outputs: ['shot1.mp4'] }), place: 'before' },
+      { record: record({ id: 'g2', actor: 'system', operation: 'shot.render', params: { plan: 'p1', shot: 2 }, status: 'running' }), place: 'current' },
+      { record: record({ id: 'g1', actor: 'system', operation: 'shot.render', params: { plan: 'p1', shot: 1 }, outputs: ['shot1.mp4'] }), place: 'before' },
       {
         record: record({ id: 'ap', actor: 'agent', operation: 'plan.approve', params: { plan: 'p1' }, report: { plan: 'p1', version: 1, scheduled: ['g1', 'g2'] } }),
         place: 'before',
@@ -117,7 +117,7 @@ describe('HistoryPanel', () => {
     expect(fold.textContent).toContain('Render 2 shots (1/2)')
     fireEvent.click(fold)
     expect(fold.getAttribute('aria-expanded')).toBe('true')
-    expect(row('g1').textContent).toContain('Render shot from references 1')
+    expect(row('g1').textContent).toContain('Render shot 1')
     expect(row('g2').textContent).toContain('Automatic')
     // Folded rows follow `report.scheduled`: shot 1, then shot 2.
     const folded = [...view.container.querySelectorAll('[data-testid="dv-history-row"]')].map(element => element.getAttribute('data-record'))
@@ -161,7 +161,7 @@ describe('HistoryPanel', () => {
 
   it('keeps the thumbnail column on a render row that produced nothing, and gives other rows none', async () => {
     const failed: HistoryEntry = {
-      record: record({ id: 'f1', operation: 'shot.render_t2va', status: 'failed', outputs: [] }), place: 'before',
+      record: record({ id: 'f1', operation: 'shot.render', status: 'failed', outputs: [] }), place: 'before',
     }
     const { row } = mount([failed, ...ENTRIES])
     await waitFor(() => { row('f1') })
