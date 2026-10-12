@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在 `@dv/project`、`@dv/asset-pool` 和 `@dv/models` 之后挂载插件，并挂载一个向模型目录注册模型的公司插件，例如 [`@dv/fastvideo`](../fastvideo/README.zh.md)。`shot` 归约函数总会注册；模型目录中至少有一个模型时注册 `shot.render`，模型目录每次变化时重新注册，所以它的 `model` 参数恰好列出已注册的模型。
+在 `@dv/project`、`@dv/asset-pool` 和 `@dv/models` 之后挂载插件，并挂载一个向模型目录注册模型的公司插件，例如 [`@dv/fastvideo`](../fastvideo/README.zh.md)。`shot` 归约函数总会注册；模型目录中至少有一个模型时注册 `shot.render`，已注册的模型名称变化时重新注册，所以它的 `model` 参数恰好列出已注册的模型。
 
 ```yaml
 - id: dv-shot-render

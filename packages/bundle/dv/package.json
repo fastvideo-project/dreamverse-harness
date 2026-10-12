@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The DreamVerse profile layer: the render mode providers, the components, the chat references, the API, the interface plugins, the video-directing skill, and the model routes, stacked on dsh-base and dsh-web-app or dsh-headless.",
+  "description": "The DreamVerse profile layer: the model catalog and its FastVideo models, the components, the chat references, the API, the interface plugins, the video-directing skill, and the model routes, stacked on dsh-base and dsh-web-app or dsh-headless.",
   "exports": {
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"

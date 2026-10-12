@@ -481,6 +481,11 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     // The precondition counts a character version's reference images: one image is enough.
     await withCharacter(fixture)
     expect((await fixture.record('shot.render', { ...REF, prompt: 'Picture 1 waves' }, [c1()])).status).toBe('done')
+    // A model that needs two reference images is told how many the shot has.
+    const declared = fixture.ctx.dvModels.get('fake')?.modes.reference?.inputs.reference
+    if (declared !== undefined) declared.min = 2
+    await expect(fixture.record('shot.render', { ...REF, prompt: 'Picture 1 waves' }, [c1()]))
+      .rejects.toThrow('from 2 to 2 reference images, and this shot has 1. Nothing was rendered.')
   })
 
   it('fails requests the model cannot serve and records stream failures', async () => {

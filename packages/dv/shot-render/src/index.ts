@@ -6,8 +6,8 @@
  * continues; mode `text` takes the prompt alone. A model accepts only the inputs it declares for the mode, and its own
  * parameters go in `extra`, checked against the parameters the model declares for the mode.
  *
- * The operation exists while the catalog holds at least one model, and it is registered again on every catalog change,
- * so its `model` param lists exactly the registered models. The model's facts in the mode decide the frame size and
+ * The operation exists while the catalog holds at least one model, and it is registered again when the registered model
+ * names change, so its `model` param lists exactly the registered models. The model's facts in the mode decide the frame size and
  * frame count. Every render stores the video and its last still as two outputs (`video`, `last_still`), so a later shot
  * can start from output `#1`. The component's reducer groups the takes of each shot in the `shot` slice. While the
  * optional live stream service is mounted, the video bytes also go to browsers as the model produces them.
@@ -356,7 +356,7 @@ export default class DvShotRender extends Service {
     const textModels = this.ctx.dvModels.list().filter(model => model.modes.text !== undefined).map(model => model.id)
     const fromText = textModels.length === 0 ? '' : ` A shot that needs no reference image can use mode text with ${textModels.join(', ')}.`
     throw new Error(`Model ${entry.id} in mode ${mode} renders a shot from ${needed} to ${limit} reference images`
-      + `${planned ? '' : ', and this shot has none'}. Nothing was rendered. Ask the user for a reference image of the subject `
+      + `${planned ? '' : `, and this shot has ${count === 0 ? 'none' : String(count)}`}. Nothing was rendered. Ask the user for a reference image of the subject `
       + '(they can attach one in the chat; it appears under Imported images), add it as a reference or to the character, '
       + `${planned ? 'update the plan with dv_plan_update, ' : ''}then call again.${fromText}`)
   }

@@ -70,7 +70,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-本服务把条目按 `id` 存在一个 map 中，每次注册或移除后调用所有 `onChanged` 监听器。`register` 用 `MODES` 检查每个声明的生成方式：该生成方式必须存在，每个声明的输入角色必须是该生成方式允许的；`min` 数量和 `extra` schema 由模型自己决定。`checkExtra` 先拒绝未知名称，再用 `dsh-tools` 的 `validateArgs` 校验值，并给每条消息加上 `extra` 前缀。`describe` 依次读取每个声明的生成方式的 `facts(mode)`，为每个输入角色报告 `min` 和 `max`（`reference` 为 `maxReferenceImages`，`first_frame` 为 1）。DSH `systemPrompt` 服务挂载期间，本服务注册 `dv:models` 段落，其文本在每次请求时由 `list()` 重建，没有已注册模型时为空；DSH 工具注册表挂载期间，它注册 `dv_models_get`，该工具以缩进的 JSON 返回 `describe(model)`。镜头渲染在模型目录每次变化时重新注册 `shot.render`，所以 `dv_shot_render` 的 `model` 参数恰好列出已注册的模型。
+本服务把条目按 `id` 存在一个 map 中，每次注册或移除后调用所有 `onChanged` 监听器。`register` 用 `MODES` 检查每个声明的生成方式：该生成方式必须存在，每个声明的输入角色必须是该生成方式允许的；`min` 数量和 `extra` schema 由模型自己决定。`checkExtra` 先拒绝未知名称，再用 `dsh-tools` 的 `validateArgs` 校验值，并给每条消息加上 `extra` 前缀。`describe` 同时读取所有声明的生成方式的 `facts(mode)`，为每个输入角色报告 `min` 和 `max`（`reference` 为 `maxReferenceImages`，`first_frame` 为 1）。DSH `systemPrompt` 服务挂载期间，本服务注册 `dv:models` 段落，其文本在每次请求时由 `list()` 重建，没有已注册模型时为空；DSH 工具注册表挂载期间，它注册 `dv_models_get`，该工具以缩进的 JSON 返回 `describe(model)`。已注册的模型名称变化时，镜头渲染重新注册 `shot.render`，所以 `dv_shot_render` 的 `model` 参数恰好列出已注册的模型。
 
 | 文件 | 内容 |
 | --- | --- |

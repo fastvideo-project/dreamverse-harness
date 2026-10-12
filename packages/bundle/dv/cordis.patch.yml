@@ -1,5 +1,5 @@
 # The DreamVerse bundle patch: the DreamVerse plugins over dsh-base, for a profile that also stacks dsh-web-app (the
-# chat page) or dsh-headless (one task per process). Every row reads its configuration from the environment that
+# chat page) or dsh-headless (one task per process). Rows that read the environment read these variables, which
 # scripts/video-harness/launch.sh prepares:
 #   DV_STATE_ROOT    where assets, project records, session bindings, and view state live (default ~/.local/state/dv)
 #   DV_FFMPEG / DV_FFPROBE  media binaries

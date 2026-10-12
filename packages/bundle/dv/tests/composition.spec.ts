@@ -1,7 +1,7 @@
 /**
- * The REAL composition of the bundle: the component rows, the render mode provider rows, the `dv-chat-references` row
- * and the `dv-api` row of `cordis.patch.yml`, with their `!!js` configuration and `disabled` flags, boot through the
- * Loader beside the DSH system prompt and tool registry, with each render mode provider replaced by a fake, and a
+ * The REAL composition of the bundle: the component rows, the model catalog and FastVideo rows, the `dv-chat-references`
+ * row and the `dv-api` row of `cordis.patch.yml`, with their `!!js` configuration and `disabled` flags, boot through the
+ * Loader beside the DSH system prompt and tool registry, with the FastVideo row replaced by a fake, and a
  * model-visible tool call becomes a durable record.
  */
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'

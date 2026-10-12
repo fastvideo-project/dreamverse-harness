@@ -24,7 +24,7 @@ Use this package to render shots. It is the Consumer of the model catalog of [`@
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin after `@dv/project`, `@dv/asset-pool` and `@dv/models`, and mount a company plugin that registers models into the catalog, such as [`@dv/fastvideo`](../fastvideo/README.md). The `shot` reducer is always registered; `shot.render` is registered while the catalog holds at least one model and registered again on every catalog change, so its `model` param lists exactly the registered models.
+Mount the plugin after `@dv/project`, `@dv/asset-pool` and `@dv/models`, and mount a company plugin that registers models into the catalog, such as [`@dv/fastvideo`](../fastvideo/README.md). The `shot` reducer is always registered; `shot.render` is registered while the catalog holds at least one model and registered again when the registered model names change, so its `model` param lists exactly the registered models.
 
 ```yaml
 - id: dv-shot-render
