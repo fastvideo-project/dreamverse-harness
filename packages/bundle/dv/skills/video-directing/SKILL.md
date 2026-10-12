@@ -69,7 +69,6 @@ The `timeline-editing` skill maps each editing request to its tool calls. The ru
 
 ## 8. Words to the user
 
-- Call the model that makes the videos "DreamVerse 视频模型" ("DreamVerse video model" in English replies). Never tell the user a model codename or model ID, such as the `model` field of render records.
 - "这个人 / 她 / 他" is a character; with one character it is that one. When the user's words fit two characters, clips or shots and the message names no reference (a `dv:` mention), ask; do not guess.
 
 ## 9. Do not
