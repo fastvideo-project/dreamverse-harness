@@ -53,7 +53,7 @@ kind: "package-reference"
 | `id` | 智能体和用户选择模型时用的名称，如 `fasth3`；在模型目录中唯一 |
 | `company` | 提供该模型的一方，如 `local FastVideo`，用于模型列表 |
 | `summary` | 把该模型与其他模型区分开的一行文字，用于模型列表 |
-| `modes` | 支持的生成方式，至少一种，每种是一个 `ModeDeclaration`：`inputs`（每个接受的输入角色，`reference` 或 `first_frame`，带 `min`，即一次渲染所需的最少数量）和 `extra`（模型在该生成方式下自有参数的参数 schema，没有时为空） |
+| `modes` | 支持的生成方式，至少一种，每种是一个 `ModeDeclaration`：`inputs`（每个接受的输入角色，`reference` 或 `first_frame`，带 `min`，即一次渲染所需的最少数量）、`extra`（模型在该生成方式下自有参数的参数 schema，没有时为空）和 `gpuSecondsPerVideoSecond`（该生成方式下每渲染一秒视频所用的 GPU 秒数，用于 GPU 估算） |
 | `facts(mode)` | resolve 为模型在该生成方式下的 `RenderModelFacts`；后端无法连接时 reject |
 | `render(mode, request, signal?)` | 先按顺序发送参考图，再发送首帧；恰好产生一个 `last_frame`、一个 `video_start`、若干 `chunk` 事件，然后是 `done`；任何后端失败都会 reject；中止 `signal` 会取消渲染并以其原因 reject |
 
@@ -61,7 +61,7 @@ kind: "package-reference"
 | --- | --- |
 | `ModeId` | `reference` 或 `text` |
 | `ModeDefinition` | `description`（一句面向模型的话）和 `inputs`（该生成方式允许的输入角色：`reference` 允许 `reference` 和 `first_frame`，`text` 不允许任何输入） |
-| `RenderModelFacts` | `modelId`（后端的模型 ID）、`aspectRatios` 和 `resolutions`（默认值在前）、`frameSizes`（按宽高比再按分辨率给出的 `[width, height]`）、`minDurationSec`、`maxDurationSec`、`numFramesByDurationSec`、`maxReferenceImages`（不接受参考图的生成方式下为 0）、`imageLabels`（`Picture 1`、`Picture 2`、…；不接受图片的生成方式下为空）、`gpuSecondsPerVideoSecond`（每渲染一秒视频所用的 GPU 秒数，用于 GPU 估算） |
+| `RenderModelFacts` | `modelId`（后端的模型 ID）、`aspectRatios` 和 `resolutions`（默认值在前）、`frameSizes`（按宽高比再按分辨率给出的 `[width, height]`）、`minDurationSec`、`maxDurationSec`、`numFramesByDurationSec`、`maxReferenceImages`（不接受参考图的生成方式下为 0）、`imageLabels`（`Picture 1`、`Picture 2`、…；不接受图片的生成方式下为空） |
 | `RenderRequest` | `prompt`、`references`（按输入顺序的图片字节）、`firstFrame`（图片字节或 null）、`frameWidth`、`frameHeight`、`numFrames`、`seed`、`extra`（模型的自有参数，已按其 schema 检查） |
 | `RenderStreamEvent` | `last_frame`（PNG 字节，在视频之前或之后）、`video_start`（视频的媒体类型）、`chunk`（视频字节）、`done`（后端的耗时：以 `_ms` 结尾的键是毫秒，其他键是秒） |
 

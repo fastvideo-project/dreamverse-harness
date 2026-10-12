@@ -24,7 +24,7 @@ import DvProject, {
   type RecordInputRef, type Reducer, type RunRequest, type SessionId,
 } from '@dv/project'
 import DvModels, { type ModeId, type ModelEntry, type RenderModelFacts, type RenderRequest, type RenderStreamEvent } from '@dv/models'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import DvShotRender from '../src/index.ts'
 import { backendSeconds, imageLabels, shotGeometry } from '../src/render.ts'
 
@@ -44,7 +44,7 @@ function testFacts(mode: ModeId): RenderModelFacts {
     modelId: `test-${mode}`, aspectRatios: ['16:9', '9:16'], resolutions: ['720p'],
     frameSizes: { '16:9': { '720p': [192, 112] }, '9:16': { '720p': [112, 192] } }, minDurationSec: 1, maxDurationSec: 5,
     numFramesByDurationSec: framesByDuration(1, 5), maxReferenceImages: mode === 'reference' ? 2 : 0,
-    imageLabels: mode === 'reference' ? ['Picture 1', 'Picture 2', 'Picture 3'] : [], gpuSecondsPerVideoSecond: mode === 'reference' ? 3 : 1.5,
+    imageLabels: mode === 'reference' ? ['Picture 1', 'Picture 2', 'Picture 3'] : [],
   }
 }
 
@@ -109,9 +109,10 @@ function fakeModel(lanes: Partial<Record<ModeId, FakeLane>>): ModelEntry {
     modes.reference = {
       inputs: { reference: { min: 1 }, first_frame: { min: 0 } },
       extra: { strength: { type: 'number', description: 'How strongly the references bind.' } },
+      gpuSecondsPerVideoSecond: 3,
     }
   }
-  if (lanes.text !== undefined) modes.text = { inputs: {}, extra: {} }
+  if (lanes.text !== undefined) modes.text = { inputs: {}, extra: {}, gpuSecondsPerVideoSecond: 1.5 }
   const lane = (mode: ModeId): FakeLane => {
     const found = lanes[mode]
     if (found === undefined) throw new Error(`fake serves no mode ${mode}`)
@@ -296,8 +297,8 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
   it('registers shot.render while the catalog holds a model, follows the catalog, and removes it on disposal', async () => {
     const fixture = await start()
     expect(renderSpec(fixture)).toMatchObject({ component: 'shot', resource: 'gpu', confirm: 'over_gpu_budget', deterministic: false })
-    // Each estimate uses the GPU rate the model reports for the call's mode.
-    await vi.waitFor(() => { expect(renderSpec(fixture)?.estimate?.({ ...REF, duration_sec: 2 })).toEqual({ gpu_seconds: 6 }) })
+    // Each estimate uses the GPU rate the model declares for the call's mode.
+    expect(renderSpec(fixture)?.estimate?.({ ...REF, duration_sec: 2 })).toEqual({ gpu_seconds: 6 })
     expect(renderSpec(fixture)?.estimate?.({ ...TXT })).toEqual({ gpu_seconds: 7.5 })
     expect(renderSpec(fixture)?.estimate?.({ model: 'other', mode: 'text' })).toEqual({ gpu_seconds: 0 })
     // An approved plan schedules renders with the params `plan`, `plan_version` and `shot`, so the spec declares them.

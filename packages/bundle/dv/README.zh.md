@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## 概要
 
-用这个 bundle 把 DreamVerse 作为一个 `dsh` profile 运行。它插入模型目录 `@dv/models` 和公司插件 `@dv/fastvideo`（模型 `fasth3` 的生成方式 `reference`，以及只在设置了 `DV_T2VA_BACKEND_URL` 时才有的生成方式 `text`）、DreamVerse 各组件及 `@dv/ffmpeg`、对话引用、API 和 `@dv/ui-*` 界面插件；提供 `video-directing` skill，两处 `skill-filesystem` 行都读取它；声明到集群 SGLang 服务器的 `deepseek-local` 路由；并从环境变量选择智能体模型。`scripts/video-harness/setup-profile.sh` 把它叠在 `dsh-base` 加 `dsh-web-app` 上成为 profile `video-harness`，叠在 `dsh-base` 加 `dsh-headless` 上成为 `video-harness-headless`；`scripts/video-harness/launch.sh web|headless` 从源码运行二者之一。
+用这个 bundle 把 DreamVerse 作为一个 `dsh` profile 运行。它插入模型目录 `@dv/models` 和公司插件 `@dv/fastvideo`（模型 `fasth3` 的生成方式 `reference` 和 `text`）、DreamVerse 各组件及 `@dv/ffmpeg`、对话引用、API 和 `@dv/ui-*` 界面插件；提供 `video-directing` skill，两处 `skill-filesystem` 行都读取它；声明到集群 SGLang 服务器的 `deepseek-local` 路由；并从环境变量选择智能体模型。`scripts/video-harness/setup-profile.sh` 把它叠在 `dsh-base` 加 `dsh-web-app` 上成为 profile `video-harness`，叠在 `dsh-base` 加 `dsh-headless` 上成为 `video-harness-headless`；`scripts/video-harness/launch.sh web|headless` 从源码运行二者之一。
 
 ## 目录
 
@@ -27,12 +27,12 @@ scripts/video-harness/launch.sh web --trusted-host <public host>   # chat page o
 scripts/video-harness/launch.sh headless "给我一个这个人跳舞的视频" --session-id demo   # one task, printed result
 ```
 
-patch 读取的环境变量：`DV_BACKEND_URL`（模型 `fasth3` 在生成方式 `reference` 下的服务器；默认 `http://127.0.0.1:8029`）、`DV_T2VA_BACKEND_URL`（模型 `fasth3` 在生成方式 `text` 下的服务器；未设置时 `dv-fastvideo` 行注册的 `fasth3` 没有生成方式 `text`，所以模型列表和 `dv_shot_render` 只提供生成方式 `reference`）、`DV_STATE_ROOT`（默认 `~/.local/state/dv`；下有 `assets`、`projects`、`sessions`，以及 `@dv/api` 保存的视图状态，patch 把它作为 `@dv/api` 的 `stateRoot` 传入）、`DV_FFMPEG`、`DV_FFPROBE`、`DV_PUBLIC_URL`（聊天卡片里素材链接的来源）、`DV_AGENT_PROVIDER` 与 `DV_AGENT_MODEL`（默认 `deepseek-local` / `deepseek-v4.1`；备选 `groq` / `qwen/qwen3.8-27b`）、`DV_AGENT_REASONING`（默认 `low`）、`DV_DEEPSEEK_BASE_URL`（OpenAI 兼容的 SGLang 端点；启动脚本默认为 `http://10.244.6.153:30000/v1`）、`DV_DEEPSEEK_API_KEY`（服务器无需密钥，但 pi-ai 的 OpenAI 路由坚持要一个 bearer token，启动脚本导出 `none`）、`DV_AGENT_VISION`（`0` 让 `inspect.image` 报告不支持图片而不调用模型），以及启动脚本从 `DV_ENV_FILE` 读入的备选密钥 `GROQ_API_KEY`。
+patch 读取的环境变量：`DV_STATE_ROOT`（默认 `~/.local/state/dv`；下有 `assets`、`projects`、`sessions`，以及 `@dv/api` 保存的视图状态，patch 把它作为 `@dv/api` 的 `stateRoot` 传入）、`DV_FFMPEG`、`DV_FFPROBE`、`DV_PUBLIC_URL`（聊天卡片里素材链接的来源）、`DV_AGENT_PROVIDER` 与 `DV_AGENT_MODEL`（默认 `deepseek-local` / `deepseek-v4.1`；备选 `groq` / `qwen/qwen3.8-27b`）、`DV_AGENT_REASONING`（默认 `low`）、`DV_DEEPSEEK_BASE_URL`（OpenAI 兼容的 SGLang 端点；启动脚本默认为 `http://10.244.6.153:30000/v1`）、`DV_DEEPSEEK_API_KEY`（服务器无需密钥，但 pi-ai 的 OpenAI 路由坚持要一个 bearer token，启动脚本导出 `none`）、`DV_AGENT_VISION`（`0` 让 `inspect.image` 报告不支持图片而不调用模型），以及启动脚本从 `DV_ENV_FILE` 读入的备选密钥 `GROQ_API_KEY`。
 
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-[`cordis.patch.yml`](cordis.patch.yml) 有一个 `insert` 列表放 DreamVerse 的行，和三处覆盖。`dv-models` 行不带配置地挂载模型目录；`dv-fastvideo` 行用 `!!js` 构造它的 `models` 配置：`fasth3` 的生成方式 `reference` 在 `DV_BACKEND_URL` 上，`gpuSecondsPerVideoSecond` 为 4；设置了 `DV_T2VA_BACKEND_URL` 时再加上生成方式 `text`，在该地址上，`gpuSecondsPerVideoSecond` 为 1.5。三处覆盖是：`skill-filesystem`（skill 目录，其中是 `video-directing`；视频模型的 prompt skill 和 `timeline-editing` 由各自的插件通过 `ctx.skills` 注册）、`llm-pi-ai`（手工声明的 `deepseek-local` 路由：`DV_DEEPSEEK_BASE_URL` 上的 `openai-completions`，唯一模型 `deepseek-v4.1` 声明为文本加图片输入，另有 Groq 路由）、`agent-default-model`（来自环境变量的 provider、model 和推理强度）。不包含 web server 行：web profile 的页面来自 `dsh-web-app`，`dvAssetPool` 在那个服务器上注册 `/dv/assets`。[`tests/composition.spec.ts`](tests/composition.spec.ts) 经 Loader 启动补丁里的行（带它们的 `!!js` 配置和 `disabled` 标志，视频模型后端换成假实现），并把一次模型工具调用变成一条记录。
+[`cordis.patch.yml`](cordis.patch.yml) 有一个 `insert` 列表放 DreamVerse 的行，和三处覆盖。`dv-models` 行不带配置地挂载模型目录；`dv-fastvideo` 行直接写明服务器：`fasth3` 的生成方式 `reference` 在 `http://10.244.19.118:8029` 上，`gpuSecondsPerVideoSecond` 为 4；生成方式 `text` 在 `http://10.244.16.130:8031` 上，`gpuSecondsPerVideoSecond` 为 1.5。使用其他服务器的部署在自己的 profile patch 里替换这一行的配置。三处覆盖是：`skill-filesystem`（skill 目录，其中是 `video-directing`；视频模型的 prompt skill 和 `timeline-editing` 由各自的插件通过 `ctx.skills` 注册）、`llm-pi-ai`（手工声明的 `deepseek-local` 路由：`DV_DEEPSEEK_BASE_URL` 上的 `openai-completions`，唯一模型 `deepseek-v4.1` 声明为文本加图片输入，另有 Groq 路由）、`agent-default-model`（来自环境变量的 provider、model 和推理强度）。不包含 web server 行：web profile 的页面来自 `dsh-web-app`，`dvAssetPool` 在那个服务器上注册 `/dv/assets`。[`tests/composition.spec.ts`](tests/composition.spec.ts) 经 Loader 启动补丁里的行（带它们的 `!!js` 配置和 `disabled` 标志，视频模型后端换成假实现），并把一次模型工具调用变成一条记录。
 
 <a id="further-exploration"></a>
 ## 延伸阅读

@@ -24,23 +24,27 @@ Use this package to render shots with video models on local FastVideo streaming_
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin after `@dv/models`, with one server per model and mode. The DreamVerse bundle mounts it as row `dv-fastvideo`, with mode `reference` on `DV_BACKEND_URL` and mode `text` only when `DV_T2VA_BACKEND_URL` is set:
+Mount the plugin after `@dv/models`, with one server per model and mode. The DreamVerse bundle mounts it as row `dv-fastvideo`, with one explicit server per mode:
 
 ```yaml
 - id: dv-fastvideo
   name: '@dv/fastvideo'
   config:
     models:
-      fasth3: !!js >-
-        ({ reference: { baseUrl: process.env.DV_BACKEND_URL || 'http://127.0.0.1:8029', gpuSecondsPerVideoSecond: 4 },
-        ...process.env.DV_T2VA_BACKEND_URL ? { text: { baseUrl: process.env.DV_T2VA_BACKEND_URL, gpuSecondsPerVideoSecond: 1.5 } } : {} })
+      fasth3:
+        reference:
+          baseUrl: http://10.244.19.118:8029
+          gpuSecondsPerVideoSecond: 4
+        text:
+          baseUrl: http://10.244.16.130:8031
+          gpuSecondsPerVideoSecond: 1.5
 ```
 
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `models` | required | The models to register, by model name, and for each the modes to serve it in, by mode name; a model or mode left out is not registered |
 | `models.<model>.<mode>.baseUrl` | required | HTTP base URL of the FastVideo streaming_v2 server that renders the model in the mode, such as `http://127.0.0.1:8029` |
-| `models.<model>.<mode>.gpuSecondsPerVideoSecond` | required | GPU seconds per rendered video second on that server; the model facts report it for the GPU estimate before a render |
+| `models.<model>.<mode>.gpuSecondsPerVideoSecond` | required | GPU seconds per rendered video second on that server; the model declares it for the mode, for the GPU estimate before a render |
 
 Loading fails when `models` names a model other than `fasth3`, a mode the model is not served in (`fasth3`: `reference`, `text`), or a model with no mode. While the plugin is mounted, the model list and the `model` param of `dv_shot_render` include `fasth3` with the configured modes. Mount the DSH skill registry (`@deepseek-ai/dsh-skill`) as well so that the agent can load the prompt skills.
 
@@ -56,7 +60,7 @@ The table `SERVED` in `src/index.ts` holds what the plugin can serve: per model 
 | [`src/index.ts`](src/index.ts) | `name`, `inject`, `Config`, `apply`, the `SERVED` table, the config check, and the model entry |
 | [`skills/fasth3-reference-prompting.md`](skills/fasth3-reference-prompting.md) | The skill body for `fasth3` in mode `reference`: the DreamVerse connection section, then the official MiniMax-H3 full-reference prompt guide copied unchanged |
 | [`skills/fasth3-text-prompting.md`](skills/fasth3-text-prompting.md) | The skill body for `fasth3` in mode `text`: the DreamVerse connection section, then the official MiniMax-H3 prompt guide (T2VA / I2VA / FL2VA / L2VA) copied unchanged |
-| [`tests/fastvideo.spec.ts`](tests/fastvideo.spec.ts) | A Loader composition with the skill registry and the catalog against one fake streaming_v2 server per mode; an opt-in test renders against the server named by `DV_BACKEND_URL` |
+| [`tests/fastvideo.spec.ts`](tests/fastvideo.spec.ts) | A Loader composition with the skill registry and the catalog against one fake streaming_v2 server per mode; an opt-in test renders against the server named by `DV_FASTVIDEO_TEST_URL` |
 
 -----
 

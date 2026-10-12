@@ -21,7 +21,7 @@ import type { ModeDeclaration, ModeId, ModelEntry, RenderModelFacts, RenderReque
 export interface ModeServer {
   /** HTTP base URL of the FastVideo streaming_v2 server, such as `http://127.0.0.1:8029`. */
   baseUrl: string
-  /** GPU seconds per rendered video second on this server, reported in the model facts for the GPU estimate. */
+  /** GPU seconds per rendered video second on this server, declared for the mode for the GPU estimate. */
   gpuSecondsPerVideoSecond: number
 }
 
@@ -39,8 +39,11 @@ export const Config: z<Config> = z.object({
   }))).required(),
 })
 
-/** One mode this plugin can serve a model in: what the model accepts in it, and its prompt skill. */
-interface ServedMode extends ModeDeclaration {
+/**
+ * One mode this plugin can serve a model in: what the model accepts in it, and its prompt skill. The GPU rate comes
+ * from the configured server of the mode.
+ */
+interface ServedMode extends Omit<ModeDeclaration, 'gpuSecondsPerVideoSecond'> {
   skill: { name: string; description: string; file: string }
 }
 
@@ -109,18 +112,18 @@ function modelEntry(ctx: Context, id: string, modes: Record<string, ModeServer>)
   const served = SERVED[id]
   /* v8 ignore next -- checkConfig refuses unknown models before any entry is built. */
   if (served === undefined) throw new Error(`dv-fastvideo serves no model "${id}".`)
-  const clients = new Map<string, { client: DreamverseGeneration; server: ModeServer }>()
+  const clients = new Map<string, DreamverseGeneration>()
   for (const [mode, server] of Object.entries(modes)) {
-    clients.set(mode, { client: new DreamverseGeneration(ctx.isolate('dreamverseGeneration'), { baseUrl: server.baseUrl }), server })
+    clients.set(mode, new DreamverseGeneration(ctx.isolate('dreamverseGeneration'), { baseUrl: server.baseUrl }))
   }
-  const clientOf = (mode: ModeId): { client: DreamverseGeneration; server: ModeServer } => {
+  const clientOf = (mode: ModeId): DreamverseGeneration => {
     const found = clients.get(mode)
     if (found === undefined) throw new Error(`Model ${id} is not served in mode ${mode}.`)
     return found
   }
-  const declared = Object.fromEntries(Object.keys(modes).map((mode) => {
+  const declared = Object.fromEntries(Object.entries(modes).map(([mode, server]) => {
     const { inputs, extra } = served.modes[mode as ModeId] as ServedMode
-    return [mode, { inputs, extra }]
+    return [mode, { inputs, extra, gpuSecondsPerVideoSecond: server.gpuSecondsPerVideoSecond }]
   }))
   return {
     id,
@@ -129,20 +132,17 @@ function modelEntry(ctx: Context, id: string, modes: Record<string, ModeServer>)
     modes: declared,
     // The server counts the first frame among its request images, so a reference render keeps one image for it.
     async facts(mode: ModeId): Promise<RenderModelFacts> {
-      const { client, server } = clientOf(mode)
-      const facts = await client.model()
-      const images = mode === 'reference'
+      const facts = await clientOf(mode).model()
+      const images = declared[mode]?.inputs.reference !== undefined
       return {
         modelId: facts.modelId, aspectRatios: facts.aspectRatios, resolutions: facts.resolutions, frameSizes: facts.frameSizes,
         minDurationSec: facts.minSegmentDurationSec, maxDurationSec: facts.maxSegmentDurationSec,
         numFramesByDurationSec: facts.numFramesByDurationSec,
         maxReferenceImages: images ? facts.maxReferenceImages - 1 : 0, imageLabels: images ? facts.referenceLabels : [],
-        gpuSecondsPerVideoSecond: server.gpuSecondsPerVideoSecond,
       }
     },
     render(mode: ModeId, request: RenderRequest, signal?: AbortSignal): AsyncIterable<RenderStreamEvent> {
-      const { client } = clientOf(mode)
-      return client.generateSegment({
+      return clientOf(mode).generateSegment({
         prompt: request.prompt,
         referenceImages: request.firstFrame === null ? request.references : [...request.references, request.firstFrame],
         frameWidth: request.frameWidth,
@@ -168,17 +168,17 @@ export function apply(ctx: Context, config: Config): void {
   for (const [id, modes] of Object.entries(config.models)) {
     const entry = modelEntry(ctx, id, modes)
     ctx.effect(() => ctx.dvModels.register(entry), `dvModels ${id}`)
-    for (const mode of Object.keys(modes)) {
-      const skill = (SERVED[id]?.modes[mode as ModeId] as ServedMode).skill
-      const definition = {
-        name: skill.name, description: skill.description, source: 'runtime',
-        content: readFileSync(new URL(`../skills/${skill.file}`, import.meta.url), 'utf8'),
-        // The agent's own procedure: the model loads it, and the composer's / menu and the Skills page do not list it.
-        invocation: { modelInvocable: true, userInvocable: false },
-      }
-      ctx.inject(['skills'], (child) => {
-        child.effect(() => child.skills.register(definition), `dvModels ${skill.name}`)
-      })
-    }
   }
+  const skills = Object.entries(config.models).flatMap(([id, modes]) => Object.keys(modes).map((mode) => {
+    const skill = (SERVED[id]?.modes[mode as ModeId] as ServedMode).skill
+    return {
+      name: skill.name, description: skill.description, source: 'runtime',
+      content: readFileSync(new URL(`../skills/${skill.file}`, import.meta.url), 'utf8'),
+      // The agent's own procedure: the model loads it, and the composer's / menu and the Skills page do not list it.
+      invocation: { modelInvocable: true, userInvocable: false },
+    }
+  }))
+  ctx.inject(['skills'], (child) => {
+    for (const definition of skills) child.effect(() => child.skills.register(definition), `dvModels ${definition.name}`)
+  })
 }

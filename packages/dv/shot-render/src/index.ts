@@ -31,7 +31,6 @@ import { RENDER_OPERATION, shotReducer } from './reducer.ts'
 import { backendSeconds, baseMime, imageLabels, number, shotGeometry, text, type ShotGeometry } from './render.ts'
 
 export type * from './types.ts'
-export { RENDER_OPERATION } from './reducer.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -40,7 +39,7 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** `dvShotRender` plugin configuration: none; each model reports its GPU rate in its facts. */
+/** `dvShotRender` plugin configuration: none; each model declares its GPU rate per mode when it registers. */
 export type Config = Record<string, unknown>
 
 /** Loader validation. */
@@ -142,35 +141,25 @@ export default class DvShotRender extends Service {
   static inject = ['dvProject', 'dvAssetPool', 'dvModels']
   static Config = Config
 
-  /**
-   * The latest facts each model reported per mode, by `<model>/<mode>`. The GPU estimate (`estimate`,
-   * `confirmSummary`) is synchronous, so it reads the model's GPU rate from here; every facts read refreshes the entry.
-   */
-  private readonly facts = new Map<string, RenderModelFacts>()
-
   constructor(ctx: Context) {
     super(ctx, 'dvShotRender')
     ctx.effect(() => ctx.dvProject.registerReducer('shot', shotReducer), 'dvShotRender reducer')
     ctx.effect(() => {
       let removeOperation: (() => void) | null = null
+      let registered = ''
+      // The operation's `model` enum lists the registered names, so it is registered again only when they change.
       const sync = (): void => {
+        const names = ctx.dvModels.list().map(entry => entry.id)
+        if (names.join('\n') === registered) return
         removeOperation?.()
-        removeOperation = null
-        const models = ctx.dvModels.list()
-        const names = models.map(entry => entry.id)
-        for (const key of [...this.facts.keys()]) if (!names.includes(key.split('/')[0] ?? '')) this.facts.delete(key)
-        if (models.length === 0) return
-        for (const entry of models) {
-          for (const mode of Object.keys(entry.modes) as ModeId[]) if (!this.facts.has(`${entry.id}/${mode}`)) this.prefetchFacts(entry, mode)
-        }
-        removeOperation = ctx.dvProject.registerOperation(this.renderOperation(names))
+        removeOperation = names.length === 0 ? null : ctx.dvProject.registerOperation(this.renderOperation(names))
+        registered = names.join('\n')
       }
       sync()
       const unlisten = ctx.dvModels.onChanged(sync)
       return () => {
         unlisten()
         removeOperation?.()
-        this.facts.clear()
       }
     }, 'dvShotRender shot.render')
   }
@@ -211,7 +200,7 @@ export default class DvShotRender extends Service {
     /* v8 ignore next -- a render is not a read, so it always runs with a record. */
     if (record === null) throw new Error('A render runs only with a record.')
     const { entry, mode, declaration } = this.resolve(context.params)
-    const facts = await this.modelFacts(entry, mode)
+    const facts = await entry.facts(mode)
     const geometry = shotGeometry(facts, context.params)
     const prompt = text(context.params['prompt'])
     if (prompt === '') throw new Error('shot.render needs a `prompt`.')
@@ -222,8 +211,7 @@ export default class DvShotRender extends Service {
     }
     const pool = this.ctx.dvAssetPool
     const seed = number(context.params['seed'], randomInt(SEED_LIMIT))
-    const extra = typeof context.params['extra'] === 'object' && context.params['extra'] !== null
-      ? context.params['extra'] as Record<string, unknown> : {}
+    const extra = (context.params['extra'] ?? {}) as Record<string, unknown>
     const stream = entry.render(mode, {
       prompt, references: references.map(asset => pool.read(asset)), firstFrame: firstFrame === null ? null : pool.read(firstFrame),
       frameWidth: geometry.width, frameHeight: geometry.height, numFrames: geometry.numFrames, seed, extra,
@@ -330,31 +318,6 @@ export default class DvShotRender extends Service {
     return { videoPath, mime, lastFrame, timings }
   }
 
-  /**
-   * Read a model's facts in one mode and keep them for the GPU estimate while the model stays registered.
-   * @param entry - the model.
-   * @param mode - a mode the model supports.
-   * @returns the facts.
-   * @throws Error when the model cannot read them.
-   */
-  private async modelFacts(entry: ModelEntry, mode: ModeId): Promise<RenderModelFacts> {
-    const facts = await entry.facts(mode)
-    if (this.ctx.dvModels.get(entry.id) === entry) this.facts.set(`${entry.id}/${mode}`, facts)
-    return facts
-  }
-
-  /**
-   * Read a newly registered model's facts in one mode in the background, so the GPU estimate knows its rate before the
-   * first call; a failed read is logged and retried by the next call.
-   * @param entry - the model.
-   * @param mode - a mode the model supports.
-   */
-  private prefetchFacts(entry: ModelEntry, mode: ModeId): void {
-    this.modelFacts(entry, mode).catch((error: unknown) => {
-      this.ctx.logger.warn(`dvShotRender: model ${entry.id} reported no facts in mode ${mode} yet: ${String(error)}`)
-    })
-  }
-
   /** @returns the optional live stream service, looked up per render so a service mounted later is still used. */
   private liveSink(): LiveShotSink | undefined {
     return this.ctx.get('vhStream') // names:allow (the live stream service keeps its name)
@@ -373,13 +336,9 @@ export default class DvShotRender extends Service {
    */
   private async precondition(request: RunRequest, state: ProjectState): Promise<void> {
     const { entry, mode, declaration } = this.resolve(request.params)
-    const extra = request.params['extra']
-    if (extra !== undefined) {
-      const problems = typeof extra === 'object' && extra !== null && !Array.isArray(extra)
-        ? this.ctx.dvModels.checkExtra(entry, mode, extra as Record<string, unknown>)
-        : ['extra must be an object.']
-      if (problems.length > 0) throw new Error(problems.join(' '))
-    }
+    // Project checked `extra` against the operation's `type: 'object'` before the precondition runs.
+    const problems = this.ctx.dvModels.checkExtra(entry, mode, (request.params['extra'] ?? {}) as Record<string, unknown>)
+    if (problems.length > 0) throw new Error(problems.join(' '))
     for (const input of request.inputs) {
       if (!Object.hasOwn(declaration.inputs, input.role)) {
         throw new Error(`Model ${entry.id} in mode ${mode} takes no ${input.role} input; it takes: `
@@ -392,7 +351,7 @@ export default class DvShotRender extends Service {
       'asset' in ref || 'record' in ref ? 1 : this.ctx.dvProject.assetsOf(state, ref)?.length ?? 0
     const count = request.inputs.filter(input => input.role === 'reference').reduce((sum, input) => sum + images(input.ref), 0)
     if (count >= needed) return
-    const limit = (await this.modelFacts(entry, mode)).maxReferenceImages
+    const limit = (await entry.facts(mode)).maxReferenceImages
     const planned = request.params['plan'] !== undefined
     const textModels = this.ctx.dvModels.list().filter(model => model.modes.text !== undefined).map(model => model.id)
     const fromText = textModels.length === 0 ? '' : ` A shot that needs no reference image can use mode text with ${textModels.join(', ')}.`
@@ -403,15 +362,14 @@ export default class DvShotRender extends Service {
   }
 
   /**
-   * Prepare an agent call of `shot.render`: read the model's facts (the agreement text reads its GPU rate), turn
-   * `continue_from` into the `first_frame` input, and apply the precondition before Project asks for the user's agreement.
+   * Prepare an agent call of `shot.render`: turn `continue_from` into the `first_frame` input, and apply the
+   * precondition before Project asks for the user's agreement.
    * @param call - the parsed call.
    * @throws Error from the precondition, or when `continue_from` names a first frame the model does not take in the mode.
    */
   private async prepareCall(call: OperationToolCall): Promise<void> {
     const { args, request, state } = call
     const { entry, mode, declaration } = this.resolve(request.params)
-    await this.modelFacts(entry, mode)
     const continueFrom = text(args['continue_from'])
     if (continueFrom !== '') {
       if (declaration.inputs.first_frame === undefined) {
@@ -423,14 +381,16 @@ export default class DvShotRender extends Service {
   }
 
   /**
-   * The GPU estimate of one render: its duration times the `gpuSecondsPerVideoSecond` of its model in its mode.
+   * The GPU estimate of one render: its duration times the `gpuSecondsPerVideoSecond` its model declares in its mode.
    * @param params - the call's params.
-   * @returns the estimate from `duration_sec`, or from 5 seconds when the call names none; 0 while the model has
-   *   reported no facts in the mode (its backend was never reached, so the render cannot run either).
+   * @returns the estimate from `duration_sec`, or from 5 seconds when the call names none; 0 for a model or mode that
+   *   is not in the catalog.
    */
   private estimate(params: Record<string, unknown>): { gpu_seconds: number } {
     const durationSec = number(params['duration_sec'], 0)
-    const rate = this.facts.get(`${text(params['model'])}/${text(params['mode'])}`)?.gpuSecondsPerVideoSecond ?? 0
+    const modes = this.ctx.dvModels.get(text(params['model']))?.modes
+    const mode = text(params['mode'])
+    const rate = modes !== undefined && Object.hasOwn(modes, mode) ? modes[mode as ModeId]?.gpuSecondsPerVideoSecond ?? 0 : 0
     return { gpu_seconds: (durationSec > 0 ? durationSec : ESTIMATE_DURATION_SEC) * rate }
   }
 

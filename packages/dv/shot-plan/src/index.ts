@@ -164,11 +164,10 @@ function canonical(value: unknown): string {
 }
 
 /**
- * One shot of an approval: the render operation of its mode and the request part, whether it starts from the previous
- * shot's last still, and the done take it reuses, or null when it renders.
+ * One shot of an approval: the request part of its `shot.render` call, whether it starts from the previous shot's last
+ * still, and the done take it reuses, or null when it renders.
  */
 interface ApprovalShot {
-  operation: string
   params: Record<string, unknown>
   inputs: RunRequest['inputs']
   continuePrevious: boolean
@@ -176,10 +175,10 @@ interface ApprovalShot {
 }
 
 /**
- * The render operation, params and reference inputs of every shot of a plan version, in shot order, as `plan.approve`
+ * The `shot.render` params and reference inputs of every shot of a plan version, in shot order, as `plan.approve`
  * schedules them, and the take each unchanged shot reuses. A shot in a mode that takes references carries its own
  * references, else the plan's; a shot in another mode carries none. Each shot's params name its model and mode. A shot
- * is unchanged when a done record of the shot's render operation for the same plan in the approving state has the same
+ * is unchanged when a done `shot.render` record for the same plan in the approving state has the same
  * params (apart from `plan`, `plan_version` and `shot`), the same reference inputs,
  * and the same `first_frame` input: none for a shot without `continue_previous`, else the reused take of the previous
  * shot, so a continuing shot after a rendered shot renders too. The newest such take is reused. The `first_frame` input
@@ -199,9 +198,8 @@ function approvalShots(
     canonical(Object.fromEntries(Object.entries(params).filter(([key]) => !PLAN_RENDER_PARAMS.has(key))))
   const shots: ApprovalShot[] = []
   for (const [index, shot] of version.shots.entries()) {
-    const operation = RENDER_OPERATION
     const references = takesReferences(shot) ? shot.references ?? version.references ?? [] : []
-    const inputs: RunRequest['inputs'] = references.length === 0 ? [] : project.parseInputs(operation, { reference: references }, state)
+    const inputs: RunRequest['inputs'] = references.length === 0 ? [] : project.parseInputs(RENDER_OPERATION, { reference: references }, state)
     const params: Record<string, unknown> = {
       model: shot.model, mode: shot.mode, prompt: shot.prompt, plan, plan_version: version.version, shot: index + 1,
     }
@@ -215,11 +213,11 @@ function approvalShots(
       ? (previous.reuse === null ? null : canonical([{ record: previous.reuse, output: 1 }]))
       : canonical([])
     const wanted = canonical(inputs.map(input => input.ref))
-    const reuse = firstFrame === null ? undefined : takes.find(take => take.operation === operation
+    const reuse = firstFrame === null ? undefined : takes.find(take => take.operation === RENDER_OPERATION
       && ownParams(take.params) === ownParams(params)
       && canonical(take.inputs.filter(input => input.role === 'reference').map(input => input.ref)) === wanted
       && canonical(take.inputs.filter(input => input.role === 'first_frame').map(input => input.ref)) === firstFrame)
-    shots.push({ operation, params, inputs, continuePrevious, reuse: reuse?.id ?? null })
+    shots.push({ params, inputs, continuePrevious, reuse: reuse?.id ?? null })
   }
   return shots
 }
@@ -340,7 +338,7 @@ export default class DvShotPlan extends Service {
       }
       const previous = scheduled.at(-1)
       const run = await project.run({
-        ...origin, project: context.project, operation: shot.operation, params: shot.params, inputs: shot.inputs,
+        ...origin, project: context.project, operation: RENDER_OPERATION, params: shot.params, inputs: shot.inputs,
         intent: `shot ${String(shot.params['shot'])} of plan ${plan} v${version.version}`, after: previous === undefined ? [] : [previous],
       })
       /* v8 ignore next -- a scheduled run always returns its pending record. */
@@ -393,14 +391,13 @@ export default class DvShotPlan extends Service {
     const version = versionIn(state, plan, typeof requested === 'number' ? requested : undefined)
     this.checkPlan(version, state)
     const project = this.ctx.dvProject
-    const operations = project.listOperations()
+    const render = project.listOperations().find(spec => spec.name === RENDER_OPERATION)
     const refused: number[] = []
     let reason = ''
     for (const shot of approvalShots(version, plan, project, state)) {
-      const render = operations.find(spec => spec.name === shot.operation)
       if (shot.reuse !== null || render?.precondition === undefined) continue
       try {
-        await render.precondition({ ...request, operation: shot.operation, params: shot.params, inputs: shot.inputs }, state)
+        await render.precondition({ ...request, operation: RENDER_OPERATION, params: shot.params, inputs: shot.inputs }, state)
       } catch (error: unknown) {
         refused.push(Number(shot.params['shot']))
         if (reason === '') reason = error instanceof Error ? error.message : String(error)
@@ -423,13 +420,13 @@ export default class DvShotPlan extends Service {
    * @throws Error when a reference names an unknown character, location or style version.
    */
   private renderCost(version: Plan & { version: number }, plan: string, state: ProjectState): RenderCost {
-    const operations = this.ctx.dvProject.listOperations()
+    const render = this.ctx.dvProject.listOperations().find(spec => spec.name === RENDER_OPERATION)
     let gpuSeconds = 0
     const shots = approvalShots(version, plan, this.ctx.dvProject, state)
     const lines = shots.map((shot, index) => {
       const planned = version.shots[index]
       if (shot.reuse !== null || planned === undefined) return `shot ${String(index + 1)}: keeps its take`
-      gpuSeconds += operations.find(spec => spec.name === shot.operation)?.estimate?.(shot.params).gpu_seconds ?? 0
+      gpuSeconds += render?.estimate?.(shot.params).gpu_seconds ?? 0
       const duration = planned.duration_sec === undefined ? '' : `, ${String(planned.duration_sec)} s`
       const continues = shot.continuePrevious ? ', continues from the previous shot' : ''
       const prompt = planned.prompt.length > PROMPT_PREVIEW ? `${planned.prompt.slice(0, PROMPT_PREVIEW)}…` : planned.prompt

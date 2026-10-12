@@ -192,10 +192,10 @@ export default class DvModels extends Service {
   async describe(id: string): Promise<JsonValue> {
     const entry = this.get(id)
     if (entry === undefined) throw new Error(`Unknown model "${id}"; models: ${this.list().map(model => model.id).join(', ') || 'none'}.`)
-    const modes: Record<string, JsonValue> = {}
-    for (const [mode, declaration] of Object.entries(entry.modes)) {
+    // Each mode may be served by its own backend, so the modes' facts are read together.
+    const modes = await Promise.all(Object.entries(entry.modes).map(async ([mode, declaration]): Promise<[string, JsonValue]> => {
       const facts = await entry.facts(mode as ModeId)
-      modes[mode] = {
+      return [mode, {
         inputs: Object.fromEntries(Object.entries(declaration.inputs).map(([role, limit]) => [role, {
           min: limit.min, ...role === 'reference' ? { max: facts.maxReferenceImages } : { max: 1 },
         }])),
@@ -203,9 +203,9 @@ export default class DvModels extends Service {
         aspect_ratios: facts.aspectRatios,
         resolutions: facts.resolutions,
         extra: JSON.parse(JSON.stringify(declaration.extra)) as JsonValue,
-      }
-    }
-    return { model: entry.id, company: entry.company, about: entry.summary, modes }
+      }]
+    }))
+    return { model: entry.id, company: entry.company, about: entry.summary, modes: Object.fromEntries(modes) }
   }
 
   /** The `dv_models_get` tool. */

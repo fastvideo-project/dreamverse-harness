@@ -85,9 +85,6 @@ describe('DreamVerse bundle composition', () => {
     vi.stubEnv('DV_STATE_ROOT', dir)
     vi.stubEnv('DV_FFMPEG', FFMPEG)
     vi.stubEnv('DV_FFPROBE', FFPROBE)
-    // Without a t2va backend URL the `dv-fastvideo` row serves fasth3 in mode reference only.
-    vi.stubEnv('DV_T2VA_BACKEND_URL', '')
-    vi.stubEnv('DV_BACKEND_URL', '')
     disposers.push(() => { vi.unstubAllEnvs() })
     const globals = globalThis as typeof globalThis & { __dvComposition?: Record<string, object> }
     globals.__dvComposition = PLUGINS
@@ -121,8 +118,13 @@ describe('DreamVerse bundle composition', () => {
       .toEqual(expect.arrayContaining(['plan.create', 'shot.render', 'timeline.create', 'timeline.update']))
     expect(ctx.get('tools')?.get('dv_shot_render')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_models_get')).toBeDefined()
-    // The bundle's `!!js` config names fasth3 in mode reference only, because no t2va backend URL is set.
-    expect(fastVideoConfig).toEqual({ fasth3: { reference: { baseUrl: 'http://127.0.0.1:8029', gpuSecondsPerVideoSecond: 4 } } })
+    // The bundle names one server per mode of fasth3.
+    expect(fastVideoConfig).toEqual({
+      fasth3: {
+        reference: { baseUrl: 'http://10.244.19.118:8029', gpuSecondsPerVideoSecond: 4 },
+        text: { baseUrl: 'http://10.244.16.130:8031', gpuSecondsPerVideoSecond: 1.5 },
+      },
+    })
     expect(ctx.dvModels.list().map(model => model.id)).toEqual(['fasth3'])
     const renderer = fasth3
 

@@ -31,7 +31,7 @@ kind: "package-reference"
   name: '@dv/shot-render'
 ```
 
-本插件没有配置。一次渲染的 GPU 预估 `estimate(params)` 是 `duration_sec`（调用未给出时为 5）乘以指定模型在指定生成方式下的模型事实中报告的 `gpuSecondsPerVideoSecond`。Shot render 保存每个模型在其每种生成方式下最近一次报告的模型事实，键为 `<model>/<mode>`：模型注册时在后台读取（读取失败会记录日志，由下一次调用重试），每次调用时再读取，所以同步的预估可以用于一轮的 GPU 预算和 `confirmSummary` 的确认文字。模型在某种生成方式下还没有报告模型事实时，预估为 0。
+本插件没有配置。一次渲染的 GPU 预估 `estimate(params)` 是 `duration_sec`（调用未给出时为 5）乘以指定模型注册时为指定生成方式声明的 `gpuSecondsPerVideoSecond`，所以同步的预估无需读取后端，就可以用于一轮的 GPU 预算和 `confirmSummary` 的确认文字。模型或生成方式不在模型目录中时，预估为 0。
 
 | 操作 | 工具 | 输入和参数 | 输出和报告 |
 | --- | --- | --- | --- |

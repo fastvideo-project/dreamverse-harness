@@ -53,7 +53,7 @@ A `ModelEntry` has these fields; every company plugin implements `facts` and `re
 | `id` | The name the agent and the user choose the model by, such as `fasth3`; unique in the catalog |
 | `company` | Who serves the model, such as `local FastVideo`, for the model list |
 | `summary` | One line that tells the model apart from the others, for the model list |
-| `modes` | The supported modes, at least one, each a `ModeDeclaration`: `inputs` (each accepted input role, `reference` or `first_frame`, with `min`, the smallest count a render needs) and `extra` (the parameter schema of the model's own parameters in the mode, empty when it has none) |
+| `modes` | The supported modes, at least one, each a `ModeDeclaration`: `inputs` (each accepted input role, `reference` or `first_frame`, with `min`, the smallest count a render needs) `extra` (the parameter schema of the model's own parameters in the mode, empty when it has none), and `gpuSecondsPerVideoSecond` (GPU seconds per rendered video second in the mode, for the GPU estimate) |
 | `facts(mode)` | Resolves with the `RenderModelFacts` of the model in the mode; rejects when the backend cannot be reached |
 | `render(mode, request, signal?)` | Sends the reference images in order, then the first frame; yields exactly one `last_frame`, one `video_start`, the `chunk` events, then `done`; rejects for any backend failure; aborting `signal` cancels the render and rejects with its reason |
 
@@ -61,7 +61,7 @@ A `ModelEntry` has these fields; every company plugin implements `facts` and `re
 | --- | --- |
 | `ModeId` | `reference` or `text` |
 | `ModeDefinition` | `description` (one model-facing sentence) and `inputs` (the input roles the mode allows: `reference` and `first_frame` for `reference`, none for `text`) |
-| `RenderModelFacts` | `modelId` (the backend's model ID), `aspectRatios` and `resolutions` (the default first), `frameSizes` (`[width, height]` by aspect ratio and then by resolution), `minDurationSec`, `maxDurationSec`, `numFramesByDurationSec`, `maxReferenceImages` (0 in a mode without reference images), `imageLabels` (`Picture 1`, `Picture 2`, …; empty in a mode without images), `gpuSecondsPerVideoSecond` (GPU seconds per rendered video second, for the GPU estimate) |
+| `RenderModelFacts` | `modelId` (the backend's model ID), `aspectRatios` and `resolutions` (the default first), `frameSizes` (`[width, height]` by aspect ratio and then by resolution), `minDurationSec`, `maxDurationSec`, `numFramesByDurationSec`, `maxReferenceImages` (0 in a mode without reference images), `imageLabels` (`Picture 1`, `Picture 2`, …; empty in a mode without images) |
 | `RenderRequest` | `prompt`, `references` (image bytes in input order), `firstFrame` (image bytes or null), `frameWidth`, `frameHeight`, `numFrames`, `seed`, `extra` (the model's own parameters, already checked against its schema) |
 | `RenderStreamEvent` | `last_frame` (PNG bytes, before or after the video), `video_start` (the media type of the video), `chunk` (video bytes), `done` (the backend's timings: keys ending in `_ms` are milliseconds, other keys seconds) |
 

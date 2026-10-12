@@ -24,23 +24,27 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在 `@dv/models` 之后挂载本插件，每个模型的每种生成方式配一个服务器。DreamVerse bundle 以行 `dv-fastvideo` 挂载它，生成方式 `reference` 使用 `DV_BACKEND_URL`，只有设置了 `DV_T2VA_BACKEND_URL` 时才加上生成方式 `text`：
+在 `@dv/models` 之后挂载本插件，每个模型的每种生成方式配一个服务器。DreamVerse bundle 以行 `dv-fastvideo` 挂载它，每种生成方式直接写明一个服务器：
 
 ```yaml
 - id: dv-fastvideo
   name: '@dv/fastvideo'
   config:
     models:
-      fasth3: !!js >-
-        ({ reference: { baseUrl: process.env.DV_BACKEND_URL || 'http://127.0.0.1:8029', gpuSecondsPerVideoSecond: 4 },
-        ...process.env.DV_T2VA_BACKEND_URL ? { text: { baseUrl: process.env.DV_T2VA_BACKEND_URL, gpuSecondsPerVideoSecond: 1.5 } } : {} })
+      fasth3:
+        reference:
+          baseUrl: http://10.244.19.118:8029
+          gpuSecondsPerVideoSecond: 4
+        text:
+          baseUrl: http://10.244.16.130:8031
+          gpuSecondsPerVideoSecond: 1.5
 ```
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `models` | 必填 | 要注册的模型（按模型名），以及每个模型要以哪些生成方式提供（按生成方式名）；未列出的模型或生成方式不会注册 |
 | `models.<model>.<mode>.baseUrl` | 必填 | 以该生成方式渲染该模型的 FastVideo streaming_v2 服务器的 HTTP 基础 URL，如 `http://127.0.0.1:8029` |
-| `models.<model>.<mode>.gpuSecondsPerVideoSecond` | 必填 | 该服务器每渲染一秒视频所用的 GPU 秒数；模型事实报告它，用于渲染前的 GPU 估算 |
+| `models.<model>.<mode>.gpuSecondsPerVideoSecond` | 必填 | 该服务器每渲染一秒视频所用的 GPU 秒数；模型为该生成方式声明它，用于渲染前的 GPU 估算 |
 
 `models` 列出 `fasth3` 以外的模型、模型不提供的生成方式（`fasth3`：`reference`、`text`），或没有任何生成方式的模型时，加载失败。本插件挂载期间，模型列表和 `dv_shot_render` 的 `model` 参数包含 `fasth3` 及其配置的生成方式。同时挂载 DSH skill 注册表（`@deepseek-ai/dsh-skill`），智能体才能加载提示词 skill。
 
@@ -56,7 +60,7 @@ kind: "package-reference"
 | [`src/index.ts`](src/index.ts) | `name`、`inject`、`Config`、`apply`、表 `SERVED`、配置检查和模型条目 |
 | [`skills/fasth3-reference-prompting.md`](skills/fasth3-reference-prompting.md) | `fasth3` 在生成方式 `reference` 下的 skill 正文：DreamVerse 对接说明，后接原样复制的 MiniMax-H3 官方全参考提示词指南 |
 | [`skills/fasth3-text-prompting.md`](skills/fasth3-text-prompting.md) | `fasth3` 在生成方式 `text` 下的 skill 正文：DreamVerse 对接说明，后接原样复制的 MiniMax-H3 官方提示词指南（T2VA / I2VA / FL2VA / L2VA） |
-| [`tests/fastvideo.spec.ts`](tests/fastvideo.spec.ts) | 用 Loader 组装 skill 注册表、模型目录和本插件，每种生成方式对接一台假的 streaming_v2 服务器；一个可选测试对 `DV_BACKEND_URL` 指定的服务器做真实渲染 |
+| [`tests/fastvideo.spec.ts`](tests/fastvideo.spec.ts) | 用 Loader 组装 skill 注册表、模型目录和本插件，每种生成方式对接一台假的 streaming_v2 服务器；一个可选测试对 `DV_FASTVIDEO_TEST_URL` 指定的服务器做真实渲染 |
 
 -----
 

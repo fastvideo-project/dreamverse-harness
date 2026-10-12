@@ -41,7 +41,7 @@ export { uriOf } from './compose.ts'
 type SessionId = ToolCallViewProps['sessionId']
 
 /** The agent tool of the Shot render operation `shot.render`. */
-const RENDER_TOOLS: ReadonlySet<string> = new Set(['dv_shot_render'])
+const RENDER_TOOL = 'dv_shot_render'
 
 /** Required services: the trigger registry, the sessions, the slots, and the right sidebar that holds 对话. */
 export const inject = ['inputTriggers', 'sessions', 'slots', 'sidebarRight']
@@ -121,9 +121,7 @@ export function apply(ctx: ClientContext): void {
       toolName: props.toolName, label, sessionId: props.sessionId, callId: props.callId, phase: props.phase, block: props.block,
     })
   }
-  for (const name of RENDER_TOOLS) {
-    ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key: name }, RenderRow))
-  }
+  ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key: RENDER_TOOL }, RenderRow))
 
   // Every other labelled tool shows its creator-facing name in its chat row and in the running group title.
   function LabelRow(props: ToolCallViewProps) {
@@ -133,7 +131,7 @@ export function apply(ctx: ClientContext): void {
     })
   }
   for (const name of Object.keys(DV_TOOL_LABELS)) {
-    if (RENDER_TOOLS.has(name)) continue
+    if (name === RENDER_TOOL) continue
     ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key: name }, LabelRow))
   }
   ctx.effect(() => {

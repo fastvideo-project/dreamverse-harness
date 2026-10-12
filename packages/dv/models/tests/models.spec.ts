@@ -20,7 +20,7 @@ function facts(mode: ModeId): RenderModelFacts {
   return {
     modelId: `backend-${mode}`, aspectRatios: ['16:9'], resolutions: ['720p'], frameSizes: { '16:9': { '720p': [1280, 720] } },
     minDurationSec: 4, maxDurationSec: 8, numFramesByDurationSec: { 4: 97 }, maxReferenceImages: mode === 'reference' ? 2 : 0,
-    imageLabels: [], gpuSecondsPerVideoSecond: 2,
+    imageLabels: [],
   }
 }
 
@@ -29,8 +29,8 @@ function model(id: string, modes: ModeId[]): ModelEntry {
   return {
     id, company: 'Test Co', summary: `${id} test model`,
     modes: Object.fromEntries(modes.map(mode => [mode, mode === 'reference'
-      ? { inputs: { reference: { min: 1 }, first_frame: { min: 0 } }, extra: { cfg: { type: 'number', description: 'Guidance scale.' } } }
-      : { inputs: {}, extra: {} }])),
+      ? { inputs: { reference: { min: 1 }, first_frame: { min: 0 } }, extra: { cfg: { type: 'number', description: 'Guidance scale.' } }, gpuSecondsPerVideoSecond: 2 }
+      : { inputs: {}, extra: {}, gpuSecondsPerVideoSecond: 2 }])),
     facts: mode => Promise.resolve(facts(mode)),
     render: () => { throw new Error('not rendered in this test') },
   }
@@ -109,7 +109,7 @@ describe('dvModels', () => {
     expect(() => ctx.dvModels.register(model('none', []))).toThrow('dvModels: model "none" declares no mode.')
     expect(() => ctx.dvModels.register({ ...model('odd', ['text']), modes: { fly: { inputs: {}, extra: {} } } as never }))
       .toThrow('dvModels: model "odd" declares unknown mode "fly"; modes: reference, text.')
-    expect(() => ctx.dvModels.register({ ...model('odd', ['text']), modes: { text: { inputs: { reference: { min: 1 } }, extra: {} } } }))
+    expect(() => ctx.dvModels.register({ ...model('odd', ['text']), modes: { text: { inputs: { reference: { min: 1 } }, extra: {}, gpuSecondsPerVideoSecond: 2 } } }))
       .toThrow('dvModels: mode "text" of model "odd" accepts input "reference", which the mode does not allow.')
     expect(ctx.dvModels.list().map(entry => entry.id)).toEqual(['alpha', 'beta'])
   })

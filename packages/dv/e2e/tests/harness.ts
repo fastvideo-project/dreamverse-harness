@@ -229,7 +229,8 @@ export async function bootHarness(
     repeatLast: true, toolName: 'dv_proj_state', toolArguments: '{}',
   })
   // The isolated harness home mirrors scripts/video-harness/setup-profile.sh: a manifest naming the three bundles,
-  // an empty profile patch, and a link to this checkout's bundle package.
+  // a profile patch, and a link to this checkout's bundle package. The profile patch replaces the config of the
+  // bundle's `dv-fastvideo` row, so fasth3 renders only in mode reference, on the fake backend.
   const home = join(scratch, 'dsh-home')
   const profileDir = join(home, 'profiles', 'video-harness')
   mkdirSync(join(profileDir, 'node_modules', '@dv'), { recursive: true })
@@ -237,7 +238,10 @@ export async function bootHarness(
     name: 'dsh-profile-video-harness', private: true,
     dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@dv/bundle'] } },
   }))
-  writeFileSync(join(profileDir, 'cordis.patch.yml'), '[]\n')
+  writeFileSync(join(profileDir, 'cordis.patch.yml'), [
+    '- id: dv-fastvideo', '  config:', '    models:', '      fasth3:', '        reference:',
+    `          baseUrl: ${backend.url}`, '          gpuSecondsPerVideoSecond: 4', '',
+  ].join('\n'))
   symlinkSync(join(REPO_ROOT, 'packages/bundle/dv'), join(profileDir, 'node_modules', '@dv', 'bundle'))
   const port = await freePort()
   const stateRoot = join(scratch, 'state')
@@ -249,10 +253,6 @@ export async function bootHarness(
       PATH: `${dirname(process.execPath)}:${process.env['PATH'] ?? ''}`,
       DSH_HOME: home,
       DV_STATE_ROOT: stateRoot,
-      DV_BACKEND_URL: backend.url,
-      // An empty text-mode backend URL leaves fasth3 without mode text, so fasth3 renders only in mode reference
-      // whatever the calling shell exports.
-      DV_T2VA_BACKEND_URL: '',
       DV_FFMPEG: FFMPEG,
       DV_PUBLIC_URL: '',
       DV_DEEPSEEK_BASE_URL: options.modelBaseUrl ?? `${model.baseURL}/v1`,

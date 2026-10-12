@@ -2,7 +2,7 @@
  * The FastVideo company plugin in a REAL composition: a test-only `cordis.yml` boots the DSH skill registry, the model
  * catalog and the plugin through the Loader. The FastVideo streaming_v2 servers are the only fakes: one HTTP server per
  * mode that answers the capabilities and health routes and streams fixed bytes for every render. An opt-in test renders
- * against a running server named by `DV_BACKEND_URL`.
+ * against a running server named by `DV_FASTVIDEO_TEST_URL`.
  */
 import { once } from 'node:events'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -21,7 +21,7 @@ import * as FastVideo from '../src/index.ts'
 
 /** The reference image of the opt-in run against a running server. */
 const REAL_REFERENCE = '/mnt/lustre/vlm-d1su/codes/dsh-dv-hub/elon-musk.jpg'
-const REAL_BACKEND = process.env['DV_BACKEND_URL']
+const REAL_BACKEND = process.env['DV_FASTVIDEO_TEST_URL']
 
 /** The capabilities the fake reference server reports; the server counts the first frame among its 3 images. */
 const REFERENCE_CAPABILITIES = {
@@ -141,15 +141,18 @@ describe('dv-fastvideo', () => {
     const entry = fasth3(ctx)
     expect(entry).toMatchObject({
       company: 'local FastVideo',
-      modes: { reference: { inputs: { reference: { min: 1 }, first_frame: { min: 0 } }, extra: {} }, text: { inputs: {}, extra: {} } },
+      modes: {
+        reference: { inputs: { reference: { min: 1 }, first_frame: { min: 0 } }, extra: {}, gpuSecondsPerVideoSecond: 4 },
+        text: { inputs: {}, extra: {}, gpuSecondsPerVideoSecond: 1.5 },
+      },
     })
     // The server counts the first frame among its request images, so mode reference takes one reference image fewer.
     expect(await entry.facts('reference')).toEqual({
       modelId: 'fake-ref2va', aspectRatios: ['16:9'], resolutions: ['720p'], frameSizes: { '16:9': { '720p': [1344, 768] } },
       minDurationSec: 5, maxDurationSec: 6, numFramesByDurationSec: { 5: 124, 6: 158 },
-      maxReferenceImages: 2, imageLabels: ['Picture 1', 'Picture 2', 'Picture 3'], gpuSecondsPerVideoSecond: 4,
+      maxReferenceImages: 2, imageLabels: ['Picture 1', 'Picture 2', 'Picture 3'],
     })
-    expect(await entry.facts('text')).toMatchObject({ modelId: 'fake-t2va', maxReferenceImages: 0, imageLabels: [], gpuSecondsPerVideoSecond: 1.5 })
+    expect(await entry.facts('text')).toMatchObject({ modelId: 'fake-t2va', maxReferenceImages: 0, imageLabels: [] })
     // The streaming_v2 clients stay private to the plugin.
     expect(ctx.get('dreamverseGeneration')).toBeUndefined()
   })

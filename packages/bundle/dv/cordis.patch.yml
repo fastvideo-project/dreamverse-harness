@@ -1,9 +1,6 @@
 # The DreamVerse bundle patch: the DreamVerse plugins over dsh-base, for a profile that also stacks dsh-web-app (the
 # chat page) or dsh-headless (one task per process). Every row reads its configuration from the environment that
 # scripts/video-harness/launch.sh prepares:
-#   DV_BACKEND_URL   FastVideo streaming_v2 server of the ref2va render mode (default http://127.0.0.1:8029)
-#   DV_T2VA_BACKEND_URL  FastVideo streaming_v2 server of the t2va render mode (FastVideo/FastVideo-FastH3-8-Step-V2);
-#                        unset, the t2va render mode is not mounted
 #   DV_STATE_ROOT    where assets, project records, session bindings, and view state live (default ~/.local/state/dv)
 #   DV_FFMPEG / DV_FFPROBE  media binaries
 #   DV_PUBLIC_URL    origin that serves /dv/assets to remote viewers, for links in chat cards
@@ -18,15 +15,19 @@
     - id: dv-models
       name: '@dv/models'
 
-    # Models on local FastVideo servers: fasth3 in mode reference on DV_BACKEND_URL, and in mode text on
-    # DV_T2VA_BACKEND_URL when it is set. A model or mode left out of `models` is not registered.
+    # Models on the cluster's FastVideo streaming_v2 servers, one server per mode. A model or mode left out of `models`
+    # is not registered; a deployment with other servers replaces this row's config in its profile patch.
     - id: dv-fastvideo
       name: '@dv/fastvideo'
       config:
         models:
-          fasth3: !!js >-
-            ({ reference: { baseUrl: process.env.DV_BACKEND_URL || 'http://127.0.0.1:8029', gpuSecondsPerVideoSecond: 4 },
-            ...process.env.DV_T2VA_BACKEND_URL ? { text: { baseUrl: process.env.DV_T2VA_BACKEND_URL, gpuSecondsPerVideoSecond: 1.5 } } : {} })
+          fasth3:
+            reference:
+              baseUrl: http://10.244.19.118:8029
+              gpuSecondsPerVideoSecond: 4
+            text:
+              baseUrl: http://10.244.16.130:8031
+              gpuSecondsPerVideoSecond: 1.5
 
     - id: dv-ffmpeg
       name: '@dv/ffmpeg'

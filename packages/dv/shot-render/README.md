@@ -31,7 +31,7 @@ Mount the plugin after `@dv/project`, `@dv/asset-pool` and `@dv/models`, and mou
   name: '@dv/shot-render'
 ```
 
-The plugin has no configuration. The GPU estimate of a render, `estimate(params)`, is `duration_sec` (5 when the call names none) times the `gpuSecondsPerVideoSecond` that the named model reports in its facts for the named mode. Shot render keeps the latest facts of each model in each of its modes, keyed `<model>/<mode>`: it reads them in the background when a model registers (a failed read is logged and retried by the next call) and again on every call, so the synchronous estimate serves the GPU budget of a turn and the agreement text of `confirmSummary`. While a model has reported no facts in a mode, the estimate is 0.
+The plugin has no configuration. The GPU estimate of a render, `estimate(params)`, is `duration_sec` (5 when the call names none) times the `gpuSecondsPerVideoSecond` that the named model declares for the named mode when it registers, so the synchronous estimate serves the GPU budget of a turn and the agreement text of `confirmSummary` without reading the backend. For a model or mode that is not in the catalog, the estimate is 0.
 
 | Operation | Tool | Inputs and params | Outputs and report |
 | --- | --- | --- | --- |

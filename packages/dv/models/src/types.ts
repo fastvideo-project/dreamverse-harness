@@ -33,6 +33,8 @@ export interface ModeDeclaration {
   inputs: ModeInputs
   /** The model's own parameters in this mode, passed in the render's `extra` param; empty when it has none. */
   extra: ParameterSchemaSpec
+  /** GPU seconds per rendered video second in this mode, for the GPU estimate of a render before it runs. */
+  gpuSecondsPerVideoSecond: number
 }
 
 /**
@@ -61,8 +63,6 @@ export interface RenderModelFacts {
    * input order, then the first frame. Empty in a mode without images.
    */
   imageLabels: string[]
-  /** GPU seconds per rendered video second, for the GPU estimate of a render before it runs. */
-  gpuSecondsPerVideoSecond: number
 }
 
 /** One render: the prompt, the images the mode takes, the frame size and count, the seed, and the model's own parameters. */
