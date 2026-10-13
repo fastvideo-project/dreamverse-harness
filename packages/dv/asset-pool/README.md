@@ -1,5 +1,5 @@
 ---
-description: "Asset pool component of DreamVerse: the dvAssetPool service, the content-addressed asset store with its /dv/assets route, the canvas placements of the current state, and the operations asset.import, asset.grab_still, asset.place and asset.unplace with their agent tools."
+description: "Asset pool component of DreamVerse: the dvAssetPool service, the content-addressed asset store with its /dv/assets route, the canvas placements of the current state, and the operations asset.import, asset.grab_still, asset.cut_segment, asset.place and asset.unplace with their agent tools."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to keep every image, video, audio, and text file of a project exactly once and never change it. An asset's ID is the SHA-256 of its bytes, so a record that names an asset always names the same bytes. The service is Project's asset store and registers four operations with `dvProject`: `asset.import`, where a file or base64 bytes become an asset; `asset.grab_still`, where one frame of a video becomes a PNG still; and `asset.place` and `asset.unplace`, which put assets on the canvas and take them off it. While the DSH web server runs, the service serves asset files at `/dv/assets/<AssetId>`.
+Use this package to keep every image, video, audio, and text file of a project exactly once and never change it. An asset's ID is the SHA-256 of its bytes, so a record that names an asset always names the same bytes. The service is Project's asset store and registers five operations with `dvProject`: `asset.import`, where a file or base64 bytes become an asset; `asset.grab_still`, where one frame of a video becomes a PNG still; `asset.cut_segment`, where the part of a video between two times becomes a new MP4 video with its sound; and `asset.place` and `asset.unplace`, which put assets on the canvas and take them off it. While the DSH web server runs, the service serves asset files at `/dv/assets/<AssetId>`.
 
 ## Table of Contents
 
@@ -24,7 +24,7 @@ Use this package to keep every image, video, audio, and text file of a project e
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin after `@dv/project` and `@dv/ffmpeg`. Other plugins inject `dvAssetPool`. The service registers itself with `dvProject.registerAssetStore`, so the same file imported twice is one asset. `asset.import` reads the pixel size and duration of an image or video through `dvFfmpeg`, `asset.grab_still` runs through `dvFfmpeg`, and `dvProject` turns the four operations into the agent tools `dv_asset_import`, `dv_asset_grab_still`, `dv_asset_place` and `dv_asset_unplace`. The `asset` reducer keeps `placed`, the assets on the canvas of the current state in the order they were placed; the `proj` slice's `created_by` names the record that created each asset. Which assets are on the canvas is project content: each placement is a record, so History lists it and undo takes it back.
+Mount the plugin after `@dv/project` and `@dv/ffmpeg`. Other plugins inject `dvAssetPool`. The service registers itself with `dvProject.registerAssetStore`, so the same file imported twice is one asset. `asset.import` reads the pixel size and duration of an image or video through `dvFfmpeg`, `asset.grab_still` and `asset.cut_segment` run through `dvFfmpeg`, and `dvProject` turns the five operations into the agent tools `dv_asset_import`, `dv_asset_grab_still`, `dv_asset_cut_segment`, `dv_asset_place` and `dv_asset_unplace`. The `asset` reducer keeps `placed`, the assets on the canvas of the current state in the order they were placed; the `proj` slice's `created_by` names the record that created each asset. Which assets are on the canvas is project content: each placement is a record, so History lists it and undo takes it back.
 
 ```yaml
 - id: dv-asset-pool
@@ -42,6 +42,7 @@ Mount the plugin after `@dv/project` and `@dv/ffmpeg`. Other plugins inject `dvA
 | --- | --- | --- | --- |
 | `asset.import` | `dv_asset_import` | params `path` (a file on this machine) or `base64` (the bytes), `mime` (required), `name` (default: the file name), `place` (true also puts the asset on the canvas) | `asset` |
 | `asset.grab_still` | `dv_asset_grab_still` | input `video`, param `at`: `first`, `last` (default), or a time in seconds | `still` (PNG) |
+| `asset.cut_segment` | `dv_asset_cut_segment` | input `video`, params `in_sec` and `out_sec` (both required, seconds from the video's start); refused with `invalid_params` unless `0 <= in_sec < out_sec`; the record fails when the range holds no video frame | `segment` (MP4 with its sound, pixel size, and duration) |
 | `asset.place` | `dv_asset_place` | input `asset` (one or more); refused with `invalid_inputs` for an asset that is neither imported by a record of the project (discarded records included) nor made by a step of the current state, and with `invalid_params` when every asset is already on the canvas | none |
 | `asset.unplace` | `dv_asset_unplace` | input `asset` (one or more); refused with `invalid_params` when none of the assets is on the canvas; the assets stay in the pool | none |
 
@@ -49,23 +50,24 @@ Mount the plugin after `@dv/project` and `@dv/ffmpeg`. Other plugins inject `dvA
 | --- | --- |
 | `importAsset(bytes \| {path}, {mime, name, durationSec?, width?, height?}, createdBy)` | Stores the bytes under their hash and appends an index line; identical content returns the existing ID and keeps the first asset |
 | `get(asset)` | The `Asset`: `id`, `mime`, `name`, `size_bytes`, `created_by`, `created_at`, `width`, `height`, `duration_sec` |
+| `mediaType(asset)` | The top-level type of the asset's MIME type, such as `video` for `video/mp4`; other packages ask the pool instead of reading the MIME type |
 | `path(asset)` / `read(asset)` | The stored file's absolute path, or its bytes |
 | `has(asset)` / `list()` | Membership, and every asset oldest first |
 | `url(asset)` | `<publicBaseUrl>/dv/assets/<AssetId>` |
 | `grabStill(video, at, dir)` | Writes one frame of a video as `still.png` into `dir` and returns its path; the operation imports it |
 
-`get`, `path`, and `read` throw `ProjectError` with code `unknown_asset` for an asset the pool does not hold. `GET /dv/assets/<AssetId>` answers the whole file with its media type and an immutable cache header; any other path or method under `/dv/assets` is 404.
+`get`, `mediaType`, `path`, and `read` throw `ProjectError` with code `unknown_asset` for an asset the pool does not hold. `GET /dv/assets/<AssetId>` answers the whole file with its media type and an immutable cache header; any other path or method under `/dv/assets` is 404.
 
 -----
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-`importAsset` writes the bytes to `objects/<sha>.partial` and renames the file into place, so a crash never leaves a half-written object under its hash. The index is one `Asset` JSON line per asset, appended after the object exists; at start the service replays the index and skips lines whose object file is missing. `asset.import` reads the width, height, and duration of an image or video that the entry does not know yet with ffprobe (`dvFfmpeg.probe`); a video whose header has no duration (a WebM file a browser recorded) is decoded once with `-progress pipe:1`, and the last `out_time` is its duration. `describe` appends the updated entry to the index, and the last line of an ID wins at replay. A probe failure leaves the facts null and does not fail the import. `grabStill` seeks to the first frame or the given time; for the last frame it probes the video and tries an input seek just before the video stream's end, then a full decode that keeps the last frame, because a fragmented MP4 from a streaming backend has no reliable duration in its header. The route registers on `webServer` through `ctx.inject`, so the plugin also works in compositions without a web server.
+`importAsset` writes the bytes to `objects/<sha>.partial` and renames the file into place, so a crash never leaves a half-written object under its hash. The index is one `Asset` JSON line per asset, appended after the object exists; at start the service replays the index and skips lines whose object file is missing. `asset.import` reads the width, height, and duration of an image or video that the entry does not know yet with ffprobe (`dvFfmpeg.probe`); a video whose header has no duration (a WebM file a browser recorded) is decoded once with `-progress pipe:1`, and the last `out_time` is its duration. `describe` appends the updated entry to the index, and the last line of an ID wins at replay. A probe failure leaves the facts null and does not fail the import. `grabStill` seeks to the first frame or the given time; for the last frame it probes the video and tries an input seek just before the video stream's end, then a full decode that keeps the last frame, because a fragmented MP4 from a streaming backend has no reliable duration in its header. `asset.cut_segment` runs ffmpeg with `-ss` and `-to` after `-i` and re-encodes the video with libx264 and the audio with AAC, so the segment starts and ends on the exact frames, like the clip trimming of `@dv/deliver`. It probes the segment, fails the record when the file holds no video stream (a range that starts after the video's end), and imports the segment with its pixel size and duration. The route registers on `webServer` through `ctx.inject`, so the plugin also works in compositions without a web server.
 
 | File | Content |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `dvAssetPool`: the store, the index replay, the route, the four operations, and `grabStill` |
+| [`src/index.ts`](src/index.ts) | `dvAssetPool`: the store, the index replay, the route, the five operations, `mediaType`, and `grabStill` |
 | [`src/imports.ts`](src/imports.ts) | `importedAssets(records)`, the project's first finished `asset.import` record of each imported asset, and `placeable(state, imported, asset)`, the rule of `asset.place`; `@dv/api` and `@dv/chat-references` use both |
 | [`src/reducer.ts`](src/reducer.ts) | The `asset` reducer: `placed` from `asset.place`, `asset.unplace`, and `asset.import` with `place` |
 | [`src/types.ts`](src/types.ts) | `Asset`, one line of `index.jsonl`, and the `asset` slice `AssetState` |
@@ -76,7 +78,7 @@ Mount the plugin after `@dv/project` and `@dv/ffmpeg`. Other plugins inject `dvA
 ## Further Exploration
 
 - [`@dv/project`](../project/README.md): operations, agent tools, and the asset store registration.
-- [`@dv/ffmpeg`](../ffmpeg/README.md): the ffmpeg runner `grabStill` uses.
+- [`@dv/ffmpeg`](../ffmpeg/README.md): the ffmpeg runner that `grabStill` and `asset.cut_segment` use.
 - [`COMPONENT-TEMPLATE.md`](../COMPONENT-TEMPLATE.md): the layout this component follows.
 
 -----
@@ -88,11 +90,11 @@ Mount the plugin after `@dv/project` and `@dv/ffmpeg`. Other plugins inject `dvA
 
 #### What the model sees
 
-Four tools, `dv_asset_import`, `dv_asset_grab_still`, `dv_asset_place` and `dv_asset_unplace`, in the format `@dv/project` gives every operation tool. `dv_asset_import` says "Bring a file into the asset pool: a path on this machine, or base64 bytes. Returns the asset ID to reference later." and takes `path`, `base64`, `mime` (required), `name` and `place` ("Also put the asset on the canvas."). `dv_asset_grab_still` says "Grab one frame of a video as a PNG still, to look at it or to use it as a reference." and "Runs on the CPU.", and takes the input `video` and the param `at` (`'first'`, `'last'`, or a time in seconds; default last). These two descriptions end with "Repeating a call with the same inputs and params reuses the earlier result." `dv_asset_place` says "Put assets of the project on the canvas, where the user sees each one as a node. The assets must come from a record in the current state of the project." and `dv_asset_unplace` says "Take assets off the canvas. The assets stay in the asset pool."; both take the input `asset`.
+Five tools, `dv_asset_import`, `dv_asset_grab_still`, `dv_asset_cut_segment`, `dv_asset_place` and `dv_asset_unplace`, in the format `@dv/project` gives every operation tool. `dv_asset_import` says "Bring a file into the asset pool: a path on this machine, or base64 bytes. Returns the asset ID to reference later." and takes `path`, `base64`, `mime` (required), `name` and `place` ("Also put the asset on the canvas."). `dv_asset_grab_still` says "Grab one frame of a video as a PNG still, to look at it or to use it as a reference." and "Runs on the CPU.", and takes the input `video` and the param `at` (`'first'`, `'last'`, or a time in seconds; default last). `dv_asset_cut_segment` says "Cut the part of a video between two times into a new video asset with its sound, for example to use it as a reference." and "Runs on the CPU.", and takes the input `video` and the required params `in_sec` and `out_sec` (seconds from the video's start). These three descriptions end with "Repeating a call with the same inputs and params reuses the earlier result." `dv_asset_place` says "Put assets of the project on the canvas, where the user sees each one as a node. The assets must come from a record in the current state of the project." and `dv_asset_unplace` says "Take assets off the canvas. The assets stay in the asset pool."; both take the input `asset`.
 
 #### Token effect
 
-About 1,100 tokens for the four definitions, fixed while the plugin is mounted; the shared arguments of `@dv/project` add about 200 tokens to each definition.
+About 1,400 tokens for the five definitions, fixed while the plugin is mounted; the shared arguments of `@dv/project` add about 200 tokens to each definition.
 
 #### KV Cache effect
 
@@ -102,7 +104,7 @@ The definitions sit in the stable tool section of every agent request; mounting 
 
 #### What the model sees
 
-A call returns one text block: `done <record>: <summary>` (`imported face.png`, `still at last`, `placed 2 asset(s) on the canvas`), one line per output with its asset ID (the SHA-256 of its bytes), media type and `/dv/assets/<AssetId>` URL, and the params. Image outputs also arrive as image blocks while an attachment service is mounted.
+A call returns one text block: `done <record>: <summary>` (`imported face.png`, `still at last`, `segment 1–2 s`, `placed 2 asset(s) on the canvas`), one line per output with its asset ID (the SHA-256 of its bytes), media type and `/dv/assets/<AssetId>` URL, and the params. Image outputs also arrive as image blocks while an attachment service is mounted.
 
 #### Token effect
 

@@ -9,15 +9,18 @@
  * <root>/index.jsonl          one `Asset` line per asset, appended on import, replayed at start
  * ```
  *
- * Two identical files become one asset. The service registers itself as Project's asset store, and four operations:
+ * Two identical files become one asset. The service registers itself as Project's asset store, and five operations:
  * - `asset.import`: a file on this machine, or base64 bytes, becomes an asset; with `place`, it also goes on the canvas;
  *   an image or video gets its pixel size and duration from `dvFfmpeg` the first time a record imports it;
  * - `asset.grab_still`: one frame of a video becomes a PNG still, through `dvFfmpeg`;
+ * - `asset.cut_segment`: the part of a video between two times becomes a re-encoded MP4 video with its sound, through
+ *   `dvFfmpeg`;
  * - `asset.place` and `asset.unplace`: assets go on the canvas or come off it, and stay in the pool either way.
  *
- * `dvProject` turns each operation into its agent tool (`dv_asset_import`, `dv_asset_grab_still`, `dv_asset_place`,
- * `dv_asset_unplace`). The `asset` reducer keeps the canvas placements of the state; the `proj` slice's `created_by` names
- * the record that created each asset. While the DSH web server is mounted, the service serves `GET /dv/assets/<AssetId>`.
+ * `dvProject` turns each operation into its agent tool (`dv_asset_import`, `dv_asset_grab_still`,
+ * `dv_asset_cut_segment`, `dv_asset_place`, `dv_asset_unplace`). The `asset` reducer keeps the canvas placements of the
+ * state; the `proj` slice's `created_by` names the record that created each asset. While the DSH web server is mounted,
+ * the service serves `GET /dv/assets/<AssetId>`.
  *
  * @module @dv/asset-pool
  */
@@ -69,6 +72,8 @@ const ROUTE_PREFIX = '/dv/assets'
 const FILE_ROUTE = /^\/dv\/assets\/([0-9a-f]{64})$/
 /** The file name of a grabbed still inside the operation's scratch directory. */
 const STILL_FILE = 'still.png'
+/** The file name of a cut segment inside the operation's scratch directory. */
+const SEGMENT_FILE = 'segment.mp4'
 
 /** What `importAsset` takes besides the bytes: the media type, the display name, and what the importer knows. */
 type ImportMeta = Parameters<OperationContext['importAsset']>[1]
@@ -137,7 +142,7 @@ export default class DvAssetPool extends Service {
       importAsset: (source, meta, createdBy) => this.importAsset(source, meta, createdBy),
     }), 'dvAssetPool asset store')
     ctx.effect(() => ctx.dvProject.registerReducer('asset', assetReducer), 'dvAssetPool reducer')
-    for (const spec of [this.importOperation(), this.grabStillOperation(), this.placementOperation('asset.place'), this.placementOperation('asset.unplace')]) {
+    for (const spec of [this.importOperation(), this.grabStillOperation(), this.cutSegmentOperation(), this.placementOperation('asset.place'), this.placementOperation('asset.unplace')]) {
       ctx.effect(() => ctx.dvProject.registerOperation(spec), `dvAssetPool ${spec.name}`)
     }
     ctx.inject(['webServer'], (webCtx) => {
@@ -220,6 +225,15 @@ export default class DvAssetPool extends Service {
     const found = this.assets.get(asset)
     if (found === undefined) throw new ProjectError('unknown_asset', `Asset '${asset}' is not in the asset pool.`)
     return found
+  }
+
+  /**
+   * @param asset - an asset ID.
+   * @returns the top-level type of the asset's MIME type: `video` for `video/mp4`.
+   * @throws ProjectError `unknown_asset` for an asset the pool does not hold.
+   */
+  mediaType(asset: AssetId): string {
+    return this.get(asset).mime.split('/')[0] as string
   }
 
   /**
@@ -374,12 +388,12 @@ export default class DvAssetPool extends Service {
    */
   private async probeMedia(id: AssetId): Promise<void> {
     const asset = this.get(id)
-    const video = asset.mime.startsWith('video/')
-    if (!video && !asset.mime.startsWith('image/')) return
-    if (asset.width !== null && asset.height !== null && (!video || asset.duration_sec !== null)) return
+    const mediaType = this.mediaType(id)
+    if (mediaType !== 'video' && mediaType !== 'image') return
+    if (asset.width !== null && asset.height !== null && (mediaType !== 'video' || asset.duration_sec !== null)) return
     try {
       const probed = await this.ctx.dvFfmpeg.probe(this.path(id))
-      const durationSec = video ? probed.videoDurationSec ?? probed.durationSec ?? await this.decodedDuration(id) : null
+      const durationSec = mediaType === 'video' ? probed.videoDurationSec ?? probed.durationSec ?? await this.decodedDuration(id) : null
       this.describe(id, { width: probed.width, height: probed.height, durationSec })
     } catch (error) {
       this.ctx.logger('dvAssetPool').warn('could not read the media facts of asset %s: %s', id, error instanceof Error ? error.message : String(error))
@@ -427,6 +441,61 @@ export default class DvAssetPool extends Service {
         if (video === undefined || video === null) throw new Error('Input "video" is required.')
         const still = await this.grabStill(video, stillAt(context.params['at']), context.scratchDir)
         return { outputs: [context.importAsset({ path: still }, { mime: 'image/png', name: STILL_FILE })] }
+      },
+    }
+  }
+
+  /**
+   * The `asset.cut_segment` operation: ffmpeg seeks after `-i` and re-encodes, so the segment starts and ends on the
+   * exact frames; the audio stream is kept. A call whose times are not `0 <= in_sec < out_sec` is refused before any
+   * record, and a range that holds no video frame fails the record without importing a file.
+   * @returns the operation spec.
+   */
+  private cutSegmentOperation(): OperationSpec {
+    return {
+      name: 'asset.cut_segment',
+      component: 'asset',
+      version: '1',
+      description: 'Cut the part of a video between two times into a new video asset with its sound, for example to use it as a reference.',
+      inputs: { video: { type: 'video', required: true, description: 'The video.' } },
+      params: {
+        in_sec: { type: 'number', required: true, description: 'Where the segment starts, in seconds from the video\'s start.' },
+        out_sec: { type: 'number', required: true, description: 'Where the segment ends, in seconds from the video\'s start; after in_sec.' },
+      },
+      outputs: [{ role: 'segment', type: 'video' }],
+      deterministic: true,
+      resource: 'cpu',
+      confirm: 'never',
+      summarize: record => `segment ${String(record.params['in_sec'])}–${String(record.params['out_sec'])} s`,
+      precondition: (request): Promise<void> => {
+        const inSec = Number(request.params['in_sec'])
+        const outSec = Number(request.params['out_sec'])
+        if (inSec < 0) throw new ProjectError('invalid_params', `The in point ${String(inSec)}s is before the video's start.`)
+        if (outSec <= inSec) throw new ProjectError('invalid_params', `The out point ${String(outSec)}s is not after the in point ${String(inSec)}s.`)
+        return Promise.resolve()
+      },
+      execute: async (context): Promise<OperationResult> => {
+        const video = context.inputs.find(input => input.role === 'video')?.resolved_asset
+        if (video === undefined || video === null) throw new Error('Input "video" is required.')
+        const inSec = Number(context.params['in_sec'])
+        const outSec = Number(context.params['out_sec'])
+        // The seek comes after `-i` so the decoder reads the frames before the cut and the cut lands on the exact frame.
+        const segment = (await this.ctx.dvFfmpeg.run({
+          argv: [
+            'ffmpeg', '-y', '-loglevel', 'error', '-i', '{{in:0}}', '-ss', String(inSec), '-to', String(outSec),
+            '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-movflags', '+faststart', `{{out:${SEGMENT_FILE}}}`,
+          ],
+          inputs: [this.path(video)], outputs: [SEGMENT_FILE], dir: context.scratchDir,
+        })).outputs[0] as string
+        // ffmpeg writes a file without streams when the range starts after the video's end.
+        const probed = await this.ctx.dvFfmpeg.probe(segment)
+        if (probed.width === null || probed.height === null) throw new Error(`The video has no frame between ${String(inSec)}s and ${String(outSec)}s.`)
+        const durationSec = probed.videoDurationSec ?? probed.durationSec
+        return {
+          outputs: [context.importAsset({ path: segment }, {
+            mime: 'video/mp4', name: SEGMENT_FILE, width: probed.width, height: probed.height, ...durationSec === null ? {} : { durationSec },
+          })],
+        }
       },
     }
   }

@@ -153,9 +153,12 @@ describe('dvAssetPool', () => {
     const fixture = await start()
     const specs = fixture.ctx.dvProject.listOperations().filter(spec => spec.component === 'asset')
     expect(specs.map(spec => [spec.name, spec.deterministic, spec.resource])).toEqual([
-      ['asset.import', true, 'none'], ['asset.grab_still', true, 'cpu'], ['asset.place', false, 'none'], ['asset.unplace', false, 'none'],
+      ['asset.import', true, 'none'], ['asset.grab_still', true, 'cpu'], ['asset.cut_segment', true, 'cpu'], ['asset.place', false, 'none'],
+      ['asset.unplace', false, 'none'],
     ])
-    for (const tool of ['dv_asset_import', 'dv_asset_grab_still', 'dv_asset_place', 'dv_asset_unplace']) expect(fixture.ctx.tools.get(tool)).toBeDefined()
+    for (const tool of ['dv_asset_import', 'dv_asset_grab_still', 'dv_asset_cut_segment', 'dv_asset_place', 'dv_asset_unplace']) {
+      expect(fixture.ctx.tools.get(tool)).toBeDefined()
+    }
     expect(fixture.web.routes.has('/dv/assets')).toBe(true)
     const entry = [...fixture.ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-asset-pool.mjs'))
     await entry?.fiber?.dispose()
@@ -250,6 +253,8 @@ describe('dvAssetPool', () => {
     expect(JSON.parse(readFileSync(join(first.dir, 'assets', 'index.jsonl'), 'utf8').split('\n')[0] ?? '{}')).toMatchObject({ id: kept, size_bytes: 4 })
     const missing = brandString<AssetId>('0'.repeat(64))
     expect(pool.has(missing)).toBe(false)
+    expect(pool.mediaType(kept)).toBe('text')
+    expect(() => pool.mediaType(missing)).toThrow(expect.objectContaining({ code: 'unknown_asset' }))
     expect(() => pool.get(missing)).toThrow(ProjectError)
     expect(() => pool.path(missing)).toThrow(expect.objectContaining({ code: 'unknown_asset' }))
     await first.stop()
@@ -313,6 +318,42 @@ describe('dvAssetPool', () => {
       const text = fixture.ctx.dvAssetPool.importAsset(Buffer.from('notes'), { mime: 'text/plain', name: 'notes.txt' }, null)
       expect(await fixture.run('asset.grab_still', { at: 'first' }, [videoInput(text)])).toMatchObject({ status: 'failed', error: { code: 'operation_failed' } })
       expect(failure(await fixture.call('dv_asset_grab_still', { reason: 'no video' }))).toContain('needs input "video"')
+    })
+
+    it('cuts a segment of a video with its sound as a record whose output is an MP4 with known size and duration', async () => {
+      const fixture = await start()
+      const { outputs } = await fixture.ctx.dvFfmpeg.run({
+        argv: [
+          'ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=160x90:d=3:r=10', '-f', 'lavfi', '-i', 'sine=d=3',
+          '-shortest', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '{{out:talk.mp4}}',
+        ],
+        inputs: [], outputs: ['talk.mp4'], dir: fixture.dir,
+      })
+      const talk = fixture.ctx.dvAssetPool.importAsset({ path: outputs[0] as string }, { mime: 'video/mp4', name: 'talk.mp4' }, null)
+      const cut = value(await fixture.call('dv_asset_cut_segment', { reason: 'the middle second as reference', in_sec: 1, out_sec: 2, inputs: { video: talk } }))
+      expect(cut).toMatchObject({ status: 'done', summary: 'segment 1–2 s', outputs: [{ role: 'segment', mime: 'video/mp4' }] })
+      const record = fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(cut.record))
+      expect(record).toMatchObject({ actor: 'agent', component: 'asset', operation: 'asset.cut_segment', params: { in_sec: 1, out_sec: 2 } })
+      expect(record.inputs).toEqual([videoInput(talk)])
+      const segment = record.outputs[0] as AssetId
+      const stored = fixture.ctx.dvAssetPool.get(segment)
+      expect(stored).toMatchObject({ mime: 'video/mp4', name: 'segment.mp4', created_by: record.id, width: 160, height: 90 })
+      expect(stored.duration_sec).toBeCloseTo(1, 1)
+      expect(fixture.ctx.dvAssetPool.mediaType(segment)).toBe('video')
+      expect((await fixture.ctx.dvFfmpeg.probe(fixture.ctx.dvAssetPool.path(segment))).hasAudio).toBe(true)
+      // Times outside 0 <= in_sec < out_sec are refused before any record.
+      const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
+      await expect(fixture.run('asset.cut_segment', { in_sec: -1, out_sec: 1 }, [videoInput(talk)])).rejects.toMatchObject({ code: 'invalid_params' })
+      await expect(fixture.run('asset.cut_segment', { in_sec: 2, out_sec: 2 }, [videoInput(talk)])).rejects.toMatchObject({ code: 'invalid_params' })
+      await expect(fixture.run('asset.cut_segment', { in_sec: 0 }, [videoInput(talk)])).rejects.toMatchObject({ code: 'invalid_params' })
+      expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
+      // A range after the video's end holds no frame; the record fails and no file enters the pool.
+      const assets = fixture.ctx.dvAssetPool.list().length
+      expect(await fixture.run('asset.cut_segment', { in_sec: 5, out_sec: 6 }, [videoInput(talk)])).toMatchObject({
+        status: 'failed', error: { code: 'operation_failed', message: 'The video has no frame between 5s and 6s.' },
+      })
+      expect(fixture.ctx.dvAssetPool.list()).toHaveLength(assets)
+      expect(failure(await fixture.call('dv_asset_cut_segment', { reason: 'no video', in_sec: 0, out_sec: 1 }))).toContain('needs input "video"')
     })
 
     it('reads the size and duration of an imported video, decoding it when its header has no duration', async () => {

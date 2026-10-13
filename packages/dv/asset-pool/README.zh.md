@@ -1,5 +1,5 @@
 ---
-description: "DreamVerse 的素材库组件：dvAssetPool 服务、带 /dv/assets 路由的内容寻址素材存储、当前状态的画布摆放，以及操作 asset.import、asset.grab_still、asset.place 和 asset.unplace 及其智能体工具。"
+description: "DreamVerse 的素材库组件：dvAssetPool 服务、带 /dv/assets 路由的内容寻址素材存储、当前状态的画布摆放，以及操作 asset.import、asset.grab_still、asset.cut_segment、asset.place 和 asset.unplace 及其智能体工具。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包把项目的每张图片、每段视频、每个音频和文本文件只保存一次，并且永不修改。素材的 ID 是其字节的 SHA-256，因此引用某个素材的记录永远指向同样的字节。本服务是项目的素材存储，并向 `dvProject` 注册四个操作：`asset.import`，把一个文件或 base64 字节变成素材；`asset.grab_still`，把视频的一帧变成 PNG 静帧；`asset.place` 和 `asset.unplace`，把素材放到画布上和从画布移除。DSH web server 运行时，本服务在 `/dv/assets/<AssetId>` 提供素材文件。
+使用本包把项目的每张图片、每段视频、每个音频和文本文件只保存一次，并且永不修改。素材的 ID 是其字节的 SHA-256，因此引用某个素材的记录永远指向同样的字节。本服务是项目的素材存储，并向 `dvProject` 注册五个操作：`asset.import`，把一个文件或 base64 字节变成素材；`asset.grab_still`，把视频的一帧变成 PNG 静帧；`asset.cut_segment`，把视频中两个时间点之间的部分变成一个带声音的新 MP4 视频；`asset.place` 和 `asset.unplace`，把素材放到画布上和从画布移除。DSH web server 运行时，本服务在 `/dv/assets/<AssetId>` 提供素材文件。
 
 ## 目录
 
@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在 `@dv/project` 和 `@dv/ffmpeg` 之后挂载插件。其他插件注入 `dvAssetPool`。本服务经 `dvProject.registerAssetStore` 注册自己，因此同一文件导入两次只是一个素材。`asset.import` 经 `dvFfmpeg` 读取图片或视频的像素尺寸和时长，`asset.grab_still` 经 `dvFfmpeg` 运行，`dvProject` 把这四个操作变成智能体工具 `dv_asset_import`、`dv_asset_grab_still`、`dv_asset_place` 和 `dv_asset_unplace`。`asset` 归约函数维护 `placed`，即当前状态中画布上的素材，按放上的顺序排列；`proj` 切片的 `created_by` 记着创建每个素材的记录。画布上有哪些素材属于项目内容：每次摆放都是一条记录，因此历史会列出它，撤销能把它退回。
+在 `@dv/project` 和 `@dv/ffmpeg` 之后挂载插件。其他插件注入 `dvAssetPool`。本服务经 `dvProject.registerAssetStore` 注册自己，因此同一文件导入两次只是一个素材。`asset.import` 经 `dvFfmpeg` 读取图片或视频的像素尺寸和时长，`asset.grab_still` 和 `asset.cut_segment` 经 `dvFfmpeg` 运行，`dvProject` 把这五个操作变成智能体工具 `dv_asset_import`、`dv_asset_grab_still`、`dv_asset_cut_segment`、`dv_asset_place` 和 `dv_asset_unplace`。`asset` 归约函数维护 `placed`，即当前状态中画布上的素材，按放上的顺序排列；`proj` 切片的 `created_by` 记着创建每个素材的记录。画布上有哪些素材属于项目内容：每次摆放都是一条记录，因此历史会列出它，撤销能把它退回。
 
 ```yaml
 - id: dv-asset-pool
@@ -42,6 +42,7 @@ kind: "package-reference"
 | --- | --- | --- | --- |
 | `asset.import` | `dv_asset_import` | 参数 `path`（本机上的文件）或 `base64`（字节）、`mime`（必填）、`name`（默认：文件名）、`place`（为 true 时同时把素材放到画布上） | `asset` |
 | `asset.grab_still` | `dv_asset_grab_still` | 输入 `video`，参数 `at`：`first`、`last`（默认）或以秒计的时间 | `still`（PNG） |
+| `asset.cut_segment` | `dv_asset_cut_segment` | 输入 `video`，参数 `in_sec` 和 `out_sec`（都必填，从视频开头起的秒数）；不满足 `0 <= in_sec < out_sec` 时返回 `invalid_params`；区间内没有视频帧时记录失败 | `segment`（MP4，带声音、像素尺寸和时长） |
 | `asset.place` | `dv_asset_place` | 输入 `asset`（一个或多个）；素材既不是项目的任何记录（包括被丢弃的记录）导入的、也不是当前状态中某一步生成的时返回 `invalid_inputs`，全部素材已在画布上时返回 `invalid_params` | 无 |
 | `asset.unplace` | `dv_asset_unplace` | 输入 `asset`（一个或多个）；没有一个素材在画布上时返回 `invalid_params`；素材仍留在素材库 | 无 |
 
@@ -49,23 +50,24 @@ kind: "package-reference"
 | --- | --- |
 | `importAsset(bytes \| {path}, {mime, name, durationSec?, width?, height?}, createdBy)` | 按哈希保存字节并追加一行索引；相同内容返回已有 ID，保留第一个素材 |
 | `get(asset)` | `Asset`：`id`、`mime`、`name`、`size_bytes`、`created_by`、`created_at`、`width`、`height`、`duration_sec` |
+| `mediaType(asset)` | 素材 MIME 类型的顶层类型，例如 `video/mp4` 的 `video`；其他包向素材库查询，而不自己读取 MIME 类型 |
 | `path(asset)` / `read(asset)` | 存储文件的绝对路径，或其字节 |
 | `has(asset)` / `list()` | 是否持有，以及按时间从旧到新的全部素材 |
 | `url(asset)` | `<publicBaseUrl>/dv/assets/<AssetId>` |
 | `grabStill(video, at, dir)` | 把视频的一帧写成 `dir` 中的 `still.png` 并返回其路径；由操作导入 |
 
-对素材库没有的素材，`get`、`path` 和 `read` 抛出代码为 `unknown_asset` 的 `ProjectError`。`GET /dv/assets/<AssetId>` 返回整个文件及其媒体类型和不可变缓存头；`/dv/assets` 下其他路径或方法返回 404。
+对素材库没有的素材，`get`、`mediaType`、`path` 和 `read` 抛出代码为 `unknown_asset` 的 `ProjectError`。`GET /dv/assets/<AssetId>` 返回整个文件及其媒体类型和不可变缓存头；`/dv/assets` 下其他路径或方法返回 404。
 
 -----
 
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`importAsset` 先把字节写到 `objects/<sha>.partial`，再改名到位，因此崩溃不会在哈希名下留下写了一半的对象。索引每个素材一行 `Asset` JSON，在对象文件存在之后追加；启动时服务重放索引，跳过对象文件缺失的行。`asset.import` 用 ffprobe（`dvFfmpeg.probe`）读取条目还不知道的图片或视频的宽、高和时长；文件头里没有时长的视频（浏览器录制的 WebM 文件）用 `-progress pipe:1` 解码一遍，最后一个 `out_time` 就是它的时长。`describe` 把更新后的条目追加到索引，重放时同一 ID 以最后一行为准。探测失败时这些值保持为 null，导入不会因此失败。`grabStill` 对第一帧或给定时间直接定位；对最后一帧，它先探测视频，尝试在视频流结尾前做输入定位，再尝试保留最后一帧的完整解码，因为来自流式后端的分片 MP4 头部没有可靠的时长。路由通过 `ctx.inject` 注册在 `webServer` 上，因此插件在没有 web server 的组合中也能工作。
+`importAsset` 先把字节写到 `objects/<sha>.partial`，再改名到位，因此崩溃不会在哈希名下留下写了一半的对象。索引每个素材一行 `Asset` JSON，在对象文件存在之后追加；启动时服务重放索引，跳过对象文件缺失的行。`asset.import` 用 ffprobe（`dvFfmpeg.probe`）读取条目还不知道的图片或视频的宽、高和时长；文件头里没有时长的视频（浏览器录制的 WebM 文件）用 `-progress pipe:1` 解码一遍，最后一个 `out_time` 就是它的时长。`describe` 把更新后的条目追加到索引，重放时同一 ID 以最后一行为准。探测失败时这些值保持为 null，导入不会因此失败。`grabStill` 对第一帧或给定时间直接定位；对最后一帧，它先探测视频，尝试在视频流结尾前做输入定位，再尝试保留最后一帧的完整解码，因为来自流式后端的分片 MP4 头部没有可靠的时长。`asset.cut_segment` 运行 ffmpeg，把 `-ss` 和 `-to` 放在 `-i` 之后，用 libx264 重新编码视频、用 AAC 重新编码音频，因此片段在准确的帧上开始和结束，与 `@dv/deliver` 的片段裁剪相同。它探测片段，文件里没有视频流时（区间从视频结尾之后开始）记录失败，否则带着像素尺寸和时长导入片段。路由通过 `ctx.inject` 注册在 `webServer` 上，因此插件在没有 web server 的组合中也能工作。
 
 | 文件 | 内容 |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `dvAssetPool`：存储、索引重放、路由、四个操作和 `grabStill` |
+| [`src/index.ts`](src/index.ts) | `dvAssetPool`：存储、索引重放、路由、五个操作、`mediaType` 和 `grabStill` |
 | [`src/imports.ts`](src/imports.ts) | `importedAssets(records)`：项目对每个导入素材的第一条已完成 `asset.import` 记录；`placeable(state, imported, asset)`：`asset.place` 的规则；`@dv/api` 和 `@dv/chat-references` 都使用这两个函数 |
 | [`src/reducer.ts`](src/reducer.ts) | `asset` 归约函数：由 `asset.place`、`asset.unplace` 和带 `place` 的 `asset.import` 得出 `placed` |
 | [`src/types.ts`](src/types.ts) | `Asset`，即 `index.jsonl` 的一行，以及 `asset` 切片 `AssetState` |
@@ -76,7 +78,7 @@ kind: "package-reference"
 ## 进一步探索
 
 - [`@dv/project`](../project/README.zh.md)：操作、智能体工具和素材存储的注册。
-- [`@dv/ffmpeg`](../ffmpeg/README.zh.md)：`grabStill` 使用的 ffmpeg 执行器。
+- [`@dv/ffmpeg`](../ffmpeg/README.zh.md)：`grabStill` 和 `asset.cut_segment` 使用的 ffmpeg 执行器。
 - [`COMPONENT-TEMPLATE.md`](../COMPONENT-TEMPLATE.md)：本组件遵循的布局。
 
 -----
@@ -88,11 +90,11 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-四个工具 `dv_asset_import`、`dv_asset_grab_still`、`dv_asset_place` 和 `dv_asset_unplace`，采用 `@dv/project` 给每个操作工具的格式。`dv_asset_import` 的描述是 "Bring a file into the asset pool: a path on this machine, or base64 bytes. Returns the asset ID to reference later."，参数为 `path`、`base64`、`mime`（必填）、`name` 和 `place`（"Also put the asset on the canvas."）。`dv_asset_grab_still` 的描述是 "Grab one frame of a video as a PNG still, to look at it or to use it as a reference." 和 "Runs on the CPU."，接受输入 `video` 和参数 `at`（`'first'`、`'last'` 或以秒计的时间；默认 last）。这两个描述都以 "Repeating a call with the same inputs and params reuses the earlier result." 结尾。`dv_asset_place` 的描述是 "Put assets of the project on the canvas, where the user sees each one as a node. The assets must come from a record in the current state of the project."，`dv_asset_unplace` 的描述是 "Take assets off the canvas. The assets stay in the asset pool."；两者都接受输入 `asset`。
+五个工具 `dv_asset_import`、`dv_asset_grab_still`、`dv_asset_cut_segment`、`dv_asset_place` 和 `dv_asset_unplace`，采用 `@dv/project` 给每个操作工具的格式。`dv_asset_import` 的描述是 "Bring a file into the asset pool: a path on this machine, or base64 bytes. Returns the asset ID to reference later."，参数为 `path`、`base64`、`mime`（必填）、`name` 和 `place`（"Also put the asset on the canvas."）。`dv_asset_grab_still` 的描述是 "Grab one frame of a video as a PNG still, to look at it or to use it as a reference." 和 "Runs on the CPU."，接受输入 `video` 和参数 `at`（`'first'`、`'last'` 或以秒计的时间；默认 last）。`dv_asset_cut_segment` 的描述是 "Cut the part of a video between two times into a new video asset with its sound, for example to use it as a reference." 和 "Runs on the CPU."，接受输入 `video` 和必填参数 `in_sec`、`out_sec`（从视频开头起的秒数）。这三个描述都以 "Repeating a call with the same inputs and params reuses the earlier result." 结尾。`dv_asset_place` 的描述是 "Put assets of the project on the canvas, where the user sees each one as a node. The assets must come from a record in the current state of the project."，`dv_asset_unplace` 的描述是 "Take assets off the canvas. The assets stay in the asset pool."；两者都接受输入 `asset`。
 
 #### Token 影响
 
-四个定义约 1,100 个 token，插件挂载期间固定不变；`@dv/project` 的共享参数让每个定义多约 200 个 token。
+五个定义约 1,400 个 token，插件挂载期间固定不变；`@dv/project` 的共享参数让每个定义多约 200 个 token。
 
 #### KV Cache 影响
 
@@ -102,7 +104,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-一次调用返回一个文本块：`done <record>: <summary>`（`imported face.png`、`still at last`、`placed 2 asset(s) on the canvas`），每个输出一行，带素材 ID（其字节的 SHA-256）、媒体类型和 `/dv/assets/<AssetId>` URL，以及参数。挂载了附件服务时，图片输出还以图片块到达。
+一次调用返回一个文本块：`done <record>: <summary>`（`imported face.png`、`still at last`、`segment 1–2 s`、`placed 2 asset(s) on the canvas`），每个输出一行，带素材 ID（其字节的 SHA-256）、媒体类型和 `/dv/assets/<AssetId>` URL，以及参数。挂载了附件服务时，图片输出还以图片块到达。
 
 #### Token 影响
 

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Asset pool component of DreamVerse: the content-addressed asset store with its /dv/assets route, and the operations asset.import (a file becomes an asset) and asset.grab_still (a still from a video).",
+  "description": "Asset pool component of DreamVerse: the content-addressed asset store with its /dv/assets route, and the operations asset.import (a file becomes an asset), asset.grab_still (a still from a video) and asset.cut_segment (a segment of a video).",
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json"
