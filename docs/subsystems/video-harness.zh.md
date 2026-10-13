@@ -41,18 +41,18 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 | 视图     | `@dv/ui-*`                                                                                                        | DSH Web 客户端的右侧栏标签类型和中央视图；`@dv/ui-kit` 是它们共用的库。                                                                                   |
 | bundle | [`@dv/bundle`](../../packages/bundle/dv/README.zh.md)                                                             | profile 层：把每一行组成 `video-harness` 和 `video-harness-headless` 两个 profile，并附带 `video-directing` skill。                              |
 
-组件用 `dvProject.registerOperation` 注册操作，用 `dvProject.registerReducer` 注册归约函数。每个操作同时是智能体工具 `dv_<操作名，点换成下划线>`，一次调用成为一条记录。素材库的 `dv_asset_import` 和 `dv_asset_grab_still` 添加素材，`dv_asset_place` 和 `dv_asset_unplace` 把素材放到画布上和从画布移除；设定库的 `dv_bible_*` 工具创建和更新角色、场景和风格的版本；分镜的 `dv_plan_create` 写入一个新分镜计划的版次 1，该计划得到一个 `PlanId`（`p1`、`p2`、…），`dv_plan_update` 写入 `plan` 参数所指计划的下一个版次，`dv_plan_approve` 批准一个版次；镜头渲染的 `dv_shot_render` 按调用指定的[模型和生成方式](#models-and-modes)渲染镜头的一个版本，`duration_sec` 是该模型范围内的整秒数（默认为模型的最小值）；时间线的 `dv_timeline_*` 工具创建、更新、重命名和删除时间线，并插入、移动、移除、拆分、裁剪和替换片段，不创建文件；交付的 `dv_deliver_timeline_export` 把一条时间线写成一个视频；检查器的 `dv_inspect_image` 和 `dv_inspect_asset` 读取素材，不写记录。项目组件自己的 `dv_proj_*` 工具创建和打开项目、读取状态和历史、撤销、接受过期记录，以及等待排定的记录。操作声明资源类别（`none`、`cpu`、`gpu`）和确认策略（`never`、`always`、`over_gpu_budget`；见[在对话中确认](#confirmation-in-the-conversation)）；项目组件的调度器按类别并发上限运行排定的记录。
+组件用 `dvProject.registerOperation` 注册操作，用 `dvProject.registerReducer` 注册归约函数。每个操作同时是智能体工具 `dv_<操作名，点换成下划线>`，一次调用成为一条记录。素材库的 `dv_asset_import`、`dv_asset_grab_still` 和 `dv_asset_cut_segment` 添加素材，`dv_asset_place` 和 `dv_asset_unplace` 把素材放到画布上和从画布移除；设定库的 `dv_bible_*` 工具创建和更新角色、场景和风格的版本；分镜的 `dv_plan_create` 写入一个新分镜计划的版次 1，该计划得到一个 `PlanId`（`p1`、`p2`、…），`dv_plan_update` 写入 `plan` 参数所指计划的下一个版次，`dv_plan_approve` 批准一个版次；镜头渲染的 `dv_shot_render` 按调用指定的[模型和生成方式](#models-and-modes)渲染镜头的一个版本，`duration_sec` 是该模型范围内的整秒数（默认为模型的最小值）；时间线的 `dv_timeline_*` 工具创建、更新、重命名和删除时间线，并插入、移动、移除、拆分、裁剪和替换片段，不创建文件；交付的 `dv_deliver_timeline_export` 把一条时间线写成一个视频；检查器的 `dv_inspect_image` 和 `dv_inspect_asset` 读取素材，不写记录。项目组件自己的 `dv_proj_*` 工具创建和打开项目、读取状态和历史、撤销、接受过期记录，以及等待排定的记录。操作声明资源类别（`none`、`cpu`、`gpu`）和确认策略（`never`、`always`、`over_gpu_budget`；见[在对话中确认](#confirmation-in-the-conversation)）；项目组件的调度器按类别并发上限运行排定的记录。
 
-批准分镜计划时，以 `system` 发起者为所批准版次中每个新增或改动的镜头运行一次 `shot.render`，带该镜头的 `model` 和 `mode`，以及参数 `plan`、`plan_version` 和 `shot`（镜头从 1 起的位置，镜头在各版次间保持这个编号）。若当前状态中同一计划有一条 `shot.render` 的 `done` 记录，其参数除 `plan`、`plan_version` 和 `shot` 外相同，参考图输入相同，首帧也相同，则该镜头未改动；批准复用最新的这样一个版本而不渲染。随后它对该计划的时间线（最新的创建或修改记录指向该计划的那条时间线）运行一次 `timeline.update`，按镜头顺序放入每个镜头的版本，计划还没有时间线时则运行一次 `timeline.create`；渲染尚未完成的镜头先显示为占位片段，直到渲染完成。批准在 `report.scheduled` 中列出排定的记录。片段有一个 `ClipId`（`cl1`、`cl2`、…），由插入它的时间线操作分配并存入记录的 `report.clips`；该 ID 在项目内唯一、从不复用，每个片段操作都用 `clip` 参数按它指定片段。
+批准分镜计划时，以 `system` 发起者为所批准版次中每个新增或改动的镜头运行一次 `shot.render`，带该镜头的 `model` 和 `mode`，以及参数 `plan`、`plan_version` 和 `shot`（镜头从 1 起的位置，镜头在各版次间保持这个编号）。若当前状态中同一计划有一条 `shot.render` 的 `done` 记录，其参数除 `plan`、`plan_version` 和 `shot` 外相同，参考素材输入相同，首帧也相同，则该镜头未改动；批准复用最新的这样一个版本而不渲染。随后它对该计划的时间线（最新的创建或修改记录指向该计划的那条时间线）运行一次 `timeline.update`，按镜头顺序放入每个镜头的版本，计划还没有时间线时则运行一次 `timeline.create`；渲染尚未完成的镜头先显示为占位片段，直到渲染完成。批准在 `report.scheduled` 中列出排定的记录。片段有一个 `ClipId`（`cl1`、`cl2`、…），由插入它的时间线操作分配并存入记录的 `report.clips`；该 ID 在项目内唯一、从不复用，每个片段操作都用 `clip` 参数按它指定片段。
 
 <a id="models-and-modes"></a>
 ## 模型和生成方式
 
-视频模型渲染镜头，生成方式说明一次渲染接受哪些输入。两者是独立的选择。`@dv/models` 中的 `MODES` 对每种生成方式只定义一次：`reference` 由一段提示词、参考图和一张可选的首帧渲染；`text` 只由一段提示词渲染。每个模型声明自己支持的生成方式，以及在每种生成方式下接受的输入、每种输入的最少数量和自己的参数（`extra`）。每次渲染指定一个模型及其一种生成方式，返回一段带音频的视频及其最后一张静帧，镜头渲染把两者存为一个版本的两个输出。
+视频模型渲染镜头，生成方式说明一次渲染接受哪些输入。两者是独立的选择。`@dv/models` 中的 `MODES` 对每种生成方式只定义一次：`reference` 由一段提示词、参考素材和一张可选的首帧渲染；`text` 只由一段提示词渲染。每个模型声明自己支持的生成方式，以及在每种生成方式下接受的输入、每种输入的最少数量和自己的参数（`extra`）。每次渲染指定一个模型及其一种生成方式，返回一段带音频的视频及其最后一张静帧，镜头渲染把两者存为一个版本的两个输出。
 
 模型目录是 [`@dv/models`](../../packages/dv/models/README.zh.md) 的 `dvModels` 服务，它是一个能力 seam，其 Service Provider 是公司插件。公司插件为其服务的每个模型注册一个条目：[`@dv/fastvideo`](../../packages/dv/fastvideo/README.zh.md) 以生成方式 `reference`（FastH3 Ref2VA）和 `text`（FastH3 8-Step V2）注册 `fasth3`，每种生成方式连接自己的 FastVideo streaming_v2 服务器，并用 `ctx.skills` 为每个配置的模型和生成方式注册提示词 skill（`fasth3-reference-prompting`、`fasth3-text-prompting`）。模型目录通过 `dv:models` 提示词段落把模型列表交给智能体，并通过 `dv_models_get` 提供单个模型的限制。Consumer `@dv/shot-render` 在模型目录中有模型时注册唯一的操作 `shot.render`，并在已注册的模型名变化时重新注册它，所以 `dv_shot_render` 的 `model` 参数恰好列出已注册的模型。bundle 为 `fasth3` 提供生成方式 `reference` 和 `text`，每种生成方式的服务器由 `dv-fastvideo` 行直接写明。
 
-`shot.render` 的 precondition 对每个调用方都拒绝：未知模型、模型不支持的生成方式、模型在该生成方式下不接受的 `extra` 参数或类型错误的值、模型在该生成方式下不接受的输入，以及少于模型在该生成方式下所需数量的参考图（`fasth3` 在生成方式 `reference` 下至少一张）。分镜计划的每个镜头写明自己的 `model` 和 `mode`；镜头的模型在其生成方式下接受首帧时，`continue_previous: true` 让该镜头从上一个镜头的最后一张静帧开始。`plan.create`、`plan.update` 和 `plan.approve` 拒绝模型不在模型目录中或模型不支持其生成方式的镜头、在不接受参考图的生成方式下带参考图的镜头，以及镜头 1 上或模型不接受首帧时的 `continue_previous`。
+`shot.render` 的 precondition 对每个调用方都拒绝：未知模型、模型不支持的生成方式、模型在该生成方式下不接受的 `extra` 参数或类型错误的值、缺少提示词、超出模型事实的参数、多于一个的首帧，以及模型拒绝的渲染请求。模型注册的每种生成方式都提供 `validateGenerationRequest(request)`，由它负责模型的输入规则，例如接受的媒体类型和数量（`fasth3` 在生成方式 `reference` 下至少一个参考素材）；`shot.render` 组装请求，在写入记录前和真正渲染前各调用一次，自己不检查任何模型规则。分镜计划的每个镜头写明自己的 `model` 和 `mode`；镜头的模型在其生成方式下接受首帧时，`continue_previous: true` 让该镜头从上一个镜头的最后一张静帧开始。`plan.create`、`plan.update` 和 `plan.approve` 拒绝模型不在模型目录中或模型不支持其生成方式的镜头、在不接受参考素材的生成方式下带参考素材的镜头，以及镜头 1 上或模型不接受首帧时的 `continue_previous`。
 
 ## 操作记录
 
@@ -88,7 +88,7 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 
 ## 操作如何运行
 
-视图和智能体到达同样的操作。画布、时间线、素材库面板或历史面板上的手势通过 `@dv/api` 的路由运行一个操作，带 `actor: 'user'`，`surface` 设为该视图。智能体调用该操作的 `dv_*` 工具，工具以 `actor: 'agent'`、`surface: 'chat'`、对话、轮次和工具调用 ID 运行它。智能体的调用运行之前，操作的 `prepareToolCall` 可以拒绝或修改它，然后项目组件应用该操作的 `confirm` 策略。每次调用都经过 `dvProject.run` 的运行器。运行器先校验参数；然后在项目锁内把每个输入解析为素材，并调用操作的 `precondition`，它在写入任何记录之前拒绝调用，对每个调用方都生效（`shot.render` 和 `plan.approve` 拒绝生成方式 `reference` 下没有参考图的渲染）。运行器随后追加 `pending` 记录，并把操作自己的 `supersedes` 指出的记录加入该记录的 `supersedes`。最后运行器在锁外运行所属组件的实现，并追加带输出、成本和报告的最终更新行。输入指向未完成记录的调用，以及批准计划时排定的每次渲染，都在项目组件的调度器中等待，直到其输入完成。
+视图和智能体到达同样的操作。画布、时间线、素材库面板或历史面板上的手势通过 `@dv/api` 的路由运行一个操作，带 `actor: 'user'`，`surface` 设为该视图。智能体调用该操作的 `dv_*` 工具，工具以 `actor: 'agent'`、`surface: 'chat'`、对话、轮次和工具调用 ID 运行它。智能体的调用运行之前，操作的 `prepareToolCall` 可以拒绝或修改它，然后项目组件应用该操作的 `confirm` 策略。每次调用都经过 `dvProject.run` 的运行器。运行器先校验参数；然后在项目锁内把每个输入解析为素材，并调用操作的 `precondition`，它在写入任何记录之前拒绝调用，对每个调用方都生效（`shot.render` 和 `plan.approve` 拒绝生成方式 `reference` 下没有参考素材的渲染）。运行器随后追加 `pending` 记录，并把操作自己的 `supersedes` 指出的记录加入该记录的 `supersedes`。最后运行器在锁外运行所属组件的实现，并追加带输出、成本和报告的最终更新行。输入指向未完成记录的调用，以及批准计划时排定的每次渲染，都在项目组件的调度器中等待，直到其输入完成。
 
 <a id="confirmation-in-the-conversation"></a>
 ## 在对话中确认
@@ -161,7 +161,7 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 | -------------------- | -------------------------------------------------------- |
 | 一个组件的工具怎么用           | 该操作的 `description`                                       |
 | 跨多个组件的做事流程           | `@dv/bundle` 中的一个 skill                                  |
-| 模型的限制和提示词写法，例如必须有参考图 | 模型的公司插件为该生成方式注册的提示词 skill                                |
+| 模型的限制和提示词写法，例如参考素材要求 | 模型的公司插件为该生成方式注册的提示词 skill                                |
 | 每轮都会变的项目状态           | `@dv/project` 的 `dv:project` 提示词段，经由归约函数的 `agentSummary` |
 
 ### 流程
@@ -195,7 +195,7 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 2. 主人：服务该模型的公司插件；`@dv/fastvideo` 以生成方式 `text` 服务 `fasth3`。
 3. 扩展点：`@dv/fastvideo` 在其 `SERVED` 表中为 `fasth3` 声明生成方式 `text`，并在配置为该生成方式指定服务器时注册它；`@dv/shot-render` 无需改动，因为 `dv_shot_render` 接受每个已注册的模型和生成方式。
 4. 可替换：是；另一个公司插件可以以生成方式 `text` 注册另一个模型，智能体按名称从模型列表中选择它。
-5. 文字：`fasth3` 在生成方式 `text` 下的提示词规则是该公司插件的 skill `fasth3-text-prompting`；“每个镜头必须有参考图”只是 `fasth3` 在生成方式 `reference` 下的输入要求（`min: 1`），写在 skill `fasth3-reference-prompting` 和 `dv_shot_render` 的拒绝文本里。
+5. 文字：`fasth3` 在生成方式 `text` 下的提示词规则是该公司插件的 skill `fasth3-text-prompting`；“每个镜头必须有参考素材”只是 `fasth3` 在生成方式 `reference` 下的输入要求（`min: 1`），写在 skill `fasth3-reference-prompting` 和 `dv_shot_render` 的拒绝文本里。
 
 <a id="glossary"></a>
 ## 术语表
@@ -212,7 +212,7 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 | tool             | 工具 / Tool             | 智能体可以调用的东西；组件工具（智能体工具 / agent tool）包装一个操作。                                                                                                  |
 | reducer          | —                     | 组件的一个函数，读取记录并计算出项目状态中它的切片；它不写记录。DSH 中对应的是会话投影（`ctx.sessionProjections`），它折叠的是会话日志。                                                          |
 | model            | 模型 / Model            | 模型目录（`dvModels`）中的一个视频模型，按名称选择，如 `fasth3`；公司插件连同其支持的生成方式注册它。                                                                                |
-| mode             | 生成方式 / Mode           | 一次渲染接受哪些输入：`reference`（参考图生成 / From references：提示词、参考图和可选的首帧）或 `text`（文字生成 / From text：只有提示词）。每个模型声明自己支持的生成方式。                              |
+| mode             | 生成方式 / Mode           | 一次渲染接受哪些输入：`reference`（参考图生成 / From references：提示词、参考素材和可选的首帧）或 `text`（文字生成 / From text：只有提示词）。每个模型声明自己支持的生成方式。                             |
 | company plugin   | —                     | 把一家公司服务的模型注册进模型目录的插件，如 `@dv/fastvideo`。                                                                                                     |
 | capability seam  | —                     | 一项可替换的能力，有三种角色：Service Definition（`@dv/models`）、Service Provider（`@dv/fastvideo` 这样的公司插件）和 Consumer（`@dv/shot-render`、`@dv/shot-plan`）。     |
 | turn             | 轮次 / Turn             | 智能体从一条用户消息到它的回复的一次运行；记录用 DSH 轮次编号指出它。                                                                                                       |
@@ -249,7 +249,7 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 | 组件               | 键          | 包                 | 服务             | 操作                                                                                                                                                                                                            |
 | ---------------- | ---------- | ----------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Project 项目       | `proj`     | `@dv/project`     | `dvProject`    | `proj.create` `proj.stale_accept`；历史工具 `dv_proj_undo` `dv_proj_redo`；读取工具 `dv_proj_open` `dv_proj_state` `dv_proj_history_list` `dv_proj_wait`                                                                |
-| Asset pool 素材库   | `asset`    | `@dv/asset-pool`  | `dvAssetPool`  | `asset.import` `asset.grab_still` `asset.place` `asset.unplace`                                                                                                                                               |
+| Asset pool 素材库   | `asset`    | `@dv/asset-pool`  | `dvAssetPool`  | `asset.import` `asset.grab_still` `asset.cut_segment` `asset.place` `asset.unplace`                                                                                                                           |
 | Story bible 设定库  | `bible`    | `@dv/story-bible` | `dvStoryBible` | `bible.character_create` `bible.character_update` `bible.location_create` `bible.location_update` `bible.style_create` `bible.style_update`                                                                   |
 | Shot plan 分镜     | `plan`     | `@dv/shot-plan`   | `dvShotPlan`   | `plan.create` `plan.update` `plan.approve`                                                                                                                                                                    |
 | Shot render 镜头渲染 | `shot`     | `@dv/shot-render` | `dvShotRender` | `shot.render`（模型目录中有模型时）                                                                                                                                                                                      |
@@ -268,6 +268,7 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 | `create` `update` `delete` `rename`               | 项目、角色、场景、风格、分镜计划和时间线。                               |
 | `import`                                          | 把文件导入素材库。                                           |
 | `grab`                                            | 从视频截取静帧。                                            |
+| `cut`                                             | 把视频中两个时间点之间的部分取为一个新视频。                              |
 | `render`                                          | 把镜头变成版本。                                            |
 | `export`                                          | 把时间线变成一个视频素材。                                       |
 | `insert` `move` `remove` `split` `trim` `replace` | 片段。                                                 |
