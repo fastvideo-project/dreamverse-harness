@@ -178,7 +178,7 @@ export default class DvChatReferences extends Service {
     const importing = (async () => {
       const ids: AssetId[] = []
       for (const block of blocks) {
-        const file = await this.attachmentFile(attachments, block)
+        const file = await this.locateAttachmentFile(attachments, block)
         const result = await project.run({
           project: projectId, operation: 'asset.import', inputs: [], params: { path: file.path, mime: file.mime, name: file.name, place: true },
           actor: 'user', surface: 'chat', session, turn: null, tool_call: null, intent: `import ${file.name}`,
@@ -199,7 +199,7 @@ export default class DvChatReferences extends Service {
    * @param block - one attachment block of the user message.
    * @returns the file, its media type, and its display name.
    */
-  private async attachmentFile(attachments: AttachmentStore, block: ChatAttachmentBlock): Promise<ChatAttachmentFile> {
+  private async locateAttachmentFile(attachments: AttachmentStore, block: ChatAttachmentBlock): Promise<ChatAttachmentFile> {
     if (block.type === 'file') {
       const path = attachments.fileHostPath(block.attachment)
       if (path === undefined) throw new Error(`the attachment service keeps ${block.attachment.name} off this machine`)
