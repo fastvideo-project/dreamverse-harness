@@ -1,8 +1,8 @@
 /**
- * The FastVideo company plugin in a REAL composition: a test-only `cordis.yml` boots the DSH skill registry, the model
- * catalog and the plugin through the Loader. The FastVideo streaming_v2 servers are the only fakes: one HTTP server per
- * mode that answers the capabilities and health routes and streams fixed bytes for every render. An opt-in test renders
- * against a running server named by `DV_FASTVIDEO_TEST_URL`.
+ * The FastVideo company plugin in a REAL composition: a test-only `cordis.yml` boots the DSH skill registry, Project,
+ * ffmpeg, the asset pool, the model catalog and the plugin through the Loader. The FastVideo streaming_v2 servers are
+ * the only fakes: one HTTP server per mode that answers the capabilities and health routes and streams fixed bytes for
+ * every render. An opt-in test renders against a running server named by `DV_FASTVIDEO_TEST_URL`.
  */
 import { once } from 'node:events'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -15,7 +15,10 @@ import { Context } from '@deepseek-ai/cordis'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
-import DvModels, { type ModelEntry, type RenderStreamEvent } from '@dv/models'
+import DvAssetPool, { type AssetId } from '@dv/asset-pool'
+import DvFfmpeg from '@dv/ffmpeg'
+import DvModels, { type ModeDeclaration, type ModelEntry, type RenderStreamEvent } from '@dv/models'
+import DvProject from '@dv/project'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as FastVideo from '../src/index.ts'
 
@@ -23,16 +26,20 @@ import * as FastVideo from '../src/index.ts'
 const REAL_REFERENCE = '/mnt/lustre/vlm-d1su/codes/dsh-dv-hub/elon-musk.jpg'
 const REAL_BACKEND = process.env['DV_FASTVIDEO_TEST_URL']
 
-/** The capabilities the fake reference server reports; the server counts the first frame among its 3 images. */
+/**
+ * The capabilities the fake reference server reports: 4 references, at most 3 images and 2 videos, and no audio. The
+ * server counts the first frame among its references.
+ */
 const REFERENCE_CAPABILITIES = {
   model_id: 'fake-ref2va', name: 'Fake Ref2AV', min_segment_duration_sec: 5, max_segment_duration_sec: 6,
-  max_reference_images: 3, max_reference_aspect_ratio: 4.0,
+  max_references: 4, reference_media_types: { image: { max_count: 3 }, video: { max_count: 2 } }, max_reference_aspect_ratio: 4.0,
   frame_sizes: { '16:9': { '720p': [1344, 768] } }, num_frames_by_duration_sec: { 5: 124, 6: 158 },
 }
 
 /** The capabilities the fake text server reports. */
 const TEXT_CAPABILITIES = {
-  model_id: 'fake-t2va', name: 'Fake T2AV', min_segment_duration_sec: 5, max_segment_duration_sec: 6, max_reference_images: 0,
+  model_id: 'fake-t2va', name: 'Fake T2AV', min_segment_duration_sec: 5, max_segment_duration_sec: 6,
+  max_references: 0, reference_media_types: {},
   frame_sizes: { '16:9': { '720p': [1344, 768] } }, num_frames_by_duration_sec: { 5: 124, 6: 158 },
 }
 
@@ -81,12 +88,12 @@ async function startFakeServer(capabilities: object): Promise<{ url: string; req
 
 /** The plugins the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
 const PLUGINS = {
-  SkillRegistry, DvModels,
+  SkillRegistry, DvProject, DvFfmpeg, DvAssetPool, DvModels,
   FastVideo: { name: FastVideo.name, inject: FastVideo.inject, Config: FastVideo.Config, apply: FastVideo.apply },
 }
 
 /**
- * Boot the skill registry, the catalog and the plugin from a test-only `cordis.yml`.
+ * Boot the skill registry, Project, ffmpeg, the asset pool, the catalog and the plugin from a test-only `cordis.yml`.
  * @param modes - the server URL of each mode of `fasth3` to configure.
  * @returns the root context.
  */
@@ -98,7 +105,15 @@ async function start(modes: { reference?: string; text?: string }): Promise<Cont
     `    ${mode}:`, `      baseUrl: ${url}`, `      gpuSecondsPerVideoSecond: ${mode === 'reference' ? 4 : 1.5}`,
   ])]
   const rows: string[] = []
-  for (const [id, key, lines] of [['skills', 'SkillRegistry', []], ['dv-models', 'DvModels', []], ['dv-fastvideo', 'FastVideo', config]] as const) {
+  const plugins = [
+    ['skills', 'SkillRegistry', []],
+    ['dv-project', 'DvProject', [`root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`]],
+    ['dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe']],
+    ['dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`]],
+    ['dv-models', 'DvModels', []],
+    ['dv-fastvideo', 'FastVideo', config],
+  ] as const
+  for (const [id, key, lines] of plugins) {
     writeFileSync(join(dir, `${id}.mjs`), `export default globalThis.__dvFastVideo.${key}\n`)
     rows.push(`- id: ${id}`, `  name: ${pathToFileURL(join(dir, `${id}.mjs`)).href}`, ...lines.length === 0 ? [] : ['  config:', ...lines.map(line => `    ${line}`)])
   }
@@ -129,9 +144,19 @@ async function collect(stream: AsyncIterable<RenderStreamEvent>): Promise<Render
   return events
 }
 
-/** A render request with the given images. */
-function request(references: Buffer[], firstFrame: Buffer | null) {
-  return { prompt: 'Picture 1 smiles', references, firstFrame, frameWidth: 1344, frameHeight: 768, numFrames: 124, seed: 7, extra: {} }
+/** Import bytes into the asset pool under a MIME type. */
+function importAsset(ctx: Context, bytes: Buffer, mime: string): AssetId {
+  return ctx.dvAssetPool.importAsset(bytes, { mime, name: 'asset' }, null)
+}
+
+/** A render request with the given input assets. */
+function request(references: AssetId[], firstFrame: AssetId | null) {
+  return { prompt: '<Picture 1> smiles', references, firstFrame, frameWidth: 1344, frameHeight: 768, numFrames: 124, seed: 7, extra: {} }
+}
+
+/** The wire form of one reference: its media type and its base64 bytes. */
+function encodeWireReference(mediaType: string, bytes: string) {
+  return { media_type: mediaType, data: Buffer.from(bytes).toString('base64') }
 }
 
 describe('dv-fastvideo', () => {
@@ -142,36 +167,68 @@ describe('dv-fastvideo', () => {
     expect(entry).toMatchObject({
       company: 'local FastVideo',
       modes: {
-        reference: { inputs: { reference: { min: 1 }, first_frame: { min: 0 } }, extra: {}, gpuSecondsPerVideoSecond: 4 },
+        reference: {
+          inputs: { reference: { min: 1, mediaTypes: ['image', 'video', 'audio'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
+          extra: {}, gpuSecondsPerVideoSecond: 4,
+        },
         text: { inputs: {}, extra: {}, gpuSecondsPerVideoSecond: 1.5 },
       },
     })
-    // The server counts the first frame among its request images, so mode reference takes one reference image fewer.
+    // The first image frame takes one of the server's references and one of its images; audio the server does not accept.
     expect(await entry.facts('reference')).toEqual({
       modelId: 'fake-ref2va', aspectRatios: ['16:9'], resolutions: ['720p'], frameSizes: { '16:9': { '720p': [1344, 768] } },
       minDurationSec: 5, maxDurationSec: 6, numFramesByDurationSec: { 5: 124, 6: 158 },
-      maxReferenceImages: 2, imageLabels: ['Picture 1', 'Picture 2', 'Picture 3'],
+      inputLimits: {
+        reference: { maxCount: 3, maxCountByMediaType: { image: 2, video: 2, audio: 0 } },
+        first_frame: { maxCount: 1, maxCountByMediaType: {} },
+      },
     })
-    expect(await entry.facts('text')).toMatchObject({ modelId: 'fake-t2va', maxReferenceImages: 0, imageLabels: [] })
+    expect(await entry.facts('text')).toMatchObject({ modelId: 'fake-t2va', inputLimits: {} })
     // The streaming_v2 clients stay private to the plugin.
     expect(ctx.get('dvFastvideoGeneration')).toBeUndefined()
   })
 
-  it('sends each mode to its own server: references, then the first frame, or no image', async () => {
+  it('validates a request in each mode against what the mode declares and the limits of its own server', async () => {
     const [reference, text] = await Promise.all([startFakeServer(REFERENCE_CAPABILITIES), startFakeServer(TEXT_CAPABILITIES)])
     const ctx = await start({ reference: reference.url, text: text.url })
-    const events = await collect(fasth3(ctx).render('reference', request([Buffer.from('REF1'), Buffer.from('REF2')], Buffer.from('FIRST'))))
+    const { reference: referenceMode, text: textMode } = fasth3(ctx).modes
+    const asset = (bytes: string, mime: string) => importAsset(ctx, Buffer.from(bytes), mime)
+    const [video, otherVideo] = [asset('VID1', 'video/mp4'), asset('VID2', 'video/mp4')]
+    const [image, otherImage, thirdImage] = [asset('IMG1', 'image/png'), asset('IMG2', 'image/png'), asset('IMG3', 'image/png')]
+    const [audio, json] = [asset('AUD1', 'audio/mpeg'), asset('{}', 'application/json')]
+    const check = (mode: ModeDeclaration | undefined, references: AssetId[], firstFrame: AssetId | null) =>
+      mode?.validateGenerationRequest(request(references, firstFrame))
+    expect(await check(referenceMode, [video, image], image)).toEqual([])
+    expect(await check(referenceMode, [], null)).toEqual(['Its reference input needs at least 1 of type image, video, audio; this shot has 0.'])
+    expect(await check(referenceMode, [json], null)).toEqual([`Its reference input takes assets of type image, video, audio; asset ${json} is of type application.`])
+    // The server lists no audio, so its audio limit is 0; the first frame takes one of the server's three references and two images.
+    expect(await check(referenceMode, [audio], null)).toEqual(['Its reference input takes at most 0 of type audio; this shot has 1.'])
+    expect(await check(referenceMode, [video, otherVideo, image, otherImage], null)).toEqual(['Its reference input takes at most 3 assets; this shot has 4.'])
+    expect(await check(referenceMode, [image, otherImage, thirdImage], null)).toEqual(['Its reference input takes at most 2 of type image; this shot has 3.'])
+    expect(await check(referenceMode, [image], video)).toEqual([`Its first_frame input takes assets of type image; asset ${video} is of type video.`])
+    expect(await check(textMode, [], null)).toEqual([])
+    expect(await check(textMode, [image], video)).toEqual(['It takes no reference input; this shot has 1.', 'It takes no first_frame input; this shot has 1.'])
+  })
+
+  it('sends each mode to its own server: the references with their media types, then the first frame, or none', async () => {
+    const [reference, text] = await Promise.all([startFakeServer(REFERENCE_CAPABILITIES), startFakeServer(TEXT_CAPABILITIES)])
+    const ctx = await start({ reference: reference.url, text: text.url })
+    const video = importAsset(ctx, Buffer.from('VID1'), 'video/mp4')
+    const image = importAsset(ctx, Buffer.from('IMG1'), 'image/png')
+    const audio = importAsset(ctx, Buffer.from('AUD1'), 'audio/mpeg')
+    const first = importAsset(ctx, Buffer.from('FIRST'), 'image/png')
+    const events = await collect(fasth3(ctx).render('reference', request([video, image, audio], first)))
     expect(reference.requests[0]).toEqual({
-      prompt: 'Picture 1 smiles', width: 1344, height: 768, num_frames: 124, seed: 7, return_last_frame: true,
-      reference_images: ['REF1', 'REF2', 'FIRST'].map(value => Buffer.from(value).toString('base64')),
+      prompt: '<Picture 1> smiles', width: 1344, height: 768, num_frames: 124, seed: 7, return_last_frame: true,
+      references: [encodeWireReference('video', 'VID1'), encodeWireReference('image', 'IMG1'), encodeWireReference('audio', 'AUD1'), encodeWireReference('image', 'FIRST')],
     })
     expect(events.map(event => event.kind)).toEqual(['last_frame', 'video_start', 'chunk', 'done'])
     expect(events[2]).toEqual({ kind: 'chunk', bytes: Buffer.from('VIDEO') })
-    await collect(fasth3(ctx).render('reference', request([Buffer.from('REF1')], null)))
-    expect(reference.requests[1]?.['reference_images']).toEqual([Buffer.from('REF1').toString('base64')])
+    await collect(fasth3(ctx).render('reference', request([video], null)))
+    expect(reference.requests[1]?.['references']).toEqual([encodeWireReference('video', 'VID1')])
     await collect(fasth3(ctx).render('text', request([], null)))
     expect(text.requests).toHaveLength(1)
-    expect(text.requests[0]?.['reference_images'] ?? []).toEqual([])
+    expect(text.requests[0]?.['references']).toEqual([])
   })
 
   it('registers only the configured modes and their prompt skills, and removes them on disposal', async () => {
@@ -181,7 +238,7 @@ describe('dv-fastvideo', () => {
     expect(() => fasth3(ctx).render('text', request([], null))).toThrow('Model fasth3 is not served in mode text.')
     const skill = await ctx.skills.get('fasth3-reference-prompting')
     expect(skill?.description).toContain('model fasth3 in mode reference')
-    expect(skill?.content).toContain('Every shot needs at least one reference image.')
+    expect(skill?.content).toContain('Every shot needs at least one reference.')
     expect(await ctx.skills.get('fasth3-text-prompting')).toBeUndefined()
     const entry = [...ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-fastvideo.mjs'))
     await entry?.fiber?.dispose()
@@ -205,8 +262,8 @@ describe('dv-fastvideo', () => {
     const facts = await fasth3(ctx).facts('reference')
     const [width, height] = facts.frameSizes[facts.aspectRatios[0] ?? '']?.[facts.resolutions[0] ?? ''] ?? [0, 0]
     const events = await collect(fasth3(ctx).render('reference', {
-      prompt: 'Picture 1 is a man speaking to the camera in a bright office, slow push-in, natural light.',
-      references: [readFileSync(REAL_REFERENCE)], firstFrame: null, frameWidth: width, frameHeight: height,
+      prompt: '<Picture 1> is a man speaking to the camera in a bright office, slow push-in, natural light.',
+      references: [importAsset(ctx, readFileSync(REAL_REFERENCE), 'image/jpeg')], firstFrame: null, frameWidth: width, frameHeight: height,
       numFrames: facts.numFramesByDurationSec['5'] ?? 0, seed: 1, extra: {},
     }))
     expect(events.map(event => event.kind)).toEqual(expect.arrayContaining(['last_frame', 'video_start', 'chunk', 'done']))

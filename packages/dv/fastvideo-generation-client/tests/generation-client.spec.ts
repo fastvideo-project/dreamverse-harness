@@ -109,7 +109,6 @@ describe('HTTP routes', () => {
       referenceMediaTypes: { image: { maxCount: 3 }, video: { maxCount: 2 } },
       frameSizes: { '16:9': { '720p': [1344, 768], '480p': [896, 512] }, '9:16': { '720p': [768, 1344] } },
       numFramesByDurationSec: { 5: 124, 6: 158 },
-      referenceLabels: ['Picture 1', 'Picture 2', 'Picture 3'],
     })
     expect(await generation.model()).toBe(facts)
     expect(fake.paths).toEqual(['/v1/streamv2/capabilities', '/v1/streamv2/capabilities'])

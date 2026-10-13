@@ -42,7 +42,7 @@ Construct one client per backend with the backend's base URL. `@dv/fastvideo` bu
 
 ### Service
 
-- `model()` reads `GET /v1/streamv2/capabilities` and caches the first successful result. It adds aspect ratios and resolutions from the `frame_sizes` keys and the labels `Picture 1` to `Picture N` for N = the `image` entry's `max_count`.
+- `model()` reads `GET /v1/streamv2/capabilities` and caches the first successful result. It adds aspect ratios and resolutions from the `frame_sizes` keys.
 - `generateSegment(request)` sends one `POST /v1/streamv2/generate` and yields `last_frame`, `video_start`, `chunk`, and `done` outputs in arrival order. HTTP 400 and an `error` event reject with `GenerationSegmentError(message, errorType)`, where `errorType` is the backend's error code. A stream that ends before `done` rejects with `Error`. Leaving the iteration or aborting `request.signal` cancels the HTTP request; an abort rejects with `signal.reason`.
 
 ### Backend API

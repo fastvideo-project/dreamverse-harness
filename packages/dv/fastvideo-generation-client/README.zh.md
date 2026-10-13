@@ -42,7 +42,7 @@ kind: "package-reference"
 
 ### 服务
 
-- `model()` 读取 `GET /v1/streamv2/capabilities` 并缓存第一次成功的结果。它补充取自 `frame_sizes` 键的宽高比与分辨率，以及 N = `image` 条目的 `max_count` 时的标签 `Picture 1` 到 `Picture N`。
+- `model()` 读取 `GET /v1/streamv2/capabilities` 并缓存第一次成功的结果。它补充取自 `frame_sizes` 键的宽高比与分辨率。
 - `generateSegment(request)` 发送一个 `POST /v1/streamv2/generate`，并按到达顺序产出 `last_frame`、`video_start`、`chunk` 和 `done` 输出。HTTP 400 和 `error` 事件以 `GenerationSegmentError(message, errorType)` 拒绝，其中 `errorType` 是后端的错误码。在 `done` 之前结束的流以 `Error` 拒绝。离开迭代或中止 `request.signal` 会取消 HTTP 请求；中止以 `signal.reason` 拒绝。
 
 ### 后端 API

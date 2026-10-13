@@ -57,9 +57,7 @@ export class DvFastvideoGeneration extends Service {
   }
 
   /**
-   * Read the served model's facts; the first successful response is reused afterwards. The capabilities supply the
-   * model-specific values. The client adds `Picture 1` to `Picture N` labels for the image `max_count` request
-   * images.
+   * Read the served model's facts; the first successful response is reused afterwards.
    * @returns the model facts.
    * @throws Error naming the route for a status other than 200, or the `fetch` error when the backend is unreachable.
    */
@@ -79,8 +77,6 @@ export class DvFastvideoGeneration extends Service {
       referenceMediaTypes,
       frameSizes: body.frame_sizes,
       numFramesByDurationSec: body.num_frames_by_duration_sec,
-      referenceLabels: Array.from(
-        { length: referenceMediaTypes['image']?.maxCount ?? 0 }, (_value, index) => `Picture ${index + 1}`),
     }
     return this.modelFacts
   }

@@ -6,8 +6,8 @@
  */
 
 /**
- * The served model's facts. The model-specific values come from `GET /v1/streamv2/capabilities`; `referenceLabels` is
- * the harness's value, and `aspectRatios` and `resolutions` list the keys of `frameSizes`.
+ * The served model's facts from `GET /v1/streamv2/capabilities`; `aspectRatios` and `resolutions` list the keys of
+ * `frameSizes`.
  */
 export interface ModelFacts {
   modelId: string
@@ -23,11 +23,6 @@ export interface ModelFacts {
   frameSizes: Record<string, Record<string, [number, number]>>
   /** Native frame count by segment duration in seconds, for every duration from the minimum to the maximum. */
   numFramesByDurationSec: Record<string, number>
-  /**
-   * Prompt labels of the request images in request order, `Picture 1` to `Picture N` for N = the image `maxCount`;
-   * the labels for N images are the first N entries.
-   */
-  referenceLabels: string[]
 }
 
 /** One reference of a segment request: its media type and its bytes, in model order. */

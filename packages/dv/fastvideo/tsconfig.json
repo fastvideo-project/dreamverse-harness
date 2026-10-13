@@ -21,6 +21,9 @@
       "path": "../../skill/skill"
     },
     {
+      "path": "../asset-pool"
+    },
+    {
       "path": "../models"
     }
   ]

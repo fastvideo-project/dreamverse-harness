@@ -2,20 +2,24 @@
  * Company plugin of DreamVerse for models served by local FastVideo streaming_v2 servers. It registers each model that
  * its `models` config names into `ctx.dvModels`, with the modes the config gives a server for; a model or mode the
  * config leaves out is not registered. Each mode of a model is served by its own server: the streaming_v2 client of
- * `@dv/fastvideo-generation-client` sends each render as one `POST /v1/streamv2/generate`, with the reference images
- * first and the first frame after them. While the DSH skill registry is mounted, the plugin registers the prompt skill
- * of every registered model and mode.
+ * `@dv/fastvideo-generation-client` sends each render as one `POST /v1/streamv2/generate`, with the references first and
+ * the first frame after them, each as its media type and bytes read from `dvAssetPool`. While the DSH skill registry is
+ * mounted, the plugin registers the prompt skill of every registered model and mode.
  *
  * Served models: `fasth3` (MiniMax H3 as FastH3), in mode `reference` (FastH3 Ref2VA) and mode `text` (FastH3 8-Step V2).
  *
  * @module @dv/fastvideo
  */
 import { readFileSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-skill'
 import z from '@deepseek-ai/schemastery'
-import { DvFastvideoGeneration } from '@dv/fastvideo-generation-client'
-import type { ModeDeclaration, ModeId, ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent } from '@dv/models'
+import { DvFastvideoGeneration, type ModelFacts } from '@dv/fastvideo-generation-client'
+import type {} from '@dv/asset-pool'
+import type {
+  InputRole, ModeDeclaration, ModeId, ModeInputs, ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent,
+} from '@dv/models'
 
 /** One mode of one model: the streaming_v2 server that renders it and its GPU rate. */
 export interface ModeServer {
@@ -43,7 +47,7 @@ export const Config: z<Config> = z.object({
  * One mode this plugin can serve a model in: what the model accepts in it, and its prompt skill. The GPU rate comes
  * from the configured server of the mode.
  */
-interface ServedMode extends Omit<ModeDeclaration, 'gpuSecondsPerVideoSecond'> {
+interface ServedMode extends Pick<ModeDeclaration, 'inputs' | 'extra'> {
   skill: { name: string; description: string; file: string }
 }
 
@@ -54,12 +58,12 @@ const SERVED: Record<string, { company: string; summary: string; modes: Partial<
     summary: 'MiniMax H3 (FastH3); video with sound, dialogue and music written in the prompt',
     modes: {
       reference: {
-        inputs: { reference: { min: 1 }, first_frame: { min: 0 } },
+        inputs: { reference: { min: 1, mediaTypes: ['image', 'video', 'audio'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
         extra: {},
         skill: {
           name: 'fasth3-reference-prompting',
           description: 'Model limits and prompt rules for dv_shot_render with model fasth3 in mode reference: reference images, '
-            + 'how the prompt names them, and how a shot continues the previous one.',
+            + 'videos and audio, how the prompt names them, and how a shot continues the previous one.',
           file: 'fasth3-reference-prompting.md',
         },
       },
@@ -80,8 +84,8 @@ const SERVED: Record<string, { company: string; summary: string; modes: Partial<
 /** Plugin name. */
 export const name = 'dv-fastvideo'
 
-/** Required services: the model catalog. */
-export const inject = ['dvModels']
+/** Required services: the model catalog, and the asset pool that holds the bytes and media type of each input asset. */
+export const inject = ['dvModels', 'dvAssetPool']
 
 /**
  * Check the `models` config against the models and modes this plugin serves.
@@ -102,8 +106,77 @@ function checkConfig(config: Config): void {
 }
 
 /**
+ * The count limits of a mode's input roles, from the server's reference limits. The server counts the first frame among
+ * its references, so the first frame takes one slot of the server's total and one slot of each media type that the
+ * `first_frame` role accepts, and the `reference` role keeps the rest. A media type that the `reference` role declares
+ * and the server does not accept has a limit of 0.
+ * @param inputs - the inputs the mode declares; `SERVED` declares `reference` and `first_frame` together or neither.
+ * @param facts - the server's facts.
+ * @returns the limits by declared role; empty in a mode without references.
+ */
+function deriveInputLimits(inputs: ModeInputs, facts: ModelFacts): RenderModelFacts['inputLimits'] {
+  const { reference, first_frame: firstFrame } = inputs
+  if (reference === undefined || firstFrame === undefined) return {}
+  const firstFrameTypes = new Set(firstFrame.mediaTypes)
+  const maxCountByMediaType = Object.fromEntries(reference.mediaTypes.map(mediaType => [
+    mediaType, (facts.referenceMediaTypes[mediaType]?.maxCount ?? 0) - (firstFrameTypes.has(mediaType) ? 1 : 0),
+  ]))
+  return {
+    reference: { maxCount: facts.maxReferences - 1, maxCountByMediaType },
+    first_frame: { maxCount: 1, maxCountByMediaType: {} },
+  }
+}
+
+/**
+ * The problems of one render request in a mode: an input role the mode does not declare holding an asset, a role
+ * holding fewer assets than its `min`, an asset whose media type its role does not declare, or a role holding more
+ * assets in total or of one media type than the server's limits allow.
+ * @param inputs - the inputs the mode declares.
+ * @param limits - the input limits from the server's facts.
+ * @param request - the render request.
+ * @param mediaTypeOf - the media type of an asset, read from the asset pool.
+ * @returns the problems, each one sentence; empty when the server renders the request.
+ */
+function requestProblems(
+  inputs: ModeInputs, limits: RenderModelFacts['inputLimits'], request: RenderRequest,
+  mediaTypeOf: (asset: RenderRequest['references'][number]) => string,
+): string[] {
+  const problems: string[] = []
+  const roles: Array<[InputRole, RenderRequest['references']]> = [
+    ['reference', request.references], ['first_frame', request.firstFrame === null ? [] : [request.firstFrame]],
+  ]
+  for (const [role, assets] of roles) {
+    const declared = inputs[role]
+    if (declared === undefined) {
+      if (assets.length > 0) problems.push(`It takes no ${role} input; this shot has ${assets.length}.`)
+      continue
+    }
+    const accepted = declared.mediaTypes.join(', ')
+    if (assets.length < declared.min) {
+      problems.push(`Its ${role} input needs at least ${declared.min} of type ${accepted}; this shot has ${assets.length}.`)
+    }
+    const counts = new Map<string, number>()
+    for (const asset of assets) {
+      const mediaType = mediaTypeOf(asset)
+      if (!declared.mediaTypes.includes(mediaType)) problems.push(`Its ${role} input takes assets of type ${accepted}; asset ${asset} is of type ${mediaType}.`)
+      counts.set(mediaType, (counts.get(mediaType) ?? 0) + 1)
+    }
+    const limit = limits[role]
+    if (limit?.maxCount !== undefined && assets.length > limit.maxCount) {
+      problems.push(`Its ${role} input takes at most ${limit.maxCount} assets; this shot has ${assets.length}.`)
+    }
+    for (const [mediaType, count] of counts) {
+      const max = limit?.maxCountByMediaType[mediaType]
+      if (max !== undefined && count > max) problems.push(`Its ${role} input takes at most ${max} of type ${mediaType}; this shot has ${count}.`)
+    }
+  }
+  return problems
+}
+
+/**
  * A catalog entry for one configured model: one streaming_v2 client per configured mode.
- * @param ctx - the plugin context; each client lives in an isolated `dvFastvideoGeneration` scope.
+ * @param ctx - the plugin context; each client lives in an isolated `dvFastvideoGeneration` scope, and `render` reads
+ *   each input asset from `ctx.dvAssetPool`.
  * @param id - the model name.
  * @param modes - the configured modes and their servers.
  * @returns the entry.
@@ -121,37 +194,48 @@ function modelEntry(ctx: Context, id: string, modes: Record<string, ModeServer>)
     if (found === undefined) throw new Error(`Model ${id} is not served in mode ${mode}.`)
     return found
   }
-  const declared = Object.fromEntries(Object.entries(modes).map(([mode, server]) => {
+  // Each mode checks requests against its own declared inputs and its own server's limits.
+  const declared = Object.fromEntries(Object.entries(modes).map(([mode, server]): [string, ModeDeclaration] => {
     const { inputs, extra } = served.modes[mode as ModeId] as ServedMode
-    return [mode, { inputs, extra, gpuSecondsPerVideoSecond: server.gpuSecondsPerVideoSecond }]
+    return [mode, {
+      inputs, extra, gpuSecondsPerVideoSecond: server.gpuSecondsPerVideoSecond,
+      validateGenerationRequest: async request => requestProblems(
+        inputs, deriveInputLimits(inputs, await clientOf(mode as ModeId).model()), request, asset => ctx.dvAssetPool.mediaType(asset)),
+    }]
   }))
   return {
     id,
     company: served.company,
     summary: served.summary,
     modes: declared,
-    // The server counts the first frame among its request images, so a reference render keeps one image for it.
     async facts(mode: ModeId): Promise<RenderModelFacts> {
       const facts = await clientOf(mode).model()
-      const images = declared[mode]?.inputs.reference !== undefined
       return {
         modelId: facts.modelId, aspectRatios: facts.aspectRatios, resolutions: facts.resolutions, frameSizes: facts.frameSizes,
         minDurationSec: facts.minSegmentDurationSec, maxDurationSec: facts.maxSegmentDurationSec,
         numFramesByDurationSec: facts.numFramesByDurationSec,
-        maxReferenceImages: images ? facts.maxReferenceImages - 1 : 0, imageLabels: images ? facts.referenceLabels : [],
+        inputLimits: deriveInputLimits((served.modes[mode] as ServedMode).inputs, facts),
       }
     },
     render(mode: ModeId, request: RenderRequest, signal?: AbortSignal): AsyncIterable<RenderStreamEvent> {
-      return clientOf(mode).generateSegment({
-        prompt: request.prompt,
-        referenceImages: request.firstFrame === null ? request.references : [...request.references, request.firstFrame],
-        frameWidth: request.frameWidth,
-        frameHeight: request.frameHeight,
-        numFrames: request.numFrames,
-        seed: request.seed,
-        returnLastFrame: true,
-        ...signal === undefined ? {} : { signal },
-      })
+      const client = clientOf(mode)
+      const assets = request.firstFrame === null ? request.references : [...request.references, request.firstFrame]
+      return (async function* () {
+        // Video and audio references can be tens of megabytes each, so they are read concurrently off the event loop.
+        const references = await Promise.all(assets.map(async id => ({
+          mediaType: ctx.dvAssetPool.mediaType(id), bytes: await readFile(ctx.dvAssetPool.path(id)),
+        })))
+        yield* client.generateSegment({
+          prompt: request.prompt,
+          references,
+          frameWidth: request.frameWidth,
+          frameHeight: request.frameHeight,
+          numFrames: request.numFrames,
+          seed: request.seed,
+          returnLastFrame: true,
+          ...signal === undefined ? {} : { signal },
+        })
+      })()
     },
   }
 }
