@@ -38,7 +38,7 @@ import { DV_TIMELINE_INSERT_EVENT } from '@dv/ui-kit/workspace-events.ts'
 | `api.ts` | `DvClient` (`listProjects`, `listProjectSummaries` (`GET /api/dv/projects/summary`), `getState` (the current state), `listOperations`, `runOperation`, `importAsset`, `undo` (one step back), `moveTo` (to a step of the history list), `redo` (one step forward), `acceptStale`, `listHistory`, `placeOnCanvas` (`asset.place` or `asset.unplace` on the canvas surface), project, layout (positions and viewport), workspace, and session calls, `subscribe`), `ViewSurface`, `DvApiError`, `assetUrl` |
 | `form.ts` | `fieldsOf(params, values)`, `paramsOf(fields)`, `FieldParseError`: one control per schema property, typed coercion |
 | `timeline.ts` | `FALLBACK_CLIP_SECONDS`, `timelineName(timeline, numbered)`, `formatSeconds` |
-| `references.ts` | `shotReferences(version, shot)`, `referenceImages(state, references)`, `pictureParts(prompt)`: the reference images a shot sends to the video model in the order its prompt names them `Picture 1`, `Picture 2`, …, and the prompt split at those tokens; a shot in mode `text` has no reference images |
+| `references.ts` | `shotReferences(version, shot)`, `referenceAssets(state, references)`, `isPicture(asset)`, `pictureParts(prompt)`: the reference assets of any media type a shot sends to the video model, which of them are images, numbered `Picture 1`, `Picture 2`, … in input order, and the prompt split at those tokens; a shot in mode `text` has no references |
 | `state.ts` | `assetIndex`, `videoAssets` |
 | `useProject.ts` | `useProjects`, `useOperations`, `useProjectState`: loaders that refetch on every project event; `useLoader(load, deps)`, the request lifecycle they share, which aborts a stale request and keeps the last value while it reloads |
 | `useView.ts` | `useViewSession(client, surface, session?)`: the project choice, the project's current state, the operations, the last failure, and the project-bar callbacks; `sessionFromLocation` reads the chat session from the page's `?session=` so the view opens on that session's project |
@@ -66,7 +66,7 @@ import { DV_TIMELINE_INSERT_EVENT } from '@dv/ui-kit/workspace-events.ts'
 | [`src/client/api.ts`](src/client/api.ts) | The client and the shared event streams |
 | [`src/client/form.ts`](src/client/form.ts) | The form model |
 | [`src/client/timeline.ts`](src/client/timeline.ts) | Timeline helpers |
-| [`src/client/references.ts`](src/client/references.ts) | Shot reference images and `Picture N` tokens |
+| [`src/client/references.ts`](src/client/references.ts) | Shot reference assets and `Picture N` tokens |
 | [`src/client/zoom.ts`](src/client/zoom.ts) | The pop-up zoom transition |
 | [`src/client/useProject.ts`](src/client/useProject.ts), [`src/client/useView.ts`](src/client/useView.ts) | The hooks |
 | [`src/client/ProjectBar.tsx`](src/client/ProjectBar.tsx) | The shared bar |

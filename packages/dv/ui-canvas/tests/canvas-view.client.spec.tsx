@@ -498,6 +498,31 @@ describe('CanvasView', () => {
     expect(textShot?.textContent).toContain(zh['editor.textOnlyReferences'])
   })
 
+  it('the plan editor shows reference assets of every media type and numbers only the images as Picture N', async () => {
+    const { view, node } = mount(true, (state) => {
+      const [v1] = state.components.plan.plans['p1'] ?? []
+      if (v1 === undefined) throw new Error('fixture lacks plan p1')
+      state.assets.push(asset('score.wav', 'audio/wav', null))
+      state.components.plan.plans['p1'] = [{
+        ...v1, approved_by: null, references: ['shot1.mp4', 'hero@1'],
+        shots: [{ prompt: '<Video 1> then <Picture 1>', model: 'fasth3', mode: 'reference' as const, references: ['shot1.mp4', 'hero@1', 'score.wav'] }],
+      }]
+    })
+    await waitFor(() => { node('plan:p1') })
+    fireEvent.pointerDown(node('plan:p1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
+    const editor = await view.findByTestId('dv-canvas-node-editor')
+    // The plan header lists the video by name and the image as Picture 1.
+    const header = within(editor).getByText(zh['editor.planReferences'])
+    expect(header.textContent).toBe(`${zh['editor.planReferences']}shot1.mp4Picture 1 · Hero`)
+    expect(header.querySelector('video')).not.toBeNull()
+    // The shot lists the video, the image, and the audio in input order; <Picture 1> draws Hero's image.
+    const shot = editor.querySelector('li[data-shot="1"]')
+    expect(shot?.querySelector('dd')?.textContent).toBe('shot1.mp4Picture 1 · Heroscore.wav')
+    expect(shot?.querySelector('p')?.textContent).toBe('<Video 1> then ')
+    expect(shot?.querySelector('p img')?.getAttribute('src')).toBe(assetUrl('ref.png'))
+  })
+
   it('follows the DSH interface language in <html lang> when the host passes no translate', async () => {
     document.documentElement.lang = 'en'
     const { view } = mount(false)

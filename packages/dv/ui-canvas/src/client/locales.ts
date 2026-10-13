@@ -73,7 +73,7 @@ export const zh = {
   'editor.modelMode': '模型和生成方式',
   'editor.modelModeValue': '{model} · {mode}',
   'editor.continuePrevious': '接上一镜头',
-  'editor.planReferences': '计划参考图',
+  'editor.planReferences': '计划参考',
   'editor.picture': 'Picture {number} · {name}',
   'editor.seconds': '{seconds} 秒',
   'editor.firstFrame': '首帧',

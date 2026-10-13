@@ -1,18 +1,25 @@
-/** The reference images of a shot in the model's Picture N order, and the split of a prompt at its Picture N tokens. */
+/** The reference assets of a shot, which of them the model numbers as Picture N, and the split of a prompt at its Picture N tokens. */
 import { describe, expect, it } from 'vitest'
-import { pictureParts, referenceImages, shotReferences } from '../src/client/references.ts'
+import { isPicture, pictureParts, referenceAssets, shotReferences } from '../src/client/references.ts'
 import { asset, fixtureState } from './fixture.client.tsx'
 
-describe('referenceImages', () => {
-  it('expands a character version to its images in version order, keeps input order, and skips what the state lacks', () => {
+describe('referenceAssets', () => {
+  it('expands a character version to its references in version order, keeps input order and every media type, and skips what the state lacks', () => {
     const state = fixtureState()
     state.components.bible.characters['hero']?.push({
       id: 'hero', version: 2, name: 'Hero', description: '', references: ['side.png', 'ref.png'], created_by: 'e2',
     })
     state.components.bible.locations['alley'] = [{ id: 'alley', version: 1, name: 'Alley', description: '', references: ['alley.png'], created_by: 'e3' }]
-    state.assets.push(asset('side.png', 'image/png', null), asset('alley.png', 'image/png', null))
-    expect(referenceImages(state, ['alley@1', 'hero@2', 'g1#1', 'shot1-last.png', 'hero@9', 'g1#0', 'missing.png']))
-      .toEqual(['alley.png', 'side.png', 'ref.png', 'shot1-last.png', 'shot1-last.png'])
+    state.assets.push(asset('side.png', 'image/png', null), asset('alley.png', 'image/png', null), asset('score.wav', 'audio/wav', null))
+    expect(referenceAssets(state, ['alley@1', 'hero@2', 'g1#1', 'shot1-last.png', 'hero@9', 'g1#0', 'score.wav', 'missing.png']).map(entry => entry.id))
+      .toEqual(['alley.png', 'side.png', 'ref.png', 'shot1-last.png', 'shot1-last.png', 'shot1.mp4', 'score.wav'])
+  })
+})
+
+describe('isPicture', () => {
+  it('numbers images only', () => {
+    expect([asset('a.png', 'image/png', null), asset('b.mp4', 'video/mp4', null), asset('c.wav', 'audio/wav', null)].map(isPicture))
+      .toEqual([true, false, false])
   })
 })
 

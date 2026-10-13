@@ -38,7 +38,7 @@ import { DV_TIMELINE_INSERT_EVENT } from '@dv/ui-kit/workspace-events.ts'
 | `api.ts` | `DvClient`（`listProjects`、`listProjectSummaries`（`GET /api/dv/projects/summary`）、`getState`（读当前状态）、`listOperations`、`runOperation`、`importAsset`、`undo`（往回移一步）、`moveTo`（移到历史列表中的某一步）、`redo`（往前移一步）、`acceptStale`、`listHistory`、`placeOnCanvas`（在画布来源上执行 `asset.place` 或 `asset.unplace`），项目、布局（位置和视口）、工作区和对话调用，`subscribe`）、`ViewSurface`、`DvApiError`、`assetUrl` |
 | `form.ts` | `fieldsOf(params, values)`、`paramsOf(fields)`、`FieldParseError`：每个 schema 属性一个控件，带类型转换 |
 | `timeline.ts` | `FALLBACK_CLIP_SECONDS`、`timelineName(timeline, numbered)`、`formatSeconds` |
-| `references.ts` | `shotReferences(version, shot)`、`referenceImages(state, references)`、`pictureParts(prompt)`：一个镜头发给视频模型的参考图，按提示词里 `Picture 1`、`Picture 2`…… 的编号顺序排列，以及在这些标记处切开的提示词；生成方式为 `text` 的镜头没有参考图 |
+| `references.ts` | `shotReferences(version, shot)`、`referenceAssets(state, references)`、`isPicture(asset)`、`pictureParts(prompt)`：一个镜头发给视频模型的各种媒体类型的参考素材，其中哪些是图片（按输入顺序编号为 `Picture 1`、`Picture 2`……），以及在这些标记处切开的提示词；生成方式为 `text` 的镜头没有参考 |
 | `state.ts` | `assetIndex`、`videoAssets` |
 | `useProject.ts` | `useProjects`、`useOperations`、`useProjectState`：每次项目事件都重新拉取的加载器；`useLoader(load, deps)` 是它们共用的请求流程，会中止过期的请求，并在重新加载时保留上一次的值 |
 | `useView.ts` | `useViewSession(client, surface, session?)`：项目选择、项目的当前状态、操作、最近一次失败和项目栏回调；`sessionFromLocation` 从页面地址的 `?session=` 读对话，让视图打开该对话的项目 |
@@ -66,7 +66,7 @@ import { DV_TIMELINE_INSERT_EVENT } from '@dv/ui-kit/workspace-events.ts'
 | [`src/client/api.ts`](src/client/api.ts) | 客户端和共享的事件流 |
 | [`src/client/form.ts`](src/client/form.ts) | 表单模型 |
 | [`src/client/timeline.ts`](src/client/timeline.ts) | 时间线辅助函数 |
-| [`src/client/references.ts`](src/client/references.ts) | 镜头参考图和 `Picture N` 标记 |
+| [`src/client/references.ts`](src/client/references.ts) | 镜头参考素材和 `Picture N` 标记 |
 | [`src/client/zoom.ts`](src/client/zoom.ts) | 弹窗的缩放过渡 |
 | [`src/client/useProject.ts`](src/client/useProject.ts)、[`src/client/useView.ts`](src/client/useView.ts) | hook |
 | [`src/client/ProjectBar.tsx`](src/client/ProjectBar.tsx) | 共用的栏 |
