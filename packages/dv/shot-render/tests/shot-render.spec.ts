@@ -26,7 +26,7 @@ import DvProject, {
 import DvModels, { type ModeId, type ModelEntry, type RenderModelFacts, type RenderRequest, type RenderStreamEvent } from '@dv/models'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvShotRender from '../src/index.ts'
-import { backendSeconds, imageLabels, shotGeometry } from '../src/render.ts'
+import { backendSeconds, shotGeometry } from '../src/render.ts'
 
 const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmpeg-native/bin/ffmpeg'
 const FFPROBE = process.env['DV_FFPROBE'] ?? 'ffprobe'
@@ -38,13 +38,13 @@ function framesByDuration(min: number, max: number): Record<string, number> {
   return Object.fromEntries(Array.from({ length: max - min + 1 }, (_value, index) => [String(min + index), (min + index) * 24 + 1]))
 }
 
-/** Facts with small frames so the fake model renders quickly; mode `reference` takes two reference images. */
+/** Facts with small frames so the fake model renders quickly. */
 function testFacts(mode: ModeId): RenderModelFacts {
   return {
     modelId: `test-${mode}`, aspectRatios: ['16:9', '9:16'], resolutions: ['720p'],
     frameSizes: { '16:9': { '720p': [192, 112] }, '9:16': { '720p': [112, 192] } }, minDurationSec: 1, maxDurationSec: 5,
-    numFramesByDurationSec: framesByDuration(1, 5), maxReferenceImages: mode === 'reference' ? 2 : 0,
-    imageLabels: mode === 'reference' ? ['Picture 1', 'Picture 2', 'Picture 3'] : [],
+    numFramesByDurationSec: framesByDuration(1, 5),
+    inputLimits: {},
   }
 }
 
@@ -71,16 +71,28 @@ class FakeLane {
   readonly requests: RenderRequest[] = []
   /** When set, `render` rejects with this error before streaming. */
   failure: Error | null = null
+  /** When set, `render` waits for it before rendering, so the record stays unfinished. */
+  hold: Promise<void> | null = null
   /** An event to leave out of the stream, to exercise the stream checks. */
   omit: 'last_frame' | 'done' | null = null
   /** Extra zero bytes appended as one chunk, to exercise write backpressure. */
   padChunkBytes = 0
+  /** Every request the mode's `validateGenerationRequest` received, in call order. */
+  readonly validations: RenderRequest[] = []
+  /** The problems the mode's `validateGenerationRequest` reports for a request; none by default. */
+  check: (request: RenderRequest) => string[] = () => []
+
+  validate(request: RenderRequest): Promise<string[]> {
+    this.validations.push(request)
+    return Promise.resolve(this.check(request))
+  }
 
   constructor(public facts: RenderModelFacts) {}
 
   async *render(request: RenderRequest): AsyncIterable<RenderStreamEvent> {
     this.requests.push(request)
     if (this.failure !== null) throw this.failure
+    if (this.hold !== null) await this.hold
     const dir = mkdtempSync(join(tmpdir(), 'dv-fake-render-'))
     try {
       const rendered = await renderClip(dir, request.frameWidth, request.frameHeight, request.numFrames)
@@ -98,21 +110,25 @@ class FakeLane {
 }
 
 /**
- * The catalog entry of the fake model `fake`, in the modes its lanes serve; mode `reference` takes the extra parameter
- * `strength`.
+ * The catalog entry of the fake model `fake`, in the modes its lanes serve; mode `reference` takes image and video
+ * references, an image first frame, and the extra parameter `strength`.
  * @param lanes - the lane of each served mode.
  * @returns the entry.
  */
 function fakeModel(lanes: Partial<Record<ModeId, FakeLane>>): ModelEntry {
   const modes: ModelEntry['modes'] = {}
-  if (lanes.reference !== undefined) {
+  const { reference, text } = lanes
+  if (reference !== undefined) {
     modes.reference = {
-      inputs: { reference: { min: 1 }, first_frame: { min: 0 } },
+      inputs: { reference: { min: 1, mediaTypes: ['image', 'video'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
       extra: { strength: { type: 'number', description: 'How strongly the references bind.' } },
       gpuSecondsPerVideoSecond: 3,
+      validateGenerationRequest: request => reference.validate(request),
     }
   }
-  if (lanes.text !== undefined) modes.text = { inputs: {}, extra: {}, gpuSecondsPerVideoSecond: 1.5 }
+  if (text !== undefined) {
+    modes.text = { inputs: {}, extra: {}, gpuSecondsPerVideoSecond: 1.5, validateGenerationRequest: request => text.validate(request) }
+  }
   const lane = (mode: ModeId): FakeLane => {
     const found = lanes[mode]
     if (found === undefined) throw new Error(`fake serves no mode ${mode}`)
@@ -339,13 +355,17 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(fixture.reference.requests[0]?.extra).toEqual({ strength: 0.5 })
   })
 
-  it('refuses inputs a mode does not take, and continue_from where the model takes no first frame', async () => {
+  it('refuses inputs the model\'s validation refuses, continue_from included', async () => {
     const fixture = await start()
     await withCharacter(fixture)
-    await expect(fixture.record('shot.render', { ...TXT, prompt: 'a cat' }, [c1()])).rejects.toThrow('Model fake in mode text takes no reference input; it takes: no inputs.')
+    fixture.text.check = request => [
+      ...request.references.length > 0 ? ['It takes no reference input.'] : [], ...request.firstFrame === null ? [] : ['It takes no first frame.'],
+    ]
+    await expect(fixture.record('shot.render', { ...TXT, prompt: 'a cat' }, [c1()]))
+      .rejects.toThrow('Model fake in mode text cannot render this shot: It takes no reference input. Nothing was rendered;')
     const shot = await fixture.record('shot.render', { ...TXT, prompt: 'A street at dawn' })
     expect(failure(await fixture.call('dv_shot_render', { ...TXT, reason: 'next', prompt: 'later', continue_from: shot.id })))
-      .toContain('Model fake in mode text takes no first frame, so continue_from does not apply.')
+      .toContain('Model fake in mode text cannot render this shot: It takes no first frame.')
   })
 
   it('has no render operation without a model', async () => {
@@ -368,21 +388,22 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(pool.get(shot.outputs[0] as AssetId)).toMatchObject({ mime: 'video/mp4', duration_sec: 2, created_by: shot.id, ...size })
     expect(pool.get(shot.outputs[1] as AssetId)).toMatchObject({ mime: 'image/png', name: `${shot.id.slice(0, 8)}-last.png`, ...size })
     expect((await fixture.ctx.dvFfmpeg.probe(pool.path(shot.outputs[0] as AssetId))).durationSec).toBeCloseTo(2, 0)
-    expect(shot.report).toMatchObject({ seed: 42, model: 'fake', mode: 'reference', model_id: 'test-reference', frame_width: 192, num_frames: 49, image_labels: { referenceLabels: ['Picture 1'], firstFrameLabel: null } })
+    expect(shot.report).toMatchObject({ seed: 42, model: 'fake', mode: 'reference', model_id: 'test-reference', frame_width: 192, num_frames: 49 })
     expect(shot.report).not.toHaveProperty('generation_mode')
+    expect(shot.report).not.toHaveProperty('image_labels')
     expect(shot.cost).toMatchObject({ gpu_seconds: 0.25, reused: false })
     expect(fixture.reference.requests[0]).toMatchObject({ prompt: 'Picture 1 waves', frameWidth: 192, frameHeight: 112, numFrames: 49, seed: 42, firstFrame: null })
-    expect(fixture.reference.requests[0]?.references[0]?.equals(pool.read(image))).toBe(true)
+    // The model receives asset IDs and reads each asset from the pool itself.
+    expect(fixture.reference.requests[0]?.references).toEqual([image])
     expect(renderSpec(fixture)?.summarize(shot)).toBe('shot "Picture 1 waves" (2s, seed 42)')
     const { report: _report, ...withoutReport } = shot
     expect(renderSpec(fixture)?.summarize({ ...withoutReport, params: {} })).toBe('shot "" (?s, seed ?)')
     expect(renderSpec(fixture)?.summarize({ ...withoutReport, params: { prompt: 'x', plan: 'p1', plan_version: 2, shot: 7 } }))
       .toBe('shot 7 of plan p1 v2 "x" (?s, seed ?)')
-    // The next shot continues from the last still; the still is the first frame and gets the label after the references.
+    // The next shot continues from the last still, which is the first frame.
     const next = await fixture.record('shot.render', { ...REF, prompt: 'keeps waving' }, [c1(), { role: 'first_frame', ref: { record: shot.id, output: 1 } }])
-    expect(fixture.reference.requests[1]?.references).toHaveLength(1)
-    expect(fixture.reference.requests[1]?.firstFrame?.equals(pool.read(shot.outputs[1] as AssetId))).toBe(true)
-    expect(next.report).toMatchObject({ duration_sec: 1, image_labels: { referenceLabels: ['Picture 1'], firstFrameLabel: 'Picture 2' } })
+    expect(fixture.reference.requests[1]).toMatchObject({ references: [image], firstFrame: shot.outputs[1] })
+    expect(next.report).toMatchObject({ duration_sec: 1 })
     expect(renderSpec(fixture)?.summarize(next)).toBe(`shot "keeps waving" (1s, seed ${String(next.report?.['seed'])})`)
   })
 
@@ -428,6 +449,9 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(next.params).not.toHaveProperty('continue_from')
     expect(fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(next.record)).inputs.find(input => input.role === 'first_frame'))
       .toEqual({ role: 'first_frame', ref: { record: shot.record, output: 1 }, resolved_asset: shot.outputs[1]?.asset_id })
+    // The precondition counts an output the record does not have as one without an asset; Project then refuses the call.
+    expect(failure(await fixture.call('dv_shot_render', { ...REF, reason: 'third shot', prompt: 'x', inputs: { reference: `${shot.record}#7` } })))
+      .toContain('has no output 7')
     const fromText = value(await fixture.call('dv_shot_render', { ...TXT, reason: 'establishing shot', prompt: 'A quiet street at dawn', duration_sec: 1 }))
     expect(fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(fromText.record)))
       .toMatchObject({ actor: 'agent', operation: 'shot.render', inputs: [] })
@@ -448,62 +472,91 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(summary).toEqual({ text: 'Render shot 3 of plan p1 v1 with fake (text): "x"', gpu_seconds: 7.5 })
   })
 
-  it('refuses an agent call without reference images before recording anything', async () => {
+  it('refuses a call that the model\'s validation refuses before recording anything, and tells the agent what to change', async () => {
     const fixture = await start()
     await fixture.record('bible.character_create', { character: 'c2' })
+    fixture.reference.check = request => request.references.length === 0 ? ['It needs a reference asset; this shot has none.'] : []
     const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
     const noImages = await fixture.call('dv_shot_render', { ...REF, reason: 'cat', prompt: 'a cat', inputs: { reference: 'c2@1' } })
-    expect(failure(noImages)).toContain('from 1 to 2 reference images, and this shot has none. Nothing was rendered.')
-    // With a model in mode text registered, the refusal names it.
-    expect(failure(noImages)).toContain('A shot that needs no reference image can use mode text with fake.')
-    expect(failure(await fixture.call('dv_shot_render', { ...REF, reason: 'cat', prompt: 'a cat' }))).toContain('this shot has none')
-    expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
-    expect(fixture.reference.requests).toHaveLength(0)
-  })
-
-  it('refuses a call of any caller without reference images before recording anything', async () => {
-    const fixture = await start({ modes: ['reference'] })
-    await fixture.record('bible.character_create', { character: 'c2' })
-    const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
-    const c2 = { role: 'reference', ref: { character: brandString<CharacterId>('c2'), version: 1 } }
-    await expect(fixture.record('shot.render', { ...REF, prompt: 'a cat' }, [c2])).rejects.toThrow(
-      'Model fake in mode reference renders a shot from 1 to 2 reference images, and this shot has none. Nothing was rendered. Ask the user '
-      + 'for a reference image of the subject (they can attach one in the chat; it appears under Imported images), add it as a '
-      + 'reference or to the character, then call again.',
+    expect(failure(noImages)).toContain(
+      'Model fake in mode reference cannot render this shot: It needs a reference asset; this shot has none. Nothing was rendered; '
+      + 'change the inputs (ask the user for an asset the shot needs; they can attach it in the chat), then call again.',
     )
-    // A render that a plan scheduled is told to update the plan; the plan approval names its shots.
+    // A render that a plan scheduled is told to update the plan.
+    const c2 = { role: 'reference', ref: { character: brandString<CharacterId>('c2'), version: 1 } }
     await expect(fixture.record('shot.render', { ...REF, prompt: 'a cat', plan: 'p1', plan_version: 1, shot: 2 }, [c2]))
-      .rejects.toThrow('from 1 to 2 reference images. Nothing was rendered.')
-    await expect(fixture.record('shot.render', { ...REF, prompt: 'a cat', plan: 'p1', plan_version: 1, shot: 2 }, [c2]))
-      .rejects.toThrow(/to the character, update the plan with dv_plan_update, then call again\.$/)
+      .rejects.toThrow(/Nothing was rendered; update the plan with dv_plan_update, then call again\.$/)
     expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
     expect(fixture.reference.requests).toHaveLength(0)
-    // The precondition counts a character version's reference images: one image is enough.
-    await withCharacter(fixture)
-    expect((await fixture.record('shot.render', { ...REF, prompt: 'Picture 1 waves' }, [c1()])).status).toBe('done')
-    // A model that needs two reference images is told how many the shot has.
-    const declared = fixture.ctx.dvModels.get('fake')?.modes.reference?.inputs.reference
-    if (declared !== undefined) declared.min = 2
-    await expect(fixture.record('shot.render', { ...REF, prompt: 'Picture 1 waves' }, [c1()]))
-      .rejects.toThrow('from 2 to 2 reference images, and this shot has 1. Nothing was rendered.')
   })
 
-  it('fails requests the model cannot serve and records stream failures', async () => {
+  it('validates the request the model renders before recording and again before rendering', async () => {
     const fixture = await start()
     const image = await withCharacter(fixture)
+    const video = fixture.put(Buffer.from('MP4-FAKE-1'), 'video/mp4', 'one.mp4')
+    const still = fixture.put(Buffer.from('PNG-FAKE-2'), 'image/png', 'start.png')
+    const shot = await fixture.record('shot.render', { ...REF, prompt: 'x', seed: 7 }, [
+      { role: 'reference', ref: { asset: video } }, c1(), { role: 'first_frame', ref: { asset: still } },
+    ])
+    expect(shot.status).toBe('done')
+    // A character version stands for its reference assets; the first frame is not a reference.
+    expect(fixture.reference.validations).toHaveLength(2)
+    expect(fixture.reference.validations[0]).toEqual(fixture.reference.requests[0])
+    expect(fixture.reference.validations[1]).toEqual(fixture.reference.requests[0])
+    expect(fixture.reference.requests[0]).toMatchObject({ references: [video, image], firstFrame: still, seed: 7 })
+    // shot.render passes every input to the model, which judges them.
+    fixture.text.check = request => request.firstFrame === null ? [] : ['It takes no first frame.']
+    await expect(fixture.record('shot.render', { ...TXT, prompt: 'x' }, [{ role: 'first_frame', ref: { asset: still } }]))
+      .rejects.toThrow('Model fake in mode text cannot render this shot: It takes no first frame.')
+    await expect(fixture.record('shot.render', { ...REF, prompt: 'x' }, [c1(), { role: 'first_frame', ref: { asset: still } }, { role: 'first_frame', ref: { asset: still } }]))
+      .rejects.toThrow('shot.render takes one first_frame input; this call has 2.')
+  })
+
+  it('validates a request with an output of an unfinished record once the output exists, before the model renders', async () => {
+    const fixture = await start()
+    await withCharacter(fixture)
+    let release = (): void => {}
+    fixture.text.hold = new Promise<void>((resolve) => { release = resolve })
+    const producer = await fixture.record('shot.render', { ...TXT, prompt: 'a street' }, [], { after: [] })
+    // The producer's video has no asset yet, so the request is incomplete and the precondition records the call unvalidated.
+    fixture.reference.check = request => request.firstFrame !== null && fixture.ctx.dvAssetPool.mediaType(request.firstFrame) !== 'image'
+      ? ['Its first frame must be an image.']
+      : []
+    const firstFrame = await fixture.record('shot.render', { ...REF, prompt: 'x' }, [c1(), { role: 'first_frame', ref: { record: producer.id, output: 0 } }], { after: [producer.id] })
+    const planned = await fixture.record('shot.render', { ...REF, prompt: 'x', plan: 'p1', plan_version: 1, shot: 2 }, [
+      c1(), { role: 'first_frame', ref: { record: producer.id, output: 0 } },
+    ], { after: [producer.id] })
+    expect(fixture.reference.validations).toHaveLength(0)
+    release()
+    await fixture.ctx.dvProject.wait(fixture.project, [producer.id, firstFrame.id, planned.id])
+    // A render that a plan scheduled is told to update the plan, at render time as before recording.
+    expect(fixture.ctx.dvProject.getRecord(fixture.project, planned.id).error?.message)
+      .toMatch(/update the plan with dv_plan_update, then call again\.$/)
+    const output = fixture.ctx.dvProject.getRecord(fixture.project, producer.id).outputs[0]
+    expect(fixture.reference.validations.map(request => request.firstFrame)).toEqual([output, output])
+    expect(fixture.ctx.dvProject.getRecord(fixture.project, firstFrame.id)).toMatchObject({
+      status: 'failed', error: { message: expect.stringContaining('Model fake in mode reference cannot render this shot: Its first frame must be an image.') },
+    })
+    expect(fixture.reference.requests).toHaveLength(0)
+  })
+
+  it('refuses requests outside the model\'s facts before recording, and records stream failures', async () => {
+    const fixture = await start()
+    await withCharacter(fixture)
     const failed = async (params: Record<string, unknown>, inputs: RunRequest['inputs'] = [c1()], mode: ModeId = 'reference'): Promise<string> => {
       const shot = await fixture.record('shot.render', { model: 'fake', mode, ...params }, inputs)
       expect(shot.status).toBe('failed')
       return shot.error?.message ?? ''
     }
     await expect(fixture.record('shot.render', { ...REF }, [c1()])).rejects.toMatchObject({ code: 'invalid_params' })
-    expect(await failed({ prompt: '' })).toContain('shot.render needs a `prompt`')
-    expect(await failed({ prompt: '' }, [], 'text')).toContain('shot.render needs a `prompt`')
-    await expect(fixture.record('shot.render', { ...REF, prompt: 'x' }, [])).rejects.toThrow('this shot has none')
-    const three = [c1(), { role: 'reference', ref: { asset: image } }, { role: 'reference', ref: { asset: image } }]
-    expect(await failed({ prompt: 'x' }, three)).toContain('Model fake takes at most 2 reference images in mode reference; this shot has 3.')
-    expect(await failed({ prompt: 'x', duration_sec: 7 })).toContain('duration_sec')
-    expect(await failed({ prompt: 'x', resolution: '4k' }, [], 'text')).toContain('aspect_ratio and resolution')
+    // The precondition builds the render request it validates, so a missing prompt or a shot outside the facts is refused
+    // before any record.
+    const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
+    await expect(fixture.record('shot.render', { ...REF, prompt: '' }, [c1()])).rejects.toThrow('shot.render needs a `prompt`')
+    await expect(fixture.record('shot.render', { ...TXT, prompt: '' })).rejects.toThrow('shot.render needs a `prompt`')
+    await expect(fixture.record('shot.render', { ...REF, prompt: 'x', duration_sec: 7 }, [c1()])).rejects.toThrow('duration_sec')
+    await expect(fixture.record('shot.render', { ...TXT, prompt: 'x', resolution: '4k' })).rejects.toThrow('aspect_ratio and resolution')
+    expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
     fixture.reference.omit = 'done'
     expect(await failed({ prompt: 'x' })).toContain('ended before the backend reported completion')
     fixture.reference.omit = 'last_frame'
@@ -536,7 +589,7 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
   })
 })
 
-describe('render geometry, image labels and timings', () => {
+describe('render geometry and timings', () => {
   it('derives the geometry from the model facts', () => {
     const facts = testFacts('reference')
     expect(shotGeometry(facts, {})).toEqual({ aspectRatio: '16:9', resolution: '720p', width: 192, height: 112, durationSec: 1, numFrames: 25 })
@@ -545,13 +598,6 @@ describe('render geometry, image labels and timings', () => {
     expect(() => shotGeometry(facts, { resolution: '480p' })).toThrow('aspect_ratio and resolution')
     expect(() => shotGeometry(facts, { duration_sec: 9 })).toThrow('duration_sec must be a whole number from 1 to 5')
     expect(() => shotGeometry({ ...facts, aspectRatios: [] }, {})).toThrow('aspect_ratio and resolution')
-  })
-
-  it('labels the reference images in order, then the first frame', () => {
-    const facts = testFacts('reference')
-    expect(imageLabels(facts, 2, true)).toEqual({ referenceLabels: ['Picture 1', 'Picture 2'], firstFrameLabel: 'Picture 3' })
-    expect(imageLabels(facts, 1, false)).toEqual({ referenceLabels: ['Picture 1'], firstFrameLabel: null })
-    expect(imageLabels(facts, 3, true)).toEqual({ referenceLabels: ['Picture 1', 'Picture 2', 'Picture 3'], firstFrameLabel: null })
   })
 
   it('reports the longest backend timing in seconds', () => {

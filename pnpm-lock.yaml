@@ -7435,9 +7435,6 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
-      '@dv/asset-pool':
-        specifier: workspace:*
-        version: link:../asset-pool
       '@dv/models':
         specifier: workspace:*
         version: link:../models
@@ -7460,6 +7457,9 @@ importers:
       '@deepseek-ai/dsh-system-prompt':
         specifier: workspace:*
         version: link:../../core/system-prompt
+      '@dv/asset-pool':
+        specifier: workspace:*
+        version: link:../asset-pool
       '@types/node':
         specifier: ^22.20.0
         version: 22.20.0

@@ -1,10 +1,12 @@
 /**
  * The Shot render component of DreamVerse as the `dvShotRender` Cordis service: the Consumer of the model catalog of
  * `@dv/models`. It owns one operation, `shot.render` (tool `dv_shot_render`): one take of a shot rendered by the model
- * and in the generation mode the call names, both required. Mode `reference` takes 1 to N reference images (the images
- * of the characters, locations and styles it names) and optionally a first frame, usually the last still of the shot it
- * continues; mode `text` takes the prompt alone. A model accepts only the inputs it declares for the mode, and its own
- * parameters go in `extra`, checked against the parameters the model declares for the mode.
+ * and in the generation mode the call names, both required. Mode `reference` takes reference media (imported assets,
+ * or the assets of the characters, locations and styles it names) and optionally a first frame, usually the last still
+ * of the shot it continues; mode `text` takes the prompt alone. The model's `validateGenerationRequest` for the mode
+ * decides which inputs it renders, and the mode's declared inputs describe them to the agent; the model's own
+ * parameters go in `extra`, checked against the parameters the model declares for the mode. The model receives asset
+ * IDs and reads each asset from the asset pool.
  *
  * The operation exists while the catalog holds at least one model, and it is registered again when the registered model
  * names change, so its `model` param lists exactly the registered models. The model's facts in the mode decide the frame size and
@@ -21,14 +23,15 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ParameterSchemaSpec } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
-import type {} from '@dv/asset-pool'
-import { MODES, type ModeDeclaration, type ModeId, type ModelEntry, type RenderModelFacts, type RenderStreamEvent } from '@dv/models'
+import {
+  MODES, type ModeDeclaration, type ModeId, type ModelEntry, type RenderModelFacts, type RenderRequest, type RenderStreamEvent,
+} from '@dv/models'
 import type {
   AssetId, OperationContext, OperationInput, OperationResult, OperationSpec, OperationToolCall, ProjectId, ProjectRecord, ProjectState,
-  RecordId, RecordInputRef, RunRequest,
+  RecordId, RecordInput, RecordInputRef, RunRequest,
 } from '@dv/project'
 import { RENDER_OPERATION, shotReducer } from './reducer.ts'
-import { backendSeconds, baseMime, imageLabels, number, shotGeometry, text, type ShotGeometry } from './render.ts'
+import { backendSeconds, baseMime, number, shotGeometry, text, type ShotGeometry } from './render.ts'
 
 export type * from './types.ts'
 
@@ -86,8 +89,8 @@ function renderParams(models: string[]): OperationSpec['params'] {
     mode: { type: 'string', enum: Object.keys(MODES), required: true, description: 'A mode the model supports (see the video model list).' },
     prompt: {
       type: 'string', required: true,
-      description: 'The complete shot prompt, written with the prompt skill of its model and mode; it names the images by position: '
-        + 'the reference images in input order, then the first frame.',
+      description: 'The complete shot prompt, written with the prompt skill of its model and mode; it names the references with '
+        + 'the numbering of that skill: the reference input in input order, then the first frame.',
     },
     duration_sec: { type: 'integer', description: 'Whole seconds within the model range; default the model minimum.' },
     aspect_ratio: { type: 'string', description: 'One of the model aspect ratios; default the first.' },
@@ -107,9 +110,9 @@ function renderParams(models: string[]): OperationSpec['params'] {
 /** The inputs of `shot.render`; a model accepts the subset it declares for the mode. */
 const RENDER_INPUTS: Record<string, OperationInput> = {
   reference: {
-    type: 'image', many: true, bible: true,
-    description: 'Reference images, or character, location and style versions whose reference images the shot carries, in prompt '
-      + 'order. Mode reference only.',
+    type: 'any', many: true, bible: true,
+    description: 'Reference media in prompt order: imported assets, or character, location and style versions whose reference '
+      + 'assets the shot carries; the model accepts the media types dv_models_get lists. Mode reference only.',
   },
   first_frame: { type: 'image', description: 'The frame the shot starts from, usually output #1 of the previous shot.' },
 }
@@ -119,14 +122,45 @@ const TAKE_RULE = 'Outputs: the video, then its last still. Every call is a new 
 
 /**
  * The resolved assets of an input role, in input order.
- * @param context - the running call.
+ * @param inputs - the call's input assets with their roles.
  * @param role - the role.
  * @returns the assets.
  */
-function inputAssets(context: Pick<OperationContext, 'inputs'>, role: string): AssetId[] {
-  return context.inputs.filter(input => input.role === role)
+function inputAssets(inputs: ReadonlyArray<Pick<RecordInput, 'role' | 'resolved_asset'>>, role: string): AssetId[] {
+  return inputs.filter(input => input.role === role)
     .map(input => input.resolved_asset)
     .filter((asset): asset is AssetId => asset !== null)
+}
+
+/**
+ * The render request of a call: its prompt, its `reference` assets in input order, its `first_frame` asset, the frame
+ * size and frame count from the model's facts, the seed (the call's `seed`, else a random one), and the model's own
+ * parameters.
+ * @param facts - the model's facts in the call's mode.
+ * @param params - the call's params.
+ * @param inputs - the call's input assets with their roles.
+ * @returns the request and the shot's geometry.
+ * @throws Error for a missing prompt, params outside the facts, or more than one `first_frame` input.
+ */
+function renderRequest(
+  facts: RenderModelFacts, params: Record<string, unknown>, inputs: Array<Pick<RecordInput, 'role' | 'resolved_asset'>>,
+): { request: RenderRequest; geometry: ShotGeometry } {
+  const prompt = text(params['prompt'])
+  if (prompt === '') throw new Error('shot.render needs a `prompt`.')
+  // An output of a record that has not finished counts here although it has no asset yet.
+  const firstFrameCount = inputs.filter(input => input.role === 'first_frame').length
+  if (firstFrameCount > 1) throw new Error(`shot.render takes one first_frame input; this call has ${firstFrameCount}.`)
+  const firstFrames = inputAssets(inputs, 'first_frame')
+  const geometry = shotGeometry(facts, params)
+  return {
+    request: {
+      prompt, references: inputAssets(inputs, 'reference'), firstFrame: firstFrames[0] ?? null,
+      frameWidth: geometry.width, frameHeight: geometry.height, numFrames: geometry.numFrames,
+      seed: number(params['seed'], randomInt(SEED_LIMIT)),
+      extra: (params['extra'] ?? {}) as Record<string, unknown>,
+    },
+    geometry,
+  }
 }
 
 /** The model, mode and declaration a call names, after they were checked against the catalog. */
@@ -138,7 +172,7 @@ interface Resolved {
 
 /** The Shot render service: the `shot.render` operation while the catalog holds a model, the `shot` reducer, and the method it runs. */
 export default class DvShotRender extends Service {
-  static inject = ['dvProject', 'dvAssetPool', 'dvModels']
+  static inject = ['dvProject', 'dvModels']
   static Config = Config
 
   constructor(ctx: Context) {
@@ -192,34 +226,21 @@ export default class DvShotRender extends Service {
    * @param context - the running `shot.render` call.
    * @returns the video and last-still assets, the GPU time, and the report of the render's facts.
    * @throws Error for an unknown model or a mode it does not support, params outside the model's facts, a missing
-   *   prompt, a reference count the model refuses, a model failure, or a stream that ends before the model reports
-   *   completion or without a last frame.
+   *   prompt, a request that the model's `validateGenerationRequest` refuses, a model failure, or a stream that ends
+   *   before the model reports completion or without a last frame.
    */
   async renderShot(context: OperationContext): Promise<OperationResult> {
     const record = context.record
     /* v8 ignore next -- a render is not a read, so it always runs with a record. */
     if (record === null) throw new Error('A render runs only with a record.')
-    const { entry, mode, declaration } = this.resolve(context.params)
+    const resolved = this.resolve(context.params)
+    const { entry, mode } = resolved
     const facts = await entry.facts(mode)
-    const geometry = shotGeometry(facts, context.params)
-    const prompt = text(context.params['prompt'])
-    if (prompt === '') throw new Error('shot.render needs a `prompt`.')
-    const references = declaration.inputs.reference === undefined ? [] : inputAssets(context, 'reference')
-    const firstFrame = declaration.inputs.first_frame === undefined ? null : inputAssets(context, 'first_frame')[0] ?? null
-    if (declaration.inputs.reference !== undefined && references.length > facts.maxReferenceImages) {
-      throw new Error(`Model ${entry.id} takes at most ${facts.maxReferenceImages} reference images in mode ${mode}; this shot has ${references.length}.`)
-    }
-    const pool = this.ctx.dvAssetPool
-    const seed = number(context.params['seed'], randomInt(SEED_LIMIT))
-    const extra = (context.params['extra'] ?? {}) as Record<string, unknown>
-    const stream = entry.render(mode, {
-      prompt, references: references.map(asset => pool.read(asset)), firstFrame: firstFrame === null ? null : pool.read(firstFrame),
-      frameWidth: geometry.width, frameHeight: geometry.height, numFrames: geometry.numFrames, seed, extra,
-    }, context.signal)
-    const images = references.length > 0 || firstFrame !== null
-    return await this.storeShot(context, record, facts, geometry, seed, stream, {
-      model: entry.id, mode, ...images ? { image_labels: imageLabels(facts, references.length, firstFrame !== null) } : {},
-    })
+    const { request, geometry } = renderRequest(facts, context.params, context.inputs)
+    // A record output that had not finished when the precondition ran is an asset now, so the model sees every asset.
+    await this.validate(resolved, request, context.params)
+    const stream = entry.render(mode, request, context.signal)
+    return await this.storeShot(context, record, facts, geometry, request.seed, stream, { model: entry.id, mode })
   }
 
   /**
@@ -230,7 +251,7 @@ export default class DvShotRender extends Service {
    * @param geometry - the shot's frame size and frame count.
    * @param seed - the seed the request carried.
    * @param stream - the model's render stream.
-   * @param extra - report fields of the call: the model, the mode, and the image labels.
+   * @param extra - report fields of the call: the model and the mode.
    * @returns the outputs, the GPU time, and the report.
    */
   private async storeShot(
@@ -325,58 +346,75 @@ export default class DvShotRender extends Service {
 
   /**
    * Refuse a `shot.render` call of any caller before any record when the model is unknown, the model does not support
-   * the mode, `extra` names a parameter the model does not take in the mode or a value of the wrong type, an input
-   * role is one the model does not accept in the mode, or the call carries fewer reference images than the model needs
-   * in the mode. Character, location and style versions count their reference images, so a character created without
-   * reference images adds nothing. A call that a plan scheduled (param `plan`) is told to update the plan with
-   * `dv_plan_update`; `plan.approve` names the shots in front of it.
+   * the mode, `extra` names a parameter the model does not take in the mode or a value of the wrong type, or the model's
+   * `validateGenerationRequest` refuses the call's render request. Character, location and style versions stand for
+   * their reference assets. A missing prompt, params outside the model's facts, and more than one `first_frame` input
+   * are refused for every call; a call with an output of a record that has not finished has no complete request yet, so
+   * `renderShot` validates it with the model once the output exists. A call that a plan scheduled (param `plan`) is told to update the
+   * plan with `dv_plan_update`; `plan.approve` names the shots in front of it.
    * @param request - the call, with its input references.
    * @param state - the project's current state, which the call writes after.
-   * @throws Error naming the problem; for missing reference images, telling the model to ask the user for one first.
+   * @throws Error naming the problem.
    */
   private async precondition(request: RunRequest, state: ProjectState): Promise<void> {
-    const { entry, mode, declaration } = this.resolve(request.params)
+    const resolved = this.resolve(request.params)
+    const { entry, mode } = resolved
     // Project checked `extra` against the operation's `type: 'object'` before the precondition runs.
     const problems = this.ctx.dvModels.checkExtra(entry, mode, (request.params['extra'] ?? {}) as Record<string, unknown>)
     if (problems.length > 0) throw new Error(problems.join(' '))
-    for (const input of request.inputs) {
-      if (!Object.hasOwn(declaration.inputs, input.role)) {
-        throw new Error(`Model ${entry.id} in mode ${mode} takes no ${input.role} input; it takes: `
-          + `${Object.keys(declaration.inputs).join(', ') || 'no inputs'}.`)
-      }
+    const inputs = request.inputs.flatMap(({ role, ref }) =>
+      this.resolveRefAssets(request.project, state, ref).map(asset => ({ role, resolved_asset: asset })))
+    const facts = await entry.facts(mode)
+    // A seed drawn here only completes the request checked before recording; `renderShot` draws the recorded seed.
+    const { request: renderable } = renderRequest(facts, request.params, inputs)
+    if (inputs.some(input => input.resolved_asset === null)) return
+    await this.validate(resolved, renderable, request.params)
+  }
+
+  /**
+   * Refuse a render request that the model's `validateGenerationRequest` finds problems in.
+   * @param resolved - the model, the mode and its declaration.
+   * @param request - the render request.
+   * @param params - the call's params; a call that a plan scheduled (param `plan`) is told to update the plan.
+   * @throws Error with the model's problems and what to change before calling again.
+   */
+  private async validate({ entry, mode, declaration }: Resolved, request: RenderRequest, params: Record<string, unknown>): Promise<void> {
+    const problems = await declaration.validateGenerationRequest(request)
+    if (problems.length === 0) return
+    const next = params['plan'] !== undefined
+      ? 'update the plan with dv_plan_update'
+      : 'change the inputs (ask the user for an asset the shot needs; they can attach it in the chat)'
+    throw new Error(`Model ${entry.id} in mode ${mode} cannot render this shot: ${problems.join(' ')} Nothing was rendered; ${next}, then call again.`)
+  }
+
+  /**
+   * The assets one input reference stands for before the record is written: an asset itself, an output of a finished
+   * record, or the assets of a character, location or style version.
+   * @param project - the project of the call.
+   * @param state - the project's current state.
+   * @param ref - the input reference.
+   * @returns the assets in order; null for an output of a record that has not finished, which has no asset yet.
+   */
+  private resolveRefAssets(project: ProjectId, state: ProjectState, ref: RecordInputRef): Array<AssetId | null> {
+    if ('asset' in ref) return [ref.asset]
+    if ('record' in ref) {
+      const producer = this.ctx.dvProject.getRecord(project, ref.record)
+      return [producer.status === 'done' ? producer.outputs[ref.output] ?? null : null]
     }
-    const needed = declaration.inputs.reference?.min ?? 0
-    if (needed === 0) return
-    const images = (ref: RecordInputRef): number =>
-      'asset' in ref || 'record' in ref ? 1 : this.ctx.dvProject.assetsOf(state, ref)?.length ?? 0
-    const count = request.inputs.filter(input => input.role === 'reference').reduce((sum, input) => sum + images(input.ref), 0)
-    if (count >= needed) return
-    const limit = (await entry.facts(mode)).maxReferenceImages
-    const planned = request.params['plan'] !== undefined
-    const textModels = this.ctx.dvModels.list().filter(model => model.modes.text !== undefined).map(model => model.id)
-    const fromText = textModels.length === 0 ? '' : ` A shot that needs no reference image can use mode text with ${textModels.join(', ')}.`
-    throw new Error(`Model ${entry.id} in mode ${mode} renders a shot from ${needed} to ${limit} reference images`
-      + `${planned ? '' : `, and this shot has ${count === 0 ? 'none' : String(count)}`}. Nothing was rendered. Ask the user for a reference image of the subject `
-      + '(they can attach one in the chat; it appears under Imported images), add it as a reference or to the character, '
-      + `${planned ? 'update the plan with dv_plan_update, ' : ''}then call again.${fromText}`)
+    return this.ctx.dvProject.assetsOf(state, ref) ?? []
   }
 
   /**
    * Prepare an agent call of `shot.render`: turn `continue_from` into the `first_frame` input, and apply the
-   * precondition before Project asks for the user's agreement.
+   * precondition before Project asks for the user's agreement. The model's `validateGenerationRequest` decides whether
+   * it takes the first frame.
    * @param call - the parsed call.
-   * @throws Error from the precondition, or when `continue_from` names a first frame the model does not take in the mode.
+   * @throws Error from the precondition.
    */
   private async prepareCall(call: OperationToolCall): Promise<void> {
     const { args, request, state } = call
-    const { entry, mode, declaration } = this.resolve(request.params)
     const continueFrom = text(args['continue_from'])
-    if (continueFrom !== '') {
-      if (declaration.inputs.first_frame === undefined) {
-        throw new Error(`Model ${entry.id} in mode ${mode} takes no first frame, so continue_from does not apply.`)
-      }
-      request.inputs.push({ role: 'first_frame', ref: { record: brandString<RecordId>(continueFrom), output: 1 } })
-    }
+    if (continueFrom !== '') request.inputs.push({ role: 'first_frame', ref: { record: brandString<RecordId>(continueFrom), output: 1 } })
     await this.precondition(request, state)
   }
 
@@ -405,8 +443,9 @@ export default class DvShotRender extends Service {
       component: 'shot',
       version: '1',
       description: 'Render one take of a shot with a model from the video model list, in one of its modes; model and mode are '
-        + 'required. Mode reference renders from reference images through the reference input: imported images, or character, '
-        + 'location and style versions with reference images (c1@1). Mode text renders from the prompt alone. Pass continue_from to '
+        + 'required. Mode reference renders from reference media through the reference input: imported assets, or character, '
+        + 'location and style versions with reference assets (c1@1); dv_models_get lists the media types and counts each model '
+        + 'accepts. Mode text renders from the prompt alone. Pass continue_from to '
         + 'start from the last still of an earlier shot when the model takes a first frame in the mode. The model\'s own parameters '
         + 'go in extra (see dv_models_get). ' + TAKE_RULE,
       inputs: RENDER_INPUTS,

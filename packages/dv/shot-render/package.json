@@ -11,7 +11,6 @@
   "dependencies": {
     "@deepseek-ai/dsh-brand": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
-    "@dv/asset-pool": "workspace:*",
     "@dv/project": "workspace:*",
     "@dv/models": "workspace:*"
   },
@@ -26,6 +25,7 @@
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-system-prompt": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
+    "@dv/asset-pool": "workspace:*",
     "@types/node": "^22.20.0"
   }
 }

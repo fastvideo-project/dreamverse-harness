@@ -1,6 +1,6 @@
 /**
- * The pure helpers of the Shot render operation: the frame size and frame count a shot asks the model for, the prompt
- * labels of a request's images, and the GPU time the backend reported.
+ * The pure helpers of the Shot render operation: the frame size and frame count a shot asks the model for, and the GPU
+ * time the backend reported.
  *
  * @module @dv/shot-render/render
  */
@@ -47,29 +47,6 @@ export function shotGeometry(facts: RenderModelFacts, params: Record<string, unk
     throw new Error(`duration_sec must be a whole number from ${facts.minDurationSec} to ${facts.maxDurationSec}.`)
   }
   return { aspectRatio, resolution, width: size[0], height: size[1], durationSec, numFrames }
-}
-
-/** The prompt labels of a request's images, as the record report keeps them (`image_labels`). */
-export interface ImageLabels {
-  /** Labels of the reference images, in input order. */
-  referenceLabels: string[]
-  /** Label of the first frame; null when the request carries none. */
-  firstFrameLabel: string | null
-}
-
-/**
- * Name the images of a request: the reference images take the first labels in input order, and the first frame takes
- * the next one.
- * @param facts - the model's facts in the mode.
- * @param referenceCount - the number of reference images.
- * @param firstFrame - whether the request carries a first frame.
- * @returns the labels; an image beyond the model's labels gets none.
- */
-export function imageLabels(facts: RenderModelFacts, referenceCount: number, firstFrame: boolean): ImageLabels {
-  return {
-    referenceLabels: facts.imageLabels.slice(0, referenceCount),
-    firstFrameLabel: firstFrame ? facts.imageLabels[referenceCount] ?? null : null,
-  }
 }
 
 /**
