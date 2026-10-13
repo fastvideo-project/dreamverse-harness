@@ -15,22 +15,30 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvModels, { MODES, type ModeId, type ModelEntry, type RenderModelFacts } from '../src/index.ts'
 
-/** The facts every fake model reports; mode `reference` takes two reference images. */
+/**
+ * The facts every fake model reports. In mode `reference`, the `reference` role takes at most three assets, at most two
+ * of them images; videos and the `first_frame` role have no count limit.
+ */
 function facts(mode: ModeId): RenderModelFacts {
   return {
     modelId: `backend-${mode}`, aspectRatios: ['16:9'], resolutions: ['720p'], frameSizes: { '16:9': { '720p': [1280, 720] } },
-    minDurationSec: 4, maxDurationSec: 8, numFramesByDurationSec: { 4: 97 }, maxReferenceImages: mode === 'reference' ? 2 : 0,
-    imageLabels: [],
+    minDurationSec: 4, maxDurationSec: 8, numFramesByDurationSec: { 4: 97 },
+    inputLimits: mode === 'reference'
+      ? { reference: { maxCount: 3, maxCountByMediaType: { image: 2 } } }
+      : {},
   }
 }
 
-/** A fake model in the given modes; mode `reference` takes the extra parameter `cfg`. */
+/** A fake model in the given modes; mode `reference` takes image and video references and the extra parameter `cfg`. */
 function model(id: string, modes: ModeId[]): ModelEntry {
   return {
     id, company: 'Test Co', summary: `${id} test model`,
     modes: Object.fromEntries(modes.map(mode => [mode, mode === 'reference'
-      ? { inputs: { reference: { min: 1 }, first_frame: { min: 0 } }, extra: { cfg: { type: 'number', description: 'Guidance scale.' } }, gpuSecondsPerVideoSecond: 2 }
-      : { inputs: {}, extra: {}, gpuSecondsPerVideoSecond: 2 }])),
+      ? {
+        inputs: { reference: { min: 1, mediaTypes: ['image', 'video'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
+        extra: { cfg: { type: 'number', description: 'Guidance scale.' } }, gpuSecondsPerVideoSecond: 2, validateGenerationRequest: () => Promise.resolve([]),
+      }
+      : { inputs: {}, extra: {}, gpuSecondsPerVideoSecond: 2, validateGenerationRequest: () => Promise.resolve([]) }])),
     facts: mode => Promise.resolve(facts(mode)),
     render: () => { throw new Error('not rendered in this test') },
   }
@@ -103,14 +111,16 @@ describe('dvModels', () => {
     expect(changes).toEqual([['alpha', 'beta', 'gamma'], ['alpha', 'beta']])
   })
 
-  it('refuses a duplicate name, an unknown mode, an input the mode does not allow, and an entry without modes', async () => {
+  it('refuses a duplicate name, an unknown mode, an input the mode does not allow, an input without media types, and an entry without modes', async () => {
     const ctx = await start()
     expect(() => ctx.dvModels.register(model('alpha', ['text']))).toThrow('dvModels: model "alpha" is already registered.')
     expect(() => ctx.dvModels.register(model('none', []))).toThrow('dvModels: model "none" declares no mode.')
     expect(() => ctx.dvModels.register({ ...model('odd', ['text']), modes: { fly: { inputs: {}, extra: {} } } as never }))
       .toThrow('dvModels: model "odd" declares unknown mode "fly"; modes: reference, text.')
-    expect(() => ctx.dvModels.register({ ...model('odd', ['text']), modes: { text: { inputs: { reference: { min: 1 } }, extra: {}, gpuSecondsPerVideoSecond: 2 } } }))
+    expect(() => ctx.dvModels.register({ ...model('odd', ['text']), modes: { text: { inputs: { reference: { min: 1, mediaTypes: ['image'] } }, extra: {}, gpuSecondsPerVideoSecond: 2, validateGenerationRequest: () => Promise.resolve([]) } } }))
       .toThrow('dvModels: mode "text" of model "odd" accepts input "reference", which the mode does not allow.')
+    expect(() => ctx.dvModels.register({ ...model('odd', ['text']), modes: { reference: { inputs: { reference: { min: 1, mediaTypes: [] } }, extra: {}, gpuSecondsPerVideoSecond: 2, validateGenerationRequest: () => Promise.resolve([]) } } }))
+      .toThrow('dvModels: mode "reference" of model "odd" accepts input "reference" with no media type.')
     expect(ctx.dvModels.list().map(entry => entry.id)).toEqual(['alpha', 'beta'])
   })
 
@@ -119,7 +129,8 @@ describe('dvModels', () => {
     const text = await modelList(ctx)
     expect(text).toContain('Every dv_shot_render call names a `model` and a `mode` from this list; a call without them is refused.')
     for (const [mode, definition] of Object.entries(MODES)) expect(text).toContain(`- ${mode}: ${definition.description}`)
-    expect(text).toContain('| alpha | Test Co | reference, text | cfg (reference) | alpha test model |')
+    expect(text).toContain('the media types and counts each input takes')
+    expect(text).toContain('| alpha | Test Co | reference (reference: image, video; first_frame: image), text | cfg (reference) | alpha test model |')
     expect(text).toContain('| beta | Test Co | text | — | beta test model |')
     const company = [...ctx.loader.entries()].find(entry => entry.options.name.endsWith('/test-company.mjs'))
     await company?.fiber?.dispose()
@@ -138,7 +149,11 @@ describe('dvModels', () => {
       model: 'alpha', company: 'Test Co', about: 'alpha test model',
       modes: {
         reference: {
-          inputs: { reference: { min: 1, max: 2 }, first_frame: { min: 0, max: 1 } }, duration_sec: { min: 4, max: 8 },
+          inputs: {
+            reference: { min: 1, max: 3, media_types: { image: { max: 2 }, video: {} } },
+            first_frame: { min: 0, media_types: { image: {} } },
+          },
+          duration_sec: { min: 4, max: 8 },
           aspect_ratios: ['16:9'], resolutions: ['720p'], extra: { cfg: { type: 'number', description: 'Guidance scale.' } },
         },
         text: { inputs: {}, duration_sec: { min: 4, max: 8 }, aspect_ratios: ['16:9'], resolutions: ['720p'], extra: {} },

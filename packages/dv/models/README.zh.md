@@ -39,12 +39,12 @@ kind: "package-reference"
 
 | 方法 | 返回值 | 语义 |
 | --- | --- | --- |
-| `register(entry)` | `() => void` | 添加一个模型；返回的函数移除它。已注册同 `id` 的模型，或条目没有声明生成方式、声明了 `MODES` 之外的生成方式、声明了其生成方式不允许的输入角色时抛出错误 |
+| `register(entry)` | `() => void` | 添加一个模型；返回的函数移除它。已注册同 `id` 的模型，或条目没有声明生成方式、声明了 `MODES` 之外的生成方式、声明了其生成方式不允许的输入角色、或声明了没有媒体类型的输入角色时抛出错误 |
 | `get(id)` | `ModelEntry \| undefined` | 以 `id` 注册的模型 |
 | `list()` | `ModelEntry[]` | 所有已注册模型，按注册顺序 |
 | `onChanged(listener)` | `() => void` | 每次注册和移除后调用 `listener`；返回的函数移除该监听器 |
 | `checkExtra(entry, mode, extra)` | `string[]` | 渲染的 `extra` 参数的每个问题对应一句话：模型在该生成方式下不接受的名称，或类型错误的值；值都有效时为空 |
-| `describe(id)` | `Promise<JsonValue>` | 模型、它的公司、它的简介，以及每种生成方式下接受的输入及其数量、时长范围、宽高比、分辨率和额外参数 schema，均从模型的 `facts(mode)` 读取；`id` 未知或后端出错时抛出错误 |
+| `describe(id)` | `Promise<JsonValue>` | 模型、它的公司、它的简介，以及每种生成方式下接受的输入及其媒体类型和数量、时长范围、宽高比、分辨率和额外参数 schema，均从模型的 `facts(mode)` 读取；`id` 未知或后端出错时抛出错误 |
 
 `ModelEntry` 有以下字段；每个公司插件都按下面的语义实现 `facts` 和 `render`：
 
@@ -53,16 +53,18 @@ kind: "package-reference"
 | `id` | 智能体和用户选择模型时用的名称，如 `fasth3`；在模型目录中唯一 |
 | `company` | 提供该模型的一方，如 `local FastVideo`，用于模型列表 |
 | `summary` | 把该模型与其他模型区分开的一行文字，用于模型列表 |
-| `modes` | 支持的生成方式，至少一种，每种是一个 `ModeDeclaration`：`inputs`（每个接受的输入角色，`reference` 或 `first_frame`，带 `min`，即一次渲染所需的最少数量）、`extra`（模型在该生成方式下自有参数的参数 schema，没有时为空）和 `gpuSecondsPerVideoSecond`（该生成方式下每渲染一秒视频所用的 GPU 秒数，用于 GPU 估算） |
+| `modes` | 支持的生成方式，至少一种，每种是一个 `ModeDeclaration`：`inputs`（每个接受的输入角色，`reference` 或 `first_frame`，带 `min`，即一次渲染所需的最少数量，以及 `mediaTypes`，即该角色接受的媒体类型，至少一种）、`extra`（模型在该生成方式下自有参数的参数 schema，没有时为空）`gpuSecondsPerVideoSecond`（该生成方式下每渲染一秒视频所用的 GPU 秒数，用于 GPU 估算），以及 `validateGenerationRequest(request)`（必填；解析为阻止模型在该生成方式下渲染某个 `RenderRequest` 的问题列表，可以渲染时为空）。`inputs` 和 facts 的 `inputLimits` 用于向 agent 描述该生成方式；Shot render 只渲染 `validateGenerationRequest` 接受的请求 |
 | `facts(mode)` | resolve 为模型在该生成方式下的 `RenderModelFacts`；后端无法连接时 reject |
-| `render(mode, request, signal?)` | 先按顺序发送参考图，再发送首帧；恰好产生一个 `last_frame`、一个 `video_start`、若干 `chunk` 事件，然后是 `done`；任何后端失败都会 reject；中止 `signal` 会取消渲染并以其原因 reject |
+| `render(mode, request, signal?)` | 先按输入顺序发送参考素材，再发送首帧，每个素材的字节和媒体类型从 `dvAssetPool` 读取；恰好产生一个 `last_frame`、一个 `video_start`、若干 `chunk` 事件，然后是 `done`；任何后端失败都会 reject；中止 `signal` 会取消渲染并以其原因 reject |
 
 | 类型 | 字段 |
 | --- | --- |
+| `MediaType` | 素材 MIME 类型的顶层类型，如 `image`、`video` 或 `audio`，即 `dvAssetPool.mediaType` 返回的值；可以是任意字符串，模型目录从不解释它 |
 | `ModeId` | `reference` 或 `text` |
 | `ModeDefinition` | `description`（一句面向模型的话）和 `inputs`（该生成方式允许的输入角色：`reference` 允许 `reference` 和 `first_frame`，`text` 不允许任何输入） |
-| `RenderModelFacts` | `modelId`（后端的模型 ID）、`aspectRatios` 和 `resolutions`（默认值在前）、`frameSizes`（按宽高比再按分辨率给出的 `[width, height]`）、`minDurationSec`、`maxDurationSec`、`numFramesByDurationSec`、`maxReferenceImages`（不接受参考图的生成方式下为 0）、`imageLabels`（`Picture 1`、`Picture 2`、…；不接受图片的生成方式下为空） |
-| `RenderRequest` | `prompt`、`references`（按输入顺序的图片字节）、`firstFrame`（图片字节或 null）、`frameWidth`、`frameHeight`、`numFrames`、`seed`、`extra`（模型的自有参数，已按其 schema 检查） |
+| `RenderModelFacts` | `modelId`（后端的模型 ID）、`aspectRatios` 和 `resolutions`（默认值在前）、`frameSizes`（按宽高比再按分辨率给出的 `[width, height]`）、`minDurationSec`、`maxDurationSec`、`numFramesByDurationSec`、`inputLimits`（每个声明的输入角色一个 `InputLimits`；没有条目的角色除其声明外没有限制） |
+| `InputLimits` | `maxCount`（该角色跨所有媒体类型的最多素材数；角色没有总数限制时不存在）和 `maxCountByMediaType`（该角色中每种媒体类型的最多素材数；没有对应键的已声明媒体类型没有数量限制） |
+| `RenderRequest` | `prompt`、`references`（按输入顺序的素材 ID）、`firstFrame`（一个素材 ID 或 null）、`frameWidth`、`frameHeight`、`numFrames`、`seed`、`extra`（模型的自有参数，已按其 schema 检查） |
 | `RenderStreamEvent` | `last_frame`（PNG 字节，在视频之前或之后）、`video_start`（视频的媒体类型）、`chunk`（视频字节）、`done`（后端的耗时：以 `_ms` 结尾的键是毫秒，其他键是秒） |
 
 -----
@@ -70,12 +72,12 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-本服务把条目按 `id` 存在一个 map 中，每次注册或移除后调用所有 `onChanged` 监听器。`register` 用 `MODES` 检查每个声明的生成方式：该生成方式必须存在，每个声明的输入角色必须是该生成方式允许的；`min` 数量和 `extra` schema 由模型自己决定。`checkExtra` 先拒绝未知名称，再用 `dsh-tools` 的 `validateArgs` 校验值，并给每条消息加上 `extra` 前缀。`describe` 同时读取所有声明的生成方式的 `facts(mode)`，为每个输入角色报告 `min` 和 `max`（`reference` 为 `maxReferenceImages`，`first_frame` 为 1）。DSH `systemPrompt` 服务挂载期间，本服务注册 `dv:models` 段落，其文本在每次请求时由 `list()` 重建，没有已注册模型时为空；DSH 工具注册表挂载期间，它注册 `dv_models_get`，该工具以缩进的 JSON 返回 `describe(model)`。已注册的模型名称变化时，镜头渲染重新注册 `shot.render`，所以 `dv_shot_render` 的 `model` 参数恰好列出已注册的模型。
+本服务把条目按 `id` 存在一个 map 中，每次注册或移除后调用所有 `onChanged` 监听器。`register` 用 `MODES` 检查每个声明的生成方式：该生成方式必须存在，每个声明的输入角色必须是该生成方式允许的，并且每个角色至少声明一种媒体类型；`min` 数量、媒体类型和 `extra` schema 由模型自己决定，模型目录不判断存在哪些媒体类型。`checkExtra` 先拒绝未知名称，再用 `dsh-tools` 的 `validateArgs` 校验值，并给每条消息加上 `extra` 前缀。`describe` 同时读取所有声明的生成方式的 `facts(mode)`，为每个声明的输入角色报告 `min`、模型事实的 `inputLimits` 为该角色给出 `maxCount` 时的 `max`，以及 `media_types`：其中每个声明的媒体类型在模型事实限制该类型时为 `{ max }`，否则为 `{}`。DSH `systemPrompt` 服务挂载期间，本服务注册 `dv:models` 段落，其文本在每次请求时由 `list()` 重建，没有已注册模型时为空；DSH 工具注册表挂载期间，它注册 `dv_models_get`，该工具以缩进的 JSON 返回 `describe(model)`。已注册的模型名称变化时，镜头渲染重新注册 `shot.render`，所以 `dv_shot_render` 的 `model` 参数恰好列出已注册的模型。
 
 | 文件 | 内容 |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `MODES`、`PROMPT_SECTION`、`Config`、`dvModels` 服务及其方法、`dv:models` 段落和 `dv_models_get` |
-| [`src/types.ts`](src/types.ts) | `ModeId`、`InputRole`、`ModeDefinition`、`ModeInputs`、`ModeDeclaration`、`RenderModelFacts`、`RenderRequest`、`RenderStreamEvent`、`ModelEntry` |
+| [`src/types.ts`](src/types.ts) | `MediaType`、`ModeId`、`InputRole`、`ModeDefinition`、`InputDeclaration`、`ModeInputs`、`ModeDeclaration`、`InputLimits`、`RenderModelFacts`、`RenderRequest`、`RenderStreamEvent`、`ModelEntry` |
 
 -----
 
@@ -96,25 +98,25 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-`systemPrompt` 服务挂载且至少注册了一个模型时，系统提示词带有下面的 `dv:models` 段落：先是各生成方式及其 `MODES` 描述，然后每个已注册模型一行表格。`<extra parameters>` 把每个额外参数列为 `<name> (<mode>)`，模型没有额外参数时为 `—`。没有已注册模型时，该段落为空。
+`systemPrompt` 服务挂载且至少注册了一个模型时，系统提示词带有下面的 `dv:models` 段落：先是各生成方式及其 `MODES` 描述，然后每个已注册模型一行表格。`<modes>` 列出每种生成方式，声明了输入时在括号中跟上其输入角色及媒体类型，如 `reference (reference: image, video, audio; first_frame: image), text`。`<extra parameters>` 把每个额外参数列为 `<name> (<mode>)`，模型没有额外参数时为 `—`。没有已注册模型时，该段落为空。
 
 ##### `dv:models` 段落
 
 ```markdown
 ## Video models
 Every dv_shot_render call names a `model` and a `mode` from this list; a call without them is refused. Modes:
-- reference: From reference images (character, location and style versions, or imported images) and the prompt; optionally a first frame, such as the last still of the previous shot.
-- text: From the prompt alone; no images.
-Call dv_models_get with a model for its limits in each of its modes: durations, aspect ratios, resolutions, reference images, and the extra parameters it takes in `extra`.
+- reference: From reference media (character, location and style versions, or imported assets) and the prompt; optionally a first frame, such as the last still of the previous shot. dv_models_get lists the media types and counts each model accepts.
+- text: From the prompt alone; no references.
+Call dv_models_get with a model for its limits in each of its modes: durations, aspect ratios, resolutions, the media types and counts each input takes, and the extra parameters it takes in `extra`.
 
-| model | company | modes | extra parameters | about |
+| model | company | modes (input: media types) | extra parameters | about |
 | --- | --- | --- | --- | --- |
 | <model> | <company> | <modes> | <extra parameters> | <summary> |
 ```
 
 #### Token 影响
 
-有已注册模型期间，每次请求中固定文本约 130 个 token，每个已注册模型再加约 35 个 token。
+有已注册模型期间，每次请求中固定文本约 160 个 token，每个已注册模型再加约 50 个 token。
 
 #### KV Cache 影响
 
@@ -124,11 +126,11 @@ Call dv_models_get with a model for its limits in each of its modes: durations, 
 
 #### 模型看到什么
 
-工具 `dv_models_get`，有一个必填参数 `model`，描述为 "Read one video model's limits in each of its modes: the inputs it accepts, durations, aspect ratios, resolutions, and the extra parameters it takes in the `extra` param of dv_shot_render."。一次调用返回一个文本块，内容是 `describe(model)` 的 JSON：`{model, company, about, modes}`，其中每种生成方式包含 `inputs`（每个角色的 `min` 和 `max`）、`duration_sec`（`min` 和 `max`）、`aspect_ratios`、`resolutions` 和 `extra`。未知模型以 `Unknown model "<model>"; models: <registered models>.` 失败，后端无法连接时以后端的错误失败。
+工具 `dv_models_get`，有一个必填参数 `model`，描述为 "Read one video model's limits in each of its modes: the inputs it accepts with their media types and counts, durations, aspect ratios, resolutions, and the extra parameters it takes in the `extra` param of dv_shot_render."。一次调用返回一个文本块，内容是 `describe(model)` 的 JSON：`{model, company, about, modes}`，其中每种生成方式包含 `inputs`（每个声明的角色的 `min`、后端限制该角色总数时的 `max`，以及 `media_types`：每个声明的媒体类型，后端限制该类型时带 `max`）、`duration_sec`（`min` 和 `max`）、`aspect_ratios`、`resolutions` 和 `extra`。未知模型以 `Unknown model "<model>"; models: <registered models>.` 失败，后端无法连接时以后端的错误失败。
 
 #### Token 影响
 
-工具注册表挂载期间，定义约 90 个 token；每个结果按模型的生成方式计，每种约 100 个 token。
+工具注册表挂载期间，定义约 100 个 token；每个结果按模型的生成方式计，每种约 150 个 token。
 
 #### KV Cache 影响
 

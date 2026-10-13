@@ -40,7 +40,8 @@ export function testFacts(): RenderModelFacts {
   return {
     modelId: 'test-ref2va', aspectRatios: ['16:9', '9:16'], resolutions: ['720p'],
     frameSizes: { '16:9': { '720p': [192, 112] }, '9:16': { '720p': [112, 192] } }, minDurationSec: 1, maxDurationSec: 5,
-    numFramesByDurationSec: framesByDuration(1, 5), maxReferenceImages: 2, imageLabels: ['Picture 1', 'Picture 2', 'Picture 3'],
+    numFramesByDurationSec: framesByDuration(1, 5),
+    inputLimits: {},
   }
 }
 
@@ -70,7 +71,7 @@ export class FakeModel implements ModelEntry {
   readonly company = 'test'
   readonly summary = 'Solid-color clips'
   readonly modes: ModelEntry['modes'] = {
-    reference: { inputs: { reference: { min: 1 }, first_frame: { min: 0 } }, extra: {}, gpuSecondsPerVideoSecond: 4 },
+    reference: { inputs: { reference: { min: 1, mediaTypes: ['image'] }, first_frame: { min: 0, mediaTypes: ['image'] } }, extra: {}, gpuSecondsPerVideoSecond: 4, validateGenerationRequest: () => Promise.resolve([]) },
   }
   readonly requests: RenderRequest[] = []
 

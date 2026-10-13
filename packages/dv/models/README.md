@@ -39,12 +39,12 @@ A company plugin injects `dvModels` and calls `register(entry)` inside `ctx.effe
 
 | Method | Returns | Semantics |
 | --- | --- | --- |
-| `register(entry)` | `() => void` | Adds a model; the returned function removes it. Throws when a model with the same `id` is registered, or when the entry declares no mode, a mode outside `MODES`, or an input role its mode does not allow |
+| `register(entry)` | `() => void` | Adds a model; the returned function removes it. Throws when a model with the same `id` is registered, or when the entry declares no mode, a mode outside `MODES`, an input role its mode does not allow, or an input role without a media type |
 | `get(id)` | `ModelEntry \| undefined` | The model registered under `id` |
 | `list()` | `ModelEntry[]` | Every registered model, in registration order |
 | `onChanged(listener)` | `() => void` | Calls `listener` after each registration and removal; the returned function removes the listener |
 | `checkExtra(entry, mode, extra)` | `string[]` | One sentence per problem of a render's `extra` param: a name the model does not take in the mode, or a value of the wrong type; empty when the values are valid |
-| `describe(id)` | `Promise<JsonValue>` | The model, its company, its summary, and per mode the accepted inputs with their counts, the duration range, the aspect ratios, the resolutions, and the extra parameter schema, read from the model's `facts(mode)`; throws for an unknown `id` or the backend's error |
+| `describe(id)` | `Promise<JsonValue>` | The model, its company, its summary, and per mode the accepted inputs with their media types and counts, the duration range, the aspect ratios, the resolutions, and the extra parameter schema, read from the model's `facts(mode)`; throws for an unknown `id` or the backend's error |
 
 A `ModelEntry` has these fields; every company plugin implements `facts` and `render` with the semantics below:
 
@@ -53,16 +53,18 @@ A `ModelEntry` has these fields; every company plugin implements `facts` and `re
 | `id` | The name the agent and the user choose the model by, such as `fasth3`; unique in the catalog |
 | `company` | Who serves the model, such as `local FastVideo`, for the model list |
 | `summary` | One line that tells the model apart from the others, for the model list |
-| `modes` | The supported modes, at least one, each a `ModeDeclaration`: `inputs` (each accepted input role, `reference` or `first_frame`, with `min`, the smallest count a render needs) `extra` (the parameter schema of the model's own parameters in the mode, empty when it has none), and `gpuSecondsPerVideoSecond` (GPU seconds per rendered video second in the mode, for the GPU estimate) |
+| `modes` | The supported modes, at least one, each a `ModeDeclaration`: `inputs` (each accepted input role, `reference` or `first_frame`, with `min`, the smallest count a render needs, and `mediaTypes`, the media types the role accepts, at least one), `extra` (the parameter schema of the model's own parameters in the mode, empty when it has none), `gpuSecondsPerVideoSecond` (GPU seconds per rendered video second in the mode, for the GPU estimate), and `validateGenerationRequest(request)` (required; resolves with the problems that stop the model from rendering a `RenderRequest` in the mode, empty when it renders it). `inputs` and the facts' `inputLimits` describe the mode to the agent; Shot render renders a request only when `validateGenerationRequest` accepts it |
 | `facts(mode)` | Resolves with the `RenderModelFacts` of the model in the mode; rejects when the backend cannot be reached |
-| `render(mode, request, signal?)` | Sends the reference images in order, then the first frame; yields exactly one `last_frame`, one `video_start`, the `chunk` events, then `done`; rejects for any backend failure; aborting `signal` cancels the render and rejects with its reason |
+| `render(mode, request, signal?)` | Sends the references in input order, then the first frame, reading each asset's bytes and media type from `dvAssetPool`; yields exactly one `last_frame`, one `video_start`, the `chunk` events, then `done`; rejects for any backend failure; aborting `signal` cancels the render and rejects with its reason |
 
 | Type | Fields |
 | --- | --- |
+| `MediaType` | The top-level type of an asset's MIME type, such as `image`, `video` or `audio`, as `dvAssetPool.mediaType` returns it; any string, which the catalog never interprets |
 | `ModeId` | `reference` or `text` |
 | `ModeDefinition` | `description` (one model-facing sentence) and `inputs` (the input roles the mode allows: `reference` and `first_frame` for `reference`, none for `text`) |
-| `RenderModelFacts` | `modelId` (the backend's model ID), `aspectRatios` and `resolutions` (the default first), `frameSizes` (`[width, height]` by aspect ratio and then by resolution), `minDurationSec`, `maxDurationSec`, `numFramesByDurationSec`, `maxReferenceImages` (0 in a mode without reference images), `imageLabels` (`Picture 1`, `Picture 2`, …; empty in a mode without images) |
-| `RenderRequest` | `prompt`, `references` (image bytes in input order), `firstFrame` (image bytes or null), `frameWidth`, `frameHeight`, `numFrames`, `seed`, `extra` (the model's own parameters, already checked against its schema) |
+| `RenderModelFacts` | `modelId` (the backend's model ID), `aspectRatios` and `resolutions` (the default first), `frameSizes` (`[width, height]` by aspect ratio and then by resolution), `minDurationSec`, `maxDurationSec`, `numFramesByDurationSec`, `inputLimits` (an `InputLimits` per declared input role; a role without an entry has no limit beyond its declaration) |
+| `InputLimits` | `maxCount` (the most assets in the role across media types; absent when the role has no total limit) and `maxCountByMediaType` (the most assets of each media type in the role; a declared media type without a key has no count limit) |
+| `RenderRequest` | `prompt`, `references` (asset IDs in input order), `firstFrame` (an asset ID or null), `frameWidth`, `frameHeight`, `numFrames`, `seed`, `extra` (the model's own parameters, already checked against its schema) |
 | `RenderStreamEvent` | `last_frame` (PNG bytes, before or after the video), `video_start` (the media type of the video), `chunk` (video bytes), `done` (the backend's timings: keys ending in `_ms` are milliseconds, other keys seconds) |
 
 -----
@@ -70,12 +72,12 @@ A `ModelEntry` has these fields; every company plugin implements `facts` and `re
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The service keeps the entries in a map by `id` and calls every `onChanged` listener after a registration or a removal. `register` checks each declared mode against `MODES`: the mode must exist and each declared input role must be one the mode allows; the model's own `min` counts and `extra` schema are its own. `checkExtra` refuses unknown names first and then validates the values with `validateArgs` of `dsh-tools`, prefixing each message with `extra`. `describe` reads `facts(mode)` for all declared modes concurrently and reports each input role with its `min` and its `max` (`maxReferenceImages` for `reference`, 1 for `first_frame`). While the DSH `systemPrompt` service is mounted, the service registers the `dv:models` section, whose text is rebuilt from `list()` at every request and is empty while no model is registered; while the DSH tool registry is mounted, it registers `dv_models_get`, which returns `describe(model)` as indented JSON. Shot render registers `shot.render` again when the registered model names change, so the `model` param of `dv_shot_render` lists exactly the registered models.
+The service keeps the entries in a map by `id` and calls every `onChanged` listener after a registration or a removal. `register` checks each declared mode against `MODES`: the mode must exist, each declared input role must be one the mode allows, and each role must declare at least one media type; the model's own `min` counts, media types, and `extra` schema are its own, and the catalog makes no judgment about which media types exist. `checkExtra` refuses unknown names first and then validates the values with `validateArgs` of `dsh-tools`, prefixing each message with `extra`. `describe` reads `facts(mode)` for all declared modes concurrently and reports each declared input role with its `min`, its `max` when the facts' `inputLimits` give the role a `maxCount`, and `media_types` with each declared media type, as `{ max }` when the facts limit that type and `{}` otherwise. While the DSH `systemPrompt` service is mounted, the service registers the `dv:models` section, whose text is rebuilt from `list()` at every request and is empty while no model is registered; while the DSH tool registry is mounted, it registers `dv_models_get`, which returns `describe(model)` as indented JSON. Shot render registers `shot.render` again when the registered model names change, so the `model` param of `dv_shot_render` lists exactly the registered models.
 
 | File | Content |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `MODES`, `PROMPT_SECTION`, `Config`, the `dvModels` service with its methods, the `dv:models` section, and `dv_models_get` |
-| [`src/types.ts`](src/types.ts) | `ModeId`, `InputRole`, `ModeDefinition`, `ModeInputs`, `ModeDeclaration`, `RenderModelFacts`, `RenderRequest`, `RenderStreamEvent`, `ModelEntry` |
+| [`src/types.ts`](src/types.ts) | `MediaType`, `ModeId`, `InputRole`, `ModeDefinition`, `InputDeclaration`, `ModeInputs`, `ModeDeclaration`, `InputLimits`, `RenderModelFacts`, `RenderRequest`, `RenderStreamEvent`, `ModelEntry` |
 
 -----
 
@@ -96,25 +98,25 @@ The service keeps the entries in a map by `id` and calls every `onChanged` liste
 
 #### What the model sees
 
-While the `systemPrompt` service is mounted and at least one model is registered, the system prompt carries the `dv:models` section below: the generation modes with their `MODES` descriptions, then one table row per registered model. `<extra parameters>` lists each extra parameter as `<name> (<mode>)`, or `—` when the model has none. While no model is registered, the section is empty.
+While the `systemPrompt` service is mounted and at least one model is registered, the system prompt carries the `dv:models` section below: the generation modes with their `MODES` descriptions, then one table row per registered model. `<modes>` lists each mode, followed by its input roles and their media types in parentheses when it declares inputs, such as `reference (reference: image, video, audio; first_frame: image), text`. `<extra parameters>` lists each extra parameter as `<name> (<mode>)`, or `—` when the model has none. While no model is registered, the section is empty.
 
 ##### The `dv:models` section
 
 ```markdown
 ## Video models
 Every dv_shot_render call names a `model` and a `mode` from this list; a call without them is refused. Modes:
-- reference: From reference images (character, location and style versions, or imported images) and the prompt; optionally a first frame, such as the last still of the previous shot.
-- text: From the prompt alone; no images.
-Call dv_models_get with a model for its limits in each of its modes: durations, aspect ratios, resolutions, reference images, and the extra parameters it takes in `extra`.
+- reference: From reference media (character, location and style versions, or imported assets) and the prompt; optionally a first frame, such as the last still of the previous shot. dv_models_get lists the media types and counts each model accepts.
+- text: From the prompt alone; no references.
+Call dv_models_get with a model for its limits in each of its modes: durations, aspect ratios, resolutions, the media types and counts each input takes, and the extra parameters it takes in `extra`.
 
-| model | company | modes | extra parameters | about |
+| model | company | modes (input: media types) | extra parameters | about |
 | --- | --- | --- | --- | --- |
 | <model> | <company> | <modes> | <extra parameters> | <summary> |
 ```
 
 #### Token effect
 
-About 130 tokens for the fixed text, plus about 35 tokens per registered model, on every request while a model is registered.
+About 160 tokens for the fixed text, plus about 50 tokens per registered model, on every request while a model is registered.
 
 #### KV Cache effect
 
@@ -124,11 +126,11 @@ The section sits in the system prompt at order `promptSectionOrder` (4890) and s
 
 #### What the model sees
 
-The tool `dv_models_get` with one required argument, `model`, and the description "Read one video model's limits in each of its modes: the inputs it accepts, durations, aspect ratios, resolutions, and the extra parameters it takes in the `extra` param of dv_shot_render." A call returns one text block with the JSON of `describe(model)`: `{model, company, about, modes}`, where each mode holds `inputs` (each role with `min` and `max`), `duration_sec` (`min` and `max`), `aspect_ratios`, `resolutions`, and `extra`. An unknown model fails with `Unknown model "<model>"; models: <registered models>.`, and an unreachable backend fails with the backend's error.
+The tool `dv_models_get` with one required argument, `model`, and the description "Read one video model's limits in each of its modes: the inputs it accepts with their media types and counts, durations, aspect ratios, resolutions, and the extra parameters it takes in the `extra` param of dv_shot_render." A call returns one text block with the JSON of `describe(model)`: `{model, company, about, modes}`, where each mode holds `inputs` (each declared role with `min`, `max` when the backend limits the role's total, and `media_types`, each declared media type with `max` when the backend limits that type), `duration_sec` (`min` and `max`), `aspect_ratios`, `resolutions`, and `extra`. An unknown model fails with `Unknown model "<model>"; models: <registered models>.`, and an unreachable backend fails with the backend's error.
 
 #### Token effect
 
-About 90 tokens for the definition while the tool registry is mounted; a result is roughly 100 tokens per mode of the model.
+About 100 tokens for the definition while the tool registry is mounted; a result is roughly 150 tokens per mode of the model.
 
 #### KV Cache effect
 

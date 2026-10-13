@@ -6,14 +6,21 @@
  * @module @dv/models/types
  */
 import type { ParameterSchemaSpec } from '@deepseek-ai/dsh-tools'
+import type { AssetId } from '@dv/project'
 
 /**
- * A generation mode: which inputs a render takes. `reference`: reference images (character, location and style
- * versions, or imported images) and optionally a first frame; `text`: the prompt alone.
+ * The top-level type of an asset's MIME type, such as `image`, `video` or `audio`, as `dvAssetPool.mediaType` returns
+ * it. Any string; the catalog never interprets it.
+ */
+export type MediaType = string
+
+/**
+ * A generation mode: which inputs a render takes. `reference`: reference media (character, location and style
+ * versions, or imported assets) and optionally a first frame; `text`: the prompt alone.
  */
 export type ModeId = 'reference' | 'text'
 
-/** An input role of a render: `reference` (reference images in prompt order) or `first_frame` (the frame it starts from). */
+/** An input role of a render: `reference` (reference media in prompt order) or `first_frame` (the frame it starts from). */
 export type InputRole = 'reference' | 'first_frame'
 
 /** What one generation mode means, for every model that supports it. */
@@ -24,22 +31,54 @@ export interface ModeDefinition {
   inputs: readonly InputRole[]
 }
 
-/** The inputs one model accepts in one mode: each accepted role with the smallest count a render needs. */
-export type ModeInputs = Partial<Record<InputRole, { min: number }>>
+/** One input role that a model accepts in one mode. */
+export interface InputDeclaration {
+  /** The fewest assets that a render needs in this role. */
+  min: number
+  /** The media types the role accepts; at least one. */
+  mediaTypes: readonly MediaType[]
+}
 
-/** What one model supports in one mode, declared when the model registers. */
+/** The inputs one model accepts in one mode, by role. */
+export type ModeInputs = Partial<Record<InputRole, InputDeclaration>>
+
+/**
+ * What one model supports in one mode, declared when the model registers. `inputs` and the facts' `inputLimits`
+ * describe the mode to the agent; Shot render renders a request only when `validateGenerationRequest` accepts it.
+ */
 export interface ModeDeclaration {
-  /** The accepted input roles; a role the mode allows but the model omits is refused. */
+  /**
+   * The accepted input roles, as the model list and the render tool describe them; a role the mode allows but the
+   * model omits is not offered.
+   */
   inputs: ModeInputs
   /** The model's own parameters in this mode, passed in the render's `extra` param; empty when it has none. */
   extra: ParameterSchemaSpec
   /** GPU seconds per rendered video second in this mode, for the GPU estimate of a render before it runs. */
   gpuSecondsPerVideoSecond: number
+  /**
+   * Check one render request of the model in this mode. Shot render calls it before it records a render whose input
+   * assets all exist, and again before it sends the request to `render`.
+   * @param request - the request as `render` would receive it.
+   * @returns the problems, each one model-facing sentence; empty when the model renders the request.
+   */
+  validateGenerationRequest(request: RenderRequest): Promise<string[]>
+}
+
+/** The count limits of one input role, read from the backend. */
+export interface InputLimits {
+  /** The most assets in the role across all media types; absent when the role has no total limit. */
+  maxCount?: number
+  /**
+   * The most assets of each media type in the role. The keys are a subset of the role's declared `mediaTypes`; a
+   * declared media type without a key has no count limit.
+   */
+  maxCountByMediaType: Partial<Record<MediaType, number>>
 }
 
 /**
  * The facts of one model in one mode, read from its backend. Shot render reads them to choose the frame size and frame
- * count of a shot and to check the reference images. Map keys keep the backend's values, such as `16:9` or `720p`.
+ * count of a shot, and the model list reads the input limits. Map keys keep the backend's values, such as `16:9` or `720p`.
  */
 export interface RenderModelFacts {
   /** The backend's model ID, which the record report keeps (`model_id`); never shown to the user. */
@@ -56,22 +95,20 @@ export interface RenderModelFacts {
   maxDurationSec: number
   /** The model's frame count by shot duration in whole seconds, for every duration from the minimum to the maximum. */
   numFramesByDurationSec: Record<string, number>
-  /** The most reference images one request carries besides its first frame; 0 in a mode without reference images. */
-  maxReferenceImages: number
-  /**
-   * The prompt labels of the request images in request order (`Picture 1`, `Picture 2`, …): the reference images in
-   * input order, then the first frame. Empty in a mode without images.
-   */
-  imageLabels: string[]
+  /** The count limits by declared input role; a role without an entry has no limit beyond its declaration. */
+  inputLimits: Partial<Record<InputRole, InputLimits>>
 }
 
-/** One render: the prompt, the images the mode takes, the frame size and count, the seed, and the model's own parameters. */
+/**
+ * One render: the prompt, the input assets the mode takes, the frame size and count, the seed, and the model's own
+ * parameters. Inputs are asset IDs; the model reads each asset's bytes and media type from `dvAssetPool`.
+ */
 export interface RenderRequest {
   prompt: string
-  /** Image bytes of the reference images in input order; empty in a mode without references. */
-  references: Buffer[]
-  /** Image bytes of the frame the video starts from, or null. */
-  firstFrame: Buffer | null
+  /** The `reference` assets in input order; empty in a mode without references. */
+  references: AssetId[]
+  /** The asset the video starts from, or null. */
+  firstFrame: AssetId | null
   frameWidth: number
   frameHeight: number
   numFrames: number
@@ -97,9 +134,9 @@ export type RenderStreamEvent =
  *
  * Models must honor these semantics:
  * - `facts(mode)` resolves with the facts of the model in that mode; rejects when the backend cannot be reached.
- * - `render(mode, request, signal)` sends the reference images in order, then the first frame; yields exactly one
- *   `last_frame`, one `video_start`, the `chunk` events, then `done`; rejects for any backend failure. Aborting `signal`
- *   cancels the render and rejects with its reason.
+ * - `render(mode, request, signal)` sends the references in input order, then the first frame, reading each asset
+ *   through `dvAssetPool`; yields exactly one `last_frame`, one `video_start`, the `chunk` events, then `done`; rejects
+ *   for any backend failure. Aborting `signal` cancels the render and rejects with its reason.
  */
 export interface ModelEntry {
   /** The name the agent and the user choose the model by, such as `fasth3`; unique in the catalog. */
@@ -120,7 +157,7 @@ export interface ModelEntry {
   /**
    * Render one shot.
    * @param mode - a mode the model supports.
-   * @param request - the prompt, images, frame size, frame count, seed, and the model's own parameters.
+   * @param request - the prompt, input assets, frame size, frame count, seed, and the model's own parameters.
    * @param signal - cancels the render.
    * @returns the render stream.
    */

@@ -15,7 +15,7 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import { defineTool, validateArgs } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
-import type { InputRole, ModeDefinition, ModeId, ModelEntry } from './types.ts'
+import type { InputRole, ModeDeclaration, ModeDefinition, ModeId, ModelEntry, RenderModelFacts } from './types.ts'
 
 export type * from './types.ts'
 
@@ -29,11 +29,12 @@ declare module '@deepseek-ai/cordis' {
 /** Every generation mode, defined once; a model declares the modes it supports. */
 export const MODES: Readonly<Record<ModeId, ModeDefinition>> = {
   reference: {
-    description: 'From reference images (character, location and style versions, or imported images) and the prompt; '
-      + 'optionally a first frame, such as the last still of the previous shot.',
+    description: 'From reference media (character, location and style versions, or imported assets) and the prompt; '
+      + 'optionally a first frame, such as the last still of the previous shot. dv_models_get lists the media types '
+      + 'and counts each model accepts.',
     inputs: ['reference', 'first_frame'],
   },
-  text: { description: 'From the prompt alone; no images.', inputs: [] },
+  text: { description: 'From the prompt alone; no references.', inputs: [] },
 }
 
 /** The name of the model list prompt section. */
@@ -51,7 +52,8 @@ export const Config: z<Config> = z.object({
 })
 
 /**
- * Refuse a model entry that names an unknown mode, an input role its mode does not allow, or no mode at all.
+ * Refuse a model entry that names an unknown mode, an input role its mode does not allow, an input role without a
+ * media type, or no mode at all.
  * @param entry - the entry to register.
  * @throws Error naming the problem.
  */
@@ -61,12 +63,47 @@ function checkEntry(entry: ModelEntry): void {
   for (const [mode, declaration] of modes) {
     const definition = Object.hasOwn(MODES, mode) ? MODES[mode as ModeId] : undefined
     if (definition === undefined) throw new Error(`dvModels: model "${entry.id}" declares unknown mode "${mode}"; modes: ${Object.keys(MODES).join(', ')}.`)
-    for (const role of Object.keys(declaration.inputs)) {
+    for (const [role, input] of Object.entries(declaration.inputs)) {
       if (!definition.inputs.includes(role as InputRole)) {
         throw new Error(`dvModels: mode "${mode}" of model "${entry.id}" accepts input "${role}", which the mode does not allow.`)
       }
+      if (input.mediaTypes.length === 0) {
+        throw new Error(`dvModels: mode "${mode}" of model "${entry.id}" accepts input "${role}" with no media type.`)
+      }
     }
   }
+}
+
+/**
+ * Format each mode of a model with its input roles and their media types for the model list, such as
+ * `reference (reference: image, video; first_frame: image), text`.
+ * @param entry - the model.
+ * @returns the text.
+ */
+function formatModes(entry: ModelEntry): string {
+  return Object.entries(entry.modes).map(([mode, declaration]) => {
+    const inputs = Object.entries(declaration.inputs).map(([role, input]) => `${role}: ${input.mediaTypes.join(', ')}`)
+    return inputs.length === 0 ? mode : `${mode} (${inputs.join('; ')})`
+  }).join(', ')
+}
+
+/**
+ * Report each declared input role of a mode for `dv_models_get`: its `min`, its `max` when the facts give the role a
+ * total limit, and each declared media type with its `max` when the facts limit that type.
+ * @param declaration - the model's declaration of the mode.
+ * @param facts - the model's facts in the mode.
+ * @returns the inputs by role.
+ */
+function describeInputs(declaration: ModeDeclaration, facts: RenderModelFacts): JsonValue {
+  return Object.fromEntries(Object.entries(declaration.inputs).map(([role, input]) => {
+    const limits = facts.inputLimits[role as InputRole]
+    const mediaTypes = input.mediaTypes.map((type): [string, JsonValue] => {
+      const max = limits?.maxCountByMediaType[type]
+      return [type, max === undefined ? {} : { max }]
+    })
+    const total = limits?.maxCount === undefined ? {} : { max: limits.maxCount }
+    return [role, { min: input.min, ...total, media_types: Object.fromEntries(mediaTypes) }]
+  }))
 }
 
 /**
@@ -104,7 +141,7 @@ export default class DvModels extends Service {
    * @param entry - the model and the modes it supports.
    * @returns a function that removes the model.
    * @throws Error when a model with the same `id` is registered, or when the entry declares no mode, an unknown mode,
-   *   or an input role its mode does not allow.
+   *   an input role its mode does not allow, or an input role without a media type.
    */
   register(entry: ModelEntry): () => void {
     if (this.entries.has(entry.id)) throw new Error(`dvModels: model "${entry.id}" is already registered.`)
@@ -174,19 +211,19 @@ export default class DvModels extends Service {
       'Every dv_shot_render call names a `model` and a `mode` from this list; a call without them is refused. Modes:',
       ...Object.entries(MODES).map(([mode, definition]) => `- ${mode}: ${definition.description}`),
       'Call dv_models_get with a model for its limits in each of its modes: durations, aspect ratios, resolutions, '
-        + 'reference images, and the extra parameters it takes in `extra`.',
+        + 'the media types and counts each input takes, and the extra parameters it takes in `extra`.',
       '',
-      '| model | company | modes | extra parameters | about |',
+      '| model | company | modes (input: media types) | extra parameters | about |',
       '| --- | --- | --- | --- | --- |',
-      ...models.map(entry => `| ${entry.id} | ${entry.company} | ${Object.keys(entry.modes).join(', ')} | ${extraNames(entry)} | ${entry.summary} |`),
+      ...models.map(entry => `| ${entry.id} | ${entry.company} | ${formatModes(entry)} | ${extraNames(entry)} | ${entry.summary} |`),
     ].join('\n')
   }
 
   /**
    * One model's limits in each of its modes, read from its backend, with its extra parameters.
    * @param id - the model name.
-   * @returns the model, its company, and per mode the accepted inputs, durations, aspect ratios, resolutions, the
-   *   reference image limit, and the extra parameter schema.
+   * @returns the model, its company, and per mode the accepted inputs with their media types and counts, durations,
+   *   aspect ratios, resolutions, and the extra parameter schema.
    * @throws Error naming the registered models when `id` is unknown, or the backend's error.
    */
   async describe(id: string): Promise<JsonValue> {
@@ -196,9 +233,7 @@ export default class DvModels extends Service {
     const modes = await Promise.all(Object.entries(entry.modes).map(async ([mode, declaration]): Promise<[string, JsonValue]> => {
       const facts = await entry.facts(mode as ModeId)
       return [mode, {
-        inputs: Object.fromEntries(Object.entries(declaration.inputs).map(([role, limit]) => [role, {
-          min: limit.min, ...role === 'reference' ? { max: facts.maxReferenceImages } : { max: 1 },
-        }])),
+        inputs: describeInputs(declaration, facts),
         duration_sec: { min: facts.minDurationSec, max: facts.maxDurationSec },
         aspect_ratios: facts.aspectRatios,
         resolutions: facts.resolutions,
@@ -212,8 +247,9 @@ export default class DvModels extends Service {
   private getTool() {
     return defineTool({
       name: 'dv_models_get',
-      description: 'Read one video model\'s limits in each of its modes: the inputs it accepts, durations, aspect ratios, '
-        + 'resolutions, and the extra parameters it takes in the `extra` param of dv_shot_render.',
+      description: 'Read one video model\'s limits in each of its modes: the inputs it accepts with their media types and '
+        + 'counts, durations, aspect ratios, resolutions, and the extra parameters it takes in the `extra` param of '
+        + 'dv_shot_render.',
       parameters: { model: { type: 'string', required: true, description: 'A model from the video model list.' } },
       output: {
         schema: { type: 'json' },

@@ -72,9 +72,12 @@ const GPU_SECONDS_PER_VIDEO_SECOND = 4
 /** What a stand-in model declares in each mode: reference images and an optional first frame, or the prompt alone. */
 const DECLARATIONS: Record<ModeId, ModeDeclaration> = {
   reference: {
-    inputs: { reference: { min: 1 }, first_frame: { min: 0 } }, extra: {}, gpuSecondsPerVideoSecond: GPU_SECONDS_PER_VIDEO_SECOND,
+    inputs: { reference: { min: 1, mediaTypes: ['image'] }, first_frame: { min: 0, mediaTypes: ['image'] } }, extra: {}, gpuSecondsPerVideoSecond: GPU_SECONDS_PER_VIDEO_SECOND,
+    validateGenerationRequest: () => Promise.resolve([]),
   },
-  text: { inputs: {}, extra: {}, gpuSecondsPerVideoSecond: GPU_SECONDS_PER_VIDEO_SECOND },
+  text: {
+    inputs: {}, extra: {}, gpuSecondsPerVideoSecond: GPU_SECONDS_PER_VIDEO_SECOND, validateGenerationRequest: () => Promise.resolve([]),
+  },
 }
 
 /**
@@ -466,7 +469,7 @@ describe('dvShotPlan', () => {
   it('refuses a plan before its record when a shot names a model or mode the catalog does not serve or breaks a rule of its model and mode', async () => {
     // fake serves only mode reference; still takes reference images but no first frame.
     const fixture = await start({ modes: ['reference'] })
-    fixture.ctx.dvModels.register(model('still', { reference: { inputs: { reference: { min: 1 } }, extra: {}, gpuSecondsPerVideoSecond: GPU_SECONDS_PER_VIDEO_SECOND } }))
+    fixture.ctx.dvModels.register(model('still', { reference: { inputs: { reference: { min: 1, mediaTypes: ['image'] } }, extra: {}, gpuSecondsPerVideoSecond: GPU_SECONDS_PER_VIDEO_SECOND, validateGenerationRequest: () => Promise.resolve([]) } }))
     const picture = fixture.put('face', 'image/png', 'face.png')
     const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
     await expect(fixture.record('plan.create', {

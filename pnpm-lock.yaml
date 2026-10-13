@@ -7184,6 +7184,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
+      '@dv/asset-pool':
+        specifier: workspace:*
+        version: link:../asset-pool
       '@dv/fastvideo-generation-client':
         specifier: workspace:*
         version: link:../fastvideo-generation-client
@@ -7200,6 +7203,12 @@ importers:
       '@deepseek-ai/cordis-plugin-loader':
         specifier: workspace:~
         version: link:../../../vendor/loader
+      '@dv/ffmpeg':
+        specifier: workspace:*
+        version: link:../ffmpeg
+      '@dv/project':
+        specifier: workspace:*
+        version: link:../project
       '@types/node':
         specifier: ^22.20.0
         version: 22.20.0
@@ -7315,6 +7324,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
+      '@dv/project':
+        specifier: workspace:*
+        version: link:../project
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:~
