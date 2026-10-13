@@ -281,7 +281,8 @@ describe('CanvasView', () => {
       return found
     })
     fireEvent.click(tile)
-    expect(tile.getAttribute('aria-pressed')).toBe('true')
+    // The picker rings the picked tile of the asset pool panel.
+    expect(picker.querySelector('style')?.textContent).toContain('[data-asset-id="shot1.mp4"]')
     fireEvent.click(view.getByText('确认（2）'))
     expect(view.queryByTestId('dv-canvas-asset-picker')).toBeNull()
     fireEvent.click(view.getByRole('button', { name: '查看 shot1.mp4' }))

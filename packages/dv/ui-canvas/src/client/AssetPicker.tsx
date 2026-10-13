@@ -86,7 +86,7 @@ export interface AssetPickerProps {
 }
 
 /**
- * The picker: the project's characters, locations and styles when `withBible`, then the asset pool panel in pick mode.
+ * The picker: the project's characters, locations and styles when `withBible`, then the asset pool panel, whose clicks pick assets.
  * A click toggles an item; the confirm button hands over every picked reference.
  * @param props - the project, the offered kinds, and the callbacks.
  * @returns the dialog.
@@ -108,6 +108,10 @@ export function AssetPicker(props: AssetPickerProps): ReactNode {
     })
     : []
   const pickedSet = new Set(picked)
+  // The asset pool panel marks each tile with `data-asset-id`; the picker rings the picked ones.
+  const pickedRing = picked.length === 0
+    ? null
+    : `${picked.map(ref => `[data-testid="dv-canvas-asset-picker"] [data-asset-id="${ref.replace(/["\\]/g, '\\$&')}"]`).join(',')}{box-shadow:0 0 0 2px var(--dv-accent)}`
   return createPortal(
     <div role="dialog" aria-modal="true" aria-label={t('picker.title')} data-testid="dv-canvas-asset-picker" style={overlay} onClick={onCancel}>
       <div style={dialog} onClick={(event) => { event.stopPropagation() }}>
@@ -131,10 +135,8 @@ export function AssetPicker(props: AssetPickerProps): ReactNode {
             </section>
           )}
         <div style={{ flex: 1, minHeight: 0 }}>
-          <AssetsPanel
-            projectId={props.project} session={props.session} client={props.client}
-            pick={{ picked: pickedSet, onToggle: (asset) => { toggle(asset.id) } }}
-          />
+          {pickedRing === null ? null : <style>{pickedRing}</style>}
+          <AssetsPanel projectId={props.project} session={props.session} client={props.client} onOpen={(asset) => { toggle(asset.id) }} />
         </div>
         <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 16px', borderTop: '1px solid var(--dv-line)' }}>
           <button type="button" className="dv-canvas-btn" style={{ ...button, border: '1px solid var(--dv-line-strong)', color: 'var(--dv-text)' }} onClick={onCancel}>{t('picker.cancel')}</button>
