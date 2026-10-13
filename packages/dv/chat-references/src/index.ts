@@ -36,11 +36,21 @@ declare module '@deepseek-ai/dsh-llm' {
 /** A chat attachment as the user message carries it: an image block or a block of any other file. */
 type ChatAttachmentBlock = ImageBlock | FileBlock
 
-/** One chat attachment ready for `asset.import`: a file on this machine, its media type, and its display name. */
-interface ChatAttachmentFile {
+/** The `asset.import` params of one chat attachment: its file on this machine, its media type, and its display name. */
+interface AssetImportParams {
   path: string
   mime: string
   name: string
+}
+
+/**
+ * @param path - the host path the DSH attachment store returned for an attachment.
+ * @param name - the attachment's display name.
+ * @returns the path. Throws when the store keeps the attachment off this machine.
+ */
+function requireHostPath(path: string | undefined, name: string): string {
+  if (path === undefined) throw new Error(`the DSH attachment store keeps ${name} off this machine`)
+  return path
 }
 
 /** `dv:` mention expansion and chat attachment import. */
@@ -178,10 +188,10 @@ export default class DvChatReferences extends Service {
     const importing = (async () => {
       const ids: AssetId[] = []
       for (const block of blocks) {
-        const file = await this.locateAttachmentFile(attachments, block)
+        const params = this.getAssetImportParamsFromDshAttachmentStore(attachments, block)
         const result = await project.run({
-          project: projectId, operation: 'asset.import', inputs: [], params: { path: file.path, mime: file.mime, name: file.name, place: true },
-          actor: 'user', surface: 'chat', session, turn: null, tool_call: null, intent: `import ${file.name}`,
+          project: projectId, operation: 'asset.import', inputs: [], params: { ...params, place: true },
+          actor: 'user', surface: 'chat', session, turn: null, tool_call: null, intent: `import ${params.name}`,
         })
         ids.push(...result.outputs)
       }
@@ -192,23 +202,21 @@ export default class DvChatReferences extends Service {
   }
 
   /**
-   * Locate one chat attachment as a file on this machine for `asset.import`. The attachment service keeps an image
-   * normalized and readable only through `readImage`, so its bytes go into the asset pool first; it keeps any other file
-   * verbatim at a host path, and the file's extension names its media type.
-   * @param attachments - the attachment service.
+   * Get the `asset.import` params of one chat attachment from the DSH attachment store. An image is the store's
+   * normalized file and keeps the media type of its block; any other file is the store's verbatim file, and its file name
+   * extension names its media type, or `application/octet-stream` when the extension names none.
+   * @param attachments - the DSH attachment store.
    * @param block - one attachment block of the user message.
-   * @returns the file, its media type, and its display name.
+   * @returns the host path of the stored file, its media type, and its display name. Throws when the store keeps the
+   * file off this machine.
    */
-  private async locateAttachmentFile(attachments: AttachmentStore, block: ChatAttachmentBlock): Promise<ChatAttachmentFile> {
-    if (block.type === 'file') {
-      const path = attachments.fileHostPath(block.attachment)
-      if (path === undefined) throw new Error(`the attachment service keeps ${block.attachment.name} off this machine`)
-      return { path, mime: mime.lookup(block.attachment.name) || 'application/octet-stream', name: block.attachment.name }
+  private getAssetImportParamsFromDshAttachmentStore(attachments: AttachmentStore, block: ChatAttachmentBlock): AssetImportParams {
+    if (block.type === 'image') {
+      const type = block.attachment.mediaType
+      const name = block.attachment.name ?? `image.${type.slice('image/'.length)}`
+      return { path: requireHostPath(attachments.imageHostPath(block.attachment), name), mime: type, name }
     }
-    const pool = this.ctx.dvAssetPool
-    const stored = await attachments.readImage(block.attachment)
-    const type = block.attachment.mediaType
-    const name = block.attachment.name ?? `image.${type.slice('image/'.length)}`
-    return { path: pool.path(pool.importAsset(stored.data, { mime: type, name }, null)), mime: type, name }
+    const name = block.attachment.name
+    return { path: requireHostPath(attachments.fileHostPath(block.attachment), name), mime: mime.lookup(name) || 'application/octet-stream', name }
   }
 }

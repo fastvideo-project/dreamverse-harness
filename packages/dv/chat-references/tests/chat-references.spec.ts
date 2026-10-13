@@ -15,24 +15,26 @@ import { afterEach, describe, expect, it } from 'vitest'
 import DvChatReferences from '../src/index.ts'
 import { startBase, type BaseFixture } from '../../api/tests/support.ts'
 
-/** An attachment service that accepts every image and reads it back, and keeps other files at their host paths. */
+/** A DSH attachment store that writes every image to a host file and keeps other files at their host paths. */
 class FakeAttachments {
-  readonly saved: SaveImageAttachment[] = []
+  readonly images = new Map<string, string>()
   readonly files = new Map<string, string>()
 
+  /** @param writeFile - writes one host file and returns its path. */
+  constructor(private readonly writeFile: (name: string, content: Buffer) => string) {}
+
   saveImage(input: SaveImageAttachment): Promise<ImageAttachmentRef> {
-    this.saved.push(input)
+    const attachmentId = brandString<ImageAttachmentRef['attachmentId']>(`att-${this.images.size + 1}`)
+    this.images.set(attachmentId, this.writeFile(attachmentId, Buffer.from(input.data)))
     return Promise.resolve({
-      attachmentId: brandString<ImageAttachmentRef['attachmentId']>(`att-${this.saved.length}`), mediaType: input.mediaType,
+      attachmentId, mediaType: input.mediaType,
       bytes: input.data.byteLength, width: 192, height: 112, ...input.name === undefined ? {} : { name: input.name },
     })
   }
 
-  /** Read back a saved image by its reference. */
-  readImage(ref: ImageAttachmentRef): Promise<{ ref: ImageAttachmentRef; data: Uint8Array }> {
-    const saved = this.saved[Number(ref.attachmentId.slice('att-'.length)) - 1]
-    if (saved === undefined) return Promise.reject(new Error(`unknown attachment ${ref.attachmentId}`))
-    return Promise.resolve({ ref, data: saved.data })
+  /** The host path of a saved image. */
+  imageHostPath(ref: ImageAttachmentRef): string | undefined {
+    return this.images.get(ref.attachmentId)
   }
 
   /** Keep a file that already lies on this machine as a verbatim file attachment. */
@@ -76,7 +78,7 @@ afterEach(async () => {
 async function start(): Promise<ChatFixture> {
   const fixture = await startBase({ generation: 'none' })
   cleanups.push(() => fixture.dispose())
-  const attachments = new FakeAttachments()
+  const attachments = new FakeAttachments((name, content) => fixture.writeFile(name, content))
   fixture.context.provide('attachments', attachments)
   const session = { id: 's1' }
   const agent = { id: 's1', session, options: {} }
@@ -202,7 +204,7 @@ describe('chat attachments', () => {
     expect(fixture.project.getState(projectId).components.asset.placed).toEqual(assets)
   })
 
-  it('imports nothing for a file the attachment service keeps off this machine, and the next tool call still runs', async () => {
+  it('imports nothing for a file the DSH attachment store keeps off this machine, and the next tool call still runs', async () => {
     const { fixture, emit, callAs } = await start()
     const created = await callAs('dv_proj_create', { title: 'remote file' })
     if (created.isError) throw new Error(created.error.message)

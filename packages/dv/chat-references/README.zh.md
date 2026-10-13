@@ -31,7 +31,7 @@ kind: "package-reference"
 
 `@dv/ui-composer` 的输入框把选中的项目对象写成 `@[<label>](dv:<kind>/<id>)`。在 `agent/pre-step`，插件在本步的用户消息里找到这些提及，并追加一条 `dv-mentions` 上下文消息，用具体 ID 描述每个提及，内容读自对话所属项目的当前状态。提及 URI：`dv:asset/<AssetId>`、`dv:record/<RecordId>`、`dv:character/<CharacterId>`、`dv:location/<LocationId>`、`dv:style/<StyleId>` 和 `dv:clip/<ClipId>`。
 
-活着的对话里用户输入的消息带附件时，插件以用户身份、在来源 `chat` 上、作为项目当前位置之后的一步为每个附件执行一次带 `place: true` 的 `asset.import`，因此每个附件也放到画布上。图片用 `readImage` 从 `attachments` 读取，并在执行 `asset.import` 之前存入素材池。其他文件从 `attachments.fileHostPath` 返回的主机路径导入，媒体类型由文件名扩展名决定，扩展名对应不到媒体类型时用 `application/octet-stream`；附件服务没有把文件存在本机时，导入在该文件处停止。对话的下一次工具调用会等导入完成（`dvProject.holdToolCalls`）。这样的消息提及素材（`dv:asset/<id>`）时，插件把被提及、`asset.place` 接受（项目历史中任何一处导入的素材，或由当前状态中的记录创建的素材）且还不在画布上的素材，以用户身份、在来源 `chat` 上用一次 `asset.place` 放到画布上。没有绑定项目的对话不导入也不放置。
+活着的对话里用户输入的消息带附件时，插件以用户身份、在来源 `chat` 上、作为项目当前位置之后的一步为每个附件执行一次带 `place: true` 的 `asset.import`，因此每个附件也放到画布上。每次 `asset.import` 都从附件在 `attachments` 中的主机路径读取：图片用 `imageHostPath`，媒体类型取自它的块；其他文件用 `fileHostPath`，媒体类型由文件名扩展名决定，扩展名对应不到媒体类型时用 `application/octet-stream`。`attachments` 没有把附件存在本机时，导入在该附件处停止。对话的下一次工具调用会等导入完成（`dvProject.holdToolCalls`）。这样的消息提及素材（`dv:asset/<id>`）时，插件把被提及、`asset.place` 接受（项目历史中任何一处导入的素材，或由当前状态中的记录创建的素材）且还不在画布上的素材，以用户身份、在来源 `chat` 上用一次 `asset.place` 放到画布上。没有绑定项目的对话不导入也不放置。
 
 提及辅助函数 `parseMentions`、`formatMention`、`describeMention` 供其他使用者导出；`dvChatReferences.expansionMessage(sessionId, messages)` 返回某一步的上下文消息。
 
