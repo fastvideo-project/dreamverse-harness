@@ -1,5 +1,5 @@
 ---
-description: "The DreamVerse chat references: dv: mentions in user messages expand into record and asset IDs, mentioned assets and the images a user attaches in a chat go on the canvas of the session's project, and the images become imported assets."
+description: "The DreamVerse chat references: dv: mentions in user messages expand into record and asset IDs, mentioned assets and the files a user attaches in a chat go on the canvas of the session's project, and the files become imported assets."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package so that what a user points at in a chat message reaches the DreamVerse project. `dvChatReferences` expands the `dv:` mentions of new user messages into a context message with the concrete record and asset IDs, imports the images a user attaches in the chat as assets of the session's project and puts them on its canvas, and puts the assets that a typed message mentions on the canvas.
+Use this package so that what a user points at in a chat message reaches the DreamVerse project. `dvChatReferences` expands the `dv:` mentions of new user messages into a context message with the concrete record and asset IDs, imports the files a user attaches in the chat, of any media type, as assets of the session's project and puts them on its canvas, and puts the assets that a typed message mentions on the canvas.
 
 ## Table of Contents
 
@@ -31,7 +31,7 @@ Mount `@dv/chat-references` after the DreamVerse components; it injects `dvProje
 
 The composer of `@dv/ui-composer` serializes a picked project item as `@[<label>](dv:<kind>/<id>)`. At `agent/pre-step` the plugin finds these mentions in the step's user messages and appends one `dv-mentions` context message that describes each mention with concrete IDs, read from the current state of the session's project. Mention URIs: `dv:asset/<AssetId>`, `dv:record/<RecordId>`, `dv:character/<CharacterId>`, `dv:location/<LocationId>`, `dv:style/<StyleId>`, and `dv:clip/<ClipId>`.
 
-When a user message that the user typed in a live session carries images, the plugin reads them from `attachments` and runs one `asset.import` with `place: true` per image as the user, on the surface `chat`, as a step after the project's current position, so each image also goes on the canvas. The session's next tool call waits until the import finished (`dvProject.holdToolCalls`). When such a message mentions assets (`dv:asset/<id>`), the plugin puts the mentioned assets that `asset.place` accepts (an import of the project anywhere in its history, or an asset that a record in the current state created) and that are not on the canvas yet on it with one `asset.place` by the user, on the surface `chat`. A session without a bound project imports and places nothing.
+When a user message that the user typed in a live session carries attachments, the plugin runs one `asset.import` with `place: true` per attachment as the user, on the surface `chat`, as a step after the project's current position, so each attachment also goes on the canvas. An image is read from `attachments` with `readImage` and stored in the asset pool before its `asset.import`. Any other file is imported from the host path that `attachments.fileHostPath` returns, with the media type that its file name extension names, or `application/octet-stream` when the extension names none; when the attachment service keeps the file off this machine, the import stops at that file. The session's next tool call waits until the import finished (`dvProject.holdToolCalls`). When such a message mentions assets (`dv:asset/<id>`), the plugin puts the mentioned assets that `asset.place` accepts (an import of the project anywhere in its history, or an asset that a record in the current state created) and that are not on the canvas yet on it with one `asset.place` by the user, on the surface `chat`. A session without a bound project imports and places nothing.
 
 The mention helpers `parseMentions`, `formatMention`, and `describeMention` are exported for other consumers; `dvChatReferences.expansionMessage(sessionId, messages)` returns the context message for one step.
 
@@ -40,7 +40,7 @@ The mention helpers `parseMentions`, `formatMention`, and `describeMention` are 
 
 | File | Role |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `DvChatReferences`: the `agent/pre-step` listener that appends the `dv-mentions` message, the project a mention resolves against (the session's bound project, else the newest project that produced a mentioned asset, else the newest project), and the `session/event` listener that imports chat images and places mentioned assets |
+| [`src/index.ts`](src/index.ts) | `DvChatReferences`: the `agent/pre-step` listener that appends the `dv-mentions` message, the project a mention resolves against (the session's bound project, else the newest project that produced a mentioned asset, else the newest project), and the `session/event` listener that imports chat attachments and places mentioned assets |
 | [`src/expand.ts`](src/expand.ts) | `parseMentions`, `formatMention`, and `describeMention`: each mention URI described with concrete IDs and the record that produced it |
 
 A mention of a clip names the clip by its `ClipId`, which is unique in the project; a placeholder clip names the render record it waits for. A mention of a character, location, or style names its latest version in the current state and tells the model to pass that version as an input.
@@ -60,7 +60,7 @@ A mention of a clip names the clip by its `ClipId`, which is unique in the proje
 
 #### What the model sees
 
-When a new user message holds `@[<label>](dv:<kind>/<id>)` mentions, a context message of source `dv-mentions` follows it: "The user referenced these project items:" and one line per mention with the asset, record, character, location, style, or clip and the record that produced it (tool, status, prompt, duration, inputs, outputs). An imported chat image adds no text of its own; it appears as an asset in the project summary of `@dv/project`.
+When a new user message holds `@[<label>](dv:<kind>/<id>)` mentions, a context message of source `dv-mentions` follows it: "The user referenced these project items:" and one line per mention with the asset, record, character, location, style, or clip and the record that produced it (tool, status, prompt, duration, inputs, outputs). An imported chat attachment adds no text of its own; it appears as an asset in the project summary of `@dv/project`.
 
 #### Token effect
 
@@ -74,4 +74,4 @@ The message is appended after the user's message, so it leaves the cached prefix
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- Chat images come from `session/event`, which does not wait for its listeners; the import holds the session's next tool call, but a reply that reads the project before that call does not see the new assets.
+- Chat attachments come from `session/event`, which does not wait for its listeners; the import holds the session's next tool call, but a reply that reads the project before that call does not see the new assets.

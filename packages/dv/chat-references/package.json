@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The DreamVerse chat references: dv: mentions in user messages expand into record and asset IDs, and the images a user attaches in a chat become imported assets of the session's project.",
+  "description": "The DreamVerse chat references: dv: mentions in user messages expand into record and asset IDs, and the files a user attaches in a chat become imported assets of the session's project.",
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json"
@@ -17,7 +17,8 @@
     "@dv/asset-pool": "workspace:*",
     "@dv/project": "workspace:*",
     "@dv/story-bible": "workspace:*",
-    "@dv/timeline": "workspace:*"
+    "@dv/timeline": "workspace:*",
+    "mime-types": "^3.0.2"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~"
@@ -29,6 +30,7 @@
     "@dv/ffmpeg": "workspace:*",
     "@dv/shot-plan": "workspace:*",
     "@dv/shot-render": "workspace:*",
+    "@types/mime-types": "^3.0.1",
     "@types/node": "^22.20.0"
   }
 }

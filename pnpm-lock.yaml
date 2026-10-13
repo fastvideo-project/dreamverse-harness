@@ -7884,6 +7884,9 @@ importers:
       '@dv/timeline':
         specifier: workspace:*
         version: link:../timeline
+      mime-types:
+        specifier: ^3.0.2
+        version: 3.0.2
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:~
@@ -7903,6 +7906,9 @@ importers:
       '@dv/shot-render':
         specifier: workspace:*
         version: link:../shot-render
+      '@types/mime-types':
+        specifier: ^3.0.1
+        version: 3.0.1
       '@types/node':
         specifier: ^22.20.0
         version: 22.20.0

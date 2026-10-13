@@ -1,11 +1,12 @@
 /**
  * `dvChatReferences` over the real Project service and components: `dv:` mentions of a step's user messages become a
- * `dv-mentions` context message read from the project's current state, chat images become `asset.import` records of
- * the session's project that put them on its canvas, mentioned assets go on the canvas, and disposal removes both
- * listeners.
+ * `dv-mentions` context message read from the project's current state, chat attachments of any media type become
+ * `asset.import` records of the session's project that put them on its canvas, mentioned assets go on the canvas, and
+ * disposal removes both listeners.
  */
 import { agentEvents } from '@deepseek-ai/dsh-agent'
-import type { ImageAttachmentRef, SaveImageAttachment } from '@deepseek-ai/dsh-attachment'
+import { basename } from 'node:path'
+import type { FileAttachmentRef, ImageAttachmentRef, SaveImageAttachment } from '@deepseek-ai/dsh-attachment'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { createUserMessage, ToolCallId, type UserMessage } from '@deepseek-ai/dsh-llm'
 import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
@@ -14,9 +15,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 import DvChatReferences from '../src/index.ts'
 import { startBase, type BaseFixture } from '../../api/tests/support.ts'
 
-/** An attachment service that accepts every image and reads it back. */
+/** An attachment service that accepts every image and reads it back, and keeps other files at their host paths. */
 class FakeAttachments {
   readonly saved: SaveImageAttachment[] = []
+  readonly files = new Map<string, string>()
 
   saveImage(input: SaveImageAttachment): Promise<ImageAttachmentRef> {
     this.saved.push(input)
@@ -31,6 +33,18 @@ class FakeAttachments {
     const saved = this.saved[Number(ref.attachmentId.slice('att-'.length)) - 1]
     if (saved === undefined) return Promise.reject(new Error(`unknown attachment ${ref.attachmentId}`))
     return Promise.resolve({ ref, data: saved.data })
+  }
+
+  /** Keep a file that already lies on this machine as a verbatim file attachment. */
+  saveFile(path: string, bytes: number): FileAttachmentRef {
+    const attachmentId = brandString<FileAttachmentRef['attachmentId']>(`file-${this.files.size + 1}`)
+    this.files.set(attachmentId, path)
+    return { attachmentId, name: basename(path), bytes }
+  }
+
+  /** The host path of a kept file. */
+  fileHostPath(ref: FileAttachmentRef): string | undefined {
+    return this.files.get(ref.attachmentId)
   }
 }
 
@@ -140,7 +154,7 @@ describe('mention expansion', () => {
   })
 })
 
-describe('chat images', () => {
+describe('chat attachments', () => {
   it('imports the images a user attached in a bound chat as project assets and puts them on the canvas', async () => {
     const { fixture, attachments, emit, callAs } = await start()
     const image = await attachments.saveImage({ data: Buffer.from('chat-image'), mediaType: 'image/png', name: 'cat.png' })
@@ -163,6 +177,41 @@ describe('chat images', () => {
     const asset = imported[0]?.outputs[0] as AssetId
     expect(fixture.assets.read(asset).toString()).toBe('chat-image')
     expect(fixture.project.getState(projectId).components.asset.placed).toEqual([asset])
+  })
+
+  it('imports the other files a user attached from their host paths, with the media type their extension names', async () => {
+    const { fixture, attachments, emit, callAs } = await start()
+    const created = await callAs('dv_proj_create', { title: 'files' })
+    if (created.isError) throw new Error(created.error.message)
+    const projectId = (created.value as { project_id: ProjectId }).project_id
+    const contents = { 'clip.mp4': 'chat-video', 'notes.txt': 'chat-notes', 'blob': 'chat-blob' }
+    const files = Object.entries(contents).map(([name, content]) => attachments.saveFile(fixture.writeFile(name, content), content.length))
+    emit('user/message', { source: { kind: 'user' }, content: files.map(attachment => ({ type: 'file', attachment })) })
+    // The session's next tool call waits for the import.
+    const timeline = await callAs('dv_timeline_create', { reason: 'order', assets: [] })
+    if (timeline.isError) throw new Error(timeline.error.message)
+    // The history lists the newest record first; reverse it into import order.
+    const imported = fixture.project.listHistory({ project: projectId, actor: 'user', operation: 'asset.import' }).map(entry => entry.record).reverse()
+    expect(imported.map(record => record.params)).toEqual([
+      expect.objectContaining({ name: 'clip.mp4', mime: 'video/mp4', place: true }),
+      expect.objectContaining({ name: 'notes.txt', mime: 'text/plain', place: true }),
+      expect.objectContaining({ name: 'blob', mime: 'application/octet-stream', place: true }),
+    ])
+    const assets = imported.flatMap(record => record.outputs as AssetId[])
+    expect(assets.map(asset => fixture.assets.read(asset).toString())).toEqual(Object.values(contents))
+    expect(fixture.project.getState(projectId).components.asset.placed).toEqual(assets)
+  })
+
+  it('imports nothing for a file the attachment service keeps off this machine, and the next tool call still runs', async () => {
+    const { fixture, emit, callAs } = await start()
+    const created = await callAs('dv_proj_create', { title: 'remote file' })
+    if (created.isError) throw new Error(created.error.message)
+    const projectId = (created.value as { project_id: ProjectId }).project_id
+    const remote: FileAttachmentRef = { attachmentId: brandString<FileAttachmentRef['attachmentId']>('remote'), name: 'clip.mp4', bytes: 1 }
+    emit('user/message', { source: { kind: 'user' }, content: [{ type: 'file', attachment: remote }] })
+    const timeline = await callAs('dv_timeline_create', { reason: 'order', assets: [] })
+    expect(timeline.isError).toBe(false)
+    expect(fixture.project.listHistory({ project: projectId, operation: 'asset.import' })).toEqual([])
   })
 
   it('puts the assets a user message mentions on the canvas once, with one asset.place by the user in the chat', async () => {

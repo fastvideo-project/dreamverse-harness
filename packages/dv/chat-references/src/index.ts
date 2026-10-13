@@ -1,28 +1,28 @@
 /**
  * The DreamVerse chat references as the `dvChatReferences` Cordis service: what a user points at in a chat message
  * reaches the project. The `dv:` mentions of new user messages expand at `agent/pre-step` into a context message with
- * the concrete record and asset IDs, read from the current state of the session's project; the images a user attaches
- * to a chat message are imported into the session's project as assets and put on its canvas, and the `dv:asset`
- * mentions a user sends put those assets on the canvas.
+ * the concrete record and asset IDs, read from the current state of the session's project; the files a user attaches
+ * to a chat message, of any media type, are imported into the session's project as assets and put on its canvas, and the
+ * `dv:asset` mentions a user sends put those assets on the canvas.
  *
  * @module @dv/chat-references
  */
 import { Service, type Context } from '@deepseek-ai/cordis'
-import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
-import type {} from '@deepseek-ai/dsh-attachment'
+import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { PreStepDecision } from '@deepseek-ai/dsh-agent'
-import { createUserMessage, type ContextFormed, type UserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, type ContextFormed, type FileBlock, type ImageBlock, type UserMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, SessionEventMap } from '@deepseek-ai/dsh-session'
 import { importedAssets, placeable } from '@dv/asset-pool'
 import type { AssetId, ProjectId, SessionId } from '@dv/project'
+import mime from 'mime-types'
 import { expansionBlock, mentionedAssetIds, type ExpansionSources } from './expand.ts'
 
 export { describeMention, formatMention, parseMentions, type ExpansionSources, type Mention } from './expand.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
-    /** The chat references: `dv:` mention expansion and chat image import. */
+    /** The chat references: `dv:` mention expansion and chat attachment import. */
     dvChatReferences: DvChatReferences
   }
 }
@@ -33,7 +33,17 @@ declare module '@deepseek-ai/dsh-llm' {
   }
 }
 
-/** `dv:` mention expansion and chat image import. */
+/** A chat attachment as the user message carries it: an image block or a block of any other file. */
+type ChatAttachmentBlock = ImageBlock | FileBlock
+
+/** One chat attachment ready for `asset.import`: a file on this machine, its media type, and its display name. */
+interface ChatAttachmentFile {
+  path: string
+  mime: string
+  name: string
+}
+
+/** `dv:` mention expansion and chat attachment import. */
 export default class DvChatReferences extends Service {
   static inject = ['dvProject', 'dvAssetPool']
 
@@ -97,7 +107,7 @@ export default class DvChatReferences extends Service {
     }
   }
 
-  /** Import the images of the messages a user typed in a live session. */
+  /** Import the attachments of the messages a user typed in a live session. */
   private onSessionEvent(session: Session, event: SessionEvent): void {
     if (event.type !== 'user/message' || event.data.source.kind !== 'user') return
     const agents = this.ctx.get('agents')
@@ -105,7 +115,7 @@ export default class DvChatReferences extends Service {
       const agent = agents.get(session.id)
       if (agent === undefined || agent.session !== session) return
     }
-    this.recordChatImages(session.id, event.data)
+    this.recordChatAttachments(session.id, event.data)
     this.placeMentionedAssets(brandString<SessionId>(session.id), event.data)
   }
 
@@ -138,49 +148,67 @@ export default class DvChatReferences extends Service {
   }
 
   /**
-   * Import the images a user attached to a chat message as project assets, so the asset pool lists them.
+   * Import the files a user attached to a chat message as project assets, so the asset pool lists them.
    * @param sessionId - the chat session.
    * @param message - the appended user message, which the user typed.
    */
-  private recordChatImages(sessionId: string, message: SessionEventMap['user/message']): void {
-    const refs = message.content.flatMap(block => block.type === 'image' ? [block.attachment] : [])
-    if (refs.length === 0) return
-    this.importChatImages(brandString<SessionId>(sessionId), refs).catch((error: unknown) => {
+  private recordChatAttachments(sessionId: string, message: SessionEventMap['user/message']): void {
+    const blocks = message.content.flatMap(block => block.type === 'image' || block.type === 'file' ? [block] : [])
+    if (blocks.length === 0) return
+    this.importChatAttachments(brandString<SessionId>(sessionId), blocks).catch((error: unknown) => {
       const reason = error instanceof Error ? error.message : String(error)
-      this.ctx.logger('dvChatReferences').warn('could not import chat images of session %s as assets: %s', sessionId, reason)
+      this.ctx.logger('dvChatReferences').warn('could not import chat attachments of session %s as assets: %s', sessionId, reason)
     })
   }
 
   /**
-   * Import chat images as assets of the session's project and put them on its canvas: one `asset.import` with `place`
-   * per image by the user, in the chat, after the project's current position. The session's next tool call waits until the import finished
-   * (`dvProject.holdToolCalls`). A session without a project, or a process without an attachment service, imports
-   * nothing.
+   * Import chat attachments of any media type as assets of the session's project and put them on its canvas: one
+   * `asset.import` with `place` per attachment by the user, in the chat, after the project's current position. The
+   * session's next tool call waits until the import finished (`dvProject.holdToolCalls`). A session without a project,
+   * or a process without an attachment service, imports nothing.
    * @param session - the chat session.
-   * @param refs - the image attachments of the user message.
+   * @param blocks - the attachment blocks of the user message.
    * @returns the imported asset IDs.
    */
-  private importChatImages(session: SessionId, refs: readonly ImageAttachmentRef[]): Promise<AssetId[]> {
+  private importChatAttachments(session: SessionId, blocks: readonly ChatAttachmentBlock[]): Promise<AssetId[]> {
     const project = this.ctx.dvProject
-    const pool = this.ctx.dvAssetPool
     const projectId = project.sessionProject(session)
     const attachments = this.ctx.get('attachments')
     if (projectId === null || attachments === undefined) return Promise.resolve([])
     const importing = (async () => {
       const ids: AssetId[] = []
-      for (const ref of refs) {
-        const stored = await attachments.readImage(ref)
-        const name = ref.name ?? `image.${ref.mediaType.slice('image/'.length)}`
-        const asset = pool.importAsset(stored.data, { mime: ref.mediaType, name }, null)
+      for (const block of blocks) {
+        const file = await this.attachmentFile(attachments, block)
         const result = await project.run({
-          project: projectId, operation: 'asset.import', inputs: [], params: { path: pool.path(asset), mime: ref.mediaType, name, place: true },
-          actor: 'user', surface: 'chat', session, turn: null, tool_call: null, intent: `import ${name}`,
+          project: projectId, operation: 'asset.import', inputs: [], params: { path: file.path, mime: file.mime, name: file.name, place: true },
+          actor: 'user', surface: 'chat', session, turn: null, tool_call: null, intent: `import ${file.name}`,
         })
-        ids.push(result.outputs[0] ?? asset)
+        ids.push(...result.outputs)
       }
       return ids
     })()
     project.holdToolCalls(session, importing)
     return importing
+  }
+
+  /**
+   * Locate one chat attachment as a file on this machine for `asset.import`. The attachment service keeps an image
+   * normalized and readable only through `readImage`, so its bytes go into the asset pool first; it keeps any other file
+   * verbatim at a host path, and the file's extension names its media type.
+   * @param attachments - the attachment service.
+   * @param block - one attachment block of the user message.
+   * @returns the file, its media type, and its display name.
+   */
+  private async attachmentFile(attachments: AttachmentStore, block: ChatAttachmentBlock): Promise<ChatAttachmentFile> {
+    if (block.type === 'file') {
+      const path = attachments.fileHostPath(block.attachment)
+      if (path === undefined) throw new Error(`the attachment service keeps ${block.attachment.name} off this machine`)
+      return { path, mime: mime.lookup(block.attachment.name) || 'application/octet-stream', name: block.attachment.name }
+    }
+    const pool = this.ctx.dvAssetPool
+    const stored = await attachments.readImage(block.attachment)
+    const type = block.attachment.mediaType
+    const name = block.attachment.name ?? `image.${type.slice('image/'.length)}`
+    return { path: pool.path(pool.importAsset(stored.data, { mime: type, name }, null)), mime: type, name }
   }
 }
