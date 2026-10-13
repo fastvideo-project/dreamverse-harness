@@ -2,7 +2,7 @@
  * Company plugin of DreamVerse for models served by local FastVideo streaming_v2 servers. It registers each model that
  * its `models` config names into `ctx.dvModels`, with the modes the config gives a server for; a model or mode the
  * config leaves out is not registered. Each mode of a model is served by its own server: the streaming_v2 client of
- * `@dreamverse/generation-client` sends each render as one `POST /v1/streamv2/generate`, with the reference images
+ * `@dv/fastvideo-generation-client` sends each render as one `POST /v1/streamv2/generate`, with the reference images
  * first and the first frame after them. While the DSH skill registry is mounted, the plugin registers the prompt skill
  * of every registered model and mode.
  *
@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-skill'
 import z from '@deepseek-ai/schemastery'
-import { DreamverseGeneration } from '@dreamverse/generation-client'
+import { DvFastvideoGeneration } from '@dv/fastvideo-generation-client'
 import type { ModeDeclaration, ModeId, ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent } from '@dv/models'
 
 /** One mode of one model: the streaming_v2 server that renders it and its GPU rate. */
@@ -103,7 +103,7 @@ function checkConfig(config: Config): void {
 
 /**
  * A catalog entry for one configured model: one streaming_v2 client per configured mode.
- * @param ctx - the plugin context; each client lives in an isolated `dreamverseGeneration` scope.
+ * @param ctx - the plugin context; each client lives in an isolated `dvFastvideoGeneration` scope.
  * @param id - the model name.
  * @param modes - the configured modes and their servers.
  * @returns the entry.
@@ -112,11 +112,11 @@ function modelEntry(ctx: Context, id: string, modes: Record<string, ModeServer>)
   const served = SERVED[id]
   /* v8 ignore next -- checkConfig refuses unknown models before any entry is built. */
   if (served === undefined) throw new Error(`dv-fastvideo serves no model "${id}".`)
-  const clients = new Map<string, DreamverseGeneration>()
+  const clients = new Map<string, DvFastvideoGeneration>()
   for (const [mode, server] of Object.entries(modes)) {
-    clients.set(mode, new DreamverseGeneration(ctx.isolate('dreamverseGeneration'), { baseUrl: server.baseUrl }))
+    clients.set(mode, new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), { baseUrl: server.baseUrl }))
   }
-  const clientOf = (mode: ModeId): DreamverseGeneration => {
+  const clientOf = (mode: ModeId): DvFastvideoGeneration => {
     const found = clients.get(mode)
     if (found === undefined) throw new Error(`Model ${id} is not served in mode ${mode}.`)
     return found

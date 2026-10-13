@@ -17,4 +17,4 @@ This page is a pointer. The design rationale behind the [DreamVerse packages](vi
 
 ## Where the implementation lives
 
-The packages under `packages/dv/` and [`packages/video-harness/`](../../packages/video-harness/README.md) implement the design, and the [DreamVerse packages page](video-harness.md) describes them; the [DreamVerse page](dreamverse.md) lists which DreamVerse packages the harness reuses and which it supersedes.
+The packages under `packages/dv/` and [`packages/video-harness/`](../../packages/video-harness/README.md) implement the design, and the [DreamVerse packages page](video-harness.md) describes them.

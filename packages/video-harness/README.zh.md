@@ -33,7 +33,6 @@ kind: "package-group"
 
 - [DreamVerse 各包](../../docs/subsystems/video-harness.zh.md) — 分层、操作记录，以及视图和智能体遵守的规则。
 - [`@dv/api`](../dv/api/README.zh.md) — 界面插件读取状态所用的浏览器 API。
-- [`dreamverse/`](../dreamverse/README.zh.md) — 模型工具复用的生成客户端和片段规则。
 
 <a id="dev-note"></a>
 ## 开发备注

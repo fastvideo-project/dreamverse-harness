@@ -17,4 +17,4 @@
 
 ## 实现位置
 
-`packages/dv/` 和 [`packages/video-harness/`](../../packages/video-harness/README.zh.md) 下的包实现了该设计，[DreamVerse 各包页面](video-harness.zh.md)描述这些包；[DreamVerse 页](dreamverse.zh.md)列出了 harness 复用与取代的 DreamVerse 包。
+`packages/dv/` 和 [`packages/video-harness/`](../../packages/video-harness/README.zh.md) 下的包实现了该设计，[DreamVerse 各包页面](video-harness.zh.md)描述这些包。

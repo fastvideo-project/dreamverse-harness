@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@deepseek-ai/dsh-skill": "workspace:*",
-    "@dreamverse/generation-client": "workspace:*",
+    "@dv/fastvideo-generation-client": "workspace:*",
     "@dv/models": "workspace:*"
   },
   "peerDependencies": {

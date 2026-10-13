@@ -33,7 +33,6 @@ The [DreamVerse packages page](../../docs/subsystems/video-harness.md) explains 
 
 - [DreamVerse packages](../../docs/subsystems/video-harness.md) — the layers, the operation record, and the rules views and the agent follow.
 - [`@dv/api`](../dv/api/README.md) — the browser API that the interface plugins read state from.
-- [`dreamverse/`](../dreamverse/README.md) — the generation client and segment rules that the model-backed tools reuse.
 
 <a id="dev-note"></a>
 ## Dev Note

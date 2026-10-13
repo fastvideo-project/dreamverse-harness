@@ -1,6 +1,0 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
-#   pnpm run verify-translation-pairing --write packages/dreamverse/user-actions/README.md
-README.md: fc0f0c111c59d0d07ebed2a087fa379ff9a4476b
-README.zh.md: e6d0b93f52d079f10852543e756cda53c05577c4

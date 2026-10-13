@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/video-harness/README.md
-README.md: 1968fd09924a0f65347f2056d79c5916e3ca57ca
-README.zh.md: 36a972a376ba9de7699bfbf7af0c3be9ff67f3ec
+README.md: 5c41a3651d95f463157521b50fdc5b9af0dd7550
+README.zh.md: f1c19aaf13b2e29e33bcf994657d28444edfe6e8

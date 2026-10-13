@@ -154,7 +154,7 @@ describe('dv-fastvideo', () => {
     })
     expect(await entry.facts('text')).toMatchObject({ modelId: 'fake-t2va', maxReferenceImages: 0, imageLabels: [] })
     // The streaming_v2 clients stay private to the plugin.
-    expect(ctx.get('dreamverseGeneration')).toBeUndefined()
+    expect(ctx.get('dvFastvideoGeneration')).toBeUndefined()
   })
 
   it('sends each mode to its own server: references, then the first frame, or no image', async () => {

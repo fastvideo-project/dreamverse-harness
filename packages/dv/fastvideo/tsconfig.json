@@ -15,7 +15,7 @@
       "path": "../../../vendor/schemastery"
     },
     {
-      "path": "../../dreamverse/generation-client"
+      "path": "../fastvideo-generation-client"
     },
     {
       "path": "../../skill/skill"

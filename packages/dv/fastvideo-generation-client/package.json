@@ -1,0 +1,20 @@
+{
+  "name": "@dv/fastvideo-generation-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The FastVideo streaming_v2 client of DreamVerse: reads the served model's facts and streams one generated segment per request.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/schemastery": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/schemastery": "workspace:~",
+    "@types/node": "^22.20.0"
+  }
+}

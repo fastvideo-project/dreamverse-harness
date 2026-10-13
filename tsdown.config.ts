@@ -23,8 +23,8 @@ export default defineConfig(({ env }) => {
       exclude: [
         // tsdown's default exclusions.
         '**/node_modules/**', '**/dist/**', '**/test?(s)/**', '**/t?(e)mp/**',
-        // DreamVerse packages load from source through the dsh launcher's tsx hook and have no build step.
-        'packages/dreamverse/**', 'packages/bundle/dreamverse/**', 'packages/bundle/dreamverse-multiverse/**',
+        // The FastVideo generation client loads from source through the dsh launcher's tsx hook and has no build step.
+        'packages/dv/fastvideo-generation-client/**',
         // Video harness host packages load from source the same way; ui-kit is bundled into the two client plugins.
         // One pattern per package: the matcher does not expand braces.
         'packages/video-harness/oplog/**', 'packages/video-harness/runtime/**',
