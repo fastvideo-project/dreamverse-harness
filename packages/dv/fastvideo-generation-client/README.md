@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to reach a FastVideo generation backend. It reads the served model's facts (durations, frame sizes, reference image limit) and streams one segment per request: the last frame, then the fragmented MP4 in chunks, then the timings. Backend errors become typed errors, and aborting a request cancels it at once. The backend keeps no state between requests, so callers send every conditioning image with each request.
+Use this package to reach a FastVideo generation backend. It reads the served model's facts (durations, frame sizes, reference limits per media type) and streams one segment per request: the last frame, then the fragmented MP4 in chunks, then the timings. Backend errors become typed errors, and aborting a request cancels it at once. The backend keeps no state between requests, so callers send every reference with each request.
 
 ## Table of Contents
 
@@ -42,7 +42,7 @@ Construct one client per backend with the backend's base URL. `@dv/fastvideo` bu
 
 ### Service
 
-- `model()` reads `GET /v1/streamv2/capabilities` and caches the first successful result. It adds aspect ratios and resolutions from the `frame_sizes` keys and the labels `Picture 1` to `Picture N` for N = `max_reference_images`.
+- `model()` reads `GET /v1/streamv2/capabilities` and caches the first successful result. It adds aspect ratios and resolutions from the `frame_sizes` keys and the labels `Picture 1` to `Picture N` for N = the `image` entry's `max_count`.
 - `generateSegment(request)` sends one `POST /v1/streamv2/generate` and yields `last_frame`, `video_start`, `chunk`, and `done` outputs in arrival order. HTTP 400 and an `error` event reject with `GenerationSegmentError(message, errorType)`, where `errorType` is the backend's error code. A stream that ends before `done` rejects with `Error`. Leaving the iteration or aborting `request.signal` cancels the HTTP request; an abort rejects with `signal.reason`.
 
 ### Backend API
@@ -55,16 +55,21 @@ FastVideo owns the API; the client uses two routes. `GET /v1/streamv2/capabiliti
   "name": "H3 Ref2AV",
   "min_segment_duration_sec": 5,
   "max_segment_duration_sec": 15,
-  "max_reference_images": 9,
+  "max_references": 12,
+  "reference_media_types": {
+    "image": {"max_count": 9},
+    "video": {"max_count": 3},
+    "audio": {"max_count": 3}
+  },
   "max_reference_aspect_ratio": 4.0,
   "frame_sizes": {"16:9": {"720p": [1344, 768]}},
   "num_frames_by_duration_sec": {"5": 124, "6": 158, "15": 362}
 }
 ```
 
-`max_reference_images` counts every request image, including a continued segment's first frame. `num_frames_by_duration_sec` holds every whole duration from the minimum to the maximum.
+`max_references` counts every reference of a request across media types. `reference_media_types` lists each accepted media type with its own `max_count`; a request image that continues a segment counts as an `image`. `num_frames_by_duration_sec` holds every whole duration from the minimum to the maximum.
 
-`POST /v1/streamv2/generate` takes `{"prompt", "reference_images", "width", "height", "num_frames", "seed"?, "return_last_frame"}` and answers a `text/event-stream` of `event: <name>` records with one-line JSON `data:`, in this order:
+`POST /v1/streamv2/generate` takes `{"prompt", "references", "width", "height", "num_frames", "seed"?, "return_last_frame"}` and answers a `text/event-stream` of `event: <name>` records with one-line JSON `data:`, in this order:
 
 | Event | Data |
 | --- | --- |
@@ -74,7 +79,7 @@ FastVideo owns the API; the client uses two routes. `GET /v1/streamv2/capabiliti
 | `done` | `{"timings": {"generation_ms": float, "e2e_latency_ms": float}}`; the response ends |
 | `error` | `{"code": "invalid_request" \| "generation_failed", "message": str}`; the response ends |
 
-A request problem found before generation starts answers HTTP 400 `{"code": "invalid_request", "message": str}`. The backend serializes generation across concurrent requests and finishes a segment whose generation has started, even after the client cancels.
+`references` is an ordered list of `{"media_type": str, "data": <base64 bytes>}`, built from `SegmentRequest.references`; the client does not check the media types, and the backend decodes each reference by its `media_type`. A request problem found before generation starts answers HTTP 400 `{"code": "invalid_request", "message": str}`. The backend serializes generation across concurrent requests and finishes a segment whose generation has started, even after the client cancels.
 
 -----
 
@@ -90,7 +95,7 @@ The service uses `fetch` for every call. `generateSegment` parses the server-sen
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | The `dvFastvideoGeneration` service: model facts and the segment request |
 | [`src/generation-stream.ts`](src/generation-stream.ts) | The request body and the event-stream parser |
-| [`src/types.ts`](src/types.ts) | Model facts, the segment request, and the segment outputs |
+| [`src/types.ts`](src/types.ts) | Model facts, the segment request with its typed references, and the segment outputs |
 | [`src/errors.ts`](src/errors.ts) | The segment error |
 
 The `tests/` directory runs the client against a local HTTP server that plays the backend.
@@ -113,7 +118,7 @@ The `tests/` directory runs the client against a local HTTP server that plays th
 
 #### What the model sees
 
-The video model receives the request body that `generateSegment` builds: `prompt` unchanged, `reference_images` as base64 image bytes in the caller's order, `width`, `height`, `num_frames`, `seed` only when the caller sets one, and `return_last_frame`. The prompt names the images `Picture 1`, `Picture 2`, and so on in list order.
+The video model receives the request body that `generateSegment` builds: `prompt` unchanged, `references` as `{media_type, data}` entries with base64 bytes in the caller's order, `width`, `height`, `num_frames`, `seed` only when the caller sets one, and `return_last_frame`. The model numbers the references per media type in list order, and the caller's prompt names them with the model's numbering, such as `Picture 1` for the first image.
 
 #### Token effect
 

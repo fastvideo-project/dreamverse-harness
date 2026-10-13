@@ -31,7 +31,8 @@ interface CapabilitiesBody {
   model_id: string
   min_segment_duration_sec: number
   max_segment_duration_sec: number
-  max_reference_images: number
+  max_references: number
+  reference_media_types: Record<string, { max_count: number }>
   frame_sizes: Record<string, Record<string, [number, number]>>
   num_frames_by_duration_sec: Record<string, number>
 }
@@ -57,7 +58,7 @@ export class DvFastvideoGeneration extends Service {
 
   /**
    * Read the served model's facts; the first successful response is reused afterwards. The capabilities supply the
-   * model-specific values. The client adds `Picture 1` to `Picture N` labels for the `max_reference_images` request
+   * model-specific values. The client adds `Picture 1` to `Picture N` labels for the image `max_count` request
    * images.
    * @returns the model facts.
    * @throws Error naming the route for a status other than 200, or the `fetch` error when the backend is unreachable.
@@ -66,16 +67,20 @@ export class DvFastvideoGeneration extends Service {
     if (this.modelFacts !== null) return this.modelFacts
     const route = '/v1/streamv2/capabilities'
     const body = await readBody<CapabilitiesBody>(await fetch(new URL(route, this.baseUrl)), `GET ${route}`)
+    const referenceMediaTypes = Object.fromEntries(Object.entries(body.reference_media_types)
+      .map(([mediaType, limit]) => [mediaType, { maxCount: limit.max_count }]))
     this.modelFacts = {
       modelId: body.model_id,
       aspectRatios: Object.keys(body.frame_sizes),
       resolutions: [...new Set(Object.values(body.frame_sizes).flatMap(sizes => Object.keys(sizes)))],
       minSegmentDurationSec: body.min_segment_duration_sec,
       maxSegmentDurationSec: body.max_segment_duration_sec,
-      maxReferenceImages: body.max_reference_images,
+      maxReferences: body.max_references,
+      referenceMediaTypes,
       frameSizes: body.frame_sizes,
       numFramesByDurationSec: body.num_frames_by_duration_sec,
-      referenceLabels: Array.from({ length: body.max_reference_images }, (_value, index) => `Picture ${index + 1}`),
+      referenceLabels: Array.from(
+        { length: referenceMediaTypes['image']?.maxCount ?? 0 }, (_value, index) => `Picture ${index + 1}`),
     }
     return this.modelFacts
   }

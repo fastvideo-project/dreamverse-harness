@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包访问 FastVideo 生成后端。它读取所服务模型的事实（时长、帧尺寸、参考图上限），并为每个请求流式传输一个片段：先是末帧，然后是分块的 fragmented MP4，最后是耗时。后端错误变为带类型的错误，中止请求会立即取消它。后端在请求之间不保留状态，因此调用方每次请求都要发送所有条件图片。
+使用本包访问 FastVideo 生成后端。它读取所服务模型的事实（时长、帧尺寸、每种媒体类型的参考上限），并为每个请求流式传输一个片段：先是末帧，然后是分块的 fragmented MP4，最后是耗时。后端错误变为带类型的错误，中止请求会立即取消它。后端在请求之间不保留状态，因此调用方每次请求都要发送所有参考。
 
 ## 目录
 
@@ -42,7 +42,7 @@ kind: "package-reference"
 
 ### 服务
 
-- `model()` 读取 `GET /v1/streamv2/capabilities` 并缓存第一次成功的结果。它补充取自 `frame_sizes` 键的宽高比与分辨率，以及 N = `max_reference_images` 时的标签 `Picture 1` 到 `Picture N`。
+- `model()` 读取 `GET /v1/streamv2/capabilities` 并缓存第一次成功的结果。它补充取自 `frame_sizes` 键的宽高比与分辨率，以及 N = `image` 条目的 `max_count` 时的标签 `Picture 1` 到 `Picture N`。
 - `generateSegment(request)` 发送一个 `POST /v1/streamv2/generate`，并按到达顺序产出 `last_frame`、`video_start`、`chunk` 和 `done` 输出。HTTP 400 和 `error` 事件以 `GenerationSegmentError(message, errorType)` 拒绝，其中 `errorType` 是后端的错误码。在 `done` 之前结束的流以 `Error` 拒绝。离开迭代或中止 `request.signal` 会取消 HTTP 请求；中止以 `signal.reason` 拒绝。
 
 ### 后端 API
@@ -55,16 +55,21 @@ API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/streamv2
   "name": "H3 Ref2AV",
   "min_segment_duration_sec": 5,
   "max_segment_duration_sec": 15,
-  "max_reference_images": 9,
+  "max_references": 12,
+  "reference_media_types": {
+    "image": {"max_count": 9},
+    "video": {"max_count": 3},
+    "audio": {"max_count": 3}
+  },
   "max_reference_aspect_ratio": 4.0,
   "frame_sizes": {"16:9": {"720p": [1344, 768]}},
   "num_frames_by_duration_sec": {"5": 124, "6": 158, "15": 362}
 }
 ```
 
-`max_reference_images` 计入每张请求图片，包括延续片段的首帧。`num_frames_by_duration_sec` 包含从最小值到最大值的每个整数时长。
+`max_references` 计入一个请求中所有媒体类型的每个参考。`reference_media_types` 列出每种接受的媒体类型及其各自的 `max_count`；延续片段的请求图片按 `image` 计数。`num_frames_by_duration_sec` 包含从最小值到最大值的每个整数时长。
 
-`POST /v1/streamv2/generate` 接受 `{"prompt", "reference_images", "width", "height", "num_frames", "seed"?, "return_last_frame"}`，并以 `text/event-stream` 响应，其中每条 `event: <name>` 记录带一行 JSON `data:`，顺序如下：
+`POST /v1/streamv2/generate` 接受 `{"prompt", "references", "width", "height", "num_frames", "seed"?, "return_last_frame"}`，并以 `text/event-stream` 响应，其中每条 `event: <name>` 记录带一行 JSON `data:`，顺序如下：
 
 | 事件 | 数据 |
 | --- | --- |
@@ -74,7 +79,7 @@ API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/streamv2
 | `done` | `{"timings": {"generation_ms": float, "e2e_latency_ms": float}}`；响应结束 |
 | `error` | `{"code": "invalid_request" \| "generation_failed", "message": str}`；响应结束 |
 
-在生成开始前发现的请求问题返回 HTTP 400 `{"code": "invalid_request", "message": str}`。后端在并发请求之间串行生成，并且即使客户端取消，也会完成已经开始生成的片段。
+`references` 是由 `{"media_type": str, "data": <base64 字节>}` 组成的有序列表，由 `SegmentRequest.references` 构建；客户端不检查媒体类型，后端按每个参考的 `media_type` 解码。在生成开始前发现的请求问题返回 HTTP 400 `{"code": "invalid_request", "message": str}`。后端在并发请求之间串行生成，并且即使客户端取消，也会完成已经开始生成的片段。
 
 -----
 
@@ -90,7 +95,7 @@ API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/streamv2
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `dvFastvideoGeneration` 服务：模型事实与片段请求 |
 | [`src/generation-stream.ts`](src/generation-stream.ts) | 请求体与事件流解析器 |
-| [`src/types.ts`](src/types.ts) | 模型事实、片段请求与片段输出 |
+| [`src/types.ts`](src/types.ts) | 模型事实、带类型参考的片段请求与片段输出 |
 | [`src/errors.ts`](src/errors.ts) | 片段错误 |
 
 `tests/` 目录让客户端连接一个扮演后端的本地 HTTP 服务器来测试它。
@@ -113,7 +118,7 @@ API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/streamv2
 
 #### 模型看到什么
 
-视频模型收到 `generateSegment` 构建的请求体：保持不变的 `prompt`、按调用方顺序以 base64 图片字节表示的 `reference_images`、`width`、`height`、`num_frames`、仅在调用方设置时才发送的 `seed`，以及 `return_last_frame`。提示词按列表顺序把这些图片称为 `Picture 1`、`Picture 2` 等。
+视频模型收到 `generateSegment` 构建的请求体：保持不变的 `prompt`、按调用方顺序由带 base64 字节的 `{media_type, data}` 条目组成的 `references`、`width`、`height`、`num_frames`、仅在调用方设置时才发送的 `seed`，以及 `return_last_frame`。模型按列表顺序为每种媒体类型分别编号，调用方的提示词使用模型的编号指称这些参考，例如第一张图片为 `Picture 1`。
 
 #### Token 影响
 

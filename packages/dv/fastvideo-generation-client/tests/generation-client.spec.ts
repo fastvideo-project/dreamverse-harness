@@ -10,7 +10,8 @@ import DvFastvideoGeneration, { GenerationSegmentError, type SegmentOutput, type
 const UNREACHABLE_PORT = 18502
 
 const CAPABILITIES_BODY = {
-  model_id: 'h3-ref2va', min_segment_duration_sec: 5, max_segment_duration_sec: 15, max_reference_images: 3,
+  model_id: 'h3-ref2va', min_segment_duration_sec: 5, max_segment_duration_sec: 15,
+  max_references: 4, reference_media_types: { image: { max_count: 3 }, video: { max_count: 2 } },
   frame_sizes: { '16:9': { '720p': [1344, 768], '480p': [896, 512] }, '9:16': { '720p': [768, 1344] } },
   num_frames_by_duration_sec: { 5: 124, 6: 158 },
 }
@@ -91,7 +92,7 @@ async function collect(outputs: AsyncIterable<SegmentOutput>): Promise<SegmentOu
 }
 
 function segmentRequest(fields: Partial<SegmentRequest> = {}): SegmentRequest {
-  return { prompt: 'A lake', frameWidth: 1344, frameHeight: 768, numFrames: 124, referenceImages: [], returnLastFrame: false, ...fields }
+  return { prompt: 'A lake', frameWidth: 1344, frameHeight: 768, numFrames: 124, references: [], returnLastFrame: false, ...fields }
 }
 
 describe('HTTP routes', () => {
@@ -104,7 +105,8 @@ describe('HTTP routes', () => {
     const facts = await generation.model()
     expect(facts).toEqual({
       modelId: 'h3-ref2va', aspectRatios: ['16:9', '9:16'], resolutions: ['720p', '480p'],
-      minSegmentDurationSec: 5, maxSegmentDurationSec: 15, maxReferenceImages: 3,
+      minSegmentDurationSec: 5, maxSegmentDurationSec: 15, maxReferences: 4,
+      referenceMediaTypes: { image: { maxCount: 3 }, video: { maxCount: 2 } },
       frameSizes: { '16:9': { '720p': [1344, 768], '480p': [896, 512] }, '9:16': { '720p': [768, 1344] } },
       numFramesByDurationSec: { 5: 124, 6: 158 },
       referenceLabels: ['Picture 1', 'Picture 2', 'Picture 3'],
@@ -134,8 +136,8 @@ describe('segment generation', () => {
       ])
     })
     const generation = client(fake.port)
-    const images = [Buffer.from('side image'), Buffer.from([0, 255])]
-    expect(await collect(generation.generateSegment(segmentRequest({ referenceImages: images, returnLastFrame: true, seed: 7 }))))
+    const references = [{ mediaType: 'video', bytes: Buffer.from('dance clip') }, { mediaType: 'image', bytes: Buffer.from([0, 255]) }]
+    expect(await collect(generation.generateSegment(segmentRequest({ references, returnLastFrame: true, seed: 7 }))))
       .toEqual([
         { kind: 'last_frame', png: Buffer.from('frame') },
         { kind: 'video_start', mime: 'video/mp4; codecs="avc1.640028, mp4a.40.2"' },
@@ -148,10 +150,11 @@ describe('segment generation', () => {
     expect(fake.paths).toEqual(['/v1/streamv2/generate', '/v1/streamv2/generate'])
     expect(fake.requests).toEqual([
       {
-        prompt: 'A lake', reference_images: [Buffer.from('side image').toString('base64'), 'AP8='],
+        prompt: 'A lake',
+        references: [{ media_type: 'video', data: Buffer.from('dance clip').toString('base64') }, { media_type: 'image', data: 'AP8=' }],
         width: 1344, height: 768, num_frames: 124, seed: 7, return_last_frame: true,
       },
-      { prompt: 'A lake', reference_images: [], width: 1344, height: 768, num_frames: 124, return_last_frame: false },
+      { prompt: 'A lake', references: [], width: 1344, height: 768, num_frames: 124, return_last_frame: false },
     ])
   })
 

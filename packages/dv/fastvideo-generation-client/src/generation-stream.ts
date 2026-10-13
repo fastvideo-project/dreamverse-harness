@@ -42,7 +42,7 @@ function segmentError(body: ErrorBody): GenerationSegmentError {
 function requestBody(request: SegmentRequest): Record<string, unknown> {
   return {
     prompt: request.prompt,
-    reference_images: request.referenceImages.map(image => image.toString('base64')),
+    references: request.references.map(reference => ({ media_type: reference.mediaType, data: reference.bytes.toString('base64') })),
     width: request.frameWidth,
     height: request.frameHeight,
     num_frames: request.numFrames,

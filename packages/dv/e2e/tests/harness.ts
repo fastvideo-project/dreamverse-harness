@@ -27,7 +27,8 @@ export * as playwright from 'playwright'
 /** The capabilities the fake backend reports: tiny frames so a video renders in well under a second. */
 const CAPABILITIES_BODY = {
   model_id: 'fake-ref2va', name: 'Fake Ref2AV', min_segment_duration_sec: 1, max_segment_duration_sec: 2,
-  max_reference_images: 3, max_reference_aspect_ratio: 4.0,
+  max_references: 3, reference_media_types: { image: { max_count: 3 }, video: { max_count: 3 }, audio: { max_count: 3 } },
+  max_reference_aspect_ratio: 4.0,
   frame_sizes: { '16:9': { '720p': [192, 112] } }, num_frames_by_duration_sec: { 1: 25, 2: 49 },
 }
 
