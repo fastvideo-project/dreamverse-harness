@@ -195,7 +195,9 @@ export function NodeCard(
     body = (
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 10 }}>
         <div style={{ position: 'relative', flex: 'none', width: 40, height: 40, borderRadius: 'var(--dv-radius-md)', overflow: 'hidden', background: 'var(--dv-surface-3)' }}>
-          {node.references[0] === undefined ? null : <img src={assetUrl(node.references[0])} alt="" style={media} draggable={false} />}
+          {node.video !== null
+            ? <video src={`${assetUrl(node.video)}#t=0.1`} muted preload="metadata" style={media} />
+            : node.references[0] === undefined ? null : <img src={assetUrl(node.references[0])} alt="" style={media} draggable={false} />}
         </div>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <span style={{ ...text(12), display: 'flex', alignItems: 'center', gap: 6, color: 'var(--dv-text-2)' }}>

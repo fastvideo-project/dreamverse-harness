@@ -43,9 +43,9 @@ export interface CanvasNode {
   subtitle: string
   /** An image asset shown as the thumbnail; null for story bible nodes, which show {@link CanvasNode.references}. */
   thumb: string | null
-  /** For story bible nodes, the image references of the current version in order; empty for other nodes. */
+  /** For story bible nodes, the image and video references of the current version in order; empty for other nodes. */
   references: string[]
-  /** A video asset the editor plays. */
+  /** A video asset the editor plays; for a story bible node, its first reference when that reference is a video. */
   video: string | null
   durationSec: number | null
   /** The record behind the node; for story bible and plan nodes, the record that wrote the latest version. */
@@ -278,9 +278,11 @@ export function buildCanvasGraph(
     const id = `bible:${bibleId}`
     for (const version of versions) for (const reference of version.references) bibleOfAsset.set(reference, id)
     const record = records.get(latest.created_by) ?? null
+    const references = latest.references.filter(reference => isImage(reference) || isVideo(reference))
+    const first = references[0]
     nodes.push({
       id, kind: 'bible', bibleKind: kind, bibleId, title: latest.name || bibleId, subtitle: latest.description,
-      thumb: null, references: latest.references.filter(reference => isImage(reference)), video: null, durationSec: null, record,
+      thumb: null, references, video: first !== undefined && isVideo(first) ? first : null, durationSec: null, record,
       flags: flagsOf(record), badges: [], take: null, x: 0, y: 0,
     })
   }

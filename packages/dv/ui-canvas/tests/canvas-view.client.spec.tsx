@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** The canvas over a scripted API: nodes, drag persistence, the floating editor, and the `dv:compose` event. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, createEvent, fireEvent, render, waitFor } from '@testing-library/react'
+import { act, cleanup, createEvent, fireEvent, render, waitFor, within } from '@testing-library/react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import { DV_COMPOSE_EVENT } from '@dv/ui-kit/compose.ts'
@@ -151,6 +151,16 @@ describe('CanvasView', () => {
     expect(card.textContent).toContain('+5')
   })
 
+  it('draws a character whose first reference is a video as the video\'s first frame', async () => {
+    const { node } = mount(true, (state) => {
+      const hero = state.components.bible.characters['hero']?.[0]
+      if (hero !== undefined) hero.references = ['shot1.mp4', 'ref.png']
+    })
+    await waitFor(() => { node('bible:hero') })
+    expect([...node('bible:hero').querySelectorAll('video')].map(video => video.getAttribute('src'))).toEqual([`${assetUrl('shot1.mp4')}#t=0.1`])
+    expect(node('bible:hero').textContent).toContain('+1')
+  })
+
   it('puts a dropped 素材 tile on the canvas under the pointer with asset.place, and 从画布移除 takes it off with asset.unplace', async () => {
     const { view, node, writes } = mount(true, (state) => {
       state.assets.push(asset('pool.png', 'image/png', 'u2'))
@@ -235,6 +245,95 @@ describe('CanvasView', () => {
     expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
     // Choosing a node is a view gesture: it writes nothing.
     expect(writes.map(write => write.path)).toEqual(['/api/dv/operation'])
+  })
+
+  it('添加素材 adds the characters, locations and assets picked in the picker as references of the take, and an asset chip opens its preview', async () => {
+    const { view, node, writes } = mount(true, (state) => {
+      const bible = state.components.bible
+      bible.characters['villain'] = [{ id: 'villain', version: 2, name: 'Villain', description: '', references: [], created_by: 'e1' }]
+      bible.characters['ghost'] = []
+      bible.locations['studio'] = [{ id: 'studio', version: 1, name: '', description: '', references: ['plan.json'], created_by: 'e1' }]
+      state.assets.push(asset('plan.json', 'application/json', null))
+    })
+    await waitFor(() => { node('g1') })
+    fireEvent.pointerDown(node('g1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
+    await view.findByTestId('dv-canvas-node-editor')
+    // Escape closes the picker and leaves the editor open.
+    fireEvent.click(view.getByText(zh['editor.addAsset']))
+    await view.findByTestId('dv-canvas-asset-picker')
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(view.queryByTestId('dv-canvas-asset-picker')).toBeNull()
+    expect(view.getByTestId('dv-canvas-node-editor')).toBeTruthy()
+    fireEvent.click(view.getByText(zh['editor.addAsset']))
+    const picker = await view.findByTestId('dv-canvas-asset-picker')
+    // The take already holds hero@1, so the picker offers the other characters and locations, then the asset pool.
+    fireEvent.keyDown(window, { key: 'a' })
+    expect(picker.textContent).toContain(zh['picker.bible'])
+    const villain = within(picker).getByRole('button', { name: 'Villain' })
+    fireEvent.click(within(picker).getByRole('button', { name: 'studio' }))
+    fireEvent.click(within(picker).getByRole('button', { name: 'studio' }))
+    expect(within(picker).getByRole('button', { name: 'studio' }).getAttribute('aria-pressed')).toBe('false')
+    fireEvent.click(villain)
+    const tile = await waitFor(() => {
+      const found = picker.querySelector('[data-asset-id="shot1.mp4"]')
+      if (!(found instanceof HTMLElement)) throw new Error('no shot1.mp4 tile')
+      return found
+    })
+    fireEvent.click(tile)
+    expect(tile.getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(view.getByText('确认（2）'))
+    expect(view.queryByTestId('dv-canvas-asset-picker')).toBeNull()
+    fireEvent.click(view.getByRole('button', { name: '查看 shot1.mp4' }))
+    expect(await view.findByRole('dialog', { name: 'shot1.mp4' })).toBeTruthy()
+    // Escape closes the preview and leaves the editor open.
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => { expect(view.queryByRole('dialog', { name: 'shot1.mp4' })).toBeNull() })
+    expect(view.getByTestId('dv-canvas-node-editor')).toBeTruthy()
+    fireEvent.click(view.getByText(zh['editor.renderTake']))
+    await waitFor(() => { expect(writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
+    expect(writes.find(write => write.path === '/api/dv/operation')?.body).toMatchObject({
+      operation: 'shot.render',
+      inputs: [{ role: 'reference', ref: 'hero@1' }, { role: 'reference', ref: 'villain@2' }, { role: 'reference', ref: 'shot1.mp4' }],
+    })
+  })
+
+  it('a character chip opens the character editor over the take editor, and closing it keeps the take editor\'s changes', async () => {
+    const { view, node } = mount()
+    await waitFor(() => { node('g1') })
+    fireEvent.pointerDown(node('g1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
+    const editor = await view.findByTestId('dv-canvas-node-editor')
+    fireEvent.change(editor.querySelector('textarea') as HTMLTextAreaElement, { target: { value: 'hero runs' } })
+    fireEvent.click(view.getByRole('button', { name: '查看 Hero' }))
+    expect(view.getAllByTestId('dv-canvas-node-editor').map(panel => panel.getAttribute('aria-label'))).toEqual([editor.getAttribute('aria-label'), 'Hero'])
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(view.getAllByTestId('dv-canvas-node-editor')).toHaveLength(1)
+    expect((view.getByTestId('dv-canvas-node-editor').querySelector('textarea') as HTMLTextAreaElement).value).toBe('hero runs')
+  })
+
+  it('the character editor appends picked assets to its references and removes one while more than one is left', async () => {
+    const { view, node, writes } = mount()
+    await waitFor(() => { node('bible:hero') })
+    fireEvent.pointerDown(node('bible:hero'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
+    await view.findByTestId('dv-canvas-node-editor')
+    // The only reference cannot be removed: an update without references keeps the current ones.
+    expect(view.getByRole('button', { name: '移除 ref.png' }).hasAttribute('disabled')).toBe(true)
+    fireEvent.click(view.getByText(zh['editor.addAsset']))
+    const picker = await view.findByTestId('dv-canvas-asset-picker')
+    const tile = await waitFor(() => {
+      const found = picker.querySelector('[data-asset-id="shot1.mp4"]')
+      if (!(found instanceof HTMLElement)) throw new Error('no shot1.mp4 tile')
+      return found
+    })
+    fireEvent.click(tile)
+    fireEvent.click(view.getByText('确认（1）'))
+    await waitFor(() => { expect(writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
+    expect(writes.find(write => write.path === '/api/dv/operation')?.body).toMatchObject({
+      operation: 'bible.character_update', params: { character: 'hero' },
+      inputs: [{ role: 'reference', ref: 'ref.png' }, { role: 'reference', ref: 'shot1.mp4' }],
+    })
   })
 
   it('offers 仍然保留 on a stale node, which accepts its record for the chat session beside the canvas', async () => {

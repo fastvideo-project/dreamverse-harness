@@ -7,22 +7,25 @@
  * failed take, its model and generation mode, its prompt, reference chips (mode `reference` only), duration, and seed,
  * and offers "渲染新版本" (a user `shot.render` record in the take's model and mode, whose `based_on` is the take);
  * while the render starts the button is disabled and reads 渲染中…, and a refused request shows its error under the
- * button. A character, location or style can replace its reference image. A plan switches between its versions (第 1 版,
+ * button. "添加素材" opens the asset picker; a reference chip opens the preview of its asset, or the editor of its character,
+ * location or style over this one. A character, location or style shows its references, adds assets from the picker, and
+ * removes one reference while it has more than one. A plan switches between its versions (第 1 版,
  * 第 2 版, …) and shows the chosen version's approval status, its reference images, and one card per shot with exactly
  * what the plan holds: duration, model and mode, reference images, whether the shot continues the previous shot, and the
  * full prompt with each `Picture N` drawn as its image. A stale node offers "仍然保留", which keeps its record as it is
  * (`proj.stale_accept`).
  */
 import { memo, useLayoutEffect, useRef, useState } from 'react'
-import type { ChangeEvent, CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import { dispatchCompose, type DvComposeRef } from '@dv/ui-kit/compose.ts'
 import { pictureParts, referenceImages, shotReferences } from '@dv/ui-kit/references.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
-import type { OperationRequest, PlanVersion, Shot, WireState } from '@dv/ui-kit/types.ts'
-import { bibleItems, bibleVersions, referenceText } from './graph.ts'
+import type { OperationRequest, PlanVersion, ProjectAsset, Shot, WireState } from '@dv/ui-kit/types.ts'
+import { AssetMedia, AssetPicker, AssetPreview } from './AssetPicker.tsx'
+import { bibleVersions, referenceText } from './graph.ts'
 import type { CanvasNode } from './graph.ts'
 import { KIND_COLOR, kindLabel, mono, nodeTitle, planTotalSec } from './NodeCard.tsx'
 import type { CanvasTranslate } from './NodeCard.tsx'
@@ -46,6 +49,8 @@ export interface NodeEditorProps {
   onRender: (request: OperationRequest & { based_on: string }) => Promise<void>
   /** Take an asset off the project's canvas list; the asset stays in the asset pool. */
   onRemoveFromCanvas: (assetId: string) => void
+  /** Open the editor of another node over this one, which keeps its unsaved changes. */
+  onOpenNode: (nodeId: string) => void
   /** The zoom transition's ref for the panel, which grows out of the node and shrinks back into it. */
   zoomRef: (element: HTMLElement | null) => void
 }
@@ -242,6 +247,8 @@ const button: CSSProperties = {
 /** A secondary button: 1px border, transparent fill (the `dv-canvas-btn` class paints the fill and the hover). */
 const secondaryButton: CSSProperties = { ...button, border: '1px solid var(--dv-line-strong)', color: 'var(--dv-text)' }
 const chip: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 6px 2px 2px', borderRadius: 14, background: 'var(--dv-surface-3)', fontSize: 13, lineHeight: '20px' }
+/** The part of a reference chip that opens the reference: its thumbnail and its name. */
+const chipOpen: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: 0, border: 'none', background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer' }
 const referenceImage: CSSProperties = { height: 220, borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-3)' }
 /** A small rounded tag in the plan editor: the duration and model-and-mode chips of a shot. */
 const tag: CSSProperties = { height: 22, padding: '0 8px', display: 'inline-flex', alignItems: 'center', fontSize: 12, lineHeight: '16px', background: 'var(--dv-surface-3)' }
@@ -288,20 +295,6 @@ function refName(state: WireState, ref: string): string {
   const bibleId = /^(.+)@\d+$/.exec(ref)?.[1]
   if (bibleId !== undefined) return bibleVersions(state, bibleId)?.at(-1)?.name ?? bibleId
   return state.assets.find(asset => asset.id === ref)?.name ?? ref
-}
-
-/**
- * Read a file as base64 without the data-URL prefix.
- * @param file - the file.
- * @returns the base64 text.
- */
-function base64Of(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => { resolve(String(reader.result).replace(/^data:[^,]*,/, '')) }
-    reader.onerror = () => { reject(reader.error ?? new Error('read failed')) }
-    reader.readAsDataURL(file)
-  })
 }
 
 /** What {@link useEditorPlacement} gives the panel. */
@@ -550,7 +543,7 @@ function AssetPanel(
  * @returns the element.
  */
 function TakeForm(
-  { node, state, project, session, t, onRender, title }: NodeEditorProps & { title: string },
+  { node, state, client, project, session, t, onRender, onOpenNode, title }: NodeEditorProps & { title: string },
 ): ReactNode {
   const record = node.record
   const [prompt, setPrompt] = useState(() => typeof record?.params['prompt'] === 'string' ? record.params['prompt'] : '')
@@ -562,13 +555,15 @@ function TakeForm(
   const [starting, setStarting] = useState(false)
   const [renderError, setRenderError] = useState<string | null>(null)
   const references = inputs.filter(input => input.role === 'reference')
-  const candidates = [
-    ...bibleItems(state).flatMap(({ id, versions }) => {
-      const latest = versions.at(-1)
-      return latest === undefined ? [] : [{ ref: `${id}@${String(latest.version)}`, name: latest.name || id }]
-    }),
-    ...state.assets.filter(asset => asset.mime.startsWith('image/')).map(asset => ({ ref: asset.id, name: asset.name })),
-  ].filter(candidate => !references.some(input => input.ref === candidate.ref))
+  const [picking, setPicking] = useState(false)
+  const [previewed, setPreviewed] = useState<ProjectAsset | null>(null)
+  const chips = useRef<HTMLDivElement | null>(null)
+  const assets = new Map(state.assets.map(asset => [asset.id, asset]))
+  const addReferences = (refs: readonly string[]): void => {
+    setPicking(false)
+    const added = refs.filter(ref => !references.some(input => input.ref === ref))
+    setInputs([...inputs, ...added.map(ref => ({ role: 'reference', ref }))])
+  }
   const operation = record?.operation ?? null
   const model = typeof record?.params['model'] === 'string' ? record.params['model'] : ''
   const mode = typeof record?.params['mode'] === 'string' ? record.params['mode'] : ''
@@ -603,27 +598,41 @@ function TakeForm(
       <span data-testid="dv-canvas-render-mode">{modelModeLabel(model, mode, t)}</span>
       <label style={label} htmlFor="dv-canvas-editor-prompt">{t('editor.prompt')}</label>
       <textarea id="dv-canvas-editor-prompt" style={{ ...field, minHeight: 72, resize: 'vertical' }} value={prompt} onChange={(event) => { setPrompt(event.target.value) }} />
-      {textOnly ? null : <><span style={label}>{t('editor.references')}</span><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+      {textOnly ? null : <><span style={label}>{t('editor.references')}</span><div ref={chips} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
         {references.map((input) => {
-          const image = refImage(state, input.ref)
+          const shown = refImage(state, input.ref)
           const name = refName(state, input.ref)
+          const bibleId = /^(.+)@\d+$/.exec(input.ref)?.[1]
+          const asset = shown === null ? undefined : assets.get(shown)
+          // A character, location or style opens its editor; an asset opens its preview.
+          const open = (): void => {
+            if (bibleId !== undefined) onOpenNode(`bible:${bibleId}`)
+            else if (asset !== undefined) setPreviewed(asset)
+          }
           return (
             <span key={input.ref} style={chip}>
-              {image === null ? null : <img src={assetUrl(image)} alt="" style={{ width: 22, height: 22, borderRadius: 11, objectFit: 'cover' }} />}
-              {name}
+              <button type="button" data-reference={input.ref} aria-label={t('editor.openReference', { name })} style={chipOpen} onClick={open}>
+                <AssetMedia asset={asset} style={{ width: 22, height: 22, borderRadius: 11, objectFit: 'cover' }} />
+                {name}
+              </button>
               <button type="button" aria-label={t('editor.removeReference', { name })} style={{ border: 'none', background: 'transparent', color: 'var(--dv-text-2)', cursor: 'pointer' }} onClick={() => { setInputs(inputs.filter(other => other !== input)) }}>×</button>
             </span>
           )
         })}
-        {candidates.length > 0
-          ? (
-            <select aria-label={t('editor.addReference')} style={{ ...field, width: 'auto' }} value="" onChange={(event) => { if (event.target.value !== '') setInputs([...inputs, { role: 'reference', ref: event.target.value }]) }}>
-              <option value="">{t('editor.addReference')}</option>
-              {candidates.map(candidate => <option key={candidate.ref} value={candidate.ref}>{candidate.name}</option>)}
-            </select>
-          )
-          : null}
+        <button type="button" className="dv-canvas-btn" style={{ ...secondaryButton, height: 28 }} onClick={() => { setPicking(true) }}>{t('editor.addAsset')}</button>
       </div></>}
+      {picking
+        ? (
+          <AssetPicker
+            state={state} client={client} project={project} session={session} t={t} withBible
+            chosen={references.map(input => input.ref)} onConfirm={addReferences} onCancel={() => { setPicking(false) }}
+          />
+        )
+        : null}
+      <AssetPreview
+        asset={previewed} onClose={() => { setPreviewed(null) }}
+        openerOf={asset => chips.current?.querySelector(`[data-reference="${asset.id}"]`) ?? null}
+      />
       <div style={{ display: 'flex', gap: 12 }}>
         <div style={{ flex: 1 }}>
           <label style={label} htmlFor="dv-canvas-editor-duration">{t('editor.duration')}</label>
@@ -648,7 +657,8 @@ function TakeForm(
 }
 
 /**
- * A character, location or style: its reference images and description, and a control to replace the reference image.
+ * A character, location or style: its references, each opening its preview and removable while more than one is left,
+ * its description, and "添加素材", which appends the assets picked from the asset pool.
  * @param props - editor props.
  * @returns the element.
  */
@@ -656,46 +666,71 @@ function BibleForm({ node, state, client, project, session, t, run }: NodeEditor
   const bibleId = node.bibleId ?? ''
   const kind = node.bibleKind ?? 'character'
   const latest = bibleVersions(state, bibleId)?.at(-1)
-  const images = state.assets.filter(asset => asset.mime.startsWith('image/'))
+  const references = latest?.references ?? []
+  const name = latest?.name || bibleId
+  const [picking, setPicking] = useState(false)
+  const [previewed, setPreviewed] = useState<ProjectAsset | null>(null)
+  const list = useRef<HTMLDivElement | null>(null)
+  const assets = new Map(state.assets.map(asset => [asset.id, asset]))
   const sessionField = session === null ? {} : { session }
-  const replace = (assetId: string): void => {
+  // `bible.<kind>_update` writes the next version with exactly these references.
+  const update = (next: readonly string[], intent: string): void => {
     if (latest === undefined) return
     void run(() => client.runOperation({
-      project, operation: `bible.${kind}_update`, params: { [kind]: bibleId }, inputs: [{ role: 'reference', ref: assetId }], surface: 'canvas',
-      intent: t('intent.replaceRef', { name: latest.name || bibleId }), ...sessionField,
+      project, operation: `bible.${kind}_update`, params: { [kind]: bibleId }, inputs: next.map(ref => ({ role: 'reference', ref })), surface: 'canvas',
+      intent, ...sessionField,
     }))
   }
-  const importImage = (event: ChangeEvent<HTMLInputElement>): void => {
-    const file = event.target.files?.[0]
-    if (file === undefined) return
-    void run(async () => {
-      const base64 = await base64Of(file)
-      const record = await client.runOperation({ project, operation: 'asset.import', params: { base64, mime: file.type || 'image/png', name: file.name }, surface: 'canvas', intent: t('intent.import', { name: file.name }), ...sessionField })
-      const assetId = record.outputs[0]
-      if (assetId !== undefined) replace(assetId)
-    })
+  const addReferences = (refs: readonly string[]): void => {
+    setPicking(false)
+    const added = refs.filter(ref => !references.includes(ref))
+    if (added.length > 0) update([...references, ...added], t('intent.addReferences', { name }))
   }
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {(latest?.references ?? []).map(reference => (
-          <img key={reference} src={assetUrl(reference)} alt={reference} style={referenceImage} />
-        ))}
+      <div ref={list} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {references.map((reference) => {
+          const asset = assets.get(reference)
+          const assetName = asset?.name ?? reference
+          return (
+            <div key={reference} style={{ position: 'relative' }}>
+              <button
+                type="button" data-reference={reference} aria-label={t('editor.openReference', { name: assetName })}
+                style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'pointer', display: 'block' }}
+                onClick={() => { if (asset !== undefined) setPreviewed(asset) }}
+              >
+                <AssetMedia asset={asset} style={referenceImage} />
+              </button>
+              {/* An update without references keeps the current ones, so the last reference cannot be removed. */}
+              <button
+                type="button" className="dv-canvas-btn" aria-label={t('editor.removeReference', { name: assetName })} disabled={references.length < 2}
+                style={{ ...secondaryButton, position: 'absolute', top: 6, right: 6, width: 28, height: 28, padding: 0, background: 'var(--dv-surface-1)', opacity: references.length < 2 ? 0.5 : 1 }}
+                onClick={() => { update(references.filter(other => other !== reference), t('intent.removeReference', { name })) }}
+              >
+                ×
+              </button>
+            </div>
+          )
+        })}
       </div>
       {latest !== undefined && latest.description !== ''
         ? (<><span style={label}>{t('editor.description')}</span><p style={{ margin: 0 }}>{latest.description}</p></>)
         : null}
-      <span style={label}>{t('editor.replaceRef')}</span>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <select aria-label={t('editor.replaceRef')} style={{ ...field, width: 'auto' }} value="" onChange={(event) => { if (event.target.value !== '') replace(event.target.value) }}>
-          <option value="">{t('editor.replaceRef')}</option>
-          {images.map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
-        </select>
-        <label className="dv-canvas-btn" style={secondaryButton}>
-          {t('editor.import')}
-          <input type="file" accept="image/*" style={{ display: 'none' }} onChange={importImage} />
-        </label>
+      <div style={{ marginTop: 12 }}>
+        <button type="button" className="dv-canvas-btn" style={secondaryButton} onClick={() => { setPicking(true) }}>{t('editor.addAsset')}</button>
       </div>
+      {picking
+        ? (
+          <AssetPicker
+            state={state} client={client} project={project} session={session} t={t} withBible={false}
+            chosen={references} onConfirm={addReferences} onCancel={() => { setPicking(false) }}
+          />
+        )
+        : null}
+      <AssetPreview
+        asset={previewed} onClose={() => { setPreviewed(null) }}
+        openerOf={asset => list.current?.querySelector(`[data-reference="${asset.id}"]`) ?? null}
+      />
     </div>
   )
 }

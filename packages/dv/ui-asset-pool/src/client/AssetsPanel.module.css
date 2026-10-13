@@ -90,6 +90,11 @@
   box-shadow: 0 0 0 1px var(--dv-line-strong);
 }
 
+/* A picked tile in pick mode. */
+.thumb[aria-pressed='true'] {
+  box-shadow: 0 0 0 2px var(--dv-accent);
+}
+
 .thumbMedia {
   display: block;
   width: 100%;

@@ -31,6 +31,8 @@ export interface AssetsPanelProps {
   session: string | null
   /** The API client; defaults to one over the page's fetch. */
   client?: DvClient
+  /** Pick mode: a click on a tile toggles whether its asset is picked instead of opening the preview. */
+  pick?: { picked: ReadonlySet<string>; onToggle: (asset: Asset) => void }
 }
 
 /**
@@ -48,6 +50,8 @@ export function AssetsPanel(props: AssetsPanelProps): ReactNode {
   const previewZoom = useZoomPresence(preview, asset =>
     [...panelRef.current?.querySelectorAll('[data-asset-id]') ?? []].find(tile => tile.getAttribute('data-asset-id') === asset.id) ?? null)
   const library = useMemo(() => state.value === null ? null : assetLibrary(state.value), [state.value])
+  const onOpen = props.pick?.onToggle ?? setPreview
+  const picked = props.pick?.picked
 
   let body: ReactNode
   if (library === null) body = <p className={css.note}>{state.error === null ? t('正在读取…', 'Loading…') : t(`读取失败：${state.error}`, `Failed to load: ${state.error}`)}</p>
@@ -56,9 +60,9 @@ export function AssetsPanel(props: AssetsPanelProps): ReactNode {
   } else {
     body = (
       <>
-        <Section title={t('图片', 'Images')} assets={library.images} onOpen={setPreview} />
-        <Section title={t('视频', 'Videos')} assets={library.videos} onOpen={setPreview} />
-        <Section title={t('从生成中截取的帧', 'Extracted from generation')} assets={library.extracted} onOpen={setPreview} />
+        <Section title={t('图片', 'Images')} assets={library.images} onOpen={onOpen} picked={picked} />
+        <Section title={t('视频', 'Videos')} assets={library.videos} onOpen={onOpen} picked={picked} />
+        <Section title={t('从生成中截取的帧', 'Extracted from generation')} assets={library.extracted} onOpen={onOpen} picked={picked} />
       </>
     )
   }
@@ -123,32 +127,34 @@ function ImportZone(props: { client: DvClient; projectId: string; session: strin
 
 /**
  * One titled grid of thumbnails.
- * @param props - the title, the assets, and the preview callback.
+ * @param props - the title, the assets, the click callback, and the picked assets in pick mode.
  * @returns the section, or nothing when it has no assets.
  */
-function Section(props: { title: string; assets: Asset[]; onOpen: (asset: Asset) => void }): ReactNode {
+function Section(
+  props: { title: string; assets: Asset[]; onOpen: (asset: Asset) => void; picked: ReadonlySet<string> | undefined },
+): ReactNode {
   if (props.assets.length === 0) return null
   return (
     <section className={css.section}>
       <h3 className={css.sectionTitle}>{props.title} · {props.assets.length}</h3>
       <div className={css.grid}>
-        {props.assets.map(asset => <Thumb key={asset.id} asset={asset} onOpen={props.onOpen} />)}
+        {props.assets.map(asset => <Thumb key={asset.id} asset={asset} onOpen={props.onOpen} picked={props.picked?.has(asset.id)} />)}
       </div>
     </section>
   )
 }
 
 /**
- * One draggable thumbnail; dragging it carries the asset ID, clicking it opens the preview.
- * @param props - the asset and the preview callback.
+ * One draggable thumbnail; dragging it carries the asset ID, clicking it opens the preview or, in pick mode, toggles it.
+ * @param props - the asset, the click callback, and in pick mode whether the asset is picked.
  * @returns the thumbnail.
  */
-function Thumb(props: { asset: Asset; onOpen: (asset: Asset) => void }): ReactNode {
+function Thumb(props: { asset: Asset; onOpen: (asset: Asset) => void; picked: boolean | undefined }): ReactNode {
   const { asset } = props
   const video = asset.mime.startsWith('video/')
   return (
     <button
-      type="button" draggable title={asset.name} data-asset-id={asset.id}
+      type="button" draggable title={asset.name} data-asset-id={asset.id} aria-pressed={props.picked}
       onDragStart={(event) => { event.dataTransfer.setData(DV_ASSET_DRAG_TYPE, asset.id); event.dataTransfer.effectAllowed = 'copy' }}
       onClick={() => { props.onOpen(asset) }}
       className={css.thumb}
@@ -170,7 +176,7 @@ function Thumb(props: { asset: Asset; onOpen: (asset: Asset) => void }): ReactNo
  * backdrop fades.
  * @returns the dialog.
  */
-function Preview(props: { asset: Asset; onClose: () => void; zoom: ZoomPresence<Asset> }): ReactNode {
+export function Preview(props: { asset: Asset; onClose: () => void; zoom: ZoomPresence<Asset> }): ReactNode {
   const { asset, onClose } = props
   const t = useText()
   // When the asset pool could not read the dimensions at import, read them from the loaded media.

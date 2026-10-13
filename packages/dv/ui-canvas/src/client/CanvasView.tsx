@@ -55,6 +55,8 @@ const MIN_ZOOM = 0.25
 const MAX_ZOOM = 2
 const DRAG_THRESHOLD = 4
 const SAVE_DELAY_MS = 500
+/** The zoom ref of a stacked editor, which opens and closes without the zoom transition. */
+const noZoom = (element: HTMLElement | null): void => { void element }
 
 /** Edge stroke per kind: the kind color of the node the edge leaves (a reference leaves a character or an asset). */
 const EDGE_COLOR: Record<CanvasEdge['kind'], string> = {
@@ -239,6 +241,9 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
   // The node with the accent ring, and the node whose editor is open; closing the editor keeps the ring.
   const [selected, setSelected] = useState<string | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
+  // The editor a reference chip opened over the `editing` one; it closes first, and with the editor beneath it.
+  const [stacked, setStacked] = useState<string | null>(null)
+  useEffect(() => { setStacked(null) }, [editing])
   // The take node IDs opened in this browser, for the project they belong to; null until the graph first loads.
   const [seen, setSeen] = useState<{ project: string; ids: ReadonlySet<string> } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -329,13 +334,17 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
     return () => { observer.disconnect() }
   }, [])
 
-  // Escape closes the floating editor wherever focus is.
+  // Escape closes the top floating editor wherever focus is.
   useEffect(() => {
     if (editing === null) return
-    const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape') setEditing(null) }
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      if (stacked === null) setEditing(null)
+      else setStacked(null)
+    }
     window.addEventListener('keydown', onKey)
     return () => { window.removeEventListener('keydown', onKey) }
-  }, [editing])
+  }, [editing, stacked])
 
   /** Pan so a node sits at the center of the canvas, keeping the zoom. */
   const centerOn = useCallback((node: CanvasNode) => {
@@ -719,6 +728,12 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
     [...container.current?.querySelectorAll('[data-node-id]') ?? []].find(card => card.getAttribute('data-node-id') === id) ?? null
   const editorZoom = useZoomPresence(editing, nodeCard)
   const editingNode = graph?.nodes.find(node => node.id === editorZoom.shown) ?? null
+  const stackedNode = editingNode === null ? null : graph?.nodes.find(node => node.id === stacked) ?? null
+  const removeFromCanvas = (assetId: string): void => {
+    setEditing(null)
+    setSelected(null)
+    void run(() => changePlacement(assetId, false))
+  }
   return (
     <div
       ref={container}
@@ -763,13 +778,33 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
               onClose={() => { setEditing(null) }}
               run={run}
               onRender={startRender}
-              onRemoveFromCanvas={(assetId) => {
-                setEditing(null)
-                setSelected(null)
-                void run(() => changePlacement(assetId, false))
-              }}
+              onRemoveFromCanvas={removeFromCanvas}
+              onOpenNode={setStacked}
             />
           </>
+        )
+        : null}
+      {stackedNode !== null && graph !== null
+        ? (
+          // The stacked editor covers the canvas area; a press outside its panel closes it, not the editor beneath.
+          <div style={{ position: 'absolute', inset: 0, zIndex: 11 }} onPointerDown={(event) => { event.stopPropagation(); setStacked(null) }}>
+            <div aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'var(--dv-overlay)' }} />
+            <NodeEditor
+              key={`stacked:${stackedNode.id}`}
+              node={stackedNode}
+              zoomRef={noZoom}
+              state={graph.state}
+              client={client}
+              project={projectId}
+              session={session}
+              t={t}
+              onClose={() => { setStacked(null) }}
+              run={run}
+              onRender={startRender}
+              onRemoveFromCanvas={removeFromCanvas}
+              onOpenNode={setStacked}
+            />
+          </div>
         )
         : null}
     </div>

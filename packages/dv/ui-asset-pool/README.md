@@ -53,7 +53,7 @@ The panel lists every image and video that the state lists in `assets` (every as
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`assetLibrary` groups the assets of the state, each asset once, into images and videos; an image whose `made_by` is a shot render operation goes to `extracted`. The state already carries this project's own import name and time of each asset (`ProjectAsset`), because the asset pool keeps the name and time of the first import of identical bytes in any project. The preview reads the width and height from the loaded media when the asset pool could not read them at import, and renders on `document.body` so the right Sidebar cannot cover its buttons; Escape or a click outside closes it.
+`assetLibrary` groups the assets of the state, each asset once, into images and videos; an image whose `made_by` is a shot render operation goes to `extracted`. The state already carries this project's own import name and time of each asset (`ProjectAsset`), because the asset pool keeps the name and time of the first import of identical bytes in any project. The preview reads the width and height from the loaded media when the asset pool could not read them at import, and renders on `document.body` so the right Sidebar cannot cover its buttons; Escape or a click outside closes it. With the `pick` prop, a click on a thumbnail picks or unpicks its asset instead of opening the preview, and a picked thumbnail has an accent ring and `aria-pressed="true"`; the asset picker of `@dv/ui-canvas` uses this mode and the exported `Preview`.
 
 | File | Content |
 | --- | --- |

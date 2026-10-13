@@ -8373,6 +8373,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: workspace:*
         version: link:../../client/ui-slots
+      '@dv/ui-asset-pool':
+        specifier: workspace:*
+        version: link:../ui-asset-pool
       '@dv/ui-kit':
         specifier: workspace:*
         version: link:../ui-kit
