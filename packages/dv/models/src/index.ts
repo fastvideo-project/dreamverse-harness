@@ -1,172 +1,130 @@
 /**
- * The DreamVerse model catalog as the `dvModels` Cordis service. Company plugins register one entry per model they
- * serve, with the generation modes they serve it in; consumers such as Shot render list the models and render with the
- * model and mode a call names. The catalog also gives the agent the model list as the `dv:models` prompt section and
- * the `dv_models_get` tool, which returns one model's limits in each of its modes.
- *
- * A model and a mode are separate choices: `MODES` defines each generation mode once, and each model declares the
- * modes it supports. Ten models and ten modes are ten entries, not a hundred.
+ * The DreamVerse model catalog as the `dvModels` Cordis service: a provider-neutral registry of model entries. Provider
+ * plugins register one entry per task a model serves, keyed by modality, task, provider and model; consumers such as
+ * Shot render list the entries and render with the entry a key names. The catalog knows no specific model and adds
+ * nothing to the system prompt: the agent reads entries through the `dv_models_list` and `dv_models_get` tools and
+ * chooses one for each shot with the `video-model-selection` skill.
  *
  * @module @dv/models
  */
+import { readFileSync } from 'node:fs'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import type {} from '@deepseek-ai/dsh-system-prompt'
-import { defineTool, validateArgs } from '@deepseek-ai/dsh-tools'
+import type {} from '@deepseek-ai/dsh-skill'
+import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
-import type { InputRole, ModeDeclaration, ModeDefinition, ModeId, ModelEntry, RenderModelFacts } from './types.ts'
+import type { ModelEntry, ModelFilter, ModelKey } from './types.ts'
 
 export type * from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
-    /** The model catalog: the models company plugins serve, by name. */
+    /** The model catalog: the entries provider plugins register, by modality, task, provider and model. */
     dvModels: DvModels
   }
 }
 
-/** Every generation mode, defined once; a model declares the modes it supports. */
-export const MODES: Readonly<Record<ModeId, ModeDefinition>> = {
-  reference: {
-    description: 'From reference media (character, location and style versions, or imported assets) and the prompt; '
-      + 'optionally a first frame, such as the last still of the previous shot. dv_models_get lists the media types '
-      + 'and counts each model accepts.',
-    inputs: ['reference', 'first_frame'],
-  },
-  text: { description: 'From the prompt alone; no references.', inputs: [] },
-}
-
-/** The name of the model list prompt section. */
-export const PROMPT_SECTION = 'dv:models'
-
-/** `dvModels` plugin configuration. */
-export interface Config {
-  /** The order of the `dv:models` prompt section among the system prompt sections. */
-  promptSectionOrder: number
-}
+/** `dvModels` plugin configuration: none. */
+export type Config = Record<string, unknown>
 
 /** Loader validation. */
-export const Config: z<Config> = z.object({
-  promptSectionOrder: z.number().default(4890),
-})
+export const Config: z<Config> = z.object({})
+
+/** The fields of a model key. */
+const MODEL_KEY_FIELDS = ['modality', 'task', 'provider', 'model'] as const
 
 /**
- * Refuse a model entry that names an unknown mode, an input role its mode does not allow, an input role without a
- * media type, or no mode at all.
- * @param entry - the entry to register.
- * @throws Error naming the problem.
+ * Format a model key as one string, such as `video/ref2v/fastvideo/fasth3`.
+ * @param key - the key.
+ * @returns `modality/task/provider/model`.
  */
-function checkEntry(entry: ModelEntry): void {
-  const modes = Object.entries(entry.modes)
-  if (modes.length === 0) throw new Error(`dvModels: model "${entry.id}" declares no mode.`)
-  for (const [mode, declaration] of modes) {
-    const definition = Object.hasOwn(MODES, mode) ? MODES[mode as ModeId] : undefined
-    if (definition === undefined) throw new Error(`dvModels: model "${entry.id}" declares unknown mode "${mode}"; modes: ${Object.keys(MODES).join(', ')}.`)
-    for (const [role, input] of Object.entries(declaration.inputs)) {
-      if (!definition.inputs.includes(role as InputRole)) {
-        throw new Error(`dvModels: mode "${mode}" of model "${entry.id}" accepts input "${role}", which the mode does not allow.`)
-      }
-      if (input.mediaTypes.length === 0) {
-        throw new Error(`dvModels: mode "${mode}" of model "${entry.id}" accepts input "${role}" with no media type.`)
-      }
-    }
-  }
+export function formatModelKey(key: ModelKey): string {
+  return `${key.modality}/${key.task}/${key.provider}/${key.model}`
 }
 
 /**
- * Format each mode of a model with its input roles and their media types for the model list, such as
- * `reference (reference: image, video; first_frame: image), text`.
- * @param entry - the model.
- * @returns the text.
+ * Whether an entry equals every given field of a filter; a field that is absent or undefined matches every entry.
+ * @param entry - the entry.
+ * @param filter - the key fields to match, as plain strings so that tool arguments can be passed unchanged.
+ * @returns true when the entry matches.
  */
-function formatModes(entry: ModelEntry): string {
-  return Object.entries(entry.modes).map(([mode, declaration]) => {
-    const inputs = Object.entries(declaration.inputs).map(([role, input]) => `${role}: ${input.mediaTypes.join(', ')}`)
-    return inputs.length === 0 ? mode : `${mode} (${inputs.join('; ')})`
-  }).join(', ')
+function entryMatchesFilter(entry: ModelKey, filter: Partial<Record<typeof MODEL_KEY_FIELDS[number], string>>): boolean {
+  return MODEL_KEY_FIELDS.every(field => filter[field] === undefined || entry[field] === filter[field])
 }
 
-/**
- * Report each declared input role of a mode for `dv_models_get`: its `min`, its `max` when the facts give the role a
- * total limit, and each declared media type with its `max` when the facts limit that type.
- * @param declaration - the model's declaration of the mode.
- * @param facts - the model's facts in the mode.
- * @returns the inputs by role.
- */
-function describeInputs(declaration: ModeDeclaration, facts: RenderModelFacts): JsonValue {
-  return Object.fromEntries(Object.entries(declaration.inputs).map(([role, input]) => {
-    const limits = facts.inputLimits[role as InputRole]
-    const mediaTypes = input.mediaTypes.map((type): [string, JsonValue] => {
-      const max = limits?.maxCountByMediaType[type]
-      return [type, max === undefined ? {} : { max }]
-    })
-    const total = limits?.maxCount === undefined ? {} : { max: limits.maxCount }
-    return [role, { min: input.min, ...total, media_types: Object.fromEntries(mediaTypes) }]
-  }))
+/** Convert an entry to one item of the `dv_models_list` result: its key and its description. */
+function toModelListItem(entry: ModelEntry): Record<string, JsonValue> {
+  return { modality: entry.modality, task: entry.task, provider: entry.provider, model: entry.model, description: entry.description }
 }
 
-/**
- * The extra parameters of a mode as text for the model list, such as `cfg, steps`, or `—` when it has none.
- * @param entry - the model.
- * @returns the text.
- */
-function extraNames(entry: ModelEntry): string {
-  const names = Object.entries(entry.modes).flatMap(([mode, declaration]) =>
-    Object.keys(declaration.extra).map(name => `${name} (${mode})`))
-  return names.length === 0 ? '—' : names.join(', ')
-}
+/** Render a tool's JSON value as the text the agent reads. */
+const JSON_TOOL_OUTPUT = {
+  schema: { type: 'json' },
+  render: (_args: unknown, value: JsonValue): ContentBlock[] => [{ type: 'text', text: JSON.stringify(value, null, 1) }],
+} as const
 
-/** The model catalog service: model entries by name, the model list prompt section, and the `dv_models_get` tool. */
+/** The model catalog service: entries by key, the `dv_models_list` and `dv_models_get` tools, and the selection skill. */
 export default class DvModels extends Service {
   static Config = Config
 
   private readonly entries = new Map<string, ModelEntry>()
   private readonly listeners = new Set<() => void>()
 
-  constructor(ctx: Context, config: Config) {
+  constructor(ctx: Context) {
     super(ctx, 'dvModels')
-    ctx.inject(['systemPrompt'], (child) => {
-      child.effect(() => child.systemPrompt.section({
-        name: PROMPT_SECTION, order: config.promptSectionOrder, interpolate: false, text: () => this.modelList(),
-      }), 'dvModels prompt section')
-    })
     ctx.inject(['tools'], (child) => {
-      child.effect(() => child.tools.register(this.getTool()), 'dvModels dv_models_get')
+      child.effect(() => child.tools.register(this.defineModelsListTool()), 'dvModels dv_models_list')
+      child.effect(() => child.tools.register(this.defineModelsGetTool()), 'dvModels dv_models_get')
+    })
+    const skill = {
+      name: 'video-model-selection',
+      description: 'How to choose the video model for each shot of a plan: the task of the shot, the candidates from '
+        + 'dv_models_list and dv_models_get, and when to ask the user.',
+      source: 'runtime',
+      content: readFileSync(new URL('../skills/video-model-selection.md', import.meta.url), 'utf8'),
+      // The agent's own procedure: the model loads it, and the composer's / menu and the Skills page do not list it.
+      invocation: { modelInvocable: true, userInvocable: false },
+    }
+    ctx.inject(['skills'], (child) => {
+      child.effect(() => child.skills.register(skill), `dvModels ${skill.name}`)
     })
   }
 
   /**
-   * Register a model.
-   * @param entry - the model and the modes it supports.
-   * @returns a function that removes the model.
-   * @throws Error when a model with the same `id` is registered, or when the entry declares no mode, an unknown mode,
-   *   an input role its mode does not allow, or an input role without a media type.
+   * Register an entry.
+   * @param entry - one model of one provider serving one task.
+   * @returns a function that removes the entry.
+   * @throws Error when an entry with the same key is registered.
    */
   register(entry: ModelEntry): () => void {
-    if (this.entries.has(entry.id)) throw new Error(`dvModels: model "${entry.id}" is already registered.`)
-    checkEntry(entry)
-    this.entries.set(entry.id, entry)
+    const key = formatModelKey(entry)
+    if (this.entries.has(key)) throw new Error(`dvModels: model "${key}" is already registered.`)
+    this.entries.set(key, entry)
     this.notify()
     return () => {
-      if (this.entries.get(entry.id) !== entry) return
-      this.entries.delete(entry.id)
+      if (this.entries.get(key) !== entry) return
+      this.entries.delete(key)
       this.notify()
     }
   }
 
   /**
-   * Read one model.
-   * @param id - the model name.
-   * @returns the entry, or undefined when no model is registered under `id`.
+   * Read one entry.
+   * @param key - the entry's modality, task, provider and model.
+   * @returns the entry, or undefined when no entry is registered under `key`.
    */
-  get(id: string): ModelEntry | undefined {
-    return this.entries.get(id)
+  get(key: ModelKey): ModelEntry | undefined {
+    return this.entries.get(formatModelKey(key))
   }
 
-  /** @returns every registered model, in registration order. */
-  list(): ModelEntry[] {
-    return [...this.entries.values()]
+  /**
+   * Read the entries that match a filter.
+   * @param filter - the modality, task and provider to match; an absent field matches every entry.
+   * @returns the matching entries, in registration order.
+   */
+  list(filter: ModelFilter = {}): ModelEntry[] {
+    return [...this.entries.values()].filter(entry => entryMatchesFilter(entry, filter))
   }
 
   /**
@@ -179,83 +137,57 @@ export default class DvModels extends Service {
     return () => { this.listeners.delete(listener) }
   }
 
-  /**
-   * Check the `extra` param of a render against the model's parameters in the mode: an unknown name or a value of the
-   * wrong type is refused.
-   * @param entry - the model.
-   * @param mode - a mode the model supports.
-   * @param extra - the `extra` param of the call.
-   * @returns one sentence per problem; empty when the values are valid.
-   */
-  checkExtra(entry: ModelEntry, mode: ModeId, extra: Record<string, unknown>): string[] {
-    const schema = entry.modes[mode]?.extra ?? {}
-    const known = Object.keys(schema)
-    const unknown = Object.keys(extra).filter(name => !known.includes(name))
-    if (unknown.length > 0) {
-      return [`${entry.id} has no extra parameter ${unknown.map(name => `\`${name}\``).join(', ')} in mode ${mode}; `
-        + `its extra parameters: ${known.length === 0 ? 'none' : known.join(', ')}.`]
-    }
-    return validateArgs(schema, extra).map(message => `extra${message.startsWith('.') ? '' : '.'}${message}`)
-  }
-
   private notify(): void {
     for (const listener of this.listeners) listener()
   }
 
-  /** The `dv:models` prompt section: the modes, then one row per model; empty while no model is registered. */
-  private modelList(): string {
-    const models = this.list()
-    if (models.length === 0) return ''
-    return [
-      '## Video models',
-      'Every dv_shot_render call names a `model` and a `mode` from this list; a call without them is refused. Modes:',
-      ...Object.entries(MODES).map(([mode, definition]) => `- ${mode}: ${definition.description}`),
-      'Call dv_models_get with a model for its limits in each of its modes: durations, aspect ratios, resolutions, '
-        + 'the media types and counts each input takes, and the extra parameters it takes in `extra`.',
-      '',
-      '| model | company | modes (input: media types) | extra parameters | about |',
-      '| --- | --- | --- | --- | --- |',
-      ...models.map(entry => `| ${entry.id} | ${entry.company} | ${formatModes(entry)} | ${extraNames(entry)} | ${entry.summary} |`),
-    ].join('\n')
-  }
-
-  /**
-   * One model's limits in each of its modes, read from its backend, with its extra parameters.
-   * @param id - the model name.
-   * @returns the model, its company, and per mode the accepted inputs with their media types and counts, durations,
-   *   aspect ratios, resolutions, and the extra parameter schema.
-   * @throws Error naming the registered models when `id` is unknown, or the backend's error.
-   */
-  async describe(id: string): Promise<JsonValue> {
-    const entry = this.get(id)
-    if (entry === undefined) throw new Error(`Unknown model "${id}"; models: ${this.list().map(model => model.id).join(', ') || 'none'}.`)
-    // Each mode may be served by its own backend, so the modes' facts are read together.
-    const modes = await Promise.all(Object.entries(entry.modes).map(async ([mode, declaration]): Promise<[string, JsonValue]> => {
-      const facts = await entry.facts(mode as ModeId)
-      return [mode, {
-        inputs: describeInputs(declaration, facts),
-        duration_sec: { min: facts.minDurationSec, max: facts.maxDurationSec },
-        aspect_ratios: facts.aspectRatios,
-        resolutions: facts.resolutions,
-        extra: JSON.parse(JSON.stringify(declaration.extra)) as JsonValue,
-      }]
-    }))
-    return { model: entry.id, company: entry.company, about: entry.summary, modes: Object.fromEntries(modes) }
+  /** The `dv_models_list` tool. */
+  private defineModelsListTool() {
+    return defineTool({
+      name: 'dv_models_list',
+      description: 'List the video models you can render with, each with its key (modality, task, provider, model) and '
+        + 'its description. To choose the model of a shot, follow the video-model-selection skill.',
+      parameters: {
+        modality: { type: 'string', description: 'Only models of this modality, such as video.' },
+        task: { type: 'string', description: 'Only models for this task: t2v (prompt only) or ref2v (reference media and prompt).' },
+        provider: { type: 'string', description: 'Only models of this provider.' },
+      },
+      output: JSON_TOOL_OUTPUT,
+      execute: args => Promise.resolve(this.list().filter(entry => entryMatchesFilter(entry, args)).map(toModelListItem)),
+    })
   }
 
   /** The `dv_models_get` tool. */
-  private getTool() {
+  private defineModelsGetTool() {
     return defineTool({
       name: 'dv_models_get',
-      description: 'Read one video model\'s limits in each of its modes: the inputs it accepts with their media types and '
-        + 'counts, durations, aspect ratios, resolutions, and the extra parameters it takes in the `extra` param of '
-        + 'dv_shot_render.',
-      parameters: { model: { type: 'string', required: true, description: 'A model from the video model list.' } },
-      output: {
-        schema: { type: 'json' },
-        render: (_args: unknown, value: JsonValue): ContentBlock[] => [{ type: 'text', text: JSON.stringify(value, null, 1) }],
+      description: 'Read one video model by its key from dv_models_list: its description; its facts (durations, aspect '
+        + 'ratios and resolutions); and its schema (the inputs it accepts with their media types and counts, and the '
+        + 'parameters it takes in `extra`).',
+      parameters: {
+        modality: { type: 'string', required: true, description: 'The modality of the model, as dv_models_list lists it.' },
+        task: { type: 'string', required: true, description: 'The task of the model, as dv_models_list lists it.' },
+        provider: { type: 'string', required: true, description: 'The provider of the model, as dv_models_list lists it.' },
+        model: { type: 'string', required: true, description: 'The model name, as dv_models_list lists it.' },
       },
-      execute: args => this.describe(args.model),
+      output: JSON_TOOL_OUTPUT,
+      execute: async (args) => {
+        const entry = this.list().find(candidate => entryMatchesFilter(candidate, args))
+        if (entry === undefined) {
+          throw new Error(`No video model has the key ${args.modality}/${args.task}/${args.provider}/${args.model}; `
+            + 'call dv_models_list for the models you can use.')
+        }
+        const [facts, schema] = await Promise.all([entry.facts(), entry.schema()])
+        return {
+          ...toModelListItem(entry),
+          facts: {
+            duration_sec: { min: facts.minDurationSec, max: facts.maxDurationSec },
+            aspect_ratios: facts.aspectRatios,
+            resolutions: facts.resolutions,
+          },
+          schema,
+        }
+      },
     })
   }
 }
