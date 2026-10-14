@@ -46,7 +46,7 @@ fastvideo serve --config scripts/dreamverse/h3-ref2va.serve.yaml
 
 ### Start DreamVerse
 
-Build the repository, point the harness at the video server and the agent model, and start the web interface:
+The repository is private, so cloning it requires a GitHub account with access to `Davids048/dreamverse-harness`. Build the repository, point the harness at the video server and the agent model, and start the web interface:
 
 ```sh
 git clone https://github.com/Davids048/dreamverse-harness.git
@@ -103,7 +103,7 @@ registry       @dv/project          operation records, history, undo and redo, a
   ▲
   │ registerOperation
 components     @dv/asset-pool  @dv/story-bible  @dv/shot-plan  @dv/shot-render
-               @dv/timeline  @dv/deliver  @dv/inspector  @dv/chat-references
+               @dv/timeline  @dv/inspector  @dv/chat-references
   │ ctx.dvRef2va, ctx.dvT2va
   ▼
 render modes   @dv/render-modes     one Service Definition per render mode

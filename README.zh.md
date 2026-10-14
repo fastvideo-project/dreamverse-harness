@@ -54,7 +54,7 @@ fastvideo serve --config scripts/dreamverse/h3-ref2va.serve.yaml
 
 ### 启动 DreamVerse
 
-构建仓库，把 harness 指向视频服务器和智能体模型，然后启动 Web 界面：
+本仓库是私有仓库，克隆前需要一个有 `Davids048/dreamverse-harness` 访问权限的 GitHub 账号。构建仓库，把 harness 指向视频服务器和智能体模型，然后启动 Web 界面：
 
 ```sh
 git clone https://github.com/Davids048/dreamverse-harness.git
@@ -115,7 +115,7 @@ registry       @dv/project          operation records, history, undo and redo, a
   ▲
   │ registerOperation
 components     @dv/asset-pool  @dv/story-bible  @dv/shot-plan  @dv/shot-render
-               @dv/timeline  @dv/deliver  @dv/inspector  @dv/chat-references
+               @dv/timeline  @dv/inspector  @dv/chat-references
   │ ctx.dvRef2va, ctx.dvT2va
   ▼
 render modes   @dv/render-modes     one Service Definition per render mode
