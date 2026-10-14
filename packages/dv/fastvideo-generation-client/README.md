@@ -25,7 +25,7 @@ Use this package to reach a FastVideo generation backend. It reads the served mo
 <a id="use-this-package"></a>
 ## Use this package
 
-Construct one client per backend with the backend's base URL. `@dv/fastvideo` builds one client per configured model and mode in an isolated `dvFastvideoGeneration` scope.
+Construct one client per backend with the backend's base URL. `@dv/fastvideo` builds one client per configured model and task in an isolated `dvFastvideoGeneration` scope.
 
 ### Minimal configuration
 

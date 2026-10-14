@@ -53,7 +53,7 @@ const RULES: ScriptedRule[] = [
       { calls: [{ name: 'dv_asset_import', args: { reason: '产品图', base64: solidPng([200, 40, 40]).toString('base64'), mime: 'image/png', name: 'agent-product.png' } }] },
       view => ({ calls: [{ name: 'dv_plan_create', args: {
         reason: '规划', title: '智能体广告', references: [assetIdOf(view.toolResults[0], 'asset')],
-        shots: [{ prompt: '广告镜头一', duration_sec: 1, model: 'fasth3', mode: 'reference' }],
+        shots: [{ prompt: '广告镜头一', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }],
       } }] }),
       // The story's project is new, so its first plan is p1.
       { calls: [{ name: 'dv_plan_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
@@ -149,7 +149,7 @@ describe('The asset pool panel', () => {
       inputs: [], surface: 'canvas', intent: 'seed',
     }) as ProjectRecord
     const shot = await harness.api.post('/api/dv/operation', {
-      project: projectId, operation: 'shot.render', params: { model: 'fasth3', mode: 'reference', prompt, duration_sec: 1 },
+      project: projectId, operation: 'shot.render', params: { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt, duration_sec: 1 },
       inputs: [{ role: 'reference', ref: reference.outputs[0] }], surface: 'canvas', intent: 'seed',
     }) as ProjectRecord
     expect(shot.status).toBe('done')

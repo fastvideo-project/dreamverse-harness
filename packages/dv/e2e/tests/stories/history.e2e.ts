@@ -73,7 +73,7 @@ async function seedProject(prefix: string): Promise<Seeded> {
   const renders: ProjectRecord[] = []
   for (const prompt of [`${prefix} shot 1`, `${prefix} shot 2`]) {
     const reference = [{ role: 'reference', ref: imported.outputs[0] ?? '' }]
-    const render = await runOperation(id, 'shot.render', { model: 'fasth3', mode: 'reference', prompt, duration_sec: 1 }, reference)
+    const render = await runOperation(id, 'shot.render', { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt, duration_sec: 1 }, reference)
     expect(render.status).toBe('done')
     renders.push(render)
   }
@@ -343,7 +343,7 @@ describe('History panel', () => {
   it('a plan approval folds the renders it scheduled under its row; the toggle shows them', async () => {
     const id = await createProject('history-fold')
     const imported = await runOperation(id, 'asset.import', { base64: PNG_BASE64, mime: 'image/png', name: 'ref.png' })
-    const shots = [1, 2].map(shot => ({ prompt: `history-fold shot ${String(shot)}`, duration_sec: 1, model: 'fasth3', mode: 'reference' }))
+    const shots = [1, 2].map(shot => ({ prompt: `history-fold shot ${String(shot)}`, duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }))
     const plan = await runOperation(id, 'plan.create', { title: '折叠', references: [imported.outputs[0] ?? ''], shots })
     expect(plan.report?.['plan']).toBe('p1')
     const approval = await runOperation(id, 'plan.approve', { plan: 'p1' })
@@ -417,7 +417,7 @@ describe('History panel', () => {
     await expect.poll(() => rowOf(page, imported.id).getAttribute('data-status'), { timeout: 15_000 }).toBe('done')
     expect(await historyPanel(page).locator('[data-testid="dv-history-empty"]').count()).toBe(0)
     const reference = [{ role: 'reference', ref: imported.outputs[0] ?? '' }]
-    const render = await runOperation(id, 'shot.render', { model: 'fasth3', mode: 'reference', prompt: 'history-live shot', duration_sec: 1 }, reference)
+    const render = await runOperation(id, 'shot.render', { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'history-live shot', duration_sec: 1 }, reference)
     await expect.poll(() => rowOf(page, render.id).getAttribute('data-status'), { timeout: 30_000 }).toBe('done')
     await expect.poll(() => rowOf(page, render.id).locator('[data-testid="dv-history-thumb"]').count()).toBe(1)
     expect(page.errors).toEqual([])

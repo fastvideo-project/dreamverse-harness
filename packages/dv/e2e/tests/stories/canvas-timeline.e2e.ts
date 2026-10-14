@@ -14,7 +14,7 @@ const OTHER_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQV
 /** A 1×1 opaque PNG. */
 const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 
-/** The Shot render operation of every seeded shot; the e2e profile serves fasth3 in mode reference only. */
+/** The Shot render operation of every seeded shot; the e2e profile serves fasth3 for task ref2v only. */
 const RENDER_OPERATION = 'shot.render'
 
 /** A seeded project: its ID, the rendered take assets in shot order (the clips of timeline t1), and the shot records. */
@@ -75,7 +75,7 @@ async function seedProject(title: string, shots = 3, timelines: number[] = []): 
   const plan = await runOperation(id, 'plan.create', {
     title, references: ['c1@1'],
     shots: Array.from({ length: shots }, (_, index) => ({
-      prompt: `${title} shot ${String(index + 1)}`, duration_sec: 1 + (index % 2), model: 'fasth3', mode: 'reference',
+      prompt: `${title} shot ${String(index + 1)}`, duration_sec: 1 + (index % 2), modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3',
     })),
   })
   await runOperation(id, 'plan.approve', { plan: plan.report?.['plan'] })
@@ -340,7 +340,7 @@ describe('canvas stories', () => {
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
     await page.locator('[data-node-kind="take"]').first().click()
     await expect.poll(() => editor.count()).toBe(1)
-    // The take editor names the mode of the take's record.
+    // The take editor names the model and task of the take's record.
     expect(await editor.locator('[data-testid="dv-canvas-render-mode"]').textContent()).toBe('fasth3 · 参考图生成')
     await editor.getByRole('button', { name: '关闭' }).click()
     await expect.poll(() => editor.count()).toBe(0)
@@ -379,7 +379,7 @@ describe('canvas stories', () => {
     await runOperation(project.id, 'plan.update', {
       plan: 'p1', title: v1.title, references: v1.references,
       shots: Array.from({ length: 40 }, (_, index) => ({
-        prompt: `canvas-editor-wheel shot ${String(index + 1)}`, duration_sec: 1, model: 'fasth3', mode: 'reference',
+        prompt: `canvas-editor-wheel shot ${String(index + 1)}`, duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3',
       })),
     })
     const page = await openPage()
@@ -492,7 +492,7 @@ describe('canvas stories', () => {
     // Shot 3 continues shot 2, so its render starts from the last still of shot 2's take.
     await runOperation(project.id, 'plan.update', {
       plan: 'p1', title: v1.title, references: v1.references,
-      shots: [...v1.shots, { prompt: 'canvas-plan-versions shot 3', duration_sec: 1, model: 'fasth3', mode: 'reference', continue_previous: true }],
+      shots: [...v1.shots, { prompt: 'canvas-plan-versions shot 3', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', continue_previous: true }],
     })
     await runOperation(project.id, 'plan.approve', { plan: 'p1' })
     const state = await waitFor(async () => {
@@ -528,7 +528,7 @@ describe('canvas stories', () => {
     expect(await versions.allTextContents()).toEqual(['第 1 版', '第 2 版'])
     expect(await editor.getByRole('button', { name: '第 2 版' }).getAttribute('aria-pressed')).toBe('true')
     await expect.poll(() => editor.locator('ol > li').count()).toBe(3)
-    // Each shot card names its mode, and its 首帧 row says whether it continues the previous shot.
+    // Each shot card names its model and task, and its 首帧 row says whether it continues the previous shot.
     expect(await editor.locator('[data-testid="dv-canvas-shot-mode"]').allTextContents()).toEqual(['fasth3 · 参考图生成', 'fasth3 · 参考图生成', 'fasth3 · 参考图生成'])
     expect(await editor.locator('ol > li dd').filter({ hasText: /^(接上一镜头|无 · 不接上一镜头)$/ }).allTextContents()).toEqual(['无 · 不接上一镜头', '无 · 不接上一镜头', '接上一镜头'])
     await editor.getByRole('button', { name: '第 1 版' }).click()
@@ -541,7 +541,7 @@ describe('canvas stories', () => {
     const v1 = (await stateOf(project.id)).components.plan.plans['p1']?.[0]
     if (v1 === undefined) throw new Error('the seeded plan is not p1')
     const base = { plan: 'p1', title: v1.title, references: v1.references }
-    const added = [...v1.shots, { prompt: 'canvas-current shot 4', duration_sec: 1, model: 'fasth3', mode: 'reference' }]
+    const added = [...v1.shots, { prompt: 'canvas-current shot 4', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }]
     // v2 adds shot 4 and is approved; v3 changes shot 2 and is never approved; v4 returns to the three v1 shots.
     await runOperation(project.id, 'plan.update', { ...base, shots: added })
     await runOperation(project.id, 'plan.approve', { plan: 'p1' })
@@ -690,7 +690,7 @@ describe('canvas stories', () => {
     model.rules.push({
       match: 'agent-shot-please',
       steps: [{ calls: [{ name: 'dv_shot_render', args: {
-        reason: 'agent shot', project_id: project.id, model: 'fasth3', mode: 'reference', prompt: 'canvas-agent extra shot', duration_sec: 1, inputs: { reference: ['c1@1'] },
+        reason: 'agent shot', project_id: project.id, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'canvas-agent extra shot', duration_sec: 1, inputs: { reference: ['c1@1'] },
       } }] }],
       endText: '拍好了',
     })
@@ -1284,7 +1284,7 @@ describe('timeline stories', () => {
     await runOperation(project, 'bible.character_create', { character: 'c1', name: 'Dancer' }, [{ role: 'reference', ref: imported.outputs[0] ?? '' }])
     const plan = await runOperation(project, 'plan.create', {
       title: 'timeline-pending', references: ['c1@1'],
-      shots: [1, 2, 3].map(shot => ({ prompt: `timeline-pending shot ${String(shot)}`, duration_sec: shot === 2 ? 2 : 1, model: 'fasth3', mode: 'reference' })),
+      shots: [1, 2, 3].map(shot => ({ prompt: `timeline-pending shot ${String(shot)}`, duration_sec: shot === 2 ? 2 : 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' })),
     })
     harness.backend.hold()
     try {
@@ -1443,7 +1443,7 @@ describe('going back and keep anyway', () => {
     // A plain edit is the step to come back to; the seeded renders fold under the plan approval's row.
     const earlier = (await runOperation(project.id, 'timeline.rename', { timeline: 't1', name: 'go-back base' })).id
     // Two more edits: one more take on the canvas and a second timeline.
-    await runOperation(project.id, RENDER_OPERATION, { model: 'fasth3', mode: 'reference', prompt: 'go-back shot', duration_sec: 1 }, [{ role: 'reference', ref: 'c1@1' }])
+    await runOperation(project.id, RENDER_OPERATION, { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'go-back shot', duration_sec: 1 }, [{ role: 'reference', ref: 'c1@1' }])
     await expect.poll(() => takes.count(), { timeout: 30_000 }).toBe(2)
     await viewToggle(page, '时间线').click()
     await page.locator('[data-testid="dv-timeline-editor"]').getByRole('button', { name: '＋ 新建' }).click()

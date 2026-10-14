@@ -141,7 +141,7 @@ describe('shot.render with a live stream', () => {
     })
     const { record: shot } = await fixture.project.run({
       ...user, project: projectId, operation: 'shot.render', inputs: [{ role: 'reference', ref: { character: brandString<CharacterId>('c1'), version: 1 } }],
-      params: { model: 'fasth3', mode: 'reference', prompt: 'Picture 1 waves', duration_sec: 1, shot: 3 }, intent: 'shot',
+      params: { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'Picture 1 waves', duration_sec: 1, shot: 3 }, intent: 'shot',
     })
     if (shot === null) throw new Error('shot.render wrote no record')
     expect(shot.status).toBe('done')

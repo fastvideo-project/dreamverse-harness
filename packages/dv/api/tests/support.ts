@@ -1,7 +1,7 @@
 /**
  * Mounting for the API, chat references, stream, bundle and e2e specs: the real Project service, asset pool, `dvFfmpeg`,
  * the Story bible, Shot plan, Shot render and Timeline components, and optionally the DSH tool registry, over a temporary
- * root, with the model catalog and a fake model `fasth3` in mode reference.
+ * root, with the model catalog and a fake `fastvideo` model `fasth3` for task `ref2v`.
  */
 import { execFile } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -15,7 +15,7 @@ import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvProject from '@dv/project'
-import DvModels, { type ModelEntry, type ModeId, type RenderModelFacts, type RenderRequest, type RenderStreamEvent } from '@dv/models'
+import DvModels, { type ModelEntry, type RenderModelFacts, type RenderRequest, type RenderStreamEvent } from '@dv/models'
 import DvShotPlan from '@dv/shot-plan'
 import DvShotRender from '@dv/shot-render'
 import DvStoryBible from '@dv/story-bible'
@@ -41,7 +41,6 @@ export function testFacts(): RenderModelFacts {
     modelId: 'test-ref2va', aspectRatios: ['16:9', '9:16'], resolutions: ['720p'],
     frameSizes: { '16:9': { '720p': [192, 112] }, '9:16': { '720p': [112, 192] } }, minDurationSec: 1, maxDurationSec: 5,
     numFramesByDurationSec: framesByDuration(1, 5),
-    inputLimits: {},
   }
 }
 
@@ -63,28 +62,47 @@ export async function encodeClip(dir: string, width: number, height: number, num
 }
 
 /**
- * The catalog entry of a fake model `fasth3` in mode reference (1 to 2 reference images and an optional first frame):
- * it renders a solid-color clip for every request and remembers the requests.
+ * The catalog entry of a fake `fastvideo` model `fasth3` for task `ref2v` (1 to 2 reference images and an optional first
+ * frame): it accepts every request, renders a solid-color clip for each, and remembers the requests.
  */
-export class FakeModel implements ModelEntry {
-  readonly id = 'fasth3'
-  readonly company = 'test'
-  readonly summary = 'Solid-color clips'
-  readonly modes: ModelEntry['modes'] = {
-    reference: { inputs: { reference: { min: 1, mediaTypes: ['image'] }, first_frame: { min: 0, mediaTypes: ['image'] } }, extra: {}, gpuSecondsPerVideoSecond: 4, validateGenerationRequest: () => Promise.resolve([]) },
-  }
+export class FakeModel implements ModelEntry<'ref2v'> {
+  readonly modality = 'video'
+  readonly task = 'ref2v'
+  readonly provider = 'fastvideo'
+  readonly model = 'fasth3'
+  readonly description = 'Solid-color clips.'
+  readonly gpuSecondsPerVideoSecond = 4
   readonly requests: RenderRequest[] = []
 
   /**
-   * Read the facts; the same in every mode.
+   * Read the facts.
    * @returns the facts.
    */
-  facts(_mode: ModeId): Promise<RenderModelFacts> {
+  facts(): Promise<RenderModelFacts> {
     return Promise.resolve(testFacts())
   }
 
+  /**
+   * Describe the accepted inputs; the model takes no parameters in `extra`.
+   * @returns the description.
+   */
+  schema(): ReturnType<ModelEntry['schema']> {
+    return Promise.resolve({
+      inputs: { reference: { media_types: ['image'], min: 1, max: 2 }, first_frame: { media_types: ['image'], max: 1 } },
+      extra: {},
+    })
+  }
+
+  /**
+   * Accept every request.
+   * @returns no problems.
+   */
+  validateGenerationRequest(): Promise<string[]> {
+    return Promise.resolve([])
+  }
+
   /** Render the request's frames as a solid clip, then stream its last frame, its bytes in two chunks, and completion. */
-  async *render(_mode: ModeId, request: RenderRequest): AsyncIterable<RenderStreamEvent> {
+  async *render(request: RenderRequest): AsyncIterable<RenderStreamEvent> {
     this.requests.push(request)
     const dir = mkdtempSync(join(tmpdir(), 'dv-fake-render-'))
     try {
@@ -143,7 +161,7 @@ export async function startBase(options: BaseFixtureOptions = {}): Promise<BaseF
   const root = options.root ?? mkdtempSync(join(tmpdir(), 'dv-base-'))
   const context = new Context()
   let renderer: FakeModel | null = null
-  await context.plugin(DvModels, { promptSectionOrder: 4890 }).await()
+  await context.plugin(DvModels).await()
   if ((options.generation ?? 'fake') === 'fake') {
     const fake = new FakeModel()
     context.effect(() => context.dvModels.register(fake))

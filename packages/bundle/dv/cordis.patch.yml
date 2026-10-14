@@ -11,21 +11,22 @@
 #   GROQ_API_KEY          key of the documented fallback route
 
 - insert:
-    # The model catalog: the video model list the agent reads, and the models dv_shot_render and plans can name.
+    # The model catalog: the models dv_shot_render and plans can name, which the agent reads through dv_models_list and
+    # dv_models_get.
     - id: dv-models
       name: '@dv/models'
 
-    # Models on the cluster's FastVideo streaming_v2 servers, one server per mode. A model or mode left out of `models`
+    # Models on the cluster's FastVideo streaming_v2 servers, one server per task. A model or task left out of `models`
     # is not registered; a deployment with other servers replaces this row's config in its profile patch.
     - id: dv-fastvideo
       name: '@dv/fastvideo'
       config:
         models:
           fasth3:
-            reference:
+            ref2v:
               baseUrl: http://10.244.19.118:8029
               gpuSecondsPerVideoSecond: 4
-            text:
+            t2v:
               baseUrl: http://10.244.16.130:8031
               gpuSecondsPerVideoSecond: 1.5
 
