@@ -1,17 +1,17 @@
 /**
  * The Shot plan component of DreamVerse as the `dvShotPlan` Cordis service: the plan of a video before anything is
  * rendered. A plan has a `PlanId` (`p1`, `p2`, …) and numbered versions. It owns three operations:
- * - `plan.create`: version 1 of a new plan (the shots with their models and modes, prompts and durations, and the
- *   references), stored as a JSON asset so the agent and the user read the same text; the assigned PlanId goes in
- *   `report.plan`;
+ * - `plan.create`: version 1 of a new plan (the shots with their models, prompts and durations, and the references),
+ *   stored as a JSON asset so the agent and the user read the same text; the assigned PlanId goes in `report.plan`;
  * - `plan.update`: the next version of the plan its `plan` param names;
  * - `plan.approve`: the user's go-ahead for one version; through `dvProject.run` as the `system` actor, it schedules one
- *   render per new or changed shot with the Shot render operation `shot.render`, in the shot's model and mode, and
- *   one `timeline.update` of the plan's timeline with every shot's take, or a `timeline.create` of a new timeline when
- *   the plan has none.
+ *   render per new or changed shot with the Shot render operation `shot.render`, with the shot's model, and one
+ *   `timeline.update` of the plan's timeline with every shot's take, or a `timeline.create` of a new timeline when the
+ *   plan has none.
  *
- * `plan.create` and `plan.update` refuse a shot whose model is not in the model catalog or does not support the shot's
- * mode, so a plan names only models and modes the deployment serves.
+ * A shot names its model by the four fields of its key in the model catalog: `modality`, `task`, `provider` and `model`.
+ * `plan.create` and `plan.update` refuse a shot whose key is not in the catalog, so a plan names only models the
+ * deployment serves.
  *
  * `dvProject` turns each operation into its agent tool (`dv_plan_create`, `dv_plan_update`, `dv_plan_approve`). The
  * reducer keeps the `plan` slice: every version of every plan and the record that approved it.
@@ -22,7 +22,7 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import z from '@deepseek-ai/schemastery'
 import type DvModels from '@dv/models'
-import { MODES } from '@dv/models'
+import { formatModelKey, type ModelKey } from '@dv/models'
 import type DvProject from '@dv/project'
 import type { OperationContext, OperationResult, OperationSpec, ProjectId, ProjectState, RecordId, RunRequest } from '@dv/project'
 import type {} from '@dv/timeline'
@@ -47,9 +47,19 @@ export const Config: z<Config> = z.object({})
 /** The Shot render operation; `plan.approve` schedules it by name. */
 const RENDER_OPERATION = 'shot.render'
 
-/** Whether a shot's mode takes reference images; a shot in another mode ignores the plan's references. */
+/** Whether a shot's task takes references; a shot of another task ignores the plan's references. */
 function takesReferences(shot: Shot): boolean {
-  return Object.hasOwn(MODES, shot.mode) && MODES[shot.mode].inputs.includes('reference')
+  return shot.task === 'ref2v'
+}
+
+/** Whether a shot's task can start from a first frame, which `continue_previous` supplies. */
+function takesFirstFrame(shot: Shot): boolean {
+  return shot.task === 'ref2v'
+}
+
+/** The key in the model catalog of the model that renders a shot. */
+function shotKey(shot: Shot): ModelKey {
+  return { modality: shot.modality, task: shot.task, provider: shot.provider, model: shot.model }
 }
 
 /** The operations that lay out the rendered clips on a timeline; `plan.approve` schedules one of them by name. */
@@ -61,18 +71,20 @@ const SHOT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    model: { type: 'string', required: true, description: 'A model from the video model list.' },
-    mode: { type: 'string', enum: Object.keys(MODES), required: true, description: 'A mode the model supports (see the video model list).' },
-    prompt: { type: 'string', required: true, description: 'The complete prompt of this shot, written for its model and mode.' },
+    modality: { type: 'string', required: true, description: 'The modality of a model that dv_models_list lists.' },
+    task: { type: 'string', required: true, description: 'The task of that model, as dv_models_list lists it.' },
+    provider: { type: 'string', required: true, description: 'The provider of that model, as dv_models_list lists it.' },
+    model: { type: 'string', required: true, description: 'The model name, as dv_models_list lists it.' },
+    prompt: { type: 'string', required: true, description: 'The complete prompt of this shot, written for its model and task.' },
     duration_sec: { type: 'integer', description: 'Seconds; defaults to the model minimum.' },
     references: {
       type: 'array', items: { type: 'string' },
-      description: 'Mode reference only: character, location or style versions (c1@1) or asset IDs this shot uses instead of the plan references.',
+      description: 'Task ref2v only: character, location or style versions (c1@1) or asset IDs this shot uses instead of the plan references.',
     },
     continue_previous: {
       type: 'boolean',
-      description: 'Not on shot 1, and only when the model takes a first frame in the mode: the shot starts from the last frame of '
-        + 'the previous shot. Omit it for a shot that does not continue the previous one.',
+      description: 'Not on shot 1, and only when the model takes a first frame (see dv_models_get): the shot starts from the last '
+        + 'frame of the previous shot. Omit it for a shot that does not continue the previous one.',
     },
     seed: { type: 'integer' },
   },
@@ -83,7 +95,7 @@ const PLAN_PARAMS = {
   title: { type: 'string' },
   references: {
     type: 'array', items: { type: 'string' },
-    description: 'Character, location or style versions (c1@1) or asset IDs every shot in mode reference references unless it names its own.',
+    description: 'Character, location or style versions (c1@1) or asset IDs every shot of task ref2v references unless it names its own.',
   },
   aspect_ratio: { type: 'string' },
   resolution: { type: 'string' },
@@ -110,29 +122,25 @@ function shotCount(params: Record<string, unknown>): number {
 }
 
 /**
- * The problems of a plan's shots that no render can fix: a model that is not in the catalog, a mode the model does not
- * support, references in a mode that takes none, and `continue_previous` on shot 1 or where the model takes no first
- * frame in the mode.
+ * The problems of a plan's shots that no render can fix: a model key that is not in the catalog, references in a task
+ * other than `ref2v`, and `continue_previous` on shot 1 or in a task other than `ref2v`.
  * @param shots - the shots, in order.
  * @param models - the model catalog.
  * @returns one sentence per problem, empty when the shots are valid.
  */
-function shotProblems(shots: readonly Shot[], models: Pick<DvModels, 'get' | 'list'>): string[] {
+function shotProblems(shots: readonly Shot[], models: Pick<DvModels, 'get'>): string[] {
   return shots.flatMap((shot, index) => {
     const n = String(index + 1)
-    const entry = models.get(shot.model)
-    if (entry === undefined) {
-      return [`Shot ${n} uses model ${shot.model}, which is not in the video model list; models: `
-        + `${models.list().map(model => model.id).join(', ') || 'none'}.`]
+    const key = shotKey(shot)
+    if (models.get(key) === undefined) {
+      return [`Shot ${n} uses model ${formatModelKey(key)}, which is not in the model catalog; call dv_models_list for the models.`]
     }
-    const declaration = Object.hasOwn(entry.modes, shot.mode) ? entry.modes[shot.mode] : undefined
-    if (declaration === undefined) return [`Shot ${n} uses model ${shot.model} in mode ${shot.mode}, which it does not support; its modes: ${Object.keys(entry.modes).join(', ')}.`]
     const problems: string[] = []
-    if (declaration.inputs.reference === undefined && (shot.references?.length ?? 0) > 0) {
-      problems.push(`Shot ${n} uses mode ${shot.mode}, which takes no reference images; remove its references or use mode reference.`)
+    if (!takesReferences(shot) && (shot.references?.length ?? 0) > 0) {
+      problems.push(`Shot ${n} uses task ${shot.task}, which takes no references; remove its references or use task ref2v.`)
     }
-    if (shot.continue_previous === true && declaration.inputs.first_frame === undefined) {
-      problems.push(`Shot ${n} uses model ${shot.model} in mode ${shot.mode}, which cannot start from the previous shot; remove its continue_previous.`)
+    if (shot.continue_previous === true && !takesFirstFrame(shot)) {
+      problems.push(`Shot ${n} uses task ${shot.task}, which takes no first frame; remove its continue_previous or use task ref2v.`)
     } else if (shot.continue_previous === true && index === 0) {
       problems.push('Shot 1 has no previous shot to continue; remove its continue_previous.')
     }
@@ -176,8 +184,8 @@ interface ApprovalShot {
 
 /**
  * The `shot.render` params and reference inputs of every shot of a plan version, in shot order, as `plan.approve`
- * schedules them, and the take each unchanged shot reuses. A shot in a mode that takes references carries its own
- * references, else the plan's; a shot in another mode carries none. Each shot's params name its model and mode. A shot
+ * schedules them, and the take each unchanged shot reuses. A shot of task `ref2v` carries its own references, else the
+ * plan's; a shot of another task carries none. Each shot's params name its model key. A shot
  * is unchanged when a done `shot.render` record for the same plan in the approving state has the same
  * params (apart from `plan`, `plan_version` and `shot`), the same reference inputs,
  * and the same `first_frame` input: none for a shot without `continue_previous`, else the reused take of the previous
@@ -201,7 +209,7 @@ function approvalShots(
     const references = takesReferences(shot) ? shot.references ?? version.references ?? [] : []
     const inputs: RunRequest['inputs'] = references.length === 0 ? [] : project.parseInputs(RENDER_OPERATION, { reference: references }, state)
     const params: Record<string, unknown> = {
-      model: shot.model, mode: shot.mode, prompt: shot.prompt, plan, plan_version: version.version, shot: index + 1,
+      ...shotKey(shot), prompt: shot.prompt, plan, plan_version: version.version, shot: index + 1,
     }
     for (const [key, value] of Object.entries({
       duration_sec: shot.duration_sec, aspect_ratio: version.aspect_ratio, resolution: version.resolution, seed: shot.seed ?? version.seed,
@@ -303,7 +311,7 @@ export default class DvShotPlan extends Service {
 
   /**
    * Schedule the renders of the plan version that a running `plan.approve` call names (its `version` param, else the
-   * latest version): one `shot.render` call in the shot's model and mode per shot that is new or changed (see
+   * latest version): one `shot.render` call with the shot's model per shot that is new or changed (see
    * `approvalShots`; an unchanged shot reuses its done take), and one `timeline.update` of the plan's timeline with every
    * shot's take in shot order, or a `timeline.create` of a new timeline when the plan has none (see `timelineCall`),
    * written by the `system` actor in the approving record's surface, session and turn. A rendered shot with
@@ -357,10 +365,10 @@ export default class DvShotPlan extends Service {
   }
 
   /**
-   * Refuse a `plan.create` or `plan.update` call before its record when a shot names a model that is not in the model
-   * catalog or a mode the model does not support, references in a mode that takes none, or `continue_previous` on shot 1
-   * or where the model takes no first frame (see `shotProblems`), or when a shot's references (its own, else the plan's)
-   * name an unknown character, location or style version, so the report's GPU estimate can be computed.
+   * Refuse a `plan.create` or `plan.update` call before its record when a shot names a model key that is not in the
+   * model catalog, references in a task other than `ref2v`, or `continue_previous` on shot 1 or in a task other than
+   * `ref2v` (see `shotProblems`), or when a shot's references (its own, else the plan's) name an unknown character,
+   * location or style version, so the report's GPU estimate can be computed.
    * @param plan - the plan of the call's params.
    * @param state - the project's current state, which the call writes after.
    * @throws Error with one sentence per problem, or the error of the unknown reference.
@@ -376,9 +384,9 @@ export default class DvShotPlan extends Service {
   }
 
   /**
-   * Refuse a `plan.approve` call before its record when the plan or version is unknown, when a shot names a model or
-   * mode the catalog does not serve (see `checkPlan`), or when a shot it would render breaks the precondition of
-   * `shot.render` (such as the reference-image count of its model in its mode): every rendered shot is
+   * Refuse a `plan.approve` call before its record when the plan or version is unknown, when a shot names a model the
+   * catalog does not serve (see `checkPlan`), or when a shot it would render breaks the precondition of `shot.render`
+   * (such as the reference count of its model, or a first frame the model cannot take): every rendered shot is
    * checked, and one error names all refused shots, so the plan can be fixed at once.
    * @param request - the `plan.approve` call.
    * @param state - the project's current state, which the call writes after.
@@ -409,7 +417,7 @@ export default class DvShotPlan extends Service {
   }
 
   /**
-   * What approving a plan version renders and costs: one line per shot (its model and mode, duration, whether it continues
+   * What approving a plan version renders and costs: one line per shot (its model key, duration, whether it continues
    * the previous shot, and the start of its prompt, or that it keeps its take), the number of shots it renders, and the
    * sum of the render operations' GPU estimates for those shots. `plan.create` and `plan.update` report it, and the
    * `confirmSummary` of `plan.approve` repeats it.
@@ -430,7 +438,7 @@ export default class DvShotPlan extends Service {
       const duration = planned.duration_sec === undefined ? '' : `, ${String(planned.duration_sec)} s`
       const continues = shot.continuePrevious ? ', continues from the previous shot' : ''
       const prompt = planned.prompt.length > PROMPT_PREVIEW ? `${planned.prompt.slice(0, PROMPT_PREVIEW)}…` : planned.prompt
-      return `shot ${String(index + 1)} (${planned.model} ${planned.mode}${duration}${continues}): ${prompt}`
+      return `shot ${String(index + 1)} (${formatModelKey(shotKey(planned))}${duration}${continues}): ${prompt}`
     })
     return { shots: lines, rendered: shots.filter(shot => shot.reuse === null).length, gpu_seconds: gpuSeconds }
   }
@@ -458,7 +466,7 @@ export default class DvShotPlan extends Service {
       name: 'plan.create',
       component: 'plan',
       version: '1',
-      description: 'Propose a new plan for a separate story: for each shot its model and mode, its prompt written for them, its '
+      description: 'Propose a new plan for a separate story: for each shot its model from dv_models_list, its prompt written for it, its '
         + 'duration, and its inputs (references; continue_previous to start from the previous shot\'s last frame). The report names '
         + 'the new plan ID (p1, p2, …), one line per shot, and gpu_seconds, the GPU estimate of approving it; show them to the user. '
         + 'To extend, shorten or change an existing plan, call dv_plan_update instead. Nothing is rendered until the user agrees in '
@@ -515,7 +523,7 @@ export default class DvShotPlan extends Service {
         component: 'plan',
         version: '1',
         description: 'Record the user\'s approval of a plan version and render its new or changed shots in order, each with the '
-          + 'shot\'s model and mode; unchanged shots keep their takes, and the plan\'s timeline gets every shot. Call it only after '
+          + 'shot\'s model; unchanged shots keep their takes, and the plan\'s timeline gets every shot. Call it only after '
           + 'you showed the plan and the user agreed in the conversation. Then call dv_proj_wait and read dv_proj_state.',
         inputs: {},
         params: {
