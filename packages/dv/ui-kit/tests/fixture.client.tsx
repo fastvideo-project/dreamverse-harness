@@ -67,7 +67,7 @@ export function fixtureState(): WireState {
     }),
     record({ id: 's1', turn: 't3', actor: 'agent', operation: 'timeline.create', params: { assets: ['shot1.mp4', 'shot2.mp4'] } }),
     record({
-      id: 'c1', turn: 't4', surface: 'timeline', operation: 'deliver.timeline_export', params: { timeline: 't1' },
+      id: 'c1', turn: 't4', surface: 'timeline', operation: 'timeline.export', params: { timeline: 't1' },
       inputs: [{ role: 'clip', ref: { asset: 'shot2.mp4' }, resolved_asset: 'shot2.mp4' }], outputs: ['export.mp4'], status: 'failed',
       error: { code: 'operation_failed', message: 'ffmpeg exit 1' },
     }),
@@ -117,7 +117,7 @@ export function fixtureState(): WireState {
       asset('shot1-last.png', 'image/png', 'g1', null, 'shot.render'),
       asset('shot2.mp4', 'video/mp4', 'g2', 6, 'shot.render'),
       asset('shot2-last.png', 'image/png', 'g2', null, 'shot.render'),
-      asset('export.mp4', 'video/mp4', 'c1', 3, 'deliver.timeline_export'),
+      asset('export.mp4', 'video/mp4', 'c1', 3, 'timeline.export'),
       asset('export-last.png', 'image/png', 'x1', null, 'asset.grab_still'),
     ],
   }

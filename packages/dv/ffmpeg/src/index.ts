@@ -1,6 +1,6 @@
 /**
  * The ffmpeg runner of DreamVerse as the `dvFfmpeg` Cordis service: it runs ffmpeg and ffprobe over files on disk and
- * reads what ffprobe reports. Components call it from their operations: the Asset pool grabs stills, Deliver exports
+ * reads what ffprobe reports. Components call it from their operations: the Asset pool grabs stills, Timeline exports
  * timelines, and Inspector reads asset metadata. The runner never stores anything: a command reads input files by path
  * and writes its declared outputs into a directory the caller gives, usually the operation's `scratchDir`, and the
  * operation imports the outputs into the asset pool with `OperationContext.importAsset`.

@@ -16,7 +16,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { AssetId, ProjectRecord, Reducer } from '@dv/project'
 import type { Clip, ClipId, ClipStatus, Timeline, TimelineId, TimelineState } from './types.ts'
 
-/** The ten Timeline operations by verb. */
+/** The ten Timeline edit operations by verb. */
 export const OPERATIONS = {
   create: 'timeline.create',
   update: 'timeline.update',

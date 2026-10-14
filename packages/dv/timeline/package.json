@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Timeline component of DreamVerse: the timelines of a project and their clips (assets with in and out points), edited by the ten timeline.* operations, each clip named by its clip ID; editing a clip never creates a file.",
+  "description": "Timeline component of DreamVerse: the timelines of a project and their clips (assets with in and out points), edited by the ten timeline.* edit operations, each clip named by its clip ID; editing a clip never creates a file, and timeline.export writes a timeline to one video with ffmpeg.",
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json"
@@ -11,6 +11,8 @@
   "dependencies": {
     "@deepseek-ai/dsh-brand": "workspace:*",
     "@deepseek-ai/dsh-skill": "workspace:*",
+    "@dv/asset-pool": "workspace:*",
+    "@dv/ffmpeg": "workspace:*",
     "@dv/project": "workspace:*"
   },
   "peerDependencies": {
@@ -25,8 +27,6 @@
     "@deepseek-ai/dsh-system-prompt": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
-    "@dv/asset-pool": "workspace:*",
-    "@dv/ffmpeg": "workspace:*",
     "@types/node": "^22.20.0"
   }
 }

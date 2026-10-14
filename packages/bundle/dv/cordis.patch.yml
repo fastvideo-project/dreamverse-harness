@@ -74,9 +74,6 @@
     - id: dv-timeline
       name: '@dv/timeline'
 
-    - id: dv-deliver
-      name: '@dv/deliver'
-
     # dv: mentions in chat messages and chat image import.
     - id: dv-chat-references
       name: '@dv/chat-references'

@@ -71,7 +71,7 @@ kind: "package-reference"
 <a id="model-experience"></a>
 ## 模型体验
 
-间接地，经由 `@dv/asset-pool`、`@dv/deliver` 和 `@dv/inspector` 的操作：它们的工具结果报告该服务产生的文件和探测字段。
+间接地，经由 `@dv/asset-pool`、`@dv/timeline` 和 `@dv/inspector` 的操作：它们的工具结果报告该服务产生的文件和探测字段。
 
 #### KV Cache 影响
 

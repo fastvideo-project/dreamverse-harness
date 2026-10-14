@@ -239,7 +239,7 @@ export function centerFocus(entry: HistoryEntry, owner: ReadonlyMap<string, stri
   const { record } = entry
   if (entry.place === 'after') return null
   if (record.component === 'proj') return null
-  if (record.component === 'timeline' || record.operation === 'deliver.timeline_export') {
+  if (record.component === 'timeline') {
     const timelineId = timelineOf(record, owner)
     if (timelineId === null) return null
     const clipId = text(record.params['clip']) ?? reportedClips(record)[0] ?? null

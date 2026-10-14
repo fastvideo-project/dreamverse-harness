@@ -17,7 +17,6 @@
     "@dv/api": "workspace:*",
     "@dv/asset-pool": "workspace:*",
     "@dv/chat-references": "workspace:*",
-    "@dv/deliver": "workspace:*",
     "@dv/fastvideo": "workspace:*",
     "@dv/ffmpeg": "workspace:*",
     "@dv/inspector": "workspace:*",

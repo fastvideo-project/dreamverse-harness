@@ -19,7 +19,7 @@ Resolve "第 N 段 / clip N" first: it is clip N of the first timeline in the pr
 | 撤销错了 / 恢复刚才撤销的 / redo | `dv_proj_redo` | none: it goes forward one step after an undo and adds no step. |
 | 回到之前 / 撤销到… / 回到上一版 (the project, not one clip) / roll back | `dv_proj_history_list` → `dv_proj_undo` | list: find the record of the step to go to (`place` `before`, or `after` for a step that an earlier move left). undo: `to` = that record ID; the project shows its state just after it, and the move adds no step. A new change after a move discards the later steps for good, so ask first when the user may still want them. Never rebuild the earlier state with new edits (clip replaces, a new plan version). |
 | 看一下第 N 段的最后一帧 / 第 t 秒 | `dv_asset_grab_still` → `dv_inspect_image` when a judgment is needed | still: `inputs.video` = clip N's asset, `at` = `last`, `first`, or a number of seconds (never a numeric string). inspect: `inputs.image` = the still asset, `question`. |
-| 合成 / 导出成片 | `dv_deliver_timeline_export` | `timeline` = the timeline's ID (default: the first timeline); it trims each clip with an in or out point to that range and joins the clips in timeline order; then give the link. |
+| 合成 / 导出成片 | `dv_timeline_export` | `timeline` = the timeline's ID (default: the first timeline); it trims each clip with an in or out point to that range and joins the clips in timeline order; then give the link. |
 
 ## Rules that apply to every row
 

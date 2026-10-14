@@ -168,7 +168,7 @@ Invariants: a move writes no record and keeps `tip`; an undo and then a redo ret
 
 Owner: agent B.
 
-**Registration.** `registerOperation(spec)`: refuse a registered name with `operation_exists`, a `component` outside `proj asset bible plan shot timeline deliver inspect` with `invalid_params`, a name that does not start with `<component>.` with `invalid_params`, and a `confirm` other than `never` without `confirmSummary` with `invalid_params`. `listOperations` returns registration order.
+**Registration.** `registerOperation(spec)`: refuse a registered name with `operation_exists`, a `component` outside `proj asset bible plan shot timeline inspect` with `invalid_params`, a name that does not start with `<component>.` with `invalid_params`, and a `confirm` other than `never` without `confirmSummary` with `invalid_params`. `listOperations` returns registration order.
 
 **Runner: run.** Steps of `run(request)`:
 

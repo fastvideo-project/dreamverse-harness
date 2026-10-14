@@ -261,12 +261,12 @@ describe('TimelineView', () => {
     expect(view.getByRole('button', { name: 'Split' })).toBeTruthy()
   })
 
-  it('exports the shown timeline with one deliver.timeline_export call', async () => {
+  it('exports the shown timeline with one timeline.export call', async () => {
     const { view, requests, track } = mount()
     await track()
     fireEvent.click(view.getByText('导出'))
     await waitFor(() => { expect(view.getByTestId('dv-timeline-exported').getAttribute('href')).toBe('/dv/assets/new.mp4') })
-    expect(requests().map(body => body['operation'])).toEqual(['deliver.timeline_export'])
+    expect(requests().map(body => body['operation'])).toEqual(['timeline.export'])
     expect(requests()[0]).toMatchObject({ params: { timeline: 't1' } })
   })
 })

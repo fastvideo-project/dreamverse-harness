@@ -71,7 +71,7 @@ A failed command, an unknown placeholder, or a declared output the command did n
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through the operations of `@dv/asset-pool`, `@dv/deliver`, and `@dv/inspector`, whose tool results report the files and probe fields that the service produces.
+Indirectly, through the operations of `@dv/asset-pool`, `@dv/timeline`, and `@dv/inspector`, whose tool results report the files and probe fields that the service produces.
 
 #### KV Cache effect
 

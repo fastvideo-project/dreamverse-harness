@@ -1308,9 +1308,9 @@ describe('timeline stories', () => {
       const exportButton = page.getByRole('button', { name: '导出' })
       expect(await exportButton.isDisabled()).toBe(true)
       expect(await page.locator('[data-testid="dv-timeline-export-waiting"]').textContent()).toBe('片段 1, 2, 3 还没就绪，全部就绪后才能导出')
-      // Deliver refuses the export too, naming the clips that are not ready.
+      // The export operation refuses the call too, naming the clips that are not ready.
       const refused = await harness.api.post('/api/dv/operation', {
-        project, operation: 'deliver.timeline_export', params: { timeline: 't1' }, inputs: [], surface: 'timeline', intent: 'export early',
+        project, operation: 'timeline.export', params: { timeline: 't1' }, inputs: [], surface: 'timeline', intent: 'export early',
       }).then(() => '', (error: unknown) => String(error))
       expect(refused).toContain('Clips 1, 2, 3 of timeline t1 are not ready yet.')
       // Each finished render turns its placeholder into a clip the viewer plays; the others stay placeholders.

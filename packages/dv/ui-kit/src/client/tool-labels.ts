@@ -40,7 +40,7 @@ export const DV_TOOL_LABELS: Readonly<Record<string, readonly [string, string]>>
   dv_shot_render: ['渲染镜头', 'Render shot'],
   dv_models_list: ['列出模型', 'List models'],
   dv_models_get: ['查看模型', 'Get model'],
-  dv_deliver_timeline_export: ['导出时间线', 'Export timeline'],
+  dv_timeline_export: ['导出时间线', 'Export timeline'],
   dv_asset_grab_still: ['截取静帧', 'Grab still'],
   dv_inspect_image: ['检查画面', 'Inspect image'],
   dv_inspect_asset: ['检查素材', 'Inspect asset'],

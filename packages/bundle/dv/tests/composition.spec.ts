@@ -15,7 +15,6 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
-import DvDeliver from '@dv/deliver'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvInspector from '@dv/inspector'
 import DvProject, { type OperationToolValue, type ProjectId, type RecordId } from '@dv/project'
@@ -59,7 +58,7 @@ const FakeFastVideo = {
 const PLUGINS: Record<string, object> = {
   '@deepseek-ai/dsh-system-prompt': SystemPrompt, '@deepseek-ai/dsh-tools': ToolRuntime, '@dv/project': DvProject,
   '@dv/ffmpeg': DvFfmpeg, '@dv/asset-pool': DvAssetPool, '@dv/inspector': DvInspector, '@dv/story-bible': DvStoryBible,
-  '@dv/shot-plan': DvShotPlan, '@dv/shot-render': DvShotRender, '@dv/timeline': DvTimeline, '@dv/deliver': DvDeliver,
+  '@dv/shot-plan': DvShotPlan, '@dv/shot-render': DvShotRender, '@dv/timeline': DvTimeline,
   '@dv/api': DvApi, '@dv/chat-references': DvChatReferences,
   '@dv/models': DvModels, '@dv/fastvideo': FakeFastVideo,
 }

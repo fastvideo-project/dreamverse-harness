@@ -524,7 +524,7 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
     void runOperation('timeline.clip_split', { clip: clip.clip, at_sec: atSec }, t('intent.split', { position: clip.position, at: atSec }))
   }
 
-  // Export is one `deliver.timeline_export` call: Deliver trims the clips with an in or out point and joins all clips.
+  // Export is one `timeline.export` call: it trims the clips with an in or out point and joins all clips.
   // It waits while any clip is a placeholder; the toolbar names those clips.
   const waiting = clips.filter(clip => clip.status !== 'ready').map(clip => clip.position)
   const exportTimeline = (): void => {
@@ -533,7 +533,7 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
     setExported(null)
     void run(async () => {
       const exported = await client.runOperation(request(project, session, {
-        operation: 'deliver.timeline_export', params: { timeline: timelineId }, intent: t('intent.export', { name: shownName }),
+        operation: 'timeline.export', params: { timeline: timelineId }, intent: t('intent.export', { name: shownName }),
       }))
       setExported(exported.outputs[0] ?? null)
     }).finally(() => { setExporting(false) })

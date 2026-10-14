@@ -117,7 +117,7 @@ export class Runner {
 
   /**
    * Register an operation. Refused with `operation_exists` when the name is registered, and with `invalid_params`
-   * when `component` is not one of the component keys `proj asset bible plan shot timeline deliver inspect`, when `name`
+   * when `component` is not one of the component keys `proj asset bible plan shot timeline inspect`, when `name`
    * does not start with `<component>.`, or when `confirm` is not `never` and the spec has no `confirmSummary`.
    * @param spec - the operation.
    * @returns a function that removes the registration (only if it is still this spec).

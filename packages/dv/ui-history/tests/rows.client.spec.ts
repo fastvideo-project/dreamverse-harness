@@ -89,7 +89,7 @@ describe('timelines and focus', () => {
     record({ id: 's', operation: 'timeline.clip_split', params: { clip: 'cl2', at_sec: 1 }, report: { clips: ['cl4'] } }),
     record({ id: 'm', operation: 'timeline.clip_move', params: { clip: 'cl4', to: 1 } }),
     record({ id: 'm2', operation: 'timeline.clip_move', params: { clip: 'cl3', to: 1 } }),
-    record({ id: 'e', operation: 'deliver.timeline_export', params: { timeline: 't1' }, outputs: ['out.mp4'] }),
+    record({ id: 'e', operation: 'timeline.export', params: { timeline: 't1' }, outputs: ['out.mp4'] }),
   ]
 
   it('assigns each clip to the timeline of the record that added it, a split to the split clip\'s timeline', () => {

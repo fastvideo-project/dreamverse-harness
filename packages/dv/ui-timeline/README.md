@@ -43,7 +43,7 @@ The Host half registers nothing. The browser half registers the `dv-timeline` ta
 | Delete key on the selected clip | `timeline.clip_remove {clip}` |
 | Drop an asset on the track, or pick one with ＋ | `timeline.clip_insert {timeline, at, asset}` |
 | ＋ New, rename, delete a tab | `timeline.create {timeline, assets: []}` (no name, so the tab shows 时间线 {n} / Timeline {n}), `timeline.rename {timeline, name}`, `timeline.delete {timeline}` |
-| Export | One `deliver.timeline_export {timeline}` call; the link opens the exported video |
+| Export | One `timeline.export {timeline}` call; the link opens the exported video |
 | "Keep anyway" for a selected stale clip | `POST /api/dv/stale/accept` for the record that made the clip's asset (`proj.stale_accept`) |
 
 Every record carries `surface: 'timeline'`, the chat session the view sits beside (stored as the record's `session`; the record is a step after the project's current position), and an intent in the DSH interface language naming the gesture. The selected timeline is shared through `@dv/ui-kit/current-timeline.ts`, so the shell keeps it in the URL. `TimelineView` follows `<html lang>` through `@dv/ui-kit/locale.ts`; switching timeline tabs stops playback and resets the viewer and playhead. Clicking a clip selects it and sends nothing. A clip whose asset reports no duration is drawn as five seconds.
@@ -82,8 +82,7 @@ The DOM carries test IDs `dv-timeline-body`, `dv-timeline-editor`, `dv-timeline-
 
 - [`@dv/api`](../api/README.md) — the routes behind every gesture.
 - [`@dv/ui-kit`](../ui-kit/README.md) — the client, the track geometry and the hooks.
-- [`@dv/timeline`](../timeline/README.md) — the `timeline.*` operations the editor calls.
-- [`@dv/deliver`](../deliver/README.md) — the `deliver.timeline_export` operation that Export calls.
+- [`@dv/timeline`](../timeline/README.md) — the `timeline.*` operations the editor calls, including the `timeline.export` operation that Export calls.
 
 -----
 
