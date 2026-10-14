@@ -200,8 +200,11 @@ function EntryPage(props: CenterProps): ReactNode {
   const conversation = useConversation(s => s)
   const summaryBlank = useSessions(s => sessionId === undefined ? undefined : s.byId[sessionId]?.blank)
   const mounted = useSyncExternalStore(shell.mountedSeat.subscribe, shell.mountedSeat.getSnapshot)
+  // A sent message's local echo makes the page active too: the blank band holds only the composer, so the echo bubble
+  // would overflow it onto the template chips until the turn starts.
   const active = session !== undefined && conversation !== undefined && (
-    conversation.activeTargets.size > 0 || (!session.blank && !session.awaitingFirstTurn) || session.running)
+    conversation.activeTargets.size > 0 || (!session.blank && !session.awaitingFirstTurn) || session.running
+    || session.pendingSubmissions.length > 0)
   const settling = sessionId !== undefined && !active && session?.openState === 'loading' && summaryBlank !== true
   const blank = !active && !settling
   useEffect(() => {
