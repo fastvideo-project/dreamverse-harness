@@ -1,5 +1,5 @@
 ---
-description: "The ffmpeg runner of DreamVerse: the dvFfmpeg service runs ffmpeg and ffprobe over files for component operations."
+description: "The ffmpeg runner of DreamVerse: the dvFfmpeg service runs ffmpeg commands and ffprobe reads (duration, frame size, codec, audio) over files on disk for component operations; open it to call, configure, or debug a media command."
 kind: "package-reference"
 ---
 

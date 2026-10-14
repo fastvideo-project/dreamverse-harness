@@ -1,5 +1,5 @@
 ---
-description: "DreamVerse 的 ffmpeg 执行器：dvFfmpeg 服务为组件操作对文件运行 ffmpeg 和 ffprobe。"
+description: "DreamVerse 的 ffmpeg 执行器：dvFfmpeg 服务为组件操作对磁盘上的文件运行 ffmpeg 命令和 ffprobe 读取（时长、画面尺寸、编码、音频）；调用、配置或调试媒体命令时打开本页。"
 kind: "package-reference"
 ---
 
