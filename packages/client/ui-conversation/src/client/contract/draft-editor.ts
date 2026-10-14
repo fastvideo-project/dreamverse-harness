@@ -10,12 +10,22 @@ export interface TokenSpan {
   readonly draftRev: number
 }
 
+/** Media shown at the start of a reference chip in place of its glyph, and enlarged while the pointer rests on the chip. */
+export interface ReferenceThumbnail {
+  /** URL the browser loads the image or video from. */
+  readonly url: string
+  /** Whether `url` is a video; the chip then shows its first frame. */
+  readonly video: boolean
+}
+
 /** Structured reference inserted by an input-trigger source. */
 export interface ReferenceInsert {
   readonly source: string
   readonly ref: string
   readonly label: string
   readonly appearance?: 'session' | 'file' | 'folder'
+  /** Media that shows the referenced item; a chip whose media fails to load shows its glyph instead. */
+  readonly thumbnail?: ReferenceThumbnail
   readonly clipboardText: string
 }
 
@@ -98,6 +108,8 @@ export interface Occurrence {
   readonly label: string
   /** Optional domain glyph (insert-time cache). */
   readonly appearance?: ReferenceInsert['appearance']
+  /** Optional media of the referenced item (insert-time cache). */
+  readonly thumbnail?: ReferenceThumbnail
   /** Clipboard / persistence projection, e.g. `/name` (insert-time cache, never the model form). */
   readonly clipboardText: string
   /** Owner-resolution failure flag: the chip renders the failure treatment. */

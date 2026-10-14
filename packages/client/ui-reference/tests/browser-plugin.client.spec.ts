@@ -638,7 +638,7 @@ describe('pick and codec', () => {
       },
     })
     expect(source.codec?.clipboardText(mention)).toBe(mention)
-    await expect(source.codec?.serialize(mention, new AbortController().signal)).resolves.toBe(mention)
+    await expect(source.codec?.serialize(mention, new AbortController().signal, [])).resolves.toBe(mention)
   })
 
   it('ignores candidates that do not carry a source-owned value', async () => {

@@ -5,21 +5,21 @@ import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import type {
   CommandNode, CompactionSummaryNode, ConversationLocationDataStore, ConversationTurnDataMap,
   ConversationGroupData, GroupSnapshot,
-  MessageImageLoader, MessageImagesOwnerProps, RenderMessageImages, TurnLocation,
+  MessageImageLoader, MessageImageSource, MessageImagesOwnerProps, RenderMessageImages, TurnLocation,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {
   InjectFace, KeyedSnapshotSelectorHook, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
   SlotHookFactory, SnapshotSelectorHook,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
-import type { MarkdownElement, MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MarkdownElement, MarkdownFileMentions, UserTextReference } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { createChatStore } from '../stores.ts'
 import type { ChatPresentationPolicy } from '../presentation-policy.ts'
 import type { ToolCallId } from './store.ts'
 import type { ChatConversationViewNode, ChatNode, ChatNodeKind } from './chat-nodes.ts'
 import type {
-  ChatNodeProcessSource, ChatNodeSource, ChatSnapshot, ChatTurnProcessPresentation,
+  ChatNodeProcessSource, ChatNodeSource, ChatSnapshot, ChatTurnProcessPresentation, UserMessageNode,
 } from './snapshot.ts'
 import type { TurnProcessSpec } from './turn-process.ts'
 import type { PerformanceUsageMode } from '../../chat-settings.ts'
@@ -59,6 +59,23 @@ export interface ChatMarkdownOwnerProps {
   readonly element: MarkdownElement
   /** The default rendering of the element, for an elected entry that keeps the element unchanged. */
   readonly fallback: ReactNode
+}
+
+/** One attachment of a user message: an image as the message image group draws it, or another file. */
+export type MessageAttachmentSource =
+  | { readonly type: 'image'; readonly image: MessageImageSource }
+  | { readonly type: 'file'; readonly file: Extract<UserMessageNode['content'][number], { type: 'file' }>['attachment'] }
+
+/** Owner currency of one plugin reference of sent user text offered to the `conversation.chat.reference` chain. */
+export interface ChatReferenceOwnerProps {
+  /** The label and address of the wire form `@[label](uri)`. */
+  readonly reference: UserTextReference
+  /** The default label chip, for an elected entry that keeps the reference unchanged. */
+  readonly fallback: ReactNode
+  /** The attachments of the message that holds the reference, in content order (the submission echo's before admission). */
+  readonly attachments: readonly MessageAttachmentSource[]
+  /** Session-authorized URL loader for the durable images among `attachments`. */
+  readonly loadImage: MessageImageLoader
 }
 
 /** Owner currency of finalized-assistant actions. */
@@ -194,6 +211,8 @@ export interface ChatViewInjected {
     presentation: ObservableSnapshot<ChatPresentationPolicy>
     /** Whether `conversation.chat.markdown` has an entry; without one, Markdown renders without slot outlets. */
     markdownReplaced: ObservableSnapshot<boolean>
+    /** Whether `conversation.chat.reference` has an entry; without one, sent references render without slot outlets. */
+    referenceReplaced: ObservableSnapshot<boolean>
   }
   keyedHooks: {
     /** Resolve the stable source for one Chat Node key. */
@@ -223,7 +242,9 @@ export interface ChatViewInjected {
 /** Full Chat view props. */
 export type ChatViewSlotProps =
   PropsRuntime<'conversation.view'>
-  & PropsRenderSlots<'conversation.chat.node' | 'conversation.message.images' | 'conversation.chat.markdown'>
+  & PropsRenderSlots<
+    'conversation.chat.node' | 'conversation.message.images' | 'conversation.chat.markdown' | 'conversation.chat.reference'
+  >
   & PropsStore<ChatStore>
   & InjectFace<ChatViewInjected>
   & PropsLocale<'chat'>
@@ -269,6 +290,13 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * place, and an all-decline renders the default element.
      */
     'conversation.chat.markdown': { kind: 'chain'; scope: 'session'; owner: ChatMarkdownOwnerProps }
+    /**
+     * Replacement renderers for the plugin references (`@[label](uri)` with a
+     * scheme other than `dsh-session`) of sent user text inside the Chat view.
+     * Each entry's `select` reads the reference; the first non-null result
+     * renders in its place, and an all-decline renders the default label chip.
+     */
+    'conversation.chat.reference': { kind: 'chain'; scope: 'session'; owner: ChatReferenceOwnerProps }
     /**
      * Command row keyed by the command name. The component receives the folded
      * command lifecycle and linked compaction when present. Reusing a key

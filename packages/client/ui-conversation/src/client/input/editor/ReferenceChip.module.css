@@ -19,6 +19,48 @@
   align-self: center;
 }
 
+.thumbnail {
+  flex: none;
+  align-self: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.previewCard {
+  position: fixed;
+  z-index: 100;
+  display: block;
+  padding: 8px;
+  border-radius: 10px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-specific-menu);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  box-shadow: var(--dsw-elevation-panel);
+  pointer-events: none;
+}
+
+.preview {
+  display: block;
+  max-width: 284px;
+  max-height: 284px;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+.previewName {
+  display: block;
+  max-width: 284px;
+  margin-top: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 .label {
   overflow: hidden;
   text-overflow: ellipsis;

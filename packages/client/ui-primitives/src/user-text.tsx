@@ -17,11 +17,12 @@
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import { ReferenceIconRegular } from './ReferenceIcon.tsx'
+import { useMarkdownDelegate, type UserTextReference } from './markdown/MarkdownDelegate.tsx'
 import css from './user-text.module.css'
 import markdownCss from './markdown/MarkdownText.module.css'
 
 /** The wire form a reference chip serializes to (`dsh-session:` or a plugin scheme such as `vh:`); label is the display text. */
-const SESSION_WIRE_RE = /@\[([^\]\n]+)\]\(([a-z][\w+.-]*):[^)\s]+\)/gu
+const SESSION_WIRE_RE = /@\[([^\]\n]+)\]\((([a-z][\w+.-]*):[^)\s]+)\)/gu
 
 /** Sentence punctuation a bare `@name` token may carry without being part of the reference. */
 const TRAILING_PUNCTUATION_RE = /[.,;:!?，。；：！？]+$/u
@@ -34,6 +35,18 @@ interface DecorationRange {
   readonly kind: 'session' | 'plain'
   /** Pre-resolved display text (wire folds); derived from label when absent. */
   readonly display?: string
+  /** The address of a folded plugin wire reference, which the nearest Markdown delegate may render. */
+  readonly uri?: string
+}
+
+/**
+ * A folded plugin wire reference: the nearest Markdown delegate's reference renderer, else the default label chip.
+ * @param props - the reference and its default chip.
+ * @returns the rendered reference.
+ */
+function DelegatedReference({ reference, fallback }: { reference: UserTextReference; fallback: ReactNode }): ReactNode {
+  const { renderReference } = useMarkdownDelegate()
+  return renderReference === undefined ? fallback : renderReference(reference, fallback)
 }
 
 /** Optional navigation supplied by consumers that can preview references. */
@@ -70,8 +83,9 @@ export function projectUserText(
       start: wire.index,
       end: wire.index + wire[0].length,
       label: wire[0],
-      kind: wire[2] === 'dsh-session' ? 'session' : 'plain',
+      kind: wire[3] === 'dsh-session' ? 'session' : 'plain',
       display: wire[1] as string, // non-optional capture in SESSION_WIRE_RE
+      ...wire[3] === 'dsh-session' ? {} : { uri: wire[2] as string },
     })
   }
   for (const rawLabel of [...new Set(sessionLabels)].sort((a, b) => b.length - a.length)) {
@@ -134,10 +148,13 @@ export function projectUserText(
           ? () => { references.openSkill(label.slice(1)) }
           : undefined
     const className = clsx(css.refChip, referenceKind === undefined && css.slashChip)
+    const chip = <span key={tokenStart} className={className} data-ref-chip={referenceKind ?? slashKind} title={label}>
+      {contents}
+    </span>
     parts.push(open === undefined
-      ? <span key={tokenStart} className={className} data-ref-chip={referenceKind ?? slashKind} title={label}>
-        {contents}
-      </span>
+      ? range.uri === undefined || range.display === undefined
+        ? chip
+        : <DelegatedReference key={tokenStart} reference={{ label: range.display, uri: range.uri }} fallback={chip} />
       : <button
         key={tokenStart}
         type="button"

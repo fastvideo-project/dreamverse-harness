@@ -1,7 +1,7 @@
 /**
  * ReferenceChipNode: one inline reference as an atomic Lexical decorator.
  * The node IS the occurrence — NodeKey carries identity, the node carries
- * the owner's insert-time projections (label/appearance/clipboardText), and
+ * the owner's insert-time projections (label/appearance/thumbnail/clipboardText), and
  * `getTextContent()` answers the clipboard/persistence projection so native
  * copy and the draft mirror stay correct without expansion code. The detect
  * projection (trigger scanning and TokenSpan coordinates) counts every chip
@@ -21,6 +21,7 @@ export type SerializedReferenceChipNode = Spread<{
   ref: string
   label: string
   appearance?: ReferenceInsert['appearance']
+  thumbnail?: ReferenceInsert['thumbnail']
   clipboardText: string
   invalid: boolean
 }, SerializedLexicalNode>
@@ -35,6 +36,8 @@ export class ReferenceChipNode extends DecoratorNode<JSX.Element> {
   __label: string
   /** Optional domain glyph (insert-time cache). */
   __appearance: ReferenceInsert['appearance']
+  /** Optional media of the referenced item (insert-time cache). */
+  __thumbnail: ReferenceInsert['thumbnail']
   /** Clipboard / persistence projection, e.g. `/name` (never the model form). */
   __clipboardText: string
   /** Owner-resolution failure flag: chip renders invalid; serialization must fail. */
@@ -57,6 +60,7 @@ export class ReferenceChipNode extends DecoratorNode<JSX.Element> {
         ref: node.__ref,
         label: node.__label,
         appearance: node.__appearance,
+        thumbnail: node.__thumbnail,
         clipboardText: node.__clipboardText,
       },
       node.__invalid,
@@ -76,6 +80,7 @@ export class ReferenceChipNode extends DecoratorNode<JSX.Element> {
         ref: json.ref,
         label: json.label,
         appearance: json.appearance,
+        thumbnail: json.thumbnail,
         clipboardText: json.clipboardText,
       },
       json.invalid,
@@ -87,12 +92,20 @@ export class ReferenceChipNode extends DecoratorNode<JSX.Element> {
    * @param invalid - owner-resolution failure bit (defaults valid).
    * @param key - Lexical clone-path key; absent for fresh nodes.
    */
-  constructor(insert: Omit<ReferenceInsert, 'appearance'> & { appearance?: ReferenceInsert['appearance'] }, invalid = false, key?: NodeKey) {
+  constructor(
+    insert: Omit<ReferenceInsert, 'appearance' | 'thumbnail'> & {
+      appearance?: ReferenceInsert['appearance']
+      thumbnail?: ReferenceInsert['thumbnail']
+    },
+    invalid = false,
+    key?: NodeKey,
+  ) {
     super(key)
     this.__source = insert.source
     this.__ref = insert.ref
     this.__label = insert.label
     this.__appearance = insert.appearance
+    this.__thumbnail = insert.thumbnail
     this.__clipboardText = insert.clipboardText
     this.__invalid = invalid
   }
@@ -107,6 +120,7 @@ export class ReferenceChipNode extends DecoratorNode<JSX.Element> {
       ref: this.__ref,
       label: this.__label,
       ...(this.__appearance === undefined ? {} : { appearance: this.__appearance }),
+      ...(this.__thumbnail === undefined ? {} : { thumbnail: this.__thumbnail }),
       clipboardText: this.__clipboardText,
       invalid: this.__invalid,
     }
@@ -183,12 +197,18 @@ export class ReferenceChipNode extends DecoratorNode<JSX.Element> {
     return this.getLatest().__appearance
   }
 
+  /** Optional media of the referenced item. */
+  getThumbnail(): ReferenceInsert['thumbnail'] {
+    return this.getLatest().__thumbnail
+  }
+
   /** React face rendered into the host element by the decorator portal. */
   override decorate(): JSX.Element {
     return (
       <ReferenceChip
         label={this.__label}
         appearance={this.__appearance}
+        thumbnail={this.__thumbnail}
         invalid={this.__invalid}
       />
     )

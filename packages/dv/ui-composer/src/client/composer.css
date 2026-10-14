@@ -57,3 +57,12 @@ html body [data-dv-chat] [data-composer-card] button:focus-visible {
     transition: none;
   }
 }
+
+/* The highlighted row of the composer's `@` and ＋ menus (`@deepseek-ai/dsh-client-ui-input-trigger` MenuView, whose
+   row classes end in `_item` and `_active`): the DreamVerse accent tint instead of DSH's grey hover tint, on the chat
+   tab and on the entry page. */
+html body :is([data-dv-chat], [data-dv-entry]) [role='option'][aria-selected='true'][class*='_item'] {
+  background: var(--dv-accent-soft);
+  color: var(--dv-accent-text);
+  box-shadow: inset 2px 0 0 var(--dv-accent);
+}

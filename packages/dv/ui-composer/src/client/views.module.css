@@ -97,3 +97,34 @@
     transition: none;
   }
 }
+
+/* A sent chip of a dv:asset or dv:attachment reference: the asset's media in front of the label, in the text line. */
+.sentReference {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 240px;
+  padding: 0 4px;
+  border-radius: 6px;
+  color: var(--dv-accent-text);
+  vertical-align: bottom;
+}
+
+.sentReferenceMedia {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+/* The media box of a chip whose attached image is still loading. */
+.sentReferencePending {
+  background: var(--dv-media-bg);
+}
+
+.sentReferenceLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

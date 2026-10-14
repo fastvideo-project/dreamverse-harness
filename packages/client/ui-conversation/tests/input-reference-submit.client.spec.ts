@@ -17,6 +17,15 @@ const commandAttachments = {
   unsupportedNotice: (token: string) => `${token.trim()} attachments-unsupported`,
 }
 
+/** An input-trigger controller whose reference serialization is `serializeReference`. */
+function serializingTriggers(serializeReference: InputTriggerController['serializeReference']): InputTriggerController {
+  return {
+    serializeReference,
+    track: vi.fn(),
+    lexicon: { getSnapshot: () => new Map(), subscribe: () => () => {} },
+  } as unknown as InputTriggerController
+}
+
 function chip(shell: SessionInputShell): void {
   shell.setDraft('@res')
   const accepted = shell.insertReference({
@@ -81,11 +90,7 @@ describe('reference submission', () => {
     ) => Promise<SubmitOutcome>>()
       .mockResolvedValueOnce({ kind: 'error', text: 'snapshot unavailable' })
       .mockResolvedValueOnce({ kind: 'success' })
-    const inputTriggers = {
-      serializeReference,
-      track: vi.fn(),
-      lexicon: { getSnapshot: () => new Map(), subscribe: () => () => {} },
-    } as unknown as InputTriggerController
+    const inputTriggers = serializingTriggers(serializeReference)
     const shell = new SessionInputShell({
       actx: {} as Context,
       inputTriggers: () => inputTriggers,
@@ -123,6 +128,27 @@ describe('reference submission', () => {
     })
     expect(shell.snapshot.occurrences).toEqual([])
     expect(serializeReference).toHaveBeenCalledTimes(2)
+  })
+
+  it('hands each chip serialization the draft attachments the message carries, in draft order', async () => {
+    const serializeReference = vi.fn((_source: string, _ref: string, _signal: AbortSignal, ids: readonly DraftAttachmentId[]) =>
+      Promise.resolve(`attachment ${String(ids.length)}`))
+    const sink = vi.fn(() => Promise.resolve<SubmitOutcome>({ kind: 'success' }))
+    const inputTriggers = serializingTriggers(serializeReference)
+    const shell = new SessionInputShell({
+      actx: {} as Context,
+      inputTriggers: () => inputTriggers,
+      defaultSink: sink,
+      commandAttachments,
+    })
+    chip(shell)
+    const ids = ['first' as DraftAttachmentId, 'second' as DraftAttachmentId]
+    expect(shell.addAttachments(ids)).toBe(true)
+    shell.submit('queue')
+    await vi.waitFor(() => {
+      expect(sink).toHaveBeenCalledWith('attachment 2', ids, 'queue', expect.any(AbortSignal))
+    })
+    expect(serializeReference).toHaveBeenCalledWith('reference', mention, expect.any(AbortSignal), ids)
   })
 
   it('blocks submission and retains the chip when its owner cannot serialize it', async () => {

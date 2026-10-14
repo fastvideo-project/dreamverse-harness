@@ -1,7 +1,7 @@
 // An enclosing `[data-conversation-scroll]` owns scrolling when present;
 // otherwise this view owns it. Each row subscribes to one stable node key.
 
-import { memo, useCallback, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react'
+import { memo, useCallback, useContext, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import type {
   NodeKey, RenderEntry, RenderMessageImages,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -9,11 +9,11 @@ import type { InboxState } from '@deepseek-ai/dsh-agent/types'
 import type { PendingSubmission } from '@deepseek-ai/dsh-api-session-controller/client'
 import {
   Button, IconChevronDownOutlineRegular, MarkdownDelegateProvider, Modal,
-  type MarkdownElement, type MarkdownElementRenderer,
+  type MarkdownElement, type MarkdownElementRenderer, type UserTextReference, type UserTextReferenceRenderer,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatViewSlotProps, OpenFileOptions } from '../contract/slots.ts'
 import type { ChatSnapshot } from '../contract/snapshot.ts'
-import { PendingSteeringBubble, PendingSubmissionBubble } from './MessageItem.tsx'
+import { MessageAttachmentsContext, PendingSteeringBubble, PendingSubmissionBubble } from './MessageItem.tsx'
 import { ChatNodeSeat } from './ChatNodeSeat.tsx'
 import { ChatGroupSeat } from './ChatGroupSeat.tsx'
 import { chatRenderKey } from './render-entry.ts'
@@ -28,6 +28,21 @@ import css from './ChatView.module.css'
 function openFailureMessage(error: unknown, fallback: string): string {
   const message = error instanceof Error ? error.message : String(error)
   return message === '' ? fallback : message
+}
+
+/**
+ * Offer one sent plugin reference to the `conversation.chat.reference` chain with the attachments of its user bubble.
+ * @param props - the reference, its default chip, the image loader, and the chain renderer.
+ * @returns the elected entry's rendering, or the default chip.
+ */
+function ChatReference({ reference, fallback, loadImage, renderSlotChain }: {
+  reference: UserTextReference
+  fallback: ReactNode
+  loadImage: ChatViewSlotProps['loadImage']
+  renderSlotChain: ChatViewSlotProps['renderSlotChain']
+}): ReactNode {
+  const attachments = useContext(MessageAttachmentsContext)
+  return renderSlotChain('conversation.chat.reference', { reference, fallback, attachments, loadImage }, { fallback, inline: true })
 }
 
 /**
@@ -101,7 +116,7 @@ const ChatNodeList = memo(function ChatNodeList({ entries, useChatGroup, pending
 export function ChatView({
   useSession, useChat, useChatNode, useChatNodeProcess, useChatGroup, useConversation, useSessions, useStore, actions, renderSlot,
   sessionId, openFile, openSkill, openExternalLink, loadOlder, loadThrough, loadImage, inspectCall, chatScroll, forkAt, fileMentions,
-  usePresentation, useProjection, t, renderSlotChain, useMarkdownReplaced,
+  usePresentation, useProjection, t, renderSlotChain, useMarkdownReplaced, useReferenceReplaced,
 }: ChatViewSlotProps) {
   const order = useChat(s => s.order)
   const groupedEntries = useConversation(snapshot => snapshot.views.grouped('chat')?.entries)
@@ -210,6 +225,11 @@ export function ChatView({
     ? (element: MarkdownElement, fallback: ReactNode) => renderSlotChain(
       'conversation.chat.markdown', { element, fallback }, { fallback, inline: element.kind !== 'table' })
     : undefined, [markdownReplaced, renderSlotChain])
+  const referenceReplaced = useReferenceReplaced(replaced => replaced)
+  const renderReference = useMemo<UserTextReferenceRenderer | undefined>(() => referenceReplaced
+    ? (reference: UserTextReference, fallback: ReactNode) => (
+      <ChatReference reference={reference} fallback={fallback} loadImage={loadImage} renderSlotChain={renderSlotChain} />)
+    : undefined, [loadImage, referenceReplaced, renderSlotChain])
 
   const firstKey = order[0]
   const firstSeq = firstKey === undefined ? null : nodeStore.get(firstKey)?.anchorSeq ?? null
@@ -254,7 +274,7 @@ export function ChatView({
               </div>
             )}
             <MarkdownDelegateProvider openExternalLink={openExternalLink} openFile={requestOpenFile} fileImages={fileImages}
-              renderElement={renderMarkdownElement}>
+              renderElement={renderMarkdownElement} renderReference={renderReference}>
               <ChatNodeList
                 entries={entries}
                 pendingInputs={pendingInputs}

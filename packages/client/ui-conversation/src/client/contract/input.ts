@@ -110,8 +110,12 @@ export interface InputTriggerController {
   arbitrate(key: ArbitrateKey, composing: boolean): ArbitrateOutcome
   /** @returns whether Space applied a trigger result. */
   onSpace(): boolean
-  /** @param source - reference source. @param ref - source-local id. @param signal - submit cancellation. @returns model text. */
-  serializeReference(source: string, ref: string, signal: AbortSignal): Promise<string>
+  /**
+   * @param source - reference source. @param ref - source-local id. @param signal - submit cancellation.
+   * @param attachmentIds - the draft attachments sent with the message, in the order the message carries them.
+   * @returns model text.
+   */
+  serializeReference(source: string, ref: string, signal: AbortSignal, attachmentIds: readonly DraftAttachmentId[]): Promise<string>
   /** @param line - trimmed draft. @param signal - submit cancellation. @param envelope - attachment count. @returns winning result. */
   adjudicate(
     line: string,

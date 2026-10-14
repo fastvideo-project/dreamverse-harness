@@ -37,6 +37,8 @@ Chat 在节点列表外通过一个 `MarkdownDelegateProvider` 提供文件及 H
 
 Chat 视图中已落定的 Markdown 链接、链接外的图片和表格可通过 `conversation.chat.markdown` chain slot 替换。其 owner 值为 `{ element, fallback }`：`MarkdownDelegateProvider.renderElement` 收到的解析数据，以及该元素的默认渲染。第一个 `select` 返回非 null 值的条目在该元素位置渲染，并可渲染 `fallback` 以保持元素不变；所有条目都拒绝时渲染默认元素。链接或图片的 outlet 是 `display: contents` 的 `<span>`，因此在段落内仍是合法嵌套；表格的 outlet 是 `<div>`。该 slot 没有条目时，Chat 不传入渲染器，Markdown 渲染不带 slot outlet。
 
+已发送用户文本中的插件引用（`dsh-session` 以外 scheme 的 `@[label](uri)` 线上形式）可通过 `conversation.chat.reference` chain slot 替换。其 owner 值为 `{ reference, fallback, attachments, loadImage }`：引用的标签和地址、默认的文字标签、按内容顺序排列的所在消息附件（消息被接纳前为本地提交回显的附件），以及用于加载其中持久图片的会话图片加载器。outlet 是 `display: contents` 的 `<span>`。该 slot 没有条目时，Chat 不传入渲染器，引用渲染为不带 slot outlet 的文字标签。
+
 设置 → 通用设置 → 网页链接默认打开方式控制普通点击 Chat HTTP(S) 链接时的目标：「应用内侧边栏」（默认）打开新的右侧 Sidebar Browser tab，「默认浏览器」打开外部标签页。该设置项仅在 Sidebar Browser 可用时显示。若 Sidebar Browser 未注册，两种选择均使用外部浏览器；带修饰键的点击保留原生行为。`ui-chat.linkOpening` 偏好在回环地址浏览器中持久化，设置无法持久化写入时仅在当前进程内生效。已发送的文件引用及消息日志确认调用的 skill 也可在右侧栏打开预览。文件路径使用当前查看的 Session；skill 名称由该 Session 当前的输入触发源解析。两者悬停或聚焦时均使用正文文件链接的虚线下划线。会话、目录和命令标签仍只作为引用展示。
 
 <a id="system-prompt-row"></a>

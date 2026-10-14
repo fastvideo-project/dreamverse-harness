@@ -68,6 +68,12 @@ export interface IConversation {
    * @returns completion of the page pull.
    */
   loadOlder(): Promise<void>
+  /**
+   * Read the browser-owned draft attachments behind a session input's `attachmentIds`.
+   * @param ids - draft attachment ids.
+   * @returns descriptors that remain live, in requested order.
+   */
+  resolveDraftAttachments(ids: readonly DraftAttachmentId[]): readonly ComposerAttachment[]
 }
 
 /** Create one browser-only image draft descriptor; only its id enters input state. */

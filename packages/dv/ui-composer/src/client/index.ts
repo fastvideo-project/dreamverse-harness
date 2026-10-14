@@ -1,6 +1,6 @@
 /**
  * Browser half of the DreamVerse composer additions:
- * - an `@` source listing the bound project's clips, characters, and assets;
+ * - an `@` source listing the files attached to the draft and the bound project's clips, characters, and assets;
  * - a 引用 row in the composer's ＋ menu that opens that `@` list at the end of the draft;
  * - an invisible `conversation.input.left` entry that makes each session's composer a `dv:compose` target;
  * - thumbnail cards for the project's video and image assets in settled chat Markdown (`chat-media.ts`);
@@ -15,7 +15,7 @@
  * @module @dv/ui-composer/client
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import type { SessionInput } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { ComposerAttachment, SessionInput } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ClientSessionContext } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { IconLinkOutlineRegular, type IconProps } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
@@ -66,14 +66,23 @@ interface CommandMenu {
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
-  ctx.effect(() => ctx.inputTriggers.registerSource(projectMentionSource()), 'dv-composer: @ source')
-  registerChatMedia(ctx)
-
   /** The input facade of one session, while its scope and conversation service exist. */
   const inputOf = (sessionId: SessionId): SessionInput | undefined => {
     const scope = ctx.sessions.scope(sessionId)
     return scope?.get('conversation')?.input.for(scope)
   }
+
+  /** The files attached to one session's composer draft, in draft order. */
+  const draftUploads = (sessionId: SessionId): readonly ComposerAttachment[] => {
+    const scope = ctx.sessions.scope(sessionId)
+    const conversation = scope?.get('conversation')
+    const input = scope === undefined ? undefined : conversation?.input.for(scope)
+    if (input === undefined || conversation === undefined) return []
+    return conversation.resolveDraftAttachments(input.state.getSnapshot().attachmentIds)
+  }
+
+  ctx.effect(() => ctx.inputTriggers.registerSource(projectMentionSource(draftUploads)), 'dv-composer: @ source')
+  registerChatMedia(ctx)
 
   /**
    * Open the `@` project-item list of one session's composer at the end of its draft; a pick inserts its chip there.

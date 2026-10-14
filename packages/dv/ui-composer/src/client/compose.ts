@@ -1,11 +1,13 @@
 /**
  * The `dv:compose` prefill. The canvas or the asset pool panel dispatches the event on `window`; the most recently mounted chat
- * composer takes it, replaces its draft with the event text, and appends one `@` reference chip per item. An event
+ * composer takes it, replaces its draft with the event text, and appends one `@` reference chip per item, which shows
+ * the item's `assetId` image or video. An event
  * that arrives while no composer is mounted waits for the next composer that mounts.
  *
  * @module @dv/ui-composer/compose
  */
 import type { SessionInput } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { assetUrl } from '@dv/ui-kit/api.ts'
 import type { DvComposeDetail, DvComposeRef } from '@dv/ui-kit/compose.ts'
 import { MENTION_SOURCE, referenceText } from './mention.ts'
 
@@ -31,8 +33,9 @@ function prefill(input: SessionInput, detail: DvComposeDetail): void {
     const text = referenceText(ref.label, uriOf(ref))
     const state = input.state.getSnapshot()
     const end = state.draft.length
+    const thumbnail = ref.assetId === undefined ? {} : { thumbnail: { url: assetUrl(ref.assetId), video: ref.assetIsVideo === true } }
     const inserted = input.insertReference(
-      { source: MENTION_SOURCE, ref: text, label: ref.label, clipboardText: text },
+      { source: MENTION_SOURCE, ref: text, label: ref.label, ...thumbnail, clipboardText: text },
       { start: end, end, draftRev: state.draftRev },
     )
     if (!inserted) input.setDraft(`${input.state.getSnapshot().draft}${text} `)

@@ -55,6 +55,21 @@ export type MarkdownElement = MarkdownLinkElement | MarkdownImageElement | Markd
  */
 export type MarkdownElementRenderer = (element: MarkdownElement, fallback: ReactNode) => ReactNode
 
+/** One plugin reference of sent user text: the wire form `@[label](uri)` whose scheme is not `dsh-session`. */
+export interface UserTextReference {
+  readonly label: string
+  /** The reference address, such as `dv:asset/<id>`. */
+  readonly uri: string
+}
+
+/**
+ * Render one plugin reference of sent user text in place of its default label chip.
+ * @param reference - The label and address of the reference.
+ * @param fallback - The default label chip.
+ * @returns the replacement inline node.
+ */
+export type UserTextReferenceRenderer = (reference: UserTextReference, fallback: ReactNode) => ReactNode
+
 /** Navigation and element-rendering capabilities supplied by the nearest Markdown owner. */
 export interface MarkdownDelegate {
   /** Image previews for decoded local paths in this owner's workspace. */
@@ -75,6 +90,8 @@ export interface MarkdownDelegate {
    * Streaming renders never reach the renderer.
    */
   readonly renderElement?: MarkdownElementRenderer | undefined
+  /** Replace plugin references of sent user text; absent renderers keep the default label chip. */
+  readonly renderReference?: UserTextReferenceRenderer | undefined
 }
 
 const MarkdownDelegateContext = createContext<MarkdownDelegate>({})
@@ -87,7 +104,7 @@ export interface MarkdownDelegateProviderProps extends MarkdownDelegate {
 /**
  * Scope Markdown navigation without threading callbacks through renderers.
  * Nested providers replace the enclosing capabilities. Handler changes reach cached links.
- * @param props - Child tree, its file and HTTP(S) link handlers, and its element renderer.
+ * @param props - Child tree, its file and HTTP(S) link handlers, its element renderer, and its user-text reference renderer.
  * @returns the scoped child tree.
  */
 export function MarkdownDelegateProvider({
@@ -96,10 +113,11 @@ export function MarkdownDelegateProvider({
   openFile,
   fileImages,
   renderElement,
+  renderReference,
 }: MarkdownDelegateProviderProps): ReactNode {
   const delegate = useMemo(
-    () => ({ openExternalLink, openFile, fileImages, renderElement }),
-    [openExternalLink, openFile, fileImages, renderElement],
+    () => ({ openExternalLink, openFile, fileImages, renderElement, renderReference }),
+    [openExternalLink, openFile, fileImages, renderElement, renderReference],
   )
   return (
     <MarkdownDelegateContext.Provider value={delegate}>

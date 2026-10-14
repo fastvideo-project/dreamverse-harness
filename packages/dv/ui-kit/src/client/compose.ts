@@ -19,6 +19,8 @@ export interface DvComposeRef {
   label: string
   /** An image or video asset that shows the item, for the chip thumbnail. */
   assetId?: string
+  /** Whether `assetId` is a video; the chip then shows its first frame. */
+  assetIsVideo?: boolean
 }
 
 /** The event's `detail`. */

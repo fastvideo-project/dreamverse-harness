@@ -199,6 +199,7 @@ export function $projectComposer(idOf: (key: NodeKey) => number): EditorProjecti
   for (const segment of layout.segments) {
     if (segment.kind !== 'chip' || !$isReferenceChipNode(segment.node)) continue
     const chip = segment.node
+    const thumbnail = chip.getThumbnail()
     occurrences.push({
       occurrenceId: idOf(chip.getKey()),
       source: chip.getSource(),
@@ -207,6 +208,7 @@ export function $projectComposer(idOf: (key: NodeKey) => number): EditorProjecti
       length: segment.clipboardLength,
       label: chip.getLabel(),
       ...(chip.getAppearance() === undefined ? {} : { appearance: chip.getAppearance() }),
+      ...(thumbnail === undefined ? {} : { thumbnail }),
       clipboardText: chip.getTextContent(),
       ...(chip.isInvalid() ? { invalid: true } : {}),
     })

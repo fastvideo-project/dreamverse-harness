@@ -107,6 +107,11 @@ describe('ReferenceChipNode', () => {
       const backBare = ReferenceChipNode.importJSON(bare)
       expect(backBare.getAppearance()).toBeUndefined()
       expect(backBare.getLabel()).toBe('commit-helper')
+      expect('thumbnail' in bare).toBe(false)
+
+      const thumbnail = { url: 'blob:car', video: false }
+      const withThumbnail = $createReferenceChipNode({ ...SKILL_REF, thumbnail }).exportJSON()
+      expect(ReferenceChipNode.importJSON(withThumbnail).getThumbnail()).toEqual(thumbnail)
     }, { discrete: true })
   })
 

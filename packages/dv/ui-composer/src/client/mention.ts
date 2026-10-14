@@ -1,14 +1,23 @@
 /**
- * The `@` source that lists the project items of the project the shell has open: clips by timeline name and position
- * (`时间线 1 · 片段 2`, or `Timeline 1 · Clip 2` in English, for an unnamed timeline), characters, locations, styles,
- * and assets. A pick inserts a reference chip whose text is `@[<label>](dv:<kind>/<id>)`; the host plugin
- * `@dv/chat-references` expands that address into record and asset IDs for the model, and puts the assets of the
- * `dv:asset/<id>` chips of a sent message on the canvas.
+ * The `@` source that lists the files attached to the draft and the project items of the project the shell has open:
+ * clips by timeline name and position (`时间线 1 · 片段 2`, or `Timeline 1 · Clip 2` in English, for an unnamed
+ * timeline), characters, locations, styles, and assets of every media type. A pick inserts a reference chip whose text
+ * is `@[<label>](dv:<kind>/<id>)` and that shows the item's image or video; the host plugin `@dv/chat-references`
+ * expands that address into record and asset IDs for the model, and puts the assets of the `dv:asset/<id>` chips of a
+ * sent message on the canvas.
+ *
+ * A file attached to the draft is not an asset until the message is sent: the host imports the attachments of a sent
+ * message as assets. Its chip text is `@[<label>](dv:upload/<DraftAttachmentId>)`, and sending serializes it to
+ * `@[<label>](dv:attachment/<n>)`, where `<n>` is the 1-based position of the file among the message's attachments; a
+ * chip whose file was removed from the draft before sending serializes to its label alone.
  *
  * @module @dv/ui-composer/mention
  */
 import { createElement, type ComponentType } from 'react'
-import type { InputTriggerCandidate, InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
+import type { ComposerAttachment, DraftAttachmentId } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type {
+  ClientSessionContext, InputTriggerCandidate, InputTriggerSource, ReferenceThumbnail,
+} from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import type { IconProps } from '@deepseek-ai/dsh-client-ui-primitives'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import type { Character, WireState } from '@dv/ui-kit/types.ts'
@@ -30,7 +39,7 @@ export function referenceText(label: string, uri: string): string {
 }
 
 /** A small thumbnail as a candidate icon. */
-function thumbnail(url: string, video: boolean): ComponentType<IconProps> {
+function thumbnailIcon({ url, video }: ReferenceThumbnail): ComponentType<IconProps> {
   // Sized to stay clear of the label in the 14 px icon column of the @ menu.
   const style = { width: 20, height: 14, objectFit: 'cover' as const, borderRadius: 3, flex: 'none' }
   return function Thumbnail() {
@@ -44,7 +53,14 @@ interface Item {
   label: string
   section: string
   description?: string
-  icon?: ComponentType<IconProps>
+  /** The image or video of the item, shown in the @ menu row and in the inserted chip. */
+  thumbnail?: ReferenceThumbnail
+}
+
+/** The thumbnail of a project asset: the asset itself when it is an image or a video. */
+function assetThumbnail(asset: { id: string; mime: string }): ReferenceThumbnail | undefined {
+  const video = asset.mime.startsWith('video/')
+  return video || asset.mime.startsWith('image/') ? { url: assetUrl(asset.id), video } : undefined
 }
 
 /**
@@ -61,7 +77,7 @@ function bibleItems(kind: 'character' | 'location' | 'style', versions: Record<s
     const image = latest.references[0]
     return [{
       uri: `dv:${kind}/${encodeURIComponent(id)}`, label: latest.name || id, section,
-      description: latest.description.slice(0, 40), ...image === undefined ? {} : { icon: thumbnail(assetUrl(image), false) },
+      description: latest.description.slice(0, 40), ...image === undefined ? {} : { thumbnail: { url: assetUrl(image), video: false } },
     }]
   })
 }
@@ -89,8 +105,8 @@ export function projectItems(state: WireState): Item[] {
       section: pickText('片段', 'Clips'),
       ...prompt === '' ? {} : { description: prompt.slice(0, 40) },
       ...frame !== undefined
-        ? { icon: thumbnail(assetUrl(frame), false) }
-        : clip.asset === null ? {} : { icon: thumbnail(assetUrl(clip.asset), true) },
+        ? { thumbnail: { url: assetUrl(frame), video: false } }
+        : clip.asset === null ? {} : { thumbnail: { url: assetUrl(clip.asset), video: true } },
     }
   }))
   const bible = state.components.bible
@@ -100,54 +116,96 @@ export function projectItems(state: WireState): Item[] {
     ...bibleItems('location', bible.locations, settings),
     ...bibleItems('style', bible.styles, settings),
   ]
-  const assets = state.assets.filter(asset => asset.mime.startsWith('image/') || asset.mime.startsWith('video/')).slice(-40).reverse()
-    .map((asset): Item => ({
-      uri: `dv:asset/${encodeURIComponent(asset.id)}`, label: asset.name, section: pickText('素材', 'Assets'),
-      icon: thumbnail(assetUrl(asset.id), asset.mime.startsWith('video/')),
-    }))
+  const assets = state.assets.filter(asset => ['image/', 'video/', 'audio/'].some(type => asset.mime.startsWith(type))).slice(-40).reverse()
+    .map((asset): Item => {
+      const media = assetThumbnail(asset)
+      return {
+        uri: `dv:asset/${encodeURIComponent(asset.id)}`, label: asset.name, section: pickText('素材', 'Assets'),
+        ...media === undefined ? {} : { thumbnail: media },
+      }
+    })
   return [...clips, ...characters, ...assets]
 }
 
 /**
+ * The files attached to a composer draft, as `@` items. An image shows its draft preview; another file shows no
+ * thumbnail until it is sent and imported as an asset.
+ * @param uploads - the draft attachments, in draft order.
+ * @returns the items.
+ */
+export function uploadItems(uploads: readonly ComposerAttachment[]): Item[] {
+  return uploads.map((upload): Item => ({
+    uri: `dv:upload/${encodeURIComponent(upload.id)}`,
+    label: upload.file.name === '' ? pickText('上传的文件', 'Uploaded file') : upload.file.name,
+    section: pickText('本条消息的上传', 'Attached to this message'),
+    ...upload.kind === 'image' ? { thumbnail: { url: upload.previewUrl, video: false } } : {},
+  }))
+}
+
+/** The chip text of a file attached to the draft: `@[<label>](dv:upload/<DraftAttachmentId>)`. */
+const UPLOAD_REFERENCE = /^@\[([^\]]*)\]\(dv:upload\/([^)\s]+)\)$/
+
+/**
+ * The model text of one chip. A chip of a file attached to the draft becomes `@[<label>](dv:attachment/<n>)`, with
+ * `<n>` the 1-based position of the file among the attachments the message carries, or its label alone when the file
+ * is no longer attached; every other chip keeps its text.
+ * @param ref - the chip text.
+ * @param attachmentIds - the draft attachments sent with the message, in message order.
+ * @returns the model text.
+ */
+export function serializeReference(ref: string, attachmentIds: readonly DraftAttachmentId[]): string {
+  const match = UPLOAD_REFERENCE.exec(ref)
+  if (match === null) return ref
+  const label = match[1] ?? ''
+  const id = decodeURIComponent(match[2] ?? '')
+  const position = attachmentIds.findIndex(attachment => attachment === id) + 1
+  return position === 0 ? label : referenceText(label, `dv:attachment/${String(position)}`)
+}
+
+/**
  * The `@` source over the `/api/dv` routes.
+ * @param draftUploads - the files attached to a session's composer draft, in draft order.
  * @returns the source.
  */
-export function projectMentionSource(): InputTriggerSource {
+export function projectMentionSource(
+  draftUploads: (sessionId: ClientSessionContext['sessionId']) => readonly ComposerAttachment[],
+): InputTriggerSource {
   const client = new DvClient()
   return {
     trigger: '@',
     name: MENTION_SOURCE,
     showGroupTitle: false,
-    async candidates(_session, { query, signal }): Promise<readonly InputTriggerCandidate[]> {
-      // The project the shell has open; the entry page lists nothing.
+    async candidates(session, { query, signal }): Promise<readonly InputTriggerCandidate[]> {
+      // The project the shell has open; the entry page lists only the files attached to the draft.
       const projectId = getCurrentProject()
-      if (projectId === null) return []
-      const state = await client.getState(projectId, signal)
+      const uploads = uploadItems(draftUploads(session.sessionId))
+      const items = projectId === null ? uploads : [...uploads, ...projectItems(await client.getState(projectId, signal))]
       const needle = query.toLowerCase()
       // The menu shows a candidate name that differs from its label as a trailing alias, so the name is the label
       // (numbered when labels repeat) and the `dv:` address travels in `value`.
       const seen = new Map<string, number>()
-      return projectItems(state)
+      return items
         .filter(item => needle === '' || item.label.toLowerCase().includes(needle) || (item.description ?? '').toLowerCase().includes(needle))
         .map((item): InputTriggerCandidate => {
           const count = (seen.get(item.label) ?? 0) + 1
           seen.set(item.label, count)
           return {
-            name: count === 1 ? item.label : `${item.label} (${String(count)})`, section: item.section, value: JSON.stringify({ uri: item.uri, label: item.label }),
+            name: count === 1 ? item.label : `${item.label} (${String(count)})`, section: item.section,
+            value: JSON.stringify({ uri: item.uri, label: item.label, thumbnail: item.thumbnail }),
             ...item.description === undefined ? {} : { description: item.description },
-            ...item.icon === undefined ? {} : { icon: item.icon },
+            ...item.thumbnail === undefined ? {} : { icon: thumbnailIcon(item.thumbnail) },
           }
         })
     },
     onPick({ candidate }) {
-      const { uri, label } = JSON.parse(candidate.value ?? '{}') as { uri?: string; label?: string }
+      const { uri, label, thumbnail } = JSON.parse(candidate.value ?? '{}') as { uri?: string; label?: string; thumbnail?: ReferenceThumbnail }
       if (uri === undefined || label === undefined) return undefined
       const text = referenceText(label, uri)
-      return { insert: { source: MENTION_SOURCE, ref: text, label, clipboardText: text } }
+      return { insert: { source: MENTION_SOURCE, ref: text, label, ...thumbnail === undefined ? {} : { thumbnail }, clipboardText: text } }
     },
     codec: {
       clipboardText: ref => ref,
-      serialize: ref => Promise.resolve(ref),
+      serialize: (ref, _signal, attachmentIds) => Promise.resolve(serializeReference(ref, attachmentIds)),
     },
   }
 }

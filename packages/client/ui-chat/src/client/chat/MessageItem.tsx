@@ -1,9 +1,8 @@
-import { Fragment, memo, useEffect, useMemo, useState } from 'react'
+import { createContext, Fragment, memo, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { PendingSubmission } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { MessageImageSource } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { fileExtension, FileTypeIcon, fileSizeText, JsonBlock, projectUserText, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { ChatNodeOwnerProps, ChatNodeViewProps, ChatViewSlotProps } from '../contract/slots.ts'
+import type { ChatNodeOwnerProps, ChatNodeViewProps, ChatViewSlotProps, MessageAttachmentSource } from '../contract/slots.ts'
 import type { ModelRetryNode, TurnErrorNode, UserMessageNode } from '../contract/snapshot.ts'
 import { CompactionItem } from './CompactionItem.tsx'
 import { ContextInjectionRow } from './ContextInjectionRow.tsx'
@@ -12,9 +11,10 @@ import css from './MessageItem.module.css'
 
 type UserImage = Extract<UserMessageNode['content'][number], { type: 'image' }>
 type UserFile = Extract<UserMessageNode['content'][number], { type: 'file' }>
-type PresentedAttachment =
-  | { readonly type: 'image'; readonly image: MessageImageSource }
-  | { readonly type: 'file'; readonly file: UserFile['attachment'] }
+type PresentedAttachment = MessageAttachmentSource
+
+/** The attachments of the user bubble that encloses a sent reference; the `conversation.chat.reference` owner reads them. */
+export const MessageAttachmentsContext = createContext<readonly MessageAttachmentSource[]>([])
 
 function contentParts(content: readonly unknown[]): {
   text: string
@@ -214,7 +214,9 @@ function UserStyleBubble({
           </div>
         )}
         {showBubble && <div className={css.bubble}>
-          {projectUserText(text, referenceLabels, skillNames, 'skill', references)}
+          <MessageAttachmentsContext.Provider value={attachments}>
+            {projectUserText(text, referenceLabels, skillNames, 'skill', references)}
+          </MessageAttachmentsContext.Provider>
           {rest.map((block, i) => <JsonBlock key={i} label={t('message.extraBlock')} payload={block} truncatedLabel={truncated} />)}
         </div>}
         {referenceLabels.length > 0 && (

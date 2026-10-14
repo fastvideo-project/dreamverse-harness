@@ -17,6 +17,7 @@ import { createElement, type ReactNode } from 'react'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { followAssetKinds, NO_ASSET_KINDS, type AssetKinds } from './asset-kinds.ts'
 import { ChatMediaView } from './ChatMedia.tsx'
+import { selectSentReference, SentReferenceEntry } from './sent-references.tsx'
 
 /** One video card of a shot grid. */
 export interface ShotCard {
@@ -186,42 +187,46 @@ function sameChatMedia(a: ChatMedia | null, b: ChatMedia | null): boolean {
 }
 
 /**
- * Register the chain entry while the Chat view declares `conversation.chat.markdown`. The entry stays registered for
- * the whole declaration, and the open project's asset kinds reach its component through the `useAssetKinds` hook. The
- * kinds are followed only while a chat element subscribes to them; when the last one unsubscribes, following stops and
- * the last kinds stay for the next subscriber.
+ * Register the chain entries while the Chat view declares `conversation.chat.markdown` and
+ * `conversation.chat.reference`: the Markdown cards of this module and the sent chips of `./sent-references.tsx`. Each
+ * entry stays registered for the whole declaration of its chain, and the open project's asset kinds reach both
+ * components through one `useAssetKinds` hook source. The kinds are followed only while a chat element subscribes to
+ * them; when the last one unsubscribes, following stops and the last kinds stay for the next subscriber.
  * @param ctx - client root context with the `slots` service.
  */
 export function registerChatMedia(ctx: Context): void {
   const client = new DvClient()
-  ctx.slots.inject('conversation.chat.markdown', () => {
-    let kinds = NO_ASSET_KINDS
-    const listeners = new Set<() => void>()
-    let stopFollowing: (() => void) | null = null
-    const assetKinds = {
-      getSnapshot: (): AssetKinds => kinds,
-      subscribe: (listener: () => void): (() => void) => {
-        listeners.add(listener)
-        stopFollowing ??= followAssetKinds(client, (next) => {
-          kinds = next
-          for (const each of [...listeners]) each()
-        })
-        return () => {
-          listeners.delete(listener)
-          if (listeners.size > 0) return
-          stopFollowing?.()
-          stopFollowing = null
-        }
-      },
-    }
-    const unregister = ctx.slots.register({
-      name: 'conversation.chat.markdown',
-      select: ({ element }) => selectAssetReference(element),
-      inject: () => ({ hooks: { assetKinds } }),
-    }, ChatMediaEntry)
-    return () => {
-      unregister()
-      stopFollowing?.()
-    }
-  })
+  let kinds = NO_ASSET_KINDS
+  const listeners = new Set<() => void>()
+  let stopFollowing: (() => void) | null = null
+  const assetKinds = {
+    getSnapshot: (): AssetKinds => kinds,
+    subscribe: (listener: () => void): (() => void) => {
+      listeners.add(listener)
+      stopFollowing ??= followAssetKinds(client, (next) => {
+        kinds = next
+        for (const each of [...listeners]) each()
+      })
+      return () => {
+        listeners.delete(listener)
+        if (listeners.size > 0) return
+        stopFollowing?.()
+        stopFollowing = null
+      }
+    },
+  }
+  ctx.slots.inject('conversation.chat.markdown', () => ctx.slots.register({
+    name: 'conversation.chat.markdown',
+    select: ({ element }) => selectAssetReference(element),
+    inject: () => ({ hooks: { assetKinds } }),
+  }, ChatMediaEntry))
+  ctx.slots.inject('conversation.chat.reference', () => ctx.slots.register({
+    name: 'conversation.chat.reference',
+    select: ({ reference }) => selectSentReference(reference),
+    inject: () => ({ hooks: { assetKinds } }),
+  }, SentReferenceEntry))
+  ctx.effect(() => () => {
+    stopFollowing?.()
+    stopFollowing = null
+  }, 'dv-composer: asset kinds follower')
 }

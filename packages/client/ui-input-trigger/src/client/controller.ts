@@ -10,7 +10,7 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type {
-  ArbitrateKey, ArbitrateOutcome, PickOutcome, ReferenceInsert,
+  ArbitrateKey, ArbitrateOutcome, DraftAttachmentId, PickOutcome, ReferenceInsert,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { detectTrigger } from '../core/detect.ts'
@@ -341,14 +341,15 @@ export class InputTriggerController {
    * @param source - owning source name.
    * @param ref - owner-scoped reference id.
    * @param signal - the submit attempt's abort signal.
+   * @param attachmentIds - the draft attachments sent with the message, in message order.
    * @returns the model representation (e.g. `<skill>name</skill>`).
    */
-  serializeReference(source: string, ref: string, signal: AbortSignal): Promise<string> {
+  serializeReference(source: string, ref: string, signal: AbortSignal, attachmentIds: readonly DraftAttachmentId[]): Promise<string> {
     const owner = this.deps.roster.all().find(s => s.name === source)
     if (owner?.codec === undefined) {
       return Promise.reject(new Error(`slash: no serializer for reference source "${source}"`))
     }
-    return owner.codec.serialize(ref, signal)
+    return owner.codec.serialize(ref, signal, attachmentIds)
   }
 
   /**

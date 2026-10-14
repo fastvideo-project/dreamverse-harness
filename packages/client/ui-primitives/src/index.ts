@@ -96,6 +96,7 @@ export { MarkdownDelegateProvider } from './markdown/MarkdownDelegate.tsx'
 export type {
   MarkdownDelegate, MarkdownDelegateProviderProps, MarkdownElement, MarkdownElementRenderer, MarkdownExternalLinkHandler,
   MarkdownImageElement, MarkdownLinkElement, MarkdownTableCell, MarkdownTableElement, MarkdownTableLink,
+  UserTextReference, UserTextReferenceRenderer,
 } from './markdown/MarkdownDelegate.tsx'
 export { MarkdownText } from './markdown/MarkdownText.tsx'
 export type { MarkdownCodeLabels, MarkdownFileMentions, MarkdownLabels, MarkdownPathImages } from './markdown/MarkdownText.tsx'

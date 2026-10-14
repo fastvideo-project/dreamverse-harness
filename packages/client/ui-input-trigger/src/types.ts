@@ -9,14 +9,14 @@
  */
 import type { ComponentType } from 'react'
 import type {
-  PickOutcome, ReferenceInsert, TokenSpan,
+  DraftAttachmentId, PickOutcome, ReferenceInsert, TokenSpan,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { IconProps } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
 export type {
   ArbitrateKey, ArbitrateOutcome, BeginCommandRequest, CommandClaim, ConsumeTokenRequest,
-  InsertReferenceRequest, InsertTextRequest, PickOutcome, ReferenceInsert, SubmitAttachment,
+  InsertReferenceRequest, InsertTextRequest, PickOutcome, ReferenceInsert, ReferenceThumbnail, SubmitAttachment,
   SubmitOutcome, TokenSpan,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 
@@ -142,8 +142,15 @@ export interface InputTriggerPick {
 export interface ReferenceCodec {
   /** Clipboard / persistence projection of one reference (e.g. `/name`). */
   clipboardText(ref: string): string
-  /** Model serialization of one reference (e.g. `<skill>name</skill>`). */
-  serialize(ref: string, signal: AbortSignal): Promise<string>
+  /**
+   * Model serialization of one reference (e.g. `<skill>name</skill>`).
+   * @param ref - the source-owned reference id.
+   * @param signal - the submit attempt's cancellation.
+   * @param attachmentIds - the draft attachments sent with the message, in the order the message carries them; a
+   * reference to a draft attachment serializes to its position among them.
+   * @returns the model text.
+   */
+  serialize(ref: string, signal: AbortSignal, attachmentIds: readonly DraftAttachmentId[]): Promise<string>
 }
 
 /**

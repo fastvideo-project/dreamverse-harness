@@ -1,7 +1,8 @@
 /**
  * `dvChatReferences` over the real Project service and components: `dv:` mentions of a step's user messages become a
- * `dv-mentions` context message read from the project's current state, chat attachments of any media type become
- * `asset.import` records of the session's project that put them on its canvas, mentioned assets go on the canvas, and
+ * `dv-mentions` context message read from the project's current state, chat attachments of any media type of a step's
+ * user messages become `asset.import` records of the session's project that put them on its canvas, a `dv:attachment/<n>`
+ * mention names the asset imported from the n-th attachment of its own message, mentioned assets go on the canvas, and
  * disposal removes both listeners.
  */
 import { agentEvents } from '@deepseek-ai/dsh-agent'
@@ -60,8 +61,8 @@ interface ChatFixture {
   emit(type: string, data: Record<string, unknown>): void
   /** Call a DSH tool on behalf of the live session's agent. */
   callAs(name: string, args: Record<string, unknown>): Promise<ToolExecutionResult>
-  /** Run the `agent/pre-step` waterfall for one user message; returns the step's messages. */
-  preStep(text: string): Promise<UserMessage[]>
+  /** Run the `agent/pre-step` waterfall for user messages, each given as its text or its content; returns the step's messages. */
+  preStep(...contents: Array<string | UserMessage['content']>): Promise<UserMessage[]>
 }
 
 const cleanups: Array<() => Promise<void> | void> = []
@@ -96,11 +97,13 @@ async function start(): Promise<ChatFixture> {
       const call = { callId: ToolCallId(`as-${calls}`), name, arguments: args, signal: new AbortController().signal, agent: agent as never }
       return fixture.context.tools.execute(call)
     },
-    async preStep(text) {
-      const message = createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } })
+    async preStep(...contents) {
+      const messages = contents.map(content => createUserMessage({
+        content: typeof content === 'string' ? [{ type: 'text', text: content }] : content, source: { kind: 'user' },
+      }))
       const decision = await agentEvents(fixture.context, agent as never).waterfall('agent/pre-step',
-        { messages: [message], turn: 1, step: 1, signal: new AbortController().signal },
-        () => Promise.resolve({ kind: 'enter' as const, messages: [message] }))
+        { messages, turn: 1, step: 1, signal: new AbortController().signal },
+        () => Promise.resolve({ kind: 'enter' as const, messages }))
       if (decision.kind !== 'enter') throw new Error('expected step entry')
       return decision.messages
     },
@@ -157,22 +160,24 @@ describe('mention expansion', () => {
 })
 
 describe('chat attachments', () => {
-  it('imports the images a user attached in a bound chat as project assets and puts them on the canvas', async () => {
-    const { fixture, attachments, emit, callAs } = await start()
+  it('imports the images a user attached before the chat had a project at the first step after it got one', async () => {
+    const { fixture, attachments, preStep, callAs } = await start()
     const image = await attachments.saveImage({ data: Buffer.from('chat-image'), mediaType: 'image/png', name: 'cat.png' })
-    const message = { source: { kind: 'user' }, content: [{ type: 'image', attachment: image }] }
-    // Without a bound project the image stays in the chat only.
-    emit('user/message', message)
+    // Without a bound project the image waits, and its mention says so.
+    const first = await preStep([{ type: 'image', attachment: image }, { type: 'text', text: 'animate @[cat.png](dv:attachment/1)' }])
+    expect(textOf(first.at(-1))).toContain(
+      '- cat.png (dv:attachment/1): attachment 1 of this message; it is imported as an asset once this conversation has a project',
+    )
     const created = await callAs('dv_proj_create', { title: 'dance' })
     if (created.isError) throw new Error(created.error.message)
     const projectId = (created.value as { project_id: ProjectId }).project_id
-    emit('user/message', message)
-    // A message the user did not type imports nothing.
-    emit('user/message', { source: { kind: 'plugin' }, content: [{ type: 'image', attachment: image }] })
-    // The session's next tool call waits for the import.
-    const timeline = await callAs('dv_timeline_create', { reason: 'order', assets: [] })
-    if (timeline.isError) throw new Error(timeline.error.message)
+    // The step after the tool call carries no user message; it imports the waiting image and names its asset.
+    const next = await preStep()
     const imported = fixture.project.listHistory({ project: projectId, actor: 'user', operation: 'asset.import' }).map(entry => entry.record)
+    expect(textOf(next.at(-1))).toBe('The files the user attached while this conversation had no project are now imported into its project:\n'
+      + `- "cat.png" (dv:attachment/1 of the earlier message): asset ${String(imported[0]?.outputs[0])}`)
+    // A later step imports nothing again.
+    expect(await preStep()).toEqual([])
     expect(imported).toEqual([expect.objectContaining({
       surface: 'chat', turn: null, session: 's1', params: expect.objectContaining({ name: 'cat.png', mime: 'image/png', place: true }),
     })])
@@ -182,13 +187,13 @@ describe('chat attachments', () => {
   })
 
   it('imports the other files a user attached from their host paths, with the media type their extension names', async () => {
-    const { fixture, attachments, emit, callAs } = await start()
+    const { fixture, attachments, preStep, callAs } = await start()
     const created = await callAs('dv_proj_create', { title: 'files' })
     if (created.isError) throw new Error(created.error.message)
     const projectId = (created.value as { project_id: ProjectId }).project_id
     const contents = { 'clip.mp4': 'chat-video', 'notes.txt': 'chat-notes', 'blob': 'chat-blob' }
     const files = Object.entries(contents).map(([name, content]) => attachments.saveFile(fixture.writeFile(name, content), content.length))
-    emit('user/message', { source: { kind: 'user' }, content: files.map(attachment => ({ type: 'file', attachment })) })
+    await preStep(files.map(attachment => ({ type: 'file', attachment })))
     // The session's next tool call waits for the import.
     const timeline = await callAs('dv_timeline_create', { reason: 'order', assets: [] })
     if (timeline.isError) throw new Error(timeline.error.message)
@@ -204,13 +209,39 @@ describe('chat attachments', () => {
     expect(fixture.project.getState(projectId).components.asset.placed).toEqual(assets)
   })
 
+  it('names the asset imported from the n-th attachment of the same message for each dv:attachment mention', async () => {
+    const chat = await start()
+    const { fixture, attachments } = chat
+    const created = await chat.callAs('dv_proj_create', { title: 'attachment mentions' })
+    if (created.isError) throw new Error(created.error.message)
+    const projectId = (created.value as { project_id: ProjectId }).project_id
+    const cat = await attachments.saveImage({ data: Buffer.from('cat'), mediaType: 'image/png', name: 'cat.png' })
+    const notes = attachments.saveFile(fixture.writeFile('notes.txt', 'notes'), 'notes'.length)
+    const dog = await attachments.saveImage({ data: Buffer.from('dog'), mediaType: 'image/png', name: 'dog.png' })
+    // Two user messages of one step number their attachments separately.
+    const messages = await chat.preStep(
+      [{ type: 'image', attachment: cat }, { type: 'file', attachment: notes },
+        { type: 'text', text: 'read @[notes.txt](dv:attachment/2), not @[x](dv:attachment/3)' }],
+      [{ type: 'image', attachment: dog }, { type: 'text', text: 'and draw @[dog.png](dv:attachment/1)' }],
+    )
+    // The step waited for the imports, so the records exist.
+    const imported = fixture.project.listHistory({ project: projectId, actor: 'user', operation: 'asset.import' }).map(entry => entry.record)
+    const assetOf = (name: string) => imported.find(record => record.params['name'] === name)?.outputs[0]
+    const block = textOf(messages.at(-1))
+    expect(block).toContain(`- notes.txt (dv:attachment/2): attachment 2 of this message, asset ${String(assetOf('notes.txt'))} made by record`)
+    expect(block).toContain('- x (dv:attachment/3): no attachment 3 in this message')
+    expect(block).toContain(`- dog.png (dv:attachment/1): attachment 1 of this message, asset ${String(assetOf('dog.png'))} made by record`)
+    expect(imported).toHaveLength(3)
+  })
+
   it('imports nothing for a file the DSH attachment store keeps off this machine, and the next tool call still runs', async () => {
-    const { fixture, emit, callAs } = await start()
+    const { fixture, preStep, callAs } = await start()
     const created = await callAs('dv_proj_create', { title: 'remote file' })
     if (created.isError) throw new Error(created.error.message)
     const projectId = (created.value as { project_id: ProjectId }).project_id
     const remote: FileAttachmentRef = { attachmentId: brandString<FileAttachmentRef['attachmentId']>('remote'), name: 'clip.mp4', bytes: 1 }
-    emit('user/message', { source: { kind: 'user' }, content: [{ type: 'file', attachment: remote }] })
+    const messages = await preStep([{ type: 'file', attachment: remote }, { type: 'text', text: 'cut @[clip.mp4](dv:attachment/1)' }])
+    expect(textOf(messages.at(-1))).toContain('- clip.mp4 (dv:attachment/1): attachment 1 of this message, not imported as an asset')
     const timeline = await callAs('dv_timeline_create', { reason: 'order', assets: [] })
     expect(timeline.isError).toBe(false)
     expect(fixture.project.listHistory({ project: projectId, operation: 'asset.import' })).toEqual([])

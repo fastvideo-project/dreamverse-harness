@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useEffect } from 'react'
 import type {
-  AssistantMessageNode, ChatMarkdownOwnerProps, ChatNode, ChatNodeHookContext, ChatNodeOwnerProps, ChatSnapshot,
+  AssistantMessageNode, ChatMarkdownOwnerProps, ChatNode, ChatReferenceOwnerProps, ChatNodeHookContext, ChatNodeOwnerProps, ChatSnapshot,
   ChatViewSlotProps, CommandNode, CompactionSummaryNode, ContextMessageNode, ConversationNode,
   LegacyConversationSlice, ModelRetryNode, StartedToolCall, SteeringMessageNode,
   ToolCallBlock, ToolResultNode, TurnErrorNode, TurnMaxTokensNode, UseChatNodeTurnData,
@@ -406,6 +406,7 @@ function makeHarness(
   // ChatView never invokes it (pass-through stub).
   const SessionProviderStub: ChatViewSlotProps['SessionProvider'] = ({ children }) => <>{children}</>
   const markdownReplaced = createSnapshotStore(false)
+  const referenceReplaced = createSnapshotStore(false)
   const props: ChatViewSlotProps = {
     usePanelInfo: selector => selector({ activePanelId: null }),
     sessionId: SID,
@@ -441,6 +442,7 @@ function makeHarness(
     actions: chat.actions,
     usePresentation: bindSnapshotSelector(derivePresentationPolicy(transcriptView)),
     useMarkdownReplaced: bindSnapshotSelector(markdownReplaced),
+    useReferenceReplaced: bindSnapshotSelector(referenceReplaced),
     renderSlot,
     renderSlotChain: (_key, _owner, opts) => opts?.fallback ?? null,
     SessionProvider: SessionProviderStub,
@@ -490,6 +492,7 @@ function makeHarness(
     },
     setTranscriptView: (mode: TranscriptViewMode) => { transcriptView.set(mode) },
     setMarkdownReplaced: (replaced: boolean) => { markdownReplaced.set(replaced) },
+    setReferenceReplaced: (replaced: boolean) => { referenceReplaced.set(replaced) },
     setNodeRenderer: (renderer: React.ComponentProps<typeof ChatNodeSeat>['renderSlot']) => {
       nodeSlotOverride = renderer
     },
@@ -604,6 +607,28 @@ describe('Chat node rendering', () => {
 
     act(() => { h.setMarkdownReplaced(false) })
     expect(view.getByRole('link', { name: 'Play' })).toBeTruthy()
+  })
+
+  it('offers sent plugin references with their message attachments to the reference chain only while it has entries', () => {
+    const image = { attachmentId: 'img-1', mediaType: 'image/png' }
+    const withImage: UserMessageNode = {
+      ...user(1, ''),
+      content: [{ type: 'image', attachment: image }, { type: 'text', text: 'use @[cat.png](dv:asset/a1) here' }] as never,
+    }
+    const h = makeHarness({ nodes: [withImage] })
+    const owners: ChatReferenceOwnerProps[] = []
+    h.props.renderSlotChain = ((_key: string, owner: ChatReferenceOwnerProps) => {
+      owners.push(owner)
+      return <span data-testid="sent-chip">{owner.reference.uri}</span>
+    }) as ChatViewSlotProps['renderSlotChain']
+    const view = render(<h.ChatView {...h.props} />)
+    expect(view.getByTitle('@[cat.png](dv:asset/a1)').textContent).toBe('cat.png')
+    expect(owners).toEqual([])
+
+    act(() => { h.setReferenceReplaced(true) })
+    expect(view.getByTestId('sent-chip').textContent).toBe('dv:asset/a1')
+    expect(owners.at(-1)?.reference).toEqual({ label: 'cat.png', uri: 'dv:asset/a1' })
+    expect(owners.at(-1)?.attachments).toEqual([{ type: 'image', image: { attachment: image } }])
   })
 
   it('renders a replaced paragraph link through an inline outlet and passes the default link to the entry', async () => {

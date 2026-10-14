@@ -151,6 +151,7 @@ root
 │     │     │     └─ tool.view.cordis
 │     │     ├─ conversation.message.images
 │     │     ├─ conversation.chat.markdown
+│     │     ├─ conversation.chat.reference
 │     │     └─ conversation.trajectory.images
 │     ├─ conversation.header
 │     │  ├─ conversation.header.leading

@@ -1,9 +1,11 @@
 /**
  * The DreamVerse chat references as the `dvChatReferences` Cordis service: what a user points at in a chat message
- * reaches the project. The `dv:` mentions of new user messages expand at `agent/pre-step` into a context message with
- * the concrete record and asset IDs, read from the current state of the session's project; the files a user attaches
- * to a chat message, of any media type, are imported into the session's project as assets and put on its canvas, and the
- * `dv:asset` mentions a user sends put those assets on the canvas.
+ * reaches the project. At `agent/pre-step`, the files a user attached to the step's messages, of any media type, start
+ * to import into the session's project as assets that go on its canvas, and the `dv:` mentions of those messages expand
+ * into a context message with the concrete record and asset IDs, read from the current state of the session's project;
+ * a `dv:attachment/<n>` mention waits for the import of its message's attachments and names the asset imported from the
+ * n-th one. The attachments of a message whose session has no project yet wait, and the first step after the session
+ * gets one imports them and names their assets. The `dv:asset` mentions a user sends put those assets on the canvas.
  *
  * @module @dv/chat-references
  */
@@ -16,9 +18,15 @@ import type { Session, SessionEvent, SessionEventMap } from '@deepseek-ai/dsh-se
 import { importedAssets, placeable } from '@dv/asset-pool'
 import type { AssetId, ProjectId, SessionId } from '@dv/project'
 import mime from 'mime-types'
-import { expansionBlock, mentionedAssetIds, type ExpansionSources } from './expand.ts'
+import {
+  deferredAttachmentsBlock, expansionBlock, mentionedAssetIds, mentionsAttachment,
+  type DeferredAttachment, type ExpansionSources, type MentionMessage,
+} from './expand.ts'
 
-export { describeMention, formatMention, parseMentions, type ExpansionSources, type Mention } from './expand.ts'
+export {
+  deferredAttachmentsBlock, describeMention, formatMention, parseMentions,
+  type DeferredAttachment, type ExpansionSources, type Mention, type MentionMessage,
+} from './expand.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -53,9 +61,24 @@ function requireHostPath(path: string | undefined, name: string): string {
   return path
 }
 
+/**
+ * @param block - one attachment block of a user message.
+ * @returns its display name: the file name, or `image.<subtype>` for an image without one.
+ */
+function attachmentName(block: ChatAttachmentBlock): string {
+  if (block.type === 'file') return block.attachment.name
+  return block.attachment.name ?? `image.${block.attachment.mediaType.slice('image/'.length)}`
+}
+
 /** `dv:` mention expansion and chat attachment import. */
 export default class DvChatReferences extends Service {
   static inject = ['dvProject', 'dvAssetPool']
+
+  /**
+   * The attachment blocks of the user messages that entered a step while their session had no project, by session, one
+   * entry per message in step order. The first step after the session gets a project imports them.
+   */
+  private deferredAttachments = new Map<SessionId, ChatAttachmentBlock[][]>()
 
   constructor(ctx: Context) {
     super(ctx, 'dvChatReferences')
@@ -63,24 +86,32 @@ export default class DvChatReferences extends Service {
     ctx.on('agent/pre-step', async ({ agent }, next): Promise<PreStepDecision> => {
       const decision = await next()
       if (decision.kind === 'reject') return decision
-      const context = this.expansionMessage(agent.id, decision.messages)
+      const session = brandString<SessionId>(agent.id)
+      const deferred = await this.importDeferredAttachments(session)
+      const messages = await Promise.all(decision.messages.filter(message => message.source.kind === 'user')
+        .map(message => this.mentionMessage(session, message)))
+      const context = this.expansionMessage(agent.id, messages, deferred)
       return context === null ? decision : { ...decision, messages: [...decision.messages, context] }
     }, { prepend: true })
   }
 
   /**
-   * The context message for the `dv:` mentions in one step's user messages, or null when they hold none.
+   * The context message for the `dv:` mentions in one step's user messages and for the files imported at this step
+   * because the session got a project, or null when there is neither.
    * @param sessionId - the chat session.
-   * @param messages - the step's new messages.
+   * @param messages - the step's new messages that the user typed, with the assets imported from their attachments.
+   * @param deferred - the files attached while the session had no project, imported at this step.
    * @returns the message.
    */
-  expansionMessage(sessionId: string, messages: readonly UserMessage[]): UserMessage | null {
-    const text = messages.filter(message => message.source.kind === 'user')
-      .flatMap(message => message.content.flatMap(block => block.type === 'text' ? [block.text] : []))
-      .join('\n')
+  expansionMessage(
+    sessionId: string, messages: readonly MentionMessage[], deferred: readonly DeferredAttachment[] = [],
+  ): UserMessage | null {
+    const text = messages.map(message => message.text).join('\n')
     const session = brandString<SessionId>(sessionId)
-    const block = expansionBlock(text, this.projectFor(session, text), this.expansionSources())
-    if (block === null) return null
+    const blocks = [deferredAttachmentsBlock(deferred), expansionBlock(messages, this.projectFor(session, text), this.expansionSources())]
+      .filter(part => part !== null)
+    if (blocks.length === 0) return null
+    const block = blocks.join('\n\n')
     return createUserMessage({
       content: [{ type: 'text', text: block }],
       source: { kind: 'dv-mentions', form: 'snapshot', sections: [{ name: 'dv-mentions', text: block }] },
@@ -117,7 +148,44 @@ export default class DvChatReferences extends Service {
     }
   }
 
-  /** Import the attachments of the messages a user typed in a live session. */
+  /**
+   * Start the import of the attachments of one user message that enters a step, and read the message for expansion.
+   * The step waits for the import only when the message holds a `dv:attachment/<n>` mention.
+   * @param session - the chat session.
+   * @param message - a message of the step that the user typed.
+   * @returns the message's text and, when it mentions an attachment, the asset imported from each attachment block.
+   */
+  private async mentionMessage(session: SessionId, message: UserMessage): Promise<MentionMessage> {
+    const text = message.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
+    const blocks = message.content.flatMap(block => block.type === 'image' || block.type === 'file' ? [block] : [])
+    if (this.ctx.dvProject.sessionProject(session) === null) {
+      // The session's project does not exist yet (the entry page): the first step after it is bound imports the files.
+      if (blocks.length > 0) this.deferredAttachments.set(session, [...this.deferredAttachments.get(session) ?? [], blocks])
+      return { text, attachments: blocks.map(() => null), importPending: blocks.length > 0 }
+    }
+    const imports = blocks.length === 0 ? [] : this.importChatAttachments(session, blocks)
+    return { text, attachments: mentionsAttachment(text) ? await Promise.all(imports) : [], importPending: false }
+  }
+
+  /**
+   * Import the files attached while the session had no project, once it has one, and name the asset of each.
+   * @param session - the chat session.
+   * @returns the files in message order and then in attachment order; empty while the session has no project or
+   * nothing waits.
+   */
+  private async importDeferredAttachments(session: SessionId): Promise<DeferredAttachment[]> {
+    const waiting = this.deferredAttachments.get(session)
+    if (waiting === undefined || this.ctx.dvProject.sessionProject(session) === null) return []
+    this.deferredAttachments.delete(session)
+    const blocks = waiting.flat()
+    const assets = await Promise.all(this.importChatAttachments(session, blocks))
+    let index = 0
+    return waiting.flatMap((message, m) => message.map((block, b): DeferredAttachment => ({
+      name: attachmentName(block), position: b + 1, message: m + 1, asset: assets[index++] ?? null,
+    })))
+  }
+
+  /** Place the assets that the messages a user typed in a live session mention. */
   private onSessionEvent(session: Session, event: SessionEvent): void {
     if (event.type !== 'user/message' || event.data.source.kind !== 'user') return
     const agents = this.ctx.get('agents')
@@ -125,7 +193,6 @@ export default class DvChatReferences extends Service {
       const agent = agents.get(session.id)
       if (agent === undefined || agent.session !== session) return
     }
-    this.recordChatAttachments(session.id, event.data)
     this.placeMentionedAssets(brandString<SessionId>(session.id), event.data)
   }
 
@@ -158,47 +225,41 @@ export default class DvChatReferences extends Service {
   }
 
   /**
-   * Import the files a user attached to a chat message as project assets, so the asset pool lists them.
-   * @param sessionId - the chat session.
-   * @param message - the appended user message, which the user typed.
-   */
-  private recordChatAttachments(sessionId: string, message: SessionEventMap['user/message']): void {
-    const blocks = message.content.flatMap(block => block.type === 'image' || block.type === 'file' ? [block] : [])
-    if (blocks.length === 0) return
-    this.importChatAttachments(brandString<SessionId>(sessionId), blocks).catch((error: unknown) => {
-      const reason = error instanceof Error ? error.message : String(error)
-      this.ctx.logger('dvChatReferences').warn('could not import chat attachments of session %s as assets: %s', sessionId, reason)
-    })
-  }
-
-  /**
    * Import chat attachments of any media type as assets of the session's project and put them on its canvas: one
-   * `asset.import` with `place` per attachment by the user, in the chat, after the project's current position. The
-   * session's next tool call waits until the import finished (`dvProject.holdToolCalls`). A session without a project,
-   * or a process without an attachment service, imports nothing.
+   * `asset.import` with `place` per attachment by the user, in the chat, after the project's current position, in block
+   * order. The import stops at the first attachment that fails and logs the failure. The session's next tool call waits
+   * until the import finished (`dvProject.holdToolCalls`). A session without a project, or a process without an
+   * attachment service, imports nothing.
    * @param session - the chat session.
-   * @param blocks - the attachment blocks of the user message.
-   * @returns the imported asset IDs.
+   * @param blocks - the attachment blocks of the user message, in content order.
+   * @returns per block, in block order, a promise of the asset imported from it, or of null when the block was not
+   * imported; the promises never reject.
    */
-  private importChatAttachments(session: SessionId, blocks: readonly ChatAttachmentBlock[]): Promise<AssetId[]> {
+  private importChatAttachments(session: SessionId, blocks: readonly ChatAttachmentBlock[]): Array<Promise<AssetId | null>> {
     const project = this.ctx.dvProject
     const projectId = project.sessionProject(session)
     const attachments = this.ctx.get('attachments')
-    if (projectId === null || attachments === undefined) return Promise.resolve([])
-    const importing = (async () => {
-      const ids: AssetId[] = []
-      for (const block of blocks) {
+    if (projectId === null || attachments === undefined) return blocks.map(() => Promise.resolve(null))
+    // Each import starts after the previous one finished, and a failure rejects the imports of the blocks after it.
+    let previous: Promise<AssetId | undefined> = Promise.resolve(undefined)
+    const imports = blocks.map((block) => {
+      previous = previous.then(async () => {
         const params = this.getAssetImportParamsFromDshAttachmentStore(attachments, block)
         const result = await project.run({
           project: projectId, operation: 'asset.import', inputs: [], params: { ...params, place: true },
           actor: 'user', surface: 'chat', session, turn: null, tool_call: null, intent: `import ${params.name}`,
         })
-        ids.push(...result.outputs)
-      }
-      return ids
-    })()
+        return result.outputs[0]
+      })
+      return previous
+    })
+    const importing = Promise.all(imports)
     project.holdToolCalls(session, importing)
-    return importing
+    importing.catch((error: unknown) => {
+      const reason = error instanceof Error ? error.message : String(error)
+      this.ctx.logger('dvChatReferences').warn('could not import chat attachments of session %s as assets: %s', session, reason)
+    })
+    return imports.map(imported => imported.then(asset => asset ?? null, () => null))
   }
 
   /**
@@ -211,12 +272,10 @@ export default class DvChatReferences extends Service {
    * file off this machine.
    */
   private getAssetImportParamsFromDshAttachmentStore(attachments: AttachmentStore, block: ChatAttachmentBlock): AssetImportParams {
+    const name = attachmentName(block)
     if (block.type === 'image') {
-      const type = block.attachment.mediaType
-      const name = block.attachment.name ?? `image.${type.slice('image/'.length)}`
-      return { path: requireHostPath(attachments.imageHostPath(block.attachment), name), mime: type, name }
+      return { path: requireHostPath(attachments.imageHostPath(block.attachment), name), mime: block.attachment.mediaType, name }
     }
-    const name = block.attachment.name
     return { path: requireHostPath(attachments.fileHostPath(block.attachment), name), mime: mime.lookup(name) || 'application/octet-stream', name }
   }
 }

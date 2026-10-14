@@ -20,6 +20,8 @@ export interface AssetEntry {
    * take 镜头 N / Shot N by; null for other assets and for a take without one.
    */
   readonly shot: number | null
+  /** The asset's name in the project, such as the file name of an upload. */
+  readonly name: string
 }
 
 /** Asset ID → media kind and shot number; assets of other kinds, such as audio, are absent. */
@@ -44,13 +46,13 @@ export function kindOf(mime: string): AssetKind | undefined {
 /**
  * @param a - an index.
  * @param b - another index.
- * @returns whether both map the same assets to the same kinds and shot numbers.
+ * @returns whether both map the same assets to the same kinds, shot numbers, and names.
  */
 function sameKinds(a: AssetKinds, b: AssetKinds): boolean {
   if (a.size !== b.size) return false
   for (const [id, entry] of a) {
     const other = b.get(id)
-    if (other?.kind !== entry.kind || other.shot !== entry.shot) return false
+    if (other?.kind !== entry.kind || other.shot !== entry.shot || other.name !== entry.name) return false
   }
   return true
 }
@@ -73,7 +75,7 @@ async function fetchKinds(client: DvClient, project: string, signal: AbortSignal
   const kinds = new Map<string, AssetEntry>()
   for (const asset of state.assets) {
     const kind = kindOf(asset.mime)
-    if (kind !== undefined) kinds.set(asset.id, { kind, shot: shots.get(asset.id) ?? null })
+    if (kind !== undefined) kinds.set(asset.id, { kind, shot: shots.get(asset.id) ?? null, name: asset.name })
   }
   return kinds
 }

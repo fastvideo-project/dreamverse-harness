@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { AssetId, CharacterId, ProjectId, ProjectRecord, ProjectState, RecordId, SessionId, TurnId } from '@dv/project'
 import type { ClipId, TimelineId } from '@dv/timeline'
-import { expansionBlock, formatMention, parseMentions, type ExpansionSources } from '../src/expand.ts'
+import { deferredAttachmentsBlock, expansionBlock as expandMessages, formatMention, parseMentions, type ExpansionSources } from '../src/expand.ts'
 
 const project = brandString<ProjectId>('p1')
 const img = brandString<AssetId>('img1')
@@ -44,6 +44,11 @@ const sources: ExpansionSources = {
   getRecord: (_project, id) => id === shot.id ? shot : undefined,
 }
 
+/** The context block for one user message without attachments. */
+function expansionBlock(text: string, projectId: ProjectId | null, expansionSources: ExpansionSources): string | null {
+  return expandMessages([{ text, attachments: [], importPending: false }], projectId, expansionSources)
+}
+
 describe('dv mentions', () => {
   it('round-trips the serialized form', () => {
     const text = `改一下 ${formatMention('时间线 1·片段 2', 'dv:clip/cl2')} 的光线`
@@ -73,6 +78,31 @@ describe('dv mentions', () => {
     expect(block).toContain('record none not found')
     expect(block).toContain('unknown mention kind')
     expect(expansionBlock('@[a](dv:asset/img1)', null, sources)).toContain('call dv_proj_open first')
+  })
+
+  it('names the files that waited for the project, by message only when several messages waited', () => {
+    expect(deferredAttachmentsBlock([])).toBeNull()
+    expect(deferredAttachmentsBlock([
+      { name: 'a.png', position: 1, message: 1, asset: img },
+      { name: 'b.mp4', position: 1, message: 2, asset: null },
+    ])?.split('\n').slice(1)).toEqual([
+      '- "a.png" (dv:attachment/1 of earlier message 1): asset img1',
+      '- "b.mp4" (dv:attachment/1 of earlier message 2): not imported as an asset',
+    ])
+  })
+
+  it('describes dv:attachment mentions by the attachments of their own message', () => {
+    const block = expandMessages([
+      { text: '@[a](dv:attachment/2) @[b](dv:attachment/1) @[c](dv:attachment/3) @[d](dv:attachment/0)', attachments: [null, img], importPending: false },
+      { text: '@[e](dv:attachment/1)', attachments: [vid], importPending: false },
+    ], project, sources) ?? ''
+    expect(block.split('\n').slice(1)).toEqual([
+      '- a (dv:attachment/2): attachment 2 of this message, asset img1, imported (no producing record)',
+      '- b (dv:attachment/1): attachment 1 of this message, not imported as an asset',
+      '- c (dv:attachment/3): no attachment 3 in this message',
+      '- d (dv:attachment/0): no attachment 0 in this message',
+      expect.stringMatching(/^- e \(dv:attachment\/1\): attachment 1 of this message, asset vid1 made by record rec-shot /),
+    ])
   })
 
   it('returns null for text without mentions', () => {

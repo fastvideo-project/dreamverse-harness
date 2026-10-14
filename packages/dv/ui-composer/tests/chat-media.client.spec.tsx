@@ -13,7 +13,8 @@ import {
 import { ChatMediaView } from '../src/client/ChatMedia.tsx'
 
 const KINDS: AssetKinds = new Map<string, AssetEntry>([
-  ['v1.mp4', { kind: 'video', shot: 2 }], ['v2.mp4', { kind: 'video', shot: null }], ['i1.png', { kind: 'image', shot: null }],
+  ['v1.mp4', { kind: 'video', shot: 2, name: 'v1.mp4' }], ['v2.mp4', { kind: 'video', shot: null, name: 'v2.mp4' }],
+  ['i1.png', { kind: 'image', shot: null, name: 'i1.png' }],
 ])
 
 const link = (href: string): MarkdownElement => ({ kind: 'link', href })
@@ -177,7 +178,7 @@ interface StateRecord { operation: string; params: Record<string, unknown>; outp
 /** A project state with the given assets and records, in the fields the index reads. */
 function state(assets: Array<[string, string]>, records: StateRecord[] = []) {
   return {
-    assets: assets.map(([id, mime]) => ({ id, mime })),
+    assets: assets.map(([id, mime]) => ({ id, mime, name: id })),
     components: { proj: { records } },
   }
 }
@@ -221,7 +222,9 @@ describe('followAssetKinds', () => {
     const fetchImpl = stateFetch(states)
     const stop = followAssetKinds(new DvClient(fetchImpl), (kinds) => { seen.push(kinds) })
     await vi.waitFor(() => { expect(seen).toHaveLength(1) })
-    expect([...seen[0]!]).toEqual([['v1.mp4', { kind: 'video', shot: null }], ['i1.png', { kind: 'image', shot: null }]])
+    expect([...seen[0]!]).toEqual([
+      ['v1.mp4', { kind: 'video', shot: null, name: 'v1.mp4' }], ['i1.png', { kind: 'image', shot: null, name: 'i1.png' }],
+    ])
 
     // A burst of events causes one refetch; an unchanged refetch publishes nothing; a new asset publishes again.
     events.send()
@@ -232,7 +235,9 @@ describe('followAssetKinds', () => {
     states['p1'] = state([['v1.mp4', 'video/mp4'], ['v2.mp4', 'video/mp4']])
     events.send()
     await vi.waitFor(() => { expect(seen).toHaveLength(2) })
-    expect([...seen[1]!]).toEqual([['v1.mp4', { kind: 'video', shot: null }], ['v2.mp4', { kind: 'video', shot: null }]])
+    expect([...seen[1]!]).toEqual([
+      ['v1.mp4', { kind: 'video', shot: null, name: 'v1.mp4' }], ['v2.mp4', { kind: 'video', shot: null, name: 'v2.mp4' }],
+    ])
 
     publishCurrentProject(null)
     expect(seen.at(-1)).toBe(NO_ASSET_KINDS)
@@ -269,15 +274,16 @@ describe('followAssetKinds', () => {
     const stop = followAssetKinds(new DvClient(stateFetch(states)), (kinds) => { seen.push(kinds) })
     await vi.waitFor(() => { expect(seen).toHaveLength(1) })
     expect(Object.fromEntries(seen[0]!)).toEqual({
-      'v1.mp4': { kind: 'video', shot: 3 }, 'v2.mp4': { kind: 'video', shot: null }, 'v3.mp4': { kind: 'video', shot: null },
-      's1.png': { kind: 'image', shot: 3 }, 'v4.mp4': { kind: 'video', shot: 4 },
+      'v1.mp4': { kind: 'video', shot: 3, name: 'v1.mp4' }, 'v2.mp4': { kind: 'video', shot: null, name: 'v2.mp4' },
+      'v3.mp4': { kind: 'video', shot: null, name: 'v3.mp4' }, 's1.png': { kind: 'image', shot: 3, name: 's1.png' },
+      'v4.mp4': { kind: 'video', shot: 4, name: 'v4.mp4' },
     })
 
     // A changed shot number publishes the index again.
     states['p1'] = state(assets, records(6))
     events.send()
     await vi.waitFor(() => { expect(seen).toHaveLength(2) })
-    expect(seen[1]!.get('v4.mp4')).toEqual({ kind: 'video', shot: 6 })
+    expect(seen[1]!.get('v4.mp4')).toEqual({ kind: 'video', shot: 6, name: 'v4.mp4' })
     stop()
   })
 

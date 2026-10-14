@@ -147,6 +147,10 @@ export function apply(ctx: Context): void {
     getSnapshot: () => ctx.slots.entries('conversation.chat.markdown').length > 0,
     subscribe: listener => ctx.slots.subscribe('conversation.chat.markdown', listener),
   }
+  const referenceReplaced: ObservableSnapshot<boolean> = {
+    getSnapshot: () => ctx.slots.entries('conversation.chat.reference').length > 0,
+    subscribe: listener => ctx.slots.subscribe('conversation.chat.reference', listener),
+  }
   ctx.slots.inject('conversation.view', () => {
     const disposeView = ctx.slots.register({
       name: 'conversation.view',
@@ -158,6 +162,7 @@ export function apply(ctx: Context): void {
         'conversation.chat.node': { kind: 'keyed', scope: 'session', inject: CHAT_NODE_INJECT },
         'conversation.message.images': { kind: 'single', scope: 'session' },
         'conversation.chat.markdown': { kind: 'chain', scope: 'session' },
+        'conversation.chat.reference': { kind: 'chain', scope: 'session' },
       },
       store: chatStore,
       inject: (sessionId: SessionId): ChatViewInjected => {
@@ -167,7 +172,7 @@ export function apply(ctx: Context): void {
         const chat = chatSource(binding)
         const conversation = ctx.uiConversation.binding(binding)
         return {
-          hooks: { presentation, markdownReplaced },
+          hooks: { presentation, markdownReplaced, referenceReplaced },
           keyedHooks: {
             chatNode: key => chat.getSnapshot().nodes.source(key),
             chatNodeProcess: key => chat.getSnapshot().nodes.processSource(key),
