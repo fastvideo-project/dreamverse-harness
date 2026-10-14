@@ -1,16 +1,16 @@
-/** The pure `shot` reducer: finished `shot.render` takes of every mode grouped under the root record of their `based_on` chain. */
+/** The pure `shot` reducer: finished `shot.render` takes of every task grouped under the root record of their `based_on` chain. */
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ProjectRecord, RecordId } from '@dv/project'
 import { describe, expect, it } from 'vitest'
 import { shotReducer } from '../src/reducer.ts'
 import type { ShotState } from '../src/types.ts'
 
-/** A finished `shot.render` record in mode reference with the given ID and `based_on`, changed by `overrides`. */
+/** A finished `shot.render` record in task ref2v with the given ID and `based_on`, changed by `overrides`. */
 function record(id: string, basedOn: string | null, overrides: Partial<ProjectRecord> = {}): ProjectRecord {
   return {
     id: brandString<RecordId>(id), parents: [], kind: 'operation', component: 'shot', operation: 'shot.render',
     operation_version: '1', actor: 'user', surface: 'canvas', turn: null, session: null, tool_call: null, intent: id,
-    params: { model: 'fasth3', mode: 'reference' },
+    params: { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' },
     inputs: [], outputs: [], based_on: basedOn === null ? null : brandString<RecordId>(basedOn), supersedes: [], deterministic: false,
     status: 'done', created_at: '2026-10-06T00:00:00Z', ...overrides,
   }
@@ -23,7 +23,7 @@ function reduceAll(records: ProjectRecord[]): ShotState {
 
 describe('shot reducer', () => {
   it('groups takes under the root record of their based_on chain', () => {
-    const text = { params: { model: 'fasth3', mode: 'text' } }
+    const text = { params: { modality: 'video', task: 't2v', provider: 'fastvideo', model: 'fasth3' } }
     const slice = reduceAll([record('r1', null), record('r2', 'r1'), record('r3', 'r2', text), record('s1', null, text), record('s2', 's1')])
     expect(slice).toEqual({ takes: { r1: ['r1', 'r2', 'r3'], s1: ['s1', 's2'] }, roots: { r2: 'r1', r3: 'r1', s2: 's1' } })
   })

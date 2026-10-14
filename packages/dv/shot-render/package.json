@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Shot render component of DreamVerse: shot.render renders one take of a shot with the model and generation mode the call names, from the model catalog of @dv/models, and the shot reducer groups the takes of each shot.",
+  "description": "Shot render component of DreamVerse: shot.render renders one take of a shot with the model the call names by its key in the model catalog of @dv/models, and the shot reducer groups the takes of each shot.",
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json"
