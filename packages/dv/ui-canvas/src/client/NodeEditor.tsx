@@ -596,8 +596,11 @@ function TakeForm(
         : <p role="note" style={{ margin: 0, padding: '8px 12px', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-danger-soft)', color: 'var(--dv-danger)' }}>{t('editor.failure', { message: failure })}</p>}
       <span style={label}>{t('editor.modelTask')}</span>
       <span data-testid="dv-canvas-render-mode">{modelTaskLabel(model, task, t)}</span>
-      <label style={label} htmlFor="dv-canvas-editor-prompt">{t('editor.prompt')}</label>
-      <textarea id="dv-canvas-editor-prompt" style={{ ...field, minHeight: 72, resize: 'vertical' }} value={prompt} onChange={(event) => { setPrompt(event.target.value) }} />
+      <span style={label} id="dv-canvas-editor-prompt-label">{t('editor.prompt')}</span>
+      <PromptEditor
+        id="dv-canvas-editor-prompt" labelledBy="dv-canvas-editor-prompt-label" prompt={prompt}
+        references={namedReferences(state, references.map(input => input.ref))} onChange={setPrompt}
+      />
       {textOnly ? null : <><span style={label}>{t('editor.references')}</span><div ref={chips} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
         {references.map((input) => {
           const shown = refImage(state, input.ref)
@@ -956,5 +959,68 @@ function PromptBox({ prompt, references, t }: { prompt: string; references: Name
         )
         : null}
     </>
+  )
+}
+
+/**
+ * The text that a {@link PromptEditor} element holds: its text, each drawn picture as its token, and each line break as
+ * `\n`. A `<br>` that only lets a trailing line break show adds nothing, and a block element that the browser inserted
+ * for a new line starts one.
+ * @param element - the editor element, or a block inside it.
+ * @returns the prompt.
+ */
+function promptText(element: Node): string {
+  let text = ''
+  element.childNodes.forEach((child, index) => {
+    if (child instanceof Text) text += child.data
+    else if (!(child instanceof HTMLElement)) return
+    else if (child.dataset['token'] !== undefined) text += child.dataset['token']
+    else if (child.tagName === 'BR') text += child === element.lastChild && text.endsWith('\n') ? '' : '\n'
+    else text += (index > 0 ? '\n' : '') + promptText(child)
+  })
+  return text
+}
+
+/**
+ * An editable shot prompt with each `Picture N` token drawn as that reference image, as {@link PromptBox} draws it.
+ * The prompt text keeps the tokens, so the model receives what the editor shows; deleting a drawn image deletes its
+ * token. The element owns its content while the user types: it draws the prompt again only when the reference images
+ * change, because then a token can stand for another image.
+ * @param props - the element ID, the ID of its label, the prompt, the shot's reference assets with their `Picture N`
+ *   numbers, and the change callback.
+ * @returns the element.
+ */
+function PromptEditor({ id, labelledBy, prompt, references, onChange }: {
+  id: string
+  labelledBy: string
+  prompt: string
+  references: NamedReference[]
+  onChange: (prompt: string) => void
+}): ReactNode {
+  const pictures = references.map(reference => `${String(reference.picture)}:${reference.asset.id}`).join(' ')
+  const [drawn, setDrawn] = useState({ prompt, pictures })
+  if (drawn.pictures !== pictures) setDrawn({ prompt, pictures })
+  return (
+    <div
+      key={drawn.pictures} id={id} role="textbox" aria-multiline aria-labelledby={labelledBy} contentEditable="plaintext-only"
+      suppressContentEditableWarning
+      style={{
+        ...field, minHeight: 72, maxHeight: 360, overflowY: 'auto', resize: 'vertical', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
+        outline: 'none',
+      }}
+      onInput={(event) => { onChange(promptText(event.currentTarget)) }}
+    >
+      {pictureParts(drawn.prompt).map((part, position) => {
+        const image = 'picture' in part ? references.find(reference => reference.picture === part.picture) : undefined
+        return image === undefined
+          ? part.text
+          : (
+            <img
+              key={position} src={assetUrl(image.asset.id)} alt={part.text} title={part.text} data-token={part.text}
+              contentEditable={false} draggable={false} style={promptThumb}
+            />
+          )
+      })}
+    </div>
   )
 }

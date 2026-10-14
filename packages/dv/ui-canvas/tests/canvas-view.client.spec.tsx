@@ -63,6 +63,18 @@ function mount(withTranslate = true, edit: (state: WireState) => void = () => un
   return { view, writes: scripted.writes, layoutWrites, node }
 }
 
+/**
+ * Replace the take editor's prompt as typing does: the editable element's text, then an input event.
+ * @param editor - the open take editor.
+ * @param text - the prompt.
+ */
+function typePrompt(editor: HTMLElement, text: string): void {
+  const prompt = editor.querySelector('[role="textbox"]')
+  if (!(prompt instanceof HTMLElement)) throw new Error('no prompt editor')
+  prompt.textContent = text
+  fireEvent.input(prompt)
+}
+
 describe('CanvasView', () => {
   it('draws the project\'s current state with nodes at stored positions, stores the others\' spots, and stores a dragged position', async () => {
     const { view, node, layoutWrites } = mount()
@@ -227,7 +239,7 @@ describe('CanvasView', () => {
     fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
     const editor = await view.findByTestId('dv-canvas-node-editor')
     expect(view.getByTestId('dv-canvas-render-mode').textContent).toBe(`fasth3 · ${zh['task.ref2v']}`)
-    fireEvent.change(editor.querySelector('textarea') as HTMLTextAreaElement, { target: { value: 'hero runs' } })
+    typePrompt(editor, 'hero runs')
     fireEvent.click(view.getByText(zh['editor.renderTake']))
     await waitFor(() => { expect(writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
     expect(writes.find(write => write.path === '/api/dv/operation')?.body).toMatchObject({
@@ -299,18 +311,40 @@ describe('CanvasView', () => {
     })
   })
 
+  it('the take editor draws <Picture N> as that reference image and renders the prompt with its tokens', async () => {
+    const { view, node, writes } = mount(true, (state) => {
+      state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g1'
+        ? { ...entry, params: { ...entry.params, prompt: '<Picture 1> runs' } }
+        : entry)
+    })
+    await waitFor(() => { node('g1') })
+    fireEvent.pointerDown(node('g1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
+    await view.findByTestId('dv-canvas-node-editor')
+    const prompt = view.getByRole('textbox', { name: zh['editor.prompt'] })
+    const image = prompt.querySelector('img')
+    expect([image?.getAttribute('alt'), image?.getAttribute('src')?.includes('ref.png'), prompt.textContent])
+      .toEqual(['<Picture 1>', true, ' runs'])
+    // Typing after the image keeps its token in the prompt.
+    prompt.append(' fast')
+    fireEvent.input(prompt)
+    fireEvent.click(view.getByText(zh['editor.renderTake']))
+    await waitFor(() => { expect(writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
+    expect(writes.find(write => write.path === '/api/dv/operation')?.body).toMatchObject({ params: { prompt: '<Picture 1> runs fast' } })
+  })
+
   it('a character chip opens the character editor over the take editor, and closing it keeps the take editor\'s changes', async () => {
     const { view, node } = mount()
     await waitFor(() => { node('g1') })
     fireEvent.pointerDown(node('g1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
     fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
     const editor = await view.findByTestId('dv-canvas-node-editor')
-    fireEvent.change(editor.querySelector('textarea') as HTMLTextAreaElement, { target: { value: 'hero runs' } })
+    typePrompt(editor, 'hero runs')
     fireEvent.click(view.getByRole('button', { name: '查看 Hero' }))
     expect(view.getAllByTestId('dv-canvas-node-editor').map(panel => panel.getAttribute('aria-label'))).toEqual([editor.getAttribute('aria-label'), 'Hero'])
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(view.getAllByTestId('dv-canvas-node-editor')).toHaveLength(1)
-    expect((view.getByTestId('dv-canvas-node-editor').querySelector('textarea') as HTMLTextAreaElement).value).toBe('hero runs')
+    expect(view.getByRole('textbox', { name: zh['editor.prompt'] }).textContent).toBe('hero runs')
   })
 
   it('the character editor appends picked assets to its references and removes one while more than one is left', async () => {
