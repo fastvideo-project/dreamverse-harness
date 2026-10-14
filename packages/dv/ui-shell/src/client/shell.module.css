@@ -590,15 +590,10 @@
 }
 
 .brandMark {
-  display: inline-flex;
+  display: block;
   flex: none;
-  align-items: center;
-  justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: var(--dv-radius-md);
-  background: var(--dv-accent);
-  color: #FFFFFF;
 }
 
 /* Right-panel tab bodies. */

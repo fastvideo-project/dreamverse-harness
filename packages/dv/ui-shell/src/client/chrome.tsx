@@ -59,17 +59,22 @@ const TEXT_OVERRIDES: Record<string, Record<string, [string, string]>> = {
   },
 }
 
-/** The DreamVerse tab icon (`icon-simple.svg` of the FastVideo DreamVerse web app), shown in place of DSH's whale. */
-const DREAMVERSE_ICON =
-  'data:image/svg+xml,%3Csvg%20width%3D%22160%22%20height%3D%2293%22%20viewBox%3D%220%200%20160%2093%22%20fill%3D' +
-  '%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M28.8511%2091.66L57.6319%20' +
-  '1.86368H64.5394L35.7585%2091.66H28.8511Z%22%20fill%3D%22%23356CFF%22%20stroke%3D%22%23356CFF%22%20stroke-width' +
-  '%3D%222.30244%22%2F%3E%3Cpath%20d%3D%22M15.0376%2091.66L43.8185%201.86368H46.1209L17.3401%2091.66H15.0376Z%22%' +
-  '20fill%3D%22%23356CFF%22%20stroke%3D%22%23356CFF%22%20stroke-width%3D%222.30244%22%2F%3E%3Cpath%20d%3D%22M1.22' +
-  '217%2091.66L30.003%201.86366H31.1543L2.3734%2091.66H1.22217Z%22%20fill%3D%22%23356CFF%22%20stroke%3D%22%23356C' +
-  'FF%22%20stroke-width%3D%221.15122%22%2F%3E%3Cpath%20d%3D%22M71.4465%201.86483L42.666%2091.6599H69.144L78.3538%' +
-  '2058.2746H123.251L129.007%2039.855H84.1099L89.866%2022.5868H152.032L157.788%201.86483H71.4465Z%22%20fill%3D%22' +
-  '%23356CFF%22%20stroke%3D%22%23356CFF%22%20stroke-width%3D%222.30244%22%2F%3E%3C%2Fsvg%3E'
+/** The DreamVerse mark: a blue D slanted 18° like the FastVideo wordmark, with a yellow film camera inside it. */
+const DREAMVERSE_MARK_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+  '<path fill="#356CFF" d="M2.73 56.00 18.26 8.00L41.07 8.00Q47.04 8.00 51.41 10.16Q55.79 12.32 57.98 16.39Q60.17 20.45 59.52 26.26' +
+  'Q59.36 27.68 59.00 29.17Q58.65 30.66 58.09 32.30Q55.30 40.57 51.13 45.83Q46.96 51.08 40.76 53.54' +
+  'Q34.56 56.00 25.54 56.00Z"/>' +
+  '<path fill="#FDC717" d="M31.53 24.39C30.82 26.56 28.50 28.31 26.34 28.31C24.18 28.31 22.99 26.56 23.69 24.39' +
+  'C24.40 22.23 26.72 20.48 28.88 20.48C31.05 20.48 32.23 22.23 31.53 24.39ZM40.79 24.39' +
+  'C40.08 26.56 37.76 28.31 35.60 28.31C33.43 28.31 32.25 26.56 32.95 24.39' +
+  'C33.66 22.23 35.98 20.48 38.14 20.48C40.30 20.48 41.49 22.23 40.79 24.39ZM23.49 28.84L38.09 28.84' +
+  'Q39.16 28.84 38.81 29.91L36.04 38.46Q35.69 39.52 34.62 39.52L20.02 39.52Q18.95 39.52 19.30 38.46' +
+  'L22.08 29.91Q22.43 28.84 23.49 28.84ZM38.08 34.36L45.78 29.29L42.51 39.35Z"/>' +
+  '</svg>'
+
+/** The DreamVerse mark as a data URL, for the browser tab icon and the sidebar brand. */
+export const DREAMVERSE_ICON = `data:image/svg+xml,${encodeURIComponent(DREAMVERSE_MARK_SVG)}`
 
 /** Renders nothing in place of a DSH UI slot entry DreamVerse hides. */
 function Hidden(): ReactNode {
