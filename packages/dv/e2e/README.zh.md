@@ -34,7 +34,7 @@ DSH_PLAYWRIGHT_EXECUTABLE_PATH=/path/to/chrome-linux/chrome \
 | 变量 | 含义 |
 | --- | --- |
 | `DSH_PLAYWRIGHT_EXECUTABLE_PATH` | Playwright 启动的 Chromium 程序；不设置时 Playwright 使用它自己下载的浏览器 |
-| `DV_FFMPEG` | 假后端编码视频所用、profile 中 `@dv/ffmpeg` 运行的 ffmpeg 程序；它需要 `libvpx-vp9` 编码器 |
+| `DV_FFMPEG` | 假后端和片段交界故事编码视频所用、profile 中 `@dv/ffmpeg` 运行的 ffmpeg 程序；它需要 `libvpx-vp9` 和 `libopus` 编码器 |
 | `DV_E2E_SHOTS`、`DV_NAV_SHOTS` | 失败的对话故事或导航故事在其中留下页面截图的目录 |
 
 | 故事文件 | 故事覆盖的内容 |

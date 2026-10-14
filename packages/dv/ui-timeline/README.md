@@ -58,7 +58,7 @@ The DOM carries test IDs `dv-timeline-body`, `dv-timeline-editor`, `dv-timeline-
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`TimelineBody` holds the view session from `@dv/ui-kit/useView.ts` and renders the project bar above `TimelineEditor`. `TimelineView` reads the project's current state itself. `placeTimeline` turns one timeline of the state into positioned clips; `useTimelinePlayer` plays them through two stacked `<video>` elements. Each gesture is one `DvClient.runOperation` call followed by a state refetch.
+`TimelineBody` holds the view session from `@dv/ui-kit/useView.ts` and renders the project bar above `TimelineEditor`. `TimelineView` reads the project's current state itself. `placeTimeline` turns one timeline of the state into positioned clips; `useTimelinePlayer` plays them through two stacked `<video>` elements; half a second before a clip's out point, the hidden element plays the next clip muted until its time advances and then returns paused to that clip's in point, so the switch to the next clip does not hold its first frame. Each gesture is one `DvClient.runOperation` call followed by a state refetch.
 
 | File | Content |
 | --- | --- |

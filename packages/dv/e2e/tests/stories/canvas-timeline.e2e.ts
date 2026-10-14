@@ -2,10 +2,11 @@
 // fake video backend that renders playable VP9 videos and a scripted agent model. Projects are seeded through the
 // `/api/dv` routes, so each story starts from plans, takes, and several timelines without waiting for an agent. Every story
 // asserts what the creator must see after the action; a story whose expected behavior is not built yet fails.
+import { execFileSync } from 'node:child_process'
 import type { Browser, BrowserContext, Locator, Page } from 'playwright'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
-import { bootHarness, escapeRegExp, playwright, waitFor, type BootedHarness } from '../harness.ts'
+import { FFMPEG, bootHarness, escapeRegExp, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import { startScriptedModel, type ScriptedModel } from '../scripted-model.ts'
 
 /** A 2×2 PNG with other bytes than {@link PNG_BASE64}, so its import is a new asset. */
@@ -1120,6 +1121,49 @@ describe('timeline stories', () => {
     expect(Date.now() - started).toBeLessThan(9000)
     expect([...shown].sort()).toEqual([...new Set(project.clipAssets)].sort())
     await expect.poll(() => page.getByRole('button', { name: '播放', exact: true }).count(), { timeout: 2000 }).toBe(1)
+  })
+
+  it('play does not hold the first frame of the next clip at a clip boundary', async () => {
+    // Two 2 s clips at 1280×720 with an audio track, like rendered takes and unlike the fake backend's silent videos.
+    const created = await harness.api.post('/api/dv/projects', { title: 'timeline-boundary', surface: 'timeline' }) as { id: string }
+    const clipAssets: string[] = []
+    for (const tone of [440, 660]) {
+      const video = execFileSync(FFMPEG, [
+        '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=1280x720:r=24:d=2', '-f', 'lavfi', '-i', `sine=f=${String(tone)}:d=2`,
+        '-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-b:v', '2M', '-c:a', 'libopus', '-shortest', '-f', 'webm', 'pipe:1',
+      ], { maxBuffer: 64 * 1024 * 1024 })
+      const imported = await runOperation(created.id, 'asset.import', { base64: video.toString('base64'), mime: 'video/webm', name: `tone-${String(tone)}.webm` })
+      clipAssets.push(imported.outputs[0] ?? '')
+    }
+    await runOperation(created.id, 'timeline.create', { timeline: 't1', assets: clipAssets })
+    const page = await openPage()
+    await gotoProject(page, created.id, 'timeline')
+    await expect.poll(() => viewerAsset(page)).toBe(clipAssets[0])
+    // Every animation frame records the time label until it reads the end, so a held frame shows as a run of one label.
+    const sampling = page.evaluate(() => new Promise<Array<[number, string]>>((resolve) => {
+      const samples: Array<[number, string]> = []
+      const label = document.querySelector('[data-testid="dv-timeline-time"]')
+      const sample = (now: number): void => {
+        const text = label?.textContent ?? ''
+        samples.push([now, text])
+        if (text.startsWith('00:04.00 /') || samples.length > 1200) resolve(samples)
+        else requestAnimationFrame(sample)
+      }
+      requestAnimationFrame(sample)
+    }))
+    await page.getByRole('button', { name: '播放', exact: true }).click()
+    const samples = await sampling
+    // The longest run of one label between the start and the end of playback, which crosses the boundary at 2 s.
+    const playing = samples.filter(([, label]) => !label.startsWith('00:00.00 /') && !label.startsWith('00:04.00 /'))
+    let held = 0
+    for (let at = 0, from = 0; at < playing.length; at++) {
+      if (playing[at]?.[1] !== playing[from]?.[1]) from = at
+      held = Math.max(held, (playing[at]?.[0] ?? 0) - (playing[from]?.[0] ?? 0))
+    }
+    expect(playing.length).toBeGreaterThan(60)
+    expect(held).toBeLessThan(100)
+    // The muted warm-up of the second clip leaves both video elements with sound.
+    expect(await page.locator('[data-testid="dv-timeline-viewer"] video').evaluateAll(videos => videos.map(video => (video as HTMLVideoElement).muted))).toEqual([false, false])
   })
 
   it('scrubbing the ruler moves the playhead, the time, and the viewer frame', async () => {
