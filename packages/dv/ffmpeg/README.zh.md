@@ -1,5 +1,5 @@
 ---
-description: "DreamVerse 的 ffmpeg 执行器：dvFfmpeg 服务为截取静帧、导出时间线和检查素材的组件对文件运行 ffmpeg 和 ffprobe。"
+description: "DreamVerse 的 ffmpeg 执行器：dvFfmpeg 服务为组件操作对文件运行 ffmpeg 和 ffprobe。"
 kind: "package-reference"
 ---
 
@@ -71,7 +71,7 @@ kind: "package-reference"
 <a id="model-experience"></a>
 ## 模型体验
 
-间接地，经由 `@dv/asset-pool`、`@dv/timeline` 和 `@dv/inspector` 的操作：它们的工具结果报告该服务产生的文件和探测字段。
+间接地，经由调用该服务的组件操作：它们的工具结果报告该服务产生的文件和探测字段。
 
 #### KV Cache 影响
 

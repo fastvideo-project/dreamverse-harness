@@ -1,5 +1,5 @@
 ---
-description: "The ffmpeg runner of DreamVerse: the dvFfmpeg service runs ffmpeg and ffprobe over files for the components that grab stills, export timelines, and inspect assets."
+description: "The ffmpeg runner of DreamVerse: the dvFfmpeg service runs ffmpeg and ffprobe over files for component operations."
 kind: "package-reference"
 ---
 
@@ -71,7 +71,7 @@ A failed command, an unknown placeholder, or a declared output the command did n
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through the operations of `@dv/asset-pool`, `@dv/timeline`, and `@dv/inspector`, whose tool results report the files and probe fields that the service produces.
+Indirectly, through the component operations that call the service, whose tool results report the files and probe fields that the service produces.
 
 #### KV Cache effect
 
