@@ -13,7 +13,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { pickText, useText } from '@dv/ui-kit/locale.ts'
 import type { ShellInjected } from './Center.tsx'
-import { DREAMVERSE_ICON } from './chrome.tsx'
+import { DREAMVERSE_WORDMARK } from './chrome.tsx'
 import { ChevronDownIcon, ChevronRightIcon, HomeIcon, PlugIcon, PluginsIcon, PlusIcon, SkillsIcon } from './icons.tsx'
 import { InlineRename, RowMenu } from './InlineRename.tsx'
 import type { WireProjectLink } from '@dv/ui-kit/types.ts'
@@ -180,12 +180,12 @@ function ProjectTree(props: NavigatorProps & { project: WireProjectLink; open: b
   )
 }
 
-/** The brand in the sidebar header: the DreamVerse mark (a slanted blue D with a yellow film camera) and the name. */
+/** The brand in the sidebar header: the DreamVerse wordmark (speed lines, then DREAMVERSE with a film camera in the D). */
 export function BrandName(): ReactNode {
   return (
-    <span className={css.brand}>
-      <img className={css.brandMark} src={DREAMVERSE_ICON} alt="" aria-hidden="true" />
-      DreamVerse
-    </span>
+    <svg className={css.brand} viewBox="0 8 544 48" role="img" aria-label="DreamVerse">
+      <path fill="#356CFF" d={DREAMVERSE_WORDMARK.blue} />
+      <path fill="#FDC717" d={DREAMVERSE_WORDMARK.yellow} />
+    </svg>
   )
 }
