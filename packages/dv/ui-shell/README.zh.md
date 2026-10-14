@@ -82,7 +82,8 @@ Host 半边不注册任何东西。浏览器半边以优先级 -1 注册中间�
 | [`src/client/explore.ts`](src/client/explore.ts) | 从 `dv.explore` 条目同步的 探索 标签 |
 | [`src/client/tabs.tsx`](src/client/tabs.tsx) | 对话 和 轨迹 的标签类型与主体 |
 | [`src/client/undo-keys.ts`](src/client/undo-keys.ts) | `historyKey` 和 `listenHistoryKeys`：窗口监听，Ctrl+Z（Cmd+Z）时调用 `/api/dv/undo`，Shift+Ctrl+Z（Shift+Cmd+Z）时调用 `/api/dv/redo` |
-| [`src/client/chrome.tsx`](src/client/chrome.tsx) | 隐藏和改写的 DSH 界面、右侧面板指南页、随界面语言变化的标签标题，以及 DreamVerse 的标志 |
+| [`src/client/chrome.tsx`](src/client/chrome.tsx) | 隐藏和改写的 DSH 界面、右侧面板指南页，以及随界面语言变化的标签标题 |
+| [`src/client/logo.ts`](src/client/logo.ts) | DreamVerse logo 的 SVG 路径数据：侧边栏字标和浏览器标签页图标 |
 | [`src/client/InlineRename.tsx`](src/client/InlineRename.tsx) | 行内标题输入框和 ⋯ 行菜单 |
 | [`src/client/views.ts`](src/client/views.ts) | 画布和时间线视图，从各自包的源码引入本 bundle |
 | [`src/client/shell.module.css`](src/client/shell.module.css) | 中间区域、导航和标签的样式 |

@@ -82,7 +82,8 @@ The workspace sends the chat session to the canvas and the timeline editor only 
 | [`src/client/explore.ts`](src/client/explore.ts) | The 探索 tabs mirrored from the `dv.explore` entries |
 | [`src/client/tabs.tsx`](src/client/tabs.tsx) | The 对话 and 轨迹 tab types and bodies |
 | [`src/client/undo-keys.ts`](src/client/undo-keys.ts) | `historyKey` and `listenHistoryKeys`: the window listener that calls `/api/dv/undo` on Ctrl+Z (Cmd+Z) and `/api/dv/redo` on Shift+Ctrl+Z (Shift+Cmd+Z) |
-| [`src/client/chrome.tsx`](src/client/chrome.tsx) | Hidden and reworded DSH chrome, the right-panel guide, tab titles that follow the interface language, and the DreamVerse logo |
+| [`src/client/chrome.tsx`](src/client/chrome.tsx) | Hidden and reworded DSH chrome, the right-panel guide, and tab titles that follow the interface language |
+| [`src/client/logo.ts`](src/client/logo.ts) | The DreamVerse logo's SVG path data: the sidebar wordmark and the browser tab mark |
 | [`src/client/InlineRename.tsx`](src/client/InlineRename.tsx) | The inline title field and the ⋯ row menu |
 | [`src/client/views.ts`](src/client/views.ts) | The canvas and timeline views, imported from their packages' sources into this bundle |
 | [`src/client/shell.module.css`](src/client/shell.module.css) | Styles of the center, the navigator, and the tabs |
