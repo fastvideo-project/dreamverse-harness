@@ -238,12 +238,12 @@ describe('CanvasView', () => {
     fireEvent.pointerDown(node('g1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
     fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
     const editor = await view.findByTestId('dv-canvas-node-editor')
-    expect(view.getByTestId('dv-canvas-render-mode').textContent).toBe(`fasth3 · ${zh['mode.reference']}`)
+    expect(view.getByTestId('dv-canvas-render-mode').textContent).toBe(`fasth3 · ${zh['task.ref2v']}`)
     typePrompt(editor, 'hero runs')
     fireEvent.click(view.getByText(zh['editor.renderTake']))
     await waitFor(() => { expect(writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
     expect(writes.find(write => write.path === '/api/dv/operation')?.body).toMatchObject({
-      project: 'p1', operation: 'shot.render', surface: 'canvas', based_on: 'g1', params: { model: 'fasth3', mode: 'reference', prompt: 'hero runs' },
+      project: 'p1', operation: 'shot.render', surface: 'canvas', based_on: 'g1', params: { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'hero runs' },
       inputs: [{ role: 'reference', ref: 'hero@1' }],
     })
     fireEvent.pointerDown(node('bible:hero'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
@@ -402,7 +402,7 @@ describe('CanvasView', () => {
     await waitFor(() => { expect(writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
     expect(writes.find(write => write.path === '/api/dv/operation')?.body).toMatchObject({
       project: 'p1', operation: 'shot.render', surface: 'canvas', based_on: 'g1', session: 's5',
-      params: { model: 'fasth3', mode: 'reference', prompt: 'hero walks through the rain at night in the city' }, inputs: [{ role: 'reference', ref: 'hero@1' }],
+      params: { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'hero walks through the rain at night in the city' }, inputs: [{ role: 'reference', ref: 'hero@1' }],
     })
     fireEvent.pointerDown(node('g1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
     fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
@@ -507,7 +507,7 @@ describe('CanvasView', () => {
       if (v1 === undefined) throw new Error('fixture lacks plan p1')
       const v3 = {
         ...v1, version: 3, approved_by: null, references: ['hero@1'],
-        shots: [{ prompt: '<Picture 1> walks in the rain', model: 'fasth3', mode: 'reference' as const }, { prompt: 'the sky clears', model: 'fasth3', mode: 'text' as const }],
+        shots: [{ prompt: '<Picture 1> walks in the rain', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3' }, { prompt: 'the sky clears', modality: 'video' as const, task: 't2v' as const, provider: 'fastvideo', model: 'fasth3' }],
       }
       state.components.plan.plans['p1'] = [v1, { ...v1, version: 2, approved_by: null }, v3]
     })
@@ -527,10 +527,10 @@ describe('CanvasView', () => {
     expect(shot?.textContent).toContain('Picture 1 · Hero')
     expect(shot?.querySelector('p')?.textContent).toBe(' walks in the rain')
     expect(shot?.textContent).toContain(zh['editor.firstFrameNone'])
-    // A text shot shows its model and mode and no reference images.
+    // A text shot shows its model and task and no reference images.
     const textShot = editor.querySelector('li[data-shot="2"]')
     expect(textShot?.querySelectorAll('img')).toHaveLength(0)
-    expect(textShot?.querySelector('[data-testid="dv-canvas-shot-mode"]')?.textContent).toBe(`fasth3 · ${zh['mode.text']}`)
+    expect(textShot?.querySelector('[data-testid="dv-canvas-shot-mode"]')?.textContent).toBe(`fasth3 · ${zh['task.t2v']}`)
     expect(textShot?.textContent).toContain(zh['editor.textOnlyReferences'])
   })
 
@@ -541,7 +541,7 @@ describe('CanvasView', () => {
       state.assets.push(asset('score.wav', 'audio/wav', null))
       state.components.plan.plans['p1'] = [{
         ...v1, approved_by: null, references: ['shot1.mp4', 'hero@1'],
-        shots: [{ prompt: '<Video 1> then <Picture 1>', model: 'fasth3', mode: 'reference' as const, references: ['shot1.mp4', 'hero@1', 'score.wav'] }],
+        shots: [{ prompt: '<Video 1> then <Picture 1>', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3', references: ['shot1.mp4', 'hero@1', 'score.wav'] }],
       }]
     })
     await waitFor(() => { node('plan:p1') })

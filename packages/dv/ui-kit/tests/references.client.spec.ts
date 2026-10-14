@@ -24,12 +24,12 @@ describe('isPicture', () => {
 })
 
 describe('shotReferences', () => {
-  it('uses the shot\'s own references, else the plan version\'s, as plan.approve does; a shot in mode text has none', () => {
-    expect(shotReferences({ references: ['hero@1'] }, { mode: 'reference', references: ['a.png'] })).toEqual(['a.png'])
-    expect(shotReferences({ references: ['hero@1'] }, { mode: 'reference' })).toEqual(['hero@1'])
-    expect(shotReferences({ references: ['hero@1'] }, { mode: 'reference', references: [] })).toEqual([])
-    expect(shotReferences({}, { mode: 'reference' })).toEqual([])
-    expect(shotReferences({ references: ['hero@1'] }, { mode: 'text' })).toEqual([])
+  it('uses the shot\'s own references, else the plan version\'s, as plan.approve does; a shot in task t2v has none', () => {
+    expect(shotReferences({ references: ['hero@1'] }, { task: 'ref2v', references: ['a.png'] })).toEqual(['a.png'])
+    expect(shotReferences({ references: ['hero@1'] }, { task: 'ref2v' })).toEqual(['hero@1'])
+    expect(shotReferences({ references: ['hero@1'] }, { task: 'ref2v', references: [] })).toEqual([])
+    expect(shotReferences({}, { task: 'ref2v' })).toEqual([])
+    expect(shotReferences({ references: ['hero@1'] }, { task: 't2v' })).toEqual([])
   })
 })
 

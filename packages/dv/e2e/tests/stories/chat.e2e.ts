@@ -27,8 +27,8 @@ function planCall(view: TurnView, title: string): ScriptedStep {
   return { calls: [{ name: 'dv_plan_create', args: {
     reason: '规划', title, references: [assetIdOf(view.toolResults[0], 'asset')],
     shots: [
-      { prompt: 'Picture 1 产品特写', duration_sec: 1, model: 'fasth3', mode: 'reference' },
-      { prompt: 'Picture 1 产品使用场景', duration_sec: 2, model: 'fasth3', mode: 'reference' },
+      { prompt: 'Picture 1 产品特写', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' },
+      { prompt: 'Picture 1 产品使用场景', duration_sec: 2, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' },
     ],
   } }] }
 }
@@ -66,7 +66,7 @@ const RULES: ScriptedRule[] = [
     steps: [
       { calls: [{ name: 'dv_asset_import', args: { reason: '产品图', base64: PNG_BASE64, mime: 'image/png', name: 'named.png' } }] },
       view => ({ calls: [{ name: 'dv_shot_render', args: {
-        reason: '用户点名', model: 'fasth3', mode: 'reference', prompt: '点名的镜头', duration_sec: 1, user_requested: true,
+        reason: '用户点名', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: '点名的镜头', duration_sec: 1, user_requested: true,
         inputs: { reference: assetIdOf(view.toolResults[0], 'asset') },
       } }] }),
     ],
@@ -118,7 +118,7 @@ const RULES: ScriptedRule[] = [
     steps: [
       { calls: [{ name: 'dv_asset_import', args: { reason: '产品图', base64: PNG_BASE64, mime: 'image/png', name: 'product.png' } }] },
       view => ({ calls: [1, 2].map(segment => ({ name: 'dv_shot_render', args: {
-        reason: `第${String(segment)}段`, model: 'fasth3', mode: 'reference', prompt: segment === 1 ? '第一段画面' : '第二段画面', duration_sec: segment,
+        reason: `第${String(segment)}段`, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: segment === 1 ? '第一段画面' : '第二段画面', duration_sec: segment,
         inputs: { reference: assetIdOf(view.toolResults[0], 'asset') },
       } })) }),
     ],
@@ -299,10 +299,8 @@ describe('chat with the agent', () => {
     // Creators get the video tools, not the developer tool set.
     const tools = (requestFor('只回复一')?.tools ?? []).map(tool => tool.function?.name ?? '')
     expect(tools.filter(name => ['bash', 'glob', 'grep', 'edit', 'write', 'web_fetch', 'web_search'].includes(name))).toEqual([])
-    // The agent gets one render tool, and the model catalog offers fasth3 in it.
-    expect(tools).toContain('dv_shot_render')
-    const render = requestFor('只回复一')?.tools?.find(tool => tool.function?.name === 'dv_shot_render')
-    expect(render?.function?.parameters?.properties?.['model']?.enum).toContain('fasth3')
+    // The agent gets one render tool and reads the models through the model catalog tools.
+    expect(tools).toEqual(expect.arrayContaining(['dv_shot_render', 'dv_models_list', 'dv_models_get']))
     expect(errors).toEqual([])
   })
 
@@ -484,7 +482,7 @@ describe('chat with the agent', () => {
     const waiting = await currentState()
     expect(waiting.components.plan.plans['p1']?.[0]?.approved_by).toBeNull()
     expect(waiting.components.proj.records.filter(record => record.operation === 'shot.render')).toHaveLength(0)
-    // The canvas plan editor lists each shot with its reference image, the image in place of the bare Picture 1, and its mode.
+    // The canvas plan editor lists each shot with its reference image, the image in place of the bare Picture 1, and its model and task.
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
     await waitFor(async () => {
       // The canvas fits its view after the nodes load; a click during that move can miss, so click until it opens.
@@ -596,7 +594,7 @@ describe('chat with the agent', () => {
   it('问 agent on a canvas take prefills the open project\'s chat composer with a reference the agent can resolve', async () => {
     const { projectId, assetId } = await seedProject('改片段', 'ref.png')
     const plan = await runOperation(projectId, 'plan.create', {
-      title: '改片段', references: [assetId], shots: [{ prompt: '镜头甲', duration_sec: 1, model: 'fasth3', mode: 'reference' }],
+      title: '改片段', references: [assetId], shots: [{ prompt: '镜头甲', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }],
     })
     await runOperation(projectId, 'plan.approve', { plan: plan.report?.['plan'] })
     const done = await waitFor(async () => {

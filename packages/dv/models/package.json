@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Model catalog of DreamVerse: the dvModels service that company plugins register their models into, each with the generation modes it supports, plus the dv:models prompt section (the model list) and the dv_models_get tool.",
+  "description": "Model catalog of DreamVerse: the provider-neutral dvModels registry that provider plugins register one entry per model and task into, plus the dv_models_list and dv_models_get tools and the video-model-selection skill.",
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {
     "@deepseek-ai/dsh-llm": "workspace:*",
-    "@deepseek-ai/dsh-system-prompt": "workspace:*",
+    "@deepseek-ai/dsh-skill": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/dsh-util-values": "workspace:*",
     "@dv/project": "workspace:*"
@@ -23,6 +23,7 @@
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/cordis-plugin-include": "workspace:~",
     "@deepseek-ai/cordis-plugin-loader": "workspace:~",
+    "@deepseek-ai/dsh-system-prompt": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
     "@types/node": "^22.20.0"
   }

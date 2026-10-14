@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## 概要
 
-用这个 bundle 把 DreamVerse 作为一个 `dsh` profile 运行。它插入模型目录 `@dv/models` 和公司插件 `@dv/fastvideo`（模型 `fasth3` 的生成方式 `reference` 和 `text`）、DreamVerse 各组件及 `@dv/ffmpeg`、对话引用、API 和 `@dv/ui-*` 界面插件；提供 `video-directing` skill，两处 `skill-filesystem` 行都读取它；声明到集群 SGLang 服务器的 `deepseek-local` 路由；并从环境变量选择智能体模型。`scripts/video-harness/setup-profile.sh` 把它叠在 `dsh-base` 加 `dsh-web-app` 上成为 profile `video-harness`，叠在 `dsh-base` 加 `dsh-headless` 上成为 `video-harness-headless`；`scripts/video-harness/launch.sh web|headless` 从源码运行二者之一。
+用这个 bundle 把 DreamVerse 作为一个 `dsh` profile 运行。它插入模型目录 `@dv/models` 和提供方插件 `@dv/fastvideo`（模型 `fasth3` 的生成任务 `ref2v` 和 `t2v`）、DreamVerse 各组件及 `@dv/ffmpeg`、对话引用、API 和 `@dv/ui-*` 界面插件；提供 `video-directing` skill，两处 `skill-filesystem` 行都读取它；声明到集群 SGLang 服务器的 `deepseek-local` 路由；并从环境变量选择智能体模型。`scripts/video-harness/setup-profile.sh` 把它叠在 `dsh-base` 加 `dsh-web-app` 上成为 profile `video-harness`，叠在 `dsh-base` 加 `dsh-headless` 上成为 `video-harness-headless`；`scripts/video-harness/launch.sh web|headless` 从源码运行二者之一。
 
 ## 目录
 
@@ -32,7 +32,7 @@ patch 读取的环境变量：`DV_STATE_ROOT`（默认 `~/.local/state/dv`；下
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-[`cordis.patch.yml`](cordis.patch.yml) 有一个 `insert` 列表放 DreamVerse 的行，和三处覆盖。`dv-models` 行不带配置地挂载模型目录；`dv-fastvideo` 行直接写明服务器：`fasth3` 的生成方式 `reference` 在 `http://10.244.19.118:8029` 上，`gpuSecondsPerVideoSecond` 为 4；生成方式 `text` 在 `http://10.244.16.130:8031` 上，`gpuSecondsPerVideoSecond` 为 1.5。使用其他服务器的部署在自己的 profile patch 里替换这一行的配置。三处覆盖是：`skill-filesystem`（skill 目录，其中是 `video-directing`；视频模型的 prompt skill 和 `timeline-editing` 由各自的插件通过 `ctx.skills` 注册）、`llm-pi-ai`（手工声明的 `deepseek-local` 路由：`DV_DEEPSEEK_BASE_URL` 上的 `openai-completions`，唯一模型 `deepseek-v4.1` 声明为文本加图片输入，另有 Groq 路由）、`agent-default-model`（来自环境变量的 provider、model 和推理强度）。不包含 web server 行：web profile 的页面来自 `dsh-web-app`，`dvAssetPool` 在那个服务器上注册 `/dv/assets`。[`tests/composition.spec.ts`](tests/composition.spec.ts) 经 Loader 启动补丁里的行（带它们的 `!!js` 配置和 `disabled` 标志，视频模型后端换成假实现），并把一次模型工具调用变成一条记录。
+[`cordis.patch.yml`](cordis.patch.yml) 有一个 `insert` 列表放 DreamVerse 的行，和三处覆盖。`dv-models` 行不带配置地挂载模型目录；`dv-fastvideo` 行直接写明服务器：`fasth3` 的生成任务 `ref2v` 在 `http://10.244.19.118:8029` 上，`gpuSecondsPerVideoSecond` 为 4；生成任务 `t2v` 在 `http://10.244.16.130:8031` 上，`gpuSecondsPerVideoSecond` 为 1.5。使用其他服务器的部署在自己的 profile patch 里替换这一行的配置。三处覆盖是：`skill-filesystem`（skill 目录，其中是 `video-directing`；`video-model-selection`、视频模型的 prompt skill 和 `timeline-editing` 由各自的插件通过 `ctx.skills` 注册）、`llm-pi-ai`（手工声明的 `deepseek-local` 路由：`DV_DEEPSEEK_BASE_URL` 上的 `openai-completions`，唯一模型 `deepseek-v4.1` 声明为文本加图片输入，另有 Groq 路由）、`agent-default-model`（来自环境变量的 provider、model 和推理强度）。不包含 web server 行：web profile 的页面来自 `dsh-web-app`，`dvAssetPool` 在那个服务器上注册 `/dv/assets`。[`tests/composition.spec.ts`](tests/composition.spec.ts) 经 Loader 启动补丁里的行（带它们的 `!!js` 配置和 `disabled` 标志，视频模型后端换成假实现），并把一次模型工具调用变成一条记录。
 
 <a id="further-exploration"></a>
 ## 延伸阅读

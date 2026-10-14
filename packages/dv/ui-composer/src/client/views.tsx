@@ -67,7 +67,7 @@ function outputsOf(block: object): Array<{ role: string; url: string; mime: stri
 }
 
 /**
- * The card of one render call (`dv_shot_render`): the tool's name, the model and generation mode, the prompt, the status,
+ * The card of one render call (`dv_shot_render`): the tool's name, the model and generation task, the prompt, the status,
  * and the rendered video.
  * @param props - the call.
  * @returns the card.
@@ -80,9 +80,9 @@ export function RenderCard(props: RenderCardProps) {
   const args = argsOf(raw)
   const prompt = typeof args['prompt'] === 'string' ? args['prompt'] : ''
   const model = typeof args['model'] === 'string' ? args['model'] : ''
-  const mode = args['mode'] === 'reference' ? t('参考图生成', 'From references')
-    : args['mode'] === 'text' ? t('文字生成', 'From text') : typeof args['mode'] === 'string' ? args['mode'] : ''
-  const modelLine = [model, mode].filter(part => part !== '').join(' · ')
+  const task = args['task'] === 'ref2v' ? t('参考图生成', 'From references')
+    : args['task'] === 't2v' ? t('文字生成', 'From text') : typeof args['task'] === 'string' ? args['task'] : ''
+  const modelLine = [model, task].filter(part => part !== '').join(' · ')
   const failed = 'isError' in block && block.isError === true
   const video = outputsOf(block).find(output => output.mime.startsWith('video/'))
   const status = props.phase === 'result' ? (failed ? t('未渲染', 'Not rendered') : t('已渲染', 'Rendered')) : t('渲染中…', 'Rendering…')

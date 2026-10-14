@@ -231,7 +231,7 @@ export async function bootHarness(
   })
   // The isolated harness home mirrors scripts/video-harness/setup-profile.sh: a manifest naming the three bundles,
   // a profile patch, and a link to this checkout's bundle package. The profile patch replaces the config of the
-  // bundle's `dv-fastvideo` row, so fasth3 renders only in mode reference, on the fake backend.
+  // bundle's `dv-fastvideo` row, so fasth3 renders only for task ref2v, on the fake backend.
   const home = join(scratch, 'dsh-home')
   const profileDir = join(home, 'profiles', 'video-harness')
   mkdirSync(join(profileDir, 'node_modules', '@dv'), { recursive: true })
@@ -240,7 +240,7 @@ export async function bootHarness(
     dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@dv/bundle'] } },
   }))
   writeFileSync(join(profileDir, 'cordis.patch.yml'), [
-    '- id: dv-fastvideo', '  config:', '    models:', '      fasth3:', '        reference:',
+    '- id: dv-fastvideo', '  config:', '    models:', '      fasth3:', '        ref2v:',
     `          baseUrl: ${backend.url}`, '          gpuSecondsPerVideoSecond: 4', '',
   ].join('\n'))
   symlinkSync(join(REPO_ROOT, 'packages/bundle/dv'), join(profileDir, 'node_modules', '@dv', 'bundle'))

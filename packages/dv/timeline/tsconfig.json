@@ -21,6 +21,12 @@
       "path": "../../util/brand"
     },
     {
+      "path": "../asset-pool"
+    },
+    {
+      "path": "../ffmpeg"
+    },
+    {
       "path": "../project"
     }
   ]

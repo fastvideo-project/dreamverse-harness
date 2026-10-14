@@ -6,7 +6,7 @@
  * @module @dv/shot-plan/types
  */
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { ModeId } from '@dv/models'
+import type { ModalityId, TaskId } from '@dv/models'
 import type { RecordId } from '@dv/project'
 
 /**
@@ -22,18 +22,21 @@ export interface Shot {
   /** Seconds; the render uses the model minimum when absent. */
   duration_sec?: number
   /**
-   * Character, location or style versions (`c1@1`) or asset IDs this shot uses instead of the plan's references; only in a
-   * mode that takes references.
+   * Character, location or style versions (`c1@1`) or asset IDs this shot uses instead of the plan's references; only for
+   * task `ref2v`.
    */
   references?: string[]
   seed?: number
-  /** The model from the model catalog that renders the shot. */
+  /** The modality of the model that renders the shot; with `task`, `provider` and `model`, its key in the model catalog. */
+  modality: ModalityId
+  /** The generation task the model renders the shot in, such as `ref2v`. */
+  task: TaskId
+  /** The provider that serves the model. */
+  provider: string
+  /** The provider's name for the model. */
   model: string
-  /** The generation mode the model renders the shot in, such as `reference` or `text`. */
-  mode: ModeId
   /**
-   * The shot starts from the previous shot's last still (its `first_frame` input), when the model takes a first frame in
-   * the mode; never on shot 1.
+   * The shot starts from the previous shot's last still (its `first_frame` input); task `ref2v` only, never on shot 1.
    */
   continue_previous?: boolean
 }
@@ -41,7 +44,7 @@ export interface Shot {
 /** The shots and settings of one plan version, which `plan.approve` turns into shot renders. */
 export interface Plan {
   title?: string
-  /** References every shot in a mode that takes references carries unless it names its own: `<id>@<version>` or asset IDs. */
+  /** References every shot of task `ref2v` carries unless it names its own: `<id>@<version>` or asset IDs. */
   references?: string[]
   aspect_ratio?: string
   resolution?: string

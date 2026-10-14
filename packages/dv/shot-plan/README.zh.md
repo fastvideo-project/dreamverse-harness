@@ -1,5 +1,5 @@
 ---
-description: "DreamVerse 的分镜组件：dvShotPlan 服务，带 PlanId 和编号版本的分镜计划，操作 plan.create、plan.update 和 plan.approve 及其智能体工具，写明模型目录中的模型和生成方式的镜头，以及 plan 状态切片。"
+description: "DreamVerse 的分镜组件：dvShotPlan 服务，带 PlanId 和编号版本的分镜计划，操作 plan.create、plan.update 和 plan.approve 及其智能体工具，按模态、任务、提供方和模型写明模型目录中的模型的镜头，以及 plan 状态切片。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-用这个包在生成任何内容之前规划一段视频。一个分镜计划有一个 `PlanId`（`p1`、`p2`……）和编号的版本，每个镜头写明渲染它的视频模型和生成方式，二者取自 [`@dv/models`](../models/README.zh.md) 的模型目录。`plan.create` 存储新分镜计划的版本 1，`plan.update` 存储下一个版本，`plan.approve` 记录用户对一个版本的同意，为每个新增或修改的镜头按其模型和生成方式调度 `shot.render`，并把每个镜头的版本排进一条时间线。智能体以 `dv_plan_create`、`dv_plan_update` 和 `dv_plan_approve` 调用它们。
+用这个包在生成任何内容之前规划一段视频。一个分镜计划有一个 `PlanId`（`p1`、`p2`……）和编号的版本，每个镜头以 [`@dv/models`](../models/README.zh.md) 模型目录中的键写明渲染它的视频模型：`modality`、`task`、`provider` 和 `model`。`plan.create` 存储新分镜计划的版本 1，`plan.update` 存储下一个版本，`plan.approve` 记录用户对一个版本的同意，为每个新增或修改的镜头按其模型调度 `shot.render`，并把每个镜头的版本排进一条时间线。智能体以 `dv_plan_create`、`dv_plan_update` 和 `dv_plan_approve` 调用它们。
 
 ## 目录
 
@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在 `@dv/project` 和 `@dv/models` 之后挂载本插件；分镜计划的检查读取模型目录 `dvModels`。批准需要镜头渲染操作 `shot.render`、操作 `timeline.create` 和 `timeline.update`（时间线），并读取 `timeline` 切片，素材库存储分镜计划文件。分镜计划的一个版本包含镜头（每个镜头有模型 `model`、生成方式 `mode`、提示词、时长和输入），以及生成方式为 `reference` 的镜头共用的参考。批准为每个新增或修改的镜头调度一次渲染，再调度一条 `timeline.update` 或 `timeline.create` 来排列每个镜头的版本。归约函数维护 `plan` 切片：每个分镜计划的每个版本和批准它的记录。
+在 `@dv/project` 和 `@dv/models` 之后挂载本插件；分镜计划的检查读取模型目录 `dvModels`。批准需要镜头渲染操作 `shot.render`、操作 `timeline.create` 和 `timeline.update`（时间线），并读取 `timeline` 切片，素材库存储分镜计划文件。分镜计划的一个版本包含镜头（每个镜头有模型键 `modality`、`task`、`provider`、`model`，以及提示词、时长和输入），以及任务为 `ref2v` 的镜头共用的参考。批准为每个新增或修改的镜头调度一次渲染，再调度一条 `timeline.update` 或 `timeline.create` 来排列每个镜头的版本。归约函数维护 `plan` 切片：每个分镜计划的每个版本和批准它的记录。
 
 ```yaml
 - id: dv-shot-plan
@@ -35,7 +35,7 @@ kind: "package-reference"
 
 | 操作 | 工具 | 参数 | 输出和报告 | 确认 |
 | --- | --- | --- | --- | --- |
-| `plan.create` | `dv_plan_create` | `shots`（每个含 `model`（模型列表中的一个模型）、`mode`（`reference` 或 `text`）、`prompt`、`duration_sec?`、`references?`（仅生成方式 `reference`）、`continue_previous?`（仅当模型在该生成方式下接受首帧，镜头 1 不可用）、`seed?`）、`title?`、`references?`（生成方式为 `reference` 的镜头共用）、`aspect_ratio?`、`resolution?`、`seed?` | `plan`（`plan.json`）；报告 `{plan, version: 1, shots, gpu_seconds}`，含分配的 PlanId | `never` |
+| `plan.create` | `dv_plan_create` | `shots`（每个含 `modality`、`task`、`provider` 和 `model`（`dv_models_list` 列出的一个模型的键）、`prompt`、`duration_sec?`、`references?`（仅任务 `ref2v`）、`continue_previous?`（仅任务 `ref2v`，镜头 1 不可用）、`seed?`）、`title?`、`references?`（任务为 `ref2v` 的镜头共用）、`aspect_ratio?`、`resolution?`、`seed?` | `plan`（`plan.json`）；报告 `{plan, version: 1, shots, gpu_seconds}`，含分配的 PlanId | `never` |
 | `plan.update` | `dv_plan_update` | `plan`（PlanId）和 `plan.create` 的参数：完整的下一个版本 | `plan`（`plan.json`）；报告 `{plan, version, shots, gpu_seconds}` | `never` |
 | `plan.approve` | `dv_plan_approve` | `plan`（PlanId）、`version?`（默认最新版本） | 无；报告 `{plan, version, scheduled}`（按镜头顺序调度的镜头渲染，然后是时间线记录） | `always`，带 `confirmSummary` |
 
@@ -46,7 +46,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`plan.create` 和 `plan.update` 由 runner 校验参数，没有镜头的分镜计划会失败，并通过 `context.importAsset` 把版本导入为 `plan.json`；对任何调用方，在写下记录之前，它们拒绝未知 PlanId 的分镜计划（`plan.update`）、模型不在模型目录中（列出已注册的模型）或模型不支持镜头生成方式（列出它的生成方式）的镜头、生成方式下模型不接受参考图却带参考的镜头，以及镜头 1 上或模型在该生成方式下不接受首帧时的 `continue_previous`，用一个错误列出每个镜头及其问题；它们还拒绝指向未知角色、场景或风格版本的参考。它们的报告加上 `shots`（版本的每个镜头一行）和 `gpu_seconds`（在它们写入的状态中批准该版本的 GPU 估算），与 `plan.approve` 的 `confirmSummary`（见下）用相同的行和总和。所以分镜计划只会写部署提供的模型和生成方式：没有支持生成方式 `text` 的模型时，生成方式为 `text` 的镜头被拒绝，错误列出它的模型支持的生成方式。`plan.approve` 从状态读取版本，并为每个镜头构造一次 `shot.render` 调用，参数为 `model`、`mode`、`prompt`、`plan`、`plan_version`、`shot`（位置）、`duration_sec`、`aspect_ratio`、`resolution` 和 `seed`；生成方式为 `reference` 的镜头的 `reference` 输入取镜头自己的参考，否则取分镜计划的参考；生成方式为 `text` 的镜头没有输入。当批准时的状态中同一分镜计划的一条 done 状态的 `shot.render` 记录除 `plan`、`plan_version` 和 `shot` 外参数相同、参考输入相同、`first_frame` 输入也相同（没有 `continue_previous` 的镜头没有，有 `continue_previous` 的镜头为前一个镜头沿用的版本）时，镜头沿用该版本；沿用最新的那个。所以生成的镜头之后接上一镜头的镜头也会生成，改了模型或生成方式的镜头会生成，修改分镜计划范围的设置会让每个镜头都生成。对其余每个镜头，它以 `system` actor、在批准记录的界面、会话和轮次中运行一次 `shot.render` 调用，等待在它之前调度的生成；带 `continue_previous` 的生成镜头还把前一个镜头的最后静帧（`{record, output: 1}`）作为 `first_frame` 输入。最后一条带参数 `timeline` 和 `plan` 的时间线调用按镜头顺序把每个镜头的版本（沿用或生成的）作为 `clip` 输入（`{record, output: 0}`），并立即运行，所以批准后时间线马上列出每个镜头，渲染尚未完成的镜头是占位片段：对分镜计划的时间线（其最新一条已完成的 `timeline.create` 或 `timeline.update` 记录在 `params.plan` 中指定该 PlanId 的时间线）调用 `timeline.update`，否则以下一个空闲 ID（已用最大编号之后的 `t<n>`，项目没有时间线时为 `t1`）调用 `timeline.create` 新建时间线。因此批准分镜计划的较新版本会替换其时间线的片段，批准另一个分镜计划会添加一条时间线。参考用 `dvProject.parseInputs` 按 `shot.render` 解析，所以未知版本会在调度任何生成之前让批准被拒绝。对任何调用方，在写下 `plan.approve` 记录之前，它的 `precondition` 拒绝未知的分镜计划或版本，以及 `plan.create` 拒绝的那些镜头问题（分镜计划写好之后，模型可能从模型目录中移除），用同样的方式构造每个将要生成的镜头的参数和输入，并调用 `shot.render` 的 `precondition`（例如镜头的模型在其生成方式下的参考图数量）；有镜头被拒绝时，批准以一个错误被拒绝，错误列出全部这些镜头，例如 "Shot 2, 3 of the plan are refused by its render operation."，后接第一个镜头渲染给出的原因。智能体工具在 `prepareToolCall` 中运行同一个前置条件，所以智能体在 Project 要求它征得用户同意之前就被拒绝。`plan.approve` 的 `confirm` 是 `always`：Project 拒绝不带 `user_approved: true` 的智能体调用，并把 `confirmSummary` 的文字放进拒绝消息：每个镜头一行（`shot <n> (<model> <mode>, <d> s, continues from the previous shot): <prompt>`，带提示词的前 80 个字符，或 `shot <n>: keeps its take`），以及将要生成的镜头的 `shot.render` `estimate` 之和作为 GPU 秒数。本组件只以字符串命名其他操作，并通过 `dvProject.run` 运行它们。
+`plan.create` 和 `plan.update` 由 runner 校验参数，没有镜头的分镜计划会失败，并通过 `context.importAsset` 把版本导入为 `plan.json`；对任何调用方，在写下记录之前，它们拒绝未知 PlanId 的分镜计划（`plan.update`）、模型键不在模型目录中的镜头（以 `modality/task/provider/model` 写出该键，并让智能体调用 `dv_models_list`）、任务不是 `ref2v` 却带参考的镜头，以及镜头 1 上或任务不是 `ref2v` 的镜头上的 `continue_previous`，用一个错误列出每个镜头及其问题；它们还拒绝指向未知角色、场景或风格版本的参考。它们的报告加上 `shots`（版本的每个镜头一行）和 `gpu_seconds`（在它们写入的状态中批准该版本的 GPU 估算），与 `plan.approve` 的 `confirmSummary`（见下）用相同的行和总和。所以分镜计划只会写部署提供的模型。`plan.approve` 从状态读取版本，并为每个镜头构造一次 `shot.render` 调用，参数为 `modality`、`task`、`provider`、`model`、`prompt`、`plan`、`plan_version`、`shot`（位置）、`duration_sec`、`aspect_ratio`、`resolution` 和 `seed`；任务为 `ref2v` 的镜头的 `reference` 输入取镜头自己的参考，否则取分镜计划的参考；其他任务的镜头没有参考输入。当批准时的状态中同一分镜计划的一条 done 状态的 `shot.render` 记录除 `plan`、`plan_version` 和 `shot` 外参数相同、参考输入相同、`first_frame` 输入也相同（没有 `continue_previous` 的镜头没有，有 `continue_previous` 的镜头为前一个镜头沿用的版本）时，镜头沿用该版本；沿用最新的那个。所以生成的镜头之后接上一镜头的镜头也会生成，改了模型键的镜头会生成，修改分镜计划范围的设置会让每个镜头都生成。对其余每个镜头，它以 `system` actor、在批准记录的界面、会话和轮次中运行一次 `shot.render` 调用，等待在它之前调度的生成；带 `continue_previous` 的生成镜头还把前一个镜头的最后静帧（`{record, output: 1}`）作为 `first_frame` 输入。最后一条带参数 `timeline` 和 `plan` 的时间线调用按镜头顺序把每个镜头的版本（沿用或生成的）作为 `clip` 输入（`{record, output: 0}`），并立即运行，所以批准后时间线马上列出每个镜头，渲染尚未完成的镜头是占位片段：对分镜计划的时间线（其最新一条已完成的 `timeline.create` 或 `timeline.update` 记录在 `params.plan` 中指定该 PlanId 的时间线）调用 `timeline.update`，否则以下一个空闲 ID（已用最大编号之后的 `t<n>`，项目没有时间线时为 `t1`）调用 `timeline.create` 新建时间线。因此批准分镜计划的较新版本会替换其时间线的片段，批准另一个分镜计划会添加一条时间线。参考用 `dvProject.parseInputs` 按 `shot.render` 解析，所以未知版本会在调度任何生成之前让批准被拒绝。对任何调用方，在写下 `plan.approve` 记录之前，它的 `precondition` 拒绝未知的分镜计划或版本，以及 `plan.create` 拒绝的那些镜头问题（分镜计划写好之后，模型可能从模型目录中移除），用同样的方式构造每个将要生成的镜头的参数和输入，并调用 `shot.render` 的 `precondition`（例如模型对镜头参考的校验）；有镜头被拒绝时，批准以一个错误被拒绝，错误列出全部这些镜头，例如 "Shot 2, 3 of the plan are refused by its render operation."，后接第一个镜头渲染给出的原因。智能体工具在 `prepareToolCall` 中运行同一个前置条件，所以智能体在 Project 要求它征得用户同意之前就被拒绝。`plan.approve` 的 `confirm` 是 `always`：Project 拒绝不带 `user_approved: true` 的智能体调用，并把 `confirmSummary` 的文字放进拒绝消息：每个镜头一行（`shot <n> (<modality>/<task>/<provider>/<model>, <d> s, continues from the previous shot): <prompt>`，带提示词的前 80 个字符，或 `shot <n>: keeps its take`），以及将要生成的镜头的 `shot.render` `estimate` 之和作为 GPU 秒数。本组件只以字符串命名其他操作，并通过 `dvProject.run` 运行它们。
 
 归约函数忽略状态不是 `done` 的记录：一条已完成的 `plan.create` 添加其 `report.plan` 指定的分镜计划的版本 1，一条已完成的 `plan.update` 添加其 `plan` 参数指定的分镜计划的下一个版本，一条已完成的 `plan.approve` 设置其 `version` 参数指定的版本的 `approved_by`，否则设置其 `report.version` 指定的版本的。指定未知分镜计划或版本的记录不产生任何效果。智能体摘要把每个分镜计划列一次，形如 `{plan, title, version, approved_version, shots}`：最新版本、最新的已批准版本或 null，以及最新版本的镜头数。
 
@@ -62,7 +62,7 @@ kind: "package-reference"
 ## 进一步探索
 
 - [`@dv/project`](../project/README.zh.md)：操作、调度运行、归约函数和智能体工具。
-- [`@dv/models`](../models/README.zh.md)：镜头从中选取模型和生成方式的模型目录。
+- [`@dv/models`](../models/README.zh.md)：镜头从中选取模型的模型目录，带 `dv_models_list` 和 `dv_models_get`。
 - [`@dv/shot-render`](../shot-render/README.zh.md)：批准调度的操作 `shot.render`。
 - [`COMPONENT-TEMPLATE.md`](../COMPONENT-TEMPLATE.md)：每个组件遵循的布局。
 
@@ -75,11 +75,11 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-三个工具 `dv_plan_create`、`dv_plan_update` 和 `dv_plan_approve`，格式与 `@dv/project` 给每个操作工具的格式相同。描述告诉智能体只有另一个故事才新建分镜计划，给每个镜头选一个模型和一种生成方式、按它们写提示词，用 `dv_plan_update` 在故事的分镜计划上延长、缩短或修改故事（传完整的分镜计划，所有镜头按顺序），并且只在展示分镜计划、用户在对话中同意之后才调用 `dv_plan_approve`；`dv_plan_create` 和 `dv_plan_update` 还带有确定性说明。因为 `confirm` 是 `always`，Project 给 `dv_plan_approve` 加上 `user_approved`。
+三个工具 `dv_plan_create`、`dv_plan_update` 和 `dv_plan_approve`，格式与 `@dv/project` 给每个操作工具的格式相同。描述告诉智能体只有另一个故事才新建分镜计划，给每个镜头从 `dv_models_list` 选一个模型、按它写提示词，用 `dv_plan_update` 在故事的分镜计划上延长、缩短或修改故事（传完整的分镜计划，所有镜头按顺序），并且只在展示分镜计划、用户在对话中同意之后才调用 `dv_plan_approve`；`dv_plan_create` 和 `dv_plan_update` 还带有确定性说明。因为 `confirm` 是 `always`，Project 给 `dv_plan_approve` 加上 `user_approved`。
 
 #### Token 影响
 
-插件挂载期间，三个定义固定约 1,500 个 token；`@dv/project` 的共享参数给每个定义最多增加约 200 个 token。
+插件挂载期间，三个定义固定约 1,600 个 token；`@dv/project` 的共享参数给每个定义最多增加约 200 个 token。
 
 #### KV Cache 影响
 
@@ -89,7 +89,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-一次 `dv_plan_create` 调用返回一个文本块，例如 `done <record>: plan with 2 shots`，附带 `plan.json` 输出、参数和报告 `{"plan":"p1","version":1,"shots":[…],"gpu_seconds":20}`，所以智能体在询问之前就能展示 GPU 估算；一次 `dv_plan_update` 调用返回 `plan updated (2 shots)` 和带新版本的报告，其镜头行标出沿用版本的镜头。含有部署无法渲染的镜头的分镜计划在任何记录之前被拒绝，每个问题一句话，例如已注册的模型或某个模型支持的生成方式。不带 `user_approved: true` 的 `dv_plan_approve` 调用被拒绝，拒绝消息带有 `confirmSummary` 的镜头行和 GPU 估算，并要求在对话中询问用户、问题用粗体。带它的 `dv_plan_approve` 调用返回 `done <record>: plan p1 v2 approved` 和已调度的记录；智能体随后用 `dv_proj_wait` 等待。生成方式为 `reference` 的镜头参考图不够的批准在任何记录之前被拒绝，消息列出这些镜头和 `shot.render` 给出的原因。
+一次 `dv_plan_create` 调用返回一个文本块，例如 `done <record>: plan with 2 shots`，附带 `plan.json` 输出、参数和报告 `{"plan":"p1","version":1,"shots":[…],"gpu_seconds":20}`，所以智能体在询问之前就能展示 GPU 估算；一次 `dv_plan_update` 调用返回 `plan updated (2 shots)` 和带新版本的报告，其镜头行标出沿用版本的镜头。含有部署无法渲染的镜头的分镜计划在任何记录之前被拒绝，每个问题一句话，例如不在模型目录中的模型键，并要求调用 `dv_models_list`。不带 `user_approved: true` 的 `dv_plan_approve` 调用被拒绝，拒绝消息带有 `confirmSummary` 的镜头行和 GPU 估算，并要求在对话中询问用户、问题用粗体。带它的 `dv_plan_approve` 调用返回 `done <record>: plan p1 v2 approved` 和已调度的记录；智能体随后用 `dv_proj_wait` 等待。有镜头被渲染拒绝的批准（例如任务为 `ref2v` 的镜头参考不够）在任何记录之前被拒绝，消息列出这些镜头和 `shot.render` 给出的原因。
 
 #### Token 影响
 
@@ -104,4 +104,5 @@ kind: "package-reference"
 <a id="known-limitations-and-deferred-work"></a>
 
 - **分镜计划只有文本**：分镜计划是一个 JSON 文件；除记录和画布节点外没有分镜计划编辑器或预览。
-- **批准依赖其他组件的操作**：`plan.approve` 以字符串指名 `shot.render`、`timeline.create` 和 `timeline.update`，并依赖它们的参数（对 `shot.render` 是 `model` 和 `mode`）、输入角色和输出顺序；那里的改动需要这里同步修改。镜头可写的生成方式是 `@dv/models` 的 `ModeId` 和 `MODES`，所以那里新增的生成方式无需修改这里即可用于分镜计划。
+- **批准依赖其他组件的操作**：`plan.approve` 以字符串指名 `shot.render`、`timeline.create` 和 `timeline.update`，并依赖它们的参数（对 `shot.render` 是 `modality`、`task`、`provider` 和 `model`）、输入角色和输出顺序；那里的改动需要这里同步修改。
+- **只有任务 `ref2v` 接受参考**：镜头只在任务为 `ref2v` 时带上分镜计划的参考，所以在 `@dv/models` 的 `TaskMap` 中新增接受参考的任务时需要修改这里。

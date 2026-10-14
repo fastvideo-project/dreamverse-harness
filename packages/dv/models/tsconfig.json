@@ -15,13 +15,13 @@
       "path": "../../../vendor/schemastery"
     },
     {
-      "path": "../../core/system-prompt"
-    },
-    {
       "path": "../../core/tools"
     },
     {
       "path": "../../llm/llm"
+    },
+    {
+      "path": "../../skill/skill"
     },
     {
       "path": "../../util/values"

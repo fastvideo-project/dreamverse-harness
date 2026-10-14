@@ -27,10 +27,10 @@ import DvTimeline from '../src/index.ts'
 /** The plugin classes the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
 const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, DvTimeline }
 
-/** The ten operations in registration order. */
+/** The eleven operations in registration order: the ten edits, then the export. */
 const OPERATIONS = [
   'timeline.create', 'timeline.update', 'timeline.rename', 'timeline.delete', 'timeline.clip_insert', 'timeline.clip_move', 'timeline.clip_remove',
-  'timeline.clip_split', 'timeline.clip_trim', 'timeline.clip_replace',
+  'timeline.clip_split', 'timeline.clip_trim', 'timeline.clip_replace', 'timeline.export',
 ]
 
 interface Fixture {
@@ -116,11 +116,12 @@ function failure(result: ToolExecutionResult): string {
 }
 
 describe('dvTimeline', () => {
-  it('registers the ten operations with their dv_timeline_* tools and removes them on disposal', async () => {
+  it('registers the eleven operations with their dv_timeline_* tools and removes them on disposal', async () => {
     const fixture = await start()
     const specs = fixture.ctx.dvProject.listOperations().filter(spec => spec.component === 'timeline')
     expect(specs.map(spec => spec.name)).toEqual(OPERATIONS)
-    expect(specs.every(spec => spec.outputs.length === 0 && spec.resource === 'none' && spec.confirm === 'never')).toBe(true)
+    const edits = specs.filter(spec => spec.name !== 'timeline.export')
+    expect(edits.every(spec => spec.outputs.length === 0 && spec.resource === 'none' && spec.confirm === 'never')).toBe(true)
     for (const name of OPERATIONS) expect(fixture.ctx.tools.get(`dv_${name.replace('.', '_')}`)).toBeDefined()
     expect(fixture.ctx.dvProject.getState(fixture.project).components.timeline).toEqual({ timelines: [] })
     const entry = [...fixture.ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-timeline.mjs'))

@@ -1,18 +1,20 @@
 /**
  * The Timeline component of DreamVerse as the `dvTimeline` Cordis service: the timelines of a project (each one edited
  * video, shown by its name, or as 时间线 {n} for a timeline t<n> without one) and their clips (an asset with in and out
- * points). It owns ten operations, which change only records and never create a file:
+ * points). It owns ten edit operations, which change only records and never create a file:
  * - `timeline.create`, `timeline.update`, `timeline.rename`, `timeline.delete` act on a whole timeline;
  * - `timeline.clip_insert`, `timeline.clip_move`, `timeline.clip_remove`, `timeline.clip_split`, `timeline.clip_trim`,
  *   `timeline.clip_replace` edit its clips, each named by its ID (`cl1`, `cl2`, …) in the `clip` param.
+ *
+ * Its eleventh operation, `timeline.export`, writes a timeline to one video file with `dvFfmpeg` and imports the file
+ * into the asset pool (see `export.ts`).
  *
  * The operations that add clips assign the new clip IDs and store them in the record's `report.clips`; the `timeline`
  * reducer folds the records into the `timeline` slice. `timeline.create` and `timeline.update` declare the `clip` input
  * role in `pendingInputRoles`: a clip input may name a render that is not done, and the clip is a placeholder until
  * the render is done. `dvProject` turns each operation into its agent tool
- * (`dv_timeline_create`, `dv_timeline_clip_move`, ...). Exporting a timeline to a file belongs to Deliver. While the DSH
- * skill registry is mounted, the component registers the `timeline-editing` skill: the user's editing phrasings mapped
- * to the exact `dv_*` calls.
+ * (`dv_timeline_create`, `dv_timeline_clip_move`, `dv_timeline_export`, ...). While the DSH skill registry is mounted,
+ * the component registers the `timeline-editing` skill: the user's editing phrasings mapped to the exact `dv_*` calls.
  *
  * @module @dv/timeline
  */
@@ -22,8 +24,9 @@ import type {} from '@deepseek-ai/dsh-skill'
 import z from '@deepseek-ai/schemastery'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { OperationContext, OperationResult, OperationSpec, ProjectId, ProjectRecord } from '@dv/project'
+import { exportOperation, exportTimeline } from './export.ts'
 import { addedClipCount, clipProblem, namedTimeline, OPERATIONS, reportedClips, timelineReducer } from './reducer.ts'
-import type { ClipId } from './types.ts'
+import type { ClipId, Timeline } from './types.ts'
 
 export type { Clip, ClipId, ClipStatus, Timeline, TimelineId, TimelineState } from './types.ts'
 
@@ -118,9 +121,9 @@ function edit(
   }
 }
 
-/** The Timeline service: the reducer and the ten operations. */
+/** The Timeline service: the reducer, the ten edit operations and the export operation. */
 export default class DvTimeline extends Service {
-  static inject = ['dvProject']
+  static inject = ['dvProject', 'dvAssetPool', 'dvFfmpeg']
   static Config = Config
 
   /** The highest clip number this service assigned per project, for calls whose records have not finished yet. */
@@ -129,10 +132,25 @@ export default class DvTimeline extends Service {
   constructor(ctx: Context) {
     super(ctx, 'dvTimeline')
     ctx.effect(() => ctx.dvProject.registerReducer('timeline', timelineReducer), 'dvTimeline reducer')
-    for (const spec of this.operations()) ctx.effect(() => ctx.dvProject.registerOperation(spec), `dvTimeline ${spec.name}`)
+    for (const spec of [...this.operations(), exportOperation(ctx)]) {
+      ctx.effect(() => ctx.dvProject.registerOperation(spec), `dvTimeline ${spec.name}`)
+    }
     ctx.inject(['skills'], (child) => {
       child.effect(() => child.skills.register(TIMELINE_EDITING_SKILL), `dvTimeline ${TIMELINE_EDITING_SKILL.name}`)
     })
+  }
+
+  /**
+   * Export a timeline to one MP4 file: trim each clip with an in or out point to that range, then join all clips in
+   * playback order.
+   * @param timeline - the timeline with at least one clip, each of which has an asset.
+   * @param dir - an existing directory for the trimmed clips and the joined file, usually the operation's `scratchDir`.
+   * @returns the path of the joined file inside `dir`.
+   * @throws Error for a timeline without clips or with a placeholder clip; FfmpegError when ffmpeg cannot trim or join
+   *   the clips.
+   */
+  exportTimeline(timeline: Timeline, dir: string): Promise<string> {
+    return exportTimeline(this.ctx, timeline, dir)
   }
 
   /**
@@ -170,7 +188,7 @@ export default class DvTimeline extends Service {
     return Promise.resolve(adds ? { outputs: [], report: { clips: this.assignClipIds(context.project, count) } } : { outputs: [] })
   }
 
-  /** The ten operations, in the order the agent's tool list shows them. */
+  /** The ten edit operations, in the order the agent's tool list shows them. */
   private operations(): OperationSpec[] {
     const execute = (context: OperationContext): Promise<OperationResult> => this.execute(context)
     return [

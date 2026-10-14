@@ -17,9 +17,9 @@ function record(operation: string | null, params: Record<string, unknown> = {}, 
   }
 }
 
-/** A shot of the model `fake` in mode `text` with the given prompt. */
+/** A shot of the model `fake` of provider `test` in task `t2v` with the given prompt. */
 function shot(prompt: string): Shot {
-  return { model: 'fake', mode: 'text', prompt }
+  return { modality: 'video', task: 't2v', provider: 'test', model: 'fake', prompt }
 }
 
 /** Reduce records in order from the initial slice. */

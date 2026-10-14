@@ -43,7 +43,7 @@ Host 半边不注册任何东西。浏览器半边注册 `dv-timeline` 标签类
 | 对选中片段按 Delete | `timeline.clip_remove {clip}` |
 | 把素材拖到轨道上，或用 ＋ 选择 | `timeline.clip_insert {timeline, at, asset}` |
 | ＋ 新建、重命名、删除标签 | `timeline.create {timeline, assets: []}`（不带名称，标签显示 时间线 {n} / Timeline {n}）、`timeline.rename {timeline, name}`、`timeline.delete {timeline}` |
-| 导出 | 一次 `deliver.timeline_export {timeline}` 调用；链接打开导出的视频 |
+| 导出 | 一次 `timeline.export {timeline}` 调用；链接打开导出的视频 |
 | 对选中的过期片段点"仍然保留" | 对创建该片段素材的记录调用 `POST /api/dv/stale/accept`（`proj.stale_accept`） |
 
 每条记录都带 `surface: 'timeline'`、视图旁边的对话（存为记录的 `session`；记录是项目当前位置之后的一步），以及一句用 DSH 界面语言说明手势的意图。所选时间线经 `@dv/ui-kit/current-timeline.ts` 共享，shell 因此把它写进 URL。`TimelineView` 通过 `@dv/ui-kit/locale.ts` 跟随 `<html lang>`；切换时间线标签会停止播放，并重置预览和播放头。点一个片段会选中它，不发送任何请求。素材没有时长时片段按五秒画。
@@ -82,8 +82,7 @@ DOM 带测试 ID `dv-timeline-body`、`dv-timeline-editor`、`dv-timeline-viewer
 
 - [`@dv/api`](../api/README.zh.md) — 每个手势背后的路由。
 - [`@dv/ui-kit`](../ui-kit/README.zh.md) — 客户端、轨道几何和 hook。
-- [`@dv/timeline`](../timeline/README.zh.md) — 编辑器调用的 `timeline.*` 操作。
-- [`@dv/deliver`](../deliver/README.zh.md) — 导出调用的 `deliver.timeline_export` 操作。
+- [`@dv/timeline`](../timeline/README.zh.md) — 编辑器调用的 `timeline.*` 操作，包括导出调用的 `timeline.export` 操作。
 
 -----
 

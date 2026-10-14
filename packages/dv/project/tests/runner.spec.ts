@@ -263,7 +263,7 @@ describe('Runner', () => {
 
   it('refuses an operation whose name does not start with its component key', () => {
     const m = startModules()
-    expect(() => m.runner.registerOperation(operation({ name: 'timeline.create', component: 'deliver' })))
+    expect(() => m.runner.registerOperation(operation({ name: 'timeline.create', component: 'inspect' })))
       .toThrow(expect.objectContaining({ code: 'invalid_params' }))
     expect(() => m.runner.registerOperation(operation({ name: 'shot', component: 'shot' })))
       .toThrow(expect.objectContaining({ code: 'invalid_params' }))

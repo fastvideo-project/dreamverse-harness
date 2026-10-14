@@ -1,6 +1,7 @@
 /**
  * The model catalog in a REAL composition: a test-only `cordis.yml` boots the DSH system prompt, the DSH tool registry,
- * `dvModels`, and a test company plugin through the Loader. The company plugin's models are the only fakes.
+ * the DSH skill registry, `dvModels`, and a test provider plugin through the Loader. The provider plugin's entries are
+ * the only fakes.
  */
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -10,52 +11,42 @@ import { Context } from '@deepseek-ai/cordis'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import SkillRegistry from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it } from 'vitest'
-import DvModels, { MODES, type ModeId, type ModelEntry, type RenderModelFacts } from '../src/index.ts'
+import DvModels, { formatModelKey, type ModelEntry, type RenderModelFacts, type TaskId } from '../src/index.ts'
 
-/**
- * The facts every fake model reports. In mode `reference`, the `reference` role takes at most three assets, at most two
- * of them images; videos and the `first_frame` role have no count limit.
- */
-function facts(mode: ModeId): RenderModelFacts {
-  return {
-    modelId: `backend-${mode}`, aspectRatios: ['16:9'], resolutions: ['720p'], frameSizes: { '16:9': { '720p': [1280, 720] } },
-    minDurationSec: 4, maxDurationSec: 8, numFramesByDurationSec: { 4: 97 },
-    inputLimits: mode === 'reference'
-      ? { reference: { maxCount: 3, maxCountByMediaType: { image: 2 } } }
-      : {},
-  }
+/** The facts every fake entry reports. */
+const FACTS: RenderModelFacts = {
+  modelId: 'backend-model', aspectRatios: ['16:9'], resolutions: ['720p'], frameSizes: { '16:9': { '720p': [1280, 720] } },
+  minDurationSec: 4, maxDurationSec: 8, numFramesByDurationSec: { 4: 97 },
 }
 
-/** A fake model in the given modes; mode `reference` takes image and video references and the extra parameter `cfg`. */
-function model(id: string, modes: ModeId[]): ModelEntry {
+/** A fake entry of one model of one provider serving one video task; its schema names the task. */
+function entry(task: TaskId, provider: string, model: string): ModelEntry {
   return {
-    id, company: 'Test Co', summary: `${id} test model`,
-    modes: Object.fromEntries(modes.map(mode => [mode, mode === 'reference'
-      ? {
-        inputs: { reference: { min: 1, mediaTypes: ['image', 'video'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
-        extra: { cfg: { type: 'number', description: 'Guidance scale.' } }, gpuSecondsPerVideoSecond: 2, validateGenerationRequest: () => Promise.resolve([]),
-      }
-      : { inputs: {}, extra: {}, gpuSecondsPerVideoSecond: 2, validateGenerationRequest: () => Promise.resolve([]) }])),
-    facts: mode => Promise.resolve(facts(mode)),
+    modality: 'video', task, provider, model, description: `${model} for ${task}`, gpuSecondsPerVideoSecond: 2,
+    facts: () => Promise.resolve(FACTS),
+    schema: () => Promise.resolve({ inputs: task === 'ref2v' ? { reference: { media_types: ['image'] } } : {}, extra: {} }),
+    validateGenerationRequest: () => Promise.resolve([]),
     render: () => { throw new Error('not rendered in this test') },
   }
 }
 
-/** The test company plugin: registers `alpha` in both modes and `beta` in mode text. */
-const Company = {
-  name: 'test-company',
+/** The test provider plugin: registers `alpha` of provider `test` for t2v and ref2v, and `beta` of provider `other` for t2v. */
+const Provider = {
+  name: 'test-provider',
   inject: ['dvModels'],
   apply(ctx: Context): void {
-    ctx.effect(() => ctx.dvModels.register(model('alpha', ['reference', 'text'])))
-    ctx.effect(() => ctx.dvModels.register(model('beta', ['text'])))
+    ctx.effect(() => ctx.dvModels.register(entry('t2v', 'test', 'alpha')))
+    ctx.effect(() => ctx.dvModels.register(entry('ref2v', 'test', 'alpha')))
+    ctx.effect(() => ctx.dvModels.register(entry('t2v', 'other', 'beta')))
   },
 }
 
 /** The plugins the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
-const PLUGINS = { SystemPrompt, ToolRuntime, DvModels, Company }
+const PLUGINS = { SystemPrompt, ToolRuntime, SkillRegistry, DvModels, Provider }
 
 const cleanups: Array<() => Promise<void>> = []
 
@@ -64,7 +55,8 @@ afterEach(async () => {
 })
 
 /**
- * Boot the system prompt, the tool registry, the catalog and the test company plugin from a test-only `cordis.yml`.
+ * Boot the system prompt, the tool registry, the skill registry, the catalog and the test provider plugin from a
+ * test-only `cordis.yml`.
  * @returns the root context.
  */
 async function start(): Promise<Context> {
@@ -72,7 +64,11 @@ async function start(): Promise<Context> {
   const globals = globalThis as typeof globalThis & { __dvModels?: typeof PLUGINS }
   globals.__dvModels = PLUGINS
   const rows: string[] = []
-  for (const [id, key] of [['system-prompt', 'SystemPrompt'], ['tools', 'ToolRuntime'], ['dv-models', 'DvModels'], ['test-company', 'Company']] as const) {
+  const plugins = [
+    ['system-prompt', 'SystemPrompt'], ['tools', 'ToolRuntime'], ['skills', 'SkillRegistry'], ['dv-models', 'DvModels'],
+    ['test-provider', 'Provider'],
+  ] as const
+  for (const [id, key] of plugins) {
     writeFileSync(join(dir, `${id}.mjs`), `export default globalThis.__dvModels.${key}\n`)
     rows.push(`- id: ${id}`, `  name: ${pathToFileURL(join(dir, `${id}.mjs`)).href}`)
   }
@@ -89,98 +85,100 @@ async function start(): Promise<Context> {
   return ctx
 }
 
-/** The text of the `dv:models` prompt section; empty when the section is empty or not registered. */
-async function modelList(ctx: Context): Promise<string> {
-  const assembly = await ctx.systemPrompt.assemble({ agent: { id: 's1' } as never })
-  return assembly.sections.find(section => section.name === 'dv:models')?.text ?? ''
+/** Dispose the fiber of one fixture row, such as `test-provider`. */
+async function unload(ctx: Context, id: string): Promise<void> {
+  const row = [...ctx.loader.entries()].find(candidate => candidate.options.name.endsWith(`/${id}.mjs`))
+  await row?.fiber?.dispose()
+}
+
+/** Call one tool through the tool registry. */
+function call(ctx: Context, name: string, args: Record<string, unknown>) {
+  return ctx.tools.execute({
+    callId: ToolCallId('call-1'), name, arguments: args, signal: new AbortController().signal, agent: { id: 's1' } as never,
+  })
 }
 
 describe('dvModels', () => {
-  it('lists every registered model with its modes, and follows registrations and removals', async () => {
+  it('keys entries by modality, task, provider and model, and lists the entries that match a filter', async () => {
     const ctx = await start()
-    expect(ctx.dvModels.list().map(entry => entry.id)).toEqual(['alpha', 'beta'])
-    expect(Object.keys(ctx.dvModels.get('alpha')?.modes ?? {})).toEqual(['reference', 'text'])
-    expect(ctx.dvModels.get('gamma')).toBeUndefined()
+    expect(ctx.dvModels.list().map(formatModelKey)).toEqual(['video/t2v/test/alpha', 'video/ref2v/test/alpha', 'video/t2v/other/beta'])
+    expect(ctx.dvModels.list({ task: 't2v' }).map(formatModelKey)).toEqual(['video/t2v/test/alpha', 'video/t2v/other/beta'])
+    expect(ctx.dvModels.list({ task: 't2v', provider: 'other' }).map(formatModelKey)).toEqual(['video/t2v/other/beta'])
+    expect(ctx.dvModels.list({ modality: 'video', provider: 'none' })).toEqual([])
+    expect(ctx.dvModels.get({ modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha' })?.description).toBe('alpha for ref2v')
+    expect(ctx.dvModels.get({ modality: 'video', task: 'ref2v', provider: 'other', model: 'beta' })).toBeUndefined()
+  })
+
+  it('refuses a duplicate key, and notifies listeners of each registration and removal', async () => {
+    const ctx = await start()
+    expect(() => ctx.dvModels.register(entry('t2v', 'test', 'alpha'))).toThrow('dvModels: model "video/t2v/test/alpha" is already registered.')
     const changes: string[][] = []
-    const unlisten = ctx.dvModels.onChanged(() => { changes.push(ctx.dvModels.list().map(entry => entry.id)) })
-    const remove = ctx.dvModels.register(model('gamma', ['text']))
+    const unlisten = ctx.dvModels.onChanged(() => { changes.push(ctx.dvModels.list({ provider: 'extra' }).map(formatModelKey)) })
+    const remove = ctx.dvModels.register(entry('ref2v', 'extra', 'gamma'))
     remove()
     remove()
     unlisten()
-    ctx.dvModels.register(model('delta', ['text']))()
-    expect(changes).toEqual([['alpha', 'beta', 'gamma'], ['alpha', 'beta']])
+    ctx.dvModels.register(entry('t2v', 'extra', 'delta'))()
+    expect(changes).toEqual([['video/ref2v/extra/gamma'], []])
   })
 
-  it('refuses a duplicate name, an unknown mode, an input the mode does not allow, an input without media types, and an entry without modes', async () => {
+  it('removes a provider\'s entries when the provider plugin unloads', async () => {
     const ctx = await start()
-    expect(() => ctx.dvModels.register(model('alpha', ['text']))).toThrow('dvModels: model "alpha" is already registered.')
-    expect(() => ctx.dvModels.register(model('none', []))).toThrow('dvModels: model "none" declares no mode.')
-    expect(() => ctx.dvModels.register({ ...model('odd', ['text']), modes: { fly: { inputs: {}, extra: {} } } as never }))
-      .toThrow('dvModels: model "odd" declares unknown mode "fly"; modes: reference, text.')
-    expect(() => ctx.dvModels.register({ ...model('odd', ['text']), modes: { text: { inputs: { reference: { min: 1, mediaTypes: ['image'] } }, extra: {}, gpuSecondsPerVideoSecond: 2, validateGenerationRequest: () => Promise.resolve([]) } } }))
-      .toThrow('dvModels: mode "text" of model "odd" accepts input "reference", which the mode does not allow.')
-    expect(() => ctx.dvModels.register({ ...model('odd', ['text']), modes: { reference: { inputs: { reference: { min: 1, mediaTypes: [] } }, extra: {}, gpuSecondsPerVideoSecond: 2, validateGenerationRequest: () => Promise.resolve([]) } } }))
-      .toThrow('dvModels: mode "reference" of model "odd" accepts input "reference" with no media type.')
-    expect(ctx.dvModels.list().map(entry => entry.id)).toEqual(['alpha', 'beta'])
-  })
-
-  it('gives the agent the model list as the dv:models prompt section, and drops it while no model is registered', async () => {
-    const ctx = await start()
-    const text = await modelList(ctx)
-    expect(text).toContain('Every dv_shot_render call names a `model` and a `mode` from this list; a call without them is refused.')
-    for (const [mode, definition] of Object.entries(MODES)) expect(text).toContain(`- ${mode}: ${definition.description}`)
-    expect(text).toContain('the media types and counts each input takes')
-    expect(text).toContain('| alpha | Test Co | reference (reference: image, video; first_frame: image), text | cfg (reference) | alpha test model |')
-    expect(text).toContain('| beta | Test Co | text | — | beta test model |')
-    const company = [...ctx.loader.entries()].find(entry => entry.options.name.endsWith('/test-company.mjs'))
-    await company?.fiber?.dispose()
+    await unload(ctx, 'test-provider')
     expect(ctx.dvModels.list()).toEqual([])
-    expect(await modelList(ctx)).toBe('')
   })
 
-  it('answers dv_models_get with a model\'s limits in each of its modes', async () => {
+  it('answers dv_models_list with the key and description of each matching entry', async () => {
     const ctx = await start()
-    const call = (args: Record<string, unknown>) => ctx.tools.execute({
-      callId: ToolCallId('call-1'), name: 'dv_models_get', arguments: args, signal: new AbortController().signal, agent: { id: 's1' } as never,
-    })
-    const result = await call({ model: 'alpha' })
+    const all = await call(ctx, 'dv_models_list', {})
+    if (all.isError) throw new Error(all.error.message)
+    expect(all.value).toEqual([
+      { modality: 'video', task: 't2v', provider: 'test', model: 'alpha', description: 'alpha for t2v' },
+      { modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', description: 'alpha for ref2v' },
+      { modality: 'video', task: 't2v', provider: 'other', model: 'beta', description: 'beta for t2v' },
+    ])
+    const refs = await call(ctx, 'dv_models_list', { task: 'ref2v' })
+    if (refs.isError) throw new Error(refs.error.message)
+    expect(refs.value).toEqual([{ modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', description: 'alpha for ref2v' }])
+  })
+
+  it('answers dv_models_get with one entry\'s durations, aspect ratios, resolutions and schema, and names an unknown key', async () => {
+    const ctx = await start()
+    const result = await call(ctx, 'dv_models_get', { modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha' })
     if (result.isError) throw new Error(result.error.message)
     expect(result.value).toEqual({
-      model: 'alpha', company: 'Test Co', about: 'alpha test model',
-      modes: {
-        reference: {
-          inputs: {
-            reference: { min: 1, max: 3, media_types: { image: { max: 2 }, video: {} } },
-            first_frame: { min: 0, media_types: { image: {} } },
-          },
-          duration_sec: { min: 4, max: 8 },
-          aspect_ratios: ['16:9'], resolutions: ['720p'], extra: { cfg: { type: 'number', description: 'Guidance scale.' } },
-        },
-        text: { inputs: {}, duration_sec: { min: 4, max: 8 }, aspect_ratios: ['16:9'], resolutions: ['720p'], extra: {} },
-      },
+      modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', description: 'alpha for ref2v',
+      facts: { duration_sec: { min: 4, max: 8 }, aspect_ratios: ['16:9'], resolutions: ['720p'] },
+      schema: { inputs: { reference: { media_types: ['image'] } }, extra: {} },
     })
-    const unknown = await call({ model: 'gamma' })
-    expect(unknown.isError && unknown.error.message).toContain('Unknown model "gamma"; models: alpha, beta.')
+    const unknown = await call(ctx, 'dv_models_get', { modality: 'video', task: 'ref2v', provider: 'other', model: 'beta' })
+    expect(unknown.isError && unknown.error.message)
+      .toContain('No video model has the key video/ref2v/other/beta; call dv_models_list for the models you can use.')
   })
 
-  it('checks extra parameters against the model\'s parameters in the mode', async () => {
+  it('registers the video-model-selection skill for the agent only', async () => {
     const ctx = await start()
-    const alpha = ctx.dvModels.get('alpha')
-    if (alpha === undefined) throw new Error('alpha is not registered')
-    expect(ctx.dvModels.checkExtra(alpha, 'reference', { cfg: 7 })).toEqual([])
-    expect(ctx.dvModels.checkExtra(alpha, 'reference', { steps: 4 }))
-      .toEqual(['alpha has no extra parameter `steps` in mode reference; its extra parameters: cfg.'])
-    expect(ctx.dvModels.checkExtra(alpha, 'text', { cfg: 7 })).toEqual(['alpha has no extra parameter `cfg` in mode text; its extra parameters: none.'])
-    expect(ctx.dvModels.checkExtra(alpha, 'reference', { cfg: 'high' })).toEqual([expect.stringContaining('cfg')])
+    const skill = await ctx.skills.get('video-model-selection')
+    expect(skill?.invocation).toEqual({ modelInvocable: true, userInvocable: false })
+    expect(skill?.content).toContain('Call `dv_models_list` with the task of the shot.')
   })
 
-  it('removes its prompt section and tool when the catalog unloads', async () => {
+  it('adds nothing to the system prompt', async () => {
     const ctx = await start()
+    const loaded = await ctx.systemPrompt.assemble({ agent: { id: 's1' } as never })
+    await unload(ctx, 'dv-models')
+    const unloaded = await ctx.systemPrompt.assemble({ agent: { id: 's1' } as never })
+    expect(loaded.sections).toEqual(unloaded.sections)
+    expect(loaded.contexts).toEqual(unloaded.contexts)
+  })
+
+  it('removes its tools and skill when the catalog unloads', async () => {
+    const ctx = await start()
+    expect(ctx.tools.get('dv_models_list')).toBeDefined()
     expect(ctx.tools.get('dv_models_get')).toBeDefined()
-    const catalog = [...ctx.loader.entries()].find(entry => entry.options.name.endsWith('/dv-models.mjs'))
-    await catalog?.fiber?.dispose()
+    await unload(ctx, 'dv-models')
+    expect(ctx.tools.get('dv_models_list')).toBeUndefined()
     expect(ctx.tools.get('dv_models_get')).toBeUndefined()
-    const assembly = await ctx.systemPrompt.assemble({ agent: { id: 's1' } as never })
-    expect(assembly.sections.map(section => section.name)).not.toContain('dv:models')
+    expect(await ctx.skills.get('video-model-selection')).toBeUndefined()
   })
 })

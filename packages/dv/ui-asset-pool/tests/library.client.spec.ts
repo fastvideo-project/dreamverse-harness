@@ -18,7 +18,7 @@ describe('assetLibrary over a synthetic state', () => {
   const stateOf = (assets: ProjectAsset[]): WireState => ({ ...fixtureState(), assets })
   const assets = [
     asset('img', 'image/png', 'asset.import', '2026-10-05T09:00:00.000Z'), asset('vid', 'video/mp4', 'shot.render', '2026-10-05T09:01:00.000Z'),
-    asset('out', 'video/mp4', 'deliver.timeline_export', '2026-10-05T09:03:00.000Z'),
+    asset('out', 'video/mp4', 'timeline.export', '2026-10-05T09:03:00.000Z'),
   ]
 
   it('groups images and videos, newest first, and leaves out assets of other media types', () => {

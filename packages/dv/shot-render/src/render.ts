@@ -29,7 +29,7 @@ export interface ShotGeometry {
 /**
  * Resolve a shot's geometry from its params and the served model's facts. Omitted params take the model's first
  * aspect ratio, first resolution, and shortest duration.
- * @param facts - the model's facts in the mode.
+ * @param facts - the model's facts.
  * @param params - the record params.
  * @returns the geometry.
  * @throws Error naming the allowed values when a param is outside the model's facts.

@@ -467,7 +467,6 @@
     { "path": "./packages/dv/fastvideo" },
     { "path": "./packages/dv/timeline" },
     { "path": "./packages/dv/story-bible" },
-    { "path": "./packages/dv/deliver" },
     { "path": "./apps/cli" },
     { "path": "./apps/desktop-host" },
     { "path": "./apps/desktop/tsconfig.host.json" }

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This group holds one package, `stream` (`@video-harness/stream`), a Cordis service: while the Shot render operation `shot.render` renders a take, the service sends the take's fMP4 chunks to every browser subscribed to the project over the `/vh/ws` WebSocket route. The Project component, the other components, the model catalog and the company plugins that register its models, the chat references, the API, the interface plugins, and the browser tests of DreamVerse live under `packages/dv/`, starting with [`@dv/project`](../dv/project/README.md); the bundle is [`@dv/bundle`](../bundle/dv/README.md).
+This group holds one package, `stream` (`@video-harness/stream`), a Cordis service: while the Shot render operation `shot.render` renders a take, the service sends the take's fMP4 chunks to every browser subscribed to the project over the `/vh/ws` WebSocket route. The Project component, the other components, the model catalog and the provider plugins that register its models, the chat references, the API, the interface plugins, and the browser tests of DreamVerse live under `packages/dv/`, starting with [`@dv/project`](../dv/project/README.md); the bundle is [`@dv/bundle`](../bundle/dv/README.md).
 
 ## Table of Contents
 

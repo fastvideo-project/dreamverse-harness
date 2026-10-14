@@ -15,7 +15,6 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
-import DvDeliver from '@dv/deliver'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvInspector from '@dv/inspector'
 import DvProject, { type OperationToolValue, type ProjectId, type RecordId } from '@dv/project'
@@ -25,7 +24,7 @@ import DvStoryBible from '@dv/story-bible'
 import DvTimeline from '@dv/timeline'
 import DvApi from '@dv/api'
 import DvChatReferences from '@dv/chat-references'
-import DvModels from '@dv/models'
+import DvModels, { formatModelKey } from '@dv/models'
 import * as yaml from 'js-yaml'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FakeModel, FFMPEG, FFPROBE } from '../../../dv/api/tests/support.ts'
@@ -42,7 +41,7 @@ let fastVideoConfig: unknown = null
 /** The model the stand-in FastVideo plugin registered. */
 const fasth3 = new FakeModel()
 
-/** A stand-in for `@dv/fastvideo`: it keeps the row's config and registers the fake model `fasth3` in mode reference. */
+/** A stand-in for `@dv/fastvideo`: it keeps the row's config and registers the fake model `fasth3` for task `ref2v`. */
 const FakeFastVideo = {
   name: 'fake-fastvideo',
   inject: ['dvModels'],
@@ -59,7 +58,7 @@ const FakeFastVideo = {
 const PLUGINS: Record<string, object> = {
   '@deepseek-ai/dsh-system-prompt': SystemPrompt, '@deepseek-ai/dsh-tools': ToolRuntime, '@dv/project': DvProject,
   '@dv/ffmpeg': DvFfmpeg, '@dv/asset-pool': DvAssetPool, '@dv/inspector': DvInspector, '@dv/story-bible': DvStoryBible,
-  '@dv/shot-plan': DvShotPlan, '@dv/shot-render': DvShotRender, '@dv/timeline': DvTimeline, '@dv/deliver': DvDeliver,
+  '@dv/shot-plan': DvShotPlan, '@dv/shot-render': DvShotRender, '@dv/timeline': DvTimeline,
   '@dv/api': DvApi, '@dv/chat-references': DvChatReferences,
   '@dv/models': DvModels, '@dv/fastvideo': FakeFastVideo,
 }
@@ -117,15 +116,16 @@ describe('DreamVerse bundle composition', () => {
     expect(ctx.get('dvProject')?.listOperations().map(spec => spec.name))
       .toEqual(expect.arrayContaining(['plan.create', 'shot.render', 'timeline.create', 'timeline.update']))
     expect(ctx.get('tools')?.get('dv_shot_render')).toBeDefined()
+    expect(ctx.get('tools')?.get('dv_models_list')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_models_get')).toBeDefined()
-    // The bundle names one server per mode of fasth3.
+    // The bundle names one server per task of fasth3.
     expect(fastVideoConfig).toEqual({
       fasth3: {
-        reference: { baseUrl: 'http://10.244.19.118:8029', gpuSecondsPerVideoSecond: 4 },
-        text: { baseUrl: 'http://10.244.16.130:8031', gpuSecondsPerVideoSecond: 1.5 },
+        ref2v: { baseUrl: 'http://10.244.19.118:8029', gpuSecondsPerVideoSecond: 4 },
+        t2v: { baseUrl: 'http://10.244.16.130:8031', gpuSecondsPerVideoSecond: 1.5 },
       },
     })
-    expect(ctx.dvModels.list().map(model => model.id)).toEqual(['fasth3'])
+    expect(ctx.dvModels.list().map(entry => formatModelKey(entry))).toEqual(['video/ref2v/fastvideo/fasth3'])
     const renderer = fasth3
 
     const signal = new AbortController().signal
@@ -141,7 +141,7 @@ describe('DreamVerse bundle composition', () => {
     const reference = ctx.dvAssetPool.list().map(asset => asset.id)
     await call('dv_bible_character_create', { reason: 'lead', character: 'c1', name: 'Lead', inputs: { reference } })
     const shot = await call('dv_shot_render', {
-      model: 'fasth3', mode: 'reference', reason: 'the opening shot', prompt: 'Picture 1 looks up', duration_sec: 1, inputs: { reference: 'c1@1' },
+      modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', reason: 'the opening shot', prompt: 'Picture 1 looks up', duration_sec: 1, inputs: { reference: 'c1@1' },
     })
     const shotValue = shot.value as OperationToolValue
     expect(shotValue.status).toBe('done')

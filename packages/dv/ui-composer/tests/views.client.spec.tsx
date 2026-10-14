@@ -7,11 +7,11 @@ import { RenderCard } from '../src/client/views.tsx'
 afterEach(() => { cleanup() })
 
 describe('RenderCard', () => {
-  it('names the render tool and shows the model, the mode, and the prompt while the call renders', () => {
+  it('names the render tool and shows the model, the task, and the prompt while the call renders', () => {
     render(
       <RenderCard
         toolName="dv_shot_render" label={['渲染镜头', 'Render shot']} sessionId="s1" callId="call-1" phase="start"
-        block={{ argsRaw: JSON.stringify({ model: 'fasth3', mode: 'text', prompt: 'a lighthouse at dusk' }) }}
+        block={{ argsRaw: JSON.stringify({ modality: 'video', task: 't2v', provider: 'fastvideo', model: 'fasth3', prompt: 'a lighthouse at dusk' }) }}
       />,
     )
     const card = document.querySelector('[data-tool="dv_shot_render"]')

@@ -1,5 +1,5 @@
 ---
-description: "Company plugin of DreamVerse for video models on local FastVideo streaming_v2 servers: registers the configured model fasth3 into the dvModels catalog in modes reference (FastH3 Ref2VA) and text (FastH3 8-Step V2), with the prompt skill of each model and mode."
+description: "Provider plugin fastvideo of DreamVerse for video models on local FastVideo streaming_v2 servers: registers the configured model fasth3 into the dvModels catalog once per task, ref2v (FastH3 Ref2VA) and t2v (FastH3 8-Step V2), with the input and extra parameter schema, request validation and prompt skill of each entry."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to render shots with video models on local FastVideo streaming_v2 servers. The function plugin `dv-fastvideo` is a company plugin of the [`@dv/models`](../models/README.md) catalog: it registers each model its `models` config names, in the modes the config gives a server for, one server per mode. It serves `fasth3` (MiniMax H3 as FastH3) in mode `reference` (FastH3 Ref2VA: a prompt, reference images, videos and audio, and an optional first frame) and mode `text` (FastH3 8-Step V2: a prompt only). While the DSH skill registry is mounted, it registers the prompt skill of each configured mode.
+Use this package to render shots with video models on local FastVideo streaming_v2 servers. The function plugin `dv-fastvideo` is the provider `fastvideo` of the [`@dv/models`](../models/README.md) catalog: it registers one catalog entry per model that its `models` config names and per task the config gives a server for, one server per task. It serves `fasth3` (MiniMax H3 as FastH3) for task `ref2v` (FastH3 Ref2VA: a prompt, reference images, videos and audio, and an optional first frame) and task `t2v` (FastH3 8-Step V2: a prompt only). While the DSH skill registry is mounted, it registers the prompt skill of each configured entry.
 
 ## Table of Contents
 
@@ -24,7 +24,7 @@ Use this package to render shots with video models on local FastVideo streaming_
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin after `@dv/models` and `@dv/asset-pool`, with one server per model and mode. The DreamVerse bundle mounts it as row `dv-fastvideo`, with one explicit server per mode:
+Mount the plugin after `@dv/models` and `@dv/asset-pool`, with one server per model and task. The DreamVerse bundle mounts it as row `dv-fastvideo`, with one explicit server per task:
 
 ```yaml
 - id: dv-fastvideo
@@ -32,35 +32,35 @@ Mount the plugin after `@dv/models` and `@dv/asset-pool`, with one server per mo
   config:
     models:
       fasth3:
-        reference:
+        ref2v:
           baseUrl: http://10.244.19.118:8029
           gpuSecondsPerVideoSecond: 4
-        text:
+        t2v:
           baseUrl: http://10.244.16.130:8031
           gpuSecondsPerVideoSecond: 1.5
 ```
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `models` | required | The models to register, by model name, and for each the modes to serve it in, by mode name; a model or mode left out is not registered |
-| `models.<model>.<mode>.baseUrl` | required | HTTP base URL of the FastVideo streaming_v2 server that renders the model in the mode, such as `http://127.0.0.1:8029` |
-| `models.<model>.<mode>.gpuSecondsPerVideoSecond` | required | GPU seconds per rendered video second on that server; the model declares it for the mode, for the GPU estimate before a render |
+| `models` | required | The models to register, by model name, and for each the tasks to serve it for, by task ID; a model or task left out is not registered |
+| `models.<model>.<task>.baseUrl` | required | HTTP base URL of the FastVideo streaming_v2 server that renders the model for the task, such as `http://127.0.0.1:8029` |
+| `models.<model>.<task>.gpuSecondsPerVideoSecond` | required | GPU seconds per rendered video second on that server; the entry of the model and task declares it, for the GPU estimate before a render |
 
-Loading fails when `models` names a model other than `fasth3`, a mode the model is not served in (`fasth3`: `reference`, `text`), or a model with no mode. While the plugin is mounted, the model list and the `model` param of `dv_shot_render` include `fasth3` with the configured modes. Mount the DSH skill registry (`@deepseek-ai/dsh-skill`) as well so that the agent can load the prompt skills.
+Loading fails when `models` names a model other than `fasth3`, a task the model is not served for (`fasth3`: `ref2v`, `t2v`), or a model with no task. While the plugin is mounted, the catalog holds one entry per configured task with provider `fastvideo` and model `fasth3`, such as `video/ref2v/fastvideo/fasth3`. Mount the DSH skill registry (`@deepseek-ai/dsh-skill`) as well so that the agent can load the prompt skills.
 
 -----
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The table `SERVED` in `src/index.ts` holds what the plugin can serve: per model its company (`local FastVideo`), its summary, and per mode the accepted inputs, the extra parameter schema, and the prompt skill. `fasth3` accepts in mode `reference` at least one `reference` asset of media type `image`, `video` or `audio` and an optional `first_frame` of media type `image`, and in mode `text` no input; neither mode takes extra parameters. The server of mode `reference` serves FastH3 Ref2VA, and the server of mode `text` serves FastH3 8-Step V2 (`FastVideo/FastVideo-FastH3-8-Step-V2`). For each configured mode the plugin creates one streaming_v2 client of `@dv/fastvideo-generation-client` in an isolated `dvFastvideoGeneration` scope, so the host gains no `dvFastvideoGeneration` service. `facts(mode)` reads `GET /v1/streamv2/capabilities` from that mode's server and reports the server's model ID, aspect ratios, resolutions, frame sizes, duration range, and frame counts. `facts` also reports `inputLimits` from the server's `max_references` and its per-media-type `max_count`. The server counts the first frame among its references, so in mode `reference` the `reference` role gets one fewer than the server's total and one fewer image than the server's image count (one fewer of each media type that `first_frame` accepts), `first_frame` gets at most one asset, and a declared media type that the server does not list gets 0; mode `text` has no input limits. Each configured mode's declaration carries its own `validateGenerationRequest(request)`, which checks the request against that mode's declared inputs and its own server's limits: it refuses an asset in a role the mode does not declare, fewer assets in a role than the role's `min`, an asset whose media type (read with `dvAssetPool.mediaType`) its role does not declare, and more assets in a role, in total or of one media type, than the mode's `inputLimits` allow, with one sentence per problem. `render(mode, request, signal)` reads the media type and bytes of each input asset ID from `dvAssetPool`, sends one `POST /v1/streamv2/generate` to the mode's server with the references in input order and the first frame after them, each as its media type and base64 bytes, asks for the server's last frame, and passes `signal` on to cancel the HTTP request. The plugin writes no reference labels: the model numbers the references itself. The model registers through `ctx.effect`, and each skill through `ctx.skills.register` inside `ctx.inject(['skills'], …)`, so the skills appear when the skill registry mounts and leave when the plugin or the registry is removed.
+The table `SERVED` in `src/index.ts` holds what the plugin can serve: per model and task the entry's description of the model's strengths and weaknesses, the accepted inputs, the extra parameter schema, and the prompt skill. `fasth3` accepts for task `ref2v` at least one `reference` asset of media type `image`, `video` or `audio` and an optional `first_frame` of media type `image`, and for task `t2v` no input; neither task takes extra parameters. The server of task `ref2v` serves FastH3 Ref2VA, and the server of task `t2v` serves FastH3 8-Step V2 (`FastVideo/FastVideo-FastH3-8-Step-V2`). For each configured task the plugin registers one entry with modality `video`, the task, provider `fastvideo`, and the model name, and creates one streaming_v2 client of `@dv/fastvideo-generation-client` in an isolated `dvFastvideoGeneration` scope, so the host gains no `dvFastvideoGeneration` service. `facts()` reads `GET /v1/streamv2/capabilities` from the task's server and reports the server's model ID, aspect ratios, resolutions, frame sizes, duration range, and frame counts. The input limits come from the server's `max_references` and its per-media-type `max_count`. The server counts the first frame among its references, so for task `ref2v` the `reference` input gets one fewer than the server's total and one fewer image than the server's image count (one fewer of each media type that `first_frame` accepts), `first_frame` gets at most one asset, and a declared media type that the server does not list gets 0; task `t2v` has no inputs. `schema()` reports, from the same capabilities, each declared input with its `min`, its total `max`, and its media types with each type's `max`, plus the extra parameter schema; for task `ref2v` it reads `{"inputs": {"reference": {"min": 1, "max": 11, "media_types": {"image": {"max": 8}, "video": {"max": 3}, "audio": {"max": 3}}}, "first_frame": {"min": 0, "max": 1, "media_types": {"image": {}}}}, "extra": {}}` against a server with 12 references, 9 images, 3 videos and 3 audio files. `validateGenerationRequest(request)` checks the request against the task's declared inputs and its own server's limits: it refuses an asset in an input the task does not declare, fewer assets in an input than the input's `min`, an asset whose media type (read with `dvAssetPool.mediaType`) its input does not declare, and more assets in an input, in total or of one media type, than the limits allow. It then checks `extra`: names the task does not take are refused in one sentence that lists the task's extra parameters, and the values of known names are checked against their schema with `validateArgs` of `@deepseek-ai/dsh-tools`. Each problem is one sentence. `render(request, signal)` reads the media type and bytes of each input asset ID from `dvAssetPool`, sends one `POST /v1/streamv2/generate` to the task's server with the references in input order and the first frame after them, each as its media type and base64 bytes, asks for the server's last frame, and passes `signal` on to cancel the HTTP request. The plugin writes no reference labels: the model numbers the references itself. Each entry registers through `ctx.effect`, and each skill through `ctx.skills.register` inside `ctx.inject(['skills'], …)`, so the skills appear when the skill registry mounts and leave when the plugin or the registry is removed.
 
 | File | Content |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `name`, `inject`, `Config`, `apply`, the `SERVED` table, the config check, and the model entry |
-| [`skills/fasth3-reference-prompting.md`](skills/fasth3-reference-prompting.md) | The skill body for `fasth3` in mode `reference`: the DreamVerse connection section, then the official MiniMax-H3 full-reference prompt guide copied unchanged |
-| [`skills/fasth3-text-prompting.md`](skills/fasth3-text-prompting.md) | The skill body for `fasth3` in mode `text`: the DreamVerse connection section, then the official MiniMax-H3 prompt guide (T2VA / I2VA / FL2VA / L2VA) copied unchanged |
-| [`tests/fastvideo.spec.ts`](tests/fastvideo.spec.ts) | A Loader composition with the skill registry, Project, ffmpeg, the asset pool and the catalog against one fake streaming_v2 server per mode; an opt-in test renders against the server named by `DV_FASTVIDEO_TEST_URL` |
+| [`src/index.ts`](src/index.ts) | `name`, `inject`, `Config`, `apply`, the `SERVED` table, the config check, and the catalog entry of one model and task |
+| [`skills/fasth3-reference-prompting.md`](skills/fasth3-reference-prompting.md) | The skill body for `fasth3` for task `ref2v`: the DreamVerse connection section, then the official MiniMax-H3 full-reference prompt guide copied unchanged |
+| [`skills/fasth3-text-prompting.md`](skills/fasth3-text-prompting.md) | The skill body for `fasth3` for task `t2v`: the DreamVerse connection section, then the official MiniMax-H3 prompt guide (T2VA / I2VA / FL2VA / L2VA) copied unchanged |
+| [`tests/fastvideo.spec.ts`](tests/fastvideo.spec.ts) | A Loader composition with the skill registry, Project, ffmpeg, the asset pool and the catalog against one fake streaming_v2 server per task; an opt-in test renders against the server named by `DV_FASTVIDEO_TEST_URL` |
 
 -----
 
@@ -77,65 +77,65 @@ The table `SERVED` in `src/index.ts` holds what the plugin can serve: per model 
 <a id="model-experience"></a>
 ## Model Experience
 
-### Prompt skill for mode reference
+### Prompt skill for task ref2v
 
 #### What the model sees
 
-While the skill registry is mounted and `fasth3` is configured in mode `reference`, the skill catalog that `dsh-tool-skill` renders lists the catalog entry below. When the agent calls the `skill` tool with `fasth3-reference-prompting`, the tool result carries `skills/fasth3-reference-prompting.md`: a DreamVerse connection section for `dv_shot_render` with `model: fasth3, mode: reference` and for plan shots with the same model and mode (one DreamVerse shot is one target video; the six rewrite sections form the `prompt`; the model's per-type numbering `<Picture N>`, `<Video N>` and `<Audio N>` in reference order, with an extra `<Audio N>` for each video with sound and the first frame as the next `<Picture N>`; reference videos and audio used up to the shot's length; at least one reference; at most 8 images plus the first frame, 3 videos, 3 audio files and 11 references; `duration_sec` from 5 to 15), followed by the official MiniMax-H3 full-reference prompt guide `VIDEO_PROMPT_WRITING_GUIDE_ref_en.md` copied unchanged. Users cannot invoke the skill with `/fasth3-reference-prompting`; only the agent loads it.
+While the skill registry is mounted and `fasth3` is configured for task `ref2v`, the skill catalog that `dsh-tool-skill` renders lists the catalog entry below. When the agent calls the `skill` tool with `fasth3-reference-prompting`, the tool result carries `skills/fasth3-reference-prompting.md`: a DreamVerse connection section for `dv_shot_render` with model `fasth3` for task `ref2v` and for plan shots with the same model and task (one DreamVerse shot is one target video; the six rewrite sections form the `prompt`; the model's per-type numbering `<Picture N>`, `<Video N>` and `<Audio N>` in reference order, with an extra `<Audio N>` for each video with sound and the first frame as the next `<Picture N>`; reference videos and audio used up to the shot's length; at least one reference; at most 8 images plus the first frame, 3 videos, 3 audio files and 11 references; `duration_sec` from 5 to 15), followed by the official MiniMax-H3 full-reference prompt guide `VIDEO_PROMPT_WRITING_GUIDE_ref_en.md` copied unchanged. Users cannot invoke the skill with `/fasth3-reference-prompting`; only the agent loads it.
 
 ##### Catalog entry
 
 ```markdown
-- `fasth3-reference-prompting`: Model limits and prompt rules for dv_shot_render with model fasth3 in mode reference: reference images, videos and audio, how the prompt names them, and how a shot continues the previous one.
+- `fasth3-reference-prompting`: Model limits and prompt rules for dv_shot_render with model fasth3 for task ref2v: reference images, videos and audio, how the prompt names them, and how a shot continues the previous one.
 ```
 
 #### Token effect
 
-About 40 tokens in the catalog while the mode and the skill registry are mounted, and about 6,300 tokens each time the agent loads the skill.
+About 40 tokens in the catalog while the entry and the skill registry are mounted, and about 6,300 tokens each time the agent loads the skill.
 
 #### KV Cache effect
 
 Mounting or removing the plugin changes the skill list, and `dsh-tool-skill` appends a replacement catalog; a loaded skill body is appended as a tool result. Both leave the cached prefix before them intact.
 
-### Prompt skill for mode text
+### Prompt skill for task t2v
 
 #### What the model sees
 
-While the skill registry is mounted and `fasth3` is configured in mode `text`, the skill catalog lists the catalog entry below. When the agent calls the `skill` tool with `fasth3-text-prompting`, the tool result carries `skills/fasth3-text-prompting.md`: a DreamVerse connection section for `dv_shot_render` with `model: fasth3, mode: text` and for plan shots with the same model and mode (use the guide's T2VA mode, so the prompt begins directly with the three fields `integrated_multimodal_description`, `overall_soundscape` and `non_diegetic_music`; one DreamVerse shot is one target video; describe everything in words, and use mode `reference` for a face that must stay the same; `duration_sec` from 5 to 15), followed by the official MiniMax-H3 prompt guide `VIDEO_PROMPT_WRITING_GUIDE_base_en.md` copied unchanged. Users cannot invoke the skill with `/fasth3-text-prompting`; only the agent loads it.
+While the skill registry is mounted and `fasth3` is configured for task `t2v`, the skill catalog lists the catalog entry below. When the agent calls the `skill` tool with `fasth3-text-prompting`, the tool result carries `skills/fasth3-text-prompting.md`: a DreamVerse connection section for `dv_shot_render` with model `fasth3` for task `t2v` and for plan shots with the same model and task (use the guide's T2VA mode, so the prompt begins directly with the three fields `integrated_multimodal_description`, `overall_soundscape` and `non_diegetic_music`; one DreamVerse shot is one target video; describe everything in words, and use task `ref2v` for a face that must stay the same; `duration_sec` from 5 to 15), followed by the official MiniMax-H3 prompt guide `VIDEO_PROMPT_WRITING_GUIDE_base_en.md` copied unchanged. Users cannot invoke the skill with `/fasth3-text-prompting`; only the agent loads it.
 
 ##### Catalog entry
 
 ```markdown
-- `fasth3-text-prompting`: Model limits and prompt rules for dv_shot_render with model fasth3 in mode text: the three prompt fields, shot changes, camera motion, speakers and dialogue, sound and music.
+- `fasth3-text-prompting`: Model limits and prompt rules for dv_shot_render with model fasth3 for task t2v: the three prompt fields, shot changes, camera motion, speakers and dialogue, sound and music.
 ```
 
 #### Token effect
 
-About 40 tokens in the catalog while the mode and the skill registry are mounted, and about 4,200 tokens each time the agent loads the skill.
+About 40 tokens in the catalog while the entry and the skill registry are mounted, and about 4,200 tokens each time the agent loads the skill.
 
 #### KV Cache effect
 
 Mounting or removing the plugin changes the skill list, and `dsh-tool-skill` appends a replacement catalog; a loaded skill body is appended as a tool result. Both leave the cached prefix before them intact.
 
-### Model list row and render facts
+### Catalog entries and render facts
 
 #### What the model sees
 
-The `dv:models` section of `@dv/models` lists `fasth3` with company `local FastVideo`, the configured modes, no extra parameters, and the summary "MiniMax H3 (FastH3); video with sound, dialogue and music written in the prompt". The facts this plugin reads from the servers appear in `dv_models_get` results and in the results and refusals of `dv_shot_render`: the server's model ID (`model_id`), the frame size and frame count, the allowed aspect ratios, resolutions and durations, the reference count limits per media type in mode `reference`, and the GPU estimate from `gpuSecondsPerVideoSecond`.
+The `dv_models_list` results of `@dv/models` list each configured entry with its key (modality `video`, task, provider `fastvideo`, model `fasth3`) and its description: for task `ref2v`, "MiniMax H3 served as FastH3 Ref2VA: video with sound, dialogue and music written in the prompt, from reference images, videos and audio and an optional first frame. Keeps a face, place or style the same across shots through the references, and continues a shot from the previous shot's last still. Needs at least one reference."; for task `t2v`, "MiniMax H3 served as FastH3 8-Step V2: video with sound, dialogue and music written in the prompt, from the prompt alone. A subject keeps its look only as far as the same words describe it, and no shot starts from an earlier shot's last still; a face that must stay the same needs fasth3 for task ref2v.". The facts and the schema this plugin reads from the servers appear in `dv_models_get` results, and the facts also appear in the results and refusals of `dv_shot_render`: the server's model ID (`model_id`) and the frame size and frame count (in `dv_shot_render` only), the allowed aspect ratios, resolutions and durations, for task `ref2v` the input counts per media type, and the GPU estimate from `gpuSecondsPerVideoSecond`.
 
 #### Token effect
 
-About 35 tokens for the model's row in the model list. A `dv_shot_render` refusal of a request that `validateGenerationRequest` rejects carries this package's problem sentences, about 15 to 25 tokens each, such as "Its reference input needs at least 1 of type image, video, audio; this shot has 0."; the rest of the results and refusals come from `@dv/models` and `@dv/shot-render`.
+About 60 tokens for each entry's description in a `dv_models_list` result, and about 60 tokens for the `ref2v` schema in a `dv_models_get` result. A `dv_shot_render` refusal of a request that `validateGenerationRequest` rejects carries this package's problem sentences, about 15 to 25 tokens each, such as "Its reference input needs at least 1 of type image, video, audio; this shot has 0." or "fasth3 has no extra parameter `cfg` for task ref2v; its extra parameters: none."; the rest of the results and refusals come from `@dv/models` and `@dv/shot-render`.
 
 #### KV Cache effect
 
-Mounting or removing the plugin registers or removes `fasth3`, which changes the `dv:models` section and the `model` param of `dv_shot_render`; the cached prefix is invalidated from the first of those two changes on.
+The entries reach the model only through tool results, which are appended to the session, so mounting or removing the plugin leaves the cached prefix intact apart from the skill catalog change described above.
 
 ## Known Limitations and Deferred Work
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **Fixed limits in the skills**: `skills/fasth3-reference-prompting.md` states 5 to 15 seconds and the reference count limits, and `skills/fasth3-text-prompting.md` states 5 to 15 seconds, while `facts` reads the limits from the servers; a server with other limits makes a skill disagree with `dv_models_get` and the refusals of `dv_shot_render`.
+- **Fixed limits in the skills**: `skills/fasth3-reference-prompting.md` states 5 to 15 seconds and the reference count limits, and `skills/fasth3-text-prompting.md` states 5 to 15 seconds, while `facts` and `schema` read the limits from the servers; a server with other limits makes a skill disagree with `dv_models_get` and the refusals of `dv_shot_render`.
 - **Reference aspect ratio**: `facts` drops the server's `max_reference_aspect_ratio` because `RenderModelFacts` has no field for it, so Shot render sends reference assets to the server without an aspect ratio check.
-- **Mode text keeps no identity**: in mode `text` the model sees only the prompt, so a subject keeps its look only as far as the same words describe it, and no shot starts from an earlier shot's last still; a face that must stay the same, or a shot that continues another, needs mode `reference`.
-- **Served models are fixed in code**: `SERVED` in `src/index.ts` lists the models and modes the plugin can serve; another FastVideo model, or `fasth3` in another mode, needs an entry there and its prompt skill, not only a config change.
+- **Task t2v keeps no identity**: for task `t2v` the model sees only the prompt, so a subject keeps its look only as far as the same words describe it, and no shot starts from an earlier shot's last still; a face that must stay the same, or a shot that continues another, needs task `ref2v`.
+- **Served models are fixed in code**: `SERVED` in `src/index.ts` lists the models and tasks the plugin can serve; another FastVideo model, or `fasth3` for another task, needs an entry there and its prompt skill, not only a config change.

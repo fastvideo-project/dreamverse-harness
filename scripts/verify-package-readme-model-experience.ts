@@ -239,7 +239,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/dv/ui-composer': { kind: 'indirect', reason: 'Browser-side composer additions; @dv/chat-references turns their dv: mentions into model context.' },
   'packages/dv/ui-skills': { kind: 'indirect', reason: 'Browser-side Skills page; Use puts /name into the composer, and the skill reaches the model only when the user sends the message and dsh-tool-skill loads it.' },
   'packages/dv/ui-shell': { kind: 'indirect', reason: 'Browser-side shell; the session bindings it saves and the records its Insert clip writes reach the model only through the dv:project prompt section and the dv_proj_* and operation tools of @dv/project.' },
-  'packages/dv/ffmpeg': { kind: 'indirect', reason: 'The command runner adds no tool; the asset pool, deliver, and inspector operations report its files and probe fields.' },
+  'packages/dv/ffmpeg': { kind: 'indirect', reason: 'The command runner adds no tool; the component operations that call it report its files and probe fields.' },
   'packages/dv/e2e': { kind: 'none', reason: 'Browser stories that run the DreamVerse profile against a scripted model; the package ships no plugin, prompt, or tool.' },
 }
 

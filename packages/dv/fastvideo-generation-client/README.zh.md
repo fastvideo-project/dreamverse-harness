@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-每个后端用其基础 URL 构造一个客户端。`@dv/fastvideo` 在隔离的 `dvFastvideoGeneration` 作用域中，为每个配置的模型和生成方式各构造一个客户端。
+每个后端用其基础 URL 构造一个客户端。`@dv/fastvideo` 在隔离的 `dvFastvideoGeneration` 作用域中，为每个配置的模型和生成任务各构造一个客户端。
 
 ### 最小配置
 

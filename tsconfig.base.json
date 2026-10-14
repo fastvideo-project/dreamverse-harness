@@ -333,7 +333,6 @@
       "@dv/api": ["./packages/dv/api/src/index.ts"],
       "@dv/asset-pool": ["./packages/dv/asset-pool/src/index.ts"],
       "@dv/chat-references": ["./packages/dv/chat-references/src/index.ts"],
-      "@dv/deliver": ["./packages/dv/deliver/src/index.ts"],
       "@dv/fastvideo": ["./packages/dv/fastvideo/src/index.ts"],
       "@dv/fastvideo-generation-client": ["./packages/dv/fastvideo-generation-client/src/index.ts"],
       "@dv/ffmpeg": ["./packages/dv/ffmpeg/src/index.ts"],

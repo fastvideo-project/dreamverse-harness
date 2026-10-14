@@ -7,7 +7,7 @@
  * The component keys an operation's `component` may name, in the order the project summary of the `dv_proj_*` tools
  * lists the components' fields.
  */
-export const COMPONENT_KEYS: ReadonlySet<string> = new Set(['proj', 'asset', 'bible', 'plan', 'shot', 'timeline', 'deliver', 'inspect'])
+export const COMPONENT_KEYS: ReadonlySet<string> = new Set(['proj', 'asset', 'bible', 'plan', 'shot', 'timeline', 'inspect'])
 
 /** Why a Project call was refused. The record store, the runner and history throw these codes. */
 export type ProjectErrorCode =

@@ -4,14 +4,14 @@
  * right and bottom edges resize it, and a double click on the title row puts it back at the centered default. The last
  * position and size are kept in `localStorage` for every node and fitted into the canvas when restored. Every node offers
  * "问 agent" (a `dv:compose` event that prefills the chat composer). A take shows a large player, the failure reason of a
- * failed take, its model and generation mode, its prompt, reference chips (mode `reference` only), duration, and seed,
- * and offers "渲染新版本" (a user `shot.render` record in the take's model and mode, whose `based_on` is the take);
+ * failed take, its model and generation task, its prompt, reference chips (task `ref2v` only), duration, and seed,
+ * and offers "渲染新版本" (a user `shot.render` record in the take's model and task, whose `based_on` is the take);
  * while the render starts the button is disabled and reads 渲染中…, and a refused request shows its error under the
  * button. "添加素材" opens the asset picker; a reference chip opens the preview of its asset, or the editor of its character,
  * location or style over this one. A character, location or style shows its references, adds assets from the picker, and
  * removes one reference while it has more than one. A plan switches between its versions (第 1 版,
  * 第 2 版, …) and shows the chosen version's approval status, its reference assets, and one card per shot with exactly
- * what the plan holds: duration, model and mode, reference assets, whether the shot continues the previous shot, and the
+ * what the plan holds: duration, model and task, reference assets, whether the shot continues the previous shot, and the
  * full prompt with each `Picture N` drawn as its image. A stale node offers "仍然保留", which keeps its record as it is
  * (`proj.stale_accept`).
  */
@@ -250,21 +250,21 @@ const chip: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap:
 /** The part of a reference chip that opens the reference: its thumbnail and its name. */
 const chipOpen: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: 0, border: 'none', background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer' }
 const referenceImage: CSSProperties = { height: 220, borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-3)' }
-/** A small rounded tag in the plan editor: the duration and model-and-mode chips of a shot. */
+/** A small rounded tag in the plan editor: the duration and model-and-task chips of a shot. */
 const tag: CSSProperties = { height: 22, padding: '0 8px', display: 'inline-flex', alignItems: 'center', fontSize: 12, lineHeight: '16px', background: 'var(--dv-surface-3)' }
 /** The height a shot prompt is collapsed to until the reader expands it. */
 const PROMPT_COLLAPSED_HEIGHT = 140
 
 /**
- * The copy of a render's model and generation mode, such as `fasth3 · 参考图生成` / `fasth3 · From references`.
- * @param model - the model name from the model catalog.
- * @param mode - the generation mode; a mode without copy shows its name.
+ * The copy of a render's model and generation task, such as `fasth3 · 参考图生成` / `fasth3 · From references`.
+ * @param model - the provider's model name.
+ * @param task - the generation task; a task without copy shows its name.
  * @param t - the canvas translate.
- * @returns the model and the mode's copy.
+ * @returns the model and the task's copy.
  */
-function modelModeLabel(model: string, mode: string, t: CanvasTranslate): string {
-  const modeText = mode === 'reference' ? t('mode.reference') : mode === 'text' ? t('mode.text') : mode
-  return t('editor.modelModeValue', { model, mode: modeText })
+function modelTaskLabel(model: string, task: string, t: CanvasTranslate): string {
+  const taskText = task === 'ref2v' ? t('task.ref2v') : task === 't2v' ? t('task.t2v') : task
+  return t('editor.modelTaskValue', { model, task: taskText })
 }
 
 /** One input of the edited record. */
@@ -567,9 +567,9 @@ function TakeForm(
   }
   const operation = record?.operation ?? null
   const model = typeof record?.params['model'] === 'string' ? record.params['model'] : ''
-  const mode = typeof record?.params['mode'] === 'string' ? record.params['mode'] : ''
+  const task = typeof record?.params['task'] === 'string' ? record.params['task'] : ''
   // A text render takes no reference images, so its editor has no reference chips.
-  const textOnly = mode === 'text'
+  const textOnly = task === 't2v'
   const renderTake = (): void => {
     if (record === null || operation === null) return
     const params: Record<string, unknown> = { ...record.params, prompt }
@@ -595,8 +595,8 @@ function TakeForm(
       {failure === null
         ? null
         : <p role="note" style={{ margin: 0, padding: '8px 12px', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-danger-soft)', color: 'var(--dv-danger)' }}>{t('editor.failure', { message: failure })}</p>}
-      <span style={label}>{t('editor.modelMode')}</span>
-      <span data-testid="dv-canvas-render-mode">{modelModeLabel(model, mode, t)}</span>
+      <span style={label}>{t('editor.modelTask')}</span>
+      <span data-testid="dv-canvas-render-mode">{modelTaskLabel(model, task, t)}</span>
       <span style={label} id="dv-canvas-editor-prompt-label">{t('editor.prompt')}</span>
       <PromptEditor
         id="dv-canvas-editor-prompt" labelledBy="dv-canvas-editor-prompt-label" prompt={prompt}
@@ -878,7 +878,7 @@ const PlanShots = memo(function PlanShots({ plan, state, t }: { plan: PlanVersio
 const term: CSSProperties = { fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }
 
 /**
- * One shot of a plan version as a card with exactly what the plan holds: number, duration, model and mode, reference
+ * One shot of a plan version as a card with exactly what the plan holds: number, duration, model and task, reference
  * assets, whether it continues the previous shot, and the prompt.
  * @param props - the 1-based shot number, the shot, its reference assets in input order, and the canvas translate.
  * @returns the element.
@@ -887,7 +887,7 @@ function ShotCard(
   { number, shot, references, t }: { number: number; shot: Shot; references: NamedReference[]; t: CanvasTranslate },
 ): ReactNode {
   let chips: ReactNode
-  if (shot.mode === 'text') chips = <span style={{ color: 'var(--dv-text-2)' }}>{t('editor.textOnlyReferences')}</span>
+  if (shot.task === 't2v') chips = <span style={{ color: 'var(--dv-text-2)' }}>{t('editor.textOnlyReferences')}</span>
   else if (references.length === 0) chips = <span style={{ color: 'var(--dv-text-2)' }}>{t('editor.none')}</span>
   else chips = <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{references.map((reference, index) => <ReferenceChip key={index} reference={reference} t={t} />)}</span>
   return (
@@ -897,7 +897,7 @@ function ShotCard(
         {shot.duration_sec === undefined
           ? null
           : <span style={{ ...tag, ...mono, borderRadius: 'var(--dv-radius-sm)', color: 'var(--dv-text-2)' }}>{t('editor.seconds', { seconds: shot.duration_sec })}</span>}
-        <span data-testid="dv-canvas-shot-mode" style={{ ...tag, borderRadius: 9999, color: 'var(--dv-text)' }}>{modelModeLabel(shot.model, shot.mode, t)}</span>
+        <span data-testid="dv-canvas-shot-mode" style={{ ...tag, borderRadius: 9999, color: 'var(--dv-text)' }}>{modelTaskLabel(shot.model, shot.task, t)}</span>
       </div>
       <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: '8px 12px', alignItems: 'center' }}>
         <dt style={term}>{t('editor.references')}</dt>

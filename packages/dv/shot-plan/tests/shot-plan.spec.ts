@@ -1,10 +1,10 @@
 /**
  * The Shot plan component in a REAL composition: a test-only `cordis.yml` boots the DSH tool registry, `dvProject`,
- * `dvFfmpeg`, the asset pool, `dvTimeline`, the model catalog `dvModels` and `dvShotPlan` through the Loader. The catalog
- * holds the stand-in model `fake`, whose modes each test chooses. `plan.approve` schedules other components' operations by
- * name: the timeline operations of the real `dvTimeline`, and a stand-in for the Shot render operation `shot.render`
- * registered with `dvProject`, which imports a small video and a last still without a generation backend. The browser
- * stories run the approval against the real components.
+ * `dvFfmpeg`, the asset pool, `dvTimeline`, the model catalog `dvModels` and `dvShotPlan` through the Loader. The
+ * catalog holds the stand-in model `fake` of provider `test`, whose tasks each test chooses. `plan.approve` schedules
+ * other components' operations by name: the timeline operations of the real `dvTimeline`, and a stand-in for the Shot
+ * render operation `shot.render` registered with `dvProject`, which imports a small video and a last still without a
+ * generation backend. The browser stories run the approval against the real components.
  */
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -19,7 +19,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
-import DvModels, { type ModeDeclaration, type ModeId, type ModelEntry } from '@dv/models'
+import DvModels, { type ModelEntry, type TaskId } from '@dv/models'
 import DvProject, {
   type AssetId, type OperationSpec, type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId, type RunRequest,
   type SessionId,
@@ -56,42 +56,33 @@ afterEach(async () => {
   for (const dispose of disposers.splice(0)) await dispose()
 })
 
-/** What a test changes in the composition: the stand-in render and the modes of the catalog model `fake`. */
+/** What a test changes in the composition: the stand-in render and the tasks of the catalog model `fake`. */
 interface StartOptions {
   /** The precondition of the stand-in `shot.render`. */
   precondition?: OperationSpec['precondition']
   /** Awaited before each stand-in render imports its outputs, with the shot's prompt; a throw fails the render. */
   before?: (prompt: string) => Promise<void>
-  /** The modes the catalog model `fake` declares; both by default. */
-  modes?: Array<'reference' | 'text'>
+  /** The tasks the catalog model `fake` serves, one entry each; both by default. */
+  tasks?: TaskId[]
 }
 
 /** The GPU seconds the stand-in render estimates per video second. */
 const GPU_SECONDS_PER_VIDEO_SECOND = 4
 
-/** What a stand-in model declares in each mode: reference images and an optional first frame, or the prompt alone. */
-const DECLARATIONS: Record<ModeId, ModeDeclaration> = {
-  reference: {
-    inputs: { reference: { min: 1, mediaTypes: ['image'] }, first_frame: { min: 0, mediaTypes: ['image'] } }, extra: {}, gpuSecondsPerVideoSecond: GPU_SECONDS_PER_VIDEO_SECOND,
-    validateGenerationRequest: () => Promise.resolve([]),
-  },
-  text: {
-    inputs: {}, extra: {}, gpuSecondsPerVideoSecond: GPU_SECONDS_PER_VIDEO_SECOND, validateGenerationRequest: () => Promise.resolve([]),
-  },
-}
-
 /**
- * A catalog entry of a stand-in model. The stand-in `shot.render` never reads its facts or renders with it, so both
- * reject.
- * @param id - the model name.
- * @param modes - the modes the model declares.
+ * A catalog entry of a stand-in model of provider `test`. The stand-in `shot.render` never reads its facts or schema or
+ * renders with it, so they reject.
+ * @param name - the model name.
+ * @param task - the task the entry serves.
  * @returns the entry.
  */
-function model(id: string, modes: ModelEntry['modes']): ModelEntry {
+function model(name: string, task: TaskId): ModelEntry {
   return {
-    id, company: 'test', summary: 'stand-in', modes,
-    facts: () => Promise.reject(new Error(`${id} has no backend.`)),
-    render: () => { throw new Error(`${id} has no backend.`) },
+    modality: 'video', task, provider: 'test', model: name, description: 'stand-in', gpuSecondsPerVideoSecond: GPU_SECONDS_PER_VIDEO_SECOND,
+    facts: () => Promise.reject(new Error(`${name} has no backend.`)),
+    schema: () => Promise.reject(new Error(`${name} has no backend.`)),
+    validateGenerationRequest: () => Promise.resolve([]),
+    render: () => { throw new Error(`${name} has no backend.`) },
   }
 }
 
@@ -106,7 +97,8 @@ function standIn(options: StartOptions): OperationSpec {
     name: 'shot.render', component: 'shot', version: '1', description: 'stand-in', deterministic: false, confirm: 'never',
     resource: 'gpu', summarize: () => 'stand-in',
     params: {
-      model: { type: 'string', required: true }, mode: { type: 'string', required: true }, prompt: { type: 'string', required: true },
+      modality: { type: 'string', required: true }, task: { type: 'string', required: true }, provider: { type: 'string', required: true },
+      model: { type: 'string', required: true }, prompt: { type: 'string', required: true },
       plan: { type: 'string' }, plan_version: { type: 'integer' }, shot: { type: 'integer' }, duration_sec: { type: 'integer' },
       aspect_ratio: { type: 'string' }, resolution: { type: 'string' }, seed: { type: 'integer' },
     },
@@ -131,7 +123,7 @@ function standIn(options: StartOptions): OperationSpec {
 
 /**
  * Boot the composition from a test-only `cordis.yml`, with the stand-in render and the model `fake` registered beside it.
- * @param options - the stand-in render's precondition and wait, and the modes of `fake`.
+ * @param options - the stand-in render's precondition and wait, and the tasks of `fake`.
  * @returns the fixture, with a project bound to chat session `s1`.
  */
 async function start(options: StartOptions = {}): Promise<Fixture> {
@@ -158,9 +150,8 @@ async function start(options: StartOptions = {}): Promise<Fixture> {
   ctx.loader.builtins.include = Include
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
   await ctx.loader.await()
-  const modes: ModelEntry['modes'] = {}
-  for (const mode of options.modes ?? ['reference', 'text']) modes[mode] = DECLARATIONS[mode]
-  const removers = [ctx.dvProject.registerOperation(standIn(options)), ctx.dvModels.register(model('fake', modes))]
+  const tasks: TaskId[] = options.tasks ?? ['ref2v', 't2v']
+  const removers = [ctx.dvProject.registerOperation(standIn(options)), ...tasks.map(task => ctx.dvModels.register(model('fake', task)))]
   disposers.push(async () => {
     for (const remove of removers) remove()
     await ctx.fiber.dispose()
@@ -196,9 +187,15 @@ function spec(fixture: Fixture, name: string): OperationSpec | undefined {
   return fixture.ctx.dvProject.listOperations().find(entry => entry.name === name)
 }
 
-/** A shot of the model `fake` in mode `reference` with a prompt and the other fields given. */
+/** The model key of the model `fake` in task `ref2v`. */
+const REF = { modality: 'video', task: 'ref2v', provider: 'test', model: 'fake' }
+
+/** The model key of the model `fake` in task `t2v`. */
+const TXT = { ...REF, task: 't2v' }
+
+/** A shot of the model `fake` in task `ref2v` with a prompt and the other fields given. */
 function ref(prompt: string, fields: Record<string, unknown> = {}): Record<string, unknown> {
-  return { model: 'fake', mode: 'reference', prompt, ...fields }
+  return { ...REF, prompt, ...fields }
 }
 
 describe('dvShotPlan', () => {
@@ -227,7 +224,10 @@ describe('dvShotPlan', () => {
     // The report shows what approving the plan renders and its GPU estimate (duration × 4 GPU seconds per video second).
     expect(created.report).toEqual({
       plan: 'p1', version: 1, gpu_seconds: 3 * GPU_SECONDS_PER_VIDEO_SECOND,
-      shots: ['shot 1 (fake reference, 1 s): Picture 1 starts dancing', 'shot 2 (fake reference, 2 s, continues from the previous shot): keeps dancing'],
+      shots: [
+        'shot 1 (video/ref2v/test/fake, 1 s): Picture 1 starts dancing',
+        'shot 2 (video/ref2v/test/fake, 2 s, continues from the previous shot): keeps dancing',
+      ],
     })
     const record = fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(created.record))
     expect(record).toMatchObject({
@@ -236,11 +236,11 @@ describe('dvShotPlan', () => {
     })
     const stored = JSON.parse(fixture.ctx.dvAssetPool.read(record.outputs[0] as AssetId).toString('utf8')) as unknown
     expect(stored).toEqual({ title: 'dance', references: [picture], shots })
-    const one = { model: 'fake', mode: 'text', prompt: 'one' }
+    const one = { ...TXT, prompt: 'one' }
     const revised = value(await fixture.call('dv_plan_update', { reason: 'shorter', plan: 'p1', shots: [one] }))
     expect(revised).toMatchObject({
       summary: 'plan updated (1 shots)',
-      report: { plan: 'p1', version: 2, shots: ['shot 1 (fake text): one'], gpu_seconds: 5 * GPU_SECONDS_PER_VIDEO_SECOND },
+      report: { plan: 'p1', version: 2, shots: ['shot 1 (video/t2v/test/fake): one'], gpu_seconds: 5 * GPU_SECONDS_PER_VIDEO_SECOND },
     })
     const state = fixture.ctx.dvProject.getState(fixture.project)
     expect(state.components.plan.plans).toEqual({
@@ -255,19 +255,21 @@ describe('dvShotPlan', () => {
     const other = value(await fixture.call('dv_plan_create', { reason: 'another story', shots: [ref('x')] }))
     expect(other.report).toMatchObject({ plan: 'p2', version: 1 })
     expect(spec(fixture, 'plan.create')?.summarize({ ...record, params: {} })).toBe('plan with 0 shots')
-    // A shot without a model or a mode is refused by the tool's params.
-    expect((await fixture.call('dv_plan_create', { reason: 'no model', shots: [{ mode: 'text', prompt: 'x' }] })).isError).toBe(true)
-    expect((await fixture.call('dv_plan_create', { reason: 'no mode', shots: [{ model: 'fake', prompt: 'x' }] })).isError).toBe(true)
+    // A shot without a model or a task is refused by the tool's params.
+    const { model: _model, ...noModel } = TXT
+    const { task: _task, ...noTask } = TXT
+    expect((await fixture.call('dv_plan_create', { reason: 'no model', shots: [{ ...noModel, prompt: 'x' }] })).isError).toBe(true)
+    expect((await fixture.call('dv_plan_create', { reason: 'no task', shots: [{ ...noTask, prompt: 'x' }] })).isError).toBe(true)
   })
 
-  it('approves a plan into ordered shot renders in each shot\'s model and mode and one timeline, written by the system actor', async () => {
+  it('approves a plan into ordered shot renders with each shot\'s model and one timeline, written by the system actor', async () => {
     const fixture = await start()
     const picture = fixture.put('face', 'image/png', 'face.png')
     await fixture.record('plan.create', {
       references: [picture], aspect_ratio: '16:9', seed: 7,
       shots: [
         ref('one', { duration_sec: 1 }), ref('two', { duration_sec: 2, seed: 9, continue_previous: true }),
-        { model: 'fake', mode: 'text', prompt: 'three' },
+        { ...TXT, prompt: 'three' },
       ],
     })
     const approved = value(await fixture.call('dv_plan_approve', { reason: 'the user said go', plan: 'p1', user_approved: true }))
@@ -276,16 +278,15 @@ describe('dvShotPlan', () => {
     await fixture.ctx.dvProject.wait(fixture.project)
     const state = fixture.ctx.dvProject.getState(fixture.project)
     const shots = state.components.proj.records.filter(record => record.component === 'shot')
-    const reference = { model: 'fake', mode: 'reference' }
     expect(shots.map(shot => [shot.operation, shot.params])).toEqual([
-      ['shot.render', { ...reference, prompt: 'one', plan: 'p1', plan_version: 1, shot: 1, duration_sec: 1, aspect_ratio: '16:9', seed: 7 }],
-      ['shot.render', { ...reference, prompt: 'two', plan: 'p1', plan_version: 1, shot: 2, duration_sec: 2, aspect_ratio: '16:9', seed: 9 }],
-      ['shot.render', { model: 'fake', mode: 'text', prompt: 'three', plan: 'p1', plan_version: 1, shot: 3, aspect_ratio: '16:9', seed: 7 }],
+      ['shot.render', { ...REF, prompt: 'one', plan: 'p1', plan_version: 1, shot: 1, duration_sec: 1, aspect_ratio: '16:9', seed: 7 }],
+      ['shot.render', { ...REF, prompt: 'two', plan: 'p1', plan_version: 1, shot: 2, duration_sec: 2, aspect_ratio: '16:9', seed: 9 }],
+      ['shot.render', { ...TXT, prompt: 'three', plan: 'p1', plan_version: 1, shot: 3, aspect_ratio: '16:9', seed: 7 }],
     ])
     expect(shots.every(shot => shot.actor === 'system' && shot.surface === 'chat' && shot.session === 's1' && shot.status === 'done')).toBe(true)
     expect(shots[0]?.inputs).toEqual([{ role: 'reference', ref: { asset: picture }, resolved_asset: picture }])
     expect(shots[1]?.inputs[1]).toEqual({ role: 'first_frame', ref: { record: shots[0]?.id, output: 1 }, resolved_asset: shots[0]?.outputs[1] })
-    // The shot in mode text carries no references and does not continue from shot 2.
+    // The shot of task t2v carries no references and does not continue from shot 2.
     expect(shots[2]?.inputs).toEqual([])
     const timeline = state.components.proj.records.find(record => record.operation === 'timeline.create')
     expect(timeline).toMatchObject({ actor: 'system', status: 'done', params: { timeline: 't1', plan: 'p1' } })
@@ -307,15 +308,15 @@ describe('dvShotPlan', () => {
       plan: 'p1', title: 'dance', references: [picture],
       shots: [
         ref('one', { duration_sec: 2 }), ref('two'), ref(long, { duration_sec: 3, continue_previous: true }),
-        { model: 'fake', mode: 'text', prompt: 'four' },
+        { ...TXT, prompt: 'four' },
       ],
     })
     const text = [
       'Approve plan p1 v2 "dance": render 2 of 4 shots and lay every shot on the plan\'s timeline.',
       '- shot 1: keeps its take',
       '- shot 2: keeps its take',
-      `- shot 3 (fake reference, 3 s, continues from the previous shot): ${'x'.repeat(80)}…`,
-      '- shot 4 (fake text): four',
+      `- shot 3 (video/ref2v/test/fake, 3 s, continues from the previous shot): ${'x'.repeat(80)}…`,
+      '- shot 4 (video/t2v/test/fake): four',
     ].join('\n')
     // The update's report carries the same shot lines and estimate.
     expect(update.report).toEqual({
@@ -379,7 +380,7 @@ describe('dvShotPlan', () => {
     await fixture.ctx.dvProject.wait(fixture.project)
     const renders = fixture.recordsOf('shot.render')
     expect(renders).toHaveLength(3)
-    expect(renders[2]?.params).toEqual({ model: 'fake', mode: 'reference', prompt: 'three', plan: 'p1', plan_version: 2, shot: 3 })
+    expect(renders[2]?.params).toEqual({ ...REF, prompt: 'three', plan: 'p1', plan_version: 2, shot: 3 })
     expect(renders[2]?.inputs.map(input => input.ref)).toEqual([{ asset: picture }, { record: second?.id, output: 1 }])
     expect(extended.report).toEqual({ plan: 'p1', version: 2, scheduled: [renders[2]?.id, fixture.recordsOf('timeline.update')[0]?.id] })
     let state = fixture.ctx.dvProject.getState(fixture.project)
@@ -399,11 +400,11 @@ describe('dvShotPlan', () => {
     expect(spec(fixture, 'plan.approve')?.summarize(again)).toBe('plan p1 v2 approved')
   })
 
-  it('reuses only takes in the current state, makes shots without continue_previous reusable one by one, and renders a shot whose mode changed', async () => {
+  it('reuses only takes in the current state, makes shots without continue_previous reusable one by one, and renders a shot whose task changed', async () => {
     const fixture = await start()
     const picture = fixture.put('face', 'image/png', 'face.png')
     const created = await fixture.record('plan.create', {
-      references: [picture], shots: [ref('a'), ref('b'), { model: 'fake', mode: 'text', prompt: 'c' }],
+      references: [picture], shots: [ref('a'), ref('b'), { ...TXT, prompt: 'c' }],
     })
     value(await fixture.call('dv_plan_approve', { reason: 'go', plan: 'p1', user_approved: true }))
     await fixture.ctx.dvProject.wait(fixture.project)
@@ -416,9 +417,9 @@ describe('dvShotPlan', () => {
     expect(toRender()).toEqual([1, 2, 3])
     // Moving forward to the newest step brings the takes back.
     await fixture.ctx.dvProject.moveTo(fixture.project, rendered.record.id)
-    // Shot 2 changes, shot 3 changes its mode with the same prompt, shot 4 is new; shot 1 keeps its take.
+    // Shot 2 changes, shot 3 changes its task with the same prompt, shot 4 is new; shot 1 keeps its take.
     value(await fixture.call('dv_plan_update', {
-      reason: 'change', plan: 'p1', references: [picture], shots: [ref('a'), ref('B'), ref('c'), { model: 'fake', mode: 'text', prompt: 'd' }],
+      reason: 'change', plan: 'p1', references: [picture], shots: [ref('a'), ref('B'), ref('c'), { ...TXT, prompt: 'd' }],
     }))
     expect(toRender()).toEqual([2, 3, 4])
   })
@@ -448,76 +449,72 @@ describe('dvShotPlan', () => {
       .toEqual([['t1', [renders[0]?.outputs[0]]], ['t2', [renders[1]?.outputs[0]]]])
   })
 
-  it('gives shots in mode reference only their references, a shot\'s own references replace the plan\'s, and shots in mode text get none', async () => {
+  it('gives shots of task ref2v only their references, a shot\'s own references replace the plan\'s, and shots of task t2v get none', async () => {
     const fixture = await start()
     const shared = fixture.put('shared', 'image/png', 'shared.png')
     const own = fixture.put('own', 'image/png', 'own.png')
     await fixture.record('plan.create', {
       references: [shared],
-      shots: [ref('a'), ref('b', { references: [own] }), ref('c', { references: [] }), { model: 'fake', mode: 'text', prompt: 'd' }],
+      shots: [ref('a'), ref('b', { references: [own] }), ref('c', { references: [] }), { ...TXT, prompt: 'd' }],
     })
     await fixture.record('plan.approve', { plan: 'p1' })
     await fixture.ctx.dvProject.wait(fixture.project)
     const renders = fixture.ctx.dvProject.getState(fixture.project).components.proj.records.filter(record => record.component === 'shot')
-    expect(renders.map(shot => [shot.operation, shot.params['mode'], shot.inputs.map(input => input.ref)])).toEqual([
-      ['shot.render', 'reference', [{ asset: shared }]], ['shot.render', 'reference', [{ asset: own }]], ['shot.render', 'reference', []],
-      ['shot.render', 'text', []],
+    expect(renders.map(shot => [shot.operation, shot.params['task'], shot.inputs.map(input => input.ref)])).toEqual([
+      ['shot.render', 'ref2v', [{ asset: shared }]], ['shot.render', 'ref2v', [{ asset: own }]], ['shot.render', 'ref2v', []],
+      ['shot.render', 't2v', []],
     ])
     expect(renders.map(shot => shot.actor)).toEqual(['system', 'system', 'system', 'system'])
   })
 
-  it('refuses a plan before its record when a shot names a model or mode the catalog does not serve or breaks a rule of its model and mode', async () => {
-    // fake serves only mode reference; still takes reference images but no first frame.
-    const fixture = await start({ modes: ['reference'] })
-    fixture.ctx.dvModels.register(model('still', { reference: { inputs: { reference: { min: 1, mediaTypes: ['image'] } }, extra: {}, gpuSecondsPerVideoSecond: GPU_SECONDS_PER_VIDEO_SECOND, validateGenerationRequest: () => Promise.resolve([]) } }))
+  it('refuses a plan before its record when a shot names a model the catalog does not serve or breaks a rule of its task', async () => {
+    // fake serves only task ref2v.
+    const fixture = await start({ tasks: ['ref2v'] })
     const picture = fixture.put('face', 'image/png', 'face.png')
     const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
     await expect(fixture.record('plan.create', {
-      references: [picture], shots: [ref('a'), { model: 'fake', mode: 'text', prompt: 'b' }, { model: 'ghost', mode: 'reference', prompt: 'c' }],
+      references: [picture], shots: [ref('a'), { ...TXT, prompt: 'b' }, { ...REF, model: 'ghost', prompt: 'c' }],
     })).rejects.toThrow(
-      'The plan cannot be rendered as written. Shot 2 uses model fake in mode text, which it does not support; its modes: reference. '
-      + 'Shot 3 uses model ghost, which is not in the video model list; models: fake, still.',
+      'The plan cannot be rendered as written. '
+      + 'Shot 2 uses model video/t2v/test/fake, which is not in the model catalog; call dv_models_list for the models. '
+      + 'Shot 3 uses model video/ref2v/test/ghost, which is not in the model catalog; call dv_models_list for the models.',
     )
-    // plain serves only mode text, which takes neither reference images nor a first frame.
-    const removePlain = fixture.ctx.dvModels.register(model('plain', { text: DECLARATIONS.text }))
+    // plain serves only task t2v, which takes no references and no first frame.
+    const removePlain = fixture.ctx.dvModels.register(model('plain', 't2v'))
+    const plain = { ...TXT, model: 'plain' }
     const refused = await fixture.call('dv_plan_create', {
       reason: 'rules',
-      shots: [
-        ref('a', { continue_previous: true }),
-        { model: 'plain', mode: 'text', prompt: 'b', references: [picture], continue_previous: true },
-        { model: 'still', mode: 'reference', prompt: 'c', continue_previous: true },
-      ],
+      shots: [ref('a', { continue_previous: true }), { ...plain, prompt: 'b', references: [picture], continue_previous: true }],
     })
     expect(refused.isError && refused.error.message).toBe([
       'The plan cannot be rendered as written.',
       'Shot 1 has no previous shot to continue; remove its continue_previous.',
-      'Shot 2 uses mode text, which takes no reference images; remove its references or use mode reference.',
-      'Shot 2 uses model plain in mode text, which cannot start from the previous shot; remove its continue_previous.',
-      'Shot 3 uses model still in mode reference, which cannot start from the previous shot; remove its continue_previous.',
+      'Shot 2 uses task t2v, which takes no references; remove its references or use task ref2v.',
+      'Shot 2 uses task t2v, which takes no first frame; remove its continue_previous or use task ref2v.',
     ].join(' '))
     expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
     // plan.update checks the same rules; plan.approve also refuses a stored plan whose model left the catalog.
     await fixture.record('plan.create', { references: [picture], shots: [ref('a')] })
-    const shots = [{ model: 'plain', mode: 'text', prompt: 'b' }]
+    const shots = [{ ...plain, prompt: 'b' }]
     await fixture.record('plan.update', { plan: 'p1', shots })
     removePlain()
-    const unknown = 'Shot 1 uses model plain, which is not in the video model list; models: fake, still.'
+    const unknown = 'Shot 1 uses model video/t2v/test/plain, which is not in the model catalog; call dv_models_list for the models.'
     await expect(fixture.record('plan.update', { plan: 'p1', shots })).rejects.toThrow(unknown)
     await expect(fixture.record('plan.approve', { plan: 'p1' })).rejects.toThrow(unknown)
     expect(fixture.recordsOf('plan.approve')).toEqual([])
   })
 
   it('refuses an approval before its record when shots break the render precondition, naming every refused shot', async () => {
-    // The stand-in render refuses a shot in mode reference without a reference, the way Shot render does.
+    // The stand-in render refuses a shot of task ref2v without a reference, the way a model's validation does.
     const fixture = await start({
       precondition: (request) => {
-        if (request.params['mode'] !== 'reference' || request.inputs.some(input => input.role === 'reference')) return Promise.resolve()
+        if (request.params['task'] !== 'ref2v' || request.inputs.some(input => input.role === 'reference')) return Promise.resolve()
         return Promise.reject(new Error('The video model renders every shot from 1 to 3 reference images. Nothing was rendered.'))
       },
     })
     const picture = fixture.put('face', 'image/png', 'face.png')
     await fixture.record('plan.create', {
-      shots: [ref('one', { references: [picture] }), ref('two'), ref('three'), { model: 'fake', mode: 'text', prompt: 'four' }],
+      shots: [ref('one', { references: [picture] }), ref('two'), ref('three'), { ...TXT, prompt: 'four' }],
     })
     const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
     const message = 'Shot 2, 3 of the plan are refused by its render operation. The video model renders every shot from 1 to 3 reference '
@@ -529,9 +526,9 @@ describe('dvShotPlan', () => {
     expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
     await fixture.record('plan.create', { references: [picture], shots: [ref('one'), ref('two', { references: [] })] })
     await expect(fixture.record('plan.approve', { plan: 'p2' })).rejects.toThrow('Shot 2 of the plan is refused by its render operation.')
-    // A plan whose every shot in mode reference has a reference is approved; an unknown plan or version is refused before its
+    // A plan whose every shot of task ref2v has a reference is approved; an unknown plan or version is refused before its
     // record too.
-    await fixture.record('plan.create', { references: [picture], shots: [ref('one'), { model: 'fake', mode: 'text', prompt: 'two' }] })
+    await fixture.record('plan.create', { references: [picture], shots: [ref('one'), { ...TXT, prompt: 'two' }] })
     expect((await fixture.record('plan.approve', { plan: 'p3' })).status).toBe('done')
     await expect(fixture.record('plan.approve', { plan: 'ghost' })).rejects.toThrow("Unknown plan 'ghost'")
     await expect(fixture.record('plan.approve', { plan: 'p3', version: 2 })).rejects.toThrow("Plan 'p3' has no version 2; it has 1.")
@@ -551,7 +548,7 @@ describe('dvShotPlan', () => {
     await expect(fixture.record('plan.create', { references: ['c9@1'], shots: [ref('x')] }))
       .rejects.toThrow("Unknown character, location, or style version 'c9@1'.")
     expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
-    await fixture.record('plan.create', { shots: [{ model: 'fake', mode: 'text', prompt: 'x' }] })
+    await fixture.record('plan.create', { shots: [{ ...TXT, prompt: 'x' }] })
     await expect(fixture.record('plan.update', { plan: 'p1', shots: [ref('x', { references: ['s9@1'] })] }))
       .rejects.toThrow("Unknown character, location, or style version 's9@1'.")
     expect((await fixture.record('plan.update', { plan: 'p1', shots: [] })).error?.message).toBe('plan.update needs at least one shot.')

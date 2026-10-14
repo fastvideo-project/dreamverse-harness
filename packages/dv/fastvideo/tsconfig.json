@@ -21,6 +21,12 @@
       "path": "../../skill/skill"
     },
     {
+      "path": "../../core/tools"
+    },
+    {
+      "path": "../../util/values"
+    },
+    {
       "path": "../asset-pool"
     },
     {

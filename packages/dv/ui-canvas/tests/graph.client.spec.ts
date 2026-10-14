@@ -45,7 +45,7 @@ function rollbackProject(until?: string): WireState {
   const kept = until === undefined ? all : all.slice(0, all.findIndex(entry => entry.id === until) + 1)
   const ids = new Set(kept.map(entry => entry.id))
   const shots = (count: number, changed: Record<number, string> = {}): PlanVersion['shots'] =>
-    Array.from({ length: count }, (_, index) => ({ prompt: changed[index + 1] ?? PROMPTS[index] ?? 'end', model: 'fasth3', mode: 'reference' as const }))
+    Array.from({ length: count }, (_, index) => ({ prompt: changed[index + 1] ?? PROMPTS[index] ?? 'end', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3' }))
   const versions: PlanVersion[] = [
     { version: 1, shots: shots(6), created_by: 'q1', approved_by: 'a1' },
     { version: 2, shots: shots(7, { 3: 'door, closer' }), created_by: 'q2', approved_by: 'a2' },
