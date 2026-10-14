@@ -1,7 +1,7 @@
 /**
- * The FastVideo company plugin in a REAL composition: a test-only `cordis.yml` boots the DSH skill registry, Project,
+ * The FastVideo provider plugin in a REAL composition: a test-only `cordis.yml` boots the DSH skill registry, Project,
  * ffmpeg, the asset pool, the model catalog and the plugin through the Loader. The FastVideo streaming_v2 servers are
- * the only fakes: one HTTP server per mode that answers the capabilities and health routes and streams fixed bytes for
+ * the only fakes: one HTTP server per task that answers the capabilities and health routes and streams fixed bytes for
  * every render. An opt-in test renders against a running server named by `DV_FASTVIDEO_TEST_URL`.
  */
 import { once } from 'node:events'
@@ -17,7 +17,7 @@ import Loader from '@deepseek-ai/cordis-plugin-loader'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import DvAssetPool, { type AssetId } from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
-import DvModels, { type ModeDeclaration, type ModelEntry, type RenderStreamEvent } from '@dv/models'
+import DvModels, { type ModelEntry, type RenderStreamEvent, type TaskId } from '@dv/models'
 import DvProject from '@dv/project'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as FastVideo from '../src/index.ts'
@@ -94,15 +94,15 @@ const PLUGINS = {
 
 /**
  * Boot the skill registry, Project, ffmpeg, the asset pool, the catalog and the plugin from a test-only `cordis.yml`.
- * @param modes - the server URL of each mode of `fasth3` to configure.
+ * @param tasks - the server URL of each task of `fasth3` to configure.
  * @returns the root context.
  */
-async function start(modes: { reference?: string; text?: string }): Promise<Context> {
+async function start(tasks: { ref2v?: string; t2v?: string }): Promise<Context> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-fastvideo-'))
   const globals = globalThis as typeof globalThis & { __dvFastVideo?: typeof PLUGINS }
   globals.__dvFastVideo = PLUGINS
-  const config = ['models:', '  fasth3:', ...Object.entries(modes).flatMap(([mode, url]) => [
-    `    ${mode}:`, `      baseUrl: ${url}`, `      gpuSecondsPerVideoSecond: ${mode === 'reference' ? 4 : 1.5}`,
+  const config = ['models:', '  fasth3:', ...Object.entries(tasks).flatMap(([task, url]) => [
+    `    ${task}:`, `      baseUrl: ${url}`, `      gpuSecondsPerVideoSecond: ${task === 'ref2v' ? 4 : 1.5}`,
   ])]
   const rows: string[] = []
   const plugins = [
@@ -130,10 +130,10 @@ async function start(modes: { reference?: string; text?: string }): Promise<Cont
   return ctx
 }
 
-/** The registered `fasth3` entry. */
-function fasth3(ctx: Context): ModelEntry {
-  const entry = ctx.dvModels.get('fasth3')
-  if (entry === undefined) throw new Error('fasth3 is not registered')
+/** The registered `fasth3` entry for a task. */
+function fasth3(ctx: Context, task: TaskId): ModelEntry {
+  const entry = ctx.dvModels.get({ modality: 'video', task, provider: 'fastvideo', model: 'fasth3' })
+  if (entry === undefined) throw new Error(`fasth3 is not registered for task ${task}`)
   return entry
 }
 
@@ -149,9 +149,9 @@ function importAsset(ctx: Context, bytes: Buffer, mime: string): AssetId {
   return ctx.dvAssetPool.importAsset(bytes, { mime, name: 'asset' }, null)
 }
 
-/** A render request with the given input assets. */
-function request(references: AssetId[], firstFrame: AssetId | null) {
-  return { prompt: '<Picture 1> smiles', references, firstFrame, frameWidth: 1344, frameHeight: 768, numFrames: 124, seed: 7, extra: {} }
+/** A render request with the given input assets and `extra` values. */
+function request(references: AssetId[], firstFrame: AssetId | null, extra: Record<string, unknown> = {}) {
+  return { prompt: '<Picture 1> smiles', references, firstFrame, frameWidth: 1344, frameHeight: 768, numFrames: 124, seed: 7, extra }
 }
 
 /** The wire form of one reference: its media type and its base64 bytes. */
@@ -160,84 +160,94 @@ function encodeWireReference(mediaType: string, bytes: string) {
 }
 
 describe('dv-fastvideo', () => {
-  it('registers fasth3 in the configured modes, each with the facts of its own server', async () => {
+  it('registers fasth3 once per configured task, each with the facts and schema of its own server', async () => {
     const [reference, text] = await Promise.all([startFakeServer(REFERENCE_CAPABILITIES), startFakeServer(TEXT_CAPABILITIES)])
-    const ctx = await start({ reference: reference.url, text: text.url })
-    const entry = fasth3(ctx)
-    expect(entry).toMatchObject({
-      company: 'local FastVideo',
-      modes: {
-        reference: {
-          inputs: { reference: { min: 1, mediaTypes: ['image', 'video', 'audio'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
-          extra: {}, gpuSecondsPerVideoSecond: 4,
-        },
-        text: { inputs: {}, extra: {}, gpuSecondsPerVideoSecond: 1.5 },
-      },
-    })
-    // The first image frame takes one of the server's references and one of its images; audio the server does not accept.
-    expect(await entry.facts('reference')).toEqual({
+    const ctx = await start({ ref2v: reference.url, t2v: text.url })
+    expect(ctx.dvModels.list().map(({ modality, task, provider, model, gpuSecondsPerVideoSecond }) =>
+      ({ modality, task, provider, model, gpuSecondsPerVideoSecond }))).toEqual([
+      { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', gpuSecondsPerVideoSecond: 4 },
+      { modality: 'video', task: 't2v', provider: 'fastvideo', model: 'fasth3', gpuSecondsPerVideoSecond: 1.5 },
+    ])
+    expect(fasth3(ctx, 'ref2v').description).toContain('Needs at least one reference.')
+    expect(fasth3(ctx, 't2v').description).toContain('a face that must stay the same needs fasth3 for task ref2v')
+    expect(await fasth3(ctx, 'ref2v').facts()).toEqual({
       modelId: 'fake-ref2va', aspectRatios: ['16:9'], resolutions: ['720p'], frameSizes: { '16:9': { '720p': [1344, 768] } },
       minDurationSec: 5, maxDurationSec: 6, numFramesByDurationSec: { 5: 124, 6: 158 },
-      inputLimits: {
-        reference: { maxCount: 3, maxCountByMediaType: { image: 2, video: 2, audio: 0 } },
-        first_frame: { maxCount: 1, maxCountByMediaType: {} },
-      },
     })
-    expect(await entry.facts('text')).toMatchObject({ modelId: 'fake-t2va', inputLimits: {} })
+    expect(await fasth3(ctx, 't2v').facts()).toMatchObject({ modelId: 'fake-t2va' })
+    // The first image frame takes one of the server's references and one of its images; audio the server does not accept.
+    expect(await fasth3(ctx, 'ref2v').schema()).toEqual({
+      inputs: {
+        reference: { min: 1, max: 3, media_types: { image: { max: 2 }, video: { max: 2 }, audio: { max: 0 } } },
+        first_frame: { min: 0, max: 1, media_types: { image: {} } },
+      },
+      extra: {},
+    })
+    expect(await fasth3(ctx, 't2v').schema()).toEqual({ inputs: {}, extra: {} })
     // The streaming_v2 clients stay private to the plugin.
     expect(ctx.get('dvFastvideoGeneration')).toBeUndefined()
   })
 
-  it('validates a request in each mode against what the mode declares and the limits of its own server', async () => {
+  it('validates a request for each task against what the task declares and the limits of its own server', async () => {
     const [reference, text] = await Promise.all([startFakeServer(REFERENCE_CAPABILITIES), startFakeServer(TEXT_CAPABILITIES)])
-    const ctx = await start({ reference: reference.url, text: text.url })
-    const { reference: referenceMode, text: textMode } = fasth3(ctx).modes
+    const ctx = await start({ ref2v: reference.url, t2v: text.url })
+    const [referenceTask, textTask] = [fasth3(ctx, 'ref2v'), fasth3(ctx, 't2v')]
     const asset = (bytes: string, mime: string) => importAsset(ctx, Buffer.from(bytes), mime)
     const [video, otherVideo] = [asset('VID1', 'video/mp4'), asset('VID2', 'video/mp4')]
     const [image, otherImage, thirdImage] = [asset('IMG1', 'image/png'), asset('IMG2', 'image/png'), asset('IMG3', 'image/png')]
     const [audio, json] = [asset('AUD1', 'audio/mpeg'), asset('{}', 'application/json')]
-    const check = (mode: ModeDeclaration | undefined, references: AssetId[], firstFrame: AssetId | null) =>
-      mode?.validateGenerationRequest(request(references, firstFrame))
-    expect(await check(referenceMode, [video, image], image)).toEqual([])
-    expect(await check(referenceMode, [], null)).toEqual(['Its reference input needs at least 1 of type image, video, audio; this shot has 0.'])
-    expect(await check(referenceMode, [json], null)).toEqual([`Its reference input takes assets of type image, video, audio; asset ${json} is of type application.`])
+    const check = (entry: ModelEntry, references: AssetId[], firstFrame: AssetId | null) =>
+      entry.validateGenerationRequest(request(references, firstFrame))
+    expect(await check(referenceTask, [video, image], image)).toEqual([])
+    expect(await check(referenceTask, [], null)).toEqual(['Its reference input needs at least 1 of type image, video, audio; this shot has 0.'])
+    expect(await check(referenceTask, [json], null)).toEqual([`Its reference input takes assets of type image, video, audio; asset ${json} is of type application.`])
     // The server lists no audio, so its audio limit is 0; the first frame takes one of the server's three references and two images.
-    expect(await check(referenceMode, [audio], null)).toEqual(['Its reference input takes at most 0 of type audio; this shot has 1.'])
-    expect(await check(referenceMode, [video, otherVideo, image, otherImage], null)).toEqual(['Its reference input takes at most 3 assets; this shot has 4.'])
-    expect(await check(referenceMode, [image, otherImage, thirdImage], null)).toEqual(['Its reference input takes at most 2 of type image; this shot has 3.'])
-    expect(await check(referenceMode, [image], video)).toEqual([`Its first_frame input takes assets of type image; asset ${video} is of type video.`])
-    expect(await check(textMode, [], null)).toEqual([])
-    expect(await check(textMode, [image], video)).toEqual(['It takes no reference input; this shot has 1.', 'It takes no first_frame input; this shot has 1.'])
+    expect(await check(referenceTask, [audio], null)).toEqual(['Its reference input takes at most 0 of type audio; this shot has 1.'])
+    expect(await check(referenceTask, [video, otherVideo, image, otherImage], null)).toEqual(['Its reference input takes at most 3 assets; this shot has 4.'])
+    expect(await check(referenceTask, [image, otherImage, thirdImage], null)).toEqual(['Its reference input takes at most 2 of type image; this shot has 3.'])
+    expect(await check(referenceTask, [image], video)).toEqual([`Its first_frame input takes assets of type image; asset ${video} is of type video.`])
+    expect(await check(textTask, [], null)).toEqual([])
+    expect(await check(textTask, [image], video)).toEqual(['It takes no reference input; this shot has 1.', 'It takes no first_frame input; this shot has 1.'])
   })
 
-  it('sends each mode to its own server: the references with their media types, then the first frame, or none', async () => {
+  it('refuses extra parameters that the task does not take, after the input problems', async () => {
     const [reference, text] = await Promise.all([startFakeServer(REFERENCE_CAPABILITIES), startFakeServer(TEXT_CAPABILITIES)])
-    const ctx = await start({ reference: reference.url, text: text.url })
+    const ctx = await start({ ref2v: reference.url, t2v: text.url })
+    const image = importAsset(ctx, Buffer.from('IMG1'), 'image/png')
+    expect(await fasth3(ctx, 'ref2v').validateGenerationRequest(request([image], null, { cfg: 5, steps: 8 })))
+      .toEqual(['fasth3 has no extra parameter `cfg`, `steps` for task ref2v; its extra parameters: none.'])
+    expect(await fasth3(ctx, 't2v').validateGenerationRequest(request([image], null, { cfg: 5 }))).toEqual([
+      'It takes no reference input; this shot has 1.', 'fasth3 has no extra parameter `cfg` for task t2v; its extra parameters: none.',
+    ])
+  })
+
+  it('sends each task to its own server: the references with their media types, then the first frame, or none', async () => {
+    const [reference, text] = await Promise.all([startFakeServer(REFERENCE_CAPABILITIES), startFakeServer(TEXT_CAPABILITIES)])
+    const ctx = await start({ ref2v: reference.url, t2v: text.url })
     const video = importAsset(ctx, Buffer.from('VID1'), 'video/mp4')
     const image = importAsset(ctx, Buffer.from('IMG1'), 'image/png')
     const audio = importAsset(ctx, Buffer.from('AUD1'), 'audio/mpeg')
     const first = importAsset(ctx, Buffer.from('FIRST'), 'image/png')
-    const events = await collect(fasth3(ctx).render('reference', request([video, image, audio], first)))
+    const events = await collect(fasth3(ctx, 'ref2v').render(request([video, image, audio], first)))
     expect(reference.requests[0]).toEqual({
       prompt: '<Picture 1> smiles', width: 1344, height: 768, num_frames: 124, seed: 7, return_last_frame: true,
       references: [encodeWireReference('video', 'VID1'), encodeWireReference('image', 'IMG1'), encodeWireReference('audio', 'AUD1'), encodeWireReference('image', 'FIRST')],
     })
     expect(events.map(event => event.kind)).toEqual(['last_frame', 'video_start', 'chunk', 'done'])
     expect(events[2]).toEqual({ kind: 'chunk', bytes: Buffer.from('VIDEO') })
-    await collect(fasth3(ctx).render('reference', request([video], null)))
+    await collect(fasth3(ctx, 'ref2v').render(request([video], null), new AbortController().signal))
     expect(reference.requests[1]?.['references']).toEqual([encodeWireReference('video', 'VID1')])
-    await collect(fasth3(ctx).render('text', request([], null)))
+    await collect(fasth3(ctx, 't2v').render(request([], null)))
     expect(text.requests).toHaveLength(1)
     expect(text.requests[0]?.['references']).toEqual([])
   })
 
-  it('registers only the configured modes and their prompt skills, and removes them on disposal', async () => {
+  it('registers only the configured tasks and their prompt skills, and removes them on disposal', async () => {
     const reference = await startFakeServer(REFERENCE_CAPABILITIES)
-    const ctx = await start({ reference: reference.url })
-    expect(Object.keys(fasth3(ctx).modes)).toEqual(['reference'])
-    expect(() => fasth3(ctx).render('text', request([], null))).toThrow('Model fasth3 is not served in mode text.')
+    const ctx = await start({ ref2v: reference.url })
+    expect(ctx.dvModels.list().map(entry => entry.task)).toEqual(['ref2v'])
     const skill = await ctx.skills.get('fasth3-reference-prompting')
-    expect(skill?.description).toContain('model fasth3 in mode reference')
+    expect(skill?.description).toContain('model fasth3 for task ref2v')
     expect(skill?.content).toContain('Every shot needs at least one reference.')
     expect(await ctx.skills.get('fasth3-text-prompting')).toBeUndefined()
     const entry = [...ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-fastvideo.mjs'))
@@ -246,22 +256,22 @@ describe('dv-fastvideo', () => {
     expect(ctx.dvModels.list()).toEqual([])
   })
 
-  it('refuses a config that names a model or mode it does not serve', async () => {
+  it('refuses a config that names a model or task it does not serve', async () => {
     const reference = await startFakeServer(REFERENCE_CAPABILITIES)
-    const ctx = await start({ reference: reference.url })
+    const ctx = await start({ ref2v: reference.url })
     const server = { baseUrl: reference.url, gpuSecondsPerVideoSecond: 1 }
-    expect(() => { FastVideo.apply(ctx, { models: { wan: { text: server } } }) }).toThrow('dv-fastvideo serves no model "wan"; it serves: fasth3.')
-    expect(() => { FastVideo.apply(ctx, { models: { fasth3: { edit: server } } }) })
-      .toThrow('dv-fastvideo serves model "fasth3" in no mode "edit"; its modes: reference, text.')
-    expect(() => { FastVideo.apply(ctx, { models: { fasth3: {} } }) }).toThrow('dv-fastvideo: model "fasth3" names no mode.')
-    expect(ctx.dvModels.list().map(model => model.id)).toEqual(['fasth3'])
+    expect(() => { FastVideo.apply(ctx, { models: { wan: { t2v: server } } }) }).toThrow('dv-fastvideo serves no model "wan"; it serves: fasth3.')
+    expect(() => { FastVideo.apply(ctx, { models: { fasth3: { reference: server } } }) })
+      .toThrow('dv-fastvideo serves model "fasth3" for no task "reference"; its tasks: ref2v, t2v.')
+    expect(() => { FastVideo.apply(ctx, { models: { fasth3: {} } }) }).toThrow('dv-fastvideo: model "fasth3" names no task.')
+    expect(ctx.dvModels.list().map(entry => entry.task)).toEqual(['ref2v'])
   })
 
   it.skipIf(REAL_BACKEND === undefined || !existsSync(REAL_REFERENCE))('renders a real five-second shot against the running server', async () => {
-    const ctx = await start({ reference: REAL_BACKEND as string })
-    const facts = await fasth3(ctx).facts('reference')
+    const ctx = await start({ ref2v: REAL_BACKEND as string })
+    const facts = await fasth3(ctx, 'ref2v').facts()
     const [width, height] = facts.frameSizes[facts.aspectRatios[0] ?? '']?.[facts.resolutions[0] ?? ''] ?? [0, 0]
-    const events = await collect(fasth3(ctx).render('reference', {
+    const events = await collect(fasth3(ctx, 'ref2v').render({
       prompt: '<Picture 1> is a man speaking to the camera in a bright office, slow push-in, natural light.',
       references: [importAsset(ctx, readFileSync(REAL_REFERENCE), 'image/jpeg')], firstFrame: null, frameWidth: width, frameHeight: height,
       numFrames: facts.numFramesByDurationSec['5'] ?? 0, seed: 1, extra: {},

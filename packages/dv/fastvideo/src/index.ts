@@ -1,12 +1,13 @@
 /**
- * Company plugin of DreamVerse for models served by local FastVideo streaming_v2 servers. It registers each model that
- * its `models` config names into `ctx.dvModels`, with the modes the config gives a server for; a model or mode the
- * config leaves out is not registered. Each mode of a model is served by its own server: the streaming_v2 client of
- * `@dv/fastvideo-generation-client` sends each render as one `POST /v1/streamv2/generate`, with the references first and
- * the first frame after them, each as its media type and bytes read from `dvAssetPool`. While the DSH skill registry is
- * mounted, the plugin registers the prompt skill of every registered model and mode.
+ * Provider plugin `fastvideo` of DreamVerse for models served by local FastVideo streaming_v2 servers. It registers into
+ * `ctx.dvModels` one entry per model that its `models` config names and per task the config gives a server for; a model
+ * or task the config leaves out is not registered. Each task of a model is served by its own server: the streaming_v2
+ * client of `@dv/fastvideo-generation-client` sends each render as one `POST /v1/streamv2/generate`, with the references
+ * first and the first frame after them, each as its media type and bytes read from `dvAssetPool`. Each entry describes
+ * the inputs and `extra` parameters it accepts in `schema()` and checks both in `validateGenerationRequest`. While the
+ * DSH skill registry is mounted, the plugin registers the prompt skill of every registered entry.
  *
- * Served models: `fasth3` (MiniMax H3 as FastH3), in mode `reference` (FastH3 Ref2VA) and mode `text` (FastH3 8-Step V2).
+ * Served models: `fasth3` (MiniMax H3 as FastH3), for task `ref2v` (FastH3 Ref2VA) and task `t2v` (FastH3 8-Step V2).
  *
  * @module @dv/fastvideo
  */
@@ -14,25 +15,25 @@ import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-skill'
+import { validateArgs, type ParameterSchemaSpec } from '@deepseek-ai/dsh-tools'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
 import { DvFastvideoGeneration, type ModelFacts } from '@dv/fastvideo-generation-client'
 import type {} from '@dv/asset-pool'
-import type {
-  InputRole, ModeDeclaration, ModeId, ModeInputs, ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent,
-} from '@dv/models'
+import type { ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent, TaskId } from '@dv/models'
 
-/** One mode of one model: the streaming_v2 server that renders it and its GPU rate. */
-export interface ModeServer {
+/** One task of one model: the streaming_v2 server that renders it and its GPU rate. */
+export interface TaskServer {
   /** HTTP base URL of the FastVideo streaming_v2 server, such as `http://127.0.0.1:8029`. */
   baseUrl: string
-  /** GPU seconds per rendered video second on this server, declared for the mode for the GPU estimate. */
+  /** GPU seconds per rendered video second on this server, declared for the task for the GPU estimate. */
   gpuSecondsPerVideoSecond: number
 }
 
 /** `dv-fastvideo` configuration. */
 export interface Config {
-  /** The models to register, by model name, and for each the modes to serve it in, by mode, with their servers. */
-  models: Record<string, Record<string, ModeServer>>
+  /** The models to register, by model name, and for each the tasks to serve it for, by task ID, with their servers. */
+  models: Record<string, Record<string, TaskServer>>
 }
 
 /** Loader validation. */
@@ -43,39 +44,80 @@ export const Config: z<Config> = z.object({
   }))).required(),
 })
 
+/** The provider name of every entry this plugin registers. */
+const PROVIDER = 'fastvideo'
+
 /**
- * One mode this plugin can serve a model in: what the model accepts in it, and its prompt skill. The GPU rate comes
- * from the configured server of the mode.
+ * The top-level type of an asset's MIME type, such as `image`, `video` or `audio`, as `dvAssetPool.mediaType` returns
+ * it.
  */
-interface ServedMode extends Pick<ModeDeclaration, 'inputs' | 'extra'> {
+type MediaType = string
+
+/** An input of a render request: `reference` (the reference assets in input order) or `first_frame`. */
+type InputRole = 'reference' | 'first_frame'
+
+/** One input that a task of a model accepts. */
+interface InputDeclaration {
+  /** The fewest assets that a render needs in this input. */
+  min: number
+  /** The media types the input accepts; at least one. */
+  mediaTypes: readonly MediaType[]
+}
+
+/** The inputs one task of a model accepts, by role; a role left out takes no asset. */
+type TaskInputs = Partial<Record<InputRole, InputDeclaration>>
+
+/** The count limits of one input, read from the server. */
+interface InputLimits {
+  /** The most assets in the input across all media types. */
+  maxCount: number
+  /** The most assets of each media type in the input; a declared media type without a key has no count limit. */
+  maxCountByMediaType: Partial<Record<MediaType, number>>
+}
+
+/** The count limits by declared input; an input without an entry has no limit beyond its declaration. */
+type TaskInputLimits = Partial<Record<InputRole, InputLimits>>
+
+/**
+ * One task this plugin can serve a model for: the entry's description, what the model accepts for it, and its prompt
+ * skill. The GPU rate comes from the configured server of the task.
+ */
+interface ServedTask {
+  description: string
+  inputs: TaskInputs
+  /** The model's own parameters for this task, passed in the request's `extra`; empty when it has none. */
+  extra: ParameterSchemaSpec
   skill: { name: string; description: string; file: string }
 }
 
-/** The models this plugin can serve, with the modes it can serve each in. */
-const SERVED: Record<string, { company: string; summary: string; modes: Partial<Record<ModeId, ServedMode>> }> = {
+/** The models this plugin can serve, with the tasks it can serve each for. */
+const SERVED: Record<string, { [T in TaskId]?: ServedTask }> = {
   fasth3: {
-    company: 'local FastVideo',
-    summary: 'MiniMax H3 (FastH3); video with sound, dialogue and music written in the prompt',
-    modes: {
-      reference: {
-        inputs: { reference: { min: 1, mediaTypes: ['image', 'video', 'audio'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
-        extra: {},
-        skill: {
-          name: 'fasth3-reference-prompting',
-          description: 'Model limits and prompt rules for dv_shot_render with model fasth3 in mode reference: reference images, '
-            + 'videos and audio, how the prompt names them, and how a shot continues the previous one.',
-          file: 'fasth3-reference-prompting.md',
-        },
+    ref2v: {
+      description: 'MiniMax H3 served as FastH3 Ref2VA: video with sound, dialogue and music written in the prompt, from '
+        + 'reference images, videos and audio and an optional first frame. Keeps a face, place or style the same across '
+        + 'shots through the references, and continues a shot from the previous shot\'s last still. Needs at least one '
+        + 'reference.',
+      inputs: { reference: { min: 1, mediaTypes: ['image', 'video', 'audio'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
+      extra: {},
+      skill: {
+        name: 'fasth3-reference-prompting',
+        description: 'Model limits and prompt rules for dv_shot_render with model fasth3 for task ref2v: reference images, '
+          + 'videos and audio, how the prompt names them, and how a shot continues the previous one.',
+        file: 'fasth3-reference-prompting.md',
       },
-      text: {
-        inputs: {},
-        extra: {},
-        skill: {
-          name: 'fasth3-text-prompting',
-          description: 'Model limits and prompt rules for dv_shot_render with model fasth3 in mode text: the three prompt fields, '
-            + 'shot changes, camera motion, speakers and dialogue, sound and music.',
-          file: 'fasth3-text-prompting.md',
-        },
+    },
+    t2v: {
+      description: 'MiniMax H3 served as FastH3 8-Step V2: video with sound, dialogue and music written in the prompt, from '
+        + 'the prompt alone. A subject keeps its look only as far as the same words describe it, and no shot starts from '
+        + 'an earlier shot\'s last still; a face that must stay the same needs fasth3 for task ref2v.',
+      inputs: {},
+      extra: {},
+      skill: {
+        name: 'fasth3-text-prompting',
+        description: 'Model limits and prompt rules for dv_shot_render with model fasth3 for task t2v: the three prompt fields, '
+          + 'shot changes, camera motion, speakers and dialogue, sound and music.',
+        file: 'fasth3-text-prompting.md',
       },
     },
   },
@@ -88,33 +130,33 @@ export const name = 'dv-fastvideo'
 export const inject = ['dvModels', 'dvAssetPool']
 
 /**
- * Check the `models` config against the models and modes this plugin serves.
+ * Check the `models` config against the models and tasks this plugin serves.
  * @param config - the validated configuration.
- * @throws Error naming an unknown model, an unknown mode, or a model without modes.
+ * @throws Error naming an unknown model, an unknown task, or a model without tasks.
  */
 function checkConfig(config: Config): void {
-  for (const [model, modes] of Object.entries(config.models)) {
+  for (const [model, tasks] of Object.entries(config.models)) {
     const served = SERVED[model]
     if (served === undefined) throw new Error(`dv-fastvideo serves no model "${model}"; it serves: ${Object.keys(SERVED).join(', ')}.`)
-    if (Object.keys(modes).length === 0) throw new Error(`dv-fastvideo: model "${model}" names no mode.`)
-    for (const mode of Object.keys(modes)) {
-      if (!Object.hasOwn(served.modes, mode)) {
-        throw new Error(`dv-fastvideo serves model "${model}" in no mode "${mode}"; its modes: ${Object.keys(served.modes).join(', ')}.`)
+    if (Object.keys(tasks).length === 0) throw new Error(`dv-fastvideo: model "${model}" names no task.`)
+    for (const task of Object.keys(tasks)) {
+      if (!Object.hasOwn(served, task)) {
+        throw new Error(`dv-fastvideo serves model "${model}" for no task "${task}"; its tasks: ${Object.keys(served).join(', ')}.`)
       }
     }
   }
 }
 
 /**
- * The count limits of a mode's input roles, from the server's reference limits. The server counts the first frame among
- * its references, so the first frame takes one slot of the server's total and one slot of each media type that the
- * `first_frame` role accepts, and the `reference` role keeps the rest. A media type that the `reference` role declares
- * and the server does not accept has a limit of 0.
- * @param inputs - the inputs the mode declares; `SERVED` declares `reference` and `first_frame` together or neither.
+ * The count limits of a task's inputs, from the server's reference limits. The server counts the first frame among its
+ * references, so the first frame takes one slot of the server's total and one slot of each media type that the
+ * `first_frame` input accepts, and the `reference` input keeps the rest. A media type that the `reference` input
+ * declares and the server does not accept has a limit of 0.
+ * @param inputs - the inputs the task declares; `SERVED` declares `reference` and `first_frame` together or neither.
  * @param facts - the server's facts.
- * @returns the limits by declared role; empty in a mode without references.
+ * @returns the limits by declared input; empty for a task without references.
  */
-function deriveInputLimits(inputs: ModeInputs, facts: ModelFacts): RenderModelFacts['inputLimits'] {
+function deriveInputLimits(inputs: TaskInputs, facts: ModelFacts): TaskInputLimits {
   const { reference, first_frame: firstFrame } = inputs
   if (reference === undefined || firstFrame === undefined) return {}
   const firstFrameTypes = new Set(firstFrame.mediaTypes)
@@ -128,17 +170,36 @@ function deriveInputLimits(inputs: ModeInputs, facts: ModelFacts): RenderModelFa
 }
 
 /**
- * The problems of one render request in a mode: an input role the mode does not declare holding an asset, a role
- * holding fewer assets than its `min`, an asset whose media type its role does not declare, or a role holding more
- * assets in total or of one media type than the server's limits allow.
- * @param inputs - the inputs the mode declares.
+ * Describe each declared input of a task for `schema()`: its `min`, its total `max`, and each declared media type with
+ * its `max` when the server limits that type.
+ * @param inputs - the inputs the task declares.
+ * @param limits - the input limits from the server's facts.
+ * @returns the inputs by role.
+ */
+function describeInputs(inputs: TaskInputs, limits: TaskInputLimits): JsonValue {
+  return Object.fromEntries(Object.entries(inputs).map(([role, input]) => {
+    // deriveInputLimits gives every declared input its limits.
+    const limit = limits[role as InputRole] as InputLimits
+    const mediaTypes = input.mediaTypes.map((type): [string, JsonValue] => {
+      const max = limit.maxCountByMediaType[type]
+      return [type, max === undefined ? {} : { max }]
+    })
+    return [role, { min: input.min, max: limit.maxCount, media_types: Object.fromEntries(mediaTypes) }]
+  }))
+}
+
+/**
+ * The problems of one render request for a task: an input the task does not declare holding an asset, an input holding
+ * fewer assets than its `min`, an asset whose media type its input does not declare, or an input holding more assets
+ * in total or of one media type than the server's limits allow.
+ * @param inputs - the inputs the task declares.
  * @param limits - the input limits from the server's facts.
  * @param request - the render request.
  * @param mediaTypeOf - the media type of an asset, read from the asset pool.
  * @returns the problems, each one sentence; empty when the server renders the request.
  */
 function requestProblems(
-  inputs: ModeInputs, limits: RenderModelFacts['inputLimits'], request: RenderRequest,
+  inputs: TaskInputs, limits: TaskInputLimits, request: RenderRequest,
   mediaTypeOf: (asset: RenderRequest['references'][number]) => string,
 ): string[] {
   const problems: string[] = []
@@ -162,7 +223,7 @@ function requestProblems(
       counts.set(mediaType, (counts.get(mediaType) ?? 0) + 1)
     }
     const limit = limits[role]
-    if (limit?.maxCount !== undefined && assets.length > limit.maxCount) {
+    if (limit !== undefined && assets.length > limit.maxCount) {
       problems.push(`Its ${role} input takes at most ${limit.maxCount} assets; this shot has ${assets.length}.`)
     }
     for (const [mediaType, count] of counts) {
@@ -174,51 +235,69 @@ function requestProblems(
 }
 
 /**
- * A catalog entry for one configured model: one streaming_v2 client per configured mode.
- * @param ctx - the plugin context; each client lives in an isolated `dvFastvideoGeneration` scope, and `render` reads
+ * The problems of a request's `extra` values for a task: names the task does not take are refused in one sentence that
+ * lists its parameters, and the values of known names are checked against their schema.
+ * @param model - the model name.
+ * @param task - the task.
+ * @param schema - the task's extra parameters.
+ * @param extra - the request's `extra` values.
+ * @returns one sentence per problem; empty when the values are valid.
+ */
+function extraProblems(model: string, task: TaskId, schema: ParameterSchemaSpec, extra: Record<string, unknown>): string[] {
+  const known = Object.keys(schema)
+  const unknown = Object.keys(extra).filter(name => !known.includes(name))
+  if (unknown.length > 0) {
+    return [`${model} has no extra parameter ${unknown.map(name => `\`${name}\``).join(', ')} for task ${task}; `
+      + `its extra parameters: ${known.join(', ') || 'none'}.`]
+  }
+  /* v8 ignore next -- every served task declares no extra parameter, so every name is refused as unknown above. */
+  return validateArgs(schema, extra).map(message => `extra${message.startsWith('.') ? '' : '.'}${message}`)
+}
+
+/**
+ * A catalog entry for one configured model and task, rendered through one streaming_v2 client of the task's server.
+ * @param ctx - the plugin context; the client lives in an isolated `dvFastvideoGeneration` scope, and `render` reads
  *   each input asset from `ctx.dvAssetPool`.
- * @param id - the model name.
- * @param modes - the configured modes and their servers.
+ * @param model - the model name.
+ * @param task - the task.
+ * @param server - the task's configured server.
  * @returns the entry.
  */
-function modelEntry(ctx: Context, id: string, modes: Record<string, ModeServer>): ModelEntry {
-  const served = SERVED[id]
-  /* v8 ignore next -- checkConfig refuses unknown models before any entry is built. */
-  if (served === undefined) throw new Error(`dv-fastvideo serves no model "${id}".`)
-  const clients = new Map<string, DvFastvideoGeneration>()
-  for (const [mode, server] of Object.entries(modes)) {
-    clients.set(mode, new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), { baseUrl: server.baseUrl }))
-  }
-  const clientOf = (mode: ModeId): DvFastvideoGeneration => {
-    const found = clients.get(mode)
-    if (found === undefined) throw new Error(`Model ${id} is not served in mode ${mode}.`)
-    return found
-  }
-  // Each mode checks requests against its own declared inputs and its own server's limits.
-  const declared = Object.fromEntries(Object.entries(modes).map(([mode, server]): [string, ModeDeclaration] => {
-    const { inputs, extra } = served.modes[mode as ModeId] as ServedMode
-    return [mode, {
-      inputs, extra, gpuSecondsPerVideoSecond: server.gpuSecondsPerVideoSecond,
-      validateGenerationRequest: async request => requestProblems(
-        inputs, deriveInputLimits(inputs, await clientOf(mode as ModeId).model()), request, asset => ctx.dvAssetPool.mediaType(asset)),
-    }]
-  }))
+function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServer): ModelEntry {
+  const served = SERVED[model]?.[task]
+  /* v8 ignore next -- checkConfig refuses unknown models and tasks before any entry is built. */
+  if (served === undefined) throw new Error(`dv-fastvideo serves no model "${model}" for task "${task}".`)
+  const { inputs, extra } = served
+  const client = new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), { baseUrl: server.baseUrl })
   return {
-    id,
-    company: served.company,
-    summary: served.summary,
-    modes: declared,
-    async facts(mode: ModeId): Promise<RenderModelFacts> {
-      const facts = await clientOf(mode).model()
+    modality: 'video',
+    task,
+    provider: PROVIDER,
+    model,
+    description: served.description,
+    gpuSecondsPerVideoSecond: server.gpuSecondsPerVideoSecond,
+    async facts(): Promise<RenderModelFacts> {
+      const facts = await client.model()
       return {
         modelId: facts.modelId, aspectRatios: facts.aspectRatios, resolutions: facts.resolutions, frameSizes: facts.frameSizes,
         minDurationSec: facts.minSegmentDurationSec, maxDurationSec: facts.maxSegmentDurationSec,
         numFramesByDurationSec: facts.numFramesByDurationSec,
-        inputLimits: deriveInputLimits((served.modes[mode] as ServedMode).inputs, facts),
       }
     },
-    render(mode: ModeId, request: RenderRequest, signal?: AbortSignal): AsyncIterable<RenderStreamEvent> {
-      const client = clientOf(mode)
+    async schema(): Promise<JsonValue> {
+      return {
+        inputs: describeInputs(inputs, deriveInputLimits(inputs, await client.model())),
+        extra: JSON.parse(JSON.stringify(extra)) as JsonValue,
+      }
+    },
+    async validateGenerationRequest(request: RenderRequest): Promise<string[]> {
+      const limits = deriveInputLimits(inputs, await client.model())
+      return [
+        ...requestProblems(inputs, limits, request, asset => ctx.dvAssetPool.mediaType(asset)),
+        ...extraProblems(model, task, extra, request.extra),
+      ]
+    },
+    render(request: RenderRequest, signal?: AbortSignal): AsyncIterable<RenderStreamEvent> {
       const assets = request.firstFrame === null ? request.references : [...request.references, request.firstFrame]
       return (async function* () {
         // Video and audio references can be tens of megabytes each, so they are read concurrently off the event loop.
@@ -241,27 +320,29 @@ function modelEntry(ctx: Context, id: string, modes: Record<string, ModeServer>)
 }
 
 /**
- * Register every configured model into `ctx.dvModels`, and the prompt skill of each configured model and mode while
- * the DSH skill registry is mounted.
+ * Register one entry into `ctx.dvModels` per configured model and task, and the prompt skill of each while the DSH skill
+ * registry is mounted.
  * @param ctx - the plugin context.
  * @param config - the validated configuration.
- * @throws Error when the config names a model or mode this plugin does not serve.
+ * @throws Error when the config names a model or task this plugin does not serve.
  */
 export function apply(ctx: Context, config: Config): void {
   checkConfig(config)
-  for (const [id, modes] of Object.entries(config.models)) {
-    const entry = modelEntry(ctx, id, modes)
-    ctx.effect(() => ctx.dvModels.register(entry), `dvModels ${id}`)
+  const configured = Object.entries(config.models).flatMap(([model, tasks]) =>
+    Object.entries(tasks).map(([task, server]) => ({ model, task: task as TaskId, server })))
+  for (const { model, task, server } of configured) {
+    const entry = modelEntry(ctx, model, task, server)
+    ctx.effect(() => ctx.dvModels.register(entry), `dvModels ${model} ${task}`)
   }
-  const skills = Object.entries(config.models).flatMap(([id, modes]) => Object.keys(modes).map((mode) => {
-    const skill = (SERVED[id]?.modes[mode as ModeId] as ServedMode).skill
+  const skills = configured.map(({ model, task }) => {
+    const skill = (SERVED[model]?.[task] as ServedTask).skill
     return {
       name: skill.name, description: skill.description, source: 'runtime',
       content: readFileSync(new URL(`../skills/${skill.file}`, import.meta.url), 'utf8'),
       // The agent's own procedure: the model loads it, and the composer's / menu and the Skills page do not list it.
       invocation: { modelInvocable: true, userInvocable: false },
     }
-  }))
+  })
   ctx.inject(['skills'], (child) => {
     for (const definition of skills) child.effect(() => child.skills.register(definition), `dvModels ${definition.name}`)
   })

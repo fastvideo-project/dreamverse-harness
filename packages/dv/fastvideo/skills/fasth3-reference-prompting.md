@@ -1,6 +1,6 @@
-# FastH3 prompts in mode reference
+# FastH3 prompts for task ref2v
 
-Model `fasth3` in mode `reference` renders a shot from a prompt and reference media: images, videos and audio. The served model is FastH3 Ref2VA, which renders 5 to 15 seconds of video with sound per shot. Write every such prompt with the official MiniMax-H3 full-reference guide below; this section maps the guide to `dv_shot_render` with `model: fasth3, mode: reference` and to plan shots with the same model and mode.
+Model `fasth3` for task `ref2v` renders a shot from a prompt and reference media: images, videos and audio. The served model is FastH3 Ref2VA, which renders 5 to 15 seconds of video with sound per shot. Write every such prompt with the official MiniMax-H3 full-reference guide below; this section maps the guide to `dv_shot_render` with model `fasth3` for task `ref2v` and to plan shots with the same model and task.
 
 ## DreamVerse connection
 

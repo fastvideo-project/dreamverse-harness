@@ -3,13 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Company plugin of DreamVerse for models on local FastVideo streaming_v2 servers: registers each configured model (fasth3) into dvModels with the modes the config gives a server for, plus the prompt skill of each model and mode.",
+  "description": "Provider plugin fastvideo of DreamVerse for models on local FastVideo streaming_v2 servers: registers one dvModels entry per configured model (fasth3) and task (ref2v, t2v), each with its input and extra parameter schema and request validation, plus the prompt skill of each entry.",
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {
     "@deepseek-ai/dsh-skill": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-util-values": "workspace:*",
     "@dv/asset-pool": "workspace:*",
     "@dv/fastvideo-generation-client": "workspace:*",
     "@dv/models": "workspace:*"

@@ -1,13 +1,13 @@
-# FastH3 prompts in mode text
+# FastH3 prompts for task t2v
 
-Model `fasth3` in mode `text` renders a shot from a prompt only. The served model is FastH3 8-Step V2, which renders 5 to 15 seconds of video with sound per shot from text. Write every such prompt with the official MiniMax-H3 prompt guide below, in its T2VA mode; this section maps the guide to `dv_shot_render` with `model: fasth3, mode: text` and to plan shots with the same model and mode.
+Model `fasth3` for task `t2v` renders a shot from a prompt only. The served model is FastH3 8-Step V2, which renders 5 to 15 seconds of video with sound per shot from text. Write every such prompt with the official MiniMax-H3 prompt guide below, in its T2VA mode; this section maps the guide to `dv_shot_render` with model `fasth3` for task `t2v` and to plan shots with the same model and task.
 
 ## DreamVerse connection
 
-- **Use the T2VA mode of the guide.** A shot in mode `text` has no reference image and no first frame, so the prompt has no instruction line: it begins directly with the three core fields (`integrated_multimodal_description`, `overall_soundscape`, `non_diegetic_music`) as the guide's section 2.2 shows. The guide's I2VA, FL2VA and L2VA parts do not apply.
+- **Use the T2VA mode of the guide.** A shot for task `t2v` has no reference image and no first frame, so the prompt has no instruction line: it begins directly with the three core fields (`integrated_multimodal_description`, `overall_soundscape`, `non_diegetic_music`) as the guide's section 2.2 shows. The guide's I2VA, FL2VA and L2VA parts do not apply.
 - **One DreamVerse shot is one target video.** The guide's `[Shot 1]`, `[Shot 2]` … are camera shots inside that one video. A DreamVerse shot may contain one or several of them.
 - **The whole final prompt is the `prompt`.** Put the three fields, in the guide's format, into the shot's `prompt` string.
-- **Describe everything in words.** The model sees only the prompt: describe every subject, place, wardrobe and style, and repeat the same words in every shot where a subject must look the same. A person who must keep a face across shots needs mode `reference` with a reference image.
+- **Describe everything in words.** The model sees only the prompt: describe every subject, place, wardrobe and style, and repeat the same words in every shot where a subject must look the same. A person who must keep a face across shots needs task `ref2v` with a reference image.
 - `duration_sec` is a whole number from 5 to 15.
 
 ## Official guide
