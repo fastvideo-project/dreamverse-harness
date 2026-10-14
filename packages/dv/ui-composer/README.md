@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to fit the DSH chat composer to a DreamVerse project. Typing `@`, or picking 引用 / Reference in the composer's ＋ menu, lists the files attached to the draft and the open project's clips, characters, locations, styles, and assets as reference chips that show the item's image or video. DreamVerse tool rows in the chat show creator-facing names, the render card shows the prompt, the status, and the rendered video, and the link 在历史中查看 / Show in history selects a call's record. The canvas and the asset pool panel prefill the composer through `dv:compose`. The agent asks for the user's agreement in the conversation.
+Use this package to fit the DSH chat composer to a DreamVerse project. Typing `@`, or picking 引用 / Reference in the composer's ＋ menu, lists the draft's files and the open project's clips, characters, locations, styles, and assets as reference chips with thumbnails. DreamVerse tool rows in the chat show creator-facing names, the render card shows the prompt, status, and video, and the link 在历史中查看 / Show in history selects a call's record. The canvas and the asset pool panel prefill the composer through `dv:compose`. The agent asks for the user's agreement in the conversation.
 
 ## Table of Contents
 
