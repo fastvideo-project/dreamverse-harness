@@ -152,10 +152,10 @@ export interface Timeline {
 }
 
 /**
- * A generation mode of `shot.render`: `reference` renders from reference images and the prompt, `text` from the prompt
- * alone.
+ * A generation task of `shot.render`: `ref2v` renders a video from reference media and the prompt, `t2v` from the
+ * prompt alone.
  */
-export type RenderMode = 'reference' | 'text'
+export type RenderTask = 'ref2v' | 't2v'
 
 /** One shot of a plan version; its number is its 1-based position in the version. */
 export interface Shot {
@@ -163,14 +163,18 @@ export interface Shot {
   duration_sec?: number
   /**
    * Character, location or style versions (`c1@1`) or asset IDs this shot uses instead of the plan's references; only
-   * in mode `reference`.
+   * in task `ref2v`.
    */
   references?: string[]
   seed?: number
-  /** The model from the model catalog that renders the shot, such as `fasth3`. */
+  /** The output modality of the shot's task. */
+  modality: 'video'
+  /** The generation task the model renders the shot in. */
+  task: RenderTask
+  /** The provider plugin that serves the model, such as `fastvideo`. */
+  provider: string
+  /** The provider's name for the model that renders the shot, such as `fasth3`. */
   model: string
-  /** The generation mode the model renders the shot in. */
-  mode: RenderMode
   /** Whether the shot starts from the last still of the previous shot's take. */
   continue_previous?: boolean
 }

@@ -4,7 +4,7 @@
  * - a 引用 row in the composer's ＋ menu that opens that `@` list at the end of the draft;
  * - an invisible `conversation.input.left` entry that makes each session's composer a `dv:compose` target;
  * - thumbnail cards for the project's video and image assets in settled chat Markdown (`chat-media.ts`);
- * - the `dv_shot_render` tool card, which shows the model and generation mode, the prompt, status, and rendered video;
+ * - the `dv_shot_render` tool card, which shows the model and generation task, the prompt, status, and rendered video;
  * - creator-facing names for the other `dv_*` tools in their chat rows and in the running group title;
  * - 在历史中查看 on every settled row whose tool is not read-only, including failed calls, which dispatches
  *   `dv:history-focus`;

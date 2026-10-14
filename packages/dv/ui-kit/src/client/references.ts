@@ -3,10 +3,10 @@
  * them (`Picture 1`, `Picture 2`, …), and the split of a prompt at those names, so a view can show each named image
  * instead of the bare label.
  *
- * The order matches `shot.render` in mode `reference`: the resolved `reference` inputs in input order, where a
+ * The order matches `shot.render` in task `ref2v`: the resolved `reference` inputs in input order, where a
  * character, location or style version stands for all of its references in the version's order. The `first_frame`
  * input of a shot that continues the previous shot (the previous take's last still) is not a reference: the model names
- * it after the reference images (`Picture N+1`, where N is the number of reference images). A shot in mode `text`
+ * it after the reference images (`Picture N+1`, where N is the number of reference images). A shot in task `t2v`
  * renders from the prompt alone and has no references.
  *
  * @module @dv/ui-kit/references
@@ -17,14 +17,14 @@ import type { PlanVersion, ProjectAsset, Shot, WireState } from './types.ts'
 export type PicturePart = { text: string } | { picture: number; text: string }
 
 /**
- * The reference texts a plan shot renders from, as `plan.approve` passes them to `shot.render`: in mode `reference`,
- * the shot's own references, else the plan version's. A shot in mode `text` has none.
+ * The reference texts a plan shot renders from, as `plan.approve` passes them to `shot.render`: in task `ref2v`,
+ * the shot's own references, else the plan version's. A shot in task `t2v` has none.
  * @param version - the plan version.
  * @param shot - one shot of the version.
  * @returns the reference texts (`<asset>`, `<record>#<output>`, or `<id>@<version>`).
  */
-export function shotReferences(version: Pick<PlanVersion, 'references'>, shot: Pick<Shot, 'references' | 'mode'>): string[] {
-  return shot.mode === 'reference' ? shot.references ?? version.references ?? [] : []
+export function shotReferences(version: Pick<PlanVersion, 'references'>, shot: Pick<Shot, 'references' | 'task'>): string[] {
+  return shot.task === 'ref2v' ? shot.references ?? version.references ?? [] : []
 }
 
 /**
