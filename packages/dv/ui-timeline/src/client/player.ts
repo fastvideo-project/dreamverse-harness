@@ -1,8 +1,10 @@
 /**
  * Continuous playback of one timeline's clips through two stacked `<video>` elements. The front element plays the
  * current clip from its in point; the back element holds the next clip, already seeked to its in point, so the switch
- * at the out point does not wait for a load. Placeholder clips, whose render is not done, have no video: playback jumps
- * over them to the next ready clip, and a seek onto one blanks the viewer.
+ * at the out point does not wait for a load. Both elements play their sound through one Web Audio context that stays
+ * open: an element with its own audio output opens that output at `play()` and holds its first frame until the output
+ * runs, about 0.15 s, which a switch would show as a held frame. Placeholder clips, whose render is not done, have no
+ * video: playback jumps over them to the next ready clip, and a seek onto one blanks the viewer.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
@@ -92,6 +94,9 @@ export function useTimelinePlayer(timelineId: string | null, clips: TrackClip[],
   const [positionOf, setPositionOf] = useState(timelineId)
   const [playing, setPlaying] = useState(false)
   const element = (which: 0 | 1): HTMLVideoElement | null => (which === 0 ? first : second).current
+  // The Web Audio context both elements play their sound through; the first `play` creates it, because a browser starts
+  // audio only after a user gesture, and unmounting closes it.
+  const audio = useRef<AudioContext | null>(null)
 
   // The back element holds the next ready clip at or after `index`.
   const preload = useCallback((index: number) => {
@@ -125,6 +130,18 @@ export function useTimelinePlayer(timelineId: string | null, clips: TrackClip[],
   const play = useCallback(() => {
     const list = clipsRef.current
     if (readyIndexFrom(list, 0) === -1) return
+    if (audio.current === null) {
+      const context = new AudioContext()
+      for (const which of [0, 1] as const) {
+        const target = element(which)
+        if (target !== null) context.createMediaElementSource(target).connect(context.destination)
+      }
+      audio.current = context
+    }
+    audio.current.resume().catch((error: unknown) => {
+      // A browser refuses to resume without a user gesture; the elements then play without sound.
+      void error
+    })
     if (position >= total - 0.05 || current.current === -1) seek(position >= total - 0.05 ? 0 : position)
     // From a placeholder, playback starts at the next ready clip, or at the first one when none follows.
     if (list[current.current]?.status !== 'ready') {
@@ -186,6 +203,8 @@ export function useTimelinePlayer(timelineId: string | null, clips: TrackClip[],
     frame = requestAnimationFrame(tick)
     return () => { cancelAnimationFrame(frame) }
   }, [playing, total, preload])
+
+  useEffect(() => () => { void audio.current?.close() }, [])
 
   // An edit changes the clips under the playhead; show the frame at the same time again. Another timeline starts at 0.
   const layout = clips.map(clip => `${clip.assetId ?? clip.status}@${String(clip.inSec)}-${String(clip.outSec)}`).join('|')

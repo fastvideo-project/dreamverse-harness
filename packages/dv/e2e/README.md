@@ -34,7 +34,7 @@ DSH_PLAYWRIGHT_EXECUTABLE_PATH=/path/to/chrome-linux/chrome \
 | Variable | Meaning |
 | --- | --- |
 | `DSH_PLAYWRIGHT_EXECUTABLE_PATH` | The Chromium binary that Playwright launches; without it Playwright uses its own downloaded browser |
-| `DV_FFMPEG` | The ffmpeg binary that the fake backend encodes videos with and that the profile's `@dv/ffmpeg` runs; it needs the `libvpx-vp9` encoder |
+| `DV_FFMPEG` | The ffmpeg binary that the fake backend and the clip-boundary story encode videos with and that the profile's `@dv/ffmpeg` runs; it needs the `libvpx-vp9` and `libopus` encoders |
 | `DV_E2E_SHOTS`, `DV_NAV_SHOTS` | A directory where a failed chat story or navigation story leaves screenshots of its pages |
 
 | Story file | What the stories cover |

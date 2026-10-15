@@ -2,10 +2,12 @@
 // fake video backend that renders playable VP9 videos and a scripted agent model. Projects are seeded through the
 // `/api/dv` routes, so each story starts from plans, takes, and several timelines without waiting for an agent. Every story
 // asserts what the creator must see after the action; a story whose expected behavior is not built yet fails.
+import { execFileSync } from 'node:child_process'
+import { join } from 'node:path'
 import type { Browser, BrowserContext, Locator, Page } from 'playwright'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
-import { bootHarness, escapeRegExp, playwright, waitFor, type BootedHarness } from '../harness.ts'
+import { FFMPEG, bootHarness, escapeRegExp, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import { startScriptedModel, type ScriptedModel } from '../scripted-model.ts'
 
 /** A 2×2 PNG with other bytes than {@link PNG_BASE64}, so its import is a new asset. */
@@ -195,6 +197,51 @@ async function viewerAsset(page: Page): Promise<string | null> {
     const shown = videos.find(video => (video as HTMLVideoElement).style.visibility !== 'hidden')
     return /\/dv\/assets\/([0-9a-f]+)/.exec(shown?.getAttribute('src') ?? '')?.[1] ?? null
   })
+}
+
+/**
+ * Start playback and measure, around a clip boundary, the longest wall-time interval without a new frame on screen. A
+ * frame counts when `requestVideoFrameCallback` presents it on a visible element, and a swap of the viewer's visible
+ * element counts as a new frame.
+ * @param page - the page.
+ * @param source - the timeline viewer, or the `<video id="dv-e2e-export">` element that plays the exported video.
+ * @param boundary - the timeline time of the boundary in seconds; frames within 0.5 s of it count.
+ * @param start - starts playback.
+ * @returns the interval in milliseconds.
+ */
+async function longestFrameGap(page: Page, source: 'viewer' | 'export', boundary: number, start: () => Promise<void>): Promise<number> {
+  const measuring = page.evaluate(({ source, boundary }) => new Promise<number>((resolve) => {
+    const videos = source === 'export'
+      ? [document.getElementById('dv-e2e-export') as HTMLVideoElement]
+      : [...document.querySelectorAll<HTMLVideoElement>('[data-testid="dv-timeline-viewer"] video')]
+    const position = (): number => {
+      if (source === 'export') return videos[0]?.currentTime ?? 0
+      const [minutes = '0', seconds = '0'] = (document.querySelector('[data-testid="dv-timeline-time"]')?.textContent ?? '').split('/')[0]?.trim().split(':') ?? []
+      return Number(minutes) * 60 + Number(seconds)
+    }
+    const updates: number[] = []
+    let done = false
+    const record = (at: number): void => {
+      const now = position()
+      if (Math.abs(now - boundary) <= 0.5) updates.push(at)
+      if (now < boundary + 0.6 || done) return
+      done = true
+      updates.sort((a, b) => a - b)
+      resolve(Math.max(0, ...updates.slice(1).map((at, index) => at - (updates[index] ?? at))))
+    }
+    for (const video of videos) {
+      const onFrame = (_now: number, frame: VideoFrameCallbackMetadata): void => {
+        if (done) return
+        if (video.style.visibility !== 'hidden') record(frame.expectedDisplayTime)
+        video.requestVideoFrameCallback(onFrame)
+      }
+      video.requestVideoFrameCallback(onFrame)
+    }
+    if (source === 'viewer') new MutationObserver(() => { if (!done) record(performance.now()) }).observe(document.querySelector('[data-testid="dv-timeline-viewer"]') ?? document.body, { subtree: true, attributes: true, attributeFilter: ['style'] })
+    setTimeout(() => { if (!done) resolve(Number.POSITIVE_INFINITY) }, 15_000)
+  }), { source, boundary })
+  await start()
+  return await measuring
 }
 
 /** @returns the positions of the clips on V1 in track order, the selected one marked with `*`. */
@@ -1120,6 +1167,51 @@ describe('timeline stories', () => {
     expect(Date.now() - started).toBeLessThan(9000)
     expect([...shown].sort()).toEqual([...new Set(project.clipAssets)].sort())
     await expect.poll(() => page.getByRole('button', { name: '播放', exact: true }).count(), { timeout: 2000 }).toBe(1)
+  })
+
+  it('playback across a clip boundary holds a frame no longer than the exported video does', async () => {
+    // Two 2 s clips at 1280×720 with an audio track, like rendered takes and unlike the fake backend's silent videos.
+    const created = await harness.api.post('/api/dv/projects', { title: 'timeline-boundary', surface: 'timeline' }) as { id: string }
+    const clipAssets: string[] = []
+    for (const tone of [440, 660]) {
+      const video = execFileSync(FFMPEG, [
+        '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=1280x720:r=24:d=2', '-f', 'lavfi', '-i', `sine=f=${String(tone)}:d=2`,
+        '-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-b:v', '2M', '-c:a', 'libopus', '-shortest', '-f', 'webm', 'pipe:1',
+      ], { maxBuffer: 64 * 1024 * 1024 })
+      const imported = await runOperation(created.id, 'asset.import', { base64: video.toString('base64'), mime: 'video/webm', name: `tone-${String(tone)}.webm` })
+      clipAssets.push(imported.outputs[0] ?? '')
+    }
+    await runOperation(created.id, 'timeline.create', { timeline: 't1', assets: clipAssets })
+    const page = await openPage()
+    await gotoProject(page, created.id, 'timeline')
+    await expect.poll(() => viewerAsset(page)).toBe(clipAssets[0])
+    await page.getByRole('button', { name: '导出' }).click()
+    const link = page.locator('[data-testid="dv-timeline-exported"]')
+    await link.waitFor({ timeout: 60_000 })
+    const exportId = /\/dv\/assets\/([0-9a-f]+)/.exec(await link.getAttribute('href') ?? '')?.[1] ?? ''
+    // The export is H.264, which the open-source Chromium build cannot decode; VP9 keeps its frame timestamps.
+    const exported = execFileSync(FFMPEG, [
+      '-loglevel', 'error', '-i', join(harness.stateRoot, 'assets', 'objects', exportId),
+      '-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-b:v', '2M', '-c:a', 'libopus', '-f', 'webm', 'pipe:1',
+    ], { maxBuffer: 64 * 1024 * 1024 })
+    await page.evaluate((base64) => {
+      const video = document.createElement('video')
+      video.id = 'dv-e2e-export'
+      video.muted = true
+      video.src = `data:video/webm;base64,${base64}`
+      Object.assign(video.style, { position: 'fixed', inset: '0', width: '100%', height: '100%', zIndex: '99999' })
+      document.body.append(video)
+    }, exported.toString('base64'))
+    await page.waitForFunction(() => (document.getElementById('dv-e2e-export') as HTMLVideoElement | null)?.readyState === 4)
+    const exportGap = await longestFrameGap(page, 'export', 2, async () => {
+      await page.evaluate(() => (document.getElementById('dv-e2e-export') as HTMLVideoElement).play())
+    })
+    await page.evaluate(() => { document.getElementById('dv-e2e-export')?.remove() })
+    const viewerGap = await longestFrameGap(page, 'viewer', 2, async () => {
+      await page.getByRole('button', { name: '播放', exact: true }).click()
+    })
+    // One frame at 24 fps of slack: the next clip's second frame can arrive up to one frame late after the swap.
+    expect(viewerGap, `export ${exportGap.toFixed(1)} ms`).toBeLessThanOrEqual(exportGap + 1000 / 24)
   })
 
   it('scrubbing the ruler moves the playhead, the time, and the viewer frame', async () => {
