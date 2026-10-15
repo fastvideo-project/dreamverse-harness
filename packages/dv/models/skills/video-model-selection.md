@@ -6,7 +6,7 @@ Each shot of a plan renders with one video model. Each video model has a key of 
 
 1. Find the task of the shot.
    - Use `t2v` when the shot has only a prompt.
-   - Use `ref2v` when the shot has reference media and a prompt. A `ref2v` shot can also have a first frame.
+   - Use `ref2v` when the prompt of the shot cites reference images (`@[<label>](dv:asset/<AssetId>)`). A `ref2v` shot can also have a first frame.
 2. If the user named a model, call `dv_models_list` with the task of the shot. Use the entry of that model. If that model has no entry for the task, tell the user. Go to step 9.
 3. Call `dv_models_list` with the task of the shot. Each model that `dv_models_list` returns is a candidate.
 4. Call `dv_models_get` for each candidate.
@@ -14,7 +14,7 @@ Each shot of a plan renders with one video model. Each video model has a key of 
    - duration;
    - aspect ratio;
    - resolution;
-   - number of references and media type of each reference;
+   - number of references: the distinct images that the prompt cites;
    - a first frame, when the shot continues the previous shot.
 6. If one candidate remains, use it. Go to step 9.
 7. If more than one candidate remains, compare their descriptions. If the choice depends on a preference of the user, ask the user. Show the provider, the model and the description of each option.

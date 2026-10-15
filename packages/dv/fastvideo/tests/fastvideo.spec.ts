@@ -168,17 +168,17 @@ describe('dv-fastvideo', () => {
       { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', gpuSecondsPerVideoSecond: 4 },
       { modality: 'video', task: 't2v', provider: 'fastvideo', model: 'fasth3', gpuSecondsPerVideoSecond: 1.5 },
     ])
-    expect(fasth3(ctx, 'ref2v').description).toContain('Needs at least one reference.')
+    expect(fasth3(ctx, 'ref2v').description).toContain('Needs at least one reference image.')
     expect(fasth3(ctx, 't2v').description).toContain('a face that must stay the same needs fasth3 for task ref2v')
     expect(await fasth3(ctx, 'ref2v').facts()).toEqual({
       modelId: 'fake-ref2va', aspectRatios: ['16:9'], resolutions: ['720p'], frameSizes: { '16:9': { '720p': [1344, 768] } },
       minDurationSec: 5, maxDurationSec: 6, numFramesByDurationSec: { 5: 124, 6: 158 },
     })
     expect(await fasth3(ctx, 't2v').facts()).toMatchObject({ modelId: 'fake-t2va' })
-    // The first image frame takes one of the server's references and one of its images; audio the server does not accept.
+    // The first image frame takes one of the server's references and one of its images; the references are images only.
     expect(await fasth3(ctx, 'ref2v').schema()).toEqual({
       inputs: {
-        reference: { min: 1, max: 3, media_types: { image: { max: 2 }, video: { max: 2 }, audio: { max: 0 } } },
+        reference: { min: 1, max: 3, media_types: { image: { max: 2 } } },
         first_frame: { min: 0, max: 1, media_types: { image: {} } },
       },
       extra: {},
@@ -193,18 +193,24 @@ describe('dv-fastvideo', () => {
     const ctx = await start({ ref2v: reference.url, t2v: text.url })
     const [referenceTask, textTask] = [fasth3(ctx, 'ref2v'), fasth3(ctx, 't2v')]
     const asset = (bytes: string, mime: string) => importAsset(ctx, Buffer.from(bytes), mime)
-    const [video, otherVideo] = [asset('VID1', 'video/mp4'), asset('VID2', 'video/mp4')]
+    const video = asset('VID1', 'video/mp4')
     const [image, otherImage, thirdImage] = [asset('IMG1', 'image/png'), asset('IMG2', 'image/png'), asset('IMG3', 'image/png')]
     const [audio, json] = [asset('AUD1', 'audio/mpeg'), asset('{}', 'application/json')]
     const check = (entry: ModelEntry, references: AssetId[], firstFrame: AssetId | null) =>
       entry.validateGenerationRequest(request(references, firstFrame))
-    expect(await check(referenceTask, [video, image], image)).toEqual([])
-    expect(await check(referenceTask, [], null)).toEqual(['Its reference input needs at least 1 of type image, video, audio; this shot has 0.'])
-    expect(await check(referenceTask, [json], null)).toEqual([`Its reference input takes assets of type image, video, audio; asset ${json} is of type application.`])
-    // The server lists no audio, so its audio limit is 0; the first frame takes one of the server's three references and two images.
-    expect(await check(referenceTask, [audio], null)).toEqual(['Its reference input takes at most 0 of type audio; this shot has 1.'])
-    expect(await check(referenceTask, [video, otherVideo, image, otherImage], null)).toEqual(['Its reference input takes at most 3 assets; this shot has 4.'])
+    expect(await check(referenceTask, [image, otherImage], image)).toEqual([])
+    expect(await check(referenceTask, [], null)).toEqual(['Its reference input needs at least 1 of type image; this shot has 0.'])
+    expect(await check(referenceTask, [json], null)).toEqual([`Its reference input takes assets of type image; asset ${json} is of type application.`])
+    // A prompt cites only images; the first frame takes one of the server's three references and one of its three images.
+    expect(await check(referenceTask, [video, audio], null)).toEqual([
+      `Its reference input takes assets of type image; asset ${video} is of type video.`,
+      `Its reference input takes assets of type image; asset ${audio} is of type audio.`,
+    ])
     expect(await check(referenceTask, [image, otherImage, thirdImage], null)).toEqual(['Its reference input takes at most 2 of type image; this shot has 3.'])
+    expect(await check(referenceTask, [image, otherImage, thirdImage, json], null)).toEqual([
+      `Its reference input takes assets of type image; asset ${json} is of type application.`,
+      'Its reference input takes at most 3 assets; this shot has 4.', 'Its reference input takes at most 2 of type image; this shot has 3.',
+    ])
     expect(await check(referenceTask, [image], video)).toEqual([`Its first_frame input takes assets of type image; asset ${video} is of type video.`])
     expect(await check(textTask, [], null)).toEqual([])
     expect(await check(textTask, [image], video)).toEqual(['It takes no reference input; this shot has 1.', 'It takes no first_frame input; this shot has 1.'])
@@ -221,22 +227,24 @@ describe('dv-fastvideo', () => {
     ])
   })
 
-  it('sends each task to its own server: the references with their media types, then the first frame, or none', async () => {
+  it('sends each task to its own server: the prompt with Picture labels, the references with their media types, then the first frame', async () => {
     const [reference, text] = await Promise.all([startFakeServer(REFERENCE_CAPABILITIES), startFakeServer(TEXT_CAPABILITIES)])
     const ctx = await start({ ref2v: reference.url, t2v: text.url })
-    const video = importAsset(ctx, Buffer.from('VID1'), 'video/mp4')
     const image = importAsset(ctx, Buffer.from('IMG1'), 'image/png')
-    const audio = importAsset(ctx, Buffer.from('AUD1'), 'audio/mpeg')
+    const other = importAsset(ctx, Buffer.from('IMG2'), 'image/png')
     const first = importAsset(ctx, Buffer.from('FIRST'), 'image/png')
-    const events = await collect(fasth3(ctx, 'ref2v').render(request([video, image, audio], first)))
+    // Each citation becomes the label of its asset's position in the references; a citation of no reference becomes its label.
+    const prompt = `@[Mia](dv:asset/${image}) meets @[Bo](dv:asset/${other}), then @[Mia again](dv:asset/${image}) reads @[a note](dv:record/r1)`
+    const events = await collect(fasth3(ctx, 'ref2v').render({ ...request([image, other], first), prompt }))
     expect(reference.requests[0]).toEqual({
-      prompt: '<Picture 1> smiles', width: 1344, height: 768, num_frames: 124, seed: 7, return_last_frame: true,
-      references: [encodeWireReference('video', 'VID1'), encodeWireReference('image', 'IMG1'), encodeWireReference('audio', 'AUD1'), encodeWireReference('image', 'FIRST')],
+      prompt: '<Picture 1> meets <Picture 2>, then <Picture 1> reads a note', width: 1344, height: 768, num_frames: 124, seed: 7,
+      return_last_frame: true,
+      references: [encodeWireReference('image', 'IMG1'), encodeWireReference('image', 'IMG2'), encodeWireReference('image', 'FIRST')],
     })
     expect(events.map(event => event.kind)).toEqual(['last_frame', 'video_start', 'chunk', 'done'])
     expect(events[2]).toEqual({ kind: 'chunk', bytes: Buffer.from('VIDEO') })
-    await collect(fasth3(ctx, 'ref2v').render(request([video], null), new AbortController().signal))
-    expect(reference.requests[1]?.['references']).toEqual([encodeWireReference('video', 'VID1')])
+    await collect(fasth3(ctx, 'ref2v').render(request([image], null), new AbortController().signal))
+    expect(reference.requests[1]?.['references']).toEqual([encodeWireReference('image', 'IMG1')])
     await collect(fasth3(ctx, 't2v').render(request([], null)))
     expect(text.requests).toHaveLength(1)
     expect(text.requests[0]?.['references']).toEqual([])
@@ -248,7 +256,7 @@ describe('dv-fastvideo', () => {
     expect(ctx.dvModels.list().map(entry => entry.task)).toEqual(['ref2v'])
     const skill = await ctx.skills.get('fasth3-reference-prompting')
     expect(skill?.description).toContain('model fasth3 for task ref2v')
-    expect(skill?.content).toContain('Every shot needs at least one reference.')
+    expect(skill?.content).toContain('Every shot cites at least one reference image.')
     expect(await ctx.skills.get('fasth3-text-prompting')).toBeUndefined()
     const entry = [...ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-fastvideo.mjs'))
     await entry?.fiber?.dispose()

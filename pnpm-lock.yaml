@@ -7269,6 +7269,9 @@ importers:
 
   packages/dv/models:
     dependencies:
+      '@deepseek-ai/dsh-brand':
+        specifier: workspace:*
+        version: link:../../util/brand
       '@deepseek-ai/dsh-llm':
         specifier: workspace:*
         version: link:../../llm/llm

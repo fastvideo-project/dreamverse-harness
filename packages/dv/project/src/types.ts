@@ -238,6 +238,11 @@ export interface OperationInput {
   many?: boolean
   /** Whether the role also accepts character, location or style versions (`<id>@<version>`) besides assets. */
   bible?: boolean
+  /**
+   * Whether the operation reads the role's references from the call's params (`OperationSpec.inputsFromParams`). A
+   * caller passes no input of the role, and the agent tool does not list it.
+   */
+  fromParams?: boolean
 }
 
 /** One output of an operation, in the order its `execute` returns them. */
@@ -332,6 +337,13 @@ export interface OperationSpec {
    * @returns the line.
    */
   summarize(record: ProjectRecord): string
+  /**
+   * The inputs of the roles marked `fromParams`, read from a call's params. The runner adds them after the caller's
+   * inputs for every caller, before it resolves the inputs.
+   * @param params - the call's params, after the runner validated them.
+   * @returns the inputs.
+   */
+  inputsFromParams?(params: Record<string, unknown>): RunRequest['inputs']
   /** Tool-only arguments besides `params`; Project removes them from the run request's params before `prepareToolCall`. */
   toolParams?: ParameterSchemaSpec
   /**

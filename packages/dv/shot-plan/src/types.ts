@@ -17,15 +17,10 @@ export type PlanId = Branded<'DvPlanId'>
 
 /** One shot of a plan, in the snake_case of tool params. */
 export interface Shot {
-  /** The complete prompt of the shot. */
+  /** The complete prompt of the shot; in task `ref2v` it cites the shot's reference assets (`@[<label>](dv:asset/<AssetId>)`). */
   prompt: string
   /** Seconds; the render uses the model minimum when absent. */
   duration_sec?: number
-  /**
-   * Character, location or style versions (`c1@1`) or asset IDs this shot uses instead of the plan's references; only for
-   * task `ref2v`.
-   */
-  references?: string[]
   seed?: number
   /** The modality of the model that renders the shot; with `task`, `provider` and `model`, its key in the model catalog. */
   modality: ModalityId
@@ -44,8 +39,6 @@ export interface Shot {
 /** The shots and settings of one plan version, which `plan.approve` turns into shot renders. */
 export interface Plan {
   title?: string
-  /** References every shot of task `ref2v` carries unless it names its own: `<id>@<version>` or asset IDs. */
-  references?: string[]
   aspect_ratio?: string
   resolution?: string
   seed?: number

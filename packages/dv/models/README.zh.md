@@ -75,15 +75,15 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 
 | `RenderRequest` 字段 | 含义 |
 | --- | --- |
-| `prompt` | 文本提示词。 |
-| `references` | 参考素材的素材 ID，按输入顺序排列。没有参考素材的任务中该列表为空。 |
+| `prompt` | 带引用的文本提示词。一个引用写作 `@[<label>](dv:asset/<AssetId>)`。 |
+| `references` | 提示词引用的素材的 ID，每个只出现一次，按首次引用的顺序。提示词没有引用时，列表为空。 |
 | `firstFrame` | 视频起始图像的素材 ID，或 `null`。 |
 | `frameWidth`、`frameHeight` | 以像素为单位的帧尺寸。消费方从 facts 的 `frameSizes` 中取得它。 |
 | `numFrames` | 帧数。消费方从 facts 的 `numFramesByDurationSec` 中取得它。 |
 | `seed` | 随机种子。 |
 | `extra` | 模型自有参数的值。`schema()` 描述它们，`validateGenerationRequest` 检查它们。 |
 
-`references` 和 `firstFrame` 承载 `dv_shot_render` 的 `reference` 和 `first_frame` 输入。
+`references` 和 `firstFrame` 承载 `dv_shot_render` 的 `reference` 和 `first_frame` 输入。`parsePromptCitations`、`citedAsset`、`promptAssets` 和 `replacePromptCitations` 读取并替换提示词中的引用。提供方插件在模型读取提示词之前，把每个引用换成它的模型的写法。
 
 | `RenderModelFacts` 字段 | 含义 |
 | --- | --- |
@@ -121,10 +121,10 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 - 提供方名称和后端的协议。
 - 其 `Config` 中的部署值，如每个模型和任务的服务器 URL 和 GPU 费率。
 - 它注册的每个条目的所有成员。
-- 把 `RenderRequest` 翻译成后端请求。插件从 `dvAssetPool` 读取每个素材的字节和媒体类型。插件以后端的格式发送它们。
+- 把 `RenderRequest` 翻译成后端请求。插件从 `dvAssetPool` 读取每个素材的字节和媒体类型。插件以后端的格式发送它们。插件把 `prompt` 中的每个引用换成它的模型的写法。
 - 其模型的可选提示词 skill。
 
-本包负责键、条目约定、请求和流类型、`dvModels` 服务、两个工具和选择 skill。它不包含任何特定模型的数据。
+本包负责键、条目约定、请求和流类型、`prompt` 的引用格式及其解析器、`dvModels` 服务、两个工具和选择 skill。它不包含任何特定模型的数据。
 
 <a id="add-a-provider-or-a-model"></a>
 ### 添加提供方或模型
@@ -160,6 +160,7 @@ DSH skill 注册表（`skills`）挂载期间，本服务从 `skills/video-model
 | 文件 | 内容 |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `Config`、`formatModelKey`、`DvModels` 服务和两个工具 |
+| [`src/citations.ts`](src/citations.ts) | `PromptCitation`、`parsePromptCitations`、`citedAsset`、`promptAssets`、`replacePromptCitations` |
 | [`src/types.ts`](src/types.ts) | `ModalityMap`、`TaskMap`、`ModelKey`、`RenderModelFacts`、`RenderRequest`、`RenderStreamEvent`、`ModelEntry`、`ModelFilter` |
 | [`skills/video-model-selection.md`](skills/video-model-selection.md) | 模型选择 skill |
 | [`tests/models.spec.ts`](tests/models.spec.ts) | Loader 组合中的模型目录、工具、skill 和系统提示词 |

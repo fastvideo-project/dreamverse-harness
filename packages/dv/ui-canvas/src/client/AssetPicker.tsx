@@ -1,9 +1,8 @@
 /**
  * The asset pool as the canvas editors use it, drawn with the asset pool panel of `@dv/ui-asset-pool`: the picker that
- * adds references (the project's characters, locations and styles, then the asset pool with its import drop zone), the
- * preview of one asset, and the thumbnail of an image or a video asset. This file is the canvas's only import of
- * `@dv/ui-asset-pool`. The picker and the preview render on `document.body` and close on Escape before the canvas sees
- * the key, so the editor beneath them stays open.
+ * adds references (the asset pool with its import drop zone), the preview of one asset, and the thumbnail of an image
+ * or a video asset. This file is the canvas's only import of `@dv/ui-asset-pool`. The picker and the preview render on
+ * `document.body` and close on Escape before the canvas sees the key, so the editor beneath them stays open.
  *
  * @module @dv/ui-canvas/AssetPicker
  */
@@ -13,9 +12,8 @@ import { createPortal } from 'react-dom'
 import { AssetsPanel, Preview } from '@dv/ui-asset-pool/src/client/AssetsPanel.tsx'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import type { DvClient } from '@dv/ui-kit/api.ts'
-import type { Asset, WireState } from '@dv/ui-kit/types.ts'
+import type { Asset } from '@dv/ui-kit/types.ts'
 import { useZoomPresence } from '@dv/ui-kit/zoom.ts'
-import { bibleItems } from './graph.ts'
 import type { CanvasTranslate } from './NodeCard.tsx'
 
 const overlay: CSSProperties = {
@@ -25,13 +23,6 @@ const dialog: CSSProperties = {
   display: 'flex', flexDirection: 'column', width: 'min(880px, 90vw)', height: '80vh', overflow: 'hidden', background: 'var(--dv-surface-1)',
   color: 'var(--dv-text)', borderRadius: 'var(--dv-radius-xl)', boxShadow: '0 0 0 1px var(--dv-line-strong), var(--dv-shadow-2)', fontSize: 13, lineHeight: '20px',
 }
-const sectionTitle: CSSProperties = { margin: '0 0 8px', fontSize: 12, lineHeight: '16px', fontWeight: 500, color: 'var(--dv-text-2)' }
-const grid: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 8 }
-const tile: CSSProperties = {
-  display: 'flex', flexDirection: 'column', gap: 4, padding: 4, border: 'none', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-3)',
-  color: 'var(--dv-text)', fontFamily: 'inherit', fontSize: 12, lineHeight: '16px', cursor: 'pointer', textAlign: 'left',
-}
-const tileMedia: CSSProperties = { width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 'var(--dv-radius-sm)', display: 'block' }
 const button: CSSProperties = {
   height: 32, border: 'none', borderRadius: 'var(--dv-radius-md)', padding: '0 12px', fontFamily: 'inherit', fontSize: 13, lineHeight: '20px', fontWeight: 500,
   cursor: 'pointer',
@@ -70,73 +61,41 @@ export function AssetMedia(props: { asset: Asset | undefined; style: CSSProperti
 
 /** Props of {@link AssetPicker}. */
 export interface AssetPickerProps {
-  state: WireState
   client: DvClient
   project: string
   /** The chat session the canvas sits beside, recorded as the `session` of the picker's imports. */
   session: string | null
   t: CanvasTranslate
-  /** Whether the picker also offers the latest version of each character, location and style. */
-  withBible: boolean
-  /** The references the editor already holds; a story bible version among them is not offered again. */
-  chosen: readonly string[]
-  /** Receives the picked references in pick order: asset IDs, and `<id>@<version>` for story bible versions. */
-  onConfirm: (refs: string[]) => void
+  /** Receives the picked assets in pick order. */
+  onConfirm: (assets: Asset[]) => void
   onCancel: () => void
 }
 
 /**
- * The picker: the project's characters, locations and styles when `withBible`, then the asset pool panel, whose clicks pick assets.
- * A click toggles an item; the confirm button hands over every picked reference.
- * @param props - the project, the offered kinds, and the callbacks.
+ * The picker: the asset pool panel, whose clicks pick assets. A click toggles an asset; the confirm button hands over
+ * every picked asset.
+ * @param props - the project and the callbacks.
  * @returns the dialog.
  */
 export function AssetPicker(props: AssetPickerProps): ReactNode {
   const { t, onCancel } = props
-  const [picked, setPicked] = useState<string[]>([])
+  const [picked, setPicked] = useState<Asset[]>([])
   useEscapeFirst(true, onCancel)
-  const toggle = (ref: string): void => {
-    setPicked(current => current.includes(ref) ? current.filter(other => other !== ref) : [...current, ref])
+  const toggle = (asset: Asset): void => {
+    setPicked(current => current.some(other => other.id === asset.id)
+      ? current.filter(other => other.id !== asset.id)
+      : [...current, asset])
   }
-  const assets = new Map(props.state.assets.map(asset => [asset.id, asset]))
-  const bible = props.withBible
-    ? bibleItems(props.state).flatMap(({ id, versions }) => {
-      const latest = versions.at(-1)
-      const ref = latest === undefined ? '' : `${id}@${String(latest.version)}`
-      if (latest === undefined || props.chosen.includes(ref)) return []
-      return [{ ref, name: latest.name || id, cover: assets.get(latest.references[0] ?? '') }]
-    })
-    : []
-  const pickedSet = new Set(picked)
   // The asset pool panel marks each tile with `data-asset-id`; the picker rings the picked ones.
-  const pickedRing = picked.length === 0
-    ? null
-    : `${picked.map(ref => `[data-testid="dv-canvas-asset-picker"] [data-asset-id="${ref.replace(/["\\]/g, '\\$&')}"]`).join(',')}{box-shadow:0 0 0 2px var(--dv-accent)}`
+  const pickedTiles = picked.map(asset => `[data-testid="dv-canvas-asset-picker"] [data-asset-id="${asset.id.replace(/["\\]/g, '\\$&')}"]`)
+  const pickedRing = picked.length === 0 ? null : `${pickedTiles.join(',')}{box-shadow:0 0 0 2px var(--dv-accent)}`
   return createPortal(
     <div role="dialog" aria-modal="true" aria-label={t('picker.title')} data-testid="dv-canvas-asset-picker" style={overlay} onClick={onCancel}>
       <div style={dialog} onClick={(event) => { event.stopPropagation() }}>
         <h2 style={{ margin: 0, padding: '16px 16px 0', fontSize: 16, lineHeight: '24px', fontWeight: 600 }}>{t('picker.title')}</h2>
-        {bible.length === 0
-          ? null
-          : (
-            <section style={{ padding: '12px 16px 0' }}>
-              <h3 style={sectionTitle}>{t('picker.bible')}</h3>
-              <div style={grid}>
-                {bible.map(item => (
-                  <button
-                    key={item.ref} type="button" aria-pressed={pickedSet.has(item.ref)} onClick={() => { toggle(item.ref) }}
-                    style={{ ...tile, boxShadow: pickedSet.has(item.ref) ? '0 0 0 2px var(--dv-accent)' : '0 0 0 1px var(--dv-line)' }}
-                  >
-                    <AssetMedia asset={item.cover} style={tileMedia} />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
         <div style={{ flex: 1, minHeight: 0 }}>
           {pickedRing === null ? null : <style>{pickedRing}</style>}
-          <AssetsPanel projectId={props.project} session={props.session} client={props.client} onOpen={(asset) => { toggle(asset.id) }} />
+          <AssetsPanel projectId={props.project} session={props.session} client={props.client} onOpen={toggle} />
         </div>
         <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 16px', borderTop: '1px solid var(--dv-line)' }}>
           <button type="button" className="dv-canvas-btn" style={{ ...button, border: '1px solid var(--dv-line-strong)', color: 'var(--dv-text)' }} onClick={onCancel}>{t('picker.cancel')}</button>

@@ -131,6 +131,14 @@ describe('agent tools', () => {
     expect(descriptionOf('dv_shot_render'))
       .toBe('A test operation. Uses the GPU. Repeating a call with the same inputs and params reuses the earlier result.')
     expect(descriptionOf('dv_inspect_asset')).toBe('A test operation. Runs on the CPU. A read that writes no record.')
+    // A role that the operation reads from its params takes no argument; without other roles the tool has no `inputs`.
+    const removePlace = fixture.project.registerOperation(operation({
+      name: 'asset.place', component: 'asset',
+      inputs: { asset: { type: 'any', description: 'The asset.', fromParams: true } }, inputsFromParams: () => [],
+    }))
+    const placeArgs = fixture.context.tools.schemas().find(tool => tool.name === 'dv_asset_place')?.parameters as { properties: object }
+    expect(Object.keys(placeArgs.properties)).not.toContain('inputs')
+    removePlace()
     removeRender()
     removeRead()
     remove()

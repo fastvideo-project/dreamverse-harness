@@ -156,6 +156,34 @@ describe('Runner', () => {
     expect((await running).record?.status).toBe('done')
   })
 
+  it('reads the inputs of a fromParams role from the params and refuses them from the caller', async () => {
+    const m = startModules()
+    const project = await createTestProject(m)
+    const kite = m.assets.add('kite')
+    const seen: RunRequest['inputs'][] = []
+    m.runner.registerOperation(operation({
+      name: 'shot.render', component: 'shot',
+      inputs: { reference: { type: 'image', description: 'A reference.', many: true, fromParams: true } },
+      inputsFromParams: params => [{ role: 'reference', ref: { asset: brandString<AssetId>(String(params.prompt)) } }],
+      precondition: (call) => {
+        seen.push(call.inputs)
+        return Promise.resolve()
+      },
+    }))
+
+    const result = await m.runner.run(request(project, 'shot.render', userOrigin(), { params: { prompt: kite } }))
+
+    expect(seen).toEqual([[{ role: 'reference', ref: { asset: kite } }]])
+    expect(result.record?.inputs).toEqual([{ role: 'reference', ref: { asset: kite }, resolved_asset: kite }])
+    const before = files(m, project)
+    await expect(m.runner.run(request(project, 'shot.render', userOrigin(), {
+      params: { prompt: kite }, inputs: [{ role: 'reference', ref: { asset: kite } }],
+    }))).rejects.toMatchObject({ code: 'invalid_inputs' })
+    await expect(m.runner.run(request(project, 'shot.render', userOrigin(), { params: { prompt: 'no-such-asset' } })))
+      .rejects.toMatchObject({ code: 'unknown_asset' })
+    expect(files(m, project)).toBe(before)
+  })
+
   it('refuses a call that the operation\'s precondition refuses, before writing', async () => {
     const m = startModules()
     const project = await createTestProject(m)

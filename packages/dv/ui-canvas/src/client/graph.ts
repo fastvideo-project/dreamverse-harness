@@ -8,6 +8,7 @@
 import type {
   Character, Clip, Location, NodePosition, PlanVersion, ProjectRecord, RecordInput, RecordInputRef, StoryBibleState, Style, WireState,
 } from '@dv/ui-kit/types.ts'
+import { citedAssets } from '@dv/ui-kit/references.ts'
 import { isRenderOperation } from '@dv/ui-kit/state.ts'
 
 /** What a node represents; the canvas colors nodes by it. */
@@ -111,8 +112,8 @@ function approvalLayout(version: PlanVersion, records: ReadonlyMap<string, Proje
  *   plays a take of that shot), else the newest done take of that shot and version or the earlier take the version's
  *   approval reused, else the newest take still rendering;
  * - every take that is not part of a plan, with its retakes;
- * - every take whose outputs are in use: played by a timeline clip, named as a reference by a current story bible or plan
- *   version, or read as an input by a drawn take.
+ * - every take whose outputs are in use: played by a timeline clip, named as a reference by a current story bible
+ *   version, cited by a shot prompt of a plan's latest version, or read as an input by a drawn take.
  * Takes of shots a later plan version removed, and takes of earlier versions that nothing uses, are left out.
  * @param state - a project state.
  * @returns the record IDs.
@@ -155,8 +156,7 @@ function shownTakes(state: WireState): Set<string> {
   for (const [planId, versions] of Object.entries(state.components.plan.plans)) {
     const latest = versions.at(-1)
     if (latest === undefined) continue
-    const references = [...latest.references ?? [], ...latest.shots.flatMap(shot => shot.references ?? [])]
-    for (const reference of references) use(proj.created_by[reference])
+    for (const asset of latest.shots.flatMap(shot => citedAssets(shot.prompt))) use(proj.created_by[asset])
     const layout = approvalLayout(latest, records)
     const pointed = layout?.inputs.filter(input => input.role === 'clip').map(input => 'record' in input.ref ? input.ref.record : undefined) ?? []
     const timelineId = layout?.params['timeline'] ?? 't1'
@@ -226,6 +226,16 @@ export function referenceText(ref: RecordInputRef): string {
   if ('character' in ref) return `${ref.character}@${String(ref.version)}`
   if ('location' in ref) return `${ref.location}@${String(ref.version)}`
   return `${ref.style}@${String(ref.version)}`
+}
+
+/**
+ * The inputs that a request to render a take again repeats from the take's record, as reference text: every input
+ * except `reference`, which `shot.render` derives from the prompt's citations and refuses from callers.
+ * @param record - the take's record.
+ * @returns the inputs, such as `first_frame`, in record order.
+ */
+export function renderRequestInputs(record: ProjectRecord): Array<{ role: string; ref: string }> {
+  return record.inputs.filter(input => input.role !== 'reference').map(input => ({ role: input.role, ref: referenceText(input.ref) }))
 }
 
 /**

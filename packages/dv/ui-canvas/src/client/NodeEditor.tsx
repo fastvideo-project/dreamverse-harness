@@ -7,12 +7,14 @@
  * failed take, its model and generation task, its prompt, reference chips (task `ref2v` only), duration, and seed,
  * and offers "渲染新版本" (a user `shot.render` record in the take's model and task, whose `based_on` is the take);
  * while the render starts the button is disabled and reads 渲染中…, and a refused request shows its error under the
- * button. "添加素材" opens the asset picker; a reference chip opens the preview of its asset, or the editor of its character,
- * location or style over this one. A character, location or style shows its references, adds assets from the picker, and
- * removes one reference while it has more than one. A plan switches between its versions (第 1 版,
- * 第 2 版, …) and shows the chosen version's approval status, its reference assets, and one card per shot with exactly
- * what the plan holds: duration, model and task, reference assets, whether the shot continues the previous shot, and the
- * full prompt with each `Picture N` drawn as its image. A stale node offers "仍然保留", which keeps its record as it is
+ * button. The reference chips are the assets the prompt cites (`@[<label>](dv:asset/<AssetId>)`, see
+ * `@dv/ui-kit/references`) in the order of their first citation; a chip opens the preview of its asset, and its × removes
+ * every citation of the asset from the prompt. "添加素材" opens the asset picker and inserts one citation per picked
+ * asset at the prompt's cursor. A character, location or style shows its references, adds assets from the picker, and
+ * removes one reference while it has more than one. A plan switches between its versions (第 1 版, 第 2 版, …) and
+ * shows the chosen version's approval status and one card per shot with exactly what the plan holds: duration, model
+ * and task, the assets its prompt cites, whether the shot continues the previous shot, and the full prompt with each
+ * citation drawn as its asset's thumbnail and label. A stale node offers "仍然保留", which keeps its record as it is
  * (`proj.stale_accept`).
  */
 import { memo, useLayoutEffect, useRef, useState } from 'react'
@@ -20,12 +22,12 @@ import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent a
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import { dispatchCompose, type DvComposeRef } from '@dv/ui-kit/compose.ts'
-import { isPicture, pictureParts, referenceAssets, shotReferences } from '@dv/ui-kit/references.ts'
+import { assetCitation, citedAssets, insertAt, promptParts, removeCitations } from '@dv/ui-kit/references.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
-import type { OperationRequest, PlanVersion, ProjectAsset, Shot, WireState } from '@dv/ui-kit/types.ts'
+import type { Asset, OperationRequest, PlanVersion, ProjectAsset, Shot, WireState } from '@dv/ui-kit/types.ts'
 import { AssetMedia, AssetPicker, AssetPreview } from './AssetPicker.tsx'
-import { bibleVersions, referenceText } from './graph.ts'
+import { bibleVersions, renderRequestInputs } from './graph.ts'
 import type { CanvasNode } from './graph.ts'
 import { KIND_COLOR, kindLabel, mono, nodeTitle, planTotalSec } from './NodeCard.tsx'
 import type { CanvasTranslate } from './NodeCard.tsx'
@@ -49,8 +51,6 @@ export interface NodeEditorProps {
   onRender: (request: OperationRequest & { based_on: string }) => Promise<void>
   /** Take an asset off the project's canvas list; the asset stays in the asset pool. */
   onRemoveFromCanvas: (assetId: string) => void
-  /** Open the editor of another node over this one, which keeps its unsaved changes. */
-  onOpenNode: (nodeId: string) => void
   /** The zoom transition's ref for the panel, which grows out of the node and shrinks back into it. */
   zoomRef: (element: HTMLElement | null) => void
 }
@@ -233,7 +233,7 @@ const panel: CSSProperties = {
   boxShadow: '0 0 0 1px var(--dv-line-strong), var(--dv-shadow-2)', zIndex: 10, fontSize: 13, lineHeight: '20px',
 }
 const label: CSSProperties = { display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 500, color: 'var(--dv-text-2)', margin: '12px 0 4px' }
-/** A reference image in a reference chip, and one that stands in a shot prompt for its Picture N token. */
+/** A reference image in a reference chip, and one that stands in a shot prompt for its citation. */
 const chipThumb: CSSProperties = { width: 24, height: 24, objectFit: 'cover', borderRadius: 'var(--dv-radius-sm)', flex: 'none' }
 const promptThumb: CSSProperties = { height: '1.4em', width: 'auto', verticalAlign: 'middle', borderRadius: 3, margin: '0 2px' }
 const field: CSSProperties = {
@@ -265,36 +265,6 @@ const PROMPT_COLLAPSED_HEIGHT = 140
 function modelTaskLabel(model: string, task: string, t: CanvasTranslate): string {
   const taskText = task === 'ref2v' ? t('task.ref2v') : task === 't2v' ? t('task.t2v') : task
   return t('editor.modelTaskValue', { model, task: taskText })
-}
-
-/** One input of the edited record. */
-interface EditedInput {
-  role: string
-  ref: string
-}
-
-/**
- * The asset that shows a reference: the latest reference image of a character, location or style, or the asset itself.
- * @param state - the project state.
- * @param ref - reference text such as `hero@1` or an asset ID.
- * @returns the asset ID, or null.
- */
-function refImage(state: WireState, ref: string): string | null {
-  const bibleId = /^(.+)@\d+$/.exec(ref)?.[1]
-  if (bibleId !== undefined) return bibleVersions(state, bibleId)?.at(-1)?.references[0] ?? null
-  return state.assets.some(asset => asset.id === ref) ? ref : null
-}
-
-/**
- * A reference chip label: the name of the character, location or style, or the asset's name.
- * @param state - the project state.
- * @param ref - reference text.
- * @returns the label.
- */
-function refName(state: WireState, ref: string): string {
-  const bibleId = /^(.+)@\d+$/.exec(ref)?.[1]
-  if (bibleId !== undefined) return bibleVersions(state, bibleId)?.at(-1)?.name ?? bibleId
-  return state.assets.find(asset => asset.id === ref)?.name ?? ref
 }
 
 /** What {@link useEditorPlacement} gives the panel. */
@@ -457,7 +427,7 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
           </button>
         </div>
         {node.kind === 'plan' && plan !== undefined
-          ? <PlanHeader versions={planVersions} plan={plan} state={props.state} t={t} onChoose={setChosen} />
+          ? <PlanHeader versions={planVersions} plan={plan} t={t} onChoose={setChosen} />
           : null}
       </header>
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: node.kind === 'plan' ? 12 : 16 }}>
@@ -543,26 +513,29 @@ function AssetPanel(
  * @returns the element.
  */
 function TakeForm(
-  { node, state, client, project, session, t, onRender, onOpenNode, title }: NodeEditorProps & { title: string },
+  { node, state, client, project, session, t, onRender, title }: NodeEditorProps & { title: string },
 ): ReactNode {
   const record = node.record
   const [prompt, setPrompt] = useState(() => typeof record?.params['prompt'] === 'string' ? record.params['prompt'] : '')
-  const [inputs, setInputs] = useState<EditedInput[]>(
-    () => record?.inputs.map(input => ({ role: input.role, ref: referenceText(input.ref) })) ?? [],
-  )
+  // The prompt's cursor after the creator last moved it; null inserts picked citations at the end.
+  const cursor = useRef<number | null>(null)
   const [duration, setDuration] = useState(() => typeof record?.params['duration_sec'] === 'number' ? String(record.params['duration_sec']) : '')
   const [seed, setSeed] = useState(() => typeof record?.params['seed'] === 'number' ? String(record.params['seed']) : '')
   const [starting, setStarting] = useState(false)
   const [renderError, setRenderError] = useState<string | null>(null)
-  const references = inputs.filter(input => input.role === 'reference')
+  const references = citedAssets(prompt)
   const [picking, setPicking] = useState(false)
   const [previewed, setPreviewed] = useState<ProjectAsset | null>(null)
   const chips = useRef<HTMLDivElement | null>(null)
   const assets = new Map(state.assets.map(asset => [asset.id, asset]))
-  const addReferences = (refs: readonly string[]): void => {
+  const addReferences = (picked: readonly Asset[]): void => {
     setPicking(false)
-    const added = refs.filter(ref => !references.some(input => input.ref === ref))
-    setInputs([...inputs, ...added.map(ref => ({ role: 'reference', ref }))])
+    const citations = picked.map(assetCitation).join(' ')
+    const position = Math.min(cursor.current ?? prompt.length, prompt.length)
+    const next = insertAt(prompt, position, citations)
+    // The next insertion follows these citations.
+    cursor.current = next.length - (prompt.length - position)
+    setPrompt(next)
   }
   const operation = record?.operation ?? null
   const model = typeof record?.params['model'] === 'string' ? record.params['model'] : ''
@@ -580,7 +553,8 @@ function TakeForm(
     setRenderError(null)
     // On success the canvas closes the editor and selects the new take.
     onRender({
-      project, operation, inputs, params, surface: 'canvas', intent: t('intent.renderTake', { title }), based_on: record.id,
+      project, operation, inputs: renderRequestInputs(record), params, surface: 'canvas',
+      intent: t('intent.renderTake', { title }), based_on: record.id,
       ...session === null ? {} : { session },
     }).catch((error: unknown) => {
       setStarting(false)
@@ -597,25 +571,30 @@ function TakeForm(
       <span style={label}>{t('editor.modelTask')}</span>
       <span data-testid="dv-canvas-render-mode">{modelTaskLabel(model, task, t)}</span>
       <label style={label} htmlFor="dv-canvas-editor-prompt">{t('editor.prompt')}</label>
-      <textarea id="dv-canvas-editor-prompt" style={{ ...field, minHeight: 72, resize: 'vertical' }} value={prompt} onChange={(event) => { setPrompt(event.target.value) }} />
+      <textarea
+        id="dv-canvas-editor-prompt" style={{ ...field, minHeight: 72, resize: 'vertical' }} value={prompt}
+        onChange={(event) => { setPrompt(event.target.value) }} onSelect={(event) => { cursor.current = event.currentTarget.selectionEnd }}
+      />
       {textOnly ? null : <><span style={label}>{t('editor.references')}</span><div ref={chips} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-        {references.map((input) => {
-          const shown = refImage(state, input.ref)
-          const name = refName(state, input.ref)
-          const bibleId = /^(.+)@\d+$/.exec(input.ref)?.[1]
-          const asset = shown === null ? undefined : assets.get(shown)
-          // A character, location or style opens its editor; an asset opens its preview.
-          const open = (): void => {
-            if (bibleId !== undefined) onOpenNode(`bible:${bibleId}`)
-            else if (asset !== undefined) setPreviewed(asset)
-          }
+        {references.map((id) => {
+          const asset = assets.get(id)
+          const name = asset?.name ?? id
           return (
-            <span key={input.ref} style={chip}>
-              <button type="button" data-reference={input.ref} aria-label={t('editor.openReference', { name })} style={chipOpen} onClick={open}>
+            <span key={id} style={chip}>
+              <button
+                type="button" data-reference={id} aria-label={t('editor.openReference', { name })} style={chipOpen}
+                onClick={() => { if (asset !== undefined) setPreviewed(asset) }}
+              >
                 <AssetMedia asset={asset} style={{ width: 22, height: 22, borderRadius: 11, objectFit: 'cover' }} />
                 {name}
               </button>
-              <button type="button" aria-label={t('editor.removeReference', { name })} style={{ border: 'none', background: 'transparent', color: 'var(--dv-text-2)', cursor: 'pointer' }} onClick={() => { setInputs(inputs.filter(other => other !== input)) }}>×</button>
+              <button
+                type="button" aria-label={t('editor.removeReference', { name })}
+                style={{ border: 'none', background: 'transparent', color: 'var(--dv-text-2)', cursor: 'pointer' }}
+                onClick={() => { setPrompt(removeCitations(prompt, id)) }}
+              >
+                ×
+              </button>
             </span>
           )
         })}
@@ -624,8 +603,8 @@ function TakeForm(
       {picking
         ? (
           <AssetPicker
-            state={state} client={client} project={project} session={session} t={t} withBible
-            chosen={references.map(input => input.ref)} onConfirm={addReferences} onCancel={() => { setPicking(false) }}
+            client={client} project={project} session={session} t={t}
+            onConfirm={addReferences} onCancel={() => { setPicking(false) }}
           />
         )
         : null}
@@ -681,9 +660,9 @@ function BibleForm({ node, state, client, project, session, t, run }: NodeEditor
       intent, ...sessionField,
     }))
   }
-  const addReferences = (refs: readonly string[]): void => {
+  const addReferences = (picked: readonly Asset[]): void => {
     setPicking(false)
-    const added = refs.filter(ref => !references.includes(ref))
+    const added = picked.map(asset => asset.id).filter(id => !references.includes(id))
     if (added.length > 0) update([...references, ...added], t('intent.addReferences', { name }))
   }
   return (
@@ -722,8 +701,8 @@ function BibleForm({ node, state, client, project, session, t, run }: NodeEditor
       {picking
         ? (
           <AssetPicker
-            state={state} client={client} project={project} session={session} t={t} withBible={false}
-            chosen={references} onConfirm={addReferences} onCancel={() => { setPicking(false) }}
+            client={client} project={project} session={session} t={t}
+            onConfirm={addReferences} onCancel={() => { setPicking(false) }}
           />
         )
         : null}
@@ -735,68 +714,31 @@ function BibleForm({ node, state, client, project, session, t, run }: NodeEditor
   )
 }
 
-/** One reference asset of a plan or a shot, with the name of what it shows and its `Picture N` number. */
-interface NamedReference {
-  asset: ProjectAsset
-  name: string
-  /** The 1-based `Picture N` number of an image; null for an asset that is not an image. */
-  picture: number | null
-}
-
 /**
- * The reference assets that reference texts stand for, of any media type, in input order (see `referenceAssets`), each
- * with the name of the character, location or style version it belongs to, else the asset's name, and the images
- * numbered in `Picture N` order.
- * @param state - the branch state.
- * @param references - the reference texts, in input order.
- * @returns the reference assets.
- */
-function namedReferences(state: WireState, references: readonly string[]): NamedReference[] {
-  let pictures = 0
-  return references.flatMap((ref) => {
-    const bible = /^(.+)@(\d+)$/.exec(ref)
-    const bibleName = bible === null ? undefined : bibleVersions(state, bible[1] ?? '')?.find(version => version.version === Number(bible[2]))?.name
-    return referenceAssets(state, [ref])
-      .map(asset => ({ asset, name: bibleName || asset.name, picture: isPicture(asset) ? ++pictures : null }))
-  })
-}
-
-/**
- * The label of one reference: "Picture N · name" for an image, else its name.
- * @param reference - the reference.
- * @param t - the canvas translate.
- * @returns the label.
- */
-function referenceLabel(reference: NamedReference, t: CanvasTranslate): string {
-  return reference.picture === null ? reference.name : t('editor.picture', { number: reference.picture, name: reference.name })
-}
-
-/**
- * One reference asset as a chip: its media and its label.
- * @param props - the reference and the canvas translate.
+ * One reference asset as a chip: its media and its name.
+ * @param props - the asset.
  * @returns the element.
  */
-function ReferenceChip({ reference, t }: { reference: NamedReference; t: CanvasTranslate }): ReactNode {
+function ReferenceChip({ asset }: { asset: ProjectAsset }): ReactNode {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 32, padding: '0 10px 0 4px', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-3)', maxWidth: '100%' }}>
-      <AssetMedia asset={reference.asset} style={chipThumb} />
-      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{referenceLabel(reference, t)}</span>
+      <AssetMedia asset={asset} style={chipThumb} />
+      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{asset.name}</span>
     </span>
   )
 }
 
 /**
- * The plan's second header row: the version switch, the chosen version's approval status, its shot count, total
- * duration and aspect ratio, and the plan's reference assets. The status is approved, awaiting approval (the latest
- * version only), or replaced by the next version.
- * @param props - every version, the chosen one, the branch state, the canvas translate, and the version choice callback.
+ * The plan's second header row: the version switch, the chosen version's approval status, and its shot count, total
+ * duration and aspect ratio. The status is approved, awaiting approval (the latest version only), or replaced by the
+ * next version.
+ * @param props - every version, the chosen one, the canvas translate, and the version choice callback.
  * @returns the element.
  */
 function PlanHeader(
-  { versions, plan, state, t, onChoose }: {
+  { versions, plan, t, onChoose }: {
     versions: PlanVersion[]
     plan: PlanVersion
-    state: WireState
     t: CanvasTranslate
     onChoose: (version: number) => void
   },
@@ -810,7 +752,6 @@ function PlanHeader(
   else if (replaced) { status = t('editor.planReplaced', { version: plan.version + 1 }); tone = 'var(--dv-text-2)' }
   const total = planTotalSec(plan.shots)
   const summary = [t('node.planShots', { count: plan.shots.length }), ...total === null ? [] : [clockText(total)], ...plan.aspect_ratio === undefined ? [] : [plan.aspect_ratio]]
-  const references = namedReferences(state, plan.references ?? [])
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
       <div role="group" aria-label={t('editor.planVersions')} style={{ display: 'inline-flex', padding: 3, borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-3)' }}>
@@ -837,36 +778,21 @@ function PlanHeader(
         <span style={{ width: 6, height: 6, borderRadius: 9999, background: tone }} />{status}
       </span>
       <span style={{ fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }}>{summary.join(' · ')}</span>
-      <span style={{ flex: 1 }} />
-      {references.length === 0
-        ? null
-        : (
-          <span style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }}>
-            {t('editor.planReferences')}
-            {references.map((reference, index) => (
-              <span key={index} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <AssetMedia asset={reference.asset} style={{ ...chipThumb, boxShadow: '0 0 0 1px var(--dv-line-strong)' }} />
-                <span style={{ color: 'var(--dv-text)' }}>{referenceLabel(reference, t)}</span>
-              </span>
-            ))}
-          </span>
-        )}
     </div>
   )
 }
 
 /**
  * The shots of one plan version as cards. Memoized, because a move or resize of the editor panel re-renders the editor
- * on every pointer move and the shot cards look up their reference assets.
+ * on every pointer move and the shot cards look up their cited assets.
  * @param props - the version, the branch state, and the canvas translate.
  * @returns the element.
  */
 const PlanShots = memo(function PlanShots({ plan, state, t }: { plan: PlanVersion; state: WireState; t: CanvasTranslate }): ReactNode {
+  const assets = new Map(state.assets.map(asset => [asset.id, asset]))
   return (
     <ol aria-label={t('editor.shots')} style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {plan.shots.map((shot, index) => (
-        <ShotCard key={index} number={index + 1} shot={shot} references={namedReferences(state, shotReferences(plan, shot))} t={t} />
-      ))}
+      {plan.shots.map((shot, index) => <ShotCard key={index} number={index + 1} shot={shot} assets={assets} t={t} />)}
     </ol>
   )
 })
@@ -874,18 +800,20 @@ const PlanShots = memo(function PlanShots({ plan, state, t }: { plan: PlanVersio
 const term: CSSProperties = { fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }
 
 /**
- * One shot of a plan version as a card with exactly what the plan holds: number, duration, model and task, reference
- * assets, whether it continues the previous shot, and the prompt.
- * @param props - the 1-based shot number, the shot, its reference assets in input order, and the canvas translate.
+ * One shot of a plan version as a card with exactly what the plan holds: number, duration, model and task, the
+ * assets its prompt cites (its references, in the order of their first citation), whether it continues the previous
+ * shot, and the prompt. A cited asset that the state does not hold has no chip.
+ * @param props - the 1-based shot number, the shot, the state's assets by ID, and the canvas translate.
  * @returns the element.
  */
 function ShotCard(
-  { number, shot, references, t }: { number: number; shot: Shot; references: NamedReference[]; t: CanvasTranslate },
+  { number, shot, assets, t }: { number: number; shot: Shot; assets: ReadonlyMap<string, ProjectAsset>; t: CanvasTranslate },
 ): ReactNode {
+  const references = citedAssets(shot.prompt).flatMap(id => assets.get(id) ?? [])
   let chips: ReactNode
   if (shot.task === 't2v') chips = <span style={{ color: 'var(--dv-text-2)' }}>{t('editor.textOnlyReferences')}</span>
   else if (references.length === 0) chips = <span style={{ color: 'var(--dv-text-2)' }}>{t('editor.none')}</span>
-  else chips = <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{references.map((reference, index) => <ReferenceChip key={index} reference={reference} t={t} />)}</span>
+  else chips = <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{references.map(asset => <ReferenceChip key={asset.id} asset={asset} />)}</span>
   return (
     <li data-shot={number} style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12, borderRadius: 'var(--dv-radius-lg)', background: 'var(--dv-surface-2)', boxShadow: '0 0 0 1px var(--dv-line)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -901,19 +829,22 @@ function ShotCard(
         <dt style={term}>{t('editor.firstFrame')}</dt>
         <dd style={{ margin: 0, color: 'var(--dv-text-2)' }}>{shot.continue_previous === true ? t('editor.continuePrevious') : t('editor.firstFrameNone')}</dd>
         <dt style={{ ...term, alignSelf: 'start', paddingTop: 10 }}>{t('editor.prompt')}</dt>
-        <dd style={{ margin: 0, minWidth: 0 }}><PromptBox prompt={shot.prompt} references={references} t={t} /></dd>
+        <dd style={{ margin: 0, minWidth: 0 }}><PromptBox prompt={shot.prompt} assets={assets} t={t} /></dd>
       </dl>
     </li>
   )
 }
 
 /**
- * A shot prompt in full, with each `Picture N` token drawn as that reference image. A prompt taller than
- * {@link PROMPT_COLLAPSED_HEIGHT} starts collapsed under a fade, with a toggle that shows all of it.
- * @param props - the prompt, the shot's reference assets with their `Picture N` numbers, and the canvas translate.
+ * A shot prompt in full, with each citation drawn as the cited asset's thumbnail and the citation's label; a citation of
+ * an asset that the state does not hold shows its label only. A prompt taller than {@link PROMPT_COLLAPSED_HEIGHT}
+ * starts collapsed under a fade, with a toggle that shows all of it.
+ * @param props - the prompt, the state's assets by ID, and the canvas translate.
  * @returns the element.
  */
-function PromptBox({ prompt, references, t }: { prompt: string; references: NamedReference[]; t: CanvasTranslate }): ReactNode {
+function PromptBox(
+  { prompt, assets, t }: { prompt: string; assets: ReadonlyMap<string, ProjectAsset>; t: CanvasTranslate },
+): ReactNode {
   const [expanded, setExpanded] = useState(false)
   const [overflows, setOverflows] = useState(false)
   const box = useRef<HTMLDivElement | null>(null)
@@ -932,15 +863,14 @@ function PromptBox({ prompt, references, t }: { prompt: string; references: Name
         }}
       >
         <p style={{ margin: 0, fontSize: 13, lineHeight: '20px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-          {pictureParts(prompt).map((part, position) => {
-            const image = 'picture' in part ? references.find(reference => reference.picture === part.picture) : undefined
-            return image === undefined
-              ? <span key={position}>{part.text}</span>
-              : (
-                <img
-                  key={position} src={assetUrl(image.asset.id)} alt={part.text} title={part.text} style={promptThumb} draggable={false}
-                />
-              )
+          {promptParts(prompt).map((part, position) => {
+            if (!('asset' in part)) return <span key={position}>{part.text}</span>
+            return (
+              <span key={position} data-citation={part.asset} title={part.text}>
+                <AssetMedia asset={assets.get(part.asset)} style={promptThumb} />
+                {part.label}
+              </span>
+            )
           })}
         </p>
         {collapsed ? <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 40, background: 'linear-gradient(to bottom, transparent, var(--dv-surface-1))' }} /> : null}

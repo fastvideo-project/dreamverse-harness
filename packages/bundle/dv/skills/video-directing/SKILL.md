@@ -23,20 +23,19 @@ Every `dv_*` call becomes a record the user sees as a chat card, a canvas node, 
 
 Choose each shot's model with the `video-model-selection` skill: `dv_models_list` lists the models with their tasks and descriptions, and `dv_models_get` gives one model's durations, input limits and `extra` parameters. Each shot names the `modality`, `task`, `provider` and `model` of one listed model.
 
-- Task `ref2v` takes the prompt and reference images (`references`: `c1@1` or asset IDs), and `continue_previous` where the model takes a first frame. The model's schema gives the reference count; `fasth3` needs at least one. Task `t2v` takes the prompt alone.
+- Task `ref2v` takes the prompt, which cites each reference image as `@[<label>](dv:asset/<AssetId>)`, and `continue_previous` where the model takes a first frame. The shot renders with the distinct cited images in the order of their first citation. A prompt cites image assets only: to show a character, location or style, it cites that item's reference images by their asset IDs. The model's schema gives the reference count; `fasth3` needs at least one cited image. Task `t2v` takes the prompt alone.
 - A shot with a character, a location or a style that must look like its reference images uses task `ref2v`. A shot that needs no reference image (a landscape, an establishing shot, an object the user only described) can use task `t2v` with a model that serves it.
 - When a shot needs task `ref2v` and the user gave no reference image, ask for one (the user can attach it in the chat) before planning.
 - `continue_previous: true` makes a shot start from the last frame of the previous shot. It is a choice per shot: use it when the shot continues the previous action in the same place; leave it out for a new angle, a new scene, or an unrelated shot. Shot 1 never continues.
-- Plan-level `references` apply to every task `ref2v` shot that names no `references` of its own.
-- Do not change a shot's model, task, references or `continue_previous` on your own after the user agreed to the plan; propose the change and stop.
+- Do not change a shot's model, task, cited images or `continue_previous` on your own after the user agreed to the plan; propose the change and stop.
 
 ## 4. Write each prompt with the prompt skill of its model and task
 
-Before writing the prompts, load the prompt skill of every model and task the plan uses from your skill list. Write each shot's `prompt` with the rules of its skill. A task `ref2v` prompt names the reference pictures; a task `t2v` prompt describes everything in words.
+Before writing the prompts, load the prompt skill of every model and task the plan uses from your skill list. Write each shot's `prompt` with the rules of its skill. A task `ref2v` prompt cites its reference images; a task `t2v` prompt describes everything in words.
 
 ## 5. Create the plan, show it, and ask
 
-1. `dv_plan_create` with `title`, `references` when shots share them, and `shots` (`modality`, `task`, `provider`, `model`, `prompt`, `duration_sec`, and per shot `references` or `continue_previous` when needed). The call needs no agreement; it records version 1. Its report names the plan ID (such as `p1`), one line per shot, and `gpu_seconds`, the GPU estimate of approving the plan.
+1. `dv_plan_create` with `title` and `shots` (`modality`, `task`, `provider`, `model`, `prompt`, `duration_sec`, and `continue_previous` when needed). The call needs no agreement; it records version 1. Its report names the plan ID (such as `p1`), one line per shot, and `gpu_seconds`, the GPU estimate of approving the plan.
 2. Reply with a table (shot, model and task, duration, continues from the previous shot or not, one line of action, camera) and the report's GPU estimate. End the turn with one question in bold, such as **开始渲染这 3 个镜头吗？** Do not call `dv_plan_approve` in this turn.
 3. When the user agrees in the next message: `dv_plan_approve` with `plan` and `user_approved: true`, then `dv_proj_wait`, then `dv_proj_state`. The approval renders every shot with its model and task and lays every shot on the plan's timeline.
 4. Report each finished shot with its last frame (you receive it as an image) and its link. Inside an approved plan, never ask again.
@@ -47,7 +46,7 @@ If the user changes the plan before agreeing, call `dv_plan_update` with `plan` 
 
 One story is one plan. To extend, shorten or change it, also after it was approved, update that plan; create a new plan with `dv_plan_create` only for a separate story.
 
-1. `dv_plan_update` with `plan` = the plan ID from the project block and the complete next version: every shot in order, the unchanged shots copied exactly (same `modality`, `task`, `provider`, `model`, prompt, duration, references, `continue_previous` and seed) so their takes are kept. A shot added after six shots is shot 7.
+1. `dv_plan_update` with `plan` = the plan ID from the project block and the complete next version: every shot in order, the unchanged shots copied exactly (same `modality`, `task`, `provider`, `model`, prompt, duration, `continue_previous` and seed) so their takes are kept. A shot added after six shots is shot 7.
 2. Show only the new or changed shots and the GPU estimate from the `dv_plan_update` report (it lists the shots that keep their takes), and ask in bold.
 3. When the user agrees: `dv_plan_approve` with `plan` and `user_approved: true`. Only new or changed shots render, and a shot with `continue_previous` after a rendered shot renders too; the plan's timeline gets every shot in order. Never lay a plan's shots onto a timeline by hand.
 
@@ -55,17 +54,17 @@ One story is one plan. To extend, shorten or change it, also after it was approv
 
 The `timeline-editing` skill maps each editing request to its tool calls. The rules behind it:
 
-- **A retake keeps the model, the task and the inputs.** A retake of clip N calls `dv_shot_render` with the `modality`, `task`, `provider`, `model`, `inputs.reference` and `continue_from` of the record that produced clip N, `based_on` = that record, `supersedes: [that record]`, and a prompt that changes only what the user named.
+- **A retake keeps the model, the task and the inputs.** A retake of clip N calls `dv_shot_render` with the `modality`, `task`, `provider`, `model` and `continue_from` of the record that produced clip N, `based_on` = that record, `supersedes: [that record]`, and a prompt that keeps its citations and changes only what the user named.
 - **A render the user asked for by name carries `user_requested: true`.** A render you propose on your own is described with its cost, and you stop and ask in bold.
 
 ## 7. When a reference changes
 
-`dv_bible_character_update` (or a style or location update) makes every record that used the old version stale, and a retake that `supersedes` a record makes the records that used its outputs stale. Nothing is redone by itself.
+`dv_bible_character_update` (or a style or location update) records a new version with its reference images; a shot prompt cites asset IDs, so the shots that cite the earlier images keep them. A retake that `supersedes` a record makes the records that used its outputs stale. Nothing is redone by itself.
 
-1. Read the "stale" records in the project block.
+1. Read the "stale" records in the project block; after a character, location or style update, find the shots whose prompts cite its earlier reference images.
 2. List the affected shots by clip position.
 3. Ask in bold which to redo. Never render a stale shot again without that answer.
-4. Redo the agreed ones as retakes (section 6) with the new character, location or style version in `inputs.reference`.
+4. Redo the agreed ones as retakes (section 6) whose prompts cite the new reference images in place of the earlier ones.
 
 ## 8. Words to the user
 

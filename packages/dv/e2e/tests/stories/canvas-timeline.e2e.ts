@@ -5,7 +5,7 @@
 import type { Browser, BrowserContext, Locator, Page } from 'playwright'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
-import { bootHarness, escapeRegExp, playwright, waitFor, type BootedHarness } from '../harness.ts'
+import { bootHarness, cite, escapeRegExp, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import { startScriptedModel, type ScriptedModel } from '../scripted-model.ts'
 
 /** A 2×2 PNG with other bytes than {@link PNG_BASE64}, so its import is a new asset. */
@@ -17,8 +17,11 @@ const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk
 /** The Shot render operation of every seeded shot; the e2e profile serves fasth3 for task ref2v only. */
 const RENDER_OPERATION = 'shot.render'
 
-/** A seeded project: its ID, the rendered take assets in shot order (the clips of timeline t1), and the shot records. */
-interface Seeded { id: string; clipAssets: string[]; shots: string[] }
+/**
+ * A seeded project: its ID, the rendered take assets in shot order (the clips of timeline t1), the shot records, and the
+ * imported reference image that every seeded shot prompt cites, with the `asset.import` record that imported it.
+ */
+interface Seeded { id: string; clipAssets: string[]; shots: string[]; reference: string; referenceImport: string }
 
 let harness: BootedHarness
 let model: ScriptedModel
@@ -60,8 +63,8 @@ async function clipAt(project: string, position: number): Promise<string> {
 }
 
 /**
- * Seed a project: an imported reference, a character, an approved plan whose shots last 1 s, 2 s, 1 s, … and render
- * into timeline t1, and extra timelines made of the first clips.
+ * Seed a project: an imported reference, a character, an approved plan whose shots cite the reference and last 1 s, 2 s,
+ * 1 s, … and render into timeline t1, and extra timelines made of the first clips.
  * @param title - the project title.
  * @param shots - how many shots the plan has.
  * @param timelines - for each extra timeline (t2, t3, …, created without a name), how many clips it starts with.
@@ -71,11 +74,12 @@ async function seedProject(title: string, shots = 3, timelines: number[] = []): 
   const created = await harness.api.post('/api/dv/projects', { title, surface: 'canvas' }) as { id: string }
   const id = created.id
   const imported = await runOperation(id, 'asset.import', { base64: PNG_BASE64, mime: 'image/png', name: 'ref.png' })
-  await runOperation(id, 'bible.character_create', { character: 'c1', name: 'Dancer' }, [{ role: 'reference', ref: imported.outputs[0] ?? '' }])
+  const reference = imported.outputs[0] ?? ''
+  await runOperation(id, 'bible.character_create', { character: 'c1', name: 'Dancer' }, [{ role: 'reference', ref: reference }])
   const plan = await runOperation(id, 'plan.create', {
-    title, references: ['c1@1'],
+    title,
     shots: Array.from({ length: shots }, (_, index) => ({
-      prompt: `${title} shot ${String(index + 1)}`, duration_sec: 1 + (index % 2), modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3',
+      prompt: `${cite(reference, 'Dancer')} ${title} shot ${String(index + 1)}`, duration_sec: 1 + (index % 2), modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3',
     })),
   })
   await runOperation(id, 'plan.approve', { plan: plan.report?.['plan'] })
@@ -90,7 +94,19 @@ async function seedProject(title: string, shots = 3, timelines: number[] = []): 
     await runOperation(id, 'timeline.create', { timeline: `t${String(index + 2)}`, assets: clipAssets.slice(0, count) })
   }
   const shotRecords = state.components.proj.records.filter(record => record.operation === RENDER_OPERATION).map(record => record.id)
-  return { id, clipAssets, shots: shotRecords }
+  return { id, clipAssets, shots: shotRecords, reference, referenceImport: imported.id }
+}
+
+/**
+ * Import another image that replaces the seeded reference image (the import `supersedes` the seeded import), so every
+ * take whose prompt cites the reference becomes stale.
+ * @param project - the seeded project.
+ */
+async function replaceReference(project: Seeded): Promise<void> {
+  await harness.api.post('/api/dv/operation', {
+    project: project.id, operation: 'asset.import', params: { base64: OTHER_PNG_BASE64, mime: 'image/png', name: 'ref-2.png' },
+    supersedes: [project.referenceImport], surface: 'canvas', intent: 'seed: replace the reference image',
+  })
 }
 
 /**
@@ -377,7 +393,7 @@ describe('canvas stories', () => {
     if (v1 === undefined) throw new Error('the seeded plan is not p1')
     // An unapproved v2 with 40 shots makes the plan editor taller than the canvas.
     await runOperation(project.id, 'plan.update', {
-      plan: 'p1', title: v1.title, references: v1.references,
+      plan: 'p1', title: v1.title,
       shots: Array.from({ length: 40 }, (_, index) => ({
         prompt: `canvas-editor-wheel shot ${String(index + 1)}`, duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3',
       })),
@@ -458,7 +474,7 @@ describe('canvas stories', () => {
     await expect.poll(() => takes.count()).toBe(2)
     const original = await takes.first().getAttribute('data-node-id') ?? ''
     await takes.first().click()
-    await page.locator('#dv-canvas-editor-prompt').fill('canvas-take shot 1, take two')
+    await page.locator('#dv-canvas-editor-prompt').fill(`${cite(project.reference, 'Dancer')} canvas-take shot 1, take two`)
     const requests = harness.backend.requests.length
     await page.getByRole('button', { name: '渲染新版本' }).click()
     await expect.poll(() => page.locator('[data-testid="dv-canvas-node-editor"]').count()).toBe(0)
@@ -477,7 +493,7 @@ describe('canvas stories', () => {
     await gotoProject(page, project.id)
     const takes = page.locator('[data-node-kind="take"]')
     await takes.first().click()
-    await page.locator('#dv-canvas-editor-prompt').fill('canvas-take-names shot 1, take two')
+    await page.locator('#dv-canvas-editor-prompt').fill(`${cite(project.reference, 'Dancer')} canvas-take-names shot 1, take two`)
     await page.getByRole('button', { name: '渲染新版本' }).click()
     await expect.poll(() => takes.count(), { timeout: 30_000 }).toBe(3)
     // Two cards that both read 镜头 1 leave the creator guessing which is the new version.
@@ -491,8 +507,8 @@ describe('canvas stories', () => {
     if (v1 === undefined) throw new Error('the seeded plan is not p1')
     // Shot 3 continues shot 2, so its render starts from the last still of shot 2's take.
     await runOperation(project.id, 'plan.update', {
-      plan: 'p1', title: v1.title, references: v1.references,
-      shots: [...v1.shots, { prompt: 'canvas-plan-versions shot 3', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', continue_previous: true }],
+      plan: 'p1', title: v1.title,
+      shots: [...v1.shots, { prompt: `${cite(project.reference, 'Dancer')} canvas-plan-versions shot 3`, duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', continue_previous: true }],
     })
     await runOperation(project.id, 'plan.approve', { plan: 'p1' })
     const state = await waitFor(async () => {
@@ -540,8 +556,8 @@ describe('canvas stories', () => {
     const project = await seedProject('canvas-current', 3)
     const v1 = (await stateOf(project.id)).components.plan.plans['p1']?.[0]
     if (v1 === undefined) throw new Error('the seeded plan is not p1')
-    const base = { plan: 'p1', title: v1.title, references: v1.references }
-    const added = [...v1.shots, { prompt: 'canvas-current shot 4', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }]
+    const base = { plan: 'p1', title: v1.title }
+    const added = [...v1.shots, { prompt: `${cite(project.reference, 'Dancer')} canvas-current shot 4`, duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }]
     // v2 adds shot 4 and is approved; v3 changes shot 2 and is never approved; v4 returns to the three v1 shots.
     await runOperation(project.id, 'plan.update', { ...base, shots: added })
     await runOperation(project.id, 'plan.approve', { plan: 'p1' })
@@ -553,7 +569,7 @@ describe('canvas stories', () => {
     const v2Layout = v2State.components.proj.records.findLast(record => record.operation === 'timeline.update')
     const shot4 = v2State.components.proj.records.find(record => record.operation === RENDER_OPERATION && record.params['shot'] === 4)
     if (v2Layout === undefined || shot4 === undefined) throw new Error('the v2 approval wrote no timeline update or shot 4 render')
-    await runOperation(project.id, 'plan.update', { ...base, shots: added.map((shot, index) => index === 1 ? { ...shot, prompt: 'canvas-current shot 2, closer' } : shot) })
+    await runOperation(project.id, 'plan.update', { ...base, shots: added.map((shot, index) => index === 1 ? { ...shot, prompt: `${cite(project.reference, 'Dancer')} canvas-current shot 2, closer` } : shot) })
     await runOperation(project.id, 'plan.update', { ...base, shots: v1.shots })
     await runOperation(project.id, 'plan.approve', { plan: 'p1' })
     await waitFor(async () => {
@@ -660,11 +676,9 @@ describe('canvas stories', () => {
     expect(await page.locator('[data-node-id]').count()).toBe(0)
   })
 
-  it('takes whose character changed are drawn stale (red) on the canvas and their clips on the track until the creator keeps them', async () => {
+  it('takes whose cited reference image was replaced are drawn stale (red) on the canvas and their clips on the track until the creator keeps them', async () => {
     const project = await seedProject('canvas-stale', 2)
-    const state = await stateOf(project.id)
-    const frame = state.assets.find(asset => asset.mime.startsWith('image/') && asset.name !== 'ref.png')
-    await runOperation(project.id, 'bible.character_update', { character: 'c1' }, [{ role: 'reference', ref: frame?.id ?? '' }])
+    await replaceReference(project)
     const page = await openPage()
     await gotoProject(page, project.id)
     const staleTakes = page.locator('[data-node-kind="take"][data-node-stale="true"]')
@@ -682,7 +696,7 @@ describe('canvas stories', () => {
     }
     await expect.poll(() => page.locator('[data-clip-stale="true"]').count()).toBe(0)
     await viewToggle(page, '画布').click()
-    await expect.poll(() => page.locator('[data-node-stale="true"]').count()).toBe(0)
+    await expect.poll(() => page.locator('[data-node-kind="take"][data-node-stale="true"]').count()).toBe(0)
   })
 
   it('the agent\'s take joins the canvas at once and is drawn like every other take', async () => {
@@ -690,7 +704,7 @@ describe('canvas stories', () => {
     model.rules.push({
       match: 'agent-shot-please',
       steps: [{ calls: [{ name: 'dv_shot_render', args: {
-        reason: 'agent shot', project_id: project.id, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'canvas-agent extra shot', duration_sec: 1, inputs: { reference: ['c1@1'] },
+        reason: 'agent shot', project_id: project.id, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: `${cite(project.reference, 'Dancer')} canvas-agent extra shot`, duration_sec: 1,
       } }] }],
       endText: '拍好了',
     })
@@ -1283,8 +1297,8 @@ describe('timeline stories', () => {
     const imported = await runOperation(project, 'asset.import', { base64: PNG_BASE64, mime: 'image/png', name: 'ref.png' })
     await runOperation(project, 'bible.character_create', { character: 'c1', name: 'Dancer' }, [{ role: 'reference', ref: imported.outputs[0] ?? '' }])
     const plan = await runOperation(project, 'plan.create', {
-      title: 'timeline-pending', references: ['c1@1'],
-      shots: [1, 2, 3].map(shot => ({ prompt: `timeline-pending shot ${String(shot)}`, duration_sec: shot === 2 ? 2 : 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' })),
+      title: 'timeline-pending',
+      shots: [1, 2, 3].map(shot => ({ prompt: `${cite(imported.outputs[0] ?? '', 'Dancer')} timeline-pending shot ${String(shot)}`, duration_sec: shot === 2 ? 2 : 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' })),
     })
     harness.backend.hold()
     try {
@@ -1443,7 +1457,7 @@ describe('going back and keep anyway', () => {
     // A plain edit is the step to come back to; the seeded renders fold under the plan approval's row.
     const earlier = (await runOperation(project.id, 'timeline.rename', { timeline: 't1', name: 'go-back base' })).id
     // Two more edits: one more take on the canvas and a second timeline.
-    await runOperation(project.id, RENDER_OPERATION, { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'go-back shot', duration_sec: 1 }, [{ role: 'reference', ref: 'c1@1' }])
+    await runOperation(project.id, RENDER_OPERATION, { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: `${cite(project.reference, 'Dancer')} go-back shot`, duration_sec: 1 })
     await expect.poll(() => takes.count(), { timeout: 30_000 }).toBe(2)
     await viewToggle(page, '时间线').click()
     await page.locator('[data-testid="dv-timeline-editor"]').getByRole('button', { name: '＋ 新建' }).click()
@@ -1467,9 +1481,7 @@ describe('going back and keep anyway', () => {
 
   it('仍然保留 on a stale take node and on a stale clip removes that mark', async () => {
     const project = await seedProject('keep-anyway', 2)
-    const state = await stateOf(project.id)
-    const frame = state.assets.find(asset => asset.mime.startsWith('image/') && asset.name !== 'ref.png')
-    await runOperation(project.id, 'bible.character_update', { character: 'c1' }, [{ role: 'reference', ref: frame?.id ?? '' }])
+    await replaceReference(project)
     const page = await openPage()
     await gotoProject(page, project.id)
     const staleTakes = page.locator('[data-node-kind="take"][data-node-stale="true"]')

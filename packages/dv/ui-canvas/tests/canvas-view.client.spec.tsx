@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** The canvas over a scripted API: nodes, drag persistence, the floating editor, and the `dv:compose` event. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, createEvent, fireEvent, render, waitFor, within } from '@testing-library/react'
+import { act, cleanup, createEvent, fireEvent, render, waitFor } from '@testing-library/react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import { DV_COMPOSE_EVENT } from '@dv/ui-kit/compose.ts'
@@ -232,7 +232,7 @@ describe('CanvasView', () => {
     await waitFor(() => { expect(writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
     expect(writes.find(write => write.path === '/api/dv/operation')?.body).toMatchObject({
       project: 'p1', operation: 'shot.render', surface: 'canvas', based_on: 'g1', params: { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'hero runs' },
-      inputs: [{ role: 'reference', ref: 'hero@1' }],
+      inputs: [],
     })
     fireEvent.pointerDown(node('bible:hero'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
     fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
@@ -247,70 +247,91 @@ describe('CanvasView', () => {
     expect(writes.map(write => write.path)).toEqual(['/api/dv/operation'])
   })
 
-  it('添加素材 adds the characters, locations and assets picked in the picker as references of the take, and an asset chip opens its preview', async () => {
+  it('take editor chips are the cited assets, × removes their citations, and 添加素材 inserts citations at the cursor', async () => {
+    const cited = '@[Hero](dv:asset/ref.png) walks past @[gone](dv:asset/gone.png), then @[Hero again](dv:asset/ref.png) waves'
     const { view, node, writes } = mount(true, (state) => {
-      const bible = state.components.bible
-      bible.characters['villain'] = [{ id: 'villain', version: 2, name: 'Villain', description: '', references: [], created_by: 'e1' }]
-      bible.characters['ghost'] = []
-      bible.locations['studio'] = [{ id: 'studio', version: 1, name: '', description: '', references: ['plan.json'], created_by: 'e1' }]
-      state.assets.push(asset('plan.json', 'application/json', null))
+      state.components.proj.records = state.components.proj.records
+        .map(entry => entry.id === 'g1' ? { ...entry, params: { ...entry.params, prompt: cited } } : entry)
     })
     await waitFor(() => { node('g1') })
     fireEvent.pointerDown(node('g1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
     fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
-    await view.findByTestId('dv-canvas-node-editor')
+    const editor = await view.findByTestId('dv-canvas-node-editor')
+    const textarea = editor.querySelector('textarea') as HTMLTextAreaElement
+    const chips = (): Array<string | null> =>
+      [...editor.querySelectorAll('[data-reference]')].map(chip => chip.getAttribute('data-reference'))
+    // One chip per cited asset in first-citation order; an asset the project lacks is named by its ID and opens nothing.
+    expect(textarea.value).toBe(cited)
+    expect(chips()).toEqual(['ref.png', 'gone.png'])
+    fireEvent.click(view.getByRole('button', { name: '查看 gone.png' }))
+    expect(view.queryByRole('dialog', { name: 'gone.png' })).toBeNull()
+    fireEvent.click(view.getByRole('button', { name: '移除 ref.png' }))
+    expect(textarea.value).toBe(' walks past @[gone](dv:asset/gone.png), then  waves')
+    expect(chips()).toEqual(['gone.png'])
     // Escape closes the picker and leaves the editor open.
     fireEvent.click(view.getByText(zh['editor.addAsset']))
     await view.findByTestId('dv-canvas-asset-picker')
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(view.queryByTestId('dv-canvas-asset-picker')).toBeNull()
     expect(view.getByTestId('dv-canvas-node-editor')).toBeTruthy()
+    // Put the cursor after "walks past", then pick a video and an image; the picker offers the asset pool only.
+    textarea.focus()
+    textarea.setSelectionRange(11, 11)
+    fireEvent.keyUp(textarea, { key: 'ArrowLeft' })
     fireEvent.click(view.getByText(zh['editor.addAsset']))
     const picker = await view.findByTestId('dv-canvas-asset-picker')
-    // The take already holds hero@1, so the picker offers the other characters and locations, then the asset pool.
     fireEvent.keyDown(window, { key: 'a' })
-    expect(picker.textContent).toContain(zh['picker.bible'])
-    const villain = within(picker).getByRole('button', { name: 'Villain' })
-    fireEvent.click(within(picker).getByRole('button', { name: 'studio' }))
-    fireEvent.click(within(picker).getByRole('button', { name: 'studio' }))
-    expect(within(picker).getByRole('button', { name: 'studio' }).getAttribute('aria-pressed')).toBe('false')
-    fireEvent.click(villain)
-    const tile = await waitFor(() => {
-      const found = picker.querySelector('[data-asset-id="shot1.mp4"]')
-      if (!(found instanceof HTMLElement)) throw new Error('no shot1.mp4 tile')
+    const tile = async (id: string): Promise<HTMLElement> => waitFor(() => {
+      const found = picker.querySelector(`[data-asset-id="${id}"]`)
+      if (!(found instanceof HTMLElement)) throw new Error(`no ${id} tile`)
       return found
     })
-    fireEvent.click(tile)
-    // The picker rings the picked tile of the asset pool panel.
+    fireEvent.click(await tile('shot1.mp4'))
+    fireEvent.click(await tile('ref.png'))
+    fireEvent.click(await tile('ref.png'))
+    fireEvent.click(await tile('ref.png'))
+    // The picker rings the picked tiles of the asset pool panel.
     expect(picker.querySelector('style')?.textContent).toContain('[data-asset-id="shot1.mp4"]')
     fireEvent.click(view.getByText('确认（2）'))
     expect(view.queryByTestId('dv-canvas-asset-picker')).toBeNull()
+    const edited = ' walks past @[shot1.mp4](dv:asset/shot1.mp4) @[ref.png](dv:asset/ref.png) @[gone](dv:asset/gone.png), then  waves'
+    expect(textarea.value).toBe(edited)
+    expect(chips()).toEqual(['shot1.mp4', 'ref.png', 'gone.png'])
     fireEvent.click(view.getByRole('button', { name: '查看 shot1.mp4' }))
     expect(await view.findByRole('dialog', { name: 'shot1.mp4' })).toBeTruthy()
     // Escape closes the preview and leaves the editor open.
     fireEvent.keyDown(window, { key: 'Escape' })
     await waitFor(() => { expect(view.queryByRole('dialog', { name: 'shot1.mp4' })).toBeNull() })
     expect(view.getByTestId('dv-canvas-node-editor')).toBeTruthy()
+    // The render request carries the citations in its prompt and no reference inputs.
+    fireEvent.click(view.getByText(zh['editor.renderTake']))
+    await waitFor(() => { expect(writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
+    expect(writes.find(write => write.path === '/api/dv/operation')?.body)
+      .toMatchObject({ operation: 'shot.render', params: { prompt: edited }, inputs: [] })
+  })
+
+  it('添加素材 appends citations to a prompt whose cursor never moved, and the render keeps the take\'s first_frame input', async () => {
+    const { view, node, writes } = mount()
+    await waitFor(() => { node('g2') })
+    fireEvent.pointerDown(node('g2'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
+    const editor = await view.findByTestId('dv-canvas-node-editor')
+    fireEvent.click(view.getByText(zh['editor.addAsset']))
+    const picker = await view.findByTestId('dv-canvas-asset-picker')
+    const tile = await waitFor(() => {
+      const found = picker.querySelector('[data-asset-id="ref.png"]')
+      if (!(found instanceof HTMLElement)) throw new Error('no ref.png tile')
+      return found
+    })
+    fireEvent.click(tile)
+    fireEvent.click(view.getByText('确认（1）'))
+    expect((editor.querySelector('textarea') as HTMLTextAreaElement).value).toBe('hero turns @[ref.png](dv:asset/ref.png)')
     fireEvent.click(view.getByText(zh['editor.renderTake']))
     await waitFor(() => { expect(writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
     expect(writes.find(write => write.path === '/api/dv/operation')?.body).toMatchObject({
-      operation: 'shot.render',
-      inputs: [{ role: 'reference', ref: 'hero@1' }, { role: 'reference', ref: 'villain@2' }, { role: 'reference', ref: 'shot1.mp4' }],
+      operation: 'shot.render', based_on: 'g2', params: { prompt: 'hero turns @[ref.png](dv:asset/ref.png)' },
+      inputs: [{ role: 'first_frame', ref: 'g1#1' }],
     })
-  })
-
-  it('a character chip opens the character editor over the take editor, and closing it keeps the take editor\'s changes', async () => {
-    const { view, node } = mount()
-    await waitFor(() => { node('g1') })
-    fireEvent.pointerDown(node('g1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
-    fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
-    const editor = await view.findByTestId('dv-canvas-node-editor')
-    fireEvent.change(editor.querySelector('textarea') as HTMLTextAreaElement, { target: { value: 'hero runs' } })
-    fireEvent.click(view.getByRole('button', { name: '查看 Hero' }))
-    expect(view.getAllByTestId('dv-canvas-node-editor').map(panel => panel.getAttribute('aria-label'))).toEqual([editor.getAttribute('aria-label'), 'Hero'])
-    fireEvent.keyDown(window, { key: 'Escape' })
-    expect(view.getAllByTestId('dv-canvas-node-editor')).toHaveLength(1)
-    expect((view.getByTestId('dv-canvas-node-editor').querySelector('textarea') as HTMLTextAreaElement).value).toBe('hero runs')
   })
 
   it('the character editor appends picked assets to its references and removes one while more than one is left', async () => {
@@ -366,7 +387,7 @@ describe('CanvasView', () => {
     await waitFor(() => { expect(writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
     expect(writes.find(write => write.path === '/api/dv/operation')?.body).toMatchObject({
       project: 'p1', operation: 'shot.render', surface: 'canvas', based_on: 'g1', session: 's5',
-      params: { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'hero walks through the rain at night in the city' }, inputs: [{ role: 'reference', ref: 'hero@1' }],
+      params: { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'hero walks through the rain at night in the city' }, inputs: [],
     })
     fireEvent.pointerDown(node('g1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
     fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
@@ -465,13 +486,17 @@ describe('CanvasView', () => {
     expect(transform()).not.toBe(before)
   })
 
-  it('the plan editor marks a version replaced before approval as 已被第 {n} 版取代 and shows each shot\'s reference images', async () => {
+  it('the plan editor marks a version replaced before approval as 已被第 {n} 版取代 and shows the assets each shot prompt cites', async () => {
     const { view, node } = mount(true, (state) => {
       const [v1] = state.components.plan.plans['p1'] ?? []
       if (v1 === undefined) throw new Error('fixture lacks plan p1')
       const v3 = {
-        ...v1, version: 3, approved_by: null, references: ['hero@1'],
-        shots: [{ prompt: '<Picture 1> walks in the rain', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3' }, { prompt: 'the sky clears', modality: 'video' as const, task: 't2v' as const, provider: 'fastvideo', model: 'fasth3' }],
+        ...v1, version: 3, approved_by: null,
+        shots: [
+          { prompt: '@[Hero](dv:asset/ref.png) walks in the rain', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3' },
+          { prompt: 'the sky clears', modality: 'video' as const, task: 't2v' as const, provider: 'fastvideo', model: 'fasth3' },
+          { prompt: 'an empty street', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3' },
+        ],
       }
       state.components.plan.plans['p1'] = [v1, { ...v1, version: 2, approved_by: null }, v3]
     })
@@ -484,43 +509,50 @@ describe('CanvasView', () => {
       return view.getByTestId('dv-canvas-plan-status').textContent ?? ''
     }
     expect([status(1), status(2), status(3)]).toEqual([zh['editor.planApproved'], '已被第 3 版取代', zh['editor.planPending']])
-    // v3's shot renders from Hero's reference image: a "Picture 1 · Hero" chip, and the image in place of <Picture 1> and its brackets.
+    // v3's shot 1 cites ref.png: a "ref.png" chip, and the image with the citation's label in place of the citation.
     const shot = editor.querySelector('li[data-shot="1"]')
-    expect([...shot?.querySelectorAll('img') ?? []].map(image => [image.getAttribute('alt'), image.getAttribute('src')?.includes('ref.png')]))
-      .toEqual([['', true], ['<Picture 1>', true]])
-    expect(shot?.textContent).toContain('Picture 1 · Hero')
-    expect(shot?.querySelector('p')?.textContent).toBe(' walks in the rain')
+    expect(shot?.querySelector('dd')?.textContent).toBe('ref.png')
+    expect([...shot?.querySelectorAll('img') ?? []].map(image => image.getAttribute('src')))
+      .toEqual([assetUrl('ref.png'), assetUrl('ref.png')])
+    expect(shot?.querySelector('p')?.textContent).toBe('Hero walks in the rain')
+    expect(shot?.querySelector('p [data-citation="ref.png"]')?.getAttribute('title')).toBe('@[Hero](dv:asset/ref.png)')
     expect(shot?.textContent).toContain(zh['editor.firstFrameNone'])
     // A text shot shows its model and task and no reference images.
     const textShot = editor.querySelector('li[data-shot="2"]')
     expect(textShot?.querySelectorAll('img')).toHaveLength(0)
     expect(textShot?.querySelector('[data-testid="dv-canvas-shot-mode"]')?.textContent).toBe(`fasth3 · ${zh['task.t2v']}`)
     expect(textShot?.textContent).toContain(zh['editor.textOnlyReferences'])
+    // A shot whose prompt cites nothing has no references.
+    expect(editor.querySelector('li[data-shot="3"] dd')?.textContent).toBe(zh['editor.none'])
   })
 
-  it('the plan editor shows reference assets of every media type and numbers only the images as Picture N', async () => {
+  it('the plan editor shows cited assets of every media type and draws a citation of an asset the project lacks as its label', async () => {
     const { view, node } = mount(true, (state) => {
       const [v1] = state.components.plan.plans['p1'] ?? []
       if (v1 === undefined) throw new Error('fixture lacks plan p1')
       state.assets.push(asset('score.wav', 'audio/wav', null))
       state.components.plan.plans['p1'] = [{
-        ...v1, approved_by: null, references: ['shot1.mp4', 'hero@1'],
-        shots: [{ prompt: '<Video 1> then <Picture 1>', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3', references: ['shot1.mp4', 'hero@1', 'score.wav'] }],
+        ...v1, approved_by: null,
+        shots: [{
+          prompt: '@[clip](dv:asset/shot1.mp4) then @[Hero](dv:asset/ref.png) over @[music](dv:asset/score.wav)'
+            + ' and @[lost](dv:asset/lost.png)',
+          modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3',
+        }],
       }]
     })
     await waitFor(() => { node('plan:p1') })
     fireEvent.pointerDown(node('plan:p1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
     fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
     const editor = await view.findByTestId('dv-canvas-node-editor')
-    // The plan header lists the video by name and the image as Picture 1.
-    const header = within(editor).getByText(zh['editor.planReferences'])
-    expect(header.textContent).toBe(`${zh['editor.planReferences']}shot1.mp4Picture 1 · Hero`)
-    expect(header.querySelector('video')).not.toBeNull()
-    // The shot lists the video, the image, and the audio in input order; <Picture 1> draws Hero's image.
+    // The shot lists the video, the image, and the audio in citation order; the asset the project lacks has no chip.
     const shot = editor.querySelector('li[data-shot="1"]')
-    expect(shot?.querySelector('dd')?.textContent).toBe('shot1.mp4Picture 1 · Heroscore.wav')
-    expect(shot?.querySelector('p')?.textContent).toBe('<Video 1> then ')
-    expect(shot?.querySelector('p img')?.getAttribute('src')).toBe(assetUrl('ref.png'))
+    expect(shot?.querySelector('dd')?.textContent).toBe('shot1.mp4ref.pngscore.wav')
+    // The prompt draws each cited asset with the citation's label; the missing asset shows its label alone.
+    const prompt = shot?.querySelector('p')
+    expect(prompt?.textContent).toBe('clip then Hero over music and lost')
+    expect(prompt?.querySelector('[data-citation="shot1.mp4"] video')).not.toBeNull()
+    expect(prompt?.querySelector('[data-citation="ref.png"] img')?.getAttribute('src')).toBe(assetUrl('ref.png'))
+    expect(prompt?.querySelector('[data-citation="lost.png"]')?.children).toHaveLength(0)
   })
 
   it('follows the DSH interface language in <html lang> when the host passes no translate', async () => {

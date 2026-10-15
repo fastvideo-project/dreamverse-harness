@@ -3,7 +3,8 @@
  * `ctx.dvModels` one entry per model that its `models` config names and per task the config gives a server for; a model
  * or task the config leaves out is not registered. Each task of a model is served by its own server: the streaming_v2
  * client of `@dv/fastvideo-generation-client` sends each render as one `POST /v1/streamv2/generate`, with the references
- * first and the first frame after them, each as its media type and bytes read from `dvAssetPool`. Each entry describes
+ * first and the first frame after them, each as its media type and bytes read from `dvAssetPool`, and with each citation
+ * of the prompt replaced by the MiniMax H3 label of the cited image (`<Picture N>`). Each entry describes
  * the inputs and `extra` parameters it accepts in `schema()` and checks both in `validateGenerationRequest`. While the
  * DSH skill registry is mounted, the plugin registers the prompt skill of every registered entry.
  *
@@ -20,7 +21,9 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
 import { DvFastvideoGeneration, type ModelFacts } from '@dv/fastvideo-generation-client'
 import type {} from '@dv/asset-pool'
-import type { ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent, TaskId } from '@dv/models'
+import {
+  citedAsset, replacePromptCitations, type ModelEntry, type RenderModelFacts, type RenderRequest, type RenderStreamEvent, type TaskId,
+} from '@dv/models'
 
 /** One task of one model: the streaming_v2 server that renders it and its GPU rate. */
 export interface TaskServer {
@@ -95,15 +98,15 @@ const SERVED: Record<string, { [T in TaskId]?: ServedTask }> = {
   fasth3: {
     ref2v: {
       description: 'MiniMax H3 served as FastH3 Ref2VA: video with sound, dialogue and music written in the prompt, from '
-        + 'reference images, videos and audio and an optional first frame. Keeps a face, place or style the same across '
+        + 'the reference images that the prompt cites and an optional first frame. Keeps a face, place or style the same across '
         + 'shots through the references, and continues a shot from the previous shot\'s last still. Needs at least one '
-        + 'reference.',
-      inputs: { reference: { min: 1, mediaTypes: ['image', 'video', 'audio'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
+        + 'reference image.',
+      inputs: { reference: { min: 1, mediaTypes: ['image'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
       extra: {},
       skill: {
         name: 'fasth3-reference-prompting',
-        description: 'Model limits and prompt rules for dv_shot_render with model fasth3 for task ref2v: reference images, '
-          + 'videos and audio, how the prompt names them, and how a shot continues the previous one.',
+        description: 'Model limits and prompt rules for dv_shot_render with model fasth3 for task ref2v: how the prompt cites '
+          + 'reference images, how the model names them, and how a shot continues the previous one.',
         file: 'fasth3-reference-prompting.md',
       },
     },
@@ -255,6 +258,22 @@ function extraProblems(model: string, task: TaskId, schema: ParameterSchemaSpec,
 }
 
 /**
+ * The prompt that MiniMax H3 reads: each citation of a reference replaced with `<Picture k>`, where k is the 1-based
+ * position of the cited asset in `references`. The `reference` input takes only images, so every reference is a picture.
+ * A citation that names no asset of `references` becomes its label.
+ * @param request - the render request.
+ * @returns the prompt.
+ */
+function h3Prompt(request: RenderRequest): string {
+  const positions = new Map(request.references.map((asset, index) => [asset, index + 1]))
+  return replacePromptCitations(request.prompt, (citation) => {
+    const asset = citedAsset(citation.uri)
+    const position = asset === null ? undefined : positions.get(asset)
+    return position === undefined ? citation.label : `<Picture ${String(position)}>`
+  })
+}
+
+/**
  * A catalog entry for one configured model and task, rendered through one streaming_v2 client of the task's server.
  * @param ctx - the plugin context; the client lives in an isolated `dvFastvideoGeneration` scope, and `render` reads
  *   each input asset from `ctx.dvAssetPool`.
@@ -305,7 +324,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
           mediaType: ctx.dvAssetPool.mediaType(id), bytes: await readFile(ctx.dvAssetPool.path(id)),
         })))
         yield* client.generateSegment({
-          prompt: request.prompt,
+          prompt: h3Prompt(request),
           references,
           frameWidth: request.frameWidth,
           frameHeight: request.frameHeight,

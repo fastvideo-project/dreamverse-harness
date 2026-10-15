@@ -260,8 +260,10 @@ export function callProject(argument: unknown, bound: ProjectId | null): Project
  * @returns the shared params.
  */
 function sharedParams(spec: OperationSpec): ParameterSchemaSpec {
-  const roles = Object.entries(spec.inputs).map(([role, input]) => `${role}${input.required === true ? '' : '?'}: ${input.type}`
-    + `${input.many === true ? '[]' : ''}${input.bible === true ? ' (<asset> or <id>@<version>)' : ''}`)
+  // A role that the operation reads from its params takes no argument.
+  const roles = Object.entries(spec.inputs).filter(([, input]) => input.fromParams !== true)
+    .map(([role, input]) => `${role}${input.required === true ? '' : '?'}: ${input.type}`
+      + `${input.many === true ? '[]' : ''}${input.bible === true ? ' (<asset> or <id>@<version>)' : ''}`)
   return {
     reason: {
       type: 'string', required: true,
@@ -270,7 +272,7 @@ function sharedParams(spec: OperationSpec): ParameterSchemaSpec {
     project_id: {
       type: 'string', description: 'The project; defaults to this conversation\'s project from dv_proj_create or dv_proj_open.',
     },
-    ...Object.keys(spec.inputs).length === 0 ? {} : {
+    ...roles.length === 0 ? {} : {
       inputs: {
         type: 'object', additionalProperties: true,
         description: 'Input references by role: <asset> (an asset ID), <record>#<output> (an output of an earlier record), or '

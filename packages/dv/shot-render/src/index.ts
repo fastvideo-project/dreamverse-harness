@@ -2,8 +2,8 @@
  * The Shot render component of DreamVerse as the `dvShotRender` Cordis service: the Consumer of the model catalog of
  * `@dv/models`. It owns one operation, `shot.render` (tool `dv_shot_render`): one take of a shot rendered by the catalog
  * entry whose key the call names in the required params `modality`, `task`, `provider` and `model`. Task `ref2v` takes
- * reference media (imported assets, or the assets of the characters, locations and styles it names) and optionally a
- * first frame, usually the last still of the shot it continues. The entry's `validateGenerationRequest` decides which
+ * the reference assets that the prompt cites (`@[<label>](dv:asset/<AssetId>)`) and optionally a first frame, usually
+ * the last still of the shot it continues. The entry's `validateGenerationRequest` decides which
  * inputs and which values of the model's own parameters (`extra`) it renders, and the entry's schema describes them to
  * the agent. The model receives asset IDs and reads each asset from the asset pool.
  *
@@ -22,8 +22,8 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ParameterSchemaSpec } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import {
-  formatModelKey, type ModalityId, type ModelEntry, type ModelKey, type RenderModelFacts, type RenderRequest, type RenderStreamEvent,
-  type TaskId,
+  citedAsset, formatModelKey, parsePromptCitations, promptAssets, type ModalityId, type ModelEntry, type ModelKey, type RenderModelFacts,
+  type RenderRequest, type RenderStreamEvent, type TaskId,
 } from '@dv/models'
 import type {
   AssetId, OperationContext, OperationInput, OperationResult, OperationSpec, OperationToolCall, ProjectId, ProjectRecord, ProjectState,
@@ -87,8 +87,8 @@ const RENDER_PARAMS: OperationSpec['params'] = {
   model: { type: 'string', required: true, description: 'The model name, as dv_models_list lists it.' },
   prompt: {
     type: 'string', required: true,
-    description: 'The complete shot prompt, written with the prompt skill of its model and task; it names the references with '
-      + 'the numbering of that skill: the reference input in input order, then the first frame.',
+    description: 'The complete shot prompt, written with the prompt skill of its model and task; it cites each reference asset '
+      + 'where it names it, as @[<label>](dv:asset/<asset ID>).',
   },
   duration_sec: { type: 'integer', description: 'Whole seconds within the model range; default the model minimum.' },
   aspect_ratio: { type: 'string', description: 'One of the model aspect ratios; default the first.' },
@@ -107,9 +107,8 @@ const RENDER_PARAMS: OperationSpec['params'] = {
 /** The inputs of `shot.render`; a model accepts the subset its schema lists. */
 const RENDER_INPUTS: Record<string, OperationInput> = {
   reference: {
-    type: 'any', many: true, bible: true,
-    description: 'Reference media in prompt order: imported assets, or character, location and style versions whose reference '
-      + 'assets the shot carries; the model accepts the media types dv_models_get lists. Task ref2v only.',
+    type: 'any', many: true, fromParams: true,
+    description: 'The assets that the prompt cites, in the order of their first citation. Task ref2v only.',
   },
   first_frame: { type: 'image', description: 'The frame the shot starts from, usually output #1 of the previous shot.' },
 }
@@ -131,6 +130,15 @@ function modelKey(params: Record<string, unknown>): ModelKey {
 }
 
 /**
+ * The `reference` inputs of a call: the assets that its prompt cites, in the order of their first citation.
+ * @param params - the call's params.
+ * @returns the inputs.
+ */
+function citedInputs(params: Record<string, unknown>): RunRequest['inputs'] {
+  return promptAssets(text(params['prompt'])).map(asset => ({ role: 'reference', ref: { asset } }))
+}
+
+/**
  * The resolved assets of an input role, in input order.
  * @param inputs - the call's input assets with their roles.
  * @param role - the role.
@@ -143,20 +151,25 @@ function inputAssets(inputs: ReadonlyArray<Pick<RecordInput, 'role' | 'resolved_
 }
 
 /**
- * The render request of a call: its prompt, its `reference` assets in input order, its `first_frame` asset, the frame
- * size and frame count from the model's facts, the seed (the call's `seed`, else a random one), and the model's own
- * parameters.
+ * The render request of a call: its prompt with its citations, the assets that the prompt cites in the order of their
+ * first citation, its `first_frame` asset, the frame size and frame count from the model's facts, the seed (the call's
+ * `seed`, else a random one), and the model's own parameters.
  * @param facts - the model's facts.
  * @param params - the call's params.
  * @param inputs - the call's input assets with their roles.
  * @returns the request and the shot's geometry.
- * @throws Error for a missing prompt, params outside the facts, or more than one `first_frame` input.
+ * @throws Error for a missing prompt, a citation of anything other than an asset, params outside the facts, or more
+ *   than one `first_frame` input.
  */
 function renderRequest(
   facts: RenderModelFacts, params: Record<string, unknown>, inputs: Array<Pick<RecordInput, 'role' | 'resolved_asset'>>,
 ): { request: RenderRequest; geometry: ShotGeometry } {
   const prompt = text(params['prompt'])
   if (prompt === '') throw new Error('shot.render needs a `prompt`.')
+  const others = parsePromptCitations(prompt).filter(citation => citedAsset(citation.uri) === null).map(citation => citation.uri)
+  if (others.length > 0) {
+    throw new Error(`The prompt cites ${[...new Set(others)].join(', ')}; a shot prompt cites only assets, as @[<label>](dv:asset/<asset ID>).`)
+  }
   // An output of a record that has not finished counts here although it has no asset yet.
   const firstFrameCount = inputs.filter(input => input.role === 'first_frame').length
   if (firstFrameCount > 1) throw new Error(`shot.render takes one first_frame input; this call has ${firstFrameCount}.`)
@@ -164,7 +177,7 @@ function renderRequest(
   const geometry = shotGeometry(facts, params)
   return {
     request: {
-      prompt, references: inputAssets(inputs, 'reference'), firstFrame: firstFrames[0] ?? null,
+      prompt, references: promptAssets(prompt), firstFrame: firstFrames[0] ?? null,
       frameWidth: geometry.width, frameHeight: geometry.height, numFrames: geometry.numFrames,
       seed: number(params['seed'], randomInt(SEED_LIMIT)),
       extra: (params['extra'] ?? {}) as Record<string, unknown>,
@@ -339,10 +352,11 @@ export default class DvShotRender extends Service {
 
   /**
    * Refuse a `shot.render` call of any caller before any record when its key names no catalog entry, or the entry's
-   * `validateGenerationRequest` refuses the call's render request, its `extra` values included. Character, location and
-   * style versions stand for their reference assets. A missing prompt, params outside the model's facts, and more than
-   * one `first_frame` input are refused for every call; a call whose input is an output of a record that has not
-   * finished is validated, `extra` included, by `renderShot` before the render. A call that a plan scheduled (param
+   * `validateGenerationRequest` refuses the call's render request, its `extra` values included. The request's
+   * references are the assets that the prompt cites. A missing prompt, a citation of anything other than an asset,
+   * params outside the model's facts, and more than one `first_frame` input are refused for every call; a call whose
+   * input is an output of a record that has not finished is validated, `extra` included, by `renderShot` before the
+   * render. A call that a plan scheduled (param
    * `plan`) is told to update the plan with `dv_plan_update`; `plan.approve` names the shots in front of it.
    * @param request - the call, with its input references.
    * @param state - the project's current state, which the call writes after.
@@ -428,11 +442,12 @@ export default class DvShotRender extends Service {
       component: 'shot',
       version: '1',
       description: 'Render one take of a shot with a model from dv_models_list; modality, task, provider and model name it and are '
-        + 'required. Task ref2v renders from reference media through the reference input: imported assets, or character, '
-        + 'location and style versions with reference assets (c1@1); dv_models_get lists the inputs, media types and counts each '
-        + 'model accepts. Pass continue_from to start from the last still of an earlier shot when the model takes a first frame. '
+        + 'required. Task ref2v renders from the reference assets that the prompt cites as @[<label>](dv:asset/<asset ID>), sent in '
+        + 'the order of their first citation; dv_models_get lists the media types and counts each model accepts. Pass continue_from '
+        + 'to start from the last still of an earlier shot when the model takes a first frame. '
         + 'The model\'s own parameters go in extra (see dv_models_get). ' + TAKE_RULE,
       inputs: RENDER_INPUTS,
+      inputsFromParams: params => citedInputs(params),
       params: RENDER_PARAMS,
       toolParams: CONTINUE_FROM_PARAM,
       outputs: [{ role: 'video', type: 'video' }, { role: 'last_still', type: 'image' }],

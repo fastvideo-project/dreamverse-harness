@@ -141,7 +141,8 @@ describe('DreamVerse bundle composition', () => {
     const reference = ctx.dvAssetPool.list().map(asset => asset.id)
     await call('dv_bible_character_create', { reason: 'lead', character: 'c1', name: 'Lead', inputs: { reference } })
     const shot = await call('dv_shot_render', {
-      modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', reason: 'the opening shot', prompt: 'Picture 1 looks up', duration_sec: 1, inputs: { reference: 'c1@1' },
+      modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', reason: 'the opening shot',
+      prompt: `@[Lead](dv:asset/${reference[0] ?? ''}) looks up`, duration_sec: 1,
     })
     const shotValue = shot.value as OperationToolValue
     expect(shotValue.status).toBe('done')
@@ -156,6 +157,8 @@ describe('DreamVerse bundle composition', () => {
     const [video] = record.outputs
     expect(video !== undefined && ctx.dvAssetPool.has(video)).toBe(true)
     expect(renderer.requests).toHaveLength(1)
+    // The render reads its references from the prompt's citations.
+    expect(renderer.requests[0]?.references).toEqual(reference)
     await call('dv_timeline_create', { reason: 'lay out the shot', assets: [video] })
     const clips = ctx.dvProject.getState(projectId).components.timeline.timelines[0]?.clips
     expect(clips?.map(clip => [clip.id, clip.asset])).toEqual([['cl1', video]])

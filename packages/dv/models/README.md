@@ -75,15 +75,15 @@ A provider plugin implements one `ModelEntry` for each key. A `ModelEntry` has t
 
 | `RenderRequest` field | Meaning |
 | --- | --- |
-| `prompt` | The text prompt. |
-| `references` | The reference assets as asset IDs, in input order. The list is empty for a task without references. |
+| `prompt` | The text prompt with its citations. A citation is `@[<label>](dv:asset/<AssetId>)`. |
+| `references` | The assets that the prompt cites, as asset IDs, each once, in the order of their first citation. The list is empty for a prompt without citations. |
 | `firstFrame` | The asset ID of the image that the video starts from, or `null`. |
 | `frameWidth`, `frameHeight` | The frame size in pixels. A consumer takes it from `frameSizes` in the facts. |
 | `numFrames` | The frame count. A consumer takes it from `numFramesByDurationSec` in the facts. |
 | `seed` | The random seed. |
 | `extra` | The values of the model's own parameters. `schema()` describes them, and `validateGenerationRequest` checks them. |
 
-`references` and `firstFrame` carry the `reference` and `first_frame` inputs of `dv_shot_render`.
+`references` and `firstFrame` carry the `reference` and `first_frame` inputs of `dv_shot_render`. `parsePromptCitations`, `citedAsset`, `promptAssets`, and `replacePromptCitations` read and replace the citations of a prompt. The provider plugin replaces each citation with the syntax of its model before the model reads the prompt.
 
 | `RenderModelFacts` field | Meaning |
 | --- | --- |
@@ -121,10 +121,10 @@ A provider plugin connects one provider to the catalog. [`@dv/fastvideo`](../fas
 - The provider name and the protocol of the backend.
 - The deployment values in its `Config`, such as the server URL and the GPU rate of each model and task.
 - All members of each entry that it registers.
-- The translation of a `RenderRequest` into a backend request. The plugin reads the bytes and the media type of each asset from `dvAssetPool`. The plugin sends them in the format of the backend.
+- The translation of a `RenderRequest` into a backend request. The plugin reads the bytes and the media type of each asset from `dvAssetPool`. The plugin sends them in the format of the backend. The plugin replaces each citation in `prompt` with the syntax of its model.
 - Optional prompt skills for its models.
 
-This package owns the key, the entry contract, the request and stream types, the `dvModels` service, the two tools, and the selection skill. It contains no data about a specific model.
+This package owns the key, the entry contract, the request and stream types, the citation syntax of `prompt` and its parser, the `dvModels` service, the two tools, and the selection skill. It contains no data about a specific model.
 
 <a id="add-a-provider-or-a-model"></a>
 ### Add a provider or a model
@@ -160,6 +160,7 @@ While the DSH skill registry (`skills`) is mounted, the service registers the ru
 | File | Content |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `Config`, `formatModelKey`, the `DvModels` service, and the two tools |
+| [`src/citations.ts`](src/citations.ts) | `PromptCitation`, `parsePromptCitations`, `citedAsset`, `promptAssets`, `replacePromptCitations` |
 | [`src/types.ts`](src/types.ts) | `ModalityMap`, `TaskMap`, `ModelKey`, `RenderModelFacts`, `RenderRequest`, `RenderStreamEvent`, `ModelEntry`, `ModelFilter` |
 | [`skills/video-model-selection.md`](skills/video-model-selection.md) | The model selection skill |
 | [`tests/models.spec.ts`](tests/models.spec.ts) | The catalog, the tools, the skill, and the system prompt in a Loader composition |

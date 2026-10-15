@@ -17,6 +17,7 @@ import z from '@deepseek-ai/schemastery'
 import type { ModelEntry, ModelFilter, ModelKey } from './types.ts'
 
 export type * from './types.ts'
+export { citedAsset, parsePromptCitations, promptAssets, replacePromptCitations, type PromptCitation } from './citations.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {

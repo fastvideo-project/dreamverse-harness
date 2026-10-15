@@ -228,6 +228,15 @@ describe('buildCanvasGraph', () => {
     expect(drawn(pending).filter(([, kind]) => kind === 'take').map(([id]) => id)).toEqual(['r1', 'r2', 'r3', 'r4', 's7', 'w5', 'r6'].sort(byRecordOrder))
   })
 
+  it('draws a take whose output a shot prompt of the plan\'s latest version cites', () => {
+    const state = rollbackProject()
+    const shot = state.components.plan.plans['p1']?.at(-1)?.shots[0]
+    if (shot === undefined) throw new Error('rollbackProject lacks shot 1 of p1')
+    expect(drawn(state).map(([id]) => id)).not.toContain('s3')
+    shot.prompt = `@[door](dv:asset/s3.png) ${shot.prompt}`
+    expect(drawn(state).map(([id]) => id)).toContain('s3')
+  })
+
   it('writes stored input references as the reference text of an operation request', () => {
     expect([
       referenceText({ asset: 'a1' }), referenceText({ record: 'g1', output: 1 }), referenceText({ character: 'hero', version: 2 }),

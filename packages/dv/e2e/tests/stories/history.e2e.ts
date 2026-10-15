@@ -8,7 +8,7 @@
 import type { Browser, BrowserContext, Locator, Page } from 'playwright'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
-import { bootHarness, playwright, waitFor, type BootedHarness } from '../harness.ts'
+import { bootHarness, cite, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import { startScriptedModel, type ScriptedModel } from '../scripted-model.ts'
 
 /** A 1×1 opaque PNG. */
@@ -71,9 +71,9 @@ async function seedProject(prefix: string): Promise<Seeded> {
   const id = await createProject(prefix)
   const imported = await runOperation(id, 'asset.import', { base64: PNG_BASE64, mime: 'image/png', name: 'ref.png' })
   const renders: ProjectRecord[] = []
-  for (const prompt of [`${prefix} shot 1`, `${prefix} shot 2`]) {
-    const reference = [{ role: 'reference', ref: imported.outputs[0] ?? '' }]
-    const render = await runOperation(id, 'shot.render', { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt, duration_sec: 1 }, reference)
+  for (const shot of [`${prefix} shot 1`, `${prefix} shot 2`]) {
+    const prompt = `${cite(imported.outputs[0] ?? '', 'ref.png')} ${shot}`
+    const render = await runOperation(id, 'shot.render', { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt, duration_sec: 1 })
     expect(render.status).toBe('done')
     renders.push(render)
   }
@@ -343,8 +343,10 @@ describe('History panel', () => {
   it('a plan approval folds the renders it scheduled under its row; the toggle shows them', async () => {
     const id = await createProject('history-fold')
     const imported = await runOperation(id, 'asset.import', { base64: PNG_BASE64, mime: 'image/png', name: 'ref.png' })
-    const shots = [1, 2].map(shot => ({ prompt: `history-fold shot ${String(shot)}`, duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }))
-    const plan = await runOperation(id, 'plan.create', { title: '折叠', references: [imported.outputs[0] ?? ''], shots })
+    const shots = [1, 2].map(shot => ({
+      prompt: `${cite(imported.outputs[0] ?? '', 'ref.png')} history-fold shot ${String(shot)}`, duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3',
+    }))
+    const plan = await runOperation(id, 'plan.create', { title: '折叠', shots })
     expect(plan.report?.['plan']).toBe('p1')
     const approval = await runOperation(id, 'plan.approve', { plan: 'p1' })
     const scheduled = approval.report?.['scheduled'] as string[]
@@ -416,8 +418,8 @@ describe('History panel', () => {
     const imported = await runOperation(id, 'asset.import', { base64: PNG_BASE64, mime: 'image/png', name: 'live.png' })
     await expect.poll(() => rowOf(page, imported.id).getAttribute('data-status'), { timeout: 15_000 }).toBe('done')
     expect(await historyPanel(page).locator('[data-testid="dv-history-empty"]').count()).toBe(0)
-    const reference = [{ role: 'reference', ref: imported.outputs[0] ?? '' }]
-    const render = await runOperation(id, 'shot.render', { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'history-live shot', duration_sec: 1 }, reference)
+    const prompt = `${cite(imported.outputs[0] ?? '', 'live.png')} history-live shot`
+    const render = await runOperation(id, 'shot.render', { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt, duration_sec: 1 })
     await expect.poll(() => rowOf(page, render.id).getAttribute('data-status'), { timeout: 30_000 }).toBe('done')
     await expect.poll(() => rowOf(page, render.id).locator('[data-testid="dv-history-thumb"]').count()).toBe(1)
     expect(page.errors).toEqual([])

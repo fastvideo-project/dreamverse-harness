@@ -60,7 +60,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-挂载了 DSH `tools` 注册表时，每个已注册的操作以一个工具 `dv_<把点换成下划线的操作名>` 到达模型：操作的 `description`，后接资源提示（"Uses the GPU." 或 "Runs on the CPU."）以及只读操作（"A read that writes no record."）和确定性操作（"Repeating a call with the same inputs and params reuses the earlier result."）的说明；它的 `params` 加 `toolParams`，以及按 `confirm` 加上的布尔参数 `user_approved`（"Set true only after the user agreed to this exact call in the conversation. …"）或 `user_requested`（"Set true when the user asked for this exact change, or agreed to it in the conversation. …"）；还有共享参数 `reason`（记录的 intent）、`project_id`、`inputs`（按角色给出 `<asset>`、`<record>#<output>`，或角色、场景、风格版本的 `<id>@<version>`；只用于有输入的操作）、`supersedes` 和 `based_on`（后两个只用于写记录的操作）。
+挂载了 DSH `tools` 注册表时，每个已注册的操作以一个工具 `dv_<把点换成下划线的操作名>` 到达模型：操作的 `description`，后接资源提示（"Uses the GPU." 或 "Runs on the CPU."）以及只读操作（"A read that writes no record."）和确定性操作（"Repeating a call with the same inputs and params reuses the earlier result."）的说明；它的 `params` 加 `toolParams`，以及按 `confirm` 加上的布尔参数 `user_approved`（"Set true only after the user agreed to this exact call in the conversation. …"）或 `user_requested`（"Set true when the user asked for this exact change, or agreed to it in the conversation. …"）；还有共享参数 `reason`（记录的 intent）、`project_id`、`inputs`（按角色给出 `<asset>`、`<record>#<output>`，或角色、场景、风格版本的 `<id>@<version>`；只用于有输入角色、且操作不从参数读取该角色的操作）、`supersedes` 和 `based_on`（后两个只用于写记录的操作）。
 
 #### Token 影响
 

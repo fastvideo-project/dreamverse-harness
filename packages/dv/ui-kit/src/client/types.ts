@@ -161,11 +161,6 @@ export type RenderTask = 'ref2v' | 't2v'
 export interface Shot {
   prompt: string
   duration_sec?: number
-  /**
-   * Character, location or style versions (`c1@1`) or asset IDs this shot uses instead of the plan's references; only
-   * in task `ref2v`.
-   */
-  references?: string[]
   seed?: number
   /** The output modality of the shot's task. */
   modality: 'video'
@@ -184,7 +179,6 @@ export interface PlanVersion {
   /** The 1-based version number; reference text `p1@2` names version 2 of plan `p1`. */
   version: number
   title?: string
-  references?: string[]
   aspect_ratio?: string
   resolution?: string
   seed?: number

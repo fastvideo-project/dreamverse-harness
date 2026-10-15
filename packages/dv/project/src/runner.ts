@@ -149,15 +149,16 @@ export class Runner {
    * before a record exists (unknown operation, invalid params or inputs, input not ready, unknown project), or with the
    * error of the operation's `precondition`. Once the record is written, resolves with it in its final status (`done`,
    * `failed`, `cancelled`), or `pending` for a scheduled run.
-   * @param request - the call.
+   * @param call - the call; the runner adds the inputs that the operation reads from its params.
    * @returns the record, its outputs and report.
    */
-  async run(request: RunRequest): Promise<RunResult> {
+  async run(call: RunRequest): Promise<RunResult> {
     const { store, reducers, scheduler } = this.deps
-    const spec = this.operations.get(request.operation)
-    if (spec === undefined) throw new ProjectError('unknown_operation', `Operation ${request.operation} is not registered.`)
-    store.getProject(request.project)
-    this.checkRequest(spec, request)
+    const spec = this.operations.get(call.operation)
+    if (spec === undefined) throw new ProjectError('unknown_operation', `Operation ${call.operation} is not registered.`)
+    store.getProject(call.project)
+    this.checkRequest(spec, call)
+    const request: RunRequest = { ...call, inputs: [...call.inputs, ...spec.inputsFromParams?.(call.params) ?? []] }
 
     if (spec.readOnly === true) return await this.runRead(spec, request)
 
@@ -311,6 +312,10 @@ export class Runner {
     const role = request.inputs.find(input => !Object.hasOwn(spec.inputs, input.role))
     if (role !== undefined) {
       throw new ProjectError('invalid_inputs', `Operation ${spec.name} takes no input with role '${role.role}'.`)
+    }
+    const fromParams = request.inputs.find(input => spec.inputs[input.role]?.fromParams === true)
+    if (fromParams !== undefined) {
+      throw new ProjectError('invalid_inputs', `Operation ${spec.name} reads its '${fromParams.role}' inputs from its params; pass none.`)
     }
   }
 

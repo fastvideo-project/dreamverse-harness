@@ -28,7 +28,7 @@ import type { DvWorkspaceEventMap } from '@dv/ui-kit/workspace-events.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { useProjectState } from '@dv/ui-kit/useProject.ts'
 import { useZoomPresence } from '@dv/ui-kit/zoom.ts'
-import { buildCanvasGraph, freePositions, NODE_WIDTH, planShotFrames, referenceText, ROW } from './graph.ts'
+import { buildCanvasGraph, freePositions, NODE_WIDTH, planShotFrames, renderRequestInputs, ROW } from './graph.ts'
 import type { CanvasEdge, CanvasNode } from './graph.ts'
 import { NodeCard, nodeHeight, nodeTitle } from './NodeCard.tsx'
 import type { CanvasTranslate } from './NodeCard.tsx'
@@ -55,8 +55,6 @@ const MIN_ZOOM = 0.25
 const MAX_ZOOM = 2
 const DRAG_THRESHOLD = 4
 const SAVE_DELAY_MS = 500
-/** The zoom ref of a stacked editor, which opens and closes without the zoom transition. */
-const noZoom = (element: HTMLElement | null): void => { void element }
 
 /** Edge stroke per kind: the kind color of the node the edge leaves (a reference leaves a character or an asset). */
 const EDGE_COLOR: Record<CanvasEdge['kind'], string> = {
@@ -241,9 +239,6 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
   // The node with the accent ring, and the node whose editor is open; closing the editor keeps the ring.
   const [selected, setSelected] = useState<string | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
-  // The editor a reference chip opened over the `editing` one; it closes first, and with the editor beneath it.
-  const [stacked, setStacked] = useState<string | null>(null)
-  useEffect(() => { setStacked(null) }, [editing])
   // The take node IDs opened in this browser, for the project they belong to; null until the graph first loads.
   const [seen, setSeen] = useState<{ project: string; ids: ReadonlySet<string> } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -334,17 +329,15 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
     return () => { observer.disconnect() }
   }, [])
 
-  // Escape closes the top floating editor wherever focus is.
+  // Escape closes the floating editor wherever focus is.
   useEffect(() => {
     if (editing === null) return
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return
-      if (stacked === null) setEditing(null)
-      else setStacked(null)
+      if (event.key === 'Escape') setEditing(null)
     }
     window.addEventListener('keydown', onKey)
     return () => { window.removeEventListener('keydown', onKey) }
-  }, [editing, stacked])
+  }, [editing])
 
   /** Pan so a node sits at the center of the canvas, keeping the zoom. */
   const centerOn = useCallback((node: CanvasNode) => {
@@ -576,8 +569,8 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
     })
   })
   /**
-   * Render a failed take again: its own operation, inputs, and params, as a new take based on it. This is the request
-   * the take editor's 渲染新版本 sends when nothing was edited.
+   * Render a failed take again: its own operation, non-reference inputs, and params, as a new take based on it. This is
+   * the request the take editor's 渲染新版本 sends when nothing was edited.
    * @param node - the failed take's node.
    */
   const retryTake = (node: CanvasNode): void => {
@@ -586,7 +579,7 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
     if (record === null || operation === null) return
     setRetryingFrom(record.id)
     startRender({
-      project: projectId, operation, inputs: record.inputs.map(input => ({ role: input.role, ref: referenceText(input.ref) })),
+      project: projectId, operation, inputs: renderRequestInputs(record),
       params: record.params, surface: 'canvas', intent: t('intent.retryTake', { title: nodeTitle(node, t) }), based_on: record.id,
       ...session === null ? {} : { session },
     }).catch((error: unknown) => { setNotice(t('error', { message: error instanceof Error ? error.message : String(error) })) })
@@ -728,7 +721,6 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
     [...container.current?.querySelectorAll('[data-node-id]') ?? []].find(card => card.getAttribute('data-node-id') === id) ?? null
   const editorZoom = useZoomPresence(editing, nodeCard)
   const editingNode = graph?.nodes.find(node => node.id === editorZoom.shown) ?? null
-  const stackedNode = editingNode === null ? null : graph?.nodes.find(node => node.id === stacked) ?? null
   const removeFromCanvas = (assetId: string): void => {
     setEditing(null)
     setSelected(null)
@@ -779,32 +771,8 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
               run={run}
               onRender={startRender}
               onRemoveFromCanvas={removeFromCanvas}
-              onOpenNode={setStacked}
             />
           </>
-        )
-        : null}
-      {stackedNode !== null && graph !== null
-        ? (
-          // The stacked editor covers the canvas area; a press outside its panel closes it, not the editor beneath.
-          <div style={{ position: 'absolute', inset: 0, zIndex: 11 }} onPointerDown={(event) => { event.stopPropagation(); setStacked(null) }}>
-            <div aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'var(--dv-overlay)' }} />
-            <NodeEditor
-              key={`stacked:${stackedNode.id}`}
-              node={stackedNode}
-              zoomRef={noZoom}
-              state={graph.state}
-              client={client}
-              project={projectId}
-              session={session}
-              t={t}
-              onClose={() => { setStacked(null) }}
-              run={run}
-              onRender={startRender}
-              onRemoveFromCanvas={removeFromCanvas}
-              onOpenNode={setStacked}
-            />
-          </div>
         )
         : null}
     </div>

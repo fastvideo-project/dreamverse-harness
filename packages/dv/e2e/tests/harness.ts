@@ -344,3 +344,14 @@ export async function waitFor<T>(check: () => Promise<T | null | undefined | fal
 export function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
+
+/**
+ * The citation of an asset in a shot prompt, as the canvas editor and the chat composer write it; `shot.render` renders
+ * from the cited assets.
+ * @param asset - the asset ID.
+ * @param label - the label that the editor shows.
+ * @returns `@[<label>](dv:asset/<URI-component-encoded asset ID>)`.
+ */
+export function cite(asset: string, label: string): string {
+  return `@[${label}](dv:asset/${encodeURIComponent(asset)})`
+}

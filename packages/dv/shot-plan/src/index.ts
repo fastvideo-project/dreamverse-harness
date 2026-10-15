@@ -1,7 +1,8 @@
 /**
  * The Shot plan component of DreamVerse as the `dvShotPlan` Cordis service: the plan of a video before anything is
  * rendered. A plan has a `PlanId` (`p1`, `p2`, …) and numbered versions. It owns three operations:
- * - `plan.create`: version 1 of a new plan (the shots with their models, prompts and durations, and the references),
+ * - `plan.create`: version 1 of a new plan (the shots with their models, prompts and durations; each prompt cites its
+ *   reference assets),
  *   stored as a JSON asset so the agent and the user read the same text; the assigned PlanId goes in `report.plan`;
  * - `plan.update`: the next version of the plan its `plan` param names;
  * - `plan.approve`: the user's go-ahead for one version; through `dvProject.run` as the `system` actor, it schedules one
@@ -22,8 +23,7 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import z from '@deepseek-ai/schemastery'
 import type DvModels from '@dv/models'
-import { formatModelKey, type ModelKey } from '@dv/models'
-import type DvProject from '@dv/project'
+import { formatModelKey, parsePromptCitations, type ModelKey } from '@dv/models'
 import type { OperationContext, OperationResult, OperationSpec, ProjectId, ProjectState, RecordId, RunRequest } from '@dv/project'
 import type {} from '@dv/timeline'
 import { planOf, planReducer, reportedPlan } from './reducer.ts'
@@ -47,7 +47,7 @@ export const Config: z<Config> = z.object({})
 /** The Shot render operation; `plan.approve` schedules it by name. */
 const RENDER_OPERATION = 'shot.render'
 
-/** Whether a shot's task takes references; a shot of another task ignores the plan's references. */
+/** Whether a shot's task takes references, which its prompt cites. */
 function takesReferences(shot: Shot): boolean {
   return shot.task === 'ref2v'
 }
@@ -75,12 +75,12 @@ const SHOT_SCHEMA = {
     task: { type: 'string', required: true, description: 'The task of that model, as dv_models_list lists it.' },
     provider: { type: 'string', required: true, description: 'The provider of that model, as dv_models_list lists it.' },
     model: { type: 'string', required: true, description: 'The model name, as dv_models_list lists it.' },
-    prompt: { type: 'string', required: true, description: 'The complete prompt of this shot, written for its model and task.' },
-    duration_sec: { type: 'integer', description: 'Seconds; defaults to the model minimum.' },
-    references: {
-      type: 'array', items: { type: 'string' },
-      description: 'Task ref2v only: character, location or style versions (c1@1) or asset IDs this shot uses instead of the plan references.',
+    prompt: {
+      type: 'string', required: true,
+      description: 'The complete prompt of this shot, written for its model and task; in task ref2v it cites each reference asset '
+        + 'where it names it, as @[<label>](dv:asset/<asset ID>).',
     },
+    duration_sec: { type: 'integer', description: 'Seconds; defaults to the model minimum.' },
     continue_previous: {
       type: 'boolean',
       description: 'Not on shot 1, and only when the model takes a first frame (see dv_models_get): the shot starts from the last '
@@ -93,10 +93,6 @@ const SHOT_SCHEMA = {
 /** The params of `plan.create`: the fields of a `Plan`. */
 const PLAN_PARAMS = {
   title: { type: 'string' },
-  references: {
-    type: 'array', items: { type: 'string' },
-    description: 'Character, location or style versions (c1@1) or asset IDs every shot of task ref2v references unless it names its own.',
-  },
   aspect_ratio: { type: 'string' },
   resolution: { type: 'string' },
   seed: { type: 'integer' },
@@ -122,8 +118,8 @@ function shotCount(params: Record<string, unknown>): number {
 }
 
 /**
- * The problems of a plan's shots that no render can fix: a model key that is not in the catalog, references in a task
- * other than `ref2v`, and `continue_previous` on shot 1 or in a task other than `ref2v`.
+ * The problems of a plan's shots that no render can fix: a model key that is not in the catalog, a prompt with
+ * citations in a task other than `ref2v`, and `continue_previous` on shot 1 or in a task other than `ref2v`.
  * @param shots - the shots, in order.
  * @param models - the model catalog.
  * @returns one sentence per problem, empty when the shots are valid.
@@ -136,8 +132,8 @@ function shotProblems(shots: readonly Shot[], models: Pick<DvModels, 'get'>): st
       return [`Shot ${n} uses model ${formatModelKey(key)}, which is not in the model catalog; call dv_models_list for the models.`]
     }
     const problems: string[] = []
-    if (!takesReferences(shot) && (shot.references?.length ?? 0) > 0) {
-      problems.push(`Shot ${n} uses task ${shot.task}, which takes no references; remove its references or use task ref2v.`)
+    if (!takesReferences(shot) && parsePromptCitations(shot.prompt).length > 0) {
+      problems.push(`Shot ${n} uses task ${shot.task}, which takes no references; remove the citations from its prompt or use task ref2v.`)
     }
     if (shot.continue_previous === true && !takesFirstFrame(shot)) {
       problems.push(`Shot ${n} uses task ${shot.task}, which takes no first frame; remove its continue_previous or use task ref2v.`)
@@ -183,31 +179,25 @@ interface ApprovalShot {
 }
 
 /**
- * The `shot.render` params and reference inputs of every shot of a plan version, in shot order, as `plan.approve`
- * schedules them, and the take each unchanged shot reuses. A shot of task `ref2v` carries its own references, else the
- * plan's; a shot of another task carries none. Each shot's params name its model key. A shot
+ * The `shot.render` params of every shot of a plan version, in shot order, as `plan.approve` schedules them, and the
+ * take each unchanged shot reuses. Each shot's params name its model key, and its prompt cites its references, which
+ * `shot.render` reads from the prompt. A shot
  * is unchanged when a done `shot.render` record for the same plan in the approving state has the same
- * params (apart from `plan`, `plan_version` and `shot`), the same reference inputs,
+ * params (apart from `plan`, `plan_version` and `shot`), prompt included,
  * and the same `first_frame` input: none for a shot without `continue_previous`, else the reused take of the previous
  * shot, so a continuing shot after a rendered shot renders too. The newest such take is reused. The `first_frame` input
  * of a rendered continuing shot is added by the caller, because it can name a record that does not exist yet.
  * @param version - the plan version.
  * @param plan - the PlanId.
- * @param project - the Project service, which parses the references against the state.
  * @param state - the state the approval runs on.
- * @returns one entry per shot.
- * @throws Error when a reference names an unknown character, location or style version.
+ * @returns one entry per shot, with no inputs.
  */
-function approvalShots(
-  version: Plan & { version: number }, plan: string, project: Pick<DvProject, 'parseInputs'>, state: ProjectState,
-): ApprovalShot[] {
+function approvalShots(version: Plan & { version: number }, plan: string, state: ProjectState): ApprovalShot[] {
   const takes = state.components.proj.records.filter(record => record.status === 'done' && record.params['plan'] === plan).reverse()
   const ownParams = (params: Record<string, unknown>): string =>
     canonical(Object.fromEntries(Object.entries(params).filter(([key]) => !PLAN_RENDER_PARAMS.has(key))))
   const shots: ApprovalShot[] = []
   for (const [index, shot] of version.shots.entries()) {
-    const references = takesReferences(shot) ? shot.references ?? version.references ?? [] : []
-    const inputs: RunRequest['inputs'] = references.length === 0 ? [] : project.parseInputs(RENDER_OPERATION, { reference: references }, state)
     const params: Record<string, unknown> = {
       ...shotKey(shot), prompt: shot.prompt, plan, plan_version: version.version, shot: index + 1,
     }
@@ -220,12 +210,10 @@ function approvalShots(
     const firstFrame = continuePrevious
       ? (previous.reuse === null ? null : canonical([{ record: previous.reuse, output: 1 }]))
       : canonical([])
-    const wanted = canonical(inputs.map(input => input.ref))
     const reuse = firstFrame === null ? undefined : takes.find(take => take.operation === RENDER_OPERATION
       && ownParams(take.params) === ownParams(params)
-      && canonical(take.inputs.filter(input => input.role === 'reference').map(input => input.ref)) === wanted
       && canonical(take.inputs.filter(input => input.role === 'first_frame').map(input => input.ref)) === firstFrame)
-    shots.push({ params, inputs, continuePrevious, reuse: reuse?.id ?? null })
+    shots.push({ params, inputs: [], continuePrevious, reuse: reuse?.id ?? null })
   }
   return shots
 }
@@ -286,10 +274,10 @@ export default class DvShotPlan extends Service {
    * @param plan - the PlanId.
    * @param version - the version number; the latest version when omitted.
    * @returns the 1-based shot positions, in shot order.
-   * @throws Error naming the unknown plan or version, or an unknown character, location or style version.
+   * @throws Error naming the unknown plan or version.
    */
   shotsToRender(state: ProjectState, plan: PlanId | string, version?: number): number[] {
-    return approvalShots(versionIn(state, plan, version), plan, this.ctx.dvProject, state)
+    return approvalShots(versionIn(state, plan, version), plan, state)
       .flatMap((shot, index) => shot.reuse === null ? [index + 1] : [])
   }
 
@@ -321,8 +309,7 @@ export default class DvShotPlan extends Service {
    * not done is a placeholder until it is.
    * @param context - the running `plan.approve` call.
    * @returns the approved version, and the records it wrote: the scheduled shot renders in shot order, then the timeline.
-   * @throws Error when the param names no known plan or version, or a reference names an unknown character, location
-   *   or style version.
+   * @throws Error when the param names no known plan or version.
    */
   async approvePlan(context: OperationContext): Promise<{ version: number; scheduled: RecordId[] }> {
     const approve = context.record
@@ -335,7 +322,7 @@ export default class DvShotPlan extends Service {
     const origin = { actor: 'system' as const, surface: approve.surface, session: approve.session, turn: approve.turn, tool_call: null }
     const scheduled: RecordId[] = []
     const takes: RecordId[] = []
-    for (const shot of approvalShots(version, plan, project, context.state)) {
+    for (const shot of approvalShots(version, plan, context.state)) {
       if (shot.reuse !== null) {
         takes.push(shot.reuse)
         continue
@@ -366,21 +353,14 @@ export default class DvShotPlan extends Service {
 
   /**
    * Refuse a `plan.create` or `plan.update` call before its record when a shot names a model key that is not in the
-   * model catalog, references in a task other than `ref2v`, or `continue_previous` on shot 1 or in a task other than
-   * `ref2v` (see `shotProblems`), or when a shot's references (its own, else the plan's) name an unknown character,
-   * location or style version, so the report's GPU estimate can be computed.
+   * model catalog, has a prompt with citations in a task other than `ref2v`, or has `continue_previous` on shot 1 or
+   * in a task other than `ref2v` (see `shotProblems`).
    * @param plan - the plan of the call's params.
-   * @param state - the project's current state, which the call writes after.
-   * @throws Error with one sentence per problem, or the error of the unknown reference.
+   * @throws Error with one sentence per problem.
    */
-  private checkPlan(plan: Plan, state: ProjectState): void {
-    const project = this.ctx.dvProject
+  private checkPlan(plan: Plan): void {
     const problems = shotProblems(plan.shots, this.ctx.dvModels)
     if (problems.length > 0) throw new Error(`The plan cannot be rendered as written. ${problems.join(' ')}`)
-    for (const shot of plan.shots) {
-      const references = takesReferences(shot) ? shot.references ?? plan.references ?? [] : []
-      if (references.length > 0) project.parseInputs(RENDER_OPERATION, { reference: references }, state)
-    }
   }
 
   /**
@@ -391,18 +371,18 @@ export default class DvShotPlan extends Service {
    * @param request - the `plan.approve` call.
    * @param state - the project's current state, which the call writes after.
    * @throws Error naming the unknown plan or version, the shots and their problems, or the refused shots followed by the
-   *   first render refusal; the error of an unknown character, location or style version.
+   *   first render refusal.
    */
   private async precondition(request: RunRequest, state: ProjectState): Promise<void> {
     const plan = String(request.params['plan'])
     const requested = request.params['version']
     const version = versionIn(state, plan, typeof requested === 'number' ? requested : undefined)
-    this.checkPlan(version, state)
+    this.checkPlan(version)
     const project = this.ctx.dvProject
     const render = project.listOperations().find(spec => spec.name === RENDER_OPERATION)
     const refused: number[] = []
     let reason = ''
-    for (const shot of approvalShots(version, plan, project, state)) {
+    for (const shot of approvalShots(version, plan, state)) {
       if (shot.reuse !== null || render?.precondition === undefined) continue
       try {
         await render.precondition({ ...request, operation: RENDER_OPERATION, params: shot.params, inputs: shot.inputs }, state)
@@ -425,12 +405,11 @@ export default class DvShotPlan extends Service {
    * @param plan - the PlanId.
    * @param state - the state the approval would run on.
    * @returns the shot lines, the rendered shot count, and the GPU seconds.
-   * @throws Error when a reference names an unknown character, location or style version.
    */
   private renderCost(version: Plan & { version: number }, plan: string, state: ProjectState): RenderCost {
     const render = this.ctx.dvProject.listOperations().find(spec => spec.name === RENDER_OPERATION)
     let gpuSeconds = 0
-    const shots = approvalShots(version, plan, this.ctx.dvProject, state)
+    const shots = approvalShots(version, plan, state)
     const lines = shots.map((shot, index) => {
       const planned = version.shots[index]
       if (shot.reuse !== null || planned === undefined) return `shot ${String(index + 1)}: keeps its take`
@@ -467,7 +446,8 @@ export default class DvShotPlan extends Service {
       component: 'plan',
       version: '1',
       description: 'Propose a new plan for a separate story: for each shot its model from dv_models_list, its prompt written for it, its '
-        + 'duration, and its inputs (references; continue_previous to start from the previous shot\'s last frame). The report names '
+        + 'duration, and continue_previous to start from the previous shot\'s last frame; a ref2v prompt cites its reference assets. '
+        + 'The report names '
         + 'the new plan ID (p1, p2, …), one line per shot, and gpu_seconds, the GPU estimate of approving it; show them to the user. '
         + 'To extend, shorten or change an existing plan, call dv_plan_update instead. Nothing is rendered until the user agrees in '
         + 'the conversation and you call dv_plan_approve.',
@@ -478,8 +458,8 @@ export default class DvShotPlan extends Service {
       resource: 'none',
       confirm: 'never',
       summarize: record => `plan with ${shotCount(record.params)} shots`,
-      precondition: (request, state) => {
-        this.checkPlan(planOf(request.params), state)
+      precondition: (request) => {
+        this.checkPlan(planOf(request.params))
         return Promise.resolve()
       },
       execute: (context): Promise<OperationResult> => {
@@ -504,7 +484,7 @@ export default class DvShotPlan extends Service {
         summarize: record => `plan updated (${shotCount(record.params)} shots)`,
         precondition: (request, state) => {
           versionIn(state, String(request.params['plan']))
-          this.checkPlan(planOf(request.params), state)
+          this.checkPlan(planOf(request.params))
           return Promise.resolve()
         },
         execute: (context): Promise<OperationResult> => {
