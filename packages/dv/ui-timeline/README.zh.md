@@ -58,7 +58,7 @@ DOM 带测试 ID `dv-timeline-body`、`dv-timeline-editor`、`dv-timeline-viewer
 <details>
 <summary>实现内部——点击展开</summary>
 
-`TimelineBody` 持有来自 `@dv/ui-kit/useView.ts` 的视图会话，在 `TimelineEditor` 上方画项目栏。`TimelineView` 自己读取项目的当前状态。`placeTimeline` 把状态里的一条时间线变成带坐标的片段；`useTimelinePlayer` 通过两个叠放的 `<video>` 元素播放它们；在片段出点前半秒，隐藏的元素静音播放下一个片段，等它的时间前进后再暂停并回到该片段的入点，这样切换到下一个片段时不会停在它的第一帧。每个手势都是一次 `DvClient.runOperation` 调用加一次状态重新拉取。
+`TimelineBody` 持有来自 `@dv/ui-kit/useView.ts` 的视图会话，在 `TimelineEditor` 上方画项目栏。`TimelineView` 自己读取项目的当前状态。`placeTimeline` 把状态里的一条时间线变成带坐标的片段；`useTimelinePlayer` 通过两个叠放的 `<video>` 元素播放它们，两个元素的声音经过同一个 Web Audio context，由第一次播放创建；如果元素使用自己的音频输出，每次切换都要打开这个输出，下一个片段的第一帧会停住约 0.15 秒。每个手势都是一次 `DvClient.runOperation` 调用加一次状态重新拉取。
 
 | 文件 | 内容 |
 | --- | --- |

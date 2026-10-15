@@ -1,9 +1,9 @@
 /**
  * Continuous playback of one timeline's clips through two stacked `<video>` elements. The front element plays the
  * current clip from its in point; the back element holds the next clip, already seeked to its in point, so the switch
- * at the out point does not wait for a load. Shortly before the out point the back element also plays muted until its
- * time advances and then returns to its in point, so the browser has started that element's playback once and its
- * `play()` at the switch does not hold the clip's first frame. Placeholder clips, whose render is not done, have no
+ * at the out point does not wait for a load. Both elements play their sound through one Web Audio context that stays
+ * open: an element with its own audio output opens that output at `play()` and holds its first frame until the output
+ * runs, about 0.15 s, which a switch would show as a held frame. Placeholder clips, whose render is not done, have no
  * video: playback jumps over them to the next ready clip, and a seek onto one blanks the viewer.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -11,9 +11,6 @@ import type { RefObject } from 'react'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { clipIndexAt, readyIndexFrom, skipTarget } from './timelines.ts'
 import type { TrackClip } from './timelines.ts'
-
-/** Seconds of wall time before the out point at which the back element starts its muted warm-up play. */
-const WARM_UP_LEAD_SEC = 0.5
 
 /** What the viewer and the toolbar read and call. */
 export interface TimelinePlayer {
@@ -60,34 +57,6 @@ function start(element: HTMLVideoElement): void {
   }
 }
 
-/** A warm-up play of the back element; an aborted `controller` means the warm-up has ended. */
-interface WarmUp {
-  element: HTMLVideoElement
-  controller: AbortController
-}
-
-/**
- * Play a cued element muted until its time passes its in point, then pause it, unmute it, and seek it back to the in
- * point. A browser starts the first playback of an element with a delay of about a quarter second; after this warm-up
- * the element's next `play()` starts at once.
- * @param element - the back element, cued at the in point.
- * @param inSec - the in point inside the element's asset.
- * @returns the warm-up.
- */
-function warmUp(element: HTMLVideoElement, inSec: number): WarmUp {
-  const controller = new AbortController()
-  element.muted = true
-  element.addEventListener('timeupdate', () => {
-    if (element.currentTime <= inSec) return
-    controller.abort()
-    element.pause()
-    element.muted = false
-    element.currentTime = inSec
-  }, { signal: controller.signal })
-  start(element)
-  return { element, controller }
-}
-
 /**
  * Stop an element and detach its source so it shows no frame.
  * @param element - the video element.
@@ -125,19 +94,13 @@ export function useTimelinePlayer(timelineId: string | null, clips: TrackClip[],
   const [positionOf, setPositionOf] = useState(timelineId)
   const [playing, setPlaying] = useState(false)
   const element = (which: 0 | 1): HTMLVideoElement | null => (which === 0 ? first : second).current
-  // The warm-up of the back element for the coming switch; null until the current clip nears its out point.
-  const warming = useRef<WarmUp | null>(null)
+  // The Web Audio context both elements play their sound through; the first `play` creates it, because a browser starts
+  // audio only after a user gesture, and unmounting closes it.
+  const audio = useRef<AudioContext | null>(null)
 
-  // The back element holds the next ready clip at or after `index`; a running warm-up stops paused and unmuted.
+  // The back element holds the next ready clip at or after `index`.
   const preload = useCallback((index: number) => {
     const back = element(frontRef.current === 0 ? 1 : 0)
-    const warm = warming.current
-    warming.current = null
-    if (warm !== null && !warm.controller.signal.aborted) {
-      warm.controller.abort()
-      warm.element.pause()
-      warm.element.muted = false
-    }
     const clip = clipsRef.current[readyIndexFrom(clipsRef.current, index)]
     if (back !== null && clip !== undefined && clip.assetId !== null) cue(back, clip.assetId, clip.inSec)
   }, [])
@@ -167,6 +130,18 @@ export function useTimelinePlayer(timelineId: string | null, clips: TrackClip[],
   const play = useCallback(() => {
     const list = clipsRef.current
     if (readyIndexFrom(list, 0) === -1) return
+    if (audio.current === null) {
+      const context = new AudioContext()
+      for (const which of [0, 1] as const) {
+        const target = element(which)
+        if (target !== null) context.createMediaElementSource(target).connect(context.destination)
+      }
+      audio.current = context
+    }
+    audio.current.resume().catch((error: unknown) => {
+      // A browser refuses to resume without a user gesture; the elements then play without sound.
+      void error
+    })
     if (position >= total - 0.05 || current.current === -1) seek(position >= total - 0.05 ? 0 : position)
     // From a placeholder, playback starts at the next ready clip, or at the first one when none follows.
     if (list[current.current]?.status !== 'ready') {
@@ -208,21 +183,14 @@ export function useTimelinePlayer(timelineId: string | null, clips: TrackClip[],
       const clip = list[current.current]
       if (shown === null || clip === undefined) { setPlaying(false); return }
       setPosition(clip.startSec + Math.max(0, shown.currentTime - clip.inSec))
-      const nextIndex = readyIndexFrom(list, current.current + 1)
-      const next = list[nextIndex]
-      const back: 0 | 1 = frontRef.current === 0 ? 1 : 0
-      const incoming = element(back)
-      const lead = (clip.outSec - shown.currentTime) / shown.playbackRate
-      if (warming.current === null && incoming !== null && next !== undefined && next.assetId !== null && lead <= WARM_UP_LEAD_SEC) {
-        warming.current = warmUp(incoming, next.inSec)
-      }
       if (shown.currentTime >= clip.outSec - 0.03 || shown.ended) {
+        const nextIndex = readyIndexFrom(list, current.current + 1)
+        const next = list[nextIndex]
         shown.pause()
         if (next === undefined || next.assetId === null) { setPosition(total); setPlaying(false); return }
+        const back: 0 | 1 = frontRef.current === 0 ? 1 : 0
+        const incoming = element(back)
         if (incoming === null) { setPlaying(false); return }
-        // A warm-up still running at the out point keeps playing as the shown clip.
-        warming.current?.controller.abort()
-        incoming.muted = false
         if (incoming.getAttribute('src') !== assetUrl(next.assetId)) cue(incoming, next.assetId, next.inSec)
         start(incoming)
         frontRef.current = back
@@ -235,6 +203,8 @@ export function useTimelinePlayer(timelineId: string | null, clips: TrackClip[],
     frame = requestAnimationFrame(tick)
     return () => { cancelAnimationFrame(frame) }
   }, [playing, total, preload])
+
+  useEffect(() => () => { void audio.current?.close() }, [])
 
   // An edit changes the clips under the playhead; show the frame at the same time again. Another timeline starts at 0.
   const layout = clips.map(clip => `${clip.assetId ?? clip.status}@${String(clip.inSec)}-${String(clip.outSec)}`).join('|')
