@@ -492,7 +492,10 @@ describe('canvas stories', () => {
     // Shot 3 continues shot 2, so its render starts from the last still of shot 2's take.
     await runOperation(project.id, 'plan.update', {
       plan: 'p1', title: v1.title, references: v1.references,
-      shots: [...v1.shots, { prompt: 'canvas-plan-versions shot 3', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', continue_previous: true }],
+      shots: [...v1.shots, {
+        prompt: 'canvas-plan-versions shot 3 from @[首帧](dv:input/first_frame)',
+        duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', continue_previous: true,
+      }],
     })
     await runOperation(project.id, 'plan.approve', { plan: 'p1' })
     const state = await waitFor(async () => {
