@@ -550,10 +550,29 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     await expect(fixture.record('shot.render', { ...REF, prompt: `@[other](dv:asset/${other}) waves` }, [c1()]))
       .rejects.toThrow(`The prompt cites asset ${other}, which is not in the reference input. `
         + 'Cite only the assets of inputs.reference and the inputs of the call.')
-    const characterCited = { ...REF, reason: 'x', prompt: '@[Mia](dv:character/c1) waves', inputs: { reference: 'c1@1' } }
-    expect(failure(await fixture.call('dv_shot_render', characterCited)))
-      .toContain('The prompt cites dv:character/c1; a shot prompt cites only reference assets and inputs of the call.')
+    const characterCited = { ...REF, reason: 'x', prompt: '@[Bo](dv:character/c9) waves', inputs: { reference: 'c1@1' } }
+    expect(failure(await fixture.call('dv_shot_render', characterCited))).toContain('The prompt cites dv:character/c9; a shot prompt '
+      + 'cites only the assets and elements of its reference input and the inputs of the call.')
     expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
+  })
+
+  it('expands a citation of a character in the reference input into its reference images, and reports the expanded prompt', async () => {
+    const fixture = await start()
+    const face = await withCharacter(fixture)
+    const side = fixture.put(Buffer.from('PNG-SIDE'), 'image/png', 'side.png')
+    await fixture.record('bible.character_create', { character: 'c2' }, [
+      { role: 'reference', ref: { asset: face } }, { role: 'reference', ref: { asset: side } },
+    ])
+    const c2 = { role: 'reference', ref: { character: brandString<CharacterId>('c2'), version: 1 } }
+    const prompt = '@[Mia](dv:character/c2) waves at @[Bo](dv:character/c1)'
+    const shot = await fixture.record('shot.render', { ...REF, prompt }, [c2, c1()])
+    const expanded = `Mia (@[Mia · 1](dv:asset/${face}) @[Mia · 2](dv:asset/${side})) waves at Bo (@[Bo · 1](dv:asset/${face}))`
+    expect(fixture.reference.requests[0]).toMatchObject({ prompt: expanded, references: [face, side, face] })
+    // The record keeps the prompt as written; the report shows what the model plugin received.
+    expect(shot.params['prompt']).toBe(prompt)
+    expect(shot.report).toMatchObject({ expanded_prompt: expanded })
+    const plain = await fixture.record('shot.render', { ...REF, prompt: 'Mia waves' }, [c2])
+    expect(plain.report).not.toHaveProperty('expanded_prompt')
   })
 
   it('passes a prompt that cites the first_frame input of a call with continue_from, and refuses an input the call lacks', async () => {

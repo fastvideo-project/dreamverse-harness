@@ -26,9 +26,9 @@ import {
   type TaskId,
 } from '@dv/models'
 import {
-  citedAsset, citedInput, parsePromptCitations, type AssetId, type OperationContext, type OperationInput, type OperationResult,
-  type OperationSpec, type OperationToolCall, type ProjectId, type ProjectRecord, type ProjectState, type RecordId, type RecordInput,
-  type RecordInputRef, type RunRequest,
+  citedAsset, citedInput, elementCitationUri, parsePromptCitations, replacePromptCitations, type AssetId, type OperationContext,
+  type OperationInput, type OperationResult, type OperationSpec, type OperationToolCall, type ProjectId, type ProjectRecord,
+  type ProjectState, type RecordId, type RecordInput, type RecordInputRef, type RunRequest,
 } from '@dv/project'
 import { RENDER_OPERATION, shotReducer } from './reducer.ts'
 import { backendSeconds, baseMime, number, shotGeometry, text, type ShotGeometry } from './render.ts'
@@ -159,27 +159,49 @@ function citationProblems(prompt: string, references: readonly AssetId[], roles:
       return role !== 'reference' && roles.has(role) ? [] : [`The prompt cites the input ${role}, which this call does not have.`]
     }
     const asset = citedAsset(citation.uri)
-    if (asset === null) return [`The prompt cites ${citation.uri}; a shot prompt cites only reference assets and inputs of the call.`]
+    if (asset === null) {
+      return [`The prompt cites ${citation.uri}; a shot prompt cites only the assets and elements of its reference input `
+        + 'and the inputs of the call.']
+    }
     return references.includes(asset) ? [] : [`The prompt cites asset ${asset}, which is not in the reference input.`]
   })
 }
 
 /**
- * The render request of a call: its prompt, its `reference` assets in input order, its `first_frame` asset, the frame
- * size and frame count from the model's facts, the seed (the call's `seed`, else a random one), and the model's own
- * parameters.
+ * A prompt with each citation of an element in the `reference` input (`dv:character/<id>`, `dv:location/<id>` or
+ * `dv:style/<id>`) expanded into the citation's label and the citations of the element's reference assets, in their
+ * order: `Mia (@[Mia · 1](dv:asset/a1) @[Mia · 2](dv:asset/a2))`. A citation of anything else stays as written.
+ * @param prompt - the prompt.
+ * @param inputs - the call's input assets with their roles and references.
+ * @returns the expanded prompt.
+ */
+function expandElements(prompt: string, inputs: ReadonlyArray<Pick<RecordInput, 'role' | 'ref' | 'resolved_asset'>>): string {
+  return replacePromptCitations(prompt, (citation) => {
+    const assets = [...new Set(inputs.flatMap(input => input.role === 'reference' && input.resolved_asset !== null
+      && elementCitationUri(input.ref) === citation.uri ? [input.resolved_asset] : []))]
+    if (assets.length === 0) return prompt.slice(citation.start, citation.end)
+    const label = citation.label.replaceAll(']', '')
+    const cited = assets.map((asset, index) => `@[${label} · ${String(index + 1)}](dv:asset/${encodeURIComponent(asset)})`)
+    return `${label} (${cited.join(' ')})`
+  })
+}
+
+/**
+ * The render request of a call: its prompt with each element citation expanded (see `expandElements`), its
+ * `reference` assets in input order, its `first_frame` asset, the frame size and frame count from the model's facts, the
+ * seed (the call's `seed`, else a random one), and the model's own parameters.
  * @param facts - the model's facts.
  * @param params - the call's params.
- * @param inputs - the call's input assets with their roles.
+ * @param inputs - the call's input assets with their roles and references.
  * @returns the request and the shot's geometry.
  * @throws Error for a missing prompt, a citation that names no `reference` asset, params outside the facts, or more than
  *   one `first_frame` input.
  */
 function renderRequest(
-  facts: RenderModelFacts, params: Record<string, unknown>, inputs: Array<Pick<RecordInput, 'role' | 'resolved_asset'>>,
+  facts: RenderModelFacts, params: Record<string, unknown>, inputs: Array<Pick<RecordInput, 'role' | 'ref' | 'resolved_asset'>>,
 ): { request: RenderRequest; geometry: ShotGeometry } {
-  const prompt = text(params['prompt'])
-  if (prompt === '') throw new Error('shot.render needs a `prompt`.')
+  if (text(params['prompt']) === '') throw new Error('shot.render needs a `prompt`.')
+  const prompt = expandElements(text(params['prompt']), inputs)
   const references = inputAssets(inputs, 'reference')
   // An output of a record that has not finished counts here although it has no asset yet.
   const firstFrameCount = inputs.filter(input => input.role === 'first_frame').length
@@ -259,7 +281,9 @@ export default class DvShotRender extends Service {
     await this.validate(entry, request, context.params)
     const stream = entry.render(request, context.signal)
     const key = { modality: entry.modality, task: entry.task, provider: entry.provider, model: entry.model }
-    return await this.storeShot(context, record, facts, geometry, request.seed, stream, key)
+    // The record's params keep the prompt as written; the report adds the prompt that the model plugin received.
+    const expanded = request.prompt === text(context.params['prompt']) ? {} : { expanded_prompt: request.prompt }
+    return await this.storeShot(context, record, facts, geometry, request.seed, stream, { ...key, ...expanded })
   }
 
   /**
@@ -270,7 +294,7 @@ export default class DvShotRender extends Service {
    * @param geometry - the shot's frame size and frame count.
    * @param seed - the seed the request carried.
    * @param stream - the model's render stream.
-   * @param extra - report fields of the call: the model key.
+   * @param extra - report fields of the call: the model key, and `expanded_prompt` when expansion changed the prompt.
    * @returns the outputs, the GPU time, and the report.
    */
   private async storeShot(
@@ -378,7 +402,7 @@ export default class DvShotRender extends Service {
   private async precondition(request: RunRequest, state: ProjectState): Promise<void> {
     const entry = this.resolve(request.params)
     const inputs = request.inputs.flatMap(({ role, ref }) =>
-      this.resolveRefAssets(request.project, state, ref).map(asset => ({ role, resolved_asset: asset })))
+      this.resolveRefAssets(request.project, state, ref).map(asset => ({ role, ref, resolved_asset: asset })))
     const facts = await entry.facts()
     // A seed drawn here only completes the request checked before recording; `renderShot` draws the recorded seed.
     const { request: renderable } = renderRequest(facts, request.params, inputs)
