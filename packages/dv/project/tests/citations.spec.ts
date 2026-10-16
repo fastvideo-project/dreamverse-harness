@@ -2,7 +2,7 @@
  * Tests of the citations of a prompt: parsing, the cited assets, and replacement.
  */
 import { describe, expect, it } from 'vitest'
-import { citedAsset, parsePromptCitations, promptAssets, replacePromptCitations } from '../src/index.ts'
+import { citedAsset, citedInput, parsePromptCitations, promptAssets, replacePromptCitations } from '../src/index.ts'
 
 const PROMPT = '@[Mia · front](dv:asset/a1) meets @[Bo](dv:asset/b%2F2) by @[the lake](dv:element/e1@2), then @[Mia](dv:asset/a1) waves'
 
@@ -20,6 +20,8 @@ describe('prompt citations', () => {
   it('names the cited assets once each, in the order of their first citation', () => {
     expect(citedAsset('dv:asset/b%2F2')).toBe('b/2')
     expect(citedAsset('dv:element/e1@2')).toBeNull()
+    expect(citedInput('dv:input/first_frame')).toBe('first_frame')
+    expect(citedInput('dv:asset/a1')).toBeNull()
     expect(promptAssets(PROMPT)).toEqual(['a1', 'b/2'])
     expect(promptAssets('a cat')).toEqual([])
   })

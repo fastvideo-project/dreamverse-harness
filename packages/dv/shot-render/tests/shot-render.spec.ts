@@ -548,11 +548,28 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(shot.status).toBe('done')
     const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
     await expect(fixture.record('shot.render', { ...REF, prompt: `@[other](dv:asset/${other}) waves` }, [c1()]))
-      .rejects.toThrow(`The prompt cites asset ${other}, which is not in the reference input. Cite only the assets of inputs.reference.`)
+      .rejects.toThrow(`The prompt cites asset ${other}, which is not in the reference input. `
+        + 'Cite only the assets of inputs.reference and the inputs of the call.')
     const characterCited = { ...REF, reason: 'x', prompt: '@[Mia](dv:character/c1) waves', inputs: { reference: 'c1@1' } }
     expect(failure(await fixture.call('dv_shot_render', characterCited)))
-      .toContain('The prompt cites dv:character/c1; a shot prompt cites only assets of its reference input.')
+      .toContain('The prompt cites dv:character/c1; a shot prompt cites only reference assets and inputs of the call.')
     expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
+  })
+
+  it('passes a prompt that cites the first_frame input of a call with continue_from, and refuses an input the call lacks', async () => {
+    const fixture = await start()
+    await withCharacter(fixture)
+    const shot = await fixture.record('shot.render', { ...REF, prompt: 'Picture 1 waves' }, [c1()])
+    const prompt = 'The shot starts from @[首帧](dv:input/first_frame).'
+    const args = { ...REF, prompt, inputs: { reference: 'c1@1' } }
+    const next = value(await fixture.call('dv_shot_render', { ...args, reason: 'next', continue_from: shot.id }))
+    expect(next.status).toBe('done')
+    expect(fixture.reference.requests[1]).toMatchObject({ prompt, firstFrame: shot.outputs[1] })
+    expect(failure(await fixture.call('dv_shot_render', { ...args, reason: 'no frame' })))
+      .toContain('The prompt cites the input first_frame, which this call does not have.')
+    // The reference input is cited by its assets, not by its role.
+    expect(failure(await fixture.call('dv_shot_render', { ...args, reason: 'role', prompt: '@[refs](dv:input/reference)' })))
+      .toContain('The prompt cites the input reference, which this call does not have.')
   })
 
   it('refuses requests outside the model\'s facts before recording, and records stream failures', async () => {

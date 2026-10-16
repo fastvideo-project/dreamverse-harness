@@ -26,7 +26,7 @@ kind: "package-reference"
 
 用项目目录和会话目录挂载插件。素材库加载时用 `registerAssetStore` 注册它的存储，聊天会话用 `bindSession` 绑定到项目。智能体调用前需要用户同意的操作把 `OperationSpec.confirm` 设为 `always` 或 `over_gpu_budget`，并提供 `confirmSummary(call, state)`，它返回 `{text, gpu_seconds}`：这次调用要做什么及其 GPU 估算；没有 `confirmSummary` 的这种 spec 会被 `registerOperation` 拒绝（`invalid_params`）。项目随后给该操作的工具加上仅工具参数 `user_approved`（`always`）或 `user_requested`（`over_gpu_budget`），在适用 `always`，或本轮的 GPU 秒数超过 `confirmGpuSecondsThreshold` 时，拒绝不带该参数的智能体调用，此时不写任何记录；拒绝文字让智能体在对话中询问用户，问题用粗体。该参数不进入记录的 params，用户和系统的调用从不被拒绝。每个归约函数经 `Reducer.agentSummary` 把自己切片的字段加入项目摘要。操作在 `OperationSpec.pendingInputRoles` 中列出可以指向尚未完成的记录输出的输入角色：运行器立即记录并执行这样的调用，`resolved_asset` 为 null，生产记录完成后由记录的当前形式填入（时间线中等待渲染的片段使用它）。
 
-提示词以 `@[<label>](dv:<kind>/<id>)` 引用项目条目。[`src/citations.ts`](src/citations.ts) 中的函数 `parsePromptCitations`、`citedAsset`、`promptAssets` 和 `replacePromptCitations` 读取并替换这些引用。模型提供方插件用它们把每个引用换成它的模型的写法。
+提示词以 `@[<label>](dv:<kind>/<id>)` 引用项目条目。[`src/citations.ts`](src/citations.ts) 中的函数 `parsePromptCitations`、`citedAsset`、`promptAssets` 和 `replacePromptCitations` 读取并替换这些引用；`citedInput` 读取按角色引用调用输入的引用，例如 `dv:input/first_frame`。模型提供方插件用它们把每个引用换成它的模型的写法。
 
 ```yaml
 - id: dv-project

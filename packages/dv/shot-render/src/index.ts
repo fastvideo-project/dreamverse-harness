@@ -26,9 +26,9 @@ import {
   type TaskId,
 } from '@dv/models'
 import {
-  citedAsset, parsePromptCitations, type AssetId, type OperationContext, type OperationInput, type OperationResult, type OperationSpec,
-  type OperationToolCall, type ProjectId, type ProjectRecord, type ProjectState, type RecordId, type RecordInput, type RecordInputRef,
-  type RunRequest,
+  citedAsset, citedInput, parsePromptCitations, type AssetId, type OperationContext, type OperationInput, type OperationResult,
+  type OperationSpec, type OperationToolCall, type ProjectId, type ProjectRecord, type ProjectState, type RecordId, type RecordInput,
+  type RecordInputRef, type RunRequest,
 } from '@dv/project'
 import { RENDER_OPERATION, shotReducer } from './reducer.ts'
 import { backendSeconds, baseMime, number, shotGeometry, text, type ShotGeometry } from './render.ts'
@@ -144,16 +144,22 @@ function inputAssets(inputs: ReadonlyArray<Pick<RecordInput, 'role' | 'resolved_
 }
 
 /**
- * The problems of a prompt's citations: a citation of anything other than an asset, and a citation of an asset that is not
- * one of the `reference` assets.
+ * The problems of a prompt's citations: a citation of an input role (`dv:input/<role>`) that the call has no input of, or
+ * of the `reference` role, which a prompt cites by asset; a citation of anything other than an asset or an input; and a
+ * citation of an asset that is not one of the `reference` assets.
  * @param prompt - the prompt.
  * @param references - the `reference` assets of the call.
- * @returns one sentence per problem; empty when every citation names a reference asset.
+ * @param roles - the input roles of the call, such as `first_frame`, including inputs whose value does not exist yet.
+ * @returns one sentence per problem; empty when every citation names a reference asset or an input of the call.
  */
-function citationProblems(prompt: string, references: readonly AssetId[]): string[] {
+function citationProblems(prompt: string, references: readonly AssetId[], roles: ReadonlySet<string>): string[] {
   return parsePromptCitations(prompt).flatMap((citation) => {
+    const role = citedInput(citation.uri)
+    if (role !== null) {
+      return role !== 'reference' && roles.has(role) ? [] : [`The prompt cites the input ${role}, which this call does not have.`]
+    }
     const asset = citedAsset(citation.uri)
-    if (asset === null) return [`The prompt cites ${citation.uri}; a shot prompt cites only assets of its reference input.`]
+    if (asset === null) return [`The prompt cites ${citation.uri}; a shot prompt cites only reference assets and inputs of the call.`]
     return references.includes(asset) ? [] : [`The prompt cites asset ${asset}, which is not in the reference input.`]
   })
 }
@@ -175,10 +181,10 @@ function renderRequest(
   const prompt = text(params['prompt'])
   if (prompt === '') throw new Error('shot.render needs a `prompt`.')
   const references = inputAssets(inputs, 'reference')
-  const problems = citationProblems(prompt, references)
-  if (problems.length > 0) throw new Error(`${problems.join(' ')} Cite only the assets of inputs.reference.`)
   // An output of a record that has not finished counts here although it has no asset yet.
   const firstFrameCount = inputs.filter(input => input.role === 'first_frame').length
+  const problems = citationProblems(prompt, references, new Set(inputs.map(input => input.role)))
+  if (problems.length > 0) throw new Error(`${problems.join(' ')} Cite only the assets of inputs.reference and the inputs of the call.`)
   if (firstFrameCount > 1) throw new Error(`shot.render takes one first_frame input; this call has ${firstFrameCount}.`)
   const firstFrames = inputAssets(inputs, 'first_frame')
   const geometry = shotGeometry(facts, params)

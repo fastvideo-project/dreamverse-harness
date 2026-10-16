@@ -27,6 +27,9 @@ const CITATION = /@\[([^\]]*)\]\((dv:[^)\s]+)\)/g
 /** The URI prefix of an asset citation. */
 const ASSET_PREFIX = 'dv:asset/'
 
+/** The URI prefix of a citation of an input of the call by its role, such as `dv:input/first_frame`. */
+const INPUT_PREFIX = 'dv:input/'
+
 /**
  * Find every citation in a prompt.
  * @param prompt - the prompt.
@@ -47,6 +50,16 @@ export function parsePromptCitations(prompt: string): PromptCitation[] {
  */
 export function citedAsset(uri: string): AssetId | null {
   return uri.startsWith(ASSET_PREFIX) ? brandString<AssetId>(decodeURIComponent(uri.slice(ASSET_PREFIX.length))) : null
+}
+
+/**
+ * The input role that a citation URI names. A citation of an input names the call's input of that role, whatever its
+ * value is, so it also names an input whose value a record has not produced yet.
+ * @param uri - a `dv:` URI.
+ * @returns the role of a `dv:input/<role>` URI, such as `first_frame`; null for any other URI.
+ */
+export function citedInput(uri: string): string | null {
+  return uri.startsWith(INPUT_PREFIX) ? uri.slice(INPUT_PREFIX.length) : null
 }
 
 /**

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/dv/shot-render/README.md
-README.md: c43f11d12aa482d94a9b71ef9967cfb41359e0d8
-README.zh.md: 281778753950c026e1cd75195e9f59753a7aa83c
+README.md: c06e15ee2948bd0c8c306782accea6912809f505
+README.zh.md: 20b83e4b9041b73bd5df97923bf4377842cf89a7
