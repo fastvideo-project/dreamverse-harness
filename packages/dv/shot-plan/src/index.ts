@@ -24,7 +24,10 @@ import z from '@deepseek-ai/schemastery'
 import type DvModels from '@dv/models'
 import { formatModelKey, type ModelKey } from '@dv/models'
 import type DvProject from '@dv/project'
-import type { OperationContext, OperationResult, OperationSpec, ProjectId, ProjectState, RecordId, RunRequest } from '@dv/project'
+import {
+  citedInput, parsePromptCitations, type OperationContext, type OperationResult, type OperationSpec, type ProjectId, type ProjectState,
+  type RecordId, type RunRequest,
+} from '@dv/project'
 import type {} from '@dv/timeline'
 import { planOf, planReducer, reportedPlan } from './reducer.ts'
 import type { Plan, PlanId, PlanVersion, Shot } from './types.ts'
@@ -123,7 +126,8 @@ function shotCount(params: Record<string, unknown>): number {
 
 /**
  * The problems of a plan's shots that no render can fix: a model key that is not in the catalog, references in a task
- * other than `ref2v`, and `continue_previous` on shot 1 or in a task other than `ref2v`.
+ * other than `ref2v`, `continue_previous` on shot 1 or in a task other than `ref2v`, and a prompt that cites the first frame
+ * (`dv:input/first_frame`) of a shot that does not continue the previous shot.
  * @param shots - the shots, in order.
  * @param models - the model catalog.
  * @returns one sentence per problem, empty when the shots are valid.
@@ -143,6 +147,11 @@ function shotProblems(shots: readonly Shot[], models: Pick<DvModels, 'get'>): st
       problems.push(`Shot ${n} uses task ${shot.task}, which takes no first frame; remove its continue_previous or use task ref2v.`)
     } else if (shot.continue_previous === true && index === 0) {
       problems.push('Shot 1 has no previous shot to continue; remove its continue_previous.')
+    }
+    const citesFirstFrame = parsePromptCitations(shot.prompt).some(citation => citedInput(citation.uri) === 'first_frame')
+    if (citesFirstFrame && (shot.continue_previous !== true || index === 0)) {
+      problems.push(`Shot ${n} cites the first frame but does not continue the previous shot; `
+        + 'set continue_previous or remove the citation.')
     }
     return problems
   })

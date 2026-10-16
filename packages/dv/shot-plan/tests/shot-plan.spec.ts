@@ -493,6 +493,18 @@ describe('dvShotPlan', () => {
       'Shot 2 uses task t2v, which takes no first frame; remove its continue_previous or use task ref2v.',
     ].join(' '))
     expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
+    // A prompt cites the first frame only in a shot that continues the previous shot.
+    const firstFrame = '@[首帧](dv:input/first_frame) is the first frame'
+    const cited = await fixture.call('dv_plan_create', {
+      reason: 'first frame',
+      shots: [ref(firstFrame, { continue_previous: true }), ref(firstFrame), ref(firstFrame, { continue_previous: true })],
+    })
+    expect(cited.isError && cited.error.message).toBe([
+      'The plan cannot be rendered as written.',
+      'Shot 1 has no previous shot to continue; remove its continue_previous.',
+      'Shot 1 cites the first frame but does not continue the previous shot; set continue_previous or remove the citation.',
+      'Shot 2 cites the first frame but does not continue the previous shot; set continue_previous or remove the citation.',
+    ].join(' '))
     // plan.update checks the same rules; plan.approve also refuses a stored plan whose model left the catalog.
     await fixture.record('plan.create', { references: [picture], shots: [ref('a')] })
     const shots = [{ ...plain, prompt: 'b' }]
