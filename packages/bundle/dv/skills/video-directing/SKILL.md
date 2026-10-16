@@ -32,7 +32,7 @@ Choose each shot's model with the `video-model-selection` skill: `dv_models_list
 
 ## 4. Write each prompt with the prompt skill of its model and task
 
-Before writing the prompts, load the prompt skill of every model and task the plan uses from your skill list. Write each shot's `prompt` with the rules of its skill. A task `ref2v` prompt names the reference pictures; a task `t2v` prompt describes everything in words.
+Before writing the prompts, load the prompt skill of every model and task the plan uses from your skill list. Write each shot's `prompt` with the rules of its skill. A task `ref2v` prompt cites its reference images as `@[<label>](dv:asset/<AssetId>)`; a task `t2v` prompt describes everything in words.
 
 ## 5. Create the plan, show it, and ask
 
