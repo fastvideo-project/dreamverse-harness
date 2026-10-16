@@ -4,6 +4,7 @@
  * @module @dv/fastvideo/types
  */
 import type { ParameterSchemaSpec } from '@deepseek-ai/dsh-tools'
+import type { RenderRequest } from '@dv/models'
 import type { AssignReferenceLabels } from './reference-labels.ts'
 
 /**
@@ -37,5 +38,7 @@ export interface ServedTask {
   extra: ParameterSchemaSpec
   /** How the model names the references in its prompt; a citation of a reference becomes its label. */
   assignReferenceLabels: AssignReferenceLabels
+  /** The problems of a request's prompt under the model's own prompt rules, one sentence each; absent when it has none. */
+  promptProblems?: (request: RenderRequest) => string[]
   skill: { name: string; description: string; file: string }
 }

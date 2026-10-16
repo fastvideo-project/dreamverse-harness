@@ -239,6 +239,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
       return [
         ...requestProblems(inputs, limits, request, asset => ctx.dvAssetPool.mediaType(asset)),
         ...extraProblems(model, task, extra, request.extra),
+        ...served.promptProblems?.(request) ?? [],
       ]
     },
     render(request: RenderRequest, signal?: AbortSignal): AsyncIterable<RenderStreamEvent> {

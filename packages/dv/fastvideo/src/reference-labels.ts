@@ -5,24 +5,26 @@
  * @module @dv/fastvideo/reference-labels
  */
 import type { RenderRequest } from '@dv/models'
-import { citedAsset, replacePromptCitations, type AssetId } from '@dv/project'
+import { citedAsset, citedInput, replacePromptCitations, type AssetId } from '@dv/project'
 
-/** One reference of a render request with its media type, such as `image`, as `dvAssetPool.mediaType` returns it. */
+/** One medium of a render request with its media type, such as `image`, as `dvAssetPool.mediaType` returns it. */
 export interface ReferenceMedia {
   asset: AssetId
   mediaType: string
 }
 
 /**
- * Assign a model's labels to the references of one render request.
- * @param references - the references in input order.
- * @returns the label of each reference that the model names; a reference without a label has no entry.
+ * Assign a model's labels to the media of one render request.
+ * @param media - the media in the order that the model receives them: the references in input order, then the first
+ *   frame when the request has one.
+ * @returns the label of each medium, at the same position; null for a medium that the model does not name.
  */
-export type AssignReferenceLabels = (references: readonly ReferenceMedia[]) => ReadonlyMap<AssetId, string>
+export type AssignReferenceLabels = (media: readonly ReferenceMedia[]) => ReadonlyArray<string | null>
 
 /**
- * The prompt that a model reads: each citation of a reference replaced with the model's label of that reference. A
- * citation of anything other than a reference, or of a reference that the model has no label for, becomes its label.
+ * The prompt that a model reads: each citation of a reference or of the first frame (`dv:input/first_frame`) replaced with the
+ * model's label of that medium. A citation of anything else, or of a medium that the model has no label for, becomes its
+ * label.
  * @param request - the render request.
  * @param assignReferenceLabels - assigns the model's label to each reference.
  * @param mediaTypeOf - the media type of an asset, read from the asset pool.
@@ -31,9 +33,14 @@ export type AssignReferenceLabels = (references: readonly ReferenceMedia[]) => R
 export function modelPrompt(
   request: RenderRequest, assignReferenceLabels: AssignReferenceLabels, mediaTypeOf: (asset: AssetId) => string,
 ): string {
-  const labels = assignReferenceLabels(request.references.map(asset => ({ asset, mediaType: mediaTypeOf(asset) })))
+  const media = request.firstFrame === null ? request.references : [...request.references, request.firstFrame]
+  const labels = assignReferenceLabels(media.map(asset => ({ asset, mediaType: mediaTypeOf(asset) })))
   return replacePromptCitations(request.prompt, (citation) => {
     const asset = citedAsset(citation.uri)
-    return (asset === null ? undefined : labels.get(asset)) ?? citation.label
+    // The first frame follows the references; a reference cited by its asset takes the label of its first position.
+    const position = citedInput(citation.uri) === 'first_frame' && request.firstFrame !== null
+      ? request.references.length
+      : asset === null ? -1 : request.references.indexOf(asset)
+    return labels[position] ?? citation.label
   })
 }

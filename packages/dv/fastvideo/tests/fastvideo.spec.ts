@@ -196,9 +196,14 @@ describe('dv-fastvideo', () => {
     const [video, otherVideo] = [asset('VID1', 'video/mp4'), asset('VID2', 'video/mp4')]
     const [image, otherImage, thirdImage] = [asset('IMG1', 'image/png'), asset('IMG2', 'image/png'), asset('IMG3', 'image/png')]
     const [audio, json] = [asset('AUD1', 'audio/mpeg'), asset('{}', 'application/json')]
-    const check = (entry: ModelEntry, references: AssetId[], firstFrame: AssetId | null) =>
-      entry.validateGenerationRequest(request(references, firstFrame))
+    // A request with a first frame cites it, as the fasth3 prompt rule asks.
+    const check = (entry: ModelEntry, references: AssetId[], firstFrame: AssetId | null) => entry.validateGenerationRequest({
+      ...request(references, firstFrame), prompt: firstFrame === null ? '<Picture 1> smiles' : '@[首帧](dv:input/first_frame) smiles',
+    })
     expect(await check(referenceTask, [video, image], image)).toEqual([])
+    expect(await referenceTask.validateGenerationRequest(request([image], image))).toEqual([
+      'Its prompt does not cite the first frame; write "@[首帧](dv:input/first_frame) is the first frame of [Shot 1]".',
+    ])
     expect(await check(referenceTask, [], null)).toEqual(['Its reference input needs at least 1 of type image, video, audio; this shot has 0.'])
     expect(await check(referenceTask, [json], null)).toEqual([`Its reference input takes assets of type image, video, audio; asset ${json} is of type application.`])
     // The server lists no audio, so its audio limit is 0; the first frame takes one of the server's three references and two images.
@@ -251,8 +256,14 @@ describe('dv-fastvideo', () => {
     // A citation of a video, of an asset outside the references, or of anything other than an asset becomes its label.
     const prompt = `@[Mia](dv:asset/${other}) meets @[Bo](dv:asset/${image}) and @[Mia](dv:asset/${other}) in @[the walk](dv:asset/${video}), `
       + '@[a cat](dv:asset/missing) and @[the lake](dv:element/e1@2)'
-    await collect(fasth3(ctx, 'ref2v').render({ ...request([video, image, other], null), prompt }))
-    expect(reference.requests[0]?.['prompt']).toBe('<Picture 2> meets <Picture 1> and <Picture 2> in the walk, a cat and the lake')
+    const firstFrame = '@[首帧](dv:input/first_frame)'
+    await collect(fasth3(ctx, 'ref2v').render({ ...request([video, image, other], null), prompt: `${prompt} from ${firstFrame}` }))
+    expect(reference.requests[0]?.['prompt'])
+      .toBe('<Picture 2> meets <Picture 1> and <Picture 2> in the walk, a cat and the lake from 首帧')
+    // The first frame is the image after the reference images, even when it is also one of them.
+    const continued = `@[Bo](dv:asset/${image}) from ${firstFrame}`
+    await collect(fasth3(ctx, 'ref2v').render({ ...request([video, image, other], image), prompt: continued }))
+    expect(reference.requests[1]?.['prompt']).toBe('<Picture 1> from <Picture 3>')
   })
 
   it('registers only the configured tasks and their prompt skills, and removes them on disposal', async () => {

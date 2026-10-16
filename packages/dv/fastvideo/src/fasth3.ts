@@ -4,14 +4,31 @@
  *
  * @module @dv/fastvideo/fasth3
  */
-import type { TaskId } from '@dv/models'
+import type { RenderRequest, TaskId } from '@dv/models'
+import { citedInput, parsePromptCitations } from '@dv/project'
 import type { AssignReferenceLabels } from './reference-labels.ts'
 import type { ServedTask } from './types.ts'
 
-/** Assign the MiniMax H3 labels: the k-th reference image is `<Picture k>`, counting the images in input order. */
-export const assignFasth3ReferenceLabels: AssignReferenceLabels = references => new Map(references
-  .filter(reference => reference.mediaType === 'image')
-  .map((reference, index) => [reference.asset, `<Picture ${String(index + 1)}>`]))
+/**
+ * Assign the MiniMax H3 labels: the k-th image is `<Picture k>`, counting the images in the order that the model receives
+ * them, so the first frame is the image after the reference images.
+ */
+export const assignFasth3ReferenceLabels: AssignReferenceLabels = (media) => {
+  let pictures = 0
+  return media.map(medium => medium.mediaType === 'image' ? `<Picture ${String(++pictures)}>` : null)
+}
+
+/**
+ * The MiniMax H3 prompt rule for the first frame: the model has no first-frame slot, so a first frame acts as the first
+ * frame only when the prompt cites it and says so; an uncited first frame acts as a plain reference image.
+ * @param request - the render request.
+ * @returns one sentence when the request has a first frame that the prompt does not cite; else none.
+ */
+export function fasth3PromptProblems(request: RenderRequest): string[] {
+  if (request.firstFrame === null) return []
+  const cited = parsePromptCitations(request.prompt).some(citation => citedInput(citation.uri) === 'first_frame')
+  return cited ? [] : ['Its prompt does not cite the first frame; write "@[首帧](dv:input/first_frame) is the first frame of [Shot 1]".']
+}
 
 /** The tasks this plugin serves `fasth3` for. */
 export const FASTH3: { [T in TaskId]?: ServedTask } = {
@@ -23,6 +40,7 @@ export const FASTH3: { [T in TaskId]?: ServedTask } = {
     inputs: { reference: { min: 1, mediaTypes: ['image', 'video', 'audio'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
     extra: {},
     assignReferenceLabels: assignFasth3ReferenceLabels,
+    promptProblems: fasth3PromptProblems,
     skill: {
       name: 'fasth3-reference-prompting',
       description: 'Model limits and prompt rules for dv_shot_render with model fasth3 for task ref2v: reference images, '
