@@ -20,7 +20,7 @@ import Loader from '@deepseek-ai/cordis-plugin-loader'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import DvAssetPool, { type AssetId } from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
-import DvModels, { type ModelEntry, type RenderStreamEvent, type TaskId } from '@dv/models'
+import DvModels, { type ModelEntry, type RenderStreamEvent, type TaskOfModality } from '@dv/models'
 import DvProject from '@dv/project'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as FastVideo from '../src/index.ts'
@@ -153,7 +153,7 @@ async function start(tasks: { ref2v?: string; t2v?: string }): Promise<Context> 
 }
 
 /** The registered `fasth3` entry for a task. */
-function fasth3(ctx: Context, task: TaskId): ModelEntry {
+function fasth3(ctx: Context, task: TaskOfModality<'video'>): ModelEntry<'video'> {
   const entry = ctx.dvModels.get({ modality: 'video', task, provider: 'fastvideo', model: 'fasth3' })
   if (entry === undefined) throw new Error(`fasth3 is not registered for task ${task}`)
   return entry
@@ -199,13 +199,16 @@ describe('dv-fastvideo', () => {
     expect(await fasth3(ctx, 't2v').facts()).toMatchObject({ modelId: 'fake-t2va' })
     // The first image frame takes one of the server's references and one of its images; audio the server does not accept.
     expect(await fasth3(ctx, 'ref2v').schema()).toEqual({
+      duration_sec: { min: 5, max: 6 }, aspect_ratios: ['16:9'], resolutions: ['720p'],
       inputs: {
         reference: { min: 1, max: 3, media_types: { image: { max: 2 }, video: { max: 2 }, audio: { max: 0 } } },
         first_frame: { min: 0, max: 1, media_types: { image: {} } },
       },
       extra: {},
     })
-    expect(await fasth3(ctx, 't2v').schema()).toEqual({ inputs: {}, extra: {} })
+    expect(await fasth3(ctx, 't2v').schema()).toEqual({
+      duration_sec: { min: 5, max: 6 }, aspect_ratios: ['16:9'], resolutions: ['720p'], inputs: {}, extra: {},
+    })
     // The streaming_v2 clients stay private to the plugin.
     expect(ctx.get('dvFastvideoGeneration')).toBeUndefined()
   })
@@ -219,7 +222,7 @@ describe('dv-fastvideo', () => {
     const [image, otherImage, thirdImage] = [asset('IMG1', 'image/png'), asset('IMG2', 'image/png'), asset('IMG3', 'image/png')]
     const [audio, json] = [asset('AUD1', 'audio/mpeg'), asset('{}', 'application/json')]
     // A request with a first frame cites it, as the fasth3 prompt rule asks.
-    const check = (entry: ModelEntry, references: AssetId[], firstFrame: AssetId | null) => entry.validateGenerationRequest({
+    const check = (entry: ModelEntry<'video'>, references: AssetId[], firstFrame: AssetId | null) => entry.validateGenerationRequest({
       ...request(references, firstFrame), prompt: firstFrame === null ? '<Picture 1> smiles' : '@[首帧](dv:input/first_frame) smiles',
     })
     expect(await check(referenceTask, [video, image], image)).toEqual([])

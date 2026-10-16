@@ -65,7 +65,7 @@ export async function encodeClip(dir: string, width: number, height: number, num
  * The catalog entry of a fake `fastvideo` model `fasth3` for task `ref2v` (1 to 2 reference images and an optional first
  * frame): it accepts every request, renders a solid-color clip for each, and remembers the requests.
  */
-export class FakeModel implements ModelEntry<'ref2v'> {
+export class FakeModel implements ModelEntry<'video'> {
   readonly modality = 'video'
   readonly task = 'ref2v'
   readonly provider = 'fastvideo'
@@ -86,7 +86,7 @@ export class FakeModel implements ModelEntry<'ref2v'> {
    * Describe the accepted inputs; the model takes no parameters in `extra`.
    * @returns the description.
    */
-  schema(): ReturnType<ModelEntry['schema']> {
+  schema(): ReturnType<ModelEntry<'video'>['schema']> {
     return Promise.resolve({
       inputs: { reference: { media_types: ['image'], min: 1, max: 2 }, first_frame: { media_types: ['image'], max: 1 } },
       extra: {},

@@ -19,7 +19,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
-import DvModels, { type ModelEntry, type TaskId } from '@dv/models'
+import DvModels, { type ModelEntry, type TaskOfModality } from '@dv/models'
 import DvProject, {
   type AssetId, type OperationSpec, type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId, type RunRequest,
   type SessionId,
@@ -63,7 +63,7 @@ interface StartOptions {
   /** Awaited before each stand-in render imports its outputs, with the shot's prompt; a throw fails the render. */
   before?: (prompt: string) => Promise<void>
   /** The tasks the catalog model `fake` serves, one entry each; both by default. */
-  tasks?: TaskId[]
+  tasks?: TaskOfModality<'video'>[]
 }
 
 /** The GPU seconds the stand-in render estimates per video second. */
@@ -76,7 +76,7 @@ const GPU_SECONDS_PER_VIDEO_SECOND = 4
  * @param task - the task the entry serves.
  * @returns the entry.
  */
-function model(name: string, task: TaskId): ModelEntry {
+function model(name: string, task: TaskOfModality<'video'>): ModelEntry<'video'> {
   return {
     modality: 'video', task, provider: 'test', model: name, description: 'stand-in', gpuSecondsPerVideoSecond: GPU_SECONDS_PER_VIDEO_SECOND,
     facts: () => Promise.reject(new Error(`${name} has no backend.`)),
@@ -150,7 +150,7 @@ async function start(options: StartOptions = {}): Promise<Fixture> {
   ctx.loader.builtins.include = Include
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
   await ctx.loader.await()
-  const tasks: TaskId[] = options.tasks ?? ['ref2v', 't2v']
+  const tasks: TaskOfModality<'video'>[] = options.tasks ?? ['ref2v', 't2v']
   const removers = [ctx.dvProject.registerComponent('shot'), ctx.dvProject.registerOperation(standIn(options))]
   removers.push(...tasks.map(task => ctx.dvModels.register(model('fake', task))))
   disposers.push(async () => {

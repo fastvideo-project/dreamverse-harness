@@ -35,7 +35,7 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 | ------ | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 注册表    | [`@dv/project`](../../packages/dv/project/README.zh.md)                                                           | `dvProject` 服务：组件向它注册操作和归约函数，就像工具向 `ctx.tools` 注册一样。它是项目文件唯一的写入者，把每个操作变成一个 DSH 工具，并注册 `dv:project` 系统提示词段。                                              |
 | 组件     | `@dv/asset-pool`、`@dv/story-bible`、`@dv/shot-plan`、`@dv/shot-render`、`@dv/timeline`、`@dv/inspector`               | 各自拥有一项能力的插件：它的数据（一个状态切片及其归约函数）、它的操作，以及智能体读到的关于它们的文字。外部程序经 [`@dv/ffmpeg`](../../packages/dv/ffmpeg/README.zh.md) 运行。                                     |
-| 模型     | [`@dv/models`](../../packages/dv/models/README.zh.md)、[`@dv/fastvideo`](../../packages/dv/fastvideo/README.zh.md) | 模型目录：`@dv/models` 持有 `dvModels` Service Definition 以及 `ModalityMap` 和 `TaskMap`，`@dv/fastvideo` 这样的提供方插件是 Service Provider，注册自己服务的模型，镜头渲染和分镜是 Consumer。 |
+| 模型     | [`@dv/models`](../../packages/dv/models/README.zh.md)、[`@dv/fastvideo`](../../packages/dv/fastvideo/README.zh.md) | 模型目录：`@dv/models` 持有 `dvModels` Service Definition 以及 `ModalityTypes` 和 `TaskMap`，`@dv/fastvideo` 这样的提供方插件是 Service Provider，注册自己服务的模型，镜头渲染和分镜是 Consumer。 |
 | API    | [`@dv/api`](../../packages/dv/api/README.zh.md)                                                                   | DSH `connection` 服务上的 Fetch 路由和 `webServer` 上的事件流；视图读取或修改项目的唯一途径。                                                                                       |
 | 对话引用   | [`@dv/chat-references`](../../packages/dv/chat-references/README.zh.md)                                           | `agent/pre-step` 和 `session/event` 上的监听器，把用户在对话消息中指向的东西变成项目 ID 和素材。                                                                                     |
 | 视图     | `@dv/ui-*`                                                                                                        | DSH Web 客户端的右侧栏标签类型和中央视图；`@dv/ui-kit` 是它们共用的库。                                                                                                          |
@@ -185,7 +185,7 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 | 可替换能力       | 一个 Service Definition 包加若干 Service Provider 包；用到它的组件是 Consumer                                                          | 模型目录、3D 渲染                 |
 | 模型          | 提供方插件的修改；见[添加提供方或模型](../../packages/dv/models/README.zh.md#add-a-provider-or-a-model)                                   | `@dv/fastvideo` 的 `fasth3` |
 | 生成任务        | 一个 `TaskMap` 条目，由引入该生成任务的插件声明（[模型键](../../packages/dv/models/README.zh.md#model-keys)），若有新的输入角色，再加上 `shot.render` 的对应输入 | 由首帧和尾帧渲染的生成任务              |
-| 输出模态        | 一个 `ModalityMap` 条目（[模型键](../../packages/dv/models/README.zh.md#model-keys)），并带上产出它的生成任务和存储其输出的 Consumer                | 图像生成                       |
+| 输出模态        | `ModalityTypes` 中的一行及其 facts、请求和结果类型（[模型键](../../packages/dv/models/README.zh.md#model-keys)），并带上产出它的生成任务和存储其输出的 Consumer                | 图像生成                       |
 | 给智能体的文字     | 按原则中的文字表放置                                                                                                              | “先出分镜计划再渲染”                |
 | 视图          | 一个只通过 `@dv/api` 读写的 `@dv/ui-*` 插件                                                                                       | 画布                         |
 | 接到智能体循环上的逻辑 | 由数据的主人在 DSH 事件上注册，例如 `agent/pre-step` 或 `tools/pre-execute`                                                             | `dv:` 提及展开                 |
@@ -214,7 +214,7 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 | reducer          | —                     | 组件的一个函数，读取记录并计算出项目状态中它的切片；它不写记录。DSH 中对应的是会话投影（`ctx.sessionProjections`），它折叠的是会话日志。                                                          |
 | model            | 模型 / Model            | 一个提供方的一个视频模型，如 `fasth3`；模型目录（`dvModels`）为该模型服务的每个生成任务各存一个条目，按模态、生成任务、提供方和模型作键。                                                              |
 | task             | 生成方式 / Mode           | 一次渲染由哪些输入产出什么：`ref2v`（参考图生成 / From references：提示词、参考素材和可选的首帧）或 `t2v`（文字生成 / From text：只有提示词）。`TaskMap` 把每个生成任务映射到它的模态。                      |
-| modality         | —                     | 生成任务产出的输出种类，如 `video`；`ModalityMap` 列出各模态。                                                                                                  |
+| modality         | —                     | 生成任务产出的输出种类，如 `video`；`ModalityTypes` 列出各模态及其 facts、请求和结果类型。                                                                                                  |
 | provider plugin  | —                     | 以自己的提供方名称把一个提供方的模型注册进模型目录的插件，如提供方为 `fastvideo` 的 `@dv/fastvideo`。                                                                           |
 | capability seam  | —                     | 一项可替换的能力，有三种角色：Service Definition（`@dv/models`）、Service Provider（`@dv/fastvideo` 这样的提供方插件）和 Consumer（`@dv/shot-render`、`@dv/shot-plan`）。    |
 | turn             | 轮次 / Turn             | 智能体从一条用户消息到它的回复的一次运行；记录用 DSH 轮次编号指出它。                                                                                                       |

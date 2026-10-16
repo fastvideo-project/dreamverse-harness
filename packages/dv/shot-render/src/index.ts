@@ -22,8 +22,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ParameterSchemaSpec } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import {
-  formatModelKey, type ModalityId, type ModelEntry, type ModelKey, type RenderModelFacts, type RenderRequest, type RenderStreamEvent,
-  type TaskId,
+  formatModelKey, modelKey, type ModelEntry, type RenderModelFacts, type RenderRequest, type RenderStreamEvent,
 } from '@dv/models'
 import {
   citedAsset, citedInput, elementCitationUri, parsePromptCitations, replacePromptCitations, type AssetId, type OperationContext,
@@ -117,19 +116,6 @@ const RENDER_INPUTS: Record<string, OperationInput> = {
 
 /** The sentence the render description ends with. */
 const TAKE_RULE = 'Outputs: the video, then its last still. Every call is a new take; a changed prompt for the same shot passes based_on.'
-
-/**
- * The catalog key that a call's params name. A modality or task outside the vocabulary names no entry, so
- * `dvModels.get` finds none for it.
- * @param params - the call's params.
- * @returns the key.
- */
-function modelKey(params: Record<string, unknown>): ModelKey {
-  return {
-    modality: text(params['modality']) as ModalityId, task: text(params['task']) as TaskId,
-    provider: text(params['provider']), model: text(params['model']),
-  }
-}
 
 /**
  * The resolved assets of an input role, in input order.
@@ -230,35 +216,9 @@ export default class DvShotRender extends Service {
     super(ctx, 'dvShotRender')
     ctx.effect(() => ctx.dvProject.registerComponent('shot'), 'dvShotRender component')
     ctx.effect(() => ctx.dvProject.registerReducer('shot', shotReducer), 'dvShotRender reducer')
-    ctx.effect(() => {
-      let removeOperation: (() => void) | null = null
-      // The operation is registered when the catalog gains its first model and removed when it loses its last.
-      const sync = (): void => {
-        const serving = ctx.dvModels.list().length > 0
-        if (serving === (removeOperation !== null)) return
-        removeOperation?.()
-        removeOperation = serving ? ctx.dvProject.registerOperation(this.renderOperation()) : null
-      }
-      sync()
-      const unlisten = ctx.dvModels.onChanged(sync)
-      return () => {
-        unlisten()
-        removeOperation?.()
-      }
-    }, 'dvShotRender shot.render')
-  }
-
-  /**
-   * The catalog entry whose key a call names.
-   * @param params - the call's params.
-   * @returns the entry.
-   * @throws Error naming the key and `dv_models_list` when no entry has the key.
-   */
-  private resolve(params: Record<string, unknown>): ModelEntry {
-    const key = modelKey(params)
-    const entry = this.ctx.dvModels.get(key)
-    if (entry === undefined) throw new Error(`Unknown model "${formatModelKey(key)}"; call dv_models_list for the models.`)
-    return entry
+    // The operation exists while the catalog holds a video model.
+    ctx.effect(() => ctx.dvModels.whileServing('video', () => ctx.dvProject.registerOperation(this.renderOperation())),
+      'dvShotRender shot.render')
   }
 
   /**
@@ -275,7 +235,7 @@ export default class DvShotRender extends Service {
     const record = context.record
     /* v8 ignore next -- a render is not a read, so it always runs with a record. */
     if (record === null) throw new Error('A render runs only with a record.')
-    const entry = this.resolve(context.params)
+    const entry = this.ctx.dvModels.resolve('video', context.params)
     const facts = await entry.facts()
     const { request, geometry } = renderRequest(facts, context.params, context.inputs)
     // A record output that had not finished when the precondition ran is an asset now, so the model sees every asset.
@@ -401,7 +361,7 @@ export default class DvShotRender extends Service {
    * @throws Error naming the problem.
    */
   private async precondition(request: RunRequest, state: ProjectState): Promise<void> {
-    const entry = this.resolve(request.params)
+    const entry = this.ctx.dvModels.resolve('video', request.params)
     const inputs = request.inputs.flatMap(({ role, ref }) =>
       this.resolveRefAssets(request.project, state, ref).map(asset => ({ role, ref, resolved_asset: asset })))
     const facts = await entry.facts()
@@ -418,7 +378,7 @@ export default class DvShotRender extends Service {
    * @param params - the call's params; a call that a plan scheduled (param `plan`) is told to update the plan.
    * @throws Error with the model's problems and what to change before calling again.
    */
-  private async validate(entry: ModelEntry, request: RenderRequest, params: Record<string, unknown>): Promise<void> {
+  private async validate(entry: ModelEntry<'video'>, request: RenderRequest, params: Record<string, unknown>): Promise<void> {
     const problems = await entry.validateGenerationRequest(request)
     if (problems.length === 0) return
     const next = params['plan'] !== undefined

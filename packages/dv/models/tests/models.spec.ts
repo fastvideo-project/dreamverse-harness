@@ -15,7 +15,7 @@ import SkillRegistry from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it } from 'vitest'
-import DvModels, { formatModelKey, type ModelEntry, type RenderModelFacts, type TaskId } from '../src/index.ts'
+import DvModels, { formatModelKey, modelKey, type ModelEntry, type RenderModelFacts, type TaskOfModality } from '../src/index.ts'
 
 /** The facts every fake entry reports. */
 const FACTS: RenderModelFacts = {
@@ -24,7 +24,7 @@ const FACTS: RenderModelFacts = {
 }
 
 /** A fake entry of one model of one provider serving one video task; its schema names the task. */
-function entry(task: TaskId, provider: string, model: string): ModelEntry {
+function entry(task: TaskOfModality<'video'>, provider: string, model: string): ModelEntry<'video'> {
   return {
     modality: 'video', task, provider, model, description: `${model} for ${task}`, gpuSecondsPerVideoSecond: 2,
     facts: () => Promise.resolve(FACTS),
@@ -142,18 +142,48 @@ describe('dvModels', () => {
     expect(refs.value).toEqual([{ modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', description: 'alpha for ref2v' }])
   })
 
-  it('answers dv_models_get with one entry\'s durations, aspect ratios, resolutions and schema, and names an unknown key', async () => {
+  it('answers dv_models_get with one entry\'s key, description and schema, and names an unknown key', async () => {
     const ctx = await start()
     const result = await call(ctx, 'dv_models_get', { modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha' })
     if (result.isError) throw new Error(result.error.message)
     expect(result.value).toEqual({
       modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', description: 'alpha for ref2v',
-      facts: { duration_sec: { min: 4, max: 8 }, aspect_ratios: ['16:9'], resolutions: ['720p'] },
       schema: { inputs: { reference: { media_types: ['image'] } }, extra: {} },
     })
     const unknown = await call(ctx, 'dv_models_get', { modality: 'video', task: 'ref2v', provider: 'other', model: 'beta' })
     expect(unknown.isError && unknown.error.message)
-      .toContain('No video model has the key video/ref2v/other/beta; call dv_models_list for the models you can use.')
+      .toContain('No model has the key video/ref2v/other/beta; call dv_models_list for the models you can use.')
+  })
+
+  it('reads the key of a tool call from its params, and resolves the entry of a modality or names the unknown key', async () => {
+    const ctx = await start()
+    expect(modelKey({ modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', prompt: 'a cat' }))
+      .toEqual({ modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha' })
+    expect(formatModelKey(modelKey({ modality: 'video', task: 7 }))).toBe('video///')
+    expect(ctx.dvModels.resolve('video', { modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha' }).description)
+      .toBe('alpha for ref2v')
+    expect(() => ctx.dvModels.resolve('video', { modality: 'video', task: 'ref2v', provider: 'other', model: 'beta' }))
+      .toThrow('Unknown model "video/ref2v/other/beta"; call dv_models_list for the models.')
+  })
+
+  it('keeps a registration while the catalog holds an entry of the modality, and disposes it with the last entry', async () => {
+    const ctx = await start()
+    const events: string[] = []
+    const stop = ctx.dvModels.whileServing('video', () => {
+      events.push('start')
+      return () => { events.push('stop') }
+    })
+    expect(events).toEqual(['start'])
+    ctx.dvModels.register(entry('ref2v', 'extra', 'gamma'))()
+    expect(events).toEqual(['start'])
+    await unload(ctx, 'test-provider')
+    expect(events).toEqual(['start', 'stop'])
+    const remove = ctx.dvModels.register(entry('t2v', 'extra', 'delta'))
+    expect(events).toEqual(['start', 'stop', 'start'])
+    stop()
+    expect(events).toEqual(['start', 'stop', 'start', 'stop'])
+    remove()
+    expect(events).toEqual(['start', 'stop', 'start', 'stop'])
   })
 
   it('registers the video-model-selection skill for the agent only', async () => {

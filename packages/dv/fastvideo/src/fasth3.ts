@@ -4,7 +4,7 @@
  *
  * @module @dv/fastvideo/fasth3
  */
-import type { RenderRequest, TaskId } from '@dv/models'
+import type { RenderRequest, TaskOfModality } from '@dv/models'
 import { citedInput, parsePromptCitations } from '@dv/project'
 import type { AssignReferenceLabels } from './reference-labels.ts'
 import type { ServedTask } from './types.ts'
@@ -41,7 +41,7 @@ export function fasth3PromptProblems(request: RenderRequest): string[] {
 }
 
 /** The tasks this plugin serves `fasth3` for. */
-export const FASTH3: { [T in TaskId]?: ServedTask } = {
+export const FASTH3: { [T in TaskOfModality<'video'>]?: ServedTask } = {
   ref2v: {
     description: 'MiniMax H3 served as FastH3 Ref2VA: video with sound, dialogue and music written in the prompt, from '
       + 'reference images, videos and audio and an optional first frame. Keeps a face, place or style the same across '

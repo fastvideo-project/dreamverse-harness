@@ -21,7 +21,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
 import { DvFastvideoGeneration, type ModelFacts } from '@dv/fastvideo-generation-client'
 import type {} from '@dv/asset-pool'
-import type { ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent, TaskId } from '@dv/models'
+import type { ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent, TaskId, TaskOfModality } from '@dv/models'
 import { FASTH3 } from './fasth3.ts'
 import { modelPrompt } from './reference-labels.ts'
 import type { InputRole, MediaType, ServedTask, TaskInputs } from './types.ts'
@@ -63,7 +63,7 @@ interface InputLimits {
 type TaskInputLimits = Partial<Record<InputRole, InputLimits>>
 
 /** The models this plugin can serve, with the tasks it can serve each for. */
-const SERVED: Record<string, { [T in TaskId]?: ServedTask }> = {
+const SERVED: Record<string, { [T in TaskOfModality<'video'>]?: ServedTask }> = {
   fasth3: FASTH3,
 }
 
@@ -207,7 +207,7 @@ function extraProblems(model: string, task: TaskId, schema: ParameterSchemaSpec,
  * @param server - the task's configured server.
  * @returns the entry.
  */
-function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServer): ModelEntry {
+function modelEntry(ctx: Context, model: string, task: TaskOfModality<'video'>, server: TaskServer): ModelEntry<'video'> {
   const served = SERVED[model]?.[task]
   /* v8 ignore next -- checkConfig refuses unknown models and tasks before any entry is built. */
   if (served === undefined) throw new Error(`dv-fastvideo serves no model "${model}" for task "${task}".`)
@@ -229,8 +229,12 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
       }
     },
     async schema(): Promise<JsonValue> {
+      const capabilities = await client.model()
       return {
-        inputs: describeInputs(inputs, deriveInputLimits(inputs, await client.model())),
+        duration_sec: { min: capabilities.minSegmentDurationSec, max: capabilities.maxSegmentDurationSec },
+        aspect_ratios: capabilities.aspectRatios,
+        resolutions: capabilities.resolutions,
+        inputs: describeInputs(inputs, deriveInputLimits(inputs, capabilities)),
         extra: JSON.parse(JSON.stringify(extra)) as JsonValue,
       }
     },
@@ -279,7 +283,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
 export function apply(ctx: Context, config: Config): void {
   checkConfig(config)
   const configured = Object.entries(config.models).flatMap(([model, tasks]) =>
-    Object.entries(tasks).map(([task, server]) => ({ model, task: task as TaskId, server })))
+    Object.entries(tasks).map(([task, server]) => ({ model, task: task as TaskOfModality<'video'>, server })))
   for (const { model, task, server } of configured) {
     const entry = modelEntry(ctx, model, task, server)
     ctx.effect(() => ctx.dvModels.register(entry), `dvModels ${model} ${task}`)

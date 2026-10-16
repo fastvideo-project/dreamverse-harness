@@ -1,7 +1,8 @@
 /**
  * The DreamVerse model catalog as the `dvModels` Cordis service: a provider-neutral registry of model entries. Provider
  * plugins register one entry per task a model serves, keyed by modality, task, provider and model; consumers such as
- * Shot render list the entries and render with the entry a key names. The catalog knows no specific model and adds
+ * Shot render register their operation while the catalog serves their modality, and render with the entry a call's key
+ * names. The catalog knows no specific model and adds
  * nothing to the system prompt: the agent reads entries through the `dv_models_list` and `dv_models_get` tools and
  * chooses one for each shot with the `video-model-selection` skill.
  *
@@ -14,7 +15,7 @@ import type {} from '@deepseek-ai/dsh-skill'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
-import type { ModelEntry, ModelFilter, ModelKey } from './types.ts'
+import type { ModalityId, ModelEntry, ModelFilter, ModelKey, TaskId } from './types.ts'
 
 export type * from './types.ts'
 
@@ -53,8 +54,34 @@ function entryMatchesFilter(entry: ModelKey, filter: Partial<Record<typeof MODEL
   return MODEL_KEY_FIELDS.every(field => filter[field] === undefined || entry[field] === filter[field])
 }
 
+/**
+ * The catalog key that the params of a tool call name in their `modality`, `task`, `provider` and `model` fields. A
+ * missing field reads as an empty string, and a modality or task outside the vocabulary names no entry, so `get` finds
+ * none for it.
+ * @param params - the call's params.
+ * @returns the key.
+ */
+export function modelKey(params: Record<string, unknown>): ModelKey {
+  const field = (name: typeof MODEL_KEY_FIELDS[number]): string => {
+    const value = params[name]
+    return typeof value === 'string' ? value : ''
+  }
+  return { modality: field('modality') as ModalityId, task: field('task') as TaskId, provider: field('provider'), model: field('model') }
+}
+
+/**
+ * Whether an entry is of modality `M`.
+ * @param entry - the entry.
+ * @param modality - the modality.
+ * @returns true when the entry's key names `modality`.
+ */
+function hasModality<M extends ModalityId>(entry: ModelEntry<ModalityId>, modality: M): entry is ModelEntry<M> {
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- plugins merge more modalities into ModalityTypes.
+  return entry.modality === modality
+}
+
 /** Convert an entry to one item of the `dv_models_list` result: its key and its description. */
-function toModelListItem(entry: ModelEntry): Record<string, JsonValue> {
+function toModelListItem(entry: ModelEntry<ModalityId>): Record<string, JsonValue> {
   return { modality: entry.modality, task: entry.task, provider: entry.provider, model: entry.model, description: entry.description }
 }
 
@@ -68,7 +95,7 @@ const JSON_TOOL_OUTPUT = {
 export default class DvModels extends Service {
   static Config = Config
 
-  private readonly entries = new Map<string, ModelEntry>()
+  private readonly entries = new Map<string, ModelEntry<ModalityId>>()
   private readonly listeners = new Set<() => void>()
 
   constructor(ctx: Context) {
@@ -97,7 +124,7 @@ export default class DvModels extends Service {
    * @returns a function that removes the entry.
    * @throws Error when an entry with the same key is registered.
    */
-  register(entry: ModelEntry): () => void {
+  register(entry: ModelEntry<ModalityId>): () => void {
     const key = formatModelKey(entry)
     if (this.entries.has(key)) throw new Error(`dvModels: model "${key}" is already registered.`)
     this.entries.set(key, entry)
@@ -110,12 +137,52 @@ export default class DvModels extends Service {
   }
 
   /**
-   * Read one entry.
+   * Read one entry. The modality of the key types the entry.
    * @param key - the entry's modality, task, provider and model.
    * @returns the entry, or undefined when no entry is registered under `key`.
    */
-  get(key: ModelKey): ModelEntry | undefined {
-    return this.entries.get(formatModelKey(key))
+  get<M extends ModalityId>(key: ModelKey & { modality: M }): ModelEntry<M> | undefined {
+    // `register` stores each entry under its own key, so the entry under a key of modality `M` is of modality `M`.
+    return this.entries.get(formatModelKey(key)) as ModelEntry<M> | undefined
+  }
+
+  /**
+   * Read the entry of modality `modality` that the params of a consumer's tool call name.
+   * @param modality - the modality that the consumer renders.
+   * @param params - the call's params, with the key in `modality`, `task`, `provider` and `model`.
+   * @returns the entry.
+   * @throws Error naming the key and `dv_models_list` when no entry of `modality` has the key.
+   */
+  resolve<M extends ModalityId>(modality: M, params: Record<string, unknown>): ModelEntry<M> {
+    const key = modelKey(params)
+    const entry = this.entries.get(formatModelKey(key))
+    if (entry === undefined || !hasModality(entry, modality)) {
+      throw new Error(`Unknown model "${formatModelKey(key)}"; call dv_models_list for the models.`)
+    }
+    return entry
+  }
+
+  /**
+   * Keep a registration of a consumer, such as its operation, while the catalog holds at least one entry of a modality.
+   * @param modality - the modality.
+   * @param start - registers the consumer's part when the first entry of `modality` arrives; returns its disposer.
+   * @returns a function that stops listening and disposes the registration; pass it to `ctx.effect`.
+   */
+  whileServing(modality: ModalityId, start: () => () => void): () => void {
+    let stop: (() => void) | null = null
+    const sync = (): void => {
+      const serving = this.list({ modality }).length > 0
+      if (serving === (stop !== null)) return
+      stop?.()
+      stop = serving ? start() : null
+    }
+    sync()
+    const unlisten = this.onChanged(sync)
+    return () => {
+      unlisten()
+      stop?.()
+      stop = null
+    }
   }
 
   /**
@@ -123,7 +190,7 @@ export default class DvModels extends Service {
    * @param filter - the modality, task and provider to match; an absent field matches every entry.
    * @returns the matching entries, in registration order.
    */
-  list(filter: ModelFilter = {}): ModelEntry[] {
+  list(filter: ModelFilter = {}): Array<ModelEntry<ModalityId>> {
     return [...this.entries.values()].filter(entry => entryMatchesFilter(entry, filter))
   }
 
@@ -145,11 +212,11 @@ export default class DvModels extends Service {
   private defineModelsListTool() {
     return defineTool({
       name: 'dv_models_list',
-      description: 'List the video models you can render with, each with its key (modality, task, provider, model) and '
-        + 'its description. To choose the model of a shot, follow the video-model-selection skill.',
+      description: 'List the models you can generate with, each with its key (modality, task, provider, model) and its '
+        + 'description. To choose the video model of a shot, follow the video-model-selection skill.',
       parameters: {
         modality: { type: 'string', description: 'Only models of this modality, such as video.' },
-        task: { type: 'string', description: 'Only models for this task: t2v (prompt only) or ref2v (reference media and prompt).' },
+        task: { type: 'string', description: 'Only models for this task, such as ref2v.' },
         provider: { type: 'string', description: 'Only models of this provider.' },
       },
       output: JSON_TOOL_OUTPUT,
@@ -161,8 +228,8 @@ export default class DvModels extends Service {
   private defineModelsGetTool() {
     return defineTool({
       name: 'dv_models_get',
-      description: 'Read one video model by its key from dv_models_list: its description; its facts (durations, aspect '
-        + 'ratios and resolutions); and its schema (the inputs it accepts with their media types and counts, and the '
+      description: 'Read one model by its key from dv_models_list: its description and its schema (its limits, such as '
+        + 'durations, aspect ratios and resolutions; the inputs it accepts with their media types and counts; and the '
         + 'parameters it takes in `extra`).',
       parameters: {
         modality: { type: 'string', required: true, description: 'The modality of the model, as dv_models_list lists it.' },
@@ -174,19 +241,10 @@ export default class DvModels extends Service {
       execute: async (args) => {
         const entry = this.list().find(candidate => entryMatchesFilter(candidate, args))
         if (entry === undefined) {
-          throw new Error(`No video model has the key ${args.modality}/${args.task}/${args.provider}/${args.model}; `
+          throw new Error(`No model has the key ${args.modality}/${args.task}/${args.provider}/${args.model}; `
             + 'call dv_models_list for the models you can use.')
         }
-        const [facts, schema] = await Promise.all([entry.facts(), entry.schema()])
-        return {
-          ...toModelListItem(entry),
-          facts: {
-            duration_sec: { min: facts.minDurationSec, max: facts.maxDurationSec },
-            aspect_ratios: facts.aspectRatios,
-            resolutions: facts.resolutions,
-          },
-          schema,
-        }
+        return { ...toModelListItem(entry), schema: await entry.schema() }
       },
     })
   }

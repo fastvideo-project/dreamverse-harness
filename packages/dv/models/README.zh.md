@@ -1,5 +1,5 @@
 ---
-description: "本包是 DreamVerse 的视频模型目录。提供方插件在 dvModels 服务中为每个模型和任务注册一个 ModelEntry。每个提供方插件把 RenderRequest 翻译成其后端的请求。agent 用 dv_models_list 和 dv_models_get 工具读取模型目录。添加提供方、模型或服务器，或了解 agent 如何选择模型时，阅读本页。"
+description: "本包是 DreamVerse 的模型目录。提供方插件在 dvModels 服务中为每个模型和任务注册一个 ModelEntry。ModelEntry<M> 是模态 M 的条目，ModalityTypes 给出每个模态的 facts、请求和结果类型，如视频的 RenderRequest。agent 用 dv_models_list 和 dv_models_get 工具读取模型目录。添加提供方、模型或服务器，或了解 agent 如何选择模型时，阅读本页。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包列出部署可以用来渲染的视频模型。提供方插件（如 [`@dv/fastvideo`](../fastvideo/README.zh.md)）为它提供的每个模型和任务注册一个条目。消费方（如 [`@dv/shot-render`](../shot-render/README.zh.md)）按键获取条目，并用一种请求类型渲染。agent（智能体）用两个工具读取条目，并用一个 skill（技能）为每个镜头选择模型。添加提供方时，添加一个提供方插件。添加模型时，修改一个提供方插件。添加服务器时，修改该提供方插件的 `Config` 行。
+使用本包列出部署可以用来渲染的模型。提供方插件（如 [`@dv/fastvideo`](../fastvideo/README.zh.md)）为每个模型和任务注册一个条目。消费方（如 [`@dv/shot-render`](../shot-render/README.zh.md)）在模型目录中有其模态的模型时注册自己的操作，并解析调用所指定的条目。agent（智能体）用两个工具读取条目。添加提供方时，添加一个提供方插件。添加模型时，修改一个提供方插件。添加服务器时，修改该提供方插件的 `Config` 行。
 
 ## 目录
 
@@ -45,33 +45,33 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 <a id="model-keys"></a>
 ### 模型键
 
-提供方是一个视频生成系统，如 FastVideo、fal 或 SGLang。服务器是提供方的一个运行中的后端。每个条目有一个由四个字段组成的键。`formatModelKey(key)` 把键写成一个字符串，如 `video/ref2v/fastvideo/fasth3`。
+提供方是一个生成系统，如 FastVideo、fal 或 SGLang。服务器是提供方的一个运行中的后端。每个条目有一个由四个字段组成的键。`formatModelKey(key)` 把键写成一个字符串，如 `video/ref2v/fastvideo/fasth3`。
 
 | 字段 | 含义 | 本包中的值 |
 | --- | --- | --- |
-| `modality` | 任务产生的输出。`ModalityMap` 声明模态名称。 | `video` |
+| `modality` | 任务产生的输出。`ModalityTypes` 声明每个模态及其 facts、请求和结果类型。 | `video` |
 | `task` | 生成任务。`TaskMap` 声明每个任务名称，并把它映射到该任务产生的模态。 | `t2v`：只由提示词生成视频。`ref2v`：由参考媒体和提示词生成视频，可选首帧。 |
 | `provider` | 提供方的名称。提供方插件设定该名称。 | 每个提供方插件自己设定名称，如 `fastvideo`。 |
 | `model` | 提供方为模型取的名称。 | 每个提供方插件自己设定名称，如 `fasth3`。 |
 
-服务两个任务的模型有两个条目，每个任务一个。插件在自己的包中通过 TypeScript 声明合并添加模态或任务，例如 `declare module '@dv/models' { interface TaskMap { v2v: 'video' } }`。任务名称的值是该任务产生的模态。两个插件可以用相同的值声明相同的名称。TypeScript 会合并这两个声明。用不同的值声明相同的名称无法编译。
+服务两个任务的模型有两个条目，每个任务一个。插件在自己的包中通过 TypeScript 声明合并添加模态或任务：模态是 `ModalityTypes` 的一行，任务是 `TaskMap` 的一行，例如 `declare module '@dv/models' { interface TaskMap { v2v: 'video' } }`。任务名称的值是该任务产生的模态。`TaskOfModality<M>` 是模态 `M` 的一个任务，如 `video` 的 `t2v | ref2v`。两个插件可以用相同的值声明相同的名称。TypeScript 会合并这两个声明。用不同的值声明相同的名称无法编译。
 
 ### 模型条目
 
-提供方插件为每个键实现一个 `ModelEntry`。`ModelEntry` 有四个键字段和下表中的成员：
+提供方插件为每个键实现一个 `ModelEntry<M>`，其中 `M` 是该键的模态。它的 `task` 是一个 `TaskOfModality<M>`，`ModalityTypes[M]` 给出它的 facts、请求和 `render` 结果的类型；对 `video`，它们是 `RenderModelFacts`、`RenderRequest` 和 `RenderStreamEvent` 值的流。`ModelEntry<M>` 有四个键字段和下表中的成员：
 
 | 成员 | 约定 |
 | --- | --- |
 | `description` | 模型的长处和短处。agent 和用户比较描述，在相似的模型之间选择。 |
 | `gpuSecondsPerVideoSecond` | 渲染一秒视频所用的 GPU 秒数。消费方把它乘以镜头时长，在渲染开始前估算渲染的 GPU 时间。 |
-| `facts()` | resolve 为后端报告的 `RenderModelFacts`。后端无法连接时 reject。 |
-| `schema()` | resolve 为描述模型所接受请求的 JSON：各输入及其媒体类型和数量，以及 `extra` 中的参数。提供方插件定义该 JSON。模型目录把它原样交给 agent。后端无法连接时 reject。 |
+| `facts()` | resolve 为后端报告的该模态的 facts，消费方用它构建请求。后端无法连接时 reject。 |
+| `schema()` | resolve 为描述模型所接受请求的 JSON：agent 需要的限制，如时长、宽高比和分辨率，各输入及其媒体类型和数量，以及 `extra` 中的参数。提供方插件定义该 JSON。模型目录把它原样交给 agent，不为任何模态做格式化。后端无法连接时 reject。 |
 | `validateGenerationRequest(request)` | resolve 为模型无法渲染某个 `RenderRequest` 的每个原因，每个原因一句面向 agent 的话。原因包括无效的 `extra` 值。模型能渲染该请求时 resolve 为空列表。后端无法连接时 reject。 |
-| `render(request, signal)` | 渲染一个镜头，返回 `RenderStreamEvent` 值的流。通过 `dvAssetPool` 读取每个输入素材。产生一个 `video_start` 事件、若干 `chunk` 事件，然后是一个 `done` 事件。在 `video_start` 之前或最后一个 `chunk` 之后恰好产生一个 `last_frame` 事件。任何后端失败都会 reject。`signal` 中止时，取消渲染并以中止原因 reject。 |
+| `render(request, signal)` | 把一个请求渲染为该模态的结果。视频条目渲染一个镜头，返回 `RenderStreamEvent` 值的流。通过 `dvAssetPool` 读取每个输入素材。产生一个 `video_start` 事件、若干 `chunk` 事件，然后是一个 `done` 事件。在 `video_start` 之前或最后一个 `chunk` 之后恰好产生一个 `last_frame` 事件。任何后端失败都会 reject。`signal` 中止时，取消渲染并以中止原因 reject。 |
 
 ### 渲染请求与渲染流
 
-`RenderRequest` 是所有提供方共用的唯一请求类型。消费方对每个模型以相同方式构建它。每个提供方插件把它翻译成其后端的请求格式。[`dsh-llm`](../../llm/llm/README.zh.md) 的 `GenerateOptions` 类型对语言模型起相同作用。
+`RenderRequest` 是视频模态所有提供方共用的唯一请求类型。消费方对每个模型以相同方式构建它。每个提供方插件把它翻译成其后端的请求格式。[`dsh-llm`](../../llm/llm/README.zh.md) 的 `GenerateOptions` 类型对语言模型起相同作用。
 
 | `RenderRequest` 字段 | 含义 |
 | --- | --- |
@@ -108,11 +108,13 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 | 方法 | 返回值 | 语义 |
 | --- | --- | --- |
 | `register(entry)` | `() => void` | 添加一个条目。返回的函数移除该条目。第二次调用该函数不做任何事。已存在同键条目时抛出错误。在 `ctx.effect` 内调用 `register`，这样销毁提供方插件会移除它的条目。 |
-| `get(key)` | `ModelEntry \| undefined` | 具有该键的条目，或 `undefined`。 |
-| `list(filter?)` | `ModelEntry[]` | 与 `modality`、`task` 和 `provider` 中每个给定字段都匹配的条目，按注册顺序。未给出的字段匹配所有条目。 |
+| `get(key)` | `ModelEntry<M> \| undefined` | 具有该键的条目，或 `undefined`。`M` 是该键的模态。 |
+| `resolve(modality, params)` | `ModelEntry<M>` | 工具调用的 `modality`、`task`、`provider` 和 `model` 参数所指定的 `modality` 条目。没有 `modality` 的条目对应该键时，抛出 `Unknown model "<modality>/<task>/<provider>/<model>"; call dv_models_list for the models.`。 |
+| `whileServing(modality, start)` | `() => void` | 模型目录有了第一个 `modality` 条目时调用 `start`，失去最后一个时调用 `start` 返回的释放函数。消费方在 `start` 中注册自己的操作。返回的函数停止此行为并释放注册；在 `ctx.effect` 中调用 `whileServing`。 |
+| `list(filter?)` | `ModelEntry<ModalityId>[]` | 与 `modality`、`task` 和 `provider` 中每个给定字段都匹配的条目，按注册顺序。未给出的字段匹配所有条目。 |
 | `onChanged(listener)` | `() => void` | 每次注册和每次移除后调用 `listener`。返回的函数移除该监听器。 |
 
-本服务还为 agent 注册工具 `dv_models_list` 和 `dv_models_get` 以及 skill `video-model-selection`。它不向系统提示词添加任何内容。
+`modelKey(params)` 从工具调用的参数读取键。本服务还为 agent 注册工具 `dv_models_list` 和 `dv_models_get` 以及 skill `video-model-selection`。它不向系统提示词添加任何内容。
 
 ### 提供方插件负责的部分
 
@@ -136,6 +138,7 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 | 添加提供方 | 添加一个提供方插件包。 |
 | 添加模型 | 修改一个提供方插件。 |
 | 添加服务器 | 在组合中修改该提供方插件的 `Config` 行。 |
+| 添加模态 | 在定义其类型的包中，通过声明合并声明它在 `ModalityTypes` 中的一行和它在 `TaskMap` 中的任务。 |
 
 **没有兼容代码。**`@dv/models` 只有一种键格式和一种条目类型。它不包含面向其他目录格式的别名、适配器或回退代码。
 
@@ -151,16 +154,16 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 
 本服务把条目按格式化后的键存在一个 `Map` 中。`register` 拒绝 map 中已有的键。每次注册和每次移除都在 map 改变后调用所有 `onChanged` 监听器。`register` 返回的函数只在 map 仍持有同一个条目时移除该条目。
 
-DSH 工具注册表（`tools`）挂载期间，本服务以 effect 注册 `dv_models_list` 和 `dv_models_get`。`dv_models_list` 用其参数筛选条目，返回每个条目的键和描述。`dv_models_get` 用全部四个键字段查找条目，并同时读取 `facts()` 和 `schema()`。`dv_models_get` 只从 facts 中返回时长范围、宽高比和分辨率。`@dv/shot-render` 用其他 facts 构建请求。
+DSH 工具注册表（`tools`）挂载期间，本服务以 effect 注册 `dv_models_list` 和 `dv_models_get`。`dv_models_list` 用其参数筛选条目，返回每个条目的键和描述。`dv_models_get` 用全部四个键字段查找条目，返回它的键、描述和 `schema()` 的 JSON。它不读取 `facts()`；消费方读取 facts 来构建请求。
 
 DSH skill 注册表（`skills`）挂载期间，本服务从 `skills/video-model-selection.md` 注册运行时 skill `video-model-selection`。agent 可以加载该 skill。用户不能从输入框调用它。
 
-[`@dv/shot-render`](../shot-render/README.zh.md) 获取 `dv_shot_render` 调用所指定的条目。它用条目的 facts 构建 `RenderRequest`。它用 `validateGenerationRequest` 检查请求，然后渲染该请求。[`@dv/shot-plan`](../shot-plan/README.zh.md) 拒绝键不对应任何条目的计划镜头。
+[`@dv/shot-render`](../shot-render/README.zh.md) 解析 `dv_shot_render` 调用所指定的视频条目。它用条目的 facts 构建 `RenderRequest`。它用 `validateGenerationRequest` 检查请求，然后渲染该请求。[`@dv/shot-plan`](../shot-plan/README.zh.md) 拒绝键不对应任何条目的计划镜头。
 
 | 文件 | 内容 |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `Config`、`formatModelKey`、`DvModels` 服务和两个工具 |
-| [`src/types.ts`](src/types.ts) | `ModalityMap`、`TaskMap`、`ModelKey`、`RenderModelFacts`、`RenderRequest`、`RenderStreamEvent`、`ModelEntry`、`ModelFilter` |
+| [`src/index.ts`](src/index.ts) | `Config`、`formatModelKey`、`modelKey`、`DvModels` 服务和两个工具 |
+| [`src/types.ts`](src/types.ts) | `ModalityTypes`、`ModalityId`、`TaskMap`、`TaskOfModality`、`ModelKey`、`RenderModelFacts`、`RenderRequest`、`RenderStreamEvent`、`ModelEntry`、`ModelFilter` |
 | [`skills/video-model-selection.md`](skills/video-model-selection.md) | 模型选择 skill |
 | [`tests/models.spec.ts`](tests/models.spec.ts) | Loader 组合中的模型目录、工具、skill 和系统提示词 |
 
@@ -191,14 +194,14 @@ DSH 工具注册表挂载期间，agent 看到工具 `dv_models_list`，带下�
 ##### dv_models_list 描述
 
 ```markdown
-List the video models you can render with, each with its key (modality, task, provider, model) and its description. To choose the model of a shot, follow the video-model-selection skill.
+List the models you can generate with, each with its key (modality, task, provider, model) and its description. To choose the video model of a shot, follow the video-model-selection skill.
 ```
 
 ##### dv_models_list 参数描述
 
 ```markdown
 - modality: Only models of this modality, such as video.
-- task: Only models for this task: t2v (prompt only) or ref2v (reference media and prompt).
+- task: Only models for this task, such as ref2v.
 - provider: Only models of this provider.
 ```
 
@@ -214,12 +217,12 @@ List the video models you can render with, each with its key (modality, task, pr
 
 #### 模型看到什么
 
-DSH 工具注册表挂载期间，agent 看到工具 `dv_models_get`，带下面的描述。该工具有四个必填字符串参数：`modality`、`task`、`provider` 和 `model`。一次调用返回一个文本块，内容是缩进的 JSON：四个键字段、`description`、`facts` 和提供方的 `schema` JSON。`facts` 包含带 `min` 和 `max` 的 `duration_sec`、`aspect_ratios` 和 `resolutions`。键不对应任何条目时，调用以 `No video model has the key <modality>/<task>/<provider>/<model>; call dv_models_list for the models you can use.` 失败。后端无法连接时，调用以后端的错误失败。
+DSH 工具注册表挂载期间，agent 看到工具 `dv_models_get`，带下面的描述。该工具有四个必填字符串参数：`modality`、`task`、`provider` 和 `model`。一次调用返回一个文本块，内容是缩进的 JSON：四个键字段、`description` 和提供方的 `schema` JSON，其中包含模型的限制。键不对应任何条目时，调用以 `No model has the key <modality>/<task>/<provider>/<model>; call dv_models_list for the models you can use.` 失败。后端无法连接时，调用以后端的错误失败。
 
 ##### dv_models_get 描述
 
 ```markdown
-Read one video model by its key from dv_models_list: its description; its facts (durations, aspect ratios and resolutions); and its schema (the inputs it accepts with their media types and counts, and the parameters it takes in `extra`).
+Read one model by its key from dv_models_list: its description and its schema (its limits, such as durations, aspect ratios and resolutions; the inputs it accepts with their media types and counts; and the parameters it takes in `extra`).
 ```
 
 ##### dv_models_get 参数描述
@@ -265,7 +268,7 @@ skill 注册表挂载期间，目录中约 40 个 token。agent 每次加载该 
 
 以下限制适用于模型目录、两个工具和选择 skill。
 
-- **面向 agent 的文本只列出两个任务**——`dv_models_list` 的 `task` 参数和 `video-model-selection` 的第 1 步只列出 `t2v` 和 `ref2v`。插件可以通过声明合并添加任务。该任务会出现在 `dv_models_list` 结果中。agent 得不到何时选择该任务的说明。
+- **选择 skill 只列出两个任务**——`video-model-selection` 的第 1 步只列出 `t2v` 和 `ref2v`。插件可以通过声明合并添加任务。该任务会出现在 `dv_models_list` 结果中。agent 得不到何时选择该任务的说明。
 - **没有就绪检查**——提供方插件注册条目后，该条目就出现在 `dv_models_list` 中。此时该条目的后端可能无法连接。只有 `dv_models_get` 或一次渲染读取该条目时，后端失败才会显现。
 - **键字段可以包含 `/`**——`register` 按 `formatModelKey` 的格式比较键。`register` 不拒绝字段中的 `/`。提供方 `a/b` 加模型 `c` 与提供方 `a` 加模型 `b/c` 的格式化键相同，所以第二次注册失败。提供方插件必须使用不含 `/` 的名称。
 - **`schema()` 没有固定的 JSON 格式**——每个提供方插件定义自己的 JSON。`@dv/models` 不检查该 JSON。只有 agent 读取它；没有消费方代码解析它。每个条目的 `validateGenerationRequest` 成员是对输入和 `extra` 值唯一强制执行的检查。

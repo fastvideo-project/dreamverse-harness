@@ -10,7 +10,7 @@ Each shot of a plan renders with one video model. Each video model has a key of 
 2. If the user named a model, call `dv_models_list` with the task of the shot. Use the entry of that model. If that model has no entry for the task, tell the user. Go to step 9.
 3. Call `dv_models_list` with the task of the shot. Each model that `dv_models_list` returns is a candidate.
 4. Call `dv_models_get` for each candidate.
-5. Remove each candidate that cannot render the shot. Compare the shot with the facts and the schema of the candidate:
+5. Remove each candidate that cannot render the shot. Compare the shot with the schema of the candidate:
    - duration;
    - aspect ratio;
    - resolution;

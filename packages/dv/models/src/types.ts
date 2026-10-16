@@ -1,23 +1,15 @@
 /**
- * Types of the DreamVerse model catalog: the modality and task vocabularies, the key of a catalog entry, the video
- * render request and render stream, and the model entry that provider plugins implement. One entry is one model of one
- * provider serving one task.
+ * Types of the DreamVerse model catalog: the modalities with the facts, request and result types of each, the task
+ * vocabulary, the key of a catalog entry, and the model entry that provider plugins implement. One entry is one model of
+ * one provider serving one task; `ModelEntry<M>` is an entry of modality `M`.
  *
  * @module @dv/models/types
  */
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { AssetId } from '@dv/project'
 
-/**
- * The output modalities, each mapped to its own name. A plugin adds a modality through declaration merging:
- * `declare module '@dv/models' { interface ModalityMap { image: 'image' } }`.
- */
-export interface ModalityMap {
-  video: 'video'
-}
-
-/** One output modality, such as `video`. */
-export type ModalityId = ModalityMap[keyof ModalityMap]
+/** One output modality, such as `video`: a key of `ModalityTypes`. */
+export type ModalityId = keyof ModalityTypes
 
 /**
  * The generation tasks, each mapped to the modality it produces. `t2v`: a video from the prompt alone; `ref2v`: a video
@@ -31,6 +23,12 @@ export interface TaskMap {
 
 /** One generation task, such as `ref2v`. */
 export type TaskId = keyof TaskMap
+
+/** The tasks of each modality: `TaskMap` read the other way, from modality to task. */
+type TasksByModality = { [M in ModalityId]: { [T in TaskId]: TaskMap[T] extends M ? T : never }[TaskId] }
+
+/** One task of modality `M`, such as `t2v | ref2v` for `video`. */
+export type TaskOfModality<M extends ModalityId> = TasksByModality[M]
 
 /** The key of one catalog entry: one model of one provider, serving one task of the task's modality. */
 export interface ModelKey<T extends TaskId = TaskId> {
@@ -94,11 +92,21 @@ export type RenderStreamEvent =
   | { kind: 'done'; timings: Record<string, number> }
 
 /**
+ * The facts, request and result types of each modality, which `ModelEntry<M>` uses for modality `M`. A plugin adds a
+ * modality through declaration merging: `declare module '@dv/models' { interface ModalityTypes { audio: { … } } }`.
+ */
+export interface ModalityTypes {
+  video: { facts: RenderModelFacts; request: RenderRequest; result: AsyncIterable<RenderStreamEvent> }
+}
+
+/**
  * One catalog entry, which a provider plugin implements and registers: one model of the provider serving one task. A
- * model that serves several tasks is registered once per task.
+ * model that serves several tasks is registered once per task. `ModelEntry<M>` is an entry of modality `M`: its key names
+ * one task of `M`, and `ModalityTypes[M]` gives the types of its facts, request and result.
  *
  * Entries must honor these semantics:
  * - `facts()` and `schema()` resolve with values read from the backend; they reject when the backend cannot be reached.
+ *   `schema()` holds everything the agent reads about the model's limits, because the catalog returns it unchanged.
  * - `validateGenerationRequest(request)` resolves with every reason the model cannot render the request, including
  *   invalid `extra` values; it resolves with an empty list when the model renders it, and rejects when the backend
  *   cannot be reached.
@@ -106,38 +114,44 @@ export type RenderStreamEvent =
  *   events, then one `done`, and exactly one `last_frame` before `video_start` or after the last `chunk`; rejects for
  *   any backend failure. Aborting `signal` cancels the render and rejects with its reason.
  */
-export interface ModelEntry<T extends TaskId = TaskId> extends ModelKey<T> {
+export interface ModelEntry<M extends ModalityId> {
+  modality: M
+  task: TaskOfModality<M>
+  /** The provider plugin's name for the backend that serves the model, such as `fastvideo`. */
+  provider: string
+  /** The provider's name for the model, such as `fasth3`. */
+  model: string
   /** The model's strengths and weaknesses, for the agent and the user to choose between similar models. */
   description: string
   /** GPU seconds per rendered video second, for the GPU estimate of a render before it runs. */
   gpuSecondsPerVideoSecond: number
   /**
-   * Read the facts that a render request of this entry is built from.
+   * Read the facts that a request of this entry is built from.
    * @returns the facts.
    * @throws Error when the backend cannot be reached.
    */
-  facts(): Promise<RenderModelFacts>
+  facts(): Promise<ModalityTypes[M]['facts']>
   /**
-   * Read the model's own description of the requests it accepts: the inputs it takes with their media types and counts,
-   * and the parameters it takes in `extra`. The catalog returns it to the agent unchanged.
+   * Read the model's own description of the requests it accepts: its limits, the inputs it takes with their media types
+   * and counts, and the parameters it takes in `extra`. The catalog returns it to the agent unchanged.
    * @returns the description.
    * @throws Error when the backend cannot be reached.
    */
   schema(): Promise<JsonValue>
   /**
-   * Check one render request.
+   * Check one request.
    * @param request - the request as `render` would receive it.
    * @returns the problems, each one agent-facing sentence; empty when the model renders the request.
    * @throws Error when the backend cannot be reached.
    */
-  validateGenerationRequest(request: RenderRequest): Promise<string[]>
+  validateGenerationRequest(request: ModalityTypes[M]['request']): Promise<string[]>
   /**
-   * Render one shot.
-   * @param request - the prompt, input assets, frame size, frame count, seed, and the model's own parameters.
+   * Render one request, such as one shot of a video entry.
+   * @param request - the request of the entry's modality.
    * @param signal - cancels the render.
-   * @returns the render stream.
+   * @returns the result of the entry's modality, such as the render stream of a video entry.
    */
-  render(request: RenderRequest, signal?: AbortSignal): AsyncIterable<RenderStreamEvent>
+  render(request: ModalityTypes[M]['request'], signal?: AbortSignal): ModalityTypes[M]['result']
 }
 
 /** A filter of `dvModels.list`: an entry matches when it equals every given field. */
