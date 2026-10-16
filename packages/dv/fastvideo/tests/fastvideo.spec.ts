@@ -247,19 +247,20 @@ describe('dv-fastvideo', () => {
     expect(text.requests[0]?.['references']).toEqual([])
   })
 
-  it('replaces each image citation with the Picture label of its position among the image references', async () => {
+  it('replaces each citation of a reference image or video with its label, counting each media type in order', async () => {
     const reference = await startFakeServer(REFERENCE_CAPABILITIES)
     const ctx = await start({ ref2v: reference.url })
     const video = importAsset(ctx, Buffer.from('VID1'), 'video/mp4')
     const image = importAsset(ctx, Buffer.from('IMG1'), 'image/png')
     const other = importAsset(ctx, Buffer.from('IMG2'), 'image/png')
-    // A citation of a video, of an asset outside the references, or of anything other than an asset becomes its label.
+    const audio = importAsset(ctx, Buffer.from('AUD1'), 'audio/mpeg')
+    // A citation of audio, of an asset outside the references, or of anything other than an asset becomes its label.
     const prompt = `@[Mia](dv:asset/${other}) meets @[Bo](dv:asset/${image}) and @[Mia](dv:asset/${other}) in @[the walk](dv:asset/${video}), `
-      + '@[a cat](dv:asset/missing) and @[the lake](dv:element/e1@2)'
+      + `to @[the song](dv:asset/${audio}), @[a cat](dv:asset/missing) and @[the lake](dv:element/e1@2)`
     const firstFrame = '@[首帧](dv:input/first_frame)'
-    await collect(fasth3(ctx, 'ref2v').render({ ...request([video, image, other], null), prompt: `${prompt} from ${firstFrame}` }))
+    await collect(fasth3(ctx, 'ref2v').render({ ...request([video, image, other, audio], null), prompt: `${prompt} from ${firstFrame}` }))
     expect(reference.requests[0]?.['prompt'])
-      .toBe('<Picture 2> meets <Picture 1> and <Picture 2> in the walk, a cat and the lake from 首帧')
+      .toBe('<Picture 2> meets <Picture 1> and <Picture 2> in <Video 1>, to the song, a cat and the lake from 首帧')
     // The first frame is the image after the reference images, even when it is also one of them.
     const continued = `@[Bo](dv:asset/${image}) from ${firstFrame}`
     await collect(fasth3(ctx, 'ref2v').render({ ...request([video, image, other], image), prompt: continued }))

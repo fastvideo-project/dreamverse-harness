@@ -10,12 +10,17 @@ import type { AssignReferenceLabels } from './reference-labels.ts'
 import type { ServedTask } from './types.ts'
 
 /**
- * Assign the MiniMax H3 labels: the k-th image is `<Picture k>`, counting the images in the order that the model receives
- * them, so the first frame is the image after the reference images.
+ * Assign the MiniMax H3 labels: the k-th image is `<Picture k>` and the k-th video is `<Video k>`, counting each media
+ * type in the order that the model receives the media, so the first frame is the image after the reference images. Audio
+ * gets no label.
  */
 export const assignFasth3ReferenceLabels: AssignReferenceLabels = (media) => {
   let pictures = 0
-  return media.map(medium => medium.mediaType === 'image' ? `<Picture ${String(++pictures)}>` : null)
+  let videos = 0
+  return media.map((medium) => {
+    if (medium.mediaType === 'image') return `<Picture ${String(++pictures)}>`
+    return medium.mediaType === 'video' ? `<Video ${String(++videos)}>` : null
+  })
 }
 
 /**
