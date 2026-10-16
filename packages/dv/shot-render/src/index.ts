@@ -25,9 +25,10 @@ import {
   formatModelKey, type ModalityId, type ModelEntry, type ModelKey, type RenderModelFacts, type RenderRequest, type RenderStreamEvent,
   type TaskId,
 } from '@dv/models'
-import type {
-  AssetId, OperationContext, OperationInput, OperationResult, OperationSpec, OperationToolCall, ProjectId, ProjectRecord, ProjectState,
-  RecordId, RecordInput, RecordInputRef, RunRequest,
+import {
+  citedAsset, parsePromptCitations, type AssetId, type OperationContext, type OperationInput, type OperationResult, type OperationSpec,
+  type OperationToolCall, type ProjectId, type ProjectRecord, type ProjectState, type RecordId, type RecordInput, type RecordInputRef,
+  type RunRequest,
 } from '@dv/project'
 import { RENDER_OPERATION, shotReducer } from './reducer.ts'
 import { backendSeconds, baseMime, number, shotGeometry, text, type ShotGeometry } from './render.ts'
@@ -87,8 +88,8 @@ const RENDER_PARAMS: OperationSpec['params'] = {
   model: { type: 'string', required: true, description: 'The model name, as dv_models_list lists it.' },
   prompt: {
     type: 'string', required: true,
-    description: 'The complete shot prompt, written with the prompt skill of its model and task; it names the references with '
-      + 'the numbering of that skill: the reference input in input order, then the first frame.',
+    description: 'The complete shot prompt, written with the prompt skill of its model and task; it cites each reference image '
+      + 'of the reference input as @[<label>](dv:asset/<asset ID>) where it names it.',
   },
   duration_sec: { type: 'integer', description: 'Whole seconds within the model range; default the model minimum.' },
   aspect_ratio: { type: 'string', description: 'One of the model aspect ratios; default the first.' },
@@ -143,6 +144,21 @@ function inputAssets(inputs: ReadonlyArray<Pick<RecordInput, 'role' | 'resolved_
 }
 
 /**
+ * The problems of a prompt's citations: a citation of anything other than an asset, and a citation of an asset that is not
+ * one of the `reference` assets.
+ * @param prompt - the prompt.
+ * @param references - the `reference` assets of the call.
+ * @returns one sentence per problem; empty when every citation names a reference asset.
+ */
+function citationProblems(prompt: string, references: readonly AssetId[]): string[] {
+  return parsePromptCitations(prompt).flatMap((citation) => {
+    const asset = citedAsset(citation.uri)
+    if (asset === null) return [`The prompt cites ${citation.uri}; a shot prompt cites only assets of its reference input.`]
+    return references.includes(asset) ? [] : [`The prompt cites asset ${asset}, which is not in the reference input.`]
+  })
+}
+
+/**
  * The render request of a call: its prompt, its `reference` assets in input order, its `first_frame` asset, the frame
  * size and frame count from the model's facts, the seed (the call's `seed`, else a random one), and the model's own
  * parameters.
@@ -150,13 +166,17 @@ function inputAssets(inputs: ReadonlyArray<Pick<RecordInput, 'role' | 'resolved_
  * @param params - the call's params.
  * @param inputs - the call's input assets with their roles.
  * @returns the request and the shot's geometry.
- * @throws Error for a missing prompt, params outside the facts, or more than one `first_frame` input.
+ * @throws Error for a missing prompt, a citation that names no `reference` asset, params outside the facts, or more than
+ *   one `first_frame` input.
  */
 function renderRequest(
   facts: RenderModelFacts, params: Record<string, unknown>, inputs: Array<Pick<RecordInput, 'role' | 'resolved_asset'>>,
 ): { request: RenderRequest; geometry: ShotGeometry } {
   const prompt = text(params['prompt'])
   if (prompt === '') throw new Error('shot.render needs a `prompt`.')
+  const references = inputAssets(inputs, 'reference')
+  const problems = citationProblems(prompt, references)
+  if (problems.length > 0) throw new Error(`${problems.join(' ')} Cite only the assets of inputs.reference.`)
   // An output of a record that has not finished counts here although it has no asset yet.
   const firstFrameCount = inputs.filter(input => input.role === 'first_frame').length
   if (firstFrameCount > 1) throw new Error(`shot.render takes one first_frame input; this call has ${firstFrameCount}.`)
@@ -164,7 +184,7 @@ function renderRequest(
   const geometry = shotGeometry(facts, params)
   return {
     request: {
-      prompt, references: inputAssets(inputs, 'reference'), firstFrame: firstFrames[0] ?? null,
+      prompt, references, firstFrame: firstFrames[0] ?? null,
       frameWidth: geometry.width, frameHeight: geometry.height, numFrames: geometry.numFrames,
       seed: number(params['seed'], randomInt(SEED_LIMIT)),
       extra: (params['extra'] ?? {}) as Record<string, unknown>,
@@ -340,10 +360,11 @@ export default class DvShotRender extends Service {
   /**
    * Refuse a `shot.render` call of any caller before any record when its key names no catalog entry, or the entry's
    * `validateGenerationRequest` refuses the call's render request, its `extra` values included. Character, location and
-   * style versions stand for their reference assets. A missing prompt, params outside the model's facts, and more than
-   * one `first_frame` input are refused for every call; a call whose input is an output of a record that has not
-   * finished is validated, `extra` included, by `renderShot` before the render. A call that a plan scheduled (param
-   * `plan`) is told to update the plan with `dv_plan_update`; `plan.approve` names the shots in front of it.
+   * style versions stand for their reference assets. A missing prompt, a citation that names no reference asset, params
+   * outside the model's facts, and more than one `first_frame` input are refused for every call; a call whose input is
+   * an output of a record that has not finished is validated, `extra` included, by `renderShot` before the render. A call
+   * that a plan scheduled (param `plan`) is told to update the plan with `dv_plan_update`; `plan.approve` names the shots
+   * in front of it.
    * @param request - the call, with its input references.
    * @param state - the project's current state, which the call writes after.
    * @throws Error naming the problem.
@@ -429,8 +450,9 @@ export default class DvShotRender extends Service {
       version: '1',
       description: 'Render one take of a shot with a model from dv_models_list; modality, task, provider and model name it and are '
         + 'required. Task ref2v renders from reference media through the reference input: imported assets, or character, '
-        + 'location and style versions with reference assets (c1@1); dv_models_get lists the inputs, media types and counts each '
-        + 'model accepts. Pass continue_from to start from the last still of an earlier shot when the model takes a first frame. '
+        + 'location and style versions with reference assets (c1@1); the prompt cites each reference image as '
+        + '@[<label>](dv:asset/<asset ID>). dv_models_get lists the inputs, media types and counts each model accepts. '
+        + 'Pass continue_from to start from the last still of an earlier shot when the model takes a first frame. '
         + 'The model\'s own parameters go in extra (see dv_models_get). ' + TAKE_RULE,
       inputs: RENDER_INPUTS,
       params: RENDER_PARAMS,

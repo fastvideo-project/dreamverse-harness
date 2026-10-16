@@ -537,6 +537,24 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(fixture.reference.requests).toHaveLength(0)
   })
 
+  it('passes a prompt that cites reference assets as written, and refuses a citation of anything else before recording', async () => {
+    const fixture = await start()
+    const image = await withCharacter(fixture)
+    const other = fixture.put(Buffer.from('PNG-OTHER'), 'image/png', 'other.png')
+    // A character version stands for its reference assets, so the prompt can cite them.
+    const prompt = `@[face](dv:asset/${image}) waves`
+    const shot = await fixture.record('shot.render', { ...REF, prompt }, [c1()])
+    expect(fixture.reference.requests[0]).toMatchObject({ prompt, references: [image] })
+    expect(shot.status).toBe('done')
+    const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
+    await expect(fixture.record('shot.render', { ...REF, prompt: `@[other](dv:asset/${other}) waves` }, [c1()]))
+      .rejects.toThrow(`The prompt cites asset ${other}, which is not in the reference input. Cite only the assets of inputs.reference.`)
+    const characterCited = { ...REF, reason: 'x', prompt: '@[Mia](dv:character/c1) waves', inputs: { reference: 'c1@1' } }
+    expect(failure(await fixture.call('dv_shot_render', characterCited)))
+      .toContain('The prompt cites dv:character/c1; a shot prompt cites only assets of its reference input.')
+    expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
+  })
+
   it('refuses requests outside the model\'s facts before recording, and records stream failures', async () => {
     const fixture = await start()
     await withCharacter(fixture)
