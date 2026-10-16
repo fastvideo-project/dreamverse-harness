@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/proposed/feature/2026-10-15-prompt-media-citations.md
-2026-10-15-prompt-media-citations.md: 1935843f94b257e0b4dad4de37c2dbf3c015cc2e
-2026-10-15-prompt-media-citations.zh.md: e2ecd59bac32f6605e46abc09ed4209d6d71047a
+2026-10-15-prompt-media-citations.md: ae53ee6ba3743ad6bf64e668e66aec0401a99768
+2026-10-15-prompt-media-citations.zh.md: 80cae08c4baa91398697499aabf895a9c7300715
