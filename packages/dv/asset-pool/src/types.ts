@@ -27,6 +27,8 @@ export interface Asset {
   readonly height: number | null
   /** Duration of audio or video in seconds, or null when the importer did not give it. */
   readonly duration_sec: number | null
+  /** Whether a video holds a sound stream; absent until `dvAssetPool.hasAudio` first reads the video. */
+  readonly has_audio?: boolean
 }
 
 /** Where `asset.grab_still` takes the still: the first frame, the last frame, or a time in seconds. */

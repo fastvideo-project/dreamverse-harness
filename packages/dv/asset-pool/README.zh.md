@@ -49,14 +49,15 @@ kind: "package-reference"
 | 方法 | 行为 |
 | --- | --- |
 | `importAsset(bytes \| {path}, {mime, name, durationSec?, width?, height?}, createdBy)` | 按哈希保存字节并追加一行索引；相同内容返回已有 ID，保留第一个素材 |
-| `get(asset)` | `Asset`：`id`、`mime`、`name`、`size_bytes`、`created_by`、`created_at`、`width`、`height`、`duration_sec` |
+| `get(asset)` | `Asset`：`id`、`mime`、`name`、`size_bytes`、`created_by`、`created_at`、`width`、`height`、`duration_sec`，以及 `hasAudio` 读过视频之后的 `has_audio` |
+| `hasAudio(asset)` | 素材是否有声音：音频为 true，图片和其他文件为 false，视频取存储的 `has_audio`；第一次读取视频时用 ffprobe 检查并把结果追加到索引 |
 | `mediaType(asset)` | 素材 MIME 类型的顶层类型，例如 `video/mp4` 的 `video`；其他包向素材库查询，而不自己读取 MIME 类型 |
 | `path(asset)` / `read(asset)` | 存储文件的绝对路径，或其字节 |
 | `has(asset)` / `list()` | 是否持有，以及按时间从旧到新的全部素材 |
 | `url(asset)` | `<publicBaseUrl>/dv/assets/<AssetId>` |
 | `grabStill(video, at, dir)` | 把视频的一帧写成 `dir` 中的 `still.png` 并返回其路径；由操作导入 |
 
-对素材库没有的素材，`get`、`mediaType`、`path` 和 `read` 抛出代码为 `unknown_asset` 的 `ProjectError`。`GET /dv/assets/<AssetId>` 返回整个文件及其媒体类型和不可变缓存头；`/dv/assets` 下其他路径或方法返回 404。
+对素材库没有的素材，`get`、`hasAudio`、`mediaType`、`path` 和 `read` 抛出代码为 `unknown_asset` 的 `ProjectError`。`GET /dv/assets/<AssetId>` 返回整个文件及其媒体类型和不可变缓存头；`/dv/assets` 下其他路径或方法返回 404。
 
 -----
 

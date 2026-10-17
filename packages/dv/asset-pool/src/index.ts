@@ -228,6 +228,27 @@ export default class DvAssetPool extends Service {
   }
 
   /**
+   * Whether an asset holds sound: an audio file always, a video when ffprobe finds an audio stream, and any other asset
+   * never. The first read of a video probes the file and appends the answer to `index.jsonl`, so later reads and
+   * restarts reuse it.
+   * @param asset - an asset ID.
+   * @returns true when the asset holds sound.
+   * @throws ProjectError `unknown_asset` for an asset the pool does not hold; FfmpegError when ffprobe cannot read the
+   * video.
+   */
+  async hasAudio(asset: AssetId): Promise<boolean> {
+    const mediaType = this.mediaType(asset)
+    if (mediaType !== 'video') return mediaType === 'audio'
+    const known = this.get(asset).has_audio
+    if (known !== undefined) return known
+    const hasAudio = (await this.ctx.dvFfmpeg.probe(this.path(asset))).hasAudio
+    const next: Asset = { ...this.get(asset), has_audio: hasAudio }
+    appendFileSync(join(this.config.root, INDEX_FILE), `${JSON.stringify(next)}\n`)
+    this.assets.set(asset, next)
+    return hasAudio
+  }
+
+  /**
    * @param asset - an asset ID.
    * @returns the top-level type of the asset's MIME type: `video` for `video/mp4`.
    * @throws ProjectError `unknown_asset` for an asset the pool does not hold.

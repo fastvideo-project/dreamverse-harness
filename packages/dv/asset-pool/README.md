@@ -49,14 +49,15 @@ Mount the plugin after `@dv/project` and `@dv/ffmpeg`. Other plugins inject `dvA
 | Method | Behavior |
 | --- | --- |
 | `importAsset(bytes \| {path}, {mime, name, durationSec?, width?, height?}, createdBy)` | Stores the bytes under their hash and appends an index line; identical content returns the existing ID and keeps the first asset |
-| `get(asset)` | The `Asset`: `id`, `mime`, `name`, `size_bytes`, `created_by`, `created_at`, `width`, `height`, `duration_sec` |
+| `get(asset)` | The `Asset`: `id`, `mime`, `name`, `size_bytes`, `created_by`, `created_at`, `width`, `height`, `duration_sec`, and `has_audio` once `hasAudio` has read a video |
+| `hasAudio(asset)` | Whether the asset holds sound: true for audio, false for an image or other file, and for a video the stored `has_audio`; the first read of a video probes it with ffprobe and appends the answer to the index |
 | `mediaType(asset)` | The top-level type of the asset's MIME type, such as `video` for `video/mp4`; other packages ask the pool instead of reading the MIME type |
 | `path(asset)` / `read(asset)` | The stored file's absolute path, or its bytes |
 | `has(asset)` / `list()` | Membership, and every asset oldest first |
 | `url(asset)` | `<publicBaseUrl>/dv/assets/<AssetId>` |
 | `grabStill(video, at, dir)` | Writes one frame of a video as `still.png` into `dir` and returns its path; the operation imports it |
 
-`get`, `mediaType`, `path`, and `read` throw `ProjectError` with code `unknown_asset` for an asset the pool does not hold. `GET /dv/assets/<AssetId>` answers the whole file with its media type and an immutable cache header; any other path or method under `/dv/assets` is 404.
+`get`, `hasAudio`, `mediaType`, `path`, and `read` throw `ProjectError` with code `unknown_asset` for an asset the pool does not hold. `GET /dv/assets/<AssetId>` answers the whole file with its media type and an immutable cache header; any other path or method under `/dv/assets` is 404.
 
 -----
 

@@ -380,6 +380,31 @@ describe('dvAssetPool', () => {
       expect(fixture.ctx.dvAssetPool.get(bare.outputs[0] as AssetId).duration_sec).toBeCloseTo(3, 1)
     })
 
+    it('reads whether an asset holds sound, probing a video once and keeping the answer across a restart', async () => {
+      const fixture = await start()
+      const pool = fixture.ctx.dvAssetPool
+      const { outputs } = await fixture.ctx.dvFfmpeg.run({
+        argv: [
+          'ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=160x90:d=1:r=10', '-f', 'lavfi', '-i', 'sine=d=1',
+          '-shortest', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '{{out:talk.mp4}}',
+        ],
+        inputs: [], outputs: ['talk.mp4'], dir: fixture.dir,
+      })
+      const talk = pool.importAsset({ path: outputs[0] as string }, { mime: 'video/mp4', name: 'talk.mp4' }, null)
+      const silent = await video(fixture, 'blue', 1)
+      const audio = pool.importAsset(Buffer.from('AUD1'), { mime: 'audio/wav', name: 'a.wav' }, null)
+      const image = pool.importAsset(Buffer.from('IMG1'), { mime: 'image/png', name: 'a.png' }, null)
+      expect(pool.get(talk).has_audio).toBeUndefined()
+      const answers = [await pool.hasAudio(talk), await pool.hasAudio(silent), await pool.hasAudio(audio), await pool.hasAudio(image)]
+      expect(answers).toEqual([true, false, true, false])
+      expect(pool.get(talk).has_audio).toBe(true)
+      await fixture.stop()
+      const second = await start({ dir: fixture.dir })
+      const probe = vi.spyOn(second.ctx.dvFfmpeg, 'probe')
+      expect([await second.ctx.dvAssetPool.hasAudio(talk), await second.ctx.dvAssetPool.hasAudio(silent)]).toEqual([true, false])
+      expect(probe).not.toHaveBeenCalled()
+    })
+
     it('puts an import of an undone step on the canvas, and refuses a generated asset whose step was undone', async () => {
       const fixture = await start()
       const red = await video(fixture, 'red', 1)
