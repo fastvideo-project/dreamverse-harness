@@ -21,7 +21,7 @@ import { discardedSteps } from './history.ts'
 import type { ReducerRegistry } from './reducers.ts'
 import type { RecordLineInput, RecordStore } from './record-store.ts'
 import type { Scheduler } from './scheduler.ts'
-import { COMPONENT_KEYS, ProjectError } from './shared.ts'
+import { ProjectError } from './shared.ts'
 import type {
   AssetId, OperationContext, OperationSpec, ProjectId, ProjectRecord, ProjectState, RecordFailure, RecordId,
   RecordInput, RecordOrigin, RecordUpdate, RunRequest, RunResult,
@@ -105,6 +105,7 @@ function originOf(request: RunRequest): RecordOrigin {
 /** The operation registry and the change path. */
 export class Runner {
   private readonly operations = new Map<string, OperationSpec>()
+  private readonly components = new Set<string>()
   /** The abort controller of every executing record, so a write that discards the record's step can stop it. */
   private readonly executing = new Map<RecordId, AbortController>()
   /** Records a write discarded before they started executing; `execute` ends them at once. */
@@ -116,16 +117,28 @@ export class Runner {
   constructor(private readonly deps: RunnerDeps) {}
 
   /**
-   * Register an operation. Refused with `operation_exists` when the name is registered, and with `invalid_params`
-   * when `component` is not one of the component keys `proj asset bible plan shot timeline inspect`, when `name`
-   * does not start with `<component>.`, or when `confirm` is not `never` and the spec has no `confirmSummary`.
+   * Register a component key, which a plugin's operations then name in `component`. Refused with `component_exists`
+   * when the key is registered.
+   * @param key - the component key, such as `timeline`.
+   * @returns a function that removes the key (only if it is still registered).
+   */
+  registerComponent(key: string): () => void {
+    if (this.components.has(key)) throw new ProjectError('component_exists', `Component ${key} is already registered.`)
+    this.components.add(key)
+    return () => { this.components.delete(key) }
+  }
+
+  /**
+   * Register an operation. Refused with `operation_exists` when the name is registered, and with `invalid_params` when
+   * `component` is not a registered component key, when `name` does not start with `<component>.`, or when `confirm`
+   * is not `never` and the spec has no `confirmSummary`.
    * @param spec - the operation.
    * @returns a function that removes the registration (only if it is still this spec).
    */
   registerOperation(spec: OperationSpec): () => void {
     if (this.operations.has(spec.name)) throw new ProjectError('operation_exists', `Operation ${spec.name} is already registered.`)
-    if (!COMPONENT_KEYS.has(spec.component)) {
-      throw new ProjectError('invalid_params', `Operation ${spec.name} names an unknown component '${spec.component}'.`)
+    if (!this.components.has(spec.component)) {
+      throw new ProjectError('invalid_params', `Operation ${spec.name} names the component '${spec.component}', which no plugin registered.`)
     }
     if (!spec.name.startsWith(`${spec.component}.`)) {
       throw new ProjectError('invalid_params', `Operation ${spec.name} does not start with its component key '${spec.component}.'.`)

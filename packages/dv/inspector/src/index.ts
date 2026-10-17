@@ -84,6 +84,7 @@ export default class DvInspector extends Service {
 
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'dvInspector')
+    ctx.effect(() => ctx.dvProject.registerComponent('inspect'), 'dvInspector component')
     ctx.effect(() => ctx.dvProject.registerOperation(this.assetOperation()), 'dvInspector inspect.asset')
     ctx.inject(['llm', 'agentDefaultModel', 'attachments'], (child) => {
       child.effect(() => {

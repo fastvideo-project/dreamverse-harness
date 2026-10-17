@@ -134,7 +134,7 @@ Owner: agent D.
 | `apply(state, record)`               | One more `reduce` per reducer on a copy of `state.components`; `head` becomes `record.id`.                                                             |
 | `assetsOf(state, ref)`               | `assetsOf` of the reducer that defines it, on that reducer's slice (Story bible in a deployment); null when no reducer defines it.                    |
 | `createdBy` (private)                | `createdBy` of the reducer that defines it, on its slice before the record; the `proj` slice reads it while it reduces that record.                   |
-| `agentSummaries(state, assets)`      | The `agentSummary(slice, assets, state)` fields of every reducer that defines it, in the component key order of `COMPONENT_KEYS` (other keys after, in registration order). |
+| `agentSummaries(state, assets)`      | The `agentSummary(slice, assets, state)` fields of every reducer that defines it: `proj` first, then the other keys in alphabetical order.             |
 
 `projReducer` (Project's own slice) follows its JSDoc. Staleness in detail, for each record R in order:
 
@@ -168,7 +168,7 @@ Invariants: a move writes no record and keeps `tip`; an undo and then a redo ret
 
 Owner: agent B.
 
-**Registration.** `registerOperation(spec)`: refuse a registered name with `operation_exists`, a `component` outside `proj asset bible plan shot timeline inspect` with `invalid_params`, a name that does not start with `<component>.` with `invalid_params`, and a `confirm` other than `never` without `confirmSummary` with `invalid_params`. `listOperations` returns registration order.
+**Registration.** `registerComponent(key)` adds a component key and returns the disposer that removes it; a registered key is refused with `component_exists`. `registerOperation(spec)` accepts an operation of a registered component: refuse a registered name with `operation_exists`, a `component` that no plugin registered with `invalid_params`, a name that does not start with `<component>.` with `invalid_params`, and a `confirm` other than `never` without `confirmSummary` with `invalid_params`. `listOperations` returns registration order.
 
 **Runner: run.** Steps of `run(request)`:
 

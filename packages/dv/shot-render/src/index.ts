@@ -228,6 +228,7 @@ export default class DvShotRender extends Service {
 
   constructor(ctx: Context) {
     super(ctx, 'dvShotRender')
+    ctx.effect(() => ctx.dvProject.registerComponent('shot'), 'dvShotRender component')
     ctx.effect(() => ctx.dvProject.registerReducer('shot', shotReducer), 'dvShotRender reducer')
     ctx.effect(() => {
       let removeOperation: (() => void) | null = null

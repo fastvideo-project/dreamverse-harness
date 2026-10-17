@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-用项目目录和会话目录挂载插件。素材库加载时用 `registerAssetStore` 注册它的存储，聊天会话用 `bindSession` 绑定到项目。智能体调用前需要用户同意的操作把 `OperationSpec.confirm` 设为 `always` 或 `over_gpu_budget`，并提供 `confirmSummary(call, state)`，它返回 `{text, gpu_seconds}`：这次调用要做什么及其 GPU 估算；没有 `confirmSummary` 的这种 spec 会被 `registerOperation` 拒绝（`invalid_params`）。项目随后给该操作的工具加上仅工具参数 `user_approved`（`always`）或 `user_requested`（`over_gpu_budget`），在适用 `always`，或本轮的 GPU 秒数超过 `confirmGpuSecondsThreshold` 时，拒绝不带该参数的智能体调用，此时不写任何记录；拒绝文字让智能体在对话中询问用户，问题用粗体。该参数不进入记录的 params，用户和系统的调用从不被拒绝。每个归约函数经 `Reducer.agentSummary` 把自己切片的字段加入项目摘要。操作在 `OperationSpec.pendingInputRoles` 中列出可以指向尚未完成的记录输出的输入角色：运行器立即记录并执行这样的调用，`resolved_asset` 为 null，生产记录完成后由记录的当前形式填入（时间线中等待渲染的片段使用它）。
+用项目目录和会话目录挂载插件。每个组件插件先用 `registerComponent` 注册自己的组件键，再注册操作；核心不保存组件列表。素材库加载时用 `registerAssetStore` 注册它的存储，聊天会话用 `bindSession` 绑定到项目。智能体调用前需要用户同意的操作把 `OperationSpec.confirm` 设为 `always` 或 `over_gpu_budget`，并提供 `confirmSummary(call, state)`，它返回 `{text, gpu_seconds}`：这次调用要做什么及其 GPU 估算；没有 `confirmSummary` 的这种 spec 会被 `registerOperation` 拒绝（`invalid_params`）。项目随后给该操作的工具加上仅工具参数 `user_approved`（`always`）或 `user_requested`（`over_gpu_budget`），在适用 `always`，或本轮的 GPU 秒数超过 `confirmGpuSecondsThreshold` 时，拒绝不带该参数的智能体调用，此时不写任何记录；拒绝文字让智能体在对话中询问用户，问题用粗体。该参数不进入记录的 params，用户和系统的调用从不被拒绝。每个归约函数经 `Reducer.agentSummary` 把自己切片的字段加入项目摘要。操作在 `OperationSpec.pendingInputRoles` 中列出可以指向尚未完成的记录输出的输入角色：运行器立即记录并执行这样的调用，`resolved_asset` 为 null，生产记录完成后由记录的当前形式填入（时间线中等待渲染的片段使用它）。
 
 提示词以 `@[<label>](dv:<kind>/<id>)` 引用项目条目。[`src/citations.ts`](src/citations.ts) 中的函数 `parsePromptCitations`、`citedAsset`、`promptAssets` 和 `replacePromptCitations` 读取并替换这些引用；`citedInput` 读取按角色引用调用输入的引用，例如 `dv:input/first_frame`；`elementCitationUri` 给出输入引用所属元素的引用 `dv:character/<id>`、`dv:location/<id>` 或 `dv:style/<id>`。模型提供方插件用它们把每个引用换成它的模型的写法。
 
@@ -90,7 +90,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-八个工具：`dv_proj_create`、`dv_proj_open`、`dv_proj_state`、`dv_proj_history_list`、`dv_proj_undo`、`dv_proj_redo`、`dv_proj_stale_accept` 和 `dv_proj_wait`。`dv_proj_history_list` 按从新到旧返回步骤（默认 20 条），每条带 `place`（`current`、`before` 或 `after`）、操作、状态、发起者、意图和输出；其他工具以缩进 JSON 返回当前状态的项目摘要：`record`（只在写记录的工具之后出现：该调用写下的最新记录）、`project_id`、`head`、`records`（数量），然后按组件键顺序是各组件的 `agentSummary` 字段（设定库 `characters`、`locations`、`styles`；分镜 `plans`；时间线 `timelines`），最后是 `stale` 和 `recent`（最多十二条记录，带摘要和输出 URL）。`dv_proj_undo` 不带 `to` 时往回移一步，带 `to`（`dv_proj_history_list` 里的记录 ID）时移到那一步，可在当前一步之前或之后；`dv_proj_redo` 往前移一步。这些移动不加一步；之后的修改会丢弃当前一步之后的步骤。
+八个工具：`dv_proj_create`、`dv_proj_open`、`dv_proj_state`、`dv_proj_history_list`、`dv_proj_undo`、`dv_proj_redo`、`dv_proj_stale_accept` 和 `dv_proj_wait`。`dv_proj_history_list` 按从新到旧返回步骤（默认 20 条），每条带 `place`（`current`、`before` 或 `after`）、操作、状态、发起者、意图和输出；其他工具以缩进 JSON 返回当前状态的项目摘要：`record`（只在写记录的工具之后出现：该调用写下的最新记录）、`project_id`、`head`、`records`（数量），然后按组件键的字母顺序是各组件的 `agentSummary` 字段（设定库 `characters`、`locations`、`styles`；分镜 `plans`；时间线 `timelines`），最后是 `stale` 和 `recent`（最多十二条记录，带摘要和输出 URL）。`dv_proj_undo` 不带 `to` 时往回移一步，带 `to`（`dv_proj_history_list` 里的记录 ID）时移到那一步，可在当前一步之前或之后；`dv_proj_redo` 往前移一步。这些移动不加一步；之后的修改会丢弃当前一步之后的步骤。
 
 #### Token 影响
 

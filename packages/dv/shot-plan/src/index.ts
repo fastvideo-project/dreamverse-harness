@@ -272,6 +272,7 @@ export default class DvShotPlan extends Service {
 
   constructor(ctx: Context, _config: Config) {
     super(ctx, 'dvShotPlan')
+    ctx.effect(() => ctx.dvProject.registerComponent('plan'), 'dvShotPlan component')
     ctx.effect(() => ctx.dvProject.registerReducer('plan', planReducer), 'dvShotPlan reducer')
     for (const spec of this.operations()) ctx.effect(() => ctx.dvProject.registerOperation(spec), `dvShotPlan ${spec.name}`)
   }

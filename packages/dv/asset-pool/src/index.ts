@@ -141,6 +141,7 @@ export default class DvAssetPool extends Service {
       url: asset => this.url(asset),
       importAsset: (source, meta, createdBy) => this.importAsset(source, meta, createdBy),
     }), 'dvAssetPool asset store')
+    ctx.effect(() => ctx.dvProject.registerComponent('asset'), 'dvAssetPool component')
     ctx.effect(() => ctx.dvProject.registerReducer('asset', assetReducer), 'dvAssetPool reducer')
     for (const spec of [this.importOperation(), this.grabStillOperation(), this.cutSegmentOperation(), this.placementOperation('asset.place'), this.placementOperation('asset.unplace')]) {
       ctx.effect(() => ctx.dvProject.registerOperation(spec), `dvAssetPool ${spec.name}`)

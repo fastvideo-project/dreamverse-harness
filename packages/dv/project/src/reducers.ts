@@ -11,7 +11,7 @@
  */
 import type { RecordStore } from './record-store.ts'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { COMPONENT_KEYS, ProjectError } from './shared.ts'
+import { ProjectError } from './shared.ts'
 import type {
   AssetId, AssetStore, ComponentStates, ProjectId, ProjectInfo, ProjectRecord, ProjectState, RecordId, RecordInput, RecordInputRef,
   Reducer,
@@ -222,16 +222,15 @@ export class ReducerRegistry {
   }
 
   /**
-   * The project summary fields of every reducer that defines `agentSummary`, in component key order (keys outside
-   * that list follow in registration order).
+   * The project summary fields of every reducer that defines `agentSummary`: Project's own `proj` slice first, then the
+   * other components in the alphabetical order of their keys, so the order never depends on which plugin mounted first.
    * @param state - a project state.
    * @param assets - the asset store, for asset URLs.
    * @returns one field object per such reducer.
    */
   agentSummaries(state: ProjectState, assets: Pick<AssetStore, 'url'>): Array<Record<string, JsonValue>> {
-    const order = [...COMPONENT_KEYS]
-    const rank = (key: string): number => (order.includes(key) ? order.indexOf(key) : order.length)
-    return [...this.reducers].sort(([a], [b]) => rank(String(a)) - rank(String(b)))
+    const sortKey = (key: string): string => (key === 'proj' ? '' : key)
+    return [...this.reducers].sort(([a], [b]) => sortKey(a).localeCompare(sortKey(b)))
       .flatMap(([key, reducer]) => (
         reducer.agentSummary === undefined ? [] : [reducer.agentSummary(sliceOf(state, key, reducer), assets, state)]))
   }

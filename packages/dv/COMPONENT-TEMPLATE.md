@@ -62,7 +62,7 @@ Every registration is inside `ctx.effect`, so disposal removes it. An operation 
 | Field             | Rule                                                                                                  |
 | ----------------- | ----------------------------------------------------------------------------------------------------- |
 | `name`            | `<component key>.<verb>` or `<component key>.<object>_<verb>` from the glossary; the runner checks it |
-| `component`       | the component key (`asset bible plan shot timeline inspect`)                                          |
+| `component`       | the component's own key, such as `shot`, which the plugin registers with `registerComponent`          |
 | `version`         | `'1'`; bump when the meaning of `params` changes                                                      |
 | `description`     | model-facing and canvas-facing text; registry words only                                              |
 | `params`          | DSH parameter schema in snake_case registry words (`timeline`, `clip`, `in_sec`)                      |

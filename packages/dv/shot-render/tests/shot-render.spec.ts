@@ -248,6 +248,7 @@ async function start(options: { tasks?: TaskId[]; live?: FakeLiveStream; budget?
     rmSync(dir, { recursive: true, force: true })
   })
   ctx.effect(() => ctx.dvProject.registerReducer('bible' as never, bibleReducer))
+  ctx.effect(() => ctx.dvProject.registerComponent('bible'))
   ctx.effect(() => ctx.dvProject.registerOperation(characterCreate))
   const origin = { actor: 'user' as const, surface: 'api' as const, session: null, turn: null, tool_call: null }
   const project = (await ctx.dvProject.createProject('shots', { ...origin, intent: 'create' })).id

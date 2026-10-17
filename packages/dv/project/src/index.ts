@@ -362,11 +362,21 @@ export default class DvProject extends Service {
   }
 
   /**
+   * Register a component's key; a plugin calls it inside `ctx.effect` before it registers the component's operations.
+   * The core keeps no list of components: every built-in and added plugin registers its own key in the same way.
+   * @param key - the component key, such as `timeline`.
+   * @returns a function that removes the key. Throws `component_exists`.
+   */
+  registerComponent(key: string): () => void {
+    return this.runner.registerComponent(key)
+  }
+
+  /**
    * Register an operation and, while the DSH `tools` registry is mounted, its agent tool `dv_<name with _>`; a
    * component calls it from its plugin inside `ctx.effect` and returns the disposer.
    * @param spec - the operation.
-   * @returns a function that removes the operation and its tool. Throws `operation_exists`, or `invalid_params` for
-   *   an unknown component key, a name that does not start with `<component>.`, or a `confirm` other than `never`
+   * @returns a function that removes the operation and its tool. Throws `operation_exists`, or `invalid_params` for an
+   *   unregistered component key, a name that does not start with `<component>.`, or a `confirm` other than `never`
    *   without `confirmSummary`.
    */
   registerOperation(spec: OperationSpec): () => void {

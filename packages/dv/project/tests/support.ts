@@ -148,6 +148,9 @@ export interface ProjectModules {
   events: Array<{ project: ProjectId; event: ProjectEvent }>
 }
 
+/** The component keys that the fake operations of the Project tests use. */
+export const STAND_IN_COMPONENTS = ['asset', 'bible', 'plan', 'shot', 'timeline', 'inspect']
+
 /**
  * Build the module set on a temporary root, load it, and register the `proj` reducer.
  * @param limits - the scheduler limits; defaults to one `gpu` and four `cpu`.
@@ -172,6 +175,8 @@ export function startModules(limits = { cpu: 4, gpu: 1 }): ProjectModules {
     return holder.runner.execute(project, record)
   }, limits)
   const runner = new Runner({ store, reducers, scheduler, assets })
+  // The fake operations of these tests stand in for the components that DreamVerse plugins register.
+  for (const key of STAND_IN_COMPONENTS) runner.registerComponent(key)
   holder.scheduler = scheduler
   holder.runner = runner
   store.load()

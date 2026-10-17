@@ -151,7 +151,8 @@ async function start(options: StartOptions = {}): Promise<Fixture> {
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
   await ctx.loader.await()
   const tasks: TaskId[] = options.tasks ?? ['ref2v', 't2v']
-  const removers = [ctx.dvProject.registerOperation(standIn(options)), ...tasks.map(task => ctx.dvModels.register(model('fake', task)))]
+  const removers = [ctx.dvProject.registerComponent('shot'), ctx.dvProject.registerOperation(standIn(options))]
+  removers.push(...tasks.map(task => ctx.dvModels.register(model('fake', task))))
   disposers.push(async () => {
     for (const remove of removers) remove()
     await ctx.fiber.dispose()

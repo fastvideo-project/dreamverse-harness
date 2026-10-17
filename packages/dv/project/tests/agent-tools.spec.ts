@@ -16,7 +16,7 @@ import DvProject, {
   type RecordId, type SessionId, type TurnId,
 } from '../src/index.ts'
 import { formatToolResult } from '../src/agent-tools.ts'
-import { MemoryAssets, tempRoot, versionKey } from './support.ts'
+import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot, versionKey } from './support.ts'
 
 /** An attachment service that accepts every image. */
 class MemoryAttachments {
@@ -70,6 +70,7 @@ async function start(root = tempRoot(), attachments = true): Promise<Fixture> {
   }).await()
   const assets = new MemoryAssets()
   context.dvProject.registerAssetStore(assets)
+  for (const key of STAND_IN_COMPONENTS) context.dvProject.registerComponent(key)
   let calls = 0
   return {
     context, project: context.dvProject, assets, root, turns,

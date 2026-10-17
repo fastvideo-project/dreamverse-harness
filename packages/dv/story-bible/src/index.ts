@@ -61,6 +61,7 @@ export default class DvStoryBible extends Service {
 
   constructor(ctx: Context) {
     super(ctx, 'dvStoryBible')
+    ctx.effect(() => ctx.dvProject.registerComponent('bible'), 'dvStoryBible component')
     ctx.effect(() => ctx.dvProject.registerReducer('bible', bibleReducer), 'dvStoryBible reducer')
     for (const kind of BIBLE_KINDS) {
       for (const spec of [createOperation(kind), updateOperation(kind)]) {

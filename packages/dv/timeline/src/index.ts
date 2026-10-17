@@ -131,6 +131,7 @@ export default class DvTimeline extends Service {
 
   constructor(ctx: Context) {
     super(ctx, 'dvTimeline')
+    ctx.effect(() => ctx.dvProject.registerComponent('timeline'), 'dvTimeline component')
     ctx.effect(() => ctx.dvProject.registerReducer('timeline', timelineReducer), 'dvTimeline reducer')
     for (const spec of [...this.operations(), exportOperation(ctx)]) {
       ctx.effect(() => ctx.dvProject.registerOperation(spec), `dvTimeline ${spec.name}`)

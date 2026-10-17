@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import DvProject, {
   type AssetId, type OperationSpec, type OperationToolValue, type ProjectId, type RecordId, type SessionId,
 } from '../src/index.ts'
-import { MemoryAssets, tempRoot } from './support.ts'
+import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot } from './support.ts'
 
 declare module '@dv/project' {
   interface ComponentStates {
@@ -60,6 +60,7 @@ async function start(): Promise<Fixture> {
   await fiber.await()
   const assets = new MemoryAssets()
   context.dvProject.registerAssetStore(assets)
+  for (const key of STAND_IN_COMPONENTS) context.dvProject.registerComponent(key)
   let calls = 0
   return {
     context, project: context.dvProject, assets, fiber,

@@ -235,6 +235,7 @@ describe('dvTimeline', () => {
       actor: 'user', surface: 'timeline', session: null, turn: null, tool_call: null, intent: 'render', project: fixture.project,
       operation: 'shot.render', params: { shot: index }, inputs: [],
     })
+    fixture.ctx.dvProject.registerComponent('shot')
     fixture.ctx.dvProject.registerOperation({
       name: 'shot.render', component: 'shot', version: '1', description: 'stand-in', params: {}, inputs: {},
       outputs: [{ role: 'video', type: 'video' }], confirm: 'never', deterministic: false, resource: 'none', summarize: () => 'stand-in',
@@ -277,6 +278,7 @@ describe('dvTimeline', () => {
   it('keeps a placeholder clip laid out while the render runs and fills it when the render is done, after an undo too', async () => {
     const fixture = await start()
     const held = gate()
+    fixture.ctx.dvProject.registerComponent('shot')
     fixture.ctx.dvProject.registerOperation({
       name: 'shot.render', component: 'shot', version: '1', description: 'stand-in', params: {}, inputs: {},
       outputs: [{ role: 'video', type: 'video' }], confirm: 'never', deterministic: false, resource: 'none', summarize: () => 'stand-in',

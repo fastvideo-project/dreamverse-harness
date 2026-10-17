@@ -224,6 +224,7 @@ describe('dvApi', () => {
       confirm: 'never', deterministic: false, resource: 'none', summarize: () => 'slow',
       execute: async (context) => { await held; return { outputs: [context.importAsset(Buffer.from('T'), { mime: 'text/plain', name: 't.txt' })] } },
     }
+    fixture.project.registerComponent('inspect')
     fixture.project.registerOperation(slow)
     const running = fixture.handlers.runOperation({ project: projectId, operation: SLOW, surface: 'canvas' })
     await new Promise(resolve => setTimeout(resolve, 50))

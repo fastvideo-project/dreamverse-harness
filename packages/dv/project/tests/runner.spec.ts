@@ -261,6 +261,18 @@ describe('Runner', () => {
       .toThrow(expect.objectContaining({ code: 'invalid_params' }))
   })
 
+  it('registers an operation only after a plugin registers its component', () => {
+    const m = startModules()
+    expect(() => m.runner.registerOperation(operation({ name: 'image.generate', component: 'image' })))
+      .toThrow(expect.objectContaining({ code: 'invalid_params' }))
+    const disposeComponent = m.runner.registerComponent('image')
+    expect(() => m.runner.registerComponent('image')).toThrow(expect.objectContaining({ code: 'component_exists' }))
+    m.runner.registerOperation(operation({ name: 'image.generate', component: 'image' }))
+    expect(m.runner.listOperations().map(spec => spec.name)).toEqual(['image.generate'])
+    disposeComponent()
+    m.runner.registerComponent('image')
+  })
+
   it('refuses an operation whose name does not start with its component key', () => {
     const m = startModules()
     expect(() => m.runner.registerOperation(operation({ name: 'timeline.create', component: 'inspect' })))

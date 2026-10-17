@@ -79,6 +79,7 @@ async function start(): Promise<Fixture> {
     await ctx.fiber.dispose()
     rmSync(dir, { recursive: true, force: true })
   })
+  ctx.dvProject.registerComponent('shot')
   ctx.dvProject.registerOperation({
     name: 'shot.render', component: 'shot', version: '1', description: 'Test render.', params: {},
     inputs: { reference: { type: 'image', many: true, bible: true, description: 'References.' } },

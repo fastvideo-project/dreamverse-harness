@@ -1,13 +1,8 @@
 /**
- * Values that every module of the Project service uses: the component keys and the error classes.
+ * Values that every module of the Project service uses: the error classes.
  *
  * @module @dv/project/shared
  */
-/**
- * The component keys an operation's `component` may name, in the order the project summary of the `dv_proj_*` tools
- * lists the components' fields.
- */
-export const COMPONENT_KEYS: ReadonlySet<string> = new Set(['proj', 'asset', 'bible', 'plan', 'shot', 'timeline', 'inspect'])
 
 /** Why a Project call was refused. The record store, the runner and history throw these codes. */
 export type ProjectErrorCode =
@@ -18,6 +13,7 @@ export type ProjectErrorCode =
   | 'invalid_params'
   | 'invalid_inputs'
   | 'input_not_ready'
+  | 'component_exists'
   | 'operation_exists'
   | 'reducer_exists'
   | 'parent_not_head'

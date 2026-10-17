@@ -135,6 +135,7 @@ describe('timeline.export', () => {
     const fixture = await start()
     let release: () => void = () => undefined
     const held = new Promise<void>((resolve) => { release = resolve })
+    fixture.ctx.dvProject.registerComponent('shot')
     fixture.ctx.dvProject.registerOperation({
       name: 'shot.render', component: 'shot', version: '1', description: 'stand-in', params: {}, inputs: {},
       outputs: [{ role: 'video', type: 'video' }], confirm: 'never', deterministic: false, resource: 'none', summarize: () => 'stand-in',
