@@ -249,8 +249,13 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
         const references = await Promise.all(assets.map(async id => ({
           mediaType: ctx.dvAssetPool.mediaType(id), bytes: await readFile(ctx.dvAssetPool.path(id)),
         })))
+        // The sound of a video changes only the labels of audio, so the pool reads it only when the media hold audio.
+        const audio = references.some(reference => reference.mediaType === 'audio')
+        const media = await Promise.all(assets.map(async asset => ({
+          asset, mediaType: ctx.dvAssetPool.mediaType(asset), hasAudio: audio && await ctx.dvAssetPool.hasAudio(asset),
+        })))
         yield* client.generateSegment({
-          prompt: modelPrompt(request, assignReferenceLabels, asset => ctx.dvAssetPool.mediaType(asset)),
+          prompt: modelPrompt(request, assignReferenceLabels, media),
           references,
           frameWidth: request.frameWidth,
           frameHeight: request.frameHeight,

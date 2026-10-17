@@ -11,6 +11,11 @@ import { citedAsset, citedInput, replacePromptCitations, type AssetId } from '@d
 export interface ReferenceMedia {
   asset: AssetId
   mediaType: string
+  /**
+   * Whether the medium has sound: always for audio, never for an image. For a video, `dvAssetPool.hasAudio` answers when
+   * the media hold audio; otherwise the sound does not change any label, and it is false.
+   */
+  hasAudio: boolean
 }
 
 /**
@@ -27,14 +32,13 @@ export type AssignReferenceLabels = (media: readonly ReferenceMedia[]) => Readon
  * label.
  * @param request - the render request.
  * @param assignReferenceLabels - assigns the model's label to each reference.
- * @param mediaTypeOf - the media type of an asset, read from the asset pool.
+ * @param media - the media of the request in the order that the model receives them: the references, then the first frame.
  * @returns the prompt.
  */
 export function modelPrompt(
-  request: RenderRequest, assignReferenceLabels: AssignReferenceLabels, mediaTypeOf: (asset: AssetId) => string,
+  request: RenderRequest, assignReferenceLabels: AssignReferenceLabels, media: readonly ReferenceMedia[],
 ): string {
-  const media = request.firstFrame === null ? request.references : [...request.references, request.firstFrame]
-  const labels = assignReferenceLabels(media.map(asset => ({ asset, mediaType: mediaTypeOf(asset) })))
+  const labels = assignReferenceLabels(media)
   return replacePromptCitations(request.prompt, (citation) => {
     const asset = citedAsset(citation.uri)
     // The first frame follows the references; a reference cited by its asset takes the label of its first position.

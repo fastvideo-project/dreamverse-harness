@@ -4,13 +4,16 @@
  * the only fakes: one HTTP server per task that answers the capabilities and health routes and streams fixed bytes for
  * every render. An opt-in test renders against a running server named by `DV_FASTVIDEO_TEST_URL`.
  */
+import { execFile } from 'node:child_process'
 import { once } from 'node:events'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { promisify } from 'node:util'
 import { Context } from '@deepseek-ai/cordis'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
@@ -25,6 +28,25 @@ import * as FastVideo from '../src/index.ts'
 /** The reference image of the opt-in run against a running server. */
 const REAL_REFERENCE = '/mnt/lustre/vlm-d1su/codes/dsh-dv-hub/elon-musk.jpg'
 const REAL_BACKEND = process.env['DV_FASTVIDEO_TEST_URL']
+
+/** The ffmpeg binary that makes the sample videos whose sound ffprobe reads. */
+const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmpeg-native/bin/ffmpeg'
+const run = promisify(execFile)
+
+/**
+ * The bytes of a one-second sample video.
+ * @param sound - whether the video has a sound track.
+ * @returns the MP4 bytes.
+ */
+async function sampleVideo(sound: boolean): Promise<Buffer> {
+  const dir = mkdtempSync(join(tmpdir(), 'dv-fastvideo-video-'))
+  cleanups.push(() => rm(dir, { recursive: true, force: true }))
+  const path = join(dir, 'sample.mp4')
+  const audio = sound ? ['-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', '-shortest'] : []
+  const video = ['-f', 'lavfi', '-i', 'color=c=black:s=64x64:d=1:r=8']
+  await run(FFMPEG, ['-y', '-loglevel', 'error', ...video, ...audio, '-pix_fmt', 'yuv420p', path])
+  return readFileSync(path)
+}
 
 /**
  * The capabilities the fake reference server reports: 4 references, at most 3 images and 2 videos, and no audio. The
@@ -155,7 +177,7 @@ function request(references: AssetId[], firstFrame: AssetId | null, extra: Recor
 }
 
 /** The wire form of one reference: its media type and its base64 bytes. */
-function encodeWireReference(mediaType: string, bytes: string) {
+function encodeWireReference(mediaType: string, bytes: string | Buffer) {
   return { media_type: mediaType, data: Buffer.from(bytes).toString('base64') }
 }
 
@@ -226,45 +248,54 @@ describe('dv-fastvideo', () => {
     ])
   })
 
-  it('sends each task to its own server: the references with their media types, then the first frame, or none', async () => {
+  it.skipIf(!existsSync(FFMPEG))('sends each task to its own server: the references with media types, then the first frame', async () => {
     const [reference, text] = await Promise.all([startFakeServer(REFERENCE_CAPABILITIES), startFakeServer(TEXT_CAPABILITIES)])
     const ctx = await start({ ref2v: reference.url, t2v: text.url })
-    const video = importAsset(ctx, Buffer.from('VID1'), 'video/mp4')
+    const silent = await sampleVideo(false)
+    const video = importAsset(ctx, silent, 'video/mp4')
     const image = importAsset(ctx, Buffer.from('IMG1'), 'image/png')
     const audio = importAsset(ctx, Buffer.from('AUD1'), 'audio/mpeg')
     const first = importAsset(ctx, Buffer.from('FIRST'), 'image/png')
     const events = await collect(fasth3(ctx, 'ref2v').render(request([video, image, audio], first)))
     expect(reference.requests[0]).toEqual({
       prompt: '<Picture 1> smiles', width: 1344, height: 768, num_frames: 124, seed: 7, return_last_frame: true,
-      references: [encodeWireReference('video', 'VID1'), encodeWireReference('image', 'IMG1'), encodeWireReference('audio', 'AUD1'), encodeWireReference('image', 'FIRST')],
+      references: [
+        encodeWireReference('video', silent), encodeWireReference('image', 'IMG1'), encodeWireReference('audio', 'AUD1'),
+        encodeWireReference('image', 'FIRST'),
+      ],
     })
     expect(events.map(event => event.kind)).toEqual(['last_frame', 'video_start', 'chunk', 'done'])
     expect(events[2]).toEqual({ kind: 'chunk', bytes: Buffer.from('VIDEO') })
     await collect(fasth3(ctx, 'ref2v').render(request([video], null), new AbortController().signal))
-    expect(reference.requests[1]?.['references']).toEqual([encodeWireReference('video', 'VID1')])
+    expect(reference.requests[1]?.['references']).toEqual([encodeWireReference('video', silent)])
     await collect(fasth3(ctx, 't2v').render(request([], null)))
     expect(text.requests).toHaveLength(1)
     expect(text.requests[0]?.['references']).toEqual([])
   })
 
-  it('replaces each citation of a reference image or video with its label, counting each media type in order', async () => {
+  it.skipIf(!existsSync(FFMPEG))('replaces each citation of a reference with its label, counting each media type in order', async () => {
     const reference = await startFakeServer(REFERENCE_CAPABILITIES)
     const ctx = await start({ ref2v: reference.url })
-    const video = importAsset(ctx, Buffer.from('VID1'), 'video/mp4')
+    const video = importAsset(ctx, await sampleVideo(true), 'video/mp4')
     const image = importAsset(ctx, Buffer.from('IMG1'), 'image/png')
     const other = importAsset(ctx, Buffer.from('IMG2'), 'image/png')
     const audio = importAsset(ctx, Buffer.from('AUD1'), 'audio/mpeg')
-    // A citation of audio, of an asset outside the references, or of anything other than an asset becomes its label.
+    // A citation of an asset outside the references, or of anything other than an asset, becomes its label.
     const prompt = `@[Mia](dv:asset/${other}) meets @[Bo](dv:asset/${image}) and @[Mia](dv:asset/${other}) in @[the walk](dv:asset/${video}), `
       + `to @[the song](dv:asset/${audio}), @[a cat](dv:asset/missing) and @[the lake](dv:element/e1@2)`
     const firstFrame = '@[首帧](dv:input/first_frame)'
     await collect(fasth3(ctx, 'ref2v').render({ ...request([video, image, other, audio], null), prompt: `${prompt} from ${firstFrame}` }))
     expect(reference.requests[0]?.['prompt'])
-      .toBe('<Picture 2> meets <Picture 1> and <Picture 2> in <Video 1>, to the song, a cat and the lake from 首帧')
+      .toBe('<Picture 2> meets <Picture 1> and <Picture 2> in <Video 1>, to <Audio 2>, a cat and the lake from 首帧')
+    // The sound of a video takes the audio number before the audio files after it; a silent video takes none.
+    const silent = importAsset(ctx, await sampleVideo(false), 'video/mp4')
+    const song = `@[the walk](dv:asset/${silent}) to @[the song](dv:asset/${audio})`
+    await collect(fasth3(ctx, 'ref2v').render({ ...request([silent, audio], null), prompt: song }))
+    expect(reference.requests[1]?.['prompt']).toBe('<Video 1> to <Audio 1>')
     // The first frame is the image after the reference images, even when it is also one of them.
     const continued = `@[Bo](dv:asset/${image}) from ${firstFrame}`
     await collect(fasth3(ctx, 'ref2v').render({ ...request([video, image, other], image), prompt: continued }))
-    expect(reference.requests[1]?.['prompt']).toBe('<Picture 1> from <Picture 3>')
+    expect(reference.requests[2]?.['prompt']).toBe('<Picture 1> from <Picture 3>')
   })
 
   it('registers only the configured tasks and their prompt skills, and removes them on disposal', async () => {
