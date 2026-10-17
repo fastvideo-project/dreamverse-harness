@@ -1,6 +1,6 @@
 - listbox "Trigger suggestions":
   - text: Add
-  - option "File" [selected]
+  - option "Upload files" [selected]
   - option "Goal Set or view the goal for a long-running task"
   - option "Plan Enter or leave plan mode"
   - option "Feedback Record feedback about this session"
