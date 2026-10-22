@@ -1,0 +1,31 @@
+{
+  "name": "@dv/image-generate",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Image component of DreamVerse: declares the image primitive and task t2i in the model catalog of @dv/models, and image.generate generates one image from a prompt with the model the call names by its key.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@dv/generation": "workspace:*",
+    "@dv/models": "workspace:*",
+    "@dv/project": "workspace:*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/cordis-plugin-include": "workspace:~",
+    "@deepseek-ai/cordis-plugin-loader": "workspace:~",
+    "@deepseek-ai/dsh-brand": "workspace:*",
+    "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-system-prompt": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@dv/asset-pool": "workspace:*",
+    "@dv/ffmpeg": "workspace:*",
+    "@types/node": "^22.20.0"
+  }
+}
