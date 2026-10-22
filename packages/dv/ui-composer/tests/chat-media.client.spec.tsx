@@ -16,6 +16,9 @@ import type { ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.t
 import { AudioView, ImageView, VideoView } from '../../ui-asset-pool/src/client/media.tsx'
 import { asset, fixtureState, OPERATIONS, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
+import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
+import { apply as historyApply, inject as historyInject } from '../../ui-history/src/client/index.ts'
+import { apply as shotRenderApply, inject as shotRenderInject } from '../../ui-shot-render/src/client/index.ts'
 import { followChatAssets, NO_CHAT_ASSETS, type ChatAssets } from '../src/client/chat-assets.ts'
 import { assetIdOf, registerChatMedia, resolveChatMedia, selectAssetReference, type DescribeRecord } from '../src/client/chat-media.ts'
 
@@ -280,6 +283,20 @@ describe('registerChatMedia under the slot runtime', () => {
 
     await plugin.dispose()
     expect(runtime.slots.entries('conversation.chat.markdown')).toHaveLength(0)
+    await runtime.dispose()
+  })
+
+  it('captions a take by History\'s label of its render, and an imported file by its name, with the real History and shot render plugins', async () => {
+    const elements: Array<[MarkdownElement, string]> = [[link('/dv/assets/shot1.mp4'), '点此播放'], [link('/dv/assets/ref.png'), '定妆照']]
+    const { runtime, view } = await mountChat(elements, chatState(), false)
+    runtime.ctx.provide('sidebarRightTabs', { register: () => () => {} } as never)
+    runtime.ctx.provide('dvCanvas', createDvCanvas())
+    await runtime.mount({ inject: [...historyInject], apply: historyApply })
+    await runtime.mount({ inject: [...shotRenderInject], apply: shotRenderApply })
+    act(() => { publishCurrentProject('p1') })
+    // The fixture declares shot.render without a label, so History labels the render by the operation name.
+    expect(await view.findByRole('button', { name: '查看: shot.render' })).toBeTruthy()
+    expect(within(view.getByTestId('p1')).getByRole('button', { name: '查看: ref.png' })).toBeTruthy()
     await runtime.dispose()
   })
 

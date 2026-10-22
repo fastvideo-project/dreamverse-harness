@@ -36,8 +36,11 @@ export interface HistoryRow {
 /** Provided by `@dv/ui-history` as `ctx.dvHistory`. */
 export interface DvHistory {
   rows: Registry<HistoryRow>
-  /** The label History shows for a record: its operation label and its row's subject; the chat media caption reads it. */
-  describe(record: ProjectRecord, operations: readonly WireOperation[]): Text
+  /**
+   * The label History shows for a record whose row has `media`, such as a take: its operation label and its subject;
+   * null for any other record, such as an import. The chat media caption reads it, else the asset's name.
+   */
+  describe(record: ProjectRecord, operations: readonly WireOperation[]): Text | null
 }
 
 declare module '@deepseek-ai/cordis' {

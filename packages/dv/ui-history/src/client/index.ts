@@ -15,7 +15,7 @@ import type {} from '@dv/ui-shell/contract'
 import type { DvHistory, HistoryRow } from './contract/index.ts'
 import { HistoryTabBody, type HistoryInjected } from './HistoryPanel.tsx'
 import { HISTORY_ID, HISTORY_KIND, historyDefinition } from './definition.ts'
-import { actionLabel } from './rows.ts'
+import { actionLabel, matchingRow } from './rows.ts'
 
 export { HistoryPanel, type HistoryPanelProps } from './HistoryPanel.tsx'
 export { HISTORY_ID, HISTORY_KIND }
@@ -34,7 +34,11 @@ export function apply(ctx: ClientContext): void {
   const rows = createRegistry<HistoryRow>(row => [row.match], row => `the History row of ${row.match}`)
   const history: DvHistory = {
     rows,
-    describe: (record, operations) => actionLabel(record, { operations, rows: rows.getSnapshot(), records: new Map() }),
+    describe: (record, operations) => {
+      const registered = rows.getSnapshot()
+      if (matchingRow(record, registered)?.media === undefined) return null
+      return actionLabel(record, { operations, rows: registered, records: new Map() })
+    },
   }
   ctx.reflect.provide('dvHistory', history)
   ctx.effect(() => ctx.sidebarRightTabs.register(historyDefinition), 'ui-history: tab type')

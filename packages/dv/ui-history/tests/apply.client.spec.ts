@@ -78,11 +78,13 @@ describe('ui-history apply', () => {
     expect(ctx.dvHistory.rows.getSnapshot()).toEqual([])
   })
 
-  it('describes a record by its operation label and the subject of its registered row', async () => {
+  it('describes a record of a media row by its operation label and its subject, and no record of any other row', async () => {
     const { ctx } = await boot()
-    ctx.dvHistory.rows.register({ match: 'shot.render', subject: () => [' 7', ' 7'] })
-    expect(ctx.dvHistory.describe(record({ id: 'g1', operation: 'shot.render' }), OPERATIONS)[1]).toMatch(/ 7$/)
-    expect(ctx.dvHistory.describe(record({ id: 'o', operation: 'other.thing' }), OPERATIONS)).toEqual(['other.thing', 'other.thing'])
+    ctx.dvHistory.rows.register({ match: 'shot.render', subject: () => [' 7', ' 7'], media: { thumbnail: () => null } })
+    ctx.dvHistory.rows.register({ match: 'plan.', subject: () => [' p1', ' p1'] })
+    expect(ctx.dvHistory.describe(record({ id: 'g1', operation: 'shot.render' }), OPERATIONS)?.[1]).toMatch(/ 7$/)
+    expect(ctx.dvHistory.describe(record({ id: 'q1', operation: 'plan.create' }), OPERATIONS)).toBeNull()
+    expect(ctx.dvHistory.describe(record({ id: 'o', operation: 'other.thing' }), OPERATIONS)).toBeNull()
   })
 
   it('moves the center through dvCenter while the shell provides it, and does nothing without it', async () => {
