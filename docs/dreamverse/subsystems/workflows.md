@@ -32,24 +32,25 @@ The chain of an approval is the set of records that the approval writes in its e
 The story chain starts with `story.preview` and ends with the layout. In this example, shot 3 keeps its take:
 
 ```mermaid
-flowchart LR
+flowchart TB
   subgraph approval["approval in the conversation"]
-    direction TB
-    preview["story.preview<br/>read; writes no record"]
-    user(["user agrees in the conversation"])
-    approve["story.approve = record A<br/>confirm: always<br/>refused while problems is not empty"]
-    preview -- "report: shot lines,<br/>gpu_seconds, problems" --> user
-    user -- "dv_story_approve with<br/>user_approved: true" --> approve
-  end
-  subgraph chain["the approval chain of record A"]
     direction LR
-    r1["shot.render (shot 1)<br/>started_by<br/>{record: A, slot: 1}<br/>after: none"]
-    r2["shot.render (shot 2)<br/>started_by<br/>{record: A, slot: 2}<br/>after: render of shot 1"]
-    keep["shot 3 keeps its take<br/>no record"]
-    r4["shot.render (shot 4)<br/>started_by<br/>{record: A, slot: 4}<br/>after: render of shot 2"]
-    layout["dvTimeline.layout<br/>started_by<br/>{record: A, slot: null}<br/>writes timeline.create<br/>or timeline.update:<br/>the takes of shots 1 to 4<br/>in shot order"]
+    preview["story.preview<br/>writes no record"]
+    user(["user agrees"])
+    approve["story.approve<br/>record A"]
+    preview -- "report" --> user
+    user -- "dv_story_approve<br/>user_approved: true" --> approve
   end
-  approval -- "execute,<br/>actor system" --> chain
+  subgraph chain["chain: started_by record A"]
+    direction TB
+    r1["shot.render, slot 1<br/>after no record"]
+    r2["shot.render, slot 2<br/>after shot 1"]
+    keep(["shot 3 keeps its take<br/>no record"])
+    r4["shot.render, slot 4<br/>after shot 2"]
+    layout["dvTimeline.layout, slot null<br/>takes in shot order"]
+    r1 & r2 & keep & r4 --> layout
+  end
+  approval -- "execute, actor system" --> chain
 ```
 
 ## The shot walk

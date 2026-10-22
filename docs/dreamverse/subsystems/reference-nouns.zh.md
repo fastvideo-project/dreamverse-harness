@@ -29,36 +29,24 @@ reference kit 只实现一次 kit 形状，分为两半。宿主半部是包 `@d
 
 ```mermaid
 flowchart TB
-  subgraph uiHalf["UI half"]
-    direction TB
-    uiCall["UI package @dv/ui-#lt;k#gt;<br/><br/>#lt;k#gt; = defineReferenceUi({<br/>id: '@dv/ui-#lt;k#gt;', key: '#lt;k#gt;',<br/>slice, label, mention,<br/>editor? })<br/>apply = #lt;k#gt;.apply"]
-    subgraph browser["browser services"]
-      direction LR
-      nodeTypes["dvCanvas.nodeTypes<br/>NodeType<br/>node ID #lt;k#gt;:#lt;id#gt;"]
-      takesInUse["dvCanvas.takesInUse<br/>references in use"]
-      versionKinds["dvCanvas.versionKinds<br/>VersionKind"]
-      editorSlot["slots: dv.canvas.editor<br/>editor body, key @dv/ui-#lt;k#gt;"]
-      mentions["dvMentions.kinds<br/>MentionKind, dv:#lt;k#gt;/#lt;id#gt;"]
-      history["dvHistory.rows<br/>HistoryRow, match #lt;k#gt;."]
-    end
-    uiCall -- "apply(ctx)" --> browser
-  end
-
-  subgraph hostHalf["host half"]
-    direction TB
-    hostCall["host package @dv/#lt;k#gt;<br/><br/>class Dv#lt;K#gt; extends<br/>defineReference({<br/>service, component: '#lt;k#gt;',<br/>noun, meaning, reference,<br/>skill, fields? })"]
-    subgraph dvProject["dvProject"]
-      direction LR
-      regComponent["registerComponent<br/>component key #lt;k#gt;"]
-      regReducer["registerReducer<br/>referenceReducer(spec)"]
-      regKind["registerReferenceKind<br/>reference kind #lt;k#gt;: #lt;id#gt;@#lt;version#gt;"]
-      regCreate["registerOperation<br/>#lt;k#gt;.create, tool dv_#lt;k#gt;_create"]
-      regUpdate["registerOperation<br/>#lt;k#gt;.update, tool dv_#lt;k#gt;_update"]
-    end
-    skills["skills.register<br/>skill #lt;k#gt;"]
-    hostCall -- "the constructor<br/>injects dvProject" --> dvProject
-    hostCall -- "while skills<br/>is present" --> skills
-  end
+  hostCall["host half: @dv/#lt;k#gt;<br/>extends defineReference"]
+  regComponent["dvProject<br/>component"]
+  regReducer["dvProject<br/>reducer"]
+  regKind["dvProject<br/>reference kind"]
+  regCreate["dvProject<br/>#lt;k#gt;.create"]
+  regUpdate["dvProject<br/>#lt;k#gt;.update"]
+  regSkill["skills<br/>skill #lt;k#gt;"]
+  hostCall --> regComponent & regReducer & regKind & regCreate & regUpdate
+  hostCall -. "while present" .-> regSkill
+  uiCall["UI half: @dv/ui-#lt;k#gt;<br/>apply of defineReferenceUi"]
+  nodeTypes["dvCanvas<br/>nodeTypes"]
+  takesInUse["dvCanvas<br/>takesInUse"]
+  versionKinds["dvCanvas<br/>versionKinds"]
+  editorSlot["slots<br/>dv.canvas.editor"]
+  mentionKinds["dvMentions<br/>kinds"]
+  historyRows["dvHistory<br/>rows"]
+  uiCall --> nodeTypes & takesInUse & versionKinds & editorSlot & mentionKinds & historyRows
+  regComponent & regReducer & regKind & regCreate & regUpdate & regSkill ~~~ uiCall
 ```
 
 ## 宿主声明：`defineReference`

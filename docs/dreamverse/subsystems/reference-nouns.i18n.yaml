@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/dreamverse/subsystems/reference-nouns.md
-reference-nouns.md: 4a51f4d764cb53084e7608f5e7ad98393a3c561c
-reference-nouns.zh.md: a8345e0a049238e66f543682a41420e8510d5c05
+reference-nouns.md: 6fd4776eac0b76577cb9e251c75793a2c5dd166c
+reference-nouns.zh.md: 6ca292bd885bd469b5318b90e019b9ee95c10fe8

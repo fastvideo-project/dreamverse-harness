@@ -70,31 +70,34 @@ skill 承载工作流程和模型专属的规则，各由其主人注册：
 agent 和视图通过 `dvProject.run` 运行同样的操作。两边各以自己的形式读取项目。agent 读取 `dv:project` 提示词段和对话引用消息。视图从 `GET /api/dv/state` 读取 `WireState`。[协议状态](project.zh.md#the-project-summary-and-the-wire-state)给出它的字段，以及视图何时重新获取它。[操作如何运行](project.zh.md#how-an-operation-runs) 给出运行器的步骤。
 
 ```mermaid
-flowchart TB
-  agent(["Agent in a chat session"])
-  user(["User in the browser"])
-  tool["dv_* tool of @dv/project<br/>actor agent, surface chat,<br/>session, turn, tool_call;<br/>prepareToolCall and<br/>the confirm policy"]
-  route["POST /api/dv/operation<br/>of @dv/api<br/>actor user, surface canvas,<br/>timeline or asset_pool;<br/>session"]
-  run["dvProject.run<br/>validates the params,<br/>resolves the inputs,<br/>checks the precondition"]
+flowchart LR
+  agent["Agent<br/>dv_* tool"]
+  user["User<br/>POST /api/dv/operation"]
+  run["dvProject.run"]
   records[("records.jsonl")]
-  state["reducers build<br/>the current state"]
-  summary[/"dv:project prompt section<br/>(Project rules +<br/>project summary)"/]
-  mentions[/"dv-mentions<br/>context message"/]
-  wire[/"WireState of<br/>GET /api/dv/state"/]
-  events[["/dv/events<br/>record, update, line"]]
+  subgraph reads["reducers build the current state"]
+    summary["dv:project<br/>prompt section"]
+    mentions["dv-mentions<br/>context message"]
+    wire["WireState<br/>GET /api/dv/state"]
+  end
+  events[["/dv/events"]]
 
-  agent -- "calls a dv_* tool" --> tool
-  user -- "makes a gesture on a view" --> route
-  tool --> run
-  route --> run
-  run -- "appends the record after<br/>the current position" --> records
-  records --> state
-  records --> events
-  state -- "at the agent's next step" --> summary
-  state --> mentions
-  state --> wire
-  events -- "the views fetch<br/>WireState again" --> wire
+  agent -- "actor agent" --> run
+  user -- "actor user" --> run
+  run -- "appends" --> records
+  records --> summary
+  records --> mentions
+  records --> wire
+  records -- "record, update, line" --> events
 ```
+
+图中各步的工作方式如下：
+
+- agent 在对话会话中调用 `@dv/project` 的一个 `dv_*` 工具。工具以 `actor: 'agent'`、`surface: 'chat'` 以及这次调用的会话、轮次和 `tool_call` 运行操作。运行之前，工具调用该操作的 `prepareToolCall`，并应用确认策略。
+- 用户在视图上做一个手势，视图向 `@dv/api` 发送 `POST /api/dv/operation`。该路由以 `actor: 'user'`、`surface` 为 `canvas`、`timeline` 或 `asset_pool`，以及视图的对话会话运行操作。
+- `dvProject.run` 校验参数，解析输入，并检查前置条件。然后它在 `records.jsonl` 中把一条记录追加在当前位置之后。
+- 归约函数从记录构建当前状态。`dv:project` 提示词段包含 Project 的规则和项目摘要，agent 在下一步读取它。
+- `/dv/events` 发送一条 `record`、`update` 或 `line` 消息。每收到一条消息，视图就从 `GET /api/dv/state` 重新获取 `WireState`。
 
 <a id="mcp-presets"></a>
 ## MCP 预设

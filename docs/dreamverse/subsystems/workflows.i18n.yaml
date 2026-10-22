@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/dreamverse/subsystems/workflows.md
-workflows.md: 726b21c3a946ca84986ed65a721b66865d593b4d
-workflows.zh.md: 9e446cba130b2c801cce916122995d8ff01f6a73
+workflows.md: 526d276e9914945abe24d2eacf8b39c89475fc15
+workflows.zh.md: 2486e84f07b713e1f5dd70384e579a7799b7aa1a

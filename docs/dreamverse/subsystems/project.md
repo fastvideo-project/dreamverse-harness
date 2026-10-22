@@ -76,18 +76,14 @@ flowchart TB
         direction LR
         a1[r1] --> a2[r2] --> a3[r3] --> a4[r4] --> a5[["r5<br/>tip, at"]]
     end
-    subgraph undo["After two undos: line.json {tip: r5, at: r3}. No record is written."]
+    subgraph undo["After two undos: line.json {tip: r5, at: r3}"]
         direction LR
         b1[r1] --> b2[r2] --> b3[["r3<br/>at"]] --> b4["r4<br/>gray"] --> b5[["r5<br/>gray, tip"]]
     end
     subgraph write["After a new step r6: line.json {tip: r6, at: r6}"]
         direction LR
         c1[r1] --> c2[r2] --> c3[r3] --> c6[["r6<br/>tip, at"]]
-        subgraph gone["Discarded: lines stay in records.jsonl"]
-            direction LR
-            c4[r4] -.-> c5[r5]
-        end
-        c3 -.-> c4
+        c3 -. "discarded" .-> c4[r4] -.-> c5[r5]
     end
     five ~~~ undo ~~~ write
 ```
@@ -161,52 +157,49 @@ The views and the agent reach the same operations:
 - A gesture on the canvas, the timeline, or the asset pool panel runs an operation through the routes of `@dv/api`. The route sets `actor: 'user'` and sets `surface` to that view.
 - The agent calls the `dv_*` tool of the operation. The tool runs the operation with `actor: 'agent'`, `surface: 'chat'`, the chat session, the turn, and the tool call ID. Before an agent call runs, the `prepareToolCall` of the operation can refuse or change the call. Then the agent tool applies the `confirm` policy of the operation.
 
-Every call goes through the runner of `dvProject.run`. The runner validates the params. Under the project lock, the runner resolves each input to an asset and calls the `precondition` of the operation. The precondition refuses a call for every caller before the runner writes a record. For example, `shot.render` and `story.approve` refuse a render request that the catalog entry of the model refuses. One such request is a `fasth3` render for task `ref2v` without a reference.
-
-After the precondition, the runner appends the `pending` record. The runner adds to the `supersedes` of the record the records that the `supersedes` function of the operation names. Last, the runner runs the implementation of the owning component outside the lock. Then the runner appends the final update with the outputs, the cost, and the report.
-
 Two kinds of call wait in the scheduler of Project until their inputs are done:
 
 - a call whose input names an unfinished record;
 - each render that a plan approval schedules.
 
-The diagram shows the sequence of one call. Steps 5 to 8 run under the project lock, so two calls on one project never write at the same time.
+Every call goes through the runner of `dvProject.run`. The diagram shows the steps of one call. Steps 3 and 4 run under the project lock, so two calls on one project never write at the same time.
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    participant caller as Caller<br/>agent dv_* tool, view route,<br/>or plugin service
-    participant run as dvProject.run
-    participant store as Record store
-    participant comp as Owning component
-    opt agent tool call only
-        caller->>caller: prepareToolCall,<br/>then the confirm policy
+flowchart LR
+    subgraph callers["1. callers"]
+        direction LR
+        agenttool["agent tool"]
+        route["view route"]
+        service["plugin service"]
     end
-    caller->>run: run(request)
-    run->>run: validate the params and the input roles
-    break readOnly operation
-        run->>comp: precondition, then execute. No lock, no record.
+    validate{{"2. validate"}}
+    readonly["readOnly:<br/>no lock, no record"]
+    subgraph lock["project lock"]
+        direction TB
+        check{{"3. resolve inputs,<br/>precondition"}}
+        pending[("4. pending record")]
+        check -- "accepts" --> pending
     end
-    critical project lock
-        run->>run: resolve each input to an asset
-        run->>comp: precondition
-        break precondition refuses
-            run-->>caller: reject, no record written
-        end
-        run->>store: append the pending record with its supersedes,<br/>discard the steps after at
+    subgraph after["outside the lock"]
+        direction TB
+        wait["5. wait for after"]
+        reuse{{"6. reuse or execute"}}
+        final[("7. final update")]
+        wait --> reuse --> final
     end
-    opt the call has after
-        run->>run: wait in the scheduler until the records in after are done
-    end
-    alt deterministic, and an equal done record exists
-        run->>store: reuse the outputs of that record
-    else
-        run->>comp: execute, outside the lock
-        comp-->>run: outputs, cost, report
-    end
-    run->>store: append the final update: outputs, cost, report
-    run-->>caller: the record in its final status
+    callers --> validate
+    validate -- "readOnly" --> readonly
+    validate --> lock
+    lock --> after
 ```
+
+1. A caller runs the operation: an agent tool, a view route of `@dv/api`, or the service of a plugin. An agent tool first applies the `prepareToolCall` and the `confirm` policy of the operation.
+2. The runner validates the params and the input roles. For a `readOnly` operation, the runner then resolves the inputs, calls the `precondition` and `execute` of the operation, and returns the outputs. A `readOnly` operation takes no lock and writes no record.
+3. Under the project lock, the runner resolves each input to an asset and calls the `precondition` of the operation. The precondition refuses a call for every caller, and a refused call writes no record. For example, `shot.render` and `story.approve` refuse a render request that the catalog entry of the model refuses. One such request is a `fasth3` render for task `ref2v` without a reference.
+4. When the precondition accepts the call, the runner appends the `pending` record after the current position and discards the later steps ([history rules](#history-rules)). The runner adds to the `supersedes` of the record the records that the `supersedes` function of the operation names.
+5. For a call with `after`, `dvProject.run` returns the `pending` record at once. The scheduler executes the record when the records in `after` are done.
+6. Outside the lock, the runner reuses the outputs of an equal `done` record when the operation is deterministic ([deterministic reuse](#deterministic-reuse)). Otherwise, the owning component executes the operation.
+7. The runner appends the final update with the outputs, the cost, and the report, and `dvProject.run` returns the record.
 
 <a id="confirmation-in-the-conversation"></a>
 ## Confirmation in the conversation
@@ -277,19 +270,20 @@ The owning operation decides what a call supersedes through `OperationSpec.super
 
 Only the agent or the human decides to rerun a stale record. `proj.stale_accept` clears the mark of one record. After that, the consumers of the record do not become stale through it.
 
-The diagram shows staleness in one project. The names `r2` to `r7` stand for record IDs. The solid arrows show which record reads an output or a version that another record wrote. The dotted arrows show which record a record supersedes and which mark `proj.stale_accept` removes.
+The diagram shows staleness in one project. The names `r2` to `r7` stand for record IDs. `r3` and `r4` are stale because `r5` supersedes `r2`. The solid arrows show which record reads an output or a version that another record wrote. The dotted arrows show which record a record supersedes and which mark `proj.stale_accept` removes.
 
 ```mermaid
-flowchart TB
-    r2["r2 character.create<br/>writes c1@1<br/>superseded by r5"]
-    r3["r3 shot.render<br/>reads c1@1<br/>stale because of r5"]
-    r4["r4 asset.grab_still<br/>reads r3#0<br/>stale because of r5"]
-    r5["r5 character.update<br/>writes c1@2"]
-    r6["r6 shot.render<br/>reads c1@2<br/>not stale"]
-    r7["r7 proj.stale_accept<br/>params {record: r4}"]
+flowchart LR
+    r2["r2 character.create<br/>superseded"]
+    r3["r3 shot.render<br/>stale"]
+    r4["r4 asset.grab_still<br/>stale"]
+    r5["r5 character.update"]
+    r6["r6 shot.render<br/>not stale"]
+    r7["r7 proj.stale_accept<br/>{record: r4}"]
     r2 -- "c1@1" --> r3
     r3 -- "r3#0" --> r4
     r5 -- "c1@2" --> r6
+    r2 ~~~ r5
     r5 -. "supersedes" .-> r2
     r7 -. "removes the mark" .-> r4
 ```

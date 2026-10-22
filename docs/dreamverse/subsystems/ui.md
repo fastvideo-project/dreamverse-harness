@@ -58,29 +58,35 @@ The canvas draws these nodes:
 <a id="slots"></a>
 ## Slots of the shell and the canvas
 
-A slot is a named place of the DSH client that plugins fill with entries through `ctx.slots`. Exactly one entry declares each DreamVerse slot. The `@dv/ui-shell` center entry declares `dv.explore` and `dv.center.view`. The `canvas` entry of `dv.center.view` declares the three canvas slots. The `dv-canvas` tab body (`CanvasBody.tsx`) declares no slot, so the canvas slots render only in the center view.
+A slot is a named place of the DSH client that plugins fill with entries through `ctx.slots`. Exactly one entry declares each DreamVerse slot. The `@dv/ui-shell` center entry is an entry of the DSH slot `main.conversation`. It declares `dv.explore` and `dv.center.view`. The `canvas` entry of `dv.center.view` declares the three canvas slots. The `dv-canvas` tab body (`CanvasBody.tsx`) declares no slot, so the canvas slots render only in the center view.
 
 ```mermaid
-flowchart LR
-  pkg_mcp["@dv/ui-mcp-presets"] -- "mcp" --> explore
-  pkg_skills["@dv/ui-skills"] -- "skills" --> explore
-  pkg_timeline["@dv/ui-timeline"] -- "timeline" --> timeline_entry
-  pkg_canvas["@dv/ui-canvas"] -- "canvas" --> canvas
-  pkg_refs["@dv/ui-shot-plan<br/>@dv/ui-character<br/>@dv/ui-location<br/>@dv/ui-style"] -- "key NodeType.id" --> editor
-  pkg_assets["@dv/ui-asset-pool"] -- "assets" --> picker
-  pkg_assets -- "assets" --> preview
-  subgraph shell["@dv/ui-shell center entry in DSH slot main.conversation"]
-    explore["dv.explore<br/>list slot by entry id,<br/>shown with no project open"]
-    subgraph center_view["dv.center.view: list slot by entry id, a project open"]
-      timeline_entry["timeline entry"]
-      subgraph canvas["canvas entry"]
-        editor["dv.canvas.editor<br/>keyed slot by NodeType.id"]
-        picker["dv.canvas.picker<br/>keyed slot, key assets"]
-        preview["dv.canvas.preview<br/>keyed slot, key assets"]
-      end
+flowchart BT
+  pkg_refs["reference and plan<br/>UI plugins"]
+  pkg_assets["@dv/ui-asset-pool"]
+  pkg_explore["explore<br/>UI plugins"]
+  subgraph center_view["dv.center.view of @dv/ui-shell"]
+    subgraph canvas["canvas entry of @dv/ui-canvas"]
+      editor["dv.canvas.editor"]
+      picker["dv.canvas.picker"]
+      preview["dv.canvas.preview"]
     end
+    timeline_entry["timeline entry<br/>@dv/ui-timeline"]
   end
+  explore["dv.explore<br/>@dv/ui-shell"]
+  pkg_refs -- "key NodeType.id" --> editor
+  pkg_assets -- "key assets" --> picker
+  pkg_assets -- "key assets" --> preview
+  pkg_explore -- "mcp, skills" --> explore
 ```
+
+The diagram uses these group names and slot kinds:
+
+- The reference and plan UI plugins are `@dv/ui-shot-plan`, `@dv/ui-character`, `@dv/ui-location`, and `@dv/ui-style`.
+- The explore UI plugins are `@dv/ui-mcp-presets`, with the entry `mcp`, and `@dv/ui-skills`, with the entry `skills`.
+- `dv.center.view` and `dv.explore` are list slots. The shell shows one entry of a list slot at a time and selects it by its entry ID.
+- The shell shows `dv.center.view` while a project is open. It shows `dv.explore` while no project is open.
+- The three canvas slots are keyed slots. Each entry of a keyed slot has a key, such as a `NodeType.id` or `assets`.
 
 The shell shows the entries of `dv.center.view` as the toggle of the top bar, in `order`. A URL view that no entry has shows the first entry. The editor of a canvas node renders the `dv.canvas.editor` entry whose key is the `NodeType.id` of the node. An editor entry imports only `@dv/ui-kit`, so the canvas gives it an `EntryEditorHost` with three callbacks:
 

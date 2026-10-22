@@ -70,31 +70,34 @@ The [`@dv/api` README](../../../packages/dv/api/README.md#use-this-package) give
 The agent and the views run the same operations through `dvProject.run`. Each side reads the project in its own form. The agent reads the `dv:project` prompt section and the chat reference message. The views read `WireState` from `GET /api/dv/state`. [The wire state](project.md#the-project-summary-and-the-wire-state) gives its fields and when a view fetches it again. [How an operation runs](project.md#how-an-operation-runs) gives the steps of the runner.
 
 ```mermaid
-flowchart TB
-  agent(["Agent in a chat session"])
-  user(["User in the browser"])
-  tool["dv_* tool of @dv/project<br/>actor agent, surface chat,<br/>session, turn, tool_call;<br/>prepareToolCall and<br/>the confirm policy"]
-  route["POST /api/dv/operation<br/>of @dv/api<br/>actor user, surface canvas,<br/>timeline or asset_pool;<br/>session"]
-  run["dvProject.run<br/>validates the params,<br/>resolves the inputs,<br/>checks the precondition"]
+flowchart LR
+  agent["Agent<br/>dv_* tool"]
+  user["User<br/>POST /api/dv/operation"]
+  run["dvProject.run"]
   records[("records.jsonl")]
-  state["reducers build<br/>the current state"]
-  summary[/"dv:project prompt section<br/>(Project rules +<br/>project summary)"/]
-  mentions[/"dv-mentions<br/>context message"/]
-  wire[/"WireState of<br/>GET /api/dv/state"/]
-  events[["/dv/events<br/>record, update, line"]]
+  subgraph reads["reducers build the current state"]
+    summary["dv:project<br/>prompt section"]
+    mentions["dv-mentions<br/>context message"]
+    wire["WireState<br/>GET /api/dv/state"]
+  end
+  events[["/dv/events"]]
 
-  agent -- "calls a dv_* tool" --> tool
-  user -- "makes a gesture on a view" --> route
-  tool --> run
-  route --> run
-  run -- "appends the record after<br/>the current position" --> records
-  records --> state
-  records --> events
-  state -- "at the agent's next step" --> summary
-  state --> mentions
-  state --> wire
-  events -- "the views fetch<br/>WireState again" --> wire
+  agent -- "actor agent" --> run
+  user -- "actor user" --> run
+  run -- "appends" --> records
+  records --> summary
+  records --> mentions
+  records --> wire
+  records -- "record, update, line" --> events
 ```
+
+Each step of the diagram works as follows:
+
+- The agent calls a `dv_*` tool of `@dv/project` in a chat session. The tool runs the operation with `actor: 'agent'`, `surface: 'chat'`, and the session, the turn, and the `tool_call` of the call. Before the run, the tool calls the `prepareToolCall` of the operation and applies the confirm policy.
+- The user makes a gesture on a view, and the view sends `POST /api/dv/operation` to `@dv/api`. The route runs the operation with `actor: 'user'`, the `surface` `canvas`, `timeline`, or `asset_pool`, and the chat session of the view.
+- `dvProject.run` validates the params, resolves the inputs, and checks the precondition. Then it appends a record after the current position in `records.jsonl`.
+- The reducers build the current state from the records. The `dv:project` prompt section holds the Project rules and the project summary, and the agent reads it at its next step.
+- `/dv/events` sends a `record`, `update`, or `line` message. After each message, the views fetch `WireState` from `GET /api/dv/state` again.
 
 <a id="mcp-presets"></a>
 ## MCP presets

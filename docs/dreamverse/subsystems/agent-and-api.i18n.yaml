@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/dreamverse/subsystems/agent-and-api.md
-agent-and-api.md: e009f95d14cde60dcfa50b9902043f30ed860ef9
-agent-and-api.zh.md: 4be4445ce241b93907e21223398504ab06a11d0a
+agent-and-api.md: 7eed755461b3c3239d9c524d2c318127b80ed00b
+agent-and-api.zh.md: efcec0def463c8487212cca76c5a60d9936c718c

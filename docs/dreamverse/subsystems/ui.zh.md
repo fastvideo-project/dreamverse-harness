@@ -58,29 +58,35 @@ UI 各包是 web 应用的右侧栏标签类型和中央视图。因此视图和
 <a id="slots"></a>
 ## shell 和画布的 slot
 
-slot 是 DSH 客户端中的具名位置，插件通过 `ctx.slots` 向它注册条目。每个 DreamVerse slot 恰好由一个条目声明。`@dv/ui-shell` 的中央条目声明 `dv.explore` 和 `dv.center.view`。`dv.center.view` 的 `canvas` 条目声明三个画布 slot。标签 `dv-canvas` 的主体（`CanvasBody.tsx`）不声明 slot，因此画布 slot 只在中央视图中渲染。
+slot 是 DSH 客户端中的具名位置，插件通过 `ctx.slots` 向它注册条目。每个 DreamVerse slot 恰好由一个条目声明。`@dv/ui-shell` 的中央条目是 DSH slot `main.conversation` 的一个条目。它声明 `dv.explore` 和 `dv.center.view`。`dv.center.view` 的 `canvas` 条目声明三个画布 slot。标签 `dv-canvas` 的主体（`CanvasBody.tsx`）不声明 slot，因此画布 slot 只在中央视图中渲染。
 
 ```mermaid
-flowchart LR
-  pkg_mcp["@dv/ui-mcp-presets"] -- "mcp" --> explore
-  pkg_skills["@dv/ui-skills"] -- "skills" --> explore
-  pkg_timeline["@dv/ui-timeline"] -- "timeline" --> timeline_entry
-  pkg_canvas["@dv/ui-canvas"] -- "canvas" --> canvas
-  pkg_refs["@dv/ui-shot-plan<br/>@dv/ui-character<br/>@dv/ui-location<br/>@dv/ui-style"] -- "key NodeType.id" --> editor
-  pkg_assets["@dv/ui-asset-pool"] -- "assets" --> picker
-  pkg_assets -- "assets" --> preview
-  subgraph shell["@dv/ui-shell center entry in DSH slot main.conversation"]
-    explore["dv.explore<br/>list slot by entry id,<br/>shown with no project open"]
-    subgraph center_view["dv.center.view: list slot by entry id, a project open"]
-      timeline_entry["timeline entry"]
-      subgraph canvas["canvas entry"]
-        editor["dv.canvas.editor<br/>keyed slot by NodeType.id"]
-        picker["dv.canvas.picker<br/>keyed slot, key assets"]
-        preview["dv.canvas.preview<br/>keyed slot, key assets"]
-      end
+flowchart BT
+  pkg_refs["reference and plan<br/>UI plugins"]
+  pkg_assets["@dv/ui-asset-pool"]
+  pkg_explore["explore<br/>UI plugins"]
+  subgraph center_view["dv.center.view of @dv/ui-shell"]
+    subgraph canvas["canvas entry of @dv/ui-canvas"]
+      editor["dv.canvas.editor"]
+      picker["dv.canvas.picker"]
+      preview["dv.canvas.preview"]
     end
+    timeline_entry["timeline entry<br/>@dv/ui-timeline"]
   end
+  explore["dv.explore<br/>@dv/ui-shell"]
+  pkg_refs -- "key NodeType.id" --> editor
+  pkg_assets -- "key assets" --> picker
+  pkg_assets -- "key assets" --> preview
+  pkg_explore -- "mcp, skills" --> explore
 ```
+
+图中使用以下分组名和 slot 种类：
+
+- 引用和计划 UI 插件是 `@dv/ui-shot-plan`、`@dv/ui-character`、`@dv/ui-location` 和 `@dv/ui-style`。
+- 探索 UI 插件是带条目 `mcp` 的 `@dv/ui-mcp-presets` 和带条目 `skills` 的 `@dv/ui-skills`。
+- `dv.center.view` 和 `dv.explore` 是列表 slot。shell 每次只显示列表 slot 的一个条目，并按条目 ID 选择它。
+- 项目打开时，shell 显示 `dv.center.view`。没有打开的项目时，shell 显示 `dv.explore`。
+- 三个画布 slot 是键控 slot。键控 slot 的每个条目都有一个键，例如 `NodeType.id` 或 `assets`。
 
 shell 按 `order` 把 `dv.center.view` 的条目显示为顶栏的切换按钮。URL 中的视图没有对应条目时，显示第一个条目。画布节点的编辑器渲染键等于该节点 `NodeType.id` 的 `dv.canvas.editor` 条目。编辑器条目只导入 `@dv/ui-kit`，因此画布把一个带三个回调的 `EntryEditorHost` 传给它：
 

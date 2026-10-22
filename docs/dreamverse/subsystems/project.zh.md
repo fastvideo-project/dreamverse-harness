@@ -76,18 +76,14 @@ flowchart TB
         direction LR
         a1[r1] --> a2[r2] --> a3[r3] --> a4[r4] --> a5[["r5<br/>tip, at"]]
     end
-    subgraph undo["After two undos: line.json {tip: r5, at: r3}. No record is written."]
+    subgraph undo["After two undos: line.json {tip: r5, at: r3}"]
         direction LR
         b1[r1] --> b2[r2] --> b3[["r3<br/>at"]] --> b4["r4<br/>gray"] --> b5[["r5<br/>gray, tip"]]
     end
     subgraph write["After a new step r6: line.json {tip: r6, at: r6}"]
         direction LR
         c1[r1] --> c2[r2] --> c3[r3] --> c6[["r6<br/>tip, at"]]
-        subgraph gone["Discarded: lines stay in records.jsonl"]
-            direction LR
-            c4[r4] -.-> c5[r5]
-        end
-        c3 -.-> c4
+        c3 -. "discarded" .-> c4[r4] -.-> c5[r5]
     end
     five ~~~ undo ~~~ write
 ```
@@ -161,52 +157,49 @@ flowchart TB
 - 画布、时间线或素材库面板上的手势通过 `@dv/api` 的路由运行一个操作。路由设置 `actor: 'user'`，并把 `surface` 设为该视图。
 - agent 调用该操作的 `dv_*` 工具。工具以 `actor: 'agent'`、`surface: 'chat'`、对话、轮次和工具调用 ID 运行该操作。agent 的调用运行之前，操作的 `prepareToolCall` 可以拒绝或修改这次调用。然后 agent 工具应用该操作的 `confirm` 策略。
 
-每次调用都经过 `dvProject.run` 的运行器。运行器校验参数。在项目锁内，运行器把每个输入解析为素材，并调用操作的 `precondition`。在运行器写入记录之前，precondition 对每个调用方拒绝调用。例如，`shot.render` 和 `story.approve` 拒绝模型的目录条目所拒绝的渲染请求。生成任务 `ref2v` 下没有参考素材的 `fasth3` 渲染就是这样的请求。
-
-precondition 之后，运行器追加 `pending` 记录。运行器把操作的 `supersedes` 函数指出的记录加入该记录的 `supersedes`。最后，运行器在锁外运行所属组件的实现。然后运行器追加带输出、成本和报告的最终更新行。
-
 两类调用在项目组件的调度器中等待，直到其输入完成：
 
 - 输入指向未完成记录的调用；
 - 批准计划时排定的每次渲染。
 
-下图显示一次调用的顺序。第 5 到第 8 步在项目锁内运行，因此同一个项目上的两次调用从不同时写入。
+每次调用都经过 `dvProject.run` 的运行器。下图显示一次调用的各个步骤。第 3 步和第 4 步在项目锁内运行，因此同一个项目上的两次调用从不同时写入。
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    participant caller as Caller<br/>agent dv_* tool, view route,<br/>or plugin service
-    participant run as dvProject.run
-    participant store as Record store
-    participant comp as Owning component
-    opt agent tool call only
-        caller->>caller: prepareToolCall,<br/>then the confirm policy
+flowchart LR
+    subgraph callers["1. callers"]
+        direction LR
+        agenttool["agent tool"]
+        route["view route"]
+        service["plugin service"]
     end
-    caller->>run: run(request)
-    run->>run: validate the params and the input roles
-    break readOnly operation
-        run->>comp: precondition, then execute. No lock, no record.
+    validate{{"2. validate"}}
+    readonly["readOnly:<br/>no lock, no record"]
+    subgraph lock["project lock"]
+        direction TB
+        check{{"3. resolve inputs,<br/>precondition"}}
+        pending[("4. pending record")]
+        check -- "accepts" --> pending
     end
-    critical project lock
-        run->>run: resolve each input to an asset
-        run->>comp: precondition
-        break precondition refuses
-            run-->>caller: reject, no record written
-        end
-        run->>store: append the pending record with its supersedes,<br/>discard the steps after at
+    subgraph after["outside the lock"]
+        direction TB
+        wait["5. wait for after"]
+        reuse{{"6. reuse or execute"}}
+        final[("7. final update")]
+        wait --> reuse --> final
     end
-    opt the call has after
-        run->>run: wait in the scheduler until the records in after are done
-    end
-    alt deterministic, and an equal done record exists
-        run->>store: reuse the outputs of that record
-    else
-        run->>comp: execute, outside the lock
-        comp-->>run: outputs, cost, report
-    end
-    run->>store: append the final update: outputs, cost, report
-    run-->>caller: the record in its final status
+    callers --> validate
+    validate -- "readOnly" --> readonly
+    validate --> lock
+    lock --> after
 ```
+
+1. 调用方运行操作：agent 工具、`@dv/api` 的视图路由，或插件的服务。agent 工具先应用操作的 `prepareToolCall` 和 `confirm` 策略。
+2. 运行器校验参数和输入角色。对 `readOnly` 操作，运行器随后解析输入，调用操作的 `precondition` 和 `execute`，并返回输出。`readOnly` 操作不取锁，也不写记录。
+3. 在项目锁内，运行器把每个输入解析为素材，并调用操作的 `precondition`。precondition 对每个调用方拒绝调用，被拒绝的调用不写记录。例如，`shot.render` 和 `story.approve` 拒绝模型的目录条目所拒绝的渲染请求。生成任务 `ref2v` 下没有参考素材的 `fasth3` 渲染就是这样的请求。
+4. precondition 接受调用后，运行器在当前位置之后追加 `pending` 记录，并丢弃之后的步骤（[历史规则](#history-rules)）。运行器把操作的 `supersedes` 函数指出的记录加入该记录的 `supersedes`。
+5. 对带 `after` 的调用，`dvProject.run` 立即返回 `pending` 记录。`after` 中的记录完成后，调度器执行该记录。
+6. 在锁外，如果操作是确定性的，运行器复用相同的 `done` 记录的输出（[确定性复用](#deterministic-reuse)）。否则，所属组件执行该操作。
+7. 运行器追加带输出、成本和报告的最终更新行，`dvProject.run` 返回该记录。
 
 <a id="confirmation-in-the-conversation"></a>
 ## 在对话中确认
@@ -277,19 +270,20 @@ agent 和视图以两种形式读取当前状态：
 
 只有 agent 或人决定重跑陈旧记录。`proj.stale_accept` 清除一条记录的标记。此后，该记录的消费者不会因它而变为陈旧。
 
-下图显示一个项目中的陈旧状态。名字 `r2` 到 `r7` 代表记录 ID。实线箭头表示哪条记录读取另一条记录写下的输出或版本。虚线箭头表示一条记录替代哪条记录，以及 `proj.stale_accept` 清除哪条记录的标记。
+下图显示一个项目中的陈旧状态。名字 `r2` 到 `r7` 代表记录 ID。`r3` 和 `r4` 是陈旧的，因为 `r5` 替代了 `r2`。实线箭头表示哪条记录读取另一条记录写下的输出或版本。虚线箭头表示一条记录替代哪条记录，以及 `proj.stale_accept` 清除哪条记录的标记。
 
 ```mermaid
-flowchart TB
-    r2["r2 character.create<br/>writes c1@1<br/>superseded by r5"]
-    r3["r3 shot.render<br/>reads c1@1<br/>stale because of r5"]
-    r4["r4 asset.grab_still<br/>reads r3#0<br/>stale because of r5"]
-    r5["r5 character.update<br/>writes c1@2"]
-    r6["r6 shot.render<br/>reads c1@2<br/>not stale"]
-    r7["r7 proj.stale_accept<br/>params {record: r4}"]
+flowchart LR
+    r2["r2 character.create<br/>superseded"]
+    r3["r3 shot.render<br/>stale"]
+    r4["r4 asset.grab_still<br/>stale"]
+    r5["r5 character.update"]
+    r6["r6 shot.render<br/>not stale"]
+    r7["r7 proj.stale_accept<br/>{record: r4}"]
     r2 -- "c1@1" --> r3
     r3 -- "r3#0" --> r4
     r5 -- "c1@2" --> r6
+    r2 ~~~ r5
     r5 -. "supersedes" .-> r2
     r7 -. "removes the mark" .-> r4
 ```
