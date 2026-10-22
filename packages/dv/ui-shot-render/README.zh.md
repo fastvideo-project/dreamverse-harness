@@ -48,7 +48,7 @@ Host 半边不注册任何东西。浏览器半边通过 `defineGenerationUi` �
 | 模型行（`data-testid="dv-composer-render-model"`） | 调用的 `model`，和按 `GET /api/dv/tasks` 里的标签显示的 `task`（没有标签时显示任务名），用 ` · ` 连接（例如任务 `ref2v` 显示 `fasth3 · 参考图生成` / `fasth3 · From references`） |
 | 提示词 | 调用的 `prompt` |
 | 状态 | 调用结束前为 渲染中… / Rendering…，之后为 已渲染 / Rendered；失败的调用为 生成失败 / Render failed |
-| 媒体 | 结果展示元数据里的第一个产出，即视频，经 `dv.media` 以用途 `player` 绘制 |
+| 媒体 | 结果展示元数据里的第一个产出，即视频，经 `dv.media` 以用途 `loop` 绘制：静音、循环、带控件，以图片产出为封面 |
 | 在历史中查看 / Show in history（`data-testid="dv-composer-open-history"`） | 出现在已结束的调用上；派发 `dv:history-focus` `{session, toolCall}`，历史面板选中这次调用写出的记录 |
 
 参数还在流式到达时，卡片显示已有的部分。两个列表加载完成前，或读取失败时，标题按上表回退，模型行显示任务名。
@@ -58,7 +58,7 @@ Host 半边不注册任何东西。浏览器半边通过 `defineGenerationUi` �
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`src/client/index.ts` 导出一次 `defineGenerationUi` 调用的 `inject` 和 `apply`。声明的 `references` 规则对任务 `t2v` 关闭参考图标签，它的 `preview` 选出图片产出，套件把它用作卡片的媒体、编辑器的封面、历史缩略图，以及分镜计划画框网格中的画面。套件在对话卡片或版本编辑器第一次订阅时读取 `GET /api/dv/operations` 和 `GET /api/dv/tasks`，读取失败后在下一次订阅时再读取（`@dv/ui-kit` 的 `loadedOnce`）；解析后的参数、产出和历史链接来自 `@dv/ui-kit/tool-rows.tsx`。
+`src/client/index.ts` 导出一次 `defineGenerationUi` 调用的 `inject` 和 `apply`。声明的 `references` 规则对任务 `t2v` 关闭参考图标签，它的 `preview` 选出图片产出，套件把它用作卡片的媒体、编辑器和对话卡片的封面、历史缩略图，以及分镜计划画框网格中的画面。套件在对话卡片或版本编辑器第一次订阅时读取 `GET /api/dv/operations` 和 `GET /api/dv/tasks`，读取失败后在下一次订阅时再读取（`@dv/ui-kit` 的 `loadedOnce`）；解析后的参数、产出和历史链接来自 `@dv/ui-kit/tool-rows.tsx`。
 
 | 文件 | 内容 |
 | --- | --- |

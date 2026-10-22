@@ -14,5 +14,5 @@ export const { inject, apply } = defineGenerationUi({
   status: { running: ['渲染中…', 'Rendering…'], failed: ['生成失败', 'Render failed'], done: ['已渲染', 'Rendered'] },
   // A text render (task `t2v`) takes no reference images.
   references: record => record.params['task'] !== 't2v',
-  preview: (record, state) => record.outputs.find(id => state.assets.find(asset => asset.id === id)?.mime.startsWith('image/') === true),
+  preview: outputs => outputs.find(output => output.mime.startsWith('image/'))?.id,
 })

@@ -87,6 +87,14 @@ describe('the chat card of a generation call', () => {
     expect(focused).toEqual([{ session: 's1', toolCall: 'call-2' }])
   })
 
+  it('plays a settled call\'s first output muted, with controls, behind the still that the kind picks as the poster', async () => {
+    const outputs = [{ role: 'video', asset_id: 'v1.mp4', mime: 'video/mp4' }, { role: 'still', asset_id: 'v1.png', mime: 'image/png' }]
+    const { container } = await renderCall('result', { call: { argsRaw: ARGS }, meta: { outputs } })
+    const video = container.querySelector('video')
+    expect([video?.getAttribute('src'), video?.muted, video?.hasAttribute('controls'), video?.getAttribute('poster')])
+      .toEqual(['/dv/assets/v1.mp4', true, true, '/dv/assets/v1.png'])
+  })
+
   it('reads the failed words for a call that settled as an error, with the arguments of the settled call block', async () => {
     document.documentElement.lang = 'en'
     const { container, view } = await renderCall('result', { call: { argsRaw: '{"model":"fasth3","prompt":"a red kite"}' }, isError: true })

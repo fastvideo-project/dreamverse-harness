@@ -23,7 +23,7 @@ export const testTake = defineGenerationUi({
   color: 'var(--dv-kind-take)',
   status: { running: ['生成中…', 'Generating…'], failed: ['没生成', 'Not generated'], done: ['已生成', 'Generated'] },
   references: record => record.params['task'] !== 't2v',
-  preview: (record, state) => record.outputs.find(id => state.assets.find(asset => asset.id === id)?.mime === 'image/png'),
+  preview: outputs => outputs.find(output => output.mime === 'image/png')?.id,
 })
 
 /** The chain anchor of the fixture's approval `a1`: the records it started hang off `plan:p1`. */

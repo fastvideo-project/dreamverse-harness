@@ -1,7 +1,7 @@
 /**
  * The chat card of one generation tool call: the operation's name, the model and generation task, the prompt, the
- * status words of the kind, the first output drawn through `dv.media` at purpose 'player', and the 在历史中查看 link
- * once settled.
+ * status words of the kind, the first output drawn through `dv.media` at purpose 'loop' (muted and looping behind the
+ * kind's preview output as the poster), and the 在历史中查看 link once settled.
  *
  * @module @dv/ui-generation/GenerationCard
  */
@@ -11,7 +11,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import { useText } from '@dv/ui-kit/locale.ts'
 import { operationLabel, taskLabel } from '@dv/ui-kit/tool-labels.ts'
 import { argsOf, HistoryLink, outputsOf } from '@dv/ui-kit/tool-rows.tsx'
-import type {} from '@dv/ui-media/contract'
+import type { MediaAsset } from '@dv/ui-media/contract'
 import type { GenerationInjected } from './loaded.ts'
 import css from './generation-card.module.css'
 
@@ -26,6 +26,8 @@ export interface StatusWords {
 export interface GenerationCardInjected extends GenerationInjected {
   operation: string
   status: StatusWords
+  /** The kind's preview of the call's outputs, which the player shows before it plays. */
+  preview(outputs: readonly MediaAsset[]): string | undefined
 }
 
 /** The card's composed props: DSH's tool-call owner props plus the injected kind facts. */
@@ -49,7 +51,9 @@ export function GenerationCard(props: GenerationCardProps): ReactNode {
   const task = typeof args['task'] === 'string' ? t(...taskLabel(args['task'], taskLabels)) : ''
   const modelLine = [model, task].filter(part => part !== '').join(' · ')
   const failed = 'isError' in block && block.isError
-  const output = outputsOf(block)[0]
+  const outputs = outputsOf(block).map(({ id, mime }): MediaAsset => ({ id, mime }))
+  const played = outputs[0]
+  const poster = props.preview(outputs)
   let status = t(...props.status.running)
   if (props.phase === 'result') status = failed ? t(...props.status.failed) : t(...props.status.done)
   return (
@@ -60,12 +64,9 @@ export function GenerationCard(props: GenerationCardProps): ReactNode {
       </div>
       {modelLine !== '' && <div className={css.model} data-testid="dv-composer-render-model">{modelLine}</div>}
       {prompt !== '' && <div className={css.prompt}>{prompt}</div>}
-      {output !== undefined && (
+      {played !== undefined && (
         <div className={css.media}>
-          {props.renderFactorySlot('dv.media', {
-            asset: { id: output.id, mime: output.mime },
-            purpose: 'player',
-          })}
+          {props.renderFactorySlot('dv.media', { asset: played, purpose: 'loop', ...poster === undefined ? {} : { poster } })}
         </div>
       )}
       {props.phase === 'result' && <div className={css.cardFooter}><HistoryLink sessionId={props.sessionId} callId={props.callId} className={css.textButton} /></div>}

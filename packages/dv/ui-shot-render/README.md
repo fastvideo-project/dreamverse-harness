@@ -48,7 +48,7 @@ The Host half registers nothing. The browser half registers the following entrie
 | Model line (`data-testid="dv-composer-render-model"`) | The call's `model` and its `task` by its label in `GET /api/dv/tasks`, else by its name, joined by ` · ` (for example `fasth3 · 参考图生成` / `fasth3 · From references` for task `ref2v`) |
 | Prompt | The call's `prompt` |
 | Status | 渲染中… / Rendering… until the call settles, then 已渲染 / Rendered, or 生成失败 / Render failed for a failed call |
-| Media | The first output in the result's presentation metadata, the video, drawn through `dv.media` at purpose `player` |
+| Media | The first output in the result's presentation metadata, the video, drawn through `dv.media` at purpose `loop`: muted, looping, with controls, behind the image output as the poster |
 | 在历史中查看 / Show in history (`data-testid="dv-composer-open-history"`) | On a settled call; dispatches `dv:history-focus` `{session, toolCall}`, and the History panel selects the record that the call wrote |
 
 The card shows what it has while the arguments stream. Until the two lists load, or when a read fails, the title falls back as the table says and the model line shows the task name.
@@ -58,7 +58,7 @@ The card shows what it has while the arguments stream. Until the two lists load,
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-`src/client/index.ts` exports the `inject` and `apply` of one `defineGenerationUi` call. The declaration's `references` rule turns the reference chips off for task `t2v`, and its `preview` picks the image output, which the kit uses as the card's media, the editor's poster, the History thumbnail, and the frame of a plan's frame grid. The kit reads `GET /api/dv/operations` and `GET /api/dv/tasks` on the first subscription of the chat card or the take editor, and again on the next one after a failed read (`loadedOnce` of `@dv/ui-kit`); the parsed arguments, the outputs, and the history link come from `@dv/ui-kit/tool-rows.tsx`.
+`src/client/index.ts` exports the `inject` and `apply` of one `defineGenerationUi` call. The declaration's `references` rule turns the reference chips off for task `t2v`, and its `preview` picks the image output, which the kit uses as the card's media, the poster of the editor and of the chat card, the History thumbnail, and the frame of a plan's frame grid. The kit reads `GET /api/dv/operations` and `GET /api/dv/tasks` on the first subscription of the chat card or the take editor, and again on the next one after a failed read (`loadedOnce` of `@dv/ui-kit`); the parsed arguments, the outputs, and the history link come from `@dv/ui-kit/tool-rows.tsx`.
 
 | File | Content |
 | --- | --- |

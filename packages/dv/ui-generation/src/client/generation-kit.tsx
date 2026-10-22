@@ -17,8 +17,8 @@ import { pickText } from '@dv/ui-kit/locale.ts'
 import { formatInputRef } from '@dv/ui-kit/references.ts'
 import type { UiPlugin } from '@dv/ui-kit/registries.ts'
 import { toolNameOf } from '@dv/ui-kit/tool-labels.ts'
-import type { ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
-import type {} from '@dv/ui-media/contract'
+import type { Asset, ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
+import type { MediaAsset } from '@dv/ui-media/contract'
 import { GenerationCard } from './GenerationCard.tsx'
 import type { GenerationCardInjected, StatusWords } from './GenerationCard.tsx'
 import { labelSources } from './loaded.ts'
@@ -53,11 +53,20 @@ export interface GenerationUiSpec {
   /** The History subject of a record; default none. */
   subject?(record: ProjectRecord): Text | null
   /**
-   * The output that stands for a take in small views (the frame of its anchor's grid, its History thumbnail), when it is
-   * not the first output.
+   * The output that stands for a take in small views (the frame of its anchor's grid, its History thumbnail) and that the
+   * players of its editor and its chat card show before they play, when it is not the first output; read from the
+   * take's outputs, in output order.
    */
-  preview?(record: ProjectRecord, state: WireState): string | undefined
+  preview?(outputs: readonly MediaAsset[]): string | undefined
 }
+
+/**
+ * @param record - a record.
+ * @param state - the project state.
+ * @returns the output assets of the record that the state holds, in output order.
+ */
+const outputsIn = (record: ProjectRecord, state: WireState): Asset[] =>
+  record.outputs.flatMap(id => state.assets.find(asset => asset.id === id) ?? [])
 
 /** The take frame's height at the 208 card width. */
 const FRAME_HEIGHT = 117
@@ -96,7 +105,7 @@ export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
   const entry = (claimed: ClaimedRecord, input: NodeInput): ClaimedEntry => {
     const timed = claimed.record.outputs.map(id => input.state.assets.find(asset => asset.id === id)?.duration_sec ?? null)
       .find(seconds => seconds !== null)
-    const preview = spec.preview?.(claimed.record, input.state)
+    const preview = spec.preview?.(outputsIn(claimed.record, input.state))
     return {
       title: titleOf(claimed, input), bodyHeight,
       ...timed === undefined ? {} : { meta: `${timed.toFixed(1)}s` }, ...preview === undefined ? {} : { preview },
@@ -127,7 +136,7 @@ export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
   const rows: HistoryRow[] = spec.operations.map(match => ({
     match,
     subject: record => spec.subject?.(record) ?? null,
-    thumbnail: (record, state) => spec.preview?.(record, state) ?? record.outputs[0] ?? null,
+    thumbnail: (record, state) => spec.preview?.(outputsIn(record, state)) ?? record.outputs[0] ?? null,
   }))
   return {
     inject: [],
@@ -147,7 +156,7 @@ export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
           { name: 'dv.canvas.editor.claimed', key: spec.type, inject: () => editor }, TakeEditor,
         )), `${spec.id}: editor`)
         for (const operation of spec.operations) {
-          const card: GenerationCardInjected = { ...labels, operation, status: spec.status }
+          const card: GenerationCardInjected = { ...labels, operation, status: spec.status, preview: outputs => spec.preview?.(outputs) }
           scope.effect(() => scope.slots.inject('tool.call.toolview', () => scope.slots.register(
             { name: 'tool.call.toolview', key: toolNameOf(operation), inject: () => card }, GenerationCard,
           )), `${spec.id}: chat card of ${operation}`)
