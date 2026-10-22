@@ -145,6 +145,20 @@ describe('dvModels', () => {
     expect(refs.value).toEqual([{ modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', description: 'alpha for ref2v' }])
   })
 
+  it('lists the catalog as dv_models_get answers each entry, with schema null for a backend it cannot reach', async () => {
+    const ctx = await start()
+    ctx.dvModels.register({ ...entry('t2v', 'down', 'gamma'), schema: () => Promise.reject(new Error('connection refused')) })
+    expect(await ctx.dvModels.catalog()).toEqual([
+      { modality: 'video', task: 't2v', provider: 'test', model: 'alpha', description: 'alpha for t2v', schema: { inputs: {}, extra: {} } },
+      {
+        modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', description: 'alpha for ref2v',
+        schema: { inputs: { reference: { media_types: ['image'] } }, extra: {} },
+      },
+      { modality: 'video', task: 't2v', provider: 'other', model: 'beta', description: 'beta for t2v', schema: { inputs: {}, extra: {} } },
+      { modality: 'video', task: 't2v', provider: 'down', model: 'gamma', description: 'gamma for t2v', schema: null },
+    ])
+  })
+
   it('answers dv_models_get with one entry\'s key, description and schema, and names an unknown key', async () => {
     const ctx = await start()
     const result = await call(ctx, 'dv_models_get', { modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha' })

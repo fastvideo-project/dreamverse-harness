@@ -269,6 +269,19 @@ export default class DvModels extends Service {
     return () => { this.listeners.delete(listener) }
   }
 
+  /**
+   * The catalog the browser reads: each entry as `dv_models_get` returns it, in registration order, so the agent and the
+   * browser read one catalog.
+   * @returns the entries; an entry whose `schema()` fails, such as one whose backend cannot be reached, has schema null.
+   */
+  async catalog(): Promise<Array<Record<string, JsonValue>>> {
+    return await Promise.all(this.list().map(async (entry) => {
+      // The schema of an unreachable backend is unknown; the entry still lists its key and description.
+      const schema = await entry.schema().catch((_unreachable: unknown) => null)
+      return { ...toModelListItem(entry), schema }
+    }))
+  }
+
   private notify(): void {
     for (const listener of this.listeners) listener()
   }

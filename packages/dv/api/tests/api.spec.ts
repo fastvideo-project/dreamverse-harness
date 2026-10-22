@@ -15,7 +15,7 @@ import { importedAssets } from '@dv/asset-pool'
 import type { CharacterId } from '@dv/character'
 import DvModels from '@dv/models'
 import type { AssetId, OperationSpec, ProjectEvent, ProjectId, ProjectRecord, RecordId, RecordOrigin, SessionId, TurnId } from '@dv/project'
-import { FFMPEG, startBase, type BaseFixture } from './support.ts'
+import { FakeModel, FFMPEG, startBase, type BaseFixture } from './support.ts'
 import { answer } from '../src/api.ts'
 import DvApi, { ApiRequestError, EVENTS_PATH, ROUTES, WORKSPACE_ROUTES, frameOf, mentionedAssets, messageOf, type ApiHandlers } from '../src/index.ts'
 
@@ -138,6 +138,15 @@ async function call(
   })
   const response = await route.fetch(request)
   return { status: response.status, json: await response.json() }
+}
+
+/** A composer call: an operation, its params, and its inputs as reference texts. */
+interface ComposerCall { operation: string; params: Record<string, unknown>; inputs: Array<{ role: string; ref: string }> }
+
+/** The kernel's check of a composer call, through the check route. */
+async function checkCall(fixture: Fixture, edited: ComposerCall, project: string): Promise<{ problems: string[] }> {
+  const answered = await call(fixture, ROUTES.operationCheck, { method: 'POST', body: { project, surface: 'canvas', ...edited } })
+  return answered.json as { problems: string[] }
 }
 
 describe('dvApi', () => {
@@ -327,7 +336,7 @@ describe('dvApi', () => {
     expect(Array.isArray(operations.json)).toBe(true)
     expect(await call(fixture, ROUTES.operation, { method: 'POST', body: { project: projectId, operation: 'no.such', surface: 'canvas' } }))
       .toMatchObject({ status: 404, json: { code: 'unknown_operation' } })
-    expect(Object.keys(ROUTES)).toEqual(['projects', 'projectSummaries', 'state', 'operations', 'tasks', 'operation', 'undo', 'redo', 'acceptStale', 'history'])
+    expect(Object.keys(ROUTES)).toEqual(['projects', 'projectSummaries', 'state', 'operations', 'tasks', 'operation', 'operationCheck', 'models', 'undo', 'redo', 'acceptStale', 'history'])
     for (const gone of ['/api/dv/branches/create', '/api/dv/branches/switch', '/api/dv/branches/rename']) {
       expect(fixture.connection.routes.has(gone)).toBe(false)
     }
@@ -355,6 +364,68 @@ describe('dvApi', () => {
     expect(await call(fixture, ROUTES.tasks)).toEqual({ status: 200, json: { ...video, test_task: { zh: '测试', en: 'Test' } } })
     for (const fiber of fixture.context.registry.get(DvModels)?.fibers ?? []) await fiber.dispose()
     expect(await call(fixture, ROUTES.tasks)).toEqual({ status: 200, json: {} })
+  })
+
+  it('checks a call with the sentence that the operation route refuses it with, and its GPU estimate, writing nothing', async () => {
+    const fixture = await start()
+    fixture.context.effect(() => fixture.context.dvModels.register(new FakeModel()))
+    const projectId = await fixture.newProject('demo')
+    const image = await fixture.handlers.runOperation({
+      project: projectId, operation: 'asset.import', surface: 'canvas', params: { path: fixture.writeFile('ref.png', 'PNG'), mime: 'image/png' },
+    })
+    const ref = image.outputs[0] ?? ''
+    const shot = (prompt: string, inputs: Array<{ role: string; ref: string }>) => ({
+      project: projectId, operation: 'shot.render', surface: 'canvas', inputs,
+      params: { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt, duration_sec: 2, aspect_ratio: '16:9', resolution: '720p' },
+    })
+    const tip = fixture.handlers.getState(projectId).tip
+    const refusals = [
+      shot('@[Lamp](dv:asset/other) glows', [{ role: 'reference', ref }]),
+      shot('a cat', [{ role: 'reference', ref: 'ghost@1' }]),
+      { ...shot('a cat', [{ role: 'reference', ref }]), operation: 'no.such' },
+    ]
+    for (const body of refusals) {
+      const refusal = await fixture.handlers.runOperation(body).then(() => '', (error: unknown) => (error as Error).message)
+      expect(refusal).not.toBe('')
+      expect((await call(fixture, ROUTES.operationCheck, { method: 'POST', body })).json).toMatchObject({ problems: [refusal] })
+    }
+    expect(await call(fixture, ROUTES.operationCheck, { method: 'POST', body: shot(`@[Mia](dv:asset/${ref}) waves`, [{ role: 'reference', ref }]) }))
+      .toEqual({ status: 200, json: { problems: [], gpu_seconds: 8 } })
+    expect(fixture.handlers.getState(projectId).tip).toBe(tip)
+    expect((await call(fixture, ROUTES.operationCheck, { method: 'POST', body: { project: 'nope', operation: 'shot.render', surface: 'canvas' } })).status).toBe(404)
+  })
+
+  it('accepts the S6 call after the composer removes a tile, and refuses the call that keeps the citation of the removed input', async () => {
+    const fixture = await start()
+    fixture.context.effect(() => fixture.context.dvModels.register(new FakeModel()))
+    const projectId = await fixture.newProject('demo')
+    const imported = async (name: string): Promise<string> => (await fixture.handlers.runOperation({
+      project: projectId, operation: 'asset.import', surface: 'canvas', params: { path: fixture.writeFile(name, name), mime: 'image/png' },
+    })).outputs[0] ?? ''
+    const [mia, lamp] = [await imported('mia.png'), await imported('lamp.png')]
+    const call = {
+      operation: 'shot.render',
+      params: { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: `@[Mia](dv:asset/${mia}) holds the lamp from @[Take 3](dv:asset/${lamp})`, duration_sec: 2, aspect_ratio: '16:9', resolution: '720p' },
+      inputs: [{ role: 'reference', ref: mia }, { role: 'reference', ref: lamp }],
+    }
+    const check = async (edited: ComposerCall) => (await checkCall(fixture, edited, projectId)).problems
+    expect(await check(call)).toEqual([])
+    // The take editor before the composer drops the input and keeps its citation; the kernel refuses that call.
+    const dropped = { ...call, inputs: [{ role: 'reference', ref: lamp }] }
+    expect(await check(dropped)).toEqual([expect.stringContaining(`cites asset ${mia}, which is not in the reference input`)])
+    // The composer's R2 turns the citation into its label (pinned in ui-composer's reference-model spec, S6 row).
+    const edited = { ...dropped, params: { ...call.params, prompt: `Mia holds the lamp from @[Take 3](dv:asset/${lamp})` } }
+    expect(await check(edited)).toEqual([])
+  })
+
+  it('serves the model catalog as dv_models_get returns each entry', async () => {
+    const fixture = await start()
+    fixture.context.effect(() => fixture.context.dvModels.register(new FakeModel()))
+    const models = await call(fixture, ROUTES.models)
+    const key = { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }
+    expect(models).toEqual({ status: 200, json: [(await fixture.call('dv_models_get', key)).value] })
+    for (const fiber of fixture.context.registry.get(DvModels)?.fibers ?? []) await fiber.dispose()
+    expect(await call(fixture, ROUTES.models)).toEqual({ status: 200, json: [] })
   })
 
   it('answers every refusal of the project routes with the body {error, code}', async () => {

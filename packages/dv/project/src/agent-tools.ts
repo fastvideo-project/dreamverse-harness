@@ -26,6 +26,7 @@ import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool, type ParameterSchemaSpec, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { splitInputRef } from './grammar.ts'
 import type { OperationSpec, OperationToolCall } from './operation-types.ts'
 import type { Sessions } from './sessions.ts'
 import { ProjectError } from './shared.ts'
@@ -162,8 +163,8 @@ export function turnOf(ctx: Context, exec: Pick<ToolRunContext, 'agent'>): TurnI
 }
 
 /**
- * Turn one input reference text into a record input reference: `<record>#<n>` names output n of a record,
- * `<id>@<n>` names version n of the one reference kind that has it, and anything else names an asset.
+ * Turn one input reference text into a record input reference: the syntax of `splitInputRef`, with the kind of a
+ * version found among the registered reference kinds.
  * @param ref - the reference text.
  * @param state - the state the version is looked up in.
  * @param kinds - the registered reference kinds.
@@ -171,13 +172,10 @@ export function turnOf(ctx: Context, exec: Pick<ToolRunContext, 'agent'>): TurnI
  * @throws ProjectError `invalid_inputs` for `<id>@<n>` that no reference kind, or more than one, has.
  */
 export function parseInputRef(ref: string, state: ProjectState, kinds: ReferenceKindLookup): RecordInputRef {
-  const hash = ref.lastIndexOf('#')
-  const output = hash > 0 ? Number(ref.slice(hash + 1)) : Number.NaN
-  if (Number.isInteger(output) && output >= 0) return { record: brandString<RecordId>(ref.slice(0, hash)), output }
-  const at = ref.lastIndexOf('@')
-  const version = at > 0 ? Number(ref.slice(at + 1)) : Number.NaN
-  if (!Number.isInteger(version)) return { asset: brandString<AssetId>(ref) }
-  const id = ref.slice(0, at)
+  const syntax = splitInputRef(ref)
+  if ('asset' in syntax) return { asset: brandString<AssetId>(syntax.asset) }
+  if ('record' in syntax) return { record: brandString<RecordId>(syntax.record), output: syntax.output }
+  const { id, version } = syntax
   const [kind, ...others] = kinds.kindsWithVersion(state, id, version)
   const known = kinds.listReferenceKinds().join(', ') || 'none'
   if (kind === undefined) throw new ProjectError('invalid_inputs', `Unknown version '${ref}'; reference kinds: ${known}.`)
@@ -186,30 +184,6 @@ export function parseInputRef(ref: string, state: ProjectState, kinds: Reference
   }
   const fields: Record<string, string | number> = { [kind]: id, version }
   return fields as RecordInputRef
-}
-
-/**
- * The reference kind, ID and version of a version reference.
- * @param ref - a record input reference.
- * @returns them, or null for an asset or a record output.
- */
-export function versionRefOf(ref: RecordInputRef): { kind: string; id: string; version: number } | null {
-  if ('asset' in ref || 'record' in ref) return null
-  const fields: Record<string, string | number> = ref
-  const kind = Object.keys(fields).find(key => key !== 'version')
-  return kind === undefined ? null : { kind, id: String(fields[kind]), version: Number(fields['version']) }
-}
-
-/**
- * Write one record input reference as the text that {@link parseInputRef} reads back.
- * @param ref - the reference.
- * @returns an asset ID, `<record>#<output>`, or `<id>@<version>` for a version.
- */
-export function formatInputRef(ref: RecordInputRef): string {
-  if ('asset' in ref) return ref.asset
-  if ('record' in ref) return `${ref.record}#${String(ref.output)}`
-  const named = versionRefOf(ref)
-  return named === null ? JSON.stringify(ref) : `${named.id}@${String(named.version)}`
 }
 
 /**

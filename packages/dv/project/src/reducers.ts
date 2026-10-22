@@ -13,7 +13,7 @@
  */
 import type { RecordStore } from './record-store.ts'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { versionRefOf } from './agent-tools.ts'
+import { versionRefOf } from './grammar.ts'
 import { ProjectError } from './shared.ts'
 import type {
   AssetId, AssetStore, ComponentStates, ProjectId, ProjectInfo, ProjectRecord, ProjectState, RecordId, RecordInput, RecordInputRef,

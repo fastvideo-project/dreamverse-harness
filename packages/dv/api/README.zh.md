@@ -52,6 +52,8 @@ kind: "package-reference"
 | `/api/dv/operations` | GET | — | `WireOperation[]`：每个不是 `readOnly` 的已注册操作，不含执行器，声明了 `label` 时带上它 |
 | `/api/dv/tasks` | GET | — | 每个任务的标签 `{zh, en}`，按任务名：[`@dv/models`](../models/README.zh.md) 的 `dvModels.taskLabels()`；模型目录未挂载时为 `{}` |
 | `/api/dv/operation` | POST | `OperationRequest` `{project, operation, inputs?, params?, intent?, surface, session?, based_on?, supersedes?}`；`inputs` = `[{role, ref}]`，`ref` 是引用文本 | `ProjectRecord`，已完成或 `pending` |
+| `/api/dv/operation/check` | POST | 与 `/api/dv/operation` 相同的 `OperationRequest` | `OperationCheck` `{problems, gpu_seconds}`：`dvProject.check`，不写任何内容。`problems` 存放 `/api/dv/operation` 此刻拒绝这次调用时用的句子，调用可以运行时为空。未知操作和无法解析的输入文本也算问题。`gpu_seconds` 是操作的 `estimate`，否则为 null |
+| `/api/dv/models` | GET | — | [`@dv/models`](../models/README.zh.md) 中每个模型一个条目，与 `dv_models_get` 返回的相同：`dvModels.catalog()`；模型目录未挂载时为 `[]` |
 | `/api/dv/assets/import` | POST | 原始文件作为请求体；查询参数 `project`、`name`、`mime`、`surface`（`canvas \| asset_pool`，其他值回 `400` `invalid_params`）、`session?` | `{asset, record}`：`AssetId` 和 `asset.import` 记录；从画布导入时带 `place: true` 运行，因此素材也会放到画布上 |
 | `/api/dv/undo` | POST | `{project, to?}`：把当前位置往回移一步，或移到历史列表中的步骤 `to`，可在当前位置之前或之后；不写记录 | `{tip, at}`：最后一步和当前位置 |
 | `/api/dv/redo` | POST | `{project}`：把当前位置往前移一步；不写记录 | `{tip, at}` |

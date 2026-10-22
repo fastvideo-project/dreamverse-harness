@@ -396,6 +396,14 @@ export interface RunResult {
   report: Record<string, unknown> | null
 }
 
+/** What `dvProject.check` returns: whether `run` would accept a call on the current state, and its GPU estimate. */
+export interface OperationCheck {
+  /** The sentence of the first refusal, verbatim; empty when the call can run. */
+  problems: string[]
+  /** The operation's `estimate`; null for an operation that declares none. */
+  gpu_seconds: number | null
+}
+
 /** The history list's last step and the current position, as `line.json` stores them. */
 export interface ProjectLine {
   /** The last step of the history list; the list is its `parents[0]` ancestry. */

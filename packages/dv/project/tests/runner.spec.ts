@@ -200,6 +200,31 @@ describe('Runner', () => {
     expect((await m.runner.run(request(project, 'shot.render'))).record?.status).toBe('done')
   })
 
+  it('checks a call with the sentence that run refuses it with, and the estimate, writing nothing', async () => {
+    const m = startModules()
+    const project = await createTestProject(m)
+    m.runner.registerOperation(operation({
+      name: 'shot.render', component: 'shot', estimate: params => ({ gpu_seconds: Number(params['seed'] ?? 5) * 3 }),
+      precondition: call => call.params['prompt'] === 'refuse' ? Promise.reject(new Error('This shot has no reference image.')) : Promise.resolve(),
+    }))
+    const before = files(m, project)
+    const calls: Array<Partial<RunRequest>> = [
+      { params: { prompt: 5 } },
+      { inputs: [{ role: 'mask', ref: { asset: m.assets.add('mask') } }] },
+      { inputs: [{ role: 'reference', ref: { asset: brandString<AssetId>('no-such-asset') } }] },
+      { params: { prompt: 'refuse' } },
+    ]
+    for (const extra of calls) {
+      const refusal = await m.runner.run(request(project, 'shot.render', userOrigin(), extra)).then(() => '', (error: unknown) => (error as Error).message)
+      expect(refusal).not.toBe('')
+      expect(await m.runner.check(request(project, 'shot.render', userOrigin(), extra))).toEqual({ problems: [refusal], gpu_seconds: 15 })
+    }
+    expect(await m.runner.check(request(project, 'unregistered'))).toEqual({ problems: ['Operation unregistered is not registered.'], gpu_seconds: null })
+    expect(await m.runner.check(request(project, 'shot.render', userOrigin(), { params: { prompt: 'a kite', seed: 2 } })))
+      .toEqual({ problems: [], gpu_seconds: 6 })
+    expect(files(m, project)).toBe(before)
+  })
+
   it('fails the record when execute throws', async () => {
     const m = startModules()
     const project = await createTestProject(m)

@@ -69,6 +69,8 @@ export const ROUTES = {
   operations: '/api/dv/operations',
   tasks: '/api/dv/tasks',
   operation: '/api/dv/operation',
+  operationCheck: '/api/dv/operation/check',
+  models: '/api/dv/models',
   undo: '/api/dv/undo',
   redo: '/api/dv/redo',
   acceptStale: '/api/dv/stale/accept',
@@ -145,6 +147,8 @@ export default class DvApi extends Service {
       // The model catalog is optional: without it no task has a label.
       { path: ROUTES.tasks, methods: ['GET'], requestBody: 'buffered', fetch: () => answer(() => this.ctx.get('dvModels')?.taskLabels() ?? {}) },
       { path: ROUTES.operation, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.runOperation(body)) },
+      { path: ROUTES.operationCheck, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.checkOperation(body)) },
+      { path: ROUTES.models, methods: ['GET'], requestBody: 'buffered', fetch: () => answer(() => this.ctx.get('dvModels')?.catalog() ?? []) },
       { path: ROUTES.undo, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.undo(body)) },
       { path: ROUTES.redo, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.redo(body)) },
       { path: ROUTES.acceptStale, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.acceptStale(body)) },

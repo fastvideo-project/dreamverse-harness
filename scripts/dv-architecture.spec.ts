@@ -178,6 +178,20 @@ describe('rule clauses', () => {
     ['R7a provider imports other domain types', [
       source('sglang', "import type { Clip } from '@dv/timeline'\nctx.dvModels.register(entry)\n"),
     ], ['R7a']],
+    ['R7a UI core imports the kernel grammar', [
+      source('ui-canvas', "import { formatCitation } from '@dv/project/grammar'\nimport type { PromptCitation } from '@dv/project/grammar'\n"),
+    ], []],
+    ['R7a UI core imports another kernel entry', [
+      source('ui-canvas', "import { run } from '@dv/project'\nimport type { RecordId } from '@dv/project/types'\n"),
+    ], ['R7a', 'R7a']],
+    ['R7a a kit or a UI package imports the kernel grammar', [
+      source('ui-reference-kit', "import { citationUri } from '@dv/project/grammar'\n", 'client/index.ts'),
+      source('ui-shot-plan', "import { formatCitation } from '@dv/project/grammar'\n", 'client/index.ts'),
+    ], ['R7a', 'R7a']],
+    ['R7b grammar entry reaches a host module', [
+      { path: 'packages/dv/project/package.json', text: '{ "exports": { "./grammar": "./src/grammar.ts" } }\n' },
+      source('project', "import { randomUUID } from 'node:crypto'\n", 'grammar.ts'),
+    ], ['R7b']],
     ['R7b face reaches a node import through an import', [
       manifest('project'), source('project', "import type { RecordId } from './ids.ts'\n", 'types.ts'),
       source('project', "import { randomUUID } from 'node:crypto'\n", 'ids.ts'),

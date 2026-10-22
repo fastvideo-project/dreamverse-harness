@@ -52,17 +52,18 @@ import { Sessions } from './sessions.ts'
 import { Subscriptions } from './subscriptions.ts'
 import type {
   AssetId, AssetStore, ComponentStates, ProjectLine, HistoryEntry, HistoryQuery,
-  ProjectEvent, ProjectId, ProjectInfo, ProjectRecord, ProjectState, RecordId, RecordInputRef, RecordOrigin, Reducer,
+  OperationCheck, ProjectEvent, ProjectId, ProjectInfo, ProjectRecord, ProjectState, RecordId, RecordInputRef, RecordOrigin, Reducer,
   ReferenceKindSpec, RunRequest, RunResult, SessionId,
 } from './types.ts'
 
 export * from './types.ts'
 export * from './operation-types.ts'
 export { ProjectError } from './shared.ts'
+export { promptAssets, replacePromptCitations } from './citations.ts'
 export {
-  citedAsset, citedInput, elementCitationUri, parsePromptCitations, promptAssets, replacePromptCitations, type PromptCitation,
-} from './citations.ts'
-export { formatInputRef, sessionOf, toolNameOf, versionRefOf, type OperationToolValue } from './agent-tools.ts'
+  citedAsset, citedInput, elementCitationUri, formatCitation, formatInputRef, parsePromptCitations, versionRefOf, type PromptCitation,
+} from './grammar.ts'
+export { sessionOf, toolNameOf, type OperationToolValue } from './agent-tools.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -258,6 +259,16 @@ export default class DvProject extends Service {
    */
   run(request: RunRequest): Promise<RunResult> {
     return this.runner.run(request)
+  }
+
+  /**
+   * Check one operation call against every refusal of `run` and estimate its GPU cost, writing nothing. The answer is
+   * advisory: `run` checks the call again under the project lock.
+   * @param request - the call.
+   * @returns the refusal sentence (empty when `run` would accept the call now) and the GPU estimate.
+   */
+  check(request: RunRequest): Promise<OperationCheck> {
+    return this.runner.check(request)
   }
 
   /**

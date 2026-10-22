@@ -29,8 +29,9 @@ import {
   formatModelKey, modelKey, type RenderModelFacts, type RenderRequest, type RenderStreamEvent,
 } from '@dv/models'
 import {
-  citedAsset, citedInput, elementCitationUri, parsePromptCitations, replacePromptCitations, type AssetId, type OperationContext,
-  type OperationInput, type OperationResult, type OperationSpec, type ProjectId, type RecordId, type RecordInput, type StartedBy,
+  citedAsset, citedInput, elementCitationUri, formatCitation, parsePromptCitations, replacePromptCitations, type AssetId,
+  type OperationContext, type OperationInput, type OperationResult, type OperationSpec, type ProjectId, type RecordId, type RecordInput,
+  type StartedBy,
 } from '@dv/project'
 import { backendSeconds, baseMime, number, shotGeometry, text } from './render.ts'
 
@@ -146,7 +147,7 @@ function expandElements(prompt: string, inputs: readonly RequestInput[]): string
       && input.ref !== null && elementCitationUri(input.ref) === citation.uri ? [input.resolved_asset] : []))]
     if (assets.length === 0) return prompt.slice(citation.start, citation.end)
     const label = citation.label.replaceAll(']', '')
-    const cited = assets.map((asset, index) => `@[${label} · ${String(index + 1)}](dv:asset/${encodeURIComponent(asset)})`)
+    const cited = assets.map((asset, index) => formatCitation(`${label} · ${String(index + 1)}`, 'asset', asset))
     return `${label} (${cited.join(' ')})`
   })
 }

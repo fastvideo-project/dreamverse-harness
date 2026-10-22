@@ -1,78 +1,12 @@
 /**
- * The citations of a prompt. A prompt cites a project item with the composer's mention syntax
- * `@[<label>](dv:<kind>/<id>)`. Project owns the syntax because the project holds the records and the assets that the
- * citations name; a model provider plugin replaces the citations with the syntax of its model before the model reads the
- * prompt.
+ * The citations of a prompt, read with the citation grammar of `grammar.ts`: the assets that a prompt cites, and the
+ * replacement of each citation. Project owns the grammar because the project holds the records and the assets that the
+ * citations name.
  *
  * @module @dv/project/citations
  */
-import { brandString } from '@deepseek-ai/dsh-brand'
-import { versionRefOf } from './agent-tools.ts'
-import type { AssetId, RecordInputRef } from './types.ts'
-
-/** One citation in a prompt. */
-export interface PromptCitation {
-  /** The label that the editor shows, such as `Mia · front`. */
-  label: string
-  /** The `dv:` URI, such as `dv:asset/a1`. */
-  uri: string
-  /** The offset of the citation's `@` in the prompt. */
-  start: number
-  /** The offset after the citation's closing parenthesis. */
-  end: number
-}
-
-/** A serialized citation: `@[label](dv:...)`. */
-const CITATION = /@\[([^\]]*)\]\((dv:[^)\s]+)\)/g
-
-/** The URI prefix of an asset citation. */
-const ASSET_PREFIX = 'dv:asset/'
-
-/** The URI prefix of a citation of an input of the call by its role, such as `dv:input/first_frame`. */
-const INPUT_PREFIX = 'dv:input/'
-
-/**
- * Find every citation in a prompt.
- * @param prompt - the prompt.
- * @returns the citations in prompt order.
- */
-export function parsePromptCitations(prompt: string): PromptCitation[] {
-  return [...prompt.matchAll(CITATION)].map((match) => {
-    // Both groups of CITATION match in every citation.
-    const [text, label, uri] = match as RegExpExecArray & [string, string, string]
-    return { label, uri, start: match.index, end: match.index + text.length }
-  })
-}
-
-/**
- * The asset that a citation URI names.
- * @param uri - a `dv:` URI.
- * @returns the asset ID of a `dv:asset/<AssetId>` URI; null for any other URI.
- */
-export function citedAsset(uri: string): AssetId | null {
-  return uri.startsWith(ASSET_PREFIX) ? brandString<AssetId>(decodeURIComponent(uri.slice(ASSET_PREFIX.length))) : null
-}
-
-/**
- * The input role that a citation URI names. A citation of an input names the call's input of that role, whatever its
- * value is, so it also names an input whose value a record has not produced yet.
- * @param uri - a `dv:` URI.
- * @returns the role of a `dv:input/<role>` URI, such as `first_frame`; null for any other URI.
- */
-export function citedInput(uri: string): string | null {
-  return uri.startsWith(INPUT_PREFIX) ? uri.slice(INPUT_PREFIX.length) : null
-}
-
-/**
- * The citation URI of the element that an input reference is a version of: `dv:<kind>/<id>`, with the reference kind.
- * A prompt cites an element without a version; the reference names the version.
- * @param ref - an input reference, such as a `reference` input of a render call.
- * @returns the URI; null for a reference to an asset or to a record output.
- */
-export function elementCitationUri(ref: RecordInputRef): string | null {
-  const named = versionRefOf(ref)
-  return named === null ? null : `dv:${named.kind}/${encodeURIComponent(named.id)}`
-}
+import { citedAsset, parsePromptCitations, type PromptCitation } from './grammar.ts'
+import type { AssetId } from './types.ts'
 
 /**
  * The assets that a prompt cites, each once.

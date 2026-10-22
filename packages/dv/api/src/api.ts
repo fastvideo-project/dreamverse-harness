@@ -13,8 +13,8 @@ import type DvAssetPool from '@dv/asset-pool'
 import { ProjectError } from '@dv/project'
 import type DvProject from '@dv/project'
 import type {
-  AssetId, HistoryEntry, HistoryQuery, ProjectId, ProjectInfo, ProjectLine, ProjectRecord, RecordId, RecordOrigin, RunRequest, SessionId,
-  Surface,
+  AssetId, HistoryEntry, HistoryQuery, OperationCheck, ProjectId, ProjectInfo, ProjectLine, ProjectRecord, RecordId, RecordOrigin,
+  RunRequest, SessionId, Surface,
 } from '@dv/project'
 import { summarizeProject, type WireProjectSummary } from './summaries.ts'
 import {
@@ -338,7 +338,37 @@ export class ApiHandlers {
    * @throws ApiRequestError when the body or the operation is unknown, or Project refuses the call.
    */
   async runOperation(raw: unknown): Promise<ProjectRecord> {
-    const body = objectOf(raw)
+    const request = await this.runRequestOf(objectOf(raw))
+    const result = await refused(() => this.services.project.run(request))
+    if (result.record === null) throw new ApiRequestError(400, `'${request.operation}' is a read and writes no record.`, 'invalid_params')
+    return result.record
+  }
+
+  /**
+   * Check an operation call as {@link runOperation} would run it, writing nothing: the refusal sentence that the call
+   * would get now, and the operation's GPU estimate. An unknown operation and an input text that does not parse are
+   * refusals too.
+   * @param raw - the {@link OperationRequest}.
+   * @returns the check; `problems` is empty when the call can run on the current state.
+   * @throws ApiRequestError when the body or the project is unknown.
+   */
+  async checkOperation(raw: unknown): Promise<OperationCheck> {
+    try {
+      return await this.services.project.check(await this.runRequestOf(objectOf(raw)))
+    } catch (error) {
+      if (!(error instanceof ApiRequestError) || !['invalid_inputs', 'unknown_operation'].includes(error.code)) throw error
+      return { problems: [error.message], gpu_seconds: null }
+    }
+  }
+
+  /**
+   * The run request of one {@link OperationRequest}: the human origin, the parsed inputs, and `after` when an input
+   * names a producer that has not finished.
+   * @param body - the request body.
+   * @returns the request.
+   * @throws ApiRequestError when the project or the operation is unknown, or an input does not parse.
+   */
+  private async runRequestOf(body: Record<string, unknown>): Promise<RunRequest> {
     const projectId = this.requireProject(body['project'])
     const operation = stringOf(body['operation'], 'operation')
     if (!this.services.project.listOperations().some(spec => spec.name === operation)) {
@@ -356,15 +386,12 @@ export class ApiHandlers {
       // Project's input parser explains an unknown role or a malformed reference; the request is at fault.
       throw new ApiRequestError(400, messageOf(error), error instanceof ProjectError ? error.code : 'invalid_inputs')
     }
-    const request: RunRequest = {
+    return {
       ...origin, project: projectId, operation, params: objectOf(body['params']), inputs,
       ...typeof body['based_on'] === 'string' ? { based_on: brandString<RecordId>(body['based_on']) } : {},
       ...Array.isArray(body['supersedes']) ? { supersedes: body['supersedes'].filter((id): id is RecordId => typeof id === 'string') } : {},
       ...await refused(() => this.waitsForProducer(projectId, inputs)) ? { after: [] } : {},
     }
-    const result = await refused(() => this.services.project.run(request))
-    if (result.record === null) throw new ApiRequestError(400, `'${operation}' is a read and writes no record.`, 'invalid_params')
-    return result.record
   }
 
   /**

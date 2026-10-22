@@ -6,7 +6,8 @@
     "tsBuildInfoFile": "lib/tsconfig.client.tsbuildinfo"
   },
   "include": [
-    "src/types.ts"
+    "src/types.ts",
+    "src/grammar.ts"
   ],
   "references": [
     { "path": "../../util/brand" },
