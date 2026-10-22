@@ -52,7 +52,7 @@ An entry of task `t2i` implements `ModelEntry<'t2i'>` with these types, which th
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The declaration's `toRequest` trims the prompt, refuses an empty prompt, and parses `size` into an `ImageSize`; a call without `size` gives the request `size: null`, so the entry decides the default. The kernel draws the seed when the call names none. The declaration's `toOutputs` imports the PNG through `importOne` with its width and height, named `<record ID, 8 characters>.png`, records the reported `gpuSeconds` as the cost (the kernel records the estimate when it is null), and reports `model_id` and the rendered `size`; the kernel adds `seed`. The GPU estimate is `gpuSecondsPerMegapixel` of the entry times the megapixels of the call's size, or of the entry's `defaultSize` when the call names none; with 0.6, a 1024x1024 call estimates 0.63 GPU seconds and a 1792x2400 call 2.58. The summary of a record is `image "<prompt, first 60 characters>" (<size>, seed <seed>)`.
+The declaration's `toRequest` trims the prompt, refuses an empty prompt, and parses `size` into an `ImageSize`; a call without `size` gives the request `size: null`, so the entry decides the default. The kernel draws the seed when the call names none. The declaration's `toOutputs` imports the PNG through `importOne` with its width and height, named `<record ID, 8 characters>.png`, records the reported `gpuSeconds` as the cost (the kernel records the estimate when it is null), and reports `model_id` and the rendered `size`; the kernel adds `seed`. The GPU estimate is `gpuSecondsPerMegapixel` of the entry times the megapixels of the call's size, or of the entry's `defaultSize` when the call names none; with 0.6, a 1024x1024 call estimates 0.63 GPU seconds and a 1792x2400 call 2.58. The summary of a record is `image "<prompt>" (<size>, seed <seed>)`, the prompt written by `quotePrompt(prompt, 60)` of `@dv/generation`.
 
 | File | Content |
 | --- | --- |
@@ -104,12 +104,12 @@ The definition sits in the stable tool section of every agent request; registeri
 
 #### What the model sees
 
-A call returns the text block below, then the image as an image block when an attachment service is mounted. A refused call writes no record and fails the tool call with the reason and the closing sentence of `@dv/generation`; the reasons of this package are below, and the model's validation reports its own problems. A call that passes the turn's GPU budget without `user_requested` is refused with the summary `Generate image with <provider>/<model>: "<prompt, first 80 characters>"` and the rounded estimate. A render failure fails the record and the tool call with the provider's message.
+A call returns the text block below, then the image as an image block when an attachment service is mounted. A refused call writes no record and fails the tool call with the reason and the closing sentence of `@dv/generation`; the reasons of this package are below, and the model's validation reports its own problems. A call that passes the turn's GPU budget without `user_requested` is refused with the summary `Generate image with <provider>/<model>: "<prompt>"` and the rounded estimate. In that summary and in the result below, `"<prompt>"` is the trimmed prompt as a JSON string, cut with `…` after 80 and 60 characters. A render failure fails the record and the tool call with the provider's message.
 
 ##### Success result
 
 ```markdown
-done <record>: image "<prompt, first 60 characters>" (<width>x<height>, seed <seed>)
+done <record>: image "<prompt>" (<width>x<height>, seed <seed>)
 - image: <asset ID> (image/png) <asset URL>
 params: <params JSON>
 report: {"seed":<seed>,"model_id":"<backend model ID>","size":"<width>x<height>"}

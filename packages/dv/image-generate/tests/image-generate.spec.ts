@@ -204,7 +204,7 @@ describe('dvImageGenerate', () => {
     expect(ctx.tools.get('dv_image_generate')?.output?.render?.(args, result)).toEqual([
       {
         type: 'text',
-        text: `done ${record.id}: image "A tea shop poster that reads "Moon Garden Tea"" (768x1024, seed 7)\n`
+        text: `done ${record.id}: image "A tea shop poster that reads \\"Moon Garden Tea\\"" (768x1024, seed 7)\n`
           + `- image: ${String(asset?.asset_id)} (image/png) ${String(asset?.url)}\n`
           + `params: ${JSON.stringify(record.params)}\n`
           + 'report: {"seed":7,"model_id":"fake-image-1","size":"768x1024"}',
@@ -221,6 +221,7 @@ describe('dvImageGenerate', () => {
     expect(request).toMatchObject({ prompt: 'a lantern', size: null, extra: {} })
     expect(Number.isInteger(request?.seed)).toBe(true)
     expect(result.report).toEqual({ seed: request?.seed, model_id: 'fake-image-1', size: '1024x1024' })
+    expect(result.summary).toBe(`image "a lantern" (1024x1024, seed ${String(request?.seed)})`)
   })
 
   it('refuses an empty prompt, a malformed size and a request the model refuses, before any record', async () => {

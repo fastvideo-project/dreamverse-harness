@@ -9,7 +9,7 @@
  * @module @dv/image-generate
  */
 import type { Context } from '@deepseek-ai/cordis'
-import { defineGeneration, importOne } from '@dv/generation'
+import { defineGeneration, importOne, quotePrompt } from '@dv/generation'
 import type { OperationContext, OperationResult, ProjectRecord } from '@dv/project'
 
 declare module '@dv/models' {
@@ -107,7 +107,7 @@ async function storeImage(_ctx: Context, run: OperationContext, result: Promise<
 function summarize(record: ProjectRecord): string {
   const { prompt } = record.params
   const { size, seed } = { ...record.report }
-  return `image "${String(prompt).slice(0, 60)}" (${String(size)}, seed ${String(seed)})`
+  return `image ${quotePrompt(String(prompt), 60)} (${String(size)}, seed ${String(seed)})`
 }
 
 /** The Image service: the `image.generate` operation and the `GenerationApi` methods for workflows. */

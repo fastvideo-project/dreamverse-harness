@@ -92,7 +92,7 @@ interface GenerationSpecFields<P extends PrimitiveId> {
   /** The GPU estimate of the params with the entry that their key names. */
   estimate(params: Record<string, unknown>, entry: ModelEntry<TaskOfPrimitive<P>>): { gpu_seconds: number }
   /**
-   * The confirmation text of an agent call. Default: `<label.en> with <provider>/<model>: "<prompt, first 80 characters>"`.
+   * The confirmation text of an agent call. Default: `<label.en> with <provider>/<model>: <quotePrompt(prompt, 80)>`.
    * The refusal that shows it states the estimate on the next line.
    */
   confirmText?(params: Record<string, unknown>): string
@@ -182,6 +182,18 @@ class Unavailable extends Error {
 /** The reason for the problems that a model finds in a request. */
 function modelReason(entry: ModelEntry, problems: readonly string[]): string {
   return `Model ${formatModelKey(entry)} cannot generate this: ${problems.join(' ')}`
+}
+
+/**
+ * A prompt as one quoted line of a summary: trimmed, cut after `limit` characters (grapheme clusters, so that no emoji
+ * is split) with `…` when longer, and written as a JSON string, so that its quotes and line breaks are escaped.
+ * @param prompt - the prompt.
+ * @param limit - the most characters to keep.
+ * @returns the quoted prompt.
+ */
+export function quotePrompt(prompt: string, limit: number): string {
+  const characters = Array.from(new Intl.Segmenter().segment(prompt.trim()), ({ segment }) => segment)
+  return JSON.stringify(characters.length > limit ? `${characters.slice(0, limit).join('')}…` : characters.join(''))
 }
 
 /**
@@ -321,7 +333,7 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
         confirmSummary: ({ request: { params } }) => {
           const { provider, model } = modelKey(params)
           const gpuSeconds = this.estimate({ params }).gpu_seconds
-          const text = spec.confirmText?.(params) ?? `${label.en} with ${provider}/${model}: "${String(params['prompt']).slice(0, 80)}"`
+          const text = spec.confirmText?.(params) ?? `${label.en} with ${provider}/${model}: ${quotePrompt(String(params['prompt']), 80)}`
           return { text, gpu_seconds: gpuSeconds }
         },
         estimate: params => this.estimate({ params }),

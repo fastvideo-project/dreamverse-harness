@@ -45,6 +45,8 @@ A primitive package declares its row of `PrimitiveTypes` and its tasks in `TaskM
 
 `importOne(run, file)` imports one output of a running call as an asset named `<record ID, 8 characters>.<mime subtype>`, such as `a1b2c3d4.png`. It throws for a call without a record.
 
+`quotePrompt(prompt, limit)` writes a prompt as one quoted line of a summary: it trims the prompt, cuts it after `limit` characters with `…`, and writes it as a JSON string, which escapes its quotes and line breaks.
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -52,9 +54,9 @@ A primitive package declares its row of `PrimitiveTypes` and its tasks in `TaskM
 
 The service registers the component, then the task labels with `dvModels.labelTasks`, for as long as it lives; a second declaration that labels one of the same tasks fails to start. The operation puts the model key and `prompt` before the declaration's params, and `seed` (unless `seed` is `false`) and `extra` after them. It is not deterministic, uses the GPU, has version `1`, and confirms with `over_gpu_budget`. The precondition, which the agent tool also runs before confirmation, refuses a call with the reasons of `check`; it passes no chained role, so a render never accepts one. `check` reads only the call's project, params and inputs. It resolves the entry with `dvModels.resolve`, resolves each input to its assets, adds each chained role as `{ role, ref: null, resolved_asset: null }`, and builds the request. When every input has an asset, it adds the problems of `validateGenerationRequest`; otherwise `execute` checks the full request before the model runs. `execute` uses the `seed` param or draws one (no seed when `seed` is `false`), builds and validates the request again, renders, and passes the result to `toOutputs`. It adds `seed` to the report, and records the declaration's estimate as the cost when `toOutputs` returns none. `findTake` compares the declared params (the keys of the operation's params) and the inputs as JSON, so key order does not matter, and compares the inputs of each role in order. The kernel also stores an undeclared param, such as a stray `seed`; it does not change the result of `findTake`.
 
-| File                           | Content                                                                                              |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| [`src/index.ts`](src/index.ts) | `defineGeneration`, `importOne`, `GenerationSpec`, `GenerationApi`, `GenerationCall`, `RequestInput` |
+| File                           | Content                                                                                                             |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| [`src/index.ts`](src/index.ts) | `defineGeneration`, `importOne`, `quotePrompt`, `GenerationSpec`, `GenerationApi`, `GenerationCall`, `RequestInput` |
 
 -----
 
@@ -73,7 +75,7 @@ The service registers the component, then the task labels with `dvModels.labelTa
 
 #### What the model sees
 
-The kernel turns each generation operation into the agent tool `dv_<component>_<verb>`. Its params begin with `modality`, `task`, `provider`, `model` and `prompt`, and end with `seed` and `extra`, with the descriptions below; a declaration with `seed: false` has no `seed`. The tool takes `user_requested`, and a call without it is refused when the turn passes the GPU budget, with the text `<label.en> with <provider>/<model>: "<prompt, first 80 characters>"` unless the declaration gives its own; the next line of the refusal gives the estimate. A refused call fails the tool call with the reasons and the sentence `Nothing was generated; change the inputs or params, then call again.` When the entry's `facts()` or `validateGenerationRequest` rejects, the reason reads `Model <modality>/<task>/<provider>/<model> is unavailable: <message>` and the sentence is `Nothing was generated; no change to the call helps while the model is unavailable.` A model problem reads `Model <modality>/<task>/<provider>/<model> cannot generate this: <problems>`. A result report carries `seed`.
+The kernel turns each generation operation into the agent tool `dv_<component>_<verb>`. Its params begin with `modality`, `task`, `provider`, `model` and `prompt`, and end with `seed` and `extra`, with the descriptions below; a declaration with `seed: false` has no `seed`. The tool takes `user_requested`, and a call without it is refused when the turn passes the GPU budget, with the text `<label.en> with <provider>/<model>: "<prompt>"`, the prompt written by `quotePrompt(prompt, 80)`, unless the declaration gives its own; the next line of the refusal gives the estimate. A refused call fails the tool call with the reasons and the sentence `Nothing was generated; change the inputs or params, then call again.` When the entry's `facts()` or `validateGenerationRequest` rejects, the reason reads `Model <modality>/<task>/<provider>/<model> is unavailable: <message>` and the sentence is `Nothing was generated; no change to the call helps while the model is unavailable.` A model problem reads `Model <modality>/<task>/<provider>/<model> cannot generate this: <problems>`. A result report carries `seed`.
 
 ##### Shared param descriptions
 

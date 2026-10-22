@@ -52,7 +52,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-声明的 `toRequest` 去掉提示词首尾空白，拒绝空提示词，并把 `size` 解析为 `ImageSize`；没有 `size` 的调用让请求的 `size` 为 null，由条目决定默认值。调用没有指定种子时，内核抽取种子。声明的 `toOutputs` 经 `importOne` 导入带宽高的 PNG，命名为 `<记录 ID 前 8 个字符>.png`，把报告的 `gpuSeconds` 记为成本（它为 null 时，内核记录估计值），并在报告中给出 `model_id` 和渲染的 `size`；内核加入 `seed`。GPU 估计值是条目的 `gpuSecondsPerMegapixel` 乘以调用尺寸的百万像素数，调用没有指定尺寸时用条目的 `defaultSize`；费率为 0.6 时，1024x1024 的调用估计 0.63 GPU 秒，1792x2400 的调用估计 2.58 GPU 秒。记录的摘要是 `image "<prompt, first 60 characters>" (<size>, seed <seed>)`。
+声明的 `toRequest` 去掉提示词首尾空白，拒绝空提示词，并把 `size` 解析为 `ImageSize`；没有 `size` 的调用让请求的 `size` 为 null，由条目决定默认值。调用没有指定种子时，内核抽取种子。声明的 `toOutputs` 经 `importOne` 导入带宽高的 PNG，命名为 `<记录 ID 前 8 个字符>.png`，把报告的 `gpuSeconds` 记为成本（它为 null 时，内核记录估计值），并在报告中给出 `model_id` 和渲染的 `size`；内核加入 `seed`。GPU 估计值是条目的 `gpuSecondsPerMegapixel` 乘以调用尺寸的百万像素数，调用没有指定尺寸时用条目的 `defaultSize`；费率为 0.6 时，1024x1024 的调用估计 0.63 GPU 秒，1792x2400 的调用估计 2.58 GPU 秒。记录的摘要是 `image "<prompt>" (<size>, seed <seed>)`，提示词由 `@dv/generation` 的 `quotePrompt(prompt, 60)` 写出。
 
 | 文件 | 内容 |
 | --- | --- |
@@ -104,12 +104,12 @@ The image size as WIDTHxHEIGHT in pixels, such as 1024x768. It must meet the siz
 
 #### 模型看到什么
 
-一次调用返回下面的文本块；挂载了附件服务时，其后是作为图片块的图片。被拒绝的调用不写记录，并以理由和 `@dv/generation` 的结束句使工具调用失败；本包的理由如下，模型校验报告它自己的问题。不带 `user_requested` 且超过本轮 GPU 预算的调用被拒绝，并给出摘要 `Generate image with <provider>/<model>: "<prompt, first 80 characters>"` 和四舍五入后的估计值。渲染失败时，记录和工具调用以提供方的消息失败。
+一次调用返回下面的文本块；挂载了附件服务时，其后是作为图片块的图片。被拒绝的调用不写记录，并以理由和 `@dv/generation` 的结束句使工具调用失败；本包的理由如下，模型校验报告它自己的问题。不带 `user_requested` 且超过本轮 GPU 预算的调用被拒绝，并给出摘要 `Generate image with <provider>/<model>: "<prompt>"` 和四舍五入后的估计值。在该摘要和下面的结果中，`"<prompt>"` 是去掉首尾空白后写成 JSON 字符串的提示词，分别在 80 和 60 个字符后截断并加 `…`。渲染失败时，记录和工具调用以提供方的消息失败。
 
 ##### Success result
 
 ```markdown
-done <record>: image "<prompt, first 60 characters>" (<width>x<height>, seed <seed>)
+done <record>: image "<prompt>" (<width>x<height>, seed <seed>)
 - image: <asset ID> (image/png) <asset URL>
 params: <params JSON>
 report: {"seed":<seed>,"model_id":"<backend model ID>","size":"<width>x<height>"}
