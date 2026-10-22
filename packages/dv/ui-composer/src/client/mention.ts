@@ -1,8 +1,9 @@
 /**
  * The `@` source that lists the project items of the project the shell has open: the items of the mention kinds that
  * plugin UI halves register in `dvMentions`, and assets of every media type. A pick inserts a reference chip whose text
- * is `@[<label>](dv:<kind>/<id>)`; the host plugin `@dv/chat-references` expands that address into record and asset IDs
- * for the model, and puts the assets of the `dv:asset/<id>` chips of a sent message on the canvas.
+ * is the citation `@[<label>](dv:<kind>/<id>)` that `formatCitation` of `@dv/project/grammar` writes; the host plugin
+ * `@dv/chat-references` expands that address into record and asset IDs for the model, and puts the assets of the
+ * `dv:asset/<id>` chips of a sent message on the canvas.
  *
  * @module @dv/ui-composer/mention
  */
@@ -10,6 +11,7 @@ import { createElement, type ComponentType } from 'react'
 import type { InputTriggerCandidate, InputTriggerSource, PickOutcome } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { IconPaperclipOutlineRegular, type IconProps } from '@deepseek-ai/dsh-client-ui-primitives'
+import { citationTarget, formatCitation } from '@dv/project/grammar'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import type { DvMentions, MentionKind } from '@dv/ui-kit/registries.ts'
 import { mediaTypeOf } from '@dv/ui-kit/media-type.ts'
@@ -20,16 +22,6 @@ import type { MediaType } from '@dv/ui-media/contract'
 
 /** The source name; reference chips carry it so their codec serializes them. */
 export const MENTION_SOURCE = 'dv-project'
-
-/**
- * The reference text of one project item.
- * @param label - the chip label.
- * @param uri - the `dv:` address.
- * @returns `@[label](uri)`.
- */
-export function referenceText(label: string, uri: string): string {
-  return `@[${label.replaceAll(']', '')}](${uri})`
-}
 
 function poster(url: string): ComponentType<IconProps> {
   // Sized to stay clear of the label in the 14 px icon column of the @ menu.
@@ -127,8 +119,10 @@ export function projectMentionSource(mentions: DvMentions, mediaTypes: () => rea
   /** The chip of a picked candidate. */
   function insert(candidate: InputTriggerCandidate): PickOutcome {
     const { uri, label } = JSON.parse(candidate.value ?? '{}') as { uri?: string; label?: string }
-    if (uri === undefined || label === undefined) return undefined
-    const text = referenceText(label, uri)
+    // An item URI may hold the parentheses of an ID raw; the kernel writer encodes them, so the chip text reads back as the item.
+    const target = uri === undefined ? null : citationTarget(uri)
+    if (target === null || label === undefined) return undefined
+    const text = formatCitation(label, target.kind, target.id)
     return { insert: { source: MENTION_SOURCE, ref: text, label, clipboardText: text } }
   }
   return {

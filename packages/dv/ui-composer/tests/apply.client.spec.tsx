@@ -192,11 +192,11 @@ async function mountSessionComposer() {
   const rows: MenuRow[] = []
   const opened: Array<{ name: string; request: unknown }> = []
   const tabs: string[] = []
-  const draft = { text: '', rev: 7 }
+  const draft = { text: '', rev: 7, refuseChips: false }
   const input = {
     state: { getSnapshot: () => ({ draft: draft.text, draftRev: draft.rev }) },
     setDraft: (text: string) => { draft.text = text; calls.push(`draft ${text}`) },
-    insertReference: (chip: { ref: string }) => { calls.push(`chip ${chip.ref}`); return true },
+    insertReference: (chip: { ref: string }) => { calls.push(`chip ${chip.ref}`); return !draft.refuseChips },
     focus: () => { calls.push('focus') },
   }
   runtime.ctx.provide('inputTriggers', {
@@ -280,6 +280,18 @@ describe('the session composer', () => {
 
     await composer.dispose()
     expect(view.getByRole('button', { name: '工作区内修改' })).toBeTruthy()
+    await runtime.dispose()
+  })
+
+  it('writes each prefill chip with the kernel citation writer, and falls back to its text when the input refuses it', async () => {
+    const { runtime, composer, calls, draft, provideInput } = await mountSessionComposer()
+    provideInput()
+    runtime.renderRoot()
+    draft.refuseChips = true
+    dispatchCompose({ text: '', refs: [{ kind: 'test_ref', id: 'mia(young)', label: 'Mia' }] })
+    const text = '@[Mia](dv:test_ref/mia%28young%29)'
+    expect(calls).toEqual(['draft ', `chip ${text}`, `draft ${text} `, 'focus'])
+    await composer.dispose()
     await runtime.dispose()
   })
 })

@@ -18,7 +18,8 @@ import { MEDIA_TYPES as MEDIA_ENTRIES } from '../../ui-asset-pool/src/client/med
 const MEDIA_TYPES = MEDIA_ENTRIES.map(entry => entry.type)
 import { asset, fixtureState, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply, inject } from '../src/client/index.ts'
-import { MENTION_SOURCE, projectItems, projectMentionSource, referenceText } from '../src/client/mention.ts'
+import { formatCitation } from '@dv/project/grammar'
+import { MENTION_SOURCE, projectItems, projectMentionSource } from '../src/client/mention.ts'
 
 afterEach(() => { vi.unstubAllGlobals(); publishCurrentProject(null); document.documentElement.lang = '' })
 
@@ -196,6 +197,18 @@ describe('projectMentionSource in a prompt occurrence', () => {
     const text = '@[Lit](dv:test_look/l1)'
     expect(prompt().onPick(pickOf(lit))).toEqual({ insert: { source: MENTION_SOURCE, ref: text, label: 'Lit', clipboardText: text } })
   })
+
+  it('writes the citation of a picked item with the kernel writer, which encodes the parentheses of an ID', () => {
+    const value = JSON.stringify({ uri: 'dv:test_look/mia(young)', label: 'Mia' })
+    const text = '@[Mia](dv:test_look/mia%28young%29)'
+    expect(prompt().onPick(pickOf({ name: 'Mia', value }))).toEqual({ insert: { source: MENTION_SOURCE, ref: text, label: 'Mia', clipboardText: text } })
+  })
+
+  it('inserts nothing for a picked value without a citation URI or without a label', () => {
+    for (const value of [JSON.stringify({ uri: 'https://x', label: 'Hat' }), JSON.stringify({ uri: 'dv:test_look/l1' })]) {
+      expect(prompt().onPick(pickOf({ name: 'Hat', value }))).toBeUndefined()
+    }
+  })
 })
 
 describe('projectMentionSource codec', () => {
@@ -208,8 +221,8 @@ describe('projectMentionSource codec', () => {
     publishCurrentProject('p1')
     const { codec } = projectMentionSource({ kinds: createRegistry<MentionKind>(kind => [kind.id], kind => kind.id) }, () => [])
     if (codec === undefined) throw new Error('the source has no codec')
-    const asset = referenceText('hero.png', 'dv:asset/a%2B1')
-    const character = referenceText('Hero', 'dv:character/hero')
+    const asset = formatCitation('hero.png', 'asset', 'a+1')
+    const character = formatCitation('Hero', 'character', 'hero')
     expect(await codec.serialize(asset, new AbortController().signal)).toBe(asset)
     expect(await codec.serialize(character, new AbortController().signal)).toBe(character)
     expect(codec.clipboardText(asset)).toBe(asset)

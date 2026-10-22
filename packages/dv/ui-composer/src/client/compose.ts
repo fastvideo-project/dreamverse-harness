@@ -6,29 +6,22 @@
  * @module @dv/ui-composer/compose
  */
 import type { SessionInput } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type { DvComposeDetail, DvComposeRef } from '@dv/ui-kit/compose.ts'
-import { MENTION_SOURCE, referenceText } from './mention.ts'
+import { formatCitation } from '@dv/project/grammar'
+import type { DvComposeDetail } from '@dv/ui-kit/compose.ts'
+import { MENTION_SOURCE } from './mention.ts'
 
 /** A mounted composer: resolves its session's input facade on demand. */
 type ComposerTarget = () => SessionInput | undefined
 
-const targets: ComposerTarget[] = []
+/** The mounted composers, in mount order; a Set keeps insertion order, so the newest is the last. */
+const targets = new Set<ComposerTarget>()
 let waiting: DvComposeDetail | null = null
-
-/**
- * The `dv:` address of one compose reference.
- * @param ref - the reference from the event.
- * @returns the address.
- */
-export function uriOf(ref: DvComposeRef): string {
-  return `dv:${ref.kind}/${encodeURIComponent(ref.id)}`
-}
 
 /** Fill one composer: the text, then one chip per reference; a refused chip falls back to its plain reference text. */
 function prefill(input: SessionInput, detail: DvComposeDetail): void {
   input.setDraft(detail.text === '' ? '' : `${detail.text} `)
   for (const ref of detail.refs) {
-    const text = referenceText(ref.label, uriOf(ref))
+    const text = formatCitation(ref.label, ref.kind, ref.id)
     const state = input.state.getSnapshot()
     const end = state.draft.length
     const inserted = input.insertReference(
@@ -45,7 +38,7 @@ function prefill(input: SessionInput, detail: DvComposeDetail): void {
  * @param detail - the event detail.
  */
 export function deliverCompose(detail: DvComposeDetail): void {
-  const input = targets[targets.length - 1]?.()
+  const input = [...targets].at(-1)?.()
   if (input === undefined) {
     waiting = detail
     return
@@ -60,10 +53,7 @@ export function deliverCompose(detail: DvComposeDetail): void {
  * @returns the unregister function.
  */
 export function mountComposer(target: ComposerTarget): () => void {
-  targets.push(target)
+  targets.add(target)
   if (waiting !== null) deliverCompose(waiting)
-  return () => {
-    const index = targets.lastIndexOf(target)
-    if (index >= 0) targets.splice(index, 1)
-  }
+  return () => { targets.delete(target) }
 }

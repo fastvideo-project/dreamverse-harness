@@ -37,6 +37,6 @@ describe('DSH client rules', () => {
 
   it('exports no value from @dv/ui-composer/contract and no new value from the client entry', () => {
     expect(Object.keys(contract)).toEqual([])
-    expect(Object.keys(entry).sort()).toEqual(['MENTION_SOURCE', 'apply', 'inject', 'projectItems', 'referenceText', 'uriOf'])
+    expect(Object.keys(entry).sort()).toEqual(['MENTION_SOURCE', 'apply', 'inject', 'projectItems'])
   })
 })

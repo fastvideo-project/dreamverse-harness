@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  citedElement, elementCitationUri, formatCitation, formatInputRef, formatInputSyntax, parsePromptCitations, splitInputRef,
+  citationTarget, citedElement, elementCitationUri, formatCitation, formatInputRef, formatInputSyntax, parsePromptCitations, splitInputRef,
 } from '../src/grammar.ts'
 
 describe('citation grammar', () => {
@@ -20,6 +20,12 @@ describe('citation grammar', () => {
     expect(formatCitation('', 'asset', 'a1')).toBe('@[a1](dv:asset/a1)')
     expect(formatCitation('Mia\nfront', 'asset', 'a1')).toBe('@[Mia front](dv:asset/a1)')
     expect(parsePromptCitations('@[](dv:asset/a1) @[Mia\nfront](dv:asset/a1)').map(c => c.label)).toEqual(['', 'Mia\nfront'])
+  })
+
+  it('reads the kind and the ID of any citation URI, which the writer writes back', () => {
+    expect(citationTarget('dv:clip/c%201')).toEqual({ kind: 'clip', id: 'c 1' })
+    expect(formatCitation('Clip', 'clip', 'c 1')).toBe('@[Clip](dv:clip/c%201)')
+    expect([citationTarget('https://x'), citationTarget('dv:nothing')]).toEqual([null, null])
   })
 
   it('names no element for an asset, a record or an input citation', () => {

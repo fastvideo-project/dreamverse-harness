@@ -44,8 +44,7 @@ import { ToolLabelRow } from './views.tsx'
 // The DreamVerse look of the DSH composer card in the 对话 tab; the bundle injects the sheet when the plugin loads.
 import './composer.css'
 
-export { projectItems, referenceText, MENTION_SOURCE } from './mention.ts'
-export { uriOf } from './compose.ts'
+export { projectItems, MENTION_SOURCE } from './mention.ts'
 
 /** The branded session ID the session-scoped DSH UI slots receive. */
 type SessionId = ToolCallViewProps['sessionId']

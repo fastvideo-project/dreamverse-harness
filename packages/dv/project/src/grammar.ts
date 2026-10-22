@@ -73,8 +73,17 @@ export function citedInput(uri: string): string | null {
  * @returns the kind and the decoded ID, or null.
  */
 export function citedElement(uri: string): { kind: string; id: string } | null {
+  return NOT_ELEMENTS.some(prefix => uri.startsWith(prefix)) ? null : citationTarget(uri)
+}
+
+/**
+ * The kind and the ID that a citation URI names, whatever the kind; {@link formatCitation} writes them back.
+ * @param uri - a `dv:` URI.
+ * @returns the kind and the decoded ID of a `dv:<kind>/<id>` URI, or null for any other text.
+ */
+export function citationTarget(uri: string): { kind: string; id: string } | null {
   const slash = uri.indexOf('/')
-  if (!uri.startsWith('dv:') || slash < 0 || NOT_ELEMENTS.some(prefix => uri.startsWith(prefix))) return null
+  if (!uri.startsWith('dv:') || slash < 0) return null
   return { kind: uri.slice('dv:'.length, slash), id: decodeURIComponent(uri.slice(slash + 1)) }
 }
 
