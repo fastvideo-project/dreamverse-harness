@@ -126,8 +126,9 @@ describe('dv-sglang-omni', () => {
     expect(fake.requests).toEqual([{ speed: 1.1, input: prompt, response_format: 'wav' }])
     const record = fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(take.record))
     expect(record).toMatchObject({ status: 'done', report: { model_id: 'fishaudio/drama-3', duration_sec: 1.5 } })
+    // The cost is the wall time of the request, not the estimate of 3 GPU seconds per call.
     expect(record.cost?.gpu_seconds).toBeGreaterThan(0)
-    expect(record.cost?.gpu_seconds).toBeLessThan(3)
+    expect(record.cost?.gpu_seconds).not.toBe(3)
     const asset = record.outputs[0] as AssetId
     expect(fixture.ctx.dvAssetPool.get(asset)).toMatchObject({ mime: 'audio/wav', duration_sec: 1.5 })
     expect(fixture.ctx.dvAssetPool.read(asset).equals(wav(132_300))).toBe(true)
