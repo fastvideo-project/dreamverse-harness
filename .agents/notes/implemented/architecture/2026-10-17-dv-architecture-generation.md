@@ -14,48 +14,13 @@ Each added media type also edited shared packages. The image-generation change t
 
 Generation has three parts (the [layers note](2026-10-17-dv-architecture-layers.md) owns the layer map):
 
-- `@dv/models` (base layer) is the model catalog, the `dvModels` service, into which provider plugins register entries. It is a [capability seam](2026-06-13-capability-seams.md).
+- `@dv/models` (base layer) is the model catalog, the `dvModels` service, into which provider plugins register entries. It is a [capability seam](2026-06-13-capability-seams.md). It registers no operation and writes no record.
 - `@dv/generation` (base layer) is a library. `defineGeneration(spec)` turns the declaration of one primitive into a Cordis service with one component key and one operation. It names no primitive.
-- One primitive package (domain layer) per input and output signature declares its types and calls `defineGeneration`. `@dv/shot-render` is the only primitive package in the repository.
+- One primitive package (domain layer) per input and output signature declares its types and calls `defineGeneration`.
 
 A *primitive* is one input and output signature of a model call: one package, one component key, one operation and one `defineGeneration` call. A *task* names which inputs a model uses, and each task runs on one primitive.
 
-### The catalog keyed by primitive and task
-
-`packages/dv/models/src/types.ts` declares two open interfaces. `PrimitiveTypes` holds one row per primitive with its `modality`, the `facts` a request is built from, the `request`, the `result` of `render`, and the `entry` fields that only this primitive reads. `TaskMap` maps each task to its primitive. The catalog declares only the `video` row (entry field `gpuSecondsPerVideoSecond`) and the tasks `t2v` and `ref2v`; another package adds a row or a task through `declare module '@dv/models'`. `ModelEntry<T>` takes the types of the row that task `T` runs on.
-
-One entry is one model of one provider serving one task, keyed `modality/task/provider/model`. A Consumer reaches entries only through its task list: `resolve(tasks, params)` returns the entry that the call's key fields name, or throws a refusal that names `dv_models_list`; `whileServing(tasks, start)` keeps a registration alive while an entry serves one of the tasks. The catalog registers no operation and writes no record.
-
-The agent reads the catalog with `dv_models_list` (keys, descriptions and prompt-skill names) and `dv_models_get` (one entry's key, description and `schema()`: limits, inputs, and the params of `extra`). `packages/dv/models/tests/models.spec.ts` checks that neither tool names a media type.
-
-Task labels come from the primitive declarations: `GenerationSpec.tasks` gives each task a Chinese and an English label, the generated service registers them with `dvModels.labelTasks`, `@dv/api` serves them at `GET /api/dv/tasks`, and UI packages show them with `taskLabel` of `packages/dv/ui-kit/src/client/tool-labels.ts`.
-
-### `defineGeneration` and `GenerationApi`
-
-`defineGeneration` (`packages/dv/generation/src/index.ts`) fixes everything that does not depend on the signature. The service registers the component and the task labels, and registers the operation through `whileServing`, so the operation and its agent tool exist only while a model serves one of its tasks. The params are the four key fields and `prompt`, the declaration's params, then `seed` (unless the declaration sets `seed: false`) and `extra`. Every generation operation has `deterministic: false`, `resource: 'gpu'`, `confirm: 'over_gpu_budget'` and version `1`. `estimate` is required, and a record without a reported cost keeps the estimate. Before any record, the precondition refuses a call with every reason of `check`; `execute` validates the request again before the model runs.
-
-The declaration supplies only the code that differs: `toRequest` builds the request from the model's facts, params, inputs and seed; `toOutputs` imports the result (`importOne` imports one output); `estimate`, `summarize`, and the optional `confirmText`, `toolParams` and `prepareToolCall`.
-
-The service also implements `GenerationApi` for workflows: `render`, `check(call, state, chained?)`, `estimate`, `findTake(state, call, where)` and `parseInputs`. A chained role reaches `toRequest` with `ref: null`, so role counts and prompt citations see it while the model check waits for `execute`; the render path passes no chained role. `findTake` compares only the declared params and the inputs. The [workflows note](2026-10-17-dv-architecture-workflows.md) owns how `@dv/workflow-kit` uses these methods.
-
-### `shot.render` on the helper
-
-`@dv/shot-render` is `class DvShotRender extends defineGeneration(RENDER_DECLARATION)`: component `shot`, operation `shot.render`, primitive `video`, tasks `t2v` (文字生成 / From text) and `ref2v` (参考图生成 / From references). Its tool-only argument `continue_from` becomes a `first_frame` input in `prepareToolCall`; `toOutputs` stores the video and its last still; `estimate` multiplies the duration by the entry's `gpuSecondsPerVideoSecond`.
-
-### Model-line skills
-
-The catalog owns the skill `video-model-selection`. A provider ships a prompt skill per model and task as `ModelEntry.promptSkill`; `dvModels` registers it while the entry lives, for the agent only, and the provider registers no skill itself. A prompt skill's description names the model and the task and no tool. Catalog and provider skills use only the catalog's words and never name a consumer's operation or tool, such as `shot.render` or `dv_shot_render`, nor a workflow word such as `plan`. The [fitness test note](../process/2026-10-17-dv-architecture-fitness-test.md) owns the checks that enforce this.
-
-### Adding a primitive
-
-A primitive package adds a primitive without editing any other package:
-
-1. Declare the row and the tasks in the package's own source, such as `declare module '@dv/models' { interface PrimitiveTypes { image: {…} } interface TaskMap { t2i: 'image' } }`, with entry fields such as `gpuSecondsPerCall`.
-2. Default-export `defineGeneration({...})` with the tasks and their labels, the input roles, the outputs, `toRequest`, `toOutputs`, `estimate` and `summarize`.
-3. A provider imports the request type from the primitive package with `import type`, the only import of a domain package that a provider may make, fills the entry fields from a required config field, and registers its entries.
-4. The bundle mounts the primitive package and the provider.
-
-Input roles that no primitive has require their own primitive: lip sync produces video from input roles that `shot.render` lacks, so it is its own primitive package. A task with known roles edits its provider, the `tasks` record of its primitive's declaration, and the task rules of `@dv/shot-plan` (`takesReferences`, `takesFirstFrame`). Video-only test fakes outside `@dv/models` type their tasks as `TaskOfPrimitive<'video'>`, so an added `TaskMap` row breaks no other package's test. The [UI registries note](2026-10-17-dv-architecture-ui-registries.md) owns how the canvas shows the records of any generation operation.
+The cut follows the signature, not the media type, because the signature is what varies between models. `defineGeneration` fixes once the parts that do not depend on the signature: the record, the GPU confirmation, the required estimate, the seed, and the check before the record. A primitive package declares its own catalog row and tasks through `declare module '@dv/models'` and supplies only the code that differs, so an added primitive edits neither `@dv/models` nor another primitive. Video-only test fakes outside `@dv/models` type their tasks as `TaskOfPrimitive<'video'>`, so an added `TaskMap` row breaks no other package's test. Task labels travel from the declaration through the catalog to the views, and the catalog registers the prompt skill of each provider entry, so no provider copies registration code and no catalog or provider skill names a consumer. The catalog, the helper, `shot.render`, the model-line skills and the providers are documented in [DreamVerse generation](../../../../docs/dreamverse/subsystems/generation.md), and the steps to add a primitive in [Adding a generation primitive](../../../../docs/dreamverse/cookbook/adding-a-generation-primitive.md).
 
 ## Alternatives considered
 

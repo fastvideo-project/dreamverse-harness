@@ -18,63 +18,22 @@ The architecture fitness test `scripts/dv-architecture.ts`, run against the code
 
 ## Decision
 
-Each DreamVerse plugin has one goal, and each plugin can be added or removed alone. A plugin is one host package, plus one UI package `ui-<name>` when it has a browser half, and the bundle composes it with one row per package in `packages/bundle/dv/cordis.patch.yml`. The ten layers below and their one dependency direction serve that goal: a package depends only on layers that know nothing about it, so adding or removing a plugin edits no package below it and no sibling.
+Each DreamVerse plugin has one goal, and each plugin can be added or removed alone. A plugin is one host package, plus one UI package `ui-<name>` when it has a browser half, and the bundle composes it with one row per package in `packages/bundle/dv/cordis.patch.yml`. Ten layers and their one dependency direction serve that goal: a package depends only on layers that know nothing about it, so adding or removing a plugin edits no package below it and no sibling.
 
-### The layers
+`layerOf` in the fitness test infers the layer of each package from its folder name, and for a provider from a `dvModels.register(` call, so no package declares its layer. A host package that its UI package reads also publishes a client face `./types`, which the browser program compiles. A face imports and augments only other faces, so the browser program never compiles host code.
 
-`layerOf` in [`scripts/dv-architecture.ts`](../../../../scripts/dv-architecture.ts) infers the layer of each package from its folder name, and for a provider from a `dvModels.register(` call in its `src`. No package declares its layer. The constants `BASE`, `SURFACE` and `UI_CORE` list the base, surface and UI-core packages; a folder `workflow-*` is a workflow, `ui-*` is a UI package, and every other host package is a domain plugin.
-
-| Layer          | Packages (under `packages/dv/` unless marked)                                           | Role                                                                                                                                |
-| -------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `kernel`       | `project`                                                                               | Records, operations, reducers, reference kinds and the registries that plugins fill; names no plugin.                               |
-| `base`         | `models`, `generation`, `asset-pool`, `ffmpeg`, `reference-kit`                         | Services and libraries for every domain plugin: model catalog, generation helper, assets, external programs, reference-noun helper. |
-| `provider`     | `fastvideo`, `fastvideo-generation-client`                                              | Register model entries in the `dvModels` catalog and ship each model's prompt skills.                                               |
-| `domain`       | `character`, `location`, `style`, `shot-plan`, `shot-render`, `timeline`, `inspector`   | One component key each: the slice, the reducer, the operations and the agent text of one noun or one capability.                    |
-| `workflow-lib` | `workflow-kit`                                                                          | The pieces of a shot walk that carry no policy; names no workflow and stays at most 300 non-blank `src` lines.                      |
-| `workflow`     | `workflow-story`                                                                        | Composes domain plugins into one production flow: preview, approval, reuse policy, timeline choice.                                 |
-| `surface`      | `api`, `chat-references`, `mcp-presets`                                                 | Serve the user (HTTP routes, chat mentions, MCP presets) and run operations by name as the user.                                    |
-| `ui-core`      | `ui-kit`, `ui-canvas`, `ui-history`, `ui-shell`, `ui-composer`                          | The browser frame, its registries and slots, and the shared wire types; names no plugin noun.                                       |
-| `ui`           | every other `ui-*` package, such as `ui-character`, `ui-shot-plan`, `ui-workflow-story` | The browser half of one plugin; `ui-<x>` pairs with the host package `<x>` when that package exists.                                |
-| `bundle`       | `packages/bundle/dv` (`@dv/bundle`)                                                     | The Cordis rows of every package and the cross-cutting `video-directing` skill.                                                     |
-
-### The dependency direction
-
-An import may point only down this table. The fitness test checks every `@dv/` import in `src` against these targets:
-
-| A package in   | May import values from                               | May also `import type` from                                                                                 |
-| -------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `kernel`       | nothing                                              | nothing                                                                                                     |
-| `base`         | `kernel`, `base`                                     | nothing more                                                                                                |
-| `provider`     | `kernel`, `base`, its own `<name>-generation-client` | a domain package that merges a row into `PrimitiveTypes`                                                    |
-| `domain`       | `kernel`, `base`                                     | nothing more                                                                                                |
-| `workflow-lib` | `kernel`, `base`                                     | `domain`                                                                                                    |
-| `workflow`     | `kernel`, `base`, `domain`, `workflow-lib`           | nothing more                                                                                                |
-| `surface`      | `kernel`, `base`                                     | `domain`                                                                                                    |
-| `ui-core`      | `@dv/ui-kit`                                         | nothing more                                                                                                |
-| `ui`           | `@dv/ui-kit`                                         | `@dv/<x>/types` of its paired host package, and `import type {}` of a UI-core package that merges `SlotMap` |
-
-A domain plugin never imports another domain plugin, so composition across nouns happens only in a workflow, which reaches each domain plugin through its service in `static inject` (`workflow-story` injects `dvProject`, `dvShotPlan`, `dvShotRender` and `dvTimeline`). A UI package never imports another UI package or a value from a host package; it registers into the registries and slots that UI-core packages provide, and it reads its host package only through types.
-
-### Host face and client face
-
-A host package that its UI package must read has two faces. The host face is the package root (`"."` → `src/index.ts`): the Cordis plugin and its services. The client face is `exports["./types"]` → `src/types.ts`: the slice and record types that the browser program compiles. A client face has four parts:
-
-1. the `./types` export in `package.json`;
-2. a `tsconfig.client.json` beside the host `tsconfig.json`, which includes only `src/types.ts` and references the client configs of the faces that it imports;
-3. a path entry `@dv/<pkg>/types` in `tsconfig.base.json`;
-4. a reference to that `tsconfig.client.json` in the root `tsconfig.client.json`.
-
-A `src/types.ts` imports and augments only client faces, such as `declare module '@dv/project/types'`, never the bare `@dv/project`. The fitness test follows every module that a `./types` entry reaches and fails when one imports `node:*`, `@deepseek-ai/cordis` or `@deepseek-ai/dsh-tools`. `project`, `models`, `reference-kit`, `asset-pool`, `character`, `location`, `style`, `shot-plan` and `timeline` publish a client face. A host package without one, such as `workflow-story`, gives its UI package no types, and that UI package narrows the slice itself (`isStorySlice` in `ui-workflow-story/src/client/index.ts`). How the client faces merge their slice types into the browser state is in [client state types](2026-10-17-dv-architecture-client-state-types.md).
+The layers, the import table and the two faces are documented in [DreamVerse architecture](../../../../docs/dreamverse/architecture.md), and the scripts that check them in [DreamVerse architecture checks](../../../../docs/dreamverse/architecture-checks.md).
 
 ### The other DreamVerse architecture notes
 
 - [Data flow](2026-10-17-dv-architecture-data-flow.md): the kernel `@dv/project` and the one-direction flow from records to views.
 - [Generation](2026-10-17-dv-architecture-generation.md): the model catalog, `@dv/generation` and how a new primitive is added.
-- [Workflows](2026-10-17-dv-architecture-workflows.md): the workflow contract, `@dv/workflow-kit`, `@dv/workflow-story` and how a second workflow is added.
-- [UI registries](2026-10-17-dv-architecture-ui-registries.md): the registries and slots through which UI packages extend UI core.
+- [Workflows](2026-10-17-dv-architecture-workflows.md): each workflow is a component in its own package `@dv/workflow-<key>`, and the shot walk, which holds no policy, is the library `@dv/workflow-kit`.
+- [UI registries](2026-10-17-dv-architecture-ui-registries.md): UI core draws only what UI packages register in its registries and slots, and names no plugin noun.
 - [Reference nouns](2026-10-17-dv-architecture-reference-nouns.md): `character`, `location` and `style` on the shared reference kit, and its membership rule.
 - [Client state types](2026-10-17-dv-architecture-client-state-types.md): the `ComponentStates` merges and the partial wire view.
-- [Fitness test](../process/2026-10-17-dv-architecture-fitness-test.md): `scripts/dv-architecture.ts`, its rules and baseline, and `pnpm dv:owners`.
+- [Fitness test](../process/2026-10-17-dv-architecture-fitness-test.md): `scripts/dv-architecture.ts` runs the layer rules as a test against a ratchet baseline, `pnpm dv:owners` prints the owner of each registration, and `scripts/dv-blast-radius.ts` limits the size of one change.
+- [Documentation tree](../process/2026-10-22-dreamverse-docs-tree.md): the `docs/dreamverse/` tree that holds the mechanics of these notes.
 
 ## Alternatives considered
 
@@ -101,5 +60,3 @@ A `src/types.ts` imports and augments only client faces, such as `declare module
 **The layer lists are code.** A new base, surface or UI-core package must be added to `BASE`, `SURFACE` or `UI_CORE` in `scripts/dv-architecture.ts`. Any other package is classified by its folder name (`workflow-*`, `ui-*`), by a `dvModels.register(` call, or as a domain plugin, and is checked by that layer's imports.
 
 **Surfaces read domain slices.** A surface may read the slice type of any domain plugin, and no rule scans these reads. `api/src/wire.ts`, `api/src/summaries.ts` and `chat-references/src/expand.ts` read the `timeline` slice; [client state types](2026-10-17-dv-architecture-client-state-types.md) records what this leaves open on the host side.
-
-**The architecture page uses coarser roles.** The layer diagram of [`docs/dreamverse/architecture.md`](../../../../docs/dreamverse/architecture.md) groups the packages as views, API, registry, workflows, components, chat references, base libraries, models, providers and bundle; this note uses the names of `layerOf`.

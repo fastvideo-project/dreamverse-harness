@@ -12,59 +12,15 @@ DreamVerse 保存三类镜头必须复现的条目：角色、场景和风格。
 
 ## 决策
 
-**引用名词**是一种组件，其条目具有以下形状，本文称之为 kit 形状：
+**引用名词**是一种组件，其条目具有 kit 形状：每个条目有一个 ID 和一个版本列表，每个版本代表一组参考图，输入以 `<id>@<version>` 指定一个版本，修改会取代写出上一个版本的记录。[数据流 Agent Note](2026-10-17-dv-architecture-data-flow.zh.md) 负责引用种类、`<id>@<version>` 的解析、陈旧标记和取代。本文负责这些名词以及它们共享的库。
 
-- 每个条目有一个 ID 和一个版本列表。每次新建或修改都写入下一个版本，并保留之前的版本。
-- 每个版本代表一组参考图（`references`，即资产 ID），并带有名称和描述。
-- 输入以 `<id>@<version>` 指定一个版本，例如 `c1@3`，运行器把它解析为该版本的参考图。
-- 修改会取代写出上一个版本的记录，因此用该版本生成的每条记录都会变为陈旧。
+角色、场景和风格是三个引用名词。每个名词是一对插件，并拥有自己的 slice：`@dv/character` 与 `@dv/ui-character`、`@dv/location` 与 `@dv/ui-location`、`@dv/style` 与 `@dv/ui-style`。每对名词插件对共享库 **reference kit** 的两半各调用一次，kit 只实现一次 kit 形状：base 层包 `@dv/reference-kit`（[分层 Agent Note](2026-10-17-dv-architecture-layers.zh.md)）的 `defineReference`，以及文件 `packages/dv/ui-kit/src/client/reference-kit.tsx` 的 `defineReferenceUi`。名词包只填入各名词之间不同的部分。一个名词包从不导入另一个名词包，其他每个插件都通过 kit 填入的内核和客户端注册表读取名词。
 
-[数据流 Agent Note](2026-10-17-dv-architecture-data-flow.zh.md) 负责引用种类、`<id>@<version>` 的解析、陈旧标记和取代。本文负责这些名词以及它们共享的库。
+名词只在其条目具有 kit 形状时使用 kit。需要不同形状的名词停止使用 kit 并直接注册。这次迁移只修改该名词的两个包，因为其他每个插件都通过注册表读取名词。角色预计是第一个停止使用 kit 的名词，因为预计它会自己管理更多行为。kit 形状、两个声明及其注册的内容、扩展点和成员规则记述在 [DreamVerse 引用名词](../../../../docs/dreamverse/subsystems/reference-nouns.zh.md)中，[添加引用名词](../../../../docs/dreamverse/cookbook/adding-a-reference-noun.zh.md)给出步骤。
 
-角色、场景和风格是三个引用名词。每个名词是一对插件，并拥有自己的 slice：`@dv/character` 与 `@dv/ui-character`、`@dv/location` 与 `@dv/ui-location`、`@dv/style` 与 `@dv/ui-style`。每个宿主包拥有操作 `<k>.create` 和 `<k>.update`（agent（智能体）工具 `dv_<k>_create` 和 `dv_<k>_update`），`@` 菜单按顺序显示角色、场景和风格三个分区。
+## UI 半部为何放在 ui-kit 中
 
-一个键命名一个名词的全部内容：组件键、引用种类、ID 参数、操作前缀、skill 名称和画布节点类型。每个宿主包带有一个手写的 skill `packages/dv/<k>/skills/<k>/SKILL.md`，其中只写出自己的工具。一个名词包从不导入另一个名词包：[架构适应度测试](../process/2026-10-17-dv-architecture-fitness-test.zh.md)的分层规则会拒绝导入另一个 domain 包的 domain 包。
-
-## reference kit 的两半
-
-每对名词插件对共享库 **reference kit** 的两半各调用一次。kit 只实现一次 kit 形状；名词包只填入各名词之间不同的部分。
-
-**宿主一半：`@dv/reference-kit`。** 包 `packages/dv/reference-kit` 位于 base 层（[分层 Agent Note](2026-10-17-dv-architecture-layers.zh.md)）。`defineReference(spec)` 返回一个 Cordis 服务类，名词包默认导出它的一个子类，如 `packages/dv/character/src/index.ts` 中的 `class DvCharacter extends defineReference({...}) {}`。声明有七个字段：`service`、`component`、`noun`（`{ zh, en }`）、`meaning`、`reference`（输入角色）、`skill` 和可选的 `fields`。该类注入 `dvProject`，并注册组件键、reducer `referenceReducer(spec)`、同名的引用种类、标签由 `noun` 生成的操作 `<k>.create` 和 `<k>.update`，以及在 DSH skill 注册表已挂载时注册 skill `<k>`。`<k>.create` 拒绝含 `@` 或 `#` 的 ID，也拒绝 `dvProject.kindsWithId` 列出的任何 ID，因此 ID 在所有引用种类之间保持唯一。客户端入口 `@dv/reference-kit/types` 导出 `ReferenceVersion`、`ReferenceSlice` 和 `ReferenceKey`；只有当名词把键同时合并进 `ComponentStates` 和 `ReferenceKinds`、且其值为 `ReferenceSlice` 时，声明才能通过编译。该包不写出任何名词和媒体类型：声明提供名词文字和 `image` 输入角色。
-
-**UI 一半：`ui-kit/src/client/reference-kit.tsx`。** 文件 `packages/dv/ui-kit/src/client/reference-kit.tsx` 以 `@dv/ui-kit/reference-kit.tsx` 导入，包含 `defineReferenceUi(spec)` 和 `ReferenceEditor`。声明有六个字段：`id`（包名，同时是编辑器 slot 键）、`key`、`slice`、`label`、`mention` 和可选的 `editor`。`defineReferenceUi` 返回该名词的 `NodeType`、`VersionKind`、在用引用、`MentionKind` 和 `HistoryRow`，以及 `apply(ctx)`：注册这些描述符和 `dv.canvas.editor` 条目的客户端插件主体。默认编辑器主体 `ReferenceEditor` 把每次改动都通过 `host.run` 写为 `<key>.update`。[UI 注册表 Agent Note](2026-10-17-dv-architecture-ui-registries.zh.md) 负责这些注册表，[客户端状态类型 Agent Note](2026-10-17-dv-architecture-client-state-types.zh.md) 负责 slice 缺失时的含义。UI 声明重复宿主声明中的标签对。
-
-**扩展点。** 名词通过四种机制在 kit 内扩展：
-
-- 宿主一半的 `fields`：额外的版本字段，每个字段是两个操作共有的一个参数；省略某字段的修改保留其上一个值。
-- UI 一半的 `children`：`ReferenceEditor` 内额外的表单行，通过 `<key>.update` 写入。
-- UI 一半的 `editor`：替代 `ReferenceEditor` 的完整编辑器主体。
-- 更多 `<k>.*` 操作：名词的服务类在自己的构造函数中注册它们，因为该类继承 `defineReference` 返回的类。
-
-## 谁导入 kit
-
-只有六个名词包从 `src` 导入 kit：三个宿主包导入 `@dv/reference-kit`，三个 UI 包导入 `@dv/ui-kit/reference-kit.tsx`。除此之外，只有测试、`scripts/dv-architecture.ts` 及其 fixture（测试前置数据）、根 tsconfig 文件和 `pnpm-lock.yaml` 在代码中引用 kit；`packages/dv/COMPONENT-TEMPLATE.md`、`docs/dreamverse/architecture.md`、各包 README 和 Agent Notes 记述它。
-
-其他插件只看到 kit 注册的内容。`@dv/chat-references` 为 `dvProject.listReferenceKinds()` 中的每个种类展开 `dv:<kind>/<id>`。运行器通过已注册的引用种类解析 `c1@3`。`@dv/api` 在 `mentionedAssets` 中从记录已解析的输入收集参考图。`@dv/ui-canvas`、`@dv/ui-composer` 和 `@dv/ui-history` 从 `dvCanvas`、`dvMentions` 和 `dvHistory` 注册表绘制。运行时没有插件依赖 kit，名词也可以绕过它：`packages/dv/COMPONENT-TEMPLATE.md` 展示了直接调用 `registerComponent`、`registerReducer`、`registerReferenceKind` 和 `registerOperation` 的写法，其他形状的组件（例如 `@dv/shot-plan` 和 `@dv/timeline`）就是这样自行注册的。
-
-## kit 成员规则
-
-名词只在其条目具有 kit 形状时留在 kit 上。
-
-- **不为单个名词加选项。** kit 不添加只有一个名词使用的选项、分支、默认值或标记。名词只通过四个扩展点扩展。
-- **离开 kit。** 如果某项需求改变版本形状、新建或修改的语义，或 `<id>@<version>` 解析到的内容，该名词就离开 kit。此后它的两个包直接向 `dvProject` 和画布注册表注册。这次迁移只修改这两个包，因为其他每个插件都通过内核和画布注册表读取名词。
-- **至少两个名词，否则不保留。** kit 至少保留两个名词。只剩一个名词时，kit 合并回该名词。
-- **预计的第一个案例。** 角色预计是第一个离开的名词，因为预计它会自己管理更多行为。
-
-| 名词需要                                       | 机制                                | 是否留在 kit 上 |
-| ---------------------------------------------- | ----------------------------------- | --------------- |
-| 更多版本字段和表单行                           | `fields`、`children`                | 是              |
-| 不同的编辑器，例如角色形象面板                 | `editor`                            | 是              |
-| 更多操作，例如训练 LoRA 或检查面部一致性       | 名词服务类的构造函数                | 是              |
-| 不同的版本含义，或不同的 `<id>@<version>` 结果 | 直接向 `dvProject` 和画布注册表注册 | 否              |
-
-## UI 一半为何放在 ui-kit 中
-
-宿主一半是独立的包，而 UI 一半是 `@dv/ui-kit` 中的一个文件，原因是[架构适应度测试](../process/2026-10-17-dv-architecture-fitness-test.zh.md)的导入规则：UI 层的包只能导入 `@dv/ui-kit`、以 `import type` 导入与之配对的宿主包的 `./types`，以及 UI 核心包的 slot 声明。这一放置反映的是改动的大小，并不表示引用名词与 `@dv/ui-kit` 的其他内容属于一类。该文件属于 UI 核心，因此受「UI 核心不写出插件名词」这条规则约束。
+宿主半部是独立的包，而 UI 半部是 `@dv/ui-kit` 中的一个文件，原因是[架构适应度测试](../process/2026-10-17-dv-architecture-fitness-test.zh.md)的导入规则：UI 层的包只能导入 `@dv/ui-kit`、以 `import type` 导入与之配对的宿主包的 `./types`，以及 UI 核心包的 slot 声明。这一放置反映的是改动的大小，并不表示引用名词与 `@dv/ui-kit` 的其他内容属于一类。该文件属于 UI 核心，因此受「UI 核心不写出插件名词」这条规则约束。
 
 ## 曾考虑的替代方案
 

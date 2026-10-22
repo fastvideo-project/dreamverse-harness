@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-10-17-dv-architecture-workflows.md
-2026-10-17-dv-architecture-workflows.md: 1a4fd3596499093ef12209d7eeea0b10543eb6b0
-2026-10-17-dv-architecture-workflows.zh.md: f86a3ecef1c46deb646126ae334c999654f65bef
+2026-10-17-dv-architecture-workflows.md: 68e71cbd7952407db153b2d6c218eb561c7a7f3d
+2026-10-17-dv-architecture-workflows.zh.md: 8298217b33ca515f7abe9308817579fc1ae4c266

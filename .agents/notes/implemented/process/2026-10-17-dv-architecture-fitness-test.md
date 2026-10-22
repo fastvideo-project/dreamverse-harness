@@ -12,48 +12,11 @@ No command showed which package owned a given name. No check measured how far on
 
 ## Decision
 
-`scripts/dv-architecture.ts` scans the DreamVerse packages for rules R1 to R8, and `scripts/dv-architecture.spec.ts` runs the scan as a Vitest test. The root `vitest.config.ts` includes `scripts/**/*.spec.ts`, so `pnpm test` runs it; `pnpm exec vitest run scripts/dv-architecture.spec.ts` runs it alone. The scanner walks the TypeScript syntax tree of each `.ts` and `.tsx` file, so comments never match, and matches skill Markdown as text.
+`scripts/dv-architecture.ts` scans the DreamVerse packages for the rules R1 to R8, and `scripts/dv-architecture.spec.ts` runs the scan as a Vitest test, so `pnpm test` fails on a regression and names the broken rule in words. The scanner walks TypeScript syntax trees, so comments never match. It compares the violations with a ratchet baseline that counts matches by file, rule and matched text, so a change that removes a violation lowers its entry in the same commit. The checked-in baseline is `{}`, and one exception marker with a fixed reason text suppresses a match on its own line.
 
-`readScanFiles` reads `packages/dv/*/src/**/*.{ts,tsx}`, `packages/dv/*/skills/**/*.md`, `packages/bundle/dv/skills/**/*.md` and `packages/dv/*/package.json`, and skips every path that contains `/tests/`. It throws when it finds no kernel source, so a narrowed glob cannot pass by scanning nothing. `layerOf` assigns each package its layer from its folder name, through the lists `BASE`, `SURFACE` and `UI_CORE` and the `workflow-` and `ui-` prefixes, and marks a package that calls `dvModels.register(` as a provider.
+`pnpm dv:owners` prints the owner package of each component key, reference kind, operation, skill and UI registration from the facts that the rules read. `scripts/dv-blast-radius.ts` measures one change against a base commit. It fails above 400 counted lines or above 3 existing packages with logic changes, and it weighs moved and deleted lines less than added lines.
 
-Every failure line repeats the rule's line from `RULE_STATEMENTS`, and a violation carries its clause letter, such as `R1d`.
-
-## The rules
-
-| Rule | Statement in `RULE_STATEMENTS` | Main matches | What it protects |
-| --- | --- | --- | --- |
-| R1 | The kernel names no plugin noun and never reads `started_by`. | In `project/src`: (a) `@dv/*` imports; (b) a plugin component key as a literal or a `components.<key>` read; (c) `CharacterId`, `LocationId`, `StyleId`, `bible`; (d) plugin nouns in string text; (e) `started_by` outside `types.ts`, `runner.ts` and `record-store.ts`. | A plugin is added or removed without a kernel edit ([data flow](../architecture/2026-10-17-dv-architecture-data-flow.md)). |
-| R2 | Base packages, reference-kit included, name no media type; workflow-kit names no workflow. | (a) `image`, `audio` and every primitive key in `models`, `generation` and `reference-kit`; (b) a workflow key or operation in `workflow-kit`, or more than 300 non-blank lines there. | A primitive or a workflow is added without a base package edit ([generation](../architecture/2026-10-17-dv-architecture-generation.md), [workflows](../architecture/2026-10-17-dv-architecture-workflows.md)). |
-| R3 | One owner per component key, reference kind and operation; `defineReference` operations are checked at runtime; a `defineReference` key is one lowercase word and not `proj`, `asset`, `record` or `version`. | A component key claimed twice; a literal operation outside the package of its key; (c) a malformed or reserved `defineReference` key. | Each name leaves with the one package that owns it ([reference nouns](../architecture/2026-10-17-dv-architecture-reference-nouns.md)). |
-| R4 | A host package names only operations of its own component key. | A `<key>.<verb>` literal of a key that another package owns; `api` and `chat-references` may name `asset.import` and `asset.place`. | No host package drives another plugin by operation name. |
-| R5 | UI core names no plugin noun. | (a) Plugin operation literals; (b) `components.<key>` reads other than `proj` and `asset`; (c) the literals `character`, `location`, `style`, `bible` and `plan`; (d) `params.plan`, `params.plan_version` and `params.shot`; (e, f) plugin tool names in `DV_TOOL_LABELS` and in literals. | UI core draws plugins only through registries ([UI registries](../architecture/2026-10-17-dv-architecture-ui-registries.md)). |
-| R6 | No deep import into another package's `src`. | `@dv/<pkg>/src/…` specifiers. | Packages meet only at their exported entries. |
-| R7 | Dependencies point down the layers; a `./types` entry reaches no host-only module. | (a) Each `@dv/*` import against the layer table `IMPORTS`; (b) a `./types` entry that reaches `node:*`, `@deepseek-ai/cordis` or `@deepseek-ai/dsh-tools` through imports or `declare module` targets. | The direction of the [layers](../architecture/2026-10-17-dv-architecture-layers.md), and a client face that loads in the browser. |
-| R8 | A skill never names a consumer; only the package that owns a reference kind names its tools. | In skill Markdown, provider literals and skill descriptions: (a) a tool of a higher layer; (b) `plan` or `continue_previous` in base and provider text; (c) a workflow tool outside that workflow's skills; (d) a tool other than `dv_models_*` in catalog text; (e) another workflow's `<k>-directing`; (f) a reference noun's tool outside its package. | A skill names only tools that exist wherever its package loads. |
-
-The runtime covers what R3 leaves out: `packages/dv/project/src/runner.ts` refuses a second component key (`component_exists`), a second operation (`operation_exists`) and an operation name without its `<component>.` prefix, and `packages/dv/project/src/reducers.ts` refuses a second reference kind (`kind_exists`). The spec pins each clause with the 24 fixtures in `scripts/fixtures/dv-architecture/` and inline cases.
-
-## Baseline and exception marker
-
-`scripts/dv-architecture.baseline.json` maps `<file> <rule> <matched text>` to a count. The key holds no line number, so moved code changes nothing. `compareBaseline` fails on a missing key, on more matches than the count and on fewer matches, so a change that removes a violation lowers its entry in the same commit. The checked-in baseline is `{}`.
-
-A TypeScript line may end with the one exception marker `// dv-arch-allow R<k>: <reason>`, where the reason is the fixed text that `RULE_STATEMENTS.marker` quotes. The marker suppresses matches of `R<k>` on its own line. Any other marker text and any marker that suppresses nothing fail as a `marker` violation. No file under `packages/` carries the marker.
-
-## Owner listing
-
-`pnpm dv:owners` runs `scripts/dv-owners.ts`, which prints the rows of `listOwners`. `listOwners` reads the facts of the R3 walk (`collectFacts`), so the listing and the rules see the same declarations. Rows come from component claims, literal operation declarations, `defineReference` and `defineReferenceUi` calls, variables typed as a UI registry entry, and skill files. Rows sort by key, so `pnpm dv:owners | grep character` prints the nine rows of `@dv/character` and `@dv/ui-character` as one block.
-
-## Change size check
-
-`scripts/dv-blast-radius.ts` checks one change against a base commit:
-
-```
-pnpm exec tsx scripts/dv-blast-radius.ts --base <sha> [--own <dir or glob>]... [--allow <glob>[:max=<n>][:net-delete]]... [--max-lines <n>] [--lint]
-```
-
-It reads the changed paths, untracked files included, from `scripts/change-scope.ts`. A path must be own, wiring or matched by an `--allow` glob. Wiring is the fixed list `WIRING` (root tsconfig files, `pnpm-lock.yaml`, bundle registration files), every file under `docs/dreamverse/`, plus the `README.md`, `package.json` and `tsconfig.json` of a package absent at the merge base and the baseline file once it exists there. `:max=<n>` caps the added plus deleted lines of the matched files, and `:net-delete` fails when they gain lines; the baseline file always carries `:net-delete`.
-
-An added line counts 1, a deleted line 0.5, and a deleted line whose trimmed text is added in another file 0. Tests, spec files, `pnpm-lock.yaml`, `README.zh.md` and `*.i18n.yaml` count 0, and a package that does not exist at the merge base counts only `src/` and `skills/`. The check fails above 400 counted lines, or the cap of `--max-lines <n>`, and above 3 existing packages with logic changes: more than 2 changed `src` lines, some outside every limited glob. `--lint` runs the default oxlint config, which needs the host build, and fails only on findings on added lines. Failure lines start with `R9:` for paths and limits and `R10:` for size.
+The rules, the baseline, the exception marker, the owner listing and the change size check are documented in [DreamVerse architecture checks](../../../../docs/dreamverse/architecture-checks.md).
 
 ## Alternatives considered
 

@@ -18,63 +18,22 @@ Status: implemented
 
 ## 决策
 
-每个 DreamVerse 插件只有一个目标，并且每个插件都能单独加入或移除。一个插件是一个宿主包，有浏览器部分时再加一个 UI 包 `ui-<name>`；bundle 在 `packages/bundle/dv/cordis.patch.yml` 中为每个包写一行来组合它。下面的十个层和唯一的依赖方向服务于这个目标：一个包只依赖对它一无所知的层，因此加入或移除一个插件不会修改它下层的包，也不会修改同级的包。
+每个 DreamVerse 插件只有一个目标，并且每个插件都能单独加入或移除。一个插件是一个宿主包，有浏览器半部时再加一个 UI 包 `ui-<name>`；bundle 在 `packages/bundle/dv/cordis.patch.yml` 中为每个包写一行来组合它。十个层和唯一的依赖方向服务于这个目标：一个包只依赖对它一无所知的层，因此加入或移除一个插件不会修改它下层的包，也不会修改同级的包。
 
-### 层
+适应度测试中的 `layerOf` 根据包的目录名推断每个包的层；对提供方，则根据 `dvModels.register(` 调用推断，因此没有包声明自己的层。UI 包需要读取的宿主包还发布一个客户端面 `./types`，由浏览器程序编译。一个面只 import 和扩充其他面，因此浏览器程序从不编译宿主代码。
 
-[`scripts/dv-architecture.ts`](../../../../scripts/dv-architecture.ts) 中的 `layerOf` 根据包的目录名推断它的层；对提供方，则根据其 `src` 中的 `dvModels.register(` 调用推断。没有包声明自己的层。常量 `BASE`、`SURFACE` 和 `UI_CORE` 列出 base、surface 和 UI core 包；目录 `workflow-*` 是工作流，`ui-*` 是 UI 包，其他宿主包都是领域插件。
-
-| 层              | 包（除另行标注外都在 `packages/dv/` 下）                                                    | 职责                                                            |
-| -------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| `kernel`       | `project`                                                                       | 记录、operation、reducer、引用种类以及由插件填充的注册表；不点名任何插件。                 |
-| `base`         | `models`、`generation`、`asset-pool`、`ffmpeg`、`reference-kit`                     | 供所有领域插件使用的服务和库：模型目录、生成辅助库、素材、外部程序、引用名词辅助库。                    |
-| `provider`     | `fastvideo`、`fastvideo-generation-client`                                       | 在 `dvModels` 目录中注册模型条目，并随附每个模型的 prompt skill。                 |
-| `domain`       | `character`、`location`、`style`、`shot-plan`、`shot-render`、`timeline`、`inspector` | 每个包一个组件 key：一个名词或一项能力的 slice、reducer、operation 和面向 agent 的文本。 |
-| `workflow-lib` | `workflow-kit`                                                                  | 镜头遍历中不带策略的部分；不点名任何工作流，`src` 最多 300 个非空行。                      |
-| `workflow`     | `workflow-story`                                                                | 把领域插件组合成一条制作流程：预览、审批、复用策略、时间线选择。                              |
-| `surface`      | `api`、`chat-references`、`mcp-presets`                                           | 服务用户（HTTP 路由、聊天提及、MCP 预设），并以用户身份按名字运行 operation。              |
-| `ui-core`      | `ui-kit`、`ui-canvas`、`ui-history`、`ui-shell`、`ui-composer`                      | 浏览器框架、它的注册表和插槽，以及共享的 wire 类型；不点名任何插件名词。                       |
-| `ui`           | 其他所有 `ui-*` 包，例如 `ui-character`、`ui-shot-plan`、`ui-workflow-story`              | 一个插件的浏览器部分；宿主包 `<x>` 存在时，`ui-<x>` 与它配对。                       |
-| `bundle`       | `packages/bundle/dv`（`@dv/bundle`）                                              | 每个包的 Cordis 配置行，以及跨组件的 `video-directing` skill。               |
-
-### 依赖方向
-
-import 只能指向本表中更下层的包。适应度测试按下表检查 `src` 中的每个 `@dv/` import：
-
-| 所在层            | 可以 import 值的来源                                 | 还可以 `import type` 的来源                                                  |
-| -------------- | ---------------------------------------------- | ---------------------------------------------------------------------- |
-| `kernel`       | 无                                              | 无                                                                      |
-| `base`         | `kernel`、`base`                                | 无其他                                                                    |
-| `provider`     | `kernel`、`base`、自己的 `<name>-generation-client` | 向 `PrimitiveTypes` 合并了一行的领域包                                           |
-| `domain`       | `kernel`、`base`                                | 无其他                                                                    |
-| `workflow-lib` | `kernel`、`base`                                | `domain`                                                               |
-| `workflow`     | `kernel`、`base`、`domain`、`workflow-lib`        | 无其他                                                                    |
-| `surface`      | `kernel`、`base`                                | `domain`                                                               |
-| `ui-core`      | `@dv/ui-kit`                                   | 无其他                                                                    |
-| `ui`           | `@dv/ui-kit`                                   | 配对宿主包的 `@dv/<x>/types`，以及向 `SlotMap` 合并插槽的 UI core 包的 `import type {}` |
-
-领域插件从不 import 另一个领域插件，因此跨名词的组合只发生在工作流中；工作流通过 `static inject` 中的服务访问每个领域插件（`workflow-story` 注入 `dvProject`、`dvShotPlan`、`dvShotRender` 和 `dvTimeline`）。UI 包从不 import 另一个 UI 包，也不 import 宿主包中的值；它向 UI core 包提供的注册表和插槽注册，并且只通过类型读取自己的宿主包。
-
-### 宿主面与客户端面
-
-UI 包需要读取的宿主包有两个面。宿主面是包的根入口（`"."` → `src/index.ts`）：Cordis 插件及其服务。客户端面是 `exports["./types"]` → `src/types.ts`：浏览器程序编译的 slice 类型和记录类型。一个客户端面由四部分组成：
-
-1. `package.json` 中的 `./types` 导出；
-2. 宿主 `tsconfig.json` 旁边的 `tsconfig.client.json`，它只包含 `src/types.ts`，并引用它所 import 的各个面的客户端配置；
-3. `tsconfig.base.json` 中的路径条目 `@dv/<pkg>/types`；
-4. 根 `tsconfig.client.json` 中对该 `tsconfig.client.json` 的引用。
-
-`src/types.ts` 只 import 和扩充客户端面，例如 `declare module '@dv/project/types'`，从不 import 或扩充裸的 `@dv/project`。适应度测试追踪 `./types` 入口能到达的每个模块，只要其中一个 import 了 `node:*`、`@deepseek-ai/cordis` 或 `@deepseek-ai/dsh-tools` 就报失败。`project`、`models`、`reference-kit`、`asset-pool`、`character`、`location`、`style`、`shot-plan` 和 `timeline` 发布了客户端面。没有客户端面的宿主包（例如 `workflow-story`）不向它的 UI 包提供类型，该 UI 包自行收窄 slice（`ui-workflow-story/src/client/index.ts` 中的 `isStorySlice`）。客户端面如何把各自的 slice 类型合并进浏览器状态，见[客户端状态类型](2026-10-17-dv-architecture-client-state-types.zh.md)。
+层、import 表和两个面记录在 [DreamVerse 架构](../../../../docs/dreamverse/architecture.zh.md)中，检查它们的脚本记录在 [DreamVerse 架构检查](../../../../docs/dreamverse/architecture-checks.zh.md)中。
 
 ### 其他 DreamVerse 架构笔记
 
 - [数据流](2026-10-17-dv-architecture-data-flow.zh.md)：内核 `@dv/project`，以及从记录到视图的单向数据流。
-- [生成](2026-10-17-dv-architecture-generation.zh.md)：模型目录、`@dv/generation`，以及如何新增一个 primitive。
-- [工作流](2026-10-17-dv-architecture-workflows.zh.md)：工作流约定、`@dv/workflow-kit`、`@dv/workflow-story`，以及如何新增第二个工作流。
-- [UI 注册表](2026-10-17-dv-architecture-ui-registries.zh.md)：UI 包扩展 UI core 所用的注册表和插槽。
-- [引用名词](2026-10-17-dv-architecture-reference-nouns.zh.md)：建在共享引用库上的 `character`、`location` 和 `style`，以及该库的成员规则。
+- [生成](2026-10-17-dv-architecture-generation.zh.md)：模型目录、`@dv/generation`，以及如何新增一个原语。
+- [工作流](2026-10-17-dv-architecture-workflows.zh.md)：每个工作流是它自己的包 `@dv/workflow-<key>` 中的一个组件，不含策略的镜头遍历是库 `@dv/workflow-kit`。
+- [UI 注册表](2026-10-17-dv-architecture-ui-registries.zh.md)：UI 核心只绘制 UI 包注册到其注册表和 slot 中的内容，不点名任何插件名词。
+- [引用名词](2026-10-17-dv-architecture-reference-nouns.zh.md)：建在共享 reference kit 上的 `character`、`location` 和 `style`，以及 kit 成员规则。
 - [客户端状态类型](2026-10-17-dv-architecture-client-state-types.zh.md)：`ComponentStates` 的合并和部分 wire 视图。
-- [适应度测试](../process/2026-10-17-dv-architecture-fitness-test.zh.md)：`scripts/dv-architecture.ts`、它的规则和 baseline，以及 `pnpm dv:owners`。
+- [适应度测试](../process/2026-10-17-dv-architecture-fitness-test.zh.md)：`scripts/dv-architecture.ts` 以测试的形式对照一个只降不升的基线运行分层规则，`pnpm dv:owners` 打印每项注册的所有者，`scripts/dv-blast-radius.ts` 限制一次变更的规模。
+- [文档树](../process/2026-10-22-dreamverse-docs-tree.zh.md)：承载这些 Agent Note 机制细节的 `docs/dreamverse/` 目录树。
 
 ## 曾考虑的替代方案
 
@@ -101,5 +60,3 @@ UI 包需要读取的宿主包有两个面。宿主面是包的根入口（`"."`
 **层的名单写在代码里。** 新增的 base、surface 或 UI core 包必须加进 `scripts/dv-architecture.ts` 中的 `BASE`、`SURFACE` 或 `UI_CORE`。其他包按目录名（`workflow-*`、`ui-*`）、按 `dvModels.register(` 调用，或者作为领域插件分类，并按该层的 import 规则检查。
 
 **surface 读取领域 slice。** surface 可以读取任何领域插件的 slice 类型，没有规则扫描这些读取。`api/src/wire.ts`、`api/src/summaries.ts` 和 `chat-references/src/expand.ts` 读取 `timeline` slice；[客户端状态类型](2026-10-17-dv-architecture-client-state-types.zh.md)记录了这在宿主侧留下的缺口。
-
-**架构页面使用更粗的角色划分。** [`docs/dreamverse/architecture.md`](../../../../docs/dreamverse/architecture.zh.md) 的分层图把包分为 views、API、registry、workflows、components、chat references、base libraries、models、providers 和 bundle；本笔记使用 `layerOf` 的层名。

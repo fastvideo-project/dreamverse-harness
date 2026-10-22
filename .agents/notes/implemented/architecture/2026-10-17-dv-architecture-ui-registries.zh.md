@@ -10,47 +10,11 @@ Status: implemented
 
 ## 决策
 
-DreamVerse 的浏览器端分为 UI 核心和 UI 插件；[分层](2026-10-17-dv-architecture-layers.zh.md) 列出每一层的包和允许的导入。UI 核心是 `@dv/ui-kit`、`@dv/ui-canvas`、`@dv/ui-history`、`@dv/ui-shell` 和 `@dv/ui-composer`；它只绘制插件注册的内容，不点名任何插件名词（[R5](../process/2026-10-17-dv-architecture-fitness-test.zh.md)）。UI 插件是带 `./client` 入口的包 `packages/dv/ui-<name>`；宿主包 `<name>` 存在时，两者配对。
+DreamVerse 的浏览器端分为 UI 核心和 UI 插件；[分层](2026-10-17-dv-architecture-layers.zh.md) 列出每一层的包和允许的导入。UI 核心是 `@dv/ui-kit`、`@dv/ui-canvas`、`@dv/ui-history`、`@dv/ui-shell` 和 `@dv/ui-composer`；它只绘制插件注册的内容，不点名任何插件名词（[R5](../process/2026-10-17-dv-architecture-fitness-test.zh.md)）。UI 插件是带 `./client` 入口的包 `packages/dv/ui-<name>`；宿主包 `<name>` 存在时，两者配对。`@dv/ui-kit` 是一个库：它不注册任何东西，每个消费方打包自己导入的模块。UI 半部如何为自己的 slice 定类型，见 [客户端状态类型](2026-10-17-dv-architecture-client-state-types.zh.md)。
 
-`@dv/ui-kit` 是一个库：它不注册任何东西，每个消费方打包自己导入的模块。它持有协议类型（`src/client/types.ts`）、注册表描述符类型和 `createRegistry`（`src/client/registries.ts`），以及所有视图以同一方式使用的纯函数辅助：`chainOf`、`versionRefOf`、`formatInputRef`、`isGenerationOperation`、`isGenerationRecord`、`operationLabel` 和 `taskLabel`。UI 半部如何为自己的 slice 定类型，见 [客户端状态类型](2026-10-17-dv-architecture-client-state-types.zh.md)。
+每个注册表都是一个 Cordis 服务，由读取它的 UI 核心包在其 `apply` 的顶层提供，绝不在 effect 内提供，因为其他插件从各自的 fiber 向它注册。注册表的每个键只有一个所有者。UI 半部在 `ctx.inject` 内以 `scope.effect` 注册每个描述符，因此插件在服务缺席时也能加载，服务或插件离开时它的描述符随之离开。UI 半部只通过运行操作来改变项目数据（[数据流](2026-10-17-dv-architecture-data-flow.zh.md)）。“type”指画布节点类型，“kind”指内核的引用种类或提及种类；把绘制出的节点命名为 `NodeEntry`，也把它与生成参数 `seed` 区分开。
 
-每个注册表都是一个 Cordis 服务，由读取它的 UI 核心包在其 `apply` 的顶层通过 `ctx.reflect.provide` 提供，绝不在 effect 内提供，因为其他插件从各自的 fiber 向它注册：`@dv/ui-canvas` 提供 `dvCanvas`，`@dv/ui-history` 提供 `dvHistory`，`@dv/ui-composer` 提供 `dvMentions`。`createRegistry(keys)` 返回一个每个键只有一个所有者的描述符列表：当另一个描述符已占用其中某个键时 `register` 抛出异常，否则返回一个 disposer；`list()` 在变化之前返回同一个数组；`subscribe` 报告每次变化。
-
-UI 半部在 `ctx.inject(['dvCanvas'], …)`（或 `dvHistory`、`dvMentions`、`slots`）内以 `scope.effect` 注册每个描述符，因此插件在服务缺席时也能加载，服务或插件离开时它的描述符随之离开。每个注册的包都测试 dispose（资源释放）会移除它的描述符，这是 `packages/AGENTS.md` 的要求。UI 半部只通过运行操作来改变项目数据（[数据流](2026-10-17-dv-architecture-data-flow.zh.md)）。
-
-## 注册表与 slot
-
-描述符类型和 `SlotMap` 合并都位于 `packages/dv/ui-kit/src/client/registries.ts`。三个引用名词各通过一次 `defineReferenceUi` 调用注册（[引用名词](2026-10-17-dv-architecture-reference-nouns.zh.md)）；表中把 `ui-character`、`ui-location` 和 `ui-style` 记作“名词包”。
-
-| 注册表或 slot                           | 提供方或声明方                       | 键            | 一个描述符或条目给出的内容                         | 注册方                                                     |
-| --------------------------------------- | ------------------------------------ | ------------- | -------------------------------------------------- | ---------------------------------------------------------- |
-| `dvCanvas.nodeTypes`                    | `ui-canvas`                          | `id`          | 一种画布节点类型及其条目，从插件自己的 slice 读取  | `ui-shot-plan`（`plan`）、名词包                           |
-| `dvCanvas.chainAnchors`                 | `ui-canvas`                          | `starter`     | 一个起始操作的记录所挂的节点，以及其已批准的版本号 | `ui-workflow-story`（`story.approve`）                     |
-| `dvCanvas.takesInUse`                   | `ui-canvas`                          | `id`          | 插件数据使用其产出的记录，以及素材节点上的标记     | `ui-timeline`、`ui-shot-plan`、名词包                      |
-| `dvCanvas.versionKinds`                 | `ui-canvas`                          | `kind`        | 一种引用种类的版本、名称、参考素材和节点 ID        | 名词包                                                     |
-| `dvHistory.rows`                        | `ui-history`                         | `match`       | 一个操作或组件键的历史行的主语和中心聚焦           | `ui-workflow-story`、`ui-timeline`、`ui-shot-plan`、名词包 |
-| `dvMentions.kinds`                      | `ui-composer`                        | `id`          | `@` 菜单的一个分区                                 | `ui-timeline`（`clip`）、名词包                            |
-| `dv.canvas.editor`（keyed slot）        | ui-canvas 的 `dv.center.view` 条目   | `NodeType.id` | 一个节点条目的编辑器主体                           | `ui-shot-plan`、名词包                                     |
-| `dv.canvas.picker`、`dv.canvas.preview` | ui-canvas 的 `dv.center.view` 条目   | `assets`      | 素材选择器中的素材库面板，以及一个素材的预览       | `ui-asset-pool`                                            |
-| `dv.center.view`（list slot）           | ui-shell 的 `main.conversation` 条目 | 条目 `id`     | 工作区中心里打开项目的一个视图                     | `ui-canvas`（`canvas`）、`ui-timeline`（`timeline`）       |
-
-编辑器条目只导入 `@dv/ui-kit`，因此画布借给它一个 `EntryEditorHost`：`run` 以画布写入的身份、用画布的项目和聊天会话运行一个操作，`pickAssets` 打开画布的素材选择器，`preview` 打开画布的素材预览。一个 slot 只由一个条目声明：ui-canvas 的中心视图声明三个画布 slot，画布的右侧边栏标签页主体（`CanvasBody.tsx`）不声明任何 slot。
-
-## 画布、历史和提及规则
-
-**版本。** 当 `isGenerationRecord(record, op, mimeOf)` 成立时，一条记录是版本（take）。当 `/api/dv/operations` 列出该记录的操作时，由声明决定（非确定性、资源为 `gpu`、有图像、视频或音频输出），因此一个待处理的版本在有产出之前就会绘制；否则由记录自身的事实决定。
-
-**链与锚点。** 记录的链由 `chainOf` 给出：它自己的 `started_by`，没有时取其 `based_on` 根记录的 `started_by`，因此重拍保留它的镜头。当链的起始记录已加载、且为起始记录的操作注册了 `ChainAnchor` 时，这条链是锚定链。锚定链按位置（slot）和分支（lane）为版本命名，用一条 `chain` 边把版本挂在锚点节点上，为版本分组并编号，并填充带 `slots` 的条目的帧网格；其他版本是自由版本，以操作标签作为标题。一个节点的已批准版本是所有锚点的 `approvedVersions` 的并集；`story.approve` 写入的链归 [工作流](2026-10-17-dv-architecture-workflows.zh.md) 笔记所有。
-
-**条目卡片。** 核心用同一种卡片绘制每个 `NodeEntry`：以 `NodeType.color` 着色的类型圆点、`NodeType.label()`，然后是 ` · <subtitle>`。带 `slots` 的条目显示帧网格；其他条目显示第一项媒体，更多媒体显示为 `+N`。
-
-**历史。** `started_by.record` 等于某行记录的已加载记录折叠在该行之下。一行显示 `operationLabel` 加上与操作匹配的已注册 `HistoryRow` 的主语，先匹配精确名称，再匹配 `'<key>.'`；匹配行绝不回落到另一行。没有匹配行的记录显示它的链位置和分支，例如 渲染镜头 1 · 9:16。选中一行时运行该行的 `focus`；没有 `focus` 时，`proj` 记录不聚焦任何内容，其他记录把它的画布节点居中。
-
-**提及。** ui-composer 的 `@` 来源按 `order` 在各自的 `section()` 下列出每个 `MentionKind` 的条目，然后列出最新的 40 个图像和视频。选中一项会插入 `@[<label>](dv:<kind>/<id>)`，`@dv/chat-references` 为 `dvProject.listReferenceKinds()` 中的每个种类展开它。
-
-## NodeType 与 NodeEntry 这两个名称
-
-“type”指画布节点类型，“kind”指内核的引用种类或提及种类。`NodeType.type` 是卡片的 `data-node-type` 值，例如 `plan` 或 `character`；`VersionKind.kind` 是一个引用种类；`MentionKind.kind` 是 `dv:<kind>/<id>` 中的 `<kind>`。`NodeEntry` 是 `NodeType` 绘制的一个节点，没有自己的标签：卡片显示 `NodeType.label()`。“entry”一词也把绘制出的节点与生成参数 `seed` 区分开。在 ui-canvas 内部，绘制出的节点类型是 `CanvasNodeType = 'asset' | 'take' | 'entry'`。
+注册表、slot、描述符类型以及画布、历史和提及规则记录在 [界面](../../../../docs/dreamverse/subsystems/ui.zh.md) 中。
 
 ## 曾考虑的替代方案
 
