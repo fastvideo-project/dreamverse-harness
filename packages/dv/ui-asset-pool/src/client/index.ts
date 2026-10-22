@@ -39,7 +39,7 @@ export function apply(ctx: ClientContext): void {
     AssetsTabBody,
   )), 'ui-asset-pool: tab body')
   ctx.effect(() => ctx.slots.inject('dv.canvas.picker', () => ctx.slots.register(
-    { name: 'dv.canvas.picker', key: 'assets', inject: () => ({ preview }) }, AssetsPanel,
+    { name: 'dv.canvas.picker', key: 'assets' }, AssetsPanel,
   )), 'ui-asset-pool: canvas picker')
   ctx.inject(['dvMedia', 'slots'], (scope) => {
     for (const { type, View } of MEDIA_TYPES) {

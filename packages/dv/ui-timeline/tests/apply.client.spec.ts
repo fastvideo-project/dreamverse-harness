@@ -71,6 +71,8 @@ describe('ui-timeline apply', () => {
     ])
     expect(registered[0]?.inject().client).toBeInstanceOf(DvClient)
     expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort())
+    // 插入片段 of the asset preview and of the track read one key.
+    expect(Object.keys(zh)).not.toContain('preview.insert')
   })
 
   it('registers the center view and 插入片段 once dvCenter is present, with the tab body\'s API client, and both leave with dvCenter', async () => {

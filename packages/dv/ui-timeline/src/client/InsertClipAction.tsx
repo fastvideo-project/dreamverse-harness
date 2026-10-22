@@ -33,7 +33,7 @@ export function InsertClipAction(props: InsertClipActionProps): ReactNode {
   if (projectId !== open || mediaTypeOf(asset.mime) !== 'video') return null
   return (
     <button type="button" className={props.buttonClass} onClick={() => { insert(asset.id); props.close() }}>
-      {t('preview.insert')}
+      {t('track.add')}
     </button>
   )
 }

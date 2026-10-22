@@ -22,20 +22,26 @@ import type {} from '@dv/ui-media/contract'
 import { assetLibrary } from './library.ts'
 import css from './AssetsPanel.module.css'
 
-/** Props of {@link AssetsPanel}. */
-export interface AssetsPanelProps {
+/**
+ * Props of {@link AssetsPanel}: a click on a thumbnail opens the asset preview in the tab, and calls `onOpen` in the
+ * canvas's picker.
+ */
+export type AssetsPanelProps = {
   projectId: string
   /** The chat session the panel sits beside, recorded as the `session` of its imports. */
   session: string | null
   /** The API client. */
   client: DvClient
-  /** Open the asset preview of `dvMedia` for an asset of a project, growing out of the clicked tile. */
-  preview: (projectId: string, asset: Asset, opener: Element | null) => void
-  /** Called on a click on a thumbnail instead of opening the preview. */
-  onOpen?: (asset: Asset) => void
   /** Draws each thumbnail's asset through the `dv.media` Factory of `@dv/ui-media`. */
   renderFactorySlot: RenderFactorySlot
-}
+} & (
+  | {
+    /** Open the asset preview of `dvMedia` for an asset of a project, growing out of the clicked tile. */
+    preview: (projectId: string, asset: Asset, opener: Element | null) => void
+    onOpen?: never
+  }
+  | { onOpen: (asset: Asset) => void }
+)
 
 /**
  * The asset pool panel of one project.
@@ -47,8 +53,10 @@ export function AssetsPanel(props: AssetsPanelProps): ReactNode {
   const state = useProjectState(client, props.projectId)
   const t = useText()
   const library = useMemo(() => state.value === null ? null : assetLibrary(state.value), [state.value])
-  const { onOpen: pick, preview } = props
-  const onOpen = (asset: Asset, tile: Element): void => { if (pick === undefined) preview(props.projectId, asset, tile); else pick(asset) }
+  const onOpen = (asset: Asset, tile: Element): void => {
+    if (props.onOpen === undefined) props.preview(props.projectId, asset, tile)
+    else props.onOpen(asset)
+  }
 
   let body: ReactNode
   if (library === null) body = <p className={css.note}>{state.error === null ? t('正在读取…', 'Loading…') : t(`读取失败：${state.error}`, `Failed to load: ${state.error}`)}</p>
