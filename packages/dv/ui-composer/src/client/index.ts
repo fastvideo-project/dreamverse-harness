@@ -2,7 +2,7 @@
  * Browser half of the DreamVerse composer additions:
  * - `dvMentions`, the registry of the mention kinds that plugin UI halves add to the `@` source;
  * - `dvComposer`, the registry of parameter bars, and the `dv.prompt` composer Factory with the chip face of every
- *   prompt editor (`prompt.ts`);
+ *   prompt editor and of the chat composer bar (`prompt.ts`);
  * - an `@` source listing the items of every registered mention kind and the assets of every media type;
  * - a 引用 row in the composer's ＋ menu that opens that `@` list at the end of the draft;
  * - an invisible `conversation.input.left` entry that makes each session's composer a `dv:compose` target;

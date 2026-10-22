@@ -1,7 +1,7 @@
 /**
  * The apply world of the prompt composer: the `dvComposer` registry of parameter bars, the `dv.prompt` Factory with
  * its inject face over the registered version kinds and the `/api/dv` routes, and the chip face of the `@` source in
- * every prompt occurrence.
+ * every prompt occurrence and in the chat composer bar.
  * Live data reaches the components through observable sources: the model catalog, the operation declarations, the
  * open project, and each project's state, fetched again after its project events.
  *
@@ -130,7 +130,11 @@ export function applyPrompt(ctx: ClientContext): void {
     hooks: { currentProject, versionKinds },
     keyedHooks: { projectState: states },
   }
+  // One face for the chips of every prompt occurrence and of the chat composer bar, which each declare their own slot.
   ctx.effect(() => ctx.slots.inject('conversation.prompt.reference', () => ctx.slots.register(
     { name: 'conversation.prompt.reference', key: MENTION_SOURCE, inject: () => face }, ReferenceFace,
   )), 'dv-composer: prompt chip face')
+  ctx.effect(() => ctx.slots.inject('conversation.input.reference', () => ctx.slots.register(
+    { name: 'conversation.input.reference', key: MENTION_SOURCE, inject: () => face }, ReferenceFace,
+  )), 'dv-composer: chat chip face')
 }

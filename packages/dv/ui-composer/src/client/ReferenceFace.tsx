@@ -1,5 +1,6 @@
 /**
- * The face of a DreamVerse chip in every prompt editor: the `conversation.prompt.reference` entry of the `@` source.
+ * The face of a DreamVerse chip in every prompt editor and in the chat composer bar: the `conversation.prompt.reference`
+ * and `conversation.input.reference` entries of the `@` source.
  * It draws the reference's preview, its label, and the version a call sends, from the live project state; a chip that
  * the call's inputs do not satisfy draws in the failure style. A chat chip names its element's newest version.
  *
