@@ -40,14 +40,14 @@ export const { inject, apply } = defineReferenceUi({
 
 | 符号 | 含义 |
 | --- | --- |
-| `ReferenceUiSpec<V>` | 一个名词：`id`（包名，每个描述符的所有者）、`key`（组件键，同时也是参考种类、节点类型和节点 ID 前缀）、`slice(state)`（名词的切片，从条目 ID 到其各版本的映射，名词的 Host 半边未加载时为 `undefined`）、`label`（卡片标签和选择窗口分区的中英文文本对），以及 `mention`（`@` 菜单分区的 `{ section, order }`） |
+| `ReferenceUiSpec<V>` | 一个名词：`id`（包名，每个描述符的所有者）、`key`（组件键，同时也是参考种类、节点类型和节点 ID 前缀）、`color`（名词在主题节点色板中的位置，例如 `var(--dv-node-1)`）、`slice(state)`（名词的切片，从条目 ID 到其各版本的映射，名词的 Host 半边未加载时为 `undefined`）、`label`（卡片标签和选择窗口分区的中英文文本对），以及 `mention`（`@` 菜单分区的 `{ section, order }`） |
 | `WireReferenceVersion` | wire 发送的条目的一个版本：`id`、`version`、`name`、`description`、`references` 和 `created_by`（写下它的记录） |
 | `referenceDescriptors(spec)` | 为一个名词返回 `{ nodeType, versionKind, referencesInUse, mentionKind, historyRow }` |
 | `defineReferenceUi(spec)` | 返回注册这些描述符以及卡片和编辑器条目的 `UiPlugin`（`{ inject: [], apply }`） |
 
 描述符只读取名词自己的切片和 `proj` 记录：
 
-- `nodeType` 是带切片条目的 `NodeType`：每个有版本的条目一个节点 `<key>:<id>`，位于第 0 列，颜色为 `var(--dv-kind-character)`，主体高 30 px。标题是最新版本的名称，没有时为条目 ID。它的 `record` 是写下最新版本的 `proj` 记录，`records` 是较早版本的记录，`assets` 是最新的参考，`ref` 是 `{ kind: key, id }`。
+- `nodeType` 是带切片条目的 `NodeType`：每个有版本的条目一个节点 `<key>:<id>`，位于第 0 列，颜色为声明的 `color`，主体高 30 px。标题是最新版本的名称，没有时为条目 ID。它的 `record` 是写下最新版本的 `proj` 记录，`records` 是较早版本的记录，`assets` 是最新的参考，`ref` 是 `{ kind: key, id }`。
 - `versionKind` 是一个 `VersionKind`：`node(id)` 为 `<key>:<id>`，`latest(state)` 列出每个条目的最新版本，`name` 和 `assets` 读取某个版本，版本不存在时分别为 null 和空。
 - `referencesInUse` 是一个 `RecordsInUse`：`uses(state)` 列出最新参考的产出记录（`proj.created_by`），所以画布会保留这些版本的绘制。
 - `mentionKind` 是 `@dv/ui-composer` 的 `MentionKind`：条目为 `dv:<key>/<id>`，标签为名称（没有时为 ID），描述为说明的前 40 个字符，第一个参考作为缩略图。
@@ -103,7 +103,7 @@ export const { inject, apply } = defineReferenceUi({
 <a id="known-limitations-and-deferred-work"></a>
 
 - **卡片和编辑器通过 `@dv/ui-kit` 的 hook 读取文案。** `ReferenceCard` 和 `ReferenceEditor` 用 `useText` 选择文本，节点类型、版本种类和 mention 种类的标签用 `pickText`，它们都跟随 `<html lang>`，而不是使用注入的 `hooks` 源和插槽的 `t`。
-- **所有名词使用同一种颜色和同一列。** 每个名词节点的颜色都是 `var(--dv-kind-character)`，位于第 0 列；`ReferenceUiSpec` 没有字段可以改变它们。
+- **所有名词使用同一列。** 每个名词节点都位于第 0 列；`ReferenceUiSpec` 没有字段可以改变它。
 - **最后一个参考不能移除。** 不带参考的 `<key>.update` 会保留当前的参考，所以编辑器在最后一个参考上禁用 ×。
 
 <a id="dev-note"></a>

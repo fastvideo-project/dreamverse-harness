@@ -50,7 +50,7 @@ export const planNodeType: NodeType = {
   id: ID,
   type: 'plan',
   label: () => pickText('分镜计划', 'Plan'),
-  color: 'var(--dv-kind-plan)',
+  color: 'var(--dv-node-2)',
   column: 1,
   entries({ state }) {
     const records = new Map(state.components.proj.records.map(record => [record.id, record]))

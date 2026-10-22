@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/dv/ui-shot-plan/README.md
-README.md: 3fb3d4a0901d4bbbfe44c485f294c1be7f675d57
-README.zh.md: 072ceb2b60e5d9064eff8add5aa91f1cf6efac6e
+README.md: f02d194c7e97025f899781fa39e45e12a1842f4e
+README.zh.md: 21e8fb8f9568d5914a3288af948497694f9aa010

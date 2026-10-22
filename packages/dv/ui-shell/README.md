@@ -75,7 +75,7 @@ The workspace renders the shown view with the owner props `projectId` (the open 
 | [`src/client/sessions.ts`](src/client/sessions.ts) | The chat sessions of one project, shared by the navigator and the session switcher |
 | [`src/client/sidebar.ts`](src/client/sidebar.ts) | The fold state of DSH's left sidebar and the shell's collapse and restore |
 | [`src/client/right-panel.ts`](src/client/right-panel.ts) | The right panel's 448 px default width |
-| [`src/client/theme.ts`](src/client/theme.ts) | The DreamVerse theme stylesheet: the `--dv-*` variables and the DSH alias mapping |
+| [`src/client/theme.ts`](src/client/theme.ts) | The DreamVerse theme stylesheet: the `--dv-*` variables, among them the node palette `--dv-node-1` to `--dv-node-8` that each canvas node type picks a slot of and the waveform colors, and the DSH alias mapping |
 | [`src/client/icons.tsx`](src/client/icons.tsx) | The shell's 16 px stroke icons |
 | [`src/client/Navigator.tsx`](src/client/Navigator.tsx) | The left navigator and the brand name |
 | [`src/client/panels.ts`](src/client/panels.ts) | The DSH sidebar page entries, mirrored for the navigator |

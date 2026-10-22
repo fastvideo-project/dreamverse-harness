@@ -24,7 +24,7 @@ import type { ReferenceUiSpec } from '../src/client/reference-kit.tsx'
 
 /** The reference noun `test_ref`. */
 const SPEC = {
-  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref,
+  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref, color: 'var(--dv-node-1)',
   label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 4 },
 } satisfies ReferenceUiSpec
 const testRef = defineReferenceUi(SPEC)
@@ -78,7 +78,7 @@ describe('referenceDescriptors', () => {
       ['test_ref:noir', 'Noir', [], undefined, [], { kind: 'test_ref', id: 'noir' }],
     ])
     expect([nodeType.id, nodeType.type, nodeType.column, nodeType.color, nodeType.label()])
-      .toEqual(['@dv/ui-test-ref', 'test_ref', 0, 'var(--dv-kind-character)', '参考'])
+      .toEqual(['@dv/ui-test-ref', 'test_ref', 0, 'var(--dv-node-1)', '参考'])
     document.documentElement.lang = 'en'
     expect(nodeType.label()).toBe('Reference')
   })

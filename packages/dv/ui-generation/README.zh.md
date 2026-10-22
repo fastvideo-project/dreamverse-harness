@@ -29,7 +29,7 @@ kind: "package-reference"
 
 ```ts ignore-check
 export const { inject, apply } = defineGenerationUi({
-  id: '@dv/ui-shot-render', type: 'take', operations: ['shot.render'], label: ['版本', 'Take'], color: 'var(--dv-kind-take)',
+  id: '@dv/ui-shot-render', type: 'take', operations: ['shot.render'], label: ['版本', 'Take'], color: 'var(--dv-node-3)',
   deepenOn: ['first_frame'],
   status: { running: ['渲染中…', 'Rendering…'], failed: ['生成失败', 'Render failed'], done: ['已渲染', 'Rendered'] },
   references: record => record.params['task'] !== 't2v',
@@ -44,7 +44,7 @@ export const { inject, apply } = defineGenerationUi({
 | 符号 | 含义 |
 | --- | --- |
 | `defineGenerationUi(spec)` | 返回一个生成原语的 `UiPlugin`（`{ inject: [], apply }`） |
-| `GenerationUiSpec` | 声明。必填：`id`（注册它的包）、`type`（节点类型键，例如 `'audio'`）、`operations`（其记录即为版本的生成操作）、`label`（中英文类型标签）、`color`（主题颜色，例如 `var(--dv-kind-take)`）和 `status`（`StatusWords`）。可选：`column`（默认 2）、`deepenOn`（把版本推到其读取来源节点右边一列的输入角色）、`bodyHeight`（默认 117，即 208 px 卡片宽度下的 16:9 画面）、`references(record)`（操作声明了 `reference` 输入时，版本编辑器是否为该版本提供参考标签；默认是）、`subject(record)`（历史主题；默认无）和 `preview(outputs)`（不是第一个输出时，在小视图中代表版本、并由编辑器和对话卡片的播放器在播放前显示的输出；它读取版本的输出及其 MIME 类型） |
+| `GenerationUiSpec` | 声明。必填：`id`（注册它的包）、`type`（节点类型键，例如 `'audio'`）、`operations`（其记录即为版本的生成操作）、`label`（中英文类型标签）、`color`（主题颜色，例如 `var(--dv-node-3)`）和 `status`（`StatusWords`）。可选：`column`（默认 2）、`deepenOn`（把版本推到其读取来源节点右边一列的输入角色）、`bodyHeight`（默认 117，即 208 px 卡片宽度下的 16:9 画面）、`references(record)`（操作声明了 `reference` 输入时，版本编辑器是否为该版本提供参考标签；默认是）、`subject(record)`（历史主题；默认无）和 `preview(outputs)`（不是第一个输出时，在小视图中代表版本、并由编辑器和对话卡片的播放器在播放前显示的输出；它读取版本的输出及其 MIME 类型） |
 | `StatusWords` | 中英文文本对 `running`、`failed` 和 `done` |
 
 ### 插件注册的内容

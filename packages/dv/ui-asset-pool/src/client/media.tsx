@@ -159,7 +159,7 @@ function AudioCard({ asset }: { asset: PropsRuntime<'dv.media.view'>['asset'] })
         ? <span style={{ flex: 1 }} />
         : (
           <svg data-testid="dv-audio-waveform" viewBox={`0 0 ${String(BARS * (BAR + GAP))} 40`} preserveAspectRatio="none" aria-hidden style={{ flex: 1, height: '60%' }}>
-            <path d={path} fill="var(--dv-kind-audio)" />
+            <path d={path} fill="var(--dv-waveform)" />
           </svg>
         )}
       <audio

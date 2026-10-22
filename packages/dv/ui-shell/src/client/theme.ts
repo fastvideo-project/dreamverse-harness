@@ -9,7 +9,11 @@
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 
-/** The `--dv-*` variables and the DSH alias mapping. */
+/**
+ * The `--dv-*` variables and the DSH alias mapping. `--dv-node-1` to `--dv-node-8` are a categorical palette that names
+ * no kind: each canvas node type picks one slot for its type dot and its edges. `--dv-waveform` and `--dv-waveform-soft`
+ * draw a waveform and the box behind it.
+ */
 const DV_THEME_CSS = `
 html body {
   --dv-bg: #F5F6F8;
@@ -31,11 +35,16 @@ html body {
   --dv-warn: #B45309;
   --dv-danger: #DC2626;
   --dv-danger-soft: #FDF0F0;
-  --dv-kind-character: #DB2777;
-  --dv-kind-plan: #EA580C;
-  --dv-kind-take: #0D9488;
-  --dv-kind-audio: rgba(77,124,15,0.7);
-  --dv-kind-audio-soft: rgba(101,163,13,0.10);
+  --dv-node-1: #DB2777;
+  --dv-node-2: #EA580C;
+  --dv-node-3: #0D9488;
+  --dv-node-4: #65A30D;
+  --dv-node-5: #7C3AED;
+  --dv-node-6: #0284C7;
+  --dv-node-7: #CA8A04;
+  --dv-node-8: #475569;
+  --dv-waveform: rgba(77,124,15,0.7);
+  --dv-waveform-soft: rgba(101,163,13,0.10);
   --dv-grid: rgba(16,24,40,0.10);
   --dv-media-bg: #E9ECF1;
   --dv-overlay: rgba(20,22,27,0.18);
@@ -71,11 +80,16 @@ html body[data-ds-dark-theme] {
   --dv-warn: #F5B83D;
   --dv-danger: #F2555A;
   --dv-danger-soft: rgba(242,85,90,0.10);
-  --dv-kind-character: #F472B6;
-  --dv-kind-plan: #FB923C;
-  --dv-kind-take: #2DD4BF;
-  --dv-kind-audio: rgba(163,230,53,0.75);
-  --dv-kind-audio-soft: rgba(163,230,53,0.10);
+  --dv-node-1: #F472B6;
+  --dv-node-2: #FB923C;
+  --dv-node-3: #2DD4BF;
+  --dv-node-4: #A3E635;
+  --dv-node-5: #A78BFA;
+  --dv-node-6: #38BDF8;
+  --dv-node-7: #FACC15;
+  --dv-node-8: #94A3B8;
+  --dv-waveform: rgba(163,230,53,0.75);
+  --dv-waveform-soft: rgba(163,230,53,0.10);
   --dv-grid: rgba(255,255,255,0.06);
   --dv-media-bg: #050607;
   --dv-overlay: rgba(0,0,0,0.45);

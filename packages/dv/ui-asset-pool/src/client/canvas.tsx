@@ -24,7 +24,7 @@ export const assetNodeType: NodeType = {
   id: ID,
   type: 'asset',
   label: () => pickText('素材', 'Asset'),
-  color: 'var(--dv-kind-character)',
+  color: 'var(--dv-node-6)',
   column: 0,
   entries({ state, placed }) {
     const assets = new Map(state.assets.map(asset => [asset.id, asset]))

@@ -115,9 +115,9 @@ const palette = {
   accentFg: 'var(--dv-accent-text)',
   danger: 'var(--dv-danger)',
   dangerSoft: 'var(--dv-danger-soft)',
-  take: 'var(--dv-kind-take)',
-  audio: 'var(--dv-kind-audio)',
-  audioSoft: 'var(--dv-kind-audio-soft)',
+  take: 'var(--dv-node-3)',
+  audio: 'var(--dv-waveform)',
+  audioSoft: 'var(--dv-waveform-soft)',
   media: 'var(--dv-media-bg)',
   mono: 'var(--dv-font-mono)',
 }

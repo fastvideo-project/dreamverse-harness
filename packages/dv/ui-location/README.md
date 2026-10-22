@@ -66,4 +66,4 @@ None; the package sends nothing to a model.
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **One color** — the node type uses `var(--dv-kind-character)`, because the theme has no token for each noun.
+- **Column 0** — the node type sits in column 0 with every other noun, colored `var(--dv-node-5)`, because `ReferenceUiSpec` has no column field.

@@ -20,7 +20,7 @@ import { defineGenerationUi } from '../src/client/generation-kit.tsx'
 /** The test kind: takes of `shot.render` and `clip.extend`, whose still output stands for a take, and no references for `t2v`. */
 export const testTake = defineGenerationUi({
   id: '@dv/ui-test-take', type: 'test_take', operations: ['shot.render', 'clip.extend'], label: ['测试版本', 'Test take'],
-  color: 'var(--dv-kind-take)',
+  color: 'var(--dv-node-3)',
   status: { running: ['生成中…', 'Generating…'], failed: ['没生成', 'Not generated'], done: ['已生成', 'Generated'] },
   references: record => record.params['task'] !== 't2v',
   preview: outputs => outputs.find(output => output.mime === 'image/png')?.id,

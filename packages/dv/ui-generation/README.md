@@ -29,7 +29,7 @@ Add `@dv/ui-generation` to the `devDependencies` of a primitive's UI package and
 
 ```ts ignore-check
 export const { inject, apply } = defineGenerationUi({
-  id: '@dv/ui-shot-render', type: 'take', operations: ['shot.render'], label: ['版本', 'Take'], color: 'var(--dv-kind-take)',
+  id: '@dv/ui-shot-render', type: 'take', operations: ['shot.render'], label: ['版本', 'Take'], color: 'var(--dv-node-3)',
   deepenOn: ['first_frame'],
   status: { running: ['渲染中…', 'Rendering…'], failed: ['生成失败', 'Render failed'], done: ['已渲染', 'Rendered'] },
   references: record => record.params['task'] !== 't2v',
@@ -44,7 +44,7 @@ The kit's entry is [`src/client/generation-kit.tsx`](src/client/generation-kit.t
 | Symbol | Meaning |
 | --- | --- |
 | `defineGenerationUi(spec)` | Returns the `UiPlugin` (`{ inject: [], apply }`) of one generation primitive |
-| `GenerationUiSpec` | The declaration. Required: `id` (the registering package), `type` (the node type key, such as `'audio'`), `operations` (the generation operations whose records are the takes), `label` (the Chinese and English type label), `color` (a theme color, such as `var(--dv-kind-take)`), and `status` (`StatusWords`). Optional: `column` (default 2), `deepenOn` (input roles that push a take one column right of the node it reads them from), `bodyHeight` (default 117, the 16:9 frame at the 208 px card width), `references(record)` (whether the take editor offers reference chips for a take whose operation declares a `reference` input; default yes), `subject(record)` (the History subject; default none), and `preview(outputs)` (the output that stands for a take in small views and that the editor's and the chat card's players show before they play, when it is not the first output; it reads the take's outputs with their MIME types) |
+| `GenerationUiSpec` | The declaration. Required: `id` (the registering package), `type` (the node type key, such as `'audio'`), `operations` (the generation operations whose records are the takes), `label` (the Chinese and English type label), `color` (a theme color, such as `var(--dv-node-3)`), and `status` (`StatusWords`). Optional: `column` (default 2), `deepenOn` (input roles that push a take one column right of the node it reads them from), `bodyHeight` (default 117, the 16:9 frame at the 208 px card width), `references(record)` (whether the take editor offers reference chips for a take whose operation declares a `reference` input; default yes), `subject(record)` (the History subject; default none), and `preview(outputs)` (the output that stands for a take in small views and that the editor's and the chat card's players show before they play, when it is not the first output; it reads the take's outputs with their MIME types) |
 | `StatusWords` | The Chinese and English pairs `running`, `failed`, and `done` |
 
 ### What the plugin registers

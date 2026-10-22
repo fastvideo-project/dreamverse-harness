@@ -38,7 +38,7 @@ export interface GenerationUiSpec {
   operations: readonly string[]
   /** The type label, such as ['音频', 'Audio']: the editor header and the accessible names. */
   label: Text
-  /** A theme color, such as `var(--dv-kind-take)`. */
+  /** A slot of the theme's node palette, such as `var(--dv-node-3)`. */
   color: string
   /** Default 2, the column of takes. */
   column?: number

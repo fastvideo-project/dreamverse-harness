@@ -19,7 +19,10 @@ interface NodeTypeCore {
   type: string
   /** The type label in the interface language: the editor header and the accessible names. */
   label(): string
-  /** A theme color, such as `var(--dv-kind-take)`: the type dot and every edge that leaves a node of this type. */
+  /**
+   * A slot of the theme's node palette, `var(--dv-node-1)` to `var(--dv-node-8)` of `@dv/ui-shell`: the type dot and
+   * every edge that leaves a node of this type.
+   */
   color: string
   /** The default layout column. */
   column: number

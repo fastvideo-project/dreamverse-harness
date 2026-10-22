@@ -11,6 +11,9 @@ import { assetUrl } from '@dv/ui-kit/api.ts'
 import type { NodeType } from '../src/client/contract/index.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { forgetCanvasStorage, KINDS, mountCanvas } from './canvas-runtime.client.tsx'
+import { apply as characterApply, inject as characterInject } from '../../ui-character/src/client/index.ts'
+import { apply as locationApply, inject as locationInject } from '../../ui-location/src/client/index.ts'
+import { apply as styleApply, inject as styleInject } from '../../ui-style/src/client/index.ts'
 
 usePinnedBrowserLanguages('zh-CN')
 
@@ -45,6 +48,21 @@ describe('the dv.canvas Factory', () => {
 })
 
 describe('kind plugins', () => {
+  it('gives each node type of today\'s kinds its own slot of the theme\'s node palette', async () => {
+    const { runtime } = await mountCanvas({ kinds: ['plan', 'assets', 'takes', 'media'] })
+    const nouns = [
+      { inject: characterInject, apply: characterApply }, { inject: locationInject, apply: locationApply },
+      { inject: styleInject, apply: styleApply },
+    ]
+    for (const noun of nouns) await runtime.mount({ inject: [...noun.inject], apply: noun.apply })
+    const colors = runtime.ctx.dvCanvas.nodeTypes.getSnapshot().map(type => [type.type, type.color]).sort()
+    expect(colors).toEqual([
+      ['asset', 'var(--dv-node-6)'], ['character', 'var(--dv-node-1)'], ['location', 'var(--dv-node-5)'], ['plan', 'var(--dv-node-2)'],
+      ['style', 'var(--dv-node-7)'], ['take', 'var(--dv-node-3)'],
+    ])
+    await runtime.dispose()
+  })
+
   it('disposing the video takes\' fiber removes their node type, operation claim, card and editor entries, 重试 action and nodes', async () => {
     const { runtime, node, kinds, view } = await mountCanvas()
     const canvas = runtime.ctx.dvCanvas

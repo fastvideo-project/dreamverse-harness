@@ -11,6 +11,6 @@ declare module '@dv/ui-kit/types.ts' { interface ComponentStates { character: Ch
 
 /** The character noun on the canvas, in the asset picker, in the `@` menu and in the History panel. */
 export const { inject, apply } = defineReferenceUi({
-  id: '@dv/ui-character', key: 'character', slice: state => state.components.character,
+  id: '@dv/ui-character', key: 'character', slice: state => state.components.character, color: 'var(--dv-node-1)',
   label: ['角色', 'Character'], mention: { section: ['角色', 'Characters'], order: 1 },
 })

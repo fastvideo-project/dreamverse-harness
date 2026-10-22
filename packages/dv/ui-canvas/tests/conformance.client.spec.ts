@@ -48,7 +48,7 @@ async function registered(): Promise<{ registrations: CanvasRegistrations; rows:
   await runtime.mount({ inject: [...inject], apply })
   await runtime.mount({ inject: [...historyInject], apply: historyApply })
   const testRef = defineReferenceUi({
-    id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref,
+    id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref, color: 'var(--dv-node-1)',
     label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 1 },
   })
   await runtime.mount({ inject: [...testRef.inject], apply: testRef.apply })

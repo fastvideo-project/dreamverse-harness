@@ -20,7 +20,7 @@ import { APPROVAL, CLIPS } from './fixtures/conformance-states.client.ts'
 
 /** The descriptors of the fixture's reference noun `test_ref`, as the reference kit builds them for a noun package. */
 const testRef = referenceDescriptors({
-  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref,
+  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref, color: 'var(--dv-node-1)',
   label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 1 },
 })
 

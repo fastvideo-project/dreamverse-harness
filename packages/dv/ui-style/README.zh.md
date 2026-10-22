@@ -66,4 +66,4 @@ Host 半边不注册任何东西。浏览器半边在各服务存在时注册每
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **只有一种颜色** —— 节点类型使用 `var(--dv-kind-character)`，因为主题没有给每个名词的颜色变量。
+- **第 0 列** —— 节点类型和其他名词一起位于第 0 列，颜色为 `var(--dv-node-7)`，因为 `ReferenceUiSpec` 没有列字段。

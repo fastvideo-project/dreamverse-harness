@@ -35,7 +35,7 @@ The Host half registers nothing. The browser half registers the following entrie
 
 | Registration | Value |
 | --- | --- |
-| `dvCanvas.nodeTypes` | The node type `take` (keys `take` and `op:shot.render`), labeled 版本 / Take, colored `var(--dv-kind-take)`, in column 2. It claims the current records of `shot.render`, so the canvas draws each one as a take node; a take whose `first_frame` input it reads from another node sits one column right of that node (`deepenOn: ['first_frame']`). While a take runs, its node shows 渲染中… / Rendering…; a failed take shows 生成失败 / Render failed |
+| `dvCanvas.nodeTypes` | The node type `take` (keys `take` and `op:shot.render`), labeled 版本 / Take, colored `var(--dv-node-3)`, in column 2. It claims the current records of `shot.render`, so the canvas draws each one as a take node; a take whose `first_frame` input it reads from another node sits one column right of that node (`deepenOn: ['first_frame']`). While a take runs, its node shows 渲染中… / Rendering…; a failed take shows 生成失败 / Render failed |
 | `dvCanvas.actions` | `@dv/ui-shot-render:take:retry`, 重试 / Retry on a failed take: it reruns the take's operation with the take's inputs and params and `based_on` set to the take |
 | `dv.canvas.card` key `take` | The take's last still (its image output), else its first output, drawn through `dv.media` at purpose `card` in a 16:9 frame |
 | `dv.canvas.editor.claimed` key `take` | The take editor of `@dv/ui-generation`: the video through `dv.media` at purpose `loop` with the still as its poster, the model and generation task, the params that `shot.render` declares, reference chips unless the take's task is `t2v`, and 渲染新版本 / Render new take |

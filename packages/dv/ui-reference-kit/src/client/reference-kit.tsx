@@ -35,6 +35,8 @@ export interface ReferenceUiSpec<V extends WireReferenceVersion = WireReferenceV
   key: string
   /** The noun's slice, such as `state => state.components.character`; undefined while the host half is not loaded. */
   slice: (state: WireState) => Readonly<Record<string, readonly V[]>> | undefined
+  /** A slot of the theme's node palette, such as `var(--dv-node-1)`: the type dot and the edges of the noun's nodes. */
+  color: string
   /** Card label and picker section, such as ['角色', 'Character']. */
   label: readonly [zh: string, en: string]
   /** The `@` menu section and its order, such as { section: ['角色', 'Characters'], order: 1 }. */
@@ -90,7 +92,7 @@ export function referenceDescriptors<V extends WireReferenceVersion>(spec: Refer
     id: spec.id,
     type: key,
     label: () => pickText(...spec.label),
-    color: 'var(--dv-kind-character)',
+    color: spec.color,
     column: 0,
     entries({ state }) {
       const records = new Map(state.components.proj.records.map(record => [record.id, record]))

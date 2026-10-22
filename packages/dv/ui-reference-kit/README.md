@@ -40,14 +40,14 @@ The kit is one module, [`src/client/reference-kit.tsx`](src/client/reference-kit
 
 | Symbol | Meaning |
 | --- | --- |
-| `ReferenceUiSpec<V>` | One noun: `id` (the package name, the owner of every descriptor), `key` (the component key, which is also the reference kind, the node type, and the node ID prefix), `slice(state)` (the noun's slice, a map from item ID to its versions, `undefined` while the Host half of the noun is not loaded), `label` (the Chinese and English pair of the card label and the picker section), and `mention` (`{ section, order }` of the `@` menu section) |
+| `ReferenceUiSpec<V>` | One noun: `id` (the package name, the owner of every descriptor), `key` (the component key, which is also the reference kind, the node type, and the node ID prefix), `color` (the noun's slot of the theme's node palette, such as `var(--dv-node-1)`), `slice(state)` (the noun's slice, a map from item ID to its versions, `undefined` while the Host half of the noun is not loaded), `label` (the Chinese and English pair of the card label and the picker section), and `mention` (`{ section, order }` of the `@` menu section) |
 | `WireReferenceVersion` | One version of an item as the wire sends it: `id`, `version`, `name`, `description`, `references`, and `created_by` (the record that wrote it) |
 | `referenceDescriptors(spec)` | Returns `{ nodeType, versionKind, referencesInUse, mentionKind, historyRow }` for one noun |
 | `defineReferenceUi(spec)` | Returns the `UiPlugin` (`{ inject: [], apply }`) that registers those descriptors and the card and editor entries |
 
 The descriptors read only the noun's own slice and the `proj` records:
 
-- `nodeType` is a `NodeType` with slice entries: one node `<key>:<id>` per item that has a version, in column 0, colored `var(--dv-kind-character)`, with a body 30 px tall. Its title is the newest version's name, else the item ID. Its `record` is the `proj` record that wrote the newest version, `records` are the records of the earlier versions, `assets` are the newest references, and `ref` is `{ kind: key, id }`.
+- `nodeType` is a `NodeType` with slice entries: one node `<key>:<id>` per item that has a version, in column 0, colored by the spec's `color`, with a body 30 px tall. Its title is the newest version's name, else the item ID. Its `record` is the `proj` record that wrote the newest version, `records` are the records of the earlier versions, `assets` are the newest references, and `ref` is `{ kind: key, id }`.
 - `versionKind` is a `VersionKind` whose `node(id)` is `<key>:<id>`, whose `latest(state)` lists the newest version of each item, and whose `name` and `assets` read one version, null and empty for a version that does not exist.
 - `referencesInUse` is a `RecordsInUse` whose `uses(state)` lists the producer records (`proj.created_by`) of the newest references, so the canvas keeps those takes drawn.
 - `mentionKind` is a `MentionKind` of `@dv/ui-composer` whose items are `dv:<key>/<id>`, labeled with the name, else the ID, described by the first 40 characters of the description, with the first reference as the thumbnail.
@@ -103,7 +103,7 @@ None; the kit sends nothing to a model.
 <a id="known-limitations-and-deferred-work"></a>
 
 - **The card and the editor read their copy through `@dv/ui-kit` hooks.** `ReferenceCard` and `ReferenceEditor` pick their text with `useText`, and the node type, version kind, and mention kind labels use `pickText`, which follow `<html lang>`, instead of an inject `hooks` source and the slot's `t`.
-- **Every noun has one color and column.** Every noun node is colored `var(--dv-kind-character)` in column 0; `ReferenceUiSpec` has no field to change them.
+- **Every noun has one column.** Every noun node is in column 0; `ReferenceUiSpec` has no field to change it.
 - **The last reference cannot be removed.** An `<key>.update` without references keeps the current ones, so the editor disables × on the last reference.
 
 <a id="dev-note"></a>
