@@ -36,9 +36,9 @@ function chatState(): WireState {
 /** The shot number of every output of the takes of {@link chatState}. */
 const SHOTS = { 'shot1.mp4': 1, 'shot1-last.png': 1, 'shot2.mp4': 2, 'shot2-last.png': 2 }
 
-/** The snapshot of {@link chatState}. */
+/** The snapshot of {@link chatState} in project p1. */
 function heldOf(state: WireState): ChatAssets {
-  return { assets: Object.fromEntries(state.assets.map(entry => [entry.id, entry])), shots: SHOTS }
+  return { project: 'p1', assets: Object.fromEntries(state.assets.map(entry => [entry.id, entry])), shots: SHOTS }
 }
 
 /** A browser event stream whose project events the test sends. */
@@ -89,8 +89,8 @@ describe('resolveChatMedia', () => {
   const byId = (id: string) => state.assets.find(entry => entry.id === id)
 
   it('gives a link card the take\'s shot number, and no shot number to an asset of no take, for any media type', () => {
-    expect(resolveChatMedia({ kind: 'link', asset: 'shot1.mp4' }, held)).toEqual({ kind: 'link', asset: byId('shot1.mp4'), shot: 1 })
-    expect(resolveChatMedia({ kind: 'link', asset: 'score.wav' }, held)).toEqual({ kind: 'link', asset: byId('score.wav'), shot: null })
+    expect(resolveChatMedia({ kind: 'link', asset: 'shot1.mp4' }, held)).toEqual({ project: 'p1', kind: 'link', asset: byId('shot1.mp4'), shot: 1 })
+    expect(resolveChatMedia({ kind: 'link', asset: 'score.wav' }, held)).toEqual({ project: 'p1', kind: 'link', asset: byId('score.wav'), shot: null })
   })
 
   it('keeps the default element while the project does not hold the asset', () => {
@@ -100,7 +100,7 @@ describe('resolveChatMedia', () => {
   })
 
   it('draws an image of any held asset as a thumbnail', () => {
-    expect(resolveChatMedia({ kind: 'image', asset: 'shot1.mp4', alt: '镜头' }, held)).toEqual({ kind: 'image', asset: byId('shot1.mp4'), alt: '镜头' })
+    expect(resolveChatMedia({ kind: 'image', asset: 'shot1.mp4', alt: '镜头' }, held)).toEqual({ project: 'p1', kind: 'image', asset: byId('shot1.mp4'), alt: '镜头' })
   })
 
   it('turns a table whose every body row links a held asset into a grid of the first held asset per row, captioned by the other cells', () => {
@@ -110,7 +110,7 @@ describe('resolveChatMedia', () => {
     ))
     if (reference === null) throw new Error('the table links no asset')
     expect(resolveChatMedia(reference, held)).toEqual({
-      kind: 'table', cards: [{ asset: byId('shot1.mp4'), caption: '1 · 直播间开场「来一把吧」' }, { asset: byId('score.wav'), caption: '2' }],
+      project: 'p1', kind: 'table', cards: [{ asset: byId('shot1.mp4'), caption: '1 · 直播间开场「来一把吧」' }, { asset: byId('score.wav'), caption: '2' }],
     })
     const missing = selectAssetReference(table([cell('1'), cell('播放', '/dv/assets/shot1.mp4')], [cell('2'), cell('缺失', '/dv/assets/missing.mp4')]))
     if (missing === null) throw new Error('the table links no asset')
@@ -282,7 +282,7 @@ describe('registerChatMedia under the slot runtime', () => {
     expect(view.getByRole('button', { name: '查看: 2 · 特写' })).toBeTruthy()
 
     fireEvent.click(card)
-    expect(preview).toHaveBeenCalledExactlyOnceWith(chatState().assets.find(entry => entry.id === 'shot1.mp4'), card)
+    expect(preview).toHaveBeenCalledExactlyOnceWith('p1', chatState().assets.find(entry => entry.id === 'shot1.mp4'), card)
     expect(view.getByRole('dialog', { name: 'shot1.mp4' }).querySelector('video')?.hasAttribute('controls')).toBe(true)
 
     await plugin.dispose()

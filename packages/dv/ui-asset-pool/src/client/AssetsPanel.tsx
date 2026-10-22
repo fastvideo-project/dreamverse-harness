@@ -28,8 +28,8 @@ export interface AssetsPanelProps {
   session: string | null
   /** The API client. */
   client: DvClient
-  /** Open the asset preview of `dvMedia`, growing out of the clicked tile. */
-  preview: (asset: Asset, opener: Element | null) => void
+  /** Open the asset preview of `dvMedia` for an asset of a project, growing out of the clicked tile. */
+  preview: (projectId: string, asset: Asset, opener: Element | null) => void
   /** Called on a click on a thumbnail instead of opening the preview. */
   onOpen?: (asset: Asset) => void
 }
@@ -45,7 +45,7 @@ export function AssetsPanel(props: AssetsPanelProps): ReactNode {
   const t = useText()
   const library = useMemo(() => state.value === null ? null : assetLibrary(state.value), [state.value])
   const { onOpen: pick, preview } = props
-  const onOpen = (asset: Asset, tile: Element): void => { if (pick === undefined) preview(asset, tile); else pick(asset) }
+  const onOpen = (asset: Asset, tile: Element): void => { if (pick === undefined) preview(props.projectId, asset, tile); else pick(asset) }
 
   let body: ReactNode
   if (library === null) body = <p className={css.note}>{state.error === null ? t('正在读取…', 'Loading…') : t(`读取失败：${state.error}`, `Failed to load: ${state.error}`)}</p>
@@ -162,7 +162,7 @@ function Thumb(props: { asset: Asset; onOpen: (asset: Asset, tile: Element) => v
 /** What the plugin hands the tab body and the canvas picker entry. */
 export interface AssetsTabInjected {
   client: DvClient
-  preview: (asset: Asset, opener: Element | null) => void
+  preview: (projectId: string, asset: Asset, opener: Element | null) => void
 }
 
 /**

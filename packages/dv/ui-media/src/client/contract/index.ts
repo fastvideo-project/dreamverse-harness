@@ -39,10 +39,11 @@ export interface MediaType {
 export interface DvMedia {
   types: Registry<MediaType>
   /**
-   * Open the preview of an asset: its media at purpose 'player' with its facts and the `dv.media.preview.action`
-   * entries, growing out of `opener` and shrinking back into it, in DSH's root `shell.overlay` list.
+   * Open the preview of an asset of a project: its media at purpose 'player' with its facts and the
+   * `dv.media.preview.action` entries, growing out of `opener` and shrinking back into it, in DSH's root
+   * `shell.overlay` list. The preview closes when the open project of the DreamVerse shell changes.
    */
-  preview(asset: Asset, opener: Element | null): void
+  preview(projectId: string, asset: Asset, opener: Element | null): void
 }
 
 /**
@@ -69,6 +70,8 @@ export interface MediaViewOwner extends MediaOwner {
 
 /** Owner props of one action of the asset preview. */
 export interface PreviewActionOwner {
+  /** The project of the previewed asset. */
+  projectId: string
   asset: Asset
   /** Close the preview. */
   close(): void

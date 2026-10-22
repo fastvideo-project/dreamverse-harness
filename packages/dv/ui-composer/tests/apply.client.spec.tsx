@@ -57,13 +57,13 @@ describe('让智能体使用', () => {
   it('prefills 使用这个素材： with the previewed asset and closes the preview, until the plugin is disposed', async () => {
     const { runtime, composer, view, composed, stop } = await mountComposer()
     const audio = asset('score.wav', 'audio/wav', null)
-    act(() => { runtime.ctx.dvMedia.preview(audio, null) })
+    act(() => { runtime.ctx.dvMedia.preview('p1', audio, null) })
     fireEvent.click(within(view.getByRole('dialog', { name: 'score.wav' })).getByRole('button', { name: '让智能体使用' }))
     expect(composed).toEqual([{ text: '使用这个素材：', refs: [{ kind: 'asset', id: 'score.wav', label: 'score.wav', assetId: 'score.wav' }] }])
     await vi.waitFor(() => { expect(view.queryByRole('dialog')).toBeNull() })
 
     await composer.dispose()
-    act(() => { runtime.ctx.dvMedia.preview(audio, null) })
+    act(() => { runtime.ctx.dvMedia.preview('p1', audio, null) })
     expect(within(view.getByRole('dialog', { name: 'score.wav' })).queryByRole('button', { name: '让智能体使用' })).toBeNull()
     stop()
     await runtime.dispose()

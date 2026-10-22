@@ -570,7 +570,7 @@ describe('CanvasView', () => {
     const opened = vi.spyOn(runtime.ctx.dvMedia, 'preview')
     const chip = view.getByRole('button', { name: '查看 shot1.mp4' })
     fireEvent.click(chip)
-    expect(opened.mock.calls).toEqual([[expect.objectContaining({ id: 'shot1.mp4' }), chip]])
+    expect(opened.mock.calls).toEqual([['p1', expect.objectContaining({ id: 'shot1.mp4' }), chip]])
     expect(await view.findByRole('dialog', { name: 'shot1.mp4' })).toBeTruthy()
     // Escape closes the preview and leaves the editor open.
     fireEvent.keyDown(window, { key: 'Escape' })

@@ -32,7 +32,7 @@ export interface MediaFrame {
   renderSlot: ComposedProps<'root', never, keyof typeof FRAME_SLOTS, undefined, object>['renderSlot']
   renderFactorySlot: RenderFactorySlot
   /** Opens the `dvMedia` preview, as the canvas plugin injects it into both canvases. */
-  preview: (asset: Asset, opener: Element | null) => void
+  preview: (projectId: string, asset: Asset, opener: Element | null) => void
 }
 
 /**
@@ -46,7 +46,9 @@ export async function mountCanvasFrame(
   runtime: SlotTestRuntime, draw: (frame: MediaFrame) => ReactNode, media: (runtime: SlotTestRuntime) => Promise<void> = mountMediaPlugins,
 ): Promise<void> {
   runtime.ctx.provide('sidebarRightTabs', new SidebarRightTabRegistry(runtime.ctx) as never)
-  const preview = (asset: Asset, opener: Element | null): void => { runtime.ctx.dvMedia.preview(asset, opener) }
+  const preview = (projectId: string, asset: Asset, opener: Element | null): void => {
+    runtime.ctx.dvMedia.preview(projectId, asset, opener)
+  }
   await runtime.root.declare(FRAME_SLOTS, ({ renderSlot, renderFactorySlot }) => (
     <>{draw({ renderSlot, renderFactorySlot, preview })}{renderSlot('shell.overlay', {})}</>
   ))

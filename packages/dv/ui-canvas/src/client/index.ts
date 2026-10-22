@@ -39,7 +39,7 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.sidebarRightTabs.register(canvasDefinition(t)), 'ui-canvas: tab type')
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-canvas: dictionaries')
   const injected: CanvasInjected = {
-    client: new DvClient(), canvas, preview: (asset, opener) => { ctx.get('dvMedia')?.preview(asset, opener) },
+    client: new DvClient(), canvas, preview: (projectId, asset, opener) => { ctx.get('dvMedia')?.preview(projectId, asset, opener) },
   }
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
     { name: 'sidebar.right.pane.tab', key: CANVAS_ID, locale: NS, inject: () => injected },

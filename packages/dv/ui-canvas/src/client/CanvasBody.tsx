@@ -23,8 +23,8 @@ export interface CanvasInjected {
   client: DvClient
   /** The `dvCanvas` registries that the plugin provides. */
   canvas: DvCanvas
-  /** Opens the asset preview of `dvMedia`; nothing opens while `@dv/ui-media` is not loaded. */
-  preview: (asset: Asset, opener: Element | null) => void
+  /** Opens the asset preview of `dvMedia` for an asset of a project; nothing opens while `@dv/ui-media` is not loaded. */
+  preview: (projectId: string, asset: Asset, opener: Element | null) => void
 }
 
 /** The body's composed props: the tab it draws, the API client, the canvas registries, the preview, its copy, and the

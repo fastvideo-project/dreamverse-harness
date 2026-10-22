@@ -32,7 +32,7 @@ export const inject = ['slots', 'sidebarRightTabs']
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.sidebarRightTabs.register(assetPoolDefinition), 'ui-asset-pool: tab type')
   // The media plugin is optional; without it an asset opens no preview.
-  const preview: AssetsTabInjected['preview'] = (asset, opener) => { ctx.get('dvMedia')?.preview(asset, opener) }
+  const preview: AssetsTabInjected['preview'] = (projectId, asset, opener) => { ctx.get('dvMedia')?.preview(projectId, asset, opener) }
   const injected: AssetsTabInjected = { client: new DvClient(), preview }
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
     { name: 'sidebar.right.pane.tab', key: ASSET_POOL_ID, inject: () => injected },

@@ -76,9 +76,9 @@ async function mount(routes: ScriptedRoutes = {}) {
   const view = runtime.renderRoot()
   const operations = (): unknown[] => writes.filter(write => write.path === '/api/dv/operation').map(write => write.body)
   const show = (target: CenterTarget): void => { act(() => { runtime.ctx.dvCenter.show(target) }) }
-  /** Open the preview of an asset, as a tile of the asset pool does, and return its 插入片段 button, or null. */
-  const preview = (item: Asset): HTMLElement | null => {
-    act(() => { runtime.ctx.dvMedia.preview(item, null) })
+  /** Open the preview of an asset of a project, p1 by default, as a tile of the asset pool does, and return its 插入片段 button, or null. */
+  const preview = (item: Asset, projectId = 'p1'): HTMLElement | null => {
+    act(() => { runtime.ctx.dvMedia.preview(projectId, item, null) })
     return within(view.getByRole('dialog')).queryByRole('button', { name: /插入片段|Insert clip/ })
   }
   /** Click 插入片段 in the preview of an asset. */
@@ -143,6 +143,14 @@ describe('插入片段 in the asset preview', () => {
         surface: 'timeline', session: 's5',
       }])
     })
+    await runtime.dispose()
+  })
+
+  it('hides 插入片段 for an asset of a project that is not open', async () => {
+    const { runtime, preview } = await mount()
+    act(() => { publishCurrentProject('p1') })
+    expect(preview(CLIP, 'p2')).toBeNull()
+    expect(preview(CLIP, 'p1')).not.toBeNull()
     await runtime.dispose()
   })
 

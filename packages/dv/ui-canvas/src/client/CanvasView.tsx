@@ -60,8 +60,9 @@ export interface CanvasViewProps {
   renderSlot?: RenderCanvasSlot
   /** Renders the `dv.canvas` assets through the `dv.media` Factory of `@dv/ui-media`; without it, no asset draws. */
   renderFactorySlot?: PropsRenderFactories['renderFactorySlot']
-  /** Opens the asset preview of `dvMedia`, growing out of `opener`; without it, an asset opens no preview. */
-  preview?: (asset: Asset, opener: Element | null) => void
+  /** Opens the asset preview of `dvMedia` for an asset of a project, growing out of `opener`; without it, an asset opens
+   *  no preview. */
+  preview?: (projectId: string, asset: Asset, opener: Element | null) => void
   /** The record whose node to open once; none when null or omitted. */
   focus?: CanvasFocus | null
 }
@@ -794,7 +795,7 @@ export function CanvasView(
     t,
     ...renderSlot === undefined ? {} : { renderSlot },
     ...renderFactorySlot === undefined ? {} : { renderFactorySlot },
-    ...preview === undefined ? {} : { preview },
+    ...preview === undefined ? {} : { preview: (asset: Asset, opener: Element | null) => { preview(projectId, asset, opener) } },
     run,
     onRender: startRender,
     onRemoveFromCanvas: removeFromCanvas,

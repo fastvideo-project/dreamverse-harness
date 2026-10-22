@@ -12,6 +12,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
 import type { Asset } from '@dv/ui-kit/types.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
@@ -20,6 +21,7 @@ import type { MediaOwner, MediaType } from '../src/client/contract/index.ts'
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  publishCurrentProject(null)
   document.documentElement.lang = ''
 })
 
@@ -50,9 +52,9 @@ const imageViewPlugin = {
 /** The assets that the preview action inserted. */
 const inserted: string[] = []
 
-/** A preview action that records its asset and closes the preview. */
+/** A preview action that records its asset with the asset's project and closes the preview. */
 function InsertAction(props: PropsRuntime<'dv.media.preview.action'>): ReactNode {
-  return <button type="button" onClick={() => { inserted.push(props.asset.id); props.close() }}>{`插入 ${props.asset.name}`}</button>
+  return <button type="button" onClick={() => { inserted.push(`${props.projectId}/${props.asset.id}`); props.close() }}>{`插入 ${props.asset.name}`}</button>
 }
 
 /** A plugin that adds 插入 beside 关闭 in the preview. */
@@ -98,7 +100,7 @@ async function mount(occurrences: readonly MediaOwner[]) {
  * @param shown - the asset.
  */
 function preview(runtime: SlotTestRuntime, shown: Asset): void {
-  act(() => { runtime.ctx.dvMedia.preview(shown, null) })
+  act(() => { runtime.ctx.dvMedia.preview('p1', shown, null) })
 }
 
 describe('@dv/ui-media', () => {
@@ -172,7 +174,7 @@ describe('the asset preview', () => {
     expect(ratios(dialog)).toEqual(['1920 / 1080'])
     expect(within(dialog).getByRole('button', { name: '关闭' })).toBeTruthy()
     fireEvent.click(within(dialog).getByRole('button', { name: '插入 wide.png' }))
-    expect(inserted).toEqual(['wide.png'])
+    expect(inserted).toEqual(['p1/wide.png'])
     await waitFor(() => { expect(view.queryByRole('dialog')).toBeNull() })
     preview(runtime, asset('small.png', 'image/png', { size_bytes: 2048 }))
     const small = view.getByRole('dialog', { name: 'small.png' })
@@ -181,17 +183,27 @@ describe('the asset preview', () => {
     await runtime.dispose()
   })
 
+  it('closes when the open project changes', async () => {
+    const { runtime, view } = await mount([])
+    act(() => { publishCurrentProject('p1') })
+    preview(runtime, asset('wide.png', 'image/png'))
+    expect(view.getByRole('dialog', { name: 'wide.png' })).toBeTruthy()
+    act(() => { publishCurrentProject('p2') })
+    await waitFor(() => { expect(view.queryByRole('dialog')).toBeNull() })
+    await runtime.dispose()
+  })
+
   it('moves the focus to 关闭 when it opens, and back to the element that opened it when it closes', async () => {
     const { runtime, view } = await mount([])
     const opener = document.createElement('button')
     document.body.append(opener)
     opener.focus()
-    act(() => { runtime.ctx.dvMedia.preview(asset('wide.png', 'image/png'), opener) })
+    act(() => { runtime.ctx.dvMedia.preview('p1', asset('wide.png', 'image/png'), opener) })
     expect(document.activeElement).toBe(within(view.getByRole('dialog')).getByRole('button', { name: '关闭' }))
     fireEvent.click(within(view.getByRole('dialog')).getByRole('button', { name: '关闭' }))
     expect(document.activeElement).toBe(opener)
     // An opener that left the page while the preview was open gets no focus.
-    act(() => { runtime.ctx.dvMedia.preview(asset('wide.png', 'image/png'), opener) })
+    act(() => { runtime.ctx.dvMedia.preview('p1', asset('wide.png', 'image/png'), opener) })
     opener.remove()
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(document.activeElement).toBe(document.body)

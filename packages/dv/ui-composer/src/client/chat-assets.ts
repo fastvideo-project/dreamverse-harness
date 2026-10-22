@@ -13,6 +13,8 @@ import type { ProjectAsset } from '@dv/ui-kit/types.ts'
 
 /** What the chat cards read from the open project. JSON data. */
 export interface ChatAssets {
+  /** The project whose assets these are, or null while no project is open. */
+  readonly project: string | null
   /** Every asset of the state, by ID. */
   readonly assets: Readonly<Record<string, ProjectAsset>>
   /**
@@ -23,7 +25,7 @@ export interface ChatAssets {
 }
 
 /** The snapshot while no project is open or before the first fetch settles. */
-export const NO_CHAT_ASSETS: ChatAssets = { assets: {}, shots: {} }
+export const NO_CHAT_ASSETS: ChatAssets = { project: null, assets: {}, shots: {} }
 
 /** The pause after a project event before the fetch, so a burst of events causes one fetch. */
 const REFETCH_DELAY_MS = 150
@@ -44,7 +46,7 @@ async function fetchChatAssets(client: DvClient, project: string, signal: AbortS
     if (shot === null || !isGenerationRecord(record, undefined, id => state.assets.find(item => item.id === id)?.mime)) continue
     for (const output of record.outputs) shots[output] = shot
   }
-  return { assets: Object.fromEntries(state.assets.map(asset => [asset.id, asset])), shots }
+  return { project, assets: Object.fromEntries(state.assets.map(asset => [asset.id, asset])), shots }
 }
 
 /**

@@ -38,24 +38,27 @@ const imageButton: CSSProperties = {
 
 /** Props of the chat cards. */
 interface CardProps {
-  /** Open the asset preview, growing out of `opener`. */
-  preview: (asset: Asset, opener: Element | null) => void
+  /** Open the asset preview of an asset of a project, growing out of `opener`. */
+  preview: (projectId: string, asset: Asset, opener: Element | null) => void
   renderFactorySlot: RenderFactorySlot
 }
+
+/** Props of one card: its asset's project and the shared card props. */
+type OneCardProps = CardProps & { project: string }
 
 /**
  * One 16:9 card: the asset's still and the caption under it; a click opens the asset preview.
  * @param props - the asset, the caption, whether the card fills a grid cell, the preview, and the Factory renderer.
  * @returns the card.
  */
-function AssetCard(props: CardProps & { asset: ProjectAsset; label: string; inGrid: boolean }): ReactNode {
-  const { asset, label, inGrid, preview, renderFactorySlot } = props
+function AssetCard(props: OneCardProps & { asset: ProjectAsset; label: string; inGrid: boolean }): ReactNode {
+  const { project, asset, label, inGrid, preview, renderFactorySlot } = props
   const t = useText()
   const open = t('查看', 'View')
   return (
     <span style={inGrid ? gridCard : card} data-dv-chat-card={asset.id}>
       <button type="button" style={frame} aria-label={label === '' ? open : `${open}: ${label}`}
-        onClick={(event) => { preview(asset, event.currentTarget) }}>
+        onClick={(event) => { preview(project, asset, event.currentTarget) }}>
         {renderFactorySlot('dv.media', { asset, purpose: 'thumb' })}
       </button>
       {label !== '' && <span style={caption} title={label}>{label}</span>}
@@ -69,7 +72,7 @@ function AssetCard(props: CardProps & { asset: ProjectAsset; label: string; inGr
  * @param props - the asset, its alt text, the preview, and the Factory renderer.
  * @returns the thumbnail.
  */
-function AssetThumb({ asset, alt, preview, renderFactorySlot }: CardProps & { asset: ProjectAsset; alt: string }): ReactNode {
+function AssetThumb({ project, asset, alt, preview, renderFactorySlot }: OneCardProps & { asset: ProjectAsset; alt: string }): ReactNode {
   const t = useText()
   const view = t('查看大图', 'View large image')
   const { width, height } = asset
@@ -78,7 +81,7 @@ function AssetThumb({ asset, alt, preview, renderFactorySlot }: CardProps & { as
     : { width: 240, aspectRatio: '16 / 9' }
   return (
     <button type="button" style={{ ...imageButton, ...box }} aria-label={alt === '' ? view : `${view}: ${alt}`}
-      data-dv-chat-card={asset.id} onClick={(event) => { preview(asset, event.currentTarget) }}>
+      data-dv-chat-card={asset.id} onClick={(event) => { preview(project, asset, event.currentTarget) }}>
       {renderFactorySlot('dv.media', { asset, purpose: 'thumb' })}
     </button>
   )
@@ -95,17 +98,19 @@ export function ChatMediaView({ media, preview, renderFactorySlot }: CardProps &
     case 'link': {
       const shot = media.shot === null ? null : String(media.shot)
       return (
-        <AssetCard asset={media.asset} label={shot === null ? media.asset.name : t(`镜头 ${shot}`, `Shot ${shot}`)} inGrid={false}
+        <AssetCard project={media.project} asset={media.asset} label={shot === null ? media.asset.name : t(`镜头 ${shot}`, `Shot ${shot}`)} inGrid={false}
           preview={preview} renderFactorySlot={renderFactorySlot} />
       )
     }
     case 'image':
-      return <AssetThumb asset={media.asset} alt={media.alt} preview={preview} renderFactorySlot={renderFactorySlot} />
+      return (
+        <AssetThumb project={media.project} asset={media.asset} alt={media.alt} preview={preview} renderFactorySlot={renderFactorySlot} />
+      )
     case 'table':
       return (
         <div style={grid}>
           {media.cards.map((shown, index) => (
-            <AssetCard key={index} asset={shown.asset} label={shown.caption} inGrid
+            <AssetCard key={index} project={media.project} asset={shown.asset} label={shown.caption} inGrid
               preview={preview} renderFactorySlot={renderFactorySlot} />
           ))}
         </div>

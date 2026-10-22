@@ -1,14 +1,15 @@
 /**
  * Browser half: provide `dvMedia`, whose `types` registry the media plugins fill and whose `preview` opens the asset
- * preview; register the `dv.media` Component Factory, which draws one asset by its `dv.media.view` entry or the file
- * card; and register the preview in DSH's root `shell.overlay` list, which declares `dv.media.preview.action`. The
- * package names no media type.
+ * preview of a project's asset until the open project changes; register the `dv.media` Component Factory, which draws
+ * one asset by its `dv.media.view` entry or the file card; and register the preview in DSH's root `shell.overlay` list,
+ * which declares `dv.media.preview.action`. The package names no media type.
  *
  * @module @dv/ui-media/client
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import { DV_CURRENT_PROJECT_EVENT } from '@dv/ui-kit/current-project.ts'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type { Asset } from '@dv/ui-kit/types.ts'
 import type { DvMedia, MediaType } from './contract/index.ts'
@@ -46,13 +47,19 @@ export function apply(ctx: ClientContext): void {
   const media: DvMedia = {
     // At apply's top level, never inside an effect: other plugins register into the registry from their own fibers.
     types: createRegistry<MediaType>(type => [type.id]),
-    preview(asset: Asset, element: Element | null) {
+    preview(projectId: string, asset: Asset, element: Element | null) {
       opener = element
       serial += 1
-      publish({ asset, serial })
+      publish({ projectId, asset, serial })
     },
   }
   ctx.reflect.provide('dvMedia', media)
+  // An open preview belongs to the project that the user had open, so its actions never reach another project.
+  ctx.effect(() => {
+    const close = (): void => { if (request !== null) publish(null) }
+    window.addEventListener(DV_CURRENT_PROJECT_EVENT, close)
+    return () => { window.removeEventListener(DV_CURRENT_PROJECT_EVENT, close) }
+  }, 'ui-media: close the preview when the open project changes')
   const injected: PreviewInjected = {
     hooks: { preview: source },
     openerOf: () => opener,

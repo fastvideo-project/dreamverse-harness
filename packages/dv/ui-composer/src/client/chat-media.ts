@@ -50,18 +50,19 @@ export interface GridCard {
   readonly caption: string
 }
 
-/** What the chain entry draws in place of one Markdown element, by the element's kind. JSON data. */
-export type ChatMedia =
+/** What the chain entry draws in place of one Markdown element, by the element's kind, and the assets' project. JSON data. */
+export type ChatMedia = { readonly project: string } & (
   /** A standalone link: a card captioned with `shot`, the take's shot number, else with the asset's name when it is null. */
   | { readonly kind: 'link'; readonly asset: ProjectAsset; readonly shot: number | null }
   | { readonly kind: 'image'; readonly asset: ProjectAsset; readonly alt: string }
   | { readonly kind: 'table'; readonly cards: readonly GridCard[] }
+)
 
 /** What the entry injects: the open project's assets as an observable source, and the preview. */
 export interface ChatMediaInjected {
   hooks: { chatAssets: HostObservable<ChatAssets> }
-  /** Open the asset preview of `dvMedia`, growing out of `opener`; nothing while `dvMedia` is absent. */
-  preview: (asset: Asset, opener: Element | null) => void
+  /** Open the asset preview of `dvMedia` for an asset of a project, growing out of `opener`; nothing while `dvMedia` is absent. */
+  preview: (projectId: string, asset: Asset, opener: Element | null) => void
 }
 
 /** The path of an asset's file under the host, as `@dv/asset-pool` serves it. */
@@ -149,14 +150,16 @@ function gridCard(row: AssetRow, held: ChatAssets): GridCard | undefined {
  * @returns what the entry draws, or null while the project does not hold a referenced asset.
  */
 export function resolveChatMedia(reference: AssetReference, held: ChatAssets): ChatMedia | null {
+  const { project } = held
+  if (project === null) return null
   switch (reference.kind) {
     case 'link': {
       const asset = held.assets[reference.asset]
-      return asset === undefined ? null : { kind: 'link', asset, shot: held.shots[asset.id] ?? null }
+      return asset === undefined ? null : { project, kind: 'link', asset, shot: held.shots[asset.id] ?? null }
     }
     case 'image': {
       const asset = held.assets[reference.asset]
-      return asset === undefined ? null : { kind: 'image', asset, alt: reference.alt }
+      return asset === undefined ? null : { project, kind: 'image', asset, alt: reference.alt }
     }
     case 'table': {
       const cards: GridCard[] = []
@@ -165,7 +168,7 @@ export function resolveChatMedia(reference: AssetReference, held: ChatAssets): C
         if (card === undefined) return null
         cards.push(card)
       }
-      return { kind: 'table', cards }
+      return { project, kind: 'table', cards }
     }
   }
 }
@@ -226,7 +229,7 @@ export function registerChatMedia(ctx: Context): void {
     }
     const injected: ChatMediaInjected = {
       hooks: { chatAssets },
-      preview: (asset, opener) => { ctx.get('dvMedia')?.preview(asset, opener) },
+      preview: (projectId, asset, opener) => { ctx.get('dvMedia')?.preview(projectId, asset, opener) },
     }
     const unregister = ctx.slots.register({
       name: 'conversation.chat.markdown',

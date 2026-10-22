@@ -44,8 +44,8 @@ Host 半边（`src/index.ts`）是一个什么都不做的 `apply`，所以 Load
 | `MediaAsset` | 类型 | 视图绘制的素材事实：`id` 和 `mime`，以及界面知道时的 `name`、`width`、`height` 和 `duration_sec`，例如概要只按 ID 和 MIME 类型指定的项目封面 |
 | `MediaOwner` | 类型 | `dv.media` 实例的属性，也是每个 `dv.media.view` 条目的所有者属性：`asset`（一个 `MediaAsset`）、`purpose`、可选的 `poster`（可播放形式在播放前显示的静帧的素材 ID，例如版本的图片输出），以及可选的 `onSize({ width, height })`（为存储尺寸未知的素材接收已加载媒体的像素尺寸） |
 | `MediaType` | 类型 | `dvMedia.types` 中的一个媒体类型：`id`（媒体类型，例如 `'audio'`，也是其 `dv.media.view` 条目的键）、`icon`（没有静帧处使用的图标组件，属性与 DSH 图标相同，例如 `@` 菜单），以及可选的 `poster(asset, state)`（在只能用 `<img>` 绘制的地方代表该素材的静帧的素材 ID，或 null） |
-| `DvMedia` | 服务 | `ctx.dvMedia`：`types` 是 `@dv/ui-kit/registries.ts` 的 `Registry<MediaType>`，以 `id` 为键，所以同一 `id` 的第二个类型会抛错；`preview(asset, opener)` 打开素材预览 |
-| `PreviewActionOwner` | 类型 | 一个预览按钮的所有者属性：`asset` 和 `close()` |
+| `DvMedia` | 服务 | `ctx.dvMedia`：`types` 是 `@dv/ui-kit/registries.ts` 的 `Registry<MediaType>`，以 `id` 为键，所以同一 `id` 的第二个类型会抛错；`preview(projectId, asset, opener)` 打开某个项目的素材的预览 |
+| `PreviewActionOwner` | 类型 | 一个预览按钮的所有者属性：`projectId`（所预览素材的项目）、`asset` 和 `close()` |
 | `dv.media` | 组件工厂 | 根作用域；属性为 `MediaOwner`；一个键控子插槽 `dv.media.view`。视图用 `renderFactorySlot('dv.media', { asset, purpose })` 绘制一个实例，不需要自己声明插槽；外框归视图所有，媒体视图填满它 |
 | `MediaViewOwner` | 类型 | 每个 `dv.media.view` 条目的所有者属性：`MediaOwner` 和 `unsupported()`，浏览器无法绘制该素材时视图调用它，例如无法解码的图片格式；组件工厂随后绘制文件卡片 |
 | `dv.media.view` | 键控插槽，根 | 一种媒体类型的视图，以 `MediaType.id` 为键；后备是文件卡片 |
@@ -64,7 +64,7 @@ ctx.effect(() => ctx.slots.inject('dv.media.view', () => ctx.slots.register({ na
 
 ### 打开素材预览
 
-用用户点击的元素调用 `dvMedia.preview(asset, opener)`；`@dv/ui-canvas` 的参考标签和条目编辑器（`EntryEditorHost.preview`）、`@dv/ui-asset-pool` 的素材库面板和 `@dv/ui-composer` 的对话媒体会调用它。预览是以素材命名的模态对话框。它通过 `dv.media` 以用途 `player` 绘制素材，下面一行是素材名称、它的信息、`dv.media.preview.action` 条目和 关闭 / Close。信息是尺寸（例如 `1920×1080`）、保留一位小数的时长（例如 `4.0 秒` 或 `4.0 s`），以及小于 1 MiB 时以 KB、否则以 MB 表示的大小（例如 `2.5 MB`），用 ` · ` 连接。没有存储尺寸的素材，信息显示媒体视图通过 `onSize` 报告的尺寸，只对该素材有效。有存储尺寸的素材，预览在媒体加载前就按这些尺寸确定媒体框的大小（`@dv/ui-kit/zoom.ts` 的 `mediaBox`），所以对话框从 `opener` 放大出来时已是最终大小。再次调用 `preview` 会替换正在显示的素材。关闭 / Close、点击对话框外部和 Escape 关闭预览；预览在捕获阶段接收 Escape，所以下面的画布或编辑器收不到这个按键。预览打开时焦点在 关闭 / Close 上；预览关闭时，若 `opener` 仍在页面上，焦点回到它。对话框打开时从 `opener` 放大出来，关闭时缩回其中（`@dv/ui-kit/zoom.ts` 的 `useZoomPresence`）。`@dv/ui-composer` 向 `dv.media.preview.action` 添加条目 `dv.composer.use-asset`（让智能体使用 / Ask the agent to use it），`@dv/ui-timeline` 添加 `dv.timeline.insert`（插入片段 / Insert clip）。
+用素材的项目和用户点击的元素调用 `dvMedia.preview(projectId, asset, opener)`；`@dv/ui-canvas` 的参考标签和条目编辑器（`EntryEditorHost.preview`）、`@dv/ui-asset-pool` 的素材库面板和 `@dv/ui-composer` 的对话媒体会调用它。预览是以素材命名的模态对话框。它通过 `dv.media` 以用途 `player` 绘制素材，下面一行是素材名称、它的信息、`dv.media.preview.action` 条目和 关闭 / Close。信息是尺寸（例如 `1920×1080`）、保留一位小数的时长（例如 `4.0 秒` 或 `4.0 s`），以及小于 1 MiB 时以 KB、否则以 MB 表示的大小（例如 `2.5 MB`），用 ` · ` 连接。没有存储尺寸的素材，信息显示媒体视图通过 `onSize` 报告的尺寸，只对该素材有效。有存储尺寸的素材，预览在媒体加载前就按这些尺寸确定媒体框的大小（`@dv/ui-kit/zoom.ts` 的 `mediaBox`），所以对话框从 `opener` 放大出来时已是最终大小。再次调用 `preview` 会替换正在显示的素材，DreamVerse 外壳打开的项目改变（`dv:current-project`）时预览关闭。关闭 / Close、点击对话框外部和 Escape 关闭预览；预览在捕获阶段接收 Escape，所以下面的画布或编辑器收不到这个按键。预览打开时焦点在 关闭 / Close 上；预览关闭时，若 `opener` 仍在页面上，焦点回到它。对话框打开时从 `opener` 放大出来，关闭时缩回其中（`@dv/ui-kit/zoom.ts` 的 `useZoomPresence`）。`@dv/ui-composer` 向 `dv.media.preview.action` 添加条目 `dv.composer.use-asset`（让智能体使用 / Ask the agent to use it），`@dv/ui-timeline` 添加 `dv.timeline.insert`（插入片段 / Insert clip）。
 
 -----
 

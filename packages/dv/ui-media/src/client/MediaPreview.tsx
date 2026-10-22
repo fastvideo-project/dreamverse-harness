@@ -14,8 +14,9 @@ import type { Asset } from '@dv/ui-kit/types.ts'
 import { mediaBox, useZoomPresence } from '@dv/ui-kit/zoom.ts'
 import css from './media.module.css'
 
-/** One open request: the asset and the serial number of the request. */
+/** One open request: the project and its asset, and the serial number of the request. */
 export interface PreviewRequest {
+  projectId: string
   asset: Asset
   serial: number
 }
@@ -91,7 +92,7 @@ export function MediaPreview({ usePreview, openerOf, close, renderSlot, renderFa
     }
   }, [open, close, openerOf])
   if (zoom.shown === null) return null
-  const { asset, serial } = zoom.shown
+  const { projectId, asset, serial } = zoom.shown
   const size = loaded?.serial === serial ? loaded.size : null
   // The bounds match `.media` inside `.dialog`: 80vw wide with 16 px padding, media at most 70vh tall.
   const sized = asset.width !== null && asset.height !== null && asset.height > 0
@@ -106,7 +107,7 @@ export function MediaPreview({ usePreview, openerOf, close, renderSlot, renderFa
           <span className={css.name}>{asset.name}</span>
           <span className={css.factText}>{factsOf(asset, size, pick).join(' · ')}</span>
           <span style={{ flex: 1 }} />
-          {renderSlot('dv.media.preview.action', { asset, close })}
+          {renderSlot('dv.media.preview.action', { projectId, asset, close })}
           <button type="button" className={css.button} onClick={close} ref={focusOnMount}>{pick('关闭', 'Close')}</button>
         </div>
       </div>
