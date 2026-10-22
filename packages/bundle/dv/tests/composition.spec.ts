@@ -113,7 +113,7 @@ describe('DreamVerse bundle composition', () => {
     const rows = bundleRows()
     expect(rows.map(row => row.id)).toEqual(expect.arrayContaining([
       'dv-models', 'dv-fastvideo', 'dv-project', 'dv-shot-plan', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
-      'dv-sglang-diffusion', 'dv-image-generate',
+      'dv-sglang-diffusion', 'dv-image-generate', 'dv-sglang-omni', 'dv-audio-generate',
     ]))
     // Each row keeps its id and `!!js` config; its package name points at a module that re-exports the plugin class.
     const entries = [
@@ -156,9 +156,12 @@ describe('DreamVerse bundle composition', () => {
         t2v: { baseUrl: 'http://10.244.16.130:8031', gpuSecondsPerVideoSecond: 1.5 },
       },
     })
-    // The image row names its server; registering the entry reads no server.
+    // The image and speech rows name their servers; registering the entries reads no server.
     expect(rows.find(row => row.id === 'dv-sglang-diffusion')?.config).toEqual({
       models: { 'qwen-image-2.1-turbo': { baseUrl: 'http://127.0.0.1:30010', gpuSecondsPerMegapixel: 0.6 } },
+    })
+    expect(rows.find(row => row.id === 'dv-sglang-omni')?.config).toEqual({
+      models: { 'fish-audio-drama-3': { baseUrl: 'http://127.0.0.1:8000', gpuSecondsPerCall: 3 } },
     })
     expect(ctx.dvModels.list().map(entry => formatModelKey(entry))).toEqual([
       'video/ref2v/fastvideo/fasth3', 'image/t2i/sglang-diffusion/qwen-image-2.1-turbo', 'audio/t2a/sglang-omni/fish-audio-drama-3',

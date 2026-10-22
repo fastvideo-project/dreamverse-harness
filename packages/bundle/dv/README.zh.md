@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## 概要
 
-用这个 bundle 把 DreamVerse 作为一个 `dsh` profile 运行。它插入模型目录 `@dv/models` 和提供方插件 `@dv/fastvideo`（`fasth3`，生成任务 `ref2v` 和 `t2v`）与 `@dv/sglang-diffusion`（`qwen-image-2.1-turbo`，生成任务 `t2i`）、DreamVerse 各组件及 `@dv/ffmpeg`、故事工作流 `@dv/workflow-story`、对话引用、API 和 `@dv/ui-*` 界面插件；提供 `video-directing` skill，两处 `skill-filesystem` 行都读取它；声明到集群 SGLang 服务器的 `deepseek-local` 路由；并从环境变量选择智能体模型。`scripts/video-harness/setup-profile.sh` 把它叠在 `dsh-base` 加 `dsh-web-app` 上成为 profile `video-harness`，叠在 `dsh-base` 加 `dsh-headless` 上成为 `video-harness-headless`；`scripts/video-harness/launch.sh web|headless` 从源码运行二者之一。
+用这个 bundle 把 DreamVerse 作为一个 `dsh` profile 运行。它插入模型目录 `@dv/models`、提供方插件 `@dv/fastvideo`（`fasth3`，生成任务 `ref2v` 和 `t2v`）、`@dv/sglang-diffusion`（`qwen-image-2.1-turbo`，生成任务 `t2i`）与 `@dv/sglang-omni`（`fish-audio-drama-3`，生成任务 `t2a`）、DreamVerse 各组件及 `@dv/ffmpeg`、故事工作流 `@dv/workflow-story`、对话引用、API 和 `@dv/ui-*` 界面插件；为两处 `skill-filesystem` 行提供 `video-directing` skill；把 `deepseek-local` 路由到集群 SGLang 服务器；并从环境变量选择智能体模型。`scripts/video-harness/setup-profile.sh` 把它叠在 `dsh-base` 加 `dsh-web-app` 上成为 profile `video-harness`，叠在 `dsh-base` 加 `dsh-headless` 上成为 `video-harness-headless`；`scripts/video-harness/launch.sh web|headless` 从源码运行二者之一。
 
 ## 目录
 
