@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/dv/sglang-diffusion/README.md
-README.md: 24bcbd1c91385d94faaea2a81da88ce8b60ae591
-README.zh.md: 7dd0e42ad7bdf99bc45b677fc42a1013dee04b65
+README.md: 65a7247b5924b2f60251a5f92e23018a22c85acf
+README.zh.md: 2b0c7267053515d8a5b19771a3c69f08149170d3

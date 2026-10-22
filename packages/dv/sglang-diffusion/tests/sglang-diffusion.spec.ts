@@ -253,7 +253,7 @@ describe('dv-sglang-diffusion', () => {
     expect(value(await fixture.tool('dv_models_get', KEY))).toMatchObject({
       schema: {
         size: {
-          default: '1024x1024', rule: 'width and height are positive multiples of 32',
+          default: '1024x1024', rule: 'width and height are positive multiples of 32, and width times height is at most 4300800',
           by_aspect_ratio: {
             '1:1': '2048x2048', '4:3': '2400x1792', '3:4': '1792x2400', '3:2': '2528x1696',
             '2:3': '1696x2528', '16:9': '2752x1536', '9:16': '1536x2752',
@@ -274,18 +274,30 @@ describe('dv-sglang-diffusion', () => {
     await expect(closed.entry().facts()).rejects.toThrow(/^The server at http:\/\/127\.0\.0\.1:\d+ cannot be reached\.$/)
   })
 
-  it('refuses sizes that are not multiples of 32 with the nearest sizes, and any extra value, without a server call', async () => {
+  it('refuses sizes that are not multiples of 32 or above the pixel limit with the nearest sizes, and any extra value, without a server call', async () => {
     const server = await startFakeServer()
     const fixture = await start(server.url)
     const validate = (size: ImageRequest['size'], extra?: Record<string, unknown>) => fixture.entry().validateGenerationRequest(request(size, extra))
     expect(await validate(null)).toEqual([])
-    expect(await validate({ width: 1792, height: 2400 })).toEqual([])
+    // Every size that dv_models_get lists by aspect ratio renders.
+    const { schema } = value(await fixture.tool('dv_models_get', KEY)) as { schema: { size: { by_aspect_ratio: Record<string, string> } } }
+    for (const preset of Object.values(schema.size.by_aspect_ratio)) {
+      const [width = 0, height = 0] = preset.split('x').map(Number)
+      expect(await validate({ width, height })).toEqual([])
+    }
+    const tooLarge = (size: string, pixels: number, preset: string) =>
+      `The model renders at most 4300800 pixels, and ${size} has ${String(pixels)}; the preset nearest its aspect ratio is ${preset}.`
+    expect(await validate({ width: 2432, height: 1792 })).toEqual([tooLarge('2432x1792', 4358144, '2400x1792 (4:3)')])
+    expect(await validate({ width: 4096, height: 4096 })).toEqual([tooLarge('4096x4096', 16777216, '2048x2048 (1:1)')])
+    expect(await validate({ width: 8224, height: 1024 })).toEqual([tooLarge('8224x1024', 8421376, '2752x1536 (16:9)')])
+    expect(await validate({ width: 1024, height: 8224 })).toEqual([tooLarge('1024x8224', 8421376, '1536x2752 (9:16)')])
     expect(await validate({ width: 1000, height: 1000 }))
       .toEqual(['Width and height must each be a multiple of 32, and 1000x1000 is not; the nearest sizes are 992x992 and 1024x1024.'])
     expect(await validate({ width: 16, height: 16 }))
       .toEqual(['Width and height must each be a multiple of 32, and 16x16 is not; the nearest size is 32x32.'])
     expect(await validate(null, { steps: 8 })).toEqual(['This model takes no extra parameter; omit extra.'])
-    expect(server.routes).toEqual([])
+    // The one server call is the schema read of dv_models_get.
+    expect(server.routes).toEqual(['GET /v1/models'])
   })
 
   it('renders through dv_image_generate: the request it sends, the image it stores, and the GPU time it records', async () => {
@@ -317,6 +329,9 @@ describe('dv-sglang-diffusion', () => {
     expect(failure(await fixture.tool('dv_image_generate', { ...KEY, reason: 'try', prompt: 'x', size: '1000x1000' }))).toBe(
       'Model image/t2i/sglang-diffusion/qwen-image-2.1-turbo cannot generate this: Width and height must each be a multiple of 32, '
       + `and 1000x1000 is not; the nearest sizes are 992x992 and 1024x1024. ${REFUSAL_END}`)
+    expect(failure(await fixture.tool('dv_image_generate', { ...KEY, reason: 'try', prompt: 'x', size: '4096x4096', user_requested: true }))).toBe(
+      'Model image/t2i/sglang-diffusion/qwen-image-2.1-turbo cannot generate this: The model renders at most 4300800 pixels, and '
+      + `4096x4096 has 16777216; the preset nearest its aspect ratio is 2048x2048 (1:1). ${REFUSAL_END}`)
     server.models = json(SPEECH_MODELS)
     expect(failure(await fixture.tool('dv_image_generate', { ...KEY, reason: 'try', prompt: 'x' }))).toBe(
       `Model image/t2i/sglang-diffusion/qwen-image-2.1-turbo is unavailable: The server at ${server.url} serves fishaudio/drama-3, `

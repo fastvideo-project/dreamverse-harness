@@ -50,7 +50,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`src/index.ts` 中的表 `SERVED` 为每个模型保存服务器端点不列出的内容：服务器的模型 ID（`Qwen/Qwen-Image-2.1-Turbo`）、条目描述、默认尺寸、尺寸倍数（32）和模型卡给出的七个按宽高比的尺寸。服务器忽略请求的 `model` 字段，所以 `facts()` 每次调用都读取 `GET /v1/models`，服务器列出其他模型时拒绝；`schema()` 先调用 `facts()`。`validateGenerationRequest` 不调用服务器：服务器对不是 32 倍数的尺寸以 HTTP 500 回答且不给原因，所以条目先拒绝它并给出最近的尺寸，并拒绝任何 `extra` 值。`render` 发送 `POST /v1/images/generations`，带提示词、尺寸（请求没有尺寸时用 `defaultSize`）、种子、`n: 1`、`response_format: 'b64_json'` 和 `output_format: 'png'`，因为对没有设置格式的模型，服务器自己的默认格式是 JPEG。它返回所发送尺寸的 PNG，并以回答的 `inference_time_s` 作为 GPU 秒数。错误回答变为服务器的 `detail` 文本，或原样的回答体；中止时以信号的原因拒绝。
+`src/index.ts` 中的表 `SERVED` 为每个模型保存服务器端点不列出的内容：服务器的模型 ID（`Qwen/Qwen-Image-2.1-Turbo`）、条目描述、默认尺寸、尺寸倍数（32）、像素上限（4300800，即最大预设尺寸 2400x1792 的面积）和模型卡给出的七个按宽高比的尺寸。服务器忽略请求的 `model` 字段，所以 `facts()` 每次调用都读取 `GET /v1/models`，服务器列出其他模型时拒绝；`schema()` 先调用 `facts()`。`validateGenerationRequest` 不调用服务器：服务器对不是 32 倍数的尺寸以 HTTP 500 回答且不给原因，所以条目先拒绝它并给出最近的尺寸。它拒绝超过像素上限的尺寸，因为这样的尺寸可能在 GPU 时间花掉之后在服务器上失败，或在工具结果的图片附件中失败，并给出宽高比最接近的预设尺寸；它也拒绝任何 `extra` 值。`render` 发送 `POST /v1/images/generations`，带提示词、尺寸（请求没有尺寸时用 `defaultSize`）、种子、`n: 1`、`response_format: 'b64_json'` 和 `output_format: 'png'`，因为对没有设置格式的模型，服务器自己的默认格式是 JPEG。它返回所发送尺寸的 PNG，并以回答的 `inference_time_s` 作为 GPU 秒数。错误回答变为服务器的 `detail` 文本，或原样的回答体；中止时以信号的原因拒绝。
 
 | 文件 | 内容 |
 | --- | --- |
@@ -77,7 +77,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-`@dv/models` 的 `dv_models_list` 结果列出该条目的键（模态 `image`、任务 `t2i`、提供方 `sglang-diffusion`、模型 `qwen-image-2.1-turbo`）和下面的描述，没有提示词技能。`dv_models_get` 加上下面的 schema。在 `dv_image_generate` 的拒绝中，`validateGenerationRequest` 的问题跟在 `Model image/t2i/sglang-diffusion/qwen-image-2.1-turbo cannot generate this: ` 之后；`<down>` 把两边都向下取整到 32 的倍数，`<up>` 把两边都向上取整，每边至少 32，两者相同时用第二种形式。在拒绝中，`facts()` 或 `schema()` 的拒绝跟在 `Model image/t2i/sglang-diffusion/qwen-image-2.1-turbo is unavailable: ` 之后，`dv_models_get` 单独把它作为错误显示。渲染失败时，记录和工具调用以它的消息失败。
+`@dv/models` 的 `dv_models_list` 结果列出该条目的键（模态 `image`、任务 `t2i`、提供方 `sglang-diffusion`、模型 `qwen-image-2.1-turbo`）和下面的描述，没有提示词技能。`dv_models_get` 加上下面的 schema。在 `dv_image_generate` 的拒绝中，`validateGenerationRequest` 的问题跟在 `Model image/t2i/sglang-diffusion/qwen-image-2.1-turbo cannot generate this: ` 之后；`<down>` 把两边都向下取整到 32 的倍数，`<up>` 把两边都向上取整，每边至少 32，两者相同时用第二种形式；`<preset>` 是按宽高比列出的尺寸中宽高比与 `<W>x<H>` 最接近的一个。在拒绝中，`facts()` 或 `schema()` 的拒绝跟在 `Model image/t2i/sglang-diffusion/qwen-image-2.1-turbo is unavailable: ` 之后，`dv_models_get` 单独把它作为错误显示。渲染失败时，记录和工具调用以它的消息失败。
 
 ##### Entry description
 
@@ -88,7 +88,7 @@ Qwen-Image 2.1 Turbo: a text-to-image model that renders legible text inside the
 ##### Schema
 
 ```markdown
-{"size":{"default":"1024x1024","rule":"width and height are positive multiples of 32","by_aspect_ratio":{"1:1":"2048x2048","4:3":"2400x1792","3:4":"1792x2400","3:2":"2528x1696","2:3":"1696x2528","16:9":"2752x1536","9:16":"1536x2752"}},"extra":{}}
+{"size":{"default":"1024x1024","rule":"width and height are positive multiples of 32, and width times height is at most 4300800","by_aspect_ratio":{"1:1":"2048x2048","4:3":"2400x1792","3:4":"1792x2400","3:2":"2528x1696","2:3":"1696x2528","16:9":"2752x1536","9:16":"1536x2752"}},"extra":{}}
 ```
 
 ##### Request problems
@@ -96,6 +96,7 @@ Qwen-Image 2.1 Turbo: a text-to-image model that renders legible text inside the
 ```markdown
 Width and height must each be a multiple of 32, and <W>x<H> is not; the nearest sizes are <down> and <up>.
 Width and height must each be a multiple of 32, and <W>x<H> is not; the nearest size is <size>.
+The model renders at most 4300800 pixels, and <W>x<H> has <pixels>; the preset nearest its aspect ratio is <preset> (<ratio>).
 This model takes no extra parameter; omit extra.
 ```
 
@@ -110,7 +111,7 @@ The server at <baseUrl> answered POST /v1/images/generations with HTTP <status>:
 
 #### Token 影响
 
-条目在 `dv_models_list` 结果中约 50 个 token，schema 在 `dv_models_get` 结果中约 110 个 token。每个问题句子在拒绝中约 20 到 35 个 token。
+条目在 `dv_models_list` 结果中约 50 个 token，schema 在 `dv_models_get` 结果中约 130 个 token。每个问题句子在拒绝中约 20 到 40 个 token。
 
 #### KV Cache 影响
 

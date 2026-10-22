@@ -50,7 +50,7 @@ Loading fails when `models` names a model other than `qwen-image-2.1-turbo`. Whi
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The table `SERVED` in `src/index.ts` holds what no server endpoint lists for each model: the server's model ID (`Qwen/Qwen-Image-2.1-Turbo`), the entry description, the default size, the size multiple (32) and the model card's seven sizes by aspect ratio. The server ignores the `model` field of a request, so `facts()` reads `GET /v1/models` on every call and rejects when the server lists another model; `schema()` calls `facts()` first. `validateGenerationRequest` calls no server: the server answers a size that is not a multiple of 32 with HTTP 500 and no reason, so the entry refuses it first and names the nearest sizes, and it refuses every `extra` value. `render` sends `POST /v1/images/generations` with the prompt, the size (`defaultSize` for a request without one), the seed, `n: 1`, `response_format: 'b64_json'` and `output_format: 'png'`, because the server's own default format is JPEG for models that set none. It returns the PNG at the size it sent and the answer's `inference_time_s` as the GPU seconds. An error answer becomes the server's `detail` text, or the body as sent; an abort rejects with the signal's reason.
+The table `SERVED` in `src/index.ts` holds what no server endpoint lists for each model: the server's model ID (`Qwen/Qwen-Image-2.1-Turbo`), the entry description, the default size, the size multiple (32), the pixel limit (4300800, the area of 2400x1792, the largest preset) and the model card's seven sizes by aspect ratio. The server ignores the `model` field of a request, so `facts()` reads `GET /v1/models` on every call and rejects when the server lists another model; `schema()` calls `facts()` first. `validateGenerationRequest` calls no server: the server answers a size that is not a multiple of 32 with HTTP 500 and no reason, so the entry refuses it first and names the nearest sizes. It refuses a size above the pixel limit, which can fail on the server or in the image attachment of the tool result after the GPU time is spent, and names the preset nearest its aspect ratio; it also refuses every `extra` value. `render` sends `POST /v1/images/generations` with the prompt, the size (`defaultSize` for a request without one), the seed, `n: 1`, `response_format: 'b64_json'` and `output_format: 'png'`, because the server's own default format is JPEG for models that set none. It returns the PNG at the size it sent and the answer's `inference_time_s` as the GPU seconds. An error answer becomes the server's `detail` text, or the body as sent; an abort rejects with the signal's reason.
 
 | File | Content |
 | --- | --- |
@@ -77,7 +77,7 @@ Run the opt-in suite, which renders three images, with `DV_SGLANG_DIFFUSION_TEST
 
 #### What the model sees
 
-The `dv_models_list` results of `@dv/models` list the entry with its key (modality `image`, task `t2i`, provider `sglang-diffusion`, model `qwen-image-2.1-turbo`) and the description below, without a prompt skill. `dv_models_get` adds the schema below. The problems of `validateGenerationRequest` follow `Model image/t2i/sglang-diffusion/qwen-image-2.1-turbo cannot generate this: ` in a refusal of `dv_image_generate`; `<down>` rounds both sides down to a multiple of 32 and `<up>` rounds both up, each side at least 32, and the second form applies when the two are equal. A rejection of `facts()` or `schema()` follows `Model image/t2i/sglang-diffusion/qwen-image-2.1-turbo is unavailable: ` in a refusal, and `dv_models_get` shows it alone as its error. A render failure fails the record and the tool call with its message.
+The `dv_models_list` results of `@dv/models` list the entry with its key (modality `image`, task `t2i`, provider `sglang-diffusion`, model `qwen-image-2.1-turbo`) and the description below, without a prompt skill. `dv_models_get` adds the schema below. The problems of `validateGenerationRequest` follow `Model image/t2i/sglang-diffusion/qwen-image-2.1-turbo cannot generate this: ` in a refusal of `dv_image_generate`; `<down>` rounds both sides down to a multiple of 32 and `<up>` rounds both up, each side at least 32, and the second form applies when the two are equal; `<preset>` is the size listed by aspect ratio whose width over height is nearest to that of `<W>x<H>`. A rejection of `facts()` or `schema()` follows `Model image/t2i/sglang-diffusion/qwen-image-2.1-turbo is unavailable: ` in a refusal, and `dv_models_get` shows it alone as its error. A render failure fails the record and the tool call with its message.
 
 ##### Entry description
 
@@ -88,7 +88,7 @@ Qwen-Image 2.1 Turbo: a text-to-image model that renders legible text inside the
 ##### Schema
 
 ```markdown
-{"size":{"default":"1024x1024","rule":"width and height are positive multiples of 32","by_aspect_ratio":{"1:1":"2048x2048","4:3":"2400x1792","3:4":"1792x2400","3:2":"2528x1696","2:3":"1696x2528","16:9":"2752x1536","9:16":"1536x2752"}},"extra":{}}
+{"size":{"default":"1024x1024","rule":"width and height are positive multiples of 32, and width times height is at most 4300800","by_aspect_ratio":{"1:1":"2048x2048","4:3":"2400x1792","3:4":"1792x2400","3:2":"2528x1696","2:3":"1696x2528","16:9":"2752x1536","9:16":"1536x2752"}},"extra":{}}
 ```
 
 ##### Request problems
@@ -96,6 +96,7 @@ Qwen-Image 2.1 Turbo: a text-to-image model that renders legible text inside the
 ```markdown
 Width and height must each be a multiple of 32, and <W>x<H> is not; the nearest sizes are <down> and <up>.
 Width and height must each be a multiple of 32, and <W>x<H> is not; the nearest size is <size>.
+The model renders at most 4300800 pixels, and <W>x<H> has <pixels>; the preset nearest its aspect ratio is <preset> (<ratio>).
 This model takes no extra parameter; omit extra.
 ```
 
@@ -110,7 +111,7 @@ The server at <baseUrl> answered POST /v1/images/generations with HTTP <status>:
 
 #### Token effect
 
-About 50 tokens for the entry in a `dv_models_list` result, and about 110 tokens for the schema in a `dv_models_get` result. Each problem sentence costs about 20 to 35 tokens in a refusal.
+About 50 tokens for the entry in a `dv_models_list` result, and about 130 tokens for the schema in a `dv_models_get` result. Each problem sentence costs about 20 to 40 tokens in a refusal.
 
 #### KV Cache effect
 

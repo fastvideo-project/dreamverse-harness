@@ -43,6 +43,8 @@ interface ServedImageModel {
   defaultSize: ImageSize
   /** Width and height must each be a multiple of this. */
   sizeMultiple: number
+  /** The most pixels of one image: the area of the largest preset of the model card. */
+  maxPixels: number
   /** The model card's sizes by aspect ratio, as `dv_models_get` lists them. */
   presets: Record<string, string>
 }
@@ -55,6 +57,7 @@ const SERVED: Record<string, ServedImageModel> = {
       + 'posters, labels and interface layouts. The same seed, size and prompt give the same image.',
     defaultSize: { width: 1024, height: 1024 },
     sizeMultiple: 32,
+    maxPixels: 2400 * 1792,
     presets: {
       '1:1': '2048x2048', '4:3': '2400x1792', '3:4': '1792x2400', '3:2': '2528x1696',
       '2:3': '1696x2528', '16:9': '2752x1536', '9:16': '1536x2752',
@@ -148,6 +151,13 @@ function requestProblems(served: ServedImageModel, request: ImageRequest): strin
     problems.push(`Width and height must each be a multiple of ${String(step)}, and ${formatSize({ width, height })} `
       + `is not; the nearest ${sizes.length === 1 ? 'size is' : 'sizes are'} ${sizes.join(' and ')}.`)
   }
+  if (width * height > served.maxPixels) {
+    const aspect = (size: string): number => Number(size.slice(0, size.indexOf('x'))) / Number(size.slice(size.indexOf('x') + 1))
+    const [ratio, preset] = Object.entries(served.presets).reduce((best, next) =>
+      Math.abs(aspect(next[1]) - width / height) < Math.abs(aspect(best[1]) - width / height) ? next : best)
+    problems.push(`The model renders at most ${String(served.maxPixels)} pixels, and ${formatSize({ width, height })} has `
+      + `${String(width * height)}; the preset nearest its aspect ratio is ${preset} (${ratio}).`)
+  }
   if (Object.keys(request.extra).length > 0) problems.push('This model takes no extra parameter; omit extra.')
   return problems
 }
@@ -177,7 +187,7 @@ function modelEntry(model: string, server: ModelServer): ModelEntry<'t2i'> {
       return {
         size: {
           default: formatSize(served.defaultSize),
-          rule: `width and height are positive multiples of ${String(served.sizeMultiple)}`,
+          rule: `width and height are positive multiples of ${String(served.sizeMultiple)}, and width times height is at most ${String(served.maxPixels)}`,
           by_aspect_ratio: served.presets,
         },
         extra: {},
