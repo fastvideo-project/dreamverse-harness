@@ -64,8 +64,8 @@ export interface GeneratedImage {
   mime: 'image/png'
   width: number
   height: number
-  /** GPU seconds the backend reported for this image; the record keeps them as its cost. */
-  gpuSeconds: number
+  /** GPU seconds the backend reported for this image, which the record keeps as its cost; null when it reported none. */
+  gpuSeconds: number | null
 }
 
 /**
@@ -91,14 +91,14 @@ function imageRequest(params: Record<string, unknown>, seed: number): ImageReque
   return { prompt, size, seed, extra: (params['extra'] ?? {}) as Record<string, unknown> }
 }
 
-/** Store one image as the record's output with its pixel size; the cost is the GPU time that the backend reported. */
+/** Store one image as the record's output with its pixel size; the cost is the GPU time that the backend reported, if any. */
 async function storeImage(_ctx: Context, run: OperationContext, result: Promise<GeneratedImage>,
   facts: ImageModelFacts): Promise<OperationResult> {
   const image = await result
   const asset = importOne(run, { bytes: image.bytes, mime: image.mime, width: image.width, height: image.height })
   return {
     outputs: [asset],
-    cost: { gpu_seconds: image.gpuSeconds },
+    ...image.gpuSeconds === null ? {} : { cost: { gpu_seconds: image.gpuSeconds } },
     report: { model_id: facts.modelId, size: `${String(image.width)}x${String(image.height)}` },
   }
 }

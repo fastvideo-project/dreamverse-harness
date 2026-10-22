@@ -68,8 +68,8 @@ const SERVED: Record<string, ServedImageModel> = {
 /** The `GET /v1/models` answer of the server, with the fields this plugin reads. */
 interface ModelList { data: Array<{ id: string }> }
 
-/** The `POST /v1/images/generations` answer for `n: 1` and `response_format: 'b64_json'`, with the fields this plugin reads. */
-interface GenerationAnswer { data: [{ b64_json: string }]; inference_time_s: number }
+/** The first eight bytes of every PNG file. */
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
 /** Plugin name. */
 export const name = 'dv-sglang-diffusion'
@@ -136,18 +136,23 @@ async function checkServed(baseUrl: string, modelId: string): Promise<void> {
 
 /**
  * Generate one PNG through `POST /v1/images/generations`. The server renders this model at the requested size.
- * @returns the image at the requested size, with the answer's `inference_time_s` as its GPU seconds.
- * @throws the signal's reason on abort, or Error for a server that answers with an error or cannot be reached.
+ * @returns the image at the requested size, with the answer's finite `inference_time_s` as its GPU seconds, else null.
+ * @throws the signal's reason on abort, or Error for a server that answers with an error or without a PNG, or cannot be reached.
  */
 async function generateImage(baseUrl: string, size: ImageSize, request: ImageRequest, signal?: AbortSignal): Promise<GeneratedImage> {
   const body = JSON.stringify({
     prompt: request.prompt, size: formatSize(size), seed: request.seed, n: 1, response_format: 'b64_json', output_format: 'png',
   })
-  const answer = await call<GenerationAnswer>(baseUrl, '/v1/images/generations', {
+  const answer = await call<unknown>(baseUrl, '/v1/images/generations', {
     method: 'POST', headers: { 'content-type': 'application/json' }, body, ...signal === undefined ? {} : { signal },
   })
-  const bytes = Buffer.from(answer.data[0].b64_json, 'base64')
-  return { bytes, mime: 'image/png', width: size.width, height: size.height, gpuSeconds: answer.inference_time_s }
+  const data = field(answer, 'data')
+  const b64 = field(Array.isArray(data) ? data[0] : undefined, 'b64_json')
+  const bytes = Buffer.from(typeof b64 === 'string' ? b64 : '', 'base64')
+  if (!bytes.subarray(0, 8).equals(PNG_SIGNATURE)) throw new Error(`The server at ${baseUrl} answered POST /v1/images/generations without a PNG image.`)
+  const seconds = field(answer, 'inference_time_s')
+  const gpuSeconds = typeof seconds === 'number' && Number.isFinite(seconds) ? seconds : null
+  return { bytes, mime: 'image/png', width: size.width, height: size.height, gpuSeconds }
 }
 
 /** The problems of a request's size and `extra`, each one agent-facing sentence. */

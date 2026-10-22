@@ -50,7 +50,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`src/index.ts` 中的表 `SERVED` 为每个模型保存服务器端点不列出的内容：服务器的模型 ID（`Qwen/Qwen-Image-2.1-Turbo`）、条目描述、默认尺寸、尺寸倍数（32）、像素上限（4300800，即最大预设尺寸 2400x1792 的面积）和模型卡给出的七个按宽高比的尺寸。服务器忽略请求的 `model` 字段，所以 `facts()` 每次调用都读取 `GET /v1/models`，服务器列出其他模型时拒绝；`schema()` 先调用 `facts()`。`validateGenerationRequest` 不调用服务器：服务器对不是 32 倍数的尺寸以 HTTP 500 回答且不给原因，所以条目先拒绝它并给出最近的尺寸。它拒绝超过像素上限的尺寸，因为这样的尺寸可能在 GPU 时间花掉之后在服务器上失败，或在工具结果的图片附件中失败，并给出宽高比最接近的预设尺寸；它也拒绝任何 `extra` 值。`render` 发送 `POST /v1/images/generations`，带提示词、尺寸（请求没有尺寸时用 `defaultSize`）、种子、`n: 1`、`response_format: 'b64_json'` 和 `output_format: 'png'`，因为对没有设置格式的模型，服务器自己的默认格式是 JPEG。它返回所发送尺寸的 PNG，并以回答的 `inference_time_s` 作为 GPU 秒数。错误回答变为服务器的 `detail` 文本，或原样的回答体；中止时以信号的原因拒绝。
+`src/index.ts` 中的表 `SERVED` 为每个模型保存服务器端点不列出的内容：服务器的模型 ID（`Qwen/Qwen-Image-2.1-Turbo`）、条目描述、默认尺寸、尺寸倍数（32）、像素上限（4300800，即最大预设尺寸 2400x1792 的面积）和模型卡给出的七个按宽高比的尺寸。服务器忽略请求的 `model` 字段，所以 `facts()` 每次调用都读取 `GET /v1/models`，服务器列出其他模型时拒绝；`schema()` 先调用 `facts()`。`validateGenerationRequest` 不调用服务器：服务器对不是 32 倍数的尺寸以 HTTP 500 回答且不给原因，所以条目先拒绝它并给出最近的尺寸。它拒绝超过像素上限的尺寸，因为这样的尺寸可能在 GPU 时间花掉之后在服务器上失败，或在工具结果的图片附件中失败，并给出宽高比最接近的预设尺寸；它也拒绝任何 `extra` 值。`render` 发送 `POST /v1/images/generations`，带提示词、尺寸（请求没有尺寸时用 `defaultSize`）、种子、`n: 1`、`response_format: 'b64_json'` 和 `output_format: 'png'`，因为对没有设置格式的模型，服务器自己的默认格式是 JPEG。它拒绝不含 PNG 图片的回答，例如 JPEG 字节或空的 `data` 列表，并返回所发送尺寸的 PNG，以回答的 `inference_time_s` 作为 GPU 秒数；该值不是有限数时为 null，记录于是保留估计值。错误回答变为服务器的 `detail` 文本，或原样的回答体；中止时以信号的原因拒绝。
 
 | 文件 | 内容 |
 | --- | --- |
@@ -107,6 +107,7 @@ The server at <baseUrl> serves <served IDs, comma-separated>, not Qwen/Qwen-Imag
 The server at <baseUrl> cannot be reached.
 The server at <baseUrl> answered GET /v1/models with HTTP <status>: <server text>
 The server at <baseUrl> answered POST /v1/images/generations with HTTP <status>: <server text>
+The server at <baseUrl> answered POST /v1/images/generations without a PNG image.
 ```
 
 #### Token 影响

@@ -323,6 +323,27 @@ describe('dv-sglang-diffusion', () => {
     expect(square.report).toMatchObject({ size: '1024x1024' })
   })
 
+  it('fails a render whose answer holds no PNG image', async () => {
+    const server = await startFakeServer()
+    const fixture = await start(server.url)
+    const noPng = `The server at ${server.url} answered POST /v1/images/generations without a PNG image.`
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01])
+    for (const data of [[{ b64_json: jpeg.toString('base64') }], [], [{ b64_json: null, url: '/v1/images/1/content' }], null]) {
+      server.generation = json({ data, inference_time_s: 0.5 })
+      await expect(fixture.entry().render(request(null))).rejects.toThrow(noPng)
+    }
+    expect(failure(await fixture.tool('dv_image_generate', { ...KEY, reason: 'try', prompt: 'x' }))).toBe(noPng)
+    expect(fixture.records().at(-1)).toMatchObject({ status: 'failed', error: { message: noPng } })
+  })
+
+  it('records the GPU estimate as the cost of an image whose answer reports no GPU time', async () => {
+    const server = await startFakeServer()
+    const fixture = await start(server.url)
+    server.generation = json({ data: [{ b64_json: PNG.toString('base64') }] })
+    const take = operationValue(await fixture.tool('dv_image_generate', { ...KEY, reason: 'lantern', prompt: 'x' }))
+    expect(fixture.records().at(-1)).toMatchObject({ id: take.record, status: 'done', cost: { gpu_seconds: 0.6 * 1024 * 1024 / 1e6 } })
+  })
+
   it('refuses a size and a misrouted server before any record, with the closing sentence of each case', async () => {
     const server = await startFakeServer()
     const fixture = await start(server.url)

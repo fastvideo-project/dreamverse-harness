@@ -42,7 +42,7 @@ kind: "package-reference"
 | --- | --- |
 | `ImageModelFacts` | `modelId`：后端的模型 ID |
 | `ImageRequest` | `prompt`；`size`：一个 `ImageSize`，调用没有指定尺寸时为 null；`seed`；`extra` |
-| `GeneratedImage` | `bytes`、`mime: 'image/png'`、`width`、`height`、`gpuSeconds`：后端报告的 GPU 时间 |
+| `GeneratedImage` | `bytes`、`mime: 'image/png'`、`width`、`height`、`gpuSeconds`：后端报告的 GPU 时间，后端没有报告时为 null |
 | 条目字段 | `gpuSecondsPerMegapixel`：GPU 估计值的费率；`defaultSize`：条目为 `size` 为 null 的请求渲染的尺寸 |
 
 条目的 `render(request)` 返回一个 `GeneratedImage` 的 promise。该服务还为工作流实现 `@dv/generation` 的 `GenerationApi`。
@@ -52,7 +52,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-声明的 `toRequest` 去掉提示词首尾空白，拒绝空提示词，并把 `size` 解析为 `ImageSize`；没有 `size` 的调用让请求的 `size` 为 null，由条目决定默认值。调用没有指定种子时，内核抽取种子。声明的 `toOutputs` 经 `importOne` 导入带宽高的 PNG，命名为 `<记录 ID 前 8 个字符>.png`，把报告的 `gpuSeconds` 记为成本，并在报告中给出 `model_id` 和渲染的 `size`；内核加入 `seed`。GPU 估计值是条目的 `gpuSecondsPerMegapixel` 乘以调用尺寸的百万像素数，调用没有指定尺寸时用条目的 `defaultSize`；费率为 0.6 时，1024x1024 的调用估计 0.63 GPU 秒，1792x2400 的调用估计 2.58 GPU 秒。记录的摘要是 `image "<prompt, first 60 characters>" (<size>, seed <seed>)`。
+声明的 `toRequest` 去掉提示词首尾空白，拒绝空提示词，并把 `size` 解析为 `ImageSize`；没有 `size` 的调用让请求的 `size` 为 null，由条目决定默认值。调用没有指定种子时，内核抽取种子。声明的 `toOutputs` 经 `importOne` 导入带宽高的 PNG，命名为 `<记录 ID 前 8 个字符>.png`，把报告的 `gpuSeconds` 记为成本（它为 null 时，内核记录估计值），并在报告中给出 `model_id` 和渲染的 `size`；内核加入 `seed`。GPU 估计值是条目的 `gpuSecondsPerMegapixel` 乘以调用尺寸的百万像素数，调用没有指定尺寸时用条目的 `defaultSize`；费率为 0.6 时，1024x1024 的调用估计 0.63 GPU 秒，1792x2400 的调用估计 2.58 GPU 秒。记录的摘要是 `image "<prompt, first 60 characters>" (<size>, seed <seed>)`。
 
 | 文件 | 内容 |
 | --- | --- |
