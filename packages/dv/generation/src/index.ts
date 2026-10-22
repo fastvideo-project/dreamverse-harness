@@ -91,7 +91,10 @@ interface GenerationSpecFields<P extends PrimitiveId> {
     facts: PrimitiveTypes[P]['facts'], request: PrimitiveTypes[P]['request']): Promise<OperationResult>
   /** The GPU estimate of the params with the entry that their key names. */
   estimate(params: Record<string, unknown>, entry: ModelEntry<TaskOfPrimitive<P>>): { gpu_seconds: number }
-  /** The confirmation text of an agent call. Default: `<label.en> with <provider>/<model>: about <n> GPU seconds.` */
+  /**
+   * The confirmation text of an agent call. Default: `<label.en> with <provider>/<model>: "<prompt, first 80 characters>"`.
+   * The refusal that shows it states the estimate on the next line.
+   */
   confirmText?(params: Record<string, unknown>): string
   /** One line that describes a finished record. */
   summarize(record: ProjectRecord): string
@@ -318,7 +321,7 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
         confirmSummary: ({ request: { params } }) => {
           const { provider, model } = modelKey(params)
           const gpuSeconds = this.estimate({ params }).gpu_seconds
-          const text = spec.confirmText?.(params) ?? `${label.en} with ${provider}/${model}: about ${String(gpuSeconds)} GPU seconds.`
+          const text = spec.confirmText?.(params) ?? `${label.en} with ${provider}/${model}: "${String(params['prompt']).slice(0, 80)}"`
           return { text, gpu_seconds: gpuSeconds }
         },
         estimate: params => this.estimate({ params }),

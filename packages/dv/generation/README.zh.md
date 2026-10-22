@@ -73,7 +73,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-内核把每个生成操作变成 agent 工具 `dv_<component>_<verb>`。其参数以 `modality`、`task`、`provider`、`model` 和 `prompt` 开头，以 `seed` 和 `extra` 结尾，描述如下；`seed: false` 的声明没有 `seed`。工具接受 `user_requested`，当本轮超过 GPU 预算时，不带它的调用被拒绝，文本为 `<label.en> with <provider>/<model>: about <n> GPU seconds.`，除非声明给出自己的文本。被拒绝的调用使工具调用失败，并给出理由和句子 `Nothing was generated; change the inputs or params, then call again.` 条目的 `facts()` 或 `validateGenerationRequest` 拒绝时，理由写作 `Model <modality>/<task>/<provider>/<model> is unavailable: <message>`，句子为 `Nothing was generated; no change to the call helps while the model is unavailable.` 模型问题写作 `Model <modality>/<task>/<provider>/<model> cannot generate this: <problems>`。结果报告带有 `seed`。
+内核把每个生成操作变成 agent 工具 `dv_<component>_<verb>`。其参数以 `modality`、`task`、`provider`、`model` 和 `prompt` 开头，以 `seed` 和 `extra` 结尾，描述如下；`seed: false` 的声明没有 `seed`。工具接受 `user_requested`，当本轮超过 GPU 预算时，不带它的调用被拒绝，文本为 `<label.en> with <provider>/<model>: "<prompt, first 80 characters>"`，除非声明给出自己的文本；拒绝消息的下一行给出估计值。被拒绝的调用使工具调用失败，并给出理由和句子 `Nothing was generated; change the inputs or params, then call again.` 条目的 `facts()` 或 `validateGenerationRequest` 拒绝时，理由写作 `Model <modality>/<task>/<provider>/<model> is unavailable: <message>`，句子为 `Nothing was generated; no change to the call helps while the model is unavailable.` 模型问题写作 `Model <modality>/<task>/<provider>/<model> cannot generate this: <problems>`。结果报告带有 `seed`。
 
 ##### 共享参数描述
 
