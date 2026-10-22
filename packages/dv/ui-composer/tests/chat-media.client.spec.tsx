@@ -264,9 +264,12 @@ describe('registerChatMedia under the slot runtime', () => {
     const card = await view.findByRole('button', { name: '查看: 镜头 1' })
     expect(within(view.getByTestId('p0')).getByTitle('镜头 1').textContent).toBe('镜头 1')
     expect(view.getByTestId('p0').querySelector('video')?.getAttribute('src')).toBe(`${assetUrl('shot1.mp4')}#t=0.1`)
+    // A video card carries the play badge over its frame; the audio card below has none.
+    expect(card.querySelector('svg path')).not.toBeNull()
     // The audio link draws the audio view at 'thumb'; the imported file is captioned by its name.
     const audio = within(view.getByTestId('p1'))
     expect(audio.getByRole('button', { name: '查看: score.wav' }).textContent).toBe('♪')
+    expect(audio.getByRole('button', { name: '查看: score.wav' }).querySelector('svg')).toBeNull()
     expect(audio.getByRole('button', { name: '查看: score.wav' })).toBeTruthy()
     // A PDF has no media view, so dv.media draws the file card.
     expect(view.getByTestId('p2').querySelector('[data-dv-media="file"]')?.textContent).toBe('application/pdf')

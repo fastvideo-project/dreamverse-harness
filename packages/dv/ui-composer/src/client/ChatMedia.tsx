@@ -59,7 +59,7 @@ function AssetCard(props: OneCardProps & { asset: ProjectAsset; label: string; i
     <span style={inGrid ? gridCard : card} data-dv-chat-card={asset.id}>
       <button type="button" style={frame} aria-label={label === '' ? open : `${open}: ${label}`}
         onClick={(event) => { preview(project, asset, event.currentTarget) }}>
-        {renderFactorySlot('dv.media', { asset, purpose: 'thumb' })}
+        {renderFactorySlot('dv.media', { asset, purpose: 'thumb', playBadge: true })}
       </button>
       {label !== '' && <span style={caption} title={label}>{label}</span>}
     </span>

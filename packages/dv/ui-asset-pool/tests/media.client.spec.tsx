@@ -100,6 +100,9 @@ describe('the media views', () => {
       ['/dv/assets/poster.png', '', 'cover'], ['/dv/assets/poster.png', '', 'cover'], ['/dv/assets/poster.png', '海报', 'contain'],
       ['/dv/assets/poster.png', '海报', 'contain'],
     ])
+    // A still loads lazily and decodes off the main thread.
+    const still = view.getByTestId('poster.png:thumb').querySelector('img')
+    expect([still?.getAttribute('loading'), still?.getAttribute('decoding')]).toEqual(['lazy', 'async'])
     const player = view.getByTestId('poster.png:player').querySelector('img')
     if (player === null) throw new Error('no player image')
     Object.defineProperties(player, { naturalWidth: { value: 1920 }, naturalHeight: { value: 1080 } })
@@ -119,6 +122,10 @@ describe('the media views', () => {
       ['/dv/assets/clip.mp4#t=0.1', true, false, false, null], ['/dv/assets/clip.mp4#t=0.1', true, false, false, null],
       ['/dv/assets/clip.mp4', false, true, false, null], ['/dv/assets/clip.mp4', true, true, true, '/dv/assets/poster.png'],
     ])
+    // A still plays inline on a phone and is hidden from assistive technology, as the image of an image still is.
+    const still = view.getByTestId('clip.mp4:thumb').querySelector('video')
+    expect([still?.hasAttribute('playsinline'), still?.getAttribute('aria-hidden'), view.getByTestId('clip.mp4:thumb').querySelector('svg')])
+      .toEqual([true, 'true', null])
     const looping = view.getByTestId('clip.mp4:loop').querySelector('video')
     if (looping === null) throw new Error('no looping video')
     Object.defineProperties(looping, { videoWidth: { value: 1280 }, videoHeight: { value: 720 } })

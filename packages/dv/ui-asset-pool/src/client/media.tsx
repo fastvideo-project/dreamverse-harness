@@ -16,6 +16,11 @@ import { clipPeaks, useAudioEnvelope } from '@dv/ui-kit/waveform.ts'
 import type { MediaType } from '@dv/ui-media/contract'
 
 const fill: CSSProperties = { display: 'block', width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }
+/** The badge sits on video frames, so it keeps the same light fill and dark glyph in both themes. */
+const playBadge: CSSProperties = {
+  position: 'absolute', right: 4, bottom: 4, width: 18, height: 18, borderRadius: 9999,
+  display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255, 255, 255, 0.9)', color: '#0A0B0D',
+}
 const playable: CSSProperties = { display: 'block', width: '100%', maxHeight: '70vh', objectFit: 'contain' }
 
 /**
@@ -51,7 +56,9 @@ export const MEDIA_TYPES: readonly MediaTypeEntry[] = [
  * @returns the element.
  */
 export function ImageView({ asset, purpose, onSize, unsupported }: PropsRuntime<'dv.media.view'>): ReactNode {
-  if (purpose === 'thumb' || purpose === 'card') return <img src={assetUrl(asset.id)} alt="" style={fill} draggable={false} onError={unsupported} />
+  if (purpose === 'thumb' || purpose === 'card') {
+    return <img src={assetUrl(asset.id)} alt="" loading="lazy" decoding="async" style={fill} draggable={false} onError={unsupported} />
+  }
   return (
     <img
       src={assetUrl(asset.id)} alt={asset.name} style={playable} draggable={false} onError={unsupported}
@@ -60,15 +67,30 @@ export function ImageView({ asset, purpose, onSize, unsupported }: PropsRuntime<
   )
 }
 
+/** @returns the filled play triangle of the badge. */
+function PlayIcon(): ReactNode {
+  return (
+    <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M7 5.5v13a1 1 0 0 0 1.5.9l10.4-6.5a1 1 0 0 0 0-1.8L8.5 4.6A1 1 0 0 0 7 5.5z" />
+    </svg>
+  )
+}
+
 /**
- * A video: its first frame, muted, as a still; with controls and sound as a player; with controls, muted and looping,
- * behind the poster, at purpose 'loop'. A playable form reports its loaded size. A video that the browser cannot decode,
- * such as HEVC in a browser without the codec, reports that it cannot draw.
- * @param props - the asset, the purpose, the poster, the size callback and the failure report.
+ * A video: its first frame, muted and decorative, as a still, with a play badge when the surface asks for one; with
+ * controls and sound as a player; with controls, muted and looping, behind the poster, at purpose 'loop'. A playable
+ * form reports its loaded size. A video that the browser cannot decode, such as HEVC in a browser without the codec,
+ * reports that it cannot draw.
+ * @param props - the asset, the purpose, the poster, the play badge, the size callback and the failure report.
  * @returns the element.
  */
-export function VideoView({ asset, purpose, poster, onSize, unsupported }: PropsRuntime<'dv.media.view'>): ReactNode {
-  if (purpose === 'thumb' || purpose === 'card') return <video src={`${assetUrl(asset.id)}#t=0.1`} muted preload="metadata" style={fill} onError={unsupported} />
+export function VideoView({ asset, purpose, poster, playBadge: badge, onSize, unsupported }: PropsRuntime<'dv.media.view'>): ReactNode {
+  if (purpose === 'thumb' || purpose === 'card') {
+    // `#t=0.1` asks the browser to decode a frame past the first keyframe's black lead-in.
+    const still = <video src={`${assetUrl(asset.id)}#t=0.1`} muted preload="metadata" playsInline aria-hidden style={fill} onError={unsupported} />
+    if (badge === undefined) return still
+    return <span style={{ position: 'relative', display: 'block', width: '100%', height: '100%' }}>{still}<span style={playBadge}><PlayIcon /></span></span>
+  }
   const loop = purpose === 'loop'
   return (
     <video

@@ -42,7 +42,7 @@ Host 半边（`src/index.ts`）是一个什么都不做的 `apply`，所以 Load
 | --- | --- | --- |
 | `MediaPurpose` | 类型 | 视图请求的形式：`'thumb'`（小方块）、`'card'`（卡片主体）、`'player'`（全宽可播放形式）或 `'loop'`（静音开始并循环的全宽可播放形式，例如编辑器中的版本） |
 | `MediaAsset` | 类型 | 视图绘制的素材事实：`id` 和 `mime`，以及界面知道时的 `name`、`width`、`height` 和 `duration_sec`，例如概要只按 ID 和 MIME 类型指定的项目封面 |
-| `MediaOwner` | 类型 | `dv.media` 实例的属性，也是每个 `dv.media.view` 条目的所有者属性：`asset`（一个 `MediaAsset`）、`purpose`、可选的 `poster`（可播放形式在播放前显示的静帧的素材 ID，例如版本的图片输出），以及可选的 `onSize({ width, height })`（为存储尺寸未知的素材接收已加载媒体的像素尺寸） |
+| `MediaOwner` | 类型 | `dv.media` 实例的属性，也是每个 `dv.media.view` 条目的所有者属性：`asset`（一个 `MediaAsset`）、`purpose`、可选的 `poster`（可播放形式在播放前显示的静帧的素材 ID，例如版本的图片输出）、可选的 `playBadge`（可播放素材静帧上的播放标记，例如点击后打开播放器的对话卡片），以及可选的 `onSize({ width, height })`（为存储尺寸未知的素材接收已加载媒体的像素尺寸） |
 | `MediaType` | 类型 | `dvMedia.types` 中的一个媒体类型：`id`（媒体类型，例如 `'audio'`，也是其 `dv.media.view` 条目的键）、`icon`（没有静帧处使用的图标组件，属性与 DSH 图标相同，例如 `@` 菜单），以及可选的 `poster(asset, state)`（在只能用 `<img>` 绘制的地方代表该素材的静帧的素材 ID，或 null） |
 | `DvMedia` | 服务 | `ctx.dvMedia`：`types` 是 `@dv/ui-kit/registries.ts` 的 `Registry<MediaType>`，以 `id` 为键，所以同一 `id` 的第二个类型会抛错；`preview(projectId, asset, opener)` 打开某个项目的素材的预览 |
 | `PreviewActionOwner` | 类型 | 一个预览按钮的所有者属性：`projectId`（所预览素材的项目）、`asset`、`buttonClass`（预览按钮的类名，操作按钮用它，外观、悬停和焦点与 关闭 / Close 一致）和 `close()` |

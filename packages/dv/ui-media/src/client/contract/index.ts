@@ -58,6 +58,8 @@ export interface MediaOwner {
   purpose: MediaPurpose
   /** The asset ID of a still that a playable form shows before it plays, such as a take's image output. */
   poster?: string
+  /** Mark the still of a playable asset with a play badge, such as a chat card whose click opens the player. */
+  playBadge?: true
   /** Receives the pixel size of the loaded media, for an asset whose stored size is unknown. */
   onSize?: (size: { width: number; height: number }) => void
 }
