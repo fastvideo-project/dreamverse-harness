@@ -255,6 +255,37 @@ describe('the asset pool tab', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
     await waitFor(() => { expect(view.queryByRole('dialog')).toBeNull() })
   })
+
+  it('draws each tile through dv.media in a box of the asset\'s aspect ratio, and a tile whose image does not decode as the file card', async () => {
+    const state = fixtureState()
+    state.assets.push(
+      { ...asset('portrait.png', 'image/png', null), width: 900, height: 1600 },
+      { ...asset('wide.png', 'image/png', null), width: 1600, height: 900 },
+      asset('broken.heic', 'image/heic', null),
+    )
+    vi.stubGlobal('fetch', scriptedFetch({ state }).fetch)
+    const reference: { current: SessionReference | undefined } = { current: undefined }
+    const { runtime } = await mountAssetPool(tabBody(reference))
+    await openSession(runtime, reference)
+    const view = runtime.renderRoot()
+    act(() => { publishCurrentProject('p1') })
+    const tile = (id: string): HTMLElement => {
+      const found = view.getByTestId('tab').querySelector(`[data-asset-id="${id}"]`)
+      if (!(found instanceof HTMLElement)) throw new Error(`no ${id} tile`)
+      return found
+    }
+    await waitFor(() => { tile('broken.heic') })
+    const box = (id: string): [string, string] => {
+      const media = tile(id).firstElementChild
+      return media instanceof HTMLElement ? [media.style.aspectRatio, media.style.width] : ['', '']
+    }
+    const broken = tile('broken.heic').querySelector('img')
+    if (broken === null) throw new Error('no image in the broken.heic tile')
+    fireEvent.error(broken)
+    expect([tile('broken.heic').querySelector('img'), tile('broken.heic').textContent]).toEqual([null, 'image/heic'])
+    expect([box('portrait.png'), box('wide.png')]).toEqual([['900 / 1600', '56.25%'], ['1600 / 900', '100%']])
+    expect(tile('wide.png').querySelector('img')?.style.objectFit).toBe('cover')
+  })
 })
 
 describe('disposal of the media and tab registrations', () => {

@@ -41,7 +41,7 @@ function importServer(): { fetch: typeof fetch; imports: HeldImport[] } {
  * @returns the view and the drop zone.
  */
 function renderPanel(fetch: typeof globalThis.fetch) {
-  const view = render(<AssetsPanel projectId="p1" session="s5" client={new DvClient(fetch)} preview={() => {}} />)
+  const view = render(<AssetsPanel projectId="p1" session="s5" client={new DvClient(fetch)} preview={() => {}} renderFactorySlot={() => null} />)
   return { view, zone: view.getByRole('button', { name: /^Drop images or videos here/ }) }
 }
 
@@ -55,7 +55,7 @@ describe('AssetsPanel', () => {
     state.assets.push(asset('wide.mp4', 'video/mp4', 'g9', 5, 'shot.render'), asset('wide-last.png', 'image/png', 'g9', null, 'shot.render'))
     const posts: string[] = []
     const { fetch } = scriptedFetch({ state, post: (path) => { posts.push(path); return { status: 404, body: { error: path } } } })
-    const view = render(<AssetsPanel projectId="p1" session="s5" client={new DvClient(fetch)} preview={() => {}} />)
+    const view = render(<AssetsPanel projectId="p1" session="s5" client={new DvClient(fetch)} preview={() => {}} renderFactorySlot={() => null} />)
     const panel = within(view.getByTestId('dv-asset-pool-panel'))
     await waitFor(() => { expect(view.container.querySelector('[data-asset-id="shot1.mp4"]')).not.toBeNull() })
     expect(view.container.querySelector('[data-asset-id="wide.mp4"]')).not.toBeNull()

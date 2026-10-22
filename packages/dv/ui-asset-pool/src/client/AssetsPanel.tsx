@@ -8,16 +8,17 @@
  * @module @dv/ui-asset-pool/AssetsPanel
  */
 import { useCallback, useMemo, useRef, useState } from 'react'
-import type { DragEvent, ReactNode } from 'react'
+import type { CSSProperties, DragEvent, ReactNode } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { assetUrl, type DvClient } from '@dv/ui-kit/api.ts'
+import type { PropsRenderFactories, PropsRuntime, RenderFactorySlot } from '@deepseek-ai/dsh-client-ui-slots'
+import type { DvClient } from '@dv/ui-kit/api.ts'
 import type { Asset } from '@dv/ui-kit/types.ts'
 import { useCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import { useProjectState } from '@dv/ui-kit/useProject.ts'
 import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
+import type {} from '@dv/ui-media/contract'
 import { assetLibrary } from './library.ts'
 import css from './AssetsPanel.module.css'
 
@@ -32,6 +33,8 @@ export interface AssetsPanelProps {
   preview: (projectId: string, asset: Asset, opener: Element | null) => void
   /** Called on a click on a thumbnail instead of opening the preview. */
   onOpen?: (asset: Asset) => void
+  /** Draws each thumbnail's asset through the `dv.media` Factory of `@dv/ui-media`. */
+  renderFactorySlot: RenderFactorySlot
 }
 
 /**
@@ -54,9 +57,12 @@ export function AssetsPanel(props: AssetsPanelProps): ReactNode {
   } else {
     body = (
       <>
-        <Section title={t('图片', 'Images')} assets={library.images} onOpen={onOpen} />
-        <Section title={t('视频', 'Videos')} assets={library.videos} onOpen={onOpen} />
-        <Section title={t('从生成中截取的帧', 'Extracted from generation')} assets={library.extracted} onOpen={onOpen} />
+        <Section title={t('图片', 'Images')} assets={library.images} onOpen={onOpen} renderFactorySlot={props.renderFactorySlot} />
+        <Section title={t('视频', 'Videos')} assets={library.videos} onOpen={onOpen} renderFactorySlot={props.renderFactorySlot} />
+        <Section
+          title={t('从生成中截取的帧', 'Extracted from generation')} assets={library.extracted} onOpen={onOpen}
+          renderFactorySlot={props.renderFactorySlot}
+        />
       </>
     )
   }
@@ -117,41 +123,56 @@ function ImportZone(props: { client: DvClient; projectId: string; session: strin
   )
 }
 
+/** What a grid of thumbnails needs: the click callback and the `dv.media` renderer. */
+type ThumbProps = { onOpen: (asset: Asset, tile: Element) => void; renderFactorySlot: RenderFactorySlot }
+
 /**
  * One titled grid of thumbnails.
- * @param props - the title, the assets, and the preview callback.
+ * @param props - the title, the assets, the preview callback, and the `dv.media` renderer.
  * @returns the section, or nothing when it has no assets.
  */
-function Section(props: { title: string; assets: Asset[]; onOpen: (asset: Asset, tile: Element) => void }): ReactNode {
+function Section(props: ThumbProps & { title: string; assets: Asset[] }): ReactNode {
   if (props.assets.length === 0) return null
   return (
     <section className={css.section}>
       <h3 className={css.sectionTitle}>{props.title} · {props.assets.length}</h3>
       <div className={css.grid}>
-        {props.assets.map(asset => <Thumb key={asset.id} asset={asset} onOpen={props.onOpen} />)}
+        {props.assets.map(asset => (
+          <Thumb key={asset.id} asset={asset} onOpen={props.onOpen} renderFactorySlot={props.renderFactorySlot} />
+        ))}
       </div>
     </section>
   )
 }
 
 /**
- * One draggable thumbnail; dragging it carries the asset ID, clicking it opens the preview.
- * @param props - the asset and the preview callback.
+ * The box of a thumbnail's media inside the square cell: the asset's aspect ratio at the largest size that the cell
+ * holds, so a portrait image or a 16:9 video frame shows whole; the whole cell for an asset of unknown dimensions.
+ * @param asset - the asset.
+ * @returns the box style.
+ */
+function thumbBox(asset: Asset): CSSProperties {
+  if (asset.width === null || asset.height === null || asset.height <= 0) return { width: '100%', height: '100%' }
+  return { aspectRatio: `${String(asset.width)} / ${String(asset.height)}`, width: `${String(Math.min(1, asset.width / asset.height) * 100)}%` }
+}
+
+/**
+ * One draggable thumbnail, its asset drawn through `dv.media` at purpose 'thumb'; dragging it carries the asset ID,
+ * clicking it opens the preview.
+ * @param props - the asset, the preview callback, and the `dv.media` renderer.
  * @returns the thumbnail.
  */
-function Thumb(props: { asset: Asset; onOpen: (asset: Asset, tile: Element) => void }): ReactNode {
+function Thumb(props: ThumbProps & { asset: Asset }): ReactNode {
   const { asset } = props
   const video = asset.mime.startsWith('video/')
   return (
     <button
-      type="button" draggable title={asset.name} data-asset-id={asset.id}
+      type="button" draggable title={asset.name} aria-label={asset.name} data-asset-id={asset.id}
       onDragStart={(event) => { event.dataTransfer.setData(DV_ASSET_DRAG_TYPE, asset.id); event.dataTransfer.effectAllowed = 'copy' }}
       onClick={(event) => { props.onOpen(asset, event.currentTarget) }}
       className={css.thumb}
     >
-      {video
-        ? <video src={`${assetUrl(asset.id)}#t=0.1`} muted preload="metadata" className={css.thumbMedia} />
-        : <img src={assetUrl(asset.id)} alt={asset.name} loading="lazy" className={css.thumbMedia} />}
+      <span className={css.thumbMedia} style={thumbBox(asset)}>{props.renderFactorySlot('dv.media', { asset, purpose: 'thumb' })}</span>
       {video && asset.duration_sec !== null
         ? <span className={css.duration}>{asset.duration_sec.toFixed(0)}s</span>
         : null}
@@ -171,10 +192,15 @@ export interface AssetsTabInjected {
  * @param props - the tab's chat session and the injected client.
  * @returns the panel, or a notice while no project is open.
  */
-export function AssetsTabBody(props: PropsRuntime<'sidebar.right.pane.tab'> & AssetsTabInjected): ReactNode {
+export function AssetsTabBody(props: PropsRuntime<'sidebar.right.pane.tab'> & AssetsTabInjected & PropsRenderFactories): ReactNode {
   const project = useCurrentProject()
   const t = useText()
   if (project === null) return <p className={css.note} style={{ padding: 16 }}>{t('先打开一个项目', 'Open a project first')}</p>
   // Keyed by project so a switch starts from an empty panel instead of showing the previous project's assets.
-  return <AssetsPanel key={project} projectId={project} session={props.sessionId} client={props.client} preview={props.preview} />
+  return (
+    <AssetsPanel
+      key={project} projectId={project} session={props.sessionId} client={props.client} preview={props.preview}
+      renderFactorySlot={props.renderFactorySlot}
+    />
+  )
 }

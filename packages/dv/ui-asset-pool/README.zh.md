@@ -38,10 +38,10 @@ Host 半边不注册任何东西。浏览器半边注册 `dv-asset-pool` 标签�
 | 打开面板、项目的任何变化 | 对项目的当前状态调用 `GET /api/dv/state`，每个 `/dv/events` 事件都重新拉取 |
 | 把图片或视频拖到拖放区，或点击它选择文件 | 每个图片或视频文件一次 `POST /api/dv/assets/import`，带 `surface=asset_pool` 和标签所在的对话；`asset.import` 记录是项目当前位置之后的一步。拖放区不导入其他文件，对每个这样的文件显示 「<name>」不是图片或视频，没有导入。 |
 | 拖动缩略图 | 以 `application/x-dv-asset` 携带素材 ID 的拖动；画布把素材的节点移到放下的位置，时间线在放下的位置插入片段 |
-| 在标签里点击缩略图 | 以该素材和该缩略图调用 `dvMedia.preview`：`@dv/ui-media` 的素材预览，带 `dv.media.preview.action` 按钮，例如 `@dv/ui-timeline` 的 插入片段 和 `@dv/ui-composer` 的 让智能体使用；`dvMedia` 不存在时什么也不打开 |
+| 在标签里点击缩略图 | 以项目、该素材和该缩略图调用 `dvMedia.preview`：`@dv/ui-media` 的素材预览，带 `dv.media.preview.action` 按钮，例如 `@dv/ui-timeline` 的 插入片段 和 `@dv/ui-composer` 的 让智能体使用；`dvMedia` 不存在时什么也不打开 |
 | 在画布素材选择窗口里点击缩略图 | 选择窗口的 `onOpen` 在选择窗口中切换该素材的选中状态；不打开预览 |
 
-缩略图和媒体视图从 `GET /dv/assets/<AssetId>` 加载素材文件。
+每个缩略图通过 `dv.media` 组件工厂以用途 `thumb` 绘制其素材，放在方形格子中央、比例与素材相同的框里，所以竖版图片或 16:9 视频帧完整显示；尺寸未知的素材填满格子。缩略图和媒体视图从 `GET /dv/assets/<AssetId>` 加载素材文件。
 
 面板把状态在 `assets` 里列出的每个图片和视频（当前状态中的每个素材，加上项目的任何记录导入的每个素材，包括被丢弃的记录；见[历史规则](../../../docs/subsystems/video-harness.zh.md#history-rules)）列出一次，分为三组，每组最新在前：图片（`image/*`）、视频（`video/*`）和 从生成中截取的帧（`made_by` 为 `shot.render` 的图片，例如版本的末帧静帧）。其他媒体类型的素材不列出。角色、场景或风格用到的图片仍列在 图片 一组，`asset.grab_still` 的静帧也列在 图片 一组。没有素材的组不显示，没有素材的项目显示 暂无。被撤销移出当前状态的导入素材，拖动、插入和预览都和其他素材一样，所以插入它会写一条普通的 `timeline.clip_insert` 记录，作为当前位置之后的一步。
 
