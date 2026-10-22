@@ -29,8 +29,9 @@ const DECODE_SAMPLE_RATE = 16000
 const EDGE_TOLERANCE = 1e-6
 
 /**
- * Reduce decoded samples to a peak envelope.
- * @param channels - the sample arrays of each channel, all of the same length.
+ * Reduce decoded samples to a peak envelope. The windows follow the first channel; a shorter channel reads as silence
+ * past its end.
+ * @param channels - the sample arrays of each channel, as a decoded buffer gives them.
  * @param sampleRate - samples per second of each channel.
  * @param rate - envelope windows per second.
  * @returns the envelope.
@@ -45,7 +46,7 @@ export function peakEnvelope(channels: readonly Float32Array[], sampleRate: numb
     const end = Math.min(samples, Math.floor((window + 1) * sampleRate / rate))
     let peak = 0
     for (const channel of channels) {
-      for (const sample of channel.subarray(start, end)) peak = Math.max(peak, Math.abs(sample))
+      for (let at = start; at < end; at += 1) peak = Math.max(peak, Math.abs(channel[at] ?? 0))
     }
     const value = Math.min(1, peak)
     peaks[window] = value

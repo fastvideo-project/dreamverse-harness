@@ -18,6 +18,13 @@ describe('peakEnvelope', () => {
     expect(envelope.max).toBeCloseTo(0.9)
   })
 
+  it('reads a channel shorter than the first as silence past its end, and reads the samples in place', () => {
+    const subarray = vi.spyOn(Float32Array.prototype, 'subarray')
+    const envelope = peakEnvelope([Float32Array.from([0, 0, 0, 0.4]), Float32Array.from([0.2])], 2, 1)
+    expect([Array.from(envelope.peaks), subarray.mock.calls.length]).toEqual([[0.2, 0.4].map(Math.fround), 0])
+    subarray.mockRestore()
+  })
+
   it('gives a partial last window its own peak and an empty buffer no windows', () => {
     expect(Array.from(peakEnvelope([Float32Array.from([0.25, 0, 0, 0, -0.5])], 4, 1).peaks)).toEqual([0.25, 0.5])
     expect(peakEnvelope([], 8, 2)).toEqual({ peaks: new Float32Array(0), rate: 2, max: 0 })
