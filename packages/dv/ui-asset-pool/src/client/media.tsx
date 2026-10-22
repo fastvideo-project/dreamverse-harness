@@ -93,7 +93,7 @@ const GAP = 1
  */
 export function AudioView({ asset, purpose, unsupported }: PropsRuntime<'dv.media.view'>): ReactNode {
   if (purpose === 'thumb') {
-    return <span aria-label={asset.name} style={{ display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', background: 'var(--dv-surface-3)', color: 'var(--dv-text-2)' }}>♪</span>
+    return <span aria-hidden style={{ display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', background: 'var(--dv-surface-3)', color: 'var(--dv-text-2)' }}>♪</span>
   }
   if (purpose === 'player' || purpose === 'loop') return <audio src={assetUrl(asset.id)} controls style={{ display: 'block', width: '100%', alignSelf: 'center' }} onError={unsupported} />
   return <AudioCard asset={asset} />
@@ -109,8 +109,10 @@ function AudioCard({ asset }: { asset: PropsRuntime<'dv.media.view'>['asset'] })
   const envelope = useAudioEnvelope(asset.id)
   const player = useRef<HTMLAudioElement | null>(null)
   const [playing, setPlaying] = useState(false)
-  // Bars are mirrored around the middle and at least 1 unit tall, so a silent stretch still shows a center line.
-  const path = envelope === null ? null : clipPeaks(envelope, 0, asset.duration_sec ?? envelope.peaks.length / envelope.rate, BARS)
+  // Bars are mirrored around the middle and at least 1 unit tall, so a silent stretch still shows a center line. An asset
+  // of no duration has no bars.
+  const peaks = envelope === null ? [] : clipPeaks(envelope, 0, asset.duration_sec ?? envelope.peaks.length / envelope.rate, BARS)
+  const path = peaks.length === 0 ? null : peaks
     .map((peak, bar) => {
       const height = Math.max(1, peak * 36)
       return `M${String(bar * (BAR + GAP))} ${String((40 - height) / 2)}h${String(BAR)}v${String(height)}h-${String(BAR)}z`
@@ -139,6 +141,7 @@ function AudioCard({ asset }: { asset: PropsRuntime<'dv.media.view'>['asset'] })
       <audio
         ref={player} src={assetUrl(asset.id)} preload="none" style={{ display: 'none' }}
         onPlay={() => { setPlaying(true) }} onPause={() => { setPlaying(false) }} onEnded={() => { setPlaying(false) }}
+        onError={() => { setPlaying(false) }}
       />
     </span>
   )

@@ -132,7 +132,8 @@ describe('the media views', () => {
     const { runtime } = await mountAssetPool(occurrences([THEME]))
     const view = runtime.renderRoot()
     const thumb = view.getByTestId('theme.wav:thumb')
-    expect([within(thumb).getByLabelText('主题曲').textContent, thumb.querySelector('audio')]).toEqual(['♪', null])
+    // The note is decorative, as the image of an image thumbnail is: the surface names the thumbnail.
+    expect([thumb.textContent, thumb.querySelector('[aria-label]'), thumb.querySelector('[aria-hidden="true"]')?.textContent, thumb.querySelector('audio')]).toEqual(['♪', null, '♪', null])
     const card = view.getByTestId('theme.wav:card')
     await waitFor(() => { expect(within(card).getByTestId('dv-audio-waveform').querySelector('path')?.getAttribute('d')).toMatch(/^M0 /) })
     expect([card.querySelector('audio')?.getAttribute('src'), card.querySelector('audio')?.controls]).toEqual(['/dv/assets/theme.wav', false])
@@ -164,6 +165,16 @@ describe('the media views', () => {
 })
 
 describe('the audio card', () => {
+  it('draws no waveform for an audio asset of no duration', async () => {
+    stubDecoder()
+    const { runtime } = await mountAssetPool(occurrences([{ ...THEME, id: 'silent.wav', duration_sec: 0 }, { ...THEME, id: 'after.wav' }]))
+    const view = runtime.renderRoot()
+    // The decodes run one at a time in order, so the asset after it shows its waveform once its own decode is done.
+    await waitFor(() => { expect(within(view.getByTestId('after.wav:card')).getByTestId('dv-audio-waveform')).toBeTruthy() })
+    expect(view.getByTestId('silent.wav:card').querySelector('svg')).toBeNull()
+    vi.unstubAllGlobals()
+  })
+
   it('spans its waveform over the decoded audio when the asset has no stored duration', async () => {
     stubDecoder()
     const { runtime } = await mountAssetPool(occurrences([{ ...THEME, duration_sec: null }]))
@@ -201,6 +212,10 @@ describe('the audio card', () => {
     expect(shown()).toEqual(['Play', 'false', '▶'])
     fireEvent.play(audio)
     fireEvent.ended(audio)
+    expect(shown()).toEqual(['Play', 'false', '▶'])
+    // A source that fails to load after the play started ends the play state.
+    fireEvent.play(audio)
+    fireEvent.error(audio)
     expect(shown()).toEqual(['Play', 'false', '▶'])
 
     // A surface beneath, such as the canvas, listens above the React root.

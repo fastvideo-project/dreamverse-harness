@@ -266,7 +266,7 @@ describe('registerChatMedia under the slot runtime', () => {
     expect(view.getByTestId('p0').querySelector('video')?.getAttribute('src')).toBe(`${assetUrl('shot1.mp4')}#t=0.1`)
     // The audio link draws the audio view at 'thumb'; the imported file is captioned by its name.
     const audio = within(view.getByTestId('p1'))
-    expect(audio.getByLabelText('score.wav').textContent).toBe('♪')
+    expect(audio.getByRole('button', { name: '查看: score.wav' }).textContent).toBe('♪')
     expect(audio.getByRole('button', { name: '查看: score.wav' })).toBeTruthy()
     // A PDF has no media view, so dv.media draws the file card.
     expect(view.getByTestId('p2').querySelector('[data-dv-media="file"]')?.textContent).toBe('application/pdf')

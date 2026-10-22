@@ -188,7 +188,7 @@ describe('PlanEditor', () => {
     expect(chips.map(chip => [chip.textContent, chip.querySelector('img, video')?.getAttribute('src') ?? null])).toEqual([
       ['shot1.mp4', `${assetUrl('shot1.mp4')}#t=0.1`], ['Picture 1 · Hero', assetUrl('ref.png')], ['♪score.wav', null],
     ])
-    expect(within(chips[2] as HTMLElement).getByLabelText('score.wav').textContent).toBe('♪')
+    expect((chips[2] as HTMLElement).querySelector('[aria-hidden="true"]')?.textContent).toBe('♪')
     expect(shot?.querySelector('p')?.textContent).toBe('<Video 1> then ')
     expect(shot?.querySelector('p img')?.getAttribute('src')).toBe(assetUrl('ref.png'))
     await runtime.dispose()
