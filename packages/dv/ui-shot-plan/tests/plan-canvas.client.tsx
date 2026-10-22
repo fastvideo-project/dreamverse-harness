@@ -9,7 +9,7 @@ import type { ReactNode } from 'react'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { FeatureHandle } from '@deepseek-ai/dsh-client-test-runtime'
-import type { CardHost, DvCanvas, NodeHost, NodeView } from '@dv/ui-canvas/contract'
+import type { DvCanvas, EditorHost, NodeView } from '@dv/ui-canvas/contract'
 import { createDvCanvas } from '@dv/ui-canvas/src/client/dv-canvas.ts'
 import { buildCanvasGraph } from '@dv/ui-canvas/src/client/graph.ts'
 import type { CanvasNode } from '@dv/ui-canvas/src/client/graph.ts'
@@ -20,8 +20,8 @@ import { OPERATIONS, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx
 import { apply, inject } from '../src/client/index.ts'
 
 /** The canvas's writes, picker, preview and navigation, which the plan card and editor do not call. */
-export const HOST: NodeHost & CardHost = {
-  run: vi.fn(), rerun: vi.fn(), pickAssets: vi.fn(), preview: vi.fn(), reference: vi.fn(), openNode: vi.fn(),
+export const HOST: EditorHost = {
+  run: vi.fn(), rerun: vi.fn(() => Promise.resolve()), pickAssets: vi.fn(), preview: vi.fn(), reference: vi.fn(), openNode: vi.fn(),
   setPlaced: vi.fn(), close: vi.fn(),
 }
 

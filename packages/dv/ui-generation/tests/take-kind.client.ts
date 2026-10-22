@@ -9,7 +9,7 @@ import type { ChildrenDecl } from '@deepseek-ai/dsh-client-ui-slots'
 import type { HistoryRow } from '@dv/ui-history/contract'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type { WireOperation, WireState } from '@dv/ui-kit/types.ts'
-import type { ChainAnchor, ClaimedNodeView, DvCanvas, NodeHost, NodeView, ReferenceFacts } from '../../ui-canvas/src/client/contract/index.ts'
+import type { ChainAnchor, ClaimedNodeView, DvCanvas, EditorHost, NodeView, ReferenceFacts } from '../../ui-canvas/src/client/contract/index.ts'
 import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
 import { buildCanvasGraph } from '../../ui-canvas/src/client/graph.ts'
 import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
@@ -104,13 +104,13 @@ export function recordingHost(rerun: () => Promise<void> = () => Promise.resolve
     'villain@2': { name: 'Villain', asset: null, node: 'test_ref:villain' },
   }
   return {
-    run: vi.fn<NodeHost['run']>(),
-    rerun: vi.fn<NodeHost['rerun']>(rerun),
-    pickAssets: vi.fn<NodeHost['pickAssets']>(),
-    preview: vi.fn<NodeHost['preview']>(),
-    reference: vi.fn<NodeHost['reference']>(ref => items[ref] ?? { name: ref, asset: assetOf(ref), node: null }),
-    openNode: vi.fn<NodeHost['openNode']>(),
-    setPlaced: vi.fn<NodeHost['setPlaced']>(),
-    close: vi.fn<NodeHost['close']>(),
+    run: vi.fn<EditorHost['run']>(),
+    rerun: vi.fn<EditorHost['rerun']>(rerun),
+    pickAssets: vi.fn<EditorHost['pickAssets']>(),
+    preview: vi.fn<EditorHost['preview']>(),
+    reference: vi.fn<EditorHost['reference']>(ref => items[ref] ?? { name: ref, asset: assetOf(ref), node: null }),
+    openNode: vi.fn<EditorHost['openNode']>(),
+    setPlaced: vi.fn<EditorHost['setPlaced']>(),
+    close: vi.fn<EditorHost['close']>(),
   }
 }

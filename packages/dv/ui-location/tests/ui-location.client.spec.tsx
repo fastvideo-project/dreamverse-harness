@@ -9,7 +9,7 @@ import { cleanup, fireEvent } from '@testing-library/react'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { AssetId, RecordId } from '@dv/project/types'
 import type { LocationId } from '@dv/location/types'
-import type { CardHost, NodeHost, NodeView } from '@dv/ui-canvas/contract'
+import type { CardHost, EditorHost, NodeView } from '@dv/ui-canvas/contract'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
 import type { MentionKind } from '@dv/ui-kit/registries.ts'
 import type { Asset, WireOperation, WireState } from '@dv/ui-kit/types.ts'
@@ -136,9 +136,9 @@ describe('the location plugin', () => {
     expect(runtime.ctx.dvCanvas.versionKinds.getSnapshot().map(kind => [kind.kind, kind.label(), kind.node('l1')])).toEqual([['location', '场景', 'location:l1']])
 
     const host = {
-      run: vi.fn<NodeHost['run']>(), rerun: vi.fn<NodeHost['rerun']>(), pickAssets: vi.fn<NodeHost['pickAssets']>(), preview: vi.fn<NodeHost['preview']>(),
-      reference: vi.fn<NodeHost['reference']>(), openNode: vi.fn<NodeHost['openNode']>(), setPlaced: vi.fn<NodeHost['setPlaced']>(), close: vi.fn<NodeHost['close']>(),
-    } satisfies NodeHost
+      run: vi.fn<EditorHost['run']>(), rerun: vi.fn<EditorHost['rerun']>(), pickAssets: vi.fn<EditorHost['pickAssets']>(), preview: vi.fn<EditorHost['preview']>(),
+      reference: vi.fn<EditorHost['reference']>(), openNode: vi.fn<EditorHost['openNode']>(), setPlaced: vi.fn<EditorHost['setPlaced']>(), close: vi.fn<EditorHost['close']>(),
+    } satisfies EditorHost
     const { view } = runtime.renderSlot('dv.canvas.editor', { node, state, operations: [], host }, { entryKey: 'location' })
     fireEvent.click(view.getByRole('button', { name: '移除 ref.png' }))
     expect(host.run).toHaveBeenLastCalledWith({

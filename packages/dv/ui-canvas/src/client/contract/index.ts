@@ -157,21 +157,18 @@ export type ClaimedNodeView = Extract<NodeView, { claimed: true }>
 /** A write that the canvas completes with its project, chat session and surface. */
 export type CanvasRequest = Omit<OperationRequest, 'project' | 'surface' | 'session'>
 
-/** The callbacks that a card body receives. */
-export interface CardHost {
-  /** Run an operation as a canvas write (project, chat session, surface 'canvas'); the canvas shows a failure. */
-  run(request: CanvasRequest): void
-  /**
-   * Run an operation whose record is `based_on` this node's record. Once its node appears, the canvas closes the
-   * editor, selects and centers that node, and settles; rejects with the error of a refused request.
-   */
-  rerun(request: CanvasRequest & { based_on: string }): Promise<void>
-}
+/** A canvas write whose record is `based_on` the record of the node that runs it. */
+export type RerunRequest = CanvasRequest & { based_on: string }
 
-/** What the canvas lends an editor body and a node action. */
-export interface NodeHost extends CardHost {
-  /** The canvas's asset picker; `versions: true` adds the sections of the registered version kinds. */
-  pickAssets(chosen: readonly string[], options: { versions: boolean }, onConfirm: (refs: string[]) => void): void
+/**
+ * What the canvas lends a node action, on every surface that draws it. The canvas shows the error of a refused write
+ * in its notice, over any open editor.
+ */
+export interface NodeHost {
+  /** Run an operation as a canvas write (project, chat session, surface 'canvas'). */
+  run(request: CanvasRequest): void
+  /** Run an operation again; once its node appears, the canvas closes the editor and selects and centers that node. */
+  rerun(request: RerunRequest): void
   /** The asset preview of `dvMedia`, growing out of `opener`. */
   preview(asset: string, opener: Element | null): void
   /**
@@ -185,6 +182,20 @@ export interface NodeHost extends CardHost {
   setPlaced(asset: string, on: boolean): void
   /** Close the editor and clear the selection. */
   close(): void
+}
+
+/** What the canvas lends a card body: the writes of the node host. */
+export type CardHost = Pick<NodeHost, 'run' | 'rerun'>
+
+/** What the canvas lends an editor body: the node host with the editor's asset picker, and a rerun that it awaits. */
+export interface EditorHost extends Omit<NodeHost, 'rerun'> {
+  /**
+   * As `NodeHost.rerun`, and the body shows a refusal itself: settles once the new node appears, rejects with the error
+   * of a refused request, and the canvas shows neither.
+   */
+  rerun(request: RerunRequest): Promise<void>
+  /** The editor's asset picker; `versions: true` adds the sections of the registered version kinds. */
+  pickAssets(chosen: readonly string[], options: { versions: boolean }, onConfirm: (refs: string[]) => void): void
 }
 
 /** What one reference of an input names, for its chip. */
@@ -265,7 +276,7 @@ export interface EditorOwner<N extends NodeView = NodeView> {
   node: N
   state: WireState
   operations: readonly WireOperation[]
-  host: NodeHost
+  host: EditorHost
 }
 
 /** Owner props of the asset pool panel inside the canvas's picker. */

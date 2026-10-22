@@ -15,7 +15,7 @@ import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import type { WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { AssetPicker } from './AssetPicker.tsx'
-import type { NodeAction, NodeHost, NodeView } from './contract/index.ts'
+import type { EditorHost, NodeAction, NodeHost, NodeView } from './contract/index.ts'
 import type { CanvasNode } from './graph.ts'
 import type { CanvasTranslate } from './NodeCard.tsx'
 
@@ -23,6 +23,12 @@ import type { CanvasTranslate } from './NodeCard.tsx'
 export type RenderCanvasSlot = PropsRenderSlots<
   'dv.canvas.card' | 'dv.canvas.editor' | 'dv.canvas.editor.claimed' | 'dv.canvas.picker'
 >['renderSlot']
+
+/** The hosts that the canvas lends one surface: the node host of its actions, and its editor body's host without the picker. */
+export interface SurfaceHosts {
+  node: NodeHost
+  editor: Omit<EditorHost, 'pickAssets'>
+}
 
 /** Props of {@link NodeEditor}. */
 export interface NodeEditorProps extends PropsRenderFactories {
@@ -38,8 +44,8 @@ export interface NodeEditorProps extends PropsRenderFactories {
   project: string
   session: string | null
   t: CanvasTranslate
-  /** The canvas's writes, preview, placement and other editors; the editor adds its own asset picker. */
-  host: Omit<NodeHost, 'pickAssets'>
+  /** The hosts of the header's actions and of the body; the editor adds its own asset picker to the body's. */
+  hosts: SurfaceHosts
   /** Keep a stale record as it is. */
   onAcceptStale: (record: string) => void
   onClose: () => void
@@ -332,8 +338,8 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
   const staleRecord = node.flags.stale ? node.record : null
   const placement = useEditorPlacement(props.area)
   const [picking, setPicking] = useState<Picking | null>(null)
-  const host: NodeHost = {
-    ...props.host,
+  const host: EditorHost = {
+    ...props.hosts.editor,
     pickAssets: (chosen, options, onConfirm) => { setPicking({ chosen, versions: options.versions, onConfirm }) },
   }
   const { rect, begin, follow, finish, reset, resizeBy } = placement
@@ -362,7 +368,7 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
           </span>
           <h2 style={{ flex: 1, minWidth: 0, margin: 0, fontSize: 16, lineHeight: '24px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</h2>
           {props.actions.map(action => (
-            <button key={action.id} type="button" className="dv-canvas-soft" style={button} disabled={view.rerunning} onClick={() => { action.run(view, host) }}>{action.label()}</button>
+            <button key={action.id} type="button" className="dv-canvas-soft" style={button} disabled={view.rerunning} onClick={() => { action.run(view, props.hosts.node) }}>{action.label()}</button>
           ))}
           <button type="button" className="dv-canvas-btn" aria-label={t('editor.close')} title={t('editor.close')} style={{ ...button, width: 32, padding: 0, color: 'var(--dv-text-2)' }} onClick={onClose}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>

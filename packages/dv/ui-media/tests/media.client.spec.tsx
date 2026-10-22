@@ -275,7 +275,7 @@ describe('one dv.media Factory under parents of both scopes', () => {
       rerunning: false,
     }
     const card = runtime.renderSlot('dv.canvas.card', {
-      node, assets: { 'v1.mp4': asset('v1.mp4', 'video/mp4') }, textScale: 1, host: { run: () => undefined, rerun: () => Promise.resolve() },
+      node, assets: { 'v1.mp4': asset('v1.mp4', 'video/mp4') }, textScale: 1, host: { run: () => undefined, rerun: () => undefined },
     }, { entryKey: 'asset' })
     expect(runtime.slots.snapshot('factory:dv.media')).toHaveLength(1)
     expect(chat.container.querySelector('video')?.getAttribute('src')).toBe(assetUrl('v1.mp4'))

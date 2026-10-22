@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent } from '@testing-library/react'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { FeatureHandle } from '@deepseek-ai/dsh-client-test-runtime'
-import type { CardHost, NodeHost, NodeView } from '@dv/ui-canvas/contract'
+import type { CardHost, EditorHost, NodeView } from '@dv/ui-canvas/contract'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type { MentionKind } from '@dv/ui-kit/registries.ts'
@@ -173,9 +173,9 @@ const cardHost = (): CardHost => ({ run: vi.fn<CardHost['run']>(), rerun: vi.fn<
 /** @returns an editor host whose methods record their calls. */
 function hostMock() {
   return {
-    run: vi.fn<NodeHost['run']>(), rerun: vi.fn<NodeHost['rerun']>(), pickAssets: vi.fn<NodeHost['pickAssets']>(), preview: vi.fn<NodeHost['preview']>(),
-    reference: vi.fn<NodeHost['reference']>(), openNode: vi.fn<NodeHost['openNode']>(), setPlaced: vi.fn<NodeHost['setPlaced']>(), close: vi.fn<NodeHost['close']>(),
-  } satisfies NodeHost
+    run: vi.fn<EditorHost['run']>(), rerun: vi.fn<EditorHost['rerun']>(), pickAssets: vi.fn<EditorHost['pickAssets']>(), preview: vi.fn<EditorHost['preview']>(),
+    reference: vi.fn<EditorHost['reference']>(), openNode: vi.fn<EditorHost['openNode']>(), setPlaced: vi.fn<EditorHost['setPlaced']>(), close: vi.fn<EditorHost['close']>(),
+  } satisfies EditorHost
 }
 
 describe('the plugin of a reference noun', () => {

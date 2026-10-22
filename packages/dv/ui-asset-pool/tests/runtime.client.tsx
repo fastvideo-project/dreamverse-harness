@@ -11,7 +11,7 @@ import { tabInfoFactory } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/cli
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import type { ComposedProps } from '@deepseek-ai/dsh-client-ui-slots'
 import type { WireState } from '@dv/ui-kit/types.ts'
-import type { NodeHost, NodeView } from '../../ui-canvas/src/client/contract/index.ts'
+import type { EditorHost, NodeView } from '../../ui-canvas/src/client/contract/index.ts'
 import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
 import { buildCanvasGraph } from '../../ui-canvas/src/client/graph.ts'
 import { OPERATIONS } from '../../ui-kit/tests/fixture.client.tsx'
@@ -78,11 +78,11 @@ export function canvasNodes(runtime: SlotTestRuntime, state: WireState, placed: 
 }
 
 /**
- * A node host that records each call as one line, such as `setPlaced poster.png false`.
+ * An editor host that records each call as one line, such as `setPlaced poster.png false`.
  * @param calls - the list the host appends to.
  * @returns the host.
  */
-export function recordingHost(calls: string[]): NodeHost {
+export function recordingHost(calls: string[]): EditorHost {
   const log = (...parts: unknown[]): void => { calls.push(parts.map(String).join(' ')) }
   return {
     run: (request) => { log('run', request.operation) },

@@ -30,13 +30,13 @@ import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { useOperations, useProjectState } from '@dv/ui-kit/useProject.ts'
 import { useZoomPresence } from '@dv/ui-kit/zoom.ts'
-import type { CanvasRequest, CardHost, NodeAction, NodeHost, NodeView, ReferenceFacts } from './contract/index.ts'
+import type { CanvasRequest, EditorHost, NodeAction, NodeHost, NodeView, ReferenceFacts, RerunRequest } from './contract/index.ts'
 import { buildCanvasGraph, freePositions, isFinished, NODE_WIDTH, previewOf, ROW, slotFrames } from './graph.ts'
 import type { CanvasEdge, CanvasNode, CanvasRegistrations, SlotFrame } from './graph.ts'
 import { cardHeight, NodeCard, textScaleAt, TypeLabelBody } from './NodeCard.tsx'
 import type { CanvasTranslate } from './NodeCard.tsx'
 import { NodeEditor } from './NodeEditor.tsx'
-import type { EditorArea, RenderCanvasSlot } from './NodeEditor.tsx'
+import type { EditorArea, RenderCanvasSlot, SurfaceHosts } from './NodeEditor.tsx'
 
 /** The registered descriptors that the canvas draws with: the graph's registrations and the node actions. */
 export interface CanvasDescriptors extends CanvasRegistrations {
@@ -629,7 +629,7 @@ export function CanvasView(
    * @param request - the request; its `based_on` is the record it runs again.
    * @returns settles once the new node is revealed; rejects with the error of a request that fails before that.
    */
-  const rerun = (request: CanvasRequest & { based_on: string }): Promise<void> => new Promise((resolve, reject) => {
+  const rerun = (request: RerunRequest): Promise<void> => new Promise((resolve, reject) => {
     const known = new Set(graphRef.current?.nodes.map(node => node.id))
     const awaited: AwaitedRender = { basedOn: request.based_on, known, resolve }
     awaitedRender.current = awaited
@@ -647,10 +647,6 @@ export function CanvasView(
       reject(new Error(message))
     })
   })
-  const cardHost: CardHost = {
-    run: (request) => { void run(() => client.runOperation(canvasRequest(request))) },
-    rerun,
-  }
   const accepts = (event: ReactDragEvent): boolean => event.dataTransfer.types.includes(DV_ASSET_DRAG_TYPE) || event.dataTransfer.types.includes('Files')
   // A drag the canvas accepts stops here, so the chat composer's document-level file listeners neither show their drop
   // overlay nor attach the dropped files.
@@ -745,6 +741,7 @@ export function CanvasView(
     const selectedNode = editing === null && selected !== null ? byId.get(selected) : undefined
     const selection = selectedNode === undefined ? null : { node: selectedNode, view: viewFor(selectedNode) }
     const toolbarActions = selection === null ? [] : actionsFor(selection.view)
+    const hosts = hostsOf(() => { setEditing(null) }, graph.state)
     content = (
       <div style={{ position: 'absolute', left: 0, top: 0, transform: `translate(${String(viewport.x)}px, ${String(viewport.y)}px) scale(${String(viewport.zoom)})`, transformOrigin: '0 0' }}>
         <svg style={{ position: 'absolute', left: 0, top: 0, width: 1, height: 1, overflow: 'visible', pointerEvents: 'none' }} aria-hidden="true">
@@ -790,12 +787,12 @@ export function CanvasView(
               zoom={viewport.zoom}
               t={t}
               onPointerDown={onNodeDown(node)}
-              body={renderSlot('dv.canvas.card', { node: view, assets, textScale, host: cardHost }, {
+              body={renderSlot('dv.canvas.card', { node: view, assets, textScale, host: hosts.node }, {
                 entryKey: node.type, fallback: <TypeLabelBody label={node.nodeType.label()} textScale={textScale} />,
               })}
               frames={(grids.get(node.id) ?? []).map(frameMedia)}
               failedActions={node.claimed && node.flags.failed ? actionsFor(view) : []}
-              onAction={(action) => { action.run(view, actionHost(graph.state)) }}
+              onAction={(action) => { action.run(view, hosts.node) }}
             />
           )
         })}
@@ -811,7 +808,7 @@ export function CanvasView(
                 <button
                   key={action.id} type="button" className="dv-canvas-btn" disabled={selection.view.rerunning}
                   style={{ height: 24, padding: '0 8px', border: 'none', borderRadius: 'var(--dv-radius-sm)', fontFamily: 'inherit', fontSize: 12, color: 'var(--dv-text)', cursor: 'pointer' }}
-                  onClick={() => { action.run(selection.view, actionHost(graph.state)) }}
+                  onClick={() => { action.run(selection.view, hosts.node) }}
                 >
                   {action.label()}
                 </button>
@@ -829,15 +826,16 @@ export function CanvasView(
   const editingNode = graph?.nodes.find(node => node.id === editorZoom.shown) ?? null
   const stackedNode = editingNode === null ? null : graph?.nodes.find(node => node.id === stacked) ?? null
   /**
-   * The node host of one editor or action.
-   * @param close - closes the editor that the host belongs to.
+   * The hosts of one surface, the only place that builds them: the node host of its actions and card bodies, whose
+   * refused writes the canvas notice shows, and the host of an editor body without the editor's picker, whose rerun the
+   * body awaits.
+   * @param close - closes the editor of the surface; on the canvas, the open editor.
    * @param state - the drawn project state, which reference text is read against.
-   * @returns the host; an editor replaces `pickAssets` with its own picker, and an action outside an editor picks nothing.
+   * @returns the hosts.
    */
-  function editorHost(close: () => void, state: WireState): NodeHost {
-    return {
-      ...cardHost,
-      pickAssets: () => undefined,
+  function hostsOf(close: () => void, state: WireState): SurfaceHosts {
+    const services: Omit<NodeHost, 'rerun'> = {
+      run: (request) => { void run(() => client.runOperation(canvasRequest(request))) },
       preview: (assetId, opener) => {
         const asset = assetById.get(assetId)
         if (asset !== undefined) preview(projectId, asset, opener)
@@ -847,27 +845,15 @@ export function CanvasView(
       setPlaced: (assetId, on) => { void run(() => changePlacement(assetId, on)) },
       close,
     }
-  }
-  /**
-   * The node host of an action on a card or in the toolbar, outside any editor: the canvas shows a refused rerun.
-   * @param state - the drawn project state.
-   * @returns the host.
-   */
-  function actionHost(state: WireState): NodeHost {
-    const host = editorHost(() => { setEditing(null) }, state)
-    return {
-      ...host,
-      rerun: request => host.rerun(request).catch((error: unknown) => {
-        setNotice(t('error', { message: errorMessage(error) }))
-      }),
-    }
+    const editor: Omit<EditorHost, 'pickAssets'> = { ...services, rerun }
+    return { node: { ...services, rerun: (request) => { void run(() => rerun(request)) } }, editor }
   }
   /** The props that the editor of the open node and the stacked editor share. */
   const sharedEditorProps = (node: CanvasNode, close: () => void, state: WireState) => {
     const view = viewFor(node)
     return {
       node, view, operations: operations.value ?? [], versionKinds: descriptors.versionKinds,
-      actions: actionsFor(view), project: projectId, session, t, host: editorHost(close, state), area, renderSlot, renderFactorySlot,
+      actions: actionsFor(view), project: projectId, session, t, hosts: hostsOf(close, state), area, renderSlot, renderFactorySlot,
       onAcceptStale: (record: string) => { void run(() => client.acceptStale(projectId, record, 'canvas', session)) },
       onClose: close,
     }
@@ -890,7 +876,8 @@ export function CanvasView(
     >
       <style>{CANVAS_CSS}</style>
       {content}
-      {notice !== null ? <p role="alert" style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', margin: 0, padding: '6px 10px', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-1)', border: '1px solid var(--dv-danger)', color: 'var(--dv-danger)', fontSize: 13, lineHeight: '20px', zIndex: 6 }}>{notice}</p> : null}
+      {/* Over the editors, so that a refusal from an editor's header shows. */}
+      {notice !== null ? <p role="alert" style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', margin: 0, padding: '6px 10px', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-1)', border: '1px solid var(--dv-danger)', color: 'var(--dv-danger)', fontSize: 13, lineHeight: '20px', zIndex: 12 }}>{notice}</p> : null}
       <div role="toolbar" aria-label={t('canvas.zoom')} style={{ ...floating, position: 'absolute', left: 16, bottom: 16, display: 'flex', alignItems: 'center', gap: 2, padding: 4, borderRadius: 10 }} onPointerDown={(event) => { event.stopPropagation() }}>
         <button type="button" className="dv-canvas-btn" aria-label={t('canvas.zoomOut')} title={t('canvas.zoomOut')} style={toolButton} onClick={() => { zoomBy(1 / 1.2) }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" aria-hidden="true"><path d="M5 12h14" /></svg>

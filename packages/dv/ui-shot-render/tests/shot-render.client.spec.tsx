@@ -10,7 +10,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { HistoryRow } from '@dv/ui-history/contract'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
-import type { ClaimedNodeView, NodeHost } from '../../ui-canvas/src/client/contract/index.ts'
+import type { ClaimedNodeView, EditorHost } from '../../ui-canvas/src/client/contract/index.ts'
 import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
 import { buildCanvasGraph } from '../../ui-canvas/src/client/graph.ts'
 import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
@@ -73,7 +73,7 @@ function takesOf(canvas: ReturnType<typeof createDvCanvas>, state = fixtureState
 }
 
 /** @returns a canvas host that names `hero@1` as the item Hero and records nothing else. */
-function host(): NodeHost {
+function host(): EditorHost {
   return {
     run: vi.fn(), rerun: vi.fn(() => Promise.resolve()), pickAssets: vi.fn(), preview: vi.fn(), openNode: vi.fn(), setPlaced: vi.fn(),
     close: vi.fn(),

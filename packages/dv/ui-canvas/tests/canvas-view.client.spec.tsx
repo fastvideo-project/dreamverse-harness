@@ -695,6 +695,28 @@ describe('writes and failures', () => {
     await runtime.dispose()
   })
 
+  it('shows a refused 重试 of the editor header in the canvas notice over the editor, and offers 重试 again', async () => {
+    const { runtime, view, open } = await mountCanvas({ edit: failG1, refuse: refuseOperation('shot.render', 'GPU busy') })
+    const editor = await open('g1')
+    fireEvent.click(within(editor).getByRole('button', { name: '重试' }))
+    const notice = await view.findByRole('alert')
+    expect(notice.textContent).toBe('失败：GPU busy')
+    expect(Number(notice.style.zIndex)).toBeGreaterThan(Number(editor.style.zIndex))
+    await waitFor(() => { expect(within(editor).getByRole('button', { name: '重试' }).hasAttribute('disabled')).toBe(false) })
+    await runtime.dispose()
+  })
+
+  it('shows a refused 重试 of the selected-node toolbar in the canvas notice, and offers 重试 again', async () => {
+    const { runtime, view, open } = await mountCanvas({ edit: failG1, refuse: refuseOperation('shot.render', 'GPU busy') })
+    const editor = await open('g1')
+    fireEvent.click(within(editor).getByRole('button', { name: zh['editor.close'] }))
+    const toolbar = view.getByTestId('dv-canvas-node-toolbar')
+    fireEvent.click(within(toolbar).getByRole('button', { name: '重试' }))
+    expect((await view.findByRole('alert')).textContent).toBe('失败：GPU busy')
+    await waitFor(() => { expect(within(toolbar).getByRole('button', { name: '重试' }).hasAttribute('disabled')).toBe(false) })
+    await runtime.dispose()
+  })
+
   it('shows the error of a rerun that fails after its new take appeared', async () => {
     let started = false
     const { runtime, view, node, open, server } = await mountCanvas({
@@ -741,14 +763,13 @@ describe('node actions', () => {
     id: `@dv/ui-test-probe:${name}`, label: () => name, order, shows: (node): node is NodeView => node.id === 'g1', run,
   })
 
-  it('orders the toolbar actions; an action outside an editor reads references, picks nothing and previews no unknown asset', async () => {
+  it('orders the toolbar actions; an action outside an editor reads references and previews no unknown asset', async () => {
     const facts: ReferenceFacts[] = []
     const { runtime, view, node, open, canvasOf } = await mountCanvas()
     await mountDescriptors(runtime, {
       actions: [
         onG1('second', 2, (_node, host) => {
           facts.push(...['hero@1', 'hero@9', 'ref.png', 'gone.png'].map(ref => host.reference(ref)))
-          host.pickAssets([], { versions: true }, () => undefined)
           host.preview('gone.png', null)
         }),
         onG1('first', 1),
@@ -765,7 +786,6 @@ describe('node actions', () => {
     expect(facts.map(fact => [fact.name, fact.asset?.id ?? null, fact.node])).toEqual([
       ['Hero', 'ref.png', 'test_ref:hero'], ['hero', null, null], ['ref.png', 'ref.png', null], ['gone.png', null, null],
     ])
-    expect(view.queryByTestId('dv-canvas-asset-picker')).toBeNull()
     expect(view.queryByRole('dialog')).toBeNull()
     await runtime.dispose()
   })
