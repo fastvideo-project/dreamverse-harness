@@ -59,6 +59,12 @@ describe('the take editor', () => {
     expect([...container.querySelectorAll('label')].map(label => label.textContent)).toEqual(['Prompt', 'Seed', 'aspect', 'loop', 'extra'])
   })
 
+  it('draws the player in a box of the full width and 360 px tall for a take whose size is not stored', async () => {
+    const { view } = await openEditor('g1')
+    const box = view.getByTestId('dv-take-player')
+    expect([box.style.width, box.style.height]).toEqual(['100%', '360px'])
+  })
+
   it('names the task in Chinese under <html lang="zh-CN">', async () => {
     document.documentElement.lang = 'zh-CN'
     const { view } = await openEditor('g1')

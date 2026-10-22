@@ -121,6 +121,24 @@ describe('the asset card and editor', () => {
     expect([clipEditor?.getAttribute('src'), clipEditor?.controls]).toEqual(['/dv/assets/clip.mp4', true])
   })
 
+  it('draw the editor\'s asset in a box of its aspect ratio at most 360 px tall, and 360 px tall for an asset of unknown size', async () => {
+    const state = importedState()
+    state.assets = state.assets.map(item => item.id === 'poster.png' ? { ...item, width: 1920, height: 1080 } : item)
+    let nodes: NodeView[] = []
+    const host = recordingHost([])
+    const { runtime } = await mountAssetPool(({ renderSlot }) => nodes.map(node => (
+      <div key={node.id} data-testid={`${node.id}:editor`}>{renderSlot('dv.canvas.editor', { node, state, operations: OPERATIONS, host }, { entryKey: node.type })}</div>
+    )))
+    nodes = canvasNodes(runtime, state, ['poster.png', 'clip.mp4'])
+    const view = runtime.renderRoot()
+    // The box is the nearest ancestor of the media element that the surface sizes to 360 px.
+    const box = (id: string): string[] => {
+      const frame = view.getByTestId(`${id}:editor`).querySelector('img, video')?.closest('[style*="360px"]')
+      return frame instanceof HTMLElement ? [frame.style.width, frame.style.height, frame.style.aspectRatio, frame.style.maxHeight] : []
+    }
+    expect([box('u2'), box('u3')]).toEqual([['100%', '', '1920 / 1080', '360px'], ['100%', '360px', '', '']])
+  })
+
   it('draw an empty frame and no editor body for an asset that the state does not list yet', async () => {
     const state = importedState()
     let nodes: NodeView[] = []
