@@ -101,7 +101,7 @@ describe('dv-sglang-omni', () => {
       'This server speaks only <|speaker:0|>, and the prompt has <|speaker:01|>, <|speaker:2|>. Write one clip per character, each with '
         + '<|speaker:0|> or no speaker tag.',
     ])
-    expect(await validate('Hello.', { speed: 'fast' })).toEqual(['extra."speed" must be a number'])
+    expect(await validate('Hello.', { speed: 'fast' })).toEqual(['extra."speed" must be a number.'])
     expect(await validate('Hello.', { voice: 'alloy', top_k: 30 })).toEqual(['This model takes no extra parameter voice, top_k; it takes speed.'])
     const before = fixture.history()
     const refusal = async (prompt: string, extra: Record<string, unknown> = {}) =>
@@ -114,6 +114,7 @@ describe('dv-sglang-omni', () => {
     expect(await refusal('<|speaker:1|>')).toBe(`${CANNOT}${speakerOnly} ${tagsOnly} ${REFUSAL_END}`)
     expect(await refusal('Hello there.', { voice: 'alloy' }))
       .toBe(`${CANNOT}This model takes no extra parameter voice; it takes speed. ${REFUSAL_END}`)
+    expect(await refusal('Hello there.', { speed: 'fast' })).toBe(`${CANNOT}extra."speed" must be a number. ${REFUSAL_END}`)
     expect(fixture.history()).toBe(before)
     expect(fake.requests).toEqual([])
   })

@@ -105,7 +105,7 @@ The `dv_models_list` results of `@dv/models` list the entry with its key (modali
 This server speaks only <allowed tags>, and the prompt has <refused tags>. Write one clip per character, each with <allowed tags> or no speaker tag.
 The prompt has no text to speak besides its speaker tags; write the words to speak after the tag.
 This model takes no extra parameter <names, comma-separated>; it takes speed.
-extra."speed" must be a number
+extra."speed" must be a number.
 ```
 
 #### Token effect

@@ -185,7 +185,7 @@ function requestProblems(served: ServedSpeechModel, request: AudioRequest): stri
     ...request.prompt.replace(SPEAKER_TAG, '').trim() !== '' ? []
       : ['The prompt has no text to speak besides its speaker tags; write the words to speak after the tag.'],
     ...unknown.length === 0 ? [] : [`This model takes no extra parameter ${unknown.join(', ')}; it takes ${known.join(', ')}.`],
-    ...validateArgs(served.extra, request.extra).map(message => `extra.${message}`),
+    ...validateArgs(served.extra, request.extra).map(message => `extra.${message}.`),
   ]
 }
 
