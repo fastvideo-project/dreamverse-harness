@@ -52,13 +52,13 @@ describe('kind plugins', () => {
     expect(canvas.nodeTypes.getSnapshot().map(type => type.type)).toContain('take')
     expect(keysOf(runtime, 'dv.canvas.card')).toContain('take')
     expect(keysOf(runtime, 'dv.canvas.editor.claimed')).toContain('take')
-    expect(canvas.actions.getSnapshot().map(action => action.id)).toContain('@dv/ui-shot-render:retry')
+    expect(canvas.actions.getSnapshot().map(action => action.id)).toContain('@dv/ui-shot-render:take:retry')
 
     await kinds.takes?.dispose()
     expect(canvas.nodeTypes.getSnapshot().map(type => type.type)).not.toContain('take')
     expect(keysOf(runtime, 'dv.canvas.card')).not.toContain('take')
     expect(keysOf(runtime, 'dv.canvas.editor.claimed')).not.toContain('take')
-    expect(canvas.actions.getSnapshot().map(action => action.id)).not.toContain('@dv/ui-shot-render:retry')
+    expect(canvas.actions.getSnapshot().map(action => action.id)).not.toContain('@dv/ui-shot-render:take:retry')
     await waitFor(() => { expect(view.container.querySelector('[data-node-id="g1"]')).toBeNull() })
     // The operation key `op:shot.render` left with the type, so another type may claim the operation.
     expect(() => canvas.nodeTypes.register(OTHER_RENDER)).not.toThrow()

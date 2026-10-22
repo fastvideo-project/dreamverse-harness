@@ -207,6 +207,17 @@ describe('the plugin of a reference noun', () => {
     await runtime.dispose()
   })
 
+  it('registers no @ menu kind for a noun whose node type the canvas refuses', async () => {
+    const { runtime } = await mountKit()
+    runtime.ctx.provide('dvMentions', { kinds: createRegistry<MentionKind>(kind => [kind.id], kind => kind.id) })
+    await vi.waitFor(() => { expect(runtime.ctx.dvMentions.kinds.getSnapshot().map(kind => kind.id)).toEqual(['@dv/ui-test-ref']) })
+    // A noun of another package with the key test_ref, which the mounted noun already holds.
+    const rival = defineReferenceUi({ ...SPEC, id: '@dv/ui-test-rival' })
+    await runtime.mount({ inject: [...rival.inject], apply: rival.apply })
+    expect(runtime.ctx.dvMentions.kinds.getSnapshot().map(kind => kind.id)).toEqual(['@dv/ui-test-ref'])
+    await runtime.dispose()
+  })
+
   it('draws a noun card as its first reference image, its label, and the count of the other references', async () => {
     document.documentElement.lang = 'zh-CN'
     const { runtime } = await mountKit()

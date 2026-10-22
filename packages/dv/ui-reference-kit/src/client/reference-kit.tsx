@@ -158,24 +158,23 @@ export function defineReferenceUi<V extends WireReferenceVersion>(spec: Referenc
   return {
     inject: [],
     apply: (ctx) => {
-      ctx.inject(['dvCanvas'], (scope) => {
+      // The node type registers first in the one scope of the noun, so a refused type leaves nothing of the noun behind.
+      ctx.inject(['dvCanvas', 'slots'], (scope) => {
         scope.effect(() => scope.dvCanvas.nodeTypes.register(nodeType), `${spec.id}: node type`)
         scope.effect(() => scope.dvCanvas.recordsInUse.register(referencesInUse), `${spec.id}: references in use`)
         scope.effect(() => scope.dvCanvas.versionKinds.register(versionKind), `${spec.id}: version kind`)
-      })
-      ctx.inject(['slots'], (scope) => {
         scope.effect(() => scope.slots.inject('dv.canvas.card', () => scope.slots.register(
           { name: 'dv.canvas.card', key: spec.key }, Card,
         )), `${spec.id}: card`)
         scope.effect(() => scope.slots.inject('dv.canvas.editor', () => scope.slots.register(
           { name: 'dv.canvas.editor', key: spec.key }, Editor,
         )), `${spec.id}: editor`)
-      })
-      ctx.inject(['dvMentions'], (scope) => {
-        scope.effect(() => scope.dvMentions.kinds.register(mentionKind), `${spec.id}: mention kind`)
-      })
-      ctx.inject(['dvHistory'], (scope) => {
-        scope.effect(() => scope.dvHistory.rows.register(historyRow), `${spec.id}: history row`)
+        scope.inject(['dvMentions'], (mentions) => {
+          mentions.effect(() => mentions.dvMentions.kinds.register(mentionKind), `${spec.id}: mention kind`)
+        })
+        scope.inject(['dvHistory'], (history) => {
+          history.effect(() => history.dvHistory.rows.register(historyRow), `${spec.id}: history row`)
+        })
       })
     },
   }

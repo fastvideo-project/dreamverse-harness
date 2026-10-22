@@ -50,12 +50,12 @@ export const { inject, apply } = defineGenerationUi({
 
 ### 插件注册的内容
 
-插件在各描述符的服务存在时注册它们，任何加载顺序都有效，每个注册随它的服务或插件一起离开：
+插件在 `dvCanvas` 和插槽注册表存在时注册它的描述符，在 `dvHistory` 也存在时注册它的历史行，任何加载顺序都有效。节点类型最先注册，所以节点类型被拒绝时，该种类不留下其他注册。每个注册随它的服务或插件一起离开：
 
 - **认领式节点类型。** `dvCanvas.nodeTypes` 以 `type` 和每个操作的 `op:<operation>` 为键，所以认领了其中某个操作的第二个类型会抛错并给出持有者的名字，例如 `registry key "op:shot.render" is already registered by @dv/ui-shot-render`。画布从记录构建每个认领式节点；工具包提供标题、meta、预览、主体高度和状态文字。锚定链上的版本以它的位置和分支为标题，例如 镜头 1 · 9:16 / Shot 1 · 9:16；其他版本以界面语言的操作标签为标题，没有时用操作名。同组有多个版本时追加编号，例如 ` · 第 2 次` / ` · take 2`。meta 是第一个有时长的输出的时长，例如 `2.5s`。
 - **卡片主体**，以 `type` 为键的 `dv.canvas.card` 条目。它在高度为该类型主体高度（默认 117 px）的画面中通过 `dv.media` 以用途 `card` 绘制版本的预览，没有时绘制第一个输出；待处理的版本在画布的运行中文字下显示空画面。
 - **版本编辑器**，以 `type` 为键的 `dv.canvas.editor.claimed` 条目。它通过 `dv.media` 以用途 `loop` 播放第一个输出，以版本的预览作为静帧，并显示失败版本的失败原因。它显示模型和生成任务（任务在 `GET /api/dv/tasks` 中的标签，没有时用任务名），并为操作在 `GET /api/dv/operations` 中声明的每个参数显示一个字段：先是提示词，再是其他参数，模型键参数 `modality`、`task`、`provider` 和 `model` 不显示。操作声明了 `reference` 输入且 `spec.references` 允许时显示参考标签；标签打开其带版本条目所在节点的编辑器（`host.openNode`）或其素材的预览（`host.preview`），＋ 添加素材 / + Add asset 打开 `host.pickAssets(…, { versions: true }, …)`。渲染新版本 / Render new take 调用 `host.rerun`，带版本的操作、改过的输入、版本的参数加上改过的字段（清空的字段去掉其参数），`based_on` 设为该版本；等待期间按钮禁用并显示运行中文字，被拒绝的请求在按钮下显示错误。操作不在该列表中的版本不显示参数，也没有按钮。
-- **重试 / Retry 动作**，`dvCanvas.actions` 中的 `<id>:retry`，顺序 0。它只在原语操作的失败认领式版本上显示，并用记录自己的操作、输入和参数调用 `host.rerun`，`based_on` 为该记录。
+- **重试 / Retry 动作**，`dvCanvas.actions` 中的 `<id>:<type>:retry`，顺序 0，所以同一个包的每个种类各有一个。它只在原语操作的失败认领式版本上显示，并用记录自己的操作、输入和参数调用 `host.rerun`，`based_on` 为该记录。
 - **对话卡片**，每个操作一个 `tool.call.toolview` 条目，以操作的工具名为键，例如 `shot.render` 的 `dv_shot_render`。它显示操作标签、调用所处阶段的状态文字、模型和任务行、提示词、通过 `dv.media` 以用途 `player` 绘制的第一个输出，以及调用结束后的 在历史中查看 / Show in history。
 - **历史行**，每个操作一个 `dvHistory.rows` 条目。每行以 `spec.subject` 为主题，以 `spec.preview`（没有时为第一个输出）为缩略图。
 
@@ -69,7 +69,7 @@ export const { inject, apply } = defineGenerationUi({
 <details>
 <summary>实现内部——点击展开</summary>
 
-`defineGenerationUi` 从声明一次性构建节点类型、重试 动作和历史行，然后在 `apply` 中按服务（`dvCanvas`、`slots`、`dvHistory`）各开一个 `ctx.inject` 块注册它们。画布计算每个版本的谱系（它的锚定链和在组内的编号）并交给节点类型的 `entry`，所以认领式节点不会与它的记录不一致。版本编辑器从画布传入的 `operations` 所有者属性读取声明的参数，它的表单使用 `@dv/ui-kit/form.ts` 的 `fieldsOf` 和 `paramsOf`。
+`defineGenerationUi` 从声明一次性构建节点类型、重试 动作和历史行，然后在 `apply` 中用一个 `dvCanvas` 和 `slots` 的 `ctx.inject` 块注册它们，历史行在其中嵌套的 `dvHistory` 块里注册。画布计算每个版本的谱系（它的锚定链和在组内的编号）并交给节点类型的 `entry`，所以认领式节点不会与它的记录不一致。版本编辑器从画布传入的 `operations` 所有者属性读取声明的参数，它的表单使用 `@dv/ui-kit/form.ts` 的 `fieldsOf` 和 `paramsOf`。
 
 `tests/` 下的测试在 `@deepseek-ai/dsh-client-test-runtime` 的 `SlotTestRuntime` 下挂载工具包，由真实的 `@dv/ui-media` 和 `@dv/ui-asset-pool` 插件绘制媒体。`tests/take-kind.client.ts` 定义认领 `shot.render` 和 `clip.extend` 的测试种类 `test_take`，以及一个记录调用的画布 host。`generation-kit.client.spec.tsx` 检查标题、meta、预览、状态文字、卡片主体、重试 动作，以及卸载时移除每个注册。`take-editor.client.spec.tsx` 检查播放器、字段、重新渲染请求、参考标签和错误；`generation-card.client.spec.tsx` 在对话会话中检查对话卡片。`plugin-proofs.client.tsx` 存放每个原语自己的测试在其插件上运行的检查：它在 `@dv/ui-canvas` 之前挂载插件并挂载画布，找到某条记录唯一的节点，渲染已结束调用的对话卡片，并列出每个不是 JSON 数据或函数的注入值或所有者值。`plugin-proofs.client.spec.tsx` 在 `@dv/ui-shot-render` 上运行这些检查。
 

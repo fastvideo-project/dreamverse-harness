@@ -150,7 +150,7 @@ describe('the 重试 action of a generation kind', () => {
       entries: () => [{ id: 'slice:g2', title: 'slice', record: state.components.proj.records.find(entry => entry.id === 'g2') ?? null, assets: [], bodyHeight: 60 }],
     })
     const nodes = nodesOf(canvas, state, OPERATIONS, 'zh')
-    const retry = canvas.actions.getSnapshot().find(action => action.id === '@dv/ui-test-take:retry')
+    const retry = canvas.actions.getSnapshot().find(action => action.id === '@dv/ui-test-take:test_take:retry')
     const assets = new Map(state.assets.map(entry => [entry.id, entry]))
     const shows = (id: string) => {
       const node = nodes.get(id)
@@ -170,7 +170,56 @@ describe('the 重试 action of a generation kind', () => {
   })
 })
 
+describe('the 重试 action of each kind of one package', () => {
+  it('registers a 重试 for each kind, which shows on the failed takes of that kind', async () => {
+    const { runtime, canvas } = await mountKit({})
+    const kind = (type: string, operation: string) => defineGenerationUi({
+      id: '@dv/ui-test-pair', type, operations: [operation], label: [type, type], color: '',
+      status: { running: ['生成中…', 'Generating…'], failed: ['没生成', 'Not generated'], done: ['已生成', 'Generated'] },
+    })
+    for (const each of [kind('test_image', 'image.generate'), kind('test_video', 'video.generate')]) {
+      await runtime.mount({ inject: [...each.inject], apply: each.apply })
+    }
+    const state = fixtureState()
+    const failed = { status: 'failed' as const, deterministic: false }
+    state.components.proj.records.push(record({ id: 'i1', operation: 'image.generate', ...failed }), record({ id: 'v1', operation: 'video.generate', ...failed }))
+    const nodes = nodesOf(canvas, state, OPERATIONS, 'en')
+    const assets = new Map(state.assets.map(entry => [entry.id, entry]))
+    const retries = (id: string) => canvas.actions.getSnapshot()
+      .filter(action => action.shows(nodes.get(id)!, assets)).map(action => action.label())
+    expect([retries('i1'), retries('v1')]).toEqual([['Retry'], ['Retry']])
+    await runtime.dispose()
+  })
+})
+
 describe('defineGenerationUi apply', () => {
+  it('registers no card, editor, chat card or History row for a kind whose node type the canvas refuses', async () => {
+    vi.stubGlobal('fetch', scriptedFetch().fetch)
+    const { runtime, canvas, rows } = await mountKit({
+      'dv.canvas.card': { kind: 'keyed', scope: 'root' },
+      'dv.canvas.editor.claimed': { kind: 'keyed', scope: 'root' },
+      'tool.call.toolview': { kind: 'keyed', scope: 'session', inject: { hooks: { toolCallArgumentsPartial: () => () => '' } } },
+    })
+    // The mounted test kind already holds the type key test_take.
+    const rival = defineGenerationUi({
+      id: '@dv/ui-test-rival', type: 'test_take', operations: ['image.generate'], label: ['对手', 'Rival'], color: '',
+      status: { running: ['生成中…', 'Generating…'], failed: ['没生成', 'Not generated'], done: ['已生成', 'Generated'] },
+    })
+    await runtime.mount({ inject: [...rival.inject], apply: rival.apply })
+    const keys = (name: 'dv.canvas.card' | 'dv.canvas.editor.claimed' | 'tool.call.toolview') =>
+      runtime.slots.entries(name).map(entry => entry.options.key).filter(key => key !== 'asset')
+    expect({
+      types: canvas.nodeTypes.getSnapshot().map(type => type.type), actions: canvas.actions.getSnapshot().map(action => action.id),
+      card: keys('dv.canvas.card'), editor: keys('dv.canvas.editor.claimed'), chat: keys('tool.call.toolview'),
+      history: rows.getSnapshot().map(row => row.match),
+    }).toEqual({
+      types: ['asset', 'test_take'], actions: ['@dv/ui-asset-pool:unplace', '@dv/ui-test-take:test_take:retry'],
+      card: ['test_take'], editor: ['test_take'], chat: ['dv_shot_render', 'dv_clip_extend'], history: ['shot.render', 'clip.extend'],
+    })
+    await runtime.dispose()
+  })
+
+
   it('removes the node type, the 重试 action, the card, the editor, the chat card of each operation and the History rows on unload', async () => {
     vi.stubGlobal('fetch', scriptedFetch().fetch)
     const { runtime, kit, canvas, rows } = await mountKit({
@@ -187,7 +236,7 @@ describe('defineGenerationUi apply', () => {
       history: rows.getSnapshot().map(row => [row.match, row.subject(record({ id: 'r', operation: row.match }))]),
     })
     expect(registered()).toEqual({
-      types: ['test_take'], actions: ['@dv/ui-test-take:retry'], card: ['test_take'], editor: ['test_take'],
+      types: ['test_take'], actions: ['@dv/ui-test-take:test_take:retry'], card: ['test_take'], editor: ['test_take'],
       chat: ['dv_shot_render', 'dv_clip_extend'], history: [['shot.render', null], ['clip.extend', null]],
     })
     const state = fixtureState()

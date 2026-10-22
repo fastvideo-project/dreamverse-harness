@@ -112,7 +112,7 @@ export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
     },
   }
   const retry: NodeAction<ClaimedNodeView> = {
-    id: `${spec.id}:retry`,
+    id: `${spec.id}:${spec.type}:retry`,
     label: () => pickText('重试', 'Retry'),
     order: 0,
     shows: (node): node is ClaimedNodeView => node.claimed && node.flags.failed && operations.has(node.record.operation),
@@ -134,11 +134,10 @@ export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
     apply: (ctx) => {
       const labels = labelSources(new DvClient())
       const editor: TakeEditorInjected = { ...labels, status: spec.status, references: record => spec.references?.(record) ?? true }
-      ctx.inject(['dvCanvas'], (scope) => {
+      // The node type registers first in the one scope of the kind, so a refused type leaves nothing of the kind behind.
+      ctx.inject(['dvCanvas', 'slots'], (scope) => {
         scope.effect(() => scope.dvCanvas.nodeTypes.register(nodeType), `${spec.id}: node type`)
         scope.effect(() => scope.dvCanvas.actions.register(retry), `${spec.id}: retry`)
-      })
-      ctx.inject(['slots'], (scope) => {
         scope.effect(() => scope.slots.inject('dv.canvas.card', () => scope.slots.register(
           { name: 'dv.canvas.card', key: spec.type }, TakeCard,
         )), `${spec.id}: card`)
@@ -151,9 +150,9 @@ export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
             { name: 'tool.call.toolview', key: toolNameOf(operation), inject: () => card }, GenerationCard,
           )), `${spec.id}: chat card of ${operation}`)
         }
-      })
-      ctx.inject(['dvHistory'], (scope) => {
-        for (const row of rows) scope.effect(() => scope.dvHistory.rows.register(row), `${spec.id}: history row of ${row.match}`)
+        scope.inject(['dvHistory'], (history) => {
+          for (const row of rows) history.effect(() => history.dvHistory.rows.register(row), `${spec.id}: history row of ${row.match}`)
+        })
       })
     },
   }

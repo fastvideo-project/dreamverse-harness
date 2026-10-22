@@ -1,7 +1,8 @@
 /**
  * The History panel as the DreamVerse bundle loads it: the real `@dv/ui-media` plugin, test media views that show the
  * asset and the purpose they drew, and the real History plugin, in a slot test runtime that provides the right-Sidebar
- * tab registry and a recording `dvCenter`, and whose root frame renders the History tab body in chat session `s5`.
+ * tab registry, a recording `dvCenter` and the canvas registries, and whose root frame renders the History tab body in
+ * chat session `s5`.
  */
 import type { ReactNode } from 'react'
 import { act } from '@testing-library/react'
@@ -14,6 +15,7 @@ import { tabInfoFactory } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/cli
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import type { ComposedProps, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
+import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
 import type { CenterTarget } from '@dv/ui-shell/contract'
 import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import { HISTORY_ID } from '../src/client/definition.ts'
@@ -65,6 +67,8 @@ export async function mountHistory(plugins: readonly Plugin[] = []): Promise<Mou
   const shown: CenterTarget[] = []
   runtime.ctx.provide('sidebarRightTabs', new SidebarRightTabRegistry(runtime.ctx) as never)
   runtime.ctx.provide('dvCenter', { show: (target: CenterTarget) => { shown.push(target) } })
+  // A kind's plugin registers its History rows only while the canvas registries exist.
+  runtime.ctx.provide('dvCanvas', createDvCanvas())
   const reference: { current: SessionReference | undefined } = { current: undefined }
   await runtime.root.declare(SLOTS, ({ renderSlot, SessionProvider }: FrameProps) => (
     reference.current === undefined

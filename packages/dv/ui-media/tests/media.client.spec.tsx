@@ -14,6 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolResultNode } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { NodeView } from '../../ui-canvas/src/client/contract/index.ts'
+import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
 import type { Asset } from '@dv/ui-kit/types.ts'
@@ -253,6 +254,8 @@ describe('one dv.media Factory under parents of both scopes', () => {
     const runtime = await SlotTestRuntime.create()
     // The asset pool's tab type is not under test; its registration needs only a registry that accepts it.
     runtime.ctx.provide('sidebarRightTabs', { register: () => () => undefined } as never)
+    // The shot render plugin registers its chat card while the canvas registries exist.
+    runtime.ctx.provide('dvCanvas', createDvCanvas())
     await runtime.declare({
       'tool.call.toolview': { kind: 'keyed', scope: 'session', inject: { hooks: { toolCallArgumentsPartial: () => () => '' } } },
       'dv.canvas.card': { kind: 'keyed', scope: 'root' },

@@ -36,7 +36,7 @@ Host 半边不注册任何东西。浏览器半边通过 `defineGenerationUi` �
 | 注册 | 值 |
 | --- | --- |
 | `dvCanvas.nodeTypes` | 节点类型 `take`（键为 `take` 和 `op:shot.render`），标签 版本 / Take，颜色 `var(--dv-kind-take)`，位于第 2 列。它认领 `shot.render` 的当前记录，所以画布把每条这样的记录画成一个版本节点；从另一个节点读取 `first_frame` 输入的版本位于那个节点右边一列（`deepenOn: ['first_frame']`）。版本运行时节点显示 渲染中… / Rendering…；失败的版本显示 生成失败 / Render failed |
-| `dvCanvas.actions` | `@dv/ui-shot-render:retry`，失败版本上的 重试 / Retry：用该版本的输入和参数重新运行它的操作，`based_on` 设为该版本 |
+| `dvCanvas.actions` | `@dv/ui-shot-render:take:retry`，失败版本上的 重试 / Retry：用该版本的输入和参数重新运行它的操作，`based_on` 设为该版本 |
 | `dv.canvas.card` 键 `take` | 版本的最后一帧静帧（它的图片产出），没有时用它的第一个产出，经 `dv.media` 以用途 `card` 画在 16:9 的画框里 |
 | `dv.canvas.editor.claimed` 键 `take` | `@dv/ui-generation` 的版本编辑器：经 `dv.media` 以用途 `loop` 播放的视频（静帧作封面）、模型和生成任务、`shot.render` 声明的参数、参考图标签（版本的任务为 `t2v` 时没有），以及 渲染新版本 / Render new take |
 | `tool.call.toolview` 键 `dv_shot_render` | 对话卡片，使用默认优先级 0。`@dv/ui-composer` 以优先级 1 为每个操作工具注册一行，以优先级 0.5 为 `DV_TOOL_LABELS` 里的每个工具注册一行，所以卡片取代这些行显示 |
