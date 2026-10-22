@@ -130,6 +130,23 @@ describe('the card body of a take', () => {
     expect(media()).toEqual([undefined, undefined])
     await runtime.dispose()
   })
+
+  it('draws the card body in a frame of the body height that the kind declares', async () => {
+    const { runtime, canvas } = await mountKit({ 'dv.canvas.card': { kind: 'keyed', scope: 'root' } })
+    const low = defineGenerationUi({
+      id: '@dv/ui-test-low', type: 'test_low', operations: ['audio.generate'], label: ['矮', 'Low'], color: '', bodyHeight: 72,
+      status: { running: ['生成中…', 'Generating…'], failed: ['没生成', 'Not generated'], done: ['已生成', 'Generated'] },
+    })
+    await runtime.mount({ inject: [...low.inject], apply: low.apply })
+    const state = fixtureState()
+    state.components.proj.records.push(record({ id: 'a9', operation: 'audio.generate', deterministic: false, outputs: [] }))
+    const node = nodesOf(canvas, state, OPERATIONS, 'en').get('a9')
+    if (node === undefined) throw new Error('no node a9')
+    const card = runtime.renderSlot('dv.canvas.card', { node, assets: {}, textScale: 1, host: recordingHost() }, { entryKey: 'test_low' })
+    const frame = card.container.firstElementChild
+    expect([node.bodyHeight, frame instanceof HTMLElement ? frame.style.height : null]).toEqual([72, '72px'])
+    await runtime.dispose()
+  })
 })
 
 describe('the 重试 action of a generation kind', () => {
