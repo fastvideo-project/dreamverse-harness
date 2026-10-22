@@ -21,8 +21,14 @@ export interface HistoryRow {
   subject(record: ProjectRecord): Text | null
   /** Where selecting the record moves the center; absent: the record's canvas node (`{ view: 'canvas', target: { record } }`). */
   focus?(record: ProjectRecord, records: readonly ProjectRecord[]): CenterTarget | null
-  /** The asset of the row's thumbnail, drawn through `dv.media` at 'thumb'; absent or null: no thumbnail. */
-  thumbnail?: (record: ProjectRecord, state: WireState) => string | null
+  /**
+   * Present on the row of the records that History draws as media, such as takes: such a row has the thumbnail column,
+   * and its record counts in the fold text of its starter.
+   */
+  media?: {
+    /** The asset of the row's thumbnail, drawn through `dv.media` at 'thumb'; null: an empty square. */
+    thumbnail(record: ProjectRecord, state: WireState): string | null
+  }
   /** The label of the records folded under this row, such as ['渲染 3 个镜头', 'Render 3 shots']. */
   fold?(count: number): Text
 }

@@ -241,11 +241,11 @@ describe('defineGenerationUi apply', () => {
     })
     const state = fixtureState()
     // A row's thumbnail is the take's preview, else its first output, else none.
-    const thumbnail = rows.getSnapshot()[0]?.thumbnail
+    const media = rows.getSnapshot()[0]?.media
     expect([
-      thumbnail?.(record({ id: 'r1', operation: 'shot.render', outputs: ['shot1.mp4', 'shot1-last.png'] }), state),
-      thumbnail?.(record({ id: 'r2', operation: 'shot.render', outputs: ['shot1.mp4'] }), state),
-      thumbnail?.(record({ id: 'r3', operation: 'shot.render', outputs: [] }), state),
+      media?.thumbnail(record({ id: 'r1', operation: 'shot.render', outputs: ['shot1.mp4', 'shot1-last.png'] }), state),
+      media?.thumbnail(record({ id: 'r2', operation: 'shot.render', outputs: ['shot1.mp4'] }), state),
+      media?.thumbnail(record({ id: 'r3', operation: 'shot.render', outputs: [] }), state),
     ]).toEqual(['shot1-last.png', 'shot1.mp4', null])
     const node = claimedOf(canvas, state, OPERATIONS, 'en').get('g1')!
     const editor = runtime.renderSlot('dv.canvas.editor.claimed', { node, state, operations: OPERATIONS, host: recordingHost() }, { entryKey: 'test_take' })

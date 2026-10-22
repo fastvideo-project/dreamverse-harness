@@ -136,7 +136,7 @@ export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
   const rows: HistoryRow[] = spec.operations.map(match => ({
     match,
     subject: record => spec.subject?.(record) ?? null,
-    thumbnail: (record, state) => spec.preview?.(outputsIn(record, state)) ?? record.outputs[0] ?? null,
+    media: { thumbnail: (record, state) => spec.preview?.(outputsIn(record, state)) ?? record.outputs[0] ?? null },
   }))
   return {
     inject: [],

@@ -334,12 +334,16 @@ describe('the History tab', () => {
     })
   })
 
-  it('plays no output in the details of a row registered without a thumbnail', async () => {
-    const { row } = await mount(ENTRIES, () => {}, [{ match: 'shot.render', subject: () => null }], { plugins: [] })
+  it('plays the first output of a selected row whose registered row draws no media, as of an import that no row names', async () => {
+    const imported: HistoryEntry = { record: record({ id: 'u1', operation: 'asset.import', outputs: ['ref.png'] }), place: 'current' }
+    const { row } = await mount([imported, ...ENTRIES], () => {}, [{ match: 'shot.render', subject: () => null }], { plugins: [] })
     await waitFor(() => { row('g1') })
     fireEvent.click(row('g1'))
-    expect(drawn(row('g1'))).toEqual([])
+    expect(drawn(within(row('g1')).getByTestId('dv-history-preview'))).toEqual(['shot1.mp4@loop'])
     expect(row('g1').textContent).toContain('render the hero')
+    fireEvent.click(row('u1'))
+    expect(row('u1').querySelector('[data-testid="dv-history-thumb"]')).toBeNull()
+    expect(drawn(within(row('u1')).getByTestId('dv-history-preview'))).toEqual(['ref.png@loop'])
   })
 
   it('undoes and redoes by moving the current position; redo is enabled while a step lies after it', async () => {

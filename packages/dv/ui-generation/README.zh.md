@@ -57,7 +57,7 @@ export const { inject, apply } = defineGenerationUi({
 - **版本编辑器**，以 `type` 为键的 `dv.canvas.editor.claimed` 条目。它通过 `dv.media` 以用途 `loop` 播放第一个输出，以版本的预览作为静帧，并显示失败版本的失败原因。它显示模型和生成任务（任务在 `GET /api/dv/tasks` 中的标签，没有时用任务名），并为操作在 `GET /api/dv/operations` 中声明的每个参数显示一个字段：先是提示词，再是其他参数，模型键参数 `modality`、`task`、`provider` 和 `model` 不显示。操作声明了 `reference` 输入且 `spec.references` 允许时显示参考标签；标签打开其带版本条目所在节点的编辑器（`host.openNode`）或其素材的预览（`host.preview`），＋ 添加素材 / + Add asset 打开 `host.pickAssets(…, { versions: true }, …)`。渲染新版本 / Render new take 调用 `host.rerun`，带版本的操作、改过的输入、版本的参数加上改过的字段（清空的字段去掉其参数），`based_on` 设为该版本；等待期间按钮禁用并显示运行中文字，被拒绝的请求在按钮下显示错误。操作不在该列表中的版本不显示参数，也没有按钮。
 - **重试 / Retry 动作**，`dvCanvas.actions` 中的 `<id>:<type>:retry`，顺序 0，所以同一个包的每个种类各有一个。它只在原语操作的失败认领式版本上显示，并用记录自己的操作、输入和参数调用 `host.rerun`，`based_on` 为该记录。
 - **对话卡片**，每个操作一个 `tool.call.toolview` 条目，以操作的工具名为键，例如 `shot.render` 的 `dv_shot_render`。它显示操作标签、调用所处阶段的状态文字、模型和任务行、提示词、通过 `dv.media` 以用途 `loop` 静音绘制的第一个输出（以 `preview` 选出的输出为封面），以及调用结束后的 在历史中查看 / Show in history。
-- **历史行**，每个操作一个 `dvHistory.rows` 条目。每行以 `spec.subject` 为主题，以 `spec.preview`（没有时为第一个输出）为缩略图。
+- **历史行**，每个操作一个 `dvHistory.rows` 条目。每行以 `spec.subject` 为主题，并标为媒体行，以 `spec.preview`（没有时为第一个输出）为缩略图。
 
 对话卡片和版本编辑器通过 [`src/client/loaded.ts`](src/client/loaded.ts) 的注入 `hooks` 读取操作标签和任务标签：两个源在第一次订阅时各加载 `GET /api/dv/operations` 和 `GET /api/dv/tasks`，加载失败时保持为空，所以每个读取方都退回到名称，直到下一次订阅再加载。版本编辑器只读取任务标签；它从 `operations` 所有者属性读取声明。
 

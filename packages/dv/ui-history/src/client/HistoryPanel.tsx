@@ -440,13 +440,13 @@ interface RowContext {
 }
 
 /**
- * Whether History draws a record as media: its registered row names a thumbnail. Such a record has the thumbnail column,
- * plays its first output in the details, and counts in the fold text of its starter.
+ * Whether History draws a record as media: its registered row has `media`. Such a record has the thumbnail column and
+ * counts in the fold text of its starter.
  * @param row - the record's registered row.
- * @returns whether the row names a thumbnail.
+ * @returns whether the row has `media`.
  */
-function isMediaRow(row: HistoryRow | undefined): row is HistoryRow & Required<Pick<HistoryRow, 'thumbnail'>> {
-  return row?.thumbnail !== undefined
+function isMediaRow(row: HistoryRow | undefined): row is HistoryRow & Required<Pick<HistoryRow, 'media'>> {
+  return row?.media !== undefined
 }
 
 /**
@@ -502,7 +502,7 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
   // rows stay text so the list reads cleanly.
   const row = props.rowOf(record)
   const render = isMediaRow(row)
-  const thumbnail = render && props.state !== null ? row.thumbnail(record, props.state) : null
+  const thumbnail = render && props.state !== null ? row.media.thumbnail(record, props.state) : null
   const thumbAsset = thumbnail === null ? undefined : props.assetOf(thumbnail)
   // The intent the agent gave for its call; a call without one records the operation name, which the label already shows.
   // A human action's intent repeats its label, so it stays in the tooltip.
@@ -558,7 +558,7 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
         <StepActions onBack={entry.place === 'current' ? null : () => { props.onJump(record.id) }} />
       </div>
       {selected
-        ? <Details record={record} media={render ? props.assetOf(record.outputs[0] ?? '') : undefined} words={words} renderFactorySlot={props.renderFactorySlot} />
+        ? <Details record={record} media={props.assetOf(record.outputs[0] ?? '')} words={words} renderFactorySlot={props.renderFactorySlot} />
         : null}
     </div>
   )
@@ -586,9 +586,9 @@ function Thumb(props: { asset: Asset | undefined; size: number; renderFactorySlo
 }
 
 /**
- * What a selected row adds below it: the inline player of a media record's first output, the agent's intent in full,
- * and the link into the trajectory for an agent action.
- * @param props - the record, the asset of its first output on a media row, the agent's intent, and the Factory renderer.
+ * What a selected row adds below it: the inline player of the record's first output, the agent's intent in full, and
+ * the link into the trajectory for an agent action.
+ * @param props - the record, the asset of its first output, the agent's intent, and the Factory renderer.
  * @returns the details, or null when there is nothing to add.
  */
 function Details(
