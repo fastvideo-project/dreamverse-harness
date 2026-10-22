@@ -10,6 +10,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type { PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { NodeAction, NodeEntry, NodeType, NodeView } from '@dv/ui-canvas/contract'
+import { NODE_FRAME_HEIGHT } from '@dv/ui-kit/frame.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
 import { playerBox } from '@dv/ui-kit/player-box.ts'
 import type { ProjectRecord } from '@dv/ui-kit/types.ts'
@@ -17,8 +18,6 @@ import type {} from '@dv/ui-media/contract'
 
 /** The package name: the owner of the asset node type and its action. */
 const ID = '@dv/ui-asset-pool'
-/** The 16:9 frame at the 208 card width. */
-const FRAME_HEIGHT = 117
 
 /** The asset node type. */
 export const assetNodeType: NodeType = {
@@ -33,7 +32,7 @@ export const assetNodeType: NodeType = {
       const asset = assets.get(assetId)
       const seconds = asset?.duration_sec ?? null
       return {
-        id, title: asset?.name ?? assetId, record, assets: [assetId], standIn: true, bodyHeight: FRAME_HEIGHT,
+        id, title: asset?.name ?? assetId, record, assets: [assetId], standIn: true, bodyHeight: NODE_FRAME_HEIGHT,
         ...seconds === null ? {} : { meta: `${seconds.toFixed(1)}s` }, ...record === null ? { ref: { kind: 'asset', id: assetId } } : {},
       }
     }
@@ -48,7 +47,7 @@ export const assetNodeType: NodeType = {
   },
 }
 
-const frame: CSSProperties = { display: 'flex', width: '100%', height: FRAME_HEIGHT, overflow: 'hidden', background: 'var(--dv-surface-3)' }
+const frame: CSSProperties = { display: 'flex', width: '100%', height: NODE_FRAME_HEIGHT, overflow: 'hidden', background: 'var(--dv-surface-3)' }
 /** The frame of the asset in the editor; `playerBox` gives its size. */
 const player: CSSProperties = { display: 'flex', borderRadius: 'var(--dv-radius-lg)', overflow: 'hidden', background: 'var(--dv-media-bg)' }
 
@@ -58,7 +57,7 @@ const player: CSSProperties = { display: 'flex', borderRadius: 'var(--dv-radius-
  * @returns the element.
  */
 export function AssetCard({ node, assets, renderFactorySlot }: PropsRuntime<'dv.canvas.card'> & PropsRenderFactories): ReactNode {
-  const asset = Object.values(assets).find(each => each.id === node.assets[0])
+  const asset = node.assets.map(id => assets[id]).find(each => each !== undefined)
   return <div style={frame}>{asset === undefined ? null : renderFactorySlot('dv.media', { asset, purpose: 'card' })}</div>
 }
 

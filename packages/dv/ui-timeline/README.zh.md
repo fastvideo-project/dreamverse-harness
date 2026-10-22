@@ -70,7 +70,7 @@ DOM 带测试 ID `dv-timeline-body`、`dv-timeline-editor`、`dv-timeline-viewer
 | [`src/client/selection.ts`](src/client/selection.ts) | 标签主体为每个项目所选的时间线，以及中央视图请求的读取 |
 | [`src/client/TimelineEditor.tsx`](src/client/TimelineEditor.tsx) | 编辑器：标签、预览、工具栏、标尺、轨道、手势 |
 | [`src/client/timelines.ts`](src/client/timelines.ts) | `timelinesOf(state)`（`timeline` 切片中的时间线，`@dv/timeline` 未加载时为 `[]`）、片段摆放、放下位置、时间码 |
-| [`src/client/takes-in-use.ts`](src/client/takes-in-use.ts) | 画布的 `RecordsInUse`：片段记录和裁剪标记 |
+| [`src/client/records-in-use.ts`](src/client/records-in-use.ts) | 画布的 `RecordsInUse`：片段记录和裁剪标记 |
 | [`src/client/history-row.ts`](src/client/history-row.ts) | 时间线记录的 `HistoryRow`：每个片段所属的时间线和选中记录的定位 |
 | [`src/client/mention.ts`](src/client/mention.ts) | 对话输入框 `@` 菜单的片段提及类型 |
 | [`src/client/first-frame.ts`](src/client/first-frame.ts) | 视频的首帧，每个页面只读一次；没有静帧图的轨道片段把它沿整个宽度重复铺满 |

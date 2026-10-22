@@ -15,7 +15,7 @@ import { timelinesOf } from './timelines.ts'
  * @param t - namespace-bound translate, read on every `badges` call.
  * @returns the descriptor to register.
  */
-export function timelineTakesInUse(t: TranslateNS<'dvTimeline'>): RecordsInUse {
+export function timelineRecordsInUse(t: TranslateNS<'dvTimeline'>): RecordsInUse {
   return {
     id: TIMELINE_ID,
     uses(state) {

@@ -22,7 +22,7 @@ import type { InsertClipInjected } from './InsertClipAction.tsx'
 import { en, NS, zh } from './locales.ts'
 import { clipMentionKind } from './mention.ts'
 import { createTimelineSelection } from './selection.ts'
-import { timelineTakesInUse } from './takes-in-use.ts'
+import { timelineRecordsInUse } from './records-in-use.ts'
 import { TimelineBody } from './TimelineBody.tsx'
 import type { TimelineInjected } from './TimelineBody.tsx'
 import { TimelineView } from './TimelineView.tsx'
@@ -77,7 +77,7 @@ export function apply(ctx: ClientContext): void {
     )), 'ui-timeline: 插入片段 preview action')
   })
   ctx.inject(['dvCanvas'], (scope) => {
-    scope.effect(() => scope.dvCanvas.recordsInUse.register(timelineTakesInUse(t)), 'ui-timeline: records in use')
+    scope.effect(() => scope.dvCanvas.recordsInUse.register(timelineRecordsInUse(t)), 'ui-timeline: records in use')
   })
   ctx.inject(['dvHistory'], (scope) => {
     scope.effect(() => scope.dvHistory.rows.register(timelineHistoryRow), 'ui-timeline: history row')

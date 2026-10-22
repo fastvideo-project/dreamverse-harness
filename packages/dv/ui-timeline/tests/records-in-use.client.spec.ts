@@ -9,12 +9,12 @@ import { fixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { TIMELINE_ID } from '../src/client/definition.ts'
 import { apply } from '../src/client/index.ts'
 import { zh } from '../src/client/locales.ts'
-import { timelineTakesInUse } from '../src/client/takes-in-use.ts'
+import { timelineRecordsInUse } from '../src/client/records-in-use.ts'
 
 /** Translate with the Chinese dictionary. */
 const t = makeTranslate(zh)
 
-describe('timelineTakesInUse', () => {
+describe('timelineRecordsInUse', () => {
   it('uses the record behind each clip: the render a placeholder clip waits for, else the producer of the clip asset, else none', () => {
     const state = fixtureState()
     state.components.timeline.timelines.push({
@@ -24,7 +24,7 @@ describe('timelineTakesInUse', () => {
         { id: 'cl5' as ClipId, asset: null, source: null, in_sec: null, out_sec: null },
       ],
     })
-    const descriptor = timelineTakesInUse(t)
+    const descriptor = timelineRecordsInUse(t)
     expect(descriptor.id).toBe(TIMELINE_ID)
     expect(descriptor.uses(state)).toEqual(['g1', 'g2', 'g3'])
   })
@@ -37,7 +37,7 @@ describe('timelineTakesInUse', () => {
         { id: 'cl4' as ClipId, asset: null, source: { record: 'g3' as RecordId, output: 0 }, in_sec: 1, out_sec: null },
       ],
     })
-    expect(timelineTakesInUse(t).badges?.(state)).toEqual([
+    expect(timelineRecordsInUse(t).badges?.(state)).toEqual([
       { asset: 'shot2.mp4', label: '已裁剪' }, { asset: 'shot1.mp4', label: '已裁剪' },
     ])
   })

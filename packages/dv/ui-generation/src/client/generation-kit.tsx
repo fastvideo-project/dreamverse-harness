@@ -11,8 +11,9 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import type { ClaimedEntry, ClaimedNodeView, ClaimedRecord, NodeAction, NodeInput, NodeType } from '@dv/ui-canvas/contract'
-import type { HistoryRow } from '@dv/ui-history/contract'
+import type { HistoryRow, Text } from '@dv/ui-history/contract'
 import { DvClient } from '@dv/ui-kit/api.ts'
+import { NODE_FRAME_HEIGHT } from '@dv/ui-kit/frame.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
 import { formatInputRef } from '@dv/ui-kit/references.ts'
 import type { UiPlugin } from '@dv/ui-kit/registries.ts'
@@ -26,9 +27,6 @@ import { TakeEditor } from './TakeEditor.tsx'
 import type { TakeEditorInjected } from './TakeEditor.tsx'
 
 export type { StatusWords } from './GenerationCard.tsx'
-
-/** A pair of interface texts, Chinese then English. */
-export type Text = readonly [zh: string, en: string]
 
 /** The declaration of one generation primitive's UI. */
 export interface GenerationUiSpec {
@@ -68,9 +66,6 @@ export interface GenerationUiSpec {
 const outputsIn = (record: ProjectRecord, state: WireState): Asset[] =>
   record.outputs.flatMap(id => state.assets.find(asset => asset.id === id) ?? [])
 
-/** The take frame's height at the 208 card width. */
-const FRAME_HEIGHT = 117
-
 const frame: CSSProperties = { display: 'flex', width: '100%', overflow: 'hidden', background: 'var(--dv-surface-3)' }
 
 /**
@@ -92,7 +87,7 @@ function TakeCard({ node, assets, renderFactorySlot }: PropsRuntime<'dv.canvas.c
  */
 export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
   const operations = new Set(spec.operations)
-  const bodyHeight = spec.bodyHeight ?? FRAME_HEIGHT
+  const bodyHeight = spec.bodyHeight ?? NODE_FRAME_HEIGHT
   /** The take's title: its chain's slot and lane, else its operation's label; with its number in a group of several. */
   const titleOf = ({ record, chain, version }: ClaimedRecord, input: NodeInput): string => {
     const pick = (zh: string, en: string): string => input.language === 'zh' ? zh : en
