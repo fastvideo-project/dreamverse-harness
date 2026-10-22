@@ -102,4 +102,4 @@ UI 包需要读取的宿主包有两个面。宿主面是包的根入口（`"."`
 
 **surface 读取领域 slice。** surface 可以读取任何领域插件的 slice 类型，没有规则扫描这些读取。`api/src/wire.ts`、`api/src/summaries.ts` 和 `chat-references/src/expand.ts` 读取 `timeline` slice；[客户端状态类型](2026-10-17-dv-architecture-client-state-types.zh.md)记录了这在宿主侧留下的缺口。
 
-**子系统页面使用更粗的角色划分。** [`docs/subsystems/video-harness.md`](../../../../docs/subsystems/video-harness.zh.md) 的分层图把包分为 views、API、registry、workflows、components、chat references、base libraries、models、providers 和 bundle；本笔记使用 `layerOf` 的层名。
+**架构页面使用更粗的角色划分。** [`docs/dreamverse/architecture.md`](../../../../docs/dreamverse/architecture.zh.md) 的分层图把包分为 views、API、registry、workflows、components、chat references、base libraries、models、providers 和 bundle；本笔记使用 `layerOf` 的层名。

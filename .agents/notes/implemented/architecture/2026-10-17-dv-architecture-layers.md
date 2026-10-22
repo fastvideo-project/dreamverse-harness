@@ -102,4 +102,4 @@ A `src/types.ts` imports and augments only client faces, such as `declare module
 
 **Surfaces read domain slices.** A surface may read the slice type of any domain plugin, and no rule scans these reads. `api/src/wire.ts`, `api/src/summaries.ts` and `chat-references/src/expand.ts` read the `timeline` slice; [client state types](2026-10-17-dv-architecture-client-state-types.md) records what this leaves open on the host side.
 
-**The subsystem page uses coarser roles.** The layer diagram of [`docs/subsystems/video-harness.md`](../../../../docs/subsystems/video-harness.md) groups the packages as views, API, registry, workflows, components, chat references, base libraries, models, providers and bundle; this note uses the names of `layerOf`.
+**The architecture page uses coarser roles.** The layer diagram of [`docs/dreamverse/architecture.md`](../../../../docs/dreamverse/architecture.md) groups the packages as views, API, registry, workflows, components, chat references, base libraries, models, providers and bundle; this note uses the names of `layerOf`.

@@ -36,6 +36,23 @@ describe('package-group subsystem pages', () => {
     })
   })
 
+  it('accepts a DreamVerse subsystem page link but not the DreamVerse subsystem index', () => {
+    const root = fixture()
+    write(root, 'packages/dv/README.md', '[project](../../docs/dreamverse/subsystems/project.md#history-rules)\n')
+    write(root, 'docs/dreamverse/subsystems/project.md', '# Project\n')
+    write(root, 'packages/index/README.md', '[index](../../docs/dreamverse/subsystems/README.md)\n')
+    write(root, 'docs/dreamverse/subsystems/README.md', '# DreamVerse subsystems\n')
+
+    expect(auditSubsystemPages(root, {})).toEqual({
+      groups: 2,
+      linked: 1,
+      exempt: 0,
+      violations: [
+        'packages/index/README.md: no reader-visible direct docs/subsystems/*.md link; add the owning page and link, or add a justified GROUPS_WITHOUT_SUBSYSTEM_PAGE entry',
+      ],
+    })
+  })
+
   it('rejects a new group whose README never declares subsystem ownership', () => {
     const root = fixture()
     write(root, 'packages/schedule/README.md', '# Schedule\n')

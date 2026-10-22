@@ -1,6 +1,6 @@
 # Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
-#   pnpm run verify-translation-pairing --write docs/subsystems/video-harness-design.md
-video-harness-design.md: 15122782d36ae6c921ef061a6e2f3daa42c9eb19
-video-harness-design.zh.md: 84cf65f5e6b659ddcd0c7403f13212944a0c10fd
+#   pnpm run verify-translation-pairing --write packages/dv/README.md
+README.md: c3fd69ac5c03850115de88f9c2c1d4222e5cd5ec
+README.zh.md: ae6f7a5e26fc78c1e3261eac34e0c4392b561693

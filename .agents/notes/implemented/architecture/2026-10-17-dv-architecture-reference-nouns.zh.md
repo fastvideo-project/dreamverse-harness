@@ -42,7 +42,7 @@ DreamVerse 保存三类镜头必须复现的条目：角色、场景和风格。
 
 ## 谁导入 kit
 
-只有六个名词包从 `src` 导入 kit：三个宿主包导入 `@dv/reference-kit`，三个 UI 包导入 `@dv/ui-kit/reference-kit.tsx`。除此之外，只有测试、`scripts/dv-architecture.ts` 及其 fixture（测试前置数据）、根 tsconfig 文件和 `pnpm-lock.yaml` 在代码中引用 kit；`packages/dv/COMPONENT-TEMPLATE.md`、`docs/subsystems/video-harness.md`、各包 README 和 Agent Notes 记述它。
+只有六个名词包从 `src` 导入 kit：三个宿主包导入 `@dv/reference-kit`，三个 UI 包导入 `@dv/ui-kit/reference-kit.tsx`。除此之外，只有测试、`scripts/dv-architecture.ts` 及其 fixture（测试前置数据）、根 tsconfig 文件和 `pnpm-lock.yaml` 在代码中引用 kit；`packages/dv/COMPONENT-TEMPLATE.md`、`docs/dreamverse/architecture.md`、各包 README 和 Agent Notes 记述它。
 
 其他插件只看到 kit 注册的内容。`@dv/chat-references` 为 `dvProject.listReferenceKinds()` 中的每个种类展开 `dv:<kind>/<id>`。运行器通过已注册的引用种类解析 `c1@3`。`@dv/api` 在 `mentionedAssets` 中从记录已解析的输入收集参考图。`@dv/ui-canvas`、`@dv/ui-composer` 和 `@dv/ui-history` 从 `dvCanvas`、`dvMentions` 和 `dvHistory` 注册表绘制。运行时没有插件依赖 kit，名词也可以绕过它：`packages/dv/COMPONENT-TEMPLATE.md` 展示了直接调用 `registerComponent`、`registerReducer`、`registerReferenceKind` 和 `registerOperation` 的写法，其他形状的组件（例如 `@dv/shot-plan` 和 `@dv/timeline`）就是这样自行注册的。
 
@@ -84,7 +84,7 @@ DreamVerse 保存三类镜头必须复现的条目：角色、场景和风格。
 
 对 kit 的改动会同时影响每个名词。kit 中的一次缺陷修复同时修好三个名词，而为一个名词加的选项会让三个名词都背负它。没有自动检查执行成员规则；由评审执行。
 
-挂载一个名词仍要修改它那对包之外的接线文件：`packages/bundle/dv/` 下的 bundle 文件、`tsconfig.base.json` 中的路径别名，以及 `docs/subsystems/video-harness.md` 中的名词列表。
+挂载一个名词仍要修改它那对包之外的接线文件：`packages/bundle/dv/` 下的 bundle 文件、`tsconfig.base.json` 中的路径别名，以及 `docs/dreamverse/` 各页中的名词列表。
 
 UI 一半与无关代码共用一个包：`@dv/ui-kit/src/client` 有 22 个模块、2404 行，其中包括 `/api/dv` 客户端、wire 类型和时间线几何，并且有 14 个 UI 包依赖 `@dv/ui-kit`。
 

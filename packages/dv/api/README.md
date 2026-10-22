@@ -104,7 +104,7 @@ The Fetch routes list, create, rename, delete, and summarize projects, read the 
 <a id="further-exploration"></a>
 ## Further Exploration
 
-- [DreamVerse packages](../../../docs/subsystems/video-harness.md) — the record, the history rules, staleness, and the rules every view follows.
+- [DreamVerse Project](../../../docs/dreamverse/subsystems/project.md) — the record, the history rules, staleness, and the rules every view follows.
 - [`@dv/project`](../project/README.md) — records, undo and redo, and stale marks behind the routes, and the project summary that tells the model about the user records.
 - [`@dv/ui-canvas`](../ui-canvas/README.md) and [`@dv/ui-timeline`](../ui-timeline/README.md) — two of the browser consumers.
 

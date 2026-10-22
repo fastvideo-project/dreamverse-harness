@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包让 web 应用在对话旁边多一个历史面板。面板与图像编辑器的历史记录面板相同（[历史规则](../../../docs/subsystems/video-harness.zh.md#history-rules)）：它是一张列表，列出所打开项目来自所有发起者、来源和对话的步骤，最新的在前。当前位置的那一步带 当前，之后的步骤（重做能带回的步骤）变灰。每行显示谁做的、何时、状态和缩略图；选中一行会播放它的产出，若该步骤在当前位置或之前，还会在画布或时间线上定位它。顶部放着撤销和重做按钮，每一行的 ⋮ 菜单提供 回到这一步 / Go back to this step。这些移动不写记录；移动之后的新步骤会丢弃变灰的步骤。右侧栏的 `dv-history` 标签类型显示 shell 所打开项目的面板。
+使用本包让 web 应用在对话旁边多一个历史面板。面板与图像编辑器的历史记录面板相同（[历史规则](../../../docs/dreamverse/subsystems/project.zh.md#history-rules)）：它是一张列表，列出所打开项目来自所有发起者、来源和对话的步骤，最新的在前。当前位置的那一步带 当前，之后的步骤（重做能带回的步骤）变灰。每行显示谁做的、何时、状态和缩略图；选中一行会播放它的产出，若该步骤在当前位置或之前，还会在画布或时间线上定位它。顶部放着撤销和重做按钮，每一行的 ⋮ 菜单提供 回到这一步 / Go back to this step。这些移动不写记录；移动之后的新步骤会丢弃变灰的步骤。右侧栏的 `dv-history` 标签类型显示 shell 所打开项目的面板。
 
 ## 目录
 
@@ -73,7 +73,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvHisto
 <a id="further-exploration"></a>
 ## 进一步探索
 
-- [历史规则](../../../docs/subsystems/video-harness.zh.md#history-rules) — 哪些修改是步骤，以及撤销、重做和 回到这一步 做什么。
+- [历史规则](../../../docs/dreamverse/subsystems/project.zh.md#history-rules) — 哪些修改是步骤，以及撤销、重做和 回到这一步 做什么。
 - [`@dv/api`](../api/README.zh.md) — 历史路由以及撤销和重做路由。
 - [`@dv/project`](../project/README.zh.md) — 历史查询、撤销和重做。
 - [`@dv/ui-kit`](../ui-kit/README.zh.md) — API 客户端、wire 类型、窗口事件和工具名称。

@@ -22,7 +22,7 @@ kind: "package-group"
 <a id="packages"></a>
 ## 包
 
-[DreamVerse 各包页面](../../docs/subsystems/video-harness.zh.md)说明这些包如何配合。
+[DreamVerse 各包页面](../../docs/dreamverse/subsystems/project.zh.md)说明这些包如何配合。
 
 | 包 | 职责 |
 | --- | --- |
@@ -31,7 +31,7 @@ kind: "package-group"
 <a id="related-documentation"></a>
 ## 相关文档
 
-- [DreamVerse 各包](../../docs/subsystems/video-harness.zh.md) — 分层、操作记录，以及视图和智能体遵守的规则。
+- [DreamVerse 各包](../../docs/dreamverse/subsystems/project.zh.md) — 分层、操作记录，以及视图和智能体遵守的规则。
 - [`@dv/api`](../dv/api/README.zh.md) — 界面插件读取状态所用的浏览器 API。
 
 <a id="dev-note"></a>

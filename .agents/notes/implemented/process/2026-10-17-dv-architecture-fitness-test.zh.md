@@ -51,7 +51,7 @@ TypeScript 代码行可以以唯一的例外标记 `// dv-arch-allow R<k>: <reas
 pnpm exec tsx scripts/dv-blast-radius.ts --base <sha> [--own <dir or glob>]... [--allow <glob>[:max=<n>][:net-delete]]... [--max-lines <n>] [--lint]
 ```
 
-它从 `scripts/change-scope.ts` 读取已变更的路径，包括未跟踪的文件。每个路径必须属于自身范围、属于接线文件，或匹配某个 `--allow` glob。接线文件是固定列表 `WIRING`（根目录 tsconfig 文件、`pnpm-lock.yaml`、bundle 注册文件、`docs/subsystems/video-harness` 三件套），另加合并基准中不存在的包的 `README.md`、`package.json` 和 `tsconfig.json`，以及合并基准中已存在时的基线文件。`:max=<n>` 限制所匹配文件的新增行与删除行之和，`:net-delete` 在所匹配文件行数增加时失败；基线文件始终带有 `:net-delete`。
+它从 `scripts/change-scope.ts` 读取已变更的路径，包括未跟踪的文件。每个路径必须属于自身范围、属于接线文件，或匹配某个 `--allow` glob。接线文件是固定列表 `WIRING`（根目录 tsconfig 文件、`pnpm-lock.yaml`、bundle 注册文件），`docs/dreamverse/` 下的每个文件，另加合并基准中不存在的包的 `README.md`、`package.json` 和 `tsconfig.json`，以及合并基准中已存在时的基线文件。`:max=<n>` 限制所匹配文件的新增行与删除行之和，`:net-delete` 在所匹配文件行数增加时失败；基线文件始终带有 `:net-delete`。
 
 新增一行计 1，删除一行计 0.5，而删除行的去空白文本若在另一个文件中被新增，则计 0。测试、spec 文件、`pnpm-lock.yaml`、`README.zh.md` 和 `*.i18n.yaml` 计 0，合并基准中不存在的包只计 `src/` 和 `skills/`。计数行超过 400 行或超过 `--max-lines <n>` 的上限时检查失败；有逻辑变更的既有包超过 3 个时也失败，逻辑变更指 `src` 变更超过 2 行，且其中有文件不在任何带限制的 glob 内。`--lint` 运行默认 oxlint 配置，需要先完成宿主构建，并且只在新增行上有发现时失败。失败行以 `R9:` 开头表示路径和限制问题，以 `R10:` 开头表示规模问题。
 

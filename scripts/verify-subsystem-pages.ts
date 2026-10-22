@@ -1,7 +1,7 @@
 /**
  * Doc-sync gate for package-group subsystem references. Every package group
- * either links at least one existing `docs/subsystems/` page from its English
- * group README or carries an explicit, justified exemption below.
+ * either links at least one existing `docs/subsystems/` or `docs/dreamverse/subsystems/`
+ * page from its English group README or carries an explicit, justified exemption below.
  */
 
 import { existsSync, globSync, readFileSync } from 'node:fs'
@@ -51,9 +51,11 @@ function subsystemLinks(source: string): string[] {
   const links = new Set<string>()
   visitMarkdown(parseMarkdown(source), (node) => {
     if (node.type !== 'link') return
-    const match = /^\.\.\/\.\.\/docs\/subsystems\/([^/#?]+\.md)(?:#[^?#]*)?$/.exec(node.url)
-    const page = match?.[1]
-    if (page !== undefined && page !== 'README.md' && !page.endsWith('.zh.md')) links.add(`docs/subsystems/${page}`)
+    const match = /^\.\.\/\.\.\/docs\/((?:dreamverse\/)?subsystems)\/([^/#?]+\.md)(?:#[^?#]*)?$/.exec(node.url)
+    const [folder, page] = [match?.[1], match?.[2]]
+    if (folder !== undefined && page !== undefined && page !== 'README.md' && !page.endsWith('.zh.md')) {
+      links.add(`docs/${folder}/${page}`)
+    }
   })
   return [...links].sort()
 }

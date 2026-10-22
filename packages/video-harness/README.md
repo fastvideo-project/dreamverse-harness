@@ -22,7 +22,7 @@ This group holds one package, `stream` (`@video-harness/stream`), a Cordis servi
 <a id="packages"></a>
 ## Packages
 
-The [DreamVerse packages page](../../docs/subsystems/video-harness.md) explains how these packages fit together.
+The [DreamVerse packages page](../../docs/dreamverse/subsystems/project.md) explains how these packages fit together.
 
 | Package | Role |
 | --- | --- |
@@ -31,7 +31,7 @@ The [DreamVerse packages page](../../docs/subsystems/video-harness.md) explains 
 <a id="related-documentation"></a>
 ## Related documentation
 
-- [DreamVerse packages](../../docs/subsystems/video-harness.md) — the layers, the operation record, and the rules views and the agent follow.
+- [DreamVerse packages](../../docs/dreamverse/subsystems/project.md) — the layers, the operation record, and the rules views and the agent follow.
 - [`@dv/api`](../dv/api/README.md) — the browser API that the interface plugins read state from.
 
 <a id="dev-note"></a>

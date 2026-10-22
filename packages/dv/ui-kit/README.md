@@ -85,7 +85,7 @@ import { DV_TIMELINE_INSERT_EVENT } from '@dv/ui-kit/workspace-events.ts'
 
 - [`@dv/api`](../api/README.md) — the routes and the JSON this client reads.
 - [`@dv/ui-canvas`](../ui-canvas/README.md) and [`@dv/ui-timeline`](../ui-timeline/README.md) — the two views that use the hooks and the bar.
-- [DreamVerse packages](../../../docs/subsystems/video-harness.md) — what a record, the history rules, and a stale mark mean.
+- [DreamVerse Project](../../../docs/dreamverse/subsystems/project.md) — what a record, the history rules, and a stale mark mean.
 
 -----
 

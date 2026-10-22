@@ -55,7 +55,7 @@ Status: implemented
 
 1. 创建 `packages/dv/workflow-<key>`，包含它的服务、reducer、两个操作、`Owns` 函数、`<key>-directing` skill 和 REAL-composition 测试。它调用 kit 的函数，不复制其中任何一个。广告工作流把每个变体同时作为 `walkShot` 的覆盖值和 `lane` 传入，并把每个变体以 `after` 接在前一个变体的最后一次渲染之后。
 2. 创建 `packages/dv/ui-workflow-<key>`，包含一个链锚点和一个 History 行，布局同 `@dv/ui-workflow-story`。
-3. 加上接线：`packages/bundle/dv/cordis.patch.yml` 中的 host 行和 client 行、`packages/bundle/dv/package.json` 中的依赖、`packages/bundle/dv/tests/composition.spec.ts` 的插件映射、`tsconfig.base.json`、`tsconfig.host.json` 和 `tsconfig.client.json` 中的条目、`pnpm-lock.yaml`，以及组合包 README 对和 `docs/subsystems/video-harness.md` 对中列出已挂载工作流的行，还有列出插件所注册技能的行：组合包 README 对中的 `skill-filesystem` 句子，以及 `docs/subsystems/video-harness.md` 对中的技能表。
+3. 加上接线：`packages/bundle/dv/cordis.patch.yml` 中的 host 行和 client 行、`packages/bundle/dv/package.json` 中的依赖、`packages/bundle/dv/tests/composition.spec.ts` 的插件映射、`tsconfig.base.json`、`tsconfig.host.json` 和 `tsconfig.client.json` 中的条目、`pnpm-lock.yaml`，以及组合包 README 对和 `docs/dreamverse/architecture.md` 对中列出已挂载工作流的行，还有列出插件所注册技能的行：组合包 README 对中的 `skill-filesystem` 句子，以及 `docs/dreamverse/subsystems/agent-and-api.md` 对中的技能表。
 
 `@dv/project`、`@dv/shot-plan`、`@dv/shot-render`、`@dv/timeline`、`@dv/workflow-kit`、`@dv/workflow-story` 和 UI 核心的文件都不改动。两个工作流可以审批同一个计划，因为每个工作流只复用起始记录被自己的 `Owns` 接受的成片和时间线。
 

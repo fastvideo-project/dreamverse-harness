@@ -87,7 +87,7 @@ The editor of a take shows its model and generation task from the record's param
 
 - [`@dv/api`](../api/README.md) — the routes behind every gesture.
 - [`@dv/ui-kit`](../ui-kit/README.md) — the API client, the wire types, and the hooks.
-- [DreamVerse packages](../../../docs/subsystems/video-harness.md) — staleness, takes, and the history rules as the canvas shows them.
+- [DreamVerse Project](../../../docs/dreamverse/subsystems/project.md) — staleness, takes, and the history rules as the canvas shows them.
 
 -----
 

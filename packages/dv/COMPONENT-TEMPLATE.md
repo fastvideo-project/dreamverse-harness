@@ -1,6 +1,6 @@
 # DreamVerse component template
 
-This file is the recipe for one DreamVerse component package under `packages/dv`. `@dv/inspector` is the reference component: copy its layout, its registration code, its tests and its README. Every public name, and every word for a DreamVerse concept in code, docs and copy, comes from the [glossary](../../docs/subsystems/video-harness.md#glossary).
+This file is the recipe for one DreamVerse component package under `packages/dv`. `@dv/inspector` is the reference component: copy its layout, its registration code, its tests and its README. Every public name, and every word for a DreamVerse concept in code, docs and copy, comes from the [glossary](../../docs/dreamverse/glossary.md).
 
 ## Contents
 

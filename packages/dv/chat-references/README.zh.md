@@ -48,7 +48,7 @@ kind: "package-reference"
 <a id="further-exploration"></a>
 ## 延伸阅读
 
-- [DreamVerse 各包](../../../docs/subsystems/video-harness.zh.md)
+- [DreamVerse 智能体和 API](../../../docs/dreamverse/subsystems/agent-and-api.zh.md)
 - [`@dv/project`](../project/README.zh.md)，当前状态、展开所描述的记录，以及 `holdToolCalls`
 - [`@dv/ui-composer`](../ui-composer/src/index.ts)，写出提及的输入框
 - [`@dv/bundle`](../../bundle/dv/README.zh.md)，挂载全部组件的 profile

@@ -42,7 +42,7 @@ Each noun pair holds one call to each half of a shared library, the **reference 
 
 ## Who imports the kit
 
-Only the six noun packages import the kit from `src`: the three host packages import `@dv/reference-kit`, and the three UI packages import `@dv/ui-kit/reference-kit.tsx`. Beyond them, only tests, `scripts/dv-architecture.ts` and its fixtures, the root tsconfig files and `pnpm-lock.yaml` refer to the kit in code; `packages/dv/COMPONENT-TEMPLATE.md`, `docs/subsystems/video-harness.md`, the package READMEs and the Agent Notes document it.
+Only the six noun packages import the kit from `src`: the three host packages import `@dv/reference-kit`, and the three UI packages import `@dv/ui-kit/reference-kit.tsx`. Beyond them, only tests, `scripts/dv-architecture.ts` and its fixtures, the root tsconfig files and `pnpm-lock.yaml` refer to the kit in code; `packages/dv/COMPONENT-TEMPLATE.md`, `docs/dreamverse/architecture.md`, the package READMEs and the Agent Notes document it.
 
 Every other plugin sees only what the kit registers. `@dv/chat-references` expands `dv:<kind>/<id>` for each kind in `dvProject.listReferenceKinds()`. The runner resolves `c1@3` through the registered reference kind. `@dv/api` collects reference images from the resolved inputs of records in `mentionedAssets`. `@dv/ui-canvas`, `@dv/ui-composer` and `@dv/ui-history` draw from the `dvCanvas`, `dvMentions` and `dvHistory` registries. No plugin depends on the kit at runtime, and a noun can bypass it: `packages/dv/COMPONENT-TEMPLATE.md` shows the direct `registerComponent`, `registerReducer`, `registerReferenceKind` and `registerOperation` calls that components of other shapes, such as `@dv/shot-plan` and `@dv/timeline`, make themselves.
 
@@ -84,7 +84,7 @@ A noun costs two declarations. `@dv/character` has 46 non-blank `src` lines and 
 
 A kit change reaches every noun at once. A bug fix in the kit fixes all three nouns, and an option for one noun would burden all three. No automated check enforces the membership rule; review enforces it.
 
-Mounting a noun still edits wiring outside its pair: the bundle files under `packages/bundle/dv/`, the path aliases in `tsconfig.base.json` and the noun lists of `docs/subsystems/video-harness.md`.
+Mounting a noun still edits wiring outside its pair: the bundle files under `packages/bundle/dv/`, the path aliases in `tsconfig.base.json` and the noun lists of the `docs/dreamverse/` pages.
 
 The UI half shares a package with unrelated code: `@dv/ui-kit/src/client` holds 22 modules and 2404 lines, among them the `/api/dv` client, the wire types and the timeline geometry, and 14 UI packages depend on `@dv/ui-kit`.
 

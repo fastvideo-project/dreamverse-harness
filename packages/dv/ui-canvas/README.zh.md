@@ -87,7 +87,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanva
 
 - [`@dv/api`](../api/README.zh.md) — 每个手势背后的路由。
 - [`@dv/ui-kit`](../ui-kit/README.zh.md) — API 客户端、wire 类型和 hook。
-- [DreamVerse 各包](../../../docs/subsystems/video-harness.zh.md) — 画布所显示的过期、版本和历史规则。
+- [DreamVerse 项目](../../../docs/dreamverse/subsystems/project.zh.md) — 画布所显示的过期、版本和历史规则。
 
 -----
 
