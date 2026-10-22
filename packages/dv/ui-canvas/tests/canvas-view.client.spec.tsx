@@ -790,6 +790,25 @@ describe('node actions', () => {
     await runtime.dispose()
   })
 
+  it('ends the wait of a take editor whose rerun a rerun from a stacked editor replaces, and shows why', async () => {
+    const { runtime, view, open } = await mountCanvas({ holdOperations: true })
+    const rerunG2: NodeAction = {
+      id: '@dv/ui-test-probe:rerun', label: () => 'rerun g2', order: 1, shows: (node): node is NodeView => node.id === 'test_ref:hero',
+      run: (_node, host) => { host.rerun({ operation: 'shot.render', inputs: [], params: {}, intent: 'rerun g2', based_on: 'g2' }) },
+    }
+    await mountDescriptors(runtime, { actions: [rerunG2] })
+    const editor = await open('g1')
+    fireEvent.click(within(editor).getByRole('button', { name: '渲染新版本' }))
+    await waitFor(() => { expect(within(editor).getByRole('button', { name: '渲染中…' }).hasAttribute('disabled')).toBe(true) })
+    fireEvent.click(within(editor).getByRole('button', { name: '查看 Hero' }))
+    const stacked = view.getAllByTestId('dv-canvas-node-editor')[1]
+    if (stacked === undefined) throw new Error('no stacked editor')
+    fireEvent.click(within(stacked).getByRole('button', { name: 'rerun g2' }))
+    expect((await within(editor).findByRole('alert')).textContent).toBe(`失败：${zh['rerun.superseded']}`)
+    expect(within(editor).getByRole('button', { name: '渲染新版本' }).hasAttribute('disabled')).toBe(false)
+    await runtime.dispose()
+  })
+
   it('an action in a failed row closes the open editor through its host', async () => {
     const { runtime, view, node, open } = await mountCanvas({ edit: failG1 })
     await mountDescriptors(runtime, { actions: [onG1('close', 1, (_node, host) => { host.close() })] })

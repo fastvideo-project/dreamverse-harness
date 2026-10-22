@@ -191,7 +191,7 @@ export type CardHost = Pick<NodeHost, 'run' | 'rerun'>
 export interface EditorHost extends Omit<NodeHost, 'rerun'> {
   /**
    * As `NodeHost.rerun`, and the body shows a refusal itself: settles once the new node appears, rejects with the error
-   * of a refused request, and the canvas shows neither.
+   * of a refused request or once a later rerun replaces this one, and the canvas shows neither.
    */
   rerun(request: RerunRequest): Promise<void>
   /** The editor's asset picker; `versions: true` adds the sections of the registered version kinds. */

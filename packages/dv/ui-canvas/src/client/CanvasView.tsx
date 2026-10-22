@@ -183,11 +183,15 @@ function settledAt(record: ProjectRecord): string {
   return record.finished_at ?? record.created_at
 }
 
-/** A rerun whose new node the canvas waits for: the record it is based on and every node drawn before the request. */
+/**
+ * A rerun whose new node the canvas waits for: the record it is based on, every node drawn before the request, and the
+ * settlers of its promise.
+ */
 interface AwaitedRender {
   basedOn: string
   known: ReadonlySet<string>
   resolve: () => void
+  reject: (error: Error) => void
 }
 
 /** An in-progress pointer gesture. */
@@ -625,13 +629,16 @@ export function CanvasView(
   /**
    * Start a rerun of a record and wait for the new node. The request itself returns when the operation ends, so the
    * canvas reveals the new node as soon as the project state shows it. When the request returns first, as for a record
-   * that no type draws, the editor closes then.
+   * that no type draws, the editor closes then. The canvas waits for one rerun at a time, so a rerun rejects the one that
+   * it replaces.
    * @param request - the request; its `based_on` is the record it runs again.
-   * @returns settles once the new node is revealed; rejects with the error of a request that fails before that.
+   * @returns settles once the new node is revealed; rejects with the error of a request that fails before that, or
+   *   once a later rerun replaces this one.
    */
   const rerun = (request: RerunRequest): Promise<void> => new Promise((resolve, reject) => {
     const known = new Set(graphRef.current?.nodes.map(node => node.id))
-    const awaited: AwaitedRender = { basedOn: request.based_on, known, resolve }
+    const awaited: AwaitedRender = { basedOn: request.based_on, known, resolve, reject }
+    awaitedRender.current?.reject(new Error(t('rerun.superseded')))
     awaitedRender.current = awaited
     setRerunningFrom(request.based_on)
     setNotice(null)
