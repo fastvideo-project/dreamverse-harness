@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包让智能体和工作流由文字生成图片。它在模型目录 `@dv/models` 中声明生成原语 `image` 和任务 `t2i`，并用 `@dv/generation` 的 `defineGeneration` 构建 `dvImageGenerate` 服务。模型目录持有任务 `t2i` 的条目期间，该服务注册操作 `image.generate`，`dvProject` 把它变成智能体工具 `dv_image_generate`。每次调用用调用的模型键指定的条目渲染一张 PNG，这张图片是一条新记录的唯一输出。提供方插件注册 `t2i` 条目。
+使用本包让智能体和工作流由文字生成图片。它在模型目录 `@dv/models` 中声明生成原语 `image` 和任务 `t2i`，并用 `@dv/generation` 的 `defineGeneration` 构建 `dvImageGenerate` 服务。模型目录持有任务 `t2i` 的条目期间，该服务注册操作 `image.generate`，`dvProject` 把它变成智能体工具 `dv_image_generate`。每次调用用调用的模型键指定的条目渲染一张 PNG，这张图片是一条新记录的唯一输出。提供方插件（如 [`@dv/sglang-diffusion`](../sglang-diffusion/README.zh.md)）注册 `t2i` 条目。
 
 ## 目录
 
@@ -67,6 +67,7 @@ kind: "package-reference"
 - [`@dv/generation`](../generation/README.zh.md)：`defineGeneration`、共享参数、拒绝和确认文本。
 - [`@dv/models`](../models/README.zh.md)：模型目录、键和 `dv_models_get`。
 - [`@dv/project`](../project/README.zh.md)：记录、智能体工具和 GPU 预算。
+- [`@dv/sglang-diffusion`](../sglang-diffusion/README.zh.md)：`t2i` 模型 `qwen-image-2.1-turbo` 的提供方插件。
 
 -----
 

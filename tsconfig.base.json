@@ -351,6 +351,7 @@
       "@dv/project/types": ["./packages/dv/project/src/types.ts"],
       "@dv/reference-kit": ["./packages/dv/reference-kit/src/index.ts"],
       "@dv/reference-kit/types": ["./packages/dv/reference-kit/src/types.ts"],
+      "@dv/sglang-diffusion": ["./packages/dv/sglang-diffusion/src/index.ts"],
       "@dv/shot-plan": ["./packages/dv/shot-plan/src/index.ts"],
       "@dv/shot-plan/types": ["./packages/dv/shot-plan/src/types.ts"],
       "@dv/shot-render": ["./packages/dv/shot-render/src/index.ts"],

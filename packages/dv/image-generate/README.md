@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to let the agent and workflows generate images from text. It declares the generation primitive `image` and the task `t2i` in the model catalog `@dv/models`, and builds the `dvImageGenerate` service with `defineGeneration` of `@dv/generation`. While the catalog holds an entry of task `t2i`, the service registers the operation `image.generate`, which `dvProject` turns into the agent tool `dv_image_generate`. Each call renders one PNG with the entry that the call's model key names, and the image is the one output of a new record. Provider plugins register the `t2i` entries.
+Use this package to let the agent and workflows generate images from text. It declares the generation primitive `image` and the task `t2i` in the model catalog `@dv/models`, and builds the `dvImageGenerate` service with `defineGeneration` of `@dv/generation`. While the catalog holds an entry of task `t2i`, the service registers the operation `image.generate`, which `dvProject` turns into the agent tool `dv_image_generate`. Each call renders one PNG with the entry that the call's model key names, and the image is the one output of a new record. Provider plugins, such as [`@dv/sglang-diffusion`](../sglang-diffusion/README.md), register the `t2i` entries.
 
 ## Table of Contents
 
@@ -67,6 +67,7 @@ The declaration's `toRequest` trims the prompt, refuses an empty prompt, and par
 - [`@dv/generation`](../generation/README.md): `defineGeneration`, the shared params, the refusals and the confirmation text.
 - [`@dv/models`](../models/README.md): the model catalog, the keys and `dv_models_get`.
 - [`@dv/project`](../project/README.md): records, agent tools and the GPU budget.
+- [`@dv/sglang-diffusion`](../sglang-diffusion/README.md): the provider plugin of the `t2i` model `qwen-image-2.1-turbo`.
 
 -----
 

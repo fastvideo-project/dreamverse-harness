@@ -467,6 +467,7 @@
     { "path": "./packages/dv/fastvideo-generation-client" },
     { "path": "./packages/dv/fastvideo" },
     { "path": "./packages/dv/image-generate" },
+    { "path": "./packages/dv/sglang-diffusion" },
     { "path": "./packages/dv/timeline" },
     { "path": "./packages/dv/reference-kit" },
     { "path": "./packages/dv/character" },
