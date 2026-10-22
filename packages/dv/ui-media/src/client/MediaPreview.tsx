@@ -2,8 +2,9 @@
  * The asset preview in DSH's `shell.overlay` list: the asset at purpose 'player', its name and facts, the
  * `dv.media.preview.action` entries and 关闭. The facts read the asset's stored dimensions, else the size of the loaded
  * media. It grows out of the element that opened it and shrinks back into it (`@dv/ui-kit/zoom.ts`); Escape, a click
- * outside the dialog and 关闭 close it. An asset of known dimensions has its media box sized before the media loads, so
- * the dialog has its final box when it grows out of the opener.
+ * outside the dialog and 关闭 close it. 关闭 has the focus while the preview is open, and the opener gets it back when
+ * the preview closes. An asset of known dimensions has its media box sized before the media loads, so the dialog has
+ * its final box when it grows out of the opener.
  */
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -54,6 +55,14 @@ function factsOf(asset: Asset, loaded: Size | null, pick: (zh: string, en: strin
 }
 
 /**
+ * Focus 关闭 when a preview opens, so the keyboard starts inside the dialog.
+ * @param button - the button, or null when it leaves the page.
+ */
+function focusOnMount(button: HTMLButtonElement | null): void {
+  button?.focus()
+}
+
+/**
  * The preview.
  * @param props - the open request, its opener, the close callback, and the renderers of the media and the actions.
  * @returns the dialog, or nothing while no preview is open.
@@ -74,8 +83,13 @@ export function MediaPreview({ usePreview, openerOf, close, renderSlot, renderFa
       close()
     }
     window.addEventListener('keydown', onKey, true)
-    return () => { window.removeEventListener('keydown', onKey, true) }
-  }, [open, close])
+    return () => {
+      window.removeEventListener('keydown', onKey, true)
+      // The keyboard user goes on where the preview was opened, while that element is still on the page.
+      const opener = openerOf()
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
+    }
+  }, [open, close, openerOf])
   if (zoom.shown === null) return null
   const { asset, serial } = zoom.shown
   const size = loaded?.serial === serial ? loaded.size : null
@@ -93,7 +107,7 @@ export function MediaPreview({ usePreview, openerOf, close, renderSlot, renderFa
           <span className={css.factText}>{factsOf(asset, size, pick).join(' · ')}</span>
           <span style={{ flex: 1 }} />
           {renderSlot('dv.media.preview.action', { asset, close })}
-          <button type="button" className={css.button} onClick={close}>{pick('关闭', 'Close')}</button>
+          <button type="button" className={css.button} onClick={close} ref={focusOnMount}>{pick('关闭', 'Close')}</button>
         </div>
       </div>
     </div>

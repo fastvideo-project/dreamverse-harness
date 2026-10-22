@@ -181,6 +181,23 @@ describe('the asset preview', () => {
     await runtime.dispose()
   })
 
+  it('moves the focus to 关闭 when it opens, and back to the element that opened it when it closes', async () => {
+    const { runtime, view } = await mount([])
+    const opener = document.createElement('button')
+    document.body.append(opener)
+    opener.focus()
+    act(() => { runtime.ctx.dvMedia.preview(asset('wide.png', 'image/png'), opener) })
+    expect(document.activeElement).toBe(within(view.getByRole('dialog')).getByRole('button', { name: '关闭' }))
+    fireEvent.click(within(view.getByRole('dialog')).getByRole('button', { name: '关闭' }))
+    expect(document.activeElement).toBe(opener)
+    // An opener that left the page while the preview was open gets no focus.
+    act(() => { runtime.ctx.dvMedia.preview(asset('wide.png', 'image/png'), opener) })
+    opener.remove()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(document.activeElement).toBe(document.body)
+    await runtime.dispose()
+  })
+
   it('shows the size of the loaded media for an asset without stored dimensions, for that asset only', async () => {
     const { runtime, view } = await mount([])
     preview(runtime, asset('unsized.png', 'image/png', { size_bytes: 2048 }))
