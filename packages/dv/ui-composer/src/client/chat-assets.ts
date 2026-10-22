@@ -15,14 +15,16 @@ export interface ChatAssets {
   readonly project: string | null
   /** Every asset of the state, by ID. */
   readonly assets: Readonly<Record<string, ProjectAsset>>
-  /** The current-state record that created each output asset, by asset ID; an imported asset has none. */
+  /** The current-state record that created each output asset, by asset ID. */
   readonly producers: Readonly<Record<string, ProjectRecord>>
+  /** Every record of the current state, by ID, which History's record label reads for the chain of a retake. */
+  readonly records: Readonly<Record<string, ProjectRecord>>
   /** The declarations of `/api/dv/operations`, which History's record label reads. */
   readonly operations: readonly WireOperation[]
 }
 
 /** The snapshot while no project is open or before the first fetch settles. */
-export const NO_CHAT_ASSETS: ChatAssets = { project: null, assets: {}, producers: {}, operations: [] }
+export const NO_CHAT_ASSETS: ChatAssets = { project: null, assets: {}, producers: {}, records: {}, operations: [] }
 
 /** The pause after a project event before the fetch, so a burst of events causes one fetch. */
 const REFETCH_DELAY_MS = 150
@@ -42,7 +44,8 @@ async function fetchChatAssets(client: DvClient, project: string, signal: AbortS
     const producer = records.get(id)
     if (producer !== undefined) producers[asset] = producer
   }
-  return { project, assets: Object.fromEntries(state.assets.map(asset => [asset.id, asset])), producers, operations }
+  const assets = Object.fromEntries(state.assets.map(asset => [asset.id, asset]))
+  return { project, assets, producers, records: Object.fromEntries(records), operations }
 }
 
 /**

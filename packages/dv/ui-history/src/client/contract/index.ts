@@ -33,6 +33,14 @@ export interface HistoryRow {
   fold?(count: number): Text
 }
 
+/** What History's label of a record reads besides the record. */
+export interface DescribeContext {
+  /** The operation declarations of `/api/dv/operations`. */
+  operations: readonly WireOperation[]
+  /** The records of the project's current state by ID, for the chain of a retake. */
+  records: Readonly<Record<string, ProjectRecord>>
+}
+
 /** Provided by `@dv/ui-history` as `ctx.dvHistory`. */
 export interface DvHistory {
   rows: Registry<HistoryRow>
@@ -40,7 +48,7 @@ export interface DvHistory {
    * The label History shows for a record whose row has `media`, such as a take: its operation label and its subject;
    * null for any other record, such as an import. The chat media caption reads it, else the asset's name.
    */
-  describe(record: ProjectRecord, operations: readonly WireOperation[]): Text | null
+  describe(record: ProjectRecord, context: DescribeContext): Text | null
 }
 
 declare module '@deepseek-ai/cordis' {

@@ -82,9 +82,9 @@ describe('ui-history apply', () => {
     const { ctx } = await boot()
     ctx.dvHistory.rows.register({ match: 'shot.render', subject: () => [' 7', ' 7'], media: { thumbnail: () => null } })
     ctx.dvHistory.rows.register({ match: 'plan.', subject: () => [' p1', ' p1'] })
-    expect(ctx.dvHistory.describe(record({ id: 'g1', operation: 'shot.render' }), OPERATIONS)?.[1]).toMatch(/ 7$/)
-    expect(ctx.dvHistory.describe(record({ id: 'q1', operation: 'plan.create' }), OPERATIONS)).toBeNull()
-    expect(ctx.dvHistory.describe(record({ id: 'o', operation: 'other.thing' }), OPERATIONS)).toBeNull()
+    expect(ctx.dvHistory.describe(record({ id: 'g1', operation: 'shot.render' }), { operations: OPERATIONS, records: {} })?.[1]).toMatch(/ 7$/)
+    expect(ctx.dvHistory.describe(record({ id: 'q1', operation: 'plan.create' }), { operations: OPERATIONS, records: {} })).toBeNull()
+    expect(ctx.dvHistory.describe(record({ id: 'o', operation: 'other.thing' }), { operations: OPERATIONS, records: {} })).toBeNull()
   })
 
   it('moves the center through dvCenter while the shell provides it, and does nothing without it', async () => {

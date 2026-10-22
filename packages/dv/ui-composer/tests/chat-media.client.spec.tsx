@@ -43,12 +43,15 @@ function heldOf(state: WireState, operations: readonly WireOperation[] = OPERATI
       const producer = records.get(by)
       return producer === undefined ? [] : [[id, producer]]
     })),
+    records: Object.fromEntries(records),
     operations,
   }
 }
 
 /** A record label that names the record and the number of operations it was given, as History's `describe` would. */
-const describeRecord: DescribeRecord = (entry, operations) => [`${entry.id} 的标签 ${String(operations.length)}`, `label of ${entry.id}`]
+const labelOf = (entry: ProjectRecord, operations: readonly WireOperation[]): readonly [string, string] =>
+  [`${entry.id} 的标签 ${String(operations.length)}`, `label of ${entry.id}`]
+const describeRecord: DescribeRecord = (entry, held) => labelOf(entry, held.operations)
 
 /** A browser event stream whose project events the test sends. */
 function fakeEvents() {
@@ -208,9 +211,9 @@ async function mountChat(elements: ReadonlyArray<[MarkdownElement, string]>, sta
   const described: ProjectRecord[] = []
   const history: DvHistory = {
     rows: createRegistry(row => [row.match], row => row.match),
-    describe: (entry, operations) => {
+    describe: (entry, context) => {
       described.push(entry)
-      return describeRecord(entry, operations) ?? ['', '']
+      return labelOf(entry, context.operations)
     },
   }
   if (withHistory) runtime.ctx.provide('dvHistory', history)
@@ -297,6 +300,38 @@ describe('registerChatMedia under the slot runtime', () => {
     // The fixture declares shot.render without a label, so History labels the render by the operation name.
     expect(await view.findByRole('button', { name: '查看: shot.render' })).toBeTruthy()
     expect(within(view.getByTestId('p1')).getByRole('button', { name: '查看: ref.png' })).toBeTruthy()
+    await runtime.dispose()
+  })
+
+  it('captions a card again once History and the shot render rows register after the card shows', async () => {
+    const { runtime, view } = await mountChat([[link('/dv/assets/shot1.mp4'), '点此播放']], chatState(), false)
+    act(() => { publishCurrentProject('p1') })
+    expect(await view.findByRole('button', { name: '查看: shot1.mp4' })).toBeTruthy()
+    runtime.ctx.provide('sidebarRightTabs', { register: () => () => {} } as never)
+    runtime.ctx.provide('dvCanvas', createDvCanvas())
+    await runtime.mount({ inject: [...historyInject], apply: historyApply })
+    await runtime.mount({ inject: [...shotRenderInject], apply: shotRenderApply })
+    expect(await view.findByRole('button', { name: '查看: shot.render' })).toBeTruthy()
+    await runtime.dispose()
+  })
+
+  it('names the shot of a retake through the records of the current state', async () => {
+    const state = chatState()
+    const render = (id: string, fields: Partial<ProjectRecord>): ProjectRecord => ({
+      ...state.components.proj.records.find(entry => entry.id === 'g1')!, id, outputs: [`${id}.mp4`], ...fields,
+    })
+    state.components.proj.records.push(render('r7', { started_by: { record: 'a1', slot: 7 } }), render('x7', { based_on: 'r7' }))
+    for (const id of ['r7', 'x7']) {
+      state.components.proj.created_by[`${id}.mp4`] = id
+      state.assets.push(asset(`${id}.mp4`, 'video/mp4', id))
+    }
+    const { runtime, view } = await mountChat([[link('/dv/assets/x7.mp4'), '点此播放']], state, false)
+    runtime.ctx.provide('sidebarRightTabs', { register: () => () => {} } as never)
+    runtime.ctx.provide('dvCanvas', createDvCanvas())
+    await runtime.mount({ inject: [...historyInject], apply: historyApply })
+    await runtime.mount({ inject: [...shotRenderInject], apply: shotRenderApply })
+    act(() => { publishCurrentProject('p1') })
+    expect(await view.findByRole('button', { name: '查看: shot.render 7' })).toBeTruthy()
     await runtime.dispose()
   })
 

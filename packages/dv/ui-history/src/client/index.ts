@@ -34,10 +34,10 @@ export function apply(ctx: ClientContext): void {
   const rows = createRegistry<HistoryRow>(row => [row.match], row => `the History row of ${row.match}`)
   const history: DvHistory = {
     rows,
-    describe: (record, operations) => {
+    describe: (record, { operations, records }) => {
       const registered = rows.getSnapshot()
       if (matchingRow(record, registered)?.media === undefined) return null
-      return actionLabel(record, { operations, rows: registered, records: new Map() })
+      return actionLabel(record, { operations, rows: registered, records: new Map(Object.entries(records)) })
     },
   }
   ctx.reflect.provide('dvHistory', history)
