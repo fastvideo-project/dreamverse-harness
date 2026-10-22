@@ -48,7 +48,7 @@ describe('package-group subsystem pages', () => {
       linked: 1,
       exempt: 0,
       violations: [
-        'packages/index/README.md: no reader-visible direct docs/subsystems/*.md link; add the owning page and link, or add a justified GROUPS_WITHOUT_SUBSYSTEM_PAGE entry',
+        'packages/index/README.md: no reader-visible direct docs/subsystems/*.md or docs/dreamverse/subsystems/*.md link; add the owning page and link, or add a justified GROUPS_WITHOUT_SUBSYSTEM_PAGE entry',
       ],
     })
   })
@@ -59,7 +59,7 @@ describe('package-group subsystem pages', () => {
     write(root, 'packages/schedule/tool-schedule/package.json', '{}\n')
 
     expect(auditSubsystemPages(root, {}).violations).toEqual([
-      'packages/schedule/README.md: no reader-visible direct docs/subsystems/*.md link; add the owning page and link, or add a justified GROUPS_WITHOUT_SUBSYSTEM_PAGE entry',
+      'packages/schedule/README.md: no reader-visible direct docs/subsystems/*.md or docs/dreamverse/subsystems/*.md link; add the owning page and link, or add a justified GROUPS_WITHOUT_SUBSYSTEM_PAGE entry',
     ])
   })
 
@@ -74,7 +74,7 @@ describe('package-group subsystem pages', () => {
     write(root, 'docs/subsystems/wrong.zh.md', '# Wrong\n')
 
     expect(auditSubsystemPages(root, {}).violations).toEqual([
-      'packages/wrong/README.md: no reader-visible direct docs/subsystems/*.md link; add the owning page and link, or add a justified GROUPS_WITHOUT_SUBSYSTEM_PAGE entry',
+      'packages/wrong/README.md: no reader-visible direct docs/subsystems/*.md or docs/dreamverse/subsystems/*.md link; add the owning page and link, or add a justified GROUPS_WITHOUT_SUBSYSTEM_PAGE entry',
     ])
   })
 
@@ -96,7 +96,7 @@ describe('package-group subsystem pages', () => {
     write(root, 'docs/subsystems/hidden.md', '# Hidden\n')
 
     expect(auditSubsystemPages(root, {}).violations).toEqual([
-      'packages/hidden/README.md: no reader-visible direct docs/subsystems/*.md link; add the owning page and link, or add a justified GROUPS_WITHOUT_SUBSYSTEM_PAGE entry',
+      'packages/hidden/README.md: no reader-visible direct docs/subsystems/*.md or docs/dreamverse/subsystems/*.md link; add the owning page and link, or add a justified GROUPS_WITHOUT_SUBSYSTEM_PAGE entry',
     ])
   })
 
@@ -106,7 +106,7 @@ describe('package-group subsystem pages', () => {
     write(root, 'docs/architecture.md', '# Architecture\n')
 
     expect(auditSubsystemPages(root, {}).violations).toEqual([
-      'packages/escape/README.md: no reader-visible direct docs/subsystems/*.md link; add the owning page and link, or add a justified GROUPS_WITHOUT_SUBSYSTEM_PAGE entry',
+      'packages/escape/README.md: no reader-visible direct docs/subsystems/*.md or docs/dreamverse/subsystems/*.md link; add the owning page and link, or add a justified GROUPS_WITHOUT_SUBSYSTEM_PAGE entry',
     ])
   })
 

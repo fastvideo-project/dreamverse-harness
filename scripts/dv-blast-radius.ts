@@ -51,7 +51,7 @@ const WIRING = new Set([
   ...['cordis.patch.yml', 'package.json', 'tests/composition.spec.ts', 'README.md', 'README.zh.md', 'README.i18n.yaml']
     .map(file => `packages/bundle/dv/${file}`),
 ])
-/** The DreamVerse documentation tree: W. */
+/** The DreamVerse documentation tree: a wiring path (W), always allowed and never counted. */
 const DOCS_WIRING = /^docs\/dreamverse\//u
 /** The ratchet baseline of `scripts/dv-architecture.spec.ts`: W with an implied `:net-delete` once it exists at the
  *  merge base. */

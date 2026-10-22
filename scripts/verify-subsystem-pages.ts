@@ -101,8 +101,8 @@ export function auditSubsystemPages(
         exempt += 1
       } else {
         violations.push(
-          `${readme}: no reader-visible direct docs/subsystems/*.md link; add the owning page and link,`
-          + ' or add a justified GROUPS_WITHOUT_SUBSYSTEM_PAGE entry',
+          `${readme}: no reader-visible direct docs/subsystems/*.md or docs/dreamverse/subsystems/*.md link;`
+          + ' add the owning page and link, or add a justified GROUPS_WITHOUT_SUBSYSTEM_PAGE entry',
         )
       }
       continue
