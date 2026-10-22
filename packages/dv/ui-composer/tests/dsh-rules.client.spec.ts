@@ -1,6 +1,6 @@
 /**
- * The DSH client rules that the composer and the editor seams keep: components read no React context, the composer's
- * components reach no ctx and no API client, and `@dv/ui-composer/contract` holds types only.
+ * The DSH client rules that the composer and the editor seams keep: components read no React context, the components of
+ * the composer and of the DSH editor seams reach no ctx and no API client, and `@dv/ui-composer/contract` holds types only.
  */
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -29,9 +29,17 @@ describe('DSH client rules', () => {
     expect(files.filter(([, text]) => /\buseContext\b|createContext\(/u.test(text)).map(([path]) => path)).toEqual([])
   })
 
-  it('imports no cordis value and no API client in the composer\'s components', () => {
+  it('imports no cordis value and no API client in the components of the composer and of the DSH editor seams', () => {
     const cordisValue = /^import \{[^}]*\} from '@deepseek-ai\/cordis'/mu
-    const reaching = COMPOSER.filter(([, text]) => cordisValue.test(text) || /\bDvClient\b/u.test(text) || /\bctx\./u.test(text))
+    const files = [
+      ...COMPOSER, ...EDITOR,
+      ...components('client/ui-conversation/src/client/skeleton').filter(([path]) => /\/(PromptEditor|InputBar)\.tsx$/u.test(path)),
+      ...components('client/ui-input-trigger/src/client'),
+    ]
+    expect(files.map(([path]) => path)).toEqual(expect.arrayContaining([
+      'client/ui-conversation/src/client/skeleton/PromptEditor.tsx', 'client/ui-input-trigger/src/client/MenuView.tsx',
+    ]))
+    const reaching = files.filter(([, text]) => cordisValue.test(text) || /\bDvClient\b/u.test(text) || /\bctx\./u.test(text))
     expect(reaching.map(([path]) => path)).toEqual([])
   })
 
