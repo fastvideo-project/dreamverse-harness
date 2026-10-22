@@ -115,7 +115,7 @@ ctx.effect(() => ctx.slots.inject('dv.media.view', () => ctx.slots.register({ na
 - **预览通过 `useText` 读取文案。** `MediaPreview` 用 `@dv/ui-kit/locale.ts` 的 `useText`（跟随 `<html lang>`）选择 关闭 / Close 和 秒 / s 单位，而不是通过 locale 命名空间和插槽的 `t`。
 - **每个 MIME 顶层类型只有一个视图。** `dv.media.view` 以 `asset.mime` 的媒体类型（`/` 之前的部分）为键，所以 `image/png` 和 `image/svg+xml` 共用一个视图，插件不能为子类型单独提供视图。
 - **媒体类型和它的视图是两次注册。** 注册 `MediaType` 不会添加视图，`dv.media.view` 条目没有 `MediaType` 也能绘制；本包不检查两者是否一致。注册方在同一步里以同一个键安装两者，如 `@dv/ui-asset-pool` 所做。
-- **只有评审让本包不写出媒体类型。** `scripts/dv-architecture.ts` 把本包列为 UI 核心，其规则 R5 只检查插件名词。针对某一种媒体类型的规则属于注册该视图的插件。
+- **本包不能写出任何媒体类型。** `scripts/dv-architecture.ts` 的规则 R5 由 `scripts/dv-architecture.spec.ts` 检查，它统计本包中的媒体类型字面量、MIME 前缀以及 `<video>` 或 `<audio>` 元素；针对某一种媒体类型的规则属于注册该视图的插件。
 
 <a id="dev-note"></a>
 ### 开发备注

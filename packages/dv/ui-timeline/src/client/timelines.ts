@@ -4,7 +4,7 @@
  */
 import type { Timeline, TimelineState } from '@dv/timeline/types'
 import { FALLBACK_CLIP_SECONDS } from '@dv/ui-kit/timeline.ts'
-import type { WireState } from '@dv/ui-kit/types.ts'
+import type { Asset, WireState } from '@dv/ui-kit/types.ts'
 
 declare module '@dv/ui-kit/types.ts' { interface ComponentStates { timeline: TimelineState } }
 
@@ -154,4 +154,13 @@ export function timecode(seconds: number): string {
   const minutes = Math.floor(hundredths / 6000)
   const rest = (hundredths - minutes * 6000) / 100
   return `${String(minutes).padStart(2, '0')}:${rest < 10 ? '0' : ''}${rest.toFixed(2)}`
+}
+
+/**
+ * The video assets of a state, newest first, for insertion into the timeline.
+ * @param state - the project state.
+ * @returns the video assets.
+ */
+export function videoAssets(state: WireState): Asset[] {
+  return state.assets.filter(asset => asset.mime.startsWith('video/')).sort((a, b) => b.created_at.localeCompare(a.created_at))
 }

@@ -69,7 +69,7 @@ DOM 带测试 ID `dv-timeline-body`、`dv-timeline-editor`、`dv-timeline-viewer
 | [`src/client/TimelineView.tsx`](src/client/TimelineView.tsx) | 中央视图：状态、写入、中间区域字段 `timeline`，以及历史和 插入片段 的请求 |
 | [`src/client/selection.ts`](src/client/selection.ts) | 标签主体为每个项目所选的时间线，以及中央视图请求的读取 |
 | [`src/client/TimelineEditor.tsx`](src/client/TimelineEditor.tsx) | 编辑器：标签、预览、工具栏、标尺、轨道、手势 |
-| [`src/client/timelines.ts`](src/client/timelines.ts) | `timelinesOf(state)`（`timeline` 切片中的时间线，`@dv/timeline` 未加载时为 `[]`）、片段摆放、放下位置、时间码 |
+| [`src/client/timelines.ts`](src/client/timelines.ts) | `timelinesOf(state)`（`timeline` 切片中的时间线，`@dv/timeline` 未加载时为 `[]`）、片段摆放、放下位置、时间码，以及 `videoAssets(state)`（＋ 提供的视频素材，最新的在前） |
 | [`src/client/records-in-use.ts`](src/client/records-in-use.ts) | 画布的 `RecordsInUse`：片段记录和裁剪标记 |
 | [`src/client/history-row.ts`](src/client/history-row.ts) | 时间线记录的 `HistoryRow`：每个片段所属的时间线和选中记录的定位 |
 | [`src/client/mention.ts`](src/client/mention.ts) | 对话输入框 `@` 菜单的片段提及类型 |

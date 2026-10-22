@@ -22,7 +22,7 @@ export const RULE_STATEMENTS: Readonly<Record<string, string>> = {
   R2: 'Base packages, reference-kit included, name no media type; workflow-kit names no workflow.',
   R3: 'One owner per component key, reference kind and operation; defineReference operations are checked at runtime; a defineReference key is one lowercase word and not proj, asset, record or version.',
   R4: 'A host package names only operations of its own component key.',
-  R5: 'UI core names no plugin noun.',
+  R5: 'UI core names no plugin noun, media type, task, kind word or record param; a kit names no plugin noun, media type or task.',
   R6: 'No deep import into another package\'s src.',
   R7: 'Dependencies point down the layers; a ./types entry reaches no host-only module.',
   R8: 'A skill never names a consumer; only the package that owns a reference kind names its tools.',
@@ -44,6 +44,11 @@ interface Facts {
   providers: Set<string>
   /** `PrimitiveTypes` keys declared outside `@dv/models`, and the packages that declare them. */
   primitives: Set<string>
+  /** Every `PrimitiveTypes` key, `@dv/models` included, and every `TaskMap` key (R5g, R5h). */
+  allPrimitives: Set<string>
+  tasks: Set<string>
+  /** Members of each `Wire<Name>` interface of `ui-kit`, read by the exemption of wire-type guards (R5). */
+  wireMembers: Map<string, Set<string>>
   primitivePackages: Set<string>
   /** Packages whose `package.json` exports a `./types` entry. */
   typesEntries: Set<string>
@@ -99,6 +104,10 @@ const MARKER = /\/\/ dv-arch-allow (R\d+): (.*)$/u
 /** Modules that a `./types` entry must never reach (R7 b). */
 const HOST_ONLY = /^(?:node:|@deepseek-ai\/(?:cordis|dsh-tools)(?:\/|$))/u
 const KIT_LINES = 300
+/** The kind words of R5j, matched in a literal without whitespace, such as `node.take` or `dv:timeline-focus`. */
+const UI_KIND_WORDS = /\b(?:character|location|style|plan|shot|timeline|clip|take)s?\b/iu
+/** The element kinds of DSH's `MarkdownElement` (`ui-primitives/src/markdown/MarkdownDelegate.tsx`); the spec checks the copy. */
+export const MARKDOWN_KINDS: ReadonlySet<string> = new Set(['link', 'image', 'table'])
 /**
  * A reference noun key names its skill, ID param and tools; the kernel reserves the other keys (`RESERVED_KINDS` in
  * `project/src/index.ts`, and Project's component key `proj`).
@@ -168,7 +177,8 @@ function walk(node: ts.Node, visit: (node: ts.Node) => void): void {
 function collectFacts(sources: readonly Source[], files: readonly ScanFile[]): Facts {
   const facts: Facts = {
     packages: new Set(files.map(file => packageOf(file.path))), owners: new Map(), claims: [], providers: new Set(),
-    primitives: new Set(), primitivePackages: new Set(), typesEntries: new Set(), kindOwners: new Set(),
+    primitives: new Set(), allPrimitives: new Set(), tasks: new Set(), wireMembers: new Map(), primitivePackages: new Set(),
+    typesEntries: new Set(), kindOwners: new Set(),
     ownerRows: [],
   }
   for (const file of files) {
@@ -212,6 +222,15 @@ function collectFacts(sources: readonly Source[], files: readonly ScanFile[]): F
       const [what, property = ''] = typed ? UI_ROWS[node.type.typeName.getText(sf)] ?? [] : []
       const owned = what !== undefined && ts.isVariableDeclaration(node) ? stringProperty(node.initializer, property) : undefined
       if (what !== undefined && owned !== undefined) row(what, owned.text, node)
+      if (ts.isInterfaceDeclaration(node) && node.name.text === 'PrimitiveTypes') {
+        for (const member of node.members) facts.allPrimitives.add(textOf(member.name) ?? '')
+      }
+      if (ts.isInterfaceDeclaration(node) && node.name.text === 'TaskMap') {
+        for (const member of node.members) facts.tasks.add(textOf(member.name) ?? '')
+      }
+      if (pkg === 'ui-kit' && ts.isInterfaceDeclaration(node) && node.name.text.startsWith('Wire')) {
+        facts.wireMembers.set(node.name.text, new Set(node.members.map(member => textOf(member.name) ?? '')))
+      }
       if (ts.isInterfaceDeclaration(node) && node.name.text === 'PrimitiveTypes' && pkg !== 'models') {
         facts.primitivePackages.add(pkg)
         for (const member of node.members) facts.primitives.add(textOf(member.name) ?? '')
@@ -302,11 +321,100 @@ function scanSkillText(
   for (const match of text.matchAll(/\b(?:plan|continue_previous)\b/giu)) report('R8b', match.index, match[0].toLowerCase())
 }
 
+/**
+ * The union of a type: the type itself, a parenthesized union, or the union that an intersection adds the fields of
+ * every member to, such as `{ project: string } & (A | B)`.
+ */
+function unionOf(type: ts.TypeNode): ts.UnionTypeNode | undefined {
+  if (ts.isParenthesizedTypeNode(type)) return unionOf(type.type)
+  if (ts.isIntersectionTypeNode(type)) return type.types.map(unionOf).find(union => union !== undefined)
+  return ts.isUnionTypeNode(type) ? type : undefined
+}
+
+/**
+ * The type aliases of a file whose union members' `kind` literals are exactly the Markdown element kinds, so the file
+ * mirrors DSH's `MarkdownElement` (exemption M of R5).
+ */
+function markdownMirrors(sf: ts.SourceFile): Set<string> {
+  const mirrors = new Set<string>()
+  walk(sf, (node) => {
+    if (!ts.isTypeAliasDeclaration(node)) return
+    const union = unionOf(node.type)
+    if (union === undefined) return
+    const kinds = new Set(union.types.flatMap(member => ts.isTypeLiteralNode(member)
+      ? member.members.flatMap(field => textOf(field.name) === 'kind' && ts.isPropertySignature(field) && field.type !== undefined
+        && ts.isLiteralTypeNode(field.type) ? [textOf(field.type.literal) ?? ''] : [])
+      : []))
+    if (sameSet(kinds, MARKDOWN_KINDS)) mirrors.add(node.name.text)
+  })
+  return mirrors
+}
+
+const sameSet = (a: ReadonlySet<string>, b: ReadonlySet<string>): boolean => a.size === b.size && [...a].every(item => b.has(item))
+
+/**
+ * Whether a string literal is a wire fact or a Markdown element kind, which R5c-R5j do not count: a literal in the
+ * `Surface` or `ViewSurface` alias or the literal type of a `surface` field (W); a key read inside a guard
+ * `x is Wire<Name>` that names a member of that `ui-kit` interface (W); a literal in a Markdown mirror alias, a `case`
+ * of a switch over exactly the Markdown kinds, or the `kind` of an object returned as a Markdown mirror (M).
+ */
+function exemptUiLiteral(node: ts.StringLiteralLike, sf: ts.SourceFile, facts: Facts, mirrors: ReadonlySet<string>): boolean {
+  const inAlias = (names: ReadonlySet<string> | readonly string[]): boolean =>
+    ts.findAncestor(node, n => ts.isTypeAliasDeclaration(n) && [...names].includes(n.name.text)) !== undefined
+  if (inAlias(['Surface', 'ViewSurface']) || inAlias(mirrors)) return true
+  const field = ts.findAncestor(node, ts.isPropertySignature)
+  if (field !== undefined && textOf(field.name) === 'surface' && ts.isLiteralTypeNode(node.parent)) return true
+  if (ts.isElementAccessExpression(node.parent) && node.parent.argumentExpression === node) {
+    const guard = ts.findAncestor(node, ts.isFunctionLike)?.type
+    const named = guard !== undefined && ts.isTypePredicateNode(guard) ? guard.type?.getText(sf) : undefined
+    if (named !== undefined && facts.wireMembers.get(named)?.has(node.text) === true) return true
+  }
+  if (ts.isCaseClause(node.parent) && node.parent.expression === node) {
+    const cases = new Set(node.parent.parent.clauses.flatMap(clause => ts.isCaseClause(clause) ? [textOf(clause.expression) ?? ''] : []))
+    if (sameSet(cases, MARKDOWN_KINDS)) return true
+  }
+  if (ts.isPropertyAssignment(node.parent) && textOf(node.parent.name) === 'kind' && ts.isObjectLiteralExpression(node.parent.parent)) {
+    const returned = ts.findAncestor(node.parent.parent, ts.isFunctionLike)?.type
+    const references: string[] = []
+    if (returned !== undefined) walk(returned, (type) => { if (ts.isTypeReferenceNode(type)) references.push(type.typeName.getText(sf)) })
+    if (references.some(name => mirrors.has(name))) return true
+  }
+  return false
+}
+
+/**
+ * R5c and R5g-R5j over one node of a UI-core or kit file: a plugin component key (c), a media type literal or element
+ * (g) and a task name (h) in both layers; the literals `take` and `shot` (i) and a kind word in token-shaped text (j)
+ * in UI core only.
+ */
+function scanUiLiteral(
+  node: ts.Node, sf: ts.SourceFile, layer: Layer, facts: Facts, mirrors: ReadonlySet<string>, pluginKeys: ReadonlySet<string>,
+  report: (rule: string, text: string) => void,
+): void {
+  if ((ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && ['video', 'audio'].includes(node.tagName.getText(sf))) {
+    report('R5g', `<${node.tagName.getText(sf)}>`)
+  }
+  if (!ts.isStringLiteralLike(node) || ts.isImportDeclaration(node.parent) || ts.isExportDeclaration(node.parent)) return
+  if (ts.isCallExpression(node.parent) && node.parent.expression.getText(sf) === 'document.createElement') return
+  if (ts.isModuleDeclaration(node.parent) || exemptUiLiteral(node, sf, facts, mirrors)) return
+  const text = node.text
+  const media = new Set(['image', 'video', 'audio', ...facts.allPrimitives])
+  if (pluginKeys.has(text)) report('R5c', text)
+  if (media.has(text) || /^(?:image|video|audio)\//u.test(text)) report('R5g', text)
+  if (facts.tasks.has(text)) report('R5h', text)
+  if (layer !== 'ui-core') return
+  if (text === 'take' || text === 'shot') report('R5i', text)
+  else if (!pluginKeys.has(text) && !/\s/u.test(text) && UI_KIND_WORDS.test(text)) report('R5j', text)
+}
+
 /** R1, R2 and R4-R8 over one TypeScript source file, and R3 for operation names. */
 function scanSource({ path, pkg, sf }: Source, facts: Facts, out: Violation[]): void {
   const layer = layerOf(pkg, facts)
   const pluginKeys = new Set([...facts.owners].filter(([key, owners]) => key !== 'proj' && [...owners].some(o => o !== 'project'))
     .map(([key]) => key))
+  // UI core reads the `asset` slice by design, so R5 does not count its key.
+  const uiPluginKeys = new Set([...pluginKeys].filter(key => key !== 'asset'))
+  const mirrors = layer === 'ui-core' || layer === 'ui-lib' ? markdownMirrors(sf) : new Set<string>()
   const workflowKey = (key: string): boolean => [...facts.owners.get(key) ?? []].some(owner => layerOf(owner, facts) === 'workflow')
   const inAlias = (node: ts.Node, name: string): boolean =>
     ts.findAncestor(node, n => ts.isTypeAliasDeclaration(n) && n.name.text === name) !== undefined
@@ -365,12 +473,13 @@ function scanSource({ path, pkg, sf }: Source, facts: Facts, out: Violation[]): 
     const surfaceAsset = ['api', 'chat-references'].includes(pkg) && ['asset.import', 'asset.place'].includes(literal ?? '')
     const host = layer !== 'ui' && layer !== 'ui-core'
     if (host && operationKey !== undefined && ownedElsewhere(operationKey, pkg, facts) && !surfaceAsset) report('R4', literal ?? '')
+    if (layer === 'ui-core' || layer === 'ui-lib') scanUiLiteral(node, sf, layer, facts, mirrors, uiPluginKeys, report)
     if (layer === 'ui-core') {
       if (key !== null && !['proj', 'asset'].includes(key[1] ?? '') && facts.owners.has(key[1] ?? '')) report('R5a', key[0])
       if (object === 'components' && !['proj', 'asset'].includes(member) && ts.isPropertyAccessExpression(node)) report('R5b', read)
-      const tagName = literal !== undefined && ts.isCallExpression(node.parent) && node.parent.expression.getText(sf) === 'document.createElement'
-      if (['character', 'location', 'style', 'bible', 'plan'].includes(literal ?? '') && !tagName) report('R5c', literal ?? '')
       if (pkg === 'ui-kit' && bibleProperty) report('R5c', 'bible')
+      const params = (ts.isPropertyAccessExpression(node) && node.name.text === 'params') || (ts.isElementAccessExpression(node) && textOf(node.argumentExpression) === 'params')
+      if (params && ts.isIdentifier(node.expression) && node.expression.text === 'record') report('R5k', node.getText(sf))
       if (object === 'params' && ['plan', 'plan_version', 'shot'].includes(member)) report('R5d', read)
       const table = ts.isPropertyAssignment(node) && ts.isObjectLiteralExpression(node.parent)
         && ts.isVariableDeclaration(node.parent.parent) && textOf(node.parent.parent.name) === 'DV_TOOL_LABELS'

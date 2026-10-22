@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { compareBaseline, listOwners, parseFixture, readScanFiles, RULE_STATEMENTS, scan, type Baseline, type ScanFile, type Violation } from './dv-architecture.ts'
+import {
+  compareBaseline, listOwners, MARKDOWN_KINDS, parseFixture, readScanFiles, RULE_STATEMENTS, scan,
+  type Baseline, type ScanFile, type Violation,
+} from './dv-architecture.ts'
 import { checkBudget, countLines, findingsOnAddedLines, parseAllow, parseDiff, type FileChange } from './dv-blast-radius.ts'
 
 const root = resolve(import.meta.dirname, '..')
@@ -56,6 +59,21 @@ describe('DreamVerse architecture fitness test', () => {
     expect(scan(fixture('R7-reference-kit-positive.txt'))).toEqual([])
   })
 
+  it('copies the element kinds of DSH MarkdownElement for the Markdown exemption of R5', () => {
+    const delegate = readFileSync(resolve(root, 'packages/client/ui-primitives/src/markdown/MarkdownDelegate.tsx'), 'utf8')
+    const union = /export type MarkdownElement\s*=([^\n]+)/u.exec(delegate)?.[1] ?? ''
+    const kinds = union.split('|').map(name => new RegExp(`interface ${name.trim()}[^}]*kind: '([a-z]+)'`, 'u').exec(delegate)?.[1])
+    expect(new Set(kinds)).toEqual(MARKDOWN_KINDS)
+  })
+
+  it('fails R5 when the canvas names a take or a media type again', () => {
+    const files = readScanFiles(root).map(file => file.path === 'packages/dv/ui-canvas/src/client/graph.ts'
+      ? { ...file, text: `${file.text}\nexport const taken = (node: { type: string; mime: string }) => node.type === 'take' || node.mime.startsWith('image/')\n` }
+      : file)
+    const added = scan(files).filter(violation => violation.file === 'packages/dv/ui-canvas/src/client/graph.ts')
+    expect(added.map(violation => `${violation.rule} ${violation.text}`).sort()).toEqual(['R5g image/', 'R5i take'])
+  })
+
   it('lets a kit and a UI plugin type-import a UI-core contract, and a UI plugin value-import a kit', () => {
     expect(scan(fixture('R7a-kit-positive.txt'))).toEqual([])
   })
@@ -101,11 +119,37 @@ describe('rule clauses', () => {
       source('story-bible', "p.registerReferenceKind({ kind: 'prop' })\n"), source('prop', "p.registerReferenceKind({ kind: 'prop' })\n"),
     ], []],
     ['R4 surface may name asset.import', [owner('asset-pool', 'asset'), source('api', "run('asset.import')\n")], []],
-    ['R5a operation prefix in UI core', [owner('timeline', 'timeline'), source('ui-canvas', "prefix = 'timeline.'\n")], ['R5a']],
+    ['R5a operation prefix in UI core', [owner('timeline', 'timeline'), source('ui-canvas', "prefix = 'timeline.'\n")], ['R5a', 'R5j']],
     ['R5b slice read in UI core', [source('ui-history', 'clips = state.components.timeline\n')], ['R5b']],
     ['R5b allows the asset slice', [source('ui-history', 'assets = state.components.asset\n')], []],
     ['R5c skips a DOM tag name', [source('ui-shell', "el = document.createElement('style')\n")], []],
-    ['R5d plan param read', [source('ui-canvas', "plan = record.params['plan']\n")], ['R5c', 'R5d']],
+    ['R5d plan param read', [source('ui-canvas', "plan = record.params['plan']\n")], ['R5d', 'R5j', 'R5k']],
+    ['R5c plugin key from the owners', [owner('timeline', 'timeline'), source('ui-shell', "view = 'timeline'\n")], ['R5c']],
+    ['R5c skips the asset key that UI core reads', [owner('asset-pool', 'asset'), source('ui-shell', "key = 'asset'\n")], []],
+    ['R5g media literal, MIME prefix and element in UI core', [source('ui-history', "a = 'image'\nb = mime.startsWith('video/')\nc = <audio src={x} />\n", 'client/x.tsx')], ['R5g', 'R5g', 'R5g']],
+    ['R5g primitive type key', [source('models', 'interface PrimitiveTypes { music: object }\n', 'types.ts'), source('ui-kit', "kind = 'music'\n")], ['R5g']],
+    ['R5h task name', [source('models', "interface TaskMap { t2v: 'video' }\n", 'types.ts'), source('ui-canvas', "task = 't2v'\n")], ['R5h']],
+    ['R5i take and shot', [source('ui-canvas', "a = node.type === 'take'\nb = 'shot'\n")], ['R5i', 'R5i']],
+    ['R5j kind word in a token', [source('ui-kit', "event = 'dv:timeline-focus'\ncolor = 'var(--dv-kind-take)'\n")], ['R5j', 'R5j']],
+    ['R5j skips copy with whitespace', [source('ui-shell', "hint = 'Open the timeline view'\n")], []],
+    ['R5k record params read in UI core', [source('ui-canvas', 'p = record.params\nq = record?.params\nr = declared.params\n')], ['R5k', 'R5k']],
+    ['R5 kit layer: plugin key, media type and task, not take or kind words', [
+      owner('timeline', 'timeline'), source('models', "interface TaskMap { t2v: 'video' }\n", 'types.ts'),
+      source('ui-generation', "a = 'timeline'\nb = 'video/'\nc = 't2v'\nd = 'take'\ne = 'dv:timeline-focus'\nf = record.params\n", 'client/kit.ts'),
+    ], ['R5c', 'R5g', 'R5h']],
+    ['R5 skips a UI plugin', [source('ui-shot-render', "a = 'take'\nb = 'video/'\nc = record.params\n", 'client/index.ts')], []],
+    ['R5 exempts the wire Surface alias and surface field', [
+      source('ui-kit', "type Surface = 'chat' | 'timeline'\ninterface OperationRequest { surface: 'canvas' | 'timeline' }\n", 'client/types.ts'),
+    ], []],
+    ['R5 exempts a member read in a Wire guard', [
+      source('ui-kit', "interface WireProjectCover { video: string | null; image: string | null }\nfunction isCover(x: Record<string, unknown>): x is WireProjectCover { return x['video'] !== undefined && x['image'] !== undefined }\n", 'client/api.ts'),
+    ], []],
+    ['R5 exempts the Markdown element kinds', [
+      source('ui-composer', "type Ref = { kind: 'link' } | { kind: 'image' } | { kind: 'table' }\nfunction f(k: string): Ref { switch (k) { case 'link': case 'image': case 'table': return { kind: 'image' } } return { kind: 'link' } }\n", 'client/chat.ts'),
+    ], []],
+    ['R5 exempts the Markdown element kinds of a union that an intersection adds shared fields to', [
+      source('ui-composer', "type Ref = { at: string } & ({ kind: 'link' } | { kind: 'image' } | { kind: 'table' })\nfunction f(): Ref { return { at: 'p1', kind: 'image' } }\n", 'client/chat.ts'),
+    ], []],
     ['R5e plugin tool label', [source('ui-kit', 'const DV_TOOL_LABELS = { dv_proj_undo: x, dv_plan_create: y }\n')], ['R5e']],
     ['R5f plugin tool name', [source('ui-composer', "card = 'dv_shot_render'\n")], ['R5f']],
     ['R6 deep import', [source('ui-canvas', "import { A } from '@dv/ui-asset-pool/src/client/A.tsx'\n")], ['R6', 'R7a']],

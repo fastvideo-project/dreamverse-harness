@@ -115,7 +115,7 @@ None; the package sends nothing to a model.
 - **The preview reads its copy through `useText`.** `MediaPreview` picks 关闭 / Close and the 秒 / s unit with `useText` of `@dv/ui-kit/locale.ts`, which follows `<html lang>`, instead of a locale namespace and the slot's `t`.
 - **One view per MIME top-level type.** `dv.media.view` is keyed by the media type of `asset.mime`, the part before `/`, so `image/png` and `image/svg+xml` share one view, and a plugin cannot give a subtype its own view.
 - **A media type and its view are two registrations.** Registering a `MediaType` adds no view, and a `dv.media.view` entry draws without a `MediaType`; the package does not check that the two agree. The registrant installs both in one step under one key, as `@dv/ui-asset-pool` does.
-- **Only review keeps media types out of the package.** `scripts/dv-architecture.ts` lists the package as UI core, whose rule R5 checks plugin nouns only. A rule about one media type belongs in the plugin that registers its view.
+- **The package must name no media type.** Rule R5 of `scripts/dv-architecture.ts`, checked by `scripts/dv-architecture.spec.ts`, counts a media type literal, a MIME prefix, or a `<video>` or `<audio>` element in this package; a rule about one media type belongs in the plugin that registers its view.
 
 <a id="dev-note"></a>
 ### Dev Note

@@ -1,6 +1,6 @@
 /** Timeline helpers and the state readings both views share. */
 import { describe, expect, it } from 'vitest'
-import { assetIndex, videoAssets } from '../src/client/state.ts'
+import { assetIndex } from '../src/client/state.ts'
 import { clockText, timelineName } from '../src/client/timeline.ts'
 import { fixtureState } from './fixture.client.tsx'
 
@@ -20,9 +20,7 @@ describe('timeline helpers', () => {
 })
 
 describe('state readings', () => {
-  it('indexes assets and picks videos newest first', () => {
-    const state = fixtureState()
-    expect(assetIndex(state).get('export.mp4')?.mime).toBe('video/mp4')
-    expect(videoAssets(state).map(video => video.id)).toEqual(['shot1.mp4', 'shot2.mp4', 'export.mp4'])
+  it('indexes assets by ID', () => {
+    expect(assetIndex(fixtureState()).get('export.mp4')?.mime).toBe('video/mp4')
   })
 })
