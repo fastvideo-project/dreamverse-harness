@@ -6,6 +6,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
+import { IconMicrophoneOutlineRegular, IconPaperclipOutlineRegular, IconPlayOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
 import type { Asset } from '@dv/ui-kit/types.ts'
@@ -215,19 +216,20 @@ describe('the audio card', () => {
 })
 
 describe('the media types', () => {
-  it('registers image, video and audio into dvMedia.types, an image its own poster and a video its producer\'s image output', async () => {
+  it('registers image, video and audio into dvMedia.types with their icons and their views under the same keys, an image its own poster and a video its producer\'s image output', async () => {
     const { runtime } = await mountAssetPool(() => null)
     const state = fixtureState()
     const take = state.assets.find(each => each.id === 'shot1.mp4')
     if (take === undefined) throw new Error('fixture lacks shot1.mp4')
     const sample: Readonly<Record<string, Asset>> = { image: POSTER, video: take, audio: THEME }
     expect(runtime.ctx.dvMedia.types.list().map(type => ({
-      id: type.id, label: type.label(), icon: type.icon, poster: type.poster?.(sample[type.id] ?? POSTER, state) ?? null,
+      fields: Object.keys(type).sort(), icon: type.icon, poster: type.poster?.(sample[type.id] ?? POSTER, state) ?? null,
     }))).toEqual([
-      { id: 'image', label: ['图片', 'Image'], icon: 'image', poster: 'poster.png' },
-      { id: 'video', label: ['视频', 'Video'], icon: 'video', poster: 'shot1-last.png' },
-      { id: 'audio', label: ['音频', 'Audio'], icon: 'audio', poster: null },
+      { fields: ['icon', 'id', 'poster'], icon: IconPaperclipOutlineRegular, poster: 'poster.png' },
+      { fields: ['icon', 'id', 'poster'], icon: IconPlayOutlineRegular, poster: 'shot1-last.png' },
+      { fields: ['icon', 'id'], icon: IconMicrophoneOutlineRegular, poster: null },
     ])
+    expect(runtime.slots.entries('dv.media.view').map(entry => entry.options.key)).toEqual(runtime.ctx.dvMedia.types.list().map(type => type.id))
     // A video that no record with an image output made, such as an imported one, has no poster.
     expect(runtime.ctx.dvMedia.types.list().find(type => type.id === 'video')?.poster?.(CLIP, state)).toBeNull()
   })

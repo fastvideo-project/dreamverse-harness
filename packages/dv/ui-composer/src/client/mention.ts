@@ -8,9 +8,7 @@
  */
 import { createElement, type ComponentType } from 'react'
 import type { InputTriggerCandidate, InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
-import {
-  IconMicrophoneOutlineRegular, IconPaperclipOutlineRegular, IconPlayOutlineRegular, type IconProps,
-} from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconPaperclipOutlineRegular, type IconProps } from '@deepseek-ai/dsh-client-ui-primitives'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import type { DvMentions, MentionKind } from '@dv/ui-kit/registries.ts'
 import { mediaTypeOf } from '@dv/ui-kit/media-type.ts'
@@ -32,12 +30,6 @@ export function referenceText(label: string, uri: string): string {
   return `@[${label.replaceAll(']', '')}](${uri})`
 }
 
-/** The glyph of each icon name that a media type gives (`MediaType.icon`), for an asset without a poster. */
-const GLYPHS: Readonly<Record<string, ComponentType<IconProps>>> = {
-  video: IconPlayOutlineRegular,
-  audio: IconMicrophoneOutlineRegular,
-}
-
 /** A poster still as a candidate icon. */
 function poster(url: string): ComponentType<IconProps> {
   // Sized to stay clear of the label in the 14 px icon column of the @ menu.
@@ -48,8 +40,7 @@ function poster(url: string): ComponentType<IconProps> {
 }
 
 /**
- * The `@` menu icon of an asset: an image of its media type's poster, else the glyph of the type's icon name, else a
- * file glyph.
+ * The `@` menu icon of an asset: an image of its media type's poster, else the media type's icon, else a file glyph.
  * @param asset - the asset, or undefined for an asset that the state does not hold.
  * @param types - the registered media types.
  * @param state - the project state that the poster reads.
@@ -58,7 +49,7 @@ function poster(url: string): ComponentType<IconProps> {
 function assetIcon(asset: Asset | undefined, types: readonly MediaType[], state: WireState): ComponentType<IconProps> {
   const type = asset === undefined ? undefined : types.find(entry => entry.id === mediaTypeOf(asset.mime))
   const still = asset === undefined ? null : type?.poster?.(asset, state) ?? null
-  return still === null ? GLYPHS[type?.icon ?? ''] ?? IconPaperclipOutlineRegular : poster(assetUrl(still))
+  return still === null ? type?.icon ?? IconPaperclipOutlineRegular : poster(assetUrl(still))
 }
 
 /** One listed item before query filtering. */

@@ -43,10 +43,9 @@ The contract is the types-only module [`src/client/contract/index.ts`](src/clien
 | `MediaPurpose` | type | What a view asks for: `'thumb'` (a small square), `'card'` (a card body), `'player'` (a full-width playable form), or `'loop'` (a full-width playable form that starts muted and loops, such as a take in its editor) |
 | `MediaAsset` | type | The facts of an asset that a view draws: `id` and `mime`, and `name`, `width`, `height` and `duration_sec` where the surface knows them, such as a project cover that the summary names by ID and MIME type only |
 | `MediaOwner` | type | The props of a `dv.media` occurrence and the owner props of each `dv.media.view` entry: `asset` (a `MediaAsset`), `purpose`, the optional `poster` (the asset ID of a still that a playable form shows before it plays, such as a take's image output), and the optional `onSize({ width, height })` (receives the pixel size of the loaded media, for an asset whose stored size is unknown) |
-| `MediaType` | type | One media type in `dvMedia.types`: `id` (the MIME top-level type, such as `'audio'`, and the key of its `dv.media.view` entry), `label()` (a Chinese and English text pair), `icon` (an icon name for places with no poster, such as the `@` menu), and the optional `poster(asset, state)` (the asset ID of a still that stands for the asset where only an `<img>` can draw, or null) |
+| `MediaType` | type | One media type in `dvMedia.types`: `id` (the media type, such as `'audio'`, and the key of its `dv.media.view` entry), `icon` (the icon component, with the props of the DSH icons, for places with no poster, such as the `@` menu), and the optional `poster(asset, state)` (the asset ID of a still that stands for the asset where only an `<img>` can draw, or null) |
 | `DvMedia` | service | `ctx.dvMedia`: `types`, a `Registry<MediaType>` of `@dv/ui-kit/registries.ts` keyed by `id`, so a second type with one `id` throws; and `preview(asset, opener)`, which opens the asset preview |
 | `PreviewActionOwner` | type | The owner props of one preview button: `asset` and `close()` |
-| `Text` | type | A Chinese and English text pair |
 | `dv.media` | Component Factory | Root scope; props `MediaOwner`; one keyed child slot `dv.media.view`. A view renders an occurrence with `renderFactorySlot('dv.media', { asset, purpose })` and declares no slot of its own; the view owns the box, and the media view fills it |
 | `MediaViewOwner` | type | The owner props of each `dv.media.view` entry: `MediaOwner` and `unsupported()`, which a view calls when the browser cannot draw the asset, such as an image format that it cannot decode; the Factory then draws the file card |
 | `dv.media.view` | keyed slot, root | The view of one media type, keyed by `MediaType.id`; the fallback is the file card |
@@ -115,7 +114,7 @@ None; the package sends nothing to a model.
 
 - **The preview reads its copy through `useText`.** `MediaPreview` picks 关闭 / Close and the 秒 / s unit with `useText` of `@dv/ui-kit/locale.ts`, which follows `<html lang>`, instead of a locale namespace and the slot's `t`.
 - **One view per MIME top-level type.** `dv.media.view` is keyed by the media type of `asset.mime`, the part before `/`, so `image/png` and `image/svg+xml` share one view, and a plugin cannot give a subtype its own view.
-- **Media types and views are separate registrations.** Registering a `MediaType` adds no view, and a `dv.media.view` entry draws without a `MediaType`; the package does not check that the two agree.
+- **A media type and its view are two registrations.** Registering a `MediaType` adds no view, and a `dv.media.view` entry draws without a `MediaType`; the package does not check that the two agree. The registrant installs both in one step under one key, as `@dv/ui-asset-pool` does.
 - **Only review keeps media types out of the package.** `scripts/dv-architecture.ts` lists the package as UI core, whose rule R5 checks plugin nouns only. A rule about one media type belongs in the plugin that registers its view.
 
 <a id="dev-note"></a>

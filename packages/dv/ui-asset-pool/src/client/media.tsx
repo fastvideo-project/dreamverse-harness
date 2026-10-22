@@ -7,6 +7,7 @@
  */
 import { useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
+import { IconMicrophoneOutlineRegular, IconPaperclipOutlineRegular, IconPlayOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
@@ -30,11 +31,17 @@ function videoStill(asset: Asset, state: WireState): string | null {
   return maker?.outputs.find(id => images.has(id)) ?? null
 }
 
+/** A media type and the `dv.media.view` entry that draws it, registered together under the type's `id`. */
+export interface MediaTypeEntry {
+  type: MediaType
+  View: (props: PropsRuntime<'dv.media.view'>) => ReactNode
+}
+
 /** The three media types; the `@` menu shows an image itself and a video by the image output of its producer. */
-export const MEDIA_TYPES: readonly MediaType[] = [
-  { id: 'image', label: () => ['图片', 'Image'], icon: 'image', poster: asset => asset.id },
-  { id: 'video', label: () => ['视频', 'Video'], icon: 'video', poster: videoStill },
-  { id: 'audio', label: () => ['音频', 'Audio'], icon: 'audio' },
+export const MEDIA_TYPES: readonly MediaTypeEntry[] = [
+  { type: { id: 'image', icon: IconPaperclipOutlineRegular, poster: asset => asset.id }, View: ImageView },
+  { type: { id: 'video', icon: IconPlayOutlineRegular, poster: videoStill }, View: VideoView },
+  { type: { id: 'audio', icon: IconMicrophoneOutlineRegular }, View: AudioView },
 ]
 
 /**

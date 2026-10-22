@@ -43,7 +43,7 @@ async function mountComposer() {
   runtime.ctx.provide('sidebarRight', { mounted: { getSnapshot: () => undefined }, openTab: () => {} } as never)
   await runtime.root.declare({ 'shell.overlay': { kind: 'list', scope: 'root' } }, props => <>{props.renderSlot('shell.overlay', {})}</>)
   await runtime.mount({ inject: [...mediaInject], apply: mediaApply })
-  for (const type of MEDIA_TYPES) runtime.ctx.dvMedia.types.register(type)
+  for (const { type } of MEDIA_TYPES) runtime.ctx.dvMedia.types.register(type)
   const composer = await runtime.mount({ inject: [...inject], apply })
   const view = runtime.renderRoot()
   const composed: DvComposeDetail[] = []
@@ -86,6 +86,20 @@ describe('the @ menu', () => {
     // The audio file draws the glyph of its type's icon name, which differs from the file glyph of a PDF.
     expect([listed['score.wav']?.startsWith('<svg'), listed['brief.pdf']?.startsWith('<svg')]).toEqual([true, true])
     expect(listed['score.wav']).not.toBe(listed['brief.pdf'])
+    stop()
+    await runtime.dispose()
+  })
+
+  it('lists an asset of a media type that a plugin adds with the icon component of that type', async () => {
+    const state = fixtureState()
+    state.assets.push(asset('scene.glb', 'model/gltf-binary', null))
+    vi.stubGlobal('fetch', scriptedFetch({ state }).fetch)
+    publishCurrentProject('p1')
+    const { runtime, sources, stop } = await mountComposer()
+    runtime.ctx.dvMedia.types.register({ id: 'model', icon: () => <svg data-icon="cube" /> })
+    const candidates = await sources[0]?.candidates({} as never, { query: '', signal: new AbortController().signal } as never) ?? []
+    const model = candidates.find(candidate => candidate.name === 'scene.glb')
+    expect(model?.icon === undefined ? '' : renderToStaticMarkup(createElement(model.icon))).toBe('<svg data-icon="cube"></svg>')
     stop()
     await runtime.dispose()
   })

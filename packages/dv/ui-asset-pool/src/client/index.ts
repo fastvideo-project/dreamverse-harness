@@ -15,7 +15,7 @@ import type {} from '@dv/ui-media/contract'
 import { AssetsPanel, AssetsTabBody } from './AssetsPanel.tsx'
 import type { AssetsTabInjected } from './AssetsPanel.tsx'
 import { ASSET_POOL_ID, ASSET_POOL_KIND, assetPoolDefinition } from './definition.ts'
-import { AudioView, ImageView, MEDIA_TYPES, VideoView } from './media.tsx'
+import { MEDIA_TYPES } from './media.tsx'
 
 export { AssetsPanel, type AssetsPanelProps } from './AssetsPanel.tsx'
 export { ASSET_POOL_ID, ASSET_POOL_KIND }
@@ -23,13 +23,10 @@ export { ASSET_POOL_ID, ASSET_POOL_KIND }
 /** Required browser services: the tab registry and the DSH UI slot registry. */
 export const inject = ['slots', 'sidebarRightTabs']
 
-/** The view of each media type, by its MIME top-level type. */
-const VIEWS = { image: ImageView, video: VideoView, audio: AudioView } as const
-
 /**
  * Client plugin body: register the tab type and its body under the type's id; while the canvas declares it, the entry
- * of its picker slot; while `dvMedia` is present, the media types; and while the `dv.media` Factory declares it, each
- * media view.
+ * of its picker slot; and while `dvMedia` is present, each media type with its view, in one step, so a type that does
+ * not register leaves no view.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
@@ -44,10 +41,13 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.slots.inject('dv.canvas.picker', () => ctx.slots.register(
     { name: 'dv.canvas.picker', key: 'assets', inject: () => ({ preview }) }, AssetsPanel,
   )), 'ui-asset-pool: canvas picker')
-  ctx.inject(['dvMedia'], (scope) => {
-    for (const type of MEDIA_TYPES) scope.effect(() => scope.dvMedia.types.register(type), `ui-asset-pool: media type ${type.id}`)
+  ctx.inject(['dvMedia', 'slots'], (scope) => {
+    for (const { type, View } of MEDIA_TYPES) {
+      scope.effect(() => {
+        const unregister = scope.dvMedia.types.register(type)
+        const unview = scope.slots.inject('dv.media.view', () => scope.slots.register({ name: 'dv.media.view', key: type.id }, View))
+        return () => { unview(); unregister() }
+      }, `ui-asset-pool: media type ${type.id}`)
+    }
   })
-  for (const [key, view] of Object.entries(VIEWS)) {
-    ctx.effect(() => ctx.slots.inject('dv.media.view', () => ctx.slots.register({ name: 'dv.media.view', key }, view)), `ui-asset-pool: ${key} view`)
-  }
 }

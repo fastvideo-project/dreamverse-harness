@@ -108,7 +108,7 @@ describe('@dv/ui-media', () => {
 
   it('refuses a second media type of one id', async () => {
     const { runtime } = await mount([])
-    const image: MediaType = { id: 'image', label: () => ['图片', 'Image'], icon: 'image' }
+    const image: MediaType = { id: 'image', icon: () => null }
     runtime.ctx.dvMedia.types.register(image)
     expect(() => runtime.ctx.dvMedia.types.register({ ...image }))
       .toThrow('registry key "image" is already registered')

@@ -43,10 +43,9 @@ Host 半边（`src/index.ts`）是一个什么都不做的 `apply`，所以 Load
 | `MediaPurpose` | 类型 | 视图请求的形式：`'thumb'`（小方块）、`'card'`（卡片主体）、`'player'`（全宽可播放形式）或 `'loop'`（静音开始并循环的全宽可播放形式，例如编辑器中的版本） |
 | `MediaAsset` | 类型 | 视图绘制的素材事实：`id` 和 `mime`，以及界面知道时的 `name`、`width`、`height` 和 `duration_sec`，例如概要只按 ID 和 MIME 类型指定的项目封面 |
 | `MediaOwner` | 类型 | `dv.media` 实例的属性，也是每个 `dv.media.view` 条目的所有者属性：`asset`（一个 `MediaAsset`）、`purpose`、可选的 `poster`（可播放形式在播放前显示的静帧的素材 ID，例如版本的图片输出），以及可选的 `onSize({ width, height })`（为存储尺寸未知的素材接收已加载媒体的像素尺寸） |
-| `MediaType` | 类型 | `dvMedia.types` 中的一个媒体类型：`id`（MIME 顶层类型，例如 `'audio'`，也是其 `dv.media.view` 条目的键）、`label()`（中英文文本对）、`icon`（没有静帧处使用的图标名，例如 `@` 菜单），以及可选的 `poster(asset, state)`（在只能用 `<img>` 绘制的地方代表该素材的静帧的素材 ID，或 null） |
+| `MediaType` | 类型 | `dvMedia.types` 中的一个媒体类型：`id`（媒体类型，例如 `'audio'`，也是其 `dv.media.view` 条目的键）、`icon`（没有静帧处使用的图标组件，属性与 DSH 图标相同，例如 `@` 菜单），以及可选的 `poster(asset, state)`（在只能用 `<img>` 绘制的地方代表该素材的静帧的素材 ID，或 null） |
 | `DvMedia` | 服务 | `ctx.dvMedia`：`types` 是 `@dv/ui-kit/registries.ts` 的 `Registry<MediaType>`，以 `id` 为键，所以同一 `id` 的第二个类型会抛错；`preview(asset, opener)` 打开素材预览 |
 | `PreviewActionOwner` | 类型 | 一个预览按钮的所有者属性：`asset` 和 `close()` |
-| `Text` | 类型 | 中英文文本对 |
 | `dv.media` | 组件工厂 | 根作用域；属性为 `MediaOwner`；一个键控子插槽 `dv.media.view`。视图用 `renderFactorySlot('dv.media', { asset, purpose })` 绘制一个实例，不需要自己声明插槽；外框归视图所有，媒体视图填满它 |
 | `MediaViewOwner` | 类型 | 每个 `dv.media.view` 条目的所有者属性：`MediaOwner` 和 `unsupported()`，浏览器无法绘制该素材时视图调用它，例如无法解码的图片格式；组件工厂随后绘制文件卡片 |
 | `dv.media.view` | 键控插槽，根 | 一种媒体类型的视图，以 `MediaType.id` 为键；后备是文件卡片 |
@@ -115,7 +114,7 @@ ctx.effect(() => ctx.slots.inject('dv.media.view', () => ctx.slots.register({ na
 
 - **预览通过 `useText` 读取文案。** `MediaPreview` 用 `@dv/ui-kit/locale.ts` 的 `useText`（跟随 `<html lang>`）选择 关闭 / Close 和 秒 / s 单位，而不是通过 locale 命名空间和插槽的 `t`。
 - **每个 MIME 顶层类型只有一个视图。** `dv.media.view` 以 `asset.mime` 的媒体类型（`/` 之前的部分）为键，所以 `image/png` 和 `image/svg+xml` 共用一个视图，插件不能为子类型单独提供视图。
-- **媒体类型和视图分开注册。** 注册 `MediaType` 不会添加视图，`dv.media.view` 条目没有 `MediaType` 也能绘制；本包不检查两者是否一致。
+- **媒体类型和它的视图是两次注册。** 注册 `MediaType` 不会添加视图，`dv.media.view` 条目没有 `MediaType` 也能绘制；本包不检查两者是否一致。注册方在同一步里以同一个键安装两者，如 `@dv/ui-asset-pool` 所做。
 - **只有评审让本包不写出媒体类型。** `scripts/dv-architecture.ts` 把本包列为 UI 核心，其规则 R5 只检查插件名词。针对某一种媒体类型的规则属于注册该视图的插件。
 
 <a id="dev-note"></a>

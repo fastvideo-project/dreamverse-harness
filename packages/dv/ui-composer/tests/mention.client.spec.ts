@@ -12,7 +12,10 @@ import type { InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigge
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { createRegistry, type MentionKind } from '@dv/ui-kit/registries.ts'
-import { MEDIA_TYPES } from '../../ui-asset-pool/src/client/media.tsx'
+import { MEDIA_TYPES as MEDIA_ENTRIES } from '../../ui-asset-pool/src/client/media.tsx'
+
+/** The media types that the asset pool registers. */
+const MEDIA_TYPES = MEDIA_ENTRIES.map(entry => entry.type)
 import { asset, fixtureState, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply, inject } from '../src/client/index.ts'
 import { MENTION_SOURCE, projectItems, projectMentionSource, referenceText } from '../src/client/mention.ts'

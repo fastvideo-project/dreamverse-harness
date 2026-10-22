@@ -54,7 +54,7 @@ describe('clipMentionKind', () => {
 
   it('gives the composer\'s @ list the clip items of the base: first, with an image thumbnail, else the video\'s media-type glyph', () => {
     document.documentElement.lang = 'zh-CN'
-    const items = projectItems(clipState(), [clipMentionKind], MEDIA_TYPES)
+    const items = projectItems(clipState(), [clipMentionKind], MEDIA_TYPES.map(entry => entry.type))
     expect(items.slice(0, 4).map(item => [item.label, item.section])).toEqual([
       ['时间线 1 · 片段 1', '片段'], ['时间线 1 · 片段 2', '片段'], ['片尾 · 片段 1', '片段'], ['片尾 · 片段 2', '片段'],
     ])

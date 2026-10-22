@@ -31,7 +31,7 @@ kind: "package-reference"
   name: '@dv/ui-asset-pool'
 ```
 
-Host 半边不注册任何东西。浏览器半边注册 `dv-asset-pool` 标签类型（侧栏指南页以"素材库"提供的页面）和以自身 id `@dv/ui-asset-pool` 为键的标签主体。其他标签在前面时，该标签保持挂载。它还以键 `assets` 向 `@dv/ui-canvas` 画布的键控插槽 `dv.canvas.picker`（它的 `SlotMap` 条目在 `@dv/ui-kit/registries.ts` 中）填入 `AssetsPanel`，即画布素材选择窗口里的面板，点击缩略图调用选择窗口的 `onOpen` 并选中素材。只要 `@dv/ui-media` 的媒体服务 `dvMedia` 存在，它就在 `dvMedia.types` 中注册媒体类型 `image`、`video` 和 `audio`；只要 `dv.media` 组件工厂声明了 `dv.media.view`，它就把 `ImageView`、`VideoView` 和 `AudioView` 注册为这些键上的条目；浏览器无法解码的图片、视频或音频播放器调用 `unsupported()`，由文件卡片代替它。每个素材都通过 `asset.import` 进入项目，所以这些媒体类型归本包所有。
+Host 半边不注册任何东西。浏览器半边注册 `dv-asset-pool` 标签类型（侧栏指南页以"素材库"提供的页面）和以自身 id `@dv/ui-asset-pool` 为键的标签主体。其他标签在前面时，该标签保持挂载。它还以键 `assets` 向 `@dv/ui-canvas` 画布的键控插槽 `dv.canvas.picker`（它的 `SlotMap` 条目在 `@dv/ui-kit/registries.ts` 中）填入 `AssetsPanel`，即画布素材选择窗口里的面板，点击缩略图调用选择窗口的 `onOpen` 并选中素材。只要 `@dv/ui-media` 的媒体服务 `dvMedia` 存在，它就在 `dvMedia.types` 中注册媒体类型 `image`、`video` 和 `audio`，每个类型与其视图（`ImageView`、`VideoView`、`AudioView`）在同一步里注册为同一个键上的 `dv.media.view` 条目，所以没注册成功的类型不留下视图；浏览器无法解码的图片、视频或音频播放器调用 `unsupported()`，由文件卡片代替它。每个素材都通过 `asset.import` 进入项目，所以这些媒体类型归本包所有。
 
 | 手势 | 请求或事件 |
 | --- | --- |

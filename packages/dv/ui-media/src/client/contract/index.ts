@@ -1,18 +1,17 @@
 /**
  * The media contract of DreamVerse: how a surface draws one asset by its media type. `@dv/ui-media` provides `dvMedia`,
  * registers the `dv.media` Component Factory, draws the file card fallback and the asset preview, and names no media
- * type; the media views are entries of `dv.media.view` keyed by the MIME top-level type, registered by the plugins
- * through which a media type enters a project. Types only.
+ * type; the media views are entries of `dv.media.view` keyed by the media type, registered with their `MediaType` by the
+ * plugins through which a media type enters a project. Types only.
  *
  * @module @dv/ui-media/contract
  */
+import type { ComponentType } from 'react'
 import type {} from '@deepseek-ai/cordis'
+import type { IconProps } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type { Registry } from '@dv/ui-kit/registries.ts'
 import type { Asset, WireState } from '@dv/ui-kit/types.ts'
-
-/** A pair of interface texts, Chinese then English. */
-export type Text = readonly [zh: string, en: string]
 
 /**
  * What a surface asks for: a small square, a card body, a full-width playable form, or a full-width playable form that
@@ -21,15 +20,14 @@ export type Text = readonly [zh: string, en: string]
 export type MediaPurpose = 'thumb' | 'card' | 'player' | 'loop'
 
 /**
- * One media type. Registry `dvMedia.types`, keyed by `id`, the MIME top-level type, so the key refuses a second view of
- * one type.
+ * One media type. Registry `dvMedia.types`, keyed by `id`, so the key refuses a second type of one id. The plugin that
+ * registers a type registers its `dv.media.view` entry under the same key, in the same step.
  */
 export interface MediaType {
   /** The media type, such as 'audio', as `mediaTypeOf` of `@dv/ui-kit/media-type.ts` reads it; the key of its `dv.media.view` entry. */
   id: string
-  label(): Text
-  /** An icon name, drawn where no poster exists (the `@` menu, whose icon is a plain component). */
-  icon: string
+  /** The icon drawn where no poster exists, such as the `@` menu. */
+  icon: ComponentType<IconProps>
   /**
    * The asset ID of a still that stands for the asset where only an `<img>` can draw, such as the `@` menu icon, read
    * from the project state; null for none.
