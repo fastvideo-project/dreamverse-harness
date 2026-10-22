@@ -156,7 +156,7 @@ Invariants: reducers are pure; `getState` on the same records always gives equal
 
 ## 7. History (`history.ts`)
 
-Owner: agent D. The module comment defines the history list, the current position and moves; the JSDoc of `discardedSteps`, `undo`, `redo`, `moveTo` and `list` defines their behavior. The user-facing rules are the [history rules](../../../docs/subsystems/video-harness.md#history-rules).
+Owner: agent D. The module comment defines the history list, the current position and moves; the JSDoc of `discardedSteps`, `undo`, `redo`, `moveTo` and `list` defines their behavior. The user-facing rules are the [history rules](../../../docs/dreamverse/subsystems/project.md#history-rules).
 
 - The history list is the `parents[0]` ancestry of `tip` (`store.lineIds`), oldest first; the first record is `proj.create`.
 - `undo(project)`: moves `at` to its parent; `nothing_to_undo` at the first record; `invalid_params` for a project without records.

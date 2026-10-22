@@ -50,8 +50,9 @@ const WIRING = new Set([
   'tsconfig.base.json', 'tsconfig.host.json', 'tsconfig.client.json', 'pnpm-lock.yaml',
   ...['cordis.patch.yml', 'package.json', 'tests/composition.spec.ts', 'README.md', 'README.zh.md', 'README.i18n.yaml']
     .map(file => `packages/bundle/dv/${file}`),
-  ...['md', 'zh.md', 'i18n.yaml'].map(extension => `docs/subsystems/video-harness.${extension}`),
 ])
+/** The DreamVerse documentation tree: a wiring path (W), always allowed and never counted. */
+const DOCS_WIRING = /^docs\/dreamverse\//u
 /** The ratchet baseline of `scripts/dv-architecture.spec.ts`: W with an implied `:net-delete` once it exists at the
  *  merge base. */
 const BASELINE = 'scripts/dv-architecture.baseline.json'
@@ -147,7 +148,7 @@ export function checkBudget(changes: readonly FileChange[], options: BudgetOptio
     return pkg !== undefined && !options.existing.has(pkg)
   }
   const isWiring = (path: string): boolean => WIRING.has(path) || (path === BASELINE && options.existing.has(BASELINE))
-    || (NEW_PACKAGE_WIRING.test(path) && isNewPackage(path))
+    || DOCS_WIRING.test(path) || (NEW_PACKAGE_WIRING.test(path) && isNewPackage(path))
   const isOwn = (path: string): boolean => options.own.some(dir => path.startsWith(`${dir.replace(/\/+$/u, '')}/`) || posix.matchesGlob(path, dir))
   const outside = changes.map(c => c.path).filter(path => !isWiring(path) && !isOwn(path))
   for (const path of outside.filter(p => !options.allow.some(allow => posix.matchesGlob(p, allow.glob)))) {

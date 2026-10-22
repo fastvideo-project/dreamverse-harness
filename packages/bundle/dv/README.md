@@ -37,7 +37,7 @@ Environment the patch reads: `DV_STATE_ROOT` (default `~/.local/state/dv`; holds
 <a id="further-exploration"></a>
 ## Further Exploration
 
-- [DreamVerse packages](../../../docs/subsystems/video-harness.md)
+- [DreamVerse documentation](../../../docs/dreamverse/README.md)
 - [`@dv/models`](../../dv/models/README.md)
 - [`@dv/fastvideo`](../../dv/fastvideo/README.md)
 - [`@dv/chat-references`](../../dv/chat-references/README.md)

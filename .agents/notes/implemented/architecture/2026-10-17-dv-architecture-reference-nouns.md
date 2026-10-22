@@ -12,55 +12,11 @@ Before that, the nouns reached further: the kernel `@dv/project` declared `Chara
 
 ## Decision
 
-A **reference noun** is a component whose items have the following shape, called the kit shape in this note:
+A **reference noun** is a component whose items have the kit shape: each item has an ID and a list of versions, each version stands for a list of reference images, an input names one version as `<id>@<version>`, and an update supersedes the record that wrote the previous version. The [data flow note](2026-10-17-dv-architecture-data-flow.md) owns reference kinds, `<id>@<version>` parsing, staleness and supersession. This note owns the nouns and the library that they share.
 
-- Each item has an ID and a list of versions. Every create or update writes the next version and keeps the earlier ones.
-- Each version stands for a list of reference images (`references`, asset IDs), with a name and a description.
-- An input names one version as `<id>@<version>`, such as `c1@3`, and the runner resolves it to that version's reference images.
-- An update supersedes the record that wrote the previous version, so every record made from that version becomes stale.
+Character, location and style are three reference nouns. Each noun is its own plugin pair with its own slice: `@dv/character` and `@dv/ui-character`, `@dv/location` and `@dv/ui-location`, `@dv/style` and `@dv/ui-style`. Each pair makes one call to each half of a shared library, the **reference kit**, which implements the kit shape once: `defineReference` of the base-layer package `@dv/reference-kit` ([layers note](2026-10-17-dv-architecture-layers.md)) and `defineReferenceUi` of the file `packages/dv/ui-kit/src/client/reference-kit.tsx`. A noun package fills in only what differs between nouns. A noun package never imports another noun package, and every other plugin reads the nouns through the kernel and client registries that the kit fills.
 
-The [data flow note](2026-10-17-dv-architecture-data-flow.md) owns reference kinds, `<id>@<version>` parsing, staleness and supersession. This note owns the nouns and the library that they share.
-
-Character, location and style are three reference nouns. Each noun is a plugin pair with its own slice: `@dv/character` and `@dv/ui-character`, `@dv/location` and `@dv/ui-location`, `@dv/style` and `@dv/ui-style`. Each host package owns the operations `<k>.create` and `<k>.update` (agent tools `dv_<k>_create` and `dv_<k>_update`), and the `@` menu shows the sections 角色, 场景 and 风格 in that order.
-
-One key names everything of a noun: the component key, the reference kind, the ID param, the operation prefix, the skill name and the canvas node type. Each host package carries a hand-written skill `packages/dv/<k>/skills/<k>/SKILL.md` that names only its own tools. A noun package never imports another noun package: the layer rule of the [fitness test](../process/2026-10-17-dv-architecture-fitness-test.md) rejects a domain package that imports another domain package.
-
-## The two halves of the reference kit
-
-Each noun pair holds one call to each half of a shared library, the **reference kit**, which implements the kit shape once; a noun package fills in only what differs between nouns.
-
-**Host half: `@dv/reference-kit`.** The package `packages/dv/reference-kit` sits in the base layer ([layers note](2026-10-17-dv-architecture-layers.md)). `defineReference(spec)` returns a Cordis service class, and the noun package default-exports a subclass, as `class DvCharacter extends defineReference({...}) {}` in `packages/dv/character/src/index.ts` does. The declaration has seven fields: `service`, `component`, `noun` (`{ zh, en }`), `meaning`, `reference` (the input roles), `skill` and the optional `fields`. The class injects `dvProject` and registers the component key, the reducer `referenceReducer(spec)`, the reference kind of the same name, the operations `<k>.create` and `<k>.update` with labels built from `noun`, and, while the DSH skill registry is mounted, the skill `<k>`. `<k>.create` refuses an ID with `@` or `#` and any ID that `dvProject.kindsWithId` lists, so IDs stay unique across every reference kind. The client face `@dv/reference-kit/types` exports `ReferenceVersion`, `ReferenceSlice` and `ReferenceKey`; a declaration compiles only with a key that the noun merges into both `ComponentStates` and `ReferenceKinds` with a `ReferenceSlice` value. The package names no noun and no media type: the declaration supplies the noun words and the `image` input role.
-
-**UI half: `ui-kit/src/client/reference-kit.tsx`.** The file `packages/dv/ui-kit/src/client/reference-kit.tsx`, imported as `@dv/ui-kit/reference-kit.tsx`, holds `defineReferenceUi(spec)` and `ReferenceEditor`. The declaration has six fields: `id` (the package name, which is also the editor slot key), `key`, `slice`, `label`, `mention` and the optional `editor`. `defineReferenceUi` returns the noun's `NodeType`, `VersionKind`, references in use, `MentionKind` and `HistoryRow`, and `apply(ctx)`, the client plugin body that registers them and the `dv.canvas.editor` entry. `ReferenceEditor`, the default editor body, writes every change as `<key>.update` through `host.run`. The [UI registries note](2026-10-17-dv-architecture-ui-registries.md) owns these registries, and the [client state types note](2026-10-17-dv-architecture-client-state-types.md) owns what a missing slice means. The UI declaration repeats the label pair of the host declaration.
-
-**Extension points.** A noun grows inside the kit through four mechanisms:
-
-- `fields` on the host half: extra version fields, each one param of both operations; an update that omits a field keeps its previous value.
-- `children` on the UI half: extra form rows inside `ReferenceEditor` that write through `<key>.update`.
-- `editor` on the UI half: a whole editor body in place of `ReferenceEditor`.
-- More `<k>.*` operations: the noun's service class registers them in its own constructor, because the class extends the class that `defineReference` returns.
-
-## Who imports the kit
-
-Only the six noun packages import the kit from `src`: the three host packages import `@dv/reference-kit`, and the three UI packages import `@dv/ui-kit/reference-kit.tsx`. Beyond them, only tests, `scripts/dv-architecture.ts` and its fixtures, the root tsconfig files and `pnpm-lock.yaml` refer to the kit in code; `packages/dv/COMPONENT-TEMPLATE.md`, `docs/subsystems/video-harness.md`, the package READMEs and the Agent Notes document it.
-
-Every other plugin sees only what the kit registers. `@dv/chat-references` expands `dv:<kind>/<id>` for each kind in `dvProject.listReferenceKinds()`. The runner resolves `c1@3` through the registered reference kind. `@dv/api` collects reference images from the resolved inputs of records in `mentionedAssets`. `@dv/ui-canvas`, `@dv/ui-composer` and `@dv/ui-history` draw from the `dvCanvas`, `dvMentions` and `dvHistory` registries. No plugin depends on the kit at runtime, and a noun can bypass it: `packages/dv/COMPONENT-TEMPLATE.md` shows the direct `registerComponent`, `registerReducer`, `registerReferenceKind` and `registerOperation` calls that components of other shapes, such as `@dv/shot-plan` and `@dv/timeline`, make themselves.
-
-## Kit membership
-
-A noun stays on the kit only while its items have the kit shape.
-
-- **No option for one noun.** The kit adds no option, branch, default or token that only one noun uses. A noun grows only through the four extension points.
-- **Leaving the kit.** A need that changes the version shape, the create or update semantics, or what `<id>@<version>` resolves to moves the noun off the kit. Its two packages then register with `dvProject` and the canvas registries directly. The move edits only those two packages, because every other plugin reads nouns through the kernel and canvas registries.
-- **Two nouns or none.** The kit keeps at least two nouns. When only one noun is left, the kit folds back into that noun.
-- **Expected first case.** Character is the noun expected to leave first, because it is expected to manage more of its own behavior.
-
-| A noun needs                                                          | Mechanism                                                      | Stays on the kit |
-| --------------------------------------------------------------------- | -------------------------------------------------------------- | ---------------- |
-| More version fields and form rows                                     | `fields`, `children`                                           | yes              |
-| A different editor, such as a character portrait panel                | `editor`                                                       | yes              |
-| More operations, such as training a LoRA or checking face consistency | the constructor of the noun's service class                    | yes              |
-| A different version meaning, or a different `<id>@<version>` result   | direct registration with `dvProject` and the canvas registries | no               |
+A noun uses the kit only while its items have the kit shape. A noun that needs a different shape stops using the kit and registers directly. The move edits only the noun's two packages, because every other plugin reads nouns through the registries. Character is the noun expected to stop using the kit first, because it is expected to manage more of its own behavior. The kit shape, the two declarations and what they register, the extension points and the membership rules are documented in [DreamVerse reference nouns](../../../../docs/dreamverse/subsystems/reference-nouns.md), and [Adding a reference noun](../../../../docs/dreamverse/cookbook/adding-a-reference-noun.md) gives the steps.
 
 ## Why the UI half lives in ui-kit
 
@@ -84,7 +40,7 @@ A noun costs two declarations. `@dv/character` has 46 non-blank `src` lines and 
 
 A kit change reaches every noun at once. A bug fix in the kit fixes all three nouns, and an option for one noun would burden all three. No automated check enforces the membership rule; review enforces it.
 
-Mounting a noun still edits wiring outside its pair: the bundle files under `packages/bundle/dv/`, the path aliases in `tsconfig.base.json` and the noun lists of `docs/subsystems/video-harness.md`.
+Mounting a noun still edits wiring outside its pair: the bundle files under `packages/bundle/dv/`, the path aliases in `tsconfig.base.json` and the noun lists of the `docs/dreamverse/` pages.
 
 The UI half shares a package with unrelated code: `@dv/ui-kit/src/client` holds 22 modules and 2404 lines, among them the `/api/dv` client, the wire types and the timeline geometry, and 14 UI packages depend on `@dv/ui-kit`.
 

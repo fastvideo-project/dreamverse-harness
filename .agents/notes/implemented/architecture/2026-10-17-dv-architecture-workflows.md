@@ -14,50 +14,7 @@ A workflow is an ordinary component in its own package `@dv/workflow-<key>`, wit
 
 `@dv/shot-plan` keeps `plan.create`, `plan.update`, the `plan` slice of versions, `dvShotPlan.get`, `dvShotPlan.shots`, and the structure checks of a plan. It injects only `dvProject`. The approval operation, take reuse, the choice of timeline, the GPU estimate, the model check of each shot, and the approval status of a version belong to the story workflow.
 
-## The workflow contract
-
-Each workflow package has these parts:
-
-- **Preview.** `<key>.preview` is `readOnly: true` and `confirm: 'never'`. It writes no record and reports the preview lines, the GPU estimate, and `problems`, every reason that a render would be refused.
-- **Approve.** `<key>.approve` is `confirm: 'always'`; its synchronous `confirmSummary` gives a head line and the preview lines. Its `prepareToolCall` and `precondition` refuse while `problems` is not empty, so every caller is refused before a record exists. Its execute writes the whole chain, with no step engine and no background process.
-- **Chain.** Every record that the approval writes carries `started_by` with the approval record, a slot, and an optional lane, as the [data flow note](2026-10-17-dv-architecture-data-flow.md) defines. Take reuse and timeline ownership test the starter record in the log with the workflow's `Owns` function and never read the workflow slice.
-- **Services.** The workflow runs no operation by name. Renders go through the generation service `dvShotRender` ([generation note](2026-10-17-dv-architecture-generation.md)), and layouts go through `dvTimeline.layout`.
-- **Skill.** The skill `<key>-directing` lives in the package and registers inside `ctx.inject(['skills'], …)`. No other skill names it or its `dv_<key>_*` tools.
-- **UI half.** `@dv/ui-workflow-<key>` registers one chain anchor and one History row, as the [UI registries note](2026-10-17-dv-architecture-ui-registries.md) defines.
-- **Test.** A REAL-composition test boots a test-only `cordis.yml` through the Loader, as `packages/dv/workflow-story/tests/fixture.ts` does.
-
-`scripts/dv-architecture.ts` checks the imports, operation names, and skill texts of each workflow; the [fitness test note](../process/2026-10-17-dv-architecture-fitness-test.md) states its rules.
-
-## The shot walk: `@dv/workflow-kit`
-
-`@dv/workflow-kit` (`packages/dv/workflow-kit/src/index.ts`) has no component, no service, and no operation. It names no workflow, and the fitness test reports a violation when its `src` exceeds 300 non-blank lines, so the library cannot grow into a step engine. Each function takes only the `GenerationApi` methods that it calls.
-
-- `walkShot` maps one shot of `dvShotPlan.shots` to render params; overrides, such as a variant's aspect ratio, win.
-- `planShots` parses the references of each shot and picks its reused take through `findTake` among the records that a `where` filter accepts. A continuing shot after a rendered shot never reuses.
-- `checkShots` collects the refusals of the shots that render; a continuing shot after a rendered shot is checked with `first_frame` marked as chained.
-- `shotLine` writes the preview line of one shot.
-- `scheduleShots` renders each step that keeps no take, each after the render before it, with `started_by: { record: call.approve, slot, lane }`.
-- `chainStarter` finds the starter of a record: its own `started_by`, else that of its `based_on` root, so a canvas retake stays in its workflow's chain. `takeFilter` and `keepTimeline` test that starter with the workflow's `Owns`.
-
-The reading functions write nothing, so a preview, a refusal check, and an approval read the same steps.
-
-## The story workflow: `@dv/workflow-story`
-
-`dvStory` injects `dvProject`, `dvShotPlan`, `dvShotRender`, and `dvTimeline` and registers the component key `story`. Its `Owns` function accepts a `story.approve` record whose `plan` param names the plan.
-
-`story.preview` (tool `dv_story_preview`) reports the preview lines, `gpu_seconds` (the sum of `dvShotRender.estimate` over the shots that render), and `problems`. `story.approve` (tool `dv_story_approve`) writes its chain in one execute as the `system` actor: one render per added or changed shot, then one `dvTimeline.layout` of every take in shot order. The layout reuses the plan's timeline only while `keepTimeline` finds a story approval of the plan as the starter of `dvTimeline.lastWrite` for that timeline. After another write, such as the user's edit, the layout creates the next free timeline and leaves the edited one unchanged.
-
-The `story` reducer folds each finished approval into `approvals` and `timelines` per plan. The skill `story-directing` holds the flow: preview, ask the user in bold, and approve in the next turn. `@dv/ui-workflow-story` anchors the records of an approval on the canvas node `plan:<PlanId>` and returns the approved versions of a plan; the plan editor of `@dv/ui-shot-plan` reads them through the registered chain anchors and imports no workflow package.
-
-## Adding a second workflow
-
-A second workflow, such as an ad workflow `@dv/workflow-ad` whose `ad.preview` and `ad.approve` take a list of aspect-ratio variants, is two packages plus wiring:
-
-1. Create `packages/dv/workflow-<key>` with its service, reducer, two operations, `Owns` function, `<key>-directing` skill, and REAL-composition test. It calls the kit functions and copies none of them. An ad workflow passes each variant as a `walkShot` override and as the `lane`, and chains each variant `after` the last render of the one before it.
-2. Create `packages/dv/ui-workflow-<key>` with one chain anchor and one History row, laid out as `@dv/ui-workflow-story` is.
-3. Add the wiring: the host and client rows in `packages/bundle/dv/cordis.patch.yml`, the dependency in `packages/bundle/dv/package.json`, the plugin map of `packages/bundle/dv/tests/composition.spec.ts`, the `tsconfig.base.json`, `tsconfig.host.json` and `tsconfig.client.json` entries, `pnpm-lock.yaml`, the lines that list the mounted workflows in the bundle README pair and the `docs/subsystems/video-harness.md` pair, and the lines that list the skills that plugins register: the `skill-filesystem` sentence of the bundle README pair and the skills table of the `docs/subsystems/video-harness.md` pair.
-
-No file of `@dv/project`, `@dv/shot-plan`, `@dv/shot-render`, `@dv/timeline`, `@dv/workflow-kit`, `@dv/workflow-story`, or the UI core changes. Two workflows can approve the same plan, because each reuses only the takes and timelines whose starter its own `Owns` accepts.
+The approval writes its whole chain inside its own execute, with no step engine and no background process, and runs no operation by name: renders go through the generation service `dvShotRender` ([generation note](2026-10-17-dv-architecture-generation.md)), and layouts go through `dvTimeline.layout`. Take reuse and timeline ownership test the starter record of the chain (`started_by`, [data flow note](2026-10-17-dv-architecture-data-flow.md)) in the log with the workflow's `Owns` function and never read the workflow slice, so two workflows can approve the same plan: each reuses only the takes and timelines whose starter its own `Owns` accepts. The shot walk `@dv/workflow-kit` names no workflow, and the fitness test reports a violation when its `src` exceeds 300 non-blank lines, so the library cannot grow into a step engine. Its reading functions write nothing, so a preview, a refusal check, and an approval read the same steps. The workflow contract, the approval chain, the shot walk and the story workflow are documented in [DreamVerse workflows](../../../../docs/dreamverse/subsystems/workflows.md), and the steps to add a workflow are in [Adding a workflow](../../../../docs/dreamverse/cookbook/adding-a-workflow.md).
 
 ## Alternatives considered
 

@@ -104,7 +104,7 @@ kind: "package-reference"
 <a id="further-exploration"></a>
 ## 进一步探索
 
-- [DreamVerse 各包](../../../docs/subsystems/video-harness.zh.md) — 记录、历史规则、过期标记，以及每个视图遵守的规则。
+- [DreamVerse 项目](../../../docs/dreamverse/subsystems/project.zh.md) — 记录、历史规则、过期标记，以及每个视图遵守的规则。
 - [`@dv/project`](../project/README.zh.md) — 路由背后的记录、撤销和重做以及过期标记，以及把用户记录告诉模型的项目摘要。
 - [`@dv/ui-canvas`](../ui-canvas/README.zh.md) 与 [`@dv/ui-timeline`](../ui-timeline/README.zh.md) — 其中两个浏览器消费者。
 

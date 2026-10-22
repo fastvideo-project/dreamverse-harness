@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包修改和读取 DreamVerse 项目。每次修改都是一条记录，由 `dvProject.run`（组件操作）或某个 `proj.*` 方法（接受过期记录）写在项目当前位置之后；`undo`、`redo` 和移到某一步只移动当前位置。[历史规则](../../../docs/subsystems/video-harness.zh.md#history-rules)说明哪些修改是步骤，以及撤销和重做做什么。组件用 `registerOperation` 注册操作，用 `registerReducer` 注册归约函数。挂载了 DSH `tools` 注册表时，每个操作都成为它的智能体工具 `dv_<把点换成下划线的操作名>`，与项目自己的 `dv_proj_*` 工具并列。挂载了 DSH `systemPrompt` 服务时，项目的规则和当前状态的项目摘要作为 `dv:project` 提示词段落到达智能体。`CONTRACTS.md` 规定了每个内部模块。
+使用本包修改和读取 DreamVerse 项目。每次修改都是一条记录，由 `dvProject.run`（组件操作）或某个 `proj.*` 方法（接受过期记录）写在项目当前位置之后；`undo`、`redo` 和移到某一步只移动当前位置。[历史规则](../../../docs/dreamverse/subsystems/project.zh.md#history-rules)说明哪些修改是步骤，以及撤销和重做做什么。组件用 `registerOperation` 注册操作，用 `registerReducer` 注册归约函数。挂载了 DSH `tools` 注册表时，每个操作都成为它的智能体工具 `dv_<把点换成下划线的操作名>`，与项目自己的 `dv_proj_*` 工具并列。挂载了 DSH `systemPrompt` 服务时，项目的规则和当前状态的项目摘要作为 `dv:project` 提示词段落到达智能体。`CONTRACTS.md` 规定了每个内部模块。
 
 ## 目录
 

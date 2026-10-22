@@ -14,48 +14,13 @@ Status: implemented
 
 生成由三部分组成（[分层 note](2026-10-17-dv-architecture-layers.zh.md) 负责层次图）：
 
-- `@dv/models`（基础层）是模型目录，即 `dvModels` 服务，提供方插件向其中注册条目。它是一个[能力 seam](2026-06-13-capability-seams.zh.md)。
+- `@dv/models`（基础层）是模型目录，即 `dvModels` 服务，提供方插件向其中注册条目。它是一个[能力 seam](2026-06-13-capability-seams.zh.md)。它不注册操作，也不写记录。
 - `@dv/generation`（基础层）是一个库。`defineGeneration(spec)` 把一个原语的声明变成一个 Cordis 服务，该服务拥有一个组件键和一个操作。它不点名任何原语。
-- 每个输入和输出签名对应一个原语包（领域层），它声明自己的类型并调用 `defineGeneration`。`@dv/shot-render` 是仓库中唯一的原语包。
+- 每个输入和输出签名对应一个原语包（领域层），它声明自己的类型并调用 `defineGeneration`。
 
 *原语*是一次模型调用的一种输入和输出签名：一个包、一个组件键、一个操作和一次 `defineGeneration` 调用。*任务*指明模型使用哪些输入，每个任务运行在一个原语上。
 
-### 按原语和任务索引的模型目录
-
-`packages/dv/models/src/types.ts` 声明两个开放接口。`PrimitiveTypes` 为每个原语保存一行，含其 `modality`、构建请求所依据的 `facts`、`request`、`render` 的 `result`，以及只有该原语读取的 `entry` 字段。`TaskMap` 把每个任务映射到其原语。模型目录只声明 `video` 行（entry 字段 `gpuSecondsPerVideoSecond`）以及任务 `t2v` 和 `ref2v`；其他包通过 `declare module '@dv/models'` 添加行或任务。`ModelEntry<T>` 取任务 `T` 所用那一行的类型。
-
-一个条目是一个提供方的一个模型服务一个任务，键为 `modality/task/provider/model`。Consumer 只通过自己的任务列表访问条目：`resolve(tasks, params)` 返回调用的键字段所指定的条目，否则抛出一个点名 `dv_models_list` 的拒绝；`whileServing(tasks, start)` 在有条目服务其中某个任务期间保持一项注册。模型目录不注册操作，也不写记录。
-
-agent 用 `dv_models_list`（键、描述和提示词 skill 名称）和 `dv_models_get`（一个条目的键、描述和 `schema()`：限制、输入，以及 `extra` 的参数）读取模型目录。`packages/dv/models/tests/models.spec.ts` 检查两个工具都不点名媒体类型。
-
-任务标签来自原语声明：`GenerationSpec.tasks` 为每个任务给出中文和英文标签，生成的服务用 `dvModels.labelTasks` 注册它们，`@dv/api` 在 `GET /api/dv/tasks` 提供它们，UI 包用 `packages/dv/ui-kit/src/client/tool-labels.ts` 的 `taskLabel` 显示它们。
-
-### `defineGeneration` 与 `GenerationApi`
-
-`defineGeneration`（`packages/dv/generation/src/index.ts`）固定所有不依赖签名的部分。该服务注册组件和任务标签，并通过 `whileServing` 注册操作，因此操作及其 agent 工具只在有模型服务其某个任务期间存在。参数依次是四个键字段和 `prompt`、声明自己的参数，然后是 `seed`（除非声明设置 `seed: false`）和 `extra`。每个生成操作都有 `deterministic: false`、`resource: 'gpu'`、`confirm: 'over_gpu_budget'` 和版本 `1`。`estimate` 是必需的，没有报告成本的记录以估计值作为成本。在任何记录之前，前置条件用 `check` 的每条理由拒绝调用；`execute` 在模型运行前再次校验请求。
-
-声明只提供不同的代码：`toRequest` 由模型的事实、参数、输入和种子构建请求；`toOutputs` 导入结果（`importOne` 导入一个输出）；`estimate`、`summarize`，以及可选的 `confirmText`、`toolParams` 和 `prepareToolCall`。
-
-该服务还为工作流实现 `GenerationApi`：`render`、`check(call, state, chained?)`、`estimate`、`findTake(state, call, where)` 和 `parseInputs`。链式角色以 `ref: null` 到达 `toRequest`，因此角色计数和提示词引用能看到它，而模型检查等到 `execute` 才运行；渲染路径不传入链式角色。`findTake` 只比较已声明的参数和输入。[工作流 note](2026-10-17-dv-architecture-workflows.zh.md) 负责 `@dv/workflow-kit` 如何使用这些方法。
-
-### 基于辅助库的 `shot.render`
-
-`@dv/shot-render` 是 `class DvShotRender extends defineGeneration(RENDER_DECLARATION)`：组件 `shot`、操作 `shot.render`、原语 `video`、任务 `t2v`（文字生成 / From text）和 `ref2v`（参考图生成 / From references）。其仅限工具的参数 `continue_from` 在 `prepareToolCall` 中变为 `first_frame` 输入；`toOutputs` 存储视频及其最后一帧静帧；`estimate` 用时长乘以条目的 `gpuSecondsPerVideoSecond`。
-
-### 模型线 skill
-
-模型目录拥有 skill `video-model-selection`。提供方以 `ModelEntry.promptSkill` 为每个模型和任务提供一个提示词 skill；`dvModels` 在条目存续期间注册它，仅供 agent 使用，提供方自己不注册任何 skill。提示词 skill 的描述写明模型和任务，不提及任何工具。模型目录和提供方的 skill 只使用模型目录的词，从不点名消费方的操作或工具（例如 `shot.render` 或 `dv_shot_render`），也不使用 `plan` 这类工作流词。[适应度测试 note](../process/2026-10-17-dv-architecture-fitness-test.zh.md) 负责执行这些规则的检查。
-
-### 添加原语
-
-原语包添加一个原语时不修改任何其他包：
-
-1. 在包自己的源码中声明行和任务，例如 `declare module '@dv/models' { interface PrimitiveTypes { image: {…} } interface TaskMap { t2i: 'image' } }`，并带上 `gpuSecondsPerCall` 这类 entry 字段。
-2. 默认导出 `defineGeneration({...})`，其中包含任务及其标签、输入角色、输出、`toRequest`、`toOutputs`、`estimate` 和 `summarize`。
-3. 提供方用 `import type` 从原语包导入请求类型（这是提供方唯一允许的对领域包的导入），从一个必需的配置字段填入 entry 字段，并注册自己的条目。
-4. bundle 挂载该原语包和提供方。
-
-没有任何原语具备的输入角色需要自己的原语：口型同步由 `shot.render` 所没有的输入角色生成视频，因此它是独立的原语包。输入角色已知的任务需要修改其提供方、其原语声明中的 `tasks` 记录，以及 `@dv/shot-plan` 的任务规则（`takesReferences`、`takesFirstFrame`）。`@dv/models` 之外只服务视频任务的测试 fake 用 `TaskOfPrimitive<'video'>` 为任务定型，因此添加一行 `TaskMap` 不会破坏其他包的测试。[UI 注册表 note](2026-10-17-dv-architecture-ui-registries.zh.md) 负责画布如何显示任意生成操作的记录。
+切分依据签名而不是媒体类型，因为模型之间变化的是签名。`defineGeneration` 把不依赖签名的部分一次固定下来：记录、GPU 确认、必需的估计值、种子，以及记录前的检查。原语包通过 `declare module '@dv/models'` 声明自己的模型目录行和任务，只提供不同的代码，因此添加原语既不修改 `@dv/models`，也不修改其他原语。`@dv/models` 之外只服务视频任务的测试 fake 用 `TaskOfPrimitive<'video'>` 为任务定型，因此添加一行 `TaskMap` 不会破坏其他包的测试。任务标签从声明经模型目录传到视图，模型目录注册每个提供方条目的提示词 skill，因此没有提供方复制注册代码，模型目录和提供方的 skill 也都不点名消费方。模型目录、辅助库、`shot.render`、模型线 skill 和提供方记录在 [DreamVerse 生成](../../../../docs/dreamverse/subsystems/generation.zh.md)中，添加原语的步骤记录在[添加生成原语](../../../../docs/dreamverse/cookbook/adding-a-generation-primitive.zh.md)中。
 
 ## 曾考虑的替代方案
 

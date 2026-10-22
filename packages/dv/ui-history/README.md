@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to give the web application a History panel beside the chat. The panel works like the History panel of an image editor ([history rules](../../../docs/subsystems/video-harness.md#history-rules)): it is one list of the steps of the open project from every actor, surface, and chat session, newest first. The step at the current position carries 当前 / Current, and the steps after it, which redo brings back, are greyed. Each row shows who did it, when, the status, and a thumbnail; selecting a row plays its output and, for a step at or before the current position, focuses it on the canvas or timeline. The header holds the undo and redo buttons, and each row's ⋮ menu offers 回到这一步 / Go back to this step. These moves write no record; a new step after a move discards the greyed steps. The `dv-history` right-Sidebar tab type shows the panel of the project the shell has open.
+Use this package to give the web application a History panel beside the chat. The panel works like the History panel of an image editor ([history rules](../../../docs/dreamverse/subsystems/project.md#history-rules)): it is one list of the steps of the open project from every actor, surface, and chat session, newest first. The step at the current position carries 当前 / Current, and the steps after it, which redo brings back, are greyed. Each row shows who did it, when, the status, and a thumbnail; selecting a row plays its output and, for a step at or before the current position, focuses it on the canvas or timeline. The header holds the undo and redo buttons, and each row's ⋮ menu offers 回到这一步 / Go back to this step. These moves write no record; a new step after a move discards the greyed steps. The `dv-history` right-Sidebar tab type shows the panel of the project the shell has open.
 
 ## Table of Contents
 
@@ -73,7 +73,7 @@ A `dv:history-focus` event `{session, toolCall}` finds the record that tool call
 <a id="further-exploration"></a>
 ## Further Exploration
 
-- [History rules](../../../docs/subsystems/video-harness.md#history-rules) — which changes are steps, and what undo, redo and 回到这一步 do.
+- [History rules](../../../docs/dreamverse/subsystems/project.md#history-rules) — which changes are steps, and what undo, redo and 回到这一步 do.
 - [`@dv/api`](../api/README.md) — the history route and the undo and redo routes.
 - [`@dv/project`](../project/README.md) — the history query, undo and redo.
 - [`@dv/ui-kit`](../ui-kit/README.md) — the API client, the wire types, the window events, and the tool labels.

@@ -15,27 +15,11 @@ No run-time fact backed that claim. The bundle file `packages/bundle/dv/cordis.p
 
 ## Decision
 
-Slice merges stay required on the host and on the client. The client wire view is partial. Each owner of a slice defines what its absence means, once.
+Slice merges stay required on the host and on the client. The client wire view is partial: `WireState.components` has the type `WireComponents = Pick<ComponentStates, 'proj' | 'asset'> & Partial<ComponentStates>`, in which only `proj` and `asset` are required, because the `@dv/api` plugin that sends the state injects only their owners `dvProject` and `dvAssetPool`. Each owner of a slice defines what its absence means, once, in one accessor (`itemsOf`, `timelinesOf`, `plansOf`). The value of an absent slice is the owner's initial slice on the host, so a missing plugin and an empty slice draw the same view. The value type of a reference noun's `fields` entry is required as well, because the kit reducer in `packages/dv/reference-kit/src/index.ts` writes every declared field into every version. A reader of named slices types them with `Pick`, and its caller proves that they are present, as `SummarySource` in `packages/dv/api/src/summaries.ts` does.
 
-**Declarations.** A host package declares its slice type in its client face (`<k>/src/types.ts`) and merges `<k>: <K>State` into `ComponentStates` of `@dv/project/types`. Its UI package merges the same required key into `ComponentStates` of `@dv/ui-kit/types.ts` (`ui-<k>/src/client/index.ts`). A merged member means "the type of slice `<k>` when the slice is present". The value type of a reference noun's `fields` entry is required as well, because the kit reducer in `packages/dv/reference-kit/src/index.ts` writes every declared field into every version.
+The shared client test state `FixtureState` names the slices that it holds and holds no noun slice, so an added noun edits no shared file. A test-only key merged into the host `ComponentStates` stays optional, for example `test_ref?:` in `packages/dv/reference-kit/tests/support.ts` and `reducers_test?:` in `packages/dv/project/tests/reducers.spec.ts`, because the root host type-check program holds every host test file, so a test key merged there reaches the host state type of every package. The case "draws no entry, @ item or version for a state without the slice of the noun" in `packages/dv/ui-kit/tests/reference-kit.client.spec.tsx` pins the absent-slice behavior of the kit.
 
-**The wire view.** `packages/dv/ui-kit/src/client/types.ts` states presence in one type:
-
-```
-export type WireComponents = Pick<ComponentStates, 'proj' | 'asset'> & Partial<ComponentStates>
-```
-
-`WireState.components` has the type `WireComponents`. The `proj` slice and the `asset` slice are always present, because the `@dv/api` plugin that sends the state injects their owners `dvProject` and `dvAssetPool` (`static inject` in `packages/dv/api/src/index.ts`). Any other slice has the type `<K>State | undefined`.
-
-**Absence.** In the browser, an absent slice is a real state: the server has not loaded the host plugin that owns it. The value of an absent slice is the owner's initial slice on the host, so a missing plugin and an empty slice draw the same view. Each owner writes that value in one accessor:
-
-- `itemsOf(spec, state)`, defined as `spec.slice(state) ?? {}` in `packages/dv/ui-kit/src/client/reference-kit.tsx`, serves every reference noun. `newestOf`, `versionOf` and `ReferenceEditor` read through `itemsOf`. The value `{}` is the initial slice that `defineReference` gives a noun on the host, so a missing noun shows no canvas node, no `@` item and no version. `ReferenceUiSpec.slice` returns `… | undefined`, and a noun's `slice: state => state.components.character` takes that type with no edit in the noun package.
-- `timelinesOf` in `packages/dv/ui-timeline/src/client/timelines.ts` returns `state.components.timeline?.timelines ?? []`.
-- `plansOf` in `packages/dv/ui-shot-plan/src/client/PlanEditor.tsx` returns `state.components.plan?.plans ?? {}`. The canvas entries in `packages/dv/ui-shot-plan/src/client/index.ts` and the `PlanEditor` component both call `plansOf`.
-
-A UI package whose host package has no client face reads its slice through the `[key: string]: unknown` index signature of the client `ComponentStates` and narrows the value with a type guard; `@dv/ui-workflow-story` reads the `story` slice this way with `isStorySlice`.
-
-**Readers of several slices.** Generic client code, such as the canvas of `@dv/ui-canvas`, takes `WireState` and reads only `proj` and `asset`. It reads a noun only through the descriptors that the noun's owner registers, as the [UI registries note](2026-10-17-dv-architecture-ui-registries.md) describes. Every `state.components.<k>` read in `packages/dv/ui-*/src` sits in the package that owns `<k>`. A reader of named slices types them with `Pick`, and its caller proves that they are present: `SummarySource` in `packages/dv/api/src/summaries.ts` takes `Pick<ComponentStates, 'proj' | 'timeline'>`. The e2e type `WireState` in `packages/dv/e2e/tests/wire-state.ts` types the slices of a full bundle as present.
+The declarations, the wire view, the accessors and `FixtureState` are documented in [User interface](../../../../docs/dreamverse/subsystems/ui.md#wire-types).
 
 ## The Cordis mapping
 
@@ -49,12 +33,6 @@ The model copies how Cordis types its services. Cordis declares a service once a
 | The `inject` list of a plugin names the services that it holds                                                                                                                                                   | `FixtureState` names the slices that the shared test state holds                                                                                      |
 
 On the host, the reducer registry is the run-time fact behind presence: `reduceChain` in `packages/dv/project/src/reducers.ts` starts every registered slice from its reducer's initial slice, and `componentStates` asserts the full `ComponentStates` type once. In the browser, a slice is only a field of the JSON that the server sent, and the browser's Cordis instance does not know which host plugins the server loaded, so the client state takes the `ctx.get` form.
-
-## Test fixtures
-
-`fixtureState()` in `packages/dv/ui-kit/tests/fixture.client.tsx` returns `FixtureState`, defined as `WireState & { components: Pick<ComponentStates, 'plan' | 'timeline'> }`. It holds no noun slice. `withTestRef<S extends WireState>(state: S): S` adds the test noun and keeps the caller's type. The client test noun `test_ref` merges into `ComponentStates` as a required key in the same fixture file. A noun test assigns its whole slice, as `state.components.character = { [id]: [ … ] }` does in `packages/dv/ui-character/tests/ui-character.client.spec.tsx`. A client test literal lists only the slices that the test reads, with no cast. The case "draws no entry, @ item or version for a state without the slice of the noun" in `packages/dv/ui-kit/tests/reference-kit.client.spec.tsx` pins the absent-slice behavior of the kit.
-
-A test-only key merged into the host `ComponentStates` stays optional, for example `test_ref?:` in `packages/dv/reference-kit/tests/support.ts` and `reducers_test?:` in `packages/dv/project/tests/reducers.spec.ts`. The root host type-check program holds every host test file, so a test key merged there reaches the host state type of every package.
 
 ## Alternatives considered
 

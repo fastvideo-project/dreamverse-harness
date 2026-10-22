@@ -81,7 +81,7 @@ kind: "package-reference"
 
 - [`@dv/shot-render`](../../dv/shot-render/README.zh.md) — 渲染版本并把其分块写入本服务的操作。
 - [`@dv/project`](../../dv/project/README.zh.md) — socket 转发的记录事件和 line 事件。
-- [DreamVerse 包](../../../docs/subsystems/video-harness.zh.md) — DreamVerse 各包如何组合。
+- [DreamVerse 架构](../../../docs/dreamverse/architecture.zh.md) — DreamVerse 各包如何组合。
 - [`dsh-host-webserver`](../../host/webserver/README.zh.md) — 提供升级路由的 web 服务器。
 
 -----

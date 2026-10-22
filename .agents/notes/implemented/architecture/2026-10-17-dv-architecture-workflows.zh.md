@@ -10,54 +10,11 @@ Status: implemented
 
 ## 决策
 
-工作流是一个普通组件，位于自己的包 `@dv/workflow-<key>` 中，组件键为 `<key>`。它拥有一个预览审批的只读操作、一个执行审批的写操作、记录其审批的切片，以及承载其流程的 skill。每个工作流都需要且不含策略的代码放在库 `@dv/workflow-kit` 中。组合包只带一个工作流，即故事工作流 `@dv/workflow-story`（服务 `dvStory`），以及它的浏览器一半 `@dv/ui-workflow-story`。[分层注记](2026-10-17-dv-architecture-layers.zh.md)给出这两层在依赖顺序中的位置。
+工作流是一个普通组件，位于自己的包 `@dv/workflow-<key>` 中，组件键为 `<key>`。它拥有一个预览审批的只读操作、一个执行审批的写操作、记录其审批的切片，以及承载其流程的 skill。每个工作流都需要且不含策略的代码放在库 `@dv/workflow-kit` 中。组合包只带一个工作流，即故事工作流 `@dv/workflow-story`（服务 `dvStory`），以及它的浏览器半部 `@dv/ui-workflow-story`。[分层注记](2026-10-17-dv-architecture-layers.zh.md)给出这两层在依赖顺序中的位置。
 
-`@dv/shot-plan` 保留 `plan.create`、`plan.update`、记录各版本的 `plan` 切片、`dvShotPlan.get`、`dvShotPlan.shots`，以及计划的结构检查。它只注入 `dvProject`。审批操作、成片复用、时间线的选择、GPU 估算、每个镜头的模型检查以及版本的审批状态都归故事工作流所有。
+`@dv/shot-plan` 保留 `plan.create`、`plan.update`、记录各版次的 `plan` 切片、`dvShotPlan.get`、`dvShotPlan.shots`，以及计划的结构检查。它只注入 `dvProject`。审批操作、版本（take）复用、时间线的选择、GPU 估算、每个镜头的模型检查以及版次的审批状态都归故事工作流所有。
 
-## 工作流约定
-
-每个工作流包有以下部分：
-
-- **预览。** `<key>.preview` 为 `readOnly: true` 且 `confirm: 'never'`。它不写记录，报告预览行、GPU 估算和 `problems`，即渲染会被拒绝的每条原因。
-- **审批。** `<key>.approve` 为 `confirm: 'always'`；它的同步 `confirmSummary` 给出标题行和预览行。只要 `problems` 不为空，它的 `prepareToolCall` 和 `precondition` 就拒绝调用，所以每个调用方都在记录产生之前被拒绝。它的 execute 写完整条链，不经过步骤引擎，也不经过后台进程。
-- **链。** 审批写入的每条记录都带 `started_by`，内容为审批记录、一个 slot 和可选的 lane，字段定义见[数据流注记](2026-10-17-dv-architecture-data-flow.zh.md)。成片复用和时间线归属都用工作流的 `Owns` 函数检查日志中的起始记录，从不读取工作流切片。
-- **服务。** 工作流不按名称运行任何操作。渲染经过生成服务 `dvShotRender`（[生成注记](2026-10-17-dv-architecture-generation.zh.md)），排布经过 `dvTimeline.layout`。
-- **Skill。** skill `<key>-directing` 放在包内，并在 `ctx.inject(['skills'], …)` 内注册。其他 skill 都不指名它，也不指名它的 `dv_<key>_*` 工具。
-- **UI 一半。** `@dv/ui-workflow-<key>` 注册一个链锚点和一个 History 行，二者的定义见 [UI 注册表注记](2026-10-17-dv-architecture-ui-registries.zh.md)。
-- **测试。** 一个 REAL-composition 测试通过 Loader 启动仅供测试的 `cordis.yml`，做法同 `packages/dv/workflow-story/tests/fixture.ts`。
-
-`scripts/dv-architecture.ts` 检查每个工作流的 import、操作名称和 skill 文本；[适应度测试注记](../process/2026-10-17-dv-architecture-fitness-test.zh.md)列出它的规则。
-
-## 镜头遍历：`@dv/workflow-kit`
-
-`@dv/workflow-kit`（`packages/dv/workflow-kit/src/index.ts`）没有组件、没有服务，也没有操作。它不指名任何工作流；它的 `src` 超过 300 个非空行时，适应度测试报告一条违规，所以这个库无法长成步骤引擎。每个函数只接收它调用的那些 `GenerationApi` 方法。
-
-- `walkShot` 把 `dvShotPlan.shots` 的一个镜头映射为渲染参数；覆盖值优先，例如某个变体的画幅。
-- `planShots` 解析每个镜头的参考，并通过 `findTake` 在 `where` 过滤器接受的记录中选出它复用的成片。接在需要渲染的镜头之后的接续镜头从不复用。
-- `checkShots` 收集需要渲染的镜头的拒绝原因；接在需要渲染的镜头之后的接续镜头，在检查时把 `first_frame` 标为由链提供。
-- `shotLine` 写出一个镜头的预览行。
-- `scheduleShots` 为每个不保留成片的步骤发起渲染，每次排在前一次渲染之后，并带 `started_by: { record: call.approve, slot, lane }`。
-- `chainStarter` 找出一条记录的起始记录：它自己的 `started_by`，否则为其 `based_on` 根记录的 `started_by`，所以画布上的重拍仍留在其工作流的链中。`takeFilter` 和 `keepTimeline` 用工作流的 `Owns` 检查这条起始记录。
-
-读取用的函数不写任何东西，所以预览、拒绝检查和审批读到相同的步骤。
-
-## 故事工作流：`@dv/workflow-story`
-
-`dvStory` 注入 `dvProject`、`dvShotPlan`、`dvShotRender` 和 `dvTimeline`，并注册组件键 `story`。它的 `Owns` 函数接受 `plan` 参数指名该计划的 `story.approve` 记录。
-
-`story.preview`（工具 `dv_story_preview`）报告预览行、`gpu_seconds`（需要渲染的镜头的 `dvShotRender.estimate` 之和）和 `problems`。`story.approve`（工具 `dv_story_approve`）以 `system` 行为者在一次 execute 中写完它的链：每个新增或改动的镜头渲染一次，然后一次 `dvTimeline.layout` 按镜头顺序排布每个成片。只有当 `keepTimeline` 发现该时间线的 `dvTimeline.lastWrite` 的起始记录是该计划的一次故事审批时，排布才复用计划的时间线。若之后有其他写入，例如用户的编辑，排布会创建下一个空闲时间线，并保持被编辑的时间线不变。
-
-`story` reducer 把每次完成的审批按计划折叠进 `approvals` 和 `timelines`。skill `story-directing` 承载流程：预览，用粗体询问用户，在下一轮审批。`@dv/ui-workflow-story` 把一次审批的记录挂在画布节点 `plan:<PlanId>` 上，并返回计划已审批的版本；`@dv/ui-shot-plan` 的计划编辑器通过已注册的链锚点读取它们，不 import 任何工作流包。
-
-## 添加第二个工作流
-
-第二个工作流，例如 `ad.preview` 和 `ad.approve` 接收一组画幅变体的广告工作流 `@dv/workflow-ad`，由两个包加上接线组成：
-
-1. 创建 `packages/dv/workflow-<key>`，包含它的服务、reducer、两个操作、`Owns` 函数、`<key>-directing` skill 和 REAL-composition 测试。它调用 kit 的函数，不复制其中任何一个。广告工作流把每个变体同时作为 `walkShot` 的覆盖值和 `lane` 传入，并把每个变体以 `after` 接在前一个变体的最后一次渲染之后。
-2. 创建 `packages/dv/ui-workflow-<key>`，包含一个链锚点和一个 History 行，布局同 `@dv/ui-workflow-story`。
-3. 加上接线：`packages/bundle/dv/cordis.patch.yml` 中的 host 行和 client 行、`packages/bundle/dv/package.json` 中的依赖、`packages/bundle/dv/tests/composition.spec.ts` 的插件映射、`tsconfig.base.json`、`tsconfig.host.json` 和 `tsconfig.client.json` 中的条目、`pnpm-lock.yaml`，以及组合包 README 对和 `docs/subsystems/video-harness.md` 对中列出已挂载工作流的行，还有列出插件所注册技能的行：组合包 README 对中的 `skill-filesystem` 句子，以及 `docs/subsystems/video-harness.md` 对中的技能表。
-
-`@dv/project`、`@dv/shot-plan`、`@dv/shot-render`、`@dv/timeline`、`@dv/workflow-kit`、`@dv/workflow-story` 和 UI 核心的文件都不改动。两个工作流可以审批同一个计划，因为每个工作流只复用起始记录被自己的 `Owns` 接受的成片和时间线。
+审批在自己的 execute 中写完整条链，不经过步骤引擎，也不经过后台进程，并且不按名称运行任何操作：渲染经过生成服务 `dvShotRender`（[生成注记](2026-10-17-dv-architecture-generation.zh.md)），排布经过 `dvTimeline.layout`。版本复用和时间线归属都用工作流的 `Owns` 函数检查日志中链的起始记录（`started_by`，[数据流注记](2026-10-17-dv-architecture-data-flow.zh.md)），从不读取工作流切片，因此两个工作流可以审批同一个计划：每个工作流只复用起始记录被自己的 `Owns` 接受的版本和时间线。镜头遍历库 `@dv/workflow-kit` 不指名任何工作流；它的 `src` 超过 300 个非空行时，适应度测试报告一条违规，所以这个库无法长成步骤引擎。它的读取函数不写任何东西，所以预览、拒绝检查和审批读到相同的步骤。工作流约定、审批链、镜头遍历和故事工作流记述在 [DreamVerse 工作流](../../../../docs/dreamverse/subsystems/workflows.zh.md)中，添加工作流的步骤见[添加工作流](../../../../docs/dreamverse/cookbook/adding-a-workflow.zh.md)。
 
 ## 曾考虑的替代方案
 

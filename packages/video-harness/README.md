@@ -22,7 +22,7 @@ This group holds one package, `stream` (`@video-harness/stream`), a Cordis servi
 <a id="packages"></a>
 ## Packages
 
-The [DreamVerse packages page](../../docs/subsystems/video-harness.md) explains how these packages fit together.
+The [live render stream section](../../docs/dreamverse/subsystems/shots-and-timeline.md#live-render-stream) of the shots and timeline page explains how `shot.render` writes to `stream` and what a browser receives on the `/vh/ws` route.
 
 | Package | Role |
 | --- | --- |
@@ -31,7 +31,7 @@ The [DreamVerse packages page](../../docs/subsystems/video-harness.md) explains 
 <a id="related-documentation"></a>
 ## Related documentation
 
-- [DreamVerse packages](../../docs/subsystems/video-harness.md) — the layers, the operation record, and the rules views and the agent follow.
+- [Shots and timeline](../../docs/dreamverse/subsystems/shots-and-timeline.md) — plans, renders and their takes, the live render stream, and timelines.
 - [`@dv/api`](../dv/api/README.md) — the browser API that the interface plugins read state from.
 
 <a id="dev-note"></a>

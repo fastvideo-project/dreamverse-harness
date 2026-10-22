@@ -16,9 +16,9 @@ Every type a generated signature references must resolve somewhere in the folder
 
 Every `packages/<group>/README.md` pair is a thin entry point in one shape: a why-first intro paragraph, a package table (Package / Role / ctx key), and a closing pointer to the owning subsystems page. A group that declares no standalone subsystem reference is instead classified with a non-empty rationale in `GROUPS_WITHOUT_SUBSYSTEM_PAGE`. Load-bearing prose that outgrows that shape relocates to the owning subsystems page rather than being deleted.
 
-`verify-subsystem-pages` discovers groups from both group READMEs and child package manifests. It rejects a missing group README, a group with neither a reader-visible direct link to one English file under `docs/subsystems/` nor an explicit exemption, a blank or orphaned exemption, an exempt group that gains a link, and a link whose page is absent; code, comments, images, nested paths, and traversal do not satisfy ownership. The check runs as an independent `doc-sync` leaf, so adding a package group cannot silently omit its documentation owner.
+`verify-subsystem-pages` discovers groups from both group READMEs and child package manifests. It rejects a missing group README, a group with neither a reader-visible direct link to one English file under `docs/subsystems/` or `docs/dreamverse/subsystems/` nor an explicit exemption, a blank or orphaned exemption, an exempt group that gains a link, and a link whose page is absent; code, comments, images, nested paths, and traversal do not satisfy ownership. The check runs as an independent `doc-sync` leaf, so adding a package group cannot silently omit its documentation owner.
 
-The [subsystems README](../../../../docs/subsystems/README.md) indexes every page in the folder on both language sides; `scripts/project-doc-site.spec.ts` enforces one table row per page, so an added or merged page cannot silently miss the index.
+The [subsystems README](../../../../docs/subsystems/README.md) indexes every page in the folder on both language sides, as the [DreamVerse subsystems README](../../../../docs/dreamverse/subsystems/README.md) does for `docs/dreamverse/subsystems/`; `scripts/project-doc-site.spec.ts` enforces one table row per page in both folders, so an added or merged page cannot silently miss the index.
 
 ## Alternatives considered
 

@@ -37,7 +37,7 @@ patch 读取的环境变量：`DV_STATE_ROOT`（默认 `~/.local/state/dv`；下
 <a id="further-exploration"></a>
 ## 延伸阅读
 
-- [DreamVerse 各包](../../../docs/subsystems/video-harness.zh.md)
+- [DreamVerse 文档](../../../docs/dreamverse/README.zh.md)
 - [`@dv/models`](../../dv/models/README.zh.md)
 - [`@dv/fastvideo`](../../dv/fastvideo/README.zh.md)
 - [`@dv/chat-references`](../../dv/chat-references/README.zh.md)

@@ -212,3 +212,46 @@
 | workflow | 工作流 | | | |
 | wrapper | 包装层 | | | 软件层或 SDK 包装层 |
 | wrapper script | 包装脚本 | | | 可执行脚本包装层 |
+
+## DreamVerse 类（`docs/dreamverse/` 与 DreamVerse Agent Note）
+
+本节术语只用于 DreamVerse 文档和 DreamVerse Agent Note；"中文"列为英文的条目在中文正文中保留英文。界面文案以 [DreamVerse 术语表](../dreamverse/glossary.md)的 zh / en 列为准。
+
+| English | 中文 | 首次出现 | 不要译作 | 备注 |
+|---|---|---|---|---|
+| approval chain | 审批链 | | | 一次审批在其 execute 中写入的一组记录 |
+| browser half | 浏览器半部 | | 浏览器部分、浏览器一半 | 插件在浏览器中运行的 UI 包 `@dv/ui-<name>` |
+| change size check | 变更规模检查 | | | `scripts/dv-blast-radius.ts` |
+| chain anchor | 链锚点 | | | `dvCanvas.chainAnchors` 中的条目 |
+| client face | 客户端面 | | | 包的 `./types` 导出，与 host face 成对 |
+| component key | 组件键 | | 组件 key | 如 `proj`、`plan`、`timeline` |
+| descriptor | 描述符 | | | UI 注册表中的条目 |
+| fitness test | 适应度测试 | | | `scripts/dv-architecture.ts` |
+| free take | 自由版本 | | | 画布上不属于任何锚定链的版本 |
+| generation primitive | 生成原语 | | | 用 `defineGeneration` 声明的原语，如 `shot.render` |
+| host face | 宿主面 | | | 包根导出 `"."`，与 client face 成对 |
+| host half | 宿主半部 | | 宿主一半 | reference kit 的宿主包部分 `@dv/reference-kit` |
+| kit shape | kit 形状 | | | 引用名词条目的结构 |
+| live render stream | 实时渲染流 | | | `@video-harness/stream` |
+| model catalog | 模型目录 | | | `dvModels` |
+| model line | 模型线 | | | 如 `fasth3`；组合词写 `模型线 skill` |
+| owner listing | 所有者列表 | | | `pnpm dv:owners` |
+| placeholder clip | 占位片段 | | | 渲染尚未完成的片段 |
+| plan version | 版次 | | 版本 | 分镜计划的版本；界面文案为「分镜计划版次」 |
+| primitive | 原语 | | | |
+| record log | 记录日志 | | | 项目的 `records.jsonl` |
+| reducer | 归约函数 | | | 组件计算其切片的函数 |
+| reference kind | 引用种类 | | | `dvProject.registerReferenceKind` 注册的种类 |
+| reference kit | reference kit | | | `@dv/reference-kit` 与 `@dv/ui-kit` 中的 `reference-kit.tsx` |
+| reference noun | 引用名词 | | | 角色、场景、风格这类组件 |
+| shot walk | 镜头遍历 | | | `@dv/workflow-kit` 的函数 |
+| slice | 切片 | | | `ProjectState.components` 中一个组件的状态 |
+| staleness | 陈旧状态 | | 过期 | 与 stale → 陈旧 一致 |
+| starter record | 起始记录 | | 发起记录 | 记录的 `started_by` 所指的记录 |
+| take | 版本 | 版本（take） | 成片 | 一次 `shot.render` 调用的记录；引用名词的 version 也译作版本，所以首次出现带括注 |
+| takes in use | 在用的版本 | | | |
+| task | 生成任务 | | | 生成任务如 `t2v`、`ref2v`；界面文案为「生成方式」 |
+| UI core | UI 核心 | | UI core | `ui-core` 层的包 |
+| UI half | UI 半部 | | UI 一半 | 与 browser half 同义；reference kit 的 UI 半部是 `@dv/ui-kit` 的 `reference-kit.tsx` |
+| UI plugin | UI 插件 | | | `ui` 层的包 |
+| wire state | 协议状态 | | | `WireState`；沿用 wire format → 协议格式 |

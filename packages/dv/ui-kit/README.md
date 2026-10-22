@@ -56,6 +56,8 @@ import { DV_TIMELINE_INSERT_EVENT } from '@dv/ui-kit/workspace-events.ts'
 
 `subscribe` uses `EventSource` when the browser has it and polls every three seconds otherwise. Every bundle that follows a project shares one stream per project through `window.__dvEventSources`; `window.__dvStreams` counts the open streams.
 
+The shared client test state of the DreamVerse UI packages is `fixtureState()` in `tests/fixture.client.tsx`. It returns `FixtureState`, which is `WireState & { components: Pick<ComponentStates, 'plan' | 'timeline'> }`. It holds no noun slice. `withTestRef(state)` adds the test noun `test_ref` and keeps the type of its argument. A client test literal lists only the slices that the test reads. The e2e type `WireState` in `packages/dv/e2e/tests/wire-state.ts` types the slices of a full bundle as present.
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -85,7 +87,7 @@ import { DV_TIMELINE_INSERT_EVENT } from '@dv/ui-kit/workspace-events.ts'
 
 - [`@dv/api`](../api/README.md) — the routes and the JSON this client reads.
 - [`@dv/ui-canvas`](../ui-canvas/README.md) and [`@dv/ui-timeline`](../ui-timeline/README.md) — the two views that use the hooks and the bar.
-- [DreamVerse packages](../../../docs/subsystems/video-harness.md) — what a record, the history rules, and a stale mark mean.
+- [DreamVerse Project](../../../docs/dreamverse/subsystems/project.md) — what a record, the history rules, and a stale mark mean.
 
 -----
 

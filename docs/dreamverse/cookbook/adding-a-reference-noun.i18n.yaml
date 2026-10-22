@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/dreamverse/cookbook/adding-a-reference-noun.md
+adding-a-reference-noun.md: 1f80bb212c98f2ee0c4a79a08eb1fe40dd71be9a
+adding-a-reference-noun.zh.md: 37e478276e5f2387b15e8b51c1781a4530813b6d

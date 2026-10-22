@@ -419,19 +419,19 @@ describe('docsPages locale routes', () => {
     }
   })
 
-  it('indexes every subsystem page in both sides of the folder README', () => {
-    const pages = globSync(join(repositoryRoot, 'docs/subsystems/*.md'))
+  it.each(['docs/subsystems', 'docs/dreamverse/subsystems'])('indexes every subsystem page in both sides of the %s README', (folder) => {
+    const pages = globSync(join(repositoryRoot, folder, '*.md'))
       .map(page => basename(page))
       .filter(page => !page.endsWith('.zh.md') && page !== 'README.md')
       .sort()
     expect(pages.length).toBeGreaterThan(0)
     for (const readme of ['README.md', 'README.zh.md']) {
-      const rows = readFileSync(join(repositoryRoot, 'docs/subsystems', readme), 'utf8')
+      const rows = readFileSync(join(repositoryRoot, folder, readme), 'utf8')
       const missing = pages.filter((page) => {
         const target = readme.endsWith('.zh.md') ? page.replace(/\.md$/, '.zh.md') : page
         return !rows.includes(`| [${page}](${target}) |`)
       })
-      expect(missing, `${readme} must carry one table row per subsystem page`).toEqual([])
+      expect(missing, `${folder}/${readme} must carry one table row per subsystem page`).toEqual([])
     }
   })
 

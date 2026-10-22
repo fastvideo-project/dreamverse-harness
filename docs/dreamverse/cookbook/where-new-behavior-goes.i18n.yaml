@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/dreamverse/cookbook/where-new-behavior-goes.md
+where-new-behavior-goes.md: ed098908340be12a366160d729c65de2c30995cf
+where-new-behavior-goes.zh.md: 990af402cbbeca90883ae6d16b601c345eebf9cf

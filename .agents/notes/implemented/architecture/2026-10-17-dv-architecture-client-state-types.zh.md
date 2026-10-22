@@ -15,27 +15,11 @@ Status: implemented
 
 ## 决策
 
-切片合并在宿主和客户端上都保持必填。客户端的 wire 视图是部分的。每个切片的所有者只定义一次缺失的含义。
+切片合并在宿主和客户端上都保持必填。客户端的协议视图是部分的：`WireState.components` 的类型是 `WireComponents = Pick<ComponentStates, 'proj' | 'asset'> & Partial<ComponentStates>`，其中只有 `proj` 和 `asset` 是必填的，因为发送状态的 `@dv/api` 插件只注入了它们的所有者 `dvProject` 和 `dvAssetPool`。每个切片的所有者只在一个访问函数（`itemsOf`、`timelinesOf`、`plansOf`）中定义一次缺失的含义。缺失切片的值等于所有者在宿主上的初始切片，因此"插件未加载"和"切片为空"画出的视图相同。引用名词 `fields` 条目的值类型同样是必填的，因为 `packages/dv/reference-kit/src/index.ts` 中的 kit reducer 会把每个声明的字段写进每个版本。读取具名切片的代码用 `Pick` 为它们定类型，并由调用方证明它们存在，`packages/dv/api/src/summaries.ts` 中的 `SummarySource` 就是这样。
 
-**声明。** 宿主包在自己的客户端 face（`<k>/src/types.ts`）中声明切片类型，并把 `<k>: <K>State` 合并进 `@dv/project/types` 的 `ComponentStates`。它的 UI 包把同一个必填键合并进 `@dv/ui-kit/types.ts` 的 `ComponentStates`（`ui-<k>/src/client/index.ts`）。合并进来的成员表示"切片存在时，切片 `<k>` 的类型"。引用名词 `fields` 条目的值类型同样是必填的，因为 `packages/dv/reference-kit/src/index.ts` 中的 kit reducer 会把每个声明的字段写进每个版本。
+共享的客户端测试状态 `FixtureState` 列出它持有的切片，不持有任何名词切片，因此新增名词不修改任何共享文件。合并进宿主 `ComponentStates` 的仅测试用键保持可选，例如 `packages/dv/reference-kit/tests/support.ts` 中的 `test_ref?:` 和 `packages/dv/project/tests/reducers.spec.ts` 中的 `reducers_test?:`，因为根宿主类型检查程序包含每个宿主测试文件，合并到那里的测试键会进入每个包的宿主状态类型。`packages/dv/ui-kit/tests/reference-kit.client.spec.tsx` 中的用例"draws no entry, @ item or version for a state without the slice of the noun"固定了 kit 在切片缺失时的行为。
 
-**wire 视图。** `packages/dv/ui-kit/src/client/types.ts` 用一个类型表达存在性：
-
-```
-export type WireComponents = Pick<ComponentStates, 'proj' | 'asset'> & Partial<ComponentStates>
-```
-
-`WireState.components` 的类型是 `WireComponents`。`proj` 切片和 `asset` 切片始终存在，因为发送状态的 `@dv/api` 插件注入了它们的所有者 `dvProject` 和 `dvAssetPool`（`packages/dv/api/src/index.ts` 中的 `static inject`）。其他每个切片的类型是 `<K>State | undefined`。
-
-**缺失。** 在浏览器中，切片缺失是一种真实的状态：服务器没有加载拥有它的宿主插件。缺失切片的值等于所有者在宿主上的初始切片，因此"插件未加载"和"切片为空"画出的视图相同。每个所有者在一个访问函数中写出这个值：
-
-- `itemsOf(spec, state)` 在 `packages/dv/ui-kit/src/client/reference-kit.tsx` 中定义为 `spec.slice(state) ?? {}`，服务所有引用名词。`newestOf`、`versionOf` 和 `ReferenceEditor` 都通过 `itemsOf` 读取。值 `{}` 是 `defineReference` 在宿主上给名词的初始切片，因此缺失的名词不显示画布节点、`@` 项和版本。`ReferenceUiSpec.slice` 返回 `… | undefined`，名词的 `slice: state => state.components.character` 无需在名词包中修改就得到这个类型。
-- `packages/dv/ui-timeline/src/client/timelines.ts` 中的 `timelinesOf` 返回 `state.components.timeline?.timelines ?? []`。
-- `packages/dv/ui-shot-plan/src/client/PlanEditor.tsx` 中的 `plansOf` 返回 `state.components.plan?.plans ?? {}`。`packages/dv/ui-shot-plan/src/client/index.ts` 中的画布条目和 `PlanEditor` 组件都调用 `plansOf`。
-
-宿主包没有客户端 face 的 UI 包，通过客户端 `ComponentStates` 的 `[key: string]: unknown` 索引签名读取自己的切片，并用类型守卫收窄这个值；`@dv/ui-workflow-story` 就这样用 `isStorySlice` 读取 `story` 切片。
-
-**读取多个切片的代码。** 通用客户端代码（例如 `@dv/ui-canvas` 的画布）接收 `WireState`，只读取 `proj` 和 `asset`。它只通过名词所有者注册的描述符读取名词，见 [UI 注册表 Agent Note](2026-10-17-dv-architecture-ui-registries.zh.md)。`packages/dv/ui-*/src` 中每一处 `state.components.<k>` 读取都位于拥有 `<k>` 的包里。读取具名切片的代码用 `Pick` 为它们定类型，并由调用方证明它们存在：`packages/dv/api/src/summaries.ts` 中的 `SummarySource` 接收 `Pick<ComponentStates, 'proj' | 'timeline'>`。`packages/dv/e2e/tests/wire-state.ts` 中的 e2e 类型 `WireState` 把完整 bundle 的切片都定为存在。
+声明、wire 视图、访问函数和 `FixtureState` 记录在 [界面](../../../../docs/dreamverse/subsystems/ui.zh.md#wire-types) 中。
 
 ## Cordis 对应关系
 
@@ -49,12 +33,6 @@ export type WireComponents = Pick<ComponentStates, 'proj' | 'asset'> & Partial<C
 | 插件的 `inject` 列表列出它持有的服务                                                                                                                                                            | `FixtureState` 列出共享测试状态持有的切片                                                                                     |
 
 在宿主上，reducer 注册表是存在性背后的运行时事实：`packages/dv/project/src/reducers.ts` 中的 `reduceChain` 从每个已注册 reducer 的初始切片开始构建切片，`componentStates` 对完整的 `ComponentStates` 类型只断言一次。在浏览器中，切片只是服务器发来的 JSON 的一个字段，浏览器中的 Cordis 实例并不知道服务器加载了哪些宿主插件，所以客户端状态采用 `ctx.get` 的形式。
-
-## 测试 fixture
-
-`packages/dv/ui-kit/tests/fixture.client.tsx` 中的 `fixtureState()` 返回 `FixtureState`，其定义为 `WireState & { components: Pick<ComponentStates, 'plan' | 'timeline'> }`。它不持有任何名词切片。`withTestRef<S extends WireState>(state: S): S` 加入测试名词并保留调用方的类型。客户端测试名词 `test_ref` 在同一个 fixture 文件中以必填键合并进 `ComponentStates`。名词测试为自己的整个切片赋值，如 `packages/dv/ui-character/tests/ui-character.client.spec.tsx` 中的 `state.components.character = { [id]: [ … ] }`。客户端测试字面量只列出测试读取的切片，不需要类型断言。`packages/dv/ui-kit/tests/reference-kit.client.spec.tsx` 中的用例"draws no entry, @ item or version for a state without the slice of the noun"固定了 kit 在切片缺失时的行为。
-
-合并进宿主 `ComponentStates` 的仅测试用键保持可选，例如 `packages/dv/reference-kit/tests/support.ts` 中的 `test_ref?:` 和 `packages/dv/project/tests/reducers.spec.ts` 中的 `reducers_test?:`。根宿主类型检查程序包含每个宿主测试文件，因此合并到那里的测试键会进入每个包的宿主状态类型。
 
 ## 曾考虑的替代方案
 

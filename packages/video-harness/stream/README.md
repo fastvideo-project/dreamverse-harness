@@ -81,7 +81,7 @@ The `/vh/ws` route works as follows:
 
 - [`@dv/shot-render`](../../dv/shot-render/README.md) — the operation that renders a take and writes its chunks to this service.
 - [`@dv/project`](../../dv/project/README.md) — the record and line events the socket forwards.
-- [DreamVerse packages](../../../docs/subsystems/video-harness.md) — how the DreamVerse packages fit together.
+- [DreamVerse architecture](../../../docs/dreamverse/architecture.md) — how the DreamVerse packages fit together.
 - [`dsh-host-webserver`](../../host/webserver/README.md) — the web server that serves the upgrade route.
 
 -----

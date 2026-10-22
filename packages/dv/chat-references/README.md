@@ -48,7 +48,7 @@ A mention of a clip names the clip by its `ClipId`, which is unique in the proje
 <a id="further-exploration"></a>
 ## Further Exploration
 
-- [DreamVerse packages](../../../docs/subsystems/video-harness.md)
+- [DreamVerse agent and API](../../../docs/dreamverse/subsystems/agent-and-api.md)
 - [`@dv/project`](../project/README.md) for the current state, the records the expansion describes, and `holdToolCalls`
 - [`@dv/ui-composer`](../ui-composer/src/index.ts) for the composer that writes the mentions
 - [`@dv/bundle`](../../bundle/dv/README.md) for the profile that mounts everything

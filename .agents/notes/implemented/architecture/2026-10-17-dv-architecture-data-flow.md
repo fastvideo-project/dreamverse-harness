@@ -17,66 +17,11 @@ Every DreamVerse project change is a record that the kernel `@dv/project` (the `
 
 ## Decision
 
-`@dv/project` keeps mechanisms and open registries and names no plugin noun. It owns the record log, the history list, the operation runner and scheduler, stale marks, and the agent tools of operations. Plugins register their component keys, reducers, reference kinds and operations into it, each inside `ctx.effect`, so a disposed plugin removes its registrations. Data moves in one direction:
+`@dv/project` keeps mechanisms and open registries and names no plugin noun. It owns the record log, the history list, the operation runner and scheduler, stale marks, and the agent tools of operations. Plugins register their component keys, reducers, reference kinds and operations into it, each inside `ctx.effect`, so a disposed plugin removes its registrations. An operation declares its own display label, and a reference kind answers for its own versions, so no shared package lists the plugins.
 
-```
-agent tool call   view (POST /api/dv/operation)   plugin service (ctx.dv<Name>.<method>)
-        \                    |                              /
-         +-------------> dvProject.run <-------------------+
-                             |
-                             v
-          record line and update lines in <project>/records.jsonl
-                             |
-                             v
-          every registered reducer, record by record, in registration order
-                             |
-                             v
-          ProjectState.components: one slice per registered reducer
-                 |                                   |
-                 v                                   v
-   project summary (dv_proj_* tools,      WireState (GET /api/dv/state)
-   dv:project prompt section)                        |
-                                                     v
-                                        canvas, timeline, history, asset pool
-```
+Data moves in one direction. Every write from the agent, a view or a plugin service is a call of `dvProject.run`, which appends a record; the reducers compute the slices from the records; the agent and the views read the state again after the change and never edit a slice. A plugin runs only its own operations, and another plugin reaches them through the plugin's typed Cordis service. The kernel stores `started_by` and never reads it; workflows and UI code own its meaning. The [fitness test](../process/2026-10-17-dv-architecture-fitness-test.md) checks that `packages/dv/project/src` names no plugin key or noun and never reads `started_by`.
 
-Views and the agent never edit a slice. They write only by running an operation, and they read the state again after the change. The [fitness test](../process/2026-10-17-dv-architecture-fitness-test.md) checks that `packages/dv/project/src` names no plugin key or noun and never reads `started_by`.
-
-## Records, components and slices
-
-A project is three files under the store root: `project.json`, `records.jsonl` and `line.json`. Each `ProjectRecord` is one call of one operation, with its caller (`actor`, `surface`, `session`, `turn`, `tool_call`, `intent`), `params`, `inputs`, `outputs`, `based_on`, `supersedes`, the optional `started_by`, and a `status` that only moves forward. Update lines set the fields that change after the append. Only the record store reads or writes these files.
-
-The history list is the `parents[0]` ancestry of the last step (`tip`), and the project state is the state at the current position (`at`). `undo`, `redo` and `moveTo` move the position and write no record.
-
-A plugin calls `registerComponent(key)` before its reducer and operations; a second claim throws `component_exists`, and the kernel registers `proj` itself. `registerReducer` refuses an unregistered key (`invalid_params`) and a second reducer for one key (`reducer_exists`). The slice type joins `ComponentStates` by declaration merging ([client state types](2026-10-17-dv-architecture-client-state-types.md)). A key may have no reducer: `shot` and `inspect` register a key and operations only.
-
-`ReducerRegistry.reduceChain` passes each record of the chain through every registered reducer before the next record. A reducer is pure and ignores the records that it does not interpret.
-
-## Operations
-
-An operation name has the form `<key>.<verb>`, and `registerOperation` refuses a name outside the key of `OperationSpec.component`. `dvProject.run` is the one change path: it validates params and inputs, runs the operation's `precondition`, appends the `pending` record, and executes it at once or after the records in `after`. A `readOnly` operation writes no record.
-
-Each operation becomes the agent tool `dv_<name with _>`. `OperationSpec.label` holds the display name `{ zh, en }`; the kernel only stores it, `toWireOperation` sends it in `GET /api/dv/operations`, and `operationLabel` in `@dv/ui-kit` reads it. `DV_TOOL_LABELS` keeps only the `dv_proj_*`, `dv_asset_*` and `dv_models_*` tools, whose packages declare no label.
-
-A plugin runs only its own operations. Another plugin reaches them through the plugin's typed Cordis service: `dvTimeline.layout` runs `timeline.create` or `timeline.update` itself. [Workflows](2026-10-17-dv-architecture-workflows.md) compose these services.
-
-`StartedBy` is `{ record, slot, lane? }`: the record whose `execute` started the call, the caller's position for it (such as a shot slot) or null, and the caller's parallel sequence, such as an ad variant. The runner copies `RunRequest.started_by` onto the record, and the kernel never reads it. Workflows write the field, and `chainOf` in `packages/dv/ui-kit/src/client/chain.ts` reads it for the canvas and the history panel ([UI registries](2026-10-17-dv-architecture-ui-registries.md)).
-
-## References and staleness
-
-A `RecordInputRef` is an asset, `{ record, output }`, or a version of a reference kind, such as `{ character: 'c1', version: 2 }`. The text forms are the asset ID, `<record>#<n>` and `<id>@<n>`. For `<id>@<n>`, `parseInputRef` asks every kind's `createdBy` and needs exactly one answer; no answer or two answers throw `invalid_inputs`.
-
-A kind owner merges its key into `ReferenceKinds` and calls `registerReferenceKind` with a `ReferenceKindSpec`: `kind`, the owning `component`, and `assetsOf`, `createdBy` and `latest`, which each read the owner's slice. The kernel refuses the kinds `asset`, `record` and `version`, a second owner of a kind (`kind_exists`), and an unregistered component. Registering or removing a kind rebuilds every operation tool, because the `inputs` text lists the registered kinds. IDs are unique across kinds: a kind owner's create operation refuses an ID that `kindsWithId` lists. [Reference nouns](2026-10-17-dv-architecture-reference-nouns.md) describes `@dv/reference-kit`, which registers one kind per noun.
-
-The runner turns a version input into one `RecordInput` per asset of the version, each with its `resolved_asset`. The `proj` slice holds `records`, `created_by` (asset to record), `superseded` and `stale`. The producers of an input are the record that created its asset and, for a version, the record that `createdBy` names. A record is stale when one of its producers is superseded or stale. A supersede recomputes every mark in one forward pass, and a `proj.stale_accept` record (the tool `dv_proj_stale_accept`) removes one mark. `character.update` supersedes the record that wrote the current version, so every render that read `c1@1` becomes stale.
-
-## What the agent and the views read
-
-`projectSummary` in `packages/dv/project/src/proj-tools.ts` gives the agent `project_id`, `head` and the record count, then the `agentSummary` fields of each reducer in the alphabetical order of the component keys, then `stale` and the 12 most recent records. Two reducers that use one field name throw `invalid_params`. Every `dv_proj_*` tool except `dv_proj_history_list` returns this summary, and the `dv:project` system-prompt section shows it at every step for the bound project, beside rules that list the registered kinds.
-
-`toWireState` in `packages/dv/api/src/wire.ts` sends `project`, `head`, `tip`, the slices unchanged, and the assets that `mentionedAssets` collects: the outputs and resolved inputs of every record (these include the reference images of every version), the imported assets, and the timeline clips. `dvProject.subscribe` feeds the server-sent events at `/dv/events`, and `useProjectState` in `@dv/ui-kit` fetches the state again 150 ms after the last event of a burst. [Client state types](2026-10-17-dv-architecture-client-state-types.md) describes how the browser types these slices.
-
-A view writes through `DvClient.runOperation` (`POST /api/dv/operation`), and a canvas editor through `EntryEditorHost.run` on the same path. `ApiHandlers.runOperation` parses the inputs with `dvProject.parseInputs` and calls `dvProject.run` as actor `user`.
+The records, the registries, the run sequence and the state that the agent and the views read are documented in [DreamVerse project](../../../../docs/dreamverse/subsystems/project.md), and the one-direction data flow is drawn in [DreamVerse architecture](../../../../docs/dreamverse/architecture.md).
 
 ## Alternatives considered
 
