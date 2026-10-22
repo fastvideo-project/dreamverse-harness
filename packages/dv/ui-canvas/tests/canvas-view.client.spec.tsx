@@ -511,6 +511,25 @@ describe('CanvasView', () => {
     expect((await view.findByTestId('dv-canvas-node-editor')).textContent).toContain('GPU out of memory')
   })
 
+  it('shows the failure reason of a failed take only when its failure has a message', async () => {
+    const { view, node } = mount(true, (state) => {
+      state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g1' || entry.id === 'g2'
+        ? { ...entry, status: 'failed' as const, outputs: [], error: { code: 'operation_failed', message: entry.id === 'g2' ? 'GPU out of memory' : '' } }
+        : entry)
+    })
+    await waitFor(() => { node('g2') })
+    const select = (id: string): void => {
+      fireEvent.pointerDown(node(id), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+      fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
+    }
+    select('g1')
+    expect((await view.findByTestId('dv-canvas-node-editor')).textContent).not.toContain(zh['editor.failure'].replace('{message}', ''))
+    select('g2')
+    await waitFor(() => {
+      expect(view.getByTestId('dv-canvas-node-editor').textContent).toContain(zh['editor.failure'].replace('{message}', 'GPU out of memory'))
+    })
+  })
+
   it('opens the record a dv:canvas-focus asked for before mounting; empty-canvas clicks and Escape close the editor', async () => {
     window.dispatchEvent(new CustomEvent(DV_CANVAS_FOCUS_EVENT, { detail: { recordId: 'g2' } }))
     const { view, node } = mount()

@@ -656,7 +656,8 @@ function TakeForm(
       setRenderError(error instanceof Error ? error.message : String(error))
     })
   }
-  const failure = node.flags.failed ? record?.error?.message ?? null : null
+  // `||` also maps an empty message to null, so a failure without a reason shows no banner.
+  const failure = node.flags.failed ? record?.error?.message || null : null
   const fieldOf = (param: FormField): ReactNode => (
     <ParamField key={param.key} param={param} t={t} onText={(text) => { setTexts(current => ({ ...current, [param.key]: text })) }} />
   )
