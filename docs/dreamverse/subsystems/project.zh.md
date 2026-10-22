@@ -70,17 +70,26 @@
 
 下图显示一个项目的历史列表的三种状态。名字 `r1` 到 `r6` 代表记录 ID。
 
-```text
-after five steps      r1 ── r2 ── r3 ── r4 ── r5      line.json {tip: r5, at: r5}
-                                              ▲ at
-
-after two undos       r1 ── r2 ── r3 ── r4 ── r5      line.json {tip: r5, at: r3}
-                                  ▲ at                r4 and r5 show in gray; no record
-
-after a new step r6   r1 ── r2 ── r3 ── r6            line.json {tip: r6, at: r6}
-                                  │     ▲ at
-                                  └── r4 ── r5        discarded: out of the list,
-                                                      lines stay in records.jsonl
+```mermaid
+flowchart TB
+    subgraph five["After five steps: line.json {tip: r5, at: r5}"]
+        direction LR
+        a1[r1] --> a2[r2] --> a3[r3] --> a4[r4] --> a5[["r5<br/>tip, at"]]
+    end
+    subgraph undo["After two undos: line.json {tip: r5, at: r3}. No record is written."]
+        direction LR
+        b1[r1] --> b2[r2] --> b3[["r3<br/>at"]] --> b4["r4<br/>gray"] --> b5[["r5<br/>gray, tip"]]
+    end
+    subgraph write["After a new step r6: line.json {tip: r6, at: r6}"]
+        direction LR
+        c1[r1] --> c2[r2] --> c3[r3] --> c6[["r6<br/>tip, at"]]
+        subgraph gone["Discarded: lines stay in records.jsonl"]
+            direction LR
+            c4[r4] -.-> c5[r5]
+        end
+        c3 -.-> c4
+    end
+    five ~~~ undo ~~~ write
 ```
 
 ## 组件
@@ -161,26 +170,42 @@ precondition 之后，运行器追加 `pending` 记录。运行器把操作的 `
 - 输入指向未完成记录的调用；
 - 批准计划时排定的每次渲染。
 
-下图显示一次调用的顺序。第 2 到第 4 步在项目锁内运行，因此同一个项目上的两次调用从不同时写入。
+下图显示一次调用的顺序。第 5 到第 8 步在项目锁内运行，因此同一个项目上的两次调用从不同时写入。
 
-```text
-caller: agent dv_* tool │ POST /api/dv/operation │ plugin service
-   │
-   │  agent calls only: prepareToolCall, then the confirm policy
-   ▼
-dvProject.run
-   1  validate the params and the input roles
-   ├──► readOnly operation: precondition, then execute; no lock, no record
-   ▼
-   ┌─ project lock ────────────────────────────────────────────┐
-   │ 2  resolve each input to an asset                         │
-   │ 3  operation.precondition ──► refuse: no record written   │
-   │ 4  append the pending record with its supersedes          │
-   │    and discard the steps after the current position       │
-   └───────────────────────────────────────────────────────────┘
-   5  start at once, or queue in the scheduler until the records in after are done
-   6  reuse an equal deterministic record, or run execute
-   7  append the final update: outputs, cost, report
+```mermaid
+sequenceDiagram
+    autonumber
+    participant caller as Caller<br/>agent dv_* tool, view route,<br/>or plugin service
+    participant run as dvProject.run
+    participant store as Record store
+    participant comp as Owning component
+    opt agent tool call only
+        caller->>caller: prepareToolCall,<br/>then the confirm policy
+    end
+    caller->>run: run(request)
+    run->>run: validate the params and the input roles
+    break readOnly operation
+        run->>comp: precondition, then execute. No lock, no record.
+    end
+    critical project lock
+        run->>run: resolve each input to an asset
+        run->>comp: precondition
+        break precondition refuses
+            run-->>caller: reject, no record written
+        end
+        run->>store: append the pending record with its supersedes,<br/>discard the steps after at
+    end
+    opt the call has after
+        run->>run: wait in the scheduler until the records in after are done
+    end
+    alt deterministic, and an equal done record exists
+        run->>store: reuse the outputs of that record
+    else
+        run->>comp: execute, outside the lock
+        comp-->>run: outputs, cost, report
+    end
+    run->>store: append the final update: outputs, cost, report
+    run-->>caller: the record in its final status
 ```
 
 <a id="confirmation-in-the-conversation"></a>
@@ -252,23 +277,21 @@ agent 和视图以两种形式读取当前状态：
 
 只有 agent 或人决定重跑陈旧记录。`proj.stale_accept` 清除一条记录的标记。此后，该记录的消费者不会因它而变为陈旧。
 
-下图显示一个项目中的陈旧状态。名字 `r2` 到 `r7` 代表记录 ID。箭头表示哪条记录读取另一条记录写下的输出或版本。
+下图显示一个项目中的陈旧状态。名字 `r2` 到 `r7` 代表记录 ID。实线箭头表示哪条记录读取另一条记录写下的输出或版本。虚线箭头表示一条记录替代哪条记录，以及 `proj.stale_accept` 清除哪条记录的标记。
 
-```text
-r2  character.create    writes c1@1                 superseded by r5
- │ c1@1
- ▼
-r3  shot.render         reads c1@1                  stale because of r5
- │ r3#0
- ▼
-r4  asset.grab_still    reads r3#0                  stale because of r5
-
-r5  character.update    writes c1@2                 supersedes r2
- │ c1@2
- ▼
-r6  shot.render         reads c1@2                  not stale
-
-r7  proj.stale_accept   params {record: r4}         removes the mark of r4
+```mermaid
+flowchart TB
+    r2["r2 character.create<br/>writes c1@1<br/>superseded by r5"]
+    r3["r3 shot.render<br/>reads c1@1<br/>stale because of r5"]
+    r4["r4 asset.grab_still<br/>reads r3#0<br/>stale because of r5"]
+    r5["r5 character.update<br/>writes c1@2"]
+    r6["r6 shot.render<br/>reads c1@2<br/>not stale"]
+    r7["r7 proj.stale_accept<br/>params {record: r4}"]
+    r2 -- "c1@1" --> r3
+    r3 -- "r3#0" --> r4
+    r5 -- "c1@2" --> r6
+    r5 -. "supersedes" .-> r2
+    r7 -. "removes the mark" .-> r4
 ```
 
 <a id="deterministic-reuse"></a>

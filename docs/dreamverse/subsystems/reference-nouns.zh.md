@@ -27,34 +27,38 @@
 
 reference kit 只实现一次 kit 形状，分为两半。宿主半部是包 `@dv/reference-kit`，包含 `defineReference`。UI 半部是文件 `packages/dv/ui-kit/src/client/reference-kit.tsx`，包含 `defineReferenceUi` 和 `ReferenceEditor`，UI 包以 `@dv/ui-kit/reference-kit.tsx` 导入它。每个名词包对所属的半部调用一次，只填入各名词之间不同的部分。下图显示名词 `<k>` 的两次调用以及每次调用注册的内容。
 
-```text
-┌─ host package @dv/<k> ────────────────────────────────────────────┐
-│ export default class Dv<K> extends defineReference({              │
-│   service, component: '<k>', noun, meaning, reference, skill,     │
-│   fields? }) {}                                                   │
-└─────────────────────────────────┬─────────────────────────────────┘
-                                  │ the constructor injects dvProject
-                                  ▼
-  dvProject.registerComponent       component key <k>
-  dvProject.registerReducer         referenceReducer(spec)
-  dvProject.registerReferenceKind   reference kind <k>: <id>@<version>
-  dvProject.registerOperation       <k>.create   tool dv_<k>_create
-  dvProject.registerOperation       <k>.update   tool dv_<k>_update
-  skills.register                   skill <k>, while skills is present
+```mermaid
+flowchart TB
+  subgraph uiHalf["UI half"]
+    direction TB
+    uiCall["UI package @dv/ui-#lt;k#gt;<br/><br/>#lt;k#gt; = defineReferenceUi({<br/>id: '@dv/ui-#lt;k#gt;', key: '#lt;k#gt;',<br/>slice, label, mention,<br/>editor? })<br/>apply = #lt;k#gt;.apply"]
+    subgraph browser["browser services"]
+      direction LR
+      nodeTypes["dvCanvas.nodeTypes<br/>NodeType<br/>node ID #lt;k#gt;:#lt;id#gt;"]
+      takesInUse["dvCanvas.takesInUse<br/>references in use"]
+      versionKinds["dvCanvas.versionKinds<br/>VersionKind"]
+      editorSlot["slots: dv.canvas.editor<br/>editor body, key @dv/ui-#lt;k#gt;"]
+      mentions["dvMentions.kinds<br/>MentionKind, dv:#lt;k#gt;/#lt;id#gt;"]
+      history["dvHistory.rows<br/>HistoryRow, match #lt;k#gt;."]
+    end
+    uiCall -- "apply(ctx)" --> browser
+  end
 
-┌─ UI package @dv/ui-<k> ───────────────────────────────────────────┐
-│ export const <k> = defineReferenceUi({                            │
-│   id: '@dv/ui-<k>', key: '<k>', slice, label, mention, editor? }) │
-│ export const apply = <k>.apply                                    │
-└─────────────────────────────────┬─────────────────────────────────┘
-                                  │ apply(ctx)
-                                  ▼
-  dvCanvas.nodeTypes                NodeType, node ID <k>:<id>
-  dvCanvas.takesInUse               references in use
-  dvCanvas.versionKinds             VersionKind
-  slots: dv.canvas.editor           editor body, key @dv/ui-<k>
-  dvMentions.kinds                  MentionKind, dv:<k>/<id>
-  dvHistory.rows                    HistoryRow, match <k>.
+  subgraph hostHalf["host half"]
+    direction TB
+    hostCall["host package @dv/#lt;k#gt;<br/><br/>class Dv#lt;K#gt; extends<br/>defineReference({<br/>service, component: '#lt;k#gt;',<br/>noun, meaning, reference,<br/>skill, fields? })"]
+    subgraph dvProject["dvProject"]
+      direction LR
+      regComponent["registerComponent<br/>component key #lt;k#gt;"]
+      regReducer["registerReducer<br/>referenceReducer(spec)"]
+      regKind["registerReferenceKind<br/>reference kind #lt;k#gt;: #lt;id#gt;@#lt;version#gt;"]
+      regCreate["registerOperation<br/>#lt;k#gt;.create, tool dv_#lt;k#gt;_create"]
+      regUpdate["registerOperation<br/>#lt;k#gt;.update, tool dv_#lt;k#gt;_update"]
+    end
+    skills["skills.register<br/>skill #lt;k#gt;"]
+    hostCall -- "the constructor<br/>injects dvProject" --> dvProject
+    hostCall -- "while skills<br/>is present" --> skills
+  end
 ```
 
 ## 宿主声明：`defineReference`

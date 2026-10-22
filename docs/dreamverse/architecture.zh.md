@@ -20,34 +20,44 @@
 5. 常量 `SURFACE` 和 `UI_CORE` 列出 `surface` 和 `ui-core` 包。
 6. 其他所有 `ui-*` 目录是 `ui` 包，其他所有包是 `domain` 插件。
 
-新增 `base`、`surface` 或 `ui-core` 包时，把它的目录名加进 `BASE`、`SURFACE` 或 `UI_CORE`。下图给出十个层。浏览器程序编译两个 UI 层，宿主程序编译其他层。每个 import 都指向下方。
+新增 `base`、`surface` 或 `ui-core` 包时，把它的目录名加进 `BASE`、`SURFACE` 或 `UI_CORE`。下图给出十个层。浏览器程序编译两个 UI 层，宿主程序编译其他层。`@dv/bundle` 组合两个程序的插件，它不导入任何包。实线箭头是值导入，虚线箭头是 `import type`。每个 import 都指向下方。
 
-```text
- Client program: browser code, root tsconfig.client.json
- ┌──────────────────────────────────────────────────────────────────┐
- │ ui            @dv/ui-<name>: the browser half of one plugin      │
- │   │                                                              │
- │   ▼ import values from @dv/ui-kit only                           │
- │ ui-core       @dv/ui-kit  @dv/ui-canvas  @dv/ui-history          │
- │               @dv/ui-shell  @dv/ui-composer                      │
- └──┬───────────────────────────────────────────────────────────────┘
-    │ ui only: import type from the paired client face @dv/<x>/types
-    ▼
- Host program: Node code, root tsconfig.host.json
- ┌──────────────────────────────────────────────────────────────────┐
- │ bundle        @dv/bundle: one Cordis row per plugin, no imports  │
- │                                                                  │
- │ │ surface       @dv/api  @dv/chat-references  @dv/mcp-presets    │
- │ │ workflow      @dv/workflow-story                               │
- │ │ workflow-lib  @dv/workflow-kit                                 │
- │ │ domain        @dv/character  @dv/location  @dv/style           │
- │ │               @dv/shot-plan  @dv/shot-render  @dv/timeline     │
- │ │               @dv/inspector                                    │
- │ │ provider      @dv/fastvideo  @dv/fastvideo-generation-client   │
- │ │ base          @dv/models  @dv/generation  @dv/asset-pool       │
- │ │               @dv/ffmpeg  @dv/reference-kit                    │
- │ ▼ kernel        @dv/project                                      │
- └──────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+  bundle(["bundle<br/>@dv/bundle"])
+  subgraph client["Client program: browser code, tsconfig.client.json"]
+    direction TB
+    ui["ui<br/>@dv/ui-#lt;name#gt;<br/>one per plugin"]
+    uicore["ui-core<br/>@dv/ui-kit<br/>@dv/ui-canvas<br/>@dv/ui-history<br/>@dv/ui-shell<br/>@dv/ui-composer"]
+  end
+  subgraph host["Host program: Node code, tsconfig.host.json"]
+    direction TB
+    provider["provider<br/>@dv/fastvideo<br/>@dv/fastvideo-generation-client"]
+    workflow["workflow<br/>@dv/workflow-story"]
+    wlib["workflow-lib<br/>@dv/workflow-kit"]
+    surface["surface<br/>@dv/api<br/>@dv/chat-references<br/>@dv/mcp-presets"]
+    domain["domain<br/>@dv/character<br/>@dv/location<br/>@dv/style<br/>@dv/shot-plan<br/>@dv/shot-render<br/>@dv/timeline<br/>@dv/inspector"]
+    subgraph core["kernel and base: values for every host layer"]
+      direction LR
+      base["base<br/>@dv/models<br/>@dv/generation<br/>@dv/asset-pool<br/>@dv/ffmpeg<br/>@dv/reference-kit"]
+      kernel["kernel<br/>@dv/project"]
+    end
+  end
+  bundle -- "one Cordis row per plugin" --> client
+  bundle -- "one Cordis row per plugin" --> host
+  ui -- "values from @dv/ui-kit only" --> uicore
+  ui -. "ui only: import type<br/>@dv/#lt;x#gt;/types" .-> host
+  workflow --> wlib
+  workflow --> domain
+  wlib -. "import type" .-> domain
+  provider -. "import type" .-> domain
+  surface -. "import type" .-> domain
+  surface --> core
+  wlib --> core
+  provider --> core
+  domain --> core
+  workflow --> core
+  base --> kernel
 ```
 
 每一层有一个角色：
@@ -88,18 +98,19 @@
 
 UI 包需要读取的宿主包有两个面。宿主面是包的根入口（`"."` → `src/index.ts`），它持有 Cordis 插件及其服务。客户端面是 `exports["./types"]` → `src/types.ts`，它持有浏览器程序编译的切片类型和记录类型。每个面属于一个程序。下图给出 `@dv/character` 的两个面，`@dv/ui-character` 用 `import type` 读取客户端面。
 
-```text
-                @dv/character (packages/dv/character/)
-        ┌──────────────────────────┴───────────────────────────┐
-        ▼                                                      ▼
- host face "."                                   client face "./types"
- src/index.ts                                    src/types.ts
- the Cordis plugin and its services              the slice and record types
-        │                                                      │
-        │ tsconfig.json                                        │ tsconfig.client.json
-        ▼                                                      ▼
- host program                                    client program
- root tsconfig.host.json                         root tsconfig.client.json
+```mermaid
+flowchart TB
+  pkg["@dv/character<br/>packages/dv/character/"]
+  uichar["@dv/ui-character"]
+  hostface["host face: exports #quot;.#quot;<br/>src/index.ts<br/>the Cordis plugin and its services"]
+  clientface["client face: exports #quot;./types#quot;<br/>src/types.ts<br/>the slice and record types"]
+  hostprog(["host program<br/>root tsconfig.host.json"])
+  clientprog(["client program<br/>root tsconfig.client.json"])
+  pkg --> hostface
+  pkg --> clientface
+  uichar -. "import type" .-> clientface
+  hostface -- "tsconfig.json" --> hostprog
+  clientface -- "tsconfig.client.json" --> clientprog
 ```
 
 一个客户端面由四部分组成：
@@ -116,27 +127,27 @@ UI 包需要读取的宿主包有两个面。宿主面是包的根入口（`"."`
 
 项目数据沿一个方向流动。三类写入方调用 `dvProject.run`：agent 工具调用、经 `@dv/api` 的视图，以及插件的服务。`dvProject.run` 向项目的 `records.jsonl` 文件追加一条记录。随后每个已注册的归约函数计算 `ProjectState.components` 中自己的切片，agent 和视图读取这些切片。
 
-```text
- agent tool call     view (POST /api/dv/operation)     plugin service (ctx.dv<Name>.<method>)
-        │                         │                                 │
-        └─────────────────────────┼─────────────────────────────────┘
-                                  ▼
-                            dvProject.run
-                                  │
-                                  ▼
-          record line and update lines in <project>/records.jsonl
-                                  │
-                                  ▼
-       every registered reducer, record by record, in registration order
-                                  │
-                                  ▼
-         ProjectState.components: one slice per registered reducer
-                 │                                     │
-                 ▼                                     ▼
-  project summary (dv_proj_* tools,          WireState (GET /api/dv/state)
-  dv:project prompt section)                           │
-                                                       ▼
-                                         canvas, timeline, history, asset pool
+```mermaid
+flowchart TB
+  agent["agent tool call"]
+  view["view<br/>POST /api/dv/operation"]
+  plugin["plugin service<br/>ctx.dv#lt;Name#gt;.#lt;method#gt;"]
+  run(["dvProject.run"])
+  records[("#lt;project#gt;/records.jsonl")]
+  reducers["every registered reducer<br/>record by record,<br/>in registration order"]
+  components["ProjectState.components<br/>one slice per<br/>registered reducer"]
+  summary["project summary<br/>dv_proj_* tools<br/>dv:project prompt section"]
+  wire["WireState<br/>GET /api/dv/state"]
+  views["canvas, timeline, history, asset pool"]
+  agent -- "operation" --> run
+  view -- "operation" --> run
+  plugin -- "operation" --> run
+  run -- "record line and update lines" --> records
+  records -- "records" --> reducers
+  reducers -- "slices" --> components
+  components --> summary
+  components --> wire
+  wire --> views
 ```
 
 视图和 agent 从不直接编辑切片。它们只通过运行操作来写入。[项目](subsystems/project.zh.md)页面拥有记录、操作、历史规则和项目状态。[项目摘要和协议状态](subsystems/project.zh.md#the-project-summary-and-the-wire-state)一节说明视图在变化之后如何重新读取协议状态。

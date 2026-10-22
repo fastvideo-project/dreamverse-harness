@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/dreamverse/architecture.md
-architecture.md: 3a6d9beaa59c5023845e5d8209ca83377d89c21c
-architecture.zh.md: 5c94ea0f20016763dd5e44ad6850152413aea232
+architecture.md: e770490ce9d0c4bb2df6f221f22c2705aa2a9f10
+architecture.zh.md: c2d19a325b0b3e2a7970f83dd04f5c78f1c3f11d

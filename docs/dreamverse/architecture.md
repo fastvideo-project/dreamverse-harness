@@ -20,34 +20,44 @@ The function `layerOf` in [`scripts/dv-architecture.ts`](../../scripts/dv-archit
 5. The constants `SURFACE` and `UI_CORE` list the `surface` and `ui-core` packages.
 6. Every other folder `ui-*` is a `ui` package, and every other package is a `domain` plugin.
 
-When you add a `base`, `surface` or `ui-core` package, add its folder name to `BASE`, `SURFACE` or `UI_CORE`. The diagram shows the ten layers. The browser program compiles the two UI layers, and the host program compiles the other layers. Every import points down.
+When you add a `base`, `surface` or `ui-core` package, add its folder name to `BASE`, `SURFACE` or `UI_CORE`. The diagram shows the ten layers. The browser program compiles the two UI layers, and the host program compiles the other layers. `@dv/bundle` composes the plugins of both programs and imports no package. A solid arrow is a value import, and a dotted arrow is an `import type`. Every import points down.
 
-```text
- Client program: browser code, root tsconfig.client.json
- ┌──────────────────────────────────────────────────────────────────┐
- │ ui            @dv/ui-<name>: the browser half of one plugin      │
- │   │                                                              │
- │   ▼ import values from @dv/ui-kit only                           │
- │ ui-core       @dv/ui-kit  @dv/ui-canvas  @dv/ui-history          │
- │               @dv/ui-shell  @dv/ui-composer                      │
- └──┬───────────────────────────────────────────────────────────────┘
-    │ ui only: import type from the paired client face @dv/<x>/types
-    ▼
- Host program: Node code, root tsconfig.host.json
- ┌──────────────────────────────────────────────────────────────────┐
- │ bundle        @dv/bundle: one Cordis row per plugin, no imports  │
- │                                                                  │
- │ │ surface       @dv/api  @dv/chat-references  @dv/mcp-presets    │
- │ │ workflow      @dv/workflow-story                               │
- │ │ workflow-lib  @dv/workflow-kit                                 │
- │ │ domain        @dv/character  @dv/location  @dv/style           │
- │ │               @dv/shot-plan  @dv/shot-render  @dv/timeline     │
- │ │               @dv/inspector                                    │
- │ │ provider      @dv/fastvideo  @dv/fastvideo-generation-client   │
- │ │ base          @dv/models  @dv/generation  @dv/asset-pool       │
- │ │               @dv/ffmpeg  @dv/reference-kit                    │
- │ ▼ kernel        @dv/project                                      │
- └──────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+  bundle(["bundle<br/>@dv/bundle"])
+  subgraph client["Client program: browser code, tsconfig.client.json"]
+    direction TB
+    ui["ui<br/>@dv/ui-#lt;name#gt;<br/>one per plugin"]
+    uicore["ui-core<br/>@dv/ui-kit<br/>@dv/ui-canvas<br/>@dv/ui-history<br/>@dv/ui-shell<br/>@dv/ui-composer"]
+  end
+  subgraph host["Host program: Node code, tsconfig.host.json"]
+    direction TB
+    provider["provider<br/>@dv/fastvideo<br/>@dv/fastvideo-generation-client"]
+    workflow["workflow<br/>@dv/workflow-story"]
+    wlib["workflow-lib<br/>@dv/workflow-kit"]
+    surface["surface<br/>@dv/api<br/>@dv/chat-references<br/>@dv/mcp-presets"]
+    domain["domain<br/>@dv/character<br/>@dv/location<br/>@dv/style<br/>@dv/shot-plan<br/>@dv/shot-render<br/>@dv/timeline<br/>@dv/inspector"]
+    subgraph core["kernel and base: values for every host layer"]
+      direction LR
+      base["base<br/>@dv/models<br/>@dv/generation<br/>@dv/asset-pool<br/>@dv/ffmpeg<br/>@dv/reference-kit"]
+      kernel["kernel<br/>@dv/project"]
+    end
+  end
+  bundle -- "one Cordis row per plugin" --> client
+  bundle -- "one Cordis row per plugin" --> host
+  ui -- "values from @dv/ui-kit only" --> uicore
+  ui -. "ui only: import type<br/>@dv/#lt;x#gt;/types" .-> host
+  workflow --> wlib
+  workflow --> domain
+  wlib -. "import type" .-> domain
+  provider -. "import type" .-> domain
+  surface -. "import type" .-> domain
+  surface --> core
+  wlib --> core
+  provider --> core
+  domain --> core
+  workflow --> core
+  base --> kernel
 ```
 
 Each layer has one role:
@@ -88,18 +98,19 @@ A domain plugin never imports another domain plugin, and a component never names
 
 A host package that its UI package reads has two faces. The host face is the package root (`"."` → `src/index.ts`), and it holds the Cordis plugin and its services. The client face is `exports["./types"]` → `src/types.ts`, and it holds the slice and record types that the browser program compiles. Each face belongs to one program. The diagram shows the two faces of `@dv/character`, and `@dv/ui-character` reads the client face with `import type`.
 
-```text
-                @dv/character (packages/dv/character/)
-        ┌──────────────────────────┴───────────────────────────┐
-        ▼                                                      ▼
- host face "."                                   client face "./types"
- src/index.ts                                    src/types.ts
- the Cordis plugin and its services              the slice and record types
-        │                                                      │
-        │ tsconfig.json                                        │ tsconfig.client.json
-        ▼                                                      ▼
- host program                                    client program
- root tsconfig.host.json                         root tsconfig.client.json
+```mermaid
+flowchart TB
+  pkg["@dv/character<br/>packages/dv/character/"]
+  uichar["@dv/ui-character"]
+  hostface["host face: exports #quot;.#quot;<br/>src/index.ts<br/>the Cordis plugin and its services"]
+  clientface["client face: exports #quot;./types#quot;<br/>src/types.ts<br/>the slice and record types"]
+  hostprog(["host program<br/>root tsconfig.host.json"])
+  clientprog(["client program<br/>root tsconfig.client.json"])
+  pkg --> hostface
+  pkg --> clientface
+  uichar -. "import type" .-> clientface
+  hostface -- "tsconfig.json" --> hostprog
+  clientface -- "tsconfig.client.json" --> clientprog
 ```
 
 A client face has four parts:
@@ -116,27 +127,27 @@ A `src/types.ts` imports and augments only client faces, such as `declare module
 
 Project data moves in one direction. Three writers call `dvProject.run`: an agent tool call, a view through `@dv/api`, and the service of a plugin. `dvProject.run` appends a record to the project's `records.jsonl` file. Every registered reducer then computes its slice of `ProjectState.components`, and the agent and the views read these slices.
 
-```text
- agent tool call     view (POST /api/dv/operation)     plugin service (ctx.dv<Name>.<method>)
-        │                         │                                 │
-        └─────────────────────────┼─────────────────────────────────┘
-                                  ▼
-                            dvProject.run
-                                  │
-                                  ▼
-          record line and update lines in <project>/records.jsonl
-                                  │
-                                  ▼
-       every registered reducer, record by record, in registration order
-                                  │
-                                  ▼
-         ProjectState.components: one slice per registered reducer
-                 │                                     │
-                 ▼                                     ▼
-  project summary (dv_proj_* tools,          WireState (GET /api/dv/state)
-  dv:project prompt section)                           │
-                                                       ▼
-                                         canvas, timeline, history, asset pool
+```mermaid
+flowchart TB
+  agent["agent tool call"]
+  view["view<br/>POST /api/dv/operation"]
+  plugin["plugin service<br/>ctx.dv#lt;Name#gt;.#lt;method#gt;"]
+  run(["dvProject.run"])
+  records[("#lt;project#gt;/records.jsonl")]
+  reducers["every registered reducer<br/>record by record,<br/>in registration order"]
+  components["ProjectState.components<br/>one slice per<br/>registered reducer"]
+  summary["project summary<br/>dv_proj_* tools<br/>dv:project prompt section"]
+  wire["WireState<br/>GET /api/dv/state"]
+  views["canvas, timeline, history, asset pool"]
+  agent -- "operation" --> run
+  view -- "operation" --> run
+  plugin -- "operation" --> run
+  run -- "record line and update lines" --> records
+  records -- "records" --> reducers
+  reducers -- "slices" --> components
+  components --> summary
+  components --> wire
+  wire --> views
 ```
 
 Views and the agent never edit a slice. They write only by running an operation. [Project](subsystems/project.md) owns the records, the operations, the history rules and the project state. [The project summary and the wire state](subsystems/project.md#the-project-summary-and-the-wire-state) describes how a view reads the wire state again after a change.

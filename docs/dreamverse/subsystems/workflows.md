@@ -31,21 +31,25 @@ The chain of an approval is the set of records that the approval writes in its e
 
 The story chain starts with `story.preview` and ends with the layout. In this example, shot 3 keeps its take:
 
-```text
-story.preview                read; writes no record
-  │ report: shot lines, gpu_seconds, problems
-  ▼
-user agrees in the conversation
-  │ dv_story_approve with user_approved: true
-  ▼
-story.approve = record A     confirm: always; refused while problems is not empty
-  │ execute, actor system
-  ├──▶ shot.render (shot 1)   started_by {record: A, slot: 1}      after: none
-  ├──▶ shot.render (shot 2)   started_by {record: A, slot: 2}      after: render of shot 1
-  │    shot 3 keeps its take  no record
-  ├──▶ shot.render (shot 4)   started_by {record: A, slot: 4}      after: render of shot 2
-  └──▶ dvTimeline.layout      started_by {record: A, slot: null}
-         └──▶ timeline.create or timeline.update: the takes of shots 1 to 4 in shot order
+```mermaid
+flowchart LR
+  subgraph approval["approval in the conversation"]
+    direction TB
+    preview["story.preview<br/>read; writes no record"]
+    user(["user agrees in the conversation"])
+    approve["story.approve = record A<br/>confirm: always<br/>refused while problems is not empty"]
+    preview -- "report: shot lines,<br/>gpu_seconds, problems" --> user
+    user -- "dv_story_approve with<br/>user_approved: true" --> approve
+  end
+  subgraph chain["the approval chain of record A"]
+    direction LR
+    r1["shot.render (shot 1)<br/>started_by<br/>{record: A, slot: 1}<br/>after: none"]
+    r2["shot.render (shot 2)<br/>started_by<br/>{record: A, slot: 2}<br/>after: render of shot 1"]
+    keep["shot 3 keeps its take<br/>no record"]
+    r4["shot.render (shot 4)<br/>started_by<br/>{record: A, slot: 4}<br/>after: render of shot 2"]
+    layout["dvTimeline.layout<br/>started_by<br/>{record: A, slot: null}<br/>writes timeline.create<br/>or timeline.update:<br/>the takes of shots 1 to 4<br/>in shot order"]
+  end
+  approval -- "execute,<br/>actor system" --> chain
 ```
 
 ## The shot walk

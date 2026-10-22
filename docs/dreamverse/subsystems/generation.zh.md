@@ -115,28 +115,34 @@ agent（智能体）只通过两个工具读取条目：
 
 agent 调用和工作流调用的渲染请求走同一条路径。precondition 的步骤在写下记录之前运行；渲染的步骤在 `execute` 中运行。
 
-```text
-dv_shot_render (agent)               dvShotRender.render(call) (workflow)
-  │                                    │
-  └──────────────────┬─────────────────┘
-                     ▼
-dvProject.run        shot.render: params modality, task, provider, model, prompt, ...
-                     │
-                     ▼  precondition
-dvModels.resolve     tasks ['t2v', 'ref2v'] + params ─► entry video/ref2v/fastvideo/fasth3
-                     │                                   no entry: refused, no record
-                     ▼
-toRequest            entry.facts() + params + inputs + seed ─► RenderRequest
-                     │
-                     ▼
-model check          entry.validateGenerationRequest(request) ─► problems: refused, no record
-                     │
-                     ▼  pending record, then execute
-render               resolve, build, and check again ─► entry.render(request, signal)
-                     │
-                     ▼
-@dv/fastvideo        DvFastvideoGeneration.generateSegment ─► POST /v1/streamv2/generate
-                     │
-                     ▼
-toOutputs            RenderStreamEvent stream ─► assets video and last_still
+```mermaid
+flowchart TB
+  agent(["dv_shot_render (agent)"])
+  workflow(["dvShotRender.render(call) (workflow)"])
+  run["dvProject.run<br/>shot.render: params modality, task, provider, model, prompt, ..."]
+  refused[/"refused, no record"/]
+  subgraph precondition["precondition"]
+    resolve{{"dvModels.resolve<br/>tasks t2v, ref2v + params"}}
+    toRequest["toRequest<br/>entry.facts() + params + inputs + seed"]
+    check{{"model check<br/>entry.validateGenerationRequest(request)"}}
+  end
+  subgraph execute["pending record, then execute"]
+    render["render<br/>resolve, build, and check again"]
+    fastvideo["@dv/fastvideo<br/>DvFastvideoGeneration.generateSegment"]
+    toOutputs["toOutputs"]
+  end
+  backend(["FastVideo streaming_v2 backend"])
+  assets[("assets video and last_still")]
+  agent --> run
+  workflow --> run
+  run --> resolve
+  resolve -- "entry video/ref2v/fastvideo/fasth3" --> toRequest
+  resolve -- "no entry" --> refused
+  toRequest -- "RenderRequest" --> check
+  check -- "problems" --> refused
+  check -- "no problems" --> render
+  render -- "entry.render(request, signal)" --> fastvideo
+  fastvideo -- "POST /v1/streamv2/generate" --> backend
+  fastvideo -- "RenderStreamEvent stream" --> toOutputs
+  toOutputs --> assets
 ```

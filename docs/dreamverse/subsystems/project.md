@@ -70,17 +70,26 @@ These rules tell which changes are steps. They also tell what undo, redo, and "g
 
 The diagram shows the history list of one project in three states. The names `r1` to `r6` stand for record IDs.
 
-```text
-after five steps      r1 ── r2 ── r3 ── r4 ── r5      line.json {tip: r5, at: r5}
-                                              ▲ at
-
-after two undos       r1 ── r2 ── r3 ── r4 ── r5      line.json {tip: r5, at: r3}
-                                  ▲ at                r4 and r5 show in gray; no record
-
-after a new step r6   r1 ── r2 ── r3 ── r6            line.json {tip: r6, at: r6}
-                                  │     ▲ at
-                                  └── r4 ── r5        discarded: out of the list,
-                                                      lines stay in records.jsonl
+```mermaid
+flowchart TB
+    subgraph five["After five steps: line.json {tip: r5, at: r5}"]
+        direction LR
+        a1[r1] --> a2[r2] --> a3[r3] --> a4[r4] --> a5[["r5<br/>tip, at"]]
+    end
+    subgraph undo["After two undos: line.json {tip: r5, at: r3}. No record is written."]
+        direction LR
+        b1[r1] --> b2[r2] --> b3[["r3<br/>at"]] --> b4["r4<br/>gray"] --> b5[["r5<br/>gray, tip"]]
+    end
+    subgraph write["After a new step r6: line.json {tip: r6, at: r6}"]
+        direction LR
+        c1[r1] --> c2[r2] --> c3[r3] --> c6[["r6<br/>tip, at"]]
+        subgraph gone["Discarded: lines stay in records.jsonl"]
+            direction LR
+            c4[r4] -.-> c5[r5]
+        end
+        c3 -.-> c4
+    end
+    five ~~~ undo ~~~ write
 ```
 
 ## Components
@@ -161,26 +170,42 @@ Two kinds of call wait in the scheduler of Project until their inputs are done:
 - a call whose input names an unfinished record;
 - each render that a plan approval schedules.
 
-The diagram shows the sequence of one call. Steps 2 to 4 run under the project lock, so two calls on one project never write at the same time.
+The diagram shows the sequence of one call. Steps 5 to 8 run under the project lock, so two calls on one project never write at the same time.
 
-```text
-caller: agent dv_* tool │ POST /api/dv/operation │ plugin service
-   │
-   │  agent calls only: prepareToolCall, then the confirm policy
-   ▼
-dvProject.run
-   1  validate the params and the input roles
-   ├──► readOnly operation: precondition, then execute; no lock, no record
-   ▼
-   ┌─ project lock ────────────────────────────────────────────┐
-   │ 2  resolve each input to an asset                         │
-   │ 3  operation.precondition ──► refuse: no record written   │
-   │ 4  append the pending record with its supersedes          │
-   │    and discard the steps after the current position       │
-   └───────────────────────────────────────────────────────────┘
-   5  start at once, or queue in the scheduler until the records in after are done
-   6  reuse an equal deterministic record, or run execute
-   7  append the final update: outputs, cost, report
+```mermaid
+sequenceDiagram
+    autonumber
+    participant caller as Caller<br/>agent dv_* tool, view route,<br/>or plugin service
+    participant run as dvProject.run
+    participant store as Record store
+    participant comp as Owning component
+    opt agent tool call only
+        caller->>caller: prepareToolCall,<br/>then the confirm policy
+    end
+    caller->>run: run(request)
+    run->>run: validate the params and the input roles
+    break readOnly operation
+        run->>comp: precondition, then execute. No lock, no record.
+    end
+    critical project lock
+        run->>run: resolve each input to an asset
+        run->>comp: precondition
+        break precondition refuses
+            run-->>caller: reject, no record written
+        end
+        run->>store: append the pending record with its supersedes,<br/>discard the steps after at
+    end
+    opt the call has after
+        run->>run: wait in the scheduler until the records in after are done
+    end
+    alt deterministic, and an equal done record exists
+        run->>store: reuse the outputs of that record
+    else
+        run->>comp: execute, outside the lock
+        comp-->>run: outputs, cost, report
+    end
+    run->>store: append the final update: outputs, cost, report
+    run-->>caller: the record in its final status
 ```
 
 <a id="confirmation-in-the-conversation"></a>
@@ -252,23 +277,21 @@ The owning operation decides what a call supersedes through `OperationSpec.super
 
 Only the agent or the human decides to rerun a stale record. `proj.stale_accept` clears the mark of one record. After that, the consumers of the record do not become stale through it.
 
-The diagram shows staleness in one project. The names `r2` to `r7` stand for record IDs. The arrows show which record reads an output or a version that another record wrote.
+The diagram shows staleness in one project. The names `r2` to `r7` stand for record IDs. The solid arrows show which record reads an output or a version that another record wrote. The dotted arrows show which record a record supersedes and which mark `proj.stale_accept` removes.
 
-```text
-r2  character.create    writes c1@1                 superseded by r5
- │ c1@1
- ▼
-r3  shot.render         reads c1@1                  stale because of r5
- │ r3#0
- ▼
-r4  asset.grab_still    reads r3#0                  stale because of r5
-
-r5  character.update    writes c1@2                 supersedes r2
- │ c1@2
- ▼
-r6  shot.render         reads c1@2                  not stale
-
-r7  proj.stale_accept   params {record: r4}         removes the mark of r4
+```mermaid
+flowchart TB
+    r2["r2 character.create<br/>writes c1@1<br/>superseded by r5"]
+    r3["r3 shot.render<br/>reads c1@1<br/>stale because of r5"]
+    r4["r4 asset.grab_still<br/>reads r3#0<br/>stale because of r5"]
+    r5["r5 character.update<br/>writes c1@2"]
+    r6["r6 shot.render<br/>reads c1@2<br/>not stale"]
+    r7["r7 proj.stale_accept<br/>params {record: r4}"]
+    r2 -- "c1@1" --> r3
+    r3 -- "r3#0" --> r4
+    r5 -- "c1@2" --> r6
+    r5 -. "supersedes" .-> r2
+    r7 -. "removes the mark" .-> r4
 ```
 
 <a id="deterministic-reuse"></a>
