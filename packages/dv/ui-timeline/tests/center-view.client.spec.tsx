@@ -146,6 +146,15 @@ describe('插入片段 in the asset preview', () => {
     await runtime.dispose()
   })
 
+  it('draws 插入片段 with the button class of 关闭, so it hovers and shows its focus ring as 关闭 does', async () => {
+    const { runtime, view, preview } = await mount()
+    act(() => { publishCurrentProject('p1') })
+    const button = preview(CLIP)
+    const close = within(view.getByRole('dialog')).getByRole('button', { name: '关闭' })
+    expect([button?.className, button?.getAttribute('style')]).toEqual([close.className, null])
+    await runtime.dispose()
+  })
+
   it('hides 插入片段 for an asset of a project that is not open', async () => {
     const { runtime, preview } = await mount()
     act(() => { publishCurrentProject('p1') })

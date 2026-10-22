@@ -107,7 +107,7 @@ export function MediaPreview({ usePreview, openerOf, close, renderSlot, renderFa
           <span className={css.name}>{asset.name}</span>
           <span className={css.factText}>{factsOf(asset, size, pick).join(' · ')}</span>
           <span style={{ flex: 1 }} />
-          {renderSlot('dv.media.preview.action', { projectId, asset, close })}
+          {renderSlot('dv.media.preview.action', { projectId, asset, buttonClass: css.button, close })}
           <button type="button" className={css.button} onClick={close} ref={focusOnMount}>{pick('关闭', 'Close')}</button>
         </div>
       </div>

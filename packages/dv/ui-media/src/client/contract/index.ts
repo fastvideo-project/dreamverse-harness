@@ -73,6 +73,8 @@ export interface PreviewActionOwner {
   /** The project of the previewed asset. */
   projectId: string
   asset: Asset
+  /** The class of the preview's buttons, which an action's button takes so that it looks, hovers and focuses as 关闭 does. */
+  buttonClass: string | undefined
   /** Close the preview. */
   close(): void
 }

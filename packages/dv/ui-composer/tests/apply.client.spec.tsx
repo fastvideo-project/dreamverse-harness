@@ -58,7 +58,10 @@ describe('让智能体使用', () => {
     const { runtime, composer, view, composed, stop } = await mountComposer()
     const audio = asset('score.wav', 'audio/wav', null)
     act(() => { runtime.ctx.dvMedia.preview('p1', audio, null) })
-    fireEvent.click(within(view.getByRole('dialog', { name: 'score.wav' })).getByRole('button', { name: '让智能体使用' }))
+    const dialog = within(view.getByRole('dialog', { name: 'score.wav' }))
+    // The button looks, hovers and focuses as 关闭 does.
+    expect(dialog.getByRole('button', { name: '让智能体使用' }).className).toBe(dialog.getByRole('button', { name: '关闭' }).className)
+    fireEvent.click(dialog.getByRole('button', { name: '让智能体使用' }))
     expect(composed).toEqual([{ text: '使用这个素材：', refs: [{ kind: 'asset', id: 'score.wav', label: 'score.wav', assetId: 'score.wav' }] }])
     await vi.waitFor(() => { expect(view.queryByRole('dialog')).toBeNull() })
 

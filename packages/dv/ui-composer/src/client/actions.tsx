@@ -9,18 +9,17 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { dispatchCompose } from '@dv/ui-kit/compose.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import type {} from '@dv/ui-media/contract'
-import css from './views.module.css'
 
 /**
  * A draft 使用这个素材： / Use this asset: with a reference to the asset; then the preview closes.
- * @param props - the previewed asset and the preview's close callback.
+ * @param props - the previewed asset, the preview's button class and its close callback.
  * @returns the button.
  */
 export function UseAssetAction(props: PropsRuntime<'dv.media.preview.action'>): ReactNode {
   const t = useText()
   const { asset } = props
   return (
-    <button type="button" className={css.actionButton} onClick={() => {
+    <button type="button" className={props.buttonClass} onClick={() => {
       dispatchCompose({ text: t('使用这个素材：', 'Use this asset: '), refs: [{ kind: 'asset', id: asset.id, label: asset.name, assetId: asset.id }] })
       props.close()
     }}>

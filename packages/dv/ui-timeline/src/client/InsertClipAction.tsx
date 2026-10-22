@@ -21,14 +21,10 @@ export interface InsertClipInjected {
 /** The action's composed props: the previewed asset, the close callback, the injected gesture, and the copy. */
 export type InsertClipActionProps = PropsRuntime<'dv.media.preview.action'> & InjectFace<InsertClipInjected> & PropsLocale<'dvTimeline'>
 
-const button = {
-  height: 32, padding: '0 12px', border: '1px solid var(--dv-line-strong)', borderRadius: 'var(--dv-radius-md)', background: 'transparent',
-  color: 'var(--dv-text)', font: 'inherit', fontSize: 13, lineHeight: '20px', cursor: 'pointer',
-} as const
-
 /**
  * The button.
- * @param props - the asset and its project, the close callback, the open project, the insert gesture, and the copy.
+ * @param props - the asset and its project, the preview's button class, the close callback, the open project, the
+ *   insert gesture, and the copy.
  * @returns the button, or nothing for an asset that is not a video or not of the open project.
  */
 export function InsertClipAction(props: InsertClipActionProps): ReactNode {
@@ -36,7 +32,7 @@ export function InsertClipAction(props: InsertClipActionProps): ReactNode {
   const open = useOpenProject(project => project)
   if (projectId !== open || mediaTypeOf(asset.mime) !== 'video') return null
   return (
-    <button type="button" style={button} onClick={() => { insert(asset.id); props.close() }}>
+    <button type="button" className={props.buttonClass} onClick={() => { insert(asset.id); props.close() }}>
       {t('preview.insert')}
     </button>
   )
