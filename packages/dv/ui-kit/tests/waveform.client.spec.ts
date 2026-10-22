@@ -1,19 +1,17 @@
 // @vitest-environment jsdom
 /**
- * The 原声 track's peak computation and envelope cache, the track-area height clamp, and the skip target. The cache tests
- * stub `fetch` and `OfflineAudioContext` and run on fake timers, so each retry delay passes on demand.
+ * The waveform's peak computation and envelope cache. The cache tests stub `fetch` and `OfflineAudioContext` and run on
+ * fake timers, so each retry delay passes on demand.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, renderHook } from '@testing-library/react'
-import { clampTrackHeight } from '../src/client/TimelineEditor.tsx'
-import { skipTarget } from '../src/client/timelines.ts'
 import { clipPeaks, peakEnvelope, useAudioEnvelope } from '../src/client/waveform.ts'
 
 describe('peakEnvelope', () => {
   it('keeps the largest absolute sample of each window across all channels', () => {
     // 8 samples per second, 2 windows per second: windows of 4 samples.
-    const left = [0.1, -0.5, 0.2, 0, 0, 0, 0.3, 0]
-    const right = [0, 0.2, 0, 0, -0.9, 0, 0, 0]
+    const left = Float32Array.from([0.1, -0.5, 0.2, 0, 0, 0, 0.3, 0])
+    const right = Float32Array.from([0, 0.2, 0, 0, -0.9, 0, 0, 0])
     const envelope = peakEnvelope([left, right], 8, 2)
     expect(Array.from(envelope.peaks)).toEqual([0.5, 0.9].map(Math.fround))
     expect(envelope.rate).toBe(2)
@@ -21,7 +19,7 @@ describe('peakEnvelope', () => {
   })
 
   it('gives a partial last window its own peak and an empty buffer no windows', () => {
-    expect(Array.from(peakEnvelope([[0.25, 0, 0, 0, -0.5]], 4, 1).peaks)).toEqual([0.25, 0.5])
+    expect(Array.from(peakEnvelope([Float32Array.from([0.25, 0, 0, 0, -0.5])], 4, 1).peaks)).toEqual([0.25, 0.5])
     expect(peakEnvelope([], 8, 2)).toEqual({ peaks: new Float32Array(0), rate: 2, max: 0 })
   })
 })
@@ -55,6 +53,8 @@ describe('clipPeaks', () => {
 describe('useAudioEnvelope', () => {
   /** A media file body that the stub decoder rejects, as `decodeAudioData` rejects a file without an audio track. */
   const NO_AUDIO = 'no audio'
+  /** A media file body that the stub decoder decodes into a buffer without samples. */
+  const EMPTY_AUDIO = 'empty audio'
   /** One answer of the stub `fetch`: a network failure, or a status with a body. */
   type Answer = 'network' | { status: number; body?: string }
   let answers: Answer[] = []
@@ -65,10 +65,17 @@ describe('useAudioEnvelope', () => {
     const bytes = new TextEncoder().encode(answer.body ?? 'audio').buffer
     return Promise.resolve({ ok: answer.status < 300, status: answer.status, arrayBuffer: () => Promise.resolve(bytes) })
   })
-  /** A stand-in decoder: one second of samples at 0.5, or a rejection for the {@link NO_AUDIO} body. */
+  /**
+   * A stand-in decoder: one second of samples at 0.5, a rejection for the {@link NO_AUDIO} body, and no samples for the
+   * {@link EMPTY_AUDIO} body.
+   */
   class StubAudioContext {
     decodeAudioData(bytes: ArrayBuffer): Promise<unknown> {
-      if (new TextDecoder().decode(bytes) === NO_AUDIO) return Promise.reject(new DOMException('no audio track', 'EncodingError'))
+      const body = new TextDecoder().decode(bytes)
+      if (body === NO_AUDIO) return Promise.reject(new DOMException('no audio track', 'EncodingError'))
+      if (body === EMPTY_AUDIO) {
+        return Promise.resolve({ numberOfChannels: 1, length: 0, sampleRate: 100, getChannelData: () => new Float32Array(0) })
+      }
       const samples = new Float32Array(100).fill(0.5)
       return Promise.resolve({ numberOfChannels: 1, length: 100, sampleRate: 100, getChannelData: () => samples })
     }
@@ -144,23 +151,49 @@ describe('useAudioEnvelope', () => {
     await advance(60000)
     expect(fetchStub).toHaveBeenCalledTimes(2)
   })
-})
 
-describe('clampTrackHeight', () => {
-  it('keeps at least 160 px for the preview and at least the track rows\' own height', () => {
-    expect(clampTrackHeight(300, 800, 220)).toBe(300)
-    expect(clampTrackHeight(700, 800, 220)).toBe(640)
-    expect(clampTrackHeight(100, 800, 220)).toBe(220)
-    // A short editor gives the track rows their height and the preview the rest.
-    expect(clampTrackHeight(300, 300, 220)).toBe(220)
+  it('settles a file whose audio decodes to no samples as having no waveform', async () => {
+    answers = [{ status: 200, body: EMPTY_AUDIO }]
+    const empty = renderHook(() => useAudioEnvelope('empty.mp4'))
+    await advance(60000)
+    expect(empty.result.current).toBeNull()
+    renderHook(() => useAudioEnvelope('empty.mp4'))
+    await advance(60000)
+    expect(fetchStub).toHaveBeenCalledTimes(1)
   })
-})
 
-describe('skipTarget', () => {
-  it('moves the playhead by the skip and clamps it to the timeline', () => {
-    expect(skipTarget(3, 5, 30)).toBe(8)
-    expect(skipTarget(28, 5, 30)).toBe(30)
-    expect(skipTarget(3, -5, 30)).toBe(0)
-    expect(skipTarget(0, 5, 0)).toBe(0)
+  it('decodes an asset once for every clip that shows it, including a clip unmounted before the decode settles', async () => {
+    answers = [{ status: 200 }]
+    const first = renderHook(() => useAudioEnvelope('shared.mp4'))
+    const second = renderHook(() => useAudioEnvelope('shared.mp4'))
+    const gone = renderHook(() => useAudioEnvelope('shared.mp4'))
+    gone.unmount()
+    await advance(0)
+    expect(fetchStub).toHaveBeenCalledTimes(1)
+    expect(first.result.current?.max).toBe(0.5)
+    expect(second.result.current?.max).toBe(0.5)
+    expect(renderHook(() => useAudioEnvelope('shared.mp4')).result.current?.max).toBe(0.5)
+    expect(fetchStub).toHaveBeenCalledTimes(1)
+  })
+
+  it('has no envelope for a placeholder clip without an asset', async () => {
+    const { result } = renderHook(() => useAudioEnvelope(null))
+    await advance(60000)
+    expect(result.current).toBeNull()
+    expect(fetchStub).not.toHaveBeenCalled()
+  })
+
+  it('starts a decode only when the browser reports idle time', async () => {
+    const idleCallbacks: Array<() => void> = []
+    vi.stubGlobal('requestIdleCallback', (callback: () => void) => { idleCallbacks.push(callback); return idleCallbacks.length })
+    answers = [{ status: 200 }]
+    const { result } = renderHook(() => useAudioEnvelope('idle.mp4'))
+    await advance(60000)
+    expect(fetchStub).not.toHaveBeenCalled()
+    expect(idleCallbacks).toHaveLength(1)
+    await act(async () => { idleCallbacks[0]?.() })
+    await advance(0)
+    expect(fetchStub).toHaveBeenCalledOnce()
+    expect(result.current?.max).toBe(0.5)
   })
 })

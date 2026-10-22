@@ -24,14 +24,14 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在叠了 `dsh-web-app`（提供侧栏、会话和 Workspace 服务以及客户端模块加载器）和 `@dv/api`（提供外壳调用的路由）的 profile 里挂载插件。同时挂载 `@dv/ui-asset-pool` 和 `@dv/ui-history`：右侧面板按钮和右侧面板的指南页会打开它们的标签。还要挂载 `@dv/ui-canvas` 和 `@dv/ui-timeline`：它们注册中间区域的 画布 和 时间线 视图。先构建浏览器 bundle：`pnpm run build` 会写出 `lib/client.js`。
+在叠了 `dsh-web-app`（提供侧栏、会话和 Workspace 服务以及客户端模块加载器）和 `@dv/api`（提供外壳调用的路由）的 profile 里挂载插件。同时挂载 `@dv/ui-asset-pool` 和 `@dv/ui-history`：右侧面板按钮和右侧面板的指南页会打开它们的标签。还要挂载 `@dv/ui-canvas` 和 `@dv/ui-timeline`：它们注册中间区域的 画布 和 时间线 视图。也要挂载 `@dv/ui-media`：它的 `dv.media` 组件工厂绘制项目封面。先构建浏览器 bundle：`pnpm run build` 会写出 `lib/client.js`。
 
 ```yaml
 - id: dv-ui-shell
   name: '@dv/ui-shell'
 ```
 
-Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCenter`（`@dv/ui-shell/contract` 的 `DvCenter`），并以优先级 -1 注册中间区域、导航和作为品牌名的 DreamVerse 字标以覆盖 DSH 的条目，注册 `dv-chat` 和 `dv-trajectory` 标签类型及其标签主体，以及提供 对话、素材库、历史 和 轨迹 的右侧面板指南页。它还隐藏 DreamVerse 不用的 DSH 界面（欢迎提示、侧栏的品牌图标、新会话按钮、展开侧栏中的页面列表（导航列出这些页面；收起的侧栏保留它们的图标）、输入框统计、上下文用量、Host 斜杠命令），改写几条 DSH 文字，并在浏览器标签页上用 DreamVerse 图标替换 DSH 的图标。工作区顶栏显示会话切换器（项目封面、项目名和对话标题；其菜单提供 首页、新建项目、本项目的对话和 新建会话，以及其他项目）、视图切换（画布 | 时间线）和右侧面板按钮；右侧面板按钮是一个 16 px 图标按钮，标签为 打开右侧面板 / Open the right panel，点击后打开 对话、素材库 和 历史。该按钮只在右侧面板收起时出现（`ctx.sidebarRight.expanded`），位置就是面板展开时它自己收起按钮所在的角落。右侧面板默认宽 448 px，正好放下三个标签和当前标签的关闭按钮，用户拖动边缘后改用拖动的宽度。首页显示标题 今天想拍点什么？、不可用的 从模板开始 标签，以及以封面卡片显示的两个最新项目（全部项目 显示其余项目）。发送第一条消息时这些部分即离开页面，所以在 turn 开始前，该消息的气泡已显示在对话中。URL hash 的形式为 `#project=<id>&view=<view>&<field>=<value>&session=<id>`，所以刷新、后退和前进都能恢复位置。`view` 是所显示 `dv.center.view` 条目的 `id`；没有它时中间区域显示 `canvas`，没有条目使用的 id 显示第一个视图。其他每个字段都是打开项目的中间区域字段，例如 `timeline=t2`，即 时间线 视图显示的时间线，所以 `#project=<id>&timeline=t2` 打开画布，之后 时间线 显示时间线 `t2`。
+Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCenter`（`@dv/ui-shell/contract` 的 `DvCenter`），并以优先级 -1 注册中间区域、导航和作为品牌名的 DreamVerse 字标以覆盖 DSH 的条目，注册 `dv-chat` 和 `dv-trajectory` 标签类型及其标签主体，以及提供 对话、素材库、历史 和 轨迹 的右侧面板指南页。它还隐藏 DreamVerse 不用的 DSH 界面（欢迎提示、侧栏的品牌图标、新会话按钮、展开侧栏中的页面列表（导航列出这些页面；收起的侧栏保留它们的图标）、输入框统计、上下文用量、Host 斜杠命令），改写几条 DSH 文字，并在浏览器标签页上用 DreamVerse 图标替换 DSH 的图标。工作区顶栏显示会话切换器（项目封面、项目名和对话标题；其菜单提供 首页、新建项目、本项目的对话和 新建会话，以及其他项目）、视图切换（画布 | 时间线）和右侧面板按钮；右侧面板按钮是一个 16 px 图标按钮，标签为 打开右侧面板 / Open the right panel，点击后打开 对话、素材库 和 历史。该按钮只在右侧面板收起时出现（`ctx.sidebarRight.expanded`），位置就是面板展开时它自己收起按钮所在的角落。右侧面板默认宽 448 px，正好放下三个标签和当前标签的关闭按钮，用户拖动边缘后改用拖动的宽度。首页显示标题 今天想拍点什么？、不可用的 从模板开始 标签，以及以封面卡片显示的两个最新项目（全部项目 显示其余项目）。项目卡片和会话切换器通过 `dv.media` 组件工厂绘制封面素材，卡片上用途为 `card`，切换器里为 `thumb`；`cover.tsx` 的 `coverAsset` 把封面中第一个持有素材 ID 的字段读作该 MIME 顶层类型（`video`，否则 `image`）的素材。发送第一条消息时这些部分即离开页面，所以在 turn 开始前，该消息的气泡已显示在对话中。URL hash 的形式为 `#project=<id>&view=<view>&<field>=<value>&session=<id>`，所以刷新、后退和前进都能恢复位置。`view` 是所显示 `dv.center.view` 条目的 `id`；没有它时中间区域显示 `canvas`，没有条目使用的 id 显示第一个视图。其他每个字段都是打开项目的中间区域字段，例如 `timeline=t2`，即 时间线 视图显示的时间线，所以 `#project=<id>&timeline=t2` 打开画布，之后 时间线 显示时间线 `t2`。
 
 | 手势 | 请求或事件 |
 | --- | --- |
@@ -45,7 +45,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCente
 | 删除项目（行菜单，然后确认） | `POST /api/dv/projects/delete`（项目移到回收目录）；关联的 Workspace 被删除，打开中的项目回到 首页 |
 | 重命名或删除对话（行菜单） | DSH 的会话重命名，或停止其活动后归档 |
 | 主会话位于某项目的 Workspace 但没有绑定 | `POST /api/dv/workspaces/bind` |
-| `ctx.dvCenter.show({ view, target })`，例如选中的历史行（`@dv/ui-history`）或 素材库 面板里 插入片段 的 `dv:timeline-insert` 事件（`@dv/ui-timeline`） | 显示 `view` 条目，并把 `target` 作为它的 owner prop `request` 的值交给它，直到它取走该请求；再次 `show`、换到另一个视图或另一个项目会丢掉视图还没取走的请求 |
+| `ctx.dvCenter.show({ view, target })`，例如选中的历史行（`@dv/ui-history`）或素材预览里的 插入片段（`@dv/ui-timeline`） | 显示 `view` 条目，并把 `target` 作为它的 owner prop `request` 的值交给它，直到它取走该请求；再次 `show`、换到另一个视图或另一个项目会丢掉视图还没取走的请求 |
 | 视图的 owner prop `note(fields)`，例如用户在 时间线 视图（`@dv/ui-timeline`）里选的时间线 | 打开项目的中间区域字段改变（null 删除一个字段），URL hash 显示它们；已不再打开的项目的 note 不改变任何东西 |
 | `dv:trajectory-focus` `{session, toolCall}` | 主会话移到 `session`，然后打开 轨迹 并滚动到该工具调用 |
 
@@ -71,7 +71,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCente
 | [`src/client/store.ts`](src/client/store.ts) | 共享状态（打开的项目、视图、中间区域字段、所显示视图的请求、主会话、关联）、`dvCenter.show` 和视图的 `note`、URL hash 同步，以及会话 → 项目查找 |
 | [`src/client/Center.tsx`](src/client/Center.tsx) | 中间区域：URL 恢复、首页、模板标签、最近项目、工作区顶栏、所显示的中间区域视图及其请求和中间区域字段，以及后退、前进和 hash 修改的监听 |
 | [`src/client/SessionSwitcher.tsx`](src/client/SessionSwitcher.tsx) | 工作区顶栏的会话切换按钮和菜单 |
-| [`src/client/cover.tsx`](src/client/cover.tsx) | 从 `/api/dv/projects/summary` 读取的项目封面和最后编辑时间 |
+| [`src/client/cover.tsx`](src/client/cover.tsx) | 从 `/api/dv/projects/summary` 读取的项目封面和最后编辑时间；通过 `dv.media` 绘制的封面素材 |
 | [`src/client/sessions.ts`](src/client/sessions.ts) | 一个项目的对话，导航和会话切换器共用 |
 | [`src/client/sidebar.ts`](src/client/sidebar.ts) | DSH 左侧栏的折叠状态，以及外壳的收起和恢复 |
 | [`src/client/right-panel.ts`](src/client/right-panel.ts) | 右侧面板 448 px 的默认宽度 |
@@ -100,6 +100,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCente
 - [`@dv/ui-timeline`](../ui-timeline/README.zh.md) — 时间线编辑器，注册为中间区域的 时间线 视图；它插入 插入片段 的片段。
 - [`@dv/ui-history`](../ui-history/README.zh.md) — 历史标签（它的行通过 `dvCenter.show` 移动中间区域）和 `dv:trajectory-focus` 链接。
 - [`@dv/ui-kit`](../ui-kit/README.zh.md) — API 客户端、wire 类型、窗口事件和当前项目。
+- [`@dv/ui-media`](../ui-media/README.zh.md) — 绘制项目封面的 `dv.media` 组件工厂。
 
 -----
 

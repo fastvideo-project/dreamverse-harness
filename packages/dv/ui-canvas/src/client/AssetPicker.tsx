@@ -1,22 +1,20 @@
 /**
  * The asset pool as the canvas editors use it: the picker that adds references (the items of each registered version
- * kind under the kind's label, then the `dv.canvas.picker` entry at key `assets`, which `@dv/ui-asset-pool` fills
- * with its asset pool panel and import drop zone), the preview of one asset (the `dv.canvas.preview` entry at key
- * `assets`, the asset pool's preview), and the thumbnail of an image or a video asset. Without a slot renderer the
- * picker offers only the items and the preview shows nothing. The picker and the preview render on `document.body`
- * and close on Escape before the canvas sees the key, so the editor beneath them stays open.
+ * kind under the kind's label, each drawn by its first asset through the `dv.media` Factory, then the `dv.canvas.picker`
+ * entry at key `assets`, which `@dv/ui-asset-pool` fills with its asset pool panel and import drop zone). Without a slot
+ * renderer the picker offers only the items. The picker renders on `document.body` and closes on Escape before the
+ * canvas sees the key, so the editor beneath it stays open.
  *
  * @module @dv/ui-canvas/AssetPicker
  */
-import { Fragment, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
-import { AssetMedia } from '@dv/ui-kit/asset-media.tsx'
+import type { PropsRenderFactories, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
-import type { Asset, WireState } from '@dv/ui-kit/types.ts'
-import { useZoomPresence } from '@dv/ui-kit/zoom.ts'
+import type { WireState } from '@dv/ui-kit/types.ts'
+import type {} from '@dv/ui-media/contract'
 import type { CanvasTranslate } from './NodeCard.tsx'
 
 const overlay: CSSProperties = {
@@ -32,20 +30,18 @@ const tile: CSSProperties = {
   display: 'flex', flexDirection: 'column', gap: 4, padding: 4, border: 'none', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-3)',
   color: 'var(--dv-text)', fontFamily: 'inherit', fontSize: 12, lineHeight: '16px', cursor: 'pointer', textAlign: 'left',
 }
-const tileMedia: CSSProperties = { width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 'var(--dv-radius-sm)', display: 'block' }
+const tileMedia: CSSProperties = { width: '100%', aspectRatio: '1', overflow: 'hidden', borderRadius: 'var(--dv-radius-sm)', display: 'block' }
 const button: CSSProperties = {
   height: 32, border: 'none', borderRadius: 'var(--dv-radius-md)', padding: '0 12px', fontFamily: 'inherit', fontSize: 13, lineHeight: '20px', fontWeight: 500,
   cursor: 'pointer',
 }
 
 /**
- * Run `onEscape` on Escape while `active`, before every other Escape listener of the page.
- * @param active - whether the pop-up is open.
+ * Run `onEscape` on Escape while the pop-up is mounted, before every other Escape listener of the page.
  * @param onEscape - closes the pop-up.
  */
-function useEscapeFirst(active: boolean, onEscape: () => void): void {
+function useEscapeFirst(onEscape: () => void): void {
   useEffect(() => {
-    if (!active) return
     const onKey = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return
       event.stopPropagation()
@@ -53,7 +49,7 @@ function useEscapeFirst(active: boolean, onEscape: () => void): void {
     }
     window.addEventListener('keydown', onKey, true)
     return () => { window.removeEventListener('keydown', onKey, true) }
-  }, [active, onEscape])
+  }, [onEscape])
 }
 
 /** Props of {@link AssetPicker}. */
@@ -74,6 +70,8 @@ export interface AssetPickerProps {
   onCancel: () => void
   /** Renders the `dv.canvas.picker` entry, the asset pool panel; without it the picker offers only the items. */
   renderSlot?: PropsRenderSlots<'dv.canvas.picker'>['renderSlot']
+  /** Renders the `dv.media` occurrence of each item's first asset; without it, no item draws an asset. */
+  renderFactorySlot?: PropsRenderFactories['renderFactorySlot']
 }
 
 /**
@@ -86,7 +84,7 @@ export interface AssetPickerProps {
 export function AssetPicker(props: AssetPickerProps): ReactNode {
   const { t, onCancel } = props
   const [picked, setPicked] = useState<string[]>([])
-  useEscapeFirst(true, onCancel)
+  useEscapeFirst(onCancel)
   const toggle = (ref: string): void => {
     setPicked(current => current.includes(ref) ? current.filter(other => other !== ref) : [...current, ref])
   }
@@ -117,7 +115,7 @@ export function AssetPicker(props: AssetPickerProps): ReactNode {
                   key={item.ref} type="button" aria-pressed={pickedSet.has(item.ref)} onClick={() => { toggle(item.ref) }}
                   style={{ ...tile, boxShadow: pickedSet.has(item.ref) ? '0 0 0 2px var(--dv-accent)' : '0 0 0 1px var(--dv-line)' }}
                 >
-                  <AssetMedia asset={item.cover} style={tileMedia} />
+                  <span style={tileMedia}>{item.cover === undefined ? null : props.renderFactorySlot?.('dv.media', { asset: item.cover, purpose: 'thumb' })}</span>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
                 </button>
               ))}
@@ -143,27 +141,4 @@ export function AssetPicker(props: AssetPickerProps): ReactNode {
     </div>,
     document.body,
   )
-}
-
-/** Props of {@link AssetPreview}. */
-export interface AssetPreviewProps {
-  asset: Asset | null
-  openerOf: (asset: Asset) => Element | null
-  onClose: () => void
-  /** Renders the `dv.canvas.preview` entry, the asset pool's preview; without it nothing shows. */
-  renderSlot?: PropsRenderSlots<'dv.canvas.preview'>['renderSlot']
-}
-
-/**
- * The preview of one asset in the `dv.canvas.preview` entry, growing out of the element that opened it and shrinking
- * back into it.
- * @param props - the asset on show or null, the element it grows out of, the close callback, and the slot renderer.
- * @returns the preview, or nothing while no asset is on show.
- */
-export function AssetPreview(props: AssetPreviewProps): ReactNode {
-  const zoom = useZoomPresence(props.asset, props.openerOf)
-  useEscapeFirst(props.asset !== null, props.onClose)
-  if (zoom.shown === null) return null
-  // Keyed by the asset, so the preview of another asset starts fresh.
-  return <Fragment key={zoom.shown.id}>{props.renderSlot?.('dv.canvas.preview', { asset: zoom.shown, onClose: props.onClose, zoom }, { entryKey: 'assets' })}</Fragment>
 }

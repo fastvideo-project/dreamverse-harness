@@ -8,6 +8,7 @@ import { createRegistry, type DvMentions, type MentionKind } from '@dv/ui-kit/re
 import { TIMELINE_ID, TIMELINE_KIND } from '../src/client/definition.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { en, zh } from '../src/client/locales.ts'
+import { InsertClipAction } from '../src/client/InsertClipAction.tsx'
 import { clipMentionKind } from '../src/client/mention.ts'
 import { TimelineBody } from '../src/client/TimelineBody.tsx'
 import { TimelineView } from '../src/client/TimelineView.tsx'
@@ -72,13 +73,14 @@ describe('ui-timeline apply', () => {
     expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort())
   })
 
-  it('registers the center view once dvCenter is present, with the tab body\'s API client, and it leaves with dvCenter', async () => {
+  it('registers the center view and 插入片段 once dvCenter is present, with the tab body\'s API client, and both leave with dvCenter', async () => {
     const { ctx, registered } = await boot()
     const dispose = ctx.provide('dvCenter', { show: () => {} })
-    await vi.waitFor(() => { expect(registered).toHaveLength(2) })
+    await vi.waitFor(() => { expect(registered).toHaveLength(3) })
     expect(registered.map(entry => [entry.name, entry.key ?? entry.id, entry.locale, entry.component])).toEqual([
       ['sidebar.right.pane.tab', TIMELINE_ID, 'dvTimeline', TimelineBody],
       ['dv.center.view', 'timeline', undefined, TimelineView],
+      ['dv.media.preview.action', 'dv.timeline.insert', 'dvTimeline', InsertClipAction],
     ])
     // The center view comes after the canvas in the workspace's view control, under the tab type's label.
     expect([registered[1]?.order, registered[1]?.label?.()]).toEqual([1, 'type.label'])

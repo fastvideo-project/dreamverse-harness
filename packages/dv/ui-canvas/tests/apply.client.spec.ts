@@ -74,11 +74,10 @@ describe('ui-canvas apply', () => {
     expect([registered[1]?.order, registered[1]?.label?.()]).toEqual([0, 'type.label'])
     expect(registered[1]?.inject()).toBe(registered[0]?.inject())
     // The center view declares the slot of the entry editors, which plugin UI halves fill by `NodeType.id`, and the asset
-    // pool's slots of the picker and the preview; the body declares none.
+    // pool's slot of the picker; the body declares none.
     expect(registered[1]?.children).toEqual({
       'dv.canvas.editor': { kind: 'keyed', scope: 'root' },
       'dv.canvas.picker': { kind: 'keyed', scope: 'root' },
-      'dv.canvas.preview': { kind: 'keyed', scope: 'root' },
     })
     expect(registered[0]?.children).toBeUndefined()
     expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort())

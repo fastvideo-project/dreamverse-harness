@@ -37,6 +37,7 @@
     "@deepseek-ai/dsh-client-ui-sidebar-right": "workspace:*",
     "@deepseek-ai/dsh-client-ui-slots": "workspace:*",
     "@dv/ui-kit": "workspace:*",
+    "@dv/ui-media": "workspace:*",
     "@dv/ui-shell": "workspace:*",
     "@testing-library/react": "^16.1.0",
     "@types/react": "~18.3.1",

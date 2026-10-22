@@ -87,7 +87,7 @@ describe('the location descriptors', () => {
     document.documentElement.lang = 'zh-CN'
     const { mentionKind } = location
     expect([mentionKind.id, mentionKind.kind, mentionKind.order, mentionKind.section()]).toEqual(['@dv/ui-location', 'location', 2, '场景'])
-    const item = projectItems(nounState(), [mentionKind]).find(entry => entry.uri === 'dv:location/l1')
+    const item = projectItems(nounState(), [mentionKind], []).find(entry => entry.uri === 'dv:location/l1')
     expect([item?.label, item?.section, item?.description]).toEqual(['小巷', '场景', ''])
     document.documentElement.lang = 'en'
     expect(mentionKind.section()).toBe('Locations')

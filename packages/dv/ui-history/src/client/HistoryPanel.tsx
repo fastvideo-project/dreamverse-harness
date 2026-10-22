@@ -1,13 +1,14 @@
 /**
  * The History panel: the edit history of a project, read through `POST /api/dv/history`, like the History panel of an
  * image editor. It lists the steps of the history list, newest first. Each row shows the action with its subject
- * (修改分镜计划 p1 → v2, 渲染镜头 7), who did it (你, 智能体, 自动), how long ago, its status, a thumbnail on render rows, and for an
- * agent action the intent the agent gave for the call. The records that a record started (`started_by`) fold under its
- * row. The step at the current position carries 当前; the steps after it, which redo brings back, are greyed. Every other
- * row's ⋮ menu offers 回到这一步, which moves the current position to that step. Selecting a row plays its output under
- * the row and, for a step at or before the current position, moves the center (`dvCenter.show`) where the registered
- * history row's `focus` says, else to the record's canvas node. The header holds undo and redo; moves write no record, and a new step
- * after a move discards the greyed steps.
+ * (修改分镜计划 p1 → v2, 渲染镜头 7), who did it (你, 智能体, 自动), how long ago, its status, a thumbnail on render
+ * rows, and for an agent action the intent the agent gave for the call. The records that a record started
+ * (`started_by`) fold under its row. The step at the current position carries 当前; the steps after it, which redo
+ * brings back, are greyed. Every other row's ⋮ menu offers 回到这一步, which moves the current position to that step.
+ * Every asset draws through the `dv.media` Factory of `@dv/ui-media`. Selecting a row plays its output under the row
+ * and, for a step at or before the current position, moves the center (`dvCenter.show`) where the registered history
+ * row's `focus` says, else to the record's canvas node. The header holds undo and redo; moves write no record, and a
+ * new step after a move discards the greyed steps.
  *
  * @module @dv/ui-history/HistoryPanel
  */
@@ -15,8 +16,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { CSSProperties, ReactNode } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { assetUrl, type DvClient } from '@dv/ui-kit/api.ts'
+import type { PropsRenderFactories, PropsRuntime, RenderFactorySlot } from '@deepseek-ai/dsh-client-ui-slots'
+import type { DvClient } from '@dv/ui-kit/api.ts'
 import { useCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import type { Registry } from '@dv/ui-kit/registries.ts'
@@ -26,9 +27,10 @@ import { useOperations, useProjectState } from '@dv/ui-kit/useProject.ts'
 import {
   DV_HISTORY_FOCUS_EVENT, DV_TRAJECTORY_FOCUS_EVENT, dispatchWorkspaceEvent, type DvWorkspaceEventMap,
 } from '@dv/ui-kit/workspace-events.ts'
+import type {} from '@dv/ui-media/contract'
 import type { CenterTarget } from '@dv/ui-shell/contract'
 import {
-  actionLabel, actionRows, centerFocus, relativeTime, thumbnailOf, type ActionRow, type LabelContext, type Thumbnail,
+  actionLabel, actionRows, centerFocus, relativeTime, thumbnailOf, type ActionRow, type LabelContext,
 } from './rows.ts'
 import type { HistoryRow } from './contract/index.ts'
 import css from './HistoryPanel.module.css'
@@ -50,6 +52,8 @@ export interface HistoryPanelProps {
   rows: Registry<HistoryRow>
   /** Move the workspace center to the target of a selected record. */
   showInCenter: (target: CenterTarget) => void
+  /** Draws the thumbnails and the output players through `dv.media`. */
+  renderFactorySlot: RenderFactorySlot
 }
 
 /** Entries per page. */
@@ -272,6 +276,7 @@ export function HistoryPanel(props: HistoryPanelProps): ReactNode {
     const shared = {
       assets: loaded.assets, records: recordsById, now, selected, onChoose: choose, rowRef, onJump: jump,
       labels: { operations: operations.value ?? [], rows: registered, records: recordsById },
+      renderFactorySlot: props.renderFactorySlot,
       isGeneration: (record: ProjectRecord): boolean => isGenerationRecord(
         record, operations.value?.find(operation => operation.name === record.operation), id => loaded.assets.get(id)?.mime),
     }
@@ -434,6 +439,7 @@ interface RowContext {
   isGeneration: (record: ProjectRecord) => boolean
   /** What the row labels read: the operation declarations, the registered rows and the records. */
   labels: LabelContext
+  renderFactorySlot: RenderFactorySlot
 }
 
 /**
@@ -509,7 +515,11 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
         {/* A step after the current one is greyed; the ⋮ menu is not, so it is not trapped under the next row. */}
         {!render
           ? null
-          : <div style={{ opacity: dim, filter: after ? 'grayscale(1)' : undefined }}><Thumb thumbnail={thumbnail} size={size} /></div>}
+          : (
+            <div style={{ opacity: dim, filter: after ? 'grayscale(1)' : undefined }}>
+              <Thumb asset={assets.get(thumbnail ?? '')} size={size} renderFactorySlot={props.renderFactorySlot} />
+            </div>
+          )}
         <div style={{ minWidth: 0, opacity: dim }}>
           <div className={css.titleLine}>
             <span className={css.label}>
@@ -539,52 +549,52 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
         </div>
         <StepActions onBack={entry.place === 'current' ? null : () => { props.onJump(record.id) }} />
       </div>
-      {selected ? <Details record={record} assets={assets} words={words} /> : null}
+      {selected ? <Details record={record} assets={assets} words={words} renderFactorySlot={props.renderFactorySlot} /> : null}
     </div>
   )
 }
 
 /**
- * A row's one thumbnail: an image, a video's first frame, or an empty square that keeps the rows aligned. An image that
- * fails to load falls back to the empty square instead of the browser's broken-image icon.
- * @param props - the thumbnail, or null, and its edge in pixels.
+ * A row's one thumbnail: its asset drawn through `dv.media` at 'thumb', or an empty square that keeps the rows aligned.
+ * Media that fails to load falls back to the empty square instead of the browser's broken-media icon.
+ * @param props - the thumbnail's asset, or undefined, its edge in pixels, and the Factory renderer.
  * @returns the thumbnail.
  */
-function Thumb(props: { thumbnail: Thumbnail | null; size: number }): ReactNode {
+function Thumb(props: { asset: Asset | undefined; size: number; renderFactorySlot: RenderFactorySlot }): ReactNode {
   const [failed, setFailed] = useState<string | null>(null)
-  const media: CSSProperties = { width: props.size, height: props.size }
-  const { thumbnail } = props
-  if (thumbnail === null || failed === thumbnail.asset) return <span className={css.thumb} style={media} />
-  const shared = { 'data-testid': 'dv-history-thumb', 'data-asset': thumbnail.asset, className: css.thumb, style: media }
-  return thumbnail.kind === 'video'
-    ? <video {...shared} src={assetUrl(thumbnail.asset)} preload="metadata" muted playsInline onError={() => { setFailed(thumbnail.asset) }} />
-    : <img {...shared} src={assetUrl(thumbnail.asset)} alt="" loading="lazy" onError={() => { setFailed(thumbnail.asset) }} />
+  const box: CSSProperties = { width: props.size, height: props.size, overflow: 'hidden' }
+  const { asset } = props
+  if (asset === undefined || failed === asset.id) return <span className={css.thumb} style={box} />
+  return (
+    <span
+      data-testid="dv-history-thumb" data-asset={asset.id} className={css.thumb} style={box}
+      onErrorCapture={() => { setFailed(asset.id) }}
+    >
+      {props.renderFactorySlot('dv.media', { asset, purpose: 'thumb' })}
+    </span>
+  )
 }
 
 /**
  * What a selected row adds below it: the inline player of its first video output (else its first image output), the
  * agent's intent in full, and the link into the trajectory for an agent action.
- * @param props - the record, the known assets, and the agent's intent.
+ * @param props - the record, the known assets, the agent's intent, and the Factory renderer.
  * @returns the details, or null when there is nothing to add.
  */
-function Details(props: { record: ProjectRecord; assets: ReadonlyMap<string, Asset>; words: string }): ReactNode {
+function Details(
+  props: { record: ProjectRecord; assets: ReadonlyMap<string, Asset>; words: string; renderFactorySlot: RenderFactorySlot },
+): ReactNode {
   const { record } = props
-  const outputs = record.outputs.map(id => ({ id, mime: props.assets.get(id)?.mime ?? '' }))
-  const video = outputs.find(output => output.mime.startsWith('video/'))
-  const preview = video ?? outputs.find(output => output.mime.startsWith('image/'))
+  const outputs = record.outputs.flatMap(id => props.assets.get(id) ?? [])
+  // The player shows the first video output, else the first image output, muted and looping at purpose 'loop'.
+  const media = outputs.find(output => output.mime.startsWith('video/')) ?? outputs.find(output => output.mime.startsWith('image/'))
   const call = record.session !== null && record.tool_call !== null ? { session: record.session, toolCall: record.tool_call } : null
-  if (preview === undefined && call === null && props.words === '') return null
+  if (media === undefined && call === null && props.words === '') return null
   return (
     <div onClick={(event) => { event.stopPropagation() }} className={css.details}>
-      {preview === undefined
+      {media === undefined
         ? null
-        : (
-          <div data-testid="dv-history-preview">
-            {video === undefined
-              ? <img src={assetUrl(preview.id)} alt="" className={css.preview} />
-              : <video src={assetUrl(video.id)} autoPlay muted controls className={css.preview} />}
-          </div>
-        )}
+        : <div data-testid="dv-history-preview" className={css.preview}>{props.renderFactorySlot('dv.media', { asset: media, purpose: 'loop' })}</div>}
       {props.words === '' ? null : <div className={css.detailWords}>“{props.words}”</div>}
       {call === null ? null : <div><TrajectoryLink session={call.session} toolCall={call.toolCall} /></div>}
     </div>
@@ -594,13 +604,18 @@ function Details(props: { record: ProjectRecord; assets: ReadonlyMap<string, Ass
 /**
  * The tab body: the History panel of the project that the DreamVerse shell has open, beside the chat session whose
  * right panel holds the tab.
- * @param props - the tab's props, the injected client, the history rows and the center callback.
+ * @param props - the tab's props, the injected client, the history rows, the center callback and the Factory renderer.
  * @returns the panel, or a notice while no project is open.
  */
-export function HistoryTabBody(props: PropsRuntime<'sidebar.right.pane.tab'> & HistoryInjected): ReactNode {
+export function HistoryTabBody(props: PropsRuntime<'sidebar.right.pane.tab'> & HistoryInjected & PropsRenderFactories): ReactNode {
   const project = useCurrentProject()
   const t = useText()
   if (project === null) return <p data-testid="dv-history-empty" className={css.note} style={{ padding: 12 }}>{t('先打开一个项目', 'Open a project first')}</p>
   // Keyed by project so a switch starts from an empty panel instead of showing the previous project's records.
-  return <HistoryPanel key={project} projectId={project} client={props.client} rows={props.rows} showInCenter={props.showInCenter} />
+  return (
+    <HistoryPanel
+      key={project} projectId={project} client={props.client} rows={props.rows} showInCenter={props.showInCenter}
+      renderFactorySlot={props.renderFactorySlot}
+    />
+  )
 }

@@ -1,15 +1,15 @@
 /**
  * The timeline plugin booted over recording services, for specs that render its components directly: the values that
- * the plugin injects into the center view and the tab body, the requests it showed through a recording `dvCenter`, the
- * inject `hooks` bound as the renderer binds them, and a stand-in for the shell's center of project p1, which keeps the
- * center fields that the view notes and the request that a test hands it.
+ * the plugin injects into the center view and the tab body, the inject `hooks` bound as the renderer binds them, and a
+ * stand-in for the shell's center of project p1, which keeps the center fields that the view notes and the request that
+ * a test hands it.
  */
 import { useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
 import { Context } from '@deepseek-ai/cordis'
 import type { Fiber } from '@deepseek-ai/cordis'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
-import type { CenterFields, CenterRequest, CenterTarget, JsonFields } from '@dv/ui-shell/contract'
+import type { CenterFields, CenterRequest, JsonFields } from '@dv/ui-shell/contract'
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import type { TimelineInjected } from '../src/client/TimelineBody.tsx'
 import { TimelineView } from '../src/client/TimelineView.tsx'
@@ -44,8 +44,6 @@ export interface BootedTimeline {
   ctx: Context
   fiber: Fiber
   registered: Registered[]
-  /** The targets that the plugin showed through `dvCenter.show`, in order. */
-  shown: CenterTarget[]
   /** The center of project p1 that {@link centerView} draws the view in. */
   stand: StandInCenter
   center: () => TimelineCenterInjected
@@ -81,13 +79,12 @@ export function standInCenter(): StandInCenter {
 }
 
 /**
- * Boot the plugin over recording `slots`, `locale`, `sidebarRightTabs` and `dvCenter` services.
+ * Boot the plugin over recording `slots`, `locale` and `sidebarRightTabs` services and a `dvCenter` that shows nothing.
  * @returns the booted plugin.
  */
 export async function bootTimeline(): Promise<BootedTimeline> {
   const ctx = new Context()
   const registered: Registered[] = []
-  const shown: CenterTarget[] = []
   ctx.provide('slots', {
     inject: (_name: string, register: () => () => void) => register(),
     register: (options: Omit<Registered, 'component'>, component: unknown) => {
@@ -98,7 +95,7 @@ export async function bootTimeline(): Promise<BootedTimeline> {
   } as never)
   ctx.provide('locale', { bind: () => (key: string) => key, register: () => () => {} } as never)
   ctx.provide('sidebarRightTabs', { register: () => () => {} } as never)
-  ctx.provide('dvCenter', { show: (target: CenterTarget) => { shown.push(target) } })
+  ctx.provide('dvCenter', { show: () => {} })
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
   const injected = <T,>(name: string): () => T => () => {
@@ -107,7 +104,7 @@ export async function bootTimeline(): Promise<BootedTimeline> {
     return entry.inject() as T
   }
   return {
-    ctx, fiber, registered, shown, stand: standInCenter(),
+    ctx, fiber, registered, stand: standInCenter(),
     center: injected<TimelineCenterInjected>('dv.center.view'),
     tab: injected<TimelineInjected>('sidebar.right.pane.tab'),
   }

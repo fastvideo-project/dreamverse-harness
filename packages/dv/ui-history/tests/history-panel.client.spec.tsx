@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
  * The History tab under the real slot runtime and a scripted API: the steps with 当前 and greyed later steps, the
- * thumbnails and players of render rows, folds, selection and the center moves it asks `dvCenter` for, undo, redo,
- * 回到这一步, paging, live updates, and empty states.
+ * thumbnails and players of render rows, drawn through `dv.media` by the asset pool's media views, folds, selection and
+ * the center moves it asks `dvCenter` for, undo, redo, 回到这一步, paging, live updates, and empty states.
  */
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -14,6 +14,7 @@ import type { Asset, HistoryEntry, HistoryQuery, ProjectRecord, WireHistory, Wir
 import { DV_HISTORY_FOCUS_EVENT, DV_TRAJECTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import type { HistoryRow } from '../src/client/contract/index.ts'
+import { HISTORY_ID } from '../src/client/definition.ts'
 import { HistoryPanel } from '../src/client/HistoryPanel.tsx'
 import { disposeHistories, mountHistory } from './runtime.client.tsx'
 
@@ -180,11 +181,19 @@ const settle = (): Promise<void> => new Promise((resolve) => { setTimeout(resolv
 
 /**
  * @param element - a row.
- * @returns the tag and the asset of the row's thumbnail, or null while it shows the empty square.
+ * @returns the media element that the row's thumbnail draws through `dv.media`, or null while it shows the empty square.
+ */
+const thumbMedia = (element: HTMLElement): Element | null => element.querySelector(
+  '[data-testid="dv-history-thumb"] img, [data-testid="dv-history-thumb"] video',
+)
+
+/**
+ * @param element - a row.
+ * @returns the tag and the source of the row's thumbnail media, or null while it shows the empty square.
  */
 const thumbOf = (element: HTMLElement): string | null => {
-  const thumb = element.querySelector('[data-testid="dv-history-thumb"]')
-  return thumb === null ? null : `${thumb.tagName.toLowerCase()} ${thumb.getAttribute('src') ?? ''}`
+  const media = thumbMedia(element)
+  return media === null ? null : `${media.tagName.toLowerCase()} ${media.getAttribute('src') ?? ''}`
 }
 
 describe('the History tab', () => {
@@ -219,9 +228,13 @@ describe('the History tab', () => {
       serve: serveEntries([{ record: take, place: 'current' }, { record: clip, place: 'before' }], assets),
     })
     await waitFor(() => { expect(thumbOf(row('g7'))).toBe('img /dv/assets/still.png') })
-    expect(thumbOf(row('v1'))).toBe('video /dv/assets/clip.mp4')
+    // The video view draws a video without a still by its first frame.
+    expect(thumbOf(row('v1'))).toBe('video /dv/assets/clip.mp4#t=0.1')
     fireEvent.click(row('g7'))
-    expect(within(row('g7')).getByTestId('dv-history-preview').querySelector('video')?.getAttribute('src')).toBe('/dv/assets/take.mp4')
+    const player = within(row('g7')).getByTestId('dv-history-preview').querySelector('video')
+    expect(player?.getAttribute('src')).toBe('/dv/assets/take.mp4')
+    // The player starts muted and loops, as a take does in its editor.
+    expect([player?.muted, player?.loop, player?.autoplay]).toEqual([true, true, true])
   })
 
   it('falls back to the empty square when a thumbnail image or video fails to load', async () => {
@@ -229,11 +242,11 @@ describe('the History tab', () => {
     const { row } = await mount([], () => {}, [], {
       serve: serveEntries([...ENTRIES, clip], [...ASSETS, asset('clip.mp4', 'video/mp4', 'v1')]),
     })
-    await waitFor(() => { expect(thumbOf(row('v1'))).toBe('video /dv/assets/clip.mp4') })
+    await waitFor(() => { expect(thumbOf(row('v1'))).toBe('video /dv/assets/clip.mp4#t=0.1') })
     for (const id of ['g1', 'v1']) {
-      const thumb = row(id).querySelector('[data-testid="dv-history-thumb"]')
-      if (thumb === null) throw new Error(`no thumbnail on ${id}`)
-      fireEvent.error(thumb)
+      const media = thumbMedia(row(id))
+      if (media === null) throw new Error(`no thumbnail on ${id}`)
+      fireEvent.error(media)
       expect(thumbOf(row(id))).toBeNull()
       // The empty square keeps the thumbnail column.
       expect(row(id).querySelector<HTMLElement>('[style*="grid-template-columns"]')?.style.gridTemplateColumns).toMatch(/^40px /)
@@ -541,10 +554,12 @@ describe('the History tab', () => {
 
   it('removes the tab body with the History plugin', async () => {
     const { row, history, view, runtime } = await mount()
+    const tabKeys = (): Array<string | undefined> => runtime.slots.entries('sidebar.right.pane.tab').map(entry => entry.options.key)
     await waitFor(() => { row('g1') })
+    expect(tabKeys()).toContain(HISTORY_ID)
     await history.dispose()
     await waitFor(() => { expect(view.container.querySelector('[data-testid="dv-history-panel"]')).toBeNull() })
-    expect(runtime.slots.entries('sidebar.right.pane.tab')).toEqual([])
+    expect(tabKeys()).not.toContain(HISTORY_ID)
   })
 })
 
@@ -685,7 +700,9 @@ describe('HistoryPanel', () => {
     }
     const client = new DvClient(fetchImpl)
     const rows = createRegistry<HistoryRow>(row => [row.match])
-    const panel = (project: string): ReactNode => <HistoryPanel projectId={project} client={client} rows={rows} showInCenter={() => {}} />
+    const panel = (project: string): ReactNode => (
+      <HistoryPanel projectId={project} client={client} rows={rows} showInCenter={() => {}} renderFactorySlot={() => null} />
+    )
     const view = render(panel('p1'))
     const listed = (): Array<string | null> => [...view.container.querySelectorAll('[data-testid="dv-history-row"]')].map(element => element.getAttribute('data-record'))
     fireEvent.click(await view.findByTestId('dv-history-more'))

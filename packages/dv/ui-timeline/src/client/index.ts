@@ -1,10 +1,10 @@
 /**
  * Browser half: register `dv-timeline` as a right-Sidebar tab type, its dictionaries, and its body; while `dvCenter` is
  * present, register the timeline editor (`TimelineView`) as the 时间线 view of the workspace center (`dv.center.view`)
- * and show that view with a request to insert the asset of a `dv:timeline-insert` event; while `dvCanvas` is present,
- * register the records that the timelines use; while `dvHistory` is present, register the History row of timeline
- * records; while `dvMentions` is present, register the clip mention kind of the composer's `@` menu. The tab body keeps
- * its own timeline selection of each project; the center view keeps its selection in the open project's center fields.
+ * and 插入片段 in the asset preview (`dv.media.preview.action`); while `dvCanvas` is present, register the records that
+ * the timelines use; while `dvHistory` is present, register the History row of timeline records; while `dvMentions` is
+ * present, register the clip mention kind of the composer's `@` menu. The tab body keeps its own timeline selection of
+ * each project; the center view keeps its selection in the open project's center fields.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -12,11 +12,13 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@dv/ui-history/contract'
 import { DvClient } from '@dv/ui-kit/api.ts'
-import { DV_TIMELINE_INSERT_EVENT } from '@dv/ui-kit/workspace-events.ts'
-import type { DvWorkspaceEventMap } from '@dv/ui-kit/workspace-events.ts'
+import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
+import { DV_CURRENT_PROJECT_EVENT, getCurrentProject } from '@dv/ui-kit/current-project.ts'
 import type {} from '@dv/ui-shell/contract'
 import { TIMELINE_ID, timelineDefinition } from './definition.ts'
 import { timelineHistoryRow } from './history-row.ts'
+import { InsertClipAction } from './InsertClipAction.tsx'
+import type { InsertClipInjected } from './InsertClipAction.tsx'
 import { en, NS, zh } from './locales.ts'
 import { clipMentionKind } from './mention.ts'
 import { createTimelineSelection } from './selection.ts'
@@ -34,12 +36,13 @@ export type { TimelineCenterInjected, TimelineViewProps } from './TimelineView.t
 export const inject = ['slots', 'locale', 'sidebarRightTabs']
 
 /**
- * Client plugin body: register the type, its dictionaries, and its body under the type's id; while `dvCenter` is present,
- * register the center view `timeline`, which edits the project and writes for the chat session that the workspace center
- * passes, and show that view for a `dv:timeline-insert` request, whose asset the view inserts; while `dvCanvas` is
- * present, register the timeline's `TakesInUse` under the same id; while `dvHistory` is present, register the History
- * row `timeline.`, whose focus shows a record's timeline and clip; while `dvMentions` is present, register the clip
- * mention kind. Each registration leaves with its service or with the plugin.
+ * Client plugin body: register the type, its dictionaries, and its body under the type's id; while `dvCenter` is
+ * present, register the center view `timeline`, which edits the project and writes for the chat session that the
+ * workspace center passes, and the preview action `dv.timeline.insert` (插入片段), which shows the timeline view of the
+ * open project with a request to insert a video; while `dvCanvas` is present, register the timeline's `TakesInUse`
+ * under the same id; while `dvHistory` is present, register the History row `timeline.`, whose focus shows a record's
+ * timeline and clip; while `dvMentions` is present, register the clip mention kind. Each registration leaves with its
+ * service or with the plugin.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
@@ -49,6 +52,14 @@ export function apply(ctx: ClientContext): void {
   const client = new DvClient()
   const selection = createTimelineSelection()
   const injected: TimelineInjected = { client, hooks: { selection }, select: selection.select }
+  // The open project of the DreamVerse shell, for the inject `hooks` of 插入片段.
+  const openProject: HostObservable<string | null> = {
+    getSnapshot: getCurrentProject,
+    subscribe(listener) {
+      window.addEventListener(DV_CURRENT_PROJECT_EVENT, listener)
+      return () => { window.removeEventListener(DV_CURRENT_PROJECT_EVENT, listener) }
+    },
+  }
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
     { name: 'sidebar.right.pane.tab', key: TIMELINE_ID, locale: NS, inject: () => injected },
     TimelineBody,
@@ -58,15 +69,13 @@ export function apply(ctx: ClientContext): void {
     scope.effect(() => scope.slots.inject('dv.center.view', () => scope.slots.register(
       { name: 'dv.center.view', id: 'timeline', order: 1, label: () => t('type.label'), inject: () => center }, TimelineView,
     )), 'ui-timeline: center view')
-    // 插入片段 in the asset pool's preview names the open project, whose timeline view inserts the asset.
-    const insert = (event: Event): void => {
-      const { assetId } = (event as CustomEvent<DvWorkspaceEventMap['dv:timeline-insert']>).detail
-      scope.dvCenter.show({ view: 'timeline', target: { insert: assetId } })
+    const action: InsertClipInjected = {
+      hooks: { openProject },
+      insert: (assetId) => { scope.dvCenter.show({ view: 'timeline', target: { insert: assetId } }) },
     }
-    scope.effect(() => {
-      window.addEventListener(DV_TIMELINE_INSERT_EVENT, insert)
-      return () => { window.removeEventListener(DV_TIMELINE_INSERT_EVENT, insert) }
-    }, 'ui-timeline: dv:timeline-insert')
+    scope.effect(() => scope.slots.inject('dv.media.preview.action', () => scope.slots.register(
+      { name: 'dv.media.preview.action', id: 'dv.timeline.insert', locale: NS, inject: () => action }, InsertClipAction,
+    )), 'ui-timeline: 插入片段 preview action')
   })
   ctx.inject(['dvCanvas'], (scope) => {
     scope.effect(() => scope.dvCanvas.takesInUse.register(timelineTakesInUse(t)), 'ui-timeline: takes in use')

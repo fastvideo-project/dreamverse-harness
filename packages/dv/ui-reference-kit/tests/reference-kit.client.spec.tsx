@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
 /**
  * `defineReferenceUi` on the test-only reference noun `test_ref`: its canvas node type, version kind, references in use,
- * `@` menu kind and History row, their registration and removal, and the `dv.canvas.editor` entry with its writes.
+ * `@` menu kind and History row, their registration and removal, and the `dv.canvas.editor` entry with its writes and
+ * its references drawn through `dv.media` by the asset pool's media views.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { Context } from '@deepseek-ai/cordis'
+import type { Plugin } from '@deepseek-ai/cordis'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
+import type { FeatureHandle } from '@deepseek-ai/dsh-client-test-runtime'
 import { defineReferenceUi, ReferenceEditor } from '../src/client/reference-kit.tsx'
 import type { ReferenceEditorProps } from '../src/client/reference-kit.tsx'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
@@ -17,6 +20,8 @@ import type {
 } from '@dv/ui-kit/registries.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
 import { fixtureState, record, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
+import { ImageView, VideoView } from '../../ui-asset-pool/src/client/media.tsx'
+import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 
 /** The reference noun `test_ref` with the default editor. */
 const testRef = defineReferenceUi({
@@ -157,6 +162,29 @@ function entryOf(state: WireState, id: string): NodeEntry {
   return found
 }
 
+/** The asset pool's image and video views, registered under `dv.media.view` as the asset pool plugin does. */
+const mediaViews: Plugin = {
+  inject: ['slots'],
+  apply(ctx: Context) {
+    for (const [key, view] of Object.entries({ image: ImageView, video: VideoView })) {
+      ctx.effect(() => ctx.slots.inject('dv.media.view', () => ctx.slots.register({ name: 'dv.media.view', key }, view)), `test: ${key} view`)
+    }
+  },
+}
+
+/**
+ * A runtime that declares `dv.canvas.editor` and holds the `@dv/ui-media` plugin, the media views, and a reference noun.
+ * @param noun - the reference noun's plugin body.
+ * @returns the runtime and the noun plugin's handle.
+ */
+async function editorRuntime(noun: (ctx: Context) => void): Promise<{ runtime: SlotTestRuntime; plugin: FeatureHandle }> {
+  const runtime = await SlotTestRuntime.create()
+  await runtime.declare({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } })
+  await runtime.mount({ inject: [...mediaInject], apply: mediaApply })
+  await runtime.mount(mediaViews)
+  return { runtime, plugin: await runtime.mount({ apply: noun }) }
+}
+
 /** @returns a canvas host whose methods record their calls. */
 function hostMock() {
   return { run: vi.fn<EntryEditorHost['run']>(), pickAssets: vi.fn<EntryEditorHost['pickAssets']>(), preview: vi.fn<EntryEditorHost['preview']>() }
@@ -165,9 +193,7 @@ function hostMock() {
 describe('the editor entry of a reference noun', () => {
   it('shows the newest references and the description, writes <key>.update through the host, and leaves with the plugin', async () => {
     document.documentElement.lang = 'zh-CN'
-    const runtime = await SlotTestRuntime.create()
-    await runtime.declare({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } })
-    const plugin = await runtime.mount({ apply: testRef.apply })
+    const { runtime, plugin } = await editorRuntime(testRef.apply)
     expect(runtime.slots.entries('dv.canvas.editor')).toHaveLength(1)
     const state = withTestRef(fixtureState())
     const host = hostMock()
@@ -178,6 +204,8 @@ describe('the editor entry of a reference noun', () => {
     expect(view.getByRole('button', { name: '移除 ref.png' }).hasAttribute('disabled')).toBe(true)
     expect(view.getByText('A tired detective.')).toBeTruthy()
     const opener = view.getByRole('button', { name: '查看 ref.png' })
+    // The image view draws the reference image as a card.
+    expect(opener.querySelector('img')?.getAttribute('src')).toBe('/dv/assets/ref.png')
     fireEvent.click(opener)
     expect(host.preview).toHaveBeenCalledWith('ref.png', opener)
 
@@ -194,7 +222,8 @@ describe('the editor entry of a reference noun', () => {
     state.components.test_ref?.['hero']?.push({ id: 'hero', version: 2, name: 'Hero', description: '', references: ['ref.png', 'shot1.mp4'], created_by: 'e1' })
     slot.update({ node: entryOf(state, 'test_ref:hero'), state, host }, { entryKey: testRef.spec.id })
     expect(view.queryByText('A tired detective.')).toBeNull()
-    expect(container.querySelector('video')?.getAttribute('src')).toContain('shot1.mp4')
+    // The video view draws the video reference by its first frame.
+    expect(view.getByRole('button', { name: '查看 shot1.mp4' }).querySelector('video')?.getAttribute('src')).toBe('/dv/assets/shot1.mp4#t=0.1')
     fireEvent.click(view.getByRole('button', { name: '移除 ref.png' }))
     expect(host.run).toHaveBeenLastCalledWith({
       operation: 'test_ref.update', params: { test_ref: 'hero' }, inputs: [{ role: 'reference', ref: 'shot1.mp4' }],
@@ -223,9 +252,7 @@ describe('the editor entry of a reference noun', () => {
       </ReferenceEditor>
     )
     const traits = defineReferenceUi({ ...testRef.spec, editor: TraitsEditor })
-    const runtime = await SlotTestRuntime.create()
-    await runtime.declare({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } })
-    await runtime.mount({ apply: traits.apply })
+    const { runtime } = await editorRuntime(traits.apply)
     const state = withTestRef(fixtureState())
     const host = hostMock()
     const { view } = runtime.renderSlot('dv.canvas.editor', { node: entryOf(state, 'test_ref:hero'), state, host }, { entryKey: traits.spec.id })
@@ -237,16 +264,14 @@ describe('the editor entry of a reference noun', () => {
 
   it('names an unnamed item by its ID, opens no preview of a reference outside the project assets, and skips held picks', async () => {
     document.documentElement.lang = 'en'
-    const runtime = await SlotTestRuntime.create()
-    await runtime.declare({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } })
-    await runtime.mount({ apply: testRef.apply })
+    const { runtime } = await editorRuntime(testRef.apply)
     const state = refState()
     const host = hostMock()
     const { container, view } = runtime.renderSlot('dv.canvas.editor', { node: entryOf(state, 'test_ref:alley'), state, host }, { entryKey: testRef.spec.id })
 
     // `alley.png` is no asset of the project: its button shows no media and opens no preview.
     const opener = view.getByRole('button', { name: 'View alley.png' })
-    expect(container.querySelector('img, video')).toBeNull()
+    expect(container.querySelector('img, video, [data-dv-media]')).toBeNull()
     fireEvent.click(opener)
     expect(host.preview).not.toHaveBeenCalled()
 
@@ -263,9 +288,7 @@ describe('the editor entry of a reference noun', () => {
   })
 
   it('draws nothing for an entry whose node ID belongs to another noun', async () => {
-    const runtime = await SlotTestRuntime.create()
-    await runtime.declare({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } })
-    await runtime.mount({ apply: testRef.apply })
+    const { runtime } = await editorRuntime(testRef.apply)
     const state = refState()
     const node = { ...entryOf(state, 'test_ref:hero'), id: 'character:hero' }
     const { container } = runtime.renderSlot('dv.canvas.editor', { node, state, host: hostMock() }, { entryKey: testRef.spec.id })

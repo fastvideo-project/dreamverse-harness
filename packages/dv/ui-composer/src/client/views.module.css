@@ -1,4 +1,4 @@
-/* The DreamVerse tool rows in the chat and their 在历史中查看 button. */
+/* The DreamVerse tool rows in the chat, their 在历史中查看 button, and the 让智能体使用 button of the asset preview. */
 .status {
   color: var(--dv-text-2);
   font-size: 12px;
@@ -44,8 +44,33 @@
   outline-offset: 2px;
 }
 
+/* 让智能体使用: an outlined button beside 关闭 in the asset preview. */
+.actionButton {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--dv-line-strong);
+  border-radius: var(--dv-radius-md);
+  background: transparent;
+  color: var(--dv-text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+  transition: background-color 120ms var(--dv-ease);
+}
+
+.actionButton:hover {
+  background: var(--dv-surface-3);
+}
+
+.actionButton:focus-visible {
+  outline: 2px solid var(--dv-accent);
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .textButton {
+  .textButton,
+  .actionButton {
     transition: none;
   }
 }

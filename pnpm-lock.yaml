@@ -2188,6 +2188,9 @@ importers:
       '@dv/ui-mcp-presets':
         specifier: workspace:*
         version: link:../../dv/ui-mcp-presets
+      '@dv/ui-media':
+        specifier: workspace:*
+        version: link:../../dv/ui-media
       '@dv/ui-shell':
         specifier: workspace:*
         version: link:../../dv/ui-shell
@@ -7693,6 +7696,9 @@ importers:
       '@dv/ui-kit':
         specifier: workspace:*
         version: link:../ui-kit
+      '@dv/ui-media':
+        specifier: workspace:*
+        version: link:../ui-media
       '@testing-library/react':
         specifier: ^16.1.0
         version: 16.3.2(@testing-library/dom@10.4.2)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -7735,6 +7741,9 @@ importers:
       '@dv/ui-kit':
         specifier: workspace:*
         version: link:../ui-kit
+      '@dv/ui-media':
+        specifier: workspace:*
+        version: link:../ui-media
       '@dv/ui-reference-kit':
         specifier: workspace:*
         version: link:../ui-reference-kit
@@ -7837,6 +7846,9 @@ importers:
       '@dv/ui-kit':
         specifier: workspace:*
         version: link:../ui-kit
+      '@dv/ui-media':
+        specifier: workspace:*
+        version: link:../ui-media
       '@types/react':
         specifier: ~18.3.1
         version: 18.3.31
@@ -7873,6 +7885,9 @@ importers:
       '@dv/ui-kit':
         specifier: workspace:*
         version: link:../ui-kit
+      '@dv/ui-media':
+        specifier: workspace:*
+        version: link:../ui-media
       '@dv/ui-shell':
         specifier: workspace:*
         version: link:../ui-shell
@@ -7985,6 +8000,42 @@ importers:
         specifier: ^18.2.0
         version: 18.3.1
 
+  packages/dv/ui-media:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-client-test-runtime':
+        specifier: workspace:*
+        version: link:../../test-support/client-runtime
+      '@deepseek-ai/dsh-client-ui-layout':
+        specifier: workspace:*
+        version: link:../../client/ui-layout
+      '@deepseek-ai/dsh-client-ui-renderer':
+        specifier: workspace:*
+        version: link:../../client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: workspace:*
+        version: link:../../client/ui-slots
+      '@dv/ui-kit':
+        specifier: workspace:*
+        version: link:../ui-kit
+      '@testing-library/react':
+        specifier: ^16.1.0
+        version: 16.3.2(@testing-library/dom@10.4.2)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@types/react':
+        specifier: ~18.3.1
+        version: 18.3.31
+      '@types/react-dom':
+        specifier: ~18.3.0
+        version: 18.3.7(@types/react@18.3.31)
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.2.0
+        version: 18.3.1(react@18.3.1)
+
   packages/dv/ui-reference-kit:
     devDependencies:
       '@deepseek-ai/cordis':
@@ -8005,6 +8056,9 @@ importers:
       '@dv/ui-kit':
         specifier: workspace:*
         version: link:../ui-kit
+      '@dv/ui-media':
+        specifier: workspace:*
+        version: link:../ui-media
       '@testing-library/react':
         specifier: ^16.1.0
         version: 16.3.2(@testing-library/dom@10.4.2)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -8065,6 +8119,9 @@ importers:
       '@dv/ui-kit':
         specifier: workspace:*
         version: link:../ui-kit
+      '@dv/ui-media':
+        specifier: workspace:*
+        version: link:../ui-media
       '@types/react':
         specifier: ~18.3.1
         version: 18.3.31
@@ -8098,6 +8155,9 @@ importers:
       '@dv/ui-kit':
         specifier: workspace:*
         version: link:../ui-kit
+      '@dv/ui-media':
+        specifier: workspace:*
+        version: link:../ui-media
       '@testing-library/react':
         specifier: ^16.1.0
         version: 16.3.2(@testing-library/dom@10.4.2)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -8275,6 +8335,9 @@ importers:
       '@dv/ui-kit':
         specifier: workspace:*
         version: link:../ui-kit
+      '@dv/ui-media':
+        specifier: workspace:*
+        version: link:../ui-media
       '@dv/ui-shell':
         specifier: workspace:*
         version: link:../ui-shell

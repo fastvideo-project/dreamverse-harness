@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /**
  * The canvas slots in the workspace center: under the real slot runtime, ui-canvas's `dv.center.view` entry declares the
- * canvas slots and hands them to its canvas, so the center canvas shows the slot bodies that plugin UI halves register.
+ * canvas slots and hands them to its canvas, so the center canvas shows the slot bodies that plugin UI halves register,
+ * draws its assets through `dv.media`, and opens the `dvMedia` preview while `@dv/ui-media` is loaded.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, waitFor, within } from '@testing-library/react'
@@ -10,7 +11,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
-import { apply as assetPoolApply, inject as assetPoolInject } from '@dv/ui-asset-pool/src/client/index.ts'
+import { assetUrl } from '@dv/ui-kit/api.ts'
 import { defineReferenceUi } from '@dv/ui-reference-kit/reference-kit.tsx'
 import type { NodeType } from '@dv/ui-kit/registries.ts'
 import type { CenterRequest, JsonFields } from '@dv/ui-shell/contract'
@@ -19,6 +20,7 @@ import { apply as shotPlanApply } from '../../ui-shot-plan/src/client/index.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { EDITOR_RECT_KEY } from '../src/client/NodeEditor.tsx'
 import { zh } from '../src/client/locales.ts'
+import { mountMediaPlugins } from './media-runtime.client.tsx'
 
 /** A node type as a plugin's UI half registers it: one entry per project. */
 const PROPS: NodeType = {
@@ -51,7 +53,8 @@ afterEach(() => {
 
 /**
  * A slot runtime whose root frame declares the center slot and shows its canvas entry, as the shell's workspace center
- * does, with the ui-canvas plugin mounted on the fixture project and its reference noun `test_ref`.
+ * does, above DSH's `shell.overlay` list, with the ui-canvas plugin mounted on the fixture project and its reference noun
+ * `test_ref`.
  * @param request - the request that the center hands the canvas; none by default.
  * @returns the runtime, the rendered root, the mounted ui-canvas plugin, and the writes of the plugin's client.
  */
@@ -62,9 +65,13 @@ async function centerCanvas(request: CenterRequest | null = null) {
   const runtime = await SlotTestRuntime.create()
   runtime.ctx.provide('locale', { bind: () => (key: string) => key, register: () => () => {} } as never)
   runtime.ctx.provide('sidebarRightTabs', new SidebarRightTabRegistry(runtime.ctx) as never)
-  const Frame = ({ renderSlot }: PropsRenderSlots<'dv.center.view'>): ReactNode =>
-    <div data-testid="center">{renderSlot('dv.center.view', { projectId: 'p1', session: 's5', request, fields: {}, note: () => {} }, { only: 'canvas' })}</div>
-  await runtime.root.declare({ 'dv.center.view': { kind: 'list', scope: 'root' } }, Frame)
+  const Frame = ({ renderSlot }: PropsRenderSlots<'dv.center.view' | 'shell.overlay'>): ReactNode => (
+    <>
+      <div data-testid="center">{renderSlot('dv.center.view', { projectId: 'p1', session: 's5', request, fields: {}, note: () => {} }, { only: 'canvas' })}</div>
+      {renderSlot('shell.overlay', {})}
+    </>
+  )
+  await runtime.root.declare({ 'dv.center.view': { kind: 'list', scope: 'root' }, 'shell.overlay': { kind: 'list', scope: 'root' } }, Frame)
   const view = runtime.renderRoot()
   const canvas = await runtime.mount({ inject: [...inject], apply })
   return { runtime, view, canvas, writes: scripted.writes }
@@ -117,9 +124,18 @@ describe('canvas slots in the workspace center', () => {
     const editor = await openEditor(container, 'test_ref:hero')
     // The body of the noun's entry: the reference of the newest version, the description and 添加素材.
 
-    expect(within(editor).getByRole('button', { name: '查看 ref.png' })).toBeTruthy()
     expect(within(editor).getByText('A tired detective.')).toBeTruthy()
     expect(within(editor).getByText('＋ 添加素材')).toBeTruthy()
+    // Without `@dv/ui-media` the reference opens no preview.
+    fireEvent.click(within(editor).getByRole('button', { name: '查看 ref.png' }))
+    expect(within(document.body).queryByRole('dialog', { name: 'ref.png' })).toBeNull()
+    expect(within(container).getByTestId('dv-canvas-node-editor')).toBe(editor)
+    // 添加素材 opens the canvas's picker over the editor, and Escape closes the picker only.
+    fireEvent.click(within(editor).getByText('＋ 添加素材'))
+    expect(within(document.body).getByTestId('dv-canvas-asset-picker')).toBeTruthy()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(within(document.body).queryByTestId('dv-canvas-asset-picker')).toBeNull()
+    expect(within(container).getByTestId('dv-canvas-node-editor')).toBe(editor)
     await runtime.dispose()
   })
 
@@ -136,11 +152,13 @@ describe('canvas slots in the workspace center', () => {
     await runtime.dispose()
   })
 
-  it('shows the asset pool tiles in the asset picker and the asset preview in the center canvas', async () => {
+  it('draws the center canvas\'s assets through dv.media, shows the asset pool tiles in the asset picker, and opens the dvMedia preview', async () => {
     document.documentElement.lang = 'zh-CN'
     const { runtime, view } = await centerCanvas()
-    await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
+    await mountMediaPlugins(runtime)
 
+    // The take's card draws its image output through the image view.
+    await waitFor(() => { expect(view.container.querySelector('[data-node-id="g1"] img')?.getAttribute('src')).toBe(assetUrl('shot1-last.png')) })
     const editor = await openEditor(view.container, 'g1')
     // 添加素材 opens the picker, which shows the asset pool's `dv.canvas.picker` entry below the versioned items.
     fireEvent.click(within(editor).getByText(zh['editor.addAsset']))
@@ -152,7 +170,7 @@ describe('canvas slots in the workspace center', () => {
     })
     fireEvent.click(tile)
     fireEvent.click(view.getByText('确认（1）'))
-    // The picked asset's chip opens the asset pool's `dv.canvas.preview` entry.
+    // The picked asset's chip opens the `dvMedia` preview in DSH's `shell.overlay` list.
     fireEvent.click(within(editor).getByRole('button', { name: '查看 shot1.mp4' }))
     expect(await view.findByRole('dialog', { name: 'shot1.mp4' })).toBeTruthy()
     await runtime.dispose()

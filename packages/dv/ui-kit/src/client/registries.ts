@@ -11,7 +11,6 @@ import type {} from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type { DvClient } from './api.ts'
 import type { Asset, OperationRequest, ProjectRecord, WireState } from './types.ts'
-import type { ZoomPresence } from './zoom.ts'
 
 /** A list of descriptors that plugins add and remove, with one owner per key. */
 export interface Registry<D> {
@@ -134,7 +133,7 @@ export interface EntryEditorHost {
   run(request: Omit<OperationRequest, 'project' | 'surface' | 'session'>): void
   /** Open the canvas's asset picker of assets only; `onConfirm` receives the picked asset IDs in pick order. */
   pickAssets(chosen: readonly string[], onConfirm: (assets: string[]) => void): void
-  /** Open the canvas's preview of an asset, growing out of `opener` and shrinking back into it. */
+  /** Open the asset preview of `dvMedia` (`@dv/ui-media`), growing out of `opener` and shrinking back into it. */
   preview(asset: string, opener: Element | null): void
 }
 
@@ -148,7 +147,7 @@ export interface MentionKind {
   /** Section order in the `@` menu; the core lists assets last. */
   order: number
   section(): string
-  /** The items of a state; `thumb` is the asset whose image, or a video's first frame, the menu shows as the icon. */
+  /** The items of a state; `thumb` is the asset whose media type's poster the menu shows as the icon. */
   items(state: WireState): Array<{ uri: string; label: string; description?: string; thumb?: string }>
 }
 declare module '@deepseek-ai/cordis' {
@@ -164,7 +163,5 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'dv.canvas.editor': { kind: 'keyed'; scope: 'root'; owner: { node: NodeEntry; state: WireState; host: EntryEditorHost } }
     /** The asset pool panel in the canvas's asset picker; `@dv/ui-canvas` renders the entry at key 'assets' below the version kinds. */
     'dv.canvas.picker': { kind: 'keyed'; scope: 'root'; owner: { projectId: string; session: string | null; client: DvClient; onOpen(asset: Asset): void } }
-    /** The preview of one asset; `@dv/ui-canvas` renders the entry at key 'assets'. Without it, the preview shows nothing. */
-    'dv.canvas.preview': { kind: 'keyed'; scope: 'root'; owner: { asset: Asset; onClose(): void; zoom: ZoomPresence<Asset> } }
   }
 }

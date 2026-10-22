@@ -4,7 +4,9 @@
  * - an `@` source listing the bound project's clips, the items of every registered mention kind, and assets;
  * - a 引用 row in the composer's ＋ menu that opens that `@` list at the end of the draft;
  * - an invisible `conversation.input.left` entry that makes each session's composer a `dv:compose` target;
- * - thumbnail cards for the project's video and image assets in settled chat Markdown (`chat-media.ts`);
+ * - cards for the project's assets of every media type in settled chat Markdown (`chat-media.ts`), drawn through
+ *   `dv.media`, whose clicks open the `dvMedia` preview;
+ * - 让智能体使用 in the asset preview (`dv.media.preview.action`), which prefills the composer with the asset;
  * - creator-facing names for the `dv_*` tools and for every operation of `/api/dv/operations` in their chat rows
  *   and in the running group title;
  * - 在历史中查看 on every settled row whose tool is not read-only, including failed calls, which dispatches
@@ -27,6 +29,8 @@ import { DV_COMPOSE_EVENT, type DvComposeDetail } from '@dv/ui-kit/compose.ts'
 import { getCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
 import { createRegistry, type MentionKind } from '@dv/ui-kit/registries.ts'
+import type { MediaType } from '@dv/ui-media/contract'
+import { UseAssetAction } from './actions.tsx'
 import { registerChatMedia } from './chat-media.ts'
 import { deliverCompose, mountComposer } from './compose.ts'
 import { MENTION_SOURCE, projectMentionSource } from './mention.ts'
@@ -68,8 +72,13 @@ export function apply(ctx: ClientContext): void {
   // At apply's top level, never inside an effect: other plugins register into the registry from their own fibers.
   const mentions = { kinds: createRegistry<MentionKind>(kind => [kind.id]) }
   ctx.reflect.provide('dvMentions', mentions)
-  ctx.effect(() => ctx.inputTriggers.registerSource(projectMentionSource(mentions)), 'dv-composer: @ source')
+  // The `@` menu icons read the media types of the optional `dvMedia` when the menu lists its candidates.
+  const mediaTypes = (): readonly MediaType[] => ctx.get('dvMedia')?.types.list() ?? []
+  ctx.effect(() => ctx.inputTriggers.registerSource(projectMentionSource(mentions, mediaTypes)), 'dv-composer: @ source')
   registerChatMedia(ctx)
+  ctx.effect(() => ctx.slots.inject('dv.media.preview.action', () => ctx.slots.register(
+    { name: 'dv.media.preview.action', id: 'dv.composer.use-asset' }, UseAssetAction,
+  )), 'dv-composer: 让智能体使用 preview action')
 
   /** The input facade of one session, while its scope and conversation service exist. */
   const inputOf = (sessionId: SessionId): SessionInput | undefined => {
@@ -119,13 +128,11 @@ export function apply(ctx: ClientContext): void {
 
   // Every labelled tool shows its creator-facing name in its chat row and in the running group title. The row sits at
   // priority 0.5: a plugin's own row at the default priority 0 wins over it, and it wins over the operation rows at 1.
-  function LabelRow(props: ToolCallViewProps) {
-    const label = DV_TOOL_LABELS[props.toolName] ?? [props.toolName, props.toolName]
-    return createElement(ToolLabelRow, {
+  // The keyed slot renders an entry only for the call whose tool name is the entry's key, so each row holds its label.
+  for (const [name, label] of Object.entries(DV_TOOL_LABELS)) {
+    const LabelRow = (props: ToolCallViewProps) => createElement(ToolLabelRow, {
       label, toolName: props.toolName, sessionId: props.sessionId, callId: props.callId, phase: props.phase, block: props.block,
     })
-  }
-  for (const name of Object.keys(DV_TOOL_LABELS)) {
     ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key: name, priority: 0.5 }, LabelRow))
   }
   // Every operation of /api/dv/operations gets its row and its name in the running group title.

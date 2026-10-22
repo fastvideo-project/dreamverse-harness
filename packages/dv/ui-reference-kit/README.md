@@ -29,7 +29,7 @@ Add `@dv/ui-reference-kit` to the `devDependencies` of a noun's UI package and i
 
 | Symbol | Meaning |
 | --- | --- |
-| `defineReferenceUi(spec)`, `ReferenceEditor` | `defineReferenceUi(spec)`: the descriptors of one reference noun from one `ReferenceUiSpec` (`id`, the package name and editor slot key; `key`, the component key, reference kind and node type; `slice(state)`, the noun's slice, `undefined` while the host half is not loaded, in which case the descriptors list no items; `label`; `mention`; an optional `editor`): a `NodeType` with one entry `<key>:<id>` per item at its newest version in column 0, a `VersionKind`, a `TakesInUse` of the producers of the newest references, a `MentionKind` of `dv:<key>/<id>` items, a `HistoryRow` that matches `<key>.` and names the record's `name`, else its ID param, and `apply(ctx)`, the client plugin body that registers them and the `dv.canvas.editor` entry; `ReferenceEditor`: the default editor body (the references, the description, the `children` rows and ＋ 添加素材), which writes each change as `<key>.update` through `host.run` |
+| `defineReferenceUi(spec)`, `ReferenceEditor` | `defineReferenceUi(spec)`: the descriptors of one reference noun from one `ReferenceUiSpec` (`id`, the package name and editor slot key; `key`, the component key, reference kind and node type; `slice(state)`, the noun's slice, `undefined` while the host half is not loaded, in which case the descriptors list no items; `label`; `mention`; an optional `editor`): a `NodeType` with one entry `<key>:<id>` per item at its newest version in column 0, a `VersionKind`, a `TakesInUse` of the producers of the newest references, a `MentionKind` of `dv:<key>/<id>` items, a `HistoryRow` that matches `<key>.` and names the record's `name`, else its ID param, and `apply(ctx)`, the client plugin body that registers them and the `dv.canvas.editor` entry; `ReferenceEditor`: the default editor body (the references, the description, the `children` rows and ＋ 添加素材), which writes each change as `<key>.update` through `host.run`, draws each reference through the `dv.media` Factory of `@dv/ui-media` at purpose `card` with the `renderFactorySlot` of the editor entry, and opens `host.preview` on a click |
 | `WireReferenceVersion` | One version of an item as the wire sends it: `id`, `version`, `name`, `description`, `references`, and `created_by` (the record that wrote it) |
 
 -----
@@ -58,6 +58,7 @@ Add `@dv/ui-reference-kit` to the `devDependencies` of a noun's UI package and i
 - [`@dv/ui-canvas`](../ui-canvas/README.md) draws the node type and renders the editor entry.
 - [`@dv/ui-history`](../ui-history/README.md) draws the History rows.
 - [`@dv/ui-composer`](../ui-composer/README.md) lists the `@` menu kinds.
+- [`@dv/ui-media`](../ui-media/README.md) draws the editor's references through `dv.media`.
 
 -----
 

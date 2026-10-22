@@ -1,13 +1,15 @@
 /**
- * Waveforms of the 原声 track: the browser fetches a clip's media file (the same URL the preview's `<video>` plays),
- * decodes its audio with `OfflineAudioContext.decodeAudioData`, and reduces the samples to a peak envelope (the largest
+ * Audio waveforms, as the timeline's 原声 track and the audio media view draw them: the browser fetches an asset's
+ * media file, decodes its audio with `OfflineAudioContext.decodeAudioData`, and reduces the samples to a peak envelope (the largest
  * absolute sample of each short window). The envelope is cached per asset in memory, so a re-render or a zoom change
  * only regroups the cached peaks into bars for the clip's played range. Decodes run one at a time, each after the
  * browser reports idle time, so they do not compete with the preview for the main thread. A media file that cannot be
  * fetched is not cached, so the clip asks for it again.
+ *
+ * @module @dv/ui-kit/waveform
  */
 import { useEffect, useState } from 'react'
-import { assetUrl } from '@dv/ui-kit/api.ts'
+import { assetUrl } from './api.ts'
 
 /** The peak envelope of one asset's audio. */
 export interface AudioEnvelope {
@@ -33,7 +35,7 @@ const EDGE_TOLERANCE = 1e-6
  * @param rate - envelope windows per second.
  * @returns the envelope.
  */
-export function peakEnvelope(channels: ArrayLike<number>[], sampleRate: number, rate: number): AudioEnvelope {
+export function peakEnvelope(channels: readonly Float32Array[], sampleRate: number, rate: number): AudioEnvelope {
   const samples = channels[0]?.length ?? 0
   const windows = Math.ceil(samples * rate / sampleRate)
   const peaks = new Float32Array(windows)
@@ -43,10 +45,7 @@ export function peakEnvelope(channels: ArrayLike<number>[], sampleRate: number, 
     const end = Math.min(samples, Math.floor((window + 1) * sampleRate / rate))
     let peak = 0
     for (const channel of channels) {
-      for (let at = start; at < end; at += 1) {
-        const value = Math.abs(channel[at] ?? 0)
-        if (value > peak) peak = value
-      }
+      for (const sample of channel.subarray(start, end)) peak = Math.max(peak, Math.abs(sample))
     }
     const value = Math.min(1, peak)
     peaks[window] = value
@@ -76,7 +75,7 @@ export function clipPeaks(envelope: AudioEnvelope, inSec: number, outSec: number
     // Each bar reads at least one window, so bars narrower than a window repeat its peak instead of reading nothing.
     const end = Math.min(peaks.length, Math.max(start + 1, Math.ceil((inSec + (bar + 1) * span) * rate - EDGE_TOLERANCE)))
     let peak = 0
-    for (let at = start; at < end; at += 1) peak = Math.max(peak, peaks[at] ?? 0)
+    for (const value of peaks.subarray(start, end)) peak = Math.max(peak, value)
     return max > 0 ? peak / max : 0
   })
 }

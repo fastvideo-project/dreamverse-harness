@@ -9,7 +9,7 @@ import type { WireState } from '@dv/ui-kit/types.ts'
 import { asset, fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState, ScriptedRoutes } from '../../ui-kit/tests/fixture.client.tsx'
 import { FALLBACK_CLIP_SECONDS } from '@dv/ui-kit/timeline.ts'
-import { DV_ASSET_DRAG_TYPE, DV_TIMELINE_INSERT_EVENT, dispatchWorkspaceEvent } from '@dv/ui-kit/workspace-events.ts'
+import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { placeTimeline } from '../src/client/timelines.ts'
 import { copyFor } from '../src/client/TimelineView.tsx'
 import { bootTimeline, centerView } from './center.client.tsx'
@@ -320,13 +320,11 @@ describe('TimelineView', () => {
     expect(requests()[0]).toMatchObject({ params: { timeline: 't1' } })
   })
 
-  it('shows itself with an insert request for a dv:timeline-insert event, and inserts the asset at the end of the selected timeline', async () => {
+  it('inserts the asset of an insert request at the end of the selected timeline, for the chat session beside it', async () => {
     const { fetch, writes } = scriptedFetch({ state: twoTimelines })
     const view = render(centerView(booted, { client: new DvClient(fetch), session: 's5' }))
     await view.findByRole('list', { name: '视频轨道' })
     fireEvent.click(view.getAllByRole('tab')[1] as HTMLElement)
-    dispatchWorkspaceEvent(DV_TIMELINE_INSERT_EVENT, { projectId: 'p1', assetId: 'shot1.mp4' })
-    expect(booted.shown).toEqual([{ view: 'timeline', target: { insert: 'shot1.mp4' } }])
     act(() => { booted.stand.show({ insert: 'shot1.mp4' }) })
     expect(booted.stand.getSnapshot().request).toBeNull()
     await waitFor(() => { expect(writes.filter(write => write.path === '/api/dv/operation')).toHaveLength(1) })

@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
-/** Image and audio records on the canvas, and the take editor that shows only declared params. */
+/**
+ * Image and audio records on the canvas, drawn through the real `dv.media` Factory and media views, and the take editor
+ * that shows only declared params.
+ */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
-import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { cleanup, fireEvent, waitFor, within } from '@testing-library/react'
+import { makeTranslate, SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import type { WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
 import type { ProjectAsset, ProjectRecord, WireOperation, WireParamSpec } from '@dv/ui-kit/types.ts'
@@ -10,6 +13,7 @@ import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui
 import { CanvasView } from '../src/client/CanvasView.tsx'
 import type { CanvasTranslate } from '../src/client/NodeCard.tsx'
 import { zh } from '../src/client/locales.ts'
+import { mountCanvasFrame } from './media-runtime.client.tsx'
 
 /** The model key and the prompt, which every generation operation declares first. */
 const KEY_PARAMS: Record<string, WireParamSpec> = Object.fromEntries(
@@ -40,24 +44,28 @@ const EXPORT: WireOperation = {
 const CAT_PARAMS = { modality: 'image', task: 't2i', provider: 'sglang', model: 'qwen-image', prompt: 'a cat', size: '512x512', seed: 7 }
 
 let language = ''
+/** The runtimes that {@link mount} created, disposed after each test. */
+const runtimes: SlotTestRuntime[] = []
 beforeEach(() => {
   language = document.documentElement.lang
   document.documentElement.lang = 'zh-CN'
 })
-afterEach(() => {
+afterEach(async () => {
   cleanup()
+  for (const runtime of runtimes.splice(0)) await runtime.dispose()
   document.documentElement.lang = language
 })
 
 /**
- * Mount the canvas over the shared fixture plus some records and their assets.
+ * Mount the canvas over the shared fixture plus some records and their assets, under a slot runtime frame that hands it
+ * the `dv.media` renderer, with the real media and asset pool plugins mounted.
  * @param operations - the declarations that `/api/dv/operations` serves.
  * @param records - the records added to the fixture.
  * @param assets - the assets added to the fixture, each with its producer in `created_by`.
  * @param tasks - the task labels that `/api/dv/tasks` serves; the fixture's video labels when omitted.
  * @returns the view, the recorded writes, a node lookup that waits for the node, and an editor opener.
  */
-function mount(operations: WireOperation[], records: ProjectRecord[], assets: ProjectAsset[], tasks?: WireTaskLabels) {
+async function mount(operations: WireOperation[], records: ProjectRecord[], assets: ProjectAsset[], tasks?: WireTaskLabels) {
   const scripted = scriptedFetch({
     operations,
     ...tasks === undefined ? {} : { tasks },
@@ -70,7 +78,13 @@ function mount(operations: WireOperation[], records: ProjectRecord[], assets: Pr
     },
   })
   const t: CanvasTranslate = makeTranslate(zh)
-  const view = render(<CanvasView projectId="p1" client={new DvClient(scripted.fetch)} session="s5" t={t} />)
+  const client = new DvClient(scripted.fetch)
+  const runtime = await SlotTestRuntime.create()
+  runtimes.push(runtime)
+  await mountCanvasFrame(runtime, ({ renderFactorySlot }) => (
+    <CanvasView projectId="p1" client={client} session="s5" t={t} renderFactorySlot={renderFactorySlot} />
+  ))
+  const view = runtime.renderRoot()
   const node = (id: string): Promise<HTMLElement> => waitFor(() => {
     const element = view.container.querySelector(`[data-node-id="${id}"]`)
     if (!(element instanceof HTMLElement)) throw new Error(`no node ${id}`)
@@ -89,7 +103,7 @@ const catTake = (): ProjectRecord => record({ id: 'i1', operation: 'image.genera
 
 describe('image and audio records on the canvas', () => {
   it('a done image.generate record draws a take with its label and thumb; its form starts with the prompt and has no duration_sec field', async () => {
-    const { view, writes, node, open } = mount([...OPERATIONS, IMAGE], [catTake()], [asset('cat.png', 'image/png', 'i1')])
+    const { view, writes, node, open } = await mount([...OPERATIONS, IMAGE], [catTake()], [asset('cat.png', 'image/png', 'i1')])
     // The running retake g3 has no output, so it draws only once the declarations arrived.
     await node('g3')
     const card = await node('i1')
@@ -97,6 +111,8 @@ describe('image and audio records on the canvas', () => {
     expect(card.getAttribute('aria-label')).toBe('生成图片')
     expect(card.querySelector('img')?.getAttribute('src')).toBe(assetUrl('cat.png'))
     const editor = await open(card)
+    // The editor plays the image at full size, named by the asset; the card's still has no name.
+    expect(editor.querySelector('img')?.getAttribute('alt')).toBe('cat.png')
     expect(view.getByTestId('dv-canvas-render-mode').textContent).toBe('qwen-image · t2i')
     // The model key is the render-mode line; every other declared param has a field, the prompt first.
     expect([...editor.querySelectorAll('textarea, input, select')].map(control => control.id))
@@ -118,17 +134,19 @@ describe('image and audio records on the canvas', () => {
 
   it('a pending image.generate record with no outputs draws with the rendering flag', async () => {
     const pending = record({ id: 'i2', operation: 'image.generate', deterministic: false, params: CAT_PARAMS, status: 'pending' })
-    const { node } = mount([...OPERATIONS, IMAGE], [pending], [])
+    const { node } = await mount([...OPERATIONS, IMAGE], [pending], [])
     expect((await node('i2')).textContent).toContain(zh['node.rendering'])
   })
 
-  it('an audio.generate take plays in an audio player with controls, not muted', async () => {
+  it('an audio.generate take draws the audio card and plays in an audio player with controls, not muted', async () => {
     const line = record({
       id: 'v1', operation: 'audio.generate', deterministic: false, outputs: ['line.wav'],
       params: { modality: 'audio', task: 't2a', provider: 'sglang', model: 'fish-audio', prompt: 'hello', voice: 'calm' },
     })
-    const { node, open } = mount([...OPERATIONS, AUDIO], [line], [asset('line.wav', 'audio/wav', 'v1', 2)])
+    const { node, open } = await mount([...OPERATIONS, AUDIO], [line], [asset('line.wav', 'audio/wav', 'v1', 2)])
     await node('g3')
+    // The card shows the audio view's card form: its play button.
+    expect(within(await node('v1')).getByRole('button', { name: '播放' })).toBeTruthy()
     const editor = await open(await node('v1'))
     const player = editor.querySelector('audio')
     expect(player?.getAttribute('src')).toBe(assetUrl('line.wav'))
@@ -141,7 +159,7 @@ describe('image and audio records on the canvas', () => {
   })
 
   it('an image record whose operation is off the list shows the label image.generate, no 渲染新版本 and no form', async () => {
-    const { view, node, open } = mount(OPERATIONS, [catTake()], [asset('cat.png', 'image/png', 'i1')])
+    const { view, node, open } = await mount(OPERATIONS, [catTake()], [asset('cat.png', 'image/png', 'i1')])
     await node('g3')
     const card = await node('i1')
     expect(card.getAttribute('aria-label')).toBe('image.generate')
@@ -152,19 +170,19 @@ describe('image and audio records on the canvas', () => {
 
   it('a timeline.export record draws no node', async () => {
     const exported = record({ id: 'c9', operation: 'timeline.export', deterministic: false, params: { timeline: 't1' }, outputs: ['cut.mp4'] })
-    const { view, node } = mount([...OPERATIONS, IMAGE, EXPORT], [catTake(), exported], [asset('cat.png', 'image/png', 'i1'), asset('cut.mp4', 'video/mp4', 'c9', 3)])
+    const { view, node } = await mount([...OPERATIONS, IMAGE, EXPORT], [catTake(), exported], [asset('cat.png', 'image/png', 'i1'), asset('cut.mp4', 'video/mp4', 'c9', 3)])
     await node('g3')
     await node('i1')
     expect(view.container.querySelector('[data-node-id="c9"]')).toBeNull()
   })
 
   it('the render-mode line of a t2i take reads the catalog label of t2i, else the task name', async () => {
-    const labelled = mount([...OPERATIONS, IMAGE], [catTake()], [asset('cat.png', 'image/png', 'i1')], { t2i: { zh: '文字生成图片', en: 'Image from text' } })
+    const labelled = await mount([...OPERATIONS, IMAGE], [catTake()], [asset('cat.png', 'image/png', 'i1')], { t2i: { zh: '文字生成图片', en: 'Image from text' } })
     await labelled.node('g3')
     await labelled.open(await labelled.node('i1'))
     await waitFor(() => { expect(labelled.view.getByTestId('dv-canvas-render-mode').textContent).toBe('qwen-image · 文字生成图片') })
     cleanup()
-    const unlabelled = mount([...OPERATIONS, IMAGE], [catTake()], [asset('cat.png', 'image/png', 'i1')], {})
+    const unlabelled = await mount([...OPERATIONS, IMAGE], [catTake()], [asset('cat.png', 'image/png', 'i1')], {})
     await unlabelled.node('g3')
     await unlabelled.open(await unlabelled.node('i1'))
     expect(unlabelled.view.getByTestId('dv-canvas-render-mode').textContent).toBe('qwen-image · t2i')

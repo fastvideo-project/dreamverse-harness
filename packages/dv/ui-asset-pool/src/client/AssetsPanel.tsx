@@ -1,26 +1,23 @@
 /**
  * The project asset pool panel: an import drop zone, every asset of the project once in thumbnail grids grouped by media
- * type (图片 · 视频 · 从生成中截取的帧), drag sources that carry the asset ID as `application/x-dv-asset`, and a
- * preview on click that grows out of the clicked tile and shrinks back into it on close (`@dv/ui-kit/zoom.ts`). The
+ * type (图片 · 视频 · 从生成中截取的帧), drag sources that carry the asset ID as `application/x-dv-asset`, and the
+ * `dvMedia` preview on click, which grows out of the clicked tile and shrinks back into it on close. The
  * panel lists every asset of the project, including the assets of steps that an undo went back past: the asset pool
  * only grows.
  *
  * @module @dv/ui-asset-pool/AssetsPanel
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type { DragEvent, ReactNode } from 'react'
-import { createPortal } from 'react-dom'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { DvClient, assetUrl } from '@dv/ui-kit/api.ts'
+import { assetUrl, type DvClient } from '@dv/ui-kit/api.ts'
 import type { Asset } from '@dv/ui-kit/types.ts'
-import { dispatchCompose } from '@dv/ui-kit/compose.ts'
 import { useCurrentProject } from '@dv/ui-kit/current-project.ts'
-import { mediaBox, useZoomPresence, type ZoomPresence } from '@dv/ui-kit/zoom.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import { useProjectState } from '@dv/ui-kit/useProject.ts'
-import { DV_ASSET_DRAG_TYPE, DV_TIMELINE_INSERT_EVENT, dispatchWorkspaceEvent } from '@dv/ui-kit/workspace-events.ts'
+import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { assetLibrary } from './library.ts'
 import css from './AssetsPanel.module.css'
 
@@ -29,8 +26,10 @@ export interface AssetsPanelProps {
   projectId: string
   /** The chat session the panel sits beside, recorded as the `session` of its imports. */
   session: string | null
-  /** The API client; defaults to one over the page's fetch. */
-  client?: DvClient
+  /** The API client. */
+  client: DvClient
+  /** Open the asset preview of `dvMedia`, growing out of the clicked tile. */
+  preview: (asset: Asset, opener: Element | null) => void
   /** Called on a click on a thumbnail instead of opening the preview. */
   onOpen?: (asset: Asset) => void
 }
@@ -41,16 +40,12 @@ export interface AssetsPanelProps {
  * @returns the panel.
  */
 export function AssetsPanel(props: AssetsPanelProps): ReactNode {
-  const client = useMemo(() => props.client ?? new DvClient(), [props.client])
+  const { client } = props
   const state = useProjectState(client, props.projectId)
   const t = useText()
-  const [preview, setPreview] = useState<Asset | null>(null)
-  const panelRef = useRef<HTMLDivElement | null>(null)
-  // The preview on screen lags `preview` while it shrinks back into its tile.
-  const previewZoom = useZoomPresence(preview, asset =>
-    [...panelRef.current?.querySelectorAll('[data-asset-id]') ?? []].find(tile => tile.getAttribute('data-asset-id') === asset.id) ?? null)
   const library = useMemo(() => state.value === null ? null : assetLibrary(state.value), [state.value])
-  const onOpen = props.onOpen ?? setPreview
+  const { onOpen: pick, preview } = props
+  const onOpen = (asset: Asset, tile: Element): void => { if (pick === undefined) preview(asset, tile); else pick(asset) }
 
   let body: ReactNode
   if (library === null) body = <p className={css.note}>{state.error === null ? t('正在读取…', 'Loading…') : t(`读取失败：${state.error}`, `Failed to load: ${state.error}`)}</p>
@@ -66,12 +61,9 @@ export function AssetsPanel(props: AssetsPanelProps): ReactNode {
     )
   }
   return (
-    <div ref={panelRef} data-testid="dv-asset-pool-panel" className={css.panel}>
+    <div data-testid="dv-asset-pool-panel" className={css.panel}>
       <ImportZone client={client} projectId={props.projectId} session={props.session} />
       <div className={css.scroll}>{body}</div>
-      {previewZoom.shown === null
-        ? null
-        : <Preview key={previewZoom.shown.id} asset={previewZoom.shown} onClose={() => { setPreview(null) }} zoom={previewZoom} />}
     </div>
   )
 }
@@ -89,10 +81,11 @@ function ImportZone(props: { client: DvClient; projectId: string; session: strin
   const [refused, setRefused] = useState<string[]>([])
   const input = useRef<HTMLInputElement>(null)
   const t = useText()
-  const importFiles = useCallback((files: FileList | null) => {
-    if (files === null) return
-    const accepted = Array.from(files).filter(file => file.type.startsWith('image/') || file.type.startsWith('video/'))
-    setRefused(Array.from(files).filter(file => !accepted.includes(file)).map(file => file.name))
+  const importFiles = useCallback((files: Iterable<File> | null) => {
+    // A file input's `files` is null only when the input is not a file input; the Set reads null as no files.
+    const chosen = [...new Set(files)]
+    const accepted = chosen.filter(file => file.type.startsWith('image/') || file.type.startsWith('video/'))
+    setRefused(chosen.filter(file => !accepted.includes(file)).map(file => file.name))
     for (const file of accepted) {
       setPending(count => count + 1)
       props.client.importAsset(props.projectId, file, 'asset_pool', props.session)
@@ -129,7 +122,7 @@ function ImportZone(props: { client: DvClient; projectId: string; session: strin
  * @param props - the title, the assets, and the preview callback.
  * @returns the section, or nothing when it has no assets.
  */
-function Section(props: { title: string; assets: Asset[]; onOpen: (asset: Asset) => void }): ReactNode {
+function Section(props: { title: string; assets: Asset[]; onOpen: (asset: Asset, tile: Element) => void }): ReactNode {
   if (props.assets.length === 0) return null
   return (
     <section className={css.section}>
@@ -146,19 +139,19 @@ function Section(props: { title: string; assets: Asset[]; onOpen: (asset: Asset)
  * @param props - the asset and the preview callback.
  * @returns the thumbnail.
  */
-function Thumb(props: { asset: Asset; onOpen: (asset: Asset) => void }): ReactNode {
+function Thumb(props: { asset: Asset; onOpen: (asset: Asset, tile: Element) => void }): ReactNode {
   const { asset } = props
   const video = asset.mime.startsWith('video/')
   return (
     <button
       type="button" draggable title={asset.name} data-asset-id={asset.id}
       onDragStart={(event) => { event.dataTransfer.setData(DV_ASSET_DRAG_TYPE, asset.id); event.dataTransfer.effectAllowed = 'copy' }}
-      onClick={() => { props.onOpen(asset) }}
+      onClick={(event) => { props.onOpen(asset, event.currentTarget) }}
       className={css.thumb}
     >
       {video
         ? <video src={`${assetUrl(asset.id)}#t=0.1`} muted preload="metadata" className={css.thumbMedia} />
-        : asset.mime.startsWith('image/') ? <img src={assetUrl(asset.id)} alt={asset.name} loading="lazy" className={css.thumbMedia} /> : <span className={css.thumbName}>{asset.name}</span>}
+        : <img src={assetUrl(asset.id)} alt={asset.name} loading="lazy" className={css.thumbMedia} />}
       {video && asset.duration_sec !== null
         ? <span className={css.duration}>{asset.duration_sec.toFixed(0)}s</span>
         : null}
@@ -166,68 +159,10 @@ function Thumb(props: { asset: Asset; onOpen: (asset: Asset) => void }): ReactNo
   )
 }
 
-/**
- * The preview dialog: the media at full size, its facts, and actions. Escape or a click outside closes it. The dialog
- * renders on `document.body`, so the right sidebar's resize handle and stacking context cannot cover its buttons.
- * @param props - the asset, the close callback, and the zoom transition refs: the dialog grows out of the tile, and the
- * backdrop fades.
- * @returns the dialog.
- */
-export function Preview(props: { asset: Asset; onClose: () => void; zoom: ZoomPresence<Asset> }): ReactNode {
-  const { asset, onClose } = props
-  const t = useText()
-  const projectId = useCurrentProject()
-  // When the asset pool could not read the dimensions at import, read them from the loaded media.
-  const [loadedSize, setLoadedSize] = useState<{ width: number; height: number } | null>(null)
-  const width = asset.width ?? loadedSize?.width ?? null
-  const height = asset.height ?? loadedSize?.height ?? null
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => { window.removeEventListener('keydown', onKey) }
-  }, [onClose])
-  const video = asset.mime.startsWith('video/')
-  // Media of known dimensions is sized before it loads, so the dialog has its final box when it grows out of the tile.
-  // The bounds match `.previewMedia` inside `.dialog` (80vw wide with 16 px padding, media at most 70vh tall).
-  const sized = asset.width !== null && asset.height !== null && asset.height > 0
-    ? mediaBox(asset.width, asset.height, '80vw - 32px', '70vh')
-    : undefined
-  const facts = [
-    width !== null && height !== null ? `${String(width)}×${String(height)}` : null,
-    asset.duration_sec === null ? null : t(`${asset.duration_sec.toFixed(1)} 秒`, `${asset.duration_sec.toFixed(1)} s`),
-    asset.size_bytes < 1024 * 1024 ? `${(asset.size_bytes / 1024).toFixed(1)} KB` : `${(asset.size_bytes / 1024 / 1024).toFixed(1)} MB`,
-  ].filter((fact): fact is string => fact !== null)
-  return createPortal(
-    <div role="dialog" aria-modal="true" aria-label={asset.name} onClick={onClose} className={css.overlay}>
-      <div ref={props.zoom.fadeRef} className={css.backdrop} aria-hidden="true" />
-      <div ref={props.zoom.targetRef} onClick={(event) => { event.stopPropagation() }} className={css.dialog}>
-        {video
-          ? (
-            <video
-              src={assetUrl(asset.id)} controls autoPlay className={css.previewMedia} style={sized}
-              onLoadedMetadata={(event) => {
-                setLoadedSize({ width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight })
-              }}
-            />
-          )
-          : (
-            <img
-              src={assetUrl(asset.id)} alt={asset.name} className={css.previewMedia} style={sized}
-              onLoad={(event) => { setLoadedSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight }) }}
-            />
-          )}
-        <div className={css.facts}>
-          <span className={css.name}>{asset.name}</span>
-          <span className={css.factText}>{facts.join(' · ')}</span>
-          <span style={{ flex: 1 }} />
-          {video && projectId !== null ? <button type="button" className={css.button} onClick={() => { dispatchWorkspaceEvent(DV_TIMELINE_INSERT_EVENT, { projectId, assetId: asset.id }); onClose() }}>{t('插入片段', 'Insert clip')}</button> : null}
-          <button type="button" className={css.button} onClick={() => { dispatchCompose({ text: t('使用这个素材：', 'Use this asset: '), refs: [{ kind: 'asset', id: asset.id, label: asset.name, assetId: asset.id }] }); onClose() }}>{t('让智能体使用', 'Ask the agent to use it')}</button>
-          <button type="button" className={css.button} onClick={onClose}>{t('关闭', 'Close')}</button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  )
+/** What the plugin hands the tab body and the canvas picker entry. */
+export interface AssetsTabInjected {
+  client: DvClient
+  preview: (asset: Asset, opener: Element | null) => void
 }
 
 /**
@@ -236,10 +171,10 @@ export function Preview(props: { asset: Asset; onClose: () => void; zoom: ZoomPr
  * @param props - the tab's chat session and the injected client.
  * @returns the panel, or a notice while no project is open.
  */
-export function AssetsTabBody(props: PropsRuntime<'sidebar.right.pane.tab'> & { client: DvClient }): ReactNode {
+export function AssetsTabBody(props: PropsRuntime<'sidebar.right.pane.tab'> & AssetsTabInjected): ReactNode {
   const project = useCurrentProject()
   const t = useText()
   if (project === null) return <p className={css.note} style={{ padding: 16 }}>{t('先打开一个项目', 'Open a project first')}</p>
   // Keyed by project so a switch starts from an empty panel instead of showing the previous project's assets.
-  return <AssetsPanel key={project} projectId={project} session={props.sessionId} client={props.client} />
+  return <AssetsPanel key={project} projectId={project} session={props.sessionId} client={props.client} preview={props.preview} />
 }

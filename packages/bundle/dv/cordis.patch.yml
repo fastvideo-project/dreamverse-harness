@@ -104,6 +104,9 @@
     - id: dv-ui-shot-render
       name: '@dv/ui-shot-render'
 
+    - id: dv-ui-media
+      name: '@dv/ui-media'
+
     - id: dv-ui-canvas
       name: '@dv/ui-canvas'
 

@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 /**
  * The plan editor, the `dv.canvas.editor` entry of the plan node type, under the real slot runtime: its versions and
- * approval status, its shots and their reference assets, and its registration and removal with the plugin.
+ * approval status, its shots and their reference assets, drawn through `dv.media` by the asset pool's media views, and
+ * its registration and removal with the plugin.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
+import type { Context, Plugin } from '@deepseek-ai/cordis'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { PlanId } from '@dv/shot-plan/types'
@@ -14,6 +16,8 @@ import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type { ChainAnchor, DvCanvas, NodeType, EntryEditorHost, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
 import { asset, fixtureState, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { AudioView, ImageView, VideoView } from '../../ui-asset-pool/src/client/media.tsx'
+import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import { apply, planNodeType, planReferencesInUse } from '../src/client/index.ts'
 import { shotReferences } from '../src/client/PlanEditor.tsx'
 
@@ -43,6 +47,16 @@ afterEach(() => {
   document.documentElement.lang = ''
 })
 
+/** The asset pool's media views, registered under `dv.media.view` by MIME top-level type as the asset pool plugin does. */
+const mediaViews: Plugin = {
+  inject: ['slots'],
+  apply(ctx: Context) {
+    for (const [key, view] of Object.entries({ image: ImageView, video: VideoView, audio: AudioView })) {
+      ctx.effect(() => ctx.slots.inject('dv.media.view', () => ctx.slots.register({ name: 'dv.media.view', key }, view)), `test: ${key} view`)
+    }
+  },
+}
+
 /** @returns empty canvas registries keyed as `DvCanvas` documents. */
 function canvasRegistries(): DvCanvas {
   return {
@@ -54,8 +68,9 @@ function canvasRegistries(): DvCanvas {
 }
 
 /**
- * Mount the plugin under a root frame that declares `dv.canvas.editor` and renders the entry of the plan node type for a
- * plan entry, as the canvas does in an entry's editor, in the Chinese interface.
+ * Mount the `@dv/ui-media` plugin, the media views and the plan plugin under a root frame that declares
+ * `dv.canvas.editor` and renders the entry of the plan node type for a plan entry, as the canvas does in an entry's
+ * editor, in the Chinese interface.
  * @param state - the project state.
  * @param canvas - the `dvCanvas` registries the plugin reads.
  * @param entry - the edited node; by default the first plan entry of `state`.
@@ -70,6 +85,8 @@ async function mount(state: WireState, canvas: DvCanvas, entry = planNodeType.en
   const Frame = ({ renderSlot }: PropsRenderSlots<'dv.canvas.editor'>): ReactNode =>
     <section data-testid="editor">{renderSlot('dv.canvas.editor', { node: entry, state, host: HOST }, { entryKey: planNodeType.id })}</section>
   await runtime.root.declare({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } }, Frame)
+  await runtime.mount({ inject: [...mediaInject], apply: mediaApply })
+  await runtime.mount(mediaViews)
   const plugin = await runtime.mount({ apply })
   const { container } = runtime.renderRoot()
   const editor = within(container).getByTestId('editor')
@@ -164,9 +181,14 @@ describe('PlanEditor', () => {
     // The plan header lists the video by name and the image of hero@1 as Picture 1.
     await waitFor(() => { expect(header.textContent).toBe('计划参考shot1.mp4Picture 1 · Hero') })
     expect(header.querySelector('video')).not.toBeNull()
-    // The shot lists the video, the image, and the audio in input order; <Picture 1> draws Hero's image.
+    // The shot lists the video, the image, and the audio in input order, each drawn by its media view as a thumbnail;
+    // <Picture 1> draws Hero's image.
     const shot = editor.querySelector('li[data-shot="1"]')
-    expect(shot?.querySelector('dd')?.textContent).toBe('shot1.mp4Picture 1 · Heroscore.wav')
+    const chips = [...shot?.querySelector('dd > span')?.children ?? []]
+    expect(chips.map(chip => [chip.textContent, chip.querySelector('img, video')?.getAttribute('src') ?? null])).toEqual([
+      ['shot1.mp4', `${assetUrl('shot1.mp4')}#t=0.1`], ['Picture 1 · Hero', assetUrl('ref.png')], ['♪score.wav', null],
+    ])
+    expect(within(chips[2] as HTMLElement).getByLabelText('score.wav').textContent).toBe('♪')
     expect(shot?.querySelector('p')?.textContent).toBe('<Video 1> then ')
     expect(shot?.querySelector('p img')?.getAttribute('src')).toBe(assetUrl('ref.png'))
     await runtime.dispose()

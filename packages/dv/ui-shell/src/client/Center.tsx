@@ -220,7 +220,7 @@ function EntryPage(props: CenterProps): ReactNode {
         })}
       </div>
       {blank && <TemplateChips />}
-      {blank && <RecentProjects shell={shell} />}
+      {blank && <RecentProjects shell={shell} renderFactorySlot={renderFactorySlot} />}
       {blank && <Explore renderSlot={props.renderSlot} />}
     </div>
   )
@@ -244,10 +244,10 @@ function TemplateChips(): ReactNode {
 
 /**
  * The recent projects grid: the newest projects as cover cards, and 全部项目 to show all of them.
- * @param props - the shell actions.
+ * @param props - the shell actions and the Factory renderer of the covers.
  * @returns the section, or nothing without projects.
  */
-function RecentProjects({ shell }: Pick<ShellInjected, 'shell'>): ReactNode {
+function RecentProjects({ shell, renderFactorySlot }: Pick<ShellInjected, 'shell'> & PropsRenderFactories): ReactNode {
   const t = useText()
   const projects = useShell(s => s.links?.projects ?? NO_PROJECTS)
   const [showAll, setShowAll] = useState(false)
@@ -270,7 +270,7 @@ function RecentProjects({ shell }: Pick<ShellInjected, 'shell'>): ReactNode {
         {shown.map(project => (
           <ProjectCard
             key={project.id} shell={shell} projectId={project.id} title={project.title} createdAt={project.created_at}
-            summary={summaries?.get(project.id) ?? null}
+            summary={summaries?.get(project.id) ?? null} renderFactorySlot={renderFactorySlot}
           />
         ))}
       </div>
@@ -320,18 +320,18 @@ function Explore({ renderSlot }: Pick<CenterProps, 'renderSlot'>): ReactNode {
 
 /**
  * One recent project: its 16:9 cover, its title, and its last edit time.
- * @param props - the shell actions, the project, and its summary (null while the summaries load).
+ * @param props - the shell actions, the Factory renderer, the project, and its summary (null while the summaries load).
  * @returns the card.
  */
 function ProjectCard(
-  { shell, projectId, title, createdAt, summary }:
-    Pick<ShellInjected, 'shell'> & { projectId: string; title: string; createdAt: string; summary: WireProjectSummary | null },
+  { shell, projectId, title, createdAt, summary, renderFactorySlot }: Pick<ShellInjected, 'shell'> & PropsRenderFactories
+    & { projectId: string; title: string; createdAt: string; summary: WireProjectSummary | null },
 ): ReactNode {
   const t = useText()
   const meta = editedText(summary?.edited_at ?? createdAt, t)
   return (
     <button type="button" className={css.card} onClick={() => { run(() => shell.openProject(projectId)) }}>
-      <CoverFrame cover={summary?.cover ?? null} className={css.cardCover} />
+      <CoverFrame cover={summary?.cover ?? null} purpose="card" className={css.cardCover} renderFactorySlot={renderFactorySlot} />
       <span className={css.cardText}>
         <span className={css.cardTitle}>{title}</span>
         <span className={css.cardMeta}>{meta}</span>
@@ -428,7 +428,7 @@ function WorkspacePage(props: CenterProps & { projectId: string; projectSession:
         <div className={css.barStart}>
           <SessionSwitcher
             shell={shell} project={project} cover={cover} sessionTitle={sessionTitle ?? null}
-            useSessions={useSessions} useWorkspaces={props.useWorkspaces}
+            useSessions={useSessions} useWorkspaces={props.useWorkspaces} renderFactorySlot={props.renderFactorySlot}
           />
         </div>
         <div className={css.toggle} role="tablist" aria-label={t('视图', 'View')}>

@@ -9,11 +9,11 @@
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { CSSProperties, ReactNode } from 'react'
-import { assetUrl } from '@dv/ui-kit/api.ts'
 import { pickText, useText } from '@dv/ui-kit/locale.ts'
 import type { HistoryRow } from '@dv/ui-history/contract'
+import type {} from '@dv/ui-media/contract'
 import type { MentionKind, NodeType, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
 
@@ -44,7 +44,7 @@ export interface ReferenceUiSpec<V extends WireReferenceVersion = WireReferenceV
 }
 
 /** Props of the editor body of one entry. */
-export type ReferenceEditorProps<V extends WireReferenceVersion = WireReferenceVersion> = PropsRuntime<'dv.canvas.editor'> & {
+export type ReferenceEditorProps<V extends WireReferenceVersion = WireReferenceVersion> = PropsRuntime<'dv.canvas.editor'> & PropsRenderFactories & {
   spec: ReferenceUiSpec<V>
   /** Extra form rows after the description; `update` runs `<key>.update` with `{ [key]: id, ...params }` and no inputs. */
   children?: (entry: { id: string; latest: V; update: (params: Record<string, unknown>, intent: string) => void }) => ReactNode
@@ -147,7 +147,7 @@ export function defineReferenceUi<V extends WireReferenceVersion>(spec: Referenc
     },
   }
   /** The `dv.canvas.editor` entry of the noun: its editor body with the declaration added to the slot props. */
-  const Editor = (props: PropsRuntime<'dv.canvas.editor'>): ReactNode =>
+  const Editor = (props: PropsRuntime<'dv.canvas.editor'> & PropsRenderFactories): ReactNode =>
     spec.editor === undefined ? <ReferenceEditor {...props} spec={spec} /> : spec.editor({ ...props, spec })
   return {
     spec, nodeType, versionKind, referencesInUse, mentionKind, historyRow,
@@ -178,17 +178,18 @@ const button: CSSProperties = {
   lineHeight: '20px', fontWeight: 500, color: 'var(--dv-text)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
 }
 const label: CSSProperties = { display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 500, color: 'var(--dv-text-2)', margin: '12px 0 4px' }
-const referenceImage: CSSProperties = { height: 220, borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-3)' }
+const referenceImage: CSSProperties = { display: 'flex', height: 220, aspectRatio: '1', borderRadius: 'var(--dv-radius-md)', overflow: 'hidden', background: 'var(--dv-surface-3)' }
 
 /**
- * The references grid, the description and ＋ 添加素材 of one entry; each change writes `<key>.update` through `host.run`.
- * Each reference opens the canvas's preview and can be removed while more than one is left; 添加素材 appends the assets
- * picked in the canvas's picker. Nothing renders when no item of the noun has the entry's node ID.
+ * The references grid, the description and ＋ 添加素材 of one entry; each change writes `<key>.update` through
+ * `host.run`. Each reference draws through `dv.media`, opens the canvas's preview and can be removed while more than
+ * one is left; 添加素材 appends the assets picked in the canvas's picker. Nothing renders when no item of the noun has
+ * the entry's node ID.
  * @param props - the entry, the state it came from, the canvas host, the noun, and the extra rows.
  * @returns the element.
  */
 export function ReferenceEditor<V extends WireReferenceVersion>(props: ReferenceEditorProps<V>): ReactNode {
-  const { node, state, host, spec } = props
+  const { node, state, host, spec, renderFactorySlot } = props
   const pick = useText()
   const prefix = `${spec.key}:`
   const id = node.id.startsWith(prefix) ? node.id.slice(prefix.length) : null
@@ -212,7 +213,6 @@ export function ReferenceEditor<V extends WireReferenceVersion>(props: Reference
         {references.map((reference) => {
           const asset = assets.get(reference)
           const assetName = asset?.name ?? reference
-          const src = assetUrl(reference)
           return (
             <div key={reference} style={{ position: 'relative' }}>
               <button
@@ -220,9 +220,7 @@ export function ReferenceEditor<V extends WireReferenceVersion>(props: Reference
                 style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'pointer', display: 'block' }}
                 onClick={(event) => { if (asset !== undefined) host.preview(reference, event.currentTarget) }}
               >
-                {/* An image shows itself and a video its first frame; any other asset shows nothing. */}
-                {asset?.mime.startsWith('image/') === true ? <img src={src} alt="" style={referenceImage} draggable={false} /> : null}
-                {asset?.mime.startsWith('video/') === true ? <video src={`${src}#t=0.1`} muted preload="metadata" style={referenceImage} /> : null}
+                <span style={referenceImage}>{asset === undefined ? null : renderFactorySlot('dv.media', { asset, purpose: 'card' })}</span>
               </button>
               {/* An update without references keeps the current ones, so the last reference cannot be removed. */}
               <button

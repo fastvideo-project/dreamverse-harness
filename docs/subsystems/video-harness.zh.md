@@ -7,7 +7,7 @@ DreamVerse 各包是 DeepSeek Harness 内视频制作的项目层。本页定义
 ## 分层和角色
 
 ```text
-views          @dv/ui-shell @dv/ui-canvas @dv/ui-timeline @dv/ui-asset-pool @dv/ui-composer @dv/ui-history (+ library @dv/ui-kit)
+views          @dv/ui-shell @dv/ui-canvas @dv/ui-timeline @dv/ui-asset-pool @dv/ui-composer @dv/ui-history @dv/ui-media (+ library @dv/ui-kit)
                @dv/ui-character @dv/ui-location @dv/ui-style @dv/ui-shot-plan @dv/ui-shot-render @dv/ui-workflow-story
   │ HTTP: /api/dv/…, /dv/events
   ▼
@@ -143,11 +143,11 @@ skill 承载工作流程和模型专属的规则，各由其主人注册：
 
 [`@dv/api`](../../packages/dv/api/README.zh.md) 是项目组件面向浏览器的 HTTP 面：`/api/dv/state` 把项目的当前状态返回为一份 JSON 文档，`/api/dv/operations` 列出已注册的操作，`/api/dv/operation` 以用户身份运行一个操作，其记录带 `surface: 'canvas'`、`'timeline'` 或 `'asset_pool'`，`/api/dv/history` 返回历史的一页，`/api/dv/undo`、`/api/dv/redo` 和 `/api/dv/stale/accept` 暴露撤销、重做和过期操作，其他路由管理项目、素材导入、画布布局（节点位置和视口）和 Workspace 链接，`/dv/events` 推送每一次记录追加、记录更新和当前位置的移动。
 
-界面各包是 web 应用的右侧栏标签类型和中央视图，因此在同一个 profile 里与对话页并存。[`@dv/ui-shell`](../../packages/dv/ui-shell/README.zh.md) 把项目工作区放在中央，把 对话 / Chat 和 轨迹 / Trajectory 标签放在右侧，把 画布 / Canvas 和 时间线 / Timeline 切换按钮放在顶栏，并把 Ctrl+Z 绑定到撤销，把 Shift+Ctrl+Z 绑定到重做。[`@dv/ui-canvas`](../../packages/dv/ui-canvas/README.zh.md) 把当前状态画成按素材流向相连的节点：导入的素材，带模型和生成任务的版本，以及 UI 插件注册的条目：处于当前版本的角色、场景和风格（`@dv/ui-character`、`@dv/ui-location`、`@dv/ui-style`），和处于最新版次的每个分镜计划，写出每个镜头的模型和生成任务，设置了的写出 接上一镜头 / Continues the previous shot（`@dv/ui-shot-plan`）；`@dv/ui-workflow-story` 把一次故事批准的版本挂在分镜计划节点下。`@dv/ui-canvas` 标记过期记录，它的编辑器以用户记录渲染新版本或替换参考图。[`@dv/ui-timeline`](../../packages/dv/ui-timeline/README.zh.md) 把每条时间线画成一条轨道，把插入、移动、移除、拆分和裁剪手势变成按 `ClipId` 指定片段的 `timeline.*` 记录，把导出变成一条 `timeline.export` 记录。`@dv/ui-asset-pool` 列出项目的每个素材并导入文件；`@dv/ui-composer` 为对话加上 `@` 和 `+ → 引用` 引用和面向创作者的工具名，`@dv/ui-shot-render` 加上渲染卡片。
+界面各包是 web 应用的右侧栏标签类型和中央视图，因此在同一个 profile 里与对话页并存。[`@dv/ui-shell`](../../packages/dv/ui-shell/README.zh.md) 把项目工作区放在中央，把 对话 / Chat 和 轨迹 / Trajectory 标签放在右侧，把 画布 / Canvas 和 时间线 / Timeline 切换按钮放在顶栏，并把 Ctrl+Z 绑定到撤销，把 Shift+Ctrl+Z 绑定到重做。[`@dv/ui-canvas`](../../packages/dv/ui-canvas/README.zh.md) 把当前状态画成按素材流向相连的节点：导入的素材，带模型和生成任务的版本，以及 UI 插件注册的条目：处于当前版本的角色、场景和风格（`@dv/ui-character`、`@dv/ui-location`、`@dv/ui-style`），和处于最新版次的每个分镜计划，写出每个镜头的模型和生成任务，设置了的写出 接上一镜头 / Continues the previous shot（`@dv/ui-shot-plan`）；`@dv/ui-workflow-story` 把一次故事批准的版本挂在分镜计划节点下。`@dv/ui-canvas` 标记过期记录，它的编辑器以用户记录渲染新版本或替换参考图。[`@dv/ui-timeline`](../../packages/dv/ui-timeline/README.zh.md) 把每条时间线画成一条轨道，把插入、移动、移除、拆分和裁剪手势变成按 `ClipId` 指定片段的 `timeline.*` 记录，把导出变成一条 `timeline.export` 记录。`@dv/ui-asset-pool` 列出项目的每个素材并导入文件；`@dv/ui-composer` 为对话加上 `@` 和 `+ → 引用` 引用和面向创作者的工具名，`@dv/ui-shot-render` 加上渲染卡片。[`@dv/ui-media`](../../packages/dv/ui-media/README.zh.md) 通过它的 `dv.media` 组件工厂、按 `@dv/ui-asset-pool` 注册的图片、视频和音频视图绘制这些视图里的每个素材，并打开素材预览，预览里的按钮 插入片段 和 让智能体使用 分别来自 `@dv/ui-timeline` 和 `@dv/ui-composer`。
 
 ## 历史和轨迹
 
-历史是项目历史列表中按顺序排列的步骤，来自每个发起者、视图和对话；轨迹是智能体在一个对话中的步骤。记录通过它的 `session` 和 `tool_call` 字段把两者连起来。[`@dv/ui-history`](../../packages/dv/ui-history/README.zh.md) 是历史面板（标签类型 `dv-history`）。它把历史列表中的每一步各列为一行，最新的在前，显示动作、谁做的（你 / You、智能体 / Agent、自动 / Automatic）、状态和一张输出缩略图；当前位置标 当前 / Current，它之后的步骤显示为灰色，批准分镜计划时排定的记录折叠在该批准行之下。它的顶部放着撤销和重做按钮。每一行的 ⋮ 菜单提供 回到这一步 / Go back to this step，它把当前位置移到那一行（[历史规则](#history-rules)）。选中当前位置或之前某一步的那一行，会以该行的中间区域目标（一个 `dv.center.view` 条目和其中的目标）调用 `@dv/ui-shell` 的 `dvCenter.show`，例如时间线上该记录的片段（`{ view: 'timeline', target: { timeline, clip } }`），否则是画布上该记录的节点（`{ view: 'canvas', target: { record } }`）；行内的 在轨迹中查看 / Show in trajectory 链接发出 `dv:trajectory-focus`，`@dv/ui-shell` 随即在那个对话的那次工具调用处打开 轨迹。在对话中，写入记录的工具的每个已结束行都有 在历史中查看 / Show in history 链接，它发出 `dv:history-focus`，让历史面板选中那次工具调用写入的记录。
+历史是项目历史列表中按顺序排列的步骤，来自每个发起者、视图和对话；轨迹是智能体在一个对话中的步骤。记录通过它的 `session` 和 `tool_call` 字段把两者连起来。[`@dv/ui-history`](../../packages/dv/ui-history/README.zh.md) 是历史面板（标签类型 `dv-history`）。它把历史列表中的每一步各列为一行，最新的在前，显示动作、谁做的（你 / You、智能体 / Agent、自动 / Automatic）、状态和一张输出缩略图；当前位置标 当前 / Current，它之后的步骤显示为灰色，批准分镜计划时排定的记录折叠在该批准行之下。历史通过 `@dv/ui-media` 的 `dv.media` 组件工厂绘制缩略图和选中行的输出。它的顶部放着撤销和重做按钮。每一行的 ⋮ 菜单提供 回到这一步 / Go back to this step，它把当前位置移到那一行（[历史规则](#history-rules)）。选中当前位置或之前某一步的那一行，会以该行的中间区域目标（一个 `dv.center.view` 条目和其中的目标）调用 `@dv/ui-shell` 的 `dvCenter.show`，例如时间线上该记录的片段（`{ view: 'timeline', target: { timeline, clip } }`），否则是画布上该记录的节点（`{ view: 'canvas', target: { record } }`）；行内的 在轨迹中查看 / Show in trajectory 链接发出 `dv:trajectory-focus`，`@dv/ui-shell` 随即在那个对话的那次工具调用处打开 轨迹。在对话中，写入记录的工具的每个已结束行都有 在历史中查看 / Show in history 链接，它发出 `dv:history-focus`，让历史面板选中那次工具调用写入的记录。
 
 ## 过期
 

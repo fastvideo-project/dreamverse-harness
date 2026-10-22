@@ -1,10 +1,12 @@
 /**
- * The DreamVerse entry of DSH's `conversation.chat.markdown` chain: in settled chat Markdown, a link to a video asset
- * becomes a 16:9 thumbnail card, an image of an image asset becomes a capped thumbnail, and a table whose every body
- * row links a video asset becomes a three-column grid of cards. The entry's `select` finds asset references by their
- * `/dv/assets/<id>` paths alone; the component reads the open project's asset kinds through the `useAssetKinds` hook
- * and renders DSH's default element while an asset is not of the kind that its card needs. The entry stays registered
- * for the whole declaration of the chain, so a change of the asset index re-renders the cards without remounting them.
+ * The DreamVerse entry of DSH's `conversation.chat.markdown` chain: in settled chat Markdown, a link to an asset becomes
+ * a 16:9 card captioned with the take's shot number, else the asset's name, an image of an asset becomes a capped
+ * thumbnail, and a table whose every body row links an asset becomes a three-column grid of cards. Each asset
+ * draws through the `dv.media` Factory, so an asset of a media type without a view draws the file card. The entry's
+ * `select` finds asset references by their `/dv/assets/<id>` paths alone; the component reads the open project's assets
+ * through the `useChatAssets` hook and renders DSH's default element while the project does not hold a referenced
+ * asset. The entry stays registered for the whole declaration of the chain, so a change of the project re-renders the
+ * cards without remounting them.
  *
  * @module @dv/ui-composer/chat-media
  */
@@ -12,18 +14,13 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { MarkdownElement, MarkdownTableElement } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
-import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
+import type { HostObservable, InjectFace, PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { createElement, type ReactNode } from 'react'
 import { DvClient } from '@dv/ui-kit/api.ts'
-import { followAssetKinds, NO_ASSET_KINDS, type AssetKinds } from './asset-kinds.ts'
+import type { Asset, ProjectAsset } from '@dv/ui-kit/types.ts'
+import type {} from '@dv/ui-media/contract'
+import { followChatAssets, NO_CHAT_ASSETS, type ChatAssets } from './chat-assets.ts'
 import { ChatMediaView } from './ChatMedia.tsx'
-
-/** One video card of a shot grid. */
-export interface ShotCard {
-  readonly asset: string
-  /** The row's other cells, joined with ` · `. */
-  readonly caption: string
-}
 
 /** One asset link of a table body row. */
 export interface RowAsset {
@@ -40,18 +37,32 @@ export interface AssetRow {
   readonly texts: readonly string[]
 }
 
-/** The asset references that the entry's `select` finds in one Markdown element, before the asset kinds are known. */
+/** The asset references that the entry's `select` finds in one Markdown element, before the project's assets are known. */
 export type AssetReference =
   | { readonly kind: 'link'; readonly asset: string }
   | { readonly kind: 'image'; readonly asset: string; readonly alt: string }
   | { readonly kind: 'table'; readonly rows: readonly AssetRow[] }
 
-/** What the chain entry draws in place of one Markdown element. */
+/** One card of a grid. */
+export interface GridCard {
+  readonly asset: ProjectAsset
+  /** The row's other cells, joined with ` · `. */
+  readonly caption: string
+}
+
+/** What the chain entry draws in place of one Markdown element, by the element's kind. JSON data. */
 export type ChatMedia =
-  /** A standalone video link; `shot` is the take's shot number from the asset index, null when the index has none. */
-  | { readonly kind: 'video'; readonly asset: string; readonly shot: number | null }
-  | { readonly kind: 'image'; readonly asset: string; readonly alt: string }
-  | { readonly kind: 'grid'; readonly shots: readonly ShotCard[] }
+  /** A standalone link: a card captioned with `shot`, the take's shot number, else with the asset's name when it is null. */
+  | { readonly kind: 'link'; readonly asset: ProjectAsset; readonly shot: number | null }
+  | { readonly kind: 'image'; readonly asset: ProjectAsset; readonly alt: string }
+  | { readonly kind: 'table'; readonly cards: readonly GridCard[] }
+
+/** What the entry injects: the open project's assets as an observable source, and the preview. */
+export interface ChatMediaInjected {
+  hooks: { chatAssets: HostObservable<ChatAssets> }
+  /** Open the asset preview of `dvMedia`, growing out of `opener`; nothing while `dvMedia` is absent. */
+  preview: (asset: Asset, opener: Element | null) => void
+}
 
 /** The path of an asset's file under the host, as `@dv/asset-pool` serves it. */
 const ASSET_PATH = /^\/dv\/assets\/([^/]+)$/
@@ -120,67 +131,64 @@ export function selectAssetReference(element: MarkdownElement): AssetReference |
 
 /**
  * @param row - the asset links and cell texts of one body row.
- * @param kinds - the asset index.
- * @returns the card of the row's first video link, or undefined when the row links no video asset.
+ * @param held - the open project's assets.
+ * @returns the card of the row's first asset that the project holds, or undefined when it holds none.
  */
-function shotCard(row: AssetRow, kinds: AssetKinds): ShotCard | undefined {
-  const video = row.assets.find(({ asset }) => kinds.get(asset)?.kind === 'video')
-  if (video === undefined) return undefined
-  const caption = row.texts.filter((text, column) => column !== video.column && text !== '')
-  return { asset: video.asset, caption: caption.join(' · ') }
+function gridCard(row: AssetRow, held: ChatAssets): GridCard | undefined {
+  const link = row.assets.find(({ asset }) => held.assets[asset] !== undefined)
+  const asset = link === undefined ? undefined : held.assets[link.asset]
+  if (link === undefined || asset === undefined) return undefined
+  const caption = row.texts.filter((text, column) => column !== link.column && text !== '')
+  return { asset, caption: caption.join(' · ') }
 }
 
 /**
- * Choose the card form of an element's asset references with the asset kinds.
+ * Resolve an element's asset references against the open project's assets.
  * @param reference - the references that {@link selectAssetReference} found.
- * @param kinds - the asset index.
- * @returns the card form, or null when an asset is not of the kind that its card needs.
+ * @param held - the open project's assets.
+ * @returns what the entry draws, or null while the project does not hold a referenced asset.
  */
-export function resolveChatMedia(reference: AssetReference, kinds: AssetKinds): ChatMedia | null {
+export function resolveChatMedia(reference: AssetReference, held: ChatAssets): ChatMedia | null {
   switch (reference.kind) {
     case 'link': {
-      const entry = kinds.get(reference.asset)
-      return entry?.kind === 'video' ? { kind: 'video', asset: reference.asset, shot: entry.shot } : null
+      const asset = held.assets[reference.asset]
+      return asset === undefined ? null : { kind: 'link', asset, shot: held.shots[asset.id] ?? null }
     }
-    case 'image':
-      return kinds.get(reference.asset)?.kind === 'image' ? { kind: 'image', asset: reference.asset, alt: reference.alt } : null
+    case 'image': {
+      const asset = held.assets[reference.asset]
+      return asset === undefined ? null : { kind: 'image', asset, alt: reference.alt }
+    }
     case 'table': {
-      const shots: ShotCard[] = []
+      const cards: GridCard[] = []
       for (const row of reference.rows) {
-        const shot = shotCard(row, kinds)
-        if (shot === undefined) return null
-        shots.push(shot)
+        const card = gridCard(row, held)
+        if (card === undefined) return null
+        cards.push(card)
       }
-      return { kind: 'grid', shots }
+      return { kind: 'table', cards }
     }
   }
 }
 
 /** The props that the chain entry's component reads. */
-export interface ChatMediaEntryProps {
-  /** The `select` result. */
-  readonly matched: AssetReference
-  /** DSH's default rendering of the element. */
-  readonly fallback: ReactNode
-  /** Selects from the open project's asset kinds. */
-  readonly useAssetKinds: SnapshotSelectorHook<AssetKinds>
-}
+export type ChatMediaEntryProps = PropsRuntime<'conversation.chat.markdown'> & PropsRenderFactories
+  & InjectFace<ChatMediaInjected> & { matched: AssetReference }
 
 /**
- * The chain entry's component: the card form of the matched references, or DSH's default element while an asset is
- * not of the kind that its card needs. A change of the asset index re-renders a card in place, so its state survives.
- * @param props - the matched references, the default element, and the asset-kind hook.
+ * The chain entry's component: the cards of the matched references, or DSH's default element while the project does
+ * not hold a referenced asset. A change of the project re-renders a card in place, so its state survives.
+ * @param props - the matched references, the default element, the asset hook, the preview, and the Factory renderer.
  * @returns the card, the thumbnail, the grid, or the default element.
  */
 export function ChatMediaEntry(props: ChatMediaEntryProps): ReactNode {
-  const { matched, fallback, useAssetKinds } = props
-  const media = useAssetKinds(kinds => resolveChatMedia(matched, kinds), sameChatMedia)
-  return media === null ? fallback : createElement(ChatMediaView, { matched: media })
+  const { matched, fallback, useChatAssets, preview, renderFactorySlot } = props
+  const media = useChatAssets(held => resolveChatMedia(matched, held), sameChatMedia)
+  return media === null ? fallback : createElement(ChatMediaView, { media, preview, renderFactorySlot })
 }
 
 /**
- * @param a - a card form.
- * @param b - another card form.
+ * @param a - a resolved form.
+ * @param b - another resolved form.
  * @returns whether both draw the same cards.
  */
 function sameChatMedia(a: ChatMedia | null, b: ChatMedia | null): boolean {
@@ -189,23 +197,23 @@ function sameChatMedia(a: ChatMedia | null, b: ChatMedia | null): boolean {
 
 /**
  * Register the chain entry while the Chat view declares `conversation.chat.markdown`. The entry stays registered for
- * the whole declaration, and the open project's asset kinds reach its component through the `useAssetKinds` hook. The
- * kinds are followed only while a chat element subscribes to them; when the last one unsubscribes, following stops and
- * the last kinds stay for the next subscriber.
+ * the whole declaration, and the open project's assets reach its component through the `useChatAssets` hook. The
+ * project is followed only while a chat element subscribes; when the last one unsubscribes, following stops and the
+ * last snapshot stays for the next subscriber. The preview is read from the optional `dvMedia` service at call time.
  * @param ctx - client root context with the `slots` service.
  */
 export function registerChatMedia(ctx: Context): void {
   const client = new DvClient()
   ctx.slots.inject('conversation.chat.markdown', () => {
-    let kinds = NO_ASSET_KINDS
+    let held = NO_CHAT_ASSETS
     const listeners = new Set<() => void>()
     let stopFollowing: (() => void) | null = null
-    const assetKinds = {
-      getSnapshot: (): AssetKinds => kinds,
-      subscribe: (listener: () => void): (() => void) => {
+    const chatAssets: HostObservable<ChatAssets> = {
+      getSnapshot: () => held,
+      subscribe: (listener) => {
         listeners.add(listener)
-        stopFollowing ??= followAssetKinds(client, (next) => {
-          kinds = next
+        stopFollowing ??= followChatAssets(client, (next) => {
+          held = next
           for (const each of [...listeners]) each()
         })
         return () => {
@@ -216,10 +224,14 @@ export function registerChatMedia(ctx: Context): void {
         }
       },
     }
+    const injected: ChatMediaInjected = {
+      hooks: { chatAssets },
+      preview: (asset, opener) => { ctx.get('dvMedia')?.preview(asset, opener) },
+    }
     const unregister = ctx.slots.register({
       name: 'conversation.chat.markdown',
       select: ({ element }) => selectAssetReference(element),
-      inject: () => ({ hooks: { assetKinds } }),
+      inject: () => injected,
     }, ChatMediaEntry)
     return () => {
       unregister()

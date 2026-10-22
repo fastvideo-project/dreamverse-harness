@@ -36,6 +36,7 @@
     "@dv/ui-history": "workspace:*",
     "@dv/ui-location": "workspace:*",
     "@dv/ui-mcp-presets": "workspace:*",
+    "@dv/ui-media": "workspace:*",
     "@dv/ui-skills": "workspace:*",
     "@dv/ui-shell": "workspace:*",
     "@dv/ui-shot-plan": "workspace:*",

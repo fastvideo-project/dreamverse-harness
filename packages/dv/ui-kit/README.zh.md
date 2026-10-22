@@ -29,7 +29,7 @@ kind: "package-reference"
 ```ts
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { useViewSession } from '@dv/ui-kit/useView.ts'
-import { DV_TIMELINE_INSERT_EVENT } from '@dv/ui-kit/workspace-events.ts'
+import { DV_HISTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 ```
 
 | 模块 | 内容 |
@@ -40,17 +40,17 @@ import { DV_TIMELINE_INSERT_EVENT } from '@dv/ui-kit/workspace-events.ts'
 | `timeline.ts` | `FALLBACK_CLIP_SECONDS`、`timelineName(timeline, numbered)` |
 | `references.ts` | `versionRefOf(ref)`、`parseVersionedReference(ref)` 和 `formatInputRef(ref)`：存储的版本引用的类型、ID 和版本，引用文本 `<id>@<n>` 所指的 ID 和版本，以及任一存储的输入引用的引用文本，不点名任何引用类型；`referenceAssets(state, references, kinds)`、`pictureParts(prompt)`：一个镜头发给视频模型的各种媒体类型的参考素材（版本 `<id>@<n>` 经传入的 `VersionKind` 展开），以及在其 `Picture N` 标记处切开的提示词 |
 | `state.ts` | `assetIndex`、`videoAssets`；`isGenerationOperation(op)`（非确定性、资源为 `gpu`、有图片、视频或音频输出）和 `isGenerationRecord(record, op, mimeOf)`（给出 `op` 时由声明决定，否则由记录决定：非确定性，并有图片、视频或音频输出）：各视图区分生成记录所用的唯一规则 |
-| `registries.ts` | `Registry` 和 `createRegistry(keys)`：每个键只有一个所有者的描述符列表（`register` 遇到已被占用的键时抛错，并返回注销函数），`list()` 在变化之前返回同一个数组；`DvCanvas`（以 `id` 为键的 `nodeTypes`、以 `starter` 为键的 `chainAnchors`、以 `id` 为键的 `takesInUse`、以 `kind` 为键的 `versionKinds`）及其描述符 `NodeType`、`NodeEntry`、`ChainAnchor`、`TakesInUse` 和 `VersionKind`（其 `label()` 是该种类在素材选择窗口中的分区标题），由 `@dv/ui-canvas` 作为 `ctx.dvCanvas` 提供；`DvMentions`（以 `id` 为键的 `kinds`）及其描述符 `MentionKind`（地址 `dv:<kind>/<id>` 的 `kind`、`@` 菜单分组的顺序 `order`、`section()`，以及给出 `uri`、`label`、`description` 和 `thumb` 素材的 `items(state)`），由 `@dv/ui-composer` 作为 `ctx.dvMentions` 提供；cordis `Context` 中 `dvCanvas` 和 `dvMentions` 的声明合并；键控插槽 `dv.canvas.editor` 的 `SlotMap` 声明合并（所有者属性为 `{ node, state, host }`，以 `NodeType.id` 为键，`EntryEditorHost` 把画布的写入、素材选择窗口和素材预览借给条目），由 `@dv/ui-canvas` 在节点条目的编辑器中渲染；键控插槽 `dv.canvas.picker`（所有者属性为 `{ projectId, session, client, onOpen }`）和 `dv.canvas.preview`（所有者属性为 `{ asset, onClose, zoom }`）的 `SlotMap` 声明合并，由 `@dv/ui-canvas` 以键 `assets` 在素材选择窗口和素材预览中渲染。`@dv/ui-history/contract` 声明历史行的类型 |
-| `asset-media.tsx` | `AssetMedia({asset, style})`：图片素材画成图片，视频素材画成它的第一帧，与画布和分镜计划编辑器的画法相同 |
+| `registries.ts` | `Registry` 和 `createRegistry(keys)`：每个键只有一个所有者的描述符列表（`register` 遇到已被占用的键时抛错，并返回注销函数），`list()` 在变化之前返回同一个数组；`DvCanvas`（以 `id` 为键的 `nodeTypes`、以 `starter` 为键的 `chainAnchors`、以 `id` 为键的 `takesInUse`、以 `kind` 为键的 `versionKinds`）及其描述符 `NodeType`、`NodeEntry`、`ChainAnchor`、`TakesInUse` 和 `VersionKind`（其 `label()` 是该种类在素材选择窗口中的分区标题），由 `@dv/ui-canvas` 作为 `ctx.dvCanvas` 提供；`DvMentions`（以 `id` 为键的 `kinds`）及其描述符 `MentionKind`（地址 `dv:<kind>/<id>` 的 `kind`、`@` 菜单分组的顺序 `order`、`section()`，以及给出 `uri`、`label`、`description` 和 `thumb` 素材的 `items(state)`，`@` 菜单把 `thumb` 素材的媒体类型的静帧显示为条目图标），由 `@dv/ui-composer` 作为 `ctx.dvMentions` 提供；cordis `Context` 中 `dvCanvas` 和 `dvMentions` 的声明合并；键控插槽 `dv.canvas.editor` 的 `SlotMap` 声明合并（所有者属性为 `{ node, state, host }`，以 `NodeType.id` 为键，`EntryEditorHost` 把画布的写入、它的素材选择窗口和 `dvMedia` 的素材预览借给条目），由 `@dv/ui-canvas` 在节点条目的编辑器中渲染；键控插槽 `dv.canvas.picker`（所有者属性为 `{ projectId, session, client, onOpen }`）的 `SlotMap` 声明合并，由 `@dv/ui-canvas` 以键 `assets` 在素材选择窗口中渲染。`@dv/ui-history/contract` 声明历史行的类型 |
+| `waveform.ts` | `useAudioEnvelope(assetId)`、`peakEnvelope`、`clipPeaks`：音频解码和峰值包络，时间线的 原声 轨道和 `@dv/ui-asset-pool` 的音频媒体视图把它们画成波形条 |
 | `chain.ts` | `chainOf(record, records)`：记录所在的链（`WireStartedBy`），即它自身的 `started_by`，没有时用它 `based_on` 根记录的 `started_by`，再没有时为 null |
 | `useProject.ts` | `useProjects`、`useOperations`、`useTaskLabels`、`useProjectState`：每次项目事件都重新拉取的加载器；`useLoader(load, deps)` 是它们共用的请求流程，会中止过期的请求，并在重新加载时保留上一次的值 |
 | `useView.ts` | `useViewSession(client, surface, session?)`：项目选择、项目的当前状态、操作、最近一次失败和项目栏回调；`sessionFromLocation` 从页面地址的 `?session=` 读对话，让视图打开该对话的项目 |
 | `ProjectBar.tsx` | 侧栏的栏（测试 ID `dv-kit-project-bar`）：项目选择器、新建项目按钮和撤销，用 `--dv-*` 主题变量画成 28 px 的次要控件；文案以 `labels` 传入，由所属插件先本地化 |
-| `compose.ts`、`workspace-events.ts` | 窗口事件 `dv:compose`、`dv:timeline-insert`、`dv:history-focus`、`dv:trajectory-focus`（`DV_*_EVENT`）和素材拖拽类型 `application/x-dv-asset` |
+| `compose.ts`、`workspace-events.ts` | 窗口事件 `dv:compose`、`dv:history-focus`、`dv:trajectory-focus`（`DV_*_EVENT`）和素材拖拽类型 `application/x-dv-asset` |
 | `tool-labels.ts` | `DV_TOOL_LABELS`：每个 `dv_proj_*`、`dv_asset_*` 和 `dv_models_*` 工具的中英文标签，这些工具所在的包不声明操作标签；`operationLabel`：操作的中英文名称（它在 `/api/dv/operations` 里的 `label`，没有时用它的工具在 `DV_TOOL_LABELS` 里的条目，再没有时用操作名）；`toolNameOf`：操作的工具名。输入框的工具行和历史面板显示这些名称。`taskLabel`：生成任务的中英文名称（它在 `WireTaskLabels`，即模型目录在 `GET /api/dv/tasks` 提供的标签里的标签，没有时用任务名），画布编辑器和 `@dv/ui-shot-render` 的渲染卡片显示它 |
 | `tool-rows.tsx` | 工具调用在对话里的行的共用部分：`argsOf(raw)`（解析后的调用参数，流式到达时为 `{}`）、`wroteRecord(block)`（结果元数据是否写明了写出的记录）、`outputsOf(block)`（每个产出素材的角色、URL 和 MIME 类型），以及 `HistoryLink`（在历史中查看 / Show in history，测试 ID `dv-composer-open-history`，派发 `dv:history-focus`；每个调用方传入自己 CSS 模块里的按钮类名） |
 | `current-project.ts` | 打开的项目，存在 `window.__dvCurrentProject` 上，用 `dv:current-project` 通知 |
-| `zoom.ts` | `useZoomPresence(value, openerOf, onOpened?)`：弹窗（对话视频播放器、画布节点编辑器、素材库预览）的缩放过渡。弹窗用 300 ms 从打开它的元素放大出来，关闭时用 250 ms 缩回该元素，背景同时淡入淡出；无论用哪种方式关闭，弹窗都等缩回结束才移除。打开它的元素已不存在或在屏幕外时，弹窗改为轻微缩放加淡出；开启 `prefers-reduced-motion` 时只淡入淡出。弹窗还在放大时被关闭，会从屏幕上的当前状态开始缩回。`mediaBox(width, height, maxWidth, maxHeight)` 在已知尺寸的图片或视频加载前就定好它的大小，这样由媒体决定大小的弹窗在过渡测量时已是最终尺寸 |
+| `zoom.ts` | `useZoomPresence(value, openerOf, onOpened?)`：弹窗（画布节点编辑器和 `@dv/ui-media` 的素材预览）的缩放过渡。弹窗用 300 ms 从打开它的元素放大出来，关闭时用 250 ms 缩回该元素，背景同时淡入淡出；无论用哪种方式关闭，弹窗都等缩回结束才移除。打开它的元素已不存在或在屏幕外时，弹窗改为轻微缩放加淡出；开启 `prefers-reduced-motion` 时只淡入淡出。弹窗还在放大时被关闭，会从屏幕上的当前状态开始缩回。`mediaBox(width, height, maxWidth, maxHeight)` 在已知尺寸的图片或视频加载前就定好它的大小，这样由媒体决定大小的弹窗在过渡测量时已是最终尺寸 |
 | `locale.ts` | `useText`、`pickText`：按 `<html lang>` 取一对中英文字符串中的一个 |
 
 `subscribe` 在浏览器有 `EventSource` 时用它，否则每三秒轮询一次。跟随项目的每个 bundle 通过 `window.__dvEventSources` 为每个项目共享一条流；`window.__dvStreams` 记录打开的流数。

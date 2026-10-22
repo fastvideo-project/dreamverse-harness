@@ -7,6 +7,7 @@
  */
 import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
+import type { PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots'
 import { useText } from '@dv/ui-kit/locale.ts'
 import type { WireProjectCover, WireProjectLink } from '@dv/ui-kit/types.ts'
 import type { ShellActions } from './actions.ts'
@@ -17,7 +18,7 @@ import { NO_PROJECTS, useShell } from './store.ts'
 import css from './shell.module.css'
 
 /** Props of the switcher. */
-export interface SessionSwitcherProps extends SessionListHooks {
+export interface SessionSwitcherProps extends SessionListHooks, PropsRenderFactories {
   shell: ShellActions
   project: WireProjectLink
   /** The cover of the open project, or null while it loads or when the project has none. */
@@ -40,7 +41,7 @@ function run(work: () => Promise<void>): void {
  * @returns the button and the menu.
  */
 export function SessionSwitcher(props: SessionSwitcherProps): ReactNode {
-  const { shell, project, cover, sessionTitle } = props
+  const { shell, project, cover, sessionTitle, renderFactorySlot } = props
   const t = useText()
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
@@ -78,7 +79,7 @@ export function SessionSwitcher(props: SessionSwitcherProps): ReactNode {
         title={t('切换会话或项目', 'Switch chat or project')}
         onClick={() => { setOpen(value => !value) }}
       >
-        <CoverFrame cover={cover} className={css.switcherCover} />
+        <CoverFrame cover={cover} purpose="thumb" className={css.switcherCover} renderFactorySlot={renderFactorySlot} />
         <span className={css.switcherProject}>{project.title}</span>
         <span className={css.switcherSep}>/</span>
         <span className={css.switcherSession}>{sessionTitle ?? t('新对话', 'New chat')}</span>

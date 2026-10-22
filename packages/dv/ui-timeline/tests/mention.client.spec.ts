@@ -8,6 +8,7 @@ import type { ClipId, TimelineId } from '@dv/timeline/types'
 import { projectItems } from '@dv/ui-composer/src/client/mention.ts'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
+import { MEDIA_TYPES } from '../../ui-asset-pool/src/client/media.tsx'
 import { asset, fixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { clipMentionKind } from '../src/client/mention.ts'
 
@@ -51,15 +52,16 @@ describe('clipMentionKind', () => {
     expect(clipMentionKind.items(state).at(-1)).toEqual({ uri: 'dv:clip/cl3', label: 'Outro · Clip 1' })
   })
 
-  it('gives the composer\'s @ list the clip items of the base: first, with an image thumbnail, else the video\'s first frame', () => {
+  it('gives the composer\'s @ list the clip items of the base: first, with an image thumbnail, else the video\'s media-type glyph', () => {
     document.documentElement.lang = 'zh-CN'
-    const items = projectItems(clipState(), [clipMentionKind])
+    const items = projectItems(clipState(), [clipMentionKind], MEDIA_TYPES)
     expect(items.slice(0, 4).map(item => [item.label, item.section])).toEqual([
       ['时间线 1 · 片段 1', '片段'], ['时间线 1 · 片段 2', '片段'], ['片尾 · 片段 1', '片段'], ['片尾 · 片段 2', '片段'],
     ])
     const icons = items.slice(0, 4).map(item => item.icon === undefined ? null : renderToStaticMarkup(createElement(item.icon)))
     expect(icons[0]).toContain(`<img src="${assetUrl('shot1-last.png')}"`)
-    expect(icons[2]).toContain(`<video src="${assetUrl('imported.mp4')}"`)
+    expect(icons[2]).toContain('<svg')
+    expect(icons[2]).not.toContain('<video')
     expect(icons[3]).toBeNull()
   })
 })

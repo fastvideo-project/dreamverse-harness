@@ -87,7 +87,7 @@ describe('the style descriptors', () => {
     document.documentElement.lang = 'zh-CN'
     const { mentionKind } = style
     expect([mentionKind.id, mentionKind.kind, mentionKind.order, mentionKind.section()]).toEqual(['@dv/ui-style', 'style', 3, '风格'])
-    const item = projectItems(nounState(), [mentionKind]).find(entry => entry.uri === 'dv:style/s1')
+    const item = projectItems(nounState(), [mentionKind], []).find(entry => entry.uri === 'dv:style/s1')
     expect([item?.label, item?.section, item?.description]).toEqual(['胶片', '风格', ''])
     document.documentElement.lang = 'en'
     expect(mentionKind.section()).toBe('Styles')

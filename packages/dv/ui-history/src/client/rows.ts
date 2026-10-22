@@ -74,38 +74,32 @@ export function actionLabel(record: ProjectRecord, context: LabelContext): reado
   return [`${zh} ${slot}`, `${en} ${slot}`]
 }
 
-/** The asset a row's thumbnail shows, and whether it is drawn as an image or as a video frame. */
-export interface Thumbnail {
-  asset: string
-  kind: 'image' | 'video'
-}
-
 /**
- * The one thumbnail of a row. An image among the record's outputs, then its inputs, comes first. A video is shown by
- * an image output of the record that made it (a take's still), else as a video frame. Files that are neither images
+ * The asset of a row's one thumbnail. An image among the record's outputs, then its inputs, comes first. A video is
+ * shown by an image output of the record that made it (a take's still), else by itself. Files that are neither images
  * nor videos (a plan's JSON) and assets of unknown type have no thumbnail. A row without media of its own shows the
  * thumbnail of the first record folded under it.
  * @param record - the record.
  * @param assets - the known assets by ID.
  * @param records - the loaded records by ID, to find the still of a video's maker.
  * @param children - the records folded under the row, in log order.
- * @returns the thumbnail, or null.
+ * @returns the asset ID, or null.
  */
 export function thumbnailOf(
   record: ProjectRecord,
   assets: ReadonlyMap<string, Asset>,
   records: ReadonlyMap<string, ProjectRecord>,
   children: readonly ProjectRecord[] = [],
-): Thumbnail | null {
+): string | null {
   const named = [...record.outputs, ...record.inputs.flatMap(input => input.resolved_asset === null ? [] : [input.resolved_asset])]
   const mime = (id: string): string => assets.get(id)?.mime ?? ''
   const image = named.find(id => mime(id).startsWith('image/'))
-  if (image !== undefined) return { asset: image, kind: 'image' }
+  if (image !== undefined) return image
   const video = named.find(id => mime(id).startsWith('video/'))
   if (video !== undefined) {
     const maker = records.get(assets.get(video)?.created_by ?? '')
     const still = maker?.outputs.find(id => mime(id).startsWith('image/'))
-    return still === undefined ? { asset: video, kind: 'video' } : { asset: still, kind: 'image' }
+    return still ?? video
   }
   for (const child of children) {
     const shown = thumbnailOf(child, assets, records)

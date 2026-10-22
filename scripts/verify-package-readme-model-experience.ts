@@ -246,6 +246,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/dv/ui-shot-render': { kind: 'none', reason: 'Browser-side render tool card; it shows the calls and results of dv_shot_render and writes no record.' },
   'packages/dv/ui-workflow-story': { kind: 'none', reason: 'Browser-side descriptors of the story workflow; they show its records and write no record.' },
   'packages/dv/ui-reference-kit': { kind: 'indirect', reason: 'Browser kit of reference nouns; the <key>.update records its editor writes reach the model only through @dv/project.' },
+  'packages/dv/ui-media': { kind: 'none', reason: 'Browser-side dv.media Factory and asset preview; they draw assets and write no record.' },
   'packages/dv/ffmpeg': { kind: 'indirect', reason: 'The command runner adds no tool; the component operations that call it report its files and probe fields.' },
   'packages/dv/e2e': { kind: 'none', reason: 'Browser stories that run the DreamVerse profile against a scripted model; the package ships no plugin, prompt, or tool.' },
 }

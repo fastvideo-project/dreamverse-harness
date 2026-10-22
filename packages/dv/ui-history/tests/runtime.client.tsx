@@ -1,7 +1,8 @@
 /**
- * The History tab as the DreamVerse bundle loads it: the real History plugin in a slot test runtime that provides the
- * right-Sidebar tab registry and a recording `dvCenter`, and whose root frame renders the History tab body in chat
- * session `s5`.
+ * The History tab as the DreamVerse bundle loads it: the real `@dv/ui-media` plugin, the real asset pool plugin, whose
+ * image, video and audio views draw every `dv.media` occurrence, and the real History plugin, in a slot test runtime
+ * that provides the right-Sidebar tab registry and a recording `dvCenter`, and whose root frame renders the History tab
+ * body in chat session `s5`.
  */
 import { act } from '@testing-library/react'
 import type { RenderResult } from '@testing-library/react'
@@ -12,6 +13,8 @@ import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-righ
 import type { ComposedProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
 import type { CenterTarget } from '@dv/ui-shell/contract'
+import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
+import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import type {} from '../src/client/contract/index.ts'
 import { HISTORY_ID } from '../src/client/definition.ts'
 import { apply, inject } from '../src/client/index.ts'
@@ -36,7 +39,8 @@ const runtimes: SlotTestRuntime[] = []
 const sessions: Disposable[] = []
 
 /**
- * Mount the History plugin, render its tab body for project `p1` in chat session `s5`, and record the center moves.
+ * Mount the media plugin, the asset pool plugin and the History plugin, render the History tab body for project `p1` in
+ * chat session `s5`, and record the center moves.
  * @returns the runtime, the History plugin's handle, the rendered page and the recorded center targets.
  */
 export async function mountHistory(): Promise<MountedHistory> {
@@ -52,6 +56,8 @@ export async function mountHistory(): Promise<MountedHistory> {
       {renderSlot('sidebar.right.pane.tab', {}, { entryKey: HISTORY_ID, hookContext: {} as never })}
     </SessionProvider>
   ))
+  await runtime.mount({ inject: [...mediaInject], apply: mediaApply })
+  await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
   const history = await runtime.mount({ inject: [...inject], apply })
   const view = runtime.renderRoot()
   act(() => { publishCurrentProject('p1') })

@@ -5,10 +5,9 @@
  */
 import { memo, useCallback, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsRenderFactories, PropsRuntime, RenderFactorySlot } from '@deepseek-ai/dsh-client-ui-slots'
 import type { PlanVersion, Shot } from '@dv/shot-plan/types'
 import { assetUrl, type DvClient } from '@dv/ui-kit/api.ts'
-import { AssetMedia } from '@dv/ui-kit/asset-media.tsx'
 import { useText } from '@dv/ui-kit/locale.ts'
 import { parseVersionedReference, pictureParts, referenceAssets } from '@dv/ui-kit/references.ts'
 import type { DvCanvas, Registry, VersionKind } from '@dv/ui-kit/registries.ts'
@@ -16,6 +15,7 @@ import { clockText } from '@dv/ui-kit/timeline.ts'
 import { taskLabel, type WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
 import type { ProjectAsset, WireState } from '@dv/ui-kit/types.ts'
 import { useTaskLabels } from '@dv/ui-kit/useProject.ts'
+import type {} from '@dv/ui-media/contract'
 import { isPicture } from './picture.ts'
 
 /** What the plugin injects: the `dvCanvas` registries (chain anchors, version kinds) and the client that reads task labels. */
@@ -23,8 +23,8 @@ export interface PlanEditorInjected { canvas: DvCanvas; client: DvClient }
 
 /** The task labels while `GET /api/dv/tasks` loads or after it fails; a shot then shows its task by its name. */
 const NO_TASK_LABELS: WireTaskLabels = {}
-/** A reference image in a reference chip, and one that stands in a shot prompt for its Picture N token. */
-const chipThumb: CSSProperties = { width: 24, height: 24, objectFit: 'cover', borderRadius: 'var(--dv-radius-sm)', flex: 'none' }
+/** A reference asset in a reference chip, and an image that stands in a shot prompt for its Picture N token. */
+const chipThumb: CSSProperties = { display: 'flex', width: 24, height: 24, overflow: 'hidden', borderRadius: 'var(--dv-radius-sm)', flex: 'none' }
 const promptThumb: CSSProperties = { height: '1.4em', width: 'auto', verticalAlign: 'middle', borderRadius: 3, margin: '0 2px' }
 /** A small rounded tag in the plan editor: the duration and model-and-task chips of a shot. */
 const tag: CSSProperties = { height: 22, padding: '0 8px', display: 'inline-flex', alignItems: 'center', fontSize: 12, lineHeight: '16px', background: 'var(--dv-surface-3)' }
@@ -89,11 +89,11 @@ function referenceLabel(reference: NamedReference): string {
   return reference.picture === null ? reference.name : `Picture ${String(reference.picture)} · ${reference.name}`
 }
 
-/** One reference asset as a chip: its media and its label. */
-function ReferenceChip({ reference }: { reference: NamedReference }): ReactNode {
+/** One reference asset as a chip: its media through `dv.media` and its label. */
+function ReferenceChip({ reference, renderFactorySlot }: { reference: NamedReference; renderFactorySlot: RenderFactorySlot }): ReactNode {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 32, padding: '0 10px 0 4px', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-3)', maxWidth: '100%' }}>
-      <AssetMedia asset={reference.asset} style={chipThumb} />
+      <span style={chipThumb}>{renderFactorySlot('dv.media', { asset: reference.asset, purpose: 'thumb' })}</span>
       <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{referenceLabel(reference)}</span>
     </span>
   )
@@ -105,10 +105,12 @@ export const plansOf = (state: WireState): Readonly<Record<string, PlanVersion[]
 /**
  * The plan editor: the version row, then the shots of the chosen version. The entry ID `plan:<PlanId>` names the plan;
  * the entry of a plan without versions shows nothing.
- * @param props - the entry, the state, the canvas registries, and the API client.
+ * @param props - the entry, the state, the canvas registries, the API client, and the Factory renderer.
  * @returns the element.
  */
-export function PlanEditor({ node, state, canvas, client }: PropsRuntime<'dv.canvas.editor'> & PlanEditorInjected): ReactNode {
+export function PlanEditor(
+  { node, state, canvas, client, renderFactorySlot }: PropsRuntime<'dv.canvas.editor'> & PlanEditorInjected & PropsRenderFactories,
+): ReactNode {
   const versions = plansOf(state)[node.id.slice(node.id.indexOf(':') + 1)] ?? []
   // The version on show; the editor holds the choice so the version row and the shot list read the same version.
   const [chosen, setChosen] = useState<number | null>(null)
@@ -121,8 +123,13 @@ export function PlanEditor({ node, state, canvas, client }: PropsRuntime<'dv.can
   const approved = anchors.some(anchor => anchor.approvedVersions?.(state, node.id).includes(plan.version) === true)
   return (
     <>
-      <PlanHeader versions={versions} plan={plan} approved={approved} state={state} kinds={kinds} onChoose={setChosen} />
-      <PlanShots plan={plan} state={state} kinds={kinds} taskLabels={taskLabels.value ?? NO_TASK_LABELS} />
+      <PlanHeader
+        versions={versions} plan={plan} approved={approved} state={state} kinds={kinds} onChoose={setChosen}
+        renderFactorySlot={renderFactorySlot}
+      />
+      <PlanShots
+        plan={plan} state={state} kinds={kinds} taskLabels={taskLabels.value ?? NO_TASK_LABELS} renderFactorySlot={renderFactorySlot}
+      />
     </>
   )
 }
@@ -133,13 +140,14 @@ export function PlanEditor({ node, state, canvas, client }: PropsRuntime<'dv.can
  * version only), or replaced by the next version.
  */
 function PlanHeader(
-  { versions, plan, approved, state, kinds, onChoose }: {
+  { versions, plan, approved, state, kinds, onChoose, renderFactorySlot }: {
     versions: readonly PlanVersion[]
     plan: PlanVersion
     approved: boolean
     state: WireState
     kinds: readonly VersionKind[]
     onChoose: (version: number) => void
+    renderFactorySlot: RenderFactorySlot
   },
 ): ReactNode {
   const pick = useText()
@@ -187,7 +195,7 @@ function PlanHeader(
             {pick('计划参考', 'Plan references')}
             {references.map((reference, index) => (
               <span key={index} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <AssetMedia asset={reference.asset} style={{ ...chipThumb, boxShadow: '0 0 0 1px var(--dv-line-strong)' }} />
+                <span style={{ ...chipThumb, boxShadow: '0 0 0 1px var(--dv-line-strong)' }}>{renderFactorySlot('dv.media', { asset: reference.asset, purpose: 'thumb' })}</span>
                 <span style={{ color: 'var(--dv-text)' }}>{referenceLabel(reference)}</span>
               </span>
             ))}
@@ -202,7 +210,13 @@ function PlanHeader(
  * on every pointer move and the shot cards look up their reference assets.
  */
 const PlanShots = memo(function PlanShots(
-  { plan, state, kinds, taskLabels }: { plan: PlanVersion; state: WireState; kinds: readonly VersionKind[]; taskLabels: WireTaskLabels },
+  { plan, state, kinds, taskLabels, renderFactorySlot }: {
+    plan: PlanVersion
+    state: WireState
+    kinds: readonly VersionKind[]
+    taskLabels: WireTaskLabels
+    renderFactorySlot: RenderFactorySlot
+  },
 ): ReactNode {
   const pick = useText()
   return (
@@ -210,7 +224,7 @@ const PlanShots = memo(function PlanShots(
       {plan.shots.map((shot, index) => (
         <ShotCard
           key={index} number={index + 1} shot={shot} references={namedReferences(state, shotReferences(plan, shot), kinds)}
-          taskLabels={taskLabels}
+          taskLabels={taskLabels} renderFactorySlot={renderFactorySlot}
         />
       ))}
     </ol>
@@ -222,13 +236,19 @@ const PlanShots = memo(function PlanShots(
  * assets, whether it continues the previous shot, and the prompt.
  */
 function ShotCard(
-  { number, shot, references, taskLabels }: { number: number; shot: Shot; references: NamedReference[]; taskLabels: WireTaskLabels },
+  { number, shot, references, taskLabels, renderFactorySlot }: {
+    number: number
+    shot: Shot
+    references: NamedReference[]
+    taskLabels: WireTaskLabels
+    renderFactorySlot: RenderFactorySlot
+  },
 ): ReactNode {
   const pick = useText()
   let chips: ReactNode
   if (shot.task === 't2v') chips = <span style={{ color: 'var(--dv-text-2)' }}>{pick('无（文字生成不用参考图）', 'None (a text render uses no reference images)')}</span>
   else if (references.length === 0) chips = <span style={{ color: 'var(--dv-text-2)' }}>{pick('无', 'None')}</span>
-  else chips = <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{references.map((reference, index) => <ReferenceChip key={index} reference={reference} />)}</span>
+  else chips = <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{references.map((reference, index) => <ReferenceChip key={index} reference={reference} renderFactorySlot={renderFactorySlot} />)}</span>
   return (
     <li data-shot={number} style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12, borderRadius: 'var(--dv-radius-lg)', background: 'var(--dv-surface-2)', boxShadow: '0 0 0 1px var(--dv-line)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

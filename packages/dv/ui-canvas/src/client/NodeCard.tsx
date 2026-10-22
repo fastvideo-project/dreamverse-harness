@@ -4,17 +4,21 @@
  * above its 16:9 frame at full card width; a failed take is a compact danger row instead of a frame. A finished take
  * that the user has not opened yet shows an accent dot in its header row. An entry draws the default card: its type label
  * and subtitle, then an entry with slots shows a mini grid of its slots' frames when any slot has one and its title, and
- * any other entry shows its first media at 40 × 40 beside its type label and its title.
+ * any other entry shows its first media at 40 × 40 beside its type label and its title. Every asset draws through the
+ * `dv.media` Factory of `@dv/ui-media`, by the callback that the canvas passes.
  */
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
-import { assetUrl } from '@dv/ui-kit/api.ts'
 import { NODE_WIDTH } from './graph.ts'
 import type { CanvasNode, CanvasNodeType, SlotFrame } from './graph.ts'
 import type {} from './locales.ts'
+import type { MediaPurpose } from '@dv/ui-media/contract'
 
 /** The canvas namespace translate. */
 export type CanvasTranslate = TranslateNS<'dvCanvas'>
+
+/** Draws one asset of the project in the box of its surface, through `dv.media`; null draws nothing. */
+export type DrawMedia = (assetId: string | null, purpose: MediaPurpose) => ReactNode
 
 /** The type dot color of each node type of the core; an entry takes the color of its `NodeType`. */
 const TYPE_COLOR: Record<Exclude<CanvasNodeType, 'entry'>, string> = {
@@ -88,12 +92,13 @@ export interface NodeCardProps {
   onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
   /** For an entry with slots, the frame of each slot; null for a slot without one. */
   frames?: Array<SlotFrame | null>
-  /** For a failed take, renders it again; omitted when the canvas is read-only. */
+  /** For a failed take, renders it again. */
   onRetry?: () => void
   /** For a failed take, true while its retry is starting: the retry button is disabled and reads 渲染中…. */
   retrying?: boolean
   /** For a finished take, true until the user opens it in the editor. */
   unseen?: boolean
+  drawMedia: DrawMedia
 }
 
 /** The zoom at and above which node text keeps its base size; below it text scales up to stay readable. */
@@ -101,20 +106,8 @@ const READABLE_ZOOM = 0.8
 /** The largest text enlargement, reached near the minimum zoom. */
 const MAX_TEXT_SCALE = 2.6
 
-const media: CSSProperties = { width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none', display: 'block' }
 export const ellipsis: CSSProperties = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
 export const mono: CSSProperties = { fontFamily: 'var(--dv-font-mono)', fontVariantNumeric: 'tabular-nums' }
-
-/**
- * The image or video of an asset, filling its box.
- * @param props - the image and video asset IDs.
- * @returns the element, or null when there is neither.
- */
-function Media({ thumb, video }: { thumb: string | null; video: string | null }): ReactNode {
-  if (thumb !== null) return <img src={assetUrl(thumb)} alt="" style={media} draggable={false} />
-  if (video !== null) return <video src={assetUrl(video)} muted preload="metadata" style={media} />
-  return null
-}
 
 /**
  * The card.
@@ -122,7 +115,7 @@ function Media({ thumb, video }: { thumb: string | null; video: string | null })
  * @returns the element.
  */
 export function NodeCard(
-  { node, x, y, selected, zoom, t, onPointerDown, frames = [], onRetry, retrying = false, unseen = false }: NodeCardProps,
+  { node, x, y, selected, zoom, t, onPointerDown, frames = [], onRetry, retrying = false, unseen = false, drawMedia }: NodeCardProps,
 ): ReactNode {
   const { flags } = node
   const scale = Math.min(MAX_TEXT_SCALE, Math.max(1, READABLE_ZOOM / zoom))
@@ -160,7 +153,7 @@ export function NodeCard(
   if (node.type === 'entry' && node.subtitle !== '') header = `${header} · ${node.subtitle}`
   let body: ReactNode
   if (failedTake) {
-    // A failed take has no frame: a compact row with the failure, the reason on hover, and 重试 when it can render again.
+    // A failed take has no frame: a compact row with the failure, the reason on hover, and 重试.
     body = (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px' }}>
         <svg width={size(16)} height={size(16)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none', color: 'var(--dv-danger)' }} aria-hidden="true">
@@ -171,18 +164,14 @@ export function NodeCard(
           <span style={{ display: 'block', color: 'var(--dv-text-2)', ...ellipsis }}>{marker}</span>
         </span>
         {stale}
-        {onRetry === undefined
-          ? null
-          : (
-            <button
-              type="button" className="dv-canvas-btn" disabled={retrying}
-              style={{ fontFamily: 'inherit', ...text(12), flex: 'none', height: 24, padding: '0 8px', border: '1px solid var(--dv-line-strong)', borderRadius: 'var(--dv-radius-sm)', color: 'var(--dv-text)', cursor: retrying ? 'default' : 'pointer', opacity: retrying ? 0.6 : 1 }}
-              onPointerDown={(event) => { event.stopPropagation() }}
-              onClick={onRetry}
-            >
-              {retrying ? t('node.rendering') : t('node.retry')}
-            </button>
-          )}
+        <button
+          type="button" className="dv-canvas-btn" disabled={retrying}
+          style={{ fontFamily: 'inherit', ...text(12), flex: 'none', height: 24, padding: '0 8px', border: '1px solid var(--dv-line-strong)', borderRadius: 'var(--dv-radius-sm)', color: 'var(--dv-text)', cursor: retrying ? 'default' : 'pointer', opacity: retrying ? 0.6 : 1 }}
+          onPointerDown={(event) => { event.stopPropagation() }}
+          onClick={onRetry}
+        >
+          {retrying ? t('node.rendering') : t('node.retry')}
+        </button>
       </div>
     )
   } else if (node.type === 'entry' && node.entry.slots === undefined) {
@@ -190,9 +179,7 @@ export function NodeCard(
     body = (
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 10 }}>
         <div style={{ position: 'relative', flex: 'none', width: 40, height: 40, borderRadius: 'var(--dv-radius-md)', overflow: 'hidden', background: 'var(--dv-surface-3)' }}>
-          {node.video !== null
-            ? <video src={`${assetUrl(node.video)}#t=0.1`} muted preload="metadata" style={media} />
-            : node.references[0] === undefined ? null : <img src={assetUrl(node.references[0])} alt="" style={media} draggable={false} />}
+          {drawMedia(node.references[0] ?? null, 'thumb')}
         </div>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <span style={{ ...text(12), display: 'flex', alignItems: 'center', gap: 6, color: 'var(--dv-text-2)' }}>
@@ -216,7 +203,7 @@ export function NodeCard(
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 3 }}>
               {frames.map((frame, index) => (
                 <div key={index} style={{ aspectRatio: '16 / 9', borderRadius: 3, overflow: 'hidden', background: 'var(--dv-surface-3)' }}>
-                  {frame === null ? null : <Media {...frame} />}
+                  {frame === null ? null : drawMedia(frame.thumb ?? frame.video, 'thumb')}
                 </div>
               ))}
             </div>
@@ -240,7 +227,7 @@ export function NodeCard(
           {node.durationSec !== null ? <span style={{ ...text(12), ...mono, flex: 'none', color: 'var(--dv-text-2)' }}>{`${node.durationSec.toFixed(1)}s`}</span> : null}
         </div>
         <div style={{ position: 'relative', width: NODE_WIDTH, height: FRAME_HEIGHT, background: 'var(--dv-surface-3)', overflow: 'hidden' }}>
-          <Media thumb={node.thumb} video={node.video} />
+          {drawMedia(node.thumb ?? node.video, 'card')}
           {marker !== null
             ? <span style={{ ...text(13), position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dv-overlay)', color: 'var(--dv-text)', fontWeight: 500 }}>{marker}</span>
             : null}

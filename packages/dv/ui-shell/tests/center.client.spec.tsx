@@ -2,7 +2,9 @@
 /**
  * The DreamVerse center in place of DSH's `main.conversation`, mounted in a slot test runtime with stand-ins for what
  * it uses: recording shell actions, a Conversation source, a `conversation.content` composer that shows its phase and
- * the chat view the center hands it, `dv.center.view` and `dv.explore` entries, and a scripted `/api/dv` server.
+ * the chat view the center hands it, `dv.center.view` and `dv.explore` entries, and a scripted `/api/dv` server. The
+ * real `@dv/ui-media` plugin and the real asset pool plugin, whose image and video views draw the covers, mount beside
+ * them.
  */
 import { act, fireEvent, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
@@ -14,10 +16,13 @@ import type { SessionFixture, SlotView } from '@deepseek-ai/dsh-client-test-runt
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { EMPTY_CONVERSATION_SNAPSHOT } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import type { FactoryComponentPropsOf, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type { WireProjectLink, WireProjectSummary, WireWorkspaces } from '@dv/ui-kit/types.ts'
+import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
+import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import type { ShellActions } from '../src/client/actions.ts'
 
 const PROJECTS: WireProjectLink[] = [
@@ -219,6 +224,9 @@ async function mountCenter(options: MountOptions = {}): Promise<Bench> {
   if (options.listsLoading === true) runtime.sessions.list.update((draft) => { draft.phase = 'pending' })
 
   await runtime.declare({ 'main.conversation': { kind: 'single', scope: 'session-maybe' } })
+  runtime.ctx.provide('sidebarRightTabs', new SidebarRightTabRegistry(runtime.ctx) as never)
+  await runtime.mount({ inject: [...mediaInject], apply: mediaApply })
+  await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
   await runtime.mount({
     inject: ['slots'],
     /** Register the stand-in composer, chat body and center, and the center view and explore entries. */

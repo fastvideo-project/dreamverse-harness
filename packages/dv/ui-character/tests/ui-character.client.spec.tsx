@@ -9,7 +9,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { buildCanvasGraph } from '@dv/ui-canvas/src/client/graph.ts'
-import { NodeCard, type CanvasTranslate } from '@dv/ui-canvas/src/client/NodeCard.tsx'
+import { NodeCard, type CanvasTranslate, type DrawMedia } from '@dv/ui-canvas/src/client/NodeCard.tsx'
 import { zh } from '@dv/ui-canvas/src/client/locales.ts'
 import type { AssetId, RecordId } from '@dv/project/types'
 import type { CharacterId } from '@dv/character/types'
@@ -91,7 +91,7 @@ describe('the character descriptors', () => {
     document.documentElement.lang = 'zh-CN'
     const { mentionKind } = character
     expect([mentionKind.id, mentionKind.kind, mentionKind.order, mentionKind.section()]).toEqual(['@dv/ui-character', 'character', 1, '角色'])
-    const item = projectItems(nounState(), [mentionKind]).find(entry => entry.uri === 'dv:character/c1')
+    const item = projectItems(nounState(), [mentionKind], []).find(entry => entry.uri === 'dv:character/c1')
     expect([item?.label, item?.section, item?.description]).toEqual(['阿明', '角色', ''])
     document.documentElement.lang = 'en'
     expect(mentionKind.section()).toBe('Characters')
@@ -116,11 +116,16 @@ describe('the character descriptors', () => {
       .find(entry => entry.id === 'character:c1')
     if (node === undefined) throw new Error('no node character:c1')
     const t: CanvasTranslate = makeTranslate(zh)
-    const { container } = render(<NodeCard node={node} x={0} y={0} selected={false} zoom={1} t={t} onPointerDown={() => {}} />)
+    // The canvas draws each asset through `dv.media`; this drawing names the asset and the purpose that the card asks for.
+    const drawMedia: DrawMedia = (assetId, purpose) => <i data-asset={assetId ?? ''} data-purpose={purpose} />
+    const { container } = render(
+      <NodeCard node={node} x={0} y={0} selected={false} zoom={1} t={t} onPointerDown={() => {}} drawMedia={drawMedia} />,
+    )
     const card = container.querySelector('[data-node-type="character"]')
     expect(card?.textContent).toContain('角色')
     expect(card?.textContent).toContain('阿明')
-    expect(card?.querySelector('img')?.getAttribute('src')).toContain('shot1-last.png')
+    const media = card?.querySelector('[data-asset]')
+    expect([media?.getAttribute('data-asset'), media?.getAttribute('data-purpose')]).toEqual(['shot1-last.png', 'thumb'])
   })
 })
 

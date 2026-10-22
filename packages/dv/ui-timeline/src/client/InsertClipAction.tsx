@@ -1,0 +1,42 @@
+/**
+ * 插入片段 / Insert clip in the asset preview of `@dv/ui-media`: an entry of `dv.media.preview.action` that shows for a
+ * video asset while a project is open, and asks the plugin to insert the asset into the project's timeline view.
+ */
+import type { ReactNode } from 'react'
+import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@dv/ui-media/contract'
+import type {} from './locales.ts'
+
+/** What the plugin injects into the action: the open project and the insert gesture. */
+export interface InsertClipInjected {
+  hooks: { openProject: HostObservable<string | null> }
+  /**
+   * Show the timeline view of the open project with a request to insert the asset.
+   * @param assetId - the asset.
+   */
+  insert: (assetId: string) => void
+}
+
+/** The action's composed props: the previewed asset, the close callback, the injected gesture, and the copy. */
+export type InsertClipActionProps = PropsRuntime<'dv.media.preview.action'> & InjectFace<InsertClipInjected> & PropsLocale<'dvTimeline'>
+
+const button = {
+  height: 32, padding: '0 12px', border: '1px solid var(--dv-line-strong)', borderRadius: 'var(--dv-radius-md)', background: 'transparent',
+  color: 'var(--dv-text)', font: 'inherit', fontSize: 13, lineHeight: '20px', cursor: 'pointer',
+} as const
+
+/**
+ * The button.
+ * @param props - the asset, the close callback, the open project, the insert gesture, and the copy.
+ * @returns the button, or nothing for an asset that is not a video or while no project is open.
+ */
+export function InsertClipAction(props: InsertClipActionProps): ReactNode {
+  const { asset, useOpenProject, insert, t } = props
+  const projectId = useOpenProject(project => project)
+  if (projectId === null || !asset.mime.startsWith('video/')) return null
+  return (
+    <button type="button" style={button} onClick={() => { insert(asset.id); props.close() }}>
+      {t('preview.insert')}
+    </button>
+  )
+}

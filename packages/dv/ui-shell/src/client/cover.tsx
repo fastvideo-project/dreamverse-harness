@@ -5,12 +5,12 @@
  * @module @dv/ui-shell/cover
  */
 import type { ReactNode } from 'react'
-import { assetUrl } from '@dv/ui-kit/api.ts'
+import type { PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots'
 import type { PickText } from '@dv/ui-kit/locale.ts'
-import type { SummaryQuery, WireProjectCover, WireProjectSummary } from '@dv/ui-kit/types.ts'
+import type { Asset, SummaryQuery, WireProjectCover, WireProjectSummary } from '@dv/ui-kit/types.ts'
 import { useLoader } from '@dv/ui-kit/useProject.ts'
+import type { MediaPurpose } from '@dv/ui-media/contract'
 import { shellClient } from './store.ts'
-import css from './shell.module.css'
 
 /**
  * Read project card summaries in one request when the component mounts and again whenever `refresh` or `narrow`
@@ -33,21 +33,36 @@ export function useProjectSummaries(
 const NO_NARROWING: SummaryQuery = {}
 
 /**
- * A decorative cover frame beside the project title: the first frame of the take's muted video, or the take's image,
- * or a neutral block without a take.
- * @param props - the cover, the class of the frame box, and overlays drawn on the frame.
+ * The asset that `dv.media` draws for a cover. Each field of the wire cover is named by the MIME top-level type of its
+ * asset, so the field that holds an asset gives the media type; the first one wins.
+ * @param cover - the cover, or null.
+ * @returns the asset, or null without a cover.
+ */
+export function coverAsset(cover: WireProjectCover | null): Asset | null {
+  const [type, id] = Object.entries(cover ?? {}).find((field): field is [string, string] => field[1] !== null) ?? []
+  if (type === undefined || id === undefined) return null
+  return { id, mime: `${type}/*`, name: '', size_bytes: 0, created_by: null, created_at: '', width: null, height: null, duration_sec: null }
+}
+
+/**
+ * A decorative cover frame beside the project title: the cover asset drawn through `dv.media`, or a neutral block
+ * without a cover.
+ * @param props - the cover, the purpose it is drawn at, the class of the frame box, the Factory renderer, and overlays
+ *   drawn on the frame.
  * @returns the frame.
  */
 export function CoverFrame(
-  { cover, className, children }: { cover: WireProjectCover | null; className: string | undefined; children?: ReactNode },
+  { cover, purpose, className, renderFactorySlot, children }: PropsRenderFactories & {
+    cover: WireProjectCover | null
+    purpose: MediaPurpose
+    className: string | undefined
+    children?: ReactNode
+  },
 ): ReactNode {
+  const asset = coverAsset(cover)
   return (
     <span className={className} aria-hidden="true">
-      {cover?.video != null && (
-        // `#t=0.1` asks the browser to decode a frame past the first keyframe's black lead-in.
-        <video className={css.coverMedia} src={`${assetUrl(cover.video)}#t=0.1`} muted playsInline preload="metadata" />
-      )}
-      {cover?.video == null && cover?.image != null && <img className={css.coverMedia} src={assetUrl(cover.image)} alt="" />}
+      {asset !== null && renderFactorySlot('dv.media', { asset, purpose })}
       {children}
     </span>
   )

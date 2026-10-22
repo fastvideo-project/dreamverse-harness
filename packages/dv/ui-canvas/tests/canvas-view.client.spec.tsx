@@ -3,17 +3,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, createEvent, fireEvent, render, waitFor, within } from '@testing-library/react'
 import type { RenderResult } from '@testing-library/react'
-import type { ReactNode } from 'react'
-import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { makeTranslate, SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
-import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import type { RecordId } from '@dv/project/types'
 import type { PlanId } from '@dv/shot-plan/types'
-import { apply as assetPoolApply, inject as assetPoolInject } from '@dv/ui-asset-pool/src/client/index.ts'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import { DV_COMPOSE_EVENT } from '@dv/ui-kit/compose.ts'
 import type { DvComposeDetail } from '@dv/ui-kit/compose.ts'
-import type { ChainAnchor, DvCanvas } from '@dv/ui-kit/registries.ts'
+import type { ChainAnchor, DvCanvas, NodeType } from '@dv/ui-kit/registries.ts'
 import type { CanvasLayout, CanvasViewport, NodePosition, WireOperation } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { defineReferenceUi } from '@dv/ui-reference-kit/reference-kit.tsx'
@@ -27,6 +23,7 @@ import { NODE_WIDTH } from '../src/client/graph.ts'
 import { EDITOR_RECT_KEY } from '../src/client/NodeEditor.tsx'
 import type { CanvasTranslate } from '../src/client/NodeCard.tsx'
 import { zh } from '../src/client/locales.ts'
+import { mountCanvasFrame } from './media-runtime.client.tsx'
 
 /** The chain anchor of the fixture's approval `a1`: it hangs the records it started off `plan:p1` and approved v1. */
 const APPROVAL: ChainAnchor = {
@@ -239,25 +236,23 @@ function mount(
 }
 
 /**
- * Mount the canvas under the real slot runtime, in a frame that declares the slots of its editors as the canvas center
- * view does, with the asset pool plugin filling the picker and the preview.
- * @param edit - changes to the fixture state, applied to every state the route serves.
+ * Mount the canvas of p1 beside chat session s5 under the real slot runtime, in a frame that declares the slots of its
+ * editors as the canvas center view does and hands the canvas the `dv.media` renderer and the `dvMedia` preview, with
+ * the real media and asset pool plugins mounted.
+ * @param options - what the server serves; the canvas reads the descriptors of `test_ref`.
  * @returns the runtime, the rendered view, the recorded writes, and a node lookup.
  */
-async function mountWithAssetPool(edit: (state: FixtureState) => void) {
-  const { client, writes } = serveCanvas({ edit })
+async function mountWithMedia(options: ServerOptions = {}) {
+  const { client, writes } = serveCanvas(options)
   const t: CanvasTranslate = makeTranslate(zh)
   const canvas = refCanvas().canvas
   const runtime = await SlotTestRuntime.create()
-  const Frame = ({ renderSlot }: PropsRenderSlots<'dv.canvas.editor' | 'dv.canvas.picker' | 'dv.canvas.preview'>): ReactNode =>
-    <CanvasView projectId="p1" client={client} session="s5" t={t} canvas={canvas} renderSlot={renderSlot} />
-  await runtime.root.declare({
-    'dv.canvas.editor': { kind: 'keyed', scope: 'root' },
-    'dv.canvas.picker': { kind: 'keyed', scope: 'root' },
-    'dv.canvas.preview': { kind: 'keyed', scope: 'root' },
-  }, Frame)
-  runtime.ctx.provide('sidebarRightTabs', new SidebarRightTabRegistry(runtime.ctx) as never)
-  await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
+  await mountCanvasFrame(runtime, ({ renderSlot, renderFactorySlot, preview }) => (
+    <CanvasView
+      projectId="p1" client={client} session="s5" t={t} canvas={canvas} renderSlot={renderSlot} renderFactorySlot={renderFactorySlot}
+      preview={preview}
+    />
+  ))
   const view = runtime.renderRoot()
   return { runtime, view, writes, node: nodeLookup(view) }
 }
@@ -353,15 +348,19 @@ describe('CanvasView', () => {
         name: 'image.generate', version: '1', description: 'One image.', inputs: {}, params: {}, outputs: [{ role: 'image', type: 'image' }],
         deterministic: false, resource: 'gpu', confirm: 'never', label: { zh: '生成图像', en: 'Generate image' },
       }
-      const { node } = mount(true, (state) => {
-        state.components.proj.records.push(record({ id: 'i1', operation: 'image.generate', deterministic: false, outputs: ['cat.png'] }))
-        state.assets.push(asset('cat.png', 'image/png', 'i1'))
-        state.components.proj.created_by['cat.png'] = 'i1'
-      }, false, [...OPERATIONS, generate])
+      const { runtime, node } = await mountWithMedia({
+        edit: (state) => {
+          state.components.proj.records.push(record({ id: 'i1', operation: 'image.generate', deterministic: false, outputs: ['cat.png'] }))
+          state.assets.push(asset('cat.png', 'image/png', 'i1'))
+          state.components.proj.created_by['cat.png'] = 'i1'
+        },
+        operations: [...OPERATIONS, generate],
+      })
       await waitFor(() => { node('i1') })
       expect(node('i1').getAttribute('data-node-type')).toBe('take')
       expect(node('i1').getAttribute('aria-label')).toBe('生成图像')
       expect(node('i1').querySelector('img')?.getAttribute('src')).toBe(assetUrl('cat.png'))
+      await runtime.dispose()
     } finally {
       document.documentElement.lang = lang
     }
@@ -388,10 +387,12 @@ describe('CanvasView', () => {
   it('draws a character as its name and its first reference image with a count of the rest', async () => {
     document.documentElement.lang = 'zh-CN'
     const references = ['ref.png', 'r2.png', 'r3.png', 'r4.png', 'r5.png', 'r6.png']
-    const { node } = mount(true, (state) => {
-      state.assets.push(...references.slice(1).map(id => asset(id, 'image/png', 'u1')))
-      const hero = state.components.test_ref?.['hero']?.[0]
-      if (hero !== undefined) hero.references = references
+    const { runtime, node } = await mountWithMedia({
+      edit: (state) => {
+        state.assets.push(...references.slice(1).map(id => asset(id, 'image/png', 'u1')))
+        const hero = state.components.test_ref?.['hero']?.[0]
+        if (hero !== undefined) hero.references = references
+      },
     })
     await waitFor(() => { node('test_ref:hero') })
     const card = node('test_ref:hero')
@@ -400,6 +401,7 @@ describe('CanvasView', () => {
     expect(card.textContent).toContain('参考')
     expect(card.textContent).toContain('Hero')
     expect(card.textContent).toContain('+5')
+    await runtime.dispose()
   })
 
   it('draws the items of a reference noun and links their version inputs from them only while its descriptors are registered', async () => {
@@ -414,13 +416,16 @@ describe('CanvasView', () => {
   })
 
   it('draws a character whose first reference is a video as the video\'s first frame', async () => {
-    const { node } = mount(true, (state) => {
-      const hero = state.components.test_ref?.['hero']?.[0]
-      if (hero !== undefined) hero.references = ['shot1.mp4', 'ref.png']
+    const { runtime, node } = await mountWithMedia({
+      edit: (state) => {
+        const hero = state.components.test_ref?.['hero']?.[0]
+        if (hero !== undefined) hero.references = ['shot1.mp4', 'ref.png']
+      },
     })
     await waitFor(() => { node('test_ref:hero') })
     expect([...node('test_ref:hero').querySelectorAll('video')].map(video => video.getAttribute('src'))).toEqual([`${assetUrl('shot1.mp4')}#t=0.1`])
     expect(node('test_ref:hero').textContent).toContain('+1')
+    await runtime.dispose()
   })
 
   it('puts a dropped 素材 tile on the canvas under the pointer with asset.place, and 从画布移除 takes it off with asset.unplace', async () => {
@@ -512,15 +517,17 @@ describe('CanvasView', () => {
 
   it('添加素材 adds the characters, locations and assets picked in the picker as references of the take, and an asset chip opens its preview', async () => {
     document.documentElement.lang = 'zh-CN'
-    const { runtime, view, node, writes } = await mountWithAssetPool((state) => {
-      state.components.test_ref = {
-        ...state.components.test_ref,
-        villain: [{ id: 'villain', version: 2, name: 'Villain', description: '', references: [], created_by: 'e1' }],
-        ghost: [],
-        studio: [{ id: 'studio', version: 1, name: '', description: '', references: ['plan.json'], created_by: 'e1' }],
-      }
+    const { runtime, view, node, writes } = await mountWithMedia({
+      edit: (state) => {
+        state.components.test_ref = {
+          ...state.components.test_ref,
+          villain: [{ id: 'villain', version: 2, name: 'Villain', description: '', references: [], created_by: 'e1' }],
+          ghost: [],
+          studio: [{ id: 'studio', version: 1, name: '', description: '', references: ['plan.json'], created_by: 'e1' }],
+        }
 
-      state.assets.push(asset('plan.json', 'application/json', null))
+        state.assets.push(asset('plan.json', 'application/json', null))
+      },
     })
     await waitFor(() => { node('g1') })
     fireEvent.pointerDown(node('g1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
@@ -540,10 +547,14 @@ describe('CanvasView', () => {
     const villain = within(picker).getByRole('button', { name: 'Villain' })
     // Each item sits in the section of its version kind, titled with the kind's label.
     expect(villain.closest('section')?.querySelector('h3')?.textContent).toBe('参考')
-    expect(within(picker).getByRole('button', { name: 'studio' }).closest('section')?.querySelector('h3')?.textContent).toBe('参考')
-    fireEvent.click(within(picker).getByRole('button', { name: 'studio' }))
-    fireEvent.click(within(picker).getByRole('button', { name: 'studio' }))
-    expect(within(picker).getByRole('button', { name: 'studio' }).getAttribute('aria-pressed')).toBe('false')
+    const studio = within(picker).getByText('studio').closest('button')
+    if (studio === null) throw new Error('no studio tile')
+    expect(studio.closest('section')?.querySelector('h3')?.textContent).toBe('参考')
+    // A tile draws its item's first asset as a thumbnail: a media type without a view shows only its MIME type there.
+    expect(studio.querySelector('[data-dv-media="file"]')?.textContent).toBe('application/json')
+    fireEvent.click(studio)
+    fireEvent.click(studio)
+    expect(studio.getAttribute('aria-pressed')).toBe('false')
     fireEvent.click(villain)
     const tile = await waitFor(() => {
       const found = picker.querySelector('[data-asset-id="shot1.mp4"]')
@@ -555,7 +566,11 @@ describe('CanvasView', () => {
     expect(picker.querySelector('style')?.textContent).toContain('[data-asset-id="shot1.mp4"]')
     fireEvent.click(view.getByText('确认（2）'))
     expect(view.queryByTestId('dv-canvas-asset-picker')).toBeNull()
-    fireEvent.click(view.getByRole('button', { name: '查看 shot1.mp4' }))
+    // The chip opens the `dvMedia` preview of its asset, growing out of the chip.
+    const opened = vi.spyOn(runtime.ctx.dvMedia, 'preview')
+    const chip = view.getByRole('button', { name: '查看 shot1.mp4' })
+    fireEvent.click(chip)
+    expect(opened.mock.calls).toEqual([[expect.objectContaining({ id: 'shot1.mp4' }), chip]])
     expect(await view.findByRole('dialog', { name: 'shot1.mp4' })).toBeTruthy()
     // Escape closes the preview and leaves the editor open.
     fireEvent.keyDown(window, { key: 'Escape' })
@@ -623,7 +638,13 @@ describe('CanvasView', () => {
     await waitFor(() => { node('g1') })
     expect(node('g1').getAttribute('title')).toBe('GPU out of memory')
     expect(node('g1').textContent).toContain(zh['node.renderFailed'])
-    fireEvent.click(view.getAllByRole('button', { name: zh['node.retry'] })[0] as HTMLElement)
+    const retry = within(node('g1')).getByRole('button', { name: zh['node.retry'] })
+    // A press on 重试 neither selects its take nor opens its editor.
+    fireEvent.pointerDown(retry, { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
+    expect(node('g1').getAttribute('data-node-selected')).toBeNull()
+    expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
+    fireEvent.click(retry)
     await waitFor(() => { expect(writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
     expect(writes.find(write => write.path === '/api/dv/operation')?.body).toMatchObject({
       project: 'p1', operation: 'shot.render', surface: 'canvas', based_on: 'g1', session: 's5',
@@ -1156,5 +1177,225 @@ describe('writes and failures', () => {
     await waitFor(() => { nodeLookup(view)('g1') })
     dropAt(view.getByTestId('dv-canvas-view'), tileDrag('pool.png'))
     expect((await view.findByRole('alert')).textContent).toBe('失败：offline')
+  })
+})
+
+/** A node type as a plugin's UI half registers it: an entry without a record or media, and one titled by its type. */
+const PROPS: NodeType = {
+  id: '@dv/ui-prop', type: 'prop', label: () => '道具', color: 'rgb(1, 2, 3)', column: 1,
+  entries: () => [{ id: 'prop:p1', record: null, title: '红伞', media: [] }, { id: 'prop:p2', record: null, title: '道具', media: [] }],
+}
+
+/**
+ * Make every element report a client size of 1200 × 800, which gives the editor panel the default rectangle 240, 80,
+ * 720 × 640.
+ */
+function mockAreaSize(): void {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1200)
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(800)
+}
+
+/**
+ * @param editor - an editor panel.
+ * @returns its left, top, width and height in px.
+ */
+const boxOf = (editor: HTMLElement): number[] =>
+  [editor.style.left, editor.style.top, editor.style.width, editor.style.height].map(value => parseFloat(value))
+
+describe('the editor panel', () => {
+  it.each([
+    ['text that is not JSON', 'not json'],
+    ['JSON that is not an object', '5'],
+    ['null', 'null'],
+    ['an object without a height', '{"x":0,"y":0,"width":800}'],
+    ['an object with a number beyond the double range', '{"x":1e999,"y":0,"width":800,"height":600}'],
+  ])('opens at the default rectangle when the remembered rectangle is %s', async (_name, stored) => {
+    mockAreaSize()
+    window.localStorage.setItem(EDITOR_RECT_KEY, stored)
+    const { open } = mount()
+    expect(boxOf(await open('g2'))).toEqual([240, 80, 720, 640])
+  })
+
+  it('keeps the panel on a release without a press, another pointer\'s release, a still press and another key; a straight drag moves it, and a double click on a button keeps it', async () => {
+    mockAreaSize()
+    const { view, open } = mount()
+    const editor = await open('g2')
+    const title = view.getByTestId('dv-canvas-editor-title-row')
+    fireEvent.pointerUp(title, { clientX: 400, clientY: 400, pointerId: 2 })
+    fireEvent.pointerDown(title, { button: 0, clientX: 300, clientY: 100, pointerId: 2 })
+    fireEvent.pointerUp(title, { clientX: 400, clientY: 400, pointerId: 3 })
+    fireEvent.pointerUp(title, { clientX: 300, clientY: 100, pointerId: 2 })
+    expect(boxOf(editor)).toEqual([240, 80, 720, 640])
+    expect(window.localStorage.getItem(EDITOR_RECT_KEY)).toBeNull()
+    fireEvent.keyDown(view.getByRole('button', { name: zh['editor.resize'] }), { key: 'Enter' })
+    expect(boxOf(editor)).toEqual([240, 80, 720, 640])
+    // A drag straight down moves the panel down only.
+    fireEvent.pointerDown(title, { button: 0, clientX: 300, clientY: 100, pointerId: 2 })
+    fireEvent.pointerMove(title, { clientX: 300, clientY: 140, pointerId: 2 })
+    fireEvent.pointerUp(title, { clientX: 300, clientY: 140, pointerId: 2 })
+    expect(boxOf(editor)).toEqual([240, 120, 720, 640])
+    fireEvent.doubleClick(view.getByRole('button', { name: zh['editor.close'] }))
+    expect(boxOf(editor)).toEqual([240, 120, 720, 640])
+    expect(JSON.parse(window.localStorage.getItem(EDITOR_RECT_KEY) ?? 'null')).toEqual({ x: 240, y: 120, width: 720, height: 640 })
+  })
+
+  it('问 agent refers to a take and an imported asset by their records, a placed asset without a record as the asset, and an entry without a record by its node', async () => {
+    const canvas = planCanvas(refCanvas().canvas)
+    canvas.nodeTypes.register(PROPS)
+    const { view, node, open } = mount(true, (state) => {
+      state.assets.push(asset('pool.png', 'image/png', 'u2'), asset('undone.png', 'image/png', 'u9', null, 'asset.import'))
+      state.components.proj.records.push(record({ id: 'u2', operation: 'asset.import', params: { name: 'pool.png' }, outputs: ['pool.png'], surface: 'asset_pool' }))
+      state.components.proj.created_by['pool.png'] = 'u2'
+      state.components.asset.placed = ['pool.png', 'undone.png']
+    }, false, OPERATIONS, canvas)
+    const composed: DvComposeDetail[] = []
+    const listener = (event: Event): void => { composed.push((event as CustomEvent<DvComposeDetail>).detail) }
+    window.addEventListener(DV_COMPOSE_EVENT, listener)
+    try {
+      for (const id of ['g1', 'u2', 'asset:undone.png', 'prop:p1']) {
+        fireEvent.click(within(await open(id)).getByRole('button', { name: zh['editor.askAgent'] }))
+        expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
+      }
+    } finally {
+      window.removeEventListener(DV_COMPOSE_EVENT, listener)
+    }
+    const take = node('g1').getAttribute('aria-label') ?? ''
+    expect(composed.map(detail => detail.refs)).toEqual([
+      [{ kind: 'record', id: 'g1', label: take, assetId: 'shot1-last.png' }],
+      [{ kind: 'record', id: 'u2', label: 'pool.png', assetId: 'pool.png' }],
+      [{ kind: 'asset', id: 'undone.png', label: 'undone.png', assetId: 'undone.png' }],
+      [{ kind: 'record', id: 'prop:p1', label: '红伞' }],
+    ])
+  })
+
+  it('shows the type label once in the header of a node titled by its type', async () => {
+    const canvas = planCanvas(refCanvas().canvas)
+    canvas.nodeTypes.register(PROPS)
+    const { open } = mount(true, undefined, false, OPERATIONS, canvas)
+    const header = (await open('prop:p2')).querySelector('header')
+    if (header === null) throw new Error('no editor header')
+    expect(within(header).getAllByText('道具').map(element => element.tagName)).toEqual(['H2'])
+  })
+})
+
+describe('the take editor', () => {
+  it('renders a new take with a toggled checkbox param as true', async () => {
+    const { view, writes, open } = mount()
+    const editor = await open('g1')
+    fireEvent.click(editor.querySelector('#dv-canvas-editor-loop') as HTMLInputElement)
+    fireEvent.click(view.getByText(zh['editor.renderTake']))
+    await waitFor(() => { expect(writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
+    expect(writes.find(write => write.path === '/api/dv/operation')?.body).toMatchObject({ params: { loop: true } })
+  })
+
+  it('names a chip by its reference text when no item or asset matches and opens nothing from it, names an item without a name by its ID, and × takes a reference off', async () => {
+    document.documentElement.lang = 'zh-CN'
+    const canvas = planCanvas(refCanvas().canvas)
+    // A version kind whose one item has no name and no asset.
+    canvas.versionKinds.register({
+      kind: 'prop', label: () => '道具', node: id => `prop:${id}`, latest: () => [{ id: 'p9', version: 1 }], name: () => null, assets: () => [],
+    })
+    const { view, writes, open } = mount(true, (state) => {
+      state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g1'
+        ? { ...entry, inputs: [...entry.inputs, { role: 'reference', ref: { asset: 'gone.png' }, resolved_asset: 'gone.png' }] }
+        : entry)
+    }, false, OPERATIONS, canvas)
+    const editor = await open('g1')
+    fireEvent.click(within(editor).getByRole('button', { name: '查看 gone.png' }))
+    expect(view.getAllByTestId('dv-canvas-node-editor')).toEqual([editor])
+    expect(view.queryByRole('dialog', { name: 'gone.png' })).toBeNull()
+    fireEvent.click(within(editor).getByText(zh['editor.addAsset']))
+    const picker = await view.findByTestId('dv-canvas-asset-picker')
+    fireEvent.click(within(picker).getByRole('button', { name: 'p9' }))
+    fireEvent.click(view.getByText('确认（1）'))
+    expect(within(editor).getByRole('button', { name: '查看 p9' })).toBeTruthy()
+    fireEvent.click(within(editor).getByRole('button', { name: '移除 gone.png' }))
+    expect(within(editor).queryByRole('button', { name: '查看 gone.png' })).toBeNull()
+    fireEvent.click(view.getByText(zh['editor.renderTake']))
+    await waitFor(() => { expect(writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
+    expect(writes.find(write => write.path === '/api/dv/operation')?.body).toMatchObject({
+      inputs: [{ role: 'reference', ref: 'hero@1' }, { role: 'reference', ref: 'p9@1' }],
+    })
+  })
+
+  it('shows why a new take does not start, a field that does not parse and then a refused request, and offers 渲染新版本 again', async () => {
+    const { writes, open } = mountCanvas({ refuse: refuseOperation('shot.render', 'GPU busy') })
+    const editor = await open('g1')
+    const extra = editor.querySelector('#dv-canvas-editor-extra') as HTMLInputElement
+    fireEvent.change(extra, { target: { value: '{' } })
+    fireEvent.click(within(editor).getByRole('button', { name: zh['editor.renderTake'] }))
+    expect(within(editor).getByRole('alert').textContent).toBe('失败：extra must be JSON.')
+    expect(writes.filter(write => write.path === '/api/dv/operation')).toEqual([])
+    fireEvent.change(extra, { target: { value: '' } })
+    fireEvent.click(within(editor).getByRole('button', { name: zh['editor.renderTake'] }))
+    await waitFor(() => { expect(within(editor).getByRole('alert').textContent).toBe('失败：GPU busy') })
+    expect(within(editor).getByRole('button', { name: zh['editor.renderTake'] }).hasAttribute('disabled')).toBe(false)
+  })
+
+  it('renders a new take without a chat session when the host passes none', async () => {
+    const server = serveCanvas()
+    const t: CanvasTranslate = makeTranslate(zh)
+    const view = render(<CanvasView projectId="p1" client={server.client} t={t} canvas={planCanvas(refCanvas().canvas)} />)
+    const node = nodeLookup(view)
+    await waitFor(() => { node('g1') })
+    fireEvent.pointerDown(node('g1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
+    fireEvent.click(within(await view.findByTestId('dv-canvas-node-editor')).getByRole('button', { name: zh['editor.renderTake'] }))
+    await waitFor(() => { expect(server.writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
+    const request = server.writes.find(write => write.path === '/api/dv/operation')?.body
+    expect(request).toMatchObject({ project: 'p1', operation: 'shot.render', based_on: 'g1' })
+    expect(request).not.toHaveProperty('session')
+  })
+
+  it('shows no failure reason for a failed take whose record carries no error', async () => {
+    const { open } = mount(true, (state) => {
+      state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g1' ? { ...entry, status: 'failed' as const, outputs: [] } : entry)
+    })
+    const editor = await open('g1')
+    expect(editor.querySelector('[role="note"]')).toBeNull()
+  })
+
+  it('shows an empty model and task, no params and no 渲染新版本 for a take whose record names no operation', async () => {
+    const { view, open } = mount(true, (state) => {
+      state.components.proj.records.push(record({ id: 'm1', deterministic: false, outputs: ['m1.mp4'] }))
+      state.assets.push(asset('m1.mp4', 'video/mp4', 'm1'))
+      state.components.proj.created_by['m1.mp4'] = 'm1'
+    })
+    const editor = await open('m1')
+    expect(view.getByTestId('dv-canvas-render-mode').textContent).toBe(' · ')
+    expect(editor.querySelector('textarea, input, select')).toBeNull()
+    expect(within(editor).queryByRole('button', { name: zh['editor.renderTake'] })).toBeNull()
+  })
+})
+
+describe('the cards', () => {
+  it('fades a superseded take', async () => {
+    const { node } = mount(true, (state) => { state.components.proj.superseded = { ...state.components.proj.superseded, g2: 'g3' } })
+    await waitFor(() => { node('g2') })
+    expect([node('g1').style.opacity, node('g2').style.opacity]).toEqual(['1', '0.55'])
+  })
+
+  it.each([
+    ['running', 'failed'],
+    ['failed', 'running'],
+  ] as const)('marks an entry whose record is %s, and an entry with slots whose record is %s, with the words and color of the state', async (hero, plan) => {
+    const { node } = mount(true, (state) => {
+      state.components.proj.records = state.components.proj.records.map((entry) => {
+        if (entry.id === 'e1') return { ...entry, status: hero }
+        return entry.id === 'p1' ? { ...entry, status: plan } : entry
+      })
+    })
+    await waitFor(() => { node('plan:p1') })
+    const marker = (id: string, status: 'running' | 'failed'): string =>
+      within(node(id)).getByText(status === 'running' ? zh['node.running'] : zh['node.failed']).style.color
+    const colorOf = (status: 'running' | 'failed'): string => status === 'running' ? 'var(--dv-text-2)' : 'var(--dv-danger)'
+    expect([marker('test_ref:hero', hero), marker('plan:p1', plan)]).toEqual([colorOf(hero), colorOf(plan)])
+  })
+
+  it('shows the badge of an entry\'s media in a row under its card', async () => {
+    const canvas = planCanvas(refCanvas().canvas)
+    canvas.takesInUse.register({ id: 'clips', uses: () => [], badges: () => [{ asset: 'ref.png', label: '已裁剪' }] })
+    const { node } = mount(true, undefined, false, OPERATIONS, canvas)
+    await waitFor(() => { expect(within(node('test_ref:hero')).getByText('已裁剪')).toBeTruthy() })
   })
 })

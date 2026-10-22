@@ -33,6 +33,9 @@
       "path": "../ui-kit"
     },
     {
+      "path": "../ui-media"
+    },
+    {
       "path": "../ui-shell"
     }
   ]

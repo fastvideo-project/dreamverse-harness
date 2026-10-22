@@ -33,7 +33,7 @@ kind: "package-reference"
   name: '@dv/ui-canvas'
 ```
 
-Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanvas`（`@dv/ui-kit/registries.ts` 的 `DvCanvas`：注册表 `nodeTypes`、`chainAnchors`、`takesInUse` 和 `versionKinds`），插件的 UI 半边向其中注册之前它们是空的。它还注册 `dv-canvas` 标签类型（侧栏指南页以"视频画布"提供的页面）、中英文的 `dvCanvas` locale 命名空间，以及以自身 id `@dv/ui-canvas` 为键的标签主体。它把 `CanvasCenter` 注册为 `dv.center.view` 条目 `canvas`（顺序 0，标签为标签类型的 画布 / Canvas），这是按中间区域的所有者属性 `projectId` 和 `session` 绘制项目并记录对话的 `CanvasView`，它打开所有者属性 `target` 指定的记录的节点。插件的 UI 半边在 `ctx.inject(['dvCanvas'], …)` 里注册它的描述符，并保留返回的注销函数；键已被占用的第二个描述符会抛错。标签主体和中间区域视图把这些注册表作为 `canvas` 属性传给 `CanvasView`。已注册 `NodeType` 的每个条目画成一个节点，带有其类型的 `data-node-type`，位于其类型的布局列 `column`，用同一张默认卡片绘制：`NodeType.color` 颜色的类型圆点、`NodeType.label()` 和 ` · <subtitle>`；带 `slots` 的条目随后在有位置已有画面时显示画面网格，再显示标题，其他条目显示 40 × 40 的第一张图片或视频、其余数量"+N"和标题；条目的媒体，以及已注册的 `VersionKind` 画成该节点的条目的每个更早版本的素材，都不单独画成 `asset` 节点。画布只通过已注册的 `VersionKind` 读取带版本的条目：版本的输入 `<id>@<n>` 从该条目的版本种类给出的节点连过来，版本编辑器的参考标签显示并打开该条目，素材选择窗口提供每个条目的最新版本，分镜计划编辑器列出每个条目版本的参考素材（`@dv/ui-kit/references.ts` 的 `referenceAssets`）。角色、场景和风格是 `@dv/ui-character`、`@dv/ui-location` 和 `@dv/ui-style` 的节点条目和版本种类。中间区域视图声明键控插槽 `dv.canvas.editor`、`dv.canvas.picker` 和 `dv.canvas.preview`（它们的 `SlotMap` 条目在 `@dv/ui-kit/registries.ts` 中），并把自己的 `renderSlot` 作为 `renderSlot` 传给 `CanvasView`：节点条目的编辑器显示以其 `NodeType.id` 为键的插槽条目，所有者属性为 `{ node, state, host }`，没有注册条目时只显示标题栏。`host`（`EntryEditorHost`）以画布写入的方式运行一个操作（画布的项目、对话会话和 `surface: 'canvas'`；失败显示在画布上方），打开只含素材的素材选择窗口，并打开某个素材的素材库预览。角色、场景或风格的编辑器是其 UI 包的条目。素材选择窗口在带版本的条目下方显示键为 `assets` 的 `dv.canvas.picker` 条目，素材预览显示键为 `assets` 的 `dv.canvas.preview` 条目；`@dv/ui-asset-pool` 用它的素材库面板和预览填充这两个插槽。一个插槽只能由一个条目声明，所以标签主体不声明画布插槽，挂载 `CanvasView` 时不传 `renderSlot`，那里的条目编辑器（包括角色、场景和风格的）只显示标题栏，素材选择窗口只提供带版本的条目，素材标签也不打开预览。
+Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanvas`（`@dv/ui-kit/registries.ts` 的 `DvCanvas`：注册表 `nodeTypes`、`chainAnchors`、`takesInUse` 和 `versionKinds`），插件的 UI 半边向其中注册之前它们是空的。它还注册 `dv-canvas` 标签类型（侧栏指南页以"视频画布"提供的页面）、中英文的 `dvCanvas` locale 命名空间，以及以自身 id `@dv/ui-canvas` 为键的标签主体。它把 `CanvasCenter` 注册为 `dv.center.view` 条目 `canvas`（顺序 0，标签为标签类型的 画布 / Canvas），这是按中间区域的所有者属性 `projectId` 和 `session` 绘制项目并记录对话的 `CanvasView`，它打开所有者属性 `target` 指定的记录的节点。插件的 UI 半边在 `ctx.inject(['dvCanvas'], …)` 里注册它的描述符，并保留返回的注销函数；键已被占用的第二个描述符会抛错。标签主体和中间区域视图把这些注册表作为 `canvas` 属性传给 `CanvasView`。已注册 `NodeType` 的每个条目画成一个节点，带有其类型的 `data-node-type`，位于其类型的布局列 `column`，用同一张默认卡片绘制：`NodeType.color` 颜色的类型圆点、`NodeType.label()` 和 ` · <subtitle>`；带 `slots` 的条目随后在有位置已有画面时显示画面网格，再显示标题，其他条目显示 40 × 40 的第一张图片或视频、其余数量"+N"和标题；条目的媒体，以及已注册的 `VersionKind` 画成该节点的条目的每个更早版本的素材，都不单独画成 `asset` 节点。画布只通过已注册的 `VersionKind` 读取带版本的条目：版本的输入 `<id>@<n>` 从该条目的版本种类给出的节点连过来，版本编辑器的参考标签显示并打开该条目，素材选择窗口提供每个条目的最新版本，分镜计划编辑器列出每个条目版本的参考素材（`@dv/ui-kit/references.ts` 的 `referenceAssets`）。角色、场景和风格是 `@dv/ui-character`、`@dv/ui-location` 和 `@dv/ui-style` 的节点条目和版本种类。中间区域视图声明键控插槽 `dv.canvas.editor` 和 `dv.canvas.picker`（它们的 `SlotMap` 条目在 `@dv/ui-kit/registries.ts` 中），并把自己的 `renderSlot` 作为 `renderSlot` 传给 `CanvasView`：节点条目的编辑器显示以其 `NodeType.id` 为键的插槽条目，所有者属性为 `{ node, state, host }`，没有注册条目时只显示标题栏。`host`（`EntryEditorHost`）以画布写入的方式运行一个操作（画布的项目、对话会话和 `surface: 'canvas'`；失败显示在画布上方），打开只含素材的素材选择窗口，并为某个素材打开 `dvMedia`（`@dv/ui-media`）的素材预览。角色、场景或风格的编辑器是其 UI 包的条目。素材选择窗口在带版本的条目下方显示键为 `assets` 的 `dv.canvas.picker` 条目；`@dv/ui-asset-pool` 用它的素材库面板填充该插槽。一个插槽只能由一个条目声明，所以标签主体不声明画布插槽，挂载 `CanvasView` 时不传 `renderSlot`，那里的条目编辑器（包括角色、场景和风格的）只显示标题栏，素材选择窗口只提供带版本的条目。标签主体和中间区域视图都把各自插槽条目的 `renderFactorySlot` 传给 `CanvasView`，由它通过 `@dv/ui-media` 的 `dv.media` 组件工厂绘制画布上的每个素材（条目卡片的媒体及其帧网格用途为 `thumb`，版本卡片或素材卡片的画面为 `card`，编辑器的播放器为 `loop` 并以图片为 poster，参考标签和选择窗口条目为 `thumb`），并传入调用 `dvMedia.preview` 的回调 `preview`；`dvMedia` 不存在时，素材不打开预览。
 
 | 手势 | 请求 |
 | --- | --- |
@@ -53,7 +53,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanva
 
 点击节点会选中它（显示强调色描边）并打开它的编辑器。关闭编辑器后描边保留，方便找回该节点；没有打开编辑器时点击空白画布会清除描边。按"渲染新版本"或失败版本的"重试"后，按钮显示"渲染中…"并禁用，直到新版本的节点出现；然后编辑器关闭，画布把新节点移到中央并选中它，新节点显示"渲染中…"直到渲染结束。如果请求在此之前被拒绝，错误显示在编辑器按钮旁边；"重试"的错误显示在画布上方。用户在本浏览器中还没打开过的已完成版本，标题旁显示一个强调色圆点，打开它的编辑器后消失。浏览器在 `localStorage` 中按项目保存已打开的版本；某个项目在一个浏览器中第一次打开时，所有已完成的版本都算作已打开。
 
-版本的编辑器按记录的参数显示它的模型和生成任务，生成任务显示它在模型目录 `GET /api/dv/tasks` 中的标签（没有时显示任务名），例如"fasth3 · 参考图生成"（生成任务 `ref2v`）或"fasth3 · 文字生成"（生成任务 `t2v`），并为它的操作在 `GET /api/dv/operations` 中声明的其他每个参数显示一个字段：先是提示词，然后是用本地化标签的时长和种子，其他参数以参数名为标签。操作声明了 `reference` 输入且生成任务不是 `t2v` 的版本有参考标签。操作不在该列表中的版本不显示字段，也没有"渲染新版本"。参考标签显示它的图片或视频的第一帧；点击后，素材打开素材库的预览，带版本的条目则在版本编辑器上方打开它所在节点的编辑器，版本编辑器里未渲染的修改保留。版本编辑器里的"添加素材"和条目编辑器的 `host.pickAssets` 打开素材选择窗口：先是每个已注册版本种类一个分区，标题为该种类的 `label()`，列出该版本尚未引用的每个条目的最新版本（只在版本编辑器里；没有这样的条目的种类不显示分区），然后是 `@dv/ui-asset-pool` 的素材库面板及其导入拖放区。点击选中或取消选中，"确认"按选中顺序追加。`plan` 条目的编辑器显示 `@dv/ui-shot-plan` 的分镜计划编辑器（版本、批准状态和镜头）。
+版本的编辑器按记录的参数显示它的模型和生成任务，生成任务显示它在模型目录 `GET /api/dv/tasks` 中的标签（没有时显示任务名），例如"fasth3 · 参考图生成"（生成任务 `ref2v`）或"fasth3 · 文字生成"（生成任务 `t2v`），并为它的操作在 `GET /api/dv/operations` 中声明的其他每个参数显示一个字段：先是提示词，然后是用本地化标签的时长和种子，其他参数以参数名为标签。操作声明了 `reference` 输入且生成任务不是 `t2v` 的版本有参考标签。操作不在该列表中的版本不显示字段，也没有"渲染新版本"。参考标签以用途 `thumb` 绘制它的素材；点击后，素材打开从该标签放大出来的素材预览，带版本的条目则在版本编辑器上方打开它所在节点的编辑器，版本编辑器里未渲染的修改保留。版本编辑器里的"添加素材"和条目编辑器的 `host.pickAssets` 打开素材选择窗口：先是每个已注册版本种类一个分区，标题为该种类的 `label()`，列出该版本尚未引用的每个条目的最新版本（只在版本编辑器里；没有这样的条目的种类不显示分区），然后是 `@dv/ui-asset-pool` 的素材库面板及其导入拖放区。点击选中或取消选中，"确认"按选中顺序追加。`plan` 条目的编辑器显示 `@dv/ui-shot-plan` 的分镜计划编辑器（版本、批准状态和镜头）。
 
 -----
 
@@ -75,7 +75,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanva
 | [`src/client/CanvasView.tsx`](src/client/CanvasView.tsx) | 画布：平移、缩放、拖动、拖放、布局存储 |
 | [`src/client/graph.ts`](src/client/graph.ts) | 节点、边和默认布局 |
 | [`src/client/NodeCard.tsx`](src/client/NodeCard.tsx)、[`src/client/NodeEditor.tsx`](src/client/NodeEditor.tsx) | 节点卡片和浮动编辑器 |
-| [`src/client/AssetPicker.tsx`](src/client/AssetPicker.tsx) | 素材选择窗口和素材预览（渲染 `dv.canvas.picker` 和 `dv.canvas.preview` 条目），以及图片或视频缩略图 |
+| [`src/client/AssetPicker.tsx`](src/client/AssetPicker.tsx) | 素材选择窗口：渲染 `dv.canvas.picker` 条目，并通过 `dv.media` 以每个带版本条目的第一个素材绘制该条目 |
 | [`src/client/locales.ts`](src/client/locales.ts) | `dvCanvas` 词典 |
 
 </details>
@@ -88,6 +88,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanva
 - [`@dv/api`](../api/README.zh.md) — 每个手势背后的路由。
 - [`@dv/ui-kit`](../ui-kit/README.zh.md) — API 客户端、wire 类型和 hook。
 - [`@dv/ui-shell`](../ui-shell/README.zh.md) — 工作区中间区域和把它移到画布的 `dvCenter`。
+- [`@dv/ui-media`](../ui-media/README.zh.md) — 绘制画布素材的 `dv.media` 组件工厂，以及素材预览。
 - [DreamVerse 各包](../../../docs/subsystems/video-harness.zh.md) — 画布所显示的过期、版本和历史规则。
 
 -----

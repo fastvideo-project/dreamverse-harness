@@ -24,9 +24,9 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在叠了 `dsh-web-app`（提供右侧栏和客户端模块加载器）和 `@dv/api`（提供面板调用的路由）的 profile 里挂载插件。先构建浏览器 bundle：`pnpm run build` 会写出 `lib/client.js`。
+在叠了 `dsh-web-app`（提供右侧栏和客户端模块加载器）和 `@dv/api`（提供面板调用的路由）的 profile 里挂载插件。也要挂载 `@dv/ui-media`：它的 `dv.media` 组件工厂绘制缩略图和播放器。先构建浏览器 bundle：`pnpm run build` 会写出 `lib/client.js`。
 
-面板请求项目历史列表中的步骤，最新的在前。每行显示带主体的操作名称（`@dv/ui-kit` 的 `operationLabel`：操作在 `/api/dv/operations` 里的 `label`，没有时用它的工具名称，再没有时用操作名）（修改分镜计划 p1 → v2、渲染镜头 1、新建角色「名字」）、谁做的（你、智能体、自动）、多久以前、状态，以及只有渲染行（`@dv/ui-kit` 的 `isGenerationRecord` 认定的记录，即图片、视频或音频生成）才有的一张缩略图（版本的静帧，没有静帧时用视频画面，什么都没产出时用空方块，让渲染行保持对齐）；其他行只显示文字。智能体行的第二行显示记录自身的 `intent`，即智能体为这次调用给出的理由。主体来自为该操作注册的 `HistoryRow`（先按完整操作名匹配，再按 `'<key>.'` 匹配），例如 `@dv/ui-shot-plan` 的 `plan.` 行和 `@dv/ui-character` 的 `character.` 行；没有时，带链位置的记录写出这个位置，链带有 lane 时再加 ` · <lane>`（`@dv/ui-kit` 的 `chainOf`：记录自身的 `started_by`，没有时用它 `based_on` 根记录的 `started_by`，所以画布上的重新生成保留它的镜头号）。`started_by.record` 是某一行记录的已加载记录，比如分镜计划批准的渲染和时间线记录，按日志顺序折叠在那一行下面，由 渲染 n 个镜头 开关展开。当前位置的一行带 当前，它之后的行变灰：文字变淡，缩略图变成黑白。其他每一行末尾有一个 ⋮ 按钮（更多操作），它的菜单提供 回到这一步（`/api/dv/undo` 带 `to` = 该步骤），把当前位置移到那一步，可在当前一步之前或之后。
+面板请求项目历史列表中的步骤，最新的在前。每行显示带主体的操作名称（`@dv/ui-kit` 的 `operationLabel`：操作在 `/api/dv/operations` 里的 `label`，没有时用它的工具名称，再没有时用操作名）（修改分镜计划 p1 → v2、渲染镜头 1、新建角色「名字」）、谁做的（你、智能体、自动）、多久以前、状态，以及只有渲染行（`@dv/ui-kit` 的 `isGenerationRecord` 认定的记录，即图片、视频或音频生成）才有的一张缩略图，通过 `dv.media` 组件工厂以用途 `thumb` 绘制（版本的静帧，没有静帧时用视频本身，什么都没产出时用空方块，让渲染行保持对齐）；其他行只显示文字。选中的行在下方通过 `dv.media` 以用途 `loop` 绘制它的第一个视频输出，没有时绘制第一个图片输出，所以视频静音循环播放。智能体行的第二行显示记录自身的 `intent`，即智能体为这次调用给出的理由。主体来自为该操作注册的 `HistoryRow`（先按完整操作名匹配，再按 `'<key>.'` 匹配），例如 `@dv/ui-shot-plan` 的 `plan.` 行和 `@dv/ui-character` 的 `character.` 行；没有时，带链位置的记录写出这个位置，链带有 lane 时再加 ` · <lane>`（`@dv/ui-kit` 的 `chainOf`：记录自身的 `started_by`，没有时用它 `based_on` 根记录的 `started_by`，所以画布上的重新生成保留它的镜头号）。`started_by.record` 是某一行记录的已加载记录，比如分镜计划批准的渲染和时间线记录，按日志顺序折叠在那一行下面，由 渲染 n 个镜头 开关展开。当前位置的一行带 当前，它之后的行变灰：文字变淡，缩略图变成黑白。其他每一行末尾有一个 ⋮ 按钮（更多操作），它的菜单提供 回到这一步（`/api/dv/undo` 带 `to` = 该步骤），把当前位置移到那一步，可在当前一步之前或之后。
 
 ```yaml
 - id: dv-ui-history
@@ -55,7 +55,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvHisto
 <details>
 <summary>实现内部——点击展开</summary>
 
-`HistoryPanel` 用 `useProjectState` 读取项目的当前状态，以得到当前状态的记录，并通过 `POST /api/dv/history` 列出历史。`actionRows` 把每条被启动的记录折叠到启动它的记录那一行下面，`actionLabel` 为每条记录命名，`centerFocus` 决定选中的行把中间区域移到哪里：变灰的步骤不移动，否则用匹配的已注册行的 `focus`，否则 `proj` 记录不移动，否则移到记录的画布节点。每个条目的 `place` 决定 当前 标记、变灰的行，以及哪些行提供 回到这一步。在 `/dv/events` 上，`update` 事件替换已加载行中的记录，`record` 或 `line` 事件以 200 ms 防抖重新拉取已加载的窗口。
+`HistoryPanel` 用 `useProjectState` 读取项目的当前状态，以得到当前状态的记录，并通过 `POST /api/dv/history` 列出历史。它接收必需属性 `renderFactorySlot`，即挂载它的插槽条目的组件工厂渲染函数，用来绘制缩略图和播放器；标签主体传入自己的渲染函数。`actionRows` 把每条被启动的记录折叠到启动它的记录那一行下面，`actionLabel` 为每条记录命名，`centerFocus` 决定选中的行把中间区域移到哪里：变灰的步骤不移动，否则用匹配的已注册行的 `focus`，否则 `proj` 记录不移动，否则移到记录的画布节点。每个条目的 `place` 决定 当前 标记、变灰的行，以及哪些行提供 回到这一步。在 `/dv/events` 上，`update` 事件替换已加载行中的记录，`record` 或 `line` 事件以 200 ms 防抖重新拉取已加载的窗口。
 
 | 文件 | 内容 |
 | --- | --- |
@@ -79,6 +79,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvHisto
 - [`@dv/project`](../project/README.zh.md) — 历史查询、撤销和重做。
 - [`@dv/ui-shell`](../ui-shell/README.zh.md) — `dvCenter` 和 `CenterTarget`，把工作区中间区域移到选中的记录。
 - [`@dv/ui-kit`](../ui-kit/README.zh.md) — API 客户端、wire 类型、窗口事件和工具名称。
+- [`@dv/ui-media`](../ui-media/README.zh.md) — 绘制缩略图和播放器的 `dv.media` 组件工厂。
 
 -----
 

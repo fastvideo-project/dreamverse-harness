@@ -24,7 +24,7 @@ Use this package to show the plans of the `plan` slice (`@dv/shot-plan`) on the 
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin in a profile that stacks `dsh-web-app`, `@dv/api` and `@dv/ui-canvas`. Build the browser bundle first: `pnpm run build` writes `lib/client.js`.
+Mount the plugin in a profile that stacks `dsh-web-app`, `@dv/api`, `@dv/ui-canvas`, and `@dv/ui-media`, whose `dv.media` Factory draws the plan editor's reference assets. Build the browser bundle first: `pnpm run build` writes `lib/client.js`.
 
 ```yaml
 - id: dv-ui-shot-plan
@@ -34,7 +34,7 @@ Mount the plugin in a profile that stacks `dsh-web-app`, `@dv/api` and `@dv/ui-c
 | Descriptor | Registry | Value |
 | --- | --- | --- |
 | `planNodeType` | `dvCanvas.nodeTypes` | `id: '@dv/ui-shot-plan'`, `type: 'plan'`, label `分镜计划` / `Plan`, color `var(--dv-kind-plan)`, column 1; one entry per plan with a version: ID `plan:<PlanId>`, `record` the record that wrote the latest version, `records` the records that wrote the earlier versions, subtitle `第 N 版` / `vN`, title the shot count followed by ` · <total duration>` when every shot has a duration, no media, `slots` the shot count |
-| `PlanEditor` | the `dv.canvas.editor` slot | key `@dv/ui-shot-plan`, owner `{ node, state, host }` (it uses no `host` member); shows the chosen version's `title`, switches between the plan's versions (`第 1 版` / `v1`, …; the latest first) and shows the chosen version's status (`已批准` / `Approved` when a registered chain anchor lists it among the approved versions of the node, `已被第 N 版取代` / `Replaced by vN` when a later version replaced it before approval, else `待批准` / `Awaiting approval`), its shot count, total duration, aspect ratio and reference assets, then one card per shot: duration, model and task label, reference assets of any media type in input order (each image numbered `Picture N` and named by the first `VersionKind` that names its version, else by the asset), whether it continues the previous shot, and the prompt with each `Picture N` or `<Picture N>` token drawn as that image; a shot in task `t2v` has no references |
+| `PlanEditor` | the `dv.canvas.editor` slot | key `@dv/ui-shot-plan`, owner `{ node, state, host }` (it uses no `host` member); shows the chosen version's `title`, switches between the plan's versions (`第 1 版` / `v1`, …; the latest first) and shows the chosen version's status (`已批准` / `Approved` when a registered chain anchor lists it among the approved versions of the node, `已被第 N 版取代` / `Replaced by vN` when a later version replaced it before approval, else `待批准` / `Awaiting approval`), its shot count, total duration, aspect ratio and reference assets (these and each shot's reference assets are chips that draw the asset through the `dv.media` Factory at purpose `thumb`), then one card per shot: duration, model and task label, reference assets of any media type in input order (each image numbered `Picture N` and named by the first `VersionKind` that names its version, else by the asset), whether it continues the previous shot, and the prompt with each `Picture N` or `<Picture N>` token drawn as that image; a shot in task `t2v` has no references |
 | `planReferencesInUse` | `dvCanvas.takesInUse` | `id: '@dv/ui-shot-plan'`; `uses` gives the producer (`created_by`) of each asset among the references of each plan's latest version and of its shots; a version reference such as `c1@1` names no record |
 | `planHistoryRow` | `dvHistory.rows` | `match: 'plan.'`; the subject of `plan.create` is its title as `《猫》` / ` “猫”`, else its PlanId as ` p1`; the subject of `plan.update` is ` p1 → v2` with the version it wrote, else ` p1`; the PlanId and the version come from the record's `report`, else from its params, and a plan named by its record ID gives no subject; any other `plan.*` record has no subject |
 
@@ -63,6 +63,7 @@ The Host half registers nothing. The browser half registers both descriptors ins
 - [`@dv/ui-canvas`](../ui-canvas/README.md): how the canvas draws an entry with the default card and fills its frame grid.
 - [`@dv/ui-history`](../ui-history/README.md): how a History row gets its subject, and the `HistoryRow` descriptor type of `@dv/ui-history/contract`.
 - [`@dv/ui-kit`](../ui-kit/README.md): the `NodeType`, `NodeEntry` and `TakesInUse` descriptor types.
+- [`@dv/ui-media`](../ui-media/README.md): the `dv.media` Factory that draws the reference assets.
 
 -----
 

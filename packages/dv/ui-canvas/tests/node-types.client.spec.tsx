@@ -1,18 +1,15 @@
 // @vitest-environment jsdom
 /**
  * Node types in `dvCanvas`: the canvas draws each entry of a registered `NodeType` with the default card, its editor shows
- * the `dv.canvas.editor` entry keyed by the type's `id` and lends it the canvas's writes, asset picker and asset preview
- * (the asset pool's `dv.canvas.picker` and `dv.canvas.preview` entries), and both leave when the registering plugin is
- * disposed.
+ * the `dv.canvas.editor` entry keyed by the type's `id` and lends it the canvas's writes, asset picker (the asset pool's
+ * `dv.canvas.picker` entry) and the `dvMedia` asset preview, and both leave when the registering plugin is disposed.
  */
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
-import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { makeTranslate, SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
-import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
-import { apply as assetPoolApply, inject as assetPoolInject } from '@dv/ui-asset-pool/src/client/index.ts'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { defineReferenceUi } from '@dv/ui-reference-kit/reference-kit.tsx'
 import type { NodeType } from '@dv/ui-kit/registries.ts'
@@ -23,6 +20,7 @@ import { createDvCanvas } from '../src/client/dv-canvas.ts'
 import { EDITOR_RECT_KEY } from '../src/client/NodeEditor.tsx'
 import type { CanvasTranslate } from '../src/client/NodeCard.tsx'
 import { zh } from '../src/client/locales.ts'
+import { mountCanvasFrame } from './media-runtime.client.tsx'
 
 /** A node type as a plugin's UI half registers it: one entry with media, one entry with a frame grid. */
 const PROPS: NodeType = {
@@ -41,21 +39,20 @@ const testRef = defineReferenceUi({
   label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 1 },
 })
 
-/** The slots that the canvas center view declares for its editors. */
-type CanvasSlot = 'dv.canvas.editor' | 'dv.canvas.picker' | 'dv.canvas.preview'
-const CANVAS_SLOTS = {
-  'dv.canvas.editor': { kind: 'keyed', scope: 'root' },
-  'dv.canvas.picker': { kind: 'keyed', scope: 'root' },
-  'dv.canvas.preview': { kind: 'keyed', scope: 'root' },
-} as const
-
 /**
- * The `dv.canvas.editor` entry of the node type.
- * @param props - the entry and the state.
+ * The `dv.canvas.editor` entry of the node type: its title, a button per asset ID that asks the host for the asset's
+ * preview, among them an ID that no asset of the project has, and a rename that the host runs.
+ * @param props - the entry, the state and the host.
  * @returns the element.
  */
-function PropEditor({ node, state }: PropsRuntime<'dv.canvas.editor'>): ReactNode {
-  return <p data-testid="prop-editor">{`${node.title} · ${state.project.id}`}</p>
+function PropEditor({ node, state, host }: PropsRuntime<'dv.canvas.editor'>): ReactNode {
+  return (
+    <>
+      <p data-testid="prop-editor">{`${node.title} · ${state.project.id}`}</p>
+      {['umbrella.png', 'gone.png'].map(id => <button key={id} type="button" onClick={(event) => { host.preview(id, event.currentTarget) }}>{`preview ${id}`}</button>)}
+      <button type="button" onClick={() => { host.run({ operation: 'prop.rename', params: { prop: 'p1', name: '蓝伞' }, intent: '改名' }) }}>rename</button>
+    </>
+  )
 }
 
 afterEach(() => {
@@ -77,12 +74,14 @@ describe('node types', () => {
     const state = withTestRef(fixtureState())
     state.assets.push(asset('umbrella.png', 'image/png', null), asset('umbrella-back.png', 'image/png', null))
     state.components.asset.placed = ['umbrella.png']
-    const client = new DvClient(scriptedFetch({ state }).fetch)
+    const scripted = scriptedFetch({ state })
+    const client = new DvClient(scripted.fetch)
     const t: CanvasTranslate = makeTranslate(zh)
-    // The root frame declares the slots, as the canvas center view does, and hands its renderSlot to the canvas.
-    const Frame = ({ renderSlot }: PropsRenderSlots<CanvasSlot>): ReactNode =>
-      <CanvasView projectId="p1" client={client} t={t} canvas={canvas} renderSlot={renderSlot} />
-    await runtime.root.declare(CANVAS_SLOTS, Frame)
+    // The root frame declares the slots, as the canvas center view does, and hands the canvas its renderers and the
+    // `dvMedia` preview; the canvas sits beside no chat session.
+    await mountCanvasFrame(runtime, ({ renderSlot, renderFactorySlot, preview }) => (
+      <CanvasView projectId="p1" client={client} t={t} canvas={canvas} renderSlot={renderSlot} renderFactorySlot={renderFactorySlot} preview={preview} />
+    ))
     const { container } = runtime.renderRoot()
     const card = (id: string): HTMLElement | null => container.querySelector(`[data-node-id="${id}"]`)
     await waitFor(() => { expect(card('g1')).not.toBeNull() })
@@ -117,6 +116,22 @@ describe('node types', () => {
     fireEvent.pointerUp(container.querySelector('[data-testid="dv-canvas-view"]') as HTMLElement, { pointerId: 1 })
     const editor = await waitFor(() => within(container).getByTestId('dv-canvas-node-editor'))
     expect(within(editor).getByTestId('prop-editor').textContent).toBe('红伞 · p1')
+    // The host previews an asset of the project, growing out of the element that asked, and ignores any other ID.
+    const opened = vi.spyOn(runtime.ctx.dvMedia, 'preview')
+    fireEvent.click(within(editor).getByRole('button', { name: 'preview gone.png' }))
+    expect(opened).not.toHaveBeenCalled()
+    const known = within(editor).getByRole('button', { name: 'preview umbrella.png' })
+    fireEvent.click(known)
+    expect(opened.mock.calls).toEqual([[expect.objectContaining({ id: 'umbrella.png' }), known]])
+    expect(await within(document.body).findByRole('dialog', { name: 'umbrella.png' })).toBeTruthy()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => { expect(within(document.body).queryByRole('dialog', { name: 'umbrella.png' })).toBeNull() })
+    // The entry's write carries the canvas's project and surface, and no chat session.
+    fireEvent.click(within(editor).getByRole('button', { name: 'rename' }))
+    await waitFor(() => { expect(scripted.writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
+    expect(scripted.writes.find(write => write.path === '/api/dv/operation')?.body).toEqual({
+      operation: 'prop.rename', params: { prop: 'p1', name: '蓝伞' }, intent: '改名', project: 'p1', surface: 'canvas',
+    })
 
     await editors.dispose()
     expect(runtime.slots.entries('dv.canvas.editor')).toHaveLength(0)
@@ -138,13 +153,11 @@ describe('node types', () => {
     const scripted = scriptedFetch({ state: () => withTestRef(fixtureState()) })
     const client = new DvClient(scripted.fetch)
     const t: CanvasTranslate = makeTranslate(zh)
-    // The asset pool fills the picker and the preview slots.
-    const Frame = ({ renderSlot }: PropsRenderSlots<CanvasSlot>): ReactNode =>
-      <CanvasView projectId="p1" client={client} session="s5" t={t} canvas={canvas} renderSlot={renderSlot} />
-    await runtime.root.declare(CANVAS_SLOTS, Frame)
+    // The asset pool fills the picker slot; this host hands the canvas no `dv.media` renderer.
+    await mountCanvasFrame(runtime, ({ renderSlot, preview }) => (
+      <CanvasView projectId="p1" client={client} session="s5" t={t} canvas={canvas} renderSlot={renderSlot} preview={preview} />
+    ))
     await runtime.mount({ apply: testRef.apply })
-    runtime.ctx.provide('sidebarRightTabs', new SidebarRightTabRegistry(runtime.ctx) as never)
-    await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
     const { container } = runtime.renderRoot()
     const hero = await waitFor(() => {
       const found = container.querySelector('[data-node-id="test_ref:hero"]')
@@ -154,13 +167,23 @@ describe('node types', () => {
     fireEvent.pointerDown(hero, { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
     fireEvent.pointerUp(container.querySelector('[data-testid="dv-canvas-view"]') as HTMLElement, { pointerId: 1 })
     const editor = await waitFor(() => within(container).getByTestId('dv-canvas-node-editor'))
-    // The entry's reference opens the canvas's preview; Escape closes the preview and leaves the editor open.
-    fireEvent.click(within(editor).getByRole('button', { name: '查看 ref.png' }))
+    // The entry's reference opens the `dvMedia` preview from the reference; Escape closes the preview and leaves the
+    // editor open.
+    const opened = vi.spyOn(runtime.ctx.dvMedia, 'preview')
+    const reference = within(editor).getByRole('button', { name: '查看 ref.png' })
+    fireEvent.click(reference)
+    expect(opened.mock.calls).toEqual([[expect.objectContaining({ id: 'ref.png' }), reference]])
     const view = within(document.body)
     expect(await view.findByRole('dialog', { name: 'ref.png' })).toBeTruthy()
     fireEvent.keyDown(window, { key: 'Escape' })
     await waitFor(() => { expect(view.queryByRole('dialog', { name: 'ref.png' })).toBeNull() })
-    // 添加素材 opens the canvas's picker of assets only; the write carries the canvas's project, session and surface.
+    // 添加素材 opens the canvas's picker of assets only, which Escape closes; the write carries the canvas's project,
+    // session and surface.
+    fireEvent.click(within(editor).getByText('＋ 添加素材'))
+    await view.findByTestId('dv-canvas-asset-picker')
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(view.queryByTestId('dv-canvas-asset-picker')).toBeNull()
+    expect(within(container).getByTestId('dv-canvas-node-editor')).toBe(editor)
     fireEvent.click(within(editor).getByText('＋ 添加素材'))
     const picker = await view.findByTestId('dv-canvas-asset-picker')
     expect(picker.textContent).not.toContain('参考')

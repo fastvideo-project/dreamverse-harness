@@ -9,9 +9,6 @@
 /** The `DataTransfer` type whose value is an asset ID, set by asset drag sources. */
 export const DV_ASSET_DRAG_TYPE = 'application/x-dv-asset'
 
-/** The event that inserts an asset into the selected timeline of a project and shows the timeline view. */
-export const DV_TIMELINE_INSERT_EVENT = 'dv:timeline-insert'
-
 /** The event that opens the History panel and selects the record a tool call of the agent wrote. */
 export const DV_HISTORY_FOCUS_EVENT = 'dv:history-focus'
 
@@ -20,8 +17,6 @@ export const DV_TRAJECTORY_FOCUS_EVENT = 'dv:trajectory-focus'
 
 /** Event names and their `detail` fields. */
 export interface DvWorkspaceEventMap {
-  /** Insert asset `assetId` into the current timeline of project `projectId`. */
-  'dv:timeline-insert': { projectId: string; assetId: string }
   /** Open the History panel and select the record that tool call `toolCall` of chat session `session` wrote. */
   'dv:history-focus': { session: string; toolCall: string }
   /** Open 轨迹 on chat session `session` and show its tool call `toolCall`. */

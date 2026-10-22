@@ -5,7 +5,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** Timeline editor copy: timeline tabs, viewer, toolbar, tracks, the project bar, and the canvas badge of a trimmed clip. */
+    /** Timeline editor copy: timeline tabs, viewer, toolbar, tracks, the project bar, the canvas badge of a trimmed clip, and
+     *  the 插入片段 action of the asset preview. */
     dvTimeline: DvTimelineKey
   }
 }
@@ -67,6 +68,7 @@ export const zh = {
   'track.rendering': '渲染中…',
   'track.renderFailed': '渲染失败',
   'track.add': '插入片段',
+  'preview.insert': '插入片段',
   'track.pick': '选一个素材插入到末尾',
   'track.noAssets': '项目里还没有视频素材',
   'track.fileDrop': '时间线轨道只接受素材库里的视频。请先在对话里导入文件，再从素材库拖到轨道上。',
@@ -141,6 +143,7 @@ export const en = {
   'track.rendering': 'Rendering…',
   'track.renderFailed': 'Render failed',
   'track.add': 'Insert clip',
+  'preview.insert': 'Insert clip',
   'track.pick': 'Pick an asset to insert at the end',
   'track.noAssets': 'The project has no video assets yet',
   'track.fileDrop': 'The timeline track takes videos from the asset pool only. Import the file in the chat first, then drag it from the asset pool.',

@@ -141,6 +141,7 @@
     { "path": "./packages/dv/timeline/tsconfig.client.json" },
     { "path": "./packages/dv/asset-pool/tsconfig.client.json" },
     { "path": "./packages/dv/ui-kit" },
+    { "path": "./packages/dv/ui-media" },
     { "path": "./packages/dv/ui-reference-kit" },
     { "path": "./packages/dv/ui-canvas" },
     { "path": "./packages/dv/ui-timeline" },

@@ -21,12 +21,13 @@
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import type { PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { useLanguage } from '@dv/ui-kit/locale.ts'
 import { formatInputRef } from '@dv/ui-kit/references.ts'
 import type { DvCanvas, Registry } from '@dv/ui-kit/registries.ts'
 import type { WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
-import type { CanvasViewport, NodePosition, OperationRequest, WireState } from '@dv/ui-kit/types.ts'
+import type { Asset, CanvasViewport, NodePosition, OperationRequest, WireState } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { useOperations, useProjectState, useTaskLabels } from '@dv/ui-kit/useProject.ts'
@@ -35,9 +36,9 @@ import { createDvCanvas } from './dv-canvas.ts'
 import { buildCanvasGraph, freePositions, NODE_WIDTH, ROW, slotFrames } from './graph.ts'
 import type { CanvasEdge, CanvasNode } from './graph.ts'
 import { NodeCard, nodeHeight, nodeTitle } from './NodeCard.tsx'
-import type { CanvasTranslate } from './NodeCard.tsx'
-import { NodeEditor } from './NodeEditor.tsx'
-import type { RenderCanvasSlot } from './NodeEditor.tsx'
+import type { CanvasTranslate, DrawMedia } from './NodeCard.tsx'
+import { messageOf, NodeEditor } from './NodeEditor.tsx'
+import type { EditorArea, RenderCanvasSlot } from './NodeEditor.tsx'
 import { en, zh } from './locales.ts'
 import type { DvCanvasKey } from './locales.ts'
 
@@ -54,9 +55,13 @@ export interface CanvasViewProps {
   /** The `dvCanvas` registries that plugin UI halves fill for this view; without them, every take is a free take. */
   canvas?: DvCanvas
   /** Renders the canvas's slots in its editors: the `dv.canvas.editor` entry of an entry node, and the `dv.canvas.picker`
-   *  and `dv.canvas.preview` entries of the asset pool; without it, an entry's editor shows only its header, the asset picker
-   *  offers only versioned items, and the asset preview shows nothing. */
+   *  entry of the asset pool; without it, an entry's editor shows only its header, and the asset picker offers only
+   *  versioned items. */
   renderSlot?: RenderCanvasSlot
+  /** Renders the `dv.canvas` assets through the `dv.media` Factory of `@dv/ui-media`; without it, no asset draws. */
+  renderFactorySlot?: PropsRenderFactories['renderFactorySlot']
+  /** Opens the asset preview of `dvMedia`, growing out of `opener`; without it, an asset opens no preview. */
+  preview?: (asset: Asset, opener: Element | null) => void
   /** The record whose node to open once; none when null or omitted. */
   focus?: CanvasFocus | null
 }
@@ -124,12 +129,6 @@ function dictionaryTranslate(dictionary: Record<DvCanvasKey, string>): CanvasTra
 const translates = { zh: dictionaryTranslate(zh), en: dictionaryTranslate(en) }
 
 const clampZoom = (zoom: number): number => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
-
-/**
- * @param error - a failure that a request rejected with.
- * @returns its message.
- */
-const messageOf = (error: unknown): string => error instanceof Error ? error.message : String(error)
 
 /** Zoom change per pixel of a mouse wheel's deltaY: one notch (about 100 px) zooms by about 14%. */
 const WHEEL_ZOOM_RATE = 0.0015
@@ -212,11 +211,14 @@ function withoutKeys<V>(map: ReadonlyMap<string, V>, keys: readonly string[]): M
 
 /**
  * The canvas.
- * @param props - the project, chat session, and optional client, translate, registries, editor slot and focus.
+ * @param props - the project, chat session, and optional client, translate, registries, editor slot, media renderer,
+ *   preview and focus.
  * @returns the element.
  */
 export function CanvasView(
-  { projectId, client: given, session = null, t: givenT, canvas = NO_CANVAS, renderSlot, focus }: CanvasViewProps,
+  {
+    projectId, client: given, session = null, t: givenT, canvas = NO_CANVAS, renderSlot, renderFactorySlot, preview, focus,
+  }: CanvasViewProps,
 ): ReactNode {
   const client = useMemo(() => given ?? new DvClient(), [given])
   const language = useLanguage()
@@ -364,18 +366,25 @@ export function CanvasView(
   // The canvas can change size after the first fit, for example when the right panel opens; keep the automatic fit.
   const fitRef = useRef(fit)
   fitRef.current = fit
+  // The canvas area that the editor panels sit in, measured as the canvas element's client size.
+  const [area, setArea] = useState<EditorArea>({ width: 0, height: 0 })
   const detachCanvas = useRef<(() => void) | null>(null)
   /**
    * Attach the canvas element's native listeners when React mounts it, and detach them when React unmounts it: a size
-   * observer that keeps an automatic fit, and a wheel listener that zooms around the cursor, registered natively because
-   * React's wheel listener is passive.
+   * observer that measures the editor area and keeps an automatic fit, and a wheel listener that zooms around the cursor,
+   * registered natively because React's wheel listener is passive.
    */
   const attachCanvas = useCallback((element: HTMLDivElement | null) => {
     container.current = element
     detachCanvas.current?.()
     detachCanvas.current = null
     if (element === null) return
-    const observer = new ResizeObserver(() => { if (autoFit.current) fitRef.current() })
+    const measure = (): void => { setArea({ width: element.clientWidth, height: element.clientHeight }) }
+    measure()
+    const observer = new ResizeObserver(() => {
+      measure()
+      if (autoFit.current) fitRef.current()
+    })
     observer.observe(element)
     const onWheel = (event: WheelEvent): void => {
       if (event.target instanceof Element && event.target.closest('[data-dv-scroll-island]') !== null) return
@@ -700,6 +709,11 @@ export function CanvasView(
     content = <p style={{ ...centered, pointerEvents: 'none' }}>{t('canvas.empty')}</p>
   } else {
     const byId = new Map(graph.nodes.map(node => [node.id, node]))
+    const assets = new Map(graph.state.assets.map(asset => [asset.id, asset]))
+    const drawMedia: DrawMedia = (assetId, purpose) => {
+      const asset = assets.get(assetId ?? '')
+      return asset === undefined || renderFactorySlot === undefined ? null : renderFactorySlot('dv.media', { asset, purpose })
+    }
     const heightOf = (node: CanvasNode): number => nodeHeight(node, grids.get(node.id)?.frames.some(frame => frame !== null) === true)
     // The selected node's edges are drawn last, so they stay on top of the others.
     const touchesSelected = (edge: CanvasEdge): boolean => selected !== null && (edge.from === selected || edge.to === selected)
@@ -749,6 +763,7 @@ export function CanvasView(
               {...grid === undefined ? {} : { frames: grid.frames }}
               {...node.type === 'take' && node.flags.failed ? { onRetry: () => { retryTake(node) }, retrying: retryingFrom === node.id } : {}}
               unseen={seenIds !== null && isFinishedTake(node) && !seenIds.has(node.id)}
+              drawMedia={drawMedia}
             />
           )
         })}
@@ -778,10 +793,13 @@ export function CanvasView(
     session,
     t,
     ...renderSlot === undefined ? {} : { renderSlot },
+    ...renderFactorySlot === undefined ? {} : { renderFactorySlot },
+    ...preview === undefined ? {} : { preview },
     run,
     onRender: startRender,
     onRemoveFromCanvas: removeFromCanvas,
     onOpenNode: setStacked,
+    area,
   })
   return (
     <div

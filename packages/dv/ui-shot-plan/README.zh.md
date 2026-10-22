@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在叠加了 `dsh-web-app`、`@dv/api` 和 `@dv/ui-canvas` 的 profile 中挂载这个插件。先构建浏览器包：`pnpm run build` 写出 `lib/client.js`。
+在叠加了 `dsh-web-app`、`@dv/api`、`@dv/ui-canvas` 和 `@dv/ui-media` 的 profile 中挂载这个插件，`@dv/ui-media` 的 `dv.media` 组件工厂绘制分镜计划编辑器的参考素材。先构建浏览器包：`pnpm run build` 写出 `lib/client.js`。
 
 ```yaml
 - id: dv-ui-shot-plan
@@ -34,7 +34,7 @@ kind: "package-reference"
 | 描述符 | 注册表 | 值 |
 | --- | --- | --- |
 | `planNodeType` | `dvCanvas.nodeTypes` | `id: '@dv/ui-shot-plan'`、`type: 'plan'`、标签 `分镜计划` / `Plan`、颜色 `var(--dv-kind-plan)`、第 1 列；每个有版本的分镜计划一个条目：ID 为 `plan:<PlanId>`，`record` 是写下最新版本的记录，`records` 是写下较早版本的记录，副标题 `第 N 版` / `vN`，标题是镜头数，每个镜头都有时长时后接 ` · <总时长>`，没有媒体，`slots` 是镜头数 |
-| `PlanEditor` | `dv.canvas.editor` 插槽 | 键 `@dv/ui-shot-plan`，所有者属性 `{ node, state, host }`（不使用 `host` 的成员）；显示所选版本的 `title`，在分镜计划的各版本之间切换（`第 1 版` / `v1`……；先显示最新版本），并显示所选版本的状态（某个已注册的链锚点把它列为节点的已批准版本时为 `已批准` / `Approved`，在批准前被后来的版本取代时为 `已被第 N 版取代` / `Replaced by vN`，否则为 `待批准` / `Awaiting approval`）、镜头数、总时长、画幅比例和参考素材，然后每个镜头一张卡片：时长、模型和生成任务标签、按输入顺序列出的各种媒体类型的参考素材（每张图片编号为 `Picture N`，名字取第一个能给出该版本名字的 `VersionKind`，否则取素材名）、是否接上一镜头，以及提示词，其中每个 `Picture N` 或 `<Picture N>` 标记显示为那张图片；生成任务为 `t2v` 的镜头没有参考 |
+| `PlanEditor` | `dv.canvas.editor` 插槽 | 键 `@dv/ui-shot-plan`，所有者属性 `{ node, state, host }`（不使用 `host` 的成员）；显示所选版本的 `title`，在分镜计划的各版本之间切换（`第 1 版` / `v1`……；先显示最新版本），并显示所选版本的状态（某个已注册的链锚点把它列为节点的已批准版本时为 `已批准` / `Approved`，在批准前被后来的版本取代时为 `已被第 N 版取代` / `Replaced by vN`，否则为 `待批准` / `Awaiting approval`）、镜头数、总时长、画幅比例和参考素材（这些参考素材和每个镜头的参考素材都是标签，通过 `dv.media` 组件工厂以用途 `thumb` 绘制素材），然后每个镜头一张卡片：时长、模型和生成任务标签、按输入顺序列出的各种媒体类型的参考素材（每张图片编号为 `Picture N`，名字取第一个能给出该版本名字的 `VersionKind`，否则取素材名）、是否接上一镜头，以及提示词，其中每个 `Picture N` 或 `<Picture N>` 标记显示为那张图片；生成任务为 `t2v` 的镜头没有参考 |
 | `planReferencesInUse` | `dvCanvas.takesInUse` | `id: '@dv/ui-shot-plan'`；`uses` 给出每个分镜计划最新版本及其镜头的参考中每个素材的产出记录（`created_by`）；`c1@1` 这样的版本引用不对应记录 |
 | `planHistoryRow` | `dvHistory.rows` | `match: 'plan.'`；`plan.create` 的主体是它的标题，写成 `《猫》` / ` “猫”`，没有标题时是它的 PlanId，写成 ` p1`；`plan.update` 的主体是带它写下的版本的 ` p1 → v2`，没有版本时是 ` p1`；PlanId 和版本取自记录的 `report`，没有时取自参数，用记录 ID 命名的分镜计划没有主体；其他 `plan.*` 记录没有主体 |
 
@@ -63,6 +63,7 @@ Host 半边不注册任何东西。浏览器半边在 `ctx.inject(['dvCanvas'], 
 - [`@dv/ui-canvas`](../ui-canvas/README.zh.md)：画布如何用默认卡片画条目并填充它的画面网格。
 - [`@dv/ui-history`](../ui-history/README.zh.md)：历史行如何得到主语，以及 `@dv/ui-history/contract` 的 `HistoryRow` 描述符类型。
 - [`@dv/ui-kit`](../ui-kit/README.zh.md)：`NodeType`、`NodeEntry` 和 `TakesInUse` 描述符类型。
+- [`@dv/ui-media`](../ui-media/README.zh.md)：绘制参考素材的 `dv.media` 组件工厂。
 
 -----
 
