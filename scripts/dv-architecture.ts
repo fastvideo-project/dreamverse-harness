@@ -383,9 +383,9 @@ function exemptUiLiteral(node: ts.StringLiteralLike, sf: ts.SourceFile, facts: F
 }
 
 /**
- * R5c and R5g-R5j over one node of a UI-core or kit file: a plugin component key (c), a media type literal or element
- * (g) and a task name (h) in both layers; the literals `take` and `shot` (i) and a kind word in token-shaped text (j)
- * in UI core only.
+ * R5c and R5g-R5j over one node of a UI-core or kit file: a plugin component key (c), a media type literal, a MIME
+ * prefix in a string, template head or regular expression, or a media element (g) and a task name (h) in both layers;
+ * the literals `take` and `shot` (i) and a kind word in token-shaped text (j) in UI core only.
  */
 function scanUiLiteral(
   node: ts.Node, sf: ts.SourceFile, layer: Layer, facts: Facts, mirrors: ReadonlySet<string>, pluginKeys: ReadonlySet<string>,
@@ -394,6 +394,8 @@ function scanUiLiteral(
   if ((ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && ['video', 'audio'].includes(node.tagName.getText(sf))) {
     report('R5g', `<${node.tagName.getText(sf)}>`)
   }
+  if (ts.isTemplateHead(node) && /^(?:image|video|audio)\//u.test(node.text)) report('R5g', node.text)
+  if (ts.isRegularExpressionLiteral(node) && /(?:image|video|audio)\)?\\\//u.test(node.text)) report('R5g', node.text)
   if (!ts.isStringLiteralLike(node) || ts.isImportDeclaration(node.parent) || ts.isExportDeclaration(node.parent)) return
   if (ts.isCallExpression(node.parent) && node.parent.expression.getText(sf) === 'document.createElement') return
   if (ts.isModuleDeclaration(node.parent) || exemptUiLiteral(node, sf, facts, mirrors)) return

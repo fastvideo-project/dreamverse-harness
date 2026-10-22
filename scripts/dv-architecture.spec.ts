@@ -127,6 +127,10 @@ describe('rule clauses', () => {
     ['R5c plugin key from the owners', [owner('timeline', 'timeline'), source('ui-shell', "view = 'timeline'\n")], ['R5c']],
     ['R5c skips the asset key that UI core reads', [owner('asset-pool', 'asset'), source('ui-shell', "key = 'asset'\n")], []],
     ['R5g media literal, MIME prefix and element in UI core', [source('ui-history', "a = 'image'\nb = mime.startsWith('video/')\nc = <audio src={x} />\n", 'client/x.tsx')], ['R5g', 'R5g', 'R5g']],
+    ['R5g MIME prefix in a template head and a regular expression in UI core', [
+      source('ui-history', 'a = `video/${ext}`\nb = /^audio\\//u.test(mime)\nc = /^(?:image|video)\\//u.test(mime)\n'),
+    ], ['R5g', 'R5g', 'R5g']],
+    ['R5g skips a template and a regular expression without a MIME prefix', [source('ui-shell', 'a = `${type}/png`\nb = /^[a-z]+\\//u\n')], []],
     ['R5g primitive type key', [source('models', 'interface PrimitiveTypes { music: object }\n', 'types.ts'), source('ui-kit', "kind = 'music'\n")], ['R5g']],
     ['R5h task name', [source('models', "interface TaskMap { t2v: 'video' }\n", 'types.ts'), source('ui-canvas', "task = 't2v'\n")], ['R5h']],
     ['R5i take and shot', [source('ui-canvas', "a = node.type === 'take'\nb = 'shot'\n")], ['R5i', 'R5i']],
