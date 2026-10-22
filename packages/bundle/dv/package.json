@@ -36,6 +36,7 @@
     "@dv/ui-character": "workspace:*",
     "@dv/ui-composer": "workspace:*",
     "@dv/ui-history": "workspace:*",
+    "@dv/ui-image-generate": "workspace:*",
     "@dv/ui-location": "workspace:*",
     "@dv/ui-mcp-presets": "workspace:*",
     "@dv/ui-media": "workspace:*",

@@ -116,6 +116,9 @@
     - id: dv-ui-shot-render
       name: '@dv/ui-shot-render'
 
+    - id: dv-ui-image-generate
+      name: '@dv/ui-image-generate'
+
     - id: dv-ui-media
       name: '@dv/ui-media'
 
