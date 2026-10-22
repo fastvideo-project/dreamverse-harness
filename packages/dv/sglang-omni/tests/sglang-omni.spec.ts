@@ -133,7 +133,7 @@ describe('dv-sglang-omni', () => {
     expect(take.summary).toBe(`audio "${prompt.slice(0, 60)}" (1.5s)`)
   })
 
-  it('reads the duration past other chunks, and refuses a body that is not a WAV file with a duration', async () => {
+  it('reads the duration past other chunks, and refuses a body that is not a WAV file with a duration or holds no samples', async () => {
     const { fake, fixture } = await boot()
     const render = () => fixture.entry().render(speech('Hello.'))
     fake.speech = { status: 200, headers: speechHeaders('stop'), body: wav(44_100, [chunk('LIST', Buffer.from('INFOISFTx'))]) }
@@ -146,10 +146,14 @@ describe('dv-sglang-omni', () => {
       wav(0).subarray(0, 20),
       Buffer.concat([wav(0).subarray(0, 40), Buffer.from([0xff, 0xff, 0xff, 0xff]), Buffer.alloc(88_200)]),
       Buffer.concat([Buffer.from('RIFF\0\0\0\0WAVE', 'latin1'), chunk('data', Buffer.alloc(4)), wav(0).subarray(12, 36)]),
+      Buffer.concat([Buffer.from('RIFF\0\0\0\0WAVE', 'latin1'), chunk('fmt ', Buffer.alloc(8)), chunk('data', Buffer.alloc(88_200))]),
+      Buffer.concat([Buffer.from('RIFF\0\0\0\0WAVE', 'latin1'), chunk('fmt ', Buffer.alloc(8))]),
     ]) {
       fake.speech = { status: 200, headers: speechHeaders('stop'), body }
       await expect(render()).rejects.toThrow(notWav)
     }
+    fake.speech = { status: 200, headers: speechHeaders('stop'), body: wav(0) }
+    await expect(render()).rejects.toThrow(`The server at ${fake.url} answered POST /v1/audio/speech with an empty WAV clip.`)
   })
 
   it('fails a clip that the server cut at its length limit, and names the server\'s error text', async () => {

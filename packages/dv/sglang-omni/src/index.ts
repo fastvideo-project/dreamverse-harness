@@ -124,7 +124,8 @@ async function checkServed(baseUrl: string, modelId: string): Promise<void> {
  * The duration of a PCM WAV file from its header: the size of its `data` chunk divided by the byte rate of its `fmt `
  * chunk. It walks the chunks by their sizes, with the pad byte of an odd size, so a chunk such as `LIST` before `data`
  * is skipped, and it stops at a chunk that the bytes do not hold in full.
- * @returns the seconds; null when the bytes are not RIFF/WAVE or hold no complete `data` chunk after a `fmt ` chunk.
+ * @returns the seconds; null when the bytes are not RIFF/WAVE or hold no complete `data` chunk after a `fmt ` chunk of at
+ *   least the 16 bytes of PCM.
  */
 function wavDurationSec(wav: Uint8Array): number | null {
   const view = new DataView(wav.buffer, wav.byteOffset, wav.byteLength)
@@ -134,7 +135,7 @@ function wavDurationSec(wav: Uint8Array): number | null {
   for (let at = 12; at + 8 <= wav.byteLength;) {
     const size = view.getUint32(at + 4, true)
     if (at + 8 + size > wav.byteLength) return null
-    if (tag(at) === 'fmt ') byteRate = view.getUint32(at + 16, true)
+    if (tag(at) === 'fmt ') byteRate = size >= 16 ? view.getUint32(at + 16, true) : 0
     if (tag(at) === 'data') return byteRate > 0 ? size / byteRate : null
     at += 8 + size + size % 2
   }
@@ -145,7 +146,8 @@ function wavDurationSec(wav: Uint8Array): number | null {
  * Speak one request through `POST /v1/audio/speech`.
  * @returns the WAV clip, its duration from its header, and the request's wall-clock seconds as its GPU seconds.
  * @throws Error when the clip stopped at the length limit (`x-finish-reason` `length`), when `x-finish-reason` is
- *   missing or another value than `stop`, when the body is not a WAV file with a duration, or as `call` throws.
+ *   missing or another value than `stop`, when the body is not a WAV file with a duration or holds no samples, or as
+ *   `call` throws.
  */
 async function speak(baseUrl: string, request: AudioRequest, signal?: AbortSignal): Promise<GeneratedAudio> {
   const started = performance.now()
@@ -163,6 +165,7 @@ async function speak(baseUrl: string, request: AudioRequest, signal?: AbortSigna
   }
   const durationSec = wavDurationSec(bytes)
   if (durationSec === null) throw new Error(`The server at ${baseUrl} answered POST /v1/audio/speech with a body that is not a WAV file.`)
+  if (durationSec === 0) throw new Error(`The server at ${baseUrl} answered POST /v1/audio/speech with an empty WAV clip.`)
   return { bytes, mime: 'audio/wav', durationSec, gpuSeconds: (performance.now() - started) / 1000 }
 }
 
