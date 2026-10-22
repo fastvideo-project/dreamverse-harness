@@ -9,7 +9,7 @@ kind: "package-group"
 
 ## 概述
 
-dv 包组包含 DreamVerse 各包，即 DeepSeek Harness 内视频制作的项目层。`@dv/project` 把每个项目存为记录，并把每个操作变成一个智能体工具；各组件拥有项目数据和操作，工作流拥有制作流程，模型目录及其提供方插件提供视频模型。`@dv/api` 和 `@dv/chat-references` 把浏览器和对话接到项目上，`@dv/ui-*` 插件负责绘制。[DreamVerse 文档](../../docs/dreamverse/README.zh.md)负责跨包规则。
+dv 包组包含 DreamVerse 各包，即 DeepSeek Harness 内视频制作的项目层。`@dv/project` 把每个项目存为记录，并把每个操作变成一个智能体工具。各组件拥有项目数据和操作，工作流拥有制作流程。模型目录及其提供方插件提供视频模型。`@dv/api` 和 `@dv/chat-references` 把浏览器和对话接到项目上，`@dv/ui-*` 插件负责绘制。[DreamVerse 文档](../../docs/dreamverse/README.zh.md)负责跨包规则。
 
 ## 目录
 
@@ -38,7 +38,7 @@ dv 包组包含 DreamVerse 各包，即 DeepSeek Harness 内视频制作的项�
 | domain | [`location`](location/README.zh.md) | 作为带版本的引用名词的场景 |
 | domain | [`style`](style/README.zh.md) | 作为带版本的引用名词的风格 |
 | domain | [`shot-plan`](shot-plan/README.zh.md) | 带编号版次的分镜计划和 `plan.*` 操作 |
-| domain | [`shot-render`](shot-render/README.zh.md) | 通过 `shot.render` 用模型目录中的模型渲染镜头的一个版本 |
+| domain | [`shot-render`](shot-render/README.zh.md) | 通过 `shot.render` 用模型目录中的模型渲染镜头的一个版本（take） |
 | domain | [`timeline`](timeline/README.zh.md) | 时间线、其片段、`timeline.*` 编辑操作和导出 |
 | domain | [`inspector`](inspector/README.zh.md) | 只读操作 `inspect.image` 和 `inspect.asset` |
 | workflow-lib | [`workflow-kit`](workflow-kit/README.zh.md) | 工作流读取分镜计划版次并排定其渲染所用的镜头遍历 |
@@ -63,16 +63,16 @@ dv 包组包含 DreamVerse 各包，即 DeepSeek Harness 内视频制作的项�
 | ui | [`ui-skills`](ui-skills/README.zh.md) | 列出创作者可以启动的 skill 的技能页 |
 | — | [`e2e`](e2e/README.zh.md) | 通过 Playwright 驱动已发布 profile 的浏览器故事 |
 
-`packages/bundle/dv/` 下的 bundle [`@dv/bundle`](../bundle/dv/README.zh.md) 是 `bundle` 层：它把这些包组合成 `video-harness` 和 `video-harness-headless` 两个 profile。
+`packages/bundle/dv/` 下的 bundle [`@dv/bundle`](../bundle/dv/README.zh.md) 是 `bundle` 层。它把这些包组合成 `video-harness` 和 `video-harness-headless` 两个 profile。
 
 <a id="related-documentation"></a>
 ## 相关文档
 
-- [DreamVerse 文档](../../docs/dreamverse/README.zh.md) — 架构页、子系统页面、cookbook 和术语表的索引。
-- [项目子系统](../../docs/dreamverse/subsystems/project.zh.md) — 操作记录、历史规则和项目状态。
-- [DreamVerse 插件分层](../../.agents/notes/implemented/architecture/2026-10-17-dv-architecture-layers.zh.md) — 这些层及其依赖方向为什么存在。
-- [组件模板](COMPONENT-TEMPLATE.md) — 一个组件包的做法。
-- [`video-harness/`](../video-harness/README.zh.md) — 镜头渲染的实时媒体流。
+- [DreamVerse 文档](../../docs/dreamverse/README.zh.md)是架构页、子系统页面、cookbook 和术语表的索引。
+- [项目子系统](../../docs/dreamverse/subsystems/project.zh.md)说明操作记录、历史规则和项目状态。
+- [DreamVerse 插件分层](../../.agents/notes/implemented/architecture/2026-10-17-dv-architecture-layers.zh.md)记录这些层及其依赖方向存在的理由。
+- [组件模板](COMPONENT-TEMPLATE.md)给出构建一个组件包的步骤。
+- [`video-harness/`](../video-harness/README.zh.md)存放镜头渲染的实时媒体流。
 
 <a id="dev-note"></a>
 ## 开发备注

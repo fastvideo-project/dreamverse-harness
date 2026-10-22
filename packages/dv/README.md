@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The dv group holds the DreamVerse packages, the project layer for video production inside DeepSeek Harness. `@dv/project` stores every project as records and turns each operation into an agent tool; the components own project data and operations, the workflows own production flows, and the model catalog with its provider plugins serves the video models. `@dv/api` and `@dv/chat-references` connect the browser and the chat to a project, and the `@dv/ui-*` plugins draw it. The [DreamVerse documentation](../../docs/dreamverse/README.md) owns the cross-package rules.
+The dv group holds the DreamVerse packages, the project layer for video production inside DeepSeek Harness. `@dv/project` stores every project as records and turns each operation into an agent tool. The components own project data and operations, and the workflows own production flows. The model catalog and its provider plugins serve the video models. `@dv/api` and `@dv/chat-references` connect the browser and the chat to a project, and the `@dv/ui-*` plugins draw it. The [DreamVerse documentation](../../docs/dreamverse/README.md) owns the cross-package rules.
 
 ## Table of Contents
 
@@ -63,16 +63,16 @@ Each package sits in the layer that `layerOf` of `scripts/dv-architecture.ts` as
 | ui | [`ui-skills`](ui-skills/README.md) | The Skills page that lists the skills a creator can start |
 | — | [`e2e`](e2e/README.md) | Browser stories that drive the shipped profile through Playwright |
 
-The bundle [`@dv/bundle`](../bundle/dv/README.md) under `packages/bundle/dv/` is the `bundle` layer: it composes these packages into the `video-harness` and `video-harness-headless` profiles.
+The bundle [`@dv/bundle`](../bundle/dv/README.md) under `packages/bundle/dv/` is the `bundle` layer. It composes these packages into the `video-harness` and `video-harness-headless` profiles.
 
 <a id="related-documentation"></a>
 ## Related documentation
 
-- [DreamVerse documentation](../../docs/dreamverse/README.md) — the index of the architecture page, the subsystem pages, the cookbook, and the glossary.
-- [Project subsystem](../../docs/dreamverse/subsystems/project.md) — the operation record, the history rules, and project state.
-- [DreamVerse plugin layers](../../.agents/notes/implemented/architecture/2026-10-17-dv-architecture-layers.md) — why the layers and their dependency direction exist.
-- [Component template](COMPONENT-TEMPLATE.md) — the recipe for one component package.
-- [`video-harness/`](../video-harness/README.md) — the live media stream of shot renders.
+- [DreamVerse documentation](../../docs/dreamverse/README.md) is the index of the architecture page, the subsystem pages, the cookbook, and the glossary.
+- [Project subsystem](../../docs/dreamverse/subsystems/project.md) describes the operation record, the history rules, and project state.
+- [DreamVerse plugin layers](../../.agents/notes/implemented/architecture/2026-10-17-dv-architecture-layers.md) records why the layers and their dependency direction exist.
+- [Component template](COMPONENT-TEMPLATE.md) gives the steps that build one component package.
+- [`video-harness/`](../video-harness/README.md) holds the live media stream of shot renders.
 
 <a id="dev-note"></a>
 ## Dev Note

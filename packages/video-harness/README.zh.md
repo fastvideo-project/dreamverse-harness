@@ -22,7 +22,7 @@ kind: "package-group"
 <a id="packages"></a>
 ## 包
 
-[DreamVerse 各包页面](../../docs/dreamverse/subsystems/project.zh.md)说明这些包如何配合。
+镜头与时间线页面的[实时渲染流一节](../../docs/dreamverse/subsystems/shots-and-timeline.zh.md#live-render-stream)说明 `shot.render` 如何写入 `stream`，以及浏览器从 `/vh/ws` 路由收到什么。
 
 | 包 | 职责 |
 | --- | --- |
@@ -31,7 +31,7 @@ kind: "package-group"
 <a id="related-documentation"></a>
 ## 相关文档
 
-- [DreamVerse 各包](../../docs/dreamverse/subsystems/project.zh.md) — 分层、操作记录，以及视图和智能体遵守的规则。
+- [镜头与时间线](../../docs/dreamverse/subsystems/shots-and-timeline.zh.md) — 分镜计划、渲染及其版本、实时渲染流，以及时间线。
 - [`@dv/api`](../dv/api/README.zh.md) — 界面插件读取状态所用的浏览器 API。
 
 <a id="dev-note"></a>

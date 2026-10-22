@@ -2,15 +2,16 @@
 
 English | [中文](agent-and-api.zh.md)
 
-This page is the reference for how the DreamVerse agent and the browser reach a project: the channels and skills that the agent reads, and the `@dv/api` routes and the interface packages that the views use.
+The agent and the browser reach a DreamVerse project through the packages of this page. [`@dv/api`](../../../packages/dv/api/README.md) provides the `dvApi` service: the `/api/dv/*` routes and the `/dv/events` stream, which the UI packages in the browser consume ([User interface](ui.md)). [`@dv/chat-references`](../../../packages/dv/chat-references/README.md) provides the `dvChatReferences` service, which acts at the `agent/pre-step` waterfall and at each `user/message` session event. Both services inject `dvProject`. [Assets](assets.md) lists the packages that inject `dvAssetPool`. [`@dv/mcp-presets`](../../../packages/dv/mcp-presets/README.md) provides no service. It consumes the optional `mcpServers` service of the DSH MCP plugin. [`@dv/project`](../../../packages/dv/project/README.md) builds the `dv_*` tools and the `dv:project` prompt section. The browser halves [`@dv/ui-mcp-presets` and `@dv/ui-skills`](ui.md#ui-core-and-ui-plugins) are on the user interface page.
 
+<a id="what-the-agent-reads"></a>
 ## What the agent reads
 
 The agent reads a project through three channels, each owned by the package that owns its content:
 
 - **Tools.** Each operation's `description` says how to use its tool; [`@dv/project`](../../../packages/dv/project/README.md) builds the tool from the `OperationSpec`.
-- **The `dv:project` prompt section.** `@dv/project` registers it while the DSH `systemPrompt` service is mounted. It holds Project's rules (every change is a step, undo and redo move the current position, a new change discards the later steps, how to name records, assets, versions, and clips, confirmation in the conversation, stale records), then the project summary of the current state. It holds nothing the user cannot see: no selection in a view and no preference.
-- **Chat references.** [`@dv/chat-references`](../../../packages/dv/chat-references/README.md) expands the `dv:` mentions that the composer writes for `@` and `+ → 引用` into one context message with concrete record and asset IDs at `agent/pre-step`, imports the images a user attaches in the chat with `asset.import` as the user, and puts those images and the assets a message mentions on the canvas; the session's next tool call waits for the import.
+- **The `dv:project` prompt section.** `@dv/project` registers it while the DSH `systemPrompt` service is mounted. The section starts with Project's rules. The rules cover the history list, undo and redo, confirmation in the conversation, and stale records. They also tell how to name records, assets, versions, and other items. Then the section holds the project summary of the current state. It holds nothing that the user cannot see, such as a selection in a view or a preference.
+- **Chat references.** At `agent/pre-step`, [`@dv/chat-references`](../../../packages/dv/chat-references/README.md) expands the `dv:` mentions that the composer writes for `@` and `+ → 引用`. The result is one context message with concrete record and asset IDs. The package also imports the files that a user attaches in the chat, with `asset.import` as the user. It puts those files and the assets that a message mentions on the canvas. The next tool call of the session waits for the import ([chat references](#chat-references)).
 
 Skills hold procedures and model-specific rules, each registered by its owner:
 
@@ -25,8 +26,77 @@ Skills hold procedures and model-specific rules, each registered by its owner:
 | `video-model-selection`                               | [`@dv/models`](../../../packages/dv/models/README.md)                                          | `ctx.skills`                     | Choosing the model of each shot with `dv_models_list` and `dv_models_get`, and when to ask the user                                                                                                                          |
 | `fasth3-reference-prompting`, `fasth3-text-prompting` | the provider plugin of the model ([`@dv/fastvideo`](../../../packages/dv/fastvideo/README.md)) | `ctx.skills`                     | The model's limits and prompt rules for that task                                                                                                                                                                            |
 
-## The API and the views
+<a id="chat-references"></a>
+## Chat references
 
-[`@dv/api`](../../../packages/dv/api/README.md) is the HTTP face of Project for the browser: `/api/dv/state` returns the project's current state as one JSON document, `/api/dv/operations` lists the registered operations, `/api/dv/operation` runs an operation as the user with `surface: 'canvas'`, `'timeline'`, or `'asset_pool'`, `/api/dv/history` returns one page of the history, `/api/dv/undo`, `/api/dv/redo`, and `/api/dv/stale/accept` expose undo, redo, and the stale operation, other routes manage projects, asset imports, canvas layouts (node positions and the viewport), and Workspace links, and `/dv/events` streams every record append, record update, and move of the current position.
+The composer writes a mention as `@[<label>](dv:<kind>/<id>)`. At `agent/pre-step`, `dvChatReferences` reads the `dv:` mentions of the step's new user messages. It appends one user message with the source kind `dv-mentions`. The message starts with "The user referenced these project items:" and holds one line for each mention:
 
-The interface packages are right-Sidebar tab types and center views of the web application, so they sit beside the chat page in one profile. [`@dv/ui-shell`](../../../packages/dv/ui-shell/README.md) puts the project workspace in the center, the 对话 / Chat and 轨迹 / Trajectory tabs on the right, and the 画布 / Canvas and 时间线 / Timeline toggle in the top bar, and binds Ctrl+Z to undo and Shift+Ctrl+Z to redo. [`@dv/ui-canvas`](../../../packages/dv/ui-canvas/README.md) draws the current state as nodes linked by asset flow: imported assets, takes with their model and task, and the entries that UI plugins register: characters, locations and styles at their current version (`@dv/ui-character`, `@dv/ui-location`, `@dv/ui-style`) and each plan at its latest version with each shot's model and task and 接上一镜头 / Continues the previous shot where set (`@dv/ui-shot-plan`); `@dv/ui-workflow-story` hangs the takes of a story approval off the plan node. `@dv/ui-canvas` marks stale records, and its editor renders a new take or replaces a reference image as a user record. [`@dv/ui-timeline`](../../../packages/dv/ui-timeline/README.md) draws each timeline as one track and turns insert, move, remove, split, and trim gestures into `timeline.*` records that name clips by `ClipId`, and its export into a `timeline.export` record. `@dv/ui-asset-pool` lists every asset of the project and imports files, `@dv/ui-composer` adds the `@` and `+ → 引用` references and the creator-facing tool names to the chat, and `@dv/ui-shot-render` adds the render card.
+| Mention                                                          | The line gives                                                                                                              |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `dv:asset/<AssetId>`                                             | The asset ID and the record that made the asset, or "imported (no producing record)"                                        |
+| `dv:record/<RecordId>`                                           | The record that the ID names                                                                                                |
+| `dv:clip/<ClipId>`                                               | The timeline of the clip, its 1-based position, and its asset; a placeholder clip names the render record that it waits for |
+| `dv:<kind>/<id>`, for a kind of `dvProject.listReferenceKinds()` | The newest version `<id>@<version>` and its reference assets, to pass as an input                                           |
+| any other kind                                                   | "unknown mention kind"                                                                                                      |
+
+A line that names a record gives its tool name, its status, its prompt and duration when it has them, its inputs, and its outputs. The line tells the agent to call the tool again with `based_on` to change it. The mentions resolve against the current state of one project. This is the project bound to the chat session, else the newest project whose records made a mentioned asset, else the newest project. When no project exists, each line tells the agent to call `dv_proj_open` first.
+
+At each `user/message` event of a message that the user typed in a live agent session, `dvChatReferences` does two writes:
+
+1. It imports each attached image or file with one `asset.import` that has `place: true`, as `actor: 'user'` and `surface: 'chat'`. An image keeps the media type of its block. Any other file takes the media type of its file name extension, else `application/octet-stream`. `dvProject.holdToolCalls` makes the next tool call of the session wait for the imports.
+2. It puts the assets of the message's `dv:asset` mentions on the canvas with one `asset.place` by the user. Only the assets that `asset.place` accepts and that are not on the canvas yet count.
+
+A session without a bound project imports and places nothing. A failed import or placement writes a warning to the `dvChatReferences` log.
+
+<a id="api-routes"></a>
+## The API routes
+
+[`@dv/api`](../../../packages/dv/api/README.md) is the HTTP face of Project for the browser. Its routes do these jobs:
+
+- `GET /api/dv/state` returns the current state of a project as one JSON document.
+- `GET /api/dv/operations` lists the registered operations.
+- `POST /api/dv/operation` runs any registered operation as the user, with `surface: 'canvas'`, `'timeline'`, or `'asset_pool'`.
+- `POST /api/dv/history` returns one page of the history.
+- `POST /api/dv/undo` and `POST /api/dv/redo` move the current position.
+- `POST /api/dv/stale/accept` runs `proj.stale_accept`.
+- Other routes manage projects, task labels, asset imports, canvas layouts (node positions and the viewport), and Workspace links.
+- `GET /dv/events` streams every record append, record update, and move of the current position.
+
+The [`@dv/api` README](../../../packages/dv/api/README.md#use-this-package) gives the request and the response of each route. [User interface](ui.md#views) gives the views that use these routes.
+
+<a id="agent-path-and-http-path"></a>
+## The agent path and the HTTP path
+
+The agent and the views run the same operations through `dvProject.run`. Each side reads the project in its own form. The agent reads the `dv:project` prompt section and the chat reference message. The views read `WireState` from `GET /api/dv/state`. [The wire state](project.md#the-project-summary-and-the-wire-state) gives its fields and when a view fetches it again. [How an operation runs](project.md#how-an-operation-runs) gives the steps of the runner.
+
+```text
+agent in a chat session                             user in the browser
+reads: dv:project prompt section                    reads: WireState from GET /api/dv/state,
+       (Project's rules + project summary)                 fetched again after each /dv/events event
+       dv-mentions context message
+  │                                                   │
+  │ calls a dv_* tool                                 │ makes a gesture on a view
+  ▼                                                   ▼
+dv_<operation> tool of @dv/project                  POST /api/dv/operation of @dv/api
+actor 'agent', surface 'chat',                      actor 'user', surface 'canvas', 'timeline'
+session, turn, tool_call                            or 'asset_pool', session
+prepareToolCall, confirm policy                       │
+  │                                                   │
+  └──────────────────────┬────────────────────────────┘
+                         ▼
+                 dvProject.run (the runner)
+                         │ validate params, resolve inputs, precondition,
+                         │ append the record after the current position
+                         ▼
+                 records.jsonl ──▶ reducers ──▶ current state
+                         │                          ├──▶ project summary in the dv:project section
+                         │                          │    at the agent's next step
+                         │                          └──▶ WireState of GET /api/dv/state
+                         ▼
+                 /dv/events: record, update, line ──▶ the views fetch WireState again
+```
+
+<a id="mcp-presets"></a>
+## MCP presets
+
+`@dv/mcp-presets` (plugin name `dv-mcp-presets`) chooses the MCP servers that DreamVerse suggests. Its `presets` config maps a server name to a `title`, a `description`, and a server `spec`. While the `mcpServers` service of the DSH MCP plugin is mounted, the plugin offers the presets with `mcpServers.offerPresets()` in an effect. When the MCP plugin turns off, the effect withdraws the offer. Offering a preset adds no server and no tool. A person adds the server from the MCP tab of the entry page, which `@dv/ui-mcp-presets` draws. The [`@dv/mcp-presets` README](../../../packages/dv/mcp-presets/README.md) lists the presets of the DreamVerse bundle.

@@ -56,6 +56,8 @@ import { DV_TIMELINE_INSERT_EVENT } from '@dv/ui-kit/workspace-events.ts'
 
 `subscribe` 在浏览器有 `EventSource` 时用它，否则每三秒轮询一次。跟随项目的每个 bundle 通过 `window.__dvEventSources` 为每个项目共享一条流；`window.__dvStreams` 记录打开的流数。
 
+DreamVerse UI 包共享的客户端测试状态是 `tests/fixture.client.tsx` 中的 `fixtureState()`。它返回 `FixtureState`，即 `WireState & { components: Pick<ComponentStates, 'plan' | 'timeline'> }`。它不持有任何名词切片。`withTestRef(state)` 加入测试名词 `test_ref`，并保留参数的类型。客户端测试字面量只列出测试读取的切片。`packages/dv/e2e/tests/wire-state.ts` 中的 e2e 类型 `WireState` 把完整 bundle 的切片都定为存在。
+
 -----
 
 <a id="understand-the-implementation"></a>

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/dreamverse/glossary.md
-glossary.md: d35ea618ff97e8afb4bf82cc121ca8e1f59f71ef
-glossary.zh.md: 922d71a7432e3d1108e1da26adb47ea6ce9b7ed8
+glossary.md: d1d85347b66b0cb89e4a3bb8d19344ad2862d088
+glossary.zh.md: 11554710439f686a997b1fe0373309ee812314ee

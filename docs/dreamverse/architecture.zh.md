@@ -2,56 +2,159 @@
 
 [English](architecture.md) | 中文
 
-本页给出 DreamVerse 各包的分布图：每个包所在的层、每一层的角色，以及包之间依赖的方向。[子系统页面](subsystems/README.zh.md)是各部分的参考，[术语表](glossary.zh.md)定义各个名称。
+本页给出 DreamVerse 各包的分布图。它说明目标、层、import 方向、宿主包的两个面，以及项目数据的流向。[子系统页面](subsystems/README.zh.md)是各部分的参考，[术语表](glossary.zh.md)定义各个名称。[DreamVerse 架构检查](architecture-checks.zh.md)说明检查这些规则的脚本。
 
-## 分层和角色
+## 目标
+
+每个 DreamVerse 插件只有一项职责，并且每个插件都能单独加入或移除。一个插件是一个宿主包。有浏览器半部的插件还有一个 UI 包 `@dv/ui-<name>`。bundle `@dv/bundle` 在 `packages/bundle/dv/cordis.patch.yml` 中为每个插件包写一行来组合它。一个包只依赖对它一无所知的层。因此，加入或移除一个插件时，不需要修改它下层的包，也不需要修改同级的包。[分层 Agent Note](../../.agents/notes/implemented/architecture/2026-10-17-dv-architecture-layers.zh.md) 记录了这种结构的理由。
+
+<a id="layers"></a>
+## 层
+
+[`scripts/dv-architecture.ts`](../../scripts/dv-architecture.ts) 中的函数 `layerOf` 推断每个包的层。没有包声明自己的层。`layerOf` 按以下顺序应用这些规则：
+
+1. `project` 是 `kernel`，`packages/bundle/dv` 是 `bundle`。
+2. 常量 `BASE` 列出 `base` 包。
+3. `src` 中调用 `dvModels.register(` 的包，以及包 `fastvideo-generation-client`，是 `provider` 包。
+4. `workflow-kit` 是 `workflow-lib`，其他所有 `workflow-*` 目录是 `workflow`。
+5. 常量 `SURFACE` 和 `UI_CORE` 列出 `surface` 和 `ui-core` 包。
+6. 其他所有 `ui-*` 目录是 `ui` 包，其他所有包是 `domain` 插件。
+
+新增 `base`、`surface` 或 `ui-core` 包时，把它的目录名加进 `BASE`、`SURFACE` 或 `UI_CORE`。下图给出十个层。浏览器程序编译两个 UI 层，宿主程序编译其他层。每个 import 都指向下方。
 
 ```text
-views          @dv/ui-shell @dv/ui-canvas @dv/ui-timeline @dv/ui-asset-pool @dv/ui-composer @dv/ui-history (+ library @dv/ui-kit)
-               @dv/ui-character @dv/ui-location @dv/ui-style @dv/ui-shot-plan @dv/ui-shot-render @dv/ui-workflow-story
-  │ HTTP: /api/dv/…, /dv/events
-  ▼
-API            @dv/api                    routes that read state and run operations as the user; the event stream
-  │ dvProject.run, getState, listHistory
-  ▼
-registry       @dv/project                records, the history list, undo and redo, state, agent tools, the dv:project prompt section
-  ▲ registerOperation, registerReducer             ▲ dvProject.run (asset.import, asset.place), current-state reads
-  │ from workflows and components                  │
-workflows      @dv/workflow-story                  │
-               (+ library @dv/workflow-kit)        │
-  │ dvShotPlan, dvShotRender, dvTimeline           │
-  ▼                                                │
-components     @dv/asset-pool @dv/character       chat references   @dv/chat-references   dv: mentions, chat images
-               @dv/location @dv/style
-               @dv/shot-plan @dv/shot-render
-               @dv/timeline @dv/inspector
-  │ defineGeneration, defineReference
-  ▼
-base libraries @dv/generation @dv/reference-kit
-  │ ctx.dvModels (Consumer: @dv/shot-render)
-  ▼
-models         @dv/models                 the model catalog dvModels, dv_models_list, dv_models_get, video-model-selection
-  ▲ register one entry per task a model serves
-  │
-providers      @dv/fastvideo              provider fastvideo: fasth3 for tasks ref2v and t2v, a prompt skill per task
-
-bundle         @dv/bundle                 the cordis.patch.yml rows of every package above, the video-directing skill
+ Client program: browser code, root tsconfig.client.json
+ ┌──────────────────────────────────────────────────────────────────┐
+ │ ui            @dv/ui-<name>: the browser half of one plugin      │
+ │   │                                                              │
+ │   ▼ import values from @dv/ui-kit only                           │
+ │ ui-core       @dv/ui-kit  @dv/ui-canvas  @dv/ui-history          │
+ │               @dv/ui-shell  @dv/ui-composer                      │
+ └──┬───────────────────────────────────────────────────────────────┘
+    │ ui only: import type from the paired client face @dv/<x>/types
+    ▼
+ Host program: Node code, root tsconfig.host.json
+ ┌──────────────────────────────────────────────────────────────────┐
+ │ bundle        @dv/bundle: one Cordis row per plugin, no imports  │
+ │                                                                  │
+ │ │ surface       @dv/api  @dv/chat-references  @dv/mcp-presets    │
+ │ │ workflow      @dv/workflow-story                               │
+ │ │ workflow-lib  @dv/workflow-kit                                 │
+ │ │ domain        @dv/character  @dv/location  @dv/style           │
+ │ │               @dv/shot-plan  @dv/shot-render  @dv/timeline     │
+ │ │               @dv/inspector                                    │
+ │ │ provider      @dv/fastvideo  @dv/fastvideo-generation-client   │
+ │ │ base          @dv/models  @dv/generation  @dv/asset-pool       │
+ │ │               @dv/ffmpeg  @dv/reference-kit                    │
+ │ ▼ kernel        @dv/project                                      │
+ └──────────────────────────────────────────────────────────────────┘
 ```
 
-每个箭头从一个包指向它所依赖的包，没有反方向的依赖。组件从不写出另一个组件的操作名。工作流通过组件的服务使用组件，例如 `dvShotPlan.shots`、`dvShotRender.estimate` 和 `dvTimeline.layout`；只有 surface 包 `@dv/api` 和 `@dv/chat-references` 以用户身份按名字运行其他包的操作。用 DeepSeek Harness 的术语说，各层的角色如下：
+每一层有一个角色：
 
-| 层      | 包                                                                                                                            | 角色                                                                                                                                                      |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 注册表    | [`@dv/project`](../../packages/dv/project/README.zh.md)                                                                      | `dvProject` 服务：组件向它注册操作和归约函数，就像工具向 `ctx.tools` 注册一样。它是项目文件唯一的写入者，把每个操作变成一个 DSH 工具，并注册 `dv:project` 系统提示词段。                                              |
-| 工作流    | `@dv/workflow-story`（库 `@dv/workflow-kit`）                                                                                   | 一个制作流程：预览、批准、版本复用、时间线选择。                                                                                                                                |
-| 组件     | `@dv/asset-pool`、`@dv/character`、`@dv/location`、`@dv/style`、`@dv/shot-plan`、`@dv/shot-render`、`@dv/timeline`、`@dv/inspector` | 各自拥有一项能力的插件：它的数据（一个状态切片及其归约函数）、它的操作，以及智能体读到的关于它们的文字。外部程序经 [`@dv/ffmpeg`](../../packages/dv/ffmpeg/README.zh.md) 运行。                                     |
-| 基础库    | `@dv/generation`、`@dv/reference-kit`                                                                                         | `defineGeneration` 和 `defineReference` 构建生成原语或引用名词的服务。                                                                                                  |
-| 模型     | [`@dv/models`](../../packages/dv/models/README.zh.md)、[`@dv/fastvideo`](../../packages/dv/fastvideo/README.zh.md)            | 模型目录：`@dv/models` 持有 `dvModels` Service Definition 以及 `PrimitiveTypes` 和 `TaskMap`，`@dv/fastvideo` 这样的提供方插件是 Service Provider，注册自己服务的模型，镜头渲染是 Consumer。 |
-| API    | [`@dv/api`](../../packages/dv/api/README.zh.md)                                                                              | DSH `connection` 服务上的 Fetch 路由和 `webServer` 上的事件流；视图读取或修改项目的唯一途径。                                                                                       |
-| 对话引用   | [`@dv/chat-references`](../../packages/dv/chat-references/README.zh.md)                                                      | `agent/pre-step` 和 `session/event` 上的监听器，把用户在对话消息中指向的东西变成项目 ID 和素材。                                                                                     |
-| 视图     | UI 核心（`@dv/ui-kit`、`@dv/ui-canvas`、`@dv/ui-history`、`@dv/ui-shell`、`@dv/ui-composer`）和 UI 插件 `@dv/ui-<name>`                 | DSH Web 客户端的右侧栏标签类型和中央视图；`@dv/ui-kit` 是它们共用的库。                                                                                                          |
-| bundle | [`@dv/bundle`](../../packages/bundle/dv/README.zh.md)                                                                        | profile 层：把每一行组成 `video-harness` 和 `video-harness-headless` 两个 profile，并附带 `video-directing` skill。                                                     |
+| 层              | 角色                                                                                                                                                                  |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kernel`       | `dvProject` 服务。插件向它注册组件键、操作、归约函数和引用种类，就像工具向 `ctx.tools` 注册一样。内核是项目文件唯一的写入者。它把每个操作变成一个 DSH 工具，并注册 `dv:project` 系统提示词段。它不点名任何插件。                                      |
+| `base`         | 供每个领域插件使用的服务和库。模型目录是 `dvModels` Service Definition 以及 `PrimitiveTypes` 和 `TaskMap`。`defineGeneration` 构建生成原语的服务，`defineReference` 构建引用名词的服务。base 层还存储项目的素材，并运行外部程序。 |
+| `provider`     | 模型目录的 Service Provider。提供方插件注册自己服务的模型，并附带每个模型和任务的提示词 skill。提供方后端的客户端 `<name>-generation-client` 也在这一层。                                                              |
+| `domain`       | 各自拥有一个组件键的插件。领域插件拥有该键的数据，即一个状态切片及其归约函数。它还拥有该键的操作，以及 agent（智能体）读到的关于它们的文字。                                                                                           |
+| `workflow-lib` | 镜头遍历中不带策略的部分。这一层不点名任何工作流。                                                                                                                                           |
+| `workflow`     | 工作流插件把领域插件组合成一个制作流程，例如预览、批准、版本（take）复用和时间线选择。                                                                                                                       |
+| `surface`      | 服务用户的包。`@dv/api` 和 `@dv/chat-references` 以用户身份按名字运行其他包的操作。视图只通过 `@dv/api` 读取和修改项目（[Agent 和 API](subsystems/agent-and-api.zh.md)）。                                   |
+| `ui-core`      | DSH Web 客户端中 DreamVerse 视图的框架。UI 核心持有中央视图、右侧栏标签类型、注册表和 slot，以及共享的协议类型。`@dv/ui-kit` 是每个 UI 包共用的库。UI 核心不点名任何插件名词。                                                     |
+| `ui`           | 一个插件的浏览器半部。UI 包向 UI 核心的注册表和 slot 注册。宿主包 `@dv/<x>` 存在时，`@dv/ui-<x>` 与它配对。                                                                                            |
+| `bundle`       | 组合各插件的 profile 层（[bundle 和层外的包](#the-bundle-and-the-packages-outside-the-layers)）。                                                                                  |
 
-组件用 `dvProject.registerOperation` 注册操作，用 `dvProject.registerReducer` 注册归约函数。每个操作同时是智能体工具 `dv_<操作名，点换成下划线>`，一次调用成为一条记录。素材库的 `dv_asset_import`、`dv_asset_grab_still` 和 `dv_asset_cut_segment` 添加素材，`dv_asset_place` 和 `dv_asset_unplace` 把素材放到画布上和从画布移除；角色、场景和风格组件的 `dv_character_*`、`dv_location_*` 和 `dv_style_*` 工具创建和更新各自的版本；分镜的 `dv_plan_create` 写入一个新分镜计划的版次 1，该计划得到一个 `PlanId`（`p1`、`p2`、…），`dv_plan_update` 写入 `plan` 参数所指计划的下一个版次；故事工作流的 `dv_story_preview` 报告批准一个版次会渲染什么、花费多少，`dv_story_approve` 批准它；镜头渲染的 `dv_shot_render` 按调用指定的[模型](subsystems/generation.zh.md#model-catalog)渲染镜头的一个版本，`duration_sec` 是该模型范围内的整秒数（默认为模型的最小值）；时间线的 `dv_timeline_*` 工具创建、更新、重命名和删除时间线，并插入、移动、移除、拆分、裁剪和替换片段，不创建文件，它的 `dv_timeline_export` 把一条时间线写成一个视频；检查器的 `dv_inspect_image` 和 `dv_inspect_asset` 读取素材，不写记录。项目组件自己的 `dv_proj_*` 工具创建和打开项目、读取状态和历史、撤销、接受过期记录，以及等待排定的记录。操作声明资源类别（`none`、`cpu`、`gpu`）和确认策略（`never`、`always`、`over_gpu_budget`；见[在对话中确认](subsystems/project.zh.md#confirmation-in-the-conversation)）；项目组件的调度器按类别并发上限运行排定的记录。
+<a id="import-direction"></a>
+## import 方向
 
-分镜计划的批准属于工作流插件，例如 [`@dv/workflow-story`](../../packages/dv/workflow-story/README.zh.md) 的 `story.approve`。它以 `system` 发起者为所批准版次中每个不沿用版本的镜头运行一次 `shot.render`，带该镜头的 `modality`、`task`、`provider` 和 `model`；它写下的每条记录都带 `started_by`，指向该批准记录，渲染记录还以镜头从 1 起的位置作为 `slot`。镜头沿用参数和输入都相同、且所在链始于同一工作流对同一计划的批准的最新 done 版本。随后 `dvTimeline.layout` 按镜头顺序把每个镜头的版本排进一条时间线；渲染尚未完成的镜头先显示为占位片段，直到渲染完成。批准在 `report.scheduled` 中列出排定的记录。片段有一个 `ClipId`（`cl1`、`cl2`、…），由插入它的时间线操作分配并存入记录的 `report.clips`；该 ID 在项目内唯一、从不复用，每个片段操作都用 `clip` 参数按它指定片段。
+适应度测试按下表检查 `src` 中的每个 `@dv/` import。一个包总可以 import 它自己。
+
+| 所在层            | 可以 import 值的来源                                 | 还可以 `import type` 的来源                                            |
+| -------------- | ---------------------------------------------- | ---------------------------------------------------------------- |
+| `kernel`       | 无                                              | 无                                                                |
+| `base`         | `kernel`、`base`                                | 无其他                                                              |
+| `provider`     | `kernel`、`base`、自己的 `<name>-generation-client` | 向 `PrimitiveTypes` 合并了一行的领域包                                     |
+| `domain`       | `kernel`、`base`                                | 无其他                                                              |
+| `workflow-lib` | `kernel`、`base`                                | `domain`                                                         |
+| `workflow`     | `kernel`、`base`、`domain`、`workflow-lib`        | 无其他                                                              |
+| `surface`      | `kernel`、`base`                                | `domain`                                                         |
+| `ui-core`      | `@dv/ui-kit`                                   | 无其他                                                              |
+| `ui`           | `@dv/ui-kit`                                   | 配对宿主包的 `@dv/<x>/types`，以及合并 `SlotMap` 的 UI 核心包的 `import type {}` |
+
+领域插件从不 import 另一个领域插件，组件也从不写出另一个组件的操作名。跨名词的组合只发生在工作流中。工作流通过 `static inject` 中的服务访问每个领域插件。例如，`@dv/workflow-story` 注入 `dvProject`、`dvShotPlan`、`dvShotRender` 和 `dvTimeline`，并调用 `dvShotPlan.shots`、`dvShotRender.estimate` 和 `dvTimeline.layout`。UI 包从不 import 另一个 UI 包，也不 import 宿主包中的值。它只通过类型读取自己的宿主包。
+
+## 宿主面与客户端面
+
+UI 包需要读取的宿主包有两个面。宿主面是包的根入口（`"."` → `src/index.ts`），它持有 Cordis 插件及其服务。客户端面是 `exports["./types"]` → `src/types.ts`，它持有浏览器程序编译的切片类型和记录类型。每个面属于一个程序。下图给出 `@dv/character` 的两个面，`@dv/ui-character` 用 `import type` 读取客户端面。
+
+```text
+                @dv/character (packages/dv/character/)
+        ┌──────────────────────────┴───────────────────────────┐
+        ▼                                                      ▼
+ host face "."                                   client face "./types"
+ src/index.ts                                    src/types.ts
+ the Cordis plugin and its services              the slice and record types
+        │                                                      │
+        │ tsconfig.json                                        │ tsconfig.client.json
+        ▼                                                      ▼
+ host program                                    client program
+ root tsconfig.host.json                         root tsconfig.client.json
+```
+
+一个客户端面由四部分组成：
+
+1. `package.json` 中的 `./types` 导出；
+2. 宿主 `tsconfig.json` 旁边的 `tsconfig.client.json`，它只包含 `src/types.ts`，并引用它所 import 的各个面的客户端配置；
+3. `tsconfig.base.json` 中的路径条目 `@dv/<pkg>/types`；
+4. 根 `tsconfig.client.json` 中对该 `tsconfig.client.json` 的引用。
+
+`src/types.ts` 只 import 和扩充客户端面，例如 `declare module '@dv/project/types'`。它从不 import 裸的 `@dv/project`。适应度测试追踪 `./types` 入口能到达的每个模块。只要其中一个模块 import 了 `node:*`、`@deepseek-ai/cordis` 或 `@deepseek-ai/dsh-tools`，测试就失败。包的 `package.json` 声明 `./types` 导出时，该包有客户端面。[DreamVerse 包表](../../packages/dv/README.zh.md#packages)列出各包。
+
+<a id="project-data"></a>
+## 项目数据
+
+项目数据沿一个方向流动。三类写入方调用 `dvProject.run`：agent 工具调用、经 `@dv/api` 的视图，以及插件的服务。`dvProject.run` 向项目的 `records.jsonl` 文件追加一条记录。随后每个已注册的归约函数计算 `ProjectState.components` 中自己的切片，agent 和视图读取这些切片。
+
+```text
+ agent tool call     view (POST /api/dv/operation)     plugin service (ctx.dv<Name>.<method>)
+        │                         │                                 │
+        └─────────────────────────┼─────────────────────────────────┘
+                                  ▼
+                            dvProject.run
+                                  │
+                                  ▼
+          record line and update lines in <project>/records.jsonl
+                                  │
+                                  ▼
+       every registered reducer, record by record, in registration order
+                                  │
+                                  ▼
+         ProjectState.components: one slice per registered reducer
+                 │                                     │
+                 ▼                                     ▼
+  project summary (dv_proj_* tools,          WireState (GET /api/dv/state)
+  dv:project prompt section)                           │
+                                                       ▼
+                                         canvas, timeline, history, asset pool
+```
+
+视图和 agent 从不直接编辑切片。它们只通过运行操作来写入。[项目](subsystems/project.zh.md)页面拥有记录、操作、历史规则和项目状态。[项目摘要和协议状态](subsystems/project.zh.md#the-project-summary-and-the-wire-state)一节说明视图在变化之后如何重新读取协议状态。
+
+## 操作和 agent 工具
+
+组件用 `dvProject.registerOperation` 注册操作，用 `dvProject.registerReducer` 注册归约函数。每个操作同时是一个 agent 工具，该工具的一次调用成为一条记录。[操作](subsystems/project.zh.md#operations)给出操作名和其工具名的格式。术语表的[组件表](glossary.zh.md#components-and-packages)列出每个组件的操作。
+
+操作声明资源类别（`none`、`cpu` 或 `gpu`）和确认策略（`never`、`always` 或 `over_gpu_budget`）。[在对话中确认](subsystems/project.zh.md#confirmation-in-the-conversation)说明各确认策略。
+
+分镜计划的批准属于工作流插件。[工作流](subsystems/workflows.zh.md)页面拥有工作流约定和审批链。
+
+<a id="the-bundle-and-the-packages-outside-the-layers"></a>
+## bundle 和层外的包
+
+`packages/bundle/dv/` 中的 [`@dv/bundle`](../../packages/bundle/dv/README.zh.md) 是 profile 层。它的 `cordis.patch.yml` 为每个插件包写一行。库 `@dv/generation`、`@dv/reference-kit`、`@dv/workflow-kit`、`@dv/fastvideo-generation-client` 和 `@dv/ui-kit` 没有对应的行。`scripts/video-harness/setup-profile.sh` 把 bundle 叠在 `dsh-base` 加 `dsh-web-app` 上组成 profile `video-harness`，叠在 `dsh-base` 加 `dsh-headless` 上组成 `video-harness-headless`。bundle 还附带 `video-directing` skill，即跨组件的规划流程，由 `skill-filesystem` 行读取。
+
+两个包在十个层之外：
+
+- `packages/dv/e2e/` 中的 [`@dv/e2e`](../../packages/dv/e2e/README.zh.md) 存放浏览器故事。每个故事用假服务启动 `video-harness` profile，并驱动 Chromium。该包没有 `src`，因此 import 规则不适用于它。
+- `packages/video-harness/stream/` 中的 [`@video-harness/stream`](../../packages/video-harness/README.zh.md) 把渲染的视频分块发送给浏览器（[实时渲染流](subsystems/shots-and-timeline.zh.md#live-render-stream)）。适应度测试只扫描 `packages/dv/` 和 `packages/bundle/dv/`，因此没有规则检查这个包。
