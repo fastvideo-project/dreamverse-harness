@@ -59,7 +59,7 @@ The plugin registers its descriptors while `dvCanvas` and the slot registry exis
 - **The chat card**, one `tool.call.toolview` entry per operation, keyed by the operation's tool name, such as `dv_shot_render` for `shot.render`. It shows the operation's label, the status words of the call's phase, the model and task line, the prompt, the first output through `dv.media` at purpose `player`, and 在历史中查看 / Show in history once the call settled.
 - **The History rows**, one `dvHistory.rows` entry per operation. Each gives `spec.subject` as the subject and `spec.preview`, else the first output, as the thumbnail.
 
-The chat card and the take editor read the operation labels and the task labels through the inject `hooks` of [`src/client/loaded.ts`](src/client/loaded.ts): two sources that load `GET /api/dv/operations` and `GET /api/dv/tasks` once, on the first subscription, and stay empty after a failed load, so every reader falls back to names.
+The chat card and the take editor read the operation labels and the task labels through the inject `hooks` of [`src/client/loaded.ts`](src/client/loaded.ts): two sources that load `GET /api/dv/operations` and `GET /api/dv/tasks` on the first subscription and stay empty after a failed load, so every reader falls back to names until the next subscription loads again. The take editor reads only the task labels; it reads the declarations from its `operations` owner prop.
 
 -----
 

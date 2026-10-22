@@ -154,6 +154,26 @@ describe('the canvas over the real kinds', () => {
     await runtime.dispose()
   })
 
+  it('shows the task label in a take editor that reopens after the read of the task labels failed', async () => {
+    const { runtime, view, open } = await mountCanvas()
+    const served = globalThis.fetch
+    let reads = 0
+    // The kit's client asks for every route by its path.
+    vi.stubGlobal('fetch', (input: string, init?: RequestInit) => {
+      if (input.endsWith('/api/dv/tasks') && reads++ === 0) return Promise.reject(new TypeError('Failed to fetch'))
+      return served(input, init)
+    })
+    const mode = (editor: HTMLElement): string | null => within(editor).getByTestId('dv-canvas-render-mode').textContent
+    const first = await open('g1')
+    await waitFor(() => { expect(reads).toBe(1) })
+    expect(mode(first)).toBe('fasth3 · ref2v')
+    fireEvent.click(within(first).getByRole('button', { name: zh['editor.close'] }))
+    await waitFor(() => { expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull() })
+    const reopened = await open('g1')
+    await waitFor(() => { expect(mode(reopened)).toBe('fasth3 · 参考图生成') })
+    await runtime.dispose()
+  })
+
   it('shows 重试 of a failed take in its failed row, its editor header and the selected-node toolbar, each rerunning the take based on it', async () => {
     const { runtime, view, node, open, server } = await mountCanvas({ edit: failG1 })
     await waitFor(() => { node('g1') })

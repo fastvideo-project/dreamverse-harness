@@ -1,7 +1,7 @@
 /**
- * The operation declarations and task labels as observable sources that load once, on the first subscription, for the
- * inject `hooks` of the kit's chat card and take editor; a failed load keeps a source empty, so every reader falls back
- * to names.
+ * The operation declarations and task labels as observable sources that load on the first subscription, for the inject
+ * `hooks` of the kit's chat card and take editor; a failed load keeps a source empty, so every reader falls back to
+ * names until the next subscription loads again.
  *
  * @module @dv/ui-generation/loaded
  */

@@ -133,7 +133,9 @@ export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
     inject: [],
     apply: (ctx) => {
       const labels = labelSources(new DvClient())
-      const editor: TakeEditorInjected = { ...labels, status: spec.status, references: record => spec.references?.(record) ?? true }
+      const editor: TakeEditorInjected = {
+        hooks: { taskLabels: labels.hooks.taskLabels }, status: spec.status, references: record => spec.references?.(record) ?? true,
+      }
       // The node type registers first in the one scope of the kind, so a refused type leaves nothing of the kind behind.
       ctx.inject(['dvCanvas', 'slots'], (scope) => {
         scope.effect(() => scope.dvCanvas.nodeTypes.register(nodeType), `${spec.id}: node type`)

@@ -46,7 +46,7 @@ import { DV_HISTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 | `waveform.ts` | `useAudioEnvelope(assetId)`、`peakEnvelope`、`clipPeaks`：音频解码和峰值包络，时间线的 原声 轨道和 `@dv/ui-asset-pool` 的音频媒体视图把它们画成波形条 |
 | `chain.ts` | `chainOf(record, records)`：记录所在的链（`WireStartedBy`），即它自身的 `started_by`，没有时用它 `based_on` 根记录的 `started_by`，再没有时为 null |
 | `useProject.ts` | `useProjects`、`useOperations`、`useTaskLabels`、`useProjectState`：每次项目事件都重新拉取的加载器；`useLoader(load, deps)` 是它们共用的请求流程，会中止过期的请求，并在重新加载时保留上一次的值 |
-| `loaded.ts` | `loadedOnce(empty, load)`：一个可观察的来源，起始值为 `empty`，在第一次订阅时加载它的值，供插槽注册的 inject `hooks` 来源使用；加载失败时保持 `empty` |
+| `loaded.ts` | `loadedOnce(empty, load)`：一个可观察的来源，起始值为 `empty`，在第一次订阅时加载它的值，供插槽注册的 inject `hooks` 来源使用；加载失败时保持 `empty`，下一次订阅再加载 |
 | `useView.ts` | `useViewSession(client, surface, session?)`：项目选择、项目的当前状态、操作、最近一次失败和项目栏回调；`sessionFromLocation` 从页面地址的 `?session=` 读对话，让视图打开该对话的项目 |
 | `ProjectBar.tsx` | 侧栏的栏（测试 ID `dv-kit-project-bar`）：项目选择器、新建项目按钮和撤销，用 `--dv-*` 主题变量画成 28 px 的次要控件；文案以 `labels` 传入，由所属插件先本地化 |
 | `compose.ts`、`workspace-events.ts` | 窗口事件 `dv:compose`、`dv:history-focus`、`dv:trajectory-focus`（`DV_*_EVENT`）和素材拖拽类型 `application/x-dv-asset` |

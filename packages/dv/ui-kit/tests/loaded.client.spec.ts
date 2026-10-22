@@ -1,4 +1,4 @@
-/** A source that loads its value once, on its first subscription, and keeps the empty value when the load fails. */
+/** A source that loads its value on its first subscription, and keeps the empty value until a later load succeeds. */
 import { describe, expect, it, vi } from 'vitest'
 import { loadedOnce } from '../src/client/loaded.ts'
 

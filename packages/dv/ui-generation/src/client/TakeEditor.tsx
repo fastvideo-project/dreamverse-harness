@@ -26,8 +26,9 @@ import type {} from '@dv/ui-media/contract'
 import type { StatusWords } from './GenerationCard.tsx'
 import type { GenerationInjected } from './loaded.ts'
 
-/** What the kit injects into a take editor: the label sources, the kind's status words and its reference rule. */
-export interface TakeEditorInjected extends GenerationInjected {
+/** What the kit injects into a take editor: the task label source, the kind's status words and its reference rule. */
+export interface TakeEditorInjected {
+  hooks: Pick<GenerationInjected['hooks'], 'taskLabels'>
   status: StatusWords
   /** Whether a take of the kind takes reference images, given its record. */
   references(record: ProjectRecord): boolean
