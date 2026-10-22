@@ -53,6 +53,21 @@ describe('planNodeType', () => {
     expect(entry?.record?.id).toBe('q2')
   })
 
+  it('draws no entry for a state without the plan slice or for a plan without versions', () => {
+    const state: WireState = fixtureState()
+    const { plan: _plan, ...components } = state.components
+    expect(planNodeType.entries({ ...state, components })).toEqual([])
+    const withEmptyPlan = fixtureState()
+    withEmptyPlan.components.plan.plans['p2' as PlanId] = []
+    expect(planNodeType.entries(withEmptyPlan).map(entry => entry.id)).toEqual(['plan:p1'])
+  })
+
+  it('draws an entry without a record when the project records lack the record that wrote the shown version', () => {
+    const state = secondVersion()
+    state.components.proj.records = state.components.proj.records.filter(entry => entry.id !== 'q2')
+    expect(planNodeType.entries(state)).toMatchObject([{ id: 'plan:p1', record: null, records: ['p1'], subtitle: 'v2' }])
+  })
+
   it('titles a version with a shot without duration by its shot count, in the interface language', () => {
     document.documentElement.lang = 'en'
     expect(planNodeType.label()).toBe('Plan')
@@ -74,6 +89,7 @@ describe('planHistoryRow', () => {
     expect(planHistoryRow.match).toBe('plan.')
     expect(subject({ id: 'a', operation: 'plan.create', params: { title: '猫' }, report: { plan: 'p1', version: 1 } })).toEqual(['《猫》', ' “猫”'])
     expect(subject({ id: 'b', operation: 'plan.create', params: {}, report: { plan: 'p1', version: 1 } })).toEqual([' p1', ' p1'])
+    expect(subject({ id: 'g', operation: 'plan.create', params: {} })).toBeNull()
     expect(subject({ id: 'c', operation: 'plan.update', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } })).toEqual([' p1 → v2', ' p1 → v2'])
     expect(subject({ id: 'd', operation: 'plan.update', params: { plan: 'p1' } })).toEqual([' p1', ' p1'])
     // A plan named by its record ID (a project made before plans had IDs) and an old plan.approve record get no subject.

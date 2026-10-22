@@ -16,12 +16,13 @@ import { timelineTakesInUse } from '../src/client/takes-in-use.ts'
 const t = makeTranslate(zh)
 
 describe('timelineTakesInUse', () => {
-  it('uses the record behind each clip: the render a placeholder clip waits for, else the producer of the clip asset', () => {
+  it('uses the record behind each clip: the render a placeholder clip waits for, else the producer of the clip asset, else none', () => {
     const state = fixtureState()
     state.components.timeline.timelines.push({
       id: 't2' as TimelineId, name: '', clips: [
         { id: 'cl3' as ClipId, asset: null, source: { record: 'g3' as RecordId, output: 0 }, in_sec: null, out_sec: null },
         { id: 'cl4' as ClipId, asset: 'unknown.mp4' as AssetId, source: null, in_sec: null, out_sec: null },
+        { id: 'cl5' as ClipId, asset: null, source: null, in_sec: null, out_sec: null },
       ],
     })
     const descriptor = timelineTakesInUse(t)

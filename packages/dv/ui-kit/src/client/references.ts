@@ -9,8 +9,9 @@
  * it after the reference images (`Picture N+1`, where N is the number of reference images). A shot in task `t2v`
  * renders from the prompt alone and has no references.
  *
- * Client code names no reference kind: it reads a version reference with {@link versionRefOf} and writes any stored
- * input reference as text with {@link formatInputRef}.
+ * Client code names no reference kind: it reads a version reference with {@link versionRefOf}, reads the version that
+ * a reference text names with {@link parseVersionedReference}, and writes any stored input reference as text with
+ * {@link formatInputRef}.
  *
  * @module @dv/ui-kit/references
  */
@@ -23,7 +24,7 @@ export type PicturePart = { text: string } | { picture: number; text: string }
 /**
  * The kind, ID and version of a stored input reference that names a version of a reference kind.
  * @param ref - the stored input reference.
- * @returns the kind key, the ID and the version, or null for an asset or a record output.
+ * @returns the kind key, the ID and the version, or null for an asset, a record output, or a version reference without a kind key.
  */
 export function versionRefOf(ref: WireInputRef): { kind: string; id: string; version: number } | null {
   if (!('version' in ref)) return null
@@ -40,6 +41,19 @@ export function formatInputRef(ref: WireInputRef): string {
   if (!('version' in ref)) return 'asset' in ref ? ref.asset : `${ref.record}#${String(ref.output)}`
   const named = versionRefOf(ref)
   return named === null ? JSON.stringify(ref) : `${named.id}@${String(named.version)}`
+}
+
+/**
+ * The ID and version that a reference text names as `<id>@<version>`, read with the grammar of `parseInputRef` in
+ * `@dv/project`: the text after the last `@`, when that `@` is not the first character, converts with `Number` to an
+ * integer.
+ * @param ref - one reference text.
+ * @returns the ID and the version, or null for an asset ID or a `<record>#<output>` text.
+ */
+export function parseVersionedReference(ref: string): { id: string; version: number } | null {
+  const at = ref.lastIndexOf('@')
+  const version = at > 0 ? Number(ref.slice(at + 1)) : Number.NaN
+  return Number.isInteger(version) ? { id: ref.slice(0, at), version } : null
 }
 
 /**
@@ -63,11 +77,9 @@ export function referenceAssets(state: WireState, references: readonly string[],
       const asset = records.get(ref.slice(0, hash))?.outputs[output]
       return asset === undefined ? [] : heldAssets([asset])
     }
-    const at = ref.lastIndexOf('@')
-    const version = at > 0 ? Number(ref.slice(at + 1)) : Number.NaN
-    if (!Number.isInteger(version)) return heldAssets([ref])
-    const id = ref.slice(0, at)
-    return heldAssets(kinds.map(kind => kind.assets(state, id, version)).find(assets => assets.length > 0) ?? [])
+    const named = parseVersionedReference(ref)
+    if (named === null) return heldAssets([ref])
+    return heldAssets(kinds.map(kind => kind.assets(state, named.id, named.version)).find(assets => assets.length > 0) ?? [])
   })
 }
 

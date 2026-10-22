@@ -3,14 +3,14 @@
  * Its texts follow the interface language of `<html lang>`.
  * @module @dv/ui-shot-plan/PlanEditor
  */
-import { memo, useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { memo, useCallback, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { PlanVersion, Shot } from '@dv/shot-plan/types'
 import { assetUrl, type DvClient } from '@dv/ui-kit/api.ts'
 import { AssetMedia } from '@dv/ui-kit/asset-media.tsx'
 import { useText } from '@dv/ui-kit/locale.ts'
-import { isPicture, pictureParts, referenceAssets } from '@dv/ui-kit/references.ts'
+import { isPicture, parseVersionedReference, pictureParts, referenceAssets } from '@dv/ui-kit/references.ts'
 import type { DvCanvas, Registry, VersionKind } from '@dv/ui-kit/registries.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
 import { taskLabel, type WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
@@ -74,8 +74,10 @@ interface NamedReference {
 function namedReferences(state: WireState, references: readonly string[], kinds: readonly VersionKind[]): NamedReference[] {
   let pictures = 0
   return references.flatMap((ref) => {
-    const version = /^(.+)@(\d+)$/.exec(ref)
-    const versionName = version === null ? undefined : kinds.map(kind => kind.name(state, version[1] ?? '', Number(version[2]))).find(name => name !== null)
+    const named = parseVersionedReference(ref)
+    const versionName = named === null
+      ? undefined
+      : kinds.map(kind => kind.name(state, named.id, named.version)).find(name => name !== null)
     return referenceAssets(state, [ref], kinds)
       .map(asset => ({ asset, name: versionName || asset.name, picture: isPicture(asset) ? ++pictures : null }))
   })
@@ -255,16 +257,11 @@ function PromptBox({ prompt, references }: { prompt: string; references: NamedRe
   const pick = useText()
   const [expanded, setExpanded] = useState(false)
   const [overflows, setOverflows] = useState(false)
-  const box = useRef<HTMLDivElement | null>(null)
-  // Measure after layout: only a prompt taller than the collapsed height gets the fade and the toggle.
-  useLayoutEffect(() => {
-    if (box.current !== null) setOverflows(box.current.scrollHeight > PROMPT_COLLAPSED_HEIGHT)
-  }, [prompt])
   const collapsed = overflows && !expanded
   return (
     <>
       <div
-        ref={box}
+        ref={(box) => { if (box !== null) setOverflows(box.scrollHeight > PROMPT_COLLAPSED_HEIGHT) }}
         style={{
           position: 'relative', maxHeight: expanded ? 'none' : PROMPT_COLLAPSED_HEIGHT, overflow: 'hidden', boxSizing: 'border-box', padding: '10px 12px',
           borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-1)', boxShadow: 'inset 0 0 0 1px var(--dv-line)',

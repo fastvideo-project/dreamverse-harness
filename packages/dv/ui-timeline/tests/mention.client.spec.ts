@@ -42,6 +42,15 @@ describe('clipMentionKind', () => {
     expect([clipMentionKind.section(), clipMentionKind.items(clipState())[1]?.label]).toEqual(['Clips', 'Timeline 1 · Clip 2'])
   })
 
+  it('lists a clip with neither an asset nor a render to wait for by its label alone', () => {
+    document.documentElement.lang = 'en'
+    const state = fixtureState()
+    state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: 'Outro', clips: [
+      { id: 'cl3' as ClipId, asset: null, source: null, in_sec: null, out_sec: null },
+    ] })
+    expect(clipMentionKind.items(state).at(-1)).toEqual({ uri: 'dv:clip/cl3', label: 'Outro · Clip 1' })
+  })
+
   it('gives the composer\'s @ list the clip items of the base: first, with an image thumbnail, else the video\'s first frame', () => {
     document.documentElement.lang = 'zh-CN'
     const items = projectItems(clipState(), [clipMentionKind])

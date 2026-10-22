@@ -52,4 +52,34 @@ describe('referenceReducer', () => {
     const summary = reducer.agentSummary?.(slice, { url: asset => `https://assets.example/${asset}` }, {} as ProjectState)
     expect(summary).toEqual({ test_refs: [{ id: 'a', version: 2, name: 'Lead', description: 'blue', references: [FACE], traits: ['tall'] }] })
   })
+
+  it('reads an absent slice as a slice with no IDs', () => {
+    expect(reducer.reduce(undefined, record('r1', 'test_ref.create', { test_ref: 'a', name: 'Lead' }))).toEqual({
+      a: [{ id: 'a', version: 1, name: 'Lead', description: '', references: [], traits: [], created_by: 'r1' }],
+    })
+    expect(reducer.agentSummary?.(undefined, { url: asset => `https://assets.example/${asset}` }, {} as ProjectState)).toEqual({ test_refs: [] })
+  })
+
+  it('ignores a record that names no operation', () => {
+    const slice = reducer.initial()
+    expect(reducer.reduce(slice, { ...record('r1', 'test_ref.create', { test_ref: 'a', name: 'Lead' }), operation: null })).toBe(slice)
+  })
+
+  it('takes no reference from an input without a resolved asset, so an update with only such inputs keeps the references', () => {
+    const unresolved: RecordInput = { role: 'reference', ref: { record: brandString<RecordId>('r0'), output: 0 }, resolved_asset: null }
+    const created = record('r1', 'test_ref.create', { test_ref: 'a', name: 'Lead' }, [FACE])
+    const updated = record('r2', 'test_ref.update', { test_ref: 'a', name: 'Hero' })
+    const slice = [{ ...created, inputs: [unresolved, ...created.inputs] }, { ...updated, inputs: [unresolved] }]
+      .reduce((current, entry) => reducer.reduce(current, entry), reducer.initial())
+    expect(slice?.['a']?.map(version => [version.version, version.name, version.references])).toEqual([[1, 'Lead', [FACE]], [2, 'Hero', [FACE]]])
+  })
+
+  it('lists null in the agent summary for a field whose value is null', () => {
+    const nullable = referenceReducer<'test_ref'>({
+      ...TEST_REF, fields: { traits: { param: { type: 'array', items: { type: 'string' }, description: 'Traits of the item.' }, initial: null } },
+    })
+    const slice = nullable.reduce(nullable.initial(), record('r1', 'test_ref.create', { test_ref: 'a', name: 'Lead' }))
+    const summary = nullable.agentSummary?.(slice, { url: asset => `https://assets.example/${asset}` }, {} as ProjectState)
+    expect(summary).toEqual({ test_refs: [{ id: 'a', version: 1, name: 'Lead', description: '', references: [], traits: null }] })
+  })
 })

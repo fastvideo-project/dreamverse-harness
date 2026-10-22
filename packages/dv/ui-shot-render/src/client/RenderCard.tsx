@@ -50,6 +50,6 @@ export function RenderCard(props: RenderCardProps) {
     {modelLine !== '' && <div className={css.model} data-testid="dv-composer-render-model">{modelLine}</div>}
     {prompt !== '' && <div className={css.prompt}>{prompt}</div>}
     {video !== undefined && <video src={video.url} controls muted className={css.video} />}
-    {props.phase === 'result' && <div className={css.cardFooter}><HistoryLink sessionId={props.sessionId} callId={props.callId} className={css.textButton ?? ''} /></div>}
+    {props.phase === 'result' && <div className={css.cardFooter}><HistoryLink sessionId={props.sessionId} callId={props.callId} className={css.textButton} /></div>}
   </div>
 }

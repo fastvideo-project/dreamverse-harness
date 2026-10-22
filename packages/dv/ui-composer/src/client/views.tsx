@@ -28,6 +28,6 @@ export function ToolLabelRow(props: {
   return <div className={css.toolRow} data-tool={props.toolName}>
     <span>{t(props.label[0], props.label[1])}</span>
     <span className={css.status} data-failed={props.phase === 'result' && failed ? '' : undefined}>{status}</span>
-    {props.phase === 'result' && wroteRecord(props.block) && <HistoryLink sessionId={props.sessionId} callId={props.callId} className={css.textButton ?? ''} />}
+    {props.phase === 'result' && wroteRecord(props.block) && <HistoryLink sessionId={props.sessionId} callId={props.callId} className={css.textButton} />}
   </div>
 }

@@ -45,7 +45,7 @@ export function outputsOf(block: object): Array<{ role: string; url: string; mim
  * @param props - the chat session, the tool call, and the button class from the caller's own CSS module.
  * @returns the link button.
  */
-export function HistoryLink(props: { sessionId: string; callId: string; className: string }) {
+export function HistoryLink(props: { sessionId: string; callId: string; className: string | undefined }) {
   const t = useText()
   const { sessionId, callId } = props
   return <button type="button" data-testid="dv-composer-open-history" className={props.className}

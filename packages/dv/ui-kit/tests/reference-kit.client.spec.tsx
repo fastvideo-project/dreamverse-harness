@@ -233,4 +233,42 @@ describe('the editor entry of a reference noun', () => {
     expect(host.run).toHaveBeenCalledWith({ operation: 'test_ref.update', params: { test_ref: 'hero', traits: ['brave'] }, intent: 'Make Hero brave' })
     await runtime.dispose()
   })
+
+  it('names an unnamed item by its ID, opens no preview of a reference outside the project assets, and skips held picks', async () => {
+    document.documentElement.lang = 'en'
+    const runtime = await SlotTestRuntime.create()
+    await runtime.declare({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } })
+    await runtime.mount({ apply: testRef.apply })
+    const state = refState()
+    const host = hostMock()
+    const { container, view } = runtime.renderSlot('dv.canvas.editor', { node: entryOf(state, 'test_ref:alley'), state, host }, { entryKey: testRef.spec.id })
+
+    // `alley.png` is no asset of the project: its button shows no media and opens no preview.
+    const opener = view.getByRole('button', { name: 'View alley.png' })
+    expect(container.querySelector('img, video')).toBeNull()
+    fireEvent.click(opener)
+    expect(host.preview).not.toHaveBeenCalled()
+
+    fireEvent.click(view.getByText('+ Add asset'))
+    const addPicked = host.pickAssets.mock.calls[0]?.[1]
+    addPicked?.(['alley.png'])
+    expect(host.run).not.toHaveBeenCalled()
+    addPicked?.(['alley.png', 'ref.png'])
+    expect(host.run).toHaveBeenCalledWith({
+      operation: 'test_ref.update', params: { test_ref: 'alley' },
+      inputs: [{ role: 'reference', ref: 'alley.png' }, { role: 'reference', ref: 'ref.png' }], intent: 'Add references to alley from the canvas',
+    })
+    await runtime.dispose()
+  })
+
+  it('draws nothing for an entry whose node ID belongs to another noun', async () => {
+    const runtime = await SlotTestRuntime.create()
+    await runtime.declare({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } })
+    await runtime.mount({ apply: testRef.apply })
+    const state = refState()
+    const node = { ...entryOf(state, 'test_ref:hero'), id: 'character:hero' }
+    const { container } = runtime.renderSlot('dv.canvas.editor', { node, state, host: hostMock() }, { entryKey: testRef.spec.id })
+    expect(container.textContent).toBe('')
+    await runtime.dispose()
+  })
 })

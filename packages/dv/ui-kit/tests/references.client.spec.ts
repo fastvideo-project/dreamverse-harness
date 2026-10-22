@@ -3,7 +3,7 @@
  * Picture N, and the split of a prompt at its Picture N tokens.
  */
 import { describe, expect, it } from 'vitest'
-import { formatInputRef, isPicture, pictureParts, referenceAssets, versionRefOf } from '../src/client/references.ts'
+import { formatInputRef, isPicture, parseVersionedReference, pictureParts, referenceAssets, versionRefOf } from '../src/client/references.ts'
 import type { VersionKind } from '../src/client/registries.ts'
 import type { WireInputRef } from '../src/client/types.ts'
 import { asset, fixtureState } from './fixture.client.tsx'
@@ -25,6 +25,22 @@ describe('versionRefOf', () => {
     expect(REFS.map(versionRefOf)).toEqual([
       null, null, { kind: 'character', id: 'hero', version: 2 }, { kind: 'location', id: 'alley', version: 1 },
       { kind: 'zz', id: 'z1', version: 3 },
+    ])
+  })
+
+  it('reads a version reference without a kind key as no version, and writes it as its JSON text', () => {
+    const kindless: WireInputRef = { version: 2 }
+    expect(versionRefOf(kindless)).toBeNull()
+    expect(formatInputRef(kindless)).toBe('{"version":2}')
+  })
+})
+
+describe('parseVersionedReference', () => {
+  it('reads the text after the last @ as the version when Number gives an integer, and the text before it as the ID', () => {
+    const texts = ['hero@2', 'a@b@2', 'hero@1.0', 'hero@', 'hero@-1', '@1', 'hero@x', 'a@b.png', 'g1#1', 'shot1.mp4']
+    expect(texts.map(text => parseVersionedReference(text))).toEqual([
+      { id: 'hero', version: 2 }, { id: 'a@b', version: 2 }, { id: 'hero', version: 1 }, { id: 'hero', version: 0 }, { id: 'hero', version: -1 },
+      null, null, null, null, null,
     ])
   })
 })
@@ -56,6 +72,10 @@ describe('referenceAssets', () => {
       .toEqual(['alley.png', 'side.png', 'ref.png', 'shot1-last.png', 'shot1-last.png', 'shot1.mp4', 'score.wav'])
     // Without a version kind, a version reference stands for no asset.
     expect(referenceAssets(state, ['hero@2', 'score.wav'], []).map(entry => entry.id)).toEqual(['score.wav'])
+  })
+
+  it('adds nothing for a record output whose record, or whose output, the state does not hold', () => {
+    expect(referenceAssets(fixtureState(), ['missing#0', 'g1#9'], [])).toEqual([])
   })
 })
 

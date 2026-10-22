@@ -72,4 +72,29 @@ describe('followSlotTabs', () => {
     expect([...slotListeners.values()].every(listeners => listeners.size === 0)).toBe(true)
     expect(localeListeners.size).toBe(0)
   })
+
+  it('drops an entry without an id, sorts an entry without an order as order 0, and labels an entry without a label by its id', async () => {
+    const entries: Options[] = [
+      { id: 'late', order: 1, label: () => 'Late' },
+      { order: 0, label: () => 'Nameless' },
+      {},
+      { id: 'plain' },
+      { id: 'early', order: -1, label: () => 'Early' },
+    ]
+    const ctx = new Context()
+    ctx.provide('slots', {
+      entriesOfSlot: () => entries.map(entry => ({ options: entry })),
+      subscribe: () => () => {},
+    } as never)
+    const fiber = ctx.plugin({ inject: ['slots'], apply: (scope: Context) => { followSlotTabs(scope, 'dv.explore') } })
+    await fiber.await()
+
+    const host = document.createElement('div')
+    const root = createRoot(host)
+    act(() => { root.render(<Tabs slot="dv.explore" />) })
+    expect(host.textContent).toBe('early:Early plain:plain late:Late')
+
+    act(() => { root.unmount() })
+    await fiber.dispose()
+  })
 })

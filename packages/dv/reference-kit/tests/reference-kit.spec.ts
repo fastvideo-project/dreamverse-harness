@@ -89,6 +89,7 @@ describe('defineReference', () => {
     const coat = fixture.put('coat')
     const created = await run(fixture, 'test_ref.create', { test_ref: 'r1', name: 'Lead', description: 'red' }, [{ role: 'reference', ref: { asset: face } }])
     expect(created.status).toBe('done')
+    expect(ctx.dvProject.listOperations().find(spec => spec.name === 'test_ref.create')?.summarize(created)).toBe('test_ref Lead created')
     ctx.dvProject.registerComponent('test_use')
     ctx.dvProject.registerOperation({
       name: 'test_use.render', component: 'test_use', version: '1', description: 'Test render.', params: {},
@@ -113,6 +114,15 @@ describe('defineReference', () => {
     expect(records.find(entry => entry.id === restyled.id)?.supersedes).toEqual([renamed.id])
     expect(after.components.proj.stale).toEqual({ [render.id]: renamed.id })
     expect(ctx.dvProject.latestVersion(after, 'test_ref', 'r1')).toBe(3)
+  })
+
+  it('resolves no assets for a version that the ID does not have, or for an unknown ID', async () => {
+    const fixture = await start()
+    const { ctx } = fixture
+    await run(fixture, 'test_ref.create', { test_ref: 'r1', name: 'Lead' }, [{ role: 'reference', ref: { asset: fixture.put('face') } }])
+    const state = ctx.dvProject.getState(fixture.project)
+    expect(ctx.dvProject.assetsOf(state, { test_ref: 'r1', version: 2 })).toBeNull()
+    expect(ctx.dvProject.assetsOf(state, { test_ref: 'r9', version: 1 })).toBeNull()
   })
 
   it('refuses an empty ID, an ID with @ or #, an unknown ID and a create without a name', async () => {

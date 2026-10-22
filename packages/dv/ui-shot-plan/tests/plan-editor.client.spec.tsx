@@ -39,6 +39,7 @@ const HOST: EntryEditorHost = { run: vi.fn(), pickAssets: vi.fn(), preview: vi.f
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
   document.documentElement.lang = ''
 })
 
@@ -53,18 +54,18 @@ function canvasRegistries(): DvCanvas {
 }
 
 /**
- * Mount the plugin under a root frame that declares `dv.canvas.editor` and renders the entry of the plan node type for the
- * plan entry of `state`, as the canvas does in an entry's editor, in the Chinese interface.
- * @param state - the project state; its first plan entry is the edited node.
+ * Mount the plugin under a root frame that declares `dv.canvas.editor` and renders the entry of the plan node type for a
+ * plan entry, as the canvas does in an entry's editor, in the Chinese interface.
+ * @param state - the project state.
  * @param canvas - the `dvCanvas` registries the plugin reads.
+ * @param entry - the edited node; by default the first plan entry of `state`.
  * @returns the runtime, the plugin fiber, and the frame.
  */
-async function mount(state: WireState, canvas: DvCanvas) {
+async function mount(state: WireState, canvas: DvCanvas, entry = planNodeType.entries(state)[0]) {
   document.documentElement.lang = 'zh-CN'
   vi.stubGlobal('fetch', scriptedFetch({ state }).fetch)
   const runtime = await SlotTestRuntime.create()
   runtime.ctx.provide('dvCanvas', canvas)
-  const entry = planNodeType.entries(state)[0]
   if (entry === undefined) throw new Error('the state has no plan')
   const Frame = ({ renderSlot }: PropsRenderSlots<'dv.canvas.editor'>): ReactNode =>
     <section data-testid="editor">{renderSlot('dv.canvas.editor', { node: entry, state, host: HOST }, { entryKey: planNodeType.id })}</section>
@@ -72,7 +73,7 @@ async function mount(state: WireState, canvas: DvCanvas) {
   const plugin = await runtime.mount({ apply })
   const { container } = runtime.renderRoot()
   const editor = within(container).getByTestId('editor')
-  await waitFor(() => { expect(within(editor).getAllByRole('button').length).toBeGreaterThan(0) })
+  await waitFor(() => { expect(runtime.slots.entries('dv.canvas.editor')).toHaveLength(1) })
   return { runtime, plugin, editor }
 }
 
@@ -168,6 +169,103 @@ describe('PlanEditor', () => {
     expect(shot?.querySelector('dd')?.textContent).toBe('shot1.mp4Picture 1 · Heroscore.wav')
     expect(shot?.querySelector('p')?.textContent).toBe('<Video 1> then ')
     expect(shot?.querySelector('p img')?.getAttribute('src')).toBe(assetUrl('ref.png'))
+    await runtime.dispose()
+  })
+
+  it('shows the total duration and the aspect ratio in the version row, and each shot\'s duration on its card', async () => {
+    const state = fixtureState()
+    const [v1] = state.components.plan.plans['p1' as PlanId] ?? []
+    if (v1 === undefined) throw new Error('fixture lacks plan p1')
+    state.components.plan.plans['p1' as PlanId] = [{ ...v1, aspect_ratio: '16:9', shots: v1.shots.map((shot, index) => ({ ...shot, duration_sec: index + 1 })) }]
+    const { runtime, editor } = await mount(state, canvasRegistries())
+    expect(within(editor).getByText('2 个镜头 · 0:03 · 16:9')).toBeTruthy()
+    expect(editor.querySelector('li[data-shot="1"]')?.textContent).toContain('1 秒')
+    expect(editor.querySelector('li[data-shot="2"]')?.textContent).toContain('2 秒')
+    await runtime.dispose()
+  })
+
+  it('collapses only a prompt taller than 140 px under a fade, with a toggle that shows all of it and collapses it again', async () => {
+    // jsdom lays out nothing; a prompt box reports a height of 10 px per prompt character.
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) { return (this.textContent ?? '').length * 10 })
+    const state = fixtureState()
+    const [v1] = state.components.plan.plans['p1' as PlanId] ?? []
+    const [shot] = v1?.shots ?? []
+    if (v1 === undefined || shot === undefined) throw new Error('fixture lacks plan p1')
+    state.components.plan.plans['p1' as PlanId] = [{ ...v1, shots: [{ ...shot, prompt: 'hero walks through the rain' }, { ...shot, prompt: 'hero turns' }] }]
+    const { runtime, editor } = await mount(state, canvasRegistries())
+    const [longBox, shortBox] = [1, 2].map(number => editor.querySelector<HTMLElement>(`li[data-shot="${String(number)}"] dd:last-of-type > div`))
+    expect(shortBox?.children).toHaveLength(1)
+    expect(within(editor).getAllByRole('button', { name: '展开全部提示词' })).toHaveLength(1)
+    const toggle = within(editor).getByRole('button', { name: '展开全部提示词' })
+    expect([toggle.getAttribute('aria-expanded'), longBox?.style.maxHeight, longBox?.children.length]).toEqual(['false', '140px', 2])
+    fireEvent.click(toggle)
+    expect([toggle.textContent, toggle.getAttribute('aria-expanded'), longBox?.style.maxHeight, longBox?.children.length]).toEqual(['收起提示词', 'true', 'none', 1])
+    fireEvent.click(toggle)
+    expect([toggle.textContent, toggle.getAttribute('aria-expanded'), longBox?.style.maxHeight, longBox?.children.length]).toEqual(['展开全部提示词', 'false', '140px', 2])
+    await runtime.dispose()
+  })
+
+  it('names a version written in a form that parseInputRef accepts, such as hero@1.0, by its version kind', async () => {
+    const canvas = canvasRegistries()
+    canvas.versionKinds.register(CHARACTERS)
+    const state = fixtureState()
+    const [v1] = state.components.plan.plans['p1' as PlanId] ?? []
+    if (v1 === undefined) throw new Error('fixture lacks plan p1')
+    state.components.plan.plans['p1' as PlanId] = [{ ...v1, references: ['hero@1.0'] }]
+    const { runtime, editor } = await mount(state, canvas)
+    await waitFor(() => { expect(within(editor).getByText('计划参考').textContent).toBe('计划参考Picture 1 · Hero') })
+    await runtime.dispose()
+  })
+
+  it('measures a shot prompt again when the chosen version shows a different prompt in the same shot', async () => {
+    // jsdom lays out nothing; a prompt box reports a height of 10 px per prompt character.
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) { return (this.textContent ?? '').length * 10 })
+    const state = fixtureState()
+    const [v1] = state.components.plan.plans['p1' as PlanId] ?? []
+    const [shot] = v1?.shots ?? []
+    if (v1 === undefined || shot === undefined) throw new Error('fixture lacks plan p1')
+    state.components.plan.plans['p1' as PlanId] = [
+      { ...v1, shots: [{ ...shot, prompt: 'hero walks through the rain' }] },
+      { ...v1, version: 2, shots: [{ ...shot, prompt: 'hero turns' }] },
+    ]
+    const { runtime, editor } = await mount(state, canvasRegistries())
+    const toggles = (): HTMLElement[] => within(editor).queryAllByRole('button', { name: '展开全部提示词' })
+    expect(toggles()).toHaveLength(0)
+    fireEvent.click(within(editor).getByRole('button', { name: '第 1 版' }))
+    expect(toggles()).toHaveLength(1)
+    fireEvent.click(within(editor).getByRole('button', { name: '第 2 版' }))
+    expect(toggles()).toHaveLength(0)
+    await runtime.dispose()
+  })
+
+  it('measures a shot prompt again when a reference starts to resolve and its Picture N token turns into an image', async () => {
+    // jsdom lays out nothing; a prompt box reports a height of 10 px per prompt character, and an image adds none.
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) { return (this.textContent ?? '').length * 10 })
+    const canvas = canvasRegistries()
+    const state = fixtureState()
+    const [v1] = state.components.plan.plans['p1' as PlanId] ?? []
+    if (v1 === undefined) throw new Error('fixture lacks plan p1')
+    state.components.plan.plans['p1' as PlanId] = [{
+      ...v1, references: ['hero@1'],
+      shots: [{ prompt: '<Picture 1> walks', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3' }],
+    }]
+    const { runtime, editor } = await mount(state, canvas)
+    const toggles = (): HTMLElement[] => within(editor).queryAllByRole('button', { name: '展开全部提示词' })
+    // Without a version kind, hero@1 resolves to nothing, and the 17-character token text overflows.
+    expect(toggles()).toHaveLength(1)
+    act(() => { canvas.versionKinds.register(CHARACTERS) })
+    // After the registration, Hero's image stands for <Picture 1>; the remaining 6 characters fit.
+    await waitFor(() => { expect(toggles()).toHaveLength(0) })
+    await runtime.dispose()
+  })
+
+  it('shows nothing for an entry whose plan the state does not hold', async () => {
+    const state = fixtureState()
+    const [entry] = planNodeType.entries(state)
+    if (entry === undefined) throw new Error('fixture lacks plan p1')
+    const { runtime, editor } = await mount(state, canvasRegistries(), { ...entry, id: 'plan:p9' })
+    // The registered editor entry renders inside its slot element and leaves it empty.
+    expect(editor.querySelector('[data-slot="dv.canvas.editor"]')?.childElementCount).toBe(0)
     await runtime.dispose()
   })
 
