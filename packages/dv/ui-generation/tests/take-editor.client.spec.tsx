@@ -174,6 +174,15 @@ describe('the take editor', () => {
     expect(view.queryByTestId('dv-take-player')).toBeNull()
   })
 
+  it('shows no failure banner for a failed take whose failure has no message', async () => {
+    document.documentElement.lang = 'zh-CN'
+    const { view } = await openEditor('g1', {
+      edit: record => ({ ...record, status: 'failed', outputs: [], error: { code: 'operation_failed', message: '' } }),
+    })
+    expect(view.getByTestId('dv-canvas-render-mode')).toBeTruthy()
+    expect([view.queryByRole('note'), view.queryByText(/失败原因/)]).toEqual([null, null])
+  })
+
   it('shows no params and no 渲染新版本 for a take whose operation the declarations do not name', async () => {
     document.documentElement.lang = 'zh-CN'
     const { container, view } = await openEditor('g1', { operations: [] })

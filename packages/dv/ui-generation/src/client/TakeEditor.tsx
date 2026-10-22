@@ -137,7 +137,8 @@ export function TakeEditor(props: TakeEditorProps): ReactNode {
       setRenderError(errorMessage(error))
     })
   }
-  const failure = record.error?.message ?? null
+  // `||` also maps an empty message to null, so a failure without a reason shows no banner.
+  const failure = record.error?.message || null
   const shown = assets.get(node.assets[0] ?? '')
   const fieldOf = (param: FormField): ReactNode => (
     <ParamField key={param.key} param={param} pick={pick} onText={(text) => { setTexts(current => ({ ...current, [param.key]: text })) }} />
