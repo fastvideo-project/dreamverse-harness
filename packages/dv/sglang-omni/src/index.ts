@@ -144,8 +144,8 @@ function wavDurationSec(wav: Uint8Array): number | null {
 /**
  * Speak one request through `POST /v1/audio/speech`.
  * @returns the WAV clip, its duration from its header, and the request's wall-clock seconds as its GPU seconds.
- * @throws Error when the clip stopped before the text ended (`x-finish-reason` other than `stop`), when the body is not
- *   a WAV file with a duration, or as `call` throws.
+ * @throws Error when the clip stopped at the length limit (`x-finish-reason` `length`), when `x-finish-reason` is
+ *   missing or another value than `stop`, when the body is not a WAV file with a duration, or as `call` throws.
  */
 async function speak(baseUrl: string, request: AudioRequest, signal?: AbortSignal): Promise<GeneratedAudio> {
   const started = performance.now()
@@ -155,8 +155,11 @@ async function speak(baseUrl: string, request: AudioRequest, signal?: AbortSigna
     ...signal === undefined ? {} : { signal },
   })
   const bytes = new Uint8Array(await response.arrayBuffer())
-  if (response.headers.get('x-finish-reason') !== 'stop') {
-    throw new Error('The server stopped the clip at its length limit before the text ended; split the text into shorter clips.')
+  const finish = response.headers.get('x-finish-reason')
+  if (finish === 'length') throw new Error('The server stopped the clip at its length limit before the text ended; split the text into shorter clips.')
+  if (finish !== 'stop') {
+    throw new Error(`The server at ${baseUrl} answered POST /v1/audio/speech with x-finish-reason ${JSON.stringify(finish)}, not "stop", `
+      + 'so the clip may not hold the whole text.')
   }
   const durationSec = wavDurationSec(bytes)
   if (durationSec === null) throw new Error(`The server at ${baseUrl} answered POST /v1/audio/speech with a body that is not a WAV file.`)

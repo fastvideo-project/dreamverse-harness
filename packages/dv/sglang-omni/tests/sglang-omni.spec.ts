@@ -160,6 +160,12 @@ describe('dv-sglang-omni', () => {
     const [cut] = fixture.ctx.dvProject.listHistory({ project: fixture.project, operation: 'audio.generate' })
     expect(cut?.record).toMatchObject({ status: 'failed', outputs: [] })
     const render = () => fixture.entry().render(speech('Hello.'))
+    const { 'x-finish-reason': _stop, ...noReason } = speechHeaders('stop')
+    for (const [headers, reason] of [[noReason, 'null'], [{ ...noReason, 'x-finish-reason': 'abort' }, '"abort"']] as const) {
+      fake.speech = { status: 200, headers, body: wav(65_536) }
+      await expect(render()).rejects.toThrow(`The server at ${fake.url} answered POST /v1/audio/speech with x-finish-reason ${reason}, `
+        + 'not "stop", so the clip may not hold the whole text.')
+    }
     const answered = `The server at ${fake.url} answered POST /v1/audio/speech with HTTP 400: `
     fake.speech = json(400, '{"error":{"message":"Drama 3 request: unknown voice \'alloy\'; use default or an uploaded voice",'
       + '"type":"BadRequestError","param":null,"code":400}}')
