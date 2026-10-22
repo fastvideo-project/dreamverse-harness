@@ -79,6 +79,18 @@
     - id: dv-image-generate
       name: '@dv/image-generate'
 
+    # Speech models on the local SGLang-Omni server, and dv_audio_generate, which exists while one is registered.
+    - id: dv-sglang-omni
+      name: '@dv/sglang-omni'
+      config:
+        models:
+          fish-audio-drama-3:
+            baseUrl: http://127.0.0.1:8000
+            gpuSecondsPerCall: 3
+
+    - id: dv-audio-generate
+      name: '@dv/audio-generate'
+
     - id: dv-character
       name: '@dv/character'
 

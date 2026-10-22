@@ -16,6 +16,7 @@
   "dependencies": {
     "@dv/api": "workspace:*",
     "@dv/asset-pool": "workspace:*",
+    "@dv/audio-generate": "workspace:*",
     "@dv/character": "workspace:*",
     "@dv/chat-references": "workspace:*",
     "@dv/fastvideo": "workspace:*",
@@ -27,6 +28,7 @@
     "@dv/models": "workspace:*",
     "@dv/project": "workspace:*",
     "@dv/sglang-diffusion": "workspace:*",
+    "@dv/sglang-omni": "workspace:*",
     "@dv/shot-plan": "workspace:*",
     "@dv/shot-render": "workspace:*",
     "@dv/style": "workspace:*",

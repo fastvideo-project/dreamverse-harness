@@ -2128,6 +2128,9 @@ importers:
       '@dv/asset-pool':
         specifier: workspace:*
         version: link:../../dv/asset-pool
+      '@dv/audio-generate':
+        specifier: workspace:*
+        version: link:../../dv/audio-generate
       '@dv/character':
         specifier: workspace:*
         version: link:../../dv/character
@@ -2161,6 +2164,9 @@ importers:
       '@dv/sglang-diffusion':
         specifier: workspace:*
         version: link:../../dv/sglang-diffusion
+      '@dv/sglang-omni':
+        specifier: workspace:*
+        version: link:../../dv/sglang-omni
       '@dv/shot-plan':
         specifier: workspace:*
         version: link:../../dv/shot-plan
