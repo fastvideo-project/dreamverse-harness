@@ -6,10 +6,8 @@
  */
 import type { StyleState } from '@dv/style/types'
 import { defineReferenceUi } from '@dv/ui-reference-kit/reference-kit.tsx'
-import type { ReferenceNodeData } from '@dv/ui-reference-kit/reference-kit.tsx'
 
 declare module '@dv/ui-kit/types.ts' { interface ComponentStates { style: StyleState } }
-declare module '@dv/ui-canvas/contract' { interface NodeDataMap { style: ReferenceNodeData } }
 
 /** The style noun on the canvas, in the asset picker, in the `@` menu and in the History panel. */
 export const { inject, apply } = defineReferenceUi({

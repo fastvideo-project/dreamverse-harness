@@ -9,13 +9,11 @@
  */
 import type { CSSProperties, ReactNode } from 'react'
 import type { PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { NodeAction, NodeEntry, NodeType } from '@dv/ui-canvas/contract'
+import type { NodeAction, NodeEntry, NodeType, NodeView } from '@dv/ui-canvas/contract'
 import { pickText } from '@dv/ui-kit/locale.ts'
 import { playerBox } from '@dv/ui-kit/player-box.ts'
 import type { ProjectRecord } from '@dv/ui-kit/types.ts'
 import type {} from '@dv/ui-media/contract'
-
-declare module '@dv/ui-canvas/contract' { interface NodeDataMap { asset: null } }
 
 /** The package name: the owner of the asset node type and its action. */
 const ID = '@dv/ui-asset-pool'
@@ -23,7 +21,7 @@ const ID = '@dv/ui-asset-pool'
 const FRAME_HEIGHT = 117
 
 /** The asset node type. */
-export const assetNodeType: NodeType<'asset'> = {
+export const assetNodeType: NodeType = {
   id: ID,
   type: 'asset',
   label: () => pickText('素材', 'Asset'),
@@ -31,11 +29,11 @@ export const assetNodeType: NodeType<'asset'> = {
   column: 0,
   entries({ state, placed }) {
     const assets = new Map(state.assets.map(asset => [asset.id, asset]))
-    const entry = (id: string, record: ProjectRecord | null, assetId: string): NodeEntry<'asset'> => {
+    const entry = (id: string, record: ProjectRecord | null, assetId: string): NodeEntry => {
       const asset = assets.get(assetId)
       const seconds = asset?.duration_sec ?? null
       return {
-        id, title: asset?.name ?? assetId, record, assets: [assetId], standIn: true, bodyHeight: FRAME_HEIGHT, data: null,
+        id, title: asset?.name ?? assetId, record, assets: [assetId], standIn: true, bodyHeight: FRAME_HEIGHT,
         ...seconds === null ? {} : { meta: `${seconds.toFixed(1)}s` }, ...record === null ? { ref: { kind: 'asset', id: assetId } } : {},
       }
     }
@@ -79,7 +77,7 @@ export const unplaceAction: NodeAction = {
   id: `${ID}:unplace`,
   label: () => pickText('从画布移除', 'Remove from canvas'),
   order: 20,
-  shows: node => node.type === 'asset',
+  shows: (node): node is NodeView => node.type === 'asset',
   run(node, host) {
     host.close()
     for (const asset of node.assets) host.setPlaced(asset, false)

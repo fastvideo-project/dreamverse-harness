@@ -33,7 +33,7 @@ kind: "package-reference"
 
 | 描述符 | 注册表 | 值 |
 | --- | --- | --- |
-| `planNodeType` | `dvCanvas.nodeTypes` | `id: '@dv/ui-shot-plan'`、`type: 'plan'`、标签 `分镜计划` / `Plan`、颜色 `var(--dv-kind-plan)`、第 1 列；每个有版本的分镜计划一个切片条目：ID 为 `plan:<PlanId>`，`record` 是写下最新版本的记录，`records` 是写下较早版本的记录（第 1 版的分镜计划没有），标题是镜头数，每个镜头都有时长时后接 ` · <总时长>`，没有素材，`slots` 是镜头数，`bodyHeight` 为 46，`data: null`，类型来自本包合并进 `NodeDataMap` 的 `plan: null` 条目 |
+| `planNodeType` | `dvCanvas.nodeTypes` | `id: '@dv/ui-shot-plan'`、`type: 'plan'`、标签 `分镜计划` / `Plan`、颜色 `var(--dv-kind-plan)`、第 1 列；每个有版本的分镜计划一个切片条目：ID 为 `plan:<PlanId>`，`record` 是写下最新版本的记录，`records` 是写下较早版本的记录（第 1 版的分镜计划没有），标题是镜头数，每个镜头都有时长时后接 ` · <总时长>`，没有素材，`slots` 是镜头数，`bodyHeight` 为 46 |
 | `PlanCard` | `dv.canvas.card` 插槽 | 键 `plan`；卡片正文：类型标签和显示的版本，即节点 `records` 的数量加一，`分镜计划 · 第 2 版` / `Plan · v2`，使用画布的文字缩放 |
 | `PlanEditor` | `dv.canvas.editor` 插槽 | 键 `plan`，所有者属性 `{ node, state, operations, host }`（只使用 `node` 和 `state`），以及 inject 的 `hooks`：`chainAnchors` 和 `versionKinds`（`dvCanvas` 注册表）和 `taskLabels`（`GET /api/dv/tasks`，只加载一次）；显示所选版本的 `title`，在分镜计划的各版本之间切换（`第 1 版` / `v1`……；先显示最新版本），并显示所选版本的状态（某个已注册的链锚点把它列为节点的已批准版本时为 `已批准` / `Approved`，在批准前被后来的版本取代时为 `已被第 N 版取代` / `Replaced by vN`，否则为 `待批准` / `Awaiting approval`）、镜头数、总时长、画幅比例和参考素材，然后每个镜头一张卡片：时长、模型和生成任务标签、按输入顺序列出的各种媒体类型的参考素材，每个都经 `dv.media` 以用途 `thumb` 绘制（每张图片编号为 `Picture N`，名字取第一个能给出该版本名字的 `VersionKind`，否则取素材名）、是否接上一镜头，以及提示词，其中每个 `Picture N` 或 `<Picture N>` 标记显示为那张图片；生成任务为 `t2v` 的镜头没有参考 |
 | `planReferencesInUse` | `dvCanvas.recordsInUse` | `id: '@dv/ui-shot-plan'`；`uses` 给出每个分镜计划最新版本及其镜头的参考中每个素材的产出记录（`created_by`）；`c1@1` 这样的版本引用不对应记录 |

@@ -20,15 +20,13 @@ import { apply as historyApply, inject as historyInject } from '../../ui-history
 import { asset, fixtureState, record, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import { defineReferenceUi, referenceDescriptors } from '../src/client/reference-kit.tsx'
-import type { ReferenceNodeData, ReferenceUiSpec } from '../src/client/reference-kit.tsx'
-
-declare module '@dv/ui-canvas/contract' { interface NodeDataMap { test_ref: ReferenceNodeData } }
+import type { ReferenceUiSpec } from '../src/client/reference-kit.tsx'
 
 /** The reference noun `test_ref`. */
 const SPEC = {
   id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref,
   label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 4 },
-} satisfies ReferenceUiSpec<'test_ref'>
+} satisfies ReferenceUiSpec
 const testRef = defineReferenceUi(SPEC)
 const descriptors = referenceDescriptors(SPEC)
 
@@ -73,11 +71,11 @@ describe('referenceDescriptors', () => {
     document.documentElement.lang = 'zh-CN'
     const { nodeType } = descriptors
     const entries = nodeType.entries?.({ state: refState(), operations: [], language: 'zh', placed: new Set() }) ?? []
-    const facts = entries.map(entry => [entry.id, entry.title, entry.assets, entry.data, entry.record?.id, entry.records, entry.ref])
+    const facts = entries.map(entry => [entry.id, entry.title, entry.assets, entry.record?.id, entry.records, entry.ref])
     expect(facts).toEqual([
-      ['test_ref:hero', 'Hero', ['shot1-last.png', 'ref.png'], { references: ['shot1-last.png', 'ref.png'] }, 'e2', ['e1'], { kind: 'test_ref', id: 'hero' }],
-      ['test_ref:alley', 'alley', ['alley.png'], { references: ['alley.png'] }, undefined, [], { kind: 'test_ref', id: 'alley' }],
-      ['test_ref:noir', 'Noir', [], { references: [] }, undefined, [], { kind: 'test_ref', id: 'noir' }],
+      ['test_ref:hero', 'Hero', ['shot1-last.png', 'ref.png'], 'e2', ['e1'], { kind: 'test_ref', id: 'hero' }],
+      ['test_ref:alley', 'alley', ['alley.png'], undefined, [], { kind: 'test_ref', id: 'alley' }],
+      ['test_ref:noir', 'Noir', [], undefined, [], { kind: 'test_ref', id: 'noir' }],
     ])
     expect([nodeType.id, nodeType.type, nodeType.column, nodeType.color, nodeType.label()])
       .toEqual(['@dv/ui-test-ref', 'test_ref', 0, 'var(--dv-kind-character)', '参考'])

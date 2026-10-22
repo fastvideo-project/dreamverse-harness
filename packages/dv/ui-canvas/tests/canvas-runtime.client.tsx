@@ -23,14 +23,11 @@ import type { FixtureState, Recorded } from '../../ui-kit/tests/fixture.client.t
 import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
 import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import { defineReferenceUi } from '../../ui-reference-kit/src/client/reference-kit.tsx'
-import type { ReferenceNodeData } from '../../ui-reference-kit/src/client/reference-kit.tsx'
 import { apply as shotPlanApply, inject as shotPlanInject } from '../../ui-shot-plan/src/client/index.ts'
 import { apply as shotRenderApply, inject as shotRenderInject } from '../../ui-shot-render/src/client/index.ts'
 import { CANVAS_ID } from '../src/client/definition.ts'
 import { apply, inject } from '../src/client/index.ts'
 import type { CenterRequest } from '@dv/ui-shell/contract'
-
-declare module '../src/client/contract/index.ts' { interface NodeDataMap { test_ref: ReferenceNodeData } }
 
 /** The reference noun `test_ref` of the fixture, declared as the UI package of a noun declares it. */
 export const testRef = defineReferenceUi({

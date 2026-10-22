@@ -41,7 +41,7 @@ The Host half registers nothing. The browser half registers each descriptor whil
 | File | Content |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | The inert Host Loader entry |
-| [`src/client/index.ts`](src/client/index.ts) | The `defineReferenceUi` declaration, whose `inject` and `apply` the file exports, and the `character: ReferenceNodeData` entry of `NodeDataMap` |
+| [`src/client/index.ts`](src/client/index.ts) | The `defineReferenceUi` declaration, whose `inject` and `apply` the file exports |
 
 -----
 

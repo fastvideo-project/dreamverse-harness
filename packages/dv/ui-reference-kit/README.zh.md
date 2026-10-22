@@ -25,11 +25,9 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-把 `@dv/ui-reference-kit` 加入名词 UI 包的 `devDependencies`，并导入 `@dv/ui-reference-kit/reference-kit.tsx`；`./*` 导出映射到 `src/client/*`，名词包的客户端 bundle 会内联该工具包。工具包没有 Loader 行：它的 Host 半边（`src/index.ts`）不导出任何内容。名词包把自己的节点数据合并进 `@dv/ui-canvas/contract` 的 `NodeDataMap` 并导出插件，`@dv/ui-character` 就是这样做的：
+把 `@dv/ui-reference-kit` 加入名词 UI 包的 `devDependencies`，并导入 `@dv/ui-reference-kit/reference-kit.tsx`；`./*` 导出映射到 `src/client/*`，名词包的客户端 bundle 会内联该工具包。工具包没有 Loader 行：它的 Host 半边（`src/index.ts`）不导出任何内容。名词包导出插件，`@dv/ui-character` 就是这样做的：
 
 ```ts ignore-check
-declare module '@dv/ui-canvas/contract' { interface NodeDataMap { character: ReferenceNodeData } }
-
 export const { inject, apply } = defineReferenceUi({
   id: '@dv/ui-character', key: 'character', slice: state => state.components.character,
   label: ['角色', 'Character'], mention: { section: ['角色', 'Characters'], order: 1 },
@@ -42,16 +40,14 @@ export const { inject, apply } = defineReferenceUi({
 
 | 符号 | 含义 |
 | --- | --- |
-| `ReferenceUiSpec<K, V>` | 一个名词：`id`（包名，每个描述符的所有者）、`key`（组件键，同时也是参考种类、节点类型和节点 ID 前缀）、`slice(state)`（名词的切片，从条目 ID 到其各版本的映射，名词的 Host 半边未加载时为 `undefined`）、`label`（卡片标签和选择窗口分区的中英文文本对），以及 `mention`（`@` 菜单分区的 `{ section, order }`） |
+| `ReferenceUiSpec<V>` | 一个名词：`id`（包名，每个描述符的所有者）、`key`（组件键，同时也是参考种类、节点类型和节点 ID 前缀）、`slice(state)`（名词的切片，从条目 ID 到其各版本的映射，名词的 Host 半边未加载时为 `undefined`）、`label`（卡片标签和选择窗口分区的中英文文本对），以及 `mention`（`@` 菜单分区的 `{ section, order }`） |
 | `WireReferenceVersion` | wire 发送的条目的一个版本：`id`、`version`、`name`、`description`、`references` 和 `created_by`（写下它的记录） |
-| `ReferenceNodeData` | 名词节点的数据：`{ references }`，即条目最新版本的参考 |
-| `ReferenceKey` | 数据为 `ReferenceNodeData` 的 `NodeDataMap` 键 |
 | `referenceDescriptors(spec)` | 为一个名词返回 `{ nodeType, versionKind, referencesInUse, mentionKind, historyRow }` |
 | `defineReferenceUi(spec)` | 返回注册这些描述符以及卡片和编辑器条目的 `UiPlugin`（`{ inject: [], apply }`） |
 
 描述符只读取名词自己的切片和 `proj` 记录：
 
-- `nodeType` 是带切片条目的 `NodeType`：每个有版本的条目一个节点 `<key>:<id>`，位于第 0 列，颜色为 `var(--dv-kind-character)`，主体高 30 px。标题是最新版本的名称，没有时为条目 ID。它的 `record` 是写下最新版本的 `proj` 记录，`records` 是较早版本的记录，`assets` 和 `data.references` 是最新的参考，`ref` 是 `{ kind: key, id }`。
+- `nodeType` 是带切片条目的 `NodeType`：每个有版本的条目一个节点 `<key>:<id>`，位于第 0 列，颜色为 `var(--dv-kind-character)`，主体高 30 px。标题是最新版本的名称，没有时为条目 ID。它的 `record` 是写下最新版本的 `proj` 记录，`records` 是较早版本的记录，`assets` 是最新的参考，`ref` 是 `{ kind: key, id }`。
 - `versionKind` 是一个 `VersionKind`：`node(id)` 为 `<key>:<id>`，`latest(state)` 列出每个条目的最新版本，`name` 和 `assets` 读取某个版本，版本不存在时分别为 null 和空。
 - `referencesInUse` 是一个 `RecordsInUse`：`uses(state)` 列出最新参考的产出记录（`proj.created_by`），所以画布会保留这些版本的绘制。
 - `mentionKind` 是 `@dv/ui-composer` 的 `MentionKind`：条目为 `dv:<key>/<id>`，标签为名称（没有时为 ID），描述为说明的前 40 个字符，第一个参考作为缩略图。

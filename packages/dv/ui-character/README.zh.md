@@ -41,7 +41,7 @@ Host 半边不注册任何东西。浏览器半边在各服务存在时注册每
 | 文件 | 内容 |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | 不做事的 Host Loader 入口 |
-| [`src/client/index.ts`](src/client/index.ts) | `defineReferenceUi` 声明（文件导出它的 `inject` 和 `apply`），以及 `NodeDataMap` 的 `character: ReferenceNodeData` 条目 |
+| [`src/client/index.ts`](src/client/index.ts) | `defineReferenceUi` 声明（文件导出它的 `inject` 和 `apply`） |
 
 -----
 

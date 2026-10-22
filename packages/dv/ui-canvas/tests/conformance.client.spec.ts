@@ -13,7 +13,7 @@ import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-righ
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { WireState } from '@dv/ui-kit/types.ts'
 import { defineReferenceUi } from '../../ui-reference-kit/src/client/reference-kit.tsx'
-import type { ReferenceNodeData, WireReferenceVersion } from '../../ui-reference-kit/src/client/reference-kit.tsx'
+import type { WireReferenceVersion } from '../../ui-reference-kit/src/client/reference-kit.tsx'
 import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
 import { apply as shotPlanApply, inject as shotPlanInject } from '../../ui-shot-plan/src/client/index.ts'
 import { apply as shotRenderApply, inject as shotRenderInject } from '../../ui-shot-render/src/client/index.ts'
@@ -26,7 +26,6 @@ import { APPROVAL, CLIPS, conformanceCases, OPS } from './fixtures/conformance-s
 import type { ComparedGraph, ComparedNode } from './fixtures/conformance-states.client.ts'
 
 declare module '@dv/ui-kit/types.ts' { interface ComponentStates { test_ref: Record<string, WireReferenceVersion[]> } }
-declare module '../src/client/contract/index.ts' { interface NodeDataMap { test_ref: ReferenceNodeData } }
 
 /** The graphs of the canvas of `origin/main` at the branch's merge base, written by `fixtures/main-graph.gen.client.ts`. */
 const MAIN = JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/main-graph.json'), 'utf8')) as Record<string, ComparedGraph>
@@ -159,8 +158,8 @@ describe('claims of an unloaded type', () => {
   it('keeps a claimed record of an earlier chain drawn while a current record of another type reads it as its first frame', async () => {
     const { registrations, runtime } = await registered()
     const still: NodeType = {
-      id: '@dv/ui-test-still', type: 'none', label: () => 'still', color: '', column: 2,
-      claimed: { operations: ['image.generate'], status: { running: () => '', failed: () => '' }, entry: () => ({ title: 'i1', bodyHeight: 117, data: null }) },
+      id: '@dv/ui-test-still', type: 'still', label: () => 'still', color: '', column: 2,
+      claimed: { operations: ['image.generate'], status: { running: () => '', failed: () => '' }, entry: () => ({ title: 'i1', bodyHeight: 117 }) },
     }
     const withStill = { ...registrations, nodeTypes: [...registrations.nodeTypes, still] }
     const graph = buildCanvasGraph(imageState(), new Set(), OPS, 'zh', withStill)

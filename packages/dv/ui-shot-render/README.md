@@ -58,7 +58,7 @@ The card shows what it has while the arguments stream. Until the two lists load,
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-`src/client/index.ts` exports the `inject` and `apply` of one `defineGenerationUi` call and merges `take: null` into `NodeDataMap` of `@dv/ui-canvas/contract`, so a take node carries no plugin data. The declaration's `references` rule turns the reference chips off for task `t2v`, and its `preview` picks the image output, which the kit uses as the card's media, the editor's poster, the History thumbnail, and the frame of a plan's frame grid. The kit reads `GET /api/dv/operations` and `GET /api/dv/tasks` once, on the first subscription of the chat card or the take editor (`loadedOnce` of `@dv/ui-kit`); the parsed arguments, the outputs, and the history link come from `@dv/ui-kit/tool-rows.tsx`.
+`src/client/index.ts` exports the `inject` and `apply` of one `defineGenerationUi` call. The declaration's `references` rule turns the reference chips off for task `t2v`, and its `preview` picks the image output, which the kit uses as the card's media, the editor's poster, the History thumbnail, and the frame of a plan's frame grid. The kit reads `GET /api/dv/operations` and `GET /api/dv/tasks` once, on the first subscription of the chat card or the take editor (`loadedOnce` of `@dv/ui-kit`); the parsed arguments, the outputs, and the history link come from `@dv/ui-kit/tool-rows.tsx`.
 
 | File | Content |
 | --- | --- |

@@ -5,10 +5,7 @@
  *
  * @module @dv/ui-shot-render/client
  */
-import type {} from '@dv/ui-canvas/contract'
 import { defineGenerationUi } from '@dv/ui-generation/generation-kit.tsx'
-
-declare module '@dv/ui-canvas/contract' { interface NodeDataMap { take: null } }
 
 /** The video takes of `shot.render`; a take's still, its image output, stands for it in small views. */
 export const { inject, apply } = defineGenerationUi({

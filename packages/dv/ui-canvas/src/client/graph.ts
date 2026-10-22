@@ -13,19 +13,16 @@ import { versionRefOf } from '@dv/ui-kit/references.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import type { NodePosition, ProjectRecord, RecordInput, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import type {
-  AnchoredChain, ChainAnchor, ClaimedEntry, ClaimedRecord, NodeDataMap, NodeEntry, NodeFlags, NodeInput, NodeType, OperationRecord,
-  RecordsInUse,
+  AnchoredChain, ChainAnchor, ClaimedEntry, ClaimedRecord, NodeEntry, NodeFlags, NodeInput, NodeType, OperationRecord, RecordsInUse,
 } from './contract/index.ts'
 
-/** One drawn node: its entry, its type, and the facts that the canvas derived. */
-export type CanvasNode<K extends keyof NodeDataMap = keyof NodeDataMap> = { [P in K]: CanvasNodeOf<P> }[K]
-
 /**
- * A drawn node of one type. A claimed node is built by the canvas from its record and draws that record's edges.
+ * One drawn node: its entry, its type, and the facts that the canvas derived. A claimed node is built by the canvas
+ * from its record and draws that record's edges.
  */
-type CanvasNodeOf<K extends keyof NodeDataMap> = NodeEntry<K> & ({ claimed: true; record: OperationRecord } | { claimed: false }) & {
-  type: K
-  nodeType: NodeType<K>
+export type CanvasNode = NodeEntry & ({ claimed: true; record: OperationRecord } | { claimed: false }) & {
+  type: string
+  nodeType: NodeType
   flags: NodeFlags
   badges: string[]
   chain: AnchoredChain | null
@@ -36,7 +33,7 @@ type CanvasNodeOf<K extends keyof NodeDataMap> = NodeEntry<K> & ({ claimed: true
 }
 
 /** A drawn claimed node, whose `record` is the record it was built from. */
-type ClaimedCanvasNode<K extends keyof NodeDataMap = keyof NodeDataMap> = CanvasNode<K> & { claimed: true; record: OperationRecord }
+type ClaimedCanvasNode = Extract<CanvasNode, { claimed: true }>
 
 /** How one node fed another: an input of the target's record (with its role), its chain anchor, or its `based_on`. */
 export interface CanvasEdge {
@@ -205,20 +202,20 @@ function versionsOf(
 
 /**
  * The nodes of one type: its slice nodes, split into stand-ins and the rest, and a claimed node for each current record
- * that it claims. Generic over the data key, so each node's `type`, `nodeType` and `data` belong to one type.
+ * that it claims.
  * @param nodeType - the type.
  * @param input - what the canvas hands the type, with the current records that it claims.
  * @param flagsOf - the display states of a record.
  * @returns the type's nodes.
  */
-function nodesOf<K extends keyof NodeDataMap>(
-  nodeType: NodeType<K>, input: NodeInput, flagsOf: (record: ProjectRecord | null) => NodeFlags,
-): { slice: Array<CanvasNode<K>>; standIns: Array<CanvasNode<K>>; claimed: Array<ClaimedCanvasNode<K>> } {
-  const sliceNode = (entry: NodeEntry<K>): CanvasNode<K> => ({
+function nodesOf(
+  nodeType: NodeType, input: NodeInput, flagsOf: (record: ProjectRecord | null) => NodeFlags,
+): { slice: CanvasNode[]; standIns: CanvasNode[]; claimed: ClaimedCanvasNode[] } {
+  const sliceNode = (entry: NodeEntry): CanvasNode => ({
     ...entry, type: nodeType.type, nodeType, claimed: false, flags: flagsOf(entry.record), badges: [], chain: null, version: null,
     x: 0, y: 0,
   })
-  const claimedNode = (each: ClaimedRecord, entry: ClaimedEntry<K>): ClaimedCanvasNode<K> => ({
+  const claimedNode = (each: ClaimedRecord, entry: ClaimedEntry): ClaimedCanvasNode => ({
     ...entry, id: each.record.id, assets: each.record.outputs, type: nodeType.type, nodeType, claimed: true, record: each.record,
     flags: flagsOf(each.record), badges: [], chain: each.chain, version: each.version, x: 0, y: 0,
   })
@@ -272,7 +269,7 @@ export function buildCanvasGraph(
   for (const nodeType of nodeTypes) {
     const mine = currentList.filter(record => ownerOf.get(record.operation) === nodeType)
       .map((record): ClaimedRecord => ({ record, chain: chains.anchored(record), version: versions.get(record.id) ?? null }))
-    const nodes = nodesOf<keyof NodeDataMap>(nodeType, { ...base, records: mine }, flagsOf)
+    const nodes = nodesOf(nodeType, { ...base, records: mine }, flagsOf)
     slice.push(...nodes.slice)
     standIns.push(...nodes.standIns)
     claimed.push(...nodes.claimed)

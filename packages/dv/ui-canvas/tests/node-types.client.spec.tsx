@@ -14,8 +14,6 @@ import { asset } from '../../ui-kit/tests/fixture.client.tsx'
 import type { NodeType } from '../src/client/contract/index.ts'
 import { forgetCanvasStorage, mountCanvas } from './canvas-runtime.client.tsx'
 
-declare module '../src/client/contract/index.ts' { interface NodeDataMap { test_prop: { finish: string } } }
-
 usePinnedBrowserLanguages('zh-CN')
 
 afterEach(() => {
@@ -25,11 +23,10 @@ afterEach(() => {
 })
 
 /** A slice node type of a prop noun: one node per project, in the plans' column 1, that owns the umbrella image. */
-const PROPS: NodeType<'test_prop'> = {
+const PROPS: NodeType = {
   id: '@dv/ui-test-prop', type: 'test_prop', label: () => '道具', color: 'rgb(1, 2, 3)', column: 1,
   entries: ({ state }) => [{
-    id: 'prop:p1', title: '红伞', meta: '第 1 版', record: null, assets: ['umbrella.png'], bodyHeight: 40,
-    data: { finish: `matte · ${state.project.id}` },
+    id: `prop:${state.project.id}`, title: '红伞', meta: '第 1 版', record: null, assets: ['umbrella.png'], bodyHeight: 40,
   }],
 }
 
@@ -39,7 +36,7 @@ const PROPS: NodeType<'test_prop'> = {
  * @returns the element.
  */
 function PropCard({ node }: PropsRuntime<'dv.canvas.card'>): ReactNode {
-  return <p data-testid="prop-card">{node.type === 'test_prop' ? node.data.finish : null}</p>
+  return <p data-testid="prop-card">{`matte · ${node.id}`}</p>
 }
 
 /**
@@ -82,7 +79,7 @@ describe('node types', () => {
         ctx.effect(() => ctx.slots.inject('dv.canvas.editor', () => ctx.slots.register({ name: 'dv.canvas.editor', key: 'test_prop' }, PropEditor)), 'test: editor')
       },
     })
-    await waitFor(() => { expect(within(node('prop:p1')).getByTestId('prop-card').textContent).toBe('matte · p1') })
+    await waitFor(() => { expect(within(node('prop:p1')).getByTestId('prop-card').textContent).toBe('matte · prop:p1') })
     const editor = await open('prop:p1')
     expect(within(editor).getByRole('heading').textContent).toBe('红伞')
     expect(within(editor).getByTestId('prop-editor').textContent).toBe('红伞 · p1')

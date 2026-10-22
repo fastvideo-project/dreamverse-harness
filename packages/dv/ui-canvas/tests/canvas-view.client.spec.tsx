@@ -885,8 +885,8 @@ describe('the editor panel', () => {
     const { runtime, open } = await mountCanvas()
     await mountDescriptors(runtime, {
       nodeType: {
-        id: '@dv/ui-test-note', type: 'none', label: () => 'Note', color: '', column: 0,
-        entries: () => [{ id: 'note:1', title: 'Note', record: null, assets: [], bodyHeight: 30, data: null }],
+        id: '@dv/ui-test-note', type: 'note', label: () => 'Note', color: '', column: 0,
+        entries: () => [{ id: 'note:1', title: 'Note', record: null, assets: [], bodyHeight: 30 }],
       },
     })
     const editor = await open('note:1')

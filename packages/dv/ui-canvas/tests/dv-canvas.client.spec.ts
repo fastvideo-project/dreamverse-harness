@@ -4,7 +4,6 @@ import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import type { NodeAction, NodeType, NodeView } from '../src/client/contract/index.ts'
 import { createDvCanvas } from '../src/client/dv-canvas.ts'
 
-declare module '../src/client/contract/index.ts' { interface NodeDataMap { test_clip: null; test_cut: null } }
 
 /**
  * @param id - the registering package.
@@ -14,7 +13,7 @@ declare module '../src/client/contract/index.ts' { interface NodeDataMap { test_
  */
 const claiming = (id: string, type: 'test_clip' | 'test_cut', operations: string[]): NodeType => ({
   id, type, label: () => type, color: '#888', column: 2,
-  claimed: { operations, status: { running: () => '', failed: () => '' }, entry: () => ({ title: '', bodyHeight: 117, data: null }) },
+  claimed: { operations, status: { running: () => '', failed: () => '' }, entry: () => ({ title: '', bodyHeight: 117 }) },
 })
 
 describe('createDvCanvas', () => {

@@ -10,7 +10,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { NodeDataMap, NodeEntry, NodeType, RecordsInUse } from '@dv/ui-canvas/contract'
+import type { NodeEntry, NodeType, RecordsInUse } from '@dv/ui-canvas/contract'
 import { pickText, useText } from '@dv/ui-kit/locale.ts'
 import type { HistoryRow } from '@dv/ui-history/contract'
 import type { MentionKind, UiPlugin, VersionKind } from '@dv/ui-kit/registries.ts'
@@ -27,23 +27,12 @@ export interface WireReferenceVersion {
   created_by: string
 }
 
-/** The data of a reference noun node: the references of the item's newest version. */
-export interface ReferenceNodeData {
-  references: readonly string[]
-}
-
-/**
- * The node type keys whose data is {@link ReferenceNodeData}; a noun package merges its key into `NodeDataMap`:
- *   declare module '@dv/ui-canvas/contract' { interface NodeDataMap { character: ReferenceNodeData } }
- */
-export type ReferenceKey = { [K in keyof NodeDataMap]: NodeDataMap[K] extends ReferenceNodeData ? K : never }[keyof NodeDataMap]
-
 /** The declaration of one reference noun in the browser. */
-export interface ReferenceUiSpec<K extends ReferenceKey = ReferenceKey, V extends WireReferenceVersion = WireReferenceVersion> {
+export interface ReferenceUiSpec<V extends WireReferenceVersion = WireReferenceVersion> {
   /** Package name, such as '@dv/ui-character': the owner of every descriptor. */
   id: string
   /** Component key = reference kind = node type = node ID prefix, such as 'character'. */
-  key: K
+  key: string
   /** The noun's slice, such as `state => state.components.character`; undefined while the host half is not loaded. */
   slice: (state: WireState) => Readonly<Record<string, readonly V[]>> | undefined
   /** Card label and picker section, such as ['角色', 'Character']. */
@@ -57,7 +46,7 @@ const BODY_HEIGHT = 30
 
 /** Every item of a noun by ID; a state without the noun's slice holds none, as the initial slice of the host half. */
 const itemsOf = <V extends WireReferenceVersion>(
-  spec: ReferenceUiSpec<ReferenceKey, V>, state: WireState,
+  spec: ReferenceUiSpec<V>, state: WireState,
 ): Readonly<Record<string, readonly V[]>> => spec.slice(state) ?? {}
 
 /**
@@ -67,7 +56,7 @@ const itemsOf = <V extends WireReferenceVersion>(
  * @returns the ID, the newest version and every version of each item.
  */
 function newestOf<V extends WireReferenceVersion>(
-  spec: ReferenceUiSpec<ReferenceKey, V>, state: WireState,
+  spec: ReferenceUiSpec<V>, state: WireState,
 ): Array<{ id: string; latest: V; versions: readonly V[] }> {
   return Object.entries(itemsOf(spec, state)).flatMap(([id, versions]) => {
     const latest = versions.at(-1)
@@ -92,27 +81,23 @@ interface ReferenceDescriptors {
  * @param spec - the noun.
  * @returns the descriptors.
  */
-export function referenceDescriptors<K extends ReferenceKey, V extends WireReferenceVersion>(
-  spec: ReferenceUiSpec<K, V>,
-): ReferenceDescriptors {
-  const key: string = spec.key
+export function referenceDescriptors<V extends WireReferenceVersion>(spec: ReferenceUiSpec<V>): ReferenceDescriptors {
+  const { key } = spec
   const node = (id: string): string => `${key}:${id}`
   const versionOf = (state: WireState, id: string, version: number): V | undefined =>
     itemsOf(spec, state)[id]?.find(entry => entry.version === version)
-  const nodeType: NodeType<K> = {
+  const nodeType: NodeType = {
     id: spec.id,
-    type: spec.key,
+    type: key,
     label: () => pickText(...spec.label),
     color: 'var(--dv-kind-character)',
     column: 0,
     entries({ state }) {
       const records = new Map(state.components.proj.records.map(record => [record.id, record]))
-      return newestOf(spec, state).map(({ id, latest, versions }): NodeEntry<K> => ({
+      return newestOf(spec, state).map(({ id, latest, versions }): NodeEntry => ({
         id: node(id), title: latest.name || id, record: records.get(latest.created_by) ?? null,
         records: versions.slice(0, -1).map(entry => entry.created_by), assets: [...latest.references], bodyHeight: BODY_HEIGHT,
-        ref: { kind: spec.key, id },
-        // `ReferenceKey` holds only keys whose data is `ReferenceNodeData`; TypeScript cannot narrow `NodeDataMap[K]` by it.
-        data: { references: [...latest.references] } satisfies ReferenceNodeData as NodeDataMap[K],
+        ref: { kind: key, id },
       }))
     },
   }
@@ -166,7 +151,7 @@ export function referenceDescriptors<K extends ReferenceKey, V extends WireRefer
  * @param spec - the noun.
  * @returns what Cordis loads.
  */
-export function defineReferenceUi<K extends ReferenceKey, V extends WireReferenceVersion>(spec: ReferenceUiSpec<K, V>): UiPlugin {
+export function defineReferenceUi<V extends WireReferenceVersion>(spec: ReferenceUiSpec<V>): UiPlugin {
   const { nodeType, versionKind, referencesInUse, mentionKind, historyRow } = referenceDescriptors(spec)
   const Card = (props: PropsRuntime<'dv.canvas.card'> & PropsRenderFactories): ReactNode => <ReferenceCard {...props} label={spec.label} />
   const Editor = (props: PropsRuntime<'dv.canvas.editor'> & PropsRenderFactories): ReactNode => <ReferenceEditor {...props} spec={spec} />
@@ -251,7 +236,7 @@ type ReferenceEditorProps = PropsRuntime<'dv.canvas.editor'> & PropsRenderFactor
 function ReferenceEditor(props: ReferenceEditorProps): ReactNode {
   const { node, state, host, spec, renderFactorySlot } = props
   const pick = useText()
-  const key: string = spec.key
+  const { key } = spec
   const prefix = `${key}:`
   const id = node.id.startsWith(prefix) ? node.id.slice(prefix.length) : null
   const latest = id === null ? undefined : itemsOf(spec, state)[id]?.at(-1)

@@ -17,8 +17,6 @@ import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/c
 import { fixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { defineGenerationUi } from '../src/client/generation-kit.tsx'
 
-declare module '../../ui-canvas/src/client/contract/index.ts' { interface NodeDataMap { test_take: null } }
-
 /** The test kind: takes of `shot.render` and `clip.extend`, whose still output stands for a take, and no references for `t2v`. */
 export const testTake = defineGenerationUi({
   id: '@dv/ui-test-take', type: 'test_take', operations: ['shot.render', 'clip.extend'], label: ['测试版本', 'Test take'],

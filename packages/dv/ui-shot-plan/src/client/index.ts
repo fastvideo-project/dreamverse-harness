@@ -23,7 +23,6 @@ import { PlanEditor, plansOf, totalSec } from './PlanEditor.tsx'
 import type { PlanEditorInjected } from './PlanEditor.tsx'
 
 declare module '@dv/ui-kit/types.ts' { interface ComponentStates { plan: PlanState } }
-declare module '@dv/ui-canvas/contract' { interface NodeDataMap { plan: null } }
 
 /** The package name: the owner of the node type and of the records in use. */
 const ID = '@dv/ui-shot-plan'
@@ -47,7 +46,7 @@ function latestPlans(state: WireState): Array<{ id: string; versions: PlanVersio
  * (title `N 个镜头 · <total duration>`) with one slot per shot. The node's record wrote the latest version, and its
  * `records` wrote the earlier versions.
  */
-export const planNodeType: NodeType<'plan'> = {
+export const planNodeType: NodeType = {
   id: ID,
   type: 'plan',
   label: () => pickText('分镜计划', 'Plan'),
@@ -55,7 +54,7 @@ export const planNodeType: NodeType<'plan'> = {
   column: 1,
   entries({ state }) {
     const records = new Map(state.components.proj.records.map(record => [record.id, record]))
-    return latestPlans(state).map(({ id, versions, latest }): NodeEntry<'plan'> => {
+    return latestPlans(state).map(({ id, versions, latest }): NodeEntry => {
       const count = String(latest.shots.length)
       const total = totalSec(latest)
       const earlier = versions.slice(0, -1).map(version => version.created_by)
@@ -68,7 +67,6 @@ export const planNodeType: NodeType<'plan'> = {
         assets: [],
         slots: latest.shots.length,
         bodyHeight: BODY_HEIGHT,
-        data: null,
       }
     })
   },

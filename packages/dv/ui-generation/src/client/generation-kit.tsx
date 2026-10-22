@@ -10,7 +10,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
-import type { ClaimedEntry, ClaimedNodeView, ClaimedRecord, NodeAction, NodeDataMap, NodeInput, NodeType } from '@dv/ui-canvas/contract'
+import type { ClaimedEntry, ClaimedNodeView, ClaimedRecord, NodeAction, NodeInput, NodeType } from '@dv/ui-canvas/contract'
 import type { HistoryRow } from '@dv/ui-history/contract'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
@@ -31,11 +31,11 @@ export type { StatusWords } from './GenerationCard.tsx'
 export type Text = readonly [zh: string, en: string]
 
 /** The declaration of one generation primitive's UI. */
-export type GenerationUiSpec<K extends keyof NodeDataMap = keyof NodeDataMap> = {
+export interface GenerationUiSpec {
   /** The registering package. */
   id: string
   /** The node type key, such as 'audio'. */
-  type: K
+  type: string
   /** The generation operations whose records are this kind's takes. */
   operations: readonly string[]
   /** The type label, such as ['音频', 'Audio']: the editor header and the accessible names. */
@@ -57,9 +57,7 @@ export type GenerationUiSpec<K extends keyof NodeDataMap = keyof NodeDataMap> = 
    * not the first output.
    */
   preview?(record: ProjectRecord, state: WireState): string | undefined
-} & (NodeDataMap[K] extends null
-  ? { data?: never }
-  : { data(claimed: ClaimedRecord, input: NodeInput): NodeDataMap[K] })
+}
 
 /** The take frame's height at the 208 card width. */
 const FRAME_HEIGHT = 117
@@ -83,7 +81,7 @@ function TakeCard({ node, assets, renderFactorySlot }: PropsRuntime<'dv.canvas.c
  * @param spec - the primitive's UI declaration.
  * @returns what Cordis loads.
  */
-export function defineGenerationUi<K extends keyof NodeDataMap>(spec: GenerationUiSpec<K>): UiPlugin {
+export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
   const operations = new Set(spec.operations)
   const bodyHeight = spec.bodyHeight ?? FRAME_HEIGHT
   /** The take's title: its chain's slot and lane, else its operation's label; with its number in a group of several. */
@@ -95,18 +93,16 @@ export function defineGenerationUi<K extends keyof NodeDataMap>(spec: Generation
     const base = slot === null ? declared ?? record.operation : pick(`镜头 ${String(slot)}${lane}`, `Shot ${String(slot)}${lane}`)
     return version === null ? base : pick(`${base} · 第 ${String(version)} 次`, `${base} · take ${String(version)}`)
   }
-  const entry = (claimed: ClaimedRecord, input: NodeInput): ClaimedEntry<K> => {
+  const entry = (claimed: ClaimedRecord, input: NodeInput): ClaimedEntry => {
     const timed = claimed.record.outputs.map(id => input.state.assets.find(asset => asset.id === id)?.duration_sec ?? null)
       .find(seconds => seconds !== null)
     const preview = spec.preview?.(claimed.record, input.state)
-    // `data` is required exactly when the type's data is not null, as `GenerationUiSpec` states.
-    const data = (spec.data === undefined ? null : spec.data(claimed, input)) as NodeDataMap[K]
     return {
-      title: titleOf(claimed, input), bodyHeight, data,
+      title: titleOf(claimed, input), bodyHeight,
       ...timed === undefined ? {} : { meta: `${timed.toFixed(1)}s` }, ...preview === undefined ? {} : { preview },
     }
   }
-  const nodeType: NodeType<K> = {
+  const nodeType: NodeType = {
     id: spec.id, type: spec.type, label: () => pickText(...spec.label), color: spec.color, column: spec.column ?? 2,
     ...spec.deepenOn === undefined ? {} : { deepenOn: spec.deepenOn },
     claimed: {

@@ -10,7 +10,7 @@ import { createElement, type ComponentType } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
-import type { NodeHost, NodeViewOf } from '@dv/ui-canvas/contract'
+import type { NodeHost, NodeView } from '@dv/ui-canvas/contract'
 import { createDvCanvas } from '@dv/ui-canvas/src/client/dv-canvas.ts'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { dispatchCompose, DV_COMPOSE_EVENT, type DvComposeDetail } from '@dv/ui-kit/compose.ts'
@@ -62,10 +62,10 @@ async function mountComposer() {
  * @returns the node.
  */
 function node(
-  changes: Partial<Pick<NodeViewOf<'none'>, 'record' | 'assets' | 'preview' | 'ref'>> & { id: string; title: string },
-): NodeViewOf<'none'> {
+  changes: Partial<Pick<NodeView, 'record' | 'assets' | 'preview' | 'ref'>> & { id: string; title: string },
+): NodeView {
   return {
-    record: null, assets: [], bodyHeight: 0, data: null, type: 'none', claimed: false,
+    record: null, assets: [], bodyHeight: 0, type: 'note', claimed: false,
     flags: { stale: false, rendering: false, failed: false, superseded: false }, badges: [], chain: null, version: null,
     unseen: false, rerunning: false, ...changes,
   }

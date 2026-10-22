@@ -11,22 +11,12 @@ import type { DvLanguage } from '@dv/ui-kit/locale.ts'
 import type { Registry, VersionKind } from '@dv/ui-kit/registries.ts'
 import type { Asset, OperationRequest, ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 
-/**
- * The data of each node type, by `NodeType.type`. A plugin merges its own entry, so its card and editor read
- * `node.data` typed without a cast:
- *   declare module '@dv/ui-canvas/contract' { interface NodeDataMap { note: { text: string } } }
- */
-export interface NodeDataMap {
-  /** A node type whose card reads no data. */
-  none: null
-}
-
 /** The fields every node type has. */
-interface NodeTypeCore<K extends keyof NodeDataMap> {
+interface NodeTypeCore {
   /** The registering package; a refused key names it. One package may register several types. */
   id: string
   /** The `data-node-type` value, a registry key, and the key of its `dv.canvas.card` and `dv.canvas.editor` entries. */
-  type: K
+  type: string
   /** The type label in the interface language: the editor header and the accessible names. */
   label(): string
   /** A theme color, such as `var(--dv-kind-take)`: the type dot and every edge that leaves a node of this type. */
@@ -45,33 +35,29 @@ interface NodeTypeCore<K extends keyof NodeDataMap> {
  * record ID, `record` the record, `assets` its outputs, and its edges are the record's inputs, its chain and its
  * `based_on`; so a claimed node cannot disagree with its record.
  */
-export interface ClaimedNodes<K extends keyof NodeDataMap> {
+export interface ClaimedNodes {
   /** One registry key `op:<operation>` per name, so two types never claim one operation. */
   operations: readonly string[]
   /** The words that the chrome draws over the body of a running node and in the row of a failed node. */
   status: NodeStatusText
   /** The parts of one claimed node that vary by type. A pending record draws before it has outputs. */
-  entry(claimed: ClaimedRecord, input: NodeInput): ClaimedEntry<K>
+  entry(claimed: ClaimedRecord, input: NodeInput): ClaimedEntry
 }
 
 /** What a type supplies for one claimed node. */
-export type ClaimedEntry<K extends keyof NodeDataMap> = Pick<NodeEntry<K>, 'title' | 'bodyHeight' | 'data'>
-  & Partial<Pick<NodeEntry<K>, 'meta' | 'preview'>>
+export type ClaimedEntry = Pick<NodeEntry, 'title' | 'bodyHeight'> & Partial<Pick<NodeEntry, 'meta' | 'preview'>>
 
 /** The nodes that a type reads from its own slice, such as nouns and plans. Pure. */
-export type SliceEntries<K extends keyof NodeDataMap> = (input: Omit<NodeInput, 'records'>) => Array<NodeEntry<K>>
+export type SliceEntries = (input: Omit<NodeInput, 'records'>) => NodeEntry[]
 
 /**
  * One type of canvas node. Registry `dvCanvas.nodeTypes`, keyed by `type` and by `op:<operation>` for each claimed
- * operation. A type has claimed nodes, slice nodes, or both; the union refuses a type with neither. For a union of data
- * keys, such as the default, it is the union of the node type of each key.
+ * operation. A type has claimed nodes, slice nodes, or both; the union refuses a type with neither.
  */
-export type NodeType<K extends keyof NodeDataMap = keyof NodeDataMap> = {
-  [P in K]: NodeTypeCore<P> & (
-    | { claimed: ClaimedNodes<P>; entries?: SliceEntries<P> }
-    | { claimed?: never; entries: SliceEntries<P> }
-  )
-}[K]
+export type NodeType = NodeTypeCore & (
+  | { claimed: ClaimedNodes; entries?: SliceEntries }
+  | { claimed?: never; entries: SliceEntries }
+)
 
 /** The status words of a type's claimed nodes in the interface language. */
 export interface NodeStatusText {
@@ -116,7 +102,7 @@ export interface AnchoredChain {
 }
 
 /** One node. Optional fields are set by the few types that need them. */
-export interface NodeEntry<K extends keyof NodeDataMap = keyof NodeDataMap> {
+export interface NodeEntry {
   /** Stable: other plugins name it (a `ChainAnchor` returns 'plan:<id>'); positions and the unseen set store it. */
   id: string
   /** The accessible name, the chrome title and the text of the canvas's write intents. */
@@ -143,23 +129,18 @@ export interface NodeEntry<K extends keyof NodeDataMap = keyof NodeDataMap> {
   bodyHeight: number
   /** The kernel reference that this node stands for in a prompt, when it is not its record. */
   ref?: { kind: string; id: string }
-  /** Type-owned JSON data that only the type's card and editor read. */
-  data: NodeDataMap[K]
 }
 
 /** Display states of a node, read from its record. */
 export interface NodeFlags { stale: boolean; rendering: boolean; failed: boolean; superseded: boolean }
 
-/** A node as its card, its editor and an action receive it, discriminated by `type`. JSON data only. */
-export type NodeView<K extends keyof NodeDataMap = keyof NodeDataMap> = { [P in K]: NodeViewOf<P> }[K]
-/** A claimed node as the editor of its type's claimed nodes and an action on it receive it. */
-export type ClaimedNodeView<K extends keyof NodeDataMap = keyof NodeDataMap> = Extract<NodeView<K>, { claimed: true }>
 /**
- * A node of one type as its card, its editor and an action receive it. A claimed node is built from its record, so
+ * A node as its card, its editor and an action receive it. JSON data only. A claimed node is built from its record, so
  * `record` is that record.
  */
-export type NodeViewOf<K extends keyof NodeDataMap> = NodeEntry<K> & ({ claimed: true; record: OperationRecord } | { claimed: false }) & {
-  type: K
+export type NodeView = NodeEntry & ({ claimed: true; record: OperationRecord } | { claimed: false }) & {
+  /** Its `NodeType.type`. */
+  type: string
   flags: NodeFlags
   /** Labels that `RecordsInUse.badges` reports for the node's assets, such as 已裁剪. */
   badges: readonly string[]
@@ -170,6 +151,8 @@ export type NodeViewOf<K extends keyof NodeDataMap> = NodeEntry<K> & ({ claimed:
   /** True while a `rerun` that this node started waits for its new node. */
   rerunning: boolean
 }
+/** A claimed node as the editor of its type's claimed nodes and an action on it receive it. */
+export type ClaimedNodeView = Extract<NodeView, { claimed: true }>
 
 /** A write that the canvas completes with its project, chat session and surface. */
 export type CanvasRequest = Omit<OperationRequest, 'project' | 'surface' | 'session'>

@@ -13,7 +13,7 @@ import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolResultNode } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type { NodeViewOf } from '../../ui-canvas/src/client/contract/index.ts'
+import type { NodeView } from '../../ui-canvas/src/client/contract/index.ts'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
 import type { Asset } from '@dv/ui-kit/types.ts'
@@ -269,8 +269,8 @@ describe('one dv.media Factory under parents of both scopes', () => {
       useDisclosure: () => ({ expanded: false, setExpanded: () => undefined, toggle: () => undefined }), callId: 'call-1', toolName: 'dv_shot_render',
       openFile: () => undefined, loadImage: () => Promise.resolve(''), phase: 'result', block,
     }, { session: reference, entryKey: 'dv_shot_render', hookContext: { callId: 'call-1', assistant: undefined } })
-    const node: NodeViewOf<'asset'> = {
-      id: 'u1', type: 'asset', title: 'v1.mp4', record: null, assets: ['v1.mp4'], standIn: true, bodyHeight: 117, data: null, claimed: false,
+    const node: NodeView = {
+      id: 'u1', type: 'asset', title: 'v1.mp4', record: null, assets: ['v1.mp4'], standIn: true, bodyHeight: 117, claimed: false,
       flags: { stale: false, rendering: false, failed: false, superseded: false }, badges: [], chain: null, version: null, unseen: false,
       rerunning: false,
     }

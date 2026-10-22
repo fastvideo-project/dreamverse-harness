@@ -12,8 +12,6 @@ import type { FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { defineGenerationUi } from '../src/client/generation-kit.tsx'
 import { APPROVAL, claimedOf, CLIP_EXTEND, mountKit, nodesOf, recordingHost } from './take-kind.client.ts'
 
-declare module '../../ui-canvas/src/client/contract/index.ts' { interface NodeDataMap { test_still: { prompt: string } } }
-
 /** The fixture's `shot.render` declaration with its wire label. */
 const LABELLED = [{ ...OPERATIONS[0]!, label: { zh: '渲染镜头', en: 'Render shot' } }, CLIP_EXTEND]
 
@@ -85,17 +83,16 @@ describe('the claimed node type of a generation kind', () => {
   })
 })
 
-describe('a generation kind with node data and no references rule', () => {
-  /** Stills of `image.generate`, whose node data is the prompt. */
+describe('a generation kind with no references rule', () => {
+  /** Stills of `image.generate`. */
   const still = defineGenerationUi({
     id: '@dv/ui-test-still', type: 'test_still', operations: ['image.generate'], label: ['静帧', 'Still'], color: '',
     status: { running: ['生成中…', 'Generating…'], failed: ['没生成', 'Not generated'], done: ['已生成', 'Generated'] },
-    data: ({ record }) => ({ prompt: String(record.params['prompt']) }),
   })
   /** An `image.generate` declaration that takes reference images. */
   const IMAGE = { ...OPERATIONS[0]!, name: 'image.generate' }
 
-  it('fills the node data from the spec and offers reference chips on every take', async () => {
+  it('offers reference chips on every take of a kind without a references rule', async () => {
     document.documentElement.lang = 'zh-CN'
     vi.stubGlobal('fetch', scriptedFetch().fetch)
     const { runtime, canvas } = await mountKit({ 'dv.canvas.editor.claimed': { kind: 'keyed', scope: 'root' } })
@@ -106,7 +103,7 @@ describe('a generation kind with node data and no references rule', () => {
       inputs: [{ role: 'reference', ref: { asset: 'ref.png' }, resolved_asset: 'ref.png' }],
     }))
     const node = claimedOf(canvas, state, [IMAGE], 'zh').get('i1')!
-    expect([node.type, node.data]).toEqual(['test_still', { prompt: 'a cat' }])
+    expect(node.type).toBe('test_still')
     const editor = runtime.renderSlot('dv.canvas.editor.claimed', { node, state, operations: [IMAGE], host: recordingHost(undefined, state) }, { entryKey: 'test_still' })
     expect(editor.view.getByRole('button', { name: '查看 ref.png' })).toBeTruthy()
     await runtime.dispose()
@@ -135,8 +132,8 @@ describe('the card body of a take', () => {
 describe('the 重试 action of a generation kind', () => {
   /** A claimed type of `image.generate` from another package. */
   const IMAGE: NodeType = {
-    id: '@dv/ui-test-image', type: 'none', label: () => 'image', color: '', column: 2,
-    claimed: { operations: ['image.generate'], status: { running: () => '', failed: () => '' }, entry: () => ({ title: 'image', bodyHeight: 117, data: null }) },
+    id: '@dv/ui-test-image', type: 'image', label: () => 'image', color: '', column: 2,
+    claimed: { operations: ['image.generate'], status: { running: () => '', failed: () => '' }, entry: () => ({ title: 'image', bodyHeight: 117 }) },
   }
 
   it('shows only on a failed claimed take of its own operations and reruns the record\'s operation, inputs and params based on it', async () => {
@@ -149,8 +146,8 @@ describe('the 重试 action of a generation kind', () => {
     state.components.proj.records.push(record({ id: 'i1', operation: 'image.generate', deterministic: false, ...failed }))
     // A slice node of another type that shows the failed record g2 without claiming it.
     canvas.nodeTypes.register({
-      id: '@dv/ui-test-slice', type: 'none_slice' as 'none', label: () => 'slice', color: '', column: 0,
-      entries: () => [{ id: 'slice:g2', title: 'slice', record: state.components.proj.records.find(entry => entry.id === 'g2') ?? null, assets: [], bodyHeight: 60, data: null }],
+      id: '@dv/ui-test-slice', type: 'slice', label: () => 'slice', color: '', column: 0,
+      entries: () => [{ id: 'slice:g2', title: 'slice', record: state.components.proj.records.find(entry => entry.id === 'g2') ?? null, assets: [], bodyHeight: 60 }],
     })
     const nodes = nodesOf(canvas, state, OPERATIONS, 'zh')
     const retry = canvas.actions.getSnapshot().find(action => action.id === '@dv/ui-test-take:retry')

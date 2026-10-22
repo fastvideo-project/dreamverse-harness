@@ -10,7 +10,6 @@ import type { ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
 import { assetNodeType } from '../../ui-asset-pool/src/client/canvas.tsx'
 import { asset, fixtureState, OPERATIONS, record, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
 import { referenceDescriptors } from '../../ui-reference-kit/src/client/reference-kit.tsx'
-import type { ReferenceNodeData } from '../../ui-reference-kit/src/client/reference-kit.tsx'
 import { planNodeType, planReferencesInUse } from '../../ui-shot-plan/src/client/index.ts'
 import { apply as shotRenderApply, inject as shotRenderInject } from '../../ui-shot-render/src/client/index.ts'
 import type { ChainAnchor, NodeEntry, NodeType, RecordsInUse } from '../src/client/contract/index.ts'
@@ -18,8 +17,6 @@ import { buildCanvasGraph, freePositions, NODE_WIDTH, previewOf, ROW, slotFrames
 import type { CanvasGraph, CanvasRegistrations } from '../src/client/graph.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { APPROVAL, CLIPS } from './fixtures/conformance-states.client.ts'
-
-declare module '../src/client/contract/index.ts' { interface NodeDataMap { test_ref: ReferenceNodeData } }
 
 /** The descriptors of the fixture's reference noun `test_ref`, as the reference kit builds them for a noun package. */
 const testRef = referenceDescriptors({
@@ -77,10 +74,10 @@ function graphOf(state: WireState, registrations: CanvasRegistrations, placed: r
 const anchorOf = (starter: string): ChainAnchor => ({ starter, anchor: approval => `plan:${String(approval.params['plan'])}` })
 
 /** A test-local type of slice nodes that draws the given entries. */
-function sliceType(entries: ReadonlyArray<Omit<NodeEntry<'none'>, 'bodyHeight' | 'data'>>, column = 0): NodeType<'none'> {
+function sliceType(entries: ReadonlyArray<Omit<NodeEntry, 'bodyHeight'>>, column = 0): NodeType {
   return {
-    id: '@dv/ui-test-slice', type: 'none', label: () => 'slice', color: '', column,
-    entries: () => entries.map(entry => ({ ...entry, bodyHeight: 30, data: null })),
+    id: '@dv/ui-test-slice', type: 'slice', label: () => 'slice', color: '', column,
+    entries: () => entries.map(entry => ({ ...entry, bodyHeight: 30 })),
   }
 }
 
@@ -342,9 +339,9 @@ describe('buildCanvasGraph', () => {
   })
 
   it('draws each current record of a claimed type with its outputs as assets, numbers its based_on family, and leaves a chain with an unloaded starter unanchored', () => {
-    const image: NodeType<'none'> = {
-      id: '@dv/ui-test-image', type: 'none', label: () => 'image', color: '', column: 2,
-      claimed: { operations: ['image.generate'], status: { running: () => '', failed: () => '' }, entry: ({ record: { id } }) => ({ title: id, bodyHeight: 117, data: null }) },
+    const image: NodeType = {
+      id: '@dv/ui-test-image', type: 'image', label: () => 'image', color: '', column: 2,
+      claimed: { operations: ['image.generate'], status: { running: () => '', failed: () => '' }, entry: ({ record: { id } }) => ({ title: id, bodyHeight: 117 }) },
     }
     const state = fixtureState()
     state.components.proj.records.push(

@@ -65,7 +65,7 @@ describe('plan node type', () => {
     const [node, ...rest] = planNodes(canvas, secondVersion())
     expect(rest).toEqual([])
     expect([node?.nodeType.id, node?.nodeType.column, node?.nodeType.label()]).toEqual(['@dv/ui-shot-plan', 1, '分镜计划'])
-    expect(node).toMatchObject({ id: 'plan:p1', records: ['p1'], title: '3 个镜头 · 0:06', assets: [], slots: 3, bodyHeight: 46, data: null })
+    expect(node).toMatchObject({ id: 'plan:p1', records: ['p1'], title: '3 个镜头 · 0:06', assets: [], slots: 3, bodyHeight: 46 })
     // The node's record wrote the shown version; a history focus on the record of v1 opens the node through `records`.
     expect(node?.record?.id).toBe('q2')
     await runtime.dispose()
@@ -86,7 +86,7 @@ describe('plan node type', () => {
     const { runtime, canvas } = await mountPlugin()
     const state = secondVersion()
     state.components.proj.records = state.components.proj.records.filter(entry => entry.id !== 'q2')
-    expect(planNodes(canvas, state)).toMatchObject([{ id: 'plan:p1', record: null, records: ['p1'], data: null }])
+    expect(planNodes(canvas, state)).toMatchObject([{ id: 'plan:p1', record: null, records: ['p1'] }])
     await runtime.dispose()
   })
 
@@ -95,7 +95,7 @@ describe('plan node type', () => {
     const { runtime, canvas } = await mountPlugin()
     const nodes = planNodes(canvas, fixtureState())
     expect(nodes[0]?.nodeType.label()).toBe('Plan')
-    expect(nodes).toMatchObject([{ id: 'plan:p1', title: '2 shots', slots: 2, data: null }])
+    expect(nodes).toMatchObject([{ id: 'plan:p1', title: '2 shots', slots: 2 }])
     // Version 1 has no earlier versions.
     expect(nodes[0]?.records).toBeUndefined()
     await runtime.dispose()

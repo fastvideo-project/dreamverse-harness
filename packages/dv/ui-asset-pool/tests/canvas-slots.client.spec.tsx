@@ -19,9 +19,9 @@ afterEach(async () => {
 })
 
 /** A node type of another package whose one node owns `ref.png`, the asset that record `u1` imported. */
-const OWNER: NodeType<'none'> = {
-  id: '@dv/test-owner', type: 'none', label: () => 'owner', color: '', column: 1,
-  entries: () => [{ id: 'owner', title: 'owner', record: null, assets: ['ref.png'], bodyHeight: 60, data: null }],
+const OWNER: NodeType = {
+  id: '@dv/test-owner', type: 'owner', label: () => 'owner', color: '', column: 1,
+  entries: () => [{ id: 'owner', title: 'owner', record: null, assets: ['ref.png'], bodyHeight: 60 }],
 }
 
 /**

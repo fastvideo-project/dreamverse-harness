@@ -58,7 +58,7 @@ Host 半边不注册任何东西。浏览器半边通过 `defineGenerationUi` �
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`src/client/index.ts` 导出一次 `defineGenerationUi` 调用的 `inject` 和 `apply`，并把 `take: null` 合并进 `@dv/ui-canvas/contract` 的 `NodeDataMap`，所以版本节点不带插件数据。声明的 `references` 规则对任务 `t2v` 关闭参考图标签，它的 `preview` 选出图片产出，套件把它用作卡片的媒体、编辑器的封面、历史缩略图，以及分镜计划画框网格中的画面。套件在对话卡片或版本编辑器第一次订阅时各读取一次 `GET /api/dv/operations` 和 `GET /api/dv/tasks`（`@dv/ui-kit` 的 `loadedOnce`）；解析后的参数、产出和历史链接来自 `@dv/ui-kit/tool-rows.tsx`。
+`src/client/index.ts` 导出一次 `defineGenerationUi` 调用的 `inject` 和 `apply`。声明的 `references` 规则对任务 `t2v` 关闭参考图标签，它的 `preview` 选出图片产出，套件把它用作卡片的媒体、编辑器的封面、历史缩略图，以及分镜计划画框网格中的画面。套件在对话卡片或版本编辑器第一次订阅时各读取一次 `GET /api/dv/operations` 和 `GET /api/dv/tasks`（`@dv/ui-kit` 的 `loadedOnce`）；解析后的参数、产出和历史链接来自 `@dv/ui-kit/tool-rows.tsx`。
 
 | 文件 | 内容 |
 | --- | --- |

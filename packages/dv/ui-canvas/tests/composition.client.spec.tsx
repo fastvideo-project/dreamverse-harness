@@ -29,8 +29,8 @@ const keysOf = (runtime: SlotTestRuntime, slot: 'dv.canvas.card' | 'dv.canvas.ed
 
 /** A second type that claims the video takes' operation. */
 const OTHER_RENDER: NodeType = {
-  id: '@dv/ui-other-render', type: 'none', label: () => 'other', color: '', column: 2,
-  claimed: { operations: ['shot.render'], status: { running: () => '', failed: () => '' }, entry: () => ({ title: '', bodyHeight: 117, data: null }) },
+  id: '@dv/ui-other-render', type: 'other', label: () => 'other', color: '', column: 2,
+  claimed: { operations: ['shot.render'], status: { running: () => '', failed: () => '' }, entry: () => ({ title: '', bodyHeight: 117 }) },
 }
 
 describe('the dv.canvas Factory', () => {
