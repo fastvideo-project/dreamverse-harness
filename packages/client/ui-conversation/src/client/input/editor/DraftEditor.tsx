@@ -4,7 +4,7 @@ import type { LexicalEditor } from 'lexical'
 import clsx from 'clsx'
 import type { InputState } from '../../contract/input.ts'
 import { ComposerContentEditable } from './ComposerContentEditable.tsx'
-import { DecoratorPortals } from './DecoratorPortals.tsx'
+import { DecoratorPortals, type DecoratorPortalsProps } from './DecoratorPortals.tsx'
 
 /** Text-area values and the scrollport reference retained by InputBar. */
 export interface DraftEditorProps {
@@ -21,6 +21,8 @@ export interface DraftEditorProps {
   readonly onWorkspaceKeyDown: KeyboardEventHandler<HTMLDivElement>
   readonly hint: string | null
   readonly showPlaceholder: boolean
+  /** Draws each reference chip; absent keeps every chip's own face. */
+  readonly renderFace?: DecoratorPortalsProps['renderFace']
 }
 
 /**
@@ -30,7 +32,7 @@ export interface DraftEditorProps {
  */
 export function DraftEditor({
   classNames: css, editor, scrollRef, editable, editorDisabled, phase, placeholderText, ariaLabel,
-  workspaceTrigger, workspacePickerOpen, onWorkspaceKeyDown, hint, showPlaceholder,
+  workspaceTrigger, workspacePickerOpen, onWorkspaceKeyDown, hint, showPlaceholder, renderFace,
 }: DraftEditorProps): ReactNode {
   return (
     <div ref={scrollRef} className={css.scroll} data-input-scroll>
@@ -56,7 +58,7 @@ export function DraftEditor({
             {placeholderText}
           </div>
         )}
-        <DecoratorPortals editor={workspaceTrigger ? null : editor} />
+        <DecoratorPortals editor={workspaceTrigger ? null : editor} renderFace={renderFace} />
       </div>
     </div>
   )

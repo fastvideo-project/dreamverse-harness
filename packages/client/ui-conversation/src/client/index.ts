@@ -75,8 +75,12 @@ export type {
   InputState, InsertReferenceRequest, InsertTextRequest, PickOutcome, SessionInput,
   SessionInputResolver, SubmitAttachment, SubmitOutcome,
 } from './contract/input.ts'
-export type { ArbitrateKey, ArbitrateOutcome, ReferenceInsert, TokenSpan } from './contract/draft-editor.ts'
+export type { ArbitrateKey, ArbitrateOutcome, Occurrence, ReferenceInsert, TokenSpan } from './contract/draft-editor.ts'
 export type { ComposerBlock, ComposerBlocks } from './contract/composer-blocks.ts'
+export type {
+  PromptChip, PromptContent, PromptEditorProps, PromptHostModel, PromptInjected, PromptMenuOwner, PromptOccurrenceHandle,
+  ReferenceFaceOwner,
+} from './contract/prompt.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {

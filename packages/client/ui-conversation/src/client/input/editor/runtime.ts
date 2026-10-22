@@ -3,7 +3,7 @@ import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { LexicalEditor, NodeKey } from 'lexical'
 import {
   $addUpdateTag, $createParagraphNode, $createTextNode, $getRoot, $getSelection, $isRangeSelection,
-  CLEAR_HISTORY_COMMAND, createEditor, HISTORY_MERGE_TAG, PASTE_TAG,
+  CLEAR_HISTORY_COMMAND, createEditor, HISTORY_MERGE_TAG, HISTORY_PUSH_TAG, PASTE_TAG,
 } from 'lexical'
 import { registerPlainText } from '@lexical/plain-text'
 import { createEmptyHistoryState, registerHistory } from '@lexical/history'
@@ -290,7 +290,22 @@ export class DraftEditorRuntime {
    * @param draft - clipboard text.
    * @param occurrences - reference occurrences in clipboard order.
    */
-  restoreDraft(draft: string, occurrences: readonly Occurrence[]): void {
+  restoreDraft(draft: string, occurrences: readonly Omit<Occurrence, 'occurrenceId'>[]): void {
+    this.rebuild(draft, occurrences, HISTORY_MERGE_TAG)
+  }
+
+  /**
+   * Replace the whole content with fresh reference nodes as one undoable step, so that one undo brings back the
+   * content it replaced.
+   * @param draft - clipboard text.
+   * @param occurrences - reference occurrences in clipboard order.
+   */
+  replaceDraft(draft: string, occurrences: readonly Omit<Occurrence, 'occurrenceId'>[]): void {
+    this.rebuild(draft, occurrences, HISTORY_PUSH_TAG)
+  }
+
+  /** Rebuild the root from clipboard text and its occurrences, tagging the update for the undo history. */
+  private rebuild(draft: string, occurrences: readonly Omit<Occurrence, 'occurrenceId'>[], tag: string): void {
     this.editor.update(() => {
       const root = $getRoot()
       root.clear()
@@ -321,7 +336,7 @@ export class DraftEditorRuntime {
       }
       appendText(draft.slice(cursor))
       root.selectEnd()
-    }, { discrete: true, tag: HISTORY_MERGE_TAG })
+    }, { discrete: true, tag })
   }
 
   /** Cut the editor's undo history after a committed clear or restoration. */

@@ -13,6 +13,7 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { IconProps } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
 export type {
   ArbitrateKey, ArbitrateOutcome, BeginCommandRequest, CommandClaim, ConsumeTokenRequest,
@@ -231,6 +232,16 @@ export interface InputTriggerSource {
   openReference?(session: ClientSessionContext, reference: Pick<ReferenceInsert, 'ref' | 'appearance'>): boolean
   /** Reference codec; required for sources producing insert outcomes. */
   readonly codec?: ReferenceCodec
+  /** The calls of a prompt occurrence outside any session; a source without it is never offered there. */
+  readonly prompt?: PromptSourceFace
+}
+
+/** What a prompt occurrence outside any session calls on a source: no session projection, and the occurrence's context. */
+export interface PromptSourceFace {
+  /** @param req - the live query, and the JSON that the occurrence names for its sources. @returns the candidates. */
+  candidates(req: CandidateRequest & { readonly context: JsonValue | null }): Promise<readonly InputTriggerCandidate[]>
+  /** @param pick - the pick without a session. @returns the outcome the occurrence applies. */
+  onPick(pick: Omit<InputTriggerPick, 'session'>): PickOutcome
 }
 
 /** Trigger availability tier, derived from the input phase by the wiring layer. */

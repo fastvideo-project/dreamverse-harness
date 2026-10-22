@@ -13,7 +13,7 @@ import { WeakMapWithValues } from '@deepseek-ai/dsh-util-values'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { InputTriggerSource } from '../types.ts'
 import { InputTriggerController } from './controller.ts'
-import type { InputTriggerServiceContract } from './contract.ts'
+import type { InputTriggerServiceContract, PromptControllerOptions } from './contract.ts'
 
 /**
  * All mutable service state in one holder: cordis service methods run behind
@@ -25,6 +25,10 @@ interface LiveState {
   readonly sources: InputTriggerSource[]
   /** Per-session controllers; entries are deleted by their scope disposer. */
   readonly controllers: WeakMapWithValues<SessionBinding, InputTriggerController>
+  /** Prompt-occurrence controllers by key; each occurrence's dispose deletes its entry. */
+  readonly occurrences: Map<string, InputTriggerController>
+  /** The number of prompt occurrences opened so far; it mints their keys. */
+  opened: number
 }
 
 /** The `ctx.inputTriggers` trigger pipeline service (root registry + controller resolution). */
@@ -32,7 +36,7 @@ export class InputTriggerService extends Service implements InputTriggerServiceC
   static inject = ['sessions']
 
   private readonly live: LiveState = {
-    sources: [], controllers: new WeakMapWithValues(),
+    sources: [], controllers: new WeakMapWithValues(), occurrences: new Map(), opened: 0,
   }
 
   /**
@@ -41,7 +45,7 @@ export class InputTriggerService extends Service implements InputTriggerServiceC
   constructor(ctx: Context) {
     super(ctx, 'inputTriggers')
     ctx.on('locale/change', () => {
-      for (const controller of this.live.controllers.values) controller.refreshOpenMenu()
+      for (const controller of [...this.live.controllers.values, ...this.live.occurrences.values()]) controller.refreshOpenMenu()
     })
   }
 
@@ -58,7 +62,7 @@ export class InputTriggerService extends Service implements InputTriggerServiceC
       throw new Error(`slash source "${src.trigger}${src.name}" is already registered`)
     }
     live.sources.push(src)
-    for (const controller of live.controllers.values) {
+    for (const controller of [...live.controllers.values, ...live.occurrences.values()]) {
       try {
         controller.sourceAdded(src)
       } catch (error) {
@@ -72,7 +76,7 @@ export class InputTriggerService extends Service implements InputTriggerServiceC
       const at = live.sources.indexOf(src)
       if (at < 0) return
       live.sources.splice(at, 1)
-      for (const controller of live.controllers.values) controller.sourceRemoved(src)
+      for (const controller of [...live.controllers.values, ...live.occurrences.values()]) controller.sourceRemoved(src)
     }
   }
 
@@ -110,6 +114,43 @@ export class InputTriggerService extends Service implements InputTriggerServiceC
       live.controllers.delete(binding)
     }, 'slash: session controller')
     return controller
+  }
+
+  /**
+   * Open the controller of one prompt occurrence outside any session: it offers the named sources that have a `prompt`
+   * face, hands each of them `context`, and applies picks through `deliver`.
+   * @param options - the offered source names, the source context, and the occurrence's pick delivery.
+   * @returns the controller, the key that names it to the prompt menu, and its disposer.
+   */
+  controllerFor(options: PromptControllerOptions): { readonly key: string; readonly controller: InputTriggerController; dispose(): void } {
+    const { live } = this
+    live.opened += 1
+    const key = `prompt-${String(live.opened)}`
+    const offered = (): InputTriggerSource[] => live.sources.filter(s => s.prompt !== undefined && options.sources().includes(s.name))
+    const controller = new InputTriggerController({
+      deliver: options.deliver, sessionId: null, context: options.context,
+      roster: {
+        sources: trigger => offered().filter(s => s.trigger === trigger).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+        all: offered,
+      },
+    })
+    live.occurrences.set(key, controller)
+    return {
+      key, controller,
+      dispose: () => {
+        controller.dispose()
+        live.occurrences.delete(key)
+      },
+    }
+  }
+
+  /**
+   * The controller of one open prompt occurrence.
+   * @param key - the key that {@link controllerFor} returned.
+   * @returns the controller, or undefined after the occurrence closed.
+   */
+  occurrence(key: string): InputTriggerController | undefined {
+    return this.live.occurrences.get(key)
   }
 
   private sessions(): ISessions {

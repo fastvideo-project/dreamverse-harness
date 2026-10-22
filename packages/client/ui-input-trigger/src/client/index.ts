@@ -1,7 +1,8 @@
 /**
  * Slash trigger plugin, browser half: the InputTriggerService (`ctx.inputTriggers`) owning
  * trigger detection, the candidate menu, and the pick pipeline; MenuView
- * self-registers into the conversation.input.overlay slot. Frozen pipeline
+ * self-registers into the conversation.input.overlay slot, and PromptMenuView
+ * into each prompt occurrence's conversation.prompt.menu slot. Frozen pipeline
  * contract in ./contract.ts; sources register through ctx.inputTriggers alone.
  */
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
@@ -11,25 +12,25 @@ import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import { InputTriggerService } from './service.ts'
-import type { MenuViewInjected } from './slots.ts'
-import { MenuView } from './MenuView.tsx'
+import type { MenuViewInjected, PromptMenuInjected } from './slots.ts'
+import { MenuView, PromptMenuView } from './MenuView.tsx'
 import { en, zh, type MenuKey } from './locales.ts'
 
 export { InputTriggerService } from './service.ts'
 export { InputTriggerController } from './controller.ts'
-export type { InputTriggerControllerDeps, SourceRoster } from './controller.ts'
-export type { MenuViewInjected } from './slots.ts'
-export type { MenuViewProps } from './MenuView.tsx'
+export type { AppliedOutcome, InputTriggerControllerDeps, PickDelivery, SourceRoster } from './controller.ts'
+export type { MenuViewInjected, PromptMenuInjected } from './slots.ts'
+export type { MenuViewProps, PromptMenuViewProps } from './MenuView.tsx'
 export type { MenuKey } from './locales.ts'
 export type {
   ArbitrateKey, ArbitrateOutcome, BeginCommandRequest, CandidateRequest, ClientSessionContext,
   CommandClaim, ConsumeTokenRequest, HeaderRequest, InsertReferenceRequest, PickOutcome, PickVia,
   ReferenceCodec, ReferenceInsert, InputTriggerCandidate, InputTriggerCrumb, InputTriggerPick,
-  InputTriggerSource, SubmitAttachment, SubmitEnvelope, SubmitOutcome, TokenSpan, TriggerChar,
+  InputTriggerSource, PromptSourceFace, SubmitAttachment, SubmitEnvelope, SubmitOutcome, TokenSpan, TriggerChar,
   TriggerGuard, TriggerPosition,
 } from '../types.ts'
 export type { DetectTrigger, ExactMatch, MenuEvent, MenuReduce, MenuState, TriggerHit } from '../core/contract.ts'
-export type { InputTriggerServiceContract } from './contract.ts'
+export type { InputTriggerServiceContract, PromptControllerOptions } from './contract.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -83,5 +84,18 @@ export function apply(ctx: ClientContext): void {
         }
       },
     }, MenuView))
+    // Each prompt occurrence names its own controller; the menu reads that controller's stores by key.
+    scope.slots.inject('conversation.prompt.menu', () => scope.slots.register({
+      name: 'conversation.prompt.menu',
+      locale: MENU_NS,
+      inject: (): PromptMenuInjected => ({
+        keyedHooks: {
+          menu: menuKey => inputTriggers.occurrence(menuKey)?.menu,
+        },
+        onPick: (menuKey, source, index, action) => { inputTriggers.occurrence(menuKey)?.pick(source, index, action) },
+        onHover: (menuKey, source, index) => { inputTriggers.occurrence(menuKey)?.hover(source, index) },
+        onDismiss: (menuKey) => { inputTriggers.occurrence(menuKey)?.dismiss() },
+      }),
+    }, PromptMenuView))
   })
 }

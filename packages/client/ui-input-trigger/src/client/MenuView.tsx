@@ -15,13 +15,29 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import clsx from 'clsx'
 import { IconChevronRightOutlineRegular, ReferenceIconRegular, useAnchoredMaxHeight } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InputTriggerCrumb } from '../types.ts'
+import type { MenuState } from '../core/contract.ts'
+import { MENU_CLOSED } from '../core/menu.ts'
 import css from './MenuView.module.css'
-import type { MenuViewInjected } from './slots.ts'
+import type { MenuViewInjected, PromptMenuInjected } from './slots.ts'
 import type { MenuKey } from './locales.ts'
 
 /** Full menu props: injected face + the locale seat. */
 export type MenuViewProps = MenuViewInjected & PropsLocale<'slash.menu'>
+
+/** Full props of the `@` menu of one prompt occurrence. */
+export type PromptMenuViewProps = PropsRuntime<'conversation.prompt.menu'> & InjectFace<PromptMenuInjected> & PropsLocale<'slash.menu'>
+
+/** What the list draws: the menu state, the crumbs with their pick route, the other pick routes, and the copy. */
+type MenuListProps = Omit<MenuViewProps, 'menu' | 'headers' | 'onCrumb'> & {
+  readonly state: MenuState
+  /** The crumbs that the sources publish, and their pick route; null for a menu whose sources publish none. */
+  readonly crumbs: {
+    readonly trails: ReadonlyMap<string, readonly InputTriggerCrumb[]>
+    readonly onCrumb: MenuViewProps['onCrumb']
+  } | null
+}
 
 /** Height cap that fits the two headings and eight built-in command rows. */
 const MAX_HEIGHT = 400
@@ -43,7 +59,7 @@ function optionId(source: string, index: number): string {
  * @param props - injected face (the menu store and the pick route); `t` rides the standard locale seat.
  * @returns the dropdown while open; null while closed.
  */
-export function MenuView({ menu, headers, onPick, onCrumb, onHover, onDismiss, t }: MenuViewProps) {
+export function MenuView({ menu, headers, onCrumb, ...routes }: MenuViewProps) {
   const state = useSyncExternalStore(
     fn => menu.subscribe(fn),
     () => menu.getSnapshot(),
@@ -52,6 +68,32 @@ export function MenuView({ menu, headers, onPick, onCrumb, onHover, onDismiss, t
     fn => headers.subscribe(fn),
     () => headers.getSnapshot(),
   )
+  return <MenuList state={state} crumbs={{ trails: crumbs, onCrumb }} {...routes} />
+}
+
+/**
+ * Render the `@` menu of one prompt occurrence: the menu of the controller its owner names. Its sources publish no
+ * crumbs, because a crumb header reads a session.
+ * @param props - the occurrence's menu key, the keyed menu hook, the pick routes, and the copy.
+ * @returns the dropdown while open; null while closed.
+ */
+export function PromptMenuView({ menuKey, useMenu, onPick, onHover, onDismiss, t }: PromptMenuViewProps) {
+  return (
+    <MenuList
+      state={useMenu(menuKey) ?? MENU_CLOSED} crumbs={null} t={t}
+      onPick={(source, index, action) => { onPick(menuKey, source, index, action) }}
+      onHover={(source, index) => { onHover(menuKey, source, index) }}
+      onDismiss={() => { onDismiss(menuKey) }}
+    />
+  )
+}
+
+/**
+ * Render the dropdown of one menu state.
+ * @param props - the menu state, the crumbs, the pick routes, and the copy.
+ * @returns the dropdown while open; null while closed.
+ */
+function MenuList({ state, crumbs, onPick, onHover, onDismiss, t }: MenuListProps) {
   const listRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const [hasOverflowBelow, setHasOverflowBelow] = useState(false)
@@ -100,8 +142,8 @@ export function MenuView({ menu, headers, onPick, onCrumb, onHover, onDismiss, t
       data-trigger-menu=""
       data-overflow-below={hasOverflowBelow || undefined}
     >
-      {state.groups.map((group) => {
-        const trail = crumbs.get(group.source)
+      {crumbs === null ? null : state.groups.map((group) => {
+        const trail = crumbs.trails.get(group.source)
         return trail === undefined ? null : (
           <nav key={group.source} className={css.crumbs} aria-label={t('crumbs.aria')}>
             {trail.map((crumb, index) => (
@@ -115,7 +157,7 @@ export function MenuView({ menu, headers, onPick, onCrumb, onHover, onDismiss, t
                   // mousedown, not click: the composer keeps focus, same as a row.
                   onMouseDown={(ev) => {
                     ev.preventDefault()
-                    onCrumb(group.source, index)
+                    crumbs.onCrumb(group.source, index)
                   }}
                 >
                   {crumb.label}

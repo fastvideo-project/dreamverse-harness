@@ -1,0 +1,34 @@
+/* One prompt occurrence: a bordered box that grows with its text; the `@` menu anchors above it. */
+.prompt {
+  position: relative;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-l1);
+}
+
+.scroll {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.grow {
+  position: relative;
+}
+
+.input {
+  box-sizing: border-box;
+  min-height: 72px;
+  padding: 8px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  outline: none;
+}
+
+.input p {
+  margin: 0;
+}
+
+.readOnly .input {
+  min-height: 0;
+}

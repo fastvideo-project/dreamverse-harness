@@ -27,6 +27,7 @@ import type { IConversation } from './service.ts'
 import { ComposerBlockRegistry } from './input/blocks.ts'
 import type { ComposerBlock } from './contract/composer-blocks.ts'
 import { InputHub } from './input/hub.ts'
+import { registerPromptFactory } from './prompt.ts'
 import { ComposerSubmissionPolicy } from './input/submission-policy.ts'
 import { queueDockEntry } from './queue/QueueDock.tsx'
 import { EnterBehaviorRow } from './settings/EnterBehaviorRow.tsx'
@@ -382,6 +383,7 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     locale: NS,
     children: {
       'conversation.input.attachments': { kind: 'single', scope: 'session-maybe' },
+      'conversation.input.reference': { kind: 'keyed', scope: 'session-maybe' },
       'conversation.input.overlay': { kind: 'list', scope: 'session' },
       'conversation.input.permission': { kind: 'single', scope: 'session' },
       'conversation.input.left': { kind: 'list', scope: 'session' },
@@ -490,6 +492,8 @@ export function apply(ctx: Context, config: Config = Config({})): void {
       }
     },
   }, InputBar)
+
+  ctx.effect(() => registerPromptFactory(ctx), 'ui-conversation: prompt Factory')
 
   slots.inject('main', function* () {
     yield slots.register({

@@ -7,7 +7,8 @@
  * (running/removed/promptError) are self-selected via useSession.
  *
  * The text surface is the shell-owned Lexical editor bound here through
- * ComposerContentEditable; chips render as decorator portals, and the
+ * ComposerContentEditable; chips render as decorator portals, each through the
+ * `conversation.input.reference` entry of its source, and the
  * keymap registers submit/menu/paste gestures on the editor command layer.
  * The no-session state renders the SAME div inert as the Workspace-picker
  * trigger instead of a parallel tree.
@@ -413,6 +414,7 @@ export const InputBar = memo(function InputBar({
           onWorkspaceKeyDown={onWorkspaceKeyDown}
           hint={hint}
           showPlaceholder={draft === '' && attachments.length === 0 && !claimActive}
+          renderFace={(chip, fallback) => renderSlot('conversation.input.reference', { ...chip, context: null }, { entryKey: chip.source, fallback })}
         />
         <div ref={rowRef} className={css.row}>
           <div className={css.tools} hidden={activity}>

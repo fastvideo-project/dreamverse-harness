@@ -16,7 +16,7 @@ import { zh } from '../src/client/locales.ts'
 import type {
   InputTriggerCrumb, MenuState, TriggerHit,
 } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
-import { MenuView } from '../src/client/MenuView.tsx'
+import { MenuView, PromptMenuView } from '../src/client/MenuView.tsx'
 
 const hit: TriggerHit = {
   trigger: '/',
@@ -372,5 +372,38 @@ describe('MenuView', () => {
   it('renders no header for a source that published no crumbs', () => {
     mount(openState())
     expect(screen.queryByRole('navigation')).toBeNull()
+  })
+})
+
+describe('PromptMenuView', () => {
+  /** The framework seats of a prompt occurrence's menu, which renders with no Session and reads none of them. */
+  const NO_SESSION = {
+    sessionId: undefined, inputActions: undefined, useSession: vi.fn(), useProjection: vi.fn(), useConversation: vi.fn(),
+    useInput: vi.fn(), usePanelInfo: vi.fn(), useSessions: vi.fn(), useSessionStatus: vi.fn(), useSessionRetainInfo: vi.fn(),
+    useWorkspaces: vi.fn(), useResource: vi.fn(),
+  }
+
+  /** Render the menu of one prompt occurrence over the menu state its key names; undefined is a closed occurrence. */
+  function mountPrompt(state: MenuState | undefined) {
+    const onPick = vi.fn()
+    const view = render(
+      <PromptMenuView
+        {...NO_SESSION} menuKey="prompt-1" useMenu={() => state} onPick={onPick} onHover={vi.fn()} onDismiss={vi.fn()} t={t}
+      />,
+    )
+    return { onPick, view }
+  }
+
+  it('draws the open menu of its occurrence with no crumb header, and routes a pick with its menu key', () => {
+    const { onPick } = mountPrompt(openState())
+    expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual(['goalSet up a goal', 'plan'])
+    expect(screen.queryByRole('navigation')).toBeNull()
+    fireEvent.mouseDown(screen.getAllByRole('option')[1]!)
+    expect(onPick).toHaveBeenCalledWith('prompt-1', 'command', 1, undefined)
+  })
+
+  it('draws nothing for a menu key whose occurrence has closed', () => {
+    const { view } = mountPrompt(undefined)
+    expect(view.container.innerHTML).toBe('')
   })
 })

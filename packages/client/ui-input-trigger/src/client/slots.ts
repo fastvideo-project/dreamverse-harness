@@ -1,7 +1,7 @@
 /** Slash-menu props for the Conversation-owned input overlay. */
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { InputTriggerCrumb, PickAction } from '../types.ts'
-import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { ObservableSnapshot, SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { MenuState } from '../core/contract.ts'
 
 /** Injected business face of the MenuView overlay entry (copy rides the standard locale seat, not this face). */
@@ -32,4 +32,15 @@ export interface MenuViewInjected {
   onCrumb: (source: string, index: number) => void
   /** Dismiss the menu (external pointer outside the composer area). */
   onDismiss: () => void
+}
+
+/** Injected face of the `@` menu of a prompt occurrence: the controllers' menu stores by menu key, and the pick routes. */
+export interface PromptMenuInjected {
+  keyedHooks: {
+    /** The menu state of the occurrence controller with this key. */
+    menu: (menuKey: string) => ObservableSnapshot<MenuState> | undefined
+  }
+  onPick: (menuKey: string, source: string, index: number, action?: PickAction) => void
+  onHover: (menuKey: string, source: string, index: number) => void
+  onDismiss: (menuKey: string) => void
 }
