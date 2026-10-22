@@ -1,29 +1,34 @@
 /**
- * Browser half of the shot plan: the canvas node type of plans, the takes that plans use, and the History row of plan
- * records. The canvas core draws each plan as one node `plan:<PlanId>` at its latest version with the default card and
- * a frame grid of one slot per shot, and keeps the records that produced the reference assets of the latest version on
- * the canvas. The node's editor shows the plan editor, the `dv.canvas.editor` entry of the node type. The History row
- * names the plan of a `plan.create` or `plan.update` record.
+ * Browser half of the shot plan: the canvas node type of plans with its card and editor, the records that plans use,
+ * and the History row of plan records. Each plan is one node `plan:<PlanId>` at its latest version with a frame grid
+ * of one slot per shot, which the canvas fills from the takes anchored there; the records that produced the reference
+ * assets of the latest version stay on the canvas. The node's editor is the plan editor. The History row names the plan
+ * of a `plan.create` or `plan.update` record.
  *
  * @module @dv/ui-shot-plan/client
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
-import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type { PlanState, PlanVersion } from '@dv/shot-plan/types'
+import type { NodeEntry, NodeType, RecordsInUse } from '@dv/ui-canvas/contract'
 import { DvClient } from '@dv/ui-kit/api.ts'
+import { loadedOnce } from '@dv/ui-kit/loaded.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
 import type { HistoryRow } from '@dv/ui-history/contract'
-import type { NodeEntry, NodeType, TakesInUse } from '@dv/ui-kit/registries.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
+import type { WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
+import { PlanCard } from './PlanCard.tsx'
 import { PlanEditor, plansOf, totalSec } from './PlanEditor.tsx'
 import type { PlanEditorInjected } from './PlanEditor.tsx'
 
 declare module '@dv/ui-kit/types.ts' { interface ComponentStates { plan: PlanState } }
+declare module '@dv/ui-canvas/contract' { interface NodeDataMap { plan: null } }
 
-/** The package name: the key of the node type, of the takes in use, and of the editor entry. */
+/** The package name: the owner of the node type and of the records in use. */
 const ID = '@dv/ui-shot-plan'
+/** The body height of a plan card: the type label and the version. */
+const BODY_HEIGHT = 46
 
 /**
  * The plans of a state that have a version.
@@ -38,36 +43,39 @@ function latestPlans(state: WireState): Array<{ id: string; versions: PlanVersio
 }
 
 /**
- * The canvas node type of plans: one entry `plan:<PlanId>` per plan in column 1 that shows its latest version (subtitle
- * `第 N 版`, title `N 个镜头 · <total duration>`) with one slot per shot. The entry's record wrote the latest version, and
- * its `records` wrote the earlier versions.
+ * The canvas node type of plans: one slice node `plan:<PlanId>` per plan in column 1 that shows its latest version
+ * (title `N 个镜头 · <total duration>`) with one slot per shot. The node's record wrote the latest version, and its
+ * `records` wrote the earlier versions.
  */
-export const planNodeType: NodeType = {
+export const planNodeType: NodeType<'plan'> = {
   id: ID,
   type: 'plan',
   label: () => pickText('分镜计划', 'Plan'),
   color: 'var(--dv-kind-plan)',
   column: 1,
-  entries(state) {
+  entries({ state }) {
     const records = new Map(state.components.proj.records.map(record => [record.id, record]))
-    return latestPlans(state).map(({ id, versions, latest }): NodeEntry => {
+    return latestPlans(state).map(({ id, versions, latest }): NodeEntry<'plan'> => {
       const count = String(latest.shots.length)
       const total = totalSec(latest)
+      const earlier = versions.slice(0, -1).map(version => version.created_by)
       return {
         id: `plan:${id}`,
         record: records.get(latest.created_by) ?? null,
-        records: versions.slice(0, -1).map(version => version.created_by),
-        subtitle: pickText(`第 ${String(latest.version)} 版`, `v${String(latest.version)}`),
+        // A plan at version 1 has no earlier versions and so no `records`; the card counts the version on show from them.
+        ...earlier.length === 0 ? {} : { records: earlier },
         title: `${pickText(`${count} 个镜头`, `${count} shots`)}${total === null ? '' : ` · ${clockText(total)}`}`,
-        media: [],
+        assets: [],
         slots: latest.shots.length,
+        bodyHeight: BODY_HEIGHT,
+        data: null,
       }
     })
   },
 }
 
-/** The takes that plans use: the records that produced the reference assets of each plan's latest version and its shots. */
-export const planReferencesInUse: TakesInUse = {
+/** The records that plans use: the records that produced the reference assets of each plan's latest version and its shots. */
+export const planReferencesInUse: RecordsInUse = {
   id: ID,
   uses(state) {
     const createdBy = state.components.proj.created_by
@@ -113,21 +121,31 @@ export const planHistoryRow: HistoryRow = {
   },
 }
 
+/** Required browser services: none; each registration waits for its own service. */
+export const inject: readonly string[] = []
+
 /**
- * Client plugin body: while `dvCanvas` is present, register the node type of plans and the takes that plans use, and
- * with the slot registry the plan editor once a host declares `dv.canvas.editor`; while `dvHistory` is present,
- * register the History row of plan records. Each registration leaves with the service or with the plugin.
+ * Client plugin body: while `dvCanvas` is present, register the node type of plans and the records that plans use, and
+ * with the slot registry the plan card and the plan editor once the canvas declares their slots; while `dvHistory` is
+ * present, register the History row of plan records. Each registration leaves with the service or with the plugin.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
   ctx.inject(['dvCanvas'], (scope) => {
     scope.effect(() => scope.dvCanvas.nodeTypes.register(planNodeType), 'ui-shot-plan: node type')
-    scope.effect(() => scope.dvCanvas.takesInUse.register(planReferencesInUse), 'ui-shot-plan: takes in use')
+    scope.effect(() => scope.dvCanvas.recordsInUse.register(planReferencesInUse), 'ui-shot-plan: records in use')
   })
   ctx.inject(['dvCanvas', 'slots'], (scope) => {
-    const injected: PlanEditorInjected = { canvas: scope.dvCanvas, client: new DvClient() }
+    const client = new DvClient()
+    const injected: PlanEditorInjected = {
+      hooks: {
+        chainAnchors: scope.dvCanvas.chainAnchors, versionKinds: scope.dvCanvas.versionKinds,
+        taskLabels: loadedOnce<WireTaskLabels>({}, () => client.getTaskLabels()),
+      },
+    }
+    scope.effect(() => scope.slots.inject('dv.canvas.card', () => scope.slots.register({ name: 'dv.canvas.card', key: 'plan' }, PlanCard)), 'ui-shot-plan: plan card')
     scope.effect(() => scope.slots.inject('dv.canvas.editor', () => scope.slots.register(
-      { name: 'dv.canvas.editor', key: ID, inject: () => injected }, PlanEditor,
+      { name: 'dv.canvas.editor', key: 'plan', inject: () => injected }, PlanEditor,
     )), 'ui-shot-plan: plan editor')
   })
   ctx.inject(['dvHistory'], (scope) => {

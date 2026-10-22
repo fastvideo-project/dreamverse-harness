@@ -1,12 +1,12 @@
 /**
  * Browser half of the DreamVerse composer additions:
  * - `dvMentions`, the registry of the mention kinds that plugin UI halves add to the `@` source;
- * - an `@` source listing the bound project's clips, the items of every registered mention kind, and assets;
+ * - an `@` source listing the items of every registered mention kind and the assets of every media type;
  * - a 引用 row in the composer's ＋ menu that opens that `@` list at the end of the draft;
  * - an invisible `conversation.input.left` entry that makes each session's composer a `dv:compose` target;
- * - cards for the project's assets of every media type in settled chat Markdown (`chat-media.ts`), drawn through
- *   `dv.media`, whose clicks open the `dvMedia` preview;
- * - 让智能体使用 in the asset preview (`dv.media.preview.action`), which prefills the composer with the asset;
+ * - cards for the project's assets in settled chat Markdown, drawn through `dv.media` (`chat-media.ts`);
+ * - 问 agent / Ask the agent on every canvas node and 让智能体使用 / Ask the agent to use it in the asset preview
+ *   (`actions.tsx`);
  * - creator-facing names for the `dv_*` tools and for every operation of `/api/dv/operations` in their chat rows
  *   and in the running group title;
  * - 在历史中查看 on every settled row whose tool is not read-only, including failed calls, which dispatches
@@ -29,8 +29,9 @@ import { DV_COMPOSE_EVENT, type DvComposeDetail } from '@dv/ui-kit/compose.ts'
 import { getCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
 import { createRegistry, type MentionKind } from '@dv/ui-kit/registries.ts'
-import type { MediaType } from '@dv/ui-media/contract'
-import { UseAssetAction } from './actions.tsx'
+import type {} from '@dv/ui-canvas/contract'
+import type {} from '@dv/ui-media/contract'
+import { askAgentAction, UseAssetAction } from './actions.tsx'
 import { registerChatMedia } from './chat-media.ts'
 import { deliverCompose, mountComposer } from './compose.ts'
 import { MENTION_SOURCE, projectMentionSource } from './mention.ts'
@@ -70,14 +71,17 @@ interface CommandMenu {
  */
 export function apply(ctx: ClientContext): void {
   // At apply's top level, never inside an effect: other plugins register into the registry from their own fibers.
-  const mentions = { kinds: createRegistry<MentionKind>(kind => [kind.id]) }
+  const mentions = { kinds: createRegistry<MentionKind>(kind => [kind.id], kind => kind.id) }
   ctx.reflect.provide('dvMentions', mentions)
-  const mediaTypes = (): readonly MediaType[] => ctx.get('dvMedia')?.types.list() ?? []
+  const mediaTypes = () => ctx.get('dvMedia')?.types.getSnapshot() ?? []
   ctx.effect(() => ctx.inputTriggers.registerSource(projectMentionSource(mentions, mediaTypes)), 'dv-composer: @ source')
   registerChatMedia(ctx)
+  ctx.inject(['dvCanvas'], (scope) => {
+    scope.effect(() => scope.dvCanvas.actions.register(askAgentAction), 'dv-composer: ask the agent')
+  })
   ctx.effect(() => ctx.slots.inject('dv.media.preview.action', () => ctx.slots.register(
-    { name: 'dv.media.preview.action', id: 'dv.composer.use-asset' }, UseAssetAction,
-  )), 'dv-composer: 让智能体使用 preview action')
+    { name: 'dv.media.preview.action', id: '@dv/ui-composer:use-asset' }, UseAssetAction,
+  )), 'dv-composer: use the asset')
 
   /** The input facade of one session, while its scope and conversation service exist. */
   const inputOf = (sessionId: SessionId): SessionInput | undefined => {

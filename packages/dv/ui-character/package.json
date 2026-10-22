@@ -36,6 +36,7 @@
     "@dv/ui-composer": "workspace:*",
     "@dv/ui-history": "workspace:*",
     "@dv/ui-kit": "workspace:*",
+    "@dv/ui-media": "workspace:*",
     "@dv/ui-reference-kit": "workspace:*",
     "@testing-library/react": "^16.1.0",
     "@types/react": "~18.3.1",

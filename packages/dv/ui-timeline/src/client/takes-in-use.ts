@@ -1,21 +1,21 @@
 /**
- * The takes that the project's timelines use, as the canvas reads them through `dvCanvas.takesInUse`: the record behind
- * each clip, and a trim badge on the asset of each clip with an in or out point.
+ * The records that the project's timelines use, as the canvas reads them through `dvCanvas.recordsInUse`: the record
+ * behind each clip, and a trim badge on the asset of each clip with an in or out point.
  */
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
-import type { TakesInUse } from '@dv/ui-kit/registries.ts'
+import type { RecordsInUse } from '@dv/ui-canvas/contract'
 import { TIMELINE_ID } from './definition.ts'
 import type {} from './locales.ts'
 import { timelinesOf } from './timelines.ts'
 
 /**
- * The `TakesInUse` of the timeline, registered under the package's id. `uses` lists, for each clip of every timeline, the
+ * The `RecordsInUse` of the timeline, registered under the package's id. `uses` lists, for each clip of every timeline, the
  * render the clip waits for (`source.record`), else the producer of its asset; `badges` puts the trim label on the asset
  * of each clip with an in or out point.
  * @param t - namespace-bound translate, read on every `badges` call.
  * @returns the descriptor to register.
  */
-export function timelineTakesInUse(t: TranslateNS<'dvTimeline'>): TakesInUse {
+export function timelineTakesInUse(t: TranslateNS<'dvTimeline'>): RecordsInUse {
   return {
     id: TIMELINE_ID,
     uses(state) {

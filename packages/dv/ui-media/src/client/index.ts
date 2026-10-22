@@ -46,7 +46,7 @@ export function apply(ctx: ClientContext): void {
   }
   const media: DvMedia = {
     // At apply's top level, never inside an effect: other plugins register into the registry from their own fibers.
-    types: createRegistry<MediaType>(type => [type.id]),
+    types: createRegistry<MediaType>(type => [type.id], type => type.owner),
     preview(projectId: string, asset: Asset, element: Element | null) {
       opener = element
       serial += 1

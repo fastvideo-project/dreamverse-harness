@@ -1,13 +1,13 @@
 /**
  * Browser half of the story workflow: the canvas chain anchor and the History row of `story.approve` records. The anchor
  * hangs the records that a story approval started off the node of its plan and reads the approved versions of a plan
- * from the `story` slice; the row names the plan and version of an approval.
+ * from the `story` slice; the row names the plan and version of an approval and the renders folded under it.
  *
  * @module @dv/ui-workflow-story/client
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { ChainAnchor } from '@dv/ui-canvas/contract'
 import type { HistoryRow } from '@dv/ui-history/contract'
-import type { ChainAnchor } from '@dv/ui-kit/registries.ts'
 
 /** The operation of `@dv/workflow-story` whose records approve a plan version and start its renders and layout. */
 const APPROVE = 'story.approve'
@@ -44,9 +44,13 @@ export const storyApprovalAnchor: ChainAnchor = {
   },
 }
 
-/** The History row of story approvals: the subject ` <plan> v<version>` from the report of a finished approval. */
+/**
+ * The History row of story approvals: the subject ` <plan> v<version>` from the report of a finished approval, and the
+ * fold text 渲染 n 个镜头 / Render n shots over the shot renders the approval started.
+ */
 export const storyApprovalRow: HistoryRow = {
   match: APPROVE,
+  fold: count => [`渲染 ${String(count)} 个镜头`, `Render ${String(count)} shots`],
   subject(record) {
     const plan = record.report?.['plan']
     const version = record.report?.['version']

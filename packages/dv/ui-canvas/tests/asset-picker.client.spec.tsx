@@ -1,13 +1,15 @@
 // @vitest-environment jsdom
-/** The asset picker: one section per registered version kind, titled with the kind's label. */
-import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, render, within } from '@testing-library/react'
+/**
+ * The asset picker: one section per registered version kind, titled with the kind's label, whose items toggle, and the
+ * Escape key that closes it.
+ */
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, within } from '@testing-library/react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
-import { DvClient } from '@dv/ui-kit/api.ts'
+import type { RenderFactorySlot } from '@deepseek-ai/dsh-client-ui-slots'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
-import { fixtureState, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { fixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { AssetPicker } from '../src/client/AssetPicker.tsx'
-import { createDvCanvas } from '../src/client/dv-canvas.ts'
 import type { CanvasTranslate } from '../src/client/NodeCard.tsx'
 import { zh } from '../src/client/locales.ts'
 
@@ -30,14 +32,13 @@ afterEach(() => { cleanup() })
 
 describe('AssetPicker', () => {
   it('shows one section per registered version kind, titled with the kind\'s label and holding its items', () => {
-    const canvas = createDvCanvas()
-    canvas.versionKinds.register(namedKind('character', '角色', { hero: 'Hero' }))
-    canvas.versionKinds.register(namedKind('prop', '道具', { p1: '红伞', p2: '旧皮箱' }))
+    const kinds = [namedKind('character', '角色', { hero: 'Hero' }), namedKind('prop', '道具', { p1: '红伞', p2: '旧皮箱' })]
     const t: CanvasTranslate = makeTranslate(zh)
+    // The pool panel and the item covers are slot and Factory bodies, which this unit leaves empty.
     render(
       <AssetPicker
-        state={fixtureState()} client={new DvClient(scriptedFetch().fetch)} project="p1" session={null} t={t}
-        kinds={canvas.versionKinds.list()} chosen={[]} onConfirm={() => undefined} onCancel={() => undefined}
+        state={fixtureState()} project="p1" session={null} t={t} kinds={kinds} chosen={[]} onConfirm={() => undefined} onCancel={() => undefined}
+        renderSlot={() => null} renderFactorySlot={() => null}
       />,
     )
     const picker = within(document.body).getByTestId('dv-canvas-asset-picker')
@@ -46,5 +47,33 @@ describe('AssetPicker', () => {
       items: within(section).getAllByRole('button').map(button => button.textContent),
     }))
     expect(sections).toEqual([{ title: '角色', items: ['Hero'] }, { title: '道具', items: ['红伞', '旧皮箱'] }])
+  })
+
+  it('names an unnamed item by its ID, draws its cover through dv.media, toggles a pick off, and closes on Escape only', () => {
+    const kinds: VersionKind[] = [{ ...namedKind('character', '角色', { hero: '' }), assets: () => ['ref.png'] }]
+    const t: CanvasTranslate = makeTranslate(zh)
+    const onCancel = vi.fn()
+    const media: RenderFactorySlot = (name, props) => <span data-factory={name}>{JSON.stringify(props)}</span>
+    render(
+      <AssetPicker
+        state={fixtureState()} project="p1" session={null} t={t} kinds={kinds} chosen={[]} onConfirm={() => undefined} onCancel={onCancel}
+        renderSlot={() => null} renderFactorySlot={media}
+      />,
+    )
+    const picker = within(document.body).getByTestId('dv-canvas-asset-picker')
+    const hero = within(picker).getByRole('button', { name: /hero/u })
+    expect(hero.textContent).toContain('hero')
+    const cover = hero.querySelector('[data-factory="dv.media"]')
+    expect(JSON.parse(cover?.textContent ?? 'null')).toMatchObject({ asset: { id: 'ref.png' }, purpose: 'thumb' })
+    const confirm = (count: number): boolean =>
+      within(picker).getByRole('button', { name: `确认（${String(count)}）` }).hasAttribute('disabled')
+    fireEvent.click(hero)
+    expect([hero.getAttribute('aria-pressed'), confirm(1)]).toEqual(['true', false])
+    fireEvent.click(hero)
+    expect([hero.getAttribute('aria-pressed'), confirm(0)]).toEqual(['false', true])
+    fireEvent.keyDown(window, { key: 'a' })
+    expect(onCancel).not.toHaveBeenCalled()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(onCancel).toHaveBeenCalledTimes(1)
   })
 })

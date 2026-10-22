@@ -64,8 +64,8 @@ export async function releaseWorkspaces(): Promise<void> {
 }
 
 /**
- * Load fresh plugin modules for a page opened at `hash`, mount the shell, timeline and canvas plugins, and render the
- * center and the timeline tab body in session s1.
+ * Load fresh plugin modules for a page opened at `hash`, mount the shell, timeline, canvas and shot render plugins, and
+ * render the center and the timeline tab body in session s1.
  * @param hash - the URL hash the page loads with.
  * @returns the workspace.
  */
@@ -90,6 +90,7 @@ export async function mountWorkspace(hash: string): Promise<Workspace> {
   const shell = await import('../src/client/index.ts')
   const timeline = await import('../../ui-timeline/src/client/index.ts')
   const canvas = await import('../../ui-canvas/src/client/index.ts')
+  const shotRender = await import('../../ui-shot-render/src/client/index.ts')
   const { TIMELINE_ID } = await import('../../ui-timeline/src/client/definition.ts')
 
   const runtime = await SlotTestRuntime.create()
@@ -128,6 +129,7 @@ export async function mountWorkspace(hash: string): Promise<Workspace> {
   await runtime.mount({ inject: [...shell.inject], apply: shell.apply })
   await runtime.mount({ inject: [...timeline.inject], apply: timeline.apply })
   await runtime.mount({ inject: [...canvas.inject], apply: canvas.apply })
+  await runtime.mount({ inject: [...shotRender.inject], apply: shotRender.apply })
   const session = runtime.sessions.retain('s1' as SessionId)
   retained.push(session)
   const center = runtime.renderSlot('main.conversation', {}, { session })

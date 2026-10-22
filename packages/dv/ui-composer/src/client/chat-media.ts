@@ -1,7 +1,7 @@
 /**
  * The DreamVerse entry of DSH's `conversation.chat.markdown` chain: in settled chat Markdown, a link to an asset becomes
- * a 16:9 card captioned with the take's shot number, else the asset's name, an image of an asset becomes a capped
- * thumbnail, and a table whose every body row links an asset becomes a three-column grid of cards. Each asset
+ * a 16:9 card captioned with History's label of the record that created the asset, an image of an asset becomes a
+ * capped thumbnail, and a table whose every body row links an asset becomes a three-column grid of cards. Each asset
  * draws through the `dv.media` Factory, so an asset of a media type without a view draws the file card. The entry's
  * `select` finds asset references by their `/dv/assets/<id>` paths alone; the component reads the open project's assets
  * through the `useChatAssets` hook and renders DSH's default element while the project does not hold a referenced
@@ -17,7 +17,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { HostObservable, InjectFace, PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { createElement, type ReactNode } from 'react'
 import { DvClient } from '@dv/ui-kit/api.ts'
-import type { Asset, ProjectAsset } from '@dv/ui-kit/types.ts'
+import type { Asset, ProjectAsset, ProjectRecord, WireOperation } from '@dv/ui-kit/types.ts'
+import type { Text } from '@dv/ui-history/contract'
 import type {} from '@dv/ui-media/contract'
 import { followChatAssets, NO_CHAT_ASSETS, type ChatAssets } from './chat-assets.ts'
 import { ChatMediaView } from './ChatMedia.tsx'
@@ -52,15 +53,19 @@ export interface GridCard {
 
 /** What the chain entry draws in place of one Markdown element, by the element's kind, and the assets' project. JSON data. */
 export type ChatMedia = { readonly project: string } & (
-  /** A standalone link: a card captioned with `shot`, the take's shot number, else with the asset's name when it is null. */
-  | { readonly kind: 'link'; readonly asset: ProjectAsset; readonly shot: number | null }
+  /** A standalone link: a card captioned with History's label of the asset's producer, else the asset's name. */
+  | { readonly kind: 'link'; readonly asset: ProjectAsset; readonly caption: Text }
   | { readonly kind: 'image'; readonly asset: ProjectAsset; readonly alt: string }
   | { readonly kind: 'table'; readonly cards: readonly GridCard[] }
 )
 
-/** What the entry injects: the open project's assets as an observable source, and the preview. */
+/** History's label of a record, or null while `dvHistory` is absent. */
+export type DescribeRecord = (record: ProjectRecord, operations: readonly WireOperation[]) => Text | null
+
+/** What the entry injects: the open project's assets as an observable source, History's record label, and the preview. */
 export interface ChatMediaInjected {
   hooks: { chatAssets: HostObservable<ChatAssets> }
+  describe: DescribeRecord
   /** Open the asset preview of `dvMedia` for an asset of a project, growing out of `opener`; nothing while `dvMedia` is absent. */
   preview: (projectId: string, asset: Asset, opener: Element | null) => void
 }
@@ -147,15 +152,19 @@ function gridCard(row: AssetRow, held: ChatAssets): GridCard | undefined {
  * Resolve an element's asset references against the open project's assets.
  * @param reference - the references that {@link selectAssetReference} found.
  * @param held - the open project's assets.
+ * @param describe - History's label of a record.
  * @returns what the entry draws, or null while the project does not hold a referenced asset.
  */
-export function resolveChatMedia(reference: AssetReference, held: ChatAssets): ChatMedia | null {
+export function resolveChatMedia(reference: AssetReference, held: ChatAssets, describe: DescribeRecord): ChatMedia | null {
   const { project } = held
   if (project === null) return null
   switch (reference.kind) {
     case 'link': {
       const asset = held.assets[reference.asset]
-      return asset === undefined ? null : { project, kind: 'link', asset, shot: held.shots[asset.id] ?? null }
+      if (asset === undefined) return null
+      const producer = held.producers[asset.id]
+      const caption = producer === undefined ? null : describe(producer, held.operations)
+      return { project, kind: 'link', asset, caption: caption ?? [asset.name, asset.name] }
     }
     case 'image': {
       const asset = held.assets[reference.asset]
@@ -180,12 +189,13 @@ export type ChatMediaEntryProps = PropsRuntime<'conversation.chat.markdown'> & P
 /**
  * The chain entry's component: the cards of the matched references, or DSH's default element while the project does
  * not hold a referenced asset. A change of the project re-renders a card in place, so its state survives.
- * @param props - the matched references, the default element, the asset hook, the preview, and the Factory renderer.
+ * @param props - the matched references, the default element, the asset hook, History's label, the preview, and the
+ *   Factory renderer.
  * @returns the card, the thumbnail, the grid, or the default element.
  */
 export function ChatMediaEntry(props: ChatMediaEntryProps): ReactNode {
-  const { matched, fallback, useChatAssets, preview, renderFactorySlot } = props
-  const media = useChatAssets(held => resolveChatMedia(matched, held), sameChatMedia)
+  const { matched, fallback, useChatAssets, describe, preview, renderFactorySlot } = props
+  const media = useChatAssets(held => resolveChatMedia(matched, held, describe), sameChatMedia)
   return media === null ? fallback : createElement(ChatMediaView, { media, preview, renderFactorySlot })
 }
 
@@ -202,7 +212,8 @@ function sameChatMedia(a: ChatMedia | null, b: ChatMedia | null): boolean {
  * Register the chain entry while the Chat view declares `conversation.chat.markdown`. The entry stays registered for
  * the whole declaration, and the open project's assets reach its component through the `useChatAssets` hook. The
  * project is followed only while a chat element subscribes; when the last one unsubscribes, following stops and the
- * last snapshot stays for the next subscriber. The preview is read from the optional `dvMedia` service at call time.
+ * last snapshot stays for the next subscriber. History's label and the preview are read from the optional
+ * `dvHistory` and `dvMedia` services at call time.
  * @param ctx - client root context with the `slots` service.
  */
 export function registerChatMedia(ctx: Context): void {
@@ -229,6 +240,7 @@ export function registerChatMedia(ctx: Context): void {
     }
     const injected: ChatMediaInjected = {
       hooks: { chatAssets },
+      describe: (record, operations) => ctx.get('dvHistory')?.describe(record, operations) ?? null,
       preview: (projectId, asset, opener) => { ctx.get('dvMedia')?.preview(projectId, asset, opener) },
     }
     const unregister = ctx.slots.register({

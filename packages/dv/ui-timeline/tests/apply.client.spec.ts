@@ -93,11 +93,11 @@ describe('ui-timeline apply', () => {
 
   it('registers the clip mention kind once dvMentions is present, and the plugin disposal removes it', async () => {
     const { ctx, fiber } = await boot()
-    const mentions: DvMentions = { kinds: createRegistry<MentionKind>(kind => [kind.id]) }
+    const mentions: DvMentions = { kinds: createRegistry<MentionKind>(kind => [kind.id], kind => kind.id) }
     ctx.provide('dvMentions', mentions)
-    await vi.waitFor(() => { expect(mentions.kinds.list()).toEqual([clipMentionKind]) })
+    await vi.waitFor(() => { expect(mentions.kinds.getSnapshot()).toEqual([clipMentionKind]) })
     await fiber.dispose()
-    expect(mentions.kinds.list()).toEqual([])
+    expect(mentions.kinds.getSnapshot()).toEqual([])
   })
 
   it('removes everything when the plugin is disposed', async () => {

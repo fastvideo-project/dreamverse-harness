@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { InjectFace, PropsRuntime, Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@dv/ui-shell/contract'
+import { errorMessage } from '@dv/ui-kit/api.ts'
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import { pickText, useLanguage } from '@dv/ui-kit/locale.ts'
 import type { DvLanguage } from '@dv/ui-kit/locale.ts'
@@ -86,7 +87,7 @@ export function TimelineView(props: TimelineViewProps): ReactNode {
       reload()
       return true
     } catch (failure: unknown) {
-      setNotice(failure instanceof Error ? failure.message : String(failure))
+      setNotice(errorMessage(failure))
       return false
     }
   }, [reload])

@@ -1,5 +1,5 @@
 ---
-description: "DreamVerse 故事工作流的浏览器半边：`story.approve` 的画布链锚点，把一次批准的记录挂在它的计划节点下，并从 story 切片读出已批准的计划版本；以及历史行，写出一次批准的计划和版本。"
+description: "DreamVerse 故事工作流的浏览器半边：`story.approve` 的画布链锚点，把一次批准的记录挂在它的计划节点下，并从 story 切片读出已批准的计划版本；以及历史行，写出一次批准的计划和版本，并为折叠在它下面的渲染写出标签。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包在画布和历史面板中显示故事工作流（`@dv/workflow-story`）的记录。它在 `@dv/ui-canvas` 的 `dvCanvas` 中注册一个链锚点，在 `@dv/ui-history` 的 `dvHistory` 中注册一个历史行。锚点把一条 `story.approve` 记录启动的渲染和时间线记录挂在它的计划节点 `plan:<PlanId>` 下，并把一个计划的已批准版本交给计划编辑器。历史行把一次批准写成 `批准分镜计划 p1 v2` / `Approve plan p1 v2`。
+使用本包在画布和历史面板中显示故事工作流（`@dv/workflow-story`）的记录。它在 `@dv/ui-canvas` 的 `dvCanvas` 中注册一个链锚点，在 `@dv/ui-history` 的 `dvHistory` 中注册一个历史行。锚点把一条 `story.approve` 记录启动的渲染和时间线记录挂在它的计划节点 `plan:<PlanId>` 下，并把一个计划的已批准版本交给计划编辑器。历史行把一次批准写成 `批准分镜计划 p1 v2` / `Approve plan p1 v2`，并把折叠在它下面的记录的展开按钮标为 `渲染 3 个镜头` / `Render 3 shots`。
 
 ## 目录
 
@@ -34,7 +34,7 @@ kind: "package-reference"
 | 描述符 | 注册表 | 值 |
 | --- | --- | --- |
 | `storyApprovalAnchor` | `dvCanvas.chainAnchors` | `starter: 'story.approve'`；`anchor` 给出 `plan:` 加记录的 `plan` 参数；`approvedVersions(state, 'plan:<p>')` 给出 `story` 切片中计划 `<p>` 各次批准的版本，按版本排序且不重复，其他节点给出 `[]` |
-| `storyApprovalRow` | `dvHistory.rows` | `match: 'story.approve'`；主语 ` <plan> v<version>` 取自记录的 `report`，记录还没有 report 时没有主语 |
+| `storyApprovalRow` | `dvHistory.rows` | `match: 'story.approve'`；主语 ` <plan> v<version>` 取自记录的 `report`，记录还没有 report 时没有主语；`fold(n)` 给出 `渲染 n 个镜头` / `Render n shots`，即这次批准启动的记录的展开按钮的标签，n 是历史面板画成媒体的折叠记录（镜头渲染）的数量 |
 
 Host 半边不注册任何东西。浏览器半边在 `ctx.inject(['dvCanvas'], …)` 内注册锚点，在 `ctx.inject(['dvHistory'], …)` 内注册历史行，所以没有这两个服务时也能加载，每个描述符随它的服务或随插件一起移除。
 
@@ -56,9 +56,8 @@ Host 半边不注册任何东西。浏览器半边在 `ctx.inject(['dvCanvas'], 
 ## 进一步探索
 
 - [`@dv/workflow-story`](../workflow-story/README.zh.md)：`story.approve` 和 `story` 切片。
-- [`@dv/ui-canvas`](../ui-canvas/README.zh.md)：画布如何给有锚点的链分组，如何显示计划的批准状态。
+- [`@dv/ui-canvas`](../ui-canvas/README.zh.md)：画布如何给有锚点的链分组，如何显示计划的批准状态，以及 `@dv/ui-canvas/contract` 的 `ChainAnchor` 描述符类型。
 - [`@dv/ui-history`](../ui-history/README.zh.md)：历史行如何得到主语，以及 `@dv/ui-history/contract` 的 `HistoryRow` 描述符类型。
-- [`@dv/ui-kit`](../ui-kit/README.zh.md)：`ChainAnchor` 描述符类型。
 
 -----
 

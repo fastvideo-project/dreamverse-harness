@@ -32,12 +32,12 @@ export function wroteRecord(block: object): boolean {
   return typeof meta === 'object' && meta !== null && 'record' in meta && typeof meta.record === 'string' && meta.record !== ''
 }
 
-/** The asset URLs of a settled call, from the result's presentation metadata. */
-export function outputsOf(block: object): Array<{ role: string; url: string; mime: string }> {
+/** The output assets of a settled call, with their URLs, from the result's presentation metadata. */
+export function outputsOf(block: object): Array<{ role: string; id: string; url: string; mime: string }> {
   const meta = 'meta' in block ? block.meta : undefined
   if (typeof meta !== 'object' || meta === null || !('outputs' in meta) || !Array.isArray(meta.outputs)) return []
   return (meta.outputs as Array<{ role?: unknown; asset_id?: unknown; mime?: unknown }>).flatMap(output =>
-    typeof output.asset_id === 'string' ? [{ role: String(output.role), url: assetUrl(output.asset_id), mime: String(output.mime) }] : [])
+    typeof output.asset_id === 'string' ? [{ role: String(output.role), id: output.asset_id, url: assetUrl(output.asset_id), mime: String(output.mime) }] : [])
 }
 
 /**

@@ -97,7 +97,7 @@ export function projectMentionSource(mentions: DvMentions, mediaTypes: () => rea
       // The menu shows a candidate name that differs from its label as a trailing alias, so the name is the label
       // (numbered when labels repeat) and the `dv:` address travels in `value`.
       const seen = new Map<string, number>()
-      return projectItems(state, mentions.kinds.list(), mediaTypes())
+      return projectItems(state, mentions.kinds.getSnapshot(), mediaTypes())
         .filter(item => needle === '' || item.label.toLowerCase().includes(needle) || (item.description ?? '').toLowerCase().includes(needle))
         .map((item): InputTriggerCandidate => {
           const count = (seen.get(item.label) ?? 0) + 1

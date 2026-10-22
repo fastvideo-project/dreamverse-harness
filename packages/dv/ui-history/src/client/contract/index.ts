@@ -1,12 +1,13 @@
 /**
- * The History contract: how a UI plugin names and focuses the records of its operations in the History panel.
- * `@dv/ui-history` provides `dvHistory`; each kind's plugin registers its rows. Types only.
+ * The History contract: how a UI plugin names, focuses and draws the records of its operations in the History panel,
+ * and the record label that the chat reads. `@dv/ui-history` provides `dvHistory`; each kind's plugin registers its
+ * rows. Types only.
  *
  * @module @dv/ui-history/contract
  */
 import type {} from '@deepseek-ai/cordis'
 import type { Registry } from '@dv/ui-kit/registries.ts'
-import type { ProjectRecord } from '@dv/ui-kit/types.ts'
+import type { ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import type { CenterTarget } from '@dv/ui-shell/contract'
 
 /** A pair of interface texts, Chinese then English. */
@@ -18,17 +19,19 @@ export interface HistoryRow {
   match: string
   /** The subject after the label, with its own separator, such as [' p1 v1', ' p1 v1']; null for none. */
   subject(record: ProjectRecord): Text | null
-  /**
-   * Where selecting the record moves the center, given the records of the current state (oldest first); absent: the
-   * record's canvas node (`{ view: 'canvas', target: { record } }`).
-   */
+  /** Where selecting the record moves the center; absent: the record's canvas node (`{ view: 'canvas', target: { record } }`). */
   focus?(record: ProjectRecord, records: readonly ProjectRecord[]): CenterTarget | null
+  /** The asset of the row's thumbnail, drawn through `dv.media` at 'thumb'; absent or null: no thumbnail. */
+  thumbnail?: (record: ProjectRecord, state: WireState) => string | null
+  /** The label of the records folded under this row, such as ['渲染 3 个镜头', 'Render 3 shots']. */
+  fold?(count: number): Text
 }
 
 /** Provided by `@dv/ui-history` as `ctx.dvHistory`. */
 export interface DvHistory {
-  /** Keyed by `match`. */
   rows: Registry<HistoryRow>
+  /** The label History shows for a record: its operation label and its row's subject; the chat media caption reads it. */
+  describe(record: ProjectRecord, operations: readonly WireOperation[]): Text
 }
 
 declare module '@deepseek-ai/cordis' {

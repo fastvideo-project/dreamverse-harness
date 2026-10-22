@@ -1,5 +1,5 @@
 ---
-description: "The DreamVerse asset pool panel: the project's images and videos in a right-Sidebar tab, with import, drag into the canvas or the timeline, and the asset preview; and the image, video, and audio media types and views."
+description: "The DreamVerse asset pool panel: the project's images and videos in a right-Sidebar tab, with import, drag into the canvas or the timeline, and the asset preview; the canvas asset node; and the image, video, and audio media types and views."
 kind: "package-reference"
 ---
 
@@ -31,7 +31,7 @@ Mount the plugin in a profile that stacks `dsh-web-app` (which provides the righ
   name: '@dv/ui-asset-pool'
 ```
 
-The Host half registers nothing. The browser half registers the `dv-asset-pool` tab type (a page the Sidebar's guide offers as "Asset pool") and the tab body under its own id `@dv/ui-asset-pool`. The tab stays mounted while another tab is in front. It also fills the keyed slot `dv.canvas.picker` of the canvas of `@dv/ui-canvas` at key `assets` (its `SlotMap` entry is in `@dv/ui-kit/registries.ts`) with `AssetsPanel`, the panel inside the canvas's asset picker, whose thumbnail clicks call the picker's `onOpen` and pick assets. While the media service `dvMedia` of `@dv/ui-media` is present, it registers the media types `image`, `video`, and `audio` in `dvMedia.types`, each in one step with its view (`ImageView`, `VideoView`, `AudioView`) as the `dv.media.view` entry at the same key, so a type that does not register leaves no view; an image, a video, or an audio player that the browser cannot decode calls `unsupported()`, so the file card stands in for it. Every asset enters a project through `asset.import`, so this package owns these media types.
+The Host half registers nothing. The browser half registers the `dv-asset-pool` tab type (a page the Sidebar's guide offers as "Asset pool") and the tab body under its own id `@dv/ui-asset-pool`. The tab stays mounted while another tab is in front. It fills three keyed slots that `@dv/ui-canvas/contract` declares: `dv.canvas.picker` at key `assets` with `AssetsPanel`, the panel inside the canvas's asset picker, whose thumbnail clicks call the picker's `onOpen` and pick assets; `dv.canvas.card` at key `asset` with `AssetCard`, which draws the asset through the `dv.media` Factory at purpose `card` in a 16:9 frame; and `dv.canvas.editor` at key `asset` with `AssetEditor`, which draws the asset at purpose `player` in the box that `playerBox(asset, 360)` of `@dv/ui-kit` sizes. While the canvas service `dvCanvas` is present, it registers the node type `asset` (`assetNodeType`) in `dvCanvas.nodeTypes` and the action `@dv/ui-asset-pool:unplace` in `dvCanvas.actions`: 从画布移除 / Remove from canvas (order 20, on `asset` nodes) closes the editor and takes the asset off the canvas list through the host's `setPlaced`, and the asset stays in the asset pool. The node type has one stand-in node per asset on the canvas list (the `asset` slice's `placed`), drawn from the first `asset.import` record of the current state that imported the asset, else as `asset:<id>` with no record (an import that an undo went back past, a still, or an export), and titled by the asset's name with its duration; a stand-in shows only while no other node owns its asset. While the media service `dvMedia` of `@dv/ui-media` is present, it registers the media types `image`, `video`, and `audio` in `dvMedia.types`, each in one step with its view (`ImageView`, `VideoView`, `AudioView`) as the `dv.media.view` entry at the same key, so a type that does not register leaves no view; an image, a video, or an audio player that the browser cannot decode calls `unsupported()`, so the file card stands in for it. Every asset enters a project through `asset.import`, so this package owns these media types.
 
 | Gesture | Request or event |
 | --- | --- |
@@ -55,18 +55,19 @@ Each media view fills the box of the surface that renders the `dv.media` occurre
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`assetLibrary` groups the assets of the state, each asset once, into images and videos; an image whose producer record (`created_by`) also output a video, such as the last frame of a rendered shot, goes to `extracted`. The state already carries this project's own import name and time of each asset (`ProjectAsset`), because the asset pool keeps the name and time of the first import of identical bytes in any project. `AssetsPanel` takes the API client `client` and the `preview` callback as required props. Without the `onOpen` prop, a click on a thumbnail calls `preview` with the thumbnail, and the plugin binds `preview` to `dvMedia.preview`; with it, the click calls `onOpen` instead, which the canvas passes to the `dv.canvas.picker` entry. The slot entries register while their slots are declared, the media types register while `dvMedia` is present, and all of them leave with the plugin.
+`assetLibrary` groups the assets of the state, each asset once, into images and videos; an image whose producer record (`created_by`) also output a video, such as the last frame of a rendered shot, goes to `extracted`. The state already carries this project's own import name and time of each asset (`ProjectAsset`), because the asset pool keeps the name and time of the first import of identical bytes in any project. `AssetsPanel` takes the API client `client` and the `preview` callback as required props. Without the `onOpen` prop, a click on a thumbnail calls `preview` with the thumbnail, and the plugin binds `preview` to `dvMedia.preview`; with it, the click calls `onOpen` instead, which the canvas passes to the `dv.canvas.picker` entry. The slot entries register while their slots are declared, the registry entries register while their services are present, and all of them leave with the plugin.
 
 | File | Content |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | The Host half, which registers nothing |
 | [`src/css-modules.d.ts`](src/css-modules.d.ts) | The type of the CSS Module imports |
-| [`src/client/index.ts`](src/client/index.ts) | Registrations of the tab type, the tab body, the entry of the canvas's picker slot, and the media types and their views |
+| [`src/client/index.ts`](src/client/index.ts) | Registrations of the tab type, the tab body, the canvas's picker, card, and editor entries, the node type and its action, and the media types and their views |
 | [`src/client/definition.ts`](src/client/definition.ts) | The tab type |
 | [`src/client/AssetsPanel.tsx`](src/client/AssetsPanel.tsx) | The panel, the drop zone, the thumbnail grids by section, and the tab body |
 | [`src/client/AssetsPanel.module.css`](src/client/AssetsPanel.module.css) | Styles of the panel |
 | [`src/client/media.tsx`](src/client/media.tsx) | The image, video, and audio media types and their `dv.media.view` entries |
 | [`src/client/library.ts`](src/client/library.ts) | Grouping of the project's assets by media type with the render stills apart |
+| [`src/client/canvas.tsx`](src/client/canvas.tsx) | The `asset` node type, its card and editor bodies, and 从画布移除 / Remove from canvas |
 
 </details>
 
@@ -77,6 +78,7 @@ Each media view fills the box of the surface that renders the `dv.media` occurre
 
 - [`@dv/api`](../api/README.md) — the state route and the asset import route.
 - [`@dv/asset-pool`](../asset-pool/README.md) — the asset pool that stores the files and serves them.
+- [`@dv/ui-canvas`](../ui-canvas/README.md) — the canvas, its asset picker, and the node type and action registries.
 - [`@dv/ui-kit`](../ui-kit/README.md) — the API client, the wire types, the asset drag type, and the waveform.
 - [`@dv/ui-media`](../ui-media/README.md) — the `dv.media` Factory, the media type registry, and the asset preview.
 

@@ -7,7 +7,7 @@ DreamVerse 各包是 DeepSeek Harness 内视频制作的项目层。本页定义
 ## 分层和角色
 
 ```text
-views          @dv/ui-shell @dv/ui-canvas @dv/ui-timeline @dv/ui-asset-pool @dv/ui-composer @dv/ui-history @dv/ui-media (+ library @dv/ui-kit)
+views          @dv/ui-shell @dv/ui-canvas @dv/ui-timeline @dv/ui-asset-pool @dv/ui-composer @dv/ui-history @dv/ui-media (+ libraries @dv/ui-kit @dv/ui-reference-kit @dv/ui-generation)
                @dv/ui-character @dv/ui-location @dv/ui-style @dv/ui-shot-plan @dv/ui-shot-render @dv/ui-workflow-story
   │ HTTP: /api/dv/…, /dv/events
   ▼
@@ -143,11 +143,11 @@ skill 承载工作流程和模型专属的规则，各由其主人注册：
 
 [`@dv/api`](../../packages/dv/api/README.zh.md) 是项目组件面向浏览器的 HTTP 面：`/api/dv/state` 把项目的当前状态返回为一份 JSON 文档，`/api/dv/operations` 列出已注册的操作，`/api/dv/operation` 以用户身份运行一个操作，其记录带 `surface: 'canvas'`、`'timeline'` 或 `'asset_pool'`，`/api/dv/history` 返回历史的一页，`/api/dv/undo`、`/api/dv/redo` 和 `/api/dv/stale/accept` 暴露撤销、重做和过期操作，其他路由管理项目、素材导入、画布布局（节点位置和视口）和 Workspace 链接，`/dv/events` 推送每一次记录追加、记录更新和当前位置的移动。
 
-界面各包是 web 应用的右侧栏标签类型和中央视图，因此在同一个 profile 里与对话页并存。[`@dv/ui-shell`](../../packages/dv/ui-shell/README.zh.md) 把项目工作区放在中央，把 对话 / Chat 和 轨迹 / Trajectory 标签放在右侧，把 画布 / Canvas 和 时间线 / Timeline 切换按钮放在顶栏，并把 Ctrl+Z 绑定到撤销，把 Shift+Ctrl+Z 绑定到重做。[`@dv/ui-canvas`](../../packages/dv/ui-canvas/README.zh.md) 把当前状态画成按素材流向相连的节点：导入的素材，带模型和生成任务的版本，以及 UI 插件注册的条目：处于当前版本的角色、场景和风格（`@dv/ui-character`、`@dv/ui-location`、`@dv/ui-style`），和处于最新版次的每个分镜计划，写出每个镜头的模型和生成任务，设置了的写出 接上一镜头 / Continues the previous shot（`@dv/ui-shot-plan`）；`@dv/ui-workflow-story` 把一次故事批准的版本挂在分镜计划节点下。`@dv/ui-canvas` 标记过期记录，它的编辑器以用户记录渲染新版本或替换参考图。[`@dv/ui-timeline`](../../packages/dv/ui-timeline/README.zh.md) 把每条时间线画成一条轨道，把插入、移动、移除、拆分和裁剪手势变成按 `ClipId` 指定片段的 `timeline.*` 记录，把导出变成一条 `timeline.export` 记录。`@dv/ui-asset-pool` 列出项目的每个素材并导入文件；`@dv/ui-composer` 为对话加上 `@` 和 `+ → 引用` 引用和面向创作者的工具名，`@dv/ui-shot-render` 加上渲染卡片。[`@dv/ui-media`](../../packages/dv/ui-media/README.zh.md) 通过它的 `dv.media` 组件工厂、按 `@dv/ui-asset-pool` 注册的图片、视频和音频视图绘制这些视图里的每个素材，并打开素材预览，预览里的按钮 插入片段 和 让智能体使用 分别来自 `@dv/ui-timeline` 和 `@dv/ui-composer`。
+界面各包是 web 应用的右侧栏标签类型和中央视图，因此在同一个 profile 里与对话页并存。[`@dv/ui-shell`](../../packages/dv/ui-shell/README.zh.md) 把项目工作区放在中央，把 对话 / Chat 和 轨迹 / Trajectory 标签放在右侧，把 画布 / Canvas 和 时间线 / Timeline 切换按钮放在顶栏，并把 Ctrl+Z 绑定到撤销，把 Shift+Ctrl+Z 绑定到重做。[`@dv/ui-canvas`](../../packages/dv/ui-canvas/README.zh.md) 把当前状态画成按素材流向相连的节点，每个节点都来自 UI 插件通过 `@dv/ui-canvas/contract` 注册的节点类型：画布上的素材（`@dv/ui-asset-pool`），带模型和生成任务的版本（`@dv/ui-shot-render`，用 `@dv/ui-generation` 的 `defineGenerationUi` 声明），处于当前版本的角色、场景和风格（`@dv/ui-character`、`@dv/ui-location`、`@dv/ui-style`，用 `@dv/ui-reference-kit` 的 `defineReferenceUi` 声明），以及处于最新版次的每个分镜计划，写出每个镜头的模型和生成任务，设置了的写出 接上一镜头 / Continues the previous shot（`@dv/ui-shot-plan`）；`@dv/ui-workflow-story` 把一次故事批准的版本挂在分镜计划节点下。`@dv/ui-canvas` 标记过期记录，它的编辑器以用户记录渲染新版本或替换参考图。UI 插件还添加节点动作，例如 `@dv/ui-composer` 的 问 agent / Ask the agent（预填对话输入框）和 `@dv/ui-asset-pool` 的 从画布移除 / Remove from canvas。[`@dv/ui-timeline`](../../packages/dv/ui-timeline/README.zh.md) 把每条时间线画成一条轨道，把插入、移动、移除、拆分和裁剪手势变成按 `ClipId` 指定片段的 `timeline.*` 记录，把导出变成一条 `timeline.export` 记录。`@dv/ui-asset-pool` 列出项目的每个素材并导入文件；`@dv/ui-composer` 为对话加上 `@` 和 `+ → 引用` 引用和面向创作者的工具名，`@dv/ui-shot-render` 加上 `dv_shot_render` 的对话卡片。[`@dv/ui-media`](../../packages/dv/ui-media/README.zh.md) 通过它的 `dv.media` 组件工厂、按 `@dv/ui-asset-pool` 注册的图片、视频和音频视图绘制这些视图里的每个素材，并打开素材预览，预览里的按钮 插入片段 和 让智能体使用 分别来自 `@dv/ui-timeline` 和 `@dv/ui-composer`。
 
 ## 历史和轨迹
 
-历史是项目历史列表中按顺序排列的步骤，来自每个发起者、视图和对话；轨迹是智能体在一个对话中的步骤。记录通过它的 `session` 和 `tool_call` 字段把两者连起来。[`@dv/ui-history`](../../packages/dv/ui-history/README.zh.md) 是历史面板（标签类型 `dv-history`）。它把历史列表中的每一步各列为一行，最新的在前，显示动作、谁做的（你 / You、智能体 / Agent、自动 / Automatic）、状态和一张输出缩略图；当前位置标 当前 / Current，它之后的步骤显示为灰色，批准分镜计划时排定的记录折叠在该批准行之下。历史通过 `@dv/ui-media` 的 `dv.media` 组件工厂绘制缩略图和选中行的输出。它的顶部放着撤销和重做按钮。每一行的 ⋮ 菜单提供 回到这一步 / Go back to this step，它把当前位置移到那一行（[历史规则](#history-rules)）。选中当前位置或之前某一步的那一行，会以该行的中间区域目标（一个 `dv.center.view` 条目和其中的目标）调用 `@dv/ui-shell` 的 `dvCenter.show`，例如时间线上该记录的片段（`{ view: 'timeline', target: { timeline, clip } }`），否则是画布上该记录的节点（`{ view: 'canvas', target: { record } }`）；行内的 在轨迹中查看 / Show in trajectory 链接发出 `dv:trajectory-focus`，`@dv/ui-shell` 随即在那个对话的那次工具调用处打开 轨迹。在对话中，写入记录的工具的每个已结束行都有 在历史中查看 / Show in history 链接，它发出 `dv:history-focus`，让历史面板选中那次工具调用写入的记录。
+历史是项目历史列表中按顺序排列的步骤，来自每个发起者、视图和对话；轨迹是智能体在一个对话中的步骤。记录通过它的 `session` 和 `tool_call` 字段把两者连起来。[`@dv/ui-history`](../../packages/dv/ui-history/README.zh.md) 是历史面板（标签类型 `dv-history`）。它把历史列表中的每一步各列为一行，最新的在前，显示动作、谁做的（你 / You、智能体 / Agent、自动 / Automatic）、状态，媒体行还有一张缩略图；当前位置标 当前 / Current，它之后的步骤显示为灰色，一条记录启动的记录折叠在它那一行之下，例如批准分镜计划时排定的渲染。UI 插件在 `dvHistory.rows`（`@dv/ui-history/contract`）里注册其操作的行。一行指定记录的主体、它的中间区域目标、它的缩略图素材，以及折叠在它下面的记录的名称。历史通过 `@dv/ui-media` 的 `dv.media` 组件工厂绘制缩略图和选中行的输出。它的顶部放着撤销和重做按钮。每一行的 ⋮ 菜单提供 回到这一步 / Go back to this step，它把当前位置移到那一行（[历史规则](#history-rules)）。选中当前位置或之前某一步的那一行，会以该行的中间区域目标（一个 `dv.center.view` 条目和其中的目标）调用 `@dv/ui-shell` 的 `dvCenter.show`，例如时间线上该记录的片段（`{ view: 'timeline', target: { timeline, clip } }`），否则是画布上该记录的节点（`{ view: 'canvas', target: { record } }`）；行内的 在轨迹中查看 / Show in trajectory 链接发出 `dv:trajectory-focus`，`@dv/ui-shell` 随即在那个对话的那次工具调用处打开 轨迹。在对话中，写入记录的工具的每个已结束行都有 在历史中查看 / Show in history 链接，它发出 `dv:history-focus`，让历史面板选中那次工具调用写入的记录。对话的媒体说明用 `dvHistory.describe` 为记录命名，即历史为它显示的名称。
 
 ## 过期
 
@@ -193,19 +193,19 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 
 ### 查表
 
-| 要加的东西       | 做法                                                                                                                                            | 例子                         |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| 项目数据        | 加进主人组件的归约函数状态，并在 `agentSummary` 中给出摘要                                                                                                         | 镜头的配乐                      |
-| 操作          | 在主人组件中 `registerOperation`；项目组件据此生成工具、API 路由、历史和撤销                                                                                            | `timeline.clip_split`      |
-| 可替换能力       | 一个 Service Definition 包加若干 Service Provider 包；用到它的组件是 Consumer                                                                                | 模型目录、3D 渲染                 |
-| 模型          | 提供方插件的修改；见[添加提供方或模型](../../packages/dv/models/README.zh.md#add-a-provider-or-a-model)                                                         | `@dv/fastvideo` 的 `fasth3` |
-| 生成任务        | 一个 `TaskMap` 条目，由引入该生成任务的插件声明（[模型键](../../packages/dv/models/README.zh.md#model-keys)），再加上它在其原语声明的 `tasks` 记录中的标签；生成任务若有任何原语都没有的输入角色，就有自己的原语包 | 由首帧和尾帧渲染的生成任务              |
-| 输出模态        | 一个 `PrimitiveTypes` 行（[模型键](../../packages/dv/models/README.zh.md#model-keys)），并带上在其上运行的生成任务和一个调用 `@dv/generation` 的 `defineGeneration` 的原语包  | 图像生成                       |
-| 引用名词        | 两个声明：`@dv/reference-kit` 的 `defineReference` 和 `@dv/ui-kit` 的 `defineReferenceUi`                                                             | `@dv/character`            |
-| 制作流程        | 一个工作流包 `@dv/workflow-<key>` 及其 UI 半部                                                                                                          | `@dv/workflow-story`       |
-| 给智能体的文字     | 按原则中的文字表放置                                                                                                                                    | “先出分镜计划再渲染”                |
-| 视图          | 一个只通过 `@dv/api` 读写、并通过 `@dv/ui-canvas`、`@dv/ui-history` 和 `@dv/ui-composer` 的注册表绘制的 `@dv/ui-*` 插件                                             | 画布                         |
-| 接到智能体循环上的逻辑 | 由数据的主人在 DSH 事件上注册，例如 `agent/pre-step` 或 `tools/pre-execute`                                                                                   | `dv:` 提及展开                 |
+| 要加的东西       | 做法                                                                                                                                                                                                    | 例子                         |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| 项目数据        | 加进主人组件的归约函数状态，并在 `agentSummary` 中给出摘要                                                                                                                                                                 | 镜头的配乐                      |
+| 操作          | 在主人组件中 `registerOperation`；项目组件据此生成工具、API 路由、历史和撤销                                                                                                                                                    | `timeline.clip_split`      |
+| 可替换能力       | 一个 Service Definition 包加若干 Service Provider 包；用到它的组件是 Consumer                                                                                                                                        | 模型目录、3D 渲染                 |
+| 模型          | 提供方插件的修改；见[添加提供方或模型](../../packages/dv/models/README.zh.md#add-a-provider-or-a-model)                                                                                                                 | `@dv/fastvideo` 的 `fasth3` |
+| 生成任务        | 一个 `TaskMap` 条目，由引入该生成任务的插件声明（[模型键](../../packages/dv/models/README.zh.md#model-keys)），再加上它在其原语声明的 `tasks` 记录中的标签；生成任务若有任何原语都没有的输入角色，就有自己的原语包                                                         | 由首帧和尾帧渲染的生成任务              |
+| 输出模态        | 一个 `PrimitiveTypes` 行（[模型键](../../packages/dv/models/README.zh.md#model-keys)），并带上在其上运行的生成任务、一个调用 `@dv/generation` 的 `defineGeneration` 的原语包，以及它的调用 `@dv/ui-generation` 的 `defineGenerationUi` 的 UI 包 | 图像生成                       |
+| 引用名词        | 两个声明：`@dv/reference-kit` 的 `defineReference` 和 `@dv/ui-reference-kit` 的 `defineReferenceUi`                                                                                                           | `@dv/character`            |
+| 制作流程        | 一个工作流包 `@dv/workflow-<key>` 及其 UI 半部                                                                                                                                                                  | `@dv/workflow-story`       |
+| 给智能体的文字     | 按原则中的文字表放置                                                                                                                                                                                            | “先出分镜计划再渲染”                |
+| 视图          | 一个只通过 `@dv/api` 读写、并通过 `@dv/ui-canvas`、`@dv/ui-history` 和 `@dv/ui-composer` 的注册表绘制的 `@dv/ui-*` 插件                                                                                                     | 画布                         |
+| 接到智能体循环上的逻辑 | 由数据的主人在 DSH 事件上注册，例如 `agent/pre-step` 或 `tools/pre-execute`                                                                                                                                           | `dv:` 提及展开                 |
 
 ### 例子：不带参考图的渲染
 

@@ -1,6 +1,6 @@
 /**
- * Host half of the shot render UI plugin: nothing. The browser half in `src/client/` registers the chat card of
- * `dv_shot_render` calls.
+ * Host half of the shot render UI plugin: nothing. The browser half in `src/client/` declares the `shot.render` takes
+ * through `defineGenerationUi` of `@dv/ui-generation`.
  *
  * @module @dv/ui-shot-render
  */

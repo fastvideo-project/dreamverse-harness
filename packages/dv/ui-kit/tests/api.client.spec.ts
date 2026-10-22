@@ -1,6 +1,6 @@
 /** The browser client: routes, bodies, error decoding, and log following. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { assetUrl, DvApiError, DvClient } from '../src/client/api.ts'
+import { assetUrl, DvApiError, DvClient, errorMessage } from '../src/client/api.ts'
 import { fixtureState, PROJECT, scriptedFetch, TASK_LABELS } from './fixture.client.tsx'
 
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
@@ -21,6 +21,7 @@ describe('DvClient', () => {
     await client.moveTo('p1', 'g1')
     expect(await client.redo('p1')).toEqual({ tip: 'g3', at: 'g3' })
     await client.acceptStale('p1', 'g2', 'timeline', 's5')
+    await client.acceptStale('p1', 'g2', 'canvas')
     await client.renameProject('p1', 'Demo 3')
     await client.deleteProject('p1')
     await client.updateLayout('p1', { positions: { g1: { x: 1, y: 2 } } })
@@ -28,23 +29,22 @@ describe('DvClient', () => {
     await client.placeOnCanvas('p1', ['a1'], false)
     await client.linkWorkspace('p1', 'w1')
     await client.bindSession('s5', 'p1')
-    await client.acceptStale('p1', 'g2', 'canvas')
     expect(writes.map(write => write.path)).toEqual([
-      '/api/dv/projects', '/api/dv/operation', '/api/dv/undo', '/api/dv/undo', '/api/dv/redo', '/api/dv/stale/accept',
+      '/api/dv/projects', '/api/dv/operation', '/api/dv/undo', '/api/dv/undo', '/api/dv/redo', '/api/dv/stale/accept', '/api/dv/stale/accept',
       '/api/dv/projects/rename', '/api/dv/projects/delete', '/api/dv/layout', '/api/dv/operation', '/api/dv/operation', '/api/dv/workspaces',
-      '/api/dv/workspaces/bind', '/api/dv/stale/accept',
+      '/api/dv/workspaces/bind',
     ])
     expect(writes[0]?.body).toEqual({ title: 'Demo 2', surface: 'canvas' })
     expect(writes[2]?.body).toEqual({ project: 'p1' })
     expect(writes[3]?.body).toEqual({ project: 'p1', to: 'g1' })
     expect(writes[4]?.body).toEqual({ project: 'p1' })
     expect(writes[5]?.body).toEqual({ project: 'p1', record: 'g2', surface: 'timeline', session: 's5' })
-    expect(writes[8]?.body).toEqual({ project: 'p1', positions: { g1: { x: 1, y: 2 } } })
-    expect(writes[9]?.body).toEqual({ project: 'p1', operation: 'asset.place', surface: 'canvas', inputs: [{ role: 'asset', ref: 'a1' }], session: 's5' })
-    expect(writes[10]?.body).toEqual({ project: 'p1', operation: 'asset.unplace', surface: 'canvas', inputs: [{ role: 'asset', ref: 'a1' }] })
-    expect(writes[11]?.body).toEqual({ project: 'p1', workspace_id: 'w1' })
-    expect(writes[12]?.body).toEqual({ session: 's5', project: 'p1' })
-    expect(writes[13]?.body).toEqual({ project: 'p1', record: 'g2', surface: 'canvas' })
+    expect(writes[6]?.body).toEqual({ project: 'p1', record: 'g2', surface: 'canvas' })
+    expect(writes[9]?.body).toEqual({ project: 'p1', positions: { g1: { x: 1, y: 2 } } })
+    expect(writes[10]?.body).toEqual({ project: 'p1', operation: 'asset.place', surface: 'canvas', inputs: [{ role: 'asset', ref: 'a1' }], session: 's5' })
+    expect(writes[11]?.body).toEqual({ project: 'p1', operation: 'asset.unplace', surface: 'canvas', inputs: [{ role: 'asset', ref: 'a1' }] })
+    expect(writes[12]?.body).toEqual({ project: 'p1', workspace_id: 'w1' })
+    expect(writes[13]?.body).toEqual({ session: 's5', project: 'p1' })
     expect(assetUrl('a/b')).toBe('/dv/assets/a%2Fb')
   })
 
@@ -229,5 +229,12 @@ describe('DvClient', () => {
     stop()
     vi.advanceTimersByTime(200)
     expect(onChange).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('errorMessage', () => {
+  it('reads the message of an Error and the string form of any other value', () => {
+    expect(errorMessage(new DvApiError(409, 'refused'))).toBe('refused')
+    expect(errorMessage('offline')).toBe('offline')
   })
 })

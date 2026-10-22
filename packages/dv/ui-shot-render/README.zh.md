@@ -1,5 +1,5 @@
 ---
-description: "DreamVerse 镜头渲染的浏览器半边：一次 dv_shot_render 调用在对话里的卡片，显示模型和生成任务、提示词、状态、渲染出的视频，以及在历史中查看链接。"
+description: "DreamVerse 镜头渲染的浏览器半边：画布上 shot.render 的视频版本及其卡片、编辑器和重试动作，一次 dv_shot_render 调用在对话里的卡片，以及 shot.render 记录的历史行，用 defineGenerationUi 声明。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包把镜头渲染工具 `dv_shot_render`（`@dv/shot-render` 的操作 `shot.render`）的调用显示为 DSH 对话里的卡片。卡片显示工具名 渲染镜头 / Render shot、调用的模型和生成任务、提示词、状态、渲染出的视频，调用结束后还有链接 在历史中查看 / Show in history。
+使用本包在 DreamVerse 画布和历史面板中显示镜头渲染操作 `shot.render`（属于 `@dv/shot-render`）的版本，并把它的智能体工具 `dv_shot_render` 的调用显示为对话卡片。本包是 [`@dv/ui-generation`](../ui-generation/README.zh.md) 的一个 `defineGenerationUi` 声明：套件提供版本卡片和编辑器、重试 / Retry 动作、对话卡片和历史行；声明提供标签 版本 / Take、状态文字、首帧列规则、文生视频的参考规则，以及代表一个版本的静帧。
 
 ## 目录
 
@@ -24,22 +24,31 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在叠了 `dsh-web-app`（提供对话和 UI 插槽）和 `@dv/api`（提供 `GET /api/dv/operations` 和 `GET /api/dv/tasks`）的 profile 里挂载插件，先用 `pnpm run build` 构建浏览器 bundle（写出 `lib/client.js`）。
+在叠了 `dsh-web-app`（提供对话和 UI 插槽）、`@dv/api`（提供 `GET /api/dv/operations` 和 `GET /api/dv/tasks`）以及拥有本包所填界面的 UI 核心的 profile 里挂载插件：`@dv/ui-canvas`（`dvCanvas` 注册表和 `dv.canvas.card`、`dv.canvas.editor.claimed` 插槽）、`@dv/ui-history`（`dvHistory`）和 `@dv/ui-media`（绘制每个素材的 `dv.media` 组件工厂）。每项注册都通过 `ctx.inject` 等待它的服务，所以缺少其中某个包的 profile 只少了那一个界面。先用 `pnpm run build` 构建浏览器 bundle（写出 `lib/client.js`）。
 
 ```yaml
 - id: dv-ui-shot-render
   name: '@dv/ui-shot-render'
 ```
 
-Host 半边不注册任何东西。浏览器半边以默认优先级 0 注册一个键为 `dv_shot_render` 的 `tool.call.toolview` 条目。`@dv/ui-composer` 以优先级 1 为每个操作工具注册一行，以优先级 0.5 为 `DV_TOOL_LABELS` 里的每个工具注册一行，所以卡片取代这些行显示；没有本包时，`dv_shot_render` 调用显示输入框插件的普通工具行。
+Host 半边不注册任何东西。浏览器半边通过 `defineGenerationUi` 注册下列条目。一个版本是 `shot.render` 的一条当前记录，它的产出是视频和视频的最后一帧静帧（`video`、`last_still`）。
 
-| 卡片部分 | 值 |
+| 注册 | 值 |
+| --- | --- |
+| `dvCanvas.nodeTypes` | 节点类型 `take`（键为 `take` 和 `op:shot.render`），标签 版本 / Take，颜色 `var(--dv-kind-take)`，位于第 2 列。它认领 `shot.render` 的当前记录，所以画布把每条这样的记录画成一个版本节点；从另一个节点读取 `first_frame` 输入的版本位于那个节点右边一列（`deepenOn: ['first_frame']`）。版本运行时节点显示 渲染中… / Rendering…；失败的版本显示 生成失败 / Render failed |
+| `dvCanvas.actions` | `@dv/ui-shot-render:retry`，失败版本上的 重试 / Retry：用该版本的输入和参数重新运行它的操作，`based_on` 设为该版本 |
+| `dv.canvas.card` 键 `take` | 版本的最后一帧静帧（它的图片产出），没有时用它的第一个产出，经 `dv.media` 以用途 `card` 画在 16:9 的画框里 |
+| `dv.canvas.editor.claimed` 键 `take` | `@dv/ui-generation` 的版本编辑器：经 `dv.media` 以用途 `loop` 播放的视频（静帧作封面）、模型和生成任务、`shot.render` 声明的参数、参考图标签（版本的任务为 `t2v` 时没有），以及 渲染新版本 / Render new take |
+| `tool.call.toolview` 键 `dv_shot_render` | 对话卡片，使用默认优先级 0。`@dv/ui-composer` 以优先级 1 为每个操作工具注册一行，以优先级 0.5 为 `DV_TOOL_LABELS` 里的每个工具注册一行，所以卡片取代这些行显示 |
+| `dvHistory.rows` 匹配 `shot.render` | 历史行：没有主题文字，缩略图是版本的最后一帧静帧，没有时用它的第一个产出 |
+
+| 对话卡片部分 | 值 |
 | --- | --- |
 | 标题 | `@dv/ui-kit` 的 `operationLabel('shot.render', …)`：操作在 `GET /api/dv/operations` 里的标签（渲染镜头 / Render shot），没有时用 `shot.render` |
 | 模型行（`data-testid="dv-composer-render-model"`） | 调用的 `model`，和按 `GET /api/dv/tasks` 里的标签显示的 `task`（没有标签时显示任务名），用 ` · ` 连接（例如任务 `ref2v` 显示 `fasth3 · 参考图生成` / `fasth3 · From references`） |
 | 提示词 | 调用的 `prompt` |
-| 状态 | 调用结束前为 渲染中… / Rendering…，之后为 已渲染 / Rendered；失败的调用为 未渲染 / Not rendered |
-| 视频 | 结果展示元数据里的第一个视频产出，带控件，静音 |
+| 状态 | 调用结束前为 渲染中… / Rendering…，之后为 已渲染 / Rendered；失败的调用为 生成失败 / Render failed |
+| 媒体 | 结果展示元数据里的第一个产出，即视频，经 `dv.media` 以用途 `player` 绘制 |
 | 在历史中查看 / Show in history（`data-testid="dv-composer-open-history"`） | 出现在已结束的调用上；派发 `dv:history-focus` `{session, toolCall}`，历史面板选中这次调用写出的记录 |
 
 参数还在流式到达时，卡片显示已有的部分。两个列表加载完成前，或读取失败时，标题按上表回退，模型行显示任务名。
@@ -49,15 +58,12 @@ Host 半边不注册任何东西。浏览器半边以默认优先级 0 注册一
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-每张已挂载的卡片通过 `@dv/ui-kit` 的 `useOperations` 和 `useTaskLabels` 各读取一次 `GET /api/dv/operations` 和 `GET /api/dv/tasks`。解析后的参数、产出和历史链接来自 `@dv/ui-kit/tool-rows.tsx`，`@dv/ui-composer` 的工具行也共用它。
+`src/client/index.ts` 导出一次 `defineGenerationUi` 调用的 `inject` 和 `apply`，并把 `take: null` 合并进 `@dv/ui-canvas/contract` 的 `NodeDataMap`，所以版本节点不带插件数据。声明的 `references` 规则对任务 `t2v` 关闭参考图标签，它的 `preview` 选出图片产出，套件把它用作卡片的媒体、编辑器的封面、历史缩略图，以及分镜计划画框网格中的画面。套件在对话卡片或版本编辑器第一次订阅时各读取一次 `GET /api/dv/operations` 和 `GET /api/dv/tasks`（`@dv/ui-kit` 的 `loadedOnce`）；解析后的参数、产出和历史链接来自 `@dv/ui-kit/tool-rows.tsx`。
 
 | 文件 | 内容 |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | 不做任何事的 Host Loader 入口 |
-| [`src/css-modules.d.ts`](src/css-modules.d.ts) | CSS Module 导入的类型 |
-| [`src/client/index.ts`](src/client/index.ts) | `dv_shot_render` 的 `tool.call.toolview` 条目和标签读取 |
-| [`src/client/RenderCard.tsx`](src/client/RenderCard.tsx) | `RenderCard` |
-| [`src/client/render-card.module.css`](src/client/render-card.module.css) | 卡片和其历史链接的样式 |
+| [`src/client/index.ts`](src/client/index.ts) | `shot.render` 版本的 `defineGenerationUi` 声明 |
 
 -----
 
@@ -65,15 +71,16 @@ Host 半边不注册任何东西。浏览器半边以默认优先级 0 注册一
 ## 进一步探索
 
 - [`@dv/shot-render`](../shot-render/README.zh.md)：`shot.render` 操作和它的智能体工具。
+- [`@dv/ui-generation`](../ui-generation/README.zh.md)：`defineGenerationUi`、版本卡片和编辑器，以及对话卡片。
+- [`@dv/ui-canvas`](../ui-canvas/README.zh.md)：版本节点类型所填的画布节点契约。
 - [`@dv/ui-composer`](../ui-composer/README.zh.md)：对话里的工具行和工具名。
-- [`@dv/ui-kit`](../ui-kit/README.zh.md)：`operationLabel`、`taskLabel` 和工具行的共用部分。
 
 -----
 
 <a id="model-experience"></a>
 ## 模型体验
 
-无，作为浏览器端的工具卡片；它显示 `dv_shot_render` 的调用和结果，不写任何记录。
+无，作为浏览器端的画布节点和工具卡片；它显示 `dv_shot_render` 的调用和结果，它的 重试 / Retry 和 渲染新版本 / Render new take 以用户的画布写入写出 `shot.render` 记录，这些记录只通过 [`@dv/project`](../project/README.zh.md) 到达模型。
 
 #### KV Cache 影响
 
@@ -83,4 +90,4 @@ Host 半边不注册任何东西。浏览器半边以默认优先级 0 注册一
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **输入框的测试 ID** — 模型行保留来自 `@dv/ui-composer` 的测试 ID `dv-composer-render-model`；历史链接是 `@dv/ui-kit` 共用的 `HistoryLink`，e2e 故事 `history.e2e.ts` 在工具行上按它的测试 ID `dv-composer-open-history` 选取。
+- **输入框的测试 ID** — 对话卡片的模型行保留来自 `@dv/ui-composer` 的测试 ID `dv-composer-render-model`；历史链接是 `@dv/ui-kit` 共用的 `HistoryLink`，e2e 故事 `history.e2e.ts` 在工具行上按它的测试 ID `dv-composer-open-history` 选取。

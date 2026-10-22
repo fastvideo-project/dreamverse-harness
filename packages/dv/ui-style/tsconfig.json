@@ -18,6 +18,9 @@
       "path": "../ui-kit"
     },
     {
+      "path": "../ui-canvas"
+    },
+    {
       "path": "../ui-reference-kit"
     }
   ]

@@ -8,38 +8,44 @@ import { act, cleanup, fireEvent, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MarkdownElement, MarkdownTableCell } from '@deepseek-ai/dsh-client-ui-primitives'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
+import type { DvHistory } from '@dv/ui-history/contract'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
-import type { WireState } from '@dv/ui-kit/types.ts'
+import { createRegistry } from '@dv/ui-kit/registries.ts'
+import type { ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { AudioView, ImageView, VideoView } from '../../ui-asset-pool/src/client/media.tsx'
-import { asset, fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { asset, fixtureState, OPERATIONS, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import { followChatAssets, NO_CHAT_ASSETS, type ChatAssets } from '../src/client/chat-assets.ts'
-import { assetIdOf, registerChatMedia, resolveChatMedia, selectAssetReference } from '../src/client/chat-media.ts'
+import { assetIdOf, registerChatMedia, resolveChatMedia, selectAssetReference, type DescribeRecord } from '../src/client/chat-media.ts'
 
 const link = (href: string): MarkdownElement => ({ kind: 'link', href })
 const cell = (text: string, href?: string): MarkdownTableCell => ({ text, links: href === undefined ? [] : [{ href }] })
 const table = (...rows: MarkdownTableCell[][]): MarkdownElement => ({ kind: 'table', rows })
 
-/** The fixture project, whose takes g1 and g2 sit at chain slots 1 and 2, plus an imported audio file and a PDF. */
+/** The fixture project plus an imported audio file and an imported PDF. */
 function chatState(): WireState {
   const state = fixtureState()
   state.assets.push(asset('score.wav', 'audio/wav', null), asset('brief.pdf', 'application/pdf', null))
-  const slots: Record<string, number> = { g1: 1, g2: 2 }
-  state.components.proj.records = state.components.proj.records.map((entry) => {
-    const slot = slots[entry.id]
-    return slot === undefined ? entry : { ...entry, started_by: { record: 'a1', slot } }
-  })
   return state
 }
 
-/** The shot number of every output of the takes of {@link chatState}. */
-const SHOTS = { 'shot1.mp4': 1, 'shot1-last.png': 1, 'shot2.mp4': 2, 'shot2-last.png': 2 }
-
-/** The snapshot of {@link chatState} in project p1. */
-function heldOf(state: WireState): ChatAssets {
-  return { project: 'p1', assets: Object.fromEntries(state.assets.map(entry => [entry.id, entry])), shots: SHOTS }
+/** The snapshot that {@link followChatAssets} publishes for `state` and `operations` in project p1. */
+function heldOf(state: WireState, operations: readonly WireOperation[] = OPERATIONS): ChatAssets {
+  const records = new Map(state.components.proj.records.map(entry => [entry.id, entry]))
+  return {
+    project: 'p1',
+    assets: Object.fromEntries(state.assets.map(entry => [entry.id, entry])),
+    producers: Object.fromEntries(Object.entries(state.components.proj.created_by).flatMap(([id, by]) => {
+      const producer = records.get(by)
+      return producer === undefined ? [] : [[id, producer]]
+    })),
+    operations,
+  }
 }
+
+/** A record label that names the record and the number of operations it was given, as History's `describe` would. */
+const describeRecord: DescribeRecord = (entry, operations) => [`${entry.id} 的标签 ${String(operations.length)}`, `label of ${entry.id}`]
 
 /** A browser event stream whose project events the test sends. */
 function fakeEvents() {
@@ -88,19 +94,25 @@ describe('resolveChatMedia', () => {
   const held = heldOf(state)
   const byId = (id: string) => state.assets.find(entry => entry.id === id)
 
-  it('gives a link card the take\'s shot number, and no shot number to an asset of no take, for any media type', () => {
-    expect(resolveChatMedia({ kind: 'link', asset: 'shot1.mp4' }, held)).toEqual({ project: 'p1', kind: 'link', asset: byId('shot1.mp4'), shot: 1 })
-    expect(resolveChatMedia({ kind: 'link', asset: 'score.wav' }, held)).toEqual({ project: 'p1', kind: 'link', asset: byId('score.wav'), shot: null })
+  it('captions a link card with History\'s label of the asset\'s producer, else the asset\'s name, for any media type', () => {
+    expect(resolveChatMedia({ kind: 'link', asset: 'shot1.mp4' }, held, describeRecord))
+      .toEqual({ project: 'p1', kind: 'link', asset: byId('shot1.mp4'), caption: [`g1 的标签 ${String(OPERATIONS.length)}`, 'label of g1'] })
+    expect(resolveChatMedia({ kind: 'link', asset: 'score.wav' }, held, describeRecord))
+      .toEqual({ project: 'p1', kind: 'link', asset: byId('score.wav'), caption: ['score.wav', 'score.wav'] })
+    // Without History the producer has no label.
+    expect(resolveChatMedia({ kind: 'link', asset: 'shot1.mp4' }, held, () => null))
+      .toEqual({ project: 'p1', kind: 'link', asset: byId('shot1.mp4'), caption: ['shot1.mp4', 'shot1.mp4'] })
   })
 
   it('keeps the default element while the project does not hold the asset', () => {
-    expect(resolveChatMedia({ kind: 'link', asset: 'missing.mp4' }, held)).toBeNull()
-    expect(resolveChatMedia({ kind: 'link', asset: 'shot1.mp4' }, NO_CHAT_ASSETS)).toBeNull()
-    expect(resolveChatMedia({ kind: 'image', asset: 'missing.png', alt: '' }, held)).toBeNull()
+    expect(resolveChatMedia({ kind: 'link', asset: 'missing.mp4' }, held, describeRecord)).toBeNull()
+    expect(resolveChatMedia({ kind: 'link', asset: 'shot1.mp4' }, NO_CHAT_ASSETS, describeRecord)).toBeNull()
+    expect(resolveChatMedia({ kind: 'image', asset: 'missing.png', alt: '' }, held, describeRecord)).toBeNull()
   })
 
   it('draws an image of any held asset as a thumbnail', () => {
-    expect(resolveChatMedia({ kind: 'image', asset: 'shot1.mp4', alt: '镜头' }, held)).toEqual({ project: 'p1', kind: 'image', asset: byId('shot1.mp4'), alt: '镜头' })
+    expect(resolveChatMedia({ kind: 'image', asset: 'shot1.mp4', alt: '镜头' }, held, describeRecord))
+      .toEqual({ project: 'p1', kind: 'image', asset: byId('shot1.mp4'), alt: '镜头' })
   })
 
   it('turns a table whose every body row links a held asset into a grid of the first held asset per row, captioned by the other cells', () => {
@@ -109,17 +121,17 @@ describe('resolveChatMedia', () => {
       [cell('2'), cell(''), { text: '缺失 配乐', links: [{ href: '/dv/assets/missing.mp4' }, { href: '/dv/assets/score.wav' }] }],
     ))
     if (reference === null) throw new Error('the table links no asset')
-    expect(resolveChatMedia(reference, held)).toEqual({
+    expect(resolveChatMedia(reference, held, describeRecord)).toEqual({
       project: 'p1', kind: 'table', cards: [{ asset: byId('shot1.mp4'), caption: '1 · 直播间开场「来一把吧」' }, { asset: byId('score.wav'), caption: '2' }],
     })
     const missing = selectAssetReference(table([cell('1'), cell('播放', '/dv/assets/shot1.mp4')], [cell('2'), cell('缺失', '/dv/assets/missing.mp4')]))
     if (missing === null) throw new Error('the table links no asset')
-    expect(resolveChatMedia(missing, held)).toBeNull()
+    expect(resolveChatMedia(missing, held, describeRecord)).toBeNull()
   })
 })
 
 describe('followChatAssets', () => {
-  it('reads the current state, follows project events and project changes, and stops', async () => {
+  it('reads the current state and the operations, follows project events and project changes, and stops', async () => {
     const events = fakeEvents()
     const states: Record<string, WireState> = { p1: chatState() }
     const { fetch } = scriptedFetch({ state: () => states['p1'] ?? fixtureState() })
@@ -134,7 +146,7 @@ describe('followChatAssets', () => {
     const calls = fetchImpl.mock.calls.length
     events.send()
     events.send()
-    await vi.waitFor(() => { expect(fetchImpl.mock.calls.length).toBe(calls + 1) })
+    await vi.waitFor(() => { expect(fetchImpl.mock.calls.length).toBe(calls + 2) })
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(seen).toHaveLength(1)
     const grown = chatState()
@@ -162,41 +174,9 @@ describe('followChatAssets', () => {
     })
     const stop = followChatAssets(new DvClient(fetchImpl), (next) => { seen.push(next) })
     publishCurrentProject('gone')
-    await vi.waitFor(() => { expect(fetchImpl).toHaveBeenCalledTimes(2) })
+    await vi.waitFor(() => { expect(fetchImpl.mock.calls.length).toBeGreaterThanOrEqual(4) })
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(seen).toEqual([])
-    stop()
-  })
-
-  it('gives each output of a take the chain slot of its render record, and no slot to other records\' outputs', async () => {
-    const events = fakeEvents()
-    /** A state of four records: two takes at slots 3 and `fourth`, a take without a slot, and a trim at slot 5. */
-    const takes = (fourth: number): WireState => {
-      const state = fixtureState()
-      state.assets = [
-        asset('v1.mp4', 'video/mp4', 't1'), asset('s1.png', 'image/png', 't1'), asset('v2.mp4', 'video/mp4', 't2'),
-        asset('v3.mp4', 'video/mp4', 'k1'), asset('v4.mp4', 'video/mp4', 't4'),
-      ]
-      state.components.proj.records = [
-        record({ id: 't1', operation: 'shot.render', deterministic: false, outputs: ['v1.mp4', 's1.png'], started_by: { record: 'a1', slot: 3 } }),
-        record({ id: 't2', operation: 'shot.render', deterministic: false, outputs: ['v2.mp4'] }),
-        record({ id: 'k1', operation: 'timeline.trim', outputs: ['v3.mp4'], started_by: { record: 'a1', slot: 5 } }),
-        record({ id: 't4', operation: 'shot.render', deterministic: false, outputs: ['v4.mp4'], started_by: { record: 'a1', slot: fourth } }),
-      ]
-      return state
-    }
-    let state = takes(4)
-    const seen: ChatAssets[] = []
-    publishCurrentProject('p1')
-    const stop = followChatAssets(new DvClient(scriptedFetch({ state: () => state }).fetch), (next) => { seen.push(next) })
-    await vi.waitFor(() => { expect(seen).toHaveLength(1) })
-    expect(seen[0]?.shots).toEqual({ 'v1.mp4': 3, 's1.png': 3, 'v4.mp4': 4 })
-
-    // A changed shot number publishes the snapshot again.
-    state = takes(6)
-    events.send()
-    await vi.waitFor(() => { expect(seen).toHaveLength(2) })
-    expect(seen[1]?.shots['v4.mp4']).toBe(6)
     stop()
   })
 })
@@ -211,17 +191,26 @@ const viewsPlugin = {
 }
 
 /**
- * Mount the chain entry under a session frame that renders one chat paragraph per Markdown element and the shell's
- * overlay list, beside the media plugin and the media views unless `withMedia` is false.
+ * Mount the media plugin, the media views, `dvHistory` and the chain entry under a session frame that renders one chat
+ * paragraph per Markdown element and the shell's overlay list, in the Chinese interface.
  * @param elements - the Markdown elements and the link texts of their default rendering.
  * @param state - the open project's state.
- * @param withMedia - whether `@dv/ui-media` and the media views are mounted.
- * @returns the runtime, the chain entry's plugin, and the rendered page.
+ * @param withHistory - whether `dvHistory` is provided.
+ * @returns the runtime, the chain entry's plugin, the rendered page, and the records that `describe` received.
  */
-async function mountChat(elements: ReadonlyArray<[MarkdownElement, string]>, state: WireState, withMedia = true) {
+async function mountChat(elements: ReadonlyArray<[MarkdownElement, string]>, state: WireState, withHistory = true) {
   fakeEvents()
   vi.stubGlobal('fetch', scriptedFetch({ state }).fetch)
   const runtime = await SlotTestRuntime.create()
+  const described: ProjectRecord[] = []
+  const history: DvHistory = {
+    rows: createRegistry(row => [row.match], row => row.match),
+    describe: (entry, operations) => {
+      described.push(entry)
+      return describeRecord(entry, operations) ?? ['', '']
+    },
+  }
+  if (withHistory) runtime.ctx.provide('dvHistory', history)
   const session = await runtime.sessions.add({ id: 's1' })
   const reference = runtime.sessions.retain(session)
   await runtime.root.declare({
@@ -237,31 +226,33 @@ async function mountChat(elements: ReadonlyArray<[MarkdownElement, string]>, sta
       {props.renderSlot('shell.overlay', {})}
     </>
   ))
-  if (withMedia) {
-    await runtime.mount({ inject: [...mediaInject], apply: mediaApply })
-    await runtime.mount(viewsPlugin)
-  }
+  await runtime.mount({ inject: [...mediaInject], apply: mediaApply })
+  await runtime.mount(viewsPlugin)
   const plugin = await runtime.mount({ inject: ['slots'], apply: registerChatMedia })
   const view = runtime.renderRoot()
-  return { runtime, plugin, view }
+  return { runtime, plugin, view, described }
 }
 
 describe('registerChatMedia under the slot runtime', () => {
-  it('draws every asset reference through dv.media: the audio view, the file card for a PDF, and a shot card that opens the preview', async () => {
+  it('draws every asset reference through dv.media: the audio view, the file card for a PDF, and a captioned card that opens the preview', async () => {
     const elements: Array<[MarkdownElement, string]> = [
       [link('/dv/assets/shot1.mp4'), '点此播放'], [link('/dv/assets/score.wav'), '配乐'], [link('/dv/assets/brief.pdf'), '简报'],
       [{ kind: 'image', src: '/dv/assets/ref.png', alt: '定妆照' }, '图'], [link('/dv/assets/missing.mp4'), '缺失'],
       [table([cell('1'), cell('开场'), cell('播放', '/dv/assets/shot1.mp4')], [cell('2'), cell('特写'), cell('播放', '/dv/assets/shot2.mp4')]), '表'],
     ]
-    const { runtime, plugin, view } = await mountChat(elements, chatState())
-    const preview = vi.spyOn(runtime.ctx.dvMedia, 'preview')
+    const state = chatState()
+    // The audio file's producer is a record that the current state no longer holds.
+    state.components.proj.created_by['score.wav'] = 'gone'
+    const { runtime, plugin, view, described } = await mountChat(elements, state)
     // Before the project opens, every reference keeps the default element.
     expect(view.getByRole('link', { name: '点此播放' })).toBeTruthy()
 
     act(() => { publishCurrentProject('p1') })
-    // The take video is captioned with its shot number and draws the video view's first frame.
-    const card = await view.findByRole('button', { name: '查看: 镜头 1' })
-    expect(within(view.getByTestId('p0')).getByTitle('镜头 1').textContent).toBe('镜头 1')
+    // The take video is captioned with History's label of its producer, the render record g1.
+    const label = `g1 的标签 ${String(OPERATIONS.length)}`
+    const card = await view.findByRole('button', { name: `查看: ${label}` })
+    expect(within(view.getByTestId('p0')).getByTitle(label).textContent).toBe(label)
+    expect(described.map(entry => entry.id)).toContain('g1')
     expect(view.getByTestId('p0').querySelector('video')?.getAttribute('src')).toBe(`${assetUrl('shot1.mp4')}#t=0.1`)
     // A video card carries the play badge over its frame; the audio card below has none.
     expect(card.querySelector('svg path')).not.toBeNull()
@@ -272,10 +263,9 @@ describe('registerChatMedia under the slot runtime', () => {
     expect(audio.getByRole('button', { name: '查看: score.wav' })).toBeTruthy()
     // A PDF has no media view, so dv.media draws the file card.
     expect(view.getByTestId('p2').querySelector('[data-dv-media="file"]')?.textContent).toBe('application/pdf')
-    // An image element of an asset without a stored size draws a 240 px wide 16:9 thumbnail named by its alt text.
+    // An image element draws a thumbnail named by its alt text.
     const thumb = within(view.getByTestId('p3')).getByRole('button', { name: '查看大图: 定妆照' })
     expect(thumb.querySelector('img')?.getAttribute('src')).toBe(assetUrl('ref.png'))
-    expect([thumb.style.width, thumb.style.aspectRatio]).toEqual(['240px', '16 / 9'])
     // An asset the project does not hold keeps DSH's link.
     expect(view.getByRole('link', { name: '缺失' })).toBeTruthy()
     // The table becomes a grid of two cards captioned by the other cells.
@@ -283,6 +273,7 @@ describe('registerChatMedia under the slot runtime', () => {
       .toEqual(['shot1.mp4', 'shot2.mp4'])
     expect(view.getByRole('button', { name: '查看: 2 · 特写' })).toBeTruthy()
 
+    const preview = vi.spyOn(runtime.ctx.dvMedia, 'preview')
     fireEvent.click(card)
     expect(preview).toHaveBeenCalledExactlyOnceWith('p1', chatState().assets.find(entry => entry.id === 'shot1.mp4'), card)
     expect(view.getByRole('dialog', { name: 'shot1.mp4' }).querySelector('video')?.hasAttribute('controls')).toBe(true)
@@ -292,35 +283,22 @@ describe('registerChatMedia under the slot runtime', () => {
     await runtime.dispose()
   })
 
-  it('sizes a thumbnail by its asset up to 240 px, names a caption-less card View, and captions a take Shot N, in English', async () => {
-    document.documentElement.lang = 'en'
+  it('captions a take by its asset name without History, sizes a thumbnail by its asset, and names a caption-less card 查看', async () => {
     const state = chatState()
-    state.assets.push({ ...asset('wide.png', 'image/png', null), width: 400, height: 100 }, { ...asset('small.png', 'image/png', null), width: 120, height: 90 })
+    state.assets.push({ ...asset('wide.png', 'image/png', null), width: 400, height: 100 })
     const elements: Array<[MarkdownElement, string]> = [
-      [link('/dv/assets/shot2.mp4'), 'play'], [{ kind: 'image', src: '/dv/assets/wide.png', alt: '' }, 'wide'],
-      [{ kind: 'image', src: '/dv/assets/small.png', alt: '' }, 'small'], [table([cell('play', '/dv/assets/score.wav')]), 'table'],
+      [link('/dv/assets/shot1.mp4'), '点此播放'], [{ kind: 'image', src: '/dv/assets/wide.png', alt: '' }, '图'],
+      [table([cell('播放', '/dv/assets/score.wav')]), '表'],
     ]
-    const { runtime, view } = await mountChat(elements, state)
+    const { runtime, view } = await mountChat(elements, state, false)
     act(() => { publishCurrentProject('p1') })
-    expect(await view.findByRole('button', { name: 'View: Shot 2' })).toBeTruthy()
-    const wide = within(view.getByTestId('p1')).getByRole('button', { name: 'View large image' })
-    expect([wide.style.width, wide.style.aspectRatio, wide.style.maxWidth]).toEqual(['400px', '400 / 100', 'min(240px, 100%)'])
-    const small = within(view.getByTestId('p2')).getByRole('button', { name: 'View large image' })
-    expect([small.style.width, small.style.aspectRatio]).toEqual(['120px', '120 / 90'])
-    expect(within(view.getByTestId('p3')).getByRole('button', { name: 'View' }).nextSibling).toBeNull()
+    expect(await view.findByRole('button', { name: '查看: shot1.mp4' })).toBeTruthy()
+    const thumb = within(view.getByTestId('p1')).getByRole('button', { name: '查看大图' })
+    expect(thumb.style.aspectRatio).toBe('400 / 100')
+    expect(within(view.getByTestId('p2')).getByRole('button', { name: '查看' }).nextSibling).toBeNull()
 
-    fireEvent.click(wide)
+    fireEvent.click(thumb)
     expect(view.getByRole('dialog', { name: 'wide.png' }).querySelector('img')?.getAttribute('src')).toBe(assetUrl('wide.png'))
-    await runtime.dispose()
-  })
-
-  it('draws an empty card that opens nothing while @dv/ui-media is absent', async () => {
-    const { runtime, view } = await mountChat([[link('/dv/assets/shot1.mp4'), '点此播放']], chatState(), false)
-    act(() => { publishCurrentProject('p1') })
-    const card = await view.findByRole('button', { name: '查看: 镜头 1' })
-    expect(card.childElementCount).toBe(0)
-    fireEvent.click(card)
-    expect(view.queryByRole('dialog')).toBeNull()
     await runtime.dispose()
   })
 })

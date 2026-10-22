@@ -1,9 +1,8 @@
 /**
- * The asset pool as the canvas editors use it: the picker that adds references (the items of each registered version
- * kind under the kind's label, each drawn by its first asset through the `dv.media` Factory, then the `dv.canvas.picker`
- * entry at key `assets`, which `@dv/ui-asset-pool` fills with its asset pool panel and import drop zone). Without a slot
- * renderer the picker offers only the items. The picker renders on `document.body` and closes on Escape before the
- * canvas sees the key, so the editor beneath it stays open.
+ * The asset picker of the canvas editors: the items of each registered version kind under the kind's label, each drawn
+ * through `dv.media`, then the `dv.canvas.picker` entry at key `assets`, which `@dv/ui-asset-pool` fills with its asset
+ * pool panel and import drop zone. The picker renders on `document.body` and closes on Escape before the canvas sees
+ * the key, so the editor beneath it stays open.
  *
  * @module @dv/ui-canvas/AssetPicker
  */
@@ -11,10 +10,8 @@ import { useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { PropsRenderFactories, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
-import type { DvClient } from '@dv/ui-kit/api.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
-import type {} from '@dv/ui-media/contract'
 import type { CanvasTranslate } from './NodeCard.tsx'
 
 const overlay: CSSProperties = {
@@ -30,7 +27,7 @@ const tile: CSSProperties = {
   display: 'flex', flexDirection: 'column', gap: 4, padding: 4, border: 'none', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-3)',
   color: 'var(--dv-text)', fontFamily: 'inherit', fontSize: 12, lineHeight: '16px', cursor: 'pointer', textAlign: 'left',
 }
-const tileMedia: CSSProperties = { width: '100%', aspectRatio: '1', overflow: 'hidden', borderRadius: 'var(--dv-radius-sm)', display: 'block' }
+const tileMedia: CSSProperties = { width: '100%', aspectRatio: '1', borderRadius: 'var(--dv-radius-sm)', overflow: 'hidden', display: 'flex' }
 const button: CSSProperties = {
   height: 32, border: 'none', borderRadius: 'var(--dv-radius-md)', padding: '0 12px', fontFamily: 'inherit', fontSize: 13, lineHeight: '20px', fontWeight: 500,
   cursor: 'pointer',
@@ -53,9 +50,8 @@ function useEscapeFirst(onEscape: () => void): void {
 }
 
 /** Props of {@link AssetPicker}. */
-export interface AssetPickerProps {
+export interface AssetPickerProps extends PropsRenderFactories {
   state: WireState
-  client: DvClient
   project: string
   /** The chat session the canvas sits beside, recorded as the `session` of the picker's imports. */
   session: string | null
@@ -68,10 +64,8 @@ export interface AssetPickerProps {
   /** Receives the picked references in pick order: asset IDs, and `<id>@<version>` for item versions. */
   onConfirm: (refs: string[]) => void
   onCancel: () => void
-  /** Renders the `dv.canvas.picker` entry, the asset pool panel; without it the picker offers only the items. */
-  renderSlot?: PropsRenderSlots<'dv.canvas.picker'>['renderSlot']
-  /** Renders the `dv.media` occurrence of each item's first asset; without it, no item draws an asset. */
-  renderFactorySlot?: PropsRenderFactories['renderFactorySlot']
+  /** Renders the `dv.canvas.picker` entry, the asset pool panel. */
+  renderSlot: PropsRenderSlots<'dv.canvas.picker'>['renderSlot']
 }
 
 /**
@@ -115,7 +109,7 @@ export function AssetPicker(props: AssetPickerProps): ReactNode {
                   key={item.ref} type="button" aria-pressed={pickedSet.has(item.ref)} onClick={() => { toggle(item.ref) }}
                   style={{ ...tile, boxShadow: pickedSet.has(item.ref) ? '0 0 0 2px var(--dv-accent)' : '0 0 0 1px var(--dv-line)' }}
                 >
-                  <span style={tileMedia}>{item.cover === undefined ? null : props.renderFactorySlot?.('dv.media', { asset: item.cover, purpose: 'thumb' })}</span>
+                  <span style={tileMedia}>{item.cover === undefined ? null : props.renderFactorySlot('dv.media', { asset: item.cover, purpose: 'thumb' })}</span>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
                 </button>
               ))}
@@ -124,8 +118,8 @@ export function AssetPicker(props: AssetPickerProps): ReactNode {
         ))}
         <div style={{ flex: 1, minHeight: 0 }}>
           {pickedRing === null ? null : <style>{pickedRing}</style>}
-          {props.renderSlot?.('dv.canvas.picker', {
-            projectId: props.project, session: props.session, client: props.client, onOpen: (asset) => { toggle(asset.id) },
+          {props.renderSlot('dv.canvas.picker', {
+            projectId: props.project, session: props.session, onOpen: (asset) => { toggle(asset.id) },
           }, { entryKey: 'assets' })}
         </div>
         <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 16px', borderTop: '1px solid var(--dv-line)' }}>

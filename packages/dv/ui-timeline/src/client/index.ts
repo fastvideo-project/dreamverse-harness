@@ -9,6 +9,7 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import type {} from '@dv/ui-canvas/contract'
 import type {} from '@dv/ui-history/contract'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
@@ -38,7 +39,7 @@ export const inject = ['slots', 'locale', 'sidebarRightTabs']
  * Client plugin body: register the type, its dictionaries, and its body under the type's id; while `dvCenter` is
  * present, register the center view `timeline`, which edits the project and writes for the chat session that the
  * workspace center passes, and the preview action `dv.timeline.insert` (插入片段), which shows the timeline view of the
- * open project with a request to insert a video; while `dvCanvas` is present, register the timeline's `TakesInUse`
+ * open project with a request to insert a video; while `dvCanvas` is present, register the timeline's `RecordsInUse`
  * under the same id; while `dvHistory` is present, register the History row `timeline.`, whose focus shows a record's
  * timeline and clip; while `dvMentions` is present, register the clip mention kind. Each registration leaves with its
  * service or with the plugin.
@@ -76,7 +77,7 @@ export function apply(ctx: ClientContext): void {
     )), 'ui-timeline: 插入片段 preview action')
   })
   ctx.inject(['dvCanvas'], (scope) => {
-    scope.effect(() => scope.dvCanvas.takesInUse.register(timelineTakesInUse(t)), 'ui-timeline: takes in use')
+    scope.effect(() => scope.dvCanvas.recordsInUse.register(timelineTakesInUse(t)), 'ui-timeline: records in use')
   })
   ctx.inject(['dvHistory'], (scope) => {
     scope.effect(() => scope.dvHistory.rows.register(timelineHistoryRow), 'ui-timeline: history row')

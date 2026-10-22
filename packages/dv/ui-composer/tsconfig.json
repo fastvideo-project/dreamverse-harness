@@ -39,6 +39,12 @@
       "path": "../../client/ui-tool"
     },
     {
+      "path": "../ui-canvas"
+    },
+    {
+      "path": "../ui-history"
+    },
+    {
       "path": "../ui-kit"
     },
     {

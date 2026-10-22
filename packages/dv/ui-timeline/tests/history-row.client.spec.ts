@@ -48,16 +48,16 @@ describe('timelineHistoryRow', () => {
 
   it('registers once dvHistory is present, and the plugin disposal removes it', async () => {
     const ctx = new Context()
-    const history: DvHistory = { rows: createRegistry<HistoryRow>(row => [row.match]) }
+    const history: DvHistory = { rows: createRegistry<HistoryRow>(row => [row.match], row => row.match), describe: () => ['', ''] }
     ctx.provide('locale', { bind: vi.fn(() => (key: string) => key), register: vi.fn(() => () => undefined) } as never)
     ctx.provide('slots', { inject: vi.fn(() => () => undefined) } as never)
     ctx.provide('sidebarRightTabs', { register: vi.fn(() => () => undefined) } as never)
     const fiber = ctx.plugin({ apply })
     await fiber.await()
-    expect(history.rows.list()).toEqual([])
+    expect(history.rows.getSnapshot()).toEqual([])
     ctx.provide('dvHistory', history)
-    await vi.waitFor(() => { expect(history.rows.list()).toEqual([timelineHistoryRow]) })
+    await vi.waitFor(() => { expect(history.rows.getSnapshot()).toEqual([timelineHistoryRow]) })
     await fiber.dispose()
-    expect(history.rows.list()).toEqual([])
+    expect(history.rows.getSnapshot()).toEqual([])
   })
 })

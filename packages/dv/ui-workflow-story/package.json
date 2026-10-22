@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
+    "@dv/ui-canvas": "workspace:*",
     "@dv/ui-history": "workspace:*",
     "@dv/ui-kit": "workspace:*"
   }

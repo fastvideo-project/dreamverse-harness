@@ -12,8 +12,14 @@ import type { Context } from '@deepseek-ai/cordis'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ToolResultNode } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { NodeViewOf } from '../../ui-canvas/src/client/contract/index.ts'
+import { assetUrl } from '@dv/ui-kit/api.ts'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
 import type { Asset } from '@dv/ui-kit/types.ts'
+import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
+import { scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { apply as shotRenderApply, inject as shotRenderInject } from '../../ui-shot-render/src/client/index.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
 import type { MediaOwner, MediaType } from '../src/client/contract/index.ts'
@@ -91,12 +97,12 @@ describe('@dv/ui-media', () => {
     expect(hostApply).not.toThrow()
   })
 
-  it('refuses a second media type of one id', async () => {
+  it('refuses a second media type of one id, naming the package that registered the first', async () => {
     const { runtime } = await mount([])
-    const image: MediaType = { id: 'image', icon: () => null }
+    const image: MediaType = { id: 'image', owner: '@dv/test-images', icon: () => null }
     runtime.ctx.dvMedia.types.register(image)
-    expect(() => runtime.ctx.dvMedia.types.register({ ...image }))
-      .toThrow('registry key "image" is already registered')
+    expect(() => runtime.ctx.dvMedia.types.register({ ...image, owner: '@dv/test-other' }))
+      .toThrow('registry key "image" is already registered by @dv/test-images')
     await runtime.dispose()
   })
 })
@@ -241,31 +247,40 @@ describe('the asset preview', () => {
 })
 
 describe('one dv.media Factory under parents of both scopes', () => {
-  it('draws an asset in a session-scoped chat entry and on the root frame through the one root Factory', async () => {
+  it('draws the video of a chat card in a session-scoped tool view and of an asset card on the root-scoped canvas', async () => {
     document.documentElement.lang = 'zh-CN'
+    vi.stubGlobal('fetch', scriptedFetch().fetch)
     const runtime = await SlotTestRuntime.create()
-    await runtime.declare({ 'tool.call.toolview': { kind: 'keyed', scope: 'session', inject: { hooks: { toolCallArgumentsPartial: () => () => '' } } } })
+    // The asset pool's tab type is not under test; its registration needs only a registry that accepts it.
+    runtime.ctx.provide('sidebarRightTabs', { register: () => () => undefined } as never)
+    await runtime.declare({
+      'tool.call.toolview': { kind: 'keyed', scope: 'session', inject: { hooks: { toolCallArgumentsPartial: () => () => '' } } },
+      'dv.canvas.card': { kind: 'keyed', scope: 'root' },
+    })
     await runtime.mount({ inject, apply })
-    await runtime.mount(imageViewPlugin)
-    // A chat tool view, which renders under a chat session, draws its output through the Factory.
-    const chatView = {
-      inject: ['slots'],
-      apply(ctx: Context) {
-        ctx.effect(() => ctx.slots.inject('tool.call.toolview', () => ctx.slots.register(
-          { name: 'tool.call.toolview', key: 'test_tool' },
-          ({ renderFactorySlot }: PropsRenderFactories) => renderFactorySlot('dv.media', { asset: asset('chat.png', 'image/png'), purpose: 'card' }),
-        )), 'test: chat view')
-      },
-    }
-    await runtime.mount(chatView)
+    await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
+    await runtime.mount({ inject: [...shotRenderInject], apply: shotRenderApply })
     using reference = runtime.sessions.retain(await runtime.sessions.add({ id: 's1' }))
+    const block: ToolResultNode = {
+      kind: 'tool-result', seq: 2, time: 0, callId: 'call-1', call: { name: 'dv_shot_render', argsRaw: '{"prompt":"a lighthouse"}' }, callTime: 0,
+      content: [], isError: false, meta: { outputs: [{ role: 'video', asset_id: 'v1.mp4', mime: 'video/mp4' }] }, subCalls: [],
+    }
     const chat = runtime.renderSlot('tool.call.toolview', {
-      useDisclosure: () => ({ expanded: false, setExpanded: () => undefined, toggle: () => undefined }), callId: 'call-1', toolName: 'test_tool',
-      openFile: () => undefined, loadImage: () => Promise.resolve(''), phase: 'result', block: {} as never,
-    }, { session: reference, entryKey: 'test_tool', hookContext: { callId: 'call-1', assistant: undefined } })
+      useDisclosure: () => ({ expanded: false, setExpanded: () => undefined, toggle: () => undefined }), callId: 'call-1', toolName: 'dv_shot_render',
+      openFile: () => undefined, loadImage: () => Promise.resolve(''), phase: 'result', block,
+    }, { session: reference, entryKey: 'dv_shot_render', hookContext: { callId: 'call-1', assistant: undefined } })
+    const node: NodeViewOf<'asset'> = {
+      id: 'u1', type: 'asset', title: 'v1.mp4', record: null, assets: ['v1.mp4'], standIn: true, bodyHeight: 117, data: null, claimed: false,
+      flags: { stale: false, rendering: false, failed: false, superseded: false }, badges: [], chain: null, version: null, unseen: false,
+      rerunning: false,
+    }
+    const card = runtime.renderSlot('dv.canvas.card', {
+      node, assets: { 'v1.mp4': asset('v1.mp4', 'video/mp4') }, textScale: 1, host: { run: () => undefined, rerun: () => Promise.resolve() },
+    }, { entryKey: 'asset' })
     expect(runtime.slots.snapshot('factory:dv.media')).toHaveLength(1)
-    expect(chat.container.querySelector('img')?.getAttribute('alt')).toBe('chat.png')
-    expect(chat.container.querySelector('img')?.getAttribute('data-purpose')).toBe('card')
+    expect(chat.container.querySelector('video')?.getAttribute('src')).toBe(assetUrl('v1.mp4'))
+    expect(chat.container.querySelector('video')?.hasAttribute('controls')).toBe(true)
+    expect(card.container.querySelector('video')?.getAttribute('src')).toBe(`${assetUrl('v1.mp4')}#t=0.1`)
     await runtime.dispose()
   })
 })

@@ -1,15 +1,15 @@
 /**
  * Pure readings behind the History panel: the action rows of history entries (a record folds the records it started),
- * the label of an action with its subject, the thumbnail of a record, relative times, and where selecting a record
- * focuses the center. Nothing here touches the DOM or the network, so the unit tests cover it directly.
+ * the registered row of a record, the label of an action with its subject, relative times, and where selecting a record
+ * moves the center. Nothing here touches the DOM or the network, so the unit tests cover it directly.
  *
  * @module @dv/ui-history/rows
  */
 import { chainOf } from '@dv/ui-kit/chain.ts'
 import { operationLabel } from '@dv/ui-kit/tool-labels.ts'
-import type { Asset, HistoryEntry, ProjectRecord, WireOperation } from '@dv/ui-kit/types.ts'
+import type { HistoryEntry, ProjectRecord, WireOperation } from '@dv/ui-kit/types.ts'
 import type { CenterTarget } from '@dv/ui-shell/contract'
-import type { HistoryRow } from './contract/index.ts'
+import type { HistoryRow, Text } from './contract/index.ts'
 
 /** One row of the panel: an operation entry and the entries of the loaded records it started. */
 export interface ActionRow {
@@ -36,8 +36,13 @@ export function actionRows(entries: readonly HistoryEntry[]): ActionRow[] {
   return [...rows.values()].reverse()
 }
 
-/** @returns the registered row that matches the record's operation: an exact name first, then `'<key>.'`. */
-function matchingRow(record: ProjectRecord, rows: readonly HistoryRow[]): HistoryRow | undefined {
+/**
+ * The registered row of a record.
+ * @param record - the record.
+ * @param rows - the registered rows of `dvHistory.rows`.
+ * @returns the row that matches the record's operation, an exact name first, then `'<key>.'`; undefined for none.
+ */
+export function matchingRow(record: ProjectRecord, rows: readonly HistoryRow[]): HistoryRow | undefined {
   const operation = record.operation ?? ''
   return rows.find(item => item.match === operation)
     ?? rows.find(item => item.match.endsWith('.') && operation.startsWith(item.match))
@@ -61,7 +66,7 @@ export interface LabelContext {
  * @param context - the operations, the registered rows and the loaded records.
  * @returns the Chinese and English label.
  */
-export function actionLabel(record: ProjectRecord, context: LabelContext): readonly [string, string] {
+export function actionLabel(record: ProjectRecord, context: LabelContext): Text {
   const [zh, en] = operationLabel(record.operation, context.operations)
   const row = matchingRow(record, context.rows)
   if (row !== undefined) {
@@ -72,40 +77,6 @@ export function actionLabel(record: ProjectRecord, context: LabelContext): reado
   if (chain === null || chain.slot === null) return [zh, en]
   const slot = chain.lane === undefined ? String(chain.slot) : `${String(chain.slot)} · ${chain.lane}`
   return [`${zh} ${slot}`, `${en} ${slot}`]
-}
-
-/**
- * The asset of a row's one thumbnail. An image among the record's outputs, then its inputs, comes first. A video is
- * shown by an image output of the record that made it (a take's still), else by itself. Files that are neither images
- * nor videos (a plan's JSON) and assets of unknown type have no thumbnail. A row without media of its own shows the
- * thumbnail of the first record folded under it.
- * @param record - the record.
- * @param assets - the known assets by ID.
- * @param records - the loaded records by ID, to find the still of a video's maker.
- * @param children - the records folded under the row, in log order.
- * @returns the asset ID, or null.
- */
-export function thumbnailOf(
-  record: ProjectRecord,
-  assets: ReadonlyMap<string, Asset>,
-  records: ReadonlyMap<string, ProjectRecord>,
-  children: readonly ProjectRecord[] = [],
-): string | null {
-  const named = [...record.outputs, ...record.inputs.flatMap(input => input.resolved_asset === null ? [] : [input.resolved_asset])]
-  const mime = (id: string): string => assets.get(id)?.mime ?? ''
-  const image = named.find(id => mime(id).startsWith('image/'))
-  if (image !== undefined) return image
-  const video = named.find(id => mime(id).startsWith('video/'))
-  if (video !== undefined) {
-    const maker = records.get(assets.get(video)?.created_by ?? '')
-    const still = maker?.outputs.find(id => mime(id).startsWith('image/'))
-    return still ?? video
-  }
-  for (const child of children) {
-    const shown = thumbnailOf(child, assets, records)
-    if (shown !== null) return shown
-  }
-  return null
 }
 
 /**

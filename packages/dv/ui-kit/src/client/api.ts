@@ -90,6 +90,15 @@ export class DvApiError extends Error {
   }
 }
 
+/**
+ * The text that a view shows for a thrown or rejected value.
+ * @param error - the value.
+ * @returns an `Error`'s message, else the value as a string.
+ */
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 /** The URL of an asset's file, served by `@dv/asset-pool`. */
 export function assetUrl(id: string): string {
   return `/dv/assets/${encodeURIComponent(id)}`

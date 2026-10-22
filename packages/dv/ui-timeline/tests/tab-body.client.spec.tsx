@@ -5,6 +5,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, waitFor, within } from '@testing-library/react'
+import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { tabInfoFactory } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-info.ts'
@@ -42,7 +43,7 @@ async function mount(fetch: typeof globalThis.fetch) {
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
   runtime.ctx.provide('sidebarRightTabs', new SidebarRightTabRegistry(runtime.ctx) as never)
-  const reference: { current: ReturnType<SlotTestRuntime['sessions']['retain']> | undefined } = { current: undefined }
+  const reference: { current: SessionReference | undefined } = { current: undefined }
   await runtime.root.declare(SLOTS, ({ renderSlot, SessionProvider }: FrameProps) => (
     reference.current === undefined
       ? null

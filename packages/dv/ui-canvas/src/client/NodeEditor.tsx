@@ -1,82 +1,53 @@
 /**
- * The editor a canvas node opens: a panel over a dimmed canvas that opens centered in the canvas (720 px wide at most,
- * about 80% of the canvas height). Dragging the header's title row moves the panel, the bottom-right corner and the
- * right and bottom edges resize it, and a double click on the title row puts it back at the centered default. The last
- * position and size are kept in `localStorage` for every node and fitted into the canvas when restored. Every node offers
- * "问 agent" (a `dv:compose` event that prefills the chat composer). A take shows a large player (an audio output plays
- * in an audio player with sound), the failure reason of a failed take, its model and generation task (the task's label in
- * `GET /api/dv/tasks`, else its name), the params that its operation declares in `GET /api/dv/operations` (prompt
- * first), and reference chips when the operation takes references
- * and the task is not `t2v`, and offers "渲染新版本" (a user record of the take's operation in the take's model and task,
- * whose `based_on` is the take); a take whose operation the list does not name shows no params and no button.
- * While the render starts the button is disabled and reads 渲染中…, and a refused request shows its error under the
- * button. "添加素材" opens the asset picker; a reference chip opens the asset preview of `dvMedia`, or the editor of the
- * node of its versioned item (read through the registered version kinds) over this one. The picker's asset pool is the
- * `dv.canvas.picker` entry at key `assets`. Every asset draws through the `dv.media` Factory. An entry node (a node that a registered
- * `NodeType` drew) shows the `dv.canvas.editor` entry keyed by its `NodeType.id`, which the canvas lends its writes, its asset
- * picker of assets only and its asset preview; it shows only the header when no entry is registered or the host renders
- * no entries. A stale node offers "仍然保留", which keeps its record as it is (`proj.stale_accept`).
+ * The editor shell that a canvas node opens: a panel over a dimmed canvas that opens centered in the canvas (720 px wide
+ * at most, about 80% of the canvas height). Dragging the header's title row moves the panel, the bottom-right corner
+ * and the right and bottom edges resize it, and a double click on the title row puts it back at the centered default.
+ * The last position and size are kept in `localStorage` for every node and fitted into the canvas when restored. The
+ * header shows the type dot and label, the title, the node actions that show on the node, and close. A stale node
+ * offers "仍然保留", which keeps its record as it is (`proj.stale_accept`). The body is the entry of the node's type in
+ * `dv.canvas.editor.claimed` for a claimed node and in `dv.canvas.editor` for any other node, lent the canvas's writes,
+ * its asset picker, its asset preview and its other editors; a type without an entry shows only the header.
  */
 import { useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
-import type { PropsRenderFactories, PropsRenderSlots, RenderFactorySlot } from '@deepseek-ai/dsh-client-ui-slots'
-import type { DvClient } from '@dv/ui-kit/api.ts'
-import { dispatchCompose, type DvComposeRef } from '@dv/ui-kit/compose.ts'
-import { fieldsOf, paramsOf, type FormField } from '@dv/ui-kit/form.ts'
-import { useText } from '@dv/ui-kit/locale.ts'
-import { formatInputRef } from '@dv/ui-kit/references.ts'
-import type { EntryEditorHost, VersionKind } from '@dv/ui-kit/registries.ts'
+import type { PropsRenderFactories, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
+import type { VersionKind } from '@dv/ui-kit/registries.ts'
+import type { WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
-import { taskLabel, type WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
-import type { Asset, OperationRequest, ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
-import { playerBox } from '@dv/ui-kit/player-box.ts'
 import { AssetPicker } from './AssetPicker.tsx'
+import type { NodeAction, NodeHost, NodeView } from './contract/index.ts'
 import type { CanvasNode } from './graph.ts'
-import { nodeTitle, typeColor, typeLabel } from './NodeCard.tsx'
 import type { CanvasTranslate } from './NodeCard.tsx'
 
-/** Renders the slots of the canvas's editors (`dv.canvas.editor`, `dv.canvas.picker`): the `renderSlot` of the slot
- *  entry that declares them. */
-export type RenderCanvasSlot = PropsRenderSlots<'dv.canvas.editor' | 'dv.canvas.picker'>['renderSlot']
+/** Renders the slots that the canvas's editors show: the `renderSlot` of the `dv.canvas` Factory. */
+export type RenderCanvasSlot = PropsRenderSlots<
+  'dv.canvas.card' | 'dv.canvas.editor' | 'dv.canvas.editor.claimed' | 'dv.canvas.picker'
+>['renderSlot']
 
 /** Props of {@link NodeEditor}. */
-export interface NodeEditorProps {
+export interface NodeEditorProps extends PropsRenderFactories {
   node: CanvasNode
+  /** The node as its editor body and actions receive it. */
+  view: NodeView
   state: WireState
-  /** The operation declarations of `GET /api/dv/operations`; a take's editor shows the params of its operation. */
   operations: readonly WireOperation[]
-  /** The task labels of `GET /api/dv/tasks`; a take shows its task by its label, else by its name. */
-  taskLabels: WireTaskLabels
-  /** The registered version kinds; reference chips and the picker read versioned items through them. */
+  /** The registered version kinds, whose items the picker lists when a body asks for them. */
   versionKinds: readonly VersionKind[]
-  client: DvClient
+  /** The node actions that show on the node. */
+  actions: readonly NodeAction[]
   project: string
-  /** The chat session the canvas sits beside, recorded as the `session` of the editor's writes. */
   session: string | null
   t: CanvasTranslate
+  /** The canvas's writes, preview, placement and other editors; the editor adds its own asset picker. */
+  host: Omit<NodeHost, 'pickAssets'>
+  /** Keep a stale record as it is. */
+  onAcceptStale: (record: string) => void
   onClose: () => void
-  /** Run a write and report its failure. */
-  run: (work: () => Promise<unknown>) => Promise<void>
-  /**
-   * Start the render of a new take based on the open take. Settles once the new take is on the canvas, after the canvas
-   * closed the editor; rejects when the request fails before that.
-   */
-  onRender: (request: OperationRequest & { based_on: string }) => Promise<void>
-  /** Take an asset off the project's canvas list; the asset stays in the asset pool. */
-  onRemoveFromCanvas: (assetId: string) => void
-  /** Open the editor of another node over this one, which keeps its unsaved changes. */
-  onOpenNode: (nodeId: string) => void
   /** The zoom transition's ref for the panel, which grows out of the node and shrinks back into it. */
   zoomRef: (element: HTMLElement | null) => void
   /** The size of the canvas area that the panel sits in, which the canvas measures. */
   area: EditorArea
-  /** Renders the `dv.canvas.editor` entry of an entry node, and the asset pool in the picker; without it an entry node
-   *  shows only its header, and the picker offers only versioned items. */
-  renderSlot?: RenderCanvasSlot
-  /** Renders the `dv.media` occurrences of the editor's assets; without it, no asset draws. */
-  renderFactorySlot?: PropsRenderFactories['renderFactorySlot']
-  /** Opens the asset preview of `dvMedia`, growing out of `opener`; without it, an asset opens no preview. */
-  preview?: (asset: Asset, opener: Element | null) => void
+  renderSlot: RenderCanvasSlot
 }
 
 /** The editor panel's position and size in px, relative to the canvas area's top-left corner. */
@@ -107,12 +78,6 @@ const EDITOR_MIN_HEIGHT = 320
 const EDITOR_KEEP_VISIBLE = 48
 /** The `localStorage` key of the last panel position and size, shared by every node. */
 export const EDITOR_RECT_KEY = 'dv-canvas-editor-rect'
-
-/**
- * @param error - a value that a write or a field parse threw or rejected with.
- * @returns its message, or the value as text when it is not an `Error`.
- */
-export const messageOf = (error: unknown): string => error instanceof Error ? error.message : String(error)
 
 /**
  * Limit a number to a range; a range whose upper end is under its lower end yields the upper end.
@@ -262,114 +227,12 @@ const panel: CSSProperties = {
   overflow: 'hidden', background: 'var(--dv-surface-1)', color: 'var(--dv-text)', borderRadius: 'var(--dv-radius-xl)',
   boxShadow: '0 0 0 1px var(--dv-line-strong), var(--dv-shadow-2)', zIndex: 10, fontSize: 13, lineHeight: '20px',
 }
-const label: CSSProperties = { display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 500, color: 'var(--dv-text-2)', margin: '12px 0 4px' }
-const field: CSSProperties = {
-  width: '100%', boxSizing: 'border-box', background: 'var(--dv-surface-2)', color: 'var(--dv-text)',
-  border: '1px solid var(--dv-line-strong)', borderRadius: 'var(--dv-radius-md)', padding: '6px 8px', fontFamily: 'inherit', fontSize: 13, lineHeight: '20px',
-}
 const button: CSSProperties = {
   height: 32, border: 'none', borderRadius: 'var(--dv-radius-md)', padding: '0 12px', fontFamily: 'inherit', fontSize: 13, lineHeight: '20px', fontWeight: 500,
   cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
 }
 /** A secondary button: 1px border, transparent fill (the `dv-canvas-btn` class paints the fill and the hover). */
 const secondaryButton: CSSProperties = { ...button, border: '1px solid var(--dv-line-strong)', color: 'var(--dv-text)' }
-const chip: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 6px 2px 2px', borderRadius: 14, background: 'var(--dv-surface-3)', fontSize: 13, lineHeight: '20px' }
-/** The part of a reference chip that opens the reference: its thumbnail and its name. */
-/** The 22 px round box of a chip's asset. */
-const chipThumb: CSSProperties = { display: 'block', flex: 'none', width: 22, height: 22, borderRadius: 11, overflow: 'hidden' }
-const chipOpen: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: 0, border: 'none', background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer' }
-/** The model key params: the model-and-task line shows them, and a new take keeps them. */
-const MODEL_KEY = new Set(['modality', 'task', 'provider', 'model'])
-/** The params whose fields keep their element ID and localized label; any other param shows its key. */
-const SHARED_FIELDS: Readonly<Record<string, { id: string; label: 'editor.prompt' | 'editor.duration' | 'editor.seed' }>> = {
-  prompt: { id: 'prompt', label: 'editor.prompt' }, duration_sec: { id: 'duration', label: 'editor.duration' }, seed: { id: 'seed', label: 'editor.seed' },
-}
-
-/**
- * The field of one declared param: the prompt as a text area, a param with choices as a select, else an input.
- * @param props - the field, the canvas translate, and the callback that gets the field's next text.
- * @returns the label and the control.
- */
-function ParamField({ param, t, onText }: { param: FormField; t: CanvasTranslate; onText: (text: string) => void }): ReactNode {
-  const shared = SHARED_FIELDS[param.key]
-  const id = `dv-canvas-editor-${shared?.id ?? param.key}`
-  const change = (event: { target: { value: string } }): void => { onText(event.target.value) }
-  let control: ReactNode
-  if (param.key === 'prompt') control = <textarea id={id} style={{ ...field, minHeight: 72, resize: 'vertical' }} value={param.text} onChange={change} />
-  else if (param.control === 'select') control = <select id={id} style={field} value={param.text} onChange={change}><option value="" />{param.options.map(option => <option key={option} value={option}>{option}</option>)}</select>
-  else if (param.control === 'checkbox') control = <input id={id} type="checkbox" checked={param.text === 'true'} onChange={(event) => { onText(String(event.target.checked)) }} />
-  else control = <input id={id} type={param.control === 'number' ? 'number' : 'text'} style={field} placeholder={param.key === 'seed' ? t('editor.seedRandom') : undefined} value={param.text} onChange={change} />
-  return <div style={{ flex: '1 1 200px' }}><label style={label} htmlFor={id}>{shared === undefined ? param.key : t(shared.label)}</label>{control}</div>
-}
-
-/** One input of the edited record. */
-interface EditedInput {
-  role: string
-  ref: string
-}
-
-/** A versioned item at its newest version, with the version kind that reads it. */
-interface VersionedItem {
-  kind: VersionKind
-  id: string
-  version: number
-}
-
-/**
- * The first item of the version kinds that matches, at its newest version.
- * @param state - the project state.
- * @param kinds - the registered version kinds.
- * @param matches - whether an item ID of a kind is the one sought.
- * @returns the item, or null when no kind holds a matching item.
- */
-function findItem(
-  state: WireState, kinds: readonly VersionKind[], matches: (kind: VersionKind, id: string) => boolean,
-): VersionedItem | null {
-  for (const kind of kinds) {
-    const item = kind.latest(state).find(entry => matches(kind, entry.id))
-    if (item !== undefined) return { kind, ...item }
-  }
-  return null
-}
-
-/**
- * The item that reference text such as `hero@1` names, at its newest version.
- * @param state - the project state.
- * @param kinds - the registered version kinds.
- * @param ref - reference text.
- * @returns the item; null for `<id>@<n>` text that no kind holds; undefined for any other text.
- */
-function namedItem(state: WireState, kinds: readonly VersionKind[], ref: string): VersionedItem | null | undefined {
-  const id = /^(.+)@\d+$/.exec(ref)?.[1]
-  return id === undefined ? undefined : findItem(state, kinds, (_kind, other) => other === id)
-}
-
-/**
- * The asset that shows a reference: the first reference asset of the newest version of its item, or the asset itself.
- * @param state - the project state.
- * @param kinds - the registered version kinds.
- * @param ref - reference text such as `hero@1` or an asset ID.
- * @returns the asset ID, or null.
- */
-function refImage(state: WireState, kinds: readonly VersionKind[], ref: string): string | null {
-  const item = namedItem(state, kinds, ref)
-  if (item !== undefined) return item === null ? null : item.kind.assets(state, item.id, item.version)[0] ?? null
-  return state.assets.some(asset => asset.id === ref) ? ref : null
-}
-
-/**
- * A reference chip label: the name of the newest version of its item, or the asset's name.
- * @param state - the project state.
- * @param kinds - the registered version kinds.
- * @param ref - reference text.
- * @returns the label.
- */
-function refName(state: WireState, kinds: readonly VersionKind[], ref: string): string {
-  const item = namedItem(state, kinds, ref)
-  if (item === null) return ref.slice(0, ref.lastIndexOf('@'))
-  if (item !== undefined) return item.kind.name(state, item.id, item.version) ?? item.id
-  return state.assets.find(asset => asset.id === ref)?.name ?? ref
-}
 
 /** What {@link useEditorPlacement} gives the panel. */
 interface EditorPlacement {
@@ -449,37 +312,29 @@ const RESIZE_KEYS: Readonly<Record<string, readonly [number, number]>> = {
   ArrowRight: [RESIZE_STEP, 0], ArrowLeft: [-RESIZE_STEP, 0], ArrowDown: [0, RESIZE_STEP], ArrowUp: [0, -RESIZE_STEP],
 }
 
+/** A picker request of the editor body: the chosen references, whether versioned items show, and the confirm callback. */
+interface Picking {
+  chosen: readonly string[]
+  versions: boolean
+  onConfirm: (refs: string[]) => void
+}
+
 /**
- * The editor: a header with the node type, the title, "问 agent" and close, above the body
- * of the node's type. The title row moves the panel and a double click on it resets the panel; the handles on the right
- * edge, the bottom edge, and the bottom-right corner resize it.
- * @param props - the node, the state it came from, and the write callbacks.
+ * The editor.
+ * @param props - the node, the state it came from, its actions, the canvas host and the slot renderers.
  * @returns the element.
  */
 export function NodeEditor(props: NodeEditorProps): ReactNode {
-  const { node, t, onClose } = props
-  const title = nodeTitle(node, t)
-  // A node without its own title is titled by its type, so the label beside the type dot would repeat the title.
-  const type = typeLabel(node, t)
+  const { node, view, t, onClose } = props
+  const title = node.title
+  // A node titled by its type would repeat the title beside the type dot.
+  const type = node.nodeType.label()
   const staleRecord = node.flags.stale ? node.record : null
   const placement = useEditorPlacement(props.area)
-  // The versioned item that an entry stands for: the item whose version kind names the entry's node.
-  const item = node.type === 'entry' ? findItem(props.state, props.versionKinds, (kind, id) => kind.node(id) === node.id) : null
-  const askAgent = (): void => {
-    const shown = node.thumb ?? node.video ?? node.references[0] ?? null
-    // An asset node without a record (`asset:<id>`) is referenced as the asset itself.
-    const ref: DvComposeRef = node.type === 'asset' && node.record === null && shown !== null
-      ? { kind: 'asset', id: shown, label: title, assetId: shown }
-      : { kind: item?.kind.kind ?? 'record', id: item?.id ?? node.record?.id ?? node.id, label: title, ...shown === null ? {} : { assetId: shown } }
-    dispatchCompose({ text: t('compose.text', { title }), refs: [ref] })
-    onClose()
-  }
-  let body: ReactNode
-  // The canvas draws every take from its record; the check hands the take form a record.
-  if (node.type === 'entry') body = <EntryForm {...props} node={node} />
-  else if (node.type === 'take' && node.record !== null) body = <TakeForm {...props} record={node.record} title={title} />
-  else {
-    body = <Preview node={node} state={props.state} t={t} renderFactorySlot={props.renderFactorySlot} onRemove={props.onRemoveFromCanvas} />
+  const [picking, setPicking] = useState<Picking | null>(null)
+  const host: NodeHost = {
+    ...props.host,
+    pickAssets: (chosen, options, onConfirm) => { setPicking({ chosen, versions: options.versions, onConfirm }) },
   }
   const { rect, begin, follow, finish, reset, resizeBy } = placement
   const gestureHandlers = { onPointerMove: follow, onPointerUp: finish, onPointerCancel: finish }
@@ -502,11 +357,13 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
           onDoubleClick={(event) => { if (!(event.target instanceof Element && event.target.closest('button') !== null)) reset() }}
         >
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }}>
-            <span style={{ width: 6, height: 6, borderRadius: 9999, background: typeColor(node) }} />
+            <span style={{ width: 6, height: 6, borderRadius: 9999, background: node.nodeType.color }} />
             {type === title ? null : type}
           </span>
           <h2 style={{ flex: 1, minWidth: 0, margin: 0, fontSize: 16, lineHeight: '24px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</h2>
-          <button type="button" className="dv-canvas-soft" style={button} onClick={askAgent}>{t('editor.askAgent')}</button>
+          {props.actions.map(action => (
+            <button key={action.id} type="button" className="dv-canvas-soft" style={button} disabled={view.rerunning} onClick={() => { action.run(view, host) }}>{action.label()}</button>
+          ))}
           <button type="button" className="dv-canvas-btn" aria-label={t('editor.close')} title={t('editor.close')} style={{ ...button, width: 32, padding: 0, color: 'var(--dv-text-2)' }} onClick={onClose}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
           </button>
@@ -517,17 +374,26 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
           ? (
             <p style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 8px', color: 'var(--dv-danger)' }}>
               {t('node.stale')}
-              <button
-                type="button" className="dv-canvas-btn" style={{ ...secondaryButton, height: 28 }}
-                onClick={() => { void props.run(() => props.client.acceptStale(props.project, staleRecord.id, 'canvas', props.session)) }}
-              >
+              <button type="button" className="dv-canvas-btn" style={{ ...secondaryButton, height: 28 }} onClick={() => { props.onAcceptStale(staleRecord.id) }}>
                 {t('editor.keepAnyway')}
               </button>
             </p>
           )
           : null}
-        {body}
+        {view.claimed
+          ? props.renderSlot('dv.canvas.editor.claimed', { node: view, state: props.state, operations: props.operations, host }, { entryKey: node.type })
+          : props.renderSlot('dv.canvas.editor', { node: view, state: props.state, operations: props.operations, host }, { entryKey: node.type })}
       </div>
+      {picking === null
+        ? null
+        : (
+          <AssetPicker
+            state={props.state} project={props.project} session={props.session} t={t} kinds={picking.versions ? props.versionKinds : []}
+            chosen={picking.chosen} onCancel={() => { setPicking(null) }}
+            onConfirm={(refs) => { setPicking(null); picking.onConfirm(refs) }}
+            renderSlot={props.renderSlot} renderFactorySlot={props.renderFactorySlot}
+          />
+        )}
       {/* Thin strips on the right and bottom edges resize one dimension; the corner button resizes both and takes arrow keys. */}
       <div aria-hidden="true" style={{ position: 'absolute', top: 0, right: 0, bottom: 16, width: 4, cursor: 'ew-resize', touchAction: 'none' }} onPointerDown={begin({ right: true, bottom: false })} {...gestureHandlers} />
       <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 16, bottom: 0, height: 4, cursor: 'ns-resize', touchAction: 'none' }} onPointerDown={begin({ right: false, bottom: true })} {...gestureHandlers} />
@@ -539,203 +405,5 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.25} strokeLinecap="round" aria-hidden="true"><path d="M9 3 3 9M9 6.5 6.5 9" /></svg>
       </button>
     </section>
-  )
-}
-
-/** The frame of the node's asset; `playerBox` gives its size. */
-const player: CSSProperties = {
-  display: 'flex', overflow: 'hidden', borderRadius: 'var(--dv-radius-lg)', background: 'var(--dv-media-bg)',
-}
-
-/** Props of {@link Preview}. */
-interface PreviewProps {
-  node: CanvasNode
-  state: WireState
-  t: CanvasTranslate
-  renderFactorySlot: RenderFactorySlot | undefined
-  /** For an imported asset, takes it off the canvas list and leaves it in the asset pool; omitted for a take. */
-  onRemove?: (assetId: string) => void
-}
-
-/**
- * The node's asset at full width, at purpose 'loop' of `dv.media`: the video or audio asset when there is one, behind
- * the image as its poster, else the image; the body of an imported asset adds "从画布移除" under it.
- * @param props - the node, the project state, the canvas translate, the `dv.media` renderer, and the removal of an
- *   imported asset.
- * @returns the element, or null for a node without an asset; without the renderer, no asset draws.
- */
-function Preview({ node, state, t, renderFactorySlot, onRemove }: PreviewProps): ReactNode {
-  const asset = state.assets.find(each => each.id === (node.video ?? node.thumb))
-  if (asset === undefined) return null
-  const poster = node.video !== null && node.thumb !== null ? { poster: node.thumb } : {}
-  return (
-    <>
-      {renderFactorySlot === undefined ? null : <div style={{ ...player, ...playerBox(asset, 360) }}>{renderFactorySlot('dv.media', { asset, purpose: 'loop', ...poster })}</div>}
-      {onRemove === undefined
-        ? null
-        : (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-            <button type="button" className="dv-canvas-btn" style={secondaryButton} onClick={() => { onRemove(asset.id) }}>{t('editor.removeFromCanvas')}</button>
-          </div>
-        )}
-    </>
-  )
-}
-
-/**
- * A take: its player, the failure reason of a failed take, its model and task, the params that its operation declares
- * with the references, and "渲染新版本"; a take whose operation the list does not name shows no params and no button.
- * @param props - editor props plus the take's record and the title used in the record intent.
- * @returns the element.
- */
-function TakeForm(
-  {
-    node, record, state, operations, taskLabels, versionKinds, client, project, session, t, onRender, onOpenNode, renderSlot,
-    renderFactorySlot, preview, title,
-  }: NodeEditorProps & { record: ProjectRecord; title: string },
-): ReactNode {
-  const pick = useText()
-  const declared = operations.find(candidate => candidate.name === record.operation)
-  const [inputs, setInputs] = useState<EditedInput[]>(
-    () => record.inputs.map(input => ({ role: input.role, ref: formatInputRef(input.ref) })),
-  )
-  // The text of each field the user changed; the other fields show the record's params.
-  const [texts, setTexts] = useState<Readonly<Record<string, string>>>({})
-  const fields = declared === undefined ? [] : fieldsOf(declared.params, record.params)
-    .filter(param => !MODEL_KEY.has(param.key)).map(param => ({ ...param, text: texts[param.key] ?? param.text }))
-  const [starting, setStarting] = useState(false)
-  const [renderError, setRenderError] = useState<string | null>(null)
-  const references = inputs.filter(input => input.role === 'reference')
-  const [picking, setPicking] = useState(false)
-  const assets = new Map(state.assets.map(asset => [asset.id, asset]))
-  const addReferences = (refs: readonly string[]): void => {
-    setPicking(false)
-    const added = refs.filter(ref => !references.some(input => input.ref === ref))
-    setInputs([...inputs, ...added.map(ref => ({ role: 'reference', ref }))])
-  }
-  const model = typeof record.params['model'] === 'string' ? record.params['model'] : ''
-  const task = typeof record.params['task'] === 'string' ? record.params['task'] : ''
-  // Reference chips need a declared `reference` input; a text render (task `t2v`) takes no reference images.
-  const withReferences = declared?.inputs['reference'] !== undefined && task !== 't2v'
-  /**
-   * Render a new take of the edited fields and references, based on this take.
-   * @param operation - the take's declared operation.
-   */
-  const renderTake = (operation: string): void => {
-    let edited: Record<string, unknown>
-    try {
-      edited = paramsOf(fields)
-    } catch (error) {
-      // A field whose text does not parse, or an empty required field, starts no render.
-      setRenderError(messageOf(error))
-      return
-    }
-    // The take's other params stay, the model key among them; an emptied field drops its param.
-    const kept = Object.entries(record.params).filter(([key]) => !fields.some(param => param.key === key))
-    const params = { ...Object.fromEntries(kept), ...edited }
-    setStarting(true)
-    setRenderError(null)
-    // On success the canvas closes the editor and selects the new take.
-    onRender({
-      project, operation, inputs, params, surface: 'canvas', intent: t('intent.renderTake', { title }), based_on: record.id,
-      ...session === null ? {} : { session },
-    }).catch((error: unknown) => {
-      setStarting(false)
-      setRenderError(messageOf(error))
-    })
-  }
-  const failure = node.flags.failed ? record.error?.message ?? null : null
-  const fieldOf = (param: FormField): ReactNode => (
-    <ParamField key={param.key} param={param} t={t} onText={(text) => { setTexts(current => ({ ...current, [param.key]: text })) }} />
-  )
-  return (
-    <div>
-      <Preview node={node} state={state} t={t} renderFactorySlot={renderFactorySlot} />
-      {failure === null
-        ? null
-        : <p role="note" style={{ margin: 0, padding: '8px 12px', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-danger-soft)', color: 'var(--dv-danger)' }}>{t('editor.failure', { message: failure })}</p>}
-      <span style={label}>{t('editor.modelTask')}</span>
-      <span data-testid="dv-canvas-render-mode">{t('editor.modelTaskValue', { model, task: pick(...taskLabel(task, taskLabels)) })}</span>
-      {fields.filter(param => param.key === 'prompt').map(fieldOf)}
-      {!withReferences ? null : <><span style={label}>{t('editor.references')}</span><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-        {references.map((input) => {
-          const shown = refImage(state, versionKinds, input.ref)
-          const name = refName(state, versionKinds, input.ref)
-          const item = namedItem(state, versionKinds, input.ref)
-          const asset = shown === null ? undefined : assets.get(shown)
-          // A versioned item opens the editor of its node; an asset opens its preview, growing out of the chip.
-          const open = (chip: Element): void => {
-            if (item !== undefined && item !== null) onOpenNode(item.kind.node(item.id))
-            else if (asset !== undefined) preview?.(asset, chip)
-          }
-          return (
-            <span key={input.ref} style={chip}>
-              <button type="button" data-reference={input.ref} aria-label={t('editor.openReference', { name })} style={chipOpen} onClick={(event) => { open(event.currentTarget) }}>
-                {asset === undefined ? null : <span style={chipThumb}>{renderFactorySlot?.('dv.media', { asset, purpose: 'thumb' })}</span>}
-                {name}
-              </button>
-              <button type="button" aria-label={t('editor.removeReference', { name })} style={{ border: 'none', background: 'transparent', color: 'var(--dv-text-2)', cursor: 'pointer' }} onClick={() => { setInputs(inputs.filter(other => other !== input)) }}>×</button>
-            </span>
-          )
-        })}
-        <button type="button" className="dv-canvas-btn" style={{ ...secondaryButton, height: 28 }} onClick={() => { setPicking(true) }}>{t('editor.addAsset')}</button>
-      </div></>}
-      {picking
-        ? (
-          <AssetPicker
-            state={state} client={client} project={project} session={session} t={t} kinds={versionKinds}
-            chosen={references.map(input => input.ref)} onConfirm={addReferences} onCancel={() => { setPicking(false) }}
-            {...renderSlot === undefined ? {} : { renderSlot }}
-            {...renderFactorySlot === undefined ? {} : { renderFactorySlot }}
-          />
-        )
-        : null}
-      <div style={{ display: 'flex', flexWrap: 'wrap', columnGap: 12 }}>{fields.filter(param => param.key !== 'prompt').map(fieldOf)}</div>
-      {declared === undefined ? null : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, marginTop: 14 }}>
-        {renderError === null ? null : <p role="alert" style={{ flex: 1, minWidth: 0, margin: 0, color: 'var(--dv-danger)' }}>{t('error', { message: renderError })}</p>}
-        <button
-          type="button" className="dv-canvas-soft" disabled={starting}
-          style={{ ...button, opacity: starting ? 0.5 : 1 }} onClick={() => { renderTake(declared.name) }}
-        >
-          {starting ? t('node.rendering') : t('editor.renderTake')}
-        </button>
-      </div>}
-    </div>
-  )
-}
-
-/**
- * The body of an entry node: the `dv.canvas.editor` entry keyed by its `NodeType.id`, lent the canvas's writes (with
- * the canvas's project, chat session and surface), the asset picker of assets only, and the asset preview.
- * @param props - editor props of an entry node.
- * @returns the element.
- */
-function EntryForm(props: NodeEditorProps & { node: Extract<CanvasNode, { type: 'entry' }> }): ReactNode {
-  const { node, state, client, project, session, t, run, renderSlot } = props
-  const [picking, setPicking] = useState<{ chosen: readonly string[]; onConfirm: (assets: string[]) => void } | null>(null)
-  // Only the entry's body asks for the picker, so a host that renders no entries shows neither.
-  if (renderSlot === undefined) return null
-  const host: EntryEditorHost = {
-    run: (request) => { void run(() => client.runOperation({ ...request, project, surface: 'canvas', ...session === null ? {} : { session } })) },
-    pickAssets: (chosen, onConfirm) => { setPicking({ chosen, onConfirm }) },
-    preview: (assetId, element) => {
-      const asset = state.assets.find(each => each.id === assetId)
-      if (asset !== undefined) props.preview?.(asset, element)
-    },
-  }
-  return (
-    <>
-      {renderSlot('dv.canvas.editor', { node: node.entry, state, host }, { entryKey: node.nodeType.id })}
-      {picking === null
-        ? null
-        : (
-          <AssetPicker
-            state={state} client={client} project={project} session={session} t={t} kinds={[]} chosen={picking.chosen}
-            onConfirm={(assets) => { setPicking(null); picking.onConfirm(assets) }} onCancel={() => { setPicking(null) }}
-            renderSlot={renderSlot}
-            {...props.renderFactorySlot === undefined ? {} : { renderFactorySlot: props.renderFactorySlot }}
-          />
-        )}
-    </>
   )
 }

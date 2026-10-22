@@ -12,16 +12,13 @@
       "path": "../../../vendor/cordis"
     },
     {
-      "path": "../../client/ui-renderer"
+      "path": "../ui-canvas"
     },
     {
-      "path": "../../client/ui-slots"
+      "path": "../ui-generation"
     },
     {
-      "path": "../../client/ui-tool"
-    },
-    {
-      "path": "../ui-kit"
+      "path": "../ui-history"
     }
   ]
 }

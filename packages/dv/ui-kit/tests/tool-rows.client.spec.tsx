@@ -36,9 +36,9 @@ describe('wroteRecord', () => {
 })
 
 describe('outputsOf', () => {
-  it('lists the URL, role and MIME type of each output that names an asset ID', () => {
+  it('lists the role, asset ID, URL and MIME type of each output that names an asset ID', () => {
     const block = { meta: { outputs: [{ role: 'video', asset_id: 'shot 1.mp4', mime: 'video/mp4' }, { role: 'last_still', mime: 'image/png' }] } }
-    expect(outputsOf(block)).toEqual([{ role: 'video', url: '/dv/assets/shot%201.mp4', mime: 'video/mp4' }])
+    expect(outputsOf(block)).toEqual([{ role: 'video', id: 'shot 1.mp4', url: '/dv/assets/shot%201.mp4', mime: 'video/mp4' }])
   })
 
   it('lists no assets for a call without an outputs array in its result metadata', () => {

@@ -102,11 +102,11 @@ describe('ui-composer apply', () => {
       return (candidates ?? []).map(candidate => candidate.name)
     }
     const dispose = ctx.dvMentions.kinds.register(props)
-    expect(ctx.dvMentions.kinds.list()).toEqual([props])
+    expect(ctx.dvMentions.kinds.getSnapshot()).toEqual([props])
     expect(await names()).toEqual(['Umbrella'])
-    expect(() => ctx.dvMentions.kinds.register({ ...marks, id: 'test-props' })).toThrow('registry key "test-props" is already registered')
+    expect(() => ctx.dvMentions.kinds.register({ ...marks, id: 'test-props' })).toThrow('registry key "test-props" is already registered by test-props')
     dispose()
-    expect(ctx.dvMentions.kinds.list()).toEqual([])
+    expect(ctx.dvMentions.kinds.getSnapshot()).toEqual([])
     expect(await names()).toEqual([])
     await fiber.dispose()
     expect(ctx.get('dvMentions')).toBeUndefined()
@@ -120,7 +120,7 @@ describe('projectMentionSource candidates and picks', () => {
     items: () => [{ uri: 'dv:test_hat/h1', label: 'Hat' }, { uri: 'dv:test_hat/h2', label: 'Hat' }],
   }
   const source = (): InputTriggerSource => {
-    const kinds = createRegistry<MentionKind>(kind => [kind.id])
+    const kinds = createRegistry<MentionKind>(kind => [kind.id], kind => kind.id)
     kinds.register(hats)
     return projectMentionSource({ kinds }, () => [])
   }
@@ -154,7 +154,7 @@ describe('projectMentionSource codec', () => {
       return Promise.resolve(new Response('{}'))
     })
     publishCurrentProject('p1')
-    const { codec } = projectMentionSource({ kinds: createRegistry<MentionKind>(kind => [kind.id]) }, () => [])
+    const { codec } = projectMentionSource({ kinds: createRegistry<MentionKind>(kind => [kind.id], kind => kind.id) }, () => [])
     if (codec === undefined) throw new Error('the source has no codec')
     const asset = referenceText('hero.png', 'dv:asset/a%2B1')
     const character = referenceText('Hero', 'dv:character/hero')

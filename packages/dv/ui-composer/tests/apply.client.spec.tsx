@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The composer plugin under the real slot runtime: 让智能体使用 in the asset preview of `@dv/ui-media`, the `@` menu
- * icons from the registered media types, the ＋ menu 引用 row, the `dv:compose` prefill of a session composer, the
- * hidden permission picker, and the tool rows, each removed when the plugin is disposed.
+ * The composer plugin under the real slot runtime beside `@dv/ui-media` and a `dvCanvas`: 问 agent on every canvas
+ * node, 让智能体使用 in the asset preview, the `@` menu icons from the registered media types, and the removal of the
+ * action and the preview action when the plugin is disposed.
  */
 import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -10,11 +10,14 @@ import { createElement, type ComponentType } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
+import type { NodeHost, NodeViewOf } from '@dv/ui-canvas/contract'
+import { createDvCanvas } from '@dv/ui-canvas/src/client/dv-canvas.ts'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { dispatchCompose, DV_COMPOSE_EVENT, type DvComposeDetail } from '@dv/ui-kit/compose.ts'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
+import type { ProjectRecord } from '@dv/ui-kit/types.ts'
 import { MEDIA_TYPES } from '../../ui-asset-pool/src/client/media.tsx'
-import { asset, fixtureState, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { asset, fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import { apply, inject, MENTION_SOURCE } from '../src/client/index.ts'
 
@@ -26,8 +29,8 @@ afterEach(() => {
 })
 
 /**
- * Mount the media plugin with the image, video and audio media types, and the composer, under a root frame that
- * renders the shell's overlay list, in the Chinese interface.
+ * Mount the media plugin with the image, video and audio media types, a `dvCanvas`, and the composer, under a root
+ * frame that renders the shell's overlay list, in the Chinese interface.
  */
 async function mountComposer() {
   document.documentElement.lang = 'zh-CN'
@@ -40,6 +43,7 @@ async function mountComposer() {
     },
   } as never)
   runtime.ctx.provide('sidebarRight', { mounted: { getSnapshot: () => undefined }, openTab: () => {} } as never)
+  runtime.ctx.provide('dvCanvas', createDvCanvas())
   await runtime.root.declare({ 'shell.overlay': { kind: 'list', scope: 'root' } }, props => <>{props.renderSlot('shell.overlay', {})}</>)
   await runtime.mount({ inject: [...mediaInject], apply: mediaApply })
   for (const { type } of MEDIA_TYPES) runtime.ctx.dvMedia.types.register(type)
@@ -51,6 +55,66 @@ async function mountComposer() {
   const stop = () => { window.removeEventListener(DV_COMPOSE_EVENT, onCompose) }
   return { runtime, composer, view, sources, composed, stop }
 }
+
+/**
+ * A node as an action receives it.
+ * @param changes - the fields that matter to the test.
+ * @returns the node.
+ */
+function node(
+  changes: Partial<Pick<NodeViewOf<'none'>, 'record' | 'assets' | 'preview' | 'ref'>> & { id: string; title: string },
+): NodeViewOf<'none'> {
+  return {
+    record: null, assets: [], bodyHeight: 0, data: null, type: 'none', claimed: false,
+    flags: { stale: false, rendering: false, failed: false, superseded: false }, badges: [], chain: null, version: null,
+    unseen: false, rerunning: false, ...changes,
+  }
+}
+
+/** @returns a canvas host, and its `close` that the test observes. */
+function host(): { value: NodeHost; close: ReturnType<typeof vi.fn<() => void>> } {
+  const close = vi.fn<() => void>()
+  const value: NodeHost = {
+    run: vi.fn(), rerun: vi.fn(() => Promise.resolve()), pickAssets: vi.fn(), preview: vi.fn(),
+    reference: vi.fn(() => ({ name: '', asset: null, node: null })), openNode: vi.fn(), setPlaced: vi.fn(), close,
+  }
+  return { value, close }
+}
+
+describe('问 agent', () => {
+  it('shows on every node and prefills 修改 {title}： with the node\'s reference, its record, or the node, then closes the editor', async () => {
+    const { runtime, composer, composed, stop } = await mountComposer()
+    const [action] = runtime.ctx.dvCanvas.actions.getSnapshot()
+    if (action === undefined) throw new Error('no node action')
+    expect([action.id, action.label()]).toEqual(['@dv/ui-composer:ask-agent', '问 agent'])
+    const take: ProjectRecord = record({ id: 'g1', operation: 'shot.render', outputs: ['shot1.mp4', 'shot1-last.png'] })
+    const nodes = [
+      node({ id: 'g1', title: '镜头 1', record: take, assets: ['shot1.mp4', 'shot1-last.png'], preview: 'shot1-last.png' }),
+      node({ id: 'asset:ref.png', title: 'ref.png', assets: ['ref.png'], ref: { kind: 'asset', id: 'ref.png' } }),
+      node({ id: 'character:hero', title: 'Hero', ref: { kind: 'character', id: 'hero' } }),
+      node({ id: 'plan:p1', title: '分镜计划' }),
+    ]
+    expect(nodes.map(each => action.shows(each, new Map()))).toEqual([true, true, true, true])
+    const hosts = nodes.map(() => host())
+    nodes.forEach((each, index) => { action.run(each, (hosts[index] ?? host()).value) })
+    expect(composed).toEqual([
+      { text: '修改 镜头 1：', refs: [{ kind: 'record', id: 'g1', label: '镜头 1', assetId: 'shot1-last.png' }] },
+      { text: '修改 ref.png：', refs: [{ kind: 'asset', id: 'ref.png', label: 'ref.png', assetId: 'ref.png' }] },
+      { text: '修改 Hero：', refs: [{ kind: 'character', id: 'hero', label: 'Hero' }] },
+      { text: '修改 分镜计划：', refs: [{ kind: 'record', id: 'plan:p1', label: '分镜计划' }] },
+    ])
+    expect(hosts.map(each => each.close.mock.calls.length)).toEqual([1, 1, 1, 1])
+    document.documentElement.lang = 'en'
+    expect(action.label()).toBe('Ask the agent')
+    action.run(nodes[3] ?? node({ id: '', title: '' }), host().value)
+    expect(composed.at(-1)?.text).toBe('Change 分镜计划: ')
+
+    await composer.dispose()
+    expect(runtime.ctx.dvCanvas.actions.getSnapshot()).toEqual([])
+    stop()
+    await runtime.dispose()
+  })
+})
 
 describe('让智能体使用', () => {
   it('prefills 使用这个素材： with the previewed asset and closes the preview, until the plugin is disposed', async () => {
@@ -96,7 +160,7 @@ describe('the @ menu', () => {
     vi.stubGlobal('fetch', scriptedFetch({ state }).fetch)
     publishCurrentProject('p1')
     const { runtime, sources, stop } = await mountComposer()
-    runtime.ctx.dvMedia.types.register({ id: 'model', icon: () => <svg data-icon="cube" /> })
+    runtime.ctx.dvMedia.types.register({ id: 'model', owner: '@dv/test-models', icon: () => <svg data-icon="cube" /> })
     const candidates = await sources[0]?.candidates({} as never, { query: '', signal: new AbortController().signal } as never) ?? []
     const model = candidates.find(candidate => candidate.name === 'scene.glb')
     expect(model?.icon === undefined ? '' : renderToStaticMarkup(createElement(model.icon))).toBe('<svg data-icon="cube"></svg>')

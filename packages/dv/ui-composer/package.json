@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Chat composer additions of DreamVerse: the dvMentions registry of mention kinds; the @ source and the Reference row for project clips, the items of the registered mention kinds, and assets; thumbnail cards for project videos and images in chat Markdown; tool rows with creator-facing names and a Show in history link; and the dv:compose prefill.",
+  "description": "Chat composer additions of DreamVerse: the dvMentions registry of mention kinds; the @ source and the Reference row for the items of the registered mention kinds and the assets of every media type; cards for project assets in chat Markdown, drawn through dv.media; Ask the agent on canvas nodes and in the asset preview; tool rows with creator-facing names and a Show in history link; and the dv:compose prefill.",
   "exports": {
     ".": "./src/index.ts",
     "./client": {
@@ -45,6 +45,8 @@
     "@deepseek-ai/dsh-client-ui-sidebar-right": "workspace:*",
     "@deepseek-ai/dsh-client-ui-slots": "workspace:*",
     "@deepseek-ai/dsh-client-ui-tool": "workspace:*",
+    "@dv/ui-canvas": "workspace:*",
+    "@dv/ui-history": "workspace:*",
     "@dv/ui-kit": "workspace:*",
     "@dv/ui-media": "workspace:*",
     "@types/react": "~18.3.1",

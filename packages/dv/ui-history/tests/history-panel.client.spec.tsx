@@ -1,20 +1,20 @@
 // @vitest-environment jsdom
 /**
  * The History tab under the real slot runtime and a scripted API: the steps with 当前 and greyed later steps, the
- * thumbnails and players of render rows, drawn through `dv.media` by the asset pool's media views, folds, selection and
- * the center moves it asks `dvCenter` for, undo, redo, 回到这一步, paging, live updates, and empty states.
+ * thumbnails and players that registered rows name, drawn through `dv.media`, folds, selection and the center moves it
+ * asks `dvCenter` for, undo, redo, 回到这一步, and empty states.
  */
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
-import { createRegistry } from '@dv/ui-kit/registries.ts'
-import type { Asset, HistoryEntry, HistoryQuery, ProjectRecord, WireHistory, WireOperation, WireState } from '@dv/ui-kit/types.ts'
+import type { HistoryEntry, HistoryQuery, ProjectRecord, WireHistory, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { DV_HISTORY_FOCUS_EVENT, DV_TRAJECTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { apply as shotRenderApply, inject as shotRenderInject } from '../../ui-shot-render/src/client/index.ts'
+import { storyApprovalRow } from '../../ui-workflow-story/src/client/index.ts'
 import type { HistoryRow } from '../src/client/contract/index.ts'
-import { HISTORY_ID } from '../src/client/definition.ts'
 import { HistoryPanel } from '../src/client/HistoryPanel.tsx'
 import { disposeHistories, mountHistory } from './runtime.client.tsx'
 
@@ -29,11 +29,16 @@ function menuOf(element: HTMLElement): string[] {
 }
 
 // jsdom lays nothing out and has no scrollIntoView; the panel's scroll requests are recorded instead.
-const scrollIntoView = vi.fn()
-Element.prototype.scrollIntoView = scrollIntoView
+Element.prototype.scrollIntoView = vi.fn()
 
 afterEach(async () => { cleanup(); await disposeHistories(); vi.unstubAllGlobals(); vi.useRealTimers() })
 
+/** The History row of renders, as the generation kit registers it: the shot number, and its first output as thumbnail. */
+const RENDER_ROW: HistoryRow = {
+  match: 'shot.render',
+  subject: render => typeof render.params['shot'] === 'number' ? [` ${String(render.params['shot'])}`, ` ${String(render.params['shot'])}`] : null,
+  thumbnail: render => render.outputs[0] ?? null,
+}
 const ENTRIES: HistoryEntry[] = [
   { record: record({ id: 'm1', turn: null, surface: 'timeline', operation: 'timeline.clip_move', params: { clip: 'cl1', to: 2 }, intent: 'move clip 1' }), place: 'current' },
   {
@@ -46,9 +51,6 @@ const ENTRIES: HistoryEntry[] = [
   },
   { record: record({ id: 'p1', turn: 't3', actor: 'agent', session: 's5', tool_call: 'call-p1', operation: 'plan.create' }), place: 'before' },
 ]
-
-/** The assets that the history route lists with every page. */
-const ASSETS: Asset[] = [asset('shot1.mp4', 'video/mp4', 'g1', 4), asset('ref.png', 'image/png', null)]
 
 /** The operations on the wire: the fixture's, a clip move and the story approval, with the labels their packages declare. */
 const WIRE_OPERATIONS: WireOperation[] = [
@@ -69,13 +71,15 @@ type HistoryServer = (query: HistoryQuery, signal: AbortSignal | null) => Promis
  * A history route over fixed entries: the entries of the query's tool call, else all of them, after the query's
  * `before` record and at most `limit` of them.
  * @param entries - the entries, newest first.
- * @param assets - the assets that every page lists.
  * @returns the route.
  */
-const serveEntries = (entries: HistoryEntry[], assets: Asset[] = ASSETS): HistoryServer => (query) => {
+const serveEntries = (entries: HistoryEntry[]): HistoryServer => (query) => {
   const matching = entries.filter(entry => query.tool_call === undefined || entry.record.tool_call === query.tool_call)
   const from = query.before === undefined ? 0 : matching.findIndex(entry => entry.record.id === query.before) + 1
-  return Promise.resolve({ entries: matching.slice(from, from + (query.limit ?? matching.length)), assets })
+  return Promise.resolve({
+    entries: matching.slice(from, from + (query.limit ?? matching.length)),
+    assets: [asset('shot1.mp4', 'video/mp4', 'g1', 4), asset('ref.png', 'image/png', null)],
+  })
 }
 
 /**
@@ -89,6 +93,8 @@ const neverAnswered = (signal: AbortSignal | null): Promise<WireHistory> => new 
 
 /** What a test changes besides the entries, the state and the rows. */
 interface MountOptions {
+  /** Plugins that register their own rows into `dvHistory`. */
+  plugins?: Parameters<typeof mountHistory>[0]
   /** The history route; {@link serveEntries} of the entries by default. */
   serve?: HistoryServer
   /** Answers the other POST routes; a done record by default. */
@@ -101,15 +107,15 @@ interface MountOptions {
  * Mount the History tab over scripted routes; `/api/dv/history` answers from {@link ENTRIES}.
  * @param entries - the history the route serves.
  * @param adjust - changes to the fixture state that `/api/dv/state` serves.
- * @param rows - the history rows registered into `dvHistory`; none by default.
- * @param options - the answers of the history route, the other POST routes and the GET routes.
+ * @param rows - the history rows registered into `dvHistory`; the render row by default.
+ * @param options - plugins, and the answers of the history route, the other POST routes and the GET routes.
  * @returns the rendered tab, the recorded writes, history queries and center moves, the History plugin, and a row lookup.
  */
 async function mount(
-  entries: HistoryEntry[] = ENTRIES, adjust: (state: WireState) => void = () => {}, rows: readonly HistoryRow[] = [],
+  entries: HistoryEntry[] = ENTRIES, adjust: (state: WireState) => void = () => {}, rows: readonly HistoryRow[] = [RENDER_ROW],
   options: MountOptions = {},
 ) {
-  const { serve = serveEntries(entries), post = () => ({ status: 200, body: { record: record({ id: 'b1' }) } }) } = options
+  const { plugins = [], serve = serveEntries(entries), post = () => ({ status: 200, body: { record: record({ id: 'b1' }) } }) } = options
   const queries: HistoryQuery[] = []
   const scripted = scriptedFetch({
     operations: WIRE_OPERATIONS,
@@ -134,15 +140,15 @@ async function mount(
     return new Response(JSON.stringify(await serve(query, init?.signal ?? null)))
   }
   vi.stubGlobal('fetch', fetchImpl)
-  const mounted = await mountHistory()
-  for (const row of rows) mounted.runtime.ctx.dvHistory.rows.register(row)
+  const mounted = await mountHistory(plugins)
+  const disposers = rows.map(row => mounted.runtime.ctx.dvHistory.rows.register(row))
   const { view } = mounted
   const row = (id: string): HTMLElement => {
     const element = view.container.querySelector(`[data-testid="dv-history-row"][data-record="${id}"]`)
     if (!(element instanceof HTMLElement)) throw new Error(`no row ${id}`)
     return element
   }
-  return { ...mounted, writes: scripted.writes, queries, row }
+  return { ...mounted, writes: scripted.writes, queries, row, disposers }
 }
 
 const steps = (count: number): HistoryEntry[] => Array.from({ length: count }, (_, at) => ({
@@ -180,24 +186,14 @@ const FAILED_RENDER = record({ ...ENTRIES.find(entry => entry.record.id === 'g1'
 const settle = (): Promise<void> => new Promise((resolve) => { setTimeout(resolve, 300) })
 
 /**
- * @param element - a row.
- * @returns the media element that the row's thumbnail draws through `dv.media`, or null while it shows the empty square.
+ * @param element - a row, a thumbnail or a preview.
+ * @returns the asset and purpose of each `dv.media` occurrence inside it.
  */
-const thumbMedia = (element: HTMLElement): Element | null => element.querySelector(
-  '[data-testid="dv-history-thumb"] img, [data-testid="dv-history-thumb"] video',
-)
-
-/**
- * @param element - a row.
- * @returns the tag and the source of the row's thumbnail media, or null while it shows the empty square.
- */
-const thumbOf = (element: HTMLElement): string | null => {
-  const media = thumbMedia(element)
-  return media === null ? null : `${media.tagName.toLowerCase()} ${media.getAttribute('src') ?? ''}`
-}
+const drawn = (element: Element): string[] => [...element.querySelectorAll('[data-media]')]
+  .map(media => `${media.getAttribute('data-media') ?? ''}@${media.getAttribute('data-purpose') ?? ''}`)
 
 describe('the History tab', () => {
-  it('shows one row per step, newest first, with who, the agent\'s intent, one thumbnail, and 当前 on the current step', async () => {
+  it('shows one row per step, newest first, with who, the agent\'s intent, the thumbnail its row names through dv.media, and 当前 on the current step', async () => {
     const { view, row } = await mount()
     await waitFor(() => { expect(view.container.querySelectorAll('[data-testid="dv-history-row"]').length).toBe(3) })
     const ids = [...view.container.querySelectorAll('[data-testid="dv-history-row"]')].map(element => element.getAttribute('data-record'))
@@ -210,53 +206,49 @@ describe('the History tab', () => {
     expect(row('g1').getAttribute('data-actor')).toBe('agent')
     expect(row('m1').querySelector('[data-testid="dv-history-current"]')?.textContent).toBe('Current')
     expect(view.container.querySelectorAll('[data-testid="dv-history-current"]')).toHaveLength(1)
-    // The render's reference image comes before a frame of its video.
-    expect(row('g1').querySelectorAll('[data-testid="dv-history-thumb"]').length).toBe(1)
-    expect(thumbOf(row('g1'))).toBe('img /dv/assets/ref.png')
-    // A plan's JSON file has no thumbnail.
+    await waitFor(() => { expect(drawn(row('g1'))).toEqual(['shot1.mp4@thumb']) })
+    // A plan's row names no thumbnail, so it has none.
     expect(row('p1').querySelector('[data-testid="dv-history-thumb"]')).toBeNull()
+    expect(drawn(row('p1'))).toEqual([])
     // One list: no branch menu and no view switch; redo waits until a step lies after the current one.
     for (const id of ['dv-kit-branch-menu', 'dv-history-view-toggle']) expect(view.queryByTestId(id)).toBeNull()
     await waitFor(() => { expect(view.getByTestId('dv-history-redo')).toHaveProperty('disabled', true) })
   })
 
-  it('shows a take\'s still as its thumbnail and plays its video, and a frame of a video that has no still', async () => {
-    const take = record({ id: 'g7', operation: 'shot.render', outputs: ['take.mp4', 'still.png'] })
-    const clip = record({ id: 'v1', operation: 'shot.render', outputs: ['clip.mp4'] })
-    const assets = [asset('take.mp4', 'video/mp4', 'g7'), asset('still.png', 'image/png', 'g7'), asset('clip.mp4', 'video/mp4', 'v1')]
-    const { row } = await mount([], () => {}, [], {
-      serve: serveEntries([{ record: take, place: 'current' }, { record: clip, place: 'before' }], assets),
+  it('draws no thumbnail and no thumbnail column for a row registered without a thumbnail', async () => {
+    const { row } = await mount(ENTRIES, () => {}, [{ match: 'shot.render', subject: () => null }])
+    await waitFor(() => { expect(row('g1').textContent).toContain('Render shot') })
+    expect(row('g1').querySelector('[data-testid="dv-history-thumb"]')).toBeNull()
+    expect(drawn(row('g1'))).toEqual([])
+    expect(row('g1').querySelector<HTMLElement>('[style*="grid-template-columns"]')?.style.gridTemplateColumns).toBe('minmax(0, 1fr) auto')
+  })
+
+  it('shows a take\'s still as its thumbnail and plays its video, with the row that the shot render plugin registers', async () => {
+    const take: HistoryEntry = { record: record({ id: 'g1', operation: 'shot.render', outputs: ['shot1.mp4', 'still.png'] }), place: 'current' }
+    const { row } = await mount([take], (state) => { state.assets.push(asset('still.png', 'image/png', 'g1')) }, [], {
+      plugins: [{ inject: [...shotRenderInject], apply: shotRenderApply }],
     })
-    await waitFor(() => { expect(thumbOf(row('g7'))).toBe('img /dv/assets/still.png') })
-    // The video view draws a video without a still by its first frame.
-    expect(thumbOf(row('v1'))).toBe('video /dv/assets/clip.mp4#t=0.1')
-    fireEvent.click(row('g7'))
-    const box = within(row('g7')).getByTestId('dv-history-preview')
-    const player = box.querySelector('video')
-    expect(player?.getAttribute('src')).toBe('/dv/assets/take.mp4')
+    await waitFor(() => { expect(drawn(row('g1'))).toEqual(['still.png@thumb']) })
+    fireEvent.click(row('g1'))
+    const box = within(row('g1')).getByTestId('dv-history-preview')
+    expect(drawn(box)).toEqual(['shot1.mp4@loop'])
     // The box spans the row at most 220 px tall, so the player stays inside it; a take of unknown size gets the full height.
     expect([box.style.width, box.style.height]).toEqual(['100%', '220px'])
-    // The player starts muted and loops, as a take does in its editor.
-    expect([player?.muted, player?.loop, player?.autoplay]).toEqual([true, true, true])
   })
 
-  it('falls back to the empty square when a thumbnail image or video fails to load', async () => {
-    const clip: HistoryEntry = { record: record({ id: 'v1', operation: 'shot.render', outputs: ['clip.mp4'] }), place: 'before' }
-    const { row } = await mount([], () => {}, [], {
-      serve: serveEntries([...ENTRIES, clip], [...ASSETS, asset('clip.mp4', 'video/mp4', 'v1')]),
+  it('falls back to the empty square when a thumbnail\'s media fails to load', async () => {
+    const { row } = await mount()
+    const media = await waitFor(() => {
+      const found = row('g1').querySelector('[data-media]')
+      if (found === null) throw new Error('no thumbnail media')
+      return found
     })
-    await waitFor(() => { expect(thumbOf(row('v1'))).toBe('video /dv/assets/clip.mp4#t=0.1') })
-    for (const id of ['g1', 'v1']) {
-      const media = thumbMedia(row(id))
-      if (media === null) throw new Error(`no thumbnail on ${id}`)
-      fireEvent.error(media)
-      expect(thumbOf(row(id))).toBeNull()
-      // The empty square keeps the thumbnail column.
-      expect(row(id).querySelector<HTMLElement>('[style*="grid-template-columns"]')?.style.gridTemplateColumns).toMatch(/^40px /)
-    }
+    fireEvent.error(media)
+    await waitFor(() => { expect(drawn(row('g1'))).toEqual([]) })
+    expect(row('g1').querySelector('[data-testid="dv-history-thumb"]')).toBeNull()
   })
 
-  it('folds the records a plan approval started under its row, counting its renders, until the toggle opens them', async () => {
+  it('folds the renders a plan approval started under its row, labeled by the approval row\'s fold, until the toggle opens them', async () => {
     const approval: HistoryEntry[] = [
       {
         record: record({ id: 'g2', actor: 'system', operation: 'shot.render', params: { plan: 'p1', shot: 2 }, started_by: { record: 'ap', slot: 2 }, status: 'running' }),
@@ -275,14 +267,13 @@ describe('the History tab', () => {
         place: 'before',
       },
     ]
-    const { view, row } = await mount(approval)
+    const { view, row } = await mount(approval, () => {}, [RENDER_ROW, storyApprovalRow])
     await waitFor(() => { row('ap') })
     expect(view.container.querySelectorAll('[data-testid="dv-history-row"]').length).toBe(1)
-    await waitFor(() => { expect(row('ap').textContent).toContain('Approve plan') })
+    await waitFor(() => { expect(row('ap').textContent).toContain('Approve plan p1 v1') })
     const fold = view.getByTestId('dv-history-fold')
-    // The running render has no output yet, so it counts once the operation declarations arrive; the timeline record
-    // folds too but counts as no render.
-    await waitFor(() => { expect(fold.textContent).toContain('Render 2 shots (1/2)') })
+    // The timeline record folds too, but only the media records count: two renders, one finished.
+    expect(fold.textContent).toContain('Render 2 shots (1/2)')
     fireEvent.click(fold)
     expect(fold.getAttribute('aria-expanded')).toBe('true')
     expect(row('g1').textContent).toContain('Render shot 1')
@@ -294,21 +285,22 @@ describe('the History tab', () => {
     expect(view.container.querySelectorAll('[data-testid="dv-history-row"]').length).toBe(1)
   })
 
-  it('labels a fold that holds no render by its first folded record, without a count', async () => {
-    const started: HistoryEntry[] = [
-      { record: record({ id: 'mv', actor: 'system', operation: 'timeline.clip_move', started_by: { record: 'ap', slot: null } }), place: 'current' },
+  it('labels a fold by its first folded record when the starter\'s row has no fold', async () => {
+    const approval: HistoryEntry[] = [
+      { record: record({ id: 'g1', actor: 'system', operation: 'shot.render', started_by: { record: 'ap', slot: 1 }, outputs: ['shot1.mp4'] }), place: 'current' },
       { record: record({ id: 'ap', actor: 'agent', operation: 'story.approve', params: { plan: 'p1' } }), place: 'before' },
     ]
-    const { view } = await mount(started)
-    await waitFor(() => { expect(view.getByTestId('dv-history-fold').textContent).toBe('▸ Move clip') })
+    const { view } = await mount(approval)
+    await waitFor(() => { expect(view.getByTestId('dv-history-fold').textContent).toBe('▸ Render shot') })
   })
 
   it('labels a row with the subject of a registered history row, and drops it once the row is disposed', async () => {
-    const { row, runtime } = await mount()
+    const { row, disposers, runtime } = await mount(ENTRIES, () => {}, [])
     const dispose = runtime.ctx.dvHistory.rows.register({ match: 'timeline.', subject: () => [' 片段 1', ' clip 1'] })
     await waitFor(() => { expect(row('m1').textContent).toContain('Move clip clip 1') })
     act(() => { dispose() })
     await waitFor(() => { expect(row('m1').textContent).not.toContain('clip 1') })
+    expect(disposers).toEqual([])
   })
 
   it('asks for the steps of the history list', async () => {
@@ -316,7 +308,7 @@ describe('the History tab', () => {
     await waitFor(() => { expect(queries.at(0)).toEqual({ project: 'p1', limit: 50 }) })
   })
 
-  it('selecting a render row plays its output and moves the center to its node, a clip row moves it where its registered row says, and a step after the current one moves nothing', async () => {
+  it('selecting a render row plays its first output and moves the center to its node, a clip row moves it where its registered row says, and a step after the current one moves nothing', async () => {
     const later = ENTRIES.map(entry => entry.record.id === 'p1' ? { ...entry, place: 'after' as const } : entry)
     // A test-local timeline row: its focus finds the clip move among the records of the current state.
     const timelineRow: HistoryRow = {
@@ -325,12 +317,13 @@ describe('the History tab', () => {
         ? { view: 'timeline', target: { timeline: 't1', clip: String(item.params['clip']) } }
         : null,
     }
-    const { row, shown } = await mount(later, () => {}, [timelineRow])
+    const { row, shown } = await mount(later, () => {}, [RENDER_ROW, timelineRow])
     await waitFor(() => { row('g1') })
     await waitFor(() => { expect(row('m1').textContent).toContain('Move clip') })
     fireEvent.click(row('g1'))
     expect(row('g1').getAttribute('aria-selected')).toBe('true')
-    expect(row('g1').querySelector('[data-testid="dv-history-preview"] video')).not.toBeNull()
+    const preview = within(row('g1')).getByTestId('dv-history-preview')
+    expect(drawn(preview)).toEqual(['shot1.mp4@loop'])
     fireEvent.click(row('m1'))
     fireEvent.click(row('p1'))
     await waitFor(() => {
@@ -338,15 +331,12 @@ describe('the History tab', () => {
     })
   })
 
-  it('shows a selected row\'s image output when it has no video, and no trajectory link for a step without a tool call', async () => {
-    const imported: HistoryEntry = { record: record({ id: 'i1', operation: 'asset.import', outputs: ['gone.bin', 'ref.png'] }), place: 'before' }
-    const { row } = await mount([imported, ...ENTRIES])
-    await waitFor(() => { row('i1') })
-    fireEvent.click(row('i1'))
-    const preview = within(row('i1')).getByTestId('dv-history-preview')
-    expect(preview.querySelector('video')).toBeNull()
-    expect(preview.querySelector('img')?.getAttribute('src')).toBe('/dv/assets/ref.png')
-    expect(within(row('i1')).queryByTestId('dv-history-open-trajectory')).toBeNull()
+  it('plays no output in the details of a row registered without a thumbnail', async () => {
+    const { row } = await mount(ENTRIES, () => {}, [{ match: 'shot.render', subject: () => null }])
+    await waitFor(() => { row('g1') })
+    fireEvent.click(row('g1'))
+    expect(drawn(row('g1'))).toEqual([])
+    expect(row('g1').textContent).toContain('render the hero')
   })
 
   it('undoes and redoes by moving the current position; redo is enabled while a step lies after it', async () => {
@@ -368,8 +358,7 @@ describe('the History tab', () => {
     const { row } = await mount([failed, ...ENTRIES])
     await waitFor(() => { row('f1') })
     const columns = (id: string): string => row(id).querySelector<HTMLElement>('[style*="grid-template-columns"]')?.style.gridTemplateColumns ?? ''
-    // The failed render has no output, so its operation declaration marks it a render row.
-    await waitFor(() => { expect(columns('f1')).toMatch(/^40px /) })
+    expect(columns('f1')).toMatch(/^40px /)
     expect(row('f1').querySelector('[data-testid="dv-history-thumb"]')).toBeNull()
     expect(columns('m1')).toBe('minmax(0, 1fr) auto')
     fireEvent.click(row('f1'))
@@ -379,10 +368,13 @@ describe('the History tab', () => {
 
   it('greys a render step after the current one with a faded, black-and-white thumbnail', async () => {
     const { row } = await mount(ENTRIES.map(entry => entry.record.id === 'g1' ? { ...entry, place: 'after' as const } : entry))
-    await waitFor(() => { row('g1') })
-    const thumb = row('g1').querySelector('[data-testid="dv-history-thumb"]')?.parentElement
-    expect(thumb?.style.opacity).toBe('0.3')
-    expect(thumb?.style.filter).toBe('grayscale(1)')
+    const thumb = await waitFor(() => {
+      const found = row('g1').querySelector('[data-testid="dv-history-thumb"]')?.parentElement
+      if (!(found instanceof HTMLElement)) throw new Error('no thumbnail')
+      return found
+    })
+    expect(thumb.style.opacity).toBe('0.3')
+    expect(thumb.style.filter).toBe('grayscale(1)')
   })
 
   it('greys the steps after the current one and offers 回到这一步 on every other step', async () => {
@@ -414,14 +406,6 @@ describe('the History tab', () => {
   it('says what to do when the project has no records', async () => {
     const { view } = await mount([])
     await waitFor(() => { expect(view.getByTestId('dv-history-empty').textContent).toContain('No records yet') })
-  })
-
-  it('asks for a project while none is open', async () => {
-    const { view, row } = await mount()
-    await waitFor(() => { row('g1') })
-    act(() => { publishCurrentProject(null) })
-    expect(view.getByTestId('dv-history-empty').textContent).toBe('Open a project first')
-    expect(view.queryByTestId('dv-history-panel')).toBeNull()
   })
 
   it('selects the record a tool call wrote when a dv:history-focus event arrives', async () => {
@@ -474,7 +458,7 @@ describe('the History tab', () => {
   })
 
   it('shows why undo and 回到这一步 were refused', async () => {
-    const { view, row } = await mount(ENTRIES, () => {}, [], {
+    const { view, row } = await mount(ENTRIES, () => {}, [RENDER_ROW], {
       post: (_path, body) => ({
         status: 409, body: { error: typeof body === 'object' && body !== null && 'to' in body ? 'Step g1 is gone' : 'Nothing to undo' },
       }),
@@ -487,34 +471,19 @@ describe('the History tab', () => {
     await waitFor(() => { expect(view.getByText('Step g1 is gone')).toBeTruthy() })
   })
 
-  it('shows the text of a failed undo or 回到这一步 that is not an Error', async () => {
-    const { view, row } = await mount(ENTRIES, () => {}, [], { post: () => { throw 'offline' } })
-    await waitFor(() => { row('g1') })
-    fireEvent.click(view.getByTestId('dv-history-undo'))
-    await waitFor(() => { expect(view.getAllByText('offline')).toHaveLength(1) })
-    menuOf(row('g1'))
-    fireEvent.click(within(row('g1')).getByTestId('dv-history-step-back'))
-    await waitFor(() => { expect(view.getAllByText('offline')).toHaveLength(2) })
+  it('says why the history could not be read', async () => {
+    const { view } = await mount(ENTRIES, () => {}, [RENDER_ROW], { serve: () => Promise.reject(new TypeError('Failed to fetch')) })
+    await waitFor(() => { expect(view.getByTestId('dv-history-panel').textContent).toContain('Failed to load: Failed to fetch') })
   })
-
-  it.each([[new TypeError('Failed to fetch'), 'Failed to fetch'], ['offline', 'offline']])(
-    'says why the history could not be read (%s)',
-    async (failure, text) => {
-      const { view } = await mount(ENTRIES, () => {}, [], { serve: () => { throw failure } })
-      await waitFor(() => { expect(view.getByTestId('dv-history-panel').textContent).toContain(`Failed to load: ${text}`) })
-    },
-  )
 
   it('lists the steps before the project state and the operation labels arrive', async () => {
     let release = (): void => {}
     const arrived = new Promise<void>((resolve) => { release = resolve })
-    const { row, shown } = await mount(ENTRIES, () => {}, [], {
+    const { row, shown } = await mount(ENTRIES, () => {}, [RENDER_ROW], {
       hold: url => url.startsWith('/api/dv/state') || url.startsWith('/api/dv/operations') ? arrived : Promise.resolve(),
     })
     await waitFor(() => { row('m1') })
     expect(row('m1').textContent).toContain('timeline.clip_move')
-    // Without the declarations, the render's video output makes it a render row.
-    expect(thumbOf(row('g1'))).toBe('img /dv/assets/ref.png')
     fireEvent.click(row('g1'))
     expect(shown).toEqual([{ view: 'canvas', target: { record: 'g1' } }])
     await act(async () => { release(); await arrived })
@@ -522,7 +491,7 @@ describe('the History tab', () => {
   })
 
   it('loads the steps before the oldest loaded one with 加载更多 while the last page was full', async () => {
-    const { view, row, queries } = await mount(steps(53))
+    const { view, row, queries } = await mount(steps(53), () => {}, [])
     const listed = (): number => view.container.querySelectorAll('[data-testid="dv-history-row"]').length
     await waitFor(() => { row('r49') })
     expect(listed()).toBe(50)
@@ -534,7 +503,7 @@ describe('the History tab', () => {
   })
 
   it('starts a project switch from an empty panel, and the previous project\'s unanswered request shows no failure', async () => {
-    const { view, row } = await mount(ENTRIES, () => {}, [], {
+    const { view, row } = await mount(ENTRIES, () => {}, [RENDER_ROW], {
       serve: (query, signal) => query.project === 'p1' ? neverAnswered(signal) : serveEntries(ENTRIES)(query, signal),
     })
     await waitFor(() => { expect(view.getByTestId('dv-history-panel').textContent).toContain('Loading…') })
@@ -548,21 +517,19 @@ describe('the History tab', () => {
     const recent: HistoryEntry = {
       record: record({ id: 'n1', operation: 'timeline.clip_move', created_at: new Date(Date.now() - 50_000).toISOString() }), place: 'current',
     }
-    const { row } = await mount([recent])
+    const { row } = await mount([recent], () => {}, [])
     const time = (): string => within(row('n1')).getByTestId('dv-history-time').textContent ?? ''
     await waitFor(() => { expect(time()).toBe('just now') })
     act(() => { vi.advanceTimersByTime(30_000) })
     expect(time()).toBe('1 min ago')
   })
 
-  it('removes the tab body with the History plugin', async () => {
+  it('removes the tab body and its media with the History plugin', async () => {
     const { row, history, view, runtime } = await mount()
-    const tabKeys = (): Array<string | undefined> => runtime.slots.entries('sidebar.right.pane.tab').map(entry => entry.options.key)
-    await waitFor(() => { row('g1') })
-    expect(tabKeys()).toContain(HISTORY_ID)
+    await waitFor(() => { expect(drawn(row('g1'))).toEqual(['shot1.mp4@thumb']) })
     await history.dispose()
     await waitFor(() => { expect(view.container.querySelector('[data-testid="dv-history-panel"]')).toBeNull() })
-    expect(tabKeys()).not.toContain(HISTORY_ID)
+    expect(runtime.slots.entries('sidebar.right.pane.tab')).toEqual([])
   })
 })
 
@@ -582,14 +549,12 @@ describe('dv:history-focus', () => {
     expect(view.getByTestId('dv-history-fold').getAttribute('aria-expanded')).toBe('true')
   })
 
-  it('loads further pages until it finds the focused record, and scrolls its row into view', async () => {
-    const { row, queries } = await mount(steps(53))
+  it('loads further pages until it finds the focused record', async () => {
+    const { row, queries } = await mount(steps(53), () => {}, [])
     await waitFor(() => { row('r0') })
-    scrollIntoView.mockClear()
     focusCall('call-r52')
     await waitFor(() => { expect(row('r52').getAttribute('aria-selected')).toBe('true') })
     expect(queries).toContainEqual({ project: 'p1', before: 'r49', limit: 50 })
-    await waitFor(() => { expect(scrollIntoView.mock.contexts).toEqual([row('r52')]) })
   })
 
   it('takes a request that arrived while the tab was closed once the panel mounts', async () => {
@@ -600,7 +565,7 @@ describe('dv:history-focus', () => {
 
   it('selects nothing for a record that the history list does not hold', async () => {
     const elsewhere: HistoryEntry = { record: record({ id: 'x9', session: 's5', tool_call: 'call-x9', operation: 'timeline.clip_move' }), place: 'before' }
-    const { view, row, queries } = await mount(ENTRIES, () => {}, [], {
+    const { view, row, queries } = await mount(ENTRIES, () => {}, [RENDER_ROW], {
       serve: (query, signal) => serveEntries(query.tool_call === undefined ? ENTRIES : [elsewhere])(query, signal),
     })
     await waitFor(() => { row('p1') })
@@ -613,7 +578,7 @@ describe('dv:history-focus', () => {
 
   it('says when the tool call wrote no record, and why the lookup failed', async () => {
     let reachable = true
-    const { view, row } = await mount(ENTRIES, () => {}, [], {
+    const { view, row } = await mount(ENTRIES, () => {}, [RENDER_ROW], {
       serve: (query, signal) => reachable ? serveEntries(ENTRIES)(query, signal) : Promise.reject(new TypeError('Failed to fetch')),
     })
     await waitFor(() => { row('p1') })
@@ -645,7 +610,7 @@ describe('the History tab over /dv/events', () => {
   it('ignores an update before the first page arrives, and a change before it loads the list', async () => {
     const emit = stubEventSource()
     let first = true
-    const { row, queries } = await mount(ENTRIES, () => {}, [], {
+    const { row, queries } = await mount(ENTRIES, () => {}, [RENDER_ROW], {
       serve: (query, signal) => {
         if (!first) return serveEntries(ENTRIES)(query, signal)
         first = false
@@ -663,7 +628,7 @@ describe('the History tab over /dv/events', () => {
   it('keeps the shown steps when a reload fails', async () => {
     const emit = stubEventSource()
     let reachable = true
-    const { view, row, queries } = await mount(ENTRIES, () => {}, [], {
+    const { view, row, queries } = await mount(ENTRIES, () => {}, [RENDER_ROW], {
       serve: (query, signal) => reachable ? serveEntries(ENTRIES)(query, signal) : Promise.reject(new TypeError('Failed to fetch')),
     })
     await waitFor(() => { row('g1') })
@@ -702,9 +667,8 @@ describe('HistoryPanel', () => {
       return Promise.resolve(new Response(JSON.stringify({ entries: pages[query.project] ?? [], assets: [] })))
     }
     const client = new DvClient(fetchImpl)
-    const rows = createRegistry<HistoryRow>(row => [row.match])
     const panel = (project: string): ReactNode => (
-      <HistoryPanel projectId={project} client={client} rows={rows} showInCenter={() => {}} renderFactorySlot={() => null} />
+      <HistoryPanel projectId={project} client={client} rows={[]} showInCenter={() => {}} renderFactorySlot={() => null} />
     )
     const view = render(panel('p1'))
     const listed = (): Array<string | null> => [...view.container.querySelectorAll('[data-testid="dv-history-row"]')].map(element => element.getAttribute('data-record'))

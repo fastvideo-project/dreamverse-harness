@@ -1,67 +1,87 @@
 // @vitest-environment jsdom
-/** Canvas nodes and edges derived from the shared project state. */
-import { describe, expect, it } from 'vitest'
-import type { ChainAnchor, NodeType, TakesInUse } from '@dv/ui-kit/registries.ts'
-import type { DvLanguage } from '@dv/ui-kit/locale.ts'
+/** Canvas nodes and edges derived from a project state and the node types that the kind packages register. */
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
+import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { AssetId, RecordId } from '@dv/project/types'
 import type { PlanId, PlanVersion } from '@dv/shot-plan/types'
 import type { ClipId, TimelineId } from '@dv/timeline/types'
-import type { ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
-import { formatInputRef } from '@dv/ui-kit/references.ts'
-import { defineReferenceUi } from '@dv/ui-reference-kit/reference-kit.tsx'
+import type { ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
+import { assetNodeType } from '../../ui-asset-pool/src/client/canvas.tsx'
 import { asset, fixtureState, OPERATIONS, record, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
-import { planNodeType } from '../../ui-shot-plan/src/client/index.ts'
-import { buildCanvasGraph, freePositions, NODE_WIDTH, ROW, slotFrames } from '../src/client/graph.ts'
-import type { CanvasGraph, CanvasNode } from '../src/client/graph.ts'
+import { referenceDescriptors } from '../../ui-reference-kit/src/client/reference-kit.tsx'
+import type { ReferenceNodeData } from '../../ui-reference-kit/src/client/reference-kit.tsx'
+import { planNodeType, planReferencesInUse } from '../../ui-shot-plan/src/client/index.ts'
+import { apply as shotRenderApply, inject as shotRenderInject } from '../../ui-shot-render/src/client/index.ts'
+import type { ChainAnchor, NodeEntry, NodeType, RecordsInUse } from '../src/client/contract/index.ts'
+import { buildCanvasGraph, freePositions, NODE_WIDTH, previewOf, ROW, slotFrames } from '../src/client/graph.ts'
+import type { CanvasGraph, CanvasRegistrations } from '../src/client/graph.ts'
+import { apply, inject } from '../src/client/index.ts'
+import { APPROVAL, CLIPS } from './fixtures/conformance-states.client.ts'
 
-/** The reference noun `test_ref` of the fixture, declared as the UI package of a noun declares it. */
-const testRef = defineReferenceUi({
+declare module '../src/client/contract/index.ts' { interface NodeDataMap { test_ref: ReferenceNodeData } }
+
+/** The descriptors of the fixture's reference noun `test_ref`, as the reference kit builds them for a noun package. */
+const testRef = referenceDescriptors({
   id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref,
   label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 1 },
 })
 
+let runtime: SlotTestRuntime
+/** The `shot.render` take type of `@dv/ui-shot-render`, which only its mounted plugin registers. */
+let take: NodeType
+
+beforeEach(async () => {
+  runtime = await SlotTestRuntime.create()
+  runtime.ctx.provide('locale', { bind: () => (key: string) => key, register: () => () => {} } as never)
+  runtime.ctx.provide('sidebarRightTabs', new SidebarRightTabRegistry(runtime.ctx) as never)
+  await runtime.mount({ inject: [...inject], apply })
+  await runtime.mount({ inject: [...shotRenderInject], apply: shotRenderApply })
+  const registered = runtime.ctx.dvCanvas.nodeTypes.getSnapshot().find(type => type.type === 'take')
+  if (registered === undefined) throw new Error('@dv/ui-shot-render registered no take type')
+  take = registered
+})
+
+afterEach(async () => {
+  await runtime.dispose()
+})
+
 /**
- * The canvas graph with the node type, references in use and version kind of `test_ref` registered, as the bundle
- * mounts the UI package of a noun.
- * @param state - the state.
+ * @param parts - the descriptors that the test registers.
+ * @returns the registrations, with no chain anchor, records in use or version kind unless `parts` names them.
+ */
+function kinds(parts: Partial<CanvasRegistrations> & Pick<CanvasRegistrations, 'nodeTypes'>): CanvasRegistrations {
+  return { chainAnchors: [], recordsInUse: [], versionKinds: [], ...parts }
+}
+
+/** @returns the registrations of every kind package, plus the plan approval anchor and the timeline clips in use. */
+function allKinds(): CanvasRegistrations {
+  return {
+    nodeTypes: [testRef.nodeType, planNodeType, assetNodeType, take], chainAnchors: [APPROVAL],
+    recordsInUse: [testRef.referencesInUse, planReferencesInUse, CLIPS], versionKinds: [testRef.versionKind],
+  }
+}
+
+/**
+ * @param state - a project state.
+ * @param registrations - the registered descriptors.
  * @param placed - the assets on the canvas.
- * @param operations - the operation declarations.
- * @param language - the label language.
- * @param anchors - the chain anchors.
- * @param inUse - other `TakesInUse` descriptors, such as the timeline clips.
- * @param nodeTypes - other node types, such as the plan's.
- * @returns the graph.
+ * @param language - the interface language.
+ * @returns the canvas graph.
  */
-function refGraph(
-  state: WireState, placed?: ReadonlySet<string>, operations: readonly WireOperation[] = [], language: DvLanguage = 'zh',
-  anchors: readonly ChainAnchor[] = [], inUse: readonly TakesInUse[] = [], nodeTypes: readonly NodeType[] = [],
-): CanvasGraph {
-  const uses = [testRef.referencesInUse, ...inUse]
-  return buildCanvasGraph(state, placed, operations, language, anchors, uses, [testRef.nodeType, ...nodeTypes], [testRef.versionKind])
+function graphOf(state: WireState, registrations: CanvasRegistrations, placed: readonly string[] = [], language: 'zh' | 'en' = 'zh'): CanvasGraph {
+  return buildCanvasGraph(state, new Set(placed), OPERATIONS, language, registrations)
 }
 
-/**
- * @param node - a drawn node.
- * @returns its `data-node-type`: the `NodeType.type` of an entry, else the core type.
- */
-function typeOf(node: CanvasNode): string {
-  return node.type === 'entry' ? node.nodeType.type : node.type
-}
-
-/** A chain anchor of each approval operation: the records an approval started hang off the node of its plan. */
+/** A chain anchor of a starter operation: the records that one of its records started hang off the node of its plan. */
 const anchorOf = (starter: string): ChainAnchor => ({ starter, anchor: approval => `plan:${String(approval.params['plan'])}` })
-const APPROVAL = anchorOf('plan.approve')
 
-/**
- * A `TakesInUse` of the timeline clips, as a timeline UI half reports them: the producer of each clip's asset, and the label
- * `trim` on the asset of each clip with an in point.
- */
-const CLIPS: TakesInUse = {
-  id: 'clips',
-  uses: state => (state.components.timeline?.timelines ?? []).flatMap(timeline => timeline.clips)
-    .flatMap(clip => state.components.proj.created_by[clip.asset ?? ''] ?? []),
-  badges: state => (state.components.timeline?.timelines ?? []).flatMap(timeline => timeline.clips)
-    .filter(clip => clip.in_sec !== null).map(clip => ({ asset: clip.asset ?? '', label: 'trim' })),
+/** A test-local type of slice nodes that draws the given entries. */
+function sliceType(entries: ReadonlyArray<Omit<NodeEntry<'none'>, 'bodyHeight' | 'data'>>, column = 0): NodeType<'none'> {
+  return {
+    id: '@dv/ui-test-slice', type: 'none', label: () => 'slice', color: '', column,
+    entries: () => entries.map(entry => ({ ...entry, bodyHeight: 30, data: null })),
+  }
 }
 
 /** Six shot prompts of plan p1 version 1; versions 2 and 3 change shot 3 and add shot 7, version 4 returns to these. */
@@ -88,22 +108,21 @@ function rollbackProject(until?: string): WireState {
     id, operation, params: { timeline: 't1', plan: 'p1' }, started_by: { record: `a${id.slice(1)}`, slot: null },
     inputs: clips.map(clip => ({ role: 'clip', ref: { record: clip, output: 0 }, resolved_asset: `${clip}.mp4` })),
   })
-  const approve = (id: string, version: number, scheduled: string[]): ProjectRecord =>
-    record({ id, operation: 'plan.approve', params: { plan: 'p1', version }, report: { plan: 'p1', version, scheduled } })
+  const approve = (id: string, version: number): ProjectRecord => record({ id, operation: 'plan.approve', params: { plan: 'p1', version } })
   const v1 = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6']
   const all = [
     record({ id: 'u1', operation: 'asset.import', params: { name: 'ref.png' }, outputs: ['ref.png'] }),
     record({ id: 'e1', operation: 'test_ref.create', params: { test_ref: 'hero', name: 'Hero' } }),
     record({ id: 'q1', operation: 'plan.create', report: { plan: 'p1', version: 1 } }),
-    approve('a1', 1, [...v1, 'l1']), ...v1.map((id, index) => render(id, 1, index + 1)), layout('l1', 'timeline.create', v1),
+    approve('a1', 1), ...v1.map((id, index) => render(id, 1, index + 1)), layout('l1', 'timeline.create', v1),
     record({ id: 'q2', operation: 'plan.update', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } }),
-    approve('a2', 2, ['s3', 's7', 'l2']), render('s3', 2, 3), render('s7', 2, 7), layout('l2', 'timeline.update', ['r1', 'r2', 's3', 'r4', 'r5', 'r6', 's7']),
+    approve('a2', 2), render('s3', 2, 3), render('s7', 2, 7), layout('l2', 'timeline.update', ['r1', 'r2', 's3', 'r4', 'r5', 'r6', 's7']),
     render('x7', 2, 7, 's7'),
     record({ id: 'q3', operation: 'plan.update', params: { plan: 'p1' }, report: { plan: 'p1', version: 3 } }),
-    approve('a3', 3, ['w5', 'l3']), render('w5', 3, 5), layout('l3', 'timeline.update', ['r1', 'r2', 's3', 'r4', 'w5', 'r6', 's7']),
+    approve('a3', 3), render('w5', 3, 5), layout('l3', 'timeline.update', ['r1', 'r2', 's3', 'r4', 'w5', 'r6', 's7']),
     record({ id: 'k1', operation: 'timeline.clip_replace', params: { timeline: 't1', clip: 'cl3' }, inputs: [{ role: 'clip', ref: { asset: 'r3.mp4' }, resolved_asset: 'r3.mp4' }] }),
     record({ id: 'q4', operation: 'plan.update', params: { plan: 'p1' }, report: { plan: 'p1', version: 4 } }),
-    approve('a4', 4, ['l4']), layout('l4', 'timeline.update', v1),
+    approve('a4', 4), layout('l4', 'timeline.update', v1),
   ]
   const kept = until === undefined ? all : all.slice(0, all.findIndex(entry => entry.id === until) + 1)
   const ids = new Set(kept.map(entry => entry.id))
@@ -122,7 +141,7 @@ function rollbackProject(until?: string): WireState {
   const state = withTestRef(fixtureState())
   state.components.proj = {
     records: kept, stale: {}, superseded: {},
-    created_by: Object.fromEntries([['ref.png', 'u1'], ...renders.flatMap(entry => entry.outputs.map(output => [output, entry.id]))]),
+    created_by: Object.fromEntries<string>([['ref.png', 'u1'], ...renders.flatMap(entry => entry.outputs.map(output => [output, entry.id] as const))]),
   }
   state.components.plan.plans = { ['p1' as PlanId]: versions }
   state.components.timeline.timelines = [{ id: 't1' as TimelineId, name: '', clips }]
@@ -133,52 +152,69 @@ function rollbackProject(until?: string): WireState {
   return state
 }
 
-/** Record order of the take IDs of {@link rollbackProject}. */
-const RECORD_ORDER = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 's3', 's7', 'x7', 'w5']
-
-/** Sort `[id, …]` entries by {@link RECORD_ORDER}. */
-function byRecordOrder(a: string | string[], b: string | string[]): number {
-  return RECORD_ORDER.indexOf(Array.isArray(a) ? a[0] ?? '' : a) - RECORD_ORDER.indexOf(Array.isArray(b) ? b[0] ?? '' : b)
-}
-
 /**
- * The drawn nodes of a state as `[id, type]` pairs.
- * @param state - the state.
- * @returns the pairs, in node order.
+ * @param state - a project state.
+ * @returns the `[id, type]` pairs of the nodes that every kind package draws for it, in node order.
  */
 function drawn(state: WireState): string[][] {
-  return refGraph(state, undefined, [], 'zh', [APPROVAL], [CLIPS], [planNodeType]).nodes.map(node => [node.id, typeOf(node)])
+  return graphOf(state, allKinds()).nodes.map(node => [node.id, node.type])
 }
 
 describe('buildCanvasGraph', () => {
-  it('draws the reference entries, plans, and takes, and hides reference imports, exports, still grabs, and timeline records', () => {
-    const graph = refGraph(withTestRef(fixtureState()), undefined, OPERATIONS, 'zh', [], [CLIPS], [planNodeType])
-    expect(graph.nodes.map(node => [node.id, typeOf(node)])).toEqual([
+  it('draws the reference item, the plan and the takes with their input, first-frame and lineage edges, flags, badges and versions', () => {
+    const graph = graphOf(withTestRef(fixtureState()), allKinds())
+    // The import of the reference image, the timeline records, the failed export and its still grab draw no node.
+    expect(graph.nodes.map(node => [node.id, node.type])).toEqual([
       ['test_ref:hero', 'test_ref'], ['plan:p1', 'plan'], ['g1', 'take'], ['g2', 'take'], ['g3', 'take'],
     ])
-    // The plan node is an entry of the node type of plans; without that type the core draws no plan node.
-    expect(buildCanvasGraph(fixtureState(), undefined, OPERATIONS).nodes.map(node => node.id)).not.toContain('plan:p1')
     const byId = new Map(graph.nodes.map(node => [node.id, node]))
-    expect(byId.get('test_ref:hero')).toMatchObject({ type: 'entry', nodeType: testRef.nodeType, thumb: null, references: ['ref.png'], x: 0 })
-    expect(byId.get('g1')).toMatchObject({ thumb: 'shot1-last.png', video: 'shot1.mp4', durationSec: 4 })
+    const g1 = byId.get('g1')
+    expect(byId.get('test_ref:hero')).toMatchObject({
+      type: 'test_ref', nodeType: testRef.nodeType, claimed: false, assets: ['ref.png'], x: 0,
+    })
+    expect(g1).toMatchObject({ claimed: true, assets: ['shot1.mp4', 'shot1-last.png'] })
+    expect([byId.get('test_ref:hero')?.record?.id, g1?.record?.id]).toEqual(['e1', 'g1'])
+    expect(g1 === undefined ? null : previewOf(g1)).toBe('shot1-last.png')
+    expect(g1?.flags).toEqual({ stale: false, rendering: false, failed: false, superseded: false })
     expect(byId.get('g2')?.flags.stale).toBe(true)
+    expect(byId.get('g3')?.flags.rendering).toBe(true)
     expect(byId.get('g2')?.badges).toEqual(['trim'])
-    // The core puts no badge of its own: without a TakesInUse that reports the trim, the trimmed take has none.
-    expect(buildCanvasGraph(fixtureState(), undefined, OPERATIONS).nodes.find(node => node.id === 'g2')?.badges).toEqual([])
-    expect(byId.get('g3')?.flags).toMatchObject({ rendering: true })
-    expect(graph.edges).toEqual([
-      { from: 'test_ref:hero', to: 'g1', kind: 'reference' },
-      { from: 'test_ref:hero', to: 'g2', kind: 'reference' },
-      { from: 'g1', to: 'g2', kind: 'first_frame' },
-      { from: 'test_ref:hero', to: 'g3', kind: 'reference' },
-      { from: 'g1', to: 'g3', kind: 'take' },
-    ])
-    expect(byId.get('g2')?.x).toBeGreaterThan(byId.get('g1')?.x ?? Infinity)
-    expect(byId.get('g3')?.x).toBe(byId.get('g1')?.x)
-    // The original take and its retake are numbered; a shot with one take has no number.
-    expect([byId.get('g1')?.take, byId.get('g3')?.take, byId.get('g2')?.take]).toEqual([1, 2, null])
-    // Reference images map to their item; derived assets map up the producer chain to a drawn take.
-    expect(graph.assetNodes).toMatchObject({ 'ref.png': 'test_ref:hero', 'shot1.mp4': 'g1', 'export.mp4': 'g2' })
+    expect(graph.edges).toHaveLength(5)
+    expect(graph.edges).toEqual(expect.arrayContaining([
+      { from: 'test_ref:hero', to: 'g1', kind: 'input', role: 'reference' },
+      { from: 'test_ref:hero', to: 'g2', kind: 'input', role: 'reference' },
+      { from: 'g1', to: 'g2', kind: 'input', role: 'first_frame' },
+      { from: 'test_ref:hero', to: 'g3', kind: 'input', role: 'reference' },
+      { from: 'g1', to: 'g3', kind: 'lineage' },
+    ]))
+    expect(byId.get('g2')?.x).toBeGreaterThan(g1?.x ?? Infinity)
+    expect(byId.get('g3')?.x).toBe(g1?.x)
+    // The original and its retake are one based_on family; a take alone in its group has no number.
+    expect(['g1', 'g3', 'g2'].map(id => byId.get(id)?.version)).toEqual([1, 2, null])
+    // A derived asset maps up its producer chain to the nearest drawn record.
+    expect(graph.assetNodes).toMatchObject({
+      'ref.png': 'test_ref:hero', 'shot1.mp4': 'g1', 'export.mp4': 'g2', 'export-last.png': 'g2',
+    })
+  })
+
+  it('draws only the nodes of registered types and only the badges that a RecordsInUse reports', () => {
+    const { nodeTypes, recordsInUse } = allKinds()
+    const graph = graphOf(withTestRef(fixtureState()), {
+      ...allKinds(), nodeTypes: nodeTypes.filter(type => type !== planNodeType), recordsInUse: recordsInUse.filter(uses => uses !== CLIPS),
+    })
+    expect(graph.nodes.some(node => node.id === 'plan:p1')).toBe(false)
+    expect(graph.nodes.find(node => node.id === 'g2')?.badges).toEqual([])
+  })
+
+  it('draws no node for a generation record that no node type claims: the canvas has no take rule of its own', () => {
+    // Without the take type, the done shot.render records with video and still outputs are the records that a
+    // built-in take rule in the canvas would draw as takes.
+    const { nodeTypes } = allKinds()
+    const state = withTestRef(fixtureState())
+    const graph = graphOf(state, { ...allKinds(), nodeTypes: nodeTypes.filter(type => type !== take) })
+    const renders = state.components.proj.records.filter(entry => entry.operation === 'shot.render').map(entry => entry.id)
+    expect(renders.length).toBeGreaterThan(0)
+    expect(graph.nodes.filter(node => renders.includes(node.id) || node.record?.operation === 'shot.render')).toEqual([])
   })
 
   it('draws an imported asset only while it is on the canvas list, and never a reference image of an item', () => {
@@ -188,55 +224,84 @@ describe('buildCanvasGraph', () => {
     state.assets.push(...names.map((name, index) => asset(name, 'image/png', `u${String(index + 2)}`)))
     proj.records.push(...names.map((name, index) => record({ id: `u${String(index + 2)}`, operation: 'asset.import', params: { name }, outputs: [name] })))
     names.forEach((name, index) => { proj.created_by[name] = `u${String(index + 2)}` })
-    // A second reference image of Hero, written by an update of its item, is part of Hero's node.
+    // A second reference image of Hero, written by an update of its item, belongs to Hero's node.
     proj.records.push(record({
       id: 'e2', operation: 'test_ref.update', params: { test_ref: 'hero' },
       inputs: [{ role: 'reference', ref: { asset: 'side.png' }, resolved_asset: 'side.png' }],
     }))
     state.components.test_ref?.['hero']?.push({ id: 'hero', version: 2, name: 'Hero', description: '', references: ['ref.png', 'side.png'], created_by: 'e2' })
-    // A take reads used.png, which is off the list: no node and no edge for it.
     proj.records.push(record({
       id: 'g9', operation: 'shot.render', deterministic: false, params: { prompt: 'alone' },
       inputs: [{ role: 'reference', ref: { asset: 'used.png' }, resolved_asset: 'used.png' }],
     }))
-    const graph = refGraph(state, new Set(['listed.png', 'side.png', 'ref.png']), OPERATIONS)
+    const graph = graphOf(state, allKinds(), ['listed.png', 'side.png', 'ref.png'])
     expect(graph.nodes.filter(node => node.type === 'asset').map(node => node.id)).toEqual(['u4'])
-    expect(graph.nodes.find(node => node.id === 'test_ref:hero')?.references).toEqual(['ref.png', 'side.png'])
+    expect(graph.nodes.find(node => node.id === 'test_ref:hero')?.assets).toEqual(['ref.png', 'side.png'])
     expect(graph.edges.filter(edge => edge.to === 'g9')).toEqual([])
     expect(graph.assetNodes).toMatchObject({ 'listed.png': 'u4', 'side.png': 'test_ref:hero' })
     expect([graph.assetNodes['pool.png'], graph.assetNodes['used.png']]).toEqual([undefined, undefined])
-    // On the list, used.png is drawn with an edge to the take that reads it.
-    const listed = buildCanvasGraph(state, new Set(['listed.png', 'used.png']), OPERATIONS)
-    expect(listed.edges).toContainEqual({ from: 'u3', to: 'g9', kind: 'reference' })
+    const listed = graphOf(state, allKinds(), ['listed.png', 'used.png'])
+    expect(listed.edges).toContainEqual({ from: 'u3', to: 'g9', kind: 'input', role: 'reference' })
   })
 
-  it('gives an earlier version\'s assets to the node of its item, and links a version input from that node, through the version kinds', () => {
+  it('gives an earlier version\'s assets to the node of its item through the version kind, so a placed old reference draws no stand-in', () => {
     const state = withTestRef(fixtureState())
     state.assets.push(asset('side.png', 'image/png', null))
+    state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g1'
+      ? { ...entry, inputs: [{ role: 'reference', ref: { test_ref: 'hero', version: 1 }, resolved_asset: 'ref.png' }] }
+      : entry)
     // Version 2 of Hero replaced ref.png with side.png; ref.png stays on the canvas.
     state.components.test_ref?.['hero']?.push({ id: 'hero', version: 2, name: 'Hero', description: '', references: ['side.png'], created_by: 'e2' })
-    const placed = new Set(['ref.png'])
-    const graph = refGraph(state, placed, OPERATIONS)
+    const graph = graphOf(state, allKinds(), ['ref.png'])
     expect(graph.nodes.filter(node => node.type === 'asset')).toEqual([])
     expect(graph.assetNodes['ref.png']).toBe('test_ref:hero')
-    expect(graph.edges).toContainEqual({ from: 'test_ref:hero', to: 'g1', kind: 'reference' })
-    // With the node type alone, the import of ref.png is an asset node, and g1 reads hero@1 from it.
-    const entriesOnly = buildCanvasGraph(state, placed, OPERATIONS, 'zh', [], [], [testRef.nodeType])
-    expect(entriesOnly.nodes.filter(node => node.type === 'asset').map(node => node.id)).toEqual(['u1'])
-    expect(entriesOnly.edges).toContainEqual({ from: 'u1', to: 'g1', kind: 'reference' })
+    expect(graph.edges).toContainEqual({ from: 'test_ref:hero', to: 'g1', kind: 'input', role: 'reference' })
+    // Without the version kind, the import of ref.png is an asset node, and g1 reads hero@1 from it.
+    const noVersionKind = graphOf(state, { ...allKinds(), versionKinds: [] }, ['ref.png'])
+    expect(noVersionKind.nodes.filter(node => node.type === 'asset').map(node => node.id)).toEqual(['u1'])
+    expect(noVersionKind.edges).toContainEqual({ from: 'u1', to: 'g1', kind: 'input', role: 'reference' })
+    // Without the noun's node type, no node holds Hero's earlier version, so the placed ref.png draws as its import.
+    const { nodeTypes } = allKinds()
+    const noNoun = graphOf(state, { ...allKinds(), nodeTypes: nodeTypes.filter(type => type !== testRef.nodeType) }, ['ref.png'])
+    expect(noNoun.nodes.filter(node => node.type === 'asset').map(node => node.id)).toEqual(['u1'])
   })
 
-  it('draws a placed asset that no record of the current state imported as asset:<id>, and no second node for a take output', () => {
+  it('links a version input from the node of its item when its kind has a VersionKind, else from the node that owns its asset', () => {
+    const state = withTestRef(fixtureState())
+    state.assets.push(asset('zz.png', 'image/png', 'u9'))
+    state.components.proj.created_by['zz.png'] = 'u9'
+    state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g1'
+      ? { ...entry, inputs: [{ role: 'reference', ref: { test_ref: 'hero', version: 1 }, resolved_asset: 'ref.png' }] }
+      : entry)
+    // g9 reads version 3 of z1, an item of a kind `zz` that no package registers.
+    state.components.proj.records.push(
+      record({ id: 'u9', operation: 'asset.import', params: { name: 'zz.png' }, outputs: ['zz.png'] }),
+      record({
+        id: 'g9', operation: 'shot.render', deterministic: false, params: { prompt: 'z1 waits' },
+        inputs: [{ role: 'reference', ref: { zz: 'z1', version: 3 }, resolved_asset: 'zz.png' }],
+      }),
+    )
+    // A board registered before the noun owns ref.png, so only the version kind can route g1's hero@1 to the hero.
+    const board = sliceType([{ id: 'board:b1', title: 'Mood board', record: null, assets: ['ref.png'] }])
+    const { nodeTypes } = allKinds()
+    const graph = graphOf(state, { ...allKinds(), nodeTypes: [board, ...nodeTypes] }, ['zz.png'])
+    expect(graph.edges).toContainEqual({ from: 'test_ref:hero', to: 'g1', kind: 'input', role: 'reference' })
+    expect(graph.edges).toContainEqual({ from: 'u9', to: 'g9', kind: 'input', role: 'reference' })
+    // The fixture's g2 reads `{ character: 'hero', version: 1 }`, a kind without a VersionKind here.
+    expect(graph.edges).toContainEqual({ from: 'board:b1', to: 'g2', kind: 'input', role: 'reference' })
+  })
+
+  it('draws a placed asset that no record of the current state imported as asset:<id>, and no stand-in for an asset another node owns', () => {
     const state = fixtureState()
     // An undo went back past the import of undone.png: the asset pool keeps it, the current state has no import record.
     state.assets.push(asset('undone.png', 'image/png', 'u9', null, 'asset.import'))
-    const graph = buildCanvasGraph(state, new Set(['undone.png', 'shot1-last.png', 'export-last.png']))
-    const node = graph.nodes.find(candidate => candidate.id === 'asset:undone.png')
-    expect(node).toMatchObject({ type: 'asset', title: 'undone.png', thumb: 'undone.png', video: null, record: null })
-    // The take g1 already shows its still; the grabbed still of the export has no other node, so it gets one.
-    expect(graph.nodes.filter(candidate => candidate.type === 'asset').map(candidate => candidate.id).sort())
+    const graph = graphOf(state, kinds({ nodeTypes: [assetNodeType, take] }), ['undone.png', 'shot1-last.png', 'export-last.png'])
+    expect(graph.nodes.find(node => node.id === 'asset:undone.png'))
+      .toMatchObject({ type: 'asset', claimed: false, title: 'undone.png', record: null, assets: ['undone.png'] })
+    // The take g1 owns its still; the still grabbed from the export has no other node, so it gets a stand-in.
+    expect(graph.nodes.filter(node => node.type === 'asset').map(node => node.id).sort())
       .toEqual(['asset:export-last.png', 'asset:undone.png'])
-    expect(graph.assetNodes['undone.png']).toBe('asset:undone.png')
+    expect(graph.assetNodes).toMatchObject({ 'undone.png': 'asset:undone.png', 'shot1-last.png': 'g1' })
   })
 
   it('draws one node for an asset imported twice', () => {
@@ -247,183 +312,14 @@ describe('buildCanvasGraph', () => {
       record({ id: 'u3', operation: 'asset.import', params: { name: 'twice.png' }, outputs: ['twice.png'] }),
     )
     state.components.proj.created_by['twice.png'] = 'u3'
-    const graph = buildCanvasGraph(state, new Set(['twice.png']))
+    const graph = graphOf(state, kinds({ nodeTypes: [assetNodeType] }), ['twice.png'])
     expect(graph.nodes.filter(node => node.type === 'asset').map(node => node.id)).toEqual(['u2'])
     expect(graph.assetNodes['twice.png']).toBe('u2')
   })
 
-  it('wraps a long shot list into a block of columns without overlapping cards', () => {
-    const full = fixtureState()
-    const records = full.components.proj.records
-    const g2 = records.find(record => record.id === 'g2')
-    if (g2 === undefined) throw new Error('fixture lacks g2')
-    const shots = Array.from({ length: 22 }, (_, index) => ({ ...g2, id: `s${String(index)}`, inputs: [], params: { prompt: 'p', shot: index + 1 }, outputs: [] }))
-    full.components.proj.records = [...records.filter(record => record.operation !== 'shot.render'), ...shots]
-    const graph = buildCanvasGraph(full, undefined, OPERATIONS)
-    const takes = graph.nodes.filter(node => node.type === 'take')
-    expect(new Set(takes.map(node => `${String(node.x)},${String(node.y)}`)).size).toBe(22)
-    const width = Math.max(...takes.map(node => node.x)) - Math.min(...takes.map(node => node.x))
-    const height = Math.max(...takes.map(node => node.y))
-    expect(width).toBeGreaterThan(0)
-    expect(height).toBeLessThan(width * 2)
-  })
-
-  it('shows the latest plan version and the current take of each of its shots, not every take ever rendered', () => {
-    const graph = refGraph(rollbackProject(), undefined, [], 'zh', [APPROVAL], [CLIPS], [planNodeType])
-    // v4 has 6 shots and its approval reused every v1 take: no shot 7, no v2 or v3 take, no retake of the removed shot.
-    expect(graph.nodes.map(node => [node.id, typeOf(node)])).toEqual([
-      ['test_ref:hero', 'test_ref'], ['plan:p1', 'plan'], ...['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => [id, 'take']),
-    ])
-    const plan = graph.nodes.find(node => node.id === 'plan:p1')
-    expect([plan?.type === 'entry' ? plan.entry.slots : undefined, plan?.record?.id]).toEqual([6, 'q4'])
-    expect(graph.nodes.filter(node => node.type === 'take').map(node => [node.title, node.take]))
-      .toEqual(['1', '2', '3', '4', '5', '6'].map(shot => [shot, null]))
-    expect(graph.edges.filter(edge => edge.kind === 'chain').map(edge => [edge.from, edge.to])).toEqual(['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => ['plan:p1', id]))
-    // Assets of takes the canvas leaves out have no node, so dropping one on the canvas finds none.
-    expect(graph.assetNodes['s7.mp4']).toBeUndefined()
-    expect(graph.assetNodes['r3.mp4']).toBe('r3')
-  })
-
-  it('a jump back to an earlier step changes the canvas to that step\'s plan version and takes', () => {
-    // Back to just after the v3 approval: plan v3 with 7 shots, the takes its timeline plays.
-    expect(drawn(rollbackProject('l3'))).toEqual([
-      ['test_ref:hero', 'test_ref'], ['plan:p1', 'plan'], ...['r1', 'r2', 's3', 'r4', 's7', 'x7', 'w5', 'r6'].map(id => [id, 'take']).sort(byRecordOrder),
-    ])
-    // Back to just after the v1 approval: v1 and its 6 takes only.
-    expect(drawn(rollbackProject('l1'))).toEqual([
-      ['test_ref:hero', 'test_ref'], ['plan:p1', 'plan'], ...['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => [id, 'take']),
-    ])
-    // Back to before the plan: the character and its reference only.
-    expect(drawn(rollbackProject('e1'))).toEqual([['test_ref:hero', 'test_ref']])
-  })
-
-  it('a take a timeline clip plays is the current take of its shot, and an unapproved latest version keeps the played takes', () => {
-    // After the agent put the v1 take of shot 3 back (k1), the v3 timeline plays r3 instead of s3.
-    const replaced = drawn(rollbackProject('k1')).map(([id]) => id)
-    expect(replaced).toContain('r3')
-    expect(replaced).not.toContain('s3')
-    // v4 written but not approved yet: the timeline still plays the v3 takes, so they stay with the retake x7 of the played
-    // s7; v4 has no takes of its own.
-    const pending = rollbackProject('q4')
-    expect(pending.components.proj.records.some(entry => entry.id === 'a4')).toBe(false)
-    expect(drawn(pending).filter(([, type]) => type === 'take').map(([id]) => id)).toEqual(['r1', 'r2', 'r3', 'r4', 's7', 'x7', 'w5', 'r6'].sort(byRecordOrder))
-  })
-
-  it('draws each generation record as a take, titled by its operation label without an anchored chain; off the wire its own facts decide', () => {
-    const generation = (name: string, type: string, label: WireOperation['label']): WireOperation => ({
-      name, version: '1', description: name, inputs: {}, params: {}, outputs: [{ role: type, type }], deterministic: false, resource: 'gpu', confirm: 'never',
-      ...label === undefined ? {} : { label },
-    })
-    // A timeline export is not deterministic and outputs a video, but it runs on the CPU.
-    const exported: WireOperation = { ...generation('timeline.export', 'video', undefined), resource: 'cpu' }
-    const operations = [...OPERATIONS, generation('image.generate', 'image', { zh: '生成图像', en: 'Generate image' }), generation('audio.generate', 'audio', undefined), exported]
+  it('draws a slice node in its type\'s column with its assets, so a take that reads one links from it and its import draws no stand-in', () => {
     const state = fixtureState()
-    const proj = state.components.proj
-    proj.records.push(
-      record({ id: 'i1', operation: 'image.generate', deterministic: false, params: { prompt: 'a cat' }, outputs: ['cat.png'] }),
-      record({ id: 'i2', operation: 'image.generate', deterministic: false, based_on: 'i1', started_by: { record: 'w1', slot: 2 }, outputs: ['cat2.png'] }),
-      record({ id: 'v1', operation: 'audio.generate', deterministic: false, outputs: ['line.wav'] }),
-      record({ id: 'c9', operation: 'timeline.export', deterministic: false, outputs: ['cut.mp4'] }),
-    )
-    state.assets.push(asset('cat.png', 'image/png', 'i1'), asset('cat2.png', 'image/png', 'i2'), asset('line.wav', 'audio/wav', 'v1', 2), asset('cut.mp4', 'video/mp4', 'c9', 3))
-    Object.assign(proj.created_by, { 'cat.png': 'i1', 'cat2.png': 'i2', 'line.wav': 'v1', 'cut.mp4': 'c9' })
-    const graph = buildCanvasGraph(state, new Set(['cat.png']), operations, 'en')
-    const byId = new Map(graph.nodes.map(node => [node.id, node]))
-    expect(byId.get('i1')).toMatchObject({ type: 'take', title: '', label: 'Generate image', subtitle: 'a cat', thumb: 'cat.png', video: null, take: 1 })
-    // The starter w1 of i2's chain is not loaded, so the chain has no anchor and i2 is a free take.
-    expect(byId.get('i2')).toMatchObject({ type: 'take', title: '', label: 'Generate image', thumb: 'cat2.png', take: 2 })
-    expect(byId.get('i2')?.chain).toBeUndefined()
-    expect(byId.get('v1')).toMatchObject({ type: 'take', title: '', label: 'audio.generate', thumb: null, video: 'line.wav', durationSec: 2 })
-    expect(graph.edges).toContainEqual({ from: 'i1', to: 'i2', kind: 'take' })
-    // The CPU export is no take; a render take reads its operation label by the same rule; the placed take output gets no node.
-    expect(byId.has('c9')).toBe(false)
-    expect(byId.get('g1')).toMatchObject({ type: 'take', title: '', label: 'shot.render', take: 1 })
-    expect(graph.nodes.filter(node => node.type === 'asset')).toEqual([])
-    expect(graph.assetNodes).toMatchObject({ 'cat.png': 'i1', 'line.wav': 'v1' })
-    // Without the declarations, a record that is not deterministic and output media is a take, so the old export is one;
-    // the running retake g3 has no output yet and is none.
-    const offWire = buildCanvasGraph(state).nodes.map(node => node.id)
-    expect(offWire).toEqual(expect.arrayContaining(['g1', 'g2', 'i1', 'i2', 'v1', 'c9']))
-    expect(offWire).not.toContain('g3')
-  })
-})
-
-describe('chain grouping', () => {
-  /**
-   * The shared fixture plus the chains of two workflows on plan p1: the story approval st0 started n1 (slot 2), and the
-   * later story approval st1 started h1 (slot 1), which the canvas retake h2 is based on; the ad approval ad1 started a
-   * 9:16 take v9 and a 16:9 take v16 of slot 1. The starter zz1 of o1 is not loaded. Each take outputs one image.
-   * @returns the state.
-   */
-  function chainState(): WireState {
-    const state = fixtureState()
-    const take = (id: string, startedBy: ProjectRecord['started_by'], basedOn: string | null = null): ProjectRecord => record({
-      id, operation: 'shot.render', deterministic: false, based_on: basedOn, outputs: [`${id}.png`],
-      ...startedBy === undefined ? {} : { started_by: startedBy },
-    })
-    state.components.proj.records.push(
-      record({ id: 'st0', operation: 'story.approve', params: { plan: 'p1' } }), take('n1', { record: 'st0', slot: 2 }),
-      record({ id: 'st1', operation: 'story.approve', params: { plan: 'p1' } }), take('h1', { record: 'st1', slot: 1 }), take('h2', undefined, 'h1'),
-      record({ id: 'ad1', operation: 'ad.approve', params: { plan: 'p1' } }),
-      take('v9', { record: 'ad1', slot: 1, lane: '9:16' }), take('v16', { record: 'ad1', slot: 1, lane: '16:9' }),
-      take('o1', { record: 'zz1', slot: 2 }),
-    )
-    for (const id of ['n1', 'h1', 'h2', 'v9', 'v16', 'o1']) {
-      state.assets.push(asset(`${id}.png`, 'image/png', id))
-      state.components.proj.created_by[`${id}.png`] = id
-    }
-    return state
-  }
-  const ANCHORS = [anchorOf('story.approve'), anchorOf('ad.approve')]
-
-  it('draws the chain of the newest starter of each operation on a node, every free take, and the records a TakesInUse uses', () => {
-    const takes = (inUse: TakesInUse[] = []): string[] => buildCanvasGraph(chainState(), undefined, OPERATIONS, 'zh', ANCHORS, inUse)
-      .nodes.filter(node => node.type === 'take').map(node => node.id)
-    // st1 replaced st0 on plan:p1, so n1 is left out; the story chain and the ad chain both show; o1, g1, g2 and g3 are free takes.
-    expect(takes()).toEqual(['g1', 'g2', 'g3', 'h1', 'h2', 'v9', 'v16', 'o1'])
-    expect(takes([{ id: 'test-uses', uses: () => ['n1'] }])).toEqual(['g1', 'g2', 'g3', 'n1', 'h1', 'h2', 'v9', 'v16', 'o1'])
-    // Without anchors no chain is anchored, so n1 is a free take as well.
-    expect(buildCanvasGraph(chainState(), undefined, OPERATIONS).nodes.some(node => node.id === 'n1')).toBe(true)
-  })
-
-  it('titles a take by the slot and lane of its anchored chain, numbers takes by anchor, slot and lane, and fills slot frames', () => {
-    const graph = buildCanvasGraph(chainState(), undefined, OPERATIONS, 'en', ANCHORS, [], [planNodeType])
-    const byId = new Map(graph.nodes.map(node => [node.id, node]))
-    // The retake h2 has no started_by and keeps the slot of its root h1; two lanes of one slot are two groups.
-    expect(['h1', 'h2', 'v9', 'v16', 'o1'].map(id => [byId.get(id)?.title, byId.get(id)?.take])).toEqual([
-      ['1', 1], ['1', 2], ['1 · 9:16', null], ['1 · 16:9', null], ['', null],
-    ])
-    expect(byId.get('o1')).toMatchObject({ label: 'shot.render' })
-    expect(graph.edges.filter(edge => edge.kind === 'chain').map(edge => [edge.from, edge.to]))
-      .toEqual(['h1', 'h2', 'v9', 'v16'].map(id => ['plan:p1', id]))
-    // Slot 1 shows the newest finished take of an anchored chain on plan:p1 with slot 1; slot 2 has none, since o1 is free.
-    expect(slotFrames(graph.nodes, 'plan:p1', 2)).toEqual([{ thumb: 'v16.png', video: null }, null])
-  })
-
-  it('lays out six takes in two lanes by anchor, slot (null last), lane in first-record order, then record order', () => {
-    const state = fixtureState()
-    // The ad approval ad1 writes its 9:16 lane first; each lane writes slot null, then 2, then 1.
-    const take = (id: string, slot: number | null, lane: string): ProjectRecord =>
-      record({ id, operation: 'shot.render', deterministic: false, started_by: { record: 'ad1', slot, lane } })
-    state.components.proj.records.push(
-      record({ id: 'ad1', operation: 'ad.approve', params: { plan: 'p1' } }),
-      take('m0', null, '9:16'), take('m2', 2, '9:16'), take('m1', 1, '9:16'),
-      take('w2', 2, '16:9'), take('w0', null, '16:9'), take('w1', 1, '16:9'),
-    )
-    const graph = buildCanvasGraph(state, undefined, OPERATIONS, 'zh', [anchorOf('ad.approve')])
-    // Column 2 top to bottom, then its next sub-column: the free take g1 and its retake g3 come first, as the first records.
-    const placed = graph.nodes.filter(node => ['g1', 'g3', 'm0', 'm1', 'm2', 'w0', 'w1', 'w2'].includes(node.id))
-      .sort((a, b) => a.x - b.x || a.y - b.y).map(node => node.id)
-    expect(placed).toEqual(['g1', 'g3', 'm1', 'w1', 'm2', 'w2', 'm0', 'w0'])
-    // The nodes keep record order, so take numbers and slot frames read it.
-    expect(graph.nodes.filter(node => node.type === 'take').map(node => node.id)).toEqual(['g1', 'g2', 'g3', 'm0', 'm2', 'm1', 'w2', 'w0', 'w1'])
-  })
-})
-
-describe('node types', () => {
-  it('draws each entry of a registered NodeType in its column, and a take that reads an entry\'s media links from the entry', () => {
-    const state = fixtureState()
-    const reads = (asset: string): ProjectRecord['inputs'] => [{ role: 'reference', ref: { asset }, resolved_asset: asset }]
+    const reads = (id: string): ProjectRecord['inputs'] => [{ role: 'reference', ref: { asset: id }, resolved_asset: id }]
     const m1 = record({ id: 'm1', operation: 'prop.create', inputs: reads('ref.png') })
     state.components.proj.records.push(
       record({ id: 'u2', operation: 'asset.import', params: { name: 'umbrella.png' }, outputs: ['umbrella.png'] }), m1,
@@ -431,63 +327,237 @@ describe('node types', () => {
     )
     state.assets.push(asset('umbrella.png', 'image/png', 'u2'), asset('g4.png', 'image/png', 'g4'))
     Object.assign(state.components.proj.created_by, { 'umbrella.png': 'u2', 'g4.png': 'g4' })
-    const type: NodeType = {
-      id: '@dv/ui-prop', type: 'prop', label: () => '道具', color: '#888', column: 1,
-      entries: () => [{ id: 'prop:m1', record: m1, title: 'Red umbrella', media: ['umbrella.png'] }],
-    }
-    const placed = new Set(['umbrella.png'])
-    // Without the type, the import of the placed umbrella image is an asset node.
-    expect(buildCanvasGraph(state, placed, OPERATIONS).nodes.some(node => node.id === 'u2')).toBe(true)
-    const graph = buildCanvasGraph(state, placed, OPERATIONS, 'zh', [], [], [type, planNodeType])
+    const prop = sliceType([{ id: 'prop:m1', record: m1, title: 'Red umbrella', assets: ['umbrella.png'] }], 1)
+    const placed = ['umbrella.png']
+    expect(graphOf(state, kinds({ nodeTypes: [assetNodeType, take] }), placed).nodes.some(node => node.id === 'u2')).toBe(true)
+    const graph = graphOf(state, kinds({ nodeTypes: [prop, planNodeType, assetNodeType, take] }), placed)
     const byId = new Map(graph.nodes.map(node => [node.id, node]))
-    expect(byId.get('prop:m1')).toMatchObject({ type: 'entry', nodeType: type, title: 'Red umbrella', subtitle: '', references: ['umbrella.png'], record: m1 })
+    expect(byId.get('prop:m1')).toMatchObject({ nodeType: prop, claimed: false, title: 'Red umbrella', assets: ['umbrella.png'], record: m1 })
     expect(byId.has('u2')).toBe(false)
     expect(graph.assetNodes['umbrella.png']).toBe('prop:m1')
-    expect(graph.edges).toContainEqual({ from: 'prop:m1', to: 'g4', kind: 'reference' })
-    // The entry's own record draws no input edge (m1 read the hero's reference image), and column 1 holds plan:p1 too.
+    expect(graph.edges).toContainEqual({ from: 'prop:m1', to: 'g4', kind: 'input', role: 'reference' })
+    // A slice node draws no edge of its own record, though m1 read ref.png; column 1 holds plan:p1 too.
     expect(graph.edges.some(edge => edge.to === 'prop:m1')).toBe(false)
     expect(byId.get('prop:m1')?.x).toBe(byId.get('plan:p1')?.x)
   })
-})
 
-describe('the canvas writes a reference of any kind', () => {
-  /**
-   * The shared fixture plus a take `g9` that reads version 3 of `z1`, an item of a reference kind `zz` that no UI package
-   * knows, whose reference image `zz.png` the import `u9` wrote.
-   * @returns the state.
-   */
-  function unknownKindState(): WireState {
-    const state = withTestRef(fixtureState())
-    state.assets.push(asset('zz.png', 'image/png', 'u9'))
-    state.components.proj.created_by['zz.png'] = 'u9'
+  it('draws each current record of a claimed type with its outputs as assets, numbers its based_on family, and leaves a chain with an unloaded starter unanchored', () => {
+    const image: NodeType<'none'> = {
+      id: '@dv/ui-test-image', type: 'none', label: () => 'image', color: '', column: 2,
+      claimed: { operations: ['image.generate'], status: { running: () => '', failed: () => '' }, entry: ({ record: { id } }) => ({ title: id, bodyHeight: 117, data: null }) },
+    }
+    const state = fixtureState()
     state.components.proj.records.push(
-      record({ id: 'u9', operation: 'asset.import', params: { name: 'zz.png' }, outputs: ['zz.png'] }),
-      record({
-        id: 'g9', operation: 'shot.render', deterministic: false, params: { prompt: 'z1 waits' },
-        inputs: [{ role: 'reference', ref: { zz: 'z1', version: 3 }, resolved_asset: 'zz.png' }],
-      }),
+      record({ id: 'w0', operation: 'w.approve', params: { plan: 'p1' } }),
+      record({ id: 'i1', operation: 'image.generate', deterministic: false, outputs: ['cat.png'] }),
+      record({ id: 'i2', operation: 'image.generate', deterministic: false, based_on: 'i1', started_by: { record: 'w1', slot: 2 }, outputs: ['cat2.png'] }),
     )
-    return state
-  }
-
-  it('a take input { zz: z1, version: 3 } reads as the reference chip z1@3, never undefined@', () => {
-    const take = buildCanvasGraph(unknownKindState(), undefined, OPERATIONS).nodes.find(node => node.id === 'g9')
-    // The take editor's chips and the retry request write each input with formatInputRef.
-    const chips = take?.record?.inputs.map(input => formatInputRef(input.ref))
-    expect(chips).toEqual(['z1@3'])
-    expect(chips?.join(' ')).not.toContain('undefined')
+    state.assets.push(asset('cat.png', 'image/png', 'i1'), asset('cat2.png', 'image/png', 'i2'))
+    Object.assign(state.components.proj.created_by, { 'cat.png': 'i1', 'cat2.png': 'i2' })
+    const graph = graphOf(state, kinds({ nodeTypes: [assetNodeType, image], chainAnchors: [anchorOf('w.approve')] }), ['cat.png'])
+    const byId = new Map(graph.nodes.map(node => [node.id, node]))
+    expect([byId.get('i1'), byId.get('i2')].map(node => node === undefined ? null : [node.claimed, node.assets, node.version, node.chain]))
+      .toEqual([[true, ['cat.png'], 1, null], [true, ['cat2.png'], 2, null]])
+    expect(graph.edges).toEqual([{ from: 'i1', to: 'i2', kind: 'lineage' }])
+    expect(graph.nodes.filter(node => node.type === 'asset')).toEqual([])
+    expect(graph.assetNodes).toMatchObject({ 'cat.png': 'i1', 'cat2.png': 'i2' })
   })
 
-  it('a version of a kind without a version kind links from the node of its asset; a test_ref version links from its entry node', () => {
-    const graph = refGraph(unknownKindState(), new Set(['zz.png']), OPERATIONS)
-    expect(graph.edges).toContainEqual({ from: 'u9', to: 'g9', kind: 'reference' })
-    expect(graph.edges).toContainEqual({ from: 'test_ref:hero', to: 'g1', kind: 'reference' })
+  it('wraps a long shot list into a block of columns without overlapping cards', () => {
+    const full = fixtureState()
+    const records = full.components.proj.records
+    const g2 = records.find(entry => entry.id === 'g2')
+    if (g2 === undefined) throw new Error('fixture lacks g2')
+    const shots = Array.from({ length: 22 }, (_, index) => ({ ...g2, id: `s${String(index)}`, inputs: [], params: { prompt: 'p', shot: index + 1 }, outputs: [] }))
+    full.components.proj.records = [...records.filter(entry => entry.operation !== 'shot.render'), ...shots]
+    const takes = graphOf(full, kinds({ nodeTypes: [take] })).nodes
+    expect(takes).toHaveLength(22)
+    expect(new Set(takes.map(node => `${String(node.x)},${String(node.y)}`)).size).toBe(22)
+    const width = Math.max(...takes.map(node => node.x)) - Math.min(...takes.map(node => node.x))
+    const height = Math.max(...takes.map(node => node.y))
+    expect(width).toBeGreaterThan(0)
+    expect(height).toBeLessThan(width * 2)
+  })
+
+  it('draws a take whose input resolved to no asset without an input edge', () => {
+    const state = fixtureState()
+    state.components.proj.records.push(record({
+      id: 'g9', operation: 'shot.render', deterministic: false, params: { prompt: 'lost' },
+      inputs: [{ role: 'reference', ref: { asset: 'gone.png' }, resolved_asset: null }],
+    }))
+    const graph = graphOf(state, kinds({ nodeTypes: [take] }))
+    expect(graph.nodes.some(node => node.id === 'g9')).toBe(true)
+    expect(graph.edges.filter(edge => edge.to === 'g9')).toEqual([])
+  })
+
+  it('anchors no chain on a record without an operation', () => {
+    const state = fixtureState()
+    state.components.proj.records.push(
+      record({ id: 'n0', params: { plan: 'p1' } }),
+      record({
+        id: 'g9', operation: 'shot.render', deterministic: false, params: { prompt: 'free' }, started_by: { record: 'n0', slot: 1 },
+      }),
+    )
+    const graph = graphOf(state, kinds({ nodeTypes: [take], chainAnchors: [anchorOf('story.approve')] }))
+    expect(graph.nodes.find(node => node.id === 'g9')?.chain).toBeNull()
+    expect(graph.edges.some(edge => edge.kind === 'chain')).toBe(false)
+  })
+
+  it('shows a badge label once on the node of its asset, and no badge for an asset that no node shows', () => {
+    const { recordsInUse } = allKinds()
+    const repeated: RecordsInUse = {
+      id: 'test-badges', uses: () => [], badges: () => [{ asset: 'shot2.mp4', label: 'trim' }, { asset: 'nowhere.png', label: 'lost' }],
+    }
+    const graph = graphOf(withTestRef(fixtureState()), { ...allKinds(), recordsInUse: [...recordsInUse, repeated] })
+    expect(graph.nodes.find(node => node.id === 'g2')?.badges).toEqual(['trim'])
+    expect(graph.nodes.flatMap(node => node.badges)).toEqual(['trim'])
+  })
+
+  it('lays out two takes based on each other in their type\'s column', () => {
+    const state = fixtureState()
+    state.components.proj.records.push(
+      record({ id: 'k1', operation: 'shot.render', deterministic: false, based_on: 'k2', params: { prompt: 'one' } }),
+      record({ id: 'k2', operation: 'shot.render', deterministic: false, based_on: 'k1', params: { prompt: 'two' } }),
+    )
+    const graph = graphOf(state, kinds({ nodeTypes: [take] }))
+    const byId = new Map(graph.nodes.map(node => [node.id, node]))
+    expect(graph.edges).toEqual(expect.arrayContaining([
+      { from: 'k2', to: 'k1', kind: 'lineage' }, { from: 'k1', to: 'k2', kind: 'lineage' },
+    ]))
+    const column = byId.get('g1')?.x
+    expect([byId.get('k1')?.x, byId.get('k2')?.x]).toEqual([column, column])
+  })
+})
+
+describe('current state', () => {
+  it('shows the latest plan version and the current take of each of its shots, not every take ever rendered', () => {
+    const graph = graphOf(rollbackProject(), allKinds())
+    // v4 has 6 shots and its approval reused every v1 take: no shot 7, no v2 or v3 take, no retake of the removed shot.
+    expect(graph.nodes.map(node => [node.id, node.type])).toEqual([
+      ['test_ref:hero', 'test_ref'], ['plan:p1', 'plan'], ...['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => [id, 'take']),
+    ])
+    const plan = graph.nodes.find(node => node.id === 'plan:p1')
+    expect([plan?.slots, plan?.record?.id]).toEqual([6, 'q4'])
+    expect(graph.nodes.filter(node => node.type === 'take').map(node => [node.chain?.slot, node.version]))
+      .toEqual([1, 2, 3, 4, 5, 6].map(shot => [shot, null]))
+    expect(graph.edges.filter(edge => edge.kind === 'chain').map(edge => [edge.from, edge.to]))
+      .toEqual(['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => ['plan:p1', id]))
+    // Assets of takes the canvas leaves out have no node, so dropping one on the canvas finds none.
+    expect(graph.assetNodes['s7.mp4']).toBeUndefined()
+    expect(graph.assetNodes['r3.mp4']).toBe('r3')
+  })
+
+  it('a jump back to an earlier step changes the canvas to that step\'s plan version and takes', () => {
+    // Just after the v3 timeline: plan v3 with 7 shots, the newest chain's w5, and the takes its timeline plays with the
+    // retake x7 of the played s7.
+    const l3 = graphOf(rollbackProject('l3'), allKinds())
+    expect(l3.nodes.map(node => [node.id, node.type])).toEqual([
+      ['test_ref:hero', 'test_ref'], ['plan:p1', 'plan'], ...['r1', 'r2', 'r4', 'r6', 's3', 's7', 'x7', 'w5'].map(id => [id, 'take']),
+    ])
+    expect(l3.nodes.find(node => node.id === 'plan:p1')?.slots).toBe(7)
+    expect(drawn(rollbackProject('l1'))).toEqual([
+      ['test_ref:hero', 'test_ref'], ['plan:p1', 'plan'], ...['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => [id, 'take']),
+    ])
+    // Before the plan: the reference item only.
+    expect(drawn(rollbackProject('e1'))).toEqual([['test_ref:hero', 'test_ref']])
+  })
+
+  it('keeps a take that a timeline clip plays current, and an unapproved latest version keeps the played takes', () => {
+    const takesOf = (state: WireState): string[] => drawn(state).filter(([, type]) => type === 'take').map(([id]) => id ?? '')
+    // After the agent put the v1 take of shot 3 back (k1), the v3 timeline plays r3 instead of s3.
+    expect(takesOf(rollbackProject('k1'))).toEqual(['r1', 'r2', 'r3', 'r4', 'r6', 's7', 'x7', 'w5'])
+    // v4 written but not approved: the timeline still plays the v3 takes, and v4 has no takes of its own.
+    const pending = rollbackProject('q4')
+    expect(pending.components.proj.records.some(entry => entry.id === 'a4')).toBe(false)
+    expect(takesOf(pending)).toEqual(['r1', 'r2', 'r3', 'r4', 'r6', 's7', 'x7', 'w5'])
+  })
+})
+
+describe('chain grouping', () => {
+  const takeRecord = (id: string, startedBy: ProjectRecord['started_by'], basedOn: string | null = null): ProjectRecord => record({
+    id, operation: 'shot.render', deterministic: false, based_on: basedOn, outputs: [`${id}.png`],
+    ...startedBy === undefined ? {} : { started_by: startedBy },
+  })
+
+  /**
+   * The shared fixture plus the chains of two workflows on plan p1: the story approval st0 started n1 (slot 2), and the
+   * later story approval st1 started h1 (slot 1), which the canvas retake h2 is based on; the ad approval ad1 started a
+   * 9:16 take v9 and a 16:9 take v16 of slot 1. The starter zz1 of o1 is not loaded. Each take outputs one image.
+   * @param extra - more takes, placed right after h2.
+   * @returns the state.
+   */
+  function chainState(extra: ProjectRecord[] = []): WireState {
+    const state = fixtureState()
+    const added = [
+      record({ id: 'st0', operation: 'story.approve', params: { plan: 'p1' } }), takeRecord('n1', { record: 'st0', slot: 2 }),
+      record({ id: 'st1', operation: 'story.approve', params: { plan: 'p1' } }), takeRecord('h1', { record: 'st1', slot: 1 }), takeRecord('h2', undefined, 'h1'),
+      ...extra,
+      record({ id: 'ad1', operation: 'ad.approve', params: { plan: 'p1' } }),
+      takeRecord('v9', { record: 'ad1', slot: 1, lane: '9:16' }), takeRecord('v16', { record: 'ad1', slot: 1, lane: '16:9' }),
+      takeRecord('o1', { record: 'zz1', slot: 2 }),
+    ]
+    state.components.proj.records.push(...added)
+    for (const { id } of added.filter(entry => entry.operation === 'shot.render')) {
+      state.assets.push(asset(`${id}.png`, 'image/png', id))
+      state.components.proj.created_by[`${id}.png`] = id
+    }
+    return state
+  }
+  const ANCHORS = [anchorOf('story.approve'), anchorOf('ad.approve')]
+
+  it('draws the chain of the newest starter of each operation on each node, every free take, and the records a RecordsInUse uses', () => {
+    const takes = (state: WireState, recordsInUse: RecordsInUse[] = []): string[] =>
+      graphOf(state, kinds({ nodeTypes: [take], chainAnchors: ANCHORS, recordsInUse })).nodes.map(node => node.id)
+    // st1 replaced st0 on plan:p1, so n1 is left out; the story chain and the ad chain both show; o1, g1, g2 and g3 are free.
+    expect(takes(chainState())).toEqual(['g1', 'g2', 'g3', 'h1', 'h2', 'v9', 'v16', 'o1'])
+    expect(takes(chainState(), [{ id: 'test-uses', uses: () => ['n1'] }])).toEqual(['g1', 'g2', 'g3', 'n1', 'h1', 'h2', 'v9', 'v16', 'o1'])
+    // A newer story approval of another plan replaces no chain on plan:p1.
+    const otherPlan = chainState()
+    otherPlan.components.proj.records.push(record({ id: 'st2', operation: 'story.approve', params: { plan: 'p2' } }))
+    expect(takes(otherPlan)).toEqual(['g1', 'g2', 'g3', 'h1', 'h2', 'v9', 'v16', 'o1'])
+    // Without anchors no chain is anchored, so n1 is a free take as well.
+    expect(graphOf(chainState(), kinds({ nodeTypes: [take] })).nodes.some(node => node.id === 'n1')).toBe(true)
+  })
+
+  it('numbers records by based_on family, else by anchor, slot and lane, and fills each slot frame from the newest take anchored there', () => {
+    // n2 of the newer story approval shares plan:p1 slot 2 with n1, which a RecordsInUse keeps.
+    const state = chainState([takeRecord('n2', { record: 'st1', slot: 2 })])
+    const graph = graphOf(state, kinds({ nodeTypes: [planNodeType, take], chainAnchors: ANCHORS, recordsInUse: [{ id: 'test-uses', uses: () => ['n1'] }] }), [], 'en')
+    const byId = new Map(graph.nodes.map(node => [node.id, node]))
+    // The retake h2 has no started_by and keeps the chain of its root h1; two lanes of one slot are two groups.
+    expect(['h1', 'h2', 'n1', 'n2', 'v9', 'v16', 'o1'].map(id => [byId.get(id)?.chain ?? null, byId.get(id)?.version])).toEqual([
+      [{ starter: 'st1', anchor: 'plan:p1', slot: 1 }, 1], [{ starter: 'st1', anchor: 'plan:p1', slot: 1 }, 2],
+      [{ starter: 'st0', anchor: 'plan:p1', slot: 2 }, 1], [{ starter: 'st1', anchor: 'plan:p1', slot: 2 }, 2],
+      [{ starter: 'ad1', anchor: 'plan:p1', slot: 1, lane: '9:16' }, null], [{ starter: 'ad1', anchor: 'plan:p1', slot: 1, lane: '16:9' }, null],
+      [null, null],
+    ])
+    expect(graph.edges.filter(edge => edge.kind === 'chain').map(edge => `${edge.from}>${edge.to}`).sort())
+      .toEqual(['h1', 'h2', 'n1', 'n2', 'v16', 'v9'].map(id => `plan:p1>${id}`))
+    expect(slotFrames(graph.nodes, 'plan:p1', 2)).toEqual([{ node: 'v16', preview: 'v16.png' }, { node: 'n2', preview: 'n2.png' }])
+  })
+
+  it('lays out six takes in two lanes by anchor, slot (null last), lane in first-record order, then record order', () => {
+    const state = fixtureState()
+    // The ad approval ad1 writes its 9:16 lane first; each lane writes slot null, then 2, then 1.
+    const laneTake = (id: string, slot: number | null, lane: string): ProjectRecord => takeRecord(id, { record: 'ad1', slot, lane })
+    state.components.proj.records.push(
+      record({ id: 'ad1', operation: 'ad.approve', params: { plan: 'p1' } }),
+      laneTake('m0', null, '9:16'), laneTake('m2', 2, '9:16'), laneTake('m1', 1, '9:16'),
+      laneTake('w2', 2, '16:9'), laneTake('w0', null, '16:9'), laneTake('w1', 1, '16:9'),
+    )
+    const graph = graphOf(state, kinds({ nodeTypes: [take], chainAnchors: [anchorOf('ad.approve')] }))
+    // The take column top to bottom, then its next sub-column: the free take g1 and its retake g3 come first, as the
+    // first records; g2 continues g1's still one column right.
+    const placed = graph.nodes.filter(node => node.id !== 'g2').sort((a, b) => a.x - b.x || a.y - b.y).map(node => node.id)
+    expect(placed).toEqual(['g1', 'g3', 'm1', 'w1', 'm2', 'w2', 'm0', 'w0'])
+    // The nodes keep record order, which version numbers and slot frames read.
+    expect(graph.nodes.map(node => node.id)).toEqual(['g1', 'g2', 'g3', 'm0', 'm2', 'm1', 'w2', 'w0', 'w1'])
   })
 })
 
 describe('freePositions', () => {
   it('moves a node whose automatic spot is taken down a row at a time, and leaves stored nodes alone', () => {
-    const [template] = buildCanvasGraph(fixtureState()).nodes
+    const [template] = graphOf(fixtureState(), kinds({ nodeTypes: [take] })).nodes
     if (template === undefined) throw new Error('fixture has no nodes')
     const at = (id: string, x: number, y: number) => ({ ...template, id, x, y })
     // `moved` is stored half a card to the right of `a`'s automatic spot; `b`'s automatic spot is where `a` moves to.

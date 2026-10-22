@@ -3,20 +3,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type { DvHistory, HistoryRow } from '@dv/ui-history/contract'
-import type { ChainAnchor, DvCanvas, NodeType, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
+import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
 import { fixtureState, record } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply, storyApprovalAnchor, storyApprovalRow } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
-
-/** @returns empty canvas registries keyed as `DvCanvas` documents. */
-function canvasRegistries(): DvCanvas {
-  return {
-    nodeTypes: createRegistry<NodeType>(kind => [kind.id]),
-    chainAnchors: createRegistry<ChainAnchor>(anchor => [anchor.starter]),
-    takesInUse: createRegistry<TakesInUse>(uses => [uses.id]),
-    versionKinds: createRegistry<VersionKind>(kind => [kind.kind]),
-  }
-}
 
 describe('storyApprovalAnchor', () => {
   it('hangs a story approval off the node of its plan', () => {
@@ -44,6 +34,10 @@ describe('storyApprovalRow', () => {
     expect(storyApprovalRow.subject(done)).toEqual([' p1 v2', ' p1 v2'])
     expect(storyApprovalRow.subject(record({ id: 's2', operation: 'story.approve', params: { plan: 'p1' }, status: 'pending' }))).toBeNull()
   })
+
+  it('labels the renders folded under an approval by their count', () => {
+    expect(storyApprovalRow.fold?.(3)).toEqual(['渲染 3 个镜头', 'Render 3 shots'])
+  })
 })
 
 describe('ui-workflow-story apply', () => {
@@ -53,17 +47,17 @@ describe('ui-workflow-story apply', () => {
 
   it('registers each descriptor once its service is present, and the plugin disposal removes both', async () => {
     const ctx = new Context()
-    const canvas = canvasRegistries()
-    const history: DvHistory = { rows: createRegistry<HistoryRow>(row => [row.match]) }
+    const canvas = createDvCanvas()
+    const history: DvHistory = { rows: createRegistry<HistoryRow>(row => [row.match], row => row.match), describe: () => ['', ''] }
     const fiber = ctx.plugin({ apply })
     await fiber.await()
     ctx.provide('dvHistory', history)
-    await vi.waitFor(() => { expect(history.rows.list()).toEqual([storyApprovalRow]) })
-    expect(canvas.chainAnchors.list()).toEqual([])
+    await vi.waitFor(() => { expect(history.rows.getSnapshot()).toEqual([storyApprovalRow]) })
+    expect(canvas.chainAnchors.getSnapshot()).toEqual([])
     ctx.provide('dvCanvas', canvas)
-    await vi.waitFor(() => { expect(canvas.chainAnchors.list()).toEqual([storyApprovalAnchor]) })
+    await vi.waitFor(() => { expect(canvas.chainAnchors.getSnapshot()).toEqual([storyApprovalAnchor]) })
     await fiber.dispose()
-    expect(canvas.chainAnchors.list()).toEqual([])
-    expect(history.rows.list()).toEqual([])
+    expect(canvas.chainAnchors.getSnapshot()).toEqual([])
+    expect(history.rows.getSnapshot()).toEqual([])
   })
 })

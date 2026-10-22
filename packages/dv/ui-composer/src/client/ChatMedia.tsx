@@ -2,9 +2,9 @@
  * The DreamVerse cards that replace asset links, asset images, and asset tables in settled chat Markdown. Each card
  * draws its asset through the `dv.media` Factory at purpose 'thumb', so the media type's view draws the still and an
  * asset of a media type without a view draws the file card. A click opens the asset preview of `dvMedia`, which plays
- * the asset and grows out of the card. The card of a standalone link is captioned 镜头 N / Shot N with the take's shot
- * number, else with the asset's name, because chat link texts such as 点此播放 do not name the asset; an image
- * thumbnail is at most 240 px wide, at the asset's own width when that is smaller.
+ * the asset and grows out of the card. The card of a standalone link is captioned with History's label of the record
+ * that created the asset, because chat link texts such as 点此播放 do not name the asset; an image thumbnail is at most
+ * 240 px wide, at the asset's own width when that is smaller.
  *
  * @module @dv/ui-composer/ChatMedia
  */
@@ -87,13 +87,11 @@ function AssetThumb({ project, asset, alt, preview, renderFactorySlot }: OneCard
 export function ChatMediaView({ media, preview, renderFactorySlot }: CardProps & { media: ChatMedia }): ReactNode {
   const t = useText()
   switch (media.kind) {
-    case 'link': {
-      const shot = media.shot === null ? null : String(media.shot)
+    case 'link':
       return (
-        <AssetCard project={media.project} asset={media.asset} label={shot === null ? media.asset.name : t(`镜头 ${shot}`, `Shot ${shot}`)} inGrid={false}
+        <AssetCard project={media.project} asset={media.asset} label={t(media.caption[0], media.caption[1])} inGrid={false}
           preview={preview} renderFactorySlot={renderFactorySlot} />
       )
-    }
     case 'image':
       return (
         <AssetThumb project={media.project} asset={media.asset} alt={media.alt} preview={preview} renderFactorySlot={renderFactorySlot} />

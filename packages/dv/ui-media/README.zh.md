@@ -43,7 +43,7 @@ Host 半边（`src/index.ts`）是一个什么都不做的 `apply`，所以 Load
 | `MediaPurpose` | 类型 | 视图请求的形式：`'thumb'`（小方块）、`'card'`（卡片主体）、`'player'`（全宽可播放形式）或 `'loop'`（静音开始并循环的全宽可播放形式，例如编辑器中的版本） |
 | `MediaAsset` | 类型 | 视图绘制的素材事实：`id` 和 `mime`，以及界面知道时的 `name`、`width`、`height` 和 `duration_sec`，例如概要只按 ID 和 MIME 类型指定的项目封面 |
 | `MediaOwner` | 类型 | `dv.media` 实例的属性，也是每个 `dv.media.view` 条目的所有者属性：`asset`（一个 `MediaAsset`）、`purpose`、可选的 `poster`（可播放形式在播放前显示的静帧的素材 ID，例如版本的图片输出）、可选的 `playBadge`（可播放素材静帧上的播放标记，例如点击后打开播放器的对话卡片），以及可选的 `onSize({ width, height })`（为存储尺寸未知的素材接收已加载媒体的像素尺寸） |
-| `MediaType` | 类型 | `dvMedia.types` 中的一个媒体类型：`id`（媒体类型，例如 `'audio'`，也是其 `dv.media.view` 条目的键）、`icon`（没有静帧处使用的图标组件，属性与 DSH 图标相同，例如 `@` 菜单），以及可选的 `poster(asset, state)`（在只能用 `<img>` 绘制的地方代表该素材的静帧的素材 ID，或 null） |
+| `MediaType` | 类型 | `dvMedia.types` 中的一个媒体类型：`id`（媒体类型，例如 `'audio'`，也是其 `dv.media.view` 条目的键）、`owner`（注册它的包，被拒绝的键会给出这个名字）、`icon`（没有静帧处使用的图标组件，属性与 DSH 图标相同，例如 `@` 菜单），以及可选的 `poster(asset, state)`（在只能用 `<img>` 绘制的地方代表该素材的静帧的素材 ID，或 null） |
 | `DvMedia` | 服务 | `ctx.dvMedia`：`types` 是 `@dv/ui-kit/registries.ts` 的 `Registry<MediaType>`，以 `id` 为键，所以同一 `id` 的第二个类型会抛错；`preview(projectId, asset, opener)` 打开某个项目的素材的预览 |
 | `PreviewActionOwner` | 类型 | 一个预览按钮的所有者属性：`projectId`（所预览素材的项目）、`asset`、`buttonClass`（预览按钮的类名，操作按钮用它，外观、悬停和焦点与 关闭 / Close 一致）和 `close()` |
 | `dv.media` | 组件工厂 | 根作用域；属性为 `MediaOwner`；一个键控子插槽 `dv.media.view`。视图用 `renderFactorySlot('dv.media', { asset, purpose })` 绘制一个实例，不需要自己声明插槽；外框归界面所有并由界面给出确定的大小，媒体视图填满它 |
@@ -64,7 +64,7 @@ ctx.effect(() => ctx.slots.inject('dv.media.view', () => ctx.slots.register({ na
 
 ### 打开素材预览
 
-用素材的项目和用户点击的元素调用 `dvMedia.preview(projectId, asset, opener)`；`@dv/ui-canvas` 的参考标签和条目编辑器（`EntryEditorHost.preview`）、`@dv/ui-asset-pool` 的素材库面板和 `@dv/ui-composer` 的对话媒体会调用它。预览是以素材命名的模态对话框。它通过 `dv.media` 以用途 `player` 绘制素材，下面一行是素材名称、它的信息、`dv.media.preview.action` 条目和 关闭 / Close。信息是尺寸（例如 `1920×1080`）、保留一位小数的时长（例如 `4.0 秒` 或 `4.0 s`），以及小于 1 MiB 时以 KB、否则以 MB 表示的大小（例如 `2.5 MB`），用 ` · ` 连接。没有存储尺寸的素材，信息显示媒体视图通过 `onSize` 报告的尺寸，只对该素材有效。有存储尺寸的素材，预览在媒体加载前就按这些尺寸确定媒体框的大小（`@dv/ui-kit/zoom.ts` 的 `mediaBox`），所以对话框从 `opener` 放大出来时已是最终大小。再次调用 `preview` 会替换正在显示的素材，DreamVerse 外壳打开的项目改变（`dv:current-project`）时预览关闭。关闭 / Close、点击对话框外部和 Escape 关闭预览；预览在捕获阶段接收 Escape，所以下面的画布或编辑器收不到这个按键。预览打开时焦点在 关闭 / Close 上；预览关闭时，若 `opener` 仍在页面上，焦点回到它。对话框打开时从 `opener` 放大出来，关闭时缩回其中（`@dv/ui-kit/zoom.ts` 的 `useZoomPresence`）。`@dv/ui-composer` 向 `dv.media.preview.action` 添加条目 `dv.composer.use-asset`（让智能体使用 / Ask the agent to use it），`@dv/ui-timeline` 添加 `dv.timeline.insert`（插入片段 / Insert clip）。
+用素材的项目和用户点击的元素调用 `dvMedia.preview(projectId, asset, opener)`；`@dv/ui-canvas`（`NodeHost.preview`）、`@dv/ui-asset-pool` 的素材库面板和 `@dv/ui-composer` 的对话媒体会调用它。预览是以素材命名的模态对话框。它通过 `dv.media` 以用途 `player` 绘制素材，下面一行是素材名称、它的信息、`dv.media.preview.action` 条目和 关闭 / Close。信息是尺寸（例如 `1920×1080`）、保留一位小数的时长（例如 `4.0 秒` 或 `4.0 s`），以及小于 1 MiB 时以 KB、否则以 MB 表示的大小（例如 `2.5 MB`），用 ` · ` 连接。没有存储尺寸的素材，信息显示媒体视图通过 `onSize` 报告的尺寸，只对该素材有效。有存储尺寸的素材，预览在媒体加载前就按这些尺寸确定媒体框的大小（`@dv/ui-kit/zoom.ts` 的 `mediaBox`），所以对话框从 `opener` 放大出来时已是最终大小。再次调用 `preview` 会替换正在显示的素材，DreamVerse 外壳打开的项目改变（`dv:current-project`）时预览关闭。关闭 / Close、点击对话框外部和 Escape 关闭预览；预览在捕获阶段接收 Escape，所以下面的画布或编辑器收不到这个按键。预览打开时焦点在 关闭 / Close 上；预览关闭时，若 `opener` 仍在页面上，焦点回到它。对话框打开时从 `opener` 放大出来，关闭时缩回其中（`@dv/ui-kit/zoom.ts` 的 `useZoomPresence`）。`@dv/ui-composer` 向 `dv.media.preview.action` 添加条目 `@dv/ui-composer:use-asset`（让智能体使用 / Ask the agent to use it），`@dv/ui-timeline` 添加 `dv.timeline.insert`（插入片段 / Insert clip）。
 
 -----
 
@@ -76,7 +76,7 @@ ctx.effect(() => ctx.slots.inject('dv.media.view', () => ctx.slots.register({ na
 
 `apply` 在自己的顶层创建 `types` 注册表，因为其他插件从各自的 fiber 向其中注册。一个打开请求（素材和序号）保存在一个 observable 中，浮层条目通过注入的 `hooks.preview` 读取它；opener 元素不是 JSON 数据，所以留在 `apply` 闭包里、不放进 observable，浮层条目通过注入的 `openerOf` 读取它。`MediaView` 以 `asset.mime` 中 `/` 之前的部分为 `dv.media.view` 的键，只在实例设置了 `poster` 和 `onSize` 时才传递它们。组件工厂和浮层条目经 `ctx.effect` 注册，所以销毁插件会移除它们、`dvMedia` 和每个已绘制的实例。
 
-`tests/media.client.spec.tsx` 在 `@deepseek-ai/dsh-client-test-runtime` 的 `SlotTestRuntime`（真实的插槽运行时）下挂载插件，并带一个测试图片视图和一个测试预览按钮。它检查：同一 `id` 的第二个媒体类型会抛错；实例通过其 MIME 顶层类型的视图绘制，并带视图请求的用途和静帧；没有视图的类型画成文件卡片；预览显示用途为 `player` 的媒体、信息、按钮和已加载媒体的尺寸；关闭 / Close、背景和 Escape 在下面的监听器收到按键之前关闭预览。一个用例从会话作用域的 `tool.call.toolview` 条目通过唯一的根作用域组件工厂绘制图片；最后一个用例销毁插件，并检查组件工厂、`dvMedia`、浮层条目和已绘制的媒体都已移除。
+`tests/media.client.spec.tsx` 在 `@deepseek-ai/dsh-client-test-runtime` 的 `SlotTestRuntime`（真实的插槽运行时）下挂载插件，并带一个测试图片视图和一个测试预览按钮。它检查：同一 `id` 的第二个媒体类型会抛错，错误给出注册第一个类型的包；实例通过其 MIME 顶层类型的视图绘制，并带视图请求的用途和静帧；没有视图的类型画成文件卡片；预览显示用途为 `player` 的媒体、信息、按钮和已加载媒体的尺寸；关闭 / Close、背景和 Escape 在下面的监听器收到按键之前关闭预览。一个用例在 `@dv/ui-shot-render` 的会话作用域 `tool.call.toolview` 和 `@dv/ui-asset-pool` 的根作用域 `dv.canvas.card` 中通过同一个组件工厂绘制视频；最后一个用例销毁插件，并检查组件工厂、`dvMedia`、浮层条目和已绘制的媒体都已移除。
 
 | 文件 | 内容 |
 | --- | --- |

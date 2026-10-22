@@ -1,0 +1,349 @@
+/**
+ * The canvas as the bundle mounts it: `@dv/ui-canvas` and the real kind plugins (the test-only reference noun
+ * `test_ref` through the reference kit, plans, assets, video takes, and `@dv/ui-media`) in a SlotTestRuntime whose root
+ * frame stands in for the shell (the workspace center's `dv.center.view`, the right Sidebar's tab body, and
+ * `shell.overlay`), over a scripted `/api/dv` server. The server records every write, imports dropped files onto the
+ * project's canvas, and announces project changes through a stand-in `EventSource`, so a test sees a change at once. A
+ * test can also make the server hold layout reads and operation requests, refuse writes, and fail reads.
+ */
+import { vi } from 'vitest'
+import { fireEvent, waitFor, within } from '@testing-library/react'
+import type { RenderResult } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import type { Context, Plugin } from '@deepseek-ai/cordis'
+import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
+import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
+import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
+import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
+import type { FeatureHandle } from '@deepseek-ai/dsh-client-test-runtime'
+import type { ChainAnchor, NodeAction, NodeType, RecordsInUse } from '../src/client/contract/index.ts'
+import type { CanvasLayout, CanvasViewport, NodePosition, WireOperation, WireProject } from '@dv/ui-kit/types.ts'
+import { asset, fixtureState, OPERATIONS, PROJECT, record, scriptedFetch, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
+import type { FixtureState, Recorded } from '../../ui-kit/tests/fixture.client.tsx'
+import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
+import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
+import { defineReferenceUi } from '../../ui-reference-kit/src/client/reference-kit.tsx'
+import type { ReferenceNodeData } from '../../ui-reference-kit/src/client/reference-kit.tsx'
+import { apply as shotPlanApply, inject as shotPlanInject } from '../../ui-shot-plan/src/client/index.ts'
+import { apply as shotRenderApply, inject as shotRenderInject } from '../../ui-shot-render/src/client/index.ts'
+import { CANVAS_ID } from '../src/client/definition.ts'
+import { apply, inject } from '../src/client/index.ts'
+import type { CenterRequest } from '@dv/ui-shell/contract'
+
+declare module '../src/client/contract/index.ts' { interface NodeDataMap { test_ref: ReferenceNodeData } }
+
+/** The reference noun `test_ref` of the fixture, declared as the UI package of a noun declares it. */
+export const testRef = defineReferenceUi({
+  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref,
+  label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 1 },
+})
+
+/** The kind plugins a canvas test can mount, each the real plugin that the bundle loads. */
+export const KINDS = {
+  reference: { inject: [...testRef.inject], apply: testRef.apply },
+  plan: { inject: [...shotPlanInject], apply: shotPlanApply },
+  assets: { inject: [...assetPoolInject], apply: assetPoolApply },
+  takes: { inject: [...shotRenderInject], apply: shotRenderApply },
+  media: { inject: [...mediaInject], apply: mediaApply },
+} satisfies Record<string, Plugin>
+
+/** A kind plugin by name. */
+export type Kind = keyof typeof KINDS
+
+/** Every kind plugin, in the order the bundle lists them. */
+export const ALL_KINDS: readonly Kind[] = ['reference', 'plan', 'assets', 'takes', 'media']
+
+/** The chain anchor of the fixture's approval `a1`: it hangs the records it started off `plan:p1`. */
+export const APPROVAL: ChainAnchor = { starter: 'plan.approve', anchor: approval => `plan:${String(approval.params['plan'])}` }
+
+/** What the scripted server serves. */
+export interface ServerOptions {
+  /** Changes to the fixture state, applied to every state the server serves. */
+  edit?: (state: FixtureState) => void
+  /**
+   * The stored layout of p1, by default g1 at (10, 20) and the viewport at 100%; any other project has none stored. Null
+   * makes the layout read fail.
+   */
+  layout?: CanvasLayout | null
+  /** Leave `GET /api/dv/layout` unanswered until {@link CanvasServer.releaseLayout} answers it. */
+  holdLayout?: boolean
+  /** Leave `POST /api/dv/operation` unanswered, as a render is until it ends, until {@link CanvasServer.releaseOperations}. */
+  holdOperations?: boolean
+  /** The operation declarations; null makes `/api/dv/operations` fail. */
+  operations?: WireOperation[] | null
+  /** The projects that `/api/dv/projects` lists; the fixture project p1 by default. */
+  projects?: WireProject[]
+  /** The error that the server answers a JSON write with, by path and body; null accepts the write. */
+  refuse?: (path: string, body: unknown) => string | null
+}
+
+/** One `POST /api/dv/layout` body: the project, the positions to store, and the viewport of a save after a gesture. */
+export interface LayoutWrite {
+  project: string
+  positions: Record<string, NodePosition>
+  viewport?: CanvasViewport
+}
+
+/** One file that `POST /api/dv/assets/import` received. */
+export interface ImportRequest {
+  project: string
+  name: string
+  mime: string
+  surface: string
+  session: string | null
+}
+
+/** The scripted server's records and its change announcement. */
+export interface CanvasServer {
+  /** Every JSON write, by path. */
+  writes: Recorded[]
+  /** Every `POST /api/dv/layout` body. */
+  layoutWrites: LayoutWrite[]
+  imports: ImportRequest[]
+  /** Announce a project change on every open `/dv/events` stream. */
+  notify: () => void
+  /** Answer the held layout reads of one project. */
+  releaseLayout: (project: string) => void
+  /** Answer every held operation request. */
+  releaseOperations: () => void
+}
+
+/** A stand-in `/dv/events` stream: live at once, and it carries what {@link CanvasServer.notify} announces. */
+class ScriptedEventSource extends EventTarget {
+  static readonly open = new Set<ScriptedEventSource>()
+
+  constructor() {
+    super()
+    ScriptedEventSource.open.add(this)
+    queueMicrotask(() => { this.dispatchEvent(new Event('ready')) })
+  }
+
+  close(): void {
+    ScriptedEventSource.open.delete(this)
+  }
+}
+
+/**
+ * Serve the fixture project with the `test_ref` noun as the global `fetch` and `EventSource`, which the plugins' own
+ * clients use. An imported file becomes an asset on the project's canvas, written by an `asset.import` record.
+ * @param options - the state edits, the stored layout, whether renders stay unanswered, and the operations.
+ * @returns the server's records and its change announcement.
+ */
+export function serveCanvas(options: ServerOptions = {}): CanvasServer {
+  const imports: ImportRequest[] = []
+  const state = (): FixtureState => {
+    const served = withTestRef(fixtureState())
+    imports.forEach((file, index) => {
+      const id = `imp${String(index + 1)}`
+      served.assets.push(asset(file.name, file.mime, id, null, 'asset.import'))
+      served.components.proj.records.push(record({ id, operation: 'asset.import', params: { name: file.name }, outputs: [file.name], surface: 'canvas' }))
+      served.components.proj.created_by[file.name] = id
+      served.components.asset.placed = [...served.components.asset.placed, file.name]
+    })
+    options.edit?.(served)
+    return served
+  }
+  const scripted = scriptedFetch({ state, operations: options.operations ?? OPERATIONS, projects: options.projects ?? [PROJECT] })
+  const layoutWrites: LayoutWrite[] = []
+  const layout: CanvasLayout = options.layout ?? { positions: { g1: { x: 10, y: 20 } }, viewport: { x: 0, y: 0, zoom: 1 } }
+  const notify = (): void => {
+    for (const source of ScriptedEventSource.open) source.dispatchEvent(new MessageEvent('record', { data: 'null' }))
+  }
+  const heldLayouts: Array<{ project: string; answer: () => void }> = []
+  const heldOperations: Array<() => void> = []
+  const json = (body: unknown, status = 200): Response =>
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+  /** The refusal of a JSON write, or null for a request that `refuse` accepts. */
+  const refusal = (path: string, init: RequestInit | undefined): Response | null => {
+    if (init?.method !== 'POST' || typeof init.body !== 'string' || options.refuse === undefined) return null
+    const error = options.refuse(path, JSON.parse(init.body))
+    return error === null ? null : json({ error }, 500)
+  }
+  const fetchImpl: typeof fetch = (input, init) => {
+    const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://host')
+    if (url.pathname === '/api/dv/layout') {
+      const project = url.searchParams.get('project') ?? ''
+      const stored = project === 'p1' ? layout : { positions: {}, viewport: null }
+      // The canvas writes the body from `CanvasLayout` fields, so the parsed body is read as one.
+      if (init?.method === 'POST' && typeof init.body === 'string') layoutWrites.push(JSON.parse(init.body) as LayoutWrite)
+      const refused = refusal(url.pathname, init)
+      if (refused !== null) return Promise.resolve(refused)
+      if (options.layout === null && init?.method !== 'POST') return Promise.resolve(json({ error: 'unavailable' }, 503))
+      if (options.holdLayout === true && init?.method !== 'POST') {
+        return new Promise<Response>((resolve) => { heldLayouts.push({ project, answer: () => { resolve(json(stored)) } }) })
+      }
+      return Promise.resolve(json(stored))
+    }
+    if (url.pathname === '/api/dv/operations' && options.operations === null) return Promise.resolve(json({ error: 'offline' }, 503))
+    // The state of the requested project: the fixture state under that project's ID.
+    if (url.pathname === '/api/dv/state') {
+      const served = state()
+      return Promise.resolve(json({ ...served, project: { ...served.project, id: url.searchParams.get('project') ?? '' } }))
+    }
+    if (url.pathname === '/api/dv/assets/import') {
+      const query = url.searchParams
+      const file: ImportRequest = {
+        project: query.get('project') ?? '', name: query.get('name') ?? '', mime: query.get('mime') ?? '',
+        surface: query.get('surface') ?? '', session: query.get('session'),
+      }
+      imports.push(file)
+      queueMicrotask(notify)
+      return Promise.resolve(json({ asset: file.name, record: record({ id: `imp${String(imports.length)}`, operation: 'asset.import' }) }))
+    }
+    const answer = scripted.fetch(input, init)
+    const refused = refusal(url.pathname, init)
+    const response = refused === null ? answer : Promise.resolve(refused)
+    if (options.holdOperations === true && url.pathname === '/api/dv/operation' && init?.method === 'POST') {
+      return new Promise<Response>((resolve) => { heldOperations.push(() => { resolve(response) }) })
+    }
+    return response
+  }
+  const releaseLayout = (project: string): void => {
+    for (const held of heldLayouts.filter(each => each.project === project)) held.answer()
+  }
+  const releaseOperations = (): void => { heldOperations.splice(0).forEach((answer) => { answer() }) }
+  vi.stubGlobal('fetch', fetchImpl)
+  vi.stubGlobal('EventSource', ScriptedEventSource)
+  return { writes: scripted.writes, layoutWrites, imports, notify, releaseLayout, releaseOperations }
+}
+
+/** Where the root frame shows the canvas. */
+export type Surface = 'center' | 'tab'
+
+/** What a mounted canvas test drives. */
+export interface MountedCanvas {
+  runtime: SlotTestRuntime
+  view: RenderResult
+  server: CanvasServer
+  /** The ui-canvas plugin's fiber. */
+  canvas: FeatureHandle
+  /** Each mounted kind plugin's fiber. */
+  kinds: Partial<Record<Kind, FeatureHandle>>
+  /**
+   * @param id - a node ID.
+   * @param surface - the surface whose canvas draws it; the center by default.
+   * @returns the node's card.
+   */
+  node: (id: string, surface?: Surface) => HTMLElement
+  /**
+   * Click a node and wait for its editor.
+   * @param id - the node ID.
+   * @param surface - the surface whose canvas draws it; the center by default.
+   * @returns the editor panel.
+   */
+  open: (id: string, surface?: Surface) => Promise<HTMLElement>
+  /** @returns the canvas surface of the center, or of the right Sidebar tab. */
+  canvasOf: (surface?: Surface) => HTMLElement
+}
+
+/** How {@link mountCanvas} composes the canvas. */
+export interface MountOptions extends ServerOptions {
+  /** The kind plugins to mount, in order; every kind by default. */
+  kinds?: readonly Kind[]
+  /** The surfaces whose canvas the root frame shows; the center by default. */
+  surfaces?: readonly Surface[]
+  /** Mount ui-canvas before the kind plugins; by default the kinds mount first and register once the canvas comes. */
+  canvasFirst?: boolean
+  /** Runs once the kinds that mount first are mounted, just before ui-canvas mounts. */
+  beforeCanvas?: (runtime: SlotTestRuntime) => void | Promise<void>
+  /** The request that the center hands the canvas view, as `dvCenter.show` sets it; none by default. */
+  request?: CenterRequest
+}
+
+/** The chat session that the right Sidebar tab sits in. */
+const TAB_SESSION = 's-tab'
+
+/**
+ * Mount the canvas as the bundle does: the locale runtime and the right Sidebar's tab registry, a root frame that
+ * declares the center views, the right Sidebar tab bodies and the shell overlays, ui-canvas, and the kind plugins.
+ * The center passes project p1 and chat session s5; the tab body picks its project from `/api/dv/projects`.
+ * @param options - the server, the kinds, the surfaces and the load order.
+ * @returns the runtime, the rendered root, the server, the fibers, and node lookups.
+ */
+export async function mountCanvas(options: MountOptions = {}): Promise<MountedCanvas> {
+  // The kinds pick their copy by <html lang>, which the shell keeps on the interface language.
+  document.documentElement.lang = 'zh-CN'
+  const server = serveCanvas(options)
+  const surfaces = options.surfaces ?? ['center']
+  const runtime = await SlotTestRuntime.create()
+  const locale = new LocaleRuntime(runtime.ctx)
+  runtime.ctx.provide('locale', locale)
+  runtime.slots.installLocale(locale)
+  runtime.ctx.provide('sidebarRightTabs', new SidebarRightTabRegistry(runtime.ctx) as never)
+  const tabSession = runtime.sessions.retainFor(runtime.ctx, await runtime.sessions.add({ id: TAB_SESSION }))
+  type FrameProps = PropsRenderSlots<'dv.center.view' | 'sidebar.right.pane.tab' | 'shell.overlay'>
+    & { SessionProvider: (props: { session: unknown; children: ReactNode }) => ReactNode }
+  const Frame = ({ renderSlot, SessionProvider }: FrameProps): ReactNode => (
+    <>
+      {surfaces.includes('center')
+        ? <div data-testid="center">{renderSlot('dv.center.view', { projectId: 'p1', session: 's5', request: options.request ?? null, fields: {}, note: () => {} }, { only: 'canvas' })}</div>
+        : null}
+      {surfaces.includes('tab')
+        ? <div data-testid="tab"><SessionProvider session={tabSession}>{renderSlot('sidebar.right.pane.tab', {} as never, { entryKey: CANVAS_ID } as never)}</SessionProvider></div>
+        : null}
+      {renderSlot('shell.overlay', {})}
+    </>
+  )
+  await runtime.root.declare({
+    'dv.center.view': { kind: 'list', scope: 'root' },
+    // The right Sidebar also injects its tab-info hook, which needs a committed tab; the canvas body reads none of it.
+    'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session' } as never,
+    'shell.overlay': { kind: 'list', scope: 'root' },
+  }, Frame as never)
+  const view = runtime.renderRoot()
+  const kinds: Partial<Record<Kind, FeatureHandle>> = {}
+  const mountKinds = async (): Promise<void> => {
+    for (const kind of options.kinds ?? ALL_KINDS) kinds[kind] = await runtime.mount(KINDS[kind])
+  }
+  if (options.canvasFirst !== true) await mountKinds()
+  await options.beforeCanvas?.(runtime)
+  const canvas = await runtime.mount({ inject: [...inject], apply })
+  if (options.canvasFirst === true) await mountKinds()
+  const canvasOf = (surface: Surface = 'center'): HTMLElement => within(view.getByTestId(surface)).getByTestId('dv-canvas-view')
+  const node = (id: string, surface: Surface = 'center'): HTMLElement => {
+    const element = view.getByTestId(surface).querySelector(`[data-node-id="${id}"]`)
+    if (!(element instanceof HTMLElement)) throw new Error(`no node ${id} in the ${surface} canvas`)
+    return element
+  }
+  const open = async (id: string, surface: Surface = 'center'): Promise<HTMLElement> => {
+    const card = await waitFor(() => node(id, surface))
+    fireEvent.pointerDown(card, { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerUp(canvasOf(surface), { pointerId: 1 })
+    return waitFor(() => {
+      const editors = within(view.getByTestId(surface)).getAllByTestId('dv-canvas-node-editor')
+      const editor = editors.find(panel => panel.getAttribute('aria-label') === card.getAttribute('aria-label'))
+      if (editor === undefined) throw new Error(`no editor of ${id}`)
+      return editor
+    })
+  }
+  return { runtime, view, server, canvas, kinds, node, open, canvasOf }
+}
+
+/**
+ * Mount a plugin that registers canvas descriptors from its own fiber, as a workflow plugin does.
+ * @param runtime - the runtime.
+ * @param descriptors - a chain anchor, records in use, a node type and node actions to register.
+ * @returns the plugin's fiber.
+ */
+export function mountDescriptors(
+  runtime: SlotTestRuntime,
+  descriptors: { anchor?: ChainAnchor; inUse?: RecordsInUse; nodeType?: NodeType; actions?: readonly NodeAction[] },
+): Promise<FeatureHandle> {
+  return runtime.mount({
+    inject: ['dvCanvas'],
+    apply: (ctx: Context) => {
+      const { anchor, inUse, nodeType, actions = [] } = descriptors
+      if (anchor !== undefined) ctx.effect(() => ctx.dvCanvas.chainAnchors.register(anchor), 'test: chain anchor')
+      if (inUse !== undefined) ctx.effect(() => ctx.dvCanvas.recordsInUse.register(inUse), 'test: records in use')
+      if (nodeType !== undefined) ctx.effect(() => ctx.dvCanvas.nodeTypes.register(nodeType), 'test: node type')
+      for (const action of actions) ctx.effect(() => ctx.dvCanvas.actions.register(action), 'test: node action')
+    },
+  })
+}
+
+/** Forget the page state that a canvas test leaves: the editor rectangle, the opened nodes and <html lang>. */
+export function forgetCanvasStorage(): void {
+  document.documentElement.lang = ''
+  window.localStorage.removeItem('dv-canvas-editor-rect')
+  window.localStorage.removeItem('dv-canvas-seen:p1')
+}

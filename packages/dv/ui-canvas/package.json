@@ -3,13 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The DreamVerse canvas: the records of a project drawn as reference, asset, plan, and take nodes linked by asset flow, with a floating editor that renders a new take or replaces a reference image as a user record.",
+  "description": "The DreamVerse canvas: the nodes of the registered node types drawn in one chrome and linked by asset flow, the dv.canvas Factory that the center view and the sidebar tab render, and the floating editor shell around each type's editor body.",
   "exports": {
     ".": "./src/index.ts",
     "./client": {
       "types": "./lib/types/client/index.d.ts",
       "default": "./lib/client.js"
     },
+    "./contract": "./src/client/contract/index.ts",
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
@@ -39,7 +40,6 @@
     "@dv/ui-asset-pool": "workspace:*",
     "@dv/ui-kit": "workspace:*",
     "@dv/ui-media": "workspace:*",
-    "@dv/ui-reference-kit": "workspace:*",
     "@dv/ui-shell": "workspace:*",
     "@testing-library/react": "^16.1.0",
     "@types/react": "~18.3.1",

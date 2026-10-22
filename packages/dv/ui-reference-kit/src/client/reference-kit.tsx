@@ -1,21 +1,21 @@
 /**
  * The browser half of a reference noun: a component whose slice holds every version of each item, such as the
- * characters of `@dv/ui-character`. `defineReferenceUi` turns one declaration into the noun's canvas node type, version
- * kind, references in use, `@` menu kind, History row and `dv.canvas.editor` entry; `ReferenceEditor` is the default
- * editor body. Every descriptor reads only the noun's own slice and the `proj` records, and every write runs
- * `<key>.update` through the canvas host.
+ * characters of `@dv/ui-character`. `defineReferenceUi` turns one declaration into the UI plugin that registers the
+ * noun's canvas node type with its `dv.canvas.card` and `dv.canvas.editor` entries, its version kind, its references in
+ * use, its `@` menu kind and its History row. Every descriptor reads only the noun's own slice and the `proj` records,
+ * and every write runs `<key>.update` through the canvas host.
  *
  * @module @dv/ui-reference-kit/reference-kit
  */
-import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { CSSProperties, ReactNode } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { CSSProperties, ReactNode } from 'react'
+import type { NodeDataMap, NodeEntry, NodeType, RecordsInUse } from '@dv/ui-canvas/contract'
 import { pickText, useText } from '@dv/ui-kit/locale.ts'
 import type { HistoryRow } from '@dv/ui-history/contract'
-import type {} from '@dv/ui-media/contract'
-import type { MentionKind, NodeType, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
+import type { MentionKind, UiPlugin, VersionKind } from '@dv/ui-kit/registries.ts'
 import type { Asset, WireState } from '@dv/ui-kit/types.ts'
+import type {} from '@dv/ui-media/contract'
 
 /** One version of a reference noun item as the wire sends it. */
 export interface WireReferenceVersion {
@@ -27,44 +27,38 @@ export interface WireReferenceVersion {
   created_by: string
 }
 
+/** The data of a reference noun node: the references of the item's newest version. */
+export interface ReferenceNodeData {
+  references: readonly string[]
+}
+
+/**
+ * The node type keys whose data is {@link ReferenceNodeData}; a noun package merges its key into `NodeDataMap`:
+ *   declare module '@dv/ui-canvas/contract' { interface NodeDataMap { character: ReferenceNodeData } }
+ */
+export type ReferenceKey = { [K in keyof NodeDataMap]: NodeDataMap[K] extends ReferenceNodeData ? K : never }[keyof NodeDataMap]
+
 /** The declaration of one reference noun in the browser. */
-export interface ReferenceUiSpec<V extends WireReferenceVersion = WireReferenceVersion> {
-  /** Package name, such as '@dv/ui-character': the ID of every descriptor and the editor slot key. */
+export interface ReferenceUiSpec<K extends ReferenceKey = ReferenceKey, V extends WireReferenceVersion = WireReferenceVersion> {
+  /** Package name, such as '@dv/ui-character': the owner of every descriptor. */
   id: string
   /** Component key = reference kind = node type = node ID prefix, such as 'character'. */
-  key: string
+  key: K
   /** The noun's slice, such as `state => state.components.character`; undefined while the host half is not loaded. */
   slice: (state: WireState) => Readonly<Record<string, readonly V[]>> | undefined
   /** Card label and picker section, such as ['角色', 'Character']. */
   label: readonly [zh: string, en: string]
   /** The `@` menu section and its order, such as { section: ['角色', 'Characters'], order: 1 }. */
   mention: { section: readonly [zh: string, en: string]; order: number }
-  /** The editor body; default ReferenceEditor. */
-  editor?: (props: ReferenceEditorProps<V>) => ReactNode
 }
 
-/** Props of the editor body of one entry. */
-export type ReferenceEditorProps<V extends WireReferenceVersion = WireReferenceVersion> = PropsRuntime<'dv.canvas.editor'> & PropsRenderFactories & {
-  spec: ReferenceUiSpec<V>
-  /** Extra form rows after the description; `update` runs `<key>.update` with `{ [key]: id, ...params }` and no inputs. */
-  children?: (entry: { id: string; latest: V; update: (params: Record<string, unknown>, intent: string) => void }) => ReactNode
-}
-
-/** The descriptors of one noun and the client plugin body that registers them. */
-export interface ReferenceUi<V extends WireReferenceVersion = WireReferenceVersion> {
-  spec: ReferenceUiSpec<V>
-  nodeType: NodeType
-  versionKind: VersionKind
-  referencesInUse: TakesInUse
-  mentionKind: MentionKind
-  historyRow: HistoryRow
-  /** An arrow function, so `export const apply = <k>.apply` keeps it bound. */
-  apply: (ctx: ClientContext) => void
-}
+/** The body height of a noun card: one row with the first reference, the type label and the count of the others. */
+const BODY_HEIGHT = 30
 
 /** Every item of a noun by ID; a state without the noun's slice holds none, as the initial slice of the host half. */
-const itemsOf = <V extends WireReferenceVersion>(spec: ReferenceUiSpec<V>, state: WireState): Readonly<Record<string, readonly V[]>> =>
-  spec.slice(state) ?? {}
+const itemsOf = <V extends WireReferenceVersion>(
+  spec: ReferenceUiSpec<ReferenceKey, V>, state: WireState,
+): Readonly<Record<string, readonly V[]>> => spec.slice(state) ?? {}
 
 /**
  * Every item of a noun at its newest version, in slice order; an ID without versions is left out.
@@ -73,7 +67,7 @@ const itemsOf = <V extends WireReferenceVersion>(spec: ReferenceUiSpec<V>, state
  * @returns the ID, the newest version and every version of each item.
  */
 function newestOf<V extends WireReferenceVersion>(
-  spec: ReferenceUiSpec<V>, state: WireState,
+  spec: ReferenceUiSpec<ReferenceKey, V>, state: WireState,
 ): Array<{ id: string; latest: V; versions: readonly V[] }> {
   return Object.entries(itemsOf(spec, state)).flatMap(([id, versions]) => {
     const latest = versions.at(-1)
@@ -81,28 +75,44 @@ function newestOf<V extends WireReferenceVersion>(
   })
 }
 
+/** The descriptors of one noun. */
+interface ReferenceDescriptors {
+  nodeType: NodeType
+  versionKind: VersionKind
+  referencesInUse: RecordsInUse
+  mentionKind: MentionKind
+  historyRow: HistoryRow
+}
+
 /**
- * Build the descriptors of one reference noun from its declaration: the node type draws one entry `<key>:<id>` per item
- * at its newest version, the version kind reads every version, the references in use are the producers of the newest
- * references, the mention kind lists `dv:<key>/<id>` items, and the History row names the item of each `<key>.` record.
+ * Build the descriptors of one reference noun from its declaration: the node type draws one slice node `<key>:<id>`
+ * per item at its newest version, the version kind reads every version, the references in use are the producers of
+ * the newest references, the mention kind lists `dv:<key>/<id>` items, and the History row names the item of each
+ * `<key>.` record.
  * @param spec - the noun.
- * @returns the descriptors and the client plugin body.
+ * @returns the descriptors.
  */
-export function defineReferenceUi<V extends WireReferenceVersion>(spec: ReferenceUiSpec<V>): ReferenceUi<V> {
-  const node = (id: string): string => `${spec.key}:${id}`
+export function referenceDescriptors<K extends ReferenceKey, V extends WireReferenceVersion>(
+  spec: ReferenceUiSpec<K, V>,
+): ReferenceDescriptors {
+  const key: string = spec.key
+  const node = (id: string): string => `${key}:${id}`
   const versionOf = (state: WireState, id: string, version: number): V | undefined =>
     itemsOf(spec, state)[id]?.find(entry => entry.version === version)
-  const nodeType: NodeType = {
+  const nodeType: NodeType<K> = {
     id: spec.id,
     type: spec.key,
     label: () => pickText(...spec.label),
     color: 'var(--dv-kind-character)',
     column: 0,
-    entries(state) {
+    entries({ state }) {
       const records = new Map(state.components.proj.records.map(record => [record.id, record]))
-      return newestOf(spec, state).map(({ id, latest, versions }) => ({
-        id: node(id), record: records.get(latest.created_by) ?? null, records: versions.slice(0, -1).map(entry => entry.created_by),
-        title: latest.name || id, media: [...latest.references],
+      return newestOf(spec, state).map(({ id, latest, versions }): NodeEntry<K> => ({
+        id: node(id), title: latest.name || id, record: records.get(latest.created_by) ?? null,
+        records: versions.slice(0, -1).map(entry => entry.created_by), assets: [...latest.references], bodyHeight: BODY_HEIGHT,
+        ref: { kind: spec.key, id },
+        // `ReferenceKey` holds only keys whose data is `ReferenceNodeData`; TypeScript cannot narrow `NodeDataMap[K]` by it.
+        data: { references: [...latest.references] } satisfies ReferenceNodeData as NodeDataMap[K],
       }))
     },
   }
@@ -114,7 +124,7 @@ export function defineReferenceUi<V extends WireReferenceVersion>(spec: Referenc
     name: (state, id, version) => versionOf(state, id, version)?.name ?? null,
     assets: (state, id, version) => [...versionOf(state, id, version)?.references ?? []],
   }
-  const referencesInUse: TakesInUse = {
+  const referencesInUse: RecordsInUse = {
     id: spec.id,
     uses(state) {
       const createdBy = state.components.proj.created_by
@@ -129,16 +139,16 @@ export function defineReferenceUi<V extends WireReferenceVersion>(spec: Referenc
     items: state => newestOf(spec, state).map(({ id, latest }) => {
       const thumb = latest.references[0]
       return {
-        uri: `dv:${spec.key}/${encodeURIComponent(id)}`, label: latest.name || id, description: latest.description.slice(0, 40),
+        uri: `dv:${key}/${encodeURIComponent(id)}`, label: latest.name || id, description: latest.description.slice(0, 40),
         ...thumb === undefined ? {} : { thumb },
       }
     }),
   }
   const historyRow: HistoryRow = {
-    match: `${spec.key}.`,
+    match: `${key}.`,
     // The name that the record gives its item, else the item ID of the noun's ID param.
     subject(record) {
-      for (const param of ['name', spec.key]) {
+      for (const param of ['name', key]) {
         const value = record.params[param]
         const name = typeof value === 'number' ? String(value) : value
         if (typeof name === 'string' && name !== '') return [`「${name}」`, ` “${name}”`]
@@ -146,20 +156,34 @@ export function defineReferenceUi<V extends WireReferenceVersion>(spec: Referenc
       return null
     },
   }
-  /** The `dv.canvas.editor` entry of the noun: its editor body with the declaration added to the slot props. */
-  const Editor = (props: PropsRuntime<'dv.canvas.editor'> & PropsRenderFactories): ReactNode =>
-    spec.editor === undefined ? <ReferenceEditor {...props} spec={spec} /> : spec.editor({ ...props, spec })
+  return { nodeType, versionKind, referencesInUse, mentionKind, historyRow }
+}
+
+/**
+ * Define the UI plugin of one reference noun. The plugin registers its descriptors while their services are present,
+ * and its card and editor entries once the canvas declares their slots, each in any load order; every registration
+ * leaves with its service or with the plugin.
+ * @param spec - the noun.
+ * @returns what Cordis loads.
+ */
+export function defineReferenceUi<K extends ReferenceKey, V extends WireReferenceVersion>(spec: ReferenceUiSpec<K, V>): UiPlugin {
+  const { nodeType, versionKind, referencesInUse, mentionKind, historyRow } = referenceDescriptors(spec)
+  const Card = (props: PropsRuntime<'dv.canvas.card'> & PropsRenderFactories): ReactNode => <ReferenceCard {...props} label={spec.label} />
+  const Editor = (props: PropsRuntime<'dv.canvas.editor'> & PropsRenderFactories): ReactNode => <ReferenceEditor {...props} spec={spec} />
   return {
-    spec, nodeType, versionKind, referencesInUse, mentionKind, historyRow,
+    inject: [],
     apply: (ctx) => {
       ctx.inject(['dvCanvas'], (scope) => {
         scope.effect(() => scope.dvCanvas.nodeTypes.register(nodeType), `${spec.id}: node type`)
-        scope.effect(() => scope.dvCanvas.takesInUse.register(referencesInUse), `${spec.id}: references in use`)
+        scope.effect(() => scope.dvCanvas.recordsInUse.register(referencesInUse), `${spec.id}: references in use`)
         scope.effect(() => scope.dvCanvas.versionKinds.register(versionKind), `${spec.id}: version kind`)
       })
       ctx.inject(['slots'], (scope) => {
+        scope.effect(() => scope.slots.inject('dv.canvas.card', () => scope.slots.register(
+          { name: 'dv.canvas.card', key: spec.key }, Card,
+        )), `${spec.id}: card`)
         scope.effect(() => scope.slots.inject('dv.canvas.editor', () => scope.slots.register(
-          { name: 'dv.canvas.editor', key: spec.id }, Editor,
+          { name: 'dv.canvas.editor', key: spec.key }, Editor,
         )), `${spec.id}: editor`)
       })
       ctx.inject(['dvMentions'], (scope) => {
@@ -170,6 +194,29 @@ export function defineReferenceUi<V extends WireReferenceVersion>(spec: Referenc
       })
     },
   }
+}
+
+/**
+ * The card body of a noun node: its first reference, its type label, and the count of its other references.
+ * @param props - the node, its assets, the text scale, the noun's label, and the Factory renderer.
+ * @returns the element.
+ */
+function ReferenceCard(
+  { node, assets, textScale, label: nounLabel, renderFactorySlot }: PropsRuntime<'dv.canvas.card'> & PropsRenderFactories & { label: readonly [zh: string, en: string] },
+): ReactNode {
+  const pick = useText()
+  const first = assets[node.assets[0] ?? '']
+  const extra = node.assets.length - 1
+  const size = (base: number): number => Math.round(base * textScale)
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 22, padding: '0 10px 8px', fontSize: size(12), lineHeight: `${String(size(16))}px`, color: 'var(--dv-text-2)' }}>
+      <span style={{ flex: 'none', display: 'flex', width: 22, height: 22, borderRadius: 'var(--dv-radius-sm)', overflow: 'hidden', background: 'var(--dv-surface-3)' }}>
+        {first === undefined ? null : renderFactorySlot('dv.media', { asset: first, purpose: 'thumb' })}
+      </span>
+      <span>{pick(...nounLabel)}</span>
+      {extra > 0 ? <span style={{ fontFamily: 'var(--dv-font-mono)' }}>{`+${String(extra)}`}</span> : null}
+    </div>
+  )
 }
 
 // The `dv-canvas-btn` class of the canvas stylesheet paints the fill and the hover of these buttons.
@@ -191,28 +238,31 @@ function referenceBox(asset: Asset | undefined): CSSProperties {
   return { ...referenceImage, aspectRatio: known ? `${String(asset.width)} / ${String(asset.height)}` : '1' }
 }
 
+/** Props of the editor body of one noun node. */
+type ReferenceEditorProps = PropsRuntime<'dv.canvas.editor'> & PropsRenderFactories & { spec: ReferenceUiSpec }
+
 /**
- * The references grid, the description and ＋ 添加素材 of one entry; each change writes `<key>.update` through
- * `host.run`. Each reference draws through `dv.media`, opens the canvas's preview and can be removed while more than
- * one is left; 添加素材 appends the assets picked in the canvas's picker. Nothing renders when no item of the noun has
- * the entry's node ID.
- * @param props - the entry, the state it came from, the canvas host, the noun, and the extra rows.
+ * The references grid, the description and ＋ 添加素材 of one item; each change writes `<key>.update` through
+ * `host.run`. Each reference opens the asset preview and can be removed while more than one is left; 添加素材 appends
+ * the assets picked in the canvas's picker. Nothing renders when no item of the noun has the node's ID.
+ * @param props - the node, the state it came from, the canvas host, the noun, and the Factory renderer.
  * @returns the element.
  */
-export function ReferenceEditor<V extends WireReferenceVersion>(props: ReferenceEditorProps<V>): ReactNode {
+function ReferenceEditor(props: ReferenceEditorProps): ReactNode {
   const { node, state, host, spec, renderFactorySlot } = props
   const pick = useText()
-  const prefix = `${spec.key}:`
+  const key: string = spec.key
+  const prefix = `${key}:`
   const id = node.id.startsWith(prefix) ? node.id.slice(prefix.length) : null
   const latest = id === null ? undefined : itemsOf(spec, state)[id]?.at(-1)
   if (id === null || latest === undefined) return null
-  const operation = `${spec.key}.update`
+  const operation = `${key}.update`
   const name = latest.name || id
   const references = latest.references
   const assets = new Map(state.assets.map(asset => [asset.id, asset]))
   // `<key>.update` writes the next version with exactly these references.
   const update = (next: readonly string[], intent: string): void => {
-    host.run({ operation, params: { [spec.key]: id }, inputs: next.map(ref => ({ role: 'reference', ref })), intent })
+    host.run({ operation, params: { [key]: id }, inputs: next.map(ref => ({ role: 'reference', ref })), intent })
   }
   const addReferences = (picked: readonly string[]): void => {
     const added = picked.filter(ref => !references.includes(ref))
@@ -246,11 +296,8 @@ export function ReferenceEditor<V extends WireReferenceVersion>(props: Reference
         })}
       </div>
       {latest.description === '' ? null : <><span style={label}>{pick('描述', 'Description')}</span><p style={{ margin: 0 }}>{latest.description}</p></>}
-      {props.children?.({
-        id, latest, update: (params, intent) => { host.run({ operation, params: { [spec.key]: id, ...params }, intent }) },
-      })}
       <div style={{ marginTop: 12 }}>
-        <button type="button" className="dv-canvas-btn" style={button} onClick={() => { host.pickAssets(references, addReferences) }}>{pick('＋ 添加素材', '+ Add asset')}</button>
+        <button type="button" className="dv-canvas-btn" style={button} onClick={() => { host.pickAssets(references, { versions: false }, addReferences) }}>{pick('＋ 添加素材', '+ Add asset')}</button>
       </div>
     </div>
   )

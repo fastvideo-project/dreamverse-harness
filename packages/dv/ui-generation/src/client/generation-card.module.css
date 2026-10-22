@@ -1,4 +1,4 @@
-/* The chat card of a dv_shot_render call and its 在历史中查看 button. */
+/* The chat card of a generation call and its 在历史中查看 button. */
 .card {
   margin: 6px 0;
   padding: 10px 12px;
@@ -43,8 +43,9 @@
   color: var(--dv-text-2);
 }
 
-.video {
-  display: block;
+.media {
+  display: flex;
+  overflow: hidden;
   width: 100%;
   margin-top: 8px;
   aspect-ratio: 16 / 9;

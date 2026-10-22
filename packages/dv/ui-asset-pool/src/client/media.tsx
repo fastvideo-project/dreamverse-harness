@@ -15,6 +15,9 @@ import type { Asset, WireState } from '@dv/ui-kit/types.ts'
 import { clipPeaks, useAudioEnvelope } from '@dv/ui-kit/waveform.ts'
 import type { MediaType } from '@dv/ui-media/contract'
 
+/** The package name: the owner of the media types. */
+const ID = '@dv/ui-asset-pool'
+
 const fill: CSSProperties = { display: 'block', width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }
 /** The badge sits on video frames, so it keeps the same light fill and dark glyph in both themes. */
 const playBadge: CSSProperties = {
@@ -47,9 +50,9 @@ export interface MediaTypeEntry {
  * that made it, and a video without one, such as an imported video, has no poster.
  */
 export const MEDIA_TYPES: readonly MediaTypeEntry[] = [
-  { type: { id: 'image', icon: IconPaperclipOutlineRegular, poster: asset => asset.id }, View: ImageView },
-  { type: { id: 'video', icon: IconPlayOutlineRegular, poster: videoStill }, View: VideoView },
-  { type: { id: 'audio', icon: IconMicrophoneOutlineRegular }, View: AudioView },
+  { type: { id: 'image', owner: ID, icon: IconPaperclipOutlineRegular, poster: asset => asset.id }, View: ImageView },
+  { type: { id: 'video', owner: ID, icon: IconPlayOutlineRegular, poster: videoStill }, View: VideoView },
+  { type: { id: 'audio', owner: ID, icon: IconMicrophoneOutlineRegular }, View: AudioView },
 ]
 
 /**

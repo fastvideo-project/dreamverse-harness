@@ -1,5 +1,5 @@
 ---
-description: "DreamVerse 素材库面板：在右侧栏标签里列出项目的图片和视频，可导入、拖入画布或时间线、打开素材预览；以及图片、视频和音频媒体类型及其视图。"
+description: "DreamVerse 素材库面板：在右侧栏标签里列出项目的图片和视频，可导入、拖入画布或时间线、打开素材预览；画布的素材节点；以及图片、视频和音频媒体类型及其视图。"
 kind: "package-reference"
 ---
 
@@ -31,7 +31,7 @@ kind: "package-reference"
   name: '@dv/ui-asset-pool'
 ```
 
-Host 半边不注册任何东西。浏览器半边注册 `dv-asset-pool` 标签类型（侧栏指南页以"素材库"提供的页面）和以自身 id `@dv/ui-asset-pool` 为键的标签主体。其他标签在前面时，该标签保持挂载。它还以键 `assets` 向 `@dv/ui-canvas` 画布的键控插槽 `dv.canvas.picker`（它的 `SlotMap` 条目在 `@dv/ui-kit/registries.ts` 中）填入 `AssetsPanel`，即画布素材选择窗口里的面板，点击缩略图调用选择窗口的 `onOpen` 并选中素材。只要 `@dv/ui-media` 的媒体服务 `dvMedia` 存在，它就在 `dvMedia.types` 中注册媒体类型 `image`、`video` 和 `audio`，每个类型与其视图（`ImageView`、`VideoView`、`AudioView`）在同一步里注册为同一个键上的 `dv.media.view` 条目，所以没注册成功的类型不留下视图；浏览器无法解码的图片、视频或音频播放器调用 `unsupported()`，由文件卡片代替它。每个素材都通过 `asset.import` 进入项目，所以这些媒体类型归本包所有。
+Host 半边不注册任何东西。浏览器半边注册 `dv-asset-pool` 标签类型（侧栏指南页以"素材库"提供的页面）和以自身 id `@dv/ui-asset-pool` 为键的标签主体。其他标签在前面时，该标签保持挂载。它填充 `@dv/ui-canvas/contract` 声明的三个键控插槽：以键 `assets` 在 `dv.canvas.picker` 填入 `AssetsPanel`，即画布素材选择窗口里的面板，点击缩略图调用选择窗口的 `onOpen` 并选中素材；以键 `asset` 在 `dv.canvas.card` 填入 `AssetCard`，它在 16:9 框里通过 `dv.media` 组件工厂以用途 `card` 绘制素材；以键 `asset` 在 `dv.canvas.editor` 填入 `AssetEditor`，它在 `@dv/ui-kit` 的 `playerBox(asset, 360)` 给定大小的框里以用途 `player` 绘制素材。只要画布服务 `dvCanvas` 存在，它就在 `dvCanvas.nodeTypes` 注册节点类型 `asset`（`assetNodeType`），在 `dvCanvas.actions` 注册动作 `@dv/ui-asset-pool:unplace`：从画布移除 / Remove from canvas（order 为 20，在 `asset` 节点上）关闭编辑器，并通过宿主的 `setPlaced` 把素材移出画布列表，素材仍留在素材库里。该节点类型为画布列表（`asset` 切片的 `placed`）上的每个素材画一个替身节点：取自当前状态中第一条导入该素材的 `asset.import` 记录，没有时为不带记录的 `asset:<id>`（撤销越过的导入、静帧或导出），标题为素材名称并带其时长；只有在没有其他节点拥有该素材时，替身节点才显示。只要 `@dv/ui-media` 的媒体服务 `dvMedia` 存在，它就在 `dvMedia.types` 中注册媒体类型 `image`、`video` 和 `audio`，每个类型与其视图（`ImageView`、`VideoView`、`AudioView`）在同一步里注册为同一个键上的 `dv.media.view` 条目，所以没注册成功的类型不留下视图；浏览器无法解码的图片、视频或音频播放器调用 `unsupported()`，由文件卡片代替它。每个素材都通过 `asset.import` 进入项目，所以这些媒体类型归本包所有。
 
 | 手势 | 请求或事件 |
 | --- | --- |
@@ -55,18 +55,19 @@ Host 半边不注册任何东西。浏览器半边注册 `dv-asset-pool` 标签�
 <details>
 <summary>实现内部——点击展开</summary>
 
-`assetLibrary` 把状态中的素材分为图片和视频，每个素材只出现一次；生产记录（`created_by`）同时输出了视频的图片（例如渲染镜头的最后一帧）归入 `extracted`。状态已经带上每个素材在本项目中的导入名字和时间（`ProjectAsset`），因为素材库保存的是任意项目中相同字节第一次导入时的名字和时间。`AssetsPanel` 把 API 客户端 `client` 和回调 `preview` 作为必需属性。没有 `onOpen` 属性时，点击缩略图以该缩略图调用 `preview`，插件把 `preview` 绑定到 `dvMedia.preview`；有该属性时，点击改为调用 `onOpen`，画布把它传给 `dv.canvas.picker` 条目。插槽条目在其插槽声明期间注册，媒体类型在 `dvMedia` 存在期间注册，它们都随插件一起移除。
+`assetLibrary` 把状态中的素材分为图片和视频，每个素材只出现一次；生产记录（`created_by`）同时输出了视频的图片（例如渲染镜头的最后一帧）归入 `extracted`。状态已经带上每个素材在本项目中的导入名字和时间（`ProjectAsset`），因为素材库保存的是任意项目中相同字节第一次导入时的名字和时间。`AssetsPanel` 把 API 客户端 `client` 和回调 `preview` 作为必需属性。没有 `onOpen` 属性时，点击缩略图以该缩略图调用 `preview`，插件把 `preview` 绑定到 `dvMedia.preview`；有该属性时，点击改为调用 `onOpen`，画布把它传给 `dv.canvas.picker` 条目。插槽条目在其插槽声明期间注册，注册表条目在其服务存在期间注册，它们都随插件一起移除。
 
 | 文件 | 内容 |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | Host 半边，不注册任何东西 |
 | [`src/css-modules.d.ts`](src/css-modules.d.ts) | CSS Module 导入的类型 |
-| [`src/client/index.ts`](src/client/index.ts) | 标签类型、标签主体、画布选择窗口插槽条目，以及媒体类型及其视图的注册 |
+| [`src/client/index.ts`](src/client/index.ts) | 标签类型、标签主体、画布选择窗口、卡片和编辑器条目、节点类型及其动作，以及媒体类型及其视图的注册 |
 | [`src/client/definition.ts`](src/client/definition.ts) | 标签类型 |
 | [`src/client/AssetsPanel.tsx`](src/client/AssetsPanel.tsx) | 面板、拖放区、按组分的缩略图网格和标签主体 |
 | [`src/client/AssetsPanel.module.css`](src/client/AssetsPanel.module.css) | 面板的样式 |
 | [`src/client/media.tsx`](src/client/media.tsx) | 图片、视频和音频媒体类型及其 `dv.media.view` 条目 |
 | [`src/client/library.ts`](src/client/library.ts) | 把项目的素材按媒体类型分组，并单列渲染静帧 |
+| [`src/client/canvas.tsx`](src/client/canvas.tsx) | `asset` 节点类型、其卡片和编辑器主体，以及 从画布移除 / Remove from canvas |
 
 </details>
 
@@ -77,6 +78,7 @@ Host 半边不注册任何东西。浏览器半边注册 `dv-asset-pool` 标签�
 
 - [`@dv/api`](../api/README.zh.md) — 状态路由和素材导入路由。
 - [`@dv/asset-pool`](../asset-pool/README.zh.md) — 保存并提供素材文件的素材库。
+- [`@dv/ui-canvas`](../ui-canvas/README.zh.md) — 画布、其素材选择窗口，以及节点类型和动作的注册表。
 - [`@dv/ui-kit`](../ui-kit/README.zh.md) — API 客户端、wire 类型、素材拖动类型和波形。
 - [`@dv/ui-media`](../ui-media/README.zh.md) — `dv.media` 组件工厂、媒体类型注册表和素材预览。
 

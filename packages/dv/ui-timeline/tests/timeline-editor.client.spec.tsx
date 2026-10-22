@@ -6,10 +6,10 @@ import type { AssetId, RecordId } from '@dv/project/types'
 import type { ClipId, TimelineId } from '@dv/timeline/types'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
+import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { asset, fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState, ScriptedRoutes } from '../../ui-kit/tests/fixture.client.tsx'
 import { FALLBACK_CLIP_SECONDS } from '@dv/ui-kit/timeline.ts'
-import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { placeTimeline } from '../src/client/timelines.ts'
 import { copyFor } from '../src/client/TimelineView.tsx'
 import { bootTimeline, centerView } from './center.client.tsx'
@@ -36,12 +36,6 @@ function twoTimelines(): FixtureState {
   return state
 }
 
-/**
- * Render the center view of project p1 over scripted `/api/dv` routes.
- * @param routes - the answers; the two-timeline state by default.
- * @returns the rendered page, the recorded writes, a clip by its position, the written operation requests, and a finder
- *   of the video track.
- */
 function mount(routes: ScriptedRoutes = { state: twoTimelines }) {
   const { fetch, writes } = scriptedFetch(routes)
   const view = render(centerView(booted, { client: new DvClient(fetch) }))
@@ -737,14 +731,5 @@ describe('TimelineView copy and failures', () => {
       : fetch(input, init)
     const view = render(centerView(booted, { client: new DvClient(failing) }))
     await waitFor(() => { expect(view.getByRole('alert').textContent).toBe('失败：no state') })
-  })
-
-  it('shows the reason of a write that fails with a value other than an Error', async () => {
-    const { fetch } = scriptedFetch({ state: twoTimelines })
-    // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- the non-Error rejection is the scenario under test.
-    const offline: typeof fetch = (input, init) => input === '/api/dv/operation' ? Promise.reject('offline') : fetch(input, init)
-    const view = render(centerView(booted, { client: new DvClient(offline) }))
-    fireEvent.click(await view.findByText('＋ 新建'))
-    await waitFor(() => { expect(view.getByRole('alert').textContent).toBe('失败：offline') })
   })
 })

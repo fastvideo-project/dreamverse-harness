@@ -1,15 +1,16 @@
 // @vitest-environment jsdom
 /**
- * The plugin's registrations, the `dvHistory` service, the center moves of the tab body through `dvCenter`, the tab
- * opening on `dv:history-focus`, and their removal when the plugin goes.
+ * The plugin's registrations, the `dvHistory` service and its record label, the center moves of the tab body through
+ * `dvCenter`, the tab opening on `dv:history-focus`, and their removal when the plugin goes.
  */
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import { DvClient } from '@dv/ui-kit/api.ts'
-import type { HistoryRow } from '../src/client/contract/index.ts'
-import { DV_HISTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 import type { CenterTarget } from '@dv/ui-shell/contract'
+import { DV_HISTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
+import { OPERATIONS, record } from '../../ui-kit/tests/fixture.client.tsx'
+import type { HistoryRow } from '../src/client/contract/index.ts'
 import { HistoryTabBody, type HistoryInjected } from '../src/client/HistoryPanel.tsx'
 import { HISTORY_ID, HISTORY_KIND } from '../src/client/definition.ts'
 import { apply, inject } from '../src/client/index.ts'
@@ -66,14 +67,22 @@ describe('ui-history apply', () => {
     expect(opened).toEqual([HISTORY_KIND])
   })
 
-  it('provides dvHistory, whose rows reach the tab body and leave on disposal', async () => {
+  it('provides dvHistory, whose rows reach the tab body, refuse a second row of one operation, and leave on disposal', async () => {
     const { ctx, registered } = await boot()
     const row: HistoryRow = { match: 'story.approve', subject: () => [' p1 v1', ' p1 v1'] }
     const dispose = ctx.dvHistory.rows.register(row)
-    expect(registered[0]?.inject().rows).toBe(ctx.dvHistory.rows)
-    expect(ctx.dvHistory.rows.list()).toEqual([row])
+    expect(registered[0]?.inject().hooks.rows).toBe(ctx.dvHistory.rows)
+    expect(ctx.dvHistory.rows.getSnapshot()).toEqual([row])
+    expect(() => ctx.dvHistory.rows.register({ ...row })).toThrow('already registered by the History row of story.approve')
     dispose()
-    expect(ctx.dvHistory.rows.list()).toEqual([])
+    expect(ctx.dvHistory.rows.getSnapshot()).toEqual([])
+  })
+
+  it('describes a record by its operation label and the subject of its registered row', async () => {
+    const { ctx } = await boot()
+    ctx.dvHistory.rows.register({ match: 'shot.render', subject: () => [' 7', ' 7'] })
+    expect(ctx.dvHistory.describe(record({ id: 'g1', operation: 'shot.render' }), OPERATIONS)[1]).toMatch(/ 7$/)
+    expect(ctx.dvHistory.describe(record({ id: 'o', operation: 'other.thing' }), OPERATIONS)).toEqual(['other.thing', 'other.thing'])
   })
 
   it('moves the center through dvCenter while the shell provides it, and does nothing without it', async () => {

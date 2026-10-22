@@ -1,11 +1,10 @@
-/** The takes that the timelines use, as the canvas reads them, and their registration in `dvCanvas`. */
+/** The records that the timelines use, as the canvas reads them, and their registration in `dvCanvas.recordsInUse`. */
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import type { AssetId, RecordId } from '@dv/project/types'
 import type { ClipId, TimelineId } from '@dv/timeline/types'
-import { createRegistry } from '@dv/ui-kit/registries.ts'
-import type { ChainAnchor, DvCanvas, NodeType, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
+import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
 import { fixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { TIMELINE_ID } from '../src/client/definition.ts'
 import { apply } from '../src/client/index.ts'
@@ -44,15 +43,10 @@ describe('timelineTakesInUse', () => {
   })
 })
 
-describe('ui-timeline takes in use', () => {
+describe('ui-timeline records in use', () => {
   it('registers once dvCanvas is present, and the plugin disposal removes it', async () => {
     const ctx = new Context()
-    const canvas: DvCanvas = {
-      nodeTypes: createRegistry<NodeType>(kind => [kind.id]),
-      chainAnchors: createRegistry<ChainAnchor>(anchor => [anchor.starter]),
-      takesInUse: createRegistry<TakesInUse>(uses => [uses.id]),
-      versionKinds: createRegistry<VersionKind>(kind => [kind.kind]),
-    }
+    const canvas = createDvCanvas()
     const locale = { bind: vi.fn(() => t), register: vi.fn(() => () => undefined) }
     const slots = { inject: vi.fn(() => () => undefined) }
     const tabs = { register: vi.fn(() => () => undefined) }
@@ -61,11 +55,11 @@ describe('ui-timeline takes in use', () => {
     ctx.provide('sidebarRightTabs', tabs as never)
     const fiber = ctx.plugin({ apply })
     await fiber.await()
-    expect(canvas.takesInUse.list()).toEqual([])
+    expect(canvas.recordsInUse.getSnapshot()).toEqual([])
     ctx.provide('dvCanvas', canvas)
-    await vi.waitFor(() => { expect(canvas.takesInUse.list().map(entry => entry.id)).toEqual([TIMELINE_ID]) })
-    expect(canvas.takesInUse.list()[0]?.uses(fixtureState())).toEqual(['g1', 'g2'])
+    await vi.waitFor(() => { expect(canvas.recordsInUse.getSnapshot().map(entry => entry.id)).toEqual([TIMELINE_ID]) })
+    expect(canvas.recordsInUse.getSnapshot()[0]?.uses(fixtureState())).toEqual(['g1', 'g2'])
     await fiber.dispose()
-    expect(canvas.takesInUse.list()).toEqual([])
+    expect(canvas.recordsInUse.getSnapshot()).toEqual([])
   })
 })

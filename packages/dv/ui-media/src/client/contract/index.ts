@@ -26,6 +26,8 @@ export type MediaPurpose = 'thumb' | 'card' | 'player' | 'loop'
 export interface MediaType {
   /** The media type, such as 'audio', as `mediaTypeOf` of `@dv/ui-kit/media-type.ts` reads it; the key of its `dv.media.view` entry. */
   id: string
+  /** The registering package; a refused key names it. */
+  owner: string
   /** The icon drawn where no poster exists, such as the `@` menu. */
   icon: ComponentType<IconProps>
   /**

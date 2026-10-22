@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "DreamVerse asset pool panel as a right-Sidebar tab: the project's images and videos, with import, drag into the canvas or the timeline, and preview.",
+  "description": "DreamVerse asset pool: the project's assets as a right-Sidebar tab with import, drag into the canvas or the timeline, and preview; the canvas node type of placed assets; and the image, video and audio media views.",
   "exports": {
     ".": "./src/index.ts",
     "./client": {
@@ -36,6 +36,7 @@
     "@deepseek-ai/dsh-client-ui-session": "workspace:*",
     "@deepseek-ai/dsh-client-ui-sidebar-right": "workspace:*",
     "@deepseek-ai/dsh-client-ui-slots": "workspace:*",
+    "@dv/ui-canvas": "workspace:*",
     "@dv/ui-kit": "workspace:*",
     "@dv/ui-media": "workspace:*",
     "@testing-library/react": "^16.1.0",

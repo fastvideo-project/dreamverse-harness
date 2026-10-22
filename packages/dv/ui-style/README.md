@@ -1,5 +1,5 @@
 ---
-description: "Browser half of the DreamVerse style component: the canvas node type, version kind, references in use, editor, @ menu kind and History row of the styles, declared with defineReferenceUi."
+description: "Browser half of the DreamVerse style component: the canvas node type, card, editor, version kind, references in use, @ menu kind and History row of the styles, declared with defineReferenceUi."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to show the styles of `@dv/style` in the DreamVerse views. One `defineReferenceUi` declaration of `@dv/ui-reference-kit/reference-kit.tsx` gives the noun its canvas node type `style` (label 风格 / Style, node ID `style:<id>`), its version kind, its references in use, its `dv.canvas.editor` entry (the default `ReferenceEditor`), its `@` menu kind (section 风格 / Styles, order 3, address `dv:style/<id>`), and its History row (`style.`).
+Use this package to show the styles of `@dv/style` in the DreamVerse views. One `defineReferenceUi` declaration of `@dv/ui-reference-kit/reference-kit.tsx` gives the noun its canvas node type `style` (label 风格 / Style, node ID `style:<id>`), its version kind, its references in use, its `dv.canvas.card` and `dv.canvas.editor` entries (the kit's default card and `ReferenceEditor`), its `@` menu kind (section 风格 / Styles, order 3, address `dv:style/<id>`), and its History row (`style.`).
 
 ## Table of Contents
 
@@ -24,7 +24,7 @@ Use this package to show the styles of `@dv/style` in the DreamVerse views. One 
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin in a profile that stacks `dsh-web-app`, `@dv/api`, `@dv/style` and `@dv/ui-canvas`. Build the browser bundle first: `pnpm run build` writes `lib/client.js`.
+Mount the plugin in a profile that stacks `dsh-web-app`, `@dv/api`, `@dv/style`, `@dv/ui-canvas`, and `@dv/ui-media`, whose `dv.media` Factory draws the reference assets. Build the browser bundle first: `pnpm run build` writes `lib/client.js`.
 
 ```yaml
 - id: dv-ui-style
@@ -41,7 +41,7 @@ The Host half registers nothing. The browser half registers each descriptor whil
 | File | Content |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | The inert Host Loader entry |
-| [`src/client/index.ts`](src/client/index.ts) | The `defineReferenceUi` declaration `style` and the client plugin body `apply` |
+| [`src/client/index.ts`](src/client/index.ts) | The `defineReferenceUi` declaration, whose `inject` and `apply` the file exports, and the `style: ReferenceNodeData` entry of `NodeDataMap` |
 
 -----
 
@@ -49,7 +49,7 @@ The Host half registers nothing. The browser half registers each descriptor whil
 ## Further Exploration
 
 - [`@dv/style`](../style/README.md): the `style` slice and its operations.
-- [`@dv/ui-kit`](../ui-kit/README.md): what `defineReferenceUi` builds.
+- [`@dv/ui-reference-kit`](../ui-reference-kit/README.md): what `defineReferenceUi` builds.
 
 -----
 

@@ -25,11 +25,13 @@ export default defineConfig(({ env }) => {
         '**/node_modules/**', '**/dist/**', '**/test?(s)/**', '**/t?(e)mp/**',
         // The FastVideo generation client loads from source through the dsh launcher's tsx hook and has no build step.
         'packages/dv/fastvideo-generation-client/**',
-        // Video harness host packages load from source the same way; ui-kit and ui-reference-kit are bundled into the
-        // client plugins that import them. One pattern per package: the matcher does not expand braces.
+        // Video harness host packages load from source the same way; ui-kit, ui-reference-kit and ui-generation are
+        // bundled into the client plugins that import them. One pattern per package: the matcher does not expand
+        // braces.
         'packages/video-harness/oplog/**', 'packages/video-harness/runtime/**',
         'packages/dv/chat-references/**',
         'packages/dv/api/**', 'packages/dv/ui-kit/**', 'packages/dv/ui-reference-kit/**',
+        'packages/dv/ui-generation/**',
         'packages/video-harness/stream/**',
         'packages/bundle/dv/**',
         // The DreamVerse browser stories are tests only and have no build output.

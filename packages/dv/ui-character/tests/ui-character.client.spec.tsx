@@ -1,32 +1,36 @@
 // @vitest-environment jsdom
 /**
- * The character noun in the browser: its canvas node type, version kind, `@` menu kind and History row, the
- * registration and removal of every descriptor, and the `dv.canvas.editor` entry with its writes.
+ * The character noun in the browser, mounted beside the real media, composer and History plugins: its card and editor
+ * on the canvas node `character:c1`, its picker section, its items in the `@` menu, its History rows, and the removal of
+ * every registration with the plugin.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render } from '@testing-library/react'
-import { Context } from '@deepseek-ai/cordis'
+import { cleanup, fireEvent } from '@testing-library/react'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
-import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
-import { buildCanvasGraph } from '@dv/ui-canvas/src/client/graph.ts'
-import { NodeCard, type CanvasTranslate, type DrawMedia } from '@dv/ui-canvas/src/client/NodeCard.tsx'
-import { zh } from '@dv/ui-canvas/src/client/locales.ts'
 import type { AssetId, RecordId } from '@dv/project/types'
 import type { CharacterId } from '@dv/character/types'
-import { projectItems } from '@dv/ui-composer/src/client/mention.ts'
-import { actionLabel } from '@dv/ui-history/src/client/rows.ts'
-import { createRegistry } from '@dv/ui-kit/registries.ts'
-import type { DvHistory, HistoryRow } from '@dv/ui-history/contract'
-import type {
-  ChainAnchor, DvCanvas, DvMentions, EntryEditorHost, MentionKind, NodeType, TakesInUse, VersionKind,
-} from '@dv/ui-kit/registries.ts'
-import type { WireOperation, WireState } from '@dv/ui-kit/types.ts'
-import { fixtureState, record } from '../../ui-kit/tests/fixture.client.tsx'
-import { apply, character } from '../src/client/index.ts'
+import type { CardHost, NodeHost, NodeView } from '@dv/ui-canvas/contract'
+import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
+import type { MentionKind } from '@dv/ui-kit/registries.ts'
+import type { Asset, WireOperation, WireState } from '@dv/ui-kit/types.ts'
+import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
+import { buildCanvasGraph } from '../../ui-canvas/src/client/graph.ts'
+import { apply as composerApply, inject as composerInject } from '../../ui-composer/src/client/index.ts'
+import type { projectMentionSource } from '../../ui-composer/src/client/mention.ts'
+import { apply as historyApply, inject as historyInject } from '../../ui-history/src/client/index.ts'
+import { actionLabel } from '../../ui-history/src/client/rows.ts'
+import { fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
+import { apply, inject } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
+
+/** The `@` source that the composer registers. */
+type MentionSource = ReturnType<typeof projectMentionSource>
 
 afterEach(() => {
   cleanup()
+  vi.unstubAllGlobals()
+  publishCurrentProject(null)
   document.documentElement.lang = ''
 })
 
@@ -50,14 +54,62 @@ function nounState(): WireState {
   return state
 }
 
-/** @returns empty canvas registries keyed as `DvCanvas` documents. */
-function canvasRegistries(): DvCanvas {
-  return {
-    nodeTypes: createRegistry<NodeType>(type => [type.id]),
-    chainAnchors: createRegistry<ChainAnchor>(anchor => [anchor.starter]),
-    takesInUse: createRegistry<TakesInUse>(uses => [uses.id]),
-    versionKinds: createRegistry<VersionKind>(kind => [kind.kind]),
-  }
+/**
+ * A runtime whose frame declares the canvas's card and editor slots, with `dvCanvas`, the real media, composer and
+ * History plugins, and the character plugin mounted.
+ * @returns the runtime, the handle of the character plugin, and the `@` sources that the composer registered.
+ */
+async function mountCharacter() {
+  const runtime = await SlotTestRuntime.create()
+  const sources: MentionSource[] = []
+  runtime.ctx.provide('dvCanvas', createDvCanvas())
+  runtime.ctx.provide('inputTriggers', {
+    registerSource: (source: MentionSource) => {
+      sources.push(source)
+      return () => { sources.splice(sources.indexOf(source), 1) }
+    },
+  } as never)
+  runtime.ctx.provide('sidebarRight', {} as never)
+  runtime.ctx.provide('sidebarRightTabs', { register: () => () => {} } as never)
+  await runtime.declare({ 'dv.canvas.card': { kind: 'keyed', scope: 'root' }, 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } })
+  await runtime.mount({ inject: [...mediaInject], apply: mediaApply })
+  await runtime.mount({ inject: [...composerInject], apply: composerApply })
+  await runtime.mount({ inject: [...historyInject], apply: historyApply })
+  const plugin = await runtime.mount({ inject: [...inject], apply })
+  return { runtime, plugin, sources }
+}
+
+/**
+ * The node that the canvas builds from a state with the registered node types, as its card and editor receive it.
+ * @param runtime - a runtime from {@link mountCharacter}.
+ * @param state - a project state.
+ * @param id - the node ID.
+ * @returns the node, or undefined when the canvas draws none.
+ */
+function nodeOf(runtime: SlotTestRuntime, state: WireState, id: string): NodeView | undefined {
+  const canvas = runtime.ctx.dvCanvas
+  const graph = buildCanvasGraph(state, new Set(), [], 'zh', {
+    nodeTypes: canvas.nodeTypes.getSnapshot(), chainAnchors: canvas.chainAnchors.getSnapshot(),
+    recordsInUse: canvas.recordsInUse.getSnapshot(), versionKinds: canvas.versionKinds.getSnapshot(),
+  })
+  const found = graph.nodes.find(node => node.id === id)
+  return found === undefined ? undefined : { ...found, unseen: false, rerunning: false }
+}
+
+/** @returns the wire asset of each of the node's assets, as the canvas hands them to a card. */
+const assetsOf = (state: WireState, node: NodeView): Record<string, Asset> =>
+  Object.fromEntries(state.assets.filter(entry => node.assets.includes(entry.id)).map(entry => [entry.id, entry]))
+
+/** @returns a card host whose methods record their calls. */
+const cardHost = (): CardHost => ({ run: vi.fn<CardHost['run']>(), rerun: vi.fn<CardHost['rerun']>() })
+
+/**
+ * The `@` candidates of the composer's source for an empty query, over a scripted `/api/dv/state`.
+ * @param sources - the registered sources.
+ * @returns the candidates.
+ */
+async function candidates(sources: readonly MentionSource[]) {
+  return await sources[0]?.candidates({} as never, { query: '', signal: new AbortController().signal } as never) ?? []
 }
 
 /**
@@ -71,102 +123,92 @@ const declared = (name: string, zh: string, en: string): WireOperation => ({
   name, version: '1', description: name, label: { zh, en }, inputs: {}, params: {}, outputs: [], deterministic: false, resource: 'none', confirm: 'never',
 })
 
-describe('the character descriptors', () => {
-  it('labels the node type and the version kind 角色 / Character, which titles the picker section, and reads every version', () => {
+describe('the character plugin', () => {
+  it('draws character:c1 as a 角色 card titled 阿明 under the picker section 角色, whose editor writes character.update', async () => {
     document.documentElement.lang = 'zh-CN'
+    const { runtime } = await mountCharacter()
     const state = nounState()
-    const { nodeType, versionKind } = character
-    expect([nodeType.id, nodeType.type, nodeType.column, nodeType.label(), versionKind.kind, versionKind.label()])
-      .toEqual(['@dv/ui-character', 'character', 0, '角色', 'character', '角色'])
-    expect(nodeType.entries(state).filter(entry => entry.id === 'character:c1').map(entry => [entry.id, entry.title, entry.media, entry.records]))
-      .toEqual([['character:c1', '阿明', ['shot1-last.png', 'ref.png'], ['n1']]])
-    expect([versionKind.node('c1'), versionKind.name(state, 'c1', 1), versionKind.assets(state, 'c1', 1)]).toEqual(['character:c1', '阿明', ['ref.png']])
-    expect(versionKind.latest(state)).toContainEqual({ id: 'c1', version: 2 })
-    document.documentElement.lang = 'en'
-    expect([nodeType.label(), versionKind.label()]).toEqual(['Character', 'Character'])
-    expect(character.referencesInUse.uses(state)).toContain('g1')
-  })
-
-  it('lists the newest characters in the @ section 角色 at order 1, and a pick inserts dv:character/<id>', () => {
-    document.documentElement.lang = 'zh-CN'
-    const { mentionKind } = character
-    expect([mentionKind.id, mentionKind.kind, mentionKind.order, mentionKind.section()]).toEqual(['@dv/ui-character', 'character', 1, '角色'])
-    const item = projectItems(nounState(), [mentionKind], []).find(entry => entry.uri === 'dv:character/c1')
-    expect([item?.label, item?.section, item?.description]).toEqual(['阿明', '角色', ''])
-    document.documentElement.lang = 'en'
-    expect(mentionKind.section()).toBe('Characters')
-  })
-
-  it('names the History rows 新建角色「阿明」 and 修改角色「阿明」', () => {
-    const context = {
-      operations: [declared('character.create', '新建角色', 'Create character'), declared('character.update', '修改角色', 'Update character')],
-      rows: [character.historyRow], records: new Map(),
-    }
-    expect(character.historyRow.match).toBe('character.')
-    const row = (operation: string, params: Record<string, unknown>) => actionLabel(record({ id: 'h', operation, params }), context)
-    expect(row('character.create', { character: 'c1', name: '阿明' })).toEqual(['新建角色「阿明」', 'Create character “阿明”'])
-    expect(row('character.update', { character: 'c1', name: '阿明' })).toEqual(['修改角色「阿明」', 'Update character “阿明”'])
-    expect(row('character.update', { character: 'c1' })).toEqual(['修改角色「c1」', 'Update character “c1”'])
-  })
-
-  it('draws the card of character:c1 with the label 角色, the name and the references, as data-node-type character', () => {
-    document.documentElement.lang = 'zh-CN'
-    const state = nounState()
-    const node = buildCanvasGraph(state, undefined, [], 'zh', [], [], [character.nodeType], [character.versionKind]).nodes
-      .find(entry => entry.id === 'character:c1')
+    const node = nodeOf(runtime, state, 'character:c1')
     if (node === undefined) throw new Error('no node character:c1')
-    const t: CanvasTranslate = makeTranslate(zh)
-    // The canvas draws each asset through `dv.media`; this drawing names the asset and the purpose that the card asks for.
-    const drawMedia: DrawMedia = (assetId, purpose) => <i data-asset={assetId ?? ''} data-purpose={purpose} />
-    const { container } = render(
-      <NodeCard node={node} x={0} y={0} selected={false} zoom={1} t={t} onPointerDown={() => {}} drawMedia={drawMedia} />,
-    )
-    const card = container.querySelector('[data-node-type="character"]')
-    expect(card?.textContent).toContain('角色')
-    expect(card?.textContent).toContain('阿明')
-    const media = card?.querySelector('[data-asset]')
-    expect([media?.getAttribute('data-asset'), media?.getAttribute('data-purpose')]).toEqual(['shot1-last.png', 'thumb'])
-  })
-})
+    expect([node.type, node.title, node.assets]).toEqual(['character', '阿明', ['shot1-last.png', 'ref.png']])
+    const card = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'character' })
+    expect([card.view.getByText('角色'), card.view.getByText('+1')]).toHaveLength(2)
+    expect(runtime.ctx.dvCanvas.versionKinds.getSnapshot().map(kind => [kind.kind, kind.label(), kind.node('c1')])).toEqual([['character', '角色', 'character:c1']])
 
-describe('ui-character apply', () => {
-  it('keeps the host Loader entry inert', () => {
-    expect(hostApply).not.toThrow()
-  })
-
-  it('registers every descriptor once its service is present, and the plugin disposal removes them', async () => {
-    const ctx = new Context()
-    const canvas = canvasRegistries()
-    const mentions: DvMentions = { kinds: createRegistry<MentionKind>(kind => [kind.id]) }
-    const history: DvHistory = { rows: createRegistry<HistoryRow>(row => [row.match]) }
-    const fiber = ctx.plugin({ apply })
-    await fiber.await()
-    ctx.provide('dvCanvas', canvas)
-    ctx.provide('dvMentions', mentions)
-    ctx.provide('dvHistory', history)
-    await vi.waitFor(() => { expect(history.rows.list()).toEqual([character.historyRow]) })
-    expect([canvas.nodeTypes.list(), canvas.takesInUse.list(), canvas.versionKinds.list(), mentions.kinds.list()])
-      .toEqual([[character.nodeType], [character.referencesInUse], [character.versionKind], [character.mentionKind]])
-    await fiber.dispose()
-    expect([canvas.nodeTypes.list(), canvas.versionKinds.list(), mentions.kinds.list(), history.rows.list()]).toEqual([[], [], [], []])
-  })
-
-  it('renders the editor entry, which writes character.update through the host, and removes it with the plugin', async () => {
-    document.documentElement.lang = 'zh-CN'
-    const runtime = await SlotTestRuntime.create()
-    await runtime.declare({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } })
-    const plugin = await runtime.mount({ apply })
-    const state = nounState()
-    const node = character.nodeType.entries(state).find(entry => entry.id === 'character:c1')
-    if (node === undefined) throw new Error('no entry character:c1')
-    const host = { run: vi.fn<EntryEditorHost['run']>(), pickAssets: vi.fn<EntryEditorHost['pickAssets']>(), preview: vi.fn<EntryEditorHost['preview']>() }
-    const { view } = runtime.renderSlot('dv.canvas.editor', { node, state, host }, { entryKey: '@dv/ui-character' })
+    const host = {
+      run: vi.fn<NodeHost['run']>(), rerun: vi.fn<NodeHost['rerun']>(), pickAssets: vi.fn<NodeHost['pickAssets']>(), preview: vi.fn<NodeHost['preview']>(),
+      reference: vi.fn<NodeHost['reference']>(), openNode: vi.fn<NodeHost['openNode']>(), setPlaced: vi.fn<NodeHost['setPlaced']>(), close: vi.fn<NodeHost['close']>(),
+    } satisfies NodeHost
+    const { view } = runtime.renderSlot('dv.canvas.editor', { node, state, operations: [], host }, { entryKey: 'character' })
     fireEvent.click(view.getByRole('button', { name: '移除 ref.png' }))
     expect(host.run).toHaveBeenLastCalledWith({
       operation: 'character.update', params: { character: 'c1' }, inputs: [{ role: 'reference', ref: 'shot1-last.png' }], intent: '在画布上移除 阿明 的一个参考',
     })
-    await plugin.dispose()
-    expect(runtime.slots.entries('dv.canvas.editor')).toHaveLength(0)
+    document.documentElement.lang = 'en'
+    expect(runtime.ctx.dvCanvas.versionKinds.getSnapshot().map(kind => kind.label())).toEqual(['Character'])
     await runtime.dispose()
+  })
+
+  it('lists 阿明 in the @ section 角色 between the kinds of order 0.5 and 1.5, and a pick inserts dv:character/c1', async () => {
+    document.documentElement.lang = 'zh-CN'
+    vi.stubGlobal('fetch', scriptedFetch({ state: nounState }).fetch)
+    publishCurrentProject('p1')
+    const { runtime, sources } = await mountCharacter()
+    const probe = (order: number): MentionKind => ({
+      id: `probe-${String(order)}`, kind: 'probe', order, section: () => `order ${String(order)}`, items: () => [{ uri: `dv:probe/${String(order)}`, label: `probe ${String(order)}` }],
+    })
+    runtime.ctx.dvMentions.kinds.register(probe(1.5))
+    runtime.ctx.dvMentions.kinds.register(probe(0.5))
+    const listed = await candidates(sources)
+    expect(listed.filter(candidate => candidate.section !== '素材').map(candidate => [candidate.section, candidate.name]))
+      .toEqual([['order 0.5', 'probe 0.5'], ['角色', '阿明'], ['order 1.5', 'probe 1.5']])
+    const amin = listed.find(candidate => candidate.name === '阿明')
+    if (amin === undefined) throw new Error('no candidate 阿明')
+    expect(sources[0]?.onPick({ candidate: amin } as never)).toMatchObject({ insert: { ref: '@[阿明](dv:character/c1)', label: '阿明' } })
+    await runtime.dispose()
+  })
+
+  it('names the History rows 新建角色「阿明」 and 修改角色「阿明」', async () => {
+    const { runtime } = await mountCharacter()
+    const context = {
+      operations: [declared('character.create', '新建角色', 'Create character'), declared('character.update', '修改角色', 'Update character')],
+      rows: runtime.ctx.dvHistory.rows.getSnapshot(), records: new Map(),
+    }
+    const row = (operation: string, params: Record<string, unknown>) => actionLabel(record({ id: 'h', operation, params }), context)
+    expect(row('character.create', { character: 'c1', name: '阿明' })).toEqual(['新建角色「阿明」', 'Create character “阿明”'])
+    expect(row('character.update', { character: 'c1', name: '阿明' })).toEqual(['修改角色「阿明」', 'Update character “阿明”'])
+    expect(row('character.update', { character: 'c1' })).toEqual(['修改角色「c1」', 'Update character “c1”'])
+    await runtime.dispose()
+  })
+
+  it('removes its node type, version kind, records in use, card, editor, @ kind and History row with the plugin', async () => {
+    document.documentElement.lang = 'zh-CN'
+    vi.stubGlobal('fetch', scriptedFetch({ state: nounState }).fetch)
+    publishCurrentProject('p1')
+    const { runtime, plugin, sources } = await mountCharacter()
+    const canvas = runtime.ctx.dvCanvas
+    const registered = () => [
+      canvas.nodeTypes.getSnapshot().map(type => type.id), canvas.versionKinds.getSnapshot().map(kind => kind.kind),
+      canvas.recordsInUse.getSnapshot().map(uses => uses.id), runtime.ctx.dvMentions.kinds.getSnapshot().map(kind => kind.id),
+      runtime.ctx.dvHistory.rows.getSnapshot().map(row => row.match),
+      runtime.slots.entries('dv.canvas.card').map(entry => entry.options.key), runtime.slots.entries('dv.canvas.editor').map(entry => entry.options.key),
+    ]
+    expect(registered()).toEqual([['@dv/ui-character'], ['character'], ['@dv/ui-character'], ['@dv/ui-character'], ['character.'], ['character'], ['character']])
+    const state = nounState()
+    const node = nodeOf(runtime, state, 'character:c1')
+    if (node === undefined) throw new Error('no node character:c1')
+    const { container } = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'character' })
+    expect(container.textContent).toContain('角色')
+
+    await plugin.dispose()
+    expect(registered()).toEqual([[], [], [], [], [], [], []])
+    expect(container.textContent).toBe('')
+    expect(nodeOf(runtime, state, 'character:c1')).toBeUndefined()
+    expect((await candidates(sources)).map(candidate => candidate.name)).not.toContain('阿明')
+    await runtime.dispose()
+  })
+
+  it('keeps the host Loader entry inert', () => {
+    expect(hostApply).not.toThrow()
   })
 })

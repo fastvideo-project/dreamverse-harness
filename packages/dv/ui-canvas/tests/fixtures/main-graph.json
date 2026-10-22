@@ -1,0 +1,4378 @@
+{
+ "rollback until end": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 140,
+    "frames": [
+     "r1.png",
+     "r2.png",
+     "r3.png",
+     "r4.png",
+     "r5.png",
+     "r6.png"
+    ]
+   },
+   {
+    "id": "r1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r2",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": null,
+    "badges": [
+     "trim"
+    ],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r3",
+    "type": "take",
+    "x": 480,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r4",
+    "type": "take",
+    "x": 480,
+    "y": 600,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r5",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r6",
+    "type": "take",
+    "x": 720,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "plan:p1>r1:chain",
+   "plan:p1>r2:chain",
+   "plan:p1>r3:chain",
+   "plan:p1>r4:chain",
+   "plan:p1>r5:chain",
+   "plan:p1>r6:chain",
+   "test_ref:hero>r1:input",
+   "test_ref:hero>r2:input",
+   "test_ref:hero>r3:input",
+   "test_ref:hero>r4:input",
+   "test_ref:hero>r5:input",
+   "test_ref:hero>r6:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "r1.mp4": "r1",
+   "r1.png": "r1",
+   "r2.mp4": "r2",
+   "r2.png": "r2",
+   "r3.mp4": "r3",
+   "r3.png": "r3",
+   "r4.mp4": "r4",
+   "r4.png": "r4",
+   "r5.mp4": "r5",
+   "r5.png": "r5",
+   "r6.mp4": "r6",
+   "r6.png": "r6"
+  }
+ },
+ "rollback until end, ref.png and r1.png placed": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 140,
+    "frames": [
+     "r1.png",
+     "r2.png",
+     "r3.png",
+     "r4.png",
+     "r5.png",
+     "r6.png"
+    ]
+   },
+   {
+    "id": "r1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r2",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": null,
+    "badges": [
+     "trim"
+    ],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r3",
+    "type": "take",
+    "x": 480,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r4",
+    "type": "take",
+    "x": 480,
+    "y": 600,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r5",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r6",
+    "type": "take",
+    "x": 720,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "plan:p1>r1:chain",
+   "plan:p1>r2:chain",
+   "plan:p1>r3:chain",
+   "plan:p1>r4:chain",
+   "plan:p1>r5:chain",
+   "plan:p1>r6:chain",
+   "test_ref:hero>r1:input",
+   "test_ref:hero>r2:input",
+   "test_ref:hero>r3:input",
+   "test_ref:hero>r4:input",
+   "test_ref:hero>r5:input",
+   "test_ref:hero>r6:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "r1.mp4": "r1",
+   "r1.png": "r1",
+   "r2.mp4": "r2",
+   "r2.png": "r2",
+   "r3.mp4": "r3",
+   "r3.png": "r3",
+   "r4.mp4": "r4",
+   "r4.png": "r4",
+   "r5.mp4": "r5",
+   "r5.png": "r5",
+   "r6.mp4": "r6",
+   "r6.png": "r6"
+  }
+ },
+ "rollback until r6": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 140,
+    "frames": [
+     "r1.png",
+     "r2.png",
+     "r3.png",
+     "r4.png",
+     "r5.png",
+     "r6.png"
+    ]
+   },
+   {
+    "id": "r1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r2",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r3",
+    "type": "take",
+    "x": 480,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r4",
+    "type": "take",
+    "x": 480,
+    "y": 600,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r5",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r6",
+    "type": "take",
+    "x": 720,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "plan:p1>r1:chain",
+   "plan:p1>r2:chain",
+   "plan:p1>r3:chain",
+   "plan:p1>r4:chain",
+   "plan:p1>r5:chain",
+   "plan:p1>r6:chain",
+   "test_ref:hero>r1:input",
+   "test_ref:hero>r2:input",
+   "test_ref:hero>r3:input",
+   "test_ref:hero>r4:input",
+   "test_ref:hero>r5:input",
+   "test_ref:hero>r6:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "r1.mp4": "r1",
+   "r1.png": "r1",
+   "r2.mp4": "r2",
+   "r2.png": "r2",
+   "r3.mp4": "r3",
+   "r3.png": "r3",
+   "r4.mp4": "r4",
+   "r4.png": "r4",
+   "r5.mp4": "r5",
+   "r5.png": "r5",
+   "r6.mp4": "r6",
+   "r6.png": "r6"
+  }
+ },
+ "rollback until r6, ref.png and r1.png placed": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 140,
+    "frames": [
+     "r1.png",
+     "r2.png",
+     "r3.png",
+     "r4.png",
+     "r5.png",
+     "r6.png"
+    ]
+   },
+   {
+    "id": "r1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r2",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r3",
+    "type": "take",
+    "x": 480,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r4",
+    "type": "take",
+    "x": 480,
+    "y": 600,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r5",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r6",
+    "type": "take",
+    "x": 720,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "plan:p1>r1:chain",
+   "plan:p1>r2:chain",
+   "plan:p1>r3:chain",
+   "plan:p1>r4:chain",
+   "plan:p1>r5:chain",
+   "plan:p1>r6:chain",
+   "test_ref:hero>r1:input",
+   "test_ref:hero>r2:input",
+   "test_ref:hero>r3:input",
+   "test_ref:hero>r4:input",
+   "test_ref:hero>r5:input",
+   "test_ref:hero>r6:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "r1.mp4": "r1",
+   "r1.png": "r1",
+   "r2.mp4": "r2",
+   "r2.png": "r2",
+   "r3.mp4": "r3",
+   "r3.png": "r3",
+   "r4.mp4": "r4",
+   "r4.png": "r4",
+   "r5.mp4": "r5",
+   "r5.png": "r5",
+   "r6.mp4": "r6",
+   "r6.png": "r6"
+  }
+ },
+ "rollback until l1": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 140,
+    "frames": [
+     "r1.png",
+     "r2.png",
+     "r3.png",
+     "r4.png",
+     "r5.png",
+     "r6.png"
+    ]
+   },
+   {
+    "id": "r1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r2",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": null,
+    "badges": [
+     "trim"
+    ],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r3",
+    "type": "take",
+    "x": 480,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r4",
+    "type": "take",
+    "x": 480,
+    "y": 600,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r5",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r6",
+    "type": "take",
+    "x": 720,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "plan:p1>r1:chain",
+   "plan:p1>r2:chain",
+   "plan:p1>r3:chain",
+   "plan:p1>r4:chain",
+   "plan:p1>r5:chain",
+   "plan:p1>r6:chain",
+   "test_ref:hero>r1:input",
+   "test_ref:hero>r2:input",
+   "test_ref:hero>r3:input",
+   "test_ref:hero>r4:input",
+   "test_ref:hero>r5:input",
+   "test_ref:hero>r6:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "r1.mp4": "r1",
+   "r1.png": "r1",
+   "r2.mp4": "r2",
+   "r2.png": "r2",
+   "r3.mp4": "r3",
+   "r3.png": "r3",
+   "r4.mp4": "r4",
+   "r4.png": "r4",
+   "r5.mp4": "r5",
+   "r5.png": "r5",
+   "r6.mp4": "r6",
+   "r6.png": "r6"
+  }
+ },
+ "rollback until l1, ref.png and r1.png placed": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 140,
+    "frames": [
+     "r1.png",
+     "r2.png",
+     "r3.png",
+     "r4.png",
+     "r5.png",
+     "r6.png"
+    ]
+   },
+   {
+    "id": "r1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r2",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": null,
+    "badges": [
+     "trim"
+    ],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r3",
+    "type": "take",
+    "x": 480,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r4",
+    "type": "take",
+    "x": 480,
+    "y": 600,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r5",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r6",
+    "type": "take",
+    "x": 720,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "plan:p1>r1:chain",
+   "plan:p1>r2:chain",
+   "plan:p1>r3:chain",
+   "plan:p1>r4:chain",
+   "plan:p1>r5:chain",
+   "plan:p1>r6:chain",
+   "test_ref:hero>r1:input",
+   "test_ref:hero>r2:input",
+   "test_ref:hero>r3:input",
+   "test_ref:hero>r4:input",
+   "test_ref:hero>r5:input",
+   "test_ref:hero>r6:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "r1.mp4": "r1",
+   "r1.png": "r1",
+   "r2.mp4": "r2",
+   "r2.png": "r2",
+   "r3.mp4": "r3",
+   "r3.png": "r3",
+   "r4.mp4": "r4",
+   "r4.png": "r4",
+   "r5.mp4": "r5",
+   "r5.png": "r5",
+   "r6.mp4": "r6",
+   "r6.png": "r6"
+  }
+ },
+ "rollback until s7": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 140,
+    "frames": [
+     "r1.png",
+     "r2.png",
+     "s3.png",
+     "r4.png",
+     "r5.png",
+     "r6.png",
+     "s7.png"
+    ]
+   },
+   {
+    "id": "r1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r2",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": null,
+    "badges": [
+     "trim"
+    ],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r3",
+    "type": "take",
+    "x": 480,
+    "y": 400,
+    "number": 1,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r4",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r5",
+    "type": "take",
+    "x": 720,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r6",
+    "type": "take",
+    "x": 720,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "s3",
+    "type": "take",
+    "x": 480,
+    "y": 600,
+    "number": 2,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "s7",
+    "type": "take",
+    "x": 720,
+    "y": 600,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "plan:p1>r1:chain",
+   "plan:p1>r2:chain",
+   "plan:p1>r3:chain",
+   "plan:p1>r4:chain",
+   "plan:p1>r5:chain",
+   "plan:p1>r6:chain",
+   "plan:p1>s3:chain",
+   "plan:p1>s7:chain",
+   "test_ref:hero>r1:input",
+   "test_ref:hero>r2:input",
+   "test_ref:hero>r3:input",
+   "test_ref:hero>r4:input",
+   "test_ref:hero>r5:input",
+   "test_ref:hero>r6:input",
+   "test_ref:hero>s3:input",
+   "test_ref:hero>s7:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "r1.mp4": "r1",
+   "r1.png": "r1",
+   "r2.mp4": "r2",
+   "r2.png": "r2",
+   "r3.mp4": "r3",
+   "r3.png": "r3",
+   "r4.mp4": "r4",
+   "r4.png": "r4",
+   "r5.mp4": "r5",
+   "r5.png": "r5",
+   "r6.mp4": "r6",
+   "r6.png": "r6",
+   "s3.mp4": "s3",
+   "s3.png": "s3",
+   "s7.mp4": "s7",
+   "s7.png": "s7"
+  }
+ },
+ "rollback until s7, ref.png and r1.png placed": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 140,
+    "frames": [
+     "r1.png",
+     "r2.png",
+     "s3.png",
+     "r4.png",
+     "r5.png",
+     "r6.png",
+     "s7.png"
+    ]
+   },
+   {
+    "id": "r1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r2",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": null,
+    "badges": [
+     "trim"
+    ],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r3",
+    "type": "take",
+    "x": 480,
+    "y": 400,
+    "number": 1,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r4",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r5",
+    "type": "take",
+    "x": 720,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r6",
+    "type": "take",
+    "x": 720,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "s3",
+    "type": "take",
+    "x": 480,
+    "y": 600,
+    "number": 2,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "s7",
+    "type": "take",
+    "x": 720,
+    "y": 600,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "plan:p1>r1:chain",
+   "plan:p1>r2:chain",
+   "plan:p1>r3:chain",
+   "plan:p1>r4:chain",
+   "plan:p1>r5:chain",
+   "plan:p1>r6:chain",
+   "plan:p1>s3:chain",
+   "plan:p1>s7:chain",
+   "test_ref:hero>r1:input",
+   "test_ref:hero>r2:input",
+   "test_ref:hero>r3:input",
+   "test_ref:hero>r4:input",
+   "test_ref:hero>r5:input",
+   "test_ref:hero>r6:input",
+   "test_ref:hero>s3:input",
+   "test_ref:hero>s7:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "r1.mp4": "r1",
+   "r1.png": "r1",
+   "r2.mp4": "r2",
+   "r2.png": "r2",
+   "r3.mp4": "r3",
+   "r3.png": "r3",
+   "r4.mp4": "r4",
+   "r4.png": "r4",
+   "r5.mp4": "r5",
+   "r5.png": "r5",
+   "r6.mp4": "r6",
+   "r6.png": "r6",
+   "s3.mp4": "s3",
+   "s3.png": "s3",
+   "s7.mp4": "s7",
+   "s7.png": "s7"
+  }
+ },
+ "rollback until x7": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 140,
+    "frames": [
+     "r1.png",
+     "r2.png",
+     "s3.png",
+     "r4.png",
+     "r5.png",
+     "r6.png",
+     "x7.png"
+    ]
+   },
+   {
+    "id": "r1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r2",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": null,
+    "badges": [
+     "trim"
+    ],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r4",
+    "type": "take",
+    "x": 480,
+    "y": 600,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r5",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r6",
+    "type": "take",
+    "x": 720,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "s3",
+    "type": "take",
+    "x": 480,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "s7",
+    "type": "take",
+    "x": 720,
+    "y": 400,
+    "number": 1,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "x7",
+    "type": "take",
+    "x": 720,
+    "y": 600,
+    "number": 2,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "plan:p1>r1:chain",
+   "plan:p1>r2:chain",
+   "plan:p1>r4:chain",
+   "plan:p1>r5:chain",
+   "plan:p1>r6:chain",
+   "plan:p1>s3:chain",
+   "plan:p1>s7:chain",
+   "plan:p1>x7:chain",
+   "s7>x7:lineage",
+   "test_ref:hero>r1:input",
+   "test_ref:hero>r2:input",
+   "test_ref:hero>r4:input",
+   "test_ref:hero>r5:input",
+   "test_ref:hero>r6:input",
+   "test_ref:hero>s3:input",
+   "test_ref:hero>s7:input",
+   "test_ref:hero>x7:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "r1.mp4": "r1",
+   "r1.png": "r1",
+   "r2.mp4": "r2",
+   "r2.png": "r2",
+   "r4.mp4": "r4",
+   "r4.png": "r4",
+   "r5.mp4": "r5",
+   "r5.png": "r5",
+   "r6.mp4": "r6",
+   "r6.png": "r6",
+   "s3.mp4": "s3",
+   "s3.png": "s3",
+   "s7.mp4": "s7",
+   "s7.png": "s7",
+   "x7.mp4": "x7",
+   "x7.png": "x7"
+  }
+ },
+ "rollback until x7, ref.png and r1.png placed": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 140,
+    "frames": [
+     "r1.png",
+     "r2.png",
+     "s3.png",
+     "r4.png",
+     "r5.png",
+     "r6.png",
+     "x7.png"
+    ]
+   },
+   {
+    "id": "r1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r2",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": null,
+    "badges": [
+     "trim"
+    ],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r4",
+    "type": "take",
+    "x": 480,
+    "y": 600,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r5",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r6",
+    "type": "take",
+    "x": 720,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "s3",
+    "type": "take",
+    "x": 480,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "s7",
+    "type": "take",
+    "x": 720,
+    "y": 400,
+    "number": 1,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "x7",
+    "type": "take",
+    "x": 720,
+    "y": 600,
+    "number": 2,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "plan:p1>r1:chain",
+   "plan:p1>r2:chain",
+   "plan:p1>r4:chain",
+   "plan:p1>r5:chain",
+   "plan:p1>r6:chain",
+   "plan:p1>s3:chain",
+   "plan:p1>s7:chain",
+   "plan:p1>x7:chain",
+   "s7>x7:lineage",
+   "test_ref:hero>r1:input",
+   "test_ref:hero>r2:input",
+   "test_ref:hero>r4:input",
+   "test_ref:hero>r5:input",
+   "test_ref:hero>r6:input",
+   "test_ref:hero>s3:input",
+   "test_ref:hero>s7:input",
+   "test_ref:hero>x7:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "r1.mp4": "r1",
+   "r1.png": "r1",
+   "r2.mp4": "r2",
+   "r2.png": "r2",
+   "r4.mp4": "r4",
+   "r4.png": "r4",
+   "r5.mp4": "r5",
+   "r5.png": "r5",
+   "r6.mp4": "r6",
+   "r6.png": "r6",
+   "s3.mp4": "s3",
+   "s3.png": "s3",
+   "s7.mp4": "s7",
+   "s7.png": "s7",
+   "x7.mp4": "x7",
+   "x7.png": "x7"
+  }
+ },
+ "rollback until w5": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 140,
+    "frames": [
+     "r1.png",
+     "r2.png",
+     "s3.png",
+     "r4.png",
+     "w5.png",
+     "r6.png",
+     "x7.png"
+    ]
+   },
+   {
+    "id": "r1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r2",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": null,
+    "badges": [
+     "trim"
+    ],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r4",
+    "type": "take",
+    "x": 480,
+    "y": 600,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r5",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": 1,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r6",
+    "type": "take",
+    "x": 720,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "s3",
+    "type": "take",
+    "x": 480,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "s7",
+    "type": "take",
+    "x": 720,
+    "y": 600,
+    "number": 1,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "x7",
+    "type": "take",
+    "x": 960,
+    "y": 0,
+    "number": 2,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "w5",
+    "type": "take",
+    "x": 720,
+    "y": 200,
+    "number": 2,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "plan:p1>r1:chain",
+   "plan:p1>r2:chain",
+   "plan:p1>r4:chain",
+   "plan:p1>r5:chain",
+   "plan:p1>r6:chain",
+   "plan:p1>s3:chain",
+   "plan:p1>s7:chain",
+   "plan:p1>w5:chain",
+   "plan:p1>x7:chain",
+   "s7>x7:lineage",
+   "test_ref:hero>r1:input",
+   "test_ref:hero>r2:input",
+   "test_ref:hero>r4:input",
+   "test_ref:hero>r5:input",
+   "test_ref:hero>r6:input",
+   "test_ref:hero>s3:input",
+   "test_ref:hero>s7:input",
+   "test_ref:hero>w5:input",
+   "test_ref:hero>x7:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "r1.mp4": "r1",
+   "r1.png": "r1",
+   "r2.mp4": "r2",
+   "r2.png": "r2",
+   "r4.mp4": "r4",
+   "r4.png": "r4",
+   "r5.mp4": "r5",
+   "r5.png": "r5",
+   "r6.mp4": "r6",
+   "r6.png": "r6",
+   "s3.mp4": "s3",
+   "s3.png": "s3",
+   "s7.mp4": "s7",
+   "s7.png": "s7",
+   "x7.mp4": "x7",
+   "x7.png": "x7",
+   "w5.mp4": "w5",
+   "w5.png": "w5"
+  }
+ },
+ "rollback until w5, ref.png and r1.png placed": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 140,
+    "frames": [
+     "r1.png",
+     "r2.png",
+     "s3.png",
+     "r4.png",
+     "w5.png",
+     "r6.png",
+     "x7.png"
+    ]
+   },
+   {
+    "id": "r1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r2",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": null,
+    "badges": [
+     "trim"
+    ],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r4",
+    "type": "take",
+    "x": 480,
+    "y": 600,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r5",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": 1,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r6",
+    "type": "take",
+    "x": 720,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "s3",
+    "type": "take",
+    "x": 480,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "s7",
+    "type": "take",
+    "x": 720,
+    "y": 600,
+    "number": 1,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "x7",
+    "type": "take",
+    "x": 960,
+    "y": 0,
+    "number": 2,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "w5",
+    "type": "take",
+    "x": 720,
+    "y": 200,
+    "number": 2,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "plan:p1>r1:chain",
+   "plan:p1>r2:chain",
+   "plan:p1>r4:chain",
+   "plan:p1>r5:chain",
+   "plan:p1>r6:chain",
+   "plan:p1>s3:chain",
+   "plan:p1>s7:chain",
+   "plan:p1>w5:chain",
+   "plan:p1>x7:chain",
+   "s7>x7:lineage",
+   "test_ref:hero>r1:input",
+   "test_ref:hero>r2:input",
+   "test_ref:hero>r4:input",
+   "test_ref:hero>r5:input",
+   "test_ref:hero>r6:input",
+   "test_ref:hero>s3:input",
+   "test_ref:hero>s7:input",
+   "test_ref:hero>w5:input",
+   "test_ref:hero>x7:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "r1.mp4": "r1",
+   "r1.png": "r1",
+   "r2.mp4": "r2",
+   "r2.png": "r2",
+   "r4.mp4": "r4",
+   "r4.png": "r4",
+   "r5.mp4": "r5",
+   "r5.png": "r5",
+   "r6.mp4": "r6",
+   "r6.png": "r6",
+   "s3.mp4": "s3",
+   "s3.png": "s3",
+   "s7.mp4": "s7",
+   "s7.png": "s7",
+   "x7.mp4": "x7",
+   "x7.png": "x7",
+   "w5.mp4": "w5",
+   "w5.png": "w5"
+  }
+ },
+ "rollback until l3": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 140,
+    "frames": [
+     "r1.png",
+     "r2.png",
+     "s3.png",
+     "r4.png",
+     "w5.png",
+     "r6.png",
+     "x7.png"
+    ]
+   },
+   {
+    "id": "r1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r2",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": null,
+    "badges": [
+     "trim"
+    ],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r4",
+    "type": "take",
+    "x": 480,
+    "y": 600,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r6",
+    "type": "take",
+    "x": 720,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "s3",
+    "type": "take",
+    "x": 480,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "s7",
+    "type": "take",
+    "x": 720,
+    "y": 400,
+    "number": 1,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "x7",
+    "type": "take",
+    "x": 720,
+    "y": 600,
+    "number": 2,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "w5",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "plan:p1>r1:chain",
+   "plan:p1>r2:chain",
+   "plan:p1>r4:chain",
+   "plan:p1>r6:chain",
+   "plan:p1>s3:chain",
+   "plan:p1>s7:chain",
+   "plan:p1>w5:chain",
+   "plan:p1>x7:chain",
+   "s7>x7:lineage",
+   "test_ref:hero>r1:input",
+   "test_ref:hero>r2:input",
+   "test_ref:hero>r4:input",
+   "test_ref:hero>r6:input",
+   "test_ref:hero>s3:input",
+   "test_ref:hero>s7:input",
+   "test_ref:hero>w5:input",
+   "test_ref:hero>x7:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "r1.mp4": "r1",
+   "r1.png": "r1",
+   "r2.mp4": "r2",
+   "r2.png": "r2",
+   "r4.mp4": "r4",
+   "r4.png": "r4",
+   "r6.mp4": "r6",
+   "r6.png": "r6",
+   "s3.mp4": "s3",
+   "s3.png": "s3",
+   "s7.mp4": "s7",
+   "s7.png": "s7",
+   "x7.mp4": "x7",
+   "x7.png": "x7",
+   "w5.mp4": "w5",
+   "w5.png": "w5"
+  }
+ },
+ "rollback until l3, ref.png and r1.png placed": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 140,
+    "frames": [
+     "r1.png",
+     "r2.png",
+     "s3.png",
+     "r4.png",
+     "w5.png",
+     "r6.png",
+     "x7.png"
+    ]
+   },
+   {
+    "id": "r1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r2",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": null,
+    "badges": [
+     "trim"
+    ],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r4",
+    "type": "take",
+    "x": 480,
+    "y": 600,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r6",
+    "type": "take",
+    "x": 720,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "s3",
+    "type": "take",
+    "x": 480,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "s7",
+    "type": "take",
+    "x": 720,
+    "y": 400,
+    "number": 1,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "x7",
+    "type": "take",
+    "x": 720,
+    "y": 600,
+    "number": 2,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "w5",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "plan:p1>r1:chain",
+   "plan:p1>r2:chain",
+   "plan:p1>r4:chain",
+   "plan:p1>r6:chain",
+   "plan:p1>s3:chain",
+   "plan:p1>s7:chain",
+   "plan:p1>w5:chain",
+   "plan:p1>x7:chain",
+   "s7>x7:lineage",
+   "test_ref:hero>r1:input",
+   "test_ref:hero>r2:input",
+   "test_ref:hero>r4:input",
+   "test_ref:hero>r6:input",
+   "test_ref:hero>s3:input",
+   "test_ref:hero>s7:input",
+   "test_ref:hero>w5:input",
+   "test_ref:hero>x7:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "r1.mp4": "r1",
+   "r1.png": "r1",
+   "r2.mp4": "r2",
+   "r2.png": "r2",
+   "r4.mp4": "r4",
+   "r4.png": "r4",
+   "r6.mp4": "r6",
+   "r6.png": "r6",
+   "s3.mp4": "s3",
+   "s3.png": "s3",
+   "s7.mp4": "s7",
+   "s7.png": "s7",
+   "x7.mp4": "x7",
+   "x7.png": "x7",
+   "w5.mp4": "w5",
+   "w5.png": "w5"
+  }
+ },
+ "rollback until k1": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 140,
+    "frames": [
+     "r1.png",
+     "r2.png",
+     "r3.png",
+     "r4.png",
+     "w5.png",
+     "r6.png",
+     "x7.png"
+    ]
+   },
+   {
+    "id": "r1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r2",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": null,
+    "badges": [
+     "trim"
+    ],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r3",
+    "type": "take",
+    "x": 480,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r4",
+    "type": "take",
+    "x": 480,
+    "y": 600,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r6",
+    "type": "take",
+    "x": 720,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "s7",
+    "type": "take",
+    "x": 720,
+    "y": 400,
+    "number": 1,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "x7",
+    "type": "take",
+    "x": 720,
+    "y": 600,
+    "number": 2,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "w5",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "plan:p1>r1:chain",
+   "plan:p1>r2:chain",
+   "plan:p1>r3:chain",
+   "plan:p1>r4:chain",
+   "plan:p1>r6:chain",
+   "plan:p1>s7:chain",
+   "plan:p1>w5:chain",
+   "plan:p1>x7:chain",
+   "s7>x7:lineage",
+   "test_ref:hero>r1:input",
+   "test_ref:hero>r2:input",
+   "test_ref:hero>r3:input",
+   "test_ref:hero>r4:input",
+   "test_ref:hero>r6:input",
+   "test_ref:hero>s7:input",
+   "test_ref:hero>w5:input",
+   "test_ref:hero>x7:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "r1.mp4": "r1",
+   "r1.png": "r1",
+   "r2.mp4": "r2",
+   "r2.png": "r2",
+   "r3.mp4": "r3",
+   "r3.png": "r3",
+   "r4.mp4": "r4",
+   "r4.png": "r4",
+   "r6.mp4": "r6",
+   "r6.png": "r6",
+   "s7.mp4": "s7",
+   "s7.png": "s7",
+   "x7.mp4": "x7",
+   "x7.png": "x7",
+   "w5.mp4": "w5",
+   "w5.png": "w5"
+  }
+ },
+ "rollback until k1, ref.png and r1.png placed": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 140,
+    "frames": [
+     "r1.png",
+     "r2.png",
+     "r3.png",
+     "r4.png",
+     "w5.png",
+     "r6.png",
+     "x7.png"
+    ]
+   },
+   {
+    "id": "r1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r2",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": null,
+    "badges": [
+     "trim"
+    ],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r3",
+    "type": "take",
+    "x": 480,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r4",
+    "type": "take",
+    "x": 480,
+    "y": 600,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r6",
+    "type": "take",
+    "x": 720,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "s7",
+    "type": "take",
+    "x": 720,
+    "y": 400,
+    "number": 1,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "x7",
+    "type": "take",
+    "x": 720,
+    "y": 600,
+    "number": 2,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "w5",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "plan:p1>r1:chain",
+   "plan:p1>r2:chain",
+   "plan:p1>r3:chain",
+   "plan:p1>r4:chain",
+   "plan:p1>r6:chain",
+   "plan:p1>s7:chain",
+   "plan:p1>w5:chain",
+   "plan:p1>x7:chain",
+   "s7>x7:lineage",
+   "test_ref:hero>r1:input",
+   "test_ref:hero>r2:input",
+   "test_ref:hero>r3:input",
+   "test_ref:hero>r4:input",
+   "test_ref:hero>r6:input",
+   "test_ref:hero>s7:input",
+   "test_ref:hero>w5:input",
+   "test_ref:hero>x7:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "r1.mp4": "r1",
+   "r1.png": "r1",
+   "r2.mp4": "r2",
+   "r2.png": "r2",
+   "r3.mp4": "r3",
+   "r3.png": "r3",
+   "r4.mp4": "r4",
+   "r4.png": "r4",
+   "r6.mp4": "r6",
+   "r6.png": "r6",
+   "s7.mp4": "s7",
+   "s7.png": "s7",
+   "x7.mp4": "x7",
+   "x7.png": "x7",
+   "w5.mp4": "w5",
+   "w5.png": "w5"
+  }
+ },
+ "rollback until q4": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 140,
+    "frames": [
+     "r1.png",
+     "r2.png",
+     "r3.png",
+     "r4.png",
+     "w5.png",
+     "r6.png"
+    ]
+   },
+   {
+    "id": "r1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r2",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": null,
+    "badges": [
+     "trim"
+    ],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r3",
+    "type": "take",
+    "x": 480,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r4",
+    "type": "take",
+    "x": 480,
+    "y": 600,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r6",
+    "type": "take",
+    "x": 720,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "s7",
+    "type": "take",
+    "x": 720,
+    "y": 400,
+    "number": 1,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "x7",
+    "type": "take",
+    "x": 720,
+    "y": 600,
+    "number": 2,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "w5",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "plan:p1>r1:chain",
+   "plan:p1>r2:chain",
+   "plan:p1>r3:chain",
+   "plan:p1>r4:chain",
+   "plan:p1>r6:chain",
+   "plan:p1>s7:chain",
+   "plan:p1>w5:chain",
+   "plan:p1>x7:chain",
+   "s7>x7:lineage",
+   "test_ref:hero>r1:input",
+   "test_ref:hero>r2:input",
+   "test_ref:hero>r3:input",
+   "test_ref:hero>r4:input",
+   "test_ref:hero>r6:input",
+   "test_ref:hero>s7:input",
+   "test_ref:hero>w5:input",
+   "test_ref:hero>x7:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "r1.mp4": "r1",
+   "r1.png": "r1",
+   "r2.mp4": "r2",
+   "r2.png": "r2",
+   "r3.mp4": "r3",
+   "r3.png": "r3",
+   "r4.mp4": "r4",
+   "r4.png": "r4",
+   "r6.mp4": "r6",
+   "r6.png": "r6",
+   "s7.mp4": "s7",
+   "s7.png": "s7",
+   "x7.mp4": "x7",
+   "x7.png": "x7",
+   "w5.mp4": "w5",
+   "w5.png": "w5"
+  }
+ },
+ "rollback until q4, ref.png and r1.png placed": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 140,
+    "frames": [
+     "r1.png",
+     "r2.png",
+     "r3.png",
+     "r4.png",
+     "w5.png",
+     "r6.png"
+    ]
+   },
+   {
+    "id": "r1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r2",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": null,
+    "badges": [
+     "trim"
+    ],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r3",
+    "type": "take",
+    "x": 480,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r4",
+    "type": "take",
+    "x": 480,
+    "y": 600,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r6",
+    "type": "take",
+    "x": 720,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "s7",
+    "type": "take",
+    "x": 720,
+    "y": 400,
+    "number": 1,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "x7",
+    "type": "take",
+    "x": 720,
+    "y": 600,
+    "number": 2,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "w5",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "plan:p1>r1:chain",
+   "plan:p1>r2:chain",
+   "plan:p1>r3:chain",
+   "plan:p1>r4:chain",
+   "plan:p1>r6:chain",
+   "plan:p1>s7:chain",
+   "plan:p1>w5:chain",
+   "plan:p1>x7:chain",
+   "s7>x7:lineage",
+   "test_ref:hero>r1:input",
+   "test_ref:hero>r2:input",
+   "test_ref:hero>r3:input",
+   "test_ref:hero>r4:input",
+   "test_ref:hero>r6:input",
+   "test_ref:hero>s7:input",
+   "test_ref:hero>w5:input",
+   "test_ref:hero>x7:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "r1.mp4": "r1",
+   "r1.png": "r1",
+   "r2.mp4": "r2",
+   "r2.png": "r2",
+   "r3.mp4": "r3",
+   "r3.png": "r3",
+   "r4.mp4": "r4",
+   "r4.png": "r4",
+   "r6.mp4": "r6",
+   "r6.png": "r6",
+   "s7.mp4": "s7",
+   "s7.png": "s7",
+   "x7.mp4": "x7",
+   "x7.png": "x7",
+   "w5.mp4": "w5",
+   "w5.png": "w5"
+  }
+ },
+ "rollback until l4": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 140,
+    "frames": [
+     "r1.png",
+     "r2.png",
+     "r3.png",
+     "r4.png",
+     "r5.png",
+     "r6.png"
+    ]
+   },
+   {
+    "id": "r1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r2",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": null,
+    "badges": [
+     "trim"
+    ],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r3",
+    "type": "take",
+    "x": 480,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r4",
+    "type": "take",
+    "x": 480,
+    "y": 600,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r5",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r6",
+    "type": "take",
+    "x": 720,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "plan:p1>r1:chain",
+   "plan:p1>r2:chain",
+   "plan:p1>r3:chain",
+   "plan:p1>r4:chain",
+   "plan:p1>r5:chain",
+   "plan:p1>r6:chain",
+   "test_ref:hero>r1:input",
+   "test_ref:hero>r2:input",
+   "test_ref:hero>r3:input",
+   "test_ref:hero>r4:input",
+   "test_ref:hero>r5:input",
+   "test_ref:hero>r6:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "r1.mp4": "r1",
+   "r1.png": "r1",
+   "r2.mp4": "r2",
+   "r2.png": "r2",
+   "r3.mp4": "r3",
+   "r3.png": "r3",
+   "r4.mp4": "r4",
+   "r4.png": "r4",
+   "r5.mp4": "r5",
+   "r5.png": "r5",
+   "r6.mp4": "r6",
+   "r6.png": "r6"
+  }
+ },
+ "rollback until l4, ref.png and r1.png placed": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 140,
+    "frames": [
+     "r1.png",
+     "r2.png",
+     "r3.png",
+     "r4.png",
+     "r5.png",
+     "r6.png"
+    ]
+   },
+   {
+    "id": "r1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r2",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": null,
+    "badges": [
+     "trim"
+    ],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r3",
+    "type": "take",
+    "x": 480,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r4",
+    "type": "take",
+    "x": 480,
+    "y": 600,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r5",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "r6",
+    "type": "take",
+    "x": 720,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "plan:p1>r1:chain",
+   "plan:p1>r2:chain",
+   "plan:p1>r3:chain",
+   "plan:p1>r4:chain",
+   "plan:p1>r5:chain",
+   "plan:p1>r6:chain",
+   "test_ref:hero>r1:input",
+   "test_ref:hero>r2:input",
+   "test_ref:hero>r3:input",
+   "test_ref:hero>r4:input",
+   "test_ref:hero>r5:input",
+   "test_ref:hero>r6:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "r1.mp4": "r1",
+   "r1.png": "r1",
+   "r2.mp4": "r2",
+   "r2.png": "r2",
+   "r3.mp4": "r3",
+   "r3.png": "r3",
+   "r4.mp4": "r4",
+   "r4.png": "r4",
+   "r5.mp4": "r5",
+   "r5.png": "r5",
+   "r6.mp4": "r6",
+   "r6.png": "r6"
+  }
+ },
+ "fixture project": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 76,
+    "frames": [
+     null,
+     null
+    ]
+   },
+   {
+    "id": "g1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": 1,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "g2",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": null,
+    "badges": [
+     "trim"
+    ],
+    "flags": {
+     "stale": true,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "g3",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": 2,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": true,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "g1>g2:input:first_frame",
+   "g1>g3:lineage",
+   "test_ref:hero>g1:input",
+   "test_ref:hero>g2:input",
+   "test_ref:hero>g3:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "shot1.mp4": "g1",
+   "shot1-last.png": "g1",
+   "shot2.mp4": "g2",
+   "shot2-last.png": "g2",
+   "export.mp4": "g2",
+   "export-last.png": "g2"
+  }
+ },
+ "fixture project, every asset placed": {
+  "nodes": [
+   {
+    "id": "test_ref:hero",
+    "type": "test_ref",
+    "x": 0,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 60,
+    "frames": null
+   },
+   {
+    "id": "plan:p1",
+    "type": "plan",
+    "x": 240,
+    "y": 0,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 76,
+    "frames": [
+     null,
+     null
+    ]
+   },
+   {
+    "id": "g1",
+    "type": "take",
+    "x": 480,
+    "y": 0,
+    "number": 1,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "g2",
+    "type": "take",
+    "x": 720,
+    "y": 0,
+    "number": null,
+    "badges": [
+     "trim"
+    ],
+    "flags": {
+     "stale": true,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": true,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "g3",
+    "type": "take",
+    "x": 480,
+    "y": 200,
+    "number": 2,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": true,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "asset:export.mp4",
+    "type": "asset",
+    "x": 0,
+    "y": 200,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 147,
+    "frames": null
+   },
+   {
+    "id": "asset:export-last.png",
+    "type": "asset",
+    "x": 0,
+    "y": 400,
+    "number": null,
+    "badges": [],
+    "flags": {
+     "stale": false,
+     "rendering": false,
+     "failed": false,
+     "superseded": false
+    },
+    "finished": false,
+    "height": 147,
+    "frames": null
+   }
+  ],
+  "edges": [
+   "g1>g2:input:first_frame",
+   "g1>g3:lineage",
+   "test_ref:hero>g1:input",
+   "test_ref:hero>g2:input",
+   "test_ref:hero>g3:input"
+  ],
+  "assetNodes": {
+   "ref.png": "test_ref:hero",
+   "shot1.mp4": "g1",
+   "shot1-last.png": "g1",
+   "shot2.mp4": "g2",
+   "shot2-last.png": "g2",
+   "export.mp4": "asset:export.mp4",
+   "export-last.png": "asset:export-last.png"
+  }
+ }
+}

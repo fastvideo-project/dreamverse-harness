@@ -3,26 +3,31 @@
  * Its texts follow the interface language of `<html lang>`.
  * @module @dv/ui-shot-plan/PlanEditor
  */
-import { memo, useCallback, useState, useSyncExternalStore } from 'react'
+import { memo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import type { PropsRenderFactories, PropsRuntime, RenderFactorySlot } from '@deepseek-ai/dsh-client-ui-slots'
+import type { HostObservable, InjectFace, PropsRenderFactories, PropsRuntime, RenderFactorySlot } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ChainAnchor } from '@dv/ui-canvas/contract'
 import type { PlanVersion, Shot } from '@dv/shot-plan/types'
-import { assetUrl, type DvClient } from '@dv/ui-kit/api.ts'
+import { assetUrl } from '@dv/ui-kit/api.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import { parseVersionedReference, pictureParts, referenceAssets } from '@dv/ui-kit/references.ts'
-import type { DvCanvas, Registry, VersionKind } from '@dv/ui-kit/registries.ts'
+import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
 import { taskLabel, type WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
 import type { ProjectAsset, WireState } from '@dv/ui-kit/types.ts'
-import { useTaskLabels } from '@dv/ui-kit/useProject.ts'
 import type {} from '@dv/ui-media/contract'
 import { isPicture } from './picture.ts'
 
-/** What the plugin injects: the `dvCanvas` registries (chain anchors, version kinds) and the client that reads task labels. */
-export interface PlanEditorInjected { canvas: DvCanvas; client: DvClient }
+/** What the plugin injects: the `dvCanvas` chain anchors and version kinds, and the task labels, as observable sources. */
+export interface PlanEditorInjected {
+  hooks: {
+    chainAnchors: HostObservable<readonly ChainAnchor[]>
+    versionKinds: HostObservable<readonly VersionKind[]>
+    /** Empty until `GET /api/dv/tasks` loads, and after it fails; a shot then shows its task by its name. */
+    taskLabels: HostObservable<WireTaskLabels>
+  }
+}
 
-/** The task labels while `GET /api/dv/tasks` loads or after it fails; a shot then shows its task by its name. */
-const NO_TASK_LABELS: WireTaskLabels = {}
 /** A reference asset in a reference chip, and an image that stands in a shot prompt for its Picture N token. */
 const chipThumb: CSSProperties = { display: 'flex', width: 24, height: 24, overflow: 'hidden', borderRadius: 'var(--dv-radius-sm)', flex: 'none' }
 const promptThumb: CSSProperties = { height: '1.4em', width: 'auto', verticalAlign: 'middle', borderRadius: 3, margin: '0 2px' }
@@ -51,12 +56,6 @@ export function totalSec(version: PlanVersion): number | null {
  */
 export function shotReferences(version: Pick<PlanVersion, 'references'>, shot: Pick<Shot, 'references' | 'task'>): string[] {
   return shot.task === 'ref2v' ? shot.references ?? version.references ?? [] : []
-}
-
-/** The descriptors of a `dvCanvas` registry, read again on each change. */
-function useRegistry<D>(registry: Registry<D>): readonly D[] {
-  const subscribe = useCallback((listener: () => void) => registry.subscribe(listener), [registry])
-  return useSyncExternalStore(subscribe, () => registry.list())
 }
 
 /** One reference asset of a plan or a shot, with the name of what it shows and its `Picture N` number. */
@@ -105,18 +104,18 @@ export const plansOf = (state: WireState): Readonly<Record<string, PlanVersion[]
 /**
  * The plan editor: the version row, then the shots of the chosen version. The entry ID `plan:<PlanId>` names the plan;
  * the entry of a plan without versions shows nothing.
- * @param props - the entry, the state, the canvas registries, the API client, and the Factory renderer.
+ * @param props - the node, the state, the registry and task label hooks, and the Factory renderer.
  * @returns the element.
  */
 export function PlanEditor(
-  { node, state, canvas, client, renderFactorySlot }: PropsRuntime<'dv.canvas.editor'> & PlanEditorInjected & PropsRenderFactories,
+  { node, state, useChainAnchors, useVersionKinds, useTaskLabels, renderFactorySlot }: PropsRuntime<'dv.canvas.editor'> & PropsRenderFactories & InjectFace<PlanEditorInjected>,
 ): ReactNode {
   const versions = plansOf(state)[node.id.slice(node.id.indexOf(':') + 1)] ?? []
   // The version on show; the editor holds the choice so the version row and the shot list read the same version.
   const [chosen, setChosen] = useState<number | null>(null)
-  const anchors = useRegistry(canvas.chainAnchors)
-  const kinds = useRegistry(canvas.versionKinds)
-  const taskLabels = useTaskLabels(client)
+  const anchors = useChainAnchors(value => value)
+  const kinds = useVersionKinds(value => value)
+  const taskLabels = useTaskLabels(value => value)
   const plan = versions.find(version => version.version === chosen) ?? versions.at(-1)
   if (plan === undefined) return null
   // The approved versions of the node are the union of what every chain anchor reports for it.
@@ -127,9 +126,7 @@ export function PlanEditor(
         versions={versions} plan={plan} approved={approved} state={state} kinds={kinds} onChoose={setChosen}
         renderFactorySlot={renderFactorySlot}
       />
-      <PlanShots
-        plan={plan} state={state} kinds={kinds} taskLabels={taskLabels.value ?? NO_TASK_LABELS} renderFactorySlot={renderFactorySlot}
-      />
+      <PlanShots plan={plan} state={state} kinds={kinds} taskLabels={taskLabels} renderFactorySlot={renderFactorySlot} />
     </>
   )
 }

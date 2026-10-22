@@ -6,6 +6,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
+import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
 import { IconMicrophoneOutlineRegular, IconPaperclipOutlineRegular, IconPlayOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
@@ -15,9 +16,6 @@ import { asset, fixtureState, scriptedFetch } from '../../ui-kit/tests/fixture.c
 import { ASSET_POOL_ID } from '../src/client/definition.ts'
 import { disposeRuntimes, mountAssetPool } from './runtime.client.tsx'
 import type { FrameProps } from './runtime.client.tsx'
-
-/** A retained chat session. */
-type SessionReference = ReturnType<SlotTestRuntime['sessions']['retain']>
 
 const sessions: Disposable[] = []
 
@@ -226,15 +224,15 @@ describe('the media types', () => {
     const take = state.assets.find(each => each.id === 'shot1.mp4')
     if (take === undefined) throw new Error('fixture lacks shot1.mp4')
     const sample: Readonly<Record<string, Asset>> = { image: POSTER, video: take, audio: THEME }
-    expect(runtime.ctx.dvMedia.types.list().map(type => ({
-      fields: Object.keys(type).sort(), icon: type.icon, poster: type.poster?.(sample[type.id] ?? POSTER, state) ?? null,
+    expect(runtime.ctx.dvMedia.types.getSnapshot().map(type => ({
+      fields: Object.keys(type).sort(), owner: type.owner, icon: type.icon, poster: type.poster?.(sample[type.id] ?? POSTER, state) ?? null,
     }))).toEqual([
-      { fields: ['icon', 'id', 'poster'], icon: IconPaperclipOutlineRegular, poster: 'poster.png' },
-      { fields: ['icon', 'id', 'poster'], icon: IconPlayOutlineRegular, poster: 'shot1-last.png' },
-      { fields: ['icon', 'id'], icon: IconMicrophoneOutlineRegular, poster: null },
+      { fields: ['icon', 'id', 'owner', 'poster'], owner: '@dv/ui-asset-pool', icon: IconPaperclipOutlineRegular, poster: 'poster.png' },
+      { fields: ['icon', 'id', 'owner', 'poster'], owner: '@dv/ui-asset-pool', icon: IconPlayOutlineRegular, poster: 'shot1-last.png' },
+      { fields: ['icon', 'id', 'owner'], owner: '@dv/ui-asset-pool', icon: IconMicrophoneOutlineRegular, poster: null },
     ])
-    expect(runtime.slots.entries('dv.media.view').map(entry => entry.options.key)).toEqual(runtime.ctx.dvMedia.types.list().map(type => type.id))
-    expect(runtime.ctx.dvMedia.types.list().find(type => type.id === 'video')?.poster?.(CLIP, state)).toBeNull()
+    expect(runtime.slots.entries('dv.media.view').map(entry => entry.options.key)).toEqual(runtime.ctx.dvMedia.types.getSnapshot().map(type => type.id))
+    expect(runtime.ctx.dvMedia.types.getSnapshot().find(type => type.id === 'video')?.poster?.(CLIP, state)).toBeNull()
   })
 })
 
@@ -304,7 +302,7 @@ describe('disposal of the media and tab registrations', () => {
     const registered = () => ({
       tabTypes: runtime.ctx.sidebarRightTabs.entries().map(type => type.id),
       tabBodies: runtime.slots.entries('sidebar.right.pane.tab').length,
-      mediaTypes: runtime.ctx.dvMedia.types.list().map(type => type.id),
+      mediaTypes: runtime.ctx.dvMedia.types.getSnapshot().map(type => type.id),
       views: runtime.slots.entries('dv.media.view').length,
     })
     const drawn = () => ['poster.png', 'clip.mp4', 'theme.wav'].map(id => view.getByTestId(`${id}:card`).querySelector('img, video, audio')?.tagName ?? null)
