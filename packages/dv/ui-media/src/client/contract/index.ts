@@ -47,9 +47,15 @@ export interface DvMedia {
   preview(asset: Asset, opener: Element | null): void
 }
 
+/**
+ * The facts of an asset that a media view draws: its ID and MIME type, and its name, pixel size and duration where the
+ * surface knows them, such as a project cover that the summary names by ID and MIME type only.
+ */
+export type MediaAsset = Pick<Asset, 'id' | 'mime'> & Partial<Pick<Asset, 'name' | 'width' | 'height' | 'duration_sec'>>
+
 /** Occurrence props of the `dv.media` Factory, and owner props of each `dv.media.view` entry; the surface owns the box. */
 export interface MediaOwner {
-  asset: Asset
+  asset: MediaAsset
   purpose: MediaPurpose
   /** The asset ID of a still that a playable form shows before it plays, such as a take's image output. */
   poster?: string

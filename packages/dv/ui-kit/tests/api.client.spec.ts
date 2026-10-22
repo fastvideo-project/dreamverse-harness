@@ -113,7 +113,7 @@ describe('DvClient', () => {
 
   it('reads every project summary, or one project\'s, in one request and refuses a malformed answer', async () => {
     const summaries = [
-      { project: 'p1', cover: { video: 'shot1.mp4', image: null }, edited_at: '2026-10-05T00:00:00Z' },
+      { project: 'p1', cover: { asset: 'shot1.mp4', mime: 'video/mp4' }, edited_at: '2026-10-05T00:00:00Z' },
       { project: 'p2', cover: null, edited_at: null },
     ]
     const paths: string[] = []
@@ -131,7 +131,7 @@ describe('DvClient', () => {
       '/api/dv/projects/summary',
     ])
     const malformedBodies = [
-      { projects: summaries }, [{ ...summaries[0], edited_at: 5 }], [{ ...summaries[1], cover: { video: 1, image: null } }],
+      { projects: summaries }, [{ ...summaries[0], edited_at: 5 }], [{ ...summaries[1], cover: { asset: 1, mime: 'video/mp4' } }], [{ ...summaries[1], cover: { asset: 'shot1.mp4' } }],
       [{ ...summaries[0], cover: 'shot1.mp4' }], [null],
     ]
     for (const malformed of malformedBodies) {

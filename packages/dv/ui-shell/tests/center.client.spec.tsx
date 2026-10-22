@@ -312,8 +312,8 @@ describe('the entry page', () => {
     const bench = await mountCenter({
       main: 's0',
       summaries: [
-        { project: 'p3', cover: { video: 'take3.mp4', image: 'still3.png' }, edited_at: daysAgo(0) },
-        { project: 'p2', cover: { video: null, image: 'poster2.png' }, edited_at: daysAgo(1) },
+        { project: 'p3', cover: { asset: 'take3.mp4', mime: 'video/mp4' }, edited_at: daysAgo(0) },
+        { project: 'p2', cover: { asset: 'poster2.png', mime: 'image/png' }, edited_at: daysAgo(1) },
         { project: 'p1', cover: null, edited_at: null },
       ],
     })
@@ -519,7 +519,7 @@ describe('the workspace', () => {
   it('shows the project and chat in the switcher, the view toggle, and the selected view of the project\'s session', async () => {
     const bench = await mountCenter({
       hash: '#project=p1&view=storyboard', main: 's1',
-      summaries: [{ project: 'p1', cover: { video: null, image: 'poster.png' }, edited_at: null }],
+      summaries: [{ project: 'p1', cover: { asset: 'poster.png', mime: 'image/png' }, edited_at: null }],
     })
     await bench.refreshLinks()
     const page = bench.view.view

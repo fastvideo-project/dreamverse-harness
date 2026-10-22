@@ -10,13 +10,14 @@ import css from './media.module.css'
 
 /**
  * The file card of an asset whose media type has no view.
- * @param props - the asset and the purpose; a thumbnail shows the media type only.
+ * @param props - the asset and the purpose; a thumbnail, and an asset whose name the surface does not know, show the
+ *   media type only.
  * @returns the card.
  */
 export function FileCard({ asset, purpose }: MediaOwner): ReactNode {
   return (
-    <span className={purpose === 'thumb' ? `${css.file} ${css.fileThumb}` : css.file} data-dv-media="file" title={asset.name}>
-      {purpose === 'thumb' ? null : <span className={css.fileName}>{asset.name}</span>}
+    <span className={purpose === 'thumb' ? `${css.file} ${css.fileThumb}` : css.file} data-dv-media="file" title={asset.name ?? asset.mime}>
+      {purpose === 'thumb' || asset.name === undefined ? null : <span className={css.fileName}>{asset.name}</span>}
       <span className={css.fileType}>{asset.mime}</span>
     </span>
   )

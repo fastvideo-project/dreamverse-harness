@@ -118,12 +118,12 @@ const isStringOrNull = (value: unknown): value is string | null => value === nul
 
 /**
  * @param value - a decoded `cover` field.
- * @returns whether the value is a cover with a string or null `video` and `image`.
+ * @returns whether the value is a cover with a string `asset` and `mime`.
  */
 function isProjectCover(value: unknown): value is WireProjectCover {
   if (typeof value !== 'object' || value === null) return false
   const fields = value as Record<string, unknown>
-  return isStringOrNull(fields['video']) && isStringOrNull(fields['image'])
+  return typeof fields['asset'] === 'string' && typeof fields['mime'] === 'string'
 }
 
 /**

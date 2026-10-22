@@ -9,7 +9,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 /** Two project summaries as the route answers them. */
 const SUMMARIES = [
-  { project: 'p1', cover: { video: 'shot1.mp4', image: null }, edited_at: '2026-10-05T00:00:00Z' },
+  { project: 'p1', cover: { asset: 'shot1.mp4', mime: 'video/mp4' }, edited_at: '2026-10-05T00:00:00Z' },
   { project: 'p2', cover: null, edited_at: null },
 ]
 
@@ -18,7 +18,7 @@ describe('useProjectSummaries', () => {
     const fetchSpy = vi.fn<typeof fetch>(() => Promise.resolve(new Response(JSON.stringify(SUMMARIES))))
     vi.stubGlobal('fetch', fetchSpy)
     const { result, rerender } = renderHook(({ refresh }) => useProjectSummaries(null, refresh), { initialProps: { refresh: 'p1 p2' } })
-    await waitFor(() => { expect(result.current?.get('p1')?.cover).toEqual({ video: 'shot1.mp4', image: null }) })
+    await waitFor(() => { expect(result.current?.get('p1')?.cover).toEqual({ asset: 'shot1.mp4', mime: 'video/mp4' }) })
     expect(result.current?.get('p2')).toEqual(SUMMARIES[1])
     rerender({ refresh: 'p1 p2' })
     expect(fetchSpy).toHaveBeenCalledTimes(1)
@@ -32,7 +32,7 @@ describe('useProjectSummaries', () => {
     vi.stubGlobal('fetch', fetchSpy)
     const initialProps: { narrow: SummaryQuery | undefined } = { narrow: undefined }
     const { result, rerender } = renderHook(({ narrow }) => useProjectSummaries('p1', null, narrow), { initialProps })
-    await waitFor(() => { expect(result.current?.get('p1')?.cover).toEqual({ video: 'shot1.mp4', image: null }) })
+    await waitFor(() => { expect(result.current?.get('p1')?.cover).toEqual({ asset: 'shot1.mp4', mime: 'video/mp4' }) })
     rerender({ narrow: { timeline: 't2' } })
     await waitFor(() => { expect(fetchSpy).toHaveBeenCalledTimes(2) })
     expect(fetchSpy.mock.calls.map(call => call[0]))

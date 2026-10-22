@@ -194,13 +194,10 @@ export interface WireProject {
   current?: boolean
 }
 
-/**
- * The media a project card shows as its cover: the first frame of `video` when it has one, else `image`. A rendered
- * take's image is its last frame.
- */
+/** The media a project card shows as its cover, with its MIME type: a video, whose first frame the card shows, or an image. */
 export interface WireProjectCover {
-  video: string | null
-  image: string | null
+  asset: string
+  mime: string
 }
 
 /**

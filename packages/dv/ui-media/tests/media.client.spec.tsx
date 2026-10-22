@@ -140,6 +140,14 @@ describe('the dv.media Factory', () => {
     expect(within(thumb).getByTitle('plan.json')).toBeTruthy()
     await runtime.dispose()
   })
+
+  it('draws the file card with the MIME type alone for an asset whose name the surface does not know', async () => {
+    const { runtime, view } = await mount([{ asset: { id: 'd1', mime: 'application/pdf' }, purpose: 'card' }])
+    const card = view.getByTestId('d1:card')
+    expect(card.textContent).toBe('application/pdf')
+    expect(within(card).getByTitle('application/pdf')).toBeTruthy()
+    await runtime.dispose()
+  })
 })
 
 describe('the asset preview', () => {

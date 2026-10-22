@@ -57,7 +57,7 @@ function clip(id: string, asset: string | null): Clip {
 
 /**
  * A current state with an imported reference, two finished renders after a failed one, and two timelines: `t1` starts
- * with a placeholder clip before the clip of `shot1.mp4`, and `t2` plays `shot2.mp4`.
+ * with a placeholder clip before the clip of `shot1.mp4`, and `t2` plays a text file, then `shot2.mp4`.
  * @returns the state slices.
  */
 function state(): SummarySource {
@@ -76,7 +76,7 @@ function state(): SummarySource {
       timeline: {
         timelines: [
           { id: brandString<TimelineId>('t1'), name: '', clips: [clip('c0', null), clip('c1', 'shot1.mp4'), clip('c2', 'shot2.mp4')] },
-          { id: brandString<TimelineId>('t2'), name: '', clips: [clip('c3', 'shot2.mp4')] },
+          { id: brandString<TimelineId>('t2'), name: '', clips: [clip('c4', 'notes.txt'), clip('c3', 'shot2.mp4')] },
         ],
       },
     },
@@ -88,19 +88,19 @@ describe('summarizeProject', () => {
 
   it('takes the first clip with media of the first timeline, and the last record time', () => {
     expect(summarizeProject(projectId, state(), mimeOf)).toEqual({
-      project: 'p1', cover: { video: 'shot1.mp4', image: null }, edited_at: '2026-10-06T00:00:05Z',
+      project: 'p1', cover: { asset: 'shot1.mp4', mime: 'video/mp4' }, edited_at: '2026-10-06T00:00:05Z',
     })
   })
 
-  it('takes the named timeline when the project has it, else the first timeline', () => {
-    expect(summarizeProject(projectId, state(), mimeOf, 't2').cover).toEqual({ video: 'shot2.mp4', image: null })
-    expect(summarizeProject(projectId, state(), mimeOf, 't9').cover).toEqual({ video: 'shot1.mp4', image: null })
+  it('takes the named timeline when the project has it, else the first timeline, and skips a clip that is neither a video nor an image', () => {
+    expect(summarizeProject(projectId, state(), mimeOf, 't2').cover).toEqual({ asset: 'shot2.mp4', mime: 'video/mp4' })
+    expect(summarizeProject(projectId, state(), mimeOf, 't9').cover).toEqual({ asset: 'shot1.mp4', mime: 'video/mp4' })
   })
 
   it('falls back to the first finished image without a timeline clip, and reports no cover and no records on an empty state', () => {
     const source = state()
     source.components.timeline.timelines = []
-    expect(summarizeProject(projectId, source, mimeOf).cover).toEqual({ video: null, image: 'ref.png' })
+    expect(summarizeProject(projectId, source, mimeOf).cover).toEqual({ asset: 'ref.png', mime: 'image/png' })
     source.components.proj.records = []
     expect(summarizeProject(projectId, source, mimeOf)).toEqual({ project: 'p1', cover: null, edited_at: null })
   })
@@ -168,8 +168,8 @@ describe(ROUTES.projectSummaries, () => {
     const summaries = all.json as Array<{ project: string; cover: unknown; edited_at: string | null }>
     const byProject = new Map(summaries.map(summary => [summary.project, summary]))
     expect([...byProject.keys()].sort()).toEqual([imported, chatted, blank].sort())
-    expect(byProject.get(imported)).toMatchObject({ cover: { video: null, image: mainImage } })
-    expect(byProject.get(chatted)).toMatchObject({ cover: { video: null, image: chatImage } })
+    expect(byProject.get(imported)).toMatchObject({ cover: { asset: mainImage, mime: 'image/png' } })
+    expect(byProject.get(chatted)).toMatchObject({ cover: { asset: chatImage, mime: 'image/png' } })
     expect(byProject.get(blank)).toMatchObject({ cover: null })
     for (const summary of summaries) expect(Number.isNaN(Date.parse(summary.edited_at ?? ''))).toBe(false)
     // `project` narrows the list to one project and is checked like every project the routes name.

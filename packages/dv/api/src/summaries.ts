@@ -8,10 +8,10 @@
 import type { AssetId, ComponentStates, ProjectId } from '@dv/project'
 import type {} from '@dv/timeline'
 
-/** The media a project card shows as its cover: a video, whose first frame the card shows, or an image. */
+/** The media a project card shows as its cover, with its MIME type: a video, whose first frame the card shows, or an image. */
 export interface WireProjectCover {
-  video: AssetId | null
-  image: AssetId | null
+  asset: AssetId
+  mime: string
 }
 
 /**
@@ -47,9 +47,7 @@ export function summarizeProject(
 ): WireProjectSummary {
   const coverOf = (id: AssetId): WireProjectCover | null => {
     const mime = mimeOf(id)
-    if (mime?.startsWith('video/') === true) return { video: id, image: null }
-    if (mime?.startsWith('image/') === true) return { video: null, image: id }
-    return null
+    return mime !== null && (mime.startsWith('video/') || mime.startsWith('image/')) ? { asset: id, mime } : null
   }
   const timelines = state.components.timeline.timelines
   const timeline = timelines.find(entry => entry.id === timelineId) ?? timelines[0]
@@ -63,7 +61,7 @@ export function summarizeProject(
     // A project without a timeline clip yet, such as one whose plan is not approved, shows its first image.
     const image = records.flatMap(record => record.status === 'done' ? record.outputs : [])
       .find(id => mimeOf(id)?.startsWith('image/') === true)
-    cover = image === undefined ? null : { video: null, image }
+    cover = image === undefined ? null : coverOf(image)
   }
   const last = records.at(-1)
   const editedAt = last === undefined ? null : last.finished_at ?? last.created_at
