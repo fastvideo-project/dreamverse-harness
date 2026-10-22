@@ -241,6 +241,7 @@ function nodesOf(
  * @param language - the interface language.
  * @param registered - the registered descriptors.
  * @returns the nodes and edges.
+ * @throws when two drawn nodes have one ID, naming both node types.
  */
 export function buildCanvasGraph(
   state: WireState, placed: ReadonlySet<string>, operations: readonly WireOperation[], language: DvLanguage,
@@ -295,7 +296,12 @@ export function buildCanvasGraph(
     return true
   })
   const nodes = [...slice, ...claimed, ...kept]
-  const byId = new Map(nodes.map(entry => [entry.id, entry]))
+  const byId = new Map<string, CanvasNode>()
+  for (const entry of nodes) {
+    const held = byId.get(entry.id)
+    if (held !== undefined) throw new Error(`canvas node ID "${entry.id}" is drawn by the node types ${held.type} and ${entry.type}`)
+    byId.set(entry.id, entry)
+  }
   const recordNode = new Map(claimed.map(entry => [entry.id, entry.id]))
   /** The node an asset comes from: its owner, else the nearest drawn claimed record up its producer chain. */
   const nodeOfAsset = (assetId: string | null, depth = 0): string | null => {

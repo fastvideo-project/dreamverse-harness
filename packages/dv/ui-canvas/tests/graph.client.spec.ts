@@ -338,6 +338,16 @@ describe('buildCanvasGraph', () => {
     expect(byId.get('prop:m1')?.x).toBe(byId.get('plan:p1')?.x)
   })
 
+  it('refuses to draw two nodes with one ID and names both node types', () => {
+    const twin = (type: string): NodeType => ({
+      id: `@dv/ui-test-${type}`, type, label: () => type, color: '', column: 0,
+      entries: () => [{ id: 'twin:1', title: type, record: null, assets: [], bodyHeight: 30 }],
+    })
+    const registrations = { nodeTypes: [twin('left'), twin('right')], chainAnchors: [], recordsInUse: [], versionKinds: [] }
+    expect(() => buildCanvasGraph(fixtureState(), new Set(), OPERATIONS, 'zh', registrations))
+      .toThrow('canvas node ID "twin:1" is drawn by the node types left and right')
+  })
+
   it('draws each current record of a claimed type with its outputs as assets, numbers its based_on family, and leaves a chain with an unloaded starter unanchored', () => {
     const image: NodeType = {
       id: '@dv/ui-test-image', type: 'image', label: () => 'image', color: '', column: 2,
