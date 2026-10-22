@@ -1,16 +1,18 @@
 /**
- * Write `main-graph.json`: the graph that the canvas of `origin/main` at the merge base of `HEAD` draws for each
- * conformance case, with the node types that `main` registered for the reference noun `test_ref` (`defineReferenceUi`)
- * and the plan (`planNodeType`), the chain anchor and clip uses of `conformance-states.ts`, and the card heights of
- * `main`'s `nodeHeight` (`NodeCard.tsx:71-77`). The script reads `main`'s builder with `git show`, so it reruns
- * unchanged. Run: pnpm exec tsx packages/dv/ui-canvas/tests/fixtures/main-graph.gen.client.ts
+ * Write `main-graph.json`: what the canvas and the History panel of `origin/main` at the merge base of `HEAD` show for
+ * each conformance case. The script copies `main`'s builder, its card titles, its reference kit, the plan plugin and the
+ * History label with `git show` into a scratch directory beside this file, and draws each case with `main`'s real
+ * descriptors: the reference noun `test_ref` through `main`'s `defineReferenceUi`, `planNodeType` and
+ * `planReferencesInUse` of `@dv/ui-shot-plan`, and the chain anchor and clip uses of `conformance-states.ts`. Titles
+ * come from `nodeTitle` with `main`'s Chinese dictionary, meta from the duration that `main`'s card header showed,
+ * History labels from `actionLabel` with the rows of the noun and the plan, and card heights from `main`'s `nodeHeight`
+ * (`NodeCard.tsx:71-77`). The script reruns unchanged. Run: pnpm exec tsx packages/dv/ui-canvas/tests/fixtures/main-graph.gen.client.ts
  */
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { WireState } from '@dv/ui-kit/types.ts'
+import type { ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { APPROVAL, CLIPS, conformanceCases, OPS } from './conformance-states.client.ts'
 import type { ComparedGraph, ComparedNode } from './conformance-states.client.ts'
 
@@ -19,72 +21,59 @@ const root = resolve(import.meta.dirname, '../../../../..')
 const BASE = execFileSync('git', ['merge-base', 'HEAD', 'origin/main'], { cwd: root, encoding: 'utf8' }).trim()
 const show = (path: string): string => execFileSync('git', ['show', `${BASE}:${path}`], { cwd: root, encoding: 'utf8' })
 
-/** One reference noun version and one plan version, as the cases' slices hold them. */
-interface Version { version: number; name: string; references: readonly string[]; created_by: string; shots?: unknown[] }
 /** The fields of a node of `main`'s `buildCanvasGraph` that the check reads. */
 interface MainNode {
   id: string
   type: 'asset' | 'take' | 'entry'
   nodeType?: { type: string }
   entry?: { slots?: number }
+  title: string
   x: number
   y: number
   take: number | null
+  durationSec: number | null
   badges: string[]
   flags: ComparedNode['flags']
   thumb: string | null
   video: string | null
 }
-/** The exports of `main`'s graph module that the script calls. */
-interface MainGraph {
-  buildCanvasGraph(...args: unknown[]): {
-    nodes: MainNode[]
-    edges: Array<{ from: string; to: string; kind: string }>
-    assetNodes: Record<string, string>
+/** A descriptor of `main`, which the script passes through to `main`'s builder. */
+type Descriptor = object
+/** What `main`'s `actionLabel` reads besides its record. */
+interface MainLabelContext {
+  operations: readonly WireOperation[]
+  rows: Descriptor[]
+  records: ReadonlyMap<string, ProjectRecord>
+}
+/** The exports of `main`'s modules that the script calls. */
+interface Main {
+  graph: {
+    buildCanvasGraph(...args: unknown[]): {
+      nodes: MainNode[]
+      edges: Array<{ from: string; to: string; kind: string }>
+      assetNodes: Record<string, string>
+    }
+    slotFrames(nodes: MainNode[], id: string, slots: number): Array<{ thumb: string | null; video: string | null } | null>
   }
-  slotFrames(nodes: MainNode[], id: string, slots: number): Array<{ thumb: string | null; video: string | null } | null>
+  card: { nodeTitle(node: MainNode, t: (key: string, params?: Record<string, unknown>) => string): string }
+  locales: { zh: Record<string, string> }
+  kit: {
+    defineReferenceUi(spec: object): { nodeType: Descriptor; versionKind: Descriptor; referencesInUse: Descriptor; historyRow: Descriptor }
+  }
+  plan: { planNodeType: Descriptor; planReferencesInUse: Descriptor; planHistoryRow: Descriptor }
+  rows: {
+    actionLabel(record: ProjectRecord, context: MainLabelContext): readonly [string, string]
+  }
 }
 
-/** The newest version of each `test_ref` item, as `main`'s `defineReferenceUi` read it. */
-const newest = (state: WireState): Array<{ id: string; latest: Version; versions: Version[] }> =>
-  Object.entries((state.components['test_ref'] ?? {}) as Record<string, Version[]>).flatMap(([id, versions]) => {
-    const latest = versions.at(-1)
-    return latest === undefined ? [] : [{ id, latest, versions }]
-  })
-const testRefType = {
-  id: '@dv/ui-test-ref', type: 'test_ref', label: () => '参考', color: '', column: 0,
-  entries(state: WireState) {
-    const records = new Map(state.components.proj.records.map(entry => [entry.id, entry]))
-    return newest(state).map(({ id, latest, versions }) => ({
-      id: `test_ref:${id}`, record: records.get(latest.created_by) ?? null, records: versions.slice(0, -1).map(version => version.created_by),
-      title: latest.name || id, media: [...latest.references],
-    }))
-  },
-}
-const testRefVersionKind = {
-  kind: 'test_ref', label: () => '参考', node: (id: string) => `test_ref:${id}`,
-  latest: (state: WireState) => newest(state).map(({ id, latest }) => ({ id, version: latest.version })),
-  name: () => null, assets: () => [],
-}
-const testRefInUse = {
-  id: '@dv/ui-test-ref',
-  uses: (state: WireState) => newest(state).flatMap(({ latest }) => latest.references)
-    .flatMap(ref => state.components.proj.created_by[ref] ?? []),
-}
-const planType = {
-  id: '@dv/ui-shot-plan', type: 'plan', label: () => '分镜计划', color: '', column: 1,
-  entries(state: WireState) {
-    const records = new Map(state.components.proj.records.map(entry => [entry.id, entry]))
-    const plans = ((state.components['plan'] as { plans: Record<string, Version[]> } | undefined)?.plans ?? {})
-    return Object.entries(plans).flatMap(([id, versions]) => {
-      const latest = versions.at(-1)
-      return latest === undefined ? [] : [{
-        id: `plan:${id}`, record: records.get(latest.created_by) ?? null, records: versions.slice(0, -1).map(version => version.created_by),
-        subtitle: '', title: '', media: [], slots: latest.shots?.length ?? 0,
-      }]
-    })
-  },
-}
+/** `main`'s files that the script loads, under their repository paths, and every `@dv/ui-kit` client module they import. */
+const SOURCES = [
+  'packages/dv/ui-canvas/src/client/graph.ts', 'packages/dv/ui-canvas/src/client/NodeCard.tsx',
+  'packages/dv/ui-canvas/src/client/locales.ts', 'packages/dv/ui-shot-plan/src/client/index.ts',
+  'packages/dv/ui-shot-plan/src/client/PlanEditor.tsx', 'packages/dv/ui-history/src/client/rows.ts',
+  ...execFileSync('git', ['ls-tree', '--name-only', `${BASE}:packages/dv/ui-kit/src/client/`], { cwd: root, encoding: 'utf8' })
+    .split('\n').filter(name => name !== '').map(name => `packages/dv/ui-kit/src/client/${name}`),
+]
 
 /** `nodeHeight` of `main`'s `NodeCard.tsx:71-77`. */
 function mainHeight(node: MainNode, hasFrames: boolean): number {
@@ -97,29 +86,56 @@ function mainHeight(node: MainNode, hasFrames: boolean): number {
 
 const OLD_EDGE: Record<string, string> = { reference: 'input', first_frame: 'input:first_frame', chain: 'chain', take: 'lineage' }
 
-const dir = mkdtempSync(join(tmpdir(), 'dv-main-graph-'))
+// `main`'s modules read the interface language from `<html lang>`; the cases are drawn in Chinese.
+Object.assign(globalThis, { document: { documentElement: { lang: 'zh-CN' } } })
+// Inside the package, so that `main`'s React imports resolve to this package's dependencies.
+const dir = mkdtempSync(join(import.meta.dirname, '.main-'))
 try {
-  // `main`'s builder and the ui-kit modules it imports, with the ui-kit imports made relative.
-  for (const [name, path] of [['graph', 'ui-canvas/src/client/graph.ts'], ['chain', 'ui-kit/src/client/chain.ts'], ['references', 'ui-kit/src/client/references.ts'], ['state', 'ui-kit/src/client/state.ts']] as const) {
-    writeFileSync(join(dir, `${name}.ts`), show(`packages/dv/${path}`).replaceAll('@dv/ui-kit/', './'))
+  const kitDir = join(dir, 'packages/dv/ui-kit/src/client')
+  for (const path of SOURCES) {
+    const target = join(dir, path)
+    const kit = relative(dirname(target), kitDir) || '.'
+    mkdirSync(dirname(target), { recursive: true })
+    writeFileSync(target, show(path).replaceAll('\'@dv/ui-kit/', `'${kit.startsWith('.') ? kit : `./${kit}`}/`))
   }
-  const main = await import(pathToFileURL(join(dir, 'graph.ts')).href) as MainGraph
+  const load = (path: string): Promise<unknown> => import(pathToFileURL(join(dir, path)).href)
+  const main = {
+    graph: await load('packages/dv/ui-canvas/src/client/graph.ts'),
+    card: await load('packages/dv/ui-canvas/src/client/NodeCard.tsx'),
+    locales: await load('packages/dv/ui-canvas/src/client/locales.ts'),
+    kit: await load('packages/dv/ui-kit/src/client/reference-kit.tsx'),
+    plan: await load('packages/dv/ui-shot-plan/src/client/index.ts'),
+    rows: await load('packages/dv/ui-history/src/client/rows.ts'),
+  } as Main
+  const testRef = main.kit.defineReferenceUi({
+    id: '@dv/ui-test-ref', key: 'test_ref', slice: (state: WireState) => state.components['test_ref'],
+    label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 1 },
+  })
+  const t = (key: string, params: Record<string, unknown> = {}): string =>
+    (main.locales.zh[key] ?? key).replace(/\{(\w+)\}/g, (_whole, name: string) => String(params[name]))
   const graphs: Record<string, ComparedGraph> = {}
   for (const { name, state, placed } of conformanceCases()) {
-    const graph = main.buildCanvasGraph(state, new Set(placed), OPS, 'zh', [APPROVAL], [testRefInUse, CLIPS], [testRefType, planType], [testRefVersionKind])
+    const graph = main.graph.buildCanvasGraph(
+      state, new Set(placed), OPS, 'zh', [APPROVAL], [testRef.referencesInUse, main.plan.planReferencesInUse, CLIPS],
+      [testRef.nodeType, main.plan.planNodeType], [testRef.versionKind],
+    )
     const nodes = graph.nodes.map((node): ComparedNode => {
       const slots = node.entry?.slots
       const frames = node.type === 'entry' && slots !== undefined
-        ? main.slotFrames(graph.nodes, node.id, slots).map(frame => frame === null ? null : frame.thumb ?? frame.video)
+        ? main.graph.slotFrames(graph.nodes, node.id, slots).map(frame => frame === null ? null : frame.thumb ?? frame.video)
         : null
       return {
         id: node.id, type: node.type === 'entry' ? node.nodeType?.type ?? '' : node.type, x: node.x, y: node.y, number: node.take,
+        title: main.card.nodeTitle(node, t), meta: node.durationSec === null ? null : `${node.durationSec.toFixed(1)}s`,
         badges: node.badges, flags: node.flags, finished: node.type === 'take' && !node.flags.rendering && (node.video !== null || node.thumb !== null),
         height: mainHeight(node, frames?.some(frame => frame !== null) === true), frames,
       }
     })
     const edges = graph.edges.map(edge => `${edge.from}>${edge.to}:${OLD_EDGE[edge.kind] ?? edge.kind}`).sort()
-    graphs[name] = { nodes, edges, assetNodes: graph.assetNodes }
+    const records = new Map(state.components.proj.records.map(record => [record.id, record]))
+    const context = { operations: OPS, rows: [testRef.historyRow, main.plan.planHistoryRow], records }
+    const labels = Object.fromEntries([...records.values()].map(record => [record.id, main.rows.actionLabel(record, context)[0]]))
+    graphs[name] = { nodes, edges, assetNodes: graph.assetNodes, labels }
   }
   writeFileSync(join(import.meta.dirname, 'main-graph.json'), `${JSON.stringify(graphs, null, 1)}\n`)
   console.log(`wrote ${String(Object.keys(graphs).length)} graphs`)

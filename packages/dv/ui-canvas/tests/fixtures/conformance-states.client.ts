@@ -1,8 +1,9 @@
 /**
- * The 22 project states of the canvas conformance check: the rollback project of a plan with four versions, cut after
- * ten records, with and without placed assets, and the shared view fixture with and without every asset placed. The
- * graph that the canvas draws for each state with the registered node types must equal the graph that the canvas of
- * `origin/main` drew at the branch's merge base (`main-graph.json`, written by `main-graph.gen.client.ts`).
+ * The 23 project states of the canvas conformance check: the rollback project of a plan with four versions, cut after
+ * ten records, with and without placed assets; the whole rollback project with plan and shot references; and the shared
+ * view fixture with and without every asset placed. The graph that the canvas draws for each state with the registered
+ * node types, and the History label of each record, must equal what `origin/main` showed at the branch's merge base
+ * (`main-graph.json`, written by `main-graph.gen.client.ts`).
  */
 import type { AssetId, RecordId } from '@dv/project/types'
 import type { PlanId, PlanVersion } from '@dv/shot-plan/types'
@@ -80,6 +81,19 @@ function rollbackProject(until?: string): WireState {
   }
 }
 
+/**
+ * The whole rollback project whose latest plan version references the still of `w5` and whose third shot references the
+ * still of `s3`; neither render is otherwise current, so only the plan's references in use keep them on the canvas.
+ */
+function referencedProject(): WireState {
+  const state = rollbackProject()
+  const versions = (state.components.plan?.plans['p1' as PlanId] ?? []).map(version => version.version !== 4 ? version : {
+    ...version, references: ['w5.png'], shots: version.shots.map((each, index) => index === 2 ? { ...each, references: ['s3.png'] } : each),
+  })
+  state.components.plan = { plans: { ['p1' as PlanId]: versions } }
+  return state
+}
+
 /** A plan shot whose fields the canvas does not read. */
 const shot = () => ({ prompt: 'p', modality: 'video', task: 'ref2v', provider: '', model: '' })
 
@@ -128,7 +142,7 @@ function fixtureProject(): WireState {
 /** One conformance case: its name, its state, and the assets on the canvas. */
 export interface ConformanceCase { name: string; state: WireState; placed: readonly string[] }
 
-/** @returns the 22 cases, in the order of `main-graph.json`. */
+/** @returns the 23 cases, in the order of `main-graph.json`. */
 export function conformanceCases(): ConformanceCase[] {
   const cutoffs = [undefined, 'r6', 'l1', 's7', 'x7', 'w5', 'l3', 'k1', 'q4', 'l4']
   return [
@@ -136,6 +150,7 @@ export function conformanceCases(): ConformanceCase[] {
       { name: `rollback until ${until ?? 'end'}`, state: rollbackProject(until), placed: [] },
       { name: `rollback until ${until ?? 'end'}, ref.png and r1.png placed`, state: rollbackProject(until), placed: ['ref.png', 'r1.png', 'r1.mp4'] },
     ]),
+    { name: 'rollback until end, plan and shot references', state: referencedProject(), placed: [] },
     { name: 'fixture project', state: fixtureProject(), placed: [] },
     { name: 'fixture project, every asset placed', state: fixtureProject(), placed: fixtureProject().assets.map(entry => entry.id) },
   ]
@@ -162,6 +177,10 @@ export interface ComparedNode {
   y: number
   /** The take number on `main`, the version number on the SDK side. */
   number: number | null
+  /** The title that the card header and the accessible name show. */
+  title: string
+  /** The text right of the title in the card header, such as '4.0s'; null for none. */
+  meta: string | null
   badges: string[]
   flags: { stale: boolean; rendering: boolean; failed: boolean; superseded: boolean }
   /** Whether the node can carry the unseen dot. */
@@ -178,4 +197,6 @@ export interface ComparedGraph {
   /** `<from>><to>:<kind>[:<role>]`, sorted; kind is input, chain or lineage. */
   edges: string[]
   assetNodes: Record<string, string>
+  /** The Chinese History label of each record of the state, by record ID. */
+  labels: Record<string, string>
 }
