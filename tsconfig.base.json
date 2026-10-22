@@ -333,6 +333,7 @@
       "@dv/api": ["./packages/dv/api/src/index.ts"],
       "@dv/asset-pool": ["./packages/dv/asset-pool/src/index.ts"],
       "@dv/asset-pool/types": ["./packages/dv/asset-pool/src/types.ts"],
+      "@dv/audio-generate": ["./packages/dv/audio-generate/src/index.ts"],
       "@dv/character": ["./packages/dv/character/src/index.ts"],
       "@dv/character/types": ["./packages/dv/character/src/types.ts"],
       "@dv/chat-references": ["./packages/dv/chat-references/src/index.ts"],
