@@ -15,8 +15,9 @@
  *
  * @module @dv/ui-kit/references
  */
+import { formatInputSyntax } from '@dv/project/grammar'
 import type { VersionKind } from './registries.ts'
-import type { ProjectAsset, WireInputRef, WireState } from './types.ts'
+import type { ProjectAsset, ProjectRecord, WireInputRef, WireState } from './types.ts'
 
 /** One run of a prompt: plain text, or a `Picture N` or `<Picture N>` token that names the N-th (1-based) reference image. */
 export type PicturePart = { text: string } | { picture: number; text: string }
@@ -38,9 +39,25 @@ export function versionRefOf(ref: WireInputRef): { kind: string; id: string; ver
  * @returns `<asset>`, `<record>#<output>`, or `<id>@<version>` for a version of any reference kind.
  */
 export function formatInputRef(ref: WireInputRef): string {
-  if (!('version' in ref)) return 'asset' in ref ? ref.asset : `${ref.record}#${String(ref.output)}`
+  if (!('version' in ref)) return formatInputSyntax(ref)
   const named = versionRefOf(ref)
-  return named === null ? JSON.stringify(ref) : `${named.id}@${String(named.version)}`
+  return named === null ? JSON.stringify(ref) : formatInputSyntax(named)
+}
+
+/**
+ * The request inputs of a stored record, as an operation request takes them: a record holds one input per asset of a
+ * version, and a request names the version once.
+ * @param record - the record.
+ * @returns the inputs in stored order, each version once.
+ */
+export function requestInputsOf(record: Pick<ProjectRecord, 'inputs'>): Array<{ role: string; ref: string }> {
+  const inputs: Array<{ role: string; ref: string }> = []
+  for (const input of record.inputs) {
+    const ref = formatInputRef(input.ref)
+    const previous = inputs.at(-1)
+    if (!('version' in input.ref) || previous?.role !== input.role || previous.ref !== ref) inputs.push({ role: input.role, ref })
+  }
+  return inputs
 }
 
 /**

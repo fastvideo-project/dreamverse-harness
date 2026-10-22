@@ -18,6 +18,7 @@ import type { CanvasLayout, CanvasViewport, NodePosition, WireOperation, WirePro
 import { asset, fixtureState, OPERATIONS, PROJECT, record, scriptedFetch, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState, Recorded } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
+import { composerStack } from '../../ui-composer/tests/composer-stack.client.ts'
 import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import { defineReferenceUi } from '../../ui-reference-kit/src/client/reference-kit.tsx'
 import { apply as shotPlanApply, inject as shotPlanInject } from '../../ui-shot-plan/src/client/index.ts'
@@ -39,13 +40,14 @@ export const KINDS = {
   assets: { inject: [...assetPoolInject], apply: assetPoolApply },
   takes: { inject: [...shotRenderInject], apply: shotRenderApply },
   media: { inject: [...mediaInject], apply: mediaApply },
+  composer: composerStack,
 } satisfies Record<string, Plugin>
 
 /** A kind plugin by name. */
 export type Kind = keyof typeof KINDS
 
 /** Every kind plugin, in the order the bundle lists them. */
-export const ALL_KINDS: readonly Kind[] = ['reference', 'plan', 'assets', 'takes', 'media']
+export const ALL_KINDS: readonly Kind[] = ['reference', 'plan', 'assets', 'takes', 'media', 'composer']
 
 /** The chain anchor of the fixture's approval `a1`: it hangs the records it started off `plan:p1`. */
 export const APPROVAL: ChainAnchor = { starter: 'plan.approve', anchor: approval => `plan:${String(approval.params['plan'])}` }

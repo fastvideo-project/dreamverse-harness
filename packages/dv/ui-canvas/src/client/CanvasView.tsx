@@ -13,14 +13,12 @@ import type { PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots'
 import { errorMessage } from '@dv/ui-kit/api.ts'
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import { useLanguage } from '@dv/ui-kit/locale.ts'
-import { parseVersionedReference } from '@dv/ui-kit/references.ts'
-import type { VersionKind } from '@dv/ui-kit/registries.ts'
-import type { Asset, CanvasViewport, NodePosition, OperationRequest, ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
+import type { Asset, CanvasViewport, NodePosition, OperationRequest, ProjectRecord } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { useOperations, useProjectState } from '@dv/ui-kit/useProject.ts'
 import { useZoomPresence } from '@dv/ui-kit/zoom.ts'
-import type { CanvasRequest, EditorHost, NodeAction, NodeHost, NodeView, ReferenceFacts, RerunRequest } from './contract/index.ts'
+import type { CanvasRequest, EditorHost, NodeAction, NodeHost, NodeView, RerunRequest } from './contract/index.ts'
 import { buildCanvasGraph, freePositions, isFinished, NODE_WIDTH, previewOf, ROW, slotFrames } from './graph.ts'
 import type { CanvasEdge, CanvasNode, CanvasRegistrations, SlotFrame } from './graph.ts'
 import { cardHeight, NodeCard, textScaleAt, TypeLabelBody } from './NodeCard.tsx'
@@ -176,31 +174,6 @@ function withoutKeys<V>(map: ReadonlyMap<string, V>, keys: readonly string[]): M
   const next = new Map(map)
   for (const key of keys) next.delete(key)
   return next
-}
-
-/**
- * What reference text such as `hero@1` or an asset ID names, read through the version kinds: for text that
- * `parseVersionedReference` reads as `<id>@<version>`, that version of the item in the first kind that holds it, else
- * the asset of that ID.
- * @param state - the project state.
- * @param kinds - the registered version kinds.
- * @param ref - reference text.
- * @returns the name, the asset that shows it, and the node of a versioned item.
- */
-function referenceFacts(state: WireState, kinds: readonly VersionKind[], ref: string): ReferenceFacts {
-  const assetOf = (id: string | undefined): Asset | null => state.assets.find(each => each.id === id) ?? null
-  const versioned = parseVersionedReference(ref)
-  if (versioned === null) {
-    const asset = assetOf(ref)
-    return { name: asset?.name ?? ref, asset, node: null }
-  }
-  const { id, version } = versioned
-  for (const kind of kinds) {
-    const name = kind.name(state, id, version)
-    if (name !== null) return { name, asset: assetOf(kind.assets(state, id, version)[0]), node: kind.node(id) }
-  }
-  // A version that no kind holds is an item of a noun whose UI plugin is not loaded, or a version that does not exist.
-  return { name: id, asset: null, node: null }
 }
 
 function viewOf(node: CanvasNode, unseen: boolean, rerunning: boolean): NodeView {
@@ -696,7 +669,7 @@ export function CanvasView(
     const touchesSelected = (edge: CanvasEdge): boolean => selected !== null && (edge.from === selected || edge.to === selected)
     const links = [...graph.links.filter(link => !touchesSelected(link.edge)), ...graph.links.filter(link => touchesSelected(link.edge))]
     const textScale = textScaleAt(viewport.zoom)
-    const hosts = hostsOf(() => { setEditing(null) }, graph.state)
+    const hosts = hostsOf(() => { setEditing(null) })
     content = (
       <div style={{ position: 'absolute', left: 0, top: 0, transform: `translate(${String(viewport.x)}px, ${String(viewport.y)}px) scale(${String(viewport.zoom)})`, transformOrigin: '0 0' }}>
         <svg style={{ position: 'absolute', left: 0, top: 0, width: 1, height: 1, overflow: 'visible', pointerEvents: 'none' }} aria-hidden="true">
@@ -767,17 +740,15 @@ export function CanvasView(
    * its actions, whose refused writes the canvas notice shows, and the host of an editor body without the editor's
    * picker, whose rerun the body awaits.
    * @param close - closes the editor of the surface; on the canvas, the open editor.
-   * @param state - the drawn project state, which reference text is read against.
    * @returns the hosts.
    */
-  function hostsOf(close: () => void, state: WireState): SurfaceHosts {
+  function hostsOf(close: () => void): SurfaceHosts {
     const services: Omit<NodeHost, 'rerun'> = {
       run: (request) => { void run(() => client.runOperation(canvasRequest(request))) },
       preview: (assetId, opener) => {
         const asset = assetById.get(assetId)
         if (asset !== undefined) preview(projectId, asset, opener)
       },
-      reference: ref => referenceFacts(state, descriptors.versionKinds, ref),
       openNode: setStacked,
       setPlaced: (assetId, on) => { void run(() => changePlacement(assetId, on)) },
       close,
@@ -787,11 +758,11 @@ export function CanvasView(
     return { card: { run: services.run, rerun: shown(null) }, action: id => ({ ...services, rerun: shown(id) }), editor }
   }
   /** The props that the editor of the open node and the stacked editor share. */
-  const sharedEditorProps = (node: CanvasNode, close: () => void, state: WireState) => {
+  const sharedEditorProps = (node: CanvasNode, close: () => void) => {
     const view = viewFor(node)
     return {
       node, view, operations: operations.value ?? [], versionKinds: descriptors.versionKinds,
-      actions: actionsFor(view), project: projectId, session, t, hosts: hostsOf(close, state), area, renderSlot, renderFactorySlot,
+      actions: actionsFor(view), project: projectId, session, t, hosts: hostsOf(close), area, renderSlot, renderFactorySlot,
       onAcceptStale: (record: string) => { void run(() => client.acceptStale(projectId, record, 'canvas', session)) },
       onClose: close,
     }
@@ -831,7 +802,7 @@ export function CanvasView(
             <div ref={editorZoom.fadeRef} aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'var(--dv-overlay)', zIndex: 9 }} />
             <NodeEditor
               key={editingNode.id} zoomRef={editorZoom.targetRef} state={graph.state}
-              {...sharedEditorProps(editingNode, () => { setEditing(null) }, graph.state)}
+              {...sharedEditorProps(editingNode, () => { setEditing(null) })}
             />
           </>
         )
@@ -841,7 +812,7 @@ export function CanvasView(
           // The stacked editor covers the canvas area; a press outside its panel closes it, not the editor beneath.
           <div style={{ position: 'absolute', inset: 0, zIndex: 11 }} onPointerDown={(event) => { event.stopPropagation(); setStacked(null) }}>
             <div aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'var(--dv-overlay)' }} />
-            <NodeEditor key={`stacked:${stackedNode.id}`} zoomRef={noZoom} {...sharedEditorProps(stackedNode, () => { setStacked(null) }, graph.state)} state={graph.state} />
+            <NodeEditor key={`stacked:${stackedNode.id}`} zoomRef={noZoom} {...sharedEditorProps(stackedNode, () => { setStacked(null) })} state={graph.state} />
           </div>
         )
         : null}

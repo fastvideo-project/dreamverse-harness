@@ -88,7 +88,6 @@ export function recordingHost(calls: string[]): EditorHost {
     rerun: (request) => { log('rerun', request.operation); return Promise.resolve() },
     pickAssets: (chosen) => { log('pickAssets', ...chosen) },
     preview: (asset) => { log('preview', asset) },
-    reference: (ref) => { log('reference', ref); return { name: ref, asset: null, node: null } },
     openNode: (nodeId) => { log('openNode', nodeId) },
     setPlaced: (asset, on) => { log('setPlaced', asset, on) },
     close: () => { log('close') },

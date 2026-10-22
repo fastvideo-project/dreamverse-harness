@@ -21,7 +21,7 @@ import { apply, inject } from '../src/client/index.ts'
 
 /** The canvas's writes, picker, preview and navigation, which the plan card and editor do not call. */
 export const HOST: EditorHost = {
-  run: vi.fn(), rerun: vi.fn(() => Promise.resolve()), pickAssets: vi.fn(), preview: vi.fn(), reference: vi.fn(), openNode: vi.fn(),
+  run: vi.fn(), rerun: vi.fn(() => Promise.resolve()), pickAssets: vi.fn(), preview: vi.fn(), openNode: vi.fn(),
   setPlaced: vi.fn(), close: vi.fn(),
 }
 

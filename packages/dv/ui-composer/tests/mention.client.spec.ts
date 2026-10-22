@@ -8,7 +8,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createElement, type ComponentType } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Context } from '@deepseek-ai/cordis'
-import type { InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
+import type { InputTriggerCandidate, InputTriggerSource, PromptSourceFace } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { createRegistry, type MentionKind } from '@dv/ui-kit/registries.ts'
@@ -81,7 +82,7 @@ describe('projectItems', () => {
 })
 
 describe('ui-composer apply', () => {
-  it('provides dvMentions, whose kinds reach the @ source until their disposal, and removes it with the plugin', async () => {
+  it('provides dvMentions and dvComposer, whose mention kinds reach the @ source until their disposal, and removes both with the plugin', async () => {
     vi.stubGlobal('fetch', scriptedFetch().fetch)
     publishCurrentProject('p1')
     const ctx = new Context()
@@ -93,7 +94,7 @@ describe('ui-composer apply', () => {
       },
     } as never)
     ctx.provide('sessions', {} as never)
-    ctx.provide('slots', { inject: () => () => undefined, register: () => () => undefined } as never)
+    ctx.provide('slots', { inject: () => () => undefined, register: () => () => undefined, registerFactory: () => () => undefined } as never)
     ctx.provide('sidebarRight', {} as never)
     const fiber = ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
@@ -108,8 +109,9 @@ describe('ui-composer apply', () => {
     dispose()
     expect(ctx.dvMentions.kinds.getSnapshot()).toEqual([])
     expect(await names()).toEqual([])
+    expect(ctx.get('dvComposer')?.paramBars.getSnapshot()).toEqual([])
     await fiber.dispose()
-    expect(ctx.get('dvMentions')).toBeUndefined()
+    expect([ctx.get('dvMentions'), ctx.get('dvComposer')]).toEqual([undefined, undefined])
     expect(sources).toEqual([])
   })
 })
@@ -143,6 +145,56 @@ describe('projectMentionSource candidates and picks', () => {
     expect(mention.onPick({ candidate: second } as never))
       .toEqual({ insert: { source: MENTION_SOURCE, ref: text, label: 'Hat', clipboardText: text } })
     expect(mention.onPick({ candidate: { name: 'Hat' } } as never)).toBeUndefined()
+  })
+})
+
+describe('projectMentionSource in a prompt occurrence', () => {
+  /** A kind with an item shown by the image ref.png, one shown by an asset that the state lacks, and one without a thumb. */
+  const looks: MentionKind = {
+    id: 'test-looks', kind: 'test_look', order: 1, section: () => 'Looks',
+    items: () => [{ uri: 'dv:test_look/l1', label: 'Lit', thumb: 'ref.png' }, { uri: 'dv:test_look/l2', label: 'Lost', thumb: 'gone.png' }, { uri: 'dv:test_look/l3', label: 'Bare' }],
+  }
+  const prompt = () => {
+    const kinds = createRegistry<MentionKind>(kind => [kind.id], kind => kind.id)
+    kinds.register(looks)
+    const face = projectMentionSource({ kinds }, () => []).prompt
+    if (face === undefined) throw new Error('the source has no prompt face')
+    return face
+  }
+  /** The request of a prompt occurrence for `query`, naming `context` for its sources. */
+  const ask = (query: string, context: JsonValue | null): Parameters<PromptSourceFace['candidates']>[0] => (
+    { query, position: 'inline', drilled: false, signal: new AbortController().signal, context }
+  )
+  /** A menu pick of `candidate` in a prompt occurrence. */
+  const pickOf = (candidate: InputTriggerCandidate): Parameters<PromptSourceFace['onPick']>[0] => (
+    { candidate, position: 'inline', via: 'menu', action: 'pick', span: { start: 0, end: 1, draftRev: 0 } }
+  )
+  const names = async (context: JsonValue | null): Promise<string[]> => {
+    const candidates = await prompt().candidates(ask('', context))
+    return candidates.map(candidate => candidate.name)
+  }
+
+  it('offers only the items whose asset is of a media type that the occurrence names, and every item without a filter', async () => {
+    vi.stubGlobal('fetch', scriptedFetch().fetch)
+    publishCurrentProject('p1')
+    const images = await names({ mediaTypes: ['image'] })
+    expect(images.slice(0, 2)).toEqual(['Lit', 'Bare'])
+    expect(images).toContain('ref.png')
+    expect(images).not.toContain('shot1.mp4')
+    const videos = await names({ mediaTypes: ['video'] })
+    expect([videos.includes('Lit'), videos.includes('shot1.mp4'), videos.includes('Bare')]).toEqual([false, true, true])
+    for (const context of [null, 'image', { mediaTypes: 'image' }]) {
+      expect((await names(context)).slice(0, 3)).toEqual(['Lit', 'Lost', 'Bare'])
+    }
+  })
+
+  it('inserts the picked item\'s chip as the session face does', async () => {
+    vi.stubGlobal('fetch', scriptedFetch().fetch)
+    publishCurrentProject('p1')
+    const [lit] = await prompt().candidates(ask('lit', null))
+    if (lit === undefined) throw new Error('no Lit candidate')
+    const text = '@[Lit](dv:test_look/l1)'
+    expect(prompt().onPick(pickOf(lit))).toEqual({ insert: { source: MENTION_SOURCE, ref: text, label: 'Lit', clipboardText: text } })
   })
 })
 

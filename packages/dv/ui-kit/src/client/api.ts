@@ -5,8 +5,9 @@
  * @module @dv/ui-kit/api
  */
 import type {
-  CanvasLayout, HistoryQuery, OperationRequest, ProjectEvent,
-  ProjectInfo, ProjectRecord, SummaryQuery, WireHistory, WireLine, WireOperation, WireProject, WireProjectCover, WireProjectSummary,
+  CanvasLayout, HistoryQuery, OperationCheck, OperationRequest, ProjectEvent,
+  ProjectInfo, ProjectRecord, SummaryQuery, WireHistory, WireLine, WireModelEntry,
+  WireOperation, WireProject, WireProjectCover, WireProjectSummary,
   WireSession, WireState, WireWorkspaces,
 } from './types.ts'
 import type { WireTaskLabels } from './tool-labels.ts'
@@ -237,6 +238,20 @@ export class DvClient {
   /** @returns the label of each generation task that the model catalog serves; `{}` when no catalog is loaded. */
   getTaskLabels(signal?: AbortSignal): Promise<WireTaskLabels> {
     return this.get('/api/dv/tasks', {}, signal)
+  }
+
+  /** @returns the model catalog, each entry as `dv_models_get` returns it; `[]` when no catalog is loaded. */
+  listModels(signal?: AbortSignal): Promise<WireModelEntry[]> {
+    return this.get('/api/dv/models', {}, signal)
+  }
+
+  /**
+   * Check an operation call without running it.
+   * @param request - the call as `runOperation` takes it.
+   * @returns the refusal that a run would give now, and the GPU estimate.
+   */
+  checkOperation(request: OperationRequest): Promise<OperationCheck> {
+    return this.post('/api/dv/operation/check', request)
   }
 
   /**

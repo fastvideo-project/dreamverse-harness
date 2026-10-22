@@ -8075,6 +8075,9 @@ importers:
       '@deepseek-ai/dsh-api-session-controller':
         specifier: workspace:*
         version: link:../../api/session-controller
+      '@deepseek-ai/dsh-client-store':
+        specifier: workspace:*
+        version: link:../../client/store
       '@deepseek-ai/dsh-client-test-runtime':
         specifier: workspace:*
         version: link:../../test-support/client-runtime
@@ -8102,6 +8105,12 @@ importers:
       '@deepseek-ai/dsh-client-ui-tool':
         specifier: workspace:*
         version: link:../../client/ui-tool
+      '@deepseek-ai/dsh-util-values':
+        specifier: workspace:*
+        version: link:../../util/values
+      '@dv/project':
+        specifier: workspace:*
+        version: link:../project
       '@dv/ui-canvas':
         specifier: workspace:*
         version: link:../ui-canvas
@@ -8147,6 +8156,9 @@ importers:
       '@dv/ui-canvas':
         specifier: workspace:*
         version: link:../ui-canvas
+      '@dv/ui-composer':
+        specifier: workspace:*
+        version: link:../ui-composer
       '@dv/ui-history':
         specifier: workspace:*
         version: link:../ui-history
@@ -8279,6 +8291,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: workspace:*
         version: link:../../client/ui-slots
+      '@dv/project':
+        specifier: workspace:*
+        version: link:../project
       '@types/react':
         specifier: ~18.3.1
         version: 18.3.31
@@ -8567,6 +8582,9 @@ importers:
       '@dv/ui-canvas':
         specifier: workspace:*
         version: link:../ui-canvas
+      '@dv/ui-composer':
+        specifier: workspace:*
+        version: link:../ui-composer
       '@dv/ui-generation':
         specifier: workspace:*
         version: link:../ui-generation

@@ -35,6 +35,7 @@
     "@deepseek-ai/dsh-client-ui-slots": "workspace:*",
     "@deepseek-ai/dsh-client-ui-tool": "workspace:*",
     "@dv/ui-canvas": "workspace:*",
+    "@dv/ui-composer": "workspace:*",
     "@dv/ui-generation": "workspace:*",
     "@dv/ui-history": "workspace:*",
     "@dv/ui-kit": "workspace:*",

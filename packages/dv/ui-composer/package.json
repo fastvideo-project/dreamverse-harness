@@ -10,6 +10,7 @@
       "types": "./lib/types/client/index.d.ts",
       "default": "./lib/client.js"
     },
+    "./contract": "./src/client/contract/index.ts",
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
@@ -36,6 +37,7 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-api-session-controller": "workspace:*",
+    "@deepseek-ai/dsh-client-store": "workspace:*",
     "@deepseek-ai/dsh-client-test-runtime": "workspace:*",
     "@deepseek-ai/dsh-client-ui-chat": "workspace:*",
     "@deepseek-ai/dsh-client-ui-conversation": "workspace:*",
@@ -45,6 +47,8 @@
     "@deepseek-ai/dsh-client-ui-sidebar-right": "workspace:*",
     "@deepseek-ai/dsh-client-ui-slots": "workspace:*",
     "@deepseek-ai/dsh-client-ui-tool": "workspace:*",
+    "@deepseek-ai/dsh-util-values": "workspace:*",
+    "@dv/project": "workspace:*",
     "@dv/ui-canvas": "workspace:*",
     "@dv/ui-history": "workspace:*",
     "@dv/ui-kit": "workspace:*",

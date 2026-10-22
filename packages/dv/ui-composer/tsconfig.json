@@ -49,6 +49,15 @@
     },
     {
       "path": "../ui-media"
+    },
+    {
+      "path": "../../client/store"
+    },
+    {
+      "path": "../../util/values"
+    },
+    {
+      "path": "../project/tsconfig.client.json"
     }
   ]
 }

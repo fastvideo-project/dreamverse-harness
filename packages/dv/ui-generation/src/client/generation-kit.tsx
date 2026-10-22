@@ -14,7 +14,7 @@ import type { HistoryRow, Text } from '@dv/ui-history/contract'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { NODE_FRAME_HEIGHT } from '@dv/ui-kit/frame.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
-import { formatInputRef } from '@dv/ui-kit/references.ts'
+import { requestInputsOf } from '@dv/ui-kit/references.ts'
 import type { UiPlugin } from '@dv/ui-kit/registries.ts'
 import { toolNameOf } from '@dv/ui-kit/tool-labels.ts'
 import type { Asset, ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
@@ -45,8 +45,6 @@ export interface GenerationUiSpec {
   /** Default 117, the 16:9 frame at the 208 card width. */
   bodyHeight?: number
   status: StatusWords
-  /** Whether the take editor offers reference chips for a take, when its operation declares a `reference` input; default yes. */
-  references?(record: ProjectRecord): boolean
   /** The History subject of a record; default none. */
   subject?(record: ProjectRecord): Text | null
   /**
@@ -107,9 +105,9 @@ export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
     order: 0,
     shows: (node): node is ClaimedNodeView => node.claimed && node.flags.failed && operations.has(node.record.operation),
     run({ record, title }, host) {
-      // The request is the record's own operation, inputs and params, as 渲染新版本 sends it when nothing was edited.
+      // The request is the record's own operation, inputs and params, as the take editor sends it when nothing was edited.
       host.rerun({
-        operation: record.operation, inputs: record.inputs.map(input => ({ role: input.role, ref: formatInputRef(input.ref) })),
+        operation: record.operation, inputs: requestInputsOf(record),
         params: record.params, intent: pickText(`在画布上重试 ${title}`, `Retry ${title} from the canvas`), based_on: record.id,
       })
     },
@@ -123,9 +121,7 @@ export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
     inject: [],
     apply: (ctx) => {
       const labels = labelSources(new DvClient())
-      const editor: TakeEditorInjected = {
-        hooks: { taskLabels: labels.hooks.taskLabels }, status: spec.status, references: record => spec.references?.(record) ?? true,
-      }
+      const editor: TakeEditorInjected = { hooks: { taskLabels: labels.hooks.taskLabels } }
       // The canvas parts of the kind share one scope with the node type first, so a refused type leaves none of them.
       ctx.inject(['dvCanvas', 'slots'], (scope) => {
         scope.effect(() => scope.dvCanvas.nodeTypes.register(nodeType), `${spec.id}: node type`)

@@ -7,7 +7,8 @@
  * @module @dv/ui-composer/mention
  */
 import { createElement, type ComponentType } from 'react'
-import type { InputTriggerCandidate, InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
+import type { InputTriggerCandidate, InputTriggerSource, PickOutcome } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { IconPaperclipOutlineRegular, type IconProps } from '@deepseek-ai/dsh-client-ui-primitives'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import type { DvMentions, MentionKind } from '@dv/ui-kit/registries.ts'
@@ -51,6 +52,8 @@ interface Item {
   section: string
   description?: string
   icon?: ComponentType<IconProps>
+  /** The asset that shows the item: the asset itself, or the thumb of a mention kind's item. */
+  shows?: string
 }
 
 /**
@@ -67,53 +70,76 @@ export function projectItems(state: WireState, kinds: readonly MentionKind[], ty
   const mentioned = [...kinds].sort((a, b) => a.order - b.order).flatMap((kind) => {
     const section = kind.section()
     return kind.items(state).map(({ thumb, ...item }): Item => ({
-      ...item, section, ...thumb === undefined ? {} : { icon: assetIcon(assetsById.get(thumb), types, state) },
+      ...item, section, ...thumb === undefined ? {} : { icon: assetIcon(assetsById.get(thumb), types, state), shows: thumb },
     }))
   })
   const assets = state.assets.slice(-40).reverse().map((asset): Item => ({
     uri: `dv:asset/${encodeURIComponent(asset.id)}`, label: asset.name, section: pickText('素材', 'Assets'), icon: assetIcon(asset, types, state),
+    shows: asset.id,
   }))
   return [...mentioned, ...assets]
 }
 
+/** The media types that a prompt occurrence's source context names, else null for no filter. */
+function mediaOf(context: JsonValue | null): readonly string[] | null {
+  if (typeof context !== 'object' || context === null || Array.isArray(context)) return null
+  const media = context['mediaTypes']
+  return Array.isArray(media) ? media.filter(type => typeof type === 'string') : null
+}
+
 /**
- * The `@` source over the `/api/dv` routes.
+ * The `@` source over the `/api/dv` routes. A prompt occurrence outside a Session reaches it through its `prompt`
+ * face with the media types that its call's model takes, and an item whose asset is of another media type is not
+ * offered there.
  * @param mentions - the mention kinds that plugin UI halves register.
  * @param mediaTypes - reads the registered media types when the menu lists its candidates.
  * @returns the source.
  */
 export function projectMentionSource(mentions: DvMentions, mediaTypes: () => readonly MediaType[]): InputTriggerSource {
   const client = new DvClient()
+  /** The candidates of a query; a media filter keeps the items whose asset is of a media type the call's model takes. */
+  async function candidates(
+    query: string, signal: AbortSignal, media: readonly string[] | null,
+  ): Promise<readonly InputTriggerCandidate[]> {
+    // The project the shell has open; the entry page lists nothing.
+    const projectId = getCurrentProject()
+    if (projectId === null) return []
+    const state = await client.getState(projectId, signal)
+    const needle = query.toLowerCase()
+    const mimes = new Map(state.assets.map(asset => [asset.id, asset.mime]))
+    const taken = (asset: string): boolean => media === null || media.includes(mediaTypeOf(mimes.get(asset) ?? ''))
+    // The menu shows a candidate name that differs from its label as a trailing alias, so the name is the label
+    // (numbered when labels repeat) and the `dv:` address travels in `value`.
+    const seen = new Map<string, number>()
+    return projectItems(state, mentions.kinds.getSnapshot(), mediaTypes())
+      .filter(item => item.shows === undefined || taken(item.shows))
+      .filter(item => needle === '' || item.label.toLowerCase().includes(needle) || (item.description ?? '').toLowerCase().includes(needle))
+      .map((item): InputTriggerCandidate => {
+        const count = (seen.get(item.label) ?? 0) + 1
+        seen.set(item.label, count)
+        return {
+          name: count === 1 ? item.label : `${item.label} (${String(count)})`, section: item.section, value: JSON.stringify({ uri: item.uri, label: item.label }),
+          ...item.description === undefined ? {} : { description: item.description },
+          ...item.icon === undefined ? {} : { icon: item.icon },
+        }
+      })
+  }
+  /** The chip of a picked candidate. */
+  function insert(candidate: InputTriggerCandidate): PickOutcome {
+    const { uri, label } = JSON.parse(candidate.value ?? '{}') as { uri?: string; label?: string }
+    if (uri === undefined || label === undefined) return undefined
+    const text = referenceText(label, uri)
+    return { insert: { source: MENTION_SOURCE, ref: text, label, clipboardText: text } }
+  }
   return {
     trigger: '@',
     name: MENTION_SOURCE,
     showGroupTitle: false,
-    async candidates(_session, { query, signal }): Promise<readonly InputTriggerCandidate[]> {
-      // The project the shell has open; the entry page lists nothing.
-      const projectId = getCurrentProject()
-      if (projectId === null) return []
-      const state = await client.getState(projectId, signal)
-      const needle = query.toLowerCase()
-      // The menu shows a candidate name that differs from its label as a trailing alias, so the name is the label
-      // (numbered when labels repeat) and the `dv:` address travels in `value`.
-      const seen = new Map<string, number>()
-      return projectItems(state, mentions.kinds.getSnapshot(), mediaTypes())
-        .filter(item => needle === '' || item.label.toLowerCase().includes(needle) || (item.description ?? '').toLowerCase().includes(needle))
-        .map((item): InputTriggerCandidate => {
-          const count = (seen.get(item.label) ?? 0) + 1
-          seen.set(item.label, count)
-          return {
-            name: count === 1 ? item.label : `${item.label} (${String(count)})`, section: item.section, value: JSON.stringify({ uri: item.uri, label: item.label }),
-            ...item.description === undefined ? {} : { description: item.description },
-            ...item.icon === undefined ? {} : { icon: item.icon },
-          }
-        })
-    },
-    onPick({ candidate }) {
-      const { uri, label } = JSON.parse(candidate.value ?? '{}') as { uri?: string; label?: string }
-      if (uri === undefined || label === undefined) return undefined
-      const text = referenceText(label, uri)
-      return { insert: { source: MENTION_SOURCE, ref: text, label, clipboardText: text } }
+    candidates: (_session, { query, signal }) => candidates(query, signal, null),
+    onPick: ({ candidate }) => insert(candidate),
+    prompt: {
+      candidates: ({ query, signal, context }) => candidates(query, signal, mediaOf(context)),
+      onPick: ({ candidate }) => insert(candidate),
     },
     codec: {
       clipboardText: ref => ref,

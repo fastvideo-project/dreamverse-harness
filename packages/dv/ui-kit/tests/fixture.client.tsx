@@ -8,7 +8,9 @@ import type { PlanId } from '@dv/shot-plan/types'
 import type { ClipId, TimelineId } from '@dv/timeline/types'
 import type { WireReferenceVersion } from '../../ui-reference-kit/src/client/reference-kit.tsx'
 import type { WireTaskLabels } from '../src/client/tool-labels.ts'
-import type { ComponentStates, OperationRequest, ProjectAsset, ProjectRecord, WireOperation, WireProject, WireState } from '../src/client/types.ts'
+import type {
+  ComponentStates, OperationRequest, ProjectAsset, ProjectRecord, WireModelEntry, WireOperation, WireProject, WireState,
+} from '../src/client/types.ts'
 
 // The slice of the test-only reference noun `test_ref`.
 declare module '../src/client/types.ts' { interface ComponentStates { test_ref: Record<string, WireReferenceVersion[]> } }
@@ -167,6 +169,18 @@ export const OPERATIONS: WireOperation[] = [
   },
 ]
 
+/** The model catalog: the reference-image video model of the takes, and a second one that takes no reference. */
+export const MODELS: WireModelEntry[] = [
+  {
+    modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', description: 'References to video.',
+    schema: { duration_sec: { min: 1, max: 5 }, aspect_ratios: ['16:9', '9:16'], resolutions: ['720p'], inputs: { reference: { min: 1, max: 2, media_types: { image: {} } } }, extra: {} },
+  },
+  {
+    modality: 'video', task: 't2v', provider: 'fastvideo', model: 'fastt2v', description: 'Text to video.',
+    schema: { duration_sec: { min: 1, max: 3 }, aspect_ratios: ['16:9'], resolutions: ['720p'], inputs: {}, extra: {} },
+  },
+]
+
 /** The task labels of the video declaration, as the model catalog serves them at `GET /api/dv/tasks`. */
 export const TASK_LABELS: WireTaskLabels = {
   t2v: { zh: '文字生成', en: 'From text' },
@@ -185,6 +199,7 @@ export interface ScriptedRoutes {
   state?: WireState | (() => WireState)
   operations?: WireOperation[]
   tasks?: WireTaskLabels
+  models?: WireModelEntry[]
   /** Answer a POST; return `{status, body}` or throw. Default echoes a done record. */
   post?: (path: string, body: unknown) => { status: number; body: unknown }
 }
@@ -206,6 +221,12 @@ export function scriptedFetch(routes: ScriptedRoutes = {}): { fetch: typeof fetc
         const answer = routes.post(url.pathname, body)
         return Promise.resolve(json(answer.body, answer.status))
       }
+      // The check refuses nothing and estimates 4 GPU seconds per video second, 2 for the text-to-video model.
+      if (url.pathname === '/api/dv/operation/check') {
+        const params = (body as OperationRequest).params ?? {}
+        const rate = params['model'] === 'fastt2v' ? 2 : 4
+        return Promise.resolve(json({ problems: [], gpu_seconds: Number(params['duration_sec'] ?? 5) * rate }))
+      }
       if (url.pathname === '/api/dv/operation') {
         const request = body as OperationRequest
         return Promise.resolve(json(record({ id: `new-${String(writes.length)}`, operation: request.operation, params: request.params ?? {}, outputs: ['new.mp4'] })))
@@ -222,6 +243,7 @@ export function scriptedFetch(routes: ScriptedRoutes = {}): { fetch: typeof fetc
       }
       case '/api/dv/operations': return Promise.resolve(json(routes.operations ?? OPERATIONS))
       case '/api/dv/tasks': return Promise.resolve(json(routes.tasks ?? TASK_LABELS))
+      case '/api/dv/models': return Promise.resolve(json(routes.models ?? MODELS))
       default: return Promise.resolve(json({ error: `no route ${url.pathname}` }, 404))
     }
   }

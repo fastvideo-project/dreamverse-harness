@@ -1399,7 +1399,9 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     hookContext: '',
     slotInject: '',
     declaredBy: 'factory \'conversation.prompt\' (client-ui-conversation), so it exists while that definition is registered',
-    occupants: [],
+    occupants: [
+      '@dv/ui-composer ReferenceFace',
+    ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.prompt.reference\', () => ctx.slots.register(\n      { name: \'conversation.prompt.reference\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
     source: 'packages/client/ui-conversation/src/client/contract/prompt.ts:94',
@@ -1942,7 +1944,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.canvas.card\', () => ctx.slots.register(\n      { name: \'dv.canvas.card\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:299',
+    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:285',
   },
   {
     key: 'dv.canvas.editor',
@@ -1985,7 +1987,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.canvas.editor\', () => ctx.slots.register(\n      { name: \'dv.canvas.editor\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:301',
+    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:287',
   },
   {
     key: 'dv.canvas.editor.claimed',
@@ -2027,7 +2029,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.canvas.editor.claimed\', () => ctx.slots.register(\n      { name: \'dv.canvas.editor.claimed\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:303',
+    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:289',
   },
   {
     key: 'dv.canvas.picker',
@@ -2065,7 +2067,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.canvas.picker\', () => ctx.slots.register(\n      { name: \'dv.canvas.picker\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:305',
+    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:291',
   },
   {
     key: 'dv.center.view',

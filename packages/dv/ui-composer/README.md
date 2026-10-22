@@ -1,5 +1,5 @@
 ---
-description: "The DreamVerse additions to the DSH chat composer: the @ source and the Reference row for project items, tool rows with creator-facing names and a Show in history link, and the dv:compose prefill."
+description: "The DreamVerse additions to the DSH chat composer: the @ source and the Reference row for project items, the dv.prompt composer of one generation call with its registry of parameter bars, tool rows with creator-facing names and a Show in history link, and the dv:compose prefill."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to fit the DSH chat composer to a DreamVerse project. Typing `@`, or picking 引用 / Reference in the composer's ＋ menu, lists the items of the mention kinds that plugin UI halves register in `dvMentions` (the clips of `@dv/ui-timeline`, and the characters, locations, and styles of `@dv/ui-character`, `@dv/ui-location`, and `@dv/ui-style`) and the open project's assets as reference chips. DreamVerse tool rows in the chat show creator-facing names, and the link 在历史中查看 / Show in history selects a call's record. The canvas and the asset preview prefill the composer through `dv:compose`. The agent asks for the user's agreement in the conversation.
+Use this package to fit the DSH chat composer to a DreamVerse project. Typing `@`, or picking 引用 / Reference in the composer's ＋ menu, lists the items of the mention kinds that plugins register in `dvMentions` and the open project's assets as reference chips. The `dv.prompt` Factory draws a generation call's composer: references, prompt, parameters, cost, and send. DreamVerse tool rows in the chat show creator-facing names, and the link 在历史中查看 / Show in history selects a call's record. The canvas and the asset preview prefill the chat composer through `dv:compose`. The agent asks for the user's agreement in the conversation.
 
 ## Table of Contents
 
@@ -41,10 +41,30 @@ The Host half registers nothing. The browser half provides `dvMentions` at its `
 | 问 agent / Ask the agent on a canvas node | `dv:compose` with the draft 修改 {title}： / Change {title}: and one reference to the node's `ref`, else its record, else the node, shown by the node's preview or first asset; the editor closes |
 | 让智能体使用 / Ask the agent to use it in the asset preview | `dv:compose` with the draft 使用这个素材： / Use this asset: and one reference to the asset; the preview closes |
 | `dv:compose` from another view | The newest mounted composer replaces its draft with the text and appends one chip per reference; nothing is sent |
+| Open a `dv.prompt` occurrence | `GET /api/dv/models` and `GET /api/dv/operations` on the first subscription, and again on the next one after a failed read; `GET /api/dv/state` of the occurrence's project, fetched again 150 ms after each burst of its project events |
+| Edit the call in an editable `dv.prompt` occurrence | `POST /api/dv/operation/check` with the edited call and `surface: 'canvas'`, 250 ms after the last edit; the route writes nothing |
 
 The `@` list reads the project's current state: the items of each registered mention kind in its `order` (registration order on a tie) under its `section()`, where an item's `thumb` asset shows as that asset's icon, and the 40 newest assets of every media type; an asset's icon is the still that the `poster` of its media type in `dvMedia.types` of `@dv/ui-media` names, else the type's `icon` component, else a file glyph; a pick inserts a chip whose text is `@[<label>](dv:<kind>/<id>)`. The 引用 / Reference row opens the same list at the end of the draft. Every labelled tool row, and every operation row, shows the tool's name (an operation row shows `operationLabel` of `@dv/ui-kit`) and the status 进行中… / Running…, 完成 / Done, or 未完成 / Failed. Every settled row whose call wrote a record has the link 在历史中查看 / Show in history. A `dv:compose` event also brings the 对话 / Chat tab to the front. The package hides DSH's file-permission chip and draws the 对话 / Chat tab's composer card, its ＋ button, and its send button with the DreamVerse theme tokens.
 
 In settled chat Markdown, a link whose path is `/dv/assets/<id>` and whose asset the open project holds becomes a 16:9 card, 160 px wide, that draws the asset through the `dv.media` Factory of `@dv/ui-media` at purpose `thumb`, with a caption under it: the label that `dvHistory.describe` of `@dv/ui-history` gives the record that created the asset when History draws that record as media, such as a take, else the asset's name, such as the file name of an import. The caption follows `dvHistory` and its rows, so a card that is already drawn reads it again when a History row registers. A table in which every body row links such an asset becomes a three-column grid of these cards, each captioned with the row's other cells joined by ` · ` (for example `1 · 直播间开场「来一把吧」`). A Markdown image of such an asset becomes a thumbnail at most 240 px wide, at the asset's own width and aspect ratio when the asset has a size, else 240 px wide at 16:9. A click on a card or a thumbnail opens the asset preview through `dvMedia.preview`, which grows out of the clicked element; nothing opens while `dvMedia` is absent. An asset of a media type without a `dv.media.view` entry draws the file card of `@dv/ui-media`. The assets and the records that created them come from the current state of the open project, fetched again after each project event. Other links, images, and tables keep DSH's rendering.
+
+### The `dv.prompt` composer
+
+The browser half also provides `dvComposer`, whose types are in the types-only entry `@dv/ui-composer/contract` ([`src/client/contract/index.ts`](src/client/contract/index.ts)): `paramBars`, a `Registry<ParamBar>` keyed by `operation`, which the UI half of the plugin that owns an operation fills inside `ctx.inject(['dvComposer'], …)`, as `@dv/ui-shot-render` does for `shot.render`. A second bar of one operation throws, naming the holder's `owner`. A `ParamBar` gives `chips({schema, params, operation})`, the chips of a call under a model's `schema()`, each a param key, a label, the shown value, and the choices as param patches; `candidates(schema)`, the `@` filter of that model, with the media types and the `maxReferences` count of its `reference` input; and an optional `copy` with the `placeholder`, `send`, and `sending` texts.
+
+The browser half registers the root Component Factory `dv.prompt`, the composer of one generation call, which a plugin reaches with a bare `import type {} from '@dv/ui-composer/contract'` and draws with `renderFactorySlot('dv.prompt', props)`. Its props are `projectId`, `call` (a `PromptCall`: `operation`, `params` whose `prompt` holds the prompt with its citations, and `inputs` as `{role, ref}` request inputs), `readOnly`, `host`, and an optional `onSubmit(call)`, which receives the edited call and decides what a send does. The host is a `PromptHost`: `pickAssets(chosen, done)` opens the host's asset picker, `preview(asset, opener)` opens the preview of an asset, and `openNode(nodeId)` opens the editor of a canvas node. When the host passes another `call`, the occurrence starts over on it. The take editor of [`@dv/ui-generation`](../ui-generation/README.md) draws it over a take's call.
+
+The composer draws these parts from top to bottom:
+
+- The reference tray, with one tile per call input: the preview through `dv.media` at purpose `thumb`, the label, the version it sends (such as `v2`), 未引用 / uncited when no chip cites the input, 用 vN / Use vN when a newer version exists, and the × that removes the input. A tile of a media type that the selected model does not take is dimmed, and a click on a tile opens the item's node or the asset's preview. 添加素材 / Add asset opens `host.pickAssets` with the held references and appends each new pick as a `reference` input.
+- DSH's `conversation.prompt` editor, which draws each chip with the chip face.
+- The parameter bar: the model chip, a menu of the `GET /api/dv/models` entries of the call's `modality`, whose pick writes `modality`, `task`, `provider`, and `model`; then the chips of the operation's registered bar under the selected model's schema, else one chip per param that the operation declares other than `prompt`, `extra`, and those four, a menu for a param with choices and a text field otherwise; then the cost, 约 N GPU 秒 / ≈ N GPU s, and the send button.
+
+250 ms after the last edit, the composer sends the edited call to `POST /api/dv/operation/check`. The cost is the answer's `gpu_seconds`, its problem sentence shows under the bar, and the send stays disabled until a check answers with no problem. A send passes the edited call to `onSubmit`. The placeholder, the send text, and the text while a send runs come from the bar's `copy`; without it they are neutral: 描述要生成的内容 / Describe what to generate, 生成新版本 / Generate a new version, and 生成中… / Generating…. The tray's 添加素材 / Add asset and the editor's `@` offer references only when the operation declares a `reference` input and the bar's filter for the selected model names at least one media type; without a bar or a catalog entry of the model, there is no filter. In read mode the composer shows only the tray, with no add, pin, or ×, and the read-only editor; it draws no bar, sends nothing, and checks nothing. The editor stays read-only until the project state loads.
+
+A chip cites an asset (`dv:asset/<id>`) or an element such as a character (`dv:<kind>/<id>`). A `reference` input satisfies an asset chip when it stands for the asset, and an element chip when it is a version `<id>@<n>` of the element. The composer keeps the inputs in step with the chips: a new chip that no input satisfies appends the input it needs, the asset or the element at its newest version (R1); removing a tile turns each chip that only that input satisfied into its label, as one undo step of the editor (R2); deleting the last chip of an input removes that input unless another input also satisfies the deleted chip, and an input that no chip cited stays (R3′); a chip that no input satisfies draws in the failure style (R4). 用 vN / Use vN rewrites the input to that version, and every chip of the element follows. The editor's history is the only undo: an undo that brings a deleted chip back also brings back the input that the edit removed, at its old place, and a tray edit that leaves the prompt unchanged, such as an add from the picker or a pin, is outside that history. The module comments of [`src/client/DvPrompt.tsx`](src/client/DvPrompt.tsx) and [`src/client/reference-model.ts`](src/client/reference-model.ts) own these rules.
+
+The chip face is the `conversation.prompt.reference` entry at key `dv-project`, so it draws every chip of the `dv-project` source in every prompt editor: the preview through `dv.media` at purpose `thumb`, the label, and, in a `dv.prompt` occurrence, the version the call sends, all read from the live project state. A chip with no call context reads the open project and draws its element's newest version. A chip click in a `dv.prompt` occurrence opens the item's node or the asset's preview. The `@` source `dv-project` also has a `prompt` face for occurrences outside a Session, which lists the same items and leaves out an item whose asset is of a media type that the occurrence's model does not take.
 
 -----
 
@@ -61,7 +81,12 @@ A `dv:compose` event that arrives while no composer is mounted waits for the nex
 | [`src/index.ts`](src/index.ts) | The Host half, which registers nothing |
 | [`src/css-modules.d.ts`](src/css-modules.d.ts) | The type of the CSS Module imports |
 | [`src/client/index.ts`](src/client/index.ts) | `dvMentions` and the registrations: the `@` source, the ＋ menu row, the UI slot entries, the tool names, and the `dv:compose` listener |
-| [`src/client/mention.ts`](src/client/mention.ts) | The `@` source, its project items, and the reference text |
+| [`src/client/mention.ts`](src/client/mention.ts) | The `@` source with its `prompt` face, its project items, and the reference text |
+| [`src/client/contract/index.ts`](src/client/contract/index.ts) | The types-only entry `@dv/ui-composer/contract`: the call, the host, the parameter bar, `dvComposer`, and the `dv.prompt` Factory |
+| [`src/client/prompt.ts`](src/client/prompt.ts) | `dvComposer`, the registrations of `dv.prompt` and the chip face with their inject, and the live state of each project |
+| [`src/client/DvPrompt.tsx`](src/client/DvPrompt.tsx) | The composer: the reference tray, the editor, the parameter bar, the check, and the send |
+| [`src/client/reference-model.ts`](src/client/reference-model.ts) | The document of a call, the inputs that satisfy a citation, the edits R1 to R3′ and the version pin, and the views of chips and tiles |
+| [`src/client/ReferenceFace.tsx`](src/client/ReferenceFace.tsx) | The chip face |
 | [`src/client/chat-assets.ts`](src/client/chat-assets.ts) | The open project's assets, the record that created each one, and the operation declarations, fetched again after each project event |
 | [`src/client/chat-media.ts`](src/client/chat-media.ts) | The `conversation.chat.markdown` entry and its choice of links, images, and tables |
 | [`src/client/ChatMedia.tsx`](src/client/ChatMedia.tsx) | The asset cards, the card grid, and the image thumbnail, drawn through `dv.media` |
@@ -82,9 +107,11 @@ A `dv:compose` event that arrives while no composer is mounted waits for the nex
 - [`@dv/chat-references`](../chat-references/README.md) — the expansion of the `dv:` mentions of a sent message into a context message with record and asset IDs.
 - [`@dv/project`](../project/README.md) — the `dv:project` prompt section, which tells the agent to ask for the user's agreement in the conversation with the question in bold.
 - [`@dv/ui-canvas`](../ui-canvas/README.md) — the canvas and its node actions.
+- [`@dv/ui-generation`](../ui-generation/README.md) — the take editor, which draws `dv.prompt` over a take's call.
 - [`@dv/ui-history`](../ui-history/README.md) — the History panel that answers `dv:history-focus`, and the record label of the chat cards.
 - [`@dv/ui-kit`](../ui-kit/README.md) — the API client, the wire types, the compose event, and the tool labels.
 - [`@dv/ui-media`](../ui-media/README.md) — the `dv.media` Factory that draws the chat cards, the media types that draw the `@` menu icons, and the asset preview.
+- [`@dv/ui-shot-render`](../ui-shot-render/README.md) — the parameter bar of `shot.render`.
 
 -----
 

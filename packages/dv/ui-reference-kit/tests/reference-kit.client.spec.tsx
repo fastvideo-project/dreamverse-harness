@@ -154,7 +154,7 @@ const cardHost = (): CardHost => ({ run: vi.fn<CardHost['run']>(), rerun: vi.fn<
 function hostMock() {
   return {
     run: vi.fn<EditorHost['run']>(), rerun: vi.fn<EditorHost['rerun']>(), pickAssets: vi.fn<EditorHost['pickAssets']>(), preview: vi.fn<EditorHost['preview']>(),
-    reference: vi.fn<EditorHost['reference']>(), openNode: vi.fn<EditorHost['openNode']>(), setPlaced: vi.fn<EditorHost['setPlaced']>(), close: vi.fn<EditorHost['close']>(),
+    openNode: vi.fn<EditorHost['openNode']>(), setPlaced: vi.fn<EditorHost['setPlaced']>(), close: vi.fn<EditorHost['close']>(),
   } satisfies EditorHost
 }
 

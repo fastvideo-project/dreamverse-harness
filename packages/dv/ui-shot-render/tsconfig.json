@@ -19,6 +19,9 @@
     },
     {
       "path": "../ui-history"
+    },
+    {
+      "path": "../ui-composer"
     }
   ]
 }

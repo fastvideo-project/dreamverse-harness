@@ -285,6 +285,25 @@ export interface OperationRequest {
   supersedes?: string[]
 }
 
+/** What `POST /api/dv/operation/check` answers: the refusal that `run` would give now, and the GPU estimate. */
+export interface OperationCheck {
+  /** The refusal sentence, verbatim; empty when the call can run. */
+  problems: string[]
+  /** The operation's estimate; null for an operation that declares none. */
+  gpu_seconds: number | null
+}
+
+/** One entry of `GET /api/dv/models`, as the agent tool `dv_models_get` returns it. */
+export interface WireModelEntry {
+  modality: string
+  task: string
+  provider: string
+  model: string
+  description: string
+  /** The entry's `schema()`, whose fields its primitive owns; null when the backend cannot be reached. */
+  schema: unknown
+}
+
 /** Where a canvas node sits, in canvas units. */
 export interface NodePosition {
   x: number

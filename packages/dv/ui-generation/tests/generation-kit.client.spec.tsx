@@ -4,7 +4,7 @@
  * every registration when the plugin unloads.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, waitFor } from '@testing-library/react'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { HistoryRow } from '@dv/ui-history/contract'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
@@ -82,14 +82,14 @@ describe('the claimed node type of a generation kind', () => {
   })
 })
 
-describe('a generation kind with no references rule', () => {
+describe('a second generation kind', () => {
   const still = defineGenerationUi({
     id: '@dv/ui-test-still', type: 'test_still', operations: ['image.generate'], label: ['静帧', 'Still'], color: '',
     status: { running: ['生成中…', 'Generating…'], failed: ['没生成', 'Not generated'], done: ['已生成', 'Generated'] },
   })
   const IMAGE = { ...OPERATIONS[0]!, name: 'image.generate' }
 
-  it('offers reference chips on every take of a kind without a references rule', async () => {
+  it('composes the references of every take', async () => {
     document.documentElement.lang = 'zh-CN'
     vi.stubGlobal('fetch', scriptedFetch().fetch)
     const { runtime, canvas } = await mountKit({ 'dv.canvas.editor.claimed': { kind: 'keyed', scope: 'root' } })
@@ -101,8 +101,8 @@ describe('a generation kind with no references rule', () => {
     }))
     const node = claimedOf(canvas, state, [IMAGE], 'zh').get('i1')!
     expect(node.type).toBe('test_still')
-    const editor = runtime.renderSlot('dv.canvas.editor.claimed', { node, state, operations: [IMAGE], host: recordingHost(undefined, state) }, { entryKey: 'test_still' })
-    expect(editor.view.getByRole('button', { name: '查看 ref.png' })).toBeTruthy()
+    const editor = runtime.renderSlot('dv.canvas.editor.claimed', { node, state, operations: [IMAGE], host: recordingHost() }, { entryKey: 'test_still' })
+    await waitFor(() => { expect(editor.container.querySelector('[data-reference-tile="ref.png"]')?.textContent).toContain('ref.png') })
     await runtime.dispose()
   })
 })
@@ -275,7 +275,7 @@ describe('defineGenerationUi apply', () => {
     ]).toEqual(['shot1-last.png', 'shot1.mp4', null])
     const node = claimedOf(canvas, state, OPERATIONS, 'en').get('g1')!
     const editor = runtime.renderSlot('dv.canvas.editor.claimed', { node, state, operations: OPERATIONS, host: recordingHost() }, { entryKey: 'test_take' })
-    expect(editor.view.getByRole('button', { name: 'Render new take' })).toBeTruthy()
+    expect(editor.view.getByRole('button', { name: 'Generate a new version' })).toBeTruthy()
 
     await kit.dispose()
     expect(registered()).toEqual({ types: [], actions: [], card: [], editor: [], chat: [], history: [] })

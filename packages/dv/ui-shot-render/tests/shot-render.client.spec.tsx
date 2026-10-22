@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 /**
  * What the shot render declaration adds to the generation kit, through the real `@dv/ui-shot-render` plugin: the
- * `dv_shot_render` chat card with the render words, no reference chips on a text render (`t2v`), the still output
- * standing for a take on its card, a take that continues a first frame one column right, and the inert host Loader entry.
+ * `dv_shot_render` chat card with the render words, the composer's parameter bar of `shot.render` with the shot's words
+ * and no references for a text model (`t2v`), the still output standing for a take on its card, a take that continues
+ * a first frame one column right, and the inert host Loader entry.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, waitFor } from '@testing-library/react'
 import type { Context } from '@deepseek-ai/cordis'
+import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { HistoryRow } from '@dv/ui-history/contract'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
@@ -14,10 +16,12 @@ import type { ClaimedNodeView, EditorHost } from '../../ui-canvas/src/client/con
 import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
 import { buildCanvasGraph } from '../../ui-canvas/src/client/graph.ts'
 import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
-import { fixtureState, OPERATIONS, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { composerStack } from '../../ui-composer/tests/composer-stack.client.ts'
+import { fixtureState, MODELS, OPERATIONS, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
+import { shotRenderBar } from '../src/client/param-bar.ts'
 
 let runtime: SlotTestRuntime | undefined
 let reference: Disposable | undefined
@@ -40,12 +44,15 @@ const CHILDREN = {
 } as const
 
 /**
- * Mount the shot render plugin with the canvas registries, the History registry, and the real media and asset pool
- * plugins, over the scripted `/api/dv` routes.
+ * Mount the shot render plugin with the canvas registries, the History registry, and the real media, asset pool and
+ * composer plugins, over the scripted `/api/dv` routes.
  */
 async function mountShotRender() {
   vi.stubGlobal('fetch', scriptedFetch().fetch)
   runtime = await SlotTestRuntime.create()
+  const locale = new LocaleRuntime(runtime.ctx)
+  runtime.ctx.provide('locale', locale)
+  runtime.slots.installLocale(locale)
   const canvas = createDvCanvas()
   const rows = createRegistry<HistoryRow>(row => [row.match], row => row.match)
   runtime.ctx.provide('dvCanvas', canvas)
@@ -54,6 +61,7 @@ async function mountShotRender() {
   await runtime.declare(CHILDREN)
   await runtime.mount({ inject: [...mediaInject], apply: mediaApply })
   await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
+  await runtime.mount(composerStack)
   const plugin = await runtime.mount({ inject, apply })
   return { runtime, plugin, canvas, rows }
 }
@@ -65,12 +73,11 @@ function takesOf(canvas: ReturnType<typeof createDvCanvas>, state = fixtureState
   return new Map(graph.nodes.flatMap(node => node.type === 'take' && node.claimed ? [[node.id, { ...node, unseen: false, rerunning: false }] as const] : []))
 }
 
-/** @returns a canvas host that names `hero@1` as the item Hero and records nothing else. */
+/** @returns a canvas host that records nothing. */
 function host(): EditorHost {
   return {
     run: vi.fn(), rerun: vi.fn(() => Promise.resolve()), pickAssets: vi.fn(), preview: vi.fn(), openNode: vi.fn(), setPlaced: vi.fn(),
     close: vi.fn(),
-    reference: ref => ({ name: ref === 'hero@1' ? 'Hero' : ref, asset: null, node: ref === 'hero@1' ? 'test_ref:hero' : null }),
   }
 }
 
@@ -109,29 +116,34 @@ describe('the dv_shot_render chat card', () => {
       types: canvas.nodeTypes.getSnapshot().filter(type => type.id === '@dv/ui-shot-render').map(type => type.type),
       editor: mounted.slots.entries('dv.canvas.editor.claimed').map(entry => entry.options.key).filter(key => key === 'take'),
       history: rows.getSnapshot().map(row => row.match),
+      bars: mounted.ctx.dvComposer.paramBars.getSnapshot().map(bar => bar.owner),
     })
-    expect(own()).toEqual({ types: ['take'], editor: ['take'], history: ['shot.render'] })
+    expect(own()).toEqual({ types: ['take'], editor: ['take'], history: ['shot.render'], bars: ['@dv/ui-shot-render'] })
 
     await plugin.dispose()
     expect(entries().map(entry => entry.options.priority)).toEqual([1])
-    expect(own()).toEqual({ types: [], editor: [], history: [] })
+    expect(own()).toEqual({ types: [], editor: [], history: [], bars: [] })
   })
 })
 
 describe('the shot render takes', () => {
-  it('offer reference chips on a reference render and none on a text render (t2v)', async () => {
+  it('compose with the shot\'s words and the video model\'s chips, offering references to a reference model and none to a text model (t2v)', async () => {
     document.documentElement.lang = 'zh-CN'
     const { runtime: mounted, canvas } = await mountShotRender()
     const state = fixtureState()
-    state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g2' ? { ...entry, params: { ...entry.params, task: 't2v' } } : entry)
+    const t2v = { task: 't2v', model: 'fastt2v' }
+    state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g2' ? { ...entry, params: { ...entry.params, ...t2v } } : entry)
     const takes = takesOf(canvas, state)
     const editor = mounted.renderSlot('dv.canvas.editor.claimed', { node: takes.get('g1')!, state, operations: OPERATIONS, host: host() }, { entryKey: 'take' })
-    expect(editor.view.getByRole('button', { name: '查看 Hero' })).toBeTruthy()
-    expect(editor.view.getByRole('button', { name: '＋ 添加素材' })).toBeTruthy()
+    await waitFor(() => { expect(editor.view.getByRole('button', { name: '添加素材' })).toBeTruthy() })
+    expect(editor.view.getByRole('button', { name: '渲染新版本' })).toBeTruthy()
+    expect(editor.container.querySelector('[data-composer-input]')?.getAttribute('data-placeholder')).toBe('描述画面，输入 @ 引用素材')
+    expect([...editor.container.querySelectorAll('[data-param-chip]')].map(chip => chip.getAttribute('data-param-chip')))
+      .toEqual(['aspect_ratio', 'resolution', 'duration_sec'])
     editor.update({ node: takes.get('g2')!, state, operations: OPERATIONS, host: host() }, { entryKey: 'take' })
-    await waitFor(() => { expect(editor.view.getByTestId('dv-canvas-render-mode').textContent).toBe('fasth3 · 文字生成') })
-    expect(editor.view.queryByRole('button', { name: '查看 Hero' })).toBeNull()
-    expect(editor.view.queryByRole('button', { name: '＋ 添加素材' })).toBeNull()
+    await waitFor(() => { expect(editor.view.getByTestId('dv-canvas-render-mode').textContent).toBe('fastt2v · 文字生成') })
+    expect(editor.view.queryByRole('button', { name: '添加素材' })).toBeNull()
+    expect(editor.view.getByRole('button', { name: '渲染新版本' })).toBeTruthy()
   })
 
   it('draw the still output on the take card in place of the video', async () => {
@@ -149,6 +161,31 @@ describe('the shot render takes', () => {
     const takes = takesOf(canvas)
     // g2 reads g1's last still as its first frame; a column is 240 canvas units.
     expect((takes.get('g2')?.x ?? 0) - (takes.get('g1')?.x ?? 0)).toBe(240)
+  })
+})
+
+describe('the parameter bar of shot.render', () => {
+  it('offers the aspect ratios, resolutions and whole seconds that a model schema lists, with the call\'s values', () => {
+    const chips = shotRenderBar.chips({ schema: MODELS[0]?.schema, params: { aspect_ratio: '9:16', duration_sec: 3 }, operation: OPERATIONS[0]! })
+    expect(chips.map(chip => [chip.key, chip.value, chip.options.map(option => option.label)])).toEqual([
+      ['aspect_ratio', '9:16', ['16:9', '9:16']], ['resolution', '', ['720p']], ['duration_sec', '3', ['1', '2', '3', '4', '5']],
+    ])
+    expect(chips[2]?.options[1]?.patch).toEqual({ duration_sec: 2 })
+  })
+
+  it('offers one second and no other choice for a schema that is not an object', () => {
+    const chips = shotRenderBar.chips({ schema: null, params: {}, operation: OPERATIONS[0]! })
+    expect(chips.map(chip => chip.options.map(option => option.label))).toEqual([[], [], ['1']])
+  })
+
+  it('reads the reference filter from media types listed or keyed, with the count when the schema gives one', () => {
+    expect([
+      shotRenderBar.candidates(MODELS[0]?.schema),
+      shotRenderBar.candidates({ inputs: { reference: { media_types: ['image', 7] } } }),
+      shotRenderBar.candidates(MODELS[1]?.schema),
+    ]).toEqual([
+      { mediaTypes: ['image'], maxReferences: 2 }, { mediaTypes: ['image'], maxReferences: null }, { mediaTypes: [], maxReferences: null },
+    ])
   })
 })
 

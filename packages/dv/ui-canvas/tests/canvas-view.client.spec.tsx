@@ -11,7 +11,7 @@ import type { PlanId } from '@dv/shot-plan/types'
 import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { asset, record } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
-import type { NodeAction, NodeView, ReferenceFacts } from '../src/client/contract/index.ts'
+import type { NodeAction, NodeView } from '../src/client/contract/index.ts'
 import { NODE_WIDTH } from '../src/client/graph.ts'
 import { EDITOR_RECT_KEY } from '../src/client/NodeEditor.tsx'
 import { zh } from '../src/client/locales.ts'
@@ -54,6 +54,29 @@ const tileDrag = (assetId: string) => ({ types: [DV_ASSET_DRAG_TYPE], getData: (
 
 const operationsOf = (writes: ReadonlyArray<{ path: string; body: unknown }>): unknown[] =>
   writes.filter(write => write.path === '/api/dv/operation').map(write => write.body)
+
+/**
+ * The send button of an editor's composer once the composer's check of the call has answered.
+ * @param editor - the editor panel.
+ * @returns the enabled button.
+ */
+const sendIn = (editor: HTMLElement): Promise<HTMLButtonElement> => waitFor(() => {
+  const button = within(editor).getByRole<HTMLButtonElement>('button', { name: '渲染新版本' })
+  if (button.disabled) throw new Error('the composer has not checked the call yet')
+  return button
+})
+
+/**
+ * The tray tile of one reference in an editor's composer.
+ * @param editor - the editor panel.
+ * @param ref - the reference text of the tile's input.
+ * @returns the tile's open button.
+ */
+const tileIn = (editor: HTMLElement, ref: string): Promise<HTMLElement> => waitFor(() => {
+  const tile = editor.querySelector<HTMLElement>(`[data-reference-tile="${ref}"] button`)
+  if (tile === null) throw new Error(`no tile of ${ref}`)
+  return tile
+})
 
 /** Wait past the 150 ms debounce of the state reload that a project change starts, so answered requests settle. */
 const settle = (): Promise<void> => act(() => new Promise<void>((resolve) => { setTimeout(resolve, 200) }))
@@ -124,12 +147,13 @@ describe('the canvas over the real kinds', () => {
       },
     })
     const editor = await open('g1')
-    fireEvent.change(editor.querySelector('textarea') as HTMLTextAreaElement, { target: { value: 'hero runs' } })
-    fireEvent.click(within(editor).getByRole('button', { name: '渲染新版本' }))
-    expect(within(editor).getByRole('button', { name: '渲染中…' }).hasAttribute('disabled')).toBe(true)
+    fireEvent.change(await waitFor(() => within(editor).getByLabelText('时长')), { target: { value: '3' } })
+    fireEvent.click(await sendIn(editor))
+    await waitFor(() => { expect(within(editor).getByRole('button', { name: '渲染中…' }).hasAttribute('disabled')).toBe(true) })
     await waitFor(() => { expect(operationsOf(server.writes)).toHaveLength(1) })
     expect(operationsOf(server.writes)[0]).toMatchObject({
-      project: 'p1', operation: 'shot.render', surface: 'canvas', session: 's5', based_on: 'g1', params: { prompt: 'hero runs' },
+      project: 'p1', operation: 'shot.render', surface: 'canvas', session: 's5', based_on: 'g1',
+      params: { prompt: 'hero walks through the rain at night in the city', duration_sec: 3 },
     })
     server.notify()
     await settle()
@@ -341,17 +365,18 @@ describe('the canvas over the real kinds', () => {
     await runtime.dispose()
   })
 
-  it('a reference chip opens the noun\'s editor over the take editor, and closing it keeps the take editor\'s changes', async () => {
+  it('a reference tile opens the noun\'s editor over the take editor, and closing it keeps the take editor\'s changes', async () => {
     const { runtime, view, open } = await mountCanvas()
     const editor = await open('g1')
-    fireEvent.change(editor.querySelector('textarea') as HTMLTextAreaElement, { target: { value: 'hero runs' } })
-    fireEvent.click(within(editor).getByRole('button', { name: '查看 Hero' }))
+    fireEvent.change(await waitFor(() => within(editor).getByLabelText('时长')), { target: { value: '3' } })
+    const hero = await tileIn(editor, 'hero@1')
+    fireEvent.click(hero)
     expect(view.getAllByTestId('dv-canvas-node-editor').map(panel => panel.getAttribute('aria-label'))).toEqual([editor.getAttribute('aria-label'), 'Hero'])
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(view.getAllByTestId('dv-canvas-node-editor')).toHaveLength(1)
-    expect((view.getByTestId('dv-canvas-node-editor').querySelector('textarea') as HTMLTextAreaElement).value).toBe('hero runs')
+    expect(within(view.getByTestId('dv-canvas-node-editor')).getByLabelText<HTMLSelectElement>('时长').value).toBe('3')
     const openHero = (): HTMLElement => {
-      fireEvent.click(within(editor).getByRole('button', { name: '查看 Hero' }))
+      fireEvent.click(hero)
       const stacked = view.getAllByTestId('dv-canvas-node-editor')[1]
       if (stacked === undefined) throw new Error('no stacked editor')
       return stacked
@@ -376,12 +401,12 @@ describe('the canvas over the real kinds', () => {
       },
     })
     const editor = await open('g1')
-    fireEvent.click(within(editor).getByRole('button', { name: '＋ 添加素材' }))
+    fireEvent.click(await waitFor(() => within(editor).getByRole('button', { name: '添加素材' })))
     await view.findByTestId('dv-canvas-asset-picker')
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(view.queryByTestId('dv-canvas-asset-picker')).toBeNull()
     expect(view.getByTestId('dv-canvas-node-editor')).toBeTruthy()
-    fireEvent.click(within(editor).getByRole('button', { name: '＋ 添加素材' }))
+    fireEvent.click(within(editor).getByRole('button', { name: '添加素材' }))
     const picker = await view.findByTestId('dv-canvas-asset-picker')
     const villain = within(picker).getByRole('button', { name: 'Villain' })
     const noun = villain.closest('section')
@@ -396,17 +421,17 @@ describe('the canvas over the real kinds', () => {
     fireEvent.click(tile)
     fireEvent.click(within(picker).getByRole('button', { name: '确认（2）' }))
     expect(view.queryByTestId('dv-canvas-asset-picker')).toBeNull()
-    // The picked asset's chip opens the media preview of the canvas's project over the editor; Escape closes the preview
+    // The picked asset's tile opens the media preview of the canvas's project over the editor; Escape closes the preview
     // only.
     const opened = vi.spyOn(runtime.ctx.dvMedia, 'preview')
-    const chip = within(editor).getByRole('button', { name: '查看 shot1.mp4' })
-    fireEvent.click(chip)
-    expect(opened.mock.calls).toEqual([['p1', expect.objectContaining({ id: 'shot1.mp4' }), chip]])
+    const shot = await tileIn(editor, 'shot1.mp4')
+    fireEvent.click(shot)
+    expect(opened.mock.calls).toEqual([['p1', expect.objectContaining({ id: 'shot1.mp4' }), shot]])
     expect(await view.findByRole('dialog', { name: 'shot1.mp4' })).toBeTruthy()
     fireEvent.keyDown(window, { key: 'Escape' })
     await waitFor(() => { expect(view.queryByRole('dialog', { name: 'shot1.mp4' })).toBeNull() })
     expect(view.getByTestId('dv-canvas-node-editor')).toBeTruthy()
-    fireEvent.click(within(editor).getByRole('button', { name: '渲染新版本' }))
+    fireEvent.click(await sendIn(editor))
     await waitFor(() => { expect(operationsOf(server.writes)).toHaveLength(1) })
     expect(operationsOf(server.writes)[0]).toMatchObject({
       inputs: [{ role: 'reference', ref: 'hero@1' }, { role: 'reference', ref: 'villain@2' }, { role: 'reference', ref: 'shot1.mp4' }],
@@ -706,7 +731,7 @@ describe('writes and failures', () => {
       },
     })
     const editor = await open('g1')
-    fireEvent.click(within(editor).getByRole('button', { name: '渲染新版本' }))
+    fireEvent.click(await sendIn(editor))
     started = true
     server.notify()
     await waitFor(() => { expect(node('n1').getAttribute('data-node-selected')).toBe('true') })
@@ -740,13 +765,11 @@ describe('node actions', () => {
     id: `@dv/ui-test-probe:${name}`, label: () => name, order, shows: (node): node is NodeView => node.id === 'g1', run,
   })
 
-  it('orders the actions in the editor header; an action reads references and previews no unknown asset', async () => {
-    const facts: ReferenceFacts[] = []
+  it('orders the actions in the editor header; an action previews no unknown asset', async () => {
     const { runtime, view, open } = await mountCanvas()
     await mountDescriptors(runtime, {
       actions: [
         onG1('second', 2, (_node, host) => {
-          facts.push(...['hero@1', 'hero@9', 'ref.png', 'gone.png'].map(ref => host.reference(ref)))
           host.preview('gone.png', null)
         }),
         onG1('first', 1),
@@ -756,9 +779,6 @@ describe('node actions', () => {
     const labels = within(editor).getAllByRole('button').map(button => button.textContent)
     expect(labels.filter(label => label === 'first' || label === 'second')).toEqual(['first', 'second'])
     fireEvent.click(within(editor).getByRole('button', { name: 'second' }))
-    expect(facts.map(fact => [fact.name, fact.asset?.id ?? null, fact.node])).toEqual([
-      ['Hero', 'ref.png', 'test_ref:hero'], ['hero', null, null], ['ref.png', 'ref.png', null], ['gone.png', null, null],
-    ])
     expect(view.getAllByRole('dialog')).toEqual([editor])
     await runtime.dispose()
   })
@@ -771,9 +791,9 @@ describe('node actions', () => {
     }
     await mountDescriptors(runtime, { actions: [rerunG2] })
     const editor = await open('g1')
-    fireEvent.click(within(editor).getByRole('button', { name: '渲染新版本' }))
+    fireEvent.click(await sendIn(editor))
     await waitFor(() => { expect(within(editor).getByRole('button', { name: '渲染中…' }).hasAttribute('disabled')).toBe(true) })
-    fireEvent.click(within(editor).getByRole('button', { name: '查看 Hero' }))
+    fireEvent.click(await tileIn(editor, 'hero@1'))
     const stacked = view.getAllByTestId('dv-canvas-node-editor')[1]
     if (stacked === undefined) throw new Error('no stacked editor')
     fireEvent.click(within(stacked).getByRole('button', { name: 'rerun g2' }))
@@ -788,7 +808,7 @@ describe('node actions', () => {
     fireEvent.click(within(node('g1')).getByRole('button', { name: '重试' }))
     await waitFor(() => { expect(within(node('g1')).getByRole('button', { name: '渲染中…' }).hasAttribute('disabled')).toBe(true) })
     const editor = await open('g2')
-    fireEvent.click(within(editor).getByRole('button', { name: '渲染新版本' }))
+    fireEvent.click(await sendIn(editor))
     await act(() => new Promise((resolve) => { setTimeout(resolve, 20) }))
     expect(view.queryByRole('alert')).toBeNull()
     await runtime.dispose()

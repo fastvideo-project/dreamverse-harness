@@ -1,6 +1,8 @@
 /**
  * Browser half of the DreamVerse composer additions:
  * - `dvMentions`, the registry of the mention kinds that plugin UI halves add to the `@` source;
+ * - `dvComposer`, the registry of parameter bars, and the `dv.prompt` composer Factory with the chip face of every
+ *   prompt editor (`prompt.ts`);
  * - an `@` source listing the items of every registered mention kind and the assets of every media type;
  * - a 引用 row in the composer's ＋ menu that opens that `@` list at the end of the draft;
  * - an invisible `conversation.input.left` entry that makes each session's composer a `dv:compose` target;
@@ -33,6 +35,7 @@ import type {} from '@dv/ui-canvas/contract'
 import type {} from '@dv/ui-media/contract'
 import { askAgentAction, UseAssetAction } from './actions.tsx'
 import { registerChatMedia } from './chat-media.ts'
+import { applyPrompt } from './prompt.ts'
 import { deliverCompose, mountComposer } from './compose.ts'
 import { MENTION_SOURCE, projectMentionSource } from './mention.ts'
 import { DV_TOOL_LABELS } from '@dv/ui-kit/tool-labels.ts'
@@ -75,6 +78,7 @@ export function apply(ctx: ClientContext): void {
   ctx.reflect.provide('dvMentions', mentions)
   const mediaTypes = () => ctx.get('dvMedia')?.types.getSnapshot() ?? []
   ctx.effect(() => ctx.inputTriggers.registerSource(projectMentionSource(mentions, mediaTypes)), 'dv-composer: @ source')
+  applyPrompt(ctx)
   registerChatMedia(ctx)
   ctx.inject(['dvCanvas'], (scope) => {
     scope.effect(() => scope.dvCanvas.actions.register(askAgentAction), 'dv-composer: ask the agent')
