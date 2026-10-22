@@ -353,6 +353,10 @@ describe('dv-sglang-diffusion', () => {
     const list = '{"detail":[{"type":"missing","loc":["body","prompt"],"msg":"Field required","input":{"size":"512x512"}}]}'
     server.generation = { status: 422, type: 'application/json', body: list }
     await expect(fixture.entry().render(request(null))).rejects.toThrow(`${route} 422: ${list}`)
+    for (const body of ['Internal Server Error', 'null']) {
+      server.generation = { status: 500, type: 'application/json', body }
+      await expect(fixture.entry().render(request(null))).rejects.toThrow(`${route} 500: ${body}`)
+    }
     const reason = new Error('stopped by the user')
     await expect(fixture.entry().render(request(null), AbortSignal.abort(reason))).rejects.toBe(reason)
     const closed = await start(await closedUrl())

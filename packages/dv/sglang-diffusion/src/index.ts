@@ -82,11 +82,22 @@ function formatSize({ width, height }: ImageSize): string {
   return `${String(width)}x${String(height)}`
 }
 
+/** The field `key` of a parsed JSON value; undefined for a value that is not an object or has no such field. */
+function field(value: unknown, key: string): unknown {
+  return typeof value === 'object' && value !== null ? Reflect.get(value, key) : undefined
+}
+
 /** The text of an error answer: `detail` of a JSON body when it is a string, else the body as sent. */
 async function errorText(response: Response): Promise<string> {
   const text = await response.text()
   if (response.headers.get('content-type') !== 'application/json') return text
-  const { detail } = JSON.parse(text) as { detail?: unknown }
+  let body: unknown
+  try {
+    body = JSON.parse(text)
+  } catch {
+    return text
+  }
+  const detail = field(body, 'detail')
   return typeof detail === 'string' ? detail : text
 }
 
