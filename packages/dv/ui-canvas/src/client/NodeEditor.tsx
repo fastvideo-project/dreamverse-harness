@@ -15,7 +15,7 @@ import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import type { WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { AssetPicker } from './AssetPicker.tsx'
-import type { EditorHost, NodeAction, NodeHost, NodeView } from './contract/index.ts'
+import type { CardHost, EditorHost, NodeAction, NodeHost, NodeView } from './contract/index.ts'
 import type { CanvasNode } from './graph.ts'
 import type { CanvasTranslate } from './NodeCard.tsx'
 
@@ -24,9 +24,12 @@ export type RenderCanvasSlot = PropsRenderSlots<
   'dv.canvas.card' | 'dv.canvas.editor' | 'dv.canvas.editor.claimed' | 'dv.canvas.picker'
 >['renderSlot']
 
-/** The hosts that the canvas lends one surface: the node host of its actions, and its editor body's host without the picker. */
+/** The hosts that the canvas lends one surface. */
 export interface SurfaceHosts {
-  node: NodeHost
+  card: CardHost
+  /** The node host of one action, whose rerun the canvas attributes to that action. */
+  action: (id: string) => NodeHost
+  /** The host of an editor body, without the editor's asset picker. */
   editor: Omit<EditorHost, 'pickAssets'>
 }
 
@@ -368,7 +371,7 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
           </span>
           <h2 style={{ flex: 1, minWidth: 0, margin: 0, fontSize: 16, lineHeight: '24px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</h2>
           {props.actions.map(action => (
-            <button key={action.id} type="button" className="dv-canvas-soft" style={button} disabled={view.rerunning} onClick={() => { action.run(view, props.hosts.node) }}>{action.label()}</button>
+            <button key={action.id} type="button" className="dv-canvas-soft" style={button} disabled={view.rerunning} onClick={() => { action.run(view, props.hosts.action(action.id)) }}>{action.label()}</button>
           ))}
           <button type="button" className="dv-canvas-btn" aria-label={t('editor.close')} title={t('editor.close')} style={{ ...button, width: 32, padding: 0, color: 'var(--dv-text-2)' }} onClick={onClose}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>

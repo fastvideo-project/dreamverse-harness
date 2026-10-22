@@ -809,6 +809,16 @@ describe('node actions', () => {
     await runtime.dispose()
   })
 
+  it('reads the running words only on the failed-row button whose action started the rerun, and disables every button', async () => {
+    const { runtime, node } = await mountCanvas({ edit: failG1, holdOperations: true })
+    await mountDescriptors(runtime, { actions: [onG1('probe', 10)] })
+    await waitFor(() => { within(node('g1')).getByRole('button', { name: 'probe' }) })
+    fireEvent.click(within(node('g1')).getByRole('button', { name: '重试' }))
+    await waitFor(() => { expect(within(node('g1')).getByRole('button', { name: '渲染中…' }).hasAttribute('disabled')).toBe(true) })
+    expect(within(node('g1')).getByRole('button', { name: 'probe' }).hasAttribute('disabled')).toBe(true)
+    await runtime.dispose()
+  })
+
   it('an action in a failed row closes the open editor through its host', async () => {
     const { runtime, view, node, open } = await mountCanvas({ edit: failG1 })
     await mountDescriptors(runtime, { actions: [onG1('close', 1, (_node, host) => { host.close() })] })

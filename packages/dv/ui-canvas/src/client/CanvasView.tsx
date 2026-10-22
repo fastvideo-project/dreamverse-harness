@@ -508,11 +508,12 @@ export function CanvasView(
 
   // Reveal the node a rerun started: close the editor, center the new node, and select it.
   const awaitedRender = useRef<AwaitedRender | null>(null)
-  // The record whose rerun is awaited; its node's actions are disabled until the rerun is settled.
-  const [rerunningFrom, setRerunningFrom] = useState<string | null>(null)
+  // The record whose rerun is awaited, and the action that started it; the record's node's actions are disabled until
+  // the rerun is settled, and the action's button reads the running words.
+  const [rerunning, setRerunning] = useState<{ record: string; action: string | null } | null>(null)
   const settleAwaited = (): void => {
     awaitedRender.current = null
-    setRerunningFrom(null)
+    setRerunning(null)
   }
   useEffect(() => {
     const awaited = awaitedRender.current
@@ -632,15 +633,16 @@ export function CanvasView(
    * that no type draws, the editor closes then. The canvas waits for one rerun at a time, so a rerun rejects the one that
    * it replaces.
    * @param request - the request; its `based_on` is the record it runs again.
+   * @param action - the node action that started the rerun, or null for a body.
    * @returns settles once the new node is revealed; rejects with the error of a request that fails before that, or
    *   once a later rerun replaces this one.
    */
-  const rerun = (request: RerunRequest): Promise<void> => new Promise((resolve, reject) => {
+  const rerun = (request: RerunRequest, action: string | null): Promise<void> => new Promise((resolve, reject) => {
     const known = new Set(graphRef.current?.nodes.map(node => node.id))
     const awaited: AwaitedRender = { basedOn: request.based_on, known, resolve, reject }
     awaitedRender.current?.reject(new Error(t('rerun.superseded')))
     awaitedRender.current = awaited
-    setRerunningFrom(request.based_on)
+    setRerunning({ record: request.based_on, action })
     setNotice(null)
     client.runOperation(canvasRequest(request)).then(() => {
       if (awaitedRender.current !== awaited) return
@@ -727,7 +729,7 @@ export function CanvasView(
   const actionsFor = (view: NodeView): NodeAction[] => descriptors.actions.filter(action => action.shows(view, assetById))
     .toSorted((a, b) => a.order - b.order)
   const viewFor = (node: CanvasNode): NodeView => viewOf(
-    node, seenNodes !== null && isFinished(node) && !wasSeen(seenNodes, node), node.record !== null && node.record.id === rerunningFrom,
+    node, seenNodes !== null && isFinished(node) && !wasSeen(seenNodes, node), node.record !== null && node.record.id === rerunning?.record,
   )
   /** The media of one slot frame through `dv.media`. */
   const frameMedia = (frame: SlotFrame | null): ReactNode => {
@@ -794,12 +796,13 @@ export function CanvasView(
               zoom={viewport.zoom}
               t={t}
               onPointerDown={onNodeDown(node)}
-              body={renderSlot('dv.canvas.card', { node: view, assets, textScale, host: hosts.node }, {
+              body={renderSlot('dv.canvas.card', { node: view, assets, textScale, host: hosts.card }, {
                 entryKey: node.type, fallback: <TypeLabelBody label={node.nodeType.label()} textScale={textScale} />,
               })}
               frames={(grids.get(node.id) ?? []).map(frameMedia)}
               failedActions={node.claimed && node.flags.failed ? actionsFor(view) : []}
-              onAction={(action) => { action.run(view, hosts.node) }}
+              rerunningAction={view.rerunning ? rerunning?.action ?? null : null}
+              onAction={(action) => { action.run(view, hosts.action(action.id)) }}
             />
           )
         })}
@@ -815,7 +818,7 @@ export function CanvasView(
                 <button
                   key={action.id} type="button" className="dv-canvas-btn" disabled={selection.view.rerunning}
                   style={{ height: 24, padding: '0 8px', border: 'none', borderRadius: 'var(--dv-radius-sm)', fontFamily: 'inherit', fontSize: 12, color: 'var(--dv-text)', cursor: 'pointer' }}
-                  onClick={() => { action.run(selection.view, hosts.node) }}
+                  onClick={() => { action.run(selection.view, hosts.action(action.id)) }}
                 >
                   {action.label()}
                 </button>
@@ -833,9 +836,9 @@ export function CanvasView(
   const editingNode = graph?.nodes.find(node => node.id === editorZoom.shown) ?? null
   const stackedNode = editingNode === null ? null : graph?.nodes.find(node => node.id === stacked) ?? null
   /**
-   * The hosts of one surface, the only place that builds them: the node host of its actions and card bodies, whose
-   * refused writes the canvas notice shows, and the host of an editor body without the editor's picker, whose rerun the
-   * body awaits.
+   * The hosts of one surface, the only place that builds them: the host of its card bodies and the node host of each of
+   * its actions, whose refused writes the canvas notice shows, and the host of an editor body without the editor's
+   * picker, whose rerun the body awaits.
    * @param close - closes the editor of the surface; on the canvas, the open editor.
    * @param state - the drawn project state, which reference text is read against.
    * @returns the hosts.
@@ -852,8 +855,9 @@ export function CanvasView(
       setPlaced: (assetId, on) => { void run(() => changePlacement(assetId, on)) },
       close,
     }
-    const editor: Omit<EditorHost, 'pickAssets'> = { ...services, rerun }
-    return { node: { ...services, rerun: (request) => { void run(() => rerun(request)) } }, editor }
+    const shown = (action: string | null): NodeHost['rerun'] => (request) => { void run(() => rerun(request, action)) }
+    const editor: Omit<EditorHost, 'pickAssets'> = { ...services, rerun: request => rerun(request, null) }
+    return { card: { run: services.run, rerun: shown(null) }, action: id => ({ ...services, rerun: shown(id) }), editor }
   }
   /** The props that the editor of the open node and the stacked editor share. */
   const sharedEditorProps = (node: CanvasNode, close: () => void, state: WireState) => {

@@ -69,6 +69,8 @@ export interface NodeCardProps {
   frames: ReadonlyArray<ReactNode | null>
   /** For a failed claimed node, the actions that show on it; empty when the canvas is read-only. */
   failedActions: readonly NodeAction[]
+  /** The action whose rerun the node waits for, whose button reads the running words; null for none. */
+  rerunningAction: string | null
   onAction: (action: NodeAction) => void
 }
 
@@ -125,7 +127,7 @@ export function NodeCard(props: NodeCardProps): ReactNode {
             onPointerDown={(event) => { event.stopPropagation() }}
             onClick={() => { props.onAction(action) }}
           >
-            {view.rerunning ? running : action.label()}
+            {action.id === props.rerunningAction ? running : action.label()}
           </button>
         ))}
       </div>
