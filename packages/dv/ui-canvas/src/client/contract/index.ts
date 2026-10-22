@@ -184,7 +184,10 @@ export interface NodeHost {
 /** What the canvas lends a card body: the writes of the node host. */
 export type CardHost = Pick<NodeHost, 'run' | 'rerun'>
 
-/** What the canvas lends an editor body: the node host with the editor's asset picker, and a rerun that it awaits. */
+/**
+ * What the canvas lends an editor body: the node host with the editor's asset picker and file import, and a rerun that
+ * it awaits.
+ */
 export interface EditorHost extends Omit<NodeHost, 'rerun'> {
   /**
    * As `NodeHost.rerun`, and the body shows a refusal itself: settles once the new node appears or once a later rerun
@@ -193,6 +196,12 @@ export interface EditorHost extends Omit<NodeHost, 'rerun'> {
   rerun(request: RerunRequest): Promise<void>
   /** The editor's asset picker; `versions: true` adds the sections of the registered version kinds. */
   pickAssets(chosen: readonly string[], options: { versions: boolean }, onConfirm: (refs: string[]) => void): void
+  /**
+   * Import local files into the project as canvas imports, which also put each asset on the canvas, one after another.
+   * Resolves with the asset IDs of the imported files in file order; a refused import stops the imports and shows the
+   * canvas's error notice.
+   */
+  importFiles(files: readonly File[]): Promise<string[]>
 }
 
 /** The node that the records started by one operation hang off. */

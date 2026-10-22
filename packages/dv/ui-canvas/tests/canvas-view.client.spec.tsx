@@ -438,6 +438,21 @@ describe('the canvas over the real kinds', () => {
     })
     await runtime.dispose()
   })
+
+  it('imports the files of the editor\'s upload one after another as canvas imports, and the take\'s rerun sends them as references', async () => {
+    const { runtime, open, server } = await mountCanvas()
+    const editor = await open('g1')
+    const upload = await waitFor(() => within(editor).getByTestId('dv-prompt-upload'))
+    fireEvent.change(upload, { target: { files: [new File(['a'], 'a.png', { type: 'image/png' }), new File(['b'], 'b.png', { type: 'image/png' })] } })
+    await waitFor(() => { expect(server.imports.map(file => [file.name, file.surface, file.session])).toEqual([['a.png', 'canvas', 's5'], ['b.png', 'canvas', 's5']]) })
+    await tileIn(editor, 'b.png')
+    fireEvent.click(await sendIn(editor))
+    await waitFor(() => { expect(operationsOf(server.writes)).toHaveLength(1) })
+    expect(operationsOf(server.writes)[0]).toMatchObject({
+      inputs: [{ role: 'reference', ref: 'hero@1' }, { role: 'reference', ref: 'a.png' }, { role: 'reference', ref: 'b.png' }],
+    })
+    await runtime.dispose()
+  })
 })
 
 describe('drops on the canvas', () => {

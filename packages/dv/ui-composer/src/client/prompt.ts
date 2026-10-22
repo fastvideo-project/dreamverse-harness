@@ -21,7 +21,7 @@ import type { DvComposer, DvPromptInjected, ParamBar, PromptDocument, ReferenceF
 import { DvPrompt } from './DvPrompt.tsx'
 import { MENTION_SOURCE } from './mention.ts'
 import {
-  isAtom, reconcile, removeInput, resolveAtom, resolveInput, satisfyingIndexes, type ResolveContext,
+  countReferences, isAtom, reconcile, removeInput, resolveAtom, resolveInput, satisfyingIndexes, type ResolveContext,
 } from './reference-model.ts'
 import { ReferenceFace } from './ReferenceFace.tsx'
 
@@ -111,10 +111,10 @@ export function applyPrompt(ctx: ClientContext): void {
       const atoms = document.runs.filter(isAtom)
       return {
         atoms: atoms.map(atom => resolveAtom(atom, resolve)),
-        tray: document.inputs.map((input, index) => ({
+        tray: countReferences(document.inputs.map((input, index) => ({
           input, view: resolveInput(input, resolve),
           cited: atoms.some(atom => satisfyingIndexes(atom.uri, document.inputs, resolve).includes(index)),
-        })),
+        })), filter),
       }
     },
     reconcile: (state, document, runs, removed) => reconcile(document, runs, removed, contextOf(state, document, null)),

@@ -1946,7 +1946,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.canvas.card\', () => ctx.slots.register(\n      { name: \'dv.canvas.card\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:285',
+    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:294',
   },
   {
     key: 'dv.canvas.editor',
@@ -1989,7 +1989,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.canvas.editor\', () => ctx.slots.register(\n      { name: \'dv.canvas.editor\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:287',
+    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:296',
   },
   {
     key: 'dv.canvas.editor.claimed',
@@ -2031,7 +2031,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.canvas.editor.claimed\', () => ctx.slots.register(\n      { name: \'dv.canvas.editor.claimed\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:289',
+    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:298',
   },
   {
     key: 'dv.canvas.picker',
@@ -2069,7 +2069,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.canvas.picker\', () => ctx.slots.register(\n      { name: \'dv.canvas.picker\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:291',
+    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:300',
   },
   {
     key: 'dv.center.view',

@@ -64,7 +64,7 @@ interface MountOptions {
   readOnly?: boolean
   /** The host gives no send. */
   noSend?: boolean
-  /** The host lends no asset picker. */
+  /** The host lends no asset picker and no import. */
   noPicker?: boolean
   /** Changes to the prompt occurrence that shows Hero's chip with no call. */
   bare?: Partial<PromptHostModel>
@@ -120,7 +120,12 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
   runtime.ctx.effect(() => runtime.ctx.dvComposer.paramBars.register(shotRenderBar))
   const sent: PromptCall[] = []
   const answers: Array<() => void> = []
-  const host = { preview: vi.fn(), openNode: vi.fn(), ...options.noPicker === true ? {} : { pickAssets: vi.fn() } }
+  const host = {
+    preview: vi.fn(), openNode: vi.fn(),
+    ...options.noPicker === true
+      ? {}
+      : { pickAssets: vi.fn(), importFiles: vi.fn((files: readonly File[]) => Promise.resolve(files.map(file => file.name))) },
+  }
   const onSubmit = (edited: PromptCall): Promise<void> => {
     sent.push(edited)
     return options.holdSend === true ? new Promise<void>((resolve) => { answers.push(resolve) }) : Promise.resolve()
@@ -310,10 +315,30 @@ describe('the modes of an occurrence', () => {
     expect([host.openNode.mock.calls, host.preview.mock.calls]).toEqual([[], []])
   })
 
-  it('offers no add to an occurrence whose host lends no picker, and keeps its prompt editable', async () => {
+  it('offers no add and no upload to an occurrence whose host lends neither, and keeps its prompt editable', async () => {
     const { take } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] }, { noPicker: true })
     await sendOf(take, 'Render new take')
-    expect([within(take).queryByRole('button', { name: 'Add asset' }), box(take).getAttribute('contenteditable')]).toEqual([null, 'true'])
+    expect([within(take).queryByRole('button', { name: 'Add asset' }), within(take).queryByTestId('dv-prompt-upload')]).toEqual([null, null])
+    expect(box(take).getAttribute('contenteditable')).toBe('true')
+  })
+
+  it('imports uploaded files through the host and sends each as a reference in file order; a change without files imports nothing', async () => {
+    const { take, host, sent } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] })
+    const upload = await found(take, '[data-testid="dv-prompt-upload"]')
+    fireEvent.change(upload, { target: { files: null } })
+    expect(host.importFiles).not.toHaveBeenCalled()
+    fireEvent.change(upload, { target: { files: [new File(['a'], 'ref.png', { type: 'image/png' }), new File(['b'], 'shot1-last.png', { type: 'image/png' })] } })
+    await found(take, '[data-reference-tile="shot1-last.png"]')
+    fireEvent.click(await sendOf(take, 'Render new take'))
+    await waitFor(() => { expect(sent[0]?.inputs).toEqual([{ role: 'reference', ref: 'ref.png' }, { role: 'reference', ref: 'shot1-last.png' }]) })
+  })
+
+  it('dims each reference tile past the selected model\'s count of references', async () => {
+    const inputs = ['ref.png', 'shot1-last.png', 'export-last.png'].map(ref => ({ role: 'reference', ref }))
+    const { take } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs })
+    const last = await found(take, '[data-reference-tile="export-last.png"]')
+    await waitFor(() => { expect(last.style.opacity).toBe('0.5') })
+    expect(take.querySelector<HTMLElement>('[data-reference-tile="shot1-last.png"]')?.style.opacity).toBe('1')
   })
 
   it('offers no send to an editable occurrence whose host gives none, by the button or by Enter', async () => {

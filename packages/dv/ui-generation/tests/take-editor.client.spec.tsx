@@ -170,7 +170,19 @@ describe('the take editor', () => {
       operations: [...OPERATIONS, CLIP_EXTEND],
     })
     await waitFor(() => { expect(container.querySelector('[data-composer-input]')?.textContent).toBe('longer') })
-    expect(view.queryByRole('button', { name: '添加素材' })).toBeNull()
+    expect([view.queryByRole('button', { name: '添加素材' }), view.queryByTestId('dv-prompt-upload')]).toEqual([null, null])
+  })
+
+  it('imports an uploaded file through the canvas host and sends it as a reference', async () => {
+    document.documentElement.lang = 'zh-CN'
+    const { view, host } = await openEditor('g1')
+    const upload = await waitFor(() => view.getByTestId('dv-prompt-upload'))
+    fireEvent.change(upload, { target: { files: [new File(['x'], 'shot1-last.png', { type: 'image/png' })] } })
+    await waitFor(() => { expect(host.importFiles).toHaveBeenCalledTimes(1) })
+    fireEvent.click(await sendButton(view, '生成新版本'))
+    await waitFor(() => {
+      expect(host.rerun.mock.calls[0]?.[0].inputs).toEqual([{ role: 'reference', ref: 'hero@1' }, { role: 'reference', ref: 'shot1-last.png' }])
+    })
   })
 
   it('shows the failure reason of a failed take', async () => {

@@ -28,6 +28,7 @@ export const hostOpenNode = vi.fn<EditorHost['openNode']>()
 /** The canvas's writes, picker, preview and navigation; the plan card and editor call only the preview and navigation. */
 export const HOST: EditorHost = {
   run: vi.fn(), rerun: vi.fn(() => Promise.resolve()), pickAssets: vi.fn(), preview: hostPreview, openNode: hostOpenNode,
+  importFiles: vi.fn(() => Promise.resolve([])),
   setPlaced: vi.fn(), close: vi.fn(),
 }
 

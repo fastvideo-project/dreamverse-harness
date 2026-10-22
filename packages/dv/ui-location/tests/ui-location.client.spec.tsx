@@ -119,6 +119,7 @@ describe('the location plugin', () => {
 
     const host = {
       run: vi.fn<EditorHost['run']>(), rerun: vi.fn<EditorHost['rerun']>(), pickAssets: vi.fn<EditorHost['pickAssets']>(), preview: vi.fn<EditorHost['preview']>(),
+      importFiles: vi.fn<EditorHost['importFiles']>(),
       openNode: vi.fn<EditorHost['openNode']>(), setPlaced: vi.fn<EditorHost['setPlaced']>(), close: vi.fn<EditorHost['close']>(),
     } satisfies EditorHost
     const { view } = runtime.renderSlot('dv.canvas.editor', { node, state, operations: [], host }, { entryKey: 'location' })

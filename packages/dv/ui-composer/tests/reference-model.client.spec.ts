@@ -8,7 +8,7 @@ import type { ProjectAsset, WireState } from '@dv/ui-kit/types.ts'
 import { fixtureState, record } from '../../ui-kit/tests/fixture.client.tsx'
 import type { CallInput, PromptCall, PromptDocument, ReferenceAtom } from '../src/client/contract/index.ts'
 import {
-  callOf, deleteAtom, documentOf, editorContent, isAtom, pinVersion, reconcile, removeInput, resolveAtom, resolveInput,
+  callOf, countReferences, deleteAtom, documentOf, editorContent, isAtom, pinVersion, reconcile, removeInput, resolveAtom, resolveInput,
   runsOfEditor, satisfyingIndexes, type ResolveContext, type VersionReader,
 } from '../src/client/reference-model.ts'
 
@@ -216,5 +216,14 @@ describe('the readers of a document', () => {
     const filter = { mediaTypes: ['audio'], maxReferences: null }
     expect([resolveInput(reference('a3'), { ...ctx([reference('a3')]), filter }).fits, resolveInput(reference('a3'), ctx([reference('a3')])).fits])
       .toEqual([false, true])
+  })
+
+  it('counts the assets of the reference inputs in input order and marks each input that ends past the model\'s count', () => {
+    // c1@1 holds two assets, an unknown asset counts as one, and a first frame is not a reference.
+    const inputs = [reference('c1@1'), { role: 'first_frame', ref: 'g1#0' }, reference('a3'), reference('gone')]
+    const tray = inputs.map(input => ({ input, view: resolveInput(input, ctx(inputs)), cited: true }))
+    const fits = (max: number | null): boolean[] => countReferences(tray, { mediaTypes: ['image'], maxReferences: max }).map(entry => entry.view.fits)
+    expect([fits(2), fits(3), fits(null)]).toEqual([[true, true, false, false], [true, true, true, false], [true, true, true, true]])
+    expect(countReferences(tray, null)).toEqual(tray)
   })
 })

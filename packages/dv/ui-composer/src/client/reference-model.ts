@@ -14,7 +14,7 @@ import { mediaTypeOf } from '@dv/ui-kit/media-type.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import type { ProjectAsset, WireState } from '@dv/ui-kit/types.ts'
 import type {
-  CallInput, CandidateFilter, PromptCall, PromptDocument, ReferenceAtom, ReferenceView, RemovedInput, TextRun,
+  CallInput, CandidateFilter, PromptCall, PromptDocument, ReferenceAtom, ReferenceView, RemovedInput, TextRun, TrayEntry,
 } from './contract/index.ts'
 
 /** The part of a version kind that the model reads. */
@@ -410,4 +410,21 @@ export function resolveInput(input: CallInput, ctx: ResolveContext): ReferenceVi
     open: preview === null ? null : { asset: preview.id }, satisfied: assets.length > 0, fits: fitsFilter(assets, ctx.filter),
     version: null,
   }
+}
+
+/**
+ * Mark the reference inputs past the selected model's count. The count runs over the assets of the `reference` inputs
+ * in input order, as the kernel counts them, and an input that resolves to no asset counts as one.
+ * @param tray - the tray of a call, in input order.
+ * @param filter - the selected model's filter; null, or a filter without a count, leaves the tray as it is.
+ * @returns the tray, where every `reference` input whose assets end past `maxReferences` does not fit.
+ */
+export function countReferences(tray: readonly TrayEntry[], filter: CandidateFilter | null): TrayEntry[] {
+  const max = filter?.maxReferences ?? null
+  let count = 0
+  return tray.map((entry) => {
+    if (max === null || entry.input.role !== 'reference') return entry
+    count += Math.max(1, entry.view.assets.length)
+    return count > max ? { ...entry, view: { ...entry.view, fits: false } } : entry
+  })
 }

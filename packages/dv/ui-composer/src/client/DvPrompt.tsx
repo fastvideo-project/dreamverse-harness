@@ -3,11 +3,11 @@
  * the cost and send, over one call. The document holds the prompt and the call's inputs in their stored order; the
  * editor owns the text and the chips, and each editor change reconciles the inputs. A tray edit that changes the
  * prompt reaches the editor as a new content revision, so the editor's undo also undoes it. A tray edit that leaves the
- * prompt as it is (a picker add, a version pin) is no editor step, so the editor's undo leaves it: the editor's history
- * holds editor states only, and holding the inputs there would put them in the prompt's text. The tile's × takes back a
- * picker add; a pin to the newest version has no way back to the older one. In read mode the tray and the editor only
- * show the call. Until the project state loads, the editor is read-only, because the inputs follow its edits by the
- * state's rules.
+ * prompt as it is (a picker add, an upload, a version pin) is no editor step, so the editor's undo leaves it: the
+ * editor's history holds editor states only, and holding the inputs there would put them in the prompt's text. The
+ * tile's × takes back a picker add or an upload; a pin to the newest version has no way back to the older one. In read
+ * mode the tray and the editor only show the call. Until the project state loads, the editor is read-only, because the
+ * inputs follow its edits by the state's rules.
  *
  * The tray and `@` offer references only when the call's operation declares a `reference` input and the
  * selected model takes one. The placeholder and the send button read the copy of the operation's parameter bar; an
@@ -174,6 +174,13 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
       setDocument({ ...document, inputs: [...document.inputs, ...added] })
     })
   }
+  const importer = host.importFiles
+  const addFiles = (importFiles: NonNullable<typeof importer>, files: readonly File[]): void => {
+    if (files.length === 0) return
+    void importFiles(files).then((assets) => {
+      setDocument(current => ({ ...current, inputs: [...current.inputs, ...assets.map(ref => ({ role: 'reference', ref }))] }))
+    })
+  }
   return (
     <div data-dv-prompt="" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {(shown?.views.tray.length ?? 0) === 0 && !offersReferences ? null : <div role="list" aria-label={pick('参考', 'References')} style={row}>
@@ -192,6 +199,17 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
         ))}
         {offersReferences && picker !== undefined
           ? <button type="button" className="dv-canvas-btn" style={{ ...tile, ...plain }} onClick={() => { addTiles(picker) }}>{pick('添加素材', 'Add asset')}</button>
+          : null}
+        {offersReferences && importer !== undefined
+          ? (
+            <label className="dv-canvas-btn" style={{ ...tile, ...plain }}>
+              {pick('上传文件', 'Upload files')}
+              <input
+                type="file" multiple hidden data-testid="dv-prompt-upload"
+                onChange={(event) => { addFiles(importer, [...event.target.files ?? []]); event.target.value = '' }}
+              />
+            </label>
+          )
           : null}
       </div>}
       {renderFactorySlot('conversation.prompt', { model })}

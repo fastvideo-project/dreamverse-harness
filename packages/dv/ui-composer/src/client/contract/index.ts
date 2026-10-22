@@ -61,7 +61,7 @@ export interface ReferenceView {
   readonly open: { readonly node: string } | { readonly asset: string } | null
   /** False when no input of the call satisfies the citation; the host then refuses the call. */
   readonly satisfied: boolean
-  /** False for a reference that the selected model cannot take: a media type it does not take. */
+  /** False for a reference that the selected model cannot take: a media type it does not take, or past its count. */
   readonly fits: boolean
   /** The version the call sends and the newest version; null for assets, roles and chat chips. */
   readonly version: { readonly sent: number; readonly newest: number } | null
@@ -78,6 +78,11 @@ export interface CandidateFilter {
 export interface PromptHost {
   /** Open the host's asset picker; `done` receives the picked input reference texts. A host without one offers no add. */
   readonly pickAssets?: (chosen: readonly string[], done: (refs: string[]) => void) => void
+  /**
+   * Import local files into the project as the user. Resolves with the asset IDs that the host imported, in file
+   * order; the host shows a refused import itself. A host without it offers no upload.
+   */
+  readonly importFiles?: (files: readonly File[]) => Promise<string[]>
   /** Open the host's preview of an asset, growing out of `opener`. */
   preview(asset: string, opener: Element | null): void
   /** Open the editor of a canvas node. */

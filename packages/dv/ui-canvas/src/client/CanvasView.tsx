@@ -738,7 +738,7 @@ export function CanvasView(
   /**
    * The hosts of one surface, the only place that builds them: the host of its card bodies and the node host of each of
    * its actions, whose refused writes the canvas notice shows, and the host of an editor body without the editor's
-   * picker, whose rerun the body awaits.
+   * picker, whose rerun the body awaits and which imports files as canvas imports.
    * @param close - closes the editor of the surface; on the canvas, the open editor.
    * @returns the hosts.
    */
@@ -754,7 +754,17 @@ export function CanvasView(
       close,
     }
     const shown = (action: string | null): NodeHost['rerun'] => (request) => { void run(() => rerun(request, action)) }
-    const editor: Omit<EditorHost, 'pickAssets'> = { ...services, rerun: request => rerun(request, null) }
+    const editor: Omit<EditorHost, 'pickAssets'> = {
+      ...services,
+      rerun: request => rerun(request, null),
+      importFiles: async (files) => {
+        const imported: string[] = []
+        await run(async () => {
+          for (const file of files) imported.push((await client.importAsset(projectId, file, 'canvas', session)).asset)
+        })
+        return imported
+      },
+    }
     return { card: { run: services.run, rerun: shown(null) }, action: id => ({ ...services, rerun: shown(id) }), editor }
   }
   /** The props that the editor of the open node and the stacked editor share. */

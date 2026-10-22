@@ -5,8 +5,8 @@
  * take's call when `GET /api/dv/operations` declares its operation: the references, the prompt, the parameters, the
  * cost and the send. A send reruns the take's operation as edited, with the take as `based_on`; on success the canvas
  * closes the editor and selects the new take, and a refused request shows its error under the composer. The composer's
- * host opens the canvas's asset picker with the versioned items, opens the preview of an asset, and opens the editor of a
- * versioned item's node over this one.
+ * host opens the canvas's asset picker with the versioned items, imports uploaded files as canvas imports, opens the
+ * preview of an asset, and opens the editor of a versioned item's node over this one.
  *
  * @module @dv/ui-generation/TakeEditor
  */
@@ -52,6 +52,7 @@ export function TakeEditor(props: TakeEditorProps): ReactNode {
   const shown = state.assets.find(asset => asset.id === node.assets[0])
   const promptHost: PromptHost = {
     pickAssets: (chosen, done) => { host.pickAssets(chosen, { versions: true }, done) },
+    importFiles: files => host.importFiles(files),
     preview: (asset, opener) => { host.preview(asset, opener) },
     openNode: (nodeId) => { host.openNode(nodeId) },
   }

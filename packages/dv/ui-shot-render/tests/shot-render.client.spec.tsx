@@ -77,6 +77,7 @@ function takesOf(canvas: ReturnType<typeof createDvCanvas>, state = fixtureState
 function host(): EditorHost {
   return {
     run: vi.fn(), rerun: vi.fn(() => Promise.resolve()), pickAssets: vi.fn(), preview: vi.fn(), openNode: vi.fn(), setPlaced: vi.fn(),
+    importFiles: vi.fn(() => Promise.resolve([])),
     close: vi.fn(),
   }
 }

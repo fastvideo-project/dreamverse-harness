@@ -181,7 +181,8 @@ const PlanShots = memo(function PlanShots(
           key={index} number={index + 1} shot={shot} referenceCount={shotReferences(plan, shot).length} taskLabels={taskLabels}
           prompt={renderFactorySlot('dv.prompt', {
             projectId: state.project.id, readOnly: true,
-            // The plan view only shows the call, so it lends no picker; a chip or a tile opens its asset's preview or its item's node.
+            // The plan view only shows the call, so it lends no picker and no upload; a chip or a tile opens its item's node
+            // or its asset's preview.
             host: {
               preview: (asset, opener) => { host.preview(asset, opener) },
               openNode: (nodeId) => { host.openNode(nodeId) },
