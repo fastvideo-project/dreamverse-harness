@@ -248,6 +248,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/dv/ui-reference-kit': { kind: 'indirect', reason: 'Browser kit of reference nouns; the <key>.update records its editor writes reach the model only through @dv/project.' },
   'packages/dv/ui-generation': { kind: 'indirect', reason: 'Browser kit of generation primitives; the records its take editor and retry action write reach the model only through @dv/project.' },
   'packages/dv/ui-image-generate': { kind: 'indirect', reason: 'Browser-side image takes; the image.generate records their editor and retry write reach the model only through @dv/project.' },
+  'packages/dv/ui-audio-generate': { kind: 'indirect', reason: 'Browser-side audio takes; the audio.generate records their editor and retry write reach the model only through @dv/project.' },
   'packages/dv/ui-media': { kind: 'none', reason: 'Browser-side dv.media Factory and asset preview; they draw assets and write no record.' },
   'packages/dv/ffmpeg': { kind: 'indirect', reason: 'The command runner adds no tool; the component operations that call it report its files and probe fields.' },
   'packages/dv/e2e': { kind: 'none', reason: 'Browser stories that run the DreamVerse profile against a scripted model; the package ships no plugin, prompt, or tool.' },

@@ -130,6 +130,9 @@
     - id: dv-ui-image-generate
       name: '@dv/ui-image-generate'
 
+    - id: dv-ui-audio-generate
+      name: '@dv/ui-audio-generate'
+
     - id: dv-ui-media
       name: '@dv/ui-media'
 

@@ -159,6 +159,7 @@
     { "path": "./packages/dv/ui-shot-plan" },
     { "path": "./packages/dv/ui-shot-render" },
     { "path": "./packages/dv/ui-image-generate" },
+    { "path": "./packages/dv/ui-audio-generate" },
     { "path": "./apps/web" }
   ]
 }

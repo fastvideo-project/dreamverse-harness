@@ -34,6 +34,7 @@
     "@dv/style": "workspace:*",
     "@dv/timeline": "workspace:*",
     "@dv/ui-asset-pool": "workspace:*",
+    "@dv/ui-audio-generate": "workspace:*",
     "@dv/ui-canvas": "workspace:*",
     "@dv/ui-character": "workspace:*",
     "@dv/ui-composer": "workspace:*",
