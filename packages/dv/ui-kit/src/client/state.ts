@@ -3,6 +3,7 @@
  *
  * @module @dv/ui-kit/state
  */
+import { mediaTypeOf } from './media-type.ts'
 import type { Asset, ProjectRecord, WireOperation, WireState } from './types.ts'
 
 /** The output types of a generation operation, which are also the MIME top-level types of its output assets. */
@@ -29,7 +30,7 @@ export function isGenerationRecord(
   record: ProjectRecord, op: WireOperation | undefined, mimeOf: (asset: string) => string | undefined,
 ): boolean {
   if (op !== undefined) return isGenerationOperation(op)
-  return !record.deterministic && record.outputs.some(output => MEDIA_TYPES.has(mimeOf(output)?.split('/')[0] ?? ''))
+  return !record.deterministic && record.outputs.some(output => MEDIA_TYPES.has(mediaTypeOf(mimeOf(output) ?? '')))
 }
 
 /**

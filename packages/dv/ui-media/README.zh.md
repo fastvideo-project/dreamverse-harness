@@ -48,6 +48,7 @@ Host 半边（`src/index.ts`）是一个什么都不做的 `apply`，所以 Load
 | `PreviewActionOwner` | 类型 | 一个预览按钮的所有者属性：`asset` 和 `close()` |
 | `Text` | 类型 | 中英文文本对 |
 | `dv.media` | 组件工厂 | 根作用域；属性为 `MediaOwner`；一个键控子插槽 `dv.media.view`。视图用 `renderFactorySlot('dv.media', { asset, purpose })` 绘制一个实例，不需要自己声明插槽；外框归视图所有，媒体视图填满它 |
+| `MediaViewOwner` | 类型 | 每个 `dv.media.view` 条目的所有者属性：`MediaOwner` 和 `unsupported()`，浏览器无法绘制该素材时视图调用它，例如无法解码的图片格式；组件工厂随后绘制文件卡片 |
 | `dv.media.view` | 键控插槽，根 | 一种媒体类型的视图，以 `MediaType.id` 为键；后备是文件卡片 |
 | `dv.media.preview.action` | 列表插槽，根 | 预览中 关闭 / Close 旁边的按钮；每个条目自己决定是否为该素材显示 |
 
@@ -60,7 +61,7 @@ ctx.inject(['dvMedia'], (scope) => {
 ctx.effect(() => ctx.slots.inject('dv.media.view', () => ctx.slots.register({ name: 'dv.media.view', key: 'image' }, ImageView)), 'my-plugin: image view')
 ```
 
-文件卡片显示素材的名称和 MIME 类型；用途为 `thumb` 时只显示 MIME 类型，名称作为提示文字。`@dv/ui-composer` 的 `@` 菜单读取 `MediaType.icon` 和 `MediaType.poster`。
+组件工厂按 `@dv/ui-kit/media-type.ts` 的 `mediaTypeOf(asset.mime)` 为视图选键：小写、去掉空格和参数的顶层类型。文件卡片显示素材的名称和 MIME 类型；用途为 `thumb` 时，以及界面不知道素材名称时，只显示 MIME 类型，名称作为提示文字。`@dv/ui-composer` 的 `@` 菜单读取 `MediaType.icon` 和 `MediaType.poster`。
 
 ### 打开素材预览
 
@@ -113,7 +114,7 @@ ctx.effect(() => ctx.slots.inject('dv.media.view', () => ctx.slots.register({ na
 <a id="known-limitations-and-deferred-work"></a>
 
 - **预览通过 `useText` 读取文案。** `MediaPreview` 用 `@dv/ui-kit/locale.ts` 的 `useText`（跟随 `<html lang>`）选择 关闭 / Close 和 秒 / s 单位，而不是通过 locale 命名空间和插槽的 `t`。
-- **每个 MIME 顶层类型只有一个视图。** `dv.media.view` 以 `asset.mime` 中 `/` 之前的部分为键，所以 `image/png` 和 `image/svg+xml` 共用一个视图，插件不能为子类型单独提供视图。
+- **每个 MIME 顶层类型只有一个视图。** `dv.media.view` 以 `asset.mime` 的媒体类型（`/` 之前的部分）为键，所以 `image/png` 和 `image/svg+xml` 共用一个视图，插件不能为子类型单独提供视图。
 - **媒体类型和视图分开注册。** 注册 `MediaType` 不会添加视图，`dv.media.view` 条目没有 `MediaType` 也能绘制；本包不检查两者是否一致。
 - **只有评审让本包不写出媒体类型。** `scripts/dv-architecture.ts` 把本包列为 UI 核心，其规则 R5 只检查插件名词。针对某一种媒体类型的规则属于注册该视图的插件。
 

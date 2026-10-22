@@ -4,6 +4,7 @@
  */
 import type { ReactNode } from 'react'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import { mediaTypeOf } from '@dv/ui-kit/media-type.ts'
 import type {} from '@dv/ui-media/contract'
 import type {} from './locales.ts'
 
@@ -33,7 +34,7 @@ const button = {
 export function InsertClipAction(props: InsertClipActionProps): ReactNode {
   const { asset, useOpenProject, insert, t } = props
   const projectId = useOpenProject(project => project)
-  if (projectId === null || !asset.mime.startsWith('video/')) return null
+  if (projectId === null || mediaTypeOf(asset.mime) !== 'video') return null
   return (
     <button type="button" style={button} onClick={() => { insert(asset.id); props.close() }}>
       {t('preview.insert')}

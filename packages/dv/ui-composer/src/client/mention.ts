@@ -13,6 +13,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import type { DvMentions, MentionKind } from '@dv/ui-kit/registries.ts'
+import { mediaTypeOf } from '@dv/ui-kit/media-type.ts'
 import type { Asset, WireState } from '@dv/ui-kit/types.ts'
 import { getCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
@@ -55,7 +56,7 @@ function poster(url: string): ComponentType<IconProps> {
  * @returns the icon.
  */
 function assetIcon(asset: Asset | undefined, types: readonly MediaType[], state: WireState): ComponentType<IconProps> {
-  const type = asset === undefined ? undefined : types.find(entry => entry.id === asset.mime.split('/')[0])
+  const type = asset === undefined ? undefined : types.find(entry => entry.id === mediaTypeOf(asset.mime))
   const still = asset === undefined ? null : type?.poster?.(asset, state) ?? null
   return still === null ? GLYPHS[type?.icon ?? ''] ?? IconPaperclipOutlineRegular : poster(assetUrl(still))
 }

@@ -25,7 +25,7 @@ export type MediaPurpose = 'thumb' | 'card' | 'player' | 'loop'
  * one type.
  */
 export interface MediaType {
-  /** The MIME top-level type, such as 'audio'; the key of its `dv.media.view` entry. */
+  /** The media type, such as 'audio', as `mediaTypeOf` of `@dv/ui-kit/media-type.ts` reads it; the key of its `dv.media.view` entry. */
   id: string
   label(): Text
   /** An icon name, drawn where no poster exists (the `@` menu, whose icon is a plain component). */
@@ -53,7 +53,7 @@ export interface DvMedia {
  */
 export type MediaAsset = Pick<Asset, 'id' | 'mime'> & Partial<Pick<Asset, 'name' | 'width' | 'height' | 'duration_sec'>>
 
-/** Occurrence props of the `dv.media` Factory, and owner props of each `dv.media.view` entry; the surface owns the box. */
+/** Occurrence props of the `dv.media` Factory; the surface owns the box. */
 export interface MediaOwner {
   asset: MediaAsset
   purpose: MediaPurpose
@@ -61,6 +61,12 @@ export interface MediaOwner {
   poster?: string
   /** Receives the pixel size of the loaded media, for an asset whose stored size is unknown. */
   onSize?: (size: { width: number; height: number }) => void
+}
+
+/** Owner props of each `dv.media.view` entry: the occurrence's props, and the call that reports a failed draw. */
+export interface MediaViewOwner extends MediaOwner {
+  /** Report that the browser cannot draw the asset, such as an image it cannot decode; the Factory then draws the file card. */
+  unsupported: () => void
 }
 
 /** Owner props of one action of the asset preview. */
@@ -76,8 +82,8 @@ declare module '@deepseek-ai/cordis' {
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
-    /** One asset drawn by its media type, keyed by `MediaType.id`; fallback: a file card with the name and media type. */
-    'dv.media.view': { kind: 'keyed'; scope: 'root'; owner: MediaOwner }
+    /** One asset drawn by its media type, keyed by `MediaType.id`; fallback: a file card with the name and MIME type. */
+    'dv.media.view': { kind: 'keyed'; scope: 'root'; owner: MediaViewOwner }
     /** The buttons of the asset preview beside 关闭, such as 插入片段; each occupant decides whether it shows for the asset. */
     'dv.media.preview.action': { kind: 'list'; scope: 'root'; owner: PreviewActionOwner }
   }

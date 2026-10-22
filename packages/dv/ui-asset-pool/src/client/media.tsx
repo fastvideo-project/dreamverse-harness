@@ -38,15 +38,16 @@ export const MEDIA_TYPES: readonly MediaType[] = [
 ]
 
 /**
- * An image: cover-fitted as a still, contained at full size as a player, which reports its loaded size.
- * @param props - the asset, the purpose and the size callback.
+ * An image: cover-fitted as a still, contained at full size as a player, which reports its loaded size. An image that
+ * the browser cannot decode reports that it cannot draw.
+ * @param props - the asset, the purpose, the size callback and the failure report.
  * @returns the element.
  */
-export function ImageView({ asset, purpose, onSize }: PropsRuntime<'dv.media.view'>): ReactNode {
-  if (purpose === 'thumb' || purpose === 'card') return <img src={assetUrl(asset.id)} alt="" style={fill} draggable={false} />
+export function ImageView({ asset, purpose, onSize, unsupported }: PropsRuntime<'dv.media.view'>): ReactNode {
+  if (purpose === 'thumb' || purpose === 'card') return <img src={assetUrl(asset.id)} alt="" style={fill} draggable={false} onError={unsupported} />
   return (
     <img
-      src={assetUrl(asset.id)} alt={asset.name} style={playable} draggable={false}
+      src={assetUrl(asset.id)} alt={asset.name} style={playable} draggable={false} onError={unsupported}
       onLoad={(event) => { onSize?.({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight }) }}
     />
   )
@@ -54,17 +55,18 @@ export function ImageView({ asset, purpose, onSize }: PropsRuntime<'dv.media.vie
 
 /**
  * A video: its first frame, muted, as a still; with controls and sound as a player; with controls, muted and looping,
- * behind the poster, at purpose 'loop'. A playable form reports its loaded size.
- * @param props - the asset, the purpose, the poster and the size callback.
+ * behind the poster, at purpose 'loop'. A playable form reports its loaded size. A video that the browser cannot decode,
+ * such as HEVC in a browser without the codec, reports that it cannot draw.
+ * @param props - the asset, the purpose, the poster, the size callback and the failure report.
  * @returns the element.
  */
-export function VideoView({ asset, purpose, poster, onSize }: PropsRuntime<'dv.media.view'>): ReactNode {
-  if (purpose === 'thumb' || purpose === 'card') return <video src={`${assetUrl(asset.id)}#t=0.1`} muted preload="metadata" style={fill} />
+export function VideoView({ asset, purpose, poster, onSize, unsupported }: PropsRuntime<'dv.media.view'>): ReactNode {
+  if (purpose === 'thumb' || purpose === 'card') return <video src={`${assetUrl(asset.id)}#t=0.1`} muted preload="metadata" style={fill} onError={unsupported} />
   const loop = purpose === 'loop'
   return (
     <video
       src={assetUrl(asset.id)} poster={loop && poster !== undefined ? assetUrl(poster) : undefined} controls autoPlay
-      muted={loop} loop={loop} style={playable}
+      muted={loop} loop={loop} style={playable} onError={unsupported}
       onLoadedMetadata={(event) => { onSize?.({ width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight }) }}
     />
   )
@@ -77,15 +79,16 @@ const GAP = 1
 
 /**
  * An audio asset: a note glyph as a thumbnail; its waveform with a play button as a card; an audio player with sound
- * as a player. The waveform draws once the audio decodes, and nothing while it decodes or when it has no audio.
- * @param props - the asset and the purpose.
+ * as a player, which reports that it cannot draw an audio file that the browser cannot play. The waveform draws once
+ * the audio decodes, and nothing while it decodes or when it has no audio.
+ * @param props - the asset, the purpose and the failure report.
  * @returns the element.
  */
-export function AudioView({ asset, purpose }: PropsRuntime<'dv.media.view'>): ReactNode {
+export function AudioView({ asset, purpose, unsupported }: PropsRuntime<'dv.media.view'>): ReactNode {
   if (purpose === 'thumb') {
     return <span aria-label={asset.name} style={{ display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', background: 'var(--dv-surface-3)', color: 'var(--dv-text-2)' }}>♪</span>
   }
-  if (purpose === 'player' || purpose === 'loop') return <audio src={assetUrl(asset.id)} controls style={{ display: 'block', width: '100%', alignSelf: 'center' }} />
+  if (purpose === 'player' || purpose === 'loop') return <audio src={assetUrl(asset.id)} controls style={{ display: 'block', width: '100%', alignSelf: 'center' }} onError={unsupported} />
   return <AudioCard asset={asset} />
 }
 

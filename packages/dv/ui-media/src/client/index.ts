@@ -16,7 +16,7 @@ import { MediaPreview } from './MediaPreview.tsx'
 import type { PreviewInjected, PreviewRequest } from './MediaPreview.tsx'
 import { MediaView } from './MediaView.tsx'
 
-export type { DvMedia, MediaOwner, MediaPurpose, MediaType, PreviewActionOwner, Text } from './contract/index.ts'
+export type { DvMedia, MediaAsset, MediaOwner, MediaPurpose, MediaType, MediaViewOwner, PreviewActionOwner, Text } from './contract/index.ts'
 
 /** Required browser service: the DSH UI slot registry. */
 export const inject = ['slots']

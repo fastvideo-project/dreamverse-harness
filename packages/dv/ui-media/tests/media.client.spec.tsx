@@ -141,6 +141,15 @@ describe('the dv.media Factory', () => {
     await runtime.dispose()
   })
 
+  it('keys the view by the media type of a MIME type in any case, with spaces or with parameters', async () => {
+    const { runtime, view } = await mount([
+      { asset: asset('d.png', 'Image/PNG'), purpose: 'card' }, { asset: asset('e.jpg', ' image/jpeg; q=0.9'), purpose: 'card' },
+    ])
+    expect(within(view.getByTestId('d.png:card')).getByRole('img', { name: 'd.png' })).toBeTruthy()
+    expect(within(view.getByTestId('e.jpg:card')).getByRole('img', { name: 'e.jpg' })).toBeTruthy()
+    await runtime.dispose()
+  })
+
   it('draws the file card with the MIME type alone for an asset whose name the surface does not know', async () => {
     const { runtime, view } = await mount([{ asset: { id: 'd1', mime: 'application/pdf' }, purpose: 'card' }])
     const card = view.getByTestId('d1:card')

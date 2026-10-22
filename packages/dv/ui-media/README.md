@@ -48,6 +48,7 @@ The contract is the types-only module [`src/client/contract/index.ts`](src/clien
 | `PreviewActionOwner` | type | The owner props of one preview button: `asset` and `close()` |
 | `Text` | type | A Chinese and English text pair |
 | `dv.media` | Component Factory | Root scope; props `MediaOwner`; one keyed child slot `dv.media.view`. A view renders an occurrence with `renderFactorySlot('dv.media', { asset, purpose })` and declares no slot of its own; the view owns the box, and the media view fills it |
+| `MediaViewOwner` | type | The owner props of each `dv.media.view` entry: `MediaOwner` and `unsupported()`, which a view calls when the browser cannot draw the asset, such as an image format that it cannot decode; the Factory then draws the file card |
 | `dv.media.view` | keyed slot, root | The view of one media type, keyed by `MediaType.id`; the fallback is the file card |
 | `dv.media.preview.action` | list slot, root | The buttons of the preview beside 关闭 / Close; each entry decides whether it shows for the asset |
 
@@ -60,7 +61,7 @@ ctx.inject(['dvMedia'], (scope) => {
 ctx.effect(() => ctx.slots.inject('dv.media.view', () => ctx.slots.register({ name: 'dv.media.view', key: 'image' }, ImageView)), 'my-plugin: image view')
 ```
 
-The file card shows the asset's name and MIME type; at purpose `thumb` it shows the MIME type alone, with the name as its tooltip. The `@` menu of `@dv/ui-composer` reads `MediaType.icon` and `MediaType.poster`.
+The Factory keys the view by `mediaTypeOf(asset.mime)` of `@dv/ui-kit/media-type.ts`: the top-level type in lower case, without spaces or parameters. The file card shows the asset's name and MIME type; at purpose `thumb`, and for an asset whose name the surface does not know, it shows the MIME type alone, with the name as its tooltip. The `@` menu of `@dv/ui-composer` reads `MediaType.icon` and `MediaType.poster`.
 
 ### Open the asset preview
 
@@ -113,7 +114,7 @@ None; the package sends nothing to a model.
 <a id="known-limitations-and-deferred-work"></a>
 
 - **The preview reads its copy through `useText`.** `MediaPreview` picks 关闭 / Close and the 秒 / s unit with `useText` of `@dv/ui-kit/locale.ts`, which follows `<html lang>`, instead of a locale namespace and the slot's `t`.
-- **One view per MIME top-level type.** `dv.media.view` is keyed by the part of `asset.mime` before `/`, so `image/png` and `image/svg+xml` share one view, and a plugin cannot give a subtype its own view.
+- **One view per MIME top-level type.** `dv.media.view` is keyed by the media type of `asset.mime`, the part before `/`, so `image/png` and `image/svg+xml` share one view, and a plugin cannot give a subtype its own view.
 - **Media types and views are separate registrations.** Registering a `MediaType` adds no view, and a `dv.media.view` entry draws without a `MediaType`; the package does not check that the two agree.
 - **Only review keeps media types out of the package.** `scripts/dv-architecture.ts` lists the package as UI core, whose rule R5 checks plugin nouns only. A rule about one media type belongs in the plugin that registers its view.
 

@@ -143,6 +143,23 @@ describe('the media views', () => {
     vi.unstubAllGlobals()
     play.mockRestore()
   })
+
+  it('draws the file card in place of an image, a video or an audio player that the browser cannot decode', async () => {
+    const heic: Asset = { ...asset('photo.heic', 'image/heic', null), name: '照片' }
+    const hevc: Asset = { ...asset('take.mov', 'video/quicktime', null, 3), name: '镜头' }
+    const { runtime } = await mountAssetPool(occurrences([heic, hevc, THEME]))
+    const view = runtime.renderRoot()
+    const failing = [['photo.heic:thumb', 'img'], ['photo.heic:player', 'img'], ['take.mov:card', 'video'], ['take.mov:loop', 'video'], ['theme.wav:player', 'audio']]
+    for (const [box = '', tag = ''] of failing) {
+      const element = view.getByTestId(box).querySelector(tag)
+      if (element === null) throw new Error(`no ${tag} in ${box}`)
+      fireEvent.error(element)
+    }
+    expect(failing.map(([box = '']) => view.getByTestId(box).textContent)).toEqual([
+      'image/heic', '照片image/heic', '镜头video/quicktime', '镜头video/quicktime', '主题曲audio/wav',
+    ])
+    expect(view.getByTestId('photo.heic:card').querySelector('img')).not.toBeNull()
+  })
 })
 
 describe('the audio card', () => {
