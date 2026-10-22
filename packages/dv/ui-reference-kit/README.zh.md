@@ -53,7 +53,7 @@ export const { inject, apply } = defineReferenceUi({
 - `mentionKind` 是 `@dv/ui-composer` 的 `MentionKind`：条目为 `dv:<key>/<id>`，标签为名称（没有时为 ID），描述为说明的前 40 个字符，第一个参考作为缩略图。
 - `historyRow` 是一个 `HistoryRow`：匹配 `<key>.`，主题取记录的 `name` 参数，没有时取它的 `<key>` 参数，显示为 「名称」（中文）或 “name”（英文），都没有时无主题。
 
-在 `dvCanvas` 和插槽注册表存在时，插件先注册节点类型，再注册使用中的参考、版本种类，以及画布声明 `dv.canvas.card` 和 `dv.canvas.editor` 插槽后以 `key` 为键的条目；在此之内，它在 `dvMentions` 存在时注册 mention 种类，在 `dvHistory` 存在时注册历史行。所以节点类型被拒绝时，该名词不留下其他注册。每个注册在任何加载顺序下都有效，并随它的服务或插件一起离开。
+在 `dvCanvas` 和插槽注册表存在时，插件先注册节点类型，再注册使用中的参考、版本种类，以及画布声明 `dv.canvas.card` 和 `dv.canvas.editor` 插槽后以 `key` 为键的条目；在此之内，它在 `dvMentions` 存在时注册 mention 种类。所以节点类型被拒绝时，该名词不留下这些注册中的任何一个。插件在 `dvHistory` 存在时注册历史行，`@dv/ui-canvas` 未加载时也会注册，因为历史行以该名词的操作为键。每个注册在任何加载顺序下都有效，并随它的服务或插件一起离开。
 
 卡片主体通过 `dv.media` 以用途 `thumb` 绘制节点的第一个参考、名词标签和其余参考的 `+N`，按 `textScale` 缩放。编辑器主体通过 `dv.media` 以用途 `card` 绘制最新的参考，每个参考在高 220 px、比例与素材相同的框里（尺寸未知的素材为正方形）。点击属于项目素材的参考会打开 `host.preview`；× 移除该参考，只剩最后一个时禁用。说明不为空时编辑器显示说明。＋ 添加素材 / + Add asset 打开 `host.pickAssets(references, { versions: false }, …)`，并追加条目尚未持有的选中项。每次修改都调用 `host.run`，操作为 `<key>.update`，参数为 `{ [key]: id }`，参考作为角色 `reference` 的输入，意图为 在画布上给 <name> 添加参考 / Add references to <name> from the canvas，或 在画布上移除 <name> 的一个参考 / Remove a reference of <name> from the canvas。对不是该名词某个条目 `<key>:<id>` 的节点，编辑器不绘制任何内容。
 

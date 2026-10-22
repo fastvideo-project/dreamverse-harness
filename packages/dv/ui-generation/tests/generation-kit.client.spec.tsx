@@ -6,11 +6,14 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
+import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
+import type { HistoryRow } from '@dv/ui-history/contract'
+import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type { NodeType } from '../../ui-canvas/src/client/contract/index.ts'
 import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { defineGenerationUi } from '../src/client/generation-kit.tsx'
-import { APPROVAL, claimedOf, CLIP_EXTEND, mountKit, nodesOf, recordingHost } from './take-kind.client.ts'
+import { APPROVAL, claimedOf, CLIP_EXTEND, mountKit, nodesOf, recordingHost, testTake } from './take-kind.client.ts'
 
 /** The fixture's `shot.render` declaration with its wire label. */
 const LABELLED = [{ ...OPERATIONS[0]!, label: { zh: '渲染镜头', en: 'Render shot' } }, CLIP_EXTEND]
@@ -193,7 +196,7 @@ describe('the 重试 action of each kind of one package', () => {
 })
 
 describe('defineGenerationUi apply', () => {
-  it('registers no card, editor, chat card or History row for a kind whose node type the canvas refuses', async () => {
+  it('registers no card, editor or 重试 for a kind whose node type the canvas refuses, and still its chat cards and History rows', async () => {
     vi.stubGlobal('fetch', scriptedFetch().fetch)
     const { runtime, canvas, rows } = await mountKit({
       'dv.canvas.card': { kind: 'keyed', scope: 'root' },
@@ -214,8 +217,22 @@ describe('defineGenerationUi apply', () => {
       history: rows.getSnapshot().map(row => row.match),
     }).toEqual({
       types: ['asset', 'test_take'], actions: ['@dv/ui-asset-pool:unplace', '@dv/ui-test-take:test_take:retry'],
-      card: ['test_take'], editor: ['test_take'], chat: ['dv_shot_render', 'dv_clip_extend'], history: ['shot.render', 'clip.extend'],
+      card: ['test_take'], editor: ['test_take'], chat: ['dv_shot_render', 'dv_clip_extend', 'dv_image_generate'],
+      history: ['shot.render', 'clip.extend', 'image.generate'],
     })
+    await runtime.dispose()
+  })
+
+  it('registers the chat card of each operation and the History rows while @dv/ui-canvas is not loaded', async () => {
+    vi.stubGlobal('fetch', scriptedFetch().fetch)
+    const runtime = await SlotTestRuntime.create()
+    const rows = createRegistry<HistoryRow>(row => [row.match], row => row.match)
+    runtime.ctx.provide('dvHistory', { rows })
+    await runtime.declare({ 'tool.call.toolview': { kind: 'keyed', scope: 'session', inject: { hooks: { toolCallArgumentsPartial: () => () => '' } } } })
+    await runtime.mount({ inject: [...testTake.inject], apply: testTake.apply })
+    expect({
+      chat: runtime.slots.entries('tool.call.toolview').map(entry => entry.options.key), history: rows.getSnapshot().map(row => row.match),
+    }).toEqual({ chat: ['dv_shot_render', 'dv_clip_extend'], history: ['shot.render', 'clip.extend'] })
     await runtime.dispose()
   })
 

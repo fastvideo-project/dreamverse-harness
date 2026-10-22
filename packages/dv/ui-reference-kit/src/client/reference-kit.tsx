@@ -160,7 +160,8 @@ export function defineReferenceUi<V extends WireReferenceVersion>(spec: Referenc
   return {
     inject: [],
     apply: (ctx) => {
-      // The node type registers first in the one scope of the noun, so a refused type leaves nothing of the noun behind.
+      // The canvas parts of the noun and its @ menu kind share one scope with the node type first, so a refused type
+      // leaves none of them.
       ctx.inject(['dvCanvas', 'slots'], (scope) => {
         scope.effect(() => scope.dvCanvas.nodeTypes.register(nodeType), `${spec.id}: node type`)
         scope.effect(() => scope.dvCanvas.recordsInUse.register(referencesInUse), `${spec.id}: references in use`)
@@ -174,9 +175,10 @@ export function defineReferenceUi<V extends WireReferenceVersion>(spec: Referenc
         scope.inject(['dvMentions'], (mentions) => {
           mentions.effect(() => mentions.dvMentions.kinds.register(mentionKind), `${spec.id}: mention kind`)
         })
-        scope.inject(['dvHistory'], (history) => {
-          history.effect(() => history.dvHistory.rows.register(historyRow), `${spec.id}: history row`)
-        })
+      })
+      // The History row is keyed by the noun's operations, so it registers while the canvas is not loaded.
+      ctx.inject(['dvHistory'], (history) => {
+        history.effect(() => history.dvHistory.rows.register(historyRow), `${spec.id}: history row`)
       })
     },
   }

@@ -9,6 +9,7 @@ import { cleanup, fireEvent } from '@testing-library/react'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { FeatureHandle } from '@deepseek-ai/dsh-client-test-runtime'
 import type { CardHost, EditorHost, NodeView } from '@dv/ui-canvas/contract'
+import type { HistoryRow } from '@dv/ui-history/contract'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type { MentionKind } from '@dv/ui-kit/registries.ts'
@@ -215,6 +216,15 @@ describe('the plugin of a reference noun', () => {
     const rival = defineReferenceUi({ ...SPEC, id: '@dv/ui-test-rival' })
     await runtime.mount({ inject: [...rival.inject], apply: rival.apply })
     expect(runtime.ctx.dvMentions.kinds.getSnapshot().map(kind => kind.id)).toEqual(['@dv/ui-test-ref'])
+    await runtime.dispose()
+  })
+
+  it('registers its History row while @dv/ui-canvas is not loaded', async () => {
+    const runtime = await SlotTestRuntime.create()
+    const rows = createRegistry<HistoryRow>(row => [row.match], row => row.match)
+    runtime.ctx.provide('dvHistory', { rows })
+    await runtime.mount({ inject: [...testRef.inject], apply: testRef.apply })
+    expect(rows.getSnapshot().map(row => row.match)).toEqual(['test_ref.'])
     await runtime.dispose()
   })
 

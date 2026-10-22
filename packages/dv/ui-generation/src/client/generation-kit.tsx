@@ -140,7 +140,7 @@ export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
       const editor: TakeEditorInjected = {
         hooks: { taskLabels: labels.hooks.taskLabels }, status: spec.status, references: record => spec.references?.(record) ?? true,
       }
-      // The node type registers first in the one scope of the kind, so a refused type leaves nothing of the kind behind.
+      // The canvas parts of the kind share one scope with the node type first, so a refused type leaves none of them.
       ctx.inject(['dvCanvas', 'slots'], (scope) => {
         scope.effect(() => scope.dvCanvas.nodeTypes.register(nodeType), `${spec.id}: node type`)
         scope.effect(() => scope.dvCanvas.actions.register(retry), `${spec.id}: retry`)
@@ -150,15 +150,18 @@ export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
         scope.effect(() => scope.slots.inject('dv.canvas.editor.claimed', () => scope.slots.register(
           { name: 'dv.canvas.editor.claimed', key: spec.type, inject: () => editor }, TakeEditor,
         )), `${spec.id}: editor`)
+      })
+      // Chat cards and History rows are keyed by tool and operation, so they register while the canvas is not loaded.
+      ctx.inject(['slots'], (scope) => {
         for (const operation of spec.operations) {
           const card: GenerationCardInjected = { ...labels, operation, status: spec.status, preview: outputs => spec.preview?.(outputs) }
           scope.effect(() => scope.slots.inject('tool.call.toolview', () => scope.slots.register(
             { name: 'tool.call.toolview', key: toolNameOf(operation), inject: () => card }, GenerationCard,
           )), `${spec.id}: chat card of ${operation}`)
         }
-        scope.inject(['dvHistory'], (history) => {
-          for (const row of rows) history.effect(() => history.dvHistory.rows.register(row), `${spec.id}: history row of ${row.match}`)
-        })
+      })
+      ctx.inject(['dvHistory'], (history) => {
+        for (const row of rows) history.effect(() => history.dvHistory.rows.register(row), `${spec.id}: history row of ${row.match}`)
       })
     },
   }
