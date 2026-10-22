@@ -1,11 +1,12 @@
 /**
- * A slot test runtime with the shot plan plugin and the media plugins mounted beside a `dvCanvas` from
- * `createDvCanvas()`, and a root frame that declares `dv.canvas.card` and `dv.canvas.editor` and renders the entries
+ * A slot test runtime with the shot plan plugin, the media plugins and the composer stack mounted beside a `dvCanvas`
+ * from `createDvCanvas()`, and a root frame that declares `dv.canvas.card` and `dv.canvas.editor` and renders the entries
  * keyed by a node's type for one canvas node, as the canvas does for a selected node.
  */
 import { expect, vi } from 'vitest'
 import { waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
+import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { FeatureHandle } from '@deepseek-ai/dsh-client-test-runtime'
@@ -16,12 +17,17 @@ import type { CanvasNode } from '@dv/ui-canvas/src/client/graph.ts'
 import { apply as mediaApply, inject as mediaInject } from '@dv/ui-media/src/client/index.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
 import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
+import { composerStack } from '../../ui-composer/tests/composer-stack.client.ts'
 import { OPERATIONS, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply, inject } from '../src/client/index.ts'
 
-/** The canvas's writes, picker, preview and navigation, which the plan card and editor do not call. */
+/** The canvas's preview and navigation, which a shot's tiles and chips call. */
+export const hostPreview = vi.fn<EditorHost['preview']>()
+export const hostOpenNode = vi.fn<EditorHost['openNode']>()
+
+/** The canvas's writes, picker, preview and navigation; the plan card and editor call only the preview and navigation. */
 export const HOST: EditorHost = {
-  run: vi.fn(), rerun: vi.fn(() => Promise.resolve()), pickAssets: vi.fn(), preview: vi.fn(), openNode: vi.fn(),
+  run: vi.fn(), rerun: vi.fn(() => Promise.resolve()), pickAssets: vi.fn(), preview: hostPreview, openNode: hostOpenNode,
   setPlaced: vi.fn(), close: vi.fn(),
 }
 
@@ -48,9 +54,9 @@ export interface PlanCanvas {
 }
 
 /**
- * Mount the media plugin, the asset pool (whose `dv.media.view` entries draw images, videos and audio) and the shot plan
- * plugin, then render the card and the editor of the canvas node `plan:p1` of `state`, with `GET /api/dv` routes served
- * from `state`.
+ * Mount the media plugin, the asset pool (whose `dv.media.view` entries draw images, videos and audio), the composer
+ * stack (whose read-only `dv.prompt` draws each shot's prompt) and the shot plan plugin, then render the card and the
+ * editor of the canvas node `plan:p1` of `state`, with `GET /api/dv` routes served from `state`.
  * @param state - the project state.
  * @param options - the registries to provide (default empty ones) and the node ID to render under (default the node's own).
  * @returns the mounted canvas.
@@ -58,11 +64,15 @@ export interface PlanCanvas {
 export async function mountPlanCanvas(state: WireState, options: { canvas?: DvCanvas; nodeId?: string } = {}): Promise<PlanCanvas> {
   vi.stubGlobal('fetch', scriptedFetch({ state }).fetch)
   const runtime = await SlotTestRuntime.create()
+  const locale = new LocaleRuntime(runtime.ctx)
+  runtime.ctx.provide('locale', locale)
+  runtime.slots.installLocale(locale)
   const canvas = options.canvas ?? createDvCanvas()
   runtime.ctx.provide('dvCanvas', canvas)
   runtime.ctx.provide('sidebarRightTabs', { register: () => () => {} } as never)
   await runtime.mount({ inject: [...mediaInject], apply: mediaApply })
   await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
+  await runtime.mount(composerStack)
   const plugin = await runtime.mount({ inject: [...inject], apply })
   const built = canvasNodes(canvas, state).find(node => node.id === 'plan:p1')
   if (built === undefined) throw new Error('the state has no plan p1')

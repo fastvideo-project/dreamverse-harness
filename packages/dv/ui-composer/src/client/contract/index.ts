@@ -76,8 +76,8 @@ export interface CandidateFilter {
 
 /** What the host of an occurrence lends it. */
 export interface PromptHost {
-  /** Open the host's asset picker; `done` receives the picked input reference texts. */
-  pickAssets(chosen: readonly string[], done: (refs: string[]) => void): void
+  /** Open the host's asset picker; `done` receives the picked input reference texts. A host without one offers no add. */
+  readonly pickAssets?: (chosen: readonly string[], done: (refs: string[]) => void) => void
   /** Open the host's preview of an asset, growing out of `opener`. */
   preview(asset: string, opener: Element | null): void
   /** Open the editor of a canvas node. */

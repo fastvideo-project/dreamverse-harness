@@ -8537,6 +8537,9 @@ importers:
       '@dv/ui-canvas':
         specifier: workspace:*
         version: link:../ui-canvas
+      '@dv/ui-composer':
+        specifier: workspace:*
+        version: link:../ui-composer
       '@dv/ui-history':
         specifier: workspace:*
         version: link:../ui-history

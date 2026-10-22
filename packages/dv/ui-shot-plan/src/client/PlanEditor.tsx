@@ -3,20 +3,19 @@
  * Its texts follow the interface language of `<html lang>`.
  * @module @dv/ui-shot-plan/PlanEditor
  */
-import { memo, useState } from 'react'
+import { memo, useCallback, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import type { HostObservable, InjectFace, PropsRenderFactories, PropsRuntime, RenderFactorySlot } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ChainAnchor } from '@dv/ui-canvas/contract'
+import type { ChainAnchor, NodeHost } from '@dv/ui-canvas/contract'
+import type {} from '@dv/ui-composer/contract'
 import type { PlanVersion, Shot } from '@dv/shot-plan/types'
-import { assetUrl } from '@dv/ui-kit/api.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
-import { parseVersionedReference, pictureParts, referenceAssets } from '@dv/ui-kit/references.ts'
+import { referenceAssets } from '@dv/ui-kit/references.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
 import { taskLabel, type WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
-import type { ProjectAsset, WireState } from '@dv/ui-kit/types.ts'
+import type { WireState } from '@dv/ui-kit/types.ts'
 import type {} from '@dv/ui-media/contract'
-import { isPicture } from './picture.ts'
 
 /** What the plugin injects: the `dvCanvas` chain anchors and version kinds, and the task labels, as observable sources. */
 export interface PlanEditorInjected {
@@ -28,9 +27,8 @@ export interface PlanEditorInjected {
   }
 }
 
-/** A reference asset in a reference chip, and an image that stands in a shot prompt for its Picture N token. */
+/** A reference asset of the plan header. */
 const chipThumb: CSSProperties = { display: 'flex', width: 24, height: 24, overflow: 'hidden', borderRadius: 'var(--dv-radius-sm)', flex: 'none' }
-const promptThumb: CSSProperties = { height: '1.4em', width: 'auto', verticalAlign: 'middle', borderRadius: 3, margin: '0 2px' }
 /** A small rounded tag in the plan editor: the duration and model-and-task chips of a shot. */
 const tag: CSSProperties = { height: 22, padding: '0 8px', display: 'inline-flex', alignItems: 'center', fontSize: 12, lineHeight: '16px', background: 'var(--dv-surface-3)' }
 const mono: CSSProperties = { fontFamily: 'var(--dv-font-mono)', fontVariantNumeric: 'tabular-nums' }
@@ -58,46 +56,6 @@ export function shotReferences(version: Pick<PlanVersion, 'references'>, shot: P
   return shot.task === 'ref2v' ? shot.references ?? version.references ?? [] : []
 }
 
-/** One reference asset of a plan or a shot, with the name of what it shows and its `Picture N` number. */
-interface NamedReference {
-  asset: ProjectAsset
-  name: string
-  /** The 1-based `Picture N` number of an image; null for an asset that is not an image. */
-  picture: number | null
-}
-
-/**
- * The reference assets that reference texts stand for, of any media type, in input order (see `referenceAssets`), each
- * with the name that the first version kind gives its version, else the asset's name, and the images numbered in
- * `Picture N` order.
- */
-function namedReferences(state: WireState, references: readonly string[], kinds: readonly VersionKind[]): NamedReference[] {
-  let pictures = 0
-  return references.flatMap((ref) => {
-    const named = parseVersionedReference(ref)
-    const versionName = named === null
-      ? undefined
-      : kinds.map(kind => kind.name(state, named.id, named.version)).find(name => name !== null)
-    return referenceAssets(state, [ref], kinds)
-      .map(asset => ({ asset, name: versionName || asset.name, picture: isPicture(asset) ? ++pictures : null }))
-  })
-}
-
-/** The label of one reference: "Picture N · name" for an image, else its name. */
-function referenceLabel(reference: NamedReference): string {
-  return reference.picture === null ? reference.name : `Picture ${String(reference.picture)} · ${reference.name}`
-}
-
-/** One reference asset as a chip: its media through `dv.media` and its label. */
-function ReferenceChip({ reference, renderFactorySlot }: { reference: NamedReference; renderFactorySlot: RenderFactorySlot }): ReactNode {
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 32, padding: '0 10px 0 4px', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-3)', maxWidth: '100%' }}>
-      <span style={chipThumb}>{renderFactorySlot('dv.media', { asset: reference.asset, purpose: 'thumb' })}</span>
-      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{referenceLabel(reference)}</span>
-    </span>
-  )
-}
-
 /** The plans of a state by `PlanId`, oldest version first; a state without the plan slice holds none. */
 export const plansOf = (state: WireState): Readonly<Record<string, PlanVersion[]>> => state.components.plan?.plans ?? {}
 
@@ -108,7 +66,7 @@ export const plansOf = (state: WireState): Readonly<Record<string, PlanVersion[]
  * @returns the element.
  */
 export function PlanEditor(
-  { node, state, useChainAnchors, useVersionKinds, useTaskLabels, renderFactorySlot }: PropsRuntime<'dv.canvas.editor'> & PropsRenderFactories & InjectFace<PlanEditorInjected>,
+  { node, state, host, useChainAnchors, useVersionKinds, useTaskLabels, renderFactorySlot }: PropsRuntime<'dv.canvas.editor'> & PropsRenderFactories & InjectFace<PlanEditorInjected>,
 ): ReactNode {
   const versions = plansOf(state)[node.id.slice(node.id.indexOf(':') + 1)] ?? []
   // The version on show; the editor holds the choice so the version row and the shot list read the same version.
@@ -126,7 +84,7 @@ export function PlanEditor(
         versions={versions} plan={plan} approved={approved} state={state} kinds={kinds} onChoose={setChosen}
         renderFactorySlot={renderFactorySlot}
       />
-      <PlanShots plan={plan} state={state} kinds={kinds} taskLabels={taskLabels} renderFactorySlot={renderFactorySlot} />
+      <PlanShots plan={plan} state={state} taskLabels={taskLabels} host={host} renderFactorySlot={renderFactorySlot} />
     </>
   )
 }
@@ -156,7 +114,7 @@ function PlanHeader(
   else if (replaced) { status = pick(`已被第 ${String(plan.version + 1)} 版取代`, `Replaced by v${String(plan.version + 1)}`); tone = 'var(--dv-text-2)' }
   const total = totalSec(plan)
   const summary = [pick(`${String(plan.shots.length)} 个镜头`, `${String(plan.shots.length)} shots`), ...total === null ? [] : [clockText(total)], ...plan.aspect_ratio === undefined ? [] : [plan.aspect_ratio]]
-  const references = namedReferences(state, plan.references ?? [], kinds)
+  const references = referenceAssets(state, plan.references ?? [], kinds)
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 }}>
       {plan.title === undefined || plan.title === '' ? null : <span style={{ fontSize: 14, lineHeight: '20px', fontWeight: 500 }}>{plan.title}</span>}
@@ -190,10 +148,10 @@ function PlanHeader(
         : (
           <span style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }}>
             {pick('计划参考', 'Plan references')}
-            {references.map((reference, index) => (
+            {references.map((asset, index) => (
               <span key={index} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ ...chipThumb, boxShadow: '0 0 0 1px var(--dv-line-strong)' }}>{renderFactorySlot('dv.media', { asset: reference.asset, purpose: 'thumb' })}</span>
-                <span style={{ color: 'var(--dv-text)' }}>{referenceLabel(reference)}</span>
+                <span style={{ ...chipThumb, boxShadow: '0 0 0 1px var(--dv-line-strong)' }}>{renderFactorySlot('dv.media', { asset, purpose: 'thumb' })}</span>
+                <span style={{ color: 'var(--dv-text)' }}>{asset.name}</span>
               </span>
             ))}
           </span>
@@ -204,14 +162,14 @@ function PlanHeader(
 
 /**
  * The shots of one plan version as cards. Memoized, because a move or resize of the editor panel re-renders the editor
- * on every pointer move and the shot cards look up their reference assets.
+ * on every pointer move and each shot card renders a composer.
  */
 const PlanShots = memo(function PlanShots(
-  { plan, state, kinds, taskLabels, renderFactorySlot }: {
+  { plan, state, taskLabels, host, renderFactorySlot }: {
     plan: PlanVersion
     state: WireState
-    kinds: readonly VersionKind[]
     taskLabels: WireTaskLabels
+    host: NodeHost
     renderFactorySlot: RenderFactorySlot
   },
 ): ReactNode {
@@ -220,8 +178,19 @@ const PlanShots = memo(function PlanShots(
     <ol aria-label={pick('镜头', 'Shots')} style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
       {plan.shots.map((shot, index) => (
         <ShotCard
-          key={index} number={index + 1} shot={shot} references={namedReferences(state, shotReferences(plan, shot), kinds)}
-          taskLabels={taskLabels} renderFactorySlot={renderFactorySlot}
+          key={index} number={index + 1} shot={shot} referenceCount={shotReferences(plan, shot).length} taskLabels={taskLabels}
+          prompt={renderFactorySlot('dv.prompt', {
+            projectId: state.project.id, readOnly: true,
+            // The plan view only shows the call, so it lends no picker; a chip or a tile opens its asset's preview or its item's node.
+            host: {
+              preview: (asset, opener) => { host.preview(asset, opener) },
+              openNode: (nodeId) => { host.openNode(nodeId) },
+            },
+            call: {
+              operation: 'shot.render', params: { prompt: shot.prompt, model: shot.model, task: shot.task },
+              inputs: shotReferences(plan, shot).map(ref => ({ role: 'reference', ref })),
+            },
+          })}
         />
       ))}
     </ol>
@@ -229,23 +198,23 @@ const PlanShots = memo(function PlanShots(
 })
 
 /**
- * One shot of a plan version as a card with exactly what the plan holds: number, duration, model and task, reference
- * assets, whether it continues the previous shot, and the prompt.
+ * One shot of a plan version as a card with exactly what the plan holds: number, duration, model and task, whether it
+ * continues the previous shot, and the prompt with its reference assets.
  */
 function ShotCard(
-  { number, shot, references, taskLabels, renderFactorySlot }: {
+  { number, shot, referenceCount, taskLabels, prompt }: {
     number: number
     shot: Shot
-    references: NamedReference[]
+    referenceCount: number
     taskLabels: WireTaskLabels
-    renderFactorySlot: RenderFactorySlot
+    prompt: ReactNode
   },
 ): ReactNode {
   const pick = useText()
-  let chips: ReactNode
-  if (shot.task === 't2v') chips = <span style={{ color: 'var(--dv-text-2)' }}>{pick('无（文字生成不用参考图）', 'None (a text render uses no reference images)')}</span>
-  else if (references.length === 0) chips = <span style={{ color: 'var(--dv-text-2)' }}>{pick('无', 'None')}</span>
-  else chips = <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{references.map((reference, index) => <ReferenceChip key={index} reference={reference} renderFactorySlot={renderFactorySlot} />)}</span>
+  // A shot's reference assets show as the read-only tray of its prompt; a shot without any says why.
+  let noReferences: string | null = null
+  if (shot.task === 't2v') noReferences = pick('无（文字生成不用参考图）', 'None (a text render uses no reference images)')
+  else if (referenceCount === 0) noReferences = pick('无', 'None')
   return (
     <li data-shot={number} style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12, borderRadius: 'var(--dv-radius-lg)', background: 'var(--dv-surface-2)', boxShadow: '0 0 0 1px var(--dv-line)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -256,47 +225,49 @@ function ShotCard(
         <span data-testid="dv-canvas-shot-mode" style={{ ...tag, borderRadius: 9999, color: 'var(--dv-text)' }}>{`${shot.model} · ${pick(...taskLabel(shot.task, taskLabels))}`}</span>
       </div>
       <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: '8px 12px', alignItems: 'center' }}>
-        <dt style={term}>{pick('参考', 'References')}</dt>
-        <dd style={{ margin: 0, minWidth: 0 }}>{chips}</dd>
+        {noReferences === null
+          ? null
+          : <><dt style={term}>{pick('参考', 'References')}</dt><dd style={{ margin: 0, minWidth: 0, color: 'var(--dv-text-2)' }}>{noReferences}</dd></>}
         <dt style={term}>{pick('首帧', 'First frame')}</dt>
         <dd style={{ margin: 0, color: 'var(--dv-text-2)' }}>{shot.continue_previous === true ? pick('接上一镜头', 'Continues the previous shot') : pick('无 · 不接上一镜头', 'None · does not continue the previous shot')}</dd>
         <dt style={{ ...term, alignSelf: 'start', paddingTop: 10 }}>{pick('提示词', 'Prompt')}</dt>
-        <dd style={{ margin: 0, minWidth: 0 }}><PromptBox prompt={shot.prompt} references={references} /></dd>
+        <dd style={{ margin: 0, minWidth: 0 }}><PromptBox>{prompt}</PromptBox></dd>
       </dl>
     </li>
   )
 }
 
 /**
- * A shot prompt in full, with each `Picture N` token drawn as that reference image. A prompt taller than
- * {@link PROMPT_COLLAPSED_HEIGHT} starts collapsed under a fade, with a toggle that shows all of it.
+ * A shot prompt in full: the read-only `dv.prompt` composer of the shot, which draws each citation as a chip and the
+ * shot's references as its tray. A prompt taller than {@link PROMPT_COLLAPSED_HEIGHT} starts collapsed under a fade,
+ * with a toggle that shows all of it.
  */
-function PromptBox({ prompt, references }: { prompt: string; references: NamedReference[] }): ReactNode {
+function PromptBox({ children }: { children: ReactNode }): ReactNode {
   const pick = useText()
   const [expanded, setExpanded] = useState(false)
   const [overflows, setOverflows] = useState(false)
+  const observer = useRef<MutationObserver | null>(null)
+  // The composer fills its editor after it mounts and redraws its chips as references resolve, so the box measures
+  // again on every change below it, until React detaches it.
+  const box = useCallback((element: HTMLDivElement | null): void => {
+    observer.current?.disconnect()
+    if (element === null) return
+    const measure = (): void => { setOverflows(element.scrollHeight > PROMPT_COLLAPSED_HEIGHT) }
+    measure()
+    observer.current = new MutationObserver(measure)
+    observer.current.observe(element, { subtree: true, childList: true, characterData: true })
+  }, [])
   const collapsed = overflows && !expanded
   return (
     <>
       <div
-        ref={(box) => { if (box !== null) setOverflows(box.scrollHeight > PROMPT_COLLAPSED_HEIGHT) }}
+        ref={box}
         style={{
           position: 'relative', maxHeight: expanded ? 'none' : PROMPT_COLLAPSED_HEIGHT, overflow: 'hidden', boxSizing: 'border-box', padding: '10px 12px',
           borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-1)', boxShadow: 'inset 0 0 0 1px var(--dv-line)',
         }}
       >
-        <p style={{ margin: 0, fontSize: 13, lineHeight: '20px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-          {pictureParts(prompt).map((part, position) => {
-            const image = 'picture' in part ? references.find(reference => reference.picture === part.picture) : undefined
-            return image === undefined
-              ? <span key={position}>{part.text}</span>
-              : (
-                <img
-                  key={position} src={assetUrl(image.asset.id)} alt={part.text} title={part.text} style={promptThumb} draggable={false}
-                />
-              )
-          })}
-        </p>
+        {children}
         {collapsed ? <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 40, background: 'linear-gradient(to bottom, transparent, var(--dv-surface-1))' }} /> : null}
       </div>
       {overflows

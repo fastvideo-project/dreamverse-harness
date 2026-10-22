@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在叠加了 `dsh-web-app`、`@dv/api`、`@dv/ui-canvas` 和 `@dv/ui-media` 的 profile 中挂载这个插件，`@dv/ui-media` 的 `dv.media` 组件工厂绘制分镜计划编辑器的参考素材。先构建浏览器包：`pnpm run build` 写出 `lib/client.js`。
+在叠加了 `dsh-web-app`、`@dv/api`、`@dv/ui-canvas`、`@dv/ui-media` 和 `@dv/ui-composer` 的 profile 中挂载这个插件，`@dv/ui-media` 的 `dv.media` 组件工厂绘制分镜计划编辑器的参考素材，`@dv/ui-composer` 的 `dv.prompt` 组件工厂绘制每个镜头的提示词。先构建浏览器包：`pnpm run build` 写出 `lib/client.js`。
 
 ```yaml
 - id: dv-ui-shot-plan
@@ -35,7 +35,7 @@ kind: "package-reference"
 | --- | --- | --- |
 | `planNodeType` | `dvCanvas.nodeTypes` | `id: '@dv/ui-shot-plan'`、`type: 'plan'`、标签 `分镜计划` / `Plan`、颜色 `var(--dv-node-2)`、第 1 列；每个有版本的分镜计划一个切片条目：ID 为 `plan:<PlanId>`，`record` 是写下最新版本的记录，`records` 是写下较早版本的记录（第 1 版的分镜计划没有），标题是镜头数，每个镜头都有时长时后接 ` · <总时长>`，没有素材，`slots` 是镜头数，`bodyHeight` 为 46 |
 | `PlanCard` | `dv.canvas.card` 插槽 | 键 `plan`；卡片正文：类型标签和显示的版本，即节点 `records` 的数量加一，`分镜计划 · 第 2 版` / `Plan · v2`，使用画布的文字缩放 |
-| `PlanEditor` | `dv.canvas.editor` 插槽 | 键 `plan`，所有者属性 `{ node, state, operations, host }`（只使用 `node` 和 `state`），以及 inject 的 `hooks`：`chainAnchors` 和 `versionKinds`（`dvCanvas` 注册表）和 `taskLabels`（`GET /api/dv/tasks`，只加载一次）；显示所选版本的 `title`，在分镜计划的各版本之间切换（`第 1 版` / `v1`……；先显示最新版本），并显示所选版本的状态（某个已注册的链锚点把它列为节点的已批准版本时为 `已批准` / `Approved`，在批准前被后来的版本取代时为 `已被第 N 版取代` / `Replaced by vN`，否则为 `待批准` / `Awaiting approval`）、镜头数、总时长、画幅比例和参考素材，然后每个镜头一张卡片：时长、模型和生成任务标签、按输入顺序列出的各种媒体类型的参考素材，每个都经 `dv.media` 以用途 `thumb` 绘制（每张图片编号为 `Picture N`，名字取第一个能给出该版本名字的 `VersionKind`，否则取素材名）、是否接上一镜头，以及提示词，其中每个 `Picture N` 或 `<Picture N>` 标记显示为那张图片；生成任务为 `t2v` 的镜头没有参考 |
+| `PlanEditor` | `dv.canvas.editor` 插槽 | 键 `plan`，所有者属性 `{ node, state, operations, host }`（使用 `node`、`state` 和 `host`），以及 inject 的 `hooks`：`chainAnchors` 和 `versionKinds`（`dvCanvas` 注册表）和 `taskLabels`（`GET /api/dv/tasks`，只加载一次）；显示所选版本的 `title`，在分镜计划的各版本之间切换（`第 1 版` / `v1`……；先显示最新版本），并显示所选版本的状态（某个已注册的链锚点把它列为节点的已批准版本时为 `已批准` / `Approved`，在批准前被后来的版本取代时为 `已被第 N 版取代` / `Replaced by vN`，否则为 `待批准` / `Awaiting approval`）、镜头数、总时长、画幅比例和参考素材（每个都经 `dv.media` 以用途 `thumb` 绘制，并显示素材名），然后每个镜头一张卡片：时长、模型和生成任务标签、是否接上一镜头，以及提示词；提示词是调用 `shot.render` 的只读 `dv.prompt` 编辑器，带镜头的 `prompt`、`model` 和 `task`，镜头的参考作为 `reference` 输入，它把每个引用画成一个标签，把参考素材画成素材栏；点击标签经 `host` 打开该条目的节点，点击素材格经 `host` 打开该素材的预览；生成任务为 `t2v` 的镜头和没有参考的镜头在 `参考` / `References` 下说明原因 |
 | `planReferencesInUse` | `dvCanvas.recordsInUse` | `id: '@dv/ui-shot-plan'`；`uses` 给出每个分镜计划最新版本及其镜头的参考中每个素材的产出记录（`created_by`）；`c1@1` 这样的版本引用不对应记录 |
 | `planHistoryRow` | `dvHistory.rows` | `match: 'plan.'`；`plan.create` 的主体是它的标题，写成 `《猫》` / ` “猫”`，没有标题时是它的 PlanId，写成 ` p1`；`plan.update` 的主体是带它写下的版本的 ` p1 → v2`，没有版本时是 ` p1`；PlanId 和版本取自记录的 `report`，没有时取自参数，用记录 ID 命名的分镜计划没有主体；其他 `plan.*` 记录没有主体 |
 
@@ -46,7 +46,7 @@ Host 半边不注册任何东西。浏览器半边的 `inject` 为空：它在 `
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`src/client/index.ts` 把客户端门面 `@dv/shot-plan/types` 的 `PlanState` 合并进 `@dv/ui-kit` 的客户端 `ComponentStates`，所以这个包按类型读取 `plan` 切片。画布按位置用锚定在条目上的版本的预览填充画面网格，在中央区域聚焦 `records` 中的记录时打开条目，并在自己的编辑器标题栏下显示编辑器条目。分镜计划编辑器从链锚点读取已批准版本，从版本类别读取版本引用的名字，从 `GET /api/dv/tasks` 读取生成任务标签，都通过它的 inject `hooks`；`src/client/picture.ts` 中的 `isPicture` 判断视频模型把哪些参考素材编号为 `Picture N`，即图片。`src/client/PlanEditor.tsx` 中的 `plansOf(state)` 读取 `plan` 切片，`@dv/shot-plan` 未加载时给出 `{}`；画布条目和分镜计划编辑器都通过它读取。
+`src/client/index.ts` 把客户端门面 `@dv/shot-plan/types` 的 `PlanState` 合并进 `@dv/ui-kit` 的客户端 `ComponentStates`，所以这个包按类型读取 `plan` 切片。画布按位置用锚定在条目上的版本的预览填充画面网格，在中央区域聚焦 `records` 中的记录时打开条目，并在自己的编辑器标题栏下显示编辑器条目。分镜计划编辑器从链锚点读取已批准版本，从版本类别读取版本引用的素材，从 `GET /api/dv/tasks` 读取生成任务标签，都通过它的 inject `hooks`。`src/client/PlanEditor.tsx` 中的 `plansOf(state)` 读取 `plan` 切片，`@dv/shot-plan` 未加载时给出 `{}`；画布条目和分镜计划编辑器都通过它读取。
 
 | 文件 | 内容 |
 | --- | --- |
@@ -54,7 +54,6 @@ Host 半边不注册任何东西。浏览器半边的 `inject` 为空：它在 `
 | [`src/client/index.ts`](src/client/index.ts) | `planNodeType`、`planReferencesInUse`、`planHistoryRow` 和各项注册 |
 | [`src/client/PlanEditor.tsx`](src/client/PlanEditor.tsx) | `PlanEditor`、`shotReferences` 和 `totalSec` |
 | [`src/client/PlanCard.tsx`](src/client/PlanCard.tsx) | `PlanCard` |
-| [`src/client/picture.ts`](src/client/picture.ts) | `isPicture(asset)`：一个镜头的哪些参考素材被视频模型按输入顺序编号为 `Picture 1`、`Picture 2`……，即其中的图片 |
 
 -----
 
@@ -65,6 +64,7 @@ Host 半边不注册任何东西。浏览器半边的 `inject` 为空：它在 `
 - [`@dv/ui-canvas`](../ui-canvas/README.zh.md)：画布节点契约（`NodeType`、`NodeEntry`、`RecordsInUse`、`ChainAnchor`）以及画布如何填充画面网格。
 - [`@dv/ui-history`](../ui-history/README.zh.md)：历史行如何得到主语，以及 `@dv/ui-history/contract` 的 `HistoryRow` 描述符类型。
 - [`@dv/ui-media`](../ui-media/README.zh.md)：绘制参考素材的 `dv.media` 组件工厂。
+- [`@dv/ui-composer`](../ui-composer/README.zh.md)：绘制镜头提示词、引用标签和参考栏的 `dv.prompt` 组件工厂。
 
 -----
 

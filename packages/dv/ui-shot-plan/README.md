@@ -24,7 +24,7 @@ Use this package to show the plans of the `plan` slice (`@dv/shot-plan`) on the 
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin in a profile that stacks `dsh-web-app`, `@dv/api`, `@dv/ui-canvas`, and `@dv/ui-media`, whose `dv.media` Factory draws the plan editor's reference assets. Build the browser bundle first: `pnpm run build` writes `lib/client.js`.
+Mount the plugin in a profile that stacks `dsh-web-app`, `@dv/api`, `@dv/ui-canvas`, `@dv/ui-media`, whose `dv.media` Factory draws the plan editor's reference assets, and `@dv/ui-composer`, whose `dv.prompt` Factory draws each shot's prompt. Build the browser bundle first: `pnpm run build` writes `lib/client.js`.
 
 ```yaml
 - id: dv-ui-shot-plan
@@ -35,7 +35,7 @@ Mount the plugin in a profile that stacks `dsh-web-app`, `@dv/api`, `@dv/ui-canv
 | --- | --- | --- |
 | `planNodeType` | `dvCanvas.nodeTypes` | `id: '@dv/ui-shot-plan'`, `type: 'plan'`, label `分镜计划` / `Plan`, color `var(--dv-node-2)`, column 1; one slice entry per plan with a version: ID `plan:<PlanId>`, `record` the record that wrote the latest version, `records` the records that wrote the earlier versions (absent for a plan at version 1), title the shot count followed by ` · <total duration>` when every shot has a duration, no assets, `slots` the shot count, and `bodyHeight` 46 |
 | `PlanCard` | the `dv.canvas.card` slot | key `plan`; the card body: the type label and the version on show, one past the count of the node's `records`, `分镜计划 · 第 2 版` / `Plan · v2`, at the canvas's text scale |
-| `PlanEditor` | the `dv.canvas.editor` slot | key `plan`, owner `{ node, state, operations, host }` (it uses only `node` and `state`), and the inject `hooks` `chainAnchors` and `versionKinds` (the `dvCanvas` registries) and `taskLabels` (`GET /api/dv/tasks`, loaded once); shows the chosen version's `title`, switches between the plan's versions (`第 1 版` / `v1`, …; the latest first) and shows the chosen version's status (`已批准` / `Approved` when a registered chain anchor lists it among the approved versions of the node, `已被第 N 版取代` / `Replaced by vN` when a later version replaced it before approval, else `待批准` / `Awaiting approval`), its shot count, total duration, aspect ratio and reference assets, then one card per shot: duration, model and task label, reference assets of any media type in input order, each drawn through `dv.media` at purpose `thumb` (each image numbered `Picture N` and named by the first `VersionKind` that names its version, else by the asset), whether it continues the previous shot, and the prompt with each `Picture N` or `<Picture N>` token drawn as that image; a shot in task `t2v` has no references |
+| `PlanEditor` | the `dv.canvas.editor` slot | key `plan`, owner `{ node, state, operations, host }` (it uses `node`, `state` and `host`), and the inject `hooks` `chainAnchors` and `versionKinds` (the `dvCanvas` registries) and `taskLabels` (`GET /api/dv/tasks`, loaded once); shows the chosen version's `title`, switches between the plan's versions (`第 1 版` / `v1`, …; the latest first) and shows the chosen version's status (`已批准` / `Approved` when a registered chain anchor lists it among the approved versions of the node, `已被第 N 版取代` / `Replaced by vN` when a later version replaced it before approval, else `待批准` / `Awaiting approval`), its shot count, total duration, aspect ratio and reference assets (each drawn through `dv.media` at purpose `thumb` with the asset's name), then one card per shot: duration, model and task label, whether it continues the previous shot, and the prompt as the read-only `dv.prompt` composer of the call `shot.render` with the shot's `prompt`, `model` and `task` and its references as `reference` inputs, which draws each citation as a chip and the reference assets as its tray; a chip opens its item's node and a tile opens its asset's preview through `host`; a shot in task `t2v`, and a shot without references, shows why under `参考` / `References` |
 | `planReferencesInUse` | `dvCanvas.recordsInUse` | `id: '@dv/ui-shot-plan'`; `uses` gives the producer (`created_by`) of each asset among the references of each plan's latest version and of its shots; a version reference such as `c1@1` names no record |
 | `planHistoryRow` | `dvHistory.rows` | `match: 'plan.'`; the subject of `plan.create` is its title as `《猫》` / ` “猫”`, else its PlanId as ` p1`; the subject of `plan.update` is ` p1 → v2` with the version it wrote, else ` p1`; the PlanId and the version come from the record's `report`, else from its params, and a plan named by its record ID gives no subject; any other `plan.*` record has no subject |
 
@@ -46,7 +46,7 @@ The Host half registers nothing. The browser half's `inject` is empty: it regist
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-`src/client/index.ts` merges `PlanState` of the client face `@dv/shot-plan/types` into the client `ComponentStates` of `@dv/ui-kit`, so the package reads the `plan` slice typed. The canvas fills the frame grid with the previews of the takes anchored on the entry by slot, opens the entry for a center focus on a record in `records`, and shows the editor entry under its own editor header. The plan editor reads the approved versions from the chain anchors and the names of version references from the version kinds, and the task labels from `GET /api/dv/tasks`, all through its inject `hooks`; `isPicture` in `src/client/picture.ts` tells which reference assets the video model numbers as `Picture N`, the images. `plansOf(state)` in `src/client/PlanEditor.tsx` reads the `plan` slice and gives `{}` while `@dv/shot-plan` is not loaded; the canvas entries and the plan editor read through it.
+`src/client/index.ts` merges `PlanState` of the client face `@dv/shot-plan/types` into the client `ComponentStates` of `@dv/ui-kit`, so the package reads the `plan` slice typed. The canvas fills the frame grid with the previews of the takes anchored on the entry by slot, opens the entry for a center focus on a record in `records`, and shows the editor entry under its own editor header. The plan editor reads the approved versions from the chain anchors, the assets of version references from the version kinds, and the task labels from `GET /api/dv/tasks`, all through its inject `hooks`. `plansOf(state)` in `src/client/PlanEditor.tsx` reads the `plan` slice and gives `{}` while `@dv/shot-plan` is not loaded; the canvas entries and the plan editor read through it.
 
 | File | Content |
 | --- | --- |
@@ -54,7 +54,6 @@ The Host half registers nothing. The browser half's `inject` is empty: it regist
 | [`src/client/index.ts`](src/client/index.ts) | `planNodeType`, `planReferencesInUse`, `planHistoryRow`, and the registrations |
 | [`src/client/PlanEditor.tsx`](src/client/PlanEditor.tsx) | `PlanEditor`, `shotReferences`, and `totalSec` |
 | [`src/client/PlanCard.tsx`](src/client/PlanCard.tsx) | `PlanCard` |
-| [`src/client/picture.ts`](src/client/picture.ts) | `isPicture(asset)`: which reference assets of a shot the video model numbers as `Picture 1`, `Picture 2`, … in input order, the images |
 
 -----
 
@@ -65,6 +64,7 @@ The Host half registers nothing. The browser half's `inject` is empty: it regist
 - [`@dv/ui-canvas`](../ui-canvas/README.md): the canvas node contract (`NodeType`, `NodeEntry`, `RecordsInUse`, `ChainAnchor`) and how the canvas fills a frame grid.
 - [`@dv/ui-history`](../ui-history/README.md): how a History row gets its subject, and the `HistoryRow` descriptor type of `@dv/ui-history/contract`.
 - [`@dv/ui-media`](../ui-media/README.md): the `dv.media` Factory that draws the reference assets.
+- [`@dv/ui-composer`](../ui-composer/README.md): the `dv.prompt` Factory that draws a shot's prompt, citations and reference tray.
 
 -----
 

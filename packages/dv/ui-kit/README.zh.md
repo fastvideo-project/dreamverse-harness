@@ -38,7 +38,7 @@ import { DV_HISTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 | `api.ts` | `DvClient`（`listProjects`、`listProjectSummaries`（`GET /api/dv/projects/summary`）、`getState`（读当前状态）、`listOperations`、`getTaskLabels`（`GET /api/dv/tasks`）、`listModels`（`GET /api/dv/models`）、`checkOperation`（`POST /api/dv/operation/check`，不写任何内容）、`runOperation`、`importAsset`、`undo`（往回移一步）、`moveTo`（移到历史列表中的某一步）、`redo`（往前移一步）、`acceptStale`、`listHistory`、`placeOnCanvas`（在画布来源上执行 `asset.place` 或 `asset.unplace`），项目、布局（位置和视口）、工作区和对话调用，`subscribe`）、`ViewSurface`、`DvApiError`、`errorMessage(error)`（视图为抛出的值显示的文字）、`assetUrl` |
 | `form.ts` | `fieldsOf(params, values)`、`paramsOf(fields)`、`valueOf(field)`、`FieldParseError`：每个 schema 属性一个控件，带类型转换；`@dv/ui-composer` 的 `dv.prompt` 输入框的默认参数标签读取 `fieldsOf` 和 `valueOf` |
 | `timeline.ts` | `FALLBACK_CLIP_SECONDS`、`timelineName(timeline, numbered)` |
-| `references.ts` | `versionRefOf(ref)`、`parseVersionedReference(ref)` 和 `formatInputRef(ref)`：存储的版本引用的类型、ID 和版本，引用文本 `<id>@<n>` 所指的 ID 和版本，以及任一存储的输入引用的引用文本，不点名任何引用类型，经 `@dv/project/grammar` 的 `formatInputSyntax` 写出；`requestInputsOf(record)`：操作请求所接受形式的记录输入，记录按素材各存一次的版本只出现一次；`referenceAssets(state, references, kinds)`、`pictureParts(prompt)`：一个镜头发给视频模型的各种媒体类型的参考素材（版本 `<id>@<n>` 经传入的 `VersionKind` 展开），以及在其 `Picture N` 标记处切开的提示词 |
+| `references.ts` | `versionRefOf(ref)` 和 `formatInputRef(ref)`：存储的版本引用的类型、ID 和版本，以及任一存储的输入引用的引用文本，不点名任何引用类型，经 `@dv/project/grammar` 的 `formatInputSyntax` 写出；`requestInputsOf(record)`：操作请求所接受形式的记录输入，记录按素材各存一次的版本只出现一次；`referenceAssets(state, references, kinds)`：一个镜头发给视频模型的各种媒体类型的参考素材，经 `@dv/project/grammar` 的 `splitInputRef` 从每个引用文本读出（版本 `<id>@<n>` 经传入的 `VersionKind` 展开） |
 | `state.ts` | `assetIndex(state)`：以素材 ID 为键的状态素材 |
 | `media-type.ts` | `mediaTypeOf(mime)`：MIME 类型的媒体类型，即小写、去掉空格和参数的顶层类型，`@dv/ui-media` 以它为视图和媒体类型的键 |
 | `player-box.ts` | `playerBox(asset, maxHeight)`：可播放素材在界面上的外框，全宽、比例与素材相同，最高 `maxHeight`（尺寸未知时取完整的 `maxHeight`），例如画布节点编辑器 360 px 的播放器和历史 220 px 的播放器；媒体视图填满它 |
@@ -74,7 +74,7 @@ import { DV_HISTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 | [`src/client/api.ts`](src/client/api.ts) | 客户端和共享的事件流 |
 | [`src/client/form.ts`](src/client/form.ts) | 表单模型 |
 | [`src/client/timeline.ts`](src/client/timeline.ts) | 时间线辅助函数 |
-| [`src/client/references.ts`](src/client/references.ts) | 存储的输入引用、镜头参考素材和 `Picture N` 标记 |
+| [`src/client/references.ts`](src/client/references.ts) | 存储的输入引用、记录的请求输入和镜头参考素材 |
 | [`src/client/zoom.ts`](src/client/zoom.ts) | 弹窗的缩放过渡 |
 | [`src/client/useProject.ts`](src/client/useProject.ts)、[`src/client/useView.ts`](src/client/useView.ts) | hook |
 | [`src/client/ProjectBar.tsx`](src/client/ProjectBar.tsx) | 共用的栏 |

@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The plan editor, the `dv.canvas.editor` entry keyed `plan`, under the slot test runtime with the media plugins
- * mounted: its versions and approval status, its shots and their reference assets drawn through `dv.media`, and its
- * task labels.
+ * The plan editor, the `dv.canvas.editor` entry keyed `plan`, under the slot test runtime with the media plugins and
+ * the composer stack mounted: its versions and approval status, its shots with their prompts and reference assets in
+ * the read-only `dv.prompt` composer, and its task labels.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
@@ -14,7 +14,7 @@ import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import type { FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { asset, fixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { shotReferences } from '../src/client/PlanEditor.tsx'
-import { mountPlanCanvas } from './plan-canvas.client.tsx'
+import { hostOpenNode, hostPreview, mountPlanCanvas } from './plan-canvas.client.tsx'
 
 /** The chain anchor of the fixture's approval `a1`: it approved v1 of p1. */
 const APPROVAL: ChainAnchor = {
@@ -80,7 +80,7 @@ function measureByCharacters(): void {
 }
 
 describe('PlanEditor', () => {
-  it('marks a version replaced before approval as 已被第 {n} 版取代, shows the version\'s title and each shot\'s reference images', async () => {
+  it('marks a version replaced before approval as 已被第 {n} 版取代, shows the version\'s title, and draws each shot\'s references and citations', async () => {
     document.documentElement.lang = 'zh-CN'
     const canvas = createDvCanvas()
     canvas.chainAnchors.register(APPROVAL)
@@ -89,7 +89,7 @@ describe('PlanEditor', () => {
     const { v1 } = firstVersion(state)
     const v3 = {
       ...v1, version: 3, title: '雨夜', references: ['hero@1'],
-      shots: [{ prompt: '<Picture 1> walks in the rain', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3' }, { prompt: 'the sky clears', modality: 'video' as const, task: 't2v' as const, provider: 'fastvideo', model: 'fasth3' }],
+      shots: [{ prompt: '@[Hero](dv:character/hero) walks in the rain', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3' }, { prompt: 'the sky clears', modality: 'video' as const, task: 't2v' as const, provider: 'fastvideo', model: 'fasth3' }],
     }
     state.components.plan.plans['p1' as PlanId] = [v1, { ...v1, version: 2 }, v3]
     const { runtime, editor } = await mountPlanCanvas(state, { canvas })
@@ -99,13 +99,22 @@ describe('PlanEditor', () => {
     statuses(editor, [1])
     expect(within(editor).queryByText('雨夜')).toBeNull()
     statuses(editor, [3])
-    // v3's shot renders from Hero's reference image: a "Picture 1 · Hero" chip, and the image in place of <Picture 1> and its brackets.
+    // v3's shot renders from Hero's reference image: Hero's tile in the read-only tray, and its citation as a chip with
+    // the image; no label numbers it as Picture N.
     const shot = editor.querySelector('li[data-shot="1"]')
-    expect(drawnMedia(shot?.querySelector('dd'))).toEqual([`img ${assetUrl('ref.png')}`])
-    expect([...shot?.querySelectorAll('p img') ?? []].map(image => [image.getAttribute('alt'), image.getAttribute('src')])).toEqual([['<Picture 1>', assetUrl('ref.png')]])
-    expect(shot?.textContent).toContain('Picture 1 · Hero')
-    expect(shot?.querySelector('p')?.textContent).toBe(' walks in the rain')
+    await waitFor(() => { expect(shot?.querySelector('[data-reference-tile="hero@1"]')?.textContent).toBe('Herov1') })
+    expect(drawnMedia(shot?.querySelector('[data-reference-tile="hero@1"]'))).toEqual([`img ${assetUrl('ref.png')}`])
+    const chip = await waitFor(() => {
+      const image = shot?.querySelector('[data-dv-chip="dv:character/hero"] img')
+      expect(image?.getAttribute('src')).toBe(assetUrl('ref.png'))
+      return image!
+    })
+    expect(shot?.querySelector('[data-composer-input]')?.textContent).toBe('Herov1 walks in the rain')
+    expect(shot?.textContent).not.toContain('Picture')
     expect(shot?.textContent).toContain('无 · 不接上一镜头')
+    // A chip opens its item's node through the canvas host.
+    fireEvent.click(chip, { detail: 1 })
+    expect(hostOpenNode).toHaveBeenCalledWith('character:hero')
     // A text shot shows its model and task by the catalog's task label, and no reference images.
     const textShot = editor.querySelector('li[data-shot="2"]')
     expect(drawnMedia(textShot)).toEqual([])
@@ -144,7 +153,7 @@ describe('PlanEditor', () => {
     await runtime.dispose()
   })
 
-  it('draws reference assets of every media type through dv.media, numbers only the images as Picture N, and names a version by its version kind', async () => {
+  it('draws reference assets of every media type through dv.media, names a version by its version kind, and leaves Picture N as text', async () => {
     document.documentElement.lang = 'zh-CN'
     const canvas = createDvCanvas()
     const state = fixtureState()
@@ -160,15 +169,20 @@ describe('PlanEditor', () => {
     expect(header.textContent).toBe('计划参考shot1.mp4')
     expect(drawnMedia(header)).toEqual([`video ${assetUrl('shot1.mp4')}#t=0.1`])
     act(() => { canvas.versionKinds.register(CHARACTERS) })
-    await waitFor(() => { expect(header.textContent).toBe('计划参考shot1.mp4Picture 1 · Hero') })
+    await waitFor(() => { expect(header.textContent).toBe('计划参考shot1.mp4ref.png') })
     expect(drawnMedia(header)).toEqual([`video ${assetUrl('shot1.mp4')}#t=0.1`, `img ${assetUrl('ref.png')}`])
-    // The shot lists the video, the image, the audio and the PDF in input order; <Picture 1> draws Hero's image.
+    // The shot's tray lists the video, the version, the audio and the PDF in input order; the prompt stays its text.
     const shot = editor.querySelector('li[data-shot="1"]')
-    const chips = shot?.querySelector('dd')
-    expect(drawnMedia(chips)).toEqual([`video ${assetUrl('shot1.mp4')}#t=0.1`, `img ${assetUrl('ref.png')}`, 'audio ♪', 'file application/pdf'])
-    expect([...chips?.firstElementChild?.children ?? []].map(chip => chip.lastElementChild?.textContent)).toEqual(['shot1.mp4', 'Picture 1 · Hero', 'score.wav', 'notes.pdf'])
-    expect(shot?.querySelector('p')?.textContent).toBe('<Video 1> then ')
-    expect(shot?.querySelector('p img')?.getAttribute('src')).toBe(assetUrl('ref.png'))
+    const tray = shot?.querySelector('[role="list"]')
+    await waitFor(() => { expect([...tray?.children ?? []].map(tile => tile.getAttribute('data-reference-tile'))).toEqual(['shot1.mp4', 'hero@1', 'score.wav', 'notes.pdf']) })
+    await waitFor(() => { expect(tray?.querySelector('[data-reference-tile="hero@1"]')?.textContent).toContain('Hero') })
+    expect(drawnMedia(tray)).toEqual([`video ${assetUrl('shot1.mp4')}#t=0.1`, `img ${assetUrl('ref.png')}`, 'audio ♪', 'file application/pdf'])
+    expect(shot?.querySelector('[data-composer-input]')?.textContent).toBe('<Video 1> then <Picture 1>')
+    expect(shot?.querySelector('[data-composer-input] img')).toBeNull()
+    // A tile opens its asset's preview through the canvas host, growing out of the tile.
+    const video = tray?.querySelector<HTMLElement>('[data-reference-tile="shot1.mp4"] button')
+    fireEvent.click(video!)
+    expect(hostPreview).toHaveBeenCalledWith('shot1.mp4', video)
     await runtime.dispose()
   })
 
@@ -203,7 +217,7 @@ describe('PlanEditor', () => {
     await runtime.dispose()
   })
 
-  it('names a version written in a form that parseInputRef accepts, such as hero@1.0, by its version kind', async () => {
+  it('reads a version written in a form that parseInputRef accepts, such as hero@1.0, through its version kind', async () => {
     document.documentElement.lang = 'zh-CN'
     const canvas = createDvCanvas()
     canvas.versionKinds.register(CHARACTERS)
@@ -211,7 +225,7 @@ describe('PlanEditor', () => {
     const { v1 } = firstVersion(state)
     state.components.plan.plans['p1' as PlanId] = [{ ...v1, references: ['hero@1.0'] }]
     const { runtime, editor } = await mountPlanCanvas(state, { canvas })
-    expect(within(editor).getByText('计划参考').textContent).toBe('计划参考Picture 1 · Hero')
+    expect(within(editor).getByText('计划参考').textContent).toBe('计划参考ref.png')
     await runtime.dispose()
   })
 
@@ -226,15 +240,16 @@ describe('PlanEditor', () => {
     ]
     const { runtime, editor } = await mountPlanCanvas(state)
     const toggles = (): HTMLElement[] => within(editor).queryAllByRole('button', { name: '展开全部提示词' })
+    await waitFor(() => { expect(editor.querySelector('[data-composer-input]')?.textContent).toBe('hero turns') })
     expect(toggles()).toHaveLength(0)
     fireEvent.click(within(editor).getByRole('button', { name: '第 1 版' }))
-    expect(toggles()).toHaveLength(1)
+    await waitFor(() => { expect(toggles()).toHaveLength(1) })
     fireEvent.click(within(editor).getByRole('button', { name: '第 2 版' }))
-    expect(toggles()).toHaveLength(0)
+    await waitFor(() => { expect(toggles()).toHaveLength(0) })
     await runtime.dispose()
   })
 
-  it('measures a shot prompt again when a reference starts to resolve and its Picture N token turns into an image', async () => {
+  it('measures a shot prompt again when its tray resolves a reference to a longer name', async () => {
     document.documentElement.lang = 'zh-CN'
     measureByCharacters()
     const canvas = createDvCanvas()
@@ -242,15 +257,16 @@ describe('PlanEditor', () => {
     const { v1 } = firstVersion(state)
     state.components.plan.plans['p1' as PlanId] = [{
       ...v1, references: ['hero@1'],
-      shots: [{ prompt: '<Picture 1> walks', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3' }],
+      shots: [{ prompt: 'walks', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3' }],
     }]
     const { runtime, editor } = await mountPlanCanvas(state, { canvas })
     const toggles = (): HTMLElement[] => within(editor).queryAllByRole('button', { name: '展开全部提示词' })
-    // Without a version kind, hero@1 resolves to nothing, and the 17-character token text overflows.
-    expect(toggles()).toHaveLength(1)
-    act(() => { canvas.versionKinds.register(CHARACTERS) })
-    // After the registration, Hero's image stands for <Picture 1>; the remaining 6 characters fit.
-    await waitFor(() => { expect(toggles()).toHaveLength(0) })
+    // Without a version kind, the tile reads hero@1 未引用 beside the prompt: 14 characters fit.
+    await waitFor(() => { expect(editor.querySelector('[data-shot="1"] dd:last-of-type > div')?.textContent).toBe('hero@1未引用walks') })
+    expect(toggles()).toHaveLength(0)
+    act(() => { canvas.versionKinds.register({ ...CHARACTERS, name: () => 'Hero of the rain' }) })
+    // After the registration, the tile names the version Hero of the rain, and the box overflows.
+    await waitFor(() => { expect(toggles()).toHaveLength(1) })
     await runtime.dispose()
   })
 

@@ -64,6 +64,8 @@ interface MountOptions {
   readOnly?: boolean
   /** The host gives no send. */
   noSend?: boolean
+  /** The host lends no asset picker. */
+  noPicker?: boolean
   /** Changes to the prompt occurrence that shows Hero's chip with no call. */
   bare?: Partial<PromptHostModel>
   /** The project the shell has open; p1 by default. */
@@ -118,7 +120,7 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
   runtime.ctx.effect(() => runtime.ctx.dvComposer.paramBars.register(shotRenderBar))
   const sent: PromptCall[] = []
   const answers: Array<() => void> = []
-  const host = { pickAssets: vi.fn(), preview: vi.fn(), openNode: vi.fn() }
+  const host = { preview: vi.fn(), openNode: vi.fn(), ...options.noPicker === true ? {} : { pickAssets: vi.fn() } }
   const onSubmit = (edited: PromptCall): Promise<void> => {
     sent.push(edited)
     return options.holdSend === true ? new Promise<void>((resolve) => { answers.push(resolve) }) : Promise.resolve()
@@ -306,6 +308,12 @@ describe('the modes of an occurrence', () => {
     fireEvent.click(await sendOf(take, 'Generate a new version'))
     await waitFor(() => { expect(sent).toEqual([second]) })
     expect([host.openNode.mock.calls, host.preview.mock.calls]).toEqual([[], []])
+  })
+
+  it('offers no add to an occurrence whose host lends no picker, and keeps its prompt editable', async () => {
+    const { take } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] }, { noPicker: true })
+    await sendOf(take, 'Render new take')
+    expect([within(take).queryByRole('button', { name: 'Add asset' }), box(take).getAttribute('contenteditable')]).toEqual([null, 'true'])
   })
 
   it('offers no send to an editable occurrence whose host gives none, by the button or by Enter', async () => {

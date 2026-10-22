@@ -167,8 +167,9 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
     // Removing a tile turns its chips into text, so the editor takes the new prompt as one undoable step.
     setContent(current => ({ revision: current.revision + 1, ...chipsOf(next.document) }))
   }
-  const addTiles = (): void => {
-    host.pickAssets(document.inputs.map(input => input.ref), (refs) => {
+  const picker = host.pickAssets
+  const addTiles = (pickAssets: NonNullable<typeof picker>): void => {
+    pickAssets(document.inputs.map(input => input.ref), (refs) => {
       const added = refs.filter(ref => !document.inputs.some(input => input.ref === ref)).map(ref => ({ role: 'reference', ref }))
       setDocument({ ...document, inputs: [...document.inputs, ...added] })
     })
@@ -189,7 +190,9 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
             onPin={(version) => { setDocument(pinVersion(document, index, version)) }}
           />
         ))}
-        {offersReferences ? <button type="button" className="dv-canvas-btn" style={{ ...tile, ...plain }} onClick={addTiles}>{pick('添加素材', 'Add asset')}</button> : null}
+        {offersReferences && picker !== undefined
+          ? <button type="button" className="dv-canvas-btn" style={{ ...tile, ...plain }} onClick={() => { addTiles(picker) }}>{pick('添加素材', 'Add asset')}</button>
+          : null}
       </div>}
       {renderFactorySlot('conversation.prompt', { model })}
       {readOnly

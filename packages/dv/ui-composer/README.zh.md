@@ -52,11 +52,11 @@ Host 半边不注册任何东西。浏览器半边在 `apply` 顶层提供 `dvMe
 
 浏览器半边还提供 `dvComposer`，它的类型在只含类型的入口 `@dv/ui-composer/contract`（[`src/client/contract/index.ts`](src/client/contract/index.ts)）中：`paramBars`，一个以 `operation` 为键的 `Registry<ParamBar>`，拥有某个操作的插件的 UI 半边在 `ctx.inject(['dvComposer'], …)` 中填充它，`@dv/ui-shot-render` 就为 `shot.render` 这样做。同一个操作的第二个参数栏会抛错，并给出持有者的 `owner`。`ParamBar` 提供 `chips({schema, params, operation})`，即调用在某个模型的 `schema()` 下的参数标签，每个标签有参数键、名称、显示的值，以及以参数补丁表示的选项；`candidates(schema)`，即该模型的 `@` 过滤条件，含它的 `reference` 输入的媒体类型和数量 `maxReferences`；以及可选的 `copy`，含 `placeholder`、`send` 和 `sending` 文字。
 
-浏览器半边注册根作用域组件工厂 `dv.prompt`，即单个生成调用的输入框；插件用一个空的 `import type {} from '@dv/ui-composer/contract'` 获得它，并用 `renderFactorySlot('dv.prompt', props)` 绘制它。它的属性是 `projectId`、`call`（一个 `PromptCall`：`operation`，`params`，其中 `prompt` 是带引用的提示词，以及 `{role, ref}` 形式的请求输入 `inputs`）、`readOnly`、`host` 和可选的 `onSubmit(call)`，后者接收改过的调用，并决定发送做什么。宿主是一个 `PromptHost`：`pickAssets(chosen, done)` 打开宿主的素材选择窗口，`preview(asset, opener)` 打开素材的预览，`openNode(nodeId)` 打开画布节点的编辑器。宿主传入另一个 `call` 时，该实例在这个调用上重新开始。[`@dv/ui-generation`](../ui-generation/README.zh.md) 的版本编辑器在版本的调用上绘制它。
+浏览器半边注册根作用域组件工厂 `dv.prompt`，即单个生成调用的输入框；插件用一个空的 `import type {} from '@dv/ui-composer/contract'` 获得它，并用 `renderFactorySlot('dv.prompt', props)` 绘制它。它的属性是 `projectId`、`call`（一个 `PromptCall`：`operation`，`params`，其中 `prompt` 是带引用的提示词，以及 `{role, ref}` 形式的请求输入 `inputs`）、`readOnly`、`host` 和可选的 `onSubmit(call)`，后者接收改过的调用，并决定发送做什么。宿主是一个 `PromptHost`：可选的 `pickAssets(chosen, done)` 打开宿主的素材选择窗口，`preview(asset, opener)` 打开素材的预览，`openNode(nodeId)` 打开画布节点的编辑器。宿主传入另一个 `call` 时，该实例在这个调用上重新开始。[`@dv/ui-generation`](../ui-generation/README.zh.md) 的版本编辑器在版本的调用上绘制它，[`@dv/ui-shot-plan`](../ui-shot-plan/README.zh.md) 的分镜计划编辑器在每个镜头的调用上以只读方式绘制它。
 
 输入框从上到下绘制以下部分：
 
-- 参考栏，每个调用输入一个参考项：通过 `dv.media` 以用途 `thumb` 绘制的预览、名称、它发送的版本（例如 `v2`）、没有标签引用该输入时的 未引用 / uncited、有更新版本时的 用 vN / Use vN，以及移除该输入的 ×。所选模型不接受其媒体类型的参考项变暗，点击参考项打开条目的节点或素材的预览。添加素材 / Add asset 带着已持有的引用打开 `host.pickAssets`，并把每个新选中的引用追加为一个 `reference` 输入。
+- 参考栏，每个调用输入一个参考项：通过 `dv.media` 以用途 `thumb` 绘制的预览、名称、它发送的版本（例如 `v2`）、没有标签引用该输入时的 未引用 / uncited、有更新版本时的 用 vN / Use vN，以及移除该输入的 ×。所选模型不接受其媒体类型的参考项变暗，点击参考项打开条目的节点或素材的预览。宿主提供 `pickAssets` 时，添加素材 / Add asset 带着已持有的引用打开它，并把每个新选中的引用追加为一个 `reference` 输入。
 - DSH 的 `conversation.prompt` 编辑器，它用标签外观绘制每个标签。
 - 参数栏：模型标签，即调用的 `modality` 下 `GET /api/dv/models` 条目的菜单，选中后写入 `modality`、`task`、`provider` 和 `model`；然后是该操作已注册的参数栏在所选模型 schema 下的标签，没有时为操作声明的每个参数（`prompt`、`extra` 和上述四个除外）各一个标签，有选项的参数是菜单，否则是文本框；然后是成本 约 N GPU 秒 / ≈ N GPU s 和发送按钮。
 
