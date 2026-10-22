@@ -128,6 +128,8 @@ describe('the media views', () => {
       .toEqual([true, 'true', null])
     const looping = view.getByTestId('clip.mp4:loop').querySelector('video')
     if (looping === null) throw new Error('no looping video')
+    // A playable form fills the box that the surface sets and contains the video in it, with no height limit of its own.
+    expect([looping.style.width, looping.style.height, looping.style.maxHeight, looping.style.objectFit]).toEqual(['100%', '100%', '', 'contain'])
     Object.defineProperties(looping, { videoWidth: { value: 1280 }, videoHeight: { value: 720 } })
     fireEvent.loadedMetadata(looping)
     expect(reported).toEqual(['clip.mp4:loop 1280×720'])

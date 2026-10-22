@@ -29,6 +29,7 @@ import type { EntryEditorHost, VersionKind } from '@dv/ui-kit/registries.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { taskLabel, type WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
 import type { Asset, OperationRequest, ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
+import { playerBox } from '@dv/ui-kit/player-box.ts'
 import { AssetPicker } from './AssetPicker.tsx'
 import type { CanvasNode } from './graph.ts'
 import { nodeTitle, typeColor, typeLabel } from './NodeCard.tsx'
@@ -544,9 +545,9 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
   )
 }
 
-/** The box of the node's asset at full width. */
+/** The frame of the node's asset; `playerBox` gives its size. */
 const player: CSSProperties = {
-  display: 'flex', width: '100%', maxHeight: 360, overflow: 'hidden', borderRadius: 'var(--dv-radius-lg)', background: 'var(--dv-media-bg)',
+  display: 'flex', overflow: 'hidden', borderRadius: 'var(--dv-radius-lg)', background: 'var(--dv-media-bg)',
 }
 
 /** Props of {@link Preview}. */
@@ -572,7 +573,7 @@ function Preview({ node, state, t, renderFactorySlot, onRemove }: PreviewProps):
   const poster = node.video !== null && node.thumb !== null ? { poster: node.thumb } : {}
   return (
     <>
-      {renderFactorySlot === undefined ? null : <div style={player}>{renderFactorySlot('dv.media', { asset, purpose: 'loop', ...poster })}</div>}
+      {renderFactorySlot === undefined ? null : <div style={{ ...player, ...playerBox(asset, 360) }}>{renderFactorySlot('dv.media', { asset, purpose: 'loop', ...poster })}</div>}
       {onRemove === undefined
         ? null
         : (

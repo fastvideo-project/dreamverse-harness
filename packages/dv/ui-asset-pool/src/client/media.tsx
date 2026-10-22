@@ -21,7 +21,7 @@ const playBadge: CSSProperties = {
   position: 'absolute', right: 4, bottom: 4, width: 18, height: 18, borderRadius: 9999,
   display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255, 255, 255, 0.9)', color: '#0A0B0D',
 }
-const playable: CSSProperties = { display: 'block', width: '100%', maxHeight: '70vh', objectFit: 'contain' }
+const playable: CSSProperties = { display: 'block', width: '100%', height: '100%', objectFit: 'contain' }
 
 /**
  * The still of a video: an image output of the record that made it, such as a take's last frame; null for a video

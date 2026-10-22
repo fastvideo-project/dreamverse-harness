@@ -166,10 +166,13 @@ describe('the canvas through dv.media', () => {
     expect(drawn(await open('u2'))).toEqual(['pool.png loop'])
   })
 
-  it('plays a take\'s video in its editor muted, looping and with controls, behind its image output', async () => {
+  it('plays a take\'s video in its editor muted, looping and with controls, behind its image output, inside a box of at most 360 px', async () => {
     const { open } = await mount(() => undefined)
     const video = (await open('g1')).querySelector('video')
     expect([video?.getAttribute('src'), video?.getAttribute('poster'), video?.muted, video?.loop, video?.controls])
       .toEqual([assetUrl('shot1.mp4'), assetUrl('shot1-last.png'), true, true, true])
+    // The take's size is not stored, so its box is the full width and 360 px tall, and the video fills it.
+    const box = video?.closest('[style*="360px"]')
+    expect(box instanceof HTMLElement ? [box.style.width, box.style.height] : null).toEqual(['100%', '360px'])
   })
 })

@@ -231,8 +231,11 @@ describe('the History tab', () => {
     // The video view draws a video without a still by its first frame.
     expect(thumbOf(row('v1'))).toBe('video /dv/assets/clip.mp4#t=0.1')
     fireEvent.click(row('g7'))
-    const player = within(row('g7')).getByTestId('dv-history-preview').querySelector('video')
+    const box = within(row('g7')).getByTestId('dv-history-preview')
+    const player = box.querySelector('video')
     expect(player?.getAttribute('src')).toBe('/dv/assets/take.mp4')
+    // The box spans the row at most 220 px tall, so the player stays inside it; a take of unknown size gets the full height.
+    expect([box.style.width, box.style.height]).toEqual(['100%', '220px'])
     // The player starts muted and loops, as a take does in its editor.
     expect([player?.muted, player?.loop, player?.autoplay]).toEqual([true, true, true])
   })

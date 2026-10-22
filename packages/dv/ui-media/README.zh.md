@@ -46,7 +46,7 @@ Host 半边（`src/index.ts`）是一个什么都不做的 `apply`，所以 Load
 | `MediaType` | 类型 | `dvMedia.types` 中的一个媒体类型：`id`（媒体类型，例如 `'audio'`，也是其 `dv.media.view` 条目的键）、`icon`（没有静帧处使用的图标组件，属性与 DSH 图标相同，例如 `@` 菜单），以及可选的 `poster(asset, state)`（在只能用 `<img>` 绘制的地方代表该素材的静帧的素材 ID，或 null） |
 | `DvMedia` | 服务 | `ctx.dvMedia`：`types` 是 `@dv/ui-kit/registries.ts` 的 `Registry<MediaType>`，以 `id` 为键，所以同一 `id` 的第二个类型会抛错；`preview(projectId, asset, opener)` 打开某个项目的素材的预览 |
 | `PreviewActionOwner` | 类型 | 一个预览按钮的所有者属性：`projectId`（所预览素材的项目）、`asset`、`buttonClass`（预览按钮的类名，操作按钮用它，外观、悬停和焦点与 关闭 / Close 一致）和 `close()` |
-| `dv.media` | 组件工厂 | 根作用域；属性为 `MediaOwner`；一个键控子插槽 `dv.media.view`。视图用 `renderFactorySlot('dv.media', { asset, purpose })` 绘制一个实例，不需要自己声明插槽；外框归视图所有，媒体视图填满它 |
+| `dv.media` | 组件工厂 | 根作用域；属性为 `MediaOwner`；一个键控子插槽 `dv.media.view`。视图用 `renderFactorySlot('dv.media', { asset, purpose })` 绘制一个实例，不需要自己声明插槽；外框归界面所有并由界面给出确定的大小，媒体视图填满它 |
 | `MediaViewOwner` | 类型 | 每个 `dv.media.view` 条目的所有者属性：`MediaOwner` 和 `unsupported()`，浏览器无法绘制该素材时视图调用它，例如无法解码的图片格式；组件工厂随后绘制文件卡片 |
 | `dv.media.view` | 键控插槽，根 | 一种媒体类型的视图，以 `MediaType.id` 为键；后备是文件卡片 |
 | `dv.media.preview.action` | 列表插槽，根 | 预览中 关闭 / Close 旁边的按钮；每个条目自己决定是否为该素材显示 |

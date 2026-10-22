@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, render } from '@testing-library/react'
 import type { ReactNode } from 'react'
+import { playerBox } from '../src/client/player-box.ts'
 import { mediaBox, useZoomPresence } from '../src/client/zoom.ts'
 
 afterEach(() => {
@@ -109,5 +110,12 @@ describe('mediaBox', () => {
     expect(mediaBox(1920, 1080, '80vw - 32px', '70vh')).toEqual({
       aspectRatio: '1920 / 1080', width: `min(80vw - 32px, 1920px, calc(70vh * ${String(1920 / 1080)}))`, height: 'auto',
     })
+  })
+})
+
+describe('playerBox', () => {
+  it('spans the width at the media\'s aspect ratio up to the height limit, and takes the full height for unknown dimensions', () => {
+    expect(playerBox({ width: 1080, height: 1920 }, 360)).toEqual({ width: '100%', aspectRatio: '1080 / 1920', maxHeight: 360 })
+    expect(playerBox({ width: null, height: null }, 220)).toEqual({ width: '100%', height: 220 })
   })
 })

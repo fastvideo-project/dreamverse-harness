@@ -1,7 +1,8 @@
 /**
  * The asset preview in DSH's `shell.overlay` list: the asset at purpose 'player', its name and facts, the
  * `dv.media.preview.action` entries and 关闭. The facts read the asset's stored dimensions, else the size of the loaded
- * media. It grows out of the element that opened it and shrinks back into it (`@dv/ui-kit/zoom.ts`); Escape, a click
+ * media. The media box has the stored dimensions, else those of the loaded media, and the media view fills it. It grows
+ * out of the element that opened it and shrinks back into it (`@dv/ui-kit/zoom.ts`); Escape, a click
  * outside the dialog and 关闭 close it. 关闭 has the focus while the preview is open, and the opener gets it back when
  * the preview closes. An asset of known dimensions has its media box sized before the media loads, so the dialog has
  * its final box when it grows out of the opener.
@@ -94,10 +95,11 @@ export function MediaPreview({ usePreview, openerOf, close, renderSlot, renderFa
   if (zoom.shown === null) return null
   const { projectId, asset, serial } = zoom.shown
   const size = loaded?.serial === serial ? loaded.size : null
-  // The bounds match `.media` inside `.dialog`: 80vw wide with 16 px padding, media at most 70vh tall.
-  const sized = asset.width !== null && asset.height !== null && asset.height > 0
-    ? mediaBox(asset.width, asset.height, '80vw - 32px', '70vh')
-    : undefined
+  // The bounds match `.media` inside `.dialog`: 80vw wide with 16 px padding, media at most 70vh tall. The box has the
+  // stored dimensions, else the loaded ones, so the view fills a box of the media's own shape; a file card and an
+  // audio player keep their own height.
+  const known = asset.width !== null && asset.height !== null && asset.height > 0 ? { width: asset.width, height: asset.height } : size
+  const sized = known === null ? undefined : mediaBox(known.width, known.height, '80vw - 32px', '70vh')
   return (
     <div key={zoom.shown.serial} role="dialog" aria-modal="true" aria-label={asset.name} onClick={close} className={css.overlay}>
       <div ref={zoom.fadeRef} className={css.backdrop} aria-hidden="true" />

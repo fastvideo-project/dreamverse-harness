@@ -24,6 +24,7 @@ import type { Registry } from '@dv/ui-kit/registries.ts'
 import { isGenerationRecord } from '@dv/ui-kit/state.ts'
 import type { Actor, Asset, HistoryEntry, HistoryQuery, ProjectRecord, RecordStatus, WireHistory } from '@dv/ui-kit/types.ts'
 import { useOperations, useProjectState } from '@dv/ui-kit/useProject.ts'
+import { playerBox } from '@dv/ui-kit/player-box.ts'
 import {
   DV_HISTORY_FOCUS_EVENT, DV_TRAJECTORY_FOCUS_EVENT, dispatchWorkspaceEvent, type DvWorkspaceEventMap,
 } from '@dv/ui-kit/workspace-events.ts'
@@ -594,7 +595,11 @@ function Details(
     <div onClick={(event) => { event.stopPropagation() }} className={css.details}>
       {media === undefined
         ? null
-        : <div data-testid="dv-history-preview" className={css.preview}>{props.renderFactorySlot('dv.media', { asset: media, purpose: 'loop' })}</div>}
+        : (
+          <div data-testid="dv-history-preview" className={css.preview} style={playerBox(media, 220)}>
+            {props.renderFactorySlot('dv.media', { asset: media, purpose: 'loop' })}
+          </div>
+        )}
       {props.words === '' ? null : <div className={css.detailWords}>“{props.words}”</div>}
       {call === null ? null : <div><TrajectoryLink session={call.session} toolCall={call.toolCall} /></div>}
     </div>
