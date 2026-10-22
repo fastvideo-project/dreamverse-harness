@@ -90,7 +90,7 @@ Generate one audio clip from the prompt with a t2a model from dv_models_list; mo
 
 #### 模型看到什么
 
-一次调用返回一个文本块：`done <record>: audio "<prompt, first 60 characters>" (<duration, one decimal>s)`、一行 `- audio: <asset ID> (audio/wav) <asset URL>`、参数，以及报告 `{"model_id":"<the backend's model ID>","duration_sec":<seconds>}`。模型校验拒绝的调用在写任何记录之前被拒绝，消息为“Model <modality>/<task>/<provider>/<model> cannot generate this: <problems> Nothing was generated; change the inputs or params, then call again.”；空提示词以“The prompt is empty; write the text to speak.”和同一结尾句被拒绝。超过本轮 GPU 预算的调用以 `@dv/project` 的预算文字和 `@dv/generation` 的默认确认文字被拒绝，其标签为“Generate audio”。渲染失败时记录失败，工具错误是模型的消息。
+一次调用返回一个文本块：`done <record>: audio "<prompt>" (<duration, one decimal>s)`（提示词由 `@dv/generation` 的 `quotePrompt(prompt, 60)` 写出）、一行 `- audio: <asset ID> (audio/wav) <asset URL>`、参数，以及报告 `{"model_id":"<the backend's model ID>","duration_sec":<seconds>}`。模型校验拒绝的调用在写任何记录之前被拒绝，消息为“Model <modality>/<task>/<provider>/<model> cannot generate this: <problems> Nothing was generated; change the inputs or params, then call again.”；空提示词以“The prompt is empty; write the text to speak.”和同一结尾句被拒绝。超过本轮 GPU 预算的调用以 `@dv/project` 的预算文字和 `@dv/generation` 的默认确认文字被拒绝，其标签为“Generate audio”。渲染失败时记录失败，工具错误是模型的消息。
 
 #### Token 影响
 

@@ -9,7 +9,7 @@
  * @module @dv/audio-generate
  */
 import type { Context } from '@deepseek-ai/cordis'
-import { defineGeneration, importOne } from '@dv/generation'
+import { defineGeneration, importOne, quotePrompt } from '@dv/generation'
 import type { OperationContext, OperationResult, ProjectRecord } from '@dv/project'
 
 declare module '@dv/models' {
@@ -83,9 +83,8 @@ async function storeAudio(_ctx: Context, run: OperationContext, result: Promise<
 
 /** The one-line summary of a finished record: the prompt start and the duration. */
 function summarize(record: ProjectRecord): string {
-  const prompt = typeof record.params['prompt'] === 'string' ? record.params['prompt'].slice(0, 60) : ''
   const duration = record.report?.['duration_sec']
-  return `audio "${prompt}" (${typeof duration === 'number' ? duration.toFixed(1) : '?'}s)`
+  return `audio ${quotePrompt(String(record.params['prompt']), 60)} (${typeof duration === 'number' ? duration.toFixed(1) : '?'}s)`
 }
 
 /** The Audio service: the `audio.generate` operation and the `GenerationApi` methods for workflows. */

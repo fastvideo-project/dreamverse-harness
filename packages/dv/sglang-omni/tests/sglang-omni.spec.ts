@@ -130,7 +130,7 @@ describe('dv-sglang-omni', () => {
     const asset = record.outputs[0] as AssetId
     expect(fixture.ctx.dvAssetPool.get(asset)).toMatchObject({ mime: 'audio/wav', duration_sec: 1.5 })
     expect(fixture.ctx.dvAssetPool.read(asset).equals(wav(132_300))).toBe(true)
-    expect(take.summary).toBe(`audio "${prompt.slice(0, 60)}" (1.5s)`)
+    expect(take.summary).toBe('audio "<|speaker:0|> Welcome to DreamVerse, traveler. [laughs] Rest…" (1.5s)')
   })
 
   it('reads the duration past other chunks, and refuses a body that is not a WAV file with a duration or holds no samples', async () => {

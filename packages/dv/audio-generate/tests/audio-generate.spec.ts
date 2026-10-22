@@ -199,13 +199,13 @@ describe('dvAudioGenerate', () => {
     const blocks = fixture.ctx.tools.get('dv_audio_generate')?.output.render(args, take)
     expect(blocks).toEqual([{
       type: 'text',
-      text: `done ${record.id}: audio "  <|speaker:0|> Welcome, traveler.  " (2.3s)\n`
+      text: `done ${record.id}: audio "<|speaker:0|> Welcome, traveler." (2.3s)\n`
         + `- audio: ${asset} (audio/wav) ${fixture.ctx.dvAssetPool.url(asset)}\n`
         + `params: ${JSON.stringify({ modality: 'audio', task: 't2a', provider: 'test', model: 'fake', prompt: args.prompt, extra: { speed: 1.1 } })}\n`
         + 'report: {"model_id":"test-speech","duration_sec":2.25}',
     }])
     const { report: _report, ...withoutReport } = record
-    expect(audioSpec(fixture)?.summarize({ ...withoutReport, params: {} })).toBe('audio "" (?s)')
+    expect(audioSpec(fixture)?.summarize(withoutReport)).toBe('audio "<|speaker:0|> Welcome, traveler." (?s)')
   })
 
   it('refuses an empty prompt and the problems of the model before any record', async () => {
