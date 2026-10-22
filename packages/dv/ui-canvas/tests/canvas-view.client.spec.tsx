@@ -810,7 +810,7 @@ describe('node actions', () => {
     await runtime.dispose()
   })
 
-  it('ends the wait of a take editor whose rerun a rerun from a stacked editor replaces, and shows why', async () => {
+  it('ends the wait of a take editor whose rerun a rerun from a stacked editor replaces, with no failure notice', async () => {
     const { runtime, view, open } = await mountCanvas({ holdOperations: true })
     const rerunG2: NodeAction = {
       id: '@dv/ui-test-probe:rerun', label: () => 'rerun g2', order: 1, shows: (node): node is NodeView => node.id === 'test_ref:hero',
@@ -824,8 +824,20 @@ describe('node actions', () => {
     const stacked = view.getAllByTestId('dv-canvas-node-editor')[1]
     if (stacked === undefined) throw new Error('no stacked editor')
     fireEvent.click(within(stacked).getByRole('button', { name: 'rerun g2' }))
-    expect((await within(editor).findByRole('alert')).textContent).toBe(`失败：${zh['rerun.superseded']}`)
-    expect(within(editor).getByRole('button', { name: '渲染新版本' }).hasAttribute('disabled')).toBe(false)
+    await waitFor(() => { expect(within(editor).getByRole('button', { name: '渲染新版本' }).hasAttribute('disabled')).toBe(false) })
+    expect(view.queryByRole('alert')).toBeNull()
+    await runtime.dispose()
+  })
+
+  it('shows no canvas notice for a rerun of a failed-row action that a rerun from an editor replaces', async () => {
+    const { runtime, view, node, open } = await mountCanvas({ edit: failG1, holdOperations: true })
+    await waitFor(() => { within(node('g1')).getByRole('button', { name: '重试' }) })
+    fireEvent.click(within(node('g1')).getByRole('button', { name: '重试' }))
+    await waitFor(() => { expect(within(node('g1')).getByRole('button', { name: '渲染中…' }).hasAttribute('disabled')).toBe(true) })
+    const editor = await open('g2')
+    fireEvent.click(within(editor).getByRole('button', { name: '渲染新版本' }))
+    await act(() => new Promise((resolve) => { setTimeout(resolve, 20) }))
+    expect(view.queryByRole('alert')).toBeNull()
     await runtime.dispose()
   })
 

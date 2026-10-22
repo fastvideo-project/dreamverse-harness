@@ -129,10 +129,10 @@ export function TakeEditor(props: TakeEditorProps): ReactNode {
     const params = { ...Object.fromEntries(kept), ...edited }
     setStarting(true)
     setRenderError(null)
-    // On success the canvas closes the editor and selects the new take.
+    // On success the canvas closes the editor and selects the new take; a later rerun that replaces this one ends the wait.
     host.rerun({
       operation: record.operation, inputs, params, intent: pick(`在画布上渲染 ${node.title} 的新版本`, `Render a new take of ${node.title} from the canvas`), based_on: record.id,
-    }).catch((error: unknown) => {
+    }).then(() => { setStarting(false) }, (error: unknown) => {
       setStarting(false)
       setRenderError(errorMessage(error))
     })

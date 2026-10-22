@@ -193,8 +193,8 @@ export type CardHost = Pick<NodeHost, 'run' | 'rerun'>
 /** What the canvas lends an editor body: the node host with the editor's asset picker, and a rerun that it awaits. */
 export interface EditorHost extends Omit<NodeHost, 'rerun'> {
   /**
-   * As `NodeHost.rerun`, and the body shows a refusal itself: settles once the new node appears, rejects with the error
-   * of a refused request or once a later rerun replaces this one, and the canvas shows neither.
+   * As `NodeHost.rerun`, and the body shows a refusal itself: settles once the new node appears or once a later rerun
+   * replaces this one, rejects with the error of a refused request, and the canvas shows no refusal.
    */
   rerun(request: RerunRequest): Promise<void>
   /** The editor's asset picker; `versions: true` adds the sections of the registered version kinds. */

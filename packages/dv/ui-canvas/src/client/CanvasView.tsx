@@ -185,13 +185,12 @@ function settledAt(record: ProjectRecord): string {
 
 /**
  * A rerun whose new node the canvas waits for: the record it is based on, every node drawn before the request, and the
- * settlers of its promise.
+ * resolver of its promise.
  */
 interface AwaitedRender {
   basedOn: string
   known: ReadonlySet<string>
   resolve: () => void
-  reject: (error: Error) => void
 }
 
 /** An in-progress pointer gesture. */
@@ -630,17 +629,17 @@ export function CanvasView(
   /**
    * Start a rerun of a record and wait for the new node. The request itself returns when the operation ends, so the
    * canvas reveals the new node as soon as the project state shows it. When the request returns first, as for a record
-   * that no type draws, the editor closes then. The canvas waits for one rerun at a time, so a rerun rejects the one that
-   * it replaces.
+   * that no type draws, the editor closes then. The canvas waits for one rerun at a time, so a rerun settles the one that
+   * it replaces, which is no failure.
    * @param request - the request; its `based_on` is the record it runs again.
    * @param action - the node action that started the rerun, or null for a body.
-   * @returns settles once the new node is revealed; rejects with the error of a request that fails before that, or
-   *   once a later rerun replaces this one.
+   * @returns settles once the new node is revealed or once a later rerun replaces this one; rejects with the error of a
+   *   request that fails before that.
    */
   const rerun = (request: RerunRequest, action: string | null): Promise<void> => new Promise((resolve, reject) => {
     const known = new Set(graphRef.current?.nodes.map(node => node.id))
-    const awaited: AwaitedRender = { basedOn: request.based_on, known, resolve, reject }
-    awaitedRender.current?.reject(new Error(t('rerun.superseded')))
+    const awaited: AwaitedRender = { basedOn: request.based_on, known, resolve }
+    awaitedRender.current?.resolve()
     awaitedRender.current = awaited
     setRerunning({ record: request.based_on, action })
     setNotice(null)
