@@ -73,11 +73,11 @@ export function modelKey(params: Record<string, unknown>): ModelKey {
 
 /**
  * Whether an entry serves one of the given tasks; narrows the entry to those tasks.
- * @param entry - the entry.
+ * @param entry - the entry, or any value with an entry's `task`.
  * @param tasks - the tasks.
  * @returns true when the entry's task is in `tasks`.
  */
-export function servesTask<T extends TaskId>(entry: ModelEntry, tasks: readonly T[]): entry is ModelEntry<T> {
+export function servesTask<T extends TaskId>(entry: Pick<ModelEntry, 'task'>, tasks: readonly T[]): entry is ModelEntry<T> {
   return (tasks as readonly TaskId[]).includes(entry.task)
 }
 

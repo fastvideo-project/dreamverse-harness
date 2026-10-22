@@ -172,8 +172,9 @@ describe('dvModels', () => {
     expect(modelKey({ modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', prompt: 'a cat' }))
       .toEqual({ modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha' })
     expect(formatModelKey(modelKey({ modality: 'video', task: 7 }))).toBe('video///')
-    expect(servesTask(entry('ref2v', 'test', 'alpha'), ['t2v', 'ref2v'])).toBe(true)
-    expect(servesTask(entry('ref2v', 'test', 'alpha'), ['t2v'])).toBe(false)
+    // A consumer tests any value that carries a task, such as a catalog item, against the tasks of its operation.
+    expect(servesTask({ task: 'ref2v' }, ['t2v', 'ref2v'])).toBe(true)
+    expect(servesTask({ task: 'ref2v' }, ['t2v'])).toBe(false)
     const alpha = { modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha' }
     expect(ctx.dvModels.resolve(['t2v', 'ref2v'], alpha).description).toBe('alpha for ref2v')
     expect(() => ctx.dvModels.resolve(['t2v'], alpha)).toThrow('Unknown model "video/ref2v/test/alpha"; call dv_models_list for the models.')
