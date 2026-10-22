@@ -239,6 +239,21 @@ describe('the editor entry of a reference noun', () => {
     await runtime.dispose()
   })
 
+  it('draws each reference in a box of the asset\'s aspect ratio, and a square for an asset of unknown dimensions', async () => {
+    document.documentElement.lang = 'zh-CN'
+    const { runtime } = await editorRuntime(testRef.apply)
+    const state = withTestRef(fixtureState())
+    state.assets = state.assets.map(item => item.id === 'ref.png' ? { ...item, width: 1920, height: 1080 } : item)
+    state.components.test_ref?.['hero']?.push({ id: 'hero', version: 2, name: 'Hero', description: '', references: ['ref.png', 'shot1.mp4'], created_by: 'e1' })
+    const { view } = runtime.renderSlot('dv.canvas.editor', { node: entryOf(state, 'test_ref:hero'), state, host: hostMock() }, { entryKey: testRef.spec.id })
+    const box = (name: string): string => {
+      const found = view.getByRole('button', { name }).firstElementChild
+      return found instanceof HTMLElement ? found.style.aspectRatio : ''
+    }
+    expect([box('查看 ref.png'), box('查看 shot1.mp4')]).toEqual(['1920 / 1080', '1 / 1'])
+    await runtime.dispose()
+  })
+
   it('renders the declared editor body, whose children row writes <key>.update with its params and no inputs', async () => {
     document.documentElement.lang = 'en'
     /**

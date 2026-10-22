@@ -29,7 +29,7 @@ kind: "package-reference"
 
 | 符号 | 含义 |
 | --- | --- |
-| `defineReferenceUi(spec)`、`ReferenceEditor` | `defineReferenceUi(spec)`：由一个 `ReferenceUiSpec`（`id` 是包名，也是编辑器插槽键；`key` 是组件键、引用种类和节点类型；`slice(state)`，即该名词的切片，宿主半边未加载时为 `undefined`，此时各描述符不列出任何条目；`label`；`mention`；可选的 `editor`）生成一个参考名词的描述符：在第 0 列为每个条目的最新版本画一个节点 `<key>:<id>` 的 `NodeType`、一个 `VersionKind`、列出最新引用的生产记录的 `TakesInUse`、列出 `dv:<key>/<id>` 条目的 `MentionKind`、匹配 `<key>.` 并以记录的 `name`（否则以其 ID 参数）命名的 `HistoryRow`，以及注册它们和 `dv.canvas.editor` 条目的客户端插件主体 `apply(ctx)`；`ReferenceEditor`：默认编辑器主体（参考图、描述、`children` 行和“＋ 添加素材”），每次修改都通过 `host.run` 写入 `<key>.update`，用编辑器条目的 `renderFactorySlot` 通过 `@dv/ui-media` 的 `dv.media` 组件工厂以用途 `card` 绘制每张参考图，点击时打开 `host.preview` |
+| `defineReferenceUi(spec)`、`ReferenceEditor` | `defineReferenceUi(spec)`：由一个 `ReferenceUiSpec`（`id` 是包名，也是编辑器插槽键；`key` 是组件键、引用种类和节点类型；`slice(state)`，即该名词的切片，宿主半边未加载时为 `undefined`，此时各描述符不列出任何条目；`label`；`mention`；可选的 `editor`）生成一个参考名词的描述符：在第 0 列为每个条目的最新版本画一个节点 `<key>:<id>` 的 `NodeType`、一个 `VersionKind`、列出最新引用的生产记录的 `TakesInUse`、列出 `dv:<key>/<id>` 条目的 `MentionKind`、匹配 `<key>.` 并以记录的 `name`（否则以其 ID 参数）命名的 `HistoryRow`，以及注册它们和 `dv.canvas.editor` 条目的客户端插件主体 `apply(ctx)`；`ReferenceEditor`：默认编辑器主体（参考图、描述、`children` 行和“＋ 添加素材”），每次修改都通过 `host.run` 写入 `<key>.update`，用编辑器条目的 `renderFactorySlot` 通过 `@dv/ui-media` 的 `dv.media` 组件工厂以用途 `card` 绘制每张参考图，绘制框高 220 px，比例与素材相同（尺寸未知的素材为正方形），点击时打开 `host.preview` |
 | `WireReferenceVersion` | 线上发送的条目的一个版本：`id`、`version`、`name`、`description`、`references` 和 `created_by`（写下它的记录） |
 
 -----

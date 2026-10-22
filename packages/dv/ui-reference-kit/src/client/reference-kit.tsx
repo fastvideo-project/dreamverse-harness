@@ -15,7 +15,7 @@ import { pickText, useText } from '@dv/ui-kit/locale.ts'
 import type { HistoryRow } from '@dv/ui-history/contract'
 import type {} from '@dv/ui-media/contract'
 import type { MentionKind, NodeType, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
-import type { WireState } from '@dv/ui-kit/types.ts'
+import type { Asset, WireState } from '@dv/ui-kit/types.ts'
 
 /** One version of a reference noun item as the wire sends it. */
 export interface WireReferenceVersion {
@@ -178,7 +178,18 @@ const button: CSSProperties = {
   lineHeight: '20px', fontWeight: 500, color: 'var(--dv-text)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
 }
 const label: CSSProperties = { display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 500, color: 'var(--dv-text-2)', margin: '12px 0 4px' }
-const referenceImage: CSSProperties = { display: 'flex', height: 220, aspectRatio: '1', borderRadius: 'var(--dv-radius-md)', overflow: 'hidden', background: 'var(--dv-surface-3)' }
+const referenceImage: CSSProperties = { display: 'flex', height: 220, borderRadius: 'var(--dv-radius-md)', overflow: 'hidden', background: 'var(--dv-surface-3)' }
+
+/**
+ * The box of one reference: 220 px tall at the asset's aspect ratio, so the card view shows the whole image; square for
+ * an asset of unknown dimensions or one that the state does not hold.
+ * @param asset - the reference's asset, or undefined.
+ * @returns the box style.
+ */
+function referenceBox(asset: Asset | undefined): CSSProperties {
+  const known = asset !== undefined && asset.width !== null && asset.height !== null && asset.height > 0
+  return { ...referenceImage, aspectRatio: known ? `${String(asset.width)} / ${String(asset.height)}` : '1' }
+}
 
 /**
  * The references grid, the description and ＋ 添加素材 of one entry; each change writes `<key>.update` through
@@ -220,7 +231,7 @@ export function ReferenceEditor<V extends WireReferenceVersion>(props: Reference
                 style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'pointer', display: 'block' }}
                 onClick={(event) => { if (asset !== undefined) host.preview(reference, event.currentTarget) }}
               >
-                <span style={referenceImage}>{asset === undefined ? null : renderFactorySlot('dv.media', { asset, purpose: 'card' })}</span>
+                <span style={referenceBox(asset)}>{asset === undefined ? null : renderFactorySlot('dv.media', { asset, purpose: 'card' })}</span>
               </button>
               {/* An update without references keeps the current ones, so the last reference cannot be removed. */}
               <button
