@@ -33,12 +33,8 @@ Element.prototype.scrollIntoView = vi.fn()
 
 afterEach(async () => { cleanup(); await disposeHistories(); vi.unstubAllGlobals(); vi.useRealTimers() })
 
-/** The History row of renders, as the generation kit registers it: the shot number, and its first output as thumbnail. */
-const RENDER_ROW: HistoryRow = {
-  match: 'shot.render',
-  subject: render => typeof render.params['shot'] === 'number' ? [` ${String(render.params['shot'])}`, ` ${String(render.params['shot'])}`] : null,
-  thumbnail: render => render.outputs[0] ?? null,
-}
+/** The shot render plugin, which registers the History row of `shot.render` records through the generation kit. */
+const SHOT_RENDER = { inject: [...shotRenderInject], apply: shotRenderApply }
 const ENTRIES: HistoryEntry[] = [
   { record: record({ id: 'm1', turn: null, surface: 'timeline', operation: 'timeline.clip_move', params: { clip: 'cl1', to: 2 }, intent: 'move clip 1' }), place: 'current' },
   {
@@ -107,15 +103,16 @@ interface MountOptions {
  * Mount the History tab over scripted routes; `/api/dv/history` answers from {@link ENTRIES}.
  * @param entries - the history the route serves.
  * @param adjust - changes to the fixture state that `/api/dv/state` serves.
- * @param rows - the history rows registered into `dvHistory`; the render row by default.
- * @param options - plugins, and the answers of the history route, the other POST routes and the GET routes.
+ * @param rows - the history rows registered into `dvHistory` besides the plugins' rows.
+ * @param options - the plugins, the shot render plugin by default, and the answers of the history route, the other POST
+ *   routes and the GET routes.
  * @returns the rendered tab, the recorded writes, history queries and center moves, the History plugin, and a row lookup.
  */
 async function mount(
-  entries: HistoryEntry[] = ENTRIES, adjust: (state: WireState) => void = () => {}, rows: readonly HistoryRow[] = [RENDER_ROW],
+  entries: HistoryEntry[] = ENTRIES, adjust: (state: WireState) => void = () => {}, rows: readonly HistoryRow[] = [],
   options: MountOptions = {},
 ) {
-  const { plugins = [], serve = serveEntries(entries), post = () => ({ status: 200, body: { record: record({ id: 'b1' }) } }) } = options
+  const { plugins = [SHOT_RENDER], serve = serveEntries(entries), post = () => ({ status: 200, body: { record: record({ id: 'b1' }) } }) } = options
   const queries: HistoryQuery[] = []
   const scripted = scriptedFetch({
     operations: WIRE_OPERATIONS,
@@ -216,7 +213,7 @@ describe('the History tab', () => {
   })
 
   it('draws no thumbnail and no thumbnail column for a row registered without a thumbnail', async () => {
-    const { row } = await mount(ENTRIES, () => {}, [{ match: 'shot.render', subject: () => null }])
+    const { row } = await mount(ENTRIES, () => {}, [{ match: 'shot.render', subject: () => null }], { plugins: [] })
     await waitFor(() => { expect(row('g1').textContent).toContain('Render shot') })
     expect(row('g1').querySelector('[data-testid="dv-history-thumb"]')).toBeNull()
     expect(drawn(row('g1'))).toEqual([])
@@ -225,15 +222,21 @@ describe('the History tab', () => {
 
   it('shows a take\'s still as its thumbnail and plays its video, with the row that the shot render plugin registers', async () => {
     const take: HistoryEntry = { record: record({ id: 'g1', operation: 'shot.render', outputs: ['shot1.mp4', 'still.png'] }), place: 'current' }
-    const { row } = await mount([take], (state) => { state.assets.push(asset('still.png', 'image/png', 'g1')) }, [], {
-      plugins: [{ inject: [...shotRenderInject], apply: shotRenderApply }],
-    })
+    const { row } = await mount([take], (state) => { state.assets.push(asset('still.png', 'image/png', 'g1')) })
     await waitFor(() => { expect(drawn(row('g1'))).toEqual(['still.png@thumb']) })
     fireEvent.click(row('g1'))
     const box = within(row('g1')).getByTestId('dv-history-preview')
     expect(drawn(box)).toEqual(['shot1.mp4@loop'])
     // The box spans the row at most 220 px tall, so the player stays inside it; a take of unknown size gets the full height.
     expect([box.style.width, box.style.height]).toEqual(['100%', '220px'])
+  })
+
+  it('names the shot of a take and of its retake, with the row that the shot render plugin registers', async () => {
+    const take = record({ id: 'g7', operation: 'shot.render', started_by: { record: 'ap', slot: 7 }, outputs: ['shot1.mp4'] })
+    const retake = record({ id: 'g8', operation: 'shot.render', based_on: 'g7' })
+    const { row } = await mount([{ record: retake, place: 'current' }, { record: take, place: 'before' }])
+    await waitFor(() => { expect(within(row('g7')).getByText('Render shot 7')).toBeTruthy() })
+    expect(within(row('g8')).getByText('Render shot 7')).toBeTruthy()
   })
 
   it('falls back to the empty square when a thumbnail\'s media fails to load', async () => {
@@ -267,7 +270,7 @@ describe('the History tab', () => {
         place: 'before',
       },
     ]
-    const { view, row } = await mount(approval, () => {}, [RENDER_ROW, storyApprovalRow])
+    const { view, row } = await mount(approval, () => {}, [storyApprovalRow])
     await waitFor(() => { row('ap') })
     expect(view.container.querySelectorAll('[data-testid="dv-history-row"]').length).toBe(1)
     await waitFor(() => { expect(row('ap').textContent).toContain('Approve plan p1 v1') })
@@ -291,7 +294,7 @@ describe('the History tab', () => {
       { record: record({ id: 'ap', actor: 'agent', operation: 'story.approve', params: { plan: 'p1' } }), place: 'before' },
     ]
     const { view } = await mount(approval)
-    await waitFor(() => { expect(view.getByTestId('dv-history-fold').textContent).toBe('▸ Render shot') })
+    await waitFor(() => { expect(view.getByTestId('dv-history-fold').textContent).toBe('▸ Render shot 1') })
   })
 
   it('labels a row with the subject of a registered history row, and drops it once the row is disposed', async () => {
@@ -317,7 +320,7 @@ describe('the History tab', () => {
         ? { view: 'timeline', target: { timeline: 't1', clip: String(item.params['clip']) } }
         : null,
     }
-    const { row, shown } = await mount(later, () => {}, [RENDER_ROW, timelineRow])
+    const { row, shown } = await mount(later, () => {}, [timelineRow])
     await waitFor(() => { row('g1') })
     await waitFor(() => { expect(row('m1').textContent).toContain('Move clip') })
     fireEvent.click(row('g1'))
@@ -332,7 +335,7 @@ describe('the History tab', () => {
   })
 
   it('plays no output in the details of a row registered without a thumbnail', async () => {
-    const { row } = await mount(ENTRIES, () => {}, [{ match: 'shot.render', subject: () => null }])
+    const { row } = await mount(ENTRIES, () => {}, [{ match: 'shot.render', subject: () => null }], { plugins: [] })
     await waitFor(() => { row('g1') })
     fireEvent.click(row('g1'))
     expect(drawn(row('g1'))).toEqual([])
@@ -458,7 +461,7 @@ describe('the History tab', () => {
   })
 
   it('shows why undo and 回到这一步 were refused', async () => {
-    const { view, row } = await mount(ENTRIES, () => {}, [RENDER_ROW], {
+    const { view, row } = await mount(ENTRIES, () => {}, [], {
       post: (_path, body) => ({
         status: 409, body: { error: typeof body === 'object' && body !== null && 'to' in body ? 'Step g1 is gone' : 'Nothing to undo' },
       }),
@@ -472,14 +475,14 @@ describe('the History tab', () => {
   })
 
   it('says why the history could not be read', async () => {
-    const { view } = await mount(ENTRIES, () => {}, [RENDER_ROW], { serve: () => Promise.reject(new TypeError('Failed to fetch')) })
+    const { view } = await mount(ENTRIES, () => {}, [], { serve: () => Promise.reject(new TypeError('Failed to fetch')) })
     await waitFor(() => { expect(view.getByTestId('dv-history-panel').textContent).toContain('Failed to load: Failed to fetch') })
   })
 
   it('lists the steps before the project state and the operation labels arrive', async () => {
     let release = (): void => {}
     const arrived = new Promise<void>((resolve) => { release = resolve })
-    const { row, shown } = await mount(ENTRIES, () => {}, [RENDER_ROW], {
+    const { row, shown } = await mount(ENTRIES, () => {}, [], {
       hold: url => url.startsWith('/api/dv/state') || url.startsWith('/api/dv/operations') ? arrived : Promise.resolve(),
     })
     await waitFor(() => { row('m1') })
@@ -503,7 +506,7 @@ describe('the History tab', () => {
   })
 
   it('starts a project switch from an empty panel, and the previous project\'s unanswered request shows no failure', async () => {
-    const { view, row } = await mount(ENTRIES, () => {}, [RENDER_ROW], {
+    const { view, row } = await mount(ENTRIES, () => {}, [], {
       serve: (query, signal) => query.project === 'p1' ? neverAnswered(signal) : serveEntries(ENTRIES)(query, signal),
     })
     await waitFor(() => { expect(view.getByTestId('dv-history-panel').textContent).toContain('Loading…') })
@@ -565,7 +568,7 @@ describe('dv:history-focus', () => {
 
   it('selects nothing for a record that the history list does not hold', async () => {
     const elsewhere: HistoryEntry = { record: record({ id: 'x9', session: 's5', tool_call: 'call-x9', operation: 'timeline.clip_move' }), place: 'before' }
-    const { view, row, queries } = await mount(ENTRIES, () => {}, [RENDER_ROW], {
+    const { view, row, queries } = await mount(ENTRIES, () => {}, [], {
       serve: (query, signal) => serveEntries(query.tool_call === undefined ? ENTRIES : [elsewhere])(query, signal),
     })
     await waitFor(() => { row('p1') })
@@ -578,7 +581,7 @@ describe('dv:history-focus', () => {
 
   it('says when the tool call wrote no record, and why the lookup failed', async () => {
     let reachable = true
-    const { view, row } = await mount(ENTRIES, () => {}, [RENDER_ROW], {
+    const { view, row } = await mount(ENTRIES, () => {}, [], {
       serve: (query, signal) => reachable ? serveEntries(ENTRIES)(query, signal) : Promise.reject(new TypeError('Failed to fetch')),
     })
     await waitFor(() => { row('p1') })
@@ -610,7 +613,7 @@ describe('the History tab over /dv/events', () => {
   it('ignores an update before the first page arrives, and a change before it loads the list', async () => {
     const emit = stubEventSource()
     let first = true
-    const { row, queries } = await mount(ENTRIES, () => {}, [RENDER_ROW], {
+    const { row, queries } = await mount(ENTRIES, () => {}, [], {
       serve: (query, signal) => {
         if (!first) return serveEntries(ENTRIES)(query, signal)
         first = false
@@ -628,7 +631,7 @@ describe('the History tab over /dv/events', () => {
   it('keeps the shown steps when a reload fails', async () => {
     const emit = stubEventSource()
     let reachable = true
-    const { view, row, queries } = await mount(ENTRIES, () => {}, [RENDER_ROW], {
+    const { view, row, queries } = await mount(ENTRIES, () => {}, [], {
       serve: (query, signal) => reachable ? serveEntries(ENTRIES)(query, signal) : Promise.reject(new TypeError('Failed to fetch')),
     })
     await waitFor(() => { row('g1') })

@@ -17,7 +17,7 @@ export type Text = readonly [zh: string, en: string]
 export interface HistoryRow {
   /** An operation name, or '<key>.' for every operation of a component key. */
   match: string
-  /** The subject after the label, with its own separator, such as [' p1 v1', ' p1 v1']; null for none. */
+  /** The subject after the label, with its own separator, such as [' p1 v1', ' p1 v1']; null names the record's chain slot, if any. */
   subject(record: ProjectRecord): Text | null
   /** Where selecting the record moves the center; absent: the record's canvas node (`{ view: 'canvas', target: { record } }`). */
   focus?(record: ProjectRecord, records: readonly ProjectRecord[]): CenterTarget | null

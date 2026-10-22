@@ -60,19 +60,16 @@ export interface LabelContext {
 
 /**
  * The label a row shows for its action: the operation label (`operationLabel` of `@dv/ui-kit`) followed by its subject.
- * The subject comes from the registered row that matches the operation (an exact name first, then `'<key>.'`). Else
- * a record with a chain slot (`chainOf`) names the slot and its lane.
+ * The subject comes from the registered row that matches the operation (an exact name first, then `'<key>.'`). When no
+ * row matches or the row gives no subject, a record with a chain slot (`chainOf`) names the slot and its lane.
  * @param record - the operation record.
  * @param context - the operations, the registered rows and the loaded records.
  * @returns the Chinese and English label.
  */
 export function actionLabel(record: ProjectRecord, context: LabelContext): Text {
   const [zh, en] = operationLabel(record.operation, context.operations)
-  const row = matchingRow(record, context.rows)
-  if (row !== undefined) {
-    const subject = row.subject(record)
-    return subject === null ? [zh, en] : [`${zh}${subject[0]}`, `${en}${subject[1]}`]
-  }
+  const subject = matchingRow(record, context.rows)?.subject(record) ?? null
+  if (subject !== null) return [`${zh}${subject[0]}`, `${en}${subject[1]}`]
   const chain = chainOf(record, context.records)
   if (chain === null || chain.slot === null) return [zh, en]
   const slot = chain.lane === undefined ? String(chain.slot) : `${String(chain.slot)} · ${chain.lane}`
