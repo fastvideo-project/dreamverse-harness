@@ -25,7 +25,7 @@ Use this package to generate images with models on local SGLang diffusion server
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin after `@dv/models`, with one server per model:
+Mount the plugin after `@dv/models`, with one server per model. The DreamVerse bundle mounts it as row `dv-sglang-diffusion`:
 
 ```yaml
 - id: dv-sglang-diffusion

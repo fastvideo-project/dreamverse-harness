@@ -27,6 +27,8 @@ import DvTimeline from '@dv/timeline'
 import DvApi from '@dv/api'
 import DvChatReferences from '@dv/chat-references'
 import DvModels, { formatModelKey } from '@dv/models'
+import DvImageGenerate from '@dv/image-generate'
+import * as SglangDiffusion from '@dv/sglang-diffusion'
 import DvStory from '@dv/workflow-story'
 import * as yaml from 'js-yaml'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -65,6 +67,7 @@ const PLUGINS: Record<string, object> = {
   '@dv/shot-plan': DvShotPlan, '@dv/shot-render': DvShotRender, '@dv/timeline': DvTimeline,
   '@dv/api': DvApi, '@dv/chat-references': DvChatReferences,
   '@dv/models': DvModels, '@dv/fastvideo': FakeFastVideo, '@dv/workflow-story': DvStory,
+  '@dv/sglang-diffusion': SglangDiffusion, '@dv/image-generate': DvImageGenerate,
 }
 
 /** One row of a Loader entry list. */
@@ -107,6 +110,7 @@ describe('DreamVerse bundle composition', () => {
     const rows = bundleRows()
     expect(rows.map(row => row.id)).toEqual(expect.arrayContaining([
       'dv-models', 'dv-fastvideo', 'dv-project', 'dv-shot-plan', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
+      'dv-sglang-diffusion', 'dv-image-generate',
     ]))
     // Each row keeps its id and `!!js` config; its package name points at a module that re-exports the plugin class.
     const entries = [
@@ -130,7 +134,7 @@ describe('DreamVerse bundle composition', () => {
     expect(ctx.get('dvChatReferences')).toBeDefined()
     expect(ctx.get('dvApi')).toBeDefined()
     expect(ctx.get('dvProject')?.listOperations().map(spec => spec.name))
-      .toEqual(expect.arrayContaining(['plan.create', 'shot.render', 'timeline.create', 'timeline.update']))
+      .toEqual(expect.arrayContaining(['plan.create', 'shot.render', 'timeline.create', 'timeline.update', 'image.generate']))
     expect(ctx.get('tools')?.get('dv_shot_render')).toBeDefined()
     // The story workflow approves plans: the agent sees its preview and approve tools and no plan tool that approves.
     expect(ctx.get('tools')?.get('dv_story_preview')).toBeDefined()
@@ -138,6 +142,7 @@ describe('DreamVerse bundle composition', () => {
     expect(ctx.get('tools')?.get('dv_plan_approve')).toBeUndefined()
     expect(ctx.get('tools')?.get('dv_models_list')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_models_get')).toBeDefined()
+    expect(ctx.get('tools')?.get('dv_image_generate')).toBeDefined()
     // The bundle names one server per task of fasth3.
     expect(fastVideoConfig).toEqual({
       fasth3: {
@@ -145,7 +150,13 @@ describe('DreamVerse bundle composition', () => {
         t2v: { baseUrl: 'http://10.244.16.130:8031', gpuSecondsPerVideoSecond: 1.5 },
       },
     })
-    expect(ctx.dvModels.list().map(entry => formatModelKey(entry))).toEqual(['video/ref2v/fastvideo/fasth3'])
+    // The image row names its server; registering the entry reads no server.
+    expect(rows.find(row => row.id === 'dv-sglang-diffusion')?.config).toEqual({
+      models: { 'qwen-image-2.1-turbo': { baseUrl: 'http://127.0.0.1:30010', gpuSecondsPerMegapixel: 0.6 } },
+    })
+    expect(ctx.dvModels.list().map(entry => formatModelKey(entry))).toEqual([
+      'video/ref2v/fastvideo/fasth3', 'image/t2i/sglang-diffusion/qwen-image-2.1-turbo',
+    ])
     const renderer = fasth3
 
     const signal = new AbortController().signal

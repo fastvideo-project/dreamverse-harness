@@ -2140,6 +2140,9 @@ importers:
       '@dv/ffmpeg':
         specifier: workspace:*
         version: link:../../dv/ffmpeg
+      '@dv/image-generate':
+        specifier: workspace:*
+        version: link:../../dv/image-generate
       '@dv/inspector':
         specifier: workspace:*
         version: link:../../dv/inspector
@@ -2155,6 +2158,9 @@ importers:
       '@dv/project':
         specifier: workspace:*
         version: link:../../dv/project
+      '@dv/sglang-diffusion':
+        specifier: workspace:*
+        version: link:../../dv/sglang-diffusion
       '@dv/shot-plan':
         specifier: workspace:*
         version: link:../../dv/shot-plan

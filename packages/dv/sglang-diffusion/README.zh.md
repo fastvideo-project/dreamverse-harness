@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在 `@dv/models` 之后挂载插件，每个模型一台服务器：
+在 `@dv/models` 之后挂载插件，每个模型一台服务器。DreamVerse bundle 把它挂载为 `dv-sglang-diffusion` 行：
 
 ```yaml
 - id: dv-sglang-diffusion

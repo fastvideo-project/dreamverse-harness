@@ -68,6 +68,18 @@
     - id: dv-shot-render
       name: '@dv/shot-render'
 
+    # Image models on a local SGLang diffusion server, and dv_image_generate, which exists while one is registered.
+    - id: dv-sglang-diffusion
+      name: '@dv/sglang-diffusion'
+      config:
+        models:
+          qwen-image-2.1-turbo:
+            baseUrl: http://127.0.0.1:30010
+            gpuSecondsPerMegapixel: 0.6
+
+    - id: dv-image-generate
+      name: '@dv/image-generate'
+
     - id: dv-character
       name: '@dv/character'
 
