@@ -261,12 +261,12 @@ describe.skipIf(!HAS_FFMPEG)('dv-uniserve', () => {
     const json = importAsset(ctx, Buffer.from('{}'), 'application/json')
     const audios = ['AUD1', 'AUD2', 'AUD3', 'AUD4'].map(bytes => importAsset(ctx, Buffer.from(bytes), 'audio/mpeg'))
     const entry = fasth3(ctx)
-    expect(await entry.validateGenerationRequest({ ...request([image], image), prompt: '@[首帧](dv:input/first_frame) smiles' })).toEqual([])
+    expect(await entry.validateGenerationRequest({ ...request([image], image), prompt: '@[first frame](dv:input/first_frame) smiles' })).toEqual([])
     expect(await entry.validateGenerationRequest(request([], null))).toEqual(['Its reference input needs at least 1 of type image, video, audio; this shot has 0.'])
     expect(await entry.validateGenerationRequest(request([json], null))).toEqual([`Its reference input takes assets of type image, video, audio; asset ${json} is of type application.`])
     expect(await entry.validateGenerationRequest(request(audios, null))).toEqual(['Its reference input takes at most 3 of type audio; this shot has 4.'])
     expect(await entry.validateGenerationRequest(request([image], image, { steps: 8 }))).toEqual([
-      'Its prompt does not cite the first frame; write "@[首帧](dv:input/first_frame) is the first frame of [Shot 1]".',
+      'Its prompt does not cite the first frame; write "@[first frame](dv:input/first_frame) is the first frame of [Shot 1]".',
       'fasth3 has no extra parameter `steps` for task ref2v; its extra parameters: none.',
     ])
     const images = Array.from({ length: 9 }, (_, index) => importAsset(ctx, Buffer.from(`IMG-${String(index)}`), 'image/png'))
@@ -274,7 +274,7 @@ describe.skipIf(!HAS_FFMPEG)('dv-uniserve', () => {
       'Its reference input takes at most 11 assets; this shot has 12.',
       'Its reference input takes at most 8 of type image; this shot has 9.',
     ])
-    expect(await entry.validateGenerationRequest({ ...request([image], audios[0] ?? image), prompt: '@[首帧](dv:input/first_frame) smiles' }))
+    expect(await entry.validateGenerationRequest({ ...request([image], audios[0] ?? image), prompt: '@[first frame](dv:input/first_frame) smiles' }))
       .toEqual([`Its first_frame input takes assets of type image; asset ${String(audios[0])} is of type audio.`])
   })
 
@@ -287,7 +287,7 @@ describe.skipIf(!HAS_FFMPEG)('dv-uniserve', () => {
     const image = importAsset(ctx, Buffer.from('IMG1'), 'image/png')
     const audio = importAsset(ctx, Buffer.from('AUD1'), 'audio/mpeg')
     const first = importAsset(ctx, Buffer.from('FIRST'), 'image/jpeg')
-    const prompt = `@[Bo](dv:asset/${image}) walks in @[the walk](dv:asset/${video}) to @[the song](dv:asset/${audio}) from @[首帧](dv:input/first_frame)`
+    const prompt = `@[Bo](dv:asset/${image}) walks in @[the walk](dv:asset/${video}) to @[the song](dv:asset/${audio}) from @[first frame](dv:input/first_frame)`
     const events = await collect(fasth3(ctx).render({ ...request([video, image, audio], first), prompt }))
     // The sound of the walk takes <Audio 1>, so the audio file is <Audio 2>; the first frame is the image after the references.
     expect(fake.renders).toEqual([{

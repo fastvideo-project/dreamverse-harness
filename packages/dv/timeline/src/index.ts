@@ -239,7 +239,8 @@ export default class DvTimeline extends Service {
         pendingInputRoles: [...LAYOUT.pendingInputRoles],
         params: {
           timeline: { type: 'string', description: 'The ID of the timeline to create, such as t2. Defaults to t1.' },
-          name: { type: 'string', description: 'The name the interface shows, such as 片尾. Without a name the interface shows 时间线 2 for t2.' },
+          name: { type: 'string', description: 'The name the interface shows, such as Ending. Without a name '
+            + 'the interface shows a numbered name in the interface language, such as Timeline 2 for t2.' },
           ...LAYOUT.params,
         },
         summarize: record => `${prefix(record)}timeline of ${String(laidOut(record))} clips`,

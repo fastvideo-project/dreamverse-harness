@@ -235,7 +235,7 @@ describe('dv-fastvideo', () => {
     })
     expect(await check(referenceTask, [video, image], image)).toEqual([])
     expect(await referenceTask.validateGenerationRequest(request([image], image))).toEqual([
-      'Its prompt does not cite the first frame; write "@[首帧](dv:input/first_frame) is the first frame of [Shot 1]".',
+      'Its prompt does not cite the first frame; write "@[first frame](dv:input/first_frame) is the first frame of [Shot 1]".',
     ])
     expect(await check(referenceTask, [], null)).toEqual(['Its reference input needs at least 1 of type image, video, audio; this shot has 0.'])
     expect(await check(referenceTask, [json], null)).toEqual([`Its reference input takes assets of type image, video, audio; asset ${json} is of type application.`])

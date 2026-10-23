@@ -98,7 +98,7 @@ Its reference input takes at most <max> assets; this shot has <count>.
 Its reference input takes assets of type image, video, audio; asset <asset> is of type <type>.
 Its reference input takes at most <max> of type <type>; this shot has <count>.
 Its first_frame input takes assets of type image; asset <asset> is of type <type>.
-Its prompt does not cite the first frame; write "@[首帧](dv:input/first_frame) is the first frame of [Shot 1]".
+Its prompt does not cite the first frame; write "@[first frame](dv:input/first_frame) is the first frame of [Shot 1]".
 fasth3 has no extra parameter `<name>` for task ref2v; its extra parameters: none.
 ```
 
