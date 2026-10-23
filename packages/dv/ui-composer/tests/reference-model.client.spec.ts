@@ -161,6 +161,12 @@ describe('the edits', () => {
     expect([picked.document.inputs, undone.document.inputs, undone.removed]).toEqual([[reference('c1@2')], [reference('c1@2')], first.removed])
   })
 
+  it('adds the input of a chip that an undo brings back when no edit removed an input for it', () => {
+    const before = documentOf(call('the lamp glows', [reference('a3')]))
+    const undone = reconcile(before, `${before.prompt} ${MIA_CHIP}`, [], ctx(before.inputs), 'history')
+    expect(undone.document.inputs).toEqual([reference('a3'), reference('c1@2')])
+  })
+
   it('adds the newest version for a chip that an edit brings back, and keeps the removed input for a later undo', () => {
     const stored = E3_CALLS['S6 start']
     const document = documentOf(stored)
