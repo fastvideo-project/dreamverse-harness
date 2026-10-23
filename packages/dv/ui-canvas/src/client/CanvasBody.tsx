@@ -18,7 +18,7 @@ export interface CanvasInjected {
   client: DvClient
 }
 
-/** The body's composed props: the tab it draws, the API client, its copy, and the Factory renderer. */
+/** The tab body's composed props. */
 export type CanvasBodyProps = PropsRuntime<'sidebar.right.pane.tab'> & CanvasInjected & PropsLocale<'dvCanvas'> & PropsRenderFactories
 
 const root: CSSProperties = { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, fontSize: 12, lineHeight: '16px' }

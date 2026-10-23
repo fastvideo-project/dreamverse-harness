@@ -36,13 +36,7 @@ export type { TimelineCenterInjected, TimelineViewProps } from './TimelineView.t
 export const inject = ['slots', 'locale', 'sidebarRightTabs']
 
 /**
- * Client plugin body: register the type, its dictionaries, and its body under the type's id; while `dvCenter` is
- * present, register the center view `timeline`, which edits the project and writes for the chat session that the
- * workspace center passes, and the preview action `dv.timeline.insert` (插入片段), which shows the timeline view of the
- * open project with a request to insert a video; while `dvCanvas` is present, register the timeline's `RecordsInUse`
- * under the same id; while `dvHistory` is present, register the History row `timeline.`, whose focus shows a record's
- * timeline and clip; while `dvMentions` is present, register the clip mention kind. Each registration leaves with its
- * service or with the plugin.
+ * Client plugin body. Each service-dependent registration leaves with its service or with the plugin.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {

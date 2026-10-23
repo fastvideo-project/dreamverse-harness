@@ -7,7 +7,6 @@
  */
 import { defineGenerationUi } from '@dv/ui-generation/generation-kit.tsx'
 
-/** The video takes of `shot.render`; a take's still, its image output, stands for it in small views. */
 export const { inject, apply } = defineGenerationUi({
   id: '@dv/ui-shot-render', type: 'take', operations: ['shot.render'], label: ['版本', 'Take'], color: 'var(--dv-node-3)',
   deepenOn: ['first_frame'],

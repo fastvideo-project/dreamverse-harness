@@ -4,11 +4,6 @@ import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { applyTheme } from '../src/client/theme.ts'
 
-/**
- * @param css - the theme stylesheet.
- * @param selector - the selector of one of its rules.
- * @returns the `--dv-*` variables that the first rule of the selector defines, by name.
- */
 function variablesOf(css: string, selector: string): Record<string, string> {
   const start = css.indexOf(`${selector} {`)
   return Object.fromEntries([...css.slice(start, css.indexOf('}', start)).matchAll(/(--dv-[\w-]+):\s*([^;]+);/g)]
@@ -29,7 +24,6 @@ describe('the DreamVerse theme', () => {
     expect(new Set(palette.map(name => light[name])).size).toBe(8)
     expect(new Set(palette.map(name => dark[name])).size).toBe(8)
     expect(css).not.toContain('--dv-kind-')
-    // The character, plan and take colors of main fill slots 1 to 3, and its audio colors draw the waveform.
     const kept = ['--dv-node-1', '--dv-node-2', '--dv-node-3', '--dv-waveform', '--dv-waveform-soft']
     expect(kept.map(name => light[name])).toEqual(['#DB2777', '#EA580C', '#0D9488', 'rgba(77,124,15,0.7)', 'rgba(101,163,13,0.10)'])
     expect(kept.map(name => dark[name])).toEqual(['#F472B6', '#FB923C', '#2DD4BF', 'rgba(163,230,53,0.75)', 'rgba(163,230,53,0.10)'])

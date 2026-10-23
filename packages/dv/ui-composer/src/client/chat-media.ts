@@ -2,8 +2,7 @@
  * The DreamVerse entry of DSH's `conversation.chat.markdown` chain: in settled chat Markdown, a link to an asset becomes
  * a 16:9 card captioned with History's label of the record that created the asset, else with the asset's name, which
  * follows History's rows through the `useHistoryLabels` hook; an image of an asset becomes a
- * capped thumbnail, and a table whose every body row links an asset becomes a three-column grid of cards. Each asset
- * draws through the `dv.media` Factory, so an asset of a media type without a view draws the file card. The entry's
+ * capped thumbnail, and a table whose every body row links an asset becomes a three-column grid of cards. The entry's
  * `select` finds asset references by their `/dv/assets/<id>` paths alone; the component reads the open project's assets
  * through the `useChatAssets` hook and renders DSH's default element while the project does not hold a referenced
  * asset. The entry stays registered for the whole declaration of the chain, so a change of the project re-renders the
@@ -259,8 +258,6 @@ export function registerChatMedia(ctx: Context): void {
 /**
  * History's label of a record as an observable source: no label while `dvHistory` is absent, and a new function each
  * time `dvHistory` comes or goes or its rows change, so a card that is already drawn reads its caption again.
- * @param ctx - client root context.
- * @returns the source.
  */
 function historyLabels(ctx: Context): HostObservable<DescribeRecord> {
   const unlabelled: DescribeRecord = () => null

@@ -29,7 +29,6 @@ describe('canvas tab body and center view', () => {
       [...view.getByTestId(surface).querySelectorAll('[data-node-id]')].map(card => [card.getAttribute('data-node-id'), card.innerHTML])
     await waitFor(() => { expect(cards('tab').map(([id]) => id)).toEqual(['test_ref:hero', 'plan:p1', 'g1', 'g2', 'g3']) })
     expect(within(view.getByTestId('tab')).getByTestId('dv-canvas-body')).toBeTruthy()
-    // Each kind's `dv.canvas.card` body draws in both: the noun's label, and a take's still through `dv.media`.
     const tab = cards('tab')
     expect(tab.find(([id]) => id === 'test_ref:hero')?.[1]).toContain('参考')
     expect(tab.find(([id]) => id === 'g1')?.[1]).toContain(`<img src="${assetUrl('shot1-last.png')}"`)

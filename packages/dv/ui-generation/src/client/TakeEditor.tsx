@@ -51,7 +51,6 @@ const chip: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap:
 /** The part of a reference chip that opens the reference: its thumbnail and its name. */
 const chipOpen: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: 0, border: 'none', background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer' }
 const chipMedia: CSSProperties = { display: 'flex', width: 22, height: 22, borderRadius: 11, overflow: 'hidden' }
-/** The frame of the take's player; `playerBox` gives its size. */
 const player: CSSProperties = { display: 'flex', borderRadius: 'var(--dv-radius-lg)', overflow: 'hidden', background: 'var(--dv-media-bg)' }
 /** The model key params: the model-and-task line shows them, and a new take keeps them. */
 const MODEL_KEY = new Set(['modality', 'task', 'provider', 'model'])
@@ -137,7 +136,6 @@ export function TakeEditor(props: TakeEditorProps): ReactNode {
       setRenderError(errorMessage(error))
     })
   }
-  // `||` also maps an empty message to null, so a failure without a reason shows no banner.
   const failure = record.error?.message || null
   const shown = assets.get(node.assets[0] ?? '')
   const fieldOf = (param: FormField): ReactNode => (

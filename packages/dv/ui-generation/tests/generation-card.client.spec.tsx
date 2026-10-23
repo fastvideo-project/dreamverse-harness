@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 /**
- * The chat card of a generation tool call through the kit plugin's `tool.call.toolview` entry in a chat session: the
- * operation's wire label, the model and task line, the prompt, the kind's status words per phase, the first output
- * drawn by the real media plugins, and the 在历史中查看 link once the call settled.
+ * The chat card of a generation tool call, rendered through the kit plugin's `tool.call.toolview` entry in a chat
+ * session with the real media plugins.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, waitFor } from '@testing-library/react'
@@ -24,7 +23,6 @@ afterEach(async () => {
   document.documentElement.lang = ''
 })
 
-/** The `GET /api/dv/operations` answer: the fixture's `shot.render` with its wire label. */
 const LABELLED = [{ ...OPERATIONS[0]!, label: { zh: '渲染镜头', en: 'Render shot' } }]
 
 /**
@@ -74,7 +72,6 @@ describe('the chat card of a generation call', () => {
     await waitFor(() => { expect(container.textContent).toContain('渲染镜头') })
     expect(container.textContent).toContain('生成中…')
     show('result', { call: { argsRaw: '{"model":"fasth3","task":"i2v","prompt":"Picture 1 walks"}' }, meta: { outputs: [{ role: 'video', asset_id: 'v1.mp4', mime: 'video/mp4' }] } })
-    // A task without a catalog label shows its name.
     expect(view.getByTestId('dv-composer-render-model').textContent).toBe('fasth3 · i2v')
     const video = container.querySelector('video')
     expect([video?.getAttribute('src'), video?.hasAttribute('controls')]).toEqual(['/dv/assets/v1.mp4', true])

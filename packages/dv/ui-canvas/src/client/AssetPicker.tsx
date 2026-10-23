@@ -64,7 +64,6 @@ export interface AssetPickerProps extends PropsRenderFactories {
   /** Receives the picked references in pick order: asset IDs, and `<id>@<version>` for item versions. */
   onConfirm: (refs: string[]) => void
   onCancel: () => void
-  /** Renders the `dv.canvas.picker` entry, the asset pool panel. */
   renderSlot: PropsRenderSlots<'dv.canvas.picker'>['renderSlot']
 }
 

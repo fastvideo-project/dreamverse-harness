@@ -7,8 +7,8 @@
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 
 /**
- * A source that starts empty and loads its value on its first subscription. A failed load keeps it empty, so every
- * reader falls back to names, and the next subscription loads again.
+ * A source that starts empty and loads its value on its first subscription. A failed load keeps the value empty, and
+ * the next subscription loads again.
  * @param empty - the value until the load settles.
  * @param load - reads the value.
  * @returns the source.
@@ -27,7 +27,7 @@ export function loadedOnce<T>(empty: T, load: () => Promise<T>): HostObservable<
           value = loaded
           for (const each of [...listeners]) each()
         }, (error: unknown) => {
-          // An unreachable route leaves the names in place of the labels until a later reader asks again.
+          // Readers keep the empty value; the next subscription retries the load.
           void error
           started = false
         })

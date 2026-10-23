@@ -1,11 +1,6 @@
 /**
- * The chrome of one canvas node on the `--dv-*` theme variables. Every card has a header row (the type dot in the
- * `NodeType.color`, the title, the unseen dot of a finished node the user has not opened, the stale tag and `meta`).
- * A failed claimed node shows a danger row with its type's failure words and the node actions that show on it in place
- * of its body. Any other node shows the frame grid of its slots when a slot has a frame, then its body, the
- * `dv.canvas.card` entry of its type (the type label when no entry is registered), with the status words over the body
- * while its record runs or after a slice node's record failed, and its badges over the body's bottom-left corner. The
- * chrome names no node type.
+ * The chrome of one canvas node on the `--dv-*` theme variables: the header row, then the failure row of a failed
+ * claimed node or the frame grid and the `dv.canvas.card` body of any other node. The chrome names no node type.
  */
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
@@ -25,7 +20,7 @@ export const GRID_HEIGHT = 64
 export const FAILED_ROW_HEIGHT = 22
 
 /**
- * The card height at base text size, which the free positions, the edge anchors and the focus use before mount.
+ * The card height at base text size, computed from the node without measuring the card.
  * @param node - the node.
  * @param hasFrames - for a node with slots, whether its frame grid shows.
  * @returns the height in canvas units.
@@ -41,8 +36,9 @@ const READABLE_ZOOM = 0.8
 const MAX_TEXT_SCALE = 2.6
 
 /**
+ * The text enlargement of node text at a canvas zoom.
  * @param zoom - the canvas zoom.
- * @returns the text enlargement of node text at that zoom.
+ * @returns the enlargement factor.
  */
 export function textScaleAt(zoom: number): number {
   return Math.min(MAX_TEXT_SCALE, Math.max(1, READABLE_ZOOM / zoom))
@@ -84,7 +80,6 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   const { flags } = node
   const scale = textScaleAt(zoom)
   const size = (base: number): number => Math.round(base * scale)
-  // Type scale pairs: 12/16 metadata, 13/20 titles.
   const text = (base: 12 | 13): CSSProperties => ({ fontSize: size(base), lineHeight: `${String(size({ 12: 16, 13: 20 }[base]))}px` })
   const failedRow = node.claimed && flags.failed
   // A selected card wears the accent ring; a stale card a danger outline; any other card the plain outline.
@@ -97,7 +92,6 @@ export function NodeCard(props: NodeCardProps): ReactNode {
     color: 'var(--dv-text)', borderRadius: 'var(--dv-radius-lg)', boxShadow: ring, cursor: 'grab', userSelect: 'none', overflow: 'hidden',
     opacity: flags.superseded ? 0.55 : 1, touchAction: 'none',
   }
-  // A claimed node reads its type's status words; a slice node reads the canvas's.
   const status = node.claimed ? node.nodeType.claimed?.status : undefined
   const running = status?.running() ?? t('node.running')
   let marker: string | null = null
@@ -116,7 +110,6 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   )
   let content: ReactNode
   if (failedRow) {
-    // A failed claimed node has no body: a compact row with the failure words, the reason on hover, and its actions.
     content = (
       <div style={{ minHeight: FAILED_ROW_HEIGHT, boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px 4px' }}>
         <span style={{ ...text(12), flex: 1, minWidth: 0, color: 'var(--dv-danger)', ...ellipsis }}>{marker}</span>

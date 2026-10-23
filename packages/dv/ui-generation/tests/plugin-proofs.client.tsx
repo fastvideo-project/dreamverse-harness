@@ -1,8 +1,8 @@
 /**
  * The checks that a generation UI plugin, one `defineGenerationUi` declaration, meets the canvas node SDK: it loads
- * before ui-canvas, its takes draw once each through the kit, its chat card renders in a chat session, its slot owner
- * props and injected values are JSON data or callbacks, and its fiber takes every registration with it. Each plugin's
- * own spec runs them with its operation and output media.
+ * before ui-canvas, each take draws once through the kit, its chat card renders in a chat session, its slot owner props
+ * and injected values are JSON data or callbacks, and unloading it removes every registration. Each plugin's own spec
+ * runs them with its operation and output media.
  */
 import { expect, vi } from 'vitest'
 import { waitFor } from '@testing-library/react'
@@ -31,7 +31,7 @@ export interface Primitive {
 }
 
 /**
- * A declaration of a generation operation for a test: not deterministic, on the GPU, a prompt param and a reference input.
+ * A declaration of a generation operation for a test.
  * @param name - the operation name, such as 'image.generate'.
  * @param type - its output type.
  * @param label - its wire label.

@@ -1,9 +1,8 @@
 /**
- * The canvas node type of assets: one stand-in node per asset on the project's canvas list, drawn from the first
- * `asset.import` record of the current state that imported it, else as `asset:<id>` with no record (an import that an
- * undo went back past, a still, an export). A stand-in shows only while no other node owns its asset. Any media type
- * draws: an asset without a view draws the `dv.media` file card. Also the asset card and editor bodies and the
- * 从画布移除 action, which takes the asset off the canvas list and leaves it in the pool.
+ * The canvas node type of assets, its card and editor bodies, and the 从画布移除 action. Each asset on the project's
+ * canvas list gets one stand-in node, drawn from the first `asset.import` record of the current state that imported
+ * it, else as `asset:<id>` with no record (an import that an undo went back past, a still, an export). A stand-in
+ * shows only while no other node owns its asset.
  *
  * @module @dv/ui-asset-pool/canvas
  */
@@ -16,7 +15,6 @@ import { playerBox } from '@dv/ui-kit/player-box.ts'
 import type { ProjectRecord } from '@dv/ui-kit/types.ts'
 import type {} from '@dv/ui-media/contract'
 
-/** The package name: the owner of the asset node type and its action. */
 const ID = '@dv/ui-asset-pool'
 
 /** The asset node type. */
@@ -48,7 +46,6 @@ export const assetNodeType: NodeType = {
 }
 
 const frame: CSSProperties = { display: 'flex', width: '100%', height: NODE_FRAME_HEIGHT, overflow: 'hidden', background: 'var(--dv-surface-3)' }
-/** The frame of the asset in the editor; `playerBox` gives its size. */
 const player: CSSProperties = { display: 'flex', borderRadius: 'var(--dv-radius-lg)', overflow: 'hidden', background: 'var(--dv-media-bg)' }
 
 /**

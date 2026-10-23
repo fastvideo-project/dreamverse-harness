@@ -1,8 +1,7 @@
 /**
- * The History panel as the DreamVerse bundle loads it: the real `@dv/ui-media` plugin, test media views that show the
- * asset and the purpose they drew, and the real History plugin, in a slot test runtime that provides the right-Sidebar
- * tab registry, a recording `dvCenter` and the canvas registries, and whose root frame renders the History tab body in
- * chat session `s5`.
+ * The History panel as the DreamVerse bundle loads it: the real `@dv/ui-media` and History plugins, with test media
+ * views that show the asset and the purpose they drew, in a slot test runtime whose root frame renders the History tab
+ * body in chat session `s5`.
  */
 import type { ReactNode } from 'react'
 import { act } from '@testing-library/react'
@@ -25,15 +24,12 @@ const SLOTS = {
   'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: tabInfoFactory } } },
 } as const
 
-/** What the root frame hands its drawing. */
 type FrameProps = ComposedProps<'root', never, keyof typeof SLOTS, undefined, object>
 
-/** A test media view: an element that names the asset, its MIME type and the purpose it was drawn at. */
 function TestView({ asset, purpose }: PropsRuntime<'dv.media.view'>): ReactNode {
   return <img alt="" data-media={asset.id} data-mime={asset.mime} data-purpose={purpose} />
 }
 
-/** The image and video views that a media plugin registers once `dv.media` declares its views. */
 const mediaViewsPlugin = {
   inject: ['slots'],
   apply(ctx: Context) {
@@ -67,7 +63,6 @@ export async function mountHistory(plugins: readonly Plugin[] = []): Promise<Mou
   const shown: CenterTarget[] = []
   runtime.ctx.provide('sidebarRightTabs', new SidebarRightTabRegistry(runtime.ctx) as never)
   runtime.ctx.provide('dvCenter', { show: (target: CenterTarget) => { shown.push(target) } })
-  // A kind's plugin registers its History rows only while the canvas registries exist.
   runtime.ctx.provide('dvCanvas', createDvCanvas())
   const reference: { current: SessionReference | undefined } = { current: undefined }
   await runtime.root.declare(SLOTS, ({ renderSlot, SessionProvider }: FrameProps) => (

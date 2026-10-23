@@ -1,11 +1,8 @@
 /**
  * Canvas nodes and edges derived from a project state and the registered node types. The canvas shows the project's
  * current state only, and every node comes from a registered `NodeType`: the slice nodes that a type reads from its own
- * slice, and one claimed node per current record of an operation that a type claims. The current claimed records are
- * the records of the newest chain on each anchor node, every record without an anchored chain, every record whose
- * outputs are in use, and, for each of them, the claimed records it read its inputs from and its `based_on` family. A
- * record that no type claims draws no node. A badge that a `RecordsInUse` reports for an asset, such as the trim of a
- * timeline clip, shows on the node of that asset. The builder names no node type.
+ * slice, and one claimed node per current record of an operation that a type claims. A record that no type claims
+ * draws no node. The builder names no node type.
  */
 import { chainOf } from '@dv/ui-kit/chain.ts'
 import type { DvLanguage } from '@dv/ui-kit/locale.ts'
@@ -16,10 +13,7 @@ import type {
   AnchoredChain, ChainAnchor, ClaimedEntry, ClaimedRecord, NodeEntry, NodeFlags, NodeInput, NodeType, OperationRecord, RecordsInUse,
 } from './contract/index.ts'
 
-/**
- * One drawn node: its entry, its type, and the facts that the canvas derived. A claimed node is built by the canvas
- * from its record and draws that record's edges.
- */
+/** One drawn node: its entry, its type, and the facts that the canvas derived. */
 export type CanvasNode = NodeEntry & ({ claimed: true; record: OperationRecord } | { claimed: false }) & {
   type: string
   nodeType: NodeType
@@ -32,7 +26,6 @@ export type CanvasNode = NodeEntry & ({ claimed: true; record: OperationRecord }
   y: number
 }
 
-/** A drawn claimed node, whose `record` is the record it was built from. */
 type ClaimedCanvasNode = Extract<CanvasNode, { claimed: true }>
 
 /** How one node fed another: an input of the target's record (with its role), its chain anchor, or its `based_on`. */
@@ -44,7 +37,7 @@ export interface CanvasEdge {
   role?: string
 }
 
-/** A drawn edge with the nodes it joins, which the layout and the canvas read. */
+/** A drawn edge with the nodes it joins. */
 export interface EdgeLink {
   source: CanvasNode
   target: CanvasNode
@@ -117,9 +110,9 @@ function anchorChains(records: ReadonlyMap<string, ProjectRecord>, anchors: read
 /**
  * The claimed records in the current state: for each anchor node and starter operation, the records of the chain that
  * the newest starter started; every claimed record without an anchored chain; every claimed record whose outputs are in
- * use (`used`), walking up records that no type claims, such as a still grab; and, for each of these, the claimed
- * records it read its inputs from, of any type, and its `based_on` family. Records of an earlier starter's chain that
- * nothing uses are left out, so an undo or a jump to an earlier step changes what the canvas shows.
+ * use (`used`), walking up records that no type claims; and, for each of these, the claimed records it read its inputs
+ * from and its `based_on` family. Records of an earlier starter's chain that nothing uses are left out, so an undo or a
+ * jump to an earlier step changes what the canvas shows.
  * @param state - a project state.
  * @param isClaimed - whether a registered type claims a record's operation.
  * @param chains - the anchored chains of the records.
@@ -141,13 +134,11 @@ function currentRecords(
     }
     return current
   }
-  // Claimed records with one `based_on` root are one family.
   const roots = claimed.map(record => ({ id: record.id, root: rootOf(record.id) }))
   const familyOf = (id: string): string[] => roots.filter(each => each.root === rootOf(id)).map(each => each.id)
   // A version reference may carry any kind key, so only a reference without `version` is a record output.
   const producerOf = (input: RecordInput): string | undefined => !('version' in input.ref) && 'record' in input.ref
     ? input.ref.record : input.resolved_asset === null ? undefined : proj.created_by[input.resolved_asset]
-  // The claimed record behind a record, walking up records that no type claims, such as a still grab or an export.
   const sourceOf = (recordId: string | undefined, depth = 0): ProjectRecord | undefined => {
     const record = recordId === undefined ? undefined : records.get(recordId)
     if (record === undefined || depth > 16 || isClaimed(record)) return record
@@ -174,9 +165,7 @@ function currentRecords(
 }
 
 /**
- * Number the current claimed records of each group, so an original and its reruns read differently. Records linked by
- * `based_on` are one group; otherwise a record of an anchored chain is grouped by the chain's anchor, slot and lane, and
- * a record without one is its own group. A group of more than one record is numbered in log order.
+ * Number the current claimed records of each group in log order, so an original and its reruns read differently.
  * @param current - the current claimed records, in log order.
  * @param anchored - the anchored chain of a record.
  * @returns record ID → its number, or null when its group has one record.
@@ -357,7 +346,6 @@ export function buildCanvasGraph(
  * @returns a copy of the claimed nodes in that order.
  */
 function inChainOrder(claimed: readonly ClaimedCanvasNode[]): ClaimedCanvasNode[] {
-  /** The index of the first node whose key equals the key of `entry`. */
   const firstOf = (key: (entry: ClaimedCanvasNode) => string) => (entry: ClaimedCanvasNode): number =>
     claimed.findIndex(other => key(other) === key(entry))
   const anchor = firstOf(entry => entry.chain?.anchor ?? entry.id)

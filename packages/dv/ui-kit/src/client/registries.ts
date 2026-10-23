@@ -1,9 +1,8 @@
 /**
- * The descriptor registry that plugin UI halves register into, the version kinds that the canvas, the composer and the
- * plan editor read, the `@` menu registry, and the plugin type that the UI kits return. Each registry is a client service
- * that the UI-core package which reads it provides at its `apply` top level: `@dv/ui-composer` provides `dvMentions`.
- * The canvas registries are declared in `@dv/ui-canvas/contract` and the History rows in `@dv/ui-history/contract`. A UI
- * half registers inside `ctx.inject([<service>], …)` and keeps its disposers.
+ * The descriptor `Registry` that plugin UI halves register into, the version kinds, the `@` menu registry, and the
+ * plugin type that the UI kits return. The UI-core package that reads a registry provides it as a client service at its
+ * `apply` top level; a UI half registers inside `ctx.inject([<service>], …)` and keeps its disposers. The canvas and
+ * History registries are declared in `@dv/ui-canvas/contract` and `@dv/ui-history/contract`.
  *
  * @module @dv/ui-kit/registries
  */

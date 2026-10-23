@@ -23,14 +23,8 @@ afterEach(() => {
   forgetCanvasStorage()
 })
 
-/**
- * @param runtime - the runtime.
- * @param slot - a keyed canvas slot.
- * @returns the keys of the slot's entries.
- */
 const keysOf = (runtime: SlotTestRuntime, slot: 'dv.canvas.card' | 'dv.canvas.editor.claimed'): Array<string | undefined> => runtime.slots.entries(slot).map(entry => entry.options.key)
 
-/** A second type that claims the video takes' operation. */
 const OTHER_RENDER: NodeType = {
   id: '@dv/ui-other-render', type: 'other', label: () => 'other', color: '', column: 2,
   claimed: { operations: ['shot.render'], status: { running: () => '', failed: () => '' }, entry: () => ({ title: '', bodyHeight: 117 }) },
@@ -78,7 +72,6 @@ describe('kind plugins', () => {
     expect(keysOf(runtime, 'dv.canvas.editor.claimed')).not.toContain('take')
     expect(canvas.actions.getSnapshot().map(action => action.id)).not.toContain('@dv/ui-shot-render:take:retry')
     await waitFor(() => { expect(view.container.querySelector('[data-node-id="g1"]')).toBeNull() })
-    // The operation key `op:shot.render` left with the type, so another type may claim the operation.
     expect(() => canvas.nodeTypes.register(OTHER_RENDER)).not.toThrow()
     await runtime.dispose()
   })

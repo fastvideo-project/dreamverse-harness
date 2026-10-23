@@ -1,8 +1,7 @@
 /**
  * The `dv.canvas` Component Factory: the canvas of one project, which the workspace center's 画布 view and the
  * right-Sidebar tab body each render as an occurrence. The definition declares the canvas's child slots once, so both
- * occurrences draw the same `dv.canvas.card`, `dv.canvas.editor`, `dv.canvas.editor.claimed` and `dv.canvas.picker`
- * entries. The registries reach the definition through the inject `hooks` compartment.
+ * occurrences draw the same entries.
  */
 import { useMemo } from 'react'
 import type { ReactNode } from 'react'
@@ -18,7 +17,7 @@ import type {} from './locales.ts'
 /** What the canvas plugin injects into the Factory definition. */
 export interface CanvasFactoryInjected {
   client: DvClient
-  /** Open the asset preview of `dvMedia` for an asset of a project; nothing opens while no media plugin is loaded. */
+  /** Open the `dvMedia` preview of an asset; nothing opens while no media plugin is loaded. */
   preview(projectId: string, asset: Asset, opener: Element | null): void
   hooks: {
     nodeTypes: HostObservable<readonly NodeType[]>
@@ -31,7 +30,7 @@ export interface CanvasFactoryInjected {
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotFactoryMap {
-    /** The canvas of one project; the center view and the right-Sidebar tab body render occurrences. */
+    /** The canvas of one project. */
     'dv.canvas': {
       scope: 'root'
       props: { projectId: string; session: string | null; focus: CanvasFocus | null }
@@ -49,8 +48,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /**
  * The definition: the registered descriptors, read through the inject hooks, handed to the canvas.
- * @param props - the occurrence's project, chat session and focus, the injected client, preview and hooks, the copy,
- *   and the slot and Factory renderers.
+ * @param props - the occurrence's props, the injected values, the copy, and the renderers.
  * @returns the canvas.
  */
 export function CanvasFactory(props: FactoryComponentPropsOf<'dv.canvas'>): ReactNode {

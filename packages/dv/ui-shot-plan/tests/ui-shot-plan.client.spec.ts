@@ -41,10 +41,6 @@ function secondVersion(): WireState {
   return state
 }
 
-/**
- * Mount the shot plan plugin beside an empty `dvCanvas`.
- * @returns the runtime, the registries, and the plugin.
- */
 async function mountPlugin() {
   const runtime = await SlotTestRuntime.create()
   const canvas = createDvCanvas()
@@ -53,7 +49,6 @@ async function mountPlugin() {
   return { runtime, canvas, plugin }
 }
 
-/** @returns the canvas nodes of type `plan` that the registered node types draw for a state. */
 function planNodes(canvas: DvCanvas, state: WireState) {
   return canvasNodes(canvas, state).filter(node => node.type === 'plan')
 }
@@ -66,7 +61,6 @@ describe('plan node type', () => {
     expect(rest).toEqual([])
     expect([node?.nodeType.id, node?.nodeType.column, node?.nodeType.label()]).toEqual(['@dv/ui-shot-plan', 1, '分镜计划'])
     expect(node).toMatchObject({ id: 'plan:p1', records: ['p1'], title: '3 个镜头 · 0:06', assets: [], slots: 3, bodyHeight: 46 })
-    // The node's record wrote the shown version; a history focus on the record of v1 opens the node through `records`.
     expect(node?.record?.id).toBe('q2')
     await runtime.dispose()
   })
@@ -96,7 +90,6 @@ describe('plan node type', () => {
     const nodes = planNodes(canvas, fixtureState())
     expect(nodes[0]?.nodeType.label()).toBe('Plan')
     expect(nodes).toMatchObject([{ id: 'plan:p1', title: '2 shots', slots: 2 }])
-    // Version 1 has no earlier versions.
     expect(nodes[0]?.records).toBeUndefined()
     await runtime.dispose()
   })

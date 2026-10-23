@@ -1,11 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The canvas conformance check: with today's kinds registered by their owning packages (the reference noun through the
- * reference kit, the plan by `@dv/ui-shot-plan`, assets by `@dv/ui-asset-pool`, video takes by `@dv/ui-shot-render`
- * through the generation kit), the kind-free builder draws the graph that the canvas of `origin/main` drew for each of
- * the 23 cases: node IDs and types, titles and meta, default positions, version numbers, badges, flags, unseen
- * eligibility, card heights, slot frames, edges with the first-frame role, and the node of each asset. The History
- * panel labels each record of a case as `main` labelled it, with the rows that the same packages register.
+ * The canvas conformance check: with the kinds registered by their owning plugins, the kind-free graph builder and the
+ * History labels must equal, for each of the 23 cases, the graphs and labels in `fixtures/main-graph.json`, which
+ * `fixtures/main-graph.gen.client.ts` records from `origin/main` at the merge base of `HEAD`.
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -31,14 +28,10 @@ import type { ComparedGraph, ComparedNode } from './fixtures/conformance-states.
 
 declare module '@dv/ui-kit/types.ts' { interface ComponentStates { test_ref: Record<string, WireReferenceVersion[]> } }
 
-/**
- * The graphs of the canvas and the History labels of `origin/main` at the branch's merge base, written by
- * `fixtures/main-graph.gen.client.ts`.
- */
 const MAIN = JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/main-graph.json'), 'utf8')) as Record<string, ComparedGraph>
 
 /**
- * The canvas and History with today's kinds, mounted through their plugins, plus the cases' chain anchor and clip uses.
+ * Mount the canvas, History and the kind plugins, and register the cases' chain anchor and clip uses.
  * @returns the registrations that the canvas reads, the registered History rows, and the runtime.
  */
 async function registered(): Promise<{ registrations: CanvasRegistrations; rows: readonly HistoryRow[]; runtime: SlotTestRuntime }> {
@@ -69,7 +62,7 @@ async function registered(): Promise<{ registrations: CanvasRegistrations; rows:
 }
 
 /**
- * The SDK graph and History labels of one case as the check compares them.
+ * The graph and History labels of one case, in the fields that `main-graph.json` records.
  * @param state - the case's state.
  * @param placed - the assets on the canvas.
  * @param registrations - the registered descriptors.
@@ -185,7 +178,6 @@ describe('claims of an unloaded type', () => {
     const take = graph.nodes.find(node => node.id === 'i2')
     expect(graph.edges.filter(edge => edge.to === 'i2')).toEqual([{ from: 'i1', to: 'i2', kind: 'input', role: 'first_frame' }])
     expect(image !== undefined && take !== undefined && take.x > image.x).toBe(true)
-    // Without the reader, the image is a record of a replaced chain and is not drawn.
     const unread = imageState()
     unread.components.proj.records = unread.components.proj.records.filter(entry => entry.id !== 'i2')
     expect(buildCanvasGraph(unread, new Set(), OPS, 'zh', withStill).nodes.some(node => node.id === 'i1')).toBe(false)

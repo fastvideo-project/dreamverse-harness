@@ -1,7 +1,6 @@
 /**
- * The chat card of one generation tool call: the operation's name, the model and generation task, the prompt, the
- * status words of the kind, the first output drawn through `dv.media` at purpose 'loop' (muted and looping behind the
- * kind's preview output as the poster), and the 在历史中查看 link once settled.
+ * The chat card of one generation tool call. The first output plays through `dv.media` at purpose 'loop', with the
+ * kind's preview output as its poster.
  *
  * @module @dv/ui-generation/GenerationCard
  */
@@ -22,7 +21,7 @@ export interface StatusWords {
   done: readonly [zh: string, en: string]
 }
 
-/** What the kit injects into the chat card of one operation: the operation, the status words, and the label sources. */
+/** What the kit injects into the chat card of one operation. */
 export interface GenerationCardInjected extends GenerationInjected {
   operation: string
   status: StatusWords

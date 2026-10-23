@@ -4,7 +4,6 @@ import { createRegistry } from '../src/client/registries.ts'
 
 interface Row { match: string; owner: string }
 
-/** @returns an empty registry of rows keyed by `match`, each owned by its `owner`. */
 function rowRegistry() {
   return createRegistry<Row>(row => [row.match], row => row.owner)
 }

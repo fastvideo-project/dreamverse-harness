@@ -45,8 +45,8 @@ export const storyApprovalAnchor: ChainAnchor = {
 }
 
 /**
- * The History row of story approvals: the subject ` <plan> v<version>` from the report of a finished approval, and the
- * fold text 渲染 n 个镜头 / Render n shots over the shot renders the approval started.
+ * The History row of story approvals: the subject ` <plan> v<version>` from the report of a finished approval, and a
+ * fold over the shot renders that the approval started.
  */
 export const storyApprovalRow: HistoryRow = {
   match: APPROVE,

@@ -43,7 +43,6 @@ export interface ReferenceUiSpec<V extends WireReferenceVersion = WireReferenceV
   mention: { section: readonly [zh: string, en: string]; order: number }
 }
 
-/** The body height of a noun card: one row with the first reference, the type label and the count of the others. */
 const BODY_HEIGHT = 30
 
 /** Every item of a noun by ID; a state without the noun's slice holds none, as the initial slice of the host half. */
@@ -66,7 +65,6 @@ function newestOf<V extends WireReferenceVersion>(
   })
 }
 
-/** The descriptors of one noun. */
 interface ReferenceDescriptors {
   nodeType: NodeType
   versionKind: VersionKind
@@ -226,13 +224,11 @@ function referenceBox(asset: Asset | undefined): CSSProperties {
   return { ...referenceImage, aspectRatio: known ? `${String(asset.width)} / ${String(asset.height)}` : '1' }
 }
 
-/** Props of the editor body of one noun node. */
 type ReferenceEditorProps = PropsRuntime<'dv.canvas.editor'> & PropsRenderFactories & { spec: ReferenceUiSpec }
 
 /**
- * The references grid, the description and ＋ 添加素材 of one item; each change writes `<key>.update` through
- * `host.run`. Each reference opens the asset preview and can be removed while more than one is left; 添加素材 appends
- * the assets picked in the canvas's picker. Nothing renders when no item of the noun has the node's ID.
+ * The references grid, the description and ＋ 添加素材 of one item, each change written as `<key>.update` through
+ * `host.run`; nothing renders when no item of the noun has the node's ID.
  * @param props - the node, the state it came from, the canvas host, the noun, and the Factory renderer.
  * @returns the element.
  */

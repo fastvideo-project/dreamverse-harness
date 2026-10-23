@@ -1,21 +1,11 @@
 /**
- * The project canvas: an infinite surface of the nodes of the registered node types, each drawn in the canvas chrome
- * around its type's `dv.canvas.card` body. Drag empty space to pan, scroll to zoom around the cursor, drag a node to
- * move it, click a node to select it and open its editor panel, which grows out of the node and shrinks back into it on
- * close (`@dv/ui-kit/zoom.ts`). Closing the editor keeps the node selected (the accent ring), and the selected node shows
- * a toolbar of the node actions that show on it; a click on empty canvas with no editor open clears the selection. A
- * scroll over an overlay marked `data-dv-scroll-island`, such as the editor panel, scrolls that overlay. Node positions
- * and the viewport are stored per project through `/api/dv/layout`; a project without a stored viewport opens at 100%,
- * or fitted when its nodes do not fit the view at 100%. A node without a stored position gets the first free spot at or
- * below its automatic position, and that spot is stored, so a node that appears later never moves or covers another. A
- * `rerun` from a body or an action closes the editor once the new node appears, then centers and selects that node. A
- * finished claimed node that the user has not opened in this browser shows an accent dot; the opened nodes are kept per
- * project in `localStorage`, and a project opened for the first time in a browser starts with every finished node
- * counted as opened. The canvas draws the project's current state and follows every change of it; its writes go after
- * the current position of the project's history. Colors come from the `--dv-*` theme variables that `@dv/ui-shell`
- * defines and from each type's `color`. Dropping a 素材 tile on the canvas runs `asset.place` with its node under the
- * pointer, and dropping files imports them with `place`; each is a record, so History lists it and undo takes it back.
- * The canvas names no node type.
+ * The project canvas: a pan-and-zoom surface that draws the nodes of the registered node types in the canvas chrome
+ * around each type's `dv.canvas.card` body, and opens a clicked node's editor panel, which grows out of the node and
+ * shrinks back into it (`@dv/ui-kit/zoom.ts`). Node positions and the viewport are stored per project through
+ * `/api/dv/layout`; a node without a stored position gets the first free spot at or below its automatic position, and
+ * that spot is stored, so a node that appears later never moves or covers another. The opened nodes are kept per
+ * project in `localStorage` for the unseen dot. Colors come from the `--dv-*` theme variables that `@dv/ui-shell`
+ * defines and from each type's `color`. The canvas names no node type.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
@@ -38,7 +28,7 @@ import type { CanvasTranslate } from './NodeCard.tsx'
 import { NodeEditor } from './NodeEditor.tsx'
 import type { EditorArea, RenderCanvasSlot, SurfaceHosts } from './NodeEditor.tsx'
 
-/** The registered descriptors that the canvas draws with: the graph's registrations and the node actions. */
+/** The registered descriptors that the canvas draws with. */
 export interface CanvasDescriptors extends CanvasRegistrations {
   actions: readonly NodeAction[]
 }
@@ -53,9 +43,7 @@ export interface CanvasViewProps extends PropsRenderFactories {
   t: CanvasTranslate
   /** The descriptors that plugin UI halves registered in `dvCanvas`. */
   descriptors: CanvasDescriptors
-  /** Renders the `dv.canvas.card`, `dv.canvas.editor` and `dv.canvas.picker` entries. */
   renderSlot: RenderCanvasSlot
-  /** Open the asset preview of `dvMedia` for an asset of a project. */
   preview: (projectId: string, asset: Asset, opener: Element | null) => void
   /** The record whose node to open once; null for none. */
   focus: CanvasFocus | null
@@ -94,10 +82,6 @@ const CANVAS_CSS = `
 
 const clampZoom = (zoom: number): number => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
 
-/**
- * @param element - the canvas element, or null before it mounts.
- * @returns its size in px; a canvas without a layout box, such as a hidden one, counts as 800 × 600.
- */
 function sizeOf(element: Element | null): { width: number; height: number } {
   const rect = element?.getBoundingClientRect()
   return { width: rect?.width || 800, height: rect?.height || 600 }
@@ -145,7 +129,6 @@ function readSeen(projectId: string): Seen | null {
   const strings = (ids: unknown[]): ReadonlySet<string> => new Set(ids.filter((id): id is string => typeof id === 'string'))
   try {
     const parsed: unknown = JSON.parse(raw)
-    // A stored array lists the opened nodes alone, so no node counts as seen by when its record finished.
     if (Array.isArray(parsed)) return { since: '', ids: strings(parsed) }
     if (typeof parsed !== 'object' || parsed === null || !('since' in parsed) || !('ids' in parsed)) return null
     const { since, ids } = parsed
@@ -166,27 +149,15 @@ function writeSeen(projectId: string, seen: Seen): void {
   writeStored('local', SEEN_KEY + projectId, JSON.stringify({ since: seen.since, ids: [...seen.ids] }))
 }
 
-/**
- * @param seen - the opened nodes.
- * @param node - a finished node.
- * @returns whether the user has opened the node, or it was finished when the project was first opened in this browser.
- */
 function wasSeen(seen: Seen, node: CanvasNode): boolean {
   return seen.ids.has(node.id) || (node.record !== null && settledAt(node.record) <= seen.since)
 }
 
-/**
- * @param record - a record.
- * @returns when it finished, else when it was created.
- */
 function settledAt(record: ProjectRecord): string {
   return record.finished_at ?? record.created_at
 }
 
-/**
- * A rerun whose new node the canvas waits for: the record it is based on, every node drawn before the request, and the
- * resolver of its promise.
- */
+/** A rerun whose new node the canvas waits for; `known` holds the nodes drawn before the request. */
 interface AwaitedRender {
   basedOn: string
   known: ReadonlySet<string>
@@ -234,12 +205,6 @@ function referenceFacts(state: WireState, kinds: readonly VersionKind[], ref: st
   return { name: id, asset: null, node: null }
 }
 
-/**
- * @param node - a drawn node.
- * @param unseen - whether the unseen dot applies.
- * @param rerunning - whether a rerun that the node started waits for its new node.
- * @returns the node as its card, editor and actions receive it: JSON data only.
- */
 function viewOf(node: CanvasNode, unseen: boolean, rerunning: boolean): NodeView {
   const { nodeType: _nodeType, x: _x, y: _y, ...entry } = node
   return { ...entry, unseen, rerunning }
@@ -313,7 +278,6 @@ export function CanvasView(
   // The editor a reference chip opened over the `editing` one; it closes first, and with the editor beneath it.
   const [stacked, setStacked] = useState<string | null>(null)
   useEffect(() => { setStacked(null) }, [editing])
-  // The nodes opened in this browser, for the project they belong to; null until the graph first loads.
   const [seen, setSeen] = useState<{ project: string; seen: Seen } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const container = useRef<HTMLDivElement | null>(null)
@@ -322,7 +286,6 @@ export function CanvasView(
   viewportRef.current = viewport
   const positionsRef = useRef(positions)
   positionsRef.current = positions
-  // The positions that the user gave nodes since the last save, by node ID.
   const moved = useRef(new Map<string, NodePosition>())
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const needsFit = useRef(false)
@@ -453,11 +416,10 @@ export function CanvasView(
     }))
   }, [heightOf])
 
-  // Open and center the node of the focused record once the layout and a graph that draws it are loaded. A request waits
-  // while no node matches, so a node type that registers later still opens its node; opening the node takes the request.
+  // A focus request waits while no drawn node matches it, so a node type that registers later still opens its node;
+  // only opening the node takes the request.
   useEffect(() => {
     if (focus === null || !layoutReady || graph === null) return
-    // The record's own node, else the node whose version it wrote, else the node that holds its first output.
     const recordId = focus.record
     const firstOutput = graph.state.components.proj.records.find(record => record.id === recordId)?.outputs[0]
     const node = graph.nodes.find(candidate => candidate.id === recordId)
@@ -505,10 +467,7 @@ export function CanvasView(
     void client.updateLayout(projectId, { positions: added }).catch(() => null)
   }, [layoutReady, graph, client, projectId])
 
-  // Reveal the node a rerun started: close the editor, center the new node, and select it.
   const awaitedRender = useRef<AwaitedRender | null>(null)
-  // The record whose rerun is awaited, and the action that started it; the record's node's actions are disabled until
-  // the rerun is settled, and the action's button reads the running words.
   const [rerunning, setRerunning] = useState<{ record: string; action: string | null } | null>(null)
   const settleAwaited = (): void => {
     awaitedRender.current = null
@@ -527,9 +486,8 @@ export function CanvasView(
     awaited.resolve()
   }, [graph, centerOn])
 
-  // Load the opened nodes once the graph is there, and count the node an editor opens as opened. A project opened for the
-  // first time in this browser counts every record up to its newest as seen, so the finished nodes of a node type that
-  // registers later do not show the unseen dot either.
+  // A project opened for the first time in this browser counts every record up to its newest as seen, so the finished
+  // nodes of a node type that registers later show no unseen dot either.
   const seenNodes = seen?.project === projectId ? seen.seen : null
   useEffect(() => {
     if (graph === null) return
@@ -622,15 +580,12 @@ export function CanvasView(
       setNotice(t('error', { message: errorMessage(error) }))
     }
   }
-  /** A canvas write: the request with the canvas's project, chat session and surface. */
   const canvasRequest = (request: CanvasRequest): OperationRequest => ({
     ...request, project: projectId, surface: 'canvas', ...session === null ? {} : { session },
   })
   /**
-   * Start a rerun of a record and wait for the new node. The request itself returns when the operation ends, so the
-   * canvas reveals the new node as soon as the project state shows it. When the request returns first, as for a record
-   * that no type draws, the editor closes then. The canvas waits for one rerun at a time, so a rerun settles the one that
-   * it replaces, which is no failure.
+   * Start a rerun of a record and wait for its new node, which the canvas reveals as soon as the project state shows it
+   * because `runOperation` resolves only when the operation ends.
    * @param request - the request; its `based_on` is the record it runs again.
    * @param action - the node action that started the rerun, or null for a body.
    * @returns settles once the new node is revealed or once a later rerun replaces this one; rejects with the error of a
@@ -724,13 +679,11 @@ export function CanvasView(
     fontFamily: 'inherit', fontSize: 12, lineHeight: '16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
   }
   const centered: CSSProperties = { position: 'absolute', inset: 0, margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', fontSize: 14, lineHeight: '22px', color: 'var(--dv-text-2)' }
-  // The node actions that show on a node, in order.
   const actionsFor = (view: NodeView): NodeAction[] => descriptors.actions.filter(action => action.shows(view, assetById))
     .toSorted((a, b) => a.order - b.order)
   const viewFor = (node: CanvasNode): NodeView => viewOf(
     node, seenNodes !== null && isFinished(node) && !wasSeen(seenNodes, node), node.record !== null && node.record.id === rerunning?.record,
   )
-  /** The media of one slot frame through `dv.media`. */
   const frameMedia = (frame: SlotFrame | null): ReactNode => {
     const asset = frame === null ? undefined : assetById.get(frame.preview)
     return asset === undefined ? null : renderFactorySlot('dv.media', { asset, purpose: 'thumb' })
@@ -886,7 +839,6 @@ export function CanvasView(
     >
       <style>{CANVAS_CSS}</style>
       {content}
-      {/* Over the editors, so that a refusal from an editor's header shows. */}
       {notice !== null ? <p role="alert" style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', margin: 0, padding: '6px 10px', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-1)', border: '1px solid var(--dv-danger)', color: 'var(--dv-danger)', fontSize: 13, lineHeight: '20px', zIndex: 12 }}>{notice}</p> : null}
       <div role="toolbar" aria-label={t('canvas.zoom')} style={{ ...floating, position: 'absolute', left: 16, bottom: 16, display: 'flex', alignItems: 'center', gap: 2, padding: 4, borderRadius: 10 }} onPointerDown={(event) => { event.stopPropagation() }}>
         <button type="button" className="dv-canvas-btn" aria-label={t('canvas.zoomOut')} title={t('canvas.zoomOut')} style={toolButton} onClick={() => { zoomBy(1 / 1.2) }}>

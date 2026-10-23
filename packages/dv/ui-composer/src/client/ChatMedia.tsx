@@ -1,10 +1,8 @@
 /**
  * The DreamVerse cards that replace asset links, asset images, and asset tables in settled chat Markdown. Each card
- * draws its asset through the `dv.media` Factory at purpose 'thumb', so the media type's view draws the still and an
- * asset of a media type without a view draws the file card. A click opens the asset preview of `dvMedia`, which plays
- * the asset and grows out of the card. The card of a standalone link is captioned with History's label of the record
- * that created the asset, because chat link texts such as 点此播放 do not name the asset; an image thumbnail is at most
- * 240 px wide, at the asset's own width when that is smaller.
+ * draws its asset through the `dv.media` Factory at purpose 'thumb'; a click opens the asset preview of `dvMedia`,
+ * which grows out of the card. The card of a standalone link is captioned with History's label of the record that
+ * created the asset, because chat link texts such as 点此播放 do not name the asset.
  *
  * @module @dv/ui-composer/ChatMedia
  */

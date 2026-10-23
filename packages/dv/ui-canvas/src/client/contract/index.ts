@@ -1,7 +1,7 @@
 /**
- * The canvas node contract: the node types, chain anchors, records in use, version kinds and node actions that plugins
- * register in `ctx.dvCanvas`, the owner props of the card and editor bodies, and the `dv.canvas` Component Factory with
- * its keyed child slots. The canvas draws every node through this contract and names no node type. Types only.
+ * The canvas node contract: the `ctx.dvCanvas` registries that plugins fill and the keyed child slots of the
+ * `dv.canvas` Component Factory with their owner props. The canvas draws every node through this contract and names
+ * no node type. Types only.
  *
  * @module @dv/ui-canvas/contract
  */
@@ -11,7 +11,6 @@ import type { DvLanguage } from '@dv/ui-kit/locale.ts'
 import type { Registry, VersionKind } from '@dv/ui-kit/registries.ts'
 import type { Asset, OperationRequest, ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 
-/** The fields every node type has. */
 interface NodeTypeCore {
   /** The registering package; a refused key names it. One package may register several types. */
   id: string
@@ -104,7 +103,7 @@ export interface AnchoredChain {
   lane?: string
 }
 
-/** One node. Optional fields are set by the few types that need them. */
+/** One node as a type supplies it. */
 export interface NodeEntry {
   /** Stable: other plugins name it (a `ChainAnchor` returns 'plan:<id>'); positions and the unseen set store it. */
   id: string
@@ -126,8 +125,8 @@ export interface NodeEntry {
   slots?: number
   /**
    * The body height at base text size. The canvas computes the card height as chrome header + frame grid (when a slot
-   * has a frame) + `bodyHeight`, before mount, for the free positions, the edge anchors and the fit; a failed claimed
-   * node is the chrome header plus the chrome's failed row instead.
+   * has a frame) + `bodyHeight` without measuring the card; a failed claimed node is the chrome header plus the
+   * chrome's failed row instead.
    */
   bodyHeight: number
   /** The kernel reference that this node stands for in a prompt, when it is not its record. */

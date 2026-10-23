@@ -22,7 +22,6 @@ const APPROVAL: ChainAnchor = {
   approvedVersions: (_state, anchorId) => anchorId === 'plan:p1' ? [1] : [],
 }
 
-/** A second anchor that approves v2 of p1 from its own slice. */
 const SECOND_APPROVAL: ChainAnchor = {
   starter: 'test.approve', anchor: () => 'plan:p1', approvedVersions: (_state, anchorId) => anchorId === 'plan:p1' ? [2] : [],
 }
@@ -67,10 +66,6 @@ function statuses(editor: HTMLElement, versions: readonly number[]): string[] {
   })
 }
 
-/**
- * The media that `dv.media` drew inside an element, in document order: an image or a video by its `src`, an audio
- * thumbnail by its hidden glyph, and a file card by the media type it shows.
- */
 function drawnMedia(element: Element | null | undefined): string[] {
   return [...element?.querySelectorAll('img, video, [data-dv-media="file"], span[aria-hidden="true"]') ?? []].map((media) => {
     if (media instanceof HTMLImageElement || media instanceof HTMLVideoElement) return `${media.tagName.toLowerCase()} ${media.getAttribute('src') ?? ''}`
@@ -262,7 +257,6 @@ describe('PlanEditor', () => {
   it('shows nothing for a node whose plan the state does not hold', async () => {
     document.documentElement.lang = 'zh-CN'
     const { runtime, card, editor } = await mountPlanCanvas(fixtureState(), { nodeId: 'plan:p9' })
-    // The card entry renders for the same node, so the frame draws the plan entries; the editor entry leaves its slot empty.
     expect(card.textContent).toBe('分镜计划 · 第 1 版')
     expect(editor.querySelector('[data-slot="dv.canvas.editor"]')?.childElementCount).toBe(0)
     await runtime.dispose()

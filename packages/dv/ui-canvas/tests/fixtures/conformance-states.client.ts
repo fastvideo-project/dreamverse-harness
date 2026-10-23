@@ -1,16 +1,13 @@
 /**
- * The 23 project states of the canvas conformance check: the rollback project of a plan with four versions, cut after
- * ten records, with and without placed assets; the whole rollback project with plan and shot references; and the shared
- * view fixture with and without every asset placed. The graph that the canvas draws for each state with the registered
- * node types, and the History label of each record, must equal what `origin/main` showed at the branch's merge base
- * (`main-graph.json`, written by `main-graph.gen.client.ts`).
+ * The 23 project states of the canvas conformance check and the descriptors that both sides draw them with:
+ * `main-graph.gen.client.ts` records what `origin/main` draws for each state in `main-graph.json`, and
+ * `conformance.client.spec.ts` compares the canvas with that record.
  */
 import type { AssetId, RecordId } from '@dv/project/types'
 import type { PlanId, PlanVersion } from '@dv/shot-plan/types'
 import type { ClipId, TimelineId } from '@dv/timeline/types'
 import type { ProjectAsset, ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 
-/** A record with defaults for every field the case does not set. */
 const record = (partial: Partial<ProjectRecord> & { id: string }): ProjectRecord => {
   const operation = partial.operation ?? null
   return {
@@ -81,10 +78,6 @@ function rollbackProject(until?: string): WireState {
   }
 }
 
-/**
- * The whole rollback project whose latest plan version references the still of `w5` and whose third shot references the
- * still of `s3`; neither render is otherwise current, so only the plan's references in use keep them on the canvas.
- */
 function referencedProject(): WireState {
   const state = rollbackProject()
   const versions = (state.components.plan?.plans['p1' as PlanId] ?? []).map(version => version.version !== 4 ? version : {
@@ -94,7 +87,6 @@ function referencedProject(): WireState {
   return state
 }
 
-/** A plan shot whose fields the canvas does not read. */
 const shot = () => ({ prompt: 'p', modality: 'video', task: 'ref2v', provider: '', model: '' })
 
 /** The shared view fixture: a first-frame chain, a running retake, a failed export, and a still grab. */

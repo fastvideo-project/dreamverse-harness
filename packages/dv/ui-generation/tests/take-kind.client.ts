@@ -36,9 +36,8 @@ export const CLIP_EXTEND: WireOperation = {
 }
 
 /**
- * A slot runtime whose frame declares `children`, with the canvas registries and the History registry that the kit
- * registers into, the real media plugin and the real asset pool plugin (its image, video and audio views), and the test
- * kind mounted as a plugin.
+ * A slot runtime whose frame declares `children`, with the canvas and History registries that the kit registers into,
+ * the real media and asset pool plugins, and the test kind mounted as a plugin.
  * @param children - the slots that the test frame declares, as the canvas Factory or DSH's tool tree declares them.
  * @returns the runtime, the kit plugin's handle, the canvas registries and the History rows.
  */

@@ -33,7 +33,6 @@ Element.prototype.scrollIntoView = vi.fn()
 
 afterEach(async () => { cleanup(); await disposeHistories(); vi.unstubAllGlobals(); vi.useRealTimers() })
 
-/** The shot render plugin, which registers the History row of `shot.render` records through the generation kit. */
 const SHOT_RENDER = { inject: [...shotRenderInject], apply: shotRenderApply }
 const ENTRIES: HistoryEntry[] = [
   { record: record({ id: 'm1', turn: null, surface: 'timeline', operation: 'timeline.clip_move', params: { clip: 'cl1', to: 2 }, intent: 'move clip 1' }), place: 'current' },
@@ -87,25 +86,19 @@ const neverAnswered = (signal: AbortSignal | null): Promise<WireHistory> => new 
   signal?.addEventListener('abort', () => { reject(new DOMException('The operation was aborted.', 'AbortError')) })
 })
 
-/** What a test changes besides the entries, the state and the rows. */
 interface MountOptions {
-  /** Plugins that register their own rows into `dvHistory`. */
   plugins?: Parameters<typeof mountHistory>[0]
-  /** The history route; {@link serveEntries} of the entries by default. */
   serve?: HistoryServer
-  /** Answers the other POST routes; a done record by default. */
   post?: (path: string, body: unknown) => { status: number; body: unknown }
-  /** Delays the answer of a GET request, by its URL, until the returned promise settles. */
   hold?: (path: string) => Promise<void>
 }
 
 /**
- * Mount the History tab over scripted routes; `/api/dv/history` answers from {@link ENTRIES}.
+ * Mount the History tab over scripted API routes.
  * @param entries - the history the route serves.
  * @param adjust - changes to the fixture state that `/api/dv/state` serves.
  * @param rows - the history rows registered into `dvHistory` besides the plugins' rows.
- * @param options - the plugins, the shot render plugin by default, and the answers of the history route, the other POST
- *   routes and the GET routes.
+ * @param options - the plugins and the answers of the history route, the other POST routes and the GET routes.
  * @returns the rendered tab, the recorded writes, history queries and center moves, the History plugin, and a row lookup.
  */
 async function mount(
@@ -173,19 +166,12 @@ function stubEventSource(): (type: string, data: string) => void {
   }
 }
 
-/** A frame of `/dv/events` that carries one record. */
 const frame = (kind: 'record' | 'update', changed: ProjectRecord): string => JSON.stringify({ kind, record: changed })
 
-/** The render of {@link ENTRIES}, as `/dv/events` reports it once it failed. */
 const FAILED_RENDER = record({ ...ENTRIES.find(entry => entry.record.id === 'g1')?.record, id: 'g1', status: 'failed' })
 
-/** Let the panel's 200 ms reload delay pass. */
 const settle = (): Promise<void> => new Promise((resolve) => { setTimeout(resolve, 300) })
 
-/**
- * @param element - a row, a thumbnail or a preview.
- * @returns the asset and purpose of each `dv.media` occurrence inside it.
- */
 const drawn = (element: Element): string[] => [...element.querySelectorAll('[data-media]')]
   .map(media => `${media.getAttribute('data-media') ?? ''}@${media.getAttribute('data-purpose') ?? ''}`)
 
@@ -204,7 +190,6 @@ describe('the History tab', () => {
     expect(row('m1').querySelector('[data-testid="dv-history-current"]')?.textContent).toBe('Current')
     expect(view.container.querySelectorAll('[data-testid="dv-history-current"]')).toHaveLength(1)
     await waitFor(() => { expect(drawn(row('g1'))).toEqual(['shot1.mp4@thumb']) })
-    // A plan's row names no thumbnail, so it has none.
     expect(row('p1').querySelector('[data-testid="dv-history-thumb"]')).toBeNull()
     expect(drawn(row('p1'))).toEqual([])
     // One list: no branch menu and no view switch; redo waits until a step lies after the current one.

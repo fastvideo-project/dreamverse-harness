@@ -254,7 +254,6 @@ describe('one dv.media Factory under parents of both scopes', () => {
     const runtime = await SlotTestRuntime.create()
     // The asset pool's tab type is not under test; its registration needs only a registry that accepts it.
     runtime.ctx.provide('sidebarRightTabs', { register: () => () => undefined } as never)
-    // The shot render plugin registers its chat card while the canvas registries exist.
     runtime.ctx.provide('dvCanvas', createDvCanvas())
     await runtime.declare({
       'tool.call.toolview': { kind: 'keyed', scope: 'session', inject: { hooks: { toolCallArgumentsPartial: () => () => '' } } },

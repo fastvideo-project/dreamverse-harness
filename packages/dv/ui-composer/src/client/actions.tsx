@@ -12,8 +12,8 @@ import { pickText, useText } from '@dv/ui-kit/locale.ts'
 import type {} from '@dv/ui-media/contract'
 
 /**
- * 问 agent / Ask the agent on every node: a draft 修改 {title}： / Change {title}: with a reference to the node's kernel
- * reference, else its record, else the node itself, shown by the node's preview or first asset; then the editor closes.
+ * 问 agent / Ask the agent on every node: prefills the draft 修改 {title}： / Change {title}: with a reference to the
+ * node, then closes the editor.
  */
 export const askAgentAction: NodeAction = {
   id: '@dv/ui-composer:ask-agent',

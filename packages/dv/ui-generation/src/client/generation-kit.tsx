@@ -1,8 +1,7 @@
 /**
- * The browser twin of `defineGeneration`: one `defineGenerationUi` call per generation primitive defines the UI plugin
- * that registers the primitive's claimed node type, its `dv.canvas.card` and `dv.canvas.editor.claimed` entries, the
- * 重试 action of its failed takes, the chat card of each operation's agent tool, and the History row of each operation.
- * The canvas computes the takes' lineage; the kit supplies the title, the media, the copy and the rerun UI.
+ * The browser counterpart of `defineGeneration`: one `defineGenerationUi` call per generation primitive defines the UI
+ * plugin that registers the primitive's claimed node type, canvas card and editor, 重试 action, chat cards, and History
+ * rows. The canvas computes the takes' lineage; the kit supplies the title, the media, the copy, and the rerun UI.
  *
  * @module @dv/ui-generation/generation-kit
  */
@@ -58,23 +57,11 @@ export interface GenerationUiSpec {
   preview?(outputs: readonly MediaAsset[]): string | undefined
 }
 
-/**
- * @param record - a record.
- * @param state - the project state.
- * @returns the output assets of the record that the state holds, in output order.
- */
 const outputsIn = (record: ProjectRecord, state: WireState): Asset[] =>
   record.outputs.flatMap(id => state.assets.find(asset => asset.id === id) ?? [])
 
 const frame: CSSProperties = { display: 'flex', width: '100%', overflow: 'hidden', background: 'var(--dv-surface-3)' }
 
-/**
- * The card body of a take: its preview, else its first output, through `dv.media` at purpose 'card', in a frame of the
- * type's body height (the 16:9 frame by default). A pending take has no output yet and shows the empty frame under the
- * canvas's status words.
- * @param props - the node, its assets, and the Factory renderer.
- * @returns the element.
- */
 function TakeCard({ node, assets, renderFactorySlot }: PropsRuntime<'dv.canvas.card'> & PropsRenderFactories): ReactNode {
   const shown = assets[node.preview ?? node.assets[0] ?? '']
   return <div style={{ ...frame, height: node.bodyHeight }}>{shown === undefined ? null : renderFactorySlot('dv.media', { asset: shown, purpose: 'card' })}</div>
@@ -88,7 +75,6 @@ function TakeCard({ node, assets, renderFactorySlot }: PropsRuntime<'dv.canvas.c
 export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
   const operations = new Set(spec.operations)
   const bodyHeight = spec.bodyHeight ?? NODE_FRAME_HEIGHT
-  /** The take's title: its chain's slot and lane, else its operation's label; with its number in a group of several. */
   const titleOf = ({ record, chain, version }: ClaimedRecord, input: NodeInput): string => {
     const pick = (zh: string, en: string): string => input.language === 'zh' ? zh : en
     const declared = input.operations.find(operation => operation.name === record.operation)?.label?.[input.language]

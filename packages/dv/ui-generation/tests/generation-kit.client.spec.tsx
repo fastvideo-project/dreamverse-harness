@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 /**
- * `defineGenerationUi` mounted as a plugin: the claimed node type that the canvas builds takes from (title, meta,
- * preview, body height, status words), the 重试 action of failed takes and the rerun it asks the host for, and the removal
- * of every registration when the plugin unloads.
+ * `defineGenerationUi` mounted as a plugin: the claimed node type, the card body, the 重试 action, and the removal of
+ * every registration when the plugin unloads.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
@@ -15,7 +14,6 @@ import type { FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { defineGenerationUi } from '../src/client/generation-kit.tsx'
 import { APPROVAL, claimedOf, CLIP_EXTEND, mountKit, nodesOf, recordingHost, testTake } from './take-kind.client.ts'
 
-/** The fixture's `shot.render` declaration with its wire label. */
 const LABELLED = [{ ...OPERATIONS[0]!, label: { zh: '渲染镜头', en: 'Render shot' } }, CLIP_EXTEND]
 
 afterEach(() => {
@@ -25,8 +23,7 @@ afterEach(() => {
 })
 
 /**
- * The fixture plus takes of the chain that approval `a1` started (shot 1; shot 2 in lane b; two takes of shot 3), a
- * `clip.extend` take without a chain, and a take whose still comes before its timed video.
+ * The fixture state plus chained `shot.render` takes of approval `a1` and an unchained `clip.extend` take.
  * @returns the state.
  */
 function chainedState(): FixtureState {
@@ -70,7 +67,6 @@ describe('the claimed node type of a generation kind', () => {
     }
     expect(facts('g1')).toEqual(['4.0s', 'shot1-last.png', 117])
     expect(facts('x1')).toEqual(['2.5s', 'x1.png', 117])
-    // The running rerun g3 has no output yet.
     expect(facts('g3')).toEqual([undefined, undefined, 117])
     await runtime.dispose()
   })
@@ -87,12 +83,10 @@ describe('the claimed node type of a generation kind', () => {
 })
 
 describe('a generation kind with no references rule', () => {
-  /** Stills of `image.generate`. */
   const still = defineGenerationUi({
     id: '@dv/ui-test-still', type: 'test_still', operations: ['image.generate'], label: ['静帧', 'Still'], color: '',
     status: { running: ['生成中…', 'Generating…'], failed: ['没生成', 'Not generated'], done: ['已生成', 'Generated'] },
   })
-  /** An `image.generate` declaration that takes reference images. */
   const IMAGE = { ...OPERATIONS[0]!, name: 'image.generate' }
 
   it('offers reference chips on every take of a kind without a references rule', async () => {
@@ -150,7 +144,6 @@ describe('the card body of a take', () => {
 })
 
 describe('the 重试 action of a generation kind', () => {
-  /** A claimed type of `image.generate` from another package. */
   const IMAGE: NodeType = {
     id: '@dv/ui-test-image', type: 'image', label: () => 'image', color: '', column: 2,
     claimed: { operations: ['image.generate'], status: { running: () => '', failed: () => '' }, entry: () => ({ title: 'image', bodyHeight: 117 }) },
@@ -274,7 +267,6 @@ describe('defineGenerationUi apply', () => {
       chat: ['dv_shot_render', 'dv_clip_extend'], history: [['shot.render', null], ['clip.extend', null]],
     })
     const state = fixtureState()
-    // A row's thumbnail is the take's preview, else its first output, else none.
     const media = rows.getSnapshot()[0]?.media
     expect([
       media?.thumbnail(record({ id: 'r1', operation: 'shot.render', outputs: ['shot1.mp4', 'shot1-last.png'] }), state),

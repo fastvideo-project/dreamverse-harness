@@ -1,8 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The location noun in the browser, mounted beside the real media, composer and History plugins: its card and editor
- * on the canvas node `location:l1`, its picker section, its items in the `@` menu, its History rows, and the removal of
- * every registration with the plugin.
+ * The location noun in the browser, mounted beside the real media, composer and History plugins.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent } from '@testing-library/react'
@@ -24,7 +22,6 @@ import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/c
 import { apply, inject } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
 
-/** The `@` source that the composer registers. */
 type MentionSource = ReturnType<typeof projectMentionSource>
 
 afterEach(() => {
@@ -55,9 +52,8 @@ function nounState(): WireState {
 }
 
 /**
- * A runtime whose frame declares the canvas's card and editor slots, with `dvCanvas`, the real media, composer and
- * History plugins, and the location plugin mounted.
- * @returns the runtime, the handle of the location plugin, and the `@` sources that the composer registered.
+ * Mount `dvCanvas`, the real media, composer and History plugins, and the location plugin under a frame that declares
+ * the canvas's card and editor slots.
  */
 async function mountLocation() {
   const runtime = await SlotTestRuntime.create()
@@ -79,13 +75,6 @@ async function mountLocation() {
   return { runtime, plugin, sources }
 }
 
-/**
- * The node that the canvas builds from a state with the registered node types, as its card and editor receive it.
- * @param runtime - a runtime from {@link mountLocation}.
- * @param state - a project state.
- * @param id - the node ID.
- * @returns the node, or undefined when the canvas draws none.
- */
 function nodeOf(runtime: SlotTestRuntime, state: WireState, id: string): NodeView | undefined {
   const canvas = runtime.ctx.dvCanvas
   const graph = buildCanvasGraph(state, new Set(), [], 'zh', {
@@ -96,18 +85,11 @@ function nodeOf(runtime: SlotTestRuntime, state: WireState, id: string): NodeVie
   return found === undefined ? undefined : { ...found, unseen: false, rerunning: false }
 }
 
-/** @returns the wire asset of each of the node's assets, as the canvas hands them to a card. */
 const assetsOf = (state: WireState, node: NodeView): Record<string, Asset> =>
   Object.fromEntries(state.assets.filter(entry => node.assets.includes(entry.id)).map(entry => [entry.id, entry]))
 
-/** @returns a card host whose methods record their calls. */
 const cardHost = (): CardHost => ({ run: vi.fn<CardHost['run']>(), rerun: vi.fn<CardHost['rerun']>() })
 
-/**
- * The `@` candidates of the composer's source for an empty query, over a scripted `/api/dv/state`.
- * @param sources - the registered sources.
- * @returns the candidates.
- */
 async function candidates(sources: readonly MentionSource[]) {
   return await sources[0]?.candidates({} as never, { query: '', signal: new AbortController().signal } as never) ?? []
 }

@@ -26,16 +26,9 @@ export interface ChatAssets {
 /** The snapshot while no project is open or before the first fetch settles. */
 export const NO_CHAT_ASSETS: ChatAssets = { project: null, assets: {}, producers: {}, records: {}, operations: [] }
 
-/** The pause after a project event before the fetch, so a burst of events causes one fetch. */
 const REFETCH_DELAY_MS = 150
 
-/**
- * Fetch the project's current state and the operation declarations.
- * @param client - the API client.
- * @param project - the project.
- * @param signal - cancels the requests.
- * @returns the snapshot.
- */
+/** Fetch the project's current state and the operation declarations. */
 async function fetchChatAssets(client: DvClient, project: string, signal: AbortSignal): Promise<ChatAssets> {
   const [state, operations] = await Promise.all([client.getState(project, signal), client.listOperations(signal)])
   const records = new Map(state.components.proj.records.map(record => [record.id, record]))

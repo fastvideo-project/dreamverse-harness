@@ -23,7 +23,6 @@ import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/c
 import { defineReferenceUi, referenceDescriptors } from '../src/client/reference-kit.tsx'
 import type { ReferenceUiSpec } from '../src/client/reference-kit.tsx'
 
-/** The reference noun `test_ref`. */
 const SPEC = {
   id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref, color: 'var(--dv-node-1)',
   label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 4 },
@@ -54,11 +53,6 @@ function refState(): WireState {
   return state
 }
 
-/**
- * The fixture with `test_ref`, whose item `hero` holds exactly these references.
- * @param references - the references of `hero`.
- * @returns the state.
- */
 function heroWith(references: string[]): WireState {
   const state = withTestRef(fixtureState())
   const hero = state.components.test_ref?.['hero']?.[0]
@@ -130,11 +124,6 @@ describe('referenceDescriptors', () => {
   })
 })
 
-/**
- * A runtime whose frame declares the canvas's card and editor slots, with `dvCanvas`, the real media and asset pool
- * plugins, and the `test_ref` plugin mounted.
- * @returns the runtime and the handle of the `test_ref` plugin.
- */
 async function mountKit(): Promise<{ runtime: SlotTestRuntime; plugin: FeatureHandle }> {
   const runtime = await SlotTestRuntime.create()
   runtime.ctx.provide('dvCanvas', createDvCanvas())
@@ -146,13 +135,6 @@ async function mountKit(): Promise<{ runtime: SlotTestRuntime; plugin: FeatureHa
   return { runtime, plugin }
 }
 
-/**
- * The node that the canvas builds from a state with the registered node types, as its card and editor receive it.
- * @param runtime - a runtime from {@link mountKit}.
- * @param state - a project state.
- * @param id - the node ID.
- * @returns the node.
- */
 function nodeOf(runtime: SlotTestRuntime, state: WireState, id: string): NodeView {
   const canvas = runtime.ctx.dvCanvas
   const graph = buildCanvasGraph(state, new Set(), [], 'zh', {
@@ -164,14 +146,11 @@ function nodeOf(runtime: SlotTestRuntime, state: WireState, id: string): NodeVie
   return { ...found, unseen: false, rerunning: false }
 }
 
-/** @returns the wire asset of each of the node's assets, as the canvas hands them to a card. */
 const assetsOf = (state: WireState, node: NodeView): Record<string, Asset> =>
   Object.fromEntries(state.assets.filter(entry => node.assets.includes(entry.id)).map(entry => [entry.id, entry]))
 
-/** @returns a card host whose methods record their calls. */
 const cardHost = (): CardHost => ({ run: vi.fn<CardHost['run']>(), rerun: vi.fn<CardHost['rerun']>() })
 
-/** @returns an editor host whose methods record their calls. */
 function hostMock() {
   return {
     run: vi.fn<EditorHost['run']>(), rerun: vi.fn<EditorHost['rerun']>(), pickAssets: vi.fn<EditorHost['pickAssets']>(), preview: vi.fn<EditorHost['preview']>(),
@@ -274,7 +253,6 @@ describe('the editor of a reference noun', () => {
     const slot = runtime.renderSlot('dv.canvas.editor', { node: nodeOf(runtime, state, 'test_ref:hero'), state, operations: [], host }, { entryKey: 'test_ref' })
     const { container, view } = slot
 
-    // The only reference cannot be removed: an update without references keeps the current ones.
     expect(view.getByRole('button', { name: '移除 ref.png' }).hasAttribute('disabled')).toBe(true)
     expect(view.getByText('A tired detective.')).toBeTruthy()
     const opener = view.getByRole('button', { name: '查看 ref.png' })
@@ -332,7 +310,6 @@ describe('the editor of a reference noun', () => {
     const host = hostMock()
     const { container, view } = runtime.renderSlot('dv.canvas.editor', { node: nodeOf(runtime, state, 'test_ref:alley'), state, operations: [], host }, { entryKey: 'test_ref' })
 
-    // `alley.png` is no asset of the project: its button shows no media and opens no preview.
     const opener = view.getByRole('button', { name: 'View alley.png' })
     expect(container.querySelector('img, video')).toBeNull()
     fireEvent.click(opener)

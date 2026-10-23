@@ -42,7 +42,6 @@ const CHILDREN = {
 /**
  * Mount the shot render plugin with the canvas registries, the History registry, and the real media and asset pool
  * plugins, over the scripted `/api/dv` routes.
- * @returns the runtime, the plugin's handle, the canvas registries and the History rows.
  */
 async function mountShotRender() {
   vi.stubGlobal('fetch', scriptedFetch().fetch)
@@ -59,12 +58,6 @@ async function mountShotRender() {
   return { runtime, plugin, canvas, rows }
 }
 
-/**
- * The take nodes that the real graph builder draws from the fixture with the registered node types.
- * @param canvas - the canvas registries.
- * @param state - the project state.
- * @returns the node of each ID.
- */
 function takesOf(canvas: ReturnType<typeof createDvCanvas>, state = fixtureState()): Map<string, ClaimedNodeView & { x: number }> {
   const graph = buildCanvasGraph(state, new Set(), OPERATIONS, 'zh', {
     nodeTypes: canvas.nodeTypes.getSnapshot(), chainAnchors: [], recordsInUse: [], versionKinds: [],

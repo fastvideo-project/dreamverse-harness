@@ -1,9 +1,6 @@
 /**
  * Browser half of the shot plan: the canvas node type of plans with its card and editor, the records that plans use,
- * and the History row of plan records. Each plan is one node `plan:<PlanId>` at its latest version with a frame grid
- * of one slot per shot, which the canvas fills from the takes anchored there; the records that produced the reference
- * assets of the latest version stay on the canvas. The node's editor is the plan editor. The History row names the plan
- * of a `plan.create` or `plan.update` record.
+ * and the History row of plan records.
  *
  * @module @dv/ui-shot-plan/client
  */
@@ -24,7 +21,6 @@ import type { PlanEditorInjected } from './PlanEditor.tsx'
 
 declare module '@dv/ui-kit/types.ts' { interface ComponentStates { plan: PlanState } }
 
-/** The package name: the owner of the node type and of the records in use. */
 const ID = '@dv/ui-shot-plan'
 /** The body height of a plan card: the type label and the version. */
 const BODY_HEIGHT = 46
@@ -61,7 +57,6 @@ export const planNodeType: NodeType = {
       return {
         id: `plan:${id}`,
         record: records.get(latest.created_by) ?? null,
-        // A plan at version 1 has no earlier versions and so no `records`; the card counts the version on show from them.
         ...earlier.length === 0 ? {} : { records: earlier },
         title: `${pickText(`${count} 个镜头`, `${count} shots`)}${total === null ? '' : ` · ${clockText(total)}`}`,
         assets: [],
@@ -72,7 +67,7 @@ export const planNodeType: NodeType = {
   },
 }
 
-/** The records that plans use: the records that produced the reference assets of each plan's latest version and its shots. */
+/** The records that produced the reference assets of each plan's latest version and of its shots. */
 export const planReferencesInUse: RecordsInUse = {
   id: ID,
   uses(state) {
@@ -123,9 +118,7 @@ export const planHistoryRow: HistoryRow = {
 export const inject: readonly string[] = []
 
 /**
- * Client plugin body: while `dvCanvas` is present, register the node type of plans and the records that plans use, and
- * with the slot registry the plan card and the plan editor once the canvas declares their slots; while `dvHistory` is
- * present, register the History row of plan records. Each registration leaves with the service or with the plugin.
+ * Client plugin body. Each registration leaves with its service or with the plugin.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {

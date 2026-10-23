@@ -1,8 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The composer plugin under the real slot runtime beside `@dv/ui-media` and a `dvCanvas`: 问 agent on every canvas
- * node, 让智能体使用 in the asset preview, the `@` menu icons from the registered media types, and the removal of the
- * action and the preview action when the plugin is disposed.
+ * The composer plugin's registrations and their removal on disposal, under the real slot runtime.
  */
 import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -56,11 +54,6 @@ async function mountComposer() {
   return { runtime, composer, view, sources, composed, stop }
 }
 
-/**
- * A node as an action receives it.
- * @param changes - the fields that matter to the test.
- * @returns the node.
- */
 function node(
   changes: Partial<Pick<NodeView, 'record' | 'assets' | 'preview' | 'ref'>> & { id: string; title: string },
 ): NodeView {
@@ -71,7 +64,6 @@ function node(
   }
 }
 
-/** @returns a canvas host, and its `close` that the test observes. */
 function host(): { value: NodeHost; close: ReturnType<typeof vi.fn<() => void>> } {
   const close = vi.fn<() => void>()
   const value: NodeHost = {

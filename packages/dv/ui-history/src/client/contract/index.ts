@@ -46,7 +46,7 @@ export interface DvHistory {
   rows: Registry<HistoryRow>
   /**
    * The label History shows for a record whose row has `media`, such as a take: its operation label and its subject;
-   * null for any other record, such as an import. The chat media caption reads it, else the asset's name.
+   * null for any other record, such as an import.
    */
   describe(record: ProjectRecord, context: DescribeContext): Text | null
 }

@@ -1,10 +1,7 @@
 /**
- * The canvas as the bundle mounts it: `@dv/ui-canvas` and the real kind plugins (the test-only reference noun
- * `test_ref` through the reference kit, plans, assets, video takes, and `@dv/ui-media`) in a SlotTestRuntime whose root
- * frame stands in for the shell (the workspace center's `dv.center.view`, the right Sidebar's tab body, and
- * `shell.overlay`), over a scripted `/api/dv` server. The server records every write, imports dropped files onto the
- * project's canvas, and announces project changes through a stand-in `EventSource`, so a test sees a change at once. A
- * test can also make the server hold layout reads and operation requests, refuse writes, and fail reads.
+ * Mounts `@dv/ui-canvas` and the real kind plugins that the bundle loads in a `SlotTestRuntime`, whose root frame
+ * stands in for the shell's `dv.center.view`, right Sidebar tab body and `shell.overlay`, over a scripted `/api/dv`
+ * server that replaces the global `fetch` and `EventSource`.
  */
 import { vi } from 'vitest'
 import { fireEvent, waitFor, within } from '@testing-library/react'
@@ -64,7 +61,7 @@ export interface ServerOptions {
   layout?: CanvasLayout | null
   /** Leave `GET /api/dv/layout` unanswered until {@link CanvasServer.releaseLayout} answers it. */
   holdLayout?: boolean
-  /** Leave `POST /api/dv/operation` unanswered, as a render is until it ends, until {@link CanvasServer.releaseOperations}. */
+  /** Leave `POST /api/dv/operation` unanswered until {@link CanvasServer.releaseOperations} answers it. */
   holdOperations?: boolean
   /** The operation declarations; null makes `/api/dv/operations` fail. */
   operations?: WireOperation[] | null
@@ -74,7 +71,7 @@ export interface ServerOptions {
   refuse?: (path: string, body: unknown) => string | null
 }
 
-/** One `POST /api/dv/layout` body: the project, the positions to store, and the viewport of a save after a gesture. */
+/** One `POST /api/dv/layout` body; a save after a gesture also carries the viewport. */
 export interface LayoutWrite {
   project: string
   positions: Record<string, NodePosition>
@@ -94,7 +91,6 @@ export interface ImportRequest {
 export interface CanvasServer {
   /** Every JSON write, by path. */
   writes: Recorded[]
-  /** Every `POST /api/dv/layout` body. */
   layoutWrites: LayoutWrite[]
   imports: ImportRequest[]
   /** Announce a project change on every open `/dv/events` stream. */
@@ -105,7 +101,6 @@ export interface CanvasServer {
   releaseOperations: () => void
 }
 
-/** A stand-in `/dv/events` stream: live at once, and it carries what {@link CanvasServer.notify} announces. */
 class ScriptedEventSource extends EventTarget {
   static readonly open = new Set<ScriptedEventSource>()
 
@@ -121,9 +116,9 @@ class ScriptedEventSource extends EventTarget {
 }
 
 /**
- * Serve the fixture project with the `test_ref` noun as the global `fetch` and `EventSource`, which the plugins' own
- * clients use. An imported file becomes an asset on the project's canvas, written by an `asset.import` record.
- * @param options - the state edits, the stored layout, whether renders stay unanswered, and the operations.
+ * Replace the global `fetch` and `EventSource` with a server of the fixture project and its `test_ref` noun. An
+ * imported file becomes an asset placed on the project's canvas and created by an `asset.import` record.
+ * @param options - what the server serves.
  * @returns the server's records and its change announcement.
  */
 export function serveCanvas(options: ServerOptions = {}): CanvasServer {
@@ -150,7 +145,6 @@ export function serveCanvas(options: ServerOptions = {}): CanvasServer {
   const heldOperations: Array<() => void> = []
   const json = (body: unknown, status = 200): Response =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
-  /** The refusal of a JSON write, or null for a request that `refuse` accepts. */
   const refusal = (path: string, init: RequestInit | undefined): Response | null => {
     if (init?.method !== 'POST' || typeof init.body !== 'string' || options.refuse === undefined) return null
     const error = options.refuse(path, JSON.parse(init.body))
@@ -161,7 +155,6 @@ export function serveCanvas(options: ServerOptions = {}): CanvasServer {
     if (url.pathname === '/api/dv/layout') {
       const project = url.searchParams.get('project') ?? ''
       const stored = project === 'p1' ? layout : { positions: {}, viewport: null }
-      // The canvas writes the body from `CanvasLayout` fields, so the parsed body is read as one.
       if (init?.method === 'POST' && typeof init.body === 'string') layoutWrites.push(JSON.parse(init.body) as LayoutWrite)
       const refused = refusal(url.pathname, init)
       if (refused !== null) return Promise.resolve(refused)
@@ -172,7 +165,6 @@ export function serveCanvas(options: ServerOptions = {}): CanvasServer {
       return Promise.resolve(json(stored))
     }
     if (url.pathname === '/api/dv/operations' && options.operations === null) return Promise.resolve(json({ error: 'offline' }, 503))
-    // The state of the requested project: the fixture state under that project's ID.
     if (url.pathname === '/api/dv/state') {
       const served = state()
       return Promise.resolve(json({ ...served, project: { ...served.project, id: url.searchParams.get('project') ?? '' } }))
@@ -239,7 +231,7 @@ export interface MountOptions extends ServerOptions {
   kinds?: readonly Kind[]
   /** The surfaces whose canvas the root frame shows; the center by default. */
   surfaces?: readonly Surface[]
-  /** Mount ui-canvas before the kind plugins; by default the kinds mount first and register once the canvas comes. */
+  /** Mount ui-canvas before the kind plugins; by default the kinds mount first and register once `dvCanvas` exists. */
   canvasFirst?: boolean
   /** Runs once the kinds that mount first are mounted, just before ui-canvas mounts. */
   beforeCanvas?: (runtime: SlotTestRuntime) => void | Promise<void>
@@ -247,18 +239,15 @@ export interface MountOptions extends ServerOptions {
   request?: CenterRequest
 }
 
-/** The chat session that the right Sidebar tab sits in. */
 const TAB_SESSION = 's-tab'
 
 /**
- * Mount the canvas as the bundle does: the locale runtime and the right Sidebar's tab registry, a root frame that
- * declares the center views, the right Sidebar tab bodies and the shell overlays, ui-canvas, and the kind plugins.
+ * Mount ui-canvas and the kind plugins under the locale runtime, the right Sidebar tab registry, and the root frame.
  * The center passes project p1 and chat session s5; the tab body picks its project from `/api/dv/projects`.
  * @param options - the server, the kinds, the surfaces and the load order.
  * @returns the runtime, the rendered root, the server, the fibers, and node lookups.
  */
 export async function mountCanvas(options: MountOptions = {}): Promise<MountedCanvas> {
-  // The kinds pick their copy by <html lang>, which the shell keeps on the interface language.
   document.documentElement.lang = 'zh-CN'
   const server = serveCanvas(options)
   const surfaces = options.surfaces ?? ['center']
@@ -283,7 +272,6 @@ export async function mountCanvas(options: MountOptions = {}): Promise<MountedCa
   )
   await runtime.root.declare({
     'dv.center.view': { kind: 'list', scope: 'root' },
-    // The right Sidebar also injects its tab-info hook, which needs a committed tab; the canvas body reads none of it.
     'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session' } as never,
     'shell.overlay': { kind: 'list', scope: 'root' },
   }, Frame as never)

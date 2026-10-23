@@ -1,9 +1,7 @@
 // @vitest-environment jsdom
 /**
- * The canvas service over the real kind plugins in the workspace center: stored and free positions, selection, chain
- * anchors from the registry, the rerun reveal, the unseen dot, the center target, the editor panel, stale records,
- * stacked editors, node actions in the editor header, the failed row and the selected-node toolbar, the asset picker,
- * and drops of 素材 tiles and files.
+ * The canvas view in the workspace center, mounted with the real kind plugins over a scripted server so that cards,
+ * editors and writes come from the plugins that the bundle loads.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, createEvent, fireEvent, waitFor, within } from '@testing-library/react'
@@ -54,7 +52,6 @@ function dropAt(canvas: HTMLElement, dataTransfer: object): void {
  */
 const tileDrag = (assetId: string) => ({ types: [DV_ASSET_DRAG_TYPE], getData: (type: string) => type === DV_ASSET_DRAG_TYPE ? assetId : '', files: [] })
 
-/** The `/api/dv/operation` bodies the server received. */
 const operationsOf = (writes: ReadonlyArray<{ path: string; body: unknown }>): unknown[] =>
   writes.filter(write => write.path === '/api/dv/operation').map(write => write.body)
 
@@ -76,7 +73,6 @@ describe('the canvas over the real kinds', () => {
     expect(node('g1').style.left).toBe('10px')
     expect(node('g2').getAttribute('data-node-stale')).toBe('true')
     expect(within(node('g2')).getByText('已裁剪')).toBeTruthy()
-    // g2 continues g1's still (first_frame), so it sits one column right of the takes' column 2.
     await waitFor(() => { expect(server.layoutWrites).toHaveLength(1) })
     const stored = server.layoutWrites[0] as { project: string; positions: Record<string, unknown> }
     expect([Object.keys(stored).sort(), stored.project, stored.positions['g2']]).toEqual([['positions', 'project'], 'p1', { x: 720, y: 0 }])
@@ -99,7 +95,6 @@ describe('the canvas over the real kinds', () => {
     await waitFor(() => { node('g1') })
     expect(edge('g1')).toBeNull()
     const anchor = await mountDescriptors(runtime, { anchor: APPROVAL })
-    // The retake g3 keeps the chain of its root g1, so both hang off plan:p1 as takes of shot 1.
     await waitFor(() => { expect(edge('g1')).not.toBeNull() })
     expect(edge('g3')).not.toBeNull()
     expect([node('g1'), node('g3')].map(card => card.getAttribute('aria-label'))).toEqual(['镜头 1 · 第 1 次', '镜头 1 · 第 2 次'])
@@ -136,17 +131,14 @@ describe('the canvas over the real kinds', () => {
     expect(operationsOf(server.writes)[0]).toMatchObject({
       project: 'p1', operation: 'shot.render', surface: 'canvas', session: 's5', based_on: 'g1', params: { prompt: 'hero runs' },
     })
-    // A project change without the new take keeps the editor waiting.
     server.notify()
     await settle()
     expect(within(editor).getByRole('button', { name: '渲染中…' })).toBeTruthy()
-    // The server wrote the pending record; its next state shows the new take while the request is still open.
     started = true
     server.notify()
     await waitFor(() => { expect(node('n1').getAttribute('data-node-selected')).toBe('true') })
     expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
     expect(node('g1').getAttribute('data-node-selected')).toBeNull()
-    // The end of the request leaves an editor opened since the reveal open.
     await open('g2')
     server.releaseOperations()
     await settle()
@@ -158,7 +150,6 @@ describe('the canvas over the real kinds', () => {
     const { runtime, view, open } = await mountCanvas()
     const served = globalThis.fetch
     let reads = 0
-    // The kit's client asks for every route by its path.
     vi.stubGlobal('fetch', (input: string, init?: RequestInit) => {
       if (input.endsWith('/api/dv/tasks') && reads++ === 0) return Promise.reject(new TypeError('Failed to fetch'))
       return served(input, init)
@@ -359,7 +350,6 @@ describe('the canvas over the real kinds', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(view.getAllByTestId('dv-canvas-node-editor')).toHaveLength(1)
     expect((view.getByTestId('dv-canvas-node-editor').querySelector('textarea') as HTMLTextAreaElement).value).toBe('hero runs')
-    // A press beside the stacked panel and its close button each close the stacked editor only.
     const openHero = (): HTMLElement => {
       fireEvent.click(within(editor).getByRole('button', { name: '查看 Hero' }))
       const stacked = view.getAllByTestId('dv-canvas-node-editor')[1]
@@ -393,7 +383,6 @@ describe('the canvas over the real kinds', () => {
     expect(view.getByTestId('dv-canvas-node-editor')).toBeTruthy()
     fireEvent.click(within(editor).getByRole('button', { name: '＋ 添加素材' }))
     const picker = await view.findByTestId('dv-canvas-asset-picker')
-    // The take already holds hero@1, so the noun's section offers only Villain, under the noun's label.
     const villain = within(picker).getByRole('button', { name: 'Villain' })
     const noun = villain.closest('section')
     expect(noun?.querySelector('h3')?.textContent).toBe('参考')
@@ -454,7 +443,6 @@ describe('drops on the canvas', () => {
 
   it('places a dropped 素材 tile of an asset that no record of the current state imported, and draws it as asset:<id>', async () => {
     const { runtime, view, node, server, canvasOf } = await mountCanvas({
-      // An undo went back past the import: the asset pool still lists the asset.
       edit: (state) => { state.assets.push(asset('undone.png', 'image/png', 'u9', null, 'asset.import')) },
     })
     await waitFor(() => { node('g1') })
@@ -492,7 +480,6 @@ describe('drops on the canvas', () => {
     dropAt(canvasOf(), { types: ['Files'], getData: () => '', files: [file] })
     await waitFor(() => { expect(server.imports).toHaveLength(1) })
     expect(server.imports[0]).toEqual({ project: 'p1', name: 'brief.pdf', mime: 'application/pdf', surface: 'canvas', session: 's5' })
-    // The server wrote the import record imp1 and put brief.pdf on the canvas; its node lands under the pointer.
     await waitFor(() => { expect(node('imp1').style.left).toBe(`${String(500 - NODE_WIDTH / 2)}px`) })
     const card = node('imp1').querySelector('[data-dv-media="file"]')
     expect(card?.textContent).toContain('brief.pdf')
@@ -509,14 +496,6 @@ function viewportOf(canvas: HTMLElement): { x: number; y: number; zoom: number }
   return { x: Number(match[1]), y: Number(match[2]), zoom: Number(match[3]) }
 }
 
-/**
- * Whether every card shows whole inside a view of the given size: its 208-unit width and the 180-unit height that a fit
- * leaves for a card.
- * @param canvas - the canvas surface.
- * @param width - the view width in px.
- * @param height - the view height in px.
- * @returns the cards that do not show whole.
- */
 function cardsOutside(canvas: HTMLElement, width: number, height: number): string[] {
   const { x, y, zoom } = viewportOf(canvas)
   return [...canvas.querySelectorAll<HTMLElement>('[data-node-id]')].filter((card) => {
@@ -526,28 +505,21 @@ function cardsOutside(canvas: HTMLElement, width: number, height: number): strin
   }).map(card => card.getAttribute('data-node-id') ?? '')
 }
 
-/** Mock the canvas size that `getBoundingClientRect` reports. */
 const mockCanvasSize = (width: number, height: number): void => {
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, width, height))
 }
 
-/** Size observers that the test fires by hand. */
 function stubResizeObservers(): () => void {
   const callbacks: Array<() => void> = []
   vi.stubGlobal('ResizeObserver', class implements ResizeObserver {
     constructor(callback: ResizeObserverCallback) { callbacks.push(() => { callback([], this) }) }
     observe(): void { /* The test fires the callbacks itself. */ }
-    unobserve(): void { /* Nothing to stop. */ }
-    disconnect(): void { /* Nothing to stop. */ }
+    unobserve(): void {}
+    disconnect(): void {}
   })
   return () => { act(() => { callbacks.forEach((callback) => { callback() }) }) }
 }
 
-/**
- * @param operation - the refused operation.
- * @param error - the error that the server answers.
- * @returns a write refusal of every request of that operation.
- */
 const refuseOperation = (operation: string, error: string) => (path: string, body: unknown): string | null => {
   const named = typeof body === 'object' && body !== null && 'operation' in body && body.operation === operation
   return path === '/api/dv/operation' && named ? error : null
@@ -778,7 +750,6 @@ describe('writes and failures', () => {
 })
 
 describe('node actions', () => {
-  /** A node action on g1 with the given label, order and run. */
   const onG1 = (name: string, order: number, run: NodeAction['run'] = () => undefined): NodeAction => ({
     id: `@dv/ui-test-probe:${name}`, label: () => name, order, shows: (node): node is NodeView => node.id === 'g1', run,
   })

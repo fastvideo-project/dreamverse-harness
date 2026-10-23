@@ -47,7 +47,6 @@ export interface HistoryInjected {
 export interface HistoryPanelProps extends PropsRenderFactories {
   projectId: string
   client: DvClient
-  /** The registered history rows. */
   rows: readonly HistoryRow[]
   /** Move the workspace center to the target of a selected record. */
   showInCenter: (target: CenterTarget) => void
@@ -428,23 +427,14 @@ interface RowContext {
   rowRef: (record: string) => (element: HTMLElement | null) => void
   /** 回到这一步 on a row. */
   onJump: (record: string) => void
-  /** The project's current state, which a row's `thumbnail` reads; null while it loads. */
   state: WireState | null
   renderFactorySlot: RenderFactorySlot
   /** What the row labels read: the operation declarations, the registered rows and the records. */
   labels: LabelContext
-  /** The registered row of a record. */
   rowOf: (record: ProjectRecord) => HistoryRow | undefined
-  /** A known asset by ID: one the history listed, else one of the current state. */
   assetOf: (id: string) => Asset | undefined
 }
 
-/**
- * Whether History draws a record as media: its registered row has `media`. Such a record has the thumbnail column and
- * counts in the fold text of its starter.
- * @param row - the record's registered row.
- * @returns whether the row has `media`.
- */
 function isMediaRow(row: HistoryRow | undefined): row is HistoryRow & Required<Pick<HistoryRow, 'media'>> {
   return row?.media !== undefined
 }
@@ -452,9 +442,7 @@ function isMediaRow(row: HistoryRow | undefined): row is HistoryRow & Required<P
 /**
  * One action row: the thumbnail, the action label and the time on the first line; who, the status, 当前 on the step at
  * the current position and the agent's intent on the second; a step after the current position is greyed. A row whose
- * record started other loaded records adds the toggle that shows them, nested below it, labeled by the starter's
- * registered `fold` over the folded media records, else by the label of the first folded record, with the share of
- * finished media records while some are unfinished.
+ * record started other loaded records adds the toggle that shows them, nested below it.
  * @param props - the row, the shared row context, and the approval's expanded state and toggle.
  * @returns the row and, while expanded, its nested rows.
  */
@@ -498,8 +486,6 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
   const t = useText()
   const selected = props.selected === record.id
   const status = t(...STATUSES[record.status])
-  // Only a media row has a thumbnail column, so media rows line up even when one made nothing (an empty square); other
-  // rows stay text so the list reads cleanly.
   const row = props.rowOf(record)
   const render = isMediaRow(row)
   const thumbnail = render && props.state !== null ? row.media.thumbnail(record, props.state) : null

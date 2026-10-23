@@ -22,7 +22,6 @@ afterEach(() => {
   forgetCanvasStorage()
 })
 
-/** A slice node type of a prop noun: one node per project, in the plans' column 1, that owns the umbrella image. */
 const PROPS: NodeType = {
   id: '@dv/ui-test-prop', type: 'test_prop', label: () => '道具', color: 'rgb(1, 2, 3)', column: 1,
   entries: ({ state }) => [{
@@ -58,7 +57,6 @@ describe('node types', () => {
     })
     const card = (id: string): Element | null => view.container.querySelector(`[data-node-id="${id}"]`)
     await waitFor(() => { node('g1') })
-    // Before the prop type, the placed umbrella image is an asset stand-in.
     await waitFor(() => { expect(card('asset:umbrella.png')).not.toBeNull() })
     const type = await runtime.mount({
       inject: ['dvCanvas'],
@@ -68,7 +66,6 @@ describe('node types', () => {
     expect(node('prop:p1').getAttribute('data-node-type')).toBe('test_prop')
     expect(node('prop:p1').textContent).toBe('红伞第 1 版道具')
     expect(node('prop:p1').innerHTML).toContain('background: rgb(1, 2, 3)')
-    // The node owns its asset, so the image has no stand-in of its own; column 1 is also the plan's.
     expect(card('asset:umbrella.png')).toBeNull()
     expect(node('prop:p1').style.left).toBe(node('plan:p1').style.left)
 
@@ -98,8 +95,6 @@ describe('node types', () => {
   it('lends the editor body its writes, picker and preview: the noun\'s editor previews a reference and appends picked assets', async () => {
     const { runtime, view, open, server } = await mountCanvas()
     const editor = await open('test_ref:hero')
-    // The body's reference opens the canvas's preview for the canvas's project; Escape closes the preview and leaves the
-    // editor open.
     const opened = vi.spyOn(runtime.ctx.dvMedia, 'preview')
     const reference = within(editor).getByRole('button', { name: '查看 ref.png' })
     fireEvent.click(reference)
@@ -108,7 +103,6 @@ describe('node types', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
     await waitFor(() => { expect(view.queryByRole('dialog', { name: 'ref.png' })).toBeNull() })
     expect(view.getByTestId('dv-canvas-node-editor')).toBeTruthy()
-    // 添加素材 asks for assets only, so the picker shows no version kind's section.
     fireEvent.click(within(editor).getByRole('button', { name: '＋ 添加素材' }))
     const picker = await view.findByTestId('dv-canvas-asset-picker')
     expect(within(picker).queryByRole('heading', { name: '参考' })).toBeNull()

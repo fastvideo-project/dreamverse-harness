@@ -18,7 +18,6 @@ import type { CanvasGraph, CanvasRegistrations } from '../src/client/graph.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { APPROVAL, CLIPS } from './fixtures/conformance-states.client.ts'
 
-/** The descriptors of the fixture's reference noun `test_ref`, as the reference kit builds them for a noun package. */
 const testRef = referenceDescriptors({
   id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref, color: 'var(--dv-node-1)',
   label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 1 },
@@ -51,7 +50,6 @@ function kinds(parts: Partial<CanvasRegistrations> & Pick<CanvasRegistrations, '
   return { chainAnchors: [], recordsInUse: [], versionKinds: [], ...parts }
 }
 
-/** @returns the registrations of every kind package, plus the plan approval anchor and the timeline clips in use. */
 function allKinds(): CanvasRegistrations {
   return {
     nodeTypes: [testRef.nodeType, planNodeType, assetNodeType, take], chainAnchors: [APPROVAL],
@@ -70,10 +68,8 @@ function graphOf(state: WireState, registrations: CanvasRegistrations, placed: r
   return buildCanvasGraph(state, new Set(placed), OPERATIONS, language, registrations)
 }
 
-/** A chain anchor of a starter operation: the records that one of its records started hang off the node of its plan. */
 const anchorOf = (starter: string): ChainAnchor => ({ starter, anchor: approval => `plan:${String(approval.params['plan'])}` })
 
-/** A test-local type of slice nodes that draws the given entries. */
 function sliceType(entries: ReadonlyArray<Omit<NodeEntry, 'bodyHeight'>>, column = 0): NodeType {
   return {
     id: '@dv/ui-test-slice', type: 'slice', label: () => 'slice', color: '', column,
@@ -160,7 +156,6 @@ function drawn(state: WireState): string[][] {
 describe('buildCanvasGraph', () => {
   it('draws the reference item, the plan and the takes with their input, first-frame and lineage edges, flags, badges and versions', () => {
     const graph = graphOf(withTestRef(fixtureState()), allKinds())
-    // The import of the reference image, the timeline records, the failed export and its still grab draw no node.
     expect(graph.nodes.map(node => [node.id, node.type])).toEqual([
       ['test_ref:hero', 'test_ref'], ['plan:p1', 'plan'], ['g1', 'take'], ['g2', 'take'], ['g3', 'take'],
     ])
@@ -186,9 +181,7 @@ describe('buildCanvasGraph', () => {
     ]))
     expect(byId.get('g2')?.x).toBeGreaterThan(g1?.x ?? Infinity)
     expect(byId.get('g3')?.x).toBe(g1?.x)
-    // The original and its retake are one based_on family; a take alone in its group has no number.
     expect(['g1', 'g3', 'g2'].map(id => byId.get(id)?.version)).toEqual([1, 2, null])
-    // A derived asset maps up its producer chain to the nearest drawn record.
     expect(graph.assetNodes).toMatchObject({
       'ref.png': 'test_ref:hero', 'shot1.mp4': 'g1', 'export.mp4': 'g2', 'export-last.png': 'g2',
     })
@@ -221,7 +214,6 @@ describe('buildCanvasGraph', () => {
     state.assets.push(...names.map((name, index) => asset(name, 'image/png', `u${String(index + 2)}`)))
     proj.records.push(...names.map((name, index) => record({ id: `u${String(index + 2)}`, operation: 'asset.import', params: { name }, outputs: [name] })))
     names.forEach((name, index) => { proj.created_by[name] = `u${String(index + 2)}` })
-    // A second reference image of Hero, written by an update of its item, belongs to Hero's node.
     proj.records.push(record({
       id: 'e2', operation: 'test_ref.update', params: { test_ref: 'hero' },
       inputs: [{ role: 'reference', ref: { asset: 'side.png' }, resolved_asset: 'side.png' }],
@@ -253,11 +245,9 @@ describe('buildCanvasGraph', () => {
     expect(graph.nodes.filter(node => node.type === 'asset')).toEqual([])
     expect(graph.assetNodes['ref.png']).toBe('test_ref:hero')
     expect(graph.edges).toContainEqual({ from: 'test_ref:hero', to: 'g1', kind: 'input', role: 'reference' })
-    // Without the version kind, the import of ref.png is an asset node, and g1 reads hero@1 from it.
     const noVersionKind = graphOf(state, { ...allKinds(), versionKinds: [] }, ['ref.png'])
     expect(noVersionKind.nodes.filter(node => node.type === 'asset').map(node => node.id)).toEqual(['u1'])
     expect(noVersionKind.edges).toContainEqual({ from: 'u1', to: 'g1', kind: 'input', role: 'reference' })
-    // Without the noun's node type, no node holds Hero's earlier version, so the placed ref.png draws as its import.
     const { nodeTypes } = allKinds()
     const noNoun = graphOf(state, { ...allKinds(), nodeTypes: nodeTypes.filter(type => type !== testRef.nodeType) }, ['ref.png'])
     expect(noNoun.nodes.filter(node => node.type === 'asset').map(node => node.id)).toEqual(['u1'])
@@ -270,7 +260,6 @@ describe('buildCanvasGraph', () => {
     state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g1'
       ? { ...entry, inputs: [{ role: 'reference', ref: { test_ref: 'hero', version: 1 }, resolved_asset: 'ref.png' }] }
       : entry)
-    // g9 reads version 3 of z1, an item of a kind `zz` that no package registers.
     state.components.proj.records.push(
       record({ id: 'u9', operation: 'asset.import', params: { name: 'zz.png' }, outputs: ['zz.png'] }),
       record({
@@ -278,13 +267,11 @@ describe('buildCanvasGraph', () => {
         inputs: [{ role: 'reference', ref: { zz: 'z1', version: 3 }, resolved_asset: 'zz.png' }],
       }),
     )
-    // A board registered before the noun owns ref.png, so only the version kind can route g1's hero@1 to the hero.
     const board = sliceType([{ id: 'board:b1', title: 'Mood board', record: null, assets: ['ref.png'] }])
     const { nodeTypes } = allKinds()
     const graph = graphOf(state, { ...allKinds(), nodeTypes: [board, ...nodeTypes] }, ['zz.png'])
     expect(graph.edges).toContainEqual({ from: 'test_ref:hero', to: 'g1', kind: 'input', role: 'reference' })
     expect(graph.edges).toContainEqual({ from: 'u9', to: 'g9', kind: 'input', role: 'reference' })
-    // The fixture's g2 reads `{ character: 'hero', version: 1 }`, a kind without a VersionKind here.
     expect(graph.edges).toContainEqual({ from: 'board:b1', to: 'g2', kind: 'input', role: 'reference' })
   })
 
@@ -295,7 +282,6 @@ describe('buildCanvasGraph', () => {
     const graph = graphOf(state, kinds({ nodeTypes: [assetNodeType, take] }), ['undone.png', 'shot1-last.png', 'export-last.png'])
     expect(graph.nodes.find(node => node.id === 'asset:undone.png'))
       .toMatchObject({ type: 'asset', claimed: false, title: 'undone.png', record: null, assets: ['undone.png'] })
-    // The take g1 owns its still; the still grabbed from the export has no other node, so it gets a stand-in.
     expect(graph.nodes.filter(node => node.type === 'asset').map(node => node.id).sort())
       .toEqual(['asset:export-last.png', 'asset:undone.png'])
     expect(graph.assetNodes).toMatchObject({ 'undone.png': 'asset:undone.png', 'shot1-last.png': 'g1' })
@@ -333,7 +319,6 @@ describe('buildCanvasGraph', () => {
     expect(byId.has('u2')).toBe(false)
     expect(graph.assetNodes['umbrella.png']).toBe('prop:m1')
     expect(graph.edges).toContainEqual({ from: 'prop:m1', to: 'g4', kind: 'input', role: 'reference' })
-    // A slice node draws no edge of its own record, though m1 read ref.png; column 1 holds plan:p1 too.
     expect(graph.edges.some(edge => edge.to === 'prop:m1')).toBe(false)
     expect(byId.get('prop:m1')?.x).toBe(byId.get('plan:p1')?.x)
   })
@@ -439,7 +424,6 @@ describe('buildCanvasGraph', () => {
 describe('current state', () => {
   it('shows the latest plan version and the current take of each of its shots, not every take ever rendered', () => {
     const graph = graphOf(rollbackProject(), allKinds())
-    // v4 has 6 shots and its approval reused every v1 take: no shot 7, no v2 or v3 take, no retake of the removed shot.
     expect(graph.nodes.map(node => [node.id, node.type])).toEqual([
       ['test_ref:hero', 'test_ref'], ['plan:p1', 'plan'], ...['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => [id, 'take']),
     ])
@@ -449,14 +433,11 @@ describe('current state', () => {
       .toEqual([1, 2, 3, 4, 5, 6].map(shot => [shot, null]))
     expect(graph.edges.filter(edge => edge.kind === 'chain').map(edge => [edge.from, edge.to]))
       .toEqual(['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => ['plan:p1', id]))
-    // Assets of takes the canvas leaves out have no node, so dropping one on the canvas finds none.
     expect(graph.assetNodes['s7.mp4']).toBeUndefined()
     expect(graph.assetNodes['r3.mp4']).toBe('r3')
   })
 
   it('a jump back to an earlier step changes the canvas to that step\'s plan version and takes', () => {
-    // Just after the v3 timeline: plan v3 with 7 shots, the newest chain's w5, and the takes its timeline plays with the
-    // retake x7 of the played s7.
     const l3 = graphOf(rollbackProject('l3'), allKinds())
     expect(l3.nodes.map(node => [node.id, node.type])).toEqual([
       ['test_ref:hero', 'test_ref'], ['plan:p1', 'plan'], ...['r1', 'r2', 'r4', 'r6', 's3', 's7', 'x7', 'w5'].map(id => [id, 'take']),
@@ -465,15 +446,12 @@ describe('current state', () => {
     expect(drawn(rollbackProject('l1'))).toEqual([
       ['test_ref:hero', 'test_ref'], ['plan:p1', 'plan'], ...['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => [id, 'take']),
     ])
-    // Before the plan: the reference item only.
     expect(drawn(rollbackProject('e1'))).toEqual([['test_ref:hero', 'test_ref']])
   })
 
   it('keeps a take that a timeline clip plays current, and an unapproved latest version keeps the played takes', () => {
     const takesOf = (state: WireState): string[] => drawn(state).filter(([, type]) => type === 'take').map(([id]) => id ?? '')
-    // After the agent put the v1 take of shot 3 back (k1), the v3 timeline plays r3 instead of s3.
     expect(takesOf(rollbackProject('k1'))).toEqual(['r1', 'r2', 'r3', 'r4', 'r6', 's7', 'x7', 'w5'])
-    // v4 written but not approved: the timeline still plays the v3 takes, and v4 has no takes of its own.
     const pending = rollbackProject('q4')
     expect(pending.components.proj.records.some(entry => entry.id === 'a4')).toBe(false)
     expect(takesOf(pending)).toEqual(['r1', 'r2', 'r3', 'r4', 'r6', 's7', 'x7', 'w5'])
@@ -487,9 +465,7 @@ describe('chain grouping', () => {
   })
 
   /**
-   * The shared fixture plus the chains of two workflows on plan p1: the story approval st0 started n1 (slot 2), and the
-   * later story approval st1 started h1 (slot 1), which the canvas retake h2 is based on; the ad approval ad1 started a
-   * 9:16 take v9 and a 16:9 take v16 of slot 1. The starter zz1 of o1 is not loaded. Each take outputs one image.
+   * The shared fixture plus the takes of two story approvals, one ad approval and one unloaded starter on plan p1.
    * @param extra - more takes, placed right after h2.
    * @returns the state.
    */
@@ -515,23 +491,18 @@ describe('chain grouping', () => {
   it('draws the chain of the newest starter of each operation on each node, every free take, and the records a RecordsInUse uses', () => {
     const takes = (state: WireState, recordsInUse: RecordsInUse[] = []): string[] =>
       graphOf(state, kinds({ nodeTypes: [take], chainAnchors: ANCHORS, recordsInUse })).nodes.map(node => node.id)
-    // st1 replaced st0 on plan:p1, so n1 is left out; the story chain and the ad chain both show; o1, g1, g2 and g3 are free.
     expect(takes(chainState())).toEqual(['g1', 'g2', 'g3', 'h1', 'h2', 'v9', 'v16', 'o1'])
     expect(takes(chainState(), [{ id: 'test-uses', uses: () => ['n1'] }])).toEqual(['g1', 'g2', 'g3', 'n1', 'h1', 'h2', 'v9', 'v16', 'o1'])
-    // A newer story approval of another plan replaces no chain on plan:p1.
     const otherPlan = chainState()
     otherPlan.components.proj.records.push(record({ id: 'st2', operation: 'story.approve', params: { plan: 'p2' } }))
     expect(takes(otherPlan)).toEqual(['g1', 'g2', 'g3', 'h1', 'h2', 'v9', 'v16', 'o1'])
-    // Without anchors no chain is anchored, so n1 is a free take as well.
     expect(graphOf(chainState(), kinds({ nodeTypes: [take] })).nodes.some(node => node.id === 'n1')).toBe(true)
   })
 
   it('numbers records by based_on family, else by anchor, slot and lane, and fills each slot frame from the newest take anchored there', () => {
-    // n2 of the newer story approval shares plan:p1 slot 2 with n1, which a RecordsInUse keeps.
     const state = chainState([takeRecord('n2', { record: 'st1', slot: 2 })])
     const graph = graphOf(state, kinds({ nodeTypes: [planNodeType, take], chainAnchors: ANCHORS, recordsInUse: [{ id: 'test-uses', uses: () => ['n1'] }] }), [], 'en')
     const byId = new Map(graph.nodes.map(node => [node.id, node]))
-    // The retake h2 has no started_by and keeps the chain of its root h1; two lanes of one slot are two groups.
     expect(['h1', 'h2', 'n1', 'n2', 'v9', 'v16', 'o1'].map(id => [byId.get(id)?.chain ?? null, byId.get(id)?.version])).toEqual([
       [{ starter: 'st1', anchor: 'plan:p1', slot: 1 }, 1], [{ starter: 'st1', anchor: 'plan:p1', slot: 1 }, 2],
       [{ starter: 'st0', anchor: 'plan:p1', slot: 2 }, 1], [{ starter: 'st1', anchor: 'plan:p1', slot: 2 }, 2],
@@ -545,7 +516,6 @@ describe('chain grouping', () => {
 
   it('lays out six takes in two lanes by anchor, slot (null last), lane in first-record order, then record order', () => {
     const state = fixtureState()
-    // The ad approval ad1 writes its 9:16 lane first; each lane writes slot null, then 2, then 1.
     const laneTake = (id: string, slot: number | null, lane: string): ProjectRecord => takeRecord(id, { record: 'ad1', slot, lane })
     state.components.proj.records.push(
       record({ id: 'ad1', operation: 'ad.approve', params: { plan: 'p1' } }),
@@ -553,11 +523,8 @@ describe('chain grouping', () => {
       laneTake('w2', 2, '16:9'), laneTake('w0', null, '16:9'), laneTake('w1', 1, '16:9'),
     )
     const graph = graphOf(state, kinds({ nodeTypes: [take], chainAnchors: [anchorOf('ad.approve')] }))
-    // The take column top to bottom, then its next sub-column: the free take g1 and its retake g3 come first, as the
-    // first records; g2 continues g1's still one column right.
     const placed = graph.nodes.filter(node => node.id !== 'g2').sort((a, b) => a.x - b.x || a.y - b.y).map(node => node.id)
     expect(placed).toEqual(['g1', 'g3', 'm1', 'w1', 'm2', 'w2', 'm0', 'w0'])
-    // The nodes keep record order, which version numbers and slot frames read.
     expect(graph.nodes.map(node => node.id)).toEqual(['g1', 'g2', 'g3', 'm0', 'm2', 'm1', 'w2', 'w0', 'w1'])
   })
 })

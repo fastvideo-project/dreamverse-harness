@@ -1,12 +1,9 @@
 /**
  * Write `main-graph.json`: what the canvas and the History panel of `origin/main` at the merge base of `HEAD` show for
- * each conformance case. The script copies `main`'s builder, its card titles, its reference kit, the plan plugin and the
- * History label with `git show` into a scratch directory beside this file, and draws each case with `main`'s real
- * descriptors: the reference noun `test_ref` through `main`'s `defineReferenceUi`, `planNodeType` and
- * `planReferencesInUse` of `@dv/ui-shot-plan`, and the chain anchor and clip uses of `conformance-states.ts`. Titles
- * come from `nodeTitle` with `main`'s Chinese dictionary, meta from the duration that `main`'s card header showed,
- * History labels from `actionLabel` with the rows of the noun and the plan, and card heights from `main`'s `nodeHeight`
- * (`NodeCard.tsx:71-77`). The script reruns unchanged. Run: pnpm exec tsx packages/dv/ui-canvas/tests/fixtures/main-graph.gen.client.ts
+ * each conformance case. The script copies `main`'s graph builder, card, locales, reference kit, plan plugin and
+ * History rows with `git show` into a scratch directory beside this file, and draws each case with `main`'s
+ * descriptors plus the chain anchor and clip uses of `conformance-states.client.ts`.
+ * Run: pnpm exec tsx packages/dv/ui-canvas/tests/fixtures/main-graph.gen.client.ts
  */
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -17,11 +14,9 @@ import { APPROVAL, CLIPS, conformanceCases, OPS } from './conformance-states.cli
 import type { ComparedGraph, ComparedNode } from './conformance-states.client.ts'
 
 const root = resolve(import.meta.dirname, '../../../../..')
-/** The commit of `origin/main` that the branch starts from, whose canvas the check compares against. */
 const BASE = execFileSync('git', ['merge-base', 'HEAD', 'origin/main'], { cwd: root, encoding: 'utf8' }).trim()
 const show = (path: string): string => execFileSync('git', ['show', `${BASE}:${path}`], { cwd: root, encoding: 'utf8' })
 
-/** The fields of a node of `main`'s `buildCanvasGraph` that the check reads. */
 interface MainNode {
   id: string
   type: 'asset' | 'take' | 'entry'
@@ -37,15 +32,12 @@ interface MainNode {
   thumb: string | null
   video: string | null
 }
-/** A descriptor of `main`, which the script passes through to `main`'s builder. */
 type Descriptor = object
-/** What `main`'s `actionLabel` reads besides its record. */
 interface MainLabelContext {
   operations: readonly WireOperation[]
   rows: Descriptor[]
   records: ReadonlyMap<string, ProjectRecord>
 }
-/** The exports of `main`'s modules that the script calls. */
 interface Main {
   graph: {
     buildCanvasGraph(...args: unknown[]): {
@@ -66,7 +58,6 @@ interface Main {
   }
 }
 
-/** `main`'s files that the script loads, under their repository paths, and every `@dv/ui-kit` client module they import. */
 const SOURCES = [
   'packages/dv/ui-canvas/src/client/graph.ts', 'packages/dv/ui-canvas/src/client/NodeCard.tsx',
   'packages/dv/ui-canvas/src/client/locales.ts', 'packages/dv/ui-shot-plan/src/client/index.ts',
@@ -75,7 +66,6 @@ const SOURCES = [
     .split('\n').filter(name => name !== '').map(name => `packages/dv/ui-kit/src/client/${name}`),
 ]
 
-/** `nodeHeight` of `main`'s `NodeCard.tsx:71-77`. */
 function mainHeight(node: MainNode, hasFrames: boolean): number {
   switch (node.type) {
     case 'take': return node.flags.failed ? 52 : 147

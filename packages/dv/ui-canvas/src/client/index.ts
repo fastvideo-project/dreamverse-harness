@@ -1,9 +1,8 @@
 /**
  * Browser half: provide `dvCanvas`, the registries that plugin UI halves fill; register the `dv.canvas` Component
- * Factory, which declares the canvas's child slots (`dv.canvas.card`, `dv.canvas.editor`, `dv.canvas.editor.claimed`,
- * `dv.canvas.picker`); register `dv-canvas` as a right-Sidebar tab type, its dictionaries, and its body; and register
- * the canvas as the 画布 view of the workspace center (`dv.center.view`). The tab body and the center view each render
- * a `dv.canvas` occurrence.
+ * Factory and its child slots; register `dv-canvas` as a right-Sidebar tab type, its dictionaries, and its body; and
+ * register the canvas as the 画布 view of the workspace center (`dv.center.view`). The tab body and the center view
+ * each render a `dv.canvas` occurrence.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -39,7 +38,6 @@ export function apply(ctx: ClientContext): void {
   const client = new DvClient()
   const factory: CanvasFactoryInjected = {
     client,
-    // The media plugin is optional; without it an asset opens no preview.
     preview: (projectId, asset, opener) => { ctx.get('dvMedia')?.preview(projectId, asset, opener) },
     hooks: {
       nodeTypes: canvas.nodeTypes, chainAnchors: canvas.chainAnchors, recordsInUse: canvas.recordsInUse,

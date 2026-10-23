@@ -1,8 +1,7 @@
 /**
- * The asset pool as the DreamVerse bundle loads it: the real `@dv/ui-media` plugin and the real asset pool plugin in a
- * slot test runtime that provides `dvCanvas` and the right-Sidebar tab registry, and whose root frame declares the
- * slots the asset pool fills (the canvas's child slots, as the `dv.canvas` Factory declares them, the right-Sidebar tab
- * body slot, and DSH's root `shell.overlay` list) and draws what a test asks for.
+ * The asset pool as the DreamVerse bundle loads it: the real `@dv/ui-media` and asset pool plugins in a slot test
+ * runtime that provides `dvCanvas` and the right-Sidebar tab registry, under a root frame that declares the slots the
+ * asset pool fills and draws what a test asks for.
  */
 import type { ReactNode } from 'react'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'

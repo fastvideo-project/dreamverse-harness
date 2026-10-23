@@ -1,12 +1,8 @@
 /**
- * The editor shell that a canvas node opens: a panel over a dimmed canvas that opens centered in the canvas (720 px wide
- * at most, about 80% of the canvas height). Dragging the header's title row moves the panel, the bottom-right corner
- * and the right and bottom edges resize it, and a double click on the title row puts it back at the centered default.
- * The last position and size are kept in `localStorage` for every node and fitted into the canvas when restored. The
- * header shows the type dot and label, the title, the node actions that show on the node, and close. A stale node
- * offers "仍然保留", which keeps its record as it is (`proj.stale_accept`). The body is the entry of the node's type in
- * `dv.canvas.editor.claimed` for a claimed node and in `dv.canvas.editor` for any other node, lent the canvas's writes,
- * its asset picker, its asset preview and its other editors; a type without an entry shows only the header.
+ * The editor shell that a canvas node opens: a movable, resizable panel over a dimmed canvas. One position and size,
+ * shared by every node, is kept in `localStorage` and fitted into the canvas when restored. The body is the entry of
+ * the node's type in `dv.canvas.editor.claimed` for a claimed node and in `dv.canvas.editor` for any other node; a type
+ * without an entry shows only the header.
  */
 import { useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
@@ -29,7 +25,6 @@ export interface SurfaceHosts {
   card: CardHost
   /** The node host of one action, whose rerun the canvas attributes to that action. */
   action: (id: string) => NodeHost
-  /** The host of an editor body, without the editor's asset picker. */
   editor: Omit<EditorHost, 'pickAssets'>
 }
 
@@ -321,7 +316,6 @@ const RESIZE_KEYS: Readonly<Record<string, readonly [number, number]>> = {
   ArrowRight: [RESIZE_STEP, 0], ArrowLeft: [-RESIZE_STEP, 0], ArrowDown: [0, RESIZE_STEP], ArrowUp: [0, -RESIZE_STEP],
 }
 
-/** A picker request of the editor body: the chosen references, whether versioned items show, and the confirm callback. */
 interface Picking {
   chosen: readonly string[]
   versions: boolean
@@ -336,7 +330,6 @@ interface Picking {
 export function NodeEditor(props: NodeEditorProps): ReactNode {
   const { node, view, t, onClose } = props
   const title = node.title
-  // A node titled by its type would repeat the title beside the type dot.
   const type = node.nodeType.label()
   const staleRecord = node.flags.stale ? node.record : null
   const placement = useEditorPlacement(props.area)

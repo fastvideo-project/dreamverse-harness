@@ -26,7 +26,6 @@ const link = (href: string): MarkdownElement => ({ kind: 'link', href })
 const cell = (text: string, href?: string): MarkdownTableCell => ({ text, links: href === undefined ? [] : [{ href }] })
 const table = (...rows: MarkdownTableCell[][]): MarkdownElement => ({ kind: 'table', rows })
 
-/** The fixture project plus an imported audio file and an imported PDF. */
 function chatState(): WireState {
   const state = fixtureState()
   state.assets.push(asset('score.wav', 'audio/wav', null), asset('brief.pdf', 'application/pdf', null))
@@ -48,7 +47,6 @@ function heldOf(state: WireState, operations: readonly WireOperation[] = OPERATI
   }
 }
 
-/** A record label that names the record and the number of operations it was given, as History's `describe` would. */
 const labelOf = (entry: ProjectRecord, operations: readonly WireOperation[]): readonly [string, string] =>
   [`${entry.id} 的标签 ${String(operations.length)}`, `label of ${entry.id}`]
 const describeRecord: DescribeRecord = (entry, held) => labelOf(entry, held.operations)
@@ -105,7 +103,6 @@ describe('resolveChatMedia', () => {
       .toEqual({ project: 'p1', kind: 'link', asset: byId('shot1.mp4'), caption: [`g1 的标签 ${String(OPERATIONS.length)}`, 'label of g1'] })
     expect(resolveChatMedia({ kind: 'link', asset: 'score.wav' }, held, describeRecord))
       .toEqual({ project: 'p1', kind: 'link', asset: byId('score.wav'), caption: ['score.wav', 'score.wav'] })
-    // Without History the producer has no label.
     expect(resolveChatMedia({ kind: 'link', asset: 'shot1.mp4' }, held, () => null))
       .toEqual({ project: 'p1', kind: 'link', asset: byId('shot1.mp4'), caption: ['shot1.mp4', 'shot1.mp4'] })
   })
@@ -199,10 +196,6 @@ const viewsPlugin = {
 /**
  * Mount the media plugin, the media views, `dvHistory` and the chain entry under a session frame that renders one chat
  * paragraph per Markdown element and the shell's overlay list, in the Chinese interface.
- * @param elements - the Markdown elements and the link texts of their default rendering.
- * @param state - the open project's state.
- * @param withHistory - whether `dvHistory` is provided.
- * @returns the runtime, the chain entry's plugin, the rendered page, and the records that `describe` received.
  */
 async function mountChat(elements: ReadonlyArray<[MarkdownElement, string]>, state: WireState, withHistory = true) {
   fakeEvents()
@@ -247,34 +240,25 @@ describe('registerChatMedia under the slot runtime', () => {
       [table([cell('1'), cell('开场'), cell('播放', '/dv/assets/shot1.mp4')], [cell('2'), cell('特写'), cell('播放', '/dv/assets/shot2.mp4')]), '表'],
     ]
     const state = chatState()
-    // The audio file's producer is a record that the current state no longer holds.
     state.components.proj.created_by['score.wav'] = 'gone'
     const { runtime, plugin, view, described } = await mountChat(elements, state)
-    // Before the project opens, every reference keeps the default element.
     expect(view.getByRole('link', { name: '点此播放' })).toBeTruthy()
 
     act(() => { publishCurrentProject('p1') })
-    // The take video is captioned with History's label of its producer, the render record g1.
     const label = `g1 的标签 ${String(OPERATIONS.length)}`
     const card = await view.findByRole('button', { name: `查看: ${label}` })
     expect(within(view.getByTestId('p0')).getByTitle(label).textContent).toBe(label)
     expect(described.map(entry => entry.id)).toContain('g1')
     expect(view.getByTestId('p0').querySelector('video')?.getAttribute('src')).toBe(`${assetUrl('shot1.mp4')}#t=0.1`)
-    // A video card carries the play badge over its frame; the audio card below has none.
     expect(card.querySelector('svg path')).not.toBeNull()
-    // The audio link draws the audio view at 'thumb'; the imported file is captioned by its name.
     const audio = within(view.getByTestId('p1'))
     expect(audio.getByRole('button', { name: '查看: score.wav' }).textContent).toBe('♪')
     expect(audio.getByRole('button', { name: '查看: score.wav' }).querySelector('svg')).toBeNull()
     expect(audio.getByRole('button', { name: '查看: score.wav' })).toBeTruthy()
-    // A PDF has no media view, so dv.media draws the file card.
     expect(view.getByTestId('p2').querySelector('[data-dv-media="file"]')?.textContent).toBe('application/pdf')
-    // An image element draws a thumbnail named by its alt text.
     const thumb = within(view.getByTestId('p3')).getByRole('button', { name: '查看大图: 定妆照' })
     expect(thumb.querySelector('img')?.getAttribute('src')).toBe(assetUrl('ref.png'))
-    // An asset the project does not hold keeps DSH's link.
     expect(view.getByRole('link', { name: '缺失' })).toBeTruthy()
-    // The table becomes a grid of two cards captioned by the other cells.
     expect([...view.getByTestId('p5').querySelectorAll('[data-dv-chat-card]')].map(node => node.getAttribute('data-dv-chat-card')))
       .toEqual(['shot1.mp4', 'shot2.mp4'])
     expect(view.getByRole('button', { name: '查看: 2 · 特写' })).toBeTruthy()

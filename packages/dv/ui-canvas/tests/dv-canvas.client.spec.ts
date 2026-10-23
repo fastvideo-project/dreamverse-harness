@@ -5,12 +5,6 @@ import type { NodeAction, NodeType, NodeView } from '../src/client/contract/inde
 import { createDvCanvas } from '../src/client/dv-canvas.ts'
 
 
-/**
- * @param id - the registering package.
- * @param type - the node type key.
- * @param operations - the claimed operations.
- * @returns a type that draws the records of its operations.
- */
 const claiming = (id: string, type: 'test_clip' | 'test_cut', operations: string[]): NodeType => ({
   id, type, label: () => type, color: '#888', column: 2,
   claimed: { operations, status: { running: () => '', failed: () => '' }, entry: () => ({ title: '', bodyHeight: 117 }) },
@@ -30,7 +24,6 @@ describe('createDvCanvas', () => {
       .toThrow('registry key "test_clip" is already registered by @dv/ui-clip')
     expect(() => canvas.nodeTypes.register(claiming('@dv/ui-other', 'test_cut', ['clip.trim'])))
       .toThrow('registry key "op:clip.trim" is already registered by @dv/ui-clip')
-    // A type of another key that claims other operations registers beside it.
     expect(() => canvas.nodeTypes.register(claiming('@dv/ui-other', 'test_cut', ['clip.export']))).not.toThrow()
   })
 

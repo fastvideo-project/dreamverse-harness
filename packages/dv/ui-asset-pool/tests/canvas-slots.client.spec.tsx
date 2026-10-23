@@ -18,15 +18,14 @@ afterEach(async () => {
   document.documentElement.lang = ''
 })
 
-/** A node type of another package whose one node owns `ref.png`, the asset that record `u1` imported. */
 const OWNER: NodeType = {
   id: '@dv/test-owner', type: 'owner', label: () => 'owner', color: '', column: 1,
   entries: () => [{ id: 'owner', title: 'owner', record: null, assets: ['ref.png'], bodyHeight: 60 }],
 }
 
 /**
- * The fixture state with an image `poster.png` named 海报 that records `u2` and then `u4` imported, a 2.5-second video
- * `clip.mp4` that record `u3` imported, and an image `undone.png` that no record of the state imported.
+ * The fixture state plus an image that two `asset.import` records imported, a video, and an image that no record of the
+ * state imported.
  * @returns the state.
  */
 function importedState(): ReturnType<typeof fixtureState> {
@@ -44,22 +43,12 @@ function importedState(): ReturnType<typeof fixtureState> {
   return state
 }
 
-/**
- * What the canvas draws of each asset node, by node ID.
- * @param nodes - the drawn nodes.
- * @returns the facts of the asset nodes.
- */
 function assetNodes(nodes: readonly NodeView[]): Record<string, object> {
   return Object.fromEntries(nodes.filter(node => node.type === 'asset').map(node => [node.id, {
     title: node.title, meta: node.meta, record: node.record?.id ?? null, assets: node.assets, ref: node.ref, bodyHeight: node.bodyHeight,
   }]))
 }
 
-/**
- * The wire asset of each asset of a state, by ID, as the canvas hands them to a card.
- * @param assets - the state's assets.
- * @returns the assets by ID.
- */
 const byId = (assets: readonly Asset[]): Record<string, Asset> => Object.fromEntries(assets.map(each => [each.id, each]))
 
 describe('the asset node type', () => {
@@ -79,7 +68,6 @@ describe('the asset node type', () => {
   })
 
   it('labels the node type 素材, and draws a placed asset that the state does not list yet as asset:<id> titled by the ID', async () => {
-    // The canvas places an asset that the picker's newer state shows before the canvas's own state lists it.
     document.documentElement.lang = 'zh-CN'
     const { runtime } = await mountAssetPool(() => null)
     expect(runtime.ctx.dvCanvas.nodeTypes.getSnapshot().map(type => type.label())).toEqual(['素材'])
@@ -131,7 +119,6 @@ describe('the asset card and editor', () => {
     )))
     nodes = canvasNodes(runtime, state, ['poster.png', 'clip.mp4'])
     const view = runtime.renderRoot()
-    // The box is the nearest ancestor of the media element that the surface sizes to 360 px.
     const box = (id: string): string[] => {
       const frame = view.getByTestId(`${id}:editor`).querySelector('img, video')?.closest('[style*="360px"]')
       return frame instanceof HTMLElement ? [frame.style.width, frame.style.height, frame.style.aspectRatio, frame.style.maxHeight] : []

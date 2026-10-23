@@ -10,7 +10,7 @@ import type { CenterRequest } from '@dv/ui-shell/contract'
 import type { CanvasFocus } from './CanvasView.tsx'
 import type {} from './CanvasFactory.tsx'
 
-/** The entry's composed props: the center's project, chat session and request, and the Factory renderer. */
+/** The center view's composed props. */
 export type CanvasCenterProps = PropsRuntime<'dv.center.view'> & PropsRenderFactories
 
 /**
