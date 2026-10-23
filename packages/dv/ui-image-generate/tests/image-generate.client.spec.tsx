@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 /**
- * What `@dv/ui-image-generate` registers: its one `defineGenerationUi` declaration claims `image.generate` as the
- * `image` node type with its label, palette slot and status words, and the entries keyed by that type, by the tool
- * `dv_image_generate` and by the operation leave with the plugin.
+ * What `@dv/ui-image-generate` registers through its one `defineGenerationUi` declaration, and the removal of those
+ * entries with the plugin.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
@@ -18,10 +17,7 @@ afterEach(() => {
   document.documentElement.lang = ''
 })
 
-/**
- * Mount the plugin over the canvas and History registries, with the slots that it fills declared.
- * @returns the runtime, the registries, and the plugin's handle.
- */
+/** Mount the plugin over the canvas and History registries, with the slots that it fills declared. */
 async function mountPlugin() {
   document.documentElement.lang = 'zh-CN'
   // The kit's label sources read `/api/dv/operations` and `/api/dv/tasks`.

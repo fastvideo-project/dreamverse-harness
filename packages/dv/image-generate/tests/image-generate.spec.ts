@@ -1,8 +1,6 @@
 /**
- * The Image component in a REAL composition: a test-only `cordis.yml` boots the DSH system prompt, the DSH tool registry,
- * `dvProject`, `dvFfmpeg`, the asset pool, `dvModels` and `dvImageGenerate` through the Loader. The image model and the
- * attachment service are the only fakes: an in-process entry `image/t2i/test/fake` that returns fixed PNG bytes at the
- * size it renders, and an attachment store that accepts every image.
+ * The Image component in a REAL composition booted through the Loader from a test-only `cordis.yml`; the image model and
+ * the attachment service are the only fakes.
  */
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -22,16 +20,12 @@ import DvProject, { type AssetId, type OperationSpec, type OperationToolValue, t
 import { afterEach, describe, expect, it } from 'vitest'
 import DvImageGenerate, { type GeneratedImage, type ImageModelFacts, type ImageRequest } from '../src/index.ts'
 
-/** The key params of the fake model. */
 const KEY = { modality: 'image', task: 't2i', provider: 'test', model: 'fake' }
 
-/** The sentence that ends a refusal that other params can fix. */
 const REFUSAL_END = 'Nothing was generated; change the inputs or params, then call again.'
 
-/** The PNG bytes that the fake model returns. */
 const PNG = Buffer.from('PNG-FAKE')
 
-/** The fake image model: it records each request, finds the problems that `problems` returns, and renders `PNG`. */
 class FakeImageModel {
   readonly requests: ImageRequest[] = []
   facts: () => Promise<ImageModelFacts> = () => Promise.resolve({ modelId: 'fake-image-1' })
@@ -57,7 +51,6 @@ class FakeImageModel {
   }
 }
 
-/** An attachment service that accepts every image. */
 class FakeAttachments {
   readonly saved: Array<{ mediaType: string; name?: string }> = []
 
@@ -75,11 +68,8 @@ interface Fixture {
   model: FakeImageModel
   attachments: FakeAttachments
   project: ProjectId
-  /** Run one tool as the agent of chat session `s1`, which is bound to the project. */
   tool(name: string, args: Record<string, unknown>): Promise<ToolExecutionResult>
-  /** The registered `image.generate` operation, if any. */
   spec(): OperationSpec | undefined
-  /** The number of records of the project. */
   history(): number
 }
 
@@ -139,13 +129,11 @@ async function start(serve = true, budget = 60): Promise<Fixture> {
   }
 }
 
-/** The value of a successful operation tool call. */
 function value(result: ToolExecutionResult): OperationToolValue {
   if (result.isError) throw new Error(result.error.message)
   return result.value as OperationToolValue
 }
 
-/** The error message of a failed tool call. */
 function failure(result: ToolExecutionResult): string {
   return result.isError ? result.error.message : ''
 }
@@ -200,7 +188,6 @@ describe('dvImageGenerate', () => {
       mime: 'image/png', width: 768, height: 1024, name: `${record.id.slice(0, 8)}.png`, created_by: record.id,
     })
     expect(ctx.dvAssetPool.read(assetId)).toEqual(PNG)
-    // The text block and the image block that the agent reads.
     expect(ctx.tools.get('dv_image_generate')?.output?.render?.(args, result)).toEqual([
       {
         type: 'text',
@@ -236,7 +223,6 @@ describe('dvImageGenerate', () => {
     fixture.model.problems = request => request.size === null ? [] : ['Width and height must each be a multiple of 32.']
     expect(failure(await call({ size: '1000x1000' })))
       .toBe(`Model image/t2i/test/fake cannot generate this: Width and height must each be a multiple of 32. ${REFUSAL_END}`)
-    // A workflow call through GenerationApi skips the tool schema, so the declaration reads params of any type.
     const state = fixture.ctx.dvProject.getState(fixture.project)
     const check = (params: Record<string, unknown>) =>
       fixture.ctx.dvImageGenerate.check({ project: fixture.project, params: { ...KEY, ...params }, inputs: [] }, state)

@@ -68,10 +68,6 @@ export interface GeneratedImage {
   gpuSeconds: number | null
 }
 
-/**
- * The pixel size of a `WIDTHxHEIGHT` param.
- * @throws Error when the value is not `WIDTHxHEIGHT` with positive integers.
- */
 function parseSize(value: unknown): ImageSize {
   const match = typeof value === 'string' ? /^([1-9]\d*)x([1-9]\d*)$/u.exec(value) : null
   if (match === null) {
@@ -80,10 +76,6 @@ function parseSize(value: unknown): ImageSize {
   return { width: Number(match[1]), height: Number(match[2]) }
 }
 
-/**
- * The request of one call: the trimmed prompt, the parsed `size` (null when absent), the seed, and `extra`.
- * @throws Error for an empty prompt or a `size` that is not `WIDTHxHEIGHT` with positive integers.
- */
 function imageRequest(params: Record<string, unknown>, seed: number): ImageRequest {
   const prompt = typeof params['prompt'] === 'string' ? params['prompt'].trim() : ''
   if (prompt === '') throw new Error('The prompt is empty; describe the image to generate.')
@@ -91,7 +83,6 @@ function imageRequest(params: Record<string, unknown>, seed: number): ImageReque
   return { prompt, size, seed, extra: (params['extra'] ?? {}) as Record<string, unknown> }
 }
 
-/** Store one image as the record's output with its pixel size; the cost is the GPU time that the backend reported, if any. */
 async function storeImage(_ctx: Context, run: OperationContext, result: Promise<GeneratedImage>,
   facts: ImageModelFacts): Promise<OperationResult> {
   const image = await result
@@ -103,7 +94,6 @@ async function storeImage(_ctx: Context, run: OperationContext, result: Promise<
   }
 }
 
-/** The one-line summary of a finished record: the prompt start, the size and the seed of its report. */
 function summarize(record: ProjectRecord): string {
   const { prompt } = record.params
   const { size, seed } = { ...record.report }
@@ -133,7 +123,6 @@ export default class DvImageGenerate extends defineGeneration({
   outputs: [{ role: 'image', type: 'image' }],
   toRequest: (_facts, params, _inputs, seed) => imageRequest(params, seed),
   toOutputs: storeImage,
-  // The rate of the entry times the megapixels of the call's size, or of the entry's default size.
   estimate: (params, entry) => {
     const { width, height } = params['size'] === undefined ? entry.defaultSize : parseSize(params['size'])
     return { gpu_seconds: entry.gpuSecondsPerMegapixel * width * height / 1e6 }

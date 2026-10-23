@@ -1,6 +1,6 @@
 /**
  * Browser half of image generation: one `defineGenerationUi` declaration of `@dv/ui-generation` that claims the
- * `image.generate` records as image takes, with their label, status words and node palette slot.
+ * `image.generate` records as image takes.
  *
  * @module @dv/ui-image-generate/client
  */

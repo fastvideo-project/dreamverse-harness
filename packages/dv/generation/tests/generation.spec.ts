@@ -355,7 +355,6 @@ describe('defineGeneration', () => {
     expect(ctx.dvProbeGenerate.estimate({ params: { ...TXT, task: 'ref2v' } })).toEqual({ gpu_seconds: 0 })
     expect(fixture.spec()?.estimate?.({ ...TXT })).toEqual({ gpu_seconds: 3 })
     const refused = await fixture.tool('dv_probe_generate', { ...TXT, reason: 'try', prompt: 'long', duration_sec: 4 })
-    // The refusal states the estimate once, on its own line under the summary.
     expect(refused.isError ? refused.error.message : '').toContain('Generate a probe with test/fake: "long"\nEstimated GPU time: about 12 s.')
     const summary = (prompt: string) =>
       fixture.spec()?.confirmSummary?.({ request: { params: { ...TXT, prompt } } } as never, ctx.dvProject.getState(fixture.project))

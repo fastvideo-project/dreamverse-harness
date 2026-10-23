@@ -1,10 +1,7 @@
 /**
- * The SGLang diffusion provider plugin in a REAL composition: a test-only `cordis.yml` boots the DSH system prompt, the
- * DSH tool registry, `dvProject`, `dvFfmpeg`, the asset pool, `dvModels`, `dvImageGenerate` and the plugin through the
- * Loader. The SGLang diffusion server is the only fake: an HTTP server that answers `GET /v1/models` and
- * `POST /v1/images/generations` with the bodies, content types and statuses that the real server sent
- * (`arch-lab/media-gen/env/image-probe/`). An opt-in suite runs against a running server named by
- * `DV_SGLANG_DIFFUSION_TEST_URL`; its misrouted case also needs the SGLang-Omni server named by `DV_SGLANG_OMNI_TEST_URL`.
+ * The SGLang diffusion provider plugin in a REAL composition booted through the Loader from a test-only `cordis.yml`,
+ * against a fake SGLang diffusion server that answers with the bodies, content types and statuses of a running server.
+ * An opt-in suite runs against the running server that `DV_SGLANG_DIFFUSION_TEST_URL` names.
  */
 import { once } from 'node:events'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -31,19 +28,14 @@ import * as SglangDiffusion from '../src/index.ts'
 const REAL_SERVER = process.env['DV_SGLANG_DIFFUSION_TEST_URL']
 const OTHER_REAL_SERVER = process.env['DV_SGLANG_OMNI_TEST_URL']
 
-/** The key params of the served model. */
 const KEY = { modality: 'image', task: 't2i', provider: 'sglang-diffusion', model: 'qwen-image-2.1-turbo' } as const
 
-/** The sentence that ends a refusal that other params can fix. */
 const REFUSAL_END = 'Nothing was generated; change the inputs or params, then call again.'
 
-/** The sentence that ends the refusal of an unavailable model. */
 const UNAVAILABLE_END = 'Nothing was generated; no change to the call helps while the model is unavailable.'
 
-/** The first eight bytes of every PNG file. */
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
-/** The `GET /v1/models` body of the image server (`image-probe/models.json`). */
 const IMAGE_MODELS = {
   object: 'list',
   data: [{
@@ -53,36 +45,29 @@ const IMAGE_MODELS = {
   }],
 }
 
-/** The `GET /v1/models` body of the SGLang-Omni speech server (`provider-r3/models_8000.json`). */
 const SPEECH_MODELS = {
   object: 'list',
   data: [{ id: 'fishaudio/drama-3', object: 'model', created: 0, owned_by: 'sglang-omni', root: 'fishaudio/drama-3' }],
 }
 
-/** The PNG bytes that the fake server returns as `b64_json`. */
 const PNG = Buffer.concat([PNG_SIGNATURE, Buffer.from('FAKE-IMAGE')])
 
-/** One answer of the fake server: the status, the content type and the body text. */
 interface FakeAnswer { status: number; type: string; body: string }
 
-/** A JSON answer with HTTP 200. */
 function json(body: object): FakeAnswer {
   return { status: 200, type: 'application/json', body: JSON.stringify(body) }
 }
 
-/** The `POST /v1/images/generations` answer of the server for one image (`image-probe/b64_1024.response.json`). */
 const GENERATED = json({
   id: '72615b32-3bea-46f8-8321-2c36ac53d824', created: 1792637141,
   data: [{ b64_json: PNG.toString('base64'), url: null, revised_prompt: 'x', file_path: '/outputs/72615b32.png', resize: null }],
   peak_memory_mb: 38582.0, inference_time_s: 1.3613448347896338, usage: null,
 })
 
-/** The fake server: the answer of each route, and the bodies of the generation requests it received. */
 interface FakeServer {
   url: string
   models: FakeAnswer
   generation: FakeAnswer
-  /** The method and route of every request, oldest first. */
   routes: string[]
   generations: Array<Record<string, unknown>>
 }
@@ -121,7 +106,6 @@ async function startFakeServer(): Promise<FakeServer> {
   return fake
 }
 
-/** A URL on which no server listens: a port that a closed server released. */
 async function closedUrl(): Promise<string> {
   const server = createServer()
   server.listen(0, '127.0.0.1')
@@ -142,11 +126,8 @@ const PLUGINS = {
 interface Fixture {
   ctx: Context
   project: ProjectId
-  /** Run one tool as the agent of chat session `s1`, which is bound to the project. */
   tool(name: string, args: Record<string, unknown>): Promise<ToolExecutionResult>
-  /** The registered entry of `qwen-image-2.1-turbo`. */
   entry(): ModelEntry<'t2i'>
-  /** The `image.generate` records of the project. */
   records(): ProjectRecord[]
 }
 
@@ -200,23 +181,19 @@ async function start(baseUrl: string): Promise<Fixture> {
   }
 }
 
-/** The value of a successful tool call. */
 function value(result: ToolExecutionResult): unknown {
   if (result.isError) throw new Error(result.error.message)
   return result.value
 }
 
-/** The value of a successful operation tool call. */
 function operationValue(result: ToolExecutionResult): OperationToolValue {
   return value(result) as OperationToolValue
 }
 
-/** The error message of a failed tool call. */
 function failure(result: ToolExecutionResult): string {
   return result.isError ? result.error.message : ''
 }
 
-/** An image request with the given size and `extra` values. */
 function request(size: ImageRequest['size'], extra: Record<string, unknown> = {}): ImageRequest {
   return { prompt: 'a red paper lantern', size, seed: 7, extra }
 }
@@ -279,7 +256,6 @@ describe('dv-sglang-diffusion', () => {
     const fixture = await start(server.url)
     const validate = (size: ImageRequest['size'], extra?: Record<string, unknown>) => fixture.entry().validateGenerationRequest(request(size, extra))
     expect(await validate(null)).toEqual([])
-    // Every size that dv_models_get lists by aspect ratio renders.
     const { schema } = value(await fixture.tool('dv_models_get', KEY)) as { schema: { size: { by_aspect_ratio: Record<string, string> } } }
     for (const preset of Object.values(schema.size.by_aspect_ratio)) {
       const [width = 0, height = 0] = preset.split('x').map(Number)
@@ -296,7 +272,6 @@ describe('dv-sglang-diffusion', () => {
     expect(await validate({ width: 16, height: 16 }))
       .toEqual(['Width and height must each be a multiple of 32, and 16x16 is not; the nearest size is 32x32.'])
     expect(await validate(null, { steps: 8 })).toEqual(['This model takes no extra parameter; omit extra.'])
-    // The one server call is the schema read of dv_models_get.
     expect(server.routes).toEqual(['GET /v1/models'])
   })
 
@@ -307,7 +282,6 @@ describe('dv-sglang-diffusion', () => {
     expect(server.generations).toEqual([
       { prompt: 'a red paper lantern', size: '1024x768', seed: 1234, n: 1, response_format: 'b64_json', output_format: 'png' },
     ])
-    // The check before the agreement, the check before the record, and the render each read the served model.
     expect(server.routes).toEqual(['GET /v1/models', 'GET /v1/models', 'GET /v1/models', 'POST /v1/images/generations'])
     const record = fixture.records().at(-1)
     expect(record).toMatchObject({
@@ -317,7 +291,6 @@ describe('dv-sglang-diffusion', () => {
     const asset = brandString<AssetId>(String(result.outputs[0]?.asset_id))
     expect(fixture.ctx.dvAssetPool.read(asset)).toEqual(PNG)
     expect(fixture.ctx.dvAssetPool.get(asset)).toMatchObject({ mime: 'image/png', width: 1024, height: 768 })
-    // A call without a size renders the model's default size.
     const square = operationValue(await fixture.tool('dv_image_generate', { ...KEY, reason: 'square', prompt: 'a lantern', seed: 1 }))
     expect(server.generations[1]).toMatchObject({ size: '1024x1024' })
     expect(square.report).toMatchObject({ size: '1024x1024' })
@@ -365,7 +338,6 @@ describe('dv-sglang-diffusion', () => {
     const server = await startFakeServer()
     const fixture = await start(server.url)
     const route = `The server at ${server.url} answered POST /v1/images/generations with HTTP`
-    // The real server answers an odd size with a plain-text 500, a bad size text with a JSON detail, and a missing prompt with a list.
     server.generation = { status: 500, type: 'text/plain; charset=utf-8', body: 'Internal Server Error' }
     expect(failure(await fixture.tool('dv_image_generate', { ...KEY, reason: 'try', prompt: 'x' }))).toBe(`${route} 500: Internal Server Error`)
     expect(fixture.records().at(-1)).toMatchObject({ status: 'failed', error: { message: `${route} 500: Internal Server Error` } })
@@ -398,14 +370,12 @@ describe.skipIf(REAL_SERVER === undefined)('dv-sglang-diffusion against a runnin
     const args = { ...KEY, reason: 'lantern', prompt: 'a red paper lantern on a wooden table, soft morning light', size: '1024x768', seed: 1234 }
     const first = operationValue(await fixture.tool('dv_image_generate', args))
     const second = operationValue(await fixture.tool('dv_image_generate', args))
-    // The asset pool names an asset by its bytes, so one seed and size give one asset.
     expect(second.outputs[0]?.asset_id).toBe(first.outputs[0]?.asset_id)
     const asset = brandString<AssetId>(String(first.outputs[0]?.asset_id))
     const bytes = fixture.ctx.dvAssetPool.read(asset)
     expect(Buffer.from(bytes).subarray(0, 8)).toEqual(PNG_SIGNATURE)
     expect(pngSize(bytes)).toBe('1024x768')
     expect(fixture.ctx.dvAssetPool.get(asset)).toMatchObject({ mime: 'image/png', width: 1024, height: 768 })
-    // The cost is the server's inference time, not the estimate of 0.6 GPU seconds per megapixel.
     const record = fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(first.record))
     expect(record.cost?.gpu_seconds).toBeGreaterThan(0)
     expect(record.cost?.gpu_seconds).not.toBe(0.6 * 1024 * 768 / 1e6)

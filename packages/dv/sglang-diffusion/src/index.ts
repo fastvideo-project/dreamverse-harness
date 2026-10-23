@@ -30,7 +30,6 @@ export interface Config {
   models: Record<string, ModelServer>
 }
 
-/** Loader validation. */
 export const Config: z<Config> = z.object({
   models: z.dict(z.object({ baseUrl: z.string().required(), gpuSecondsPerMegapixel: z.number().required() })).required(),
 })
@@ -41,7 +40,6 @@ interface ServedImageModel {
   modelId: string
   description: string
   defaultSize: ImageSize
-  /** Width and height must each be a multiple of this. */
   sizeMultiple: number
   /** The most pixels of one image: the area of the largest preset of the model card. */
   maxPixels: number
@@ -49,7 +47,6 @@ interface ServedImageModel {
   presets: Record<string, string>
 }
 
-/** The models this plugin can serve. */
 const SERVED: Record<string, ServedImageModel> = {
   'qwen-image-2.1-turbo': {
     modelId: 'Qwen/Qwen-Image-2.1-Turbo',
@@ -68,21 +65,16 @@ const SERVED: Record<string, ServedImageModel> = {
 /** The `GET /v1/models` answer of the server, with the fields this plugin reads. */
 interface ModelList { data: Array<{ id: string }> }
 
-/** The first eight bytes of every PNG file. */
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
-/** Plugin name. */
 export const name = 'dv-sglang-diffusion'
 
-/** Required services: the model catalog. */
 export const inject = ['dvModels']
 
-/** `WIDTHxHEIGHT` of a size. */
 function formatSize({ width, height }: ImageSize): string {
   return `${String(width)}x${String(height)}`
 }
 
-/** The field `key` of a parsed JSON value; undefined for a value that is not an object or has no such field. */
 function field(value: unknown, key: string): unknown {
   return typeof value === 'object' && value !== null ? Reflect.get(value, key) : undefined
 }
@@ -122,10 +114,6 @@ async function call<T>(baseUrl: string, route: string, init: RequestInit = {}): 
   return await response.json() as T
 }
 
-/**
- * Check that the server lists `modelId`.
- * @throws Error when the server cannot be reached, answers with an error, or serves another model.
- */
 async function checkServed(baseUrl: string, modelId: string): Promise<void> {
   const ids = (await call<ModelList>(baseUrl, '/v1/models')).data.map(model => model.id)
   if (!ids.includes(modelId)) {
@@ -161,7 +149,6 @@ function requestProblems(served: ServedImageModel, request: ImageRequest): strin
   const step = served.sizeMultiple
   const problems: string[] = []
   if (width % step !== 0 || height % step !== 0) {
-    // Both sides rounded down, and both rounded up, each side at least one step.
     const round = (value: number, up: boolean): number => Math.max(step, (up ? Math.ceil(value / step) : Math.floor(value / step)) * step)
     const sizes = [...new Set([false, true].map(up => formatSize({ width: round(width, up), height: round(height, up) })))]
     problems.push(`Width and height must each be a multiple of ${String(step)}, and ${formatSize({ width, height })} `

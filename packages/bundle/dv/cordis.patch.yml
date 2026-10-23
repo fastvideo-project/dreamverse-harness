@@ -68,7 +68,6 @@
     - id: dv-shot-render
       name: '@dv/shot-render'
 
-    # Image models on a local SGLang diffusion server, and dv_image_generate, which exists while one is registered.
     - id: dv-sglang-diffusion
       name: '@dv/sglang-diffusion'
       config:
