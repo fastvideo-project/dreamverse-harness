@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 /**
  * The plan editor, the `dv.canvas.editor` entry keyed `plan`, under the slot test runtime with the media plugins and
- * the composer stack mounted: its versions and approval status, its shots with their prompts and reference assets in
- * the read-only `dv.prompt` composer, and its task labels.
+ * the composer stack mounted.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
@@ -133,8 +132,6 @@ describe('PlanEditor', () => {
     statuses(editor, [1])
     expect(within(editor).queryByText('雨夜')).toBeNull()
     statuses(editor, [3])
-    // v3's shot renders from Hero's reference image: Hero's tile in the read-only tray, and its citation as a chip with
-    // the image; no label numbers it as Picture N.
     const shot = editor.querySelector('li[data-shot="1"]')
     await waitFor(() => { expect(shot?.querySelector('[data-reference-tile="hero@1"]')?.textContent).toBe('Herov1') })
     expect(drawnMedia(shot?.querySelector('[data-reference-tile="hero@1"]'))).toEqual([`img ${assetUrl('ref.png')}`])
@@ -146,7 +143,6 @@ describe('PlanEditor', () => {
     expect(shot?.querySelector('[data-composer-input]')?.textContent).toBe('Herov1 walks in the rain')
     expect(shot?.textContent).not.toContain('Picture')
     expect(shot?.textContent).toContain('无 · 不接上一镜头')
-    // A chip opens its item's node through the canvas host.
     fireEvent.click(chip, { detail: 1 })
     expect(hostOpenNode).toHaveBeenCalledWith('character:hero')
     // A text shot shows its model and task by the catalog's task label, and no reference images.
@@ -205,7 +201,6 @@ describe('PlanEditor', () => {
     act(() => { canvas.versionKinds.register(CHARACTERS) })
     await waitFor(() => { expect(header.textContent).toBe('计划参考shot1.mp4Hero') })
     expect(drawnMedia(header)).toEqual([`video ${assetUrl('shot1.mp4')}#t=0.1`, `img ${assetUrl('ref.png')}`])
-    // The shot's tray lists the video, the version, the audio and the PDF in input order; the prompt stays its text.
     const shot = editor.querySelector('li[data-shot="1"]')
     const tray = shot?.querySelector('[role="list"]')
     await waitFor(() => { expect([...tray?.children ?? []].map(tile => tile.getAttribute('data-reference-tile'))).toEqual(['shot1.mp4', 'hero@1', 'score.wav', 'notes.pdf']) })
@@ -213,7 +208,6 @@ describe('PlanEditor', () => {
     expect(drawnMedia(tray)).toEqual([`video ${assetUrl('shot1.mp4')}#t=0.1`, `img ${assetUrl('ref.png')}`, 'audio ♪', 'file application/pdf'])
     expect(shot?.querySelector('[data-composer-input]')?.textContent).toBe('<Video 1> then <Picture 1>')
     expect(shot?.querySelector('[data-composer-input] img')).toBeNull()
-    // A tile opens its asset's preview through the canvas host, growing out of the tile.
     const video = tray?.querySelector<HTMLElement>('[data-reference-tile="shot1.mp4"] button')
     fireEvent.click(video!)
     expect(hostPreview).toHaveBeenCalledWith('shot1.mp4', video)
@@ -312,7 +306,6 @@ describe('PlanEditor', () => {
     await waitFor(() => { expect(editor.querySelector('[data-shot="1"] dd:last-of-type > div')?.textContent).toBe('hero@1未引用walks') })
     expect(toggles()).toHaveLength(0)
     act(() => { canvas.versionKinds.register({ ...CHARACTERS, name: () => 'Hero of the rain' }) })
-    // After the registration, the tile names the version Hero of the rain, and the box overflows.
     await waitFor(() => { expect(toggles()).toHaveLength(1) })
     await runtime.dispose()
   })

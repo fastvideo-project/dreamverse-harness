@@ -13,7 +13,6 @@ import { MENTION_SOURCE } from './mention.ts'
 /** A mounted composer: resolves its session's input facade on demand. */
 type ComposerTarget = () => SessionInput | undefined
 
-/** The mounted composers, in mount order; a Set keeps insertion order, so the newest is the last. */
 const targets = new Set<ComposerTarget>()
 let waiting: DvComposeDetail | null = null
 

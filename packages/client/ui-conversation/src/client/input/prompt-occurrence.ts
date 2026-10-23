@@ -11,7 +11,6 @@ import type { PromptChangeCause, PromptHostModel, PromptOccurrenceHandle, Prompt
 import { registerComposerKeymap } from './editor/keymap.ts'
 import { DraftEditorRuntime } from './editor/runtime.ts'
 
-/** Whether two chip lists hold the same chips at the same offsets. */
 function sameChips(a: readonly Occurrence[], b: readonly Occurrence[]): boolean {
   return a.length === b.length && a.every((chip, index) => {
     const other = b[index]
@@ -27,7 +26,6 @@ export class PromptOccurrence implements PromptOccurrenceHandle {
   private applied: number
   private draftRev = 0
   private lastDetect = ''
-  /** The content last reported to the host; null while the constructor seeds the content the host already holds. */
   private reported: { text: string; chips: readonly Occurrence[] } | null = null
   private view: PromptOccurrenceView
 
@@ -76,7 +74,6 @@ export class PromptOccurrence implements PromptOccurrenceHandle {
     onView(this.view)
   }
 
-  /** The occurrence's Lexical editor, bound by the Factory component's contenteditable. */
   get editor(): PromptOccurrenceHandle['editor'] {
     return this.runtime.editor
   }
@@ -105,7 +102,6 @@ export class PromptOccurrence implements PromptOccurrenceHandle {
     }
   }
 
-  /** Close the menu controller and every listener. */
   dispose(): void {
     this.release()
   }
@@ -127,10 +123,6 @@ export class PromptOccurrence implements PromptOccurrenceHandle {
     this.onView(view)
   }
 
-  /**
-   * Apply one pick at its span when the draft has not changed since the hit: a reference becomes a chip and a text
-   * replaces the token. An occurrence takes no command claim.
-   */
   private deliver(outcome: Exclude<PickOutcome, 'handled' | undefined>, span: TokenSpan): boolean {
     if (span.draftRev !== this.draftRev || 'claim' in outcome) return false
     if ('text' in outcome) return this.runtime.replaceText(span, outcome.text)

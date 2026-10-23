@@ -1,9 +1,6 @@
 // @vitest-environment jsdom
 /**
- * What the shot render declaration adds to the generation kit, through the real `@dv/ui-shot-render` plugin: the
- * `dv_shot_render` chat card with the render words, the composer's parameter bar of `shot.render` with the shot's words
- * and no references for a text model (`t2v`), the still output standing for a take on its card, a take that continues
- * a first frame one column right, and the inert host Loader entry.
+ * What the shot render declaration adds to the generation kit, through the real `@dv/ui-shot-render` plugin.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, waitFor } from '@testing-library/react'
@@ -73,7 +70,6 @@ function takesOf(canvas: ReturnType<typeof createDvCanvas>, state = fixtureState
   return new Map(graph.nodes.flatMap(node => node.type === 'take' && node.claimed ? [[node.id, { ...node, unseen: false, rerunning: false }] as const] : []))
 }
 
-/** @returns a canvas host that records nothing. */
 function host(): EditorHost {
   return {
     run: vi.fn(), rerun: vi.fn(() => Promise.resolve()), pickAssets: vi.fn(), preview: vi.fn(), openNode: vi.fn(), setPlaced: vi.fn(),

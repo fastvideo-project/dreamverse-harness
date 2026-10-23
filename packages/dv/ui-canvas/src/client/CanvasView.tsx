@@ -736,9 +736,8 @@ export function CanvasView(
   const editingNode = graph?.nodes.find(node => node.id === editorZoom.shown) ?? null
   const stackedNode = editingNode === null ? null : graph?.nodes.find(node => node.id === stacked) ?? null
   /**
-   * The hosts of one surface, the only place that builds them: the host of its card bodies and the node host of each of
-   * its actions, whose refused writes the canvas notice shows, and the host of an editor body without the editor's
-   * picker, whose rerun the body awaits and which imports files as canvas imports.
+   * The hosts of one surface, built only here: the host of its card bodies, the node host of each of its actions, and
+   * the host of an editor body without the editor's picker.
    * @param close - closes the editor of the surface; on the canvas, the open editor.
    * @returns the hosts.
    */

@@ -519,7 +519,6 @@ function scanSource({ path, pkg, sf }: Source, facts: Facts, out: Violation[]): 
  */
 function scanTypesEntries(sources: readonly Source[], facts: Facts): Violation[] {
   const byPath = new Map(sources.map(source => [source.path, source]))
-  // A relative path resolves among the scanned files; `@dv/<pkg>` to `src/index.ts`, `@dv/<pkg>/<entry>` to `src/<entry>.ts`.
   const resolve = (from: string, specifier: string): string | undefined => {
     if (specifier.startsWith('.')) {
       const path = posix.join(posix.dirname(from), specifier)

@@ -29,10 +29,8 @@ export type MenuViewProps = MenuViewInjected & PropsLocale<'slash.menu'>
 /** Full props of the `@` menu of one prompt occurrence. */
 export type PromptMenuViewProps = PropsRuntime<'conversation.prompt.menu'> & InjectFace<PromptMenuInjected> & PropsLocale<'slash.menu'>
 
-/** What the list draws: the menu state, the crumbs with their pick route, the other pick routes, and the copy. */
 type MenuListProps = Omit<MenuViewProps, 'menu' | 'headers' | 'onCrumb'> & {
   readonly state: MenuState
-  /** The crumbs that the sources publish, and their pick route; null for a menu whose sources publish none. */
   readonly crumbs: {
     readonly trails: ReadonlyMap<string, readonly InputTriggerCrumb[]>
     readonly onCrumb: MenuViewProps['onCrumb']

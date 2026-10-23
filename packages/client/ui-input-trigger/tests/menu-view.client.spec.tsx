@@ -376,14 +376,12 @@ describe('MenuView', () => {
 })
 
 describe('PromptMenuView', () => {
-  /** The framework seats of a prompt occurrence's menu, which renders with no Session and reads none of them. */
   const NO_SESSION = {
     sessionId: undefined, inputActions: undefined, useSession: vi.fn(), useProjection: vi.fn(), useConversation: vi.fn(),
     useInput: vi.fn(), usePanelInfo: vi.fn(), useSessions: vi.fn(), useSessionStatus: vi.fn(), useSessionRetainInfo: vi.fn(),
     useWorkspaces: vi.fn(), useResource: vi.fn(),
   }
 
-  /** Render the menu of one prompt occurrence over the menu state its key names; undefined is a closed occurrence. */
   function mountPrompt(state: MenuState | undefined) {
     const onPick = vi.fn()
     const view = render(

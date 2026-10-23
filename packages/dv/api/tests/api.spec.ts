@@ -140,10 +140,8 @@ async function call(
   return { status: response.status, json: await response.json() }
 }
 
-/** A composer call: an operation, its params, and its inputs as reference texts. */
 interface ComposerCall { operation: string; params: Record<string, unknown>; inputs: Array<{ role: string; ref: string }> }
 
-/** The kernel's check of a composer call, through the check route. */
 async function checkCall(fixture: Fixture, edited: ComposerCall, project: string): Promise<{ problems: string[] }> {
   const answered = await call(fixture, ROUTES.operationCheck, { method: 'POST', body: { project, surface: 'canvas', ...edited } })
   return answered.json as { problems: string[] }
@@ -410,10 +408,8 @@ describe('dvApi', () => {
     }
     const check = async (edited: ComposerCall) => (await checkCall(fixture, edited, projectId)).problems
     expect(await check(call)).toEqual([])
-    // The take editor before the composer drops the input and keeps its citation; the kernel refuses that call.
     const dropped = { ...call, inputs: [{ role: 'reference', ref: lamp }] }
     expect(await check(dropped)).toEqual([expect.stringContaining(`cites asset ${mia}, which is not in the reference input`)])
-    // The composer's R2 turns the citation into its label (pinned in ui-composer's reference-model spec, S6 row).
     const edited = { ...dropped, params: { ...call.params, prompt: `Mia holds the lamp from @[Take 3](dv:asset/${lamp})` } }
     expect(await check(edited)).toEqual([])
   })

@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 /**
  * The take editor of a generation kind through the kit plugin's `dv.canvas.editor.claimed` entry, with the real media,
- * asset pool and composer plugins: the player, the model and task line, the `dv.prompt` composer over the take's call,
- * and what the editor asks the canvas host for.
+ * asset pool and composer plugins.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, waitFor } from '@testing-library/react'
@@ -59,7 +58,6 @@ async function openEditor(id: string, options: {
   return { ...slot, host }
 }
 
-/** The composer's send button, once the call's check has answered. */
 async function sendButton(view: Awaited<ReturnType<typeof openEditor>>['view'], name: string): Promise<HTMLButtonElement> {
   return waitFor(() => {
     const button = view.getByRole<HTMLButtonElement>('button', { name })

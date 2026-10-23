@@ -23,7 +23,6 @@ import { DvPrompt } from './DvPrompt.tsx'
 import { MENTION_SOURCE } from './mention.ts'
 import { ReferenceFace } from './ReferenceFace.tsx'
 
-/** The wait after the last project event before the state is fetched again, in ms. */
 const REFETCH_DELAY_MS = 150
 
 /**
@@ -57,7 +56,6 @@ export function projectStates(client: Pick<DvClient, 'getState' | 'subscribe'>):
         consumers += 1
         // A consumer that read this source before the last one left takes it back as the project's source.
         if (!sources.has(projectId)) sources.set(projectId, source)
-        // The empty project is a chat chip's while the shell has no project open; it has no state to fetch.
         if (consumers === 1 && projectId !== '') {
           fetchState()
           stop = client.subscribe(projectId, () => {
@@ -149,7 +147,6 @@ export function applyPrompt(ctx: ClientContext): void {
     hooks: { currentProject, versionKinds },
     keyedHooks: { projectState: states },
   }
-  // One face for the chips of every prompt occurrence and of the chat composer bar, which each declare their own slot.
   ctx.effect(() => ctx.slots.inject('conversation.prompt.reference', () => ctx.slots.register(
     { name: 'conversation.prompt.reference', key: MENTION_SOURCE, inject: () => face }, ReferenceFace,
   )), 'dv-composer: prompt chip face')

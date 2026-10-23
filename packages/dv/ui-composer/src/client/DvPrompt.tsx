@@ -34,10 +34,8 @@ import { callOf, documentViews, faceOf, type ResolveContext } from './reference-
 /** Full props of the component. */
 export type DvPromptComponentProps = FactoryComponentPropsOf<'dv.prompt'>
 
-/** The wait after the last edit before the call is checked, in ms. */
 const CHECK_DELAY_MS = 250
 
-/** The words of an occurrence whose operation's bar gives none; they name no kind. */
 const NEUTRAL_COPY: Required<PromptCopy> = {
   placeholder: ['描述要生成的内容', 'Describe what to generate'],
   send: ['生成新版本', 'Generate a new version'],
@@ -50,7 +48,6 @@ const thumb: CSSProperties = { display: 'flex', width: 22, height: 22, borderRad
 const plain: CSSProperties = { border: 'none', background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer', padding: '0 4px' }
 const select: CSSProperties = { height: 26, borderRadius: 13, border: '1px solid var(--dv-line-strong)', background: 'var(--dv-surface-2)', color: 'var(--dv-text)', font: 'inherit', fontSize: 12, padding: '0 8px' }
 
-/** The model entry that a call's key params name. */
 function modelOf(models: readonly WireModelEntry[], params: Readonly<Record<string, unknown>>): WireModelEntry | undefined {
   return models.find(entry => entry.modality === params['modality'] && entry.task === params['task']
     && entry.provider === params['provider'] && entry.model === params['model'])
@@ -138,7 +135,6 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
   const bar = props.useParamBars(bars => bars.find(candidate => candidate.operation === call.operation) ?? null)
   const operation = props.operations.find(candidate => candidate.name === call.operation) ?? null
   const [draft, dispatch] = useReducer(reduceDraft, call, draftOf)
-  // A host that lends another call, such as the plan view on another version, starts the occurrence over on it.
   const callKey = JSON.stringify(call)
   if (draft.callKey !== callKey) dispatch({ type: 'callLent', call })
   const { document, params, sending } = draft
@@ -299,11 +295,7 @@ function Tile({ input, view, cited, renderFactorySlot, onOpen, onRemove, onPin }
   )
 }
 
-/**
- * The model chip: the catalog entries of the call's modality; a pick writes the four key params.
- * @param props - the catalog, the selected entry, the params, and the patch callback.
- * @returns the chip.
- */
+/** The model chip: the catalog entries of the call's modality; a pick writes the four key params. */
 function ModelChip({ models, entry, params, onPatch }: {
   models: readonly WireModelEntry[]
   entry: WireModelEntry | undefined

@@ -2,8 +2,7 @@
  * The `@` source that lists the project items of the project the shell has open: the items of the mention kinds that
  * plugin UI halves register in `dvMentions`, and assets of every media type. A pick inserts a reference chip whose text
  * is the citation `@[<label>](dv:<kind>/<id>)` that `formatCitation` of `@dv/project/grammar` writes; the host plugin
- * `@dv/chat-references` expands that address into record and asset IDs for the model, and puts the assets of the
- * `dv:asset/<id>` chips of a sent message on the canvas.
+ * `@dv/chat-references` expands that address into record and asset IDs for the model.
  *
  * @module @dv/ui-composer/mention
  */
@@ -112,15 +111,12 @@ export function projectMentionSource(mentions: DvMentions, mediaTypes: () => rea
    * a kinds filter keeps the assets and the items of those kinds.
    */
   async function candidates(query: string, signal: AbortSignal, { media, kinds }: PromptFilter): Promise<readonly InputTriggerCandidate[]> {
-    // The project the shell has open; the entry page lists nothing.
     const projectId = getCurrentProject()
     if (projectId === null) return []
     const state = await client.getState(projectId, signal)
     const needle = query.toLowerCase()
     const mimes = new Map(state.assets.map(asset => [asset.id, asset.mime]))
     const taken = (asset: string): boolean => media === null || media.includes(mediaTypeOf(mimes.get(asset) ?? ''))
-    // The menu shows a candidate name that differs from its label as a trailing alias, so the name is the label
-    // (numbered when labels repeat) and the `dv:` address travels in `value`.
     const seen = new Map<string, number>()
     return projectItems(state, mentions.kinds.getSnapshot(), mediaTypes())
       .filter(item => item.shows === undefined || taken(item.shows))
@@ -136,10 +132,8 @@ export function projectMentionSource(mentions: DvMentions, mediaTypes: () => rea
         }
       })
   }
-  /** The chip of a picked candidate. */
   function insert(candidate: InputTriggerCandidate): PickOutcome {
     const { uri, label } = JSON.parse(candidate.value ?? '{}') as { uri?: string; label?: string }
-    // An item URI may hold the parentheses of an ID raw; the kernel writer encodes them, so the chip text reads back as the item.
     const target = uri === undefined ? null : citationTarget(uri)
     if (target === null || label === undefined) return undefined
     const text = formatCitation(label, target.kind, target.id)

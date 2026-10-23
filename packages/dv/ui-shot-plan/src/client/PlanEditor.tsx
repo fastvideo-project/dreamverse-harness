@@ -27,7 +27,6 @@ export interface PlanEditorInjected {
   }
 }
 
-/** A reference asset of the plan header. */
 const chipThumb: CSSProperties = { display: 'flex', width: 24, height: 24, overflow: 'hidden', borderRadius: 'var(--dv-radius-sm)', flex: 'none' }
 /** A small rounded tag in the plan editor: the duration and model-and-task chips of a shot. */
 const tag: CSSProperties = { height: 22, padding: '0 8px', display: 'inline-flex', alignItems: 'center', fontSize: 12, lineHeight: '16px', background: 'var(--dv-surface-3)' }
@@ -192,8 +191,6 @@ const PlanShots = memo(function PlanShots(
           key={index} number={index + 1} shot={shot} referenceCount={shotReferences(plan, shot).length} taskLabels={taskLabels}
           prompt={renderFactorySlot('dv.prompt', {
             projectId: state.project.id, state, operations, readOnly: true, surface: 'canvas',
-            // The plan view only shows the call, so it lends no picker and no upload; a chip or a tile opens its item's node
-            // or its asset's preview.
             host,
             call: {
               operation: 'shot.render', params: { prompt: shot.prompt, model: shot.model, task: shot.task },
@@ -207,8 +204,7 @@ const PlanShots = memo(function PlanShots(
 })
 
 /**
- * One shot of a plan version as a card with exactly what the plan holds: number, duration, model and task, whether it
- * continues the previous shot, and the prompt with its reference assets.
+ * One shot of a plan version as a card with exactly the fields that the plan holds.
  */
 function ShotCard(
   { number, shot, referenceCount, taskLabels, prompt }: {
@@ -220,7 +216,6 @@ function ShotCard(
   },
 ): ReactNode {
   const pick = useText()
-  // A shot's reference assets show as the read-only tray of its prompt; a shot without any says why.
   let noReferences: string | null = null
   if (shot.task === 't2v') noReferences = pick('无（文字生成不用参考图）', 'None (a text render uses no reference images)')
   else if (referenceCount === 0) noReferences = pick('无', 'None')

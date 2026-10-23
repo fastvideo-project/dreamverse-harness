@@ -25,7 +25,6 @@ interface LiveState {
   readonly sources: InputTriggerSource[]
   /** Per-session controllers; entries are deleted by their scope disposer. */
   readonly controllers: WeakMapWithValues<SessionBinding, InputTriggerController>
-  /** Prompt-occurrence controllers by key; each occurrence's dispose deletes its entry. */
   readonly occurrences: Map<string, InputTriggerController>
   /** The number of prompt occurrences opened so far; with {@link LiveState.keyPrefix} it mints their keys. */
   opened: number
@@ -126,12 +125,6 @@ export class InputTriggerService extends Service implements InputTriggerServiceC
     return controller
   }
 
-  /**
-   * Open the controller of one prompt occurrence outside any session: it offers the named sources that have a `prompt`
-   * face, hands each of them `context`, and applies picks through `deliver`.
-   * @param options - the offered source names, the source context, and the occurrence's pick delivery.
-   * @returns the controller, the key that names it to the prompt menu, and its disposer.
-   */
   controllerFor(options: PromptControllerOptions): { readonly key: string; readonly controller: InputTriggerController; dispose(): void } {
     const { live } = this
     live.opened += 1
@@ -154,11 +147,6 @@ export class InputTriggerService extends Service implements InputTriggerServiceC
     }
   }
 
-  /**
-   * The controller of one open prompt occurrence.
-   * @param key - the key that {@link controllerFor} returned.
-   * @returns the controller, or undefined after the occurrence closed.
-   */
   occurrence(key: string): InputTriggerController | undefined {
     return this.live.occurrences.get(key)
   }

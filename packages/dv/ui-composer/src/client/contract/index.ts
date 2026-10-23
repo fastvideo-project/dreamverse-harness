@@ -105,7 +105,6 @@ export interface DvPromptProps {
 
 /** One chip of the parameter bar; the descriptor gives data, and the composer draws every chip with one component. */
 export type ParamChip = {
-  /** The param key. */
   readonly key: string
   /** The name that the chip shows beside its control. */
   readonly label: Text
@@ -138,9 +137,7 @@ export type ParamChip = {
  * which names no kind.
  */
 export interface PromptCopy {
-  /** The prompt editor's placeholder text. */
   readonly placeholder?: Text
-  /** The send button. */
   readonly send?: Text
   /** The send button while a send runs. */
   readonly sending?: Text
@@ -165,7 +162,6 @@ export interface ParamBar {
   }): ParamChip[]
   /** The `@` filter of a model, read from the same schema; null, or absent, for no filter, such as an unknown schema. */
   candidates?(schema: unknown): CandidateFilter | null
-  /** The words of the operation's occurrences. */
   readonly copy?: PromptCopy
 }
 

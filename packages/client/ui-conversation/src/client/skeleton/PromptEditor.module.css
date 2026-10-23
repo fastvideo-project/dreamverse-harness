@@ -1,4 +1,3 @@
-/* One prompt occurrence: a bordered box that grows with its text; the `@` menu anchors above it. */
 .prompt {
   position: relative;
   border: 1px solid var(--dsw-alias-border-l1);

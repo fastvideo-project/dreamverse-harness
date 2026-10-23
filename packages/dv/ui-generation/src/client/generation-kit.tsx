@@ -119,7 +119,6 @@ export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
     order: 0,
     shows: (node): node is ClaimedNodeView => node.claimed && node.flags.failed && operations.has(node.record.operation),
     run({ record, title }, host) {
-      // The request is the record's own operation, inputs and params, as the take editor sends it when nothing was edited.
       host.rerun({
         operation: record.operation, inputs: requestInputsOf(record),
         params: record.params, intent: pickText(`在画布上重试 ${title}`, `Retry ${title} from the canvas`), based_on: record.id,

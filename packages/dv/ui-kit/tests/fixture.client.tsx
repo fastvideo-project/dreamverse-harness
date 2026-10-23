@@ -221,7 +221,6 @@ export function scriptedFetch(routes: ScriptedRoutes = {}): { fetch: typeof fetc
         const answer = routes.post(url.pathname, body)
         return Promise.resolve(json(answer.body, answer.status))
       }
-      // The check refuses nothing and estimates 4 GPU seconds per video second, 2 for the text-to-video model.
       if (url.pathname === '/api/dv/operation/check') {
         const params = (body as OperationRequest).params ?? {}
         const rate = params['model'] === 'fastt2v' ? 2 : 4

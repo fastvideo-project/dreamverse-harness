@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The chip face in the chat composer bar: the bar declares `conversation.input.reference` and draws each chip through
- * the entry of its source, so a `dv-project` chip in chat draws the same face as in a take editor, at the open
- * project's newest version, until the composer leaves.
+ * The chip face in the chat composer bar. The test root declares `conversation.input.reference` as the bar does, with
+ * no face context and a glyph chip as the fallback; a `dv-project` chip draws at the open project's newest version
+ * until the composer plugin is disposed.
  */
 import { waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -42,7 +42,6 @@ describe('the chip face in the chat composer bar', () => {
     await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
     await runtime.mount({ inject: [...testRef.inject], apply: testRef.apply })
     const composer = await runtime.mount(composerStack)
-    // The bar renders each chip with no face context, and its own glyph chip as the fallback.
     await runtime.root.declare(
       { 'conversation.input.reference': { kind: 'keyed', scope: 'session-maybe' } },
       ({ renderSlot }: PropsRenderSlots<'conversation.input.reference'>): ReactNode => renderSlot(

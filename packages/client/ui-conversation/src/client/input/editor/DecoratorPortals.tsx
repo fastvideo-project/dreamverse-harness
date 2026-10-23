@@ -30,7 +30,6 @@ export interface DecoratorPortalsProps {
   readonly renderFace?: ((chip: ChipFace, fallback: ReactNode) => ReactNode) | undefined
 }
 
-/** The face fields of the chip at a node key, or null for any other decorator. */
 function chipAt(editor: LexicalEditor, key: NodeKey): ChipFace | null {
   return editor.getEditorState().read(() => {
     const node = $getNodeByKey(key)

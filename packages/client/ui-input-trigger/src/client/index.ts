@@ -84,7 +84,6 @@ export function apply(ctx: ClientContext): void {
         }
       },
     }, MenuView))
-    // Each prompt occurrence names its own controller; the menu reads that controller's stores by key.
     scope.slots.inject('conversation.prompt.menu', () => scope.slots.register({
       name: 'conversation.prompt.menu',
       locale: MENU_NS,

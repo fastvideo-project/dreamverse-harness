@@ -9,12 +9,10 @@
 import type { ParamChip } from '@dv/ui-composer/contract'
 import type { GenerationBar } from '@dv/ui-generation/generation-kit.tsx'
 
-/** The fields of a JSON object, else none. */
 function fieldsOf(value: unknown): ReadonlyMap<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? new Map(Object.entries(value)) : new Map()
 }
 
-/** The strings of a JSON list. */
 function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }

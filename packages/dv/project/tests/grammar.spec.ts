@@ -1,5 +1,5 @@
 /**
- * Tests of the reference grammars: the citation writer and readers, and the input reference split and writer.
+ * Tests of the citation grammar and the input reference grammar of `@dv/project/grammar`.
  */
 import { describe, expect, it } from 'vitest'
 import {

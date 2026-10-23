@@ -1,7 +1,6 @@
 /**
- * The test-only generation kind `test_take` that the kit specs mount: one `defineGenerationUi` declaration that claims
- * `shot.render` and `clip.extend`, plus the canvas registries it registers into, the composer stack that its take editor
- * renders, and a recording canvas host.
+ * The test-only generation kind `test_take` that the kit specs mount, with the slot runtime and canvas helpers that
+ * those specs share.
  */
 import { vi } from 'vitest'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
@@ -19,7 +18,7 @@ import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/c
 import { composerStack } from '../../ui-composer/tests/composer-stack.client.ts'
 import { defineGenerationUi } from '../src/client/generation-kit.tsx'
 
-/** The test kind: takes of `shot.render` and `clip.extend`, whose still output stands for a take. */
+/** The test generation kind, whose still output stands for a take. */
 export const testTake = defineGenerationUi({
   id: '@dv/ui-test-take', type: 'test_take', operations: ['shot.render', 'clip.extend'], label: ['测试版本', 'Test take'],
   color: 'var(--dv-node-3)',

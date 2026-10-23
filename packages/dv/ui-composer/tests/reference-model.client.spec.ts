@@ -1,6 +1,7 @@
 /**
- * The client reference model over the calls of evidence E3: the round-trip law of a stored call, the edits R1, R2,
- * R3′ with the rule for a citation that two inputs satisfy, the undo of an edit through the editor, and version pins.
+ * The client reference model: the round-trip law of a stored call, including stored forms that the kernel reads but
+ * its writer never writes, the edits R1, R2 and R3′ with the rule for a citation that two inputs satisfy, the undo
+ * of an edit through the editor, and version pins.
  */
 import { describe, expect, it } from 'vitest'
 import { requestInputsOf } from '@dv/ui-kit/references.ts'
@@ -12,12 +13,10 @@ import {
   satisfyingIndexes, type ResolveContext, type VersionReader,
 } from '../src/client/reference-model.ts'
 
-/** One image asset. */
 const image = (id: string): ProjectAsset => ({
   id, mime: 'image/png', name: `${id}.png`, size_bytes: 1, created_by: null, created_at: '', width: null, height: null, duration_sec: null, made_by: null,
 })
 
-/** The character c1 (Mia): version 1 holds a1 and a2, version 2 holds a5. */
 const MIA: VersionReader = {
   kind: 'character',
   name: (_state, id, version) => id === 'c1' && (version === 1 || version === 2) ? 'Mia' : null,
@@ -26,14 +25,12 @@ const MIA: VersionReader = {
   node: id => `character:${id}`,
 }
 
-/** A state with five images and the take g1, whose output 0 is a4. */
 const BASE = fixtureState()
 const STATE: WireState = {
   ...BASE, assets: ['a1', 'a2', 'a3', 'a4', 'a5'].map(image),
   components: { ...BASE.components, proj: { ...BASE.components.proj, records: [record({ id: 'g1', outputs: ['a4'] })] } },
 }
 
-/** The resolve context of a document's inputs. */
 function ctx(inputs: readonly CallInput[] | null): ResolveContext {
   return { state: STATE, versions: [MIA], inputs, filter: null }
 }
@@ -45,7 +42,6 @@ const call = (prompt: string, inputs: CallInput[]): PromptCall => ({
 const atoms = (document: PromptDocument): ReferenceAtom[] => atomsOf(document.prompt)
 const MIA_CHIP = '@[Mia](dv:character/c1)'
 
-/** The calls of E3 (section 3) and the stored forms that the kernel reads but the writer never writes. */
 const E3_CALLS = {
   'S4 take with an uncited version': call('Mia walks through the rain', [reference('c1@1')]),
   'S5(i) asset cited': call('@[Lamp](dv:asset/a1) glows', [reference('a1')]),
@@ -74,7 +70,6 @@ describe('the round-trip law', () => {
   it('fails under the derived order, which renumbers the model labels of an unedited resend', () => {
     const stored = E3_CALLS['S5(iii) stored order differs from citation order']
     const document = documentOf(stored)
-    // The rejected model derives the inputs: each atom's input by first citation, then the uncited ones.
     const cited = atoms(document).flatMap(atom => satisfyingIndexes(atom.uri, stored.inputs, ctx(stored.inputs)))
     const order = [...new Set([...cited, ...stored.inputs.keys()])]
     expect(order.map(index => stored.inputs[index])).not.toEqual(stored.inputs)
@@ -96,7 +91,6 @@ describe('the edits', () => {
     expect(next.inputs).toEqual([reference('g1#0')])
     expect(callOf(next, E3_CALLS['S6 start']).params['prompt']).toBe('Mia holds the lamp from @[Take 3](dv:asset/a4)')
     expect(atoms(next).every(atom => satisfyingIndexes(atom.uri, next.inputs, ctx(next.inputs)).length > 0)).toBe(true)
-    // Today's take editor drops the input and keeps the citation, which no input satisfies.
     const dropped = { ...document, inputs: [reference('g1#0')] }
     expect(atoms(dropped).map(atom => resolveAtom(atom, ctx(dropped.inputs)).satisfied)).toEqual([false, true])
   })
@@ -105,10 +99,8 @@ describe('the edits', () => {
     const document = documentOf(E3_CALLS['S6 start'])
     const remaining = atoms(document).slice(1)
     expect(deleteAtom(document.inputs, 'dv:character/c1', remaining, ctx(document.inputs), 1).inputs).toEqual([reference('g1#0')])
-    // Two Mia chips: deleting one keeps c1@1.
     const twice = documentOf(call('@[Mia](dv:character/c1) and @[Mia](dv:character/c1)', [reference('c1@1')]))
     expect(deleteAtom(twice.inputs, 'dv:character/c1', atoms(twice).slice(1), ctx(twice.inputs), 1).inputs).toEqual([reference('c1@1')])
-    // The uncited version of S4 stays when a chip of another input goes.
     const s4 = { prompt: 'Mia walks ', inputs: [reference('c1@1'), reference('a3')] }
     expect(deleteAtom(s4.inputs, 'dv:asset/a3', [], ctx(s4.inputs), 1).inputs).toEqual([reference('c1@1')])
   })
@@ -138,7 +130,6 @@ describe('the edits', () => {
     const undone = reconcile(deleted.document, document.prompt, deleted.removed, ctx(deleted.document.inputs), 'history')
     expect(undone.document.inputs).toEqual(stored.inputs)
     expect(undone.removed).toEqual([])
-    // An undo of R2 brings the chip back the same way.
     const tile = removeInput(document, 0, ctx(document.inputs), 1)
     expect(reconcile(tile.document, document.prompt, tile.removed, ctx(tile.document.inputs), 'history').document.inputs).toEqual(stored.inputs)
   })
@@ -181,7 +172,6 @@ describe('the edits', () => {
     expect(pinned.inputs).toEqual([reference('c1@2'), reference('g1#0')])
     expect(resolveAtom({ label: 'Mia', uri: 'dv:character/c1' }, ctx(pinned.inputs)).version).toEqual({ sent: 2, newest: 2 })
     expect(resolveAtom({ label: 'Mia', uri: 'dv:character/c1' }, ctx(document.inputs)).version).toEqual({ sent: 1, newest: 2 })
-    // In chat a chip names the newest version and no sent version.
     expect(resolveAtom({ label: 'Mia', uri: 'dv:character/c1' }, ctx(null))).toMatchObject({ version: null, preview: { id: 'a5' } })
   })
 
@@ -265,7 +255,6 @@ describe('the readers of a document', () => {
   })
 
   it('reads a version through the reader of its kind only, and draws a version that no reader holds as an unknown asset', () => {
-    // The style s1 has a version 1 with no reference image.
     const style: VersionReader = { kind: 'style', name: (_state, id) => id === 's1' ? 'Noir' : null, assets: () => [], latest: () => [], node: id => `style:${id}` }
     const readers = { ...ctx([reference('c1@1'), reference('s1@1')]), versions: [style, MIA] }
     expect(satisfyingIndexes('dv:character/c1', readers.inputs ?? [], readers)).toEqual([0])

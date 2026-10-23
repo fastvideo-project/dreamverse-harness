@@ -168,11 +168,9 @@ describe('projectMentionSource in a prompt occurrence', () => {
     if (face === undefined) throw new Error('the source has no prompt face')
     return face
   }
-  /** The request of a prompt occurrence for `query`, naming `context` for its sources. */
   const ask = (query: string, context: JsonValue | null): Parameters<PromptSourceFace['candidates']>[0] => (
     { query, position: 'inline', drilled: false, signal: new AbortController().signal, context }
   )
-  /** A menu pick of `candidate` in a prompt occurrence. */
   const pickOf = (candidate: InputTriggerCandidate): Parameters<PromptSourceFace['onPick']>[0] => (
     { candidate, position: 'inline', via: 'menu', action: 'pick', span: { start: 0, end: 1, draftRev: 0 } }
   )

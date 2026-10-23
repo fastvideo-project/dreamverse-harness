@@ -1,9 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The `conversation.prompt` Factory outside any Session: three occurrences render at once under one declaring
- * Factory, each opens its own trigger controller, the `@` menu of one occurrence opens through the
- * `conversation.prompt.menu` entry and a pick inserts a chip there, and every chip draws through the
- * `conversation.prompt.reference` entry of its source with the occurrence's face context.
+ * The `conversation.prompt` Factory outside any Session, rendered as three occurrences under the real trigger plugin.
  */
 import { useState, type ReactNode } from 'react'
 import { act, fireEvent } from '@testing-library/react'
@@ -18,7 +15,6 @@ import { apply, inject, type InputTriggerService, type InputTriggerSource } from
 const CITE = '@[Cat](dv:asset/a1)'
 const DOG = '@[Dog](dv:asset/a2)'
 
-/** A session-free source: its prompt face lists two assets and inserts a citation; its session face is never called. */
 function promptSource(seen: unknown[]): InputTriggerSource {
   const refuse = (): never => { throw new Error('the session face was called') }
   return {
@@ -34,7 +30,6 @@ function promptSource(seen: unknown[]): InputTriggerSource {
   }
 }
 
-/** The model of one occurrence; `changes` records every reported change. */
 function model(overrides: Partial<PromptHostModel>, changes: Array<{ text: string; chips: readonly Occurrence[] }>): PromptHostModel {
   return {
     content: { revision: 0, history: 'reset', text: '', chips: [] }, readOnly: false, sources: ['dv-project'], sourceContext: { media: ['image'] },
@@ -114,7 +109,6 @@ describe('conversation.prompt outside a Session', () => {
     const boxes = view.container.querySelectorAll('[data-prompt-occurrence] [data-composer-input]')
     expect(boxes).toHaveLength(3)
     expect([...boxes].map(box => box.getAttribute('contenteditable'))).toEqual(['true', 'true', 'false'])
-    // The read-only occurrence draws its stored chip through the face slot with its face context.
     const plan = view.container.querySelector('[data-occurrence="plan"]')!
     expect(plan.textContent).toBe(`See Cat|${CITE}|{"inputs":["a1"]} run`)
   })

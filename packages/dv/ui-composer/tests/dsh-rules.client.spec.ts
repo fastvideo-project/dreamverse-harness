@@ -1,6 +1,6 @@
 /**
- * The DSH client rules that the composer and the editor seams keep: components read no React context, the components of
- * the composer and of the DSH editor seams reach no ctx and no API client, and `@dv/ui-composer/contract` holds types only.
+ * The DSH client rules that the composer and the DSH editor seams keep, checked on the source text of their components
+ * and on the exports of the composer's entries.
  */
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -10,7 +10,6 @@ import * as entry from '../src/client/index.ts'
 
 const packages = resolve(import.meta.dirname, '../../..')
 
-/** The `.tsx` files of a directory, with their text. */
 function components(dir: string): Array<[string, string]> {
   const root = join(packages, dir)
   return readdirSync(root).filter(name => name.endsWith('.tsx')).map(name => [`${dir}/${name}`, readFileSync(join(root, name), 'utf8')])

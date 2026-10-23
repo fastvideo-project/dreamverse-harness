@@ -82,7 +82,6 @@ export function editorContent(document: PromptDocument): { text: string; chips: 
   return { text: prompt, chips }
 }
 
-/** The version reader of `kind`, or of any kind, that holds version `version` of `id`, with that version's name; else null. */
 function versionOf(id: string, version: number, ctx: ResolveContext, kind?: string): { reader: VersionReader; name: string } | null {
   for (const reader of ctx.versions) {
     const name = kind === undefined || reader.kind === kind ? reader.name(ctx.state, id, version) : null
@@ -91,7 +90,6 @@ function versionOf(id: string, version: number, ctx: ResolveContext, kind?: stri
   return null
 }
 
-/** The output assets of a record output reference. */
 function recordOutput(record: string, output: number, state: WireState): string[] {
   const found = state.components.proj.records.find(candidate => candidate.id === record)?.outputs[output]
   return found === undefined ? [] : [found]
@@ -152,7 +150,6 @@ export function inputForAtom(atom: ReferenceAtom, ctx: ResolveContext): CallInpu
   return newest === undefined ? null : { role: 'reference', ref: formatInputSyntax({ id: newest.id, version: newest.version }) }
 }
 
-/** The context of a document: its own inputs. */
 function withInputs(ctx: ResolveContext, inputs: readonly CallInput[]): ResolveContext {
   return { ...ctx, inputs }
 }
@@ -232,7 +229,6 @@ function undone(removed: readonly RemovedInput[], uris: readonly string[]): Remo
   return back
 }
 
-/** Each URI of a list of atoms, with its count and its first atom. */
 function tally(atoms: readonly ReferenceAtom[]): Map<string, { count: number; atom: ReferenceAtom }> {
   const counts = new Map<string, { count: number; atom: ReferenceAtom }>()
   for (const atom of atoms) {
@@ -300,17 +296,14 @@ export function pinVersion(document: PromptDocument, index: number, version: num
   return { prompt: document.prompt, inputs }
 }
 
-/** The assets of a list of IDs that the state holds. */
 function assetsIn(ids: readonly string[], state: WireState): ProjectAsset[] {
   return ids.flatMap(id => state.assets.find(asset => asset.id === id) ?? [])
 }
 
-/** Whether an asset's media type is one that the selected model takes. */
 function fitsFilter(assets: readonly ProjectAsset[], filter: CandidateFilter | null): boolean {
   return filter === null || assets.every(asset => filter.mediaTypes.includes(mediaTypeOf(asset.mime)))
 }
 
-/** The view of an element at one version. */
 function elementView(
   uri: string, label: string, reader: VersionReader, id: string, version: number, input: CallInput | null, ctx: ResolveContext,
 ): ReferenceView {

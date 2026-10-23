@@ -1,8 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The chat composer bar and a `conversation.prompt` occurrence rendered at once under the real Conversation plugin: each
- * parent declares its own face slot, so the plugin loads with one owner per slot, and one face component registered in
- * both slots draws the chips of both editors.
+ * The chat composer bar and a `conversation.prompt` occurrence rendered at once under the real Conversation plugin.
  */
 import './control-row-dom.ts'
 import { act, cleanup, waitFor } from '@testing-library/react'
@@ -36,7 +34,6 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-/** One face for both slots: it shows the chip's label and whether it came with an occurrence's face context. */
 function ProbeFace({ label, context }: ReferenceFaceOwner) {
   return <b data-probe-face="">{`${label}:${context === null ? 'chat' : 'model'}`}</b>
 }

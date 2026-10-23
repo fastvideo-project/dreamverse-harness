@@ -1,10 +1,7 @@
 // @vitest-environment jsdom
 /**
  * The `dv.prompt` composer on the real slot runtime, with DSH's `conversation.prompt` Factory, the `@` trigger
- * pipeline outside any Session, and the real media plugins, over the fixture project: scenario S4 (a cited version with
- * its image, a model change that moves the cost, an `@` pick, a send), S6 (removing a reference tile turns its chips
- * into text, and one undo restores both), the round-trip law of an unedited send, a chip drawn with no call, and the
- * words of an occurrence, which name a kind only when the operation's parameter bar gives them.
+ * pipeline outside any Session, and the real media plugins, over the fixture project.
  */
 import { act, fireEvent, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -33,7 +30,6 @@ const HERO = '@[Hero](dv:test_ref/hero)'
 const SHOT_BAR = { ...shotRenderBar, operation: 'shot.render', owner: '@dv/ui-shot-render', copy: { ...shotRenderBar.copy, sending: ['渲染中…', 'Rendering…'] as const } }
 const KEY = { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }
 
-/** An operation that no parameter bar describes: its default chips come from its declared params. */
 const STILL: WireOperation = {
   ...OPERATIONS[0]!, name: 'test_still.generate', label: { zh: '生成静帧', en: 'Generate still' },
   params: { prompt: { type: 'string', required: true, description: 'What to make.' }, seed: { type: 'integer', description: 'Seed.' } },
@@ -54,17 +50,11 @@ afterEach(async () => {
   document.documentElement.lang = ''
 })
 
-/** How {@link mount} composes the occurrence and the server. */
 interface MountOptions {
-  /** Edits the served state. */
   edit?: (state: WireState) => void
-  /** The served model catalog; the fixture's by default. */
   models?: WireModelEntry[]
-  /** A send waits until the test answers it. */
   holdSend?: boolean
-  /** The project state waits until the test releases it. */
   holdState?: boolean
-  /** Each check waits until the test answers it. */
   holdChecks?: boolean
   /** The model catalog waits until the test releases it. */
   holdModels?: boolean
@@ -76,15 +66,10 @@ interface MountOptions {
   surface?: DvPromptProps['surface']
   /** The canvas and its version kinds arrive after the composer opens, when the test provides them. */
   lateCanvas?: boolean
-  /** The occurrence only shows the call. */
   readOnly?: boolean
-  /** The host gives no send. */
   noSend?: boolean
-  /** The host lends no asset picker and no import. */
   noPicker?: boolean
-  /** Changes to the prompt occurrence that shows Hero's chip with no call. */
   bare?: Partial<PromptHostModel>
-  /** The project the shell has open; p1 by default. */
   open?: string | null
   /** Edits the state that the host lends after the served state is set; the server never sees the edit. */
   lend?: (state: WireState) => void
@@ -92,19 +77,14 @@ interface MountOptions {
   served?: WireOperation[]
 }
 
-/** One held request of the server: the test answers it with a body or a failure. */
 interface Held<T> {
   answer: (body: T) => void
   fail: (error: Error) => void
 }
 
 /**
- * Mount the composer stack with the reference noun, the media plugins, the `@` source and the `shot.render` bar, and
- * render one `dv.prompt` occurrence of `call` and one prompt occurrence with no call that shows Hero's chip.
- * @param call - the call the occurrence edits.
- * @param options - the state, the catalog, the held requests, the mode, and the bare occurrence.
- * @returns the runtime, the view, the sent calls, the held requests, the host spy, the occurrence's element, the server's
- *   writes, and a setter of the call.
+ * Mount the composer stack with its plugins, and render one `dv.prompt` occurrence of `call` beside one prompt
+ * occurrence with no call that shows Hero's chip.
  */
 async function mount(call: PromptCall, options: MountOptions = {}) {
   const state = withTestRef(fixtureState())
@@ -167,7 +147,6 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
     surface: options.surface ?? 'canvas',
     ...options.noSend === true || options.readOnly === true ? {} : { onSubmit },
   })
-  // A prompt occurrence that gives its chips no call: its face names the element's newest version.
   const bare: PromptHostModel = {
     content: { revision: 0, history: 'reset', text: HERO, chips: [{ source: 'dv-project', ref: HERO, label: 'Hero', offset: 0, length: HERO.length, clipboardText: HERO }] },
     readOnly: true, sources: [], sourceContext: null, faceContext: null, onChange: () => {}, placeholder: '', ariaLabel: 'bare',
@@ -205,7 +184,6 @@ const chipsIn = (text: string): PromptHostModel['content']['chips'] => parseProm
   return { source: 'dv-project', ref: cited, label: citation.label, offset: citation.start, length: cited.length, clipboardText: cited }
 })
 
-/** The occurrence's editor box. */
 const box = (take: HTMLElement): HTMLElement => {
   const found = take.querySelector<HTMLElement>('[data-composer-input]')
   if (found === null) throw new Error('no editor box')
@@ -233,14 +211,12 @@ const pasteText = (take: HTMLElement, text: string): void => {
   fireEvent.paste(box(take), { clipboardData: { items: [], getData: (type: string) => type === 'text/plain' ? text : '' } })
 }
 
-/** The first element under `root` that `selector` names, once it renders. */
 const found = (root: HTMLElement, selector: string): Promise<HTMLElement> => waitFor(() => {
   const element = root.querySelector<HTMLElement>(selector)
   if (element === null) throw new Error(`no ${selector}`)
   return element
 })
 
-/** The send button once the call's check has answered. */
 const sendOf = (take: HTMLElement, name: string): Promise<HTMLButtonElement> => waitFor(() => {
   const button = within(take).getByRole<HTMLButtonElement>('button', { name })
   if (button.disabled) throw new Error('the call is not checked yet')
@@ -265,7 +241,6 @@ describe('dv.prompt on the real stack', () => {
     fireEvent.change(within(take).getByTestId('dv-prompt-model'), { target: { value: 'fastvideo/fasth3/ref2v' } })
     fireEvent.change(take.querySelector('[data-param-chip="duration_sec"]')!, { target: { value: '2' } })
     await waitFor(() => { expect(cost.textContent).toBe('≈ 8 GPU s') })
-    // Typing @ at the end opens the menu of this occurrence; the pick inserts Hero's chip and keeps the one input.
     act(() => { box(take).focus() })
     // jsdom fires no beforeinput, so the text arrives through the editor's paste path, which `@` detection follows.
     fireEvent.paste(box(take), { clipboardData: { items: [], getData: () => ' with @' } })
@@ -282,7 +257,6 @@ describe('dv.prompt on the real stack', () => {
     expect(sent[0]).toEqual({
       operation: 'shot.render', params: { ...KEY, prompt: `${HERO} runs with ${HERO} `, duration_sec: 2 }, inputs: [{ role: 'reference', ref: 'hero@1' }],
     })
-    // Every check went to the kernel's check route with the call as edited at that moment.
     expect(writes.filter(write => write.path === '/api/dv/operation/check').at(-1)?.body).toMatchObject({ project: 'p1', params: { duration_sec: 2 } })
   })
 
@@ -308,7 +282,6 @@ describe('dv.prompt on the real stack', () => {
     await waitFor(() => { expect(take.querySelector('[data-dv-chip="dv:test_ref/hero"]')).toBeNull() })
     expect(box(take).textContent).toBe('Hero holds the lamp from Take')
     expect([...take.querySelectorAll('[data-reference-tile]')].map(tile => tile.getAttribute('data-reference-tile'))).toEqual(['shot1-last.png'])
-    // One Ctrl+Z in the editor undoes the tile removal: the chip comes back and so does its input, first again.
     fireEvent.keyDown(box(take), { key: 'z', code: 'KeyZ', ctrlKey: true })
     await waitFor(() => { expect(take.querySelector('[data-dv-chip="dv:test_ref/hero"]')).not.toBeNull() })
     expect([...take.querySelectorAll('[data-reference-tile]')].map(tile => tile.getAttribute('data-reference-tile'))).toEqual(['hero@1', 'shot1-last.png'])
@@ -779,7 +752,6 @@ describe('what the references open', () => {
       return found!
     })
     fireEvent.click(within(tile).getByRole('button', { name: 'Use v2' }))
-    // The tile reads Hero v2 with its remove button, and offers no newer version.
     await waitFor(() => { expect(take.querySelector('[data-reference-tile="hero@2"]')?.textContent).toBe('Herov2×') })
     await waitFor(() => { expect(take.querySelector('[data-dv-chip="dv:test_ref/hero"]')?.textContent).toBe('Herov2') })
     expect(take.querySelector('[data-dv-chip="dv:test_ref/hero"] img')?.getAttribute('src')).toContain('shot2-last.png')

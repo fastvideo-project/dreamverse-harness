@@ -66,22 +66,14 @@ const sendIn = (editor: HTMLElement): Promise<HTMLButtonElement> => waitFor(() =
   return button
 })
 
-/**
- * The tray tile of one reference in an editor's composer.
- * @param editor - the editor panel.
- * @param ref - the reference text of the tile's input.
- * @returns the tile's open button.
- */
 const tileIn = (editor: HTMLElement, ref: string): Promise<HTMLElement> => waitFor(() => {
   const tile = editor.querySelector<HTMLElement>(`[data-reference-tile="${ref}"] button`)
   if (tile === null) throw new Error(`no tile of ${ref}`)
   return tile
 })
 
-/** Wait past the 150 ms debounce of the state reload that a project change starts, so answered requests settle. */
 const settle = (): Promise<void> => act(() => new Promise<void>((resolve) => { setTimeout(resolve, 200) }))
 
-/** A failed g1 whose render ran out of GPU memory. */
 const failG1 = (state: FixtureState): void => {
   state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g1'
     ? { ...entry, status: 'failed' as const, outputs: [], error: { code: 'operation_failed', message: 'GPU out of memory' } }
@@ -421,8 +413,6 @@ describe('the canvas over the real kinds', () => {
     fireEvent.click(tile)
     fireEvent.click(within(picker).getByRole('button', { name: '确认（2）' }))
     expect(view.queryByTestId('dv-canvas-asset-picker')).toBeNull()
-    // The picked asset's tile opens the media preview of the canvas's project over the editor; Escape closes the preview
-    // only.
     const opened = vi.spyOn(runtime.ctx.dvMedia, 'preview')
     const shot = await tileIn(editor, 'shot1.mp4')
     fireEvent.click(shot)

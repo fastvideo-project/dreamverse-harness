@@ -32,7 +32,6 @@ const ASSET_PREFIX = 'dv:asset/'
 /** The URI prefix of a citation of an input of the call by its role, such as `dv:input/first_frame`. */
 const INPUT_PREFIX = 'dv:input/'
 
-/** The URI prefixes that name no element: the kernel's own asset, record and input citations. */
 const NOT_ELEMENTS = [ASSET_PREFIX, 'dv:record/', INPUT_PREFIX]
 
 /**
@@ -101,7 +100,6 @@ export function citationTarget(uri: string): { kind: string; id: string } | null
   return id === null ? null : { kind: uri.slice('dv:'.length, slash), id }
 }
 
-/** The URI path of an ID: `encodeURIComponent`, plus `(` and `)`, which would end the citation early. */
 function encodeId(id: string): string {
   return encodeURIComponent(id).replaceAll('(', '%28').replaceAll(')', '%29')
 }
