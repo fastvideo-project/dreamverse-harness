@@ -5,7 +5,7 @@
  *
  * @module @dv/ui-composer/draft
  */
-import type { PromptChip, PromptContent } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { PromptChangeCause, PromptChip, PromptContent } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { fieldsOf, valueOf } from '@dv/ui-kit/form.ts'
 import type { OperationCheck, WireOperation } from '@dv/ui-kit/types.ts'
 import type { PromptCall, PromptDocument, RemovedInput } from './contract/index.ts'
@@ -30,7 +30,14 @@ export interface Draft {
 /** One change of a draft. */
 export type DraftAction =
   | { readonly type: 'callLent'; readonly call: PromptCall }
-  | { readonly type: 'editorChanged'; readonly text: string; readonly chips: number; readonly ctx: ResolveContext }
+  | {
+    readonly type: 'editorChanged'
+    readonly text: string
+    /** The number of chips that the editor holds. */
+    readonly chips: number
+    readonly cause: PromptChangeCause
+    readonly ctx: ResolveContext
+  }
   | { readonly type: 'tileRemoved'; readonly index: number; readonly ctx: ResolveContext }
   | { readonly type: 'picked'; readonly refs: readonly string[] }
   | { readonly type: 'imported'; readonly assets: readonly string[] }
@@ -93,7 +100,7 @@ export function reduceDraft(draft: Draft, action: DraftAction): Draft {
       return { ...next, content: { ...next.content, revision: draft.content.revision + 1 } }
     }
     case 'editorChanged': {
-      const next = reconcile(document, action.text, draft.removed, { ...action.ctx, inputs: document.inputs })
+      const next = reconcile(document, action.text, draft.removed, { ...action.ctx, inputs: document.inputs }, action.cause)
       // A citation that a paste or typing brought in as text becomes a chip inside that edit's undo step, so the editor
       // shows a chip for every citation that the kernel reads.
       const content = atomsOf(action.text).length > action.chips ? contentOf(next.document, draft.content.revision + 1, 'merge') : draft.content

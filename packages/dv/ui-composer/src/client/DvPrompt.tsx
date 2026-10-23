@@ -128,7 +128,7 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
   const media = filter === null ? null : { mediaTypes: [...filter.mediaTypes], maxReferences: filter.maxReferences }
   const model: PromptHostModel = {
     content: draft.content, readOnly, sources: offersReferences ? [MENTION_SOURCE] : [], sourceContext: media, faceContext: faces,
-    onChange: (text, chips) => { dispatch({ type: 'editorChanged', text, chips: chips.length, ctx }) },
+    onChange: (text, chips, cause) => { dispatch({ type: 'editorChanged', text, chips: chips.length, cause, ctx }) },
     ...readOnly ? {} : { onSubmit: send },
     openReference: (_source, reference) => openReference(reference),
     placeholder: pick(...copy.placeholder),

@@ -11,6 +11,7 @@
 import {
   citationUri, citedAsset, citedElement, citedInput, formatInputSyntax, parsePromptCitations, splitInputRef,
 } from '@dv/project/grammar'
+import type { PromptChangeCause } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { mediaTypeOf } from '@dv/ui-kit/media-type.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import type { ProjectAsset, WireState } from '@dv/ui-kit/types.ts'
@@ -215,17 +216,18 @@ function tally(atoms: readonly ReferenceAtom[]): Map<string, { count: number; at
 
 /**
  * Bring a document in step with the editor's new prompt, whose citations the kernel's parser reads, whether a chip, a
- * paste or typing wrote them. A deleted atom removes its input by R3′. A new atom that no input satisfies brings back
- * the input that an earlier edit removed for it, at its old place (the editor's undo of that edit), else adds its input
- * at the end (R1). The other inputs keep their order.
+ * paste or typing wrote them. A deleted atom removes its input by R3′. A new atom that no input satisfies adds its input
+ * at the end (R1); when an undo or a redo brings the atom back, the input that an earlier edit removed for it comes back
+ * at its old place instead. The other inputs keep their order.
  * @param previous - the document before the editor change.
  * @param prompt - the editor's clipboard text, which is the prompt.
  * @param removed - the inputs earlier edits removed.
  * @param ctx - the state and the version readers.
+ * @param cause - `history` for an undo or a redo of the editor's history, else `edit`.
  * @returns the document and the removed inputs after the change.
  */
 export function reconcile(
-  previous: PromptDocument, prompt: string, removed: readonly RemovedInput[], ctx: ResolveContext,
+  previous: PromptDocument, prompt: string, removed: readonly RemovedInput[], ctx: ResolveContext, cause: PromptChangeCause,
 ): { document: PromptDocument; removed: RemovedInput[] } {
   const before = tally(atomsOf(previous.prompt))
   const remaining = atomsOf(prompt)
@@ -241,7 +243,7 @@ export function reconcile(
   }
   for (const [uri, { count, atom }] of after) {
     if (count <= (before.get(uri)?.count ?? 0) || satisfyingIndexes(uri, inputs, withInputs(ctx, inputs)).length > 0) continue
-    const back = memo.findLast(entry => entry.uri === uri)
+    const back = cause === 'history' ? memo.findLast(entry => entry.uri === uri) : undefined
     if (back !== undefined) {
       inputs.splice(Math.min(back.index, inputs.length), 0, back.input)
       memo = memo.filter(entry => entry.input !== back.input)

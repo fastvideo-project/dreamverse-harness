@@ -337,6 +337,32 @@ describe('chips that the editor\'s clipboard carries', () => {
   })
 })
 
+describe('the undo memo', () => {
+  it('adds the newest version for a fresh @ pick of an element whose chip the user deleted', async () => {
+    const stored: PromptCall = { operation: 'shot.render', params: { ...KEY, prompt: `${HERO} runs` }, inputs: [{ role: 'reference', ref: 'hero@1' }] }
+    const { take, view, sent } = await mount(stored, {
+      edit: (state) => {
+        state.components.test_ref?.['hero']?.push({ id: 'hero', version: 2, name: 'Hero', description: '', references: ['shot2-last.png'], created_by: 'e1' })
+      },
+    })
+    await found(take, '[data-reference-tile="hero@1"]')
+    act(() => { box(take).focus() })
+    press(take, 'a')
+    press(take, 'Backspace')
+    await waitFor(() => { expect(take.querySelector('[data-reference-tile]')).toBeNull() })
+    pasteText(take, 'rain @')
+    const option = await waitFor(() => {
+      const shown = view.container.querySelector('[role="option"]')
+      expect(shown?.textContent).toContain('Hero')
+      return shown!
+    })
+    fireEvent.mouseDown(option)
+    await found(take, '[data-reference-tile="hero@2"]')
+    fireEvent.click(await sendOf(take, 'Render new take'))
+    await waitFor(() => { expect(sent[0]?.inputs).toEqual([{ role: 'reference', ref: 'hero@2' }]) })
+  })
+})
+
 describe('one draft per occurrence', () => {
   it('keeps an editor edit that the user makes while the picker is open when the pick arrives', async () => {
     const { take, host, sent } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] })

@@ -27,6 +27,9 @@ export interface PromptContent {
   readonly chips: readonly PromptChip[]
 }
 
+/** What changed an occurrence's content: an edit, or an undo or a redo of the editor's history. */
+export type PromptChangeCause = 'edit' | 'history'
+
 /** What the host of one `conversation.prompt` occurrence gives it: JSON values and callbacks. */
 export interface PromptHostModel {
   readonly content: PromptContent
@@ -37,8 +40,8 @@ export interface PromptHostModel {
   readonly sourceContext: JsonValue | null
   /** Handed to every chip face as {@link ReferenceFaceOwner.context}. */
   readonly faceContext: JsonValue | null
-  /** Called after each change of the clipboard text or the chips. */
-  onChange(text: string, chips: readonly Occurrence[]): void
+  /** Called after each change of the clipboard text or the chips, with what changed them. */
+  onChange(text: string, chips: readonly Occurrence[], cause: PromptChangeCause): void
   /** Called on Enter while the menu is closed; absent in read mode. */
   onSubmit?(): void
   /**

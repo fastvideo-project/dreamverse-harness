@@ -78,7 +78,7 @@ export type {
 export type { ArbitrateKey, ArbitrateOutcome, Occurrence, ReferenceInsert, TokenSpan } from './contract/draft-editor.ts'
 export type { ComposerBlock, ComposerBlocks } from './contract/composer-blocks.ts'
 export type {
-  PromptChip, PromptContent, PromptEditorProps, PromptHostModel, PromptInjected, PromptMenuOwner, PromptOccurrenceHandle,
+  PromptChangeCause, PromptChip, PromptContent, PromptEditorProps, PromptHostModel, PromptInjected, PromptMenuOwner, PromptOccurrenceHandle,
   ReferenceFaceOwner,
 } from './contract/prompt.ts'
 

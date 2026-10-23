@@ -3,10 +3,11 @@
  * replaces the content by revision, reports each change to the host, and drives an `@` menu through its own trigger
  * controller, which hands each pick to this occurrence alone.
  */
+import { HISTORIC_TAG } from 'lexical'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { InputTriggerController, PickOutcome } from '../contract/input.ts'
 import type { Occurrence, TokenSpan } from '../contract/draft-editor.ts'
-import type { PromptHostModel, PromptOccurrenceHandle } from '../contract/prompt.ts'
+import type { PromptChangeCause, PromptHostModel, PromptOccurrenceHandle } from '../contract/prompt.ts'
 import { registerComposerKeymap } from './editor/keymap.ts'
 import { DraftEditorRuntime } from './editor/runtime.ts'
 
@@ -54,7 +55,7 @@ export class PromptOccurrence implements PromptOccurrenceHandle {
       })
     const controller = this.trigger?.controller
     this.runtime = new DraftEditorRuntime({
-      onUpdate: () => { this.onUpdate() },
+      onUpdate: (tags) => { this.onUpdate(tags.has(HISTORIC_TAG) ? 'history' : 'edit') },
       openReference: (source, reference) => this.model().openReference?.(source ?? '', reference.ref) ?? false,
       activeClaimToken: () => null,
       lexicon: () => controller?.lexicon.getSnapshot() ?? new Map(),
@@ -131,8 +132,8 @@ export class PromptOccurrence implements PromptOccurrenceHandle {
     return this.runtime.insertReference(span, outcome.insert, tail)
   }
 
-  /** Track the trigger and report a changed text or chip list to the host. */
-  private onUpdate(): void {
+  /** Track the trigger and report a changed text or chip list to the host, with what changed it. */
+  private onUpdate(cause: PromptChangeCause): void {
     this.runtime.refreshProjection()
     const projection = this.runtime.projection
     if (projection.detectText !== this.lastDetect) {
@@ -146,6 +147,6 @@ export class PromptOccurrence implements PromptOccurrenceHandle {
     if (this.reported === null) return
     if (projection.clipboardText === this.reported.text && sameChips(projection.occurrences, this.reported.chips)) return
     this.reported = { text: projection.clipboardText, chips: projection.occurrences }
-    model.onChange(projection.clipboardText, projection.occurrences)
+    model.onChange(projection.clipboardText, projection.occurrences, cause)
   }
 }
