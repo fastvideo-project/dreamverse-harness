@@ -102,12 +102,17 @@ export class PromptOccurrence implements PromptOccurrenceHandle {
     const { content } = model
     if (content.revision === this.applied) return
     this.applied = content.revision
-    if (content.history === 'step') {
-      this.runtime.replaceDraft(content.text, content.chips)
-      return
+    switch (content.history) {
+      case 'step':
+        this.runtime.replaceDraft(content.text, content.chips)
+        return
+      case 'merge':
+        this.runtime.mergeDraft(content.text, content.chips)
+        return
+      case 'reset':
+        this.runtime.restoreDraft(content.text, content.chips)
+        this.runtime.clearHistory()
     }
-    this.runtime.restoreDraft(content.text, content.chips)
-    this.runtime.clearHistory()
   }
 
   /** Close the menu controller and every listener. */

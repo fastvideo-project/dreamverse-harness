@@ -150,6 +150,23 @@ export function detectOffsetOfClipboardOffset(layout: ComposerLayout, clipboardO
   return layout.detectLength
 }
 
+/**
+ * Fold one detect-projection offset to its clipboard-projection twin: a chip's detect edges map to the edges of its
+ * clipboard expansion.
+ * @param layout - the current walk product.
+ * @param detectOffset - offset into the detect projection.
+ * @returns the clipboard offset covering the same document position.
+ */
+export function clipboardOffsetOfDetectOffset(layout: ComposerLayout, detectOffset: number): number {
+  for (const segment of layout.segments) {
+    const end = segment.detectStart + segment.detectLength
+    if (detectOffset > end) continue
+    if (detectOffset === end) return segment.clipboardStart + segment.clipboardLength
+    return segment.clipboardStart + detectOffset - segment.detectStart
+  }
+  return layout.clipboardText.length
+}
+
 /** The published projection product consumed by the shell every update. */
 export interface EditorProjection {
   /** Trigger/TokenSpan coordinate text (chip = one U+FFFC). */

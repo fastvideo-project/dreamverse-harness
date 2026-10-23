@@ -27,23 +27,21 @@ export interface PromptCall {
   readonly inputs: readonly CallInput[]
 }
 
-/** A run of plain text in a prompt document. */
-export interface TextRun {
-  readonly text: string
-}
-
-/** One citation chip of a prompt document; its input binding is derived from the call's inputs, never stored. */
+/**
+ * One citation of a prompt, as the kernel's parser reads it; its input binding is derived from the call's inputs, never
+ * stored.
+ */
 export interface ReferenceAtom {
   readonly label: string
   readonly uri: string
 }
 
 /**
- * The document of one call: the prompt as text runs and atoms, and the call's inputs in their stored order. For every
- * stored call `c`, the call of `c`'s document deep-equals `c`.
+ * The document of one call: the prompt, whose citations are its atoms, and the call's inputs in their stored order. For
+ * every stored call `c`, the call of `c`'s document deep-equals `c`.
  */
 export interface PromptDocument {
-  readonly runs: ReadonlyArray<TextRun | ReferenceAtom>
+  readonly prompt: string
   readonly inputs: readonly CallInput[]
 }
 

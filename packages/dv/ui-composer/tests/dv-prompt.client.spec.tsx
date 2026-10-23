@@ -39,6 +39,8 @@ const STILL: WireOperation = {
 beforeEach(() => {
   // jsdom has no layout: the menu scrolls its highlighted row into view, and the editor measures its selection.
   Element.prototype.scrollIntoView = vi.fn()
+  // jsdom has no ClipboardEvent, which the editor's cut and copy read.
+  vi.stubGlobal('ClipboardEvent', class ClipboardEvent extends Event {})
   Range.prototype.getBoundingClientRect = () => new DOMRect()
   document.documentElement.lang = 'en'
 })
@@ -180,6 +182,27 @@ const box = (take: HTMLElement): HTMLElement => {
   return found
 }
 
+/** Press one key with Ctrl in the occurrence's editor, as the editor's keyboard commands read it. */
+const press = (take: HTMLElement, key: string): void => {
+  fireEvent.keyDown(box(take), { key, code: key.length === 1 ? `Key${key.toUpperCase()}` : key, ctrlKey: key.length === 1 })
+}
+
+/**
+ * Select the whole prompt with Ctrl+A and cut it, as the editor's cut command does.
+ * @returns the plain text that the cut puts on the clipboard.
+ */
+const cutAll = (take: HTMLElement): string => {
+  press(take, 'a')
+  const clipboard = new Map<string, string>()
+  fireEvent.cut(box(take), { clipboardData: { setData: (type: string, text: string) => { clipboard.set(type, text) }, getData: () => '', items: [], types: [] } })
+  return clipboard.get('text/plain') ?? ''
+}
+
+/** Paste plain text at the caret of the occurrence's editor. */
+const pasteText = (take: HTMLElement, text: string): void => {
+  fireEvent.paste(box(take), { clipboardData: { items: [], getData: (type: string) => type === 'text/plain' ? text : '' } })
+}
+
 /** The first element under `root` that `selector` names, once it renders. */
 const found = (root: HTMLElement, selector: string): Promise<HTMLElement> => waitFor(() => {
   const element = root.querySelector<HTMLElement>(selector)
@@ -294,6 +317,23 @@ describe('what the host lends', () => {
   it('shows the chips of an operation that the host lends and the server does not list', async () => {
     const { take } = await mount({ operation: STILL.name, params: { prompt: 'rain', seed: 3 }, inputs: [] }, { served: OPERATIONS })
     await waitFor(() => { expect(take.querySelector<HTMLInputElement>('[data-param-chip="seed"]')?.value).toBe('3') })
+  })
+})
+
+describe('chips that the editor\'s clipboard carries', () => {
+  it('pastes a cut chip back as a chip, and the call gets its input back', async () => {
+    const stored: PromptCall = { operation: 'shot.render', params: { ...KEY, prompt: `${HERO} runs` }, inputs: [{ role: 'reference', ref: 'hero@1' }] }
+    const { take, sent } = await mount(stored)
+    await found(take, '[data-dv-chip="dv:test_ref/hero"] img')
+    act(() => { box(take).focus() })
+    const clipboard = cutAll(take)
+    expect(clipboard).toBe(`${HERO} runs`)
+    await waitFor(() => { expect(take.querySelectorAll('[data-reference-tile]')).toHaveLength(0) })
+    pasteText(take, clipboard)
+    await found(take, '[data-dv-chip="dv:test_ref/hero"] img')
+    expect([box(take).textContent, take.querySelector('[data-reference-tile]')?.getAttribute('data-reference-tile')]).toEqual(['Herov1 runs', 'hero@1'])
+    fireEvent.click(await sendOf(take, 'Render new take'))
+    await waitFor(() => { expect(sent).toEqual([stored]) })
   })
 })
 

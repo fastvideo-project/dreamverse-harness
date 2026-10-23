@@ -1168,7 +1168,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.input.reference\', () => ctx.slots.register(\n      { name: \'conversation.input.reference\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-conversation/src/client/contract/prompt.ts:97',
+    source: 'packages/client/ui-conversation/src/client/contract/prompt.ts:98',
   },
   {
     key: 'conversation.input.right',
@@ -1360,7 +1360,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.prompt.menu\', () => ctx.slots.register(\n      { name: \'conversation.prompt.menu\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-conversation/src/client/contract/prompt.ts:101',
+    source: 'packages/client/ui-conversation/src/client/contract/prompt.ts:102',
   },
   {
     key: 'conversation.prompt.reference',
@@ -1406,7 +1406,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.prompt.reference\', () => ctx.slots.register(\n      { name: \'conversation.prompt.reference\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-conversation/src/client/contract/prompt.ts:99',
+    source: 'packages/client/ui-conversation/src/client/contract/prompt.ts:100',
   },
   {
     key: 'conversation.session',

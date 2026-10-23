@@ -8,8 +8,8 @@ import type { ProjectAsset, WireState } from '@dv/ui-kit/types.ts'
 import { fixtureState, record } from '../../ui-kit/tests/fixture.client.tsx'
 import type { CallInput, PromptCall, PromptDocument, ReferenceAtom } from '../src/client/contract/index.ts'
 import {
-  callOf, countReferences, deleteAtom, documentOf, editorContent, isAtom, pinVersion, reconcile, removeInput, resolveAtom, resolveInput,
-  runsOfEditor, satisfyingIndexes, type ResolveContext, type VersionReader,
+  atomsOf, callOf, countReferences, deleteAtom, documentOf, editorContent, pinVersion, reconcile, removeInput, resolveAtom, resolveInput,
+  satisfyingIndexes, type ResolveContext, type VersionReader,
 } from '../src/client/reference-model.ts'
 
 /** One image asset. */
@@ -42,7 +42,8 @@ const reference = (ref: string): CallInput => ({ role: 'reference', ref })
 const call = (prompt: string, inputs: CallInput[]): PromptCall => ({
   operation: 'shot.render', params: { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt }, inputs,
 })
-const atoms = (document: PromptDocument): ReferenceAtom[] => document.runs.filter(isAtom)
+const atoms = (document: PromptDocument): ReferenceAtom[] => atomsOf(document.prompt)
+const MIA_CHIP = '@[Mia](dv:character/c1)'
 
 /** The calls of E3 (section 3) and the stored forms that the kernel reads but the writer never writes. */
 const E3_CALLS = {
@@ -60,7 +61,9 @@ describe('the round-trip law', () => {
     const document = documentOf(stored)
     expect(callOf(document, stored)).toEqual(stored)
     const content = editorContent(document)
-    expect(callOf({ ...document, runs: runsOfEditor(content.text, content.chips) }, stored)).toEqual(stored)
+    expect(callOf({ ...document, prompt: content.text }, stored)).toEqual(stored)
+    const cited = content.chips.map(chip => content.text.slice(chip.offset, chip.offset + chip.length))
+    expect(cited).toEqual(content.chips.map(chip => chip.ref))
   })
 
   it('keeps a call without a prompt param as it is', () => {
@@ -82,9 +85,8 @@ describe('the round-trip law', () => {
 describe('the edits', () => {
   it('R1: a new chip that no input satisfies appends its input; an element enters at its newest version', () => {
     const before = documentOf(call('the lamp glows', [reference('a3')]))
-    const runs = [...before.runs, { label: 'Mia', uri: 'dv:character/c1' }]
-    expect(reconcile(before, runs, [], ctx(before.inputs)).document.inputs).toEqual([reference('a3'), reference('c1@2')])
-    const asset = reconcile(before, [...before.runs, { label: 'Take', uri: 'dv:asset/a4' }], [], ctx(before.inputs))
+    expect(reconcile(before, `${before.prompt} ${MIA_CHIP}`, [], ctx(before.inputs)).document.inputs).toEqual([reference('a3'), reference('c1@2')])
+    const asset = reconcile(before, `${before.prompt} @[Take](dv:asset/a4)`, [], ctx(before.inputs))
     expect(asset.document.inputs).toEqual([reference('a3'), reference('a4')])
   })
 
@@ -107,7 +109,7 @@ describe('the edits', () => {
     const twice = documentOf(call('@[Mia](dv:character/c1) and @[Mia](dv:character/c1)', [reference('c1@1')]))
     expect(deleteAtom(twice.inputs, 'dv:character/c1', atoms(twice).slice(1), ctx(twice.inputs)).inputs).toEqual([reference('c1@1')])
     // The uncited version of S4 stays when a chip of another input goes.
-    const s4 = { runs: [{ text: 'Mia walks ' }], inputs: [reference('c1@1'), reference('a3')] }
+    const s4 = { prompt: 'Mia walks ', inputs: [reference('c1@1'), reference('a3')] }
     expect(deleteAtom(s4.inputs, 'dv:asset/a3', [], ctx(s4.inputs)).inputs).toEqual([reference('c1@1')])
   })
 
@@ -121,14 +123,14 @@ describe('the edits', () => {
   it('an editor undo that brings a deleted chip back restores the input at its old place', () => {
     const stored = E3_CALLS['S6 start']
     const document = documentOf(stored)
-    const deleted = reconcile(document, document.runs.slice(1), [], ctx(document.inputs))
+    const deleted = reconcile(document, document.prompt.replace(MIA_CHIP, ''), [], ctx(document.inputs))
     expect(deleted.document.inputs).toEqual([reference('g1#0')])
-    const undone = reconcile(deleted.document, document.runs, deleted.removed, ctx(deleted.document.inputs))
+    const undone = reconcile(deleted.document, document.prompt, deleted.removed, ctx(deleted.document.inputs))
     expect(undone.document.inputs).toEqual(stored.inputs)
     expect(undone.removed).toEqual([])
     // An undo of R2 brings the chip back the same way.
     const tile = removeInput(document, 0, ctx(document.inputs))
-    expect(reconcile(tile.document, document.runs, tile.removed, ctx(tile.document.inputs)).document.inputs).toEqual(stored.inputs)
+    expect(reconcile(tile.document, document.prompt, tile.removed, ctx(tile.document.inputs)).document.inputs).toEqual(stored.inputs)
   })
 
   it('R5′: pinning a version rewrites its input, and every chip of the element names the new version', () => {
@@ -152,8 +154,19 @@ describe('the edits', () => {
 })
 
 describe('the readers of a document', () => {
-  it('reads a chip whose text is no citation as plain text', () => {
-    expect(runsOfEditor('a cat here', [{ ref: 'cat', label: 'cat', offset: 2, length: 3 }])).toEqual([{ text: 'a ' }, { text: 'cat' }, { text: ' here' }])
+  it('reads every citation of the prompt as an atom, as the kernel reads it, whether a chip, a paste or typing wrote it', () => {
+    const prompt = `a cat ${MIA_CHIP} and @[Lamp](dv:asset/a1) here`
+    expect(atomsOf(prompt)).toEqual([{ label: 'Mia', uri: 'dv:character/c1' }, { label: 'Lamp', uri: 'dv:asset/a1' }])
+    expect(editorContent({ prompt, inputs: [] }).chips).toEqual([
+      { ref: MIA_CHIP, label: 'Mia', offset: 6, length: MIA_CHIP.length }, { ref: '@[Lamp](dv:asset/a1)', label: 'Lamp', offset: 34, length: 20 },
+    ])
+  })
+
+  it('keeps the input of a chip whose pasted copy stays when the chip goes', () => {
+    const one = documentOf(call(`${MIA_CHIP} runs`, [reference('c1@1')]))
+    const pasted = reconcile(one, `${MIA_CHIP} runs ${MIA_CHIP}`, [], ctx(one.inputs))
+    expect(pasted.document.inputs).toEqual([reference('c1@1')])
+    expect(reconcile(pasted.document, ` runs ${MIA_CHIP}`, pasted.removed, ctx(pasted.document.inputs)).document.inputs).toEqual([reference('c1@1')])
   })
 
   it('satisfies an input citation by an input of its role only, and a record citation by no input', () => {
@@ -167,13 +180,13 @@ describe('the readers of a document', () => {
   it('adds no input for a new chip that no input can satisfy: a record, or an element without an item', () => {
     const before = documentOf(call('the lamp glows', [reference('a3')]))
     for (const uri of ['dv:record/g1', 'dv:character/c9', 'dv:prop/p1']) {
-      expect(reconcile(before, [...before.runs, { label: 'X', uri }], [], ctx(before.inputs)).document.inputs).toEqual([reference('a3')])
+      expect(reconcile(before, `${before.prompt} @[X](${uri})`, [], ctx(before.inputs)).document.inputs).toEqual([reference('a3')])
     }
   })
 
   it('keeps the input and remembers nothing when one of two chips of one version goes', () => {
     const twice = documentOf(call('@[Mia](dv:character/c1) and @[Mia](dv:character/c1)', [reference('c1@1')]))
-    const next = reconcile(twice, twice.runs.slice(1), [], ctx(twice.inputs))
+    const next = reconcile(twice, ` and ${MIA_CHIP}`, [], ctx(twice.inputs))
     expect([next.document.inputs, next.removed]).toEqual([[reference('c1@1')], []])
   })
 

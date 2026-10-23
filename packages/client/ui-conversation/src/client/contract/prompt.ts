@@ -18,10 +18,11 @@ export interface PromptContent {
    */
   readonly revision: number
   /**
-   * How a new revision enters the undo history: `step` replaces the content as one undoable edit, and `reset` starts the
-   * history over on the content, as a new occurrence would.
+   * How a new revision enters the undo history: `step` replaces the content as one undoable edit; `merge` replaces it
+   * inside the last undoable edit and keeps the caret where it is, such as when the host turns the citations that a
+   * paste brought in as text into chips; `reset` starts the history over on the content, as a new occurrence would.
    */
-  readonly history: 'step' | 'reset'
+  readonly history: 'step' | 'merge' | 'reset'
   readonly text: string
   readonly chips: readonly PromptChip[]
 }

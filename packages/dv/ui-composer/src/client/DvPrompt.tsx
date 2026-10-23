@@ -2,13 +2,14 @@
  * The `dv.prompt` Factory component: the reference tray, the `conversation.prompt` editor, and the parameter bar with
  * the cost and send, over one call. Its draft (`draft.ts`) holds the document, which keeps the prompt and the call's
  * inputs in their stored order, and the edited params; the editor owns the text and the chips, and each editor change
- * reconciles the inputs. A tray edit that changes the prompt reaches the editor as a new content revision, so the
- * editor's undo also undoes it. A tray edit that leaves the prompt as it is (a picker add, an upload, a version pin, the
- * removal of a tile that no chip cites) is no editor step, so the editor's undo leaves it: the editor's history holds
- * editor states only, and holding the inputs there would put them in the prompt's text. The tile's × takes back a
- * picker add or an upload; a pin to the newest version has no way back to the older one. In read mode the tray and the
- * editor only show the call. Every reference resolves against the state that the host lends, and each chip's face
- * draws what the composer resolved for it.
+ * reconciles the inputs with the citations that the kernel's parser reads in the editor's text. A citation that arrives
+ * as text, such as a pasted chip, becomes a chip within the same undo step. A tray edit that changes the prompt reaches
+ * the editor as a new content revision, so the editor's undo also undoes it. A tray edit that leaves the prompt as it
+ * is (a picker add, an upload, a version pin, the removal of a tile that no chip cites) is no editor step, so the
+ * editor's undo leaves it: the editor's history holds editor states only, and holding the inputs there would put them
+ * in the prompt's text. The tile's × takes back a picker add or an upload; a pin to the newest version has no way back
+ * to the older one. In read mode the tray and the editor only show the call. Every reference resolves against the state
+ * that the host lends, and each chip's face draws what the composer resolved for it.
  *
  * The tray and `@` offer references only when the call's operation declares a `reference` input and the
  * selected model takes one. The placeholder and the send button read the copy of the operation's parameter bar; an
@@ -17,7 +18,7 @@
  * @module @dv/ui-composer/DvPrompt
  */
 import { useEffect, useReducer, type CSSProperties, type ReactNode } from 'react'
-import type { Occurrence, PromptHostModel } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { PromptHostModel } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { FactoryComponentPropsOf, RenderFactorySlot } from '@deepseek-ai/dsh-client-ui-slots'
 import { parsePromptCitations } from '@dv/project/grammar'
 import { errorMessage } from '@dv/ui-kit/api.ts'
@@ -28,7 +29,7 @@ import type {} from '@dv/ui-media/contract'
 import type { CallInput, CandidateFilter, ParamBar, ParamChip, PromptCopy, PromptFaceContext, ReferenceView } from './contract/index.ts'
 import { draftOf, reduceDraft } from './draft.ts'
 import { MENTION_SOURCE } from './mention.ts'
-import { callOf, documentViews, faceOf, runsOfEditor, type ResolveContext } from './reference-model.ts'
+import { callOf, documentViews, faceOf, type ResolveContext } from './reference-model.ts'
 
 /** Full props of the component. */
 export type DvPromptComponentProps = FactoryComponentPropsOf<'dv.prompt'>
@@ -127,7 +128,7 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
   const media = filter === null ? null : { mediaTypes: [...filter.mediaTypes], maxReferences: filter.maxReferences }
   const model: PromptHostModel = {
     content: draft.content, readOnly, sources: offersReferences ? [MENTION_SOURCE] : [], sourceContext: media, faceContext: faces,
-    onChange: (text: string, chips: readonly Occurrence[]) => { dispatch({ type: 'editorChanged', runs: runsOfEditor(text, chips), ctx }) },
+    onChange: (text, chips) => { dispatch({ type: 'editorChanged', text, chips: chips.length, ctx }) },
     ...readOnly ? {} : { onSubmit: send },
     openReference: (_source, reference) => openReference(reference),
     placeholder: pick(...copy.placeholder),

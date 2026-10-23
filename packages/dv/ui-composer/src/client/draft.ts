@@ -10,7 +10,7 @@ import { fieldsOf, valueOf } from '@dv/ui-kit/form.ts'
 import type { OperationCheck, WireOperation } from '@dv/ui-kit/types.ts'
 import type { PromptCall, PromptDocument, RemovedInput } from './contract/index.ts'
 import { MENTION_SOURCE } from './mention.ts'
-import { documentOf, editorContent, pinVersion, reconcile, removeInput, type ResolveContext } from './reference-model.ts'
+import { atomsOf, documentOf, editorContent, pinVersion, reconcile, removeInput, type ResolveContext } from './reference-model.ts'
 
 /** What one occurrence holds between renders. */
 export interface Draft {
@@ -30,7 +30,7 @@ export interface Draft {
 /** One change of a draft. */
 export type DraftAction =
   | { readonly type: 'callLent'; readonly call: PromptCall }
-  | { readonly type: 'editorChanged'; readonly runs: PromptDocument['runs']; readonly ctx: ResolveContext }
+  | { readonly type: 'editorChanged'; readonly text: string; readonly chips: number; readonly ctx: ResolveContext }
   | { readonly type: 'tileRemoved'; readonly index: number; readonly ctx: ResolveContext }
   | { readonly type: 'picked'; readonly refs: readonly string[] }
   | { readonly type: 'imported'; readonly assets: readonly string[] }
@@ -93,8 +93,11 @@ export function reduceDraft(draft: Draft, action: DraftAction): Draft {
       return { ...next, content: { ...next.content, revision: draft.content.revision + 1 } }
     }
     case 'editorChanged': {
-      const next = reconcile(document, action.runs, draft.removed, { ...action.ctx, inputs: document.inputs })
-      return { ...draft, document: next.document, removed: next.removed }
+      const next = reconcile(document, action.text, draft.removed, { ...action.ctx, inputs: document.inputs })
+      // A citation that a paste or typing brought in as text becomes a chip inside that edit's undo step, so the editor
+      // shows a chip for every citation that the kernel reads.
+      const content = atomsOf(action.text).length > action.chips ? contentOf(next.document, draft.content.revision + 1, 'merge') : draft.content
+      return { ...draft, document: next.document, removed: next.removed, content }
     }
     case 'tileRemoved': {
       const next = removeInput(document, action.index, { ...action.ctx, inputs: document.inputs })

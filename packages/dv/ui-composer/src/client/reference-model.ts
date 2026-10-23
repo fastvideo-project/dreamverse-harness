@@ -1,9 +1,10 @@
 /**
- * The client reference model of a `dv.prompt` occurrence: the document of a call (the prompt's text runs and citation
- * atoms, with the call's inputs in their stored order), the host's rule for which inputs satisfy a citation, the edits
- * that keep every citation satisfied, and the view that a chip or a tray tile draws. The grammars are the kernel's,
- * read and written through `@dv/project/grammar`; the model names no reference kind, and reads elements through the
- * version readers that the kinds' plugins register.
+ * The client reference model of a `dv.prompt` occurrence: the document of a call (the prompt, whose citations the
+ * kernel's parser reads as atoms, with the call's inputs in their stored order), the host's rule for which inputs
+ * satisfy a citation, the edits that keep every citation satisfied, and the view that a chip or a tray tile draws. The
+ * grammars are the kernel's, read and written through `@dv/project/grammar`, so the client reads a citation wherever
+ * the kernel reads one; the model names no reference kind, and reads elements through the version readers that the
+ * kinds' plugins register.
  *
  * @module @dv/ui-composer/reference-model
  */
@@ -14,7 +15,7 @@ import { mediaTypeOf } from '@dv/ui-kit/media-type.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import type { ProjectAsset, WireState } from '@dv/ui-kit/types.ts'
 import type {
-  CallInput, CandidateFilter, ChipFace, PromptCall, PromptDocument, ReferenceAtom, ReferenceView, RemovedInput, TextRun, TrayEntry,
+  CallInput, CandidateFilter, ChipFace, PromptCall, PromptDocument, ReferenceAtom, ReferenceView, RemovedInput, TrayEntry,
 } from './contract/index.ts'
 
 /** The part of a version kind that the model reads. */
@@ -29,7 +30,7 @@ export interface ResolveContext {
   readonly filter: CandidateFilter | null
 }
 
-/** One chip as the editor holds it: its citation text at a clipboard offset. */
+/** One chip of the editor's content: its citation text, its label, and its clipboard offset and length. */
 export interface EditorChip {
   readonly ref: string
   readonly label: string
@@ -37,50 +38,22 @@ export interface EditorChip {
   readonly length: number
 }
 
-/** Whether a run is an atom. */
-export function isAtom(run: TextRun | ReferenceAtom): run is ReferenceAtom {
-  return 'uri' in run
-}
-
-/** The text of one atom: its parsed label and URI written back as they were read, so a stored prompt round-trips. */
-function atomText(atom: ReferenceAtom): string {
-  return `@[${atom.label}](${atom.uri})`
-}
-
 /**
- * The runs of a prompt: one atom per citation, plain text between them.
+ * The atoms of a prompt: one per citation that the kernel's parser reads, in prompt order.
  * @param prompt - the prompt.
- * @returns the runs in prompt order.
+ * @returns the atoms.
  */
-function runsOf(prompt: string): Array<TextRun | ReferenceAtom> {
-  const runs: Array<TextRun | ReferenceAtom> = []
-  let last = 0
-  for (const citation of parsePromptCitations(prompt)) {
-    if (citation.start > last) runs.push({ text: prompt.slice(last, citation.start) })
-    runs.push({ label: citation.label, uri: citation.uri })
-    last = citation.end
-  }
-  if (last < prompt.length) runs.push({ text: prompt.slice(last) })
-  return runs
+export function atomsOf(prompt: string): ReferenceAtom[] {
+  return parsePromptCitations(prompt).map(citation => ({ label: citation.label, uri: citation.uri }))
 }
 
 /**
- * The document of a stored call: each citation becomes an atom, and the inputs stay as stored.
+ * The document of a stored call: the prompt as stored, and the inputs as stored.
  * @param call - the call.
  * @returns the document.
  */
 export function documentOf(call: PromptCall): PromptDocument {
-  const prompt = typeof call.params['prompt'] === 'string' ? call.params['prompt'] : ''
-  return { runs: runsOf(prompt), inputs: call.inputs }
-}
-
-/**
- * The prompt of a document.
- * @param runs - the document's runs.
- * @returns the text runs and the atoms' citation texts, concatenated.
- */
-export function promptOf(runs: PromptDocument['runs']): string {
-  return runs.map(run => isAtom(run) ? atomText(run) : run.text).join('')
+  return { prompt: typeof call.params['prompt'] === 'string' ? call.params['prompt'] : '', inputs: call.inputs }
 }
 
 /**
@@ -90,48 +63,22 @@ export function promptOf(runs: PromptDocument['runs']): string {
  * @returns the call.
  */
 export function callOf(document: PromptDocument, base: PromptCall): PromptCall {
-  const prompt = promptOf(document.runs)
+  const { prompt } = document
   const params = prompt === '' && !('prompt' in base.params) ? base.params : { ...base.params, prompt }
   return { operation: base.operation, params, inputs: document.inputs }
 }
 
 /**
- * The editor content of a document: the prompt as clipboard text, and one chip per atom.
+ * The editor content of a document: the prompt as clipboard text, and one chip per citation.
  * @param document - the document.
  * @returns the text and the chips in text order.
  */
 export function editorContent(document: PromptDocument): { text: string; chips: EditorChip[] } {
-  let text = ''
-  const chips: EditorChip[] = []
-  for (const run of document.runs) {
-    if (!isAtom(run)) {
-      text += run.text
-      continue
-    }
-    const cited = atomText(run)
-    chips.push({ ref: cited, label: run.label, offset: text.length, length: cited.length })
-    text += cited
-  }
-  return { text, chips }
-}
-
-/**
- * The runs of the editor's content: the text between chips, and one atom per chip whose text is one citation.
- * @param text - the editor's clipboard text.
- * @param chips - the editor's chips in text order.
- * @returns the runs.
- */
-export function runsOfEditor(text: string, chips: readonly EditorChip[]): Array<TextRun | ReferenceAtom> {
-  const runs: Array<TextRun | ReferenceAtom> = []
-  let last = 0
-  for (const chip of chips) {
-    if (chip.offset > last) runs.push({ text: text.slice(last, chip.offset) })
-    const [citation] = parsePromptCitations(chip.ref)
-    runs.push(citation === undefined ? { text: chip.ref } : { label: citation.label, uri: citation.uri })
-    last = chip.offset + chip.length
-  }
-  if (last < text.length) runs.push({ text: text.slice(last) })
-  return runs
+  const { prompt } = document
+  const chips = parsePromptCitations(prompt).map(citation => ({
+    ref: prompt.slice(citation.start, citation.end), label: citation.label, offset: citation.start, length: citation.end - citation.start,
+  }))
+  return { text: prompt, chips }
 }
 
 /** The version reader of `kind`, or of any kind, that holds version `version` of `id`, with that version's name; else null. */
@@ -221,25 +168,16 @@ export function removeInput(
   if (input === undefined) return { document, removed: [] }
   const inputs = document.inputs.filter((_, at) => at !== index)
   const removed: RemovedInput[] = []
-  const runs = document.runs.map((run) => {
-    if (!isAtom(run)) return run
-    const before = satisfyingIndexes(run.uri, document.inputs, withInputs(ctx, document.inputs))
-    if (before.length !== 1 || before[0] !== index) return run
-    removed.push({ uri: run.uri, input, index })
-    return { text: run.label }
-  })
-  return { document: { runs: mergeText(runs), inputs }, removed }
-}
-
-/** Join adjacent text runs. */
-function mergeText(runs: ReadonlyArray<TextRun | ReferenceAtom>): Array<TextRun | ReferenceAtom> {
-  const merged: Array<TextRun | ReferenceAtom> = []
-  for (const run of runs) {
-    const last = merged.at(-1)
-    if (!isAtom(run) && last !== undefined && !isAtom(last)) merged[merged.length - 1] = { text: last.text + run.text }
-    else merged.push(run)
+  let prompt = ''
+  let last = 0
+  for (const citation of parsePromptCitations(document.prompt)) {
+    const before = satisfyingIndexes(citation.uri, document.inputs, withInputs(ctx, document.inputs))
+    if (before.length !== 1 || before[0] !== index) continue
+    prompt += document.prompt.slice(last, citation.start) + citation.label
+    last = citation.end
+    removed.push({ uri: citation.uri, input, index })
   }
-  return merged
+  return { document: { prompt: prompt + document.prompt.slice(last), inputs }, removed }
 }
 
 /**
@@ -265,11 +203,6 @@ export function deleteAtom(
   return { inputs: inputs.filter((_, at) => at !== index), removed: { uri, input, index } }
 }
 
-/** The atoms of runs. */
-function atomsOf(runs: ReadonlyArray<TextRun | ReferenceAtom>): ReferenceAtom[] {
-  return runs.filter(isAtom)
-}
-
 /** Each URI of a list of atoms, with its count and its first atom. */
 function tally(atoms: readonly ReferenceAtom[]): Map<string, { count: number; atom: ReferenceAtom }> {
   const counts = new Map<string, { count: number; atom: ReferenceAtom }>()
@@ -281,20 +214,21 @@ function tally(atoms: readonly ReferenceAtom[]): Map<string, { count: number; at
 }
 
 /**
- * Bring a document in step with the editor's new runs. A deleted atom removes its input by R3′. A new atom that no
- * input satisfies brings back the input that an earlier edit removed for it, at its old place (the editor's undo of
- * that edit), else adds its input at the end (R1). The other inputs keep their order.
+ * Bring a document in step with the editor's new prompt, whose citations the kernel's parser reads, whether a chip, a
+ * paste or typing wrote them. A deleted atom removes its input by R3′. A new atom that no input satisfies brings back
+ * the input that an earlier edit removed for it, at its old place (the editor's undo of that edit), else adds its input
+ * at the end (R1). The other inputs keep their order.
  * @param previous - the document before the editor change.
- * @param runs - the editor's runs.
+ * @param prompt - the editor's clipboard text, which is the prompt.
  * @param removed - the inputs earlier edits removed.
  * @param ctx - the state and the version readers.
  * @returns the document and the removed inputs after the change.
  */
 export function reconcile(
-  previous: PromptDocument, runs: ReadonlyArray<TextRun | ReferenceAtom>, removed: readonly RemovedInput[], ctx: ResolveContext,
+  previous: PromptDocument, prompt: string, removed: readonly RemovedInput[], ctx: ResolveContext,
 ): { document: PromptDocument; removed: RemovedInput[] } {
-  const before = tally(atomsOf(previous.runs))
-  const remaining = atomsOf(runs)
+  const before = tally(atomsOf(previous.prompt))
+  const remaining = atomsOf(prompt)
   const after = tally(remaining)
   let inputs = [...previous.inputs]
   let memo = [...removed]
@@ -316,7 +250,7 @@ export function reconcile(
     const added = inputForAtom(atom, ctx)
     if (added !== null) inputs = [...inputs, added]
   }
-  return { document: { runs: [...runs], inputs }, removed: memo }
+  return { document: { prompt, inputs }, removed: memo }
 }
 
 /**
@@ -333,7 +267,7 @@ export function pinVersion(document: PromptDocument, index: number, version: num
   if (input === undefined || syntax === null || !('version' in syntax)) return document
   const pinned = { role: input.role, ref: formatInputSyntax({ id: syntax.id, version }) }
   const inputs = document.inputs.map((other, at) => at === index ? pinned : other)
-  return { runs: document.runs, inputs }
+  return { prompt: document.prompt, inputs }
 }
 
 /** The assets of a list of IDs that the state holds. */
@@ -431,7 +365,7 @@ export function resolveInput(input: CallInput, ctx: ResolveContext): ReferenceVi
  */
 export function documentViews(document: PromptDocument, ctx: ResolveContext): { atoms: ReferenceView[]; tray: TrayEntry[] } {
   const resolve = withInputs(ctx, document.inputs)
-  const atoms = atomsOf(document.runs)
+  const atoms = atomsOf(document.prompt)
   const tray = document.inputs.map((input, index) => ({
     input, view: resolveInput(input, resolve),
     cited: atoms.some(atom => satisfyingIndexes(atom.uri, document.inputs, resolve).includes(index)),
