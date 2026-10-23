@@ -338,6 +338,24 @@ describe('chips that the editor\'s clipboard carries', () => {
 })
 
 describe('the undo memo', () => {
+  it('puts every input back in its stored place when one undo brings back the chips that one delete removed', async () => {
+    const stored: PromptCall = {
+      operation: 'shot.render', params: { ...KEY, prompt: `@[Rain](dv:asset/shot1-last.png) falls on ${HERO}` },
+      inputs: [{ role: 'reference', ref: 'shot1-last.png' }, { role: 'reference', ref: 'hero@1' }],
+    }
+    const { take, sent } = await mount(stored)
+    await found(take, '[data-dv-chip="dv:test_ref/hero"] img')
+    act(() => { box(take).focus() })
+    press(take, 'a')
+    press(take, 'Backspace')
+    await waitFor(() => { expect(take.querySelector('[data-reference-tile]')).toBeNull() })
+    press(take, 'z')
+    await waitFor(() => { expect(take.querySelectorAll('[data-reference-tile]')).toHaveLength(2) })
+    expect([...take.querySelectorAll('[data-reference-tile]')].map(tile => tile.getAttribute('data-reference-tile'))).toEqual(['shot1-last.png', 'hero@1'])
+    fireEvent.click(await sendOf(take, 'Render new take'))
+    await waitFor(() => { expect(sent).toEqual([stored]) })
+  })
+
   it('adds the newest version for a fresh @ pick of an element whose chip the user deleted', async () => {
     const stored: PromptCall = { operation: 'shot.render', params: { ...KEY, prompt: `${HERO} runs` }, inputs: [{ role: 'reference', ref: 'hero@1' }] }
     const { take, view, sent } = await mount(stored, {

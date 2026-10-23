@@ -159,7 +159,10 @@ export interface TrayEntry {
 export interface RemovedInput {
   readonly uri: string
   readonly input: CallInput
+  /** The input's index when the edit removed it, after the removals of the same edit that came before it. */
   readonly index: number
+  /** The edit that removed it; the inputs of one edit come back together. */
+  readonly step: number
 }
 
 /**

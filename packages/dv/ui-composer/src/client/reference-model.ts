@@ -160,10 +160,11 @@ function withInputs(ctx: ResolveContext, inputs: readonly CallInput[]): ResolveC
  * @param document - the document.
  * @param index - the index of the input.
  * @param ctx - the state and the version readers.
+ * @param step - the step of this edit, from {@link nextStep}.
  * @returns the document, and the input as removed by each atom that turned into text.
  */
 export function removeInput(
-  document: PromptDocument, index: number, ctx: ResolveContext,
+  document: PromptDocument, index: number, ctx: ResolveContext, step: number,
 ): { document: PromptDocument; removed: RemovedInput[] } {
   const input = document.inputs[index]
   if (input === undefined) return { document, removed: [] }
@@ -176,7 +177,7 @@ export function removeInput(
     if (before.length !== 1 || before[0] !== index) continue
     prompt += document.prompt.slice(last, citation.start) + citation.label
     last = citation.end
-    removed.push({ uri: citation.uri, input, index })
+    removed.push({ uri: citation.uri, input, index, step })
   }
   return { document: { prompt: prompt + document.prompt.slice(last), inputs }, removed }
 }
@@ -189,10 +190,11 @@ export function removeInput(
  * @param uri - the deleted atom's URI.
  * @param remaining - the atoms left after the delete.
  * @param ctx - the state and the version readers.
+ * @param step - the step of the edit that deletes the atom.
  * @returns the inputs, and the input that went with its old index, if one did.
  */
 export function deleteAtom(
-  inputs: readonly CallInput[], uri: string, remaining: readonly ReferenceAtom[], ctx: ResolveContext,
+  inputs: readonly CallInput[], uri: string, remaining: readonly ReferenceAtom[], ctx: ResolveContext, step: number,
 ): { inputs: CallInput[]; removed: RemovedInput | null } {
   const own = withInputs(ctx, inputs)
   const satisfying = satisfyingIndexes(uri, inputs, own)
@@ -201,7 +203,32 @@ export function deleteAtom(
   if (index === undefined || input === undefined) return { inputs: [...inputs], removed: null }
   const stillCited = remaining.some(atom => satisfyingIndexes(atom.uri, inputs, own).includes(index))
   if (stillCited) return { inputs: [...inputs], removed: null }
-  return { inputs: inputs.filter((_, at) => at !== index), removed: { uri, input, index } }
+  return { inputs: inputs.filter((_, at) => at !== index), removed: { uri, input, index, step } }
+}
+
+/**
+ * The step of the next edit that removes inputs.
+ * @param removed - the inputs that earlier edits removed.
+ * @returns a step after every step of `removed`.
+ */
+export function nextStep(removed: readonly RemovedInput[]): number {
+  return (removed.at(-1)?.step ?? 0) + 1
+}
+
+/**
+ * The removed inputs that an undo or a redo brings back for atoms that come back: for each URI, the inputs that the
+ * last edit to remove an input for it removed for it, each input once, in the order they were removed.
+ */
+function undone(removed: readonly RemovedInput[], uris: readonly string[]): RemovedInput[] {
+  const steps = new Map(uris.flatMap((uri) => {
+    const last = removed.findLast(entry => entry.uri === uri)
+    return last === undefined ? [] : [[uri, last.step] as const]
+  }))
+  const back: RemovedInput[] = []
+  for (const entry of removed) {
+    if (steps.get(entry.uri) === entry.step && !back.some(other => other.input === entry.input)) back.push(entry)
+  }
+  return back
 }
 
 /** Each URI of a list of atoms, with its count and its first atom. */
@@ -234,23 +261,23 @@ export function reconcile(
   const after = tally(remaining)
   let inputs = [...previous.inputs]
   let memo = [...removed]
+  const step = nextStep(removed)
   for (const [uri, { count }] of before) {
     for (let gone = count - (after.get(uri)?.count ?? 0); gone > 0; gone -= 1) {
-      const step = deleteAtom(inputs, uri, remaining, ctx)
-      inputs = step.inputs
-      if (step.removed !== null) memo = [...memo, step.removed]
+      const deleted = deleteAtom(inputs, uri, remaining, ctx, step)
+      inputs = deleted.inputs
+      if (deleted.removed !== null) memo = [...memo, deleted.removed]
     }
   }
-  for (const [uri, { count, atom }] of after) {
-    if (count <= (before.get(uri)?.count ?? 0) || satisfyingIndexes(uri, inputs, withInputs(ctx, inputs)).length > 0) continue
-    const back = cause === 'history' ? memo.findLast(entry => entry.uri === uri) : undefined
-    if (back !== undefined) {
-      inputs.splice(Math.min(back.index, inputs.length), 0, back.input)
-      memo = memo.filter(entry => entry.input !== back.input)
-      continue
-    }
-    const added = inputForAtom(atom, ctx)
-    if (added !== null) inputs = [...inputs, added]
+  const added = [...after].filter(([uri, { count }]) => count > (before.get(uri)?.count ?? 0)
+    && satisfyingIndexes(uri, inputs, withInputs(ctx, inputs)).length === 0)
+  const back = cause === 'history' ? undone(memo, added.map(([uri]) => uri)) : []
+  // Last removed first, so that each input goes back to the index it had before the removals that came after it.
+  for (const entry of [...back].reverse()) inputs.splice(Math.min(entry.index, inputs.length), 0, entry.input)
+  memo = memo.filter(entry => !back.some(other => other.input === entry.input))
+  for (const [uri, { atom }] of added) {
+    const input = back.some(entry => entry.uri === uri) ? null : inputForAtom(atom, ctx)
+    if (input !== null) inputs = [...inputs, input]
   }
   return { document: { prompt, inputs }, removed: memo }
 }

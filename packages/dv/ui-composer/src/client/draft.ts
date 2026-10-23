@@ -10,7 +10,9 @@ import { fieldsOf, valueOf } from '@dv/ui-kit/form.ts'
 import type { OperationCheck, WireOperation } from '@dv/ui-kit/types.ts'
 import type { PromptCall, PromptDocument, RemovedInput } from './contract/index.ts'
 import { MENTION_SOURCE } from './mention.ts'
-import { atomsOf, documentOf, editorContent, pinVersion, reconcile, removeInput, type ResolveContext } from './reference-model.ts'
+import {
+  atomsOf, documentOf, editorContent, nextStep, pinVersion, reconcile, removeInput, type ResolveContext,
+} from './reference-model.ts'
 
 /** What one occurrence holds between renders. */
 export interface Draft {
@@ -107,7 +109,7 @@ export function reduceDraft(draft: Draft, action: DraftAction): Draft {
       return { ...draft, document: next.document, removed: next.removed, content }
     }
     case 'tileRemoved': {
-      const next = removeInput(document, action.index, { ...action.ctx, inputs: document.inputs })
+      const next = removeInput(document, action.index, { ...action.ctx, inputs: document.inputs }, nextStep(draft.removed))
       // A removal that turns chips into text changes the prompt, so the editor takes it as one undoable step; any other
       // removal leaves the editor as it is.
       const content = next.removed.length === 0 ? draft.content : contentOf(next.document, draft.content.revision + 1, 'step')

@@ -92,7 +92,7 @@ describe('the edits', () => {
 
   it('R2: removing the version turns its chip into its label, so every citation stays satisfied (S6)', () => {
     const document = documentOf(E3_CALLS['S6 start'])
-    const { document: next } = removeInput(document, 0, ctx(document.inputs))
+    const { document: next } = removeInput(document, 0, ctx(document.inputs), 1)
     expect(next.inputs).toEqual([reference('g1#0')])
     expect(callOf(next, E3_CALLS['S6 start']).params['prompt']).toBe('Mia holds the lamp from @[Take 3](dv:asset/a4)')
     expect(atoms(next).every(atom => satisfyingIndexes(atom.uri, next.inputs, ctx(next.inputs)).length > 0)).toBe(true)
@@ -104,19 +104,19 @@ describe('the edits', () => {
   it('R3′: deleting the last chip of an input removes the input; an input cited elsewhere or never cited stays', () => {
     const document = documentOf(E3_CALLS['S6 start'])
     const remaining = atoms(document).slice(1)
-    expect(deleteAtom(document.inputs, 'dv:character/c1', remaining, ctx(document.inputs)).inputs).toEqual([reference('g1#0')])
+    expect(deleteAtom(document.inputs, 'dv:character/c1', remaining, ctx(document.inputs), 1).inputs).toEqual([reference('g1#0')])
     // Two Mia chips: deleting one keeps c1@1.
     const twice = documentOf(call('@[Mia](dv:character/c1) and @[Mia](dv:character/c1)', [reference('c1@1')]))
-    expect(deleteAtom(twice.inputs, 'dv:character/c1', atoms(twice).slice(1), ctx(twice.inputs)).inputs).toEqual([reference('c1@1')])
+    expect(deleteAtom(twice.inputs, 'dv:character/c1', atoms(twice).slice(1), ctx(twice.inputs), 1).inputs).toEqual([reference('c1@1')])
     // The uncited version of S4 stays when a chip of another input goes.
     const s4 = { prompt: 'Mia walks ', inputs: [reference('c1@1'), reference('a3')] }
-    expect(deleteAtom(s4.inputs, 'dv:asset/a3', [], ctx(s4.inputs)).inputs).toEqual([reference('c1@1')])
+    expect(deleteAtom(s4.inputs, 'dv:asset/a3', [], ctx(s4.inputs), 1).inputs).toEqual([reference('c1@1')])
   })
 
   it('R3′: deleting a chip that an asset and a version both satisfy keeps both inputs (E3 S5(ii))', () => {
     const document = documentOf(call('@[Lamp](dv:asset/a1) glows', [reference('a1'), reference('c1@1')]))
     expect(satisfyingIndexes('dv:asset/a1', document.inputs, ctx(document.inputs))).toEqual([0, 1])
-    const { inputs, removed } = deleteAtom(document.inputs, 'dv:asset/a1', [], ctx(document.inputs))
+    const { inputs, removed } = deleteAtom(document.inputs, 'dv:asset/a1', [], ctx(document.inputs), 1)
     expect([inputs, removed]).toEqual([[reference('a1'), reference('c1@1')], null])
   })
 
@@ -129,8 +129,26 @@ describe('the edits', () => {
     expect(undone.document.inputs).toEqual(stored.inputs)
     expect(undone.removed).toEqual([])
     // An undo of R2 brings the chip back the same way.
-    const tile = removeInput(document, 0, ctx(document.inputs))
+    const tile = removeInput(document, 0, ctx(document.inputs), 1)
     expect(reconcile(tile.document, document.prompt, tile.removed, ctx(tile.document.inputs), 'history').document.inputs).toEqual(stored.inputs)
+  })
+
+  it('puts back the inputs of every chip that one undo brings back, each at its stored place', () => {
+    const stored = E3_CALLS['S6 start']
+    const document = documentOf(stored)
+    const cleared = reconcile(document, '', [], ctx(document.inputs), 'edit')
+    expect(cleared.document.inputs).toEqual([])
+    const undone = reconcile(cleared.document, document.prompt, cleared.removed, ctx([]), 'history')
+    expect([undone.document.inputs, undone.removed]).toEqual([stored.inputs, []])
+  })
+
+  it('brings back only the input that the last delete of a chip removed, after an edit brought the chip back once', () => {
+    const document = documentOf(call(`${MIA_CHIP} runs`, [reference('c1@1')]))
+    const first = reconcile(document, ' runs', [], ctx(document.inputs), 'edit')
+    const picked = reconcile(first.document, `${MIA_CHIP} runs`, first.removed, ctx([]), 'edit')
+    const second = reconcile(picked.document, ' runs', picked.removed, ctx(picked.document.inputs), 'edit')
+    const undone = reconcile(second.document, `${MIA_CHIP} runs`, second.removed, ctx([]), 'history')
+    expect([picked.document.inputs, undone.document.inputs, undone.removed]).toEqual([[reference('c1@2')], [reference('c1@2')], first.removed])
   })
 
   it('adds the newest version for a chip that an edit brings back, and keeps the removed input for a later undo', () => {
@@ -200,7 +218,7 @@ describe('the readers of a document', () => {
 
   it('changes nothing for a removal or a pin of an input that the document does not hold, or that names no version', () => {
     const document = documentOf(E3_CALLS['S6 start'])
-    expect([removeInput(document, 5, ctx(document.inputs)).document, pinVersion(document, 5, 2), pinVersion(document, 1, 2)])
+    expect([removeInput(document, 5, ctx(document.inputs), 1).document, pinVersion(document, 5, 2), pinVersion(document, 1, 2)])
       .toEqual([document, document, document])
   })
 
