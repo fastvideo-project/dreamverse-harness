@@ -28,7 +28,7 @@ kind: "package-reference"
 
 提示词以 `@[<label>](dv:<kind>/<id>)` 引用项目条目。两种引用语法是 [`src/grammar.ts`](src/grammar.ts) 中的字符串函数，它不导入任何宿主模块，因此浏览器通过入口 `@dv/project/grammar` 用内核自己的代码读写它们。`parsePromptCitations` 和 `citedAsset` 读取引用；`citedInput` 读取按角色引用调用输入的引用，例如 `dv:input/first_frame`；`citedElement` 读取其他引用的种类和 ID，`citationTarget` 读取任一引用 URI 的种类和 ID，`formatCitation` 把它们写回；`elementCitationUri` 按引用种类给出输入引用所属元素的引用 `dv:<kind>/<id>`。`formatCitation` 是引用的唯一写入函数：它在 ID 中编码 `(` 和 `)`，从不写入空标签或带换行的标签。`splitInputRef` 和 `formatInputSyntax` 只按语法读写输入引用文本（`<asset>`、`<record>#<output>`、`<id>@<version>`）。[`src/citations.ts`](src/citations.ts) 中的 `promptAssets` 和 `replacePromptCitations` 按调用读取这些引用。模型提供方插件用它们把每个引用换成它的模型的写法。
 
-`check(request)` 按 `run` 的顺序执行 `run` 的各项拒绝检查（params 和输入角色、`after` 指向的记录、输入，以及操作的 `precondition`），不写任何内容。它返回 `{problems, gpu_seconds}`：第一个拒绝的句子，`run` 在当前状态下会接受该调用时没有句子；以及操作的 `estimate`。这个答案仅供参考，因为 `run` 会在项目锁内再次检查该调用。
+`check(request)` 按 `run` 的顺序执行 `run` 的各项拒绝检查（params 和输入角色、`after` 指向的记录、输入，以及操作的 `precondition`），不写任何内容。它返回 `{problems, gpu_seconds}`：第一个拒绝的句子，`run` 在当前状态下会接受该调用时没有句子；以及操作对 `run` 会接受的调用给出的 `estimate`，否则为 null。读取操作从不等待产出者，所以无论 `after` 怎么写，只要读取的输入指向尚未完成的记录的输出，`check` 和 `run` 都拒绝它。这个答案仅供参考，因为 `run` 会在项目锁内再次检查该调用。
 
 ```yaml
 - id: dv-project

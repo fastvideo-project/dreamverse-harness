@@ -289,7 +289,7 @@ export interface OperationRequest {
 export interface OperationCheck {
   /** The refusal sentence, verbatim; empty when the call can run. */
   problems: string[]
-  /** The operation's estimate; null for an operation that declares none. */
+  /** The operation's estimate of a call that can run; null for a refused call and an operation that declares none. */
   gpu_seconds: number | null
 }
 

@@ -262,10 +262,10 @@ export default class DvProject extends Service {
   }
 
   /**
-   * Check one operation call against every refusal of `run` and estimate its GPU cost, writing nothing. The answer is
-   * advisory: `run` checks the call again under the project lock.
+   * Check one operation call against every refusal of `run` and estimate the GPU cost of a call that `run` would accept,
+   * writing nothing. The answer is advisory: `run` checks the call again under the project lock.
    * @param request - the call.
-   * @returns the refusal sentence (empty when `run` would accept the call now) and the GPU estimate.
+   * @returns the refusal sentence (empty when `run` would accept the call now) and the GPU estimate (null for a refusal).
    */
   check(request: RunRequest): Promise<OperationCheck> {
     return this.runner.check(request)

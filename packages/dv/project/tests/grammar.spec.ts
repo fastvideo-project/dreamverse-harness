@@ -3,7 +3,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  citationTarget, citedElement, elementCitationUri, formatCitation, formatInputRef, formatInputSyntax, parsePromptCitations, splitInputRef,
+  citationTarget, citationUri, citedAsset, citedElement, citedInput, elementCitationUri, formatCitation, formatInputRef, formatInputSyntax,
+  parsePromptCitations, splitInputRef,
 } from '../src/grammar.ts'
 
 describe('citation grammar', () => {
@@ -26,6 +27,18 @@ describe('citation grammar', () => {
     expect(citationTarget('dv:clip/c%201')).toEqual({ kind: 'clip', id: 'c 1' })
     expect(formatCitation('Clip', 'clip', 'c 1')).toBe('@[Clip](dv:clip/c%201)')
     expect([citationTarget('https://x'), citationTarget('dv:nothing')]).toEqual([null, null])
+  })
+
+  it('reads a URI with a malformed escape as naming nothing, and decodes the role of an input citation', () => {
+    expect([citedAsset('dv:asset/a%'), citationTarget('dv:character/c%zz'), citedElement('dv:character/c%'), citedInput('dv:input/x%')])
+      .toEqual([null, null, null, null])
+    expect(citedInput(citationUri('input', 'first frame'))).toBe('first frame')
+  })
+
+  it('writes a label from the ID that the reader can read when the label is empty', () => {
+    const written = formatCitation('', 'asset', 'a]b\nc')
+    expect(written).toBe('@[ab c](dv:asset/a%5Db%0Ac)')
+    expect(parsePromptCitations(written).map(citation => [citation.label, citedAsset(citation.uri)])).toEqual([['ab c', 'a]b\nc']])
   })
 
   it('names no element for an asset, a record or an input citation', () => {

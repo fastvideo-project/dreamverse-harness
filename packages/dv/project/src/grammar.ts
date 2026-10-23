@@ -48,23 +48,36 @@ export function parsePromptCitations(prompt: string): PromptCitation[] {
   })
 }
 
+/** The text with its percent escapes decoded; null for a text with a malformed escape, such as a stray `%`. */
+function decoded(text: string): string | null {
+  try {
+    return decodeURIComponent(text)
+  } catch (malformed) {
+    // `decodeURIComponent` throws a URIError for a `%` that starts no escape; a URI with one names nothing.
+    void malformed
+    return null
+  }
+}
+
 /**
  * The asset that a citation URI names.
  * @param uri - a `dv:` URI.
- * @returns the asset ID of a `dv:asset/<AssetId>` URI; null for any other URI.
+ * @returns the asset ID of a `dv:asset/<AssetId>` URI; null for any other URI and for an ID with a malformed escape.
  */
 export function citedAsset(uri: string): AssetId | null {
-  return uri.startsWith(ASSET_PREFIX) ? brandString<AssetId>(decodeURIComponent(uri.slice(ASSET_PREFIX.length))) : null
+  const id = uri.startsWith(ASSET_PREFIX) ? decoded(uri.slice(ASSET_PREFIX.length)) : null
+  return id === null ? null : brandString<AssetId>(id)
 }
 
 /**
  * The input role that a citation URI names. A citation of an input names the call's input of that role, whatever its
  * value is, so it also names an input whose value a record has not produced yet.
  * @param uri - a `dv:` URI.
- * @returns the role of a `dv:input/<role>` URI, such as `first_frame`; null for any other URI.
+ * @returns the decoded role of a `dv:input/<role>` URI, such as `first_frame`; null for any other URI and for a role
+ *   with a malformed escape.
  */
 export function citedInput(uri: string): string | null {
-  return uri.startsWith(INPUT_PREFIX) ? uri.slice(INPUT_PREFIX.length) : null
+  return uri.startsWith(INPUT_PREFIX) ? decoded(uri.slice(INPUT_PREFIX.length)) : null
 }
 
 /**
@@ -79,12 +92,13 @@ export function citedElement(uri: string): { kind: string; id: string } | null {
 /**
  * The kind and the ID that a citation URI names, whatever the kind; {@link formatCitation} writes them back.
  * @param uri - a `dv:` URI.
- * @returns the kind and the decoded ID of a `dv:<kind>/<id>` URI, or null for any other text.
+ * @returns the kind and the decoded ID of a `dv:<kind>/<id>` URI, or null for any other text and for an ID with a
+ *   malformed escape.
  */
 export function citationTarget(uri: string): { kind: string; id: string } | null {
   const slash = uri.indexOf('/')
-  if (!uri.startsWith('dv:') || slash < 0) return null
-  return { kind: uri.slice('dv:'.length, slash), id: decodeURIComponent(uri.slice(slash + 1)) }
+  const id = uri.startsWith('dv:') && slash >= 0 ? decoded(uri.slice(slash + 1)) : null
+  return id === null ? null : { kind: uri.slice('dv:'.length, slash), id }
 }
 
 /** The URI path of an ID: `encodeURIComponent`, plus `(` and `)`, which would end the citation early. */
@@ -93,16 +107,17 @@ function encodeId(id: string): string {
 }
 
 /**
- * Write one citation, the one writer of the citation grammar. The label loses `]`, each line break becomes one space,
- * and an empty label becomes the ID, so every citation it writes also matches DSH's wire form of a reference.
+ * Write one citation, the one writer of the citation grammar. An empty label becomes the ID; the label then loses `]`,
+ * and each line break becomes one space, so every citation it writes reads back and matches DSH's wire form of a
+ * reference.
  * @param label - the label that the editor shows.
  * @param kind - the URI kind, such as `asset`, `character` or `input`.
  * @param id - the ID, such as an asset ID or an element ID.
  * @returns `@[label](dv:<kind>/<id>)`.
  */
 export function formatCitation(label: string, kind: string, id: string): string {
-  const written = label.replaceAll(']', '').replaceAll(/\r\n|\r|\n/gu, ' ')
-  return `@[${written === '' ? id : written}](${citationUri(kind, id)})`
+  const written = (label === '' ? id : label).replaceAll(']', '').replaceAll(/\r\n|\r|\n/gu, ' ')
+  return `@[${written}](${citationUri(kind, id)})`
 }
 
 /**
