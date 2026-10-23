@@ -1,0 +1,12 @@
+--- packages/dv/workflow-story/package.json
+{ "dependencies": { "@dv/timeline": "workspace:*" } }
+--- packages/dv/workflow-story/src/index.ts
+export const spec = { component: 'story' }
+--- packages/dv/timeline/src/index.ts
+export const spec = { component: 'timeline' }
+--- packages/dv/audio-generate/src/index.ts
+export const spec = { component: 'audio' }
+--- packages/dv/workflow-story/skills/ad-making/SKILL.md
+Preview with `dv_story_preview`, then lay out the takes with `dv_timeline_create`.
+Add the voice line with `dv_audio_generate`.
+4. If `dv_inspect_image` is in your tool list, add the voice line with `dv_audio_generate`.

@@ -47,6 +47,7 @@ describe('DreamVerse architecture fitness test', () => {
     ['R8e-negative.txt', ['R8e']],
     ['R8f-negative.txt', ['R8f']],
     ['R8f-define-reference-negative.txt', ['R8f']],
+    ['R8g-negative.txt', ['R8g', 'R8g']],
   ])('rejects the fixture %s with %j', (name, expected) => {
     expect(rules(fixture(name)).sort()).toEqual(expected)
   })
@@ -237,6 +238,9 @@ describe('rule clauses', () => {
       { path: 'packages/dv/workflow-story/skills/story-directing/SKILL.md', text: 'Story flow.\n' },
       { path: 'packages/bundle/dv/skills/video-directing/SKILL.md', text: 'Then follow story-directing.\n' },
     ], ['R8e']],
+    ['R8g workflow skill names a tool outside its dependencies in a step that starts with its guard', [owner('audio-generate', 'audio'), {
+      path: 'packages/dv/workflow-story/skills/ad-making/SKILL.md', text: '4. If `dv_audio_generate` is in your tool list, add the voice line with `dv_audio_generate`.\n',
+    }], []],
   ])('%s', (_name, files, expected) => {
     expect(rules(files).sort()).toEqual(expected)
   })

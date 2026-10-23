@@ -25,7 +25,7 @@ export const RULE_STATEMENTS: Readonly<Record<string, string>> = {
   R5: 'UI core names no plugin noun, media type, task, kind word or record param; a kit names no plugin noun, media type or task.',
   R6: 'No deep import into another package\'s src.',
   R7: 'Dependencies point down the layers; a ./types entry reaches no host-only module.',
-  R8: 'A skill never names a consumer; only the package that owns a reference kind names its tools.',
+  R8: 'A skill never names a consumer; only the package that owns a reference kind names its tools; a workflow skill guards a tool outside its package and dependencies with "If `<tool>` is in your tool list".',
   R11: 'Only @dv/project/grammar writes a citation @[label](dv:<kind>/<id>); UI core, which imports it, writes no citation URI dv:<kind>/<id> by hand.',
   marker: 'The only exception marker is "// dv-arch-allow R<k>: temporary exception", and it suppresses a match on its line.',
 }
@@ -56,6 +56,8 @@ interface Facts {
   clientEntries: Array<{ pkg: string; entry: string }>
   /** Packages whose `src` calls `registerReferenceKind(` or `defineReference(` (R8 f). */
   kindOwners: Set<string>
+  /** Package → the DreamVerse packages in the `dependencies` of its `package.json` (R8 g). */
+  dependencies: Map<string, Set<string>>
   /** The owner rows of `listOwners`, in walk order. */
   ownerRows: OwnerRow[]
 }
@@ -102,6 +104,8 @@ const OPERATION = /^([a-z_]+)\.([a-z_]*)$/u
 const TOOL = /(?<!\w)dv_([a-z]+)_\w+/gu
 const CORE_TOOL = /^dv_(?:proj|asset|models)_/u
 const DIRECTING = /\b([a-z]+)-directing\b/gu
+/** The start of a skill line, or of its list item, that lets a workflow skill name a tool outside its dependencies (R8 g). */
+const TOOL_GUARD = /^\s*(?:(?:[-*+]|\d+\.)\s+)?If `(dv_[a-z]+_\w+)` is in your tool list/u
 const MARKER = /\/\/ dv-arch-allow (R\d+): (.*)$/u
 /**
  * The text parts of a template that writes a citation, `@[${label}](${uri})`, and of one that writes a citation URI,
@@ -188,7 +192,7 @@ function collectFacts(sources: readonly Source[], files: readonly ScanFile[]): F
   const facts: Facts = {
     packages: new Set(files.map(file => packageOf(file.path))), owners: new Map(), claims: [], providers: new Set(),
     primitives: new Set(), allPrimitives: new Set(), tasks: new Set(), wireMembers: new Map(), primitivePackages: new Set(),
-    clientEntries: [], kindOwners: new Set(),
+    clientEntries: [], kindOwners: new Set(), dependencies: new Map(),
     ownerRows: [],
   }
   for (const file of files) {
@@ -196,6 +200,10 @@ function collectFacts(sources: readonly Source[], files: readonly ScanFile[]): F
       if (file.path.endsWith('/package.json') && new RegExp(`"\\./${entry}"\\s*:`, 'u').test(file.text)) {
         facts.clientEntries.push({ pkg: packageOf(file.path), entry })
       }
+    }
+    if (file.path.endsWith('/package.json')) {
+      const names = Object.keys((JSON.parse(file.text) as { dependencies?: Record<string, string> }).dependencies ?? {})
+      facts.dependencies.set(packageOf(file.path), new Set(names.filter(name => name.startsWith('@dv/')).map(name => name.slice('@dv/'.length))))
     }
     const skill = file.path.endsWith('/SKILL.md') ? file.path.split('/').at(-2) : /([^/]+)\.md$/u.exec(file.path)?.[1]
     if (skill !== undefined) facts.ownerRows.push({ what: 'skill', name: skill, pkg: packageOf(file.path), where: `${file.path}:1`, extra: '' })
@@ -327,6 +335,8 @@ function scanSkillText(
     if (skillText && ownerLayer === 'workflow' && !(md && pkg === owner)) report('R8c', match.index, match[0])
     if (skillText && owner !== undefined && facts.kindOwners.has(owner) && pkg !== owner) report('R8f', match.index, match[0])
     if (!higher && (described || (catalog && !match[0].startsWith('dv_models_')))) report('R8d', match.index, match[0])
+    const outside = md && layer === 'workflow' && owner !== undefined && owner !== pkg && facts.dependencies.get(pkg)?.has(owner) !== true
+    if (outside && TOOL_GUARD.exec(text.slice(text.lastIndexOf('\n', match.index) + 1))?.[1] !== match[0]) report('R8g', match.index, match[0])
   }
   if (!skillText) return
   for (const match of text.matchAll(DIRECTING)) {
