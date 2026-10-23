@@ -337,6 +337,25 @@ describe('chips that the editor\'s clipboard carries', () => {
   })
 })
 
+describe('R3′ in the real composer', () => {
+  it('removes both inputs that satisfy a deleted chip when no other chip cites them, and one undo brings both back', async () => {
+    const stored: PromptCall = {
+      operation: 'shot.render', params: { ...KEY, prompt: '@[Lamp](dv:asset/ref.png) glows' },
+      inputs: [{ role: 'reference', ref: 'ref.png' }, { role: 'reference', ref: 'hero@1' }],
+    }
+    const { take, sent } = await mount(stored)
+    await found(take, '[data-dv-chip="dv:asset/ref.png"] img')
+    act(() => { box(take).focus() })
+    press(take, 'a')
+    press(take, 'Backspace')
+    await waitFor(() => { expect(take.querySelector('[data-reference-tile]')).toBeNull() })
+    press(take, 'z')
+    await waitFor(() => { expect(take.querySelectorAll('[data-reference-tile]')).toHaveLength(2) })
+    fireEvent.click(await sendOf(take, 'Render new take'))
+    await waitFor(() => { expect(sent).toEqual([stored]) })
+  })
+})
+
 describe('the undo memo', () => {
   it('removes the tile of a chip that Backspace deletes, and one Ctrl+Z brings back the chip and the tile in its place', async () => {
     const stored: PromptCall = {

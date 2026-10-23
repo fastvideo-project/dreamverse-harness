@@ -113,11 +113,21 @@ describe('the edits', () => {
     expect(deleteAtom(s4.inputs, 'dv:asset/a3', [], ctx(s4.inputs), 1).inputs).toEqual([reference('c1@1')])
   })
 
-  it('R3′: deleting a chip that an asset and a version both satisfy keeps both inputs (E3 S5(ii))', () => {
-    const document = documentOf(call('@[Lamp](dv:asset/a1) glows', [reference('a1'), reference('c1@1')]))
-    expect(satisfyingIndexes('dv:asset/a1', document.inputs, ctx(document.inputs))).toEqual([0, 1])
+  it('R3′: deleting a chip that an asset and a version both satisfy removes both inputs that no other chip cites', () => {
+    const document = documentOf(call('@[Lamp](dv:asset/a1) glows', [reference('a3'), reference('a1'), reference('c1@1')]))
+    expect(satisfyingIndexes('dv:asset/a1', document.inputs, ctx(document.inputs))).toEqual([1, 2])
     const { inputs, removed } = deleteAtom(document.inputs, 'dv:asset/a1', [], ctx(document.inputs), 1)
-    expect([inputs, removed]).toEqual([[reference('a1'), reference('c1@1')], null])
+    expect([inputs, removed.map(entry => [entry.input.ref, entry.index])]).toEqual([[reference('a3')], [['a1', 1], ['c1@1', 1]]])
+    // A Mia chip that stays still cites c1@1, so only a1 goes.
+    const mia = deleteAtom(document.inputs, 'dv:asset/a1', [{ label: 'Mia', uri: 'dv:character/c1' }], ctx(document.inputs), 1)
+    expect(mia.inputs).toEqual([reference('a3'), reference('c1@1')])
+  })
+
+  it('R3′ moves no role input: deleting a chip of the first frame keeps the call\'s first frame', () => {
+    const stored = E3_CALLS['S5(iv) cited first frame']
+    const document = documentOf(stored)
+    const next = reconcile(document, document.prompt.replace('@[首帧](dv:input/first_frame)', ''), [], ctx(document.inputs), 'edit')
+    expect([next.document.inputs, next.removed]).toEqual([stored.inputs, []])
   })
 
   it('an editor undo that brings a deleted chip back restores the input at its old place', () => {
@@ -242,6 +252,12 @@ describe('the readers of a document', () => {
     expect(resolveAtom({ label: '首帧', uri: 'dv:input/first_frame' }, ctx(null))).toMatchObject({ assets: [], preview: null })
   })
 
+  it('satisfies an element chip by no version without assets, which the kernel expands to nothing', () => {
+    const style: VersionReader = { kind: 'style', name: (_state, id) => id === 's1' ? 'Noir' : null, assets: () => [], latest: () => [], node: id => `style:${id}` }
+    const inputs = [reference('s1@1')]
+    expect(satisfyingIndexes('dv:style/s1', inputs, { ...ctx(inputs), versions: [style] })).toEqual([])
+  })
+
   it('reads a version through the reader of its kind only, and draws a version that no reader holds as an unknown asset', () => {
     // The style s1 has a version 1 with no reference image.
     const style: VersionReader = { kind: 'style', name: (_state, id) => id === 's1' ? 'Noir' : null, assets: () => [], latest: () => [], node: id => `style:${id}` }
@@ -258,11 +274,12 @@ describe('the readers of a document', () => {
   })
 
   it('counts the assets of the reference inputs in input order and marks each input that ends past the model\'s count', () => {
-    // c1@1 holds two assets, an unknown asset counts as one, and a first frame is not a reference.
-    const inputs = [reference('c1@1'), { role: 'first_frame', ref: 'g1#0' }, reference('a3'), reference('gone')]
+    // c1@1 holds two assets, c1@3 holds none, an unknown asset counts as one, and a first frame is not a reference.
+    const inputs = [reference('c1@1'), reference('c1@3'), { role: 'first_frame', ref: 'g1#0' }, reference('a3'), reference('gone')]
     const tray = inputs.map(input => ({ input, view: resolveInput(input, ctx(inputs)), cited: true }))
     const fits = (max: number | null): boolean[] => countReferences(tray, { mediaTypes: ['image'], maxReferences: max }).map(entry => entry.view.fits)
-    expect([fits(2), fits(3), fits(null)]).toEqual([[true, true, false, false], [true, true, true, false], [true, true, true, true]])
+    expect([fits(2), fits(3), fits(null)])
+      .toEqual([[true, true, true, false, false], [true, true, true, true, false], [true, true, true, true, true]])
     expect(countReferences(tray, null)).toEqual(tray)
   })
 })

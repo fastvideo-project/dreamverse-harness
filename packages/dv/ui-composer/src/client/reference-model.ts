@@ -112,8 +112,8 @@ export function assetsOfInput(input: CallInput, ctx: ResolveContext): string[] {
 
 /**
  * The indexes of the inputs that satisfy one citation, by the host's rule: an asset citation by a `reference` input
- * that stands for the asset, an element citation by a `reference` input that is a version of the element, and an
- * input citation by an input of that role other than `reference`.
+ * that stands for the asset, an element citation by a `reference` input that is a version of the element with at least
+ * one asset, and an input citation by an input of that role other than `reference`.
  * @param uri - the citation's URI.
  * @param inputs - the call's inputs.
  * @param ctx - the state and the version readers.
@@ -129,7 +129,10 @@ export function satisfyingIndexes(uri: string, inputs: readonly CallInput[], ctx
     if (asset !== null) return assetsOfInput(input, ctx).includes(asset) ? [index] : []
     if (element === null) return []
     const syntax = splitInputRef(input.ref)
-    return 'version' in syntax && syntax.id === element.id && versionOf(syntax.id, syntax.version, ctx, element.kind) !== null ? [index] : []
+    if (!('version' in syntax) || syntax.id !== element.id) return []
+    // A version without assets expands to nothing in the kernel, which then refuses the citation.
+    const found = versionOf(syntax.id, syntax.version, ctx, element.kind)
+    return found !== null && found.reader.assets(ctx.state, syntax.id, syntax.version).length > 0 ? [index] : []
   })
 }
 
@@ -183,27 +186,25 @@ export function removeInput(
 }
 
 /**
- * R3′. The inputs left after one atom with `uri` is deleted. An input that satisfied the deleted atom goes only when
- * no remaining atom cites it and it was the only input that satisfied the deleted atom, so deleting a chip that both
- * an asset and a version of an element satisfy keeps both. An input that no atom cited before stays.
+ * R3′. The inputs left after one atom with `uri` is deleted: each `reference` input that satisfied the deleted atom
+ * goes when no remaining atom cites it. An input that no atom cited before stays, and so does every input of another
+ * role, such as a first frame, which the call holds whatever its prompt cites.
  * @param inputs - the inputs before the delete.
  * @param uri - the deleted atom's URI.
  * @param remaining - the atoms left after the delete.
  * @param ctx - the state and the version readers.
  * @param step - the step of the edit that deletes the atom.
- * @returns the inputs, and the input that went with its old index, if one did.
+ * @returns the inputs, and the inputs that went in index order, each index counted after the removals before it.
  */
 export function deleteAtom(
   inputs: readonly CallInput[], uri: string, remaining: readonly ReferenceAtom[], ctx: ResolveContext, step: number,
-): { inputs: CallInput[]; removed: RemovedInput | null } {
+): { inputs: CallInput[]; removed: RemovedInput[] } {
   const own = withInputs(ctx, inputs)
   const satisfying = satisfyingIndexes(uri, inputs, own)
-  const index = satisfying.length === 1 ? satisfying[0] : undefined
-  const input = index === undefined ? undefined : inputs[index]
-  if (index === undefined || input === undefined) return { inputs: [...inputs], removed: null }
-  const stillCited = remaining.some(atom => satisfyingIndexes(atom.uri, inputs, own).includes(index))
-  if (stillCited) return { inputs: [...inputs], removed: null }
-  return { inputs: inputs.filter((_, at) => at !== index), removed: { uri, input, index, step } }
+  const cited = new Set(remaining.flatMap(atom => satisfyingIndexes(atom.uri, inputs, own)))
+  const going = inputs.flatMap((input, index) => input.role === 'reference' && satisfying.includes(index) && !cited.has(index) ? [index] : [])
+  const removed = going.flatMap((index, order) => inputs.slice(index, index + 1).map(input => ({ uri, input, index: index - order, step })))
+  return { inputs: inputs.filter((_, at) => !going.includes(at)), removed }
 }
 
 /**
@@ -266,7 +267,7 @@ export function reconcile(
     for (let gone = count - (after.get(uri)?.count ?? 0); gone > 0; gone -= 1) {
       const deleted = deleteAtom(inputs, uri, remaining, ctx, step)
       inputs = deleted.inputs
-      if (deleted.removed !== null) memo = [...memo, deleted.removed]
+      memo = [...memo, ...deleted.removed]
     }
   }
   const added = [...after].filter(([uri, { count }]) => count > (before.get(uri)?.count ?? 0)
@@ -404,7 +405,8 @@ export function documentViews(document: PromptDocument, ctx: ResolveContext): { 
 
 /**
  * Mark the reference inputs past the selected model's count. The count runs over the assets of the `reference` inputs
- * in input order, as the kernel counts them, and an input that resolves to no asset counts as one.
+ * in input order, as the kernel counts them: a version counts its assets, and any other input that resolves to no
+ * asset counts as one.
  * @param tray - the tray of a call, in input order.
  * @param filter - the selected model's filter; null, or a filter without a count, leaves the tray as it is.
  * @returns the tray, where every `reference` input whose assets end past `maxReferences` does not fit.
@@ -414,7 +416,8 @@ export function countReferences(tray: readonly TrayEntry[], filter: CandidateFil
   let count = 0
   return tray.map((entry) => {
     if (max === null || entry.input.role !== 'reference') return entry
-    count += Math.max(1, entry.view.assets.length)
+    // A version counts its assets, as the kernel's fan-out does; any other input counts as one, resolved or not.
+    count += 'version' in splitInputRef(entry.input.ref) ? entry.view.assets.length : Math.max(1, entry.view.assets.length)
     return count > max ? { ...entry, view: { ...entry.view, fits: false } } : entry
   })
 }
