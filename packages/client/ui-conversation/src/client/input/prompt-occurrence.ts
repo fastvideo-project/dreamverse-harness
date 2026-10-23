@@ -1,24 +1,15 @@
 /**
  * One `conversation.prompt` occurrence: a draft editor runtime over a host model, outside any Session. It seeds and
- * replaces the content by revision, reports each change to the host, and drives an `@` menu through its own trigger
- * controller, which hands each pick to this occurrence alone.
+ * replaces the content by revision, reports each change to the host and its view (emptiness and menu key) to the
+ * Factory component, and drives an `@` menu through its own trigger controller, which hands each pick to this
+ * occurrence alone. A read-only occurrence opens no controller until it becomes editable.
  */
 import { HISTORIC_TAG } from 'lexical'
-import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import type { InputTriggerController, PickOutcome } from '../contract/input.ts'
+import type { InputTriggerServiceFace, PickOutcome } from '../contract/input.ts'
 import type { Occurrence, TokenSpan } from '../contract/draft-editor.ts'
-import type { PromptChangeCause, PromptHostModel, PromptOccurrenceHandle } from '../contract/prompt.ts'
+import type { PromptChangeCause, PromptHostModel, PromptOccurrenceHandle, PromptOccurrenceView } from '../contract/prompt.ts'
 import { registerComposerKeymap } from './editor/keymap.ts'
 import { DraftEditorRuntime } from './editor/runtime.ts'
-
-/** The part of `ctx.inputTriggers` an occurrence uses, resolved without importing its implementation. */
-export interface PromptTriggerFace {
-  controllerFor(options: {
-    readonly sources: () => readonly string[]
-    readonly context: () => JsonValue | null
-    readonly deliver: (outcome: Exclude<PickOutcome, 'handled' | undefined>, span: TokenSpan) => boolean
-  }): { readonly key: string; readonly controller: InputTriggerController; dispose(): void }
-}
 
 /** Whether two chip lists hold the same chips at the same offsets. */
 function sameChips(a: readonly Occurrence[], b: readonly Occurrence[]): boolean {
@@ -31,47 +22,43 @@ function sameChips(a: readonly Occurrence[], b: readonly Occurrence[]): boolean 
 /** The open editor, menu controller and listeners of one occurrence. */
 export class PromptOccurrence implements PromptOccurrenceHandle {
   private readonly runtime: DraftEditorRuntime
-  private readonly trigger: ReturnType<PromptTriggerFace['controllerFor']> | null
+  private trigger: ReturnType<InputTriggerServiceFace['controllerFor']> | null = null
   private readonly release: () => void
   private applied: number
   private draftRev = 0
   private lastDetect = ''
   /** The content last reported to the host; null while the constructor seeds the content the host already holds. */
   private reported: { text: string; chips: readonly Occurrence[] } | null = null
+  private view: PromptOccurrenceView
 
   /**
    * @param model - reads the host's current model.
    * @param triggers - the trigger service, absent when no trigger plugin is loaded.
+   * @param onView - receives the occurrence's view now and after each change of it.
    */
-  constructor(private readonly model: () => PromptHostModel, triggers: PromptTriggerFace | undefined) {
+  constructor(
+    private readonly model: () => PromptHostModel,
+    private readonly triggers: InputTriggerServiceFace | undefined,
+    private readonly onView: (view: PromptOccurrenceView) => void,
+  ) {
     const first = model()
-    // The host's sources and their context can change after the occurrence opens, so the controller reads them live.
-    this.trigger = triggers === undefined
-      ? null
-      : triggers.controllerFor({
-        sources: () => this.model().sources,
-        context: () => this.model().sourceContext,
-        deliver: (outcome, span) => this.deliver(outcome, span),
-      })
-    const controller = this.trigger?.controller
     this.runtime = new DraftEditorRuntime({
       onUpdate: (tags) => { this.onUpdate(tags.has(HISTORIC_TAG) ? 'history' : 'edit') },
       openReference: (source, reference) => this.model().openReference?.(source ?? '', reference.ref) ?? false,
       activeClaimToken: () => null,
-      lexicon: () => controller?.lexicon.getSnapshot() ?? new Map(),
-      resolveLexicon: () => controller?.lexicon,
+      lexicon: () => this.trigger?.controller.lexicon.getSnapshot() ?? new Map(),
+      resolveLexicon: () => this.trigger?.controller.lexicon,
     })
     const editor = this.runtime.editor
     const offs = [
       this.runtime.register(),
       registerComposerKeymap(editor, {
-        arbitrate: (key, composing) => controller?.arbitrate(key, composing) ?? 'pass',
-        space: () => controller?.onSpace() ?? false,
+        arbitrate: (key, composing) => this.trigger?.controller.arbitrate(key, composing) ?? 'pass',
+        space: () => this.trigger?.controller.onSpace() ?? false,
         dismissPopup: () => {},
         canSubmit: () => !this.model().readOnly,
         submit: () => { this.model().onSubmit?.() },
-        // A prompt occurrence takes no files; its host adds references through its own tray.
-        intakeFiles: () => {},
+        intakeFiles: (files) => { this.model().intakeFiles?.(files) },
         pasteText: (text) => { this.runtime.paste(text) },
       }),
     ]
@@ -84,6 +71,9 @@ export class PromptOccurrence implements PromptOccurrenceHandle {
     this.runtime.clearHistory()
     this.applied = first.content.revision
     this.reported = { text: this.runtime.projection.clipboardText, chips: this.runtime.projection.occurrences }
+    if (!first.readOnly) this.openTrigger()
+    this.view = { empty: this.runtime.projection.clipboardText === '', menuKey: this.trigger?.key ?? null }
+    onView(this.view)
   }
 
   /** The occurrence's Lexical editor, bound by the Factory component's contenteditable. */
@@ -91,15 +81,14 @@ export class PromptOccurrence implements PromptOccurrenceHandle {
     return this.runtime.editor
   }
 
-  /** The key of the trigger controller, or null without one. */
-  get menuKey(): string | null {
-    return this.trigger?.key ?? null
-  }
-
   /** Apply a new content revision as its history mode says, and follow the read-only flag. */
   sync(): void {
     const model = this.model()
     this.runtime.editor.setEditable(!model.readOnly)
+    if (!model.readOnly && this.trigger === null) {
+      this.openTrigger()
+      this.publish()
+    }
     const { content } = model
     if (content.revision === this.applied) return
     this.applied = content.revision
@@ -119,6 +108,23 @@ export class PromptOccurrence implements PromptOccurrenceHandle {
   /** Close the menu controller and every listener. */
   dispose(): void {
     this.release()
+  }
+
+  /** Open the trigger controller, which reads the host's sources and their context live, as they can change. */
+  private openTrigger(): void {
+    this.trigger = this.triggers?.controllerFor({
+      sources: () => this.model().sources,
+      context: () => this.model().sourceContext,
+      deliver: (outcome, span) => this.deliver(outcome, span),
+    }) ?? null
+  }
+
+  /** Report the view to the Factory component when it changed. */
+  private publish(): void {
+    const view = { empty: this.runtime.projection.clipboardText === '', menuKey: this.trigger?.key ?? null }
+    if (view.empty === this.view.empty && view.menuKey === this.view.menuKey) return
+    this.view = view
+    this.onView(view)
   }
 
   /**
@@ -145,6 +151,7 @@ export class PromptOccurrence implements PromptOccurrenceHandle {
       this.trigger?.controller.track(projection.detectText, projection.caret, { tier: model.readOnly ? 'frozen' : 'plain' }, this.draftRev)
     }
     if (this.reported === null) return
+    this.publish()
     if (projection.clipboardText === this.reported.text && sameChips(projection.occurrences, this.reported.chips)) return
     this.reported = { text: projection.clipboardText, chips: projection.occurrences }
     model.onChange(projection.clipboardText, projection.occurrences, cause)

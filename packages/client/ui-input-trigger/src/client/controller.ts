@@ -18,8 +18,8 @@ import { detectTrigger } from '../core/detect.ts'
 import { MENU_CLOSED, menuReduce, seedGroups } from '../core/menu.ts'
 import type { MenuEvent, MenuState, TriggerHit } from '../core/contract.ts'
 import type {
-  ClientSessionContext, InputTriggerCandidate, InputTriggerCrumb, InputTriggerSource, PickAction,
-  SubmitEnvelope, TriggerChar, TriggerGuard,
+  CandidateRequest, ClientSessionContext, InputTriggerCandidate, InputTriggerCrumb, InputTriggerPick, InputTriggerSource, PickAction,
+  SubmitEnvelope, TokenSpan, TriggerChar, TriggerGuard,
 } from '../types.ts'
 
 /** Token identity a dismissal sticks to: the same trigger, query, and span bounds. */
@@ -47,21 +47,64 @@ export interface SourceRoster {
 export type AppliedOutcome = Exclude<PickOutcome, 'handled' | undefined>
 
 /**
- * Where a controller applies pick outcomes: a session scope takes them as its input events; a prompt occurrence takes
- * them through its own callback.
+ * The surface of one controller: how it asks its sources and where it applies their picks. A session asks the sources'
+ * session faces with its projection and applies picks as its scope's input events; a prompt occurrence asks their
+ * `prompt` faces with its context and applies picks through its own callback.
  */
-export type PickDelivery =
-  | { readonly actx: ClientContext; readonly deliver?: never }
-  | { readonly deliver: (outcome: AppliedOutcome, span: import('../types.ts').TokenSpan) => boolean; readonly actx?: never }
+export interface TriggerHost {
+  /** The projection that the session-only source hooks receive; null for a prompt occurrence, which calls none of them. */
+  readonly session: ClientSessionContext | null
+  candidates(source: InputTriggerSource, request: CandidateRequest): Promise<readonly InputTriggerCandidate[]>
+  onPick(source: InputTriggerSource, pick: Omit<InputTriggerPick, 'session'>): PickOutcome
+  /** @returns true when the input applied the outcome. */
+  deliver(outcome: AppliedOutcome, span: TokenSpan): boolean
+}
+
+/**
+ * The surface of a session's controller.
+ * @param actx - the session scope, the subject of the input events that apply picks.
+ * @param sessionId - the session's stable host identity.
+ * @returns the host.
+ */
+export function sessionHost(actx: ClientContext, sessionId: SessionId): TriggerHost {
+  const session = { sessionId }
+  return {
+    session,
+    candidates: (source, request) => source.candidates(session, request),
+    onPick: (source, pick) => source.onPick({ ...pick, session }),
+    deliver: (outcome, span) => {
+      if ('claim' in outcome) return actx.bail(actx, 'slash/input-begin-command', { claim: outcome.claim, span }) === true
+      if ('text' in outcome) {
+        return actx.bail(actx, 'slash/input-insert-text', {
+          text: outcome.text, span, ...outcome.continue === true ? { continue: true } : {},
+        }) === true
+      }
+      return actx.bail(actx, 'slash/input-insert-reference', { reference: outcome.insert, span }) === true
+    },
+  }
+}
+
+/**
+ * The surface of a prompt occurrence's controller, whose roster holds only sources with a `prompt` face.
+ * @param context - reads the JSON that each source's `candidates` gets as `context`.
+ * @param deliver - applies one pick to the occurrence.
+ * @returns the host.
+ */
+export function promptHost(context: () => JsonValue | null, deliver: TriggerHost['deliver']): TriggerHost {
+  return {
+    session: null,
+    candidates: (source, request) => source.prompt?.candidates({ ...request, context: context() }) ?? Promise.resolve([]),
+    onPick: (source, pick) => source.prompt?.onPick(pick),
+    deliver,
+  }
+}
 
 /** Construction hooks for one controller. */
-export type InputTriggerControllerDeps = PickDelivery & {
-  /** The session's stable host identity (the projection handed to sources); null for a prompt occurrence. */
-  sessionId: SessionId | null
+export interface InputTriggerControllerDeps {
   /** Root-service roster view. */
   roster: SourceRoster
-  /** Reads what every source's `candidates` gets as `context`; absent in a session. */
-  context?: () => JsonValue | null
+  /** The controller's surface, chosen once. */
+  host: TriggerHost
 }
 
 /**
@@ -469,30 +512,15 @@ export class InputTriggerController {
     this.lexiconOffs.clear()
   }
 
-  /** The session projection handed to sources (agent-backed identity; constant per scope); null for a prompt occurrence. */
+  /** The session projection that the session-only source hooks receive; null for a prompt occurrence. */
   private project(): ClientSessionContext | null {
-    return this.deps.sessionId === null ? null : { sessionId: this.deps.sessionId }
+    return this.deps.host.session
   }
 
-  /**
-   * Execute a claim/insert/text outcome through `deliver`, or via the scoped input events (actx as dispatch subject);
-   * true = the input applied it.
-   */
-  private execute(outcome: PickOutcome, span: import('../types.ts').TokenSpan): boolean {
+  /** Execute a claim/insert/text outcome through the host; true = the input applied it. */
+  private execute(outcome: PickOutcome, span: TokenSpan): boolean {
     if (outcome === undefined || outcome === 'handled') return false
-    if (this.deps.deliver !== undefined) return this.deps.deliver(outcome, span)
-    const { actx } = this.deps
-    if ('claim' in outcome) {
-      return actx.bail(actx, 'slash/input-begin-command', { claim: outcome.claim, span }) === true
-    }
-    if ('text' in outcome) {
-      return actx.bail(actx, 'slash/input-insert-text', {
-        text: outcome.text,
-        span,
-        ...outcome.continue === true ? { continue: true } : {},
-      }) === true
-    }
-    return actx.bail(actx, 'slash/input-insert-reference', { reference: outcome.insert, span }) === true
+    return this.deps.host.deliver(outcome, span)
   }
 
   /** Re-poll every lexicon-bearing source and publish the aggregated rolls (see the store doc). */
@@ -541,13 +569,9 @@ export class InputTriggerController {
     const controller = new AbortController()
     this.fetch = controller
     const generation = this.menu.getSnapshot().generation
-    const projection = this.project()
     for (const source of roster) {
       const request = { query: hit.query, quoted: hit.quoted, position: hit.position, drilled: this.drilled, signal: controller.signal }
-      const candidates = projection === null
-        ? source.prompt?.candidates({ ...request, context: this.deps.context?.() ?? null }) ?? Promise.resolve([])
-        : source.candidates(projection, request)
-      void candidates
+      void this.deps.host.candidates(source, request)
         .then(
           (items) => {
             if (controller.signal.aborted) return
@@ -584,9 +608,7 @@ export class InputTriggerController {
     hit: TriggerHit,
     action: PickAction,
   ): void {
-    const session = this.project()
-    const pick = { candidate, position: hit.position, via: 'menu' as const, action, span: hit.span }
-    const outcome = session === null ? src.prompt?.onPick(pick) : src.onPick({ ...pick, session })
+    const outcome = this.deps.host.onPick(src, { candidate, position: hit.position, via: 'menu', action, span: hit.span })
     this.stopFetch()
     // A settling pick is the user's decision about this token: the menu stays
     // closed for it until the text changes, so a settled command that opens a

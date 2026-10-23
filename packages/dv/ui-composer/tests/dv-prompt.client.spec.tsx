@@ -140,7 +140,10 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
     preview: vi.fn(), openNode: vi.fn(),
     ...options.noPicker === true
       ? {}
-      : { pickAssets: vi.fn<NonNullable<PromptHost['pickAssets']>>(), importFiles: vi.fn((files: readonly File[]) => Promise.resolve(files.map(file => file.name))) },
+      : {
+        pickAssets: vi.fn<NonNullable<PromptHost['pickAssets']>>(),
+        importFiles: vi.fn<NonNullable<PromptHost['importFiles']>>(files => Promise.resolve(files.map(file => file.name))),
+      },
   }
   const onSubmit = (edited: PromptCall): Promise<void> => {
     sent.push(edited)
@@ -482,6 +485,29 @@ describe('one draft per occurrence', () => {
     expect(within(take).getByRole('button', { name: 'Generate a new version' })).toBeTruthy()
     act(() => { runtime.ctx.dvComposer.paramBars.register({ ...shotRenderBar, operation: STILL.name, owner: 'test', copy: { send: ['生成静帧', 'Make the still'] } }) })
     await waitFor(() => { expect(within(take).getByRole('button', { name: 'Make the still' })).toBeTruthy() })
+  })
+})
+
+describe('what the editor shows and takes', () => {
+  it('shows the placeholder while the prompt is empty, and hides it once the user types', async () => {
+    const { take } = await mount({ operation: STILL.name, params: { prompt: '' }, inputs: [] })
+    const placeholder = await found(take, '[data-composer-placeholder]')
+    expect(placeholder.textContent).toBe('Describe what to generate')
+    act(() => { box(take).focus() })
+    pasteText(take, 'rain')
+    await waitFor(() => { expect(take.querySelector('[data-composer-placeholder]')).toBeNull() })
+  })
+
+  it('imports an image that the user pastes into the editor, and sends it as a reference', async () => {
+    const { take, host, sent } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] })
+    await sendOf(take, 'Render new take')
+    const image = new File(['a'], 'ref.png', { type: 'image/png' })
+    act(() => { box(take).focus() })
+    fireEvent.paste(box(take), { clipboardData: { items: [{ kind: 'file', getAsFile: () => image }], getData: () => '' } })
+    await found(take, '[data-reference-tile="ref.png"]')
+    expect(host.importFiles?.mock.calls).toEqual([[[image]]])
+    fireEvent.click(await sendOf(take, 'Render new take'))
+    await waitFor(() => { expect(sent[0]?.inputs).toEqual([{ role: 'reference', ref: 'ref.png' }]) })
   })
 })
 

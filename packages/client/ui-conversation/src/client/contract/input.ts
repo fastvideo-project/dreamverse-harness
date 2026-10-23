@@ -10,6 +10,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { InboxState } from '@deepseek-ai/dsh-agent/types'
 import type { ObservableSnapshot, SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { Branded } from '@deepseek-ai/dsh-brand'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { ArbitrateKey, ArbitrateOutcome, Occurrence, ReferenceInsert, TokenSpan } from './draft-editor.ts'
 import type { InputSubmitMode } from './composer-submission.ts'
 
@@ -127,6 +128,24 @@ export interface InputTriggerController {
   /** @param source - source name. @param hit - synthetic trigger hit. */
   toggleSource(source: string, hit: InputTriggerHit): void
 }
+
+/** The part of `ctx.inputTriggers` that the conversation uses, resolved without importing its implementation. */
+export interface InputTriggerServiceFace {
+  /** @param actx - Session scope. @returns that Session's trigger provider. */
+  sessionOf(actx: Context): InputTriggerController
+  /**
+   * Open the trigger controller of one prompt occurrence outside any Session.
+   * @param options - the source names the occurrence offers now, the JSON its sources get as `context`, and the
+   *   callback that applies a pick to the occurrence.
+   * @returns the controller, the key that names it to the occurrence's menu, and its disposer.
+   */
+  controllerFor(options: {
+    readonly sources: () => readonly string[]
+    readonly context: () => JsonValue | null
+    readonly deliver: (outcome: Exclude<PickOutcome, 'handled' | undefined>, span: TokenSpan) => boolean
+  }): { readonly key: string; readonly controller: InputTriggerController; dispose(): void }
+}
+
 
 declare module '@deepseek-ai/cordis' {
   interface Events {

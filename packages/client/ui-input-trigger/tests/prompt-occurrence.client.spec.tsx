@@ -89,6 +89,25 @@ async function bench() {
   return { runtime, view, seen, changes, setTake: (next: PromptHostModel) => { act(() => { setTake(next) }) }, take: occurrences[0]!.model }
 }
 
+describe('the prompt controllers of the trigger service', () => {
+  it('go with the service, and a service loaded again mints keys that the first did not', async () => {
+    const runtime = await SlotTestRuntime.create()
+    runtimes.push(runtime)
+    const locale = new LocaleRuntime(runtime.ctx)
+    runtime.ctx.provide('locale', locale)
+    runtime.slots.installLocale(locale)
+    const options = { sources: () => [], context: () => null, deliver: () => false }
+    const first = await runtime.mount({ inject: [...inject], apply })
+    const service = runtime.ctx.get('inputTriggers') as InputTriggerService
+    const opened = service.controllerFor(options)
+    await first.dispose()
+    expect(service.occurrence(opened.key)).toBeUndefined()
+    await runtime.mount({ inject: [...inject], apply })
+    const next = (runtime.ctx.get('inputTriggers') as InputTriggerService).controllerFor(options)
+    expect(next.key).not.toBe(opened.key)
+  })
+})
+
 describe('conversation.prompt outside a Session', () => {
   it('renders three occurrences under one Factory, each with its own editor and controller', async () => {
     const { view } = await bench()

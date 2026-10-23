@@ -5,7 +5,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { PromptInjected } from './contract/prompt.ts'
-import { PromptOccurrence, type PromptTriggerFace } from './input/prompt-occurrence.ts'
+import type { InputTriggerServiceFace } from './contract/input.ts'
+import { PromptOccurrence } from './input/prompt-occurrence.ts'
 import { PromptEditor } from './skeleton/PromptEditor.tsx'
 
 /**
@@ -22,7 +23,7 @@ export function registerPromptFactory(ctx: Context): () => void {
       'conversation.prompt.menu': { kind: 'single', scope: 'session-maybe' },
     },
     inject: (): PromptInjected => ({
-      open: model => new PromptOccurrence(model, ctx.get('inputTriggers') as PromptTriggerFace | undefined),
+      open: (model, onView) => new PromptOccurrence(model, ctx.get('inputTriggers') as InputTriggerServiceFace | undefined, onView),
     }),
   }, PromptEditor)
 }

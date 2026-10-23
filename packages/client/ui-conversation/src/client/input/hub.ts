@@ -16,7 +16,7 @@ import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
 import type { InboxState } from '@deepseek-ai/dsh-agent/types'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type {
-  DraftAttachmentId, DraftAttachmentSerializationResult, InputTriggerController,
+  DraftAttachmentId, DraftAttachmentSerializationResult, InputTriggerController, InputTriggerServiceFace,
   SessionInputResolver, SessionInput, SubmitOutcome,
 } from '../contract/input.ts'
 import type { ComposerKeyboard } from '../contract/draft-editor.ts'
@@ -27,12 +27,6 @@ import { SessionInputShell } from './facade.ts'
 /** Structural command face for per-session popup resolution. */
 interface CommandFace {
   popupFor(actx: Context): PopupDismissFace
-}
-
-/** Optional input-trigger service resolved without importing its implementation. */
-interface InputTriggerServiceFace {
-  /** @param actx - Session scope. @returns that Session's trigger provider. */
-  sessionOf(actx: Context): InputTriggerController
 }
 
 /** Attachment-send face resolved lazily to keep hub/service construction acyclic. */

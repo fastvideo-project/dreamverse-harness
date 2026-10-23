@@ -44,6 +44,8 @@ export interface PromptHostModel {
   onChange(text: string, chips: readonly Occurrence[], cause: PromptChangeCause): void
   /** Called on Enter while the menu is closed; absent in read mode. */
   onSubmit?(): void
+  /** Called with the files that the user pastes into the editor; absent, the editor drops pasted files. */
+  intakeFiles?(files: readonly File[]): void
   /**
    * Called when the user activates a chip; true when the host opened what the chip names. Outside a Session no trigger
    * source previews a chip, so the host does.
@@ -73,20 +75,27 @@ export interface PromptMenuOwner {
 /** The editor and the trigger controller of one open occurrence. */
 export interface PromptOccurrenceHandle {
   readonly editor: LexicalEditor
-  /** The menu key; null without a trigger plugin. */
-  readonly menuKey: string | null
   /** Apply the host's current content revision and read-only flag. */
   sync(): void
   dispose(): void
+}
+
+/** What the Factory component draws of an occurrence beside its editor. */
+export interface PromptOccurrenceView {
+  /** Whether the editor holds no text, which shows the placeholder. */
+  readonly empty: boolean
+  /** The key of the occurrence's trigger controller; null without a trigger plugin and while the occurrence is read-only. */
+  readonly menuKey: string | null
 }
 
 /** The apply-world face of the Factory: it opens one occurrence over a model the component keeps current. */
 export interface PromptInjected {
   /**
    * @param model - reads the host's current model.
+   * @param onView - receives the occurrence's view when it opens and after each change of it.
    * @returns the occurrence; the component disposes it on unmount.
    */
-  readonly open: (model: () => PromptHostModel) => PromptOccurrenceHandle
+  readonly open: (model: () => PromptHostModel, onView: (view: PromptOccurrenceView) => void) => PromptOccurrenceHandle
 }
 
 /** Full props of the Factory component. */

@@ -13,6 +13,7 @@ import { createScope, scopeOf } from '@deepseek-ai/dsh-api-session-controller/cl
 import type { LocaleSnapshot } from '@deepseek-ai/dsh-client-locale/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { InputTriggerController, InputTriggerService } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
+import { sessionHost } from '../src/client/controller.ts'
 import type {
   BeginCommandRequest, ClientSessionContext, CommandClaim, InsertReferenceRequest, PickOutcome,
   ReferenceInsert, InputTriggerCandidate, InputTriggerPick, InputTriggerSource, SourceRoster, TriggerChar,
@@ -76,7 +77,7 @@ function controllerBench(sources: InputTriggerSource[] = [], key = 'a') {
     sources: trigger => sources.filter(s => s.trigger === trigger),
     all: () => sources,
   }
-  const controller = new InputTriggerController({ actx: scope.ctx, sessionId: sid(key), roster })
+  const controller = new InputTriggerController({ host: sessionHost(scope.ctx, sid(key)), roster })
   return { root, actx: scope.ctx, controller, sources }
 }
 

@@ -18,7 +18,7 @@ import { en, zh, type MenuKey } from './locales.ts'
 
 export { InputTriggerService } from './service.ts'
 export { InputTriggerController } from './controller.ts'
-export type { AppliedOutcome, InputTriggerControllerDeps, PickDelivery, SourceRoster } from './controller.ts'
+export type { AppliedOutcome, InputTriggerControllerDeps, SourceRoster, TriggerHost } from './controller.ts'
 export type { MenuViewInjected, PromptMenuInjected } from './slots.ts'
 export type { MenuViewProps, PromptMenuViewProps } from './MenuView.tsx'
 export type { MenuKey } from './locales.ts'

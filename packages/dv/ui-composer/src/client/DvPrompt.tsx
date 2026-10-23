@@ -119,20 +119,22 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
     dispatch({ type: 'sending', sending: true })
     void onSubmit(edited).finally(() => { dispatch({ type: 'sending', sending: false }) })
   }
-  const media = filter === null ? null : { mediaTypes: [...filter.mediaTypes], maxReferences: filter.maxReferences }
-  const model: PromptHostModel = {
-    content: draft.content, readOnly, sources: offersReferences ? [MENTION_SOURCE] : [], sourceContext: media, faceContext: faces,
-    onChange: (text, chips, cause) => { dispatch({ type: 'editorChanged', text, chips: chips.length, cause, ctx }) },
-    ...readOnly ? {} : { onSubmit: send },
-    openReference: (_source, reference) => openReference(reference),
-    placeholder: pick(...copy.placeholder),
-    ariaLabel: pick('提示词', 'Prompt'),
-  }
   const picker = host.pickAssets
   const importer = host.importFiles
   const addFiles = (importFiles: NonNullable<typeof importer>, files: readonly File[]): void => {
     if (files.length === 0) return
     void importFiles(files).then((assets) => { dispatch({ type: 'imported', assets }) })
+  }
+  const media = filter === null ? null : { mediaTypes: [...filter.mediaTypes], maxReferences: filter.maxReferences }
+  const model: PromptHostModel = {
+    content: draft.content, readOnly, sources: offersReferences ? [MENTION_SOURCE] : [], sourceContext: media, faceContext: faces,
+    onChange: (text, chips, cause) => { dispatch({ type: 'editorChanged', text, chips: chips.length, cause, ctx }) },
+    ...readOnly ? {} : { onSubmit: send },
+    // A pasted file joins the call as an upload does.
+    ...offersReferences && importer !== undefined ? { intakeFiles: (files: readonly File[]) => { addFiles(importer, files) } } : {},
+    openReference: (_source, reference) => openReference(reference),
+    placeholder: pick(...copy.placeholder),
+    ariaLabel: pick('提示词', 'Prompt'),
   }
   const patch = (next: Readonly<Record<string, unknown>>): void => { dispatch({ type: 'patched', patch: next }) }
   return (

@@ -29,6 +29,15 @@
   margin: 0;
 }
 
+/* The placeholder sits over the empty first line, at the input's pads. */
+.placeholder {
+  position: absolute;
+  inset: 8px 12px auto 12px;
+  color: var(--dsw-alias-label-caption);
+  pointer-events: none;
+  user-select: none;
+}
+
 .readOnly .input {
   min-height: 0;
 }
