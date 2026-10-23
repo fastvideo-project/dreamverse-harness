@@ -230,9 +230,8 @@ export interface RecordsInUse {
 }
 
 /**
- * One command on a node, drawn by the canvas in the toolbar over the selected node, in the editor header, and in the
- * failed row of a failed claimed node. `shows` alone decides where it applies, and it narrows the node that `run`
- * receives to `N`.
+ * One command on a node, drawn by the canvas in the editor header and in the failed row of a failed claimed node.
+ * `shows` alone decides where it applies, and it narrows the node that `run` receives to `N`.
  */
 export interface NodeAction<N extends NodeView = NodeView> {
   /** Unique, such as '@dv/ui-image-upscale:upscale'; the owner is the part before ':'. */

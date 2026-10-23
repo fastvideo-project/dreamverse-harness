@@ -66,8 +66,6 @@ const DRAG_THRESHOLD = 4
 const SAVE_DELAY_MS = 500
 /** The zoom ref of a stacked editor, which opens and closes without the zoom transition. */
 const noZoom = (element: HTMLElement | null): void => { void element }
-/** The height of the action toolbar over the selected node, and its gap to the card, in canvas units. */
-const TOOLBAR_OFFSET = 36
 /** Canvas dot grid pitch at 100%, in canvas units. */
 const GRID = 20
 
@@ -694,14 +692,10 @@ export function CanvasView(
   } else if (graph.nodes.length === 0) {
     content = <p style={{ ...centered, pointerEvents: 'none' }}>{t('canvas.empty')}</p>
   } else {
-    const byId = new Map(graph.nodes.map(node => [node.id, node]))
     // The selected node's edges are drawn last, so they stay on top of the others.
     const touchesSelected = (edge: CanvasEdge): boolean => selected !== null && (edge.from === selected || edge.to === selected)
     const links = [...graph.links.filter(link => !touchesSelected(link.edge)), ...graph.links.filter(link => touchesSelected(link.edge))]
     const textScale = textScaleAt(viewport.zoom)
-    const selectedNode = editing === null && selected !== null ? byId.get(selected) : undefined
-    const selection = selectedNode === undefined ? null : { node: selectedNode, view: viewFor(selectedNode) }
-    const toolbarActions = selection === null ? [] : actionsFor(selection.view)
     const hosts = hostsOf(() => { setEditing(null) }, graph.state)
     content = (
       <div style={{ position: 'absolute', left: 0, top: 0, transform: `translate(${String(viewport.x)}px, ${String(viewport.y)}px) scale(${String(viewport.zoom)})`, transformOrigin: '0 0' }}>
@@ -758,25 +752,6 @@ export function CanvasView(
             />
           )
         })}
-        {selection === null || toolbarActions.length === 0
-          ? null
-          : (
-            <div
-              role="toolbar" aria-label={selection.node.title} data-testid="dv-canvas-node-toolbar"
-              style={{ position: 'absolute', left: positionOf(selection.node).x, top: positionOf(selection.node).y - TOOLBAR_OFFSET, display: 'flex', gap: 4, padding: 2, borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-2)', boxShadow: '0 0 0 1px var(--dv-line-strong), var(--dv-shadow-1)' }}
-              onPointerDown={(event) => { event.stopPropagation() }}
-            >
-              {toolbarActions.map(action => (
-                <button
-                  key={action.id} type="button" className="dv-canvas-btn" disabled={selection.view.rerunning}
-                  style={{ height: 24, padding: '0 8px', border: 'none', borderRadius: 'var(--dv-radius-sm)', fontFamily: 'inherit', fontSize: 12, color: 'var(--dv-text)', cursor: 'pointer' }}
-                  onClick={() => { action.run(selection.view, hosts.action(action.id)) }}
-                >
-                  {action.label()}
-                </button>
-              ))}
-            </div>
-          )}
       </div>
     )
   }

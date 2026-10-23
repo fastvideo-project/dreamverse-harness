@@ -165,7 +165,7 @@ describe('the canvas over the real kinds', () => {
     await runtime.dispose()
   })
 
-  it('shows 重试 of a failed take in its failed row, its editor header and the selected-node toolbar, each rerunning the take based on it', async () => {
+  it('shows 重试 of a failed take in its failed row and its editor header, each rerunning the take based on it, and only in the failed row once the editor closes', async () => {
     const { runtime, view, node, open, server } = await mountCanvas({ edit: failG1 })
     await waitFor(() => { node('g1') })
     expect(node('g1').getAttribute('title')).toBe('GPU out of memory')
@@ -178,13 +178,13 @@ describe('the canvas over the real kinds', () => {
     await waitFor(() => { expect(operationsOf(server.writes)).toHaveLength(1) })
     expect(operationsOf(server.writes)[0]).toMatchObject(retry)
     const editor = await open('g1')
-    expect(within(editor).getByRole('button', { name: '重试' })).toBeTruthy()
-    fireEvent.click(within(editor).getByRole('button', { name: zh['editor.close'] }))
-    const toolbar = view.getByTestId('dv-canvas-node-toolbar')
-    expect(toolbar.getAttribute('aria-label')).toBe(node('g1').getAttribute('aria-label'))
-    fireEvent.click(within(toolbar).getByRole('button', { name: '重试' }))
+    await waitFor(() => { expect(within(editor).getByRole('button', { name: '重试' }).hasAttribute('disabled')).toBe(false) })
+    fireEvent.click(within(editor).getByRole('button', { name: '重试' }))
     await waitFor(() => { expect(operationsOf(server.writes)).toHaveLength(2) })
     expect(operationsOf(server.writes)[1]).toMatchObject(retry)
+    await waitFor(() => { expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull() })
+    expect(node('g1').getAttribute('data-node-selected')).toBe('true')
+    expect(view.getAllByRole('button', { name: '重试' })).toEqual([within(node('g1')).getByRole('button', { name: '重试' })])
     await runtime.dispose()
   })
 
@@ -416,7 +416,7 @@ describe('the canvas over the real kinds', () => {
 })
 
 describe('drops on the canvas', () => {
-  it('puts a dropped 素材 tile on the canvas under the pointer with asset.place, and 从画布移除 in its toolbar and editor takes it off with asset.unplace', async () => {
+  it('puts a dropped 素材 tile on the canvas under the pointer with asset.place, and 从画布移除 in its editor takes it off with asset.unplace', async () => {
     const { runtime, view, node, open, server, canvasOf } = await mountCanvas({
       edit: (state) => {
         state.assets.push(asset('pool.png', 'image/png', 'u2'))
@@ -431,10 +431,7 @@ describe('drops on the canvas', () => {
     const placement = (operation: string) => ({ project: 'p1', operation, surface: 'canvas', inputs: [{ role: 'asset', ref: 'pool.png' }], session: 's5' })
     await waitFor(() => { expect(operationsOf(server.writes)).toContainEqual(placement('asset.place')) })
     const editor = await open('u2')
-    fireEvent.click(within(editor).getByRole('button', { name: zh['editor.close'] }))
-    expect(within(view.getByTestId('dv-canvas-node-toolbar')).getByRole('button', { name: '从画布移除' })).toBeTruthy()
-    const reopened = await open('u2')
-    fireEvent.click(within(reopened).getByRole('button', { name: '从画布移除' }))
+    fireEvent.click(within(editor).getByRole('button', { name: '从画布移除' }))
     await waitFor(() => { expect(view.container.querySelector('[data-node-id="u2"]')).toBeNull() })
     await waitFor(() => { expect(operationsOf(server.writes)).toContainEqual(placement('asset.unplace')) })
     expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
@@ -698,17 +695,6 @@ describe('writes and failures', () => {
     await runtime.dispose()
   })
 
-  it('shows a refused 重试 of the selected-node toolbar in the canvas notice, and offers 重试 again', async () => {
-    const { runtime, view, open } = await mountCanvas({ edit: failG1, refuse: refuseOperation('shot.render', 'GPU busy') })
-    const editor = await open('g1')
-    fireEvent.click(within(editor).getByRole('button', { name: zh['editor.close'] }))
-    const toolbar = view.getByTestId('dv-canvas-node-toolbar')
-    fireEvent.click(within(toolbar).getByRole('button', { name: '重试' }))
-    expect((await view.findByRole('alert')).textContent).toBe('失败：GPU busy')
-    await waitFor(() => { expect(within(toolbar).getByRole('button', { name: '重试' }).hasAttribute('disabled')).toBe(false) })
-    await runtime.dispose()
-  })
-
   it('shows the error of a rerun that fails after its new take appeared', async () => {
     let started = false
     const { runtime, view, node, open, server } = await mountCanvas({
@@ -754,9 +740,9 @@ describe('node actions', () => {
     id: `@dv/ui-test-probe:${name}`, label: () => name, order, shows: (node): node is NodeView => node.id === 'g1', run,
   })
 
-  it('orders the toolbar actions; an action outside an editor reads references and previews no unknown asset', async () => {
+  it('orders the actions in the editor header; an action reads references and previews no unknown asset', async () => {
     const facts: ReferenceFacts[] = []
-    const { runtime, view, node, open, canvasOf } = await mountCanvas()
+    const { runtime, view, open } = await mountCanvas()
     await mountDescriptors(runtime, {
       actions: [
         onG1('second', 2, (_node, host) => {
@@ -766,18 +752,14 @@ describe('node actions', () => {
         onG1('first', 1),
       ],
     })
-    await open('g1')
-    fireEvent.click(view.getByRole('button', { name: zh['editor.close'] }))
-    const toolbar = view.getByTestId('dv-canvas-node-toolbar')
-    expect(within(toolbar).getAllByRole('button').map(button => button.textContent)).toEqual(['first', 'second'])
-    fireEvent.pointerDown(toolbar, { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
-    fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
-    expect(node('g1').getAttribute('data-node-selected')).toBe('true')
-    fireEvent.click(within(toolbar).getByRole('button', { name: 'second' }))
+    const editor = await open('g1')
+    const labels = within(editor).getAllByRole('button').map(button => button.textContent)
+    expect(labels.filter(label => label === 'first' || label === 'second')).toEqual(['first', 'second'])
+    fireEvent.click(within(editor).getByRole('button', { name: 'second' }))
     expect(facts.map(fact => [fact.name, fact.asset?.id ?? null, fact.node])).toEqual([
       ['Hero', 'ref.png', 'test_ref:hero'], ['hero', null, null], ['ref.png', 'ref.png', null], ['gone.png', null, null],
     ])
-    expect(view.queryByRole('dialog')).toBeNull()
+    expect(view.getAllByRole('dialog')).toEqual([editor])
     await runtime.dispose()
   })
 
