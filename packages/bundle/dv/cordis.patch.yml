@@ -262,8 +262,10 @@
 # The agent model: DeepSeek V4.1 served by SGLang on the cluster through its OpenAI-compatible API. No installed pi-ai
 # catalog describes that server, so the route is declared by hand with the model's modalities and thinking levels; the
 # server accepts the catalog id `deepseek-v4.1` as sent. pi-ai's OpenAI implementation insists on a bearer token, so the
-# launch script exports DV_DEEPSEEK_API_KEY=none for a keyless server. Groq stays available as the documented fallback:
-# DV_AGENT_PROVIDER=groq DV_AGENT_MODEL=qwen/qwen3.8-27b.
+# launch script exports DV_DEEPSEEK_API_KEY=none for a keyless server. pi-ai does not recognize the server's address as
+# DeepSeek, so it would send the system prompt of a reasoning model as role `developer`, and SGLang drops a
+# `developer` message from a request without tools; `supportsDeveloperRole: false` sends it as role `system`. Groq stays
+# available as the documented fallback: DV_AGENT_PROVIDER=groq DV_AGENT_MODEL=qwen/qwen3.8-27b.
 - id: llm-pi-ai
   config:
     providers:
@@ -271,6 +273,8 @@
         apiKeyEnv: DV_DEEPSEEK_API_KEY
         api: openai-completions
         baseURL: !!js process.env.DV_DEEPSEEK_BASE_URL || 'http://10.244.6.153:30000/v1'
+        compat:
+          supportsDeveloperRole: false
         models:
           - id: deepseek-v4.1
             name: DeepSeek V4.1 (SGLang)
