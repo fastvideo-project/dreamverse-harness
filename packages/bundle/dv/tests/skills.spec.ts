@@ -22,6 +22,15 @@ const SKILLS = fileURLToPath(new URL('../../../dv/workflow-story/skills', import
 /** The workflow skills, each named by the folder of its `SKILL.md`. */
 const NAMES = globSync('*/SKILL.md', { cwd: SKILLS }).map(file => dirname(file)).sort()
 const TOOL = /(?<!\w)dv_[a-z]+_\w+/gu
+/** `@dv/inspector` registers `dv_inspect_image` only while `llm`, `agentDefaultModel` and `attachments` exist. */
+const MODEL_SERVICES = {
+  name: 'stand-in-model-services',
+  apply(ctx: Context): void {
+    ctx.provide('llm', {})
+    ctx.provide('agentDefaultModel', {})
+    ctx.provide('attachments', {})
+  },
+}
 
 /** The number of Unicode code points of a text, the unit of the catalog and body limits. */
 const codePoints = (text: string): number => Array.from(text).length
@@ -70,7 +79,7 @@ describe('workflow skill files in the DreamVerse bundle', () => {
   let catalog: string[]
 
   beforeAll(async () => {
-    bundle = await bootBundle({ skills: SkillRegistry, agents: AgentRegistry, 'tool-skill': ToolSkill })
+    bundle = await bootBundle({ skills: SkillRegistry, agents: AgentRegistry, 'tool-skill': ToolSkill, 'model-services': MODEL_SERVICES })
     agent = sessionAgent(bundle.dir)
     catalog = await catalogLines(bundle.ctx, agent)
   })
