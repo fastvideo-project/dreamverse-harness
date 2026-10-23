@@ -8,7 +8,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { ProjectEvent, WireState } from '@dv/ui-kit/types.ts'
 import { fixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { shotRenderBar } from '../../ui-shot-render/src/client/param-bar.ts'
-import { applyPrompt, projectStates } from '../src/client/prompt.ts'
+import { applyPrompt, catalogSource, projectStates } from '../src/client/prompt.ts'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -118,13 +118,43 @@ describe('the live state of a project', () => {
   })
 })
 
+describe('the model catalog', () => {
+  it('is null until it loads, and loads again when a consumer subscribes after the last one left', async () => {
+    const answers = [[{ modality: 'video' }], [{ modality: 'audio' }]]
+    const load = vi.fn(() => Promise.resolve(answers.shift() as never))
+    const catalog = catalogSource(load)
+    expect(catalog.getSnapshot()).toBeNull()
+    const offA = catalog.subscribe(() => {})
+    const offB = catalog.subscribe(() => {})
+    await vi.waitFor(() => { expect(catalog.getSnapshot()).toEqual([{ modality: 'video' }]) })
+    offA()
+    expect(load).toHaveBeenCalledTimes(1)
+    offB()
+    catalog.subscribe(() => {})
+    await vi.waitFor(() => { expect(catalog.getSnapshot()).toEqual([{ modality: 'audio' }]) })
+    expect(load).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the loaded catalog when a later load fails', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const load = vi.fn().mockResolvedValueOnce([{ modality: 'video' }]).mockRejectedValueOnce(new Error('offline'))
+    const catalog = catalogSource(load)
+    catalog.subscribe(() => {})()
+    await vi.waitFor(() => { expect(catalog.getSnapshot()).toEqual([{ modality: 'video' }]) })
+    catalog.subscribe(() => {})
+    await vi.waitFor(() => { expect(error).toHaveBeenCalledWith('[dv-composer] models failed:', new Error('offline')) })
+    expect(catalog.getSnapshot()).toEqual([{ modality: 'video' }])
+  })
+})
+
 describe('the parameter bars', () => {
   it('refuse a second bar of an operation, naming the package that holds it', async () => {
     const ctx = new Context()
     ctx.provide('slots', { inject: () => () => undefined, register: () => () => undefined, registerFactory: () => () => undefined } as never)
     await ctx.plugin({ inject: ['slots'], apply: applyPrompt }).await()
-    ctx.dvComposer.paramBars.register(shotRenderBar)
-    expect(() => ctx.dvComposer.paramBars.register({ ...shotRenderBar, owner: '@dv/ui-other' }))
+    const bar = { ...shotRenderBar, operation: 'shot.render', owner: '@dv/ui-shot-render' }
+    ctx.dvComposer.paramBars.register(bar)
+    expect(() => ctx.dvComposer.paramBars.register({ ...bar, owner: '@dv/ui-other' }))
       .toThrow('registry key "shot.render" is already registered by @dv/ui-shot-render')
   })
 })

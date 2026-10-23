@@ -174,8 +174,10 @@ describe('the parameter bar of shot.render', () => {
     expect(chips[2]?.kind === 'menu' && chips[2].options[1]?.patch).toEqual({ duration_sec: 2 })
   })
 
-  it('offers one second, and text fields for the lists that a schema which is not an object lacks', () => {
-    const chips = shotRenderBar.chips({ schema: null, params: {}, operation: OPERATIONS[0]! })
+  it('gives no chip and no filter for a schema that the catalog does not know, and text fields for lists that a schema lacks', () => {
+    const unknown = shotRenderBar.chips({ schema: null, params: {}, operation: OPERATIONS[0]! })
+    expect([unknown, shotRenderBar.candidates(null)]).toEqual([[], null])
+    const chips = shotRenderBar.chips({ schema: {}, params: {}, operation: OPERATIONS[0]! })
     expect(chips.map(chip => [chip.key, chip.kind])).toEqual([['aspect_ratio', 'text'], ['resolution', 'text'], ['duration_sec', 'menu']])
   })
 

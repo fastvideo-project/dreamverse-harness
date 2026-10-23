@@ -28,11 +28,16 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** `dvModels` plugin configuration: none. */
-export type Config = Record<string, unknown>
+/** `dvModels` plugin configuration. */
+export interface Config {
+  /** How long `catalog()` waits for one entry's `schema()` before it lists the entry with schema null, in ms. */
+  catalogSchemaTimeoutMs: number
+}
 
 /** Loader validation. */
-export const Config: z<Config> = z.object({})
+export const Config: z<Config> = z.object({
+  catalogSchemaTimeoutMs: z.natural().min(1).default(5000),
+})
 
 /** The fields of a model key. */
 const MODEL_KEY_FIELDS = ['modality', 'task', 'provider', 'model'] as const
@@ -103,7 +108,7 @@ export default class DvModels extends Service {
   private readonly labels = new Map<string, { zh: string; en: string }>()
   private readonly listeners = new Set<() => void>()
 
-  constructor(ctx: Context) {
+  constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'dvModels')
     ctx.inject(['tools'], (child) => {
       child.effect(() => child.tools.register(this.defineModelsListTool()), 'dvModels dv_models_list')
@@ -272,12 +277,16 @@ export default class DvModels extends Service {
   /**
    * The catalog the browser reads: each entry as `dv_models_get` returns it, in registration order, so the agent and the
    * browser read one catalog.
-   * @returns the entries; an entry whose `schema()` fails, such as one whose backend cannot be reached, has schema null.
+   * @returns the entries; an entry whose `schema()` fails or does not answer within `catalogSchemaTimeoutMs`, such as one
+   *   whose backend cannot be reached, has schema null.
    */
   async catalog(): Promise<Array<Record<string, JsonValue>>> {
     return await Promise.all(this.list().map(async (entry) => {
-      // The schema of an unreachable backend is unknown; the entry still lists its key and description.
-      const schema = await entry.schema().catch((_unreachable: unknown) => null)
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const late = new Promise<null>((resolve) => { timer = setTimeout(() => { resolve(null) }, this.config.catalogSchemaTimeoutMs) })
+      // The schema of an unreachable or slow backend is unknown; the entry still lists its key and description.
+      const schema = await Promise.race([entry.schema().catch((_unreachable: unknown) => null), late])
+      clearTimeout(timer)
       return { ...toModelListItem(entry), schema }
     }))
   }

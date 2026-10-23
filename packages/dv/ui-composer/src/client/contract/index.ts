@@ -144,19 +144,25 @@ export interface PromptCopy {
   readonly sending?: Text
 }
 
-/** The parameter bar of one operation, registered by the UI half of the plugin that owns the operation. */
+/**
+ * The parameter bar of one operation, registered by the UI half of the plugin that owns the operation; the generation
+ * kit `@dv/ui-generation` registers one for each operation of a kind, from the kind's declaration.
+ */
 export interface ParamBar {
   readonly operation: string
   /** The registering package, which a refused second bar of the operation names. */
   readonly owner: string
-  /** The chips of a call under a model's schema, whose fields that plugin owns. */
-  chips(input: {
+  /**
+   * The chips of a call under a model's schema, whose fields that plugin owns; each replaces the declared param's chip of
+   * its key. Absent, the declared params' chips show.
+   */
+  chips?(input: {
     readonly schema: unknown
     readonly params: Readonly<Record<string, unknown>>
     readonly operation: WireOperation
   }): ParamChip[]
-  /** The `@` filter of a model, read from the same schema. */
-  candidates(schema: unknown): CandidateFilter
+  /** The `@` filter of a model, read from the same schema; null, or absent, for no filter, such as an unknown schema. */
+  candidates?(schema: unknown): CandidateFilter | null
   /** The words of the operation's occurrences. */
   readonly copy?: PromptCopy
 }
@@ -191,8 +197,8 @@ export interface RemovedInput {
 export interface DvPromptInjected {
   readonly check: (request: OperationRequest) => Promise<OperationCheck>
   readonly hooks: {
-    /** The model catalog; empty until it loads. */
-    readonly models: HostObservable<readonly WireModelEntry[]>
+    /** The model catalog; null until it loads, and loaded again when an occurrence opens while none is open. */
+    readonly models: HostObservable<readonly WireModelEntry[] | null>
     /** The parameter bars that plugins registered, `dvComposer.paramBars`. */
     readonly paramBars: HostObservable<readonly ParamBar[]>
     /** The version kinds that the canvas holds, which read the versions of the elements that chips cite. */

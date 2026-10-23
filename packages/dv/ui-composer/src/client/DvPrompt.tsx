@@ -66,7 +66,9 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
   const { projectId, call, state, readOnly, host, onSubmit, renderFactorySlot } = props
   const pick = useText()
   const versions = props.useVersionKinds(kinds => kinds)
-  const models = props.useModels(catalog => catalog)
+  // Null until the catalog loads; until then the composer knows no model's references and offers none.
+  const catalog = props.useModels(loaded => loaded)
+  const models = catalog ?? []
   const bar = props.useParamBars(bars => bars.find(candidate => candidate.operation === call.operation) ?? null)
   const operation = props.operations.find(candidate => candidate.name === call.operation) ?? null
   const [draft, dispatch] = useReducer(reduceDraft, call, draftOf)
@@ -78,8 +80,8 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
   const edited = callOf(document, { ...call, params })
   const entry = modelOf(models, params)
   const copy = { ...NEUTRAL_COPY, ...bar?.copy }
-  const filter: CandidateFilter | null = readOnly || entry === undefined || bar === null ? null : bar.candidates(entry.schema)
-  const offersReferences = !readOnly && operation?.inputs['reference'] !== undefined && filter?.mediaTypes.length !== 0
+  const filter: CandidateFilter | null = readOnly || entry === undefined ? null : bar?.candidates?.(entry.schema) ?? null
+  const offersReferences = !readOnly && catalog !== null && operation?.inputs['reference'] !== undefined && filter?.mediaTypes.length !== 0
   const editedKey = JSON.stringify(edited)
   useEffect(() => {
     if (readOnly) return
@@ -267,7 +269,7 @@ function ModelChip({ models, entry, params, onPatch }: {
 function chipsFor(
   bar: ParamBar | null, entry: WireModelEntry | undefined, params: Readonly<Record<string, unknown>>, operation: WireOperation,
 ): ParamChip[] {
-  const own = bar === null || entry === undefined ? [] : bar.chips({ schema: entry.schema, params, operation })
+  const own = entry === undefined ? [] : bar?.chips?.({ schema: entry.schema, params, operation }) ?? []
   return paramChips(operation, params, own)
 }
 

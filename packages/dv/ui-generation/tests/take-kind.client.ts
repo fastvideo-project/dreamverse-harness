@@ -40,9 +40,10 @@ export const CLIP_EXTEND: WireOperation = {
  * A slot runtime whose frame declares `children`, with the canvas and History registries that the kit registers into,
  * the real media and asset pool plugins, and the test kind mounted as a plugin.
  * @param children - the slots that the test frame declares, as the canvas Factory or DSH's tool tree declares them.
+ * @param kind - the kind that the kit defines; the test kind by default.
  * @returns the runtime, the kit plugin's handle, the canvas registries and the History rows.
  */
-export async function mountKit(children: ChildrenDecl): Promise<{
+export async function mountKit(children: ChildrenDecl, kind: typeof testTake = testTake): Promise<{
   runtime: SlotTestRuntime
   kit: FeatureHandle
   canvas: DvCanvas
@@ -61,7 +62,7 @@ export async function mountKit(children: ChildrenDecl): Promise<{
   await runtime.mount({ inject: [...mediaInject], apply: mediaApply })
   await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
   await runtime.mount(composerStack)
-  const kit = await runtime.mount({ inject: [...testTake.inject], apply: testTake.apply })
+  const kit = await runtime.mount({ inject: [...kind.inject], apply: kind.apply })
   return { runtime, kit, canvas, rows }
 }
 

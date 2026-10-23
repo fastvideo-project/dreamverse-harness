@@ -41,7 +41,7 @@ Host 半边不注册任何东西。浏览器半边在 `apply` 顶层提供 `dvMe
 | 画布节点上的 问 agent | `dv:compose`，草稿为 修改 {title}：，带一个引用，指向节点的 `ref`，否则指向其记录，否则指向节点本身，以节点的预览或第一个素材显示；编辑器关闭 |
 | 素材预览里的 让智能体使用 | `dv:compose`，草稿为 使用这个素材：，带一个指向该素材的引用；预览关闭 |
 | 来自其他视图的 `dv:compose` | 最新挂载的输入框用其文字替换草稿，并为每个引用追加一个标签；不发送任何内容 |
-| 打开一个 `dv.prompt` 实例 | `GET /api/dv/models`，在第一次订阅时请求，读取失败后在下一次订阅时再请求 |
+| 打开一个 `dv.prompt` 实例 | 在没有其他实例打开时打开一个实例，就请求 `GET /api/dv/models`；读取失败时保留原有的目录 |
 | 在聊天输入框里显示一个标签 | 所打开项目的 `GET /api/dv/state`，在有聊天标签显示期间，在该项目的每一阵项目事件后 150 ms 重新获取 |
 | 在可编辑的 `dv.prompt` 实例里编辑调用 | 最后一次编辑后 250 ms，带改过的调用和 `surface: 'canvas'` 请求 `POST /api/dv/operation/check`；该路由不写任何内容 |
 
@@ -51,7 +51,7 @@ Host 半边不注册任何东西。浏览器半边在 `apply` 顶层提供 `dvMe
 
 ### `dv.prompt` 输入框
 
-浏览器半边还提供 `dvComposer`，它的类型在只含类型的入口 `@dv/ui-composer/contract`（[`src/client/contract/index.ts`](src/client/contract/index.ts)）中：`paramBars`，一个以 `operation` 为键的 `Registry<ParamBar>`，拥有某个操作的插件的 UI 半边在 `ctx.inject(['dvComposer'], …)` 中填充它，`@dv/ui-shot-render` 就为 `shot.render` 这样做。同一个操作的第二个参数栏会抛错，并给出持有者的 `owner`。`ParamBar` 提供 `chips({schema, params, operation})`，即调用在某个模型的 `schema()` 下的参数标签，每个标签有参数键、名称，以及一个菜单（显示的值和以参数补丁表示的选项）、一个文本框或一个复选框；`candidates(schema)`，即该模型的 `@` 过滤条件，含它的 `reference` 输入的媒体类型和数量 `maxReferences`；以及可选的 `copy`，含 `placeholder`、`send` 和 `sending` 文字。
+浏览器半边还提供 `dvComposer`，它的类型在只含类型的入口 `@dv/ui-composer/contract`（[`src/client/contract/index.ts`](src/client/contract/index.ts)）中：`paramBars`，一个以 `operation` 为键的 `Registry<ParamBar>`，拥有某个操作的插件的 UI 半边在 `ctx.inject(['dvComposer'], …)` 中填充它，`@dv/ui-generation` 的生成套件就为一个类型的每个操作这样做。同一个操作的第二个参数栏会抛错，并给出持有者的 `owner`。`ParamBar` 提供 `chips({schema, params, operation})`，即调用在某个模型的 `schema()` 下的参数标签，每个标签有参数键、名称，以及一个菜单（显示的值和以参数补丁表示的选项）、一个文本框或一个复选框；`candidates(schema)`，即该模型的 `@` 过滤条件，含它的 `reference` 输入的媒体类型和数量 `maxReferences`；以及可选的 `copy`，含 `placeholder`、`send` 和 `sending` 文字。`chips` 和 `candidates` 也是可选的，`candidates` 回答 null 表示没有过滤条件，例如对于目录不知道的 schema。
 
 浏览器半边注册根作用域组件工厂 `dv.prompt`，即单个生成调用的输入框；插件用一个空的 `import type {} from '@dv/ui-composer/contract'` 获得它，并用 `renderFactorySlot('dv.prompt', props)` 绘制它。它的属性是 `projectId`、`call`（一个 `PromptCall`：`operation`，`params`，其中 `prompt` 是带引用的提示词，以及 `{role, ref}` 形式的请求输入 `inputs`）、`state` 和 `operations`（宿主绘制的项目状态和操作声明，输入框据此解析每个引用并找到调用的操作）、`readOnly`、`host` 和可选的 `onSubmit(call)`，后者接收改过的调用，并决定发送做什么。宿主是一个 `PromptHost`：可选的 `pickAssets(chosen, done)` 打开宿主的素材选择窗口，可选的 `importFiles(files)` 把本地文件导入项目，并按文件顺序给出它们的素材 ID，`preview(asset, opener)` 打开素材的预览，`openNode(nodeId)` 打开画布节点的编辑器。宿主传入另一个 `call` 时，该实例在这个调用上重新开始，撤销历史为空，所以撤销不能带回被替换的调用。[`@dv/ui-generation`](../ui-generation/README.zh.md) 的版本编辑器在版本的调用上绘制它，[`@dv/ui-shot-plan`](../ui-shot-plan/README.zh.md) 的分镜计划编辑器在每个镜头的调用上以只读方式绘制它。
 
@@ -61,7 +61,7 @@ Host 半边不注册任何东西。浏览器半边在 `apply` 顶层提供 `dvMe
 - DSH 的 `conversation.prompt` 编辑器，它用标签外观绘制每个标签。
 - 参数栏：模型标签，即调用的 `modality` 下 `GET /api/dv/models` 条目的菜单，选中后写入 `modality`、`task`、`provider` 和 `model`；然后是操作声明的每个参数（`prompt` 和上述四个除外）各一个标签，每个标签带名称（共用参数显示 时长（秒）/ Duration (s) 和 种子 / Seed，其他参数显示其键）：有选项的参数是菜单，布尔参数是复选框，否则是文本框，例如空白时显示 随机 / random 的种子，以及以 JSON 表示模型自身参数的 `extra`；该操作已注册的参数栏在所选模型 schema 下的标签替换同键的标签，参数栏中未声明参数的标签排在后面；文本框显示用户输入的文字，文字无法按参数类型解析时，问题显示在参数栏下方，发送保持禁用；然后是成本 约 N GPU 秒 / ≈ N GPU s 和发送按钮。
 
-最后一次编辑后 250 ms，输入框把改过的调用发给 `POST /api/dv/operation/check`。成本是回答中的 `gpu_seconds`，回答的问题句子显示在参数栏下方，在某次检查回答没有问题之前，发送保持禁用。发送把改过的调用交给 `onSubmit`。占位文字、发送文字和发送进行中的文字来自参数栏的 `copy`；没有时它们是中性的：描述要生成的内容 / Describe what to generate、生成新版本 / Generate a new version 和 生成中… / Generating…。只有操作声明了 `reference` 输入，并且参数栏为所选模型给出的过滤条件至少写出一种媒体类型时，参考栏的 添加素材 / Add asset 和编辑器的 `@` 才提供引用；没有参数栏或模型目录里没有该模型的条目时，没有过滤条件。只读模式下，输入框只显示参考栏（没有添加、固定版本和 ×）和只读的编辑器；它不绘制参数栏，不发送，也不检查。
+最后一次编辑后 250 ms，输入框把改过的调用发给 `POST /api/dv/operation/check`。成本是回答中的 `gpu_seconds`，回答的问题句子显示在参数栏下方，在某次检查回答没有问题之前，发送保持禁用。发送把改过的调用交给 `onSubmit`。占位文字、发送文字和发送进行中的文字来自参数栏的 `copy`；没有时它们是中性的：描述要生成的内容 / Describe what to generate、生成新版本 / Generate a new version 和 生成中… / Generating…。只有操作声明了 `reference` 输入，参数栏为所选模型给出的过滤条件至少写出一种媒体类型，并且模型目录已加载时，参考栏的 添加素材 / Add asset 和编辑器的 `@` 才提供引用；没有参数栏的过滤条件或模型目录里没有该模型的条目时，没有过滤条件，所以提供所有媒体类型。只读模式下，输入框只显示参考栏（没有添加、固定版本和 ×）和只读的编辑器；它不绘制参数栏，不发送，也不检查。
 
 标签引用一个素材（`dv:asset/<id>`）或一个元素，例如角色（`dv:<kind>/<id>`）。输入框用内核的解析器读取编辑器文字中的引用，所以凡是内核读出引用的地方它都读出引用：粘贴或输入写成文字的引用，例如剪切或复制后粘贴回来的标签，会在同一步撤销中变成标签。`reference` 输入代表某个素材时满足该素材的标签，是某个元素至少有一个素材的版本 `<id>@<n>` 时满足该元素的标签。输入框让输入与标签保持一致：没有输入满足的新标签追加它需要的输入，即该素材或该元素的最新版本（R1）；移除一个参考项会把只由该输入满足的每个标签变成它的名称，作为编辑器的一步撤销（R2）；删除一个标签会移除满足它、且没有剩余标签引用的每个 `reference` 输入，没有标签引用过的输入和其他角色的输入（例如首帧）保留（R3′）；没有输入满足的标签以失败样式绘制（R4）。用 vN / Use vN 把输入改写为该版本，该元素的每个标签都跟着改变。编辑器的历史是唯一的撤销：撤销或重做带回被删除的标签时，也把该编辑为它们移除的每个输入带回存储时的位置，而编辑带回的标签，例如新的 `@` 选择或粘贴，按 R1 追加它的输入；不改变提示词的参考栏编辑，例如从选择窗口添加、固定版本或移除没有标签引用的参考项，不在这个历史中。[`src/client/DvPrompt.tsx`](src/client/DvPrompt.tsx) 和 [`src/client/reference-model.ts`](src/client/reference-model.ts) 的模块注释拥有这些规则。
 

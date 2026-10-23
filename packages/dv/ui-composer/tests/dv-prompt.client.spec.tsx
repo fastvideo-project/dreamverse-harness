@@ -28,6 +28,9 @@ import { projectMentionSource } from '../src/client/mention.ts'
 import { composerStack } from './composer-stack.client.ts'
 
 const HERO = '@[Hero](dv:test_ref/hero)'
+
+/** The bar of `shot.render` as the generation kit registers it from the shot render declaration. */
+const SHOT_BAR = { ...shotRenderBar, operation: 'shot.render', owner: '@dv/ui-shot-render', copy: { ...shotRenderBar.copy, sending: ['渲染中…', 'Rendering…'] as const } }
 const KEY = { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }
 
 /** An operation that no parameter bar describes: its default chips come from its declared params. */
@@ -63,6 +66,8 @@ interface MountOptions {
   holdState?: boolean
   /** Each check waits until the test answers it. */
   holdChecks?: boolean
+  /** The model catalog waits until the test releases it. */
+  holdModels?: boolean
   /** The occurrence only shows the call. */
   readOnly?: boolean
   /** The host gives no send. */
@@ -100,12 +105,14 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
   options.lend?.(lent)
   const scripted = scriptedFetch({ state, operations: options.served ?? [...OPERATIONS, STILL], models: options.models ?? MODELS })
   const heldStates: Array<() => void> = []
+  const heldModels: Array<() => void> = []
   const checks: Array<Held<OperationCheck>> = []
   const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
   vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const path = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://host').pathname
     const answer = scripted.fetch(input, init)
     if (options.holdState === true && path === '/api/dv/state') return new Promise((resolve) => { heldStates.push(() => { resolve(answer) }) })
+    if (options.holdModels === true && path === '/api/dv/models') return new Promise((resolve) => { heldModels.push(() => { resolve(answer) }) })
     if (options.holdChecks === true && path === '/api/dv/operation/check') {
       return new Promise((resolve, reject) => { checks.push({ answer: (body) => { resolve(json(body)) }, fail: reject }) })
     }
@@ -126,7 +133,7 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
   await runtime.mount({ inject: [...testRef.inject], apply: testRef.apply })
   await runtime.mount(composerStack)
   runtime.ctx.effect(() => runtime.ctx.inputTriggers.registerSource(projectMentionSource(mentions, () => [])))
-  runtime.ctx.effect(() => runtime.ctx.dvComposer.paramBars.register(shotRenderBar))
+  runtime.ctx.effect(() => runtime.ctx.dvComposer.paramBars.register(SHOT_BAR))
   const sent: PromptCall[] = []
   const answers: Array<() => void> = []
   const host = {
@@ -165,6 +172,7 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
   return {
     runtime, view, take, sent, answers, host, writes: scripted.writes, checks,
     releaseState: () => { act(() => { heldStates.splice(0).forEach((release) => { release() }) }) },
+    releaseModels: () => { act(() => { heldModels.splice(0).forEach((release) => { release() }) }) },
     setCall: (next: PromptCall) => { act(() => { setCall(next) }) },
   }
 }
@@ -291,6 +299,27 @@ describe('dv.prompt on the real stack', () => {
     const bare = view.getByTestId('bare')
     await waitFor(() => { expect(bare.querySelector('[data-dv-chip="dv:test_ref/hero"] img')?.getAttribute('src')).toContain('ref.png') })
     expect(bare.querySelector('[data-dv-chip="dv:test_ref/hero"]')?.textContent).toBe('Hero')
+  })
+})
+
+describe('references and the model catalog', () => {
+  it('offers references for a model whose schema the catalog does not know, as no filter', async () => {
+    const unknown: WireModelEntry = { ...MODELS[0]!, schema: null }
+    const { take } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] }, { models: [unknown] })
+    await found(take, '[data-testid="dv-prompt-upload"]')
+    expect(within(take).getByRole('button', { name: 'Add asset' })).toBeTruthy()
+  })
+
+  it('offers no references while the catalog loads, and offers them once it names a model that takes them', async () => {
+    const { take, releaseModels } = await mount({ operation: 'shot.render', params: { ...KEY, task: 't2v', model: 'fastt2v', prompt: 'rain' }, inputs: [] }, { holdModels: true })
+    await waitFor(() => { expect(box(take).textContent).toBe('rain') })
+    await act(() => new Promise((resolve) => { setTimeout(resolve, 50) }))
+    expect(within(take).queryByRole('button', { name: 'Add asset' })).toBeNull()
+    releaseModels()
+    await waitFor(() => { expect(within(take).getByTestId<HTMLSelectElement>('dv-prompt-model').value).toBe('fastvideo/fastt2v/t2v') })
+    expect(within(take).queryByRole('button', { name: 'Add asset' })).toBeNull()
+    fireEvent.change(within(take).getByTestId('dv-prompt-model'), { target: { value: 'fastvideo/fasth3/ref2v' } })
+    await waitFor(() => { expect(within(take).getByRole('button', { name: 'Add asset' })).toBeTruthy() })
   })
 })
 

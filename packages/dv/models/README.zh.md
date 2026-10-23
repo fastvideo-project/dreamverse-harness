@@ -116,7 +116,7 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 | `taskLabels()` | `Record<string, {zh, en}>` | `labelTasks` 添加且尚未移除的每个标签，按任务名。[`@dv/api`](../api/README.zh.md) 在 `GET /api/dv/tasks` 提供它。 |
 | `list(filter?)` | `ModelEntry[]` | 与 `modality`、`task` 和 `provider` 中每个给定字段都匹配的条目，按注册顺序。未给出的字段匹配所有条目。 |
 | `onChanged(listener)` | `() => void` | 每次注册和每次移除后调用 `listener`。返回的函数移除该监听器。 |
-| `catalog()` | `Promise<Record<string, JsonValue>[]>` | 每个条目，与 `dv_models_get` 返回的相同，按注册顺序：键、描述和 `schema()`。`schema()` 拒绝的条目的 schema 为 null。[`@dv/api`](../api/README.zh.md) 在 `GET /api/dv/models` 提供它，因此浏览器和 agent 读取同一个目录。 |
+| `catalog()` | `Promise<Record<string, JsonValue>[]>` | 每个条目，与 `dv_models_get` 返回的相同，按注册顺序：键、描述和 `schema()`。`schema()` 拒绝、或在 `Config` 字段 `catalogSchemaTimeoutMs`（默认 5000 ms）内没有回答的条目的 schema 为 null。[`@dv/api`](../api/README.zh.md) 在 `GET /api/dv/models` 提供它，因此浏览器和 agent 读取同一个目录。 |
 
 本服务还为 agent 注册工具 `dv_models_list` 和 `dv_models_get`、skill `video-model-selection`，以及每个条目的提示词 skill。它不向系统提示词添加任何内容。
 

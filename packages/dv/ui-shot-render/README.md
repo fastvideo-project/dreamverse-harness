@@ -31,7 +31,7 @@ Mount the plugin in a profile that stacks `dsh-web-app` (which provides the chat
   name: '@dv/ui-shot-render'
 ```
 
-The Host half registers nothing. The browser half registers the following entries, all but the parameter bar through `defineGenerationUi`. A take is a current record of `shot.render`, whose outputs are the video and its last still (`video`, `last_still`).
+The Host half registers nothing. The browser half registers the following entries, all through `defineGenerationUi`. A take is a current record of `shot.render`, whose outputs are the video and its last still (`video`, `last_still`).
 
 | Registration | Value |
 | --- | --- |
@@ -39,7 +39,7 @@ The Host half registers nothing. The browser half registers the following entrie
 | `dvCanvas.actions` | `@dv/ui-shot-render:take:retry`, 重试 / Retry on a failed take: it reruns the take's operation with the take's inputs and params and `based_on` set to the take |
 | `dv.canvas.card` key `take` | The take's last still (its image output), else its first output, drawn through `dv.media` at purpose `card` in a 16:9 frame |
 | `dv.canvas.editor.claimed` key `take` | The take editor of `@dv/ui-generation`: the video through `dv.media` at purpose `loop` with the still as its poster, the model and generation task, and the `dv.prompt` composer of `@dv/ui-composer` over the take's call, with this package's parameter bar |
-| `dvComposer.paramBars` key `shot.render` | `shotRenderBar` of `src/client/param-bar.ts`, registered while `@dv/ui-composer` is loaded. Under the selected video model's `schema()`, its chips are 画幅 / Aspect ratio over `aspect_ratios`, 清晰度 / Resolution over `resolutions`, and 时长 / Duration over the whole seconds from the `min` to the `max` of `duration_sec`, which write `aspect_ratio`, `resolution`, and `duration_sec`. Its `@` filter takes the media types of the schema's `reference` input, listed or keyed, and its `max`. Its words are 描述画面，输入 @ 引用素材 / Describe the shot; type @ to cite an item, 渲染新版本 / Render new take, and 渲染中… / Rendering… |
+| `dvComposer.paramBars` key `shot.render` | `shotRenderBar` of `src/client/param-bar.ts`, the declaration's `bar`, which the kit registers while `@dv/ui-composer` is loaded. Under the selected video model's `schema()`, its chips are 画幅 / Aspect ratio over `aspect_ratios`, 清晰度 / Resolution over `resolutions`, and 时长 / Duration over the whole seconds from the `min` to the `max` of `duration_sec`, which write `aspect_ratio`, `resolution`, and `duration_sec`. Its `@` filter takes the media types of the schema's `reference` input, listed or keyed, and its `max`. A schema that the catalog does not know gives no chip and no filter, so the take editor shows the declared params' chips and offers every media type. Its words are 描述画面，输入 @ 引用素材 / Describe the shot; type @ to cite an item, 渲染新版本 / Render new take, and the kind's running words 渲染中… / Rendering… |
 | `tool.call.toolview` key `dv_shot_render` | The chat card, at the default priority 0. `@dv/ui-composer` registers a row for every operation tool at priority 1 and a row for every `DV_TOOL_LABELS` tool at priority 0.5, so the card renders in their place |
 | `dvHistory.rows` match `shot.render` | The History row: no subject, and the take's last still as the thumbnail, else its first output |
 
@@ -59,12 +59,12 @@ The card shows what it has while the arguments stream. Until the two lists load,
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-`src/client/index.ts` exports the `inject` of one `defineGenerationUi` call and an `apply` that runs the call's `apply` and registers the parameter bar inside `ctx.inject(['dvComposer'], …)`. A text model, such as `fasth3` for task `t2v`, has no `reference` input in its schema, so the bar's filter names no media type and the take editor offers no reference. The declaration's `preview` picks the image output, which the kit uses as the card's media, the poster of the editor and of the chat card, the History thumbnail, and the frame of a plan's frame grid. The kit reads `GET /api/dv/operations` and `GET /api/dv/tasks` on the first subscription of the chat card or the take editor, and again on the next one after a failed read (`loadedOnce` of `@dv/ui-kit`); the parsed arguments, the outputs, and the history link come from `@dv/ui-kit/tool-rows.tsx`.
+`src/client/index.ts` exports the `inject` and the `apply` of one `defineGenerationUi` call, whose `bar` is the parameter bar. A text model, such as `fasth3` for task `t2v`, has no `reference` input in its schema, so the bar's filter names no media type and the take editor offers no reference. The declaration's `preview` picks the image output, which the kit uses as the card's media, the poster of the editor and of the chat card, the History thumbnail, and the frame of a plan's frame grid. The kit reads `GET /api/dv/operations` and `GET /api/dv/tasks` on the first subscription of the chat card or the take editor, and again on the next one after a failed read (`loadedOnce` of `@dv/ui-kit`); the parsed arguments, the outputs, and the history link come from `@dv/ui-kit/tool-rows.tsx`.
 
 | File | Content |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | The inert Host Loader entry |
-| [`src/client/index.ts`](src/client/index.ts) | The `defineGenerationUi` declaration of `shot.render` takes, and the registration of the parameter bar |
+| [`src/client/index.ts`](src/client/index.ts) | The `defineGenerationUi` declaration of `shot.render` takes, with the parameter bar |
 | [`src/client/param-bar.ts`](src/client/param-bar.ts) | The parameter bar of `shot.render` |
 
 -----

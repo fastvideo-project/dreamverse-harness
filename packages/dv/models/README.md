@@ -116,7 +116,7 @@ A provider plugin calls `register`. A consumer calls the other methods.
 | `taskLabels()` | `Record<string, {zh, en}>` | Every label that `labelTasks` added and that is not removed, by task name. [`@dv/api`](../api/README.md) serves it at `GET /api/dv/tasks`. |
 | `list(filter?)` | `ModelEntry[]` | The entries that match each given field of `modality`, `task` and `provider`, in registration order. An absent field matches all entries. |
 | `onChanged(listener)` | `() => void` | Calls `listener` after each registration and each removal. The returned function removes the listener. |
-| `catalog()` | `Promise<Record<string, JsonValue>[]>` | Every entry as `dv_models_get` returns it, in registration order: the key, the description and the `schema()`. An entry whose `schema()` rejects has schema null. [`@dv/api`](../api/README.md) serves it at `GET /api/dv/models`, so the browser and the agent read one catalog. |
+| `catalog()` | `Promise<Record<string, JsonValue>[]>` | Every entry as `dv_models_get` returns it, in registration order: the key, the description and the `schema()`. An entry whose `schema()` rejects, or does not answer within the `Config` field `catalogSchemaTimeoutMs` (default 5000 ms), has schema null. [`@dv/api`](../api/README.md) serves it at `GET /api/dv/models`, so the browser and the agent read one catalog. |
 
 The service also registers the tools `dv_models_list` and `dv_models_get`, the skill `video-model-selection`, and the prompt skill of each entry for the agent. It adds nothing to the system prompt.
 

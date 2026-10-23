@@ -16,7 +16,6 @@ import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@dv/ui-canvas/contract'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { DV_CURRENT_PROJECT_EVENT, getCurrentProject } from '@dv/ui-kit/current-project.ts'
-import { loadedOnce } from '@dv/ui-kit/loaded.ts'
 import { createRegistry, type VersionKind } from '@dv/ui-kit/registries.ts'
 import type { WireModelEntry, WireState } from '@dv/ui-kit/types.ts'
 import type { DvComposer, DvPromptInjected, ParamBar, ReferenceFaceInjected } from './contract/index.ts'
@@ -87,6 +86,32 @@ export function projectStates(client: Pick<DvClient, 'getState' | 'subscribe'>):
 }
 
 /**
+ * The model catalog: null until the first load answers, and loaded again each time a consumer subscribes while none
+ * did, so an occurrence that opens reads the catalog as it is then, such as after a backend that was down comes back. A
+ * failed load keeps the catalog it had.
+ * @param load - reads the catalog.
+ * @returns the source.
+ */
+export function catalogSource(load: () => Promise<readonly WireModelEntry[]>): HostObservable<readonly WireModelEntry[] | null> {
+  const store = createSnapshotStore<readonly WireModelEntry[] | null>(null)
+  let consumers = 0
+  return {
+    getSnapshot: () => store.getSnapshot(),
+    subscribe: (listener) => {
+      const off = store.subscribe(listener)
+      consumers += 1
+      if (consumers === 1) {
+        load().then((catalog) => { store.set(catalog) }, (failure: unknown) => { console.error('[dv-composer] models failed:', failure) })
+      }
+      return () => {
+        off()
+        consumers -= 1
+      }
+    },
+  }
+}
+
+/**
  * Provide `dvComposer` and register the `dv.prompt` Factory and the chip face. Call at `apply`'s top level.
  * @param ctx - client root context.
  */
@@ -94,7 +119,7 @@ export function applyPrompt(ctx: ClientContext): void {
   const composer: DvComposer = { paramBars: createRegistry<ParamBar>(bar => [bar.operation], bar => bar.owner) }
   ctx.reflect.provide('dvComposer', composer)
   const client = new DvClient()
-  const models = loadedOnce<readonly WireModelEntry[]>([], () => client.listModels())
+  const models = catalogSource(() => client.listModels())
   const states = projectStates(client)
   const currentProject = createSnapshotStore<string | null>(getCurrentProject())
   // The version kinds that the canvas holds, which the components read through their hooks.

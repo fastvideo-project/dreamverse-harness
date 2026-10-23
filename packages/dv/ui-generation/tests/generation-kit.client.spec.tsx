@@ -4,7 +4,7 @@
  * every registration when the plugin unloads.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { HistoryRow } from '@dv/ui-history/contract'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
@@ -103,6 +103,32 @@ describe('a second generation kind', () => {
     expect(node.type).toBe('test_still')
     const editor = runtime.renderSlot('dv.canvas.editor.claimed', { node, state, operations: [IMAGE], host: recordingHost() }, { entryKey: 'test_still' })
     await waitFor(() => { expect(editor.container.querySelector('[data-reference-tile="ref.png"]')?.textContent).toContain('ref.png') })
+    await runtime.dispose()
+  })
+})
+
+describe('the parameter bar of a generation kind', () => {
+  it('gives the take editor the words of its spec: the bar\'s send and placeholder, and the running words while a send runs', async () => {
+    vi.stubGlobal('fetch', scriptedFetch().fetch)
+    document.documentElement.lang = 'en'
+    const kind = defineGenerationUi({
+      id: '@dv/ui-test-render', type: 'test_render', operations: ['shot.render'], label: ['测试', 'Test'], color: 'var(--dv-node-3)',
+      status: { running: ['测试渲染中…', 'Test rendering…'], failed: ['失败', 'Failed'], done: ['好了', 'Done'] },
+      bar: { copy: { send: ['测试渲染', 'Test render'], placeholder: ['描述测试', 'Describe the test'] } },
+    })
+    const { runtime, canvas } = await mountKit({ 'dv.canvas.editor.claimed': { kind: 'keyed', scope: 'root' } }, kind)
+    const state = fixtureState()
+    const node = claimedOf(canvas, state, OPERATIONS, 'en').get('g1')!
+    const host = recordingHost(() => new Promise<void>(() => {}))
+    const editor = runtime.renderSlot('dv.canvas.editor.claimed', { node, state, operations: OPERATIONS, host }, { entryKey: 'test_render' })
+    const send = await waitFor(() => {
+      const button = editor.view.getByRole<HTMLButtonElement>('button', { name: 'Test render' })
+      if (button.disabled) throw new Error('the call is not checked yet')
+      return button
+    })
+    expect(editor.container.querySelector('[data-composer-input]')?.getAttribute('data-placeholder')).toBe('Describe the test')
+    fireEvent.click(send)
+    await waitFor(() => { expect(editor.view.getByRole('button', { name: 'Test rendering…' })).toBeTruthy() })
     await runtime.dispose()
   })
 })
@@ -261,10 +287,12 @@ describe('defineGenerationUi apply', () => {
       actions: canvas.actions.getSnapshot().map(action => action.id).filter(id => id.startsWith('@dv/ui-test-take:')),
       card: keyed('dv.canvas.card'), editor: keyed('dv.canvas.editor.claimed'), chat: keyed('tool.call.toolview'),
       history: rows.getSnapshot().map(row => [row.match, row.subject(record({ id: 'r', operation: row.match }))]),
+      bars: runtime.ctx.dvComposer.paramBars.getSnapshot().map(bar => [bar.operation, bar.owner]),
     })
     expect(registered()).toEqual({
       types: ['test_take'], actions: ['@dv/ui-test-take:test_take:retry'], card: ['test_take'], editor: ['test_take'],
       chat: ['dv_shot_render', 'dv_clip_extend'], history: [['shot.render', null], ['clip.extend', null]],
+      bars: [['shot.render', '@dv/ui-test-take'], ['clip.extend', '@dv/ui-test-take']],
     })
     const state = fixtureState()
     const media = rows.getSnapshot()[0]?.media
@@ -278,7 +306,7 @@ describe('defineGenerationUi apply', () => {
     expect(editor.view.getByRole('button', { name: 'Generate a new version' })).toBeTruthy()
 
     await kit.dispose()
-    expect(registered()).toEqual({ types: [], actions: [], card: [], editor: [], chat: [], history: [] })
+    expect(registered()).toEqual({ types: [], actions: [], card: [], editor: [], chat: [], history: [], bars: [] })
     expect(editor.container.textContent).toBe('')
     await runtime.dispose()
   })

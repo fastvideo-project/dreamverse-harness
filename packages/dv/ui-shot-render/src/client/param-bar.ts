@@ -1,11 +1,13 @@
 /**
  * The parameter bar of `shot.render` in the composer: the aspect ratio, the resolution and the duration that the
  * selected video model's `schema()` offers, the `@` filter of its `reference` input, and the words of a shot's take
- * editor.
+ * editor. A schema that the catalog does not know gives no chip and no filter, so the declared params' chips show and
+ * `@` offers every media type.
  *
  * @module @dv/ui-shot-render/param-bar
  */
-import type { ParamBar, ParamChip } from '@dv/ui-composer/contract'
+import type { ParamChip } from '@dv/ui-composer/contract'
+import type { GenerationBar } from '@dv/ui-generation/generation-kit.tsx'
 
 /** The fields of a JSON object, else none. */
 function fieldsOf(value: unknown): ReadonlyMap<string, unknown> {
@@ -24,16 +26,19 @@ function menu(key: string, label: ParamChip['label'], value: unknown, choices: r
   return { key, label, kind: 'menu', value: shown, options: choices.map(choice => ({ label: String(choice), patch: { [key]: choice } })) }
 }
 
-/** The bar descriptor, registered into `dvComposer.paramBars`. */
-export const shotRenderBar: ParamBar = {
-  operation: 'shot.render',
-  owner: '@dv/ui-shot-render',
+/** Whether a schema is a JSON object, the form of a schema that the catalog knows. */
+function known(schema: unknown): boolean {
+  return typeof schema === 'object' && schema !== null && !Array.isArray(schema)
+}
+
+/** The bar of the declaration's `bar` field; the kit registers it for `shot.render`. */
+export const shotRenderBar = {
   copy: {
     placeholder: ['描述画面，输入 @ 引用素材', 'Describe the shot; type @ to cite an item'],
     send: ['渲染新版本', 'Render new take'],
-    sending: ['渲染中…', 'Rendering…'],
   },
   chips({ schema, params }) {
+    if (!known(schema)) return []
     const fields = fieldsOf(schema)
     const duration = fieldsOf(fields.get('duration_sec'))
     const low = duration.get('min')
@@ -48,6 +53,7 @@ export const shotRenderBar: ParamBar = {
     ]
   },
   candidates(schema) {
+    if (!known(schema)) return null
     const reference = fieldsOf(fieldsOf(fieldsOf(schema).get('inputs')).get('reference'))
     const declared = reference.get('media_types')
     const max = reference.get('max')
@@ -55,4 +61,4 @@ export const shotRenderBar: ParamBar = {
     const mediaTypes = Array.isArray(declared) ? strings(declared) : [...fieldsOf(declared).keys()]
     return { mediaTypes, maxReferences: typeof max === 'number' ? max : null }
   },
-}
+} satisfies GenerationBar

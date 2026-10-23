@@ -14,7 +14,7 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import DvModels, { formatModelKey, modelKey, servesTask, type ModelEntry, type RenderModelFacts, type TaskId } from '../src/index.ts'
 
 /** The facts every fake entry reports. */
@@ -157,6 +157,16 @@ describe('dvModels', () => {
       { modality: 'video', task: 't2v', provider: 'other', model: 'beta', description: 'beta for t2v', schema: { inputs: {}, extra: {} } },
       { modality: 'video', task: 't2v', provider: 'down', model: 'gamma', description: 'gamma for t2v', schema: null },
     ])
+  })
+
+  it('lists an entry whose schema does not answer within catalogSchemaTimeoutMs with schema null', async () => {
+    const ctx = await start()
+    vi.useFakeTimers()
+    ctx.dvModels.register({ ...entry('t2v', 'slow', 'delta'), schema: () => new Promise(() => {}) })
+    const listed = ctx.dvModels.catalog()
+    await vi.advanceTimersByTimeAsync(5000)
+    expect((await listed).at(-1)).toEqual({ modality: 'video', task: 't2v', provider: 'slow', model: 'delta', description: 'delta for t2v', schema: null })
+    vi.useRealTimers()
   })
 
   it('answers dv_models_get with one entry\'s key, description and schema, and names an unknown key', async () => {

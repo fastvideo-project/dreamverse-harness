@@ -31,7 +31,7 @@ kind: "package-reference"
   name: '@dv/ui-shot-render'
 ```
 
-Host 半边不注册任何东西。浏览器半边注册下列条目，除参数栏外都通过 `defineGenerationUi` 注册。一个版本是 `shot.render` 的一条当前记录，它的产出是视频和视频的最后一帧静帧（`video`、`last_still`）。
+Host 半边不注册任何东西。浏览器半边注册下列条目，全部通过 `defineGenerationUi` 注册。一个版本是 `shot.render` 的一条当前记录，它的产出是视频和视频的最后一帧静帧（`video`、`last_still`）。
 
 | 注册 | 值 |
 | --- | --- |
@@ -39,7 +39,7 @@ Host 半边不注册任何东西。浏览器半边注册下列条目，除参数
 | `dvCanvas.actions` | `@dv/ui-shot-render:take:retry`，失败版本上的 重试 / Retry：用该版本的输入和参数重新运行它的操作，`based_on` 设为该版本 |
 | `dv.canvas.card` 键 `take` | 版本的最后一帧静帧（它的图片产出），没有时用它的第一个产出，经 `dv.media` 以用途 `card` 画在 16:9 的画框里 |
 | `dv.canvas.editor.claimed` 键 `take` | `@dv/ui-generation` 的版本编辑器：经 `dv.media` 以用途 `loop` 播放的视频（静帧作封面）、模型和生成任务，以及版本调用上 `@dv/ui-composer` 的 `dv.prompt` 输入框，带本包的参数栏 |
-| `dvComposer.paramBars` 键 `shot.render` | `src/client/param-bar.ts` 的 `shotRenderBar`，在 `@dv/ui-composer` 已加载时注册。在所选视频模型的 `schema()` 下，它的标签是基于 `aspect_ratios` 的 画幅 / Aspect ratio、基于 `resolutions` 的 清晰度 / Resolution，以及基于 `duration_sec` 从 `min` 到 `max` 的整秒数的 时长 / Duration，分别写入 `aspect_ratio`、`resolution` 和 `duration_sec`。它的 `@` 过滤条件取 schema 中 `reference` 输入的媒体类型（列出的或作为键的）和它的 `max`。它的文字是 描述画面，输入 @ 引用素材 / Describe the shot; type @ to cite an item、渲染新版本 / Render new take 和 渲染中… / Rendering… |
+| `dvComposer.paramBars` 键 `shot.render` | `src/client/param-bar.ts` 的 `shotRenderBar`，即声明的 `bar`，套件在 `@dv/ui-composer` 已加载时注册它。在所选视频模型的 `schema()` 下，它的标签是基于 `aspect_ratios` 的 画幅 / Aspect ratio、基于 `resolutions` 的 清晰度 / Resolution，以及基于 `duration_sec` 从 `min` 到 `max` 的整秒数的 时长 / Duration，分别写入 `aspect_ratio`、`resolution` 和 `duration_sec`。它的 `@` 过滤条件取 schema 中 `reference` 输入的媒体类型（列出的或作为键的）和它的 `max`。目录不知道的 schema 不给出标签，也不给出过滤条件，所以版本编辑器显示已声明参数的标签，并提供所有媒体类型。它的文字是 描述画面，输入 @ 引用素材 / Describe the shot; type @ to cite an item、渲染新版本 / Render new take，以及该类型的进行中文字 渲染中… / Rendering… |
 | `tool.call.toolview` 键 `dv_shot_render` | 对话卡片，使用默认优先级 0。`@dv/ui-composer` 以优先级 1 为每个操作工具注册一行，以优先级 0.5 为 `DV_TOOL_LABELS` 里的每个工具注册一行，所以卡片取代这些行显示 |
 | `dvHistory.rows` 匹配 `shot.render` | 历史行：没有主题文字，缩略图是版本的最后一帧静帧，没有时用它的第一个产出 |
 
@@ -59,12 +59,12 @@ Host 半边不注册任何东西。浏览器半边注册下列条目，除参数
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`src/client/index.ts` 导出一次 `defineGenerationUi` 调用的 `inject` 和一个 `apply`，后者运行该调用的 `apply`，并在 `ctx.inject(['dvComposer'], …)` 中注册参数栏。文本模型（例如任务 `t2v` 的 `fasth3`）的 schema 没有 `reference` 输入，所以参数栏的过滤条件不写出任何媒体类型，版本编辑器不提供参考。声明的 `preview` 选出图片产出，套件把它用作卡片的媒体、编辑器和对话卡片的封面、历史缩略图，以及分镜计划画框网格中的画面。套件在对话卡片或版本编辑器第一次订阅时读取 `GET /api/dv/operations` 和 `GET /api/dv/tasks`，读取失败后在下一次订阅时再读取（`@dv/ui-kit` 的 `loadedOnce`）；解析后的参数、产出和历史链接来自 `@dv/ui-kit/tool-rows.tsx`。
+`src/client/index.ts` 导出一次 `defineGenerationUi` 调用的 `inject` 和 `apply`，该调用的 `bar` 就是参数栏。文本模型（例如任务 `t2v` 的 `fasth3`）的 schema 没有 `reference` 输入，所以参数栏的过滤条件不写出任何媒体类型，版本编辑器不提供参考。声明的 `preview` 选出图片产出，套件把它用作卡片的媒体、编辑器和对话卡片的封面、历史缩略图，以及分镜计划画框网格中的画面。套件在对话卡片或版本编辑器第一次订阅时读取 `GET /api/dv/operations` 和 `GET /api/dv/tasks`，读取失败后在下一次订阅时再读取（`@dv/ui-kit` 的 `loadedOnce`）；解析后的参数、产出和历史链接来自 `@dv/ui-kit/tool-rows.tsx`。
 
 | 文件 | 内容 |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | 不做任何事的 Host Loader 入口 |
-| [`src/client/index.ts`](src/client/index.ts) | `shot.render` 版本的 `defineGenerationUi` 声明，以及参数栏的注册 |
+| [`src/client/index.ts`](src/client/index.ts) | `shot.render` 版本的 `defineGenerationUi` 声明，含参数栏 |
 | [`src/client/param-bar.ts`](src/client/param-bar.ts) | `shot.render` 的参数栏 |
 
 -----
