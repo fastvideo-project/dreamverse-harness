@@ -4,107 +4,19 @@
  * flags, boot through the Loader beside the DSH system prompt and tool registry, with the video provider rows replaced
  * by fakes, and a model-visible tool call becomes a durable record.
  */
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
-import { Context } from '@deepseek-ai/cordis'
-import Include, { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
-import Loader from '@deepseek-ai/cordis-plugin-loader'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
-import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
-import DvAssetPool from '@dv/asset-pool'
-import DvAudioGenerate from '@dv/audio-generate'
-import DvCharacter from '@dv/character'
-import DvFfmpeg from '@dv/ffmpeg'
-import DvInspector from '@dv/inspector'
-import DvLocation from '@dv/location'
-import DvProject, { type OperationToolValue, type ProjectId, type RecordId } from '@dv/project'
-import DvShotPlan from '@dv/shot-plan'
-import DvShotRender from '@dv/shot-render'
-import DvStyle from '@dv/style'
-import DvTimeline from '@dv/timeline'
-import DvApi from '@dv/api'
-import DvChatReferences from '@dv/chat-references'
-import DvModels, { formatModelKey, type ModelEntry } from '@dv/models'
-import DvImageGenerate from '@dv/image-generate'
-import * as SglangDiffusion from '@dv/sglang-diffusion'
-import * as SglangOmni from '@dv/sglang-omni'
-import DvStory from '@dv/workflow-story'
-import * as yaml from 'js-yaml'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { FakeModel, FFMPEG, FFPROBE } from '../../../dv/api/tests/support.ts'
+import type { OperationToolValue, ProjectId, RecordId } from '@dv/project'
+import { formatModelKey } from '@dv/models'
+import { afterEach, describe, expect, it } from 'vitest'
+import { bootBundle, bundleRows, fastVideo, insertRows, renderer, uniserve } from './bundle.ts'
 
 const disposers: Array<() => Promise<void> | void> = []
 
 afterEach(async () => {
   for (const dispose of disposers.splice(0).reverse()) await dispose()
 })
-
-/** Whether the stand-in FastVideo plugin was mounted. */
-let fastVideoMounted = false
-
-/** A stand-in for `@dv/fastvideo`: it records that it was mounted. */
-const FakeFastVideo = {
-  name: 'fake-fastvideo',
-  apply(): void {
-    fastVideoMounted = true
-  },
-}
-
-/** The config the stand-in UniServe plugin received from the bundle row. */
-let uniserveConfig: unknown = null
-
-/** The renderer of the fake model; its `requests` lists the render requests of the fake model. */
-const renderer = new FakeModel()
-
-/** The fake model `fasth3` for task `ref2v` of provider `uniserve`, which renders through `renderer`. */
-const fasth3: ModelEntry<'ref2v'> = Object.create(renderer, { provider: { value: 'uniserve' } }) as ModelEntry<'ref2v'>
-
-/** A stand-in for `@dv/uniserve`: it keeps the row's config and registers the fake model `fasth3` for task `ref2v`. */
-const FakeUniserve = {
-  name: 'fake-uniserve',
-  inject: ['dvModels'],
-  apply(ctx: Context, config: unknown): void {
-    uniserveConfig = config
-    ctx.effect(() => ctx.dvModels.register(fasth3))
-  },
-}
-
-/**
- * The plugin of each package a bundle row names, resolved through `globalThis` because Node imports the rows outside
- * Vite. The disabled FastVideo row names a stand-in that records a mount, and the UniServe row a stand-in that keeps
- * its config and registers a fake model.
- */
-const PLUGINS: Record<string, object> = {
-  '@deepseek-ai/dsh-system-prompt': SystemPrompt, '@deepseek-ai/dsh-tools': ToolRuntime, '@dv/project': DvProject,
-  '@dv/ffmpeg': DvFfmpeg, '@dv/asset-pool': DvAssetPool, '@dv/inspector': DvInspector,
-  '@dv/character': DvCharacter, '@dv/location': DvLocation, '@dv/style': DvStyle,
-  '@dv/shot-plan': DvShotPlan, '@dv/shot-render': DvShotRender, '@dv/timeline': DvTimeline,
-  '@dv/api': DvApi, '@dv/chat-references': DvChatReferences,
-  '@dv/models': DvModels, '@dv/fastvideo': FakeFastVideo, '@dv/uniserve': FakeUniserve, '@dv/workflow-story': DvStory,
-  '@dv/sglang-diffusion': SglangDiffusion, '@dv/image-generate': DvImageGenerate,
-  '@dv/sglang-omni': SglangOmni, '@dv/audio-generate': DvAudioGenerate,
-}
-
-/** One row of a Loader entry list. */
-interface Row { id: string; name: string; config?: unknown; disabled?: unknown }
-
-/**
- * The rows of the bundle patch that mount host plugins of DreamVerse, as the bundle writes them.
- * @returns the `dv-*` rows of the patch's first insert list, without the interface plugins.
- */
-function bundleRows(): Row[] {
-  return insertRows().filter(row => row.id.startsWith('dv-') && !row.id.startsWith('dv-ui-'))
-}
-
-/** @returns every row of the bundle patch's first insert list, in patch order. */
-function insertRows(): Row[] {
-  const patch = yaml.load(readFileSync(fileURLToPath(new URL('../cordis.patch.yml', import.meta.url)), 'utf8'), { schema: entryListSchema })
-  const [first] = patch as Array<{ insert?: Row[] }>
-  return first?.insert ?? []
-}
 
 describe('DreamVerse bundle composition', () => {
   it('mounts the reference nouns in the order character, location, style, on the host and in the browser', () => {
@@ -115,39 +27,13 @@ describe('DreamVerse bundle composition', () => {
   })
 
   it('boots the bundle rows through the Loader and turns a model tool call into a durable record', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'dv-composition-'))
-    disposers.push(() => { rmSync(dir, { recursive: true, force: true }) })
-    // The environment the bundle's `!!js` configuration reads.
-    vi.stubEnv('DV_STATE_ROOT', dir)
-    vi.stubEnv('DV_FFMPEG', FFMPEG)
-    vi.stubEnv('DV_FFPROBE', FFPROBE)
-    disposers.push(() => { vi.unstubAllEnvs() })
-    const globals = globalThis as typeof globalThis & { __dvComposition?: Record<string, object> }
-    globals.__dvComposition = PLUGINS
-    disposers.push(() => { delete globals.__dvComposition })
     const rows = bundleRows()
     expect(rows.map(row => row.id)).toEqual(expect.arrayContaining([
       'dv-models', 'dv-fastvideo', 'dv-uniserve', 'dv-project', 'dv-shot-plan', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
       'dv-sglang-diffusion', 'dv-image-generate', 'dv-sglang-omni', 'dv-audio-generate',
     ]))
-    // Each row keeps its id and `!!js` config; its package name points at a module that re-exports the plugin class.
-    const entries = [
-      { id: 'system-prompt', name: '@deepseek-ai/dsh-system-prompt' }, { id: 'tools', name: '@deepseek-ai/dsh-tools' }, ...rows,
-    ].map((row) => {
-      const plugin = PLUGINS[row.name]
-      if (plugin === undefined) throw new Error(`No plugin for bundle row ${row.id} (${row.name}).`)
-      const file = join(dir, `${row.id}.mjs`)
-      writeFileSync(file, `export default globalThis.__dvComposition[${JSON.stringify(row.name)}]\n`)
-      return { ...row, name: pathToFileURL(file).href }
-    })
-    writeFileSync(join(dir, 'cordis.yml'), yaml.dump(entries, { schema: entryListSchema }))
-
-    const ctx = new Context()
-    await ctx.plugin(Loader)
-    ctx.loader.builtins.include = Include
-    await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
-    await ctx.loader.await()
-    disposers.push(async () => { await ctx.fiber.dispose() })
+    const { ctx, dir, dispose } = await bootBundle()
+    disposers.push(dispose)
 
     expect(ctx.get('dvChatReferences')).toBeDefined()
     expect(ctx.get('dvApi')).toBeDefined()
@@ -165,7 +51,7 @@ describe('DreamVerse bundle composition', () => {
     expect(ctx.get('tools')?.get('dv_models_get')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_image_generate')).toBeDefined()
     // The FastVideo row is disabled and keeps one server per task of fasth3 for a deployment that mounts it.
-    expect(fastVideoMounted).toBe(false)
+    expect(fastVideo.mounted).toBe(false)
     expect(rows.find(row => row.id === 'dv-fastvideo')).toMatchObject({
       disabled: true,
       config: { models: { fasth3: {
@@ -174,7 +60,7 @@ describe('DreamVerse bundle composition', () => {
       } } },
     })
     // The UniServe row names the server of fasth3 for task ref2v.
-    expect(uniserveConfig).toEqual({ baseUrl: 'http://10.244.8.35:8000' })
+    expect(uniserve.config).toEqual({ baseUrl: 'http://10.244.8.35:8000' })
     expect(rows.find(row => row.id === 'dv-sglang-diffusion')?.config).toEqual({
       models: { 'qwen-image-2.1-turbo': { baseUrl: 'http://127.0.0.1:30010' } },
     })
