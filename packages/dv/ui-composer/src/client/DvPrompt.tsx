@@ -22,13 +22,13 @@ import type { PromptHostModel } from '@deepseek-ai/dsh-client-ui-conversation/cl
 import type { FactoryComponentPropsOf, RenderFactorySlot } from '@deepseek-ai/dsh-client-ui-slots'
 import { parsePromptCitations } from '@dv/project/grammar'
 import { errorMessage } from '@dv/ui-kit/api.ts'
-import { fieldsOf, valueOf } from '@dv/ui-kit/form.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import type { WireModelEntry, WireOperation } from '@dv/ui-kit/types.ts'
 import type {} from '@dv/ui-media/contract'
 import type { CallInput, CandidateFilter, ParamBar, ParamChip, PromptCopy, PromptFaceContext, ReferenceView } from './contract/index.ts'
 import { draftOf, reduceDraft } from './draft.ts'
 import { MENTION_SOURCE } from './mention.ts'
+import { paramChips, typedValue } from './param-chips.ts'
 import { callOf, documentViews, faceOf, type ResolveContext } from './reference-model.ts'
 
 /** Full props of the component. */
@@ -49,20 +49,6 @@ const tile: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap:
 const thumb: CSSProperties = { display: 'flex', width: 22, height: 22, borderRadius: 11, overflow: 'hidden' }
 const plain: CSSProperties = { border: 'none', background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer', padding: '0 4px' }
 const select: CSSProperties = { height: 26, borderRadius: 13, border: '1px solid var(--dv-line-strong)', background: 'var(--dv-surface-2)', color: 'var(--dv-text)', font: 'inherit', fontSize: 12, padding: '0 8px' }
-
-/** The params that the editor and the model chip edit, and the model's own params, which no default chip shows. */
-const NOT_CHIPS = new Set(['prompt', 'modality', 'task', 'provider', 'model', 'extra'])
-
-/**
- * The default bar of an operation without a registered bar: one chip per declared param, a menu for a param with
- * choices and a text field otherwise.
- */
-function defaultChips(operation: WireOperation, params: Readonly<Record<string, unknown>>): ParamChip[] {
-  return fieldsOf(operation.params, { ...params }).filter(field => !NOT_CHIPS.has(field.key)).map(field => ({
-    key: field.key, label: [field.key, field.key], value: field.text,
-    options: field.options.map(option => ({ label: option, patch: { [field.key]: valueOf({ ...field, text: option }) } })),
-  }))
-}
 
 /** The model entry that a call's key params name. */
 function modelOf(models: readonly WireModelEntry[], params: Readonly<Record<string, unknown>>): WireModelEntry | undefined {
@@ -119,7 +105,13 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
     else host.preview(opened.asset, null)
     return true
   }
-  const blocked = checked === null || checked.problems.length > 0
+  // A text chip whose text its param cannot take blocks the send, so the field never shows a value that the call lacks.
+  const typing = operation === null ? [] : Object.entries(draft.texts).flatMap(([key, text]) => {
+    const typed = typedValue(operation, key, text)
+    return 'problem' in typed ? [typed.problem] : []
+  })
+  const problems = typing.length > 0 ? typing : checked?.problems ?? []
+  const blocked = typing.length > 0 || checked === null || checked.problems.length > 0
   const send = (): void => {
     if (onSubmit === undefined || sending || blocked) return
     dispatch({ type: 'sending', sending: true })
@@ -188,7 +180,7 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
               <ModelChip models={models} entry={entry} params={params} onPatch={patch} />
               {operation === null ? null : chipsFor(bar, entry, params, operation).map(chip => (
                 <Chip
-                  key={chip.key} chip={chip} onPatch={patch}
+                  key={chip.key} chip={chip} typed={draft.texts[chip.key]} onPatch={patch}
                   onText={(text) => { dispatch({ type: 'typed', operation, key: chip.key, text }) }}
                 />
               ))}
@@ -203,9 +195,9 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
             </span>
           </div>
         )}
-      {checked === null || checked.problems.length === 0 || readOnly
+      {problems.length === 0 || readOnly
         ? null
-        : <p role="alert" style={{ margin: 0, fontSize: 12, color: 'var(--dv-danger)' }}>{checked.problems.join(' ')}</p>}
+        : <p role="alert" style={{ margin: 0, fontSize: 12, color: 'var(--dv-danger)' }}>{problems.join(' ')}</p>}
     </div>
   )
 }
@@ -271,44 +263,54 @@ function ModelChip({ models, entry, params, onPatch }: {
   )
 }
 
-/** The chips of a call: the registered bar's under the selected model, else the operation's default chips. */
+/** The chips of a call: one per declared param, with the registered bar's chips under the selected model. */
 function chipsFor(
   bar: ParamBar | null, entry: WireModelEntry | undefined, params: Readonly<Record<string, unknown>>, operation: WireOperation,
 ): ParamChip[] {
-  if (bar === null) return defaultChips(operation, params)
-  return entry === undefined ? [] : bar.chips({ schema: entry.schema, params, operation })
+  const own = bar === null || entry === undefined ? [] : bar.chips({ schema: entry.schema, params, operation })
+  return paramChips(operation, params, own)
 }
 
 /**
- * One parameter chip: a menu of the choices that its descriptor gives, or a text field for a chip without choices.
- * @param props - the chip and the patch callbacks.
+ * One parameter chip with its name: a menu of the choices that its descriptor gives, a checkbox, or a text field that
+ * shows the text the user typed.
+ * @param props - the chip, the typed text of a text chip, and the patch callbacks.
  * @returns the chip.
  */
-function Chip({ chip, onPatch, onText }: {
+function Chip({ chip, typed, onPatch, onText }: {
   chip: ParamChip
+  typed: string | undefined
   onPatch: (patch: Readonly<Record<string, unknown>>) => void
   onText: (text: string) => void
 }): ReactNode {
   const pick = useText()
-  if (chip.options.length === 0) {
-    return (
-      <input
-        aria-label={pick(...chip.label)} data-param-chip={chip.key} style={{ ...select, width: 96 }} defaultValue={chip.value}
-        placeholder={chip.key}
-        onBlur={(event) => { onText(event.target.value) }}
-      />
-    )
+  let control: ReactNode
+  switch (chip.kind) {
+    case 'text':
+      control = (
+        <input
+          data-param-chip={chip.key} style={{ ...select, width: 96 }} value={typed ?? chip.value}
+          placeholder={chip.placeholder === undefined ? undefined : pick(...chip.placeholder)}
+          onChange={(event) => { onText(event.target.value) }}
+        />
+      )
+      break
+    case 'toggle':
+      control = <input type="checkbox" data-param-chip={chip.key} checked={chip.checked} onChange={(event) => { onPatch({ [chip.key]: event.target.checked }) }} />
+      break
+    case 'menu':
+      control = (
+        <select
+          data-param-chip={chip.key} style={select} value={chip.value}
+          onChange={(event) => {
+            const option = chip.options.find(candidate => candidate.label === event.target.value)
+            if (option !== undefined) onPatch(option.patch)
+          }}
+        >
+          {chip.options.some(option => option.label === chip.value) ? null : <option value={chip.value}>{chip.value}</option>}
+          {chip.options.map(option => <option key={option.label} value={option.label}>{option.label}</option>)}
+        </select>
+      )
   }
-  return (
-    <select
-      aria-label={pick(...chip.label)} data-param-chip={chip.key} style={select} value={chip.value}
-      onChange={(event) => {
-        const option = chip.options.find(candidate => candidate.label === event.target.value)
-        if (option !== undefined) onPatch(option.patch)
-      }}
-    >
-      {chip.options.some(option => option.label === chip.value) ? null : <option value={chip.value}>{chip.value}</option>}
-      {chip.options.map(option => <option key={option.label} value={option.label}>{option.label}</option>)}
-    </select>
-  )
+  return <label style={{ ...row, gap: 4, fontSize: 12, color: 'var(--dv-text-2)' }}>{pick(...chip.label)}{control}</label>
 }

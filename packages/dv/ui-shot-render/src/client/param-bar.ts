@@ -17,12 +17,11 @@ function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }
 
-/** One menu chip over a list of choices. */
+/** One menu chip over a list of choices; a text field when the schema lists none. */
 function menu(key: string, label: ParamChip['label'], value: unknown, choices: readonly (string | number)[]): ParamChip {
-  return {
-    key, label, value: typeof value === 'string' || typeof value === 'number' ? String(value) : '',
-    options: choices.map(choice => ({ label: String(choice), patch: { [key]: choice } })),
-  }
+  const shown = typeof value === 'string' || typeof value === 'number' ? String(value) : ''
+  if (choices.length === 0) return { key, label, kind: 'text', value: shown }
+  return { key, label, kind: 'menu', value: shown, options: choices.map(choice => ({ label: String(choice), patch: { [key]: choice } })) }
 }
 
 /** The bar descriptor, registered into `dvComposer.paramBars`. */

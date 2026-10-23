@@ -80,7 +80,7 @@ describe('the take editor', () => {
       expect(container.querySelector('[data-composer-input]')?.textContent).toBe('hero walks through the rain at night in the city')
     })
     await waitFor(() => { expect(container.querySelector('[data-reference-tile="hero@1"]')?.textContent).toContain('Herov1') })
-    expect([...container.querySelectorAll('[data-param-chip]')].map(chip => chip.getAttribute('data-param-chip'))).toEqual(['seed', 'aspect', 'loop'])
+    expect([...container.querySelectorAll('[data-param-chip]')].map(chip => chip.getAttribute('data-param-chip'))).toEqual(['seed', 'aspect', 'loop', 'extra'])
   })
 
   it('draws the player in a box of the full width and 360 px tall for a take whose size is not stored', async () => {

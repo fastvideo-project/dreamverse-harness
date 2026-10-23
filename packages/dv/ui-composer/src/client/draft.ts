@@ -6,10 +6,10 @@
  * @module @dv/ui-composer/draft
  */
 import type { PromptChangeCause, PromptChip, PromptContent } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import { fieldsOf, valueOf } from '@dv/ui-kit/form.ts'
 import type { OperationCheck, WireOperation } from '@dv/ui-kit/types.ts'
 import type { PromptCall, PromptDocument, RemovedInput } from './contract/index.ts'
 import { MENTION_SOURCE } from './mention.ts'
+import { typedValue } from './param-chips.ts'
 import {
   atomsOf, documentOf, editorContent, nextStep, pinVersion, reconcile, removeInput, type ResolveContext,
 } from './reference-model.ts'
@@ -24,6 +24,8 @@ export interface Draft {
   /** What the editor shows; a new revision replaces the editor's content. */
   readonly content: PromptContent
   readonly params: Readonly<Record<string, unknown>>
+  /** The text that the user typed in each text chip; a text that its param cannot take stays out of `params`. */
+  readonly texts: Readonly<Record<string, string>>
   /** The answer of the check of the edited call; null until it answers. */
   readonly checked: OperationCheck | null
   readonly sending: boolean
@@ -64,27 +66,9 @@ function contentOf(document: PromptDocument, revision: number, history: PromptCo
 export function draftOf(call: PromptCall): Draft {
   const document = documentOf(call)
   return {
-    callKey: JSON.stringify(call), document, removed: [], content: contentOf(document, 0, 'reset'), params: call.params,
+    callKey: JSON.stringify(call), document, removed: [], content: contentOf(document, 0, 'reset'), params: call.params, texts: {},
     checked: null, sending: false,
   }
-}
-
-/** The params with one free-text chip's text, typed by the param's declaration; text that does not parse stays out. */
-function withText(
-  params: Readonly<Record<string, unknown>>, operation: WireOperation, key: string, text: string,
-): Readonly<Record<string, unknown>> {
-  const field = fieldsOf(operation.params, {}).find(candidate => candidate.key === key)
-  if (field === undefined) return params
-  let value: unknown
-  try {
-    value = valueOf({ ...field, text })
-  } catch (unparsed) {
-    // A text the param's type cannot take keeps the previous value; the check route names the problem of a bad value.
-    void unparsed
-    return params
-  }
-  const { [key]: _old, ...rest } = params
-  return value === undefined ? rest : { ...rest, [key]: value }
 }
 
 /**
@@ -125,8 +109,13 @@ export function reduceDraft(draft: Draft, action: DraftAction): Draft {
       return { ...draft, document: pinVersion(document, action.index, action.version) }
     case 'patched':
       return { ...draft, params: { ...draft.params, ...action.patch } }
-    case 'typed':
-      return { ...draft, params: withText(draft.params, action.operation, action.key, action.text) }
+    case 'typed': {
+      const typed = typedValue(action.operation, action.key, action.text)
+      const texts = { ...draft.texts, [action.key]: action.text }
+      if ('problem' in typed) return { ...draft, texts }
+      const { [action.key]: _old, ...rest } = draft.params
+      return { ...draft, texts, params: typed.value === undefined ? rest : { ...rest, [action.key]: typed.value } }
+    }
     case 'checked':
       return { ...draft, checked: action.answer }
     case 'sending':

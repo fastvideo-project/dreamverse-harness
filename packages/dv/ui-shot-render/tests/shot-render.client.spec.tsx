@@ -140,7 +140,7 @@ describe('the shot render takes', () => {
     expect(editor.view.getByRole('button', { name: '渲染新版本' })).toBeTruthy()
     expect(editor.container.querySelector('[data-composer-input]')?.getAttribute('data-placeholder')).toBe('描述画面，输入 @ 引用素材')
     expect([...editor.container.querySelectorAll('[data-param-chip]')].map(chip => chip.getAttribute('data-param-chip')))
-      .toEqual(['aspect_ratio', 'resolution', 'duration_sec'])
+      .toEqual(['seed', 'aspect', 'loop', 'extra', 'aspect_ratio', 'resolution', 'duration_sec'])
     editor.update({ node: takes.get('g2')!, state, operations: OPERATIONS, host: host() }, { entryKey: 'take' })
     await waitFor(() => { expect(editor.view.getByTestId('dv-canvas-render-mode').textContent).toBe('fastt2v · 文字生成') })
     expect(editor.view.queryByRole('button', { name: '添加素材' })).toBeNull()
@@ -168,15 +168,15 @@ describe('the shot render takes', () => {
 describe('the parameter bar of shot.render', () => {
   it('offers the aspect ratios, resolutions and whole seconds that a model schema lists, with the call\'s values', () => {
     const chips = shotRenderBar.chips({ schema: MODELS[0]?.schema, params: { aspect_ratio: '9:16', duration_sec: 3 }, operation: OPERATIONS[0]! })
-    expect(chips.map(chip => [chip.key, chip.value, chip.options.map(option => option.label)])).toEqual([
+    expect(chips.map(chip => chip.kind === 'menu' ? [chip.key, chip.value, chip.options.map(option => option.label)] : chip)).toEqual([
       ['aspect_ratio', '9:16', ['16:9', '9:16']], ['resolution', '', ['720p']], ['duration_sec', '3', ['1', '2', '3', '4', '5']],
     ])
-    expect(chips[2]?.options[1]?.patch).toEqual({ duration_sec: 2 })
+    expect(chips[2]?.kind === 'menu' && chips[2].options[1]?.patch).toEqual({ duration_sec: 2 })
   })
 
-  it('offers one second and no other choice for a schema that is not an object', () => {
+  it('offers one second, and text fields for the lists that a schema which is not an object lacks', () => {
     const chips = shotRenderBar.chips({ schema: null, params: {}, operation: OPERATIONS[0]! })
-    expect(chips.map(chip => chip.options.map(option => option.label))).toEqual([[], [], ['1']])
+    expect(chips.map(chip => [chip.key, chip.kind])).toEqual([['aspect_ratio', 'text'], ['resolution', 'text'], ['duration_sec', 'menu']])
   })
 
   it('reads the reference filter from media types listed or keyed, with the count when the schema gives one', () => {

@@ -480,7 +480,6 @@ describe('the words of an occurrence', () => {
     await sendOf(take, 'Generate a new version')
     vi.stubGlobal('fetch', () => Promise.reject(new Error('offline')))
     fireEvent.change(take.querySelector('[data-param-chip="seed"]')!, { target: { value: '7' } })
-    fireEvent.blur(take.querySelector('[data-param-chip="seed"]')!)
     await waitFor(() => { expect(within(take).getByRole('alert').textContent).toBe('offline') })
     expect(within(take).getByRole<HTMLButtonElement>('button', { name: 'Generate a new version' }).disabled).toBe(true)
   })
@@ -563,9 +562,9 @@ describe('the check and the send', () => {
     const { take, checks } = await mount({ operation: STILL.name, params: { prompt: 'a lamp' }, inputs: [] }, { holdChecks: true })
     await waitFor(() => { expect(checks).toHaveLength(1) })
     const seed = (): HTMLInputElement => take.querySelector('[data-param-chip="seed"]')!
-    fireEvent.blur(seed(), { target: { value: '2' } })
+    fireEvent.change(seed(), { target: { value: '2' } })
     await waitFor(() => { expect(checks).toHaveLength(2) })
-    fireEvent.blur(seed(), { target: { value: '3' } })
+    fireEvent.change(seed(), { target: { value: '3' } })
     await waitFor(() => { expect(checks).toHaveLength(3) })
     act(() => {
       checks[0]?.answer({ problems: [], gpu_seconds: 99 })
@@ -637,40 +636,66 @@ describe('what the references open', () => {
 })
 
 describe('the chips of the parameter bar', () => {
-  it('keeps the params when the stored model, which the catalog lacks, stays picked, and shows no chip of the bar for it', async () => {
+  it('shows the text of a free-text chip that its param cannot take as a problem, and blocks the send until it can', async () => {
+    const { take, sent } = await mount({ operation: STILL.name, params: { prompt: 'rain', seed: 3 }, inputs: [] })
+    await sendOf(take, 'Generate a new version')
+    const seed = take.querySelector<HTMLInputElement>('[data-param-chip="seed"]')!
+    fireEvent.change(seed, { target: { value: '12a' } })
+    await waitFor(() => { expect(within(take).getByRole('alert').textContent).toBe('seed must be a number.') })
+    expect([seed.value, within(take).getByRole<HTMLButtonElement>('button', { name: 'Generate a new version' }).disabled]).toEqual(['12a', true])
+    fireEvent.change(seed, { target: { value: '12' } })
+    fireEvent.click(await sendOf(take, 'Generate a new version'))
+    await waitFor(() => { expect(sent).toEqual([{ operation: STILL.name, params: { prompt: 'rain', seed: 12 }, inputs: [] }]) })
+  })
+
+  it('draws a chip for every declared param that the bar does not give: the seed, a boolean as a checkbox, and extra as JSON', async () => {
+    const stored: PromptCall = { operation: 'shot.render', params: { ...KEY, prompt: 'rain', extra: { camera: 'slow' } }, inputs: [] }
+    const { take, sent } = await mount(stored)
+    const seed = await found(take, 'input[data-param-chip="seed"]')
+    expect([seed.closest('label')?.textContent, seed.getAttribute('placeholder')]).toEqual(['Seed', 'random'])
+    expect(take.querySelector<HTMLInputElement>('[data-param-chip="extra"]')?.value).toBe('{"camera":"slow"}')
+    const loop = take.querySelector<HTMLInputElement>('input[type="checkbox"][data-param-chip="loop"]')!
+    fireEvent.click(loop)
+    fireEvent.change(take.querySelector('[data-param-chip="extra"]')!, { target: { value: '{"camera":"fast"}' } })
+    fireEvent.change(seed, { target: { value: '4' } })
+    fireEvent.click(await sendOf(take, 'Render new take'))
+    await waitFor(() => { expect(sent[0]?.params).toEqual({ ...KEY, prompt: 'rain', extra: { camera: 'fast' }, loop: true, seed: 4 }) })
+  })
+
+  it('keeps the params when the stored model, which the catalog lacks, stays picked, and shows only the declared chips for it', async () => {
     const stored: PromptCall = { operation: 'shot.render', params: { ...KEY, model: 'gone', prompt: 'rain' }, inputs: [] }
     const { take, sent } = await mount(stored)
     const model = await waitFor(() => within(take).getByTestId<HTMLSelectElement>('dv-prompt-model'))
     expect(model.value).toBe('')
     fireEvent.change(model, { target: { value: '' } })
-    expect(take.querySelectorAll('[data-param-chip]')).toHaveLength(0)
+    expect([...take.querySelectorAll('[data-param-chip]')].map(chip => chip.getAttribute('data-param-chip'))).toEqual(['seed', 'aspect', 'loop', 'extra'])
     fireEvent.click(await sendOf(take, 'Render new take'))
     await waitFor(() => { expect(sent).toEqual([stored]) })
   })
 
-  it('types a free-text chip by its declaration: a number, nothing for an emptied field, and the old value for text it cannot take', async () => {
+  it('types a free-text chip by its declaration: a number, and nothing for an emptied field', async () => {
     const { take, sent } = await mount({ operation: STILL.name, params: { prompt: 'rain', seed: 3 }, inputs: [] })
     const seed = (): HTMLInputElement => take.querySelector('[data-param-chip="seed"]')!
     await waitFor(() => { expect(seed().value).toBe('3') })
-    fireEvent.blur(seed(), { target: { value: 'abc' } })
-    fireEvent.click(await sendOf(take, 'Generate a new version'))
-    await waitFor(() => { expect(sent.at(-1)?.params).toEqual({ prompt: 'rain', seed: 3 }) })
-    fireEvent.blur(seed(), { target: { value: '9' } })
+    fireEvent.change(seed(), { target: { value: '9' } })
     fireEvent.click(await sendOf(take, 'Generate a new version'))
     await waitFor(() => { expect(sent.at(-1)?.params).toEqual({ prompt: 'rain', seed: 9 }) })
-    fireEvent.blur(seed(), { target: { value: '' } })
+    fireEvent.change(seed(), { target: { value: '' } })
     fireEvent.click(await sendOf(take, 'Generate a new version'))
     await waitFor(() => { expect(sent.at(-1)?.params).toEqual({ prompt: 'rain' }) })
   })
 
-  it('changes nothing for a bar chip of a param that the operation does not declare, or for the current value outside its choices', async () => {
+  it('sends the text of a bar chip of a param that the operation does not declare as it is, and changes nothing for the current value outside its choices', async () => {
     const bare: WireModelEntry = { ...MODELS[0]!, schema: { duration_sec: { min: 1, max: 5 }, aspect_ratios: ['16:9'], inputs: {} } }
     const stored: PromptCall = { operation: 'shot.render', params: { ...KEY, prompt: 'rain', duration_sec: 9 }, inputs: [] }
     const { take, sent } = await mount(stored, { models: [bare] })
-    fireEvent.blur(await found(take, 'input[data-param-chip="resolution"]'), { target: { value: '4k' } })
+    fireEvent.change(await found(take, 'input[data-param-chip="resolution"]'), { target: { value: '4k' } })
     fireEvent.change(take.querySelector('[data-param-chip="duration_sec"]')!, { target: { value: '9' } })
     fireEvent.click(await sendOf(take, 'Render new take'))
-    await waitFor(() => { expect(sent).toEqual([stored]) })
+    await waitFor(() => { expect(sent).toEqual([{ ...stored, params: { ...stored.params, resolution: '4k' } }]) })
+    fireEvent.change(take.querySelector('[data-param-chip="resolution"]')!, { target: { value: '' } })
+    fireEvent.click(await sendOf(take, 'Render new take'))
+    await waitFor(() => { expect(sent.at(-1)).toEqual(stored) })
   })
 })
 

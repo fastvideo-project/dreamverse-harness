@@ -102,15 +102,34 @@ export interface DvPromptProps {
 }
 
 /** One chip of the parameter bar; the descriptor gives data, and the composer draws every chip with one component. */
-export interface ParamChip {
+export type ParamChip = {
   /** The param key. */
   readonly key: string
+  /** The name that the chip shows beside its control. */
   readonly label: Text
-  /** The display text, such as `16:9`. */
-  readonly value: string
-  /** The choices; each choice is the patch it applies to the params. */
-  readonly options: ReadonlyArray<{ readonly label: string; readonly patch: Readonly<Record<string, unknown>> }>
-}
+} & (
+  | {
+    /** A menu of choices. */
+    readonly kind: 'menu'
+    /** The display text of the current value, such as `16:9`. */
+    readonly value: string
+    /** The choices; each choice is the patch it applies to the params. */
+    readonly options: ReadonlyArray<{ readonly label: string; readonly patch: Readonly<Record<string, unknown>> }>
+  }
+  | {
+    /** A text field; the param's declaration types its text, such as a number or JSON, and an empty text unsets it. */
+    readonly kind: 'text'
+    /** The text of the current value. */
+    readonly value: string
+    /** The text the empty field shows, such as 随机 / random for a seed. */
+    readonly placeholder?: Text
+  }
+  | {
+    /** A checkbox of a boolean param. */
+    readonly kind: 'toggle'
+    readonly checked: boolean
+  }
+)
 
 /**
  * The words of an occurrence that name what its operation makes. Each absent text keeps the composer's neutral one,
