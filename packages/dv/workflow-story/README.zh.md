@@ -40,6 +40,8 @@ kind: "package-reference"
 
 `story.approve` 的 `confirm` 为 `'always'`：智能体调用需要 `user_approved: true`，其拒绝文本是标题行 `Approve plan <p> v<n> "<title>": render <k> of <m> shots and lay every shot on the plan's timeline.` 和预览行。只要 `problems` 不为空，每个调用方都在写记录之前被拒绝，错误列出所有问题，并以 "Update the plan with dv_plan_update, then call again." 结尾。
 
+要添加一个工作流，添加带 frontmatter 字段 `name` 和带引号的 `description` 的 `skills/<name>/SKILL.md`；提供方无需修改代码即可提供该文件。然后运行一次 `pnpm exec vitest run packages/bundle/dv/tests/skills.spec.ts -u`，写入它的快照 `packages/bundle/dv/tests/expected/skills/<name>.txt`。
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -104,11 +106,11 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-技能目录列出 `story-directing` 及其描述和使用时机。智能体加载该技能时，读到调用顺序：`dv_plan_create` 或 `dv_plan_update`，然后 `dv_story_preview`（`problems` 不为空时用 `dv_plan_update` 修改后再次预览），给出镜头表格并以粗体提一个问题，下一轮用 `user_approved: true` 调用 `dv_story_approve`，然后调用 `dv_proj_wait`。它还告诉智能体如何延长、缩短或修改由计划生成的故事。
+技能目录列出每个工作流技能及其描述。智能体加载 `story-directing` 时，读到调用顺序：`dv_plan_create` 或 `dv_plan_update`，然后 `dv_story_preview`（`problems` 不为空时用 `dv_plan_update` 修改后再次预览），给出镜头表格并以粗体提一个问题，下一轮用 `user_approved: true` 调用 `dv_story_approve`，然后调用 `dv_proj_wait`。它还告诉智能体如何延长、缩短或修改由计划生成的故事。
 
 #### Token 影响
 
-插件挂载期间，技能目录中约 70 个 token；智能体每次加载该技能约 800 个 token。
+插件挂载期间，每个工作流技能在技能目录中占一行，最多 400 个码点（`story-directing` 约 70 个 token）；每次加载追加该技能的正文，少于 8192 个码点（`story-directing` 约 800 个 token）。`@dv/bundle` 的 [`skills.spec.ts`](../../bundle/dv/tests/skills.spec.ts) 检查这两个上限。
 
 #### KV Cache 影响
 

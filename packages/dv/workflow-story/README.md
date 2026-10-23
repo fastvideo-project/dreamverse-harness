@@ -40,6 +40,8 @@ The labels are 预览分镜计划 / Preview plan and 批准分镜计划 / Approv
 
 `story.approve` has `confirm: 'always'`: an agent call needs `user_approved: true`, and its refusal text is the head line `Approve plan <p> v<n> "<title>": render <k> of <m> shots and lay every shot on the plan's timeline.` and the preview lines. While `problems` is not empty, every caller is refused before a record, with one error that lists the problems and ends with "Update the plan with dv_plan_update, then call again."
 
+To add a workflow, add `skills/<name>/SKILL.md` with the frontmatter fields `name` and a quoted `description`; the provider serves the file with no code change. Then run `pnpm exec vitest run packages/bundle/dv/tests/skills.spec.ts -u` once to write its snapshot `packages/bundle/dv/tests/expected/skills/<name>.txt`.
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -104,11 +106,11 @@ Each result is appended to the conversation after its call; the cached prefix st
 
 #### What the model sees
 
-The skill catalog lists `story-directing` with its description and when to use it. When the agent loads the skill, it reads the order of calls: `dv_plan_create` or `dv_plan_update`, then `dv_story_preview` (with `dv_plan_update` and a new preview while `problems` is not empty), a table of the shots and one question in bold, and in the next turn `dv_story_approve` with `user_approved: true`, then `dv_proj_wait`. It also tells the agent how to extend, shorten or change a story that a plan made.
+The skill catalog lists each workflow skill with its description. When the agent loads `story-directing`, it reads the order of calls: `dv_plan_create` or `dv_plan_update`, then `dv_story_preview` (with `dv_plan_update` and a new preview while `problems` is not empty), a table of the shots and one question in bold, and in the next turn `dv_story_approve` with `user_approved: true`, then `dv_proj_wait`. It also tells the agent how to extend, shorten or change a story that a plan made.
 
 #### Token effect
 
-About 70 tokens in the skill catalog while the plugin is mounted; about 800 tokens each time the agent loads the skill.
+One line in the skill catalog per workflow skill while the plugin is mounted, at most 400 code points (about 70 tokens for `story-directing`); each load adds the body of the skill, under 8192 code points (about 800 tokens for `story-directing`). [`skills.spec.ts`](../../bundle/dv/tests/skills.spec.ts) of `@dv/bundle` checks both limits.
 
 #### KV Cache effect
 
