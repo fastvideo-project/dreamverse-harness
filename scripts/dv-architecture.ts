@@ -1,5 +1,5 @@
 /**
- * Scan DreamVerse packages for the plugin rules R1-R8 and compare the violations with the ratchet baseline
+ * Scan DreamVerse packages for the plugin rules R1-R8 and R11 and compare the violations with the ratchet baseline
  * `scripts/dv-architecture.baseline.json`. `RULE_STATEMENTS` states each rule, and every failure line repeats it.
  */
 
@@ -26,6 +26,7 @@ export const RULE_STATEMENTS: Readonly<Record<string, string>> = {
   R6: 'No deep import into another package\'s src.',
   R7: 'Dependencies point down the layers; a ./types entry reaches no host-only module.',
   R8: 'A skill never names a consumer; only the package that owns a reference kind names its tools.',
+  R11: 'Only @dv/project/grammar writes a citation @[label](dv:<kind>/<id>); UI core, which imports it, writes no citation URI dv:<kind>/<id> by hand.',
   marker: 'The only exception marker is "// dv-arch-allow R<k>: temporary exception", and it suppresses a match on its line.',
 }
 
@@ -102,6 +103,12 @@ const TOOL = /(?<!\w)dv_([a-z]+)_\w+/gu
 const CORE_TOOL = /^dv_(?:proj|asset|models)_/u
 const DIRECTING = /\b([a-z]+)-directing\b/gu
 const MARKER = /\/\/ dv-arch-allow (R\d+): (.*)$/u
+/**
+ * The text parts of a template that writes a citation, `@[${label}](${uri})`, and of one that writes a citation URI,
+ * `dv:<kind>/${id}`, with NUL for each substitution (R11).
+ */
+const CITATION_TEMPLATE = /@\[[^\]]*\]\((?:dv:|\0)/u
+const URI_TEMPLATE = /^dv:[^/\0]*\/\0/u
 /** The entries of a host package that the browser program reads, each at `src/<entry>.ts` (R7 b). */
 const CLIENT_ENTRIES = ['types', 'grammar']
 /** Modules that a `./types` or `./grammar` entry must never reach (R7 b). */
@@ -424,6 +431,7 @@ function scanSource({ path, pkg, sf }: Source, facts: Facts, out: Violation[]): 
   const workflowKey = (key: string): boolean => [...facts.owners.get(key) ?? []].some(owner => layerOf(owner, facts) === 'workflow')
   const inAlias = (node: ts.Node, name: string): boolean =>
     ts.findAncestor(node, n => ts.isTypeAliasDeclaration(n) && n.name.text === name) !== undefined
+  const grammar = path === 'packages/dv/project/src/grammar.ts'
   walk(sf, (node) => {
     const body = ts.isStringLiteralLike(node) || ts.isTemplateLiteralToken(node) ? node.text : undefined
     const report = (rule: string, text: string, offset = 0): number =>
@@ -438,6 +446,11 @@ function scanSource({ path, pkg, sf }: Source, facts: Facts, out: Violation[]): 
       if (!importAllowed(pkg, specifier, typeOnly, facts)) report('R7a', specifier)
     }
     const literal = ts.isStringLiteralLike(node) ? node.text : undefined
+    // R11: the text parts of a template, with one NUL in place of each substitution.
+    const template = ts.isTemplateExpression(node) && !grammar
+      ? [node.head.text, ...node.templateSpans.map(span => `\0${span.literal.text}`)].join('') : undefined
+    if (template !== undefined && CITATION_TEMPLATE.test(template)) report('R11a', node.getText(sf))
+    if (template !== undefined && layer === 'ui-core' && URI_TEMPLATE.test(template)) report('R11b', node.getText(sf))
     const access = ts.isPropertyAccessExpression(node) ? [textOf(node.expression), node.name.text]
       : ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression)
         ? [textOf(node.expression), node.argumentExpression.text] : []
@@ -583,7 +596,7 @@ export function listOwners(files: readonly ScanFile[]): OwnerRow[] {
 }
 
 /**
- * Run R1-R8 over a set of files.
+ * Run R1-R8 and R11 over a set of files.
  * @param files - the repository files from `readScanFiles`, or the files of a fixture.
  * @returns every violation that no valid exception marker suppresses.
  */

@@ -1,10 +1,10 @@
 /** Expansion of composer `dv:` mentions into concrete record and asset IDs. */
 import { describe, expect, it } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { versionRefOf, type AssetId, type ProjectId, type ProjectRecord, type ProjectState, type RecordId, type SessionId, type TurnId } from '@dv/project'
+import { formatCitation, versionRefOf, type AssetId, type ProjectId, type ProjectRecord, type ProjectState, type RecordId, type SessionId, type TurnId } from '@dv/project'
 import type { CharacterId } from '@dv/character'
 import type { ClipId, TimelineId } from '@dv/timeline'
-import { expansionBlock, formatMention, parseMentions, type ExpansionSources } from '../src/expand.ts'
+import { expansionBlock, type ExpansionSources } from '../src/expand.ts'
 
 declare module '@dv/project' {
   interface ReferenceKinds { character: CharacterId }
@@ -56,9 +56,14 @@ const sources: ExpansionSources = {
 }
 
 describe('dv mentions', () => {
-  it('round-trips the serialized form', () => {
-    const text = `改一下 ${formatMention('时间线 1·片段 2', 'dv:clip/cl2')} 的光线`
-    expect(parseMentions(text)).toEqual([{ label: '时间线 1·片段 2', uri: 'dv:clip/cl2' }])
+  it('reads the citations that the kernel writes, with the kernel\'s parser', () => {
+    const block = expansionBlock(`改一下 ${formatCitation('时间线 1·片段 2', 'clip', 'cl2')} 的光线`, project, sources)
+    expect(block).toContain('- 时间线 1·片段 2 (dv:clip/cl2): clip cl2, clip 2 of timeline t1')
+  })
+
+  it('describes a mention whose URI has a malformed escape as unknown, and its asset as none', () => {
+    expect(expansionBlock('@[x](dv:asset/img%) and @[y](dv:character/c%zz)', project, sources))
+      .toBe('The user referenced these project items:\n- x (dv:asset/img%): unknown mention kind\n- y (dv:character/c%zz): unknown mention kind')
   })
 
   it('names the timeline, position, producing record, prompt, inputs, and duration of a clip, and a placeholder clip\'s render', () => {

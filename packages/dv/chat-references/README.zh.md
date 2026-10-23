@@ -33,7 +33,7 @@ kind: "package-reference"
 
 活着的对话里用户输入的消息带附件时，插件以用户身份、在来源 `chat` 上、作为项目当前位置之后的一步为每个附件执行一次带 `place: true` 的 `asset.import`，因此每个附件也放到画布上。每次 `asset.import` 都从附件在 `attachments` 中的主机路径读取：图片用 `imageHostPath`，媒体类型取自它的块；其他文件用 `fileHostPath`，媒体类型由文件名扩展名决定，扩展名对应不到媒体类型时用 `application/octet-stream`。`attachments` 没有把附件存在本机时，导入在该附件处停止。对话的下一次工具调用会等导入完成（`dvProject.holdToolCalls`）。这样的消息提及素材（`dv:asset/<id>`）时，插件把被提及、`asset.place` 接受（项目历史中任何一处导入的素材，或由当前状态中的记录创建的素材）且还不在画布上的素材，以用户身份、在来源 `chat` 上用一次 `asset.place` 放到画布上。没有绑定项目的对话不导入也不放置。
 
-提及辅助函数 `parseMentions`、`formatMention`、`describeMention` 供其他使用者导出；`dvChatReferences.expansionMessage(sessionId, messages)` 返回某一步的上下文消息。
+本包用 `@dv/project` 的 `parsePromptCitations`，即内核自身的引用解析器，读取消息中的提及，所以转义格式错误的提及被描述为未知；`describeMention` 供其他使用者导出；`dvChatReferences.expansionMessage(sessionId, messages)` 返回某一步的上下文消息。
 
 <a id="understand-the-implementation"></a>
 ## 理解实现
@@ -41,7 +41,7 @@ kind: "package-reference"
 | 文件 | 作用 |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `DvChatReferences`：追加 `dv-mentions` 消息的 `agent/pre-step` 监听、提及所对应的项目（对话绑定的项目，否则产生被提及素材的最新项目，否则最新项目），以及导入对话附件并放置被提及素材的 `session/event` 监听 |
-| [`src/expand.ts`](src/expand.ts) | `parseMentions`、`formatMention` 与 `describeMention`：用具体 ID 和产生它的记录描述每个提及 URI |
+| [`src/expand.ts`](src/expand.ts) | `describeMention` 与 `expansionBlock`：用具体 ID 和产生它的记录描述每个提及 URI |
 
 片段提及用 `ClipId` 指明片段，`ClipId` 在项目内唯一；占位片段写出它等待的渲染记录。引用种类的提及只读 `dvProject` 的内核方法：最新版本来自 `latestVersion`，该版本的素材来自 `assetsOf`。它的一行为 `<kind> <id>@<n>, reference assets [<assets>]; pass it as input <id>@<n>`；没有版本的 ID 为 `no <kind> <id> in the current state`。
 

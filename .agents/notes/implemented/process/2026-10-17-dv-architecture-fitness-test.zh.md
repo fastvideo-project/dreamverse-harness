@@ -12,7 +12,7 @@ Status: implemented
 
 ## 决策
 
-`scripts/dv-architecture.ts` 按规则 R1 到 R8 扫描 DreamVerse 包，`scripts/dv-architecture.spec.ts` 以 Vitest 测试的形式运行扫描。根目录的 `vitest.config.ts` 包含 `scripts/**/*.spec.ts`，因此 `pnpm test` 会运行它；`pnpm exec vitest run scripts/dv-architecture.spec.ts` 单独运行它。扫描器遍历每个 `.ts` 和 `.tsx` 文件的 TypeScript 语法树，因此注释永远不会匹配；skill Markdown 则按文本匹配。
+`scripts/dv-architecture.ts` 按规则 R1 到 R8 和 R11 扫描 DreamVerse 包，`scripts/dv-architecture.spec.ts` 以 Vitest 测试的形式运行扫描。根目录的 `vitest.config.ts` 包含 `scripts/**/*.spec.ts`，因此 `pnpm test` 会运行它；`pnpm exec vitest run scripts/dv-architecture.spec.ts` 单独运行它。扫描器遍历每个 `.ts` 和 `.tsx` 文件的 TypeScript 语法树，因此注释永远不会匹配；skill Markdown 则按文本匹配。
 
 `readScanFiles` 读取 `packages/dv/*/src/**/*.{ts,tsx}`、`packages/dv/*/skills/**/*.md`、`packages/bundle/dv/skills/**/*.md` 和 `packages/dv/*/package.json`，并跳过所有包含 `/tests/` 的路径。找不到内核源码时它会抛出错误，因此缩窄后的 glob 无法靠什么都不扫描而通过。`layerOf` 根据文件夹名称为每个包分配层，依据是 `BASE`、`SURFACE` 和 `UI_CORE` 列表以及 `workflow-` 和 `ui-` 前缀，并把调用 `dvModels.register(` 的包标为提供方。
 
@@ -30,6 +30,7 @@ Status: implemented
 | R6 | No deep import into another package's `src`.（不深层导入其他包的 `src`。） | `@dv/<pkg>/src/…` 导入说明符。 | 包之间只通过导出的入口相连。 |
 | R7 | Dependencies point down the layers; a `./types` entry reaches no host-only module.（依赖沿层向下；`./types` 入口不触及任何仅限宿主的模块。） | (a) 按层表 `IMPORTS` 检查每个 `@dv/*` 导入；(b) 通过导入或 `declare module` 目标触及 `node:*`、`@deepseek-ai/cordis` 或 `@deepseek-ai/dsh-tools` 的 `./types` 入口。 | [分层](../architecture/2026-10-17-dv-architecture-layers.zh.md)的依赖方向，以及可在浏览器中加载的客户端入口。 |
 | R8 | A skill never names a consumer; only the package that owns a reference kind names its tools.（skill 从不提及消费方；只有拥有某个引用类型的包才提及该类型的工具。） | 在 skill Markdown、提供方字面量和 skill 描述中：(a) 更高层的工具；(b) 基础包和提供方文本中的 `plan` 或 `continue_previous`；(c) 位于某工作流自身 skill 之外的该工作流工具；(d) 目录文本中 `dv_models_*` 以外的工具；(e) 其他工作流的 `<k>-directing`；(f) 位于引用名词所属包之外的该名词工具。 | skill 只提及在其包加载之处必然存在的工具。 |
+| R11 | Only `@dv/project/grammar` writes a citation `@[label](dv:<kind>/<id>)`; UI core, which imports it, writes no citation URI `dv:<kind>/<id>` by hand.（只有 `@dv/project/grammar` 写引用 `@[label](dv:<kind>/<id>)`；导入它的 UI 核心不手写引用 URI `dv:<kind>/<id>`。） | 在 `packages/dv/project/src/grammar.ts` 以外的 TypeScript 源文件中：(a) 文字部分写出 `@[…](…)` 的模板；(b) 在 UI 核心包中，在替换之前以 `dv:<kind>/` 开头的模板。 | 浏览器和宿主用内核的代码读写引用，所以引用在各处读法相同。 |
 
 运行时负责 R3 未覆盖的部分：`packages/dv/project/src/runner.ts` 拒绝重复的组件键（`component_exists`）、重复的操作（`operation_exists`）以及不带 `<component>.` 前缀的操作名，`packages/dv/project/src/reducers.ts` 拒绝重复的引用类型（`kind_exists`）。测试用 `scripts/fixtures/dv-architecture/` 中的 24 个 fixture（测试前置数据）和内联用例固定每个子句。
 

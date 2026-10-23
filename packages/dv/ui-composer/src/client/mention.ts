@@ -11,7 +11,7 @@ import { createElement, type ComponentType } from 'react'
 import type { InputTriggerCandidate, InputTriggerSource, PickOutcome } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { IconPaperclipOutlineRegular, type IconProps } from '@deepseek-ai/dsh-client-ui-primitives'
-import { citationTarget, formatCitation } from '@dv/project/grammar'
+import { citationTarget, citationUri, formatCitation } from '@dv/project/grammar'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import type { DvMentions, MentionKind } from '@dv/ui-kit/registries.ts'
 import { mediaTypeOf } from '@dv/ui-kit/media-type.ts'
@@ -66,7 +66,7 @@ export function projectItems(state: WireState, kinds: readonly MentionKind[], ty
     }))
   })
   const assets = state.assets.slice(-40).reverse().map((asset): Item => ({
-    uri: `dv:asset/${encodeURIComponent(asset.id)}`, label: asset.name, section: pickText('素材', 'Assets'), icon: assetIcon(asset, types, state),
+    uri: citationUri('asset', asset.id), label: asset.name, section: pickText('素材', 'Assets'), icon: assetIcon(asset, types, state),
     shows: asset.id,
   }))
   return [...mentioned, ...assets]

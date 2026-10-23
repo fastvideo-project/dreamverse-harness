@@ -61,7 +61,8 @@ export * from './operation-types.ts'
 export { ProjectError } from './shared.ts'
 export { promptAssets, replacePromptCitations } from './citations.ts'
 export {
-  citedAsset, citedInput, elementCitationUri, formatCitation, formatInputRef, parsePromptCitations, versionRefOf, type PromptCitation,
+  citationTarget, citedAsset, citedInput, elementCitationUri, formatCitation, formatInputRef, parsePromptCitations, versionRefOf,
+  type PromptCitation,
 } from './grammar.ts'
 export { sessionOf, toolNameOf, type OperationToolValue } from './agent-tools.ts'
 

@@ -33,7 +33,7 @@ The composer of `@dv/ui-composer` serializes a picked project item as `@[<label>
 
 When a user message that the user typed in a live session carries attachments, the plugin runs one `asset.import` with `place: true` per attachment as the user, on the surface `chat`, as a step after the project's current position, so each attachment also goes on the canvas. Each `asset.import` reads the attachment from its host path in `attachments`: an image from `imageHostPath`, with the media type of its block, and any other file from `fileHostPath`, with the media type that its file name extension names, or `application/octet-stream` when the extension names none. When `attachments` keeps an attachment off this machine, the import stops at that attachment. The session's next tool call waits until the import finished (`dvProject.holdToolCalls`). When such a message mentions assets (`dv:asset/<id>`), the plugin puts the mentioned assets that `asset.place` accepts (an import of the project anywhere in its history, or an asset that a record in the current state created) and that are not on the canvas yet on it with one `asset.place` by the user, on the surface `chat`. A session without a bound project imports and places nothing.
 
-The mention helpers `parseMentions`, `formatMention`, and `describeMention` are exported for other consumers; `dvChatReferences.expansionMessage(sessionId, messages)` returns the context message for one step.
+The package reads the mentions of a message with `parsePromptCitations` of `@dv/project`, the kernel's own citation parser, so a mention with a malformed escape is described as unknown; `describeMention` is exported for other consumers; `dvChatReferences.expansionMessage(sessionId, messages)` returns the context message for one step.
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
@@ -41,7 +41,7 @@ The mention helpers `parseMentions`, `formatMention`, and `describeMention` are 
 | File | Role |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `DvChatReferences`: the `agent/pre-step` listener that appends the `dv-mentions` message, the project a mention resolves against (the session's bound project, else the newest project that produced a mentioned asset, else the newest project), and the `session/event` listener that imports chat attachments and places mentioned assets |
-| [`src/expand.ts`](src/expand.ts) | `parseMentions`, `formatMention`, and `describeMention`: each mention URI described with concrete IDs and the record that produced it |
+| [`src/expand.ts`](src/expand.ts) | `describeMention` and `expansionBlock`: each mention URI described with concrete IDs and the record that produced it |
 
 A mention of a clip names the clip by its `ClipId`, which is unique in the project; a placeholder clip names the render record it waits for. A mention of a reference kind reads only kernel methods of `dvProject`: the newest version from `latestVersion` and the version's assets from `assetsOf`. Its line is `<kind> <id>@<n>, reference assets [<assets>]; pass it as input <id>@<n>`, or `no <kind> <id> in the current state` for an ID without a version.
 

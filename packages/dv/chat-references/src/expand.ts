@@ -1,7 +1,8 @@
 /**
- * Expansion of the composer's `dv:` mentions. The composer serializes a picked project item as
- * `@[<label>](dv:<kind>/<id>)`; this module finds those mentions in user text and describes each one with the
- * concrete record and asset IDs the model needs to act on it.
+ * Expansion of the composer's `dv:` mentions. The composer writes a picked project item as the citation
+ * `@[<label>](dv:<kind>/<id>)` with `formatCitation` of `@dv/project`; this module reads those citations in user text
+ * with the kernel's own parser and describes each one with the concrete record and asset IDs the model needs to act on
+ * it.
  *
  * Mention URIs:
  * - `dv:asset/<AssetId>`: a stored asset.
@@ -12,47 +13,14 @@
  * @module @dv/chat-references/expand
  */
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { formatInputRef, toolNameOf, type AssetId, type ProjectId, type ProjectRecord, type ProjectState, type RecordId, type RecordInputRef } from '@dv/project'
+import {
+  citationTarget, formatInputRef, parsePromptCitations, toolNameOf, type AssetId, type ProjectId, type ProjectRecord, type ProjectState,
+  type PromptCitation, type RecordId, type RecordInputRef,
+} from '@dv/project'
 import type {} from '@dv/timeline'
 
-/** One `dv:` mention found in user text. */
-export interface Mention {
-  label: string
-  uri: string
-}
-
-/** The composer's serialized mention: `@[label](dv:...)`. */
-const MENTION = /@\[([^\]]*)\]\((dv:[^)\s]+)\)/g
-
-/**
- * Find every `dv:` mention in a text, in order.
- * @param text - user text.
- * @returns the mentions.
- */
-export function parseMentions(text: string): Mention[] {
-  return [...text.matchAll(MENTION)].map(match => ({ label: match[1] ?? '', uri: match[2] ?? '' }))
-}
-
-/**
- * The assets a text mentions with `dv:asset/<AssetId>`, each once, in order.
- * @param text - user text.
- * @returns the asset IDs.
- */
-export function mentionedAssetIds(text: string): AssetId[] {
-  return [...new Set(parseMentions(text).flatMap(mention => mention.uri.startsWith('dv:asset/')
-    ? [brandString<AssetId>(decodeURIComponent(mention.uri.slice('dv:asset/'.length)))]
-    : []))]
-}
-
-/**
- * Format one mention the way the composer serializes it.
- * @param label - the chip label, such as `时间线 1·片段 2`.
- * @param uri - the `dv:` URI.
- * @returns the mention text.
- */
-export function formatMention(label: string, uri: string): string {
-  return `@[${label.replaceAll(']', '')}](${uri})`
-}
+/** One `dv:` mention found in user text: a citation as the kernel's parser reads it. */
+export type Mention = Pick<PromptCitation, 'label' | 'uri'>
 
 /** What expansion reads from the Project service. */
 export interface ExpansionSources {
@@ -76,9 +44,11 @@ export interface ExpansionSources {
  * @returns one line for the model.
  */
 export function describeMention(mention: Mention, projectId: ProjectId, sources: ExpansionSources): string {
-  const [kind = '', ...rest] = mention.uri.slice('dv:'.length).split('/').map(decodeURIComponent)
-  const id = rest.join('/')
   const head = `- ${mention.label} (${mention.uri})`
+  // A URI with a malformed escape names nothing, as the kernel reads it.
+  const target = citationTarget(mention.uri)
+  if (target === null) return `${head}: unknown mention kind`
+  const { kind, id } = target
   const state = sources.getState(projectId)
   switch (kind) {
     case 'clip':
@@ -145,7 +115,7 @@ function producerText(projectId: ProjectId, recordId: RecordId | undefined, sour
  * @returns the block.
  */
 export function expansionBlock(text: string, projectId: ProjectId | null, sources: ExpansionSources): string | null {
-  const mentions = parseMentions(text)
+  const mentions = parsePromptCitations(text)
   if (mentions.length === 0) return null
   const lines = projectId === null
     ? mentions.map(mention => `- ${mention.label} (${mention.uri}): no project is bound to this conversation; call dv_proj_open first`)

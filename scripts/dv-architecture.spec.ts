@@ -188,6 +188,15 @@ describe('rule clauses', () => {
       source('ui-reference-kit', "import { citationUri } from '@dv/project/grammar'\n", 'client/index.ts'),
       source('ui-shot-plan', "import { formatCitation } from '@dv/project/grammar'\n", 'client/index.ts'),
     ], ['R7a', 'R7a']],
+    ['R11a a citation written by a template outside the kernel grammar', [
+      source('chat-references', 'export const cite = (label: string, uri: string) => `@[${label.replaceAll(\']\', \'\')}](${uri})`\n'),
+      source('ui-timeline', 'const text = `@[${label}](dv:clip/${id})`\n', 'client/index.ts'),
+      source('project', 'export const cite = (label: string, uri: string) => `@[${label}](${uri})`\n', 'grammar.ts'),
+    ], ['R11a', 'R11a']],
+    ['R11b a citation URI written by a template in UI core, which imports the grammar', [
+      source('ui-composer', 'const uri = `dv:asset/${encodeURIComponent(id)}`\nconst page = `/dv/assets/${id}`\n', 'client/index.ts'),
+      source('ui-timeline', 'const uri = `dv:clip/${id}`\n', 'client/index.ts'),
+    ], ['R11b']],
     ['R7b grammar entry reaches a host module', [
       { path: 'packages/dv/project/package.json', text: '{ "exports": { "./grammar": "./src/grammar.ts" } }\n' },
       source('project', "import { randomUUID } from 'node:crypto'\n", 'grammar.ts'),
@@ -302,7 +311,7 @@ describe('ratchet baseline comparison', () => {
   })
 
   it('states every scanned rule', () => {
-    expect(Object.keys(RULE_STATEMENTS)).toEqual(['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'marker'])
+    expect(Object.keys(RULE_STATEMENTS)).toEqual(['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R11', 'marker'])
   })
 })
 

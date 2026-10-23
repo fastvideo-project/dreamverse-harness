@@ -14,11 +14,11 @@ import type { PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, type ContextFormed, type FileBlock, type ImageBlock, type UserMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, SessionEventMap } from '@deepseek-ai/dsh-session'
 import { importedAssets, placeable } from '@dv/asset-pool'
-import type { AssetId, ProjectId, SessionId } from '@dv/project'
+import { promptAssets, type AssetId, type ProjectId, type SessionId } from '@dv/project'
 import mime from 'mime-types'
-import { expansionBlock, mentionedAssetIds, type ExpansionSources } from './expand.ts'
+import { expansionBlock, type ExpansionSources } from './expand.ts'
 
-export { describeMention, formatMention, parseMentions, type ExpansionSources, type Mention } from './expand.ts'
+export { describeMention, type ExpansionSources, type Mention } from './expand.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -92,7 +92,7 @@ export default class DvChatReferences extends Service {
     const project = this.ctx.dvProject
     const bound = project.sessionProject(session)
     if (bound !== null) return bound
-    const assets = mentionedAssetIds(text)
+    const assets = promptAssets(text)
     const projects = project.listProjects().sort((a, b) => b.created_at.localeCompare(a.created_at))
     const match = projects.find((info) => {
       const createdBy = project.getState(info.id).components.proj.created_by
@@ -144,7 +144,7 @@ export default class DvChatReferences extends Service {
     const project = this.ctx.dvProject
     const projectId = project.sessionProject(session)
     if (projectId === null) return
-    const mentioned = mentionedAssetIds(message.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n'))
+    const mentioned = promptAssets(message.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n'))
     if (mentioned.length === 0) return
     const state = project.getState(projectId)
     const placed = new Set(state.components.asset.placed)
