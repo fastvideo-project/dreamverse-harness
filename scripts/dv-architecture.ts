@@ -44,8 +44,9 @@ interface Facts {
   providers: Set<string>
   /** `PrimitiveTypes` keys declared outside `@dv/models`, and the packages that declare them. */
   primitives: Set<string>
-  /** Every `PrimitiveTypes` key, `@dv/models` included, and every `TaskMap` key (R5g, R5h). */
+  /** Every `PrimitiveTypes` key, `@dv/models` included (R5g). */
   allPrimitives: Set<string>
+  /** Every `TaskMap` key (R5h). */
   tasks: Set<string>
   /** Members of each `Wire<Name>` interface of `ui-kit`, read by the exemption of wire-type guards (R5). */
   wireMembers: Map<string, Set<string>>
@@ -321,10 +322,6 @@ function scanSkillText(
   for (const match of text.matchAll(/\b(?:plan|continue_previous)\b/giu)) report('R8b', match.index, match[0].toLowerCase())
 }
 
-/**
- * The union of a type: the type itself, a parenthesized union, or the union that an intersection adds the fields of
- * every member to, such as `{ project: string } & (A | B)`.
- */
 function unionOf(type: ts.TypeNode): ts.UnionTypeNode | undefined {
   if (ts.isParenthesizedTypeNode(type)) return unionOf(type.type)
   if (ts.isIntersectionTypeNode(type)) return type.types.map(unionOf).find(union => union !== undefined)
@@ -414,7 +411,6 @@ function scanSource({ path, pkg, sf }: Source, facts: Facts, out: Violation[]): 
   const layer = layerOf(pkg, facts)
   const pluginKeys = new Set([...facts.owners].filter(([key, owners]) => key !== 'proj' && [...owners].some(o => o !== 'project'))
     .map(([key]) => key))
-  // UI core reads the `asset` slice by design, so R5 does not count its key.
   const uiPluginKeys = new Set([...pluginKeys].filter(key => key !== 'asset'))
   const mirrors = layer === 'ui-core' || layer === 'ui-lib' ? markdownMirrors(sf) : new Set<string>()
   const workflowKey = (key: string): boolean => [...facts.owners.get(key) ?? []].some(owner => layerOf(owner, facts) === 'workflow')
