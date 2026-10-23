@@ -222,6 +222,8 @@ describe('Runner', () => {
     expect(await m.runner.check(request(project, 'unregistered'))).toEqual({ problems: ['Operation unregistered is not registered.'], gpu_seconds: null })
     expect(await m.runner.check(request(project, 'shot.render', userOrigin(), { params: { prompt: 'a kite', seed: 2 } })))
       .toEqual({ problems: [], gpu_seconds: 6 })
+    m.runner.registerOperation(operation({ name: 'shot.note', component: 'shot' }))
+    expect(await m.runner.check(request(project, 'shot.note'))).toEqual({ problems: [], gpu_seconds: null })
     expect(files(m, project)).toBe(before)
   })
 
