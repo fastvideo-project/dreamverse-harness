@@ -386,10 +386,7 @@ interface EditorPlacement {
 }
 
 /**
- * The panel's place in the canvas area and the gestures that change it. The panel starts at the remembered rectangle
- * fitted into the area at open, else at the default; while the area is smaller than the panel, the panel shrinks and
- * moves to stay usable, and returns to its size when the area grows again. A finished move or resize, an arrow-key
- * resize, and a reset update the remembered rectangle.
+ * The panel's place in the canvas area and the gestures that change it.
  * @param area - the canvas area.
  * @returns the rectangle on show and the gesture handlers.
  */

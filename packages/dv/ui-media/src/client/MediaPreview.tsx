@@ -1,11 +1,10 @@
 /**
  * The asset preview in DSH's `shell.overlay` list: the asset at purpose 'player', its name and facts, the
- * `dv.media.preview.action` entries and 关闭. The facts read the asset's stored dimensions, else the size of the loaded
- * media. The media box has the stored dimensions, else those of the loaded media, and the media view fills it. It grows
- * out of the element that opened it and shrinks back into it (`@dv/ui-kit/zoom.ts`); Escape, a click
- * outside the dialog and 关闭 close it. 关闭 has the focus while the preview is open, and the opener gets it back when
- * the preview closes. An asset of known dimensions has its media box sized before the media loads, so the dialog has
- * its final box when it grows out of the opener.
+ * `dv.media.preview.action` entries and 关闭. The facts and the media box use the asset's stored dimensions, else those
+ * of the loaded media; an asset of known dimensions has its box sized before the media loads, so the dialog has its
+ * final box when it grows out of the element that opened it (`@dv/ui-kit/zoom.ts`). Escape, a click outside the
+ * dialog and 关闭 close it. 关闭 has the focus while the preview is open, and the opener gets it back when the preview
+ * closes.
  */
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -33,19 +32,11 @@ export interface PreviewInjected {
 /** The preview entry's composed props. */
 export type MediaPreviewProps = PropsRenderSlots<'dv.media.preview.action'> & PropsRenderFactories & InjectFace<PreviewInjected>
 
-/** A pixel size. */
 interface Size {
   width: number
   height: number
 }
 
-/**
- * The facts line of an asset: its dimensions, its duration and its size.
- * @param asset - the asset.
- * @param loaded - the size of the loaded media, which stands in for unknown stored dimensions; null before it loads.
- * @param pick - picks the text of the interface language.
- * @returns the facts.
- */
 function factsOf(asset: Asset, loaded: Size | null, pick: (zh: string, en: string) => string): string[] {
   const width = asset.width ?? loaded?.width ?? null
   const height = asset.height ?? loaded?.height ?? null
@@ -56,10 +47,6 @@ function factsOf(asset: Asset, loaded: Size | null, pick: (zh: string, en: strin
   ].filter((fact): fact is string => fact !== null)
 }
 
-/**
- * Focus 关闭 when a preview opens, so the keyboard starts inside the dialog.
- * @param button - the button, or null when it leaves the page.
- */
 function focusOnMount(button: HTMLButtonElement | null): void {
   button?.focus()
 }
@@ -73,7 +60,6 @@ export function MediaPreview({ usePreview, openerOf, close, renderSlot, renderFa
   const request = usePreview(value => value)
   const pick = useText()
   const zoom = useZoomPresence(request, () => openerOf())
-  // The size of the loaded media, by the request it belongs to.
   const [loaded, setLoaded] = useState<{ serial: number; size: Size } | null>(null)
   const open = request !== null
   useEffect(() => {
@@ -87,7 +73,6 @@ export function MediaPreview({ usePreview, openerOf, close, renderSlot, renderFa
     window.addEventListener('keydown', onKey, true)
     return () => {
       window.removeEventListener('keydown', onKey, true)
-      // The keyboard user goes on where the preview was opened, while that element is still on the page.
       const opener = openerOf()
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
     }
@@ -95,9 +80,6 @@ export function MediaPreview({ usePreview, openerOf, close, renderSlot, renderFa
   if (zoom.shown === null) return null
   const { projectId, asset, serial } = zoom.shown
   const size = loaded?.serial === serial ? loaded.size : null
-  // The bounds match `.media` inside `.dialog`: 80vw wide with 16 px padding, media at most 70vh tall. The box has the
-  // stored dimensions, else the loaded ones, so the view fills a box of the media's own shape; a file card and an
-  // audio player keep their own height.
   const known = asset.width !== null && asset.height !== null && asset.height > 0 ? { width: asset.width, height: asset.height } : size
   const sized = known === null ? undefined : mediaBox(known.width, known.height, '80vw - 32px', '70vh')
   return (

@@ -1229,7 +1229,6 @@ describe('the editor panel', () => {
     expect(window.localStorage.getItem(EDITOR_RECT_KEY)).toBeNull()
     fireEvent.keyDown(view.getByRole('button', { name: zh['editor.resize'] }), { key: 'Enter' })
     expect(boxOf(editor)).toEqual([240, 80, 720, 640])
-    // A drag straight down moves the panel down only.
     fireEvent.pointerDown(title, { button: 0, clientX: 300, clientY: 100, pointerId: 2 })
     fireEvent.pointerMove(title, { clientX: 300, clientY: 140, pointerId: 2 })
     fireEvent.pointerUp(title, { clientX: 300, clientY: 140, pointerId: 2 })

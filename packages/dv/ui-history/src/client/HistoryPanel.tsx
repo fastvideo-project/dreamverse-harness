@@ -556,8 +556,8 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
 }
 
 /**
- * A row's one thumbnail: its asset drawn through `dv.media` at 'thumb', or an empty square that keeps the rows aligned.
- * Media that fails to load falls back to the empty square instead of the browser's broken-media icon.
+ * A row's one thumbnail: its asset drawn through `dv.media` at 'thumb', or an empty square that keeps the rows aligned
+ * when the row has no asset or its media fails to load.
  * @param props - the thumbnail's asset, or undefined, its edge in pixels, and the Factory renderer.
  * @returns the thumbnail.
  */

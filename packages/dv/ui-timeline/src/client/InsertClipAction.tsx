@@ -22,9 +22,8 @@ export interface InsertClipInjected {
 export type InsertClipActionProps = PropsRuntime<'dv.media.preview.action'> & InjectFace<InsertClipInjected> & PropsLocale<'dvTimeline'>
 
 /**
- * The button.
- * @param props - the asset and its project, the preview's button class, the close callback, the open project, the
- *   insert gesture, and the copy.
+ * The 插入片段 button of the asset preview.
+ * @param props - the previewed asset, the open project, the insert gesture, and the copy.
  * @returns the button, or nothing for an asset that is not a video or not of the open project.
  */
 export function InsertClipAction(props: InsertClipActionProps): ReactNode {

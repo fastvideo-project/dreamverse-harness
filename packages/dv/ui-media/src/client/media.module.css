@@ -1,4 +1,3 @@
-/* The file card: an asset whose media type has no registered view. */
 .file {
   box-sizing: border-box;
   width: 100%;
@@ -48,7 +47,6 @@
   justify-content: center;
 }
 
-/* A layer of its own, so it fades with the preview while the dialog zooms. */
 .backdrop {
   position: absolute;
   inset: 0;
@@ -97,7 +95,6 @@
   line-height: 16px;
 }
 
-/* A secondary 32 px button. */
 .button {
   height: 32px;
   padding: 0 12px;

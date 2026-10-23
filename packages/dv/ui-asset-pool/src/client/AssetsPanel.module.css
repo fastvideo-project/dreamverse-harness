@@ -70,7 +70,6 @@
   gap: 8px;
 }
 
-/* One thumbnail cell, which centers the box of its media. */
 .thumb {
   position: relative;
   display: flex;

@@ -1,10 +1,7 @@
 // @vitest-environment jsdom
 /**
- * The DreamVerse center in place of DSH's `main.conversation`, mounted in a slot test runtime with stand-ins for what
- * it uses: recording shell actions, a Conversation source, a `conversation.content` composer that shows its phase and
- * the chat view the center hands it, `dv.center.view` and `dv.explore` entries, and a scripted `/api/dv` server. The
- * real `@dv/ui-media` plugin and the real asset pool plugin, whose image and video views draw the covers, mount beside
- * them.
+ * The DreamVerse center in place of DSH's `main.conversation`, mounted in a slot test runtime. The real `@dv/ui-media`
+ * and asset pool plugins mount beside it because their image and video views draw the project covers.
  */
 import { act, fireEvent, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'

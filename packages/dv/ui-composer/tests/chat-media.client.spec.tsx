@@ -201,7 +201,6 @@ describe('followChatAssets', () => {
   })
 })
 
-/** The image, video and audio views of `@dv/ui-asset-pool`, registered once `dv.media` declares its views. */
 const viewsPlugin = {
   inject: ['slots'],
   apply(ctx: SlotTestRuntime['ctx']) {

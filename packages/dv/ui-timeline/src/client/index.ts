@@ -1,10 +1,9 @@
 /**
- * Browser half: register `dv-timeline` as a right-Sidebar tab type, its dictionaries, and its body; while `dvCenter` is
- * present, register the timeline editor (`TimelineView`) as the 时间线 view of the workspace center (`dv.center.view`)
- * and 插入片段 in the asset preview (`dv.media.preview.action`); while `dvCanvas` is present, register the records that
- * the timelines use; while `dvHistory` is present, register the History row of timeline records; while `dvMentions` is
- * present, register the clip mention kind of the composer's `@` menu. The tab body keeps its own timeline selection of
- * each project; the center view keeps its selection in the open project's center fields.
+ * Browser half: registers `dv-timeline` as a right-Sidebar tab type with its dictionaries and body, and, while each
+ * service is present, its contributions to `dvCenter` (the 时间线 view `TimelineView` and the 插入片段 preview action),
+ * `dvCanvas` (the records that timelines use), `dvHistory` (the row of timeline records), and `dvMentions` (the clip
+ * mention kind). The tab body keeps its own timeline selection of each project; the center view keeps its selection in
+ * the open project's center fields.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -52,7 +51,6 @@ export function apply(ctx: ClientContext): void {
   const client = new DvClient()
   const selection = createTimelineSelection()
   const injected: TimelineInjected = { client, hooks: { selection }, select: selection.select }
-  // The open project of the DreamVerse shell, for the inject `hooks` of 插入片段.
   const openProject: HostObservable<string | null> = {
     getSnapshot: getCurrentProject,
     subscribe(listener) {

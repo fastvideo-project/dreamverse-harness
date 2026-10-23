@@ -15,7 +15,6 @@ import type { Asset, ProjectAsset } from '@dv/ui-kit/types.ts'
 import type {} from '@dv/ui-media/contract'
 import type { ChatMedia } from './chat-media.ts'
 
-/** A three-column grid of cards. */
 const grid: CSSProperties = {
   display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, margin: '8px 0',
 }
@@ -36,20 +35,16 @@ const imageButton: CSSProperties = {
   verticalAlign: 'top', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-media-bg)', boxShadow: '0 0 0 1px var(--dv-line)',
 }
 
-/** Props of the chat cards. */
 interface CardProps {
   /** Open the asset preview of an asset of a project, growing out of `opener`. */
   preview: (projectId: string, asset: Asset, opener: Element | null) => void
   renderFactorySlot: RenderFactorySlot
 }
 
-/** Props of one card: its asset's project and the shared card props. */
 type OneCardProps = CardProps & { project: string }
 
 /**
  * One 16:9 card: the asset's still and the caption under it; a click opens the asset preview.
- * @param props - the asset, the caption, whether the card fills a grid cell, the preview, and the Factory renderer.
- * @returns the card.
  */
 function AssetCard(props: OneCardProps & { asset: ProjectAsset; label: string; inGrid: boolean }): ReactNode {
   const { project, asset, label, inGrid, preview, renderFactorySlot } = props
@@ -67,10 +62,7 @@ function AssetCard(props: OneCardProps & { asset: ProjectAsset; label: string; i
 }
 
 /**
- * One thumbnail at the asset's own width and aspect ratio when the asset has them, else 240 px wide at 16:9, and at
- * most 240 px wide; a click opens the asset preview.
- * @param props - the asset, its alt text, the preview, and the Factory renderer.
- * @returns the thumbnail.
+ * One thumbnail, at most 240 px wide, that opens the asset preview on click.
  */
 function AssetThumb({ project, asset, alt, preview, renderFactorySlot }: OneCardProps & { asset: ProjectAsset; alt: string }): ReactNode {
   const t = useText()

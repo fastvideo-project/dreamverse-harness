@@ -19,7 +19,6 @@ import type { FrameProps } from './runtime.client.tsx'
 /** A retained chat session. */
 type SessionReference = ReturnType<SlotTestRuntime['sessions']['retain']>
 
-/** Chat sessions that a tab body renders in, released once the rendered tree is gone. */
 const sessions: Disposable[] = []
 
 afterEach(async () => {
@@ -35,15 +34,8 @@ const CLIP: Asset = { ...asset('clip.mp4', 'video/mp4', null, 2.5), name: '片�
 const THEME: Asset = { ...asset('theme.wav', 'audio/wav', null, 30), name: '主题曲' }
 const PURPOSES: readonly MediaPurpose[] = ['thumb', 'card', 'player', 'loop']
 
-/** The sizes that the drawn media reported, as `<asset>:<purpose> <width>×<height>`. */
 const reported: string[] = []
 
-/**
- * Draw each asset through the `dv.media` Factory at each purpose, in a box with the test ID `<asset>:<purpose>`; the
- * looping form gets the poster `poster.png`, and every form records the size it reports.
- * @param assets - the assets to draw.
- * @returns the frame drawing.
- */
 const occurrences = (assets: readonly Asset[]) => ({ renderFactorySlot }: FrameProps) => assets.flatMap(each => PURPOSES.map(purpose => (
   <div key={`${each.id}:${purpose}`} data-testid={`${each.id}:${purpose}`}>
     {renderFactorySlot('dv.media', {
@@ -53,7 +45,6 @@ const occurrences = (assets: readonly Asset[]) => ({ renderFactorySlot }: FrameP
   </div>
 )))
 
-/** The tab body of the asset pool in the session behind `reference`, as the right Sidebar renders it. */
 const tabBody = (reference: { current: SessionReference | undefined }) => ({ renderSlot, SessionProvider }: FrameProps) => (
   reference.current === undefined
     ? null
@@ -64,18 +55,12 @@ const tabBody = (reference: { current: SessionReference | undefined }) => ({ ren
     )
 )
 
-/**
- * Open a chat session in the runtime and retain it for the tab body until the test ends.
- * @param runtime - the runtime.
- * @param reference - where the tab body reads the session from.
- */
 async function openSession(runtime: SlotTestRuntime, reference: { current: SessionReference | undefined }): Promise<void> {
   const retained = runtime.sessions.retain(await runtime.sessions.add({ id: 's5' }))
   sessions.push(retained)
   reference.current = retained
 }
 
-/** Decode every audio asset as one second of samples at 0.5, read through a stubbed fetch and `OfflineAudioContext`. */
 function stubDecoder(): void {
   class StubAudioContext {
     decodeAudioData(): Promise<unknown> {
@@ -100,7 +85,6 @@ describe('the media views', () => {
       ['/dv/assets/poster.png', '', 'cover'], ['/dv/assets/poster.png', '', 'cover'], ['/dv/assets/poster.png', '海报', 'contain'],
       ['/dv/assets/poster.png', '海报', 'contain'],
     ])
-    // A still loads lazily and decodes off the main thread.
     const still = view.getByTestId('poster.png:thumb').querySelector('img')
     expect([still?.getAttribute('loading'), still?.getAttribute('decoding')]).toEqual(['lazy', 'async'])
     const player = view.getByTestId('poster.png:player').querySelector('img')
@@ -122,13 +106,11 @@ describe('the media views', () => {
       ['/dv/assets/clip.mp4#t=0.1', true, false, false, null], ['/dv/assets/clip.mp4#t=0.1', true, false, false, null],
       ['/dv/assets/clip.mp4', false, true, false, null], ['/dv/assets/clip.mp4', true, true, true, '/dv/assets/poster.png'],
     ])
-    // A still plays inline on a phone and is hidden from assistive technology, as the image of an image still is.
     const still = view.getByTestId('clip.mp4:thumb').querySelector('video')
     expect([still?.hasAttribute('playsinline'), still?.getAttribute('aria-hidden'), view.getByTestId('clip.mp4:thumb').querySelector('svg')])
       .toEqual([true, 'true', null])
     const looping = view.getByTestId('clip.mp4:loop').querySelector('video')
     if (looping === null) throw new Error('no looping video')
-    // A playable form fills the box that the surface sets and contains the video in it, with no height limit of its own.
     expect([looping.style.width, looping.style.height, looping.style.maxHeight, looping.style.objectFit]).toEqual(['100%', '100%', '', 'contain'])
     Object.defineProperties(looping, { videoWidth: { value: 1280 }, videoHeight: { value: 720 } })
     fireEvent.loadedMetadata(looping)
@@ -141,7 +123,6 @@ describe('the media views', () => {
     const { runtime } = await mountAssetPool(occurrences([THEME]))
     const view = runtime.renderRoot()
     const thumb = view.getByTestId('theme.wav:thumb')
-    // The note is decorative, as the image of an image thumbnail is: the surface names the thumbnail.
     expect([thumb.textContent, thumb.querySelector('[aria-label]'), thumb.querySelector('[aria-hidden="true"]')?.textContent, thumb.querySelector('audio')]).toEqual(['♪', null, '♪', null])
     const card = view.getByTestId('theme.wav:card')
     await waitFor(() => { expect(within(card).getByTestId('dv-audio-waveform').querySelector('path')?.getAttribute('d')).toMatch(/^M0 /) })
@@ -178,7 +159,7 @@ describe('the audio card', () => {
     stubDecoder()
     const { runtime } = await mountAssetPool(occurrences([{ ...THEME, id: 'silent.wav', duration_sec: 0 }, { ...THEME, id: 'after.wav' }]))
     const view = runtime.renderRoot()
-    // The decodes run one at a time in order, so the asset after it shows its waveform once its own decode is done.
+    // Decodes run one at a time in order, so the waveform of after.wav shows only after the decode of silent.wav ends.
     await waitFor(() => { expect(within(view.getByTestId('after.wav:card')).getByTestId('dv-audio-waveform')).toBeTruthy() })
     expect(view.getByTestId('silent.wav:card').querySelector('svg')).toBeNull()
     vi.unstubAllGlobals()
@@ -222,7 +203,6 @@ describe('the audio card', () => {
     fireEvent.play(audio)
     fireEvent.ended(audio)
     expect(shown()).toEqual(['Play', 'false', '▶'])
-    // A source that fails to load after the play started ends the play state.
     fireEvent.play(audio)
     fireEvent.error(audio)
     expect(shown()).toEqual(['Play', 'false', '▶'])
@@ -254,7 +234,6 @@ describe('the media types', () => {
       { fields: ['icon', 'id'], icon: IconMicrophoneOutlineRegular, poster: null },
     ])
     expect(runtime.slots.entries('dv.media.view').map(entry => entry.options.key)).toEqual(runtime.ctx.dvMedia.types.list().map(type => type.id))
-    // A video that no record with an image output made, such as an imported one, has no poster.
     expect(runtime.ctx.dvMedia.types.list().find(type => type.id === 'video')?.poster?.(CLIP, state)).toBeNull()
   })
 })

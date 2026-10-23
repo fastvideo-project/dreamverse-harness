@@ -25,23 +25,14 @@ afterEach(() => {
   document.documentElement.lang = ''
 })
 
-/**
- * @param id - the asset ID, which doubles as its name.
- * @param mime - the MIME type.
- * @param facts - the dimensions, duration and size that differ from a 3-byte asset without them.
- * @returns the asset.
- */
 function asset(id: string, mime: string, facts: Partial<Pick<Asset, 'width' | 'height' | 'duration_sec' | 'size_bytes'>> = {}): Asset {
   return { id, mime, name: id, size_bytes: 3, created_by: null, created_at: '2026-10-05T00:00:00Z', width: null, height: null, duration_sec: null, ...facts }
 }
 
-/** A test image view that shows which asset and purpose it drew. */
 function TestImage({ asset: shown, purpose, poster, onSize }: PropsRuntime<'dv.media.view'>): ReactNode {
-  // A test image that loads at 640 × 360 reports that size to a surface that asks for it.
   return <img alt={shown.name} data-purpose={purpose} data-poster={poster} onLoad={() => { onSize?.({ width: 640, height: 360 }) }} />
 }
 
-/** The image view of a media plugin, registered once `dv.media` declares its views. */
 const imageViewPlugin = {
   inject: ['slots'],
   apply(ctx: Context) {
@@ -49,15 +40,12 @@ const imageViewPlugin = {
   },
 }
 
-/** The assets that the preview action inserted. */
 const inserted: string[] = []
 
-/** A preview action that records its asset with the asset's project and closes the preview. */
 function InsertAction(props: PropsRuntime<'dv.media.preview.action'>): ReactNode {
   return <button type="button" onClick={() => { inserted.push(`${props.projectId}/${props.asset.id}`); props.close() }}>{`插入 ${props.asset.name}`}</button>
 }
 
-/** A plugin that adds 插入 beside 关闭 in the preview. */
 const insertActionPlugin = {
   inject: ['slots'],
   apply(ctx: Context) {
@@ -94,11 +82,6 @@ async function mount(occurrences: readonly MediaOwner[]) {
   return { runtime, media, view }
 }
 
-/**
- * Open the preview through `dvMedia`, as a surface does on a click.
- * @param runtime - the runtime whose `dvMedia` opens it.
- * @param shown - the asset.
- */
 function preview(runtime: SlotTestRuntime, shown: Asset): void {
   act(() => { runtime.ctx.dvMedia.preview('p1', shown, null) })
 }
@@ -169,7 +152,6 @@ describe('the asset preview', () => {
     const dialog = view.getByRole('dialog', { name: 'wide.png' })
     expect(within(dialog).getByRole('img', { name: 'wide.png' }).getAttribute('data-purpose')).toBe('player')
     expect(within(dialog).getByText('1920×1080 · 4.0 秒 · 2.5 MB')).toBeTruthy()
-    // The media box has the asset's aspect ratio before the media loads, so the dialog opens at its final size.
     const ratios = (shown: HTMLElement): string[] => [...shown.querySelectorAll('div')].map(div => div.style.aspectRatio).filter(ratio => ratio !== '')
     expect(ratios(dialog)).toEqual(['1920 / 1080'])
     expect(within(dialog).getByRole('button', { name: '关闭' })).toBeTruthy()
@@ -202,7 +184,6 @@ describe('the asset preview', () => {
     expect(document.activeElement).toBe(within(view.getByRole('dialog')).getByRole('button', { name: '关闭' }))
     fireEvent.click(within(view.getByRole('dialog')).getByRole('button', { name: '关闭' }))
     expect(document.activeElement).toBe(opener)
-    // An opener that left the page while the preview was open gets no focus.
     act(() => { runtime.ctx.dvMedia.preview('p1', asset('wide.png', 'image/png'), opener) })
     opener.remove()
     fireEvent.keyDown(window, { key: 'Escape' })

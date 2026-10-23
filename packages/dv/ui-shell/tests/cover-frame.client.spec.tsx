@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 /**
- * The project cover frame under the real slot runtime, the real `@dv/ui-media` plugin and the real asset pool plugin:
- * the cover's asset drawn through `dv.media` by the view of the media type that the summary's MIME type names, at the
- * frame's purpose, or an empty frame.
+ * The project cover frame under the real slot runtime, with the real `@dv/ui-media` and asset pool plugins that draw
+ * its cover through `dv.media`.
  */
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -23,11 +22,6 @@ afterEach(async () => {
   for (const runtime of runtimes.splice(0)) await runtime.dispose()
 })
 
-/**
- * A media view of the type `model`, as a plugin registers one: it prints the asset that it is handed.
- * @param props - the asset.
- * @returns the asset as JSON.
- */
 function ModelView({ asset }: PropsRuntime<'dv.media.view'>): ReactNode {
   return <span data-testid="model-view">{JSON.stringify(asset)}</span>
 }
@@ -70,7 +64,6 @@ describe('CoverFrame', () => {
       const flags = element instanceof HTMLVideoElement ? [element.muted && 'muted', element.controls && 'controls'] : []
       return [element.tagName.toLowerCase(), element.getAttribute('src'), ...flags.filter(flag => flag !== false)].join(' ')
     }))
-    // A card or thumbnail shows a still: the video's first frame, muted and without controls, or the image.
     expect(media).toEqual([
       ['video /dv/assets/shot1.mp4#t=0.1 muted'],
       ['img /dv/assets/poster.png'],

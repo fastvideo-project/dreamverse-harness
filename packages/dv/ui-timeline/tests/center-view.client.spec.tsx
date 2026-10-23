@@ -1,10 +1,8 @@
 // @vitest-environment jsdom
 /**
  * The timeline as a view of the workspace center and 插入片段 in the asset preview, under the real slot runtime with the
- * real `@dv/ui-media` plugin: the root frame stands in for the shell, showing the view that `dvCenter.show` names with
- * the request it carries, the center fields that the view notes, and the view's `note`. The center view edits the
- * project the center passes and notes a picked timeline as the `timeline` center field, 插入片段 shows for a video while
- * a project is open and has the view insert that video, and both registrations leave with the plugin.
+ * real `@dv/ui-media` plugin. The root frame stands in for the shell: it shows the view that `dvCenter.show` names with
+ * the request it carries, and keeps the center fields that the view notes.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
@@ -33,14 +31,7 @@ afterEach(() => {
   document.documentElement.lang = ''
 })
 
-/**
- * Mount ui-media and ui-timeline under a frame that renders the center view that a recording `dvCenter` shows, with
- * project p1 and chat session s5, and the shell's overlay list.
- * @param routes - the answers of the scripted `/api/dv` routes; the shared fixture by default.
- * @returns the runtime, the timeline plugin's handle, the rendered page, the targets shown, the stand-in center, the
- *   written operations, a `show` that moves the stand-in center, and the `preview` and `insert` gestures of the asset
- *   preview.
- */
+/** Mount ui-media and ui-timeline under a frame that draws what a recording `dvCenter` shows, for p1 and session s5. */
 async function mount(routes: ScriptedRoutes = {}) {
   const { fetch, writes } = scriptedFetch(routes)
   vi.stubGlobal('fetch', fetch)
@@ -76,12 +67,10 @@ async function mount(routes: ScriptedRoutes = {}) {
   const view = runtime.renderRoot()
   const operations = (): unknown[] => writes.filter(write => write.path === '/api/dv/operation').map(write => write.body)
   const show = (target: CenterTarget): void => { act(() => { runtime.ctx.dvCenter.show(target) }) }
-  /** Open the preview of an asset of a project, p1 by default, as a tile of the asset pool does, and return its 插入片段 button, or null. */
   const preview = (item: Asset, projectId = 'p1'): HTMLElement | null => {
     act(() => { runtime.ctx.dvMedia.preview(projectId, item, null) })
     return within(view.getByRole('dialog')).queryByRole('button', { name: /插入片段|Insert clip/ })
   }
-  /** Click 插入片段 in the preview of an asset. */
   const insert = (item: Asset): void => {
     const button = preview(item)
     if (button === null) throw new Error(`no 插入片段 for ${item.id}`)
@@ -93,7 +82,6 @@ async function mount(routes: ScriptedRoutes = {}) {
 const CLIP = asset('shot1.mp4', 'video/mp4', 'g1', 4)
 const STILL = asset('shot1-last.png', 'image/png', 'g1')
 
-/** The shared fixture with a second timeline holding one imported clip. */
 function twoTimelines(): FixtureState {
   const state = fixtureState()
   state.assets.push(asset('imported.mp4', 'video/mp4', null, 3))

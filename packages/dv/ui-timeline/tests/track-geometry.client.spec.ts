@@ -9,7 +9,6 @@ describe('clampTrackHeight', () => {
     expect(clampTrackHeight(300, 800, 220)).toBe(300)
     expect(clampTrackHeight(700, 800, 220)).toBe(640)
     expect(clampTrackHeight(100, 800, 220)).toBe(220)
-    // A short editor gives the track rows their height and the preview the rest.
     expect(clampTrackHeight(300, 300, 220)).toBe(220)
   })
 })

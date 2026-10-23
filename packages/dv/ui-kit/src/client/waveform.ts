@@ -1,6 +1,6 @@
 /**
- * Audio waveforms, as the timeline's 原声 track and the audio media view draw them: the browser fetches an asset's
- * media file, decodes its audio with `OfflineAudioContext.decodeAudioData`, and reduces the samples to a peak envelope (the largest
+ * Audio waveforms for the timeline's 原声 track and the audio media view: the browser fetches an asset's media file,
+ * decodes its audio with `OfflineAudioContext.decodeAudioData`, and reduces the samples to a peak envelope (the largest
  * absolute sample of each short window). The envelope is cached per asset in memory, so a re-render or a zoom change
  * only regroups the cached peaks into bars for the clip's played range. Decodes run one at a time, each after the
  * browser reports idle time, so they do not compete with the preview for the main thread. A media file that cannot be

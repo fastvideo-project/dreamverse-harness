@@ -293,7 +293,6 @@
   margin-top: 8px;
 }
 
-/* The box of a selected record's output; `playerBox` gives its size, so the media view contains the output inside it. */
 .preview {
   display: flex;
   overflow: hidden;

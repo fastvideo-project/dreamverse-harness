@@ -14,7 +14,6 @@ import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { createRegistry, type MentionKind } from '@dv/ui-kit/registries.ts'
 import { MEDIA_TYPES as MEDIA_ENTRIES } from '../../ui-asset-pool/src/client/media.tsx'
 
-/** The media types that the asset pool registers. */
 const MEDIA_TYPES = MEDIA_ENTRIES.map(entry => entry.type)
 import { asset, fixtureState, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply, inject } from '../src/client/index.ts'
@@ -51,15 +50,11 @@ describe('projectItems', () => {
     const [mark, umbrella, hat] = items.slice(0, 3)
     expect([umbrella?.label, umbrella?.description, hat?.description]).toEqual(['Umbrella', 'red', undefined])
     const icons = Object.fromEntries(items.map(item => [item.uri, iconOf(item)]))
-    // An image draws its poster, and a take's video the image output of its render; an imported video and an audio file
-    // draw the glyphs of their media types' icon names, and a file of a media type without a type draws the file glyph:
-    // three different glyphs.
     expect(icons['dv:asset/ref.png']).toMatch(new RegExp(`^<img src="${assetUrl('ref.png')}" alt=""`))
     expect(icons['dv:asset/shot1.mp4']).toMatch(new RegExp(`^<img src="${assetUrl('shot1-last.png')}" alt=""`))
     const glyphs = ['dv:asset/score.wav', 'dv:asset/export.mp4', 'dv:asset/brief.pdf'].map(uri => icons[uri] ?? '')
     expect(glyphs.map(markup => markup.startsWith('<svg'))).toEqual([true, true, true])
     expect(new Set(glyphs).size).toBe(3)
-    // A thumb is an asset ID, drawn as that asset's icon.
     expect(iconOf(umbrella ?? {})).toBe(icons['dv:asset/shot1.mp4'])
     expect(iconOf(mark ?? {})).toContain(`<img src="${assetUrl('ref.png')}"`)
     expect(iconOf(hat ?? {})).toBeNull()
@@ -120,7 +115,6 @@ describe('ui-composer apply', () => {
 })
 
 describe('projectMentionSource candidates and picks', () => {
-  /** A kind whose two items share the label Hat. */
   const hats: MentionKind = {
     id: 'test-hats', kind: 'test_hat', order: 1, section: () => 'Hats',
     items: () => [{ uri: 'dv:test_hat/h1', label: 'Hat' }, { uri: 'dv:test_hat/h2', label: 'Hat' }],

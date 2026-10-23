@@ -72,7 +72,6 @@ export function apply(ctx: ClientContext): void {
   // At apply's top level, never inside an effect: other plugins register into the registry from their own fibers.
   const mentions = { kinds: createRegistry<MentionKind>(kind => [kind.id]) }
   ctx.reflect.provide('dvMentions', mentions)
-  // The `@` menu icons read the media types of the optional `dvMedia` when the menu lists its candidates.
   const mediaTypes = (): readonly MediaType[] => ctx.get('dvMedia')?.types.list() ?? []
   ctx.effect(() => ctx.inputTriggers.registerSource(projectMentionSource(mentions, mediaTypes)), 'dv-composer: @ source')
   registerChatMedia(ctx)
@@ -128,7 +127,6 @@ export function apply(ctx: ClientContext): void {
 
   // Every labelled tool shows its creator-facing name in its chat row and in the running group title. The row sits at
   // priority 0.5: a plugin's own row at the default priority 0 wins over it, and it wins over the operation rows at 1.
-  // The keyed slot renders an entry only for the call whose tool name is the entry's key, so each row holds its label.
   for (const [name, label] of Object.entries(DV_TOOL_LABELS)) {
     const LabelRow = (props: ToolCallViewProps) => createElement(ToolLabelRow, {
       label, toolName: props.toolName, sessionId: props.sessionId, callId: props.callId, phase: props.phase, block: props.block,

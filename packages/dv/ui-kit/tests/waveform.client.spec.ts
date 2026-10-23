@@ -60,7 +60,6 @@ describe('clipPeaks', () => {
 describe('useAudioEnvelope', () => {
   /** A media file body that the stub decoder rejects, as `decodeAudioData` rejects a file without an audio track. */
   const NO_AUDIO = 'no audio'
-  /** A media file body that the stub decoder decodes into a buffer without samples. */
   const EMPTY_AUDIO = 'empty audio'
   /** One answer of the stub `fetch`: a network failure, or a status with a body. */
   type Answer = 'network' | { status: number; body?: string }

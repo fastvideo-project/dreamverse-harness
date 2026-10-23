@@ -28,7 +28,6 @@ afterEach(() => {
 /**
  * Mount the media plugin with the image, video and audio media types, and the composer, under a root frame that
  * renders the shell's overlay list, in the Chinese interface.
- * @returns the runtime, the composer's handle, the rendered page, the `@` sources, and the `dv:compose` details.
  */
 async function mountComposer() {
   document.documentElement.lang = 'zh-CN'
@@ -59,7 +58,6 @@ describe('让智能体使用', () => {
     const audio = asset('score.wav', 'audio/wav', null)
     act(() => { runtime.ctx.dvMedia.preview('p1', audio, null) })
     const dialog = within(view.getByRole('dialog', { name: 'score.wav' }))
-    // The button looks, hovers and focuses as 关闭 does.
     expect(dialog.getByRole('button', { name: '让智能体使用' }).className).toBe(dialog.getByRole('button', { name: '关闭' }).className)
     fireEvent.click(dialog.getByRole('button', { name: '让智能体使用' }))
     expect(composed).toEqual([{ text: '使用这个素材：', refs: [{ kind: 'asset', id: 'score.wav', label: 'score.wav', assetId: 'score.wav' }] }])
@@ -86,7 +84,6 @@ describe('the @ menu', () => {
     }
     const listed = await icons()
     expect(listed['ref.png']).toMatch(new RegExp(`^<img src="${assetUrl('ref.png')}"`))
-    // The audio file draws the glyph of its type's icon name, which differs from the file glyph of a PDF.
     expect([listed['score.wav']?.startsWith('<svg'), listed['brief.pdf']?.startsWith('<svg')]).toEqual([true, true])
     expect(listed['score.wav']).not.toBe(listed['brief.pdf'])
     stop()
@@ -108,7 +105,6 @@ describe('the @ menu', () => {
   })
 })
 
-/** A ＋ menu row as the composer registers it in `commandUi`. */
 interface MenuRow {
   readonly name: string
   label(): string
@@ -117,10 +113,8 @@ interface MenuRow {
   readonly ui: { run(session: { sessionId: string }): void }
 }
 
-/** The props of a tool row that the test passes. */
 type RowProps = { toolName: string; sessionId: string; callId: string; phase: 'start'; block: object }
 
-/** A stand-in for DSH's file-permission picker at the default priority. */
 const pickerPlugin = {
   inject: ['slots'],
   apply(ctx: SlotTestRuntime['ctx']) {
@@ -131,11 +125,8 @@ const pickerPlugin = {
 }
 
 /**
- * Mount the composer beside a retained session `s1` whose composer input records the calls it receives, a ＋ menu that
- * records its rows, an `@` trigger service that records the lists it opens, and a right panel that shows `s1`, under a
- * root frame that renders the session's composer controls, in the Chinese interface.
- * @returns the runtime, the composer's handle, the recorded calls, the menu rows, the opened lists and tabs, and the
- *   session's draft.
+ * Mount the composer beside a retained session `s1`, with recording fakes for its composer input, the ＋ menu, the `@`
+ * trigger service, and the right panel.
  */
 async function mountSessionComposer() {
   document.documentElement.lang = 'zh-CN'
@@ -195,7 +186,6 @@ describe('the ＋ menu 引用 row', () => {
     expect(row.available({ sessionId: 's1' })).toBe(true)
 
     const tick = () => new Promise(resolve => setTimeout(resolve, 0))
-    // Without a conversation service, or for a session without a scope, nothing opens.
     row.ui.run({ sessionId: 's1' })
     row.ui.run({ sessionId: 'gone' })
     await tick()

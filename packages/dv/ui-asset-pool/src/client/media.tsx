@@ -1,7 +1,7 @@
 /**
- * The media views of the media types that enter a project through `asset.import`: images, videos and audio. Each view
- * fills the box of the surface that renders the `dv.media` occurrence: a still at purpose 'thumb' and 'card' (the audio
- * card shows its waveform and a play button), a playable form at purpose 'player' and 'loop'.
+ * The media types that enter a project through `asset.import` (image, video and audio) and their `dv.media.view`
+ * entries. Each view fills the box of the surface that renders it: a still at purpose 'thumb' and 'card', a playable
+ * form at purpose 'player' and 'loop'.
  *
  * @module @dv/ui-asset-pool/media
  */
@@ -42,7 +42,10 @@ export interface MediaTypeEntry {
   View: (props: PropsRuntime<'dv.media.view'>) => ReactNode
 }
 
-/** The three media types; the `@` menu shows an image itself and a video by the image output of its producer. */
+/**
+ * The image, video and audio media types. An image is its own poster; a video's poster is an image output of the record
+ * that made it, and a video without one, such as an imported video, has no poster.
+ */
 export const MEDIA_TYPES: readonly MediaTypeEntry[] = [
   { type: { id: 'image', icon: IconPaperclipOutlineRegular, poster: asset => asset.id }, View: ImageView },
   { type: { id: 'video', icon: IconPlayOutlineRegular, poster: videoStill }, View: VideoView },
@@ -67,7 +70,6 @@ export function ImageView({ asset, purpose, onSize, unsupported }: PropsRuntime<
   )
 }
 
-/** @returns the filled play triangle of the badge. */
 function PlayIcon(): ReactNode {
   return (
     <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -101,7 +103,6 @@ export function VideoView({ asset, purpose, poster, playBadge: badge, onSize, un
   )
 }
 
-/** Bars of the card waveform, and the width of one bar and its gap, in viewBox units. */
 const BARS = 48
 const BAR = 3
 const GAP = 1
@@ -131,8 +132,6 @@ function AudioCard({ asset }: { asset: PropsRuntime<'dv.media.view'>['asset'] })
   const envelope = useAudioEnvelope(asset.id)
   const player = useRef<HTMLAudioElement | null>(null)
   const [playing, setPlaying] = useState(false)
-  // Bars are mirrored around the middle and at least 1 unit tall, so a silent stretch still shows a center line. An asset
-  // of no duration has no bars.
   const peaks = envelope === null ? [] : clipPeaks(envelope, 0, asset.duration_sec ?? envelope.peaks.length / envelope.rate, BARS)
   const path = peaks.length === 0 ? null : peaks
     .map((peak, bar) => {

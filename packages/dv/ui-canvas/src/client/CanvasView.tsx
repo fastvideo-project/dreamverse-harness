@@ -367,13 +367,11 @@ export function CanvasView(
   // The canvas can change size after the first fit, for example when the right panel opens; keep the automatic fit.
   const fitRef = useRef(fit)
   fitRef.current = fit
-  // The canvas area that the editor panels sit in, measured as the canvas element's client size.
   const [area, setArea] = useState<EditorArea>({ width: 0, height: 0 })
   const detachCanvas = useRef<(() => void) | null>(null)
   /**
-   * Attach the canvas element's native listeners when React mounts it, and detach them when React unmounts it: a size
-   * observer that measures the editor area and keeps an automatic fit, and a wheel listener that zooms around the cursor,
-   * registered natively because React's wheel listener is passive.
+   * Attach the canvas element's size observer and wheel listener on mount and detach them on unmount; the wheel
+   * listener is native because React registers `onWheel` as passive, so `preventDefault` there has no effect.
    */
   const attachCanvas = useCallback((element: HTMLDivElement | null) => {
     container.current = element

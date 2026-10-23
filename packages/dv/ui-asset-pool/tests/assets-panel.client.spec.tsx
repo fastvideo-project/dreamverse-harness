@@ -12,7 +12,6 @@ import { AssetsPanel } from '../src/client/AssetsPanel.tsx'
 
 afterEach(() => { cleanup() })
 
-/** One `POST /api/dv/assets/import` that the server holds until the test answers it. */
 interface HeldImport {
   query: string
   answer(status: number, body: unknown): void
@@ -35,17 +34,11 @@ function importServer(): { fetch: typeof fetch; imports: HeldImport[] } {
   return { fetch: serve, imports }
 }
 
-/**
- * Render the panel of project p1 beside chat session s5 over a fetch, and wait for its import drop zone.
- * @param fetch - the page's fetch.
- * @returns the view and the drop zone.
- */
 function renderPanel(fetch: typeof globalThis.fetch) {
   const view = render(<AssetsPanel projectId="p1" session="s5" client={new DvClient(fetch)} preview={() => {}} renderFactorySlot={() => null} />)
   return { view, zone: view.getByRole('button', { name: /^Drop images or videos here/ }) }
 }
 
-/** @returns a file of the given name and MIME type. */
 const file = (name: string, type: string): File => new File(['x'], name, { type })
 
 describe('AssetsPanel', () => {
@@ -150,7 +143,6 @@ describe('the import drop zone', () => {
     const { view, zone } = renderPanel(server.fetch)
     const chooser = view.container.querySelector('input[type="file"]')
     if (!(chooser instanceof HTMLInputElement)) throw new Error('no file chooser')
-    // The chooser's own click bubbles to the zone, whose nested click() the DOM ignores while the first is in progress.
     const opened = vi.fn()
     chooser.addEventListener('click', opened)
     fireEvent.click(zone)

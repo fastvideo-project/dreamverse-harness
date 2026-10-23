@@ -5,8 +5,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** Timeline editor copy: timeline tabs, viewer, toolbar, tracks, the project bar, the canvas badge of a trimmed clip, and
-     *  the 插入片段 action of the asset preview. */
+    /** Copy of the timeline editor, its project bar, the canvas trim badge, and the 插入片段 preview action. */
     dvTimeline: DvTimelineKey
   }
 }

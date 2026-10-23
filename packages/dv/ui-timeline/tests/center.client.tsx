@@ -1,8 +1,7 @@
 /**
- * The timeline plugin booted over recording services, for specs that render its components directly: the values that
- * the plugin injects into the center view and the tab body, the inject `hooks` bound as the renderer binds them, and a
- * stand-in for the shell's center of project p1, which keeps the center fields that the view notes and the request that
- * a test hands it.
+ * The timeline plugin booted over recording services, for specs that render its components directly with the values
+ * that the plugin injects. A stand-in for the shell's center of project p1 keeps the center fields that the view notes
+ * and the request that a test hands it.
  */
 import { useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'

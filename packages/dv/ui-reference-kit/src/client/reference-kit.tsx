@@ -181,8 +181,8 @@ const label: CSSProperties = { display: 'block', fontSize: 12, lineHeight: '16px
 const referenceImage: CSSProperties = { display: 'flex', height: 220, borderRadius: 'var(--dv-radius-md)', overflow: 'hidden', background: 'var(--dv-surface-3)' }
 
 /**
- * The box of one reference: 220 px tall at the asset's aspect ratio, so the card view shows the whole image; square for
- * an asset of unknown dimensions or one that the state does not hold.
+ * The box of one reference: 220 px tall at the asset's aspect ratio, or square for an asset of unknown dimensions or
+ * one that the state does not hold.
  * @param asset - the reference's asset, or undefined.
  * @returns the box style.
  */

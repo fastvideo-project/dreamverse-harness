@@ -1983,7 +1983,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       },
     ],
     ownerProps: [
-      '/** Owner props of one action of the asset preview. */\nexport interface PreviewActionOwner {\n  /** The project of the previewed asset. */\n  projectId: string\n  asset: Asset\n  /** The class of the preview\'s buttons, which an action\'s button takes so that it looks, hovers and focuses as 关闭 does. */\n  buttonClass: string | undefined\n  /** Close the preview. */\n  close(): void\n}',
+      '/** Owner props of one action of the asset preview. */\nexport interface PreviewActionOwner {\n  /** The project of the previewed asset. */\n  projectId: string\n  asset: Asset\n  /** The class of the preview\'s buttons, which an action\'s button takes so that it looks, hovers and focuses as 关闭 does. */\n  buttonClass: string | undefined\n  close(): void\n}',
     ],
     ownerPropsReferences: [],
     standardProps: [
@@ -2005,7 +2005,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.media.preview.action\', () => ctx.slots.register(\n      { name: \'dv.media.preview.action\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/dv/ui-media/src/client/contract/index.ts:93',
+    source: 'packages/dv/ui-media/src/client/contract/index.ts:92',
   },
   {
     key: 'dv.media.view',
@@ -2045,7 +2045,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.media.view\', () => ctx.slots.register(\n      { name: \'dv.media.view\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/dv/ui-media/src/client/contract/index.ts:91',
+    source: 'packages/dv/ui-media/src/client/contract/index.ts:90',
   },
   {
     key: 'main',

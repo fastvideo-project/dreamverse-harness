@@ -30,7 +30,6 @@ export function referenceText(label: string, uri: string): string {
   return `@[${label.replaceAll(']', '')}](${uri})`
 }
 
-/** A poster still as a candidate icon. */
 function poster(url: string): ComponentType<IconProps> {
   // Sized to stay clear of the label in the 14 px icon column of the @ menu.
   const style = { width: 20, height: 14, objectFit: 'cover' as const, borderRadius: 3, flex: 'none' }
@@ -39,13 +38,6 @@ function poster(url: string): ComponentType<IconProps> {
   }
 }
 
-/**
- * The `@` menu icon of an asset: an image of its media type's poster, else the media type's icon, else a file glyph.
- * @param asset - the asset, or undefined for an asset that the state does not hold.
- * @param types - the registered media types.
- * @param state - the project state that the poster reads.
- * @returns the icon.
- */
 function assetIcon(asset: Asset | undefined, types: readonly MediaType[], state: WireState): ComponentType<IconProps> {
   const type = asset === undefined ? undefined : types.find(entry => entry.id === mediaTypeOf(asset.mime))
   const still = asset === undefined ? null : type?.poster?.(asset, state) ?? null
@@ -72,7 +64,6 @@ interface Item {
  */
 export function projectItems(state: WireState, kinds: readonly MentionKind[], types: readonly MediaType[]): Item[] {
   const assetsById = new Map(state.assets.map(asset => [asset.id, asset]))
-  // A thumb is an asset ID, drawn as that asset's icon.
   const mentioned = [...kinds].sort((a, b) => a.order - b.order).flatMap((kind) => {
     const section = kind.section()
     return kind.items(state).map(({ thumb, ...item }): Item => ({

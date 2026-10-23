@@ -23,14 +23,13 @@ import { assetLibrary } from './library.ts'
 import css from './AssetsPanel.module.css'
 
 /**
- * Props of {@link AssetsPanel}: a click on a thumbnail opens the asset preview in the tab, and calls `onOpen` in the
- * canvas's picker.
+ * Props of {@link AssetsPanel}: a click on a thumbnail calls `onOpen` when it is given, and otherwise opens the asset
+ * preview through `preview`.
  */
 export type AssetsPanelProps = {
   projectId: string
   /** The chat session the panel sits beside, recorded as the `session` of its imports. */
   session: string | null
-  /** The API client. */
   client: DvClient
   /** Draws each thumbnail's asset through the `dv.media` Factory of `@dv/ui-media`. */
   renderFactorySlot: RenderFactorySlot
@@ -96,7 +95,6 @@ function ImportZone(props: { client: DvClient; projectId: string; session: strin
   const input = useRef<HTMLInputElement>(null)
   const t = useText()
   const importFiles = useCallback((files: Iterable<File> | null) => {
-    // A file input's `files` is null only when the input is not a file input; the Set reads null as no files.
     const chosen = [...new Set(files)]
     const accepted = chosen.filter(file => file.type.startsWith('image/') || file.type.startsWith('video/'))
     setRefused(chosen.filter(file => !accepted.includes(file)).map(file => file.name))
@@ -131,7 +129,6 @@ function ImportZone(props: { client: DvClient; projectId: string; session: strin
   )
 }
 
-/** What a grid of thumbnails needs: the click callback and the `dv.media` renderer. */
 type ThumbProps = { onOpen: (asset: Asset, tile: Element) => void; renderFactorySlot: RenderFactorySlot }
 
 /**
@@ -154,8 +151,8 @@ function Section(props: ThumbProps & { title: string; assets: Asset[] }): ReactN
 }
 
 /**
- * The box of a thumbnail's media inside the square cell: the asset's aspect ratio at the largest size that the cell
- * holds, so a portrait image or a 16:9 video frame shows whole; the whole cell for an asset of unknown dimensions.
+ * The box of a thumbnail's media: the asset's aspect ratio at the largest size that the square cell holds, or the whole
+ * cell for an asset of unknown dimensions.
  * @param asset - the asset.
  * @returns the box style.
  */
