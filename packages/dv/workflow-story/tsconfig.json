@@ -18,6 +18,9 @@
       "path": "../../skill/skill"
     },
     {
+      "path": "../../skill/skill-filesystem"
+    },
+    {
       "path": "../../util/brand"
     },
     {

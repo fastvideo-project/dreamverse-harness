@@ -1,9 +1,13 @@
 /**
- * `dvStory` in the REAL composition of `fixture.ts`: registration, the `story-directing` skill, `story.preview`,
+ * `dvStory` in the REAL composition of `fixture.ts`: registration, the skills folder, `story.preview`,
  * `story.approve` and the `story` slice, with the intended differences from `plan.approve` and the agent's flow.
  */
+import { globSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { AssetId, OperationSpec, OperationToolValue, RunRequest } from '@dv/project'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { storyReducer } from '../src/reducer.ts'
 import { disposeAll, REF, start, TXT, USER, type Fixture } from './fixture.ts'
 
@@ -57,18 +61,24 @@ describe('dvStory', () => {
     expect(fixture.ctx.tools.get('dv_story_approve')).toBeUndefined()
   })
 
-  it('registers the story-directing skill while dvStory is mounted, and removes it on disposal', async () => {
+  it('serves exactly the SKILL.md files of its skills folder while dvStory is mounted, and removes them on disposal', async () => {
+    // A skill in the user skill folder, which the provider must not read.
+    const home = mkdtempSync(join(tmpdir(), 'dv-workflow-story-home-'))
+    onTestFinished(() => { rmSync(home, { recursive: true, force: true }) })
+    mkdirSync(join(home, 'skills', 'user-flow'), { recursive: true })
+    writeFileSync(join(home, 'skills', 'user-flow', 'SKILL.md'), '---\nname: user-flow\ndescription: "A user skill."\n---\n\nBody.\n')
+    vi.stubEnv('DSH_AGENTS_HOME', home)
+    onTestFinished(() => { vi.unstubAllEnvs() })
     const fixture = await start(undefined, true)
-    const skill = await fixture.ctx.skills.get('story-directing')
-    expect(skill).toMatchObject({ name: 'story-directing', source: 'runtime', invocation: { modelInvocable: true } })
-    expect(skill?.whenToUse).toContain('extended, shortened or changed')
-    expect(skill?.content.startsWith('# Story directing\n')).toBe(true)
-    // The skill holds the flow: preview, the question in bold, then the approval with the user's agreement.
-    expect(skill?.content).toContain('`dv_story_approve` with `plan` and `user_approved: true`, then `dv_proj_wait`')
-    expect(skill?.content).not.toContain('dv_plan_approve')
+    const folder = fileURLToPath(new URL('../skills', import.meta.url))
+    const files = globSync('*/SKILL.md', { cwd: folder }).map(file => `custom ${realpathSync(join(folder, file))}`).sort()
+    const served = async (): Promise<string[]> => (await fixture.ctx.skills.list())
+      .filter(skill => skill.provider === 'workflow-story').map(skill => `${skill.source} ${skill.path ?? ''}`).sort()
+    expect(files).not.toEqual([])
+    expect(await served()).toEqual(files)
     const entry = [...fixture.ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-story.mjs'))
     await entry?.fiber?.dispose()
-    expect(await fixture.ctx.skills.get('story-directing')).toBeUndefined()
+    expect(await served()).toEqual([])
   })
 
   it('the agent creates a plan, previews it, approves it with user_approved and waits; no tool is dv_plan_approve', async () => {

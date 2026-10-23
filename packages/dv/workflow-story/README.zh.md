@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在 `@dv/project`、`@dv/shot-plan`、`@dv/shot-render` 和 `@dv/timeline` 之后挂载本插件。它没有配置，注册组件键 `story` 及其 reducer。挂载了 `@deepseek-ai/dsh-skill` 的技能注册表 `skills` 时，插件从 [`skills/story-directing/SKILL.md`](skills/story-directing/SKILL.md) 注册 `story-directing` 技能。
+在 `@dv/project`、`@dv/shot-plan`、`@dv/shot-render` 和 `@dv/timeline` 之后挂载本插件。它没有配置，注册组件键 `story` 及其 reducer。挂载了 `@deepseek-ai/dsh-skill` 的技能注册表 `skills` 时，插件通过 `@deepseek-ai/dsh-skill-filesystem` 的一个名为 `workflow-story` 的 `FileSystemSkillProvider`，把 [`skills/`](skills/) 文件夹中的每个 `<name>/SKILL.md` 作为技能提供；该提供方不读取其他文件夹。
 
 ```yaml
 - id: dv-workflow-story
@@ -55,7 +55,7 @@ kind: "package-reference"
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `dvStory`：`story.preview`、`story.approve`、计划遍历、预览行、问题和链 |
 | [`src/reducer.ts`](src/reducer.ts) | `story` 切片、其 reducer 及其项目摘要字段 |
-| [`skills/story-directing/SKILL.md`](skills/story-directing/SKILL.md) | `story-directing` 技能的正文 |
+| [`skills/story-directing/SKILL.md`](skills/story-directing/SKILL.md) | `story-directing` 技能：它的 frontmatter 和正文 |
 
 -----
 

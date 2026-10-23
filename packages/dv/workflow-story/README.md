@@ -24,7 +24,7 @@ Use this package to preview and approve a shot plan version. Its read `story.pre
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin after `@dv/project`, `@dv/shot-plan`, `@dv/shot-render` and `@dv/timeline`. It has no configuration and registers the component key `story` with its reducer. While the skill registry `skills` of `@deepseek-ai/dsh-skill` is mounted, the plugin registers the `story-directing` skill from [`skills/story-directing/SKILL.md`](skills/story-directing/SKILL.md).
+Mount the plugin after `@dv/project`, `@dv/shot-plan`, `@dv/shot-render` and `@dv/timeline`. It has no configuration and registers the component key `story` with its reducer. While the skill registry `skills` of `@deepseek-ai/dsh-skill` is mounted, the plugin serves every `<name>/SKILL.md` of its [`skills/`](skills/) folder as a skill through one `FileSystemSkillProvider` of `@deepseek-ai/dsh-skill-filesystem`, named `workflow-story`; the provider reads no other folder.
 
 ```yaml
 - id: dv-workflow-story
@@ -55,7 +55,7 @@ The `story` reducer folds each finished `story.approve` into `approvals` (per pl
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `dvStory`: `story.preview`, `story.approve`, the plan walk, the preview lines, the problems and the chain |
 | [`src/reducer.ts`](src/reducer.ts) | The `story` slice, its reducer and its project summary field |
-| [`skills/story-directing/SKILL.md`](skills/story-directing/SKILL.md) | The body of the `story-directing` skill |
+| [`skills/story-directing/SKILL.md`](skills/story-directing/SKILL.md) | The `story-directing` skill: its frontmatter and body |
 
 -----
 
