@@ -165,31 +165,17 @@ export interface RemovedInput {
 }
 
 /**
- * The apply-world face of the `dv.prompt` Factory: callbacks over the registered version kinds and the `/api/dv`
- * routes, and live data in the hooks compartment. The component passes the state that its host lends.
+ * The apply-world face of the `dv.prompt` Factory: the `/api/dv` check route, and live data in the hooks compartment.
+ * The component resolves the references of a call against the state that its host lends and the version kinds.
  */
 export interface DvPromptInjected {
-  /** The views of every atom of a document, and the tray of its inputs, in document order. */
-  readonly views: (state: WireState, document: PromptDocument, filter: CandidateFilter | null) => {
-    readonly atoms: readonly ReferenceView[]
-    readonly tray: readonly TrayEntry[]
-  }
-  /** Bring a document in step with the editor's runs: R3′ for deleted atoms, R1 or an undone removal for new ones. */
-  readonly reconcile: (
-    state: WireState, document: PromptDocument, runs: PromptDocument['runs'], removed: readonly RemovedInput[],
-  ) => { readonly document: PromptDocument; readonly removed: readonly RemovedInput[] }
-  /** R2: remove one input; the atoms only it satisfied turn into their labels. */
-  readonly removeInput: (state: WireState, document: PromptDocument, index: number) => {
-    readonly document: PromptDocument
-    readonly removed: readonly RemovedInput[]
-  }
-  /** The parameter bar that a plugin registered for an operation, else null. */
-  readonly bar: (operation: string) => ParamBar | null
   readonly check: (request: OperationRequest) => Promise<OperationCheck>
   readonly hooks: {
     /** The model catalog; empty until it loads. */
     readonly models: HostObservable<readonly WireModelEntry[]>
-    /** The version kinds the views read; a component reads it so it draws again when a kind registers. */
+    /** The parameter bars that plugins registered, `dvComposer.paramBars`. */
+    readonly paramBars: HostObservable<readonly ParamBar[]>
+    /** The version kinds that the canvas holds, which read the versions of the elements that chips cite. */
     readonly versionKinds: HostObservable<readonly VersionKind[]>
   }
 }
@@ -212,14 +198,12 @@ export type PromptFaceContext = {
   readonly faces: Readonly<Record<string, ChipFace>>
 }
 
-/** The apply-world face of the chip face entry. */
+/** The apply-world face of the chip face entry: live data only. */
 export interface ReferenceFaceInjected {
-  /** The view of the atom of a chat chip, which names its element's newest version. */
-  readonly view: (state: WireState, atom: ReferenceAtom) => ReferenceView
   readonly hooks: {
     /** The project the shell has open, for chat chips. */
     readonly currentProject: HostObservable<string | null>
-    /** The version kinds the view reads. */
+    /** The version kinds that resolve the element of a chat chip. */
     readonly versionKinds: HostObservable<readonly VersionKind[]>
   }
   readonly keyedHooks: {

@@ -23,7 +23,7 @@ import { testRef } from '../../ui-canvas/tests/canvas-runtime.client.tsx'
 import { fixtureState, MODELS, OPERATIONS, scriptedFetch, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import { shotRenderBar } from '../../ui-shot-render/src/client/param-bar.ts'
-import type { DvPromptProps, PromptCall } from '../src/client/contract/index.ts'
+import type { DvPromptProps, PromptCall, PromptHost } from '../src/client/contract/index.ts'
 import { projectMentionSource } from '../src/client/mention.ts'
 import { composerStack } from './composer-stack.client.ts'
 
@@ -131,7 +131,7 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
     preview: vi.fn(), openNode: vi.fn(),
     ...options.noPicker === true
       ? {}
-      : { pickAssets: vi.fn(), importFiles: vi.fn((files: readonly File[]) => Promise.resolve(files.map(file => file.name))) },
+      : { pickAssets: vi.fn<NonNullable<PromptHost['pickAssets']>>(), importFiles: vi.fn((files: readonly File[]) => Promise.resolve(files.map(file => file.name))) },
   }
   const onSubmit = (edited: PromptCall): Promise<void> => {
     sent.push(edited)
@@ -294,6 +294,44 @@ describe('what the host lends', () => {
   it('shows the chips of an operation that the host lends and the server does not list', async () => {
     const { take } = await mount({ operation: STILL.name, params: { prompt: 'rain', seed: 3 }, inputs: [] }, { served: OPERATIONS })
     await waitFor(() => { expect(take.querySelector<HTMLInputElement>('[data-param-chip="seed"]')?.value).toBe('3') })
+  })
+})
+
+describe('one draft per occurrence', () => {
+  it('keeps an editor edit that the user makes while the picker is open when the pick arrives', async () => {
+    const { take, host, sent } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] })
+    await sendOf(take, 'Render new take')
+    fireEvent.click(within(take).getByRole('button', { name: 'Add asset' }))
+    const done = host.pickAssets?.mock.calls[0]?.[1]
+    act(() => { box(take).focus() })
+    fireEvent.paste(box(take), { clipboardData: { items: [], getData: () => ' falls' } })
+    await waitFor(() => { expect(box(take).textContent).toBe('rain falls') })
+    act(() => { done?.(['shot1-last.png']) })
+    await found(take, '[data-reference-tile="shot1-last.png"]')
+    fireEvent.click(await sendOf(take, 'Render new take'))
+    await waitFor(() => {
+      expect(sent).toEqual([{ operation: 'shot.render', params: { ...KEY, prompt: 'rain falls' }, inputs: [{ role: 'reference', ref: 'shot1-last.png' }] }])
+    })
+  })
+
+  it('takes no editor step for the removal of a tile that no chip cites, so one undo takes back the last edit', async () => {
+    const { take } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [{ role: 'reference', ref: 'shot1-last.png' }] })
+    await found(take, '[data-reference-tile="shot1-last.png"]')
+    act(() => { box(take).focus() })
+    fireEvent.paste(box(take), { clipboardData: { items: [], getData: () => ' falls' } })
+    await waitFor(() => { expect(box(take).textContent).toBe('rain falls') })
+    fireEvent.click(within(take).getByRole('button', { name: 'Remove shot1-last.png' }))
+    await waitFor(() => { expect(take.querySelector('[data-reference-tile]')).toBeNull() })
+    fireEvent.keyDown(box(take), { key: 'z', code: 'KeyZ', ctrlKey: true })
+    await waitFor(() => { expect(box(take).textContent).toBe('rain') })
+  })
+
+  it('shows the words of a parameter bar that registers after the composer opens', async () => {
+    const { take, runtime, checks } = await mount({ operation: STILL.name, params: { prompt: 'a lamp' }, inputs: [] }, { holdChecks: true })
+    await waitFor(() => { expect(checks).toHaveLength(1) })
+    expect(within(take).getByRole('button', { name: 'Generate a new version' })).toBeTruthy()
+    act(() => { runtime.ctx.dvComposer.paramBars.register({ ...shotRenderBar, operation: STILL.name, owner: 'test', copy: { send: ['生成静帧', 'Make the still'] } }) })
+    await waitFor(() => { expect(within(take).getByRole('button', { name: 'Make the still' })).toBeTruthy() })
   })
 })
 

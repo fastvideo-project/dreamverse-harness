@@ -1,9 +1,10 @@
 /**
  * The apply world of the prompt composer: the `dvComposer` registry of parameter bars, the `dv.prompt` Factory with
- * its inject face over the registered version kinds and the `/api/dv` routes, and the chip face of the `@` source in
- * every prompt occurrence and in the chat composer bar.
- * Live data reaches the components through observable sources: the model catalog, the open project, and the state of
- * each project that a chat chip reads, fetched again after its project events. A `dv.prompt` occurrence draws the state
+ * its inject face over the `/api/dv` check route, and the chip face of the `@` source in every prompt occurrence and in
+ * the chat composer bar.
+ * Live data reaches the components through observable sources: the model catalog, the parameter bars, the version
+ * kinds of the canvas, the open project, and the state of each project that a chat chip reads, fetched again after its
+ * project events. A `dv.prompt` occurrence draws the state
  * that its host lends, so it fetches no state.
  *
  * @module @dv/ui-composer/prompt
@@ -18,12 +19,9 @@ import { DV_CURRENT_PROJECT_EVENT, getCurrentProject } from '@dv/ui-kit/current-
 import { loadedOnce } from '@dv/ui-kit/loaded.ts'
 import { createRegistry, type VersionKind } from '@dv/ui-kit/registries.ts'
 import type { WireModelEntry, WireState } from '@dv/ui-kit/types.ts'
-import type { DvComposer, DvPromptInjected, ParamBar, PromptDocument, ReferenceFaceInjected } from './contract/index.ts'
+import type { DvComposer, DvPromptInjected, ParamBar, ReferenceFaceInjected } from './contract/index.ts'
 import { DvPrompt } from './DvPrompt.tsx'
 import { MENTION_SOURCE } from './mention.ts'
-import {
-  countReferences, isAtom, reconcile, removeInput, resolveAtom, resolveInput, satisfyingIndexes, type ResolveContext,
-} from './reference-model.ts'
 import { ReferenceFace } from './ReferenceFace.tsx'
 
 /** The wait after the last project event before the state is fetched again, in ms. */
@@ -99,7 +97,7 @@ export function applyPrompt(ctx: ClientContext): void {
   const models = loadedOnce<readonly WireModelEntry[]>([], () => client.listModels())
   const states = projectStates(client)
   const currentProject = createSnapshotStore<string | null>(getCurrentProject())
-  // The version kinds that the canvas holds; views read them at call time, and components draw again when they change.
+  // The version kinds that the canvas holds, which the components read through their hooks.
   const versionKinds = createSnapshotStore<readonly VersionKind[]>([])
   ctx.inject(['dvCanvas'], (scope) => {
     const registry = scope.dvCanvas.versionKinds
@@ -117,31 +115,12 @@ export function applyPrompt(ctx: ClientContext): void {
     window.addEventListener(DV_CURRENT_PROJECT_EVENT, follow)
     return () => { window.removeEventListener(DV_CURRENT_PROJECT_EVENT, follow) }
   }, 'dv-composer: open project')
-  /** The resolve context of a state: the version kinds that the canvas holds now. */
-  const contextOf = (state: WireState, document: Pick<PromptDocument, 'inputs'> | null, filter: ResolveContext['filter']): ResolveContext => ({
-    state, versions: versionKinds.getSnapshot(), inputs: document?.inputs ?? null, filter,
-  })
   const injected: DvPromptInjected = {
-    views: (state, document, filter) => {
-      const resolve = contextOf(state, document, filter)
-      const atoms = document.runs.filter(isAtom)
-      return {
-        atoms: atoms.map(atom => resolveAtom(atom, resolve)),
-        tray: countReferences(document.inputs.map((input, index) => ({
-          input, view: resolveInput(input, resolve),
-          cited: atoms.some(atom => satisfyingIndexes(atom.uri, document.inputs, resolve).includes(index)),
-        })), filter),
-      }
-    },
-    reconcile: (state, document, runs, removed) => reconcile(document, runs, removed, contextOf(state, document, null)),
-    removeInput: (state, document, index) => removeInput(document, index, contextOf(state, document, null)),
-    bar: operation => composer.paramBars.getSnapshot().find(bar => bar.operation === operation) ?? null,
     check: request => client.checkOperation(request),
-    hooks: { models, versionKinds },
+    hooks: { models, paramBars: composer.paramBars, versionKinds },
   }
   ctx.effect(() => ctx.slots.registerFactory({ name: 'dv.prompt', scope: 'root', inject: () => injected }, DvPrompt), 'dv-composer: dv.prompt')
   const face: ReferenceFaceInjected = {
-    view: (state, atom) => resolveAtom(atom, contextOf(state, null, null)),
     hooks: { currentProject, versionKinds },
     keyedHooks: { projectState: states },
   }

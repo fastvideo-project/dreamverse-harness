@@ -15,7 +15,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { parsePromptCitations } from '@dv/project/grammar'
 import type {} from '@dv/ui-media/contract'
 import type { ChipFace, ReferenceFaceInjected } from './contract/index.ts'
-import { faceOf } from './reference-model.ts'
+import { faceOf, resolveAtom } from './reference-model.ts'
 
 /** Full props of the face; the chat bar's slot has the same owner props. */
 export type ReferenceFaceProps = PropsRuntime<'conversation.prompt.reference'> & InjectFace<ReferenceFaceInjected> & PropsRenderFactories
@@ -63,11 +63,12 @@ export function ReferenceFace(props: ReferenceFaceProps): ReactNode {
   const current = props.useCurrentProject(projectId => projectId)
   // Only a chat chip reads a project's state; the empty project fetches nothing.
   const state = props.useProjectState(faces === null ? current ?? '' : '') ?? null
-  // The view reads the version kinds; reading them here draws the face again when a kind registers.
-  props.useVersionKinds(kinds => kinds.length)
+  const versions = props.useVersionKinds(kinds => kinds)
   const [citation] = parsePromptCitations(props.reference)
   const uri = citation?.uri ?? ''
-  const chat = state === null || citation === undefined ? null : faceOf(props.view(state, { label: citation.label, uri }))
+  const chat = state === null || citation === undefined
+    ? null
+    : faceOf(resolveAtom({ label: citation.label, uri }, { state, versions, inputs: null, filter: null }))
   const shown = faces === null ? chat : faces.get(uri) ?? null
   const invalid = props.invalid || (shown !== null && !shown.satisfied)
   return (

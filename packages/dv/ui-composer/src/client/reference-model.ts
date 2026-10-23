@@ -424,6 +424,22 @@ export function resolveInput(input: CallInput, ctx: ResolveContext): ReferenceVi
 }
 
 /**
+ * The views of every atom of a document, and the tray of its inputs, in document order.
+ * @param document - the document.
+ * @param ctx - the state, the version readers and the filter; the document gives the inputs.
+ * @returns the views of the atoms, and one tray entry per input.
+ */
+export function documentViews(document: PromptDocument, ctx: ResolveContext): { atoms: ReferenceView[]; tray: TrayEntry[] } {
+  const resolve = withInputs(ctx, document.inputs)
+  const atoms = atomsOf(document.runs)
+  const tray = document.inputs.map((input, index) => ({
+    input, view: resolveInput(input, resolve),
+    cited: atoms.some(atom => satisfyingIndexes(atom.uri, document.inputs, resolve).includes(index)),
+  }))
+  return { atoms: atoms.map(atom => resolveAtom(atom, resolve)), tray: countReferences(tray, ctx.filter) }
+}
+
+/**
  * Mark the reference inputs past the selected model's count. The count runs over the assets of the `reference` inputs
  * in input order, as the kernel counts them, and an input that resolves to no asset counts as one.
  * @param tray - the tray of a call, in input order.

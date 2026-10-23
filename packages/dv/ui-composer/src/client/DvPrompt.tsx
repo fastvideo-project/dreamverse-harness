@@ -1,13 +1,14 @@
 /**
  * The `dv.prompt` Factory component: the reference tray, the `conversation.prompt` editor, and the parameter bar with
- * the cost and send, over one call. The document holds the prompt and the call's inputs in their stored order; the
- * editor owns the text and the chips, and each editor change reconciles the inputs. A tray edit that changes the
- * prompt reaches the editor as a new content revision, so the editor's undo also undoes it. A tray edit that leaves the
- * prompt as it is (a picker add, an upload, a version pin) is no editor step, so the editor's undo leaves it: the
- * editor's history holds editor states only, and holding the inputs there would put them in the prompt's text. The
- * tile's × takes back a picker add or an upload; a pin to the newest version has no way back to the older one. In read
- * mode the tray and the editor only show the call. Every reference resolves against the state that the host lends, and
- * each chip's face draws what the composer resolved for it.
+ * the cost and send, over one call. Its draft (`draft.ts`) holds the document, which keeps the prompt and the call's
+ * inputs in their stored order, and the edited params; the editor owns the text and the chips, and each editor change
+ * reconciles the inputs. A tray edit that changes the prompt reaches the editor as a new content revision, so the
+ * editor's undo also undoes it. A tray edit that leaves the prompt as it is (a picker add, an upload, a version pin, the
+ * removal of a tile that no chip cites) is no editor step, so the editor's undo leaves it: the editor's history holds
+ * editor states only, and holding the inputs there would put them in the prompt's text. The tile's × takes back a
+ * picker add or an upload; a pin to the newest version has no way back to the older one. In read mode the tray and the
+ * editor only show the call. Every reference resolves against the state that the host lends, and each chip's face
+ * draws what the composer resolved for it.
  *
  * The tray and `@` offer references only when the call's operation declares a `reference` input and the
  * selected model takes one. The placeholder and the send button read the copy of the operation's parameter bar; an
@@ -15,20 +16,19 @@
  *
  * @module @dv/ui-composer/DvPrompt
  */
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import type { Occurrence, PromptChip, PromptHostModel } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { useEffect, useReducer, type CSSProperties, type ReactNode } from 'react'
+import type { Occurrence, PromptHostModel } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { FactoryComponentPropsOf, RenderFactorySlot } from '@deepseek-ai/dsh-client-ui-slots'
 import { parsePromptCitations } from '@dv/project/grammar'
 import { errorMessage } from '@dv/ui-kit/api.ts'
 import { fieldsOf, valueOf } from '@dv/ui-kit/form.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
-import type { OperationCheck, WireModelEntry, WireOperation, WireState } from '@dv/ui-kit/types.ts'
+import type { WireModelEntry, WireOperation } from '@dv/ui-kit/types.ts'
 import type {} from '@dv/ui-media/contract'
-import type {
-  CallInput, CandidateFilter, ParamBar, ParamChip, PromptCopy, PromptDocument, PromptFaceContext, ReferenceView, RemovedInput,
-} from './contract/index.ts'
+import type { CallInput, CandidateFilter, ParamBar, ParamChip, PromptCopy, PromptFaceContext, ReferenceView } from './contract/index.ts'
+import { draftOf, reduceDraft } from './draft.ts'
 import { MENTION_SOURCE } from './mention.ts'
-import { callOf, documentOf, editorContent, faceOf, pinVersion, runsOfEditor } from './reference-model.ts'
+import { callOf, documentViews, faceOf, runsOfEditor, type ResolveContext } from './reference-model.ts'
 
 /** Full props of the component. */
 export type DvPromptComponentProps = FactoryComponentPropsOf<'dv.prompt'>
@@ -69,49 +69,27 @@ function modelOf(models: readonly WireModelEntry[], params: Readonly<Record<stri
     && entry.provider === params['provider'] && entry.model === params['model'])
 }
 
-/** The editor content of a document, with every chip owned by the `@` source. */
-function chipsOf(document: PromptDocument): { text: string; chips: PromptChip[] } {
-  const content = editorContent(document)
-  return { text: content.text, chips: content.chips.map(chip => ({ source: MENTION_SOURCE, ...chip, clipboardText: chip.ref })) }
-}
-
 /**
  * Render one composer occurrence.
- * @param props - the call, the host, the send, the inject face, and the Factory renderer.
+ * @param props - the call, the state and operations of the host, the host, the send, the inject face, and the Factory
+ *   renderer.
  * @returns the composer.
  */
 export function DvPrompt(props: DvPromptComponentProps): ReactNode {
   const { projectId, call, state, readOnly, host, onSubmit, renderFactorySlot } = props
   const pick = useText()
-  // The views read the version kinds; reading them here draws the composer again when a kind registers.
-  props.useVersionKinds(kinds => kinds.length)
+  const versions = props.useVersionKinds(kinds => kinds)
   const models = props.useModels(catalog => catalog)
+  const bar = props.useParamBars(bars => bars.find(candidate => candidate.operation === call.operation) ?? null)
   const operation = props.operations.find(candidate => candidate.name === call.operation) ?? null
-  const [document, setDocument] = useState(() => documentOf(call))
-  const [removed, setRemoved] = useState<readonly RemovedInput[]>([])
-  const [content, setContent] = useState(() => ({ revision: 0, ...chipsOf(documentOf(call)) }))
-  const [params, setParams] = useState(call.params)
-  const [checked, setChecked] = useState<OperationCheck | null>(null)
-  const [sending, setSending] = useState(false)
+  const [draft, dispatch] = useReducer(reduceDraft, call, draftOf)
   // A host that lends another call, such as the plan view on another version, starts the occurrence over on it.
   const callKey = JSON.stringify(call)
-  const [shownCall, setShownCall] = useState(callKey)
-  if (shownCall !== callKey) {
-    const next = documentOf(call)
-    setShownCall(callKey)
-    setDocument(next)
-    setRemoved([])
-    setContent(current => ({ revision: current.revision + 1, ...chipsOf(next) }))
-    setParams(call.params)
-    setChecked(null)
-  }
-  // The editor calls back during its own update; the ref gives those callbacks this render's document and state.
-  const latest = useRef({ document, removed, state })
-  latest.current = { document, removed, state }
+  if (draft.callKey !== callKey) dispatch({ type: 'callLent', call })
+  const { document, params, checked, sending } = draft
 
   const edited = callOf(document, { ...call, params })
   const entry = modelOf(models, params)
-  const bar = props.bar(call.operation)
   const copy = { ...NEUTRAL_COPY, ...bar?.copy }
   const filter: CandidateFilter | null = readOnly || entry === undefined || bar === null ? null : bar.candidates(entry.schema)
   const offersReferences = !readOnly && operation?.inputs['reference'] !== undefined && filter?.mediaTypes.length !== 0
@@ -121,22 +99,17 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
     let live = true
     const timer = setTimeout(() => {
       const request = { project: projectId, operation: edited.operation, params: { ...edited.params }, inputs: [...edited.inputs], surface: 'canvas' as const }
-      props.check(request).then((answer) => { if (live) setChecked(answer) }, (error: unknown) => {
-        if (live) setChecked({ problems: [errorMessage(error)], gpu_seconds: null })
+      props.check(request).then((answer) => { if (live) dispatch({ type: 'checked', answer }) }, (error: unknown) => {
+        if (live) dispatch({ type: 'checked', answer: { problems: [errorMessage(error)], gpu_seconds: null } })
       })
     }, CHECK_DELAY_MS)
     return () => { live = false; clearTimeout(timer) }
     // The check follows the edited call, whose key holds every field the request sends.
   }, [editedKey, readOnly, projectId])
 
-  const views = props.views(state, document, filter)
+  const ctx: ResolveContext = { state, versions, inputs: null, filter: null }
+  const views = documentViews(document, { ...ctx, filter })
   const faces: PromptFaceContext = { faces: Object.fromEntries(views.atoms.map(view => [view.uri, faceOf(view)])) }
-  const onEditorChange = (text: string, chips: readonly Occurrence[]): void => {
-    const now = latest.current
-    const next = props.reconcile(now.state, now.document, runsOfEditor(text, chips), now.removed)
-    setDocument(next.document)
-    setRemoved(next.removed)
-  }
   const openReference = (reference: string): boolean => {
     const uri = parsePromptCitations(reference)[0]?.uri
     const opened = views.atoms.find(view => view.uri === uri)?.open ?? null
@@ -148,39 +121,25 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
   const blocked = checked === null || checked.problems.length > 0
   const send = (): void => {
     if (onSubmit === undefined || sending || blocked) return
-    setSending(true)
-    void onSubmit(edited).finally(() => { setSending(false) })
+    dispatch({ type: 'sending', sending: true })
+    void onSubmit(edited).finally(() => { dispatch({ type: 'sending', sending: false }) })
   }
   const media = filter === null ? null : { mediaTypes: [...filter.mediaTypes], maxReferences: filter.maxReferences }
   const model: PromptHostModel = {
-    content, readOnly, sources: offersReferences ? [MENTION_SOURCE] : [], sourceContext: media, faceContext: faces,
-    onChange: onEditorChange,
+    content: draft.content, readOnly, sources: offersReferences ? [MENTION_SOURCE] : [], sourceContext: media, faceContext: faces,
+    onChange: (text: string, chips: readonly Occurrence[]) => { dispatch({ type: 'editorChanged', runs: runsOfEditor(text, chips), ctx }) },
     ...readOnly ? {} : { onSubmit: send },
     openReference: (_source, reference) => openReference(reference),
     placeholder: pick(...copy.placeholder),
     ariaLabel: pick('提示词', 'Prompt'),
   }
-  const removeTile = (loaded: WireState, index: number): void => {
-    const next = props.removeInput(loaded, document, index)
-    setDocument(next.document)
-    setRemoved([...removed, ...next.removed])
-    // Removing a tile turns its chips into text, so the editor takes the new prompt as one undoable step.
-    setContent(current => ({ revision: current.revision + 1, ...chipsOf(next.document) }))
-  }
   const picker = host.pickAssets
-  const addTiles = (pickAssets: NonNullable<typeof picker>): void => {
-    pickAssets(document.inputs.map(input => input.ref), (refs) => {
-      const added = refs.filter(ref => !document.inputs.some(input => input.ref === ref)).map(ref => ({ role: 'reference', ref }))
-      setDocument({ ...document, inputs: [...document.inputs, ...added] })
-    })
-  }
   const importer = host.importFiles
   const addFiles = (importFiles: NonNullable<typeof importer>, files: readonly File[]): void => {
     if (files.length === 0) return
-    void importFiles(files).then((assets) => {
-      setDocument(current => ({ ...current, inputs: [...current.inputs, ...assets.map(ref => ({ role: 'reference', ref }))] }))
-    })
+    void importFiles(files).then((assets) => { dispatch({ type: 'imported', assets }) })
   }
+  const patch = (next: Readonly<Record<string, unknown>>): void => { dispatch({ type: 'patched', patch: next }) }
   return (
     <div data-dv-prompt="" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {views.tray.length === 0 && !offersReferences ? null : <div role="list" aria-label={pick('参考', 'References')} style={row}>
@@ -193,12 +152,19 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
               if ('node' in view.open) host.openNode(view.open.node)
               else host.preview(view.open.asset, opener)
             }}
-            onRemove={() => { removeTile(state, index) }}
-            onPin={(version) => { setDocument(pinVersion(document, index, version)) }}
+            onRemove={() => { dispatch({ type: 'tileRemoved', index, ctx }) }}
+            onPin={(version) => { dispatch({ type: 'pinned', index, version }) }}
           />
         ))}
         {offersReferences && picker !== undefined
-          ? <button type="button" className="dv-canvas-btn" style={{ ...tile, ...plain }} onClick={() => { addTiles(picker) }}>{pick('添加素材', 'Add asset')}</button>
+          ? (
+            <button
+              type="button" className="dv-canvas-btn" style={{ ...tile, ...plain }}
+              onClick={() => { picker(document.inputs.map(input => input.ref), (refs) => { dispatch({ type: 'picked', refs }) }) }}
+            >
+              {pick('添加素材', 'Add asset')}
+            </button>
+          )
           : null}
         {offersReferences && importer !== undefined
           ? (
@@ -218,11 +184,11 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
         : (
           <div style={{ ...row, justifyContent: 'space-between' }}>
             <span style={row}>
-              <ModelChip models={models} entry={entry} params={params} onPatch={(patch) => { setParams({ ...params, ...patch }) }} />
+              <ModelChip models={models} entry={entry} params={params} onPatch={patch} />
               {operation === null ? null : chipsFor(bar, entry, params, operation).map(chip => (
                 <Chip
-                  key={chip.key} chip={chip} onPatch={(patch) => { setParams({ ...params, ...patch }) }}
-                  onText={(text) => { setParams(withText(params, operation, chip.key, text)) }}
+                  key={chip.key} chip={chip} onPatch={patch}
+                  onText={(text) => { dispatch({ type: 'typed', operation, key: chip.key, text }) }}
                 />
               ))}
             </span>
@@ -310,24 +276,6 @@ function chipsFor(
 ): ParamChip[] {
   if (bar === null) return defaultChips(operation, params)
   return entry === undefined ? [] : bar.chips({ schema: entry.schema, params, operation })
-}
-
-/** The params with one free-text chip's text, typed by the param's declaration; text that does not parse stays out. */
-function withText(
-  params: Readonly<Record<string, unknown>>, operation: WireOperation, key: string, text: string,
-): Readonly<Record<string, unknown>> {
-  const field = fieldsOf(operation.params, {}).find(candidate => candidate.key === key)
-  if (field === undefined) return params
-  let value: unknown
-  try {
-    value = valueOf({ ...field, text })
-  } catch (unparsed) {
-    // A text the param's type cannot take keeps the previous value; the check route names the problem of a bad value.
-    void unparsed
-    return params
-  }
-  const { [key]: _old, ...rest } = params
-  return value === undefined ? rest : { ...rest, [key]: value }
 }
 
 /**

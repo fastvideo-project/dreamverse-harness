@@ -63,7 +63,7 @@ Host 半边不注册任何东西。浏览器半边在 `apply` 顶层提供 `dvMe
 
 最后一次编辑后 250 ms，输入框把改过的调用发给 `POST /api/dv/operation/check`。成本是回答中的 `gpu_seconds`，回答的问题句子显示在参数栏下方，在某次检查回答没有问题之前，发送保持禁用。发送把改过的调用交给 `onSubmit`。占位文字、发送文字和发送进行中的文字来自参数栏的 `copy`；没有时它们是中性的：描述要生成的内容 / Describe what to generate、生成新版本 / Generate a new version 和 生成中… / Generating…。只有操作声明了 `reference` 输入，并且参数栏为所选模型给出的过滤条件至少写出一种媒体类型时，参考栏的 添加素材 / Add asset 和编辑器的 `@` 才提供引用；没有参数栏或模型目录里没有该模型的条目时，没有过滤条件。只读模式下，输入框只显示参考栏（没有添加、固定版本和 ×）和只读的编辑器；它不绘制参数栏，不发送，也不检查。
 
-标签引用一个素材（`dv:asset/<id>`）或一个元素，例如角色（`dv:<kind>/<id>`）。`reference` 输入代表某个素材时满足该素材的标签，是某个元素的版本 `<id>@<n>` 时满足该元素的标签。输入框让输入与标签保持一致：没有输入满足的新标签追加它需要的输入，即该素材或该元素的最新版本（R1）；移除一个参考项会把只由该输入满足的每个标签变成它的名称，作为编辑器的一步撤销（R2）；删除某个输入的最后一个标签会移除该输入，除非另一个输入也满足被删除的标签，没有标签引用过的输入保留（R3′）；没有输入满足的标签以失败样式绘制（R4）。用 vN / Use vN 把输入改写为该版本，该元素的每个标签都跟着改变。编辑器的历史是唯一的撤销：撤销带回被删除的标签时，也把该编辑移除的输入带回原来的位置；不改变提示词的参考栏编辑，例如从选择窗口添加或固定版本，不在这个历史中。[`src/client/DvPrompt.tsx`](src/client/DvPrompt.tsx) 和 [`src/client/reference-model.ts`](src/client/reference-model.ts) 的模块注释拥有这些规则。
+标签引用一个素材（`dv:asset/<id>`）或一个元素，例如角色（`dv:<kind>/<id>`）。`reference` 输入代表某个素材时满足该素材的标签，是某个元素的版本 `<id>@<n>` 时满足该元素的标签。输入框让输入与标签保持一致：没有输入满足的新标签追加它需要的输入，即该素材或该元素的最新版本（R1）；移除一个参考项会把只由该输入满足的每个标签变成它的名称，作为编辑器的一步撤销（R2）；删除某个输入的最后一个标签会移除该输入，除非另一个输入也满足被删除的标签，没有标签引用过的输入保留（R3′）；没有输入满足的标签以失败样式绘制（R4）。用 vN / Use vN 把输入改写为该版本，该元素的每个标签都跟着改变。编辑器的历史是唯一的撤销：撤销带回被删除的标签时，也把该编辑移除的输入带回原来的位置；不改变提示词的参考栏编辑，例如从选择窗口添加、固定版本或移除没有标签引用的参考项，不在这个历史中。[`src/client/DvPrompt.tsx`](src/client/DvPrompt.tsx) 和 [`src/client/reference-model.ts`](src/client/reference-model.ts) 的模块注释拥有这些规则。
 
 标签外观是键为 `dv-project` 的 `conversation.prompt.reference` 条目和 `conversation.input.reference` 条目，所以它在每个提示词编辑器里和聊天输入框里绘制 `dv-project` 来源的每个标签：通过 `dv.media` 以用途 `thumb` 绘制的预览、名称，以及在 `dv.prompt` 实例中调用发送的版本。在 `dv.prompt` 实例中，标签外观绘制该实例对照宿主提供的状态解析出的结果，所以它不获取状态。聊天标签读取所打开项目的实时状态，并绘制其元素的最新版本。在 `dv.prompt` 实例中点击标签会打开条目的节点或素材的预览。`@` 来源 `dv-project` 还为会话之外的实例提供 `prompt` 面，它列出同样的条目，并去掉素材的媒体类型不被该实例的模型接受的条目。
 
@@ -86,6 +86,7 @@ Host 半边不注册任何东西。浏览器半边在 `apply` 顶层提供 `dvMe
 | [`src/client/contract/index.ts`](src/client/contract/index.ts) | 只含类型的入口 `@dv/ui-composer/contract`：调用、宿主、参数栏、`dvComposer` 和 `dv.prompt` 组件工厂 |
 | [`src/client/prompt.ts`](src/client/prompt.ts) | `dvComposer`、`dv.prompt` 和标签外观的注册及其注入，以及聊天标签读取的每个项目的实时状态 |
 | [`src/client/DvPrompt.tsx`](src/client/DvPrompt.tsx) | 输入框：参考栏、编辑器、参数栏、检查和发送 |
+| [`src/client/draft.ts`](src/client/draft.ts) | 实例的草稿：文档、参数、编辑器的内容、检查和发送，每次改变是一个动作 |
 | [`src/client/reference-model.ts`](src/client/reference-model.ts) | 调用的文档、满足引用的输入、编辑 R1 到 R3′ 和版本固定，以及标签和参考项的视图 |
 | [`src/client/ReferenceFace.tsx`](src/client/ReferenceFace.tsx) | 标签外观 |
 | [`src/client/chat-assets.ts`](src/client/chat-assets.ts) | 所打开项目的素材、创建每个素材的记录和操作声明，每次项目事件后重新获取 |
