@@ -156,7 +156,6 @@ describe('DreamVerse bundle composition', () => {
         t2v: { baseUrl: 'http://10.244.16.130:8031', gpuSecondsPerVideoSecond: 1.5 },
       },
     })
-    // The image and speech rows name their servers; registering the entries reads no server.
     expect(rows.find(row => row.id === 'dv-sglang-diffusion')?.config).toEqual({
       models: { 'qwen-image-2.1-turbo': { baseUrl: 'http://127.0.0.1:30010', gpuSecondsPerMegapixel: 0.6 } },
     })

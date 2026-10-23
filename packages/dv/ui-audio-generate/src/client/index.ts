@@ -1,6 +1,6 @@
 /**
  * Browser half of audio generation: one `defineGenerationUi` declaration of `@dv/ui-generation` that claims the
- * `audio.generate` records as audio takes, with their label, status words, node palette slot and body height.
+ * `audio.generate` records as audio takes.
  *
  * @module @dv/ui-audio-generate/client
  */

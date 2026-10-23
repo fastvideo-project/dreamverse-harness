@@ -21,7 +21,6 @@ afterEach(async () => {
   for (const fixture of fixtures.splice(0)) await fixture.dispose()
 })
 
-/** Boot the composition against `baseUrl`. */
 async function boot(baseUrl: string): Promise<Fixture> {
   const fixture = await start(baseUrl)
   fixtures.push(fixture)
@@ -33,7 +32,6 @@ function headerDuration(bytes: Buffer): number {
   return bytes.readUInt32LE(40) / bytes.readUInt32LE(28)
 }
 
-/** The duration that ffprobe reads from a file, or null when ffprobe cannot run. */
 async function probedDuration(path: string): Promise<number | null> {
   try {
     const { stdout } = await run(FFPROBE, ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path])

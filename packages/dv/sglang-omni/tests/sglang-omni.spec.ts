@@ -1,7 +1,6 @@
 /**
- * The `sglang-omni` provider plugin in a REAL composition against a fake SGLang-Omni server. The fake answers with the
- * bodies and headers of a running server: the `GET /v1/models` list, WAV clips with `x-finish-reason`, and the
- * JSON error bodies of `POST /v1/audio/speech`. The specs pin the texts that the agent reads.
+ * The `sglang-omni` provider plugin in a REAL composition against a fake SGLang-Omni server that answers with the bodies
+ * and headers of a running server.
  */
 import { readFileSync } from 'node:fs'
 import type { AssetId, RecordId } from '@dv/project'
@@ -19,7 +18,6 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup()
 })
 
-/** Start a fake server and the composition that points at it. */
 async function boot(): Promise<{ fake: FakeOmni; fixture: Fixture }> {
   const fake = await startFakeOmni()
   cleanups.push(() => fake.close())
@@ -28,7 +26,6 @@ async function boot(): Promise<{ fake: FakeOmni; fixture: Fixture }> {
   return { fake, fixture }
 }
 
-/** A speech request with the given prompt and `extra`. */
 function speech(prompt: string, extra: Record<string, unknown> = {}) {
   return { prompt, extra }
 }
@@ -96,7 +93,6 @@ describe('dv-sglang-omni', () => {
       fixture.entry().validateGenerationRequest(speech(prompt, extra))
     expect(await validate('<|speaker:0|> Welcome. [laughs] Rest here tonight.', { speed: 1.2 })).toEqual([])
     expect(await validate('Text without a tag is speaker 0.')).toEqual([])
-    // A malformed tag and a repeated tag are each listed once, in order of first appearance.
     expect(await validate('<|speaker:01|> One. <|speaker:2|> Two. <|speaker:01|> Three.')).toEqual([
       'This server speaks only <|speaker:0|>, and the prompt has <|speaker:01|>, <|speaker:2|>. Write one clip per character, each with '
         + '<|speaker:0|> or no speaker tag.',
@@ -126,7 +122,6 @@ describe('dv-sglang-omni', () => {
     expect(fake.requests).toEqual([{ speed: 1.1, input: prompt, response_format: 'wav' }])
     const record = fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(take.record))
     expect(record).toMatchObject({ status: 'done', report: { model_id: 'fishaudio/drama-3', duration_sec: 1.5 } })
-    // The cost is the wall time of the request, not the estimate of 3 GPU seconds per call.
     expect(record.cost?.gpu_seconds).toBeGreaterThan(0)
     expect(record.cost?.gpu_seconds).not.toBe(3)
     const asset = record.outputs[0] as AssetId

@@ -63,17 +63,12 @@ export interface GeneratedAudio {
   gpuSeconds: number
 }
 
-/**
- * The request of one call: the trimmed prompt and `extra`.
- * @throws Error for an empty prompt.
- */
 function audioRequest(params: Record<string, unknown>): AudioRequest {
   const prompt = typeof params['prompt'] === 'string' ? params['prompt'].trim() : ''
   if (prompt === '') throw new Error('The prompt is empty; write the text to speak.')
   return { prompt, extra: (params['extra'] ?? {}) as Record<string, unknown> }
 }
 
-/** Store one clip as the record's output with its duration; the cost is the time the backend spent. */
 async function storeAudio(_ctx: Context, run: OperationContext, result: Promise<GeneratedAudio>,
   facts: AudioModelFacts): Promise<OperationResult> {
   const clip = await result
@@ -81,7 +76,6 @@ async function storeAudio(_ctx: Context, run: OperationContext, result: Promise<
   return { outputs: [asset], cost: { gpu_seconds: clip.gpuSeconds }, report: { model_id: facts.modelId, duration_sec: clip.durationSec } }
 }
 
-/** The one-line summary of a finished record: the prompt start and the duration. */
 function summarize(record: ProjectRecord): string {
   const duration = record.report?.['duration_sec']
   return `audio ${quotePrompt(String(record.params['prompt']), 60)} (${typeof duration === 'number' ? duration.toFixed(1) : '?'}s)`

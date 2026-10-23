@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 /**
- * What `@dv/ui-audio-generate` registers: its one `defineGenerationUi` declaration claims `audio.generate` as the
- * `audio` node type with its label, palette slot, body height and status words, and the entries keyed by that type, by
- * the tool `dv_audio_generate` and by the operation leave with the plugin.
+ * What `@dv/ui-audio-generate` registers through its one `defineGenerationUi` declaration, and the removal of those
+ * entries with the plugin.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
@@ -18,10 +17,7 @@ afterEach(() => {
   document.documentElement.lang = ''
 })
 
-/**
- * Mount the plugin over the canvas and History registries, with the slots that it fills declared.
- * @returns the runtime, the registries, and the plugin's handle.
- */
+/** Mount the plugin over the canvas and History registries, with the slots that it fills declared. */
 async function mountPlugin() {
   document.documentElement.lang = 'zh-CN'
   // The kit's label sources read `/api/dv/operations` and `/api/dv/tasks`.

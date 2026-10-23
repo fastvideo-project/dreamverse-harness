@@ -1,8 +1,7 @@
 /**
- * The REAL composition of the `sglang-omni` specs: a test-only `cordis.yml` boots the DSH skill registry and tool
- * registry, Project, ffmpeg, the asset pool, the model catalog, `dvAudioGenerate` and the plugin through the Loader,
- * with the plugin's `models` config pointing at one server URL. A fake SGLang-Omni server answers with the bodies and
- * headers that a running server sent.
+ * The REAL composition of the `sglang-omni` specs, booted through the Loader from a test-only `cordis.yml` whose plugin
+ * `models` config points at one server URL, and a fake SGLang-Omni server that answers with the bodies and headers that
+ * a running server sent.
  */
 import { once } from 'node:events'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -51,16 +50,12 @@ const PLUGINS = {
 export interface Fixture {
   ctx: Context
   project: ProjectId
-  /** The registered Fish Audio Drama 3 entry. */
   entry(): ModelEntry<'t2a'>
-  /** Run one tool as the agent of chat session `s1`. */
   call(name: string, args: Record<string, unknown>): Promise<ToolExecutionResult>
-  /** The number of records in the project's history. */
   history(): number
   dispose(): Promise<void>
 }
 
-/** Whether a catalog entry serves task `t2a`; narrows its facts, request and result to the audio row. */
 function isSpeechEntry(entry: ModelEntry): entry is ModelEntry<'t2a'> {
   return entry.task === 't2a'
 }
@@ -181,7 +176,6 @@ export const OMNI_MODELS = '{"object":"list","data":[{"id":"fishaudio/drama-3","
 /** A fake SGLang-Omni server: it answers `GET /v1/models` with `models` and `POST /v1/audio/speech` with `speech`. */
 export interface FakeOmni {
   url: string
-  /** The JSON bodies of the speech requests, in arrival order. */
   readonly requests: Array<Record<string, unknown>>
   models: FakeAnswer
   /** The speech answer; `hang` leaves the request open until the client aborts it. */

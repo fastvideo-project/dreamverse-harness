@@ -1,8 +1,6 @@
 /**
- * The Audio component in a REAL composition: a test-only `cordis.yml` boots the DSH tool registry, Project, ffmpeg, the
- * asset pool, `dvModels` and `dvAudioGenerate` through the Loader. The speech model is the only fake: an in-process
- * model `fake` of provider `test` for task `t2a`, whose entry returns fixed WAV bytes and remembers its requests. The
- * specs pin the texts that the agent reads.
+ * The Audio component in a REAL composition booted through the Loader from a test-only `cordis.yml`; the speech model is
+ * the only fake.
  */
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -22,18 +20,13 @@ import DvProject, { type AssetId, type OperationSpec, type OperationToolValue, t
 import { afterEach, describe, expect, it } from 'vitest'
 import DvAudioGenerate, { type AudioRequest, type GeneratedAudio } from '../src/index.ts'
 
-/** The model key params of a call of the fake model. */
 const KEY = { modality: 'audio', task: 't2a', provider: 'test', model: 'fake' }
 
-/** The bytes that the fake model returns for every request. */
 const CLIP = Buffer.from('RIFF-FAKE-CLIP')
 
-/** The speech model of the tests: it answers every request with `CLIP` and remembers the requests. */
 class FakeSpeech {
   readonly requests: AudioRequest[] = []
-  /** The problems its validation reports for a request; none by default. */
   check: (request: AudioRequest) => string[] = () => []
-  /** When set, `render` rejects with this error. */
   failure: Error | null = null
 
   render(request: AudioRequest): Promise<GeneratedAudio> {
@@ -43,12 +36,6 @@ class FakeSpeech {
   }
 }
 
-/**
- * A catalog entry of provider `test` for task `t2a`: 3 GPU seconds per clip, served by `speech`.
- * @param speech - the fake model that validates and renders the requests.
- * @param model - the model name.
- * @returns the entry.
- */
 function fakeEntry(speech: FakeSpeech, model = 'fake'): ModelEntry<'t2a'> {
   return {
     modality: 'audio', task: 't2a', provider: 'test', model, description: 'Fixed clips', gpuSecondsPerCall: 3,
@@ -66,9 +53,7 @@ interface Fixture {
   ctx: Context
   speech: FakeSpeech
   project: ProjectId
-  /** Run one tool as the agent of chat session `s1`, which is bound to `project`. */
   call(name: string, args: Record<string, unknown>): Promise<ToolExecutionResult>
-  /** The number of records in the project's history. */
   history(): number
 }
 
@@ -128,18 +113,15 @@ async function start(options: { model?: boolean; budget?: number } = {}): Promis
   }
 }
 
-/** The value of a successful operation tool call. */
 function value(result: ToolExecutionResult): OperationToolValue {
   if (result.isError) throw new Error(result.error.message)
   return result.value as OperationToolValue
 }
 
-/** The error message of a failed tool call. */
 function failure(result: ToolExecutionResult): string {
   return result.isError ? result.error.message : ''
 }
 
-/** The registered spec of `audio.generate`. */
 function audioSpec(fixture: Fixture): OperationSpec | undefined {
   return fixture.ctx.dvProject.listOperations().find(spec => spec.name === 'audio.generate')
 }
@@ -159,7 +141,6 @@ describe('dvAudioGenerate', () => {
       + 'dv_models_list names for it, because the prompt is written in the model\'s own markup. dv_models_get lists the '
       + 'model\'s own parameters for extra. The clip is the one output; the result gives its duration. You cannot hear the '
       + 'clip, so ask the user which take to keep. Every call is a new take, and the same prompt gives a different clip. Uses the GPU.')
-    // The key, the prompt and extra: the operation has no seed param.
     const params = audioSpec(fixture)?.params ?? {}
     expect(Object.keys(params)).toEqual(['modality', 'task', 'provider', 'model', 'prompt', 'extra'])
     expect(params['prompt']).toEqual({
@@ -216,7 +197,6 @@ describe('dvAudioGenerate', () => {
     fixture.speech.check = request => request.prompt.includes('<|speaker:1|>') ? ['It speaks only <|speaker:0|>.'] : []
     expect(failure(await fixture.call('dv_audio_generate', { ...KEY, reason: 'guard', prompt: '<|speaker:1|> Who goes there?' })))
       .toBe('Model audio/t2a/test/fake cannot generate this: It speaks only <|speaker:0|>. Nothing was generated; change the inputs or params, then call again.')
-    // A workflow that calls the service without a prompt gets the same reason from `check`.
     const state = fixture.ctx.dvProject.getState(fixture.project)
     expect(await fixture.ctx.dvAudioGenerate.check({ project: fixture.project, params: KEY, inputs: [] }, state))
       .toEqual(['The prompt is empty; write the text to speak.'])

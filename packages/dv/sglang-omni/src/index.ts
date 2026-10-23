@@ -33,17 +33,15 @@ export interface Config {
   models: Record<string, ModelServer>
 }
 
-/** Loader validation. */
 export const Config: z<Config> = z.object({
   models: z.dict(z.object({ baseUrl: z.string().required(), gpuSecondsPerCall: z.number().required() })).required(),
 })
 
-/** One served speech model: its server ID, its catalog text, its speakers, its `extra` parameters and its prompt skill. */
 interface ServedSpeechModel {
   /** The ID the server reports in `GET /v1/models`. */
   modelId: string
   description: string
-  /** The speaker numbers of `<|speaker:N|>` tags that the server speaks; `schema()` and the speaker refusal read it. */
+  /** The speaker numbers of `<|speaker:N|>` tags that the server speaks. */
   speakers: readonly number[]
   /** The request fields the agent may set in `extra`, as the server names them. */
   extra: ParameterSchemaSpec
@@ -53,7 +51,6 @@ interface ServedSpeechModel {
 /** A speaker tag of the model's markup, well-formed or not; the server refuses a malformed one. */
 const SPEAKER_TAG = /<\|speaker[^|]*\|>/gu
 
-/** The models this plugin can serve. */
 const SERVED: Record<string, ServedSpeechModel> = {
   'fish-audio-drama-3': {
     modelId: 'fishaudio/drama-3',
@@ -69,10 +66,8 @@ const SERVED: Record<string, ServedSpeechModel> = {
   },
 }
 
-/** Plugin name. */
 export const name = 'dv-sglang-omni'
 
-/** Required services: the model catalog. */
 export const inject = ['dvModels']
 
 /** The text of an error answer: `error.message` of an `application/json` body, else `detail`, else the body as sent. */
@@ -83,7 +78,6 @@ async function errorText(response: Response): Promise<string> {
   try {
     body = JSON.parse(text) as typeof body
   } catch {
-    // A body that is not JSON despite its content type is shown as sent.
     return text
   }
   const message = body?.error?.message ?? body?.detail
@@ -107,10 +101,6 @@ async function call(baseUrl: string, route: string, init: RequestInit = {}): Pro
   return response
 }
 
-/**
- * Check that the server lists `modelId`.
- * @throws Error when the server cannot be reached, answers with an error, or serves another model.
- */
 async function checkServed(baseUrl: string, modelId: string): Promise<void> {
   const { data } = await (await call(baseUrl, '/v1/models')).json() as { data: Array<{ id: string }> }
   const ids = data.map(model => model.id)
