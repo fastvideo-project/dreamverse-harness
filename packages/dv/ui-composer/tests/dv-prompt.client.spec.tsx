@@ -112,6 +112,7 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
   const lent = structuredClone(state)
   options.lend?.(lent)
   const scripted = scriptedFetch({ state, operations: options.served ?? [...OPERATIONS, STILL], models: options.models ?? MODELS })
+  const requested: string[] = []
   const heldStates: Array<() => void> = []
   const heldModels: Array<() => void> = []
   const checks: Array<Held<OperationCheck>> = []
@@ -119,6 +120,7 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
   vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const path = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://host').pathname
     const answer = scripted.fetch(input, init)
+    requested.push(path)
     if (options.holdState === true && path === '/api/dv/state') return new Promise((resolve) => { heldStates.push(() => { resolve(answer) }) })
     if (options.holdModels === true && path === '/api/dv/models') return new Promise((resolve) => { heldModels.push(() => { resolve(answer) }) })
     if (options.holdChecks === true && path === '/api/dv/operation/check') {
@@ -188,7 +190,7 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
   const view = runtime.renderRoot()
   const take = view.getByTestId('take')
   return {
-    runtime, view, take, sent, answers, host, writes: scripted.writes, checks,
+    runtime, view, take, sent, answers, host, writes: scripted.writes, checks, requested,
     releaseState: () => { act(() => { heldStates.splice(0).forEach((release) => { release() }) }) },
     releaseModels: () => { act(() => { heldModels.splice(0).forEach((release) => { release() }) }) },
     setCall: (next: PromptCall) => { act(() => { setCall(next) }) },
@@ -561,6 +563,12 @@ describe('the version kinds of the canvas', () => {
     act(() => { runtime.ctx.provide('dvCanvas', createDvCanvas()) })
     await waitFor(() => { expect(box(take).getAttribute('contenteditable')).toBe('true') })
   })
+
+  it('shows the call in read mode before the canvas\'s version kinds are known, with each citation as its label', async () => {
+    const { take } = await mount({ operation: STILL.name, params: { prompt: `${HERO} rain` }, inputs: [] }, { lateCanvas: true, readOnly: true })
+    await waitFor(() => { expect(box(take).textContent).toBe('Hero rain') })
+    expect(take.querySelector('[data-dv-chip="dv:test_ref/hero"]')?.getAttribute('data-invalid')).toBe('true')
+  })
 })
 
 describe('the @ menu of an occurrence', () => {
@@ -631,14 +639,14 @@ describe('the words of an occurrence', () => {
 })
 
 describe('the modes of an occurrence', () => {
-  it('shows the stored call in read mode: its tiles with nothing to remove or add, and no parameter bar, send or check', async () => {
-    const { take, writes } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: `${HERO} runs` }, inputs: [{ role: 'reference', ref: 'hero@1' }] }, { readOnly: true })
+  it('shows the stored call in read mode: its tiles with nothing to remove or add, and no parameter bar, send, check or catalog', async () => {
+    const { take, writes, requested } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: `${HERO} runs` }, inputs: [{ role: 'reference', ref: 'hero@1' }] }, { readOnly: true })
     await waitFor(() => { expect(take.querySelector('[data-reference-tile="hero@1"]')?.textContent).toBe('Herov1') })
     expect([within(take).queryByRole('button', { name: 'Remove Hero' }), within(take).queryByRole('button', { name: 'Add asset' })]).toEqual([null, null])
     expect([within(take).queryByTestId('dv-prompt-model'), within(take).queryByRole('button', { name: 'Render new take' })]).toEqual([null, null])
     expect(box(take).getAttribute('contenteditable')).toBe('false')
     await act(() => new Promise((resolve) => { setTimeout(resolve, 300) }))
-    expect(writes.filter(write => write.path === '/api/dv/operation/check')).toEqual([])
+    expect([writes.filter(write => write.path === '/api/dv/operation/check'), requested.filter(path => path === '/api/dv/models')]).toEqual([[], []])
   })
 
   it('starts over on a call that the host lends in place of the shown one', async () => {

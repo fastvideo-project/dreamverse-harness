@@ -25,7 +25,7 @@ import { errorMessage } from '@dv/ui-kit/api.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import type { WireModelEntry, WireOperation } from '@dv/ui-kit/types.ts'
 import type {} from '@dv/ui-media/contract'
-import type { CallInput, CandidateFilter, ParamBar, ParamChip, PromptCopy, PromptFaceContext, ReferenceView } from './contract/index.ts'
+import type { CallInput, CandidateFilter, ParamBar, ParamChip, PromptCopy, PromptFaceContext, PromptHost, ReferenceView } from './contract/index.ts'
 import { draftOf, reduceDraft } from './draft.ts'
 import { MENTION_SOURCE } from './mention.ts'
 import { paramChips, typedValue } from './param-chips.ts'
@@ -57,13 +57,76 @@ function modelOf(models: readonly WireModelEntry[], params: Readonly<Record<stri
 }
 
 /**
- * Render one composer occurrence.
+ * Render one composer occurrence: the read view in read mode, which reads no model catalog and checks nothing, else the
+ * editor.
  * @param props - the call, the state and operations of the host, the host, the send, the inject face, and the Factory
  *   renderer.
  * @returns the composer.
  */
 export function DvPrompt(props: DvPromptComponentProps): ReactNode {
-  const { projectId, call, state, readOnly, host, onSubmit, surface, renderFactorySlot } = props
+  return props.readOnly ? <DvPromptView {...props} /> : <DvPromptEditor {...props} />
+}
+
+/** The faces of a document's chips, as its views resolve them. */
+function facesOf(atoms: readonly ReferenceView[]): PromptFaceContext {
+  return { faces: Object.fromEntries(atoms.map(view => [view.uri, faceOf(view)])) }
+}
+
+/** Open what a clicked chip names through the host; false for a chip that names nothing that opens. */
+function openChip(atoms: readonly ReferenceView[], host: PromptHost, reference: string): boolean {
+  const uri = parsePromptCitations(reference)[0]?.uri
+  const opened = atoms.find(view => view.uri === uri)?.open ?? null
+  if (opened === null) return false
+  if ('node' in opened) host.openNode(opened.node)
+  else host.preview(opened.asset, null)
+  return true
+}
+
+/** Open what a clicked tile names through the host, growing out of the tile. */
+function openTile(view: ReferenceView, host: PromptHost, opener: Element | null): void {
+  if (view.open === null) return
+  if ('node' in view.open) host.openNode(view.open.node)
+  else host.preview(view.open.asset, opener)
+}
+
+/**
+ * The read view: the call's tray and its read-only prompt, resolved against the host's state.
+ * @param props - the composer's props in read mode.
+ * @returns the view.
+ */
+function DvPromptView({ call, state, host, renderFactorySlot, useVersionKinds }: DvPromptComponentProps): ReactNode {
+  const pick = useText()
+  const versions = useVersionKinds(known => known) ?? []
+  const [draft, dispatch] = useReducer(reduceDraft, call, draftOf)
+  const callKey = JSON.stringify(call)
+  if (draft.callKey !== callKey) dispatch({ type: 'callLent', call })
+  const views = documentViews(draft.document, { state, versions, inputs: null, filter: null })
+  const model: PromptHostModel = {
+    content: draft.content, readOnly: true, sources: [], sourceContext: null, faceContext: facesOf(views.atoms), onChange: () => {},
+    openReference: (_source, reference) => openChip(views.atoms, host, reference), placeholder: '', ariaLabel: pick('提示词', 'Prompt'),
+  }
+  return (
+    <div data-dv-prompt="" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {views.tray.length === 0 ? null : <div role="list" aria-label={pick('参考', 'References')} style={row}>
+        {views.tray.map(({ input, view, cited }, index) => (
+          <Tile
+            key={`${String(index)}:${input.ref}`} input={input} view={view} cited={cited} renderFactorySlot={renderFactorySlot}
+            onOpen={(opener) => { openTile(view, host, opener) }}
+          />
+        ))}
+      </div>}
+      {renderFactorySlot('conversation.prompt', { model })}
+    </div>
+  )
+}
+
+/**
+ * The editor of a call: the tray with its add and upload, the prompt editor, the parameter bar, the check, and the send.
+ * @param props - the composer's props outside read mode.
+ * @returns the editor.
+ */
+function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
+  const { projectId, call, state, host, onSubmit, surface, renderFactorySlot } = props
   const pick = useText()
   // Null until the composer knows the canvas's version kinds; until then the editor is read-only, because the inputs
   // follow its edits by the kinds' rules.
@@ -83,14 +146,13 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
   const edited = callOf(document, { ...call, params })
   const entry = modelOf(models, params)
   const copy = { ...NEUTRAL_COPY, ...bar?.copy }
-  const filter: CandidateFilter | null = readOnly || entry === undefined ? null : bar?.candidates?.(entry.schema) ?? null
-  const offersReferences = !readOnly && catalog !== null && operation?.inputs['reference'] !== undefined && filter?.mediaTypes.length !== 0
+  const filter: CandidateFilter | null = entry === undefined ? null : bar?.candidates?.(entry.schema) ?? null
+  const offersReferences = catalog !== null && operation?.inputs['reference'] !== undefined && filter?.mediaTypes.length !== 0
   const editedKey = JSON.stringify(edited)
   // An answer or a failure of another call does not count for the edited call.
   const checked = draft.checked?.key === editedKey ? draft.checked.answer : null
   const failure = draft.failure?.key === editedKey ? draft.failure.message : null
   useEffect(() => {
-    if (readOnly) return
     let live = true
     const timer = setTimeout(() => {
       const request = { project: projectId, operation: edited.operation, params: { ...edited.params }, inputs: [...edited.inputs], surface }
@@ -101,19 +163,10 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
     return () => { live = false; clearTimeout(timer) }
     // The check follows the edited call, whose key holds every field the request sends, and the state that the host
     // lends, against which the kernel checks it.
-  }, [editedKey, readOnly, projectId, surface, state])
+  }, [editedKey, projectId, surface, state])
 
   const ctx: ResolveContext = { state, versions, inputs: null, filter: null }
   const views = documentViews(document, { ...ctx, filter })
-  const faces: PromptFaceContext = { faces: Object.fromEntries(views.atoms.map(view => [view.uri, faceOf(view)])) }
-  const openReference = (reference: string): boolean => {
-    const uri = parsePromptCitations(reference)[0]?.uri
-    const opened = views.atoms.find(view => view.uri === uri)?.open ?? null
-    if (opened === null) return false
-    if ('node' in opened) host.openNode(opened.node)
-    else host.preview(opened.asset, null)
-    return true
-  }
   // A text chip whose text its param cannot take blocks the send, so the field never shows a value that the call lacks.
   const typing = operation === null ? [] : Object.entries(draft.texts).flatMap(([key, text]) => {
     const typed = typedValue(operation, key, text)
@@ -141,13 +194,13 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
   // The `@` source offers the items of the kinds that a version kind reads, and assets, which inputs can satisfy.
   const sourceContext = { filter: media, kinds: versions.map(kind => kind.kind) }
   const model: PromptHostModel = {
-    content: draft.content, readOnly: readOnly || kinds === null, sources: offersReferences ? [MENTION_SOURCE] : [], sourceContext,
-    faceContext: faces,
+    content: draft.content, readOnly: kinds === null, sources: offersReferences ? [MENTION_SOURCE] : [], sourceContext,
+    faceContext: facesOf(views.atoms),
     onChange: (text, chips, cause) => { dispatch({ type: 'editorChanged', text, chips: chips.length, cause, ctx }) },
-    ...readOnly ? {} : { onSubmit: send },
+    onSubmit: send,
     // A pasted file joins the call as an upload does.
     ...offersReferences && importer !== undefined ? { intakeFiles: (files: readonly File[]) => { addFiles(importer, files) } } : {},
-    openReference: (_source, reference) => openReference(reference),
+    openReference: (_source, reference) => openChip(views.atoms, host, reference),
     placeholder: pick(...copy.placeholder),
     ariaLabel: pick('提示词', 'Prompt'),
   }
@@ -157,13 +210,8 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
       {views.tray.length === 0 && !offersReferences ? null : <div role="list" aria-label={pick('参考', 'References')} style={row}>
         {views.tray.map(({ input, view, cited }, index) => (
           <Tile
-            key={`${String(index)}:${input.ref}`} input={input} view={view} cited={cited} readOnly={readOnly}
-            renderFactorySlot={renderFactorySlot}
-            onOpen={(opener) => {
-              if (view.open === null) return
-              if ('node' in view.open) host.openNode(view.open.node)
-              else host.preview(view.open.asset, opener)
-            }}
+            key={`${String(index)}:${input.ref}`} input={input} view={view} cited={cited} renderFactorySlot={renderFactorySlot}
+            onOpen={(opener) => { openTile(view, host, opener) }}
             onRemove={() => { dispatch({ type: 'tileRemoved', index, ctx }) }}
             onPin={(version) => { dispatch({ type: 'pinned', index, version }) }}
           />
@@ -191,30 +239,26 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
           : null}
       </div>}
       {renderFactorySlot('conversation.prompt', { model })}
-      {readOnly
-        ? null
-        : (
-          <div style={{ ...row, justifyContent: 'space-between' }}>
-            <span style={row}>
-              <ModelChip models={models} entry={entry} params={params} onPatch={patch} />
-              {operation === null ? null : chipsFor(bar, entry, params, operation).map(chip => (
-                <Chip
-                  key={chip.key} chip={chip} typed={draft.texts[chip.key]} onPatch={patch}
-                  onText={(text) => { dispatch({ type: 'typed', operation, key: chip.key, text }) }}
-                />
-              ))}
-            </span>
-            <span style={row}>
-              <span data-testid="dv-prompt-cost" style={{ fontSize: 12, color: 'var(--dv-text-2)' }}>
-                {checked?.gpu_seconds === null || checked === null ? '' : pick(`约 ${String(checked.gpu_seconds)} GPU 秒`, `≈ ${String(checked.gpu_seconds)} GPU s`)}
-              </span>
-              <button type="button" className="dv-canvas-soft" disabled={onSubmit === undefined || sending || blocked} onClick={send} style={{ height: 30, borderRadius: 15, padding: '0 14px', border: 'none', font: 'inherit', cursor: 'pointer' }}>
-                {sending ? pick(...copy.sending) : pick(...copy.send)}
-              </button>
-            </span>
-          </div>
-        )}
-      {problems.length === 0 || readOnly
+      <div style={{ ...row, justifyContent: 'space-between' }}>
+        <span style={row}>
+          <ModelChip models={models} entry={entry} params={params} onPatch={patch} />
+          {operation === null ? null : chipsFor(bar, entry, params, operation).map(chip => (
+            <Chip
+              key={chip.key} chip={chip} typed={draft.texts[chip.key]} onPatch={patch}
+              onText={(text) => { dispatch({ type: 'typed', operation, key: chip.key, text }) }}
+            />
+          ))}
+        </span>
+        <span style={row}>
+          <span data-testid="dv-prompt-cost" style={{ fontSize: 12, color: 'var(--dv-text-2)' }}>
+            {checked?.gpu_seconds === null || checked === null ? '' : pick(`约 ${String(checked.gpu_seconds)} GPU 秒`, `≈ ${String(checked.gpu_seconds)} GPU s`)}
+          </span>
+          <button type="button" className="dv-canvas-soft" disabled={onSubmit === undefined || sending || blocked} onClick={send} style={{ height: 30, borderRadius: 15, padding: '0 14px', border: 'none', font: 'inherit', cursor: 'pointer' }}>
+            {sending ? pick(...copy.sending) : pick(...copy.send)}
+          </button>
+        </span>
+      </div>
+      {problems.length === 0
         ? null
         : <p role="alert" style={{ margin: 0, fontSize: 12, color: 'var(--dv-danger)' }}>{problems.join(' ')}</p>}
     </div>
@@ -222,19 +266,20 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
 }
 
 /**
- * One reference tile: its preview and name, whether a chip cites it, the version it sends, and its remove button.
- * @param props - the tile's input and view, whether it is cited, the mode, the Factory renderer, and the callbacks.
+ * One reference tile: its preview and name, whether a chip cites it, the version it sends, and, in the editor, its pin
+ * and remove buttons.
+ * @param props - the tile's input and view, whether it is cited, the Factory renderer, and the callbacks; a tile of the
+ *   read view has no remove and no pin.
  * @returns the tile.
  */
-function Tile({ input, view, cited, readOnly, renderFactorySlot, onOpen, onRemove, onPin }: {
+function Tile({ input, view, cited, renderFactorySlot, onOpen, onRemove, onPin }: {
   input: CallInput
   view: ReferenceView
   cited: boolean
-  readOnly: boolean
   renderFactorySlot: RenderFactorySlot
   onOpen: (opener: Element | null) => void
-  onRemove: () => void
-  onPin: (version: number) => void
+  onRemove?: () => void
+  onPin?: (version: number) => void
 }): ReactNode {
   const pick = useText()
   const version = view.version
@@ -246,10 +291,10 @@ function Tile({ input, view, cited, readOnly, renderFactorySlot, onOpen, onRemov
         {version === null ? null : <span style={{ color: 'var(--dv-text-2)' }}>{`v${String(version.sent)}`}</span>}
       </button>
       {cited ? null : <span style={{ color: 'var(--dv-text-3)' }}>{pick('未引用', 'uncited')}</span>}
-      {readOnly || version === null || version.newest === version.sent
+      {onPin === undefined || version === null || version.newest === version.sent
         ? null
         : <button type="button" style={{ ...plain, color: 'var(--dv-accent-text)' }} onClick={() => { onPin(version.newest) }}>{pick(`用 v${String(version.newest)}`, `Use v${String(version.newest)}`)}</button>}
-      {readOnly ? null : <button type="button" aria-label={pick(`移除 ${view.label}`, `Remove ${view.label}`)} style={plain} onClick={onRemove}>×</button>}
+      {onRemove === undefined ? null : <button type="button" aria-label={pick(`移除 ${view.label}`, `Remove ${view.label}`)} style={plain} onClick={onRemove}>×</button>}
     </span>
   )
 }

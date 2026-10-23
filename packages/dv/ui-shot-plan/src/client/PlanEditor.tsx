@@ -3,14 +3,14 @@
  * Its texts follow the interface language of `<html lang>`.
  * @module @dv/ui-shot-plan/PlanEditor
  */
-import { memo, useCallback, useRef, useState } from 'react'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import type { HostObservable, InjectFace, PropsRenderFactories, PropsRuntime, RenderFactorySlot } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ChainAnchor, NodeHost } from '@dv/ui-canvas/contract'
-import type {} from '@dv/ui-composer/contract'
+import type { ChainAnchor } from '@dv/ui-canvas/contract'
+import type { PromptHost } from '@dv/ui-composer/contract'
 import type { PlanVersion, Shot } from '@dv/shot-plan/types'
 import { useText } from '@dv/ui-kit/locale.ts'
-import { referenceAssets } from '@dv/ui-kit/references.ts'
+import { referenceItems } from '@dv/ui-kit/references.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
 import { taskLabel, type WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
@@ -74,6 +74,14 @@ export function PlanEditor(
   const anchors = useChainAnchors(value => value)
   const kinds = useVersionKinds(value => value)
   const taskLabels = useTaskLabels(value => value)
+  // The canvas lends a new host object on each render; one stable host lets the memoized shot list skip the redraws of
+  // a move or resize of the editor panel.
+  const lent = useRef(host)
+  lent.current = host
+  const shotHost = useMemo<PromptHost>(() => ({
+    preview: (asset, opener) => { lent.current.preview(asset, opener) },
+    openNode: (nodeId) => { lent.current.openNode(nodeId) },
+  }), [])
   const plan = versions.find(version => version.version === chosen) ?? versions.at(-1)
   if (plan === undefined) return null
   // The approved versions of the node are the union of what every chain anchor reports for it.
@@ -85,7 +93,7 @@ export function PlanEditor(
         renderFactorySlot={renderFactorySlot}
       />
       <PlanShots
-        plan={plan} state={state} operations={operations} taskLabels={taskLabels} host={host} renderFactorySlot={renderFactorySlot}
+        plan={plan} state={state} operations={operations} taskLabels={taskLabels} host={shotHost} renderFactorySlot={renderFactorySlot}
       />
     </>
   )
@@ -116,7 +124,7 @@ function PlanHeader(
   else if (replaced) { status = pick(`已被第 ${String(plan.version + 1)} 版取代`, `Replaced by v${String(plan.version + 1)}`); tone = 'var(--dv-text-2)' }
   const total = totalSec(plan)
   const summary = [pick(`${String(plan.shots.length)} 个镜头`, `${String(plan.shots.length)} shots`), ...total === null ? [] : [clockText(total)], ...plan.aspect_ratio === undefined ? [] : [plan.aspect_ratio]]
-  const references = referenceAssets(state, plan.references ?? [], kinds)
+  const references = referenceItems(state, plan.references ?? [], kinds)
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 }}>
       {plan.title === undefined || plan.title === '' ? null : <span style={{ fontSize: 14, lineHeight: '20px', fontWeight: 500 }}>{plan.title}</span>}
@@ -150,10 +158,10 @@ function PlanHeader(
         : (
           <span style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }}>
             {pick('计划参考', 'Plan references')}
-            {references.map((asset, index) => (
+            {references.map(({ name, asset }, index) => (
               <span key={index} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ ...chipThumb, boxShadow: '0 0 0 1px var(--dv-line-strong)' }}>{renderFactorySlot('dv.media', { asset, purpose: 'thumb' })}</span>
-                <span style={{ color: 'var(--dv-text)' }}>{asset.name}</span>
+                {asset === null ? null : <span style={{ ...chipThumb, boxShadow: '0 0 0 1px var(--dv-line-strong)' }}>{renderFactorySlot('dv.media', { asset, purpose: 'thumb' })}</span>}
+                <span style={{ color: 'var(--dv-text)' }}>{name}</span>
               </span>
             ))}
           </span>
@@ -172,7 +180,7 @@ const PlanShots = memo(function PlanShots(
     state: WireState
     operations: readonly WireOperation[]
     taskLabels: WireTaskLabels
-    host: NodeHost
+    host: PromptHost
     renderFactorySlot: RenderFactorySlot
   },
 ): ReactNode {
@@ -186,10 +194,7 @@ const PlanShots = memo(function PlanShots(
             projectId: state.project.id, state, operations, readOnly: true, surface: 'canvas',
             // The plan view only shows the call, so it lends no picker and no upload; a chip or a tile opens its item's node
             // or its asset's preview.
-            host: {
-              preview: (asset, opener) => { host.preview(asset, opener) },
-              openNode: (nodeId) => { host.openNode(nodeId) },
-            },
+            host,
             call: {
               operation: 'shot.render', params: { prompt: shot.prompt, model: shot.model, task: shot.task },
               inputs: shotReferences(plan, shot).map(ref => ({ role: 'reference', ref })),
@@ -250,16 +255,17 @@ function PromptBox({ children }: { children: ReactNode }): ReactNode {
   const pick = useText()
   const [expanded, setExpanded] = useState(false)
   const [overflows, setOverflows] = useState(false)
-  const observer = useRef<MutationObserver | null>(null)
-  // The composer fills its editor after it mounts and redraws its chips as references resolve, so the box measures
-  // again on every change below it, until React detaches it.
+  const observer = useRef<ResizeObserver | null>(null)
+  // The composer fills its editor after it mounts, redraws its chips as references resolve, and wraps again when the
+  // panel's width changes. The box measures again on each resize of itself until React detaches it: it resizes with
+  // its content until it reaches the collapsed height, and with the panel's width.
   const box = useCallback((element: HTMLDivElement | null): void => {
     observer.current?.disconnect()
     if (element === null) return
     const measure = (): void => { setOverflows(element.scrollHeight > PROMPT_COLLAPSED_HEIGHT) }
     measure()
-    observer.current = new MutationObserver(measure)
-    observer.current.observe(element, { subtree: true, childList: true, characterData: true })
+    observer.current = new ResizeObserver(measure)
+    observer.current.observe(element)
   }, [])
   const collapsed = overflows && !expanded
   return (

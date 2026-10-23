@@ -76,3 +76,26 @@ export function referenceAssets(state: WireState, references: readonly string[],
     return heldAssets(kinds.map(kind => kind.assets(state, syntax.id, syntax.version)).find(assets => assets.length > 0) ?? [])
   })
 }
+
+/**
+ * The items that reference texts name, in input order, as a view lists them: a version `<id>@<version>` by the name
+ * that the first of `kinds` holding it gives, with its first reference asset; a record output and an asset by the
+ * asset's name. A text the state cannot resolve gives no item.
+ * @param state - the project state the references are read against.
+ * @param references - the reference texts, in input order.
+ * @param kinds - the registered version kinds.
+ * @returns the items; a version without a reference asset has a null asset.
+ */
+export function referenceItems(
+  state: WireState, references: readonly string[], kinds: readonly VersionKind[],
+): Array<{ name: string; asset: ProjectAsset | null }> {
+  return references.flatMap((ref) => {
+    const syntax = splitInputRef(ref)
+    if (!('version' in syntax)) return referenceAssets(state, [ref], kinds).map(asset => ({ name: asset.name, asset }))
+    for (const kind of kinds) {
+      const name = kind.name(state, syntax.id, syntax.version)
+      if (name !== null) return [{ name, asset: referenceAssets(state, [ref], [kind])[0] ?? null }]
+    }
+    return []
+  })
+}

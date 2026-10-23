@@ -4,7 +4,7 @@
  * the composer stack mounted: its versions and approval status, its shots with their prompts and reference assets in
  * the read-only `dv.prompt` composer, and its task labels.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import type { PlanId } from '@dv/shot-plan/types'
 import type { ChainAnchor } from '@dv/ui-canvas/contract'
@@ -35,6 +35,8 @@ const CHARACTERS: VersionKind = {
   name: (_state, id, version) => id === 'hero' && version === 1 ? 'Hero' : null,
   assets: (_state, id, version) => id === 'hero' && version === 1 ? ['ref.png'] : [],
 }
+
+beforeEach(() => { vi.stubGlobal('ResizeObserver', ContentResizeObserver) })
 
 afterEach(() => {
   cleanup()
@@ -74,9 +76,41 @@ function drawnMedia(element: Element | null | undefined): string[] {
   })
 }
 
-/** Make a prompt box report a height of 10 px per prompt character, because jsdom lays out nothing; an image adds none. */
-function measureByCharacters(): void {
-  vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) { return (this.textContent ?? '').length * 10 })
+/**
+ * Make a prompt box report a height of `perCharacter` px per prompt character, because jsdom lays out nothing; an image
+ * adds none.
+ */
+function measureByCharacters(perCharacter = 10): void {
+  vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) { return (this.textContent ?? '').length * perCharacter })
+}
+
+/** The callbacks of the live ResizeObserver stand-ins, which {@link resizeAll} fires as a width change does. */
+const resized = new Set<() => void>()
+
+/**
+ * A ResizeObserver for jsdom, which lays out nothing: it reports a resize whenever the observed content changes, as a
+ * browser does for content that changes height, and when the test calls {@link resizeAll}.
+ */
+class ContentResizeObserver {
+  private readonly mutations: MutationObserver
+  constructor(private readonly fire: () => void) {
+    this.mutations = new MutationObserver(fire)
+  }
+
+  observe(target: Element): void {
+    resized.add(this.fire)
+    this.mutations.observe(target, { subtree: true, childList: true, characterData: true })
+  }
+
+  disconnect(): void {
+    resized.delete(this.fire)
+    this.mutations.disconnect()
+  }
+}
+
+/** Fire every live ResizeObserver, as a change of the editor panel's width does. */
+function resizeAll(): void {
+  act(() => { for (const fire of [...resized]) fire() })
 }
 
 describe('PlanEditor', () => {
@@ -169,7 +203,7 @@ describe('PlanEditor', () => {
     expect(header.textContent).toBe('计划参考shot1.mp4')
     expect(drawnMedia(header)).toEqual([`video ${assetUrl('shot1.mp4')}#t=0.1`])
     act(() => { canvas.versionKinds.register(CHARACTERS) })
-    await waitFor(() => { expect(header.textContent).toBe('计划参考shot1.mp4ref.png') })
+    await waitFor(() => { expect(header.textContent).toBe('计划参考shot1.mp4Hero') })
     expect(drawnMedia(header)).toEqual([`video ${assetUrl('shot1.mp4')}#t=0.1`, `img ${assetUrl('ref.png')}`])
     // The shot's tray lists the video, the version, the audio and the PDF in input order; the prompt stays its text.
     const shot = editor.querySelector('li[data-shot="1"]')
@@ -225,7 +259,20 @@ describe('PlanEditor', () => {
     const { v1 } = firstVersion(state)
     state.components.plan.plans['p1' as PlanId] = [{ ...v1, references: ['hero@1.0'] }]
     const { runtime, editor } = await mountPlanCanvas(state, { canvas })
-    expect(within(editor).getByText('计划参考').textContent).toBe('计划参考ref.png')
+    expect(within(editor).getByText('计划参考').textContent).toBe('计划参考Hero')
+    await runtime.dispose()
+  })
+
+  it('names a version without a reference asset in the header with no thumbnail', async () => {
+    document.documentElement.lang = 'zh-CN'
+    const canvas = createDvCanvas()
+    canvas.versionKinds.register({ ...CHARACTERS, assets: () => [] })
+    const state = fixtureState()
+    const { v1 } = firstVersion(state)
+    state.components.plan.plans['p1' as PlanId] = [{ ...v1, references: ['hero@1'] }]
+    const { runtime, editor } = await mountPlanCanvas(state, { canvas })
+    const header = within(editor).getByText('计划参考')
+    expect([header.textContent, drawnMedia(header)]).toEqual(['计划参考Hero', []])
     await runtime.dispose()
   })
 
@@ -266,6 +313,22 @@ describe('PlanEditor', () => {
     expect(toggles()).toHaveLength(0)
     act(() => { canvas.versionKinds.register({ ...CHARACTERS, name: () => 'Hero of the rain' }) })
     // After the registration, the tile names the version Hero of the rain, and the box overflows.
+    await waitFor(() => { expect(toggles()).toHaveLength(1) })
+    await runtime.dispose()
+  })
+
+  it('measures a shot prompt again when a narrower panel wraps it into more lines', async () => {
+    document.documentElement.lang = 'zh-CN'
+    measureByCharacters(5)
+    const state = fixtureState()
+    const { v1, shot } = firstVersion(state)
+    state.components.plan.plans['p1' as PlanId] = [{ ...v1, shots: [{ ...shot, prompt: 'hero walks through the rain' }] }]
+    const { runtime, editor } = await mountPlanCanvas(state)
+    const toggles = (): HTMLElement[] => within(editor).queryAllByRole('button', { name: '展开全部提示词' })
+    await waitFor(() => { expect(editor.querySelector('[data-composer-input]')?.textContent).toBe('hero walks through the rain') })
+    expect(toggles()).toHaveLength(0)
+    measureByCharacters(10)
+    resizeAll()
     await waitFor(() => { expect(toggles()).toHaveLength(1) })
     await runtime.dispose()
   })

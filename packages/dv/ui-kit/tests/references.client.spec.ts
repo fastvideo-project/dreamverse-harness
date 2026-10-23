@@ -1,6 +1,6 @@
 /** Stored input references read without kind names, and the reference assets of a shot. */
 import { describe, expect, it } from 'vitest'
-import { formatInputRef, referenceAssets, versionRefOf } from '../src/client/references.ts'
+import { formatInputRef, referenceAssets, referenceItems, versionRefOf } from '../src/client/references.ts'
 import type { VersionKind } from '../src/client/registries.ts'
 import type { WireInputRef } from '../src/client/types.ts'
 import { asset, fixtureState } from './fixture.client.tsx'
@@ -63,5 +63,14 @@ describe('referenceAssets', () => {
 
   it('adds nothing for a record output whose record, or whose output, the state does not hold', () => {
     expect(referenceAssets(fixtureState(), ['missing#0', 'g1#9'], [])).toEqual([])
+  })
+})
+
+describe('referenceItems', () => {
+  it('names a version by its version kind with its first asset, and any other reference by its asset, in input order', () => {
+    const state = fixtureState()
+    const kinds = [testKind('test_character', { hero: [{ version: 1, assets: ['ref.png'] }], ghost: [{ version: 1, assets: [] }] })]
+    expect(referenceItems(state, ['shot1-last.png', 'hero@1', 'ghost@1', 'nobody@1', 'missing.png'], kinds).map(item => [item.name, item.asset?.id ?? null]))
+      .toEqual([['shot1-last.png', 'shot1-last.png'], ['hero', 'ref.png'], ['ghost', null]])
   })
 })
