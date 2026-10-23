@@ -2,8 +2,9 @@
  * The apply world of the prompt composer: the `dvComposer` registry of parameter bars, the `dv.prompt` Factory with
  * its inject face over the registered version kinds and the `/api/dv` routes, and the chip face of the `@` source in
  * every prompt occurrence and in the chat composer bar.
- * Live data reaches the components through observable sources: the model catalog, the operation declarations, the
- * open project, and each project's state, fetched again after its project events.
+ * Live data reaches the components through observable sources: the model catalog, the open project, and the state of
+ * each project that a chat chip reads, fetched again after its project events. A `dv.prompt` occurrence draws the state
+ * that its host lends, so it fetches no state.
  *
  * @module @dv/ui-composer/prompt
  */
@@ -16,7 +17,7 @@ import { DvClient } from '@dv/ui-kit/api.ts'
 import { DV_CURRENT_PROJECT_EVENT, getCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { loadedOnce } from '@dv/ui-kit/loaded.ts'
 import { createRegistry, type VersionKind } from '@dv/ui-kit/registries.ts'
-import type { WireModelEntry, WireOperation, WireState } from '@dv/ui-kit/types.ts'
+import type { WireModelEntry, WireState } from '@dv/ui-kit/types.ts'
 import type { DvComposer, DvPromptInjected, ParamBar, PromptDocument, ReferenceFaceInjected } from './contract/index.ts'
 import { DvPrompt } from './DvPrompt.tsx'
 import { MENTION_SOURCE } from './mention.ts'
@@ -29,10 +30,11 @@ import { ReferenceFace } from './ReferenceFace.tsx'
 const REFETCH_DELAY_MS = 150
 
 /**
- * The live state of each project: fetched on the first subscription, and fetched again after each burst of project
- * events while a consumer subscribes.
+ * The live state of each project that a chat chip reads: fetched on the first subscription, and fetched again after
+ * each burst of project events while a consumer subscribes. Only the answer of the newest fetch is kept, and the last
+ * consumer to leave drops the state and stops the fetches.
  * @param client - reads a project's state and its events.
- * @returns the source of a project; the same source for the same project.
+ * @returns the source of a project; the same source for the same project while it has a consumer.
  */
 export function projectStates(client: Pick<DvClient, 'getState' | 'subscribe'>): (projectId: string) => HostObservable<WireState | null> {
   const sources = new Map<string, HostObservable<WireState | null>>()
@@ -43,14 +45,21 @@ export function projectStates(client: Pick<DvClient, 'getState' | 'subscribe'>):
     let consumers = 0
     let stop: (() => void) | null = null
     let timer: ReturnType<typeof setTimeout> | null = null
+    let fetches = 0
     const fetchState = (): void => {
-      client.getState(projectId).then((state) => { store.set(state) }, (failure: unknown) => { console.error('[dv-composer] state failed:', failure) })
+      fetches += 1
+      const fetched = fetches
+      client.getState(projectId).then((state) => { if (fetched === fetches) store.set(state) }, (failure: unknown) => {
+        console.error('[dv-composer] state failed:', failure)
+      })
     }
     const source: HostObservable<WireState | null> = {
       getSnapshot: () => store.getSnapshot(),
       subscribe: (listener) => {
         const off = store.subscribe(listener)
         consumers += 1
+        // A consumer that read this source before the last one left takes it back as the project's source.
+        if (!sources.has(projectId)) sources.set(projectId, source)
         // The empty project is a chat chip's while the shell has no project open; it has no state to fetch.
         if (consumers === 1 && projectId !== '') {
           fetchState()
@@ -62,7 +71,15 @@ export function projectStates(client: Pick<DvClient, 'getState' | 'subscribe'>):
         return () => {
           off()
           consumers -= 1
-          if (consumers === 0) { stop?.(); stop = null }
+          if (consumers > 0) return
+          stop?.()
+          stop = null
+          if (timer !== null) clearTimeout(timer)
+          timer = null
+          // An answer still in flight is dropped too.
+          fetches += 1
+          store.set(null)
+          sources.delete(projectId)
         }
       },
     }
@@ -80,7 +97,6 @@ export function applyPrompt(ctx: ClientContext): void {
   ctx.reflect.provide('dvComposer', composer)
   const client = new DvClient()
   const models = loadedOnce<readonly WireModelEntry[]>([], () => client.listModels())
-  const operations = loadedOnce<readonly WireOperation[]>([], () => client.listOperations())
   const states = projectStates(client)
   const currentProject = createSnapshotStore<string | null>(getCurrentProject())
   // The version kinds that the canvas holds; views read them at call time, and components draw again when they change.
@@ -121,12 +137,11 @@ export function applyPrompt(ctx: ClientContext): void {
     removeInput: (state, document, index) => removeInput(document, index, contextOf(state, document, null)),
     bar: operation => composer.paramBars.getSnapshot().find(bar => bar.operation === operation) ?? null,
     check: request => client.checkOperation(request),
-    hooks: { models, operations, versionKinds },
-    keyedHooks: { projectState: states },
+    hooks: { models, versionKinds },
   }
   ctx.effect(() => ctx.slots.registerFactory({ name: 'dv.prompt', scope: 'root', inject: () => injected }, DvPrompt), 'dv-composer: dv.prompt')
   const face: ReferenceFaceInjected = {
-    view: (state, atom, context) => resolveAtom(atom, contextOf(state, context, context?.filter ?? null)),
+    view: (state, atom) => resolveAtom(atom, contextOf(state, null, null)),
     hooks: { currentProject, versionKinds },
     keyedHooks: { projectState: states },
   }

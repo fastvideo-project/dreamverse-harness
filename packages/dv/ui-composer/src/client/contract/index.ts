@@ -93,6 +93,10 @@ export interface PromptHost {
 export interface DvPromptProps {
   readonly projectId: string
   readonly call: PromptCall
+  /** The project state that the host draws; the tray, the chips and the edits resolve every reference against it. */
+  readonly state: WireState
+  /** The operation declarations that the host reads; the composer finds the call's operation among them. */
+  readonly operations: readonly WireOperation[]
   readonly readOnly: boolean
   readonly host: PromptHost
   /** Send the edited call; absent in read mode. The caller decides what a send does, such as a rerun with `based_on`. */
@@ -162,7 +166,7 @@ export interface RemovedInput {
 
 /**
  * The apply-world face of the `dv.prompt` Factory: callbacks over the registered version kinds and the `/api/dv`
- * routes, and live data in the hooks compartments. The component passes the state it reads from `useProjectState`.
+ * routes, and live data in the hooks compartment. The component passes the state that its host lends.
  */
 export interface DvPromptInjected {
   /** The views of every atom of a document, and the tray of its inputs, in document order. */
@@ -185,28 +189,33 @@ export interface DvPromptInjected {
   readonly hooks: {
     /** The model catalog; empty until it loads. */
     readonly models: HostObservable<readonly WireModelEntry[]>
-    /** The operation declarations; empty until they load. */
-    readonly operations: HostObservable<readonly WireOperation[]>
     /** The version kinds the views read; a component reads it so it draws again when a kind registers. */
     readonly versionKinds: HostObservable<readonly VersionKind[]>
   }
-  readonly keyedHooks: {
-    /** The live state of a project; null until it loads. */
-    readonly projectState: (projectId: string) => HostObservable<WireState | null>
-  }
 }
 
-/** The face context that a `dv.prompt` occurrence gives each of its chips: its project and the call's inputs. */
-export interface PromptFaceContext {
-  readonly projectId: string
-  readonly inputs: readonly CallInput[]
-  readonly filter: CandidateFilter | null
+/**
+ * What the face of one chip of a `dv.prompt` occurrence draws, as the occurrence resolved it against the state that its
+ * host lends. A type alias, so that it is JSON.
+ */
+export type ChipFace = {
+  /** The asset that the chip previews; null for a role chip and for a citation that resolves to no asset. */
+  readonly preview: { readonly id: string; readonly mime: string; readonly name: string } | null
+  /** The version that the call sends; null for an asset, a role, and an element that no input satisfies. */
+  readonly sent: number | null
+  /** False when no input of the call satisfies the citation. */
+  readonly satisfied: boolean
+}
+
+/** The face context that a `dv.prompt` occurrence gives its chips: the face of each citation URI of its prompt. */
+export type PromptFaceContext = {
+  readonly faces: Readonly<Record<string, ChipFace>>
 }
 
 /** The apply-world face of the chip face entry. */
 export interface ReferenceFaceInjected {
-  /** The view of one atom; `context` null is a chat chip, which names the newest version. */
-  readonly view: (state: WireState, atom: ReferenceAtom, context: PromptFaceContext | null) => ReferenceView
+  /** The view of the atom of a chat chip, which names its element's newest version. */
+  readonly view: (state: WireState, atom: ReferenceAtom) => ReferenceView
   readonly hooks: {
     /** The project the shell has open, for chat chips. */
     readonly currentProject: HostObservable<string | null>
@@ -214,6 +223,7 @@ export interface ReferenceFaceInjected {
     readonly versionKinds: HostObservable<readonly VersionKind[]>
   }
   readonly keyedHooks: {
+    /** The live state of a project that a chat chip reads; null until it loads. */
     readonly projectState: (projectId: string) => HostObservable<WireState | null>
   }
 }

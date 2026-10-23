@@ -75,7 +75,7 @@ export function TakeEditor(props: TakeEditorProps): ReactNode {
         ? (
           <div style={{ marginTop: 12 }}>
             {renderFactorySlot('dv.prompt', {
-              projectId: state.project.id, readOnly: false, host: promptHost, onSubmit: rerun,
+              projectId: state.project.id, state, operations, readOnly: false, host: promptHost, onSubmit: rerun,
               call: { operation: record.operation, params: record.params, inputs: requestInputsOf(record) },
             })}
           </div>

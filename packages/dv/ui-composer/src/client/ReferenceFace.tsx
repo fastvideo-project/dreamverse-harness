@@ -1,17 +1,21 @@
 /**
  * The face of a DreamVerse chip in every prompt editor and in the chat composer bar: the `conversation.prompt.reference`
  * and `conversation.input.reference` entries of the `@` source.
- * It draws the reference's preview, its label, and the version a call sends, from the live project state; a chip that
- * the call's inputs do not satisfy draws in the failure style. A chat chip names its element's newest version.
+ * It draws the reference's preview, its label, and the version a call sends; a chip that the call's inputs do not
+ * satisfy draws in the failure style. A chip of a `dv.prompt` occurrence draws the face that the occurrence resolved
+ * against its host's state. A chat chip reads the live state of the open project and names its element's newest
+ * version.
  *
  * @module @dv/ui-composer/ReferenceFace
  */
 import type { CSSProperties, ReactNode } from 'react'
 import type { ReferenceFaceOwner } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { InjectFace, PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { parsePromptCitations } from '@dv/project/grammar'
 import type {} from '@dv/ui-media/contract'
-import type { PromptFaceContext, ReferenceFaceInjected } from './contract/index.ts'
+import type { ChipFace, ReferenceFaceInjected } from './contract/index.ts'
+import { faceOf } from './reference-model.ts'
 
 /** Full props of the face; the chat bar's slot has the same owner props. */
 export type ReferenceFaceProps = PropsRuntime<'conversation.prompt.reference'> & InjectFace<ReferenceFaceInjected> & PropsRenderFactories
@@ -22,40 +26,55 @@ const face: CSSProperties = {
 }
 const preview: CSSProperties = { display: 'inline-flex', width: 18, height: 18, borderRadius: 9, overflow: 'hidden' }
 
-/** The face context that a `dv.prompt` occurrence wrote, read back from its JSON; null for a chat chip. */
-function contextOf(owner: ReferenceFaceOwner): PromptFaceContext | null {
-  const value = owner.context
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
-  const { projectId, inputs, filter } = value
-  if (typeof projectId !== 'string' || !Array.isArray(inputs)) return null
-  const calls = inputs.flatMap(input => typeof input === 'object' && input !== null && !Array.isArray(input)
-    && typeof input['role'] === 'string' && typeof input['ref'] === 'string' ? [{ role: input['role'], ref: input['ref'] }] : [])
-  const media = typeof filter === 'object' && filter !== null && !Array.isArray(filter) && Array.isArray(filter['mediaTypes'])
-    ? { mediaTypes: filter['mediaTypes'].filter(type => typeof type === 'string'), maxReferences: typeof filter['maxReferences'] === 'number' ? filter['maxReferences'] : null }
-    : null
-  return { projectId, inputs: calls, filter: media }
+/** A JSON object, else null. */
+function objectOf(value: JsonValue | undefined): { readonly [key: string]: JsonValue } | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value : null
+}
+
+/** One face that a `dv.prompt` occurrence wrote, read back from its JSON; null for a value of another shape. */
+function chipFaceOf(value: JsonValue): ChipFace | null {
+  const fields = objectOf(value)
+  const shown = objectOf(fields?.['preview'])
+  const sent = fields?.['sent']
+  const satisfied = fields?.['satisfied']
+  if (fields === null || typeof satisfied !== 'boolean' || (typeof sent !== 'number' && sent !== null)) return null
+  const { id, mime, name } = shown ?? {}
+  const previewOf = typeof id === 'string' && typeof mime === 'string' && typeof name === 'string' ? { id, mime, name } : null
+  return { preview: previewOf, sent, satisfied }
+}
+
+/** The faces that a `dv.prompt` occurrence gave its chips, by citation URI; null for a chat chip's context. */
+function facesOf(owner: ReferenceFaceOwner): ReadonlyMap<string, ChipFace> | null {
+  const faces = objectOf(objectOf(owner.context)?.['faces'])
+  if (faces === null) return null
+  return new Map(Object.entries(faces).flatMap(([uri, value]) => {
+    const read = chipFaceOf(value)
+    return read === null ? [] : [[uri, read]]
+  }))
 }
 
 /**
  * Draw one chip.
  * @param props - the chip, its occurrence's face context, and the face's inject.
- * @returns the face; the chip's label alone until the project state loads.
+ * @returns the face; a chat chip's label alone until the project state loads.
  */
 export function ReferenceFace(props: ReferenceFaceProps): ReactNode {
-  const context = contextOf(props)
+  const faces = facesOf(props)
   const current = props.useCurrentProject(projectId => projectId)
-  const projectId = context?.projectId ?? current ?? ''
-  const state = props.useProjectState(projectId) ?? null
+  // Only a chat chip reads a project's state; the empty project fetches nothing.
+  const state = props.useProjectState(faces === null ? current ?? '' : '') ?? null
   // The view reads the version kinds; reading them here draws the face again when a kind registers.
   props.useVersionKinds(kinds => kinds.length)
   const [citation] = parsePromptCitations(props.reference)
-  const view = state === null || citation === undefined ? null : props.view(state, { label: citation.label, uri: citation.uri }, context)
-  const invalid = props.invalid || (view !== null && !view.satisfied)
+  const uri = citation?.uri ?? ''
+  const chat = state === null || citation === undefined ? null : faceOf(props.view(state, { label: citation.label, uri }))
+  const shown = faces === null ? chat : faces.get(uri) ?? null
+  const invalid = props.invalid || (shown !== null && !shown.satisfied)
   return (
-    <span data-dv-chip={citation?.uri ?? ''} data-invalid={invalid || undefined} title={props.label} style={{ ...face, ...invalid ? { color: 'var(--dv-danger)', boxShadow: 'inset 0 0 0 1px var(--dv-danger)' } : {} }}>
-      {view?.preview === null || view === null ? null : <span style={preview}>{props.renderFactorySlot('dv.media', { asset: view.preview, purpose: 'thumb' })}</span>}
+    <span data-dv-chip={uri} data-invalid={invalid || undefined} title={props.label} style={{ ...face, ...invalid ? { color: 'var(--dv-danger)', boxShadow: 'inset 0 0 0 1px var(--dv-danger)' } : {} }}>
+      {shown?.preview === null || shown === null ? null : <span style={preview}>{props.renderFactorySlot('dv.media', { asset: shown.preview, purpose: 'thumb' })}</span>}
       {props.label}
-      {view?.version === null || view === null ? null : <span style={{ color: 'var(--dv-text-2)', fontSize: 11 }}>{`v${String(view.version.sent)}`}</span>}
+      {shown?.sent === null || shown === null ? null : <span style={{ color: 'var(--dv-text-2)', fontSize: 11 }}>{`v${String(shown.sent)}`}</span>}
     </span>
   )
 }

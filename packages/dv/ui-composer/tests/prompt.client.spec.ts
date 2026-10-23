@@ -54,6 +54,55 @@ describe('the live state of a project', () => {
     expect(fake.stopped).toEqual(['p1'])
   })
 
+  it('keeps the answer of the newest fetch when the answer of an older fetch arrives after it', async () => {
+    vi.useFakeTimers()
+    const answers: Array<(state: WireState) => void> = []
+    const fake = client(() => new Promise((resolve) => { answers.push(resolve) }))
+    const p1 = projectStates(fake)('p1')
+    p1.subscribe(() => {})
+    fake.emit()
+    await vi.advanceTimersByTimeAsync(150)
+    answers[1]?.({ ...fixtureState(), head: 'newer' })
+    await vi.advanceTimersByTimeAsync(0)
+    answers[0]?.({ ...fixtureState(), head: 'older' })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(p1.getSnapshot()?.head).toBe('newer')
+  })
+
+  it('fetches nothing more when the last subscriber leaves during the wait after an event', async () => {
+    vi.useFakeTimers()
+    const fake = client()
+    const off = projectStates(fake)('p1').subscribe(() => {})
+    await vi.runAllTimersAsync()
+    fake.emit()
+    off()
+    await vi.advanceTimersByTimeAsync(150)
+    expect(fake.getState).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops the state of a project with its last subscriber, and fetches it again for the next one', async () => {
+    const fake = client()
+    const states = projectStates(fake)
+    const first = states('p1')
+    const off = first.subscribe(() => {})
+    await vi.waitFor(() => { expect(first.getSnapshot()).not.toBeNull() })
+    off()
+    const next = states('p1')
+    expect(next.getSnapshot()).toBeNull()
+    next.subscribe(() => {})
+    await vi.waitFor(() => { expect(next.getSnapshot()?.project.id).toBe('p1') })
+    expect(fake.getState).toHaveBeenCalledTimes(2)
+  })
+
+  it('takes back a source that a consumer read before the last consumer left, while the project has no other source', () => {
+    const fake = client()
+    const states = projectStates(fake)
+    const read = states('p1')
+    read.subscribe(() => {})()
+    read.subscribe(() => {})
+    expect(states('p1')).toBe(read)
+  })
+
   it('fetches nothing for the empty project of a chat chip while no project is open', () => {
     const fake = client()
     projectStates(fake)('').subscribe(() => {})

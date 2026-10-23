@@ -13,6 +13,7 @@ import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { PromptHostModel } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import { parsePromptCitations } from '@dv/project/grammar'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { createRegistry, type MentionKind } from '@dv/ui-kit/registries.ts'
 import type { OperationCheck, WireModelEntry, WireOperation, WireState } from '@dv/ui-kit/types.ts'
@@ -70,6 +71,10 @@ interface MountOptions {
   bare?: Partial<PromptHostModel>
   /** The project the shell has open; p1 by default. */
   open?: string | null
+  /** Edits the state that the host lends after the served state is set; the server never sees the edit. */
+  lend?: (state: WireState) => void
+  /** The operations that the server lists; the host lends the fixture's operations and STILL either way. */
+  served?: WireOperation[]
 }
 
 /** One held request of the server: the test answers it with a body or a failure. */
@@ -89,7 +94,9 @@ interface Held<T> {
 async function mount(call: PromptCall, options: MountOptions = {}) {
   const state = withTestRef(fixtureState())
   options.edit?.(state)
-  const scripted = scriptedFetch({ state, operations: [...OPERATIONS, STILL], models: options.models ?? MODELS })
+  const lent = structuredClone(state)
+  options.lend?.(lent)
+  const scripted = scriptedFetch({ state, operations: options.served ?? [...OPERATIONS, STILL], models: options.models ?? MODELS })
   const heldStates: Array<() => void> = []
   const checks: Array<Held<OperationCheck>> = []
   const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
@@ -131,7 +138,8 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
     return options.holdSend === true ? new Promise<void>((resolve) => { answers.push(resolve) }) : Promise.resolve()
   }
   const props = (shown: PromptCall): DvPromptProps => ({
-    projectId: 'p1', call: shown, readOnly: options.readOnly === true, host, ...options.noSend === true || options.readOnly === true ? {} : { onSubmit },
+    projectId: 'p1', call: shown, state: lent, operations: [...OPERATIONS, STILL], readOnly: options.readOnly === true, host,
+    ...options.noSend === true || options.readOnly === true ? {} : { onSubmit },
   })
   // A prompt occurrence that gives its chips no call: its face names the element's newest version.
   const bare: PromptHostModel = {
@@ -158,6 +166,12 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
     setCall: (next: PromptCall) => { act(() => { setCall(next) }) },
   }
 }
+
+/** The chips of a prompt occurrence's content: one chip of the `dv-project` source per citation of the text. */
+const chipsIn = (text: string): PromptHostModel['content']['chips'] => parsePromptCitations(text).map((citation) => {
+  const cited = text.slice(citation.start, citation.end)
+  return { source: 'dv-project', ref: cited, label: citation.label, offset: citation.start, length: cited.length, clipboardText: cited }
+})
 
 /** The occurrence's editor box. */
 const box = (take: HTMLElement): HTMLElement => {
@@ -257,6 +271,32 @@ describe('dv.prompt on the real stack', () => {
   })
 })
 
+describe('what the host lends', () => {
+  it('draws the tray and the chips from the state that the host lends while the server holds its own state back', async () => {
+    const stored: PromptCall = { operation: 'shot.render', params: { ...KEY, prompt: `${HERO} runs` }, inputs: [{ role: 'reference', ref: 'hero@1' }] }
+    const { take } = await mount(stored, {
+      holdState: true,
+      lend: (state) => {
+        state.components.test_ref?.['hero']?.push({ id: 'hero', version: 2, name: 'Hero', description: '', references: ['shot2-last.png'], created_by: 'e1' })
+      },
+    })
+    await waitFor(() => { expect(take.querySelector('[data-reference-tile="hero@1"]')?.textContent).toBe('Herov1Use v2×') })
+    expect(take.querySelector('[data-dv-chip="dv:test_ref/hero"] img')?.getAttribute('src')).toContain('ref.png')
+    expect(box(take).getAttribute('contenteditable')).toBe('true')
+  })
+
+  it('draws no parameter chip and offers no reference for a call whose operation the host does not declare', async () => {
+    const { take } = await mount({ operation: 'test_gone.generate', params: { ...KEY, prompt: `${HERO} rain`, seed: 3 }, inputs: [{ role: 'reference', ref: 'hero@1' }] })
+    await waitFor(() => { expect(take.querySelector('[data-reference-tile="hero@1"]')?.textContent).toBe('Herov1×') })
+    expect([take.querySelectorAll('[data-param-chip]').length, within(take).queryByRole('button', { name: 'Add asset' })]).toEqual([0, null])
+  })
+
+  it('shows the chips of an operation that the host lends and the server does not list', async () => {
+    const { take } = await mount({ operation: STILL.name, params: { prompt: 'rain', seed: 3 }, inputs: [] }, { served: OPERATIONS })
+    await waitFor(() => { expect(take.querySelector<HTMLInputElement>('[data-param-chip="seed"]')?.value).toBe('3') })
+  })
+})
+
 describe('the words of an occurrence', () => {
   it('names no kind for an operation whose parameter bar gives no words', async () => {
     const still = await mount({ operation: STILL.name, params: { prompt: 'a lamp' }, inputs: [] }, { holdSend: true })
@@ -298,21 +338,16 @@ describe('the modes of an occurrence', () => {
     expect(writes.filter(write => write.path === '/api/dv/operation/check')).toEqual([])
   })
 
-  it('stays read-only until the project state loads, and starts over on a call that changes meanwhile', async () => {
+  it('starts over on a call that the host lends in place of the shown one', async () => {
     const first: PromptCall = { operation: STILL.name, params: { prompt: `${HERO} rain` }, inputs: [{ role: 'reference', ref: 'hero@1' }] }
-    const { take, sent, setCall, releaseState, host } = await mount(first, { holdState: true })
-    await waitFor(() => { expect(box(take).textContent).toBe('Hero rain') })
-    expect(box(take).getAttribute('contenteditable')).toBe('false')
-    // A chip clicked before the state loads opens nothing.
-    fireEvent.click(take.querySelector('[data-dv-chip]')!, { detail: 1 })
+    const { take, sent, setCall } = await mount(first)
+    await waitFor(() => { expect(box(take).textContent).toBe('Herov1 rain') })
     const second: PromptCall = { ...first, params: { prompt: 'snow' }, inputs: [] }
     setCall(second)
     await waitFor(() => { expect(box(take).textContent).toBe('snow') })
-    releaseState()
-    await waitFor(() => { expect(box(take).getAttribute('contenteditable')).toBe('true') })
+    expect(take.querySelectorAll('[data-reference-tile]')).toHaveLength(0)
     fireEvent.click(await sendOf(take, 'Generate a new version'))
     await waitFor(() => { expect(sent).toEqual([second]) })
-    expect([host.openNode.mock.calls, host.preview.mock.calls]).toEqual([[], []])
   })
 
   it('offers no add and no upload to an occurrence whose host lends neither, and keeps its prompt editable', async () => {
@@ -467,12 +502,27 @@ describe('the chips of the parameter bar', () => {
 })
 
 describe('the chip face', () => {
-  it('reads the open project for a chip whose face context names no project, and skips context inputs that are not inputs', async () => {
+  it('draws a chip of an occurrence from the face that the occurrence resolved, and skips a face of another shape', async () => {
+    const rain = '@[Rain](dv:asset/shot1-last.png)'
+    const lamp = '@[Lamp](dv:asset/lamp.png)'
+    const text = `${HERO} ${rain} ${lamp}`
     const { view } = await mount({ operation: STILL.name, params: { prompt: 'rain' }, inputs: [] }, {
-      bare: { faceContext: { projectId: 'p1', inputs: [7, { role: 'reference', ref: 'hero@1' }], filter: { mediaTypes: ['image'], maxReferences: 'x' } } },
+      bare: {
+        content: { revision: 0, text, chips: chipsIn(text) },
+        faceContext: {
+          faces: {
+            'dv:test_ref/hero': { preview: { id: 'ref.png', mime: 'image/png', name: 'ref.png' }, sent: 1, satisfied: true },
+            'dv:asset/shot1-last.png': { preview: { id: 'shot1-last.png' }, sent: null, satisfied: false },
+            'dv:asset/lamp.png': { preview: null, sent: 'v1', satisfied: true },
+            'dv:asset/other.png': 7,
+          },
+        },
+      },
     })
     const bare = view.getByTestId('bare')
-    await waitFor(() => { expect(bare.querySelector('[data-dv-chip="dv:test_ref/hero"]')?.textContent).toBe('Herov1') })
+    await waitFor(() => { expect(bare.querySelector('[data-dv-chip="dv:test_ref/hero"] img')?.getAttribute('src')).toContain('ref.png') })
+    expect([...bare.querySelectorAll('[data-dv-chip]')].map(face => [face.textContent, face.getAttribute('data-invalid')]))
+      .toEqual([['Herov1', null], ['Rain', 'true'], ['Lamp', null]])
   })
 
   it('draws a chat chip at the open project\'s newest version when its face context is not a call\'s', async () => {

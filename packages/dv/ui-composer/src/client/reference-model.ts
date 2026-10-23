@@ -14,7 +14,7 @@ import { mediaTypeOf } from '@dv/ui-kit/media-type.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import type { ProjectAsset, WireState } from '@dv/ui-kit/types.ts'
 import type {
-  CallInput, CandidateFilter, PromptCall, PromptDocument, ReferenceAtom, ReferenceView, RemovedInput, TextRun, TrayEntry,
+  CallInput, CandidateFilter, ChipFace, PromptCall, PromptDocument, ReferenceAtom, ReferenceView, RemovedInput, TextRun, TrayEntry,
 } from './contract/index.ts'
 
 /** The part of a version kind that the model reads. */
@@ -387,6 +387,17 @@ export function resolveAtom(atom: ReferenceAtom, ctx: ResolveContext): Reference
   const assets = assetsIn(ids, ctx.state)
   const preview = assets[0] ?? null
   return { ...unresolved, assets, preview, open: preview === null ? null : { asset: preview.id }, fits: fitsFilter(assets, ctx.filter) }
+}
+
+/**
+ * What a chip's face draws of a view: the preview asset, the version the call sends, and whether an input satisfies it.
+ * @param view - the view of the chip's atom.
+ * @returns the face, as JSON.
+ */
+export function faceOf(view: ReferenceView): ChipFace {
+  const { preview, version, satisfied } = view
+  const shown = preview === null ? null : { id: preview.id, mime: preview.mime, name: preview.name }
+  return { preview: shown, sent: version?.sent ?? null, satisfied }
 }
 
 /**

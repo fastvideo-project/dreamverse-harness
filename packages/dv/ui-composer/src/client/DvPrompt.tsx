@@ -6,8 +6,8 @@
  * prompt as it is (a picker add, an upload, a version pin) is no editor step, so the editor's undo leaves it: the
  * editor's history holds editor states only, and holding the inputs there would put them in the prompt's text. The
  * tile's × takes back a picker add or an upload; a pin to the newest version has no way back to the older one. In read
- * mode the tray and the editor only show the call. Until the project state loads, the editor is read-only, because the
- * inputs follow its edits by the state's rules.
+ * mode the tray and the editor only show the call. Every reference resolves against the state that the host lends, and
+ * each chip's face draws what the composer resolved for it.
  *
  * The tray and `@` offer references only when the call's operation declares a `reference` input and the
  * selected model takes one. The placeholder and the send button read the copy of the operation's parameter bar; an
@@ -24,9 +24,11 @@ import { fieldsOf, valueOf } from '@dv/ui-kit/form.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import type { OperationCheck, WireModelEntry, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import type {} from '@dv/ui-media/contract'
-import type { CallInput, CandidateFilter, ParamBar, ParamChip, PromptCopy, PromptDocument, ReferenceView, RemovedInput } from './contract/index.ts'
+import type {
+  CallInput, CandidateFilter, ParamBar, ParamChip, PromptCopy, PromptDocument, PromptFaceContext, ReferenceView, RemovedInput,
+} from './contract/index.ts'
 import { MENTION_SOURCE } from './mention.ts'
-import { callOf, documentOf, editorContent, pinVersion, runsOfEditor } from './reference-model.ts'
+import { callOf, documentOf, editorContent, faceOf, pinVersion, runsOfEditor } from './reference-model.ts'
 
 /** Full props of the component. */
 export type DvPromptComponentProps = FactoryComponentPropsOf<'dv.prompt'>
@@ -79,13 +81,12 @@ function chipsOf(document: PromptDocument): { text: string; chips: PromptChip[] 
  * @returns the composer.
  */
 export function DvPrompt(props: DvPromptComponentProps): ReactNode {
-  const { projectId, call, readOnly, host, onSubmit, renderFactorySlot } = props
+  const { projectId, call, state, readOnly, host, onSubmit, renderFactorySlot } = props
   const pick = useText()
-  const state = props.useProjectState(projectId) ?? null
   // The views read the version kinds; reading them here draws the composer again when a kind registers.
   props.useVersionKinds(kinds => kinds.length)
   const models = props.useModels(catalog => catalog)
-  const operation = props.useOperations(declared => declared).find(candidate => candidate.name === call.operation) ?? null
+  const operation = props.operations.find(candidate => candidate.name === call.operation) ?? null
   const [document, setDocument] = useState(() => documentOf(call))
   const [removed, setRemoved] = useState<readonly RemovedInput[]>([])
   const [content, setContent] = useState(() => ({ revision: 0, ...chipsOf(documentOf(call)) }))
@@ -128,17 +129,17 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
     // The check follows the edited call, whose key holds every field the request sends.
   }, [editedKey, readOnly, projectId])
 
-  const shown = state === null ? null : { state, views: props.views(state, document, filter) }
+  const views = props.views(state, document, filter)
+  const faces: PromptFaceContext = { faces: Object.fromEntries(views.atoms.map(view => [view.uri, faceOf(view)])) }
   const onEditorChange = (text: string, chips: readonly Occurrence[]): void => {
     const now = latest.current
-    if (now.state === null) return
     const next = props.reconcile(now.state, now.document, runsOfEditor(text, chips), now.removed)
     setDocument(next.document)
     setRemoved(next.removed)
   }
   const openReference = (reference: string): boolean => {
     const uri = parsePromptCitations(reference)[0]?.uri
-    const opened = shown?.views.atoms.find(view => view.uri === uri)?.open ?? null
+    const opened = views.atoms.find(view => view.uri === uri)?.open ?? null
     if (opened === null) return false
     if ('node' in opened) host.openNode(opened.node)
     else host.preview(opened.asset, null)
@@ -152,8 +153,7 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
   }
   const media = filter === null ? null : { mediaTypes: [...filter.mediaTypes], maxReferences: filter.maxReferences }
   const model: PromptHostModel = {
-    content, readOnly: readOnly || state === null, sources: offersReferences ? [MENTION_SOURCE] : [], sourceContext: media,
-    faceContext: { projectId, inputs: document.inputs.map(input => ({ role: input.role, ref: input.ref })), filter: media },
+    content, readOnly, sources: offersReferences ? [MENTION_SOURCE] : [], sourceContext: media, faceContext: faces,
     onChange: onEditorChange,
     ...readOnly ? {} : { onSubmit: send },
     openReference: (_source, reference) => openReference(reference),
@@ -183,8 +183,8 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
   }
   return (
     <div data-dv-prompt="" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {(shown?.views.tray.length ?? 0) === 0 && !offersReferences ? null : <div role="list" aria-label={pick('参考', 'References')} style={row}>
-        {shown === null ? null : shown.views.tray.map(({ input, view, cited }, index) => (
+      {views.tray.length === 0 && !offersReferences ? null : <div role="list" aria-label={pick('参考', 'References')} style={row}>
+        {views.tray.map(({ input, view, cited }, index) => (
           <Tile
             key={`${String(index)}:${input.ref}`} input={input} view={view} cited={cited} readOnly={readOnly}
             renderFactorySlot={renderFactorySlot}
@@ -193,7 +193,7 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
               if ('node' in view.open) host.openNode(view.open.node)
               else host.preview(view.open.asset, opener)
             }}
-            onRemove={() => { removeTile(shown.state, index) }}
+            onRemove={() => { removeTile(state, index) }}
             onPin={(version) => { setDocument(pinVersion(document, index, version)) }}
           />
         ))}

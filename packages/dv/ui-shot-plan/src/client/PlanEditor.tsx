@@ -14,7 +14,7 @@ import { referenceAssets } from '@dv/ui-kit/references.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
 import { taskLabel, type WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
-import type { WireState } from '@dv/ui-kit/types.ts'
+import type { WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import type {} from '@dv/ui-media/contract'
 
 /** What the plugin injects: the `dvCanvas` chain anchors and version kinds, and the task labels, as observable sources. */
@@ -66,7 +66,7 @@ export const plansOf = (state: WireState): Readonly<Record<string, PlanVersion[]
  * @returns the element.
  */
 export function PlanEditor(
-  { node, state, host, useChainAnchors, useVersionKinds, useTaskLabels, renderFactorySlot }: PropsRuntime<'dv.canvas.editor'> & PropsRenderFactories & InjectFace<PlanEditorInjected>,
+  { node, state, operations, host, useChainAnchors, useVersionKinds, useTaskLabels, renderFactorySlot }: PropsRuntime<'dv.canvas.editor'> & PropsRenderFactories & InjectFace<PlanEditorInjected>,
 ): ReactNode {
   const versions = plansOf(state)[node.id.slice(node.id.indexOf(':') + 1)] ?? []
   // The version on show; the editor holds the choice so the version row and the shot list read the same version.
@@ -84,7 +84,9 @@ export function PlanEditor(
         versions={versions} plan={plan} approved={approved} state={state} kinds={kinds} onChoose={setChosen}
         renderFactorySlot={renderFactorySlot}
       />
-      <PlanShots plan={plan} state={state} taskLabels={taskLabels} host={host} renderFactorySlot={renderFactorySlot} />
+      <PlanShots
+        plan={plan} state={state} operations={operations} taskLabels={taskLabels} host={host} renderFactorySlot={renderFactorySlot}
+      />
     </>
   )
 }
@@ -165,9 +167,10 @@ function PlanHeader(
  * on every pointer move and each shot card renders a composer.
  */
 const PlanShots = memo(function PlanShots(
-  { plan, state, taskLabels, host, renderFactorySlot }: {
+  { plan, state, operations, taskLabels, host, renderFactorySlot }: {
     plan: PlanVersion
     state: WireState
+    operations: readonly WireOperation[]
     taskLabels: WireTaskLabels
     host: NodeHost
     renderFactorySlot: RenderFactorySlot
@@ -180,7 +183,7 @@ const PlanShots = memo(function PlanShots(
         <ShotCard
           key={index} number={index + 1} shot={shot} referenceCount={shotReferences(plan, shot).length} taskLabels={taskLabels}
           prompt={renderFactorySlot('dv.prompt', {
-            projectId: state.project.id, readOnly: true,
+            projectId: state.project.id, state, operations, readOnly: true,
             // The plan view only shows the call, so it lends no picker and no upload; a chip or a tile opens its item's node
             // or its asset's preview.
             host: {
