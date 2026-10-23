@@ -122,8 +122,8 @@ export function applyPrompt(ctx: ClientContext): void {
   const models = catalogSource(() => client.listModels())
   const states = projectStates(client)
   const currentProject = createSnapshotStore<string | null>(getCurrentProject())
-  // The version kinds that the canvas holds, which the components read through their hooks.
-  const versionKinds = createSnapshotStore<readonly VersionKind[]>([])
+  // The version kinds that the canvas holds, which the components read through their hooks; null without the canvas.
+  const versionKinds = createSnapshotStore<readonly VersionKind[] | null>(null)
   ctx.inject(['dvCanvas'], (scope) => {
     const registry = scope.dvCanvas.versionKinds
     versionKinds.set(registry.getSnapshot())
@@ -131,7 +131,7 @@ export function applyPrompt(ctx: ClientContext): void {
       const off = registry.subscribe(() => { versionKinds.set(registry.getSnapshot()) })
       return () => {
         off()
-        versionKinds.set([])
+        versionKinds.set(null)
       }
     }, 'dv-composer: version kinds')
   })

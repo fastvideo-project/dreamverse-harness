@@ -150,10 +150,16 @@ describe('projectMentionSource candidates and picks', () => {
 })
 
 describe('projectMentionSource in a prompt occurrence', () => {
-  /** A kind with an item shown by the image ref.png, one shown by an asset that the state lacks, and one without a thumb. */
+  /**
+   * A kind with an item shown by the image ref.png, one shown by an asset that the state lacks, one without a thumb, and
+   * one that names a record.
+   */
   const looks: MentionKind = {
     id: 'test-looks', kind: 'test_look', order: 1, section: () => 'Looks',
-    items: () => [{ uri: 'dv:test_look/l1', label: 'Lit', thumb: 'ref.png' }, { uri: 'dv:test_look/l2', label: 'Lost', thumb: 'gone.png' }, { uri: 'dv:test_look/l3', label: 'Bare' }],
+    items: () => [
+      { uri: 'dv:test_look/l1', label: 'Lit', thumb: 'ref.png' }, { uri: 'dv:test_look/l2', label: 'Lost', thumb: 'gone.png' },
+      { uri: 'dv:test_look/l3', label: 'Bare' }, { uri: 'dv:record/r1', label: 'Made' },
+    ],
   }
   const prompt = () => {
     const kinds = createRegistry<MentionKind>(kind => [kind.id], kind => kind.id)
@@ -178,15 +184,24 @@ describe('projectMentionSource in a prompt occurrence', () => {
   it('offers only the items whose asset is of a media type that the occurrence names, and every item without a filter', async () => {
     vi.stubGlobal('fetch', scriptedFetch().fetch)
     publishCurrentProject('p1')
-    const images = await names({ mediaTypes: ['image'] })
+    const images = await names({ filter: { mediaTypes: ['image'] } })
     expect(images.slice(0, 2)).toEqual(['Lit', 'Bare'])
     expect(images).toContain('ref.png')
     expect(images).not.toContain('shot1.mp4')
-    const videos = await names({ mediaTypes: ['video'] })
+    const videos = await names({ filter: { mediaTypes: ['video'] } })
     expect([videos.includes('Lit'), videos.includes('shot1.mp4'), videos.includes('Bare')]).toEqual([false, true, true])
-    for (const context of [null, 'image', { mediaTypes: 'image' }]) {
+    for (const context of [null, 'image', { filter: { mediaTypes: 'image' } }, { filter: 'image' }]) {
       expect((await names(context)).slice(0, 3)).toEqual(['Lit', 'Lost', 'Bare'])
     }
+  })
+
+  it('offers only the assets and the items of the kinds that the occurrence names', async () => {
+    vi.stubGlobal('fetch', scriptedFetch().fetch)
+    publishCurrentProject('p1')
+    const offered = await names({ filter: null, kinds: ['test_other'] })
+    expect([offered.includes('Lit'), offered.includes('ref.png')]).toEqual([false, true])
+    const looksOnly = await names({ filter: null, kinds: ['test_look'] })
+    expect([looksOnly.includes('Lit'), looksOnly.includes('Made')]).toEqual([true, false])
   })
 
   it('inserts the picked item\'s chip as the session face does', async () => {

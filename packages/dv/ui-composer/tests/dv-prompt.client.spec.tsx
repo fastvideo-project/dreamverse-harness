@@ -68,6 +68,14 @@ interface MountOptions {
   holdChecks?: boolean
   /** The model catalog waits until the test releases it. */
   holdModels?: boolean
+  /** The host's send refuses with this message. */
+  refuseSend?: string
+  /** The host's import refuses with this message. */
+  refuseImport?: string
+  /** The surface that the host names; the canvas by default. */
+  surface?: DvPromptProps['surface']
+  /** The canvas and its version kinds arrive after the composer opens, when the test provides them. */
+  lateCanvas?: boolean
   /** The occurrence only shows the call. */
   readOnly?: boolean
   /** The host gives no send. */
@@ -124,13 +132,13 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
-  runtime.ctx.provide('dvCanvas', createDvCanvas())
+  if (options.lateCanvas !== true) runtime.ctx.provide('dvCanvas', createDvCanvas())
   const mentions = { kinds: createRegistry<MentionKind>(kind => [kind.id], kind => kind.id) }
   runtime.ctx.provide('dvMentions', mentions)
   runtime.ctx.provide('sidebarRightTabs', { register: () => () => {} } as never)
   await runtime.mount({ inject: [...mediaInject], apply: mediaApply })
   await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
-  await runtime.mount({ inject: [...testRef.inject], apply: testRef.apply })
+  if (options.lateCanvas !== true) await runtime.mount({ inject: [...testRef.inject], apply: testRef.apply })
   await runtime.mount(composerStack)
   runtime.ctx.effect(() => runtime.ctx.inputTriggers.registerSource(projectMentionSource(mentions, () => [])))
   runtime.ctx.effect(() => runtime.ctx.dvComposer.paramBars.register(SHOT_BAR))
@@ -142,15 +150,19 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
       ? {}
       : {
         pickAssets: vi.fn<NonNullable<PromptHost['pickAssets']>>(),
-        importFiles: vi.fn<NonNullable<PromptHost['importFiles']>>(files => Promise.resolve(files.map(file => file.name))),
+        importFiles: vi.fn<NonNullable<PromptHost['importFiles']>>(files => options.refuseImport === undefined
+          ? Promise.resolve(files.map(file => file.name))
+          : Promise.reject(new Error(options.refuseImport))),
       },
   }
   const onSubmit = (edited: PromptCall): Promise<void> => {
     sent.push(edited)
+    if (options.refuseSend !== undefined) return Promise.reject(new Error(options.refuseSend))
     return options.holdSend === true ? new Promise<void>((resolve) => { answers.push(resolve) }) : Promise.resolve()
   }
-  const props = (shown: PromptCall): DvPromptProps => ({
-    projectId: 'p1', call: shown, state: lent, operations: [...OPERATIONS, STILL], readOnly: options.readOnly === true, host,
+  const props = (shown: PromptCall, state: WireState): DvPromptProps => ({
+    projectId: 'p1', call: shown, state, operations: [...OPERATIONS, STILL], readOnly: options.readOnly === true, host,
+    surface: options.surface ?? 'canvas',
     ...options.noSend === true || options.readOnly === true ? {} : { onSubmit },
   })
   // A prompt occurrence that gives its chips no call: its face names the element's newest version.
@@ -160,12 +172,15 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
     ...options.bare,
   }
   let setCall: (next: PromptCall) => void = () => {}
+  let setLent: (next: WireState) => void = () => {}
   await runtime.root.declare({}, ({ renderFactorySlot }: PropsRuntime<'root'> & PropsRenderFactories): ReactNode => {
     const [shown, update] = useState(call)
+    const [state, lend] = useState<WireState>(lent)
     setCall = update
+    setLent = lend
     return (
       <>
-        <section data-testid="take">{renderFactorySlot('dv.prompt', props(shown))}</section>
+        <section data-testid="take">{renderFactorySlot('dv.prompt', props(shown, state))}</section>
         <section data-testid="bare">{renderFactorySlot('conversation.prompt', { model: bare })}</section>
       </>
     )
@@ -177,6 +192,8 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
     releaseState: () => { act(() => { heldStates.splice(0).forEach((release) => { release() }) }) },
     releaseModels: () => { act(() => { heldModels.splice(0).forEach((release) => { release() }) }) },
     setCall: (next: PromptCall) => { act(() => { setCall(next) }) },
+    /** Lend a new state object of the same project, as the host's next fetch does. */
+    relend: () => { act(() => { setLent(structuredClone(lent)) }) },
   }
 }
 
@@ -485,6 +502,79 @@ describe('one draft per occurrence', () => {
     expect(within(take).getByRole('button', { name: 'Generate a new version' })).toBeTruthy()
     act(() => { runtime.ctx.dvComposer.paramBars.register({ ...shotRenderBar, operation: STILL.name, owner: 'test', copy: { send: ['生成静帧', 'Make the still'] } }) })
     await waitFor(() => { expect(within(take).getByRole('button', { name: 'Make the still' })).toBeTruthy() })
+  })
+})
+
+describe('the check of the edited call', () => {
+  it('checks the call again when the host lends a new project state', async () => {
+    const { take, checks, relend } = await mount({ operation: STILL.name, params: { prompt: 'a lamp' }, inputs: [] }, { holdChecks: true })
+    await waitFor(() => { expect(checks).toHaveLength(1) })
+    act(() => { checks[0]?.answer({ problems: ['The input g9#0 is not ready.'], gpu_seconds: null }) })
+    await waitFor(() => { expect(within(take).getByRole('alert').textContent).toBe('The input g9#0 is not ready.') })
+    relend()
+    await waitFor(() => { expect(checks).toHaveLength(2) })
+    act(() => { checks[1]?.answer({ problems: [], gpu_seconds: null }) })
+    await sendOf(take, 'Generate a new version')
+  })
+
+  it('blocks the send of an edit until the check of that edit answers', async () => {
+    const { take, checks } = await mount({ operation: STILL.name, params: { prompt: 'a lamp' }, inputs: [] }, { holdChecks: true })
+    await waitFor(() => { expect(checks).toHaveLength(1) })
+    act(() => { checks[0]?.answer({ problems: [], gpu_seconds: 4 }) })
+    await sendOf(take, 'Generate a new version')
+    fireEvent.change(take.querySelector('[data-param-chip="seed"]')!, { target: { value: '5' } })
+    expect([within(take).getByRole<HTMLButtonElement>('button', { name: 'Generate a new version' }).disabled, within(take).getByTestId('dv-prompt-cost').textContent])
+      .toEqual([true, ''])
+    await waitFor(() => { expect(checks).toHaveLength(2) })
+    act(() => { checks[1]?.answer({ problems: [], gpu_seconds: 5 }) })
+    await sendOf(take, 'Generate a new version')
+  })
+
+  it('checks the call with the surface that the host names', async () => {
+    const { writes } = await mount({ operation: STILL.name, params: { prompt: 'a lamp' }, inputs: [] }, { surface: 'timeline' })
+    await waitFor(() => { expect(writes.find(write => write.path === '/api/dv/operation/check')?.body).toMatchObject({ surface: 'timeline' }) })
+  })
+})
+
+describe('the failures of the host', () => {
+  it('shows a refused send as the one alert, offers the send again, and drops the alert when the call changes', async () => {
+    const { take } = await mount({ operation: STILL.name, params: { prompt: 'a lamp' }, inputs: [] }, { refuseSend: 'The GPU queue is full.' })
+    fireEvent.click(await sendOf(take, 'Generate a new version'))
+    await waitFor(() => { expect(within(take).getAllByRole('alert').map(alert => alert.textContent)).toEqual(['Failed: The GPU queue is full.']) })
+    await sendOf(take, 'Generate a new version')
+    fireEvent.change(take.querySelector('[data-param-chip="seed"]')!, { target: { value: '5' } })
+    expect(within(take).queryByRole('alert')).toBeNull()
+  })
+
+  it('shows a refused import as the alert', async () => {
+    const { take } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] }, { refuseImport: 'The file is too large.' })
+    fireEvent.change(await found(take, '[data-testid="dv-prompt-upload"]'), { target: { files: [new File(['a'], 'big.png', { type: 'image/png' })] } })
+    await waitFor(() => { expect(within(take).getByRole('alert').textContent).toBe('Failed: The file is too large.') })
+  })
+})
+
+describe('the version kinds of the canvas', () => {
+  it('keeps the editor read-only until the composer knows the canvas\'s version kinds', async () => {
+    const { take, runtime } = await mount({ operation: STILL.name, params: { prompt: 'rain' }, inputs: [] }, { lateCanvas: true })
+    await waitFor(() => { expect(box(take).textContent).toBe('rain') })
+    expect(box(take).getAttribute('contenteditable')).toBe('false')
+    act(() => { runtime.ctx.provide('dvCanvas', createDvCanvas()) })
+    await waitFor(() => { expect(box(take).getAttribute('contenteditable')).toBe('true') })
+  })
+})
+
+describe('the @ menu of an occurrence', () => {
+  it('offers the assets and the items of a kind that a version kind reads, and no other item', async () => {
+    const { take, view, runtime } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] })
+    runtime.ctx.dvMentions.kinds.register({
+      id: 'test_clip', kind: 'test_clip', order: 0, section: () => 'Clips', items: () => [{ uri: 'dv:test_clip/c1', label: 'Clip 1' }],
+    })
+    await sendOf(take, 'Render new take')
+    act(() => { box(take).focus() })
+    pasteText(take, ' @')
+    await waitFor(() => { expect(view.container.querySelectorAll('[role="option"]').length).toBeGreaterThan(1) })
+    const names = [...view.container.querySelectorAll('[role="option"]')].map(option => option.textContent).join('|')
+    expect([names.includes('Hero'), names.includes('Clip 1')]).toEqual([true, false])
   })
 })
 

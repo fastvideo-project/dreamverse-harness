@@ -11,7 +11,7 @@ import { createElement, type ComponentType } from 'react'
 import type { InputTriggerCandidate, InputTriggerSource, PickOutcome } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { IconPaperclipOutlineRegular, type IconProps } from '@deepseek-ai/dsh-client-ui-primitives'
-import { citationTarget, citationUri, formatCitation } from '@dv/project/grammar'
+import { citationTarget, citationUri, citedAsset, citedElement, formatCitation } from '@dv/project/grammar'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import type { DvMentions, MentionKind } from '@dv/ui-kit/registries.ts'
 import { mediaTypeOf } from '@dv/ui-kit/media-type.ts'
@@ -72,27 +72,46 @@ export function projectItems(state: WireState, kinds: readonly MentionKind[], ty
   return [...mentioned, ...assets]
 }
 
-/** The media types that a prompt occurrence's source context names, else null for no filter. */
-function mediaOf(context: JsonValue | null): readonly string[] | null {
-  if (typeof context !== 'object' || context === null || Array.isArray(context)) return null
-  const media = context['mediaTypes']
-  return Array.isArray(media) ? media.filter(type => typeof type === 'string') : null
+/** A JSON object, else null. */
+function objectOf(value: JsonValue | undefined): { readonly [key: string]: JsonValue } | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value : null
+}
+
+/** The strings of a JSON list, else null. */
+function stringsOf(value: JsonValue | undefined): readonly string[] | null {
+  return Array.isArray(value) ? value.filter(item => typeof item === 'string') : null
+}
+
+/** What a prompt occurrence's source context names, each null when the context names none. */
+interface PromptFilter {
+  /** The media types that the call's model takes. */
+  readonly media: readonly string[] | null
+  /** The kinds whose items a version kind reads, which an input of the call can satisfy. */
+  readonly kinds: readonly string[] | null
+}
+
+/** The filter that a prompt occurrence's source context names. */
+function promptFilterOf(context: JsonValue | null): PromptFilter {
+  const fields = objectOf(context)
+  return { media: stringsOf(objectOf(fields?.['filter'])?.['mediaTypes']), kinds: stringsOf(fields?.['kinds']) }
 }
 
 /**
  * The `@` source over the `/api/dv` routes. A prompt occurrence outside a Session reaches it through its `prompt`
- * face with the media types that its call's model takes, and an item whose asset is of another media type is not
- * offered there.
+ * face with the media types that its call's model takes and the kinds that a version kind reads; an item whose asset
+ * is of another media type, and an item of another kind, such as a timeline clip, is not offered there, because no input
+ * of the call can satisfy it.
  * @param mentions - the mention kinds that plugin UI halves register.
  * @param mediaTypes - reads the registered media types when the menu lists its candidates.
  * @returns the source.
  */
 export function projectMentionSource(mentions: DvMentions, mediaTypes: () => readonly MediaType[]): InputTriggerSource {
   const client = new DvClient()
-  /** The candidates of a query; a media filter keeps the items whose asset is of a media type the call's model takes. */
-  async function candidates(
-    query: string, signal: AbortSignal, media: readonly string[] | null,
-  ): Promise<readonly InputTriggerCandidate[]> {
+  /**
+   * The candidates of a query: a media filter keeps the items whose asset is of a media type the call's model takes, and
+   * a kinds filter keeps the assets and the items of those kinds.
+   */
+  async function candidates(query: string, signal: AbortSignal, { media, kinds }: PromptFilter): Promise<readonly InputTriggerCandidate[]> {
     // The project the shell has open; the entry page lists nothing.
     const projectId = getCurrentProject()
     if (projectId === null) return []
@@ -105,6 +124,7 @@ export function projectMentionSource(mentions: DvMentions, mediaTypes: () => rea
     const seen = new Map<string, number>()
     return projectItems(state, mentions.kinds.getSnapshot(), mediaTypes())
       .filter(item => item.shows === undefined || taken(item.shows))
+      .filter(item => kinds === null || citedAsset(item.uri) !== null || kinds.includes(citedElement(item.uri)?.kind ?? ''))
       .filter(item => needle === '' || item.label.toLowerCase().includes(needle) || (item.description ?? '').toLowerCase().includes(needle))
       .map((item): InputTriggerCandidate => {
         const count = (seen.get(item.label) ?? 0) + 1
@@ -129,10 +149,10 @@ export function projectMentionSource(mentions: DvMentions, mediaTypes: () => rea
     trigger: '@',
     name: MENTION_SOURCE,
     showGroupTitle: false,
-    candidates: (_session, { query, signal }) => candidates(query, signal, null),
+    candidates: (_session, { query, signal }) => candidates(query, signal, { media: null, kinds: null }),
     onPick: ({ candidate }) => insert(candidate),
     prompt: {
-      candidates: ({ query, signal, context }) => candidates(query, signal, mediaOf(context)),
+      candidates: ({ query, signal, context }) => candidates(query, signal, promptFilterOf(context)),
       onPick: ({ candidate }) => insert(candidate),
     },
     codec: {

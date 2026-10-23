@@ -63,7 +63,7 @@ export function ReferenceFace(props: ReferenceFaceProps): ReactNode {
   const current = props.useCurrentProject(projectId => projectId)
   // Only a chat chip reads a project's state; the empty project fetches nothing.
   const state = props.useProjectState(faces === null ? current ?? '' : '') ?? null
-  const versions = props.useVersionKinds(kinds => kinds)
+  const versions = props.useVersionKinds(kinds => kinds) ?? []
   const [citation] = parsePromptCitations(props.reference)
   const uri = citation?.uri ?? ''
   const chat = state === null || citation === undefined

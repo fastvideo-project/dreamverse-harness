@@ -26,9 +26,11 @@ export interface Draft {
   readonly params: Readonly<Record<string, unknown>>
   /** The text that the user typed in each text chip; a text that its param cannot take stays out of `params`. */
   readonly texts: Readonly<Record<string, string>>
-  /** The answer of the check of the edited call; null until it answers. */
-  readonly checked: OperationCheck | null
+  /** The last answer of the check, with the call it checked as JSON; it counts only for that call. */
+  readonly checked: { readonly key: string; readonly answer: OperationCheck } | null
   readonly sending: boolean
+  /** The message of the host's last refused send or import, with the call it refused as JSON; shown only for that call. */
+  readonly failure: { readonly key: string; readonly message: string } | null
 }
 
 /** One change of a draft. */
@@ -48,8 +50,10 @@ export type DraftAction =
   | { readonly type: 'pinned'; readonly index: number; readonly version: number }
   | { readonly type: 'patched'; readonly patch: Readonly<Record<string, unknown>> }
   | { readonly type: 'typed'; readonly operation: WireOperation; readonly key: string; readonly text: string }
-  | { readonly type: 'checked'; readonly answer: OperationCheck }
-  | { readonly type: 'sending'; readonly sending: boolean }
+  | { readonly type: 'checked'; readonly key: string; readonly answer: OperationCheck }
+  | { readonly type: 'sending' }
+  | { readonly type: 'sent'; readonly key: string; readonly failure: string | null }
+  | { readonly type: 'failed'; readonly key: string; readonly message: string }
 
 /** The editor content of a document at one revision, with every chip owned by the `@` source. */
 function contentOf(document: PromptDocument, revision: number, history: PromptContent['history']): PromptContent {
@@ -67,7 +71,7 @@ export function draftOf(call: PromptCall): Draft {
   const document = documentOf(call)
   return {
     callKey: JSON.stringify(call), document, removed: [], content: contentOf(document, 0, 'reset'), params: call.params, texts: {},
-    checked: null, sending: false,
+    checked: null, sending: false, failure: null,
   }
 }
 
@@ -117,8 +121,12 @@ export function reduceDraft(draft: Draft, action: DraftAction): Draft {
       return { ...draft, texts, params: typed.value === undefined ? rest : { ...rest, [action.key]: typed.value } }
     }
     case 'checked':
-      return { ...draft, checked: action.answer }
+      return { ...draft, checked: { key: action.key, answer: action.answer } }
     case 'sending':
-      return { ...draft, sending: action.sending }
+      return { ...draft, sending: true }
+    case 'sent':
+      return { ...draft, sending: false, failure: action.failure === null ? null : { key: action.key, message: action.failure } }
+    case 'failed':
+      return { ...draft, failure: { key: action.key, message: action.message } }
   }
 }

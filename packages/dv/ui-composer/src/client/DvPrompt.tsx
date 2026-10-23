@@ -63,9 +63,12 @@ function modelOf(models: readonly WireModelEntry[], params: Readonly<Record<stri
  * @returns the composer.
  */
 export function DvPrompt(props: DvPromptComponentProps): ReactNode {
-  const { projectId, call, state, readOnly, host, onSubmit, renderFactorySlot } = props
+  const { projectId, call, state, readOnly, host, onSubmit, surface, renderFactorySlot } = props
   const pick = useText()
-  const versions = props.useVersionKinds(kinds => kinds)
+  // Null until the composer knows the canvas's version kinds; until then the editor is read-only, because the inputs
+  // follow its edits by the kinds' rules.
+  const kinds = props.useVersionKinds(known => known)
+  const versions = kinds ?? []
   // Null until the catalog loads; until then the composer knows no model's references and offers none.
   const catalog = props.useModels(loaded => loaded)
   const models = catalog ?? []
@@ -75,7 +78,7 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
   // A host that lends another call, such as the plan view on another version, starts the occurrence over on it.
   const callKey = JSON.stringify(call)
   if (draft.callKey !== callKey) dispatch({ type: 'callLent', call })
-  const { document, params, checked, sending } = draft
+  const { document, params, sending } = draft
 
   const edited = callOf(document, { ...call, params })
   const entry = modelOf(models, params)
@@ -83,18 +86,22 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
   const filter: CandidateFilter | null = readOnly || entry === undefined ? null : bar?.candidates?.(entry.schema) ?? null
   const offersReferences = !readOnly && catalog !== null && operation?.inputs['reference'] !== undefined && filter?.mediaTypes.length !== 0
   const editedKey = JSON.stringify(edited)
+  // An answer or a failure of another call does not count for the edited call.
+  const checked = draft.checked?.key === editedKey ? draft.checked.answer : null
+  const failure = draft.failure?.key === editedKey ? draft.failure.message : null
   useEffect(() => {
     if (readOnly) return
     let live = true
     const timer = setTimeout(() => {
-      const request = { project: projectId, operation: edited.operation, params: { ...edited.params }, inputs: [...edited.inputs], surface: 'canvas' as const }
-      props.check(request).then((answer) => { if (live) dispatch({ type: 'checked', answer }) }, (error: unknown) => {
-        if (live) dispatch({ type: 'checked', answer: { problems: [errorMessage(error)], gpu_seconds: null } })
+      const request = { project: projectId, operation: edited.operation, params: { ...edited.params }, inputs: [...edited.inputs], surface }
+      props.check(request).then((answer) => { if (live) dispatch({ type: 'checked', key: editedKey, answer }) }, (error: unknown) => {
+        if (live) dispatch({ type: 'checked', key: editedKey, answer: { problems: [errorMessage(error)], gpu_seconds: null } })
       })
     }, CHECK_DELAY_MS)
     return () => { live = false; clearTimeout(timer) }
-    // The check follows the edited call, whose key holds every field the request sends.
-  }, [editedKey, readOnly, projectId])
+    // The check follows the edited call, whose key holds every field the request sends, and the state that the host
+    // lends, against which the kernel checks it.
+  }, [editedKey, readOnly, projectId, surface, state])
 
   const ctx: ResolveContext = { state, versions, inputs: null, filter: null }
   const views = documentViews(document, { ...ctx, filter })
@@ -112,22 +119,30 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
     const typed = typedValue(operation, key, text)
     return 'problem' in typed ? [typed.problem] : []
   })
-  const problems = typing.length > 0 ? typing : checked?.problems ?? []
+  const refused = failure === null ? [] : [pick(`失败：${failure}`, `Failed: ${failure}`)]
+  const problems = typing.length > 0 ? typing : [...refused, ...checked?.problems ?? []]
   const blocked = typing.length > 0 || checked === null || checked.problems.length > 0
   const send = (): void => {
     if (onSubmit === undefined || sending || blocked) return
-    dispatch({ type: 'sending', sending: true })
-    void onSubmit(edited).finally(() => { dispatch({ type: 'sending', sending: false }) })
+    dispatch({ type: 'sending' })
+    onSubmit(edited).then(() => { dispatch({ type: 'sent', key: editedKey, failure: null }) }, (error: unknown) => {
+      dispatch({ type: 'sent', key: editedKey, failure: errorMessage(error) })
+    })
   }
   const picker = host.pickAssets
   const importer = host.importFiles
   const addFiles = (importFiles: NonNullable<typeof importer>, files: readonly File[]): void => {
     if (files.length === 0) return
-    void importFiles(files).then((assets) => { dispatch({ type: 'imported', assets }) })
+    importFiles(files).then((assets) => { dispatch({ type: 'imported', assets }) }, (error: unknown) => {
+      dispatch({ type: 'failed', key: editedKey, message: errorMessage(error) })
+    })
   }
   const media = filter === null ? null : { mediaTypes: [...filter.mediaTypes], maxReferences: filter.maxReferences }
+  // The `@` source offers the items of the kinds that a version kind reads, and assets, which inputs can satisfy.
+  const sourceContext = { filter: media, kinds: versions.map(kind => kind.kind) }
   const model: PromptHostModel = {
-    content: draft.content, readOnly, sources: offersReferences ? [MENTION_SOURCE] : [], sourceContext: media, faceContext: faces,
+    content: draft.content, readOnly: readOnly || kinds === null, sources: offersReferences ? [MENTION_SOURCE] : [], sourceContext,
+    faceContext: faces,
     onChange: (text, chips, cause) => { dispatch({ type: 'editorChanged', text, chips: chips.length, cause, ctx }) },
     ...readOnly ? {} : { onSubmit: send },
     // A pasted file joins the call as an upload does.

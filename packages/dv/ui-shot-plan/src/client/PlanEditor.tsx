@@ -183,7 +183,7 @@ const PlanShots = memo(function PlanShots(
         <ShotCard
           key={index} number={index + 1} shot={shot} referenceCount={shotReferences(plan, shot).length} taskLabels={taskLabels}
           prompt={renderFactorySlot('dv.prompt', {
-            projectId: state.project.id, state, operations, readOnly: true,
+            projectId: state.project.id, state, operations, readOnly: true, surface: 'canvas',
             // The plan view only shows the call, so it lends no picker and no upload; a chip or a tile opens its item's node
             // or its asset's preview.
             host: {

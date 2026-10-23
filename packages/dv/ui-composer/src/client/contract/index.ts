@@ -96,6 +96,8 @@ export interface DvPromptProps {
   /** The operation declarations that the host reads; the composer finds the call's operation among them. */
   readonly operations: readonly WireOperation[]
   readonly readOnly: boolean
+  /** Where the user edits the call, which its check names as the request's `surface`. */
+  readonly surface: OperationRequest['surface']
   readonly host: PromptHost
   /** Send the edited call; absent in read mode. The caller decides what a send does, such as a rerun with `based_on`. */
   readonly onSubmit?: (call: PromptCall) => Promise<void>
@@ -201,8 +203,11 @@ export interface DvPromptInjected {
     readonly models: HostObservable<readonly WireModelEntry[] | null>
     /** The parameter bars that plugins registered, `dvComposer.paramBars`. */
     readonly paramBars: HostObservable<readonly ParamBar[]>
-    /** The version kinds that the canvas holds, which read the versions of the elements that chips cite. */
-    readonly versionKinds: HostObservable<readonly VersionKind[]>
+    /**
+     * The version kinds that the canvas holds, which read the versions of the elements that chips cite; null while the
+     * canvas is not loaded.
+     */
+    readonly versionKinds: HostObservable<readonly VersionKind[] | null>
   }
 }
 
@@ -229,8 +234,8 @@ export interface ReferenceFaceInjected {
   readonly hooks: {
     /** The project the shell has open, for chat chips. */
     readonly currentProject: HostObservable<string | null>
-    /** The version kinds that resolve the element of a chat chip. */
-    readonly versionKinds: HostObservable<readonly VersionKind[]>
+    /** The version kinds that resolve the element of a chat chip; null while the canvas is not loaded. */
+    readonly versionKinds: HostObservable<readonly VersionKind[] | null>
   }
   readonly keyedHooks: {
     /** The live state of a project that a chat chip reads; null until it loads. */

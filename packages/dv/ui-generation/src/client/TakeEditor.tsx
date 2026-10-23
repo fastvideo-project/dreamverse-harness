@@ -4,18 +4,16 @@
  * and generation task (the task's label in `GET /api/dv/tasks`, else its name), and the `dv.prompt` composer over the
  * take's call when `GET /api/dv/operations` declares its operation: the references, the prompt, the parameters, the
  * cost and the send. A send reruns the take's operation as edited, with the take as `based_on`; on success the canvas
- * closes the editor and selects the new take, and a refused request shows its error under the composer. The composer's
+ * closes the editor and selects the new take, and the composer shows a refused request's error. The composer's
  * host opens the canvas's asset picker with the versioned items, imports uploaded files as canvas imports, opens the
  * preview of an asset, and opens the editor of a versioned item's node over this one.
  *
  * @module @dv/ui-generation/TakeEditor
  */
-import { useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import type { InjectFace, PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@dv/ui-canvas/contract'
 import type { PromptCall, PromptHost } from '@dv/ui-composer/contract'
-import { errorMessage } from '@dv/ui-kit/api.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import { playerBox } from '@dv/ui-kit/player-box.ts'
 import { requestInputsOf } from '@dv/ui-kit/references.ts'
@@ -45,7 +43,6 @@ export function TakeEditor(props: TakeEditorProps): ReactNode {
   const taskLabels = props.useTaskLabels(value => value)
   const record = node.record
   const declared = operations.some(candidate => candidate.name === record.operation)
-  const [renderError, setRenderError] = useState<string | null>(null)
   const model = typeof record.params['model'] === 'string' ? record.params['model'] : ''
   const task = typeof record.params['task'] === 'string' ? record.params['task'] : ''
   const failure = record.error?.message || null
@@ -56,13 +53,11 @@ export function TakeEditor(props: TakeEditorProps): ReactNode {
     preview: (asset, opener) => { host.preview(asset, opener) },
     openNode: (nodeId) => { host.openNode(nodeId) },
   }
-  const rerun = async (call: PromptCall): Promise<void> => {
-    setRenderError(null)
-    await host.rerun({
-      operation: call.operation, inputs: [...call.inputs], params: { ...call.params }, based_on: record.id,
-      intent: pick(`在画布上渲染 ${node.title} 的新版本`, `Render a new take of ${node.title} from the canvas`),
-    }).catch((error: unknown) => { setRenderError(errorMessage(error)) })
-  }
+  // The composer shows a refused rerun under itself.
+  const rerun = (call: PromptCall): Promise<void> => host.rerun({
+    operation: call.operation, inputs: [...call.inputs], params: { ...call.params }, based_on: record.id,
+    intent: pick(`在画布上生成 ${node.title} 的新版本`, `Generate a new version of ${node.title} from the canvas`),
+  })
   return (
     <div>
       {shown === undefined ? null : <div style={{ ...player, ...playerBox(shown, 360) }} data-testid="dv-take-player">{renderFactorySlot('dv.media', { asset: shown, purpose: 'loop', ...node.preview === undefined ? {} : { poster: node.preview } })}</div>}
@@ -75,13 +70,12 @@ export function TakeEditor(props: TakeEditorProps): ReactNode {
         ? (
           <div style={{ marginTop: 12 }}>
             {renderFactorySlot('dv.prompt', {
-              projectId: state.project.id, state, operations, readOnly: false, host: promptHost, onSubmit: rerun,
+              projectId: state.project.id, state, operations, readOnly: false, surface: 'canvas', host: promptHost, onSubmit: rerun,
               call: { operation: record.operation, params: record.params, inputs: requestInputsOf(record) },
             })}
           </div>
         )
         : null}
-      {renderError === null ? null : <p role="alert" style={{ margin: '8px 0 0', color: 'var(--dv-danger)' }}>{pick(`失败：${renderError}`, `Failed: ${renderError}`)}</p>}
     </div>
   )
 }

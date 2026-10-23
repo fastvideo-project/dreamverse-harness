@@ -105,7 +105,7 @@ describe('the take editor', () => {
     expect(host.rerun).toHaveBeenCalledWith({
       operation: 'shot.render', inputs: [{ role: 'reference', ref: 'hero@1' }],
       params: { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'hero walks through the rain at night in the city' },
-      intent: '在画布上渲染 shot.render · 第 1 次 的新版本', based_on: 'g1',
+      intent: '在画布上生成 shot.render · 第 1 次 的新版本', based_on: 'g1',
     })
   })
 
@@ -127,12 +127,15 @@ describe('the take editor', () => {
 
   it('shows the error of a refused rerun under the composer and offers the send again', async () => {
     document.documentElement.lang = 'zh-CN'
-    const { view, host } = await openEditor('g1', { rerun: () => Promise.reject(new Error('GPU budget exceeded')) })
+    const { view, host, container } = await openEditor('g1', { rerun: () => Promise.reject(new Error('GPU budget exceeded')) })
     fireEvent.click(await sendButton(view, '生成新版本'))
     expect((await view.findByRole('alert')).textContent).toBe('失败：GPU budget exceeded')
     fireEvent.click(await sendButton(view, '生成新版本'))
     await waitFor(() => { expect(host.rerun).toHaveBeenCalledTimes(2) })
-    await waitFor(() => { expect(view.getByRole('alert').textContent).toBe('失败：GPU budget exceeded') })
+    await waitFor(() => { expect(view.getAllByRole('alert').map(alert => alert.textContent)).toEqual(['失败：GPU budget exceeded']) })
+    // An edit drops the alert of the call that the host refused, and shows the problem of the edit alone.
+    fireEvent.change(container.querySelector('[data-param-chip="seed"]')!, { target: { value: 'x' } })
+    expect(view.getAllByRole('alert').map(alert => alert.textContent)).toEqual(['seed must be a number.'])
   })
 
   it('opens the node of a versioned tile, picks with the held references, previews a picked asset, and drops a removed one from the rerun', async () => {
