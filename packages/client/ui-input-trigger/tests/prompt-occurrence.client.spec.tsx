@@ -37,7 +37,7 @@ function promptSource(seen: unknown[]): InputTriggerSource {
 /** The model of one occurrence; `changes` records every reported change. */
 function model(overrides: Partial<PromptHostModel>, changes: Array<{ text: string; chips: readonly Occurrence[] }>): PromptHostModel {
   return {
-    content: { revision: 0, text: '', chips: [] }, readOnly: false, sources: ['dv-project'], sourceContext: { media: ['image'] },
+    content: { revision: 0, history: 'reset', text: '', chips: [] }, readOnly: false, sources: ['dv-project'], sourceContext: { media: ['image'] },
     faceContext: { inputs: ['a1'] }, onChange: (text, chips) => { changes.push({ text, chips }) }, placeholder: '', ariaLabel: 'prompt',
     ...overrides,
   }
@@ -70,7 +70,7 @@ async function bench() {
   const occurrences: Array<{ id: string; model: PromptHostModel }> = [
     { id: 'take', model: model({}, changes) },
     { id: 'sidebar', model: model({}, []) },
-    { id: 'plan', model: model({ readOnly: true, sources: [], content: { revision: 0, text: `See ${CITE} run`, chips: [readChip] } }, []) },
+    { id: 'plan', model: model({ readOnly: true, sources: [], content: { revision: 0, history: 'reset', text: `See ${CITE} run`, chips: [readChip] } }, []) },
   ]
   let setTake: (next: PromptHostModel) => void = () => {}
   await runtime.root.declare({}, ({ renderFactorySlot }: PropsRuntime<'root'> & PropsRenderFactories) => {
@@ -102,7 +102,7 @@ describe('conversation.prompt outside a Session', () => {
 
   it('opens the @ menu of one occurrence and inserts the picked chip there', async () => {
     const { view, seen, changes, setTake, take } = await bench()
-    setTake({ ...take, content: { revision: 1, text: 'a picture of @', chips: [] } })
+    setTake({ ...take, content: { revision: 1, history: 'step', text: 'a picture of @', chips: [] } })
     const take_ = view.container.querySelector('[data-occurrence="take"]')!
     await vi.waitFor(() => { expect(take_.querySelector('[role="option"]')).not.toBeNull() })
     expect(view.container.querySelectorAll('[role="option"]')).toHaveLength(2)
@@ -118,17 +118,17 @@ describe('conversation.prompt outside a Session', () => {
   it('reads the sources and their context from the host model each time the menu lists candidates', async () => {
     const { runtime, view, seen, setTake, take } = await bench()
     const box = view.container.querySelector('[data-occurrence="take"]')!
-    setTake({ ...take, sources: [], content: { revision: 1, text: '@', chips: [] } })
+    setTake({ ...take, sources: [], content: { revision: 1, history: 'step', text: '@', chips: [] } })
     await runtime.flush()
     expect([seen, box.querySelector('[role="option"]')]).toEqual([[], null])
-    setTake({ ...take, sourceContext: { media: ['audio'] }, content: { revision: 2, text: 'a @', chips: [] } })
+    setTake({ ...take, sourceContext: { media: ['audio'] }, content: { revision: 2, history: 'step', text: 'a @', chips: [] } })
     await vi.waitFor(() => { expect(box.querySelectorAll('[role="option"]')).toHaveLength(2) })
     expect(seen).toEqual([{ media: ['audio'] }])
   })
 
   it('moves the highlight to the row under the pointer, and closes the menu on a pointer outside the occurrence', async () => {
     const { view, setTake, take } = await bench()
-    setTake({ ...take, content: { revision: 1, text: '@', chips: [] } })
+    setTake({ ...take, content: { revision: 1, history: 'step', text: '@', chips: [] } })
     const box = view.container.querySelector('[data-occurrence="take"]')!
     await vi.waitFor(() => { expect(box.querySelectorAll('[role="option"]')).toHaveLength(2) })
     const selected = () => box.querySelector('[role="option"][aria-selected="true"]')?.textContent

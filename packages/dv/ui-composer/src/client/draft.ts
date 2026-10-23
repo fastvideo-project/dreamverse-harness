@@ -41,10 +41,10 @@ export type DraftAction =
   | { readonly type: 'sending'; readonly sending: boolean }
 
 /** The editor content of a document at one revision, with every chip owned by the `@` source. */
-function contentOf(document: PromptDocument, revision: number): PromptContent {
+function contentOf(document: PromptDocument, revision: number, history: PromptContent['history']): PromptContent {
   const content = editorContent(document)
   const chips: PromptChip[] = content.chips.map(chip => ({ source: MENTION_SOURCE, ...chip, clipboardText: chip.ref }))
-  return { revision, text: content.text, chips }
+  return { revision, history, text: content.text, chips }
 }
 
 /**
@@ -55,7 +55,7 @@ function contentOf(document: PromptDocument, revision: number): PromptContent {
 export function draftOf(call: PromptCall): Draft {
   const document = documentOf(call)
   return {
-    callKey: JSON.stringify(call), document, removed: [], content: contentOf(document, 0), params: call.params,
+    callKey: JSON.stringify(call), document, removed: [], content: contentOf(document, 0, 'reset'), params: call.params,
     checked: null, sending: false,
   }
 }
@@ -88,6 +88,7 @@ export function reduceDraft(draft: Draft, action: DraftAction): Draft {
   const { document } = draft
   switch (action.type) {
     case 'callLent': {
+      // Another call starts the editor's history over, so an undo cannot bring back the call it replaced.
       const next = draftOf(action.call)
       return { ...next, content: { ...next.content, revision: draft.content.revision + 1 } }
     }
@@ -99,7 +100,7 @@ export function reduceDraft(draft: Draft, action: DraftAction): Draft {
       const next = removeInput(document, action.index, { ...action.ctx, inputs: document.inputs })
       // A removal that turns chips into text changes the prompt, so the editor takes it as one undoable step; any other
       // removal leaves the editor as it is.
-      const content = next.removed.length === 0 ? draft.content : contentOf(next.document, draft.content.revision + 1)
+      const content = next.removed.length === 0 ? draft.content : contentOf(next.document, draft.content.revision + 1, 'step')
       return { ...draft, document: next.document, removed: [...draft.removed, ...next.removed], content }
     }
     case 'picked': {

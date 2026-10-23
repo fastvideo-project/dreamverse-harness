@@ -143,7 +143,7 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
   })
   // A prompt occurrence that gives its chips no call: its face names the element's newest version.
   const bare: PromptHostModel = {
-    content: { revision: 0, text: HERO, chips: [{ source: 'dv-project', ref: HERO, label: 'Hero', offset: 0, length: HERO.length, clipboardText: HERO }] },
+    content: { revision: 0, history: 'reset', text: HERO, chips: [{ source: 'dv-project', ref: HERO, label: 'Hero', offset: 0, length: HERO.length, clipboardText: HERO }] },
     readOnly: true, sources: [], sourceContext: null, faceContext: null, onChange: () => {}, placeholder: '', ariaLabel: 'bare',
     ...options.bare,
   }
@@ -388,6 +388,20 @@ describe('the modes of an occurrence', () => {
     await waitFor(() => { expect(sent).toEqual([second]) })
   })
 
+  it('starts the editor\'s history over on a call that the host lends, so an undo cannot bring back the shown call', async () => {
+    const first: PromptCall = { operation: STILL.name, params: { prompt: `${HERO} rain` }, inputs: [{ role: 'reference', ref: 'hero@1' }] }
+    const { take, sent, setCall } = await mount(first)
+    await waitFor(() => { expect(box(take).textContent).toBe('Herov1 rain') })
+    const second: PromptCall = { ...first, params: { prompt: 'snow' }, inputs: [] }
+    setCall(second)
+    await waitFor(() => { expect(box(take).textContent).toBe('snow') })
+    fireEvent.keyDown(box(take), { key: 'z', code: 'KeyZ', ctrlKey: true })
+    await act(() => new Promise((resolve) => { setTimeout(resolve, 50) }))
+    expect([box(take).textContent, take.querySelectorAll('[data-reference-tile]').length]).toEqual(['snow', 0])
+    fireEvent.click(await sendOf(take, 'Generate a new version'))
+    await waitFor(() => { expect(sent).toEqual([second]) })
+  })
+
   it('offers no add and no upload to an occurrence whose host lends neither, and keeps its prompt editable', async () => {
     const { take } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] }, { noPicker: true })
     await sendOf(take, 'Render new take')
@@ -546,7 +560,7 @@ describe('the chip face', () => {
     const text = `${HERO} ${rain} ${lamp}`
     const { view } = await mount({ operation: STILL.name, params: { prompt: 'rain' }, inputs: [] }, {
       bare: {
-        content: { revision: 0, text, chips: chipsIn(text) },
+        content: { revision: 0, history: 'reset', text, chips: chipsIn(text) },
         faceContext: {
           faces: {
             'dv:test_ref/hero': { preview: { id: 'ref.png', mime: 'image/png', name: 'ref.png' }, sent: 1, satisfied: true },
@@ -574,7 +588,7 @@ describe('the chip face', () => {
       open: null,
       bare: {
         content: {
-          revision: 0, text: `${HERO} ${plain}`,
+          revision: 0, history: 'reset', text: `${HERO} ${plain}`,
           chips: [
             { source: 'dv-project', ref: HERO, label: 'Hero', offset: 0, length: HERO.length, clipboardText: HERO },
             { source: 'dv-project', ref: plain, label: 'Cat', offset: HERO.length + 1, length: plain.length, clipboardText: plain },

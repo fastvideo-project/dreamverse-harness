@@ -13,10 +13,15 @@ export type PromptChip = Omit<Occurrence, 'occurrenceId'>
 /** The content of one occurrence: clipboard text and the chips in it. */
 export interface PromptContent {
   /**
-   * A new revision replaces the editor content as one undoable edit; the occurrence opens with its first revision as
-   * the initial content, outside the undo history.
+   * A new revision replaces the editor content as {@link PromptContent.history} says; the occurrence opens with its first
+   * revision as the initial content, outside the undo history.
    */
   readonly revision: number
+  /**
+   * How a new revision enters the undo history: `step` replaces the content as one undoable edit, and `reset` starts the
+   * history over on the content, as a new occurrence would.
+   */
+  readonly history: 'step' | 'reset'
   readonly text: string
   readonly chips: readonly PromptChip[]
 }

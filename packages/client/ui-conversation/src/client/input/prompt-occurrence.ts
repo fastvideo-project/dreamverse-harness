@@ -95,13 +95,19 @@ export class PromptOccurrence implements PromptOccurrenceHandle {
     return this.trigger?.key ?? null
   }
 
-  /** Apply a new content revision as one undoable edit and follow the read-only flag. */
+  /** Apply a new content revision as its history mode says, and follow the read-only flag. */
   sync(): void {
     const model = this.model()
     this.runtime.editor.setEditable(!model.readOnly)
-    if (model.content.revision === this.applied) return
-    this.applied = model.content.revision
-    this.runtime.replaceDraft(model.content.text, model.content.chips)
+    const { content } = model
+    if (content.revision === this.applied) return
+    this.applied = content.revision
+    if (content.history === 'step') {
+      this.runtime.replaceDraft(content.text, content.chips)
+      return
+    }
+    this.runtime.restoreDraft(content.text, content.chips)
+    this.runtime.clearHistory()
   }
 
   /** Close the menu controller and every listener. */

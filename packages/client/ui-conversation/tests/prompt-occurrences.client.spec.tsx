@@ -59,7 +59,7 @@ describe('the chat bar and a prompt occurrence at once', () => {
     })
     mainReference = runtime.sessions.retain(SID, { source: 'mainView' })
     const model: PromptHostModel = {
-      content: { revision: 0, text: `A ${CITE}`, chips: [{ source: 'probe', ref: CITE, label: 'Cat', offset: 2, length: CITE.length, clipboardText: CITE }] },
+      content: { revision: 0, history: 'reset', text: `A ${CITE}`, chips: [{ source: 'probe', ref: CITE, label: 'Cat', offset: 2, length: CITE.length, clipboardText: CITE }] },
       readOnly: true, sources: [], sourceContext: null, faceContext: { node: 'n1' }, onChange: () => {}, placeholder: '', ariaLabel: 'take',
     }
     await runtime.root.declare({ main: { kind: 'keyed', scope: 'root' } }, ({ renderSlot, renderFactorySlot }: PropsRenderSlots<'main'> & PropsRenderFactories) => (
