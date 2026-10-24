@@ -1,12 +1,14 @@
 /**
  * The DreamVerse left navigator, shadowing the DSH sidebar's Workspace browser: 新建项目, 首页, the DSH sidebar pages
- * (插件, MCP, …), and the project → session tree. Each project lists the chat sessions of its Workspace and the sessions bound to it, with a
- * row menu to rename or delete the project or a session.
+ * (插件, MCP, …), the 对话 list of chats started on 首页 that no project holds, and the project → session tree. Each
+ * project lists the chat sessions of its Workspace and the sessions bound to it, with a row menu to rename or delete the
+ * project or a session.
  *
  * @module @dv/ui-shell/Navigator
  */
 import type { ReactNode } from 'react'
 import { Fragment, useState } from 'react'
+import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -18,8 +20,8 @@ import { InlineRename, RowMenu } from './InlineRename.tsx'
 import { DREAMVERSE_WORDMARK } from './logo.ts'
 import type { WireProjectLink } from '@dv/ui-kit/types.ts'
 import { usePanelEntries } from './panels.ts'
-import { useProjectSessions } from './sessions.ts'
-import { NO_PROJECTS, useShell } from './store.ts'
+import { useEntrySessions, useProjectSessions } from './sessions.ts'
+import { markSessionChoice, NO_PROJECTS, useShell } from './store.ts'
 import css from './shell.module.css'
 
 /** Props of the navigator entry. */
@@ -30,6 +32,9 @@ const PAGE_ICONS: Readonly<Record<string, () => ReactNode>> = { plugins: Plugins
 
 /** How many projects the tree lists before 项目 expands it to all. */
 const SHOWN_PROJECTS = 12
+
+/** How many entry chats the 对话 section lists before 全部对话 expands it to all. */
+const SHOWN_CHATS = 5
 
 /**
  * Run an action and log its failure; navigation failures leave the page as it was.
@@ -53,6 +58,8 @@ export function Navigator(props: NavigatorProps): ReactNode {
   const projects = useShell(s => s.links?.projects ?? NO_PROJECTS)
   const [showAll, setShowAll] = useState(false)
   const loaded = useShell(s => s.links !== null)
+  const current = useShell(s => s.sessionId)
+  const chats = useEntrySessions(props)
   if (!wide) return null
   const sorted = [...projects].sort((a, b) => b.created_at.localeCompare(a.created_at))
   const shown = showAll ? sorted : sorted.slice(0, SHOWN_PROJECTS)
@@ -70,11 +77,13 @@ export function Navigator(props: NavigatorProps): ReactNode {
       <button type="button" className={css.navSecondary} onClick={() => { run(() => shell.newProject()) }}>
         <PlusIcon />{t('新建项目', 'Create project')}
       </button>
-      {nav(t('首页', 'Home'), projectId === null && activePage === null, () => { run(() => shell.goHome()) }, <HomeIcon />)}
+      {/* 首页 is the blank entry chat; a started entry chat highlights its own 对话 row instead. */}
+      {nav(t('首页', 'Home'), projectId === null && activePage === null && !chats.some(summary => summary.id === current), () => { run(() => shell.goHome()) }, <HomeIcon />)}
       {pages.map((page) => {
         const PageIcon = PAGE_ICONS[page.id] ?? PluginsIcon
         return <Fragment key={page.id}>{nav(page.label, activePage === page.id, () => { shell.openPage(page.id) }, <PageIcon />)}</Fragment>
       })}
+      <EntryChats chats={chats} current={current} shell={shell} />
       {sorted.length > SHOWN_PROJECTS && nav(showAll ? t('收起项目', 'Fewer projects') : t('全部项目', 'All projects'), false, () => { setShowAll(value => !value) })}
       <div className={css.section}>{t('项目', 'Projects')}</div>
       {loaded && sorted.length === 0 && (
@@ -88,6 +97,42 @@ export function Navigator(props: NavigatorProps): ReactNode {
           open={project.id === projectId}
         />
       ))}
+    </div>
+  )
+}
+
+/**
+ * The 对话 section: the entry chats, newest first, each opening its chat on the entry page. It lists the newest
+ * {@link SHOWN_CHATS} chats until 全部对话 expands it, and is absent while there is no entry chat.
+ * @param props - the entry chats, the main session, and the shell actions.
+ * @returns the section, or nothing.
+ */
+function EntryChats({ chats, current, shell }: { chats: SessionSummary[]; current: string | undefined } & ShellInjected): ReactNode {
+  const t = useText()
+  const [showAll, setShowAll] = useState(false)
+  if (chats.length === 0) return null
+  const shown = showAll ? chats : chats.slice(0, SHOWN_CHATS)
+  // The open chat always has a row, also when SHOWN_CHATS newer chats push it out of the list.
+  const openRow = chats.find(summary => summary.id === current)
+  if (openRow !== undefined && !shown.includes(openRow)) shown.push(openRow)
+  return (
+    <div data-dv-entry-chats="">
+      <div className={css.section}>{t('对话', 'Chats')}</div>
+      {shown.map(summary => (
+        <SessionRow
+          key={summary.id} summary={summary} active={summary.id === current} shell={shell}
+          open={() => {
+            // Opening another chat is the user's session choice, so browser Back returns to the chat before it.
+            if (summary.id !== current) markSessionChoice()
+            run(() => shell.goHome(summary.id))
+          }}
+        />
+      ))}
+      {chats.length > SHOWN_CHATS && (
+        <button type="button" className={css.navItem} onClick={() => { setShowAll(value => !value) }}>
+          {showAll ? t('收起对话', 'Fewer chats') : t('全部对话', 'All chats')}
+        </button>
+      )}
     </div>
   )
 }
@@ -148,35 +193,54 @@ function ProjectTree(props: NavigatorProps & { project: WireProjectLink; open: b
         </button>
       </div>
       {isOpen && sessions.map(summary => (
-        <div
-          key={summary.id} role="button" tabIndex={0} className={`${css.treeRow} ${css.treeChild}`}
-          data-active={summary.id === current ? '' : undefined}
-          onClick={() => { shell.openSession(summary.id) }} onKeyDown={() => {}}
-        >
-          {renaming === summary.id
-            ? (
-              <InlineRename
-                value={summary.displayTitle} onClose={() => { setRenaming(null) }}
-                onSave={(title) => { run(() => shell.renameSession(summary.id, title)) }}
-              />
-            )
-            : <span className={css.treeLabel} title={summary.displayTitle}>{summary.blank ? t('新对话', 'New chat') : summary.displayTitle}</span>}
-          <RowMenu
-            label={t('对话菜单', 'Conversation menu')}
-            items={[
-              { label: t('重命名', 'Rename'), run: () => { setRenaming(summary.id) } },
-              {
-                label: t('删除对话', 'Delete chat'), danger: true,
-                run: () => {
-                  if (!window.confirm(pickText(`删除对话“${summary.displayTitle}”？`, `Delete chat "${summary.displayTitle}"?`))) return
-                  run(() => shell.deleteSession(summary.id))
-                },
-              },
-            ]}
-          />
-        </div>
+        <SessionRow
+          key={summary.id} summary={summary} active={summary.id === current} shell={shell}
+          open={() => { shell.openSession(summary.id) }}
+        />
       ))}
     </>
+  )
+}
+
+/**
+ * One chat session row: its title, or 新对话 while it is blank, and a row menu to rename or delete it.
+ * @param props - the session, whether it is the main session, the action that opens it, and the shell actions.
+ * @returns the row.
+ */
+function SessionRow({ summary, active, open, shell }: {
+  summary: SessionSummary
+  active: boolean
+  open: () => void
+} & ShellInjected): ReactNode {
+  const t = useText()
+  const [renaming, setRenaming] = useState(false)
+  return (
+    <div
+      role="button" tabIndex={0} className={`${css.treeRow} ${css.treeChild}`}
+      data-active={active ? '' : undefined} onClick={open} onKeyDown={() => {}}
+    >
+      {renaming
+        ? (
+          <InlineRename
+            value={summary.displayTitle} onClose={() => { setRenaming(false) }}
+            onSave={(title) => { run(() => shell.renameSession(summary.id, title)) }}
+          />
+        )
+        : <span className={css.treeLabel} title={summary.displayTitle}>{summary.blank ? t('新对话', 'New chat') : summary.displayTitle}</span>}
+      <RowMenu
+        label={t('对话菜单', 'Conversation menu')}
+        items={[
+          { label: t('重命名', 'Rename'), run: () => { setRenaming(true) } },
+          {
+            label: t('删除对话', 'Delete chat'), danger: true,
+            run: () => {
+              if (!window.confirm(pickText(`删除对话“${summary.displayTitle}”？`, `Delete chat "${summary.displayTitle}"?`))) return
+              run(() => shell.deleteSession(summary.id))
+            },
+          },
+        ]}
+      />
+    </div>
   )
 }
 

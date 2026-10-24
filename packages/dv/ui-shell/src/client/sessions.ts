@@ -1,5 +1,6 @@
 /**
- * The chat sessions of one project as the navigator and the session switcher list them.
+ * The chat sessions of one project as the navigator and the session switcher list them, and the entry chats that the
+ * navigator's 对话 section lists.
  *
  * @module @dv/ui-shell/sessions
  */
@@ -36,5 +37,25 @@ export function useProjectSessions({ useSessions, useWorkspaces }: SessionListHo
   return ids
     .map(id => byId[id as keyof typeof byId])
     .filter((summary): summary is SessionSummary => summary !== undefined && (!summary.blank || summary.id === current))
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+/**
+ * The entry chats, newest first: the sessions of the entry Workspace (the Workspace at `links.entry_path`) that have a
+ * turn, without archived sessions and sessions bound to a project, which that project lists. `goHome` opens exactly
+ * these sessions when it gets their ID.
+ * @param hooks - the DSH list hooks.
+ * @returns the session summaries; empty until the links load.
+ */
+export function useEntrySessions({ useSessions, useWorkspaces }: SessionListHooks): SessionSummary[] {
+  const entryPath = useShell(s => s.links?.entry_path)
+  const bindings = useShell(s => s.links?.bindings)
+  const entrySessions = useWorkspaces(s => s.items.find(item => item.path === entryPath)?.sessionIds)
+  const archived = useWorkspaces(s => s.archivedSessionIds)
+  const byId = useSessions(s => s.byId)
+  return (entrySessions ?? [])
+    .filter(id => !archived.includes(id) && bindings?.[id] === undefined)
+    .map(id => byId[id])
+    .filter((summary): summary is SessionSummary => summary !== undefined && !summary.blank)
     .sort((a, b) => b.updatedAt - a.updatedAt)
 }

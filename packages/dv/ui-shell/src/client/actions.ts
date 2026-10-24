@@ -49,8 +49,8 @@ export interface ShellActions {
   /** Start a chat session in the project's Workspace. */
   newSession(projectId: string): Promise<void>
   /**
-   * Show the entry page: `sessionId` when it is a started, unbound chat of the entry Workspace (a URL restore), else
-   * this browser tab's blank chat session in the entry Workspace.
+   * Show the entry page: `sessionId` when it is a started, unbound chat of the entry Workspace (a URL restore or a row of
+   * the navigator's 对话 section), else this browser tab's blank chat session in the entry Workspace.
    */
   goHome(sessionId?: string): Promise<void>
   /** Open a DSH sidebar page (Plugins, MCP, or another `sidebar.panellist` entry) in the main column. */
@@ -61,7 +61,10 @@ export interface ShellActions {
   deleteProject(projectId: string): Promise<void>
   /** Rename a chat session. */
   renameSession(sessionId: string, title: string): Promise<void>
-  /** Archive a chat session and, when it was open, move to the project's latest other session. */
+  /**
+   * Archive a chat session and, when it was open, move to the open project's latest other session, or to this browser
+   * tab's blank entry chat when no project is open.
+   */
   deleteSession(sessionId: string): Promise<void>
   /**
    * The entry Workspace (the directory that holds chats started before a project exists), created and titled
@@ -377,7 +380,7 @@ export function createActions(ctx: ClientContext): ShellActions {
       const projectId = getShell().projectId
       const open = getShell().sessionId === sessionId
       await ctx.uiWorkspace.archiveSession(sessionId as SessionId, { stopActivity: true })
-      if (open && projectId !== null) await openProject(projectId)
+      if (open) await (projectId === null ? goHome() : openProject(projectId))
     },
     async entryWorkspace() {
       const links = getShell().links ?? await refreshLinks()
