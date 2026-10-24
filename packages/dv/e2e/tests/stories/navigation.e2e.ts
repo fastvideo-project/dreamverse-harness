@@ -124,10 +124,14 @@ describe('navigation, projects, sessions, and panels', () => {
   const navigator = (page: Page) => page.locator('[data-dv-navigator]')
   /** A project row of the navigator. */
   const projectRow = (page: Page, title: string) => navigator(page).locator('div:not([role])', { has: page.locator(`span[role="button"][title="${title}"]`) }).last()
-  /** The chat session rows of the navigator, in order. */
-  const sessionRows = (page: Page) => navigator(page).locator('div[role="button"]')
-  /** The highlighted chat session row. */
-  const activeSessionRow = (page: Page) => navigator(page).locator('div[role="button"][data-active]')
+  /** The chat session rows of the navigator's projects, in order. */
+  const sessionRows = (page: Page) => navigator(page).locator(':scope > div[role="button"]')
+  /** The highlighted chat session row of a project. */
+  const activeSessionRow = (page: Page) => navigator(page).locator(':scope > div[role="button"][data-active]')
+  /** The rows of the navigator's 对话 section (chats started on 首页 that no project holds), newest first. */
+  const entryRows = (page: Page) => navigator(page).locator('[data-dv-entry-chats] div[role="button"]')
+  /** The highlighted row of the 对话 section. */
+  const activeEntryRow = (page: Page) => navigator(page).locator('[data-dv-entry-chats] div[role="button"][data-active]')
 
   /** The highlighted project row's title, or null. */
   async function activeProject(page: Page): Promise<string | null> {
@@ -292,10 +296,47 @@ describe('navigation, projects, sessions, and panels', () => {
     const project = await waitFor(async () => (await projects()).find(candidate => candidate.title === ENTRY_PROJECT), 'the agent-created project', 30_000)
     await waitProject(page, ENTRY_PROJECT)
     await expectProjectShown(page, project.id)
+    // The bound chat moved from the 对话 section to the project's chat rows.
+    await waitFor(async () => await activeEntryRow(page).count() === 0, 'the bound chat to leave 对话', 10_000)
+    expect(await activeSessionRow(page).count()).toBe(1)
     // The request that started the project stays visible in the project's 对话 tab.
     await waitFor(async () => (await rightTabs(page)).includes('对话'), 'the 对话 tab', 10_000)
     await chat(page).getByText('项目已建好').first().waitFor({ timeout: 20_000 })
     expect((await userMessages(page)).join('\n')).toContain('入口请求')
+    expect(errors).toEqual([])
+  })
+
+  it('a chat started on 首页 is listed under 对话 in a new tab, opens with its messages, renames, and deletes back to a blank 首页', async () => {
+    const context = await newContext()
+    const { page: first } = await openPage({ context })
+    const entry = (page: Page) => page.locator('[data-dv-entry]')
+    await entry(first).waitFor()
+    await composer(first).click()
+    await first.keyboard.type('只回复首页聊')
+    await first.keyboard.press('Enter')
+    await entry(first).getByText('收到首页聊').first().waitFor({ timeout: 30_000 })
+    const started = await waitFor(() => Promise.resolve(locationOf(first).session), 'the started chat in the URL', 10_000)
+    await waitFor(async () => await activeEntryRow(first).count() === 1, 'the started chat highlighted under 对话', 10_000)
+    // A second tab without #session= opens a blank chat; the started chat is one click away in 对话.
+    const { page: second, errors } = await openPage({ context })
+    await expectEntryShown(second)
+    await second.getByText('今天想拍点什么？').waitFor({ timeout: 20_000 })
+    expect(locationOf(second).session).not.toBe(started)
+    await entryRows(second).first().click()
+    await waitFor(() => Promise.resolve(locationOf(second).session === started), 'the started chat open in the second tab', 20_000)
+    await entry(second).getByText('只回复首页聊').first().waitFor({ timeout: 20_000 })
+    expect(locationOf(second).project).toBeNull()
+    expect(await activeNavEntries(second)).not.toContain('首页')
+    expect(await activeEntryRow(second).count()).toBe(1)
+    await rowMenu(second, activeEntryRow(second), '重命名')
+    await typeRename(second, 'NAV 首页对话')
+    await waitFor(async () => (await activeEntryRow(second).innerText()).trim() === 'NAV 首页对话', 'the 对话 row renamed', 10_000)
+    // Deleting the open chat removes its row and opens a blank chat on 首页.
+    await rowMenu(second, activeEntryRow(second), '删除对话')
+    await waitFor(async () => await entryRows(second).filter({ hasText: 'NAV 首页对话' }).count() === 0, 'the deleted row to disappear', 10_000)
+    await waitFor(() => Promise.resolve(locationOf(second).session !== started && locationOf(second).session !== null), 'a blank chat', 20_000)
+    await expectEntryShown(second)
+    await second.getByText('今天想拍点什么？').waitFor({ timeout: 20_000 })
     expect(errors).toEqual([])
   })
 
