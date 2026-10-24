@@ -39,6 +39,7 @@ providers      @dv/fastvideo              provider fastvideo: fasth3 for tasks r
                @dv/sglang-omni            provider sglang-omni: fish-audio-drama-3 for task t2a, a prompt skill
 
 bundle         @dv/bundle                 the cordis.patch.yml rows of every package above, the video-directing skill
+               @dv/bundle-creator         the video-harness-creator layer: turns on the DreamVerse Creator preset, the chooser, HMR of packages/dv
 ```
 
 每个箭头从一个包指向它所依赖的包，没有反方向的依赖。组件从不写出另一个组件的操作名。工作流只通过组件的工具使用组件，例如 `dv_shot_render` 和 `dv_timeline_create`；只有 surface 包 `@dv/api` 和 `@dv/chat-references` 以用户身份按名字运行其他包的操作。用 DeepSeek Harness 的术语说，各层的角色如下：
@@ -53,7 +54,7 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 | API    | [`@dv/api`](../../packages/dv/api/README.zh.md)                                                                              | DSH `connection` 服务上的 Fetch 路由和 `webServer` 上的事件流；视图读取或修改项目的唯一途径。                                                                                       |
 | 对话引用   | [`@dv/chat-references`](../../packages/dv/chat-references/README.zh.md)                                                      | `agent/pre-step` 和 `session/event` 上的监听器，把用户在对话消息中指向的东西变成项目 ID 和素材。                                                                                     |
 | 视图     | UI 核心（`@dv/ui-kit`、`@dv/ui-canvas`、`@dv/ui-history`、`@dv/ui-shell`、`@dv/ui-composer`）和 UI 插件 `@dv/ui-<name>`                 | DSH Web 客户端的右侧栏标签类型和中央视图；`@dv/ui-kit` 是它们共用的库。                                                                                                          |
-| bundle | [`@dv/bundle`](../../packages/bundle/dv/README.zh.md)                                                                        | profile 层：把每一行组成 `video-harness` 和 `video-harness-headless` 两个 profile，并附带 `video-directing` skill。                                                     |
+| bundle | [`@dv/bundle`](../../packages/bundle/dv/README.zh.md), [`@dv/bundle-creator`](../../packages/bundle/dv-creator/README.zh.md) | profile 层：把每一行组成 `video-harness` 和 `video-harness-headless` 两个 profile，并附带 `video-directing` skill；`@dv/bundle-creator` 是 `video-harness-creator` profile 的一层，它打开 DreamVerse Creator 预设和 `packages/dv` 的实时重载。 |
 
 组件用 `dvProject.registerOperation` 注册操作，用 `dvProject.registerReducer` 注册归约函数。每个操作同时是智能体工具 `dv_<操作名，点换成下划线>`，一次调用成为一条记录。素材库的 `dv_asset_import`、`dv_asset_grab_still` 和 `dv_asset_cut_segment` 添加素材，`dv_asset_place` 和 `dv_asset_unplace` 把素材放到画布上和从画布移除；角色、场景和风格组件的 `dv_character_*`、`dv_location_*` 和 `dv_style_*` 工具创建和更新各自的版本；镜头渲染的 `dv_shot_render` 按调用指定的[模型](#model-catalog)渲染镜头的一个版本，`duration_sec` 是该模型范围内的整秒数（默认为模型的最小值）；音频的 `dv_audio_generate` 用调用指定的模型说出一个片段；时间线的 `dv_timeline_*` 工具创建、更新、重命名和删除时间线，并插入、移动、移除、拆分、裁剪和替换片段，不创建文件，它的 `dv_timeline_export` 把一条时间线写成一个视频；检查器的 `dv_inspect_image` 和 `dv_inspect_asset` 读取素材，不写记录。[`@dv/ui-canvas`](../../packages/dv/ui-canvas/README.zh.md) 的两个工具不是操作，也不写记录。`dv_canvas_read` 返回每个画布节点的 ID、类型、标题、记录和卡片框，`dv_canvas_move` 设置它所列节点的位置。项目组件自己的 `dv_proj_*` 工具创建、打开和重命名项目、读取状态和历史、撤销、接受过期记录，以及等待排定的记录。操作声明资源类别（`none`、`cpu`、`gpu`）；项目组件的调度器按类别并发上限运行排定的记录。
 

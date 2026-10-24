@@ -237,7 +237,7 @@
 
 # DreamVerse Creator: the Creator-mode preset `cordis` of dsh-web-app with the DreamVerse persona, the DreamVerse skills,
 # and no personal skill roots. No Loader mechanism extends a preset, so this row restates the `preset-cordis` children;
-# tests/composition.spec.ts fails when they drift.
+# tests/composition.spec.ts fails when they drift. @dv/bundle-creator turns the row on.
 - insert:
     - id: preset-dreamverse-creator
       name: '@deepseek-ai/dsh-agent-preset'

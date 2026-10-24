@@ -2325,6 +2325,15 @@ importers:
         specifier: workspace:*
         version: link:../../core/tools
 
+  packages/bundle/dv-creator:
+    devDependencies:
+      '@deepseek-ai/cordis-plugin-include':
+        specifier: workspace:~
+        version: link:../../../vendor/include
+      '@deepseek-ai/cordis-plugin-loader':
+        specifier: workspace:~
+        version: link:../../../vendor/loader
+
   packages/bundle/headless:
     dependencies:
       '@deepseek-ai/dsh-brand':
