@@ -224,7 +224,7 @@ const sendOf = (take: HTMLElement, name: string): Promise<HTMLButtonElement> => 
 })
 
 describe('dv.prompt on the real stack', () => {
-  it('S4: shows the cited version with its image, moves the cost with the model and duration, inserts an @ pick, and sends the edited call', async () => {
+  it('S4: shows the cited version with its image, inserts an @ pick, and sends the edited call', async () => {
     const stored: PromptCall = { operation: 'shot.render', params: { ...KEY, prompt: `${HERO} runs`, duration_sec: 5 }, inputs: [{ role: 'reference', ref: 'hero@1' }] }
     const { take, view, sent, writes } = await mount(stored)
     const chip = await waitFor(() => {
@@ -234,13 +234,9 @@ describe('dv.prompt on the real stack', () => {
     })
     expect(chip.textContent).toBe('Herov1')
     expect(take.querySelector('[data-reference-tile="hero@1"]')?.getAttribute('data-cited')).toBe('true')
-    const cost = within(take).getByTestId('dv-prompt-cost')
-    await waitFor(() => { expect(cost.textContent).toBe('≈ 20 GPU s') })
     fireEvent.change(within(take).getByTestId('dv-prompt-model'), { target: { value: 'fastvideo/fastt2v/t2v' } })
-    await waitFor(() => { expect(cost.textContent).toBe('≈ 10 GPU s') })
     fireEvent.change(within(take).getByTestId('dv-prompt-model'), { target: { value: 'fastvideo/fasth3/ref2v' } })
     fireEvent.change(take.querySelector('[data-param-chip="duration_sec"]')!, { target: { value: '2' } })
-    await waitFor(() => { expect(cost.textContent).toBe('≈ 8 GPU s') })
     act(() => { box(take).focus() })
     // jsdom fires no beforeinput, so the text arrives through the editor's paste path, which `@` detection follows.
     fireEvent.paste(box(take), { clipboardData: { items: [], getData: () => ' with @' } })
@@ -484,24 +480,23 @@ describe('the check of the edited call', () => {
   it('checks the call again when the host lends a new project state', async () => {
     const { take, checks, relend } = await mount({ operation: STILL.name, params: { prompt: 'a lamp' }, inputs: [] }, { holdChecks: true })
     await waitFor(() => { expect(checks).toHaveLength(1) })
-    act(() => { checks[0]?.answer({ problems: ['The input g9#0 is not ready.'], gpu_seconds: null }) })
+    act(() => { checks[0]?.answer({ problems: ['The input g9#0 is not ready.'] }) })
     await waitFor(() => { expect(within(take).getByRole('alert').textContent).toBe('The input g9#0 is not ready.') })
     relend()
     await waitFor(() => { expect(checks).toHaveLength(2) })
-    act(() => { checks[1]?.answer({ problems: [], gpu_seconds: null }) })
+    act(() => { checks[1]?.answer({ problems: [] }) })
     await sendOf(take, 'Generate a new version')
   })
 
   it('blocks the send of an edit until the check of that edit answers', async () => {
     const { take, checks } = await mount({ operation: STILL.name, params: { prompt: 'a lamp' }, inputs: [] }, { holdChecks: true })
     await waitFor(() => { expect(checks).toHaveLength(1) })
-    act(() => { checks[0]?.answer({ problems: [], gpu_seconds: 4 }) })
+    act(() => { checks[0]?.answer({ problems: [] }) })
     await sendOf(take, 'Generate a new version')
     fireEvent.change(take.querySelector('[data-param-chip="seed"]')!, { target: { value: '5' } })
-    expect([within(take).getByRole<HTMLButtonElement>('button', { name: 'Generate a new version' }).disabled, within(take).getByTestId('dv-prompt-cost').textContent])
-      .toEqual([true, ''])
+    expect(within(take).getByRole<HTMLButtonElement>('button', { name: 'Generate a new version' }).disabled).toBe(true)
     await waitFor(() => { expect(checks).toHaveLength(2) })
-    act(() => { checks[1]?.answer({ problems: [], gpu_seconds: 5 }) })
+    act(() => { checks[1]?.answer({ problems: [] }) })
     await sendOf(take, 'Generate a new version')
   })
 
@@ -693,13 +688,13 @@ describe('the check and the send', () => {
     fireEvent.change(seed(), { target: { value: '3' } })
     await waitFor(() => { expect(checks).toHaveLength(3) })
     act(() => {
-      checks[0]?.answer({ problems: [], gpu_seconds: 99 })
+      checks[0]?.answer({ problems: [] })
       checks[1]?.fail(new Error('offline'))
     })
     await act(() => new Promise((resolve) => { setTimeout(resolve, 20) }))
-    expect([within(take).getByTestId('dv-prompt-cost').textContent, within(take).queryByRole('alert')]).toEqual(['', null])
-    act(() => { checks[2]?.answer({ problems: [], gpu_seconds: 7 }) })
-    await waitFor(() => { expect(within(take).getByTestId('dv-prompt-cost').textContent).toBe('≈ 7 GPU s') })
+    expect([within(take).getByRole<HTMLButtonElement>('button', { name: 'Generate a new version' }).disabled, within(take).queryByRole('alert')]).toEqual([true, null])
+    act(() => { checks[2]?.answer({ problems: [] }) })
+    await sendOf(take, 'Generate a new version')
   })
 
   it('sends on Enter once the check has answered, and not again while the send runs', async () => {
@@ -707,14 +702,13 @@ describe('the check and the send', () => {
     await waitFor(() => { expect(checks).toHaveLength(1) })
     fireEvent.keyDown(box(take), { key: 'Enter', code: 'Enter' })
     expect(sent).toEqual([])
-    act(() => { checks[0]?.answer({ problems: [], gpu_seconds: null }) })
+    act(() => { checks[0]?.answer({ problems: [] }) })
     await sendOf(take, 'Generate a new version')
     fireEvent.keyDown(box(take), { key: 'Enter', code: 'Enter' })
     await waitFor(() => { expect(sent).toHaveLength(1) })
     fireEvent.keyDown(box(take), { key: 'Enter', code: 'Enter' })
     expect(sent).toHaveLength(1)
     act(() => { answers.splice(0).forEach((answer) => { answer() }) })
-    expect(within(take).getByTestId('dv-prompt-cost').textContent).toBe('')
   })
 })
 

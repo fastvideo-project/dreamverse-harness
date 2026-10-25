@@ -157,7 +157,7 @@ export const OPERATIONS: WireOperation[] = [
       prompt: { type: 'string', required: true, description: 'What happens.' }, seed: { type: 'integer', description: 'Seed.' },
       aspect: { type: 'string', enum: ['16:9', '9:16'] }, loop: { type: 'boolean' }, extra: { type: 'object' },
     },
-    outputs: [{ role: 'video', type: 'video' }, { role: 'last_still', type: 'image' }], deterministic: false, resource: 'gpu', confirm: 'over_gpu_budget',
+    outputs: [{ role: 'video', type: 'video' }, { role: 'last_still', type: 'image' }], deterministic: false, resource: 'gpu', confirm: 'never',
   },
   {
     name: 'plan.create', version: '1', description: 'A plan.', inputs: {}, params: { shots: { type: 'array', items: { type: 'object' } } }, outputs: [],
@@ -221,11 +221,7 @@ export function scriptedFetch(routes: ScriptedRoutes = {}): { fetch: typeof fetc
         const answer = routes.post(url.pathname, body)
         return Promise.resolve(json(answer.body, answer.status))
       }
-      if (url.pathname === '/api/dv/operation/check') {
-        const params = (body as OperationRequest).params ?? {}
-        const rate = params['model'] === 'fastt2v' ? 2 : 4
-        return Promise.resolve(json({ problems: [], gpu_seconds: Number(params['duration_sec'] ?? 5) * rate }))
-      }
+      if (url.pathname === '/api/dv/operation/check') return Promise.resolve(json({ problems: [] }))
       if (url.pathname === '/api/dv/operation') {
         const request = body as OperationRequest
         return Promise.resolve(json(record({ id: `new-${String(writes.length)}`, operation: request.operation, params: request.params ?? {}, outputs: ['new.mp4'] })))

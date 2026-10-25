@@ -125,12 +125,12 @@ describe('the take editor', () => {
 
   it('shows the error of a refused rerun under the composer and offers the send again', async () => {
     document.documentElement.lang = 'zh-CN'
-    const { view, host, container } = await openEditor('g1', { rerun: () => Promise.reject(new Error('GPU budget exceeded')) })
+    const { view, host, container } = await openEditor('g1', { rerun: () => Promise.reject(new Error('Render server unreachable')) })
     fireEvent.click(await sendButton(view, '生成新版本'))
-    expect((await view.findByRole('alert')).textContent).toBe('失败：GPU budget exceeded')
+    expect((await view.findByRole('alert')).textContent).toBe('失败：Render server unreachable')
     fireEvent.click(await sendButton(view, '生成新版本'))
     await waitFor(() => { expect(host.rerun).toHaveBeenCalledTimes(2) })
-    await waitFor(() => { expect(view.getAllByRole('alert').map(alert => alert.textContent)).toEqual(['失败：GPU budget exceeded']) })
+    await waitFor(() => { expect(view.getAllByRole('alert').map(alert => alert.textContent)).toEqual(['失败：Render server unreachable']) })
     // An edit drops the alert of the call that the host refused, and shows the problem of the edit alone.
     fireEvent.change(container.querySelector('[data-param-chip="seed"]')!, { target: { value: 'x' } })
     expect(view.getAllByRole('alert').map(alert => alert.textContent)).toEqual(['seed must be a number.'])

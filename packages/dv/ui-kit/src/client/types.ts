@@ -35,7 +35,6 @@ export interface RecordInput {
 
 /** The cost of one operation call. */
 export interface RecordCost {
-  gpu_seconds: number
   wall_seconds: number
   /** Whether the outputs were reused from an earlier identical deterministic call. */
   reused: boolean
@@ -182,7 +181,7 @@ export interface WireOperation {
   outputs: Array<{ role: string; type: string }>
   deterministic: boolean
   resource: 'none' | 'cpu' | 'gpu'
-  confirm: 'never' | 'always' | 'over_gpu_budget'
+  confirm: 'never' | 'always'
 }
 
 /** A project row. */
@@ -285,12 +284,10 @@ export interface OperationRequest {
   supersedes?: string[]
 }
 
-/** What `POST /api/dv/operation/check` answers: the refusal that `run` would give now, and the GPU estimate. */
+/** What `POST /api/dv/operation/check` answers: the refusal that `run` would give now. */
 export interface OperationCheck {
   /** The refusal sentence, verbatim; empty when the call can run. */
   problems: string[]
-  /** The operation's estimate of a call that can run; null for a refused call and an operation that declares none. */
-  gpu_seconds: number | null
 }
 
 /** One entry of `GET /api/dv/models`, as the agent tool `dv_models_get` returns it. */

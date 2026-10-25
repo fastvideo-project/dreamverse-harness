@@ -1,6 +1,6 @@
 /**
  * The `dv.prompt` Factory component: the reference tray, the `conversation.prompt` editor, and the parameter bar with
- * the cost and send, over one call. Its draft (`draft.ts`) holds the document, which keeps the prompt and the call's
+ * the send button, over one call. Its draft (`draft.ts`) holds the document, which keeps the prompt and the call's
  * inputs in their stored order, and the edited params; the editor owns the text and the chips, and each editor change
  * reconciles the inputs with the citations that the kernel's parser reads in the editor's text. A citation that arrives
  * as text, such as a pasted chip, becomes a chip within the same undo step. A tray edit that changes the prompt reaches
@@ -153,7 +153,7 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
     const timer = setTimeout(() => {
       const request = { project: projectId, operation: edited.operation, params: { ...edited.params }, inputs: [...edited.inputs], surface }
       props.check(request).then((answer) => { if (live) dispatch({ type: 'checked', key: editedKey, answer }) }, (error: unknown) => {
-        if (live) dispatch({ type: 'checked', key: editedKey, answer: { problems: [errorMessage(error)], gpu_seconds: null } })
+        if (live) dispatch({ type: 'checked', key: editedKey, answer: { problems: [errorMessage(error)] } })
       })
     }, CHECK_DELAY_MS)
     return () => { live = false; clearTimeout(timer) }
@@ -245,14 +245,9 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
             />
           ))}
         </span>
-        <span style={row}>
-          <span data-testid="dv-prompt-cost" style={{ fontSize: 12, color: 'var(--dv-text-2)' }}>
-            {checked?.gpu_seconds === null || checked === null ? '' : pick(`约 ${String(checked.gpu_seconds)} GPU 秒`, `≈ ${String(checked.gpu_seconds)} GPU s`)}
-          </span>
-          <button type="button" className="dv-canvas-soft" disabled={onSubmit === undefined || sending || blocked} onClick={send} style={{ height: 30, borderRadius: 15, padding: '0 14px', border: 'none', font: 'inherit', cursor: 'pointer' }}>
-            {sending ? pick(...copy.sending) : pick(...copy.send)}
-          </button>
-        </span>
+        <button type="button" className="dv-canvas-soft" disabled={onSubmit === undefined || sending || blocked} onClick={send} style={{ height: 30, borderRadius: 15, padding: '0 14px', border: 'none', font: 'inherit', cursor: 'pointer' }}>
+          {sending ? pick(...copy.sending) : pick(...copy.send)}
+        </button>
       </div>
       {problems.length === 0
         ? null

@@ -248,7 +248,7 @@ export class DvClient {
   /**
    * Check an operation call without running it.
    * @param request - the call as `runOperation` takes it.
-   * @returns the refusal that a run would give now, and the GPU estimate.
+   * @returns the refusal that a run would give now.
    */
   checkOperation(request: OperationRequest): Promise<OperationCheck> {
     return this.post('/api/dv/operation/check', request)
