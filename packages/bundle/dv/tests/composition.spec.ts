@@ -1,8 +1,8 @@
 /**
- * The REAL composition of the bundle: the component rows, the model catalog and FastVideo rows, the `dv-chat-references`
- * row and the `dv-api` row of `cordis.patch.yml`, with their `!!js` configuration and `disabled` flags, boot through the
- * Loader beside the DSH system prompt and tool registry, with the FastVideo row replaced by a fake, and a
- * model-visible tool call becomes a durable record.
+ * The REAL composition of the bundle: the component rows, the model catalog and video provider rows, the
+ * `dv-chat-references` row and the `dv-api` row of `cordis.patch.yml`, with their `!!js` configuration and `disabled`
+ * flags, boot through the Loader beside the DSH system prompt and tool registry, with the video provider rows replaced
+ * by fakes, and a model-visible tool call becomes a durable record.
  */
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -27,7 +27,7 @@ import DvStyle from '@dv/style'
 import DvTimeline from '@dv/timeline'
 import DvApi from '@dv/api'
 import DvChatReferences from '@dv/chat-references'
-import DvModels, { formatModelKey } from '@dv/models'
+import DvModels, { formatModelKey, type ModelEntry } from '@dv/models'
 import DvImageGenerate from '@dv/image-generate'
 import * as SglangDiffusion from '@dv/sglang-diffusion'
 import * as SglangOmni from '@dv/sglang-omni'
@@ -42,37 +42,40 @@ afterEach(async () => {
   for (const dispose of disposers.splice(0).reverse()) await dispose()
 })
 
-/** The `models` config the stand-in FastVideo plugin received from the bundle row. */
-let fastVideoConfig: unknown = null
+/** Whether the stand-in FastVideo plugin was mounted. */
+let fastVideoMounted = false
 
-/** The model the stand-in FastVideo plugin registered. */
-const fasth3 = new FakeModel()
-
-/** A stand-in for `@dv/fastvideo`: it keeps the row's config and registers the fake model `fasth3` for task `ref2v`. */
+/** A stand-in for `@dv/fastvideo`: it records that it was mounted. */
 const FakeFastVideo = {
   name: 'fake-fastvideo',
-  inject: ['dvModels'],
-  apply(ctx: Context, config: { models: unknown }): void {
-    fastVideoConfig = config.models
-    ctx.effect(() => ctx.dvModels.register(fasth3))
+  apply(): void {
+    fastVideoMounted = true
   },
 }
 
 /** The config the stand-in UniServe plugin received from the bundle row. */
 let uniserveConfig: unknown = null
 
-/** A stand-in for `@dv/uniserve`: it keeps the row's config and registers nothing. */
+/** The renderer of the fake model; its `requests` lists the render requests of the fake model. */
+const renderer = new FakeModel()
+
+/** The fake model `fasth3` for task `ref2v` of provider `uniserve`, which renders through `renderer`. */
+const fasth3: ModelEntry<'ref2v'> = Object.create(renderer, { provider: { value: 'uniserve' } }) as ModelEntry<'ref2v'>
+
+/** A stand-in for `@dv/uniserve`: it keeps the row's config and registers the fake model `fasth3` for task `ref2v`. */
 const FakeUniserve = {
   name: 'fake-uniserve',
-  apply(_ctx: Context, config: unknown): void {
+  inject: ['dvModels'],
+  apply(ctx: Context, config: unknown): void {
     uniserveConfig = config
+    ctx.effect(() => ctx.dvModels.register(fasth3))
   },
 }
 
 /**
  * The plugin of each package a bundle row names, resolved through `globalThis` because Node imports the rows outside
- * Vite. The FastVideo row loads a stand-in that registers a fake model, and the UniServe row a stand-in that keeps its
- * config.
+ * Vite. The disabled FastVideo row names a stand-in that records a mount, and the UniServe row a stand-in that keeps
+ * its config and registers a fake model.
  */
 const PLUGINS: Record<string, object> = {
   '@deepseek-ai/dsh-system-prompt': SystemPrompt, '@deepseek-ai/dsh-tools': ToolRuntime, '@dv/project': DvProject,
@@ -161,14 +164,16 @@ describe('DreamVerse bundle composition', () => {
     expect(ctx.get('tools')?.get('dv_models_list')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_models_get')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_image_generate')).toBeDefined()
-    // The bundle names one server per task of fasth3.
-    expect(fastVideoConfig).toEqual({
-      fasth3: {
+    // The FastVideo row is disabled and keeps one server per task of fasth3 for a deployment that mounts it.
+    expect(fastVideoMounted).toBe(false)
+    expect(rows.find(row => row.id === 'dv-fastvideo')).toMatchObject({
+      disabled: true,
+      config: { models: { fasth3: {
         ref2v: { baseUrl: 'http://10.244.19.118:8029', gpuSecondsPerVideoSecond: 4 },
         t2v: { baseUrl: 'http://10.244.16.130:8031', gpuSecondsPerVideoSecond: 1.5 },
-      },
+      } } },
     })
-    // The UniServe row names a second server of fasth3 for task ref2v.
+    // The UniServe row names the server of fasth3 for task ref2v.
     expect(uniserveConfig).toEqual({ baseUrl: 'http://10.244.8.35:8000', gpuSecondsPerVideoSecond: 1.3 })
     expect(rows.find(row => row.id === 'dv-sglang-diffusion')?.config).toEqual({
       models: { 'qwen-image-2.1-turbo': { baseUrl: 'http://127.0.0.1:30010', gpuSecondsPerMegapixel: 0.6 } },
@@ -177,9 +182,8 @@ describe('DreamVerse bundle composition', () => {
       models: { 'fish-audio-drama-3': { baseUrl: 'http://127.0.0.1:8000', gpuSecondsPerCall: 3 } },
     })
     expect(ctx.dvModels.list().map(entry => formatModelKey(entry))).toEqual([
-      'video/ref2v/fastvideo/fasth3', 'image/t2i/sglang-diffusion/qwen-image-2.1-turbo', 'audio/t2a/sglang-omni/fish-audio-drama-3',
+      'video/ref2v/uniserve/fasth3', 'image/t2i/sglang-diffusion/qwen-image-2.1-turbo', 'audio/t2a/sglang-omni/fish-audio-drama-3',
     ])
-    const renderer = fasth3
 
     const signal = new AbortController().signal
     const call = async (name: string, args: Record<string, unknown>) => {
@@ -194,7 +198,7 @@ describe('DreamVerse bundle composition', () => {
     const reference = ctx.dvAssetPool.list().map(asset => asset.id)
     await call('dv_character_create', { reason: 'lead', character: 'c1', name: 'Lead', inputs: { reference } })
     const shot = await call('dv_shot_render', {
-      modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', reason: 'the opening shot', prompt: 'Picture 1 looks up', duration_sec: 1, inputs: { reference: 'c1@1' },
+      modality: 'video', task: 'ref2v', provider: 'uniserve', model: 'fasth3', reason: 'the opening shot', prompt: 'Picture 1 looks up', duration_sec: 1, inputs: { reference: 'c1@1' },
     })
     const shotValue = shot.value as OperationToolValue
     expect(shotValue.status).toBe('done')

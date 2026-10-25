@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在 `@dv/models`、`@dv/asset-pool` 和 `@dv/ffmpeg` 之后挂载本插件，并写明渲染镜头的 UniServe 服务器。DreamVerse bundle 以行 `dv-uniserve` 挂载它，与行 `dv-fastvideo` 并列，所以模型目录里有两个提供方各自的 `fasth3` 任务 `ref2v` 条目：
+在 `@dv/models`、`@dv/asset-pool` 和 `@dv/ffmpeg` 之后挂载本插件，并写明渲染镜头的 UniServe 服务器。DreamVerse bundle 以行 `dv-uniserve` 挂载它，并禁用行 `dv-fastvideo`，所以模型目录里只有一个 `fasth3` 任务 `ref2v` 条目：
 
 ```yaml
 - id: dv-uniserve

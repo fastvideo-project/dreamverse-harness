@@ -25,7 +25,7 @@ Use this package to render shots with MiniMax H3 on a UniServe server. The funct
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin after `@dv/models`, `@dv/asset-pool` and `@dv/ffmpeg`, with the UniServe server that renders the shots. The DreamVerse bundle mounts it as row `dv-uniserve`, beside row `dv-fastvideo`, so the catalog holds a `fasth3` entry for task `ref2v` from each provider:
+Mount the plugin after `@dv/models`, `@dv/asset-pool` and `@dv/ffmpeg`, with the UniServe server that renders the shots. The DreamVerse bundle mounts it as row `dv-uniserve` and disables row `dv-fastvideo`, so the catalog holds one `fasth3` entry for task `ref2v`:
 
 ```yaml
 - id: dv-uniserve

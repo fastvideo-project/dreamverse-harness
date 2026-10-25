@@ -17,9 +17,11 @@
       name: '@dv/models'
 
     # Models on the cluster's FastVideo streaming_v2 servers, one server per task. A model or task left out of `models`
-    # is not registered; a deployment with other servers replaces this row's config in its profile patch.
+    # is not registered; a deployment with other servers replaces this row's config in its profile patch. The row is
+    # disabled, so dv-uniserve serves fasth3 for task ref2v; a deployment sets `disabled: false` to mount it.
     - id: dv-fastvideo
       name: '@dv/fastvideo'
+      disabled: true
       config:
         models:
           fasth3:
@@ -30,8 +32,8 @@
               baseUrl: http://10.244.16.130:8031
               gpuSecondsPerVideoSecond: 1.5
 
-    # FastH3 Omni 8-Step V1 on the cluster's UniServe server: a second provider of fasth3 for task ref2v beside
-    # dv-fastvideo, so the catalog lists both entries. A deployment with another server replaces this row's config.
+    # FastH3 Omni 8-Step V1 on the cluster's UniServe server: the provider of fasth3 for task ref2v. A deployment with
+    # another server replaces this row's config.
     - id: dv-uniserve
       name: '@dv/uniserve'
       config:
