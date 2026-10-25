@@ -114,7 +114,7 @@ describe('the character plugin', () => {
     if (node === undefined) throw new Error('no node character:c1')
     expect([node.type, node.title, node.assets]).toEqual(['character', '阿明', ['shot1-last.png', 'ref.png']])
     const card = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'character' })
-    expect([card.view.getByText('角色'), card.view.getByText('+1')]).toHaveLength(2)
+    expect([card.view.getByText('角色'), card.view.getByText('2 张参考图 · 第 2 版')]).toHaveLength(2)
     expect(runtime.ctx.dvCanvas.versionKinds.getSnapshot().map(kind => [kind.kind, kind.label(), kind.node('c1')])).toEqual([['character', '角色', 'character:c1']])
 
     const host = {

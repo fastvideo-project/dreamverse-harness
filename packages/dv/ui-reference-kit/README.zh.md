@@ -55,7 +55,7 @@ export const { inject, apply } = defineReferenceUi({
 
 在 `dvCanvas` 和插槽注册表存在时，插件先注册节点类型，再注册使用中的参考、版本种类，以及画布声明 `dv.canvas.card` 和 `dv.canvas.editor` 插槽后以 `key` 为键的条目；在此之内，它在 `dvMentions` 存在时注册 mention 种类。所以节点类型被拒绝时，该名词不留下这些注册中的任何一个。插件在 `dvHistory` 存在时注册历史行，`@dv/ui-canvas` 未加载时也会注册，因为历史行以该名词的操作为键。每个注册在任何加载顺序下都有效，并随它的服务或插件一起离开。
 
-卡片主体画出 `@dv/ui-kit/frame.ts` 的 `CARD_SURFACE`，并在其上垂直居中地通过 `dv.media` 以用途 `thumb` 绘制节点的第一个参考、名词标签和其余参考的 `+N`，按 `textScale` 缩放。编辑器主体通过 `dv.media` 以用途 `card` 绘制最新的参考，每个参考在高 220 px、比例与素材相同的框里（尺寸未知的素材为正方形）。点击属于项目素材的参考会打开 `host.preview`；× 移除该参考，只剩最后一个时禁用。说明不为空时编辑器显示说明。＋ 添加素材 / + Add asset 打开 `host.pickAssets(references, { versions: false }, …)`，并追加条目尚未持有的选中项。每次修改都调用 `host.run`，操作为 `<key>.update`，参数为 `{ [key]: id }`，参考作为角色 `reference` 的输入，意图为 在画布上给 <name> 添加参考 / Add references to <name> from the canvas，或 在画布上移除 <name> 的一个参考 / Remove a reference of <name> from the canvas。对不是该名词某个条目 `<key>:<id>` 的节点，编辑器不绘制任何内容。
+卡片主体画出 `@dv/ui-kit/frame.ts` 的 `CARD_SURFACE`，并在其上绘制三部分。第一个参考通过 `dv.media` 以用途 `card` 填满一个 4:3、高 156 单位的框，左上角覆盖一个带名词颜色和标签的标签块。条目有两个或更多参考时，下面是一行 44 单位的缩略图（用途 `thumb`），第一个带描边；参考超过四个时显示三个缩略图和其余参考的 `+N`。底栏给出参考数量和当前版本，例如 2 张参考图 · 第 2 版 / 2 references · v2。文字按 `textScale` 缩放。只有一个参考或没有参考时节点的 `bodyHeight` 为 188，有缩略图行时为 240。编辑器主体通过 `dv.media` 以用途 `card` 绘制最新的参考，每个参考在高 220 px、比例与素材相同的框里（尺寸未知的素材为正方形）。点击属于项目素材的参考会打开 `host.preview`；× 移除该参考，只剩最后一个时禁用。说明不为空时编辑器显示说明。＋ 添加素材 / + Add asset 打开 `host.pickAssets(references, { versions: false }, …)`，并追加条目尚未持有的选中项。每次修改都调用 `host.run`，操作为 `<key>.update`，参数为 `{ [key]: id }`，参考作为角色 `reference` 的输入，意图为 在画布上给 <name> 添加参考 / Add references to <name> from the canvas，或 在画布上移除 <name> 的一个参考 / Remove a reference of <name> from the canvas。对不是该名词某个条目 `<key>:<id>` 的节点，编辑器不绘制任何内容。
 
 -----
 
@@ -67,7 +67,7 @@ export const { inject, apply } = defineReferenceUi({
 
 `referenceDescriptors` 从声明一次性构建每个描述符，所以插件和测试持有同一批对象。没有名词切片的状态不含条目，所以在名词的 Host 半边加载之前，每个描述符都不列出任何内容。`defineReferenceUi` 把卡片和编辑器包进闭包持有声明的组件，并为每个可选服务开一个 `ctx.inject` 块，所以缺少某个服务只跳过它自己的注册。
 
-`tests/reference-kit.client.spec.tsx` 在 `@dv/ui-kit/tests/fixture.client.tsx` 的夹具状态上声明仅用于测试的名词 `test_ref`。它用一个含多个版本、无名条目、无参考条目和无版本条目的状态，以及一个没有该切片的状态检查每个描述符。它与真实的 `@dv/ui-media` 和 `@dv/ui-asset-pool` 插件一起挂载插件，检查每个注册都出现并在销毁时离开。它在 `@dv/ui-canvas` 的 `buildCanvasGraph` 构建的节点上绘制卡片和编辑器，并检查媒体、`+N` 计数、`<key>.update` 请求、预览、选择窗口和被禁用的最后一个 ×。
+`tests/reference-kit.client.spec.tsx` 在 `@dv/ui-kit/tests/fixture.client.tsx` 的夹具状态上声明仅用于测试的名词 `test_ref`。它用一个含多个版本、无名条目、无参考条目和无版本条目的状态，以及一个没有该切片的状态检查每个描述符。它与真实的 `@dv/ui-media` 和 `@dv/ui-asset-pool` 插件一起挂载插件，检查每个注册都出现并在销毁时离开。它在 `@dv/ui-canvas` 的 `buildCanvasGraph` 构建的节点上绘制卡片和编辑器，并检查图片、缩略图、`+N` 计数、底栏、主体高度、`<key>.update` 请求、预览、选择窗口和被禁用的最后一个 ×。
 
 | 文件 | 内容 |
 | --- | --- |

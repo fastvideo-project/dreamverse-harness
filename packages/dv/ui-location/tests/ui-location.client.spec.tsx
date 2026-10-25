@@ -114,7 +114,7 @@ describe('the location plugin', () => {
     if (node === undefined) throw new Error('no node location:l1')
     expect([node.type, node.title, node.assets]).toEqual(['location', '小巷', ['shot1-last.png', 'ref.png']])
     const card = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'location' })
-    expect([card.view.getByText('场景'), card.view.getByText('+1')]).toHaveLength(2)
+    expect([card.view.getByText('场景'), card.view.getByText('2 张参考图 · 第 2 版')]).toHaveLength(2)
     expect(runtime.ctx.dvCanvas.versionKinds.getSnapshot().map(kind => [kind.kind, kind.label(), kind.node('l1')])).toEqual([['location', '场景', 'location:l1']])
 
     const host = {
