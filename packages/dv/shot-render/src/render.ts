@@ -49,17 +49,6 @@ export function shotGeometry(facts: RenderModelFacts, params: Record<string, unk
   return { aspectRatio, resolution, width: size[0], height: size[1], durationSec, numFrames }
 }
 
-/**
- * The backend's end-to-end time of one request in seconds: the longest timing it reported, because the end-to-end
- * timing includes the others. Keys ending in `_ms` are milliseconds; other keys are seconds.
- * @param timings - the backend's `done` timings.
- * @returns seconds, rounded to milliseconds; 0 when the backend reported none.
- */
-export function backendSeconds(timings: Record<string, number>): number {
-  const seconds = Object.entries(timings).map(([key, value]) => key.endsWith('_ms') ? value / 1000 : value)
-  return Math.round(Math.max(0, ...seconds) * 1000) / 1000
-}
-
 /** The MIME type without parameters, as the asset pool records it. */
 export function baseMime(mime: string): string {
   return mime.replace(/;.*$/s, '').trim()

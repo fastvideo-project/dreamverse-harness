@@ -30,8 +30,6 @@ import type { InputRole, MediaType, ServedTask, TaskInputs } from './types.ts'
 export interface TaskServer {
   /** HTTP base URL of the FastVideo streaming_v2 server, such as `http://127.0.0.1:8029`. */
   baseUrl: string
-  /** GPU seconds per rendered video second on this server, declared for the task for the GPU estimate. */
-  gpuSecondsPerVideoSecond: number
 }
 
 /** `dv-fastvideo` configuration. */
@@ -44,7 +42,6 @@ export interface Config {
 export const Config: z<Config> = z.object({
   models: z.dict(z.dict(z.object({
     baseUrl: z.string().required(),
-    gpuSecondsPerVideoSecond: z.number().required(),
   }))).required(),
 })
 
@@ -219,7 +216,6 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
     provider: PROVIDER,
     model,
     description: served.description,
-    gpuSecondsPerVideoSecond: server.gpuSecondsPerVideoSecond,
     promptSkill: {
       name: skill.name, description: skill.description,
       content: readFileSync(new URL(`../skills/${skill.file}`, import.meta.url), 'utf8'),

@@ -22,11 +22,8 @@ export interface PrimitiveTypes {
     facts: RenderModelFacts
     request: RenderRequest
     result: AsyncIterable<RenderStreamEvent>
-    /** Entry fields that only this primitive reads. */
-    entry: {
-      /** GPU seconds per rendered video second, for the GPU estimate of a render before it runs. */
-      gpuSecondsPerVideoSecond: number
-    }
+    /** Entry fields that only this primitive reads: none. */
+    entry: Record<never, never>
   }
 }
 

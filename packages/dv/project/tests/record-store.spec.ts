@@ -94,7 +94,7 @@ describe('RecordStore', () => {
     const record = store.append(project, line(first.id))
     const startedAt = new Date().toISOString()
     store.update(project, { update: record.id, status: 'running', started_at: startedAt })
-    const cost = { gpu_seconds: 3, wall_seconds: 4.5, reused: false }
+    const cost = { wall_seconds: 4.5, reused: false }
     store.update(project, { update: record.id, status: 'done', finished_at: startedAt, outputs: [ASSET_X], cost })
 
     const lines = readLines(root, project)

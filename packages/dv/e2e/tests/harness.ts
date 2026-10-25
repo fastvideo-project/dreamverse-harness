@@ -242,7 +242,7 @@ export async function bootHarness(
   }))
   writeFileSync(join(profileDir, 'cordis.patch.yml'), [
     '- id: dv-fastvideo', '  disabled: false', '  config:', '    models:', '      fasth3:', '        ref2v:',
-    `          baseUrl: ${backend.url}`, '          gpuSecondsPerVideoSecond: 4', '- id: dv-uniserve', '  disabled: true', '',
+    `          baseUrl: ${backend.url}`, '- id: dv-uniserve', '  disabled: true', '',
   ].join('\n'))
   symlinkSync(join(REPO_ROOT, 'packages/bundle/dv'), join(profileDir, 'node_modules', '@dv', 'bundle'))
   const port = await freePort()

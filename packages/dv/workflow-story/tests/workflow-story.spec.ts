@@ -88,7 +88,7 @@ describe('dvStory', () => {
     ])
   })
 
-  it('previews the shots a version renders and their GPU estimate, and keeps only takes of a story approval of the plan', async () => {
+  it('previews the shots a version renders, and keeps only takes of a story approval of the plan', async () => {
     const fixture = await start()
     const picture = fixture.put('face', 'image/png', 'face.png')
     const dawn = { ...TXT, prompt: 'A street at dawn', duration_sec: 2 }
@@ -101,7 +101,7 @@ describe('dvStory', () => {
     ]
     expect(await preview(fixture, 'p1')).toEqual({
       plan: 'p1', version: 1, shots: [...firstLines, 'shot 3 (video/t2v/test/fake, 2 s): A street at dawn'], rendered: 3,
-      gpu_seconds: 1 * 3 + 2 * 3 + 2 * 1.5, problems: [],
+      problems: [],
     })
     expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(history)
     // A free take with equal params belongs to no plan.
@@ -116,11 +116,11 @@ describe('dvStory', () => {
     await fixture.record('story.approve', { plan: 'p1' })
     await fixture.ctx.dvProject.wait(fixture.project)
     const kept = ['shot 1: keeps its take', 'shot 2: keeps its take', 'shot 3: keeps its take']
-    expect(await preview(fixture, 'p1')).toEqual({ plan: 'p1', version: 1, rendered: 0, gpu_seconds: 0, problems: [], shots: kept })
+    expect(await preview(fixture, 'p1')).toEqual({ plan: 'p1', version: 1, rendered: 0, problems: [], shots: kept })
     const night = { ...TXT, prompt: `A street at night ${'and rain '.repeat(10)}`, duration_sec: 2 }
     await fixture.call('dv_plan_update', { reason: 'night', plan: 'p1', references: [picture], aspect_ratio: '9:16', shots: [shots[0], shots[1], night] })
     const nightLine = `shot 3 (video/t2v/test/fake, 2 s): ${night.prompt.slice(0, 80)}…`
-    expect(await preview(fixture, 'p1')).toEqual({ plan: 'p1', version: 2, rendered: 1, gpu_seconds: 3, problems: [], shots: [...kept.slice(0, 2), nightLine] })
+    expect(await preview(fixture, 'p1')).toEqual({ plan: 'p1', version: 2, rendered: 1, problems: [], shots: [...kept.slice(0, 2), nightLine] })
     expect(await preview(fixture, 'p1', 1)).toMatchObject({ version: 1, rendered: 0, shots: kept })
   })
 
@@ -132,7 +132,7 @@ describe('dvStory', () => {
     await fixture.call('dv_plan_create', { reason: 'propose', shots })
     const nightProblem = 'Shot 3: Model video/t2v/test/fake cannot generate this: It renders no night.'
     // Shot 2 continues a shot that renders, so its first frame is chained and the model check waits for the render.
-    expect(await preview(fixture, 'p1')).toMatchObject({ rendered: 3, gpu_seconds: 5 * 3 + 5 * 3 + 5 * 1.5, problems: [nightProblem] })
+    expect(await preview(fixture, 'p1')).toMatchObject({ rendered: 3, problems: [nightProblem] })
     fixture.checks.ref2v = () => []
     await fixture.call('dv_plan_update', { reason: 'day', plan: 'p1', shots: [shots[0], shots[1], { ...TXT, prompt: 'A street by day' }] })
     await fixture.record('story.approve', { plan: 'p1' })
@@ -163,9 +163,9 @@ describe('dvStory', () => {
     const fixture = await start()
     const shots = [{ ...TXT, model: 'ghost', prompt: 'A street at dawn', duration_sec: 2 }, { ...TXT, prompt: 'A street at night', duration_sec: 2 }]
     expect(refusal(await fixture.call('dv_plan_create', { reason: 'propose', shots }))).toBe('')
-    // The unknown model adds no GPU estimate; its refusal is the catalog's text.
+    // The unknown model's refusal is the catalog's text.
     expect(await preview(fixture, 'p1')).toEqual({
-      plan: 'p1', version: 1, rendered: 2, gpu_seconds: 2 * 1.5,
+      plan: 'p1', version: 1, rendered: 2,
       shots: ['shot 1 (video/t2v/test/ghost, 2 s): A street at dawn', 'shot 2 (video/t2v/test/fake, 2 s): A street at night'],
       problems: ['Shot 1: Unknown model "video/t2v/test/ghost"; call dv_models_list for the models.'],
     })
@@ -175,12 +175,11 @@ describe('dvStory', () => {
     const fixture = await start()
     const shots = [{ ...TXT, prompt: 'A street at dawn', duration_sec: 2 }, { ...TXT, prompt: 'A street at night', duration_sec: 2 }]
     await fixture.call('dv_plan_create', { reason: 'propose', title: 'Streets', shots })
-    // Without user_approved, the agent gets the head line, the preview lines and the preview's GPU estimate to show.
+    // Without user_approved, the agent gets the head line and the preview lines to show.
     const { shots: lines } = await preview(fixture, 'p1') as { shots: string[] }
     expect(refusal(await fixture.call('dv_story_approve', { reason: 'go', plan: 'p1' }))).toContain([
       'dv_story_approve needs the user\'s agreement.', 'What it will do:',
       'Approve plan p1 v1 "Streets": render 2 of 2 shots and lay every shot on the plan\'s timeline.', ...lines.map(line => `- ${line}`),
-      'Estimated GPU time: about 6 s.',
     ].join('\n'))
     // A model refusal refuses the agent before Project asks for agreement, and every other caller before a record.
     fixture.checks.t2v = request => request.prompt.includes('night') ? ['It renders no night.'] : []
@@ -210,7 +209,7 @@ describe('dvStory', () => {
     // v2 has no title and keeps its one shot's take; approving v1 again makes v1 the plan's newest approval.
     await fixture.call('dv_plan_update', { reason: 'shorter', plan: 'p1', shots: [shots[0]] })
     expect(refusal(await fixture.call('dv_story_approve', { reason: 'go', plan: 'p1' }))).toContain(
-      'Approve plan p1 v2: render 0 of 1 shots and lay every shot on the plan\'s timeline.\n- shot 1: keeps its take\nEstimated GPU time: about 0 s.')
+      'Approve plan p1 v2: render 0 of 1 shots and lay every shot on the plan\'s timeline.\n- shot 1: keeps its take')
     const second = await fixture.record('story.approve', { plan: 'p1' })
     const third = await fixture.record('story.approve', { plan: 'p1', version: 1 })
     expect(fixture.ctx.dvProject.getState(fixture.project).components.story).toEqual({

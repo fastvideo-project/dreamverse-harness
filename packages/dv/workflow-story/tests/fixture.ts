@@ -49,14 +49,14 @@ const FACTS: RenderModelFacts = {
 export type Checks = Record<TaskOfPrimitive<'video'>, (request: RenderRequest) => string[]>
 
 /**
- * A catalog entry of the model `fake`: 3 GPU seconds per video second in task `ref2v`, 1.5 in task `t2v`.
+ * A catalog entry of the model `fake`.
  * @param task - the task the entry serves.
  * @param checks - the validation of each task.
  * @returns the entry.
  */
 function fake(task: TaskOfPrimitive<'video'>, checks: Checks): ModelEntry<TaskOfPrimitive<'video'>> {
   return {
-    modality: 'video', task, provider: 'test', model: 'fake', description: 'stand-in', gpuSecondsPerVideoSecond: task === 'ref2v' ? 3 : 1.5,
+    modality: 'video', task, provider: 'test', model: 'fake', description: 'stand-in',
     facts: () => Promise.resolve(FACTS),
     schema: () => Promise.resolve({}),
     validateGenerationRequest: request => Promise.resolve(checks[task](request)),

@@ -87,8 +87,6 @@ export interface Config {
   gpuConcurrency: number
   /** The directory holding one file per chat session with the project it is bound to (`$DV_STATE_ROOT/sessions`). */
   sessionRoot: string
-  /** Estimated GPU seconds one agent turn may spend on `over_gpu_budget` operations before the user must agree. */
-  confirmGpuSecondsThreshold: number
   /** Order of the `dv:project` section in the system prompt; before the tool SDK section at 5000. */
   promptSectionOrder: number
 }
@@ -99,7 +97,6 @@ export const Config: z<Config> = z.object({
   cpuConcurrency: z.number().default(4),
   gpuConcurrency: z.number().default(1),
   sessionRoot: z.string().required(),
-  confirmGpuSecondsThreshold: z.number().default(60),
   promptSectionOrder: z.number().default(4900),
 })
 
@@ -151,8 +148,6 @@ export default class DvProject extends Service {
     this.agentTools = new AgentTools(ctx, {
       sessions: this.sessions,
       assets: () => this.requireAssetStore(),
-      confirmGpuSecondsThreshold: config.confirmGpuSecondsThreshold,
-      listOperations: () => this.listOperations(),
       currentState: project => this.getState(project),
       listReferenceKinds: () => this.reducers.listReferenceKinds(),
       kindsWithVersion: (state, id, version) => this.reducers.kindsWithVersion(state, id, version),
@@ -271,10 +266,10 @@ export default class DvProject extends Service {
   }
 
   /**
-   * Check one operation call against every refusal of `run` and estimate the GPU cost of a call that `run` would accept,
-   * writing nothing. The answer is advisory: `run` checks the call again under the project lock.
+   * Check one operation call against every refusal of `run`, writing nothing. The answer is advisory: `run` checks
+   * the call again under the project lock.
    * @param request - the call.
-   * @returns the refusal sentence (empty when `run` would accept the call now) and the GPU estimate (null for a refusal).
+   * @returns the refusal sentence (empty when `run` would accept the call now).
    */
   check(request: RunRequest): Promise<OperationCheck> {
     return this.runner.check(request)

@@ -21,7 +21,7 @@ import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvImageGenerate, { type ImageRequest } from '@dv/image-generate'
 import DvModels, { servesTask, type ModelEntry } from '@dv/models'
-import DvProject, { type AssetId, type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId, type SessionId } from '@dv/project'
+import DvProject, { type AssetId, type OperationToolValue, type ProjectId, type ProjectRecord, type SessionId } from '@dv/project'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as SglangDiffusion from '../src/index.ts'
 
@@ -151,7 +151,7 @@ async function start(baseUrl: string): Promise<Fixture> {
   row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
   row('dv-models', 'DvModels')
   row('dv-image-generate', 'DvImageGenerate')
-  row('dv-sglang-diffusion', 'SglangDiffusion', ['models:', '  qwen-image-2.1-turbo:', `    baseUrl: ${baseUrl}`, '    gpuSecondsPerMegapixel: 0.6'])
+  row('dv-sglang-diffusion', 'SglangDiffusion', ['models:', '  qwen-image-2.1-turbo:', `    baseUrl: ${baseUrl}`])
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
   const ctx = new Context()
   await ctx.plugin(Loader)
@@ -207,7 +207,7 @@ describe('dv-sglang-diffusion', () => {
       description: 'Qwen-Image 2.1 Turbo: a text-to-image model that renders legible text inside the image, such as posters, '
         + 'labels and interface layouts. The same seed, size and prompt give the same image.',
     }])
-    expect(fixture.entry()).toMatchObject({ gpuSecondsPerMegapixel: 0.6, defaultSize: { width: 1024, height: 1024 } })
+    expect(fixture.entry()).toMatchObject({ defaultSize: { width: 1024, height: 1024 } })
     expect(fixture.ctx.tools.get('dv_image_generate')).toBeDefined()
     const row = [...fixture.ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-sglang-diffusion.mjs'))
     await row?.fiber?.dispose()
@@ -218,7 +218,7 @@ describe('dv-sglang-diffusion', () => {
   it('refuses a config that names a model it does not serve', async () => {
     const server = await startFakeServer()
     const fixture = await start(server.url)
-    expect(() => { SglangDiffusion.apply(fixture.ctx, { models: { 'flux-1': { baseUrl: server.url, gpuSecondsPerMegapixel: 1 } } }) })
+    expect(() => { SglangDiffusion.apply(fixture.ctx, { models: { 'flux-1': { baseUrl: server.url } } }) })
       .toThrow('dv-sglang-diffusion serves no model "flux-1"; it serves: qwen-image-2.1-turbo.')
     expect(fixture.ctx.dvModels.list().map(entry => entry.model)).toEqual(['qwen-image-2.1-turbo'])
   })
@@ -275,7 +275,7 @@ describe('dv-sglang-diffusion', () => {
     expect(server.routes).toEqual(['GET /v1/models'])
   })
 
-  it('renders through dv_image_generate: the request it sends, the image it stores, and the GPU time it records', async () => {
+  it('renders through dv_image_generate: the request it sends, and the image it stores', async () => {
     const server = await startFakeServer()
     const fixture = await start(server.url)
     const result = operationValue(await fixture.tool('dv_image_generate', { ...KEY, reason: 'lantern', prompt: 'a red paper lantern', size: '1024x768', seed: 1234 }))
@@ -285,7 +285,7 @@ describe('dv-sglang-diffusion', () => {
     expect(server.routes).toEqual(['GET /v1/models', 'GET /v1/models', 'GET /v1/models', 'POST /v1/images/generations'])
     const record = fixture.records().at(-1)
     expect(record).toMatchObject({
-      id: result.record, status: 'done', cost: { gpu_seconds: 1.3613448347896338 },
+      id: result.record, status: 'done',
       report: { seed: 1234, model_id: 'Qwen/Qwen-Image-2.1-Turbo', size: '1024x768' },
     })
     const asset = brandString<AssetId>(String(result.outputs[0]?.asset_id))
@@ -302,19 +302,11 @@ describe('dv-sglang-diffusion', () => {
     const noPng = `The server at ${server.url} answered POST /v1/images/generations without a PNG image.`
     const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01])
     for (const data of [[{ b64_json: jpeg.toString('base64') }], [], [{ b64_json: null, url: '/v1/images/1/content' }], null]) {
-      server.generation = json({ data, inference_time_s: 0.5 })
+      server.generation = json({ data })
       await expect(fixture.entry().render(request(null))).rejects.toThrow(noPng)
     }
     expect(failure(await fixture.tool('dv_image_generate', { ...KEY, reason: 'try', prompt: 'x' }))).toBe(noPng)
     expect(fixture.records().at(-1)).toMatchObject({ status: 'failed', error: { message: noPng } })
-  })
-
-  it('records the GPU estimate as the cost of an image whose answer reports no GPU time', async () => {
-    const server = await startFakeServer()
-    const fixture = await start(server.url)
-    server.generation = json({ data: [{ b64_json: PNG.toString('base64') }] })
-    const take = operationValue(await fixture.tool('dv_image_generate', { ...KEY, reason: 'lantern', prompt: 'x' }))
-    expect(fixture.records().at(-1)).toMatchObject({ id: take.record, status: 'done', cost: { gpu_seconds: 0.6 * 1024 * 1024 / 1e6 } })
   })
 
   it('refuses a size and a misrouted server before any record, with the closing sentence of each case', async () => {
@@ -323,7 +315,7 @@ describe('dv-sglang-diffusion', () => {
     expect(failure(await fixture.tool('dv_image_generate', { ...KEY, reason: 'try', prompt: 'x', size: '1000x1000' }))).toBe(
       'Model image/t2i/sglang-diffusion/qwen-image-2.1-turbo cannot generate this: Width and height must each be a multiple of 32, '
       + `and 1000x1000 is not; the nearest sizes are 992x992 and 1024x1024. ${REFUSAL_END}`)
-    expect(failure(await fixture.tool('dv_image_generate', { ...KEY, reason: 'try', prompt: 'x', size: '4096x4096', user_requested: true }))).toBe(
+    expect(failure(await fixture.tool('dv_image_generate', { ...KEY, reason: 'try', prompt: 'x', size: '4096x4096' }))).toBe(
       'Model image/t2i/sglang-diffusion/qwen-image-2.1-turbo cannot generate this: The model renders at most 4300800 pixels, and '
       + `4096x4096 has 16777216; the preset nearest its aspect ratio is 2048x2048 (1:1). ${REFUSAL_END}`)
     server.models = json(SPEECH_MODELS)
@@ -376,9 +368,6 @@ describe.skipIf(REAL_SERVER === undefined)('dv-sglang-diffusion against a runnin
     expect(Buffer.from(bytes).subarray(0, 8)).toEqual(PNG_SIGNATURE)
     expect(pngSize(bytes)).toBe('1024x768')
     expect(fixture.ctx.dvAssetPool.get(asset)).toMatchObject({ mime: 'image/png', width: 1024, height: 768 })
-    const record = fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(first.record))
-    expect(record.cost?.gpu_seconds).toBeGreaterThan(0)
-    expect(record.cost?.gpu_seconds).not.toBe(0.6 * 1024 * 768 / 1e6)
     const square = operationValue(await fixture.tool('dv_image_generate', { ...KEY, reason: 'square', prompt: args.prompt, seed: 1234 }))
     expect(square.report).toMatchObject({ size: '1024x1024' })
     expect(pngSize(fixture.ctx.dvAssetPool.read(brandString<AssetId>(String(square.outputs[0]?.asset_id))))).toBe('1024x1024')

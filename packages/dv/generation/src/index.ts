@@ -10,7 +10,7 @@ import { randomInt } from 'node:crypto'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
 import {
-  formatModelKey, modelKey, servesTask, type ModelEntry, type PrimitiveId, type PrimitiveTypes, type TaskOfPrimitive,
+  formatModelKey, type ModelEntry, type PrimitiveId, type PrimitiveTypes, type TaskOfPrimitive,
 } from '@dv/models'
 import type {
   AssetId, OperationContext, OperationInput, OperationOutput, OperationResult, OperationSpec, OperationToolCall, ProjectId,
@@ -50,8 +50,6 @@ export interface GenerationApi {
    */
   check(call: Pick<GenerationCall, 'project' | 'params' | 'inputs'>, state: ProjectState,
     chained?: readonly string[]): Promise<string[]>
-  /** The declaration's GPU estimate of the params; `{ gpu_seconds: 0 }` only when the key names no entry of its tasks. */
-  estimate(call: Pick<GenerationCall, 'params'>): { gpu_seconds: number }
   /**
    * The newest done record of the operation in `state` that `where` accepts and whose declared params (the keys of the
    * operation's `params`) and inputs equal the call's (inputs sorted by role, order kept inside a role); null when none.
@@ -86,16 +84,9 @@ interface GenerationSpecFields<P extends PrimitiveId> {
   toolParams?: OperationSpec['params']
   /** Change an agent call before the check, such as a tool-only argument that becomes an input. */
   prepareToolCall?(call: OperationToolCall): void
-  /** Import the model's result as the record's outputs; without a `cost` in the result, the helper records the estimate. */
+  /** Import the model's result as the record's outputs. */
   toOutputs(ctx: Context, run: OperationContext, result: PrimitiveTypes[P]['result'],
     facts: PrimitiveTypes[P]['facts'], request: PrimitiveTypes[P]['request']): Promise<OperationResult>
-  /** The GPU estimate of the params with the entry that their key names. */
-  estimate(params: Record<string, unknown>, entry: ModelEntry<TaskOfPrimitive<P>>): { gpu_seconds: number }
-  /**
-   * The confirmation text of an agent call. Default: `<label.en> with <provider>/<model>: <quotePrompt(prompt, 80)>`.
-   * The refusal that shows it states the estimate on the next line.
-   */
-  confirmText?(params: Record<string, unknown>): string
   /** One line that describes a finished record. */
   summarize(record: ProjectRecord): string
 }
@@ -217,7 +208,7 @@ export function importOne(run: OperationContext,
  * @param spec - the declaration.
  * @returns a Cordis service class named `spec.service`. It registers the component and, with `dvModels.labelTasks`,
  *   the task labels; registers the operation while the catalog serves one of `spec.tasks`, with `deterministic: false`,
- *   `resource: 'gpu'`, `confirm: 'over_gpu_budget'` and the spec's label; draws and reports the seed unless `spec.seed`
+ *   `resource: 'gpu'`, `confirm: 'never'` and the spec's label; draws and reports the seed unless `spec.seed`
  *   is false; refuses a call before its record with every reason of `check` and a closing sentence, which for an
  *   unavailable model says that no change to the call helps; imports the outputs through `spec.toOutputs`; and
  *   implements `GenerationApi`.
@@ -276,12 +267,6 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
       }
     }
 
-    estimate(call: Pick<GenerationCall, 'params'>): { gpu_seconds: number } {
-      const entry = this.ctx.dvModels.get(modelKey(call.params))
-      if (entry === undefined || !servesTask(entry, tasks)) return { gpu_seconds: 0 }
-      return spec.estimate(call.params, entry)
-    }
-
     findTake(state: ProjectState, call: Pick<GenerationCall, 'params' | 'inputs'>,
       where: (record: ProjectRecord) => boolean): RecordId | null {
       const wanted = { params: declaredParams(call.params, declared), inputs: inputRefs(call.inputs) }
@@ -309,7 +294,7 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
 
     /**
      * Run one model call and store its outputs. The model checks the request again, with every input asset known.
-     * The record carries the estimate as its cost when `toOutputs` reports none, and the seed in its report.
+     * The record carries the seed in its report.
      */
     private async execute(run: OperationContext): Promise<OperationResult> {
       const entry = this.ctx.dvModels.resolve(tasks, run.params)
@@ -318,8 +303,7 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
       const problems = await entry.validateGenerationRequest(request)
       if (problems.length > 0) throw new Error(`${modelReason(entry, problems)} ${REFUSAL_END}`)
       const result = await spec.toOutputs(this.ctx, run, entry.render(request, run.signal), facts, request)
-      const cost = result.cost ?? spec.estimate(run.params, entry)
-      return seed === null ? { ...result, cost } : { ...result, cost, report: { seed, ...result.report } }
+      return seed === null ? result : { ...result, report: { seed, ...result.report } }
     }
 
     /** The operation of the declaration. */
@@ -329,14 +313,7 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
         name: spec.operation, component: spec.component, version: '1', label, description: spec.description,
         params: operationParams,
         inputs: spec.inputs, outputs: spec.outputs, ...toolParams === undefined ? {} : { toolParams },
-        deterministic: false, resource: 'gpu', confirm: 'over_gpu_budget',
-        confirmSummary: ({ request: { params } }) => {
-          const { provider, model } = modelKey(params)
-          const gpuSeconds = this.estimate({ params }).gpu_seconds
-          const text = spec.confirmText?.(params) ?? `${label.en} with ${provider}/${model}: ${quotePrompt(String(params['prompt']), 80)}`
-          return { text, gpu_seconds: gpuSeconds }
-        },
-        estimate: params => this.estimate({ params }),
+        deterministic: false, resource: 'gpu', confirm: 'never',
         summarize: record => spec.summarize(record),
         prepareToolCall: async (call) => {
           spec.prepareToolCall?.(call)

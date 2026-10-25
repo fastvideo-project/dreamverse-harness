@@ -20,8 +20,6 @@ import type { ModelEntry } from '@dv/models'
 export interface ModelServer {
   /** HTTP base URL of the SGLang diffusion server, such as `http://127.0.0.1:30010`. */
   baseUrl: string
-  /** GPU seconds per megapixel of an image on this server, for the GPU estimate. */
-  gpuSecondsPerMegapixel: number
 }
 
 /** `dv-sglang-diffusion` configuration. */
@@ -31,7 +29,7 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  models: z.dict(z.object({ baseUrl: z.string().required(), gpuSecondsPerMegapixel: z.number().required() })).required(),
+  models: z.dict(z.object({ baseUrl: z.string().required() })).required(),
 })
 
 /** One served image model: the rules of the model that no server endpoint lists. */
@@ -124,7 +122,7 @@ async function checkServed(baseUrl: string, modelId: string): Promise<void> {
 
 /**
  * Generate one PNG through `POST /v1/images/generations`. The server renders this model at the requested size.
- * @returns the image at the requested size, with the answer's finite `inference_time_s` as its GPU seconds, else null.
+ * @returns the image at the requested size.
  * @throws the signal's reason on abort, or Error for a server that answers with an error or without a PNG, or cannot be reached.
  */
 async function generateImage(baseUrl: string, size: ImageSize, request: ImageRequest, signal?: AbortSignal): Promise<GeneratedImage> {
@@ -138,9 +136,7 @@ async function generateImage(baseUrl: string, size: ImageSize, request: ImageReq
   const b64 = field(Array.isArray(data) ? data[0] : undefined, 'b64_json')
   const bytes = Buffer.from(typeof b64 === 'string' ? b64 : '', 'base64')
   if (!bytes.subarray(0, 8).equals(PNG_SIGNATURE)) throw new Error(`The server at ${baseUrl} answered POST /v1/images/generations without a PNG image.`)
-  const seconds = field(answer, 'inference_time_s')
-  const gpuSeconds = typeof seconds === 'number' && Number.isFinite(seconds) ? seconds : null
-  return { bytes, mime: 'image/png', width: size.width, height: size.height, gpuSeconds }
+  return { bytes, mime: 'image/png', width: size.width, height: size.height }
 }
 
 /** The problems of a request's size and `extra`, each one agent-facing sentence. */
@@ -182,7 +178,6 @@ function modelEntry(model: string, server: ModelServer): ModelEntry<'t2i'> {
     provider: 'sglang-diffusion',
     model,
     description: served.description,
-    gpuSecondsPerMegapixel: server.gpuSecondsPerMegapixel,
     defaultSize: served.defaultSize,
     facts,
     async schema(): Promise<JsonValue> {

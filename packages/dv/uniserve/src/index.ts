@@ -24,14 +24,11 @@ import { FASTH3_OMNI_DESCRIPTION, fasth3OmniProblems, fasth3OmniPrompt, fasth3Om
 export interface Config {
   /** HTTP base URL of the UniServe server that serves task `ref2va`, such as `http://127.0.0.1:8000`. */
   baseUrl: string
-  /** GPU seconds per rendered video second on that server, declared by the entry for the GPU estimate before a render. */
-  gpuSecondsPerVideoSecond: number
 }
 
 /** Loader validation. */
 export const Config: z<Config> = z.object({
   baseUrl: z.string().required(),
-  gpuSecondsPerVideoSecond: z.number().required(),
 })
 
 /** The UniServe task that renders the entry's requests. */
@@ -235,7 +232,6 @@ function modelEntry(ctx: Context, config: Config): ModelEntry {
     provider: 'uniserve',
     model: 'fasth3',
     description: FASTH3_OMNI_DESCRIPTION,
-    gpuSecondsPerVideoSecond: config.gpuSecondsPerVideoSecond,
     promptSkill: {
       name: PROMPT_SKILL.name, description: PROMPT_SKILL.description,
       content: readFileSync(new URL(`../skills/${PROMPT_SKILL.file}`, import.meta.url), 'utf8'),

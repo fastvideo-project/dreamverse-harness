@@ -364,7 +364,7 @@ describe('dvApi', () => {
     expect(await call(fixture, ROUTES.tasks)).toEqual({ status: 200, json: {} })
   })
 
-  it('checks a call with the sentence that the operation route refuses it with, and its GPU estimate, writing nothing', async () => {
+  it('checks a call with the sentence that the operation route refuses it with, writing nothing', async () => {
     const fixture = await start()
     fixture.context.effect(() => fixture.context.dvModels.register(new FakeModel()))
     const projectId = await fixture.newProject('demo')
@@ -388,7 +388,7 @@ describe('dvApi', () => {
       expect((await call(fixture, ROUTES.operationCheck, { method: 'POST', body })).json).toMatchObject({ problems: [refusal] })
     }
     expect(await call(fixture, ROUTES.operationCheck, { method: 'POST', body: shot(`@[Mia](dv:asset/${ref}) waves`, [{ role: 'reference', ref }]) }))
-      .toEqual({ status: 200, json: { problems: [], gpu_seconds: 8 } })
+      .toEqual({ status: 200, json: { problems: [] } })
     expect(fixture.handlers.getState(projectId).tip).toBe(tip)
     expect((await call(fixture, ROUTES.operationCheck, { method: 'POST', body: { project: 'nope', operation: 'shot.render', surface: 'canvas' } })).status).toBe(404)
   })

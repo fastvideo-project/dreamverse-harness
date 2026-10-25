@@ -73,7 +73,6 @@ export class FakeModel implements ModelEntry<'ref2v'> {
   readonly provider = 'fastvideo'
   readonly model = 'fasth3'
   readonly description = 'Solid-color clips.'
-  readonly gpuSecondsPerVideoSecond = 4
   readonly requests: RenderRequest[] = []
 
   /**
@@ -174,7 +173,7 @@ export async function startBase(options: BaseFixtureOptions = {}): Promise<BaseF
     await context.plugin(ToolRuntime).await()
   }
   await context.plugin(DvProject, {
-    root: join(root, 'projects'), gpuConcurrency: 1, cpuConcurrency: 4, sessionRoot: join(root, 'sessions'), confirmGpuSecondsThreshold: 60,
+    root: join(root, 'projects'), gpuConcurrency: 1, cpuConcurrency: 4, sessionRoot: join(root, 'sessions'),
     promptSectionOrder: 4900,
   }).await()
   await context.plugin(DvFfmpeg, { ffmpegPath: FFMPEG, ffprobePath: FFPROBE, outputLimitBytes: 1_048_576 }).await()

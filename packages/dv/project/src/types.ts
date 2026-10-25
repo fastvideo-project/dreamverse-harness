@@ -102,7 +102,6 @@ export interface RecordInput {
 
 /** The cost of one operation call, written by its final update line. */
 export interface RecordCost {
-  gpu_seconds: number
   wall_seconds: number
   /** Whether the outputs were reused from an earlier identical deterministic call instead of executed. */
   reused: boolean
@@ -225,8 +224,6 @@ export interface OperationResult {
   outputs: AssetId[]
   /** Facts besides the outputs, such as the seed a renderer drew; a read returns its answer here. */
   report?: Record<string, unknown>
-  /** GPU time the call used; the runner measures wall time itself. */
-  cost?: { gpu_seconds: number }
 }
 
 /** What an operation's execute function receives. */
@@ -396,12 +393,10 @@ export interface RunResult {
   report: Record<string, unknown> | null
 }
 
-/** What `dvProject.check` returns: whether `run` would accept a call on the current state, and its GPU estimate. */
+/** What `dvProject.check` returns: whether `run` would accept a call on the current state. */
 export interface OperationCheck {
   /** The sentence of the first refusal, verbatim; empty when the call can run. */
   problems: string[]
-  /** The operation's `estimate` of a call that can run; null for a refused call and an operation that declares none. */
-  gpu_seconds: number | null
 }
 
 /** The history list's last step and the current position, as `line.json` stores them. */

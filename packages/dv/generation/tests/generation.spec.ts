@@ -21,7 +21,7 @@ import DvProject, {
   type AssetId, type OperationSpec, type ProjectId, type ProjectRecord, type RecordId, type RecordOrigin, type RunRequest, type SessionId,
 } from '@dv/project'
 import { afterEach, describe, expect, it } from 'vitest'
-import { defineGeneration, importOne, type GenerationCall, type RequestInput } from '../src/index.ts'
+import { defineGeneration, importOne, quotePrompt, type GenerationCall, type RequestInput } from '../src/index.ts'
 
 const seen: Array<readonly RequestInput[]> = []
 
@@ -68,14 +68,13 @@ const DvProbeGenerate = defineGeneration({
     const chunks: Buffer[] = []
     for await (const event of result) if (event.kind === 'chunk') chunks.push(event.bytes)
     const clip = run.importAsset(Buffer.concat(chunks), { mime: 'text/plain', name: 'probe.txt' })
-    return { outputs: [clip], cost: { gpu_seconds: 1 }, report: { model_id: facts.modelId, references: request.references.length } }
+    return { outputs: [clip], report: { model_id: facts.modelId, references: request.references.length } }
   },
-  estimate: (params, entry) => ({ gpu_seconds: Number(params['duration_sec'] ?? 1) * entry.gpuSecondsPerVideoSecond }),
   summarize: record => `probe "${String(record.params['prompt'])}"`,
 })
 
 /**
- * A declaration without a seed and without the optional members except `confirmText`: component `plain`, operation
+ * A declaration without a seed and without the optional members: component `plain`, operation
  * `plain.generate`, the same video tasks as the probe, so a composition mounts one of the two.
  */
 const DvPlainGenerate = defineGeneration({
@@ -91,8 +90,6 @@ const DvPlainGenerate = defineGeneration({
   toOutputs: async (_ctx, run, _result, _facts, request) => ({
     outputs: [importOne(run, { bytes: Buffer.from(`plain ${request.prompt}`), mime: 'text/plain' })],
   }),
-  estimate: () => ({ gpu_seconds: 2 }),
-  confirmText: params => `Plain clip of ${String(params['prompt'])}.`,
   summarize: () => 'plain',
 })
 
@@ -125,7 +122,7 @@ class FakeModel {
 
   entry(task: TaskOfPrimitive<'video'>): ModelEntry<TaskOfPrimitive<'video'>> {
     return {
-      modality: 'video', task, provider: 'test', model: 'fake', description: 'Probe clips', gpuSecondsPerVideoSecond: 3,
+      modality: 'video', task, provider: 'test', model: 'fake', description: 'Probe clips',
       facts: () => this.facts(),
       schema: () => Promise.resolve({}),
       validateGenerationRequest: request => new Promise((resolve) => { resolve(this.problems(request)) }),
@@ -181,7 +178,7 @@ async function start(serve = true, declaration: 'DvProbeGenerate' | 'DvPlainGene
   }
   row('system-prompt', 'SystemPrompt')
   row('tools', 'ToolRuntime')
-  row('dv-project', 'DvProject', [`root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`, 'confirmGpuSecondsThreshold: 10'])
+  row('dv-project', 'DvProject', [`root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`])
   row('dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe'])
   row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
   row('dv-models', 'DvModels')
@@ -223,7 +220,7 @@ describe('defineGeneration', () => {
     const remove = ctx.dvModels.register(fixture.model.entry('ref2v'))
     expect(fixture.spec()).toMatchObject({
       component: 'probe', version: '1', label: { zh: '生成探针', en: 'Generate a probe' }, outputs: [{ role: 'clip', type: 'video' }],
-      deterministic: false, resource: 'gpu', confirm: 'over_gpu_budget', toolParams: { continue_from: { type: 'string' } },
+      deterministic: false, resource: 'gpu', confirm: 'never', toolParams: { continue_from: { type: 'string' } },
     })
     // The key and the prompt come first and the seed and extra last; the declaration restated the prompt.
     const params = fixture.spec()?.params ?? {}
@@ -249,7 +246,6 @@ describe('defineGeneration', () => {
     expect(first).toMatchObject({ component: 'probe', operation: 'probe.generate', status: 'done', params: { ...TXT, prompt: 'dawn' } })
     expect(first.report).toMatchObject({ model_id: 'probe-1', references: 0 })
     expect(Object.keys(first.report ?? {})).toEqual(['seed', 'model_id', 'references'])
-    expect(first.cost?.gpu_seconds).toBe(1)
     expect(fixture.model.requests[0]).toMatchObject({ prompt: 'dawn', seed: first.report?.['seed'], numFrames: 24 })
     // A scheduled call resolves its record and asset inputs when it runs, keeps the seed it names, and stores its starter.
     const image = ctx.dvAssetPool.importAsset(Buffer.from('face'), { mime: 'text/plain', name: 'face.txt' }, null)
@@ -348,18 +344,9 @@ describe('defineGeneration', () => {
     expect(await ctx.dvProbeGenerate.check(missing, ctx.dvProject.getState(project))).toEqual([])
   })
 
-  it('estimates the GPU time, and describes an agent call that passes the budget', async () => {
-    const fixture = await start()
-    const { ctx } = fixture
-    expect(ctx.dvProbeGenerate.estimate({ params: { ...TXT, duration_sec: 2 } })).toEqual({ gpu_seconds: 6 })
-    expect(ctx.dvProbeGenerate.estimate({ params: { ...TXT, task: 'ref2v' } })).toEqual({ gpu_seconds: 0 })
-    expect(fixture.spec()?.estimate?.({ ...TXT })).toEqual({ gpu_seconds: 3 })
-    const refused = await fixture.tool('dv_probe_generate', { ...TXT, reason: 'try', prompt: 'long', duration_sec: 4 })
-    expect(refused.isError ? refused.error.message : '').toContain('Generate a probe with test/fake: "long"\nEstimated GPU time: about 12 s.')
-    const summary = (prompt: string) =>
-      fixture.spec()?.confirmSummary?.({ request: { params: { ...TXT, prompt } } } as never, ctx.dvProject.getState(fixture.project))
-    expect(summary(`  ${'👍🏽'.repeat(80)}tail\n`)).toEqual({ text: `Generate a probe with test/fake: "${'👍🏽'.repeat(80)}…"`, gpu_seconds: 3 })
-    expect(summary(' A sign that reads "Moon Garden"\nat night ')?.text).toBe('Generate a probe with test/fake: "A sign that reads \\"Moon Garden\\"\\nat night"')
+  it('quotes a prompt trimmed and cut at a character limit', () => {
+    expect(quotePrompt(`  ${'👍🏽'.repeat(80)}tail\n`, 80)).toBe(`"${'👍🏽'.repeat(80)}…"`)
+    expect(quotePrompt(' A sign that reads "Moon Garden"\nat night ', 80)).toBe('"A sign that reads \\"Moon Garden\\"\\nat night"')
   })
 
   it('turns tool arguments into inputs before the check, and refuses an agent call with its reasons', async () => {
@@ -413,11 +400,11 @@ describe('defineGeneration', () => {
     expect(take({ prompt: 'snow', seed: 7 })).toBeNull()
   })
 
-  it('runs a declaration without a seed, records its estimate as the cost, and names its output after the record', async () => {
+  it('runs a declaration without a seed, and names its output after the record', async () => {
     const fixture = await start(true, 'DvPlainGenerate')
     const { ctx, project } = fixture
     const spec = ctx.dvProject.listOperations().find(operation => operation.name === 'plain.generate')
-    expect(spec).toMatchObject({ confirm: 'over_gpu_budget', inputs: {} })
+    expect(spec).toMatchObject({ confirm: 'never', inputs: {} })
     expect(spec).not.toHaveProperty('toolParams')
     // The shared params as the model reads them, without a seed.
     expect(Object.keys(spec?.params ?? {})).toEqual(['modality', 'task', 'provider', 'model', 'prompt', 'extra'])
@@ -429,14 +416,11 @@ describe('defineGeneration', () => {
       prompt: { type: 'string', required: true, description: 'The complete prompt; follow the prompt skill that dv_models_list names for the model, if any.' },
       extra: { type: 'object', additionalProperties: true, description: 'The model\'s own parameters, as dv_models_get lists them; omit it when the model has none.' },
     })
-    expect(ctx.dvPlainGenerate.estimate({ params: { ...TXT } })).toEqual({ gpu_seconds: 2 })
-    expect(spec?.confirmSummary?.({ request: { params: { ...TXT, prompt: 'rain' } } } as never, ctx.dvProject.getState(project)))
-      .toEqual({ text: 'Plain clip of rain.', gpu_seconds: 2 })
     expect(await ctx.dvPlainGenerate.check(fixture.call({ prompt: 'boom' }), ctx.dvProject.getState(project))).toEqual(['The prompt is a bomb.'])
     const result = await fixture.tool('dv_plain_generate', { ...TXT, reason: 'plain', prompt: 'rain' })
     expect(result.isError).toBe(false)
     const record = ctx.dvProject.getState(project).components.proj.records.at(-1)
-    expect(record).toMatchObject({ operation: 'plain.generate', status: 'done', cost: { gpu_seconds: 2 } })
+    expect(record).toMatchObject({ operation: 'plain.generate', status: 'done' })
     expect(record?.report ?? {}).not.toHaveProperty('seed')
     const asset = ctx.dvAssetPool.get(record?.outputs[0] ?? brandString<AssetId>('none'))
     expect(asset).toMatchObject({ name: `${String(record?.id.slice(0, 8))}.plain`, mime: 'text/plain', created_by: record?.id })

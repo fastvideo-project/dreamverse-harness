@@ -34,7 +34,6 @@ describe('dv-sglang-omni', () => {
   it('lists the model with its description and prompt skill, and removes both on disposal', async () => {
     const { fixture } = await boot()
     expect(fixture.ctx.dvModels.list().map(({ modality, task, provider, model }) => ({ modality, task, provider, model }))).toEqual([KEY])
-    expect(fixture.entry().gpuSecondsPerCall).toBe(3)
     expect(value(await fixture.call('dv_models_list', {}))).toEqual([{
       ...KEY,
       description: 'Fish Audio Drama 3: expressive speech from text in many languages, with sound events such as laughs and sighs '
@@ -53,7 +52,7 @@ describe('dv-sglang-omni', () => {
 
   it('refuses a config that names a model it does not serve', async () => {
     const { fake, fixture } = await boot()
-    expect(() => { SglangOmni.apply(fixture.ctx, { models: { kokoro: { baseUrl: fake.url, gpuSecondsPerCall: 1 } } }) })
+    expect(() => { SglangOmni.apply(fixture.ctx, { models: { kokoro: { baseUrl: fake.url } } }) })
       .toThrow('dv-sglang-omni serves no model "kokoro"; it serves: fish-audio-drama-3.')
     expect(fixture.ctx.dvModels.list()).toHaveLength(1)
   })
@@ -115,15 +114,13 @@ describe('dv-sglang-omni', () => {
     expect(fake.requests).toEqual([])
   })
 
-  it('speaks a clip through POST /v1/audio/speech, with the duration from the WAV header and the wall time as its cost', async () => {
+  it('speaks a clip through POST /v1/audio/speech, with the duration from the WAV header', async () => {
     const { fake, fixture } = await boot()
     const prompt = '<|speaker:0|> Welcome to DreamVerse, traveler. [laughs] Rest here tonight.'
     const take = value(await fixture.call('dv_audio_generate', { ...KEY, reason: 'greeting', prompt, extra: { speed: 1.1 } }))
     expect(fake.requests).toEqual([{ speed: 1.1, input: prompt, response_format: 'wav' }])
     const record = fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(take.record))
     expect(record).toMatchObject({ status: 'done', report: { model_id: 'fishaudio/drama-3', duration_sec: 1.5 } })
-    expect(record.cost?.gpu_seconds).toBeGreaterThan(0)
-    expect(record.cost?.gpu_seconds).not.toBe(3)
     const asset = record.outputs[0] as AssetId
     expect(fixture.ctx.dvAssetPool.get(asset)).toMatchObject({ mime: 'audio/wav', duration_sec: 1.5 })
     expect(fixture.ctx.dvAssetPool.read(asset).equals(wav(132_300))).toBe(true)

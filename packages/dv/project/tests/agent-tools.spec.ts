@@ -13,7 +13,7 @@ import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvProject, {
   formatInputRef, toolNameOf, versionRefOf, type OperationSpec, type OperationToolValue, type ProjectId,
-  type RecordId, type SessionId, type TurnId,
+  type RecordId, type SessionId,
 } from '../src/index.ts'
 import { formatToolResult } from '../src/agent-tools.ts'
 import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot, testKind } from './support.ts'
@@ -66,7 +66,7 @@ async function start(root = tempRoot(), attachments = true): Promise<Fixture> {
   await context.plugin(ToolRuntime).await()
   await context.plugin(DvProject, {
     root: join(root, 'projects'), sessionRoot: join(root, 'sessions'), cpuConcurrency: 4, gpuConcurrency: 1,
-    confirmGpuSecondsThreshold: 60, promptSectionOrder: 4900,
+    promptSectionOrder: 4900,
   }).await()
   const assets = new MemoryAssets()
   context.dvProject.registerAssetStore(assets)
@@ -229,15 +229,14 @@ describe('agent tools', () => {
     const projectId = await boundProject(fixture)
     fixture.project.registerOperation(operation({
       name: 'plan.approve', component: 'plan', confirm: 'always',
-      confirmSummary: call => ({ text: `1. ${String(call.request.params['prompt'])} (5 s)`, gpu_seconds: 25 }),
+      confirmSummary: call => ({ text: `1. ${String(call.request.params['prompt'])} (5 s)` }),
     }))
     const properties = Object.keys((fixture.context.tools.schemas().find(tool => tool.name === 'dv_plan_approve')?.parameters as { properties: object }).properties)
     expect(properties).toContain('user_approved')
-    expect(properties).not.toContain('user_requested')
     const before = fixture.project.listHistory({ project: projectId }).length
     const refused = await fixture.call('dv_plan_approve', { reason: 'approve', prompt: 'kite' })
     expect(refused.isError && refused.error.message).toBe([
-      'dv_plan_approve needs the user\'s agreement.', 'What it will do:', '1. kite (5 s)', 'Estimated GPU time: about 25 s.',
+      'dv_plan_approve needs the user\'s agreement.', 'What it will do:', '1. kite (5 s)',
       'Show this to the user and ask in the conversation, with the question in bold (for example **Run this now?**). '
         + 'Wait for the user\'s answer, then call again with user_approved: true.',
     ].join('\n'))
@@ -249,45 +248,6 @@ describe('agent tools', () => {
     const origin = { actor: 'user' as const, surface: 'canvas' as const, session: null, turn: null, tool_call: null, intent: 'approve' }
     const human = await fixture.project.run({ ...origin, project: projectId, operation: 'plan.approve', params: { prompt: 'kite' }, inputs: [] })
     expect(human.record?.status).toBe('done')
-  })
-
-  it('refuses an over_gpu_budget call past the turn\'s budget, counting the turn\'s finished cost and unfinished estimates', async () => {
-    const fixture = await start()
-    const projectId = await boundProject(fixture)
-    let release = (): void => {}
-    const held = new Promise<void>((resolve) => { release = resolve })
-    fixture.project.registerOperation(operation({
-      name: 'shot.render_ref2va', component: 'shot', confirm: 'over_gpu_budget', resource: 'gpu', estimate: () => ({ gpu_seconds: 40 }),
-      confirmSummary: call => ({ text: `render ${String(call.request.params['prompt'])}`, gpu_seconds: 40 }),
-      execute: async (context) => {
-        if (context.params['prompt'] === 'slow') await held
-        return { outputs: [context.importAsset(Buffer.from(`take ${String(context.params['prompt'])}`), { mime: 'video/mp4', name: 'take.mp4' })], cost: { gpu_seconds: 40 } }
-      },
-    }))
-    const properties = Object.keys((fixture.context.tools.schemas().find(tool => tool.name === 'dv_shot_render_ref2va')?.parameters as { properties: object }).properties)
-    expect(properties).toContain('user_requested')
-    fixture.turns.set('s1', 1)
-    expect(value(await fixture.call('dv_shot_render_ref2va', { reason: 'first', prompt: 'a' })).status).toBe('done')
-    // The turn's finished render cost 40 s; another 40 s passes the 60 s budget.
-    const refused = await fixture.call('dv_shot_render_ref2va', { reason: 'second', prompt: 'b' })
-    expect(refused.isError && refused.error.message).toBe([
-      'dv_shot_render_ref2va would bring this turn to about 80 GPU seconds, above the 60 s budget.', 'What it will do:', 'render b',
-      'Estimated GPU time: about 40 s.',
-      'Show this to the user and ask in the conversation, with the question in bold (for example **Run this now?**). '
-        + 'Wait for the user\'s answer, then call again with user_requested: true.',
-    ].join('\n'))
-    const requested = value(await fixture.call('dv_shot_render_ref2va', { reason: 'second', prompt: 'b', user_requested: true }))
-    expect(fixture.project.getRecord(projectId, brandString<RecordId>(requested.record)).params).toEqual({ prompt: 'b' })
-    // A new turn starts with an empty budget; a running render of the turn counts with its estimate.
-    fixture.turns.set('s1', 2)
-    const slow = fixture.call('dv_shot_render_ref2va', { reason: 'slow', prompt: 'slow' })
-    await new Promise(resolve => setTimeout(resolve, 30))
-    const whileRunning = await fixture.call('dv_shot_render_ref2va', { reason: 'next', prompt: 'c' })
-    expect(whileRunning.isError && whileRunning.error.message).toContain('about 80 GPU seconds')
-    release()
-    expect(value(await slow).status).toBe('done')
-    expect(fixture.project.listHistory({ project: projectId, turn: brandString<TurnId>('2') }).map(entry => entry.record.params['prompt']))
-      .toEqual(['slow'])
   })
 
   it('records no turn for a call outside any turn', async () => {

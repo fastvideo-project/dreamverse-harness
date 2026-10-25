@@ -5,8 +5,8 @@
  * result names the record, its outputs with their URLs, and the records the call scheduled. Image outputs also reach
  * the model as image blocks through the attachment service.
  *
- * Confirmation: an operation whose `confirm` is `always` or `over_gpu_budget` gets the tool-only argument
- * `user_approved` or `user_requested`; a call that needs the user's agreement and lacks it is refused, before anything
+ * Confirmation: an operation whose `confirm` is `always` gets the tool-only argument `user_approved`; a call that
+ * lacks it is refused, before anything
  * is written, with the operation's `confirmSummary` and the instruction to ask the user in the conversation with the
  * question in bold. The record's turn is the DSH turn number of the calling agent's session, read from the
  * `turnBoundary` session projection.
@@ -40,10 +40,6 @@ export interface AgentToolDeps {
   sessions: Sessions
   /** The registered asset store; throws when none is registered. */
   assets(): AssetStore
-  /** Estimated GPU seconds one agent turn may spend on `over_gpu_budget` operations before the user must agree. */
-  confirmGpuSecondsThreshold: number
-  /** Every registered operation, for the GPU estimate of the turn's unfinished records. */
-  listOperations(): OperationSpec[]
   /** The service's read of the project's current state, which every write follows. */
   currentState(project: ProjectId): ProjectState
   /** The registered reference kinds, in registration order. */
@@ -64,9 +60,6 @@ const IMAGE_MEDIA_TYPES: ReadonlySet<string> = new Set<ImageMediaType>(['image/p
 /** The arguments every operation tool takes besides the operation's params; they never reach the run's params. */
 const SHARED_ARGS = ['reason', 'project_id', 'inputs', 'supersedes', 'based_on'] as const
 
-/** The tool-only argument that carries the user's agreement, by `OperationSpec.confirm`. */
-const CONFIRM_ARGS = { always: 'user_approved', over_gpu_budget: 'user_requested' } as const
-
 /** The tool-only confirmation argument of each `OperationSpec.confirm` value, as the model sees it. */
 const CONFIRM_PARAMS: Record<OperationSpec['confirm'], ParameterSchemaSpec> = {
   never: {},
@@ -75,13 +68,6 @@ const CONFIRM_PARAMS: Record<OperationSpec['confirm'], ParameterSchemaSpec> = {
       type: 'boolean',
       description: 'Set true only after the user agreed to this exact call in the conversation. Without it the call is refused '
         + 'with what to show the user and ask.',
-    },
-  },
-  over_gpu_budget: {
-    user_requested: {
-      type: 'boolean',
-      description: 'Set true when the user asked for this exact change, or agreed to it in the conversation. Without it a call '
-        + 'past this turn\'s GPU budget is refused with what to show the user and ask.',
     },
   },
 }
@@ -400,8 +386,7 @@ export class AgentTools {
 
   /**
    * Refuse a call that needs the user's agreement and does not carry it (`OperationSpec.confirm`): `always` needs
-   * `user_approved: true`; `over_gpu_budget` needs `user_requested: true` once the turn's GPU seconds with this call
-   * pass the budget. The refusal names what the call will do and cost and tells the model to ask in the conversation,
+   * `user_approved: true`. The refusal names what the call will do and tells the model to ask in the conversation,
    * with the question in bold.
    * @param spec - the operation.
    * @param call - the parsed call, after `prepareToolCall`.
@@ -409,39 +394,14 @@ export class AgentTools {
    */
   private confirm(spec: OperationSpec, call: OperationToolCall): void {
     if (spec.confirm === 'never' || spec.confirmSummary === undefined) return
-    const flag = CONFIRM_ARGS[spec.confirm]
-    if (call.args[flag] === true) return
+    if (call.args.user_approved === true) return
     const summary = spec.confirmSummary(call, call.state)
-    const threshold = this.deps.confirmGpuSecondsThreshold
-    const total = summary.gpu_seconds + this.turnGpuSeconds(call.request)
-    if (spec.confirm === 'over_gpu_budget' && total <= threshold) return
-    const name = toolNameOf(spec)
     throw new Error([
-      spec.confirm === 'always'
-        ? `${name} needs the user's agreement.`
-        : `${name} would bring this turn to about ${String(Math.round(total))} GPU seconds, above the ${String(threshold)} s budget.`,
-      'What it will do:', summary.text, `Estimated GPU time: about ${String(Math.round(summary.gpu_seconds))} s.`,
+      `${toolNameOf(spec)} needs the user's agreement.`,
+      'What it will do:', summary.text,
       'Show this to the user and ask in the conversation, with the question in bold (for example **Run this now?**). '
-        + `Wait for the user's answer, then call again with ${flag}: true.`,
+        + 'Wait for the user\'s answer, then call again with user_approved: true.',
     ].join('\n'))
-  }
-
-  /**
-   * The GPU seconds the call's turn already spent or scheduled: the cost of its finished records and the operation
-   * estimate of its unfinished ones, anywhere in the project's history.
-   * @param request - the call; its session and turn select the records.
-   * @returns the seconds; 0 for a call outside any turn.
-   */
-  private turnGpuSeconds(request: RunRequest): number {
-    if (request.turn === null) return 0
-    const specs = new Map(this.deps.listOperations().map(spec => [spec.name, spec]))
-    const session = request.session === null ? {} : { session: request.session }
-    return this.deps.listHistory({ project: request.project, ...session, turn: request.turn })
-      .reduce((sum, { record }) => {
-        if (record.status !== 'pending' && record.status !== 'running') return sum + (record.cost?.gpu_seconds ?? 0)
-        const spec = record.operation === null ? undefined : specs.get(record.operation)
-        return sum + (spec?.estimate?.(record.params).gpu_seconds ?? 0)
-      }, 0)
   }
 
   /**

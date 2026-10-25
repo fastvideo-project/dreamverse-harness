@@ -127,7 +127,7 @@ async function start(tasks: { ref2v?: string; t2v?: string }): Promise<Context> 
   const globals = globalThis as typeof globalThis & { __dvFastVideo?: typeof PLUGINS }
   globals.__dvFastVideo = PLUGINS
   const config = ['models:', '  fasth3:', ...Object.entries(tasks).flatMap(([task, url]) => [
-    `    ${task}:`, `      baseUrl: ${url}`, `      gpuSecondsPerVideoSecond: ${task === 'ref2v' ? 4 : 1.5}`,
+    `    ${task}:`, `      baseUrl: ${url}`,
   ])]
   const rows: string[] = []
   const plugins = [
@@ -193,10 +193,10 @@ describe('dv-fastvideo', () => {
   it('registers fasth3 once per configured task, each with the facts and schema of its own server', async () => {
     const [reference, text] = await Promise.all([startFakeServer(REFERENCE_CAPABILITIES), startFakeServer(TEXT_CAPABILITIES)])
     const ctx = await start({ ref2v: reference.url, t2v: text.url })
-    expect(ctx.dvModels.list().filter(isVideoEntry).map(({ modality, task, provider, model, gpuSecondsPerVideoSecond }) =>
-      ({ modality, task, provider, model, gpuSecondsPerVideoSecond }))).toEqual([
-      { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', gpuSecondsPerVideoSecond: 4 },
-      { modality: 'video', task: 't2v', provider: 'fastvideo', model: 'fasth3', gpuSecondsPerVideoSecond: 1.5 },
+    expect(ctx.dvModels.list().filter(isVideoEntry).map(({ modality, task, provider, model }) =>
+      ({ modality, task, provider, model }))).toEqual([
+      { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' },
+      { modality: 'video', task: 't2v', provider: 'fastvideo', model: 'fasth3' },
     ])
     expect(fasth3(ctx, 'ref2v').description).toContain('Needs at least one reference.')
     expect(fasth3(ctx, 't2v').description).toContain('a face that must stay the same needs fasth3 for task ref2v')
@@ -326,7 +326,7 @@ describe('dv-fastvideo', () => {
   it('refuses a config that names a model or task it does not serve', async () => {
     const reference = await startFakeServer(REFERENCE_CAPABILITIES)
     const ctx = await start({ ref2v: reference.url })
-    const server = { baseUrl: reference.url, gpuSecondsPerVideoSecond: 1 }
+    const server = { baseUrl: reference.url }
     expect(() => { FastVideo.apply(ctx, { models: { wan: { t2v: server } } }) }).toThrow('dv-fastvideo serves no model "wan"; it serves: fasth3.')
     expect(() => { FastVideo.apply(ctx, { models: { fasth3: { reference: server } } }) })
       .toThrow('dv-fastvideo serves model "fasth3" for no task "reference"; its tasks: ref2v, t2v.')

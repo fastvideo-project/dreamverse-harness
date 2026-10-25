@@ -27,7 +27,7 @@ import DvProject, {
 import DvModels, { type ModelEntry, type RenderModelFacts, type RenderRequest, type RenderStreamEvent, type TaskOfPrimitive } from '@dv/models'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvShotRender from '../src/index.ts'
-import { backendSeconds, shotGeometry } from '../src/render.ts'
+import { shotGeometry } from '../src/render.ts'
 
 /** A task of the video entries that these tests register. */
 type VideoTask = TaskOfPrimitive<'video'>
@@ -118,8 +118,7 @@ class FakeLane {
 }
 
 /**
- * A catalog entry of provider `test` that renders with a lane: 3 GPU seconds per video second in task `ref2v`, 1.5 in
- * task `t2v`.
+ * A catalog entry of provider `test` that renders with a lane.
  * @param task - the task the entry serves.
  * @param lane - the lane that validates and renders its requests.
  * @param model - the model name.
@@ -128,7 +127,6 @@ class FakeLane {
 function fakeEntry(task: VideoTask, lane: FakeLane, model = 'fake'): ModelEntry<VideoTask> {
   return {
     modality: 'video', task, provider: 'test', model, description: 'Solid-color clips',
-    gpuSecondsPerVideoSecond: task === 'ref2v' ? 3 : 1.5,
     facts: () => lane.unreachable === null ? Promise.resolve(lane.facts) : Promise.reject(lane.unreachable),
     schema: () => Promise.resolve({}),
     validateGenerationRequest: request => lane.validate(request),
@@ -225,11 +223,11 @@ afterEach(async () => {
 
 /**
  * Boot the composition from a test-only `cordis.yml`.
- * @param options - the tasks the fake model is registered in (both by default; none registers no model), whether a live
- *   stream service is provided, and the GPU budget of a turn.
+ * @param options - the tasks the fake model is registered in (both by default; none registers no model), and whether a live
+ *   stream service is provided.
  * @returns the fixture, with a project bound to chat session `s1` and the test-only character operation.
  */
-async function start(options: { tasks?: VideoTask[]; live?: FakeLiveStream; budget?: number } = {}): Promise<Fixture> {
+async function start(options: { tasks?: VideoTask[]; live?: FakeLiveStream } = {}): Promise<Fixture> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-shot-render-'))
   const globals = globalThis as typeof globalThis & { __dvShotRenderComposition?: typeof PLUGINS }
   globals.__dvShotRenderComposition = PLUGINS
@@ -242,7 +240,7 @@ async function start(options: { tasks?: VideoTask[]; live?: FakeLiveStream; budg
   row('system-prompt', 'SystemPrompt', [])
   row('tools', 'ToolRuntime', [])
   row('dv-project', 'DvProject', [
-    `root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`, `confirmGpuSecondsThreshold: ${options.budget ?? 60}`,
+    `root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`,
   ])
   row('dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, `ffprobePath: ${FFPROBE}`])
   row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
@@ -319,12 +317,8 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
   it('registers shot.render while the catalog holds a model, and removes it on disposal', async () => {
     const fixture = await start()
     expect(renderSpec(fixture)).toMatchObject({
-      component: 'shot', label: { zh: '渲染镜头', en: 'Render shot' }, resource: 'gpu', confirm: 'over_gpu_budget', deterministic: false,
+      component: 'shot', label: { zh: '渲染镜头', en: 'Render shot' }, resource: 'gpu', confirm: 'never', deterministic: false,
     })
-    // Each estimate uses the GPU rate of the catalog entry the call's key names.
-    expect(renderSpec(fixture)?.estimate?.({ ...REF, duration_sec: 2 })).toEqual({ gpu_seconds: 6 })
-    expect(renderSpec(fixture)?.estimate?.({ ...TXT })).toEqual({ gpu_seconds: 7.5 })
-    expect(renderSpec(fixture)?.estimate?.({ ...TXT, model: 'other' })).toEqual({ gpu_seconds: 0 })
     // The key and the prompt, the shot's geometry, then `seed` and `extra`; a render carries no plan params.
     const params = renderSpec(fixture)?.params ?? {}
     expect(Object.keys(params)).toEqual([
@@ -339,7 +333,6 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(tool?.description).toContain('modality, task, provider and model name it and are required')
     expect(tool?.description).toContain('Uses the GPU.')
     expect(JSON.stringify(tool?.parameters)).toContain('continue_from')
-    expect(JSON.stringify(tool?.parameters)).toContain('user_requested')
     // The catalog serves the labels of both tasks while the service lives.
     const labels = { t2v: { zh: '文字生成', en: 'From text' }, ref2v: { zh: '参考图生成', en: 'From references' } }
     expect(fixture.ctx.dvModels.taskLabels()).toEqual(labels)
@@ -415,7 +408,7 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(shot.report).toMatchObject({ seed: 42, ...REF, model_id: 'test-ref2v', frame_width: 192, num_frames: 49 })
     expect(shot.report).not.toHaveProperty('generation_mode')
     expect(shot.report).not.toHaveProperty('image_labels')
-    expect(shot.cost).toMatchObject({ gpu_seconds: 0.25, reused: false })
+    expect(shot.cost).toMatchObject({ reused: false })
     expect(fixture.reference.requests[0]).toMatchObject({ prompt: 'Picture 1 waves', frameWidth: 192, frameHeight: 112, numFrames: 49, seed: 42, firstFrame: null })
     // The model receives asset IDs and reads each asset from the pool itself.
     expect(fixture.reference.requests[0]?.references).toEqual([image])
@@ -472,22 +465,6 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     const fromText = value(await fixture.call('dv_shot_render', { ...TXT, reason: 'establishing shot', prompt: 'A quiet street at dawn', duration_sec: 1 }))
     expect(fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(fromText.record)))
       .toMatchObject({ actor: 'agent', operation: 'shot.render', inputs: [] })
-  })
-
-  it('asks for the user\'s agreement once a turn passes the GPU budget', async () => {
-    const fixture = await start({ budget: 5 })
-    await withCharacter(fixture)
-    const args = { ...REF, reason: 'long shot', prompt: 'Picture 1 walks a long way', duration_sec: 2, inputs: { reference: 'c1@1' } }
-    const refused = failure(await fixture.call('dv_shot_render', args))
-    expect(refused).toContain('dv_shot_render would bring this turn to about 6 GPU seconds, above the 5 s budget.')
-    expect(refused).toContain('Render shot with video/ref2v/test/fake, 2 s: "Picture 1 walks a long way"')
-    expect(fixture.reference.requests).toHaveLength(0)
-    expect(value(await fixture.call('dv_shot_render', { ...args, user_requested: true })).status).toBe('done')
-    // The plan params of an older render name no shot in the agreement text either.
-    const summary = renderSpec(fixture)?.confirmSummary?.({
-      args: {}, request: { params: { ...TXT, prompt: 'x', plan: 'p1', plan_version: 1, shot: 3 } }, state: {}, exec: {},
-    } as never, {} as never)
-    expect(summary).toEqual({ text: 'Render shot with video/t2v/test/fake: "x"', gpu_seconds: 7.5 })
   })
 
   it('refuses a call that the model\'s validation refuses before recording anything, and tells the agent what to change', async () => {
@@ -640,7 +617,6 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
       'The prompt cites the input first_frame, which this call does not have. Cite only the assets of inputs.reference and the inputs of the call.',
     ])
     expect(fixture.reference.validations).toHaveLength(0)
-    expect(fixture.ctx.dvShotRender.estimate({ params: { ...REF, duration_sec: 2 } })).toEqual({ gpu_seconds: 6 })
     const take = { params: { ...REF, prompt: '@[Bo](dv:test_character/c1) waves', seed: 3 }, inputs }
     const started_by = { record: brandString<RecordId>('approve-1'), slot: 2 }
     const id = await fixture.ctx.dvShotRender.render({ ...call, ...take, started_by })
@@ -710,10 +686,5 @@ describe('render geometry and timings', () => {
     expect(() => shotGeometry(facts, { resolution: '480p' })).toThrow('aspect_ratio and resolution')
     expect(() => shotGeometry(facts, { duration_sec: 9 })).toThrow('duration_sec must be a whole number from 1 to 5')
     expect(() => shotGeometry({ ...facts, aspectRatios: [] }, {})).toThrow('aspect_ratio and resolution')
-  })
-
-  it('reports the longest backend timing in seconds', () => {
-    expect(backendSeconds({ generation_s: 0.25, total_ms: 1500 })).toBe(1.5)
-    expect(backendSeconds({})).toBe(0)
   })
 })

@@ -32,13 +32,13 @@ class FakeSpeech {
   render(request: AudioRequest): Promise<GeneratedAudio> {
     this.requests.push(request)
     if (this.failure !== null) return Promise.reject(this.failure)
-    return Promise.resolve({ bytes: CLIP, mime: 'audio/wav', durationSec: 2.25, gpuSeconds: 0.4 })
+    return Promise.resolve({ bytes: CLIP, mime: 'audio/wav', durationSec: 2.25 })
   }
 }
 
 function fakeEntry(speech: FakeSpeech, model = 'fake'): ModelEntry<'t2a'> {
   return {
-    modality: 'audio', task: 't2a', provider: 'test', model, description: 'Fixed clips', gpuSecondsPerCall: 3,
+    modality: 'audio', task: 't2a', provider: 'test', model, description: 'Fixed clips',
     facts: () => Promise.resolve({ modelId: 'test-speech' }),
     schema: () => Promise.resolve({}),
     validateGenerationRequest: request => Promise.resolve(speech.check(request)),
@@ -65,10 +65,10 @@ afterEach(async () => {
 
 /**
  * Boot the composition from a test-only `cordis.yml`.
- * @param options - whether the fake model is registered (by default it is), and the GPU budget of a turn.
+ * @param options - whether the fake model is registered (by default it is).
  * @returns the fixture, with a project bound to chat session `s1`.
  */
-async function start(options: { model?: boolean; budget?: number } = {}): Promise<Fixture> {
+async function start(options: { model?: boolean } = {}): Promise<Fixture> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-audio-generate-'))
   const globals = globalThis as typeof globalThis & { __dvAudioGenerateComposition?: typeof PLUGINS }
   globals.__dvAudioGenerateComposition = PLUGINS
@@ -80,7 +80,7 @@ async function start(options: { model?: boolean; budget?: number } = {}): Promis
   row('system-prompt', 'SystemPrompt', [])
   row('tools', 'ToolRuntime', [])
   row('dv-project', 'DvProject', [
-    `root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`, `confirmGpuSecondsThreshold: ${String(options.budget ?? 60)}`,
+    `root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`,
   ])
   row('dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe'])
   row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
@@ -130,11 +130,9 @@ describe('dvAudioGenerate', () => {
   it('registers audio.generate and dv_audio_generate while the catalog holds a t2a model, and removes both on disposal', async () => {
     const fixture = await start()
     expect(audioSpec(fixture)).toMatchObject({
-      component: 'audio', label: { zh: '生成音频', en: 'Generate audio' }, resource: 'gpu', confirm: 'over_gpu_budget', deterministic: false,
+      component: 'audio', label: { zh: '生成音频', en: 'Generate audio' }, resource: 'gpu', confirm: 'never', deterministic: false,
       inputs: {}, outputs: [{ role: 'audio', type: 'audio' }],
     })
-    expect(audioSpec(fixture)?.estimate?.({ ...KEY, prompt: 'Hello.' })).toEqual({ gpu_seconds: 3 })
-    expect(audioSpec(fixture)?.estimate?.({ ...KEY, model: 'other' })).toEqual({ gpu_seconds: 0 })
     const tool = fixture.ctx.tools.schemas().find(schema => schema.name === 'dv_audio_generate')
     expect(tool?.description).toBe('Generate one audio clip from the prompt with a t2a model from dv_models_list; modality, task, '
       + 'provider and model name it and are required. Before the first call for a model, load the prompt skill that '
@@ -174,7 +172,6 @@ describe('dvAudioGenerate', () => {
     expect(record).toMatchObject({ status: 'done', component: 'audio', operation: 'audio.generate', actor: 'agent', inputs: [] })
     expect(record.params).not.toHaveProperty('seed')
     expect(record.report).toEqual({ model_id: 'test-speech', duration_sec: 2.25 })
-    expect(record.cost).toMatchObject({ gpu_seconds: 0.4 })
     const asset = record.outputs[0] as AssetId
     expect(fixture.ctx.dvAssetPool.get(asset)).toMatchObject({ mime: 'audio/wav', duration_sec: 2.25, name: `${record.id.slice(0, 8)}.wav`, created_by: record.id })
     const blocks = fixture.ctx.tools.get('dv_audio_generate')?.output.render(args, take)
@@ -202,21 +199,6 @@ describe('dvAudioGenerate', () => {
       .toEqual(['The prompt is empty; write the text to speak.'])
     expect(fixture.history()).toBe(before)
     expect(fixture.speech.requests).toEqual([])
-  })
-
-  it('asks for the user\'s agreement once a call passes the GPU budget', async () => {
-    const fixture = await start({ budget: 2 })
-    const args = { ...KEY, reason: 'speech', prompt: `<|speaker:0|> ${'Rest here tonight. '.repeat(6)}` }
-    expect(failure(await fixture.call('dv_audio_generate', args))).toBe([
-      'dv_audio_generate would bring this turn to about 3 GPU seconds, above the 2 s budget.',
-      'What it will do:',
-      'Generate audio with test/fake: "<|speaker:0|> Rest here tonight. Rest here tonight. Rest here tonight. Rest here…"',
-      'Estimated GPU time: about 3 s.',
-      'Show this to the user and ask in the conversation, with the question in bold (for example **Run this now?**). '
-        + 'Wait for the user\'s answer, then call again with user_requested: true.',
-    ].join('\n'))
-    expect(fixture.speech.requests).toEqual([])
-    expect(value(await fixture.call('dv_audio_generate', { ...args, user_requested: true })).status).toBe('done')
   })
 
   it('fails the record with the model\'s message when the render fails', async () => {

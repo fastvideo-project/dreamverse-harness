@@ -70,7 +70,7 @@ async function start(): Promise<Fixture> {
   await ctx.plugin(SkillRegistry, {}).await()
   await ctx.plugin(DvProject, {
     root: join(root, 'projects'), sessionRoot: join(root, 'sessions'), cpuConcurrency: 1, gpuConcurrency: 1,
-    confirmGpuSecondsThreshold: 60, promptSectionOrder: 4900,
+    promptSectionOrder: 4900,
   }).await()
   const assets = new MemoryAssets()
   ctx.dvProject.registerAssetStore(assets)

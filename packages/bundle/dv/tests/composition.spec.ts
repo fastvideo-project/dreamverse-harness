@@ -169,17 +169,17 @@ describe('DreamVerse bundle composition', () => {
     expect(rows.find(row => row.id === 'dv-fastvideo')).toMatchObject({
       disabled: true,
       config: { models: { fasth3: {
-        ref2v: { baseUrl: 'http://10.244.19.118:8029', gpuSecondsPerVideoSecond: 4 },
-        t2v: { baseUrl: 'http://10.244.16.130:8031', gpuSecondsPerVideoSecond: 1.5 },
+        ref2v: { baseUrl: 'http://10.244.19.118:8029' },
+        t2v: { baseUrl: 'http://10.244.16.130:8031' },
       } } },
     })
     // The UniServe row names the server of fasth3 for task ref2v.
-    expect(uniserveConfig).toEqual({ baseUrl: 'http://10.244.8.35:8000', gpuSecondsPerVideoSecond: 1.3 })
+    expect(uniserveConfig).toEqual({ baseUrl: 'http://10.244.8.35:8000' })
     expect(rows.find(row => row.id === 'dv-sglang-diffusion')?.config).toEqual({
-      models: { 'qwen-image-2.1-turbo': { baseUrl: 'http://127.0.0.1:30010', gpuSecondsPerMegapixel: 0.6 } },
+      models: { 'qwen-image-2.1-turbo': { baseUrl: 'http://127.0.0.1:30010' } },
     })
     expect(rows.find(row => row.id === 'dv-sglang-omni')?.config).toEqual({
-      models: { 'fish-audio-drama-3': { baseUrl: 'http://127.0.0.1:8000', gpuSecondsPerCall: 3 } },
+      models: { 'fish-audio-drama-3': { baseUrl: 'http://127.0.0.1:8000' } },
     })
     expect(ctx.dvModels.list().map(entry => formatModelKey(entry))).toEqual([
       'video/ref2v/uniserve/fasth3', 'image/t2i/sglang-diffusion/qwen-image-2.1-turbo', 'audio/t2a/sglang-omni/fish-audio-drama-3',

@@ -35,7 +35,7 @@ class FakeImageModel {
   entry(): ModelEntry<'t2i'> {
     return {
       modality: 'image', task: 't2i', provider: 'test', model: 'fake', description: 'Fake images',
-      gpuSecondsPerMegapixel: 0.6, defaultSize: { width: 1024, height: 1024 },
+      defaultSize: { width: 1024, height: 1024 },
       facts: () => this.facts(),
       schema: () => Promise.resolve({}),
       validateGenerationRequest: request => Promise.resolve(this.problems(request)),
@@ -47,7 +47,7 @@ class FakeImageModel {
     this.requests.push(request)
     if (this.failure !== null) return Promise.reject(this.failure)
     const { width, height } = request.size ?? { width: 1024, height: 1024 }
-    return Promise.resolve({ bytes: PNG, mime: 'image/png', width, height, gpuSeconds: 0.5 })
+    return Promise.resolve({ bytes: PNG, mime: 'image/png', width, height })
   }
 }
 
@@ -81,10 +81,9 @@ afterEach(async () => {
 
 /**
  * Boot the composition from a test-only `cordis.yml`, with the fake model registered unless `serve` is false.
- * @param budget - the GPU seconds of one turn before an agent call needs `user_requested`.
  * @returns the fixture, with a project bound to chat session `s1`.
  */
-async function start(serve = true, budget = 60): Promise<Fixture> {
+async function start(serve = true): Promise<Fixture> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-image-generate-'))
   const globals = globalThis as typeof globalThis & { __dvImageGenerate?: typeof PLUGINS }
   globals.__dvImageGenerate = PLUGINS
@@ -95,7 +94,7 @@ async function start(serve = true, budget = 60): Promise<Fixture> {
   }
   row('system-prompt', 'SystemPrompt')
   row('tools', 'ToolRuntime')
-  row('dv-project', 'DvProject', [`root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`, `confirmGpuSecondsThreshold: ${String(budget)}`])
+  row('dv-project', 'DvProject', [`root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`])
   row('dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe'])
   row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
   row('dv-models', 'DvModels')
@@ -147,7 +146,7 @@ describe('dvImageGenerate', () => {
     const remove = ctx.dvModels.register(fixture.model.entry())
     expect(fixture.spec()).toMatchObject({
       component: 'image', label: { zh: '生成图片', en: 'Generate image' }, outputs: [{ role: 'image', type: 'image' }], inputs: {},
-      deterministic: false, resource: 'gpu', confirm: 'over_gpu_budget',
+      deterministic: false, resource: 'gpu', confirm: 'never',
     })
     const tool = ctx.tools.schemas().find(schema => schema.name === 'dv_image_generate')
     expect(tool?.description).toBe('Generate one image from the prompt with a t2i model from dv_models_list; modality, task, provider '
@@ -180,7 +179,7 @@ describe('dvImageGenerate', () => {
     const record = ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(result.record))
     expect(record).toMatchObject({
       actor: 'agent', component: 'image', operation: 'image.generate', status: 'done', intent: 'poster',
-      report: { seed: 7, model_id: 'fake-image-1', size: '768x1024' }, cost: { gpu_seconds: 0.5 },
+      report: { seed: 7, model_id: 'fake-image-1', size: '768x1024' },
     })
     const [asset] = result.outputs
     const assetId = brandString<AssetId>(String(asset?.asset_id))
@@ -244,23 +243,5 @@ describe('dvImageGenerate', () => {
     expect(failure(await fixture.tool('dv_image_generate', { ...KEY, reason: 'try', prompt: 'a cat' })))
       .toBe('The server at http://127.0.0.1:1 answered POST /v1/images/generations with HTTP 500: busy')
     expect(fixture.ctx.dvProject.getState(fixture.project).components.proj.records.at(-1)).toMatchObject({ operation: 'image.generate', status: 'failed' })
-  })
-
-  it('estimates the GPU time from the megapixels of the size, and asks for agreement over the turn budget', async () => {
-    const fixture = await start(true, 1)
-    const estimate = (params: Record<string, unknown>) => fixture.spec()?.estimate?.({ ...KEY, ...params })
-    expect(estimate({})).toEqual({ gpu_seconds: 0.6 * 1024 * 1024 / 1e6 })
-    expect(estimate({ size: '2048x2048' })).toEqual({ gpu_seconds: 0.6 * 2048 * 2048 / 1e6 })
-    const args = { ...KEY, reason: 'poster', prompt: 'A 3:4 poster for a tea shop', size: '1792x2400' }
-    expect(failure(await fixture.tool('dv_image_generate', args))).toBe([
-      'dv_image_generate would bring this turn to about 3 GPU seconds, above the 1 s budget.',
-      'What it will do:',
-      'Generate image with test/fake: "A 3:4 poster for a tea shop"',
-      'Estimated GPU time: about 3 s.',
-      'Show this to the user and ask in the conversation, with the question in bold (for example **Run this now?**). '
-        + 'Wait for the user\'s answer, then call again with user_requested: true.',
-    ].join('\n'))
-    expect(fixture.model.requests).toEqual([])
-    expect(value(await fixture.tool('dv_image_generate', { ...args, user_requested: true })).status).toBe('done')
   })
 })

@@ -7,7 +7,7 @@
  *   shots and lays every shot's take on the plan's timeline in its own execute.
  *
  * The shots come from `dvShotPlan.shots`, the shot walk of `@dv/workflow-kit` picks the take each shot reuses and
- * schedules the renders, `dvShotRender` estimates, checks and renders each shot, and `dvTimeline` lays out the takes.
+ * schedules the renders, `dvShotRender` checks and renders each shot, and `dvTimeline` lays out the takes.
  * The `story` reducer keeps the approvals of each plan and the timeline of each approved plan.
  *
  * @module @dv/workflow-story
@@ -43,7 +43,7 @@ export const Config: z<Config> = z.object({})
 /** The skill that holds the story flow: create the plan, preview it, ask the user in bold, approve it, and wait. */
 const STORY_DIRECTING_SKILL = {
   name: 'story-directing',
-  description: 'The order of calls from planned shots to rendered shots on the plan\'s timeline: create or update the plan, preview it, show its GPU estimate, ask the user in bold, approve it, and wait.',
+  description: 'The order of calls from planned shots to rendered shots on the plan\'s timeline: create or update the plan, preview it, ask the user in bold, approve it, and wait.',
   whenToUse: 'The shots of a story are planned and must be rendered, or the user wants a story that a plan made extended, shortened or changed.',
   content: readFileSync(new URL('../skills/story-directing/SKILL.md', import.meta.url), 'utf8'),
   source: 'runtime',
@@ -55,12 +55,11 @@ interface StoryParams {
   version?: number
 }
 
-/** What approving a plan version renders: one line per shot, the number of shots that render, and their GPU estimate. */
+/** What approving a plan version renders: one line per shot and the number of shots that render. */
 interface StoryPreview {
   version: number
   shots: string[]
   rendered: number
-  gpu_seconds: number
 }
 
 /** The story params of a call's params, which the runner validated against the operation's schema. */
@@ -136,8 +135,8 @@ export default class DvStory extends Service {
   }
 
   /**
-   * What approving a plan version renders, without writing: one `shotLine` per shot, the number of shots that render,
-   * and the sum of `dvShotRender.estimate` over them. Synchronous, so a confirm summary can call it.
+   * What approving a plan version renders, without writing: one `shotLine` per shot and the number of shots that
+   * render. Synchronous, so a confirm summary can call it.
    * @param state - the state the approval would run on.
    * @param params - the plan and version.
    * @returns the preview.
@@ -152,8 +151,7 @@ export default class DvStory extends Service {
       if (shot === undefined) throw new Error(`Plan '${params.plan}' v${String(version.version)} has no shot ${String(step.slot)}.`)
       return shotLine(step, shot)
     })
-    const gpuSeconds = rendering.reduce((sum, step) => sum + this.ctx.dvShotRender.estimate(step).gpu_seconds, 0)
-    return { version: version.version, shots, rendered: rendering.length, gpu_seconds: gpuSeconds }
+    return { version: version.version, shots, rendered: rendering.length }
   }
 
   /**
@@ -184,19 +182,19 @@ export default class DvStory extends Service {
   }
 
   /**
-   * The confirm text of `story.approve`: a head line with the plan, version and title, then the preview lines, and the
-   * preview's GPU estimate. Synchronous, as `confirmSummary` must be.
+   * The confirm text of `story.approve`: a head line with the plan, version and title, then the preview lines.
+   * Synchronous, as `confirmSummary` must be.
    * @param state - the state the approval would run on.
    * @param params - the plan and version.
-   * @returns the text and the GPU seconds.
+   * @returns the text.
    * @throws ProjectError `invalid_params` naming an unknown plan or version.
    */
-  private confirmText(state: ProjectState, params: StoryParams): { text: string; gpu_seconds: number } {
-    const { version, shots, rendered, gpu_seconds: gpuSeconds } = this.previewLines(state, params)
+  private confirmText(state: ProjectState, params: StoryParams): { text: string } {
+    const { version, shots, rendered } = this.previewLines(state, params)
     const { title } = this.version(state, { plan: params.plan, version })
     const head = `Approve plan ${params.plan} v${String(version)}${title === undefined ? '' : ` "${title}"`}: render ${String(rendered)} of `
       + `${String(shots.length)} shots and lay every shot on the plan's timeline.`
-    return { text: [head, ...shots.map(line => `- ${line}`)].join('\n'), gpu_seconds: gpuSeconds }
+    return { text: [head, ...shots.map(line => `- ${line}`)].join('\n') }
   }
 
   /**
@@ -240,8 +238,8 @@ export default class DvStory extends Service {
       version: '1',
       label: { zh: '预览分镜计划', en: 'Preview plan' },
       description: 'Preview what approving a plan version renders, without rendering: shots has one line per shot (a new or changed '
-        + 'shot renders; an unchanged shot keeps its take), rendered counts the shots that render, gpu_seconds is their GPU estimate, '
-        + 'and problems lists why a render would be refused. Show the lines and gpu_seconds to the user. When problems is not empty, '
+        + 'shot renders; an unchanged shot keeps its take), rendered counts the shots that render, '
+        + 'and problems lists why a render would be refused. Show the lines to the user. When problems is not empty, '
         + 'update the plan with dv_plan_update and preview again.',
       inputs: {},
       params: storyParamsSchema('preview'),
@@ -273,7 +271,7 @@ export default class DvStory extends Service {
       label: { zh: '批准分镜计划', en: 'Approve plan' },
       description: 'Record the user\'s approval of a plan version and render its new or changed shots in order, each with the shot\'s '
         + 'model; unchanged shots keep their takes, and the plan\'s timeline gets every shot. Call it only after you showed the '
-        + 'dv_story_preview lines and gpu_seconds and the user agreed in the conversation. Then call dv_proj_wait and read dv_proj_state.',
+        + 'dv_story_preview lines and the user agreed in the conversation. Then call dv_proj_wait and read dv_proj_state.',
       inputs: {},
       params: storyParamsSchema('approve'),
       outputs: [],

@@ -346,7 +346,7 @@ export class ApiHandlers {
 
   /**
    * Check an operation call as {@link runOperation} would run it, writing nothing: the refusal sentence that the call
-   * would get now, and the operation's GPU estimate. An unknown operation and an input text that does not parse are
+   * would get now. An unknown operation and an input text that does not parse are
    * refusals too.
    * @param raw - the {@link OperationRequest}.
    * @returns the check; `problems` is empty when the call can run on the current state.
@@ -357,7 +357,7 @@ export class ApiHandlers {
       return await this.services.project.check(await this.runRequestOf(objectOf(raw)))
     } catch (error) {
       if (!(error instanceof ApiRequestError) || !['invalid_inputs', 'unknown_operation'].includes(error.code)) throw error
-      return { problems: [error.message], gpu_seconds: null }
+      return { problems: [error.message] }
     }
   }
 

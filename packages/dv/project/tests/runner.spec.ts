@@ -79,7 +79,7 @@ describe('Runner', () => {
       execute: async (context) => {
         await new Promise(resolve => setTimeout(resolve, 20))
         const take = context.importAsset(Buffer.from('take of a red kite'), { mime: 'video/mp4', name: 'take.mp4', durationSec: 2 })
-        return { outputs: [take], report: { seed: 7 }, cost: { gpu_seconds: 3 } }
+        return { outputs: [take], report: { seed: 7 } }
       },
     }))
 
@@ -92,7 +92,6 @@ describe('Runner', () => {
     expect(result.report).toEqual({ seed: 7 })
     expect(record?.report).toEqual({ seed: 7 })
     expect(record?.cost?.reused).toBe(false)
-    expect(record?.cost?.gpu_seconds).toBe(3)
     expect(record?.cost?.wall_seconds).toBeGreaterThan(0)
     expect(m.assets.created.get(record?.outputs[0] as AssetId)).toBe(record?.id)
     const lines = readLines(m.root, project).filter(line => line['id'] === record?.id || line['update'] === record?.id)
@@ -200,11 +199,11 @@ describe('Runner', () => {
     expect((await m.runner.run(request(project, 'shot.render'))).record?.status).toBe('done')
   })
 
-  it('checks a call with the sentence that run refuses it with, and the estimate, writing nothing', async () => {
+  it('checks a call with the sentence that run refuses it with, writing nothing', async () => {
     const m = startModules()
     const project = await createTestProject(m)
     m.runner.registerOperation(operation({
-      name: 'shot.render', component: 'shot', estimate: params => ({ gpu_seconds: Number(params['seed'] ?? 5) * 3 }),
+      name: 'shot.render', component: 'shot',
       precondition: call => call.params['prompt'] === 'refuse' ? Promise.reject(new Error('This shot has no reference image.')) : Promise.resolve(),
     }))
     const before = files(m, project)
@@ -217,29 +216,12 @@ describe('Runner', () => {
     for (const extra of calls) {
       const refusal = await m.runner.run(request(project, 'shot.render', userOrigin(), extra)).then(() => '', (error: unknown) => (error as Error).message)
       expect(refusal).not.toBe('')
-      expect(await m.runner.check(request(project, 'shot.render', userOrigin(), extra))).toEqual({ problems: [refusal], gpu_seconds: null })
+      expect(await m.runner.check(request(project, 'shot.render', userOrigin(), extra))).toEqual({ problems: [refusal] })
     }
-    expect(await m.runner.check(request(project, 'unregistered'))).toEqual({ problems: ['Operation unregistered is not registered.'], gpu_seconds: null })
+    expect(await m.runner.check(request(project, 'unregistered'))).toEqual({ problems: ['Operation unregistered is not registered.'] })
     expect(await m.runner.check(request(project, 'shot.render', userOrigin(), { params: { prompt: 'a kite', seed: 2 } })))
-      .toEqual({ problems: [], gpu_seconds: 6 })
-    m.runner.registerOperation(operation({ name: 'shot.note', component: 'shot' }))
-    expect(await m.runner.check(request(project, 'shot.note'))).toEqual({ problems: [], gpu_seconds: null })
+      .toEqual({ problems: [] })
     expect(files(m, project)).toBe(before)
-  })
-
-  it('checks a call whose estimate throws on a param that the call refuses with the refusal, not a rejection', async () => {
-    const m = startModules()
-    const project = await createTestProject(m)
-    m.runner.registerOperation(operation({
-      name: 'shot.still', component: 'shot',
-      estimate: (params) => {
-        if (typeof params['size'] !== 'string') throw new Error('size must be WIDTHxHEIGHT.')
-        return { gpu_seconds: 1 }
-      },
-      precondition: call => typeof call.params['size'] === 'string' ? Promise.resolve() : Promise.reject(new Error('The size is not WIDTHxHEIGHT.')),
-    }))
-    expect(await m.runner.check(request(project, 'shot.still', userOrigin(), { params: { prompt: 'a kite', size: 1024 } })))
-      .toEqual({ problems: ['The size is not WIDTHxHEIGHT.'], gpu_seconds: null })
   })
 
   it('refuses a read whose input names a record that has not finished, even with after, and runs nothing', async () => {
@@ -300,7 +282,7 @@ describe('Runner', () => {
     const second = await m.runner.run(request(project, 'asset.grab_still', userOrigin(), { params: { seed: 1, prompt: 'frame' }, inputs }))
 
     expect(calls).toBe(1)
-    expect(second.record).toMatchObject({ status: 'done', cost: { gpu_seconds: 0, wall_seconds: 0, reused: true } })
+    expect(second.record).toMatchObject({ status: 'done', cost: { wall_seconds: 0, reused: true } })
     expect(second.outputs).toEqual(first.outputs)
     expect(second.record?.started_at).toBeUndefined()
   })
@@ -331,14 +313,9 @@ describe('Runner', () => {
     const m = startModules()
     const project = await createTestProject(m)
     m.runner.registerOperation(operation({
-      name: 'shot.render_ref2va', component: 'shot', confirm: 'over_gpu_budget', estimate: () => ({ gpu_seconds: 400 }),
-      confirmSummary: () => ({ text: 'render', gpu_seconds: 400 }),
-    }))
-    m.runner.registerOperation(operation({
-      name: 'plan.approve', component: 'plan', confirm: 'always', confirmSummary: () => ({ text: 'approve', gpu_seconds: 0 }),
+      name: 'plan.approve', component: 'plan', confirm: 'always', confirmSummary: () => ({ text: 'approve' }),
     }))
     // The agent's agreement is checked by the operation's tool; the run path itself never waits for it.
-    expect((await m.runner.run(request(project, 'shot.render_ref2va', agentOrigin()))).record?.status).toBe('done')
     expect((await m.runner.run(request(project, 'plan.approve', agentOrigin()))).record?.status).toBe('done')
     expect((await m.runner.run(request(project, 'plan.approve', userOrigin()))).record?.status).toBe('done')
     expect(() => m.runner.registerOperation(operation({ name: 'shot.render_t2va', component: 'shot', confirm: 'always' })))

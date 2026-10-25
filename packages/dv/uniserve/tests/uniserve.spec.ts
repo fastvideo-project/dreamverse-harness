@@ -174,7 +174,7 @@ async function start(baseUrl: string): Promise<Context> {
     ['dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, `ffprobePath: ${FFPROBE}`]],
     ['dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`]],
     ['dv-models', 'DvModels', []],
-    ['dv-uniserve', 'Uniserve', [`baseUrl: ${baseUrl}`, 'gpuSecondsPerVideoSecond: 1.3']],
+    ['dv-uniserve', 'Uniserve', [`baseUrl: ${baseUrl}`]],
   ] as const
   for (const [id, key, lines] of plugins) {
     writeFileSync(join(dir, `${id}.mjs`), `export default globalThis.__dvUniserve.${key}\n`)
@@ -231,9 +231,9 @@ describe.skipIf(!HAS_FFMPEG)('dv-uniserve', () => {
   it('registers fasth3 for task ref2v with the facts and schema of its server, read once', async () => {
     const fake = await startFakeServer(await sampleVideo(false))
     const ctx = await start(fake.url)
-    expect(ctx.dvModels.list().filter(isVideoEntry).map(({ modality, task, provider, model, gpuSecondsPerVideoSecond }) =>
-      ({ modality, task, provider, model, gpuSecondsPerVideoSecond }))).toEqual([
-      { modality: 'video', task: 'ref2v', provider: 'uniserve', model: 'fasth3', gpuSecondsPerVideoSecond: 1.3 },
+    expect(ctx.dvModels.list().filter(isVideoEntry).map(({ modality, task, provider, model }) =>
+      ({ modality, task, provider, model }))).toEqual([
+      { modality: 'video', task: 'ref2v', provider: 'uniserve', model: 'fasth3' },
     ])
     expect(fasth3(ctx).description).toMatch(/^MiniMax H3 served as FastH3 Omni 8-Step V1 on UniServe: video with sound/)
     expect(fasth3(ctx).description).toMatch(/Needs at least one reference\.$/)

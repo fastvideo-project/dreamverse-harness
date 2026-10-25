@@ -55,34 +55,24 @@ export interface OperationSpec {
   outputs: OperationOutput[]
   /**
    * Whether an agent tool call needs the user's agreement, given in the conversation. `never`: no agreement.
-   * `always`: the tool takes `user_approved`, and a call without `user_approved: true` is refused. `over_gpu_budget`:
-   * the tool takes `user_requested`, and a call without `user_requested: true` is refused when the turn's GPU seconds
-   * (the cost of the turn's finished records, the `estimate` of its unfinished records, and this call's
-   * `confirmSummary` estimate) pass `dvProject`'s Config field `confirmGpuSecondsThreshold`. The refusal tells the agent
-   * to ask the user in the conversation, the question in bold. Project adds the argument to the tool; the operation
-   * declares nothing for it, and it never reaches the record's params. Calls by the human and by the system are never
+   * `always`: the tool takes `user_approved`, and a call without `user_approved: true` is refused. The refusal tells
+   * the agent to ask the user in the conversation, the question in bold. Project adds the argument to the tool; the
+   * operation declares nothing for it, and it never reaches the record's params. Calls by the human and by the system are never
    * refused.
    */
-  confirm: 'never' | 'always' | 'over_gpu_budget'
+  confirm: 'never' | 'always'
   /**
-   * What an agent call will do and cost, for the refusal text. `registerOperation` refuses a spec whose `confirm` is
+   * What an agent call will do, for the refusal text. `registerOperation` refuses a spec whose `confirm` is
    * not `never` and that has no `confirmSummary` (`invalid_params`).
    * @param call - the parsed call, after the operation's `prepareToolCall`.
    * @param state - the project's current state.
-   * @returns `text`: what the agent shows the user before asking (such as one line per run that the call starts);
-   *   `gpu_seconds`: the call's GPU estimate, which also counts against the turn's budget.
+   * @returns `text`: what the agent shows the user before asking (such as one line per run that the call starts).
    */
-  confirmSummary?(call: OperationToolCall, state: ProjectState): { text: string; gpu_seconds: number }
+  confirmSummary?(call: OperationToolCall, state: ProjectState): { text: string }
   /** Whether identical inputs and parameters always give identical outputs; the runner then reuses earlier outputs. */
   deterministic: boolean
   /** The scheduler's concurrency class: `gpu` and `cpu` calls share a configured limit each; `none` is unlimited. */
   resource: 'none' | 'cpu' | 'gpu'
-  /**
-   * The expected GPU time of a call; Project counts it for the turn's unfinished records (scheduled renders).
-   * @param params - the call's parameters.
-   * @returns the estimate; omit the function for operations that use no GPU.
-   */
-  estimate?(params: Record<string, unknown>): { gpu_seconds: number }
   /** A read: the runner writes no record and takes no lock. */
   readOnly?: boolean
   /**
@@ -118,7 +108,7 @@ export interface OperationSpec {
   /**
    * Run the operation. A throw fails the record with code `operation_failed` and the error's message.
    * @param context - the record, resolved inputs, parameters, state, and asset storage.
-   * @returns the outputs, the report, and the GPU time.
+   * @returns the outputs and the report.
    */
   execute(context: OperationContext): Promise<OperationResult>
 }

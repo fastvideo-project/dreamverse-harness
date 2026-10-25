@@ -23,8 +23,6 @@ import type { ModelEntry } from '@dv/models'
 export interface ModelServer {
   /** HTTP base URL of the SGLang-Omni server, such as `http://127.0.0.1:8000`. */
   baseUrl: string
-  /** GPU seconds of one clip on this server, for the GPU estimate before a call runs. */
-  gpuSecondsPerCall: number
 }
 
 /** `dv-sglang-omni` configuration. */
@@ -34,7 +32,7 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  models: z.dict(z.object({ baseUrl: z.string().required(), gpuSecondsPerCall: z.number().required() })).required(),
+  models: z.dict(z.object({ baseUrl: z.string().required() })).required(),
 })
 
 interface ServedSpeechModel {
@@ -134,13 +132,12 @@ function wavDurationSec(wav: Uint8Array): number | null {
 
 /**
  * Speak one request through `POST /v1/audio/speech`.
- * @returns the WAV clip, its duration from its header, and the request's wall-clock seconds as its GPU seconds.
+ * @returns the WAV clip and its duration from its header.
  * @throws Error when the clip stopped at the length limit (`x-finish-reason` `length`), when `x-finish-reason` is
  *   missing or another value than `stop`, when the body is not a WAV file with a duration or holds no samples, or as
  *   `call` throws.
  */
 async function speak(baseUrl: string, request: AudioRequest, signal?: AbortSignal): Promise<GeneratedAudio> {
-  const started = performance.now()
   const response = await call(baseUrl, '/v1/audio/speech', {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ ...request.extra, input: request.prompt, response_format: 'wav' }),
@@ -156,7 +153,7 @@ async function speak(baseUrl: string, request: AudioRequest, signal?: AbortSigna
   const durationSec = wavDurationSec(bytes)
   if (durationSec === null) throw new Error(`The server at ${baseUrl} answered POST /v1/audio/speech with a body that is not a WAV file.`)
   if (durationSec === 0) throw new Error(`The server at ${baseUrl} answered POST /v1/audio/speech with an empty WAV clip.`)
-  return { bytes, mime: 'audio/wav', durationSec, gpuSeconds: (performance.now() - started) / 1000 }
+  return { bytes, mime: 'audio/wav', durationSec }
 }
 
 /**
@@ -192,7 +189,6 @@ function modelEntry(model: string, server: ModelServer): ModelEntry<'t2a'> {
     provider: 'sglang-omni',
     model,
     description: served.description,
-    gpuSecondsPerCall: server.gpuSecondsPerCall,
     promptSkill: {
       name: served.skill.name, description: served.skill.description,
       content: readFileSync(new URL(`../skills/${served.skill.file}`, import.meta.url), 'utf8'),

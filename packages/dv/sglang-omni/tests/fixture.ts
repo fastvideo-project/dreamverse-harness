@@ -79,7 +79,7 @@ export async function start(baseUrl: string): Promise<Fixture> {
     ['dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`]],
     ['dv-models', 'DvModels', []],
     ['dv-audio-generate', 'DvAudioGenerate', []],
-    ['dv-sglang-omni', 'SglangOmni', ['models:', '  fish-audio-drama-3:', `    baseUrl: ${baseUrl}`, '    gpuSecondsPerCall: 3']],
+    ['dv-sglang-omni', 'SglangOmni', ['models:', '  fish-audio-drama-3:', `    baseUrl: ${baseUrl}`]],
   ]
   for (const [id, key, lines] of plugins) {
     writeFileSync(join(dir, `${id}.mjs`), `export default globalThis.__dvSglangOmni.${key}\n`)

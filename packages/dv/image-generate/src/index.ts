@@ -20,8 +20,6 @@ declare module '@dv/models' {
       request: ImageRequest
       result: Promise<GeneratedImage>
       entry: {
-        /** GPU seconds per megapixel of the image, for the GPU estimate of a call before it runs. */
-        gpuSecondsPerMegapixel: number
         /** The size that the model renders for a call that names none. */
         defaultSize: ImageSize
       }
@@ -64,8 +62,6 @@ export interface GeneratedImage {
   mime: 'image/png'
   width: number
   height: number
-  /** GPU seconds the backend reported for this image, which the record keeps as its cost; null when it reported none. */
-  gpuSeconds: number | null
 }
 
 function parseSize(value: unknown): ImageSize {
@@ -89,7 +85,6 @@ async function storeImage(_ctx: Context, run: OperationContext, result: Promise<
   const asset = importOne(run, { bytes: image.bytes, mime: image.mime, width: image.width, height: image.height })
   return {
     outputs: [asset],
-    ...image.gpuSeconds === null ? {} : { cost: { gpu_seconds: image.gpuSeconds } },
     report: { model_id: facts.modelId, size: `${String(image.width)}x${String(image.height)}` },
   }
 }
@@ -123,9 +118,5 @@ export default class DvImageGenerate extends defineGeneration({
   outputs: [{ role: 'image', type: 'image' }],
   toRequest: (_facts, params, _inputs, seed) => imageRequest(params, seed),
   toOutputs: storeImage,
-  estimate: (params, entry) => {
-    const { width, height } = params['size'] === undefined ? entry.defaultSize : parseSize(params['size'])
-    return { gpu_seconds: entry.gpuSecondsPerMegapixel * width * height / 1e6 }
-  },
   summarize,
 }) {}

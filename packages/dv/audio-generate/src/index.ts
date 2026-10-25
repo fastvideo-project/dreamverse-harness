@@ -19,10 +19,7 @@ declare module '@dv/models' {
       facts: AudioModelFacts
       request: AudioRequest
       result: Promise<GeneratedAudio>
-      entry: {
-        /** GPU seconds of one clip, for the GPU estimate of a call before it runs. */
-        gpuSecondsPerCall: number
-      }
+      entry: Record<never, never>
     }
   }
   interface TaskMap {
@@ -59,8 +56,6 @@ export interface GeneratedAudio {
   mime: 'audio/wav'
   /** The clip's length in seconds, read from the audio the backend returned. */
   durationSec: number
-  /** Seconds the backend spent on the request. */
-  gpuSeconds: number
 }
 
 function audioRequest(params: Record<string, unknown>): AudioRequest {
@@ -73,7 +68,7 @@ async function storeAudio(_ctx: Context, run: OperationContext, result: Promise<
   facts: AudioModelFacts): Promise<OperationResult> {
   const clip = await result
   const asset = importOne(run, { bytes: clip.bytes, mime: clip.mime, durationSec: clip.durationSec })
-  return { outputs: [asset], cost: { gpu_seconds: clip.gpuSeconds }, report: { model_id: facts.modelId, duration_sec: clip.durationSec } }
+  return { outputs: [asset], report: { model_id: facts.modelId, duration_sec: clip.durationSec } }
 }
 
 function summarize(record: ProjectRecord): string {
@@ -105,6 +100,5 @@ export default class DvAudioGenerate extends defineGeneration({
   seed: false,
   toRequest: (_facts, params) => audioRequest(params),
   toOutputs: storeAudio,
-  estimate: (_params, entry) => ({ gpu_seconds: entry.gpuSecondsPerCall }),
   summarize,
 }) {}

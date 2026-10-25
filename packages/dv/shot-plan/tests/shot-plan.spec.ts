@@ -128,10 +128,10 @@ describe('dvShotPlan', () => {
     const specs = fixture.ctx.dvProject.listOperations().filter(entry => entry.component === 'plan')
     expect(specs.map(entry => [entry.name, entry.confirm, entry.deterministic])).toEqual([['plan.create', 'never', true], ['plan.update', 'never', true]])
     for (const name of ['dv_plan_create', 'dv_plan_update']) expect(fixture.ctx.tools.get(name), name).toBeDefined()
-    // The agent approves plans through a workflow plugin: no plan tool approves, and no description names an approval or its cost.
+    // The agent approves plans through a workflow plugin: no plan tool approves, and no description names an approval.
     expect(fixture.ctx.tools.get('dv_plan_approve')).toBeUndefined()
     for (const name of ['dv_plan_create', 'dv_plan_update']) {
-      expect(fixture.ctx.tools.schemas().find(tool => tool.name === name)?.description, name).not.toMatch(/approv|gpu_seconds/u)
+      expect(fixture.ctx.tools.schemas().find(tool => tool.name === name)?.description, name).not.toMatch(/approv/u)
     }
     expect(fixture.ctx.dvProject.getState(fixture.project).components.plan).toEqual({ plans: {} })
     const entry = [...fixture.ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-shot-plan.mjs'))
@@ -141,7 +141,7 @@ describe('dvShotPlan', () => {
     expect(fixture.ctx.dvProject.getState(fixture.project).components).not.toHaveProperty('plan')
   })
 
-  it('stores the agent\'s plan as JSON under a new plan ID with its shot lines and GPU estimate, and writes the next version', async () => {
+  it('stores the agent\'s plan as JSON under a new plan ID with its shot lines, and writes the next version', async () => {
     const fixture = await start()
     const picture = fixture.put('face', 'image/png', 'face.png')
     const shots = [ref('Picture 1 starts dancing', { duration_sec: 1 }), ref('keeps dancing', { duration_sec: 2, continue_previous: true })]

@@ -26,14 +26,14 @@ import type { ParameterSchemaSpec } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { defineGeneration, type GenerationSpec, type RequestInput } from '@dv/generation'
 import {
-  formatModelKey, modelKey, type RenderModelFacts, type RenderRequest, type RenderStreamEvent,
+  modelKey, type RenderModelFacts, type RenderRequest, type RenderStreamEvent,
 } from '@dv/models'
 import {
   citedAsset, citedInput, elementCitationUri, formatCitation, parsePromptCitations, replacePromptCitations, type AssetId,
   type OperationContext, type OperationInput, type OperationResult, type OperationSpec, type ProjectId, type RecordId, type RecordInput,
   type StartedBy,
 } from '@dv/project'
-import { backendSeconds, baseMime, number, shotGeometry, text } from './render.ts'
+import { baseMime, shotGeometry, text } from './render.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -42,14 +42,11 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** `dvShotRender` plugin configuration: none; each catalog entry carries its GPU rate. */
+/** `dvShotRender` plugin configuration: none. */
 export type Config = Record<string, unknown>
 
 /** Loader validation. */
 export const Config: z<Config> = z.object({})
-
-/** The duration the GPU estimate assumes for a call that names none. */
-const ESTIMATE_DURATION_SEC = 5
 
 /**
  * Where a shot's bytes go while the model is still producing them, so browsers can watch the shot render: the
@@ -193,7 +190,7 @@ function renderRequest(
  * @param stream - the model's render stream.
  * @param facts - the model's facts.
  * @param request - the render request; its prompt is the expanded prompt.
- * @returns the outputs, the GPU time, and the report of the render's facts; `defineGeneration` adds the seed.
+ * @returns the outputs and the report of the render's facts; `defineGeneration` adds the seed.
  * @throws Error for a model failure, or a stream that ends before the model reports completion or without a last frame.
  */
 async function storeShot(
@@ -216,7 +213,6 @@ async function storeShot(
   const expanded = request.prompt === text(context.params['prompt']) ? {} : { expanded_prompt: request.prompt }
   return {
     outputs: [video, frame],
-    cost: { gpu_seconds: backendSeconds(streamed.timings) },
     report: {
       model_id: facts.modelId, aspect_ratio: geometry.aspectRatio, resolution: geometry.resolution,
       duration_sec: geometry.durationSec, frame_width: geometry.width, frame_height: geometry.height, num_frames: geometry.numFrames,
@@ -322,16 +318,6 @@ const RENDER_DECLARATION: GenerationSpec<'video'> = {
   },
   toRequest: renderRequest,
   toOutputs: storeShot,
-  // The duration (5 seconds when the call names none) times the `gpuSecondsPerVideoSecond` of the catalog entry.
-  estimate(params, entry) {
-    const durationSec = number(params['duration_sec'], 0)
-    return { gpu_seconds: (durationSec > 0 ? durationSec : ESTIMATE_DURATION_SEC) * entry.gpuSecondsPerVideoSecond }
-  },
-  confirmText(params) {
-    const durationSec = number(params['duration_sec'], 0)
-    return `Render shot with ${formatModelKey(modelKey(params))}${durationSec > 0 ? `, ${durationSec} s` : ''}: `
-      + `"${text(params['prompt']).slice(0, 80)}"`
-  },
   summarize: record => `${shotName(record.started_by)} "${text(record.params['prompt']).slice(0, 60)}" `
     + `(${label(record.report?.['duration_sec'] ?? record.params['duration_sec'])}s, seed ${label(record.report?.['seed'])})`,
 }

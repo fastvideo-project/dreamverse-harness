@@ -55,7 +55,7 @@ async function start(): Promise<Fixture> {
   await context.plugin(ToolRuntime).await()
   const fiber = context.plugin(DvProject, {
     root: join(root, 'projects'), sessionRoot: join(root, 'sessions'), cpuConcurrency: 4, gpuConcurrency: 1,
-    confirmGpuSecondsThreshold: 60, promptSectionOrder: 4900,
+    promptSectionOrder: 4900,
   })
   await fiber.await()
   const assets = new MemoryAssets()

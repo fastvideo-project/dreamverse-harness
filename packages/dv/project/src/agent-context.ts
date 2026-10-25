@@ -36,9 +36,8 @@ const rules = (kinds: readonly string[]): string => [
     + `${versionNaming(kinds)}an asset by its asset ID, and any other item by the ID that the summary gives it. `
     + 'The user points at things with + → 引用 or dv: mentions, which reach you as these IDs. '
     + 'When the user\'s words fit more than one thing and no mention names it, ask which one instead of guessing.',
-  '- When a tool refuses a call because it needs the user\'s agreement, show the user what the refusal says the call will do and '
-    + 'cost, and ask in the conversation with the question in bold. Call again with user_approved: true or user_requested: true '
-    + 'only after the user agreed. A change the user asked for by name (one retake, one trim) passes user_requested: true at once.',
+  '- When a tool refuses a call because it needs the user\'s agreement, show the user what the refusal says the call will do, '
+    + 'and ask in the conversation with the question in bold. Call again with user_approved: true only after the user agreed.',
   '- Stale records had an input replaced. Render one again only when the user agrees; call dv_proj_stale_accept when the user keeps it as it is.',
 ].join('\n')
 

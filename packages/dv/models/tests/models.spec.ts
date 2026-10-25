@@ -26,7 +26,7 @@ const FACTS: RenderModelFacts = {
 /** A fake entry of one model of one provider serving one video task; its schema names the task. */
 function entry(task: TaskId, provider: string, model: string): ModelEntry {
   return {
-    modality: 'video', task, provider, model, description: `${model} for ${task}`, gpuSecondsPerVideoSecond: 2,
+    modality: 'video', task, provider, model, description: `${model} for ${task}`,
     facts: () => Promise.resolve(FACTS),
     schema: () => Promise.resolve({ inputs: task === 'ref2v' ? { reference: { media_types: ['image'] } } : {}, extra: {} }),
     validateGenerationRequest: () => Promise.resolve([]),

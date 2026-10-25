@@ -66,7 +66,7 @@ const RULES: ScriptedRule[] = [
     steps: [
       { calls: [{ name: 'dv_asset_import', args: { reason: '产品图', base64: PNG_BASE64, mime: 'image/png', name: 'named.png' } }] },
       view => ({ calls: [{ name: 'dv_shot_render', args: {
-        reason: '用户点名', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: '点名的镜头', duration_sec: 1, user_requested: true,
+        reason: '用户点名', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: '点名的镜头', duration_sec: 1,
         inputs: { reference: assetIdOf(view.toolResults[0], 'asset') },
       } }] }),
     ],

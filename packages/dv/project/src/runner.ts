@@ -234,7 +234,7 @@ export class Runner {
     if (reused !== null) {
       return await this.update(project, {
         update: record, status: 'done', finished_at: new Date().toISOString(), outputs: reused,
-        cost: { gpu_seconds: 0, wall_seconds: 0, reused: true },
+        cost: { wall_seconds: 0, reused: true },
       })
     }
 
@@ -259,7 +259,7 @@ export class Runner {
       const wallSeconds = Math.round(performance.now() - started) / 1000
       return await this.update(project, {
         update: record, status: 'done', finished_at: new Date().toISOString(), outputs: result.outputs,
-        cost: { gpu_seconds: result.cost?.gpu_seconds ?? 0, wall_seconds: wallSeconds, reused: false },
+        cost: { wall_seconds: wallSeconds, reused: false },
         ...result.report === undefined ? {} : { report: result.report },
       })
     } catch (error: unknown) {
@@ -315,12 +315,10 @@ export class Runner {
   }
 
   /**
-   * Check one call against every refusal of {@link run} without writing anything, and estimate the GPU cost of a call
-   * that `run` would accept. The check reads the state outside the project lock, so its answer is advisory: `run`
-   * checks the call again under the lock.
+   * Check one call against every refusal of {@link run} without writing anything. The check reads the state outside
+   * the project lock, so its answer is advisory: `run` checks the call again under the lock.
    * @param request - the call.
-   * @returns the refusal sentence, empty when `run` would accept the call on the current state, and the operation's
-   *   `estimate` of the accepted call, null for a refused call and for an operation that declares none.
+   * @returns the refusal sentence, empty when `run` would accept the call on the current state.
    */
   async check(request: RunRequest): Promise<OperationCheck> {
     const spec = this.operations.get(request.operation)
@@ -329,10 +327,9 @@ export class Runner {
       this.deps.store.getProject(request.project)
       const state = this.deps.reducers.getState(request.project)
       await this.refuse(spec, request, state, request.after !== undefined && spec.readOnly !== true)
-      // An estimate reads params that `refuse` accepted, so it runs only for a call that `run` would accept.
-      return { problems: [], gpu_seconds: spec.estimate?.(request.params).gpu_seconds ?? null }
+      return { problems: [] }
     } catch (error) {
-      return { problems: [messageOf(error)], gpu_seconds: null }
+      return { problems: [messageOf(error)] }
     }
   }
 
