@@ -60,7 +60,7 @@ async function clipAt(project: string, position: number): Promise<string> {
 }
 
 /**
- * Seed a project: an imported reference, a character, an approved plan whose shots last 1 s, 2 s, 1 s, … and render
+ * Seed a project: an imported reference, a character, an approved plan whose shots last 5 s, 6 s, 5 s, … and render
  * into timeline t1, and extra timelines made of the first clips.
  * @param title - the project title.
  * @param shots - how many shots the plan has.
@@ -75,7 +75,7 @@ async function seedProject(title: string, shots = 3, timelines: number[] = []): 
   const plan = await runOperation(id, 'plan.create', {
     title, references: ['c1@1'],
     shots: Array.from({ length: shots }, (_, index) => ({
-      prompt: `${title} shot ${String(index + 1)}`, duration_sec: 1 + (index % 2), modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3',
+      prompt: `${title} shot ${String(index + 1)}`, duration_sec: 5 + (index % 2), modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3',
     })),
   })
   await runOperation(id, 'story.approve', { plan: plan.report?.['plan'] })
@@ -379,7 +379,7 @@ describe('canvas stories', () => {
     await runOperation(project.id, 'plan.update', {
       plan: 'p1', title: v1.title, references: v1.references,
       shots: Array.from({ length: 40 }, (_, index) => ({
-        prompt: `canvas-editor-wheel shot ${String(index + 1)}`, duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3',
+        prompt: `canvas-editor-wheel shot ${String(index + 1)}`, duration_sec: 5, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3',
       })),
     })
     const page = await openPage()
@@ -494,7 +494,7 @@ describe('canvas stories', () => {
       plan: 'p1', title: v1.title, references: v1.references,
       shots: [...v1.shots, {
         prompt: 'canvas-plan-versions shot 3 from @[首帧](dv:input/first_frame)',
-        duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', continue_previous: true,
+        duration_sec: 5, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', continue_previous: true,
       }],
     })
     await runOperation(project.id, 'story.approve', { plan: 'p1' })
@@ -544,7 +544,7 @@ describe('canvas stories', () => {
     const v1 = (await stateOf(project.id)).components.plan.plans['p1']?.[0]
     if (v1 === undefined) throw new Error('the seeded plan is not p1')
     const base = { plan: 'p1', title: v1.title, references: v1.references }
-    const added = [...v1.shots, { prompt: 'canvas-current shot 4', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }]
+    const added = [...v1.shots, { prompt: 'canvas-current shot 4', duration_sec: 5, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }]
     // v2 adds shot 4 and is approved; v3 changes shot 2 and is never approved; v4 returns to the three v1 shots.
     await runOperation(project.id, 'plan.update', { ...base, shots: added })
     await runOperation(project.id, 'story.approve', { plan: 'p1' })
@@ -693,7 +693,7 @@ describe('canvas stories', () => {
     model.rules.push({
       match: 'agent-shot-please',
       steps: [{ calls: [{ name: 'dv_shot_render', args: {
-        reason: 'agent shot', project_id: project.id, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'canvas-agent extra shot', duration_sec: 1, inputs: { reference: ['c1@1'] },
+        reason: 'agent shot', project_id: project.id, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'canvas-agent extra shot', duration_sec: 5, inputs: { reference: ['c1@1'] },
       } }] }],
       endText: '拍好了',
     })
@@ -972,17 +972,17 @@ describe('timeline stories', () => {
     const page = await openPage()
     await gotoProject(page, project.id, 'timeline')
     expect(await timelineTabs(page)).toEqual(['时间线 1*', '时间线 2', '时间线 3'])
-    expect(await timelineTime(page)).toEqual([0, 4])
+    expect(await timelineTime(page)).toEqual([0, 16])
     const ruler = await page.locator('[data-testid="dv-timeline-ruler"]').boundingBox()
     if (ruler === null) throw new Error('ruler has no box')
-    await page.mouse.click(ruler.x + 2.5 * await pxPerSecond(page), ruler.y + 10)
+    await page.mouse.click(ruler.x + 8 * await pxPerSecond(page), ruler.y + 10)
     await page.locator('[data-clip-position="2"]').click()
     expect(await trackClips(page)).toEqual(['1', '2*', '3'])
-    expect((await timelineTime(page))[0]).toBeCloseTo(2.5, 1)
+    expect((await timelineTime(page))[0]).toBeCloseTo(8, 1)
     await timelineTab(page, '时间线 2').click()
     expect(await timelineTabs(page)).toEqual(['时间线 1', '时间线 2*', '时间线 3'])
     expect(await trackClips(page)).toEqual(['1', '2'])
-    await expect.poll(() => timelineTime(page), { timeout: 3000 }).toEqual([0, 3])
+    await expect.poll(() => timelineTime(page), { timeout: 3000 }).toEqual([0, 11])
     await expect.poll(() => viewerAsset(page)).toBe(project.clipAssets[0])
     await timelineTab(page, '时间线 3').click()
     expect(await trackClips(page)).toEqual([])
@@ -1111,16 +1111,16 @@ describe('timeline stories', () => {
       if (asset !== null) shown.add(asset)
       const [position, total] = await timelineTime(page)
       // The timecode shows hundredths, so the loop waits for the end itself instead of a position that rounds to it.
-      if (position >= total || Date.now() - started > 12_000) break
+      if (position >= total || Date.now() - started > 24_000) break
       await page.waitForTimeout(100)
     }
-    // Four seconds of clips play in about four seconds and every clip appears in the viewer on the way.
+    // Sixteen seconds of clips play in about sixteen seconds and every clip appears in the viewer on the way.
     const players = await page.locator('[data-testid="dv-timeline-viewer"] video').evaluateAll(videos => videos.map((video) => {
       const element = video as HTMLVideoElement
       return `${element.style.visibility}:${String(element.currentTime)}:${element.paused ? 'paused' : 'playing'}:ready=${String(element.readyState)}:error=${String(element.error?.code ?? 0)}`
     }).join(' | '))
-    expect(await timelineTime(page), players).toEqual([4, 4])
-    expect(Date.now() - started).toBeLessThan(9000)
+    expect(await timelineTime(page), players).toEqual([16, 16])
+    expect(Date.now() - started).toBeLessThan(21_000)
     expect([...shown].sort()).toEqual([...new Set(project.clipAssets)].sort())
     await expect.poll(() => page.getByRole('button', { name: '播放', exact: true }).count(), { timeout: 2000 }).toBe(1)
   })
@@ -1134,11 +1134,11 @@ describe('timeline stories', () => {
     const px = await pxPerSecond(page)
     await page.mouse.move(ruler.x + 0.2 * px, ruler.y + 10)
     await page.mouse.down()
-    await page.mouse.move(ruler.x + 1.6 * px, ruler.y + 10, { steps: 6 })
+    await page.mouse.move(ruler.x + 8 * px, ruler.y + 10, { steps: 6 })
     await page.mouse.up()
-    expect((await timelineTime(page))[0]).toBeCloseTo(1.6, 1)
+    expect((await timelineTime(page))[0]).toBeCloseTo(8, 1)
     const playhead = await page.locator('[data-testid="dv-timeline-playhead"]').boundingBox()
-    expect(Math.abs((playhead?.x ?? 0) - (ruler.x + 1.6 * px))).toBeLessThan(4)
+    expect(Math.abs((playhead?.x ?? 0) - (ruler.x + 8 * px))).toBeLessThan(4)
     await expect.poll(() => viewerAsset(page)).toBe(project.clipAssets[1])
   })
 
@@ -1151,10 +1151,10 @@ describe('timeline stories', () => {
     const ruler = await page.locator('[data-testid="dv-timeline-ruler"]').boundingBox()
     if (ruler === null) throw new Error('ruler has no box')
     const [a, b, c] = project.clipAssets.map(id => id.slice(0, 8))
-    // Clip 2 spans 1 s to 3 s; splitting at 2 s makes two 1-second halves.
-    await page.mouse.click(ruler.x + 2 * px, ruler.y + 10)
+    // Clip 2 spans 5 s to 11 s; splitting at 8 s makes two 3-second halves.
+    await page.mouse.click(ruler.x + 8 * px, ruler.y + 10)
     await page.getByRole('button', { name: '拆分' }).click()
-    await expect.poll(() => timelineClips(project.id)).toEqual([`${a ?? ''}[-]`, `${b ?? ''}[-1]`, `${b ?? ''}[1-]`, `${c ?? ''}[-]`])
+    await expect.poll(() => timelineClips(project.id)).toEqual([`${a ?? ''}[-]`, `${b ?? ''}[-3]`, `${b ?? ''}[3-]`, `${c ?? ''}[-]`])
     await expect.poll(() => trackClips(page)).toHaveLength(4)
     // Drag the end edge of clip 1 left by 0.5 s.
     const first = await page.locator('[data-clip-position="1"]').boundingBox()
@@ -1163,9 +1163,9 @@ describe('timeline stories', () => {
     await page.mouse.down()
     await page.mouse.move(first.x + first.width - 3 - 0.5 * px, first.y + 20, { steps: 6 })
     await page.mouse.up()
-    await expect.poll(() => timelineClips(project.id)).toEqual([`${a ?? ''}[-0.5]`, `${b ?? ''}[-1]`, `${b ?? ''}[1-]`, `${c ?? ''}[-]`])
-    // The track redraws after the refetch; the next drag needs the shortened layout (3.5 s in total).
-    await expect.poll(async () => (await timelineTime(page))[1]).toBeCloseTo(3.5, 1)
+    await expect.poll(() => timelineClips(project.id)).toEqual([`${a ?? ''}[-4.5]`, `${b ?? ''}[-3]`, `${b ?? ''}[3-]`, `${c ?? ''}[-]`])
+    // The track redraws after the refetch; the next drag needs the shortened layout (15.5 s in total).
+    await expect.poll(async () => (await timelineTime(page))[1]).toBeCloseTo(15.5, 1)
     // Drag the start edge of the last clip right by 0.25 s.
     const last = await page.locator('[data-clip-position="4"]').boundingBox()
     if (last === null) throw new Error('clip 4 has no box')
@@ -1173,8 +1173,8 @@ describe('timeline stories', () => {
     await page.mouse.down()
     await page.mouse.move(last.x + 3 + 0.25 * px, last.y + 20, { steps: 6 })
     await page.mouse.up()
-    await expect.poll(() => timelineClips(project.id)).toEqual([`${a ?? ''}[-0.5]`, `${b ?? ''}[-1]`, `${b ?? ''}[1-]`, `${c ?? ''}[0.25-]`])
-    await expect.poll(async () => (await timelineTime(page))[1]).toBeCloseTo(3.25, 1)
+    await expect.poll(() => timelineClips(project.id)).toEqual([`${a ?? ''}[-4.5]`, `${b ?? ''}[-3]`, `${b ?? ''}[3-]`, `${c ?? ''}[0.25-]`])
+    await expect.poll(async () => (await timelineTime(page))[1]).toBeCloseTo(15.25, 1)
     // Drag clip 4 by its body to the front.
     const moving = await page.locator('[data-clip-position="4"]').boundingBox()
     const target = await page.locator('[data-clip-position="1"]').boundingBox()
@@ -1183,7 +1183,7 @@ describe('timeline stories', () => {
     await page.mouse.down()
     await page.mouse.move(target.x + 2, moving.y + 30, { steps: 10 })
     await page.mouse.up()
-    await expect.poll(() => timelineClips(project.id)).toEqual([`${c ?? ''}[0.25-]`, `${a ?? ''}[-0.5]`, `${b ?? ''}[-1]`, `${b ?? ''}[1-]`])
+    await expect.poll(() => timelineClips(project.id)).toEqual([`${c ?? ''}[0.25-]`, `${a ?? ''}[-4.5]`, `${b ?? ''}[-3]`, `${b ?? ''}[3-]`])
     // The track redraws after the refetch; a click before that lands on the clip that was at the position before the move.
     const movedOrder = (await stateOf(project.id)).components.timeline.timelines[0]?.clips.map(clip => clip.id)
     await expect.poll(() => trackClipIds(page)).toEqual(movedOrder)
@@ -1192,7 +1192,7 @@ describe('timeline stories', () => {
     // Select clip 2 and press Delete.
     await page.locator('[data-clip-position="2"]').click()
     await page.keyboard.press('Delete')
-    await expect.poll(() => timelineClips(project.id)).toEqual([`${c ?? ''}[0.25-]`, `${b ?? ''}[-1]`, `${b ?? ''}[1-]`])
+    await expect.poll(() => timelineClips(project.id)).toEqual([`${c ?? ''}[0.25-]`, `${b ?? ''}[-3]`, `${b ?? ''}[3-]`])
     await expect.poll(() => trackClips(page)).toEqual(['1', '2', '3'])
     expect(page.errors).toEqual([])
   })
@@ -1273,8 +1273,9 @@ describe('timeline stories', () => {
       video.onerror = () => { resolve(-1) }
       video.src = url
     }), href)
-    expect(duration).toBeGreaterThan(3.8)
-    expect(duration).toBeLessThan(4.3)
+    // The clips keep their whole videos: 124, 158, and 124 frames at 24 fps, about 16.9 s in all.
+    expect(duration).toBeGreaterThan(16.7)
+    expect(duration).toBeLessThan(17.2)
     // The export link belongs to this timeline only.
     await page.locator('[data-testid="dv-timeline-editor"]').getByRole('button', { name: '＋ 新建' }).click()
     await expect.poll(() => link.count()).toBe(0)
@@ -1287,7 +1288,7 @@ describe('timeline stories', () => {
     await runOperation(project, 'character.create', { character: 'c1', name: 'Dancer' }, [{ role: 'reference', ref: imported.outputs[0] ?? '' }])
     const plan = await runOperation(project, 'plan.create', {
       title: 'timeline-pending', references: ['c1@1'],
-      shots: [1, 2, 3].map(shot => ({ prompt: `timeline-pending shot ${String(shot)}`, duration_sec: shot === 2 ? 2 : 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' })),
+      shots: [1, 2, 3].map(shot => ({ prompt: `timeline-pending shot ${String(shot)}`, duration_sec: shot === 2 ? 6 : 5, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' })),
     })
     harness.backend.hold()
     try {
@@ -1304,7 +1305,7 @@ describe('timeline stories', () => {
       const status = (): Promise<string[]> => page.locator('[data-clip-position]').evaluateAll(clips => clips.map(clip => clip.getAttribute('data-clip-status') ?? ''))
       await expect.poll(status).toEqual(['rendering', 'rendering', 'rendering'])
       // Each placeholder keeps the length of its shot, so the timeline is as long as the plan.
-      expect((await timelineTime(page))[1]).toBeCloseTo(4, 1)
+      expect((await timelineTime(page))[1]).toBeCloseTo(16, 1)
       expect(await page.locator('[data-clip-position="1"]').getAttribute('title')).toContain('渲染中…')
       expect(await page.locator('[data-clip-position="1"] [data-trim]').count()).toBe(0)
       expect(await page.locator('[data-testid="dv-timeline-viewer-placeholder"]').textContent()).toBe('片段 1：渲染中…')
@@ -1333,7 +1334,7 @@ describe('timeline stories', () => {
         expect(await exportButton.isDisabled()).toBe(finished < 3)
       }
       expect(await page.locator('[data-testid="dv-timeline-export-waiting"]').count()).toBe(0)
-      expect((await timelineTime(page))[1]).toBeCloseTo(4, 1)
+      expect((await timelineTime(page))[1]).toBeCloseTo(16, 1)
       await exportButton.click()
       await page.locator('[data-testid="dv-timeline-exported"]').waitFor({ timeout: 60_000 })
       expect(page.errors).toEqual([])
@@ -1446,7 +1447,7 @@ describe('going back and keep anyway', () => {
     // A plain edit is the step to come back to; the seeded renders fold under the plan approval's row.
     const earlier = (await runOperation(project.id, 'timeline.rename', { timeline: 't1', name: 'go-back base' })).id
     // Two more edits: one more take on the canvas and a second timeline.
-    await runOperation(project.id, RENDER_OPERATION, { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'go-back shot', duration_sec: 1 }, [{ role: 'reference', ref: 'c1@1' }])
+    await runOperation(project.id, RENDER_OPERATION, { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'go-back shot', duration_sec: 5 }, [{ role: 'reference', ref: 'c1@1' }])
     await expect.poll(() => takes.count(), { timeout: 30_000 }).toBe(2)
     await viewToggle(page, '时间线').click()
     await page.locator('[data-testid="dv-timeline-editor"]').getByRole('button', { name: '＋ 新建' }).click()
