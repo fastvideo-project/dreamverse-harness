@@ -27,6 +27,14 @@ export interface InputDeclaration {
 /** The inputs one task of a model accepts, by role; a role left out takes no asset. */
 export type TaskInputs = Partial<Record<InputRole, InputDeclaration>>
 
+/** A server's reference limits for one request; the server counts the first frame among its references. */
+export interface ReferenceLimits {
+  /** The most references across media types. */
+  maxReferences: number
+  /** The accepted reference media types and the most references of each. */
+  referenceMediaTypes: Record<MediaType, { maxCount: number }>
+}
+
 /**
  * One task this plugin can serve a model for: the entry's description, what the model accepts for it, and its prompt
  * skill. The GPU rate comes from the configured server of the task.

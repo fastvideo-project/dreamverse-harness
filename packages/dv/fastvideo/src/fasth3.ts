@@ -40,24 +40,29 @@ export function fasth3PromptProblems(request: RenderRequest): string[] {
   return cited ? [] : ['Its prompt does not cite the first frame; write "@[首帧](dv:input/first_frame) is the first frame of [Shot 1]".']
 }
 
+/** What `fasth3` renders for task `ref2v`; an entry description puts the served checkpoint's name before it. */
+export const FASTH3_REF2V_ABILITIES = 'video with sound, dialogue and music written in the prompt, from reference images, '
+  + 'videos and audio and an optional first frame. Keeps a face, place or style the same across shots through the '
+  + 'references, and continues a shot from the previous shot\'s last still. Needs at least one reference.'
+
+/** `fasth3` for task `ref2v`, served as FastH3 Ref2VA. */
+export const FASTH3_REF2V: ServedTask = {
+  description: `MiniMax H3 served as FastH3 Ref2VA: ${FASTH3_REF2V_ABILITIES}`,
+  inputs: { reference: { min: 1, mediaTypes: ['image', 'video', 'audio'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
+  extra: {},
+  assignReferenceLabels: assignFasth3ReferenceLabels,
+  promptProblems: fasth3PromptProblems,
+  skill: {
+    name: 'fasth3-reference-prompting',
+    description: 'Model limits and prompt rules for model fasth3 for task ref2v: reference images, videos and audio, '
+      + 'how the prompt names them, and how a shot continues the previous one.',
+    file: 'fasth3-reference-prompting.md',
+  },
+}
+
 /** The tasks this plugin serves `fasth3` for. */
 export const FASTH3: { [T in TaskId]?: ServedTask } = {
-  ref2v: {
-    description: 'MiniMax H3 served as FastH3 Ref2VA: video with sound, dialogue and music written in the prompt, from '
-      + 'reference images, videos and audio and an optional first frame. Keeps a face, place or style the same across '
-      + 'shots through the references, and continues a shot from the previous shot\'s last still. Needs at least one '
-      + 'reference.',
-    inputs: { reference: { min: 1, mediaTypes: ['image', 'video', 'audio'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
-    extra: {},
-    assignReferenceLabels: assignFasth3ReferenceLabels,
-    promptProblems: fasth3PromptProblems,
-    skill: {
-      name: 'fasth3-reference-prompting',
-      description: 'Model limits and prompt rules for model fasth3 for task ref2v: reference images, videos and audio, '
-        + 'how the prompt names them, and how a shot continues the previous one.',
-      file: 'fasth3-reference-prompting.md',
-    },
-  },
+  ref2v: FASTH3_REF2V,
   t2v: {
     description: 'MiniMax H3 served as FastH3 8-Step V2: video with sound, dialogue and music written in the prompt, from '
       + 'the prompt alone. A subject keeps its look only as far as the same words describe it, and no shot starts from '

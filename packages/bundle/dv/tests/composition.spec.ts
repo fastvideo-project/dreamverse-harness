@@ -58,9 +58,21 @@ const FakeFastVideo = {
   },
 }
 
+/** The `models` config the stand-in UniServe plugin received from the bundle row. */
+let uniserveConfig: unknown = null
+
+/** A stand-in for `@dv/uniserve`: it keeps the row's config and registers nothing. */
+const FakeUniserve = {
+  name: 'fake-uniserve',
+  apply(_ctx: Context, config: { models: unknown }): void {
+    uniserveConfig = config.models
+  },
+}
+
 /**
  * The plugin of each package a bundle row names, resolved through `globalThis` because Node imports the rows outside
- * Vite. The FastVideo row loads a stand-in that registers a fake model.
+ * Vite. The FastVideo row loads a stand-in that registers a fake model, and the UniServe row a stand-in that keeps its
+ * config.
  */
 const PLUGINS: Record<string, object> = {
   '@deepseek-ai/dsh-system-prompt': SystemPrompt, '@deepseek-ai/dsh-tools': ToolRuntime, '@dv/project': DvProject,
@@ -68,7 +80,7 @@ const PLUGINS: Record<string, object> = {
   '@dv/character': DvCharacter, '@dv/location': DvLocation, '@dv/style': DvStyle,
   '@dv/shot-plan': DvShotPlan, '@dv/shot-render': DvShotRender, '@dv/timeline': DvTimeline,
   '@dv/api': DvApi, '@dv/chat-references': DvChatReferences,
-  '@dv/models': DvModels, '@dv/fastvideo': FakeFastVideo, '@dv/workflow-story': DvStory,
+  '@dv/models': DvModels, '@dv/fastvideo': FakeFastVideo, '@dv/uniserve': FakeUniserve, '@dv/workflow-story': DvStory,
   '@dv/sglang-diffusion': SglangDiffusion, '@dv/image-generate': DvImageGenerate,
   '@dv/sglang-omni': SglangOmni, '@dv/audio-generate': DvAudioGenerate,
 }
@@ -112,7 +124,7 @@ describe('DreamVerse bundle composition', () => {
     disposers.push(() => { delete globals.__dvComposition })
     const rows = bundleRows()
     expect(rows.map(row => row.id)).toEqual(expect.arrayContaining([
-      'dv-models', 'dv-fastvideo', 'dv-project', 'dv-shot-plan', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
+      'dv-models', 'dv-fastvideo', 'dv-uniserve', 'dv-project', 'dv-shot-plan', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
       'dv-sglang-diffusion', 'dv-image-generate', 'dv-sglang-omni', 'dv-audio-generate',
     ]))
     // Each row keeps its id and `!!js` config; its package name points at a module that re-exports the plugin class.
@@ -156,6 +168,8 @@ describe('DreamVerse bundle composition', () => {
         t2v: { baseUrl: 'http://10.244.16.130:8031', gpuSecondsPerVideoSecond: 1.5 },
       },
     })
+    // The UniServe row names a second server of fasth3 for task ref2v.
+    expect(uniserveConfig).toEqual({ fasth3: { ref2v: { baseUrl: 'http://10.244.8.35:8000', gpuSecondsPerVideoSecond: 1.3 } } })
     expect(rows.find(row => row.id === 'dv-sglang-diffusion')?.config).toEqual({
       models: { 'qwen-image-2.1-turbo': { baseUrl: 'http://127.0.0.1:30010', gpuSecondsPerMegapixel: 0.6 } },
     })

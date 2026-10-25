@@ -30,6 +30,17 @@
               baseUrl: http://10.244.16.130:8031
               gpuSecondsPerVideoSecond: 1.5
 
+    # FastH3 Omni 8-Step V1 on the cluster's UniServe server: a second provider of fasth3 for task ref2v beside
+    # dv-fastvideo, so the catalog lists both entries. A deployment with another server replaces this row's config.
+    - id: dv-uniserve
+      name: '@dv/uniserve'
+      config:
+        models:
+          fasth3:
+            ref2v:
+              baseUrl: http://10.244.8.35:8000
+              gpuSecondsPerVideoSecond: 1.3
+
     - id: dv-ffmpeg
       name: '@dv/ffmpeg'
       config:

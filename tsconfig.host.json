@@ -470,6 +470,7 @@
     { "path": "./packages/dv/sglang-diffusion" },
     { "path": "./packages/dv/audio-generate" },
     { "path": "./packages/dv/sglang-omni" },
+    { "path": "./packages/dv/uniserve" },
     { "path": "./packages/dv/timeline" },
     { "path": "./packages/dv/reference-kit" },
     { "path": "./packages/dv/character" },

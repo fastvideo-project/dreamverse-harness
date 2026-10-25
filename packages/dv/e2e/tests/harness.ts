@@ -231,7 +231,8 @@ export async function bootHarness(
   })
   // The isolated harness home mirrors scripts/video-harness/setup-profile.sh: a manifest naming the three bundles,
   // a profile patch, and a link to this checkout's bundle package. The profile patch replaces the config of the
-  // bundle's `dv-fastvideo` row, so fasth3 renders only for task ref2v, on the fake backend.
+  // bundle's `dv-fastvideo` row and disables its `dv-uniserve` row, so fasth3 renders only for task ref2v, on the fake
+  // backend.
   const home = join(scratch, 'dsh-home')
   const profileDir = join(home, 'profiles', 'video-harness')
   mkdirSync(join(profileDir, 'node_modules', '@dv'), { recursive: true })
@@ -241,7 +242,7 @@ export async function bootHarness(
   }))
   writeFileSync(join(profileDir, 'cordis.patch.yml'), [
     '- id: dv-fastvideo', '  config:', '    models:', '      fasth3:', '        ref2v:',
-    `          baseUrl: ${backend.url}`, '          gpuSecondsPerVideoSecond: 4', '',
+    `          baseUrl: ${backend.url}`, '          gpuSecondsPerVideoSecond: 4', '- id: dv-uniserve', '  disabled: true', '',
   ].join('\n'))
   symlinkSync(join(REPO_ROOT, 'packages/bundle/dv'), join(profileDir, 'node_modules', '@dv', 'bundle'))
   const port = await freePort()

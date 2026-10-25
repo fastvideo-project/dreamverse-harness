@@ -33,6 +33,7 @@
     "@dv/shot-render": "workspace:*",
     "@dv/style": "workspace:*",
     "@dv/timeline": "workspace:*",
+    "@dv/uniserve": "workspace:*",
     "@dv/ui-asset-pool": "workspace:*",
     "@dv/ui-audio-generate": "workspace:*",
     "@dv/ui-canvas": "workspace:*",
