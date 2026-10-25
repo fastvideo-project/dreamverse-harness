@@ -34,17 +34,14 @@ kind: "package-reference"
       fasth3:
         ref2v:
           baseUrl: http://10.244.19.118:8029
-          gpuSecondsPerVideoSecond: 4
         t2v:
           baseUrl: http://10.244.16.130:8031
-          gpuSecondsPerVideoSecond: 1.5
 ```
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `models` | 必填 | 要注册的模型（按模型名），以及每个模型要为哪些任务提供（按任务 ID）；未列出的模型或任务不会注册 |
 | `models.<model>.<task>.baseUrl` | 必填 | 为该任务渲染该模型的 FastVideo streaming_v2 服务器的 HTTP 基础 URL，如 `http://127.0.0.1:8029` |
-| `models.<model>.<task>.gpuSecondsPerVideoSecond` | 必填 | 该服务器每渲染一秒视频所用的 GPU 秒数；该模型和任务的条目声明它，用于渲染前的 GPU 估算 |
 
 `models` 列出 `fasth3` 以外的模型、模型不提供的任务（`fasth3`：`ref2v`、`t2v`），或没有任何任务的模型时，加载失败。本插件挂载期间，模型目录为每个配置的任务持有一个 provider 为 `fastvideo`、模型为 `fasth3` 的条目，如 `video/ref2v/fastvideo/fasth3`。同时挂载 DSH skill 注册表（`@deepseek-ai/dsh-skill`），智能体才能加载提示词 skill。
 
@@ -124,7 +121,7 @@ skill 注册表挂载且 `fasth3` 配置了任务 `t2v` 期间，skill 目录列
 
 #### 模型看到什么
 
-`@dv/models` 的 `dv_models_list` 结果列出每个配置的条目，带它的键（模态 `video`、任务、provider `fastvideo`、模型 `fasth3`）和描述：任务 `ref2v` 的描述为 "MiniMax H3 served as FastH3 Ref2VA: video with sound, dialogue and music written in the prompt, from reference images, videos and audio and an optional first frame. Keeps a face, place or style the same across shots through the references, and continues a shot from the previous shot's last still. Needs at least one reference."；任务 `t2v` 的描述为 "MiniMax H3 served as FastH3 8-Step V2: video with sound, dialogue and music written in the prompt, from the prompt alone. A subject keeps its look only as far as the same words describe it, and no shot starts from an earlier shot's last still; a face that must stay the same needs fasth3 for task ref2v."。本插件从服务器读取的 schema 出现在 `dv_models_get` 的结果中：允许的时长、宽高比和分辨率，以及任务 `ref2v` 下每种媒体类型的输入数量。本插件从服务器读取的事实出现在 `dv_shot_render` 的结果和拒绝文本中：服务器的模型 ID（`model_id`）、画面尺寸和帧数、允许的宽高比、分辨率和时长，以及由 `gpuSecondsPerVideoSecond` 得出的 GPU 估算。
+`@dv/models` 的 `dv_models_list` 结果列出每个配置的条目，带它的键（模态 `video`、任务、provider `fastvideo`、模型 `fasth3`）和描述：任务 `ref2v` 的描述为 "MiniMax H3 served as FastH3 Ref2VA: video with sound, dialogue and music written in the prompt, from reference images, videos and audio and an optional first frame. Keeps a face, place or style the same across shots through the references, and continues a shot from the previous shot's last still. Needs at least one reference."；任务 `t2v` 的描述为 "MiniMax H3 served as FastH3 8-Step V2: video with sound, dialogue and music written in the prompt, from the prompt alone. A subject keeps its look only as far as the same words describe it, and no shot starts from an earlier shot's last still; a face that must stay the same needs fasth3 for task ref2v."。本插件从服务器读取的 schema 出现在 `dv_models_get` 的结果中：允许的时长、宽高比和分辨率，以及任务 `ref2v` 下每种媒体类型的输入数量。本插件从服务器读取的事实出现在 `dv_shot_render` 的结果和拒绝文本中：服务器的模型 ID（`model_id`）、画面尺寸和帧数、允许的宽高比、分辨率和时长。
 
 #### Token 影响
 

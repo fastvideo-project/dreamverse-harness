@@ -40,7 +40,7 @@ Before writing the prompts, load the prompt skill of every model and task the pl
 The `timeline-editing` skill maps each editing request to its tool calls. The rules behind it:
 
 - **A retake keeps the model, the task and the inputs.** A retake of clip N calls `dv_shot_render` with the `modality`, `task`, `provider`, `model`, `inputs.reference` and `continue_from` of the record that produced clip N, `based_on` = that record, `supersedes: [that record]`, and a prompt that changes only what the user named.
-- **A render the user asked for by name carries `user_requested: true`.** A render you propose on your own is described with its cost, and you stop and ask in bold.
+- **A render you propose on your own waits for the user.** Describe it, then stop and ask in bold.
 
 ## 6. When a reference changes
 

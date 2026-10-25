@@ -70,9 +70,9 @@ Every registration is inside `ctx.effect`, so disposal removes it. An operation 
 | `inputs`          | role → `{type, description, required?, many?, versioned?}`; `versioned` accepts `<id>@<version>`      |
 | `outputs`         | the roles of the assets `execute` returns, in order                                                   |
 | `summarize`       | one line for chat cards and canvas nodes, from a finished record                                      |
-| `confirm`         | `never`, `always` (`story.approve`) or `over_gpu_budget` (`shot.render`); with `confirmSummary`       |
+| `confirm`         | `never` or `always` (`story.approve`); with `confirmSummary`                                          |
 | `deterministic`   | true when the same params and inputs give the same outputs (the runner then reuses outputs)           |
-| `resource`        | `gpu`, `cpu` or `none`; `estimate(params)` for `gpu` operations                                       |
+| `resource`        | `gpu`, `cpu` or `none`                                                                                |
 | `readOnly`        | true for reads; no record, no confirmation, the answer is `report`                                    |
 | `supersedes`      | the records a call replaces (a character update replaces the record of the previous version)          |
 | `toolParams`      | tool-only arguments, removed from `params` before the run (`continue_from` of `shot.render`)          |
@@ -80,7 +80,7 @@ Every registration is inside `ctx.effect`, so disposal removes it. An operation 
 | `prepareToolCall` | component logic before an agent call (`continue_from`); Project applies `confirm` after it            |
 | `execute`         | does the work; creates files only through `context.importAsset`; throws to fail the record            |
 
-**Tools.** `registerOperation` also registers the agent tool `dv_<name with _>` while the DSH `tools` registry is mounted, with the shared arguments `reason`, `project_id`, `inputs`, `supersedes` and `based_on`, and the result `{record, status, summary, outputs, scheduled, params, report?, images?}`. A component writes no tool code. An operation that needs the user's agreement before an agent call declares it in its own spec: `confirm: 'always'` (the tool takes `user_approved`) or `confirm: 'over_gpu_budget'` (the tool takes `user_requested`, needed once the turn's GPU seconds pass the budget), and `confirmSummary(call, state)`, which returns `{text, gpu_seconds}` for the refusal that tells the agent to ask the user in the conversation with the question in bold. Calls by the human and by the system are never refused. A rule that every caller must meet belongs in the operation's `precondition`, which the runner calls for every caller.
+**Tools.** `registerOperation` also registers the agent tool `dv_<name with _>` while the DSH `tools` registry is mounted, with the shared arguments `reason`, `project_id`, `inputs`, `supersedes` and `based_on`, and the result `{record, status, summary, outputs, scheduled, params, report?, images?}`. A component writes no tool code. An operation that needs the user's agreement before an agent call declares it in its own spec: `confirm: 'always'` (the tool takes `user_approved`), and `confirmSummary(call, state)`, which returns `{text}` for the refusal that tells the agent to ask the user in the conversation with the question in bold. Calls by the human and by the system are never refused. A rule that every caller must meet belongs in the operation's `precondition`, which the runner calls for every caller.
 
 **Reducer.** Declare the slice in `src/types.ts` and register the reducer under the component key:
 

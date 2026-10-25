@@ -31,24 +31,24 @@ Mount the plugin after `@dv/project`, `@dv/models` and `@dv/asset-pool`, and mou
   name: '@dv/audio-generate'
 ```
 
-The plugin has no configuration. The GPU estimate of a call, `estimate(params)`, is the `gpuSecondsPerCall` of the named catalog entry, the entry field that the primitive row `audio` declares; for a key that names no catalog entry, the estimate is 0.
+The plugin has no configuration.
 
 | Operation | Tool | Inputs and params | Outputs and report |
 | --- | --- | --- | --- |
-| `audio.generate` | `dv_audio_generate` | no inputs; params `modality`, `task`, `provider` and `model` (required: the key of a catalog entry, as `dv_models_list` lists it), `prompt` (required: the text to speak, in the markup of the model's prompt skill), `extra` (the model's own parameters, as `dv_models_get` lists them) | output `audio`, one `audio/wav` asset named `<record ID, 8 characters>.wav` with its `duration_sec`; report `{model_id, duration_sec}`; cost `gpu_seconds` from the result of the entry's `render` |
+| `audio.generate` | `dv_audio_generate` | no inputs; params `modality`, `task`, `provider` and `model` (required: the key of a catalog entry, as `dv_models_list` lists it), `prompt` (required: the text to speak, in the markup of the model's prompt skill), `extra` (the model's own parameters, as `dv_models_get` lists them) | output `audio`, one `audio/wav` asset named `<record ID, 8 characters>.wav` with its `duration_sec`; report `{model_id, duration_sec}` |
 
-The operation uses the GPU, is not deterministic, and declares `confirm: over_gpu_budget`: an agent call that would bring its turn past the GPU budget of `dvProject` is refused until the agent asks the user in the conversation and calls again with `user_requested: true`. The operation has no `seed` param, draws no seed and reports none (`seed: false` in the declaration), because the speech backends take no seed; the same prompt gives a different clip. Workflows call the `GenerationApi` methods of [`@dv/generation`](../generation/README.md) on `dvAudioGenerate`: `render`, `check`, `estimate`, `findTake` and `parseInputs`.
+The operation uses the GPU, is not deterministic, and declares `confirm: never`. The operation has no `seed` param, draws no seed and reports none (`seed: false` in the declaration), because the speech backends take no seed; the same prompt gives a different clip. Workflows call the `GenerationApi` methods of [`@dv/generation`](../generation/README.md) on `dvAudioGenerate`: `render`, `check`, `findTake` and `parseInputs`.
 
 -----
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The package declares the primitive row `audio` of `PrimitiveTypes` through declaration merging: facts `AudioModelFacts` (`modelId`), request `AudioRequest` (`prompt` and `extra`), result `Promise<GeneratedAudio>` (the bytes, `mime: 'audio/wav'`, `durationSec` and `gpuSeconds`), and the entry field `gpuSecondsPerCall`. It maps task `t2a` to that row in `TaskMap`. `defineGeneration` of `@dv/generation` builds the service from the declaration of `audio.generate`. A call looks up the catalog entry of the named key with `dvModels.resolve`, reads its facts, and builds the request from the trimmed prompt and the `extra` values; an empty prompt is refused with "The prompt is empty; write the text to speak.". The entry's `validateGenerationRequest(request)` judges the prompt markup and `extra` before any record, and again before the entry's `render(request, signal)`. The declaration's `toOutputs` imports the clip through `importOne` with its duration, so the asset pool never probes the clip, and records the result's `gpuSeconds` as the cost.
+The package declares the primitive row `audio` of `PrimitiveTypes` through declaration merging: facts `AudioModelFacts` (`modelId`), request `AudioRequest` (`prompt` and `extra`), result `Promise<GeneratedAudio>` (the bytes, `mime: 'audio/wav'`, and `durationSec`), and no entry fields. It maps task `t2a` to that row in `TaskMap`. `defineGeneration` of `@dv/generation` builds the service from the declaration of `audio.generate`. A call looks up the catalog entry of the named key with `dvModels.resolve`, reads its facts, and builds the request from the trimmed prompt and the `extra` values; an empty prompt is refused with "The prompt is empty; write the text to speak.". The entry's `validateGenerationRequest(request)` judges the prompt markup and `extra` before any record, and again before the entry's `render(request, signal)`. The declaration's `toOutputs` imports the clip through `importOne` with its duration, so the asset pool never probes the clip.
 
 | File | Content |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `dvAudioGenerate`: the primitive row `audio` and task `t2a`, the types `AudioModelFacts`, `AudioRequest` and `GeneratedAudio`, and the declaration of `audio.generate` (request, stored output, GPU estimate and summary) |
+| [`src/index.ts`](src/index.ts) | `dvAudioGenerate`: the primitive row `audio` and task `t2a`, the types `AudioModelFacts`, `AudioRequest` and `GeneratedAudio`, and the declaration of `audio.generate` (request, stored output and summary) |
 | [`tests/audio-generate.spec.ts`](tests/audio-generate.spec.ts) | A Loader composition with the tool registry, Project, ffmpeg, the asset pool, the catalog and the service against a fake `t2a` model; it pins the texts that the agent reads and the removal on disposal |
 
 -----
@@ -70,7 +70,7 @@ The package declares the primitive row `audio` of `PrimitiveTypes` through decla
 
 #### What the model sees
 
-One tool, `dv_audio_generate`, while the catalog holds a model of task `t2a`, in the format `@dv/project` gives every operation tool, with the argument `user_requested` that Project adds for `confirm: over_gpu_budget`. The params are `modality`, `task`, `provider`, `model`, `prompt` and `extra`, with no `seed`; the four key params and `extra` keep the descriptions of `@dv/generation`. The `prompt` param reads "The text to speak, in the markup of the prompt skill that dv_models_list names for the model.".
+One tool, `dv_audio_generate`, while the catalog holds a model of task `t2a`, in the format `@dv/project` gives every operation tool. The params are `modality`, `task`, `provider`, `model`, `prompt` and `extra`, with no `seed`; the four key params and `extra` keep the descriptions of `@dv/generation`. The `prompt` param reads "The text to speak, in the markup of the prompt skill that dv_models_list names for the model.".
 
 ##### Verbatim tool description
 
@@ -90,7 +90,7 @@ The definition sits in the stable tool section of every agent request. The first
 
 #### What the model sees
 
-A call returns one text block: `done <record>: audio "<prompt>" (<duration, one decimal>s)`, with the prompt written by `quotePrompt(prompt, 60)` of `@dv/generation`, the line `- audio: <asset ID> (audio/wav) <asset URL>`, the params, and the report `{"model_id":"<the backend's model ID>","duration_sec":<seconds>}`. A call that the model's validation refuses is refused before any record with "Model <modality>/<task>/<provider>/<model> cannot generate this: <problems> Nothing was generated; change the inputs or params, then call again."; an empty prompt is refused with "The prompt is empty; write the text to speak." and the same closing sentence. A call past the turn's GPU budget is refused with the budget text of `@dv/project` and the default confirmation text of `@dv/generation`, whose label is "Generate audio". A failed render fails the record, and the tool error is the model's message.
+A call returns one text block: `done <record>: audio "<prompt>" (<duration, one decimal>s)`, with the prompt written by `quotePrompt(prompt, 60)` of `@dv/generation`, the line `- audio: <asset ID> (audio/wav) <asset URL>`, the params, and the report `{"model_id":"<the backend's model ID>","duration_sec":<seconds>}`. A call that the model's validation refuses is refused before any record with "Model <modality>/<task>/<provider>/<model> cannot generate this: <problems> Nothing was generated; change the inputs or params, then call again."; an empty prompt is refused with "The prompt is empty; write the text to speak." and the same closing sentence. A failed render fails the record, and the tool error is the model's message.
 
 #### Token effect
 
@@ -105,4 +105,3 @@ Each result is appended to the conversation after its call; the cached prefix st
 <a id="known-limitations-and-deferred-work"></a>
 
 - **The agent cannot hear a clip**: the result carries the duration and no transcript, so the agent cannot judge a take; the tool description tells it to ask the user which take to keep.
-- **GPU estimate**: the estimate is the entry's flat `gpuSecondsPerCall`, the same for a short and a long prompt; the record replaces it with the measured cost when the render finishes.

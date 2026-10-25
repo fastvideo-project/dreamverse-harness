@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Story workflow of DreamVerse: story.preview reports what approving a shot plan version renders, its GPU estimate, and why a render would be refused, without writing; story.approve renders the version's new or changed shots and lays every take on the plan's timeline.",
+  "description": "Story workflow of DreamVerse: story.preview reports what approving a shot plan version renders and why a render would be refused, without writing; story.approve renders the version's new or changed shots and lays every take on the plan's timeline.",
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json"

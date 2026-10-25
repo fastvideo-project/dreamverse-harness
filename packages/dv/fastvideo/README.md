@@ -34,17 +34,14 @@ Mount the plugin after `@dv/models` and `@dv/asset-pool`, with one server per mo
       fasth3:
         ref2v:
           baseUrl: http://10.244.19.118:8029
-          gpuSecondsPerVideoSecond: 4
         t2v:
           baseUrl: http://10.244.16.130:8031
-          gpuSecondsPerVideoSecond: 1.5
 ```
 
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `models` | required | The models to register, by model name, and for each the tasks to serve it for, by task ID; a model or task left out is not registered |
 | `models.<model>.<task>.baseUrl` | required | HTTP base URL of the FastVideo streaming_v2 server that renders the model for the task, such as `http://127.0.0.1:8029` |
-| `models.<model>.<task>.gpuSecondsPerVideoSecond` | required | GPU seconds per rendered video second on that server; the entry of the model and task declares it, for the GPU estimate before a render |
 
 Loading fails when `models` names a model other than `fasth3`, a task the model is not served for (`fasth3`: `ref2v`, `t2v`), or a model with no task. While the plugin is mounted, the catalog holds one entry per configured task with provider `fastvideo` and model `fasth3`, such as `video/ref2v/fastvideo/fasth3`. Mount the DSH skill registry (`@deepseek-ai/dsh-skill`) as well so that the agent can load the prompt skills.
 
@@ -124,7 +121,7 @@ Mounting or removing the plugin changes the skill list, and `dsh-tool-skill` app
 
 #### What the model sees
 
-The `dv_models_list` results of `@dv/models` list each configured entry with its key (modality `video`, task, provider `fastvideo`, model `fasth3`) and its description: for task `ref2v`, "MiniMax H3 served as FastH3 Ref2VA: video with sound, dialogue and music written in the prompt, from reference images, videos and audio and an optional first frame. Keeps a face, place or style the same across shots through the references, and continues a shot from the previous shot's last still. Needs at least one reference."; for task `t2v`, "MiniMax H3 served as FastH3 8-Step V2: video with sound, dialogue and music written in the prompt, from the prompt alone. A subject keeps its look only as far as the same words describe it, and no shot starts from an earlier shot's last still; a face that must stay the same needs fasth3 for task ref2v.". The schema that this plugin reads from the servers appears in `dv_models_get` results: the allowed durations, aspect ratios and resolutions, and for task `ref2v` the input counts per media type. The facts that this plugin reads from the servers appear in the results and refusals of `dv_shot_render`: the server's model ID (`model_id`), the frame size and frame count, the allowed aspect ratios, resolutions and durations, and the GPU estimate from `gpuSecondsPerVideoSecond`.
+The `dv_models_list` results of `@dv/models` list each configured entry with its key (modality `video`, task, provider `fastvideo`, model `fasth3`) and its description: for task `ref2v`, "MiniMax H3 served as FastH3 Ref2VA: video with sound, dialogue and music written in the prompt, from reference images, videos and audio and an optional first frame. Keeps a face, place or style the same across shots through the references, and continues a shot from the previous shot's last still. Needs at least one reference."; for task `t2v`, "MiniMax H3 served as FastH3 8-Step V2: video with sound, dialogue and music written in the prompt, from the prompt alone. A subject keeps its look only as far as the same words describe it, and no shot starts from an earlier shot's last still; a face that must stay the same needs fasth3 for task ref2v.". The schema that this plugin reads from the servers appears in `dv_models_get` results: the allowed durations, aspect ratios and resolutions, and for task `ref2v` the input counts per media type. The facts that this plugin reads from the servers appear in the results and refusals of `dv_shot_render`: the server's model ID (`model_id`), the frame size and frame count, the allowed aspect ratios, resolutions and durations.
 
 #### Token effect
 

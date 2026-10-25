@@ -33,13 +33,12 @@ A primitive package declares its row of `PrimitiveTypes` and its tasks in `TaskM
 | `params`, `inputs`, `outputs`                | The params besides the shared ones, the input roles, and the outputs; a declaration may restate `prompt` to describe it         |
 | `seed`, `toolParams`, `prepareToolCall`      | `false` for a model without a seed; tool-only arguments, and the change of an agent call before the check                       |
 | `toRequest`, `toOutputs`                     | Build the model request from facts, params and `RequestInput`s, and from the seed for a seeded declaration; import the model result as outputs |
-| `estimate`, `confirmText`, `summarize`       | The required GPU estimate from the entry, the confirmation text, and the one-line record summary                                |
+| `summarize`                                  | The one-line record summary                                                                                                     |
 
 | `GenerationApi` method         | Behavior                                                                                                                               |
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `render(call)`                 | Runs the operation through `dvProject.run` with the call's `started_by`; a call with `after` is scheduled                              |
 | `check(call, state, chained?)` | `[]` when the call runs, else the first refusal or the model problems as one reason; a `chained` role counts as an input; never writes |
-| `estimate(call)`               | The declaration's estimate; `0` only when the key names no entry of the declaration's tasks                                            |
 | `findTake(state, call, where)` | The newest done record of the operation that `where` accepts, with equal declared params and equal inputs                              |
 | `parseInputs(raw, state)`      | `dvProject.parseInputs` for the operation                                                                                              |
 
@@ -52,7 +51,7 @@ A primitive package declares its row of `PrimitiveTypes` and its tasks in `TaskM
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The service registers the component, then the task labels with `dvModels.labelTasks`, for as long as it lives; a second declaration that labels one of the same tasks fails to start. The operation puts the model key and `prompt` before the declaration's params, and `seed` (unless `seed` is `false`) and `extra` after them. It is not deterministic, uses the GPU, has version `1`, and confirms with `over_gpu_budget`. The precondition, which the agent tool also runs before confirmation, refuses a call with the reasons of `check`; it passes no chained role, so a render never accepts one. `check` reads only the call's project, params and inputs. It resolves the entry with `dvModels.resolve`, resolves each input to its assets, adds each chained role as `{ role, ref: null, resolved_asset: null }`, and builds the request. When every input has an asset, it adds the problems of `validateGenerationRequest`; otherwise `execute` checks the full request before the model runs. `execute` uses the `seed` param or draws one (no seed when `seed` is `false`), builds and validates the request again, renders, and passes the result to `toOutputs`. It adds `seed` to the report, and records the declaration's estimate as the cost when `toOutputs` returns none. `findTake` compares the declared params (the keys of the operation's params) and the inputs as JSON, so key order does not matter, and compares the inputs of each role in order. The kernel also stores an undeclared param, such as a stray `seed`; it does not change the result of `findTake`.
+The service registers the component, then the task labels with `dvModels.labelTasks`, for as long as it lives; a second declaration that labels one of the same tasks fails to start. The operation puts the model key and `prompt` before the declaration's params, and `seed` (unless `seed` is `false`) and `extra` after them. It is not deterministic, uses the GPU, has version `1`, and confirms with `never`. The precondition, which the agent tool also runs, refuses a call with the reasons of `check`; it passes no chained role, so a render never accepts one. `check` reads only the call's project, params and inputs. It resolves the entry with `dvModels.resolve`, resolves each input to its assets, adds each chained role as `{ role, ref: null, resolved_asset: null }`, and builds the request. When every input has an asset, it adds the problems of `validateGenerationRequest`; otherwise `execute` checks the full request before the model runs. `execute` uses the `seed` param or draws one (no seed when `seed` is `false`), builds and validates the request again, renders, and passes the result to `toOutputs`. It adds `seed` to the report. `findTake` compares the declared params (the keys of the operation's params) and the inputs as JSON, so key order does not matter, and compares the inputs of each role in order. The kernel also stores an undeclared param, such as a stray `seed`; it does not change the result of `findTake`.
 
 | File                           | Content                                                                                                             |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
@@ -75,7 +74,7 @@ The service registers the component, then the task labels with `dvModels.labelTa
 
 #### What the model sees
 
-The kernel turns each generation operation into the agent tool `dv_<component>_<verb>`. Its params begin with `modality`, `task`, `provider`, `model` and `prompt`, and end with `seed` and `extra`, with the descriptions below; a declaration with `seed: false` has no `seed`. The tool takes `user_requested`, and a call without it is refused when the turn passes the GPU budget, with the text `<label.en> with <provider>/<model>: "<prompt>"`, the prompt written by `quotePrompt(prompt, 80)`, unless the declaration gives its own; the next line of the refusal gives the estimate. A refused call fails the tool call with the reasons and the sentence `Nothing was generated; change the inputs or params, then call again.` When the entry's `facts()` or `validateGenerationRequest` rejects, the reason reads `Model <modality>/<task>/<provider>/<model> is unavailable: <message>` and the sentence is `Nothing was generated; no change to the call helps while the model is unavailable.` A model problem reads `Model <modality>/<task>/<provider>/<model> cannot generate this: <problems>`. A result report carries `seed`.
+The kernel turns each generation operation into the agent tool `dv_<component>_<verb>`. Its params begin with `modality`, `task`, `provider`, `model` and `prompt`, and end with `seed` and `extra`, with the descriptions below; a declaration with `seed: false` has no `seed`. A refused call fails the tool call with the reasons and the sentence `Nothing was generated; change the inputs or params, then call again.` When the entry's `facts()` or `validateGenerationRequest` rejects, the reason reads `Model <modality>/<task>/<provider>/<model> is unavailable: <message>` and the sentence is `Nothing was generated; no change to the call helps while the model is unavailable.` A model problem reads `Model <modality>/<task>/<provider>/<model> cannot generate this: <problems>`. A result report carries `seed`.
 
 ##### Shared param descriptions
 
@@ -91,7 +90,7 @@ The kernel turns each generation operation into the agent tool `dv_<component>_<
 
 #### Token effect
 
-About 200 tokens of each generation tool definition (a character count of the seven params divided by four), plus about 50 for the `user_requested` param that the kernel adds, while the tool registry is mounted and a model serves one of its tasks.
+About 200 tokens of each generation tool definition (a character count of the seven params divided by four), while the tool registry is mounted and a model serves one of its tasks.
 
 #### KV Cache effect
 

@@ -34,14 +34,12 @@ Mount the plugin after `@dv/models`, with one server per model. The DreamVerse b
     models:
       qwen-image-2.1-turbo:
         baseUrl: http://127.0.0.1:30010
-        gpuSecondsPerMegapixel: 0.6
 ```
 
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `models` | required | The models to register, by model name; a model left out is not registered |
 | `models.<model>.baseUrl` | required | HTTP base URL of the SGLang diffusion server that serves the model, such as `http://127.0.0.1:30010` |
-| `models.<model>.gpuSecondsPerMegapixel` | required | GPU seconds per megapixel of an image on that server; the entry declares it for the GPU estimate before a render |
 
 Loading fails when `models` names a model other than `qwen-image-2.1-turbo`. While the plugin is mounted, the catalog holds the entry `image/t2i/sglang-diffusion/qwen-image-2.1-turbo` with `defaultSize` 1024x1024.
 
@@ -50,7 +48,7 @@ Loading fails when `models` names a model other than `qwen-image-2.1-turbo`. Whi
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The table `SERVED` in `src/index.ts` holds what no server endpoint lists for each model: the server's model ID (`Qwen/Qwen-Image-2.1-Turbo`), the entry description, the default size, the size multiple (32), the pixel limit (4300800, the area of 2400x1792, the largest preset) and the model card's seven sizes by aspect ratio. The server ignores the `model` field of a request, so `facts()` reads `GET /v1/models` on every call and rejects when the server lists another model; `schema()` calls `facts()` first. `validateGenerationRequest` calls no server: the server answers a size that is not a multiple of 32 with HTTP 500 and no reason, so the entry refuses it first and names the nearest sizes. It refuses a size above the pixel limit, which can fail on the server or in the image attachment of the tool result after the GPU time is spent, and names the preset nearest its aspect ratio; it also refuses every `extra` value. `render` sends `POST /v1/images/generations` with the prompt, the size (`defaultSize` for a request without one), the seed, `n: 1`, `response_format: 'b64_json'` and `output_format: 'png'`, because the server's own default format is JPEG for models that set none. It refuses an answer that holds no PNG image, such as JPEG bytes or an empty `data` list, and returns the PNG at the size it sent with the answer's `inference_time_s` as the GPU seconds, or null when that is not a finite number, so that the record keeps the estimate. An error answer becomes the server's `detail` text, or the body as sent; an abort rejects with the signal's reason.
+The table `SERVED` in `src/index.ts` holds what no server endpoint lists for each model: the server's model ID (`Qwen/Qwen-Image-2.1-Turbo`), the entry description, the default size, the size multiple (32), the pixel limit (4300800, the area of 2400x1792, the largest preset) and the model card's seven sizes by aspect ratio. The server ignores the `model` field of a request, so `facts()` reads `GET /v1/models` on every call and rejects when the server lists another model; `schema()` calls `facts()` first. `validateGenerationRequest` calls no server: the server answers a size that is not a multiple of 32 with HTTP 500 and no reason, so the entry refuses it first and names the nearest sizes. It refuses a size above the pixel limit, which can fail on the server or in the image attachment of the tool result after the render has run, and names the preset nearest its aspect ratio; it also refuses every `extra` value. `render` sends `POST /v1/images/generations` with the prompt, the size (`defaultSize` for a request without one), the seed, `n: 1`, `response_format: 'b64_json'` and `output_format: 'png'`, because the server's own default format is JPEG for models that set none. It refuses an answer that holds no PNG image, such as JPEG bytes or an empty `data` list, and returns the PNG at the size it sent. An error answer becomes the server's `detail` text, or the body as sent; an abort rejects with the signal's reason.
 
 | File | Content |
 | --- | --- |
@@ -125,7 +123,7 @@ The entry reaches the model only through tool results, which are appended to the
 - **Served models are fixed in code**: `SERVED` in `src/index.ts` lists the models the plugin can serve; another diffusion model needs an entry there, not only a config change.
 - **The served-model check reads the start-up name**: `POST /update_weights_from_disk` changes the weights of a running server, and `GET /v1/models` keeps the name it started with, so `facts()` does not see that change.
 - **Three model-list reads per agent call**: `facts()` reads `GET /v1/models` on every call, and an agent call of `dv_image_generate` calls it three times: in the check before the agreement, in the check before the record, and before the render.
-- **The first call at a size is slower**: the server warms up per image size, so the first call at each size, and the first call after the server sits idle, costs more GPU time than the per-megapixel estimate; the record keeps the reported time.
+- **The first call at a size is slower**: the server warms up per image size, so the first call at each size, and the first call after the server sits idle, takes longer.
 
 <a id="dev-note"></a>
 ### Dev Note

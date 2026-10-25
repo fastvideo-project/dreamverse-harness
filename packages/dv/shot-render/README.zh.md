@@ -31,13 +31,13 @@ kind: "package-reference"
   name: '@dv/shot-render'
 ```
 
-本插件没有配置。一次渲染的 GPU 预估 `estimate(params)` 是 `duration_sec`（调用未给出时为 5）乘以指定模型目录条目的 `gpuSecondsPerVideoSecond`，所以同步的预估无需读取后端，就可以用于一轮的 GPU 预算和 `confirmSummary` 的确认文字。键不对应任何模型目录条目时，预估为 0。
+本插件没有配置。
 
 | 操作 | 工具 | 输入和参数 | 输出和报告 |
 | --- | --- | --- | --- |
-| `shot.render` | `dv_shot_render` | 输入 `reference`（模型为该角色声明的任意媒体类型的素材，或角色、场景、风格版本 `<id>@<n>`，按提示词顺序）和 `first_frame`（一张图片），各自只在模型接受时可用；参数 `modality`、`task`、`provider` 和 `model`（必填：一个模型目录条目的键，即 `dv_models_list` 列出的键）、`prompt`（必填）、`duration_sec`、`aspect_ratio`、`resolution`、`seed`、`extra`（模型自己的参数，即 `dv_models_get` 列出的额外参数）；仅工具参数 `continue_from`（一条渲染记录，其输出 `#1` 成为 `first_frame`） | 输出 `video`、`last_still`；报告 `{seed, model_id, aspect_ratio, resolution, duration_sec, frame_width, frame_height, num_frames, modality, task, provider, model, timings}`，元素展开改变了提示词时还有 `expanded_prompt`；成本 `gpu_seconds` 取自后端的计时 |
+| `shot.render` | `dv_shot_render` | 输入 `reference`（模型为该角色声明的任意媒体类型的素材，或角色、场景、风格版本 `<id>@<n>`，按提示词顺序）和 `first_frame`（一张图片），各自只在模型接受时可用；参数 `modality`、`task`、`provider` 和 `model`（必填：一个模型目录条目的键，即 `dv_models_list` 列出的键）、`prompt`（必填）、`duration_sec`、`aspect_ratio`、`resolution`、`seed`、`extra`（模型自己的参数，即 `dv_models_get` 列出的额外参数）；仅工具参数 `continue_from`（一条渲染记录，其输出 `#1` 成为 `first_frame`） | 输出 `video`、`last_still`；报告 `{seed, model_id, aspect_ratio, resolution, duration_sec, frame_width, frame_height, num_frames, modality, task, provider, model, timings}`，元素展开改变了提示词时还有 `expanded_prompt` |
 
-该操作使用 GPU，不是确定性的，并声明 `confirm: over_gpu_budget`：会让本轮超过 `dvProject` GPU 预算的智能体调用被拒绝，直到智能体在对话中询问用户并带 `user_requested: true` 再次调用；`confirmSummary` 为拒绝消息给出一行说明（`Render shot with <modality>/<task>/<provider>/<model>, 5 s: "<prompt>"`）和该调用的 GPU 预估。省略的参数取模型的第一个画面比例和分辨率以及最短时长；调用未给出种子时抽取一个。`based_on` 更早渲染记录的调用是该镜头的新版本，不论每个版本用的是哪个模型。工作流在 `dvShotRender` 上调用 [`@dv/generation`](../generation/README.zh.md) 的 `GenerationApi` 方法：`render`、`check`、`estimate`、`findTake` 和 `parseInputs`。
+该操作使用 GPU，不是确定性的，并声明 `confirm: never`。省略的参数取模型的第一个画面比例和分辨率以及最短时长；调用未给出种子时抽取一个。`based_on` 更早渲染记录的调用是该镜头的新版本，不论每个版本用的是哪个模型。工作流在 `dvShotRender` 上调用 [`@dv/generation`](../generation/README.zh.md) 的 `GenerationApi` 方法：`render`、`check`、`findTake` 和 `parseInputs`。
 
 -----
 
@@ -50,7 +50,7 @@ kind: "package-reference"
 
 | 文件 | 内容 |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `dvShotRender`：`shot.render` 的声明（渲染请求、存储的输出、GPU 预估、摘要和确认文本） |
+| [`src/index.ts`](src/index.ts) | `dvShotRender`：`shot.render` 的声明（渲染请求、存储的输出和摘要） |
 | [`src/render.ts`](src/render.ts) | `shotGeometry`、`backendSeconds` |
 
 -----
@@ -74,7 +74,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-模型目录中有任务 `t2v` 或 `ref2v` 的模型时，有一个工具 `dv_shot_render`，格式与 `@dv/project` 给每个操作工具的一样，带提示 "Uses the GPU."，以及 Project 因 `confirm: over_gpu_budget` 加上的参数 `user_requested`。描述说明 `modality`、`task`、`provider` 和 `model` 指定 `dv_models_list` 中的一个模型且必填，任务 `ref2v` 根据参考素材（`c1@1`）渲染，提示词以 `@[<label>](dv:asset/<asset ID>)` 引用它们，其接受的输入、媒体类型和数量由 `dv_models_get` 列出，模型接受首帧时 `continue_from` 从更早镜头的最后静帧开始，模型自己的参数放在 `extra` 中（见 `dv_models_get`）；它还说明两个输出，以及每次调用都是新版本、修改提示词时传 `based_on`。四个键参数是字符串，其说明指向 `dv_models_list`。`reference` 输入的类型是 `any`，`prompt` 参数要求遵循 `dv_models_list` 为该模型列出的提示词 skill（如果有）。
+模型目录中有任务 `t2v` 或 `ref2v` 的模型时，有一个工具 `dv_shot_render`，格式与 `@dv/project` 给每个操作工具的一样，带提示 "Uses the GPU."。描述说明 `modality`、`task`、`provider` 和 `model` 指定 `dv_models_list` 中的一个模型且必填，任务 `ref2v` 根据参考素材（`c1@1`）渲染，提示词以 `@[<label>](dv:asset/<asset ID>)` 引用它们，其接受的输入、媒体类型和数量由 `dv_models_get` 列出，模型接受首帧时 `continue_from` 从更早镜头的最后静帧开始，模型自己的参数放在 `extra` 中（见 `dv_models_get`）；它还说明两个输出，以及每次调用都是新版本、修改提示词时传 `based_on`。四个键参数是字符串，其说明指向 `dv_models_list`。`reference` 输入的类型是 `any`，`prompt` 参数要求遵循 `dv_models_list` 为该模型列出的提示词 skill（如果有）。
 
 #### Token 影响
 
@@ -102,4 +102,4 @@ kind: "package-reference"
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **GPU 预估**：GPU 预估是 `duration_sec × gpuSecondsPerVideoSecond`，即提供方插件给模型目录条目的速率，而非测得的值。
+- **智能体只看到一个版本的最后静帧**：`video` 输出以 URL 到达智能体，只有 `last_still` 图片以图片块到达，所以智能体无法判断一个版本的运动。

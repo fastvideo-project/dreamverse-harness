@@ -33,13 +33,12 @@ kind: "package-reference"
 | `params`、`inputs`、`outputs`                | 共享参数以外的参数、输入角色，以及输出；声明可以重述 `prompt` 以描述它                     |
 | `seed`、`toolParams`、`prepareToolCall`      | 对没有种子的模型设为 `false`；仅工具参数，以及检查前对 agent 调用的修改                    |
 | `toRequest`、`toOutputs`                     | 由事实、参数和 `RequestInput` 构建模型请求，有种子的声明还由种子构建；把模型结果导入为输出 |
-| `estimate`、`confirmText`、`summarize`       | 必需的、由条目得出的 GPU 估算，确认文本，以及一行记录摘要                                  |
+| `summarize`                                  | 一行记录摘要                                                                               |
 
 | `GenerationApi` 方法           | 行为                                                                                                  |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------- |
 | `render(call)`                 | 带着调用的 `started_by` 通过 `dvProject.run` 运行该操作；带 `after` 的调用被排期                      |
 | `check(call, state, chained?)` | 调用能运行时为 `[]`，否则为第一个拒绝理由，或合为一条理由的模型问题；`chained` 角色算作输入；从不写入 |
-| `estimate(call)`               | 声明的估算；仅当键不指向声明的任务的任何条目时为 `0`                                                  |
 | `findTake(state, call, where)` | 该操作中 `where` 接受的、声明参数与输入都相等的最新完成记录                                           |
 | `parseInputs(raw, state)`      | 针对该操作的 `dvProject.parseInputs`                                                                  |
 
@@ -52,7 +51,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-该服务在存续期间注册组件，然后用 `dvModels.labelTasks` 注册任务标签；为同一任务再加标签的第二个声明无法启动。该操作把模型键和 `prompt` 放在声明的参数之前，把 `seed`（除非 `seed` 为 `false`）和 `extra` 放在其后。它不是确定性的，使用 GPU，版本为 `1`，以 `over_gpu_budget` 确认。前置条件以 `check` 的理由拒绝调用，agent 工具在确认前也运行它；它不传任何链式角色，所以渲染从不接受链式角色。`check` 只读取调用的项目、参数和输入。它用 `dvModels.resolve` 解析条目，把每个输入解析为其资产，把每个链式角色加为 `{ role, ref: null, resolved_asset: null }`，并构建请求。当每个输入都有资产时，它加入 `validateGenerationRequest` 的问题；否则 `execute` 在模型运行前检查完整请求。`execute` 使用 `seed` 参数或抽取一个种子（`seed` 为 `false` 时没有种子），再次构建并验证请求，渲染，并把结果交给 `toOutputs`。它把 `seed` 加入报告，并在 `toOutputs` 未返回成本时把声明的估算记为成本。`findTake` 以 JSON 比较声明的参数（操作 `params` 的键）和输入，所以键的顺序无关，并按顺序比较每个角色的输入。内核也会存下未声明的参数，例如多余的 `seed`；它不改变 `findTake` 的结果。
+该服务在存续期间注册组件，然后用 `dvModels.labelTasks` 注册任务标签；为同一任务再加标签的第二个声明无法启动。该操作把模型键和 `prompt` 放在声明的参数之前，把 `seed`（除非 `seed` 为 `false`）和 `extra` 放在其后。它不是确定性的，使用 GPU，版本为 `1`，以 `never` 确认。前置条件以 `check` 的理由拒绝调用，agent 工具也运行它；它不传任何链式角色，所以渲染从不接受链式角色。`check` 只读取调用的项目、参数和输入。它用 `dvModels.resolve` 解析条目，把每个输入解析为其资产，把每个链式角色加为 `{ role, ref: null, resolved_asset: null }`，并构建请求。当每个输入都有资产时，它加入 `validateGenerationRequest` 的问题；否则 `execute` 在模型运行前检查完整请求。`execute` 使用 `seed` 参数或抽取一个种子（`seed` 为 `false` 时没有种子），再次构建并验证请求，渲染，并把结果交给 `toOutputs`。它把 `seed` 加入报告。`findTake` 以 JSON 比较声明的参数（操作 `params` 的键）和输入，所以键的顺序无关，并按顺序比较每个角色的输入。内核也会存下未声明的参数，例如多余的 `seed`；它不改变 `findTake` 的结果。
 
 | 文件                           | 内容                                                                                                                |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
@@ -75,7 +74,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-内核把每个生成操作变成 agent 工具 `dv_<component>_<verb>`。其参数以 `modality`、`task`、`provider`、`model` 和 `prompt` 开头，以 `seed` 和 `extra` 结尾，描述如下；`seed: false` 的声明没有 `seed`。工具接受 `user_requested`，当本轮超过 GPU 预算时，不带它的调用被拒绝，文本为 `<label.en> with <provider>/<model>: "<prompt>"`，提示词由 `quotePrompt(prompt, 80)` 写出，除非声明给出自己的文本；拒绝消息的下一行给出估计值。被拒绝的调用使工具调用失败，并给出理由和句子 `Nothing was generated; change the inputs or params, then call again.` 条目的 `facts()` 或 `validateGenerationRequest` 拒绝时，理由写作 `Model <modality>/<task>/<provider>/<model> is unavailable: <message>`，句子为 `Nothing was generated; no change to the call helps while the model is unavailable.` 模型问题写作 `Model <modality>/<task>/<provider>/<model> cannot generate this: <problems>`。结果报告带有 `seed`。
+内核把每个生成操作变成 agent 工具 `dv_<component>_<verb>`。其参数以 `modality`、`task`、`provider`、`model` 和 `prompt` 开头，以 `seed` 和 `extra` 结尾，描述如下；`seed: false` 的声明没有 `seed`。被拒绝的调用使工具调用失败，并给出理由和句子 `Nothing was generated; change the inputs or params, then call again.` 条目的 `facts()` 或 `validateGenerationRequest` 拒绝时，理由写作 `Model <modality>/<task>/<provider>/<model> is unavailable: <message>`，句子为 `Nothing was generated; no change to the call helps while the model is unavailable.` 模型问题写作 `Model <modality>/<task>/<provider>/<model> cannot generate this: <problems>`。结果报告带有 `seed`。
 
 ##### 共享参数描述
 
@@ -91,7 +90,7 @@ kind: "package-reference"
 
 #### Token 影响
 
-在工具注册表挂载、且有模型提供其某个任务期间，每个生成工具定义中约 200 个 token（七个参数的字符数除以四），另加内核添加的 `user_requested` 参数约 50 个 token。
+在工具注册表挂载、且有模型提供其某个任务期间，每个生成工具定义中约 200 个 token（七个参数的字符数除以四）。
 
 #### KV Cache 影响
 

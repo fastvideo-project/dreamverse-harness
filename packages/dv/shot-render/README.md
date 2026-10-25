@@ -31,13 +31,13 @@ Mount the plugin after `@dv/project` and `@dv/models`, and mount a provider plug
   name: '@dv/shot-render'
 ```
 
-The plugin has no configuration. The GPU estimate of a render, `estimate(params)`, is `duration_sec` (5 when the call names none) times the `gpuSecondsPerVideoSecond` of the named catalog entry, so the synchronous estimate serves the GPU budget of a turn and the agreement text of `confirmSummary` without reading the backend. For a key that names no catalog entry, the estimate is 0.
+The plugin has no configuration.
 
 | Operation | Tool | Inputs and params | Outputs and report |
 | --- | --- | --- | --- |
-| `shot.render` | `dv_shot_render` | inputs `reference` (assets of any media type the model declares for the role, or character, location and style versions `<id>@<n>`, in prompt order) and `first_frame` (one image), each only when the model accepts it; params `modality`, `task`, `provider` and `model` (required: the key of a catalog entry, as `dv_models_list` lists it), `prompt` (required), `duration_sec`, `aspect_ratio`, `resolution`, `seed`, `extra` (the model's own parameters, as `dv_models_get` lists them); tool-only `continue_from` (a render record whose output `#1` becomes `first_frame`) | outputs `video`, `last_still`; report `{seed, model_id, aspect_ratio, resolution, duration_sec, frame_width, frame_height, num_frames, modality, task, provider, model, timings}`, plus `expanded_prompt` when element expansion changed the prompt; cost `gpu_seconds` from the backend's timings |
+| `shot.render` | `dv_shot_render` | inputs `reference` (assets of any media type the model declares for the role, or character, location and style versions `<id>@<n>`, in prompt order) and `first_frame` (one image), each only when the model accepts it; params `modality`, `task`, `provider` and `model` (required: the key of a catalog entry, as `dv_models_list` lists it), `prompt` (required), `duration_sec`, `aspect_ratio`, `resolution`, `seed`, `extra` (the model's own parameters, as `dv_models_get` lists them); tool-only `continue_from` (a render record whose output `#1` becomes `first_frame`) | outputs `video`, `last_still`; report `{seed, model_id, aspect_ratio, resolution, duration_sec, frame_width, frame_height, num_frames, modality, task, provider, model, timings}`, plus `expanded_prompt` when element expansion changed the prompt |
 
-The operation uses the GPU, is not deterministic, and declares `confirm: over_gpu_budget`: an agent call that would bring its turn past the GPU budget of `dvProject` is refused until the agent asks the user in the conversation and calls again with `user_requested: true`; `confirmSummary` gives the refusal one line (`Render shot with <modality>/<task>/<provider>/<model>, 5 s: "<prompt>"`) and the call's GPU estimate. Omitted params take the model's first aspect ratio and resolution and its shortest duration; a seed is drawn when the call names none. A call that `based_on` an earlier render is a new take of that shot, whatever model each take used. Workflows call the `GenerationApi` methods of [`@dv/generation`](../generation/README.md) on `dvShotRender`: `render`, `check`, `estimate`, `findTake` and `parseInputs`.
+The operation uses the GPU, is not deterministic, and declares `confirm: never`. Omitted params take the model's first aspect ratio and resolution and its shortest duration; a seed is drawn when the call names none. A call that `based_on` an earlier render is a new take of that shot, whatever model each take used. Workflows call the `GenerationApi` methods of [`@dv/generation`](../generation/README.md) on `dvShotRender`: `render`, `check`, `findTake` and `parseInputs`.
 
 -----
 
@@ -50,7 +50,7 @@ Before any record is written, for every caller, the `precondition` of `shot.rend
 
 | File | Content |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `dvShotRender`: the declaration of `shot.render` (render request, stored outputs, GPU estimate, summary and confirmation text) |
+| [`src/index.ts`](src/index.ts) | `dvShotRender`: the declaration of `shot.render` (render request, stored outputs and summary) |
 | [`src/render.ts`](src/render.ts) | `shotGeometry`, `backendSeconds` |
 
 -----
@@ -74,7 +74,7 @@ Before any record is written, for every caller, the `precondition` of `shot.rend
 
 #### What the model sees
 
-One tool, `dv_shot_render`, while the catalog holds a model of task `t2v` or `ref2v`, in the format `@dv/project` gives every operation tool, with the hint "Uses the GPU." and the argument `user_requested` that Project adds for `confirm: over_gpu_budget`. The description says that `modality`, `task`, `provider` and `model` name a model from `dv_models_list` and are required, that task `ref2v` renders from reference media (`c1@1`), which the prompt cites as `@[<label>](dv:asset/<asset ID>)` and whose accepted inputs, media types and counts `dv_models_get` lists, that `continue_from` starts from the last still of an earlier shot when the model takes a first frame, and that the model's own parameters go in `extra` (see `dv_models_get`); it names the two outputs and that every call is a new take whose changed prompt passes `based_on`. The four key params are strings whose descriptions point to `dv_models_list`. The `reference` input is typed `any`, and the `prompt` param says to follow the prompt skill that `dv_models_list` names for the model, if any.
+One tool, `dv_shot_render`, while the catalog holds a model of task `t2v` or `ref2v`, in the format `@dv/project` gives every operation tool, with the hint "Uses the GPU.". The description says that `modality`, `task`, `provider` and `model` name a model from `dv_models_list` and are required, that task `ref2v` renders from reference media (`c1@1`), which the prompt cites as `@[<label>](dv:asset/<asset ID>)` and whose accepted inputs, media types and counts `dv_models_get` lists, that `continue_from` starts from the last still of an earlier shot when the model takes a first frame, and that the model's own parameters go in `extra` (see `dv_models_get`); it names the two outputs and that every call is a new take whose changed prompt passes `based_on`. The four key params are strings whose descriptions point to `dv_models_list`. The `reference` input is typed `any`, and the `prompt` param says to follow the prompt skill that `dv_models_list` names for the model, if any.
 
 #### Token effect
 
@@ -102,4 +102,4 @@ Each result is appended to the conversation after its call; the cached prefix st
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **GPU estimate**: the GPU estimate is `duration_sec × gpuSecondsPerVideoSecond`, the rate the provider plugin gives the catalog entry, not a measured one.
+- **The agent sees only the last still of a take**: the `video` output reaches the agent as a URL and only the `last_still` image reaches it as an image block, so the agent cannot judge the motion of a take.

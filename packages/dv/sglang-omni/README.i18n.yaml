@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/dv/sglang-omni/README.md
-README.md: 537b8bfc763dc1d92a5db5ed49a3cf8aab8c7643
-README.zh.md: d5aba548281f8623aa4c9992bdc995bb878f5c61
+README.md: 3a5228ccf1def8031c919018d06fc2645aa36c0f
+README.zh.md: 135e1bc33f025dd60150bf13a494ee6421277251

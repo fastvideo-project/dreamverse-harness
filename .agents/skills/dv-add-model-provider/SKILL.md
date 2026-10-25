@@ -60,7 +60,6 @@ A provider plugin can implement an entry only when the provider supplies the ite
 8. **Last frame.** The provider must return the last frame of the video, or the plugin must have a way to extract it as PNG bytes.
 9. **Errors.** The provider must report a failed render as an error that the plugin can detect, with a message.
 10. **Cancellation.** The provider must stop a render when the client closes the request or calls a cancel endpoint.
-11. **GPU cost.** The user must give the GPU seconds for one second of rendered video on each server.
 
 ## What the provider plugin must implement
 
@@ -78,9 +77,9 @@ Do these steps to add a provider.
 
 1. Put each deployment value in the plugin `Config`. Use a validated `schemastery` schema.
 2. Make the `models` field a map from model name to a map from task to server settings, as `@dv/fastvideo` does.
-3. For each model and task, give the server URL and the GPU seconds for one second of video.
+3. For each model and task, give the server URL.
 4. In `apply`, throw an error for a model or a task that the plugin does not serve. Name the value in the message.
-5. Do not put a server URL, a GPU rate, or the models to register in a code constant.
+5. Do not put a server URL or the models to register in a code constant.
 
 ### Register one entry for each model and task
 
@@ -94,12 +93,11 @@ When you dispose the plugin, the effect removes the entry. `register` throws whe
 ### Implement each member
 
 1. **`description`**: Write the strengths and the weaknesses of the model for this task. Name the inputs that the model needs. Write for an agent that chooses between similar models.
-2. **`gpuSecondsPerVideoSecond`**: Read the value from the `Config` of the task.
-3. **`facts()`**: Read the limits from the server. Return all `RenderModelFacts` fields. Put the default aspect ratio and the default resolution first.
-4. **`facts()`**: Give a frame count for each whole second from `minDurationSec` to `maxDurationSec`. Reject when the server cannot be reached.
-5. **`schema()`**: Return JSON with the limits, `inputs` and `extra`. Use the `dv_shot_render` input roles `reference` and `first_frame` as the keys of `inputs`. `@dv/models` does not check this JSON. `dv_models_get` returns this JSON to the agent and does not read `facts()`.
-6. **`schema()`**: Give the limits as `duration_sec` with `min` and `max`, `aspect_ratios`, and `resolutions`. Give each input its minimum count, its maximum count, and its media types with their limits.
-7. **`schema()`**: Describe each `extra` parameter with its type and range. Reject when the server cannot be reached.
+2. **`facts()`**: Read the limits from the server. Return all `RenderModelFacts` fields. Put the default aspect ratio and the default resolution first.
+3. **`facts()`**: Give a frame count for each whole second from `minDurationSec` to `maxDurationSec`. Reject when the server cannot be reached.
+4. **`schema()`**: Return JSON with the limits, `inputs` and `extra`. Use the `dv_shot_render` input roles `reference` and `first_frame` as the keys of `inputs`. `@dv/models` does not check this JSON. `dv_models_get` returns this JSON to the agent and does not read `facts()`.
+5. **`schema()`**: Give the limits as `duration_sec` with `min` and `max`, `aspect_ratios`, and `resolutions`. Give each input its minimum count, its maximum count, and its media types with their limits.
+6. **`schema()`**: Describe each `extra` parameter with its type and range. Reject when the server cannot be reached.
 8. **`validateGenerationRequest(request)`**: Return every problem of the request as one agent-facing sentence. Return an empty list for a valid request.
 9. **`validateGenerationRequest(request)`**: Check the count of each input against the limits. Read the media type of each asset with `ctx.dvAssetPool.mediaType(id)`.
 10. **`validateGenerationRequest(request)`**: Refuse each unknown `extra` name in one sentence that lists the known names. Check each known `extra` value against its schema.
@@ -151,9 +149,8 @@ When you dispose the plugin, the effect removes the entry. `register` throws whe
 
 1. Find the row of the provider plugin in the composition, such as `packages/bundle/dv/cordis.patch.yml`.
 2. In the `config` of the row, add or change the server URL of the model and task.
-3. Set the GPU seconds for one second of video on that server.
-4. Do not change the plugin code.
-5. If you can start the composition, call `dv_models_get` for the key. Make sure that the limits in the schema come from the server.
+3. Do not change the plugin code.
+4. If you can start the composition, call `dv_models_get` for the key. Make sure that the limits in the schema come from the server.
 
 ## Verify
 

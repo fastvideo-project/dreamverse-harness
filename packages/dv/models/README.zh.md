@@ -63,7 +63,6 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 | 成员 | 约定 |
 | --- | --- |
 | `description` | 模型的长处和短处。agent 和用户比较描述，在相似的模型之间选择。 |
-| `gpuSecondsPerVideoSecond` | `video` 行的一个 `entry` 字段。渲染一秒视频所用的 GPU 秒数。消费方把它乘以镜头时长，在渲染开始前估算渲染的 GPU 时间。 |
 | `facts()` | resolve 为后端报告的 `RenderModelFacts`。后端无法连接时 reject。 |
 | `schema()` | resolve 为描述模型所接受请求的 JSON：agent 需要的限制（例如时长、宽高比和分辨率）、各输入及其媒体类型和数量，以及 `extra` 中的参数。提供方插件定义该 JSON。模型目录把它原样交给 agent。后端无法连接时 reject。 |
 | `validateGenerationRequest(request)` | resolve 为模型无法渲染某个 `RenderRequest` 的每个原因，每个原因一句面向 agent 的话。原因包括无效的 `extra` 值。模型能渲染该请求时 resolve 为空列表。后端无法连接时 reject。 |
@@ -125,7 +124,7 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 提供方插件把一个提供方连接到模型目录。[`@dv/fastvideo`](../fastvideo/README.zh.md) 是应遵循的示例。提供方插件负责以下部分：
 
 - 提供方名称和后端的协议。
-- 其 `Config` 中的部署值，如每个模型和任务的服务器 URL 和 GPU 费率。
+- 其 `Config` 中的部署值，如每个模型和任务的服务器 URL。
 - 它注册的每个条目的所有成员。
 - 把 `RenderRequest` 翻译成后端请求。插件从 `dvAssetPool` 读取每个素材的字节和媒体类型。插件以后端的格式发送它们。
 - 每个条目可选的 `promptSkill`。模型目录注册它，提供方插件不注册任何 skill。

@@ -24,11 +24,11 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-用项目目录和会话目录挂载插件。每个组件插件先用 `registerComponent` 注册自己的组件键，再注册归约函数和操作，`registerReducer` 和 `registerOperation` 拒绝未注册的键（`invalid_params`）；项目注册自己的键 `proj`，核心不保存组件列表。拥有引用种类的插件在注册组件键之后用 `registerReferenceKind({kind, component, assetsOf, createdBy, latest})` 注册它（第二个所有者得到 `kind_exists`，种类 `asset`、`record` 和 `version` 得到 `invalid_params`），并在 `ReferenceKinds` 中声明该种类；输入以 `<id>@<version>` 指向一个版本，`parseReference` 按唯一拥有该版本的种类解析一段引用文字，`listReferenceKinds` 列出各种类供智能体文字使用。ID 在各种类之间唯一：种类所有者的创建操作拒绝 `kindsWithId(state, id)` 列出的 ID，`latestVersion(state, kind, id)` 给出一个 ID 的最新版本。素材库加载时用 `registerAssetStore` 注册它的存储，聊天会话用 `bindSession` 绑定到项目。智能体调用前需要用户同意的操作把 `OperationSpec.confirm` 设为 `always` 或 `over_gpu_budget`，并提供 `confirmSummary(call, state)`，它返回 `{text, gpu_seconds}`：这次调用要做什么及其 GPU 估算；没有 `confirmSummary` 的这种 spec 会被 `registerOperation` 拒绝（`invalid_params`）。项目随后给该操作的工具加上仅工具参数 `user_approved`（`always`）或 `user_requested`（`over_gpu_budget`），在适用 `always`，或本轮的 GPU 秒数超过 `confirmGpuSecondsThreshold` 时，拒绝不带该参数的智能体调用，此时不写任何记录；拒绝文字让智能体在对话中询问用户，问题用粗体。该参数不进入记录的 params，用户和系统的调用从不被拒绝。每个归约函数经 `Reducer.agentSummary` 把自己切片的字段加入项目摘要。操作在 `OperationSpec.pendingInputRoles` 中列出可以指向尚未完成的记录输出的输入角色：运行器立即记录并执行这样的调用，`resolved_asset` 为 null，生产记录完成后由记录的当前形式填入（时间线中等待渲染的片段使用它）。在 `execute` 中运行其他操作的操作在每个运行请求中传入 `started_by: {record, slot, lane?}`：发起这次调用的记录、调用方在自己的序列中给这次调用的位置（或 null），以及调用方的并行序列，例如一个变体；运行器把它复制到新记录上，从不读取它，没有该字段的记录不是由记录发起的。操作可以声明 `OperationSpec.label`，即 `{zh, en}`：视图为它显示的名称；Project 只保存它。
+用项目目录和会话目录挂载插件。每个组件插件先用 `registerComponent` 注册自己的组件键，再注册归约函数和操作，`registerReducer` 和 `registerOperation` 拒绝未注册的键（`invalid_params`）；项目注册自己的键 `proj`，核心不保存组件列表。拥有引用种类的插件在注册组件键之后用 `registerReferenceKind({kind, component, assetsOf, createdBy, latest})` 注册它（第二个所有者得到 `kind_exists`，种类 `asset`、`record` 和 `version` 得到 `invalid_params`），并在 `ReferenceKinds` 中声明该种类；输入以 `<id>@<version>` 指向一个版本，`parseReference` 按唯一拥有该版本的种类解析一段引用文字，`listReferenceKinds` 列出各种类供智能体文字使用。ID 在各种类之间唯一：种类所有者的创建操作拒绝 `kindsWithId(state, id)` 列出的 ID，`latestVersion(state, kind, id)` 给出一个 ID 的最新版本。素材库加载时用 `registerAssetStore` 注册它的存储，聊天会话用 `bindSession` 绑定到项目。智能体调用前需要用户同意的操作把 `OperationSpec.confirm` 设为 `always`，并提供 `confirmSummary(call, state)`，它返回 `{text}`：这次调用要做什么；没有 `confirmSummary` 的这种 spec 会被 `registerOperation` 拒绝（`invalid_params`）。项目随后给该操作的工具加上仅工具参数 `user_approved`，拒绝不带该参数的智能体调用，此时不写任何记录；拒绝文字让智能体在对话中询问用户，问题用粗体。该参数不进入记录的 params，用户和系统的调用从不被拒绝。每个归约函数经 `Reducer.agentSummary` 把自己切片的字段加入项目摘要。操作在 `OperationSpec.pendingInputRoles` 中列出可以指向尚未完成的记录输出的输入角色：运行器立即记录并执行这样的调用，`resolved_asset` 为 null，生产记录完成后由记录的当前形式填入（时间线中等待渲染的片段使用它）。在 `execute` 中运行其他操作的操作在每个运行请求中传入 `started_by: {record, slot, lane?}`：发起这次调用的记录、调用方在自己的序列中给这次调用的位置（或 null），以及调用方的并行序列，例如一个变体；运行器把它复制到新记录上，从不读取它，没有该字段的记录不是由记录发起的。操作可以声明 `OperationSpec.label`，即 `{zh, en}`：视图为它显示的名称；Project 只保存它。
 
 提示词以 `@[<label>](dv:<kind>/<id>)` 引用项目条目。两种引用语法是 [`src/grammar.ts`](src/grammar.ts) 中的字符串函数，它不导入任何宿主模块，因此浏览器通过入口 `@dv/project/grammar` 用内核自己的代码读写它们。`parsePromptCitations` 和 `citedAsset` 读取引用；`citedInput` 读取按角色引用调用输入的引用，例如 `dv:input/first_frame`；`citedElement` 读取其他引用的种类和 ID，`citationTarget` 读取任一引用 URI 的种类和 ID，`formatCitation` 把它们写回；`elementCitationUri` 按引用种类给出输入引用所属元素的引用 `dv:<kind>/<id>`。`formatCitation` 是引用的唯一写入函数：它在 ID 中编码 `(` 和 `)`，从不写入空标签或带换行的标签。`splitInputRef` 和 `formatInputSyntax` 只按语法读写输入引用文本（`<asset>`、`<record>#<output>`、`<id>@<version>`）。[`src/citations.ts`](src/citations.ts) 中的 `promptAssets` 和 `replacePromptCitations` 按调用读取这些引用。模型提供方插件用它们把每个引用换成它的模型的写法。
 
-`check(request)` 按 `run` 的顺序执行 `run` 的各项拒绝检查（params 和输入角色、`after` 指向的记录、输入，以及操作的 `precondition`），不写任何内容。它返回 `{problems, gpu_seconds}`：第一个拒绝的句子，`run` 在当前状态下会接受该调用时没有句子；以及操作对 `run` 会接受的调用给出的 `estimate`，否则为 null。读取操作从不等待产出者，所以无论 `after` 怎么写，只要读取的输入指向尚未完成的记录的输出，`check` 和 `run` 都拒绝它。这个答案仅供参考，因为 `run` 会在项目锁内再次检查该调用。
+`check(request)` 按 `run` 的顺序执行 `run` 的各项拒绝检查（params 和输入角色、`after` 指向的记录、输入，以及操作的 `precondition`），不写任何内容。它返回 `{problems}`：第一个拒绝的句子，`run` 在当前状态下会接受该调用时没有句子。读取操作从不等待产出者，所以无论 `after` 怎么写，只要读取的输入指向尚未完成的记录的输出，`check` 和 `run` 都拒绝它。这个答案仅供参考，因为 `run` 会在项目锁内再次检查该调用。
 
 ```yaml
 - id: dv-project
@@ -44,7 +44,6 @@ kind: "package-reference"
 | `cpuConcurrency` | `4` | 可同时运行的已调度 `cpu` 记录数 |
 | `gpuConcurrency` | `1` | 可同时运行的已调度 `gpu` 记录数 |
 | `sessionRoot` | 必填 | 每个聊天会话一个 `<session>.json` 的目录，记录会话绑定的项目 |
-| `confirmGpuSecondsThreshold` | `60` | 用户必须同意之前，一个智能体轮次可在 `over_gpu_budget` 操作上花费的估算 GPU 秒数 |
 | `promptSectionOrder` | `4900` | `dv:project` 段落在系统提示词中的顺序；在 5000 的工具 SDK 段落之前 |
 
 <a id="understand-the-implementation"></a>
@@ -64,7 +63,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-挂载了 DSH `tools` 注册表时，每个已注册的操作以一个工具 `dv_<把点换成下划线的操作名>` 到达模型：操作的 `description`，后接资源提示（"Uses the GPU." 或 "Runs on the CPU."）以及只读操作（"A read that writes no record."）和确定性操作（"Repeating a call with the same inputs and params reuses the earlier result."）的说明；它的 `params` 加 `toolParams`，以及按 `confirm` 加上的布尔参数 `user_approved`（"Set true only after the user agreed to this exact call in the conversation. …"）或 `user_requested`（"Set true when the user asked for this exact change, or agreed to it in the conversation. …"）；还有共享参数 `reason`（记录的 intent）、`project_id`、`inputs`（按角色给出 `<asset>`、`<record>#<output>`，或已注册引用种类的版本 `<id>@<version>`，文字中列出这些种类；只用于有输入的操作）、`supersedes` 和 `based_on`（后两个只用于写记录的操作）。
+挂载了 DSH `tools` 注册表时，每个已注册的操作以一个工具 `dv_<把点换成下划线的操作名>` 到达模型：操作的 `description`，后接资源提示（"Uses the GPU." 或 "Runs on the CPU."）以及只读操作（"A read that writes no record."）和确定性操作（"Repeating a call with the same inputs and params reuses the earlier result."）的说明；它的 `params` 加 `toolParams`，以及 `confirm: 'always'` 时加上的布尔参数 `user_approved`（"Set true only after the user agreed to this exact call in the conversation. …"）；还有共享参数 `reason`（记录的 intent）、`project_id`、`inputs`（按角色给出 `<asset>`、`<record>#<output>`，或已注册引用种类的版本 `<id>@<version>`，文字中列出这些种类；只用于有输入的操作）、`supersedes` 和 `based_on`（后两个只用于写记录的操作）。
 
 #### Token 影响
 
@@ -78,7 +77,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-一次调用返回一个文本块：`<status> <record>: <summary>`（只读操作不写记录，为 `<status>: <summary>`）、每个输出一行带素材 ID、媒体类型和 URL、调度的记录、参数和报告；挂载了附件服务时，每个图片输出再跟一个图片块。失败或取消的记录返回带其消息的工具错误，被停止的记录返回 "dv_<name> was stopped before it finished."。需要用户同意却没带参数的调用返回工具错误："dv_<name> needs the user's agreement."（超出预算时为 "dv_<name> would bring this turn to about N GPU seconds, above the M s budget."），然后是 "What it will do:" 加 `confirmSummary` 的文字、估算的 GPU 时间，以及指示：把这些给用户看，在对话中用粗体提问，得到用户回答后带 `user_approved: true` 或 `user_requested: true` 再次调用。
+一次调用返回一个文本块：`<status> <record>: <summary>`（只读操作不写记录，为 `<status>: <summary>`）、每个输出一行带素材 ID、媒体类型和 URL、调度的记录、参数和报告；挂载了附件服务时，每个图片输出再跟一个图片块。失败或取消的记录返回带其消息的工具错误，被停止的记录返回 "dv_<name> was stopped before it finished."。需要用户同意却没带参数的调用返回工具错误："dv_<name> needs the user's agreement."，然后是 "What it will do:" 加 `confirmSummary` 的文字，以及指示：把这些给用户看，在对话中用粗体提问，得到用户回答后带 `user_approved: true` 再次调用。
 
 #### Token 影响
 

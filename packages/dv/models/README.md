@@ -63,7 +63,6 @@ A provider plugin implements one `ModelEntry` for each key. `ModelEntry<T>` take
 | Member | Contract |
 | --- | --- |
 | `description` | The strengths and weaknesses of the model. The agent and the user compare descriptions to choose between similar models. |
-| `gpuSecondsPerVideoSecond` | An `entry` field of the `video` row. The GPU seconds for one second of rendered video. A consumer multiplies it by the shot duration to estimate the GPU time of a render before the render starts. |
 | `facts()` | Resolves with the `RenderModelFacts` that the backend reports. Rejects when the backend cannot be reached. |
 | `schema()` | Resolves with a JSON description of the requests that the model accepts: the limits that the agent needs, such as durations, aspect ratios and resolutions, the inputs with their media types and counts, and the parameters in `extra`. The provider plugin defines this JSON. The catalog gives it to the agent unchanged. Rejects when the backend cannot be reached. |
 | `validateGenerationRequest(request)` | Resolves with each reason that the model cannot render a `RenderRequest`, one agent-facing sentence for each reason. The reasons include invalid `extra` values. Resolves with an empty list when the model can render the request. Rejects when the backend cannot be reached. |

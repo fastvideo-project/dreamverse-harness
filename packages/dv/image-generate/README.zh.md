@@ -42,8 +42,8 @@ kind: "package-reference"
 | --- | --- |
 | `ImageModelFacts` | `modelId`：后端的模型 ID |
 | `ImageRequest` | `prompt`；`size`：一个 `ImageSize`，调用没有指定尺寸时为 null；`seed`；`extra` |
-| `GeneratedImage` | `bytes`、`mime: 'image/png'`、`width`、`height`、`gpuSeconds`：后端报告的 GPU 时间，后端没有报告时为 null |
-| 条目字段 | `gpuSecondsPerMegapixel`：GPU 估计值的费率；`defaultSize`：条目为 `size` 为 null 的请求渲染的尺寸 |
+| `GeneratedImage` | `bytes`、`mime: 'image/png'`、`width`、`height` |
+| 条目字段 | `defaultSize`：条目为 `size` 为 null 的请求渲染的尺寸 |
 
 条目的 `render(request)` 返回一个 `GeneratedImage` 的 promise。该服务还为工作流实现 `@dv/generation` 的 `GenerationApi`。
 
@@ -52,12 +52,12 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-声明的 `toRequest` 去掉提示词首尾空白，拒绝空提示词，并把 `size` 解析为 `ImageSize`；没有 `size` 的调用让请求的 `size` 为 null，由条目决定默认值。调用没有指定种子时，内核抽取种子。声明的 `toOutputs` 经 `importOne` 导入带宽高的 PNG，命名为 `<记录 ID 前 8 个字符>.png`，把报告的 `gpuSeconds` 记为成本（它为 null 时，内核记录估计值），并在报告中给出 `model_id` 和渲染的 `size`；内核加入 `seed`。GPU 估计值是条目的 `gpuSecondsPerMegapixel` 乘以调用尺寸的百万像素数，调用没有指定尺寸时用条目的 `defaultSize`；费率为 0.6 时，1024x1024 的调用估计 0.63 GPU 秒，1792x2400 的调用估计 2.58 GPU 秒。记录的摘要是 `image "<prompt>" (<size>, seed <seed>)`，提示词由 `@dv/generation` 的 `quotePrompt(prompt, 60)` 写出。
+声明的 `toRequest` 去掉提示词首尾空白，拒绝空提示词，并把 `size` 解析为 `ImageSize`；没有 `size` 的调用让请求的 `size` 为 null，由条目决定默认值。调用没有指定种子时，内核抽取种子。声明的 `toOutputs` 经 `importOne` 导入带宽高的 PNG，命名为 `<记录 ID 前 8 个字符>.png`，并在报告中给出 `model_id` 和渲染的 `size`；内核加入 `seed`。记录的摘要是 `image "<prompt>" (<size>, seed <seed>)`，提示词由 `@dv/generation` 的 `quotePrompt(prompt, 60)` 写出。
 
 | 文件 | 内容 |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `PrimitiveTypes` 的 `image` 行、任务 `t2i`、请求和结果类型，以及 `dvImageGenerate` |
-| [`tests/image-generate.spec.ts`](tests/image-generate.spec.ts) | 在带一个假 `t2i` 条目的 Loader 组合中测试操作、工具文本、记录、拒绝和估计值 |
+| [`tests/image-generate.spec.ts`](tests/image-generate.spec.ts) | 在带一个假 `t2i` 条目的 Loader 组合中测试操作、工具文本、记录和拒绝 |
 
 -----
 
@@ -66,7 +66,7 @@ kind: "package-reference"
 
 - [`@dv/generation`](../generation/README.zh.md)：`defineGeneration`、共享参数、拒绝和确认文本。
 - [`@dv/models`](../models/README.zh.md)：模型目录、键和 `dv_models_get`。
-- [`@dv/project`](../project/README.zh.md)：记录、智能体工具和 GPU 预算。
+- [`@dv/project`](../project/README.zh.md)：记录和智能体工具。
 - [`@dv/sglang-diffusion`](../sglang-diffusion/README.zh.md)：`t2i` 模型 `qwen-image-2.1-turbo` 的提供方插件。
 
 -----
@@ -104,7 +104,7 @@ The image size as WIDTHxHEIGHT in pixels, such as 1024x768. It must meet the siz
 
 #### 模型看到什么
 
-一次调用返回下面的文本块；挂载了附件服务时，其后是作为图片块的图片。被拒绝的调用不写记录，并以理由和 `@dv/generation` 的结束句使工具调用失败；本包的理由如下，模型校验报告它自己的问题。不带 `user_requested` 且超过本轮 GPU 预算的调用被拒绝，并给出摘要 `Generate image with <provider>/<model>: "<prompt>"` 和四舍五入后的估计值。在该摘要和下面的结果中，`"<prompt>"` 是去掉首尾空白后写成 JSON 字符串的提示词，分别在 80 和 60 个字符后截断并加 `…`。渲染失败时，记录和工具调用以提供方的消息失败。
+一次调用返回下面的文本块；挂载了附件服务时，其后是作为图片块的图片。被拒绝的调用不写记录，并以理由和 `@dv/generation` 的结束句使工具调用失败；本包的理由如下，模型校验报告它自己的问题。在下面的结果中，`"<prompt>"` 是去掉首尾空白后写成 JSON 字符串的提示词，在 60 个字符后截断并加 `…`。渲染失败时，记录和工具调用以提供方的消息失败。
 
 ##### Success result
 
@@ -136,7 +136,6 @@ size must be WIDTHxHEIGHT in pixels with positive integers, such as 1024x768; go
 
 - **只由文字生成图片**：该操作没有输入角色，所以不编辑图片，也不接受参考图片。
 - **每次调用一张图片**：每次调用渲染一张图片并写一条记录；多个版本需要多次调用。
-- **估计值是一个费率**：GPU 估计值与像素数成线性关系，而某个尺寸的第一次调用，或服务器空闲之后的第一次调用，花费更多；记录保留后端报告的 GPU 时间。
 
 <a id="dev-note"></a>
 ### 开发备注

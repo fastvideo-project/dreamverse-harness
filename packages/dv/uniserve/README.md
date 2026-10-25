@@ -32,13 +32,11 @@ Mount the plugin after `@dv/models`, `@dv/asset-pool` and `@dv/ffmpeg`, with the
   name: '@dv/uniserve'
   config:
     baseUrl: http://10.244.8.35:8000
-    gpuSecondsPerVideoSecond: 1.3
 ```
 
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `baseUrl` | required | HTTP base URL of the UniServe server that serves task `ref2va`, such as `http://127.0.0.1:8000` |
-| `gpuSecondsPerVideoSecond` | required | GPU seconds per rendered video second on that server; the entry declares it for the GPU estimate before a render |
 
 While the plugin is mounted, the catalog holds the entry `video/ref2v/uniserve/fasth3`. Start the server with a `-reference` deployment of UniServe, which serves task `ref2va`; the [UniServe serving guide](https://github.com/hao-ai-lab/uniserve/blob/main/docs/minimax_h3/minimax_h3.md#deployments) lists them. Mount the DSH skill registry (`@deepseek-ai/dsh-skill`) as well so that the agent can load the prompt skill.
 

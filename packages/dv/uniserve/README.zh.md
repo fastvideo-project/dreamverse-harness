@@ -32,13 +32,11 @@ kind: "package-reference"
   name: '@dv/uniserve'
   config:
     baseUrl: http://10.244.8.35:8000
-    gpuSecondsPerVideoSecond: 1.3
 ```
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `baseUrl` | 必填 | 提供任务 `ref2va` 的 UniServe 服务器的 HTTP 基础 URL，例如 `http://127.0.0.1:8000` |
-| `gpuSecondsPerVideoSecond` | 必填 | 该服务器上每渲染一秒视频的 GPU 秒数；条目声明它，用于渲染前的 GPU 估算 |
 
 插件挂载期间，模型目录里有条目 `video/ref2v/uniserve/fasth3`。用 UniServe 的 `-reference` 部署启动服务器，它提供任务 `ref2va`；[UniServe 服务指南](https://github.com/hao-ai-lab/uniserve/blob/main/docs/minimax_h3/minimax_h3.md#deployments)列出了这些部署。同时挂载 DSH skill 注册表（`@deepseek-ai/dsh-skill`），agent 才能加载提示词 skill。
 

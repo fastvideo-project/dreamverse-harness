@@ -33,14 +33,12 @@ kind: "package-reference"
     models:
       fish-audio-drama-3:
         baseUrl: http://127.0.0.1:8000
-        gpuSecondsPerCall: 3
 ```
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `models` | 必填 | 要注册的模型，按模型名；未列出的模型不注册 |
 | `models.<model>.baseUrl` | 必填 | 提供该模型的 SGLang-Omni 服务器的 HTTP 基础 URL，例如 `http://127.0.0.1:8000` |
-| `models.<model>.gpuSecondsPerCall` | 必填 | 该服务器上一个片段的 GPU 秒数；条目声明它，用于调用运行之前的 GPU 预估 |
 
 `models` 列出 `fish-audio-drama-3` 以外的模型时加载失败。插件挂载期间，模型目录中每个配置的模型有一个条目，例如 `audio/t2a/sglang-omni/fish-audio-drama-3`。挂载 `@dv/audio-generate`，智能体才能说出片段；挂载 DSH skill 注册表（`@deepseek-ai/dsh-skill`），智能体才能加载提示词 skill。
 
@@ -49,7 +47,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`src/index.ts` 中的表 `SERVED` 把本插件能提供的每个模型映射到它在服务器上的模型 ID、目录描述、说话人编号、额外参数 schema 和提示词 skill 文件。`fish-audio-drama-3` 在该服务器上只说说话人 0，它唯一的额外参数是数字 `speed`。同一个值 `speakers` 同时提供 `schema()` 的 `speakers` 列表和说话人拒绝。服务器忽略请求的 `model` 字段，所以 `facts()` 和 `schema()` 每次调用都读取 `GET /v1/models`，并在服务器未列出 `fishaudio/drama-3`、以 HTTP 错误应答或无法连接时拒绝；不缓存应答。`facts()` 报告服务器的模型 ID。`schema()` 报告 `{"speakers": [0], "extra": {"speed": {"type": "number", "description": "Speaking rate; 1 is normal."}}}`。`validateGenerationRequest(request)` 不读取服务器，每个成立的检查返回一句话，顺序为：服务器不说的说话人标签（`<|speaker:N|>`，无论格式是否正确），每个标签按首次出现的顺序只列一次；除说话人标签外没有文字的提示词，服务器会以 HTTP 200 和几乎无声的片段应答它；模型不接受的 `extra` 名称；以及未通过其 schema 的每个 `extra` 值，用 `@deepseek-ai/dsh-tools` 的 `validateArgs` 检查。`render(request, signal)` 发送一次 `POST /v1/audio/speech`，带 `extra` 值、`input`（提示词）和 `response_format: 'wav'`，并把 `signal` 传下去以取消 HTTP 请求。`x-finish-reason` 头不是 `stop` 的片段失败。服务器在长度上限处截断片段时发送 `length`，这一失败让智能体拆分文本；缺少该头（例如被代理去掉）或其他值得到一条引用该值的消息。它从 WAV 头读取时长：`data` 块的大小除以 `fmt ` 块的字节率，其他块按其大小跳过；在至少 16 字节的 `fmt ` 块之后不含完整 `data` 块的正文失败，没有采样的片段也失败。它把请求的墙钟时间记为 GPU 秒数。每个条目通过 `ctx.effect` 注册，并以 `promptSkill` 携带提示词 skill，`content` 为 skill 文件的文字。
+`src/index.ts` 中的表 `SERVED` 把本插件能提供的每个模型映射到它在服务器上的模型 ID、目录描述、说话人编号、额外参数 schema 和提示词 skill 文件。`fish-audio-drama-3` 在该服务器上只说说话人 0，它唯一的额外参数是数字 `speed`。同一个值 `speakers` 同时提供 `schema()` 的 `speakers` 列表和说话人拒绝。服务器忽略请求的 `model` 字段，所以 `facts()` 和 `schema()` 每次调用都读取 `GET /v1/models`，并在服务器未列出 `fishaudio/drama-3`、以 HTTP 错误应答或无法连接时拒绝；不缓存应答。`facts()` 报告服务器的模型 ID。`schema()` 报告 `{"speakers": [0], "extra": {"speed": {"type": "number", "description": "Speaking rate; 1 is normal."}}}`。`validateGenerationRequest(request)` 不读取服务器，每个成立的检查返回一句话，顺序为：服务器不说的说话人标签（`<|speaker:N|>`，无论格式是否正确），每个标签按首次出现的顺序只列一次；除说话人标签外没有文字的提示词，服务器会以 HTTP 200 和几乎无声的片段应答它；模型不接受的 `extra` 名称；以及未通过其 schema 的每个 `extra` 值，用 `@deepseek-ai/dsh-tools` 的 `validateArgs` 检查。`render(request, signal)` 发送一次 `POST /v1/audio/speech`，带 `extra` 值、`input`（提示词）和 `response_format: 'wav'`，并把 `signal` 传下去以取消 HTTP 请求。`x-finish-reason` 头不是 `stop` 的片段失败。服务器在长度上限处截断片段时发送 `length`，这一失败让智能体拆分文本；缺少该头（例如被代理去掉）或其他值得到一条引用该值的消息。它从 WAV 头读取时长：`data` 块的大小除以 `fmt ` 块的字节率，其他块按其大小跳过；在至少 16 字节的 `fmt ` 块之后不含完整 `data` 块的正文失败，没有采样的片段也失败。每个条目通过 `ctx.effect` 注册，并以 `promptSkill` 携带提示词 skill，`content` 为 skill 文件的文字。
 
 | 文件 | 内容 |
 | --- | --- |

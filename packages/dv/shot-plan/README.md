@@ -74,7 +74,7 @@ The reducer ignores records that are not `done`: a finished `plan.create` adds v
 
 #### What the model sees
 
-Two tools, `dv_plan_create` and `dv_plan_update`, in the format `@dv/project` gives every operation tool. The descriptions tell the agent to create a plan only for a separate story, to give each shot a model from `dv_models_list` and a prompt written for it, and to extend, shorten or change a story with `dv_plan_update` on its plan (passing the complete plan, every shot in order); they say that a plan renders nothing by itself and name no approval tool and no GPU estimate. Both carry the deterministic note.
+Two tools, `dv_plan_create` and `dv_plan_update`, in the format `@dv/project` gives every operation tool. The descriptions tell the agent to create a plan only for a separate story, to give each shot a model from `dv_models_list` and a prompt written for it, and to extend, shorten or change a story with `dv_plan_update` on its plan (passing the complete plan, every shot in order); they say that a plan renders nothing by itself and name no approval tool. Both carry the deterministic note.
 
 #### Token effect
 

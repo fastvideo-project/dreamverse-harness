@@ -1,5 +1,5 @@
 ---
-description: "Story workflow of DreamVerse: the dvStory service with the read story.preview, which reports what approving a shot plan version renders, its GPU estimate and every render refusal, and story.approve, which renders the version and lays its takes on the plan's timeline; open it to change how a plan version is previewed or approved."
+description: "Story workflow of DreamVerse: the dvStory service with the read story.preview, which reports what approving a shot plan version renders and every render refusal, and story.approve, which renders the version and lays its takes on the plan's timeline; open it to change how a plan version is previewed or approved."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to preview and approve a shot plan version. Its read `story.preview` (tool `dv_story_preview`) lists each shot as rendered or kept, sums the GPU estimate, and lists every reason a render would be refused. Its write `story.approve` (tool `dv_story_approve`) renders the new or changed shots and lays every take on the plan's timeline. The shots come from `dvShotPlan.shots`, the shot walk of `@dv/workflow-kit` picks the kept takes and schedules the renders, and `dvTimeline` lays out the takes.
+Use this package to preview and approve a shot plan version. Its read `story.preview` (tool `dv_story_preview`) lists each shot as rendered or kept and lists every reason a render would be refused. Its write `story.approve` (tool `dv_story_approve`) renders the new or changed shots and lays every take on the plan's timeline. The shots come from `dvShotPlan.shots`, the shot walk of `@dv/workflow-kit` picks the kept takes and schedules the renders, and `dvTimeline` lays out the takes.
 
 ## Table of Contents
 
@@ -33,19 +33,19 @@ Mount the plugin after `@dv/project`, `@dv/shot-plan`, `@dv/shot-render` and `@d
 
 | Operation | Tool | Params | Report |
 | --- | --- | --- | --- |
-| `story.preview` | `dv_story_preview` | `plan` (required, the PlanId), `version` (default: the latest) | `{plan, version, shots, rendered, gpu_seconds, problems}`: one line per shot, the number of shots that render, the sum of their `dvShotRender.estimate`, and `Shot <n>: <reason>` per refusal |
+| `story.preview` | `dv_story_preview` | `plan` (required, the PlanId), `version` (default: the latest) | `{plan, version, shots, rendered, problems}`: one line per shot, the number of shots that render, and `Shot <n>: <reason>` per refusal |
 | `story.approve` | `dv_story_approve` | `plan` (required), `version` (default: the latest) | `{plan, version, timeline, scheduled}`: the timeline that holds the takes, and the records written: the renders in shot order, then the timeline record |
 
 The labels are 预览分镜计划 / Preview plan and 批准分镜计划 / Approve plan. A rendered shot's line is `shot <n> (<modality>/<task>/<provider>/<model>, <d> s, continues from the previous shot): <first 80 characters of the prompt>`; a kept shot's line is `shot <n>: keeps its take`. An unknown plan or version fails the call with `invalid_params`; a reference that does not parse fails it with the error of `dvShotRender.parseInputs`.
 
-`story.approve` has `confirm: 'always'`: an agent call needs `user_approved: true`, and its refusal text is the head line `Approve plan <p> v<n> "<title>": render <k> of <m> shots and lay every shot on the plan's timeline.`, the preview lines, and the preview's `gpu_seconds`. While `problems` is not empty, every caller is refused before a record, with one error that lists the problems and ends with "Update the plan with dv_plan_update, then call again."
+`story.approve` has `confirm: 'always'`: an agent call needs `user_approved: true`, and its refusal text is the head line `Approve plan <p> v<n> "<title>": render <k> of <m> shots and lay every shot on the plan's timeline.` and the preview lines. While `problems` is not empty, every caller is refused before a record, with one error that lists the problems and ends with "Update the plan with dv_plan_update, then call again."
 
 -----
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-`story.preview` maps each shot of `dvShotPlan.shots` to render params with `walkShot` and calls `planShots` with `dvShotRender` and `takeFilter`. A done render is a take of the plan when the starter of its chain (`chainStarter`: its own `started_by`, else that of its `based_on` root) is a `story.approve` record of the plan. So a free take, a take of another plan and a take of `plan.approve` are never kept. Each shot that renders goes through `checkShots`: a continuing shot after a kept take carries that take's last still as `first_frame`; after a shot that renders, the role `first_frame` is chained, so the model check waits for that render. Each line comes from `shotLine`, and `gpu_seconds` is the sum of `dvShotRender.estimate` over the shots that render.
+`story.preview` maps each shot of `dvShotPlan.shots` to render params with `walkShot` and calls `planShots` with `dvShotRender` and `takeFilter`. A done render is a take of the plan when the starter of its chain (`chainStarter`: its own `started_by`, else that of its `based_on` root) is a `story.approve` record of the plan. So a free take, a take of another plan and a take of `plan.approve` are never kept. Each shot that renders goes through `checkShots`: a continuing shot after a kept take carries that take's last still as `first_frame`; after a shot that renders, the role `first_frame` is chained, so the model check waits for that render. Each line comes from `shotLine`.
 
 `story.approve` writes its whole chain inside its own execute. `scheduleShots` renders each shot that keeps no take, each after the render before it, with `first_frame` from the previous take when the shot continues, and the intent `shot <n> of plan <p> v<v>`. Then one `dvTimeline.layout` lays every take on a timeline, with the intent `timeline of plan <p> v<v>`. The `system` actor writes each record in the approving record's surface, session and turn, and each record carries `started_by: {record: <approval>, slot}` (slot null for the timeline). The plan's timeline is the timeline of its newest approval in the `story` slice. `keepTimeline` keeps it only while the starter of the record that `dvTimeline.lastWrite` names for it is a story approval of the plan. After another write, such as the user's edit, the layout creates the next free timeline and leaves the edited one unchanged.
 
@@ -64,7 +64,7 @@ The `story` reducer folds each finished `story.approve` into `approvals` (per pl
 
 - [`@dv/workflow-kit`](../workflow-kit/README.md): `walkShot`, `planShots`, `takeFilter`, `checkShots`, `shotLine`, `scheduleShots` and `keepTimeline`.
 - [`@dv/shot-plan`](../shot-plan/README.md): plans, versions and `dvShotPlan.shots`.
-- [`@dv/shot-render`](../shot-render/README.md): `render`, `check`, `estimate` and `findTake` of `dvShotRender`.
+- [`@dv/shot-render`](../shot-render/README.md): `render`, `check` and `findTake` of `dvShotRender`.
 - [`@dv/timeline`](../timeline/README.md): `layout` and `lastWrite` of `dvTimeline`.
 
 -----
@@ -76,7 +76,7 @@ The `story` reducer folds each finished `story.approve` into `approvals` (per pl
 
 #### What the model sees
 
-Two tools in the format `@dv/project` gives every operation tool. `dv_story_preview` has the hint "A read that writes no record." Its description says that the call previews what approving a plan version renders without rendering, names the report fields, tells the agent to show the lines and `gpu_seconds` to the user, and to update the plan with `dv_plan_update` and preview again when `problems` is not empty. `dv_story_approve` takes `user_approved`. Its description says that the call renders the new or changed shots and fills the plan's timeline, that the agent calls it only after it showed the preview and the user agreed, and that it then calls `dv_proj_wait` and reads `dv_proj_state`.
+Two tools in the format `@dv/project` gives every operation tool. `dv_story_preview` has the hint "A read that writes no record." Its description says that the call previews what approving a plan version renders without rendering, names the report fields, tells the agent to show the lines to the user, and to update the plan with `dv_plan_update` and preview again when `problems` is not empty. `dv_story_approve` takes `user_approved`. Its description says that the call renders the new or changed shots and fills the plan's timeline, that the agent calls it only after it showed the preview and the user agreed, and that it then calls `dv_proj_wait` and reads `dv_proj_state`.
 
 #### Token effect
 
@@ -104,7 +104,7 @@ Each result is appended to the conversation after its call; the cached prefix st
 
 #### What the model sees
 
-The skill catalog lists `story-directing` with its description and when to use it. When the agent loads the skill, it reads the order of calls: `dv_plan_create` or `dv_plan_update`, then `dv_story_preview` (with `dv_plan_update` and a new preview while `problems` is not empty), a table of the shots with the preview's GPU estimate and one question in bold, and in the next turn `dv_story_approve` with `user_approved: true`, then `dv_proj_wait`. It also tells the agent how to extend, shorten or change a story that a plan made.
+The skill catalog lists `story-directing` with its description and when to use it. When the agent loads the skill, it reads the order of calls: `dv_plan_create` or `dv_plan_update`, then `dv_story_preview` (with `dv_plan_update` and a new preview while `problems` is not empty), a table of the shots and one question in bold, and in the next turn `dv_story_approve` with `user_approved: true`, then `dv_proj_wait`. It also tells the agent how to extend, shorten or change a story that a plan made.
 
 #### Token effect
 

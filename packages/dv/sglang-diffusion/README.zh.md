@@ -34,14 +34,12 @@ kind: "package-reference"
     models:
       qwen-image-2.1-turbo:
         baseUrl: http://127.0.0.1:30010
-        gpuSecondsPerMegapixel: 0.6
 ```
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `models` | 必填 | 要注册的模型，按模型名；未列出的模型不注册 |
 | `models.<model>.baseUrl` | 必填 | 服务该模型的 SGLang diffusion 服务器的 HTTP 基础 URL，如 `http://127.0.0.1:30010` |
-| `models.<model>.gpuSecondsPerMegapixel` | 必填 | 该服务器上一张图片每百万像素的 GPU 秒数；条目声明它，用于渲染前的 GPU 估计 |
 
 `models` 指定 `qwen-image-2.1-turbo` 以外的模型时，加载失败。插件挂载期间，模型目录持有条目 `image/t2i/sglang-diffusion/qwen-image-2.1-turbo`，其 `defaultSize` 为 1024x1024。
 
@@ -50,7 +48,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`src/index.ts` 中的表 `SERVED` 为每个模型保存服务器端点不列出的内容：服务器的模型 ID（`Qwen/Qwen-Image-2.1-Turbo`）、条目描述、默认尺寸、尺寸倍数（32）、像素上限（4300800，即最大预设尺寸 2400x1792 的面积）和模型卡给出的七个按宽高比的尺寸。服务器忽略请求的 `model` 字段，所以 `facts()` 每次调用都读取 `GET /v1/models`，服务器列出其他模型时拒绝；`schema()` 先调用 `facts()`。`validateGenerationRequest` 不调用服务器：服务器对不是 32 倍数的尺寸以 HTTP 500 回答且不给原因，所以条目先拒绝它并给出最近的尺寸。它拒绝超过像素上限的尺寸，因为这样的尺寸可能在 GPU 时间花掉之后在服务器上失败，或在工具结果的图片附件中失败，并给出宽高比最接近的预设尺寸；它也拒绝任何 `extra` 值。`render` 发送 `POST /v1/images/generations`，带提示词、尺寸（请求没有尺寸时用 `defaultSize`）、种子、`n: 1`、`response_format: 'b64_json'` 和 `output_format: 'png'`，因为对没有设置格式的模型，服务器自己的默认格式是 JPEG。它拒绝不含 PNG 图片的回答，例如 JPEG 字节或空的 `data` 列表，并返回所发送尺寸的 PNG，以回答的 `inference_time_s` 作为 GPU 秒数；该值不是有限数时为 null，记录于是保留估计值。错误回答变为服务器的 `detail` 文本，或原样的回答体；中止时以信号的原因拒绝。
+`src/index.ts` 中的表 `SERVED` 为每个模型保存服务器端点不列出的内容：服务器的模型 ID（`Qwen/Qwen-Image-2.1-Turbo`）、条目描述、默认尺寸、尺寸倍数（32）、像素上限（4300800，即最大预设尺寸 2400x1792 的面积）和模型卡给出的七个按宽高比的尺寸。服务器忽略请求的 `model` 字段，所以 `facts()` 每次调用都读取 `GET /v1/models`，服务器列出其他模型时拒绝；`schema()` 先调用 `facts()`。`validateGenerationRequest` 不调用服务器：服务器对不是 32 倍数的尺寸以 HTTP 500 回答且不给原因，所以条目先拒绝它并给出最近的尺寸。它拒绝超过像素上限的尺寸，因为这样的尺寸可能在渲染完成之后在服务器上失败，或在工具结果的图片附件中失败，并给出宽高比最接近的预设尺寸；它也拒绝任何 `extra` 值。`render` 发送 `POST /v1/images/generations`，带提示词、尺寸（请求没有尺寸时用 `defaultSize`）、种子、`n: 1`、`response_format: 'b64_json'` 和 `output_format: 'png'`，因为对没有设置格式的模型，服务器自己的默认格式是 JPEG。它拒绝不含 PNG 图片的回答，例如 JPEG 字节或空的 `data` 列表，并返回所发送尺寸的 PNG。错误回答变为服务器的 `detail` 文本，或原样的回答体；中止时以信号的原因拒绝。
 
 | 文件 | 内容 |
 | --- | --- |
@@ -125,7 +123,7 @@ The server at <baseUrl> answered POST /v1/images/generations without a PNG image
 - **所服务的模型固定在代码中**：`src/index.ts` 中的 `SERVED` 列出插件能服务的模型；另一个 diffusion 模型需要在那里加一项，不能只改配置。
 - **所服务模型检查读取启动时的名称**：`POST /update_weights_from_disk` 改变运行中服务器的权重，而 `GET /v1/models` 保留启动时的名称，所以 `facts()` 看不到这一变化。
 - **每次智能体调用读三次模型列表**：`facts()` 每次调用都读取 `GET /v1/models`，而 `dv_image_generate` 的一次智能体调用会调用它三次：同意之前的检查、写记录之前的检查，以及渲染之前。
-- **某个尺寸的第一次调用更慢**：服务器按图片尺寸预热，所以每个尺寸的第一次调用，以及服务器空闲之后的第一次调用，花费的 GPU 时间多于按百万像素的估计值；记录保留报告的时间。
+- **某个尺寸的第一次调用更慢**：服务器按图片尺寸预热，所以每个尺寸的第一次调用，以及服务器空闲之后的第一次调用，耗时更长。
 
 <a id="dev-note"></a>
 ### 开发备注
