@@ -12,6 +12,7 @@ import type { WireOperation } from './types.ts'
 export const DV_TOOL_LABELS: Readonly<Record<string, readonly [string, string]>> = {
   dv_proj_create: ['新建项目', 'Create project'],
   dv_proj_open: ['打开项目', 'Open project'],
+  dv_proj_rename: ['重命名项目', 'Rename project'],
   dv_proj_state: ['查看项目', 'Get project state'],
   dv_proj_undo: ['撤销', 'Undo'],
   dv_proj_redo: ['重做', 'Redo'],

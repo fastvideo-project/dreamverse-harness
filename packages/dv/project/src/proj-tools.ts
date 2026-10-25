@@ -1,10 +1,10 @@
 /**
- * Project's own agent tools, `dv_proj_*`: create and open projects, read state and history, undo and redo, accept a stale
- * record, and wait for scheduled records. Every tool except `dv_proj_history_list` returns the project summary of the
- * current state: Project's fields (head, record count, stale records, recent records) and the fields each component's reducer adds through
- * `Reducer.agentSummary`. A tool that writes records leads its summary with `record`, the newest record the call wrote, and
+ * Project's own agent tools, `dv_proj_*`: create, open and rename projects, read state and history, undo and redo, accept a
+ * stale record, and wait for scheduled records. Every tool except `dv_proj_history_list` returns the project summary of the
+ * current state: Project's fields (title, head, record count, stale records, recent records) and the fields each component's reducer adds
+ * through `Reducer.agentSummary`. A tool that writes records leads its summary with `record`, the newest record the call wrote, and
  * names that record in its presentation metadata (`{record}`), as the operation tools do; a read tool has no metadata.
- * `dv_proj_create` and `dv_proj_open` bind the chat session to its project.
+ * `dv_proj_create` and `dv_proj_open` bind the chat session to its project; `dv_proj_rename` renames only that project.
  *
  * Calls the `dvProject` service's public methods and, through {@link ProjToolDeps}, the asset store, the reducers'
  * summaries and the turn of a call. Called by the service, which registers the tools while the DSH `tools` registry is mounted.
@@ -81,6 +81,7 @@ export function projectSummary(
   const summary: Record<string, unknown> = {
     ...written === null ? {} : { record: written },
     project_id: projectId,
+    title: project.openProject(projectId).title,
     head: state.head,
     records: proj.records.length,
   }
@@ -166,6 +167,18 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
         project.openProject(projectId)
         project.bindSession(sessionOf(exec), projectId)
         return Promise.resolve(summary(projectId))
+      },
+    }),
+    defineTool({
+      name: 'dv_proj_rename',
+      description: 'Rename this conversation\'s project and read its state. A title that another project uses gets the '
+        + 'suffix 2, 3, … (such as "Ad 2"); the summary\'s title is the stored one.',
+      parameters: { title: { type: 'string', required: true } },
+      output: stateOutput,
+      execute: async (args, exec) => {
+        const projectId = callProject(undefined, project.sessionProject(sessionOf(exec)))
+        await project.renameProject(projectId, args.title)
+        return summary(projectId)
       },
     }),
     defineTool({

@@ -232,13 +232,21 @@ export default class DvProject extends Service {
   }
 
   /**
-   * Change a project's title in `project.json`. Writes no record.
+   * Change a project's title in `project.json` to the trimmed title, or, when another project uses that title, to the
+   * title with the smallest free ` N` suffix from 2. Writes no record.
    * @param project - the project.
-   * @param title - the new title.
-   * @returns the metadata after the change.
+   * @param title - the wanted title.
+   * @returns the metadata after the change; throws `invalid_params` for a title that is empty after trimming.
    */
   renameProject(project: ProjectId, title: string): Promise<ProjectInfo> {
-    return this.store.lock(project, () => this.store.renameProject(project, title))
+    return this.store.lock(project, () => {
+      const wanted = title.trim()
+      if (wanted.length === 0) throw new ProjectError('invalid_params', 'A project title must not be empty.')
+      const taken = new Set(this.store.listProjects().filter(info => info.id !== project).map(info => info.title))
+      let unique = wanted
+      for (let suffix = 2; taken.has(unique); suffix += 1) unique = `${wanted} ${String(suffix)}`
+      return this.store.renameProject(project, unique)
+    })
   }
 
   /**
