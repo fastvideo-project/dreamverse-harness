@@ -20,13 +20,16 @@ import type { HistoryRow } from '../../ui-history/src/client/contract/index.ts'
 import { actionLabel } from '../../ui-history/src/client/rows.ts'
 import type { NodeType } from '../src/client/contract/index.ts'
 import { buildCanvasGraph, isFinished, previewOf, slotFrames } from '../src/client/graph.ts'
-import type { CanvasRegistrations } from '../src/client/graph.ts'
+import type { CanvasNode, CanvasRegistrations } from '../src/client/graph.ts'
 import { apply, inject } from '../src/client/index.ts'
-import { cardHeight } from '../src/client/NodeCard.tsx'
+import { CAPTION_HEIGHT, cardHeight } from '../src/client/NodeCard.tsx'
 import { APPROVAL, CLIPS, conformanceCases, OPS } from './fixtures/conformance-states.client.ts'
 import type { ComparedGraph, ComparedNode } from './fixtures/conformance-states.client.ts'
 
 declare module '@dv/ui-kit/types.ts' { interface ComponentStates { test_ref: Record<string, WireReferenceVersion[]> } }
+
+/** The header row of the card of `main`, which the caption above the frame replaces; the frame keeps main's height. */
+const MAIN_HEADER_HEIGHT = 30
 
 const MAIN = JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/main-graph.json'), 'utf8')) as Record<string, ComparedGraph>
 
@@ -78,7 +81,8 @@ function sdkGraph(
     return {
       id: node.id, type: node.type, x: node.x, y: node.y, number: node.version, title: node.title, meta: node.meta ?? null,
       badges: node.badges, flags: node.flags,
-      finished: isFinished(node), height: cardHeight(node, frames?.some(frame => frame !== null) === true), frames,
+      finished: isFinished(node), frames,
+      height: cardHeight(node, frames?.some(frame => frame !== null) === true) - CAPTION_HEIGHT + MAIN_HEADER_HEIGHT,
     }
   })
   const edges = graph.edges.map(edge => `${edge.from}>${edge.to}:${edge.kind}${edge.role === 'first_frame' ? ':first_frame' : ''}`).sort()
@@ -105,7 +109,7 @@ describe('canvas conformance with origin/main', () => {
     await runtime.dispose()
   })
 
-  it('computes the card heights of main: 60 for a noun, 76 and 140 for a plan, 147 for a take or an asset, 52 for a failed take', async () => {
+  it('computes the frame heights of main: 30 for a noun, 46 and 110 for a plan, 117 for a take or an asset, also for a failed take', async () => {
     const { registrations, runtime } = await registered()
     const heights = new Set(Object.values(MAIN).flatMap(graph => graph.nodes.map(node => node.height)))
     expect([...heights].sort((a, b) => a - b)).toEqual([60, 76, 140, 147])
@@ -114,7 +118,8 @@ describe('canvas conformance with origin/main', () => {
     if (state === undefined) throw new Error('no fixture project')
     state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g2' ? { ...entry, status: 'failed' as const } : entry)
     const failed = buildCanvasGraph(state, new Set(), OPS, 'zh', registrations).nodes.find(node => node.id === 'g2')
-    expect(failed === undefined ? null : [failed.claimed, failed.flags.failed, cardHeight(failed)]).toEqual([true, true, 52])
+    const frameOf = (node: CanvasNode): number => cardHeight(node) - CAPTION_HEIGHT
+    expect(failed === undefined ? null : [failed.claimed, failed.flags.failed, frameOf(failed)]).toEqual([true, true, 117])
     await runtime.dispose()
   })
 

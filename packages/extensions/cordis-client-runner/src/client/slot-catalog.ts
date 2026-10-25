@@ -1908,8 +1908,8 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     key: 'dv.canvas.card',
     kind: 'keyed',
     scope: 'root',
-    summary: 'The body of one node\'s card inside the canvas chrome, keyed by `NodeType.type`; fallback: the type label.',
-    doc: 'The body of one node\'s card inside the canvas chrome, keyed by `NodeType.type`; fallback: the type label.',
+    summary: 'The inside of one node\'s frame, keyed by `NodeType.type`; fallback: the type label on the card surface.',
+    doc: 'The inside of one node\'s frame, keyed by `NodeType.type`; fallback: the type label on the card surface.',
     registerOptions: [
       {
         name: 'key',
@@ -1919,7 +1919,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       },
     ],
     ownerProps: [
-      '/**\n * Owner props of a card body, which draws media or content only. The chrome draws the ring, the header (dot, `title`,\n * `meta`, unseen dot, stale tag), the status words over the body, the failed row with the actions that show on it,\n * the badges, and the frame grid of a node with `slots`.\n */\nexport interface CardOwner {\n  node: NodeView\n  /** The wire asset of each of the node\'s assets, so the body can draw them through `dv.media`. */\n  assets: Readonly<Record<string, Asset>>\n  /** The text enlargement at low zoom, so a body\'s text matches the chrome\'s. */\n  textScale: number\n  host: CardHost\n}',
+      '/**\n * Owner props of a card body, which owns the inside of the node\'s frame and paints its own fill: a card-like body\n * paints `CARD_SURFACE` of `@dv/ui-kit/frame.ts`, and a body that shows a picture paints only the picture. The canvas\n * draws the caption above the frame (`title`, unseen dot, stale tag, `meta`), the frame outline and selection ring,\n * the status words over the body, the failed words with the actions that show on them in place of the body, the\n * badges, and the frame grid of a node with `slots`.\n */\nexport interface CardOwner {\n  node: NodeView\n  /** The wire asset of each of the node\'s assets, so the body can draw them through `dv.media`. */\n  assets: Readonly<Record<string, Asset>>\n  /** The text enlargement at low zoom, so a body\'s text matches the caption\'s. */\n  textScale: number\n  host: CardHost\n}',
     ],
     ownerPropsReferences: [
       'CardHost',
@@ -1946,7 +1946,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.canvas.card\', () => ctx.slots.register(\n      { name: \'dv.canvas.card\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:294',
+    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:296',
   },
   {
     key: 'dv.canvas.editor',
@@ -1989,7 +1989,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.canvas.editor\', () => ctx.slots.register(\n      { name: \'dv.canvas.editor\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:296',
+    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:298',
   },
   {
     key: 'dv.canvas.editor.claimed',
@@ -2031,7 +2031,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.canvas.editor.claimed\', () => ctx.slots.register(\n      { name: \'dv.canvas.editor.claimed\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:298',
+    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:300',
   },
   {
     key: 'dv.canvas.picker',
@@ -2069,7 +2069,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.canvas.picker\', () => ctx.slots.register(\n      { name: \'dv.canvas.picker\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:300',
+    source: 'packages/dv/ui-canvas/src/client/contract/index.ts:302',
   },
   {
     key: 'dv.center.view',

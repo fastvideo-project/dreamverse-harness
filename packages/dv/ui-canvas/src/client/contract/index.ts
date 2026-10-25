@@ -19,8 +19,8 @@ interface NodeTypeCore {
   /** The type label in the interface language: the editor header and the accessible names. */
   label(): string
   /**
-   * A slot of the theme's node palette, `var(--dv-node-1)` to `var(--dv-node-8)` of `@dv/ui-shell`: the type dot and
-   * every edge that leaves a node of this type.
+   * A slot of the theme's node palette, `var(--dv-node-1)` to `var(--dv-node-8)` of `@dv/ui-shell`: the color of every
+   * edge that leaves a node of this type.
    */
   color: string
   /** The default layout column. */
@@ -40,7 +40,7 @@ interface NodeTypeCore {
 export interface ClaimedNodes {
   /** One registry key `op:<operation>` per name, so two types never claim one operation. */
   operations: readonly string[]
-  /** The words that the chrome draws over the body of a running node and in the row of a failed node. */
+  /** The words that the canvas draws over the body of a running node and inside the frame of a failed node. */
   status: NodeStatusText
   /** The parts of one claimed node that vary by type. A pending record draws before it has outputs. */
   entry(claimed: ClaimedRecord, input: NodeInput): ClaimedEntry
@@ -107,9 +107,9 @@ export interface AnchoredChain {
 export interface NodeEntry {
   /** Stable: other plugins name it (a `ChainAnchor` returns 'plan:<id>'); positions and the unseen set store it. */
   id: string
-  /** The accessible name, the chrome title and the text of the canvas's write intents. */
+  /** The accessible name, the caption title and the text of the canvas's write intents. */
   title: string
-  /** Text right of the title in the chrome header, such as '2.0s', drawn in the mono style. */
+  /** Text right of the title in the caption, such as '2.0s', drawn in the mono style. */
   meta?: string
   /** The record behind the shown state: flags, focus. */
   record: ProjectRecord | null
@@ -124,9 +124,10 @@ export interface NodeEntry {
   /** A frame grid of n slots that the canvas fills with the previews of the nodes anchored here by slot. */
   slots?: number
   /**
-   * The body height at base text size. The canvas computes the card height as chrome header + frame grid (when a slot
-   * has a frame) + `bodyHeight` without measuring the card; a failed claimed node is the chrome header plus the
-   * chrome's failed row instead.
+   * The frame height in canvas units, which the body fills: a body that shows a picture of known size declares the
+   * height of the picture at the 208-unit frame width (`frameHeight` of `@dv/ui-kit/frame.ts`). The canvas computes
+   * the node height as caption + frame grid (when a slot has a frame) + `bodyHeight` without measuring the node; a
+   * failed claimed node keeps this height.
    */
   bodyHeight: number
   /** The kernel reference that this node stands for in a prompt, when it is not its record. */
@@ -148,7 +149,7 @@ export type NodeView = NodeEntry & ({ claimed: true; record: OperationRecord } |
   badges: readonly string[]
   chain: AnchoredChain | null
   version: number | null
-  /** A finished claimed node that the user has not opened; the chrome draws the unseen dot. */
+  /** A finished claimed node that the user has not opened; the caption shows the unseen dot. */
   unseen: boolean
   /** True while a `rerun` that this node started waits for its new node. */
   rerunning: boolean
@@ -225,7 +226,7 @@ export interface RecordsInUse {
 }
 
 /**
- * One command on a node, drawn by the canvas in the editor header and in the failed row of a failed claimed node.
+ * One command on a node, drawn by the canvas in the editor header and inside the frame of a failed claimed node.
  * `shows` alone decides where it applies, and it narrows the node that `run` receives to `N`.
  */
 export interface NodeAction<N extends NodeView = NodeView> {
@@ -254,15 +255,17 @@ export interface DvCanvas {
 }
 
 /**
- * Owner props of a card body, which draws media or content only. The chrome draws the ring, the header (dot, `title`,
- * `meta`, unseen dot, stale tag), the status words over the body, the failed row with the actions that show on it,
- * the badges, and the frame grid of a node with `slots`.
+ * Owner props of a card body, which owns the inside of the node's frame and paints its own fill: a card-like body
+ * paints `CARD_SURFACE` of `@dv/ui-kit/frame.ts`, and a body that shows a picture paints only the picture. The canvas
+ * draws the caption above the frame (`title`, unseen dot, stale tag, `meta`), the frame outline and selection ring,
+ * the status words over the body, the failed words with the actions that show on them in place of the body, the
+ * badges, and the frame grid of a node with `slots`.
  */
 export interface CardOwner {
   node: NodeView
   /** The wire asset of each of the node's assets, so the body can draw them through `dv.media`. */
   assets: Readonly<Record<string, Asset>>
-  /** The text enlargement at low zoom, so a body's text matches the chrome's. */
+  /** The text enlargement at low zoom, so a body's text matches the caption's. */
   textScale: number
   host: CardHost
 }
@@ -289,7 +292,7 @@ declare module '@deepseek-ai/cordis' {
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
-    /** The body of one node's card inside the canvas chrome, keyed by `NodeType.type`; fallback: the type label. */
+    /** The inside of one node's frame, keyed by `NodeType.type`; fallback: the type label on the card surface. */
     'dv.canvas.card': { kind: 'keyed'; scope: 'root'; owner: CardOwner }
     /** The editor body of the nodes of one node type that it does not claim, keyed by `NodeType.type`; fallback: none. */
     'dv.canvas.editor': { kind: 'keyed'; scope: 'root'; owner: EditorOwner }

@@ -11,7 +11,7 @@ import type { PlanId } from '@dv/shot-plan/types'
 import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { asset, record } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
-import type { NodeAction, NodeView } from '../src/client/contract/index.ts'
+import type { NodeAction, NodeType, NodeView } from '../src/client/contract/index.ts'
 import { NODE_WIDTH } from '../src/client/graph.ts'
 import { EDITOR_RECT_KEY } from '../src/client/NodeEditor.tsx'
 import { zh } from '../src/client/locales.ts'
@@ -80,6 +80,27 @@ const failG1 = (state: FixtureState): void => {
     : entry)
 }
 
+/** A claimed node type whose node is 117 units tall while its record renders and 400 once it is done. */
+const PAINT: NodeType = {
+  id: '@dv/ui-test-paint', type: 'paint', label: () => 'Paint', color: 'var(--dv-node-2)', column: 9,
+  claimed: {
+    operations: ['test.paint'],
+    status: { running: () => '渲染中', failed: () => '失败' },
+    entry: ({ record: { status } }) => ({ title: 'Paint', bodyHeight: status === 'done' ? 400 : 117 }),
+  },
+}
+
+/**
+ * @param finished - whether the record pa has finished.
+ * @returns a state edit that adds the paint records pa, rendering until `finished`, and pb, done.
+ */
+const paintRecords = (finished: () => boolean) => (state: FixtureState): void => {
+  state.components.proj.records.push(
+    record({ id: 'pa', operation: 'test.paint', status: finished() ? 'done' : 'running' }),
+    record({ id: 'pb', operation: 'test.paint' }),
+  )
+}
+
 describe('the canvas over the real kinds', () => {
   it('draws stored positions, stores a free spot once for every other node, stores a dragged position, and shows a reported badge', async () => {
     const { runtime, node, server, canvasOf } = await mountCanvas()
@@ -97,6 +118,45 @@ describe('the canvas over the real kinds', () => {
     fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
     await waitFor(() => { expect(server.layoutWrites).toHaveLength(2) }, { timeout: 2000 })
     expect(server.layoutWrites[1]).toMatchObject({ project: 'p1', positions: { g2: { x: 770, y: 30 } } })
+    await runtime.dispose()
+  })
+
+  it('stores the spot of a rendering node only once it finishes, placed again at its final height', async () => {
+    let finished = false
+    const { runtime, node, server } = await mountCanvas({ edit: paintRecords(() => finished) })
+    await mountDescriptors(runtime, { nodeType: PAINT })
+    await waitFor(() => { node('pb') })
+    await waitFor(() => { expect(server.layoutWrites.some(write => 'pb' in write.positions)).toBe(true) })
+    const below = server.layoutWrites.find(write => 'pb' in write.positions)?.positions['pb']
+    expect(below?.y).toBe(200)
+    // The rendering node is drawn at its spot above pb, which the canvas does not store.
+    expect([node('pa').style.left, node('pa').style.top]).toEqual([`${String(below?.x)}px`, '0px'])
+    expect(server.layoutWrites.some(write => 'pa' in write.positions)).toBe(false)
+    finished = true
+    server.notify()
+    await waitFor(() => { expect(server.layoutWrites.some(write => 'pa' in write.positions)).toBe(true) })
+    // At its final height the node no longer fits above pb, which is 420 units tall from y 200, so it lands below pb.
+    expect(server.layoutWrites.filter(write => 'pa' in write.positions).map(write => write.positions['pa'])).toEqual([{ x: below?.x, y: 800 }])
+    expect(node('pa').style.top).toBe('800px')
+    await runtime.dispose()
+  })
+
+  it('stores a dragged rendering node at once and keeps it there when it finishes', async () => {
+    let finished = false
+    const { runtime, node, server, canvasOf } = await mountCanvas({ edit: paintRecords(() => finished) })
+    await mountDescriptors(runtime, { nodeType: PAINT })
+    await waitFor(() => { node('pa') })
+    const left = Number.parseFloat(node('pa').style.left)
+    fireEvent.pointerDown(node('pa'), { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 0, clientY: 900, pointerId: 1 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
+    await waitFor(() => { expect(server.layoutWrites.some(write => 'pa' in write.positions)).toBe(true) }, { timeout: 2000 })
+    finished = true
+    server.notify()
+    await waitFor(() => { expect(node('pa').textContent).not.toContain('渲染中') })
+    await settle()
+    expect(server.layoutWrites.filter(write => 'pa' in write.positions).map(write => write.positions['pa'])).toEqual([{ x: left, y: 900 }])
+    expect(node('pa').style.top).toBe('900px')
     await runtime.dispose()
   })
 
@@ -899,6 +959,50 @@ describe('the node card', () => {
     await waitFor(() => { node('test_ref:hero') })
     expect(node('g1').style.opacity).toBe('0.55')
     expect(node('test_ref:hero').textContent).toContain(zh['node.failed'])
+    await runtime.dispose()
+  })
+
+  it('draws every node as a caption above a frame that holds its body, with no card fill or shadow, and rings the selected frame', async () => {
+    const { runtime, node, open } = await mountCanvas()
+    await waitFor(() => { node('test_ref:hero') })
+    for (const id of ['test_ref:hero', 'plan:p1', 'g1']) {
+      const frame = node(id).querySelector<HTMLElement>(':scope > [data-node-frame]')
+      if (frame === null) throw new Error(`no frame of ${id}`)
+      expect([node(id).style.background, node(id).style.boxShadow, frame.style.background]).toEqual(['', '', ''])
+      expect(frame.style.boxShadow).toBe('0 0 0 1px var(--dv-line-strong)')
+      // The caption is the node's first child, outside the frame, and carries the title.
+      expect(node(id).firstElementChild?.textContent).toContain(node(id).getAttribute('aria-label'))
+      expect(frame.contains(node(id).firstElementChild)).toBe(false)
+    }
+    expect(node('test_ref:hero').querySelector('[data-node-frame]')?.textContent).toBe('参考')
+    expect(node('plan:p1').querySelector('[data-node-frame]')?.textContent).toContain('分镜计划 · 第 1 版')
+    await open('g1')
+    expect(node('g1').querySelector<HTMLElement>('[data-node-frame]')?.style.boxShadow).toBe('0 0 0 2px var(--dv-accent), 0 0 0 6px var(--dv-accent-soft)')
+    await runtime.dispose()
+  })
+
+  it('keeps the frame height of a failed take and draws its failed words and 重试 inside the frame', async () => {
+    const { runtime, node } = await mountCanvas({ edit: failG1 })
+    await waitFor(() => { node('g1') })
+    const frame = node('g1').querySelector<HTMLElement>('[data-node-frame]')
+    expect(frame?.style.height).toBe('117px')
+    expect(frame?.textContent).toBe('生成失败重试')
+    await runtime.dispose()
+  })
+
+  it('attaches an edge at the middle of each node\'s frame, below the caption', async () => {
+    const { runtime, view, node } = await mountCanvas()
+    const edge = await waitFor(() => {
+      const found = view.container.querySelector('path[data-edge="test_ref:hero>g1"]')
+      if (found === null) throw new Error('no edge into g1')
+      return found
+    })
+    const points = (edge.getAttribute('d') ?? '').match(/-?[\d.]+/g)?.map(Number) ?? []
+    const [x1, y1] = points
+    const [x2, y2] = points.slice(-2)
+    const top = (id: string): number => Number.parseFloat(node(id).style.top)
+    expect([x1, y1]).toEqual([Number.parseFloat(node('test_ref:hero').style.left) + NODE_WIDTH, top('test_ref:hero') + 20 + 30 / 2])
+    expect([x2, y2]).toEqual([Number.parseFloat(node('g1').style.left), top('g1') + 20 + 117 / 2])
     await runtime.dispose()
   })
 })

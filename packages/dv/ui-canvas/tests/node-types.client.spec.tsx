@@ -65,7 +65,7 @@ describe('node types', () => {
     await waitFor(() => { node('prop:p1') })
     expect(node('prop:p1').getAttribute('data-node-type')).toBe('test_prop')
     expect(node('prop:p1').textContent).toBe('红伞第 1 版道具')
-    expect(node('prop:p1').innerHTML).toContain('background: rgb(1, 2, 3)')
+    expect(node('prop:p1').innerHTML).not.toContain('rgb(1, 2, 3)')
     expect(card('asset:umbrella.png')).toBeNull()
     expect(node('prop:p1').style.left).toBe(node('plan:p1').style.left)
 

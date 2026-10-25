@@ -1,9 +1,12 @@
 /**
- * The chrome of one canvas node on the `--dv-*` theme variables: the header row, then the failure row of a failed
- * claimed node or the frame grid and the `dv.canvas.card` body of any other node. The chrome names no node type.
+ * The chrome of one canvas node on the `--dv-*` theme variables: a caption above a frame. The caption is one line with
+ * the title, the unseen dot, the stale tag and `meta`. The frame is a rounded outline that wears the selection ring and
+ * holds the frame grid and the `dv.canvas.card` body, which paints its own fill, or, for a failed claimed node, the
+ * failed words and actions on the card surface. The chrome names no node type.
  */
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
+import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
 import type { NodeAction, NodeView } from './contract/index.ts'
 import { NODE_WIDTH } from './graph.ts'
 import type { CanvasNode } from './graph.ts'
@@ -12,22 +15,42 @@ import type {} from './locales.ts'
 /** The canvas namespace translate. */
 export type CanvasTranslate = TranslateNS<'dvCanvas'>
 
-/** Height of the chrome header row at base text size. */
-export const HEADER_HEIGHT = 30
+/** Height of the caption above the frame at base text size. */
+export const CAPTION_HEIGHT = 20
 /** Height of the frame grid of a node with slots, when a slot has a frame. */
 export const GRID_HEIGHT = 64
-/** Height of the failed row of a failed claimed node. */
-export const FAILED_ROW_HEIGHT = 22
+
+type SizedNode = Pick<CanvasNode, 'slots' | 'bodyHeight'>
 
 /**
- * The card height at base text size, computed from the node without measuring the card.
+ * The frame height: the frame grid of a node with slots, when it shows, above the body.
  * @param node - the node.
  * @param hasFrames - for a node with slots, whether its frame grid shows.
  * @returns the height in canvas units.
  */
-export function cardHeight(node: Pick<CanvasNode, 'claimed' | 'flags' | 'slots' | 'bodyHeight'>, hasFrames = false): number {
-  if (node.claimed && node.flags.failed) return HEADER_HEIGHT + FAILED_ROW_HEIGHT
-  return HEADER_HEIGHT + (node.slots !== undefined && hasFrames ? GRID_HEIGHT : 0) + node.bodyHeight
+function frameHeightOf(node: SizedNode, hasFrames: boolean): number {
+  return (node.slots !== undefined && hasFrames ? GRID_HEIGHT : 0) + node.bodyHeight
+}
+
+/**
+ * The node height at base text size, caption + frame, computed from the node without measuring it.
+ * @param node - the node.
+ * @param hasFrames - for a node with slots, whether its frame grid shows.
+ * @returns the height in canvas units.
+ */
+export function cardHeight(node: SizedNode, hasFrames = false): number {
+  return CAPTION_HEIGHT + frameHeightOf(node, hasFrames)
+}
+
+/**
+ * The height where edges meet a node, below its top: the middle of the frame under the caption at the text scale.
+ * @param node - the node.
+ * @param hasFrames - for a node with slots, whether its frame grid shows.
+ * @param textScale - the text enlargement ({@link textScaleAt}).
+ * @returns the offset in canvas units.
+ */
+export function edgeAnchorY(node: SizedNode, hasFrames: boolean, textScale: number): number {
+  return Math.round(CAPTION_HEIGHT * textScale) + frameHeightOf(node, hasFrames) / 2
 }
 
 /** The zoom at and above which node text keeps its base size; below it text scales up to stay readable. */
@@ -71,7 +94,7 @@ export interface NodeCardProps {
 }
 
 /**
- * The card.
+ * The node: the caption above the frame.
  * @param props - the node, its position, the canvas zoom, the body and frames, and the gesture and action callbacks.
  * @returns the element.
  */
@@ -81,15 +104,16 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   const scale = textScaleAt(zoom)
   const size = (base: number): number => Math.round(base * scale)
   const text = (base: 12 | 13): CSSProperties => ({ fontSize: size(base), lineHeight: `${String(size({ 12: 16, 13: 20 }[base]))}px` })
-  const failedRow = node.claimed && flags.failed
-  // A selected card wears the accent ring; a stale card a danger outline; any other card the plain outline.
-  let ring = '0 0 0 1px var(--dv-line-strong), var(--dv-shadow-1)'
+  const failed = node.claimed && flags.failed
+  const showGrid = props.frames.some(frame => frame !== null)
+  // A selected frame wears the accent ring; a stale frame a danger outline; a failed frame the soft outline; any other
+  // frame the plain outline.
+  let ring = '0 0 0 1px var(--dv-line-strong)'
   if (selected) ring = '0 0 0 2px var(--dv-accent), 0 0 0 6px var(--dv-accent-soft)'
-  else if (flags.stale) ring = '0 0 0 1px var(--dv-danger), var(--dv-shadow-1)'
-  else if (failedRow) ring = '0 0 0 1px var(--dv-line)'
+  else if (flags.stale) ring = '0 0 0 1px var(--dv-danger)'
+  else if (failed) ring = '0 0 0 1px var(--dv-line)'
   const style: CSSProperties = {
-    position: 'absolute', left: x, top: y, width: NODE_WIDTH, boxSizing: 'border-box', background: failedRow ? 'var(--dv-danger-soft)' : 'var(--dv-surface-2)',
-    color: 'var(--dv-text)', borderRadius: 'var(--dv-radius-lg)', boxShadow: ring, cursor: 'grab', userSelect: 'none', overflow: 'hidden',
+    position: 'absolute', left: x, top: y, width: NODE_WIDTH, boxSizing: 'border-box', color: 'var(--dv-text)', cursor: 'grab', userSelect: 'none',
     opacity: flags.superseded ? 0.55 : 1, touchAction: 'none',
   }
   const status = node.claimed ? node.nodeType.claimed?.status : undefined
@@ -97,21 +121,20 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   let marker: string | null = null
   if (flags.rendering) marker = running
   else if (flags.failed) marker = status?.failed() ?? t('node.failed')
-  const header = (
-    <div style={{ minHeight: size(HEADER_HEIGHT), boxSizing: 'border-box', padding: '0 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
-      <span style={{ flex: 'none', width: size(6), height: size(6), borderRadius: 9999, background: node.nodeType.color }} />
-      <span style={{ ...text(13), flex: 1, minWidth: 0, fontWeight: 500, ...ellipsis }}>{node.title}</span>
+  const caption = (
+    <div style={{ ...text(12), height: size(CAPTION_HEIGHT), boxSizing: 'border-box', padding: '0 2px 4px', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--dv-text-2)' }}>
+      <span style={{ flex: 1, minWidth: 0, ...ellipsis }}>{node.title}</span>
       {view.unseen
         ? <span role="img" aria-label={t('node.unseen')} title={t('node.unseen')} style={{ flex: 'none', width: size(8), height: size(8), borderRadius: 9999, background: 'var(--dv-accent)' }} />
         : null}
-      {flags.stale ? <span style={{ ...text(12), flex: 'none', color: 'var(--dv-danger)' }}>{t('node.stale')}</span> : null}
-      {node.meta === undefined ? null : <span style={{ ...text(12), ...mono, flex: 'none', color: 'var(--dv-text-2)' }}>{node.meta}</span>}
+      {flags.stale ? <span style={{ flex: 'none', color: 'var(--dv-danger)' }}>{t('node.stale')}</span> : null}
+      {node.meta === undefined ? null : <span style={{ ...mono, flex: 'none' }}>{node.meta}</span>}
     </div>
   )
   let content: ReactNode
-  if (failedRow) {
+  if (failed) {
     content = (
-      <div style={{ minHeight: FAILED_ROW_HEIGHT, boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px 4px' }}>
+      <div style={{ ...CARD_SURFACE, display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px' }}>
         <span style={{ ...text(12), flex: 1, minWidth: 0, color: 'var(--dv-danger)', ...ellipsis }}>{marker}</span>
         {props.failedActions.map(action => (
           <button
@@ -126,19 +149,18 @@ export function NodeCard(props: NodeCardProps): ReactNode {
       </div>
     )
   } else {
-    const showGrid = props.frames.some(frame => frame !== null)
     content = (
       <>
         {showGrid
           ? (
-            <div style={{ height: GRID_HEIGHT, boxSizing: 'border-box', padding: '0 10px', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 3, alignContent: 'start', overflow: 'hidden' }}>
+            <div style={{ ...CARD_SURFACE, height: GRID_HEIGHT, padding: '10px 10px 0', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 3, alignContent: 'start', overflow: 'hidden' }}>
               {props.frames.map((frame, index) => (
                 <div key={index} style={{ aspectRatio: '16 / 9', borderRadius: 3, overflow: 'hidden', background: 'var(--dv-surface-3)' }}>{frame}</div>
               ))}
             </div>
           )
           : null}
-        <div style={{ position: 'relative', minHeight: node.bodyHeight }}>
+        <div style={{ position: 'relative', height: node.bodyHeight }}>
           {props.body}
           {marker !== null
             ? <span style={{ ...text(13), position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dv-overlay)', color: flags.failed ? 'var(--dv-danger)' : 'var(--dv-text)', fontWeight: 500 }}>{marker}</span>
@@ -166,19 +188,21 @@ export function NodeCard(props: NodeCardProps): ReactNode {
       role="button"
       tabIndex={0}
       aria-label={node.title}
-      title={failedRow ? node.record.error?.message : undefined}
+      title={failed ? node.record.error?.message : undefined}
     >
-      {header}
-      {content}
+      {caption}
+      <div data-node-frame="" style={{ position: 'relative', height: frameHeightOf(node, showGrid), overflow: 'hidden', borderRadius: 'var(--dv-radius-lg)', boxShadow: ring }}>
+        {content}
+      </div>
     </div>
   )
 }
 
 /**
- * The fallback body of a node type without a `dv.canvas.card` entry: its type label.
+ * The fallback body of a node type without a `dv.canvas.card` entry: its type label on the card surface.
  * @param props - the node's type label and the text scale.
  * @returns the element.
  */
 export function TypeLabelBody({ label, textScale }: { label: string; textScale: number }): ReactNode {
-  return <span style={{ display: 'block', padding: '0 10px 8px', fontSize: Math.round(12 * textScale), color: 'var(--dv-text-2)' }}>{label}</span>
+  return <span style={{ ...CARD_SURFACE, display: 'flex', alignItems: 'center', padding: '0 10px', fontSize: Math.round(12 * textScale), color: 'var(--dv-text-2)' }}>{label}</span>
 }
