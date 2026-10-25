@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { HistoryRow } from '@dv/ui-history/contract'
+import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type { NodeType } from '../../ui-canvas/src/client/contract/index.ts'
 import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
@@ -58,14 +59,17 @@ describe('the claimed node type of a generation kind', () => {
     await runtime.dispose()
   })
 
-  it('shows the duration of the first timed output as meta, the still the spec picks as preview, and the 16:9 body height', async () => {
+  it('shows the duration of the first timed output as meta, the still the spec picks as preview, and the frame height of the shown asset', async () => {
     const { runtime, canvas } = await mountKit({})
-    const nodes = nodesOf(canvas, chainedState(), LABELLED, 'en')
+    const state = chainedState()
+    state.assets = state.assets.map(entry => entry.id === 'shot1-last.png' ? { ...entry, width: 768, height: 1024 } : entry)
+    const nodes = nodesOf(canvas, state, LABELLED, 'en')
     const facts = (id: string) => {
       const node = nodes.get(id)
       return [node?.meta, node?.preview, node?.bodyHeight]
     }
-    expect(facts('g1')).toEqual(['4.0s', 'shot1-last.png', 117])
+    // A 3:4 preview gets the 208 × 277 frame; a shown asset of unknown size and a take without outputs the 16:9 frame.
+    expect(facts('g1')).toEqual(['4.0s', 'shot1-last.png', 277])
     expect(facts('x1')).toEqual(['2.5s', 'x1.png', 117])
     expect(facts('g3')).toEqual([undefined, undefined, 117])
     await runtime.dispose()
@@ -137,17 +141,20 @@ describe('the card body of a take', () => {
   it('draws the preview the spec picks, else the first output, and an empty frame for a take without outputs', async () => {
     const { runtime, canvas } = await mountKit({ 'dv.canvas.card': { kind: 'keyed', scope: 'root' } })
     const state = fixtureState()
+    state.assets = state.assets.map(entry => entry.id === 'shot1-last.png' ? { ...entry, width: 1920, height: 1080 } : entry)
     state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g2' ? { ...entry, outputs: ['shot2.mp4'] } : entry)
     const nodes = nodesOf(canvas, state, OPERATIONS, 'en')
     const assets = Object.fromEntries(state.assets.map(entry => [entry.id, entry]))
     const owner = (id: string) => ({ node: nodes.get(id)!, assets, textScale: 1, host: recordingHost() })
     const card = runtime.renderSlot('dv.canvas.card', owner('g1'), { entryKey: 'test_take' })
     const media = () => [card.container.querySelector('img')?.getAttribute('src'), card.container.querySelector('video')?.getAttribute('src')]
-    expect(media()).toEqual(['/dv/assets/shot1-last.png', undefined])
+    // A picture of known size fills the frame bare; an asset of unknown size and an empty take sit on the card surface.
+    const fill = () => (card.container.firstElementChild as HTMLElement).style.background
+    expect([media(), fill()]).toEqual([['/dv/assets/shot1-last.png', undefined], ''])
     card.update(owner('g2'))
-    expect(media()).toEqual([undefined, '/dv/assets/shot2.mp4#t=0.1'])
+    expect([media(), fill()]).toEqual([[undefined, '/dv/assets/shot2.mp4#t=0.1'], CARD_SURFACE.background])
     card.update(owner('g3'))
-    expect(media()).toEqual([undefined, undefined])
+    expect([media(), fill()]).toEqual([[undefined, undefined], CARD_SURFACE.background])
     await runtime.dispose()
   })
 

@@ -14,7 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import type { ClaimedEntry, ClaimedNodeView, ClaimedRecord, NodeAction, NodeInput, NodeType } from '@dv/ui-canvas/contract'
 import type { HistoryRow, Text } from '@dv/ui-history/contract'
 import { DvClient } from '@dv/ui-kit/api.ts'
-import { NODE_FRAME_HEIGHT } from '@dv/ui-kit/frame.ts'
+import { CARD_SURFACE, frameHeight, NODE_FRAME_HEIGHT } from '@dv/ui-kit/frame.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
 import { requestInputsOf } from '@dv/ui-kit/references.ts'
 import type { UiPlugin } from '@dv/ui-kit/registries.ts'
@@ -45,7 +45,10 @@ export interface GenerationUiSpec {
   /** Default 2, the column of takes. */
   column?: number
   deepenOn?: readonly string[]
-  /** Default 117, the 16:9 frame at the 208 card width. */
+  /**
+   * The frame height of a take whose shown asset has an unknown width or height, such as an audio take; default 117,
+   * the 16:9 frame at the 208 node width. A take whose shown asset has a known size gets the frame of that size.
+   */
   bodyHeight?: number
   status: StatusWords
   /** The History subject of a record; default none. */
@@ -72,11 +75,23 @@ export interface GenerationBar extends Pick<ParamBar, 'chips' | 'candidates'> {
 const outputsIn = (record: ProjectRecord, state: WireState): Asset[] =>
   record.outputs.flatMap(id => state.assets.find(asset => asset.id === id) ?? [])
 
-const frame: CSSProperties = { display: 'flex', width: '100%', overflow: 'hidden', background: 'var(--dv-surface-3)' }
+const frame: CSSProperties = { display: 'flex', width: '100%', overflow: 'hidden' }
 
+/**
+ * The card body of a take: its shown asset (its preview, else its first output) through `dv.media`. A picture of known
+ * size fills the frame bare; any other asset, such as an audio waveform, and a take without outputs sit on the card
+ * surface.
+ * @param props - the node, its assets, and the Factory renderer.
+ * @returns the element.
+ */
 function TakeCard({ node, assets, renderFactorySlot }: PropsRuntime<'dv.canvas.card'> & PropsRenderFactories): ReactNode {
   const shown = assets[node.preview ?? node.assets[0] ?? '']
-  return <div style={{ ...frame, height: node.bodyHeight }}>{shown === undefined ? null : renderFactorySlot('dv.media', { asset: shown, purpose: 'card' })}</div>
+  const bare = shown !== undefined && shown.width !== null && shown.height !== null
+  return (
+    <div style={{ ...bare ? {} : CARD_SURFACE, ...frame, height: node.bodyHeight }}>
+      {shown === undefined ? null : renderFactorySlot('dv.media', { asset: shown, purpose: 'card' })}
+    </div>
+  )
 }
 
 /**
@@ -86,7 +101,7 @@ function TakeCard({ node, assets, renderFactorySlot }: PropsRuntime<'dv.canvas.c
  */
 export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
   const operations = new Set(spec.operations)
-  const bodyHeight = spec.bodyHeight ?? NODE_FRAME_HEIGHT
+  const fallbackHeight = spec.bodyHeight ?? NODE_FRAME_HEIGHT
   const titleOf = ({ record, chain, version }: ClaimedRecord, input: NodeInput): string => {
     const pick = (zh: string, en: string): string => input.language === 'zh' ? zh : en
     const declared = input.operations.find(operation => operation.name === record.operation)?.label?.[input.language]
@@ -99,8 +114,9 @@ export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
     const timed = claimed.record.outputs.map(id => input.state.assets.find(asset => asset.id === id)?.duration_sec ?? null)
       .find(seconds => seconds !== null)
     const preview = spec.preview?.(outputsIn(claimed.record, input.state))
+    const shown = input.state.assets.find(asset => asset.id === (preview ?? claimed.record.outputs[0]))
     return {
-      title: titleOf(claimed, input), bodyHeight,
+      title: titleOf(claimed, input), bodyHeight: frameHeight(shown, fallbackHeight),
       ...timed === undefined ? {} : { meta: `${timed.toFixed(1)}s` }, ...preview === undefined ? {} : { preview },
     }
   }
