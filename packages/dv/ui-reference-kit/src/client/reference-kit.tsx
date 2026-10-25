@@ -11,6 +11,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { NodeEntry, NodeType, RecordsInUse } from '@dv/ui-canvas/contract'
+import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
 import { pickText, useText } from '@dv/ui-kit/locale.ts'
 import type { HistoryRow } from '@dv/ui-history/contract'
 import type { MentionKind, UiPlugin, VersionKind } from '@dv/ui-kit/registries.ts'
@@ -183,7 +184,8 @@ export function defineReferenceUi<V extends WireReferenceVersion>(spec: Referenc
 }
 
 /**
- * The card body of a noun node: its first reference, its type label, and the count of its other references.
+ * The card body of a noun node on the card surface: its first reference, its type label, and the count of its other
+ * references.
  * @param props - the node, its assets, the text scale, the noun's label, and the Factory renderer.
  * @returns the element.
  */
@@ -195,7 +197,7 @@ function ReferenceCard(
   const extra = node.assets.length - 1
   const size = (base: number): number => Math.round(base * textScale)
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 22, padding: '0 10px 8px', fontSize: size(12), lineHeight: `${String(size(16))}px`, color: 'var(--dv-text-2)' }}>
+    <div style={{ ...CARD_SURFACE, display: 'flex', alignItems: 'center', gap: 6, minHeight: 22, padding: '0 10px', fontSize: size(12), lineHeight: `${String(size(16))}px`, color: 'var(--dv-text-2)' }}>
       <span style={{ flex: 'none', display: 'flex', width: 22, height: 22, borderRadius: 'var(--dv-radius-sm)', overflow: 'hidden', background: 'var(--dv-surface-3)' }}>
         {first === undefined ? null : renderFactorySlot('dv.media', { asset: first, purpose: 'thumb' })}
       </span>

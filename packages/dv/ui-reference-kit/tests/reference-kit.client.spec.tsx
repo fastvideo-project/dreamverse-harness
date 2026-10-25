@@ -11,6 +11,7 @@ import type { FeatureHandle } from '@deepseek-ai/dsh-client-test-runtime'
 import type { CardHost, EditorHost, NodeView } from '@dv/ui-canvas/contract'
 import type { HistoryRow } from '@dv/ui-history/contract'
 import { assetUrl } from '@dv/ui-kit/api.ts'
+import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type { MentionKind } from '@dv/ui-kit/registries.ts'
 import type { Asset, WireState } from '@dv/ui-kit/types.ts'
@@ -208,7 +209,7 @@ describe('the plugin of a reference noun', () => {
     await runtime.dispose()
   })
 
-  it('draws a noun card as its first reference image, its label, and the count of the other references', async () => {
+  it('draws a noun card on the card surface as its first reference image, its label, and the count of the other references', async () => {
     document.documentElement.lang = 'zh-CN'
     const { runtime } = await mountKit()
     const references = ['ref.png', 'r2.png', 'r3.png', 'r4.png', 'r5.png', 'r6.png']
@@ -218,6 +219,7 @@ describe('the plugin of a reference noun', () => {
     const { container } = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'test_ref' })
     expect([...container.querySelectorAll('img')].map(image => image.getAttribute('src'))).toEqual([assetUrl('ref.png')])
     expect(container.textContent).toBe('参考+5')
+    expect((container.firstElementChild as HTMLElement).style.background).toBe(CARD_SURFACE.background)
     await runtime.dispose()
   })
 
