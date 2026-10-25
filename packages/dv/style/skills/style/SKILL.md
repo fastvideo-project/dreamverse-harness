@@ -8,4 +8,4 @@ A style is a reference kind that keeps reference images, and a shot names a vers
 
 ## Update
 
-When the user asks for a look later (换风格 / 加胶片感), call `dv_style_create` (or `dv_style_update`), then propose retakes that add `s1@1` to `inputs.reference`; retakes need the user's agreement, asked in bold.
+When the user asks for a look later, such as "change the style" or "add film grain", call `dv_style_create` (or `dv_style_update`), then propose retakes that add `s1@1` to `inputs.reference`; retakes need the user's agreement, asked in bold.

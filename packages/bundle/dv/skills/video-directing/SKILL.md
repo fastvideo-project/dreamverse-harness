@@ -16,7 +16,7 @@ Every `dv_*` call becomes a record the user sees as a chat card, a canvas node, 
 
 ## 2. Organize the story and its shots
 
-1. Split the story into shots, one clear action each. Shot count = requested duration divided by the shot length (default 5 s, whole seconds inside the range of the model). "15 秒" is three shots; "30 秒" is six.
+1. Split the story into shots, one clear action each. Shot count = requested duration divided by the shot length (default 5 s, whole seconds inside the range of the model). "15 seconds" is three shots; "30 seconds" is six.
 2. Write one line per shot: what happens, the camera, and which references appear.
 
 ## 3. Choose each shot's model, task and inputs
@@ -53,7 +53,7 @@ An update of a reference writes its next version and makes every record that use
 
 ## 7. Words to the user
 
-- "这个人 / 她 / 他" is the reference of a person; with one such reference it is that one. When the user's words fit two references, clips or shots and the message has no `dv:` mention that names one, ask; do not guess.
+- "This person", "she" or "he" is the reference of a person; with one such reference it is that one. When the user's words fit two references, clips or shots and the message has no `dv:` mention that names one, ask; do not guess.
 
 ## 8. Do not
 
