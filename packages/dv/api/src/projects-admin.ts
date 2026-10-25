@@ -17,7 +17,7 @@
  */
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import type DvProject from '@dv/project'
-import { answer, ApiRequestError, requireProject } from './api.ts'
+import { answer, requireProject } from './api.ts'
 import type { CanvasLayoutStore } from './layout.ts'
 import { readLinks, writeLinks } from './workspaces.ts'
 
@@ -26,21 +26,6 @@ export const PROJECT_ADMIN_ROUTES = {
   delete: '/api/dv/projects/delete',
   rename: '/api/dv/projects/rename',
 } as const
-
-/**
- * A title no other project uses: the trimmed title, else the title with the smallest free ` N` suffix.
- * @param project - the Project service.
- * @param projectId - the project being titled, whose own title does not count as a clash.
- * @param wanted - the requested title.
- * @returns the unique title.
- */
-export function uniqueProjectTitle(project: Pick<DvProject, 'listProjects'>, projectId: string | null, wanted: string): string {
-  const taken = new Set(project.listProjects().filter(info => info.id !== projectId).map(info => info.title))
-  if (!taken.has(wanted)) return wanted
-  let suffix = 2
-  while (taken.has(`${wanted} ${String(suffix)}`)) suffix += 1
-  return `${wanted} ${String(suffix)}`
-}
 
 /**
  * The project deletion and rename Fetch routes.
@@ -65,9 +50,7 @@ export function projectAdminRoutes(project: DvProject, stateRoot: string, layout
   const rename = async (request: Request): Promise<unknown> => {
     const body = await bodyOf(request)
     const projectId = requireProject(project, body['project'])
-    const wanted = typeof body['title'] === 'string' ? body['title'].trim() : ''
-    if (wanted.length === 0) throw new ApiRequestError(400, "'title' must be a non-empty string.", 'invalid_params')
-    const info = await project.renameProject(projectId, uniqueProjectTitle(project, projectId, wanted))
+    const info = await project.renameProject(projectId, typeof body['title'] === 'string' ? body['title'] : '')
     return { title: info.title }
   }
   const guard = (run: (request: Request) => Promise<unknown>) => (request: Request): Promise<Response> => answer(() => run(request))

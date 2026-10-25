@@ -1,7 +1,7 @@
 /**
  * Project's own `dv_proj_*` tools through the `dvProject` service with the real DSH tool registry: session binding,
- * the project summary with the reducers' `agentSummary` fields, the history list, undo and redo, moves to a step,
- * stale acceptance, and waiting for scheduled records.
+ * renaming the session's project, the project summary with the reducers' `agentSummary` fields, the history list, undo
+ * and redo, moves to a step, stale acceptance, and waiting for scheduled records.
  */
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -24,7 +24,7 @@ declare module '@dv/project' {
 
 /** Every `dv_proj_*` tool. */
 const PROJ_TOOLS = [
-  'dv_proj_create', 'dv_proj_open', 'dv_proj_state', 'dv_proj_history_list', 'dv_proj_undo', 'dv_proj_redo', 'dv_proj_stale_accept', 'dv_proj_wait',
+  'dv_proj_create', 'dv_proj_open', 'dv_proj_rename', 'dv_proj_state', 'dv_proj_history_list', 'dv_proj_undo', 'dv_proj_redo', 'dv_proj_stale_accept', 'dv_proj_wait',
 ]
 
 interface Fixture {
@@ -122,6 +122,7 @@ describe('dv_proj_* tools', () => {
     const projectId = brandString<ProjectId>(String(created['project_id']))
     expect(created).toEqual({
       record: created['head'], project_id: projectId, head: expect.any(String), records: 1,
+      title: 'dance',
       stale: [],
       recent: [expect.objectContaining({ operation: 'proj.create', status: 'done', summary: 'proj.create', intent: 'create project dance' })],
     })
@@ -142,6 +143,17 @@ describe('dv_proj_* tools', () => {
     expect((await fixture.call('dv_proj_open', { project_id: 'missing' })).isError).toBe(true)
     expect(json(await fixture.call('dv_proj_open', { project_id: info.id }))).toMatchObject({ project_id: info.id, records: 1 })
     expect(fixture.project.sessionProject(brandString<SessionId>('s1'))).toBe(info.id)
+  })
+
+  it('renames only this conversation\'s project, trimmed and unique among the projects', async () => {
+    const fixture = await start()
+    expect(errorOf(await fixture.call('dv_proj_rename', { title: 'ad' }))).toContain('No project selected')
+    const origin = { actor: 'user' as const, surface: 'api' as const, session: null, turn: null, tool_call: null, intent: 'create' }
+    const other = await fixture.project.createProject('ad', origin)
+    const projectId = brandString<ProjectId>(String(json(await fixture.call('dv_proj_create', { title: 'draft' }))['project_id']))
+    expect(json(await fixture.call('dv_proj_rename', { title: '  ad  ' }))).toMatchObject({ project_id: projectId, title: 'ad 2', records: 1 })
+    expect(errorOf(await fixture.call('dv_proj_rename', { title: ' ' }))).toContain('must not be empty')
+    expect(fixture.project.listProjects().map(info => [info.id, info.title])).toEqual([[other.id, 'ad'], [projectId, 'ad 2']])
   })
 
   it('registers a reducer only for a registered component key, and registers its own key proj', async () => {
@@ -176,7 +188,7 @@ describe('dv_proj_* tools', () => {
     json(await fixture.call('dv_proj_create', { title: 'summary' }))
     const made = value(await fixture.call('dv_asset_grab_still', { reason: 'a still', prompt: 'kite' }))
     const state = json(await fixture.call('dv_proj_state', {}))
-    expect(Object.keys(state)).toEqual(['project_id', 'head', 'records', 'stills', 'versions', 'stale', 'recent'])
+    expect(Object.keys(state)).toEqual(['project_id', 'title', 'head', 'records', 'stills', 'versions', 'stale', 'recent'])
     expect(state['stills']).toEqual([made.outputs[0]?.url])
     expect(state['versions']).toBe(0)
     removeVersions()
@@ -267,7 +279,7 @@ describe('dv_proj_* tools', () => {
     expect(undone['record']).toBeUndefined()
     const state = json(await fixture.call('dv_proj_state', {}))
     expect(state['record']).toBeUndefined()
-    for (const name of ['dv_proj_open', 'dv_proj_state', 'dv_proj_history_list', 'dv_proj_wait', 'dv_proj_undo', 'dv_proj_redo']) {
+    for (const name of ['dv_proj_open', 'dv_proj_rename', 'dv_proj_state', 'dv_proj_history_list', 'dv_proj_wait', 'dv_proj_undo', 'dv_proj_redo']) {
       expect(fixture.context.tools.get(name)?.output?.presentationMeta, name).toBeUndefined()
     }
   })
