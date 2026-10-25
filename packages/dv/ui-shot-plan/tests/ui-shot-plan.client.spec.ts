@@ -12,6 +12,7 @@ import type { PlanId } from '@dv/shot-plan/types'
 import type { DvCanvas } from '@dv/ui-canvas/contract'
 import { createDvCanvas } from '@dv/ui-canvas/src/client/dv-canvas.ts'
 import type { DvHistory, HistoryRow } from '@dv/ui-history/contract'
+import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
 import { fixtureState, record } from '../../ui-kit/tests/fixture.client.tsx'
@@ -128,10 +129,11 @@ describe('plan History row', () => {
 })
 
 describe('plan card', () => {
-  it('shows the type label and the version on show, in the interface language', async () => {
+  it('shows the type label and the version on show on the card surface, in the interface language', async () => {
     document.documentElement.lang = 'zh-CN'
     const zh = await mountPlanCanvas(secondVersion())
     expect(zh.card.textContent).toBe('分镜计划 · 第 2 版')
+    expect(within(zh.card).getByText('分镜计划 · 第 2 版').style.background).toBe(CARD_SURFACE.background)
     await zh.runtime.dispose()
     document.documentElement.lang = 'en'
     const en = await mountPlanCanvas(secondVersion())
