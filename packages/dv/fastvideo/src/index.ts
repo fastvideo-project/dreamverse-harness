@@ -1,11 +1,12 @@
 /**
- * Provider plugin `fastvideo` of DreamVerse for models served by local FastVideo streaming_v2 servers. It registers into
- * `ctx.dvModels` one entry per model that its `models` config names and per task the config gives a server for; a model
- * or task the config leaves out is not registered. Each task of a model is served by its own server: the streaming_v2
- * client of `@dv/fastvideo-generation-client` sends each render as one `POST /v1/streamv2/generate`, with the references
- * first and the first frame after them, each as its media type and bytes read from `dvAssetPool`, and with each citation
- * of a reference in the prompt replaced by the label that the served model gives the reference. Each entry describes
- * in `schema()` the durations, aspect ratios and resolutions of its server and the inputs and `extra` parameters it
+ * Provider plugin `fastvideo` of DreamVerse for models served by FastVideo servers of the OpenAI-style video job API. It
+ * registers into `ctx.dvModels` one entry per model that its `models` config names and per task the config gives a
+ * server for; a model or task the config leaves out is not registered. Each task of a model is served by its own server:
+ * the client of `@dv/fastvideo-generation-client` sends each render as one video job, with the reference images first
+ * and the first frame after them, each with its MIME type and bytes read from `dvAssetPool`, and with each citation of a
+ * reference in the prompt replaced by the label that the served model gives the reference. The plugin reads the last
+ * frame of the finished video with `dvFfmpeg`. The job API reports no model facts, so each entry describes in `schema()`
+ * the durations, aspect ratios and resolutions of its served task's facts and the inputs and `extra` parameters it
  * accepts, and checks the inputs and `extra` in `validateGenerationRequest`. Each entry carries the prompt skill of its
  * model and task, which the catalog registers.
  *
@@ -14,21 +15,24 @@
  * @module @dv/fastvideo
  */
 import { readFileSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { validateArgs, type ParameterSchemaSpec } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
-import { DvFastvideoGeneration, type ModelFacts } from '@dv/fastvideo-generation-client'
+import { DvFastvideoGeneration } from '@dv/fastvideo-generation-client'
 import type {} from '@dv/asset-pool'
+import type DvFfmpeg from '@dv/ffmpeg'
 import type { ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent, TaskId } from '@dv/models'
 import { FASTH3 } from './fasth3.ts'
 import { modelPrompt } from './reference-labels.ts'
-import type { InputRole, MediaType, ServedTask, TaskInputs } from './types.ts'
+import type { InputRole, ServedFacts, ServedTask, TaskInputs } from './types.ts'
 
-/** One task of one model: the streaming_v2 server that renders it and its GPU rate. */
+/** One task of one model: the video job server that renders it and its GPU rate. */
 export interface TaskServer {
-  /** HTTP base URL of the FastVideo streaming_v2 server, such as `http://127.0.0.1:8029`. */
+  /** HTTP base URL of the FastVideo video job server, such as `http://127.0.0.1:8029`. */
   baseUrl: string
   /** GPU seconds per rendered video second on this server, declared for the task for the GPU estimate. */
   gpuSecondsPerVideoSecond: number
@@ -51,16 +55,8 @@ export const Config: z<Config> = z.object({
 /** The provider name of every entry this plugin registers. */
 const PROVIDER = 'fastvideo'
 
-/** The count limits of one input, read from the server. */
-interface InputLimits {
-  /** The most assets in the input across all media types. */
-  maxCount: number
-  /** The most assets of each media type in the input; a declared media type without a key has no count limit. */
-  maxCountByMediaType: Partial<Record<MediaType, number>>
-}
-
-/** The count limits by declared input; an input without an entry has no limit beyond its declaration. */
-type TaskInputLimits = Partial<Record<InputRole, InputLimits>>
+/** The most assets of each declared input, from the served task's facts; an input without an entry has no limit. */
+type TaskInputLimits = Partial<Record<InputRole, number>>
 
 /** The models this plugin can serve, with the tasks it can serve each for. */
 const SERVED: Record<string, { [T in TaskId]?: ServedTask }> = {
@@ -70,8 +66,11 @@ const SERVED: Record<string, { [T in TaskId]?: ServedTask }> = {
 /** Plugin name. */
 export const name = 'dv-fastvideo'
 
-/** Required services: the model catalog, and the asset pool that holds the bytes and media type of each input asset. */
-export const inject = ['dvModels', 'dvAssetPool']
+/**
+ * Required services: the model catalog, the asset pool that holds the bytes and MIME type of each input asset, and
+ * ffmpeg, which reads the last frame of each finished video.
+ */
+export const inject = ['dvModels', 'dvAssetPool', 'dvFfmpeg']
 
 /**
  * Check the `models` config against the models and tasks this plugin serves.
@@ -92,55 +91,40 @@ function checkConfig(config: Config): void {
 }
 
 /**
- * The count limits of a task's inputs, from the server's reference limits. The server counts the first frame among its
- * references, so the first frame takes one slot of the server's total and one slot of each media type that the
- * `first_frame` input accepts, and the `reference` input keeps the rest. A media type that the `reference` input
- * declares and the server does not accept has a limit of 0.
+ * The count limits of a task's inputs, from the model's reference limit. The model counts the first frame among its
+ * references, so the first frame takes one slot of the model's total and the `reference` input keeps the rest.
  * @param inputs - the inputs the task declares; `SERVED` declares `reference` and `first_frame` together or neither.
- * @param facts - the server's facts.
+ * @param facts - the served task's facts.
  * @returns the limits by declared input; empty for a task without references.
  */
-function deriveInputLimits(inputs: TaskInputs, facts: ModelFacts): TaskInputLimits {
-  const { reference, first_frame: firstFrame } = inputs
-  if (reference === undefined || firstFrame === undefined) return {}
-  const firstFrameTypes = new Set(firstFrame.mediaTypes)
-  const maxCountByMediaType = Object.fromEntries(reference.mediaTypes.map(mediaType => [
-    mediaType, (facts.referenceMediaTypes[mediaType]?.maxCount ?? 0) - (firstFrameTypes.has(mediaType) ? 1 : 0),
-  ]))
-  return {
-    reference: { maxCount: facts.maxReferences - 1, maxCountByMediaType },
-    first_frame: { maxCount: 1, maxCountByMediaType: {} },
-  }
+function deriveInputLimits(inputs: TaskInputs, facts: ServedFacts): TaskInputLimits {
+  if (inputs.reference === undefined || inputs.first_frame === undefined) return {}
+  return { reference: facts.maxReferences - 1, first_frame: 1 }
 }
 
 /**
- * Describe each declared input of a task for `schema()`: its `min`, its total `max`, and each declared media type with
- * its `max` when the server limits that type.
+ * Describe each declared input of a task for `schema()`: its `min`, its `max`, and its declared media types.
  * @param inputs - the inputs the task declares.
- * @param limits - the input limits from the server's facts.
+ * @param limits - the input limits from the served task's facts.
  * @returns the inputs by role.
  */
 function describeInputs(inputs: TaskInputs, limits: TaskInputLimits): JsonValue {
-  return Object.fromEntries(Object.entries(inputs).map(([role, input]) => {
-    // deriveInputLimits gives every declared input its limits.
-    const limit = limits[role as InputRole] as InputLimits
-    const mediaTypes = input.mediaTypes.map((type): [string, JsonValue] => {
-      const max = limit.maxCountByMediaType[type]
-      return [type, max === undefined ? {} : { max }]
-    })
-    return [role, { min: input.min, max: limit.maxCount, media_types: Object.fromEntries(mediaTypes) }]
-  }))
+  return Object.fromEntries(Object.entries(inputs).map(([role, input]) => [role, {
+    // deriveInputLimits gives every declared input its limit.
+    min: input.min, max: limits[role as InputRole] as number,
+    media_types: Object.fromEntries(input.mediaTypes.map(type => [type, {}])),
+  }]))
 }
 
 /**
  * The problems of one render request for a task: an input the task does not declare holding an asset, an input holding
  * fewer assets than its `min`, an asset whose media type its input does not declare, or an input holding more assets
- * in total or of one media type than the server's limits allow.
+ * than the model's limits allow.
  * @param inputs - the inputs the task declares.
- * @param limits - the input limits from the server's facts.
+ * @param limits - the input limits from the served task's facts.
  * @param request - the render request.
  * @param mediaTypeOf - the media type of an asset, read from the asset pool.
- * @returns the problems, each one sentence; empty when the server renders the request.
+ * @returns the problems, each one sentence; empty when the model renders the request.
  */
 function requestProblems(
   inputs: TaskInputs, limits: TaskInputLimits, request: RenderRequest,
@@ -160,20 +144,12 @@ function requestProblems(
     if (assets.length < declared.min) {
       problems.push(`Its ${role} input needs at least ${declared.min} of type ${accepted}; this shot has ${assets.length}.`)
     }
-    const counts = new Map<string, number>()
     for (const asset of assets) {
       const mediaType = mediaTypeOf(asset)
       if (!declared.mediaTypes.includes(mediaType)) problems.push(`Its ${role} input takes assets of type ${accepted}; asset ${asset} is of type ${mediaType}.`)
-      counts.set(mediaType, (counts.get(mediaType) ?? 0) + 1)
     }
     const limit = limits[role]
-    if (limit !== undefined && assets.length > limit.maxCount) {
-      problems.push(`Its ${role} input takes at most ${limit.maxCount} assets; this shot has ${assets.length}.`)
-    }
-    for (const [mediaType, count] of counts) {
-      const max = limit?.maxCountByMediaType[mediaType]
-      if (max !== undefined && count > max) problems.push(`Its ${role} input takes at most ${max} of type ${mediaType}; this shot has ${count}.`)
-    }
+    if (limit !== undefined && assets.length > limit) problems.push(`Its ${role} input takes at most ${limit} assets; this shot has ${assets.length}.`)
   }
   return problems
 }
@@ -199,9 +175,28 @@ function extraProblems(model: string, task: TaskId, schema: ParameterSchemaSpec,
 }
 
 /**
- * A catalog entry for one configured model and task, rendered through one streaming_v2 client of the task's server.
- * @param ctx - the plugin context; the client lives in an isolated `dvFastvideoGeneration` scope, and `render` reads
- *   each input asset from `ctx.dvAssetPool`.
+ * The last frame of an MP4 as PNG bytes: ffmpeg decodes every frame and keeps the last one.
+ * @param ffmpeg - the `dvFfmpeg` service.
+ * @param video - the MP4 bytes.
+ * @returns the PNG bytes.
+ * @throws FfmpegError when ffmpeg cannot decode the video.
+ */
+async function lastFrame(ffmpeg: DvFfmpeg, video: Buffer): Promise<Buffer> {
+  const dir = await mkdtemp(join(tmpdir(), 'dv-fastvideo-'))
+  try {
+    const input = join(dir, 'video.mp4')
+    await writeFile(input, video)
+    const argv = ['ffmpeg', '-y', '-loglevel', 'error', '-i', '{{in:0}}', '-an', '-update', '1', '{{out:last.png}}']
+    return await readFile((await ffmpeg.run({ argv, inputs: [input], outputs: ['last.png'], dir })).outputs[0] as string)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+}
+
+/**
+ * A catalog entry for one configured model and task, rendered as one job of the task's server.
+ * @param ctx - the plugin context; the client lives in an isolated `dvFastvideoGeneration` scope, `render` reads each
+ *   input asset from `ctx.dvAssetPool`, and the last frame comes from `ctx.dvFfmpeg`.
  * @param model - the model name.
  * @param task - the task.
  * @param server - the task's configured server.
@@ -211,7 +206,8 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
   const served = SERVED[model]?.[task]
   /* v8 ignore next -- checkConfig refuses unknown models and tasks before any entry is built. */
   if (served === undefined) throw new Error(`dv-fastvideo serves no model "${model}" for task "${task}".`)
-  const { inputs, extra, assignReferenceLabels, skill } = served
+  const { inputs, extra, assignReferenceLabels, skill, facts } = served
+  const limits = deriveInputLimits(inputs, facts)
   const client = new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), { baseUrl: server.baseUrl })
   return {
     modality: 'video',
@@ -224,54 +220,47 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
       name: skill.name, description: skill.description,
       content: readFileSync(new URL(`../skills/${skill.file}`, import.meta.url), 'utf8'),
     },
-    async facts(): Promise<RenderModelFacts> {
-      const facts = await client.model()
-      return {
-        modelId: facts.modelId, aspectRatios: facts.aspectRatios, resolutions: facts.resolutions, frameSizes: facts.frameSizes,
-        minDurationSec: facts.minSegmentDurationSec, maxDurationSec: facts.maxSegmentDurationSec,
-        numFramesByDurationSec: facts.numFramesByDurationSec,
-      }
+    facts(): Promise<RenderModelFacts> {
+      const { modelId, aspectRatios, resolutions, frameSizes, minDurationSec, maxDurationSec, numFramesByDurationSec } = facts
+      return Promise.resolve({ modelId, aspectRatios, resolutions, frameSizes, minDurationSec, maxDurationSec, numFramesByDurationSec })
     },
-    async schema(): Promise<JsonValue> {
-      const capabilities = await client.model()
-      return {
-        duration_sec: { min: capabilities.minSegmentDurationSec, max: capabilities.maxSegmentDurationSec },
-        aspect_ratios: capabilities.aspectRatios,
-        resolutions: capabilities.resolutions,
-        inputs: describeInputs(inputs, deriveInputLimits(inputs, capabilities)),
+    schema(): Promise<JsonValue> {
+      return Promise.resolve({
+        duration_sec: { min: facts.minDurationSec, max: facts.maxDurationSec },
+        aspect_ratios: facts.aspectRatios,
+        resolutions: facts.resolutions,
+        inputs: describeInputs(inputs, limits),
         extra: JSON.parse(JSON.stringify(extra)) as JsonValue,
-      }
+      })
     },
-    async validateGenerationRequest(request: RenderRequest): Promise<string[]> {
-      const limits = deriveInputLimits(inputs, await client.model())
-      return [
+    validateGenerationRequest(request: RenderRequest): Promise<string[]> {
+      return Promise.resolve([
         ...requestProblems(inputs, limits, request, asset => ctx.dvAssetPool.mediaType(asset)),
         ...extraProblems(model, task, extra, request.extra),
         ...served.promptProblems?.(request) ?? [],
-      ]
+      ])
     },
     render(request: RenderRequest, signal?: AbortSignal): AsyncIterable<RenderStreamEvent> {
       const assets = request.firstFrame === null ? request.references : [...request.references, request.firstFrame]
       return (async function* () {
-        // Video and audio references can be tens of megabytes each, so they are read concurrently off the event loop.
-        const references = await Promise.all(assets.map(async id => ({
-          mediaType: ctx.dvAssetPool.mediaType(id), bytes: await readFile(ctx.dvAssetPool.path(id)),
+        const images = await Promise.all(assets.map(async id => ({
+          mime: ctx.dvAssetPool.get(id).mime, bytes: await readFile(ctx.dvAssetPool.path(id)),
         })))
-        // The sound of a video changes only the labels of audio, so the pool reads it only when the media hold audio.
-        const audio = references.some(reference => reference.mediaType === 'audio')
-        const media = await Promise.all(assets.map(async asset => ({
-          asset, mediaType: ctx.dvAssetPool.mediaType(asset), hasAudio: audio && await ctx.dvAssetPool.hasAudio(asset),
-        })))
-        yield* client.generateSegment({
+        const media = assets.map(asset => ({ asset, mediaType: ctx.dvAssetPool.mediaType(asset) }))
+        const { video, timings } = await client.generateVideo({
+          task: served.jobTask,
           prompt: modelPrompt(request, assignReferenceLabels, media),
-          references,
+          images,
           frameWidth: request.frameWidth,
           frameHeight: request.frameHeight,
           numFrames: request.numFrames,
           seed: request.seed,
-          returnLastFrame: true,
           ...signal === undefined ? {} : { signal },
         })
+        yield { kind: 'video_start', mime: 'video/mp4' }
+        yield { kind: 'chunk', bytes: video }
+        yield { kind: 'last_frame', png: await lastFrame(ctx.dvFfmpeg, video) }
+        yield { kind: 'done', timings }
       })()
     },
   }

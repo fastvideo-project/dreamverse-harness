@@ -1,14 +1,14 @@
 /**
- * `dvFastvideoGeneration`: the harness client for the FastVideo generation backend's streaming_v2 API, which
- * `fastvideo serve` serves with a `streaming_v2:` config block. HTTP calls use `fetch`; each segment request is one
- * `POST /v1/streamv2/generate` whose response is a server-sent event stream.
+ * `dvFastvideoGeneration`: the harness client for the FastVideo generation backend's OpenAI-style video job API, which
+ * `fastvideo serve` serves. HTTP calls use `fetch`; each video is one job: `POST /v1/videos` submits it,
+ * `GET /v1/videos/{id}` reports its status, and `GET /v1/videos/{id}/content` returns the finished MP4.
  *
  * @module @dv/fastvideo-generation-client
  */
 import { Service, type Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { generateSegment } from './generation-stream.ts'
-import type { ModelFacts, SegmentOutput, SegmentRequest } from './types.ts'
+import { GenerationSegmentError } from './errors.ts'
+import type { VideoOutput, VideoRequest } from './types.ts'
 
 export * from './errors.ts'
 export type * from './types.ts'
@@ -26,26 +26,24 @@ export interface Config {
   baseUrl: string
 }
 
-/** `GET /v1/streamv2/capabilities` response fields: the served model's facts. */
-interface CapabilitiesBody {
-  model_id: string
-  min_segment_duration_sec: number
-  max_segment_duration_sec: number
-  max_references: number
-  reference_media_types: Record<string, { max_count: number }>
-  frame_sizes: Record<string, Record<string, [number, number]>>
-  num_frames_by_duration_sec: Record<string, number>
+/** The fields of a `/v1/videos` job object that the client reads. */
+interface JobBody {
+  id: string
+  status: 'queued' | 'in_progress' | 'completed' | 'failed'
+  error?: { message: string } | null
+  inference_time_s?: number | null
 }
 
-/** Reads the backend's model facts and streams segments. */
+/** The time between two status reads of a running job; the backend reports no progress between 0 and 100. */
+const POLL_MS = 1000
+
+/** Submits video jobs and downloads their videos. */
 export class DvFastvideoGeneration extends Service {
   static Config: z<Config> = z.object({
     baseUrl: z.string().required(),
   })
 
   private readonly baseUrl: URL
-  /** The first successful capabilities result; the served model stays fixed for the backend's lifetime. */
-  private modelFacts: ModelFacts | null = null
 
   /**
    * @param ctx - owning plugin context.
@@ -57,54 +55,102 @@ export class DvFastvideoGeneration extends Service {
   }
 
   /**
-   * Read the served model's facts; the first successful response is reused afterwards.
-   * @returns the model facts.
-   * @throws Error naming the route for a status other than 200, or the `fetch` error when the backend is unreachable.
+   * Submit one job, poll its status until it completes, and download its video. HTTP 400 at submission and job status
+   * `failed` reject with `GenerationSegmentError`. Aborting `request.signal` stops polling and rejects with
+   * `signal.reason`; the backend finishes a job whose generation has started.
+   * @param request - the job inputs and an optional abort signal.
+   * @returns the MP4 bytes and the timings.
+   * @throws Error naming the route for any other status than 200, or the `fetch` error when the backend is unreachable.
    */
-  async model(): Promise<ModelFacts> {
-    if (this.modelFacts !== null) return this.modelFacts
-    const route = '/v1/streamv2/capabilities'
-    const body = await readBody<CapabilitiesBody>(await fetch(new URL(route, this.baseUrl)), `GET ${route}`)
-    const referenceMediaTypes = Object.fromEntries(Object.entries(body.reference_media_types)
-      .map(([mediaType, limit]) => [mediaType, { maxCount: limit.max_count }]))
-    this.modelFacts = {
-      modelId: body.model_id,
-      aspectRatios: Object.keys(body.frame_sizes),
-      resolutions: [...new Set(Object.values(body.frame_sizes).flatMap(sizes => Object.keys(sizes)))],
-      minSegmentDurationSec: body.min_segment_duration_sec,
-      maxSegmentDurationSec: body.max_segment_duration_sec,
-      maxReferences: body.max_references,
-      referenceMediaTypes,
-      frameSizes: body.frame_sizes,
-      numFramesByDurationSec: body.num_frames_by_duration_sec,
+  async generateVideo(request: VideoRequest): Promise<VideoOutput> {
+    const { signal } = request
+    signal?.throwIfAborted()
+    const started = Date.now()
+    const submitted = await this.call('POST', '/v1/videos', signal, JSON.stringify(jobBody(request)))
+    const { id } = await submitted.json() as JobBody
+    for (;;) {
+      const job = await (await this.call('GET', `/v1/videos/${id}`, signal)).json() as JobBody
+      if (job.status === 'failed') throw new GenerationSegmentError(job.error?.message ?? 'The video job failed.', 'generation_failed')
+      if (job.status === 'completed') {
+        const video = Buffer.from(await (await this.call('GET', `/v1/videos/${id}/content`, signal)).arrayBuffer())
+        const generation = typeof job.inference_time_s === 'number' ? { generation_ms: Math.round(job.inference_time_s * 1000) } : {}
+        return { video, timings: { e2e_latency_ms: Date.now() - started, ...generation } }
+      }
+      await pause(signal)
     }
-    return this.modelFacts
   }
 
   /**
-   * Stream one segment with its own HTTP request. The iteration ends after `done` and rejects with
-   * `GenerationSegmentError` after HTTP 400 or an `error` event. Leaving the iteration or aborting `request.signal`
-   * cancels the request; an abort rejects with `signal.reason`.
-   * @param request - the segment inputs and an optional abort signal.
-   * @returns the backend outputs in arrival order.
+   * Send one request and return its successful response.
+   * @param method - the HTTP method.
+   * @param path - the route path.
+   * @param signal - aborts the request.
+   * @param body - the JSON body of a POST.
+   * @returns the response with status 200.
+   * @throws GenerationSegmentError for HTTP 400 at submission; Error naming the route for any other status than 200.
    */
-  generateSegment(request: SegmentRequest): AsyncIterable<SegmentOutput> {
-    return generateSegment(new URL('/v1/streamv2/generate', this.baseUrl), request)
+  private async call(method: 'GET' | 'POST', path: string, signal: AbortSignal | undefined, body?: string): Promise<Response> {
+    const response = await fetch(new URL(path, this.baseUrl), {
+      method,
+      ...body === undefined ? {} : { headers: { 'content-type': 'application/json' }, body },
+      ...signal === undefined ? {} : { signal },
+    })
+    if (response.status === 200) return response
+    const text = await response.text()
+    if (method === 'POST' && response.status === 400) throw new GenerationSegmentError(errorMessage(text), 'invalid_request')
+    throw new Error(`FastVideo generation backend ${method} ${path} returned HTTP ${response.status}: ${text}`)
   }
 }
 
 /**
- * Parse a successful JSON response.
- * @param response - the backend response.
- * @param route - method and path for the failure message.
- * @returns the parsed body.
- * @throws Error naming the route, status, and body for any status other than 200.
+ * The `POST /v1/videos` body of one request: each image becomes an `image_reference` `data:` URL in model order.
+ * @param request - the job inputs.
+ * @returns the JSON body.
  */
-async function readBody<T>(response: Response, route: string): Promise<T> {
-  if (response.status !== 200) {
-    throw new Error(`FastVideo generation backend ${route} returned HTTP ${response.status}: ${await response.text()}`)
+function jobBody(request: VideoRequest): Record<string, unknown> {
+  return {
+    task: request.task,
+    prompt: request.prompt,
+    size: `${request.frameWidth}x${request.frameHeight}`,
+    num_frames: request.numFrames,
+    ...request.seed === undefined ? {} : { seed: request.seed },
+    ...request.images.length === 0 ? {} : {
+      image_reference: request.images.map(image => ({ image_url: `data:${image.mime};base64,${image.bytes.toString('base64')}` })),
+    },
   }
-  return await response.json() as T
+}
+
+/**
+ * The failure message of an HTTP 400 body: FastAPI's `detail`, or the body itself when it holds none.
+ * @param text - the response body.
+ * @returns the message.
+ */
+function errorMessage(text: string): string {
+  try {
+    const { detail } = JSON.parse(text) as { detail?: unknown }
+    if (detail !== undefined) return typeof detail === 'string' ? detail : JSON.stringify(detail)
+  } catch {
+    // SyntaxError: a body that is not JSON is its own message.
+  }
+  return text
+}
+
+/**
+ * Wait one poll interval, or reject with the abort reason when the signal fires first.
+ * @param signal - the job's abort signal.
+ */
+function pause(signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onAbort = (): void => {
+      clearTimeout(timer)
+      reject(signal?.reason as Error)
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, POLL_MS)
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
 }
 
 export default DvFastvideoGeneration

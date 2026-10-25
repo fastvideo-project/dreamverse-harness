@@ -64,8 +64,8 @@ export interface ModelKey<T extends TaskId = TaskId> {
 }
 
 /**
- * The facts of one entry that a render request is built from, read from the provider's backend. Map keys keep the
- * backend's values, such as `16:9` or `720p`.
+ * The facts of one entry that a render request is built from, read from the provider's backend or, for a backend
+ * that reports none, from the provider's own table. Map keys keep the backend's values, such as `16:9` or `720p`.
  */
 export interface RenderModelFacts {
   /** The backend's model ID, which the record report keeps (`model_id`); never shown to the user. */
@@ -119,7 +119,8 @@ export type RenderStreamEvent =
  * gives the entry's extra fields and the types of its facts, request and result.
  *
  * Entries must honor these semantics:
- * - `facts()` and `schema()` resolve with values read from the backend; they reject when the backend cannot be reached.
+ * - `facts()` and `schema()` resolve with values read from the backend, or from the provider's own table for a backend
+ *   that reports none; they reject when the backend cannot be reached.
  * - `validateGenerationRequest(request)` resolves with every reason the model cannot render the request, including
  *   invalid `extra` values; it resolves with an empty list when the model renders it, and rejects when the backend
  *   cannot be reached.

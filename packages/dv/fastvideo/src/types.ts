@@ -4,7 +4,7 @@
  * @module @dv/fastvideo/types
  */
 import type { ParameterSchemaSpec } from '@deepseek-ai/dsh-tools'
-import type { RenderRequest } from '@dv/models'
+import type { RenderModelFacts, RenderRequest } from '@dv/models'
 import type { AssignReferenceLabels } from './reference-labels.ts'
 
 /**
@@ -27,12 +27,21 @@ export interface InputDeclaration {
 /** The inputs one task of a model accepts, by role; a role left out takes no asset. */
 export type TaskInputs = Partial<Record<InputRole, InputDeclaration>>
 
+/** The facts of one served task, which the job API does not report: the render facts and the reference limit. */
+export interface ServedFacts extends RenderModelFacts {
+  /** The most references that one job can carry; the first frame counts among them. */
+  maxReferences: number
+}
+
 /**
- * One task this plugin can serve a model for: the entry's description, what the model accepts for it, and its prompt
- * skill. The GPU rate comes from the configured server of the task.
+ * One task this plugin can serve a model for: the entry's description, the job API task name, the model's facts, what
+ * the model accepts for it, and its prompt skill. The GPU rate comes from the configured server of the task.
  */
 export interface ServedTask {
   description: string
+  /** The task name that the job body's `task` field carries, such as `ref2va`. */
+  jobTask: string
+  facts: ServedFacts
   inputs: TaskInputs
   /** The model's own parameters for this task, passed in the request's `extra`; empty when it has none. */
   extra: ParameterSchemaSpec

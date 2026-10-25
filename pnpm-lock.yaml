@@ -7278,6 +7278,9 @@ importers:
       '@dv/fastvideo-generation-client':
         specifier: workspace:*
         version: link:../fastvideo-generation-client
+      '@dv/ffmpeg':
+        specifier: workspace:*
+        version: link:../ffmpeg
       '@dv/models':
         specifier: workspace:*
         version: link:../models
@@ -7294,9 +7297,6 @@ importers:
       '@deepseek-ai/cordis-plugin-loader':
         specifier: workspace:~
         version: link:../../../vendor/loader
-      '@dv/ffmpeg':
-        specifier: workspace:*
-        version: link:../ffmpeg
       '@types/node':
         specifier: ^22.20.0
         version: 22.20.0

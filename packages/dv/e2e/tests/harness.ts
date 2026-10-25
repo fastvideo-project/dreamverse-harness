@@ -1,5 +1,5 @@
 /**
- * Boot the shipped `video-harness` profile for a browser test: a fake streaming_v2 backend and a scripted model server
+ * Boot the shipped `video-harness` profile for a browser test: a fake FastVideo video job backend and a scripted model server
  * started in this process, an isolated harness home with the profile manifest, and `dsh web` on a free port. The
  * returned handle carries the token URL, a cookie-aware JSON client for `/api/dv/*`, and the teardown.
  */
@@ -24,23 +24,15 @@ export const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmp
 /** Playwright, a dev dependency of this package; the stories launch Chromium through it. */
 export * as playwright from 'playwright'
 
-/** The capabilities the fake backend reports: tiny frames so a video renders in well under a second. */
-const CAPABILITIES_BODY = {
-  model_id: 'fake-ref2va', name: 'Fake Ref2AV', min_segment_duration_sec: 1, max_segment_duration_sec: 2,
-  max_references: 3, reference_media_types: { image: { max_count: 3 }, video: { max_count: 3 }, audio: { max_count: 3 } },
-  max_reference_aspect_ratio: 4.0,
-  frame_sizes: { '16:9': { '720p': [192, 112] } }, num_frames_by_duration_sec: { 1: 25, 2: 49 },
-}
-
 /** A running fake backend. */
 export interface FakeBackend {
   url: string
   requests: Record<string, unknown>[]
-  /** Hold render requests: each one waits until {@link FakeBackend.release} lets it through. */
+  /** Hold jobs: each one stays in progress until {@link FakeBackend.release} lets it through. */
   hold(): void
-  /** Let the oldest held render request finish; with none waiting, the next request to arrive passes. */
+  /** Let the oldest held job finish; with none waiting, the next job to arrive passes. */
   release(): void
-  /** Stop holding and let every waiting render request finish. */
+  /** Stop holding and let every waiting job finish. */
   releaseAll(): void
   close(): Promise<void>
 }
@@ -53,8 +45,8 @@ export interface FakeBackend {
  * @param width - frame width.
  * @param height - frame height.
  * @param numFrames - frames at 24 fps.
- * @param prompt - the request prompt.
- * @returns the video bytes and its last frame as PNG.
+ * @param prompt - the job prompt.
+ * @returns the video bytes.
  */
 async function encodePlayableVideo(
   dir: string,
@@ -62,26 +54,24 @@ async function encodePlayableVideo(
   height: number,
   numFrames: number,
   prompt: string,
-): Promise<{ video: Buffer; lastFrame: Buffer }> {
+): Promise<Buffer> {
   const work = mkdtempSync(join(dir, 'clip-'))
   const color = createHash('sha1').update(prompt).digest('hex').slice(0, 6)
   const video = join(work, 'clip.mp4')
-  const frame = join(work, 'last.png')
-  const ffmpeg = (args: string[]): Promise<void> => new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
+    const args = ['-f', 'lavfi', '-i', `color=c=0x${color}:s=${String(width)}x${String(height)}:d=${(numFrames / 24).toFixed(3)}:r=24`, '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', video]
     const child = spawn(FFMPEG, ['-y', '-loglevel', 'error', ...args], { stdio: 'ignore' })
     child.once('error', reject)
     child.once('exit', (code) => { if (code === 0) resolve(); else reject(new Error(`ffmpeg exited with ${String(code)}`)) })
   })
-  await ffmpeg(['-f', 'lavfi', '-i', `color=c=0x${color}:s=${String(width)}x${String(height)}:d=${(numFrames / 24).toFixed(3)}:r=24`, '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', video])
-  await ffmpeg(['-sseof', '-0.05', '-i', video, '-frames:v', '1', frame])
-  const rendered = { video: readFileSync(video), lastFrame: readFileSync(frame) }
+  const bytes = readFileSync(video)
   rmSync(work, { recursive: true, force: true })
-  return rendered
+  return bytes
 }
 
 /**
- * Start a fake streaming_v2 backend: capabilities and health answer statically, and every render request streams
- * one solid-color video encoded with ffmpeg.
+ * Start a fake FastVideo video job backend: every job encodes one solid-color video of the job's `size` and
+ * `num_frames` with ffmpeg, and its status reads `completed` once the video is encoded.
  * @param dir - a scratch directory for the rendered files.
  * @returns the backend handle.
  */
@@ -92,7 +82,7 @@ export async function startFakeBackend(
   // ffmpeg writes the encoded video into `dir` and does not create it.
   mkdirSync(dir, { recursive: true })
   const requests: Record<string, unknown>[] = []
-  // While `held`, a render request waits in `waiting` unless a `release` left a pass in `passes`.
+  // While `held`, a job waits in `waiting` unless a `release` left a pass in `passes`.
   let held = false
   let passes = 0
   const waiting: Array<() => void> = []
@@ -105,32 +95,36 @@ export async function startFakeBackend(
     held = false
     for (const resolve of waiting.splice(0)) resolve()
   }
+  // The encoded video of each finished job by job ID; a job without an entry is in progress.
+  const videos = new Map<string, Buffer>()
+  const sendJson = (response: ServerResponse, body: object): void => {
+    response.writeHead(200, { 'content-type': 'application/json', connection: 'close' })
+    response.end(JSON.stringify(body))
+  }
   const server: Server = createServer((request: IncomingMessage, response: ServerResponse) => {
-    const path = request.url ?? ''
+    const id = (request.url ?? '').split('/')[3] ?? ''
     if (request.method !== 'POST') {
-      response.writeHead(200, { 'content-type': 'application/json', connection: 'close' })
-      response.end(JSON.stringify(path.endsWith('/health') ? { status: 'ready' } : CAPABILITIES_BODY))
+      const video = videos.get(id)
+      if (!(request.url ?? '').endsWith('/content')) sendJson(response, { id, status: video === undefined ? 'in_progress' : 'completed' })
+      else {
+        response.writeHead(200, { 'content-type': 'video/mp4', connection: 'close' })
+        response.end(video)
+      }
       return
     }
     const parts: Buffer[] = []
     request.on('data', (part: Buffer) => { parts.push(part) })
     request.on('end', () => {
+      const body = JSON.parse(Buffer.concat(parts).toString('utf8')) as Record<string, unknown>
+      const job = `job-${String(requests.push(body))}`
+      sendJson(response, { id: job, status: 'queued' })
       void (async () => {
-        const body = JSON.parse(Buffer.concat(parts).toString('utf8')) as Record<string, unknown>
-        requests.push(body)
         await gate()
-        const rendered = options.playable === true
-          ? await encodePlayableVideo(dir, Number(body['width']), Number(body['height']), Number(body['num_frames']), String(body['prompt'] ?? ''))
-          : await encodeClip(dir, Number(body['width']), Number(body['height']), Number(body['num_frames']))
-        response.writeHead(200, { 'content-type': 'text/event-stream', connection: 'close' })
-        const events: Array<[string, object]> = [
-          ['last_frame', { data: rendered.lastFrame.toString('base64') }],
-          ['video_start', { mime: options.playable === true ? 'video/mp4; codecs="vp09.00.10.08"' : 'video/mp4; codecs="avc1.64001f"' }],
-          ['video_chunk', { data: rendered.video.toString('base64') }],
-          ['done', { timings: { total_s: 0.4 } }],
-        ]
-        for (const [event, data] of events) response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-        response.end()
+        const [width, height] = String(body['size']).split('x').map(Number) as [number, number]
+        const video = options.playable === true
+          ? await encodePlayableVideo(dir, width, height, Number(body['num_frames']), String(body['prompt'] ?? ''))
+          : (await encodeClip(dir, width, height, Number(body['num_frames']))).video
+        videos.set(job, video)
       })()
     })
   })

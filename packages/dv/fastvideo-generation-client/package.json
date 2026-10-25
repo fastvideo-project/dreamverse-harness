@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The FastVideo streaming_v2 client of DreamVerse: reads the served model's facts and streams one generated segment per request.",
+  "description": "The FastVideo video job client of DreamVerse: submits one OpenAI-style video job per request, polls it until it completes, and downloads its MP4.",
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json"

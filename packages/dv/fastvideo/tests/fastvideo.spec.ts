@@ -1,8 +1,8 @@
 /**
  * The FastVideo provider plugin in a REAL composition: a test-only `cordis.yml` boots the DSH skill registry, Project,
- * ffmpeg, the asset pool, the model catalog and the plugin through the Loader. The FastVideo streaming_v2 servers are
- * the only fakes: one HTTP server per task that answers the capabilities and health routes and streams fixed bytes for
- * every render. An opt-in test renders against a running server named by `DV_FASTVIDEO_TEST_URL`.
+ * ffmpeg, the asset pool, the model catalog and the plugin through the Loader. The FastVideo video job servers are the
+ * only fakes: one HTTP server per task that accepts every job, reports it completed, and returns one sample MP4. An
+ * opt-in test renders against a running server named by `DV_FASTVIDEO_TEST_URL`.
  */
 import { execFile } from 'node:child_process'
 import { once } from 'node:events'
@@ -32,41 +32,26 @@ type VideoTask = TaskOfPrimitive<'video'>
 const REAL_REFERENCE = '/mnt/lustre/vlm-d1su/codes/dsh-dv-hub/elon-musk.jpg'
 const REAL_BACKEND = process.env['DV_FASTVIDEO_TEST_URL']
 
-/** The ffmpeg binary that makes the sample videos whose sound ffprobe reads. */
+/** The ffmpeg binary that makes the sample videos. */
 const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmpeg-native/bin/ffmpeg'
 const run = promisify(execFile)
 
 /**
- * The bytes of a one-second sample video.
- * @param sound - whether the video has a sound track.
+ * The bytes of a one-second sample video with a sound track, as MiniMax H3 returns a video with sound.
  * @returns the MP4 bytes.
  */
-async function sampleVideo(sound: boolean): Promise<Buffer> {
+async function sampleVideo(): Promise<Buffer> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-fastvideo-video-'))
   cleanups.push(() => rm(dir, { recursive: true, force: true }))
   const path = join(dir, 'sample.mp4')
-  const audio = sound ? ['-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', '-shortest'] : []
+  const audio = ['-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', '-shortest']
   const video = ['-f', 'lavfi', '-i', 'color=c=black:s=64x64:d=1:r=8']
   await run(FFMPEG, ['-y', '-loglevel', 'error', ...video, ...audio, '-pix_fmt', 'yuv420p', path])
   return readFileSync(path)
 }
 
-/**
- * The capabilities the fake reference server reports: 4 references, at most 3 images and 2 videos, and no audio. The
- * server counts the first frame among its references.
- */
-const REFERENCE_CAPABILITIES = {
-  model_id: 'fake-ref2va', name: 'Fake Ref2AV', min_segment_duration_sec: 5, max_segment_duration_sec: 6,
-  max_references: 4, reference_media_types: { image: { max_count: 3 }, video: { max_count: 2 } }, max_reference_aspect_ratio: 4.0,
-  frame_sizes: { '16:9': { '720p': [1344, 768] } }, num_frames_by_duration_sec: { 5: 124, 6: 158 },
-}
-
-/** The capabilities the fake text server reports. */
-const TEXT_CAPABILITIES = {
-  model_id: 'fake-t2va', name: 'Fake T2AV', min_segment_duration_sec: 5, max_segment_duration_sec: 6,
-  max_references: 0, reference_media_types: {},
-  frame_sizes: { '16:9': { '720p': [1344, 768] } }, num_frames_by_duration_sec: { 5: 124, 6: 158 },
-}
+/** The schema facts of both fasth3 tasks, from the MiniMax H3 table. */
+const H3_SCHEMA = { duration_sec: { min: 5, max: 15 }, aspect_ratios: ['16:9'], resolutions: ['720p'] }
 
 const cleanups: Array<() => Promise<void>> = []
 
@@ -75,31 +60,25 @@ afterEach(async () => {
 })
 
 /**
- * Start a fake streaming_v2 server that answers capabilities and health and streams fixed bytes for every render.
- * @param capabilities - the capabilities body it reports.
- * @returns the server URL and the render request bodies.
+ * Start a fake video job server: every job is completed at its first status poll, and its content is `video`.
+ * @param video - the MP4 bytes that every job returns.
+ * @returns the server URL and the job bodies.
  */
-async function startFakeServer(capabilities: object): Promise<{ url: string; requests: Record<string, unknown>[] }> {
+async function startFakeServer(video: Buffer = Buffer.alloc(0)): Promise<{ url: string; requests: Record<string, unknown>[] }> {
   const requests: Record<string, unknown>[] = []
   const server: Server = createServer((request: IncomingMessage, response: ServerResponse) => {
     if (request.method !== 'POST') {
-      response.writeHead(200, { 'content-type': 'application/json', connection: 'close' })
-      response.end(JSON.stringify((request.url ?? '').endsWith('/health') ? { status: 'ready' } : capabilities))
+      const content = (request.url ?? '').endsWith('/content')
+      response.writeHead(200, { 'content-type': content ? 'video/mp4' : 'application/json', connection: 'close' })
+      response.end(content ? video : JSON.stringify({ id: 'job', status: 'completed', inference_time_s: 0.4 }))
       return
     }
     const parts: Buffer[] = []
     request.on('data', (part: Buffer) => { parts.push(part) })
     request.on('end', () => {
       requests.push(JSON.parse(Buffer.concat(parts).toString('utf8')) as Record<string, unknown>)
-      response.writeHead(200, { 'content-type': 'text/event-stream', connection: 'close' })
-      const events: Array<[string, object]> = [
-        ['last_frame', { data: Buffer.from('LAST').toString('base64') }],
-        ['video_start', { mime: 'video/mp4; codecs="avc1.64001f"' }],
-        ['video_chunk', { data: Buffer.from('VIDEO').toString('base64') }],
-        ['done', { timings: { total_s: 0.4 } }],
-      ]
-      for (const [event, data] of events) response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-      response.end()
+      response.writeHead(200, { 'content-type': 'application/json', connection: 'close' })
+      response.end(JSON.stringify({ id: 'job', status: 'queued' }))
     })
   })
   server.listen(0, '127.0.0.1')
@@ -184,72 +163,72 @@ function request(references: AssetId[], firstFrame: AssetId | null, extra: Recor
   return { prompt: '<Picture 1> smiles', references, firstFrame, frameWidth: 1344, frameHeight: 768, numFrames: 124, seed: 7, extra }
 }
 
-/** The wire form of one reference: its media type and its base64 bytes. */
-function encodeWireReference(mediaType: string, bytes: string | Buffer) {
-  return { media_type: mediaType, data: Buffer.from(bytes).toString('base64') }
+/** The wire form of one PNG image reference: a `data:` URL of its bytes. */
+function encodeWireImage(bytes: string) {
+  return { image_url: `data:image/png;base64,${Buffer.from(bytes).toString('base64')}` }
 }
 
 describe('dv-fastvideo', () => {
-  it('registers fasth3 once per configured task, each with the facts and schema of its own server', async () => {
-    const [reference, text] = await Promise.all([startFakeServer(REFERENCE_CAPABILITIES), startFakeServer(TEXT_CAPABILITIES)])
+  it('registers fasth3 once per configured task, each with the facts and schema of the MiniMax H3 table', async () => {
+    const [reference, text] = await Promise.all([startFakeServer(), startFakeServer()])
     const ctx = await start({ ref2v: reference.url, t2v: text.url })
     expect(ctx.dvModels.list().filter(isVideoEntry).map(({ modality, task, provider, model, gpuSecondsPerVideoSecond }) =>
       ({ modality, task, provider, model, gpuSecondsPerVideoSecond }))).toEqual([
       { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', gpuSecondsPerVideoSecond: 4 },
       { modality: 'video', task: 't2v', provider: 'fastvideo', model: 'fasth3', gpuSecondsPerVideoSecond: 1.5 },
     ])
-    expect(fasth3(ctx, 'ref2v').description).toContain('Needs at least one reference.')
+    expect(fasth3(ctx, 'ref2v').description).toContain('Needs at least one reference image.')
     expect(fasth3(ctx, 't2v').description).toContain('a face that must stay the same needs fasth3 for task ref2v')
     expect(await fasth3(ctx, 'ref2v').facts()).toEqual({
-      modelId: 'fake-ref2va', aspectRatios: ['16:9'], resolutions: ['720p'], frameSizes: { '16:9': { '720p': [1344, 768] } },
-      minDurationSec: 5, maxDurationSec: 6, numFramesByDurationSec: { 5: 124, 6: 158 },
+      modelId: 'fasth3-ref2va', aspectRatios: ['16:9'], resolutions: ['720p'], frameSizes: { '16:9': { '720p': [1344, 768] } },
+      minDurationSec: 5, maxDurationSec: 15,
+      numFramesByDurationSec: { 5: 124, 6: 158, 7: 175, 8: 192, 9: 226, 10: 243, 11: 277, 12: 294, 13: 328, 14: 345, 15: 362 },
     })
-    expect(await fasth3(ctx, 't2v').facts()).toMatchObject({ modelId: 'fake-t2va' })
-    // The first image frame takes one of the server's references and one of its images; audio the server does not accept.
+    expect(await fasth3(ctx, 't2v').facts()).toMatchObject({ modelId: 'fasth3-t2va' })
+    // The first frame takes one of the model's nine images.
     expect(await fasth3(ctx, 'ref2v').schema()).toEqual({
-      duration_sec: { min: 5, max: 6 }, aspect_ratios: ['16:9'], resolutions: ['720p'],
+      ...H3_SCHEMA,
       inputs: {
-        reference: { min: 1, max: 3, media_types: { image: { max: 2 }, video: { max: 2 }, audio: { max: 0 } } },
+        reference: { min: 1, max: 8, media_types: { image: {} } },
         first_frame: { min: 0, max: 1, media_types: { image: {} } },
       },
       extra: {},
     })
-    expect(await fasth3(ctx, 't2v').schema()).toEqual({
-      duration_sec: { min: 5, max: 6 }, aspect_ratios: ['16:9'], resolutions: ['720p'], inputs: {}, extra: {},
-    })
-    // The streaming_v2 clients stay private to the plugin.
+    expect(await fasth3(ctx, 't2v').schema()).toEqual({ ...H3_SCHEMA, inputs: {}, extra: {} })
+    // The video job clients stay private to the plugin, and reading facts sends no request.
     expect(ctx.get('dvFastvideoGeneration')).toBeUndefined()
+    expect([...reference.requests, ...text.requests]).toEqual([])
   })
 
-  it('validates a request for each task against what the task declares and the limits of its own server', async () => {
-    const [reference, text] = await Promise.all([startFakeServer(REFERENCE_CAPABILITIES), startFakeServer(TEXT_CAPABILITIES)])
+  it('validates a request for each task against what the task declares and the limits of the model', async () => {
+    const [reference, text] = await Promise.all([startFakeServer(), startFakeServer()])
     const ctx = await start({ ref2v: reference.url, t2v: text.url })
     const [referenceTask, textTask] = [fasth3(ctx, 'ref2v'), fasth3(ctx, 't2v')]
     const asset = (bytes: string, mime: string) => importAsset(ctx, Buffer.from(bytes), mime)
-    const [video, otherVideo] = [asset('VID1', 'video/mp4'), asset('VID2', 'video/mp4')]
-    const [image, otherImage, thirdImage] = [asset('IMG1', 'image/png'), asset('IMG2', 'image/png'), asset('IMG3', 'image/png')]
-    const [audio, json] = [asset('AUD1', 'audio/mpeg'), asset('{}', 'application/json')]
+    const images = Array.from({ length: 9 }, (_, index) => asset(`IMG${String(index + 1)}`, 'image/png'))
+    const [image] = images as [AssetId]
+    const [video, json] = [asset('VID1', 'video/mp4'), asset('{}', 'application/json')]
     // A request with a first frame cites it, as the fasth3 prompt rule asks.
     const check = (entry: ModelEntry<VideoTask>, references: AssetId[], firstFrame: AssetId | null) => entry.validateGenerationRequest({
       ...request(references, firstFrame), prompt: firstFrame === null ? '<Picture 1> smiles' : '@[首帧](dv:input/first_frame) smiles',
     })
-    expect(await check(referenceTask, [video, image], image)).toEqual([])
+    expect(await check(referenceTask, images.slice(0, 8), image)).toEqual([])
     expect(await referenceTask.validateGenerationRequest(request([image], image))).toEqual([
       'Its prompt does not cite the first frame; write "@[首帧](dv:input/first_frame) is the first frame of [Shot 1]".',
     ])
-    expect(await check(referenceTask, [], null)).toEqual(['Its reference input needs at least 1 of type image, video, audio; this shot has 0.'])
-    expect(await check(referenceTask, [json], null)).toEqual([`Its reference input takes assets of type image, video, audio; asset ${json} is of type application.`])
-    // The server lists no audio, so its audio limit is 0; the first frame takes one of the server's three references and two images.
-    expect(await check(referenceTask, [audio], null)).toEqual(['Its reference input takes at most 0 of type audio; this shot has 1.'])
-    expect(await check(referenceTask, [video, otherVideo, image, otherImage], null)).toEqual(['Its reference input takes at most 3 assets; this shot has 4.'])
-    expect(await check(referenceTask, [image, otherImage, thirdImage], null)).toEqual(['Its reference input takes at most 2 of type image; this shot has 3.'])
+    expect(await check(referenceTask, [], null)).toEqual(['Its reference input needs at least 1 of type image; this shot has 0.'])
+    expect(await check(referenceTask, [json], null)).toEqual([`Its reference input takes assets of type image; asset ${json} is of type application.`])
+    // The job API reads no video or audio references.
+    expect(await check(referenceTask, [video], null)).toEqual([`Its reference input takes assets of type image; asset ${video} is of type video.`])
+    // The first frame takes one of the model's nine images, so the references keep eight.
+    expect(await check(referenceTask, images, null)).toEqual(['Its reference input takes at most 8 assets; this shot has 9.'])
     expect(await check(referenceTask, [image], video)).toEqual([`Its first_frame input takes assets of type image; asset ${video} is of type video.`])
     expect(await check(textTask, [], null)).toEqual([])
     expect(await check(textTask, [image], video)).toEqual(['It takes no reference input; this shot has 1.', 'It takes no first_frame input; this shot has 1.'])
   })
 
   it('refuses extra parameters that the task does not take, after the input problems', async () => {
-    const [reference, text] = await Promise.all([startFakeServer(REFERENCE_CAPABILITIES), startFakeServer(TEXT_CAPABILITIES)])
+    const [reference, text] = await Promise.all([startFakeServer(), startFakeServer()])
     const ctx = await start({ ref2v: reference.url, t2v: text.url })
     const image = importAsset(ctx, Buffer.from('IMG1'), 'image/png')
     expect(await fasth3(ctx, 'ref2v').validateGenerationRequest(request([image], null, { cfg: 5, steps: 8 })))
@@ -259,58 +238,49 @@ describe('dv-fastvideo', () => {
     ])
   })
 
-  it.skipIf(!existsSync(FFMPEG))('sends each task to its own server: the references with media types, then the first frame', async () => {
-    const [reference, text] = await Promise.all([startFakeServer(REFERENCE_CAPABILITIES), startFakeServer(TEXT_CAPABILITIES)])
+  it.skipIf(!existsSync(FFMPEG))('sends each task to its own server as one job: the reference images, then the first frame', async () => {
+    const sample = await sampleVideo()
+    const [reference, text] = await Promise.all([startFakeServer(sample), startFakeServer(sample)])
     const ctx = await start({ ref2v: reference.url, t2v: text.url })
-    const silent = await sampleVideo(false)
-    const video = importAsset(ctx, silent, 'video/mp4')
-    const image = importAsset(ctx, Buffer.from('IMG1'), 'image/png')
-    const audio = importAsset(ctx, Buffer.from('AUD1'), 'audio/mpeg')
-    const first = importAsset(ctx, Buffer.from('FIRST'), 'image/png')
-    const events = await collect(fasth3(ctx, 'ref2v').render(request([video, image, audio], first)))
-    expect(reference.requests[0]).toEqual({
-      prompt: '<Picture 1> smiles', width: 1344, height: 768, num_frames: 124, seed: 7, return_last_frame: true,
-      references: [
-        encodeWireReference('video', silent), encodeWireReference('image', 'IMG1'), encodeWireReference('audio', 'AUD1'),
-        encodeWireReference('image', 'FIRST'),
-      ],
-    })
-    expect(events.map(event => event.kind)).toEqual(['last_frame', 'video_start', 'chunk', 'done'])
-    expect(events[2]).toEqual({ kind: 'chunk', bytes: Buffer.from('VIDEO') })
-    await collect(fasth3(ctx, 'ref2v').render(request([video], null), new AbortController().signal))
-    expect(reference.requests[1]?.['references']).toEqual([encodeWireReference('video', silent)])
-    await collect(fasth3(ctx, 't2v').render(request([], null)))
-    expect(text.requests).toHaveLength(1)
-    expect(text.requests[0]?.['references']).toEqual([])
-  })
-
-  it.skipIf(!existsSync(FFMPEG))('replaces each citation of a reference with its label, counting each media type in order', async () => {
-    const reference = await startFakeServer(REFERENCE_CAPABILITIES)
-    const ctx = await start({ ref2v: reference.url })
-    const video = importAsset(ctx, await sampleVideo(true), 'video/mp4')
     const image = importAsset(ctx, Buffer.from('IMG1'), 'image/png')
     const other = importAsset(ctx, Buffer.from('IMG2'), 'image/png')
-    const audio = importAsset(ctx, Buffer.from('AUD1'), 'audio/mpeg')
+    const first = importAsset(ctx, Buffer.from('FIRST'), 'image/png')
+    const events = await collect(fasth3(ctx, 'ref2v').render(request([image, other], first)))
+    expect(reference.requests[0]).toEqual({
+      task: 'ref2va', prompt: '<Picture 1> smiles', size: '1344x768', num_frames: 124, seed: 7,
+      image_reference: [encodeWireImage('IMG1'), encodeWireImage('IMG2'), encodeWireImage('FIRST')],
+    })
+    // The whole video is one chunk; the last frame, decoded from it, follows.
+    expect(events.map(event => event.kind)).toEqual(['video_start', 'chunk', 'last_frame', 'done'])
+    expect(events[0]).toEqual({ kind: 'video_start', mime: 'video/mp4' })
+    expect(events[1]).toEqual({ kind: 'chunk', bytes: sample })
+    expect(events[2]?.kind === 'last_frame' && events[2].png.subarray(1, 4).toString()).toBe('PNG')
+    expect(events[3]).toEqual({ kind: 'done', timings: { e2e_latency_ms: expect.any(Number) as number, generation_ms: 400 } })
+    await collect(fasth3(ctx, 'ref2v').render(request([image], null), new AbortController().signal))
+    expect(reference.requests[1]?.['image_reference']).toEqual([encodeWireImage('IMG1')])
+    await collect(fasth3(ctx, 't2v').render(request([], null)))
+    expect(text.requests).toEqual([{ task: 't2va', prompt: '<Picture 1> smiles', size: '1344x768', num_frames: 124, seed: 7 }])
+  })
+
+  it.skipIf(!existsSync(FFMPEG))('replaces each citation of a reference with its label, counting the images in order', async () => {
+    const reference = await startFakeServer(await sampleVideo())
+    const ctx = await start({ ref2v: reference.url })
+    const image = importAsset(ctx, Buffer.from('IMG1'), 'image/png')
+    const other = importAsset(ctx, Buffer.from('IMG2'), 'image/png')
     // A citation of an asset outside the references, or of anything other than an asset, becomes its label.
-    const prompt = `@[Mia](dv:asset/${other}) meets @[Bo](dv:asset/${image}) and @[Mia](dv:asset/${other}) in @[the walk](dv:asset/${video}), `
-      + `to @[the song](dv:asset/${audio}), @[a cat](dv:asset/missing) and @[the lake](dv:element/e1@2)`
+    const prompt = `@[Mia](dv:asset/${other}) meets @[Bo](dv:asset/${image}) and @[Mia](dv:asset/${other}), `
+      + '@[a cat](dv:asset/missing) and @[the lake](dv:element/e1@2)'
     const firstFrame = '@[首帧](dv:input/first_frame)'
-    await collect(fasth3(ctx, 'ref2v').render({ ...request([video, image, other, audio], null), prompt: `${prompt} from ${firstFrame}` }))
-    expect(reference.requests[0]?.['prompt'])
-      .toBe('<Picture 2> meets <Picture 1> and <Picture 2> in <Video 1>, to <Audio 2>, a cat and the lake from 首帧')
-    // The sound of a video takes the audio number before the audio files after it; a silent video takes none.
-    const silent = importAsset(ctx, await sampleVideo(false), 'video/mp4')
-    const song = `@[the walk](dv:asset/${silent}) to @[the song](dv:asset/${audio})`
-    await collect(fasth3(ctx, 'ref2v').render({ ...request([silent, audio], null), prompt: song }))
-    expect(reference.requests[1]?.['prompt']).toBe('<Video 1> to <Audio 1>')
+    await collect(fasth3(ctx, 'ref2v').render({ ...request([image, other], null), prompt: `${prompt} from ${firstFrame}` }))
+    expect(reference.requests[0]?.['prompt']).toBe('<Picture 2> meets <Picture 1> and <Picture 2>, a cat and the lake from 首帧')
     // The first frame is the image after the reference images, even when it is also one of them.
     const continued = `@[Bo](dv:asset/${image}) from ${firstFrame}`
-    await collect(fasth3(ctx, 'ref2v').render({ ...request([video, image, other], image), prompt: continued }))
-    expect(reference.requests[2]?.['prompt']).toBe('<Picture 1> from <Picture 3>')
+    await collect(fasth3(ctx, 'ref2v').render({ ...request([image, other], image), prompt: continued }))
+    expect(reference.requests[1]?.['prompt']).toBe('<Picture 1> from <Picture 3>')
   })
 
   it('registers only the configured tasks and their prompt skills, and removes them on disposal', async () => {
-    const reference = await startFakeServer(REFERENCE_CAPABILITIES)
+    const reference = await startFakeServer()
     const ctx = await start({ ref2v: reference.url })
     expect(ctx.dvModels.list().map(entry => entry.task)).toEqual(['ref2v'])
     const skill = await ctx.skills.get('fasth3-reference-prompting')
@@ -324,7 +294,7 @@ describe('dv-fastvideo', () => {
   })
 
   it('refuses a config that names a model or task it does not serve', async () => {
-    const reference = await startFakeServer(REFERENCE_CAPABILITIES)
+    const reference = await startFakeServer()
     const ctx = await start({ ref2v: reference.url })
     const server = { baseUrl: reference.url, gpuSecondsPerVideoSecond: 1 }
     expect(() => { FastVideo.apply(ctx, { models: { wan: { t2v: server } } }) }).toThrow('dv-fastvideo serves no model "wan"; it serves: fasth3.')
@@ -343,6 +313,6 @@ describe('dv-fastvideo', () => {
       references: [importAsset(ctx, readFileSync(REAL_REFERENCE), 'image/jpeg')], firstFrame: null, frameWidth: width, frameHeight: height,
       numFrames: facts.numFramesByDurationSec['5'] ?? 0, seed: 1, extra: {},
     }))
-    expect(events.map(event => event.kind)).toEqual(expect.arrayContaining(['last_frame', 'video_start', 'chunk', 'done']))
+    expect(events.map(event => event.kind)).toEqual(['video_start', 'chunk', 'last_frame', 'done'])
   }, 600_000)
 })

@@ -1,5 +1,5 @@
 ---
-description: "Client for the FastVideo streaming_v2 generation backend: served-model facts and one streamed segment request with its server-sent events and errors."
+description: "Client for the FastVideo generation backend's OpenAI-style video job API: one video job per request, submitted, polled until it completes, and downloaded as one MP4, with typed errors."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to reach a FastVideo generation backend. It reads the served model's facts (durations, frame sizes, reference limits per media type) and streams one segment per request: the last frame, then the fragmented MP4 in chunks, then the timings. Backend errors become typed errors, and aborting a request cancels it at once. The backend keeps no state between requests, so callers send every reference with each request.
+Use this package to reach a FastVideo generation backend through its OpenAI-style video job API. Each request is one job: the client submits it, polls its status until it completes, and downloads the finished MP4 with the timings. A refused submission and a failed job become typed errors, and aborting a request stops the wait at once. The backend keeps no state between jobs, so callers send every reference image with each request.
 
 ## Table of Contents
 
@@ -42,44 +42,24 @@ Construct one client per backend with the backend's base URL. `@dv/fastvideo` bu
 
 ### Service
 
-- `model()` reads `GET /v1/streamv2/capabilities` and caches the first successful result. It adds aspect ratios and resolutions from the `frame_sizes` keys.
-- `generateSegment(request)` sends one `POST /v1/streamv2/generate` and yields `last_frame`, `video_start`, `chunk`, and `done` outputs in arrival order. HTTP 400 and an `error` event reject with `GenerationSegmentError(message, errorType)`, where `errorType` is the backend's error code. A stream that ends before `done` rejects with `Error`. Leaving the iteration or aborting `request.signal` cancels the HTTP request; an abort rejects with `signal.reason`.
+- `generateVideo(request)` submits one job with `POST /v1/videos`, reads `GET /v1/videos/{id}` once per second until the job's `status` is `completed` or `failed`, and then reads `GET /v1/videos/{id}/content`. It resolves with the MP4 bytes and the timings `e2e_latency_ms`, from submission to downloaded bytes, and `generation_ms`, from the job's `inference_time_s` when the backend reports it. HTTP 400 at submission rejects with `GenerationSegmentError(message, 'invalid_request')` and a `failed` job with `GenerationSegmentError(message, 'generation_failed')`; any other status than 200 rejects with `Error` naming the route. Aborting `request.signal` stops polling and rejects with `signal.reason`.
 
 ### Backend API
 
-FastVideo owns the API; the client uses two routes. `GET /v1/streamv2/capabilities` answers the model's facts:
+FastVideo owns the API; the client uses three routes. `POST /v1/videos` takes `{"task", "prompt", "size", "num_frames", "seed"?, "image_reference"?}` and answers the job object with its `id` and `status` `queued`:
 
 ```json
 {
-  "model_id": "h3-ref2va",
-  "name": "H3 Ref2AV",
-  "min_segment_duration_sec": 5,
-  "max_segment_duration_sec": 15,
-  "max_references": 12,
-  "reference_media_types": {
-    "image": {"max_count": 9},
-    "video": {"max_count": 3},
-    "audio": {"max_count": 3}
-  },
-  "max_reference_aspect_ratio": 4.0,
-  "frame_sizes": {"16:9": {"720p": [1344, 768]}},
-  "num_frames_by_duration_sec": {"5": 124, "6": 158, "15": 362}
+  "task": "ref2va",
+  "prompt": "<Picture 1> smiles",
+  "size": "1344x768",
+  "num_frames": 124,
+  "seed": 7,
+  "image_reference": [{"image_url": "data:image/png;base64,..."}]
 }
 ```
 
-`max_references` counts every reference of a request across media types. `reference_media_types` lists each accepted media type with its own `max_count`; a request image that continues a segment counts as an `image`. `num_frames_by_duration_sec` holds every whole duration from the minimum to the maximum.
-
-`POST /v1/streamv2/generate` takes `{"prompt", "references", "width", "height", "num_frames", "seed"?, "return_last_frame"}` and answers a `text/event-stream` of `event: <name>` records with one-line JSON `data:`, in this order:
-
-| Event | Data |
-| --- | --- |
-| `last_frame` | `{"data": <base64 PNG of the final decoded frame>}`, only when `return_last_frame` is true |
-| `video_start` | `{"mime": str}` |
-| `video_chunk` | `{"data": <base64 fMP4 bytes>}`, one or more; their concatenation is one fragmented MP4 |
-| `done` | `{"timings": {"generation_ms": float, "e2e_latency_ms": float}}`; the response ends |
-| `error` | `{"code": "invalid_request" \| "generation_failed", "message": str}`; the response ends |
-
-`references` is an ordered list of `{"media_type": str, "data": <base64 bytes>}`, built from `SegmentRequest.references`; the client does not check the media types, and the backend decodes each reference by its `media_type`. A request problem found before generation starts answers HTTP 400 `{"code": "invalid_request", "message": str}`. The backend serializes generation across concurrent requests and finishes a segment whose generation has started, even after the client cancels.
+`size` is `<frameWidth>x<frameHeight>`. `image_reference` lists the request's images in order, each as a `data:` URL of its MIME type and bytes; the client leaves it out when the request has no image and leaves `seed` out when the request has none. A request problem answers HTTP 400 with FastAPI's `{"detail": ...}`. `GET /v1/videos/{id}` answers the job object, whose `status` is `queued`, `in_progress`, `completed` or `failed`, with `error.message` for a failed job and `inference_time_s` for a completed one. `GET /v1/videos/{id}/content` answers the MP4 of a completed job. The backend keeps jobs in memory and finishes a job whose generation has started, even after the client stops polling.
 
 -----
 
@@ -89,14 +69,13 @@ FastVideo owns the API; the client uses two routes. `GET /v1/streamv2/capabiliti
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The service uses `fetch` for every call. `generateSegment` parses the server-sent event stream line by line and yields each output as soon as its event is complete, so a caller can forward video chunks while the backend still generates.
+The service uses `fetch` for every call. The backend reports progress only as 0 or 100, so the client polls at a fixed one-second interval.
 
 | File | Content |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | The `dvFastvideoGeneration` service: model facts and the segment request |
-| [`src/generation-stream.ts`](src/generation-stream.ts) | The request body and the event-stream parser |
-| [`src/types.ts`](src/types.ts) | Model facts, the segment request with its typed references, and the segment outputs |
-| [`src/errors.ts`](src/errors.ts) | The segment error |
+| [`src/index.ts`](src/index.ts) | The `dvFastvideoGeneration` service: the job request body, the status polls, and the download |
+| [`src/types.ts`](src/types.ts) | The video request with its image references, and the video output |
+| [`src/errors.ts`](src/errors.ts) | The job error |
 
 The `tests/` directory runs the client against a local HTTP server that plays the backend.
 
@@ -114,11 +93,11 @@ The `tests/` directory runs the client against a local HTTP server that plays th
 <a id="model-experience"></a>
 ## Model Experience
 
-### Segment generation request
+### Video job request
 
 #### What the model sees
 
-The video model receives the request body that `generateSegment` builds: `prompt` unchanged, `references` as `{media_type, data}` entries with base64 bytes in the caller's order, `width`, `height`, `num_frames`, `seed` only when the caller sets one, and `return_last_frame`. The model numbers the references per media type in list order, and the caller's prompt names them with the model's numbering, such as `Picture 1` for the first image.
+The video model receives the job body that `generateVideo` builds: `task` and `prompt` unchanged, `size`, `num_frames`, `seed` only when the caller sets one, and `image_reference` with the images as `data:` URLs in the caller's order. The model numbers the images in list order, and the caller's prompt names them with the model's numbering, such as `<Picture 1>` for the first image.
 
 #### Token effect
 
@@ -126,14 +105,15 @@ Zero direct text tokens: the client adds no text to the caller's prompt.
 
 #### KV Cache effect
 
-Independent request per segment: the backend keeps no state between requests, and the client sends no session or cache identifier.
+Independent request per job: the backend keeps no state between jobs, and the client sends no session or cache identifier.
 
 ## Known Limitations and Deferred Work
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **Model facts never refresh** — `model()` keeps the first successful capabilities result for the plugin's lifetime. A backend that restarts with another model keeps the old facts in the harness until the plugin reloads.
-- **No request deadline** — the client sets no timeout on the capabilities or generation requests. A backend that stops sending events holds the request until the caller aborts it.
+- **Images only** — the backend reads `image_reference` from `data:` URLs and refuses `data:` videos and audio, so the client sends image references only.
+- **No cancellation of a started job** — aborting stops polling; the backend has no route that stops a running generation, so the GPU finishes the job.
+- **No request deadline** — the client sets no timeout on the job; a job that stays `in_progress` holds the request until the caller aborts it.
 
 <a id="dev-note"></a>
 ### Dev Note

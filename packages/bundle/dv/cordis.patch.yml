@@ -16,8 +16,9 @@
     - id: dv-models
       name: '@dv/models'
 
-    # Models on the cluster's FastVideo streaming_v2 servers, one server per task. A model or task left out of `models`
-    # is not registered; a deployment with other servers replaces this row's config in its profile patch.
+    # Models on the cluster's FastVideo video job servers (OpenAI-style `/v1/videos`), one server per task. A model or
+    # task left out of `models` is not registered; a deployment with other servers replaces this row's config in its
+    # profile patch.
     - id: dv-fastvideo
       name: '@dv/fastvideo'
       config:

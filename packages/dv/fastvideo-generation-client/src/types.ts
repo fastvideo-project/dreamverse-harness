@@ -1,56 +1,36 @@
 /**
- * Values that the generation backend's streaming_v2 API returns and accepts. TypeScript fields use camelCase; keys of
- * nested maps keep the backend's values, such as `16:9` or `720p`.
+ * Values that the generation backend's OpenAI-style video job API accepts and returns. TypeScript fields use camelCase.
  *
  * @module @dv/fastvideo-generation-client/types
  */
 
-/**
- * The served model's facts from `GET /v1/streamv2/capabilities`; `aspectRatios` and `resolutions` list the keys of
- * `frameSizes`.
- */
-export interface ModelFacts {
-  modelId: string
-  aspectRatios: string[]
-  resolutions: string[]
-  minSegmentDurationSec: number
-  maxSegmentDurationSec: number
-  /** The most references that one segment request can carry across media types. */
-  maxReferences: number
-  /** The accepted reference media types, such as `image` or `video`, and the most references of each per request. */
-  referenceMediaTypes: Record<string, { maxCount: number }>
-  /** `[width, height]` by aspect ratio and then by resolution, for every supported pair. */
-  frameSizes: Record<string, Record<string, [number, number]>>
-  /** Native frame count by segment duration in seconds, for every duration from the minimum to the maximum. */
-  numFramesByDurationSec: Record<string, number>
-}
-
-/** One reference of a segment request: its media type and its bytes, in model order. */
-export interface SegmentReference {
-  /** The top-level type of the file's MIME type, such as `image` or `video`; the backend decodes the bytes by it. */
-  mediaType: string
+/** One image reference of a video job: its MIME type and its bytes, in model order. */
+export interface VideoImage {
+  /** The file's MIME type, such as `image/png`; the client sends the image as a `data:` URL of this type. */
+  mime: string
   bytes: Buffer
 }
 
-/** The inputs of one `POST /v1/streamv2/generate` request. */
-export interface SegmentRequest {
+/** The inputs of one video job. */
+export interface VideoRequest {
+  /** The backend's task name, such as `ref2va` or `t2va`. */
+  task: string
   prompt: string
   frameWidth: number
   frameHeight: number
   numFrames: number
-  /** The references in model order; the client sends them unchecked and the backend checks their media types. */
-  references: SegmentReference[]
+  /** The image references in model order; the client sends them unchecked and the backend decodes them. */
+  images: VideoImage[]
   /** The generation seed; omitted, the backend uses its default seed. */
   seed?: number
-  /** Whether the backend returns the segment's last decoded frame, as PNG bytes, before its video. */
-  returnLastFrame: boolean
-  /** Aborting cancels the HTTP request and rejects the iteration with `signal.reason`. */
+  /** Aborting stops polling and rejects with `signal.reason`. */
   signal?: AbortSignal
 }
 
-/** One output of a segment request, in the order the backend sent it. */
-export type SegmentOutput =
-  | { kind: 'last_frame'; png: Buffer }
-  | { kind: 'video_start'; mime: string }
-  | { kind: 'chunk'; bytes: Buffer }
-  | { kind: 'done'; timings: Record<string, number> }
+/** The finished video of one job. */
+export interface VideoOutput {
+  /** The MP4 bytes that `GET /v1/videos/{id}/content` returned. */
+  video: Buffer
+  /** `e2e_latency_ms` from submission to downloaded bytes, and `generation_ms` when the backend reports `inference_time_s`. */
+  timings: Record<string, number>
+}

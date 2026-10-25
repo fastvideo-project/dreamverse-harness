@@ -11,11 +11,6 @@ import { citedAsset, citedInput, replacePromptCitations, type AssetId } from '@d
 export interface ReferenceMedia {
   asset: AssetId
   mediaType: string
-  /**
-   * Whether the medium has sound: always for audio, never for an image. For a video, `dvAssetPool.hasAudio` answers when
-   * the media hold audio; otherwise the sound does not change any label, and it is false.
-   */
-  hasAudio: boolean
 }
 
 /**
