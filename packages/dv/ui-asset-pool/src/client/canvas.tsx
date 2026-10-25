@@ -9,7 +9,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type { PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { NodeAction, NodeEntry, NodeType, NodeView } from '@dv/ui-canvas/contract'
-import { NODE_FRAME_HEIGHT } from '@dv/ui-kit/frame.ts'
+import { CARD_SURFACE, frameHeight, NODE_FRAME_HEIGHT } from '@dv/ui-kit/frame.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
 import { playerBox } from '@dv/ui-kit/player-box.ts'
 import type { ProjectRecord } from '@dv/ui-kit/types.ts'
@@ -30,7 +30,7 @@ export const assetNodeType: NodeType = {
       const asset = assets.get(assetId)
       const seconds = asset?.duration_sec ?? null
       return {
-        id, title: asset?.name ?? assetId, record, assets: [assetId], standIn: true, bodyHeight: NODE_FRAME_HEIGHT,
+        id, title: asset?.name ?? assetId, record, assets: [assetId], standIn: true, bodyHeight: frameHeight(asset, NODE_FRAME_HEIGHT),
         ...seconds === null ? {} : { meta: `${seconds.toFixed(1)}s` }, ...record === null ? { ref: { kind: 'asset', id: assetId } } : {},
       }
     }
@@ -45,17 +45,19 @@ export const assetNodeType: NodeType = {
   },
 }
 
-const frame: CSSProperties = { display: 'flex', width: '100%', height: NODE_FRAME_HEIGHT, overflow: 'hidden', background: 'var(--dv-surface-3)' }
+const frame: CSSProperties = { display: 'flex', width: '100%', height: '100%', overflow: 'hidden' }
 const player: CSSProperties = { display: 'flex', borderRadius: 'var(--dv-radius-lg)', overflow: 'hidden', background: 'var(--dv-media-bg)' }
 
 /**
- * The card body of an asset node: the asset through `dv.media` in the 16:9 frame.
+ * The card body of an asset node: the asset through `dv.media`, filling the frame. An image or a video of known size
+ * shows bare; any other asset, such as an audio waveform or a file card, and a missing asset sit on the card surface.
  * @param props - the node, its assets, and the Factory renderer.
  * @returns the element.
  */
 export function AssetCard({ node, assets, renderFactorySlot }: PropsRuntime<'dv.canvas.card'> & PropsRenderFactories): ReactNode {
   const asset = node.assets.map(id => assets[id]).find(each => each !== undefined)
-  return <div style={frame}>{asset === undefined ? null : renderFactorySlot('dv.media', { asset, purpose: 'card' })}</div>
+  const bare = asset !== undefined && asset.width !== null && asset.height !== null
+  return <div style={{ ...bare ? {} : CARD_SURFACE, ...frame }}>{asset === undefined ? null : renderFactorySlot('dv.media', { asset, purpose: 'card' })}</div>
 }
 
 /**

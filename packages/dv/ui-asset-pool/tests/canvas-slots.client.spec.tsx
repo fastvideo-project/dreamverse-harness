@@ -6,6 +6,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, waitFor, within } from '@testing-library/react'
+import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
 import type { Asset } from '@dv/ui-kit/types.ts'
 import type { NodeType, NodeView } from '../../ui-canvas/src/client/contract/index.ts'
 import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
@@ -60,6 +61,14 @@ describe('the asset node type', () => {
     })
   })
 
+  it('sizes the frame of an asset of known size to its aspect ratio, and gives an asset of unknown size the 16:9 frame', async () => {
+    const { runtime } = await mountAssetPool(() => null)
+    const state = importedState()
+    state.assets = state.assets.map(item => item.id === 'poster.png' ? { ...item, width: 768, height: 1024 } : item)
+    const heights = Object.fromEntries(canvasNodes(runtime, state, ['poster.png', 'clip.mp4']).map(node => [node.id, node.bodyHeight]))
+    expect(heights).toMatchObject({ u2: 277, u3: 117 })
+  })
+
   it('draws a placed asset that no record of the current state imported as asset:<id>, which names the asset in a prompt', async () => {
     const { runtime } = await mountAssetPool(() => null)
     expect(assetNodes(canvasNodes(runtime, importedState(), ['undone.png']))).toEqual({
@@ -88,6 +97,7 @@ describe('the asset node type', () => {
 describe('the asset card and editor', () => {
   it('draw the asset through dv.media: its still in the card, and its playable form named by the asset in the editor', async () => {
     const state = importedState()
+    state.assets = state.assets.map(item => item.id === 'poster.png' ? { ...item, width: 1920, height: 1080 } : item)
     let nodes: NodeView[] = []
     const host = recordingHost([])
     const { runtime } = await mountAssetPool(({ renderSlot }) => nodes.map(node => (
@@ -101,6 +111,10 @@ describe('the asset card and editor', () => {
 
     const posterCard = view.getByTestId('u2:card').querySelector('img')
     expect([posterCard?.getAttribute('src'), posterCard?.getAttribute('alt')]).toEqual(['/dv/assets/poster.png', ''])
+    // A picture of known size fills the frame bare; an asset of unknown size sits on the card surface.
+    const fill = (id: string): string | undefined =>
+      view.getByTestId(`${id}:card`).querySelector<HTMLElement>('[data-slot="dv.canvas.card"] > div')?.style.background
+    expect([fill('u2'), fill('u3')]).toEqual(['', CARD_SURFACE.background])
     expect(within(view.getByTestId('u2:editor')).getByRole('img', { name: '海报' }).getAttribute('src')).toBe('/dv/assets/poster.png')
 
     const clipCard = view.getByTestId('u3:card').querySelector('video')
