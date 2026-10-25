@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Provider plugin uniserve of DreamVerse for models on UniServe servers: registers one dvModels entry per configured model (fasth3) and task (ref2v), with the fasth3 input and extra parameter schema, request validation and prompt skill, and renders each shot with one POST /v1/videos/sync.",
+  "description": "Provider plugin uniserve of DreamVerse for MiniMax H3 served as FastH3 Omni 8-Step V1 on a UniServe server: registers the dvModels entry of model fasth3 for task ref2v, with its own input limits, request validation, reference labels and prompt skill, and renders each shot with one POST /v1/videos/sync.",
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json"
@@ -11,9 +11,9 @@
   "dependencies": {
     "@deepseek-ai/dsh-util-values": "workspace:*",
     "@dv/asset-pool": "workspace:*",
-    "@dv/fastvideo": "workspace:*",
     "@dv/ffmpeg": "workspace:*",
-    "@dv/models": "workspace:*"
+    "@dv/models": "workspace:*",
+    "@dv/project": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
@@ -25,7 +25,6 @@
     "@deepseek-ai/cordis-plugin-loader": "workspace:~",
     "@deepseek-ai/dsh-skill": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
-    "@dv/project": "workspace:*",
     "@types/node": "^22.20.0"
   }
 }

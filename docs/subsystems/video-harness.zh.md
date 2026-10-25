@@ -35,7 +35,7 @@ models         @dv/models                 the model catalog dvModels, dv_models_
   ▲ register one entry per task a model serves
   │
 providers      @dv/fastvideo              provider fastvideo: fasth3 for tasks ref2v and t2v, a prompt skill per task
-               @dv/uniserve               provider uniserve: fasth3 for task ref2v, with the fastvideo prompt skill
+               @dv/uniserve               provider uniserve: fasth3 for task ref2v, with its own prompt skill
                @dv/sglang-diffusion       provider sglang-diffusion: qwen-image-2.1-turbo for task t2i
                @dv/sglang-omni            provider sglang-omni: fish-audio-drama-3 for task t2a, a prompt skill
 

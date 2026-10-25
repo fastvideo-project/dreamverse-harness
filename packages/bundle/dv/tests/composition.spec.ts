@@ -58,14 +58,14 @@ const FakeFastVideo = {
   },
 }
 
-/** The `models` config the stand-in UniServe plugin received from the bundle row. */
+/** The config the stand-in UniServe plugin received from the bundle row. */
 let uniserveConfig: unknown = null
 
 /** A stand-in for `@dv/uniserve`: it keeps the row's config and registers nothing. */
 const FakeUniserve = {
   name: 'fake-uniserve',
-  apply(_ctx: Context, config: { models: unknown }): void {
-    uniserveConfig = config.models
+  apply(_ctx: Context, config: unknown): void {
+    uniserveConfig = config
   },
 }
 
@@ -169,7 +169,7 @@ describe('DreamVerse bundle composition', () => {
       },
     })
     // The UniServe row names a second server of fasth3 for task ref2v.
-    expect(uniserveConfig).toEqual({ fasth3: { ref2v: { baseUrl: 'http://10.244.8.35:8000', gpuSecondsPerVideoSecond: 1.3 } } })
+    expect(uniserveConfig).toEqual({ baseUrl: 'http://10.244.8.35:8000', gpuSecondsPerVideoSecond: 1.3 })
     expect(rows.find(row => row.id === 'dv-sglang-diffusion')?.config).toEqual({
       models: { 'qwen-image-2.1-turbo': { baseUrl: 'http://127.0.0.1:30010', gpuSecondsPerMegapixel: 0.6 } },
     })

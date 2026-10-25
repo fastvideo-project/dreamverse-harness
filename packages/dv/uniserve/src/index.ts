@@ -1,16 +1,14 @@
 /**
- * Provider plugin `uniserve` of DreamVerse for models served by UniServe servers. It registers into `ctx.dvModels` one
- * entry per model that its `models` config names and per task the config gives a server for. Each entry reads its facts
- * from the server's `GET /v1/capabilities`, renders each request as one `POST /v1/videos/sync` with the references
- * first and the first frame after them, each as a `data:` URI read from `dvAssetPool`, and with each citation of a
- * reference in the prompt replaced by the label that the served model gives the reference. The server answers with the
- * whole MP4; the entry reads its last frame with `dvFfmpeg` and yields the render stream at once.
- *
- * Served models: `fasth3` (MiniMax H3 as FastH3 Omni 8-Step V1), for task `ref2v`. The task's inputs, labels, prompt
- * rule and prompt skill are those of `fasth3` in `@dv/fastvideo`.
+ * Provider plugin `uniserve` of DreamVerse for MiniMax H3 served as FastH3 Omni 8-Step V1 on a UniServe server. It
+ * registers into `ctx.dvModels` the entry of model `fasth3` for task `ref2v`, rendered by the server that `baseUrl`
+ * names. The entry reads its facts from the server's `GET /v1/capabilities`, renders each request as one
+ * `POST /v1/videos/sync` of UniServe task `ref2va` with the references first and the first frame after them, each as a
+ * `data:` URI read from `dvAssetPool`, and with each citation in the prompt replaced by the model's label. The server
+ * answers with the whole MP4; the entry reads its last frame with `dvFfmpeg` and yields the render stream at once.
  *
  * @module @dv/uniserve
  */
+import { readFileSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -19,43 +17,32 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@dv/asset-pool'
 import type {} from '@dv/ffmpeg'
-import { FASTH3_REF2V, FASTH3_REF2V_ABILITIES } from '@dv/fastvideo/fasth3'
-import { modelPrompt } from '@dv/fastvideo/reference-labels'
-import {
-  readPromptSkill, registerServedModels, requestAssets, ServedModels, servedTaskProblems, servedTaskSchema, type TaskServer,
-} from '@dv/fastvideo/served-task'
-import type { ReferenceLimits, ServedTask } from '@dv/fastvideo/types'
-import type { ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent, TaskId } from '@dv/models'
+import type { ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent } from '@dv/models'
+import { FASTH3_OMNI_DESCRIPTION, fasth3OmniProblems, fasth3OmniPrompt, fasth3OmniSchema, type Ref2vaConditions } from './fasth3-omni.ts'
 
 /** `dv-uniserve` configuration. */
 export interface Config {
-  /** The models to register, by model name, and for each the tasks to serve it for, by task ID, with their UniServe servers. */
-  models: ServedModels
+  /** HTTP base URL of the UniServe server that serves task `ref2va`, such as `http://127.0.0.1:8000`. */
+  baseUrl: string
+  /** GPU seconds per rendered video second on that server, declared by the entry for the GPU estimate before a render. */
+  gpuSecondsPerVideoSecond: number
 }
 
 /** Loader validation. */
 export const Config: z<Config> = z.object({
-  models: ServedModels.required(),
+  baseUrl: z.string().required(),
+  gpuSecondsPerVideoSecond: z.number().required(),
 })
 
-/** The provider name of every entry this plugin registers. */
-const PROVIDER = 'uniserve'
+/** The UniServe task that renders the entry's requests. */
+const UNISERVE_TASK = 'ref2va'
 
-/** One task this plugin serves a model for: what the model accepts for it, and UniServe's name of the task. */
-interface UniserveTask {
-  served: ServedTask
-  /** The `task` of a UniServe request, such as `ref2va`. */
-  uniserveTask: string
-}
-
-/** The models this plugin can serve, with the tasks it can serve each for. */
-const SERVED: Record<string, { [T in TaskId]?: UniserveTask }> = {
-  fasth3: {
-    ref2v: {
-      served: { ...FASTH3_REF2V, description: `MiniMax H3 served as FastH3 Omni 8-Step V1 on UniServe: ${FASTH3_REF2V_ABILITIES}` },
-      uniserveTask: 'ref2va',
-    },
-  },
+/** The prompt skill of the entry; its body is `skills/fasth3-uniserve-prompting.md`. */
+const PROMPT_SKILL = {
+  name: 'fasth3-uniserve-prompting',
+  description: 'Model limits and prompt rules for model fasth3 of provider uniserve for task ref2v: reference images, '
+    + 'videos and audio, how the prompt names them, and how a shot continues the previous one.',
+  file: 'fasth3-uniserve-prompting.md',
 }
 
 /** The `GET /v1/capabilities` answer of a UniServe video server, with the fields this plugin reads. */
@@ -64,7 +51,7 @@ interface CapabilitiesBody {
   model: string
   video: {
     tasks: string[]
-    task_conditions: Record<string, { max_images: number; max_videos: number; max_audios: number; max_references: number }>
+    task_conditions: Record<string, Ref2vaConditions>
     canvas: {
       short_edges: number[]
       aspect_ratios: string[]
@@ -79,11 +66,11 @@ interface CapabilitiesBody {
   }
 }
 
-/** What an entry reads from its server once: the served model name, the render facts and the reference limits. */
+/** What the entry reads from its server once: the served model name, the render facts and the reference limits. */
 interface ServerFacts {
   modelName: string
   facts: RenderModelFacts
-  limits: ReferenceLimits
+  conditions: Ref2vaConditions
 }
 
 /** Plugin name. */
@@ -124,39 +111,30 @@ async function errorText(response: Response): Promise<string> {
  *   the server's text, or the server that cannot be reached.
  */
 async function call(baseUrl: string, route: string, init: RequestInit = {}): Promise<Response> {
-  let response: Response
-  try {
-    response = await fetch(new URL(route, baseUrl), init)
-  } catch {
-    // fetch rejects with the abort reason when the signal aborts, and with a TypeError when the server cannot be reached.
-    if (init.signal?.aborted === true) throw init.signal.reason
-    throw new Error(`The server at ${baseUrl} cannot be reached.`)
-  }
-  if (response.status !== 200) {
-    throw new Error(`The server at ${baseUrl} answered ${init.method ?? 'GET'} ${route} with HTTP ${String(response.status)}: `
-      + await errorText(response))
-  }
-  return response
+  // fetch rejects with the abort reason when the signal aborts, and with a TypeError when the server cannot be reached.
+  const response = await fetch(new URL(route, baseUrl), init).catch((_unreachable: unknown) => {
+    throw init.signal?.aborted === true ? init.signal.reason : new Error(`The server at ${baseUrl} cannot be reached.`)
+  })
+  if (response.status === 200) return response
+  const text = await errorText(response)
+  throw new Error(`The server at ${baseUrl} answered ${init.method ?? 'GET'} ${route} with HTTP ${String(response.status)}: ${text}`)
 }
 
 /**
- * The facts of one entry from its server's capabilities. A resolution is named by its short edge, such as `768p`. A
+ * The facts of the entry from its server's capabilities. A resolution is named by its short edge, such as `768p`. A
  * duration in whole seconds has the frame count that UniServe renders for it: `duration × fps` rounded up to the next
  * `min_frames + n × clip_frames`.
  * @param baseUrl - the server's base URL.
- * @param model - the model name, for the error message.
- * @param task - the catalog task, for the error message.
- * @param uniserveTask - the UniServe task the entry sends.
  * @returns the facts.
- * @throws Error when the server does not serve `uniserveTask`, or as `call` throws.
+ * @throws Error when the server does not serve task `ref2va`, or as `call` throws.
  */
-async function readServerFacts(baseUrl: string, model: string, task: TaskId, uniserveTask: string): Promise<ServerFacts> {
+async function readServerFacts(baseUrl: string): Promise<ServerFacts> {
   const body = await (await call(baseUrl, '/v1/capabilities')).json() as CapabilitiesBody
   const { video } = body
-  const conditions = video.task_conditions[uniserveTask]
-  if (!video.tasks.includes(uniserveTask) || conditions === undefined) {
-    throw new Error(`The server at ${baseUrl} serves task ${video.tasks.join(', ') || 'none'}, not ${uniserveTask}; the `
-      + `dv-uniserve config points model "${model}" for task "${task}" at the wrong server.`)
+  const conditions = video.task_conditions[UNISERVE_TASK]
+  if (!video.tasks.includes(UNISERVE_TASK) || conditions === undefined) {
+    throw new Error(`The server at ${baseUrl} serves task ${video.tasks.join(', ') || 'none'}, not ${UNISERVE_TASK}; the `
+      + 'dv-uniserve baseUrl names the wrong server.')
   }
   const frameSizes = Object.fromEntries(video.canvas.aspect_ratios.map(ratio => [ratio, Object.fromEntries(
     video.canvas.short_edges.map((edge) => {
@@ -177,12 +155,7 @@ async function readServerFacts(baseUrl: string, model: string, task: TaskId, uni
       modelId: body.model, aspectRatios: video.canvas.aspect_ratios, resolutions: video.canvas.short_edges.map(edge => `${String(edge)}p`),
       frameSizes, minDurationSec, maxDurationSec, numFramesByDurationSec,
     },
-    limits: {
-      maxReferences: conditions.max_references,
-      referenceMediaTypes: {
-        image: { maxCount: conditions.max_images }, video: { maxCount: conditions.max_videos }, audio: { maxCount: conditions.max_audios },
-      },
-    },
+    conditions,
   }
 }
 
@@ -243,47 +216,44 @@ async function lastFrame(ctx: Context, video: Buffer): Promise<Buffer> {
 }
 
 /**
- * A catalog entry for one configured model and task, rendered by the task's UniServe server.
+ * The catalog entry of `fasth3` for task `ref2v`, rendered by the configured UniServe server.
  * @param ctx - the plugin context; `render` reads each input asset from `ctx.dvAssetPool` and the last frame through
  *   `ctx.dvFfmpeg`.
- * @param model - the model name.
- * @param task - the task.
- * @param server - the task's configured server.
+ * @param config - the validated configuration.
  * @returns the entry.
  */
-function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServer): ModelEntry {
-  const uniserve = SERVED[model]?.[task]
-  /* v8 ignore next -- registerServedModels refuses unknown models and tasks before any entry is built. */
-  if (uniserve === undefined) throw new Error(`dv-uniserve serves no model "${model}" for task "${task}".`)
-  const { served, uniserveTask } = uniserve
-  const { assignReferenceLabels } = served
+function modelEntry(ctx: Context, config: Config): ModelEntry {
   // The first successful capabilities answer; the served model stays fixed for the server's lifetime.
   let serverFacts: ServerFacts | null = null
   const readFacts = async (): Promise<ServerFacts> => {
-    serverFacts ??= await readServerFacts(server.baseUrl, model, task, uniserveTask)
+    serverFacts ??= await readServerFacts(config.baseUrl)
     return serverFacts
   }
   return {
     modality: 'video',
-    task,
-    provider: PROVIDER,
-    model,
-    description: served.description,
-    gpuSecondsPerVideoSecond: server.gpuSecondsPerVideoSecond,
-    promptSkill: readPromptSkill(served),
+    task: 'ref2v',
+    provider: 'uniserve',
+    model: 'fasth3',
+    description: FASTH3_OMNI_DESCRIPTION,
+    gpuSecondsPerVideoSecond: config.gpuSecondsPerVideoSecond,
+    promptSkill: {
+      name: PROMPT_SKILL.name, description: PROMPT_SKILL.description,
+      content: readFileSync(new URL(`../skills/${PROMPT_SKILL.file}`, import.meta.url), 'utf8'),
+    },
     async facts(): Promise<RenderModelFacts> {
       return (await readFacts()).facts
     },
     async schema(): Promise<JsonValue> {
-      const { facts, limits } = await readFacts()
-      return servedTaskSchema(served, facts, limits)
+      const { facts, conditions } = await readFacts()
+      return fasth3OmniSchema(facts, conditions)
     },
     async validateGenerationRequest(request: RenderRequest): Promise<string[]> {
-      const { limits } = await readFacts()
-      return servedTaskProblems(model, task, served, limits, request, asset => ctx.dvAssetPool.mediaType(asset))
+      const { conditions } = await readFacts()
+      return fasth3OmniProblems(conditions, request, asset => ctx.dvAssetPool.mediaType(asset))
     },
     render(request: RenderRequest, signal?: AbortSignal): AsyncIterable<RenderStreamEvent> {
-      const assets = requestAssets(request)
+      // The server receives the references in input order, then the first frame.
+      const assets = request.firstFrame === null ? request.references : [...request.references, request.firstFrame]
       return (async function* () {
         const { modelName, facts } = await readFacts()
         // Video and audio references can be tens of megabytes each, so they are read concurrently off the event loop.
@@ -293,15 +263,15 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
           return { type: ctx.dvAssetPool.mediaType(asset), uri, role: 'reference' }
         }))
         // The sound of a video changes only the labels of audio, so the pool reads it only when the media hold audio.
-        const audio = assets.some(asset => ctx.dvAssetPool.mediaType(asset) === 'audio')
-        const media = await Promise.all(assets.map(async asset => ({
-          asset, mediaType: ctx.dvAssetPool.mediaType(asset), hasAudio: audio && await ctx.dvAssetPool.hasAudio(asset),
+        const audio = conditions.some(condition => condition.type === 'audio')
+        const media = await Promise.all(assets.map(async (asset, index) => ({
+          mediaType: (conditions[index] as { type: string }).type, hasAudio: audio && await ctx.dvAssetPool.hasAudio(asset),
         })))
         const body = JSON.stringify({
-          model: modelName, task: uniserveTask, prompt: modelPrompt(request, assignReferenceLabels, media), conditions,
+          model: modelName, task: UNISERVE_TASK, prompt: fasth3OmniPrompt(request, media), conditions,
           target: renderTarget(facts, request), seed: request.seed,
         })
-        const response = await call(server.baseUrl, '/v1/videos/sync', {
+        const response = await call(config.baseUrl, '/v1/videos/sync', {
           method: 'POST', headers: { 'content-type': 'application/json' }, body, ...signal === undefined ? {} : { signal },
         })
         const video = Buffer.from(await response.arrayBuffer())
@@ -315,11 +285,11 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
 }
 
 /**
- * Register one entry into `ctx.dvModels` per configured model and task.
+ * Register the entry of `fasth3` for task `ref2v` into `ctx.dvModels`.
  * @param ctx - the plugin context.
  * @param config - the validated configuration.
- * @throws Error when the config names a model or task this plugin does not serve.
  */
 export function apply(ctx: Context, config: Config): void {
-  registerServedModels(ctx, name, SERVED, config.models, (model, task, server) => modelEntry(ctx, model, task, server))
+  const entry = modelEntry(ctx, config)
+  ctx.effect(() => ctx.dvModels.register(entry), 'dvModels fasth3 ref2v')
 }

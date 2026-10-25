@@ -8801,15 +8801,15 @@ importers:
       '@dv/asset-pool':
         specifier: workspace:*
         version: link:../asset-pool
-      '@dv/fastvideo':
-        specifier: workspace:*
-        version: link:../fastvideo
       '@dv/ffmpeg':
         specifier: workspace:*
         version: link:../ffmpeg
       '@dv/models':
         specifier: workspace:*
         version: link:../models
+      '@dv/project':
+        specifier: workspace:*
+        version: link:../project
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:~
@@ -8823,9 +8823,6 @@ importers:
       '@deepseek-ai/dsh-skill':
         specifier: workspace:*
         version: link:../../skill/skill
-      '@dv/project':
-        specifier: workspace:*
-        version: link:../project
       '@types/node':
         specifier: ^22.20.0
         version: 22.20.0

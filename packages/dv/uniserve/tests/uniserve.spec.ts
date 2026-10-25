@@ -174,7 +174,7 @@ async function start(baseUrl: string): Promise<Context> {
     ['dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, `ffprobePath: ${FFPROBE}`]],
     ['dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`]],
     ['dv-models', 'DvModels', []],
-    ['dv-uniserve', 'Uniserve', ['models:', '  fasth3:', '    ref2v:', `      baseUrl: ${baseUrl}`, '      gpuSecondsPerVideoSecond: 1.3']],
+    ['dv-uniserve', 'Uniserve', [`baseUrl: ${baseUrl}`, 'gpuSecondsPerVideoSecond: 1.3']],
   ] as const
   for (const [id, key, lines] of plugins) {
     writeFileSync(join(dir, `${id}.mjs`), `export default globalThis.__dvUniserve.${key}\n`)
@@ -266,9 +266,16 @@ describe.skipIf(!HAS_FFMPEG)('dv-uniserve', () => {
     expect(await entry.validateGenerationRequest(request([json], null))).toEqual([`Its reference input takes assets of type image, video, audio; asset ${json} is of type application.`])
     expect(await entry.validateGenerationRequest(request(audios, null))).toEqual(['Its reference input takes at most 3 of type audio; this shot has 4.'])
     expect(await entry.validateGenerationRequest(request([image], image, { steps: 8 }))).toEqual([
-      'fasth3 has no extra parameter `steps` for task ref2v; its extra parameters: none.',
       'Its prompt does not cite the first frame; write "@[首帧](dv:input/first_frame) is the first frame of [Shot 1]".',
+      'fasth3 has no extra parameter `steps` for task ref2v; its extra parameters: none.',
     ])
+    const images = Array.from({ length: 9 }, (_, index) => importAsset(ctx, Buffer.from(`IMG-${String(index)}`), 'image/png'))
+    expect(await entry.validateGenerationRequest(request([...images, ...audios.slice(0, 3)], null))).toEqual([
+      'Its reference input takes at most 11 assets; this shot has 12.',
+      'Its reference input takes at most 8 of type image; this shot has 9.',
+    ])
+    expect(await entry.validateGenerationRequest({ ...request([image], audios[0] ?? image), prompt: '@[首帧](dv:input/first_frame) smiles' }))
+      .toEqual([`Its first_frame input takes assets of type image; asset ${String(audios[0])} is of type audio.`])
   })
 
   it('renders through POST /v1/videos/sync with labeled citations and data URIs, and yields the last frame and timings', async () => {
@@ -303,9 +310,15 @@ describe.skipIf(!HAS_FFMPEG)('dv-uniserve', () => {
       kind: 'done',
       timings: { inference_s: 6.282, decoding_s: 0.565, denoising_s: 4.854, encoding_s: 0.226, finalizing_s: 0.094, preparing_s: 0.543 },
     })
-    // A 9:16 480p request of 4 seconds; a timing that is absent or not a finite number is left out.
+    // A 9:16 480p request of 4 seconds; a timing that is absent or not a finite number is left out. A silent video takes
+    // no audio number, and a citation of anything other than a reference keeps its label.
     fake.video = { status: 200, headers: { 'content-type': 'video/mp4', 'x-stage-durations': '{"denoising":"slow","encoding":0.2}' }, body: rendered }
-    const portrait = await collect(fasth3(ctx).render({ ...request([image], null), frameWidth: 480, frameHeight: 832, numFrames: 107 }))
+    const silent = importAsset(ctx, await sampleVideo(false), 'video/mp4')
+    const portrait = await collect(fasth3(ctx).render({
+      ...request([silent, audio], null), frameWidth: 480, frameHeight: 832, numFrames: 107,
+      prompt: `@[still](dv:asset/${silent}) hums @[the song](dv:asset/${audio}) beside @[Mia](dv:character/c1) and @[gone](dv:asset/${image})`,
+    }))
+    expect(fake.renders[1]?.['prompt']).toBe('<Video 1> hums <Audio 1> beside Mia and gone')
     expect(fake.renders[1]?.['target']).toEqual({ short_edge: 480, aspect_ratio: '9:16', duration_seconds: 4 })
     expect(portrait.at(-1)).toEqual({ kind: 'done', timings: { encoding_s: 0.2 } })
     // An answer without a media type is an MP4.
@@ -351,31 +364,20 @@ describe.skipIf(!HAS_FFMPEG)('dv-uniserve', () => {
       body: JSON.stringify({ ...CAPABILITIES, video: { ...CAPABILITIES.video, tasks: [], task_conditions: {} } }),
     }
     await expect(fasth3(await start(fake.url)).schema()).rejects.toThrow(
-      `The server at ${fake.url} serves task none, not ref2va; the dv-uniserve config points model "fasth3" for task "ref2v" at the wrong server.`,
+      `The server at ${fake.url} serves task none, not ref2va; the dv-uniserve baseUrl names the wrong server.`,
     )
   })
 
-  it('registers the fasth3 reference prompt skill and removes the entry and the skill on disposal', async () => {
+  it('registers the fasth3 UniServe prompt skill and removes the entry and the skill on disposal', async () => {
     const fake = await startFakeServer(await sampleVideo(false))
     const ctx = await start(fake.url)
-    const skill = await ctx.skills.get('fasth3-reference-prompting')
-    expect(skill?.description).toContain('model fasth3 for task ref2v')
+    const skill = await ctx.skills.get('fasth3-uniserve-prompting')
+    expect(skill?.description).toContain('model fasth3 of provider uniserve for task ref2v')
     expect(skill?.content).toContain('Every shot needs at least one reference.')
     const entry = [...ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-uniserve.mjs'))
     await entry?.fiber?.dispose()
-    expect(await ctx.skills.get('fasth3-reference-prompting')).toBeUndefined()
+    expect(await ctx.skills.get('fasth3-uniserve-prompting')).toBeUndefined()
     expect(ctx.dvModels.list()).toEqual([])
-  })
-
-  it('refuses a config that names a model or task it does not serve', async () => {
-    const fake = await startFakeServer(await sampleVideo(false))
-    const ctx = await start(fake.url)
-    const server = { baseUrl: fake.url, gpuSecondsPerVideoSecond: 1 }
-    expect(() => { Uniserve.apply(ctx, { models: { wan: { t2v: server } } }) }).toThrow('dv-uniserve serves no model "wan"; it serves: fasth3.')
-    expect(() => { Uniserve.apply(ctx, { models: { fasth3: { t2v: server } } }) })
-      .toThrow('dv-uniserve serves model "fasth3" for no task "t2v"; its tasks: ref2v.')
-    expect(() => { Uniserve.apply(ctx, { models: { fasth3: {} } }) }).toThrow('dv-uniserve: model "fasth3" names no task.')
-    expect(ctx.dvModels.list().map(entry => entry.task)).toEqual(['ref2v'])
   })
 
   it.skipIf(REAL_SERVER === undefined || !existsSync(REAL_REFERENCE))('renders a real five-second shot against the running server', async () => {
