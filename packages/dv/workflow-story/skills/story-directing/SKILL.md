@@ -4,7 +4,7 @@ The order of calls from planned shots to rendered shots on the plan's timeline: 
 
 ## 1. Create the plan, preview it, and ask
 
-1. `dv_plan_create` with `title`, `references` when shots share them, and `shots` (`modality`, `task`, `provider`, `model`, `prompt`, `duration_sec`, and per shot `references` or `continue_previous` when needed). The call needs no agreement; it records version 1. Its report names the plan ID (such as `p1`) and one line per shot.
+1. `dv_plan_create` with `title`, `references` when shots share them, and `shots` (`modality`, `task`, `provider`, `model`, `prompt`, `duration_sec`, and per shot `references` or `continue_previous` when needed). The call needs no agreement; it records version 1. Its report names the plan ID (such as `p1`) and the version.
 2. `dv_story_preview` with `plan`. Its report gives one line per shot (`shots`), the number of shots that render (`rendered`), and why a render would be refused (`problems`). When `problems` is not empty, fix the named shots with `dv_plan_update` and preview again.
 3. Reply with a table (shot, model and task, duration, continues from the previous shot or not, one line of action, camera). End the turn with one question in bold, such as **Render these 3 shots?** Do not call `dv_story_approve` in this turn.
 4. When the user agrees in the next message: `dv_story_approve` with `plan` and `user_approved: true`, then `dv_proj_wait`, then `dv_proj_state`. The approval renders every shot with its model and task and lays every shot on the plan's timeline.

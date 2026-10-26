@@ -35,8 +35,8 @@ kind: "package-reference"
 
 | 操作 | 工具 | 参数 | 输出和报告 | 确认 |
 | --- | --- | --- | --- | --- |
-| `plan.create` | `dv_plan_create` | `shots`（每个含 `modality`、`task`、`provider` 和 `model`（`dv_models_list` 列出的一个模型的键）、`prompt`、`duration_sec?`、`references?`（仅任务 `ref2v`）、`continue_previous?`（仅任务 `ref2v`，镜头 1 不可用）、`seed?`）、`title?`、`references?`（任务为 `ref2v` 的镜头共用）、`aspect_ratio?`、`resolution?`、`seed?` | `plan`（`plan.json`）；报告 `{plan, version: 1, shots}`，含分配的 PlanId | `never` |
-| `plan.update` | `dv_plan_update` | `plan`（PlanId）和 `plan.create` 的参数：完整的下一个版本 | `plan`（`plan.json`）；报告 `{plan, version, shots}` | `never` |
+| `plan.create` | `dv_plan_create` | `shots`（每个含 `modality`、`task`、`provider` 和 `model`（`dv_models_list` 列出的一个模型的键）、`prompt`、`duration_sec?`、`references?`（仅任务 `ref2v`）、`continue_previous?`（仅任务 `ref2v`，镜头 1 不可用）、`seed?`）、`title?`、`references?`（任务为 `ref2v` 的镜头共用）、`aspect_ratio?`、`resolution?`、`seed?` | `plan`（`plan.json`）；报告 `{plan, version: 1}`，含分配的 PlanId | `never` |
+| `plan.update` | `dv_plan_update` | `plan`（PlanId）和 `plan.create` 的参数：完整的下一个版本 | `plan`（`plan.json`）；报告 `{plan, version}` | `never` |
 
 `PlanId` 是 `p<n>`：`plan.create` 分配的编号比项目历史列表中（包括当前位置之后的步骤）任何分镜记录在 `report.plan` 中存过的最大编号大一，所以历史列表中不会有两个分镜计划共用一个 ID。版本从 1 编号，镜头由它在版本中从 1 开始的位置标识，所以六个镜头之后添加的镜头是镜头 7。参考是已注册引用种类的版本（`<id>@<n>`）或素材 ID。切片 `components.plan` 是 `{plans: Record<PlanId, PlanVersion[]>}`，最早的版本在前；`PlanVersion` 是 `Plan` 的字段加上 `version` 和 `created_by`（`plan.create` 或 `plan.update` 记录）。服务方法 `get(state, plan, version?)` 返回某个项目状态中的一个 `PlanVersion`，`shots(state, plan, version?)` 按所有工作流读取分镜计划的同一方式解析它的镜头。`ResolvedShot` 含镜头从 1 开始的 `slot`、原样的 `shot`、计划的 `aspect_ratio` 和 `resolution`、镜头自己的 `seed`（否则用计划的）、适用的 `references`（镜头自己的，否则用计划的；`ref2v` 以外的任务没有）以及 `continuePrevious`（`slot` 1 之后、任务为 `ref2v` 的镜头上的 `continue_previous`）。
 
@@ -45,7 +45,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`plan.create` 和 `plan.update` 由 runner 校验参数，没有镜头的分镜计划会失败，并通过 `context.importAsset` 把版本导入为 `plan.json`；对任何调用方，在写下记录之前，它们拒绝未知 PlanId 的分镜计划（`plan.update`）、任务不是 `ref2v` 却带参考的镜头，镜头 1 上或任务不是 `ref2v` 的镜头上的 `continue_previous`，以及不接上一镜头的镜头在提示词中引用首帧（`dv:input/first_frame`），用一个错误列出每个镜头及其问题；它们还拒绝指向某个引用类型的未知版本的参考（`dvProject.parseReference`）。它们从不读取模型目录：镜头的模型键按原样存储，批准该分镜计划的工作流的预览会报告模型目录不提供的键。它们的报告加上 `shots`，版本的每个镜头一行：`shot <n> (<modality>/<task>/<provider>/<model>, <d> s, continues from the previous shot): <prompt>`，带提示词的前 80 个字符。本组件不指名其他组件的任何操作。
+`plan.create` 和 `plan.update` 由 runner 校验参数，没有镜头的分镜计划会失败，并通过 `context.importAsset` 把版本导入为 `plan.json`；对任何调用方，在写下记录之前，它们拒绝未知 PlanId 的分镜计划（`plan.update`）、任务不是 `ref2v` 却带参考的镜头，镜头 1 上或任务不是 `ref2v` 的镜头上的 `continue_previous`，以及不接上一镜头的镜头在提示词中引用首帧（`dv:input/first_frame`），用一个错误列出每个镜头及其问题；它们还拒绝指向某个引用类型的未知版本的参考（`dvProject.parseReference`）。它们从不读取模型目录：镜头的模型键按原样存储，批准该分镜计划的工作流的预览会报告模型目录不提供的键。它们的摘要是 `plan <PlanId> v<version> with <n> shots`。两个规格都设置 `omitParamsFromResult`，所以模型可见的工具结果不含参数，因为模型自己的工具调用已经带有这些参数；日志中的结果值保留参数。本组件不指名其他组件的任何操作。
 
 归约函数忽略状态不是 `done` 的记录：一条已完成的 `plan.create` 添加其 `report.plan` 指定的分镜计划的版本 1，一条已完成的 `plan.update` 添加其 `plan` 参数指定的分镜计划的下一个版本。其他记录（例如旧日志中的 `plan.approve` 记录）以及指定未知分镜计划的记录不产生任何效果。智能体摘要把每个分镜计划列一次，形如 `{plan, title, version, shots}`：最新版本及其镜头数。
 
@@ -88,15 +88,15 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-一次 `dv_plan_create` 调用返回一个文本块，例如 `done <record>: plan with 2 shots`，附带 `plan.json` 输出、参数和报告 `{"plan":"p1","version":1,"shots":[…]}`；一次 `dv_plan_update` 调用返回 `plan updated (2 shots)` 和带新版本的报告。违反其任务规则的分镜计划在任何记录之前被拒绝，每个问题一句话，例如镜头 1 上的 `continue_previous`。
+一次 `dv_plan_create` 调用返回一个文本块，例如 `done <record>: plan p1 v1 with 2 shots`，附带 `plan.json` 输出和报告 `{"plan":"p1","version":1}`；一次 `dv_plan_update` 调用返回 `plan p1 v2 with 2 shots` 和带新版本的报告。两种结果都不重复分镜计划。违反其任务规则的分镜计划在任何记录之前被拒绝，每个问题一句话，例如镜头 1 上的 `continue_previous`。
 
 #### Token 影响
 
-新建或更新的结果在参数里重复分镜计划，并在报告中为每个镜头加一行：约 100 个 token，每个镜头再加约 80 个。
+无论分镜计划多长，新建或更新的结果都约为 60 个 token：记录行、`plan.json` 输出行和报告。
 
 #### KV Cache 影响
 
-每个结果在调用之后追加到对话中；已缓存的前缀保持不变。分镜计划只通过调用自己的参数和结果到达模型。
+每个结果在调用之后追加到对话中；已缓存的前缀保持不变。分镜计划只通过模型自己的调用参数到达模型。
 
 ## 已知限制与延期工作
 

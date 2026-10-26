@@ -35,8 +35,8 @@ The plugin has no configuration fields.
 
 | Operation | Tool | Params | Outputs and report | Confirm |
 | --- | --- | --- | --- | --- |
-| `plan.create` | `dv_plan_create` | `shots` (each `modality`, `task`, `provider` and `model` (the key of a model that `dv_models_list` lists), `prompt`, `duration_sec?`, `references?` (task `ref2v` only), `continue_previous?` (task `ref2v` only, never on shot 1), `seed?`), `title?`, `references?` (shared by the shots of task `ref2v`), `aspect_ratio?`, `resolution?`, `seed?` | `plan` (`plan.json`); report `{plan, version: 1, shots}` with the assigned PlanId | `never` |
-| `plan.update` | `dv_plan_update` | `plan` (PlanId) and the params of `plan.create`: the complete next version | `plan` (`plan.json`); report `{plan, version, shots}` | `never` |
+| `plan.create` | `dv_plan_create` | `shots` (each `modality`, `task`, `provider` and `model` (the key of a model that `dv_models_list` lists), `prompt`, `duration_sec?`, `references?` (task `ref2v` only), `continue_previous?` (task `ref2v` only, never on shot 1), `seed?`), `title?`, `references?` (shared by the shots of task `ref2v`), `aspect_ratio?`, `resolution?`, `seed?` | `plan` (`plan.json`); report `{plan, version: 1}` with the assigned PlanId | `never` |
+| `plan.update` | `dv_plan_update` | `plan` (PlanId) and the params of `plan.create`: the complete next version | `plan` (`plan.json`); report `{plan, version}` | `never` |
 
 A `PlanId` is `p<n>`: `plan.create` assigns one more than the highest number any Shot plan record of the project stored in `report.plan`, anywhere in the history list, steps after the current position included, so no two plans of the history list share an ID. A version is numbered from 1, and a shot by its 1-based position in the version, so a shot added after six shots is shot 7. A reference is a version of a registered reference kind (`<id>@<n>`) or an asset ID. The slice `components.plan` is `{plans: Record<PlanId, PlanVersion[]>}`, oldest version first; a `PlanVersion` is the `Plan` fields with `version` and `created_by` (the `plan.create` or `plan.update` record). The service method `get(state, plan, version?)` returns one `PlanVersion` of a project state, and `shots(state, plan, version?)` resolves its shots the way every workflow reads a plan. A `ResolvedShot` holds the shot's 1-based `slot`, the `shot` as written, the plan's `aspect_ratio` and `resolution`, the shot's `seed` else the plan's, the `references` that apply (its own, else the plan's, none for a task other than `ref2v`) and `continuePrevious` (`continue_previous` on a shot of task `ref2v` after slot 1).
 
@@ -45,7 +45,7 @@ A `PlanId` is `p<n>`: `plan.create` assigns one more than the highest number any
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-`plan.create` and `plan.update` validate their params with the runner, fail a plan without shots, and import the version as `plan.json` through `context.importAsset`; before their record is written, for every caller, they refuse a plan of an unknown PlanId (`plan.update`), a shot with references whose task is not `ref2v`, `continue_previous` on shot 1 or in a task other than `ref2v`, and a prompt that cites the first frame (`dv:input/first_frame`) of a shot that does not continue the previous shot, with one error that names every shot and its problem; they also refuse a reference that names an unknown version of a reference kind (`dvProject.parseReference`). They never read the model catalog: a shot's model key is stored as written, and the preview of the workflow that approves the plan reports a key that the catalog does not serve. Their report adds `shots`, one line per shot of the version: `shot <n> (<modality>/<task>/<provider>/<model>, <d> s, continues from the previous shot): <prompt>`, with the first 80 characters of its prompt. The component names no operation of another component.
+`plan.create` and `plan.update` validate their params with the runner, fail a plan without shots, and import the version as `plan.json` through `context.importAsset`; before their record is written, for every caller, they refuse a plan of an unknown PlanId (`plan.update`), a shot with references whose task is not `ref2v`, `continue_previous` on shot 1 or in a task other than `ref2v`, and a prompt that cites the first frame (`dv:input/first_frame`) of a shot that does not continue the previous shot, with one error that names every shot and its problem; they also refuse a reference that names an unknown version of a reference kind (`dvProject.parseReference`). They never read the model catalog: a shot's model key is stored as written, and the preview of the workflow that approves the plan reports a key that the catalog does not serve. Their summary is `plan <PlanId> v<version> with <n> shots`. Both specs set `omitParamsFromResult`, so their model-visible tool result leaves out the params, which the model's own tool call already holds; the logged result value keeps them. The component names no operation of another component.
 
 The reducer ignores records that are not `done`: a finished `plan.create` adds version 1 of the plan its `report.plan` names, and a finished `plan.update` adds the next version of the plan its `plan` param names. Other records, such as a `plan.approve` record of an old log, and records that name an unknown plan apply nothing. The agent summary lists each plan once as `{plan, title, version, shots}`: the latest version and its shot count.
 
@@ -88,15 +88,15 @@ The definitions sit in the stable tool section of every agent request; mounting 
 
 #### What the model sees
 
-A `dv_plan_create` call returns one text block such as `done <record>: plan with 2 shots` with the `plan.json` output, the params, and the report `{"plan":"p1","version":1,"shots":[…]}`; a `dv_plan_update` call returns `plan updated (2 shots)` and the report with the new version. A plan that breaks a rule of its tasks is refused before any record with one sentence per problem, such as `continue_previous` on shot 1.
+A `dv_plan_create` call returns one text block such as `done <record>: plan p1 v1 with 2 shots` with the `plan.json` output and the report `{"plan":"p1","version":1}`; a `dv_plan_update` call returns `plan p1 v2 with 2 shots` and the report with the new version. Neither result repeats the plan. A plan that breaks a rule of its tasks is refused before any record with one sentence per problem, such as `continue_previous` on shot 1.
 
 #### Token effect
 
-A create or update result repeats the plan in its params and adds one shot line to the report: roughly 100 tokens plus about 80 per shot.
+A create or update result is about 60 tokens for any plan length: the record line, the `plan.json` output line, and the report.
 
 #### KV Cache effect
 
-Each result is appended to the conversation after its call; the cached prefix stays intact. A plan reaches the model only through the call's own params and results.
+Each result is appended to the conversation after its call; the cached prefix stays intact. A plan reaches the model only through the arguments of the model's own call.
 
 ## Known Limitations and Deferred Work
 

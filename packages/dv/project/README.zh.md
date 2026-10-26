@@ -77,7 +77,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-一次调用返回一个文本块：`<status> <record>: <summary>`（只读操作不写记录，为 `<status>: <summary>`）、每个输出一行带素材 ID、媒体类型和 URL、调度的记录、参数和报告；挂载了附件服务时，每个图片输出再跟一个图片块。失败或取消的记录返回带其消息的工具错误，被停止的记录返回 "dv_<name> was stopped before it finished."。需要用户同意却没带参数的调用返回工具错误："dv_<name> needs the user's agreement."，然后是 "What it will do:" 加 `confirmSummary` 的文字，以及指示：把这些给用户看，在对话中用粗体提问，得到用户回答后带 `user_approved: true` 再次调用。
+一次调用返回一个文本块：`<status> <record>: <summary>`（只读操作不写记录，为 `<status>: <summary>`）、每个输出一行带素材 ID、媒体类型和 URL、调度的记录、参数和报告；设置了 `OperationSpec.omitParamsFromResult` 的操作（例如分镜计划组件的 `plan.create` 和 `plan.update`）不含参数，因为参数重复模型自己的工具调用。挂载了附件服务时，每个图片输出再跟一个图片块。失败或取消的记录返回带其消息的工具错误，被停止的记录返回 "dv_<name> was stopped before it finished."。需要用户同意却没带参数的调用返回工具错误："dv_<name> needs the user's agreement."，然后是 "What it will do:" 加 `confirmSummary` 的文字，以及指示：把这些给用户看，在对话中用粗体提问，得到用户回答后带 `user_approved: true` 再次调用。
 
 #### Token 影响
 

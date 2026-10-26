@@ -88,6 +88,12 @@ export interface OperationSpec {
    * @returns the line.
    */
   summarize(record: ProjectRecord): string
+  /**
+   * Whether the agent tool's model-visible result leaves out its `params:` line. Set it for an operation whose params
+   * are the model's own long arguments, which the model's tool call already holds; the logged result value keeps
+   * `params`.
+   */
+  omitParamsFromResult?: boolean
   /** Tool-only arguments besides `params`; Project removes them from the run request's params before `prepareToolCall`. */
   toolParams?: ParameterSchemaSpec
   /**

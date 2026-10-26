@@ -281,13 +281,14 @@ function sharedParams(spec: OperationSpec, kinds: readonly string[]): ParameterS
 /**
  * The content blocks the model reads for an operation tool result: one text block, then the image outputs.
  * @param value - the result.
+ * @param spec - the operation; `omitParamsFromResult` leaves out the `params:` line.
  * @returns the content blocks.
  */
-export function formatToolResult(value: OperationToolValue): ContentBlock[] {
+export function formatToolResult(value: OperationToolValue, spec: Pick<OperationSpec, 'omitParamsFromResult'>): ContentBlock[] {
   const lines = [value.record === '' ? `${value.status}: ${value.summary}` : `${value.status} ${value.record}: ${value.summary}`]
   for (const output of value.outputs) lines.push(`- ${output.role}: ${output.asset_id} (${output.mime}) ${output.url}`)
   if (value.scheduled.length > 0) lines.push(`scheduled: ${value.scheduled.join(', ')}`)
-  lines.push(`params: ${JSON.stringify(value.params)}`)
+  if (spec.omitParamsFromResult !== true) lines.push(`params: ${JSON.stringify(value.params)}`)
   if (value.report !== undefined) lines.push(`report: ${JSON.stringify(value.report)}`)
   const images = (value.images ?? []).flatMap((image): ContentBlock[] => isImageRef(image) ? [{ type: 'image', attachment: image }] : [])
   return [{ type: 'text', text: lines.join('\n') }, ...images]
@@ -329,7 +330,7 @@ export class AgentTools {
       parameters,
       output: {
         schema: RESULT_SCHEMA,
-        render: (_args, value) => formatToolResult(value),
+        render: (_args, value) => formatToolResult(value, spec),
         presentationMeta: (_args, value) => ({ record: value.record, tool: spec.name, status: value.status, outputs: value.outputs }),
       },
       execute: (args, exec) => this.call(spec, args, exec),

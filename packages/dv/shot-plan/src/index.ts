@@ -90,27 +90,9 @@ const PLAN_PARAMS = {
   shots: { type: 'array', required: true, items: SHOT_SCHEMA },
 } as const
 
-/** How many characters of a shot's prompt a report line shows. */
-const PROMPT_PREVIEW = 80
-
 /** The number of shots in a plan record's params, for summaries. */
 function shotCount(params: Record<string, unknown>): number {
   return Array.isArray(params['shots']) ? params['shots'].length : 0
-}
-
-/**
- * The report line of one shot: its position, its model key, its duration, whether it continues the previous shot, and
- * the first 80 characters of its prompt.
- * @param shot - the shot.
- * @param index - its 0-based position in the version.
- * @returns `shot <n> (<modality>/<task>/<provider>/<model>, <d> s, continues from the previous shot): <prompt>`.
- */
-function shotLine(shot: Shot, index: number): string {
-  const key = `${shot.modality}/${shot.task}/${shot.provider}/${shot.model}`
-  const duration = shot.duration_sec === undefined ? '' : `, ${String(shot.duration_sec)} s`
-  const continues = shot.continue_previous === true ? ', continues from the previous shot' : ''
-  const prompt = shot.prompt.length > PROMPT_PREVIEW ? `${shot.prompt.slice(0, PROMPT_PREVIEW)}…` : shot.prompt
-  return `shot ${String(index + 1)} (${key}${duration}${continues}): ${prompt}`
 }
 
 /**
@@ -252,7 +234,7 @@ export default class DvShotPlan extends Service {
       label: { zh: '新建分镜计划', en: 'Create plan' },
       description: 'Propose a new plan for a separate story: for each shot its model from dv_models_list, its prompt written for it, its '
         + 'duration, and its inputs (references; continue_previous to start from the previous shot\'s last frame). The report names '
-        + 'the new plan ID (p1, p2, …) and one line per shot. To extend, shorten or change an existing plan, call dv_plan_update '
+        + 'the new plan ID (p1, p2, …). To extend, shorten or change an existing plan, call dv_plan_update '
         + 'instead. A plan renders nothing by itself.',
       inputs: {},
       params: PLAN_PARAMS,
@@ -260,7 +242,8 @@ export default class DvShotPlan extends Service {
       deterministic: true,
       resource: 'none',
       confirm: 'never',
-      summarize: record => `plan with ${shotCount(record.params)} shots`,
+      summarize: record => `plan ${String(record.report?.['plan'])} v${String(record.report?.['version'])} with ${shotCount(record.params)} shots`,
+      omitParamsFromResult: true,
       precondition: (request, state) => {
         this.checkPlan(planOf(request.params), state)
         return Promise.resolve()
@@ -270,7 +253,7 @@ export default class DvShotPlan extends Service {
         if (plan.shots.length === 0) throw new Error('plan.create needs at least one shot.')
         const id = this.assignPlanId(context.project)
         const asset = context.importAsset(Buffer.from(JSON.stringify(plan, null, 2)), { mime: 'application/json', name: 'plan.json' })
-        return Promise.resolve({ outputs: [asset], report: { plan: id, version: 1, shots: plan.shots.map(shotLine) } })
+        return Promise.resolve({ outputs: [asset], report: { plan: id, version: 1 } })
       },
     }
     return [
@@ -280,10 +263,9 @@ export default class DvShotPlan extends Service {
         name: 'plan.update',
         label: { zh: '修改分镜计划', en: 'Update plan' },
         description: 'Write the next version of an existing plan: pass its plan ID and the complete plan (every shot, in order; '
-          + 'a shot added after six shots is shot 7). Use it to extend, shorten or change the story. The report names the version '
-          + 'and one line per shot. A version renders nothing by itself.',
+          + 'a shot added after six shots is shot 7). Use it to extend, shorten or change the story. The report names the plan '
+          + 'ID and the new version. A version renders nothing by itself.',
         params: { plan: { type: 'string', required: true, description: 'The plan ID (p1, p2, …).' }, ...PLAN_PARAMS },
-        summarize: record => `plan updated (${shotCount(record.params)} shots)`,
         precondition: (request, state) => {
           versionIn(state, String(request.params['plan']))
           this.checkPlan(planOf(request.params), state)
@@ -296,7 +278,7 @@ export default class DvShotPlan extends Service {
           if (version.shots.length === 0) throw new Error('plan.update needs at least one shot.')
           const number = latest.version + 1
           const asset = context.importAsset(Buffer.from(JSON.stringify(version, null, 2)), { mime: 'application/json', name: 'plan.json' })
-          return Promise.resolve({ outputs: [asset], report: { plan, version: number, shots: version.shots.map(shotLine) } })
+          return Promise.resolve({ outputs: [asset], report: { plan, version: number } })
         },
       },
     ]

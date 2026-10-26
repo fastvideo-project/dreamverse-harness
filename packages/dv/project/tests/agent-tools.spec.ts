@@ -415,13 +415,14 @@ describe('session bindings and the asset store', () => {
     expect(result.record).toMatchObject({ status: 'failed', error: { message: 'No asset store is registered with dvProject; mount the asset pool.' } })
   })
 
-  it('formats a result as text plus image blocks', () => {
+  it('formats a result as text plus image blocks, with its params unless the operation omits them', () => {
     const base: OperationToolValue = {
       record: 'r1', status: 'done', summary: 'did it', outputs: [{ role: 'video', asset_id: 'a1', mime: 'video/mp4', url: '/a1' }], scheduled: ['r2'],
       params: { seed: 1 },
     }
-    expect(formatToolResult(base)).toEqual([{ type: 'text', text: 'done r1: did it\n- video: a1 (video/mp4) /a1\nscheduled: r2\nparams: {"seed":1}' }])
-    const withImages = formatToolResult({ ...base, scheduled: [], images: [{ attachmentId: 'att', mediaType: 'image/png' }, 'junk', null, ['x'], { attachmentId: 3 }] })
+    expect(formatToolResult(base, {})).toEqual([{ type: 'text', text: 'done r1: did it\n- video: a1 (video/mp4) /a1\nscheduled: r2\nparams: {"seed":1}' }])
+    expect(formatToolResult(base, { omitParamsFromResult: true })).toEqual([{ type: 'text', text: 'done r1: did it\n- video: a1 (video/mp4) /a1\nscheduled: r2' }])
+    const withImages = formatToolResult({ ...base, scheduled: [], images: [{ attachmentId: 'att', mediaType: 'image/png' }, 'junk', null, ['x'], { attachmentId: 3 }] }, {})
     expect(withImages).toHaveLength(2)
     expect(withImages[1]).toMatchObject({ type: 'image', attachment: { attachmentId: 'att' } })
   })
