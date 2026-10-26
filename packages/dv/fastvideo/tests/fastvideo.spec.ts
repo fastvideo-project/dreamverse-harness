@@ -231,7 +231,7 @@ describe('dv-fastvideo', () => {
     const [audio, json] = [asset('AUD1', 'audio/mpeg'), asset('{}', 'application/json')]
     // A request with a first frame cites it, as the fasth3 prompt rule asks.
     const check = (entry: ModelEntry<VideoTask>, references: AssetId[], firstFrame: AssetId | null) => entry.validateGenerationRequest({
-      ...request(references, firstFrame), prompt: firstFrame === null ? '<Picture 1> smiles' : '@[首帧](dv:input/first_frame) smiles',
+      ...request(references, firstFrame), prompt: firstFrame === null ? '<Picture 1> smiles' : '@[first frame](dv:input/first_frame) smiles',
     })
     expect(await check(referenceTask, [video, image], image)).toEqual([])
     expect(await referenceTask.validateGenerationRequest(request([image], image))).toEqual([
@@ -294,10 +294,10 @@ describe('dv-fastvideo', () => {
     // A citation of an asset outside the references, or of anything other than an asset, becomes its label.
     const prompt = `@[Mia](dv:asset/${other}) meets @[Bo](dv:asset/${image}) and @[Mia](dv:asset/${other}) in @[the walk](dv:asset/${video}), `
       + `to @[the song](dv:asset/${audio}), @[a cat](dv:asset/missing) and @[the lake](dv:element/e1@2)`
-    const firstFrame = '@[首帧](dv:input/first_frame)'
+    const firstFrame = '@[first frame](dv:input/first_frame)'
     await collect(fasth3(ctx, 'ref2v').render({ ...request([video, image, other, audio], null), prompt: `${prompt} from ${firstFrame}` }))
     expect(reference.requests[0]?.['prompt'])
-      .toBe('<Picture 2> meets <Picture 1> and <Picture 2> in <Video 1>, to <Audio 2>, a cat and the lake from 首帧')
+      .toBe('<Picture 2> meets <Picture 1> and <Picture 2> in <Video 1>, to <Audio 2>, a cat and the lake from first frame')
     // The sound of a video takes the audio number before the audio files after it; a silent video takes none.
     const silent = importAsset(ctx, await sampleVideo(false), 'video/mp4')
     const song = `@[the walk](dv:asset/${silent}) to @[the song](dv:asset/${audio})`
