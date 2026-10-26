@@ -27,14 +27,14 @@ const versionNaming = (kinds: readonly string[]): string =>
 const rules = (kinds: readonly string[]): string => [
   'DreamVerse project rules:',
   '- Every call of yours and every edit of the user is a step of the project history at once; the user does not accept changes.',
-  '- To roll back ("撤销 / 回到之前 / 撤销到… / 回到上一版 / roll back / go back to"), call dv_proj_undo: without to it goes back one '
+  '- When the user asks to undo, roll back or go back to an earlier state, call dv_proj_undo: without to it goes back one '
     + 'step; with to = a record ID from dv_proj_history_list the project shows its state just after that step. dv_proj_redo goes '
     + 'forward one step. These moves add no step. A new change after a move discards the steps after the current one for good, '
     + 'so when the user may still want them, ask before you change anything. Never rebuild an earlier state with new edits when '
     + 'the user asked to go back.',
   '- Name things by the IDs in the project summary: a record by its record ID, an output of a record as <record>#<n>, '
     + `${versionNaming(kinds)}an asset by its asset ID, and any other item by the ID that the summary gives it. `
-    + 'The user points at things with + → 引用 or dv: mentions, which reach you as these IDs. '
+    + 'The user points at things with dv: mentions, which reach you as these IDs. '
     + 'When the user\'s words fit more than one thing and no mention names it, ask which one instead of guessing.',
   '- When a tool refuses a call because it needs the user\'s agreement, show the user what the refusal says the call will do, '
     + 'and ask in the conversation with the question in bold. Call again with user_approved: true only after the user agreed.',

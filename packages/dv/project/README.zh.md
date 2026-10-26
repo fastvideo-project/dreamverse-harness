@@ -105,7 +105,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-挂载了 DSH `systemPrompt` 服务时，每一步的系统提示词都带有 `dv:project` 段落。它以项目的规则开头：智能体的每次调用和用户的每次编辑都立即成为项目历史中的一步，用户不需要接受修改；回滚调用 `dv_proj_undo`（一步，或 `to` 某一步），`dv_proj_redo` 往前移一步，这些移动不加一步，移动之后的新修改会永久丢弃后面的步骤，所以用户可能还需要它们时，智能体先询问；回滚从不用新编辑重建之前的状态；用项目摘要中的 ID 指称对象（记录、`<record>#<n>`、已注册引用种类的版本 `<id>@<version>`（规则列出这些种类）、素材，以及其他任何条目的 ID），用户用 + → 引用或 `dv:` 提及指出对象，有歧义的指称要询问而不是猜；因需要用户同意而被拒绝的调用要给用户看，并在对话中用粗体提问；过期记录只在用户同意时重新渲染。对绑定了项目的会话，规则之后是 "This conversation belongs to project <ProjectId> …" 和当前状态的项目摘要（缩进 JSON），与 `dv_proj_state` 返回的摘要相同。对未绑定的会话，规则之后是 "No project is bound to this conversation yet: start the work with dv_proj_create."。该段落不含选中项，也不含用户看不到的偏好。
+挂载了 DSH `systemPrompt` 服务时，每一步的系统提示词都带有 `dv:project` 段落。它以项目的规则开头：智能体的每次调用和用户的每次编辑都立即成为项目历史中的一步，用户不需要接受修改；回滚调用 `dv_proj_undo`（一步，或 `to` 某一步），`dv_proj_redo` 往前移一步，这些移动不加一步，移动之后的新修改会永久丢弃后面的步骤，所以用户可能还需要它们时，智能体先询问；回滚从不用新编辑重建之前的状态；用项目摘要中的 ID 指称对象（记录、`<record>#<n>`、已注册引用种类的版本 `<id>@<version>`（规则列出这些种类）、素材，以及其他任何条目的 ID），用户用 `dv:` 提及指出对象，有歧义的指称要询问而不是猜；因需要用户同意而被拒绝的调用要给用户看，并在对话中用粗体提问；过期记录只在用户同意时重新渲染。对绑定了项目的会话，规则之后是 "This conversation belongs to project <ProjectId> …" 和当前状态的项目摘要（缩进 JSON），与 `dv_proj_state` 返回的摘要相同。对未绑定的会话，规则之后是 "No project is bound to this conversation yet: start the work with dv_proj_create."。该段落不含选中项，也不含用户看不到的偏好。
 
 #### Token 影响
 

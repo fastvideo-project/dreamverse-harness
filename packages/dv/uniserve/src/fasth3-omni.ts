@@ -101,7 +101,7 @@ export function fasth3OmniProblems(
     const type = mediaTypeOf(firstFrame)
     if (type !== 'image') problems.push(`Its first_frame input takes assets of type image; asset ${firstFrame} is of type ${type}.`)
     const cited = parsePromptCitations(request.prompt).some(citation => citedInput(citation.uri) === 'first_frame')
-    if (!cited) problems.push('Its prompt does not cite the first frame; write "@[首帧](dv:input/first_frame) is the first frame of [Shot 1]".')
+    if (!cited) problems.push('Its prompt does not cite the first frame; write "@[first frame](dv:input/first_frame) is the first frame of [Shot 1]".')
   }
   const extra = Object.keys(request.extra)
   if (extra.length > 0) {

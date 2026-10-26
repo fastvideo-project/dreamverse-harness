@@ -6,7 +6,7 @@ The order of calls from planned shots to rendered shots on the plan's timeline: 
 
 1. `dv_plan_create` with `title`, `references` when shots share them, and `shots` (`modality`, `task`, `provider`, `model`, `prompt`, `duration_sec`, and per shot `references` or `continue_previous` when needed). The call needs no agreement; it records version 1. Its report names the plan ID (such as `p1`) and one line per shot.
 2. `dv_story_preview` with `plan`. Its report gives one line per shot (`shots`), the number of shots that render (`rendered`), and why a render would be refused (`problems`). When `problems` is not empty, fix the named shots with `dv_plan_update` and preview again.
-3. Reply with a table (shot, model and task, duration, continues from the previous shot or not, one line of action, camera). End the turn with one question in bold, such as **开始渲染这 3 个镜头吗？** Do not call `dv_story_approve` in this turn.
+3. Reply with a table (shot, model and task, duration, continues from the previous shot or not, one line of action, camera). End the turn with one question in bold, such as **Render these 3 shots?** Do not call `dv_story_approve` in this turn.
 4. When the user agrees in the next message: `dv_story_approve` with `plan` and `user_approved: true`, then `dv_proj_wait`, then `dv_proj_state`. The approval renders every shot with its model and task and lays every shot on the plan's timeline.
 5. Report each finished shot with its last frame (you receive it as an image) and its link. Inside an approved plan, never ask again.
 
@@ -14,7 +14,7 @@ If the user changes the plan before agreeing, call `dv_plan_update` with `plan` 
 
 ## 2. Extend, shorten or change the story
 
-One story is one plan. To extend, shorten or change it, also after it was approved, update that plan; create a new plan with `dv_plan_create` only for a separate story. The user asks for this with words such as 故事再长一点, 再加几个镜头 or 改一下故事 about a timeline that a plan made.
+One story is one plan. To extend, shorten or change it, also after it was approved, update that plan; create a new plan with `dv_plan_create` only for a separate story. The user asks for this about a timeline that a plan made, with words such as "make the story longer", "add a few more shots" or "change the story".
 
 1. `dv_plan_update` with `plan` = the plan ID from the project block and the complete next version: every shot in order, the unchanged shots copied exactly (same `modality`, `task`, `provider`, `model`, prompt, duration, references, `continue_previous` and seed) so their takes are kept. A shot added after six shots is shot 7.
 2. `dv_story_preview` with `plan`. Show only the new or changed shots (the preview's lines name the shots that keep their takes), and ask in bold.

@@ -37,7 +37,7 @@ export const assignFasth3ReferenceLabels: AssignReferenceLabels = (media) => {
 export function fasth3PromptProblems(request: RenderRequest): string[] {
   if (request.firstFrame === null) return []
   const cited = parsePromptCitations(request.prompt).some(citation => citedInput(citation.uri) === 'first_frame')
-  return cited ? [] : ['Its prompt does not cite the first frame; write "@[首帧](dv:input/first_frame) is the first frame of [Shot 1]".']
+  return cited ? [] : ['Its prompt does not cite the first frame; write "@[first frame](dv:input/first_frame) is the first frame of [Shot 1]".']
 }
 
 /** The tasks this plugin serves `fasth3` for. */
