@@ -30,7 +30,7 @@ import type { OperationSpec, OperationToolCall } from './operation-types.ts'
 import type { Sessions } from './sessions.ts'
 import { ProjectError } from './shared.ts'
 import type {
-  AssetId, AssetStore, HistoryEntry, HistoryQuery, ProjectId, ProjectRecord, ProjectState, RecordId,
+  AssetId, AssetStore, HistoryEntry, HistoryQuery, OperationOutput, ProjectId, ProjectRecord, ProjectState, RecordId,
   RecordInputRef, RecordOrigin, RunRequest, RunResult, SessionId, TurnId,
 } from './types.ts'
 
@@ -74,6 +74,15 @@ const CONFIRM_PARAMS: Record<OperationSpec['confirm'], ParameterSchemaSpec> = {
 /** The reference kinds as reference parsing reads them. */
 export type ReferenceKindLookup = Pick<AgentToolDeps, 'listReferenceKinds' | 'kindsWithVersion'>
 
+/** One output of a record in a tool result: its role, asset ID, media type and URL. */
+export const OUTPUT_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  properties: {
+    role: { type: 'string', required: true }, asset_id: { type: 'string', required: true }, mime: { type: 'string', required: true },
+    url: { type: 'string', required: true },
+  },
+} as const
+
 /** The value every operation tool returns to the model. */
 const RESULT_SCHEMA = {
   type: 'object',
@@ -82,16 +91,7 @@ const RESULT_SCHEMA = {
     record: { type: 'string', required: true, description: 'The record of this call; empty for a read, which writes no record.' },
     status: { type: 'string', required: true, description: 'done, or pending (scheduled behind records that have not finished).' },
     summary: { type: 'string', required: true },
-    outputs: {
-      type: 'array', required: true,
-      items: {
-        type: 'object', additionalProperties: false,
-        properties: {
-          role: { type: 'string', required: true }, asset_id: { type: 'string', required: true }, mime: { type: 'string', required: true },
-          url: { type: 'string', required: true },
-        },
-      },
-    },
+    outputs: { type: 'array', required: true, items: OUTPUT_SCHEMA },
     scheduled: {
       type: 'array', required: true, items: { type: 'string' },
       description: 'Records this call scheduled to run later, after the records they wait for.',
@@ -109,11 +109,36 @@ export type OperationToolValue = {
   record: string
   status: string
   summary: string
-  outputs: Array<{ role: string; asset_id: string; mime: string; url: string }>
+  outputs: ToolOutput[]
   scheduled: string[]
   params: JsonValue
   report?: JsonValue
   images?: JsonValue[]
+}
+
+/** One output of a record in a tool result. */
+export type ToolOutput = { role: string; asset_id: string; mime: string; url: string }
+
+/**
+ * The outputs of a record in a tool result, in the record's order.
+ * @param outputs - the record's operation's declared outputs; a record output past them gets the role `output_<index>`.
+ * @param record - the record.
+ * @param assets - the asset store, for each output's media type and URL.
+ * @returns one entry per record output.
+ */
+export function outputsOf(outputs: readonly OperationOutput[], record: ProjectRecord, assets: AssetStore): ToolOutput[] {
+  return record.outputs.map((id, index) => ({
+    role: outputs[index]?.role ?? `output_${index}`, asset_id: id, mime: assets.get(id).mime, url: assets.url(id),
+  }))
+}
+
+/**
+ * The result line of one output.
+ * @param output - the output.
+ * @returns `- <role>: <asset ID> (<media type>) <URL>`.
+ */
+export function outputLine(output: ToolOutput): string {
+  return `- ${output.role}: ${output.asset_id} (${output.mime}) ${output.url}`
 }
 
 /**
@@ -286,7 +311,7 @@ function sharedParams(spec: OperationSpec, kinds: readonly string[]): ParameterS
  */
 export function formatToolResult(value: OperationToolValue, spec: Pick<OperationSpec, 'omitParamsFromResult'>): ContentBlock[] {
   const lines = [value.record === '' ? `${value.status}: ${value.summary}` : `${value.status} ${value.record}: ${value.summary}`]
-  for (const output of value.outputs) lines.push(`- ${output.role}: ${output.asset_id} (${output.mime}) ${output.url}`)
+  lines.push(...value.outputs.map(outputLine))
   if (value.scheduled.length > 0) lines.push(`scheduled: ${value.scheduled.join(', ')}`)
   if (spec.omitParamsFromResult !== true) lines.push(`params: ${JSON.stringify(value.params)}`)
   if (value.report !== undefined) lines.push(`report: ${JSON.stringify(value.report)}`)
@@ -442,9 +467,7 @@ export class AgentTools {
       record: record.id,
       status: record.status,
       summary: record.status === 'done' ? spec.summarize(record) : `${toolNameOf(spec)} ${record.status}`,
-      outputs: record.outputs.map((id, index) => ({
-        role: spec.outputs[index]?.role ?? `output_${index}`, asset_id: id, mime: assets.get(id).mime, url: assets.url(id),
-      })),
+      outputs: outputsOf(spec.outputs, record, assets),
       scheduled,
       params: toJson(record.params),
       ...record.report === undefined ? {} : { report: toJson(record.report) },

@@ -7,7 +7,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { ProjectRecord, WireState } from '../wire-state.ts'
 import { bootHarness, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import {
-  assetIdOf, startScriptedModel, textOf, type ChatRequest, type ScriptedModel, type ScriptedRule, type ScriptedStep, type TurnView,
+  assetIdOf, scheduledOf, startScriptedModel, textOf, type ChatRequest, type ScriptedModel, type ScriptedRule, type ScriptedStep,
+  type TurnView,
 } from '../scripted-model.ts'
 
 /** A 1×1 opaque PNG. */
@@ -92,7 +93,7 @@ const RULES: ScriptedRule[] = [
       // The story's project is new, so its first plan is p1.
       { calls: [{ name: 'dv_story_preview', args: { reason: '预览计划', plan: 'p1' } }] },
       { calls: [{ name: 'dv_story_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
-      { calls: [{ name: 'dv_proj_wait', args: {} }] },
+      view => ({ calls: [{ name: 'dv_proj_wait', args: { records: scheduledOf(view.toolResults.at(-1)) } }] }),
     ],
     endText: '两个镜头已渲染。',
   },
@@ -112,7 +113,7 @@ const RULES: ScriptedRule[] = [
     steps: [
       { calls: [{ name: 'dv_story_preview', args: { reason: '预览计划', plan: 'p1' } }] },
       { calls: [{ name: 'dv_story_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
-      { calls: [{ name: 'dv_proj_wait', args: {} }] },
+      view => ({ calls: [{ name: 'dv_proj_wait', args: { records: scheduledOf(view.toolResults.at(-1)) } }] }),
     ],
     endText: '两个镜头已渲染。',
   },
@@ -426,6 +427,10 @@ describe('chat with the agent', () => {
     const workspace = page.locator('[data-dv-workspace]')
     await workspace.locator('[data-node-type="plan"]').first().waitFor({ timeout: 15_000 })
     expect(await workspace.getByRole('button', { name: '接受', exact: true }).count()).toBe(0)
+    // The agent read only the records it waited for: each render with its intent, and no project summary or report.
+    const waited = textOf(requestFor('做两个镜头的广告')?.messages.filter(message => message.role === 'tool').at(-1)?.content)
+    expect(waited).toMatch(/^done \S+ \(shot 1 of plan p1 v1\): /m)
+    expect(waited).not.toContain('"report"')
     await send(page, '只回复八')
     await waitChat(page, '收到八')
     const prompt = promptOf(requestFor('只回复八') as ChatRequest)

@@ -83,6 +83,15 @@ export function assetIdOf(result: unknown, role: string): string {
   return new RegExp(`- ${role}: ([0-9a-f]{16,})`).exec(String(result))?.[1] ?? ''
 }
 
+/**
+ * The records an operation tool result scheduled, from its `scheduled: <id>, <id>` line.
+ * @param result - one entry of `TurnView.toolResults`.
+ * @returns the record IDs; empty when the result scheduled none.
+ */
+export function scheduledOf(result: unknown): string[] {
+  return /^scheduled: (.+)$/m.exec(String(result))?.[1]?.split(', ') ?? []
+}
+
 /** Parse a tool message into JSON when possible. */
 function parseResult(content: unknown): unknown {
   const text = textOf(content)

@@ -1,8 +1,9 @@
 /**
  * Project's own `dv_proj_*` tools through the `dvProject` service with the real DSH tool registry: session binding,
  * renaming the session's project, the project summary with the reducers' `agentSummary` fields, the history list, undo
- * and redo, moves to a step, stale acceptance, and waiting for scheduled records.
+ * and redo, moves to a step, stale acceptance, and waiting for named records.
  */
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -11,7 +12,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvProject, {
-  type AssetId, type OperationSpec, type OperationToolValue, type ProjectId, type RecordId, type SessionId,
+  type AssetId, type OperationSpec, type OperationToolValue, type ProjectId, type SessionId,
 } from '../src/index.ts'
 import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot } from './support.ts'
 
@@ -284,7 +285,7 @@ describe('dv_proj_* tools', () => {
     }
   })
 
-  it('waits for scheduled records and shows a pending record by its status', async () => {
+  it('shows a pending record by its status in the project summary', async () => {
     const fixture = await start()
     let release = (): void => {}
     const held = new Promise<void>((resolve) => { release = resolve })
@@ -292,15 +293,50 @@ describe('dv_proj_* tools', () => {
       await held
       return { outputs: [context.importAsset(Buffer.from('slow'), { mime: 'image/png', name: 'slow.png' })] }
     } }))
-    const projectId = brandString<ProjectId>(String(json(await fixture.call('dv_proj_create', { title: 'wait' }))['project_id']))
+    const projectId = brandString<ProjectId>(String(json(await fixture.call('dv_proj_create', { title: 'pending' }))['project_id']))
     const origin = { actor: 'user' as const, surface: 'api' as const, session: null, turn: null, tool_call: null, intent: 'slow' }
     const scheduled = await fixture.project.run({ ...origin, project: projectId, operation: 'asset.grab_still', params: { prompt: 's' }, inputs: [], after: [] })
     const pending = json(await fixture.call('dv_proj_state', {}))['recent'] as Array<{ record: string; summary: string }>
     expect(pending.at(-1)?.record).toBe(scheduled.record?.id)
     expect(['pending', 'running']).toContain(pending.at(-1)?.summary)
-    const waiting = fixture.call('dv_proj_wait', {})
     release()
-    expect(json(await waiting)['records']).toBe(2)
-    expect(fixture.project.getRecord(projectId, brandString<RecordId>(String(scheduled.record?.id))).status).toBe('done')
+    await fixture.project.wait(projectId)
+  })
+
+  it('dv_proj_wait reads the named records after they finish', async () => {
+    const fixture = await start()
+    let release = (): void => {}
+    const held = new Promise<void>((resolve) => { release = resolve })
+    fixture.project.registerOperation(still({ resource: 'gpu', execute: async (context) => {
+      if (context.params['prompt'] === 'broken') throw new Error('The ink ran out.')
+      if (context.params['prompt'] === 'slow') await held
+      return { outputs: [context.importAsset(Buffer.from(`still ${String(context.params['prompt'])}`), { mime: 'image/png', name: 'still.png' })] }
+    } }))
+    const projectId = brandString<ProjectId>(String(json(await fixture.call('dv_proj_create', { title: 'wait' }))['project_id']))
+    const early = value(await fixture.call('dv_asset_grab_still', { reason: 'an early still', prompt: 'kite' }))
+    const origin = { actor: 'system' as const, surface: 'api' as const, session: null, turn: null, tool_call: null }
+    const scheduled = async (prompt: string, intent: string): Promise<string> => {
+      const result = await fixture.project.run({ ...origin, intent, project: projectId, operation: 'asset.grab_still', params: { prompt }, inputs: [], after: [] })
+      return String(result.record?.id)
+    }
+    const slow = await scheduled('slow', 'a slow still')
+    const broken = await scheduled('broken', 'a broken still')
+    expect(errorOf(await fixture.call('dv_proj_wait', { records: [] }))).toBe('Name at least one record ID to wait for.')
+    expect(errorOf(await fixture.call('dv_proj_wait', { records: [slow, 'missing'] }))).toContain(`Project ${projectId} has no record missing.`)
+    const waiting = fixture.call('dv_proj_wait', { records: [slow, early.record, broken] })
+    release()
+    const result = await waiting
+    const asset = (prompt: string): string => createHash('sha256').update(`still ${prompt}`).digest('hex')
+    expect(result.content).toEqual([{ type: 'text', text: [
+      `done ${slow} (a slow still): made from slow`,
+      `- still: ${asset('slow')} (image/png) https://assets.example/${asset('slow')}`,
+      `done ${early.record} (an early still): made from kite`,
+      `- still: ${asset('kite')} (image/png) https://assets.example/${asset('kite')}`,
+      `failed ${broken} (a broken still): The ink ran out.`,
+    ].join('\n') }])
+    expect(json(result)).toEqual({ records: [
+      expect.objectContaining({ record: slow, status: 'done' }), expect.objectContaining({ record: early.record, status: 'done' }),
+      { record: broken, status: 'failed', intent: 'a broken still', summary: 'The ink ran out.', outputs: [] },
+    ] })
   })
 })

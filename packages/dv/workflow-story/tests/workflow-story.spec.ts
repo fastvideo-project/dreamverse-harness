@@ -79,9 +79,15 @@ describe('dvStory', () => {
       ['dv_plan_create', { reason: 'propose', title: 'Streets', shots: [{ ...TXT, prompt: 'A street at dawn', duration_sec: 1 }] }],
       ['dv_story_preview', { reason: 'show the cost', plan: 'p1' }],
       ['dv_story_approve', { reason: 'the user agreed', plan: 'p1', user_approved: true }],
-      ['dv_proj_wait', { reason: 'renders' }],
     ]
-    for (const [name, args] of calls) expect(refusal(await fixture.call(name, args)), name).toBe('')
+    const results: Array<Awaited<ReturnType<Fixture['call']>>> = []
+    for (const [name, args] of calls) {
+      const result = await fixture.call(name, args)
+      expect(refusal(result), name).toBe('')
+      results.push(result)
+    }
+    const { scheduled } = (results.at(-1)?.value as OperationToolValue).report as { scheduled: string[] }
+    expect(refusal(await fixture.call('dv_proj_wait', { records: scheduled })), 'dv_proj_wait').toBe('')
     const records = fixture.ctx.dvProject.getState(fixture.project).components.proj.records
     expect(records.map(record => [record.operation, record.status])).toEqual([
       ['proj.create', 'done'], ['plan.create', 'done'], ['story.approve', 'done'], ['shot.render', 'done'], ['timeline.create', 'done'],
@@ -194,10 +200,10 @@ describe('dvStory', () => {
     const result = await fixture.call('dv_story_approve', { reason: 'go', plan: 'p1', user_approved: true })
     const report = (result.value as OperationToolValue).report
     expect(report).toEqual({ plan: 'p1', version: 1, timeline: 't1', scheduled: [expect.any(String), expect.any(String), expect.any(String)] })
-    await fixture.call('dv_proj_wait', { reason: 'renders' })
+    const { scheduled } = report as { scheduled: string[] }
+    expect(refusal(await fixture.call('dv_proj_wait', { records: scheduled }))).toBe('')
     const records = fixture.ctx.dvProject.getState(fixture.project).components.proj.records
     const approve = records.find(record => record.operation === 'story.approve')
-    const { scheduled } = report as { scheduled: string[] }
     const written = scheduled.map(id => records.find(record => record.id === id))
     expect(written.map(record => [record?.operation, record?.status, record?.intent])).toEqual([
       ['shot.render', 'done', 'shot 1 of plan p1 v1'], ['shot.render', 'done', 'shot 2 of plan p1 v1'],

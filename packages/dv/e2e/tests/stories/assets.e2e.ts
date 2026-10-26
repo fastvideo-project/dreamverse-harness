@@ -8,7 +8,7 @@ import type { Browser, BrowserContext, Locator, Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { ProjectRecord, WireState } from '../wire-state.ts'
 import { bootHarness, escapeRegExp, playwright, waitFor, type BootedHarness } from '../harness.ts'
-import { assetIdOf, startScriptedModel, type ScriptedModel, type ScriptedRule } from '../scripted-model.ts'
+import { assetIdOf, scheduledOf, startScriptedModel, type ScriptedModel, type ScriptedRule } from '../scripted-model.ts'
 
 /**
  * A 16×16 PNG of one color, built in memory so every test can import distinct bytes.
@@ -58,7 +58,7 @@ const RULES: ScriptedRule[] = [
       // The story's project is new, so its first plan is p1.
       { calls: [{ name: 'dv_story_preview', args: { reason: '预览计划', plan: 'p1' } }] },
       { calls: [{ name: 'dv_story_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
-      { calls: [{ name: 'dv_proj_wait', args: {} }] },
+      view => ({ calls: [{ name: 'dv_proj_wait', args: { records: scheduledOf(view.toolResults.at(-1)) } }] }),
     ],
     endText: '镜头已渲染。',
   },
