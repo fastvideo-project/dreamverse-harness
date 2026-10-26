@@ -41,7 +41,7 @@ kind: "package-reference"
 | `models` | 必填 | 要注册的模型，按模型名；未列出的模型不注册 |
 | `models.<model>.baseUrl` | 必填 | 服务该模型的 SGLang diffusion 服务器的 HTTP 基础 URL，如 `http://127.0.0.1:30010` |
 
-`models` 指定 `qwen-image-2.1-turbo` 以外的模型时，加载失败。插件挂载期间，模型目录持有条目 `image/t2i/sglang-diffusion/qwen-image-2.1-turbo`，其 `defaultSize` 为 1024x1024。
+`models` 指定 `qwen-image-2.1-turbo` 以外的模型时，加载失败。插件挂载期间，模型目录持有条目 `image/t2i/sglang-diffusion/qwen-image-2.1-turbo`。
 
 -----
 

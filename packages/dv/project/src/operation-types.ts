@@ -57,8 +57,8 @@ export interface OperationSpec {
    * Whether an agent tool call needs the user's agreement, given in the conversation. `never`: no agreement.
    * `always`: the tool takes `user_approved`, and a call without `user_approved: true` is refused. The refusal tells
    * the agent to ask the user in the conversation, the question in bold. Project adds the argument to the tool; the
-   * operation declares nothing for it, and it never reaches the record's params. Calls by the human and by the system are never
-   * refused.
+   * operation declares nothing for it, and it never reaches the record's params. Calls by the human and by the system
+   * are never refused.
    */
   confirm: 'never' | 'always'
   /**

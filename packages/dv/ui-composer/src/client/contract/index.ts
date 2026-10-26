@@ -241,7 +241,7 @@ export interface ReferenceFaceInjected {
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotFactoryMap {
-    /** The DreamVerse composer: the reference tray, the prompt editor, the parameter bar, the cost and send, over one call. */
+    /** The DreamVerse composer: the reference tray, the prompt editor, the parameter bar and send, over one call. */
     'dv.prompt': { scope: 'root'; props: DvPromptProps; inject: DvPromptInjected }
   }
 }

@@ -98,17 +98,17 @@ When you dispose the plugin, the effect removes the entry. `register` throws whe
 4. **`schema()`**: Return JSON with the limits, `inputs` and `extra`. Use the `dv_shot_render` input roles `reference` and `first_frame` as the keys of `inputs`. `@dv/models` does not check this JSON. `dv_models_get` returns this JSON to the agent and does not read `facts()`.
 5. **`schema()`**: Give the limits as `duration_sec` with `min` and `max`, `aspect_ratios`, and `resolutions`. Give each input its minimum count, its maximum count, and its media types with their limits.
 6. **`schema()`**: Describe each `extra` parameter with its type and range. Reject when the server cannot be reached.
-8. **`validateGenerationRequest(request)`**: Return every problem of the request as one agent-facing sentence. Return an empty list for a valid request.
-9. **`validateGenerationRequest(request)`**: Check the count of each input against the limits. Read the media type of each asset with `ctx.dvAssetPool.mediaType(id)`.
-10. **`validateGenerationRequest(request)`**: Refuse each unknown `extra` name in one sentence that lists the known names. Check each known `extra` value against its schema.
-11. **`validateGenerationRequest(request)`**: For an invalid request, resolve with the problems. Reject only when the server cannot be reached.
-12. **`render(request, signal)`**: Read the bytes of each asset from the file at `ctx.dvAssetPool.path(id)`. Read the media type of each asset with `ctx.dvAssetPool.mediaType(id)`.
-13. **`render(request, signal)`**: Translate each asset ID into the format of the provider. The server cannot read asset IDs.
-14. **`render(request, signal)`**: Send the references in input order. Send the first frame as the provider requires.
-15. **`render(request, signal)`**: Yield one `video_start` event, then the `chunk` events, then one `done` event.
-16. **`render(request, signal)`**: Yield exactly one `last_frame` event before `video_start` or after the last `chunk`. Give `done` the timings of the server, or an empty object.
-17. **`render(request, signal)`**: Reject for each server failure. Do not yield `done` after a failure.
-18. **`render(request, signal)`**: Pass `signal` to the server request. When `signal` aborts, stop the render and reject with `signal.reason`.
+7. **`validateGenerationRequest(request)`**: Return every problem of the request as one agent-facing sentence. Return an empty list for a valid request.
+8. **`validateGenerationRequest(request)`**: Check the count of each input against the limits. Read the media type of each asset with `ctx.dvAssetPool.mediaType(id)`.
+9. **`validateGenerationRequest(request)`**: Refuse each unknown `extra` name in one sentence that lists the known names. Check each known `extra` value against its schema.
+10. **`validateGenerationRequest(request)`**: For an invalid request, resolve with the problems. Reject only when the server cannot be reached.
+11. **`render(request, signal)`**: Read the bytes of each asset from the file at `ctx.dvAssetPool.path(id)`. Read the media type of each asset with `ctx.dvAssetPool.mediaType(id)`.
+12. **`render(request, signal)`**: Translate each asset ID into the format of the provider. The server cannot read asset IDs.
+13. **`render(request, signal)`**: Send the references in input order. Send the first frame as the provider requires.
+14. **`render(request, signal)`**: Yield one `video_start` event, then the `chunk` events, then one `done` event.
+15. **`render(request, signal)`**: Yield exactly one `last_frame` event before `video_start` or after the last `chunk`. Give `done` the timings of the server, or an empty object.
+16. **`render(request, signal)`**: Reject for each server failure. Do not yield `done` after a failure.
+17. **`render(request, signal)`**: Pass `signal` to the server request. When `signal` aborts, stop the render and reject with `signal.reason`.
 
 ### Add a task or a modality only when necessary
 

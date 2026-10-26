@@ -41,7 +41,7 @@ Mount the plugin after `@dv/models`, with one server per model. The DreamVerse b
 | `models` | required | The models to register, by model name; a model left out is not registered |
 | `models.<model>.baseUrl` | required | HTTP base URL of the SGLang diffusion server that serves the model, such as `http://127.0.0.1:30010` |
 
-Loading fails when `models` names a model other than `qwen-image-2.1-turbo`. While the plugin is mounted, the catalog holds the entry `image/t2i/sglang-diffusion/qwen-image-2.1-turbo` with `defaultSize` 1024x1024.
+Loading fails when `models` names a model other than `qwen-image-2.1-turbo`. While the plugin is mounted, the catalog holds the entry `image/t2i/sglang-diffusion/qwen-image-2.1-turbo`.
 
 -----
 

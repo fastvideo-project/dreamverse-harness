@@ -124,7 +124,7 @@ The service also registers the tools `dv_models_list` and `dv_models_get`, the s
 A provider plugin connects one provider to the catalog. [`@dv/fastvideo`](../fastvideo/README.md) is the example to follow. The provider plugin owns these parts:
 
 - The provider name and the protocol of the backend.
-- The deployment values in its `Config`, such as the server URL and the GPU rate of each model and task.
+- The deployment values in its `Config`, such as the server URL of each model and task.
 - All members of each entry that it registers.
 - The translation of a `RenderRequest` into a backend request. The plugin reads the bytes and the media type of each asset from `dvAssetPool`. The plugin sends them in the format of the backend.
 - The optional `promptSkill` of each entry. The catalog registers it, and the provider plugin registers no skill.

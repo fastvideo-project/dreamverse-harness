@@ -51,7 +51,7 @@ kind: "package-reference"
 | 文件 | 内容 |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `dvShotRender`：`shot.render` 的声明（渲染请求、存储的输出和摘要） |
-| [`src/render.ts`](src/render.ts) | `shotGeometry`、`backendSeconds` |
+| [`src/render.ts`](src/render.ts) | `shotGeometry` |
 
 -----
 
@@ -102,4 +102,4 @@ kind: "package-reference"
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **智能体只看到一个版本的最后静帧**：`video` 输出以 URL 到达智能体，只有 `last_still` 图片以图片块到达，所以智能体无法判断一个版本的运动。
+- **视频不直接给模型看**：见 [`@dv/inspector` 的限制](../inspector/README.zh.md#known-limitations-and-deferred-work)。

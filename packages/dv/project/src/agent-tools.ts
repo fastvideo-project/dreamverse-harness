@@ -6,10 +6,9 @@
  * the model as image blocks through the attachment service.
  *
  * Confirmation: an operation whose `confirm` is `always` gets the tool-only argument `user_approved`; a call that
- * lacks it is refused, before anything
- * is written, with the operation's `confirmSummary` and the instruction to ask the user in the conversation with the
- * question in bold. The record's turn is the DSH turn number of the calling agent's session, read from the
- * `turnBoundary` session projection.
+ * lacks it is refused, before anything is written, with the operation's `confirmSummary` and the instruction to ask
+ * the user in the conversation with the question in bold. The record's turn is the DSH turn number of the calling
+ * agent's session, read from the `turnBoundary` session projection.
  *
  * Calls the sessions module (project binding, held work), the asset store (output types, bytes, URLs), and the
  * service's run, state, record, operation and history reads through {@link AgentToolDeps}. Called by the service,

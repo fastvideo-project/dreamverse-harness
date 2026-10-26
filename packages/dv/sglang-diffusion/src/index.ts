@@ -16,7 +16,7 @@ import z from '@deepseek-ai/schemastery'
 import type { GeneratedImage, ImageModelFacts, ImageRequest, ImageSize } from '@dv/image-generate'
 import type { ModelEntry } from '@dv/models'
 
-/** The server of one model and its GPU rate. */
+/** The server of one model. */
 export interface ModelServer {
   /** HTTP base URL of the SGLang diffusion server, such as `http://127.0.0.1:30010`. */
   baseUrl: string
@@ -178,7 +178,6 @@ function modelEntry(model: string, server: ModelServer): ModelEntry<'t2i'> {
     provider: 'sglang-diffusion',
     model,
     description: served.description,
-    defaultSize: served.defaultSize,
     facts,
     async schema(): Promise<JsonValue> {
       await facts()

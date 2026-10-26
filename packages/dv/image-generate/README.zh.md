@@ -43,7 +43,6 @@ kind: "package-reference"
 | `ImageModelFacts` | `modelId`：后端的模型 ID |
 | `ImageRequest` | `prompt`；`size`：一个 `ImageSize`，调用没有指定尺寸时为 null；`seed`；`extra` |
 | `GeneratedImage` | `bytes`、`mime: 'image/png'`、`width`、`height` |
-| 条目字段 | `defaultSize`：条目为 `size` 为 null 的请求渲染的尺寸 |
 
 条目的 `render(request)` 返回一个 `GeneratedImage` 的 promise。该服务还为工作流实现 `@dv/generation` 的 `GenerationApi`。
 

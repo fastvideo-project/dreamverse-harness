@@ -51,7 +51,7 @@ Before any record is written, for every caller, the `precondition` of `shot.rend
 | File | Content |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `dvShotRender`: the declaration of `shot.render` (render request, stored outputs and summary) |
-| [`src/render.ts`](src/render.ts) | `shotGeometry`, `backendSeconds` |
+| [`src/render.ts`](src/render.ts) | `shotGeometry` |
 
 -----
 
@@ -102,4 +102,4 @@ Each result is appended to the conversation after its call; the cached prefix st
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **The agent sees only the last still of a take**: the `video` output reaches the agent as a URL and only the `last_still` image reaches it as an image block, so the agent cannot judge the motion of a take.
+- **Videos are not shown to the model**: see the [`@dv/inspector` limitation](../inspector/README.md#known-limitations-and-deferred-work).

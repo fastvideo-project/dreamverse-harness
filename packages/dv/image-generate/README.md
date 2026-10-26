@@ -43,7 +43,6 @@ An entry of task `t2i` implements `ModelEntry<'t2i'>` with these types, which th
 | `ImageModelFacts` | `modelId`: the backend's model ID |
 | `ImageRequest` | `prompt`; `size`: an `ImageSize`, or null when the call names none; `seed`; `extra` |
 | `GeneratedImage` | `bytes`, `mime: 'image/png'`, `width`, `height` |
-| entry fields | `defaultSize`: the size that the entry renders for a request whose `size` is null |
 
 `render(request)` of the entry returns a promise of one `GeneratedImage`. The service also implements `GenerationApi` of `@dv/generation` for workflows.
 

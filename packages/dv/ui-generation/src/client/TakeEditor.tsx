@@ -2,8 +2,8 @@
  * The editor body of a generation take, which the canvas renders for a claimed node: its first output through
  * `dv.media` at purpose 'loop' behind the take's preview as the poster, the failure reason of a failed take, its model
  * and generation task (the task's label in `GET /api/dv/tasks`, else its name), and the `dv.prompt` composer over the
- * take's call when `GET /api/dv/operations` declares its operation: the references, the prompt, the parameters, the
- * cost and the send. A send reruns the take's operation as edited, with the take as `based_on`; on success the canvas
+ * take's call when `GET /api/dv/operations` declares its operation: the references, the prompt, the parameters and
+ * the send. A send reruns the take's operation as edited, with the take as `based_on`; on success the canvas
  * closes the editor and selects the new take, and the composer shows a refused request's error. The composer's
  * host opens the canvas's asset picker with the versioned items, imports uploaded files as canvas imports, opens the
  * preview of an asset, and opens the editor of a versioned item's node over this one.

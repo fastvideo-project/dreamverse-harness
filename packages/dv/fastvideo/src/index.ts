@@ -26,7 +26,7 @@ import { FASTH3 } from './fasth3.ts'
 import { modelPrompt } from './reference-labels.ts'
 import type { InputRole, MediaType, ServedTask, TaskInputs } from './types.ts'
 
-/** One task of one model: the streaming_v2 server that renders it and its GPU rate. */
+/** One task of one model: the streaming_v2 server that renders it. */
 export interface TaskServer {
   /** HTTP base URL of the FastVideo streaming_v2 server, such as `http://127.0.0.1:8029`. */
   baseUrl: string

@@ -207,7 +207,6 @@ describe('dv-sglang-diffusion', () => {
       description: 'Qwen-Image 2.1 Turbo: a text-to-image model that renders legible text inside the image, such as posters, '
         + 'labels and interface layouts. The same seed, size and prompt give the same image.',
     }])
-    expect(fixture.entry()).toMatchObject({ defaultSize: { width: 1024, height: 1024 } })
     expect(fixture.ctx.tools.get('dv_image_generate')).toBeDefined()
     const row = [...fixture.ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-sglang-diffusion.mjs'))
     await row?.fiber?.dispose()

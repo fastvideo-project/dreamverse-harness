@@ -19,10 +19,7 @@ declare module '@dv/models' {
       facts: ImageModelFacts
       request: ImageRequest
       result: Promise<GeneratedImage>
-      entry: {
-        /** The size that the model renders for a call that names none. */
-        defaultSize: ImageSize
-      }
+      entry: Record<never, never>
     }
   }
   interface TaskMap {
@@ -49,7 +46,7 @@ export interface ImageModelFacts {
 /** One image request: the prompt, the pixel size, the seed, and the model's own parameters. */
 export interface ImageRequest {
   prompt: string
-  /** Null when the call names no size; the entry then renders its `defaultSize`. */
+  /** Null when the call names no size; the entry then renders the model's default size. */
   size: ImageSize | null
   seed: number
   /** Values of the model's own parameters, which the entry's `schema()` describes. */

@@ -35,7 +35,6 @@ class FakeImageModel {
   entry(): ModelEntry<'t2i'> {
     return {
       modality: 'image', task: 't2i', provider: 'test', model: 'fake', description: 'Fake images',
-      defaultSize: { width: 1024, height: 1024 },
       facts: () => this.facts(),
       schema: () => Promise.resolve({}),
       validateGenerationRequest: request => Promise.resolve(this.problems(request)),

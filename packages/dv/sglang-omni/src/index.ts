@@ -19,7 +19,7 @@ import z from '@deepseek-ai/schemastery'
 import type { AudioModelFacts, AudioRequest, GeneratedAudio } from '@dv/audio-generate'
 import type { ModelEntry } from '@dv/models'
 
-/** The server of one model and its GPU rate. */
+/** The server of one model. */
 export interface ModelServer {
   /** HTTP base URL of the SGLang-Omni server, such as `http://127.0.0.1:8000`. */
   baseUrl: string

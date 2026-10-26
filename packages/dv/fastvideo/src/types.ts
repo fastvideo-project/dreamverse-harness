@@ -29,7 +29,7 @@ export type TaskInputs = Partial<Record<InputRole, InputDeclaration>>
 
 /**
  * One task this plugin can serve a model for: the entry's description, what the model accepts for it, and its prompt
- * skill. The GPU rate comes from the configured server of the task.
+ * skill.
  */
 export interface ServedTask {
   description: string
