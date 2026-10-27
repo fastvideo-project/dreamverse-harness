@@ -869,6 +869,11 @@ describe('mapStopReason / mapUsage', () => {
       .toEqual({ kind: 'error', failure: { message: 'pi-ai stream error', code: 'PI_AI_ERROR' } })
   })
 
+  it('reports a route with neither a key nor a stored sign-in as a missing credential', () => {
+    expect(mapStopReason(assistant({ stopReason: 'error', errorMessage: 'Provider is not configured: openai-codex' })))
+      .toMatchObject({ kind: 'error', failure: { code: 'MISSING_CREDENTIAL' } })
+  })
+
   it('maps routable HTTP-ish error messages to stable codes', () => {
     expect(mapStopReason(assistant({ stopReason: 'error', errorMessage: 'HTTP 401: bad key' })))
       .toMatchObject({ kind: 'error', failure: { code: 'AUTH' } })

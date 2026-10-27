@@ -266,6 +266,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Streams one background job\'s observation record over the generated Remote namespace; the roster stays on the session control stream.',
   },
   {
+    key: 'authorizationController',
+    pkg: 'api-authorization-controller',
+    title: 'Host sign-in flow Remote controller',
+    mode: 'core',
+    note: 'Runs only the authorization flows a deployment lists over the generated Remote namespace, streaming notices and prompts per attempt; credentials stay on the Host.',
+  },
+  {
     key: 'credentialsController',
     pkg: 'api-settings-controller',
     title: 'Host credential-surface Remote controller',
@@ -394,7 +401,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     title: 'Authorization flow registry',
     mode: 'seam',
     implementations: [],
-    consumers: ['llm-pi-ai'],
+    consumers: ['api-authorization-controller', 'llm-pi-ai'],
     note: 'Flows are registered by the plugin that knows how to obtain one credential and keyed by the record they write; the seam owns the conversation and the one-attempt-per-key lifecycle, never the protocol.',
   },
   {

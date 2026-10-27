@@ -722,3 +722,40 @@ select.input {
   line-height: 20px;
   text-align: center;
 }
+
+.signIn {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--dsw-alias-border-l3);
+}
+
+.signInStatus {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.signInNotice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+
+.signInCode {
+  align-self: flex-start;
+  font-family: var(--ds-font-family-code);
+  font-size: 16px;
+  letter-spacing: 0.1em;
+  color: var(--dsw-alias-label-primary);
+}
+
+.signInOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

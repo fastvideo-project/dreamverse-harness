@@ -121,6 +121,19 @@
     - id: account-controller
       name: '@deepseek-ai/dsh-api-account-controller'
 
+    # Browser-reachable sign-ins. Only listed flows cross Remote: llm-pi-ai also
+    # registers an Anthropic (Claude Pro/Max) login, which Anthropic's terms
+    # forbid third-party apps from offering, so it stays unlisted.
+    - id: authorization-controller
+      name: '@deepseek-ai/dsh-api-authorization-controller'
+      config:
+        flows:
+          - llm-pi-ai/openai-codex
+        # Browser login waits for a callback on the Host's loopback, which a
+        # browser on another machine cannot reach; the device code works anywhere.
+        preferredOptions:
+          llm-pi-ai/openai-codex: device_code
+
     - id: settings-controller
       name: '@deepseek-ai/dsh-api-settings-controller'
 
