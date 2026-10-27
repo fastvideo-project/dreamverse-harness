@@ -432,7 +432,7 @@ describe('dv-fastvideo', () => {
     expect(await offered()).toContain('pablodawson')
     const registry = await ctx.plugin(DvLora, LORA_REGISTRY)
     expect(await offered()).not.toContain('pablodawson')
-    registry.dispose()
+    await registry.dispose()
     expect(await offered()).toContain('pablodawson')
   })
 
