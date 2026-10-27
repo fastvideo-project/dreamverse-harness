@@ -165,6 +165,13 @@ describe('DreamVerse bundle composition', () => {
     expect(ctx.get('tools')?.get('dv_models_list')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_models_get')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_image_generate')).toBeDefined()
+    // The LoRA registry row publishes its adapters to the agent, each for model fasth3.
+    expect(ctx.get('tools')?.get('dv_lora_list')).toBeDefined()
+    expect(ctx.get('tools')?.get('dv_lora_get')).toBeDefined()
+    expect(ctx.dvLora.list().length).toBeGreaterThan(0)
+    expect(ctx.dvLora.list().every(adapter => adapter.targets.every(target => target.model === 'fasth3'))).toBe(true)
+    expect(ctx.dvLora.list({ model: 'fasth3', task: 'ref2v' }).map(adapter => adapter.id))
+      .toEqual(['fal/MiniMax-H3-Realism-People-LoRA'])
     // The FastVideo row is disabled and keeps one server per task of fasth3 for a deployment that mounts it.
     expect(fastVideoMounted).toBe(false)
     expect(rows.find(row => row.id === 'dv-fastvideo')).toMatchObject({

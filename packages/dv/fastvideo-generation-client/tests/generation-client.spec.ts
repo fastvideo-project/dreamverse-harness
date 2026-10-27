@@ -109,9 +109,35 @@ describe('HTTP routes', () => {
       referenceMediaTypes: { image: { maxCount: 3 }, video: { maxCount: 2 } },
       frameSizes: { '16:9': { '720p': [1344, 768], '480p': [896, 512] }, '9:16': { '720p': [768, 1344] } },
       numFramesByDurationSec: { 5: 124, 6: 158 },
+      lora: { supported: false, runtimeSwitching: false, baseStrength: 0, adapters: [] },
     })
     expect(await generation.model()).toBe(facts)
     expect(fake.paths).toEqual(['/v1/streamv2/capabilities', '/v1/streamv2/capabilities'])
+  })
+
+  it('reads the lora block of the capabilities, with the optional adapter fields only when the server sends them', async () => {
+    const lora = {
+      supported: true, runtime_switching: true, base_strength: 0,
+      adapters: [
+        { id: 'a/plain', default_strength: 1, min_strength: 0, max_strength: 1.5 },
+        {
+          id: 'b/full', default_strength: 0.8, min_strength: 0.2, max_strength: 1,
+          description: 'A look.', license: 'MIT', source_url: 'https://example.test/b',
+        },
+      ],
+    }
+    const body = { ...CAPABILITIES_BODY, lora }
+    const fake = await startFakeBackend((_path, _request, response) => { sendJson(response, { status: 200, body }) })
+    expect((await client(fake.port).model()).lora).toEqual({
+      supported: true, runtimeSwitching: true, baseStrength: 0,
+      adapters: [
+        { id: 'a/plain', defaultStrength: 1, minStrength: 0, maxStrength: 1.5 },
+        {
+          id: 'b/full', defaultStrength: 0.8, minStrength: 0.2, maxStrength: 1,
+          description: 'A look.', license: 'MIT', sourceUrl: 'https://example.test/b',
+        },
+      ],
+    })
   })
 
   it('rejects model facts with the fetch error when the backend is unreachable', async () => {
@@ -155,6 +181,16 @@ describe('segment generation', () => {
       },
       { prompt: 'A lake', references: [], width: 1344, height: 768, num_frames: 124, return_last_frame: false },
     ])
+  })
+
+  it('sends the selected adapter as the lora field, and no field when the segment names none', async () => {
+    const fake = await startFakeBackend((_path, _request, response) => { sendEvents(response, [['done', { timings: {} }]]) })
+    const generation = client(fake.port)
+    await collect(generation.generateSegment(segmentRequest({ lora: { id: 'a/plain', strength: 0.6 } })))
+    await collect(generation.generateSegment(segmentRequest({ lora: { id: 'a/plain' } })))
+    await collect(generation.generateSegment(segmentRequest()))
+    expect(fake.requests.map(request => request['lora'])).toEqual([{ id: 'a/plain', strength: 0.6 }, { id: 'a/plain' }, undefined])
+    expect(fake.requests[2]).not.toHaveProperty('lora')
   })
 
   it('parses events split across reads, carriage returns, comments, and multi-line data', async () => {
