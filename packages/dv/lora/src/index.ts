@@ -126,7 +126,7 @@ function toRecord(adapter: LoraDefinition): Record<string, JsonValue> {
 }
 
 /**
- * The registry service: the adapters by id, `forTarget` for the provider plugins, the `dv_lora_list` and `dv_lora_get`
+ * The registry service: the adapters by id, `list` and `get` for the provider plugins, the `dv_lora_list` and `dv_lora_get`
  * tools, and the `community-lora` skill.
  */
 export default class DvLora extends Service {

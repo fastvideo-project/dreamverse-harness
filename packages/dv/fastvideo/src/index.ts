@@ -6,8 +6,9 @@
  * first and the first frame after them, each as its media type and bytes read from `dvAssetPool`, and with each citation
  * of a reference in the prompt replaced by the label that the served model gives the reference. Each entry describes
  * in `schema()` the durations, aspect ratios and resolutions of its server and the inputs and `extra` parameters it
- * accepts, and checks the inputs and `extra` in `validateGenerationRequest`. Each entry carries the prompt skill of its
- * model and task, which the catalog registers.
+ * accepts, and checks the inputs and `extra` in `validateGenerationRequest`. While a task's server allows an adapter,
+ * the entry also offers `extra.lora`, narrowed to the adapters of `dvLora` when that registry is mounted. Each entry
+ * carries the prompt skill of its model and task, which the catalog registers.
  *
  * Served models: `fasth3` (MiniMax H3 as FastH3), for task `ref2v` (FastH3 Ref2VA) and task `t2v` (FastH3 8-Step V2).
  *
@@ -19,7 +20,9 @@ import type { Context } from '@deepseek-ai/cordis'
 import { validateArgs, type ParameterPropertySpec, type ParameterSchemaSpec } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
-import { DvFastvideoGeneration, type LoraAdapter, type LoraFacts, type LoraSelection, type ModelFacts } from '@dv/fastvideo-generation-client'
+import {
+  DvFastvideoGeneration, type LoraAdapter, type LoraSelection, type ModelFacts,
+} from '@dv/fastvideo-generation-client'
 import type DvLora from '@dv/lora'
 import type {} from '@dv/asset-pool'
 import type { ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent, TaskId } from '@dv/models'
@@ -68,7 +71,10 @@ const SERVED: Record<string, { [T in TaskId]?: ServedTask }> = {
 /** Plugin name. */
 export const name = 'dv-fastvideo'
 
-/** Required services: the model catalog, and the asset pool that holds the bytes and media type of each input asset. */
+/**
+ * Required services: the model catalog, and the asset pool that holds the bytes and media type of each input asset.
+ * `dvLora` is optional and read per call, so it is not listed.
+ */
 export const inject = ['dvModels', 'dvAssetPool']
 
 /**
@@ -176,12 +182,9 @@ function requestProblems(
   return problems
 }
 
-
 /**
- * The adapters of a task's server that one render may name. A task that does not take `extra.lora`, and a server that
- * serves no adapter, allow none. With the DreamVerse LoRA registry mounted, the entry narrows the server's allow-list to
- * the adapters the registry publishes for this model and task, so the schema never offers an adapter that this
- * deployment does not vouch for.
+ * The adapters of a task's server that one render may name: none unless the task takes `extra.lora` and the server
+ * serves an adapter. With the `dvLora` registry mounted, only the adapters it publishes for this model and task.
  * @param facts - the task's server facts.
  * @param served - the task this plugin serves.
  * @param registry - the `dvLora` registry, when the deployment mounts it.
@@ -230,11 +233,24 @@ function extraSchema(served: ServedTask, adapters: readonly LoraAdapter[]): Para
 }
 
 /**
+ * The `extra.lora` value as an adapter selection.
+ * @param value - the request's `extra.lora`.
+ * @returns the selection, or undefined when the value is absent or not an object with a string `id` and an optional
+ *   number `strength`.
+ */
+function readLora(value: unknown): LoraSelection | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+  const { id, strength } = value as Record<string, unknown>
+  if (typeof id !== 'string' || (strength !== undefined && typeof strength !== 'number')) return undefined
+  return { id, ...strength === undefined ? {} : { strength } }
+}
+
+/**
  * The problems of a request's `extra.lora`: an id the server does not serve, an adapter the DreamVerse registry does
  * not publish for this model and task, or a strength outside the adapter's range. A malformed value is left to the
  * parameter schema, which reports its type.
  * @param adapters - the adapters this entry offers.
- * @param facts - the server's LoRA facts, whose allow-list names the server's adapters in refusal sentences.
+ * @param serverAdapters - the server's whole allow-list.
  * @param registry - the `dvLora` registry, when the deployment mounts it.
  * @param model - the model name.
  * @param task - the task.
@@ -242,53 +258,28 @@ function extraSchema(served: ServedTask, adapters: readonly LoraAdapter[]): Para
  * @returns one sentence per problem; empty when the adapter is usable.
  */
 function loraProblems(
-  adapters: readonly LoraAdapter[], facts: LoraFacts, registry: DvLora | undefined, model: string, task: TaskId,
-  extra: Record<string, unknown>,
+  adapters: readonly LoraAdapter[], serverAdapters: readonly LoraAdapter[], registry: DvLora | undefined, model: string,
+  task: TaskId, extra: Record<string, unknown>,
 ): string[] {
-  if (adapters.length === 0) return []
-  const value = extra['lora']
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return []
-  const record = value as Record<string, unknown>
-  const id = record['id']
-  if (typeof id !== 'string') return []
-  const served = facts.adapters.find(adapter => adapter.id === id)
-  if (served === undefined) {
-    const ids = facts.adapters.map(adapter => adapter.id).join(', ') || 'none'
-    return [`Its extra.lora id "${id}" is not an adapter of this server; the server serves: ${ids}.`]
+  const selection = adapters.length === 0 ? undefined : readLora(extra['lora'])
+  if (selection === undefined) return []
+  const { id, strength } = selection
+  const adapter = serverAdapters.find(candidate => candidate.id === id)
+  if (adapter === undefined) {
+    return [`Its extra.lora id "${id}" is not an adapter of this server; the server serves: `
+      + `${serverAdapters.map(candidate => candidate.id).join(', ') || 'none'}.`]
   }
-  if (!adapters.some(adapter => adapter.id === id)) {
+  if (!adapters.includes(adapter)) {
     const published = registry?.get(id)
     return [published === undefined
       ? `Its extra.lora id "${id}" is not one this deployment publishes for model ${model} task ${task}; call dv_lora_list for the adapters you can use.`
       : `Its extra.lora id "${id}" is not meant for model ${model} task ${task}: ${published.displayName} serves `
         + `${published.targets.map(target => `${target.model} ${target.tasks.join('/')}`).join(', ')}.`]
   }
-  const strength = record['strength']
-  if (typeof strength === 'number' && (strength < served.minStrength || strength > served.maxStrength)) {
-    return [`Its extra.lora strength ${strength} is outside ${served.id}'s range of ${served.minStrength} to ${served.maxStrength}.`]
+  if (strength !== undefined && (strength < adapter.minStrength || strength > adapter.maxStrength)) {
+    return [`Its extra.lora strength ${strength} is outside ${id}'s range of ${adapter.minStrength} to ${adapter.maxStrength}.`]
   }
   return []
-}
-
-/**
- * The adapter selection that a request's `extra.lora` names.
- * @param extra - the request's `extra` values.
- * @returns the selection, or undefined when the request names no adapter.
- * @throws Error when the value is not an object with a string `id` and an optional number `strength`.
- */
-function loraSelection(extra: Record<string, unknown>): LoraSelection | undefined {
-  const value = extra['lora']
-  if (value === undefined) return undefined
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error('extra.lora must be an object with a string id and an optional number strength.')
-  }
-  const record = value as Record<string, unknown>
-  const id = record['id']
-  const strength = record['strength']
-  if (typeof id !== 'string' || (strength !== undefined && typeof strength !== 'number')) {
-    throw new Error('extra.lora must have a string id and, when set, a number strength.')
-  }
-  return { id, ...(strength === undefined ? {} : { strength }) }
 }
 
 /**
@@ -325,8 +316,8 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
   if (served === undefined) throw new Error(`dv-fastvideo serves no model "${model}" for task "${task}".`)
   const { inputs, assignReferenceLabels, skill } = served
   const client = new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), { baseUrl: server.baseUrl })
-  // The registry is optional: without it the entry offers whatever adapters the server allows.
-  const registry = ctx.get('dvLora')
+  // The registry is optional and read on every call, so one mounted or removed later takes effect without a reload.
+  const registry = (): DvLora | undefined => ctx.get('dvLora')
   return {
     modality: 'video',
     task,
@@ -347,7 +338,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
     },
     async schema(): Promise<JsonValue> {
       const capabilities = await client.model()
-      const adapters = usableAdapters(capabilities, served, registry, model, task)
+      const adapters = usableAdapters(capabilities, served, registry(), model, task)
       return {
         duration_sec: { min: capabilities.minSegmentDurationSec, max: capabilities.maxSegmentDurationSec },
         aspect_ratios: capabilities.aspectRatios,
@@ -358,17 +349,20 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
     },
     async validateGenerationRequest(request: RenderRequest): Promise<string[]> {
       const capabilities = await client.model()
-      const adapters = usableAdapters(capabilities, served, registry, model, task)
+      const adapters = usableAdapters(capabilities, served, registry(), model, task)
       return [
         ...requestProblems(inputs, deriveInputLimits(inputs, capabilities), request, asset => ctx.dvAssetPool.mediaType(asset)),
         ...extraProblems(model, task, extraSchema(served, adapters), request.extra),
-        ...loraProblems(adapters, capabilities.lora, registry, model, task, request.extra),
+        ...loraProblems(adapters, capabilities.lora.adapters, registry(), model, task, request.extra),
         ...served.promptProblems?.(request) ?? [],
       ]
     },
     render(request: RenderRequest, signal?: AbortSignal): AsyncIterable<RenderStreamEvent> {
       const assets = request.firstFrame === null ? request.references : [...request.references, request.firstFrame]
-      const lora = loraSelection(request.extra)
+      const lora = readLora(request.extra['lora'])
+      if (request.extra['lora'] !== undefined && lora === undefined) {
+        throw new Error('extra.lora must be an object with a string id and an optional number strength.')
+      }
       return (async function* () {
         // Video and audio references can be tens of megabytes each, so they are read concurrently off the event loop.
         const references = await Promise.all(assets.map(async id => ({

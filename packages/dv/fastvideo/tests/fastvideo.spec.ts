@@ -424,6 +424,18 @@ describe('dv-fastvideo', () => {
         + 'fasth3 task t2v; call dv_lora_list for the adapters you can use.'])
   })
 
+  it('picks up a dvLora mounted after the plugin and drops it when it is removed', async () => {
+    const text = await startFakeServer(LORA_CAPABILITIES)
+    const ctx = await start({ t2v: text.url })
+    const task = fasth3(ctx, 't2v')
+    const offered = async () => (await task.schema() as unknown as LoraSchema).extra['lora']?.['description']
+    expect(await offered()).toContain('pablodawson')
+    const registry = await ctx.plugin(DvLora, LORA_REGISTRY)
+    expect(await offered()).not.toContain('pablodawson')
+    registry.dispose()
+    expect(await offered()).toContain('pablodawson')
+  })
+
   it('sends the selected adapter and strength with the segment, and nothing when the shot names none', async () => {
     const text = await startFakeServer(LORA_CAPABILITIES)
     const ctx = await start({ t2v: text.url })
