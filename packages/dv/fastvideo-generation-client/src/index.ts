@@ -35,6 +35,23 @@ interface CapabilitiesBody {
   reference_media_types: Record<string, { max_count: number }>
   frame_sizes: Record<string, Record<string, [number, number]>>
   num_frames_by_duration_sec: Record<string, number>
+  lora?: CapabilitiesLoraBody
+}
+
+/** The `lora` block of the capabilities; a server that predates it supports no adapter. */
+interface CapabilitiesLoraBody {
+  supported: boolean
+  runtime_switching?: boolean
+  base_strength?: number
+  adapters?: Array<{
+    id: string
+    default_strength: number
+    min_strength: number
+    max_strength: number
+    description?: string
+    license?: string
+    source_url?: string
+  }>
 }
 
 /** Reads the backend's model facts and streams segments. */
@@ -77,6 +94,20 @@ export class DvFastvideoGeneration extends Service {
       referenceMediaTypes,
       frameSizes: body.frame_sizes,
       numFramesByDurationSec: body.num_frames_by_duration_sec,
+      lora: {
+        supported: body.lora?.supported ?? false,
+        runtimeSwitching: body.lora?.runtime_switching ?? false,
+        baseStrength: body.lora?.base_strength ?? 0,
+        adapters: (body.lora?.adapters ?? []).map(adapter => ({
+          id: adapter.id,
+          defaultStrength: adapter.default_strength,
+          minStrength: adapter.min_strength,
+          maxStrength: adapter.max_strength,
+          ...(adapter.description === undefined ? {} : { description: adapter.description }),
+          ...(adapter.license === undefined ? {} : { license: adapter.license }),
+          ...(adapter.source_url === undefined ? {} : { sourceUrl: adapter.source_url }),
+        })),
+      },
     }
     return this.modelFacts
   }

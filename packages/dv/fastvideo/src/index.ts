@@ -16,10 +16,11 @@
 import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
-import { validateArgs, type ParameterSchemaSpec } from '@deepseek-ai/dsh-tools'
+import { validateArgs, type ParameterPropertySpec, type ParameterSchemaSpec } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
-import { DvFastvideoGeneration, type ModelFacts } from '@dv/fastvideo-generation-client'
+import { DvFastvideoGeneration, type LoraAdapter, type LoraFacts, type LoraSelection, type ModelFacts } from '@dv/fastvideo-generation-client'
+import type DvLora from '@dv/lora'
 import type {} from '@dv/asset-pool'
 import type { ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent, TaskId } from '@dv/models'
 import { FASTH3 } from './fasth3.ts'
@@ -175,6 +176,121 @@ function requestProblems(
   return problems
 }
 
+
+/**
+ * The adapters of a task's server that one render may name. A task that does not take `extra.lora`, and a server that
+ * serves no adapter, allow none. With the DreamVerse LoRA registry mounted, the entry narrows the server's allow-list to
+ * the adapters the registry publishes for this model and task, so the schema never offers an adapter that this
+ * deployment does not vouch for.
+ * @param facts - the task's server facts.
+ * @param served - the task this plugin serves.
+ * @param registry - the `dvLora` registry, when the deployment mounts it.
+ * @param model - the model name.
+ * @param task - the task.
+ * @returns the adapters a request may select, in the server's order.
+ */
+function usableAdapters(
+  facts: ModelFacts, served: ServedTask, registry: DvLora | undefined, model: string, task: TaskId,
+): LoraAdapter[] {
+  if (served.lora !== true || !facts.lora.supported) return []
+  if (registry === undefined) return facts.lora.adapters
+  const published = new Set(registry.list({ model, task }).map(adapter => adapter.id))
+  return facts.lora.adapters.filter(adapter => published.has(adapter.id))
+}
+
+/**
+ * Describe `extra.lora` for `schema()`: the adapters a request may name, each with its default strength and range, and
+ * the strength multiplier itself.
+ * @param adapters - the adapters a request may select; at least one.
+ * @returns the parameter schema entry.
+ */
+function loraParameter(adapters: readonly LoraAdapter[]): ParameterPropertySpec {
+  const catalogue = adapters.map(adapter => `${adapter.id} (default ${adapter.defaultStrength}, `
+    + `from ${adapter.minStrength} to ${adapter.maxStrength}${adapter.description === undefined ? '' : `: ${adapter.description}`})`).join('; ')
+  return {
+    type: 'object',
+    description: 'A community LoRA from this server and the strength to apply it at: {"id", "strength"}. Strength 0 '
+      + `renders the model without the adapter. Adapters: ${catalogue}.`,
+    properties: {
+      id: { type: 'string', required: true, description: `The adapter id: ${adapters.map(adapter => adapter.id).join(', ')}.` },
+      strength: { type: 'number', description: "Multiplier of the adapter's delta, inside that adapter's range; omitted, its default." },
+    },
+    additionalProperties: false,
+  }
+}
+
+/**
+ * The `extra` parameters of a task: the model's own, plus `extra.lora` while the task's server serves an adapter.
+ * @param served - the task this plugin serves.
+ * @param adapters - the adapters a request of this entry may select.
+ * @returns the parameter schema of `extra`.
+ */
+function extraSchema(served: ServedTask, adapters: readonly LoraAdapter[]): ParameterSchemaSpec {
+  return adapters.length === 0 ? served.extra : { ...served.extra, lora: loraParameter(adapters) }
+}
+
+/**
+ * The problems of a request's `extra.lora`: an id the server does not serve, an adapter the DreamVerse registry does
+ * not publish for this model and task, or a strength outside the adapter's range. A malformed value is left to the
+ * parameter schema, which reports its type.
+ * @param adapters - the adapters this entry offers.
+ * @param facts - the server's LoRA facts, whose allow-list names the server's adapters in refusal sentences.
+ * @param registry - the `dvLora` registry, when the deployment mounts it.
+ * @param model - the model name.
+ * @param task - the task.
+ * @param extra - the request's `extra` values.
+ * @returns one sentence per problem; empty when the adapter is usable.
+ */
+function loraProblems(
+  adapters: readonly LoraAdapter[], facts: LoraFacts, registry: DvLora | undefined, model: string, task: TaskId,
+  extra: Record<string, unknown>,
+): string[] {
+  if (adapters.length === 0) return []
+  const value = extra['lora']
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return []
+  const record = value as Record<string, unknown>
+  const id = record['id']
+  if (typeof id !== 'string') return []
+  const served = facts.adapters.find(adapter => adapter.id === id)
+  if (served === undefined) {
+    const ids = facts.adapters.map(adapter => adapter.id).join(', ') || 'none'
+    return [`Its extra.lora id "${id}" is not an adapter of this server; the server serves: ${ids}.`]
+  }
+  if (!adapters.some(adapter => adapter.id === id)) {
+    const published = registry?.get(id)
+    return [published === undefined
+      ? `Its extra.lora id "${id}" is not one this deployment publishes for model ${model} task ${task}; call dv_lora_list for the adapters you can use.`
+      : `Its extra.lora id "${id}" is not meant for model ${model} task ${task}: ${published.displayName} serves `
+        + `${published.targets.map(target => `${target.model} ${target.tasks.join('/')}`).join(', ')}.`]
+  }
+  const strength = record['strength']
+  if (typeof strength === 'number' && (strength < served.minStrength || strength > served.maxStrength)) {
+    return [`Its extra.lora strength ${strength} is outside ${served.id}'s range of ${served.minStrength} to ${served.maxStrength}.`]
+  }
+  return []
+}
+
+/**
+ * The adapter selection that a request's `extra.lora` names.
+ * @param extra - the request's `extra` values.
+ * @returns the selection, or undefined when the request names no adapter.
+ * @throws Error when the value is not an object with a string `id` and an optional number `strength`.
+ */
+function loraSelection(extra: Record<string, unknown>): LoraSelection | undefined {
+  const value = extra['lora']
+  if (value === undefined) return undefined
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('extra.lora must be an object with a string id and an optional number strength.')
+  }
+  const record = value as Record<string, unknown>
+  const id = record['id']
+  const strength = record['strength']
+  if (typeof id !== 'string' || (strength !== undefined && typeof strength !== 'number')) {
+    throw new Error('extra.lora must have a string id and, when set, a number strength.')
+  }
+  return { id, ...(strength === undefined ? {} : { strength }) }
+}
+
 /**
  * The problems of a request's `extra` values for a task: names the task does not take are refused in one sentence that
  * lists its parameters, and the values of known names are checked against their schema.
@@ -191,7 +307,6 @@ function extraProblems(model: string, task: TaskId, schema: ParameterSchemaSpec,
     return [`${model} has no extra parameter ${unknown.map(name => `\`${name}\``).join(', ')} for task ${task}; `
       + `its extra parameters: ${known.join(', ') || 'none'}.`]
   }
-  /* v8 ignore next -- every served task declares no extra parameter, so every name is refused as unknown above. */
   return validateArgs(schema, extra).map(message => `extra${message.startsWith('.') ? '' : '.'}${message}`)
 }
 
@@ -208,8 +323,10 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
   const served = SERVED[model]?.[task]
   /* v8 ignore next -- checkConfig refuses unknown models and tasks before any entry is built. */
   if (served === undefined) throw new Error(`dv-fastvideo serves no model "${model}" for task "${task}".`)
-  const { inputs, extra, assignReferenceLabels, skill } = served
+  const { inputs, assignReferenceLabels, skill } = served
   const client = new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), { baseUrl: server.baseUrl })
+  // The registry is optional: without it the entry offers whatever adapters the server allows.
+  const registry = ctx.get('dvLora')
   return {
     modality: 'video',
     task,
@@ -230,24 +347,28 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
     },
     async schema(): Promise<JsonValue> {
       const capabilities = await client.model()
+      const adapters = usableAdapters(capabilities, served, registry, model, task)
       return {
         duration_sec: { min: capabilities.minSegmentDurationSec, max: capabilities.maxSegmentDurationSec },
         aspect_ratios: capabilities.aspectRatios,
         resolutions: capabilities.resolutions,
         inputs: describeInputs(inputs, deriveInputLimits(inputs, capabilities)),
-        extra: JSON.parse(JSON.stringify(extra)) as JsonValue,
+        extra: JSON.parse(JSON.stringify(extraSchema(served, adapters))) as JsonValue,
       }
     },
     async validateGenerationRequest(request: RenderRequest): Promise<string[]> {
-      const limits = deriveInputLimits(inputs, await client.model())
+      const capabilities = await client.model()
+      const adapters = usableAdapters(capabilities, served, registry, model, task)
       return [
-        ...requestProblems(inputs, limits, request, asset => ctx.dvAssetPool.mediaType(asset)),
-        ...extraProblems(model, task, extra, request.extra),
+        ...requestProblems(inputs, deriveInputLimits(inputs, capabilities), request, asset => ctx.dvAssetPool.mediaType(asset)),
+        ...extraProblems(model, task, extraSchema(served, adapters), request.extra),
+        ...loraProblems(adapters, capabilities.lora, registry, model, task, request.extra),
         ...served.promptProblems?.(request) ?? [],
       ]
     },
     render(request: RenderRequest, signal?: AbortSignal): AsyncIterable<RenderStreamEvent> {
       const assets = request.firstFrame === null ? request.references : [...request.references, request.firstFrame]
+      const lora = loraSelection(request.extra)
       return (async function* () {
         // Video and audio references can be tens of megabytes each, so they are read concurrently off the event loop.
         const references = await Promise.all(assets.map(async id => ({
@@ -266,6 +387,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
           numFrames: request.numFrames,
           seed: request.seed,
           returnLastFrame: true,
+          ...lora === undefined ? {} : { lora },
           ...signal === undefined ? {} : { signal },
         })
       })()

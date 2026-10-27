@@ -48,6 +48,7 @@ function requestBody(request: SegmentRequest): Record<string, unknown> {
     num_frames: request.numFrames,
     ...(request.seed === undefined ? {} : { seed: request.seed }),
     return_last_frame: request.returnLastFrame,
+    ...(request.lora === undefined ? {} : { lora: request.lora }),
   }
 }
 

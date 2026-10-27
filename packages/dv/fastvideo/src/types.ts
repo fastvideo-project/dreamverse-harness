@@ -36,6 +36,11 @@ export interface ServedTask {
   inputs: TaskInputs
   /** The model's own parameters for this task, passed in the request's `extra`; empty when it has none. */
   extra: ParameterSchemaSpec
+  /**
+   * Whether the task takes `extra.lora`. The entry declares it in `schema()` only while the task's server reports that
+   * it serves an adapter, so a deployment without LoRA advertises no parameter and refuses one.
+   */
+  lora?: true
   /** How the model names the references in its prompt; a citation of a reference becomes its label. */
   assignReferenceLabels: AssignReferenceLabels
   /** The problems of a request's prompt under the model's own prompt rules, one sentence each; absent when it has none. */

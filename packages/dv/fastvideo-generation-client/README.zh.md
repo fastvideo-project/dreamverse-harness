@@ -69,7 +69,7 @@ API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/streamv2
 
 `max_references` 计入一个请求中所有媒体类型的每个参考。`reference_media_types` 列出每种接受的媒体类型及其各自的 `max_count`；延续片段的请求图片按 `image` 计数。`num_frames_by_duration_sec` 包含从最小值到最大值的每个整数时长。
 
-`POST /v1/streamv2/generate` 接受 `{"prompt", "references", "width", "height", "num_frames", "seed"?, "return_last_frame"}`，并以 `text/event-stream` 响应，其中每条 `event: <name>` 记录带一行 JSON `data:`，顺序如下：
+`POST /v1/streamv2/generate` 接受 `{"prompt", "references", "width", "height", "num_frames", "seed"?, "return_last_frame", "lora"?}`，并以 `text/event-stream` 响应，其中每条 `event: <name>` 记录带一行 JSON `data:`，顺序如下：
 
 | 事件 | 数据 |
 | --- | --- |
@@ -118,7 +118,7 @@ API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/streamv2
 
 #### 模型看到什么
 
-视频模型收到 `generateSegment` 构建的请求体：保持不变的 `prompt`、按调用方顺序由带 base64 字节的 `{media_type, data}` 条目组成的 `references`、`width`、`height`、`num_frames`、仅在调用方设置时才发送的 `seed`，以及 `return_last_frame`。模型按列表顺序为每种媒体类型分别编号，调用方的提示词使用模型的编号指称这些参考，例如第一张图片为 `Picture 1`。
+视频模型收到 `generateSegment` 构建的请求体：保持不变的 `prompt`、按调用方顺序由带 base64 字节的 `{media_type, data}` 条目组成的 `references`、`width`、`height`、`num_frames`、仅在调用方设置时才发送的 `seed`、`return_last_frame`，以及仅在调用方选择适配器时发送的 `lora`。模型按列表顺序为每种媒体类型分别编号，调用方的提示词使用模型的编号指称这些参考，例如第一张图片为 `Picture 1`。
 
 #### Token 影响
 

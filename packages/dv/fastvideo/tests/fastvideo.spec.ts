@@ -20,6 +20,7 @@ import Loader from '@deepseek-ai/cordis-plugin-loader'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import DvAssetPool, { type AssetId } from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
+import DvLora, { type Config as LoraConfig } from '@dv/lora'
 import DvModels, { type ModelEntry, type RenderStreamEvent, type TaskOfPrimitive } from '@dv/models'
 import DvProject from '@dv/project'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -27,6 +28,11 @@ import * as FastVideo from '../src/index.ts'
 
 /** A task of the video entries that fasth3 serves. */
 type VideoTask = TaskOfPrimitive<'video'>
+
+/** The `extra.lora` entry that `schema()` reports while the server serves an adapter. */
+interface LoraSchema {
+  extra: Record<string, { type?: string; description?: string; properties?: Record<string, unknown> }>
+}
 
 /** The reference image of the opt-in run against a running server. */
 const REAL_REFERENCE = '/mnt/lustre/vlm-d1su/codes/dsh-dv-hub/elon-musk.jpg'
@@ -66,6 +72,33 @@ const TEXT_CAPABILITIES = {
   model_id: 'fake-t2va', name: 'Fake T2AV', min_segment_duration_sec: 5, max_segment_duration_sec: 6,
   max_references: 0, reference_media_types: {},
   frame_sizes: { '16:9': { '720p': [1344, 768] } }, num_frames_by_duration_sec: { 5: 124, 6: 158 },
+}
+
+/** The adapters the fake text server allow-lists when it serves LoRA. */
+const LORA_ADAPTERS = {
+  supported: true, runtime_switching: true, base_strength: 0,
+  adapters: [
+    { id: 'fal/MiniMax-H3-Realism-People-LoRA', default_strength: 0.8, min_strength: 0, max_strength: 1.5,
+      description: 'Photoreal skin and faces.' },
+    { id: 'pablodawson/MiniMax-H3-360-Orbit-LoRA', default_strength: 1, min_strength: 0.2, max_strength: 2 },
+  ],
+}
+
+/** The capabilities of a text server that serves the two adapters above. */
+const LORA_CAPABILITIES = { ...TEXT_CAPABILITIES, model_id: 'fake-t2va-lora', lora: LORA_ADAPTERS }
+
+/** The DreamVerse registry the deployment mounts in these tests: one adapter for t2v, one for ref2v. */
+const LORA_REGISTRY: LoraConfig = {
+  adapters: [
+    { id: 'fal/MiniMax-H3-Realism-People-LoRA', displayName: 'Realism People', description: 'Photoreal people.',
+      triggerWords: ['photoreal skin'], defaultStrength: 0.8, minStrength: 0, maxStrength: 1.5,
+      targets: [{ model: 'fasth3', tasks: ['t2v'] }], license: 'Apache-2.0',
+      sourceUrl: 'https://huggingface.co/fal/MiniMax-H3-Realism-People-LoRA' },
+    { id: 'pablodawson/MiniMax-H3-360-Orbit-LoRA', displayName: '360 Orbit', description: 'A camera that circles.',
+      triggerWords: [], defaultStrength: 1, minStrength: 0.2, maxStrength: 2,
+      targets: [{ model: 'fasth3', tasks: ['ref2v'] }], license: 'MIT',
+      sourceUrl: 'https://huggingface.co/pablodawson/MiniMax-H3-360-Orbit-LoRA' },
+  ],
 }
 
 const cleanups: Array<() => Promise<void>> = []
@@ -113,7 +146,7 @@ async function startFakeServer(capabilities: object): Promise<{ url: string; req
 
 /** The plugins the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
 const PLUGINS = {
-  SkillRegistry, DvProject, DvFfmpeg, DvAssetPool, DvModels,
+  SkillRegistry, DvProject, DvFfmpeg, DvAssetPool, DvModels, DvLora,
   FastVideo: { name: FastVideo.name, inject: FastVideo.inject, Config: FastVideo.Config, apply: FastVideo.apply },
 }
 
@@ -122,7 +155,7 @@ const PLUGINS = {
  * @param tasks - the server URL of each task of `fasth3` to configure.
  * @returns the root context.
  */
-async function start(tasks: { ref2v?: string; t2v?: string }): Promise<Context> {
+async function start(tasks: { ref2v?: string; t2v?: string }, registry?: LoraConfig): Promise<Context> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-fastvideo-'))
   const globals = globalThis as typeof globalThis & { __dvFastVideo?: typeof PLUGINS }
   globals.__dvFastVideo = PLUGINS
@@ -136,6 +169,7 @@ async function start(tasks: { ref2v?: string; t2v?: string }): Promise<Context> 
     ['dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe']],
     ['dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`]],
     ['dv-models', 'DvModels', []],
+    ...registry === undefined ? [] : [['dv-lora', 'DvLora', [`adapters: ${JSON.stringify(registry.adapters)}`]] as const],
     ['dv-fastvideo', 'FastVideo', config],
   ] as const
   for (const [id, key, lines] of plugins) {
@@ -332,6 +366,74 @@ describe('dv-fastvideo', () => {
       .toThrow('dv-fastvideo serves model "fasth3" for no task "reference"; its tasks: ref2v, t2v.')
     expect(() => { FastVideo.apply(ctx, { models: { fasth3: {} } }) }).toThrow('dv-fastvideo: model "fasth3" names no task.')
     expect(ctx.dvModels.list().map(entry => entry.task)).toEqual(['ref2v'])
+  })
+
+  it('declares extra.lora only while the server serves an adapter, with each default and range', async () => {
+    const text = await startFakeServer(LORA_CAPABILITIES)
+    const plain = await startFakeServer(TEXT_CAPABILITIES)
+    const ctx = await start({ t2v: text.url, ref2v: plain.url })
+    const lora = (await fasth3(ctx, 't2v').schema() as unknown as LoraSchema).extra['lora']
+    expect(lora?.['type']).toBe('object')
+    expect(lora?.['description']).toContain('fal/MiniMax-H3-Realism-People-LoRA (default 0.8, from 0 to 1.5: Photoreal skin and faces.)')
+    expect(lora?.['description']).toContain('pablodawson/MiniMax-H3-360-Orbit-LoRA (default 1, from 0.2 to 2)')
+    expect(lora?.['properties']).toEqual({
+      id: { type: 'string', required: true, description: 'The adapter id: fal/MiniMax-H3-Realism-People-LoRA, pablodawson/MiniMax-H3-360-Orbit-LoRA.' },
+      strength: { type: 'number', description: "Multiplier of the adapter's delta, inside that adapter's range; omitted, its default." },
+    })
+    expect((await fasth3(ctx, 'ref2v').schema() as unknown as { extra: Record<string, unknown> }).extra).toEqual({})
+  })
+
+  it('validates extra.lora against the server allow-list and the adapter range', async () => {
+    const text = await startFakeServer(LORA_CAPABILITIES)
+    const ctx = await start({ t2v: text.url })
+    const task = fasth3(ctx, 't2v')
+    const check = (lora: unknown) => task.validateGenerationRequest(request([], null, { lora }))
+    expect(await check({ id: 'fal/MiniMax-H3-Realism-People-LoRA', strength: 0.8 })).toEqual([])
+    expect(await check({ id: 'fal/MiniMax-H3-Realism-People-LoRA' })).toEqual([])
+    expect(await check({ id: 'nobody/none' })).toEqual([
+      'Its extra.lora id "nobody/none" is not an adapter of this server; the server serves: '
+      + 'fal/MiniMax-H3-Realism-People-LoRA, pablodawson/MiniMax-H3-360-Orbit-LoRA.',
+    ])
+    expect(await check({ id: 'fal/MiniMax-H3-Realism-People-LoRA', strength: 2 })).toEqual([
+      'Its extra.lora strength 2 is outside fal/MiniMax-H3-Realism-People-LoRA\'s range of 0 to 1.5.',
+    ])
+    expect((await check({ id: 'fal/MiniMax-H3-Realism-People-LoRA', strength: 'high' }))[0]).toContain('must be a number')
+    expect((await check({ strength: 0.8 }))[0]).toContain('lora')
+    // A server without an allow-list advertises no such parameter, so the name is refused with the other unknown names.
+    const plain = await startFakeServer(TEXT_CAPABILITIES)
+    const other = await start({ t2v: plain.url })
+    expect(await fasth3(other, 't2v').validateGenerationRequest(request([], null, { lora: { id: 'fal/MiniMax-H3-Realism-People-LoRA' } })))
+      .toEqual(['fasth3 has no extra parameter `lora` for task t2v; its extra parameters: none.'])
+  })
+
+  it('narrows extra.lora to the adapters the mounted DreamVerse registry publishes for the model and task', async () => {
+    const text = await startFakeServer(LORA_CAPABILITIES)
+    const ctx = await start({ t2v: text.url }, LORA_REGISTRY)
+    const task = fasth3(ctx, 't2v')
+    const lora = (await task.schema() as unknown as LoraSchema).extra['lora']
+    expect(lora?.['description']).toContain('fal/MiniMax-H3-Realism-People-LoRA')
+    expect(lora?.['description']).not.toContain('pablodawson')
+    expect(await task.validateGenerationRequest(request([], null, { lora: { id: 'fal/MiniMax-H3-Realism-People-LoRA' } })))
+      .toEqual([])
+    expect(await task.validateGenerationRequest(request([], null, { lora: { id: 'pablodawson/MiniMax-H3-360-Orbit-LoRA' } })))
+      .toEqual(['Its extra.lora id "pablodawson/MiniMax-H3-360-Orbit-LoRA" is not meant for model fasth3 task t2v: '
+        + '360 Orbit serves fasth3 ref2v.'])
+    const unknown = await start({ t2v: text.url }, { adapters: [LORA_REGISTRY.adapters[0]!] })
+    expect(await fasth3(unknown, 't2v').validateGenerationRequest(request([], null, { lora: { id: 'pablodawson/MiniMax-H3-360-Orbit-LoRA' } })))
+      .toEqual(['Its extra.lora id "pablodawson/MiniMax-H3-360-Orbit-LoRA" is not one this deployment publishes for model '
+        + 'fasth3 task t2v; call dv_lora_list for the adapters you can use.'])
+  })
+
+  it('sends the selected adapter and strength with the segment, and nothing when the shot names none', async () => {
+    const text = await startFakeServer(LORA_CAPABILITIES)
+    const ctx = await start({ t2v: text.url })
+    const events = await collect(fasth3(ctx, 't2v').render(request([], null, { lora: { id: 'fal/MiniMax-H3-Realism-People-LoRA', strength: 0.6 } })))
+    expect(events.map(event => event.kind)).toEqual(['last_frame', 'video_start', 'chunk', 'done'])
+    expect(text.requests[0]?.['lora']).toEqual({ id: 'fal/MiniMax-H3-Realism-People-LoRA', strength: 0.6 })
+    await collect(fasth3(ctx, 't2v').render(request([], null)))
+    expect(text.requests[1]).not.toHaveProperty('lora')
+    expect(() => fasth3(ctx, 't2v').render(request([], null, { lora: 'photoreal' })))
+      .toThrow('extra.lora must be an object with a string id and an optional number strength.')
   })
 
   it.skipIf(REAL_BACKEND === undefined || !existsSync(REAL_REFERENCE))('renders a real five-second shot against the running server', async () => {

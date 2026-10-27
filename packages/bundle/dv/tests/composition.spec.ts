@@ -20,6 +20,7 @@ import DvCharacter from '@dv/character'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvInspector from '@dv/inspector'
 import DvLocation from '@dv/location'
+import DvLora from '@dv/lora'
 import DvProject, { type OperationToolValue, type ProjectId, type RecordId } from '@dv/project'
 import DvShotPlan from '@dv/shot-plan'
 import DvShotRender from '@dv/shot-render'
@@ -83,7 +84,7 @@ const PLUGINS: Record<string, object> = {
   '@dv/character': DvCharacter, '@dv/location': DvLocation, '@dv/style': DvStyle,
   '@dv/shot-plan': DvShotPlan, '@dv/shot-render': DvShotRender, '@dv/timeline': DvTimeline,
   '@dv/api': DvApi, '@dv/chat-references': DvChatReferences,
-  '@dv/models': DvModels, '@dv/fastvideo': FakeFastVideo, '@dv/uniserve': FakeUniserve, '@dv/workflow-story': DvStory,
+  '@dv/models': DvModels, '@dv/lora': DvLora, '@dv/fastvideo': FakeFastVideo, '@dv/uniserve': FakeUniserve, '@dv/workflow-story': DvStory,
   '@dv/sglang-diffusion': SglangDiffusion, '@dv/image-generate': DvImageGenerate,
   '@dv/sglang-omni': SglangOmni, '@dv/audio-generate': DvAudioGenerate,
 }
@@ -127,7 +128,7 @@ describe('DreamVerse bundle composition', () => {
     disposers.push(() => { delete globals.__dvComposition })
     const rows = bundleRows()
     expect(rows.map(row => row.id)).toEqual(expect.arrayContaining([
-      'dv-models', 'dv-fastvideo', 'dv-uniserve', 'dv-project', 'dv-shot-plan', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
+      'dv-models', 'dv-lora', 'dv-fastvideo', 'dv-uniserve', 'dv-project', 'dv-shot-plan', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
       'dv-sglang-diffusion', 'dv-image-generate', 'dv-sglang-omni', 'dv-audio-generate',
     ]))
     // Each row keeps its id and `!!js` config; its package name points at a module that re-exports the plugin class.
