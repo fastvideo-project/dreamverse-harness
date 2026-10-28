@@ -21,6 +21,7 @@ import DvCharacter from '@dv/character'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvInspector from '@dv/inspector'
 import DvLocation from '@dv/location'
+import DvLora from '@dv/lora'
 import DvProject from '@dv/project'
 import DvShotRender from '@dv/shot-render'
 import DvStyle from '@dv/style'
@@ -83,7 +84,7 @@ const PLUGINS: Record<string, object> = {
   '@dv/character': DvCharacter, '@dv/location': DvLocation, '@dv/style': DvStyle,
   '@dv/shot-render': DvShotRender, '@dv/text-node': DvTextNode, '@dv/timeline': DvTimeline,
   '@dv/api': DvApi, '@dv/chat-references': DvChatReferences,
-  '@dv/models': DvModels, '@dv/fastvideo': FakeFastVideo, '@dv/uniserve': FakeUniserve, '@dv/workflow-story': WorkflowStory,
+  '@dv/models': DvModels, '@dv/lora': DvLora, '@dv/fastvideo': FakeFastVideo, '@dv/uniserve': FakeUniserve, '@dv/workflow-story': WorkflowStory,
   '@dv/sglang-diffusion': SglangDiffusion, '@dv/image-generate': DvImageGenerate,
   '@dv/sglang-omni': SglangOmni, '@dv/audio-generate': DvAudioGenerate,
 }

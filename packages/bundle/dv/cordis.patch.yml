@@ -22,6 +22,80 @@
     - id: dv-models
       name: '@dv/models'
 
+    # The community LoRAs this deployment publishes. dv_lora_list and dv_lora_get read this registry, and the video
+    # providers offer their `extra.lora` parameter only for an adapter that both this row and the task's server allow,
+    # so a server's allow-list must repeat each id it can load. The server was GPU-verified with the Realism People
+    # adapter; the others list the strength range and trigger word of their model card, and a deployment widens
+    # `targets` only after it verifies the adapter on its own checkpoint.
+    - id: dv-lora
+      name: '@dv/lora'
+      config:
+        adapters:
+          - id: fal/MiniMax-H3-Realism-People-LoRA
+            displayName: Realism People
+            description: Photoreal skin, faces and hands for people in a shot. Trained on base H3 for text, image and
+              reference to video, so its own scale is 1.0 and 0.6 to 0.8 gives a lighter touch.
+            triggerWords: [r34l1sm]
+            defaultStrength: 1.0
+            minStrength: 0
+            maxStrength: 1.5
+            targets:
+              - model: fasth3
+                tasks: [t2v, ref2v]
+            license: other (see the source page)
+            sourceUrl: https://huggingface.co/fal/MiniMax-H3-Realism-People-LoRA
+          - id: Jojocodex/minimax-h3-Camera-Motion-lora
+            displayName: Camera Motion
+            description: Named camera moves, such as push in, pull out, dolly, orbit, follow, aerial and crane. The
+              trigger phrase opens the prompt, then the subject and the move.
+            triggerWords: [camera motion]
+            defaultStrength: 1.0
+            minStrength: 0
+            maxStrength: 1.2
+            targets:
+              - model: fasth3
+                tasks: [t2v]
+            license: Apache-2.0
+            sourceUrl: https://huggingface.co/Jojocodex/minimax-h3-Camera-Motion-lora
+          - id: KennethFal/vh5tape-vhs-lora-minimax-h3
+            displayName: VHS Tape
+            description: A worn 1980s VHS look with smeared detail, chroma bleed and tape hiss, at three trained
+              damage tiers. The trigger opens the prompt, then the damage tier, then the scene.
+            triggerWords: [vh5tape]
+            defaultStrength: 1.0
+            minStrength: 0
+            maxStrength: 1.2
+            targets:
+              - model: fasth3
+                tasks: [t2v]
+            license: MiniMax-H3 Community License
+            sourceUrl: https://huggingface.co/KennethFal/vh5tape-vhs-lora-minimax-h3
+          - id: lovis93/studio-1939-old-animation-lora-minimax-h3
+            displayName: Studio 1939
+            description: A hand-painted golden-age animation look with gouache backgrounds and celluloid palettes.
+              The trigger opens the prompt, and exhaustive art direction works better than a short prompt.
+            triggerWords: [gulliv3r]
+            defaultStrength: 0.9
+            minStrength: 0
+            maxStrength: 1.2
+            targets:
+              - model: fasth3
+                tasks: [t2v]
+            license: MiniMax-H3 Community License
+            sourceUrl: https://huggingface.co/lovis93/studio-1939-old-animation-lora-minimax-h3
+          - id: pablodawson/MiniMax-H3-360-Orbit-LoRA
+            displayName: 360 Orbit
+            description: A camera that circles the subject through a full orbit.
+            triggerWords: []
+            defaultStrength: 1.0
+            minStrength: 0
+            maxStrength: 1.5
+            targets:
+              - model: fasth3
+                tasks: [t2v]
+            license: other (see the source page)
+            sourceUrl: https://huggingface.co/pablodawson/MiniMax-H3-360-Orbit-LoRA
+
     # Models on FastVideo servers, one server per task, each with the facts of its served model. A model or task left
     # out of `models` is not registered. The row is disabled, so dv-uniserve serves fasth3 for task ref2v; a deployment
     # sets `disabled: false` and replaces these local URLs and FastH3 facts with its servers' own in its profile
