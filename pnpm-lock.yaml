@@ -7281,6 +7281,9 @@ importers:
       '@dv/fastvideo-generation-client':
         specifier: workspace:*
         version: link:../fastvideo-generation-client
+      '@dv/lora':
+        specifier: workspace:*
+        version: link:../lora
       '@dv/models':
         specifier: workspace:*
         version: link:../models

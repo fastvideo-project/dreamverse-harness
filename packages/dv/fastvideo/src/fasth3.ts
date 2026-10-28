@@ -49,6 +49,7 @@ export const FASTH3: { [T in TaskId]?: ServedTask } = {
       + 'reference.',
     inputs: { reference: { min: 1, mediaTypes: ['image', 'video', 'audio'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
     extra: {},
+    lora: true,
     assignReferenceLabels: assignFasth3ReferenceLabels,
     promptProblems: fasth3PromptProblems,
     skill: {
@@ -64,6 +65,7 @@ export const FASTH3: { [T in TaskId]?: ServedTask } = {
       + 'an earlier shot\'s last still; a face that must stay the same needs fasth3 for task ref2v.',
     inputs: {},
     extra: {},
+    lora: true,
     assignReferenceLabels: assignFasth3ReferenceLabels,
     skill: {
       name: 'fasth3-text-prompting',

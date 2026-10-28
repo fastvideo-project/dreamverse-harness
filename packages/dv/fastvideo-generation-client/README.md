@@ -67,9 +67,11 @@ FastVideo owns the API; the client uses two routes. `GET /v1/streamv2/capabiliti
 }
 ```
 
+`lora` reports the community adapters the server allows a request to select: `supported`, `runtime_switching`, `base_strength`, and each adapter's `id`, `default_strength`, `min_strength` and `max_strength` with its optional `description`, `license` and `source_url`. A server without an adapter list reports `{"supported": false, "adapters": []}`.
+
 `max_references` counts every reference of a request across media types. `reference_media_types` lists each accepted media type with its own `max_count`; a request image that continues a segment counts as an `image`. `num_frames_by_duration_sec` holds every whole duration from the minimum to the maximum.
 
-`POST /v1/streamv2/generate` takes `{"prompt", "references", "width", "height", "num_frames", "seed"?, "return_last_frame"}` and answers a `text/event-stream` of `event: <name>` records with one-line JSON `data:`, in this order:
+`POST /v1/streamv2/generate` takes `{"prompt", "references", "width", "height", "num_frames", "seed"?, "return_last_frame", "lora"?}` and answers a `text/event-stream` of `event: <name>` records with one-line JSON `data:`, in this order:
 
 | Event | Data |
 | --- | --- |
@@ -118,7 +120,7 @@ The `tests/` directory runs the client against a local HTTP server that plays th
 
 #### What the model sees
 
-The video model receives the request body that `generateSegment` builds: `prompt` unchanged, `references` as `{media_type, data}` entries with base64 bytes in the caller's order, `width`, `height`, `num_frames`, `seed` only when the caller sets one, and `return_last_frame`. The model numbers the references per media type in list order, and the caller's prompt names them with the model's numbering, such as `Picture 1` for the first image.
+The video model receives the request body that `generateSegment` builds: `prompt` unchanged, `references` as `{media_type, data}` entries with base64 bytes in the caller's order, `width`, `height`, `num_frames`, `seed` only when the caller sets one, `return_last_frame`, and `lora` only when the caller selects an adapter. The model numbers the references per media type in list order, and the caller's prompt names them with the model's numbering, such as `Picture 1` for the first image.
 
 #### Token effect
 

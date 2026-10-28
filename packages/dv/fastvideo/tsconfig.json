@@ -18,6 +18,9 @@
       "path": "../fastvideo-generation-client"
     },
     {
+      "path": "../lora"
+    },
+    {
       "path": "../../skill/skill"
     },
     {
