@@ -40,6 +40,36 @@ export interface SegmentReference {
   bytes: Buffer
 }
 
+/** One adapter that the server allows a request to select. */
+export interface LoraAdapter {
+  /** The adapter id that a request names. */
+  id: string
+  /** The strength that a request without a `strength` uses. */
+  defaultStrength: number
+  /** The lowest strength the server applies. */
+  minStrength: number
+  /** The highest strength the server applies. */
+  maxStrength: number
+  /** What the adapter changes, when the server's operator wrote it. */
+  description?: string
+}
+
+/** The server's LoRA support, from the `lora` block of `GET /v1/model_info`. */
+export interface LoraFacts {
+  /** Whether the server allows a request to select an adapter at all. */
+  supported: boolean
+  /** The adapters a request may select, in the server's order; empty when LoRA is unsupported. */
+  adapters: LoraAdapter[]
+}
+
+/** The adapter one segment selects, and the strength to apply it at. */
+export interface LoraSelection {
+  /** The id of one adapter of the server's allow-list. */
+  id: string
+  /** The strength to apply; omitted, the adapter's default strength applies. */
+  strength?: number
+}
+
 /** The inputs of one segment generation request. */
 export interface SegmentRequest {
   prompt: string
@@ -50,6 +80,8 @@ export interface SegmentRequest {
   references: SegmentReference[]
   /** The generation seed; omitted, the backend uses its default seed. */
   seed?: number
+  /** The adapter this segment selects; omitted, the backend renders the base model. */
+  lora?: LoraSelection
   /** Aborting cancels the HTTP request and rejects with `signal.reason`. */
   signal?: AbortSignal
 }

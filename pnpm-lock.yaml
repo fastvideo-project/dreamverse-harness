@@ -7382,6 +7382,9 @@ importers:
       '@dv/ffmpeg':
         specifier: workspace:*
         version: link:../ffmpeg
+      '@dv/lora':
+        specifier: workspace:*
+        version: link:../lora
       '@dv/models':
         specifier: workspace:*
         version: link:../models

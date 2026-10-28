@@ -1,6 +1,7 @@
 /**
  * `dvFastvideoGeneration`: the harness client for FastVideo generation. `model()` checks the served alias with
- * `GET /v1/model_info` and returns the configured facts; `generateSegment` sends one `POST /v1/videos/sync` with each
+ * `GET /v1/model_info` and returns the configured facts, and `lora()` returns the adapters that the same response
+ * allows; `generateSegment` sends one `POST /v1/videos/sync` with each
  * reference as a base64 `data:` URL and returns the whole MP4.
  *
  * @module @dv/fastvideo-generation-client
@@ -13,7 +14,7 @@ import { backendErrorText, GenerationSegmentError } from './errors.ts'
 import { followVideoJob, type NativeRequestInit } from './native-jobs.ts'
 import { deriveModelFacts, modelFactsConfig, type ModelFactsConfig } from './model-facts.ts'
 import { REFERENCE_FIELDS, referenceMediaType } from './references.ts'
-import type { ModelFacts, SegmentRequest, SegmentVideo } from './types.ts'
+import type { LoraFacts, ModelFacts, SegmentRequest, SegmentVideo } from './types.ts'
 
 export * from './errors.ts'
 export * from './model-facts.ts'
@@ -55,6 +56,26 @@ function untimedDispatcher(): Dispatcher {
   return getGlobalDispatcher().compose(dispatch => (options, handler) => dispatch({ ...options, headersTimeout: 0 }, handler))
 }
 
+const NO_LORA: LoraFacts = { supported: false, adapters: [] }
+
+/**
+ * The adapters of a `model_info` `lora` block, dropping any entry that lacks an id or a numeric strength range.
+ * @param block - the `lora` value of the response; anything but an object with `supported: true` means no LoRA.
+ * @returns the LoRA facts.
+ */
+function parseLora(block: unknown): LoraFacts {
+  const { supported, adapters } = (typeof block === 'object' && block !== null ? block : {}) as Record<string, unknown>
+  if (supported !== true || !Array.isArray(adapters)) return NO_LORA
+  return {
+    supported: true,
+    adapters: adapters.flatMap((raw: Record<string, unknown>) => {
+      const { id, default_strength: d, min_strength: lo, max_strength: hi, description } = raw
+      if (typeof id !== 'string' || typeof d !== 'number' || typeof lo !== 'number' || typeof hi !== 'number') return []
+      return [{ id, defaultStrength: d, minStrength: lo, maxStrength: hi, ...typeof description === 'string' ? { description } : {} }]
+    }),
+  }
+}
+
 /** Checks the served model and generates segments with the configured facts. */
 export class DvFastvideoGeneration extends Service {
   static Config: z<Config> = z.object({
@@ -71,6 +92,8 @@ export class DvFastvideoGeneration extends Service {
   readonly facts: ModelFacts
   /** Whether a `GET /v1/model_info` confirmed the served alias; the served model stays fixed for the backend's lifetime. */
   private checked = false
+  /** The adapters that the checked `GET /v1/model_info` allows; no adapter before the check. */
+  private loraFacts: LoraFacts = NO_LORA
 
   /**
    * @param ctx - owning plugin context.
@@ -105,17 +128,29 @@ export class DvFastvideoGeneration extends Service {
       throw new Error(`FastVideo ${route} returned HTTP ${response.status}: ${await backendErrorText(response)}`)
     }
     const text = await response.text()
-    let info: { served_model_name?: unknown } | null
+    let info: { served_model_name?: unknown; lora?: unknown } | null
     try {
-      info = JSON.parse(text) as { served_model_name?: unknown } | null
+      info = JSON.parse(text) as { served_model_name?: unknown; lora?: unknown } | null
     } catch (error) {
       throw new Error(`FastVideo ${route} answered no JSON: ${(error as SyntaxError).message}`, { cause: error })
     }
     const served = info?.served_model_name
     if (typeof served !== 'string') throw new Error(`FastVideo ${route} reports no served_model_name; expected ${this.facts.modelId}.`)
     if (served !== this.facts.modelId) throw new Error(`FastVideo serves ${served}; modelFacts.modelId is ${this.facts.modelId}.`)
+    this.loraFacts = parseLora(info?.lora)
     this.checked = true
     return this.facts
+  }
+
+  /**
+   * The server's LoRA support, from the `lora` block of the `GET /v1/model_info` that `model()` reads once. A server
+   * without the block supports no adapter.
+   * @returns the LoRA facts.
+   * @throws the errors of `model()`.
+   */
+  async lora(): Promise<LoraFacts> {
+    await this.model()
+    return this.loraFacts
   }
 
   /**
@@ -141,6 +176,9 @@ export class DvFastvideoGeneration extends Service {
       model: this.facts.modelId, ...this.config.task == null ? {} : { task: this.config.task },
       prompt: request.prompt, width: request.frameWidth, height: request.frameHeight,
       num_frames: request.numFrames, ...request.seed === undefined ? {} : { seed: request.seed }, ...references,
+      ...request.lora === undefined ? {} : {
+        lora: { name: request.lora.id, ...request.lora.strength === undefined ? {} : { scale: request.lora.strength } },
+      },
     }
     try {
       const response = this.config.managed || this.config.asyncJobs

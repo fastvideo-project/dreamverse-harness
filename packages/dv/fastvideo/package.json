@@ -15,6 +15,7 @@
     "@dv/asset-pool": "workspace:*",
     "@dv/fastvideo-generation-client": "workspace:*",
     "@dv/ffmpeg": "workspace:*",
+    "@dv/lora": "workspace:*",
     "@dv/models": "workspace:*",
     "@dv/project": "workspace:*"
   },
