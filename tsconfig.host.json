@@ -463,6 +463,7 @@
     { "path": "./packages/dv/shot-plan" },
     { "path": "./packages/dv/shot-render" },
     { "path": "./packages/dv/models" },
+    { "path": "./packages/dv/lora" },
     { "path": "./packages/dv/generation" },
     { "path": "./packages/dv/fastvideo-generation-client" },
     { "path": "./packages/dv/fastvideo" },

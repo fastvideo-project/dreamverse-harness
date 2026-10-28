@@ -1,0 +1,29 @@
+{
+  "name": "@dv/lora",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Community-LoRA registry of DreamVerse: the dvLora service that holds the adapters a deployment vouches for, the dv_lora_list and dv_lora_get tools, and the community-lora runtime skill that says when and how to apply one to a shot.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-skill": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-util-values": "workspace:*",
+    "@dv/models": "workspace:*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/schemastery": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/cordis-plugin-include": "workspace:~",
+    "@deepseek-ai/cordis-plugin-loader": "workspace:~",
+    "@deepseek-ai/dsh-system-prompt": "workspace:*",
+    "@deepseek-ai/schemastery": "workspace:~",
+    "@types/node": "^22.20.0"
+  }
+}

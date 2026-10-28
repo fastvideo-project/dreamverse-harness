@@ -345,6 +345,7 @@
       "@dv/inspector": ["./packages/dv/inspector/src/index.ts"],
       "@dv/location": ["./packages/dv/location/src/index.ts"],
       "@dv/location/types": ["./packages/dv/location/src/types.ts"],
+      "@dv/lora": ["./packages/dv/lora/src/index.ts"],
       "@dv/mcp-presets": ["./packages/dv/mcp-presets/src/index.ts"],
       "@dv/models": ["./packages/dv/models/src/index.ts"],
       "@dv/models/types": ["./packages/dv/models/src/types.ts"],
