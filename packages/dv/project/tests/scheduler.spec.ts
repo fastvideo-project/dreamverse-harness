@@ -10,14 +10,14 @@ import type { OperationSpec } from '../src/operation-types.ts'
 import type { OperationContext, ProjectId, ProjectRecord, RecordId, RunRequest } from '../src/types.ts'
 
 /**
- * An operation spec with test defaults: one optional `prompt` parameter, the `reference` input role, no confirmation,
- * not deterministic, and unlimited resource.
+ * An operation spec with test defaults: one optional `prompt` parameter, the `reference` input role, not
+ * deterministic, and unlimited resource.
  * @param overrides - the fields to set; `name`, `component` and `execute` are required.
  * @returns the spec.
  */
 function operation(overrides: Partial<OperationSpec> & Pick<OperationSpec, 'name' | 'component' | 'execute'>): OperationSpec {
   return {
-    version: '1', params: { prompt: { type: 'string' } }, confirm: 'never', deterministic: false,
+    version: '1', params: { prompt: { type: 'string' } }, deterministic: false,
     inputs: { reference: { type: 'image', description: 'A reference.', many: true } }, outputs: [], description: 'A test operation.',
     summarize: () => 'ran', resource: 'none', ...overrides,
   }

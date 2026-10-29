@@ -150,11 +150,10 @@ export const OPERATIONS: WireOperation[] = [
       prompt: { type: 'string', required: true, description: 'What happens.' }, seed: { type: 'integer', description: 'Seed.' },
       aspect: { type: 'string', enum: ['16:9', '9:16'] }, loop: { type: 'boolean' }, extra: { type: 'object' },
     },
-    outputs: [{ role: 'video', type: 'video' }, { role: 'last_still', type: 'image' }], deterministic: false, resource: 'gpu', confirm: 'never',
+    outputs: [{ role: 'video', type: 'video' }, { role: 'last_still', type: 'image' }], deterministic: false, resource: 'gpu',
   },
   {
     name: 'timeline.create', version: '1', description: 'Create a timeline.', inputs: {}, params: {}, outputs: [], deterministic: true, resource: 'none',
-    confirm: 'never',
   },
 ]
 

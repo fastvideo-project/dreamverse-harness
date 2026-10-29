@@ -10,7 +10,7 @@ import { OPERATIONS, TASK_LABELS } from './fixture.client.tsx'
 /** A workflow operation that declares its label and has no `DV_TOOL_LABELS` entry. */
 const ASSEMBLE: WireOperation = {
   name: 'cut.assemble', version: '1', description: 'Assemble a cut.', label: { zh: '拼接成片', en: 'Assemble cut' },
-  inputs: {}, params: {}, outputs: [], deterministic: false, resource: 'none', confirm: 'always',
+  inputs: {}, params: {}, outputs: [], deterministic: false, resource: 'none',
 }
 
 describe('operationLabel', () => {

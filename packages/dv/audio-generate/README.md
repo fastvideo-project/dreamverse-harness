@@ -37,7 +37,7 @@ The plugin has no configuration.
 | --- | --- | --- | --- |
 | `audio.generate` | `dv_audio_generate` | no inputs; params `modality`, `task`, `provider` and `model` (required: the key of a catalog entry, as `dv_models_list` lists it), `prompt` (required: the text to speak, in the markup of the model's prompt skill), `extra` (the model's own parameters, as `dv_models_get` lists them) | output `audio`, one `audio/wav` asset named `<record ID, 8 characters>.wav` with its `duration_sec`; report `{model_id, duration_sec}` |
 
-The operation uses the GPU, is not deterministic, and declares `confirm: never`. The operation has no `seed` param, draws no seed and reports none (`seed: false` in the declaration), because the speech backends take no seed; the same prompt gives a different clip. Workflows call the `GenerationApi` methods of [`@dv/generation`](../generation/README.md) on `dvAudioGenerate`: `render`, `check` and `parseInputs`.
+The operation uses the GPU and is not deterministic. The operation has no `seed` param, draws no seed and reports none (`seed: false` in the declaration), because the speech backends take no seed; the same prompt gives a different clip. Workflows call the `GenerationApi` methods of [`@dv/generation`](../generation/README.md) on `dvAudioGenerate`: `render`, `check` and `parseInputs`.
 
 -----
 
@@ -56,7 +56,7 @@ The package declares the primitive row `audio` of `PrimitiveTypes` through decla
 <a id="further-exploration"></a>
 ## Further Exploration
 
-- [`@dv/project`](../project/README.md): operations, approval, and agent tools.
+- [`@dv/project`](../project/README.md): operations and agent tools.
 - [`@dv/models`](../models/README.md): the model catalog, with `dv_models_list` and `dv_models_get`.
 - [`@dv/generation`](../generation/README.md): the helper that builds the service, its checks and its `GenerationApi`.
 - [`@dv/sglang-omni`](../sglang-omni/README.md): a provider plugin that registers a `t2a` model and its prompt skill.

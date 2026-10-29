@@ -218,7 +218,7 @@ describe('dvTextNode', () => {
     // A consumer of another component: it takes a text asset as its input.
     fixture.ctx.dvProject.registerComponent('probe')
     fixture.ctx.dvProject.registerOperation({
-      name: 'probe.use', component: 'probe', version: '1', confirm: 'never', description: 'Use a text.', params: {},
+      name: 'probe.use', component: 'probe', version: '1', description: 'Use a text.', params: {},
       inputs: { text: { type: 'text', description: 'A text.', required: true } }, outputs: [], deterministic: false,
       resource: 'none', summarize: () => 'used', execute: () => Promise.resolve({ outputs: [] }),
     })
@@ -282,7 +282,7 @@ describe('dvTextNode', () => {
     let release = (): void => {}
     fixture.ctx.dvProject.registerComponent('probe')
     fixture.ctx.dvProject.registerOperation({
-      name: 'probe.slow', component: 'probe', version: '1', confirm: 'never', description: 'Write a text later.', params: {},
+      name: 'probe.slow', component: 'probe', version: '1', description: 'Write a text later.', params: {},
       inputs: {}, outputs: [{ role: 'text', type: 'text' }], deterministic: false, resource: 'none', summarize: () => 'slow',
       execute: context => new Promise((resolve) => {
         release = () => { resolve({ outputs: [context.importAsset(Buffer.from('later'), { mime: 'text/markdown', name: 'later.md' })] }) }

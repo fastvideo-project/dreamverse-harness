@@ -165,7 +165,7 @@ const characterCreate: OperationSpec = {
   name: 'bible.character_create', component: 'bible', version: '1', description: 'Register a character.',
   params: { character: { type: 'string', required: true, description: 'The character ID.' } },
   inputs: { reference: { type: 'image', many: true, description: 'Reference images.' } },
-  outputs: [], deterministic: true, resource: 'none', confirm: 'never', summarize: () => 'character',
+  outputs: [], deterministic: true, resource: 'none', summarize: () => 'character',
   execute: () => Promise.resolve({ outputs: [] }),
 }
 
@@ -317,7 +317,7 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
   it('registers shot.render while the catalog holds a model, and removes it on disposal', async () => {
     const fixture = await start()
     expect(renderSpec(fixture)).toMatchObject({
-      component: 'shot', label: { zh: '渲染镜头', en: 'Render shot' }, resource: 'gpu', confirm: 'never', deterministic: false,
+      component: 'shot', label: { zh: '渲染镜头', en: 'Render shot' }, resource: 'gpu', deterministic: false,
     })
     // The key and the prompt, the shot's geometry, then `seed` and `extra`; a render carries no plan params.
     const params = renderSpec(fixture)?.params ?? {}

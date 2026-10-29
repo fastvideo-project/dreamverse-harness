@@ -129,7 +129,7 @@ async function start(bound = true): Promise<Fixture> {
     gates.set(prompt, made)
     return made
   }
-  const base = { version: '1', description: 'A test operation.', inputs: {}, confirm: 'never', deterministic: false } as const
+  const base = { version: '1', description: 'A test operation.', inputs: {}, deterministic: false } as const
   project.registerOperation({
     ...base, name: 'asset.import', component: 'asset', params: { name: { type: 'string' } }, outputs: [{ role: 'asset', type: 'image' }],
     resource: 'none', summarize: record => `imported ${String(record.params['name'])}`,

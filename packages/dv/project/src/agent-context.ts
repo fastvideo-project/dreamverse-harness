@@ -1,6 +1,6 @@
 /**
  * The `dv:project` system-prompt section: Project's general rules (the conversation's project, the history list, undo
- * and redo, confirmation, stale records, and how to name records, assets, versions of the registered reference kinds
+ * and redo, stale records, and how to name records, assets, versions of the registered reference kinds
  * and other items). The text depends only on the registered reference kinds, which change only together with the
  * operation tool definitions, so it is the same at every step of a session; the project's state reaches the agent
  * through the project messages of the `project-updates` module. It holds nothing that the user cannot see in the views
@@ -44,8 +44,6 @@ export function projectContext(project: Pick<DvProject, 'listReferenceKinds'>): 
       + `${versionNaming(kinds)}an asset by its asset ID, and any other item by the ID that the summary gives it. `
       + 'The user points at things with dv: mentions, which reach you as these IDs. '
       + 'When the user\'s words fit more than one thing and no mention names it, ask which one instead of guessing.',
-    '- When a tool refuses a call because it needs the user\'s agreement, show the user what the refusal says the call will do, '
-      + 'and ask in the conversation with the question in bold. Call again with user_approved: true only after the user agreed.',
     '- Stale records had an input replaced. Render one again only when the user agrees; call dv_proj_stale_accept when the user keeps it as it is.',
   ].join('\n')
 }

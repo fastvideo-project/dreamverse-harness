@@ -7,10 +7,8 @@
  * `dv_seen` (a `ProjectShown`), the record in the status the result returned, each scheduled record as `pending`, and
  * the newest of them as the position, so the project updates do not repeat them; a read stores none.
  *
- * Confirmation: an operation whose `confirm` is `always` gets the tool-only argument `user_approved`; a call that
- * lacks it is refused, before anything is written, with the operation's `confirmSummary` and the instruction to ask
- * the user in the conversation with the question in bold. The record's turn is the DSH turn number of the calling
- * agent's session, read from the `turnBoundary` session projection.
+ * The record's turn is the DSH turn number of the calling agent's session, read from the `turnBoundary` session
+ * projection.
  *
  * Calls the sessions module (project binding, held work), the asset store (output types, bytes, URLs), and the
  * service's run, state, record, operation and history reads through {@link AgentToolDeps}. Called by the service,
@@ -28,7 +26,7 @@ import { defineTool, type ParameterSchemaSpec, type ToolDefinition, type ToolRun
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { splitInputRef } from './grammar.ts'
-import type { OperationSpec, OperationToolCall } from './operation-types.ts'
+import type { OperationSpec } from './operation-types.ts'
 import type { Sessions } from './sessions.ts'
 import { ProjectError, SEEN_META_KEY } from './shared.ts'
 import type {
@@ -60,18 +58,6 @@ const IMAGE_MEDIA_TYPES: ReadonlySet<string> = new Set<ImageMediaType>(['image/p
 
 /** The arguments every operation tool takes besides the operation's params; they never reach the run's params. */
 const SHARED_ARGS = ['reason', 'project_id', 'inputs', 'supersedes', 'based_on'] as const
-
-/** The tool-only confirmation argument of each `OperationSpec.confirm` value, as the model sees it. */
-const CONFIRM_PARAMS: Record<OperationSpec['confirm'], ParameterSchemaSpec> = {
-  never: {},
-  always: {
-    user_approved: {
-      type: 'boolean',
-      description: 'Set true only after the user agreed to this exact call in the conversation. Without it the call is refused '
-        + 'with what to show the user and ask.',
-    },
-  },
-}
 
 /** The reference kinds as reference parsing reads them. */
 export type ReferenceKindLookup = Pick<AgentToolDeps, 'listReferenceKinds' | 'kindsWithVersion'>
@@ -345,7 +331,7 @@ export class AgentTools {
   define(spec: OperationSpec): ToolDefinition {
     const name = toolNameOf(spec)
     const parameters: ParameterSchemaSpec = {
-      ...spec.params, ...spec.toolParams, ...CONFIRM_PARAMS[spec.confirm], ...sharedParams(spec, this.deps.listReferenceKinds()),
+      ...spec.params, ...spec.toolParams, ...sharedParams(spec, this.deps.listReferenceKinds()),
     }
     // The description ends with where the operation runs and whether it writes a record or reuses earlier results.
     const hints = [
@@ -376,8 +362,7 @@ export class AgentTools {
 
   /**
    * Run one tool call: wait for the session's held work, resolve the project and the inputs against the project's
-   * current state, let the operation prepare the call, refuse it when it needs the user's agreement, run it as the
-   * agent, and describe the record.
+   * current state, let the operation prepare the call, run it as the agent, and describe the record.
    */
   private async call(spec: OperationSpec, args: Record<string, unknown>, exec: ToolRunContext): Promise<OperationToolValue> {
     const { sessions } = this.deps
@@ -389,7 +374,7 @@ export class AgentTools {
       intent: optionalString(args['reason']) ?? spec.name,
     }
     const state = this.deps.currentState(project)
-    const toolOnly = new Set<string>([...SHARED_ARGS, ...Object.keys(spec.toolParams ?? {}), ...Object.keys(CONFIRM_PARAMS[spec.confirm])])
+    const toolOnly = new Set<string>([...SHARED_ARGS, ...Object.keys(spec.toolParams ?? {})])
     const params = Object.fromEntries(Object.entries(args).filter(([key]) => !toolOnly.has(key)))
     const basedOn = optionalString(args['based_on'])
     const supersedes = args['supersedes']
@@ -401,7 +386,6 @@ export class AgentTools {
       ...Array.isArray(supersedes) ? { supersedes: supersedes.map(id => brandString<RecordId>(String(id))) } : {},
     }
     await spec.prepareToolCall?.({ args, request, state, exec })
-    this.confirm(spec, { args, request, state, exec })
     if (this.waitsForProducer(project, spec, request.inputs)) request.after = []
     const before = new Set(this.deps.listHistory({ project }).map(entry => entry.record.id))
     const result = await this.deps.run(request)
@@ -419,26 +403,6 @@ export class AgentTools {
       .map(entry => entry.record).filter(other => !before.has(other.id) && other.session === session)
       .map(other => other.id).reverse()
     return await this.valueOf(spec, project, record, scheduled)
-  }
-
-  /**
-   * Refuse a call that needs the user's agreement and does not carry it (`OperationSpec.confirm`): `always` needs
-   * `user_approved: true`. The refusal names what the call will do and tells the model to ask in the conversation,
-   * with the question in bold.
-   * @param spec - the operation.
-   * @param call - the parsed call, after `prepareToolCall`.
-   * @throws Error with the refusal text.
-   */
-  private confirm(spec: OperationSpec, call: OperationToolCall): void {
-    if (spec.confirm === 'never' || spec.confirmSummary === undefined) return
-    if (call.args.user_approved === true) return
-    const summary = spec.confirmSummary(call, call.state)
-    throw new Error([
-      `${toolNameOf(spec)} needs the user's agreement.`,
-      'What it will do:', summary.text,
-      'Show this to the user and ask in the conversation, with the question in bold (for example **Run this now?**). '
-        + 'Wait for the user\'s answer, then call again with user_approved: true.',
-    ].join('\n'))
   }
 
   /**

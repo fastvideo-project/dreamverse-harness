@@ -147,7 +147,6 @@ export function exportOperation(ctx: Context): OperationSpec {
     // The output depends on the timeline's clips in the project state, which the params and inputs do not name.
     deterministic: false,
     resource: 'cpu',
-    confirm: 'never',
     // A placeholder clip has no file to join yet, so the call is refused before its record.
     precondition: (request, state) => {
       const timeline = exportedTimeline(state, request.params['timeline'])

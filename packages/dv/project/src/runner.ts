@@ -1,7 +1,7 @@
 /**
  * The operation runner: the operation registry and the single change path of operations. `run` checks a request,
  * writes its pending record after the project's current position, then executes the operation now or hands the record to the
- * scheduler. The agent's confirmation (`OperationSpec.confirm`) is checked earlier, in the agent tool call.
+ * scheduler.
  *
  * Lock scope: the runner holds the project lock (from the record store) while it checks and appends a record and
  * while it writes each update line. It releases the lock while `execute` runs, so a long render does not block other
@@ -136,8 +136,7 @@ export class Runner {
 
   /**
    * Register an operation. Refused with `operation_exists` when the name is registered, and with `invalid_params` when
-   * `component` is not a registered component key, when `name` does not start with `<component>.`, or when `confirm`
-   * is not `never` and the spec has no `confirmSummary`.
+   * `component` is not a registered component key, or when `name` does not start with `<component>.`.
    * @param spec - the operation.
    * @returns a function that removes the registration (only if it is still this spec).
    */
@@ -148,9 +147,6 @@ export class Runner {
     }
     if (!spec.name.startsWith(`${spec.component}.`)) {
       throw new ProjectError('invalid_params', `Operation ${spec.name} does not start with its component key '${spec.component}.'.`)
-    }
-    if (spec.confirm !== 'never' && spec.confirmSummary === undefined) {
-      throw new ProjectError('invalid_params', `Operation ${spec.name} asks for confirmation (${spec.confirm}) but has no confirmSummary.`)
     }
     this.operations.set(spec.name, spec)
     return () => {
@@ -368,7 +364,7 @@ export class Runner {
   }
 
   /**
-   * Run a read-only operation on the project's current state: no lock, no record, no confirmation.
+   * Run a read-only operation on the project's current state: no lock and no record.
    * @param spec - a read-only operation.
    * @param request - the call.
    * @returns the outputs and the report; the record is null.

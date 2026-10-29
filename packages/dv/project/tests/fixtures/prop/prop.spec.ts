@@ -46,7 +46,7 @@ function propOperation(verb: 'create' | 'update'): OperationSpec {
     name: `prop.${verb}`, component: 'prop', version: '1', description: `Prop ${verb}.`,
     params: { prop: { type: 'string', required: true, description: 'The prop ID.' } },
     inputs: { reference: { type: 'image', many: true, description: 'Images of the prop.' } },
-    outputs: [], deterministic: false, resource: 'none', confirm: 'never', summarize: () => `prop ${verb}`,
+    outputs: [], deterministic: false, resource: 'none', summarize: () => `prop ${verb}`,
     supersedes: (params, state) => verb === 'create' ? [] : state.components.proj.records
       .filter(record => record.component === 'prop' && record.params['prop'] === params['prop']).slice(-1).map(record => record.id),
     execute: () => Promise.resolve({ outputs: [] }),
@@ -90,7 +90,7 @@ describe('the prop fixture', () => {
     dv.registerOperation({
       name: 'look.make', component: 'look', version: '1', description: 'Make a look.', params: {},
       inputs: { reference: { type: 'image', many: true, versioned: true, description: 'References.' } },
-      outputs: [], deterministic: false, resource: 'none', confirm: 'never', summarize: () => 'look', execute: () => Promise.resolve({ outputs: [] }),
+      outputs: [], deterministic: false, resource: 'none', summarize: () => 'look', execute: () => Promise.resolve({ outputs: [] }),
     })
     const removeProp = registerProp(dv)
     const user = { actor: 'user', surface: 'api', session: null, turn: null, tool_call: null, intent: 'edit' } as const

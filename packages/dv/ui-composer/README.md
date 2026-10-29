@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to fit the DSH chat composer to a DreamVerse project. Typing `@`, or picking 引用 / Reference in the composer's ＋ menu, lists the items of the mention kinds that plugins register in `dvMentions` and the open project's assets as reference chips. The `dv.prompt` Factory draws a generation call's composer: references, prompt, parameters, and send. DreamVerse tool rows in the chat show creator-facing names, and the link 在历史中查看 / Show in history selects a call's record. The canvas and the asset preview prefill the chat composer through `dv:compose`. The agent asks for the user's agreement in the conversation.
+Use this package to fit the DSH chat composer to a DreamVerse project. Typing `@`, or picking 引用 / Reference in the composer's ＋ menu, lists the items of the mention kinds that plugins register in `dvMentions` and the open project's assets as reference chips. The `dv.prompt` Factory draws a generation call's composer: references, prompt, parameters, and send. DreamVerse tool rows in the chat show creator-facing names, and the link 在历史中查看 / Show in history selects a call's record. The canvas and the asset preview prefill the chat composer through `dv:compose`.
 
 ## Table of Contents
 
@@ -110,7 +110,6 @@ A `dv:compose` event that arrives while no composer is mounted waits for the nex
 ## Further Exploration
 
 - [`@dv/chat-references`](../chat-references/README.md) — the expansion of the `dv:` mentions of a sent message into a context message with record and asset IDs.
-- [`@dv/project`](../project/README.md) — the `dv:project` prompt section, which tells the agent to ask for the user's agreement in the conversation with the question in bold.
 - [`@dv/ui-canvas`](../ui-canvas/README.md) — the canvas and its node actions.
 - [`@dv/ui-generation`](../ui-generation/README.md) — the take editor, which draws `dv.prompt` over a take's call.
 - [`@dv/ui-history`](../ui-history/README.md) — the History panel that answers `dv:history-focus`, and the record label of the chat cards.

@@ -121,7 +121,7 @@ describe('dvTimeline', () => {
     const specs = fixture.ctx.dvProject.listOperations().filter(spec => spec.component === 'timeline')
     expect(specs.map(spec => spec.name)).toEqual(OPERATIONS)
     const edits = specs.filter(spec => spec.name !== 'timeline.export')
-    expect(edits.every(spec => spec.outputs.length === 0 && spec.resource === 'none' && spec.confirm === 'never')).toBe(true)
+    expect(edits.every(spec => spec.outputs.length === 0 && spec.resource === 'none')).toBe(true)
     for (const name of OPERATIONS) expect(fixture.ctx.tools.get(`dv_${name.replace('.', '_')}`)).toBeDefined()
     expect(fixture.ctx.dvProject.getState(fixture.project).components.timeline).toEqual({ timelines: [] })
     const entry = [...fixture.ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-timeline.mjs'))
@@ -238,7 +238,7 @@ describe('dvTimeline', () => {
     fixture.ctx.dvProject.registerComponent('shot')
     fixture.ctx.dvProject.registerOperation({
       name: 'shot.render', component: 'shot', version: '1', description: 'stand-in', params: {}, inputs: {},
-      outputs: [{ role: 'video', type: 'video' }], confirm: 'never', deterministic: false, resource: 'none', summarize: () => 'stand-in',
+      outputs: [{ role: 'video', type: 'video' }], deterministic: false, resource: 'none', summarize: () => 'stand-in',
       execute: async (context) => {
         const index = Number(context.params['shot'])
         await renders[index]?.promise
@@ -281,7 +281,7 @@ describe('dvTimeline', () => {
     fixture.ctx.dvProject.registerComponent('shot')
     fixture.ctx.dvProject.registerOperation({
       name: 'shot.render', component: 'shot', version: '1', description: 'stand-in', params: {}, inputs: {},
-      outputs: [{ role: 'video', type: 'video' }], confirm: 'never', deterministic: false, resource: 'none', summarize: () => 'stand-in',
+      outputs: [{ role: 'video', type: 'video' }], deterministic: false, resource: 'none', summarize: () => 'stand-in',
       execute: async (context) => {
         await held.promise
         return { outputs: [context.importAsset(Buffer.from('take'), { mime: 'video/mp4', name: 'take.mp4' })] }

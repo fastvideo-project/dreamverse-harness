@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包让 DSH 对话输入框适配 DreamVerse 项目。输入 `@`，或在输入框的 ＋ 菜单里选 引用，会把插件在 `dvMentions` 中注册的提及类型的条目和所打开项目的素材列为引用标签。`dv.prompt` 组件工厂绘制一个生成调用的输入框：参考、提示词、参数和发送。对话里的 DreamVerse 工具行显示面向创作者的名称，在历史中查看 链接选中调用的记录。画布和素材预览通过 `dv:compose` 预填对话输入框。智能体在对话里征求用户同意。
+使用本包让 DSH 对话输入框适配 DreamVerse 项目。输入 `@`，或在输入框的 ＋ 菜单里选 引用，会把插件在 `dvMentions` 中注册的提及类型的条目和所打开项目的素材列为引用标签。`dv.prompt` 组件工厂绘制一个生成调用的输入框：参考、提示词、参数和发送。对话里的 DreamVerse 工具行显示面向创作者的名称，在历史中查看 链接选中调用的记录。画布和素材预览通过 `dv:compose` 预填对话输入框。
 
 ## 目录
 
@@ -110,7 +110,6 @@ Host 半边不注册任何东西。浏览器半边在 `apply` 顶层提供 `dvMe
 ## 进一步探索
 
 - [`@dv/chat-references`](../chat-references/README.zh.md) — 把已发送消息里的 `dv:` 提及展开成一条带记录和素材 ID 的上下文消息。
-- [`@dv/project`](../project/README.zh.md) — `dv:project` 提示词段落，它让智能体在对话里征求用户同意，并把问题加粗。
 - [`@dv/ui-canvas`](../ui-canvas/README.zh.md) — 画布及其节点动作。
 - [`@dv/ui-generation`](../ui-generation/README.zh.md) — 版本编辑器，它在版本的调用上绘制 `dv.prompt`。
 - [`@dv/ui-history`](../ui-history/README.zh.md) — 响应 `dv:history-focus` 的历史面板，以及对话卡片的记录名称。

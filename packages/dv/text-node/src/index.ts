@@ -174,7 +174,7 @@ function writing(
   return {
     ...spec, version: '1', outputs: [{ role: 'text', type: 'text' }],
     inputs: { [SOURCE]: { type: 'text', description: 'A text node this version was built from.', many: true } },
-    confirm: 'never', deterministic: false, resource: 'none', prepareToolCall: linkSources,
+    deterministic: false, resource: 'none', prepareToolCall: linkSources,
     supersedes: (params, state) => {
       const latest = latestVersion(state, String(params['path']))
       return latest === undefined ? [] : [latest.created_by]
@@ -266,7 +266,6 @@ function operations(): OperationSpec[] {
       },
       inputs: {},
       outputs: [],
-      confirm: 'never',
       deterministic: false,
       resource: 'none',
       readOnly: true,

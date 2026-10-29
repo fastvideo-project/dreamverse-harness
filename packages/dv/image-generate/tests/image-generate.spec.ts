@@ -145,7 +145,7 @@ describe('dvImageGenerate', () => {
     const remove = ctx.dvModels.register(fixture.model.entry())
     expect(fixture.spec()).toMatchObject({
       component: 'image', label: { zh: '生成图片', en: 'Generate image' }, outputs: [{ role: 'image', type: 'image' }], inputs: {},
-      deterministic: false, resource: 'gpu', confirm: 'never',
+      deterministic: false, resource: 'gpu',
     })
     const tool = ctx.tools.schemas().find(schema => schema.name === 'dv_image_generate')
     expect(tool?.description).toBe('Generate one image from the prompt with a t2i model from dv_models_list; modality, task, provider '

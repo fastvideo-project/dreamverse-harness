@@ -181,7 +181,6 @@ export interface WireOperation {
   outputs: Array<{ role: string; type: string }>
   deterministic: boolean
   resource: 'none' | 'cpu' | 'gpu'
-  confirm: 'never' | 'always'
 }
 
 /** A project row. */

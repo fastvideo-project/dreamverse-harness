@@ -49,7 +49,7 @@ kind: "package-reference"
 
 `timeline` 切片为 `{timelines: Timeline[]}`；`Timeline` 为 `{id, name, clips}`，`Clip` 为 `{id, asset, source, in_sec, out_sec}`，其中 `id` 是片段 ID，`source` 是片段所来自的渲染输出 `{record, output}`（已有素材的片段为 null），入点或出点为 null 表示素材的开头或结尾。`asset` 不为 null 时片段就绪；`asset` 为 null 的片段是尚未完成的渲染的占位片段。它的 `ClipStatus` 由来源记录推导，从不存储：`ready`；来源记录为 pending 或 running 时为 `rendering`；否则为 `failed`。本包导出类型 `Timeline`、`Clip`、`ClipId`、`ClipStatus`、`TimelineId`和 `TimelineState`（切片）。
 
-`timeline.export` 不是确定性的，因为它的输出取决于项目状态中时间线的片段，而参数并不指明这些片段；每次调用都重新导出。它在 `cpu` 资源类别中运行，从不请求确认。时间线未知、项目没有时间线或时间线没有片段时，调用让记录失败。时间线中有占位片段时，调用在写下记录之前被拒绝，并列出片段位置，例如 "Clips 3, 5 of timeline t1 are not ready yet."；`exportTimeline` 抛出同样的错误。服务方法 `exportTimeline(timeline, dir)` 为其他调用方把拼好的文件写入 `dir` 并返回其路径。
+`timeline.export` 不是确定性的，因为它的输出取决于项目状态中时间线的片段，而参数并不指明这些片段；每次调用都重新导出。它在 `cpu` 资源类别中运行。时间线未知、项目没有时间线或时间线没有片段时，调用让记录失败。时间线中有占位片段时，调用在写下记录之前被拒绝，并列出片段位置，例如 "Clips 3, 5 of timeline t1 are not ready yet."；`exportTimeline` 抛出同样的错误。服务方法 `exportTimeline(timeline, dir)` 为其他调用方把拼好的文件写入 `dir` 并返回其路径。
 
 工作流技能（例如 `@dv/workflow-skills` 的 `story-directing`）用智能体工具 `dv_timeline_create` 和 `dv_timeline_update` 排布渲染结果：每个 `clip` 输入指明一个渲染输出 `<record>#<output>`，渲染尚未完成的片段在完成前是占位片段。
 

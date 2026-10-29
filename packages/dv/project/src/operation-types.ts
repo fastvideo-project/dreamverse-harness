@@ -53,22 +53,6 @@ export interface OperationSpec {
   pendingInputRoles?: string[]
   /** The outputs, in the order `execute` returns them. */
   outputs: OperationOutput[]
-  /**
-   * Whether an agent tool call needs the user's agreement, given in the conversation. `never`: no agreement.
-   * `always`: the tool takes `user_approved`, and a call without `user_approved: true` is refused. The refusal tells
-   * the agent to ask the user in the conversation, the question in bold. Project adds the argument to the tool; the
-   * operation declares nothing for it, and it never reaches the record's params. Calls by the human and by the system
-   * are never refused.
-   */
-  confirm: 'never' | 'always'
-  /**
-   * What an agent call will do, for the refusal text. `registerOperation` refuses a spec whose `confirm` is
-   * not `never` and that has no `confirmSummary` (`invalid_params`).
-   * @param call - the parsed call, after the operation's `prepareToolCall`.
-   * @param state - the project's current state.
-   * @returns `text`: what the agent shows the user before asking (such as one line per run that the call starts).
-   */
-  confirmSummary?(call: OperationToolCall, state: ProjectState): { text: string }
   /** Whether identical inputs and parameters always give identical outputs; the runner then reuses earlier outputs. */
   deterministic: boolean
   /** The scheduler's concurrency class: `gpu` and `cpu` calls share a configured limit each; `none` is unlimited. */
@@ -98,7 +82,6 @@ export interface OperationSpec {
   toolParams?: ParameterSchemaSpec
   /**
    * Check or change an agent tool call before Project runs it, for example to turn a tool-only argument into an input.
-   * Project applies `confirm` after it.
    * @param call - the parsed call; throw to refuse it with the error's message.
    */
   prepareToolCall?(call: OperationToolCall): Promise<void>

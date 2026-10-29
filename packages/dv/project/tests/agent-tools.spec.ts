@@ -1,7 +1,7 @@
 /**
  * The agent tools of operations and the chat session bindings, through the `dvProject` service with the real DSH tool
  * registry: one `dv_*` tool per registered operation, calls that run as the agent on the session's project and turn,
- * confirmation, reads, held calls, input parsing, and the `dv:project` prompt section.
+ * reads, held calls, input parsing, and the `dv:project` prompt section.
  */
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -92,7 +92,7 @@ function operation(overrides: Partial<OperationSpec> & Pick<OperationSpec, 'name
   return {
     version: '1', description: 'A test operation.', params: { prompt: { type: 'string' } },
     inputs: { reference: { type: 'image', description: 'A reference.', many: true, versioned: true } }, outputs: [{ role: 'still', type: 'image' }],
-    confirm: 'never', deterministic: false, resource: 'none', summarize: record => `made from ${String(record.params['prompt'])}`,
+    deterministic: false, resource: 'none', summarize: record => `made from ${String(record.params['prompt'])}`,
     execute: context => Promise.resolve({ outputs: [context.importAsset(Buffer.from(`still ${String(context.params['prompt'])}`), { mime: 'image/png', name: 'still.png' })] }),
     ...overrides,
   }
@@ -228,45 +228,12 @@ describe('agent tools', () => {
     expect(fixture.project.getRecord(projectId, brandString<RecordId>(still.record)).status).toBe('done')
   })
 
-  it('refuses an always call without user_approved before any record, and runs it with the argument kept out of params', async () => {
-    const fixture = await start()
-    const projectId = await boundProject(fixture)
-    fixture.project.registerOperation(operation({
-      name: 'shot.approve', component: 'shot', confirm: 'always',
-      confirmSummary: call => ({ text: `1. ${String(call.request.params['prompt'])} (5 s)` }),
-    }))
-    const properties = Object.keys((fixture.context.tools.schemas().find(tool => tool.name === 'dv_shot_approve')?.parameters as { properties: object }).properties)
-    expect(properties).toContain('user_approved')
-    const before = fixture.project.listHistory({ project: projectId }).length
-    const refused = await fixture.call('dv_shot_approve', { reason: 'approve', prompt: 'kite' })
-    expect(refused.isError && refused.error.message).toBe([
-      'dv_shot_approve needs the user\'s agreement.', 'What it will do:', '1. kite (5 s)',
-      'Show this to the user and ask in the conversation, with the question in bold (for example **Run this now?**). '
-        + 'Wait for the user\'s answer, then call again with user_approved: true.',
-    ].join('\n'))
-    expect(fixture.project.listHistory({ project: projectId })).toHaveLength(before)
-    const approved = value(await fixture.call('dv_shot_approve', { reason: 'approve', prompt: 'kite', user_approved: true }))
-    expect(approved).toMatchObject({ status: 'done', params: { prompt: 'kite' } })
-    expect(fixture.project.getRecord(projectId, brandString<RecordId>(approved.record)).params).toEqual({ prompt: 'kite' })
-    // A human call through the run path is never refused.
-    const origin = { actor: 'user' as const, surface: 'canvas' as const, session: null, turn: null, tool_call: null, intent: 'approve' }
-    const human = await fixture.project.run({ ...origin, project: projectId, operation: 'shot.approve', params: { prompt: 'kite' }, inputs: [] })
-    expect(human.record?.status).toBe('done')
-  })
-
   it('records no turn for a call outside any turn', async () => {
     const fixture = await start()
     const projectId = await boundProject(fixture)
     fixture.project.registerOperation(operation({ name: 'asset.grab_still', component: 'asset' }))
     const grabbed = value(await fixture.call('dv_asset_grab_still', { reason: 'still', prompt: 'a' }))
     expect(fixture.project.getRecord(projectId, brandString<RecordId>(grabbed.record)).turn).toBeNull()
-  })
-
-  it('refuses to register an operation that asks for confirmation without a confirmSummary', async () => {
-    const fixture = await start()
-    expect(() => fixture.project.registerOperation(operation({ name: 'shot.approve', component: 'shot', confirm: 'always' })))
-      .toThrow(expect.objectContaining({ code: 'invalid_params' }))
-    expect(fixture.project.listOperations()).toEqual([])
   })
 
   it('gives the agent the dv:project prompt section: Project\'s rules, the same text for an unbound and a bound conversation', async () => {
@@ -282,7 +249,6 @@ describe('agent tools', () => {
       + 'state message, dv_proj_create or dv_proj_open names this conversation\'s project, do all work in it and never call '
       + 'dv_proj_create or dv_proj_open again. Changes of the project that your own tool results did not show reach you as '
       + 'DreamVerse project updates; dv_proj_state reads the whole project at any time.')
-    expect(unbound).toContain('ask in the conversation with the question in bold')
     expect(unbound).toContain('is a step of the project history at once; the user does not accept changes.')
     expect(unbound).toContain('dv_proj_redo goes forward one step. These moves add no step.')
     expect(unbound).toContain('A new change after a move discards the steps after the current one for good')
@@ -351,7 +317,7 @@ describe('agent tools', () => {
     fixture.project.registerOperation(operation({ name: 'shot.render', component: 'shot', inputs: {
       first_frame: { type: 'image', description: 'A frame.', required: true }, reference: { type: 'image', description: 'refs', many: true, versioned: true },
     } }))
-    fixture.project.registerOperation(operation({ name: 'shot.list', component: 'shot', inputs: {} }))
+    fixture.project.registerOperation(operation({ name: 'bible.create', component: 'bible', inputs: {} }))
     const creators: Record<string, RecordId> = {
       'test_location:l1@2': brandString<RecordId>('r-location'), 'test_location:dup@1': brandString<RecordId>('r1'), 'test_style:dup@1': brandString<RecordId>('r2'),
     }
@@ -380,7 +346,7 @@ describe('agent tools', () => {
     expect(() => parse('shot.render', { first_frame: ['a', 'b'] })).toThrow('takes one reference')
     expect(() => parse('shot.render', { first_frame: 1 })).toThrow('must be <asset>, <record>#<output>, or <id>@<version>')
     expect(() => parse('shot.render', { first_frame: 'a', other: 'b' })).toThrow('Unknown input role "other"')
-    expect(() => parse('shot.list', { first_frame: 'a' })).toThrow('roles: none')
+    expect(() => parse('bible.create', { first_frame: 'a' })).toThrow('roles: none')
     expect(() => parse('no.such', {})).toThrow(expect.objectContaining({ code: 'unknown_operation' }))
     // formatInputRef writes each reference form as the text parseInputs reads back.
     const inputs = parse('shot.render', { first_frame: 'r1#1', reference: ['a1', 'l1@2'] })

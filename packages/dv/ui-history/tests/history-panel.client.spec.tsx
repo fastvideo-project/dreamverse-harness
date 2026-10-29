@@ -51,11 +51,11 @@ const WIRE_OPERATIONS: WireOperation[] = [
   ...OPERATIONS.map(operation => operation.name === 'shot.render' ? { ...operation, label: { zh: '渲染镜头', en: 'Render shot' } } : operation),
   {
     name: 'timeline.clip_move', version: '2', description: 'Move a clip.', label: { zh: '移动片段', en: 'Move clip' }, inputs: {}, params: {}, outputs: [],
-    deterministic: false, resource: 'none', confirm: 'never',
+    deterministic: false, resource: 'none',
   },
   {
     name: 'cut.assemble', version: '1', description: 'Assemble a cut.', label: { zh: '拼接成片', en: 'Assemble cut' }, inputs: {}, params: {},
-    outputs: [], deterministic: false, resource: 'none', confirm: 'never',
+    outputs: [], deterministic: false, resource: 'none',
   },
 ]
 

@@ -155,7 +155,6 @@ function createOperation<K extends ReferenceKey>(spec: ReferenceSpec<K>, project
     outputs: [],
     deterministic: false,
     resource: 'none',
-    confirm: 'never',
     summarize: record => `${key} ${text(record.params['name'], text(record.params[key]))} created`,
     execute(context: OperationContext): Promise<OperationResult> {
       const id = text(context.params[key])
@@ -188,7 +187,6 @@ function updateOperation<K extends ReferenceKey>(spec: ReferenceSpec<K>): Operat
     outputs: [],
     deterministic: false,
     resource: 'none',
-    confirm: 'never',
     supersedes: (values: Record<string, unknown>, state: ProjectState): RecordId[] => {
       const current = latest(state, text(values[key]))
       return current === undefined ? [] : [current.created_by]

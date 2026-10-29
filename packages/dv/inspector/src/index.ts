@@ -161,7 +161,6 @@ export default class DvInspector extends Service {
       outputs: [],
       deterministic: false,
       resource: 'none',
-      confirm: 'never',
       readOnly: true,
       summarize: record => (record.report?.['unsupported'] === undefined
         ? `inspected: ${String(record.report?.['answer'] ?? '').slice(0, 80)}`
@@ -186,7 +185,6 @@ export default class DvInspector extends Service {
       outputs: [],
       deterministic: true,
       resource: 'cpu',
-      confirm: 'never',
       readOnly: true,
       summarize: record => `inspected ${record.inputs[0]?.resolved_asset?.slice(0, 8) ?? 'asset'}`,
       execute: async (context): Promise<OperationResult> => ({ outputs: [], report: await this.inspectAsset(inputAsset(context, 'asset')) }),

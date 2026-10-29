@@ -62,7 +62,6 @@ export interface WireOperation {
   deterministic: boolean
   /** The scheduler class: `none` for operations that wait in neither the CPU nor the GPU queue. */
   resource: OperationSpec['resource']
-  confirm: OperationSpec['confirm']
 }
 
 /**
@@ -137,7 +136,6 @@ export function toWireOperation(spec: OperationSpec): WireOperation {
     outputs: spec.outputs,
     deterministic: spec.deterministic,
     resource: spec.resource,
-    confirm: spec.confirm,
   }
 }
 

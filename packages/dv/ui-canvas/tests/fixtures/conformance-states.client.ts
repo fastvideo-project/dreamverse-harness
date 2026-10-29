@@ -16,7 +16,7 @@ const asset = (id: string, mime: string, createdBy: string | null, durationSec: 
 
 /** The operation declarations of the fixture project. */
 export const OPS: WireOperation[] = [{
-  name: 'shot.render', version: '1', description: '', deterministic: false, resource: 'gpu', confirm: 'never',
+  name: 'shot.render', version: '1', description: '', deterministic: false, resource: 'gpu',
   outputs: [{ role: 'video', type: 'video' }, { role: 'still', type: 'image' }], label: { zh: '渲染镜头', en: 'Render shot' }, params: {}, inputs: {},
 }]
 

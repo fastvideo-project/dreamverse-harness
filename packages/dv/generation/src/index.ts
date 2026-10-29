@@ -189,7 +189,7 @@ export function importOne(run: OperationContext,
  * @param spec - the declaration.
  * @returns a Cordis service class named `spec.service`. It registers the component and, with `dvModels.labelTasks`,
  *   the task labels; registers the operation while the catalog serves one of `spec.tasks`, with `deterministic: false`,
- *   `resource: 'gpu'`, `confirm: 'never'` and the spec's label; draws and reports the seed unless `spec.seed`
+ *   `resource: 'gpu'` and the spec's label; draws and reports the seed unless `spec.seed`
  *   is false; refuses a call before its record with every reason of `check` and a closing sentence, which for an
  *   unavailable model says that no change to the call helps; imports the outputs through `spec.toOutputs`; and
  *   implements `GenerationApi`.
@@ -284,7 +284,7 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
         name: spec.operation, component: spec.component, version: '1', label, description: spec.description,
         params: operationParams,
         inputs: spec.inputs, outputs: spec.outputs, ...toolParams === undefined ? {} : { toolParams },
-        deterministic: false, resource: 'gpu', confirm: 'never',
+        deterministic: false, resource: 'gpu',
         summarize: record => spec.summarize(record),
         prepareToolCall: async (call) => {
           spec.prepareToolCall?.(call)

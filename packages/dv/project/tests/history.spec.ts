@@ -152,7 +152,7 @@ describe('history', () => {
     let started = 0
     // A slow render that ends only when it is aborted.
     m.runner.registerOperation({
-      name: 'shot.render_ref2va', version: '1', component: 'shot', params: { shot: { type: 'integer' } }, confirm: 'never', inputs: {},
+      name: 'shot.render_ref2va', version: '1', component: 'shot', params: { shot: { type: 'integer' } }, inputs: {},
       outputs: [], description: 'A test render.', summarize: () => 'render', deterministic: false, resource: 'none',
       execute: async (context) => {
         started += 1
@@ -163,7 +163,7 @@ describe('history', () => {
       },
     })
     m.runner.registerOperation({
-      name: 'timeline.rename', version: '1', component: 'timeline', params: { value: { type: 'integer' } }, confirm: 'never', inputs: {},
+      name: 'timeline.rename', version: '1', component: 'timeline', params: { value: { type: 'integer' } }, inputs: {},
       outputs: [], description: 'A test edit.', summarize: () => 'edit', deterministic: false, resource: 'none',
       execute: () => Promise.resolve({ outputs: [] }),
     })

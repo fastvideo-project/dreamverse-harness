@@ -1,5 +1,5 @@
 ---
-description: "DreamVerse 的项目组件：dvProject 服务，保存每个项目的记录及其历史列表和当前位置，运行操作，计算状态和历史，把每个操作连同它的确认规则变成它的智能体工具，拥有 dv_proj_* 工具，提供 dv:project 规则段落，并把项目状态消息和项目更新消息追加到每个聊天会话的对话中。"
+description: "DreamVerse 的项目组件：dvProject 服务，保存每个项目的记录及其历史列表和当前位置，运行操作，计算状态和历史，把每个操作变成它的智能体工具，拥有 dv_proj_* 工具，提供 dv:project 规则段落，并把项目状态消息和项目更新消息追加到每个聊天会话的对话中。"
 kind: "package-reference"
 ---
 
@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-用项目目录和会话目录挂载插件。每个组件插件先用 `registerComponent` 注册自己的组件键，再注册归约函数和操作，`registerReducer` 和 `registerOperation` 拒绝未注册的键（`invalid_params`）；项目注册自己的键 `proj`，核心不保存组件列表。拥有引用种类的插件在注册组件键之后用 `registerReferenceKind({kind, component, assetsOf, createdBy, latest})` 注册它（第二个所有者得到 `kind_exists`，种类 `asset`、`record` 和 `version` 得到 `invalid_params`），并在 `ReferenceKinds` 中声明该种类；输入以 `<id>@<version>` 指向一个版本，`parseReference` 按唯一拥有该版本的种类解析一段引用文字，`listReferenceKinds` 列出各种类供智能体文字使用。ID 在各种类之间唯一：种类所有者的创建操作拒绝 `kindsWithId(state, id)` 列出的 ID，`latestVersion(state, kind, id)` 给出一个 ID 的最新版本。素材库加载时用 `registerAssetStore` 注册它的存储，聊天会话用 `bindSession` 绑定到项目。智能体调用前需要用户同意的操作把 `OperationSpec.confirm` 设为 `always`，并提供 `confirmSummary(call, state)`，它返回 `{text}`：这次调用要做什么；没有 `confirmSummary` 的这种 spec 会被 `registerOperation` 拒绝（`invalid_params`）。项目随后给该操作的工具加上仅工具参数 `user_approved`，拒绝不带该参数的智能体调用，此时不写任何记录；拒绝文字让智能体在对话中询问用户，问题用粗体。该参数不进入记录的 params，用户和系统的调用从不被拒绝。每个归约函数经 `Reducer.agentSummary` 把自己切片的字段加入项目摘要。操作在 `OperationSpec.pendingInputRoles` 中列出可以指向尚未完成的记录输出的输入角色：运行器立即记录并执行这样的调用，`resolved_asset` 为 null，生产记录完成后由记录的当前形式填入（时间线中等待渲染的片段使用它）。在 `execute` 中运行其他操作的操作在每个运行请求中传入 `started_by: {record, slot, lane?}`：发起这次调用的记录、调用方在自己的序列中给这次调用的位置（或 null），以及调用方的并行序列，例如一个变体；运行器把它复制到新记录上，从不读取它，没有该字段的记录不是由记录发起的。操作可以声明 `OperationSpec.label`，即 `{zh, en}`：视图为它显示的名称；Project 只保存它。
+用项目目录和会话目录挂载插件。每个组件插件先用 `registerComponent` 注册自己的组件键，再注册归约函数和操作，`registerReducer` 和 `registerOperation` 拒绝未注册的键（`invalid_params`）；项目注册自己的键 `proj`，核心不保存组件列表。拥有引用种类的插件在注册组件键之后用 `registerReferenceKind({kind, component, assetsOf, createdBy, latest})` 注册它（第二个所有者得到 `kind_exists`，种类 `asset`、`record` 和 `version` 得到 `invalid_params`），并在 `ReferenceKinds` 中声明该种类；输入以 `<id>@<version>` 指向一个版本，`parseReference` 按唯一拥有该版本的种类解析一段引用文字，`listReferenceKinds` 列出各种类供智能体文字使用。ID 在各种类之间唯一：种类所有者的创建操作拒绝 `kindsWithId(state, id)` 列出的 ID，`latestVersion(state, kind, id)` 给出一个 ID 的最新版本。素材库加载时用 `registerAssetStore` 注册它的存储，聊天会话用 `bindSession` 绑定到项目。每个归约函数经 `Reducer.agentSummary` 把自己切片的字段加入项目摘要。操作在 `OperationSpec.pendingInputRoles` 中列出可以指向尚未完成的记录输出的输入角色：运行器立即记录并执行这样的调用，`resolved_asset` 为 null，生产记录完成后由记录的当前形式填入（时间线中等待渲染的片段使用它）。在 `execute` 中运行其他操作的操作在每个运行请求中传入 `started_by: {record, slot, lane?}`：发起这次调用的记录、调用方在自己的序列中给这次调用的位置（或 null），以及调用方的并行序列，例如一个变体；运行器把它复制到新记录上，从不读取它，没有该字段的记录不是由记录发起的。操作可以声明 `OperationSpec.label`，即 `{zh, en}`：视图为它显示的名称；Project 只保存它。
 
 提示词以 `@[<label>](dv:<kind>/<id>)` 引用项目条目。两种引用语法是 [`src/grammar.ts`](src/grammar.ts) 中的字符串函数，它不导入任何宿主模块，因此浏览器通过入口 `@dv/project/grammar` 用内核自己的代码读写它们。`parsePromptCitations` 和 `citedAsset` 读取引用；`citedInput` 读取按角色引用调用输入的引用，例如 `dv:input/first_frame`；`citedElement` 读取其他引用的种类和 ID，`citationTarget` 读取任一引用 URI 的种类和 ID，`formatCitation` 把它们写回；`elementCitationUri` 按引用种类给出输入引用所属元素的引用 `dv:<kind>/<id>`。`formatCitation` 是引用的唯一写入函数：它在 ID 中编码 `(` 和 `)`，从不写入空标签或带换行的标签。`splitInputRef` 和 `formatInputSyntax` 只按语法读写输入引用文本（`<asset>`、`<record>#<output>`、`<id>@<version>`）。[`src/citations.ts`](src/citations.ts) 中的 `promptAssets` 和 `replacePromptCitations` 按调用读取这些引用。模型提供方插件用它们把每个引用换成它的模型的写法。
 
@@ -49,7 +49,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`src/index.ts` 中的服务委托给十一个私有模块：记录存储（唯一读写 `project.json`、`records.jsonl` 和 `line.json` 的代码）、运行器、调度器、历史、归约函数注册表、订阅、聊天会话（绑定、暂缓的工具调用）、智能体工具（每个操作一个 DSH 工具，带确认检查）、`dv_proj_*` 工具、智能体上下文（`dv:project` 提示词段落）和项目更新（项目状态消息和项目更新消息，在 `agent/pre-step` 加入；以及会话的智能体看到过的项目内容，由 `dvProjectSight` 会话投影从会话日志折叠得出）。每个项目的 `line.json` 存放 `{tip, at}`：`tip` 是最后一步，历史列表是 `tip` 的 `parents[0]` 祖先链，`at` 是当前位置。每个执行者的每次写入都把记录追加在 `at` 之后，并让它同时成为 `tip` 和 `at`，因此原来在 `at` 之后的步骤被丢弃：它们永久离开历史列表，运行器取消其中每个尚未结束的步骤（`error.code: 'discarded'`）。`undo(project)` 把 `at` 往回移一步（在第一条记录处为 `nothing_to_undo`）；`moveTo(project, to)` 把它移到历史列表中的那一步，可在 `at` 之前或之后（被丢弃的记录为 `invalid_params`）；`redo(project)` 把 `at` 往前移一步（在 `tip` 处为 `nothing_to_redo`）；`line(project)` 返回 `{tip, at}`。这些移动不写记录，并发出 `line` 事件。当前状态（`getState(project)`）折叠以 `at` 结尾的链。记录带有 `session`、`turn` 和 `tool_call`，作为指向 DSH 会话日志的链接：智能体工具在工具运行时读取轮次，即调用方智能体会话的 DSH 轮次编号，来自智能体循环注册的 `turnBoundary` 会话投影（不在轮次中或没有智能体时为 null）。`CONTRACTS.md` 列出每个模块的函数、规则、错误和测试。`listHistory(query)` 是唯一的历史查询：`dv_proj_history_list` 工具和 `@dv/api` 的 `POST /api/dv/history` 路由都调用它。它按从新到旧列出历史列表中的步骤，每项为 `{record, place}`，`place` 是相对 `at` 的 `before`、`current` 或 `after`；被丢弃的记录不列出，`listRecords(project)` 返回包括被丢弃记录在内的每条记录。它的筛选条件（`actor`、`component`、`operation`、`kind`、`status`、`session`、`turn`、`tool_call`、`records`、`before`）以“且”组合，`limit` 在筛选之后生效。
+`src/index.ts` 中的服务委托给十一个私有模块：记录存储（唯一读写 `project.json`、`records.jsonl` 和 `line.json` 的代码）、运行器、调度器、历史、归约函数注册表、订阅、聊天会话（绑定、暂缓的工具调用）、智能体工具（每个操作一个 DSH 工具）、`dv_proj_*` 工具、智能体上下文（`dv:project` 提示词段落）和项目更新（项目状态消息和项目更新消息，在 `agent/pre-step` 加入；以及会话的智能体看到过的项目内容，由 `dvProjectSight` 会话投影从会话日志折叠得出）。每个项目的 `line.json` 存放 `{tip, at}`：`tip` 是最后一步，历史列表是 `tip` 的 `parents[0]` 祖先链，`at` 是当前位置。每个执行者的每次写入都把记录追加在 `at` 之后，并让它同时成为 `tip` 和 `at`，因此原来在 `at` 之后的步骤被丢弃：它们永久离开历史列表，运行器取消其中每个尚未结束的步骤（`error.code: 'discarded'`）。`undo(project)` 把 `at` 往回移一步（在第一条记录处为 `nothing_to_undo`）；`moveTo(project, to)` 把它移到历史列表中的那一步，可在 `at` 之前或之后（被丢弃的记录为 `invalid_params`）；`redo(project)` 把 `at` 往前移一步（在 `tip` 处为 `nothing_to_redo`）；`line(project)` 返回 `{tip, at}`。这些移动不写记录，并发出 `line` 事件。当前状态（`getState(project)`）折叠以 `at` 结尾的链。记录带有 `session`、`turn` 和 `tool_call`，作为指向 DSH 会话日志的链接：智能体工具在工具运行时读取轮次，即调用方智能体会话的 DSH 轮次编号，来自智能体循环注册的 `turnBoundary` 会话投影（不在轮次中或没有智能体时为 null）。`CONTRACTS.md` 列出每个模块的函数、规则、错误和测试。`listHistory(query)` 是唯一的历史查询：`dv_proj_history_list` 工具和 `@dv/api` 的 `POST /api/dv/history` 路由都调用它。它按从新到旧列出历史列表中的步骤，每项为 `{record, place}`，`place` 是相对 `at` 的 `before`、`current` 或 `after`；被丢弃的记录不列出，`listRecords(project)` 返回包括被丢弃记录在内的每条记录。它的筛选条件（`actor`、`component`、`operation`、`kind`、`status`、`session`、`turn`、`tool_call`、`records`、`before`）以“且”组合，`limit` 在筛选之后生效。
 
 <a id="further-exploration"></a>
 ## 进一步探索
@@ -63,11 +63,11 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-挂载了 DSH `tools` 注册表时，每个已注册的操作以一个工具 `dv_<把点换成下划线的操作名>` 到达模型：操作的 `description`，后接资源提示（"Uses the GPU." 或 "Runs on the CPU."）以及只读操作（"A read that writes no record."）和确定性操作（"Repeating a call with the same inputs and params reuses the earlier result."）的说明；它的 `params` 加 `toolParams`，以及 `confirm: 'always'` 时加上的布尔参数 `user_approved`（"Set true only after the user agreed to this exact call in the conversation. …"）；还有共享参数 `reason`（记录的 intent）、`project_id`、`inputs`（按角色给出 `<asset>`、`<record>#<output>`，或已注册引用种类的版本 `<id>@<version>`，文字中列出这些种类；只用于有输入的操作）、`supersedes` 和 `based_on`（后两个只用于写记录的操作）。
+挂载了 DSH `tools` 注册表时，每个已注册的操作以一个工具 `dv_<把点换成下划线的操作名>` 到达模型：操作的 `description`，后接资源提示（"Uses the GPU." 或 "Runs on the CPU."）以及只读操作（"A read that writes no record."）和确定性操作（"Repeating a call with the same inputs and params reuses the earlier result."）的说明；它的 `params` 加 `toolParams`；还有共享参数 `reason`（记录的 intent）、`project_id`、`inputs`（按角色给出 `<asset>`、`<record>#<output>`，或已注册引用种类的版本 `<id>@<version>`，文字中列出这些种类；只用于有输入的操作）、`supersedes` 和 `based_on`（后两个只用于写记录的操作）。
 
 #### Token 影响
 
-共享参数给每个定义最多增加约 200 个 token，确认参数再加约 40 个；其余来自操作的描述和参数，每个组件的 README 给出其工具的总量。
+共享参数给每个定义最多增加约 200 个 token；其余来自操作的描述和参数，每个组件的 README 给出其工具的总量。
 
 #### KV Cache 影响
 
@@ -77,11 +77,11 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-一次调用返回一个文本块：`<status> <record>: <summary>`（只读操作不写记录，为 `<status>: <summary>`）、每个输出一行带素材 ID、媒体类型和 URL、调度的记录、参数和报告；设置了 `OperationSpec.omitParamsFromResult` 的操作（例如分镜计划组件的 `plan.create` 和 `plan.update`）不含参数，因为参数重复模型自己的工具调用。挂载了附件服务时，每个图片输出再跟一个图片块。失败或取消的记录返回带其消息的工具错误，被停止的记录返回 "dv_<name> was stopped before it finished."。需要用户同意却没带参数的调用返回工具错误："dv_<name> needs the user's agreement."，然后是 "What it will do:" 加 `confirmSummary` 的文字，以及指示：把这些给用户看，在对话中用粗体提问，得到用户回答后带 `user_approved: true` 再次调用。
+一次调用返回一个文本块：`<status> <record>: <summary>`（只读操作不写记录，为 `<status>: <summary>`）、每个输出一行带素材 ID、媒体类型和 URL、调度的记录、参数和报告；设置了 `OperationSpec.omitParamsFromResult` 的操作（例如分镜计划组件的 `plan.create` 和 `plan.update`）不含参数，因为参数重复模型自己的工具调用。挂载了附件服务时，每个图片输出再跟一个图片块。失败或取消的记录返回带其消息的工具错误，被停止的记录返回 "dv_<name> was stopped before it finished."。
 
 #### Token 影响
 
-每次调用约 50 到 200 个 token 的文本，另加图片块；确认拒绝再加上其摘要文字的长度。
+每次调用约 50 到 200 个 token 的文本，另加图片块。
 
 #### KV Cache 影响
 
@@ -105,7 +105,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-挂载了 DSH `systemPrompt` 服务时，每一步的系统提示词都带有 `dv:project` 段落，其中只有项目的规则：没有项目的对话用 `dv_proj_create` 开始，一旦项目状态消息、`dv_proj_create` 或 `dv_proj_open` 给出了本对话的项目，所有工作都留在该项目中；智能体自己的工具结果没有展示过的变化以 DreamVerse 项目更新到达，`dv_proj_state` 随时读取整个项目；智能体的每次调用和用户的每次编辑都立即成为项目历史中的一步，用户不需要接受修改；回滚调用 `dv_proj_undo`（一步，或 `to` 某一步），`dv_proj_redo` 往前移一步，这些移动不加一步，移动之后的新修改会永久丢弃后面的步骤，所以用户可能还需要它们时，智能体先询问；回滚从不用新编辑重建之前的状态；用项目摘要中的 ID 指称对象（记录、`<record>#<n>`、已注册引用种类的版本 `<id>@<version>`（规则列出这些种类）、素材，以及其他任何条目的 ID），用户用 `dv:` 提及指出对象，有歧义的指称要询问而不是猜；因需要用户同意而被拒绝的调用要给用户看，并在对话中用粗体提问；过期记录只在用户同意时重新渲染。该段落不含项目状态、选中项，也不含用户看不到的偏好。
+挂载了 DSH `systemPrompt` 服务时，每一步的系统提示词都带有 `dv:project` 段落，其中只有项目的规则：没有项目的对话用 `dv_proj_create` 开始，一旦项目状态消息、`dv_proj_create` 或 `dv_proj_open` 给出了本对话的项目，所有工作都留在该项目中；智能体自己的工具结果没有展示过的变化以 DreamVerse 项目更新到达，`dv_proj_state` 随时读取整个项目；智能体的每次调用和用户的每次编辑都立即成为项目历史中的一步，用户不需要接受修改；回滚调用 `dv_proj_undo`（一步，或 `to` 某一步），`dv_proj_redo` 往前移一步，这些移动不加一步，移动之后的新修改会永久丢弃后面的步骤，所以用户可能还需要它们时，智能体先询问；回滚从不用新编辑重建之前的状态；用项目摘要中的 ID 指称对象（记录、`<record>#<n>`、已注册引用种类的版本 `<id>@<version>`（规则列出这些种类）、素材，以及其他任何条目的 ID），用户用 `dv:` 提及指出对象，有歧义的指称要询问而不是猜；过期记录只在用户同意时重新渲染。该段落不含项目状态、选中项，也不含用户看不到的偏好。
 
 #### Token 影响
 

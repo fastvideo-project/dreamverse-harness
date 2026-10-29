@@ -117,7 +117,7 @@ function edit(
   execute: OperationSpec['execute'],
 ): OperationSpec {
   return {
-    inputs: {}, version: '2', ...spec, component: 'timeline', outputs: [], deterministic: false, resource: 'none', confirm: 'never',
+    inputs: {}, version: '2', ...spec, component: 'timeline', outputs: [], deterministic: false, resource: 'none',
     execute,
   }
 }

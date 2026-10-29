@@ -1,7 +1,6 @@
 /**
  * Tests of the operation runner: recorded runs, refusals before any write, failures, deterministic reuse, read-only
- * operations, runs of operations that ask for confirmation, the lock scope during execution, and the recovery of
- * records an earlier process left unfinished.
+ * operations, the lock scope during execution, and the recovery of records an earlier process left unfinished.
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -19,14 +18,14 @@ import type {
 } from '../src/types.ts'
 
 /**
- * An operation spec with test defaults: one optional `prompt` and `seed` parameter, the `reference` input role, no
- * confirmation, not deterministic, unlimited resource, and an execute function that creates nothing.
+ * An operation spec with test defaults: one optional `prompt` and `seed` parameter, the `reference` input role, not
+ * deterministic, unlimited resource, and an execute function that creates nothing.
  * @param overrides - the fields to set; `name` and `component` are required.
  * @returns the spec.
  */
 function operation(overrides: Partial<OperationSpec> & Pick<OperationSpec, 'name' | 'component'>): OperationSpec {
   return {
-    version: '1', params: { prompt: { type: 'string' }, seed: { type: 'integer' } }, confirm: 'never',
+    version: '1', params: { prompt: { type: 'string' }, seed: { type: 'integer' } },
     inputs: { reference: { type: 'image', description: 'A reference.', many: true } }, outputs: [], description: 'A test operation.',
     summarize: () => 'ran', deterministic: false, resource: 'none', execute: () => Promise.resolve({ outputs: [] }), ...overrides,
   }
@@ -307,19 +306,6 @@ describe('Runner', () => {
     expect(result).toEqual({ record: null, outputs: [], report: { caption: 'a red kite over a beach' } })
     expect(seen).toEqual([null])
     expect(files(m, project)).toBe(before)
-  })
-
-  it('runs an operation that asks for confirmation at once for every caller, holding no call', async () => {
-    const m = startModules()
-    const project = await createTestProject(m)
-    m.runner.registerOperation(operation({
-      name: 'shot.approve', component: 'shot', confirm: 'always', confirmSummary: () => ({ text: 'approve' }),
-    }))
-    // The agent's agreement is checked by the operation's tool; the run path itself never waits for it.
-    expect((await m.runner.run(request(project, 'shot.approve', agentOrigin()))).record?.status).toBe('done')
-    expect((await m.runner.run(request(project, 'shot.approve', userOrigin()))).record?.status).toBe('done')
-    expect(() => m.runner.registerOperation(operation({ name: 'shot.render_t2va', component: 'shot', confirm: 'always' })))
-      .toThrow(expect.objectContaining({ code: 'invalid_params' }))
   })
 
   it('registers an operation only after a plugin registers its component', () => {

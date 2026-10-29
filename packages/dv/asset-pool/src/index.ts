@@ -339,7 +339,6 @@ export default class DvAssetPool extends Service {
       outputs: [{ role: 'asset', type: 'any' }],
       deterministic: true,
       resource: 'none',
-      confirm: 'never',
       summarize: record => `imported ${text(record.params['name'], basename(text(record.params['path'], 'bytes')))}`,
       execute: async (context): Promise<OperationResult> => {
         const path = text(context.params['path'])
@@ -378,7 +377,6 @@ export default class DvAssetPool extends Service {
       outputs: [],
       deterministic: false,
       resource: 'none',
-      confirm: 'never',
       summarize: record => `${place ? 'placed' : 'took off'} ${String(record.inputs.length)} asset(s) ${place ? 'on' : 'from'} the canvas`,
       precondition: (request, state): Promise<void> => {
         const assets = request.inputs.flatMap(input => input.role === 'asset' && 'asset' in input.ref ? [input.ref.asset] : [])
@@ -456,7 +454,6 @@ export default class DvAssetPool extends Service {
       outputs: [{ role: 'still', type: 'image' }],
       deterministic: true,
       resource: 'cpu',
-      confirm: 'never',
       summarize: record => `still at ${String(stillAt(record.params['at']))}`,
       execute: async (context): Promise<OperationResult> => {
         const video = context.inputs.find(input => input.role === 'video')?.resolved_asset
@@ -487,7 +484,6 @@ export default class DvAssetPool extends Service {
       outputs: [{ role: 'segment', type: 'video' }],
       deterministic: true,
       resource: 'cpu',
-      confirm: 'never',
       summarize: record => `segment ${String(record.params['in_sec'])}–${String(record.params['out_sec'])} s`,
       precondition: (request): Promise<void> => {
         const inSec = Number(request.params['in_sec'])

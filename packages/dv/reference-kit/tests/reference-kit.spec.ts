@@ -41,7 +41,7 @@ function registerHand(project: Context['dvProject']): void {
   project.registerOperation({
     name: 'test_hand.create', component: 'test_hand', version: '1', description: 'Test hand create.',
     params: { id: { type: 'string', required: true, description: 'The ID.' } }, inputs: {},
-    outputs: [], deterministic: false, resource: 'none', confirm: 'never', summarize: () => 'test hand created',
+    outputs: [], deterministic: false, resource: 'none', summarize: () => 'test hand created',
     execute(context) {
       const used = project.kindsWithId(context.state, String(context.params['id']))
       if (used.length > 0) throw new Error(`The ID already names a ${used.join(', ')}.`)
@@ -94,7 +94,7 @@ describe('defineReference', () => {
     ctx.dvProject.registerOperation({
       name: 'test_use.render', component: 'test_use', version: '1', description: 'Test render.', params: {},
       inputs: { reference: { type: 'image', many: true, versioned: true, description: 'References.' } },
-      outputs: [], deterministic: false, resource: 'none', confirm: 'never', summarize: () => 'rendered',
+      outputs: [], deterministic: false, resource: 'none', summarize: () => 'rendered',
       execute: () => Promise.resolve({ outputs: [] }),
     })
     const ref = { test_ref: 'r1', version: 1 }

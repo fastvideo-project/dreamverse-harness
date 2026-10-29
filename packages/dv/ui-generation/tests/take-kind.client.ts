@@ -29,7 +29,7 @@ export const testTake = defineGenerationUi({
 /** The `clip.extend` declaration: no label and no reference input. */
 export const CLIP_EXTEND: WireOperation = {
   name: 'clip.extend', version: '1', description: 'Extend a clip.', inputs: {}, params: { prompt: { type: 'string', required: true } },
-  outputs: [{ role: 'video', type: 'video' }], deterministic: false, resource: 'gpu', confirm: 'never',
+  outputs: [{ role: 'video', type: 'video' }], deterministic: false, resource: 'gpu',
 }
 
 /**

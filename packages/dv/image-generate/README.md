@@ -63,7 +63,7 @@ The declaration's `toRequest` trims the prompt, refuses an empty prompt, and par
 <a id="further-exploration"></a>
 ## Further Exploration
 
-- [`@dv/generation`](../generation/README.md): `defineGeneration`, the shared params, the refusals and the confirmation text.
+- [`@dv/generation`](../generation/README.md): `defineGeneration`, the shared params and the refusals.
 - [`@dv/models`](../models/README.md): the model catalog, the keys and `dv_models_get`.
 - [`@dv/project`](../project/README.md): records and agent tools.
 - [`@dv/sglang-diffusion`](../sglang-diffusion/README.md): the provider plugin of the `t2i` model `qwen-image-2.1-turbo`.

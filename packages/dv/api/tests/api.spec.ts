@@ -200,7 +200,7 @@ describe('dvApi', () => {
     fixture.project.registerComponent('inspect')
     fixture.project.registerOperation({
       name: SLOW, component: 'inspect', version: '1', description: 'Slow.', label: { zh: '慢操作', en: 'Slow step' }, params: {}, inputs: {},
-      outputs: [], confirm: 'never', deterministic: false, resource: 'none', summarize: () => 'slow', execute: () => Promise.resolve({ outputs: [] }),
+      outputs: [], deterministic: false, resource: 'none', summarize: () => 'slow', execute: () => Promise.resolve({ outputs: [] }),
     })
     const operations = fixture.handlers.listOperations()
     expect(operations.find(operation => operation.name === SLOW)?.label).toEqual({ zh: '慢操作', en: 'Slow step' })
@@ -244,7 +244,7 @@ describe('dvApi', () => {
     const held = new Promise<void>((resolve) => { release = resolve })
     const slow: OperationSpec = {
       name: SLOW, component: 'inspect', version: '1', description: 'Slow.', params: {}, inputs: {}, outputs: [{ role: 'note', type: 'text' }],
-      confirm: 'never', deterministic: false, resource: 'none', summarize: () => 'slow',
+      deterministic: false, resource: 'none', summarize: () => 'slow',
       execute: async (context) => { await held; return { outputs: [context.importAsset(Buffer.from('T'), { mime: 'text/plain', name: 't.txt' })] } },
     }
     fixture.project.registerComponent('inspect')
@@ -572,7 +572,7 @@ describe('dvApi', () => {
     await write('character.update', { character: 'c1' }, third)
     fixture.project.registerComponent('inspect')
     fixture.project.registerOperation({
-      name: LOOK, component: 'inspect', version: '1', description: 'Look.', params: {}, outputs: [], confirm: 'never', deterministic: false,
+      name: LOOK, component: 'inspect', version: '1', description: 'Look.', params: {}, outputs: [], deterministic: false,
       inputs: { reference: { type: 'image', many: true, versioned: true, description: 'References.' } }, resource: 'none',
       summarize: () => 'looked', execute: () => Promise.resolve({ outputs: [] }),
     })
@@ -588,7 +588,7 @@ describe('dvApi', () => {
     fixture.project.registerComponent('inspect')
     fixture.project.registerOperation({
       name: MAKE, component: 'inspect', version: '1', description: 'Make.', params: {}, inputs: {}, outputs: [{ role: 'image', type: 'image' }],
-      confirm: 'never', deterministic: false, resource: 'none', summarize: () => 'made',
+      deterministic: false, resource: 'none', summarize: () => 'made',
       execute: context => Promise.resolve({ outputs: [context.importAsset(Buffer.from('G'), { mime: 'image/png', name: 'g.png' })] }),
     })
     const made = await fixture.handlers.runOperation({ project: projectId, operation: MAKE, surface: 'canvas' })

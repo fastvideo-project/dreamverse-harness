@@ -17,8 +17,7 @@
  *
  * Agent tools. While the DSH `tools` registry is mounted, every registered operation also has its agent tool
  * `dv_<operation name with _>`, built by the `agent-tools` module. A tool call runs the operation as the agent on the
- * project its chat session is bound to (`bindSession`), in the session's DSH turn; an operation whose `confirm` asks
- * for the user's agreement refuses a call without it (`OperationSpec.confirm`). Project also registers its own
+ * project its chat session is bound to (`bindSession`), in the session's DSH turn. Project also registers its own
  * `dv_proj_*` tools (the `proj-tools` module); they bind the session to its project and return the project summary,
  * to which each component's reducer adds its fields through `Reducer.agentSummary`. While the DSH `systemPrompt`
  * service is mounted, Project's rules reach the agent as the `dv:project` prompt section (the `agent-context` module),
@@ -405,8 +404,7 @@ export default class DvProject extends Service {
    * component calls it from its plugin inside `ctx.effect` and returns the disposer.
    * @param spec - the operation.
    * @returns a function that removes the operation and its tool. Throws `operation_exists`, or `invalid_params` for an
-   *   unregistered component key, a name that does not start with `<component>.`, or a `confirm` other than `never`
-   *   without `confirmSummary`.
+   *   unregistered component key or a name that does not start with `<component>.`.
    */
   registerOperation(spec: OperationSpec): () => void {
     const remove = this.runner.registerOperation(spec)

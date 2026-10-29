@@ -102,7 +102,7 @@ async function candidates(sources: readonly MentionSource[]) {
  * @returns the declaration.
  */
 const declared = (name: string, zh: string, en: string): WireOperation => ({
-  name, version: '1', description: name, label: { zh, en }, inputs: {}, params: {}, outputs: [], deterministic: false, resource: 'none', confirm: 'never',
+  name, version: '1', description: name, label: { zh, en }, inputs: {}, params: {}, outputs: [], deterministic: false, resource: 'none',
 })
 
 describe('the style plugin', () => {

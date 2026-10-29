@@ -11,12 +11,12 @@ import { addToolNames, registerOperationRows } from '../src/client/tool-labels.t
 /** A workflow operation that declares its label and has no `DV_TOOL_LABELS` entry. */
 const ASSEMBLE: WireOperation = {
   name: 'cut.assemble', version: '1', description: 'Assemble a cut.', label: { zh: '拼接成片', en: 'Assemble cut' },
-  inputs: {}, params: {}, outputs: [], deterministic: false, resource: 'none', confirm: 'always',
+  inputs: {}, params: {}, outputs: [], deterministic: false, resource: 'none',
 }
 /** An operation without a label or a `DV_TOOL_LABELS` entry. */
 const PREVIEW: WireOperation = {
   name: 'cut.preview', version: '1', description: 'Preview a cut.', inputs: {}, params: {}, outputs: [], deterministic: true,
-  resource: 'none', confirm: 'never',
+  resource: 'none',
 }
 
 /** The props of a tool row that the test passes. */

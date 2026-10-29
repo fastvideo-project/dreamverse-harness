@@ -83,7 +83,7 @@ function still(overrides: Partial<OperationSpec> = {}): OperationSpec {
   return {
     name: 'asset.grab_still', component: 'asset', version: '1', description: 'A test operation.', params: { prompt: { type: 'string' } },
     inputs: { reference: { type: 'image', description: 'A reference.' } }, outputs: [{ role: 'still', type: 'image' }],
-    confirm: 'never', deterministic: false, resource: 'none', summarize: record => `made from ${String(record.params['prompt'])}`,
+    deterministic: false, resource: 'none', summarize: record => `made from ${String(record.params['prompt'])}`,
     execute: context => Promise.resolve({ outputs: [context.importAsset(Buffer.from(`still ${String(context.params['prompt'])}`), { mime: 'image/png', name: 'still.png' })] }),
     ...overrides,
   }

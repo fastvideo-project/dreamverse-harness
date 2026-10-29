@@ -122,7 +122,7 @@ The entry reaches the model only through tool results, which are appended to the
 
 - **Served models are fixed in code**: `SERVED` in `src/index.ts` lists the models the plugin can serve; another diffusion model needs an entry there, not only a config change.
 - **The served-model check reads the start-up name**: `POST /update_weights_from_disk` changes the weights of a running server, and `GET /v1/models` keeps the name it started with, so `facts()` does not see that change.
-- **Three model-list reads per agent call**: `facts()` reads `GET /v1/models` on every call, and an agent call of `dv_image_generate` calls it three times: in the check before the agreement, in the check before the record, and before the render.
+- **Three model-list reads per agent call**: `facts()` reads `GET /v1/models` on every call, and an agent call of `dv_image_generate` calls it three times: in the check of `prepareToolCall`, in the check before the record, and before the render.
 - **The first call at a size is slower**: the server warms up per image size, so the first call at each size, and the first call after the server sits idle, takes longer.
 
 <a id="dev-note"></a>

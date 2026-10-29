@@ -122,7 +122,7 @@ The server at <baseUrl> answered POST /v1/images/generations without a PNG image
 
 - **所服务的模型固定在代码中**：`src/index.ts` 中的 `SERVED` 列出插件能服务的模型；另一个 diffusion 模型需要在那里加一项，不能只改配置。
 - **所服务模型检查读取启动时的名称**：`POST /update_weights_from_disk` 改变运行中服务器的权重，而 `GET /v1/models` 保留启动时的名称，所以 `facts()` 看不到这一变化。
-- **每次智能体调用读三次模型列表**：`facts()` 每次调用都读取 `GET /v1/models`，而 `dv_image_generate` 的一次智能体调用会调用它三次：同意之前的检查、写记录之前的检查，以及渲染之前。
+- **每次智能体调用读三次模型列表**：`facts()` 每次调用都读取 `GET /v1/models`，而 `dv_image_generate` 的一次智能体调用会调用它三次：`prepareToolCall` 中的检查、写记录之前的检查，以及渲染之前。
 - **某个尺寸的第一次调用更慢**：服务器按图片尺寸预热，所以每个尺寸的第一次调用，以及服务器空闲之后的第一次调用，耗时更长。
 
 <a id="dev-note"></a>

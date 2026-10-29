@@ -63,7 +63,7 @@ kind: "package-reference"
 <a id="further-exploration"></a>
 ## 进一步探索
 
-- [`@dv/generation`](../generation/README.zh.md)：`defineGeneration`、共享参数、拒绝和确认文本。
+- [`@dv/generation`](../generation/README.zh.md)：`defineGeneration`、共享参数和拒绝。
 - [`@dv/models`](../models/README.zh.md)：模型目录、键和 `dv_models_get`。
 - [`@dv/project`](../project/README.zh.md)：记录和智能体工具。
 - [`@dv/sglang-diffusion`](../sglang-diffusion/README.zh.md)：`t2i` 模型 `qwen-image-2.1-turbo` 的提供方插件。

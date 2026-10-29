@@ -19,7 +19,7 @@ const entry = (fields: Partial<ProjectRecord> & { id: string }, place: HistoryEn
  * @returns the declaration.
  */
 const declared = (name: string, zh: string, en: string): WireOperation => ({
-  name, version: '1', description: name, label: { zh, en }, inputs: {}, params: {}, outputs: [], deterministic: false, resource: 'none', confirm: 'never',
+  name, version: '1', description: name, label: { zh, en }, inputs: {}, params: {}, outputs: [], deterministic: false, resource: 'none',
 })
 
 /** The labelled operations that the label tests name. */
@@ -108,7 +108,7 @@ describe('operation labels', () => {
   it('labels an action by the label of its operation on the wire, else by its tool label, and an unknown one by its name', () => {
     const assemble: WireOperation = {
       name: 'cut.assemble', version: '1', description: 'Assemble a cut.', label: { zh: '拼接成片', en: 'Assemble cut' },
-      inputs: {}, params: {}, outputs: [], deterministic: false, resource: 'none', confirm: 'never',
+      inputs: {}, params: {}, outputs: [], deterministic: false, resource: 'none',
     }
     const operations = [assemble]
     expect(actionLabel(record({ id: 's', operation: 'cut.assemble' }), labels({ operations }))).toEqual(['拼接成片', 'Assemble cut'])

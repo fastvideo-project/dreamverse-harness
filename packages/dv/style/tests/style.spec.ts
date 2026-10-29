@@ -80,7 +80,7 @@ async function start(): Promise<Fixture> {
   ctx.dvProject.registerOperation({
     name: 'shot.render', component: 'shot', version: '1', description: 'Test render.', params: {},
     inputs: { reference: { type: 'image', many: true, versioned: true, description: 'References.' } },
-    outputs: [], deterministic: false, resource: 'none', confirm: 'never', summarize: () => 'rendered',
+    outputs: [], deterministic: false, resource: 'none', summarize: () => 'rendered',
     execute: () => Promise.resolve({ outputs: [] }),
   })
   const project = (await ctx.dvProject.createProject('style', HUMAN)).id
@@ -120,7 +120,7 @@ function registerTestProp(project: Context['dvProject']): void {
   project.registerOperation({
     name: 'test_prop.create', component: 'test_prop', version: '1', description: 'Test prop create.',
     params: { id: { type: 'string', required: true, description: 'The ID.' } }, inputs: {},
-    outputs: [], deterministic: false, resource: 'none', confirm: 'never', summarize: () => 'test prop created',
+    outputs: [], deterministic: false, resource: 'none', summarize: () => 'test prop created',
     execute(context) {
       const used = project.kindsWithId(context.state, String(context.params['id']))
       if (used.length > 0) throw new Error(`The ID already names a ${used.join(', ')}.`)

@@ -138,7 +138,7 @@ describe('timeline.export', () => {
     fixture.ctx.dvProject.registerComponent('shot')
     fixture.ctx.dvProject.registerOperation({
       name: 'shot.render', component: 'shot', version: '1', description: 'stand-in', params: {}, inputs: {},
-      outputs: [{ role: 'video', type: 'video' }], confirm: 'never', deterministic: false, resource: 'none', summarize: () => 'stand-in',
+      outputs: [{ role: 'video', type: 'video' }], deterministic: false, resource: 'none', summarize: () => 'stand-in',
       execute: async (context) => {
         await held
         return { outputs: [context.importAsset(Buffer.from('take'), { mime: 'video/mp4', name: 'take.mp4' })] }

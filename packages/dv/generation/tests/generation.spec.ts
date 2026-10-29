@@ -220,7 +220,7 @@ describe('defineGeneration', () => {
     const remove = ctx.dvModels.register(fixture.model.entry('ref2v'))
     expect(fixture.spec()).toMatchObject({
       component: 'probe', version: '1', label: { zh: '生成探针', en: 'Generate a probe' }, outputs: [{ role: 'clip', type: 'video' }],
-      deterministic: false, resource: 'gpu', confirm: 'never', toolParams: { continue_from: { type: 'string' } },
+      deterministic: false, resource: 'gpu', toolParams: { continue_from: { type: 'string' } },
     })
     // The key and the prompt come first and the seed and extra last; the declaration restated the prompt.
     const params = fixture.spec()?.params ?? {}
@@ -367,7 +367,7 @@ describe('defineGeneration', () => {
     const fixture = await start(true, 'DvPlainGenerate')
     const { ctx, project } = fixture
     const spec = ctx.dvProject.listOperations().find(operation => operation.name === 'plain.generate')
-    expect(spec).toMatchObject({ confirm: 'never', inputs: {} })
+    expect(spec).toMatchObject({ inputs: {} })
     expect(spec).not.toHaveProperty('toolParams')
     // The shared params as the model reads them, without a seed.
     expect(Object.keys(spec?.params ?? {})).toEqual(['modality', 'task', 'provider', 'model', 'prompt', 'extra'])

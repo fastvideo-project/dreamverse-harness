@@ -130,7 +130,7 @@ describe('dvAudioGenerate', () => {
   it('registers audio.generate and dv_audio_generate while the catalog holds a t2a model, and removes both on disposal', async () => {
     const fixture = await start()
     expect(audioSpec(fixture)).toMatchObject({
-      component: 'audio', label: { zh: '生成音频', en: 'Generate audio' }, resource: 'gpu', confirm: 'never', deterministic: false,
+      component: 'audio', label: { zh: '生成音频', en: 'Generate audio' }, resource: 'gpu', deterministic: false,
       inputs: {}, outputs: [{ role: 'audio', type: 'audio' }],
     })
     const tool = fixture.ctx.tools.schemas().find(schema => schema.name === 'dv_audio_generate')

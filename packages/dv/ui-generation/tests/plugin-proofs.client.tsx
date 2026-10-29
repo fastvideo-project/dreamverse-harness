@@ -39,7 +39,7 @@ export interface Primitive {
  */
 export function generationOperation(name: string, type: string, label: { zh: string; en: string }): WireOperation {
   return {
-    name, version: '1', description: '', label, deterministic: false, resource: 'gpu', confirm: 'never',
+    name, version: '1', description: '', label, deterministic: false, resource: 'gpu',
     inputs: { reference: { type: 'image', description: 'references', many: true, versioned: true } },
     params: { prompt: { type: 'string', required: true, description: 'What to make.' }, seed: { type: 'integer', description: 'Seed.' } },
     outputs: [{ role: type, type }],
