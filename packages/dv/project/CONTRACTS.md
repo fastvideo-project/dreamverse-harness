@@ -231,7 +231,7 @@ Invariants: never more than `limits.gpu` scheduled `gpu` records and `limits.cpu
 2. takes the session's project, else fails with "This conversation has no project yet: call dv_proj_create first.";
 3. builds the origin: actor `agent`, surface `chat`, the session, `turnOf(ctx, exec)`, the call ID, and the `reason` (empty → the operation name) as the intent;
 4. reads the project's current state and parses `inputs` with `parseInputs`;
-5. builds the run request: params are the arguments without the shared and tool-only ones; `based_on` and `supersedes` from the arguments;
+5. builds the run request: params are the arguments without the shared and tool-only ones, and an argument outside `spec.params` fails with `invalid_params` ("<tool> has no argument <names>.") before anything is written; `based_on` and `supersedes` from the arguments;
 6. calls `spec.prepareToolCall` with `{args, request, state, exec}`, which may refuse the call before any record or change the request's params and inputs;
 7. schedules the call (`after: []`) when an input outside the operation's `pendingInputRoles` names an unfinished record, then runs it;
 8. returns `{record, status, summary, outputs [{role, asset_id, mime, url}], scheduled, params, report?, images?}`; a read returns `record: ''`, the summary `<tool> answered` and its report; a `failed` or `cancelled` record is a tool error (`stopped` → "<tool> was stopped before it finished.", else the failure message). Model-visible text names the tool (`toolNameOf(spec)`), never the operation. `formatToolResult` (internal) writes the value as one text block, then one image block per image attachment; the text block has the `params:` line unless `spec.omitParamsFromResult` is true.
@@ -321,7 +321,7 @@ Each test file builds modules with `startModules()` and projects with `createTes
 - `records no turn for a call outside any turn`: with `lastTurn: 0`, the record's `turn` is null.
 - A read answers with its report and writes nothing; without an attachment service a result has no images.
 - `formats a result as text plus image blocks, with its params unless the operation omits them`: the exact text block with the `params:` line, and without it for `omitParamsFromResult: true`.
-- `prepareToolCall` changes the inputs, tool-only arguments stay out of params, and a call behind an unfinished producer is scheduled.
+- `prepareToolCall` changes the inputs, tool-only arguments stay out of params, an undeclared argument such as `project_id` is refused, and a call behind an unfinished producer is scheduled.
 - `gives the agent the dv:project prompt section: Project's rules, the same text for an unbound and a bound conversation` (R): with a `systemPrompt` service mounted, the section holds the rules (the exact binding rule, the step, undo, redo and discard rules) and is the same text before the session is bound, after, and after a record is written.
 - `names the registered reference kinds in the naming rule of the dv:project prompt section`: without a kind the rule names no `<id>@<version>`; with `test_location` and `test_style` it reads "a test_location or test_style version as <id>@<version>", and after the removal of `test_location` only "a test_style version".
 - Held work delays a session's calls until it settles, even when it fails.

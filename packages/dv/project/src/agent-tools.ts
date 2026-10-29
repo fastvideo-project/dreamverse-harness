@@ -371,6 +371,9 @@ export class AgentTools {
     const state = this.deps.currentState(project)
     const toolOnly = new Set<string>([...SHARED_ARGS, ...Object.keys(spec.toolParams ?? {})])
     const params = Object.fromEntries(Object.entries(args).filter(([key]) => !toolOnly.has(key)))
+    // The registry accepts undeclared arguments; one stored in params would end deterministic reuse.
+    const undeclared = Object.keys(params).filter(key => !Object.hasOwn(spec.params, key))
+    if (undeclared.length > 0) throw new ProjectError('invalid_params', `${toolNameOf(spec)} has no argument ${undeclared.join(', ')}.`)
     const basedOn = optionalString(args['based_on'])
     const supersedes = args['supersedes']
     const request: RunRequest = {

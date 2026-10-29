@@ -140,6 +140,15 @@ describe('agent tools', () => {
     expect(fixture.project.listOperations()).toEqual([])
   })
 
+  it('refuses a call with an argument the tool does not declare, such as a project, before any record', async () => {
+    const fixture = await start()
+    fixture.project.registerOperation(operation({ name: 'asset.grab_still', component: 'asset' }))
+    const projectId = await boundProject(fixture)
+    const stray = await fixture.call('dv_asset_grab_still', { reason: 'elsewhere', prompt: 'x', project_id: 'other' })
+    expect(stray.isError && stray.error.message).toBe('dv_asset_grab_still has no argument project_id.')
+    expect(fixture.project.listHistory({ project: projectId, operation: 'asset.grab_still' })).toEqual([])
+  })
+
   it('runs a call as the agent on its conversation\'s project and turn, and describes the record with URLs and images', async () => {
     const fixture = await start()
     fixture.project.registerOperation(operation({ name: 'asset.grab_still', component: 'asset' }))

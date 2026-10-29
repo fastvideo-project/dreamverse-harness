@@ -63,7 +63,7 @@ The service in `src/index.ts` delegates to eleven private modules: the record st
 
 #### What the model sees
 
-While the DSH `tools` registry is mounted, every registered operation reaches the model as one tool, `dv_<operation name with _>`: the operation's `description` followed by the resource hint ("Uses the GPU." or "Runs on the CPU.") and a note for reads ("A read that writes no record.") and deterministic operations ("Repeating a call with the same inputs and params reuses the earlier result."); its `params` plus `toolParams`; and the shared arguments `reason` (the record's intent), `inputs` (`<asset>`, `<record>#<output>`, or `<id>@<version>` for a version of a registered reference kind, which the text names, by role; only for operations with inputs), `supersedes` and `based_on` (the last two only for operations that write a record).
+While the DSH `tools` registry is mounted, every registered operation reaches the model as one tool, `dv_<operation name with _>`: the operation's `description` followed by the resource hint ("Uses the GPU." or "Runs on the CPU.") and a note for reads ("A read that writes no record.") and deterministic operations ("Repeating a call with the same inputs and params reuses the earlier result."); its `params` plus `toolParams`; and the shared arguments `reason` (the record's intent), `inputs` (`<asset>`, `<record>#<output>`, or `<id>@<version>` for a version of a registered reference kind, which the text names, by role; only for operations with inputs), `supersedes` and `based_on` (the last two only for operations that write a record). A call with any other argument fails with "<tool> has no argument <names>." and writes nothing.
 
 #### Token effect
 
