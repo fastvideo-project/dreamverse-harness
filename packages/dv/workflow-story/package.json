@@ -15,6 +15,7 @@
     "@dv/project": "workspace:*",
     "@dv/shot-plan": "workspace:*",
     "@dv/shot-render": "workspace:*",
+    "@dv/text-node": "workspace:*",
     "@dv/timeline": "workspace:*",
     "@dv/workflow-kit": "workspace:*"
   },

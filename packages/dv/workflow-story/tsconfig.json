@@ -33,6 +33,9 @@
       "path": "../shot-render"
     },
     {
+      "path": "../text-node"
+    },
+    {
       "path": "../timeline"
     },
     {

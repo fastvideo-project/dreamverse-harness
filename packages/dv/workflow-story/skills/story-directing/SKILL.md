@@ -1,27 +1,47 @@
 ---
 name: story-directing
-description: "The order of calls from planned shots to rendered shots on the plan's timeline: create or update the plan, preview it, ask the user in bold, approve it, and wait."
-whenToUse: "The shots of a story are planned and must be rendered, or the user wants a story that a plan made extended, shortened or changed."
+description: "The order of calls from a story to rendered shots on a timeline: write the theme, the beats and the storyboard as text nodes, wait for the user to agree, render each shot with dv_shot_render, wait, and lay the takes on a timeline."
+whenToUse: "The user wants a story or a multi-shot video made, or wants a story that is on a timeline extended, shortened or changed."
 ---
 
 # Story directing
 
-The order of calls from planned shots to rendered shots on the plan's timeline: create the plan, preview it, ask the user, approve it, and wait. Write each shot's model, task, inputs and prompt first. The project block in your system prompt is the current state; read it before every call.
+The order of calls from a story to rendered shots on a timeline: write the theme, the beats and the storyboard as text nodes, wait for the user to agree, render each shot, wait, and lay the takes on a timeline. The project block in your system prompt is the current state; read it before every call, and pass `reason` on every call.
 
-## 1. Create the plan, preview it, and ask
+## 1. Write the story as text nodes
 
-1. `dv_plan_create` with `title`, `references` when shots share them, and `shots` (`modality`, `task`, `provider`, `model`, `prompt`, `duration_sec`, and per shot `references` or `continue_previous` when needed). The call needs no agreement; it records version 1. Its report names the plan ID (such as `p1`) and the version.
-2. `dv_story_preview` with `plan`. Its report gives one line per shot (`shots`), the number of shots that render (`rendered`), and why a render would be refused (`problems`). When `problems` is not empty, fix the named shots with `dv_plan_update` and preview again.
-3. Reply with a table (shot, model and task, duration, continues from the previous shot or not, one line of action, camera). End the turn with one question in bold, such as **Render these 3 shots?** Do not call `dv_story_approve` in this turn.
-4. When the user agrees in the next message: `dv_story_approve` with `plan`, the preview's `version` and `user_approved: true`, then `dv_proj_wait`, then `dv_proj_state`. The approval renders every shot with its model and task and lays every shot on the plan's timeline.
-5. Report each finished shot with its last frame (you receive it as an image) and its link. Inside an approved plan, never ask again.
+Write each stage with `dv_textnode_write` (`path`, `title`, `body`, `base_version: 0`). Before you write a stage, call `dv_textnode_read` with the `path` of the stage before it and build from the text that it returns, since the user can have edited it. Pass that stage in `from`. Every `dv_textnode_edit` passes `base_version` = the newest `version` that you read or wrote.
 
-If the user changes the plan before agreeing, call `dv_plan_update` with `plan` and the changed shots, then `dv_story_preview`, show the changed plan, and ask again.
+1. `story/theme.md`: the premise, the characters, the location and the look, in a few lines.
+2. `story/beats.md` with `from: [story/theme.md]`: the story as numbered beats, one line each.
+3. `story/storyboard.md` with `from: [story/beats.md]`: a table of the shots (shot, model and task, duration, continues from the previous shot or not, one line of action, camera), and under it each shot's model key (`modality`, `task`, `provider`, `model`), its prompt and its `duration_sec`.
 
-## 2. Extend, shorten or change the story
+If `dv_models_get` is in your tool list, call it for the model and task, and use only the durations and aspect ratios it lists. When the project already has a story, use another folder, such as `story-2/`.
 
-One story is one plan. To extend, shorten or change it, also after it was approved, update that plan; create a new plan with `dv_plan_create` only for a separate story. The user asks for this about a timeline that a plan made, with words such as "make the story longer", "add a few more shots" or "change the story".
+## 2. Wait for the user to agree
 
-1. While the plan's renders are pending or running, call `dv_proj_wait` first. Then `dv_plan_update` with `plan` = the plan ID from the project block and the complete next version: every shot in order, the unchanged shots copied exactly (same `modality`, `task`, `provider`, `model`, prompt, duration, references, `continue_previous` and seed) so their takes are kept. A shot added after six shots is shot 7.
-2. `dv_story_preview` with `plan`. Show only the new or changed shots (the preview's lines name the shots that keep their takes), and ask in bold.
-3. When the user agrees: `dv_story_approve` with `plan`, the preview's `version` and `user_approved: true`, then `dv_proj_wait`. Only new or changed shots render, and a shot with `continue_previous` after a rendered shot renders too; the plan's timeline gets every shot in order. Never lay a plan's shots onto a timeline by hand.
+Show the storyboard in a short summary and ask the user to read the text nodes on the canvas, change them there or tell you what to change. End the turn with one question in bold, such as **Render these 3 shots?** Generate nothing before the user agrees.
+
+When the user asks for changes, change the text node with `dv_textnode_edit` and ask again. When the user agrees, call `dv_textnode_read` with `path: story/storyboard.md` and render from the text that it returns.
+
+## 3. Create the references
+
+When shots share a character, a location or a look, load the skill of that reference kind and create its versions first, so every shot cites the same version (`<id>@<version>`, such as `c1@1`) in `inputs.reference`.
+
+## 4. Render each shot
+
+1. Call `dv_shot_render` once per shot, in story order, with `modality`, `task`, `provider`, `model`, `prompt` and `duration_sec`; for task `ref2v` also `inputs.reference`, with each reference cited in the prompt. When a call is refused, fix the named value and call again.
+2. A shot that continues the previous shot passes `continue_from` = the record ID of the previous shot's render. Call it right after that render; the project waits for the previous take's last frame before the shot starts.
+3. Call `dv_proj_wait`, then `dv_proj_state`. Report each finished shot with its last frame (you receive it as an image) and its link.
+
+## 5. Lay the takes on a timeline
+
+Call `dv_timeline_create` with `inputs.clip` = output #0 of each shot's render, in story order (a render that is not done yet becomes a placeholder clip). Pass a new `timeline` ID and a `name` when the project already has a timeline.
+
+## 6. Extend, shorten or change the story
+
+One story is one timeline and one storyboard. The user asks for this about a timeline with words such as "make the story longer", "add a few more shots" or "change the story".
+
+1. Change `story/storyboard.md` with `dv_textnode_edit`, show the new or changed shots, and wait for the user to agree as in step 2. A shot added after six shots is shot 7.
+2. Render only the new or changed shots with `dv_shot_render`; a changed shot passes `based_on` = its earlier render, and a shot that continues a changed shot renders again with `continue_from` = the new render.
+3. Wait with `dv_proj_wait`, then call `dv_timeline_update` with `timeline` = the story's timeline and every clip in order, the unchanged clips as their earlier takes.

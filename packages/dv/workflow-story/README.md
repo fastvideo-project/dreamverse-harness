@@ -106,7 +106,7 @@ Each result is appended to the conversation after its call; the cached prefix st
 
 #### What the model sees
 
-The skill catalog lists each workflow skill with its description. When the agent loads `story-directing`, it reads the order of calls: `dv_plan_create` or `dv_plan_update`, then `dv_story_preview` (with `dv_plan_update` and a new preview while `problems` is not empty), a table of the shots and one question in bold, and in the next turn `dv_story_approve` with `user_approved: true`, then `dv_proj_wait`. It also tells the agent how to extend, shorten or change a story that a plan made.
+The skill catalog lists each workflow skill with its description. When the agent loads `story-directing`, it reads the order of calls: `dv_textnode_write` for the text nodes `story/theme.md`, `story/beats.md` and `story/storyboard.md`, each built from the text that `dv_textnode_read` returns for the stage before it and naming that stage in `from`; a summary and one question in bold, and no generation before the user agrees; then `dv_shot_render` per shot (with `continue_from` for a shot that continues the previous one), `dv_proj_wait` and `dv_timeline_create`. It also tells the agent how to extend, shorten or change a story on a timeline.
 
 #### Token effect
 

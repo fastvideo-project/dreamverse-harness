@@ -9002,6 +9002,9 @@ importers:
       '@dv/shot-render':
         specifier: workspace:*
         version: link:../shot-render
+      '@dv/text-node':
+        specifier: workspace:*
+        version: link:../text-node
       '@dv/timeline':
         specifier: workspace:*
         version: link:../timeline
