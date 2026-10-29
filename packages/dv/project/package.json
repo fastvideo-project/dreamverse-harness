@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./types": "./src/types.ts",
     "./grammar": "./src/grammar.ts",
+    "./folder": "./src/folder.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {

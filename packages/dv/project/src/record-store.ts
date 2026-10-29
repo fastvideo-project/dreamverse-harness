@@ -1,11 +1,12 @@
 /**
- * The record store: the only code that reads or writes the files of a project. One directory per project under the
- * configured root:
+ * The record store: the only code that reads or writes the DreamVerse files of a project. One project folder per
+ * project under the configured root; the store's files live in the folder's `.dreamverse/` directory (`PROJECT_DIR`)
+ * and the rest of the folder belongs to the user:
  *
  * ```
- * <root>/<ProjectId>/project.json    ProjectInfo
- * <root>/<ProjectId>/records.jsonl   record lines and update lines, appended in write order
- * <root>/<ProjectId>/line.json       ProjectLine: the last step of the history list and the current position
+ * <root>/<ProjectId>/.dreamverse/project.json    ProjectInfo without `path`
+ * <root>/<ProjectId>/.dreamverse/records.jsonl   record lines and update lines, appended in write order
+ * <root>/<ProjectId>/.dreamverse/line.json       ProjectLine: the history list's last step and the current position
  * ```
  *
  * The history list of a project is the `parents[0]` ancestry of its last step (`tip`); `at` is the current position on
@@ -22,6 +23,7 @@ import { randomUUID } from 'node:crypto'
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
+import { PROJECT_DIR } from './folder.ts'
 import { ProjectError } from './shared.ts'
 import type { ProjectEvent, ProjectId, ProjectInfo, ProjectLine, ProjectRecord, RecordId, RecordStatus, RecordUpdate } from './types.ts'
 
@@ -68,24 +70,26 @@ export class RecordStore {
   private readonly locks = new Map<ProjectId, Promise<void>>()
 
   /**
-   * @param root - the directory holding one `<ProjectId>/` per project; created when missing.
+   * @param root - the directory holding one project folder `<ProjectId>/` per project; created when missing.
    * @param onChange - called after each change is on disk; the subscriptions module fans it out.
    */
   constructor(readonly root: string, private readonly onChange: (project: ProjectId, event: ProjectEvent) => void) {}
 
   /**
-   * Read every project directory under the root into memory; the service calls it once at start. Directories without
-   * `project.json`, and the `.trash` directory, are skipped. `records.jsonl` is replayed in file order: a record line
-   * adds a record, an update line applies to the record it names.
+   * Read every project folder under the root into memory; the service calls it once at start. Folders without
+   * `.dreamverse/project.json`, and the `.trash` directory, are skipped. `records.jsonl` is replayed in file order: a
+   * record line adds a record, an update line applies to the record it names.
    */
   load(): void {
     mkdirSync(this.root, { recursive: true })
     this.projects.clear()
     for (const entry of readdirSync(this.root, { withFileTypes: true })) {
       if (!entry.isDirectory() || entry.name === '.trash') continue
-      const dir = join(this.root, entry.name)
+      const folder = join(this.root, entry.name)
+      const dir = join(folder, PROJECT_DIR)
       if (!existsSync(join(dir, 'project.json'))) continue
-      const info = JSON.parse(readFileSync(join(dir, 'project.json'), 'utf8')) as ProjectInfo
+      const stored = JSON.parse(readFileSync(join(dir, 'project.json'), 'utf8')) as Omit<ProjectInfo, 'path'>
+      const info: ProjectInfo = { ...stored, path: folder }
       const loaded: LoadedProject = { info, records: new Map(), order: [], line: null }
       for (const line of readFileSync(join(dir, 'records.jsonl'), 'utf8').split('\n')) {
         if (line === '') continue
@@ -127,19 +131,23 @@ export class RecordStore {
   }
 
   /**
-   * Create a project directory with `project.json` and an empty `records.jsonl`.
+   * Create a project folder `<root>/<ProjectId>` with `.dreamverse/project.json` and an empty
+   * `.dreamverse/records.jsonl`.
    * @param info - the project's metadata; `info.id` must be new.
+   * @returns the metadata with the project folder.
    */
-  createProject(info: ProjectInfo): void {
-    const dir = join(this.root, info.id)
-    if (this.projects.has(info.id) || existsSync(dir)) {
+  createProject(info: Omit<ProjectInfo, 'path'>): ProjectInfo {
+    const folder = join(this.root, info.id)
+    if (this.projects.has(info.id) || existsSync(folder)) {
       throw new ProjectError('invalid_params', `A project with ID ${info.id} already exists.`)
     }
-    const stored: ProjectInfo = { id: info.id, title: info.title, created_at: info.created_at }
-    mkdirSync(dir, { recursive: true })
-    writeFileSync(join(dir, 'project.json'), `${JSON.stringify(stored, null, 2)}\n`)
-    writeFileSync(join(dir, 'records.jsonl'), '')
-    this.projects.set(info.id, { info: stored, records: new Map(), order: [], line: null })
+    const stored = { id: info.id, title: info.title, created_at: info.created_at }
+    mkdirSync(join(folder, PROJECT_DIR), { recursive: true })
+    writeFileSync(this.file(info.id, 'project.json'), `${JSON.stringify(stored, null, 2)}\n`)
+    writeFileSync(this.file(info.id, 'records.jsonl'), '')
+    const created: ProjectInfo = { ...stored, path: folder }
+    this.projects.set(info.id, { info: created, records: new Map(), order: [], line: null })
+    return { ...created }
   }
 
   /** @returns every project's metadata, oldest first. */
@@ -165,13 +173,14 @@ export class RecordStore {
   renameProject(project: ProjectId, title: string): ProjectInfo {
     const loaded = this.loaded(project)
     const info: ProjectInfo = { ...loaded.info, title }
-    writeAtomic(join(this.root, project, 'project.json'), `${JSON.stringify(info, null, 2)}\n`)
+    const stored = { id: info.id, title: info.title, created_at: info.created_at }
+    writeAtomic(this.file(project, 'project.json'), `${JSON.stringify(stored, null, 2)}\n`)
     loaded.info = info
     return { ...info }
   }
 
   /**
-   * Remove a project: move its directory to `<root>/.trash/<ProjectId>-<timestamp>` and forget it in memory.
+   * Remove a project: move its project folder to `<root>/.trash/<ProjectId>-<timestamp>` and forget it in memory.
    * @param project - a project.
    */
   deleteProject(project: ProjectId): void {
@@ -206,11 +215,11 @@ export class RecordStore {
       deterministic: line.deterministic, status: line.status, created_at: new Date().toISOString(),
     }
     const stored = structuredClone(record)
-    appendFileSync(join(this.root, project, 'records.jsonl'), `${JSON.stringify(stored)}\n`)
+    appendFileSync(this.file(project, 'records.jsonl'), `${JSON.stringify(stored)}\n`)
     loaded.records.set(stored.id, stored)
     loaded.order.push(stored.id)
     loaded.line = { tip: stored.id, at: stored.id }
-    writeAtomic(join(this.root, project, 'line.json'), `${JSON.stringify(loaded.line)}\n`)
+    writeAtomic(this.file(project, 'line.json'), `${JSON.stringify(loaded.line)}\n`)
     const current = this.currentForm(loaded, stored)
     this.onChange(project, { kind: 'record', record: current })
     this.onChange(project, { kind: 'line', ...loaded.line })
@@ -245,7 +254,7 @@ export class RecordStore {
     if (update.cost !== undefined) line.cost = update.cost
     if (update.report !== undefined) line.report = update.report
     const stored = structuredClone(line)
-    appendFileSync(join(this.root, project, 'records.jsonl'), `${JSON.stringify(stored)}\n`)
+    appendFileSync(this.file(project, 'records.jsonl'), `${JSON.stringify(stored)}\n`)
     applyUpdate(record, stored)
     const current = this.currentForm(loaded, record)
     this.onChange(project, { kind: 'update', record: current })
@@ -339,8 +348,17 @@ export class RecordStore {
     if (loaded.line === null) throw new ProjectError('unknown_record', `Project ${project} has no record ${at}.`)
     this.storedRecord(project, loaded, at)
     loaded.line = { tip: loaded.line.tip, at }
-    writeAtomic(join(this.root, project, 'line.json'), `${JSON.stringify(loaded.line)}\n`)
+    writeAtomic(this.file(project, 'line.json'), `${JSON.stringify(loaded.line)}\n`)
     this.onChange(project, { kind: 'line', ...loaded.line })
+  }
+
+  /**
+   * @param project - a project ID.
+   * @param name - a file name of the store.
+   * @returns the file's path in the project's `.dreamverse/` directory.
+   */
+  private file(project: ProjectId, name: 'project.json' | 'records.jsonl' | 'line.json'): string {
+    return join(this.root, project, PROJECT_DIR, name)
   }
 
   /**

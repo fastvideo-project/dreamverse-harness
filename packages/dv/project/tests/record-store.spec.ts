@@ -109,20 +109,22 @@ describe('RecordStore', () => {
       ...record, status: 'done', started_at: startedAt, finished_at: startedAt, outputs: [ASSET_X], cost,
     })
     expect(store.line(project)).toEqual({ tip: record.id, at: record.id })
-    expect(JSON.parse(readFileSync(join(root, project, 'line.json'), 'utf8'))).toEqual({ tip: record.id, at: record.id })
-    expect(readdirSync(join(root, project)).sort()).toEqual(['line.json', 'project.json', 'records.jsonl'])
+    expect(JSON.parse(readFileSync(join(root, project, '.dreamverse', 'line.json'), 'utf8'))).toEqual({ tip: record.id, at: record.id })
+    expect(store.getProject(project).path).toBe(join(root, project))
+    expect(readdirSync(join(root, project))).toEqual(['.dreamverse'])
+    expect(readdirSync(join(root, project, '.dreamverse')).sort()).toEqual(['line.json', 'project.json', 'records.jsonl'])
   })
 
   it('refuses an append whose parent is not the current position', () => {
     const { root, store, events } = openStore()
     const { project, first } = createProject(store)
     store.append(project, line(first.id))
-    const before = readFileSync(join(root, project, 'records.jsonl'), 'utf8')
+    const before = readFileSync(join(root, project, '.dreamverse', 'records.jsonl'), 'utf8')
     const eventCount = events.length
 
     expect(errorCode(() => store.append(project, line(first.id)))).toBe('parent_not_head')
     expect(errorCode(() => store.append(project, line(null)))).toBe('parent_not_head')
-    expect(readFileSync(join(root, project, 'records.jsonl'), 'utf8')).toBe(before)
+    expect(readFileSync(join(root, project, '.dreamverse', 'records.jsonl'), 'utf8')).toBe(before)
     expect(events).toHaveLength(eventCount)
   })
 
@@ -184,9 +186,9 @@ describe('RecordStore', () => {
     const { root, store, events } = openStore()
     const { project, first } = createProject(store)
     const second = store.append(project, line(first.id))
-    const before = readFileSync(join(root, project, 'records.jsonl'), 'utf8')
+    const before = readFileSync(join(root, project, '.dreamverse', 'records.jsonl'), 'utf8')
     store.moveTo(project, first.id)
-    expect(readFileSync(join(root, project, 'records.jsonl'), 'utf8')).toBe(before)
+    expect(readFileSync(join(root, project, '.dreamverse', 'records.jsonl'), 'utf8')).toBe(before)
     expect(store.line(project)).toEqual({ tip: second.id, at: first.id })
     expect(events.at(-1)).toEqual({ project, event: { kind: 'line', tip: second.id, at: first.id } })
     // A write follows the current position, not the last step, and becomes both.
@@ -276,7 +278,9 @@ describe('RecordStore', () => {
       .toBe('invalid_params')
 
     expect(store.renameProject(project, 'Renamed').title).toBe('Renamed')
-    expect(JSON.parse(readFileSync(join(root, project, 'project.json'), 'utf8'))).toMatchObject({ id: project, title: 'Renamed' })
+    expect(JSON.parse(readFileSync(join(root, project, '.dreamverse', 'project.json'), 'utf8'))).toEqual({
+      id: project, title: 'Renamed', created_at: '2026-01-02T00:00:00.000Z',
+    })
     expect(store.getProject(project).title).toBe('Renamed')
 
     store.deleteProject(project)
@@ -294,7 +298,7 @@ describe('RecordStore', () => {
     // Each event must find its change on disk when it arrives.
     const seen: string[] = []
     const checked = new RecordStore(root, (eventProject, event) => {
-      const text = readFileSync(join(root, eventProject, 'records.jsonl'), 'utf8')
+      const text = readFileSync(join(root, eventProject, '.dreamverse', 'records.jsonl'), 'utf8')
       if (event.kind === 'record') expect(text).toContain(event.record.id)
       if (event.kind === 'update') expect(text).toContain(`"update":"${event.record.id}","status":"${event.record.status}"`)
       seen.push(event.kind)

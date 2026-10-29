@@ -30,7 +30,7 @@ const versions: Record<string, Record<string, { version: number; assets: AssetId
 }
 const sources: ExpansionSources = {
   getState: (): ProjectState => ({
-    project: { id: project, title: 'p', created_at: '' }, head: shot.id,
+    project: { id: project, title: 'p', created_at: '', path: '' }, head: shot.id,
     components: {
       proj: { records: [shot], stale: {}, superseded: {}, created_by: { [vid]: shot.id } },
       timeline: {

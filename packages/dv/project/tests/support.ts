@@ -208,7 +208,7 @@ export function startModules(limits = { cpu: 4, gpu: 1 }): ProjectModules {
  * @returns one object per line.
  */
 export function readLines(root: string, project: ProjectId): Array<Record<string, unknown>> {
-  return readFileSync(join(root, project, 'records.jsonl'), 'utf8').split('\n').filter(line => line !== '')
+  return readFileSync(join(root, project, '.dreamverse', 'records.jsonl'), 'utf8').split('\n').filter(line => line !== '')
     .map(line => JSON.parse(line) as Record<string, unknown>)
 }
 

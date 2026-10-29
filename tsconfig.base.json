@@ -349,6 +349,7 @@
       "@dv/models": ["./packages/dv/models/src/index.ts"],
       "@dv/models/types": ["./packages/dv/models/src/types.ts"],
       "@dv/project": ["./packages/dv/project/src/index.ts"],
+      "@dv/project/folder": ["./packages/dv/project/src/folder.ts"],
       "@dv/project/grammar": ["./packages/dv/project/src/grammar.ts"],
       "@dv/project/types": ["./packages/dv/project/src/types.ts"],
       "@dv/reference-kit": ["./packages/dv/reference-kit/src/index.ts"],

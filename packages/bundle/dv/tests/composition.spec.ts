@@ -106,6 +106,6 @@ describe('DreamVerse bundle composition', () => {
     expect(clips?.map(clip => [clip.id, clip.asset])).toEqual([['cl1', video]])
     expect(Object.keys(ctx.dvProject.getState(projectId).components.proj.created_by)).toHaveLength(3)
     // The bundle's `!!js` configuration put the project records under the state root the test set.
-    expect(readFileSync(join(dir, 'projects', projectId, 'records.jsonl'), 'utf8')).toContain('"shot.render"')
+    expect(readFileSync(join(dir, 'projects', projectId, '.dreamverse', 'records.jsonl'), 'utf8')).toContain('"shot.render"')
   })
 })

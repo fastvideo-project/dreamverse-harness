@@ -82,7 +82,10 @@ const RESERVED_KINDS = { asset: true, record: true, version: true }
 
 /** `dvProject` plugin configuration. */
 export interface Config {
-  /** The directory holding one `<ProjectId>/` per project (`$DV_STATE_ROOT/projects`); created when missing. */
+  /**
+   * The directory holding one project folder `<ProjectId>/` per project (`$DV_STATE_ROOT/projects`); created when
+   * missing. The DreamVerse files of a project live in the folder's `.dreamverse/` directory.
+   */
   root: string
   /** Scheduled records of `cpu` operations that may run at the same time. */
   cpuConcurrency: number
@@ -199,15 +202,15 @@ export default class DvProject extends Service {
   }
 
   /**
-   * Create a project: write `project.json`, then the project's first record, `proj.create` with `params {title}`, on
-   * `main` with status `done`. Holds the new project's lock.
+   * Create a project: create its project folder with `.dreamverse/project.json`, then write the project's first record,
+   * `proj.create` with `params {title}`, on `main` with status `done`. Holds the new project's lock.
    * @param title - the project title.
    * @param origin - who creates it, from where.
    * @returns the project's metadata.
    */
   async createProject(title: string, origin: RecordOrigin): Promise<ProjectInfo> {
-    const info: ProjectInfo = { id: brandString<ProjectId>(randomUUID()), title, created_at: new Date().toISOString() }
-    this.store.createProject(info)
+    const id = brandString<ProjectId>(randomUUID())
+    const info = this.store.createProject({ id, title, created_at: new Date().toISOString() })
     await this.store.lock(info.id, () => this.store.append(info.id, {
       parents: [], kind: 'operation', component: 'proj', operation: 'proj.create', operation_version: '1',
       ...origin, params: { title }, inputs: [], outputs: [], based_on: null, supersedes: [], deterministic: true, status: 'done',
@@ -249,7 +252,7 @@ export default class DvProject extends Service {
   }
 
   /**
-   * Delete a project: move its directory to the store's trash and forget it. Writes no record.
+   * Delete a project: move its project folder to the store's trash and forget it. Writes no record.
    * @param project - the project.
    */
   deleteProject(project: ProjectId): Promise<void> {

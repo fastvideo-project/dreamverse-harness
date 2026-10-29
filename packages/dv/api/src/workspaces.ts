@@ -151,7 +151,6 @@ function readBindings(stateRoot: string): Record<string, string> {
  * @returns the routes.
  */
 export function workspaceRoutes(project: DvProject, stateRoot: string): ConnectionFetchRoute[] {
-  const projectsRoot = join(stateRoot, 'projects')
   const bodyOf = async (request: Request): Promise<Record<string, unknown>> => {
     const body: unknown = await request.json().catch(() => ({}))
     return typeof body === 'object' && body !== null ? body as Record<string, unknown> : {}
@@ -166,7 +165,7 @@ export function workspaceRoutes(project: DvProject, stateRoot: string): Connecti
       entry_path: entryPath,
       projects: projects.map(info => ({
         id: info.id, title: info.title, created_at: info.created_at,
-        path: join(projectsRoot, info.id), workspace_id: links[info.id] ?? null,
+        path: info.path, workspace_id: links[info.id] ?? null,
       })),
       bindings: Object.fromEntries(Object.entries(readBindings(stateRoot)).filter(([, projectId]) => live.has(projectId))),
     }

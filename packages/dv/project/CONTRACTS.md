@@ -93,17 +93,17 @@ All of them have `inputs: []`, `outputs: []`, `based_on: null`, `supersedes: []`
 
 ## 4. Record store (`record-store.ts`)
 
-Owner: agent A. Files: `<root>/<ProjectId>/project.json` (`ProjectInfo`, pretty-printed or one line, ending with a newline), `records.jsonl` (one JSON object per line), `line.json` (`ProjectLine` `{tip, at}` as one line, rewritten atomically). `tip` is the last step: the history list is the `parents[0]` ancestry of `tip`. `at` is the current position, a record of the history list. Each record's parent is `at` when the record is written. A project without records has no `line.json`; `load` takes the last record as `tip` and `at` when the file is missing.
+Owner: agent A. Each project has a project folder `<root>/<ProjectId>`, and the store's files live in its `.dreamverse/` directory (`PROJECT_DIR` of `@dv/project/folder`); the store writes nothing else in the folder. Files: `.dreamverse/project.json` (`ProjectInfo` without `path`, pretty-printed or one line, ending with a newline), `records.jsonl` (one JSON object per line), `line.json` (`ProjectLine` `{tip, at}` as one line, rewritten atomically). `tip` is the last step: the history list is the `parents[0]` ancestry of `tip`. `at` is the current position, a record of the history list. Each record's parent is `at` when the record is written. A project without records has no `line.json`; `load` takes the last record as `tip` and `at` when the file is missing.
 
 | Function                                  | Behavior                                                                                                                                                                                                |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `constructor(root, onChange)`             | Stores both; `mkdirSync(root, {recursive: true})` happens in `load`.                                                                                                                                    |
-| `load()`                                  | Reads every `<root>/*/project.json` (skips directories without it and `.trash`) and replays `records.jsonl` (record lines, then update lines applied in file order). Emits nothing.                     |
+| `load()`                                  | Reads every `<root>/*/.dreamverse/project.json` (skips folders without it and `.trash`), sets `path` to the folder, and replays `records.jsonl` (record lines, then update lines applied in file order). Emits nothing. |
 | `lock(project, fn)`                       | A per-project promise chain: `fn` starts after every earlier `fn` for that project settled, whether it resolved or threw. Different projects run concurrently. Returns `fn`'s result or rejection.      |
-| `createProject(info)`                     | Writes `project.json` and an empty `records.jsonl`. Refuses an existing ID with `invalid_params`.                                                                                                       |
+| `createProject(info)`                     | Creates the project folder and writes `.dreamverse/project.json` and an empty `.dreamverse/records.jsonl`. Returns the info with `path`. Refuses an existing ID with `invalid_params`.                  |
 | `listProjects()` / `getProject(id)`       | Oldest first by `created_at`, then ID. `getProject` throws `unknown_project`.                                                                                                                           |
 | `renameProject(id, title)`                | Rewrites `project.json` atomically (write `<file>.tmp`, rename). Returns the new info.                                                                                                                  |
-| `deleteProject(id)`                       | Renames the directory to `<root>/.trash/<id>-<Date.now()>`; forgets the project, its listeners stay.                                                                                                    |
+| `deleteProject(id)`                       | Renames the project folder to `<root>/.trash/<id>-<Date.now()>`; forgets the project, its listeners stay.                                                                                                    |
 | `append(project, line)`                   | Rules in the JSDoc: `parents` must be `[at]` (`[]` for the first record), else `parent_not_head`. Assigns `id` and `created_at`, appends one line, sets `tip` and `at` to the record, then emits `record` and `line`. |
 | `update(project, update)`                 | Rules in the JSDoc. Appends one `{"update": id, …}` line, applies it in memory, emits `{kind: 'update', record}` with the current form.                                                                 |
 | `getRecord` / `listRecords` / `ancestors` | Current forms. `ancestors` follows `parents[0]` only (the raw chain).                                                                                                                                   |
@@ -252,7 +252,7 @@ Each test file builds modules with `startModules()` and projects with `createTes
 
 **`tests/record-store.spec.ts` (A)**
 
-- `writes a record line and an update line` (R): `append` then `update(running)` then `update(done, outputs, cost)`: `readLines` gives one record line with exactly the record-line fields and two `{"update": id}` lines; `getRecord` returns the current form with `started_at`, `finished_at`, `outputs`, `cost`.
+- `writes a record line and an update line` (R): `append` then `update(running)` then `update(done, outputs, cost)`: `readLines` gives one record line with exactly the record-line fields and two `{"update": id}` lines; `getRecord` returns the current form with `started_at`, `finished_at`, `outputs`, `cost`; `getProject(id).path` is `<root>/<id>`, and the folder holds only `.dreamverse/` with `line.json`, `project.json` and `records.jsonl`.
 - `refuses an append whose parent is not the current position`: `parent_not_head`, nothing written, no event.
 - `refuses a backward or repeated status`: `done` → `running` and `running` → `running` throw `status_backwards`.
 - `refuses an update of a finished record`: `record_finished` after `done`, `failed`, `cancelled`.
@@ -263,7 +263,7 @@ Each test file builds modules with `startModules()` and projects with `createTes
 - `fills resolved_asset of an output input once the producer is done`: record B with `{record: A, output: 0}`; null before A is done, A's output after; the file still has `null`.
 - `returns copies that callers cannot use to change the store`.
 - `serializes work under the project lock`: two `lock` calls with awaited delays run one after the other; another project's lock runs concurrently.
-- `renames and deletes a project`: `project.json` title changes; the directory moves under `.trash`; `getProject` then throws `unknown_project`.
+- `renames and deletes a project`: `project.json` title changes and the file holds no `path`; the project folder moves under `.trash`; `getProject` then throws `unknown_project`.
 - `emits record, line and update events after the write`: events arrive in order with current forms, each after its change is on disk.
 
 **`tests/subscriptions.spec.ts` (A)**

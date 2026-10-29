@@ -20,7 +20,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
  */
 export type AssetId = Branded<'DvAssetId'>
 
-/** The ID of a project; it names the project's directory under the store root. */
+/** The ID of a project; it names the project folder under the store root. */
 export type ProjectId = Branded<'DvProjectId'>
 
 /** The ID of one record in a project's `records.jsonl`. */
@@ -210,12 +210,17 @@ export interface RecordOrigin {
   intent: string
 }
 
-/** The contents of `project.json`. */
+/** A project's metadata: the contents of its `project.json`, and its project folder. */
 export interface ProjectInfo {
   id: ProjectId
   title: string
   /** When the project was created, ISO-8601 UTC. */
   created_at: string
+  /**
+   * The path of the project folder. Its `.dreamverse/` directory holds the DreamVerse files; `project.json`
+   * does not store this field.
+   */
+  path: string
 }
 
 /** The result of an operation's execute function. */

@@ -56,7 +56,7 @@ function gate<T = void>(): { promise: Promise<T>; resolve: (value: T) => void } 
  * @returns the text of the project's `records.jsonl`.
  */
 function files(m: ProjectModules, project: ProjectId): string {
-  return readFileSync(join(m.root, project, 'records.jsonl'), 'utf8')
+  return readFileSync(join(m.root, project, '.dreamverse', 'records.jsonl'), 'utf8')
 }
 
 /**
@@ -379,9 +379,9 @@ describe('Runner', () => {
       { ...origin, id: 'r3', parents: ['r2'], kind: 'operation', component: 'deliver', operation: 'deliver.timeline_export',
         params: { timeline: 't1' }, inputs: [], outputs: [], created_at: '2026-10-07T23:42:00.000Z' },
     ]
-    mkdirSync(join(m.root, project))
-    writeFileSync(join(m.root, project, 'project.json'), JSON.stringify({ id: project, title: 'Old', created_at: '2026-10-07T23:40:00.000Z' }))
-    writeFileSync(join(m.root, project, 'records.jsonl'), lines.map(line => `${JSON.stringify(line)}\n`).join(''))
+    mkdirSync(join(m.root, project, '.dreamverse'), { recursive: true })
+    writeFileSync(join(m.root, project, '.dreamverse', 'project.json'), JSON.stringify({ id: project, title: 'Old', created_at: '2026-10-07T23:40:00.000Z' }))
+    writeFileSync(join(m.root, project, '.dreamverse', 'records.jsonl'), lines.map(line => `${JSON.stringify(line)}\n`).join(''))
     m.store.load()
 
     // Replay passes every record through the registered reducers only; the unowned version is no producer.
