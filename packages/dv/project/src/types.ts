@@ -2,7 +2,7 @@
  * Types of the Project component: IDs, the record format of `records.jsonl`, operations, reducers, project state,
  * history queries, and run requests.
  *
- * Field case: types that are written to disk or sent over the wire (records, update lines, `project.json`, run
+ * Field case: types that are written to disk or sent over the wire (records, update lines, project metadata, run
  * requests, history queries) use snake_case fields, matching the record format. Types that only
  * code sees (operation specs, the execute context, reducers) use camelCase members.
  *
@@ -20,7 +20,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
  */
 export type AssetId = Branded<'DvAssetId'>
 
-/** The ID of a project; it names the project folder under the store root. */
+/** The ID of a project: the ID of the project's DSH Workspace. */
 export type ProjectId = Branded<'DvProjectId'>
 
 /** The ID of one record in a project's `records.jsonl`. */
@@ -210,16 +210,14 @@ export interface RecordOrigin {
   intent: string
 }
 
-/** A project's metadata: the contents of its `project.json`, and its project folder. */
+/** A project's metadata, read from its DSH Workspace. */
 export interface ProjectInfo {
   id: ProjectId
+  /** The Workspace title. */
   title: string
-  /** When the project was created, ISO-8601 UTC. */
+  /** When the Workspace was registered, ISO-8601 UTC. */
   created_at: string
-  /**
-   * The path of the project folder. Its `.dreamverse/` directory holds the DreamVerse files; `project.json`
-   * does not store this field.
-   */
+  /** The canonical path of the project folder; its `.dreamverse/` directory holds the DreamVerse files. */
   path: string
 }
 

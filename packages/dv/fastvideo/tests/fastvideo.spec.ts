@@ -23,6 +23,7 @@ import DvFfmpeg from '@dv/ffmpeg'
 import DvModels, { type ModelEntry, type RenderStreamEvent, type TaskOfPrimitive } from '@dv/models'
 import DvProject from '@dv/project'
 import { afterEach, describe, expect, it } from 'vitest'
+import { provideChatServices } from '../../project/tests/workspaces.ts'
 import * as FastVideo from '../src/index.ts'
 
 /** A task of the video entries that fasth3 serves. */
@@ -132,7 +133,7 @@ async function start(tasks: { ref2v?: string; t2v?: string }): Promise<Context> 
   const rows: string[] = []
   const plugins = [
     ['skills', 'SkillRegistry', []],
-    ['dv-project', 'DvProject', [`root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`, `projectsFolder: ${join(dir, 'DreamVerse')}`]],
+    ['dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`]],
     ['dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe']],
     ['dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`]],
     ['dv-models', 'DvModels', []],
@@ -144,6 +145,7 @@ async function start(tasks: { ref2v?: string; t2v?: string }): Promise<Context> 
   }
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
   const ctx = new Context()
+  provideChatServices(ctx)
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })

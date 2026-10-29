@@ -99,7 +99,7 @@ async function start(): Promise<Fixture> {
   let calls = 0
   const fixture: Fixture = {
     ...base, dvApi: base.context.dvApi, handlers: base.context.dvApi.api, connection, web,
-    newProject: async title => (await base.project.createProject(title, HUMAN)).id,
+    newProject: async title => (await base.project.createProject(await base.project.newProjectFolder(title), title, HUMAN)).id,
     agentImport: async (projectId, session, name) => {
       calls += 1
       const { record } = await base.project.run({
@@ -161,7 +161,8 @@ describe('dvApi', () => {
     expect(projects.map(entry => entry.id)).toContain(projectId)
     expect(projects.find(entry => entry.id === projectId)).toEqual({ id: projectId, title: 'demo', created_at: expect.any(String), current: false })
     expect(projects.every(entry => !entry.current)).toBe(true)
-    // The project a chat session is bound to comes first and is marked, whatever its age.
+    // The project of a chat session's folder comes first and is marked, whatever its age.
+    fixture.services.chats.open('anonymous', await fixture.project.newProjectFolder('from chat'))
     const bound = (await fixture.call('dv_proj_create', { title: 'from chat' })).value as { project_id: string }
     await fixture.newProject('newest')
     expect(fixture.handlers.listProjects('anonymous').map(entry => [entry.title, entry.current])).toEqual([['from chat', true], ['newest', false], ['demo', false]])
@@ -316,14 +317,12 @@ describe('dvApi', () => {
     expect(JSON.stringify(projects.json)).toContain(projectId)
     const created = await call(fixture, ROUTES.projects, { method: 'POST', body: { title: 'posted', surface: 'canvas' } })
     expect(created.status).toBe(200)
-    expect(created.json).toMatchObject({ title: 'posted', id: expect.any(String), created_at: expect.any(String) })
+    expect(created.json).toMatchObject({ title: 'posted', path: join(fixture.root, 'projects', 'posted') })
     expect((await call(fixture, ROUTES.projects, { method: 'POST', body: {} })).status).toBe(400)
     // A chat with no project gets a fresh empty folder whose name no other folder has.
-    expect(await call(fixture, ROUTES.untitled, { method: 'POST', body: { name: 'Untitled project' } }))
-      .toEqual({ status: 200, json: { path: join(fixture.root, 'DreamVerse', 'Untitled project') } })
-    expect(await call(fixture, ROUTES.untitled, { method: 'POST', body: { name: 'Untitled project' } }))
-      .toEqual({ status: 200, json: { path: join(fixture.root, 'DreamVerse', 'Untitled project 2') } })
-    expect(readdirSync(join(fixture.root, 'DreamVerse', 'Untitled project'))).toEqual([])
+    expect(await call(fixture, ROUTES.untitled, { method: 'POST', body: { name: 'posted' } }))
+      .toEqual({ status: 200, json: { path: join(fixture.root, 'projects', 'posted 2') } })
+    expect(readdirSync(join(fixture.root, 'projects', 'posted 2'))).toEqual([])
     expect((await call(fixture, ROUTES.untitled, { method: 'POST', body: {} })).status).toBe(400)
 
     const missing = await call(fixture, ROUTES.state, { query: { project: 'nope' } })
@@ -672,7 +671,7 @@ describe('dvApi', () => {
     const listed = await call(fixture, WORKSPACE_ROUTES.workspaces)
     const rows = (listed.json as { entry_path: string; projects: Array<{ id: string; path: string; workspace_id: string | null }> })
     expect(rows.entry_path).toBe(join(root, 'entry'))
-    expect(rows.projects.find(row => row.id === projectId)).toMatchObject({ path: join(root, 'projects', projectId), workspace_id: null })
+    expect(rows.projects.find(row => row.id === projectId)).toMatchObject({ path: join(root, 'projects', 'linked'), workspace_id: null })
     expect((await call(fixture, WORKSPACE_ROUTES.workspaces, { method: 'POST', body: { project: projectId, workspace_id: 'ws-1' } })).status).toBe(200)
     expect(await call(fixture, WORKSPACE_ROUTES.workspaces, { method: 'POST', body: { project: projectId, workspaceId: 'ws-1' } }))
       .toMatchObject({ status: 400, json: { error: expect.any(String), code: 'invalid_params' } })

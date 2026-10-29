@@ -186,8 +186,10 @@ function recordLines(project: DvProject, deps: ProjToolDeps, record: ProjectReco
  */
 export function renderState(project: DvProject, deps: ProjToolDeps, id: ProjectId): string {
   const summary = projectSummary(project, deps, id, project.getState(id), { written: null, reports: false })
+  const info = project.openProject(id)
   return [
-    `${STATE_HEAD} This conversation belongs to project ${id}: do all work in it and never call dv_proj_create. `
+    `${STATE_HEAD} This conversation belongs to the project "${info.title}" in the folder ${info.path}: do all work in it `
+      + 'and never call dv_proj_create. '
       + 'Later changes that your own tool results did not show reach you as DreamVerse project updates. '
       + 'The project summary, as dv_proj_state returns it without the reports of recent records:',
     JSON.stringify(summary, null, 1),

@@ -17,8 +17,9 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg, { FfmpegError } from '@dv/ffmpeg'
-import DvProject, { type AssetId, type OperationToolValue, type ProjectId, type RecordId, type RunResult, type SessionId } from '@dv/project'
+import DvProject, { type AssetId, type OperationToolValue, type ProjectId, type RecordId, type RunResult } from '@dv/project'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { chatProject, provideChatServices } from '../../project/tests/workspaces.ts'
 import DvTimeline from '../src/index.ts'
 
 const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmpeg-native/bin/ffmpeg'
@@ -35,7 +36,7 @@ interface Fixture {
   clip(color: string, size: string, seconds: number): Promise<AssetId>
   /** Run one operation as the user on the timeline surface. */
   run(operation: string, params: Record<string, unknown>): Promise<RunResult>
-  /** Run one tool as the agent of chat session `s1`, which is bound to `project`. */
+  /** Run one tool as the agent of chat session `s1`, which runs in the folder of `project`. */
   call(name: string, args: Record<string, unknown>): Promise<ToolExecutionResult>
 }
 
@@ -47,7 +48,7 @@ afterEach(async () => {
 
 /**
  * Boot the composition from a test-only `cordis.yml`.
- * @returns the fixture, with a project bound to chat session `s1`.
+ * @returns the fixture, with a project whose folder chat session `s1` runs in.
  */
 async function start(): Promise<Fixture> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-timeline-export-'))
@@ -60,13 +61,14 @@ async function start(): Promise<Fixture> {
   }
   row('system-prompt', 'SystemPrompt', [])
   row('tools', 'ToolRuntime', [])
-  row('dv-project', 'DvProject', [`root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`, `projectsFolder: ${join(dir, 'DreamVerse')}`])
+  row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`])
   row('dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, `ffprobePath: ${FFPROBE}`])
   row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
   row('dv-timeline', 'DvTimeline', [])
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
 
   const ctx = new Context()
+  const services = provideChatServices(ctx)
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
@@ -76,8 +78,7 @@ async function start(): Promise<Fixture> {
     rmSync(dir, { recursive: true, force: true })
   })
   const origin = { actor: 'user' as const, surface: 'timeline' as const, session: null, turn: null, tool_call: null }
-  const project = (await ctx.dvProject.createProject('export', { ...origin, intent: 'create' })).id
-  ctx.dvProject.bindSession(brandString<SessionId>('s1'), project)
+  const project = await chatProject(ctx.dvProject, services, 'export', { ...origin, intent: 'create' })
   let calls = 0
   let clips = 0
   return {

@@ -43,7 +43,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCente
 | 打开项目（导航行、最近项目卡片或会话切换器） | `GET /api/dv/workspaces/sessions` 读取其存储的对话；主会话移到其最近的非空白对话，否则移到一个空白对话 |
 | 项目行上的 ＋、会话切换器里的 新建会话，或 DSH 的新会话 | 在项目的 Workspace 里新建空白对话；在首页上，DSH 的新会话等于 首页 |
 | 重命名项目（行菜单） | `POST /api/dv/projects/rename`；项目的 Workspace 同步改名 |
-| 删除项目（行菜单，然后确认） | `POST /api/dv/projects/delete`（项目移到回收目录）；关联的 Workspace 被删除，打开中的项目回到 首页 |
+| 删除项目（行菜单，然后确认） | `POST /api/dv/projects/delete`（项目文件夹留在磁盘上）；关联的 Workspace 被删除，打开中的项目回到 首页 |
 | 导航中 对话 的一行（不在任何 Workspace 中、也没有绑定的已开始的顶层对话） | 首页，主会话为该对话；智能体把该对话绑定到项目后，它离开列表 |
 | 重命名或删除对话（行菜单） | DSH 的会话重命名，或停止其活动后归档；没有打开项目时删除打开的对话，会打开本标签页的空白首页对话 |
 | 主会话位于某项目的 Workspace 但没有绑定 | `POST /api/dv/workspaces/bind` |

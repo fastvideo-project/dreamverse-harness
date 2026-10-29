@@ -19,9 +19,10 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvFfmpeg, { FfmpegError } from '@dv/ffmpeg'
 import DvProject, {
-  ProjectError, type AssetId, type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId, type RecordInput, type SessionId,
+  ProjectError, type AssetId, type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId, type RecordInput,
 } from '@dv/project'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { chatProject, provideChatServices } from '../../project/tests/workspaces.ts'
 import DvAssetPool, { importedAssets, placeable } from '../src/index.ts'
 
 const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmpeg-native/bin/ffmpeg'
@@ -60,7 +61,7 @@ interface Fixture {
   dir: string
   web: FakeWebServer
   project: ProjectId
-  /** Run one tool as the agent of chat session `s1`, which is bound to `project`. */
+  /** Run one tool as the agent of chat session `s1`, which runs in the folder of `project`. */
   call(name: string, args: Record<string, unknown>): Promise<ToolExecutionResult>
   /** Run an operation as the human on the canvas. */
   run(operation: string, params: Record<string, unknown>, inputs?: RecordInput[]): Promise<ProjectRecord>
@@ -77,7 +78,7 @@ afterEach(async () => {
 /**
  * Boot the composition from a test-only `cordis.yml`.
  * @param options - an existing directory to reuse, and the pool's `publicBaseUrl`.
- * @returns the fixture, with a project bound to chat session `s1`.
+ * @returns the fixture, with a project whose folder chat session `s1` runs in.
  */
 async function start(options: { dir?: string; publicBaseUrl?: string } = {}): Promise<Fixture> {
   const dir = options.dir ?? mkdtempSync(join(tmpdir(), 'dv-asset-pool-'))
@@ -90,12 +91,13 @@ async function start(options: { dir?: string; publicBaseUrl?: string } = {}): Pr
   }
   row('system-prompt', 'SystemPrompt', [])
   row('tools', 'ToolRuntime', [])
-  row('dv-project', 'DvProject', [`root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`, `projectsFolder: ${join(dir, 'DreamVerse')}`])
+  row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`])
   row('dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, `ffprobePath: ${FFPROBE}`])
   row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`, ...options.publicBaseUrl === undefined ? [] : [`publicBaseUrl: ${options.publicBaseUrl}`]])
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
 
   const ctx = new Context()
+  const services = provideChatServices(ctx)
   const web = new FakeWebServer()
   ctx.provide('webServer', web)
   await ctx.plugin(Loader)
@@ -113,8 +115,7 @@ async function start(options: { dir?: string; publicBaseUrl?: string } = {}): Pr
     rmSync(dir, { recursive: true, force: true })
   })
   const origin = { actor: 'user' as const, surface: 'api' as const, session: null, turn: null, tool_call: null, intent: 'create' }
-  const project = (await ctx.dvProject.createProject('pool', origin)).id
-  ctx.dvProject.bindSession(brandString<SessionId>('s1'), project)
+  const project = await chatProject(ctx.dvProject, services, 'pool', origin)
   let calls = 0
   return {
     ctx, dir, web, project, stop,

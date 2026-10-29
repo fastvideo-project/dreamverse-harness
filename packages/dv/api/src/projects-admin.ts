@@ -1,12 +1,11 @@
 /**
- * Project deletion and renaming for the DreamVerse shell, through `dvProject`. Deletion is reversible by hand:
- * `dvProject.deleteProject` moves the project's directory into the Project store's trash, after which the project is
- * no longer listed. The project's canvas layout file is view state and is deleted, not moved. The browser deletes the
- * project's DSH Workspace registration, because only the client reaches the Workspace service.
+ * Project removal and renaming for the DreamVerse shell, through `dvProject`. `dvProject.removeProject` unregisters the
+ * project's DSH Workspace and leaves its folder on disk, after which the project is no longer listed. The project's
+ * canvas layout file is view state and is deleted.
  *
  * Routes:
- * - `POST /api/dv/projects/delete` with `{project}` deletes the project and its canvas layout file, drops its Workspace
- *   link, and returns `{ok, workspace_id}` (the dropped Workspace ID, or null).
+ * - `POST /api/dv/projects/delete` with `{project}` removes the project, deletes its canvas layout file, drops its
+ *   Workspace link, and returns `{ok, workspace_id}` (the dropped Workspace ID, or null).
  * - `POST /api/dv/projects/rename` with `{project, title}` stores a title that no other project has, appending ` 2`,
  *   ` 3`, … on a clash, and returns `{title}`.
  *
@@ -41,7 +40,7 @@ export function projectAdminRoutes(project: DvProject, stateRoot: string, layout
   }
   const remove = async (request: Request): Promise<unknown> => {
     const projectId = requireProject(project, (await bodyOf(request))['project'])
-    await project.deleteProject(projectId)
+    await project.removeProject(projectId)
     layouts.delete(projectId)
     const { [projectId]: workspaceId, ...links } = readLinks(stateRoot)
     writeLinks(stateRoot, links)

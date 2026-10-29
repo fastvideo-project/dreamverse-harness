@@ -7,16 +7,16 @@
  */
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-import { brandString } from '@deepseek-ai/dsh-brand'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvProject, {
   type AssetId, type OperationSpec, type OperationToolValue, type ProjectRecord, type RecordId, type Reducer, type ReferenceKindSpec,
-  type RunRequest, type SessionId,
+  type RunRequest,
 } from '../../../src/index.ts'
 import { MemoryAssets, tempRoot } from '../../support.ts'
+import { chatProject, provideChatServices } from '../../workspaces.ts'
 
 /** The `prop` slice: each prop's versions, oldest first, with the assets and the record of each. */
 type PropSlice = Record<string, Array<{ assets: AssetId[]; record: RecordId }>>
@@ -77,10 +77,11 @@ describe('the prop fixture', () => {
     const root = tempRoot()
     const context = new Context()
     contexts.push(context)
+    const services = provideChatServices(context)
     await context.plugin(SystemPrompt, {}).await()
     await context.plugin(ToolRuntime).await()
     await context.plugin(DvProject, {
-      root: join(root, 'projects'), sessionRoot: join(root, 'sessions'), projectsFolder: join(root, 'DreamVerse'), cpuConcurrency: 1, gpuConcurrency: 1,
+      projectsFolder: join(root, 'projects'), sessionRoot: join(root, 'sessions'), cpuConcurrency: 1, gpuConcurrency: 1,
       promptSectionOrder: 4900,
     }).await()
     const dv = context.dvProject
@@ -94,8 +95,7 @@ describe('the prop fixture', () => {
     })
     const removeProp = registerProp(dv)
     const user = { actor: 'user', surface: 'api', session: null, turn: null, tool_call: null, intent: 'edit' } as const
-    const project = (await dv.createProject('props', user)).id
-    dv.bindSession(brandString<SessionId>('s1'), project)
+    const project = await chatProject(dv, services, 'props', user)
     const run = async (operation: string, params: Record<string, unknown>, inputs: RunRequest['inputs']) =>
       (await dv.run({ ...user, project, operation, params, inputs })).record?.id
     const lamp = assets.importAsset(Buffer.from('lamp'), { mime: 'image/png', name: 'lamp.png' })

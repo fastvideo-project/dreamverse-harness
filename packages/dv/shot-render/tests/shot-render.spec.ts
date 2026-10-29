@@ -22,10 +22,11 @@ import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvProject, {
   type AssetId, type OperationSpec, type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId,
-  type Reducer, type ReferenceKindSpec, type RunRequest, type SessionId,
+  type Reducer, type ReferenceKindSpec, type RunRequest,
 } from '@dv/project'
 import DvModels, { type ModelEntry, type RenderModelFacts, type RenderRequest, type RenderStreamEvent, type TaskOfPrimitive } from '@dv/models'
 import { afterEach, describe, expect, it } from 'vitest'
+import { chatProject, provideChatServices } from '../../project/tests/workspaces.ts'
 import DvShotRender from '../src/index.ts'
 import { shotGeometry } from '../src/render.ts'
 
@@ -211,7 +212,7 @@ interface Fixture {
   put(bytes: Uint8Array, mime: string, name: string): AssetId
   /** Run one operation as the human, on `main`. */
   record(operation: string, params: Record<string, unknown>, inputs?: RunRequest['inputs'], extra?: Partial<RunRequest>): Promise<ProjectRecord>
-  /** Run one tool as the agent of chat session `s1`, which is bound to `project`. */
+  /** Run one tool as the agent of chat session `s1`, which runs in the folder of `project`. */
   call(name: string, args: Record<string, unknown>): Promise<ToolExecutionResult>
 }
 
@@ -225,7 +226,7 @@ afterEach(async () => {
  * Boot the composition from a test-only `cordis.yml`.
  * @param options - the tasks the fake model is registered in (both by default; none registers no model), and whether a live
  *   stream service is provided.
- * @returns the fixture, with a project bound to chat session `s1` and the test-only character operation.
+ * @returns the fixture, with a project whose folder chat session `s1` runs in and the test-only character operation.
  */
 async function start(options: { tasks?: VideoTask[]; live?: FakeLiveStream } = {}): Promise<Fixture> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-shot-render-'))
@@ -240,7 +241,7 @@ async function start(options: { tasks?: VideoTask[]; live?: FakeLiveStream } = {
   row('system-prompt', 'SystemPrompt', [])
   row('tools', 'ToolRuntime', [])
   row('dv-project', 'DvProject', [
-    `root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`, `projectsFolder: ${join(dir, 'DreamVerse')}`,
+    `projectsFolder: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`,
   ])
   row('dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, `ffprobePath: ${FFPROBE}`])
   row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
@@ -249,6 +250,7 @@ async function start(options: { tasks?: VideoTask[]; live?: FakeLiveStream } = {
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
 
   const ctx = new Context()
+  const services = provideChatServices(ctx)
   const reference = new FakeLane(testFacts('ref2v'))
   const text = new FakeLane(testFacts('t2v'))
   if (options.live !== undefined) ctx.provide('vhStream', options.live) // names:allow (the live stream service keeps its name)
@@ -267,8 +269,7 @@ async function start(options: { tasks?: VideoTask[]; live?: FakeLiveStream } = {
   ctx.effect(() => ctx.dvProject.registerReferenceKind(characterKind))
   ctx.effect(() => ctx.dvProject.registerOperation(characterCreate))
   const origin = { actor: 'user' as const, surface: 'api' as const, session: null, turn: null, tool_call: null }
-  const project = (await ctx.dvProject.createProject('shots', { ...origin, intent: 'create' })).id
-  ctx.dvProject.bindSession(brandString<SessionId>('s1'), project)
+  const project = await chatProject(ctx.dvProject, services, 'shots', { ...origin, intent: 'create' })
   let calls = 0
   return {
     ctx, dir, reference, text, project,

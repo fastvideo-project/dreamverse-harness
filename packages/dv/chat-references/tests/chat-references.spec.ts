@@ -57,6 +57,8 @@ interface ChatFixture {
   attachments: FakeAttachments
   plugin: { dispose(): Promise<void> }
   session: { id: string }
+  /** The folder the live session runs in; it is no project until the test or the agent makes it one. */
+  folder: string
   /** Emit one session event for the live session. */
   emit(type: string, data: Record<string, unknown>): void
   /** Call a DSH tool on behalf of the live session's agent. */
@@ -72,8 +74,8 @@ afterEach(async () => {
 })
 
 /**
- * Mount the components, a fake attachment service, a fake agent registry that reports session `s1` as live, and the
- * chat references plugin.
+ * Mount the components, a fake attachment service, a fake agent registry that reports session `s1` as live in a fresh
+ * folder, and the chat references plugin.
  * @returns the fixture.
  */
 async function start(): Promise<ChatFixture> {
@@ -81,6 +83,8 @@ async function start(): Promise<ChatFixture> {
   cleanups.push(() => fixture.dispose())
   const attachments = new FakeAttachments((name, content) => fixture.writeFile(name, content))
   fixture.context.provide('attachments', attachments)
+  const folder = await fixture.project.newProjectFolder('chat')
+  fixture.services.chats.open('s1', folder)
   const session = { id: 's1' }
   const agent = { id: 's1', session, options: {} }
   fixture.context.provide('agents', { get: (id: string) => (id === 's1' ? agent : undefined), roots: () => [agent] })
@@ -88,7 +92,7 @@ async function start(): Promise<ChatFixture> {
   await plugin.await()
   let calls = 0
   return {
-    fixture, attachments, plugin, session,
+    fixture, attachments, plugin, session, folder,
     emit(type, data) {
       fixture.context.emit('session/event', session as never, { type, data } as never)
     },
@@ -115,10 +119,11 @@ function textOf(message: UserMessage | undefined): string {
 
 describe('mention expansion', () => {
   it('appends a dv-mentions message that reads the character from the project\'s current state, after an undo too', async () => {
-    const { fixture, preStep } = await start()
+    const chat = await start()
+    const { fixture, folder } = chat
     const session = brandString<SessionId>('s1')
     const user: RecordOrigin = { actor: 'user', surface: 'canvas', session: null, turn: null, tool_call: null, intent: 'set up' }
-    const info = await fixture.project.createProject('mentions', user)
+    const info = await fixture.project.createProject(folder, 'mentions', user)
     fixture.project.bindSession(session, info.id)
     const picture = await fixture.project.run({
       ...user, project: info.id, operation: 'asset.import', inputs: [],
@@ -133,7 +138,7 @@ describe('mention expansion', () => {
       project: info.id, operation: 'character.update', inputs: reference, params: { character: 'c1', name: 'Lead renamed' },
     })
 
-    const messages = await preStep('make @[Lead](dv:character/c1) wave')
+    const messages = await chat.preStep('make @[Lead](dv:character/c1) wave')
     const assets = picture.outputs.join(', ')
     expect(messages).toHaveLength(2)
     expect(messages[1]?.source).toMatchObject({ kind: 'dv-mentions' })
@@ -141,17 +146,17 @@ describe('mention expansion', () => {
     // After an undo of the update, the mention reads version 1 again.
     await fixture.project.undo(info.id)
     expect(fixture.project.getState(info.id).components.character[brandString<CharacterId>('c1')]).toHaveLength(1)
-    expect(textOf((await preStep('make @[Lead](dv:character/c1) wave'))[1])).toContain(`character c1@1, reference assets [${assets}]`)
+    expect(textOf((await chat.preStep('make @[Lead](dv:character/c1) wave'))[1])).toContain(`character c1@1, reference assets [${assets}]`)
     expect(update.record?.status).toBe('done')
     // A message without mentions enters unchanged.
-    expect(await preStep('hello')).toHaveLength(1)
+    expect(await chat.preStep('hello')).toHaveLength(1)
   })
 
-  it('expands a mention in a chat without a project to the no-project line, even when a project made the asset', async () => {
+  it('expands a mention in a chat whose folder is no project to the no-project line, even when a project made the asset', async () => {
     const chat = await start()
     const { fixture } = chat
     const user: RecordOrigin = { actor: 'user', surface: 'canvas', session: null, turn: null, tool_call: null, intent: 'set up' }
-    const info = await fixture.project.createProject('elsewhere', user)
+    const info = await fixture.project.createProject(await fixture.project.newProjectFolder('elsewhere'), 'elsewhere', user)
     const picture = await fixture.project.run({
       ...user, project: info.id, operation: 'asset.import', inputs: [], params: { path: fixture.writeFile('face.png'), mime: 'image/png' },
     })
@@ -171,11 +176,11 @@ describe('mention expansion', () => {
 })
 
 describe('chat attachments', () => {
-  it('imports the images a user attached in a bound chat as project assets and puts them on the canvas', async () => {
+  it('imports the images a user attached in a project chat as project assets and puts them on the canvas', async () => {
     const { fixture, attachments, emit, callAs } = await start()
     const image = await attachments.saveImage({ data: Buffer.from('chat-image'), mediaType: 'image/png', name: 'cat.png' })
     const message = { source: { kind: 'user' }, content: [{ type: 'image', attachment: image }] }
-    // Without a bound project the image stays in the chat only.
+    // While the chat folder is no project the image stays in the chat only.
     emit('user/message', message)
     const created = await callAs('dv_proj_create', { title: 'dance' })
     if (created.isError) throw new Error(created.error.message)

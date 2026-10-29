@@ -407,7 +407,7 @@ describe('chat with the agent', () => {
     // The project state reached the agent once, as the project state message; the system prompt holds only the rules.
     const request = requestFor('只回复八') as ChatRequest
     expect(promptOf(request)).not.toContain('"head"')
-    expect(projectTextOf(request)).toMatch(/^DreamVerse project state\. This conversation belongs to project /)
+    expect(projectTextOf(request)).toMatch(/^DreamVerse project state\. This conversation belongs to the project "/)
     expect(projectTextOf(request)).not.toContain('"branches"')
     expect(errors).toEqual([])
   })

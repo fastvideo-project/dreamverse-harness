@@ -10,14 +10,14 @@ import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
-import { brandString } from '@deepseek-ai/dsh-brand'
 import { ToolCallId, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
-import DvProject, { type AssetId, type OperationToolValue, type ProjectId, type SessionId } from '@dv/project'
+import DvProject, { type AssetId, type OperationToolValue, type ProjectId } from '@dv/project'
 import { afterEach, describe, expect, it } from 'vitest'
+import { chatProject, provideChatServices } from '../../project/tests/workspaces.ts'
 import DvInspector from '../src/index.ts'
 
 const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmpeg-native/bin/ffmpeg'
@@ -77,7 +77,7 @@ interface Fixture {
   project: ProjectId
   /** Store bytes in the asset pool. */
   put(bytes: Uint8Array, mime: string, name: string): AssetId
-  /** Run one tool as the agent of chat session `s1`, which is bound to `project`. */
+  /** Run one tool as the agent of chat session `s1`, which runs in the folder of `project`. */
   call(name: string, args: Record<string, unknown>): Promise<ToolExecutionResult>
 }
 
@@ -90,7 +90,7 @@ afterEach(async () => {
 /**
  * Boot the composition from a test-only `cordis.yml`.
  * @param options - whether the model services are mounted, and the inspector's `imageInput`.
- * @returns the fixture, with a project bound to chat session `s1`.
+ * @returns the fixture, with a project whose folder chat session `s1` runs in.
  */
 async function start(options: { models?: boolean; imageInput?: boolean } = {}): Promise<Fixture> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-inspector-'))
@@ -103,13 +103,14 @@ async function start(options: { models?: boolean; imageInput?: boolean } = {}): 
   }
   row('system-prompt', 'SystemPrompt', [])
   row('tools', 'ToolRuntime', [])
-  row('dv-project', 'DvProject', [`root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`, `projectsFolder: ${join(dir, 'DreamVerse')}`])
+  row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`])
   row('dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, `ffprobePath: ${FFPROBE}`])
   row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
   row('dv-inspector', 'DvInspector', options.imageInput === false ? ['imageInput: false'] : [])
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
 
   const ctx = new Context()
+  const services = provideChatServices(ctx)
   const llm = new FakeLlm()
   const attachments = new FakeAttachments()
   const route: Fixture['route'] = { provider: 'test-provider', model: 'test-vision' }
@@ -127,8 +128,7 @@ async function start(options: { models?: boolean; imageInput?: boolean } = {}): 
     rmSync(dir, { recursive: true, force: true })
   })
   const origin = { actor: 'user' as const, surface: 'api' as const, session: null, turn: null, tool_call: null, intent: 'create' }
-  const project = (await ctx.dvProject.createProject('inspect', origin)).id
-  ctx.dvProject.bindSession(brandString<SessionId>('s1'), project)
+  const project = await chatProject(ctx.dvProject, services, 'inspect', origin)
   let calls = 0
   return {
     ctx, dir, llm, attachments, route, project,

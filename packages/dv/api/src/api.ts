@@ -287,15 +287,17 @@ export class ApiHandlers {
   }
 
   /**
-   * Start a project from a view. A title another listed project already has gets the next free number, so two clients
-   * that pick the same name (two tabs, a double click) create two distinct titles.
+   * Start a project from a view, in a fresh folder named after it in the DreamVerse folder. A title another listed
+   * project already has gets the next free number, so two clients that pick the same name (two tabs, a double click)
+   * create two distinct titles.
    * @param raw - `{title, surface}`.
    * @returns the project, with the title it was created with.
    */
   async createProject(raw: unknown): Promise<ProjectInfo> {
     const body = objectOf(raw)
     const title = this.freeTitle(stringOf(body['title'], 'title'))
-    return this.services.project.createProject(title, { ...humanOrigin(body, `create project ${title}`), session: null })
+    const folder = await this.services.project.newProjectFolder(title)
+    return this.services.project.createProject(folder, title, { ...humanOrigin(body, `create project ${title}`), session: null })
   }
 
   /**

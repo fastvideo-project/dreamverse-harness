@@ -15,10 +15,15 @@
  * update line, and releases it while the operation executes. Moves and project creation hold it for their whole
  * duration.
  *
+ * Projects. A project is a DSH Workspace whose folder holds `.dreamverse/records.jsonl` (the `folders` module); the
+ * project ID is the Workspace ID, and the title, creation time and folder are the Workspace's. Project registers,
+ * renames and removes these Workspaces itself; removing a project never deletes a file.
+ *
  * Agent tools. While the DSH `tools` registry is mounted, every registered operation also has its agent tool
  * `dv_<operation name with _>`, built by the `agent-tools` module. A tool call runs the operation as the agent on the
  * project its chat session is bound to (`bindSession`), in the session's DSH turn. Project also registers its own
- * `dv_proj_*` tools (the `proj-tools` module); they bind the session to its project and return the project summary,
+ * `dv_proj_*` tools (the `proj-tools` module); `dv_proj_create` makes the session's folder a project and binds the
+ * session to it, and the tools return the project summary,
  * to which each component's reducer adds its fields through `Reducer.agentSummary`. While the DSH `systemPrompt`
  * service is mounted, Project's rules reach the agent as the `dv:project` prompt section (the `agent-context` module),
  * whose text is the same at every step. While the DSH `sessionProjections` service is mounted, the project's state
@@ -34,11 +39,13 @@
  *
  * @module @dv/project
  */
-import { randomUUID } from 'node:crypto'
 import { isAbsolute } from 'node:path'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import { defaultWorkspaceDirectory } from '@deepseek-ai/dsh-api-workspace-controller'
 import { brandString } from '@deepseek-ai/dsh-brand'
+import type {} from '@deepseek-ai/dsh-session'
+import type { SessionId as ChatId } from '@deepseek-ai/dsh-session/types'
+import type {} from '@deepseek-ai/dsh-workspace'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
@@ -46,7 +53,7 @@ import { PROMPT_SECTION, projectContext } from './agent-context.ts'
 import { AgentTools, parseInputRef, parseInputs, turnOf } from './agent-tools.ts'
 import { History } from './history.ts'
 import type { OperationSpec } from './operation-types.ts'
-import { ProjectFolders } from './folders.ts'
+import { canonicalPath, ProjectFolders } from './folders.ts'
 import { projTools, type ProjToolDeps } from './proj-tools.ts'
 import { registerProjectUpdates } from './project-updates.ts'
 import { RecordStore } from './record-store.ts'
@@ -86,11 +93,6 @@ const RESERVED_KINDS = { asset: true, record: true, version: true }
 /** `dvProject` plugin configuration. */
 export interface Config {
   /**
-   * The directory holding one project folder `<ProjectId>/` per project (`$DV_STATE_ROOT/projects`); created when
-   * missing. The DreamVerse files of a project live in the folder's `.dreamverse/` directory.
-   */
-  root: string
-  /**
    * The DreamVerse folder, an absolute path that holds the folders of new projects (`DV_PROJECTS_FOLDER`); created
    * when missing. Unset, it is `<Documents>/deepseek-harness/DreamVerse`, from the DSH first-use Workspace rule; the
    * service then fails to start on a host whose Documents folder does not resolve.
@@ -108,7 +110,6 @@ export interface Config {
 
 /** Loader validation. */
 export const Config: z<Config> = z.object({
-  root: z.string().required(),
   projectsFolder: z.string(),
   cpuConcurrency: z.number().default(4),
   gpuConcurrency: z.number().default(1),
@@ -119,10 +120,11 @@ export const Config: z<Config> = z.object({
 /** The Project service. */
 export default class DvProject extends Service {
   static Config = Config
+  static inject = ['workspaceRegistry']
 
   private readonly subscriptions = new Subscriptions()
   private projectsFolder = ''
-  private readonly folders = new ProjectFolders(() => this.projectsFolder)
+  private readonly folders: ProjectFolders
   private readonly store: RecordStore
   private readonly reducers: ReducerRegistry
   private readonly history: History
@@ -140,11 +142,12 @@ export default class DvProject extends Service {
 
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'dvProject')
+    this.folders = new ProjectFolders(ctx.workspaceRegistry, () => this.projectsFolder)
     this.subscriptions.onListenerError = (error) => {
       ctx.logger('dvProject').warn('a project subscriber threw: %s', error instanceof Error ? error.message : String(error))
     }
     // Every change on disk reaches the subscribers; a finished record also lets the scheduler start its dependents.
-    this.store = new RecordStore(config.root, (project, event) => {
+    this.store = new RecordStore(this.folders, (project, event) => {
       this.subscriptions.emit(project, event)
       if (event.kind === 'update' && ['done', 'failed', 'cancelled'].includes(event.record.status)) this.scheduler.recordFinished(project)
     })
@@ -173,7 +176,6 @@ export default class DvProject extends Service {
       getRecord: (project, record) => this.getRecord(project, record),
       listHistory: query => this.listHistory(query),
     })
-    this.store.load()
     this.runner.registerComponent('proj')
     this.reducers.register('proj', projReducer)
     // The project summary that the `dv_proj_*` tools return and the project state message shows.
@@ -181,6 +183,7 @@ export default class DvProject extends Service {
       assets: () => this.requireAssetStore(),
       agentSummaries: (state: ProjectState) => this.reducers.agentSummaries(state, this.requireAssetStore()),
       turnOf: exec => turnOf(ctx, exec),
+      chatFolder: session => this.chatFolder(session),
     }
     // Every registered operation has its agent tool while the DSH tool registry is mounted.
     ctx.inject(['tools'], (child) => {
@@ -240,20 +243,22 @@ export default class DvProject extends Service {
   }
 
   /**
-   * Create a project: create its project folder with `.dreamverse/project.json`, then write the project's first record,
-   * `proj.create` with `params {title}`, on `main` with status `done`. Holds the new project's lock.
+   * Make a folder a project: register it as a DSH Workspace titled `title`, then write the project's first record,
+   * `proj.create` with `params {title}`, on `main` with status `done`, into its `.dreamverse/records.jsonl`. A folder
+   * that is a project already keeps its records, and a call repeated after a crash finishes the work.
+   * @param folder - an existing folder.
    * @param title - the project title.
    * @param origin - who creates it, from where.
    * @returns the project's metadata.
    */
-  async createProject(title: string, origin: RecordOrigin): Promise<ProjectInfo> {
-    const id = brandString<ProjectId>(randomUUID())
-    const info = this.store.createProject({ id, title, created_at: new Date().toISOString() })
-    await this.store.lock(info.id, () => this.store.append(info.id, {
-      parents: [], kind: 'operation', component: 'proj', operation: 'proj.create', operation_version: '1',
-      ...origin, params: { title }, inputs: [], outputs: [], based_on: null, supersedes: [], deterministic: true, status: 'done',
+  createProject(folder: string, title: string, origin: RecordOrigin): Promise<ProjectInfo> {
+    return this.folders.create(folder, title, (project, dir) => this.store.lock(project, () => {
+      this.store.createProject(project, dir)
+      this.store.append(project, {
+        parents: [], kind: 'operation', component: 'proj', operation: 'proj.create', operation_version: '1',
+        ...origin, params: { title }, inputs: [], outputs: [], based_on: null, supersedes: [], deterministic: true, status: 'done',
+      })
     }))
-    return info
   }
 
   /**
@@ -272,29 +277,24 @@ export default class DvProject extends Service {
   }
 
   /**
-   * Change a project's title in `project.json` to the trimmed title, or, when another project uses that title, to the
-   * title with the smallest free ` N` suffix from 2. Writes no record.
+   * Change a project's Workspace title to the trimmed title, or, when another project uses that title, to the title
+   * with the smallest free ` N` suffix from 2. The folder keeps its name. Writes no record.
    * @param project - the project.
    * @param title - the wanted title.
    * @returns the metadata after the change; throws `invalid_params` for a title that is empty after trimming.
    */
   renameProject(project: ProjectId, title: string): Promise<ProjectInfo> {
-    return this.store.lock(project, () => {
-      const wanted = title.trim()
-      if (wanted.length === 0) throw new ProjectError('invalid_params', 'A project title must not be empty.')
-      const taken = new Set(this.store.listProjects().filter(info => info.id !== project).map(info => info.title))
-      let unique = wanted
-      for (let suffix = 2; taken.has(unique); suffix += 1) unique = `${wanted} ${String(suffix)}`
-      return this.store.renameProject(project, unique)
-    })
+    return this.folders.rename(project, title)
   }
 
   /**
-   * Delete a project: move its project folder to the store's trash and forget it. Writes no record.
+   * Remove a project: unregister its Workspace and forget its records in memory. The folder, its `.dreamverse/`
+   * directory and the chat logs stay on disk. Writes no record.
    * @param project - the project.
    */
-  deleteProject(project: ProjectId): Promise<void> {
-    return this.store.lock(project, () => { this.store.deleteProject(project) })
+  async removeProject(project: ProjectId): Promise<void> {
+    await this.folders.remove(project)
+    await this.store.lock(project, () => { this.store.forget(project) })
   }
 
   /**
@@ -609,6 +609,15 @@ export default class DvProject extends Service {
   private requireAssetStore(): AssetStore {
     if (this.assetStore === null) throw new Error('No asset store is registered with dvProject; mount the asset pool.')
     return this.assetStore
+  }
+
+  /**
+   * @param session - a chat session.
+   * @returns the canonical working directory of the live session, or null when it is not live or records none.
+   */
+  private chatFolder(session: SessionId): string | null {
+    const cwd = this.ctx.get('sessions')?.get(brandString<ChatId>(session))?.header.cwd
+    return (cwd === undefined ? undefined : canonicalPath(cwd)) ?? null
   }
 
   /** Register the agent tool of an operation while the DSH tool registry is mounted. */

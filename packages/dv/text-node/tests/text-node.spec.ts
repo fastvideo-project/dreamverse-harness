@@ -17,8 +17,9 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
-import DvProject, { type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId, type SessionId } from '@dv/project'
+import DvProject, { type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId } from '@dv/project'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { chatProject, provideChatServices } from '../../project/tests/workspaces.ts'
 import DvTextNode, { type TextPath } from '../src/index.ts'
 
 const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmpeg-native/bin/ffmpeg'
@@ -46,7 +47,7 @@ afterEach(async () => {
 
 /**
  * Boot the composition from a test-only `cordis.yml`.
- * @returns the fixture, with a project bound to chat session `s1`.
+ * @returns the fixture, with a project whose folder chat session `s1` runs in.
  */
 async function start(): Promise<Fixture> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-text-node-'))
@@ -60,13 +61,14 @@ async function start(): Promise<Fixture> {
   row('skills', 'SkillRegistry', [])
   row('system-prompt', 'SystemPrompt', [])
   row('tools', 'ToolRuntime', [])
-  row('dv-project', 'DvProject', [`root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`, `projectsFolder: ${join(dir, 'DreamVerse')}`])
+  row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`])
   row('dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, `ffprobePath: ${FFPROBE}`])
   row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
   row('dv-text-node', 'DvTextNode', [])
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
 
   const ctx = new Context()
+  const services = provideChatServices(ctx)
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
@@ -76,8 +78,7 @@ async function start(): Promise<Fixture> {
     rmSync(dir, { recursive: true, force: true })
   })
   const user = { actor: 'user' as const, surface: 'canvas' as const, session: null, turn: null, tool_call: null, intent: 'create' }
-  const project = (await ctx.dvProject.createProject('texts', user)).id
-  ctx.dvProject.bindSession(brandString<SessionId>('s1'), project)
+  const project = await chatProject(ctx.dvProject, services, 'texts', user)
   let calls = 0
   return {
     ctx, project,

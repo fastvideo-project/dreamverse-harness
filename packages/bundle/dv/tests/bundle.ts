@@ -34,6 +34,7 @@ import * as WorkflowStory from '@dv/workflow-story'
 import * as yaml from 'js-yaml'
 import { vi } from 'vitest'
 import { FakeModel, FFMPEG, FFPROBE } from '../../../dv/api/tests/support.ts'
+import { provideChatServices, type TestChatServices } from '../../../dv/project/tests/workspaces.ts'
 
 /** Whether the stand-in FastVideo plugin was mounted. */
 export const fastVideo: { mounted: boolean } = { mounted: false }
@@ -99,10 +100,11 @@ export function insertRows(): Row[] {
   return first?.insert ?? []
 }
 
-/** A booted composition, its state root, and its teardown. */
+/** A booted composition, its state root, its stand-in Workspace and chat services, and its teardown. */
 export interface Bundle {
   ctx: Context
   dir: string
+  services: TestChatServices
   dispose: () => Promise<void>
 }
 
@@ -116,7 +118,7 @@ export async function bootBundle(extra: Record<string, object> = {}): Promise<Bu
   const dir = mkdtempSync(join(tmpdir(), 'dv-composition-'))
   // The environment the bundle's `!!js` configuration reads.
   vi.stubEnv('DV_STATE_ROOT', dir)
-  vi.stubEnv('DV_PROJECTS_FOLDER', join(dir, 'DreamVerse'))
+  vi.stubEnv('DV_PROJECTS_FOLDER', join(dir, 'projects'))
   vi.stubEnv('DV_FFMPEG', FFMPEG)
   vi.stubEnv('DV_FFPROBE', FFPROBE)
   const globals = globalThis as typeof globalThis & { __dvComposition?: Record<string, object> }
@@ -134,12 +136,13 @@ export async function bootBundle(extra: Record<string, object> = {}): Promise<Bu
   writeFileSync(join(dir, 'cordis.yml'), yaml.dump(entries, { schema: entryListSchema }))
 
   const ctx = new Context()
+  const services = provideChatServices(ctx)
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
   await ctx.loader.await()
   return {
-    ctx, dir,
+    ctx, dir, services,
     dispose: async () => {
       await ctx.fiber.dispose()
       delete globals.__dvComposition

@@ -16,8 +16,9 @@ import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvModels, { type ModelEntry } from '@dv/models'
-import DvProject, { type AssetId, type OperationSpec, type OperationToolValue, type ProjectId, type RecordId, type SessionId } from '@dv/project'
+import DvProject, { type AssetId, type OperationSpec, type OperationToolValue, type ProjectId, type RecordId } from '@dv/project'
 import { afterEach, describe, expect, it } from 'vitest'
+import { chatProject, provideChatServices } from '../../project/tests/workspaces.ts'
 import DvAudioGenerate, { type AudioRequest, type GeneratedAudio } from '../src/index.ts'
 
 const KEY = { modality: 'audio', task: 't2a', provider: 'test', model: 'fake' }
@@ -66,7 +67,7 @@ afterEach(async () => {
 /**
  * Boot the composition from a test-only `cordis.yml`.
  * @param options - whether the fake model is registered (by default it is).
- * @returns the fixture, with a project bound to chat session `s1`.
+ * @returns the fixture, with a project whose folder chat session `s1` runs in.
  */
 async function start(options: { model?: boolean } = {}): Promise<Fixture> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-audio-generate-'))
@@ -80,7 +81,7 @@ async function start(options: { model?: boolean } = {}): Promise<Fixture> {
   row('system-prompt', 'SystemPrompt', [])
   row('tools', 'ToolRuntime', [])
   row('dv-project', 'DvProject', [
-    `root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`, `projectsFolder: ${join(dir, 'DreamVerse')}`,
+    `projectsFolder: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`,
   ])
   row('dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe'])
   row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
@@ -89,6 +90,7 @@ async function start(options: { model?: boolean } = {}): Promise<Fixture> {
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
 
   const ctx = new Context()
+  const services = provideChatServices(ctx)
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
@@ -100,8 +102,7 @@ async function start(options: { model?: boolean } = {}): Promise<Fixture> {
     rmSync(dir, { recursive: true, force: true })
   })
   const origin = { actor: 'user' as const, surface: 'api' as const, session: null, turn: null, tool_call: null }
-  const project = (await ctx.dvProject.createProject('voices', { ...origin, intent: 'create' })).id
-  ctx.dvProject.bindSession(brandString<SessionId>('s1'), project)
+  const project = await chatProject(ctx.dvProject, services, 'voices', { ...origin, intent: 'create' })
   let calls = 0
   return {
     ctx, speech, project,

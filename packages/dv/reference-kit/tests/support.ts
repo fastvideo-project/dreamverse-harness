@@ -15,6 +15,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import DvProject, { type AssetId, type AssetStore, type ProjectId, type RecordOrigin } from '@dv/project'
 import { onTestFinished } from 'vitest'
+import { provideChatServices } from '../../project/tests/workspaces.ts'
 import { defineReference, type ReferenceSlice, type ReferenceSpec, type ReferenceVersion } from '../src/index.ts'
 
 /** One version of a `test_ref` item: the shared fields and its `traits`. */
@@ -105,6 +106,7 @@ export interface Fixture {
 export async function start(): Promise<Fixture> {
   const root = mkdtempSync(join(tmpdir(), 'dv-reference-kit-'))
   const ctx = new Context()
+  provideChatServices(ctx)
   onTestFinished(async () => {
     await ctx.fiber.dispose()
     rmSync(root, { recursive: true, force: true })
@@ -113,7 +115,7 @@ export async function start(): Promise<Fixture> {
   await ctx.plugin(ToolRuntime).await()
   await ctx.plugin(SkillRegistry, {}).await()
   await ctx.plugin(DvProject, {
-    root: join(root, 'projects'), sessionRoot: join(root, 'sessions'), projectsFolder: join(root, 'DreamVerse'), cpuConcurrency: 1, gpuConcurrency: 1,
+    projectsFolder: join(root, 'projects'), sessionRoot: join(root, 'sessions'), cpuConcurrency: 1, gpuConcurrency: 1,
     promptSectionOrder: 4900,
   }).await()
   const assets = new MemoryAssets()
@@ -123,7 +125,7 @@ export async function start(): Promise<Fixture> {
   await ctx.plugin(DvTestRef2).await()
   const testSkill = ctx.plugin(DvTestSkill)
   await testSkill.await()
-  const project = (await ctx.dvProject.createProject('kit', HUMAN)).id
+  const project = (await ctx.dvProject.createProject(await ctx.dvProject.newProjectFolder('kit'), 'kit', HUMAN)).id
   return {
     ctx, project, put: text => assets.importAsset(Buffer.from(text), { mime: 'image/png', name: `${text}.png` }),
     disposeTestRef: async () => { await testRef.dispose() },

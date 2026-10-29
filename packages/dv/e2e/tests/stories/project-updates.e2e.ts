@@ -132,7 +132,7 @@ describe('project updates reach the agent as appended messages', () => {
     expectEachRequestExtendsThePrevious(requests)
     const first = requests[0] as ChatRequest
     expect(projectMessages(first)).toHaveLength(1)
-    expect(projectMessages(first)[0]).toMatch(/^DreamVerse project state\. This conversation belongs to project /)
+    expect(projectMessages(first)[0]).toMatch(/^DreamVerse project state\. This conversation belongs to the project "/)
     expect(projectMessages(first)[0]).not.toContain('"report"')
     const system = first.messages.filter(message => message.role === 'system').map(message => textOf(message.content)).join('\n')
     expect(system).toContain('DreamVerse project rules:')

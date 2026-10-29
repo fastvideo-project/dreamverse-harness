@@ -8,7 +8,8 @@
  * `dv_proj_history_list` also stores what its result showed of the project as `dv_seen` (a `ProjectShown`) in its
  * presentation metadata, which the model never reads: a summary tool names the summary's project, its head as the
  * position and its recent records, and `dv_proj_wait` names the records it waited for.
- * `dv_proj_create` binds the chat session to its project; every other tool works on that project only.
+ * `dv_proj_create` makes the chat session's folder its project and binds the session to it; every other tool works on
+ * that project only.
  *
  * Calls the `dvProject` service's public methods and, through {@link ProjToolDeps}, the asset store, the reducers'
  * summaries and the turn of a call. Called by the service, which registers the tools while the DSH `tools` registry is mounted.
@@ -24,7 +25,7 @@ import type DvProject from './index.ts'
 import type { OperationSpec } from './operation-types.ts'
 import { ProjectError, SEEN_META_KEY } from './shared.ts'
 import type {
-  AssetStore, ProjectId, ProjectRecord, ProjectShown, ProjectState, RecordId, RecordOrigin, RecordStatus, TurnId,
+  AssetStore, ProjectId, ProjectRecord, ProjectShown, ProjectState, RecordId, RecordOrigin, RecordStatus, SessionId, TurnId,
 } from './types.ts'
 
 /** What the `dv_proj_*` tools read besides the service's public methods. */
@@ -38,6 +39,8 @@ export interface ProjToolDeps {
   agentSummaries(state: ProjectState): Array<Record<string, JsonValue>>
   /** The agent turn a tool call belongs to, or null outside any turn. */
   turnOf(exec: Pick<ToolRunContext, 'agent'>): TurnId | null
+  /** The working directory of a chat session, or null for a session that is not live or records none. */
+  chatFolder(session: SessionId): string | null
 }
 
 /** The recent records a project summary lists. */
@@ -75,13 +78,13 @@ type WaitedRecord = { record: string; status: string; intent: string; summary: s
 type WaitValue = { project: string; records: WaitedRecord[] }
 
 /**
- * The refusal a bound conversation gets when it tries to start another project: the user opened this conversation
- * inside one project, and every view beside the chat shows that project.
- * @param projectId - the project the conversation belongs to.
+ * The refusal a conversation that has a project gets when it tries to start another one: a conversation's folder never
+ * changes.
+ * @param title - the title of the conversation's project.
  * @returns the error text.
  */
-function boundProjectMessage(projectId: string): string {
-  return `This conversation belongs to project ${projectId}; keep all work in it. A new project needs a new conversation.`
+function alreadyProjectMessage(title: string): string {
+  return `This conversation's folder is already the project "${title}"; keep all work in it. Start a new conversation for a new project.`
 }
 
 /**
@@ -236,14 +239,17 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
   return [
     defineTool({
       name: 'dv_proj_create',
-      description: 'Start a video project and make it this conversation\'s project, only when the conversation has no project yet. '
-        + 'Then import references and build the video with the other DreamVerse tools.',
+      description: 'Make this conversation\'s folder a video project, only when the conversation has no project yet. '
+        + 'DreamVerse keeps the project\'s files in the folder\'s hidden .dreamverse directory and leaves the other files as '
+        + 'they are. Then import references and build the video with the other DreamVerse tools.',
       parameters: { title: { type: 'string', required: true } },
       output: writeOutput,
       execute: async (args, exec) => {
         const bound = project.sessionProject(sessionOf(exec))
-        if (bound !== null) throw new Error(boundProjectMessage(bound))
-        const info = await project.createProject(args.title, originOf(deps, exec, `create project ${args.title}`))
+        if (bound !== null) throw new Error(alreadyProjectMessage(project.openProject(bound).title))
+        const folder = deps.chatFolder(sessionOf(exec))
+        if (folder === null) throw new Error('This conversation has no folder to make a project in.')
+        const info = await project.createProject(folder, args.title, originOf(deps, exec, `create project ${args.title}`))
         project.bindSession(sessionOf(exec), info.id)
         return written(exec, info.id)
       },

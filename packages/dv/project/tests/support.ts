@@ -10,13 +10,14 @@ import { join } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { onTestFinished } from 'vitest'
 import { History } from '../src/history.ts'
-import { RecordStore } from '../src/record-store.ts'
+import { RecordStore, type RecordLineInput } from '../src/record-store.ts'
+import { ProjectError } from '../src/shared.ts'
 import { projReducer, ReducerRegistry } from '../src/reducers.ts'
 import { Runner, type RunnerAssets } from '../src/runner.ts'
 import { Scheduler } from '../src/scheduler.ts'
 import { Subscriptions } from '../src/subscriptions.ts'
 import type {
-  AssetId, AssetStore, ProjectEvent, ProjectId, RecordId, RecordOrigin, ReferenceKindSpec, SessionId, TurnId,
+  AssetId, AssetStore, ProjectEvent, ProjectId, ProjectInfo, RecordId, RecordOrigin, ReferenceKindSpec, SessionId, TurnId,
 } from '../src/types.ts'
 
 declare module '@dv/project' {
@@ -151,9 +152,62 @@ export class MemoryAssets implements AssetStore {
   }
 }
 
+/**
+ * The projects of a module set without a Workspace registry: project `<id>` lives in the folder `<root>/<id>`.
+ */
+export class TestFolders {
+  private readonly projects = new Map<ProjectId, ProjectInfo>()
+
+  constructor(readonly root: string) {}
+
+  /**
+   * Make project `id` in `<root>/<id>` with its first record, as the service does.
+   * @param store - the store that writes the first record.
+   * @param id - the project ID.
+   * @param first - the first record line.
+   * @param title - the project title.
+   * @returns the project.
+   */
+  create(store: RecordStore, id: ProjectId, first: RecordLineInput, title = `Title of ${id}`): ProjectInfo {
+    const path = join(this.root, id)
+    const info = this.add(id, title)
+    store.createProject(id, join(path, '.dreamverse'))
+    store.append(id, first)
+    return info
+  }
+
+  /**
+   * List the existing folder `<root>/<id>` as project `id`.
+   * @param id - the project ID.
+   * @param title - the project title.
+   * @returns the project.
+   */
+  add(id: ProjectId, title = `Title of ${id}`): ProjectInfo {
+    const info = { id, title, created_at: new Date(Date.parse('2026-01-01T00:00:00Z') + this.projects.size * 1000).toISOString(), path: join(this.root, id) }
+    this.projects.set(id, info)
+    return info
+  }
+
+  /** Forget a project, as removing its Workspace does. */
+  remove(id: ProjectId): void {
+    this.projects.delete(id)
+  }
+
+  get(id: ProjectId): ProjectInfo {
+    const info = this.projects.get(id)
+    if (info === undefined) throw new ProjectError('unknown_project', `There is no project ${id}.`)
+    return info
+  }
+
+  list(): ProjectInfo[] {
+    return [...this.projects.values()]
+  }
+}
+
 /** Every module of the service, wired as `DvProject` wires them, plus the events the store emitted. */
 export interface ProjectModules {
   root: string
+  folders: TestFolders
   store: RecordStore
   subscriptions: Subscriptions
   reducers: ReducerRegistry
@@ -174,11 +228,12 @@ export const STAND_IN_COMPONENTS = ['asset', 'bible', 'shot', 'timeline', 'inspe
  */
 export function startModules(limits = { cpu: 4, gpu: 1 }): ProjectModules {
   const root = tempRoot()
+  const folders = new TestFolders(root)
   const events: ProjectModules['events'] = []
   const subscriptions = new Subscriptions()
   // Scheduler and store refer to each other through callbacks, read at call time.
   const holder: { scheduler: Scheduler | null; runner: Runner | null } = { scheduler: null, runner: null }
-  const store = new RecordStore(root, (project, event) => {
+  const store = new RecordStore(folders, (project, event) => {
     events.push({ project, event })
     subscriptions.emit(project, event)
     if (event.kind === 'update' && ['done', 'failed', 'cancelled'].includes(event.record.status)) holder.scheduler?.recordFinished(project)
@@ -195,10 +250,9 @@ export function startModules(limits = { cpu: 4, gpu: 1 }): ProjectModules {
   for (const key of STAND_IN_COMPONENTS) runner.registerComponent(key)
   holder.scheduler = scheduler
   holder.runner = runner
-  store.load()
   reducers.register('proj', projReducer)
   onTestFinished(() => { scheduler.dispose() })
-  return { root, store, subscriptions, reducers, history, scheduler, runner, assets, events }
+  return { root, folders, store, subscriptions, reducers, history, scheduler, runner, assets, events }
 }
 
 /**
@@ -213,18 +267,17 @@ export function readLines(root: string, project: ProjectId): Array<Record<string
 }
 
 /**
- * Create a project the way `DvProject.createProject` does: `project.json`, then its first record, `proj.create`.
+ * Create a project the way `DvProject.createProject` does: its folder with the first record, `proj.create`.
  * @param modules - the module set.
  * @param title - the project title.
  * @returns the project ID.
  */
-export async function createTestProject(modules: ProjectModules, title = 'Test project'): Promise<ProjectId> {
+export function createTestProject(modules: ProjectModules, title = 'Test project'): Promise<ProjectId> {
   const id = brandString<ProjectId>(`project-${String(modules.store.listProjects().length + 1)}`)
-  modules.store.createProject({ id, title, created_at: new Date().toISOString() })
-  await modules.store.lock(id, () => modules.store.append(id, {
+  modules.folders.create(modules.store, id, {
     parents: [], kind: 'operation', component: 'proj', operation: 'proj.create', operation_version: '1',
     ...userOrigin({ session: null, intent: `create project ${title}` }), params: { title }, inputs: [], outputs: [], based_on: null,
     supersedes: [], deterministic: true, status: 'done',
-  }))
-  return id
+  }, title)
+  return Promise.resolve(id)
 }

@@ -380,9 +380,8 @@ describe('Runner', () => {
         params: { timeline: 't1' }, inputs: [], outputs: [], created_at: '2026-10-07T23:42:00.000Z' },
     ]
     mkdirSync(join(m.root, project, '.dreamverse'), { recursive: true })
-    writeFileSync(join(m.root, project, '.dreamverse', 'project.json'), JSON.stringify({ id: project, title: 'Old', created_at: '2026-10-07T23:40:00.000Z' }))
     writeFileSync(join(m.root, project, '.dreamverse', 'records.jsonl'), lines.map(line => `${JSON.stringify(line)}\n`).join(''))
-    m.store.load()
+    m.folders.add(project, 'Old')
 
     // Replay passes every record through the registered reducers only; the unowned version is no producer.
     const proj = m.reducers.getState(project).components.proj
@@ -409,12 +408,11 @@ describe('Runner', () => {
     }))
 
     // A new process loads the same root and recovers.
-    const store = new RecordStore(m.root, () => undefined)
+    const store = new RecordStore(m.folders, () => undefined)
     const reducers = new ReducerRegistry(store)
     const holder: { runner: Runner | null } = { runner: null }
     const scheduler = new Scheduler(store, (id, record) => (holder.runner as Runner).execute(id, record), { cpu: 1, gpu: 1 })
     holder.runner = new Runner({ store, reducers, scheduler, assets: m.assets })
-    store.load()
     reducers.register('proj', projReducer)
     await holder.runner.recover()
     scheduler.dispose()

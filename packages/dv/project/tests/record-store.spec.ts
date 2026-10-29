@@ -1,8 +1,8 @@
 /**
  * Record store tests: the record format on disk, the append rule (a record follows the current position and becomes the
  * last step and the current position, kept in `line.json`), moves of the current position, the update rules, the
- * current form of records, reload from disk, the project lock, project rename and delete, and change events.
- * The record store calls no other module, so these tests build it alone on a temporary root.
+ * current form of records, reading a project on first use, the project lock, forgetting a removed project, and change
+ * events. The record store calls only its project lookup, so these tests build it alone over test project folders.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -11,25 +11,25 @@ import { describe, expect, it } from 'vitest'
 import { RecordStore, type RecordLineInput } from '../src/record-store.ts'
 import { ProjectError } from '../src/shared.ts'
 import type { AssetId, ProjectEvent, ProjectId, ProjectRecord, RecordId } from '../src/types.ts'
-import { readLines, tempRoot, userOrigin } from './support.ts'
+import { readLines, tempRoot, TestFolders, userOrigin } from './support.ts'
 
-/** A loaded record store on a temporary root, and the events it emitted. */
+/** A record store over test project folders on a temporary root, and the events it emitted. */
 interface OpenStore {
   root: string
+  folders: TestFolders
   store: RecordStore
   events: Array<{ project: ProjectId; event: ProjectEvent }>
 }
 
 /**
- * Build and load a record store.
- * @param root - the store root; a fresh temporary directory by default.
+ * Build a record store, as a new process does.
+ * @param folders - the project folders; fresh ones on a temporary root by default.
  * @returns the store and its event list.
  */
-function openStore(root = tempRoot()): OpenStore {
+function openStore(folders = new TestFolders(tempRoot())): OpenStore {
   const events: OpenStore['events'] = []
-  const store = new RecordStore(root, (project, event) => { events.push({ project, event }) })
-  store.load()
-  return { root, store, events }
+  const store = new RecordStore(folders, (project, event) => { events.push({ project, event }) })
+  return { root: folders.root, folders, store, events }
 }
 
 /**
@@ -48,17 +48,15 @@ function line(parent: RecordId | null, overrides: Partial<RecordLineInput> = {})
 
 /**
  * Create a project with its first record, `proj.create`, as the service does.
- * @param store - the store.
+ * @param opened - the store and its folders.
  * @param id - the project ID text.
- * @param created_at - the creation time.
  * @returns the project ID and its first record.
  */
-function createProject(
-  store: RecordStore, id = 'project-1', created_at = new Date().toISOString(),
-): { project: ProjectId; first: ProjectRecord } {
+function createProject(opened: OpenStore, id = 'project-1'): { project: ProjectId; first: ProjectRecord } {
   const project = brandString<ProjectId>(id)
-  store.createProject({ id: project, title: `Title of ${id}`, created_at })
-  const first = store.append(project, line(null, { component: 'proj', operation: 'proj.create', params: { title: id }, status: 'done' }))
+  opened.folders.create(opened.store, project, line(null, { component: 'proj', operation: 'proj.create', params: { title: id }, status: 'done' }))
+  const [first] = opened.store.listRecords(project)
+  if (first === undefined) throw new Error('no first record')
   return { project, first }
 }
 
@@ -89,8 +87,9 @@ const ASSET_Y = brandString<AssetId>('asset-y')
 
 describe('RecordStore', () => {
   it('writes a record line and an update line', () => {
-    const { root, store } = openStore()
-    const { project, first } = createProject(store)
+    const opened = openStore()
+    const { root, store } = opened
+    const { project, first } = createProject(opened)
     const record = store.append(project, line(first.id))
     const startedAt = new Date().toISOString()
     store.update(project, { update: record.id, status: 'running', started_at: startedAt })
@@ -112,12 +111,13 @@ describe('RecordStore', () => {
     expect(JSON.parse(readFileSync(join(root, project, '.dreamverse', 'line.json'), 'utf8'))).toEqual({ tip: record.id, at: record.id })
     expect(store.getProject(project).path).toBe(join(root, project))
     expect(readdirSync(join(root, project))).toEqual(['.dreamverse'])
-    expect(readdirSync(join(root, project, '.dreamverse')).sort()).toEqual(['line.json', 'project.json', 'records.jsonl'])
+    expect(readdirSync(join(root, project, '.dreamverse')).sort()).toEqual(['line.json', 'records.jsonl'])
   })
 
   it('refuses an append whose parent is not the current position', () => {
-    const { root, store, events } = openStore()
-    const { project, first } = createProject(store)
+    const opened = openStore()
+    const { root, store, events } = opened
+    const { project, first } = createProject(opened)
     store.append(project, line(first.id))
     const before = readFileSync(join(root, project, '.dreamverse', 'records.jsonl'), 'utf8')
     const eventCount = events.length
@@ -129,8 +129,9 @@ describe('RecordStore', () => {
   })
 
   it('refuses a backward or repeated status', () => {
-    const { store } = openStore()
-    const { project, first } = createProject(store)
+    const opened = openStore()
+    const { store } = opened
+    const { project, first } = createProject(opened)
     const running = store.append(project, line(first.id))
     store.update(project, { update: running.id, status: 'running' })
     expect(errorCode(() => store.update(project, { update: running.id, status: 'running' }))).toBe('status_backwards')
@@ -140,8 +141,9 @@ describe('RecordStore', () => {
   })
 
   it('refuses an update of a finished record', () => {
-    const { store } = openStore()
-    const { project, first } = createProject(store)
+    const opened = openStore()
+    const { store } = opened
+    const { project, first } = createProject(opened)
     let head = first.id
     for (const status of ['done', 'failed', 'cancelled'] as const) {
       const record = store.append(project, line(head))
@@ -153,22 +155,24 @@ describe('RecordStore', () => {
   })
 
   it('reloads records, updates and the line from disk', () => {
-    const { root, store } = openStore()
-    const { project, first } = createProject(store)
+    const opened = openStore()
+    const { store } = opened
+    const { project, first } = createProject(opened)
     const record = store.append(project, line(first.id))
     store.update(project, { update: record.id, status: 'done', outputs: [ASSET_X] })
     const last = store.append(project, line(record.id))
     store.moveTo(project, record.id)
 
-    const reloaded = openStore(root).store
+    const reloaded = openStore(opened.folders).store
     expect(reloaded.listProjects()).toEqual(store.listProjects())
     expect(reloaded.listRecords(project)).toEqual(store.listRecords(project))
     expect(reloaded.line(project)).toEqual({ tip: last.id, at: record.id })
   })
 
   it('writes started_by on the record line only when the line has it, and reloads it', () => {
-    const { root, store } = openStore()
-    const { project, first } = createProject(store)
+    const opened = openStore()
+    const { root, store } = opened
+    const { project, first } = createProject(opened)
     const startedBy = { record: first.id, slot: 2, lane: 'wide' }
     const started = store.append(project, line(first.id, { started_by: startedBy }))
     const free = store.append(project, line(started.id))
@@ -178,13 +182,14 @@ describe('RecordStore', () => {
     expect(lines[1]?.['started_by']).toEqual(startedBy)
     expect(lines[2]).not.toHaveProperty('started_by')
     expect(store.getRecord(project, started.id).started_by).toEqual(startedBy)
-    expect(openStore(root).store.getRecord(project, started.id).started_by).toEqual(startedBy)
+    expect(openStore(opened.folders).store.getRecord(project, started.id).started_by).toEqual(startedBy)
     expect(store.getRecord(project, free.id)).not.toHaveProperty('started_by')
   })
 
   it('moves the current position without writing a record, and appends after it', () => {
-    const { root, store, events } = openStore()
-    const { project, first } = createProject(store)
+    const opened = openStore()
+    const { root, store, events } = opened
+    const { project, first } = createProject(opened)
     const second = store.append(project, line(first.id))
     const before = readFileSync(join(root, project, '.dreamverse', 'records.jsonl'), 'utf8')
     store.moveTo(project, first.id)
@@ -196,14 +201,12 @@ describe('RecordStore', () => {
     const third = store.append(project, line(first.id))
     expect(store.line(project)).toEqual({ tip: third.id, at: third.id })
     expect(errorCode(() => { store.moveTo(project, brandString<RecordId>('missing')) })).toBe('unknown_record')
-    const empty = brandString<ProjectId>('project-empty')
-    store.createProject({ id: empty, title: 'Empty', created_at: new Date().toISOString() })
-    expect(store.line(empty)).toBeUndefined()
   })
 
   it('lists the record IDs of the history list with the index of the current position', () => {
-    const { store } = openStore()
-    const { project, first } = createProject(store)
+    const opened = openStore()
+    const { store } = opened
+    const { project, first } = createProject(opened)
     const second = store.append(project, line(first.id))
     const third = store.append(project, line(second.id))
     store.moveTo(project, second.id)
@@ -212,15 +215,12 @@ describe('RecordStore', () => {
     store.moveTo(project, first.id)
     const fourth = store.append(project, line(first.id))
     expect(store.lineIds(project)).toEqual({ ids: [first.id, fourth.id], atIndex: 1 })
-    const empty = brandString<ProjectId>('project-empty')
-    store.createProject({ id: empty, title: 'Empty', created_at: new Date().toISOString() })
-    expect(store.lineIds(empty)).toEqual({ ids: [], atIndex: -1 })
-    expect(errorCode(() => store.requireLine(empty))).toBe('invalid_params')
   })
 
   it('fills resolved_asset of an output input once the producer is done', () => {
-    const { root, store } = openStore()
-    const { project, first } = createProject(store)
+    const opened = openStore()
+    const { root, store } = opened
+    const { project, first } = createProject(opened)
     const producer = store.append(project, line(first.id))
     const consumer = store.append(project, line(producer.id, {
       inputs: [{ role: 'source', ref: { record: producer.id, output: 1 }, resolved_asset: null }],
@@ -235,8 +235,9 @@ describe('RecordStore', () => {
   })
 
   it('returns copies that callers cannot use to change the store', () => {
-    const { store } = openStore()
-    const { project, first } = createProject(store)
+    const opened = openStore()
+    const { store } = opened
+    const { project, first } = createProject(opened)
     const record = store.getRecord(project, first.id)
     record.params.title = 'changed'
     record.parents.push(first.id)
@@ -269,42 +270,36 @@ describe('RecordStore', () => {
     expect(steps.indexOf('c end')).toBeLessThan(steps.indexOf('a end'))
   })
 
-  it('renames and deletes a project', () => {
-    const { root, store } = openStore()
-    const { project } = createProject(store, 'project-1', '2026-01-02T00:00:00.000Z')
-    const older = createProject(store, 'project-0', '2026-01-01T00:00:00.000Z').project
-    expect(store.listProjects().map(info => info.id)).toEqual([older, project])
-    expect(errorCode(() => { store.createProject({ id: project, title: 'again', created_at: '2026-01-03T00:00:00.000Z' }) }))
-      .toBe('invalid_params')
+  it('reads a project on first use, refuses to start an existing project, and forgets a removed project', () => {
+    const opened = openStore()
+    const { store, folders } = opened
+    const { project, first } = createProject(opened)
+    expect(errorCode(() => store.getRecord(brandString<ProjectId>('missing'), first.id))).toBe('unknown_project')
+    expect(errorCode(() => { store.createProject(project, join(opened.root, project, '.dreamverse')) })).toBe('invalid_params')
+    expect(readLines(opened.root, project)).toHaveLength(1)
 
-    expect(store.renameProject(project, 'Renamed').title).toBe('Renamed')
-    expect(JSON.parse(readFileSync(join(root, project, '.dreamverse', 'project.json'), 'utf8'))).toEqual({
-      id: project, title: 'Renamed', created_at: '2026-01-02T00:00:00.000Z',
-    })
-    expect(store.getProject(project).title).toBe('Renamed')
-
-    store.deleteProject(project)
-    expect(existsSync(join(root, project))).toBe(false)
-    expect(readdirSync(join(root, '.trash')).filter(name => name.startsWith(`${project}-`))).toHaveLength(1)
-    expect(errorCode(() => store.getProject(project))).toBe('unknown_project')
-    expect(openStore(root).store.listProjects().map(info => info.id)).toEqual([older])
+    folders.remove(project)
+    store.forget(project)
+    expect(errorCode(() => store.listRecords(project))).toBe('unknown_project')
+    expect(existsSync(join(opened.root, project, '.dreamverse', 'records.jsonl'))).toBe(true)
   })
 
   it('emits record, line and update events after the write', () => {
-    const { root, store, events } = openStore()
+    const opened = openStore()
+    const { root, events } = opened
     const project = brandString<ProjectId>('project-1')
-    store.createProject({ id: project, title: 'Events', created_at: new Date().toISOString() })
-    expect(events).toEqual([])
+    opened.folders.add(project, 'Events')
     // Each event must find its change on disk when it arrives.
     const seen: string[] = []
-    const checked = new RecordStore(root, (eventProject, event) => {
+    const checked = new RecordStore(opened.folders, (eventProject, event) => {
       const text = readFileSync(join(root, eventProject, '.dreamverse', 'records.jsonl'), 'utf8')
       if (event.kind === 'record') expect(text).toContain(event.record.id)
       if (event.kind === 'update') expect(text).toContain(`"update":"${event.record.id}","status":"${event.record.status}"`)
       seen.push(event.kind)
       events.push({ project: eventProject, event })
     })
-    checked.load()
+    checked.createProject(project, join(root, project, '.dreamverse'))
+    expect(events).toEqual([])
     const first = checked.append(project, line(null, { component: 'proj', operation: 'proj.create', status: 'done' }))
     const record = checked.append(project, line(first.id))
     const done = checked.update(project, { update: record.id, status: 'done', outputs: [ASSET_X] })

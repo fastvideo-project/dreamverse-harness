@@ -19,7 +19,7 @@ afterEach(async () => {
 it('stores an imported file as an asset.import record with the caller\'s surface and refuses malformed requests', async () => {
   const fixture = await startBase()
   fixtures.push(fixture)
-  const projectId = (await fixture.project.createProject('import', { actor: 'user', surface: 'canvas', session: null, turn: null, tool_call: null, intent: 'test' })).id
+  const projectId = (await fixture.project.createProject(await fixture.project.newProjectFolder('import'), 'import', { actor: 'user', surface: 'canvas', session: null, turn: null, tool_call: null, intent: 'test' })).id
   const [route] = assetImportRoutes({ project: fixture.project, assets: fixture.assets })
   if (route === undefined) throw new Error('no asset import route')
   const post = async (query: Record<string, string>, body: Uint8Array<ArrayBuffer>): Promise<{ status: number; json: unknown }> => {

@@ -43,7 +43,7 @@ The Host half registers nothing. The browser half provides the client service `d
 | Open a project (navigator row, recent project card, or session switcher) | `GET /api/dv/workspaces/sessions` for its stored chat sessions; the main session moves to its latest non-blank chat session, else to a blank one |
 | ＋ on a project row, 新建会话 / New chat in the session switcher, or DSH's New Session | a blank chat session in the project's Workspace; on the entry page, DSH's New Session equals 首页 |
 | Rename a project (row menu) | `POST /api/dv/projects/rename`; the project's Workspace is renamed to match |
-| Delete a project (row menu, then the confirmation) | `POST /api/dv/projects/delete` (the project moves to the trash directory); the linked Workspace is deleted and an open project returns to 首页 |
+| Delete a project (row menu, then the confirmation) | `POST /api/dv/projects/delete` (the project's folder stays on disk); the linked Workspace is deleted and an open project returns to 首页 |
 | A row of 对话 / Chats in the navigator (a started top-level chat that no Workspace holds and no binding names) | the entry page with that chat as the main session; the chat leaves the list when the agent binds it to a project |
 | Rename or delete a chat session (row menu) | DSH's session rename, or archive with its activity stopped; deleting the open chat while no project is open opens this tab's blank entry chat |
 | A main session that sits in a project's Workspace without a binding | `POST /api/dv/workspaces/bind` |

@@ -1,8 +1,8 @@
 /**
- * The link between DreamVerse projects and DSH Workspaces. A project's Workspace is the DSH Workspace whose directory
- * is the project's directory under `<state root>/projects`, so the chat sessions of a project are the sessions of that
- * Workspace. The browser creates the Workspace (only the client can), then links its ID to the project here; the links
- * live in one JSON file, `<state root>/workspaces.json`, and are never written as project records.
+ * The link between DreamVerse projects and DSH Workspaces. A project's Workspace is the DSH Workspace that `dvProject`
+ * registered for the project folder, so the chat sessions of a project are the sessions of that Workspace. The browser
+ * links the Workspace's ID to the project here; the links live in one JSON file, `<state root>/workspaces.json`, and
+ * are never written as project records.
  *
  * Routes:
  * - `GET /api/dv/workspaces` returns `{entry_path, projects: [{id, title, created_at, path, workspace_id}], bindings}`,

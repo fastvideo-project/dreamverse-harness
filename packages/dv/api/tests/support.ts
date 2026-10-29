@@ -21,6 +21,7 @@ import DvModels, { type ModelEntry, type RenderModelFacts, type RenderRequest, t
 import DvShotRender from '@dv/shot-render'
 import DvStyle from '@dv/style'
 import DvTimeline from '@dv/timeline'
+import { provideChatServices, type TestChatServices } from '../../project/tests/workspaces.ts'
 
 /** The ffmpeg and ffprobe the fixtures use; the native build on this host, overridable for other machines. */
 export const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmpeg-native/bin/ffmpeg'
@@ -134,6 +135,8 @@ export interface BaseFixture {
   /** The fake model, or null when the fixture registers none. */
   renderer: FakeModel | null
   root: string
+  /** The stand-in Workspace registry and live chats that `dvProject` reads. */
+  services: TestChatServices
   /** Write a file with the given content and return its path, for imports. */
   writeFile(name: string, content?: string | Buffer): string
   /** Run one DSH tool through the real registry. */
@@ -160,6 +163,7 @@ export interface BaseFixtureOptions {
 export async function startBase(options: BaseFixtureOptions = {}): Promise<BaseFixture> {
   const root = options.root ?? mkdtempSync(join(tmpdir(), 'dv-base-'))
   const context = new Context()
+  const services = provideChatServices(context)
   let renderer: FakeModel | null = null
   await context.plugin(DvModels).await()
   if ((options.generation ?? 'fake') === 'fake') {
@@ -172,7 +176,7 @@ export async function startBase(options: BaseFixtureOptions = {}): Promise<BaseF
     await context.plugin(ToolRuntime).await()
   }
   await context.plugin(DvProject, {
-    root: join(root, 'projects'), gpuConcurrency: 1, cpuConcurrency: 4, sessionRoot: join(root, 'sessions'), projectsFolder: join(root, 'DreamVerse'),
+    projectsFolder: join(root, 'projects'), sessionRoot: join(root, 'sessions'), gpuConcurrency: 1, cpuConcurrency: 4,
     promptSectionOrder: 4900,
   }).await()
   await context.plugin(DvFfmpeg, { ffmpegPath: FFMPEG, ffprobePath: FFPROBE, outputLimitBytes: 1_048_576 }).await()
@@ -184,7 +188,7 @@ export async function startBase(options: BaseFixtureOptions = {}): Promise<BaseF
   await context.plugin(DvShotRender).await()
   let calls = 0
   return {
-    context, project: context.dvProject, assets: context.dvAssetPool, renderer, root,
+    context, project: context.dvProject, assets: context.dvAssetPool, renderer, root, services,
     writeFile(name, content = `FILE:${name}`) {
       const path = join(root, name)
       writeFileSync(path, content)

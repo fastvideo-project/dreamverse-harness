@@ -133,7 +133,7 @@ describe('shot.render with a live stream', () => {
     const broadcaster = new SegmentBroadcaster(1024 * 1024)
     fixture.context.provide('vhStream', broadcaster) // names:allow (the live stream service keeps its name)
     const user = { actor: 'user' as const, surface: 'chat' as const, session: null, turn: null, tool_call: null }
-    const projectId = (await fixture.project.createProject('live', { ...user, intent: 'create' })).id
+    const projectId = (await fixture.project.createProject(await fixture.project.newProjectFolder('live'), 'live', { ...user, intent: 'create' })).id
     const frames: StreamFrame[] = []
     broadcaster.subscribe(projectId, (frame) => { frames.push(frame) })
     const imported = await fixture.project.run({

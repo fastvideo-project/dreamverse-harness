@@ -16,8 +16,9 @@ import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvModels, { type ModelEntry } from '@dv/models'
-import DvProject, { type AssetId, type OperationSpec, type OperationToolValue, type ProjectId, type RecordId, type SessionId } from '@dv/project'
+import DvProject, { type AssetId, type OperationSpec, type OperationToolValue, type ProjectId, type RecordId } from '@dv/project'
 import { afterEach, describe, expect, it } from 'vitest'
+import { chatProject, provideChatServices } from '../../project/tests/workspaces.ts'
 import DvImageGenerate, { type GeneratedImage, type ImageModelFacts, type ImageRequest } from '../src/index.ts'
 
 const KEY = { modality: 'image', task: 't2i', provider: 'test', model: 'fake' }
@@ -80,7 +81,7 @@ afterEach(async () => {
 
 /**
  * Boot the composition from a test-only `cordis.yml`, with the fake model registered unless `serve` is false.
- * @returns the fixture, with a project bound to chat session `s1`.
+ * @returns the fixture, with a project whose folder chat session `s1` runs in.
  */
 async function start(serve = true): Promise<Fixture> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-image-generate-'))
@@ -93,13 +94,14 @@ async function start(serve = true): Promise<Fixture> {
   }
   row('system-prompt', 'SystemPrompt')
   row('tools', 'ToolRuntime')
-  row('dv-project', 'DvProject', [`root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`, `projectsFolder: ${join(dir, 'DreamVerse')}`])
+  row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`])
   row('dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe'])
   row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
   row('dv-models', 'DvModels')
   row('dv-image-generate', 'DvImageGenerate')
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
   const ctx = new Context()
+  const services = provideChatServices(ctx)
   const attachments = new FakeAttachments()
   ctx.provide('attachments', attachments)
   await ctx.plugin(Loader)
@@ -113,8 +115,7 @@ async function start(serve = true): Promise<Fixture> {
   const model = new FakeImageModel()
   if (serve) ctx.effect(() => ctx.dvModels.register(model.entry()))
   const origin = { actor: 'user' as const, surface: 'api' as const, session: null, turn: null, tool_call: null, intent: 'create' }
-  const project = (await ctx.dvProject.createProject('posters', origin)).id
-  ctx.dvProject.bindSession(brandString<SessionId>('s1'), project)
+  const project = await chatProject(ctx.dvProject, services, 'posters', origin)
   let calls = 0
   return {
     ctx, model, attachments, project,

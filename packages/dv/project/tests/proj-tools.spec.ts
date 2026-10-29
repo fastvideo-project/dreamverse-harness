@@ -1,10 +1,11 @@
 /**
- * Project's own `dv_proj_*` tools through the `dvProject` service with the real DSH tool registry: session binding, tools
- * that work only on the conversation's project,
+ * Project's own `dv_proj_*` tools through the `dvProject` service with the real DSH tool registry: making the chat's
+ * folder a project, projects as Workspaces (create, re-add, remove), tools that work only on the conversation's project,
  * renaming the session's project, the project summary with the reducers' `agentSummary` fields, the history list, undo
  * and redo, moves to a step, stale acceptance, and waiting for named records.
  */
 import { createHash } from 'node:crypto'
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -16,6 +17,7 @@ import DvProject, {
   type AssetId, type OperationSpec, type OperationToolValue, type ProjectId, type SessionId,
 } from '../src/index.ts'
 import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot } from './support.ts'
+import { provideChatServices, type TestChatServices } from './workspaces.ts'
 
 declare module '@dv/project' {
   interface ComponentStates {
@@ -35,8 +37,11 @@ interface Fixture {
   assets: MemoryAssets
   /** The `dvProject` plugin's fiber. */
   fiber: { dispose(): Promise<unknown> }
-  /** Run one tool as the agent of chat session `s1`. */
-  call(name: string, args: Record<string, unknown>): Promise<ToolExecutionResult>
+  services: TestChatServices
+  /** The folder of chat session `s1`, which is no project at the start. */
+  chatFolder: string
+  /** Run one tool as the agent of chat session `s1`, or of `session`. */
+  call(name: string, args: Record<string, unknown>, session?: string): Promise<ToolExecutionResult>
 }
 
 const contexts: Context[] = []
@@ -53,10 +58,14 @@ async function start(): Promise<Fixture> {
   const root = tempRoot()
   const context = new Context()
   contexts.push(context)
+  const services = provideChatServices(context)
+  const chatFolder = join(root, 'chat')
+  mkdirSync(chatFolder)
+  services.chats.open('s1', chatFolder)
   await context.plugin(SystemPrompt, {}).await()
   await context.plugin(ToolRuntime).await()
   const fiber = context.plugin(DvProject, {
-    root: join(root, 'projects'), sessionRoot: join(root, 'sessions'), projectsFolder: join(root, 'DreamVerse'), cpuConcurrency: 4, gpuConcurrency: 1,
+    projectsFolder: join(root, 'projects'), sessionRoot: join(root, 'sessions'), cpuConcurrency: 4, gpuConcurrency: 1,
     promptSectionOrder: 4900,
   })
   await fiber.await()
@@ -65,11 +74,11 @@ async function start(): Promise<Fixture> {
   for (const key of STAND_IN_COMPONENTS) context.dvProject.registerComponent(key)
   let calls = 0
   return {
-    context, project: context.dvProject, assets, fiber,
-    call(name, args) {
+    context, project: context.dvProject, assets, fiber, services, chatFolder,
+    call(name, args, session = 's1') {
       calls += 1
       return context.tools.execute({
-        callId: ToolCallId(`call-${calls}`), name, arguments: args, signal: new AbortController().signal, agent: { id: 's1' } as never,
+        callId: ToolCallId(`call-${calls}`), name, arguments: args, signal: new AbortController().signal, agent: { id: session } as never,
       })
     },
   }
@@ -148,10 +157,11 @@ describe('dv_proj_* tools', () => {
     expect(fixture.project.sessionProject(brandString<SessionId>('s1'))).toBe(projectId)
     expect(fixture.project.listHistory({ project: projectId })[0]?.record).toMatchObject({ actor: 'agent', surface: 'chat', intent: 'create project dance' })
     expect(errorOf(await fixture.call('dv_proj_create', { title: 'other' }))).toBe(
-      `This conversation belongs to project ${projectId}; keep all work in it. A new project needs a new conversation.`,
+      'This conversation\'s folder is already the project "dance"; keep all work in it. Start a new conversation for a new project.',
     )
+    expect(errorOf(await fixture.call('dv_proj_create', { title: 'nowhere' }, 's9'))).toBe('This conversation has no folder to make a project in.')
     const origin = { actor: 'user' as const, surface: 'api' as const, session: null, turn: null, tool_call: null, intent: 'other' }
-    await fixture.project.createProject('other', origin)
+    await fixture.project.createProject(await fixture.project.newProjectFolder('other'), 'other', origin)
     expect(json(await fixture.call('dv_proj_state', {}))).toMatchObject({ project_id: projectId, title: 'dance' })
   })
 
@@ -159,7 +169,7 @@ describe('dv_proj_* tools', () => {
     const fixture = await start()
     expect(errorOf(await fixture.call('dv_proj_rename', { title: 'ad' }))).toBe('This conversation has no project yet: call dv_proj_create first.')
     const origin = { actor: 'user' as const, surface: 'api' as const, session: null, turn: null, tool_call: null, intent: 'create' }
-    const other = await fixture.project.createProject('ad', origin)
+    const other = await fixture.project.createProject(await fixture.project.newProjectFolder('ad'), 'ad', origin)
     const projectId = brandString<ProjectId>(String(json(await fixture.call('dv_proj_create', { title: 'draft' }))['project_id']))
     expect(json(await fixture.call('dv_proj_rename', { title: '  ad  ' }))).toMatchObject({ project_id: projectId, title: 'ad 2', records: 1 })
     expect(errorOf(await fixture.call('dv_proj_rename', { title: ' ' }))).toContain('must not be empty')
@@ -348,5 +358,64 @@ describe('dv_proj_* tools', () => {
     ] })
     // The metadata names each record the result showed, in the status it showed.
     expect(result.meta).toEqual({ dv_seen: { project: projectId, records: { [slow]: 'done', [early.record]: 'done', [broken]: 'failed' } } })
+  })
+})
+
+describe('projects as Workspace folders', () => {
+  const HUMAN = { actor: 'user' as const, surface: 'api' as const, session: null, turn: null, tool_call: null, intent: 'create' }
+
+  it('makes the chat\'s folder a project: .dreamverse beside the user\'s files and a titled Workspace', async () => {
+    const fixture = await start()
+    writeFileSync(join(fixture.chatFolder, 'notes.txt'), 'mine')
+    const projectId = brandString<ProjectId>(String(json(await fixture.call('dv_proj_create', { title: 'dance' }))['project_id']))
+    expect(readdirSync(fixture.chatFolder).sort()).toEqual(['.dreamverse', 'notes.txt'])
+    expect(readdirSync(join(fixture.chatFolder, '.dreamverse')).sort()).toEqual(['line.json', 'records.jsonl'])
+    const [workspace] = fixture.services.workspaces.list()
+    expect(workspace).toMatchObject({ id: projectId, title: 'dance' })
+    expect(fixture.project.openProject(projectId)).toEqual({
+      id: projectId, title: 'dance', created_at: workspace?.createdAt, path: workspace?.path,
+    })
+    // A Workspace without `.dreamverse/records.jsonl` is no project.
+    const plain = join(fixture.chatFolder, 'plain')
+    mkdirSync(plain)
+    await fixture.services.workspaces.create(plain)
+    expect(fixture.project.listProjects().map(info => info.id)).toEqual([projectId])
+  })
+
+  it('creates a folder\'s project once, and finishes a create whose Workspace registration was lost', async () => {
+    const fixture = await start()
+    const folder = await fixture.project.newProjectFolder('reel')
+    const first = await fixture.project.createProject(folder, 'reel', HUMAN)
+    expect(await fixture.project.createProject(folder, 'other title', HUMAN)).toEqual(first)
+    expect(fixture.services.workspaces.list()).toHaveLength(1)
+    expect(fixture.project.listRecords(first.id).map(record => record.operation)).toEqual(['proj.create'])
+
+    await fixture.services.workspaces.delete(first.id)
+    const again = await fixture.project.createProject(folder, 'reel', HUMAN)
+    expect(again).toMatchObject({ title: 'reel', path: first.path })
+    expect(again.id).not.toBe(first.id)
+    expect(fixture.project.listRecords(again.id).map(record => record.operation)).toEqual(['proj.create'])
+  })
+
+  it('removes a project\'s Workspace and keeps its files; a new chat in the folder makes it a project again', async () => {
+    const fixture = await start()
+    const projectId = brandString<ProjectId>(String(json(await fixture.call('dv_proj_create', { title: 'dance' }))['project_id']))
+    await fixture.project.removeProject(projectId)
+    expect(fixture.services.workspaces.list()).toEqual([])
+    expect(fixture.project.listProjects()).toEqual([])
+    expect(existsSync(join(fixture.chatFolder, '.dreamverse', 'records.jsonl'))).toBe(true)
+
+    fixture.services.chats.open('s2', fixture.chatFolder)
+    const added = brandString<ProjectId>(String(json(await fixture.call('dv_proj_create', { title: 'dance' }, 's2'))['project_id']))
+    expect(added).not.toBe(projectId)
+    expect(fixture.project.listRecords(added).map(record => record.operation)).toEqual(['proj.create'])
+    expect(fixture.project.sessionProject(brandString<SessionId>('s2'))).toBe(added)
+  })
+
+  it('gives each new project folder its own name', async () => {
+    const fixture = await start()
+    const folders = await Promise.all([fixture.project.newProjectFolder('a/b'), fixture.project.newProjectFolder('a/b')])
+    expect(folders.map(folder => folder.split('/').at(-1)).sort()).toEqual(['a-b', 'a-b 2'])
+    await expect(fixture.project.newProjectFolder(' ')).rejects.toMatchObject({ code: 'invalid_params' })
   })
 })

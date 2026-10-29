@@ -18,9 +18,10 @@ import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvModels, { type ModelEntry, type RenderModelFacts, type RenderRequest, type RenderStreamEvent, type TaskOfPrimitive } from '@dv/models'
 import DvProject, {
-  type AssetId, type OperationSpec, type ProjectId, type ProjectRecord, type RecordId, type RecordOrigin, type RunRequest, type SessionId,
+  type AssetId, type OperationSpec, type ProjectId, type ProjectRecord, type RecordId, type RecordOrigin, type RunRequest,
 } from '@dv/project'
 import { afterEach, describe, expect, it } from 'vitest'
+import { chatProject, provideChatServices } from '../../project/tests/workspaces.ts'
 import { defineGeneration, importOne, quotePrompt, type GenerationCall, type RequestInput } from '../src/index.ts'
 
 const seen: Array<readonly RequestInput[]> = []
@@ -150,7 +151,7 @@ interface Fixture {
   project: ProjectId
   /** A call of `probe.generate` on the project. */
   call(params: Record<string, unknown>, inputs?: RunRequest['inputs'], extra?: Partial<GenerationCall>): GenerationCall
-  /** Run one tool as the agent of chat session `s1`, which is bound to the project. */
+  /** Run one tool as the agent of chat session `s1`, which runs in the project folder. */
   tool(name: string, args: Record<string, unknown>): Promise<ToolExecutionResult>
   spec(): OperationSpec | undefined
   record(id: string): ProjectRecord
@@ -165,7 +166,7 @@ afterEach(async () => {
 /**
  * Boot the composition from a test-only `cordis.yml` with one test declaration, because both label the video tasks,
  * and with the fake model registered in task `t2v` unless `serve` is false.
- * @returns the fixture, with a project bound to chat session `s1`.
+ * @returns the fixture, with a project whose folder chat session `s1` runs in.
  */
 async function start(serve = true, declaration: 'DvProbeGenerate' | 'DvPlainGenerate' = 'DvProbeGenerate'): Promise<Fixture> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-generation-'))
@@ -178,13 +179,14 @@ async function start(serve = true, declaration: 'DvProbeGenerate' | 'DvPlainGene
   }
   row('system-prompt', 'SystemPrompt')
   row('tools', 'ToolRuntime')
-  row('dv-project', 'DvProject', [`root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`, `projectsFolder: ${join(dir, 'DreamVerse')}`])
+  row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`])
   row('dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe'])
   row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
   row('dv-models', 'DvModels')
   row('dv-generate', declaration)
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
   const ctx = new Context()
+  const services = provideChatServices(ctx)
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
@@ -195,8 +197,7 @@ async function start(serve = true, declaration: 'DvProbeGenerate' | 'DvPlainGene
   })
   const model = new FakeModel()
   if (serve) ctx.effect(() => ctx.dvModels.register(model.entry('t2v')))
-  const project = (await ctx.dvProject.createProject('probes', ORIGIN)).id
-  ctx.dvProject.bindSession(brandString<SessionId>('s1'), project)
+  const project = await chatProject(ctx.dvProject, services, 'probes', ORIGIN)
   let calls = 0
   return {
     ctx, model, project,

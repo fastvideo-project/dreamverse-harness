@@ -1,7 +1,7 @@
 /**
  * Project rename and delete routes over the real Project service: renamed titles stay unique and reach the project list,
- * a deleted project moves to the Project store's trash and leaves the list with its Workspace link, bindings and canvas
- * layout file, and the sessions route finds a project's DSH sessions by directory.
+ * a removed project leaves the list with its Workspace link and canvas layout file while its folder stays on disk, and
+ * the sessions route finds a project's DSH sessions by directory.
  */
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -48,12 +48,12 @@ async function call(
   return { status: response.status, json: await response.json() }
 }
 
-it('renames a project to a unique title and deletes it into the Project store\'s trash', async () => {
+it('renames a project to a unique title and removes it from the list while its folder stays on disk', async () => {
   fixture = await startBase({ generation: 'none', root })
   const layouts = new CanvasLayoutStore(join(root, 'canvas-layout'))
   const routes = [...workspaceRoutes(fixture.project, root), ...projectAdminRoutes(fixture.project, root, layouts)]
-  const first = (await fixture.project.createProject('未命名项目', HUMAN)).id
-  const second = (await fixture.project.createProject('未命名项目', HUMAN)).id
+  const first = (await fixture.project.createProject(await fixture.project.newProjectFolder('未命名项目'), '未命名项目', HUMAN)).id
+  const second = (await fixture.project.createProject(await fixture.project.newProjectFolder('未命名项目'), '未命名项目', HUMAN)).id
   layouts.write(first, { positions: { n1: { x: 1, y: 2 } } })
   layouts.write(second, { positions: { n1: { x: 3, y: 4 } } })
 
@@ -65,11 +65,10 @@ it('renames a project to a unique title and deletes it into the Project store\'s
   expect(await call(routes, PROJECT_ADMIN_ROUTES.delete, { json: {} })).toMatchObject({ status: 400, json: { code: 'invalid_params' } })
 
   await call(routes, WORKSPACE_ROUTES.workspaces, { json: { project: second, workspace_id: 'ws-2' } })
-  await call(routes, WORKSPACE_ROUTES.bind, { json: { session: 'chat-2', project: second } })
   const removed = await call(routes, PROJECT_ADMIN_ROUTES.delete, { json: { project: second } })
   expect(removed.json).toEqual({ ok: true, workspace_id: 'ws-2' })
-  expect(existsSync(join(root, 'projects', second))).toBe(false)
-  expect(readdirSync(join(root, 'projects', '.trash'))).toEqual([expect.stringMatching(new RegExp(`^${second}-\\d+$`))])
+  expect(existsSync(join(root, 'projects', '未命名项目 2', '.dreamverse', 'records.jsonl'))).toBe(true)
+  expect(readdirSync(join(root, 'projects')).sort()).toEqual(['未命名项目', '未命名项目 2'])
   expect(readdirSync(join(root, 'canvas-layout'))).toEqual([`${first}.json`])
   const listed = (await call(routes, WORKSPACE_ROUTES.workspaces)).json as {
     projects: Array<{ id: string; title: string }>
@@ -77,7 +76,7 @@ it('renames a project to a unique title and deletes it into the Project store\'s
   }
   expect(listed.projects.map(row => row.id)).toEqual([first])
   expect(listed.bindings).toEqual({})
-  // A deleted project is unknown to both routes.
+  // A removed project is unknown to both routes.
   expect(await call(routes, PROJECT_ADMIN_ROUTES.rename, { json: { project: second, title: 'x' } }))
     .toMatchObject({ status: 404, json: { error: expect.any(String), code: 'unknown_project' } })
   expect(await call(routes, PROJECT_ADMIN_ROUTES.delete, { json: { project: second } })).toMatchObject({ status: 404, json: { code: 'unknown_project' } })
@@ -86,7 +85,7 @@ it('renames a project to a unique title and deletes it into the Project store\'s
 it('lists the DSH sessions stored under a project directory, newest first', async () => {
   fixture = await startBase({ generation: 'none', root })
   const routes = workspaceRoutes(fixture.project, root)
-  const projectId = (await fixture.project.createProject('chats', HUMAN)).id
+  const projectId = (await fixture.project.createProject(await fixture.project.newProjectFolder('chats'), 'chats', HUMAN)).id
   const group = join(root, 'dsh-home', 'sessions', `--tmp-state-projects-${projectId}--`)
   for (const [id, size] of [['session-a', 10], ['session-b', 3000]] as const) {
     mkdirSync(join(group, id), { recursive: true })

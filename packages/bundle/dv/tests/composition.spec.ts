@@ -38,7 +38,7 @@ describe('DreamVerse bundle composition', () => {
       'dv-models', 'dv-fastvideo', 'dv-uniserve', 'dv-project', 'dv-text-node', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
       'dv-sglang-diffusion', 'dv-image-generate', 'dv-sglang-omni', 'dv-audio-generate',
     ]))
-    const { ctx, dir, dispose } = await bootBundle()
+    const { ctx, dir, services, dispose } = await bootBundle()
     disposers.push(dispose)
 
     expect(ctx.get('dvChatReferences')).toBeDefined()
@@ -79,6 +79,8 @@ describe('DreamVerse bundle composition', () => {
       if (result.isError) throw new Error(result.error.message)
       return result
     }
+    // A tool call without an agent runs as chat `anonymous`, which makes its folder the project.
+    services.chats.open('anonymous', await ctx.dvProject.newProjectFolder('composed'))
     const created = await call('dv_proj_create', { title: 'composed' })
     const projectId = (created.value as { project_id: ProjectId }).project_id
     writeFileSync(join(dir, 'ref.png'), 'PNG-FAKE')
@@ -105,7 +107,7 @@ describe('DreamVerse bundle composition', () => {
     const clips = ctx.dvProject.getState(projectId).components.timeline.timelines[0]?.clips
     expect(clips?.map(clip => [clip.id, clip.asset])).toEqual([['cl1', video]])
     expect(Object.keys(ctx.dvProject.getState(projectId).components.proj.created_by)).toHaveLength(3)
-    // The bundle's `!!js` configuration put the project records under the state root the test set.
-    expect(readFileSync(join(dir, 'projects', projectId, '.dreamverse', 'records.jsonl'), 'utf8')).toContain('"shot.render"')
+    // The bundle's `!!js` configuration put the project folder in the DreamVerse folder the test set.
+    expect(readFileSync(join(dir, 'projects', 'composed', '.dreamverse', 'records.jsonl'), 'utf8')).toContain('"shot.render"')
   })
 })

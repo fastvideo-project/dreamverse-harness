@@ -1,17 +1,15 @@
 /**
- * The record store: the only code that reads or writes the DreamVerse files of a project. One project folder per
- * project under the configured root; the store's files live in the folder's `.dreamverse/` directory (`PROJECT_DIR`)
- * and the rest of the folder belongs to the user:
+ * The record store: the only code that reads or writes the records of a project. The store's files live in the
+ * project folder's `.dreamverse/` directory (`PROJECT_DIR`), and the rest of the folder belongs to the user:
  *
  * ```
- * <root>/<ProjectId>/.dreamverse/project.json    ProjectInfo without `path`
- * <root>/<ProjectId>/.dreamverse/records.jsonl   record lines and update lines, appended in write order
- * <root>/<ProjectId>/.dreamverse/line.json       ProjectLine: the history list's last step and the current position
+ * <folder>/.dreamverse/records.jsonl   record lines and update lines, appended in write order
+ * <folder>/.dreamverse/line.json       ProjectLine: the history list's last step and the current position
  * ```
  *
  * The history list of a project is the `parents[0]` ancestry of its last step (`tip`); `at` is the current position on
  * that list. A new record follows `at` and becomes both `tip` and `at`, so the steps that were after `at` leave the list
- * (they are discarded and stay on disk). The store keeps every project in memory and mirrors each change to disk before
+ * (they are discarded and stay on disk). The store loads a project at first use and mirrors each change to disk before
  * it returns. It enforces the record format rules (append only after `at`, status only forward, no update after a
  * record finished) and reports every change to the `onChange` callback after the change is on disk. It does not
  * interpret records or take decisions; the other modules do that and call it while they hold the project lock it
@@ -20,7 +18,7 @@
  * @module @dv/project/record-store
  */
 import { randomUUID } from 'node:crypto'
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { PROJECT_DIR } from './folder.ts'
@@ -30,9 +28,9 @@ import type { ProjectEvent, ProjectId, ProjectInfo, ProjectLine, ProjectRecord, 
 /** A record line as a caller hands it to {@link RecordStore.append}: the store assigns `id` and `created_at`. */
 export type RecordLineInput = Omit<ProjectRecord, 'id' | 'created_at' | 'started_at' | 'finished_at' | 'error' | 'cost' | 'report'>
 
-/** One project in memory: its metadata, its records with every update line applied, and its `line.json`. */
+/** One project in memory: its `.dreamverse/` directory, its records with every update line applied, and its `line.json`. */
 interface LoadedProject {
-  info: ProjectInfo
+  dir: string
   /** Record ID → the record line with its update lines applied; `resolved_asset` values are as written on disk. */
   records: Map<RecordId, ProjectRecord>
   /** Record IDs in write order. */
@@ -70,45 +68,41 @@ export class RecordStore {
   private readonly locks = new Map<ProjectId, Promise<void>>()
 
   /**
-   * @param root - the directory holding one project folder `<ProjectId>/` per project; created when missing.
+   * @param folders - the projects: `get` throws `unknown_project`, and `path` is the project folder.
    * @param onChange - called after each change is on disk; the subscriptions module fans it out.
    */
-  constructor(readonly root: string, private readonly onChange: (project: ProjectId, event: ProjectEvent) => void) {}
+  constructor(
+    private readonly folders: { get(project: ProjectId): ProjectInfo; list(): ProjectInfo[] },
+    private readonly onChange: (project: ProjectId, event: ProjectEvent) => void,
+  ) {}
 
   /**
-   * Read every project folder under the root into memory; the service calls it once at start. Folders without
-   * `.dreamverse/project.json`, and the `.trash` directory, are skipped. `records.jsonl` is replayed in file order: a
-   * record line adds a record, an update line applies to the record it names.
+   * Read a project into memory: `records.jsonl` is replayed in file order, so a record line adds a record and an update
+   * line applies to the record it names.
+   * @param project - a project ID; throws `unknown_project`.
+   * @returns the project in memory.
    */
-  load(): void {
-    mkdirSync(this.root, { recursive: true })
-    this.projects.clear()
-    for (const entry of readdirSync(this.root, { withFileTypes: true })) {
-      if (!entry.isDirectory() || entry.name === '.trash') continue
-      const folder = join(this.root, entry.name)
-      const dir = join(folder, PROJECT_DIR)
-      if (!existsSync(join(dir, 'project.json'))) continue
-      const stored = JSON.parse(readFileSync(join(dir, 'project.json'), 'utf8')) as Omit<ProjectInfo, 'path'>
-      const info: ProjectInfo = { ...stored, path: folder }
-      const loaded: LoadedProject = { info, records: new Map(), order: [], line: null }
-      for (const line of readFileSync(join(dir, 'records.jsonl'), 'utf8').split('\n')) {
-        if (line === '') continue
-        const parsed = JSON.parse(line) as ProjectRecord | RecordUpdate
-        if ('update' in parsed) {
-          const record = loaded.records.get(parsed.update)
-          if (record === undefined) throw new Error(`${join(dir, 'records.jsonl')}: update line for unknown record ${parsed.update}`)
-          applyUpdate(record, parsed)
-        } else {
-          loaded.records.set(parsed.id, parsed)
-          loaded.order.push(parsed.id)
-        }
+  private open(project: ProjectId): LoadedProject {
+    const dir = join(this.folders.get(project).path, PROJECT_DIR)
+    const loaded: LoadedProject = { dir, records: new Map(), order: [], line: null }
+    for (const line of readFileSync(join(dir, 'records.jsonl'), 'utf8').split('\n')) {
+      if (line === '') continue
+      const parsed = JSON.parse(line) as ProjectRecord | RecordUpdate
+      if ('update' in parsed) {
+        const record = loaded.records.get(parsed.update)
+        if (record === undefined) throw new Error(`${join(dir, 'records.jsonl')}: update line for unknown record ${parsed.update}`)
+        applyUpdate(record, parsed)
+      } else {
+        loaded.records.set(parsed.id, parsed)
+        loaded.order.push(parsed.id)
       }
-      const linePath = join(dir, 'line.json')
-      const last = loaded.order.at(-1)
-      if (existsSync(linePath)) loaded.line = JSON.parse(readFileSync(linePath, 'utf8')) as ProjectLine
-      else if (last !== undefined) loaded.line = { tip: last, at: last }
-      this.projects.set(info.id, loaded)
     }
+    const linePath = join(dir, 'line.json')
+    const last = loaded.order.at(-1)
+    if (existsSync(linePath)) loaded.line = JSON.parse(readFileSync(linePath, 'utf8')) as ProjectLine
+    else if (last !== undefined) loaded.line = { tip: last, at: last }
+    this.projects.set(project, loaded)
+    return loaded
   }
 
   /**
@@ -131,29 +125,22 @@ export class RecordStore {
   }
 
   /**
-   * Create a project folder `<root>/<ProjectId>` with `.dreamverse/project.json` and an empty
-   * `.dreamverse/records.jsonl`.
-   * @param info - the project's metadata; `info.id` must be new.
-   * @returns the metadata with the project folder.
+   * Start a project with no record in its `.dreamverse/` directory, created when missing; `records.jsonl` appears with
+   * the first {@link append}.
+   * @param project - the project, which has no `records.jsonl` yet.
+   * @param dir - the project folder's `.dreamverse/` directory.
    */
-  createProject(info: Omit<ProjectInfo, 'path'>): ProjectInfo {
-    const folder = join(this.root, info.id)
-    if (this.projects.has(info.id) || existsSync(folder)) {
-      throw new ProjectError('invalid_params', `A project with ID ${info.id} already exists.`)
+  createProject(project: ProjectId, dir: string): void {
+    if (existsSync(join(dir, 'records.jsonl'))) {
+      throw new ProjectError('invalid_params', `A project with ID ${project} already exists.`)
     }
-    const stored = { id: info.id, title: info.title, created_at: info.created_at }
-    mkdirSync(join(folder, PROJECT_DIR), { recursive: true })
-    writeFileSync(this.file(info.id, 'project.json'), `${JSON.stringify(stored, null, 2)}\n`)
-    writeFileSync(this.file(info.id, 'records.jsonl'), '')
-    const created: ProjectInfo = { ...stored, path: folder }
-    this.projects.set(info.id, { info: created, records: new Map(), order: [], line: null })
-    return { ...created }
+    mkdirSync(dir, { recursive: true })
+    this.projects.set(project, { dir, records: new Map(), order: [], line: null })
   }
 
   /** @returns every project's metadata, oldest first. */
   listProjects(): ProjectInfo[] {
-    return [...this.projects.values()].map(loaded => ({ ...loaded.info })).sort((a, b) =>
-      a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+    return this.folders.list()
   }
 
   /**
@@ -161,33 +148,14 @@ export class RecordStore {
    * @returns its metadata; throws `unknown_project`.
    */
   getProject(project: ProjectId): ProjectInfo {
-    return { ...this.loaded(project).info }
+    return this.folders.get(project)
   }
 
   /**
-   * Rewrite `project.json` with a new title; the write is atomic (temporary file, then rename).
-   * @param project - a project.
-   * @param title - the new title.
-   * @returns the metadata after the change.
-   */
-  renameProject(project: ProjectId, title: string): ProjectInfo {
-    const loaded = this.loaded(project)
-    const info: ProjectInfo = { ...loaded.info, title }
-    const stored = { id: info.id, title: info.title, created_at: info.created_at }
-    writeAtomic(this.file(project, 'project.json'), `${JSON.stringify(stored, null, 2)}\n`)
-    loaded.info = info
-    return { ...info }
-  }
-
-  /**
-   * Remove a project: move its project folder to `<root>/.trash/<ProjectId>-<timestamp>` and forget it in memory.
+   * Drop a project from memory; its files stay. A later call that names the project reads it again.
    * @param project - a project.
    */
-  deleteProject(project: ProjectId): void {
-    this.loaded(project)
-    const trash = join(this.root, '.trash')
-    mkdirSync(trash, { recursive: true })
-    renameSync(join(this.root, project), join(trash, `${project}-${String(Date.now())}`))
+  forget(project: ProjectId): void {
     this.projects.delete(project)
   }
 
@@ -357,18 +325,16 @@ export class RecordStore {
    * @param name - a file name of the store.
    * @returns the file's path in the project's `.dreamverse/` directory.
    */
-  private file(project: ProjectId, name: 'project.json' | 'records.jsonl' | 'line.json'): string {
-    return join(this.root, project, PROJECT_DIR, name)
+  private file(project: ProjectId, name: 'records.jsonl' | 'line.json'): string {
+    return join(this.loaded(project).dir, name)
   }
 
   /**
    * @param project - a project ID.
-   * @returns the project in memory; throws `unknown_project`.
+   * @returns the project in memory, read on first use; throws `unknown_project`.
    */
   private loaded(project: ProjectId): LoadedProject {
-    const loaded = this.projects.get(project)
-    if (loaded === undefined) throw new ProjectError('unknown_project', `There is no project ${project}.`)
-    return loaded
+    return this.projects.get(project) ?? this.open(project)
   }
 
   /**

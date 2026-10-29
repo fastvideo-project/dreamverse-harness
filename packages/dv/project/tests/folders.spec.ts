@@ -8,6 +8,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import DvProject from '../src/index.ts'
 import { tempRoot } from './support.ts'
+import { provideChatServices } from './workspaces.ts'
 
 const documents = vi.hoisted(() => ({ folder: null as string | null }))
 
@@ -25,15 +26,16 @@ afterEach(async () => {
 
 /**
  * Load `dvProject`.
- * @param root - the directory of the store directories.
- * @param config - the config besides the store directories.
+ * @param root - the directory of the session directory.
+ * @param config - the config besides the session directory.
  * @returns the plugin's fiber and the context.
  */
 function load(root: string, config: { projectsFolder?: string }) {
   const context = new Context()
   contexts.push(context)
+  provideChatServices(context)
   const fiber = context.plugin(DvProject, {
-    root: join(root, 'projects'), sessionRoot: join(root, 'sessions'), cpuConcurrency: 1, gpuConcurrency: 1, promptSectionOrder: 4900, ...config,
+    sessionRoot: join(root, 'sessions'), cpuConcurrency: 1, gpuConcurrency: 1, promptSectionOrder: 4900, ...config,
   })
   return { context, fiber }
 }

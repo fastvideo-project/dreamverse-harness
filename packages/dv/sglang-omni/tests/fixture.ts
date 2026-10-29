@@ -13,7 +13,6 @@ import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
-import { brandString } from '@deepseek-ai/dsh-brand'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -22,7 +21,8 @@ import DvAssetPool from '@dv/asset-pool'
 import DvAudioGenerate from '@dv/audio-generate'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvModels, { type ModelEntry } from '@dv/models'
-import DvProject, { type OperationToolValue, type ProjectId, type SessionId } from '@dv/project'
+import DvProject, { type OperationToolValue, type ProjectId } from '@dv/project'
+import { chatProject, provideChatServices } from '../../project/tests/workspaces.ts'
 import * as SglangOmni from '../src/index.ts'
 
 /** The key of the served Fish Audio Drama 3 entry. */
@@ -46,7 +46,7 @@ const PLUGINS = {
   SglangOmni: { name: SglangOmni.name, inject: SglangOmni.inject, Config: SglangOmni.Config, apply: SglangOmni.apply },
 }
 
-/** The booted composition and a project bound to chat session `s1`. */
+/** The booted composition and a project whose folder chat session `s1` runs in. */
 export interface Fixture {
   ctx: Context
   project: ProjectId
@@ -74,7 +74,7 @@ export async function start(baseUrl: string): Promise<Fixture> {
     ['skills', 'SkillRegistry', []],
     ['system-prompt', 'SystemPrompt', []],
     ['tools', 'ToolRuntime', []],
-    ['dv-project', 'DvProject', [`root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`, `projectsFolder: ${join(dir, 'DreamVerse')}`]],
+    ['dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`]],
     ['dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe']],
     ['dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`]],
     ['dv-models', 'DvModels', []],
@@ -87,13 +87,13 @@ export async function start(baseUrl: string): Promise<Fixture> {
   }
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
   const ctx = new Context()
+  const services = provideChatServices(ctx)
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
   await ctx.loader.await()
   const origin = { actor: 'user' as const, surface: 'api' as const, session: null, turn: null, tool_call: null }
-  const project = (await ctx.dvProject.createProject('voices', { ...origin, intent: 'create' })).id
-  ctx.dvProject.bindSession(brandString<SessionId>('s1'), project)
+  const project = await chatProject(ctx.dvProject, services, 'voices', { ...origin, intent: 'create' })
   let calls = 0
   return {
     ctx, project,

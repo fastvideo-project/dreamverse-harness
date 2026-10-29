@@ -16,9 +16,9 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvProject, {
   type AssetId, type AssetStore, type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId, type RecordOrigin,
-  type SessionId,
 } from '@dv/project'
 import { describe, expect, it, onTestFinished } from 'vitest'
+import { chatProject, provideChatServices } from '../../project/tests/workspaces.ts'
 import DvStyle, { type StyleId } from '../src/index.ts'
 
 /** A human edit on the canvas, outside any chat session. */
@@ -47,7 +47,7 @@ interface Fixture {
   project: ProjectId
   /** Store bytes as an image asset. */
   put(text: string): AssetId
-  /** Run one tool as the agent of chat session `s1`, which is bound to `project`. */
+  /** Run one tool as the agent of chat session `s1`, which runs in the folder of `project`. */
   call(name: string, args: Record<string, unknown>): Promise<ToolExecutionResult>
   /** Remove the `dvStyle` plugin. */
   disposeStyle(): Promise<void>
@@ -56,11 +56,12 @@ interface Fixture {
 /**
  * Mount the registries, `dvProject`, `dvStyle` and a test `shot.render` whose `reference` input takes versions; the
  * context is disposed when the current test finishes.
- * @returns the fixture, with a project bound to chat session `s1`.
+ * @returns the fixture, with a project whose folder chat session `s1` runs in.
  */
 async function start(): Promise<Fixture> {
   const root = mkdtempSync(join(tmpdir(), 'dv-style-'))
   const ctx = new Context()
+  const services = provideChatServices(ctx)
   onTestFinished(async () => {
     await ctx.fiber.dispose()
     rmSync(root, { recursive: true, force: true })
@@ -69,7 +70,7 @@ async function start(): Promise<Fixture> {
   await ctx.plugin(ToolRuntime).await()
   await ctx.plugin(SkillRegistry, {}).await()
   await ctx.plugin(DvProject, {
-    root: join(root, 'projects'), sessionRoot: join(root, 'sessions'), projectsFolder: join(root, 'DreamVerse'), cpuConcurrency: 1, gpuConcurrency: 1,
+    projectsFolder: join(root, 'projects'), sessionRoot: join(root, 'sessions'), cpuConcurrency: 1, gpuConcurrency: 1,
     promptSectionOrder: 4900,
   }).await()
   const assets = new MemoryAssets()
@@ -83,8 +84,7 @@ async function start(): Promise<Fixture> {
     outputs: [], deterministic: false, resource: 'none', summarize: () => 'rendered',
     execute: () => Promise.resolve({ outputs: [] }),
   })
-  const project = (await ctx.dvProject.createProject('style', HUMAN)).id
-  ctx.dvProject.bindSession(brandString<SessionId>('s1'), project)
+  const project = await chatProject(ctx.dvProject, services, 'style', HUMAN)
   let calls = 0
   return {
     ctx, project,

@@ -17,6 +17,7 @@ import DvProject, { type OperationSpec, type ProjectId, type ProjectRecord, type
 import { STATE_HEAD, UPDATE_HEAD, foldSeen, projectMessage, seenProjection, type SessionSeen } from '../src/project-updates.ts'
 import type { ProjToolDeps } from '../src/proj-tools.ts'
 import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot } from './support.ts'
+import { chatProject, provideChatServices } from './workspaces.ts'
 
 /** The chat session of the agent under test. */
 const SESSION = brandString<SessionId>('s1')
@@ -110,10 +111,11 @@ async function start(bound = true): Promise<Fixture> {
   const context = new Context()
   contexts.push(context)
   context.provide('sessionProjections', { stateOf: () => undefined, register: () => () => {} } as never)
+  const services = provideChatServices(context)
   await context.plugin(SystemPrompt, {}).await()
   await context.plugin(ToolRuntime).await()
   await context.plugin(DvProject, {
-    root: join(root, 'projects'), sessionRoot: join(root, 'sessions'), projectsFolder: join(root, 'DreamVerse'), cpuConcurrency: 4, gpuConcurrency: 4, promptSectionOrder: 4900,
+    projectsFolder: join(root, 'projects'), sessionRoot: join(root, 'sessions'), cpuConcurrency: 4, gpuConcurrency: 4, promptSectionOrder: 4900,
   }).await()
   const project = context.dvProject
   const assets = new MemoryAssets()
@@ -146,19 +148,22 @@ async function start(bound = true): Promise<Fixture> {
       return { outputs: [context.importAsset(Buffer.from(prompt), { mime: 'video/mp4', name: 'shot.mp4' })] }
     },
   } satisfies OperationSpec)
-  const info = await project.createProject('Knife ad', user('create'))
-  if (bound) project.bindSession(SESSION, info.id)
-  const deps: ProjToolDeps = { assets: () => assets, agentSummaries: () => [], turnOf: () => null }
+  // An unbound session runs in a folder of its own, which dv_proj_create can make a project.
+  if (!bound) services.chats.open(SESSION, await project.newProjectFolder('From chat'))
+  const projectId = bound
+    ? await chatProject(project, services, 'Knife ad', user('create'))
+    : (await project.createProject(await project.newProjectFolder('Knife ad'), 'Knife ad', user('create'))).id
+  const deps: ProjToolDeps = { assets: () => assets, agentSummaries: () => [], turnOf: () => null, chatFolder: () => null }
   let calls = 0
   return {
-    context, project, projectId: info.id, deps, log: new AgentLog(project, deps),
+    context, project, projectId, deps, log: new AgentLog(project, deps),
     call(name, args) {
       calls += 1
       const agent = { id: SESSION, session: { id: SESSION } }
       return context.tools.execute({ callId: ToolCallId(`call-${calls}`), name, arguments: args, signal: new AbortController().signal, agent: agent as never })
     },
     async run(origin, operation, params, extra = {}) {
-      const result = await project.run({ ...origin, project: info.id, operation, params, inputs: [], ...extra })
+      const result = await project.run({ ...origin, project: projectId, operation, params, inputs: [], ...extra })
       if (result.record === null) throw new Error('the operation wrote no record')
       return result.record
     },
@@ -188,8 +193,9 @@ describe('project state message', () => {
     const message = projectMessage(fixture.project, fixture.deps, SESSION, fixture.log.seen)
     const text = message === null ? '' : textOf(message)
     const [head, ...json] = text.split('\n')
-    expect(head).toBe(`${STATE_HEAD} This conversation belongs to project ${fixture.projectId}: do all work in it and never call `
-      + 'dv_proj_create. Later changes that your own tool results did not show reach you as DreamVerse project updates. '
+    const { title, path } = fixture.project.openProject(fixture.projectId)
+    expect(head).toBe(`${STATE_HEAD} This conversation belongs to the project "${title}" in the folder ${path}: do all work in it `
+      + 'and never call dv_proj_create. Later changes that your own tool results did not show reach you as DreamVerse project updates. '
       + 'The project summary, as dv_proj_state returns it without the reports of recent records:')
     const summary = JSON.parse(json.join('\n')) as { project_id: string; head: string; recent: Array<Record<string, unknown>> }
     expect(summary).toMatchObject({ project_id: fixture.projectId, head: render.id })
@@ -207,16 +213,16 @@ describe('project state message', () => {
     const fixture = await start()
     expect(projectMessage(fixture.project, fixture.deps, brandString<SessionId>('unbound'), fixture.log.seen)).toBeNull()
     expect(fixture.log.step()).toMatch(/^DreamVerse project state\./)
-    const other = await fixture.project.createProject('Other', user('create'))
+    const other = await fixture.project.createProject(await fixture.project.newProjectFolder('Other'), 'Other', user('create'))
     fixture.project.bindSession(SESSION, other.id)
-    expect(fixture.log.step()).toContain(`This conversation belongs to project ${other.id}`)
+    expect(fixture.log.step()).toContain('This conversation belongs to the project "Other"')
   })
 
   it('sends the state message after the agent binds an unbound conversation with dv_proj_create', async () => {
     const fixture = await start(false)
     expect(fixture.log.step()).toBeNull()
     fixture.log.toolResult(await fixture.call('dv_proj_create', { title: 'From chat' }))
-    expect(fixture.log.step()).toMatch(/^DreamVerse project state\. This conversation belongs to project /)
+    expect(fixture.log.step()).toMatch(/^DreamVerse project state\. This conversation belongs to the project "From chat" /)
     expect(fixture.log.step()).toBeNull()
   })
 })

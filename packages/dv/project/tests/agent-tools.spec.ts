@@ -1,5 +1,5 @@
 /**
- * The agent tools of operations and the chat session bindings, through the `dvProject` service with the real DSH tool
+ * The agent tools of operations and the chat session's project, through the `dvProject` service with the real DSH tool
  * registry: one `dv_*` tool per registered operation, calls that run as the agent on the session's project and turn,
  * reads, held calls, input parsing, and the `dv:project` prompt section.
  */
@@ -17,6 +17,7 @@ import DvProject, {
 } from '../src/index.ts'
 import { formatToolResult } from '../src/agent-tools.ts'
 import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot, testKind } from './support.ts'
+import { chatProject, provideChatServices, type TestChatServices } from './workspaces.ts'
 
 /** An attachment service that accepts every image. */
 class MemoryAttachments {
@@ -33,6 +34,8 @@ interface Fixture {
   project: DvProject
   assets: MemoryAssets
   root: string
+  /** The stand-in Workspace registry and live sessions. */
+  services: TestChatServices
   /** Chat session → the DSH turn number its `turnBoundary` session projection reports. */
   turns: Map<string, number>
   /** Run one tool as the agent of chat session `session`. */
@@ -48,13 +51,19 @@ afterEach(async () => {
 /**
  * Mount the DSH tool registry, a session projection registry that answers `turnBoundary` from `turns`, and `dvProject`
  * with an in-memory asset store.
- * @param root - the store root; a fresh one by default.
+ * @param root - the folder that holds the project folders; a fresh one by default.
  * @param attachments - whether an attachment service is mounted.
+ * @param services - the stand-in Workspace registry and live sessions; fresh ones by default.
  * @returns the fixture.
  */
-async function start(root = tempRoot(), attachments = true): Promise<Fixture> {
+async function start(root = tempRoot(), attachments = true, services?: TestChatServices): Promise<Fixture> {
   const context = new Context()
   contexts.push(context)
+  const provided = services ?? provideChatServices(context)
+  if (services !== undefined) {
+    context.provide('workspaceRegistry', services.workspaces as never)
+    context.provide('sessions', services.chats as never)
+  }
   if (attachments) context.provide('attachments', new MemoryAttachments())
   const turns = new Map<string, number>()
   // A session stands in as `{id}`; the agent loop's `turnBoundary` projection reports the session's latest turn.
@@ -66,7 +75,7 @@ async function start(root = tempRoot(), attachments = true): Promise<Fixture> {
   await context.plugin(SystemPrompt, {}).await()
   await context.plugin(ToolRuntime).await()
   await context.plugin(DvProject, {
-    root: join(root, 'projects'), sessionRoot: join(root, 'sessions'), projectsFolder: join(root, 'DreamVerse'), cpuConcurrency: 4, gpuConcurrency: 1,
+    projectsFolder: join(root, 'projects'), sessionRoot: join(root, 'sessions'), cpuConcurrency: 4, gpuConcurrency: 1,
     promptSectionOrder: 4900,
   }).await()
   const assets = new MemoryAssets()
@@ -74,7 +83,7 @@ async function start(root = tempRoot(), attachments = true): Promise<Fixture> {
   for (const key of STAND_IN_COMPONENTS) context.dvProject.registerComponent(key)
   let calls = 0
   return {
-    context, project: context.dvProject, assets, root, turns,
+    context, project: context.dvProject, assets, root, services: provided, turns,
     call(name, args, session = 's1') {
       calls += 1
       const agent = { id: session, session: { id: session } }
@@ -104,12 +113,12 @@ function value(result: ToolExecutionResult): OperationToolValue {
   return result.value as OperationToolValue
 }
 
-/** A project bound to chat session `s1`. */
-async function boundProject(fixture: Fixture): Promise<ProjectId> {
-  const origin = { actor: 'user' as const, surface: 'api' as const, session: null, turn: null, tool_call: null, intent: 'create' }
-  const info = await fixture.project.createProject('demo', origin)
-  fixture.project.bindSession(brandString<SessionId>('s1'), info.id)
-  return info.id
+/** The record origin of a project the tests create. */
+const CREATE = { actor: 'user' as const, surface: 'api' as const, session: null, turn: null, tool_call: null, intent: 'create' }
+
+/** A project whose folder chat session `s1` runs in. */
+function boundProject(fixture: Fixture): Promise<ProjectId> {
+  return chatProject(fixture.project, fixture.services, 'demo', CREATE)
 }
 
 describe('agent tools', () => {
@@ -375,7 +384,7 @@ describe('session bindings and the asset store', () => {
     const projectId = await boundProject(first)
     await first.context.fiber.dispose()
     contexts.splice(0)
-    const second = await start(root)
+    const second = await start(root, true, first.services)
     expect(second.project.sessionProject(brandString<SessionId>('s1'))).toBe(projectId)
     expect(second.project.sessionProject(brandString<SessionId>('s2'))).toBeNull()
     writeFileSync(join(root, 'sessions', 's3.json'), '{"project":null}')

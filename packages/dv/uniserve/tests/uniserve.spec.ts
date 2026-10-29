@@ -24,6 +24,7 @@ import DvFfmpeg from '@dv/ffmpeg'
 import DvModels, { type ModelEntry, type RenderRequest, type RenderStreamEvent, type TaskOfPrimitive } from '@dv/models'
 import DvProject from '@dv/project'
 import { afterEach, describe, expect, it } from 'vitest'
+import { provideChatServices } from '../../project/tests/workspaces.ts'
 import * as Uniserve from '../src/index.ts'
 
 /** The reference image of the opt-in run against a running server. */
@@ -170,7 +171,7 @@ async function start(baseUrl: string): Promise<Context> {
   const rows: string[] = []
   const plugins = [
     ['skills', 'SkillRegistry', []],
-    ['dv-project', 'DvProject', [`root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`, `projectsFolder: ${join(dir, 'DreamVerse')}`]],
+    ['dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`]],
     ['dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, `ffprobePath: ${FFPROBE}`]],
     ['dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`]],
     ['dv-models', 'DvModels', []],
@@ -182,6 +183,7 @@ async function start(baseUrl: string): Promise<Context> {
   }
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
   const ctx = new Context()
+  provideChatServices(ctx)
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
