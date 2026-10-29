@@ -14,6 +14,7 @@ import type { AssetId, ProjectId, RecordOrigin, RunRequest, SessionId } from '@d
 import type { CharacterId } from '@dv/character'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvChatReferences from '../src/index.ts'
+import { ApiHandlers } from '../../api/src/api.ts'
 import { startBase, type BaseFixture } from '../../api/tests/support.ts'
 
 /** A DSH attachment store that writes every image to a host file and keeps other files at their host paths. */
@@ -197,6 +198,26 @@ describe('chat attachments', () => {
     const asset = imported[0]?.outputs[0] as AssetId
     expect(fixture.assets.read(asset).toString()).toBe('chat-image')
     expect(fixture.project.getState(projectId).components.asset.placed).toEqual([asset])
+  })
+
+  it('imports a first message\'s image into the project that the chat\'s send made of its folder before the message', async () => {
+    const chat = await start()
+    const { fixture, attachments, folder } = chat
+    const handlers = new ApiHandlers({ project: fixture.project, assets: fixture.assets })
+    const made = await handlers.createProject({ folder, session: 's1' })
+    expect(await handlers.createProject({ folder, session: 's1' })).toEqual(made)
+    expect(fixture.project.sessionProject(brandString<SessionId>('s1'))).toBe(made.id)
+    const image = await attachments.saveImage({ data: Buffer.from('first-image'), mediaType: 'image/png', name: 'cat.png' })
+    chat.emit('user/message', { source: { kind: 'user' }, content: [{ type: 'image', attachment: image }] })
+    const timeline = await chat.callAs('dv_timeline_create', { reason: 'order', assets: [] })
+    if (timeline.isError) throw new Error(timeline.error.message)
+    const projectId = brandString<ProjectId>(made.id)
+    expect(fixture.project.listProjects().map(info => info.id)).toEqual([projectId])
+    const history = fixture.project.listHistory({ project: projectId })
+    expect(history.map(entry => [entry.record.operation, entry.record.surface, entry.record.session]))
+      .toEqual([['timeline.create', 'chat', 's1'], ['asset.import', 'chat', 's1'], ['proj.create', 'chat', 's1']])
+    const [asset] = fixture.project.getState(projectId).components.asset.placed
+    expect(fixture.assets.read(asset as AssetId).toString()).toBe('first-image')
   })
 
   it('imports the other files a user attached from their host paths, with the media type their extension names', async () => {

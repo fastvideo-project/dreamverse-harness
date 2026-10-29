@@ -90,4 +90,14 @@ declare module '@deepseek-ai/cordis' {
     /** Target-neutral Conversation registries and per-Session assembly. */
     uiConversation: import('./conversation/assembly.ts').UiConversation
   }
+
+  interface Events {
+    /**
+     * A default send of a top-level Session is about to reach the Host; its echo already shows. A listener that rejects
+     * cancels the send: the echo retires, and the composer restores the draft and shows the rejection's message.
+     * @param sessionId - the sending Session.
+     * @mode serial
+     */
+    'conversation/before-send'(sessionId: import('@deepseek-ai/dsh-session/types').SessionId): Promise<void>
+  }
 }

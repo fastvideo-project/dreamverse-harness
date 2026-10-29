@@ -212,6 +212,26 @@ export function createActions(ctx: ClientContext): ShellActions {
     if (getShell().projectId === null && entry !== getShell().sessionId) showSession(entry)
   }
 
+  // This tab's entry chat makes its folder a project before its first message reaches the host, so the first prompt and
+  // the first tool call already see the project. A send during the creation waits for it; a failed creation fails the
+  // send, and the next send tries again.
+  const chatProjects = new Map<SessionId, Promise<void>>()
+  ctx.on('conversation/before-send', (sessionId) => {
+    const folder = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
+    const attached = ctx.workspaces.list.getSnapshot().items.some(item => item.sessionIds.includes(sessionId))
+    if (sessionId !== tabBlanks.get(UNTITLED_KEY) || folder === undefined || attached) return Promise.resolve()
+    const creating = chatProjects.get(sessionId) ?? shellClient.createChatProject(folder, sessionId).then(
+      () => { refreshLinks().catch((error: unknown) => { console.warn('ui-shell: links read failed', error) }) },
+      (error: unknown) => {
+        chatProjects.delete(sessionId)
+        const reason = error instanceof Error ? error.message : String(error)
+        throw new Error(pickText(`项目创建失败，消息未发送：${reason}`, `The project could not be created, so the message was not sent: ${reason}`))
+      },
+    )
+    chatProjects.set(sessionId, creating)
+    return creating
+  })
+
   const openProject = async (projectId: string, sessionId?: string): Promise<void> => {
     leavePage()
     setShell({ projectId })

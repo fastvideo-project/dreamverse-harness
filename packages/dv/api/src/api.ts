@@ -8,6 +8,7 @@
  *
  * @module @dv/api/api
  */
+import { basename } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type DvAssetPool from '@dv/asset-pool'
 import { ProjectError } from '@dv/project'
@@ -287,14 +288,20 @@ export class ApiHandlers {
   }
 
   /**
-   * Start a project from a view, in a fresh folder named after it in the DreamVerse folder. A title another listed
-   * project already has gets the next free number, so two clients that pick the same name (two tabs, a double click)
-   * create two distinct titles.
-   * @param raw - `{title, surface}`.
+   * Start a project from a view, in a fresh folder named after it in the DreamVerse folder, or make a chat's folder a
+   * project, titled after the folder's name; a folder that is a project already keeps its records and title. A title
+   * another listed project already has gets the next free number, so two clients that pick the same name (two tabs, a
+   * double click) create two distinct titles.
+   * @param raw - `{title, surface}`, or `{folder, session}` from the chat session `session` (surface `chat`).
    * @returns the project, with the title it was created with.
    */
   async createProject(raw: unknown): Promise<ProjectInfo> {
     const body = objectOf(raw)
+    if (body['folder'] !== undefined) {
+      const folder = stringOf(body['folder'], 'folder')
+      const title = this.freeTitle(basename(folder))
+      return this.services.project.createProject(folder, title, { ...humanOrigin(body, `create project ${title}`), surface: 'chat' })
+    }
     const title = this.freeTitle(stringOf(body['title'], 'title'))
     const folder = await this.services.project.newProjectFolder(title)
     return this.services.project.createProject(folder, title, { ...humanOrigin(body, `create project ${title}`), session: null })

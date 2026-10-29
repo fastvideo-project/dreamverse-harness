@@ -324,6 +324,12 @@ describe('dvApi', () => {
       .toEqual({ status: 200, json: { path: join(fixture.root, 'projects', 'posted 2') } })
     expect(readdirSync(join(fixture.root, 'projects', 'posted 2'))).toEqual([])
     expect((await call(fixture, ROUTES.untitled, { method: 'POST', body: {} })).status).toBe(400)
+    // The chat's folder becomes the project, titled after the folder; a second create keeps that one project.
+    const chatFolder = join(fixture.root, 'projects', 'posted 2')
+    const chatProject = await call(fixture, ROUTES.projects, { method: 'POST', body: { folder: chatFolder, session: 'anonymous' } })
+    expect(chatProject).toMatchObject({ status: 200, json: { title: 'posted 2', path: chatFolder } })
+    expect((await call(fixture, ROUTES.projects, { method: 'POST', body: { folder: chatFolder } })).json).toEqual(chatProject.json)
+    expect((await call(fixture, ROUTES.projects, { method: 'POST', body: { folder: '' } })).status).toBe(400)
 
     const missing = await call(fixture, ROUTES.state, { query: { project: 'nope' } })
     expect(missing.status).toBe(404)

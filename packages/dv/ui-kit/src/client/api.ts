@@ -351,6 +351,16 @@ export class DvClient {
   }
 
   /**
+   * Make a chat session's folder a project, titled after the folder's name; a folder that is a project already stays as it is.
+   * @param folder - the session's working directory.
+   * @param session - the chat session.
+   * @returns the project's identity.
+   */
+  createChatProject(folder: string, session: string): Promise<ProjectInfo> {
+    return this.post('/api/dv/projects', { folder, session })
+  }
+
+  /**
    * Follow a project's changes. Uses the page's shared `EventSource` of the project when the browser has it, else polls
    * `onChange` every `pollMs`.
    * @param project - the project.

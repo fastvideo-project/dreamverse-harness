@@ -44,7 +44,7 @@ kind: "package-reference"
 | 路由 | 方法 | 请求 | 响应 |
 | --- | --- | --- | --- |
 | `/api/dv/projects` | GET | 可选 `session`（对话 ID） | `WireProject[]`（`{id, title, created_at, current}`），最新在前；给出 `session` 时，该活动对话所在文件夹的项目排第一并带 `current: true` |
-| `/api/dv/projects` | POST | `{title, surface}` | 从视图新建的项目，位于 DreamVerse 文件夹中以其标题命名的新文件夹：`ProjectInfo` `{id, title, created_at, path}` |
+| `/api/dv/projects` | POST | `{title, surface}`，或 `{folder, session}` | 从视图新建的项目，位于 DreamVerse 文件夹中以其标题命名的新文件夹；或对话会话 `session` 在其文件夹 `folder` 中的项目，以文件夹名为标题，其 `proj.create` 记录的界面为 `chat`（已是项目的文件夹保持不变）：`ProjectInfo` `{id, title, created_at, path}` |
 | `/api/dv/projects/untitled` | POST | `{name}` | `{path}`：在 `@dv/project` 的 DreamVerse 文件夹中新建的空文件夹（`newProjectFolder`），供还没有项目的对话使用 |
 | `/api/dv/projects/summary` | GET | 可选 `project`、可选 `timeline` | `WireProjectSummary[]`（`{project, cover, edited_at}`），每个项目一条，或只有指定的项目：`cover` 是 `timeline` 指定的时间线（带 `project` 且该项目有这条时间线时）上第一个有素材的片段，否则是第一条时间线上的，形式为视频或图片的 `{asset, mime}`（素材 ID 及其 MIME 类型）；没有这样的片段时，是已完成记录的第一张图片产出的 `{asset, mime}`，否则为 null；`edited_at` 是最后一条记录的时间。每条从项目的当前状态读取。列出所有项目时，读不出状态的项目得到空条目（`cover` 和 `edited_at` 为 null），服务器在控制台输出警告；带 `project` 时，该项目的错误就是响应 |
 | `/api/dv/projects/rename` | POST | `{project, title}` | `{title}`，重名时追加 ` 2`、` 3`…… 使其唯一 |

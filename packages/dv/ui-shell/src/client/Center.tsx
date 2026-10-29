@@ -8,7 +8,7 @@
  *
  * The center also keeps the shell's open project and the DSH main session together: once the client lists are ready
  * it restores the location the URL names, and afterwards it adopts the project of a main session that moves to
- * another project by itself (for example when the agent makes the entry chat's folder a project).
+ * another project by itself (for example when the entry chat's first message makes its folder a project).
  *
  * @module @dv/ui-shell/Center
  */
@@ -147,7 +147,7 @@ export function CenterPanel(props: CenterProps): ReactNode {
   }, [shell])
   useEffect(() => {
     // After the restore, a main session that moves into another project by itself takes the center with it: the
-    // entry chat whose folder the agent made a project. A session whose project only resolves late (DSH restored a
+    // entry chat whose first message made its folder a project. A session whose project only resolves late (DSH restored a
     // session elsewhere while the shell opened the URL's project) never takes the center, and the entry page is
     // reached only through 首页.
     if (!restored) return

@@ -2,6 +2,8 @@
 // profile with the fake video backend and a scripted OpenAI-compatible model (`scripted-model.ts`). Each story opens a
 // fresh browser context and its own project, then checks the screen against the UI state contract (the destination is
 // shown, nothing is left over) and, where the story is about what the agent sees, the request the model received.
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import type { Browser, BrowserContext, Locator, Page } from 'playwright'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { ProjectRecord, WireState } from '../wire-state.ts'
@@ -19,19 +21,18 @@ const BLUE_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNQcL
 
 /**
  * The scripted agent. `只回复<X>` answers `收到<X>`; `慢慢想` streams for six seconds; `加人物` registers a character;
- * `慢慢做` imports an image and then streams for eight seconds, so a stop lands while the turn runs; `新建项目` creates a
- * project as the agent does from the entry page; `做两个镜头的广告` imports a reference, renders two shots from it, and
+ * `慢慢做` imports an image and then streams for eight seconds, so a stop lands while the turn runs; `新建项目` reads the
+ * chat's project; `做两个镜头的广告` imports a reference, renders two shots from it, and
  * lays both takes on timeline t1; every record goes at the end of the project's history at once; `两段渲染` renders two
  * shots at once.
  */
 const RULES: ScriptedRule[] = [
   { match: /只回复\S+/, steps: [view => ({ text: `收到${/只回复(\S+)/.exec(view.userText)?.[1] ?? ''}` })] },
   { match: '慢慢想', steps: [{ text: '想好了', delayMs: 6000 }] },
-  { match: '新建项目', steps: [{ calls: [{ name: 'dv_proj_create', args: { title: '入口创建的项目' } }] }], endText: '项目建好了，收到十六' },
+  { match: '新建项目', steps: [{ calls: [{ name: 'dv_proj_state', args: {} }] }], endText: '项目建好了，收到十六' },
   {
     match: '讲一个故事',
     steps: [
-      { calls: [{ name: 'dv_proj_create', args: { title: '故事项目' } }] },
       { calls: [{ name: 'ask_user_question', args: { questions: [{ id: 'length', header: '长度', question: '视频要多长？', options: [{ label: '15 秒', description: '三个镜头' }, { label: '30 秒', description: '六个镜头' }] }] } }] },
     ],
     endText: '好的，请发一张参考图。',
@@ -588,16 +589,33 @@ describe('chat with the agent', () => {
     expect(errors).toEqual([])
   })
 
-  it('a request typed on the entry page creates a project and moves the chat, with its history, to the right panel', async () => {
+  it('the first message on the entry page makes the chat\'s folder a project before the agent starts, with its attached image', async () => {
     const { page, errors } = await openPage()
+    const projectsNow = async () => (await harness.api.get('/api/dv/workspaces') as { projects: Array<{ id: string; title: string; path: string }> }).projects
+    const known = new Set((await projectsNow()).map(project => project.id))
     await page.locator('[data-dv-entry] [contenteditable="true"]').first().click({ timeout: 30_000 })
+    await page.locator('[data-dv-entry] input[type="file"]').first().setInputFiles({ name: 'entry.png', mimeType: 'image/png', buffer: Buffer.from(BLUE_PNG, 'base64') })
     await page.keyboard.type('新建项目做个短片')
     await page.keyboard.press('Enter')
-    await waitFor(() => Promise.resolve(locationOf(page).project), 'a project in the URL', 30_000)
+    const projectId = await waitFor(() => Promise.resolve(locationOf(page).project), 'a project in the URL', 30_000)
     await page.locator('[data-dv-workspace]').waitFor({ timeout: 15_000 })
     await waitChat(page, '收到十六')
-    expect(await userMessages(page)).toEqual(['新建项目做个短片'])
-    expect(await page.locator('[data-dv-workspace]').innerText()).toContain('入口创建的项目')
+    const project = (await projectsNow()).find(candidate => candidate.id === projectId)
+    expect(project?.title).toMatch(/^未命名项目( \d+)?$/)
+    expect(existsSync(join(project?.path ?? '', '.dreamverse', 'records.jsonl'))).toBe(true)
+    expect(await page.locator('[data-dv-workspace]').innerText()).toContain(project?.title ?? '')
+    // The turn's first model request already names the project in its project state message, and its first tool call
+    // reads that project.
+    const turn = model.requests.filter(request => userTextOf(request).includes('新建项目做个短片'))
+    expect(projectTextOf(turn[0])).toContain(`This conversation belongs to the project "${project?.title ?? ''}" in the folder ${project?.path ?? ''}`)
+    expect(turn.some(request => request.messages.some(message => message.role === 'tool' && textOf(message.content).includes(`"project_id": "${projectId}"`)))).toBe(true)
+    const state = await harness.api.get(`/api/dv/state?project=${projectId}`) as WireState & { assets: Array<{ name: string }> }
+    expect(state.assets.map(asset => asset.name)).toEqual(['entry.png'])
+    // A second message in the same chat creates no other project.
+    await send(page, '只回复十七')
+    await waitChat(page, '收到十七')
+    expect(await userMessages(page)).toEqual(['新建项目做个短片', '只回复十七'])
+    expect((await projectsNow()).filter(candidate => !known.has(candidate.id)).map(candidate => candidate.id)).toEqual([projectId])
     expect(await page.locator('[data-dv-entry]').count()).toBe(0)
     expect(errors).toEqual([])
   })
@@ -607,7 +625,7 @@ describe('chat with the agent', () => {
     await page.locator('[data-dv-entry] [contenteditable="true"]').first().click({ timeout: 30_000 })
     await page.keyboard.type('讲一个故事')
     await page.keyboard.press('Enter')
-    // The agent creates the project from the entry chat, so the chat moves to the right panel, then asks a question.
+    // The first message makes the entry chat's folder a project, so the chat moves to the right panel; the agent asks a question.
     const question = chat(page).locator('[data-question-key]')
     await question.waitFor({ timeout: 30_000 })
     await question.locator('[role="radio"]').first().click()

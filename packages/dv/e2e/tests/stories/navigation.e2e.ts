@@ -3,6 +3,7 @@
 // opens a fresh browser context and its own projects, then checks the screen against the UI state contract: after an
 // action the center, session switcher, navigator highlight, right panel, and URL all show exactly the destination. An
 // open project starts with the left sidebar collapsed, so a story opens the sidebar before it reads or uses the navigator.
+import { readdirSync } from 'node:fs'
 import type { Browser, BrowserContext, Page } from 'playwright'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { WireProjectLink } from '@dv/ui-kit/types.ts'
@@ -16,17 +17,11 @@ const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk
 const RED_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGM4ISf3HwAEugIEPlcfxwAAAABJRU5ErkJggg=='
 const GREEN_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGOQW2DzHwAD1AH6mPShBQAAAABJRU5ErkJggg=='
 
-/** The title the scripted agent gives the project it creates from the entry page. */
-const ENTRY_PROJECT = 'E2E 入口项目'
-
-/**
- * The scripted agent. `只回复<X>` answers `收到<X>`; `入口请求` creates the project {@link ENTRY_PROJECT} with
- * `dv_proj_create` and then answers.
- */
+/** The scripted agent. `只回复<X>` answers `收到<X>`; `入口请求` reads the chat's project and then answers. */
 const RULES: ScriptedRule[] = [
   { match: /只回复\S+/, steps: [view => ({ text: `收到${/只回复(\S+)/.exec(view.userText)?.[1] ?? ''}` })] },
   { match: '另起项目', steps: [{ calls: [{ name: 'dv_proj_create', args: { title: 'NAV 另起' } }] }], endText: '已另起项目。' },
-  { match: '入口请求', steps: [{ calls: [{ name: 'dv_proj_create', args: { title: ENTRY_PROJECT } }] }], endText: '项目已建好。' },
+  { match: '入口请求', steps: [{ calls: [{ name: 'dv_proj_state', args: {} }] }], endText: '项目已建好。' },
 ]
 
 /** One project as `/api/dv/workspaces` lists it. */
@@ -290,11 +285,13 @@ describe('navigation, projects, sessions, and panels', () => {
   it('typing a request on the entry page creates a project and moves into it', async () => {
     const { page, errors } = await openPage()
     await page.locator('[data-dv-entry]').waitFor()
+    const known = new Set((await projects()).map(project => project.id))
     await composer(page).click()
     await page.keyboard.type('入口请求：做一个橘猫看日落的短片')
     await page.keyboard.press('Enter')
-    const project = await waitFor(async () => (await projects()).find(candidate => candidate.title === ENTRY_PROJECT), 'the agent-created project', 30_000)
-    await waitProject(page, ENTRY_PROJECT)
+    const project = await waitFor(async () => (await projects()).find(candidate => !known.has(candidate.id)), 'the entry chat\'s project', 30_000)
+    expect(project.title).toMatch(/^未命名项目( \d+)?$/)
+    await waitProject(page, project.title)
     await expectProjectShown(page, project.id)
     // The bound chat moved from the 对话 section to the project's chat rows.
     await waitFor(async () => await activeEntryRow(page).count() === 0, 'the bound chat to leave 对话', 10_000)
@@ -306,37 +303,28 @@ describe('navigation, projects, sessions, and panels', () => {
     expect(errors).toEqual([])
   })
 
-  it('a chat started on 首页 is listed under 对话 in a new tab, opens with its messages, renames, and deletes back to a blank 首页', async () => {
+  it('a chat started on 首页 becomes its own project, and a second tab\'s 首页 opens a blank chat in another folder', async () => {
     const context = await newContext()
     const { page: first } = await openPage({ context })
-    const entry = (page: Page) => page.locator('[data-dv-entry]')
-    await entry(first).waitFor()
+    await first.locator('[data-dv-entry]').waitFor()
+    const known = new Set((await projects()).map(project => project.id))
     await composer(first).click()
     await first.keyboard.type('只回复首页聊')
     await first.keyboard.press('Enter')
-    await entry(first).getByText('收到首页聊').first().waitFor({ timeout: 30_000 })
-    const started = await waitFor(() => Promise.resolve(locationOf(first).session), 'the started chat in the URL', 10_000)
-    await waitFor(async () => await activeEntryRow(first).count() === 1, 'the started chat highlighted under 对话', 10_000)
-    // A second tab without #session= opens a blank chat; the started chat is one click away in 对话.
+    const project = await waitFor(async () => (await projects()).find(candidate => !known.has(candidate.id)), 'the entry chat\'s project', 30_000)
+    await expectProjectShown(first, project.id)
+    await chat(first).getByText('收到首页聊').first().waitFor({ timeout: 30_000 })
+    expect(await entryRows(first).count()).toBe(0)
+    const started = locationOf(first).session
+    const folders = readdirSync(harness.projectsFolder).length
     const { page: second, errors } = await openPage({ context })
     await expectEntryShown(second)
     await second.getByText('今天想拍点什么？').waitFor({ timeout: 20_000 })
+    await waitFor(() => Promise.resolve(locationOf(second).session !== null), 'the second tab\'s blank chat', 20_000)
     expect(locationOf(second).session).not.toBe(started)
-    await entryRows(second).first().click()
-    await waitFor(() => Promise.resolve(locationOf(second).session === started), 'the started chat open in the second tab', 20_000)
-    await entry(second).getByText('只回复首页聊').first().waitFor({ timeout: 20_000 })
-    expect(locationOf(second).project).toBeNull()
-    expect(await activeNavEntries(second)).not.toContain('首页')
-    expect(await activeEntryRow(second).count()).toBe(1)
-    await rowMenu(second, activeEntryRow(second), '重命名')
-    await typeRename(second, 'NAV 首页对话')
-    await waitFor(async () => (await activeEntryRow(second).innerText()).trim() === 'NAV 首页对话', 'the 对话 row renamed', 10_000)
-    // Deleting the open chat removes its row and opens a blank chat on 首页.
-    await rowMenu(second, activeEntryRow(second), '删除对话')
-    await waitFor(async () => await entryRows(second).filter({ hasText: 'NAV 首页对话' }).count() === 0, 'the deleted row to disappear', 10_000)
-    await waitFor(() => Promise.resolve(locationOf(second).session !== started && locationOf(second).session !== null), 'a blank chat', 20_000)
-    await expectEntryShown(second)
-    await second.getByText('今天想拍点什么？').waitFor({ timeout: 20_000 })
+    // Opening 首页 gives the second tab's chat a fresh folder of its own and creates no project.
+    expect(readdirSync(harness.projectsFolder).length).toBe(folders + 1)
+    expect((await projects()).filter(candidate => !known.has(candidate.id)).map(candidate => candidate.id)).toEqual([project.id])
     expect(errors).toEqual([])
   })
 

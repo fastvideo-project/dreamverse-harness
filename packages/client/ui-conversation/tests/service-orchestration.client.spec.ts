@@ -725,6 +725,37 @@ describe('sendSession submission echo', () => {
     await b.runtime.dispose()
   })
 
+  it('prompts after every conversation/before-send listener settles, and abandons the echo when one rejects', async () => {
+    const b = await echoBench()
+    vi.stubGlobal('requestAnimationFrame', undefined)
+    try {
+      const session = b.runtime.sessions.binding('s1')!.session
+      const gate = Promise.withResolvers<undefined>()
+      const seen: string[] = []
+      const off = b.runtime.ctx.on('conversation/before-send', async (sessionId) => {
+        seen.push(sessionId)
+        await gate.promise
+      })
+      const sending = b.root.sendSession(session, '先建项目', [], 'queue')
+      await vi.waitFor(() => { expect(seen).toEqual(['s1']) })
+      expect(b.beginSubmission).toHaveBeenCalledOnce()
+      expect(b.prompt).not.toHaveBeenCalled()
+      gate.resolve(undefined)
+      await expect(sending).resolves.toEqual({ kind: 'success' })
+      expect(b.prompt).toHaveBeenCalledWith([{ type: 'text', text: '先建项目' }], 'queue', undefined, 'req-echo')
+      off()
+
+      b.runtime.ctx.on('conversation/before-send', () => Promise.reject(new Error('no project')))
+      await expect(b.root.sendSession(session, '失败', [], 'queue')).rejects.toThrow('no project')
+      expect(b.abandon).toHaveBeenCalledOnce()
+      expect(b.prompt).toHaveBeenCalledOnce()
+    } finally {
+      vi.unstubAllGlobals()
+      b.restore()
+    }
+    await b.runtime.dispose()
+  })
+
   it('yields through the macrotask fallback where no frame clock exists', async () => {
     const b = await echoBench()
     vi.stubGlobal('requestAnimationFrame', undefined)

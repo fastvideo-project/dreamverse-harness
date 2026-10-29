@@ -251,6 +251,33 @@ describe('the shell plugin', () => {
     expect('startSession' in bench.runtime.ctx.uiWorkspace).toBe(false)
   })
 
+  it('makes the entry chat\'s folder a project before a send goes out, once for concurrent sends, and fails the send when that fails', async () => {
+    const bench = await mountShell()
+    const folder = '/dv/DreamVerse/Untitled project'
+    await bench.runtime.sessions.add({ id: 'entry-chat', summary: { blank: true, cwd: folder } })
+    await bench.runtime.sessions.add({ id: 'other-chat', summary: { blank: true, cwd: '/home/me' } })
+    bench.runtime.sessions.stubCreate(() => Promise.resolve('entry-chat' as SessionId))
+    bench.runtime.ctx.uiWorkspace.startSession()
+    await waitFor(() => { expect(bench.openSession).toHaveBeenLastCalledWith('entry-chat') })
+    const serverFetch = globalThis.fetch
+    const creates: unknown[] = []
+    let refuse = true
+    vi.stubGlobal('fetch', ((input, init) => {
+      if (input !== '/api/dv/projects' || init?.method !== 'POST') return serverFetch(input, init)
+      creates.push(JSON.parse(init.body as string))
+      const body = refuse ? { error: 'disk full' } : { id: 'p2', title: 'Untitled project', created_at: '', path: folder }
+      return Promise.resolve(new Response(JSON.stringify(body), { status: refuse ? 500 : 200 }))
+    }) satisfies typeof fetch)
+    const send = (sessionId: string): Promise<void> => bench.runtime.ctx.serial('conversation/before-send', sessionId as SessionId)
+
+    await expect(send('entry-chat')).rejects.toThrow('The project could not be created, so the message was not sent: disk full')
+    refuse = false
+    await Promise.all([send('entry-chat'), send('entry-chat')])
+    await send('entry-chat')
+    await send('other-chat')
+    expect(creates).toEqual([{ folder, session: 'entry-chat' }, { folder, session: 'entry-chat' }])
+  })
+
   it('prepares the entry Workspace for DSH\'s first-use initialization while it is loaded', async () => {
     const bench = await mountShell()
     const workspaces = bench.runtime.ctx.workspaces
