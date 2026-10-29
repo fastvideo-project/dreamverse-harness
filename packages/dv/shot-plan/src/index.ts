@@ -2,12 +2,14 @@
  * The Shot plan component of DreamVerse as the `dvShotPlan` Cordis service: the plan of a video before anything is
  * rendered. A plan has a `PlanId` (`p1`, `p2`, …) and numbered versions. It owns two operations; a workflow plugin
  * approves plan versions:
- * - `plan.create`: version 1 of a new plan (the shots with their models, prompts and durations, and the references),
- *   stored as a JSON asset so the agent and the user read the same text; the assigned PlanId goes in `report.plan`;
+ * - `plan.create`: version 1 of a new plan (the shots with their models, prompts, durations and the models' own
+ *   parameters, and the references), stored as a JSON asset so the agent and the user read the same text; the assigned
+ *   PlanId goes in `report.plan`;
  * - `plan.update`: the next version of the plan its `plan` param names.
  *
- * A shot names its model by the four fields of its key in the model catalog: `modality`, `task`, `provider` and `model`.
- * The plan stores the key as written and never looks it up; the workflow that approves the plan checks it.
+ * A shot names its model by the four fields of its key in the model catalog: `modality`, `task`, `provider` and `model`,
+ * and the model's own parameters in `extra`. The plan stores the key and `extra` as written and never looks them up; the
+ * workflow that approves the plan checks them.
  *
  * `dvProject` turns each registered operation into its agent tool (`dv_plan_create`, `dv_plan_update`). The
  * reducer keeps the `plan` slice: every version of every plan.
@@ -74,6 +76,10 @@ const SHOT_SCHEMA = {
         + 'frame of the previous shot. Omit it for a shot that does not continue the previous one.',
     },
     seed: { type: 'integer' },
+    extra: {
+      type: 'object', additionalProperties: true,
+      description: 'The model\'s own parameters for this shot, as dv_models_get lists them; omit it when the model has none.',
+    },
   },
 } as const
 
@@ -170,8 +176,9 @@ export default class DvShotPlan extends Service {
 
   /**
    * Resolve the shots of one plan version, the way every workflow reads a plan: each shot with its 1-based slot, the
-   * plan's `aspect_ratio` and `resolution`, its own `seed` else the plan's, its own references else the plan's (none for a
-   * task other than `ref2v`), and whether it continues the previous shot (`continue_previous`, task `ref2v`, not slot 1).
+   * plan's `aspect_ratio` and `resolution`, its own `seed` else the plan's, its own `extra` when it sets one, its own
+   * references else the plan's (none for a task other than `ref2v`), and whether it continues the previous shot
+   * (`continue_previous`, task `ref2v`, not slot 1).
    * @param state - the state the plan is read in.
    * @param plan - the PlanId.
    * @param version - the version number; the latest version when omitted.
@@ -187,6 +194,7 @@ export default class DvShotPlan extends Service {
         ...found.aspect_ratio === undefined ? {} : { aspect_ratio: found.aspect_ratio },
         ...found.resolution === undefined ? {} : { resolution: found.resolution },
         ...seed === undefined ? {} : { seed },
+        ...shot.extra === undefined ? {} : { extra: shot.extra },
         references: shotReferences(shot, found),
         continuePrevious: shot.continue_previous === true && takesFirstFrame(shot) && index > 0,
       }

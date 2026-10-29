@@ -265,7 +265,7 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 | timeline  | `Timeline`           | `TimelineId`（`t1`、`t2`、…）         | 时间线  | 时间线 / Timeline；没有名字的时间线显示为 时间线 {n} / Timeline {n} |
 | clip      | `Clip`               | `ClipId`（`cl1`、`cl2`、…）           | 时间线  | 片段 / Clip                                         |
 
-记录类型叫 `ProjectRecord`，因为 `Record` 是 TypeScript 内置类型。智能体把引用写成 `<asset>`、`<record>#<output>` 或 `<id>@<version>`。一个 `Shot` 包含 `modality`、`task`、`provider`、`model`、`prompt`，以及可选的 `duration_sec`、`references`、`seed` 和 `continue_previous`。
+记录类型叫 `ProjectRecord`，因为 `Record` 是 TypeScript 内置类型。智能体把引用写成 `<asset>`、`<record>#<output>` 或 `<id>@<version>`。一个 `Shot` 包含 `modality`、`task`、`provider`、`model`、`prompt`，以及可选的 `duration_sec`、`references`、`seed`、`extra` 和 `continue_previous`。
 
 ### 组件和其他包
 

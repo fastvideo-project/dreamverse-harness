@@ -28,7 +28,7 @@ Import the functions in a workflow's operation and pass the generation service t
 
 | Function | Behavior |
 | --- | --- |
-| `walkShot(resolved, overrides?)` | The `WalkShot` of one `ResolvedShot` of `dvShotPlan.shots`: params with the model key, `prompt`, and `duration_sec`, `aspect_ratio`, `resolution` and `seed` when set; the overrides win |
+| `walkShot(resolved, overrides?)` | The `WalkShot` of one `ResolvedShot` of `dvShotPlan.shots`: params with the model key, `prompt`, and `duration_sec`, `aspect_ratio`, `resolution`, `seed` and `extra` when set; the overrides win |
 | `planShots(render, state, shots, where)` | One `WalkStep` per `WalkShot`, in order: the parsed `reference` inputs and the take `findTake` returns among the records `where` accepts, or null. A continuing shot matches with the previous shot's reused take as its `first_frame` (output 1, the last still); after a rendered shot it never reuses |
 | `checkShots(render, state, steps)` | `{ slot, reason }` for each reason `check` gives a rendering step. A continuing step after a reused step is checked with that take's last still; after a rendered step, with `first_frame` chained |
 | `shotLine(step, shot)` | `shot <n>: keeps its take`, or `shot <n> (<model key>, <s> s, continues from the previous shot): <first 80 characters of the prompt>` |

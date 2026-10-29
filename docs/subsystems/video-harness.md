@@ -265,7 +265,7 @@ Code, record fields, tool descriptions, docs, and interface copy use these names
 | timeline  | `Timeline`            | `TimelineId` (`t1`, `t2`, …)              | Timeline    | 时间线 / Timeline; an unnamed timeline shows as 时间线 {n} / Timeline {n} |
 | clip      | `Clip`                | `ClipId` (`cl1`, `cl2`, …)                | Timeline    | 片段 / Clip                                                           |
 
-`ProjectRecord` names the record type because `Record` is a TypeScript built-in. The agent writes a reference as `<asset>`, `<record>#<output>`, or `<id>@<version>`. A `Shot` holds `modality`, `task`, `provider`, `model`, `prompt`, and optionally `duration_sec`, `references`, `seed`, and `continue_previous`.
+`ProjectRecord` names the record type because `Record` is a TypeScript built-in. The agent writes a reference as `<asset>`, `<record>#<output>`, or `<id>@<version>`. A `Shot` holds `modality`, `task`, `provider`, `model`, `prompt`, and optionally `duration_sec`, `references`, `seed`, `extra`, and `continue_previous`.
 
 ### Components and packages
 

@@ -24,7 +24,7 @@ Use this package to plan a video before anything is rendered. A plan has a `Plan
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin after `@dv/project`; the asset pool stores the plan files. A plan version holds the shots, each with its model key (`modality`, `task`, `provider`, `model`), prompt, duration and inputs, and the references the shots of task `ref2v` share. The plan stores each model key as written; the workflow that approves the plan checks the key against the model catalog. The reducer keeps the `plan` slice: every version of every plan.
+Mount the plugin after `@dv/project`; the asset pool stores the plan files. A plan version holds the shots, each with its model key (`modality`, `task`, `provider`, `model`), prompt, duration, inputs and the model's own parameters (`extra`), and the references the shots of task `ref2v` share. The plan stores each model key and each `extra` as written; the workflow that approves the plan checks them against the model catalog. The reducer keeps the `plan` slice: every version of every plan.
 
 ```yaml
 - id: dv-shot-plan
@@ -35,10 +35,10 @@ The plugin has no configuration fields.
 
 | Operation | Tool | Params | Outputs and report | Confirm |
 | --- | --- | --- | --- | --- |
-| `plan.create` | `dv_plan_create` | `shots` (each `modality`, `task`, `provider` and `model` (the key of a model that `dv_models_list` lists), `prompt`, `duration_sec?`, `references?` (task `ref2v` only), `continue_previous?` (task `ref2v` only, never on shot 1), `seed?`), `title?`, `references?` (shared by the shots of task `ref2v`), `aspect_ratio?`, `resolution?`, `seed?` | `plan` (`plan.json`); report `{plan, version: 1}` with the assigned PlanId | `never` |
+| `plan.create` | `dv_plan_create` | `shots` (each `modality`, `task`, `provider` and `model` (the key of a model that `dv_models_list` lists), `prompt`, `duration_sec?`, `references?` (task `ref2v` only), `continue_previous?` (task `ref2v` only, never on shot 1), `seed?`, `extra?` (the model's own parameters, as `dv_models_get` lists them)), `title?`, `references?` (shared by the shots of task `ref2v`), `aspect_ratio?`, `resolution?`, `seed?` | `plan` (`plan.json`); report `{plan, version: 1}` with the assigned PlanId | `never` |
 | `plan.update` | `dv_plan_update` | `plan` (PlanId) and the params of `plan.create`: the complete next version | `plan` (`plan.json`); report `{plan, version}` | `never` |
 
-A `PlanId` is `p<n>`: `plan.create` assigns one more than the highest number any Shot plan record of the project stored in `report.plan`, anywhere in the history list, steps after the current position included, so no two plans of the history list share an ID. A version is numbered from 1, and a shot by its 1-based position in the version, so a shot added after six shots is shot 7. A reference is a version of a registered reference kind (`<id>@<n>`) or an asset ID. The slice `components.plan` is `{plans: Record<PlanId, PlanVersion[]>}`, oldest version first; a `PlanVersion` is the `Plan` fields with `version` and `created_by` (the `plan.create` or `plan.update` record). The service method `get(state, plan, version?)` returns one `PlanVersion` of a project state, and `shots(state, plan, version?)` resolves its shots the way every workflow reads a plan. A `ResolvedShot` holds the shot's 1-based `slot`, the `shot` as written, the plan's `aspect_ratio` and `resolution`, the shot's `seed` else the plan's, the `references` that apply (its own, else the plan's, none for a task other than `ref2v`) and `continuePrevious` (`continue_previous` on a shot of task `ref2v` after slot 1).
+A `PlanId` is `p<n>`: `plan.create` assigns one more than the highest number any Shot plan record of the project stored in `report.plan`, anywhere in the history list, steps after the current position included, so no two plans of the history list share an ID. A version is numbered from 1, and a shot by its 1-based position in the version, so a shot added after six shots is shot 7. A reference is a version of a registered reference kind (`<id>@<n>`) or an asset ID. The slice `components.plan` is `{plans: Record<PlanId, PlanVersion[]>}`, oldest version first; a `PlanVersion` is the `Plan` fields with `version` and `created_by` (the `plan.create` or `plan.update` record). The service method `get(state, plan, version?)` returns one `PlanVersion` of a project state, and `shots(state, plan, version?)` resolves its shots the way every workflow reads a plan. A `ResolvedShot` holds the shot's 1-based `slot`, the `shot` as written, the plan's `aspect_ratio` and `resolution`, the shot's `seed` else the plan's, its own `extra` when it sets one, the `references` that apply (its own, else the plan's, none for a task other than `ref2v`) and `continuePrevious` (`continue_previous` on a shot of task `ref2v` after slot 1).
 
 -----
 
@@ -74,7 +74,7 @@ The reducer ignores records that are not `done`: a finished `plan.create` adds v
 
 #### What the model sees
 
-Two tools, `dv_plan_create` and `dv_plan_update`, in the format `@dv/project` gives every operation tool. The descriptions tell the agent to create a plan only for a separate story, to give each shot a model from `dv_models_list` and a prompt written for it, and to extend, shorten or change a story with `dv_plan_update` on its plan (passing the complete plan, every shot in order); they say that a plan renders nothing by itself and name no approval tool. Both carry the deterministic note.
+Two tools, `dv_plan_create` and `dv_plan_update`, in the format `@dv/project` gives every operation tool. The descriptions tell the agent to create a plan only for a separate story, to give each shot a model from `dv_models_list`, a prompt written for it and, in `extra`, the model's own parameters as `dv_models_get` lists them, and to extend, shorten or change a story with `dv_plan_update` on its plan (passing the complete plan, every shot in order); they say that a plan renders nothing by itself and name no approval tool. Both carry the deterministic note.
 
 #### Token effect
 

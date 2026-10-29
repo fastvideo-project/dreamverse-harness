@@ -177,6 +177,31 @@ describe('dvStory', () => {
     })
   })
 
+  it('passes a shot\'s extra to its render, and lists at preview the values the model refuses', async () => {
+    const fixture = await start()
+    const shots = [
+      { ...TXT, prompt: 'A street at dawn', duration_sec: 1, extra: { strength: 0.5 } },
+      { ...TXT, prompt: 'A street at noon', duration_sec: 1, extra: { cfg: 7 } },
+    ]
+    expect(refusal(await fixture.call('dv_plan_create', { reason: 'propose', shots }))).toBe('')
+    // The plan stores extra as written; the model's validation judges it where the shots are checked.
+    fixture.checks.t2v = request => Object.hasOwn(request.extra, 'cfg') ? ['It has no extra parameter `cfg`; its extra parameters: strength.'] : []
+    expect(await preview(fixture, 'p1')).toMatchObject({
+      rendered: 2, problems: ['Shot 2: Model video/t2v/test/fake cannot generate this: It has no extra parameter `cfg`; its extra parameters: strength.'],
+    })
+    await fixture.call('dv_plan_update', { reason: 'fix', plan: 'p1', shots: [shots[0], { ...shots[1], extra: { strength: 1 } }] })
+    expect(await preview(fixture, 'p1')).toMatchObject({ version: 2, problems: [] })
+    await fixture.record('story.approve', { plan: 'p1' })
+    await fixture.ctx.dvProject.wait(fixture.project)
+    const renders = fixture.ctx.dvProject.getState(fixture.project).components.proj.records.filter(record => record.operation === 'shot.render')
+    expect(renders.map(record => record.params['extra'])).toEqual([{ strength: 0.5 }, { strength: 1 }])
+    // A changed extra is a new take; a shot with the same extra keeps its take.
+    await fixture.call('dv_plan_update', { reason: 'stronger', plan: 'p1', shots: [{ ...shots[0], extra: { strength: 0.9 } }, { ...shots[1], extra: { strength: 1 } }] })
+    expect(await preview(fixture, 'p1')).toMatchObject({
+      version: 3, rendered: 1, shots: ['shot 1 (video/t2v/test/fake, 1 s): A street at dawn', 'shot 2: keeps its take'],
+    })
+  })
+
   it('asks for the user\'s agreement with the preview lines, refuses a plan with problems, and records each approval', async () => {
     const fixture = await start()
     const shots = [{ ...TXT, prompt: 'A street at dawn', duration_sec: 2 }, { ...TXT, prompt: 'A street at night', duration_sec: 2 }]

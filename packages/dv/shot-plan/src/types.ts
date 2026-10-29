@@ -26,6 +26,8 @@ export interface Shot {
    */
   references?: string[]
   seed?: number
+  /** The model's own parameters for this shot, as `dv_models_get` lists them; the render passes them as its `extra`. */
+  extra?: Record<string, unknown>
   /** The modality of the model that renders the shot; with `task`, `provider` and `model`, its key in the model catalog. */
   modality: string
   /** The generation task the model renders the shot in, such as `ref2v`. */
@@ -74,6 +76,8 @@ export interface ResolvedShot {
   resolution?: string
   /** The shot's own seed, else the plan's, when either is set. */
   seed?: number
+  /** The shot's own `extra`, when it sets one. */
+  extra?: Record<string, unknown>
   /** The shot's own references, else the plan's; empty when its task takes no references (only task `ref2v` does). */
   references: string[]
   /** `continue_previous` on a shot after slot 1 whose task takes a first frame (only task `ref2v` does). */

@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在 `@dv/project` 之后挂载本插件；素材库存储分镜计划文件。分镜计划的一个版本包含镜头（每个镜头有模型键 `modality`、`task`、`provider`、`model`，以及提示词、时长和输入），以及任务为 `ref2v` 的镜头共用的参考。分镜计划按原样存储每个模型键；批准该分镜计划的工作流对照模型目录检查这个键。归约函数维护 `plan` 切片：每个分镜计划的每个版本。
+在 `@dv/project` 之后挂载本插件；素材库存储分镜计划文件。分镜计划的一个版本包含镜头（每个镜头有模型键 `modality`、`task`、`provider`、`model`，以及提示词、时长、输入和模型自己的参数 `extra`），以及任务为 `ref2v` 的镜头共用的参考。分镜计划按原样存储每个模型键和每个 `extra`；批准该分镜计划的工作流对照模型目录检查它们。归约函数维护 `plan` 切片：每个分镜计划的每个版本。
 
 ```yaml
 - id: dv-shot-plan
@@ -35,10 +35,10 @@ kind: "package-reference"
 
 | 操作 | 工具 | 参数 | 输出和报告 | 确认 |
 | --- | --- | --- | --- | --- |
-| `plan.create` | `dv_plan_create` | `shots`（每个含 `modality`、`task`、`provider` 和 `model`（`dv_models_list` 列出的一个模型的键）、`prompt`、`duration_sec?`、`references?`（仅任务 `ref2v`）、`continue_previous?`（仅任务 `ref2v`，镜头 1 不可用）、`seed?`）、`title?`、`references?`（任务为 `ref2v` 的镜头共用）、`aspect_ratio?`、`resolution?`、`seed?` | `plan`（`plan.json`）；报告 `{plan, version: 1}`，含分配的 PlanId | `never` |
+| `plan.create` | `dv_plan_create` | `shots`（每个含 `modality`、`task`、`provider` 和 `model`（`dv_models_list` 列出的一个模型的键）、`prompt`、`duration_sec?`、`references?`（仅任务 `ref2v`）、`continue_previous?`（仅任务 `ref2v`，镜头 1 不可用）、`seed?`、`extra?`（模型自己的参数，按 `dv_models_get` 列出的））、`title?`、`references?`（任务为 `ref2v` 的镜头共用）、`aspect_ratio?`、`resolution?`、`seed?` | `plan`（`plan.json`）；报告 `{plan, version: 1}`，含分配的 PlanId | `never` |
 | `plan.update` | `dv_plan_update` | `plan`（PlanId）和 `plan.create` 的参数：完整的下一个版本 | `plan`（`plan.json`）；报告 `{plan, version}` | `never` |
 
-`PlanId` 是 `p<n>`：`plan.create` 分配的编号比项目历史列表中（包括当前位置之后的步骤）任何分镜记录在 `report.plan` 中存过的最大编号大一，所以历史列表中不会有两个分镜计划共用一个 ID。版本从 1 编号，镜头由它在版本中从 1 开始的位置标识，所以六个镜头之后添加的镜头是镜头 7。参考是已注册引用种类的版本（`<id>@<n>`）或素材 ID。切片 `components.plan` 是 `{plans: Record<PlanId, PlanVersion[]>}`，最早的版本在前；`PlanVersion` 是 `Plan` 的字段加上 `version` 和 `created_by`（`plan.create` 或 `plan.update` 记录）。服务方法 `get(state, plan, version?)` 返回某个项目状态中的一个 `PlanVersion`，`shots(state, plan, version?)` 按所有工作流读取分镜计划的同一方式解析它的镜头。`ResolvedShot` 含镜头从 1 开始的 `slot`、原样的 `shot`、计划的 `aspect_ratio` 和 `resolution`、镜头自己的 `seed`（否则用计划的）、适用的 `references`（镜头自己的，否则用计划的；`ref2v` 以外的任务没有）以及 `continuePrevious`（`slot` 1 之后、任务为 `ref2v` 的镜头上的 `continue_previous`）。
+`PlanId` 是 `p<n>`：`plan.create` 分配的编号比项目历史列表中（包括当前位置之后的步骤）任何分镜记录在 `report.plan` 中存过的最大编号大一，所以历史列表中不会有两个分镜计划共用一个 ID。版本从 1 编号，镜头由它在版本中从 1 开始的位置标识，所以六个镜头之后添加的镜头是镜头 7。参考是已注册引用种类的版本（`<id>@<n>`）或素材 ID。切片 `components.plan` 是 `{plans: Record<PlanId, PlanVersion[]>}`，最早的版本在前；`PlanVersion` 是 `Plan` 的字段加上 `version` 和 `created_by`（`plan.create` 或 `plan.update` 记录）。服务方法 `get(state, plan, version?)` 返回某个项目状态中的一个 `PlanVersion`，`shots(state, plan, version?)` 按所有工作流读取分镜计划的同一方式解析它的镜头。`ResolvedShot` 含镜头从 1 开始的 `slot`、原样的 `shot`、计划的 `aspect_ratio` 和 `resolution`、镜头自己的 `seed`（否则用计划的）、镜头自己设置的 `extra`（若有）、适用的 `references`（镜头自己的，否则用计划的；`ref2v` 以外的任务没有）以及 `continuePrevious`（`slot` 1 之后、任务为 `ref2v` 的镜头上的 `continue_previous`）。
 
 -----
 
@@ -74,7 +74,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-两个工具 `dv_plan_create` 和 `dv_plan_update`，格式与 `@dv/project` 给每个操作工具的格式相同。描述告诉智能体只有另一个故事才新建分镜计划，给每个镜头从 `dv_models_list` 选一个模型、按它写提示词，并用 `dv_plan_update` 在故事的分镜计划上延长、缩短或修改故事（传完整的分镜计划，所有镜头按顺序）；描述说明分镜计划本身不渲染任何内容，不提批准工具。两个工具都带有确定性说明。
+两个工具 `dv_plan_create` 和 `dv_plan_update`，格式与 `@dv/project` 给每个操作工具的格式相同。描述告诉智能体只有另一个故事才新建分镜计划，给每个镜头从 `dv_models_list` 选一个模型、按它写提示词、把 `dv_models_get` 列出的模型自己的参数放进 `extra`，并用 `dv_plan_update` 在故事的分镜计划上延长、缩短或修改故事（传完整的分镜计划，所有镜头按顺序）；描述说明分镜计划本身不渲染任何内容，不提批准工具。两个工具都带有确定性说明。
 
 #### Token 影响
 

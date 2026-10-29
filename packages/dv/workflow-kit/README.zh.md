@@ -28,7 +28,7 @@ kind: "package-reference"
 
 | 函数 | 行为 |
 | --- | --- |
-| `walkShot(resolved, overrides?)` | `dvShotPlan.shots` 返回的一个 `ResolvedShot` 对应的 `WalkShot`：参数含模型键、`prompt`，以及已设置的 `duration_sec`、`aspect_ratio`、`resolution` 和 `seed`；覆盖值优先 |
+| `walkShot(resolved, overrides?)` | `dvShotPlan.shots` 返回的一个 `ResolvedShot` 对应的 `WalkShot`：参数含模型键、`prompt`，以及已设置的 `duration_sec`、`aspect_ratio`、`resolution`、`seed` 和 `extra`；覆盖值优先 |
 | `planShots(render, state, shots, where)` | 按顺序为每个 `WalkShot` 返回一个 `WalkStep`：解析出的 `reference` 输入，以及 `findTake` 在 `where` 接受的记录中找到的成片或 null。接续镜头以前一个镜头复用的成片作为 `first_frame`（输出 1，即最后一帧静帧）匹配；前一个镜头需要渲染时，它从不复用 |
 | `checkShots(render, state, steps)` | `check` 对需要渲染的步骤给出的每条原因对应一个 `{ slot, reason }`。复用步骤之后的接续步骤以那条成片的最后一帧静帧检查；渲染步骤之后的接续步骤以链式角色 `first_frame` 检查 |
 | `shotLine(step, shot)` | `shot <n>: keeps its take`，或 `shot <n> (<模型键>, <秒数> s, continues from the previous shot): <提示词的前 80 个字符>` |

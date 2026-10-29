@@ -118,15 +118,15 @@ export function keepTimeline(timeline: Pick<DvTimeline, 'lastWrite'>, state: Pro
 }
 
 /**
- * Map one resolved shot to its render params: the model key, the prompt, and the duration, aspect ratio, resolution and
- * seed that apply to it. The overrides win, such as the aspect ratio of an ad variant.
+ * Map one resolved shot to its render params: the model key, the prompt, and the duration, aspect ratio, resolution,
+ * seed and `extra` that apply to it. The overrides win, such as the aspect ratio of an ad variant.
  * @param resolved - the shot as `dvShotPlan.shots` resolves it.
  * @param overrides - params that replace the resolved values.
  * @returns the shot to walk, with the slot, the references and the continuation of the resolved shot.
  */
 export function walkShot(resolved: ResolvedShot, overrides: Record<string, unknown> = {}): WalkShot {
-  const { shot, aspect_ratio: aspectRatio, resolution, seed } = resolved
-  const optional = { duration_sec: shot.duration_sec, aspect_ratio: aspectRatio, resolution, seed }
+  const { shot, aspect_ratio: aspectRatio, resolution, seed, extra } = resolved
+  const optional = { duration_sec: shot.duration_sec, aspect_ratio: aspectRatio, resolution, seed, extra }
   const params = {
     modality: shot.modality, task: shot.task, provider: shot.provider, model: shot.model, prompt: shot.prompt,
     ...Object.fromEntries(Object.entries(optional).filter(([, value]) => value !== undefined)), ...overrides,

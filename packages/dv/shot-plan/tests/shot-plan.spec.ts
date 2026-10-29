@@ -194,14 +194,14 @@ describe('dvShotPlan', () => {
     const fixture = await start()
     const picture = fixture.put('face', 'image/png', 'face.png')
     const hat = fixture.put('hat', 'image/png', 'hat.png')
-    const shots = [ref('one'), ref('two', { references: [hat], seed: 9, continue_previous: true }), { ...TXT, prompt: 'three' }]
+    const shots = [ref('one'), ref('two', { references: [hat], seed: 9, continue_previous: true, extra: { strength: 0.5 } }), { ...TXT, prompt: 'three' }]
     await fixture.record('plan.create', { references: [picture], aspect_ratio: '16:9', resolution: '720p', seed: 7, shots })
     await fixture.record('plan.update', { plan: 'p1', shots: [{ ...TXT, prompt: 'solo' }] })
     const state = fixture.ctx.dvProject.getState(fixture.project)
     const plan = { aspect_ratio: '16:9', resolution: '720p' }
     expect(fixture.ctx.dvShotPlan.shots(state, 'p1', 1)).toEqual([
       { slot: 1, shot: shots[0], ...plan, seed: 7, references: [picture], continuePrevious: false },
-      { slot: 2, shot: shots[1], ...plan, seed: 9, references: [hat], continuePrevious: true },
+      { slot: 2, shot: shots[1], ...plan, seed: 9, extra: { strength: 0.5 }, references: [hat], continuePrevious: true },
       { slot: 3, shot: shots[2], ...plan, seed: 7, references: [], continuePrevious: false },
     ])
     // The latest version by default; a version without plan values resolves shots without them.
