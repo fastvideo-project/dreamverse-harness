@@ -14,7 +14,7 @@ views          @dv/ui-shell @dv/ui-canvas @dv/ui-timeline @dv/ui-asset-pool @dv/
 API            @dv/api                    routes that read state and run operations as the user; the event stream
   │ dvProject.run, getState, listHistory
   ▼
-registry       @dv/project                records, the history list, undo and redo, state, agent tools, the dv:project prompt section
+registry       @dv/project                records, the history list, undo and redo, state, agent tools, the dv:project rules section, the project messages
   ▲ registerOperation, registerReducer             ▲ dvProject.run (asset.import, asset.place), current-state reads
   │ from workflows and components                  │
 workflows      @dv/workflow-story                  │
@@ -46,7 +46,7 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 
 | 层      | 包                                                                                                                            | 角色                                                                                                                                                      |
 | ------ | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 注册表    | [`@dv/project`](../../packages/dv/project/README.zh.md)                                                                      | `dvProject` 服务：组件向它注册操作和归约函数，就像工具向 `ctx.tools` 注册一样。它是项目文件唯一的写入者，把每个操作变成一个 DSH 工具，并注册 `dv:project` 系统提示词段。                                              |
+| 注册表    | [`@dv/project`](../../packages/dv/project/README.zh.md)                                                                      | `dvProject` 服务：组件向它注册操作和归约函数，就像工具向 `ctx.tools` 注册一样。它是项目文件唯一的写入者，把每个操作变成一个 DSH 工具，注册只含规则的 `dv:project` 系统提示词段，并把项目状态消息和项目更新消息追加到每个聊天会话。                 |
 | 工作流    | `@dv/workflow-story`（库 `@dv/workflow-kit`）                                                                                   | 一个制作流程：预览、批准、版本复用、时间线选择。                                                                                                                                |
 | 组件     | `@dv/asset-pool`、`@dv/character`、`@dv/location`、`@dv/style`、`@dv/shot-plan`、`@dv/shot-render`、`@dv/image-generate`、`@dv/audio-generate`、`@dv/timeline`、`@dv/inspector` | 各自拥有一项能力的插件：它的数据（一个状态切片及其归约函数）、它的操作，以及智能体读到的关于它们的文字。外部程序经 [`@dv/ffmpeg`](../../packages/dv/ffmpeg/README.zh.md) 运行。                                     |
 | 基础库    | `@dv/generation`、`@dv/reference-kit`                                                                                         | `defineGeneration` 和 `defineReference` 构建生成原语或引用名词的服务。                                                                                                  |
@@ -126,7 +126,8 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 智能体通过三个渠道读取项目，每个渠道归拥有其内容的包所有：
 
 - **工具。** 每个操作的 `description` 说明它的工具怎么用；[`@dv/project`](../../packages/dv/project/README.zh.md) 根据 `OperationSpec` 构建工具。
-- **`dv:project` 提示词段。** `@dv/project` 在 DSH `systemPrompt` 服务挂载时注册它。它先写项目组件的规则（每次修改都是一步，撤销和重做移动当前位置，新的修改丢弃后面的步骤，如何称呼记录、素材、版本和片段，在对话中确认，过期记录），再写当前状态的项目摘要。它不包含用户看不到的任何东西：没有视图中的选中项，也没有偏好。
+- **`dv:project` 提示词段。** `@dv/project` 在 DSH `systemPrompt` 服务挂载时注册它。它只写项目组件的规则（对话的项目，每次修改都是一步，撤销和重做移动当前位置，新的修改丢弃后面的步骤，如何称呼记录、素材、版本和片段，在对话中确认，过期记录），所以它的文本在每一步都相同。它不包含用户看不到的任何东西：没有视图中的选中项，也没有偏好。
+- **项目状态消息和项目更新消息。** `@dv/project` 在 `agent/pre-step` 把它们追加到每个绑定了项目的聊天会话：先发送一次当前状态的项目摘要，之后每一步最多一条消息，只列出智能体自己的工具结果没有展示过的变化（用户、另一个对话或调度器写下的记录，结束，撤销和重做的移动，过期标记，标题）。因此每个模型请求都是上一个请求的延伸，会话日志保存每条消息及其报告到的视图。
 - **对话引用。** [`@dv/chat-references`](../../packages/dv/chat-references/README.zh.md) 在 `agent/pre-step` 把输入框为 `@` 和 `+ → 引用` 写下的 `dv:` 提及展开成一条带具体记录和素材 ID 的上下文消息，以用户身份用 `asset.import` 导入用户在对话中附上的图片，并把这些图片和消息提及的素材放到画布上；会话的下一次工具调用等待导入完成。
 
 skill 承载工作流程和模型专属的规则，各由其主人注册：
@@ -181,7 +182,7 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 | 跨多个组件的做事流程           | `@dv/bundle` 或拥有该流程的工作流中的一个 skill（`story-directing`）     |
 | 模型的限制和提示词写法，例如参考素材要求 | 模型的提供方插件为该生成任务注册的提示词 skill                               |
 | 如何为镜头选择模型            | `@dv/models` 的 `video-model-selection` skill             |
-| 每轮都会变的项目状态           | `@dv/project` 的 `dv:project` 提示词段，经由归约函数的 `agentSummary` |
+| 每轮都会变的项目状态           | `@dv/project` 的项目状态消息和项目更新消息，经由归约函数的 `agentSummary`      |
 
 ### 流程
 

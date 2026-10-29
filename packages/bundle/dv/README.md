@@ -51,7 +51,7 @@ Environment the patch reads: `DV_STATE_ROOT` (default `~/.local/state/dv`; holds
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through the tools, the `dv:project` prompt section of `@dv/project`, the mention context of `@dv/chat-references`, and the skills the bundle mounts; the bundle itself adds no model-visible text.
+Indirectly, through the tools, the `dv:project` prompt section and the project state and update messages of `@dv/project`, the mention context of `@dv/chat-references`, and the skills the bundle mounts; the bundle itself adds no model-visible text.
 
 #### KV Cache effect
 

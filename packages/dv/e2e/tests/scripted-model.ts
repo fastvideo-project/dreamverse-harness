@@ -3,7 +3,8 @@
  * agent route speaks `openai-completions` (`POST /v1/chat/completions`, streamed), so `bootHarness({ modelBaseUrl })`
  * points `DV_DEEPSEEK_BASE_URL` here. Each request is answered from the rules: the first rule whose `match` fits the
  * newest user message supplies the reply, and the number of assistant messages after that user message picks the
- * step, so one user message can drive several tool calls in a row. Requests without tools (session titles) get a
+ * step, so one user message can drive several tool calls in a row; a step function may be async, so a story can change
+ * the project between two steps of one turn before the model answers. Requests without tools (session titles) get a
  * short text.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
@@ -43,7 +44,7 @@ export interface ScriptedRule {
   /** A substring or pattern of the newest user message. */
   match: string | RegExp
   /** The replies in order; past the end the model answers `endText`. */
-  steps: Array<ScriptedStep | ((view: TurnView) => ScriptedStep)>
+  steps: Array<ScriptedStep | ((view: TurnView) => ScriptedStep | Promise<ScriptedStep>)>
   /** The text after the last step; default `完成。`. */
   endText?: string
 }
@@ -102,18 +103,22 @@ function parseResult(content: unknown): unknown {
   }
 }
 
+/** The user messages that DSH and DreamVerse add as context: runtime context, system reminders, tool-result images, the
+ *  @ reference expansion, and the project state and update messages. */
+export const CONTEXT_MESSAGE
+  = /^(<system-reminder>|Current runtime context|Attached image|The user referenced these project items|DreamVerse project)/
+
 /**
  * Pick the reply for one agent request.
  * @param rules - the script.
  * @param request - the request body.
  * @returns the step to stream.
  */
-function replyFor(rules: ScriptedRule[], request: ChatRequest): ScriptedStep {
+async function replyFor(rules: ScriptedRule[], request: ChatRequest): Promise<ScriptedStep> {
   const messages = request.messages
   let last = -1
   for (let index = messages.length - 1; index >= 0; index -= 1) {
-    // DSH adds runtime context, system reminders, tool-result images, and the @ reference expansion as user messages; skip them.
-    if (messages[index]?.role === 'user' && !/^(<system-reminder>|Current runtime context|Attached image|The user referenced these project items)/.test(textOf(messages[index]?.content))) { last = index; break }
+    if (messages[index]?.role === 'user' && !CONTEXT_MESSAGE.test(textOf(messages[index]?.content))) { last = index; break }
   }
   const userText = last < 0 ? '' : textOf(messages[last]?.content)
   const after = messages.slice(last + 1)
@@ -123,7 +128,7 @@ function replyFor(rules: ScriptedRule[], request: ChatRequest): ScriptedStep {
   if (rule === undefined) return { text: stepIndex === 0 ? '好的。' : '完成。' }
   const step = rule.steps[stepIndex]
   if (step === undefined) return { text: rule.endText ?? '完成。' }
-  return typeof step === 'function' ? step({ userText, toolResults, request }) : step
+  return typeof step === 'function' ? await step({ userText, toolResults, request }) : step
 }
 
 /** The SSE `data:` payloads of one step. */
@@ -170,7 +175,7 @@ export async function startScriptedModel(rules: ScriptedRule[] = []): Promise<Sc
         const body = JSON.parse(Buffer.concat(parts).toString('utf8')) as ChatRequest
         const agentTurn = Array.isArray(body.tools) && body.tools.length > 0
         if (agentTurn) requests.push(body)
-        const step = agentTurn ? replyFor(rules, body) : { text: '测试对话' }
+        const step = agentTurn ? await replyFor(rules, body) : { text: '测试对话' }
         response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'close' })
         const events = eventsOf(step, calls)
         if ('calls' in step) calls += step.calls.length

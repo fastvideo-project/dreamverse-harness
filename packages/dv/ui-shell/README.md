@@ -108,7 +108,7 @@ The workspace renders the shown view with the owner props `projectId` (the open 
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through `@dv/project`; the session bindings the shell saves reach the model only through the `dv:project` prompt section and the `dv_proj_*` and operation tools of [`@dv/project`](../project/README.md).
+Indirectly, through `@dv/project`; the session bindings the shell saves reach the model only through the project state and update messages and the `dv_proj_*` and operation tools of [`@dv/project`](../project/README.md).
 
 #### KV Cache effect
 

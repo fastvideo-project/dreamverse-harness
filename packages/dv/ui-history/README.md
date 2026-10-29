@@ -86,7 +86,7 @@ A `dv:history-focus` event `{session, toolCall}` finds the record that tool call
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through `@dv/project`; the moves of the History panel change the current state, which reaches the model only through the `dv:project` prompt section and the `dv_proj_*` and operation tools of [`@dv/project`](../project/README.md).
+Indirectly, through `@dv/project`; the moves of the History panel change the current state, which reaches the model only through the project state and update messages and the `dv_proj_*` and operation tools of [`@dv/project`](../project/README.md).
 
 #### KV Cache effect
 

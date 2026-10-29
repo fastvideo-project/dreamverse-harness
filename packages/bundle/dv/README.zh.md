@@ -51,7 +51,7 @@ patch 读取的环境变量：`DV_STATE_ROOT`（默认 `~/.local/state/dv`；下
 <a id="model-experience"></a>
 ## 模型体验
 
-间接地，通过 bundle 挂载的工具、`@dv/project` 的 `dv:project` 提示词段落、`@dv/chat-references` 的提及上下文和 skill；bundle 本身不添加模型可见的文本。
+间接地，通过 bundle 挂载的工具、`@dv/project` 的 `dv:project` 提示词段落、项目状态消息和项目更新消息、`@dv/chat-references` 的提及上下文和 skill；bundle 本身不添加模型可见的文本。
 
 #### KV Cache 影响
 

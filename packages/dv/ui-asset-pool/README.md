@@ -87,7 +87,7 @@ Each media view fills the box of the surface that renders the `dv.media` occurre
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through `@dv/project`; the `asset.import` records that the asset pool panel's imports write reach the model only through the `dv:project` prompt section and the `dv_proj_*` and operation tools of [`@dv/project`](../project/README.md).
+Indirectly, through `@dv/project`; the `asset.import` records that the asset pool panel's imports write reach the model only through the project state and update messages and the `dv_proj_*` and operation tools of [`@dv/project`](../project/README.md).
 
 #### KV Cache effect
 

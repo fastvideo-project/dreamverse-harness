@@ -44,6 +44,7 @@ DSH_PLAYWRIGHT_EXECUTABLE_PATH=/path/to/chrome-linux/chrome \
 | [`tests/stories/history.e2e.ts`](tests/stories/history.e2e.ts) | The History panel: row order, labels, approval folds, focus on the canvas or the timeline, live updates, undo, redo and 回到这一步 moving 当前 without adding a row, greyed steps after 当前 that a new edit discards, and Ctrl+Z and Shift+Ctrl+Z |
 | [`tests/stories/chat.e2e.ts`](tests/stories/chat.e2e.ts) | The chat and its composer: agent changes as steps of the history at once across turns, the agent's change after an undo that discards the undone step, confirmation in the conversation, attached images, `@` mentions, and what the model request received |
 | [`tests/stories/navigation.e2e.ts`](tests/stories/navigation.e2e.ts) | Projects, chat sessions, panels, reloads, project links, browser history, and the language switch |
+| [`tests/stories/project-updates.e2e.ts`](tests/stories/project-updates.e2e.ts) | The project state and update messages across tool steps, a canvas import and a render finish between two steps, and an undo between turns; every agent request extends the previous one with equal request fields |
 
 -----
 
@@ -53,12 +54,12 @@ DSH_PLAYWRIGHT_EXECUTABLE_PATH=/path/to/chrome-linux/chrome \
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`bootHarness` in `tests/harness.ts` starts a fake streaming_v2 backend and the DSH mock LLM server in the test process, writes an isolated DSH home whose `video-harness` profile names `@deepseek-ai/dsh-base`, `@deepseek-ai/dsh-web-app`, and `@dv/bundle` (linked to this checkout), and spawns `apps/cli/src/bin.ts --profile video-harness` on a free port. It waits for the printed token URL, exchanges it for the session cookie, and returns a JSON client for the `/api/dv` routes that seeds projects without an agent. `close` stops the child and both servers and removes the scratch directory. The fake backend answers with tiny frames, so a render finishes in under a second; `playableVideos` makes it encode VP9 videos whose color follows the prompt, because the open-source Chromium build has no H.264 decoder. `startScriptedModel` in `tests/scripted-model.ts` is an OpenAI-compatible chat-completions server: the first rule whose `match` fits the newest user message supplies the reply, so one message can drive several tool calls in a row, and `requests` keeps every request for assertions.
+`bootHarness` in `tests/harness.ts` starts a fake streaming_v2 backend and the DSH mock LLM server in the test process, writes an isolated DSH home whose `video-harness` profile names `@deepseek-ai/dsh-base`, `@deepseek-ai/dsh-web-app`, and `@dv/bundle` (linked to this checkout), and spawns `apps/cli/src/bin.ts --profile video-harness` on a free port. It waits for the printed token URL, exchanges it for the session cookie, and returns a JSON client for the `/api/dv` routes that seeds projects without an agent. `close` stops the child and both servers and removes the scratch directory. The fake backend answers with tiny frames, so a render finishes in under a second; `playableVideos` makes it encode VP9 videos whose color follows the prompt, because the open-source Chromium build has no H.264 decoder. `startScriptedModel` in `tests/scripted-model.ts` is an OpenAI-compatible chat-completions server: the first rule whose `match` fits the newest user message supplies the reply, so one message can drive several tool calls in a row, a step function may be async to change the project between two steps, and `requests` keeps every request for assertions. `CONTEXT_MESSAGE` matches the user messages that DSH and DreamVerse add as context, which the newest-message match skips.
 
 | File | Content |
 | --- | --- |
 | [`tests/harness.ts`](tests/harness.ts) | `bootHarness`, `startFakeBackend`, `waitFor`, `escapeRegExp`, and the Playwright export |
-| [`tests/scripted-model.ts`](tests/scripted-model.ts) | `startScriptedModel`, `textOf`, `assetIdOf`, `scheduledOf` |
+| [`tests/scripted-model.ts`](tests/scripted-model.ts) | `startScriptedModel`, `textOf`, `assetIdOf`, `scheduledOf`, `CONTEXT_MESSAGE` |
 | [`tests/fake-backend-main.ts`](tests/fake-backend-main.ts) | Runs the fake backend as a long-lived process for manual browser testing |
 | [`vitest.e2e.config.ts`](vitest.e2e.config.ts) | The story lane: one file at a time, 180-second test timeout |
 

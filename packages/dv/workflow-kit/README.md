@@ -68,7 +68,7 @@ Import the functions in a workflow's operation and pass the generation service t
 
 #### What the model sees
 
-Nothing from this package directly; the records that `scheduleShots` asks a generation service to write reach the model as ordinary records through the `dv:project` prompt section and the `dv_proj_*` tools of `@dv/project`.
+Nothing from this package directly; the records that `scheduleShots` asks a generation service to write reach the model as ordinary records through the project state and update messages and the `dv_proj_*` tools of `@dv/project`.
 
 #### Token effect
 

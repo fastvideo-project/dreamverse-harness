@@ -21,14 +21,18 @@
  * for the user's agreement refuses a call without it (`OperationSpec.confirm`). Project also registers its own
  * `dv_proj_*` tools (the `proj-tools` module); they bind the session to its project and return the project summary,
  * to which each component's reducer adds its fields through `Reducer.agentSummary`. While the DSH `systemPrompt`
- * service is mounted, Project's rules and the summary of the project's current state reach the agent at every step
- * as the `dv:project` prompt section (the `agent-context` module).
+ * service is mounted, Project's rules reach the agent as the `dv:project` prompt section (the `agent-context` module),
+ * whose text is the same at every step. While the DSH `sessionProjections` service is mounted, the project's state
+ * reaches the agent as the project state message and afterwards as project update messages appended to the
+ * conversation (the `project-updates` module), folded from what the session's log shows the agent saw (the
+ * `project-sight` module).
  *
  * The asset pool registers itself with {@link DvProject.registerAssetStore}; until it does, a run that names an input
  * asset or imports an output fails.
  *
  * The internal modules (`record-store`, `runner`, `scheduler`, `history`, `reducers`, `subscriptions`,
- * `sessions`, `agent-tools`, `proj-tools`, `agent-context`) are private; `CONTRACTS.md` in this package specifies each of them.
+ * `sessions`, `agent-tools`, `proj-tools`, `agent-context`, `project-sight`, `project-updates`) are private;
+ * `CONTRACTS.md` in this package specifies each of them.
  *
  * @module @dv/project
  */
@@ -43,6 +47,7 @@ import { AgentTools, parseInputRef, parseInputs, turnOf } from './agent-tools.ts
 import { History } from './history.ts'
 import type { OperationSpec } from './operation-types.ts'
 import { projTools, type ProjToolDeps } from './proj-tools.ts'
+import { registerProjectUpdates } from './project-updates.ts'
 import { RecordStore } from './record-store.ts'
 import { projReducer, ReducerRegistry } from './reducers.ts'
 import { Runner } from './runner.ts'
@@ -158,7 +163,7 @@ export default class DvProject extends Service {
     this.store.load()
     this.runner.registerComponent('proj')
     this.reducers.register('proj', projReducer)
-    // The project summary that the `dv_proj_*` tools return and the `dv:project` prompt section shows.
+    // The project summary that the `dv_proj_*` tools return and the project state message shows.
     const projToolDeps: ProjToolDeps = {
       assets: () => this.requireAssetStore(),
       agentSummaries: (state: ProjectState) => this.reducers.agentSummaries(state, this.requireAssetStore()),
@@ -185,9 +190,10 @@ export default class DvProject extends Service {
         name: PROMPT_SECTION,
         order: config.promptSectionOrder,
         interpolate: false,
-        text: context => projectContext(this, projToolDeps, context.agent?.id),
+        text: () => projectContext(this),
       }), 'dvProject prompt section')
     })
+    ctx.inject(['sessionProjections'], (child) => { registerProjectUpdates(child, this, projToolDeps) })
     ctx.effect(() => () => { this.scheduler.dispose() }, 'dvProject stop scheduling')
     this.runner.recover().catch((error: unknown) => {
       ctx.logger('dvProject').warn('could not end unfinished records: %s', error instanceof Error ? error.message : String(error))

@@ -87,7 +87,7 @@ Host 半边不注册任何东西。浏览器半边注册 `dv-asset-pool` 标签�
 <a id="model-experience"></a>
 ## 模型体验
 
-间接地，通过 `@dv/project`；素材库面板导入写下的 `asset.import` 记录只经由 [`@dv/project`](../project/README.zh.md) 的 `dv:project` 提示词段落以及 `dv_proj_*` 和操作工具到达模型。
+间接地，通过 `@dv/project`；素材库面板导入写下的 `asset.import` 记录只经由 [`@dv/project`](../project/README.zh.md) 的项目状态消息、项目更新消息以及 `dv_proj_*` 和操作工具到达模型。
 
 #### KV Cache 影响
 

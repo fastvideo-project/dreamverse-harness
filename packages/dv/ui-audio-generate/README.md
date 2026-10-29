@@ -79,7 +79,7 @@ The package holds no logic of its own: every registration comes from `defineGene
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through `@dv/project`; the `audio.generate` records that the kit writes from the canvas reach the model only through the `dv:project` prompt section and the `dv_proj_*` and operation tools of [`@dv/project`](../project/README.md).
+Indirectly, through `@dv/project`; the `audio.generate` records that the kit writes from the canvas reach the model only through the project state and update messages and the `dv_proj_*` and operation tools of [`@dv/project`](../project/README.md).
 
 #### KV Cache effect
 

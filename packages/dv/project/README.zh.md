@@ -1,5 +1,5 @@
 ---
-description: "DreamVerse 的项目组件：dvProject 服务，保存每个项目的记录及其历史列表和当前位置，运行操作，计算状态和历史，把每个操作连同它的确认规则变成它的智能体工具，拥有 dv_proj_* 工具，并提供 dv:project 提示词段落。"
+description: "DreamVerse 的项目组件：dvProject 服务，保存每个项目的记录及其历史列表和当前位置，运行操作，计算状态和历史，把每个操作连同它的确认规则变成它的智能体工具，拥有 dv_proj_* 工具，提供 dv:project 规则段落，并把项目状态消息和项目更新消息追加到每个聊天会话的对话中。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包修改和读取 DreamVerse 项目。每次修改都是一条记录，由 `dvProject.run`（组件操作）或某个 `proj.*` 方法（接受过期记录）写在项目当前位置之后；`undo`、`redo` 和移到某一步只移动当前位置。[历史规则](../../../docs/subsystems/video-harness.zh.md#history-rules)说明哪些修改是步骤，以及撤销和重做做什么。组件用 `registerOperation` 注册操作，用 `registerReducer` 注册归约函数。挂载了 DSH `tools` 注册表时，每个操作都成为它的智能体工具 `dv_<把点换成下划线的操作名>`，与项目自己的 `dv_proj_*` 工具并列。挂载了 DSH `systemPrompt` 服务时，项目的规则和当前状态的项目摘要作为 `dv:project` 提示词段落到达智能体。`CONTRACTS.md` 规定了每个内部模块。
+使用本包修改和读取 DreamVerse 项目。每次修改都是一条记录，由 `dvProject.run`（组件操作）或某个 `proj.*` 方法（接受过期记录）写在项目当前位置之后；`undo`、`redo` 和移到某一步只移动当前位置。[历史规则](../../../docs/subsystems/video-harness.zh.md#history-rules)说明哪些修改是步骤，以及撤销和重做做什么。组件用 `registerOperation` 注册操作，用 `registerReducer` 注册归约函数。挂载了 DSH `tools` 注册表时，每个操作都成为它的智能体工具 `dv_<把点换成下划线的操作名>`，与项目自己的 `dv_proj_*` 工具并列。项目的规则作为 `dv:project` 提示词段落到达智能体，项目的状态作为追加的项目状态消息和项目更新消息到达。`CONTRACTS.md` 规定了每个内部模块。
 
 ## 目录
 
@@ -49,7 +49,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`src/index.ts` 中的服务委托给十个私有模块：记录存储（唯一读写 `project.json`、`records.jsonl` 和 `line.json` 的代码）、运行器、调度器、历史、归约函数注册表、订阅、聊天会话（绑定、暂缓的工具调用）、智能体工具（每个操作一个 DSH 工具，带确认检查）、`dv_proj_*` 工具和智能体上下文（`dv:project` 提示词段落）。每个项目的 `line.json` 存放 `{tip, at}`：`tip` 是最后一步，历史列表是 `tip` 的 `parents[0]` 祖先链，`at` 是当前位置。每个执行者的每次写入都把记录追加在 `at` 之后，并让它同时成为 `tip` 和 `at`，因此原来在 `at` 之后的步骤被丢弃：它们永久离开历史列表，运行器取消其中每个尚未结束的步骤（`error.code: 'discarded'`）。`undo(project)` 把 `at` 往回移一步（在第一条记录处为 `nothing_to_undo`）；`moveTo(project, to)` 把它移到历史列表中的那一步，可在 `at` 之前或之后（被丢弃的记录为 `invalid_params`）；`redo(project)` 把 `at` 往前移一步（在 `tip` 处为 `nothing_to_redo`）；`line(project)` 返回 `{tip, at}`。这些移动不写记录，并发出 `line` 事件。当前状态（`getState(project)`）折叠以 `at` 结尾的链。记录带有 `session`、`turn` 和 `tool_call`，作为指向 DSH 会话日志的链接：智能体工具在工具运行时读取轮次，即调用方智能体会话的 DSH 轮次编号，来自智能体循环注册的 `turnBoundary` 会话投影（不在轮次中或没有智能体时为 null）。`CONTRACTS.md` 列出每个模块的函数、规则、错误和测试。`listHistory(query)` 是唯一的历史查询：`dv_proj_history_list` 工具和 `@dv/api` 的 `POST /api/dv/history` 路由都调用它。它按从新到旧列出历史列表中的步骤，每项为 `{record, place}`，`place` 是相对 `at` 的 `before`、`current` 或 `after`；被丢弃的记录不列出，`listRecords(project)` 返回包括被丢弃记录在内的每条记录。它的筛选条件（`actor`、`component`、`operation`、`kind`、`status`、`session`、`turn`、`tool_call`、`records`、`before`）以“且”组合，`limit` 在筛选之后生效。
+`src/index.ts` 中的服务委托给十二个私有模块：记录存储（唯一读写 `project.json`、`records.jsonl` 和 `line.json` 的代码）、运行器、调度器、历史、归约函数注册表、订阅、聊天会话（绑定、暂缓的工具调用）、智能体工具（每个操作一个 DSH 工具，带确认检查）、`dv_proj_*` 工具、智能体上下文（`dv:project` 提示词段落）、项目视图记录（会话的智能体看到过的项目内容，由 `dvProjectSight` 会话投影从会话日志折叠得出）和项目更新（项目状态消息和项目更新消息，在 `agent/pre-step` 加入）。每个项目的 `line.json` 存放 `{tip, at}`：`tip` 是最后一步，历史列表是 `tip` 的 `parents[0]` 祖先链，`at` 是当前位置。每个执行者的每次写入都把记录追加在 `at` 之后，并让它同时成为 `tip` 和 `at`，因此原来在 `at` 之后的步骤被丢弃：它们永久离开历史列表，运行器取消其中每个尚未结束的步骤（`error.code: 'discarded'`）。`undo(project)` 把 `at` 往回移一步（在第一条记录处为 `nothing_to_undo`）；`moveTo(project, to)` 把它移到历史列表中的那一步，可在 `at` 之前或之后（被丢弃的记录为 `invalid_params`）；`redo(project)` 把 `at` 往前移一步（在 `tip` 处为 `nothing_to_redo`）；`line(project)` 返回 `{tip, at}`。这些移动不写记录，并发出 `line` 事件。当前状态（`getState(project)`）折叠以 `at` 结尾的链。记录带有 `session`、`turn` 和 `tool_call`，作为指向 DSH 会话日志的链接：智能体工具在工具运行时读取轮次，即调用方智能体会话的 DSH 轮次编号，来自智能体循环注册的 `turnBoundary` 会话投影（不在轮次中或没有智能体时为 null）。`CONTRACTS.md` 列出每个模块的函数、规则、错误和测试。`listHistory(query)` 是唯一的历史查询：`dv_proj_history_list` 工具和 `@dv/api` 的 `POST /api/dv/history` 路由都调用它。它按从新到旧列出历史列表中的步骤，每项为 `{record, place}`，`place` 是相对 `at` 的 `before`、`current` 或 `after`；被丢弃的记录不列出，`listRecords(project)` 返回包括被丢弃记录在内的每条记录。它的筛选条件（`actor`、`component`、`operation`、`kind`、`status`、`session`、`turn`、`tool_call`、`records`、`before`）以“且”组合，`limit` 在筛选之后生效。
 
 <a id="further-exploration"></a>
 ## 进一步探索
@@ -91,7 +91,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-九个工具：`dv_proj_create`、`dv_proj_open`、`dv_proj_rename`、`dv_proj_state`、`dv_proj_history_list`、`dv_proj_undo`、`dv_proj_redo`、`dv_proj_stale_accept` 和 `dv_proj_wait`。`dv_proj_history_list` 按从新到旧返回步骤（默认 20 条），每条带 `place`（`current`、`before` 或 `after`）、操作、状态、发起者、意图和输出。`dv_proj_wait` 接受 `records`，即要等待的记录 ID（某个结果在 `scheduled` 下列出的记录，或状态为 pending 的记录），等到每条记录完成或失败，然后按给出的顺序为每条记录返回一行 `<status> <record> (<intent>): <summary>`，每行后面跟着每个输出一行 `- <role>: <asset> (<mime>) <url>`；失败记录的摘要是它的错误，空列表或未知记录 ID 在任何等待之前被拒绝。其他工具以缩进 JSON 返回当前状态的项目摘要：`record`（只在写记录的工具之后出现：该调用写下的最新记录）、`project_id`、`title`、`head`、`records`（数量），然后按组件键的字母顺序是各组件的 `agentSummary` 字段（角色 `characters`、场景 `locations`、分镜 `plans`、风格 `styles`、时间线 `timelines`），最后是 `stale` 和 `recent`（最多十二条记录，带摘要和输出 URL）。`dv_proj_undo` 不带 `to` 时往回移一步，带 `to`（`dv_proj_history_list` 里的记录 ID）时移到那一步，可在当前一步之前或之后；`dv_proj_redo` 往前移一步。这些移动不加一步；之后的修改会丢弃当前一步之后的步骤。`dv_proj_rename` 接受 `title`，只重命名本对话的项目；它去掉标题首尾空白，拒绝空标题，标题已被其他项目使用时加后缀 ` 2`、` 3`、…，不写记录。除 `dv_proj_history_list` 之外的每个工具，以及每个写记录的操作工具，还把结果展示过的内容作为 `dv_seen` 存入结果的持久化元数据，模型从不读取它。
+九个工具：`dv_proj_create`、`dv_proj_open`、`dv_proj_rename`、`dv_proj_state`、`dv_proj_history_list`、`dv_proj_undo`、`dv_proj_redo`、`dv_proj_stale_accept` 和 `dv_proj_wait`。`dv_proj_history_list` 按从新到旧返回步骤（默认 20 条），每条带 `place`（`current`、`before` 或 `after`）、操作、状态、发起者、意图和输出。`dv_proj_wait` 接受 `records`，即要等待的记录 ID（某个结果在 `scheduled` 下列出的记录，或状态为 pending 的记录），等到每条记录完成或失败，然后按给出的顺序为每条记录返回一行 `<status> <record> (<intent>): <summary>`，每行后面跟着每个输出一行 `- <role>: <asset> (<mime>) <url>`；失败记录的摘要是它的错误，空列表或未知记录 ID 在任何等待之前被拒绝。其他工具以缩进 JSON 返回当前状态的项目摘要：`record`（只在写记录的工具之后出现：该调用写下的最新记录）、`project_id`、`title`、`head`、`records`（数量），然后按组件键的字母顺序是各组件的 `agentSummary` 字段（角色 `characters`、场景 `locations`、分镜 `plans`、风格 `styles`、时间线 `timelines`），最后是 `stale` 和 `recent`（最多十二条记录，带摘要和输出 URL）。`dv_proj_undo` 不带 `to` 时往回移一步，带 `to`（`dv_proj_history_list` 里的记录 ID）时移到那一步，可在当前一步之前或之后；`dv_proj_redo` 往前移一步。这些移动不加一步；之后的修改会丢弃当前一步之后的步骤。`dv_proj_rename` 接受 `title`，只重命名本对话的项目；它去掉标题首尾空白，拒绝空标题，标题已被其他项目使用时加后缀 ` 2`、` 3`、…，不写记录。除 `dv_proj_history_list` 之外的每个工具，以及每个写记录的操作工具，还把结果展示过的内容作为 `dv_seen` 存入结果的持久化元数据，模型从不读取它；项目更新消息不再列出这些记录。
 
 #### Token 影响
 
@@ -105,18 +105,35 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-挂载了 DSH `systemPrompt` 服务时，每一步的系统提示词都带有 `dv:project` 段落。它以项目的规则开头：智能体的每次调用和用户的每次编辑都立即成为项目历史中的一步，用户不需要接受修改；回滚调用 `dv_proj_undo`（一步，或 `to` 某一步），`dv_proj_redo` 往前移一步，这些移动不加一步，移动之后的新修改会永久丢弃后面的步骤，所以用户可能还需要它们时，智能体先询问；回滚从不用新编辑重建之前的状态；用项目摘要中的 ID 指称对象（记录、`<record>#<n>`、已注册引用种类的版本 `<id>@<version>`（规则列出这些种类）、素材，以及其他任何条目的 ID），用户用 `dv:` 提及指出对象，有歧义的指称要询问而不是猜；因需要用户同意而被拒绝的调用要给用户看，并在对话中用粗体提问；过期记录只在用户同意时重新渲染。对绑定了项目的会话，规则之后是 "This conversation belongs to project <ProjectId> …" 和当前状态的项目摘要（缩进 JSON），与 `dv_proj_state` 返回的摘要相同。对未绑定的会话，规则之后是 "No project is bound to this conversation yet: start the work with dv_proj_create."。该段落不含选中项，也不含用户看不到的偏好。
+挂载了 DSH `systemPrompt` 服务时，每一步的系统提示词都带有 `dv:project` 段落，其中只有项目的规则：没有项目的对话用 `dv_proj_create` 开始，一旦项目状态消息、`dv_proj_create` 或 `dv_proj_open` 给出了本对话的项目，所有工作都留在该项目中；智能体自己的工具结果没有展示过的变化以 DreamVerse 项目更新到达，`dv_proj_state` 随时读取整个项目；智能体的每次调用和用户的每次编辑都立即成为项目历史中的一步，用户不需要接受修改；回滚调用 `dv_proj_undo`（一步，或 `to` 某一步），`dv_proj_redo` 往前移一步，这些移动不加一步，移动之后的新修改会永久丢弃后面的步骤，所以用户可能还需要它们时，智能体先询问；回滚从不用新编辑重建之前的状态；用项目摘要中的 ID 指称对象（记录、`<record>#<n>`、已注册引用种类的版本 `<id>@<version>`（规则列出这些种类）、素材，以及其他任何条目的 ID），用户用 `dv:` 提及指出对象，有歧义的指称要询问而不是猜；因需要用户同意而被拒绝的调用要给用户看，并在对话中用粗体提问；过期记录只在用户同意时重新渲染。该段落不含项目状态、选中项，也不含用户看不到的偏好。
 
 #### Token 影响
 
-每一步约 450 个 token 的规则，另加当前状态的项目摘要：新项目约 150 个 token，并像项目工具中所述那样随项目增长。
+无论项目多大，每一步约 500 个 token。
 
 #### KV Cache 影响
 
-该段落位于系统提示词中 `promptSectionOrder` 的位置（4900，在工具 SDK 段落之前），每一步从当前状态重建，所以每条改变摘要的记录都会使从该段落开始的缓存前缀失效；规则本身保持稳定。
+稳定。该段落位于系统提示词中 `promptSectionOrder` 的位置（4900，在工具 SDK 段落之前），它的文本只在引用种类注册或注销时变化，而这会在同一个请求中重建操作工具定义。
+
+### 项目状态消息和项目更新消息
+
+#### 模型看到什么
+
+挂载了 DSH `sessionProjections` 服务时，绑定了项目的聊天会话的每一步最多在该步自己的消息之后得到一条用户角色消息。项目状态消息出现在第一个没有项目视图的步骤（绑定会话的第一步，或压缩、工具结果裁剪遮蔽了该视图之后的第一步），以及更新会列出超过十二条记录时："DreamVerse project state. This conversation belongs to project <ProjectId>: do all work in it and never call dv_proj_create or dv_proj_open. Later changes that your own tool results did not show reach you as DreamVerse project updates. The project summary, as dv_proj_state returns it without the reports of recent records:"，然后是缩进 JSON 形式的该摘要。之后，项目以智能体没见过的方式发生变化的步骤会得到项目更新消息："DreamVerse project updates since your last step:"，后面每个变化一行：`- history: the current step is <record>.`，以及撤销或移动拿掉的记录（`Undone (dv_proj_redo can bring them back): …`、`Discarded for good: …`）或带回的记录（`Back in the state: …`）；智能体没见过的每条记录，以及它见过未完成、之后已结束的每条记录，各一行 `- <status> <record> (<who>): <text>`，其中 who 是 `user on canvas`、`user on timeline`、`user in asset pool`、`user in chat`、`user in history`、`user via API`、`your call`、`another chat` 或 `scheduled`，text 对完成的记录是操作的摘要（每个输出再缩进一行 `- <role>: <asset> (<mime>) <url>`），对失败或取消的记录是 `<intent>: <error>`，对未结束的记录是意图；`- stale: <record> (an input was replaced by <record>), …`；以及 `- title: "<title>"`。同一会话的操作工具结果、`dv_proj_wait` 结果或项目摘要工具结果展示过的记录不再重复，没有新内容的步骤不得到消息。
+
+#### Token 影响
+
+项目状态消息约 60 个 token，另加不含报告的项目摘要（新项目约 150 个 token，随项目增长）。一条更新约 15 个 token，每个变化行另加约 20 个，每个输出行另加约 40 个；它最多列出十二条记录。
+
+#### KV Cache 影响
+
+每条消息都记录为 `user/message`，追加在已缓存的历史之后，所以请求逐个 token 地延伸上一个请求。压缩开始新的请求序列，下一步会再次发送项目状态消息。
 
 ## 已知限制与延期工作
 
 <a id="known-limitations-and-deferred-work"></a>
 
+- 只由 `dv_proj_history_list` 结果或失败的操作工具调用展示过的记录，仍会在下一条项目更新中报告，因为这些结果不存 `dv_seen` 视图记录。
+- 移动行不说明是谁移动的，因为 `line.json` 不记录谁移动了当前位置。
+- 从 `pending` 到 `running` 的变化，以及记录运行期间写入的输出和报告不报告；结束会报告。
 - 引用种类不给出素材的版本解析后不产生任何输入，所以指向这种版本的记录不留下它的痕迹，版本变化后也不会过期。

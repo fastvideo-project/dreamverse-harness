@@ -1,0 +1,157 @@
+// Project updates: the shipped video-harness profile (`dsh web`, the llm-pi-ai openai-completions route, the fake video
+// backend) drives a scripted model through steps that change the project, including a canvas import and a render that
+// finishes between two steps of one turn and an undo between turns. Every agent request of the chat session extends the
+// request before it token for token: the same request fields, the same earlier messages, new messages only appended.
+import type { Browser, Page } from 'playwright'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { bootHarness, playwright, waitFor, type BootedHarness } from '../harness.ts'
+import {
+  assetIdOf, scheduledOf, startScriptedModel, textOf, type ChatRequest, type ScriptedModel, type ScriptedRule,
+} from '../scripted-model.ts'
+
+/** A 1×1 opaque PNG, the agent's product image. */
+const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+/** A red 1×1 PNG, the image the user imports on the canvas. */
+const RED_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGM4IScHAAK2AQU0pnWqAAAAAElFTkSuQmCC'
+
+/**
+ * Assert that each request extends the one before it: every request field other than the messages is equal, and the
+ * earlier messages are unchanged at the start of the later request.
+ * @param requests - the agent requests of one chat session, in arrival order.
+ */
+function expectEachRequestExtendsThePrevious(requests: readonly ChatRequest[]): void {
+  for (let index = 1; index < requests.length; index += 1) {
+    const { messages: previous, ...previousFields } = requests[index - 1] as ChatRequest
+    const { messages: next, ...nextFields } = requests[index] as ChatRequest
+    expect(nextFields, `request ${String(index)} fields`).toEqual(previousFields)
+    expect(next.length, `request ${String(index)} length`).toBeGreaterThan(previous.length)
+    expect(next.slice(0, previous.length), `request ${String(index)} prefix`).toEqual(previous)
+  }
+}
+
+/** The project state and project update messages of one request, as text. */
+function projectMessages(request: ChatRequest): string[] {
+  return request.messages.filter(message => message.role === 'user').map(message => textOf(message.content))
+    .filter(text => text.startsWith('DreamVerse project'))
+}
+
+describe('project updates reach the agent as appended messages', () => {
+  let harness: BootedHarness
+  let model: ScriptedModel
+  let browser: Browser
+  let projectId = ''
+  let scheduled: string[] = []
+
+  // The scripted agent: imports a product image, plans two shots, approves them with renders held, then, between two
+  // steps, the user imports an image on the canvas and the first render finishes; the agent reads the plan again and
+  // waits for the renders.
+  const rules: ScriptedRule[] = [
+    { match: /只回复\S+/, steps: [view => ({ text: `收到${/只回复(\S+)/.exec(view.userText)?.[1] ?? ''}` })] },
+    {
+      match: '做两个镜头的广告',
+      steps: [
+        { calls: [{ name: 'dv_asset_import', args: { reason: '产品图', base64: PNG_BASE64, mime: 'image/png', name: 'product.png' } }] },
+        view => ({ calls: [{ name: 'dv_plan_create', args: {
+          reason: '规划', title: '产品广告', references: [assetIdOf(view.toolResults[0], 'asset')],
+          shots: [
+            { prompt: 'Picture 1 产品特写', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' },
+            { prompt: 'Picture 1 产品使用场景', duration_sec: 2, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' },
+          ],
+        } }] }),
+        { calls: [{ name: 'dv_story_preview', args: { reason: '预览计划', plan: 'p1' } }] },
+        { calls: [{ name: 'dv_story_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
+        async (view) => {
+          scheduled = scheduledOf(view.toolResults.at(-1))
+          harness.backend.release()
+          await harness.api.post('/api/dv/operation', {
+            project: projectId, operation: 'asset.import', params: { base64: RED_PNG, mime: 'image/png', name: 'knife.png' },
+            inputs: [], surface: 'canvas', intent: 'import knife.png',
+          })
+          await waitFor(async () => {
+            const history = await harness.api.post('/api/dv/history', { project: projectId, records: scheduled }) as {
+              entries: Array<{ record: { operation: string; status: string } }>
+            }
+            return history.entries.some(entry => entry.record.operation === 'shot.render' && entry.record.status === 'done')
+          }, 'the first render', 60_000)
+          return { calls: [{ name: 'dv_story_preview', args: { reason: '再看计划', plan: 'p1' } }] }
+        },
+        () => {
+          harness.backend.releaseAll()
+          return { calls: [{ name: 'dv_proj_wait', args: { records: scheduled } }] }
+        },
+      ],
+      endText: '两个镜头已渲染。',
+    },
+  ]
+
+  beforeAll(async () => {
+    model = await startScriptedModel(rules)
+    harness = await bootHarness({ modelBaseUrl: model.baseURL })
+    const executablePath = process.env['DSH_PLAYWRIGHT_EXECUTABLE_PATH']
+    browser = await playwright.chromium.launch(executablePath === undefined ? {} : { executablePath })
+  }, 150_000)
+
+  afterAll(async () => {
+    await browser?.close().catch(() => undefined)
+    await harness?.close()
+    await model?.close()
+  })
+
+  /** Open the harness in a fresh browser context, create a project, and return the page with its chat composer up. */
+  async function openProject(): Promise<Page> {
+    const page = await (await browser.newContext({ viewport: { width: 1600, height: 1000 }, locale: 'zh-CN' })).newPage()
+    await page.goto(harness.tokenUrl, { waitUntil: 'load' })
+    const notice = page.getByRole('button', { name: '继续', exact: true }).first()
+    if (await notice.waitFor({ timeout: 8000 }).then(() => true, () => false)) await notice.click()
+    await page.getByRole('button', { name: '新建项目' }).first().click()
+    await page.locator('[data-dv-workspace]').waitFor({ timeout: 30_000 })
+    projectId = await waitFor(() => Promise.resolve(new URLSearchParams(new URL(page.url()).hash.replace(/^#/, '')).get('project')), 'a project in the URL', 10_000)
+    return page
+  }
+
+  /** Send a chat message and wait until the chat shows the reply. */
+  async function chat(page: Page, text: string, reply: string): Promise<void> {
+    const composer = page.locator('[data-dv-chat]:visible [contenteditable="true"]:visible').first()
+    await composer.waitFor({ timeout: 30_000 })
+    await composer.click()
+    await page.keyboard.type(text)
+    await page.keyboard.press('Enter')
+    await page.locator('[data-dv-chat]:visible').first().getByText(reply, { exact: false }).first().waitFor({ timeout: 90_000 })
+  }
+
+  it('keeps one prefix across tool steps, a canvas import, a background render finish, and an undo between turns', async () => {
+    const page = await openProject()
+    harness.backend.hold()
+    await chat(page, '做两个镜头的广告', '两个镜头已渲染')
+    const history = await harness.api.post('/api/dv/history', { project: projectId, limit: 1 }) as { entries: Array<{ record: { id: string } }> }
+    const tip = history.entries[0]?.record.id ?? ''
+    await harness.api.post('/api/dv/undo', { project: projectId })
+    await chat(page, '只回复十', '收到十')
+
+    const requests = model.requests
+    expect(requests).toHaveLength(8)
+    expectEachRequestExtendsThePrevious(requests)
+    const first = requests[0] as ChatRequest
+    expect(projectMessages(first)).toHaveLength(1)
+    expect(projectMessages(first)[0]).toMatch(/^DreamVerse project state\. This conversation belongs to project /)
+    expect(projectMessages(first)[0]).not.toContain('"report"')
+    const system = first.messages.filter(message => message.role === 'system').map(message => textOf(message.content)).join('\n')
+    expect(system).toContain('DreamVerse project rules:')
+    expect(system).not.toContain('"head"')
+    const updates = (requests.at(-1) as ChatRequest).messages.filter(message => message.role === 'user').map(message => textOf(message.content))
+      .filter(text => text.startsWith('DreamVerse project updates since your last step:'))
+    const text = updates.join('\n')
+    // The agent's own import, plan, approval and wait are never repeated.
+    expect(text).not.toContain('(your call)')
+    // The step after the canvas import and the first render's finish names both, once.
+    expect(text.match(/^- done \S+ \(user on canvas\): imported knife\.png$/gm)).toHaveLength(1)
+    expect(text.match(/^- done \S+ \(scheduled\): shot 1\b/gm)).toHaveLength(1)
+    // dv_proj_wait showed the second render finished, so no update repeats it.
+    expect(text).not.toMatch(/\(scheduled\): shot 2\b/)
+    // The undo between turns reaches the next turn as a move.
+    expect(updates.at(-1)).toMatch(new RegExp(`^- history: the current step is \\S+\\. Undone \\(dv_proj_redo can bring them back\\): ${tip}\\.$`, 'm'))
+    // No record line is sent twice.
+    const lines = [...text.matchAll(/^- (\w+) (\S+) \(/gm)].map(match => `${match[1] ?? ''} ${match[2] ?? ''}`)
+    expect(new Set(lines).size, text).toBe(lines.length)
+  })
+})

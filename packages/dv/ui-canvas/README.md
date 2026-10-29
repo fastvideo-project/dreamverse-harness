@@ -99,7 +99,7 @@ The canvas draws every node in one chrome: a caption above a frame. The caption 
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through `@dv/project`; the records its gestures write reach the model only through the `dv:project` prompt section and the `dv_proj_*` and operation tools of [`@dv/project`](../project/README.md).
+Indirectly, through `@dv/project`; the records its gestures write reach the model only through the project state and update messages and the `dv_proj_*` and operation tools of [`@dv/project`](../project/README.md).
 
 #### KV Cache effect
 

@@ -95,7 +95,7 @@ DOM 带测试 ID `dv-timeline-body`、`dv-timeline-editor`、`dv-timeline-viewer
 <a id="model-experience"></a>
 ## 模型体验
 
-间接地，通过 `@dv/project`；其手势写下的记录只经由 [`@dv/project`](../project/README.zh.md) 的 `dv:project` 提示词段落以及 `dv_proj_*` 和操作工具到达模型。
+间接地，通过 `@dv/project`；其手势写下的记录只经由 [`@dv/project`](../project/README.zh.md) 的项目状态消息、项目更新消息以及 `dv_proj_*` 和操作工具到达模型。
 
 #### KV Cache 影响
 

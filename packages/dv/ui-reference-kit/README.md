@@ -92,7 +92,7 @@ The card body paints `CARD_SURFACE` of `@dv/ui-kit/frame.ts` and draws three par
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through `@dv/project`; the `<key>.update` records that the reference editor writes reach the model only through the `dv:project` prompt section and the `dv_proj_*` and operation tools of [`@dv/project`](../project/README.md).
+Indirectly, through `@dv/project`; the `<key>.update` records that the reference editor writes reach the model only through the project state and update messages and the `dv_proj_*` and operation tools of [`@dv/project`](../project/README.md).
 
 #### KV Cache effect
 

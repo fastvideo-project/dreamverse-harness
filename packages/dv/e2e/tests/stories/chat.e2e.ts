@@ -7,8 +7,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { ProjectRecord, WireState } from '../wire-state.ts'
 import { bootHarness, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import {
-  assetIdOf, scheduledOf, startScriptedModel, textOf, type ChatRequest, type ScriptedModel, type ScriptedRule, type ScriptedStep,
-  type TurnView,
+  CONTEXT_MESSAGE, assetIdOf, scheduledOf, startScriptedModel, textOf, type ChatRequest, type ScriptedModel, type ScriptedRule,
+  type ScriptedStep, type TurnView,
 } from '../scripted-model.ts'
 
 /** A 1×1 opaque PNG. */
@@ -251,8 +251,14 @@ describe('chat with the agent', () => {
 
   /** The typed user message of a model request (skipping DSH runtime context and reminders). */
   function userTextOf(request: ChatRequest): string {
-    const typed = request.messages.filter(message => message.role === 'user' && !/^(<system-reminder>|Current runtime context|Attached image|The user referenced these project items)/.test(textOf(message.content)))
+    const typed = request.messages.filter(message => message.role === 'user' && !CONTEXT_MESSAGE.test(textOf(message.content)))
     return textOf(typed.at(-1)?.content)
+  }
+
+  /** The project state and update messages of a model request, joined. */
+  function projectTextOf(request: ChatRequest | undefined): string {
+    return (request?.messages ?? []).filter(message => message.role === 'user').map(message => textOf(message.content))
+      .filter(text => text.startsWith('DreamVerse project')).join('\n')
   }
 
   /** The `dv:` mention expansion that `@dv/chat-references` added to a model request, or the empty string. */
@@ -433,9 +439,11 @@ describe('chat with the agent', () => {
     expect(waited).not.toContain('"report"')
     await send(page, '只回复八')
     await waitChat(page, '收到八')
-    const prompt = promptOf(requestFor('只回复八') as ChatRequest)
-    expect(prompt).toContain('Project summary of the current state')
-    expect(prompt).not.toContain('"branches"')
+    // The project state reached the agent once, as the project state message; the system prompt holds only the rules.
+    const request = requestFor('只回复八') as ChatRequest
+    expect(promptOf(request)).not.toContain('"head"')
+    expect(projectTextOf(request)).toMatch(/^DreamVerse project state\. This conversation belongs to project /)
+    expect(projectTextOf(request)).not.toContain('"branches"')
     expect(errors).toEqual([])
   })
 
@@ -467,7 +475,8 @@ describe('chat with the agent', () => {
     expect((await history()).map(entry => entry.id)).not.toContain(last)
     await send(page, '只回复九')
     await waitChat(page, '收到九')
-    expect(promptOf(requestFor('只回复九') as ChatRequest)).toContain('Project summary of the current state')
+    // The undo in the timeline view reached the agent as a project update.
+    expect(projectTextOf(requestFor('只回复九'))).toMatch(new RegExp(`^- history: the current step is \\S+\\. Undone \\(dv_proj_redo can bring them back\\): ${last}\\.$`, 'm'))
     expect(errors).toEqual([])
   })
 
@@ -649,7 +658,7 @@ describe('chat with the agent', () => {
     expect(await page.locator('[data-dv-workspace] [data-node-type="character"]').count()).toBeGreaterThan(0)
     await send(page, '只回复十三')
     await waitChat(page, '收到十三')
-    expect(promptOf(requestFor('只回复十三') as ChatRequest)).toContain('小橘')
+    expect(projectTextOf(requestFor('只回复十三'))).toContain('小橘')
     expect(errors).toEqual([])
   })
 

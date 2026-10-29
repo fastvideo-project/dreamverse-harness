@@ -68,7 +68,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-本包不直接提供任何内容；`scheduleShots` 请生成服务写入的记录，作为普通记录经 `@dv/project` 的 `dv:project` 提示词段和 `dv_proj_*` 工具到达模型。
+本包不直接提供任何内容；`scheduleShots` 请生成服务写入的记录，作为普通记录经 `@dv/project` 的项目状态消息、项目更新消息和 `dv_proj_*` 工具到达模型。
 
 #### Token 影响
 
