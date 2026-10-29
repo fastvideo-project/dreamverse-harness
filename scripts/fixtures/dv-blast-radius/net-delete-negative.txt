@@ -1,11 +1,11 @@
-diff --git a/packages/dv/shot-plan/src/index.ts b/packages/dv/shot-plan/src/index.ts
+diff --git a/packages/dv/storyboard/src/index.ts b/packages/dv/storyboard/src/index.ts
 index 3333333333..4444444444 100644
---- a/packages/dv/shot-plan/src/index.ts
-+++ b/packages/dv/shot-plan/src/index.ts
+--- a/packages/dv/storyboard/src/index.ts
++++ b/packages/dv/storyboard/src/index.ts
 @@ -48 +48,3 @@ const RENDER_OPERATION = 'shot.render'
--const APPROVE_OPERATION = 'plan.approve'
+-const PUBLISH_OPERATION = 'board.publish'
 \ No newline at end of file
-+const APPROVE_OPERATION = 'plan.approve'
-+const LEGACY_APPROVE_OPERATION = 'plan.approve'
-+const LEGACY_OPERATIONS = [APPROVE_OPERATION, LEGACY_APPROVE_OPERATION]
++const PUBLISH_OPERATION = 'board.publish'
++const LEGACY_PUBLISH_OPERATION = 'board.publish'
++const LEGACY_OPERATIONS = [PUBLISH_OPERATION, LEGACY_PUBLISH_OPERATION]
 \ No newline at end of file

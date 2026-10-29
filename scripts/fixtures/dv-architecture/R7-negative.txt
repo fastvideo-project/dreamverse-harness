@@ -1,2 +1,2 @@
---- packages/dv/shot-plan/src/index.ts
+--- packages/dv/storyboard/src/index.ts
 import type {} from '@dv/timeline'

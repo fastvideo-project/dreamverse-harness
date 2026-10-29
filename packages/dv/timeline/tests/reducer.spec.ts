@@ -64,10 +64,10 @@ describe('timeline reducer', () => {
       { role: 'clip', ref: { record: producer, output: 1 }, resolved_asset: null },
       { role: 'other', ref: { asset }, resolved_asset: asset },
     ]
-    const created = reduceAll([adding('timeline.create', { plan: 'p1' }, ['cl1', 'cl2'], { inputs })])
+    const created = reduceAll([adding('timeline.create', {}, ['cl1', 'cl2'], { inputs })])
     expect(clipsOf(created)).toEqual(['cl1 v null-null', 'cl2 null null-null'])
     expect(created.timelines[0]?.clips.map(clip => clip.source)).toEqual([{ record: producer, output: 0 }, { record: producer, output: 1 }])
-    const updated = reduceAll([adding('timeline.update', { timeline: 't1', plan: 'p1' }, ['cl3', 'cl4'], { inputs })], created)
+    const updated = reduceAll([adding('timeline.update', { timeline: 't1' }, ['cl3', 'cl4'], { inputs })], created)
     expect(clipsOf(updated)).toEqual(['cl3 v null-null', 'cl4 null null-null'])
     // A clip of an asset param has no source.
     expect(base().timelines[0]?.clips[0]?.source).toBeNull()
@@ -116,7 +116,7 @@ describe('timeline reducer', () => {
     const slice = base()
     const ignored = [
       edit('timeline.clip_remove', { clip: 'cl1' }, { status: 'pending' }),
-      edit('plan.create', { shots: [] }),
+      edit('character.create', { name: 'x' }),
       edit('timeline.clip_remove', { clip: 'cl5' }),
       adding('timeline.clip_split', { clip: 'cl1', at_sec: 0 }, ['cl4']),
       edit('timeline.rename', { timeline: 't7', name: 'x' }),
@@ -148,7 +148,7 @@ describe('timeline reducer', () => {
     expect(problem(main, edit('timeline.rename', { timeline: 't2', name: 'x' }))).toBe('Timeline t2 does not exist.')
     expect(problem(timelineReducer.initial(), edit('timeline.rename', { name: 'x' }))).toBe('The project has no timeline.')
     expect(problem(timelineReducer.initial(), adding('timeline.create', {}, []))).toBeNull()
-    expect(problem(main, edit('plan.create', {}))).toBeNull()
+    expect(problem(main, edit('character.create', {}))).toBeNull()
     expect(problem(ranged, adding('timeline.clip_split', { clip: 'cl1', at_sec: 1.5 }, ['cl3']))).toBeNull()
     expect(problem(ranged, adding('timeline.clip_split', { clip: 'cl1', at_sec: 2 }, ['cl3']))).toContain('does not play 2s of its asset')
     expect(problem(main, adding('timeline.clip_split', { clip: 'cl1', at_sec: 'x' }, ['cl3']))).toContain('does not play null')

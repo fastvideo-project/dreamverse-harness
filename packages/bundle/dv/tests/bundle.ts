@@ -20,7 +20,6 @@ import DvFfmpeg from '@dv/ffmpeg'
 import DvInspector from '@dv/inspector'
 import DvLocation from '@dv/location'
 import DvProject from '@dv/project'
-import DvShotPlan from '@dv/shot-plan'
 import DvShotRender from '@dv/shot-render'
 import DvStyle from '@dv/style'
 import DvTextNode from '@dv/text-node'
@@ -75,7 +74,7 @@ const PLUGINS: Record<string, object> = {
   '@deepseek-ai/dsh-system-prompt': SystemPrompt, '@deepseek-ai/dsh-tools': ToolRuntime, '@dv/project': DvProject,
   '@dv/ffmpeg': DvFfmpeg, '@dv/asset-pool': DvAssetPool, '@dv/inspector': DvInspector,
   '@dv/character': DvCharacter, '@dv/location': DvLocation, '@dv/style': DvStyle,
-  '@dv/shot-plan': DvShotPlan, '@dv/shot-render': DvShotRender, '@dv/text-node': DvTextNode, '@dv/timeline': DvTimeline,
+  '@dv/shot-render': DvShotRender, '@dv/text-node': DvTextNode, '@dv/timeline': DvTimeline,
   '@dv/api': DvApi, '@dv/chat-references': DvChatReferences,
   '@dv/models': DvModels, '@dv/fastvideo': FakeFastVideo, '@dv/uniserve': FakeUniserve, '@dv/workflow-story': WorkflowStory,
   '@dv/sglang-diffusion': SglangDiffusion, '@dv/image-generate': DvImageGenerate,

@@ -27,7 +27,6 @@ describe('DreamVerse architecture fitness test', () => {
     ['R1-negative.txt', ['R1b']],
     ['R2-negative.txt', ['R2a']],
     ['R2a-reference-kit-negative.txt', ['R2a']],
-    ['R2b-negative.txt', ['R2b', 'R4']],
     ['R3-negative.txt', ['R3', 'R3']],
     ['R3-component-negative.txt', ['R3', 'R3']],
     ['R3-name-negative.txt', ['R3', 'R4']],
@@ -101,14 +100,10 @@ describe('rule clauses', () => {
       source('image-generate', "declare module '@dv/models' { interface PrimitiveTypes { image: Row } }\n"),
       source('models', 'interface Rows { image: Row }\n'),
     ], ['R2a']],
-    ['R2b workflow key in workflow-kit', [owner('workflow-story', 'story'), source('workflow-kit', "starter = 'story'\n")], ['R2b']],
-    ['R2b allows domain keys in workflow-kit', [owner('shot-plan', 'plan'), source('workflow-kit', "key = 'plan'\n")], []],
-    ['R2b workflow-kit over 300 lines', [source('workflow-kit', 'x()\n'.repeat(301))], ['R2b']],
-    ['R2b workflow-kit at 300 lines', [source('workflow-kit', 'x()\n\n'.repeat(300))], []],
     ['R3 name beside component outside its key owner', [
-      owner('timeline', 'timeline'), source('shot-plan', "op = { name: 'timeline.create', component: 'plan' }\n"),
+      owner('timeline', 'timeline'), source('storyboard', "op = { name: 'timeline.create', component: 'board' }\n"),
     ], ['R3', 'R4']],
-    ['R3 name without component is no operation', [owner('timeline', 'timeline'), source('shot-plan', "file = { name: 'timeline.json' }\n")], ['R4']],
+    ['R3 name without component is no operation', [owner('timeline', 'timeline'), source('storyboard', "file = { name: 'timeline.json' }\n")], ['R4']],
     ['R3 component key claimed in two packages', [owner('timeline', 'timeline'), owner('ui-timeline', 'timeline')], ['R3', 'R3']],
     ['R3 operation in a defineGeneration declaration', [
       owner('shot-render', 'shot'), source('image-generate', "d = defineGeneration({ component: 'image', operation: 'shot.render' })\n"),
@@ -124,7 +119,6 @@ describe('rule clauses', () => {
     ['R5b slice read in UI core', [source('ui-history', 'clips = state.components.timeline\n')], ['R5b']],
     ['R5b allows the asset slice', [source('ui-history', 'assets = state.components.asset\n')], []],
     ['R5c skips a DOM tag name', [source('ui-shell', "el = document.createElement('style')\n")], []],
-    ['R5d plan param read', [source('ui-canvas', "plan = record.params['plan']\n")], ['R5d', 'R5j', 'R5k']],
     ['R5c plugin key from the owners', [owner('timeline', 'timeline'), source('ui-shell', "view = 'timeline'\n")], ['R5c']],
     ['R5c skips the asset key that UI core reads', [owner('asset-pool', 'asset'), source('ui-shell', "key = 'asset'\n")], []],
     ['R5g media literal, MIME prefix and element in UI core', [source('ui-history', "a = 'image'\nb = mime.startsWith('video/')\nc = <audio src={x} />\n", 'client/x.tsx')], ['R5g', 'R5g', 'R5g']],
@@ -155,15 +149,15 @@ describe('rule clauses', () => {
     ['R5 exempts the Markdown element kinds of a union that an intersection adds shared fields to', [
       source('ui-composer', "type Ref = { at: string } & ({ kind: 'link' } | { kind: 'image' } | { kind: 'table' })\nfunction f(): Ref { return { at: 'p1', kind: 'image' } }\n", 'client/chat.ts'),
     ], []],
-    ['R5e plugin tool label', [source('ui-kit', 'const DV_TOOL_LABELS = { dv_proj_undo: x, dv_plan_create: y }\n')], ['R5e']],
+    ['R5e plugin tool label', [source('ui-kit', 'const DV_TOOL_LABELS = { dv_proj_undo: x, dv_board_create: y }\n')], ['R5e']],
     ['R5f plugin tool name', [source('ui-composer', "card = 'dv_shot_render'\n")], ['R5f']],
     ['R6 deep import', [source('ui-canvas', "import { A } from '@dv/ui-asset-pool/src/client/A.tsx'\n")], ['R6', 'R7a']],
-    ['R7a domain imports a domain value', [source('shot-plan', "import { layout } from '@dv/timeline'\n")], ['R7a']],
-    ['R7a workflow imports a domain value', [source('workflow-story', "import { layout } from '@dv/timeline'\n")], []],
+    ['R7a domain imports a domain value', [source('storyboard', "import { layout } from '@dv/timeline'\n")], ['R7a']],
+    ['R7a workflow imports a domain value', [source('workflow-ad', "import { layout } from '@dv/timeline'\n")], []],
     ['R7a UI package imports the client face of its host', [source('ui-timeline', "import type { Clip } from '@dv/timeline/types'\n")], []],
     ['R7a UI package imports the host entry', [source('ui-timeline', "import type { Clip } from '@dv/timeline'\n")], ['R7a']],
     ['R7a UI package imports host values', [source('ui-timeline', "import { clips } from '@dv/timeline/types'\n")], ['R7a']],
-    ['R7a UI package imports the face of another host', [source('ui-timeline', "import type { Plan } from '@dv/shot-plan/types'\n")], ['R7a']],
+    ['R7a UI package imports the face of another host', [source('ui-timeline', "import type { Board } from '@dv/storyboard/types'\n")], ['R7a']],
     ['R7a UI package merges the slots of a slot owner', [
       source('ui-shell', "declare module '@deepseek-ai/dsh-client-ui-slots' { interface SlotMap { 'dv.explore': Slot } }\n"),
       source('ui-skills', "import type {} from '@dv/ui-shell/contract'\n", 'client/index.ts'),
@@ -187,7 +181,7 @@ describe('rule clauses', () => {
     ], ['R7a', 'R7a']],
     ['R7a a kit or a UI package imports the kernel grammar', [
       source('ui-reference-kit', "import { citationUri } from '@dv/project/grammar'\n", 'client/index.ts'),
-      source('ui-shot-plan', "import { formatCitation } from '@dv/project/grammar'\n", 'client/index.ts'),
+      source('ui-storyboard', "import { formatCitation } from '@dv/project/grammar'\n", 'client/index.ts'),
     ], ['R7a', 'R7a']],
     ['R11a a citation written by a template outside the kernel grammar', [
       source('chat-references', 'export const cite = (label: string, uri: string) => `@[${label.replaceAll(\']\', \'\')}](${uri})`\n'),
@@ -215,14 +209,14 @@ describe('rule clauses', () => {
       source('project', 'export type RecordId = string\n', 'types.ts'), source('project', "import { randomUUID } from 'node:crypto'\n"),
     ], []],
     ['R7b needs a ./types entry', [source('timeline', "import type { Context } from '@deepseek-ai/cordis'\n", 'types.ts')], []],
-    ['R8a and R8b in provider text', [
-      owner('shot-render', 'shot'), source('fastvideo', "ctx.dvModels.register(e)\nd = 'Rules for dv_shot_render in a plan'\n"),
-    ], ['R8a', 'R8b']],
+    ['R8a in provider text', [
+      owner('shot-render', 'shot'), source('fastvideo', "ctx.dvModels.register(e)\nd = 'Rules for dv_shot_render'\n"),
+    ], ['R8a']],
     ['R8a provider skill names a domain tool', [owner('shot-render', 'shot'), source('fastvideo', 'ctx.dvModels.register(e)\n'), {
       path: 'packages/dv/fastvideo/skills/prompting.md', text: 'Write the prompt of `dv_shot_render`.\n',
     }], ['R8a']],
-    ['R8c workflow skill names its own tool', [owner('workflow-story', 'story'), {
-      path: 'packages/dv/workflow-story/skills/story-directing/SKILL.md', text: 'Call `dv_story_approve`.\n',
+    ['R8c workflow skill names its own tool', [owner('workflow-ad', 'ad'), {
+      path: 'packages/dv/workflow-ad/skills/ad-directing/SKILL.md', text: 'Call `dv_ad_publish`.\n',
     }], []],
     ['R8d catalog skill names only catalog tools', [owner('asset-pool', 'asset'), {
       path: 'packages/dv/models/skills/selection.md', text: 'Call `dv_models_list`, not `dv_asset_import`.\n',
@@ -259,6 +253,8 @@ describe('owner listing', () => {
     const character = 'packages/dv/character/src/index.ts:3'
     const ui = 'packages/dv/ui-character/src/client/index.ts:2'
     expect(listOwners(fixture('owners.txt'))).toEqual([
+      { what: 'node type', name: 'board', pkg: 'ui-storyboard', where: 'packages/dv/ui-storyboard/src/client/index.ts:1', extra: 'slot @dv/ui-storyboard' },
+      { what: 'history row', name: 'board.', pkg: 'ui-storyboard', where: 'packages/dv/ui-storyboard/src/client/index.ts:2', extra: '' },
       { what: 'component', name: 'character', pkg: 'character', where: character, extra: '' },
       { what: 'kind', name: 'character', pkg: 'character', where: character, extra: '' },
       { what: 'operation', name: 'character.create', pkg: 'character', where: character, extra: 'dv_character_create' },
@@ -269,25 +265,23 @@ describe('owner listing', () => {
       { what: 'mention kind', name: 'character', pkg: 'ui-character', where: ui, extra: '' },
       { what: 'history row', name: 'character.', pkg: 'ui-character', where: ui, extra: '' },
       { what: 'mention kind', name: 'clip', pkg: 'ui-timeline', where: 'packages/dv/ui-timeline/src/client/mention.ts:1', extra: '' },
-      { what: 'node type', name: 'plan', pkg: 'ui-shot-plan', where: 'packages/dv/ui-shot-plan/src/client/index.ts:1', extra: 'slot @dv/ui-shot-plan' },
-      { what: 'history row', name: 'plan.', pkg: 'ui-shot-plan', where: 'packages/dv/ui-shot-plan/src/client/index.ts:2', extra: '' },
     ])
   })
 })
 
 describe('exception markers', () => {
   const transition = (line: string): ScanFile[] => [
-    { path: 'packages/dv/shot-plan/src/index.ts', text: "x = { component: 'plan' }\n" },
+    { path: 'packages/dv/storyboard/src/index.ts', text: "x = { component: 'board' }\n" },
     { path: 'packages/dv/ui-canvas/src/client/anchor.ts', text: `${line}\n` },
   ]
 
   it('suppress a violation of the named rule on their line', () => {
-    expect(scan(transition("const starter = 'plan.approve' // dv-arch-allow R5: temporary exception"))).toEqual([])
+    expect(scan(transition("const starter = 'board.publish' // dv-arch-allow R5: temporary exception"))).toEqual([])
   })
 
   it.each([
-    ['another reason', "const starter = 'plan.approve' // dv-arch-allow R5: legacy log reader"],
-    ['another rule', "const starter = 'plan.approve' // dv-arch-allow R4: temporary exception"],
+    ['another reason', "const starter = 'board.publish' // dv-arch-allow R5: legacy log reader"],
+    ['another rule', "const starter = 'board.publish' // dv-arch-allow R4: temporary exception"],
     ['a marker that suppresses nothing', 'const approvals = 0 // dv-arch-allow R5: temporary exception'],
   ])('fail on %s', (_name, line) => {
     expect(rules(transition(line))).toContain('marker')
@@ -295,8 +289,8 @@ describe('exception markers', () => {
 })
 
 describe('ratchet baseline comparison', () => {
-  const violation: Violation = { file: 'packages/dv/project/src/shared.ts', line: 10, rule: 'R1b', text: 'plan' }
-  const key = 'packages/dv/project/src/shared.ts R1b plan'
+  const violation: Violation = { file: 'packages/dv/project/src/shared.ts', line: 10, rule: 'R1b', text: 'board' }
+  const key = 'packages/dv/project/src/shared.ts R1b board'
 
   it('passes when every count matches', () => {
     expect(compareBaseline([violation], { [key]: 1 })).toEqual([])
@@ -329,7 +323,7 @@ describe('change size check (R9, R10)', () => {
 
   it.each([
     ['max-negative.txt', ['packages/dv/shot-render/src/index.ts:max=6'], 'changes 9 lines, more than max=6'],
-    ['net-delete-negative.txt', ['packages/dv/shot-plan/**:net-delete'], 'gains lines (+3 -1)'],
+    ['net-delete-negative.txt', ['packages/dv/storyboard/**:net-delete'], 'gains lines (+3 -1)'],
     ['r10-negative.txt', [], '4 existing packages with logic changes, more than 3'],
   ])('rejects the fixture %s', (name, allow, failure) => {
     const changes = diffFixture(name)

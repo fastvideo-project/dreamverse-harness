@@ -1,4 +1,4 @@
---- packages/dv/workflow-story/src/index.ts
-export const spec = { component: 'story' }
+--- packages/dv/workflow-ad/src/index.ts
+export const spec = { component: 'ad' }
 --- packages/bundle/dv/skills/video-directing/SKILL.md
-After the user agrees, call `dv_story_approve`.
+After the user agrees, call `dv_ad_publish`.

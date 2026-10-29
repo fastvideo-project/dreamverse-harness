@@ -1,4 +1,0 @@
---- packages/dv/workflow-story/src/index.ts
-export const spec = { component: 'story' }
---- packages/dv/workflow-kit/src/index.ts
-export const isApproval = (operation: string): boolean => operation === 'story.approve'

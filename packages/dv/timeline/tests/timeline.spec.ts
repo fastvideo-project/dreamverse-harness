@@ -257,7 +257,7 @@ describe('dvTimeline', () => {
 
     // The create is done at once with one placeholder clip per render; trim and split refuse a placeholder.
     const inputs = [first, second].map(record => ({ role: 'clip', ref: { record, output: 0 } }))
-    expect(await fixture.run('timeline.create', { plan: 'p1' }, inputs)).toMatchObject({ status: 'done', report: { clips: ['cl1', 'cl2'] } })
+    expect(await fixture.run('timeline.create', {}, inputs)).toMatchObject({ status: 'done', report: { clips: ['cl1', 'cl2'] } })
     const clips = (): unknown => fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0]?.clips
       .map(clip => [clip.id, clip.asset === null ? null : 'ready', clip.source?.record])
     expect(clips()).toEqual([['cl1', null, first], ['cl2', null, second]])

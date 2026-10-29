@@ -29,7 +29,6 @@
     "@dv/project": "workspace:*",
     "@dv/sglang-diffusion": "workspace:*",
     "@dv/sglang-omni": "workspace:*",
-    "@dv/shot-plan": "workspace:*",
     "@dv/shot-render": "workspace:*",
     "@dv/style": "workspace:*",
     "@dv/text-node": "workspace:*",

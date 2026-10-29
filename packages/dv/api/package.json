@@ -13,7 +13,6 @@
     "@dv/asset-pool": "workspace:*",
     "@dv/models": "workspace:*",
     "@dv/project": "workspace:*",
-    "@dv/shot-plan": "workspace:*",
     "@dv/shot-render": "workspace:*",
     "@dv/timeline": "workspace:*"
   },

@@ -28,7 +28,6 @@
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@dv/character": "workspace:*",
     "@dv/ffmpeg": "workspace:*",
-    "@dv/shot-plan": "workspace:*",
     "@dv/shot-render": "workspace:*",
     "@types/mime-types": "^3.0.1",
     "@types/node": "^22.20.0"

@@ -1,5 +1,5 @@
 --- packages/dv/timeline/src/index.ts
 ctx.dvProject.registerComponent('timeline')
---- packages/dv/shot-plan/src/index.ts
-export const spec = { name: 'timeline.create', component: 'plan' }
-export const file = { name: 'plan.json', mime: 'application/json' }
+--- packages/dv/storyboard/src/index.ts
+export const spec = { name: 'timeline.create', component: 'board' }
+export const file = { name: 'board.json', mime: 'application/json' }

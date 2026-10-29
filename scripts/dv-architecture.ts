@@ -19,7 +19,7 @@ export type Baseline = Record<string, number>
 /** The one-line statement of each rule, printed with each failure. */
 export const RULE_STATEMENTS: Readonly<Record<string, string>> = {
   R1: 'The kernel names no plugin noun and never reads started_by.',
-  R2: 'Base packages, reference-kit included, name no media type; workflow-kit names no workflow.',
+  R2: 'Base packages, reference-kit included, name no media type.',
   R3: 'One owner per component key, reference kind and operation; defineReference operations are checked at runtime; a defineReference key is one lowercase word and not proj, asset, record or version.',
   R4: 'A host package names only operations of its own component key.',
   R5: 'UI core names no plugin noun, media type, task, kind word or record param; a kit names no plugin noun, media type or task.',
@@ -30,7 +30,7 @@ export const RULE_STATEMENTS: Readonly<Record<string, string>> = {
   marker: 'The only exception marker is "// dv-arch-allow R<k>: temporary exception", and it suppresses a match on its line.',
 }
 
-type Layer = 'kernel' | 'base' | 'provider' | 'domain' | 'workflow-lib' | 'workflow' | 'surface' | 'ui-core' | 'ui-lib' | 'ui' | 'bundle'
+type Layer = 'kernel' | 'base' | 'provider' | 'domain' | 'workflow' | 'surface' | 'ui-core' | 'ui-lib' | 'ui' | 'bundle'
 
 /** One parsed TypeScript source file and its package. */
 interface Source { path: string; pkg: string; sf: ts.SourceFile }
@@ -93,13 +93,12 @@ const IMPORTS: Partial<Record<Layer, [Layer[], Layer[]]>> = {
   base: [['kernel', 'base'], []],
   provider: [['kernel', 'base'], []],
   domain: [['kernel', 'base'], []],
-  'workflow-lib': [['kernel', 'base'], ['domain']],
-  workflow: [['kernel', 'base', 'domain', 'workflow-lib'], []],
+  workflow: [['kernel', 'base', 'domain'], []],
   surface: [['kernel', 'base'], ['domain']],
 }
 /** Skill layer order of R8 (a). */
 const SKILL_ORDER: Layer[] = ['kernel', 'base', 'provider', 'domain', 'workflow', 'bundle']
-const KERNEL_WORDS = /\b(?:character|location|style|plan|shot|timeline|clip)s?\b/giu
+const KERNEL_WORDS = /\b(?:character|location|style|shot|timeline|clip)s?\b/giu
 const OPERATION = /^([a-z_]+)\.([a-z_]*)$/u
 const TOOL = /(?<!\w)dv_([a-z]+)_\w+/gu
 const CORE_TOOL = /^dv_(?:proj|asset|models)_/u
@@ -117,9 +116,8 @@ const URI_TEMPLATE = /^dv:[^/\0]*\/\0/u
 const CLIENT_ENTRIES = ['types', 'grammar']
 /** Modules that a `./types` or `./grammar` entry must never reach (R7 b). */
 const HOST_ONLY = /^(?:node:|@deepseek-ai\/(?:cordis|dsh-tools)(?:\/|$))/u
-const KIT_LINES = 300
 /** The kind words of R5j, matched in a literal without whitespace, such as `node.take` or `dv:timeline-focus`. */
-const UI_KIND_WORDS = /\b(?:character|location|style|plan|shot|timeline|clip|take)s?\b/iu
+const UI_KIND_WORDS = /\b(?:character|location|style|shot|timeline|clip|take)s?\b/iu
 /** The element kinds of DSH's `MarkdownElement` (`ui-primitives/src/markdown/MarkdownDelegate.tsx`); the spec checks the copy. */
 export const MARKDOWN_KINDS: ReadonlySet<string> = new Set(['link', 'image', 'table'])
 /**
@@ -268,7 +266,6 @@ function layerOf(pkg: string, facts: Facts): Layer {
   if (pkg === 'bundle') return 'bundle'
   if (BASE.includes(pkg)) return 'base'
   if (facts.providers.has(pkg) || pkg === 'fastvideo-generation-client') return 'provider'
-  if (pkg === 'workflow-kit') return 'workflow-lib'
   if (pkg.startsWith('workflow-')) return 'workflow'
   if (SURFACE.includes(pkg)) return 'surface'
   if (UI_LIB.includes(pkg)) return 'ui-lib'
@@ -343,8 +340,6 @@ function scanSkillText(
     const flow = `workflow-${match[1] ?? ''}`
     if (facts.packages.has(flow) && pkg !== flow) report('R8e', match.index, match[0])
   }
-  if (layer !== 'base' && layer !== 'provider') return
-  for (const match of text.matchAll(/\b(?:plan|continue_previous)\b/giu)) report('R8b', match.index, match[0].toLowerCase())
 }
 
 function unionOf(type: ts.TypeNode): ts.UnionTypeNode | undefined {
@@ -438,7 +433,6 @@ function scanSource({ path, pkg, sf }: Source, facts: Facts, out: Violation[]): 
     .map(([key]) => key))
   const uiPluginKeys = new Set([...pluginKeys].filter(key => key !== 'asset'))
   const mirrors = layer === 'ui-core' || layer === 'ui-lib' ? markdownMirrors(sf) : new Set<string>()
-  const workflowKey = (key: string): boolean => [...facts.owners.get(key) ?? []].some(owner => layerOf(owner, facts) === 'workflow')
   const inAlias = (node: ts.Node, name: string): boolean =>
     ts.findAncestor(node, n => ts.isTypeAliasDeclaration(n) && n.name.text === name) !== undefined
   const grammar = path === 'packages/dv/project/src/grammar.ts'
@@ -486,13 +480,12 @@ function scanSource({ path, pkg, sf }: Source, facts: Facts, out: Violation[]): 
       if ((ts.isIdentifier(node) || literal !== undefined) && textOf(node) === 'started_by' && !exempt) report('R1e', 'started_by')
     }
     if (pkg === 'models' || pkg === 'generation' || pkg === 'reference-kit') {
-      const banned = new Set(['image', 'audio', ...facts.primitives, ...(pkg === 'generation' ? ['video', 'shot', 'plan'] : [])])
+      const banned = new Set(['image', 'audio', ...facts.primitives, ...(pkg === 'generation' ? ['video', 'shot'] : [])])
       const typeKey = ts.isIdentifier(node) && ts.isPropertySignature(node.parent) && node.parent.name === node
       if ((literal !== undefined || typeKey) && banned.has(textOf(node) ?? '')) report('R2a', textOf(node) ?? '')
     }
     const key = OPERATION.exec(literal ?? '')
     const operationKey = key !== null && key[2] !== '' ? key[1] ?? '' : undefined
-    if (pkg === 'workflow-kit' && literal !== undefined && workflowKey(operationKey ?? literal)) report('R2b', literal)
     // R3: `name:` beside `component:`, or `operation:` in a defineGeneration declaration, names a key of this package.
     // R3c: a defineReference key is one lowercase word and not a reserved key.
     const noun = ts.isCallExpression(node) && textOf(node.expression) === 'defineReference' ? stringProperty(node.arguments[0], 'component') : undefined
@@ -509,7 +502,6 @@ function scanSource({ path, pkg, sf }: Source, facts: Facts, out: Violation[]): 
       if (pkg === 'ui-kit' && bibleProperty) report('R5c', 'bible')
       const params = (ts.isPropertyAccessExpression(node) && node.name.text === 'params') || (ts.isElementAccessExpression(node) && textOf(node.argumentExpression) === 'params')
       if (params && ts.isIdentifier(node.expression) && node.expression.text === 'record') report('R5k', node.getText(sf))
-      if (object === 'params' && ['plan', 'plan_version', 'shot'].includes(member)) report('R5d', read)
       const table = ts.isPropertyAssignment(node) && ts.isObjectLiteralExpression(node.parent)
         && ts.isVariableDeclaration(node.parent.parent) && textOf(node.parent.parent.name) === 'DV_TOOL_LABELS'
       if (table && !CORE_TOOL.test(textOf(node.name) ?? '')) report('R5e', textOf(node.name) ?? '')
@@ -621,11 +613,6 @@ export function scan(files: readonly ScanFile[]): Violation[] {
   for (const claim of facts.claims) {
     const claimants = new Set(facts.claims.filter(other => other.text === claim.text).map(other => other.pkg))
     if (claimants.size > 1) violations.push({ file: claim.file, line: claim.line, rule: claim.rule, text: claim.text })
-  }
-  const kitLines = sources.filter(source => source.pkg === 'workflow-kit')
-    .reduce((sum, source) => sum + source.sf.text.split('\n').filter(line => line.trim() !== '').length, 0)
-  if (kitLines > KIT_LINES) {
-    violations.push({ file: 'packages/dv/workflow-kit/src', line: 0, rule: 'R2b', text: `${String(kitLines)} non-blank lines, over ${String(KIT_LINES)}` })
   }
   violations.push(...scanTypesEntries(sources, facts))
   for (const file of files.filter(f => f.path.endsWith('.md'))) {

@@ -9,8 +9,8 @@ export default class DvCharacter extends defineReference({
 export const character = defineReferenceUi({
   id: '@dv/ui-character', key: 'character',
 })
---- packages/dv/ui-shot-plan/src/client/index.ts
-export const planNodeType: NodeType = { id: '@dv/ui-shot-plan', type: 'plan' }
-export const planHistoryRow: HistoryRow = { match: 'plan.' }
+--- packages/dv/ui-storyboard/src/client/index.ts
+export const boardNodeType: NodeType = { id: '@dv/ui-storyboard', type: 'board' }
+export const boardHistoryRow: HistoryRow = { match: 'board.' }
 --- packages/dv/ui-timeline/src/client/mention.ts
 export const clipMentionKind: MentionKind = { id: '@dv/ui-timeline', kind: 'clip' }

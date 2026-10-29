@@ -14,7 +14,7 @@ This file is the recipe for one DreamVerse component package under `packages/dv`
 
 ## 1. What a component is
 
-A component owns one capability: its implementation, its data, its operations, the reducer that turns its records into its state slice, and (through Project) the agent tool of each operation. It depends only on the kernel `@dv/project` and the base packages (`@dv/asset-pool` to read and import assets, `@dv/models`, `@dv/generation`, `@dv/reference-kit`, and `@dv/ffmpeg` for outside tools). A component never imports another component's package, not even for types, and names no operation of another component. A workflow package (`workflow-*`, such as `@dv/workflow-story`) instead depends on domain services: it lists them in `static inject`, calls their methods (`ctx.dvShotPlan.shots`), and runs no other component's operation by name.
+A component owns one capability: its implementation, its data, its operations, the reducer that turns its records into its state slice, and (through Project) the agent tool of each operation. It depends only on the kernel `@dv/project` and the base packages (`@dv/asset-pool` to read and import assets, `@dv/models`, `@dv/generation`, `@dv/reference-kit`, and `@dv/ffmpeg` for outside tools). A component never imports another component's package, not even for types, and names no operation of another component. A workflow package (`workflow-*`, such as `@dv/workflow-story`) holds workflow skills only, and lists in its `dependencies` the packages whose tools its skills call.
 
 ## 2. Package layout
 
@@ -94,7 +94,7 @@ The reducer is pure: `initial()`, and `reduce(slice, record)` that ignores recor
 
 | Member         | Who                                                                                              | Meaning                                                                                                                      |
 | -------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| `agentSummary` | Character, Location and Style (through `@dv/reference-kit`), Shot plan, Story workflow, Timeline | the fields of the slice that the agent reads in the project summary of `dv_proj_state`; field names unique across components |
+| `agentSummary` | Character, Location and Style (through `@dv/reference-kit`), Timeline                            | the fields of the slice that the agent reads in the project summary of `dv_proj_state`; field names unique across components |
 
 **Reference kinds.** A component whose items an input names as `<id>@<version>` declares each kind in `ReferenceKinds` (as `@dv/character` declares `character`) and registers it after its component key: `ctx.effect(() => ctx.dvProject.registerReferenceKind({ kind, component, assetsOf, createdBy, latest }))`; a noun whose items keep reference images declares all of this with one `defineReference` call of `@dv/reference-kit`, as `@dv/character` does. `assetsOf(slice, id, version)` gives the assets a version stands for, which the runner resolves version inputs to; `createdBy(slice, id, version)` gives the record that wrote the version, which Project uses for stale marks and for `<id>@<n>` parsing; `latest(slice, id)` gives the newest version of an ID, or null. One plugin owns each kind (`kind_exists`). IDs are unique across kinds: the kind's create refuses an ID that `ctx.dvProject.kindsWithId(context.state, id)` lists.
 

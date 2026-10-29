@@ -58,7 +58,7 @@ export function summarizeProject(
   }
   const records = state.components.proj.records
   if (cover === null) {
-    // A project without a timeline clip yet, such as one whose plan is not approved, shows its first image.
+    // A project without a timeline clip yet shows its first image.
     const image = records.flatMap(record => record.status === 'done' ? record.outputs : [])
       .find(id => mimeOf(id)?.startsWith('image/') === true)
     cover = image === undefined ? null : coverOf(image)

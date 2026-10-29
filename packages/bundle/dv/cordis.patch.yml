@@ -69,9 +69,6 @@
       config:
         imageInput: !!js process.env.DV_AGENT_VISION !== '0'
 
-    - id: dv-shot-plan
-      name: '@dv/shot-plan'
-
     - id: dv-shot-render
       name: '@dv/shot-render'
 

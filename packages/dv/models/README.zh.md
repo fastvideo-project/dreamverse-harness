@@ -29,7 +29,7 @@ kind: "package-reference"
 
 ### 何时选择本包
 
-在每个渲染视频镜头的组合中挂载本包。[`@dv/shot-render`](../shot-render/README.zh.md) 和 [`@dv/shot-plan`](../shot-plan/README.zh.md) 注入 `dvModels`，所以只有挂载本包后它们才会启动。本包本身不渲染。提供方插件（如 [`@dv/fastvideo`](../fastvideo/README.zh.md)）提供每个模型。
+在每个渲染视频镜头的组合中挂载本包。[`@dv/shot-render`](../shot-render/README.zh.md) 注入 `dvModels`，所以只有挂载本包后它才会启动。本包本身不渲染。提供方插件（如 [`@dv/fastvideo`](../fastvideo/README.zh.md)）提供每个模型。
 
 ### 最小配置
 
@@ -160,7 +160,7 @@ DSH 工具注册表（`tools`）挂载期间，本服务以 effect 注册 `dv_mo
 
 DSH skill 注册表（`skills`）挂载期间，本服务从 `skills/video-model-selection.md` 注册运行时 skill `video-model-selection`。agent 可以加载该 skill。用户不能从输入框调用它。在同一个注册表中，本服务按同样的调用规则注册每个条目的 `promptSkill`。条目或注册表到达时它注册该 skill，条目或注册表离开时它移除该 skill。
 
-[`@dv/shot-render`](../shot-render/README.zh.md) 用 `whileServing(['t2v', 'ref2v'], ...)` 注册 `shot.render`，并用 `resolve(['t2v', 'ref2v'], params)` 获取 `dv_shot_render` 调用所指定的条目。它用条目的 facts 构建 `RenderRequest`。它用 `validateGenerationRequest` 检查请求，然后渲染该请求。[`@dv/shot-plan`](../shot-plan/README.zh.md) 拒绝键不对应任何条目的计划镜头。
+[`@dv/shot-render`](../shot-render/README.zh.md) 用 `whileServing(['t2v', 'ref2v'], ...)` 注册 `shot.render`，并用 `resolve(['t2v', 'ref2v'], params)` 获取 `dv_shot_render` 调用所指定的条目。它用条目的 facts 构建 `RenderRequest`。它用 `validateGenerationRequest` 检查请求，然后渲染该请求。
 
 | 文件 | 内容 |
 | --- | --- |
@@ -179,7 +179,6 @@ DSH skill 注册表（`skills`）挂载期间，本服务从 `skills/video-model
 - [`@dv/fastvideo`](../fastvideo/README.zh.md)：用作示例的提供方插件。
 - [`dv-add-model-provider`](../../../.agents/skills/dv-add-model-provider/SKILL.md)：添加提供方、模型或服务器的操作步骤。
 - [`@dv/shot-render`](../shot-render/README.zh.md)：用条目渲染镜头的消费方。
-- [`@dv/shot-plan`](../shot-plan/README.zh.md)：检查每个计划镜头模型键的消费方。
 - [`@dv/bundle`](../../bundle/dv/README.zh.md)：行 `dv-models` 和 `dv-fastvideo`。
 
 -----

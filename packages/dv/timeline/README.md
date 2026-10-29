@@ -35,8 +35,8 @@ The whole-timeline operations, `timeline.clip_insert` and `timeline.export` name
 
 | Operation | Tool | Params | Effect |
 | --- | --- | --- | --- |
-| `timeline.create` | `dv_timeline_create` | `timeline`, `name`, `assets` (asset IDs in order), `plan`; input role `clip` (many) | Adds a timeline; fails when the ID exists. Without `assets` the clips are the `clip` inputs in order |
-| `timeline.update` | `dv_timeline_update` | `timeline`, `assets` (asset IDs in order), `plan`; input role `clip` (many) | Replaces all clips of an existing timeline with clips that get new clip IDs; keeps the name |
+| `timeline.create` | `dv_timeline_create` | `timeline`, `name`, `assets` (asset IDs in order); input role `clip` (many) | Adds a timeline; fails when the ID exists. Without `assets` the clips are the `clip` inputs in order |
+| `timeline.update` | `dv_timeline_update` | `timeline`, `assets` (asset IDs in order); input role `clip` (many) | Replaces all clips of an existing timeline with clips that get new clip IDs; keeps the name |
 | `timeline.rename` | `dv_timeline_rename` | `timeline`, `name` | Sets the name |
 | `timeline.delete` | `dv_timeline_delete` | `timeline` | Removes the timeline; its assets stay in the project |
 | `timeline.clip_insert` | `dv_timeline_clip_insert` | `timeline`, `at`, `asset` | Inserts the asset as a clip at position `at`; creates the timeline when it does not exist |

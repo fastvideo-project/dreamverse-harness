@@ -6,7 +6,7 @@ import type { Browser, Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { bootHarness, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import {
-  assetIdOf, scheduledOf, startScriptedModel, textOf, type ChatRequest, type ScriptedModel, type ScriptedRule,
+  assetIdOf, startScriptedModel, textOf, type ChatRequest, type ScriptedModel, type ScriptedRule,
 } from '../scripted-model.ts'
 
 /** A 1×1 opaque PNG, the agent's product image. */
@@ -42,26 +42,25 @@ describe('project updates reach the agent as appended messages', () => {
   let projectId = ''
   let scheduled: string[] = []
 
-  // The scripted agent: imports a product image, plans two shots, approves them with renders held, then, between two
-  // steps, the user imports an image on the canvas and the first render finishes; the agent reads the plan again and
-  // waits for the renders.
+  // The scripted agent: imports a product image and renders two shots with renders held, then, between two steps, the
+  // user imports an image on the canvas and the first render finishes; the agent reads the project state and waits for
+  // the renders.
   const rules: ScriptedRule[] = [
     { match: /只回复\S+/, steps: [view => ({ text: `收到${/只回复(\S+)/.exec(view.userText)?.[1] ?? ''}` })] },
     {
       match: '做两个镜头的广告',
       steps: [
         { calls: [{ name: 'dv_asset_import', args: { reason: '产品图', base64: PNG_BASE64, mime: 'image/png', name: 'product.png' } }] },
-        view => ({ calls: [{ name: 'dv_plan_create', args: {
-          reason: '规划', title: '产品广告', references: [assetIdOf(view.toolResults[0], 'asset')],
-          shots: [
-            { prompt: 'Picture 1 产品特写', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' },
-            { prompt: 'Picture 1 产品使用场景', duration_sec: 2, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' },
-          ],
+        view => ({ calls: [{ name: 'dv_shot_render', args: {
+          reason: '镜头1', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'Picture 1 产品特写',
+          duration_sec: 1, inputs: { reference: assetIdOf(view.toolResults[0], 'asset') },
         } }] }),
-        { calls: [{ name: 'dv_story_preview', args: { reason: '预览计划', plan: 'p1' } }] },
-        { calls: [{ name: 'dv_story_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
+        view => ({ calls: [{ name: 'dv_shot_render', args: {
+          reason: '镜头2', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'Picture 1 产品使用场景',
+          duration_sec: 2, inputs: { reference: assetIdOf(view.toolResults[0], 'asset') },
+        } }] }),
         async (view) => {
-          scheduled = scheduledOf(view.toolResults.at(-1))
+          scheduled = view.toolResults.slice(1, 3).map(result => /^\w+ (\S+):/.exec(textOf(result))?.[1] ?? '')
           harness.backend.release()
           await harness.api.post('/api/dv/operation', {
             project: projectId, operation: 'asset.import', params: { base64: RED_PNG, mime: 'image/png', name: 'knife.png' },
@@ -73,7 +72,7 @@ describe('project updates reach the agent as appended messages', () => {
             }
             return history.entries.some(entry => entry.record.operation === 'shot.render' && entry.record.status === 'done')
           }, 'the first render', 60_000)
-          return { calls: [{ name: 'dv_story_preview', args: { reason: '再看计划', plan: 'p1' } }] }
+          return { calls: [{ name: 'dv_proj_state', args: {} }] }
         },
         () => {
           harness.backend.releaseAll()
@@ -129,7 +128,7 @@ describe('project updates reach the agent as appended messages', () => {
     await chat(page, '只回复十', '收到十')
 
     const requests = model.requests
-    expect(requests).toHaveLength(8)
+    expect(requests).toHaveLength(7)
     expectEachRequestExtendsThePrevious(requests)
     const first = requests[0] as ChatRequest
     expect(projectMessages(first)).toHaveLength(1)
@@ -141,13 +140,13 @@ describe('project updates reach the agent as appended messages', () => {
     const updates = (requests.at(-1) as ChatRequest).messages.filter(message => message.role === 'user').map(message => textOf(message.content))
       .filter(text => text.startsWith('DreamVerse project updates since your last step:'))
     const text = updates.join('\n')
-    // The agent's own import, plan, approval and wait are never repeated.
-    expect(text).not.toContain('(your call)')
+    // The agent's own import is never repeated.
+    expect(text).not.toContain('imported product.png')
     // The step after the canvas import and the first render's finish names both, once.
     expect(text.match(/^- done \S+ \(user on canvas\): imported knife\.png$/gm)).toHaveLength(1)
-    expect(text.match(/^- done \S+ \(scheduled\): shot 1\b/gm)).toHaveLength(1)
+    expect(text.match(new RegExp(`^- done ${scheduled[0] ?? ''} \\(your call\\): `, 'gm'))).toHaveLength(1)
     // dv_proj_wait showed the second render finished, so no update repeats it.
-    expect(text).not.toMatch(/\(scheduled\): shot 2\b/)
+    expect(text).not.toContain(scheduled[1] ?? '')
     // The undo between turns reaches the next turn as a move.
     expect(updates.at(-1)).toMatch(new RegExp(`^- history: the current step is ${beforeTip}; dv_proj_history_list shows which steps are undone or discarded\\.$`, 'm'))
     // No record line is sent twice.

@@ -1,4 +1,4 @@
 --- packages/dv/shot-render/src/index.ts
 export const spec = { component: 'shot' }
---- packages/dv/shot-plan/src/index.ts
+--- packages/dv/storyboard/src/index.ts
 const RENDER_OPERATION = 'shot.render'

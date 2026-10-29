@@ -117,7 +117,7 @@ When you dispose the plugin, the effect removes the entry. `register` throws whe
 3. Use this form: `declare module '@dv/models' { interface TaskMap { v2v: 'video' } }`.
 4. Before you add a task, tell the user these facts:
    - The tool text and the skill in `@dv/models` name only `t2v` and `ref2v`.
-   - Consumers such as `@dv/shot-plan` and `@dv/shot-render` contain logic for each task.
+   - Consumers such as `@dv/shot-render` contain logic for each task.
 
 ### Add prompt skills when the model needs them
 

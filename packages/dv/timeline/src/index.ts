@@ -46,7 +46,7 @@ export type Config = Record<string, unknown>
 /** Loader validation. */
 export const Config: z<Config> = z.object({})
 
-/** The skill that maps the user's editing phrasings to the timeline, render, plan and project tool calls. */
+/** The skill that maps the user's editing phrasings to the timeline, render and project tool calls. */
 const TIMELINE_EDITING_SKILL = {
   name: 'timeline-editing',
   description: 'Cheat sheet from the user\'s editing phrasings to the exact dv_* calls and their required arguments: trims, retakes, '
@@ -80,7 +80,6 @@ const LAYOUT = {
   pendingInputRoles: ['clip'],
   params: {
     assets: { type: 'array', items: { type: 'string' }, description: 'Clip asset IDs in playback order.' },
-    plan: { type: 'string', description: 'The plan record whose shots the timeline holds.' },
   },
 } as const
 

@@ -9,7 +9,6 @@ import { importedAssets, type Asset } from '@dv/asset-pool'
 import type {
   AssetId, ComponentStates, HistoryEntry, OperationSpec, ProjectId, ProjectInfo, ProjectLine, ProjectRecord, ProjectState, RecordId,
 } from '@dv/project'
-import type {} from '@dv/shot-plan'
 import type {} from '@dv/shot-render'
 import type {} from '@dv/timeline'
 

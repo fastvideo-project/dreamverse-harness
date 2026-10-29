@@ -35,8 +35,8 @@ kind: "package-reference"
 
 | 操作 | 工具 | 参数 | 效果 |
 | --- | --- | --- | --- |
-| `timeline.create` | `dv_timeline_create` | `timeline`、`name`、`assets`（按顺序的素材 ID）、`plan`；输入角色 `clip`（多个） | 添加一条时间线；ID 已存在时失败。没有 `assets` 时片段为按顺序的 `clip` 输入 |
-| `timeline.update` | `dv_timeline_update` | `timeline`、`assets`（按顺序的素材 ID）、`plan`；输入角色 `clip`（多个） | 用获得新片段 ID 的片段替换已有时间线的全部片段；保留名称 |
+| `timeline.create` | `dv_timeline_create` | `timeline`、`name`、`assets`（按顺序的素材 ID）；输入角色 `clip`（多个） | 添加一条时间线；ID 已存在时失败。没有 `assets` 时片段为按顺序的 `clip` 输入 |
+| `timeline.update` | `dv_timeline_update` | `timeline`、`assets`（按顺序的素材 ID）；输入角色 `clip`（多个） | 用获得新片段 ID 的片段替换已有时间线的全部片段；保留名称 |
 | `timeline.rename` | `dv_timeline_rename` | `timeline`、`name` | 设置名称 |
 | `timeline.delete` | `dv_timeline_delete` | `timeline` | 删除时间线；其素材留在项目中 |
 | `timeline.clip_insert` | `dv_timeline_clip_insert` | `timeline`、`at`、`asset` | 把素材作为片段插入到位置 `at`；时间线不存在时创建它 |

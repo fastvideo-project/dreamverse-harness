@@ -137,7 +137,6 @@
     { "path": "./packages/dv/character/tsconfig.client.json" },
     { "path": "./packages/dv/location/tsconfig.client.json" },
     { "path": "./packages/dv/style/tsconfig.client.json" },
-    { "path": "./packages/dv/shot-plan/tsconfig.client.json" },
     { "path": "./packages/dv/timeline/tsconfig.client.json" },
     { "path": "./packages/dv/text-node/tsconfig.client.json" },
     { "path": "./packages/dv/asset-pool/tsconfig.client.json" },

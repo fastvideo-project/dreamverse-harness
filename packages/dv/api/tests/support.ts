@@ -1,6 +1,6 @@
 /**
  * Mounting for the API, chat references, stream, bundle and e2e specs: the real Project service, asset pool, `dvFfmpeg`,
- * the Character, Location, Style, Shot plan, Shot render and Timeline components, and optionally the DSH tool
+ * the Character, Location, Style, Shot render and Timeline components, and optionally the DSH tool
  * registry, over a temporary root, with the model catalog and a fake `fastvideo` model `fasth3` for task `ref2v`.
  */
 import { execFile } from 'node:child_process'
@@ -18,7 +18,6 @@ import DvFfmpeg from '@dv/ffmpeg'
 import DvLocation from '@dv/location'
 import DvProject from '@dv/project'
 import DvModels, { type ModelEntry, type RenderModelFacts, type RenderRequest, type RenderStreamEvent } from '@dv/models'
-import DvShotPlan from '@dv/shot-plan'
 import DvShotRender from '@dv/shot-render'
 import DvStyle from '@dv/style'
 import DvTimeline from '@dv/timeline'
@@ -179,7 +178,6 @@ export async function startBase(options: BaseFixtureOptions = {}): Promise<BaseF
   await context.plugin(DvFfmpeg, { ffmpegPath: FFMPEG, ffprobePath: FFPROBE, outputLimitBytes: 1_048_576 }).await()
   await context.plugin(DvAssetPool, { root: join(root, 'assets'), publicBaseUrl: options.publicBaseUrl ?? '' }).await()
   await context.plugin(DvTimeline).await()
-  await context.plugin(DvShotPlan).await()
   await context.plugin(DvCharacter).await()
   await context.plugin(DvLocation).await()
   await context.plugin(DvStyle).await()

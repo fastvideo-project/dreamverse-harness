@@ -2167,9 +2167,6 @@ importers:
       '@dv/sglang-omni':
         specifier: workspace:*
         version: link:../../dv/sglang-omni
-      '@dv/shot-plan':
-        specifier: workspace:*
-        version: link:../../dv/shot-plan
       '@dv/shot-render':
         specifier: workspace:*
         version: link:../../dv/shot-render
@@ -7048,9 +7045,6 @@ importers:
       '@dv/project':
         specifier: workspace:*
         version: link:../project
-      '@dv/shot-plan':
-        specifier: workspace:*
-        version: link:../shot-plan
       '@dv/shot-render':
         specifier: workspace:*
         version: link:../shot-render
@@ -7251,9 +7245,6 @@ importers:
       '@dv/ffmpeg':
         specifier: workspace:*
         version: link:../ffmpeg
-      '@dv/shot-plan':
-        specifier: workspace:*
-        version: link:../shot-plan
       '@dv/shot-render':
         specifier: workspace:*
         version: link:../shot-render
@@ -7741,46 +7732,6 @@ importers:
       '@dv/project':
         specifier: workspace:*
         version: link:../project
-      '@types/node':
-        specifier: ^22.20.0
-        version: 22.20.0
-
-  packages/dv/shot-plan:
-    dependencies:
-      '@deepseek-ai/dsh-brand':
-        specifier: workspace:*
-        version: link:../../util/brand
-      '@deepseek-ai/schemastery':
-        specifier: link:../../../vendor/schemastery
-        version: link:../../../vendor/schemastery
-      '@dv/project':
-        specifier: workspace:*
-        version: link:../project
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: workspace:~
-        version: link:../../../vendor/cordis
-      '@deepseek-ai/cordis-plugin-include':
-        specifier: workspace:~
-        version: link:../../../vendor/include
-      '@deepseek-ai/cordis-plugin-loader':
-        specifier: workspace:~
-        version: link:../../../vendor/loader
-      '@deepseek-ai/dsh-llm':
-        specifier: workspace:*
-        version: link:../../llm/llm
-      '@deepseek-ai/dsh-system-prompt':
-        specifier: workspace:*
-        version: link:../../core/system-prompt
-      '@deepseek-ai/dsh-tools':
-        specifier: workspace:*
-        version: link:../../core/tools
-      '@dv/asset-pool':
-        specifier: workspace:*
-        version: link:../asset-pool
-      '@dv/ffmpeg':
-        specifier: workspace:*
-        version: link:../ffmpeg
       '@types/node':
         specifier: ^22.20.0
         version: 22.20.0
@@ -8887,28 +8838,6 @@ importers:
       '@deepseek-ai/dsh-skill':
         specifier: workspace:*
         version: link:../../skill/skill
-      '@types/node':
-        specifier: ^22.20.0
-        version: 22.20.0
-
-  packages/dv/workflow-kit:
-    dependencies:
-      '@dv/generation':
-        specifier: workspace:*
-        version: link:../generation
-      '@dv/models':
-        specifier: workspace:*
-        version: link:../models
-      '@dv/project':
-        specifier: workspace:*
-        version: link:../project
-      '@dv/shot-plan':
-        specifier: workspace:*
-        version: link:../shot-plan
-      '@dv/timeline':
-        specifier: workspace:*
-        version: link:../timeline
-    devDependencies:
       '@types/node':
         specifier: ^22.20.0
         version: 22.20.0

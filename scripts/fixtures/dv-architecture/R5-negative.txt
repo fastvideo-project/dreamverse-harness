@@ -1,6 +1,6 @@
 --- packages/dv/story-bible/src/index.ts
 x = { component: 'bible' }
---- packages/dv/shot-plan/src/index.ts
-x = { component: 'plan' }
+--- packages/dv/storyboard/src/index.ts
+x = { component: 'board' }
 --- packages/dv/ui-canvas/src/client/graph.ts
-export const NODE_KINDS = ['bible', 'plan'] as const
+export const NODE_KINDS = ['bible', 'board'] as const

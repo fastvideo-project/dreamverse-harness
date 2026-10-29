@@ -35,7 +35,7 @@ describe('DreamVerse bundle composition', () => {
   it('boots the bundle rows through the Loader and turns a model tool call into a durable record', async () => {
     const rows = bundleRows()
     expect(rows.map(row => row.id)).toEqual(expect.arrayContaining([
-      'dv-models', 'dv-fastvideo', 'dv-uniserve', 'dv-project', 'dv-text-node', 'dv-shot-plan', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
+      'dv-models', 'dv-fastvideo', 'dv-uniserve', 'dv-project', 'dv-text-node', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
       'dv-sglang-diffusion', 'dv-image-generate', 'dv-sglang-omni', 'dv-audio-generate',
     ]))
     const { ctx, dir, dispose } = await bootBundle()
@@ -45,7 +45,7 @@ describe('DreamVerse bundle composition', () => {
     expect(ctx.get('dvApi')).toBeDefined()
     expect(ctx.get('dvProject')?.listOperations().map(spec => spec.name))
       .toEqual(expect.arrayContaining([
-        'plan.create', 'shot.render', 'timeline.create', 'timeline.update', 'image.generate', 'audio.generate',
+        'shot.render', 'timeline.create', 'timeline.update', 'image.generate', 'audio.generate',
       ]))
     expect(ctx.get('tools')?.get('dv_shot_render')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_audio_generate')).toBeDefined()

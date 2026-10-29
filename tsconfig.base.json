@@ -355,8 +355,6 @@
       "@dv/reference-kit/types": ["./packages/dv/reference-kit/src/types.ts"],
       "@dv/sglang-diffusion": ["./packages/dv/sglang-diffusion/src/index.ts"],
       "@dv/sglang-omni": ["./packages/dv/sglang-omni/src/index.ts"],
-      "@dv/shot-plan": ["./packages/dv/shot-plan/src/index.ts"],
-      "@dv/shot-plan/types": ["./packages/dv/shot-plan/src/types.ts"],
       "@dv/shot-render": ["./packages/dv/shot-render/src/index.ts"],
       "@dv/style": ["./packages/dv/style/src/index.ts"],
       "@dv/style/types": ["./packages/dv/style/src/types.ts"],
@@ -379,7 +377,6 @@
       "@dv/ui-shell": ["./packages/dv/ui-shell/src/index.ts"],
       "@dv/ui-shot-render": ["./packages/dv/ui-shot-render/src/index.ts"],
       "@dv/ui-timeline": ["./packages/dv/ui-timeline/src/index.ts"],
-      "@dv/workflow-kit": ["./packages/dv/workflow-kit/src/index.ts"],
       "@dv/workflow-story": ["./packages/dv/workflow-story/src/index.ts"],
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@deepseek-ai/dsh-acp": ["./packages/acp/acp/src"],

@@ -29,7 +29,7 @@ Mount this package once. Mount one or more provider plugins that register models
 
 ### When to choose it
 
-Mount this package in each composition that renders video shots. [`@dv/shot-render`](../shot-render/README.md) and [`@dv/shot-plan`](../shot-plan/README.md) inject `dvModels`, so they start only when this package is mounted. This package renders nothing. A provider plugin, such as [`@dv/fastvideo`](../fastvideo/README.md), supplies each model.
+Mount this package in each composition that renders video shots. [`@dv/shot-render`](../shot-render/README.md) injects `dvModels`, so it starts only when this package is mounted. This package renders nothing. A provider plugin, such as [`@dv/fastvideo`](../fastvideo/README.md), supplies each model.
 
 ### Minimal configuration
 
@@ -160,7 +160,7 @@ While the DSH tool registry (`tools`) is mounted, the service registers `dv_mode
 
 While the DSH skill registry (`skills`) is mounted, the service registers the runtime skill `video-model-selection` from `skills/video-model-selection.md`. The agent can load the skill. Users cannot call it from the composer. In the same registry, the service registers the `promptSkill` of each entry with the same invocation rule. It registers the skill when the entry or the registry arrives, and removes it when the entry or the registry leaves.
 
-[`@dv/shot-render`](../shot-render/README.md) registers `shot.render` with `whileServing(['t2v', 'ref2v'], ...)` and gets the entry that a `dv_shot_render` call names with `resolve(['t2v', 'ref2v'], params)`. It builds a `RenderRequest` from the facts of the entry. It checks the request with `validateGenerationRequest`, and then renders the request. [`@dv/shot-plan`](../shot-plan/README.md) refuses a plan shot whose key names no entry.
+[`@dv/shot-render`](../shot-render/README.md) registers `shot.render` with `whileServing(['t2v', 'ref2v'], ...)` and gets the entry that a `dv_shot_render` call names with `resolve(['t2v', 'ref2v'], params)`. It builds a `RenderRequest` from the facts of the entry. It checks the request with `validateGenerationRequest`, and then renders the request.
 
 | File | Content |
 | --- | --- |
@@ -179,7 +179,6 @@ While the DSH skill registry (`skills`) is mounted, the service registers the ru
 - [`@dv/fastvideo`](../fastvideo/README.md): the provider plugin to use as the example.
 - [`dv-add-model-provider`](../../../.agents/skills/dv-add-model-provider/SKILL.md): the procedures to add a provider, a model, or a server.
 - [`@dv/shot-render`](../shot-render/README.md): the consumer that renders a shot with an entry.
-- [`@dv/shot-plan`](../shot-plan/README.md): the consumer that checks the model key of each plan shot.
 - [`@dv/bundle`](../../bundle/dv/README.md): the rows `dv-models` and `dv-fastvideo`.
 
 -----
