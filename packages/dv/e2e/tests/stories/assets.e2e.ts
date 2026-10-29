@@ -8,7 +8,7 @@ import type { Browser, BrowserContext, Locator, Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { ProjectRecord, WireState } from '../wire-state.ts'
 import { bootHarness, escapeRegExp, playwright, waitFor, type BootedHarness } from '../harness.ts'
-import { assetIdOf, scheduledOf, startScriptedModel, type ScriptedModel, type ScriptedRule } from '../scripted-model.ts'
+import { assetIdOf, startScriptedModel, type ScriptedModel, type ScriptedRule } from '../scripted-model.ts'
 
 /**
  * A 16×16 PNG of one color, built in memory so every test can import distinct bytes.
@@ -42,8 +42,8 @@ function freshPng(): Buffer {
 }
 
 /**
- * The scripted agent. `只回复<X>` answers `收到<X>`; `做广告` imports a reference, plans one shot, approves, and waits;
- * every record goes at the end of the project's history at once.
+ * The scripted agent. `只回复<X>` answers `收到<X>`; `做广告` imports a reference, renders one shot from it, and lays the
+ * take on timeline t1; every record goes at the end of the project's history at once.
  */
 const RULES: ScriptedRule[] = [
   { match: /只回复\S+/, steps: [view => ({ text: `收到${/只回复(\S+)/.exec(view.userText)?.[1] ?? ''}` })] },
@@ -51,14 +51,11 @@ const RULES: ScriptedRule[] = [
     match: '做广告',
     steps: [
       { calls: [{ name: 'dv_asset_import', args: { reason: '产品图', base64: solidPng([200, 40, 40]).toString('base64'), mime: 'image/png', name: 'agent-product.png' } }] },
-      view => ({ calls: [{ name: 'dv_plan_create', args: {
-        reason: '规划', title: '智能体广告', references: [assetIdOf(view.toolResults[0], 'asset')],
-        shots: [{ prompt: '广告镜头一', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }],
+      view => ({ calls: [{ name: 'dv_shot_render', args: {
+        reason: '广告镜头', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: '广告镜头一', duration_sec: 1,
+        inputs: { reference: assetIdOf(view.toolResults[0], 'asset') },
       } }] }),
-      // The story's project is new, so its first plan is p1.
-      { calls: [{ name: 'dv_story_preview', args: { reason: '预览计划', plan: 'p1' } }] },
-      { calls: [{ name: 'dv_story_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
-      view => ({ calls: [{ name: 'dv_proj_wait', args: { records: scheduledOf(view.toolResults.at(-1)) } }] }),
+      view => ({ calls: [{ name: 'dv_timeline_create', args: { reason: '成片', assets: [assetIdOf(view.toolResults[1], 'video')] } }] }),
     ],
     endText: '镜头已渲染。',
   },
@@ -371,7 +368,7 @@ describe('The asset pool panel', () => {
       const video = await seedVideo(project.id, 'agent insert prompt')
       await openProject(page, project.title)
       await agentAd(page)
-      // The approved plan's timeline is in the project at once; no accept step comes between.
+      // The agent's timeline is in the project at once; no accept step comes between.
       const clips = async (): Promise<Array<{ asset: string | null }>> =>
         (await stateOf(project.id)).components.timeline.timelines[0]?.clips ?? []
       const before = (await clips()).length

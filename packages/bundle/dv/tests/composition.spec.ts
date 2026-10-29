@@ -49,10 +49,6 @@ describe('DreamVerse bundle composition', () => {
       ]))
     expect(ctx.get('tools')?.get('dv_shot_render')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_audio_generate')).toBeDefined()
-    // The story workflow approves plans: the agent sees its preview and approve tools and no plan tool that approves.
-    expect(ctx.get('tools')?.get('dv_story_preview')).toBeDefined()
-    expect(ctx.get('tools')?.get('dv_story_approve')).toBeDefined()
-    expect(ctx.get('tools')?.get('dv_plan_approve')).toBeUndefined()
     expect(ctx.get('tools')?.get('dv_models_list')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_models_get')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_image_generate')).toBeDefined()

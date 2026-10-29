@@ -7,8 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { ProjectRecord, WireState } from '../wire-state.ts'
 import { bootHarness, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import {
-  CONTEXT_MESSAGE, assetIdOf, scheduledOf, startScriptedModel, textOf, type ChatRequest, type ScriptedModel, type ScriptedRule,
-  type ScriptedStep, type TurnView,
+  CONTEXT_MESSAGE, assetIdOf, startScriptedModel, textOf, type ChatRequest, type ScriptedModel, type ScriptedRule,
 } from '../scripted-model.ts'
 
 /** A 1×1 opaque PNG. */
@@ -19,28 +18,11 @@ const GREEN_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGOQO
 const BLUE_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNQcLgAAAG0ATF+kRwWAAAAAElFTkSuQmCC'
 
 /**
- * The scripted `dv_plan_create` call of a two-shot plan whose shots render from the image the turn imported first.
- * @param view - the turn so far; its first tool result is the import.
- * @param title - the plan title.
- * @returns the step.
- */
-function planCall(view: TurnView, title: string): ScriptedStep {
-  return { calls: [{ name: 'dv_plan_create', args: {
-    reason: '规划', title, references: [assetIdOf(view.toolResults[0], 'asset')],
-    shots: [
-      { prompt: 'Picture 1 产品特写', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' },
-      { prompt: 'Picture 1 产品使用场景', duration_sec: 2, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' },
-    ],
-  } }] }
-}
-
-/**
  * The scripted agent. `只回复<X>` answers `收到<X>`; `慢慢想` streams for six seconds; `加人物` registers a character;
  * `慢慢做` imports an image and then streams for eight seconds, so a stop lands while the turn runs; `新建项目` creates a
- * project as the agent does from the entry page; `做两个镜头的广告` imports a reference, plans two shots, approves, and
- * waits; every record goes at the end of the project's history at once; `先给我看计划` imports a reference, plans two shots,
- * calls the plan approval without the user's agreement (Project refuses it), and asks in bold; `可以渲染` approves that
- * plan with the user's agreement and waits; `两段渲染` renders two shots at once.
+ * project as the agent does from the entry page; `做两个镜头的广告` imports a reference, renders two shots from it, and
+ * lays both takes on timeline t1; every record goes at the end of the project's history at once; `两段渲染` renders two
+ * shots at once.
  */
 const RULES: ScriptedRule[] = [
   { match: /只回复\S+/, steps: [view => ({ text: `收到${/只回复(\S+)/.exec(view.userText)?.[1] ?? ''}` })] },
@@ -89,31 +71,17 @@ const RULES: ScriptedRule[] = [
     match: '做两个镜头的广告',
     steps: [
       { calls: [{ name: 'dv_asset_import', args: { reason: '产品图', base64: PNG_BASE64, mime: 'image/png', name: 'product.png' } }] },
-      view => planCall(view, '产品广告'),
-      // The story's project is new, so its first plan is p1.
-      { calls: [{ name: 'dv_story_preview', args: { reason: '预览计划', plan: 'p1' } }] },
-      { calls: [{ name: 'dv_story_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
-      view => ({ calls: [{ name: 'dv_proj_wait', args: { records: scheduledOf(view.toolResults.at(-1)) } }] }),
-    ],
-    endText: '两个镜头已渲染。',
-  },
-  {
-    match: '先给我看计划',
-    steps: [
-      { calls: [{ name: 'dv_asset_import', args: { reason: '产品图', base64: PNG_BASE64, mime: 'image/png', name: 'ask-first.png' } }] },
-      view => planCall(view, '先问再渲染'),
-      // Without user_approved, Project refuses the call and tells the agent to ask in the conversation.
-      { calls: [{ name: 'dv_story_preview', args: { reason: '预览计划', plan: 'p1' } }] },
-      { calls: [{ name: 'dv_story_approve', args: { reason: '按计划渲染', plan: 'p1' } }] },
-      { text: '计划有两个镜头。**现在渲染这两个镜头吗？**' },
-    ],
-  },
-  {
-    match: '可以渲染',
-    steps: [
-      { calls: [{ name: 'dv_story_preview', args: { reason: '预览计划', plan: 'p1' } }] },
-      { calls: [{ name: 'dv_story_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
-      view => ({ calls: [{ name: 'dv_proj_wait', args: { records: scheduledOf(view.toolResults.at(-1)) } }] }),
+      view => ({ calls: [{ name: 'dv_shot_render', args: {
+        reason: '镜头1', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: '产品特写', duration_sec: 1,
+        inputs: { reference: assetIdOf(view.toolResults[0], 'asset') },
+      } }] }),
+      view => ({ calls: [{ name: 'dv_shot_render', args: {
+        reason: '镜头2', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: '产品使用场景', duration_sec: 2,
+        inputs: { reference: assetIdOf(view.toolResults[0], 'asset') },
+      } }] }),
+      view => ({ calls: [{ name: 'dv_timeline_create', args: {
+        reason: '成片', assets: [assetIdOf(view.toolResults[1], 'video'), assetIdOf(view.toolResults[2], 'video')],
+      } }] }),
     ],
     endText: '两个镜头已渲染。',
   },
@@ -425,18 +393,11 @@ describe('chat with the agent', () => {
     expect(errors).toEqual([])
   })
 
-  it('the agent\'s plan shows on the canvas at once, and the agent reads the project\'s current state', async () => {
+  it('the agent reads the project\'s current state', async () => {
     const { page, errors } = await openPage()
     await newProject(page)
     await send(page, '做两个镜头的广告')
     await waitChat(page, '两个镜头已渲染', 60_000)
-    const workspace = page.locator('[data-dv-workspace]')
-    await workspace.locator('[data-node-type="plan"]').first().waitFor({ timeout: 15_000 })
-    expect(await workspace.getByRole('button', { name: '接受', exact: true }).count()).toBe(0)
-    // The agent read only the records it waited for: each render with its intent, and no project summary or report.
-    const waited = textOf(requestFor('做两个镜头的广告')?.messages.filter(message => message.role === 'tool').at(-1)?.content)
-    expect(waited).toMatch(/^done \S+ \(shot 1 of plan p1 v1\): /m)
-    expect(waited).not.toContain('"report"')
     await send(page, '只回复八')
     await waitChat(page, '收到八')
     // The project state reached the agent once, as the project state message; the system prompt holds only the rules.
@@ -477,52 +438,6 @@ describe('chat with the agent', () => {
     await waitChat(page, '收到九')
     // The undo in the timeline view reached the agent as a project update.
     expect(projectTextOf(requestFor('只回复九'))).toMatch(/^- history: the current step is \S+; dv_proj_history_list shows which steps are undone or discarded\.$/m)
-    expect(errors).toEqual([])
-  })
-
-  it('the plan approval waits for the user\'s agreement in the conversation; meanwhile the canvas plan editor shows it', async () => {
-    const { page, errors } = await openPage()
-    const projectId = await newProject(page)
-    await send(page, '先给我看计划')
-    await waitChat(page, '现在渲染这两个镜头吗')
-    // Project refused the call without user_approved and told the agent to ask in the conversation.
-    const answered = requestFor('先给我看计划')?.messages.filter(message => message.role === 'tool').map(message => textOf(message.content)) ?? []
-    const refusal = answered.find(text => text.includes('dv_story_approve needs the user\'s agreement'))
-    expect(refusal).toContain('user_approved: true')
-    // The agent's question is bold, and the refused step is named for creators, never by its wire tool name.
-    expect(await chat(page).locator('strong', { hasText: '现在渲染这两个镜头吗？' }).count()).toBeGreaterThan(0)
-    const approveRows = chat(page).locator('[data-tool="dv_story_approve"]')
-    await waitFor(async () => (await approveRows.allTextContents()).some(text => text.includes('批准分镜计划')), 'the 批准分镜计划 step', 10_000)
-    expect(await chat(page).getByText('dv_story_approve').count()).toBe(0)
-    // Nothing renders before the user agrees: the plan waits for approval.
-    const currentState = async (): Promise<WireState> => await harness.api.get(`/api/dv/state?project=${projectId}`) as WireState
-    const waiting = await currentState()
-    expect(waiting.components).not.toHaveProperty(['story', 'approvals', 'p1'])
-    expect(waiting.components.proj.records.filter(record => record.operation === 'shot.render')).toHaveLength(0)
-    // The canvas plan editor lists each shot with its reference image, the image in place of the bare Picture 1, and its model and task.
-    const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
-    await waitFor(async () => {
-      // The canvas fits its view after the nodes load; a click during that move can miss, so click until it opens.
-      await page.locator('[data-dv-workspace] [data-node-type="plan"]').first().click({ timeout: 10_000 })
-      return await editor.isVisible()
-    }, 'the plan editor', 30_000)
-    expect(await editor.getByText('待批准').count()).toBe(1)
-    const shots = editor.locator('ol > li')
-    expect(await shots.count()).toBe(2)
-    for (const shot of await shots.all()) {
-      expect(await shot.locator('img[alt=""]').count()).toBe(1)
-      expect(await shot.locator('img[alt="Picture 1"]').count()).toBe(1)
-      // The 参考图 row names the image as Picture 1; the prompt text shows the image instead of the bare token.
-      expect(await shot.innerText()).toContain('Picture 1 · ask-first.png')
-      expect(await shot.locator('p').innerText()).not.toContain('Picture 1')
-      expect(await shot.locator('[data-testid="dv-canvas-shot-mode"]').textContent()).toBe('fasth3 · 参考图生成')
-    }
-    await page.keyboard.press('Escape')
-    // The user agrees in the conversation; the agent approves with user_approved and both shots render.
-    await send(page, '可以渲染')
-    await waitChat(page, '两个镜头已渲染', 60_000)
-    const rendered = (await currentState()).components.proj.records.filter(record => record.operation === 'shot.render')
-    expect(rendered.map(record => [record.started_by?.slot, record.status])).toEqual([[1, 'done'], [2, 'done']])
     expect(errors).toEqual([])
   })
 
@@ -610,14 +525,10 @@ describe('chat with the agent', () => {
 
   it('问 agent on a canvas take prefills the open project\'s chat composer with a reference the agent can resolve', async () => {
     const { projectId, assetId } = await seedProject('改片段', 'ref.png')
-    const plan = await runOperation(projectId, 'plan.create', {
-      title: '改片段', references: [assetId], shots: [{ prompt: '镜头甲', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }],
-    })
-    await runOperation(projectId, 'story.approve', { plan: plan.report?.['plan'] })
-    const done = await waitFor(async () => {
-      const state = await harness.api.get(`/api/dv/state?project=${projectId}`) as WireState
-      return state.components.proj.records.find(record => record.operation === 'shot.render' && record.status === 'done')
-    }, 'the take to render', 60_000)
+    const done = await runOperation(projectId, 'shot.render', {
+      modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: '镜头甲', duration_sec: 1,
+    }, [{ role: 'reference', ref: assetId }])
+    expect(done.status).toBe('done')
     // Visit another project first, so a stale composer from it would be a wrong target.
     const { page, errors } = await openPage()
     await newProject(page)

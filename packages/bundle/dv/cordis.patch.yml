@@ -110,8 +110,7 @@
     - id: dv-timeline
       name: '@dv/timeline'
 
-    # The story workflow: dv_story_preview and dv_story_approve preview and approve a plan version; its story-directing
-    # skill holds the order of calls.
+    # The workflow skills, such as story-directing, which hold the order of calls of each workflow.
     - id: dv-workflow-story
       name: '@dv/workflow-story'
 

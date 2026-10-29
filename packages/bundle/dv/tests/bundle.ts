@@ -31,7 +31,7 @@ import DvModels, { type ModelEntry } from '@dv/models'
 import DvImageGenerate from '@dv/image-generate'
 import * as SglangDiffusion from '@dv/sglang-diffusion'
 import * as SglangOmni from '@dv/sglang-omni'
-import DvStory from '@dv/workflow-story'
+import * as WorkflowStory from '@dv/workflow-story'
 import * as yaml from 'js-yaml'
 import { vi } from 'vitest'
 import { FakeModel, FFMPEG, FFPROBE } from '../../../dv/api/tests/support.ts'
@@ -77,7 +77,7 @@ const PLUGINS: Record<string, object> = {
   '@dv/character': DvCharacter, '@dv/location': DvLocation, '@dv/style': DvStyle,
   '@dv/shot-plan': DvShotPlan, '@dv/shot-render': DvShotRender, '@dv/text-node': DvTextNode, '@dv/timeline': DvTimeline,
   '@dv/api': DvApi, '@dv/chat-references': DvChatReferences,
-  '@dv/models': DvModels, '@dv/fastvideo': FakeFastVideo, '@dv/uniserve': FakeUniserve, '@dv/workflow-story': DvStory,
+  '@dv/models': DvModels, '@dv/fastvideo': FakeFastVideo, '@dv/uniserve': FakeUniserve, '@dv/workflow-story': WorkflowStory,
   '@dv/sglang-diffusion': SglangDiffusion, '@dv/image-generate': DvImageGenerate,
   '@dv/sglang-omni': SglangOmni, '@dv/audio-generate': DvAudioGenerate,
 }

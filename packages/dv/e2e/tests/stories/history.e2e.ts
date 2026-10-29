@@ -1,10 +1,10 @@
 // User stories of the History panel (历史), walked in Chromium against the shipped profile with a fake video backend that
 // renders playable VP9 videos and a scripted agent model. Projects are seeded through the `/api/dv` routes; agent turns
 // go through the chat. Every story checks the action rows the creator sees: their order, labels, who, thumbnails, the
-// 当前 mark of the current step, the renders folded under a plan approval, the focus a selected row gives the canvas or
-// the timeline, and live updates. The history works like an image editor's History panel: undo (Ctrl+Z, the undo
-// button), redo (Shift+Ctrl+Z, the redo button) and 回到这一步 in a row's ⋮ menu only move 当前 and add no row; the rows
-// after 当前 are greyed; a new edit after a move discards them.
+// 当前 mark of the current step, the focus a selected row gives the canvas or the timeline, and live updates. The history
+// works like an image editor's History panel: undo (Ctrl+Z, the undo button), redo (Shift+Ctrl+Z, the redo button) and
+// 回到这一步 in a row's ⋮ menu only move 当前 and add no row; the rows after 当前 are greyed; a new edit after a move
+// discards them.
 import type { Browser, BrowserContext, Locator, Page } from 'playwright'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { ProjectRecord, WireState } from '../wire-state.ts'
@@ -337,41 +337,6 @@ describe('History panel', () => {
     expect((await stateOf(project.id)).components.timeline.timelines[0]?.clips).toHaveLength(1)
     // The current row offers no 回到这一步; the project already shows it.
     expect(await rowOf(page, again.id).locator('[data-testid="dv-history-step-actions"]').count()).toBe(0)
-    expect(page.errors).toEqual([])
-  })
-
-  it('a plan approval folds the renders it scheduled under its row; the toggle shows them', async () => {
-    const id = await createProject('history-fold')
-    const imported = await runOperation(id, 'asset.import', { base64: PNG_BASE64, mime: 'image/png', name: 'ref.png' })
-    const shots = [1, 2].map(shot => ({ prompt: `history-fold shot ${String(shot)}`, duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }))
-    const plan = await runOperation(id, 'plan.create', { title: '折叠', references: [imported.outputs[0] ?? ''], shots })
-    expect(plan.report?.['plan']).toBe('p1')
-    const approval = await runOperation(id, 'story.approve', { plan: 'p1' })
-    const scheduled = approval.report?.['scheduled'] as string[]
-    expect(scheduled).toHaveLength(3)
-    const page = await openPage()
-    await gotoProject(page, id)
-    await openHistory(page)
-    const approvalRow = rowOf(page, approval.id)
-    await expect.poll(() => approvalRow.innerText()).toContain('批准分镜计划 p1 v1')
-    expect(await rowOf(page, plan.id).innerText()).toContain('新建分镜计划《折叠》')
-    // Folded: the scheduled renders and the timeline are not rows until the toggle opens them.
-    for (const record of scheduled) expect(await rowOf(page, record).count()).toBe(0)
-    const fold = historyPanel(page).locator('[data-testid="dv-history-fold"]')
-    await expect.poll(() => fold.innerText(), { timeout: 30_000 }).toMatch(/^▸ 渲染 2 个镜头$/)
-    await fold.click()
-    await expect.poll(() => fold.getAttribute('aria-expanded')).toBe('true')
-    // The folded rows follow the approval's scheduled order: 渲染镜头 1, 渲染镜头 2, then 新建时间线.
-    expect(await shownRecords(page)).toEqual([approval.id, ...scheduled, plan.id, imported.id, expect.any(String)])
-    expect(await rowOf(page, scheduled[2] ?? '').innerText()).toContain('新建时间线')
-    const firstShot = rowOf(page, scheduled[0] ?? '')
-    expect(await firstShot.innerText()).toContain('渲染镜头 1')
-    expect(await firstShot.getAttribute('data-actor')).toBe('system')
-    expect(await firstShot.innerText()).toContain('自动')
-    // Only render rows show a thumbnail: the approval row has none, and its first render shows the take's still.
-    expect(await approvalRow.locator('[data-testid="dv-history-thumb"]').count()).toBe(0)
-    const thumb = firstShot.locator('[data-testid="dv-history-thumb"]')
-    await expect.poll(() => thumb.evaluate(element => element instanceof HTMLImageElement && element.naturalWidth > 0)).toBe(true)
     expect(page.errors).toEqual([])
   })
 

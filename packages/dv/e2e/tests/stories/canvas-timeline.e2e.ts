@@ -1,6 +1,6 @@
 // User stories of the canvas (画布) and the timeline editor (时间线), walked in Chromium against the shipped profile with a
 // fake video backend that renders playable VP9 videos and a scripted agent model. Projects are seeded through the
-// `/api/dv` routes, so each story starts from plans, takes, and several timelines without waiting for an agent. Every story
+// `/api/dv` routes, so each story starts from takes and several timelines without waiting for an agent. Every story
 // asserts what the creator must see after the action; a story whose expected behavior is not built yet fails.
 import type { Browser, BrowserContext, Locator, Page } from 'playwright'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
@@ -60,10 +60,10 @@ async function clipAt(project: string, position: number): Promise<string> {
 }
 
 /**
- * Seed a project: an imported reference, a character, an approved plan whose shots last 1 s, 2 s, 1 s, … and render
- * into timeline t1, and extra timelines made of the first clips.
+ * Seed a project: an imported reference, a character, takes of shots that last 1 s, 2 s, 1 s, … rendered from the
+ * character, timeline t1 holding the takes in shot order, and extra timelines made of the first clips.
  * @param title - the project title.
- * @param shots - how many shots the plan has.
+ * @param shots - how many shots to render.
  * @param timelines - for each extra timeline (t2, t3, …, created without a name), how many clips it starts with.
  * @returns the project, its clip assets, and its shot records.
  */
@@ -72,25 +72,18 @@ async function seedProject(title: string, shots = 3, timelines: number[] = []): 
   const id = created.id
   const imported = await runOperation(id, 'asset.import', { base64: PNG_BASE64, mime: 'image/png', name: 'ref.png' })
   await runOperation(id, 'character.create', { character: 'c1', name: 'Dancer' }, [{ role: 'reference', ref: imported.outputs[0] ?? '' }])
-  const plan = await runOperation(id, 'plan.create', {
-    title, references: ['c1@1'],
-    shots: Array.from({ length: shots }, (_, index) => ({
-      prompt: `${title} shot ${String(index + 1)}`, duration_sec: 1 + (index % 2), modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3',
-    })),
-  })
-  await runOperation(id, 'story.approve', { plan: plan.report?.['plan'] })
-  const state = await waitFor(async () => {
-    const current = await stateOf(id)
-    const done = current.components.proj.records.filter(record => record.operation === RENDER_OPERATION && record.status === 'done')
-    const clips = current.components.timeline.timelines[0]?.clips ?? []
-    return done.length === shots && clips.length === shots && clips.every(clip => clip.asset !== null) ? current : null
-  }, `${String(shots)} rendered shots of ${title}`, 120_000)
-  const clipAssets = (state.components.timeline.timelines[0]?.clips ?? []).flatMap(clip => clip.asset === null ? [] : [clip.asset])
+  const renders: ProjectRecord[] = []
+  for (let index = 0; index < shots; index += 1) {
+    renders.push(await runOperation(id, RENDER_OPERATION, {
+      modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: `${title} shot ${String(index + 1)}`, duration_sec: 1 + (index % 2),
+    }, [{ role: 'reference', ref: 'c1@1' }]))
+  }
+  const clipAssets = renders.map(render => render.outputs[0] ?? '')
+  await runOperation(id, 'timeline.create', { timeline: 't1', assets: clipAssets })
   for (const [index, count] of timelines.entries()) {
     await runOperation(id, 'timeline.create', { timeline: `t${String(index + 2)}`, assets: clipAssets.slice(0, count) })
   }
-  const shotRecords = state.components.proj.records.filter(record => record.operation === RENDER_OPERATION).map(record => record.id)
-  return { id, clipAssets, shots: shotRecords }
+  return { id, clipAssets, shots: renders.map(render => render.id) }
 }
 
 /**
@@ -349,7 +342,7 @@ describe('canvas stories', () => {
     await page.keyboard.press('Escape')
     await expect.poll(() => editor.count()).toBe(0)
     // Escape also closes the editor when focus left it, for example after clicking the editor's video.
-    await page.locator('[data-node-type="plan"]').first().click()
+    await page.locator('[data-node-type="take"]').first().click()
     await expect.poll(() => editor.count()).toBe(1)
     await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur() })
     await page.keyboard.press('Escape')
@@ -369,49 +362,6 @@ describe('canvas stories', () => {
     // The bottom-right corner of the canvas holds no node, no editor, and no toolbar.
     await page.mouse.click(frame.x + frame.width - 20, frame.y + frame.height - 20)
     await expect.poll(() => editor.count(), { timeout: 2000 }).toBe(0)
-  })
-
-  it('a wheel over an open plan editor scrolls the editor and leaves the canvas alone; a wheel over empty canvas zooms', async () => {
-    const project = await seedProject('canvas-editor-wheel')
-    const v1 = (await stateOf(project.id)).components.plan.plans['p1']?.[0]
-    if (v1 === undefined) throw new Error('the seeded plan is not p1')
-    // An unapproved v2 with 40 shots makes the plan editor taller than the canvas.
-    await runOperation(project.id, 'plan.update', {
-      plan: 'p1', title: v1.title, references: v1.references,
-      shots: Array.from({ length: 40 }, (_, index) => ({
-        prompt: `canvas-editor-wheel shot ${String(index + 1)}`, duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3',
-      })),
-    })
-    const page = await openPage()
-    await gotoProject(page, project.id)
-    await fitCanvas(page)
-    const plan = page.locator('[data-node-type="plan"]')
-    await expect.poll(() => plan.textContent()).toContain('第 2 版')
-    await plan.click()
-    const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
-    await expect.poll(() => editor.count()).toBe(1)
-    // The editor panel keeps its header fixed and scrolls the shot cards in the body under it.
-    const body = editor.locator(':scope > div').first()
-    const scroll = await body.evaluate(el => ({ top: el.scrollTop, scrollable: el.scrollHeight - el.clientHeight > 200 }))
-    expect(scroll).toEqual({ top: 0, scrollable: true })
-    // The pan-and-zoom surface is the first transformed direct child of the canvas.
-    const surface = page.locator('[data-testid="dv-canvas-view"] > div[style*="transform"]').first()
-    const transform = async (): Promise<string> => await surface.evaluate(el => (el as HTMLElement).style.transform)
-    const before = await transform()
-    const box = await editor.boundingBox()
-    if (box === null) throw new Error('editor has no box')
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-    await page.mouse.wheel(0, 300)
-    await expect.poll(() => body.evaluate(el => el.scrollTop)).toBeGreaterThan(0)
-    expect(await transform()).toBe(before)
-    const frame = await page.locator('[data-testid="dv-canvas-view"]').boundingBox()
-    if (frame === null) throw new Error('canvas has no box')
-    // The centered editor leaves a margin around it; the bottom-right corner of the dimmed canvas holds no node, no editor,
-    // and no toolbar.
-    await page.mouse.move(frame.x + frame.width - 8, frame.y + frame.height - 8)
-    await page.mouse.wheel(0, -200)
-    await expect.poll(transform).not.toBe(before)
-    expect(page.errors).toEqual([])
   })
 
   it('switching to the timeline and back, or to another project, leaves no editor behind', async () => {
@@ -483,106 +433,6 @@ describe('canvas stories', () => {
     // Two cards that both read 镜头 1 leave the creator guessing which is the new version.
     const titles = await takes.evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label')))
     expect(new Set(titles).size).toBe(titles.length)
-  })
-
-  it('a plan updated from 2 to 3 shots stays one plan node with v1 and v2, renders only 镜头 3, and the timeline reuses the first two takes', async () => {
-    const project = await seedProject('canvas-plan-versions', 2)
-    const v1 = (await stateOf(project.id)).components.plan.plans['p1']?.[0]
-    if (v1 === undefined) throw new Error('the seeded plan is not p1')
-    // Shot 3 continues shot 2, so its render starts from the last still of shot 2's take.
-    await runOperation(project.id, 'plan.update', {
-      plan: 'p1', title: v1.title, references: v1.references,
-      shots: [...v1.shots, {
-        prompt: 'canvas-plan-versions shot 3 from @[首帧](dv:input/first_frame)',
-        duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', continue_previous: true,
-      }],
-    })
-    await runOperation(project.id, 'story.approve', { plan: 'p1' })
-    const state = await waitFor(async () => {
-      const current = await stateOf(project.id)
-      const done = current.components.proj.records.filter(record => record.operation === RENDER_OPERATION && record.status === 'done')
-      return done.length === 3 && (current.components.timeline.timelines[0]?.clips.length ?? 0) === 3 ? current : null
-    }, 'shot 3 of plan p1 v2 renders onto timeline t1', 120_000)
-    // The approval of v2 renders only the added shot and puts all three takes on the plan's one timeline.
-    expect(state.components.timeline.timelines.map(timeline => timeline.id)).toEqual(['t1'])
-    expect(state.components.timeline.timelines[0]?.clips.map(clip => clip.asset).slice(0, 2)).toEqual(project.clipAssets)
-    const renders = state.components.proj.records.filter(record => record.operation === RENDER_OPERATION)
-    expect(renders.map(render => [...['plan', 'version'].map(key => state.components.proj.records.find(record => record.id === render.started_by?.record)?.report?.[key]), render.started_by?.slot])).toEqual([
-      ['p1', 1, 1], ['p1', 1, 2], ['p1', 2, 3],
-    ])
-    const firstFrames = (render: ProjectRecord | undefined): unknown[] =>
-      (render?.inputs ?? []).filter(input => input.role === 'first_frame').map(input => input.ref)
-    expect(firstFrames(renders[2])).toEqual([{ record: renders[1]?.id, output: 1 }])
-    expect(firstFrames(renders[1])).toEqual([])
-    const page = await openPage()
-    await gotoProject(page, project.id)
-    const plans = page.locator('[data-node-type="plan"]')
-    await expect.poll(() => plans.count()).toBe(1)
-    expect(await plans.getAttribute('data-node-id')).toBe('plan:p1')
-    expect(await plans.textContent()).toContain('第 2 版')
-    const takes = page.locator('[data-node-type="take"]')
-    await expect.poll(() => takes.count()).toBe(3)
-    expect(await takes.evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label')))).toEqual(['镜头 1', '镜头 2', '镜头 3'])
-    // Each take hangs off the one plan node.
-    for (const render of renders) expect(await page.locator(`path[data-edge="plan:p1>${render.id}"]`).count()).toBe(1)
-    await plans.click()
-    const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
-    const versions = editor.getByRole('group', { name: '分镜计划版次' }).getByRole('button')
-    expect(await versions.allTextContents()).toEqual(['第 1 版', '第 2 版'])
-    expect(await editor.getByRole('button', { name: '第 2 版' }).getAttribute('aria-pressed')).toBe('true')
-    await expect.poll(() => editor.locator('ol > li').count()).toBe(3)
-    // Each shot card names its model and task, and its 首帧 row says whether it continues the previous shot.
-    expect(await editor.locator('[data-testid="dv-canvas-shot-mode"]').allTextContents()).toEqual(['fasth3 · 参考图生成', 'fasth3 · 参考图生成', 'fasth3 · 参考图生成'])
-    expect(await editor.locator('ol > li dd').filter({ hasText: /^(接上一镜头|无 · 不接上一镜头)$/ }).allTextContents()).toEqual(['无 · 不接上一镜头', '无 · 不接上一镜头', '接上一镜头'])
-    await editor.getByRole('button', { name: '第 1 版' }).click()
-    await expect.poll(() => editor.locator('ol > li').count()).toBe(2)
-    expect(page.errors).toEqual([])
-  })
-
-  it('the canvas shows only the current plan version and its takes; a jump back shows that step\'s version again', async () => {
-    const project = await seedProject('canvas-current', 3)
-    const v1 = (await stateOf(project.id)).components.plan.plans['p1']?.[0]
-    if (v1 === undefined) throw new Error('the seeded plan is not p1')
-    const base = { plan: 'p1', title: v1.title, references: v1.references }
-    const added = [...v1.shots, { prompt: 'canvas-current shot 4', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }]
-    // v2 adds shot 4 and is approved; v3 changes shot 2 and is never approved; v4 returns to the three v1 shots.
-    await runOperation(project.id, 'plan.update', { ...base, shots: added })
-    await runOperation(project.id, 'story.approve', { plan: 'p1' })
-    const v2State = await waitFor(async () => {
-      const current = await stateOf(project.id)
-      const clips = current.components.timeline.timelines[0]?.clips ?? []
-      return clips.length === 4 && clips.every(clip => clip.asset !== null) ? current : null
-    }, 'shot 4 of plan p1 v2 renders onto timeline t1', 120_000)
-    const v2Layout = v2State.components.proj.records.findLast(record => record.operation === 'timeline.update')
-    const shot4 = v2State.components.proj.records.find(record => record.operation === RENDER_OPERATION && record.started_by?.slot === 4)
-    if (v2Layout === undefined || shot4 === undefined) throw new Error('the v2 approval wrote no timeline update or shot 4 render')
-    await runOperation(project.id, 'plan.update', { ...base, shots: added.map((shot, index) => index === 1 ? { ...shot, prompt: 'canvas-current shot 2, closer' } : shot) })
-    await runOperation(project.id, 'plan.update', { ...base, shots: v1.shots })
-    await runOperation(project.id, 'story.approve', { plan: 'p1' })
-    await waitFor(async () => {
-      const clips = (await stateOf(project.id)).components.timeline.timelines[0]?.clips ?? []
-      return clips.length === 3 ? clips : null
-    }, 'the v4 approval lays the three v1 takes on timeline t1')
-    const page = await openPage()
-    await gotoProject(page, project.id)
-    const plans = page.locator('[data-node-type="plan"]')
-    const takes = page.locator('[data-node-type="take"]')
-    await expect.poll(() => plans.textContent()).toContain('第 4 版')
-    // v4 reuses the v1 takes: three takes, no take of the removed shot 4.
-    await expect.poll(() => takes.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-node-id')))).toEqual(project.shots)
-    expect(await takes.evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label')))).toEqual(['镜头 1', '镜头 2', '镜头 3'])
-    await plans.click()
-    const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
-    await editor.getByRole('button', { name: '第 3 版' }).click()
-    await expect.poll(() => editor.getByText('已被第 4 版取代').count()).toBe(1)
-    expect(await editor.getByText('待批准').count()).toBe(0)
-    await page.keyboard.press('Escape')
-    // A jump back to the v2 approval's timeline update shows plan v2 and its four takes again.
-    await harness.api.post('/api/dv/undo', { project: project.id, to: v2Layout.id })
-    await expect.poll(() => plans.textContent(), { timeout: 15_000 }).toContain('第 2 版')
-    await expect.poll(() => takes.count()).toBe(4)
-    expect(await page.locator(`[data-node-id="${shot4.id}"]`).count()).toBe(1)
-    expect(page.errors).toEqual([])
   })
 
   it('问 agent prefills the chat with a reference to the node and closes the editor', async () => {
@@ -1280,21 +1130,25 @@ describe('timeline stories', () => {
     await expect.poll(() => link.count()).toBe(0)
   })
 
-  it('an approved 3-shot plan shows 3 placeholder clips at once, each becomes playable as its render finishes, and export waits for all', async () => {
+  it('a timeline of 3 running renders shows 3 placeholder clips at once, each becomes playable as its render finishes, and export waits for all', async () => {
     const created = await harness.api.post('/api/dv/projects', { title: 'timeline-pending', surface: 'canvas' }) as { id: string }
     const project = created.id
     const imported = await runOperation(project, 'asset.import', { base64: PNG_BASE64, mime: 'image/png', name: 'ref.png' })
     await runOperation(project, 'character.create', { character: 'c1', name: 'Dancer' }, [{ role: 'reference', ref: imported.outputs[0] ?? '' }])
-    const plan = await runOperation(project, 'plan.create', {
-      title: 'timeline-pending', references: ['c1@1'],
-      shots: [1, 2, 3].map(shot => ({ prompt: `timeline-pending shot ${String(shot)}`, duration_sec: shot === 2 ? 2 : 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' })),
-    })
     harness.backend.hold()
+    // Each render call waits at the held backend until a release, so its record stays running.
+    const rendering = [1, 2, 3].map(shot => runOperation(project, RENDER_OPERATION, {
+      modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: `timeline-pending shot ${String(shot)}`, duration_sec: shot === 2 ? 2 : 1,
+    }, [{ role: 'reference', ref: 'c1@1' }]))
     try {
-      await runOperation(project, 'story.approve', { plan: plan.report?.['plan'] })
-      // The approval puts all three shots on timeline t1 right away, as placeholders of their running renders.
-      const pending = await stateOf(project)
-      expect(pending.components.timeline.timelines[0]?.clips.map(clip => clip.asset)).toEqual([null, null, null])
+      const running = await waitFor(async () => {
+        const renders = (await stateOf(project)).components.proj.records.filter(record => record.operation === RENDER_OPERATION)
+        return renders.length === 3 ? renders.sort((a, b) => String(a.params['prompt']).localeCompare(String(b.params['prompt']))) : null
+      }, 'three running renders of timeline-pending')
+      // Timeline t1 lays out the video outputs of the running renders as placeholders right away.
+      await runOperation(project, 'timeline.create', { timeline: 't1' }, running.map(render => ({ role: 'clip', ref: `${render.id}#0` })))
+      const clipAssets = async () => (await stateOf(project)).components.timeline.timelines[0]?.clips.map(clip => clip.asset)
+      await expect.poll(clipAssets).toEqual([null, null, null])
       const page = await openPage()
       await gotoProject(page, project)
       const takes = page.locator('[data-node-type="take"]')
@@ -1303,7 +1157,7 @@ describe('timeline stories', () => {
       await viewToggle(page, '时间线').click()
       const status = (): Promise<string[]> => page.locator('[data-clip-position]').evaluateAll(clips => clips.map(clip => clip.getAttribute('data-clip-status') ?? ''))
       await expect.poll(status).toEqual(['rendering', 'rendering', 'rendering'])
-      // Each placeholder keeps the length of its shot, so the timeline is as long as the plan.
+      // Each placeholder keeps the length of its shot, so the timeline is as long as the three shots.
       expect((await timelineTime(page))[1]).toBeCloseTo(4, 1)
       expect(await page.locator('[data-clip-position="1"]').getAttribute('title')).toContain('渲染中…')
       expect(await page.locator('[data-clip-position="1"] [data-trim]').count()).toBe(0)
@@ -1339,6 +1193,7 @@ describe('timeline stories', () => {
       expect(page.errors).toEqual([])
     } finally {
       harness.backend.releaseAll()
+      await Promise.allSettled(rendering)
     }
   })
 
@@ -1443,7 +1298,7 @@ describe('going back and keep anyway', () => {
     const takes = page.locator('[data-node-type="take"]')
     await expect.poll(() => takes.count(), { timeout: 15_000 }).toBe(1)
     expect(await page.locator('[data-testid="dv-kit-branch-menu"]').count()).toBe(0)
-    // A plain edit is the step to come back to; the seeded renders fold under the plan approval's row.
+    // A plain edit is the step to come back to.
     const earlier = (await runOperation(project.id, 'timeline.rename', { timeline: 't1', name: 'go-back base' })).id
     // Two more edits: one more take on the canvas and a second timeline.
     await runOperation(project.id, RENDER_OPERATION, { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'go-back shot', duration_sec: 1 }, [{ role: 'reference', ref: 'c1@1' }])
@@ -1516,7 +1371,7 @@ describe('English interface', () => {
       return [...found]
     })
     expect(await chinese()).toEqual([])
-    for (const kind of ['take', 'character', 'plan']) {
+    for (const kind of ['take', 'character']) {
       await page.locator(`[data-node-type="${kind}"]`).first().click()
       await page.locator('[data-testid="dv-canvas-node-editor"]').waitFor()
       expect(await chinese()).toEqual([])

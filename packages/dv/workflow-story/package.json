@@ -3,21 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Story workflow of DreamVerse: story.preview reports what approving a shot plan version renders and why a render would be refused, without writing; story.approve renders the version's new or changed shots and lays every take on the plan's timeline.",
+  "description": "Workflow skills of DreamVerse: serves each skills/<name>/SKILL.md, such as story-directing and ad-making, through one FileSystemSkillProvider while the DSH skill registry is mounted.",
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {
-    "@deepseek-ai/dsh-brand": "workspace:*",
     "@deepseek-ai/dsh-skill": "workspace:*",
     "@deepseek-ai/dsh-skill-filesystem": "workspace:*",
     "@dv/project": "workspace:*",
-    "@dv/shot-plan": "workspace:*",
     "@dv/shot-render": "workspace:*",
     "@dv/text-node": "workspace:*",
-    "@dv/timeline": "workspace:*",
-    "@dv/workflow-kit": "workspace:*"
+    "@dv/timeline": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
@@ -27,13 +24,7 @@
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/cordis-plugin-include": "workspace:~",
     "@deepseek-ai/cordis-plugin-loader": "workspace:~",
-    "@deepseek-ai/dsh-llm": "workspace:*",
-    "@deepseek-ai/dsh-system-prompt": "workspace:*",
-    "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
-    "@dv/asset-pool": "workspace:*",
-    "@dv/ffmpeg": "workspace:*",
-    "@dv/models": "workspace:*",
     "@types/node": "^22.20.0"
   }
 }

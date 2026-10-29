@@ -21,13 +21,7 @@
       "path": "../../skill/skill-filesystem"
     },
     {
-      "path": "../../util/brand"
-    },
-    {
       "path": "../project"
-    },
-    {
-      "path": "../shot-plan"
     },
     {
       "path": "../shot-render"
@@ -37,9 +31,6 @@
     },
     {
       "path": "../timeline"
-    },
-    {
-      "path": "../workflow-kit"
     }
   ]
 }

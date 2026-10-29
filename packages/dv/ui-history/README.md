@@ -1,5 +1,5 @@
 ---
-description: "The DreamVerse History panel: the steps of a project's history list, one row per action, newest first, with the current position marked, steps after it greyed, approval folds, output previews, undo and redo, 回到这一步 on a row, and focus of a record on the canvas or the timeline."
+description: "The DreamVerse History panel: the steps of a project's history list, one row per action, newest first, with the current position marked, steps after it greyed, folds of started records, output previews, undo and redo, 回到这一步 on a row, and focus of a record on the canvas or the timeline."
 kind: "package-reference"
 ---
 
