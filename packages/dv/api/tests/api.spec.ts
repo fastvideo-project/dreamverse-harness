@@ -162,7 +162,7 @@ describe('dvApi', () => {
     expect(projects.find(entry => entry.id === projectId)).toEqual({ id: projectId, title: 'demo', created_at: expect.any(String), current: false })
     expect(projects.every(entry => !entry.current)).toBe(true)
     // The project a chat session is bound to comes first and is marked, whatever its age.
-    const bound = (await fixture.call('dv_proj_create', { title: 'from chat' })).value as { project_id: string }
+    const bound = ((await fixture.call('dv_proj_create', { title: 'from chat' })).value as { summary: { project_id: string } }).summary
     await fixture.newProject('newest')
     expect(fixture.handlers.listProjects('anonymous').map(entry => [entry.title, entry.current])).toEqual([['from chat', true], ['newest', false], ['demo', false]])
     expect(fixture.handlers.listProjects('').map(entry => entry.title)).toEqual(['newest', 'from chat', 'demo'])

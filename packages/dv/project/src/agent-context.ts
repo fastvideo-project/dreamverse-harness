@@ -53,7 +53,7 @@ export function projectContext(project: DvProject, deps: ProjToolDeps, sessionId
   const projectId = session === null ? null : project.sessionProject(session)
   const ruleText = rules(project.listReferenceKinds())
   if (projectId === null) return `${ruleText}\n\nNo project is bound to this conversation yet: start the work with dv_proj_create.`
-  const summary = projectSummary(project, deps, projectId, project.getState(projectId), null)
+  const summary = projectSummary(project, deps, projectId, project.getState(projectId), { written: null, reports: true })
   return [
     ruleText, '',
     `This conversation belongs to project ${projectId}: do all work in it and never call dv_proj_create or dv_proj_open.`,

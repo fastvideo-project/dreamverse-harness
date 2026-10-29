@@ -223,7 +223,7 @@ describe('dvStory', () => {
       timelines: { p1: 't1' },
     })
     const summary = await fixture.call('dv_proj_state', {})
-    expect(summary.isError ? null : summary.value).toMatchObject({ story_approvals: [{ plan: 'p1', approved_version: 1, timeline: 't1' }] })
+    expect(summary.isError ? null : summary.value).toMatchObject({ summary: { story_approvals: [{ plan: 'p1', approved_version: 1, timeline: 't1' }] } })
   })
 
   it('after a stored plan.approve log, the first story approval renders every shot into the next timeline', async () => {

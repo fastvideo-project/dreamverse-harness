@@ -166,7 +166,7 @@ describe('chat attachments', () => {
     emit('user/message', message)
     const created = await callAs('dv_proj_create', { title: 'dance' })
     if (created.isError) throw new Error(created.error.message)
-    const projectId = (created.value as { project_id: ProjectId }).project_id
+    const projectId = (created.value as { summary: { project_id: ProjectId } }).summary.project_id
     emit('user/message', message)
     // A message the user did not type imports nothing.
     emit('user/message', { source: { kind: 'plugin' }, content: [{ type: 'image', attachment: image }] })
@@ -186,7 +186,7 @@ describe('chat attachments', () => {
     const { fixture, attachments, emit, callAs } = await start()
     const created = await callAs('dv_proj_create', { title: 'files' })
     if (created.isError) throw new Error(created.error.message)
-    const projectId = (created.value as { project_id: ProjectId }).project_id
+    const projectId = (created.value as { summary: { project_id: ProjectId } }).summary.project_id
     const contents = { 'clip.mp4': 'chat-video', 'notes.txt': 'chat-notes', 'blob': 'chat-blob' }
     const files = Object.entries(contents).map(([name, content]) => attachments.saveFile(fixture.writeFile(name, content), content.length))
     emit('user/message', { source: { kind: 'user' }, content: files.map(attachment => ({ type: 'file', attachment })) })
@@ -209,7 +209,7 @@ describe('chat attachments', () => {
     const { fixture, emit, callAs } = await start()
     const created = await callAs('dv_proj_create', { title: 'remote file' })
     if (created.isError) throw new Error(created.error.message)
-    const projectId = (created.value as { project_id: ProjectId }).project_id
+    const projectId = (created.value as { summary: { project_id: ProjectId } }).summary.project_id
     const remote: FileAttachmentRef = { attachmentId: brandString<FileAttachmentRef['attachmentId']>('remote'), name: 'clip.mp4', bytes: 1 }
     emit('user/message', { source: { kind: 'user' }, content: [{ type: 'file', attachment: remote }] })
     const timeline = await callAs('dv_timeline_create', { reason: 'order', assets: [] })
@@ -221,7 +221,7 @@ describe('chat attachments', () => {
     const { fixture, emit, callAs } = await start()
     const created = await callAs('dv_proj_create', { title: 'mentions' })
     if (created.isError) throw new Error(created.error.message)
-    const projectId = (created.value as { project_id: ProjectId }).project_id
+    const projectId = (created.value as { summary: { project_id: ProjectId } }).summary.project_id
     const user: RecordOrigin = { actor: 'user', surface: 'asset_pool', session: null, turn: null, tool_call: null, intent: 'import' }
     const picture = await fixture.project.run({ ...user, project: projectId, operation: 'asset.import', inputs: [], params: { path: fixture.writeFile('face.png'), mime: 'image/png' } })
     const asset = picture.outputs[0] as AssetId
@@ -241,7 +241,7 @@ describe('chat attachments', () => {
     const { fixture, emit, callAs } = await start()
     const created = await callAs('dv_proj_create', { title: 'discarded import' })
     if (created.isError) throw new Error(created.error.message)
-    const projectId = (created.value as { project_id: ProjectId }).project_id
+    const projectId = (created.value as { summary: { project_id: ProjectId } }).summary.project_id
     const user: RecordOrigin = { actor: 'user', surface: 'asset_pool', session: null, turn: null, tool_call: null, intent: 'import' }
     const picture = await fixture.project.run({ ...user, project: projectId, operation: 'asset.import', inputs: [], params: { path: fixture.writeFile('old.png'), mime: 'image/png' } })
     const asset = picture.outputs[0] as AssetId
