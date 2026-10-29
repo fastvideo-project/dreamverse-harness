@@ -24,14 +24,13 @@
  * service is mounted, Project's rules reach the agent as the `dv:project` prompt section (the `agent-context` module),
  * whose text is the same at every step. While the DSH `sessionProjections` service is mounted, the project's state
  * reaches the agent as the project state message and afterwards as project update messages appended to the
- * conversation (the `project-updates` module), folded from what the session's log shows the agent saw (the
- * `project-sight` module).
+ * conversation (the `project-updates` module), folded from what the session's log shows the agent saw.
  *
  * The asset pool registers itself with {@link DvProject.registerAssetStore}; until it does, a run that names an input
  * asset or imports an output fails.
  *
  * The internal modules (`record-store`, `runner`, `scheduler`, `history`, `reducers`, `subscriptions`,
- * `sessions`, `agent-tools`, `proj-tools`, `agent-context`, `project-sight`, `project-updates`) are private;
+ * `sessions`, `agent-tools`, `proj-tools`, `agent-context`, `project-updates`) are private;
  * `CONTRACTS.md` in this package specifies each of them.
  *
  * @module @dv/project
