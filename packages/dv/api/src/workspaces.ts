@@ -6,7 +6,7 @@
  *
  * Routes:
  * - `GET /api/dv/workspaces` returns `{entry_path, projects: [{id, title, created_at, path, workspace_id}], bindings}`,
- *   where `entry_path` is the directory of the Workspace that holds chats started before a project exists and
+ *   where `entry_path` is the directory of the Workspace that replaces DSH's first-use default Workspace and
  *   `bindings` maps each saved agent session to its project.
  * - `POST /api/dv/workspaces` with `{project, workspace_id}` links the project to its Workspace.
  * - `POST /api/dv/workspaces/bind` with `{session, project}` binds an agent session to a project.

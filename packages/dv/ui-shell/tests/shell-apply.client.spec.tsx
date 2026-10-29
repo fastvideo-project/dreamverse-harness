@@ -44,6 +44,7 @@ async function mountShell(links: WireWorkspaces = LINKS) {
   const serverFetch: typeof fetch = (input) => {
     const path = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://host').pathname
     if (path === '/api/dv/workspaces') return json(links)
+    if (path === '/api/dv/projects/untitled') return json({ path: '/dv/DreamVerse/Untitled project' })
     if (path === '/api/dv/projects/summary') return json([])
     return json({ error: `no route ${path}` }, 404)
   }
@@ -109,9 +110,6 @@ async function mountWithEntryChats(chats = ENTRY_CHATS) {
   const bench = await mountShell(links)
   for (const { id, ...summary } of chats) await bench.runtime.sessions.add({ id, summary })
   await bench.runtime.workspaces.update((draft) => {
-    draft.items = draft.items.map(item => item.path === '/dv/entry'
-      ? { ...item, sessionIds: ['blank-entry' as SessionId, ...chats.map(chat => chat.id as SessionId)] }
-      : item)
     draft.archivedSessionIds = ['chat-gone' as SessionId]
   })
   bench.runtime.sessions.stubCreate(() => Promise.resolve('blank-entry' as SessionId))
@@ -226,7 +224,7 @@ describe('the shell plugin', () => {
     expect(bench.runtime.slots.entries('sidebar.right.pane.tab')).toEqual([])
   })
 
-  it('starts DSH\'s New Session in the open project, as the entry page\'s blank chat without one, and logs a failed start', async () => {
+  it('starts DSH\'s New Session in the open project, as the entry page\'s blank chat in a fresh folder without one, and logs a failed start', async () => {
     const bench = await mountShell()
     const created: unknown[] = []
     let next = 'blank-entry'
@@ -242,7 +240,7 @@ describe('the shell plugin', () => {
     next = 'blank-p1'
     startSession()
     await waitFor(() => { expect(bench.openSession).toHaveBeenLastCalledWith('blank-p1') })
-    expect(created).toEqual([{ workspaceId: 'ws-entry' }, { workspaceId: 'ws-p1' }])
+    expect(created).toEqual([{ cwd: '/dv/DreamVerse/Untitled project' }, { workspaceId: 'ws-p1' }])
 
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     bench.runtime.sessions.stubCreate(() => Promise.reject(new Error('create refused')))

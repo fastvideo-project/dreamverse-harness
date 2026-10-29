@@ -172,7 +172,7 @@ export async function startBase(options: BaseFixtureOptions = {}): Promise<BaseF
     await context.plugin(ToolRuntime).await()
   }
   await context.plugin(DvProject, {
-    root: join(root, 'projects'), gpuConcurrency: 1, cpuConcurrency: 4, sessionRoot: join(root, 'sessions'),
+    root: join(root, 'projects'), gpuConcurrency: 1, cpuConcurrency: 4, sessionRoot: join(root, 'sessions'), projectsFolder: join(root, 'DreamVerse'),
     promptSectionOrder: 4900,
   }).await()
   await context.plugin(DvFfmpeg, { ffmpegPath: FFMPEG, ffprobePath: FFPROBE, outputLimitBytes: 1_048_576 }).await()

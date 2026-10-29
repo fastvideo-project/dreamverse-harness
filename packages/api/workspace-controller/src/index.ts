@@ -29,6 +29,7 @@ import type {
 
 export type * from './types.ts'
 export { DirectoryPickerController } from './directory-picker.ts'
+export { defaultWorkspaceDirectory } from './default-directory.ts'
 
 /** First-use directory policy for the Host account. */
 export interface Config {

@@ -80,7 +80,7 @@ async function start(options: { model?: boolean } = {}): Promise<Fixture> {
   row('system-prompt', 'SystemPrompt', [])
   row('tools', 'ToolRuntime', [])
   row('dv-project', 'DvProject', [
-    `root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`,
+    `root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`, `projectsFolder: ${join(dir, 'DreamVerse')}`,
   ])
   row('dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe'])
   row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])

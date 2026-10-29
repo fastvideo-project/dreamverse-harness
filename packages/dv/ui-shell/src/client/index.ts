@@ -90,8 +90,8 @@ export function apply(ctx: ClientContext): void {
   }, 'ui-shell: New Session in the open project')
   ctx.effect(() => {
     // DSH's first-use start creates a default Workspace in the user's documents folder, which fails on hosts without
-    // one and toasts "Unable to create default workspace". DreamVerse's first chat belongs to the entry Workspace, so
-    // first-use initialization prepares that one instead.
+    // one and toasts "Unable to create default workspace". First-use initialization prepares the entry Workspace
+    // instead.
     const workspaces = ctx.workspaces
     Object.defineProperty(workspaces, 'initializeDefault', {
       configurable: true, writable: true,

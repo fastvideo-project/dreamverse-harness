@@ -25,6 +25,7 @@ This file specifies the internal modules of the `dvProject` service: what each o
 | History and reducer registry    | `src/history.ts`, `src/reducers.ts`                                                  | `tests/history.spec.ts`, `tests/reducers.spec.ts`           |
 | Sessions, tools, agent context  | `src/sessions.ts`, `src/agent-tools.ts`, `src/proj-tools.ts`, `src/agent-context.ts` | `tests/agent-tools.spec.ts`, `tests/proj-tools.spec.ts`     |
 | Project messages                | `src/project-updates.ts`                                                             | `tests/project-updates.spec.ts`                             |
+| Project folders                 | `src/folders.ts`                                                                     | `tests/folders.spec.ts`                                     |
 
 The runner and history call the record store; the runner calls the reducer registry and the scheduler; the reducer registry calls `store.ancestors`; the runner calls `history.discardedSteps`. Tests use the real modules (`tests/support.ts` `startModules()`), not mocks of other modules. Run them from `packages/dv`: `../../node_modules/.bin/vitest run --config vitest.config.ts project/tests`.
 
@@ -52,6 +53,7 @@ The runner and history call the record store; the runner calls the reducer regis
         |  agent/pre-step listener, dvProjectSight projection                  |
         |    (sessionProjections mounted)                  -> project-updates  |
         |  registerAssetStore: the store the runner and agent-tools read       |
+        |  newProjectFolder                                -> folders          |
         v                                                                      |
   runner ----> store.line / append                                            |
     |    ----> reducers.stateAt / getState / assetsOf                          |
@@ -65,7 +67,7 @@ The runner and history call the record store; the runner calls the reducer regis
                                          subscriptions.emit, scheduler.recordFinished
 ```
 
-Only `record-store.ts` imports `node:fs` or knows a file path under the root. The runner's scratch directory for `execute` is the one other file system use (a temporary directory under the OS temp directory).
+Only `record-store.ts` imports `node:fs` or knows a file path under the root, and only `folders.ts` makes folders in the DreamVerse folder (`newFolder`: a non-recursive `mkdir` of `<name>`, then `<name> 2`, `<name> 3`, … on `EEXIST`, with path separators in the name replaced by `-`; `invalid_params` for an empty name). The service resolves the DreamVerse folder when it starts: `projectsFolder`, else `defaultWorkspaceDirectory('DreamVerse')` of `@deepseek-ai/dsh-api-workspace-controller`, else it fails to start with an error that names `DV_PROJECTS_FOLDER`. The runner's scratch directory for `execute` is the one other file system use (a temporary directory under the OS temp directory).
 
 ## 3. Rules for every module
 

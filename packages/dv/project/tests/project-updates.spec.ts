@@ -113,7 +113,7 @@ async function start(bound = true): Promise<Fixture> {
   await context.plugin(SystemPrompt, {}).await()
   await context.plugin(ToolRuntime).await()
   await context.plugin(DvProject, {
-    root: join(root, 'projects'), sessionRoot: join(root, 'sessions'), cpuConcurrency: 4, gpuConcurrency: 4, promptSectionOrder: 4900,
+    root: join(root, 'projects'), sessionRoot: join(root, 'sessions'), projectsFolder: join(root, 'DreamVerse'), cpuConcurrency: 4, gpuConcurrency: 4, promptSectionOrder: 4900,
   }).await()
   const project = context.dvProject
   const assets = new MemoryAssets()

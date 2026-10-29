@@ -116,6 +116,7 @@ export async function bootBundle(extra: Record<string, object> = {}): Promise<Bu
   const dir = mkdtempSync(join(tmpdir(), 'dv-composition-'))
   // The environment the bundle's `!!js` configuration reads.
   vi.stubEnv('DV_STATE_ROOT', dir)
+  vi.stubEnv('DV_PROJECTS_FOLDER', join(dir, 'DreamVerse'))
   vi.stubEnv('DV_FFMPEG', FFMPEG)
   vi.stubEnv('DV_FFPROBE', FFPROBE)
   const globals = globalThis as typeof globalThis & { __dvComposition?: Record<string, object> }

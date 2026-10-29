@@ -371,6 +371,15 @@ export class DvClient {
   }
 
   /**
+   * Make an empty folder in the DreamVerse folder for a chat that has no project yet.
+   * @param name - the folder name, such as the localized "Untitled project".
+   * @returns the folder.
+   */
+  untitledFolder(name: string): Promise<{ path: string }> {
+    return this.post('/api/dv/projects/untitled', { name })
+  }
+
+  /**
    * Bind a chat session to a project.
    * @param session - the chat session.
    * @param project - the project.

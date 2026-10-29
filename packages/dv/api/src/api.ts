@@ -299,6 +299,15 @@ export class ApiHandlers {
   }
 
   /**
+   * Make an empty folder in the DreamVerse folder for a chat that has no project yet.
+   * @param raw - `{name}`, the folder name, such as the browser's localized "Untitled project".
+   * @returns `{path}`, the folder.
+   */
+  async untitledFolder(raw: unknown): Promise<{ path: string }> {
+    return { path: await this.services.project.newProjectFolder(stringOf(objectOf(raw)['name'], 'name')) }
+  }
+
+  /**
    * @param wanted - the requested project title.
    * @returns the title itself when no listed project has it; else its base (without a trailing number) followed by the
    *   lowest free number from the requested one, or from 2, upwards.

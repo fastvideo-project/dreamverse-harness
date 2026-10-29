@@ -15,6 +15,9 @@
       "path": "../../../vendor/schemastery"
     },
     {
+      "path": "../../api/workspace-controller/tsconfig.host.json"
+    },
+    {
       "path": "../../attachment/attachment"
     },
     {

@@ -64,6 +64,7 @@ export const EVENTS_PATH = '/dv/events'
 /** The Fetch route paths, below the Connection's `/api` channel. */
 export const ROUTES = {
   projects: '/api/dv/projects',
+  untitled: '/api/dv/projects/untitled',
   projectSummaries: '/api/dv/projects/summary',
   state: '/api/dv/state',
   operations: '/api/dv/operations',
@@ -135,6 +136,7 @@ export default class DvApi extends Service {
           ? answer(() => api.listProjects(query(request, 'session')))
           : withBody(body => api.createProject(body))(request),
       },
+      { path: ROUTES.untitled, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.untitledFolder(body)) },
       {
         path: ROUTES.projectSummaries, methods: ['GET'], requestBody: 'buffered',
         fetch: request => answer(() => api.listProjectSummaries(query(request, 'project'), query(request, 'timeline'))),

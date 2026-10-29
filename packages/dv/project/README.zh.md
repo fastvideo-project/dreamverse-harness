@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-用项目目录和会话目录挂载插件。每个组件插件先用 `registerComponent` 注册自己的组件键，再注册归约函数和操作，`registerReducer` 和 `registerOperation` 拒绝未注册的键（`invalid_params`）；项目注册自己的键 `proj`，核心不保存组件列表。拥有引用种类的插件在注册组件键之后用 `registerReferenceKind({kind, component, assetsOf, createdBy, latest})` 注册它（第二个所有者得到 `kind_exists`，种类 `asset`、`record` 和 `version` 得到 `invalid_params`），并在 `ReferenceKinds` 中声明该种类；输入以 `<id>@<version>` 指向一个版本，`parseReference` 按唯一拥有该版本的种类解析一段引用文字，`listReferenceKinds` 列出各种类供智能体文字使用。ID 在各种类之间唯一：种类所有者的创建操作拒绝 `kindsWithId(state, id)` 列出的 ID，`latestVersion(state, kind, id)` 给出一个 ID 的最新版本。素材库加载时用 `registerAssetStore` 注册它的存储，聊天会话用 `bindSession` 绑定到项目。每个归约函数经 `Reducer.agentSummary` 把自己切片的字段加入项目摘要。操作在 `OperationSpec.pendingInputRoles` 中列出可以指向尚未完成的记录输出的输入角色：运行器立即记录并执行这样的调用，`resolved_asset` 为 null，生产记录完成后由记录的当前形式填入（时间线中等待渲染的片段使用它）。在 `execute` 中运行其他操作的操作在每个运行请求中传入 `started_by: {record, slot, lane?}`：发起这次调用的记录、调用方在自己的序列中给这次调用的位置（或 null），以及调用方的并行序列，例如一个变体；运行器把它复制到新记录上，从不读取它，没有该字段的记录不是由记录发起的。操作可以声明 `OperationSpec.label`，即 `{zh, en}`：视图为它显示的名称；Project 只保存它。
+用项目目录、会话目录和 DreamVerse 文件夹挂载插件。DreamVerse 文件夹存放新聊天的文件夹：`newProjectFolder(name)` 在其中创建空文件夹 `<name>`，已存在时依次用 `<name> 2`、`<name> 3`……，两次调用不会得到同一个文件夹。每个组件插件先用 `registerComponent` 注册自己的组件键，再注册归约函数和操作，`registerReducer` 和 `registerOperation` 拒绝未注册的键（`invalid_params`）；项目注册自己的键 `proj`，核心不保存组件列表。拥有引用种类的插件在注册组件键之后用 `registerReferenceKind({kind, component, assetsOf, createdBy, latest})` 注册它（第二个所有者得到 `kind_exists`，种类 `asset`、`record` 和 `version` 得到 `invalid_params`），并在 `ReferenceKinds` 中声明该种类；输入以 `<id>@<version>` 指向一个版本，`parseReference` 按唯一拥有该版本的种类解析一段引用文字，`listReferenceKinds` 列出各种类供智能体文字使用。ID 在各种类之间唯一：种类所有者的创建操作拒绝 `kindsWithId(state, id)` 列出的 ID，`latestVersion(state, kind, id)` 给出一个 ID 的最新版本。素材库加载时用 `registerAssetStore` 注册它的存储，聊天会话用 `bindSession` 绑定到项目。每个归约函数经 `Reducer.agentSummary` 把自己切片的字段加入项目摘要。操作在 `OperationSpec.pendingInputRoles` 中列出可以指向尚未完成的记录输出的输入角色：运行器立即记录并执行这样的调用，`resolved_asset` 为 null，生产记录完成后由记录的当前形式填入（时间线中等待渲染的片段使用它）。在 `execute` 中运行其他操作的操作在每个运行请求中传入 `started_by: {record, slot, lane?}`：发起这次调用的记录、调用方在自己的序列中给这次调用的位置（或 null），以及调用方的并行序列，例如一个变体；运行器把它复制到新记录上，从不读取它，没有该字段的记录不是由记录发起的。操作可以声明 `OperationSpec.label`，即 `{zh, en}`：视图为它显示的名称；Project 只保存它。
 
 提示词以 `@[<label>](dv:<kind>/<id>)` 引用项目条目。两种引用语法是 [`src/grammar.ts`](src/grammar.ts) 中的字符串函数，它不导入任何宿主模块，因此浏览器通过入口 `@dv/project/grammar` 用内核自己的代码读写它们。`parsePromptCitations` 和 `citedAsset` 读取引用；`citedInput` 读取按角色引用调用输入的引用，例如 `dv:input/first_frame`；`citedElement` 读取其他引用的种类和 ID，`citationTarget` 读取任一引用 URI 的种类和 ID，`formatCitation` 把它们写回；`elementCitationUri` 按引用种类给出输入引用所属元素的引用 `dv:<kind>/<id>`。`formatCitation` 是引用的唯一写入函数：它在 ID 中编码 `(` 和 `)`，从不写入空标签或带换行的标签。`splitInputRef` 和 `formatInputSyntax` 只按语法读写输入引用文本（`<asset>`、`<record>#<output>`、`<id>@<version>`）。[`src/citations.ts`](src/citations.ts) 中的 `promptAssets` 和 `replacePromptCitations` 按调用读取这些引用。模型提供方插件用它们把每个引用换成它的模型的写法。
 
@@ -36,11 +36,13 @@ kind: "package-reference"
   config:
     root: $DV_STATE_ROOT/projects
     sessionRoot: $DV_STATE_ROOT/sessions
+    projectsFolder: $DV_PROJECTS_FOLDER
 ```
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `root` | 必填 | 每个项目一个项目文件夹 `<ProjectId>/` 的目录；不存在时创建。项目的 DreamVerse 文件位于该文件夹的 `.dreamverse/` 目录中 |
+| `projectsFolder` | `<Documents>/deepseek-harness/DreamVerse` | DreamVerse 文件夹；不存在时创建。未设置时沿用 DSH 首次使用工作区的规则；主机的文档文件夹无法解析时，服务启动失败，错误信息指明 `DV_PROJECTS_FOLDER` |
 | `cpuConcurrency` | `4` | 可同时运行的已调度 `cpu` 记录数 |
 | `gpuConcurrency` | `1` | 可同时运行的已调度 `gpu` 记录数 |
 | `sessionRoot` | 必填 | 每个聊天会话一个 `<session>.json` 的目录，记录会话绑定的项目 |

@@ -56,7 +56,7 @@ async function start(): Promise<Fixture> {
   await context.plugin(SystemPrompt, {}).await()
   await context.plugin(ToolRuntime).await()
   const fiber = context.plugin(DvProject, {
-    root: join(root, 'projects'), sessionRoot: join(root, 'sessions'), cpuConcurrency: 4, gpuConcurrency: 1,
+    root: join(root, 'projects'), sessionRoot: join(root, 'sessions'), projectsFolder: join(root, 'DreamVerse'), cpuConcurrency: 4, gpuConcurrency: 1,
     promptSectionOrder: 4900,
   })
   await fiber.await()

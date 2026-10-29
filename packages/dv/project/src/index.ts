@@ -28,14 +28,16 @@
  * The asset pool registers itself with {@link DvProject.registerAssetStore}; until it does, a run that names an input
  * asset or imports an output fails.
  *
- * The internal modules (`record-store`, `runner`, `scheduler`, `history`, `reducers`, `subscriptions`,
+ * The internal modules (`folders`, `record-store`, `runner`, `scheduler`, `history`, `reducers`, `subscriptions`,
  * `sessions`, `agent-tools`, `proj-tools`, `agent-context`, `project-updates`) are private;
  * `CONTRACTS.md` in this package specifies each of them.
  *
  * @module @dv/project
  */
 import { randomUUID } from 'node:crypto'
+import { isAbsolute } from 'node:path'
 import { Service, type Context } from '@deepseek-ai/cordis'
+import { defaultWorkspaceDirectory } from '@deepseek-ai/dsh-api-workspace-controller'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
@@ -44,6 +46,7 @@ import { PROMPT_SECTION, projectContext } from './agent-context.ts'
 import { AgentTools, parseInputRef, parseInputs, turnOf } from './agent-tools.ts'
 import { History } from './history.ts'
 import type { OperationSpec } from './operation-types.ts'
+import { ProjectFolders } from './folders.ts'
 import { projTools, type ProjToolDeps } from './proj-tools.ts'
 import { registerProjectUpdates } from './project-updates.ts'
 import { RecordStore } from './record-store.ts'
@@ -87,6 +90,12 @@ export interface Config {
    * missing. The DreamVerse files of a project live in the folder's `.dreamverse/` directory.
    */
   root: string
+  /**
+   * The DreamVerse folder, an absolute path that holds the folders of new projects (`DV_PROJECTS_FOLDER`); created
+   * when missing. Unset, it is `<Documents>/deepseek-harness/DreamVerse`, from the DSH first-use Workspace rule; the
+   * service then fails to start on a host whose Documents folder does not resolve.
+   */
+  projectsFolder?: string
   /** Scheduled records of `cpu` operations that may run at the same time. */
   cpuConcurrency: number
   /** Scheduled records of `gpu` operations that may run at the same time. */
@@ -100,6 +109,7 @@ export interface Config {
 /** Loader validation. */
 export const Config: z<Config> = z.object({
   root: z.string().required(),
+  projectsFolder: z.string(),
   cpuConcurrency: z.number().default(4),
   gpuConcurrency: z.number().default(1),
   sessionRoot: z.string().required(),
@@ -111,6 +121,8 @@ export default class DvProject extends Service {
   static Config = Config
 
   private readonly subscriptions = new Subscriptions()
+  private projectsFolder = ''
+  private readonly folders = new ProjectFolders(() => this.projectsFolder)
   private readonly store: RecordStore
   private readonly reducers: ReducerRegistry
   private readonly history: History
@@ -126,7 +138,7 @@ export default class DvProject extends Service {
   private registerOperationTool: ((spec: OperationSpec) => () => void) | null = null
   private readonly toolDisposers = new Map<string, () => void>()
 
-  constructor(ctx: Context, config: Config) {
+  constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'dvProject')
     this.subscriptions.onListenerError = (error) => {
       ctx.logger('dvProject').warn('a project subscriber threw: %s', error instanceof Error ? error.message : String(error))
@@ -199,6 +211,32 @@ export default class DvProject extends Service {
     this.runner.recover().catch((error: unknown) => {
       ctx.logger('dvProject').warn('could not end unfinished records: %s', error instanceof Error ? error.message : String(error))
     })
+  }
+
+  protected async [Service.init](): Promise<void> {
+    if (this.config.projectsFolder === undefined) {
+      try {
+        this.projectsFolder = await defaultWorkspaceDirectory('DreamVerse', undefined, new AbortController().signal)
+      } catch (error) {
+        throw new Error('dvProject: the Documents folder does not resolve on this host, so new projects have no folder. '
+          + 'Set DV_PROJECTS_FOLDER (Config.projectsFolder) to the folder that holds them.', { cause: error })
+      }
+      return
+    }
+    if (!isAbsolute(this.config.projectsFolder)) {
+      throw new Error(`dvProject: DV_PROJECTS_FOLDER (Config.projectsFolder) must be an absolute path: '${this.config.projectsFolder}'.`)
+    }
+    this.projectsFolder = this.config.projectsFolder
+  }
+
+  /**
+   * Make an empty folder in the DreamVerse folder: `<name>`, else `<name> 2`, `<name> 3`, … Two calls never get one
+   * folder.
+   * @param name - the folder name; a path separator in it becomes `-`.
+   * @returns the folder path. Throws `invalid_params` for a name that is empty, `.` or `..`.
+   */
+  newProjectFolder(name: string): Promise<string> {
+    return this.folders.newFolder(name)
   }
 
   /**

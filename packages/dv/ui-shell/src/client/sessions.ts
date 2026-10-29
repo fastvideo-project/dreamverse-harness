@@ -41,21 +41,35 @@ export function useProjectSessions({ useSessions, useWorkspaces }: SessionListHo
 }
 
 /**
- * The entry chats, newest first: the sessions of the entry Workspace (the Workspace at `links.entry_path`) that have a
- * turn, without archived sessions and sessions bound to a project, which that project lists. `goHome` opens exactly
- * these sessions when it gets their ID.
+ * Whether a session is an entry chat: a top-level chat with a turn that no project holds, so no Workspace lists it and
+ * no binding names it. `goHome` opens exactly these sessions when it gets their ID.
+ * @param summary - the session.
+ * @param workspaces - the DSH Workspaces.
+ * @param bindings - the saved chat session → project bindings.
+ * @returns whether it is an entry chat.
+ */
+export function isEntryChat(
+  summary: SessionSummary | undefined,
+  workspaces: ReadonlyArray<{ sessionIds: readonly string[] }>,
+  bindings: Record<string, string> | undefined,
+): summary is SessionSummary {
+  return summary !== undefined && !summary.blank && summary.origin !== 'subagent' && bindings?.[summary.id] === undefined
+    && !workspaces.some(item => item.sessionIds.includes(summary.id))
+}
+
+/**
+ * The entry chats ({@link isEntryChat}), newest first, without archived sessions.
  * @param hooks - the DSH list hooks.
  * @returns the session summaries; empty until the links load.
  */
 export function useEntrySessions({ useSessions, useWorkspaces }: SessionListHooks): SessionSummary[] {
-  const entryPath = useShell(s => s.links?.entry_path)
-  const bindings = useShell(s => s.links?.bindings)
-  const entrySessions = useWorkspaces(s => s.items.find(item => item.path === entryPath)?.sessionIds)
+  const links = useShell(s => s.links)
+  const workspaces = useWorkspaces(s => s.items)
   const archived = useWorkspaces(s => s.archivedSessionIds)
-  const byId = useSessions(s => s.byId)
-  return (entrySessions ?? [])
-    .filter(id => !archived.includes(id) && bindings?.[id] === undefined)
-    .map(id => byId[id])
-    .filter((summary): summary is SessionSummary => summary !== undefined && !summary.blank)
+  const sessions = useSessions(s => s)
+  if (links === null) return []
+  return sessions.ids
+    .map(id => sessions.byId[id])
+    .filter((summary): summary is SessionSummary => isEntryChat(summary, workspaces, links.bindings) && !archived.includes(summary.id))
     .sort((a, b) => b.updatedAt - a.updatedAt)
 }

@@ -17,6 +17,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { pickText } from '@dv/ui-kit/locale.ts'
 import type { WireSession } from '@dv/ui-kit/types.ts'
+import { isEntryChat } from './sessions.ts'
 import { createSidebarFold } from './sidebar.ts'
 import { getShell, markSessionChoice, refreshLinks, setShell, shellClient } from './store.ts'
 
@@ -31,6 +32,9 @@ const LIST_READY_TIMEOUT_MS = 5000
 
 /** The `sessionStorage` key prefix of the blank session this tab created in a Workspace. */
 const TAB_BLANK_KEY = 'dv-shell.tab-blank'
+
+/** The {@link TAB_BLANK_KEY} suffix of this tab's blank entry chat, whose folder belongs to no Workspace yet. */
+const UNTITLED_KEY = 'untitled'
 
 /** A session log smaller than this many bytes holds no turn; used for sessions the client list has not loaded. */
 const BLANK_LOG_BYTES = 1024
@@ -49,8 +53,9 @@ export interface ShellActions {
   /** Start a chat session in the project's Workspace. */
   newSession(projectId: string): Promise<void>
   /**
-   * Show the entry page: `sessionId` when it is a started, unbound chat of the entry Workspace (a URL restore or a row of
-   * the navigator's 对话 section), else this browser tab's blank chat session in the entry Workspace.
+   * Show the entry page: `sessionId` when it is an entry chat (a URL restore or a row of the navigator's 对话 section),
+   * else this browser tab's blank entry chat while it is still blank and in no Workspace, else a new chat in a fresh
+   * folder of the DreamVerse folder.
    */
   goHome(sessionId?: string): Promise<void>
   /** Open a DSH sidebar page (Plugins, MCP, or another `sidebar.panellist` entry) in the main column. */
@@ -208,9 +213,12 @@ export function createActions(ctx: ClientContext): ShellActions {
       .sort((a, b) => b.updatedAt - a.updatedAt)
   }
 
-  /** Blank sessions this browser tab created, by Workspace, kept in `sessionStorage` so a reload reuses them. */
+  /**
+   * Blank sessions this browser tab created, by Workspace or {@link UNTITLED_KEY}, kept in `sessionStorage` so a reload
+   * reuses them.
+   */
   const tabBlanks = {
-    get(workspaceId: WorkspaceId): SessionId | undefined {
+    get(workspaceId: string): SessionId | undefined {
       try {
         return (window.sessionStorage.getItem(`${TAB_BLANK_KEY}:${workspaceId}`) ?? undefined) as SessionId | undefined
       } catch (_error: unknown) {
@@ -218,7 +226,7 @@ export function createActions(ctx: ClientContext): ShellActions {
         return undefined
       }
     },
-    set(workspaceId: WorkspaceId, sessionId: SessionId): void {
+    set(workspaceId: string, sessionId: SessionId): void {
       try {
         window.sessionStorage.setItem(`${TAB_BLANK_KEY}:${workspaceId}`, sessionId)
       } catch (_error: unknown) {
@@ -271,20 +279,22 @@ export function createActions(ctx: ClientContext): ShellActions {
   const goHome = async (sessionId?: string): Promise<void> => {
     leavePage()
     setShell({ projectId: null })
-    const links = getShell().links ?? await refreshLinks()
     await Promise.all([whenReady(ctx.sessions.list), whenReady(ctx.workspaces.list)])
-    const workspaceId = await workspaceAt(links.entry_path, 'DreamVerse')
     if (getShell().projectId !== null) return
-    const entry = ctx.workspaces.list.getSnapshot().items.find(item => item.workspaceId === workspaceId)
-    const summary = sessionId === undefined ? undefined : ctx.sessions.list.getSnapshot().byId[sessionId as SessionId]
-    if (
-      summary !== undefined && !summary.blank && entry?.sessionIds.includes(summary.id) === true
-      && links.bindings[summary.id] === undefined
-    ) {
-      if (summary.id !== getShell().sessionId) showSession(summary.id)
-      return
+    const sessions = ctx.sessions.list.getSnapshot()
+    const workspaces = ctx.workspaces.list.getSnapshot().items
+    const summary = sessionId === undefined ? undefined : sessions.byId[sessionId as SessionId]
+    const reused = tabBlanks.get(UNTITLED_KEY)
+    let entry = isEntryChat(summary, workspaces, getShell().links?.bindings) ? summary.id : undefined
+    const reusable = reused !== undefined && sessions.byId[reused]?.blank === true
+      && !workspaces.some(item => item.sessionIds.includes(reused))
+    if (entry === undefined && reusable) entry = reused
+    if (entry === undefined) {
+      const { path } = await shellClient.untitledFolder(pickText('未命名项目', 'Untitled project'))
+      entry = await ctx.sessions.create({ cwd: path })
+      tabBlanks.set(UNTITLED_KEY, entry)
     }
-    await openBlank(workspaceId, () => getShell().projectId === null)
+    if (getShell().projectId === null && entry !== getShell().sessionId) showSession(entry)
   }
 
   const openProject = async (projectId: string, sessionId?: string): Promise<void> => {

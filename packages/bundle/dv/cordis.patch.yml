@@ -2,6 +2,7 @@
 # chat page) or dsh-headless (one task per process). Rows that read the environment read these variables, which
 # scripts/video-harness/launch.sh prepares:
 #   DV_STATE_ROOT    where assets, project records, session bindings, and view state live (default ~/.local/state/dv)
+#   DV_PROJECTS_FOLDER  the folder that holds the folders of new chats and projects (default <Documents>/deepseek-harness/DreamVerse)
 #   DV_FFMPEG / DV_FFPROBE  media binaries
 #   DV_PUBLIC_URL    origin that serves /dv/assets to remote viewers, for links in chat cards
 #   DV_AGENT_PROVIDER / DV_AGENT_MODEL / DV_AGENT_REASONING  the agent's model route
@@ -54,6 +55,7 @@
           process.getBuiltinModule('node:path').join(
           process.env.DV_STATE_ROOT || process.getBuiltinModule('node:path').join(
           process.getBuiltinModule('node:os').homedir(), '.local/state/dv'), 'sessions')
+        projectsFolder: !!js process.env.DV_PROJECTS_FOLDER
 
     - id: dv-asset-pool
       name: '@dv/asset-pool'

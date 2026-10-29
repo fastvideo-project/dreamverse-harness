@@ -21,14 +21,13 @@ function summary(id: string, updatedAt: number, blank = false): SessionSummary {
   return { id: id as SessionId, displayTitle: id, running: false, blank, updatedAt, retainedBy: {} }
 }
 
-const sessions = { byId: Object.fromEntries([
+const rows = [
   summary('s1', 1), summary('s2', 5), summary('s3', 3), summary('s4', 4), summary('s5', 6, true), summary('s6', 7),
-].map(row => [row.id, row])) }
+  { ...summary('s7', 8), origin: 'subagent' as const },
+]
+const sessions = { ids: rows.map(row => row.id), byId: Object.fromEntries(rows.map(row => [row.id, row])) }
 const workspaces = {
-  items: [
-    { workspaceId: 'ws-entry', path: '/dv/entry', sessionIds: ['s1', 's2', 's3', 's4', 's5'] },
-    { workspaceId: 'ws-p1', path: '/dv/p1', sessionIds: ['s6'] },
-  ],
+  items: [{ workspaceId: 'ws-p1', path: '/dv/p1', sessionIds: ['s6'] }],
   archivedSessionIds: ['s4'],
 }
 const hooks: SessionListHooks = {
@@ -42,7 +41,7 @@ afterEach(() => {
 })
 
 describe('useEntrySessions', () => {
-  it('lists the started chats of the entry Workspace that are not archived or bound, newest first', () => {
+  it('lists the started top-level chats that no Workspace holds and no binding names, without archived ones, newest first', () => {
     setShell({ links: LINKS })
     const { result } = renderHook(() => useEntrySessions(hooks))
     expect(result.current.map(row => row.id)).toEqual(['s3', 's1'])

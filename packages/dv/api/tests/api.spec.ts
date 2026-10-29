@@ -3,7 +3,7 @@
  * operation calls from the canvas and the timeline, the one history line that every edit joins, undo, the history,
  * the Fetch routes, and the event stream.
  */
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import { join } from 'node:path'
 import type { AddressInfo } from 'node:net'
@@ -318,6 +318,13 @@ describe('dvApi', () => {
     expect(created.status).toBe(200)
     expect(created.json).toMatchObject({ title: 'posted', id: expect.any(String), created_at: expect.any(String) })
     expect((await call(fixture, ROUTES.projects, { method: 'POST', body: {} })).status).toBe(400)
+    // A chat with no project gets a fresh empty folder whose name no other folder has.
+    expect(await call(fixture, ROUTES.untitled, { method: 'POST', body: { name: 'Untitled project' } }))
+      .toEqual({ status: 200, json: { path: join(fixture.root, 'DreamVerse', 'Untitled project') } })
+    expect(await call(fixture, ROUTES.untitled, { method: 'POST', body: { name: 'Untitled project' } }))
+      .toEqual({ status: 200, json: { path: join(fixture.root, 'DreamVerse', 'Untitled project 2') } })
+    expect(readdirSync(join(fixture.root, 'DreamVerse', 'Untitled project'))).toEqual([])
+    expect((await call(fixture, ROUTES.untitled, { method: 'POST', body: {} })).status).toBe(400)
 
     const missing = await call(fixture, ROUTES.state, { query: { project: 'nope' } })
     expect(missing.status).toBe(404)
@@ -334,7 +341,7 @@ describe('dvApi', () => {
     expect(Array.isArray(operations.json)).toBe(true)
     expect(await call(fixture, ROUTES.operation, { method: 'POST', body: { project: projectId, operation: 'no.such', surface: 'canvas' } }))
       .toMatchObject({ status: 404, json: { code: 'unknown_operation' } })
-    expect(Object.keys(ROUTES)).toEqual(['projects', 'projectSummaries', 'state', 'operations', 'tasks', 'operation', 'operationCheck', 'models', 'undo', 'redo', 'acceptStale', 'history'])
+    expect(Object.keys(ROUTES)).toEqual(['projects', 'untitled', 'projectSummaries', 'state', 'operations', 'tasks', 'operation', 'operationCheck', 'models', 'undo', 'redo', 'acceptStale', 'history'])
     for (const gone of ['/api/dv/branches/create', '/api/dv/branches/switch', '/api/dv/branches/rename']) {
       expect(fixture.connection.routes.has(gone)).toBe(false)
     }
