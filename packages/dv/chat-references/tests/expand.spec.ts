@@ -89,7 +89,7 @@ describe('dv mentions', () => {
     expect(block).toContain('(dv:record/rec-shot): made by record rec-shot')
     expect(block).toContain('record none not found')
     expect(block).toContain('unknown mention kind')
-    expect(expansionBlock('@[a](dv:asset/img1)', null, sources)).toContain('call dv_proj_open first')
+    expect(expansionBlock('@[a](dv:asset/img1)', null, sources)).toContain('this conversation has no project yet; call dv_proj_create first')
   })
 
   it('pins the host text of a version mention: the newest version, its assets, and the input text', () => {

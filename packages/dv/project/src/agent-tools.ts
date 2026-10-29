@@ -57,7 +57,7 @@ const ANONYMOUS_SESSION = 'anonymous'
 const IMAGE_MEDIA_TYPES: ReadonlySet<string> = new Set<ImageMediaType>(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 
 /** The arguments every operation tool takes besides the operation's params; they never reach the run's params. */
-const SHARED_ARGS = ['reason', 'project_id', 'inputs', 'supersedes', 'based_on'] as const
+const SHARED_ARGS = ['reason', 'inputs', 'supersedes', 'based_on'] as const
 
 /** The reference kinds as reference parsing reads them. */
 export type ReferenceKindLookup = Pick<AgentToolDeps, 'listReferenceKinds' | 'kindsWithVersion'>
@@ -236,16 +236,14 @@ export function optionalString(value: unknown): string | undefined {
 }
 
 /**
- * The project a tool call works on.
- * @param argument - the call's `project_id` argument.
+ * The project a tool call works on: the project of the call's chat session.
  * @param bound - the project the call's chat session is bound to, or null.
- * @returns the argument, else the bound project.
- * @throws Error telling the model to create or open a project first when neither names one.
+ * @returns the bound project.
+ * @throws Error telling the model to create a project first when the session has none.
  */
-export function callProject(argument: unknown, bound: ProjectId | null): ProjectId {
-  const id = optionalString(argument) ?? bound
-  if (id === null) throw new Error('No project selected: call dv_proj_create or dv_proj_open first, or pass project_id.')
-  return brandString<ProjectId>(id)
+export function callProject(bound: ProjectId | null): ProjectId {
+  if (bound === null) throw new Error('This conversation has no project yet: call dv_proj_create first.')
+  return bound
 }
 
 /**
@@ -272,9 +270,6 @@ function sharedParams(spec: OperationSpec, kinds: readonly string[]): ParameterS
     reason: {
       type: 'string', required: true,
       description: 'Why you call this, in the user\'s words or your own summary; recorded as the intent of the record.',
-    },
-    project_id: {
-      type: 'string', description: 'The project; defaults to this conversation\'s project from dv_proj_create or dv_proj_open.',
     },
     ...Object.keys(spec.inputs).length === 0 ? {} : {
       inputs: {
@@ -368,7 +363,7 @@ export class AgentTools {
     const { sessions } = this.deps
     const session = sessionOf(exec)
     await sessions.ready(session)
-    const project = callProject(args['project_id'], sessions.project(session))
+    const project = callProject(sessions.project(session))
     const origin: RecordOrigin = {
       actor: 'agent', surface: 'chat', session, turn: turnOf(this.ctx, exec), tool_call: exec.callId,
       intent: optionalString(args['reason']) ?? spec.name,

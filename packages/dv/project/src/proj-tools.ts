@@ -1,14 +1,14 @@
 /**
- * Project's own agent tools, `dv_proj_*`: create, open and rename projects, read state and history, undo and redo, accept a
- * stale record, and wait for named records. `dv_proj_wait` returns each record it waited for, and every tool except it and
- * `dv_proj_history_list` returns the project summary of the current state: Project's fields (title, head, record count,
- * stale records, recent records) and the fields each component's reducer adds
+ * Project's own agent tools, `dv_proj_*`: create and rename the conversation's project, read state and history, undo and
+ * redo, accept a stale record, and wait for named records. `dv_proj_wait` returns each record it waited for, and every tool
+ * except it and `dv_proj_history_list` returns the project summary of the current state: Project's fields (title, head,
+ * record count, stale records, recent records) and the fields each component's reducer adds
  * through `Reducer.agentSummary`. A tool that writes records leads its summary with `record`, the newest record the call wrote, and
  * names that record in its presentation metadata (`{record}`), as the operation tools do. Every tool except
  * `dv_proj_history_list` also stores what its result showed of the project as `dv_seen` (a `ProjectShown`) in its
  * presentation metadata, which the model never reads: a summary tool names the summary's project, its head as the
  * position and its recent records, and `dv_proj_wait` names the records it waited for.
- * `dv_proj_create` and `dv_proj_open` bind the chat session to its project; `dv_proj_rename` renames only that project.
+ * `dv_proj_create` binds the chat session to its project; every other tool works on that project only.
  *
  * Calls the `dvProject` service's public methods and, through {@link ProjToolDeps}, the asset store, the reducers'
  * summaries and the turn of a call. Called by the service, which registers the tools while the DSH `tools` registry is mounted.
@@ -75,13 +75,13 @@ type WaitedRecord = { record: string; status: string; intent: string; summary: s
 type WaitValue = { project: string; records: WaitedRecord[] }
 
 /**
- * The refusal a bound conversation gets when it tries to start or switch to another project: the user opened this
- * conversation inside one project, and every view beside the chat shows that project.
+ * The refusal a bound conversation gets when it tries to start another project: the user opened this conversation
+ * inside one project, and every view beside the chat shows that project.
  * @param projectId - the project the conversation belongs to.
  * @returns the error text.
  */
 function boundProjectMessage(projectId: string): string {
-  return `This conversation belongs to project ${projectId}; keep all work in it. A new project starts from a new conversation on the home page.`
+  return `This conversation belongs to project ${projectId}; keep all work in it. A new project needs a new conversation.`
 }
 
 /**
@@ -217,8 +217,7 @@ function seenMeta(value: JsonValue): { [SEEN_META_KEY]: JsonValue } {
  * @returns the tool definitions.
  */
 export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinition[] {
-  const projectParam = { project_id: { type: 'string', description: 'Defaults to this conversation\'s project.' } } as const
-  const projectOf = (exec: ToolRunContext, projectId: unknown): ProjectId => callProject(projectId, project.sessionProject(sessionOf(exec)))
+  const projectOf = (exec: ToolRunContext): ProjectId => callProject(project.sessionProject(sessionOf(exec)))
   // The project's current state, led by the record a write wrote.
   const summary = (projectId: ProjectId, record: RecordId | null = null): JsonValue =>
     projectSummary(project, deps, projectId, project.getState(projectId), { written: record, reports: true })
@@ -250,28 +249,13 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
       },
     }),
     defineTool({
-      name: 'dv_proj_open',
-      description: 'Make an existing project this conversation\'s project and read its state, '
-        + 'only when the conversation has no project yet.',
-      parameters: { project_id: { type: 'string', required: true } },
-      output: stateOutput,
-      execute: (args, exec) => {
-        const bound = project.sessionProject(sessionOf(exec))
-        const projectId = brandString<ProjectId>(args.project_id)
-        if (bound !== null && bound !== projectId) throw new Error(boundProjectMessage(bound))
-        project.openProject(projectId)
-        project.bindSession(sessionOf(exec), projectId)
-        return Promise.resolve(summary(projectId))
-      },
-    }),
-    defineTool({
       name: 'dv_proj_rename',
       description: 'Rename this conversation\'s project and read its state. A title that another project uses gets the '
         + 'suffix 2, 3, … (such as "Ad 2"); the summary\'s title is the stored one.',
       parameters: { title: { type: 'string', required: true } },
       output: stateOutput,
       execute: async (args, exec) => {
-        const projectId = callProject(undefined, project.sessionProject(sessionOf(exec)))
+        const projectId = projectOf(exec)
         await project.renameProject(projectId, args.title)
         return summary(projectId)
       },
@@ -280,22 +264,21 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
       name: 'dv_proj_state',
       description: 'Read the project: the items of each component with their IDs and versions, stale records, '
         + 'and recent records.',
-      parameters: projectParam,
+      parameters: {},
       output: stateOutput,
-      execute: (args, exec) => Promise.resolve(summary(projectOf(exec, args.project_id))),
+      execute: (_args, exec) => Promise.resolve(summary(projectOf(exec))),
     }),
     defineTool({
       name: 'dv_proj_history_list',
       description: 'List the project history, newest first: each step with its operation, status, intent, and place: current '
         + '(the state the project shows), before, or after (a step that dv_proj_redo or dv_proj_undo with to brings back).',
       parameters: {
-        ...projectParam,
         limit: { type: 'integer', description: `At most this many records; default ${HISTORY_LIMIT}.` },
         operation: { type: 'string', description: 'Only records of this operation, such as proj.create.' },
       },
       output: historyOutput,
       execute: (args, exec) => {
-        const projectId = projectOf(exec, args.project_id)
+        const projectId = projectOf(exec)
         const entries = project.listHistory({
           project: projectId, limit: args.limit ?? HISTORY_LIMIT, ...args.operation === undefined ? {} : { operation: args.operation },
         })
@@ -313,12 +296,11 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
         + 'When the user asks to roll back, return to an earlier version or undo several changes, use this tool; never rebuild '
         + 'the old state with new edits.',
       parameters: {
-        ...projectParam,
         to: { type: 'string', description: 'A record ID from dv_proj_history_list to go to; omit to go back one step.' },
       },
       output: stateOutput,
       execute: async (args, exec) => {
-        const projectId = projectOf(exec, args.project_id)
+        const projectId = projectOf(exec)
         await (args.to === undefined ? project.undo(projectId) : project.moveTo(projectId, brandString<RecordId>(args.to)))
         return summary(projectId)
       },
@@ -326,10 +308,10 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
     defineTool({
       name: 'dv_proj_redo',
       description: 'Move the project one step forward again, after an undo. A move adds no step.',
-      parameters: projectParam,
+      parameters: {},
       output: stateOutput,
-      execute: async (args, exec) => {
-        const projectId = projectOf(exec, args.project_id)
+      execute: async (_args, exec) => {
+        const projectId = projectOf(exec)
         await project.redo(projectId)
         return summary(projectId)
       },
@@ -338,10 +320,10 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
       name: 'dv_proj_stale_accept',
       description: 'Accept a stale record as it is: its stale mark and the marks it passed to records made from it go away. '
         + 'Call it only when the user accepts an out-of-date result instead of rendering it again.',
-      parameters: { ...projectParam, record: { type: 'string', required: true, description: 'The stale record ID.' } },
+      parameters: { record: { type: 'string', required: true, description: 'The stale record ID.' } },
       output: writeOutput,
       execute: async (args, exec) => {
-        const projectId = projectOf(exec, args.project_id)
+        const projectId = projectOf(exec)
         await project.acceptStale(projectId, brandString<RecordId>(args.record), originOf(deps, exec, `accept ${args.record}`))
         return written(exec, projectId)
       },
@@ -351,7 +333,6 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
       description: 'Wait until the records you name have finished or failed, then read each one: its status, its summary or '
         + 'error, and its outputs.',
       parameters: {
-        ...projectParam,
         records: {
           type: 'array', required: true, items: { type: 'string' },
           description: 'The record IDs to wait for: the records a result listed under scheduled, or a record whose status was pending.',
@@ -369,7 +350,7 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
         },
       },
       execute: async (args, exec) => {
-        const projectId = projectOf(exec, args.project_id)
+        const projectId = projectOf(exec)
         const records = args.records.map(id => brandString<RecordId>(id))
         if (records.length === 0) throw new Error('Name at least one record ID to wait for.')
         await project.wait(projectId, records)

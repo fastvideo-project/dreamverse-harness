@@ -120,7 +120,7 @@ describe('agent tools', () => {
     const schema = fixture.context.tools.schemas().find(tool => tool.name === 'dv_asset_grab_still')
     expect(schema?.description).toBe('A test operation.')
     expect(Object.keys((schema?.parameters as { properties: object }).properties).sort())
-      .toEqual(['based_on', 'inputs', 'project_id', 'prompt', 'reason', 'supersedes'])
+      .toEqual(['based_on', 'inputs', 'prompt', 'reason', 'supersedes'])
     // The description ends with the resource hint and, for a read or a deterministic operation, how calls reuse work.
     const removeRender = fixture.project.registerOperation(operation({
       name: 'shot.render', component: 'shot', resource: 'gpu', deterministic: true,
@@ -144,7 +144,7 @@ describe('agent tools', () => {
     const fixture = await start()
     fixture.project.registerOperation(operation({ name: 'asset.grab_still', component: 'asset' }))
     const refused = await fixture.call('dv_asset_grab_still', { reason: 'no project yet', prompt: 'x' })
-    expect(refused.isError && refused.error.message).toContain('No project selected')
+    expect(refused.isError && refused.error.message).toBe('This conversation has no project yet: call dv_proj_create first.')
     const projectId = await boundProject(fixture)
     fixture.turns.set('s1', 3)
     const result = await fixture.call('dv_asset_grab_still', { reason: 'the kite', prompt: 'kite' })
@@ -246,9 +246,9 @@ describe('agent tools', () => {
     const unbound = await sectionOf('s1')
     expect(unbound).toContain('DreamVerse project rules:')
     expect(unbound).toContain('- A conversation without a project starts the work with dv_proj_create. Once the DreamVerse project '
-      + 'state message, dv_proj_create or dv_proj_open names this conversation\'s project, do all work in it and never call '
-      + 'dv_proj_create or dv_proj_open again. Changes of the project that your own tool results did not show reach you as '
-      + 'DreamVerse project updates; dv_proj_state reads the whole project at any time.')
+      + 'state message or dv_proj_create names this conversation\'s project, do all work in it and never call dv_proj_create '
+      + 'again. Changes of the project that your own tool results did not show reach you as DreamVerse project updates; '
+      + 'dv_proj_state reads the whole project at any time.')
     expect(unbound).toContain('is a step of the project history at once; the user does not accept changes.')
     expect(unbound).toContain('dv_proj_redo goes forward one step. These moves add no step.')
     expect(unbound).toContain('A new change after a move discards the steps after the current one for good')

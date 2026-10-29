@@ -543,7 +543,7 @@ describe('canvas stories', () => {
     model.rules.push({
       match: 'agent-shot-please',
       steps: [{ calls: [{ name: 'dv_shot_render', args: {
-        reason: 'agent shot', project_id: project.id, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'canvas-agent extra shot', duration_sec: 1, inputs: { reference: ['c1@1'] },
+        reason: 'agent shot', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'canvas-agent extra shot', duration_sec: 1, inputs: { reference: ['c1@1'] },
       } }] }],
       endText: '拍好了',
     })
@@ -1199,7 +1199,7 @@ describe('timeline stories', () => {
 
   it('a timeline the agent creates appears as a tab without moving the creator off the open timeline', async () => {
     const project = await seedProject('timeline-agent', 2, [1])
-    model.rules.push({ match: 'make-timeline-four', steps: [{ calls: [{ name: 'dv_timeline_create', args: { reason: '新建时间线 4', project_id: project.id, timeline: 't4', assets: [] } }] }] })
+    model.rules.push({ match: 'make-timeline-four', steps: [{ calls: [{ name: 'dv_timeline_create', args: { reason: '新建时间线 4', timeline: 't4', assets: [] } }] }] })
     const page = await openPage()
     await gotoProject(page, project.id, 'timeline')
     await timelineTab(page, '时间线 2').click()

@@ -118,7 +118,7 @@ export function expansionBlock(text: string, projectId: ProjectId | null, source
   const mentions = parsePromptCitations(text)
   if (mentions.length === 0) return null
   const lines = projectId === null
-    ? mentions.map(mention => `- ${mention.label} (${mention.uri}): no project is bound to this conversation; call dv_proj_open first`)
+    ? mentions.map(mention => `- ${mention.label} (${mention.uri}): this conversation has no project yet; call dv_proj_create first`)
     : mentions.map(mention => describeMention(mention, projectId, sources))
   return `The user referenced these project items:\n${lines.join('\n')}`
 }

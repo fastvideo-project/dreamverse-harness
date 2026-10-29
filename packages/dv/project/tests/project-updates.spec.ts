@@ -189,8 +189,8 @@ describe('project state message', () => {
     const text = message === null ? '' : textOf(message)
     const [head, ...json] = text.split('\n')
     expect(head).toBe(`${STATE_HEAD} This conversation belongs to project ${fixture.projectId}: do all work in it and never call `
-      + 'dv_proj_create or dv_proj_open. Later changes that your own tool results did not show reach you as DreamVerse project '
-      + 'updates. The project summary, as dv_proj_state returns it without the reports of recent records:')
+      + 'dv_proj_create. Later changes that your own tool results did not show reach you as DreamVerse project updates. '
+      + 'The project summary, as dv_proj_state returns it without the reports of recent records:')
     const summary = JSON.parse(json.join('\n')) as { project_id: string; head: string; recent: Array<Record<string, unknown>> }
     expect(summary).toMatchObject({ project_id: fixture.projectId, head: render.id })
     expect(summary.recent.at(-2)).toEqual({

@@ -279,6 +279,10 @@ describe('chat with the agent', () => {
     expect(tools.filter(name => ['bash', 'glob', 'grep', 'edit', 'write', 'web_fetch', 'web_search'].includes(name))).toEqual([])
     // The agent gets one render tool and reads the models through the model catalog tools.
     expect(tools).toEqual(expect.arrayContaining(['dv_shot_render', 'dv_models_list', 'dv_models_get']))
+    // Every tool works on the conversation's project: none opens another project or takes a project argument.
+    expect(tools).not.toContain('dv_proj_open')
+    const projectArgs = (requestFor('只回复一')?.tools ?? []).filter(tool => Object.hasOwn(tool.function?.parameters?.properties ?? {}, 'project_id'))
+    expect(projectArgs).toEqual([])
     expect(errors).toEqual([])
   })
 

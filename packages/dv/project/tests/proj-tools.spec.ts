@@ -1,5 +1,6 @@
 /**
- * Project's own `dv_proj_*` tools through the `dvProject` service with the real DSH tool registry: session binding,
+ * Project's own `dv_proj_*` tools through the `dvProject` service with the real DSH tool registry: session binding, tools
+ * that work only on the conversation's project,
  * renaming the session's project, the project summary with the reducers' `agentSummary` fields, the history list, undo
  * and redo, moves to a step, stale acceptance, and waiting for named records.
  */
@@ -25,7 +26,7 @@ declare module '@dv/project' {
 
 /** Every `dv_proj_*` tool. */
 const PROJ_TOOLS = [
-  'dv_proj_create', 'dv_proj_open', 'dv_proj_rename', 'dv_proj_state', 'dv_proj_history_list', 'dv_proj_undo', 'dv_proj_redo', 'dv_proj_stale_accept', 'dv_proj_wait',
+  'dv_proj_create', 'dv_proj_rename', 'dv_proj_state', 'dv_proj_history_list', 'dv_proj_undo', 'dv_proj_redo', 'dv_proj_stale_accept', 'dv_proj_wait',
 ]
 
 interface Fixture {
@@ -116,9 +117,26 @@ describe('dv_proj_* tools', () => {
     for (const name of PROJ_TOOLS) expect(fixture.context.tools.get(name), name).toBeUndefined()
   })
 
-  it('creates and opens this conversation\'s project, and keeps a bound conversation in its project', async () => {
+  it('has no tool that opens another project and no tool argument that names a project', async () => {
     const fixture = await start()
-    expect(errorOf(await fixture.call('dv_proj_state', {}))).toContain('No project selected: call dv_proj_create or dv_proj_open first')
+    fixture.project.registerOperation(still())
+    expect(fixture.context.tools.get('dv_proj_open')).toBeUndefined()
+    const schemas = fixture.context.tools.schemas().filter(tool => tool.name.startsWith('dv_'))
+    expect(schemas.map(tool => tool.name)).toEqual(expect.arrayContaining([...PROJ_TOOLS, 'dv_asset_grab_still']))
+    for (const tool of schemas) {
+      expect(Object.keys((tool.parameters as { properties: object }).properties), tool.name).not.toContain('project_id')
+    }
+  })
+
+  it('creates this conversation\'s project, and keeps a bound conversation in its project', async () => {
+    const fixture = await start()
+    const calls: Array<[string, Record<string, unknown>]> = [
+      ['dv_proj_state', {}], ['dv_proj_history_list', {}], ['dv_proj_undo', {}], ['dv_proj_redo', {}], ['dv_proj_wait', { records: ['r'] }],
+      ['dv_proj_stale_accept', { record: 'r' }],
+    ]
+    for (const [name, args] of calls) {
+      expect(errorOf(await fixture.call(name, args)), name).toBe('This conversation has no project yet: call dv_proj_create first.')
+    }
     const created = json(await fixture.call('dv_proj_create', { title: 'dance' }))
     const projectId = brandString<ProjectId>(String(created['project_id']))
     expect(created).toEqual({
@@ -129,26 +147,17 @@ describe('dv_proj_* tools', () => {
     })
     expect(fixture.project.sessionProject(brandString<SessionId>('s1'))).toBe(projectId)
     expect(fixture.project.listHistory({ project: projectId })[0]?.record).toMatchObject({ actor: 'agent', surface: 'chat', intent: 'create project dance' })
-    expect(errorOf(await fixture.call('dv_proj_create', { title: 'other' }))).toContain(`This conversation belongs to project ${projectId}`)
+    expect(errorOf(await fixture.call('dv_proj_create', { title: 'other' }))).toBe(
+      `This conversation belongs to project ${projectId}; keep all work in it. A new project needs a new conversation.`,
+    )
     const origin = { actor: 'user' as const, surface: 'api' as const, session: null, turn: null, tool_call: null, intent: 'other' }
-    const other = await fixture.project.createProject('other', origin)
-    expect(errorOf(await fixture.call('dv_proj_open', { project_id: other.id }))).toContain('belongs to project')
-    expect(json(await fixture.call('dv_proj_open', { project_id: projectId }))['project_id']).toBe(projectId)
-    expect(json(await fixture.call('dv_proj_state', { project_id: other.id }))).toMatchObject({ project_id: other.id, records: 1 })
-  })
-
-  it('opens an existing project in an unbound conversation', async () => {
-    const fixture = await start()
-    const origin = { actor: 'user' as const, surface: 'api' as const, session: null, turn: null, tool_call: null, intent: 'create' }
-    const info = await fixture.project.createProject('existing', origin)
-    expect((await fixture.call('dv_proj_open', { project_id: 'missing' })).isError).toBe(true)
-    expect(json(await fixture.call('dv_proj_open', { project_id: info.id }))).toMatchObject({ project_id: info.id, records: 1 })
-    expect(fixture.project.sessionProject(brandString<SessionId>('s1'))).toBe(info.id)
+    await fixture.project.createProject('other', origin)
+    expect(json(await fixture.call('dv_proj_state', {}))).toMatchObject({ project_id: projectId, title: 'dance' })
   })
 
   it('renames only this conversation\'s project, trimmed and unique among the projects', async () => {
     const fixture = await start()
-    expect(errorOf(await fixture.call('dv_proj_rename', { title: 'ad' }))).toContain('No project selected')
+    expect(errorOf(await fixture.call('dv_proj_rename', { title: 'ad' }))).toBe('This conversation has no project yet: call dv_proj_create first.')
     const origin = { actor: 'user' as const, surface: 'api' as const, session: null, turn: null, tool_call: null, intent: 'create' }
     const other = await fixture.project.createProject('ad', origin)
     const projectId = brandString<ProjectId>(String(json(await fixture.call('dv_proj_create', { title: 'draft' }))['project_id']))
@@ -202,7 +211,7 @@ describe('dv_proj_* tools', () => {
     const fixture = await start()
     const removeStill = fixture.project.registerOperation(still())
     fixture.project.registerOperation(still({ name: 'asset.import', execute: () => Promise.reject(new Error('no such file')) }))
-    const projectId = brandString<ProjectId>(String(json(await fixture.call('dv_proj_create', { title: 'recent' }))['project_id']))
+    json(await fixture.call('dv_proj_create', { title: 'recent' }))
     const made = value(await fixture.call('dv_asset_grab_still', { reason: 'a still', prompt: 'kite' }))
     expect(errorOf(await fixture.call('dv_asset_import', { reason: 'bring it', prompt: 'x' }))).toContain('no such file')
     const state = json(await fixture.call('dv_proj_state', {}))
@@ -227,7 +236,7 @@ describe('dv_proj_* tools', () => {
       expect.objectContaining({ operation: 'proj.create', actor: 'agent' }),
     ])
     expect(json(await fixture.call('dv_proj_history_list', { operation: 'asset.grab_still' }))).toHaveLength(1)
-    expect(json(await fixture.call('dv_proj_history_list', { project_id: projectId }))).toHaveLength(3)
+    expect(json(await fixture.call('dv_proj_history_list', {}))).toHaveLength(3)
   })
 
   it('moves back and forward without writing a record, discards the later steps on a write, and accepts a stale record only when called', async () => {

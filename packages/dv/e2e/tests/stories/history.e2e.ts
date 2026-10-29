@@ -179,7 +179,7 @@ async function agentRename(page: Page, project: string, word: string): Promise<P
   model.rules.push({
     match: word, endText: '改好了',
     steps: [{ calls: [{
-      name: 'dv_timeline_rename', args: { reason: `改名：${word}`, project_id: project, timeline: 't1', name: `${word} 改名` },
+      name: 'dv_timeline_rename', args: { reason: `改名：${word}`, timeline: 't1', name: `${word} 改名` },
     }] }],
   })
   // The composer lives in the 对话 tab; the story returns to 历史 once the record is written.

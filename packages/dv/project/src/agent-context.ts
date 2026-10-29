@@ -30,10 +30,10 @@ export function projectContext(project: Pick<DvProject, 'listReferenceKinds'>): 
   const kinds = project.listReferenceKinds()
   return [
     'DreamVerse project rules:',
-    '- A conversation without a project starts the work with dv_proj_create. Once the DreamVerse project state message, '
-      + 'dv_proj_create or dv_proj_open names this conversation\'s project, do all work in it and never call dv_proj_create '
-      + 'or dv_proj_open again. Changes of the project that your own tool results did not show reach you as DreamVerse '
-      + 'project updates; dv_proj_state reads the whole project at any time.',
+    '- A conversation without a project starts the work with dv_proj_create. Once the DreamVerse project state message or '
+      + 'dv_proj_create names this conversation\'s project, do all work in it and never call dv_proj_create again. Changes of '
+      + 'the project that your own tool results did not show reach you as DreamVerse project updates; dv_proj_state reads the '
+      + 'whole project at any time.',
     '- Every call of yours and every edit of the user is a step of the project history at once; the user does not accept changes.',
     '- When the user asks to undo, roll back or go back to an earlier state, call dv_proj_undo: without to it goes back one '
       + 'step; with to = a record ID from dv_proj_history_list the project shows its state just after that step. dv_proj_redo goes '

@@ -32,10 +32,6 @@
           "type": "string",
           "description": "Why you call this, in the user's words or your own summary; recorded as the intent of the record."
         },
-        "project_id": {
-          "type": "string",
-          "description": "The project; defaults to this conversation's project from dv_proj_create or dv_proj_open."
-        },
         "inputs": {
           "type": "object",
           "description": "Input references by role: <asset> (an asset ID), <record>#<output> (an output of an earlier record), or <id>@<version> (a character, location or style version; dv_proj_state lists IDs); a list for roles marked []. Roles: source?: text[].",
@@ -100,10 +96,6 @@
           "type": "string",
           "description": "Why you call this, in the user's words or your own summary; recorded as the intent of the record."
         },
-        "project_id": {
-          "type": "string",
-          "description": "The project; defaults to this conversation's project from dv_proj_create or dv_proj_open."
-        },
         "inputs": {
           "type": "object",
           "description": "Input references by role: <asset> (an asset ID), <record>#<output> (an output of an earlier record), or <id>@<version> (a character, location or style version; dv_proj_state lists IDs); a list for roles marked []. Roles: source?: text[].",
@@ -150,10 +142,6 @@
         "reason": {
           "type": "string",
           "description": "Why you call this, in the user's words or your own summary; recorded as the intent of the record."
-        },
-        "project_id": {
-          "type": "string",
-          "description": "The project; defaults to this conversation's project from dv_proj_create or dv_proj_open."
         }
       },
       "required": [

@@ -79,7 +79,7 @@ Every registration is inside `ctx.effect`, so disposal removes it. An operation 
 | `prepareToolCall` | component logic before an agent call (`continue_from`)                                                |
 | `execute`         | does the work; creates files only through `context.importAsset`; throws to fail the record            |
 
-**Tools.** `registerOperation` also registers the agent tool `dv_<name with _>` while the DSH `tools` registry is mounted, with the shared arguments `reason`, `project_id`, `inputs`, `supersedes` and `based_on`, and the result `{record, status, summary, outputs, scheduled, params, report?, images?}`. A component writes no tool code. A rule that every caller must meet belongs in the operation's `precondition`, which the runner calls for every caller.
+**Tools.** `registerOperation` also registers the agent tool `dv_<name with _>` while the DSH `tools` registry is mounted, with the shared arguments `reason`, `inputs`, `supersedes` and `based_on`, and the result `{record, status, summary, outputs, scheduled, params, report?, images?}`. A component writes no tool code. A rule that every caller must meet belongs in the operation's `precondition`, which the runner calls for every caller.
 
 **Reducer.** Declare the slice in `src/types.ts` and register the reducer under the component key:
 
