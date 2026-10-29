@@ -23,15 +23,16 @@ import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/c
 import type { ShellActions } from '../src/client/actions.ts'
 
 const PROJECTS: WireProjectLink[] = [
-  { id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z', path: '/dv/p1', workspace_id: 'ws-p1' },
-  { id: 'p2', title: 'Music video', created_at: '2026-02-05T12:00:00Z', path: '/dv/p2', workspace_id: null },
-  { id: 'p3', title: 'Drama', created_at: '2026-03-05T12:00:00Z', path: '/dv/p3', workspace_id: 'ws-p3' },
+  { id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z', path: '/dv/p1', workspace_id: 'p1' },
+  { id: 'p2', title: 'Music video', created_at: '2026-02-05T12:00:00Z', path: '/dv/p2', workspace_id: 'p2' },
+  { id: 'p3', title: 'Drama', created_at: '2026-03-05T12:00:00Z', path: '/dv/p3', workspace_id: 'p3' },
 ]
 
 const WORKSPACES = [
   { workspaceId: 'ws-entry', path: '/dv/entry', sessionIds: ['s0'] },
-  { workspaceId: 'ws-p1', path: '/dv/p1', sessionIds: ['s1', 's4'] },
-  { workspaceId: 'ws-p2', path: '/dv/p2', sessionIds: ['s2'] },
+  { workspaceId: 'p1', path: '/dv/p1', sessionIds: ['s1', 's4'] },
+  { workspaceId: 'p2', path: '/dv/p2', sessionIds: ['s2'] },
+  { workspaceId: 'p3', path: '/dv/p3', sessionIds: [] },
 ]
 
 const SESSIONS: SessionFixture[] = [
@@ -45,8 +46,6 @@ const SESSIONS: SessionFixture[] = [
 interface Server {
   links: WireWorkspaces
   summaries: WireProjectSummary[]
-  bindFails: boolean
-  binds: unknown[]
 }
 
 interface StandInShell {
@@ -97,21 +96,14 @@ function standInShell(failures: Set<string>): StandInShell {
 }
 
 /**
- * A `fetch` that answers the shell's `/api/dv` reads from the server; a bind request records the binding.
+ * A `fetch` that answers the shell's `/api/dv` reads from the server.
  * @param server - the answers.
  * @returns the fetch.
  */
 function serverFetch(server: Server): typeof fetch {
   const json = (body: unknown, status = 200): Promise<Response> => Promise.resolve(new Response(JSON.stringify(body), { status }))
-  return (input, init) => {
+  return (input) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://host')
-    if (url.pathname === '/api/dv/workspaces/bind') {
-      const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as { session: string; project: string }
-      server.binds.push(body)
-      if (server.bindFails) return json({ error: 'bind refused' }, 500)
-      server.links = { ...server.links, bindings: { ...server.links.bindings, [body.session]: body.project } }
-      return json({ ok: true })
-    }
     if (url.pathname === '/api/dv/workspaces') return json(server.links)
     if (url.pathname === '/api/dv/projects/summary') return json(server.summaries)
     if (url.pathname === '/api/dv/state') return json({ components: {} })
@@ -183,10 +175,8 @@ async function mountCenter(options: MountOptions = {}): Promise<Bench> {
   window.history.replaceState(null, '', `/${options.hash ?? ''}`)
   vi.resetModules()
   const server: Server = {
-    links: { entry_path: '/dv/entry', projects: PROJECTS, bindings: {}, ...options.links },
+    links: { entry_path: '/dv/entry', projects: PROJECTS, ...options.links },
     summaries: options.summaries ?? [],
-    bindFails: false,
-    binds: [],
   }
   vi.stubGlobal('fetch', serverFetch(server))
   const store = await import('../src/client/store.ts')
@@ -283,6 +273,23 @@ async function mountCenter(options: MountOptions = {}): Promise<Bench> {
     show(sessionId) { view.update({}, { session: reference(sessionId) }) },
     async refreshLinks() { await act(async () => { await store.refreshLinks() }) },
   }
+}
+
+/**
+ * Move a session into a Workspace, as the host does when it attaches a chat to a project's Workspace.
+ * @param bench - the bench.
+ * @param sessionId - the session.
+ * @param workspaceId - the Workspace that holds the session afterwards.
+ */
+async function attach(bench: Bench, sessionId: string, workspaceId: string): Promise<void> {
+  await act(async () => {
+    await bench.runtime.workspaces.update((draft) => {
+      draft.items = draft.items.map((item) => {
+        const others = item.sessionIds.filter(id => id !== sessionId)
+        return { ...item, sessionIds: item.workspaceId === workspaceId ? [...others, sessionId as SessionId] : others }
+      })
+    })
+  })
 }
 
 async function advance(ms: number): Promise<void> {
@@ -415,29 +422,14 @@ describe('the entry page', () => {
 })
 
 describe('the URL restore', () => {
-  it('opens the URL\'s project with its session once the lists are ready, and binds the session to its Workspace\'s project', async () => {
+  it('opens the URL\'s project with its session once the lists are ready', async () => {
     const bench = await mountCenter({ hash: '#project=p1&view=timeline&timeline=t2&session=s1', main: 's1' })
     expect(bench.view.view.getByTestId('center-view').textContent).toBe('p1|none|{"timeline":"t2"}|null')
     expect(bench.stand.calls.filter(call => call.startsWith('openProject'))).toEqual([])
     await bench.refreshLinks()
     await waitFor(() => { expect(bench.stand.calls).toContain('openProject(p1,s1)') })
     expect(bench.view.view.getByTestId('center-view').textContent).toBe('p1|s1|{"timeline":"t2"}|null')
-    await waitFor(() => { expect(bench.server.binds).toEqual([{ session: 's1', project: 'p1' }]) })
-    await waitFor(() => { expect(bench.store.getShell().links?.bindings).toEqual({ s1: 'p1' }) })
     expect(window.location.hash).toBe('#project=p1&view=timeline&timeline=t2&session=s1')
-
-    bench.server.links = { ...bench.server.links, bindings: {} }
-    await bench.refreshLinks()
-    expect(bench.server.binds).toHaveLength(1)
-  })
-
-  it('binds a session found by its Workspace\'s path, and logs a refused bind', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const bench = await mountCenter({ hash: '#project=p2', main: 's2' })
-    bench.server.bindFails = true
-    await bench.refreshLinks()
-    await waitFor(() => { expect(warn).toHaveBeenCalledWith('ui-shell: bind failed', expect.any(Error)) })
-    expect(bench.server.binds).toEqual([{ session: 's2', project: 'p2' }])
   })
 
   it('shows the entry page for a project the links do not list, with the URL\'s session, and logs a failed navigation', async () => {
@@ -477,7 +469,7 @@ describe('Back, Forward, and an edited hash', () => {
     await waitFor(() => { expect(bench.stand.calls).toContain('openProject(p3)') })
     const opened = (): string[] => bench.stand.calls.filter(call => call.startsWith('openProject') || call.startsWith('goHome'))
 
-    navigateTo(window.location.hash)
+    navigateTo(bench.store.formatLocation(bench.store.locationOf(bench.store.getShell())))
     navigateTo('#project=p1&view=timeline&session=s1')
     expect(bench.view.view.getByRole('tab', { name: 'Timeline' }).getAttribute('aria-selected')).toBe('true')
     navigateTo('#project=p3')
@@ -488,13 +480,12 @@ describe('Back, Forward, and an edited hash', () => {
 })
 
 describe('the main session\'s project', () => {
-  it('takes the center along when the entry chat is bound to a project after the restore', async () => {
+  it('takes the center along when the host attaches the entry chat to a project\'s Workspace after the restore', async () => {
     const bench = await mountCenter({ main: 's0' })
     await bench.refreshLinks()
     await waitFor(() => { expect(bench.stand.calls).toContain('goHome()') })
     expect(bench.view.container.querySelector('[data-dv-entry]')).not.toBeNull()
-    bench.server.links = { ...bench.server.links, bindings: { s0: 'p2' } }
-    await bench.refreshLinks()
+    await attach(bench, 's0', 'p2')
     expect(bench.store.getShell().projectId).toBe('p2')
     expect(bench.view.view.getByTitle('Switch chat or project').textContent).toContain('Music video')
   })
@@ -503,11 +494,9 @@ describe('the main session\'s project', () => {
     const bench = await mountCenter({ hash: '#project=p1', main: 'elsewhere', sessions: [{ id: 'elsewhere' }] })
     await bench.refreshLinks()
     await waitFor(() => { expect(bench.stand.calls).toContain('openProject(p1)') })
-    bench.server.links = { ...bench.server.links, bindings: { elsewhere: 'p2' } }
-    await bench.refreshLinks()
+    await attach(bench, 'elsewhere', 'p2')
     expect(bench.store.getShell().projectId).toBe('p1')
-    bench.server.links = { ...bench.server.links, bindings: { elsewhere: 'p1' } }
-    await bench.refreshLinks()
+    await attach(bench, 'elsewhere', 'p1')
     expect(bench.store.getShell().projectId).toBe('p1')
   })
 })
@@ -608,8 +597,7 @@ describe('the workspace', () => {
     expect(panels()).toBe(3)
 
     bench.stand.failures.add('showPanels')
-    bench.server.links = { ...bench.server.links, bindings: { s6: 'p1' } }
-    await bench.refreshLinks()
+    await attach(bench, 's6', 'p1')
     bench.show('s6')
     act(() => { bench.stand.mounted.set('s6' as SessionId) })
     await advance(19 * 250)
@@ -622,7 +610,8 @@ describe('the workspace', () => {
 
 describe('the session switcher', () => {
   it('goes home, creates a project, switches among the project\'s chats or starts one, and opens another project', async () => {
-    const bench = await mountCenter({ hash: '#project=p1', main: 's4', links: { bindings: { s5: 'p1' } } })
+    const bench = await mountCenter({ hash: '#project=p1', main: 's4' })
+    await attach(bench, 's5', 'p1')
     await bench.refreshLinks()
     const page = bench.view.view
     const switcher = page.getByTitle('Switch chat or project')

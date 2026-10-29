@@ -7,14 +7,16 @@ import { realpathSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type DvProject from '../src/index.ts'
-import { brandString } from '@deepseek-ai/dsh-brand'
-import type { ProjectId, RecordOrigin, SessionId } from '../src/index.ts'
+import type { ProjectId, RecordOrigin } from '../src/index.ts'
 
 /** One Workspace of {@link TestWorkspaces}. */
 export class TestWorkspace {
   readonly sessionIds: string[] = []
 
-  constructor(readonly id: string, readonly path: string, public title: string, readonly createdAt: string) {}
+  constructor(
+    readonly id: string, readonly path: string, public title: string, readonly createdAt: string,
+    private readonly unattachable: ReadonlySet<string>,
+  ) {}
 
   setTitle(title: string): Promise<void> {
     this.title = title
@@ -22,6 +24,7 @@ export class TestWorkspace {
   }
 
   attachSession(session: string): Promise<void> {
+    if (this.unattachable.has(session)) return Promise.reject(new Error(`session persistence holds no session ${session}`))
     if (!this.sessionIds.includes(session)) this.sessionIds.unshift(session)
     return Promise.resolve()
   }
@@ -30,6 +33,8 @@ export class TestWorkspace {
 /** The Workspace registry methods `dvProject` calls, over canonical paths, newest first. */
 export class TestWorkspaces {
   readonly items: TestWorkspace[] = []
+  /** Sessions whose attach rejects, as the real registry rejects a session whose header it cannot read. */
+  readonly unattachable = new Set<string>()
   /** Creation times strictly increase, so the project list order never depends on the clock. */
   private clock = Date.parse('2026-01-01T00:00:00Z')
 
@@ -51,7 +56,7 @@ export class TestWorkspaces {
     if (known !== undefined) return known
     this.clock += 1000
     const canonical = realpathSync(path)
-    const workspace = new TestWorkspace(randomUUID(), canonical, canonical.split('/').at(-1) ?? canonical, new Date(this.clock).toISOString())
+    const workspace = new TestWorkspace(randomUUID(), canonical, canonical.split('/').at(-1) ?? canonical, new Date(this.clock).toISOString(), this.unattachable)
     this.items.unshift(workspace)
     return workspace
   }
@@ -107,7 +112,7 @@ export function provideChatServices(ctx: Context): TestChatServices {
 }
 
 /**
- * Make a project in a fresh folder of the DreamVerse folder, start chat `session` in it, and bind the chat to it.
+ * Make a project in a fresh folder of the DreamVerse folder and start chat `session` in it.
  * @param project - the service.
  * @param services - the stand-in services.
  * @param title - the project title.
@@ -120,7 +125,5 @@ export async function chatProject(
 ): Promise<ProjectId> {
   const folder = await project.newProjectFolder(title)
   services.chats.open(session, folder)
-  const { id } = await project.createProject(folder, title, origin)
-  project.bindSession(brandString<SessionId>(session), id)
-  return id
+  return (await project.createProject(folder, title, origin)).id
 }

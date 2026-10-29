@@ -10,7 +10,7 @@
  * The record's turn is the DSH turn number of the calling agent's session, read from the `turnBoundary` session
  * projection.
  *
- * Calls the sessions module (project binding, held work), the asset store (output types, bytes, URLs), and the
+ * Calls the sessions module (held work), the asset store (output types, bytes, URLs), and the
  * service's run, state, record, operation and history reads through {@link AgentToolDeps}. Called by the service,
  * which registers and removes the tools while the DSH `tools` registry is mounted.
  *
@@ -37,6 +37,8 @@ import type {
 /** What the agent tools read and call. */
 export interface AgentToolDeps {
   sessions: Sessions
+  /** The project of a chat session, or null while it has none. */
+  sessionProject(session: SessionId): ProjectId | null
   /** The registered asset store; throws when none is registered. */
   assets(): AssetStore
   /** The service's read of the project's current state, which every write follows. */
@@ -363,7 +365,7 @@ export class AgentTools {
     const { sessions } = this.deps
     const session = sessionOf(exec)
     await sessions.ready(session)
-    const project = callProject(sessions.project(session))
+    const project = callProject(this.deps.sessionProject(session))
     const origin: RecordOrigin = {
       actor: 'agent', surface: 'chat', session, turn: turnOf(this.ctx, exec), tool_call: exec.callId,
       intent: optionalString(args['reason']) ?? spec.name,

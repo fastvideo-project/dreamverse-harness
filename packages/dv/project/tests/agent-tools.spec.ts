@@ -3,7 +3,7 @@
  * registry: one `dv_*` tool per registered operation, calls that run as the agent on the session's project and turn,
  * reads, held calls, input parsing, and the `dv:project` prompt section.
  */
-import { writeFileSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -75,7 +75,7 @@ async function start(root = tempRoot(), attachments = true, services?: TestChatS
   await context.plugin(SystemPrompt, {}).await()
   await context.plugin(ToolRuntime).await()
   await context.plugin(DvProject, {
-    projectsFolder: join(root, 'projects'), sessionRoot: join(root, 'sessions'), cpuConcurrency: 4, gpuConcurrency: 1,
+    projectsFolder: join(root, 'projects'), cpuConcurrency: 4, gpuConcurrency: 1,
     promptSectionOrder: 4900,
   }).await()
   const assets = new MemoryAssets()
@@ -377,8 +377,8 @@ describe('agent tools', () => {
   })
 })
 
-describe('session bindings and the asset store', () => {
-  it('keeps a session\'s project across a restart and refuses a broken binding file', async () => {
+describe('the chat session\'s project and the asset store', () => {
+  it('finds a session\'s project by its folder, across a restart, and only while the folder is a project', async () => {
     const root = tempRoot()
     const first = await start(root)
     const projectId = await boundProject(first)
@@ -386,11 +386,16 @@ describe('session bindings and the asset store', () => {
     contexts.splice(0)
     const second = await start(root, true, first.services)
     expect(second.project.sessionProject(brandString<SessionId>('s1'))).toBe(projectId)
+    // A chat that is not live, a chat in a folder that is no Workspace, and a chat in a Workspace without records.
     expect(second.project.sessionProject(brandString<SessionId>('s2'))).toBeNull()
-    writeFileSync(join(root, 'sessions', 's3.json'), '{"project":null}')
+    const plain = join(root, 'plain')
+    mkdirSync(plain)
+    second.services.chats.open('s3', plain)
     expect(second.project.sessionProject(brandString<SessionId>('s3'))).toBeNull()
-    writeFileSync(join(root, 'sessions', 's4.json'), '"text"')
-    expect(() => second.project.sessionProject(brandString<SessionId>('s4'))).toThrow('is not a session binding')
+    await second.services.workspaces.create(plain)
+    expect(second.project.sessionProject(brandString<SessionId>('s3'))).toBeNull()
+    await second.project.removeProject(projectId)
+    expect(second.project.sessionProject(brandString<SessionId>('s1'))).toBeNull()
   })
 
   it('fails a run that needs the asset pool while no asset store is registered', async () => {

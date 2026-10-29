@@ -74,7 +74,7 @@ export async function start(baseUrl: string): Promise<Fixture> {
     ['skills', 'SkillRegistry', []],
     ['system-prompt', 'SystemPrompt', []],
     ['tools', 'ToolRuntime', []],
-    ['dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`]],
+    ['dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`]],
     ['dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe']],
     ['dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`]],
     ['dv-models', 'DvModels', []],

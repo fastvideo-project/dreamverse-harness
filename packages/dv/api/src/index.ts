@@ -45,10 +45,7 @@ declare module '@deepseek-ai/cordis' {
 export interface Config {
   /** Milliseconds between keep-alive comments on the event stream. */
   keepaliveMs: number
-  /**
-   * The state directory: canvas layouts under `canvas-layout/`, the project → Workspace links in `workspaces.json`,
-   * the entry Workspace under `entry/`, and the session binding files of `@dv/project` under `sessions/`.
-   */
+  /** The state directory: canvas layouts under `canvas-layout/` and the entry Workspace under `entry/`. */
   stateRoot: string
 }
 
@@ -157,7 +154,7 @@ export default class DvApi extends Service {
       { path: ROUTES.history, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.listHistory(body)) },
       ...layoutRoutes(this.ctx.dvProject, layouts),
       ...workspaceRoutes(this.ctx.dvProject, this.config.stateRoot),
-      ...projectAdminRoutes(this.ctx.dvProject, this.config.stateRoot, layouts),
+      ...projectAdminRoutes(this.ctx.dvProject, layouts),
       ...assetImportRoutes({ project: this.ctx.dvProject, assets: this.ctx.dvAssetPool }),
     ]
   }

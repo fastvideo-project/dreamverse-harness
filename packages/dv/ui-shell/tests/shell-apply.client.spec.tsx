@@ -18,8 +18,7 @@ import { DV_TRAJECTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 
 const LINKS: WireWorkspaces = {
   entry_path: '/dv/entry',
-  projects: [{ id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z', path: '/dv/p1', workspace_id: 'ws-p1' }],
-  bindings: {},
+  projects: [{ id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z', path: '/dv/p1', workspace_id: 'p1' }],
 }
 
 const runtimes: SlotTestRuntime[] = []
@@ -35,15 +34,14 @@ afterEach(async () => {
 /**
  * Mount the shell plugin on fresh modules, with the DSH services it reaches stood in, and render its center, navigator
  * and brand.
- * @param links - what `/api/dv/workspaces` answers; a test may replace its fields before a links refresh.
  * @returns the runtime, the plugin, the shell store, and the recorded service calls.
  */
-async function mountShell(links: WireWorkspaces = LINKS) {
+async function mountShell() {
   vi.resetModules()
   const json = (body: unknown, status = 200): Promise<Response> => Promise.resolve(new Response(JSON.stringify(body), { status }))
   const serverFetch: typeof fetch = (input) => {
     const path = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://host').pathname
-    if (path === '/api/dv/workspaces') return json(links)
+    if (path === '/api/dv/workspaces') return json(LINKS)
     if (path === '/api/dv/projects/untitled') return json({ path: '/dv/DreamVerse/Untitled project' })
     if (path === '/api/dv/projects/summary') return json([])
     return json({ error: `no route ${path}` }, 404)
@@ -78,7 +76,7 @@ async function mountShell(links: WireWorkspaces = LINKS) {
   await runtime.workspaces.update((draft) => {
     draft.items = [
       { workspaceId: 'ws-entry' as WorkspaceId, path: '/dv/entry', title: 'DreamVerse', sessionIds: [], createdAt: '', updatedAt: '' },
-      { workspaceId: 'ws-p1' as WorkspaceId, path: '/dv/p1', title: 'Launch film', sessionIds: [], createdAt: '', updatedAt: '' },
+      { workspaceId: 'p1' as WorkspaceId, path: '/dv/p1', title: 'Launch film', sessionIds: [], createdAt: '', updatedAt: '' },
     ]
   })
   await runtime.declare({
@@ -88,11 +86,11 @@ async function mountShell(links: WireWorkspaces = LINKS) {
     'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: tabInfoFactory } } },
   })
   const shell = await runtime.mount({ inject: [...inject], apply })
-  await waitFor(() => { expect(store.getShell().links).toEqual(links) })
+  await waitFor(() => { expect(store.getShell().links).toEqual(LINKS) })
   return { runtime, shell, store, openTab, mounted, openSession, archiveSession, setRightbar, tabKeys: [CHAT_ID, TRAJECTORY_ID] }
 }
 
-/** Entry chats beside the blank entry chat: two started, one bound to `p1`, and one archived. */
+/** Entry chats beside the blank entry chat: two started, one in `p1`'s Workspace, and one archived. */
 const ENTRY_CHATS = [
   { id: 'chat-old', displayTitle: 'Old idea', updatedAt: 10 },
   { id: 'chat-new', displayTitle: 'New idea', updatedAt: 30 },
@@ -103,18 +101,18 @@ const ENTRY_CHATS = [
 /**
  * Mount the shell with entry chats in the entry Workspace, render the navigator, and let 首页 create `blank-entry`.
  * @param chats - the entry chats besides `blank-entry`.
- * @returns the bench, the links that the server answers, and the rendered navigator.
+ * @returns the bench and the rendered navigator.
  */
 async function mountWithEntryChats(chats = ENTRY_CHATS) {
-  const links: WireWorkspaces = { ...LINKS, bindings: { 'chat-bound': 'p1' } }
-  const bench = await mountShell(links)
+  const bench = await mountShell()
   for (const { id, ...summary } of chats) await bench.runtime.sessions.add({ id, summary })
   await bench.runtime.workspaces.update((draft) => {
+    draft.items = draft.items.map(item => item.workspaceId === 'p1' ? { ...item, sessionIds: ['chat-bound' as SessionId] } : item)
     draft.archivedSessionIds = ['chat-gone' as SessionId]
   })
   bench.runtime.sessions.stubCreate(() => Promise.resolve('blank-entry' as SessionId))
   const navigator = bench.runtime.renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {} })
-  return { bench, links, navigator }
+  return { bench, navigator }
 }
 
 /** The labels of the navigator's 对话 rows, in order. */
@@ -134,13 +132,14 @@ function focusTrajectory(detail: unknown): void {
 }
 
 describe('the navigator\'s 对话 section', () => {
-  it('lists the started entry chats that no project holds, newest first, and a chat whose project binding goes away', async () => {
-    const { bench, links, navigator } = await mountWithEntryChats()
+  it('lists the started entry chats that no project holds, newest first, and a chat whose project\'s Workspace goes away', async () => {
+    const { bench, navigator } = await mountWithEntryChats()
     const { container } = navigator
     await waitFor(() => { expect(entryRows(container)).toEqual(['New idea', 'Old idea']) })
     expect(within(container.querySelector<HTMLElement>('[data-dv-entry-chats]') ?? container).getByText('Chats')).toBeDefined()
-    links.bindings = {}
-    await act(async () => { await bench.store.refreshLinks() })
+    await act(async () => {
+      await bench.runtime.workspaces.update((draft) => { draft.items = draft.items.filter(item => item.workspaceId !== 'p1') })
+    })
     await waitFor(() => { expect(entryRows(container)).toEqual(['Bound idea', 'New idea', 'Old idea']) })
   })
 
@@ -240,7 +239,7 @@ describe('the shell plugin', () => {
     next = 'blank-p1'
     startSession()
     await waitFor(() => { expect(bench.openSession).toHaveBeenLastCalledWith('blank-p1') })
-    expect(created).toEqual([{ cwd: '/dv/DreamVerse/Untitled project' }, { workspaceId: 'ws-p1' }])
+    expect(created).toEqual([{ cwd: '/dv/DreamVerse/Untitled project' }, { workspaceId: 'p1' }])
 
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     bench.runtime.sessions.stubCreate(() => Promise.reject(new Error('create refused')))

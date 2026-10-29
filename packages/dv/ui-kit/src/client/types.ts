@@ -326,22 +326,12 @@ export interface WireProjectLink {
   created_at: string
   /** The project's directory, which is its Workspace's directory. */
   path: string
-  /** The recorded Workspace, or null before one was created. */
-  workspace_id: string | null
+  /** The project's Workspace, whose ID is the project ID. */
+  workspace_id: string
 }
 
 /** The `GET /api/dv/workspaces` answer. */
 export interface WireWorkspaces {
   entry_path: string
   projects: WireProjectLink[]
-  /** Saved chat session → project bindings. */
-  bindings: Record<string, string>
-}
-
-/** One saved chat session of a project, as `GET /api/dv/workspaces/sessions` lists it. */
-export interface WireSession {
-  session: string
-  /** When the session log last changed, ISO-8601 UTC. */
-  updated_at: string
-  bytes: number
 }

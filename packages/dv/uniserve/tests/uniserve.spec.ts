@@ -171,7 +171,7 @@ async function start(baseUrl: string): Promise<Context> {
   const rows: string[] = []
   const plugins = [
     ['skills', 'SkillRegistry', []],
-    ['dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`]],
+    ['dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`]],
     ['dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, `ffprobePath: ${FFPROBE}`]],
     ['dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`]],
     ['dv-models', 'DvModels', []],

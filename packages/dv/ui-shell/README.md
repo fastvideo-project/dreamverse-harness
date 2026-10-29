@@ -35,18 +35,17 @@ The Host half registers nothing. The browser half provides the client service `d
 
 | Gesture | Request or event |
 | --- | --- |
-| Page load, then every 4 seconds | `GET /api/dv/workspaces` for the projects, their Workspaces, and the session bindings |
-| 新建项目 / Create project | `POST /api/dv/projects` with the first free title 未命名项目 / Untitled project (numbered), then `POST /api/dv/workspaces` to link the Workspace created for it; a blank chat session opens in it |
+| Page load, then every 4 seconds | `GET /api/dv/workspaces` for the projects with their folders and Workspaces |
+| 新建项目 / Create project | `POST /api/dv/projects` with the first free title 未命名项目 / Untitled project (numbered), whose Workspace the host registers; a blank chat session opens in it |
 | 首页 / Home | this tab's blank entry chat while it is blank and in no Workspace, else `POST /api/dv/projects/untitled` with 未命名项目 / Untitled project and a new chat session whose working directory is the returned folder |
 | Entry page with projects | One `GET /api/dv/projects/summary` for every card's cover (the first clip with media on the project's first timeline, else the first image the project made) and last edit time; read again when the project list changes. The switcher's cover uses the timeline that the center fields name |
 | Workspace of an open project | `GET /api/dv/projects/summary?project=<id>` with the `timeline` center field, when it is set, as a further query field, for the session switcher's cover; read again after every change of the project or of its center fields. The route takes the cover from that timeline |
-| Open a project (navigator row, recent project card, or session switcher) | `GET /api/dv/workspaces/sessions` for its stored chat sessions; the main session moves to its latest non-blank chat session, else to a blank one |
+| Open a project (navigator row, recent project card, or session switcher) | the main session moves to the latest non-blank chat session of the project's Workspace, else to a blank one |
 | ＋ on a project row, 新建会话 / New chat in the session switcher, or DSH's New Session | a blank chat session in the project's Workspace; on the entry page, DSH's New Session equals 首页 |
-| Rename a project (row menu) | `POST /api/dv/projects/rename`; the project's Workspace is renamed to match |
-| Delete a project (row menu, then the confirmation) | `POST /api/dv/projects/delete` (the project's folder stays on disk); the linked Workspace is deleted and an open project returns to 首页 |
-| A row of 对话 / Chats in the navigator (a started top-level chat that no Workspace holds and no binding names) | the entry page with that chat as the main session; the chat leaves the list when the agent binds it to a project |
+| Rename a project (row menu) | `POST /api/dv/projects/rename`; the host sets the project's Workspace title |
+| Delete a project (row menu, then the confirmation) | `POST /api/dv/projects/delete` (the host unregisters the project's Workspace, and its folder stays on disk); an open project returns to 首页 |
+| A row of 对话 / Chats in the navigator (a started top-level chat that no Workspace holds) | the entry page with that chat as the main session; the chat leaves the list when the agent makes its folder a project |
 | Rename or delete a chat session (row menu) | DSH's session rename, or archive with its activity stopped; deleting the open chat while no project is open opens this tab's blank entry chat |
-| A main session that sits in a project's Workspace without a binding | `POST /api/dv/workspaces/bind` |
 | `ctx.dvCenter.show({ view, target })`, such as a selected History row (`@dv/ui-history`) or 插入片段 / Insert clip in the asset preview (`@dv/ui-timeline`) | the `view` entry shows and gets `target` as the value of its owner prop `request` until it takes the request; another `show`, another view, or another project drops a request that the view has not taken |
 | A view's owner prop `note(fields)`, such as the timeline that the user picks in the 时间线 view (`@dv/ui-timeline`) | the open project's center fields change (null removes a field) and the URL hash shows them; a note of a project that is no longer open changes nothing |
 | `dv:trajectory-focus` `{session, toolCall}` | the main session moves to `session`, then 轨迹 opens scrolled to that tool call |
@@ -61,7 +60,7 @@ The workspace renders the shown view with the owner props `projectId` (the open 
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`CenterPanel` restores the URL location once the project links and DSH's session and Workspace lists are ready, after DSH's own startup restore of its last session (or 4 seconds without one), because DSH's late restore would replace the session the shell opened. Afterwards it adopts the project of a main session that moves to another project by itself, such as the entry chat that the agent binds to a project it created. A project's chat sessions are the sessions of its Workspace, the sessions bound to it, and the sessions the server stores under its directory; a session bound to another project belongs to that project. Each browser tab keeps its own blank chat session per Workspace in `sessionStorage`, because DSH's `openWorkspace` reuses any blank session and two tabs would share one chat. The entry Workspace (`<state root>/entry`, titled DreamVerse) replaces DSH's first-use default Workspace; no new chat starts in it, because 首页 starts each chat in its own folder. The left sidebar's fold state is read from the `data-sidebar-collapsed` attribute of DSH's app frame and changed through `ctx.layout.toggleSidebar()`. The frame updates the attribute only after React renders a toggle, so the shell keeps the fold its own last toggle asked for until the attribute shows it, and a collapse right after a restore (opening a project from 首页) toggles again instead of reading the stale attribute. 首页 expands the sidebar again only when the workspace collapsed it and the user has not folded or unfolded it from DSH's rail since. The right panel's 448 px default goes through the layout store's private `setRightbar` action, because `ctx.layout` has no width setting; it is set once per page load, so a layout plugin reload keeps a width the user dragged, and a layout service without the action logs a console warning. Closing 轨迹 remounts the 对话 tab's chat, because the hidden composer of 轨迹 unbinds the session's composer editor when it unmounts.
+`CenterPanel` restores the URL location once the project links and DSH's session and Workspace lists are ready, after DSH's own startup restore of its last session (or 4 seconds without one), because DSH's late restore would replace the session the shell opened. Afterwards it adopts the project of a main session that moves to another project by itself, such as the entry chat whose folder the agent made a project. A project's chat sessions are the sessions of its Workspace. Each browser tab keeps its own blank chat session per Workspace in `sessionStorage`, because DSH's `openWorkspace` reuses any blank session and two tabs would share one chat. The entry Workspace (`<state root>/entry`, titled DreamVerse) replaces DSH's first-use default Workspace; no new chat starts in it, because 首页 starts each chat in its own folder. The left sidebar's fold state is read from the `data-sidebar-collapsed` attribute of DSH's app frame and changed through `ctx.layout.toggleSidebar()`. The frame updates the attribute only after React renders a toggle, so the shell keeps the fold its own last toggle asked for until the attribute shows it, and a collapse right after a restore (opening a project from 首页) toggles again instead of reading the stale attribute. 首页 expands the sidebar again only when the workspace collapsed it and the user has not folded or unfolded it from DSH's rail since. The right panel's 448 px default goes through the layout store's private `setRightbar` action, because `ctx.layout` has no width setting; it is set once per page load, so a layout plugin reload keeps a width the user dragged, and a layout service without the action logs a console warning. Closing 轨迹 remounts the 对话 tab's chat, because the hidden composer of 轨迹 unbinds the session's composer editor when it unmounts.
 
 | File | Content |
 | --- | --- |
@@ -97,7 +96,7 @@ The workspace renders the shown view with the owner props `projectId` (the open 
 <a id="further-exploration"></a>
 ## Further Exploration
 
-- [`@dv/api`](../api/README.md) — the project, Workspace, binding, and operation routes.
+- [`@dv/api`](../api/README.md) — the project, Workspace, and operation routes.
 - [`@dv/ui-canvas`](../ui-canvas/README.md) — the canvas, registered as the center's 画布 view.
 - [`@dv/ui-timeline`](../ui-timeline/README.md) — the timeline editor, registered as the center's 时间线 view; it inserts the clips of 插入片段 / Insert clip.
 - [`@dv/ui-history`](../ui-history/README.md) — the History tab, whose rows move the center through `dvCenter.show`, and the `dv:trajectory-focus` link.
@@ -109,7 +108,7 @@ The workspace renders the shown view with the owner props `projectId` (the open 
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through `@dv/project`; the session bindings the shell saves reach the model only through the project state and update messages and the `dv_proj_*` and operation tools of [`@dv/project`](../project/README.md).
+Indirectly, through `@dv/project`; the chat folder the shell starts reaches the model only through the project state and update messages and the `dv_proj_*` and operation tools of [`@dv/project`](../project/README.md).
 
 #### KV Cache effect
 
@@ -120,4 +119,4 @@ None; the shell sends nothing to a model.
 <a id="known-limitations-and-deferred-work"></a>
 
 - **Hidden DSH chrome depends on DSH internals** — the shell finds the hidden controls by CSS Module class name suffixes and accessible labels, rewrites DSH dictionary entries, the host command fetcher, and the right panel's width preference through private fields, reads the left sidebar's fold state from a frame attribute, and replaces `uiWorkspace.startSession` and `workspaces.initializeDefault` on the services; a DSH change to any of them shows the chrome again or breaks the override without an error, except a missing `setRightbar` action, which logs a console warning.
-- **Links poll** — projects and bindings that the agent creates appear in the navigator up to 4 seconds later.
+- **Links poll** — projects that the agent creates appear in the navigator up to 4 seconds later.

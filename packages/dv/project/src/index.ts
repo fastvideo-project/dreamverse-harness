@@ -16,14 +16,15 @@
  * duration.
  *
  * Projects. A project is a DSH Workspace whose folder holds `.dreamverse/records.jsonl` (the `folders` module); the
- * project ID is the Workspace ID, and the title, creation time and folder are the Workspace's. Project registers,
- * renames and removes these Workspaces itself; removing a project never deletes a file.
+ * project ID is the Workspace ID, and the title, creation time and folder are the Workspace's. A chat session's project
+ * is the project whose folder is the session's working directory (`sessionProject`). Project registers, renames and
+ * removes these Workspaces itself; removing a project never deletes a file.
  *
  * Agent tools. While the DSH `tools` registry is mounted, every registered operation also has its agent tool
  * `dv_<operation name with _>`, built by the `agent-tools` module. A tool call runs the operation as the agent on the
- * project its chat session is bound to (`bindSession`), in the session's DSH turn. Project also registers its own
- * `dv_proj_*` tools (the `proj-tools` module); `dv_proj_create` makes the session's folder a project and binds the
- * session to it, and the tools return the project summary,
+ * project of its chat session, in the session's DSH turn. Project also registers its own `dv_proj_*` tools (the
+ * `proj-tools` module); `dv_proj_create` makes the session's folder a project, and the tools return the project
+ * summary,
  * to which each component's reducer adds its fields through `Reducer.agentSummary`. While the DSH `systemPrompt`
  * service is mounted, Project's rules reach the agent as the `dv:project` prompt section (the `agent-context` module),
  * whose text is the same at every step. While the DSH `sessionProjections` service is mounted, the project's state
@@ -44,6 +45,7 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import { defaultWorkspaceDirectory } from '@deepseek-ai/dsh-api-workspace-controller'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type {} from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-session-persistence'
 import type { SessionId as ChatId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-workspace'
 import type {} from '@deepseek-ai/dsh-system-prompt'
@@ -102,8 +104,6 @@ export interface Config {
   cpuConcurrency: number
   /** Scheduled records of `gpu` operations that may run at the same time. */
   gpuConcurrency: number
-  /** The directory holding one file per chat session with the project it is bound to (`$DV_STATE_ROOT/sessions`). */
-  sessionRoot: string
   /** Order of the `dv:project` section in the system prompt; before the tool SDK section at 5000. */
   promptSectionOrder: number
 }
@@ -113,7 +113,6 @@ export const Config: z<Config> = z.object({
   projectsFolder: z.string(),
   cpuConcurrency: z.number().default(4),
   gpuConcurrency: z.number().default(1),
-  sessionRoot: z.string().required(),
   promptSectionOrder: z.number().default(4900),
 })
 
@@ -142,7 +141,10 @@ export default class DvProject extends Service {
 
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'dvProject')
-    this.folders = new ProjectFolders(ctx.workspaceRegistry, () => this.projectsFolder)
+    this.folders = new ProjectFolders(ctx.workspaceRegistry, () => this.projectsFolder, async () => [
+      ...ctx.get('sessions')?.list().map(session => session.header) ?? [],
+      ...(await ctx.get('sessionPersistence')?.list() ?? []).map(snapshot => snapshot.header),
+    ].filter(header => header.origin !== 'subagent'), (message) => { ctx.logger('dvProject').warn(message) })
     this.subscriptions.onListenerError = (error) => {
       ctx.logger('dvProject').warn('a project subscriber threw: %s', error instanceof Error ? error.message : String(error))
     }
@@ -165,9 +167,10 @@ export default class DvProject extends Service {
         importAsset: (source, meta, createdBy) => this.requireAssetStore().importAsset(source, meta, createdBy),
       },
     })
-    this.sessions = new Sessions(config.sessionRoot)
+    this.sessions = new Sessions()
     this.agentTools = new AgentTools(ctx, {
       sessions: this.sessions,
+      sessionProject: session => this.sessionProject(session),
       assets: () => this.requireAssetStore(),
       currentState: project => this.getState(project),
       listReferenceKinds: () => this.reducers.listReferenceKinds(),
@@ -244,8 +247,9 @@ export default class DvProject extends Service {
 
   /**
    * Make a folder a project: register it as a DSH Workspace titled `title`, then write the project's first record,
-   * `proj.create` with `params {title}`, on `main` with status `done`, into its `.dreamverse/records.jsonl`. A folder
-   * that is a project already keeps its records, and a call repeated after a crash finishes the work.
+   * `proj.create` with `params {title}`, on `main` with status `done`, into its `.dreamverse/records.jsonl`, and attach
+   * every stored or live chat session whose working directory is the folder. A folder that is a project already keeps
+   * its records, and a call repeated after a crash finishes the work.
    * @param folder - an existing folder.
    * @param title - the project title.
    * @param origin - who creates it, from where.
@@ -566,21 +570,11 @@ export default class DvProject extends Service {
   }
 
   /**
-   * Bind a chat session to a project, so its agent tools and the views beside its chat work on that project. The
-   * binding is saved under `sessionRoot` and survives a restart.
-   * @param session - the chat session.
-   * @param project - the project.
-   */
-  bindSession(session: SessionId, project: ProjectId): void {
-    this.sessions.bind(session, project)
-  }
-
-  /**
    * @param session - a chat session.
-   * @returns the project it is bound to, or null while it has none.
+   * @returns the project whose folder is the session's working directory, or null when it has none.
    */
   sessionProject(session: SessionId): ProjectId | null {
-    return this.sessions.project(session)
+    return this.folders.ofFolder(this.chatFolder(session) ?? undefined)
   }
 
   /**

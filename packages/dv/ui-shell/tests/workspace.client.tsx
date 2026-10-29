@@ -24,10 +24,9 @@ import { fixtureState, scriptedFetch } from '../../ui-kit/tests/fixture.client.t
 const LINKS: WireWorkspaces = {
   entry_path: '/dv/entry',
   projects: [
-    { id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z', path: '/dv/p1', workspace_id: 'ws-p1' },
-    { id: 'p2', title: 'Music video', created_at: '2026-02-05T12:00:00Z', path: '/dv/p2', workspace_id: 'ws-p2' },
+    { id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z', path: '/dv/p1', workspace_id: 'p1' },
+    { id: 'p2', title: 'Music video', created_at: '2026-02-05T12:00:00Z', path: '/dv/p2', workspace_id: 'p2' },
   ],
-  bindings: {},
 }
 
 const PROJECTS: WireProject[] = [
@@ -118,8 +117,8 @@ export async function mountWorkspace(hash: string): Promise<Workspace> {
     draft.phase = 'ready'
     draft.items = [
       { workspaceId: 'ws-entry' as WorkspaceId, path: '/dv/entry', title: 'DreamVerse', sessionIds: [], createdAt: '', updatedAt: '' },
-      { workspaceId: 'ws-p1' as WorkspaceId, path: '/dv/p1', title: 'Launch film', sessionIds: ['s1' as SessionId], createdAt: '', updatedAt: '' },
-      { workspaceId: 'ws-p2' as WorkspaceId, path: '/dv/p2', title: 'Music video', sessionIds: ['s2' as SessionId], createdAt: '', updatedAt: '' },
+      { workspaceId: 'p1' as WorkspaceId, path: '/dv/p1', title: 'Launch film', sessionIds: ['s1' as SessionId], createdAt: '', updatedAt: '' },
+      { workspaceId: 'p2' as WorkspaceId, path: '/dv/p2', title: 'Music video', sessionIds: ['s2' as SessionId], createdAt: '', updatedAt: '' },
     ]
   })
   await runtime.declare({

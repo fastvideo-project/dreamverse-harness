@@ -35,18 +35,17 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCente
 
 | 手势 | 请求或事件 |
 | --- | --- |
-| 页面加载，之后每 4 秒 | `GET /api/dv/workspaces`，读取项目、其 Workspace 和会话绑定 |
-| 新建项目 | `POST /api/dv/projects`，标题取第一个未被占用的 未命名项目（带编号），然后 `POST /api/dv/workspaces` 关联为它创建的 Workspace；在其中打开一个空白对话 |
+| 页面加载，之后每 4 秒 | `GET /api/dv/workspaces`，读取项目及其文件夹和 Workspace |
+| 新建项目 | `POST /api/dv/projects`，标题取第一个未被占用的 未命名项目（带编号），宿主为它注册 Workspace；在其中打开一个空白对话 |
 | 首页 | 本标签页的空白首页对话仍空白且不在任何 Workspace 中时打开它，否则以 未命名项目 调用 `POST /api/dv/projects/untitled`，并新建一个以返回的文件夹为工作目录的对话 |
 | 有项目的首页 | 一次 `GET /api/dv/projects/summary` 得到每张卡片的封面（项目第一条时间线上第一个有素材的片段，否则是项目产出的第一张图片）和最后编辑时间；项目列表变化时重新读取。切换器的封面使用中间区域字段指定的时间线 |
 | 打开项目的工作区 | `GET /api/dv/projects/summary?project=<id>`，设置了中间区域字段 `timeline` 时把它作为其他查询字段，得到会话切换器的封面；项目或其中间区域字段每次变化后重新读取。路由从那条时间线取封面 |
-| 打开项目（导航行、最近项目卡片或会话切换器） | `GET /api/dv/workspaces/sessions` 读取其存储的对话；主会话移到其最近的非空白对话，否则移到一个空白对话 |
+| 打开项目（导航行、最近项目卡片或会话切换器） | 主会话移到该项目 Workspace 中最近的非空白对话，否则移到一个空白对话 |
 | 项目行上的 ＋、会话切换器里的 新建会话，或 DSH 的新会话 | 在项目的 Workspace 里新建空白对话；在首页上，DSH 的新会话等于 首页 |
-| 重命名项目（行菜单） | `POST /api/dv/projects/rename`；项目的 Workspace 同步改名 |
-| 删除项目（行菜单，然后确认） | `POST /api/dv/projects/delete`（项目文件夹留在磁盘上）；关联的 Workspace 被删除，打开中的项目回到 首页 |
-| 导航中 对话 的一行（不在任何 Workspace 中、也没有绑定的已开始的顶层对话） | 首页，主会话为该对话；智能体把该对话绑定到项目后，它离开列表 |
+| 重命名项目（行菜单） | `POST /api/dv/projects/rename`；宿主设置项目的 Workspace 标题 |
+| 删除项目（行菜单，然后确认） | `POST /api/dv/projects/delete`（宿主注销项目的 Workspace，项目文件夹留在磁盘上）；打开中的项目回到 首页 |
+| 导航中 对话 的一行（不在任何 Workspace 中的已开始的顶层对话） | 首页，主会话为该对话；智能体把该对话的文件夹变成项目后，它离开列表 |
 | 重命名或删除对话（行菜单） | DSH 的会话重命名，或停止其活动后归档；没有打开项目时删除打开的对话，会打开本标签页的空白首页对话 |
-| 主会话位于某项目的 Workspace 但没有绑定 | `POST /api/dv/workspaces/bind` |
 | `ctx.dvCenter.show({ view, target })`，例如选中的历史行（`@dv/ui-history`）或素材预览里的 插入片段（`@dv/ui-timeline`） | 显示 `view` 条目，并把 `target` 作为它的 owner prop `request` 的值交给它，直到它取走该请求；再次 `show`、换到另一个视图或另一个项目会丢掉视图还没取走的请求 |
 | 视图的 owner prop `note(fields)`，例如用户在 时间线 视图（`@dv/ui-timeline`）里选的时间线 | 打开项目的中间区域字段改变（null 删除一个字段），URL hash 显示它们；已不再打开的项目的 note 不改变任何东西 |
 | `dv:trajectory-focus` `{session, toolCall}` | 主会话移到 `session`，然后打开 轨迹 并滚动到该工具调用 |
@@ -61,7 +60,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCente
 <details>
 <summary>实现内部——点击展开</summary>
 
-`CenterPanel` 在项目关联和 DSH 的会话、Workspace 列表就绪后恢复 URL 位置，并等到 DSH 自己在启动时恢复上次会话（或 4 秒内没有）之后，因为 DSH 迟到的恢复会替换外壳打开的会话。此后，主会话自己移到另一个项目时（例如智能体把首页对话绑定到它创建的项目），中间区域跟随该项目。项目的对话是其 Workspace 的会话、绑定到它的会话，以及服务器在其目录下存储的会话；绑定到其他项目的会话属于那个项目。每个浏览器标签页在 `sessionStorage` 里为每个 Workspace 保留自己的空白对话，因为 DSH 的 `openWorkspace` 会复用任何空白会话，两个标签页会共用一个对话。首页 Workspace（`<state root>/entry`，标题为 DreamVerse）替代 DSH 首次使用时的默认 Workspace；新对话不在其中开始，因为 首页 让每个对话在自己的文件夹中开始。左侧栏的折叠状态从 DSH 应用框架的 `data-sidebar-collapsed` 属性读取，通过 `ctx.layout.toggleSidebar()` 改变。框架要等 React 渲染了切换之后才更新该属性，所以外壳记住自己上一次切换要求的折叠状态，直到属性显示出来；这样恢复之后紧接着的收起（从首页打开项目）会再切换一次，而不是读取过时的属性。只有工作区收起了左侧栏、并且用户之后没有在 DSH 的侧栏条上折叠或展开它时，首页才会重新展开它。右侧面板 448 px 的默认宽度通过布局 store 的私有 `setRightbar` 动作设置，因为 `ctx.layout` 没有宽度设置；每次页面加载只设置一次，所以布局插件重新加载时保留用户拖动的宽度，布局服务缺少该动作时在控制台输出警告。关闭 轨迹 会重新挂载 对话 标签的对话，因为 轨迹 中隐藏的输入框在卸载时解除了会话输入编辑器的绑定。
+`CenterPanel` 在项目关联和 DSH 的会话、Workspace 列表就绪后恢复 URL 位置，并等到 DSH 自己在启动时恢复上次会话（或 4 秒内没有）之后，因为 DSH 迟到的恢复会替换外壳打开的会话。此后，主会话自己移到另一个项目时（例如智能体把首页对话的文件夹变成项目），中间区域跟随该项目。项目的对话是其 Workspace 的会话。每个浏览器标签页在 `sessionStorage` 里为每个 Workspace 保留自己的空白对话，因为 DSH 的 `openWorkspace` 会复用任何空白会话，两个标签页会共用一个对话。首页 Workspace（`<state root>/entry`，标题为 DreamVerse）替代 DSH 首次使用时的默认 Workspace；新对话不在其中开始，因为 首页 让每个对话在自己的文件夹中开始。左侧栏的折叠状态从 DSH 应用框架的 `data-sidebar-collapsed` 属性读取，通过 `ctx.layout.toggleSidebar()` 改变。框架要等 React 渲染了切换之后才更新该属性，所以外壳记住自己上一次切换要求的折叠状态，直到属性显示出来；这样恢复之后紧接着的收起（从首页打开项目）会再切换一次，而不是读取过时的属性。只有工作区收起了左侧栏、并且用户之后没有在 DSH 的侧栏条上折叠或展开它时，首页才会重新展开它。右侧面板 448 px 的默认宽度通过布局 store 的私有 `setRightbar` 动作设置，因为 `ctx.layout` 没有宽度设置；每次页面加载只设置一次，所以布局插件重新加载时保留用户拖动的宽度，布局服务缺少该动作时在控制台输出警告。关闭 轨迹 会重新挂载 对话 标签的对话，因为 轨迹 中隐藏的输入框在卸载时解除了会话输入编辑器的绑定。
 
 | 文件 | 内容 |
 | --- | --- |
@@ -97,7 +96,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCente
 <a id="further-exploration"></a>
 ## 进一步探索
 
-- [`@dv/api`](../api/README.zh.md) — 项目、Workspace、绑定和操作的路由。
+- [`@dv/api`](../api/README.zh.md) — 项目、Workspace 和操作的路由。
 - [`@dv/ui-canvas`](../ui-canvas/README.zh.md) — 画布，注册为中间区域的 画布 视图。
 - [`@dv/ui-timeline`](../ui-timeline/README.zh.md) — 时间线编辑器，注册为中间区域的 时间线 视图；它插入 插入片段 的片段。
 - [`@dv/ui-history`](../ui-history/README.zh.md) — 历史标签（它的行通过 `dvCenter.show` 移动中间区域）和 `dv:trajectory-focus` 链接。
@@ -109,7 +108,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCente
 <a id="model-experience"></a>
 ## 模型体验
 
-间接地，通过 `@dv/project`；外壳保存的会话绑定只经由 [`@dv/project`](../project/README.zh.md) 的项目状态消息、项目更新消息以及 `dv_proj_*` 和操作工具到达模型。
+间接地，通过 `@dv/project`；外壳启动的对话文件夹只经由 [`@dv/project`](../project/README.zh.md) 的项目状态消息、项目更新消息以及 `dv_proj_*` 和操作工具到达模型。
 
 #### KV Cache 影响
 
@@ -120,4 +119,4 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCente
 <a id="known-limitations-and-deferred-work"></a>
 
 - **隐藏 DSH 界面依赖 DSH 内部实现** — 外壳按 CSS Module 类名后缀和无障碍标签找到要隐藏的控件，通过私有字段改写 DSH 词典条目、Host 命令获取函数和右侧面板的宽度偏好，从框架属性读取左侧栏的折叠状态，并替换服务上的 `uiWorkspace.startSession` 和 `workspaces.initializeDefault`；DSH 改动其中任何一项，被隐藏的界面会重新出现，或覆盖失效而不报错；只有缺少 `setRightbar` 动作时会在控制台输出警告。
-- **关联轮询** — 智能体创建的项目和绑定最多 4 秒后才出现在导航里。
+- **关联轮询** — 智能体创建的项目最多 4 秒后才出现在导航里。

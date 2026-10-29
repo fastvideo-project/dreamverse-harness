@@ -133,7 +133,7 @@ async function start(tasks: { ref2v?: string; t2v?: string }): Promise<Context> 
   const rows: string[] = []
   const plugins = [
     ['skills', 'SkillRegistry', []],
-    ['dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`]],
+    ['dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`]],
     ['dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe']],
     ['dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`]],
     ['dv-models', 'DvModels', []],

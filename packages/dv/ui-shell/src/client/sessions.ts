@@ -15,45 +15,34 @@ import { useShell } from './store.ts'
 export type SessionListHooks = Pick<GlobalStandardProps, 'useSessions' | 'useWorkspaces'>
 
 /**
- * The project's chat sessions, newest first: the sessions of its Workspace and the sessions bound to it, without
- * archived sessions, sessions bound to another project, and blank sessions other than the main session.
+ * The project's chat sessions, newest first: the sessions of its Workspace, without archived sessions and blank sessions
+ * other than the main session.
  * @param hooks - the DSH list hooks.
  * @param project - the project.
  * @returns the session summaries.
  */
 export function useProjectSessions({ useSessions, useWorkspaces }: SessionListHooks, project: WireProjectLink): SessionSummary[] {
   const current = useShell(s => s.sessionId)
-  const bindings = useShell(s => s.links?.bindings)
-  const workspaceSessions = useWorkspaces(
-    s => s.items.find(item => item.workspaceId === project.workspace_id || item.path === project.path)?.sessionIds,
-  )
+  const workspaceSessions = useWorkspaces(s => s.items.find(item => item.workspaceId === project.workspace_id)?.sessionIds)
   const archived = useWorkspaces(s => s.archivedSessionIds)
   const byId = useSessions(s => s.byId)
-  // A session belongs to one project: its binding, else the project whose Workspace holds it.
-  const ids = [...new Set([
-    ...workspaceSessions ?? [],
-    ...Object.entries(bindings ?? {}).filter(([, id]) => id === project.id).map(([id]) => id),
-  ])].filter(id => !archived.includes(id as never) && (bindings?.[id] ?? project.id) === project.id)
-  return ids
+  return (workspaceSessions ?? []).filter(id => !archived.includes(id))
     .map(id => byId[id as keyof typeof byId])
     .filter((summary): summary is SessionSummary => summary !== undefined && (!summary.blank || summary.id === current))
     .sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
 /**
- * Whether a session is an entry chat: a top-level chat with a turn that no project holds, so no Workspace lists it and
- * no binding names it. `goHome` opens exactly these sessions when it gets their ID.
+ * Whether a session is an entry chat: a top-level chat with a turn that no Workspace lists, so its folder is no project
+ * yet.
  * @param summary - the session.
  * @param workspaces - the DSH Workspaces.
- * @param bindings - the saved chat session → project bindings.
  * @returns whether it is an entry chat.
  */
 export function isEntryChat(
-  summary: SessionSummary | undefined,
-  workspaces: ReadonlyArray<{ sessionIds: readonly string[] }>,
-  bindings: Record<string, string> | undefined,
+  summary: SessionSummary | undefined, workspaces: ReadonlyArray<{ sessionIds: readonly string[] }>,
 ): summary is SessionSummary {
-  return summary !== undefined && !summary.blank && summary.origin !== 'subagent' && bindings?.[summary.id] === undefined
+  return summary !== undefined && !summary.blank && summary.origin !== 'subagent'
     && !workspaces.some(item => item.sessionIds.includes(summary.id))
 }
 
@@ -70,6 +59,6 @@ export function useEntrySessions({ useSessions, useWorkspaces }: SessionListHook
   if (links === null) return []
   return sessions.ids
     .map(id => sessions.byId[id])
-    .filter((summary): summary is SessionSummary => isEntryChat(summary, workspaces, links.bindings) && !archived.includes(summary.id))
+    .filter((summary): summary is SessionSummary => isEntryChat(summary, workspaces) && !archived.includes(summary.id))
     .sort((a, b) => b.updatedAt - a.updatedAt)
 }

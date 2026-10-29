@@ -3,7 +3,7 @@
  * a removed project leaves the list with its Workspace link and canvas layout file while its folder stays on disk, and
  * the sessions route finds a project's DSH sessions by directory.
  */
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
@@ -19,18 +19,13 @@ const HUMAN: RecordOrigin = { actor: 'user', surface: 'api', session: null, turn
 
 let root = ''
 let fixture: BaseFixture | null = null
-const saved = { home: process.env['DSH_HOME'] }
-
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'dv-projects-admin-'))
-  process.env['DSH_HOME'] = join(root, 'dsh-home')
 })
 
 afterEach(async () => {
   await fixture?.dispose()
   fixture = null
-  if (saved.home === undefined) delete process.env['DSH_HOME']
-  else process.env['DSH_HOME'] = saved.home
   rmSync(root, { recursive: true, force: true })
 })
 
@@ -51,7 +46,7 @@ async function call(
 it('renames a project to a unique title and removes it from the list while its folder stays on disk', async () => {
   fixture = await startBase({ generation: 'none', root })
   const layouts = new CanvasLayoutStore(join(root, 'canvas-layout'))
-  const routes = [...workspaceRoutes(fixture.project, root), ...projectAdminRoutes(fixture.project, root, layouts)]
+  const routes = [...workspaceRoutes(fixture.project, root), ...projectAdminRoutes(fixture.project, layouts)]
   const first = (await fixture.project.createProject(await fixture.project.newProjectFolder('未命名项目'), '未命名项目', HUMAN)).id
   const second = (await fixture.project.createProject(await fixture.project.newProjectFolder('未命名项目'), '未命名项目', HUMAN)).id
   layouts.write(first, { positions: { n1: { x: 1, y: 2 } } })
@@ -64,39 +59,16 @@ it('renames a project to a unique title and removes it from the list while its f
     .toMatchObject({ status: 400, json: { error: expect.any(String), code: 'invalid_params' } })
   expect(await call(routes, PROJECT_ADMIN_ROUTES.delete, { json: {} })).toMatchObject({ status: 400, json: { code: 'invalid_params' } })
 
-  await call(routes, WORKSPACE_ROUTES.workspaces, { json: { project: second, workspace_id: 'ws-2' } })
   const removed = await call(routes, PROJECT_ADMIN_ROUTES.delete, { json: { project: second } })
-  expect(removed.json).toEqual({ ok: true, workspace_id: 'ws-2' })
+  expect(removed.json).toEqual({ ok: true })
+  expect(fixture.services.workspaces.get(second)).toBeUndefined()
   expect(existsSync(join(root, 'projects', '未命名项目 2', '.dreamverse', 'records.jsonl'))).toBe(true)
   expect(readdirSync(join(root, 'projects')).sort()).toEqual(['未命名项目', '未命名项目 2'])
   expect(readdirSync(join(root, 'canvas-layout'))).toEqual([`${first}.json`])
-  const listed = (await call(routes, WORKSPACE_ROUTES.workspaces)).json as {
-    projects: Array<{ id: string; title: string }>
-    bindings: Record<string, string>
-  }
-  expect(listed.projects.map(row => row.id)).toEqual([first])
-  expect(listed.bindings).toEqual({})
+  const listed = (await call(routes, WORKSPACE_ROUTES.workspaces)).json as { projects: Array<{ id: string; workspace_id: string }> }
+  expect(listed.projects).toMatchObject([{ id: first, workspace_id: first }])
   // A removed project is unknown to both routes.
   expect(await call(routes, PROJECT_ADMIN_ROUTES.rename, { json: { project: second, title: 'x' } }))
     .toMatchObject({ status: 404, json: { error: expect.any(String), code: 'unknown_project' } })
   expect(await call(routes, PROJECT_ADMIN_ROUTES.delete, { json: { project: second } })).toMatchObject({ status: 404, json: { code: 'unknown_project' } })
-})
-
-it('lists the DSH sessions stored under a project directory, newest first', async () => {
-  fixture = await startBase({ generation: 'none', root })
-  const routes = workspaceRoutes(fixture.project, root)
-  const projectId = (await fixture.project.createProject(await fixture.project.newProjectFolder('chats'), 'chats', HUMAN)).id
-  const group = join(root, 'dsh-home', 'sessions', `--tmp-state-projects-${projectId}--`)
-  for (const [id, size] of [['session-a', 10], ['session-b', 3000]] as const) {
-    mkdirSync(join(group, id), { recursive: true })
-    writeFileSync(join(group, id, 'session.lock'), '')
-    writeFileSync(join(group, id, 'session.v4.jsonl.zstd'), 'x'.repeat(size))
-  }
-  const listed = (await call(routes, WORKSPACE_ROUTES.sessions, { query: { project: projectId } })).json as
-    Array<{ session: string; updated_at: string; bytes: number }>
-  expect(listed.map(row => [row.session, row.bytes]).sort()).toEqual([['session-a', 10], ['session-b', 3000]])
-  expect(listed.every(row => !Number.isNaN(Date.parse(row.updated_at)))).toBe(true)
-  expect(await call(routes, WORKSPACE_ROUTES.sessions, { query: { project: 'missing' } }))
-    .toMatchObject({ status: 404, json: { error: expect.any(String), code: 'unknown_project' } })
-  expect(await call(routes, WORKSPACE_ROUTES.sessions)).toMatchObject({ status: 400, json: { code: 'invalid_params' } })
 })

@@ -39,16 +39,16 @@ kind: "package-reference"
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `keepaliveMs` | `15000` | 空闲事件流多久发一行注释，让代理保持连接 |
-| `stateRoot` | 必填 | 状态目录：`canvas-layout/` 里的画布布局、`workspaces.json` 里的项目 → Workspace 关联、`entry/` 里的入口 Workspace，以及 `sessions/` 里 `@dv/project` 的会话绑定文件；bundle 用 `DV_STATE_ROOT` 设置它 |
+| `stateRoot` | 必填 | 状态目录：`canvas-layout/` 里的画布布局和 `entry/` 里的入口 Workspace；bundle 用 `DV_STATE_ROOT` 设置它 |
 
 | 路由 | 方法 | 请求 | 响应 |
 | --- | --- | --- | --- |
-| `/api/dv/projects` | GET | 可选 `session`（对话 ID） | `WireProject[]`（`{id, title, created_at, current}`），最新在前；给出 `session` 时该对话绑定的项目排第一并带 `current: true` |
+| `/api/dv/projects` | GET | 可选 `session`（对话 ID） | `WireProject[]`（`{id, title, created_at, current}`），最新在前；给出 `session` 时，该活动对话所在文件夹的项目排第一并带 `current: true` |
 | `/api/dv/projects` | POST | `{title, surface}` | 从视图新建的项目，位于 DreamVerse 文件夹中以其标题命名的新文件夹：`ProjectInfo` `{id, title, created_at, path}` |
 | `/api/dv/projects/untitled` | POST | `{name}` | `{path}`：在 `@dv/project` 的 DreamVerse 文件夹中新建的空文件夹（`newProjectFolder`），供还没有项目的对话使用 |
 | `/api/dv/projects/summary` | GET | 可选 `project`、可选 `timeline` | `WireProjectSummary[]`（`{project, cover, edited_at}`），每个项目一条，或只有指定的项目：`cover` 是 `timeline` 指定的时间线（带 `project` 且该项目有这条时间线时）上第一个有素材的片段，否则是第一条时间线上的，形式为视频或图片的 `{asset, mime}`（素材 ID 及其 MIME 类型）；没有这样的片段时，是已完成记录的第一张图片产出的 `{asset, mime}`，否则为 null；`edited_at` 是最后一条记录的时间。每条从项目的当前状态读取。列出所有项目时，读不出状态的项目得到空条目（`cover` 和 `edited_at` 为 null），服务器在控制台输出警告；带 `project` 时，该项目的错误就是响应 |
 | `/api/dv/projects/rename` | POST | `{project, title}` | `{title}`，重名时追加 ` 2`、` 3`…… 使其唯一 |
-| `/api/dv/projects/delete` | POST | `{project}` | `{ok, workspace_id}`；`dvProject.removeProject` 注销项目的 Workspace 并保留其文件夹，它的画布布局文件被删除 |
+| `/api/dv/projects/delete` | POST | `{project}` | `{ok}`；`dvProject.removeProject` 注销项目的 Workspace 并保留其文件夹，它的画布布局文件被删除 |
 | `/api/dv/state` | GET | `project` | `WireState`：`{project, head, tip, components, assets}`：当前位置（`head`）、历史列表的最后一步（`tip`）、当前状态中与 Project 算出的一致的每个组件状态切片，以及 `ProjectAsset` 条目：当前状态中的每个素材，加上项目任何 `asset.import` 记录产出的每个素材，包括被丢弃的记录（当前位置之后的步骤或被丢弃的步骤生成的素材不列出），每个条目带本项目自己的导入 `name` 和 `created_at`，以及 `made_by`（当前状态中创建它的记录的操作，否则为 `asset.import`，否则为 null） |
 | `/api/dv/operations` | GET | — | `WireOperation[]`：每个不是 `readOnly` 的已注册操作，不含执行器，声明了 `label` 时带上它 |
 | `/api/dv/tasks` | GET | — | 每个任务的标签 `{zh, en}`，按任务名：[`@dv/models`](../models/README.zh.md) 的 `dvModels.taskLabels()`；模型目录未挂载时为 `{}` |
@@ -61,9 +61,7 @@ kind: "package-reference"
 | `/api/dv/stale/accept` | POST | `{project, record, session?, surface}` | `proj.stale_accept` 记录 |
 | `/api/dv/history` | POST | `{project, actor?, component?, operation?, kind?, status?, session?, turn?, tool_call?, records?, before?, limit?}`；`records` 是数组；`limit` 取 1 到 200，默认 50 | `WireHistory` `{entries, assets}`：`dvProject.listHistory` 的条目 `{record, place}`，即历史列表中的步骤（最新的在前），`place` 是相对当前位置的 `before`、`current` 或 `after`，以及条目提到的每个素材；这是只读请求，不写记录 |
 | `/api/dv/layout` | GET / POST | GET：`project`；POST：`{project, positions?, viewport?}` | `{positions, viewport}`；POST 合并以画布节点 ID 为键的位置，并替换视口。布局是视图状态，不写记录；画布上有哪些素材是当前状态的 `asset` 切片，由 `asset.place` 和 `asset.unplace` 经 `/api/dv/operation` 写入 |
-| `/api/dv/workspaces` | GET / POST | POST：`{project, workspace_id}` | GET：`{entry_path, projects: [{id, title, created_at, path, workspace_id}], bindings}`；POST：`{ok}` |
-| `/api/dv/workspaces/bind` | POST | `{session, project}` | `{ok}` |
-| `/api/dv/workspaces/sessions` | GET | `project` | `[{session, updated_at, bytes}]`，最新在前；`updated_at` 是 ISO-8601 UTC |
+| `/api/dv/workspaces` | GET | 无 | `{entry_path, projects: [{id, title, created_at, path, workspace_id}]}`；`workspace_id` 就是项目 ID |
 | `/dv/events?project=<id>` | GET | — | `text/event-stream`：先 `ready`，再是 `record`、`update` 和 `line` 事件，每个事件带一个 `ProjectEvent`；每次写入和每次移动之后都有一个 `line` 事件 `{kind: 'line', tip, at}` |
 
 `surface` 是 `canvas`、`timeline` 或 `asset_pool`；其他值都按 `canvas` 处理，素材导入除外：它只接受 `canvas` 或 `asset_pool`。一次运行以人的身份调用 `dvProject.run`，作为项目当前位置之后的一步，请求所属的对话记为记录的 `session`；当某个输入指向尚未完成的记录时改为排队。每条路由（包括事件流）的每个错误都以 JSON 体 `{error, code, ...details}` 回答：`error` 是消息文本，`code` 是下表中的一个错误码；`details` 携带拒绝的附加字段。
@@ -86,7 +84,7 @@ kind: "package-reference"
 <details>
 <summary>实现内部——点击展开</summary>
 
-`DvApi` 在 `dvProject` 和 `dvAssetPool` 之上构造一个 `ApiHandlers`；操作列表和一次运行的操作来自 `dvProject.listOperations()`，运行的 `inputs` 由 `dvProject.parseInputs` 解析，工作区路由用 `dvProject.bindSession` 把对话绑定到项目，并为列表读回绑定文件（`{"project": <ProjectId>}`）。任务路由在每次请求时用 `ctx.get` 读取可选的 `dvModels`。在 `ctx.inject(['connection'])` 里它用 `connection.fetch.register` 注册各条 Fetch 路由，包括素材导入、布局、工作区和项目管理路由在内的每条路由都经过 `src/api.ts` 中同一个 `answer` 包装，把 `ApiRequestError` 或 `ProjectError` 映射成它的状态码和错误码，其他错误映射成 500 `internal_error`；同一文件中的 `requireProject` 检查每条路由指定的项目。`/dv/events` 写出同样的错误体。在 `ctx.inject(['webServer'])` 里它注册 `/dv/events` 前缀路由，通过 `requestRejection` 询问 Connection 请求是否带有效 cookie，再把响应交给 `serveEventStream`；后者订阅 `dvProject.subscribe(projectId)`，每次变化写一帧 `event:`/`data:`，直到请求关闭。`toWireState` 原样发送 `ProjectState` 及其 `components`，再加上素材列表：已创建的素材、整个历史中每条记录的输出和已解析输入、每个角色、场景和风格版本的参考图，以及每个时间线片段的并集。
+`DvApi` 在 `dvProject` 和 `dvAssetPool` 之上构造一个 `ApiHandlers`；操作列表和一次运行的操作来自 `dvProject.listOperations()`，运行的 `inputs` 由 `dvProject.parseInputs` 解析，工作区路由列出 `dvProject.listProjects()`。任务路由在每次请求时用 `ctx.get` 读取可选的 `dvModels`。在 `ctx.inject(['connection'])` 里它用 `connection.fetch.register` 注册各条 Fetch 路由，包括素材导入、布局、工作区和项目管理路由在内的每条路由都经过 `src/api.ts` 中同一个 `answer` 包装，把 `ApiRequestError` 或 `ProjectError` 映射成它的状态码和错误码，其他错误映射成 500 `internal_error`；同一文件中的 `requireProject` 检查每条路由指定的项目。`/dv/events` 写出同样的错误体。在 `ctx.inject(['webServer'])` 里它注册 `/dv/events` 前缀路由，通过 `requestRejection` 询问 Connection 请求是否带有效 cookie，再把响应交给 `serveEventStream`；后者订阅 `dvProject.subscribe(projectId)`，每次变化写一帧 `event:`/`data:`，直到请求关闭。`toWireState` 原样发送 `ProjectState` 及其 `components`，再加上素材列表：已创建的素材、整个历史中每条记录的输出和已解析输入、每个角色、场景和风格版本的参考图，以及每个时间线片段的并集。
 
 | 文件 | 内容 |
 | --- | --- |
@@ -94,7 +92,7 @@ kind: "package-reference"
 | [`src/api.ts`](src/api.ts) | `ApiHandlers`、`ApiRequestError`、`OperationRequest`、`WireProject`：每条路由背后的校验和 `dvProject` 调用；所有路由共用的 `answer`、`json` 和 `requireProject` |
 | [`src/asset-import.ts`](src/asset-import.ts) | 素材导入路由 |
 | [`src/layout.ts`](src/layout.ts) | `CanvasLayoutStore` 和布局路由 |
-| [`src/workspaces.ts`](src/workspaces.ts) | 项目 → Workspace 关联、对话绑定，以及项目的 DSH 会话 |
+| [`src/workspaces.ts`](src/workspaces.ts) | 项目列表，带每个项目的文件夹和 Workspace |
 | [`src/projects-admin.ts`](src/projects-admin.ts) | 项目重命名和删除 |
 | [`src/summaries.ts`](src/summaries.ts) | `WireProjectSummary` 和 `summarizeProject`：项目卡片摘要（封面和最后编辑时间），从每个项目的当前状态读取 |
 | [`src/events.ts`](src/events.ts) | `frameOf` 和 `serveEventStream` |

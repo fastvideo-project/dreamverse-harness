@@ -81,7 +81,7 @@ describe('the prop fixture', () => {
     await context.plugin(SystemPrompt, {}).await()
     await context.plugin(ToolRuntime).await()
     await context.plugin(DvProject, {
-      projectsFolder: join(root, 'projects'), sessionRoot: join(root, 'sessions'), cpuConcurrency: 1, gpuConcurrency: 1,
+      projectsFolder: join(root, 'projects'), cpuConcurrency: 1, gpuConcurrency: 1,
       promptSectionOrder: 4900,
     }).await()
     const dv = context.dvProject

@@ -124,7 +124,6 @@ describe('mention expansion', () => {
     const session = brandString<SessionId>('s1')
     const user: RecordOrigin = { actor: 'user', surface: 'canvas', session: null, turn: null, tool_call: null, intent: 'set up' }
     const info = await fixture.project.createProject(folder, 'mentions', user)
-    fixture.project.bindSession(session, info.id)
     const picture = await fixture.project.run({
       ...user, project: info.id, operation: 'asset.import', inputs: [],
       params: { path: fixture.writeFile('face.png'), mime: 'image/png' },

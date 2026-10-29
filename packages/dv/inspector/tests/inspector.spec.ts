@@ -103,7 +103,7 @@ async function start(options: { models?: boolean; imageInput?: boolean } = {}): 
   }
   row('system-prompt', 'SystemPrompt', [])
   row('tools', 'ToolRuntime', [])
-  row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`])
+  row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`])
   row('dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, `ffprobePath: ${FFPROBE}`])
   row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
   row('dv-inspector', 'DvInspector', options.imageInput === false ? ['imageInput: false'] : [])

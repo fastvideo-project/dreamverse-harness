@@ -70,7 +70,7 @@ async function start(): Promise<Fixture> {
   await ctx.plugin(ToolRuntime).await()
   await ctx.plugin(SkillRegistry, {}).await()
   await ctx.plugin(DvProject, {
-    projectsFolder: join(root, 'projects'), sessionRoot: join(root, 'sessions'), cpuConcurrency: 1, gpuConcurrency: 1,
+    projectsFolder: join(root, 'projects'), cpuConcurrency: 1, gpuConcurrency: 1,
     promptSectionOrder: 4900,
   }).await()
   const assets = new MemoryAssets()

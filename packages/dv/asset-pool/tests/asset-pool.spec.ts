@@ -91,7 +91,7 @@ async function start(options: { dir?: string; publicBaseUrl?: string } = {}): Pr
   }
   row('system-prompt', 'SystemPrompt', [])
   row('tools', 'ToolRuntime', [])
-  row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`])
+  row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`])
   row('dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, `ffprobePath: ${FFPROBE}`])
   row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`, ...options.publicBaseUrl === undefined ? [] : [`publicBaseUrl: ${options.publicBaseUrl}`]])
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)

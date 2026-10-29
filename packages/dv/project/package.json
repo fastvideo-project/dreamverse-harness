@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Project component of DreamVerse: projects as DSH Workspace folders, the record store with one history line, undo, the operation runner and scheduler, the reducer registry, history, subscriptions, chat session bindings, the agent tool of every operation, the dv:project rules section, and the project state and update messages.",
+  "description": "Project component of DreamVerse: projects as DSH Workspace folders, the record store with one history line, undo, the operation runner and scheduler, the reducer registry, history, subscriptions, the project of each chat session, the agent tool of every operation, the dv:project rules section, and the project state and update messages.",
   "exports": {
     ".": "./src/index.ts",
     "./types": "./src/types.ts",
@@ -18,6 +18,7 @@
     "@deepseek-ai/dsh-brand": "workspace:*",
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
+    "@deepseek-ai/dsh-session-persistence": "workspace:*",
     "@deepseek-ai/dsh-session-projection": "workspace:*",
     "@deepseek-ai/dsh-system-prompt": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",

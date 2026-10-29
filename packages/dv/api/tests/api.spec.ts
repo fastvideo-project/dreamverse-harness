@@ -664,30 +664,17 @@ describe('dvApi', () => {
     expect(mentionedAssets(fixture.project.getState(projectId), imports)).toEqual([...first.outputs, ...second.outputs])
   })
 
-  it('links a project to its Workspace and binds a chat session to the project', async () => {
+  it('lists each project with its folder and Workspace, and marks the project of a chat that runs in its folder', async () => {
     const fixture = await start()
     const root = fixture.root
     const projectId = await fixture.newProject('linked')
     const listed = await call(fixture, WORKSPACE_ROUTES.workspaces)
-    const rows = (listed.json as { entry_path: string; projects: Array<{ id: string; path: string; workspace_id: string | null }> })
+    const rows = (listed.json as { entry_path: string; projects: Array<{ id: string; path: string; workspace_id: string }> })
     expect(rows.entry_path).toBe(join(root, 'entry'))
-    expect(rows.projects.find(row => row.id === projectId)).toMatchObject({ path: join(root, 'projects', 'linked'), workspace_id: null })
-    expect((await call(fixture, WORKSPACE_ROUTES.workspaces, { method: 'POST', body: { project: projectId, workspace_id: 'ws-1' } })).status).toBe(200)
-    expect(await call(fixture, WORKSPACE_ROUTES.workspaces, { method: 'POST', body: { project: projectId, workspaceId: 'ws-1' } }))
-      .toMatchObject({ status: 400, json: { error: expect.any(String), code: 'invalid_params' } })
-    const relisted = (await call(fixture, WORKSPACE_ROUTES.workspaces)).json as {
-      projects: Array<{ id: string; workspace_id: string | null }>
-      bindings: Record<string, string>
-    }
-    expect(relisted.projects.find(row => row.id === projectId)?.workspace_id).toBe('ws-1')
-    expect(relisted.bindings).toEqual({})
-    expect((await call(fixture, WORKSPACE_ROUTES.bind, { method: 'POST', body: { session: 'chat-1', project: projectId } })).json).toEqual({ ok: true })
+    expect(rows.projects.find(row => row.id === projectId)).toMatchObject({ path: join(root, 'projects', 'linked'), workspace_id: projectId })
+    for (const gone of ['/api/dv/workspaces/bind', '/api/dv/workspaces/sessions']) expect(fixture.connection.routes.has(gone)).toBe(false)
+    expect(fixture.handlers.listProjects('chat-1').every(entry => !entry.current)).toBe(true)
+    fixture.services.chats.open('chat-1', join(root, 'projects', 'linked'))
     expect(fixture.handlers.listProjects('chat-1')[0]).toMatchObject({ id: projectId, current: true })
-    // The binding file of `@dv/project` under `<state root>/sessions` reaches the listing.
-    expect(((await call(fixture, WORKSPACE_ROUTES.workspaces)).json as { bindings: Record<string, string> }).bindings).toEqual({ 'chat-1': projectId })
-    expect(await call(fixture, WORKSPACE_ROUTES.bind, { method: 'POST', body: { session: 'chat-1', project: 'missing' } }))
-      .toMatchObject({ status: 404, json: { error: expect.any(String), code: 'unknown_project' } })
-    expect(await call(fixture, WORKSPACE_ROUTES.bind, { method: 'POST', body: { project: projectId } }))
-      .toMatchObject({ status: 400, json: { code: 'invalid_params' } })
   })
 })

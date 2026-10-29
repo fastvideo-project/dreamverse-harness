@@ -63,7 +63,7 @@ async function start(): Promise<Fixture> {
   }
   row('system-prompt', 'SystemPrompt', [])
   row('tools', 'ToolRuntime', [])
-  row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`])
+  row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`])
   // The agent tools describe outputs through the asset pool, so the pool and its ffmpeg runner are mounted too.
   row('dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe'])
   row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])

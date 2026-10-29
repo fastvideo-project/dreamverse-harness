@@ -16,7 +16,6 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { pickText } from '@dv/ui-kit/locale.ts'
-import type { WireSession } from '@dv/ui-kit/types.ts'
 import { isEntryChat } from './sessions.ts'
 import { createSidebarFold } from './sidebar.ts'
 import { getShell, markSessionChoice, refreshLinks, setShell, shellClient } from './store.ts'
@@ -36,12 +35,9 @@ const TAB_BLANK_KEY = 'dv-shell.tab-blank'
 /** The {@link TAB_BLANK_KEY} suffix of this tab's blank entry chat, whose folder belongs to no Workspace yet. */
 const UNTITLED_KEY = 'untitled'
 
-/** A session log smaller than this many bytes holds no turn; used for sessions the client list has not loaded. */
-const BLANK_LOG_BYTES = 1024
-
 /** The actions the shell components receive through their DSH UI slot registrations. */
 export interface ShellActions {
-  /** Create a project and its Workspace, then open a chat session in it. */
+  /** Create a project (the host registers its Workspace), then open a chat session in it. */
   newProject(): Promise<void>
   /**
    * Open a project and move the main session into it: `sessionId` when it belongs to the project, else the main session
@@ -60,9 +56,9 @@ export interface ShellActions {
   goHome(sessionId?: string): Promise<void>
   /** Open a DSH sidebar page (Plugins, MCP, or another `sidebar.panellist` entry) in the main column. */
   openPage(panelId: string): void
-  /** Store a unique project title and rename the project's Workspace to match. */
+  /** Store a unique project title; the host sets it as the project's Workspace title. */
   renameProject(projectId: string, title: string): Promise<void>
-  /** Move a project to the trash, drop its Workspace registration, and leave it when it is open. */
+  /** Remove a project (the host unregisters its Workspace and keeps its folder), and leave it when it is open. */
   deleteProject(projectId: string): Promise<void>
   /** Rename a chat session. */
   renameSession(sessionId: string, title: string): Promise<void>
@@ -115,101 +111,20 @@ function whenReady(source: { getSnapshot(): { phase: string }; subscribe(listene
  */
 export function createActions(ctx: ClientContext): ShellActions {
   /**
-   * Rename a Workspace to `title`, or to `title N` when another Workspace already has the name.
-   * @param workspaceId - the Workspace.
-   * @param title - the wanted title.
-   */
-  const renameWorkspace = async (workspaceId: WorkspaceId, title: string): Promise<void> => {
-    const taken = new Set(ctx.workspaces.list.getSnapshot().items.filter(item => item.workspaceId !== workspaceId).map(item => item.title))
-    let failure: unknown = null
-    for (let n = 1; n <= 20; n += 1) {
-      const candidate = n === 1 ? title : `${title} ${String(n)}`
-      if (taken.has(candidate)) continue
-      try {
-        await ctx.workspaces.rename(workspaceId, candidate)
-        return
-      } catch (error) {
-        // `workspace/name-conflict` from a Workspace the list has not shown yet: try the next suffix.
-        failure = error
-      }
-    }
-    console.warn('ui-shell: Workspace rename failed', failure)
-  }
-
-  /**
-   * The Workspace whose directory is `path`, created and titled when missing.
-   * @param path - the directory.
-   * @param title - the title of a created Workspace.
-   * @returns the Workspace ID.
-   */
-  const workspaceAt = async (path: string, title: string): Promise<WorkspaceId> => {
-    const existing = ctx.workspaces.list.getSnapshot().items.find(item => item.path === path)
-    if (existing !== undefined) return existing.workspaceId
-    const created = await ctx.workspaces.create({ path })
-    await renameWorkspace(created.workspaceId, title)
-    return created.workspaceId
-  }
-
-  /**
-   * The project's Workspace, created and recorded when missing.
-   * @param projectId - the project.
-   * @returns the Workspace ID.
-   */
-  const projectWorkspace = async (projectId: string): Promise<WorkspaceId> => {
-    await whenReady(ctx.workspaces.list)
-    const links = getShell().links ?? await refreshLinks()
-    let project = links.projects.find(p => p.id === projectId)
-    if (project === undefined) project = (await refreshLinks()).projects.find(p => p.id === projectId)
-    if (project === undefined) throw new Error(`ui-shell: unknown project ${projectId}`)
-    const known = ctx.workspaces.list.getSnapshot().items
-    if (project.workspace_id !== null && known.some(item => item.workspaceId === project.workspace_id)) {
-      return project.workspace_id as WorkspaceId
-    }
-    const workspaceId = await workspaceAt(project.path, project.title)
-    await shellClient.linkWorkspace(projectId, workspaceId)
-    await refreshLinks()
-    return workspaceId
-  }
-
-  /**
-   * The project's chat sessions that are not archived, newest first: the sessions of its Workspace, the sessions bound
-   * to it, and the sessions the server stores under its directory, which covers sessions the client list lacks.
-   * @param projectId - the project.
+   * The project's chat sessions that are not archived, newest first: the sessions of its Workspace.
    * @param workspaceId - the project's Workspace.
    * @returns each session with whether it is blank.
    */
-  const projectSessions = async (
-    projectId: string,
-    workspaceId: WorkspaceId,
-  ): Promise<Array<{ id: string; updatedAt: number; blank: boolean }>> => {
+  const projectSessions = async (workspaceId: WorkspaceId): Promise<Array<{ id: string; updatedAt: number; blank: boolean }>> => {
     await Promise.all([whenReady(ctx.sessions.list), whenReady(ctx.workspaces.list)])
-    const stored = await shellClient.listSessions(projectId).catch((error: unknown): WireSession[] => {
-      console.warn('ui-shell: stored sessions read failed', error)
-      return []
-    })
     const workspace = ctx.workspaces.list.getSnapshot()
     const sessions = ctx.sessions.list.getSnapshot()
     const archived = new Set<string>(workspace.archivedSessionIds)
-    const rows = new Map<string, { id: string; updatedAt: number; blank: boolean }>()
-    const ids = [
-      ...workspace.items.find(item => item.workspaceId === workspaceId)?.sessionIds ?? [],
-      ...Object.entries(getShell().links?.bindings ?? {}).filter(([, project]) => project === projectId).map(([id]) => id),
-    ]
-    for (const id of ids) {
-      const summary = sessions.byId[id as SessionId]
-      if (summary !== undefined) rows.set(id, { id, updatedAt: summary.updatedAt, blank: summary.blank })
-    }
-    for (const row of stored) {
-      if (rows.has(row.session)) continue
-      const summary = sessions.byId[row.session as SessionId]
-      rows.set(row.session, summary === undefined
-        ? { id: row.session, updatedAt: Date.parse(row.updated_at), blank: row.bytes < BLANK_LOG_BYTES }
-        : { id: row.session, updatedAt: summary.updatedAt, blank: summary.blank })
-    }
-    // A session bound to another project belongs to that project, even when this project's Workspace holds it.
-    const bindings = getShell().links?.bindings ?? {}
-    return [...rows.values()]
-      .filter(row => !archived.has(row.id) && (bindings[row.id] ?? projectId) === projectId)
+    return (workspace.items.find(item => item.workspaceId === workspaceId)?.sessionIds ?? [])
+      .flatMap((id) => {
+        const summary = sessions.byId[id]
+        return summary === undefined || archived.has(id) ? [] : [{ id, updatedAt: summary.updatedAt, blank: summary.blank }]
+      })
       .sort((a, b) => b.updatedAt - a.updatedAt)
   }
 
@@ -285,7 +200,7 @@ export function createActions(ctx: ClientContext): ShellActions {
     const workspaces = ctx.workspaces.list.getSnapshot().items
     const summary = sessionId === undefined ? undefined : sessions.byId[sessionId as SessionId]
     const reused = tabBlanks.get(UNTITLED_KEY)
-    let entry = isEntryChat(summary, workspaces, getShell().links?.bindings) ? summary.id : undefined
+    let entry = isEntryChat(summary, workspaces) ? summary.id : undefined
     const reusable = reused !== undefined && sessions.byId[reused]?.blank === true
       && !workspaces.some(item => item.sessionIds.includes(reused))
     if (entry === undefined && reusable) entry = reused
@@ -300,8 +215,8 @@ export function createActions(ctx: ClientContext): ShellActions {
   const openProject = async (projectId: string, sessionId?: string): Promise<void> => {
     leavePage()
     setShell({ projectId })
-    const workspaceId = await projectWorkspace(projectId)
-    const sessions = await projectSessions(projectId, workspaceId)
+    const workspaceId = projectId as WorkspaceId
+    const sessions = await projectSessions(workspaceId)
     // A later navigation superseded this one while the lists loaded.
     if (getShell().projectId !== projectId) return
     const current = getShell().sessionId
@@ -343,38 +258,26 @@ export function createActions(ctx: ClientContext): ShellActions {
       const created = await shellClient.createProject(title, 'canvas')
       await refreshLinks()
       setShell({ projectId: created.id, view: 'canvas' })
-      const workspaceId = await projectWorkspace(created.id)
-      if (getShell().projectId !== created.id) return
-      await openBlank(workspaceId, () => getShell().projectId === created.id)
+      await openBlank(created.id as WorkspaceId, () => getShell().projectId === created.id)
     },
     openProject,
     openSession,
     async newSession(projectId) {
       leavePage()
       setShell({ projectId })
-      const workspaceId = await projectWorkspace(projectId)
-      if (getShell().projectId !== projectId) return
       markSessionChoice()
-      await openBlank(workspaceId, () => getShell().projectId === projectId)
+      await openBlank(projectId as WorkspaceId, () => getShell().projectId === projectId)
     },
     goHome,
     openPage(panelId) {
       ctx.get('layout')?.selectPanel(panelId as MainPanelId)
     },
     async renameProject(projectId, title) {
-      const renamed = await shellClient.renameProject(projectId, title)
-      const links = await refreshLinks()
-      const workspaceId = links.projects.find(p => p.id === projectId)?.workspace_id ?? null
-      if (workspaceId !== null && ctx.workspaces.list.getSnapshot().items.some(item => item.workspaceId === workspaceId)) {
-        await renameWorkspace(workspaceId as WorkspaceId, renamed.title)
-      }
+      await shellClient.renameProject(projectId, title)
+      await refreshLinks()
     },
     async deleteProject(projectId) {
-      const removed = await shellClient.deleteProject(projectId)
-      const linked = removed.workspace_id
-      if (linked !== null && ctx.workspaces.list.getSnapshot().items.some(item => item.workspaceId === linked)) {
-        await ctx.workspaces.delete(linked as WorkspaceId).catch((error: unknown) => { console.warn('ui-shell: Workspace delete failed', error) })
-      }
+      await shellClient.deleteProject(projectId)
       await refreshLinks()
       if (getShell().projectId === projectId) await goHome()
     },
@@ -397,7 +300,8 @@ export function createActions(ctx: ClientContext): ShellActions {
       const existing = ctx.workspaces.list.getSnapshot().items.find(item => item.path === links.entry_path)
       if (existing !== undefined) return existing
       const created = await ctx.workspaces.create({ path: links.entry_path })
-      await renameWorkspace(created.workspaceId, 'DreamVerse')
+      // The Workspace controller refuses a title another Workspace has; the entry Workspace then keeps its folder name.
+      await ctx.workspaces.rename(created.workspaceId, 'DreamVerse').catch((error: unknown) => { console.warn('ui-shell: entry Workspace rename failed', error) })
       return created
     },
     showPanels,

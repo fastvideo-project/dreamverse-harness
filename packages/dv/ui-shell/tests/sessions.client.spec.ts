@@ -2,7 +2,7 @@
 /**
  * The entry chats that the navigator's 对话 section lists, read from stand-in DSH session and Workspace lists.
  */
-import { act, cleanup, renderHook } from '@testing-library/react'
+import { cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -12,8 +12,7 @@ import { setShell } from '../src/client/store.ts'
 
 const LINKS: WireWorkspaces = {
   entry_path: '/dv/entry',
-  projects: [{ id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z', path: '/dv/p1', workspace_id: 'ws-p1' }],
-  bindings: { s2: 'p1' },
+  projects: [{ id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z', path: '/dv/p1', workspace_id: 'p1' }],
 }
 
 /** A session list row. */
@@ -26,8 +25,9 @@ const rows = [
   { ...summary('s7', 8), origin: 'subagent' as const },
 ]
 const sessions = { ids: rows.map(row => row.id), byId: Object.fromEntries(rows.map(row => [row.id, row])) }
+const p1Workspace = { workspaceId: 'p1', path: '/dv/p1', sessionIds: ['s2', 's6'] }
 const workspaces = {
-  items: [{ workspaceId: 'ws-p1', path: '/dv/p1', sessionIds: ['s6'] }],
+  items: [p1Workspace],
   archivedSessionIds: ['s4'],
 }
 const hooks: SessionListHooks = {
@@ -41,11 +41,12 @@ afterEach(() => {
 })
 
 describe('useEntrySessions', () => {
-  it('lists the started top-level chats that no Workspace holds and no binding names, without archived ones, newest first', () => {
+  it('lists the started top-level chats that no Workspace holds, without archived ones, newest first', () => {
     setShell({ links: LINKS })
-    const { result } = renderHook(() => useEntrySessions(hooks))
+    const { result, rerender } = renderHook(() => useEntrySessions(hooks))
     expect(result.current.map(row => row.id)).toEqual(['s3', 's1'])
-    act(() => { setShell({ links: { ...LINKS, bindings: {} } }) })
+    p1Workspace.sessionIds = ['s6']
+    rerender()
     expect(result.current.map(row => row.id)).toEqual(['s2', 's3', 's1'])
   })
 

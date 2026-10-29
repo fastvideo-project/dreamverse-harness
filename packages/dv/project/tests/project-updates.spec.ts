@@ -17,7 +17,7 @@ import DvProject, { type OperationSpec, type ProjectId, type ProjectRecord, type
 import { STATE_HEAD, UPDATE_HEAD, foldSeen, projectMessage, seenProjection, type SessionSeen } from '../src/project-updates.ts'
 import type { ProjToolDeps } from '../src/proj-tools.ts'
 import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot } from './support.ts'
-import { chatProject, provideChatServices } from './workspaces.ts'
+import { chatProject, provideChatServices, type TestChatServices } from './workspaces.ts'
 
 /** The chat session of the agent under test. */
 const SESSION = brandString<SessionId>('s1')
@@ -89,6 +89,7 @@ interface Fixture {
   context: Context
   project: DvProject
   projectId: ProjectId
+  services: TestChatServices
   deps: ProjToolDeps
   log: AgentLog
   /** Run one tool as the agent of {@link SESSION}. */
@@ -115,7 +116,7 @@ async function start(bound = true): Promise<Fixture> {
   await context.plugin(SystemPrompt, {}).await()
   await context.plugin(ToolRuntime).await()
   await context.plugin(DvProject, {
-    projectsFolder: join(root, 'projects'), sessionRoot: join(root, 'sessions'), cpuConcurrency: 4, gpuConcurrency: 4, promptSectionOrder: 4900,
+    projectsFolder: join(root, 'projects'), cpuConcurrency: 4, gpuConcurrency: 4, promptSectionOrder: 4900,
   }).await()
   const project = context.dvProject
   const assets = new MemoryAssets()
@@ -156,7 +157,7 @@ async function start(bound = true): Promise<Fixture> {
   const deps: ProjToolDeps = { assets: () => assets, agentSummaries: () => [], turnOf: () => null, chatFolder: () => null }
   let calls = 0
   return {
-    context, project, projectId, deps, log: new AgentLog(project, deps),
+    context, project, projectId, services, deps, log: new AgentLog(project, deps),
     call(name, args) {
       calls += 1
       const agent = { id: SESSION, session: { id: SESSION } }
@@ -213,9 +214,10 @@ describe('project state message', () => {
     const fixture = await start()
     expect(projectMessage(fixture.project, fixture.deps, brandString<SessionId>('unbound'), fixture.log.seen)).toBeNull()
     expect(fixture.log.step()).toMatch(/^DreamVerse project state\./)
-    const other = await fixture.project.createProject(await fixture.project.newProjectFolder('Other'), 'Other', user('create'))
-    fixture.project.bindSession(SESSION, other.id)
-    expect(fixture.log.step()).toContain('This conversation belongs to the project "Other"')
+    // What the agent of SESSION saw, read for a session whose folder is another project.
+    await chatProject(fixture.project, fixture.services, 'Other', user('create'), 's2')
+    const message = projectMessage(fixture.project, fixture.deps, brandString<SessionId>('s2'), fixture.log.seen)
+    expect(message === null ? '' : textOf(message)).toContain('This conversation belongs to the project "Other"')
   })
 
   it('sends the state message after the agent binds an unbound conversation with dv_proj_create', async () => {

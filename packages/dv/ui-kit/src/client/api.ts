@@ -8,7 +8,7 @@ import type {
   CanvasLayout, HistoryQuery, OperationCheck, OperationRequest, ProjectEvent,
   ProjectInfo, ProjectRecord, SummaryQuery, WireHistory, WireLine, WireModelEntry,
   WireOperation, WireProject, WireProjectCover, WireProjectSummary,
-  WireSession, WireState, WireWorkspaces,
+  WireState, WireWorkspaces,
 } from './types.ts'
 import type { WireTaskLabels } from './tool-labels.ts'
 
@@ -201,9 +201,9 @@ export class DvClient {
   /**
    * Delete a project.
    * @param project - the project.
-   * @returns the Workspace the project was linked to, for the caller to remove; null when none.
+   * @returns the acknowledgement; the project's Workspace is unregistered and its folder stays.
    */
-  deleteProject(project: string): Promise<{ ok: boolean; workspace_id: string | null }> {
+  deleteProject(project: string): Promise<{ ok: boolean }> {
     return this.post('/api/dv/projects/delete', { project })
   }
 
@@ -355,19 +355,9 @@ export class DvClient {
     })
   }
 
-  /** @returns every project with its directory and Workspace, and the saved chat session bindings. */
+  /** @returns the entry Workspace's directory, and every project with its directory and Workspace. */
   listWorkspaces(): Promise<WireWorkspaces> {
     return this.get('/api/dv/workspaces', {})
-  }
-
-  /**
-   * Record the Workspace created for a project.
-   * @param project - the project.
-   * @param workspaceId - the Workspace.
-   * @returns the acknowledgement.
-   */
-  linkWorkspace(project: string, workspaceId: string): Promise<{ ok: boolean }> {
-    return this.post('/api/dv/workspaces', { project, workspace_id: workspaceId })
   }
 
   /**
@@ -377,24 +367,6 @@ export class DvClient {
    */
   untitledFolder(name: string): Promise<{ path: string }> {
     return this.post('/api/dv/projects/untitled', { name })
-  }
-
-  /**
-   * Bind a chat session to a project.
-   * @param session - the chat session.
-   * @param project - the project.
-   * @returns the acknowledgement.
-   */
-  bindSession(session: string, project: string): Promise<{ ok: boolean }> {
-    return this.post('/api/dv/workspaces/bind', { session, project })
-  }
-
-  /**
-   * @param project - the project.
-   * @returns the project's saved chat sessions.
-   */
-  listSessions(project: string): Promise<WireSession[]> {
-    return this.get('/api/dv/workspaces/sessions', { project })
   }
 
   /**

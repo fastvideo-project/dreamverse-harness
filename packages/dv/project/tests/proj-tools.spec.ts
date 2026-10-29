@@ -65,7 +65,7 @@ async function start(): Promise<Fixture> {
   await context.plugin(SystemPrompt, {}).await()
   await context.plugin(ToolRuntime).await()
   const fiber = context.plugin(DvProject, {
-    projectsFolder: join(root, 'projects'), sessionRoot: join(root, 'sessions'), cpuConcurrency: 4, gpuConcurrency: 1,
+    projectsFolder: join(root, 'projects'), cpuConcurrency: 4, gpuConcurrency: 1,
     promptSectionOrder: 4900,
   })
   await fiber.await()
@@ -364,14 +364,14 @@ describe('dv_proj_* tools', () => {
 describe('projects as Workspace folders', () => {
   const HUMAN = { actor: 'user' as const, surface: 'api' as const, session: null, turn: null, tool_call: null, intent: 'create' }
 
-  it('makes the chat\'s folder a project: .dreamverse beside the user\'s files and a titled Workspace', async () => {
+  it('makes the chat\'s folder a project: .dreamverse beside the user\'s files, a titled Workspace, the chat attached', async () => {
     const fixture = await start()
     writeFileSync(join(fixture.chatFolder, 'notes.txt'), 'mine')
     const projectId = brandString<ProjectId>(String(json(await fixture.call('dv_proj_create', { title: 'dance' }))['project_id']))
     expect(readdirSync(fixture.chatFolder).sort()).toEqual(['.dreamverse', 'notes.txt'])
     expect(readdirSync(join(fixture.chatFolder, '.dreamverse')).sort()).toEqual(['line.json', 'records.jsonl'])
     const [workspace] = fixture.services.workspaces.list()
-    expect(workspace).toMatchObject({ id: projectId, title: 'dance' })
+    expect(workspace).toMatchObject({ id: projectId, title: 'dance', sessionIds: ['s1'] })
     expect(fixture.project.openProject(projectId)).toEqual({
       id: projectId, title: 'dance', created_at: workspace?.createdAt, path: workspace?.path,
     })
@@ -382,7 +382,7 @@ describe('projects as Workspace folders', () => {
     expect(fixture.project.listProjects().map(info => info.id)).toEqual([projectId])
   })
 
-  it('creates a folder\'s project once, and finishes a create whose Workspace registration was lost', async () => {
+  it('creates a folder\'s project once, finishes a create whose Workspace registration was lost, and attaches its stored chats', async () => {
     const fixture = await start()
     const folder = await fixture.project.newProjectFolder('reel')
     const first = await fixture.project.createProject(folder, 'reel', HUMAN)
@@ -390,11 +390,16 @@ describe('projects as Workspace folders', () => {
     expect(fixture.services.workspaces.list()).toHaveLength(1)
     expect(fixture.project.listRecords(first.id).map(record => record.operation)).toEqual(['proj.create'])
 
+    // The Workspace registration is lost, as after a crash between the records write and the registration.
     await fixture.services.workspaces.delete(first.id)
+    // A subagent child is no chat of its own, and a chat that cannot be attached leaves the project created.
+    const stored = [{ id: 's-broken', cwd: folder }, { id: 's-old', cwd: folder }, { id: 's-child', cwd: folder, origin: 'subagent' }]
+    fixture.context.provide('sessionPersistence', { list: () => Promise.resolve(stored.map(header => ({ header }))) } as never)
+    fixture.services.workspaces.unattachable.add('s-broken')
     const again = await fixture.project.createProject(folder, 'reel', HUMAN)
-    expect(again).toMatchObject({ title: 'reel', path: first.path })
     expect(again.id).not.toBe(first.id)
     expect(fixture.project.listRecords(again.id).map(record => record.operation)).toEqual(['proj.create'])
+    expect(fixture.services.workspaces.get(again.id)?.sessionIds).toEqual(['s-old'])
   })
 
   it('removes a project\'s Workspace and keeps its files; a new chat in the folder makes it a project again', async () => {
@@ -403,13 +408,14 @@ describe('projects as Workspace folders', () => {
     await fixture.project.removeProject(projectId)
     expect(fixture.services.workspaces.list()).toEqual([])
     expect(fixture.project.listProjects()).toEqual([])
+    expect(fixture.project.sessionProject(brandString<SessionId>('s1'))).toBeNull()
     expect(existsSync(join(fixture.chatFolder, '.dreamverse', 'records.jsonl'))).toBe(true)
 
     fixture.services.chats.open('s2', fixture.chatFolder)
     const added = brandString<ProjectId>(String(json(await fixture.call('dv_proj_create', { title: 'dance' }, 's2'))['project_id']))
     expect(added).not.toBe(projectId)
     expect(fixture.project.listRecords(added).map(record => record.operation)).toEqual(['proj.create'])
-    expect(fixture.project.sessionProject(brandString<SessionId>('s2'))).toBe(added)
+    expect(fixture.services.workspaces.get(added)?.sessionIds.sort()).toEqual(['s1', 's2'])
   })
 
   it('gives each new project folder its own name', async () => {

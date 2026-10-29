@@ -8,7 +8,7 @@
  *
  * The center also keeps the shell's open project and the DSH main session together: once the client lists are ready
  * it restores the location the URL names, and afterwards it adopts the project of a main session that moves to
- * another project by itself (for example when the agent binds the entry chat to a project it created).
+ * another project by itself (for example when the agent makes the entry chat's folder a project).
  *
  * @module @dv/ui-shell/Center
  */
@@ -29,7 +29,7 @@ import { SessionSwitcher } from './SessionSwitcher.tsx'
 import { useSlotTabs } from './slot-tabs.ts'
 import type { ShellLocation } from './store.ts'
 import {
-  applyingLocation, formatLocation, getShell, locationOf, NO_PROJECTS, noteInCenter, parseLocation, projectOfSession, refreshLinks,
+  applyingLocation, formatLocation, getShell, locationOf, NO_PROJECTS, noteInCenter, parseLocation, projectOfSession,
   setShell, shellClient, showLocation, startUrlMirror, useShell,
 } from './store.ts'
 import css from './shell.module.css'
@@ -110,22 +110,12 @@ export function CenterPanel(props: CenterProps): ReactNode {
   const workspace = useWorkspaces(s => sessionId === undefined ? undefined : s.items.find(item => item.sessionIds.includes(sessionId)))
   const workspacesReady = useWorkspaces(s => s.phase === 'ready')
   const sessionsReady = useSessions(s => s.phase === 'ready')
-  const { projectId: sessionProject, needsBind } = projectOfSession(links, sessionId, workspace)
-  const binding = useRef<string | null>(null)
+  const sessionProject = projectOfSession(links, sessionId, workspace)
   const previousProject = useRef<string | null>(null)
   const [restoreTimedOut, setRestoreTimedOut] = useState(false)
   useEffect(() => {
     setShell({ sessionId })
   }, [sessionId])
-  useEffect(() => {
-    if (!needsBind || sessionId === undefined || sessionProject === null) return
-    const key = `${sessionId}:${sessionProject}`
-    if (binding.current === key) return
-    binding.current = key
-    client.bindSession(sessionId, sessionProject)
-      .then(() => refreshLinks())
-      .catch((error: unknown) => { console.warn('ui-shell: bind failed', error) })
-  }, [needsBind, sessionId, sessionProject])
   useEffect(() => {
     // Restore the URL location once: the URL's project wins over the session DSH restored, and the main session
     // follows it. The entry page keeps a restored entry chat and otherwise opens the blank entry session.
@@ -157,9 +147,9 @@ export function CenterPanel(props: CenterProps): ReactNode {
   }, [shell])
   useEffect(() => {
     // After the restore, a main session that moves into another project by itself takes the center with it: the
-    // entry chat bound to a project the agent created, or a chat of the open project rebound to another project. A
-    // session whose project only resolves late (DSH restored a session elsewhere while the shell opened the URL's
-    // project) never takes the center, and the entry page is reached only through 首页.
+    // entry chat whose folder the agent made a project. A session whose project only resolves late (DSH restored a
+    // session elsewhere while the shell opened the URL's project) never takes the center, and the entry page is
+    // reached only through 首页.
     if (!restored) return
     const previous = previousProject.current
     previousProject.current = sessionProject
@@ -355,7 +345,7 @@ function WorkspacePage(props: CenterProps & { projectId: string; projectSession:
   const views = useSlotTabs('dv.center.view')
   const shown = views.find(tab => tab.id === view)?.id ?? views[0]?.id
   const listed = useShell(s => s.links?.projects.find(p => p.id === projectId))
-  const project = useMemo(() => listed ?? { id: projectId, title: projectId, created_at: '', path: '', workspace_id: null }, [listed, projectId])
+  const project = useMemo(() => listed ?? { id: projectId, title: projectId, created_at: '', path: '', workspace_id: projectId }, [listed, projectId])
   const sessionTitle = useSessions((s) => {
     const row = sessionId === undefined ? undefined : s.byId[sessionId]
     return row?.blank === false ? row.displayTitle : undefined

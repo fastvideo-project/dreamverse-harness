@@ -147,7 +147,7 @@ async function start(baseUrl: string): Promise<Fixture> {
   }
   row('system-prompt', 'SystemPrompt')
   row('tools', 'ToolRuntime')
-  row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`])
+  row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`])
   row('dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe'])
   row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
   row('dv-models', 'DvModels')

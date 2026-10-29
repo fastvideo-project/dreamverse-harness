@@ -224,22 +224,17 @@ export async function refreshLinks(): Promise<WireWorkspaces> {
 }
 
 /**
- * The project a session works on: its saved binding, else the project whose Workspace holds it.
+ * The project a session works on: the project whose Workspace holds it.
  * @param links - the links.
  * @param sessionId - the session.
  * @param workspace - the session's Workspace, when known.
- * @returns the project ID, and whether it came only from the Workspace so the binding still has to be saved.
+ * @returns the project ID, or null.
  */
 export function projectOfSession(
   links: WireWorkspaces | null,
   sessionId: string | undefined,
-  workspace: { workspaceId: string; path: string } | undefined,
-): { projectId: string | null; needsBind: boolean } {
-  if (links === null || sessionId === undefined) return { projectId: null, needsBind: false }
-  const fromWorkspace = workspace === undefined
-    ? undefined
-    : links.projects.find(p => p.workspace_id === workspace.workspaceId || p.path === workspace.path)?.id
-  const bound = links.bindings[sessionId]
-  if (bound !== undefined) return { projectId: bound, needsBind: false }
-  return { projectId: fromWorkspace ?? null, needsBind: fromWorkspace !== undefined }
+  workspace: { workspaceId: string } | undefined,
+): string | null {
+  if (links === null || sessionId === undefined || workspace === undefined) return null
+  return links.projects.find(p => p.workspace_id === workspace.workspaceId)?.id ?? null
 }

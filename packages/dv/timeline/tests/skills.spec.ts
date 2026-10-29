@@ -46,7 +46,7 @@ async function start(withSkills: boolean): Promise<Context> {
   if (withSkills) row('skills', 'SkillRegistry', [])
   row('system-prompt', 'SystemPrompt', [])
   row('tools', 'ToolRuntime', [])
-  row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`])
+  row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`])
   row('dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe'])
   row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
   row('dv-timeline', 'DvTimeline', [])

@@ -36,6 +36,9 @@
       "path": "../../llm/llm"
     },
     {
+      "path": "../../session/session-persistence"
+    },
+    {
       "path": "../../session/session-projection"
     },
     {

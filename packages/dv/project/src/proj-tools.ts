@@ -8,8 +8,7 @@
  * `dv_proj_history_list` also stores what its result showed of the project as `dv_seen` (a `ProjectShown`) in its
  * presentation metadata, which the model never reads: a summary tool names the summary's project, its head as the
  * position and its recent records, and `dv_proj_wait` names the records it waited for.
- * `dv_proj_create` makes the chat session's folder its project and binds the session to it; every other tool works on
- * that project only.
+ * `dv_proj_create` makes the chat session's folder its project; every other tool works on that project only.
  *
  * Calls the `dvProject` service's public methods and, through {@link ProjToolDeps}, the asset store, the reducers'
  * summaries and the turn of a call. Called by the service, which registers the tools while the DSH `tools` registry is mounted.
@@ -250,7 +249,6 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
         const folder = deps.chatFolder(sessionOf(exec))
         if (folder === null) throw new Error('This conversation has no folder to make a project in.')
         const info = await project.createProject(folder, args.title, originOf(deps, exec, `create project ${args.title}`))
-        project.bindSession(sessionOf(exec), info.id)
         return written(exec, info.id)
       },
     }),

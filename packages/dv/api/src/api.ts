@@ -243,7 +243,7 @@ export class ApiHandlers {
   constructor(private readonly services: ApiServices) {}
 
   /**
-   * Every project, newest first. When a chat session is named and the agent bound a project to it, that project is
+   * Every project, newest first. When a chat session is named and it runs in a project's folder, that project is
    * flagged `current` and listed first, so a view opened beside the chat shows what the agent works on.
    * @param session - the agent session ID the view sits beside, when known.
    * @returns the project rows.

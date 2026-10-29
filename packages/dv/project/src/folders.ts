@@ -9,8 +9,9 @@ import { existsSync, realpathSync } from 'node:fs'
 import { mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
+import type { SessionId as ChatId } from '@deepseek-ai/dsh-session/types'
 import { WorkspaceId, type Workspace, type WorkspaceRegistry } from '@deepseek-ai/dsh-workspace'
-import { PROJECT_DIR } from './folder.ts'
+import { PROJECT_DIR, workspaceOfSession } from './folder.ts'
 import { ProjectError } from './shared.ts'
 import type { ProjectId, ProjectInfo } from './types.ts'
 
@@ -32,7 +33,7 @@ const isProject = (workspace: Workspace): boolean => existsSync(join(workspace.p
 const infoOf = (workspace: Workspace): ProjectInfo =>
   ({ id: brandString<ProjectId>(workspace.id), title: workspace.title, created_at: workspace.createdAt, path: workspace.path })
 
-/** The projects of the Workspace registry, and the folders of new projects; the service documents each operation. */
+/** The projects of the Workspace registry; the service documents each operation. */
 export class ProjectFolders {
   /** Serializes create, rename and remove, so two calls never register one folder twice or pick one free title. */
   private chain: Promise<unknown> = Promise.resolve()
@@ -40,10 +41,14 @@ export class ProjectFolders {
   /**
    * @param registry - the DSH Workspace registry.
    * @param parent - the DreamVerse folder, which holds the folders of new projects.
+   * @param chats - the stored and live top-level chat sessions with the working directory each header records.
+   * @param warn - logs a chat session that could not be attached; the project stays created.
    */
   constructor(
     private readonly registry: Pick<WorkspaceRegistry, 'list' | 'get' | 'create' | 'delete' | 'resolveByPath'>,
     private readonly parent: () => string,
+    private readonly chats: () => Promise<ReadonlyArray<{ id: ChatId; cwd?: string | undefined }>>,
+    private readonly warn: (message: string) => void,
   ) {}
 
   list(): ProjectInfo[] {
@@ -53,6 +58,11 @@ export class ProjectFolders {
 
   get(project: ProjectId): ProjectInfo {
     return infoOf(this.workspace(project))
+  }
+
+  ofFolder(cwd: string | undefined): ProjectId | null {
+    const workspace: Workspace | undefined = workspaceOfSession(this.registry.list(), cwd)
+    return workspace !== undefined && isProject(workspace) ? brandString<ProjectId>(workspace.id) : null
   }
 
   async newFolder(name: string): Promise<string> {
@@ -78,6 +88,12 @@ export class ProjectFolders {
       const started = !isProject(workspace)
       if (started || known === undefined) await workspace.setTitle(title)
       if (started) await writeFirst(brandString<ProjectId>(workspace.id), join(path, PROJECT_DIR))
+      for (const chat of await this.chats()) {
+        if (chat.cwd === undefined || canonicalPath(chat.cwd) !== path) continue
+        await workspace.attachSession(chat.id).catch((error: unknown) => {
+          this.warn(`could not attach chat ${chat.id} to project ${workspace.id}: ${error instanceof Error ? error.message : String(error)}`)
+        })
+      }
       return infoOf(workspace)
     })
   }
