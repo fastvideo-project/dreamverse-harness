@@ -34,7 +34,7 @@ class MemoryAssets implements AssetStore {
     return file
   }
   read(): Uint8Array { return new Uint8Array() }
-  importAsset(source: Uint8Array | { path: string }, meta: { mime: string; name: string }): AssetId {
+  importAsset(_project: ProjectId, source: Uint8Array | { path: string }, meta: { mime: string; name: string }): AssetId {
     const id = brandString<AssetId>(createHash('sha256').update(source instanceof Uint8Array ? source : Buffer.from(source.path)).digest('hex'))
     this.files.set(id, meta)
     return id
@@ -88,7 +88,7 @@ async function start(): Promise<Fixture> {
   let calls = 0
   return {
     ctx, project,
-    put: text => assets.importAsset(Buffer.from(text), { mime: 'image/png', name: `${text}.png` }),
+    put: text => assets.importAsset(project, Buffer.from(text), { mime: 'image/png', name: `${text}.png` }),
     call(name, args) {
       calls += 1
       return ctx.tools.execute({ callId: ToolCallId(`call-${calls}`), name, arguments: args, signal: new AbortController().signal, agent: { id: 's1' } as never })

@@ -180,7 +180,7 @@ export async function startBase(options: BaseFixtureOptions = {}): Promise<BaseF
     promptSectionOrder: 4900,
   }).await()
   await context.plugin(DvFfmpeg, { ffmpegPath: FFMPEG, ffprobePath: FFPROBE, outputLimitBytes: 1_048_576 }).await()
-  await context.plugin(DvAssetPool, { root: join(root, 'assets'), publicBaseUrl: options.publicBaseUrl ?? '' }).await()
+  await context.plugin(DvAssetPool, { publicBaseUrl: options.publicBaseUrl ?? '' }).await()
   await context.plugin(DvTimeline).await()
   await context.plugin(DvCharacter).await()
   await context.plugin(DvLocation).await()

@@ -4,10 +4,10 @@
  * flags, boot through the Loader beside the DSH system prompt and tool registry, with the video provider rows replaced
  * by fakes, and a model-visible tool call becomes a durable record.
  */
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
-import type { OperationToolValue, ProjectId, RecordId } from '@dv/project'
+import type { AssetId, OperationToolValue, ProjectId, RecordId } from '@dv/project'
 import { formatModelKey } from '@dv/models'
 import { afterEach, describe, expect, it } from 'vitest'
 import { bootBundle, bundleRows, fastVideo, insertRows, renderer, uniserve } from './bundle.ts'
@@ -84,8 +84,8 @@ describe('DreamVerse bundle composition', () => {
     const created = await call('dv_proj_create', { title: 'composed' })
     const projectId = (created.value as { project_id: ProjectId }).project_id
     writeFileSync(join(dir, 'ref.png'), 'PNG-FAKE')
-    await call('dv_asset_import', { reason: 'reference', path: join(dir, 'ref.png'), mime: 'image/png' })
-    const reference = ctx.dvAssetPool.list().map(asset => asset.id)
+    const imported = await call('dv_asset_import', { reason: 'reference', path: join(dir, 'ref.png'), mime: 'image/png' })
+    const reference = (imported.value as OperationToolValue).outputs.map(output => output.asset_id)
     await call('dv_character_create', { reason: 'lead', character: 'c1', name: 'Lead', inputs: { reference } })
     const shot = await call('dv_shot_render', {
       modality: 'video', task: 'ref2v', provider: 'uniserve', model: 'fasth3', reason: 'the opening shot', prompt: 'Picture 1 looks up', duration_sec: 1, inputs: { reference: 'c1@1' },
@@ -109,5 +109,6 @@ describe('DreamVerse bundle composition', () => {
     expect(Object.keys(ctx.dvProject.getState(projectId).components.proj.created_by)).toHaveLength(3)
     // The bundle's `!!js` configuration put the project folder in the DreamVerse folder the test set.
     expect(readFileSync(join(dir, 'projects', 'composed', '.dreamverse', 'records.jsonl'), 'utf8')).toContain('"shot.render"')
+    expect(ctx.dvAssetPool.path(video as AssetId)).toBe(join(realpathSync(dir), 'projects', 'composed', '.dreamverse', 'assets', 'objects', video as string))
   })
 })

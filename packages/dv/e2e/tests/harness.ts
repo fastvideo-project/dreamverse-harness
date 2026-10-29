@@ -169,8 +169,6 @@ export interface BootedHarness {
   tokenUrl: string
   /** The origin without the token. */
   origin: string
-  /** The profile's `DV_STATE_ROOT` directory, which holds the asset store. */
-  stateRoot: string
   /** The profile's `DV_PROJECTS_FOLDER`, which holds the folders of new projects. */
   projectsFolder: string
   backend: FakeBackend
@@ -248,7 +246,6 @@ export async function bootHarness(
   ].join('\n'))
   symlinkSync(join(REPO_ROOT, 'packages/bundle/dv'), join(profileDir, 'node_modules', '@dv', 'bundle'))
   const port = await freePort()
-  const stateRoot = join(scratch, 'state')
   const projectsFolder = join(scratch, 'DreamVerse')
   const output: string[] = []
   const child = spawn(process.execPath, ['--import', 'tsx/esm', 'apps/cli/src/bin.ts', '--profile', 'video-harness', '--port', String(port), '--no-open'], {
@@ -257,7 +254,6 @@ export async function bootHarness(
       ...process.env,
       PATH: `${dirname(process.execPath)}:${process.env['PATH'] ?? ''}`,
       DSH_HOME: home,
-      DV_STATE_ROOT: stateRoot,
       DV_PROJECTS_FOLDER: projectsFolder,
       DV_FFMPEG: FFMPEG,
       DV_PUBLIC_URL: '',
@@ -288,7 +284,6 @@ export async function bootHarness(
   return {
     tokenUrl,
     origin,
-    stateRoot,
     projectsFolder,
     backend,
     model,

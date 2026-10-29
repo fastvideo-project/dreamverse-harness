@@ -100,7 +100,7 @@ export function insertRows(): Row[] {
   return first?.insert ?? []
 }
 
-/** A booted composition, its state root, its stand-in Workspace and chat services, and its teardown. */
+/** A booted composition, its temporary directory, its stand-in Workspace and chat services, and its teardown. */
 export interface Bundle {
   ctx: Context
   dir: string
@@ -110,14 +110,13 @@ export interface Bundle {
 
 /**
  * Boot the DSH system prompt and tool registry, the rows of `extra`, then the bundle rows through the Loader, with the
- * state root in a new temporary directory.
+ * DreamVerse folder in a new temporary directory.
  * @param extra - the plugin of each row a spec adds, by row id.
  * @returns the composition; `dispose` stops it, restores the environment and removes the directory.
  */
 export async function bootBundle(extra: Record<string, object> = {}): Promise<Bundle> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-composition-'))
   // The environment the bundle's `!!js` configuration reads.
-  vi.stubEnv('DV_STATE_ROOT', dir)
   vi.stubEnv('DV_PROJECTS_FOLDER', join(dir, 'projects'))
   vi.stubEnv('DV_FFMPEG', FFMPEG)
   vi.stubEnv('DV_FFPROBE', FFPROBE)

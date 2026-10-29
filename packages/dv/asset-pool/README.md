@@ -24,18 +24,17 @@ Use this package to keep every image, video, audio, and text file of a project e
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin after `@dv/project` and `@dv/ffmpeg`. Other plugins inject `dvAssetPool`. The service registers itself with `dvProject.registerAssetStore`, so the same file imported twice is one asset. `asset.import` reads the pixel size and duration of an image or video through `dvFfmpeg`, `asset.grab_still` and `asset.cut_segment` run through `dvFfmpeg`, and `dvProject` turns the five operations into the agent tools `dv_asset_import`, `dv_asset_grab_still`, `dv_asset_cut_segment`, `dv_asset_place` and `dv_asset_unplace`. The `asset` reducer keeps `placed`, the assets on the canvas of the current state in the order they were placed; the `proj` slice's `created_by` names the record that created each asset. Which assets are on the canvas is project content: each placement is a record, so History lists it and undo takes it back.
+Mount the plugin after `@dv/project` and `@dv/ffmpeg`. Other plugins inject `dvAssetPool`. The service registers itself with `dvProject.registerAssetStore`, so the same file imported twice into one project is one asset. A project keeps its assets in its own folder, so a copy of the folder holds the whole project: `<project folder>/.dreamverse/assets/` holds the bytes at `objects/<sha256>` and one `Asset` line per asset in `index.jsonl`. `asset.import` reads the pixel size and duration of an image or video through `dvFfmpeg`, `asset.grab_still` and `asset.cut_segment` run through `dvFfmpeg`, and `dvProject` turns the five operations into the agent tools `dv_asset_import`, `dv_asset_grab_still`, `dv_asset_cut_segment`, `dv_asset_place` and `dv_asset_unplace`. The `asset` reducer keeps `placed`, the assets on the canvas of the current state in the order they were placed; the `proj` slice's `created_by` names the record that created each asset. Which assets are on the canvas is project content: each placement is a record, so History lists it and undo takes it back.
 
 ```yaml
 - id: dv-asset-pool
   name: '@dv/asset-pool'
   config:
-    root: /home/user/.local/state/video-harness/assets
+    publicBaseUrl: https://demo.example
 ```
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `root` | required | Directory holding `objects/<sha256>` and `index.jsonl`; created when missing |
 | `publicBaseUrl` | `''` | Base of the asset URLs that the agent and chat cards show, such as a tunnel origin; empty keeps them relative |
 
 | Operation | Tool | Inputs and params | Outputs |
@@ -48,27 +47,27 @@ Mount the plugin after `@dv/project` and `@dv/ffmpeg`. Other plugins inject `dvA
 
 | Method | Behavior |
 | --- | --- |
-| `importAsset(bytes \| {path}, {mime, name, durationSec?, width?, height?}, createdBy)` | Stores the bytes under their hash and appends an index line; identical content returns the existing ID and keeps the first asset |
+| `importAsset(project, bytes \| {path}, {mime, name, durationSec?, width?, height?}, createdBy)` | Stores the bytes under their hash in the project's folder and appends an index line there; identical content in the same project returns the existing ID and keeps the first asset; a project that does not exist, or whose folder holds no `.dreamverse/records.jsonl`, throws `unknown_project` before anything is written |
 | `get(asset)` | The `Asset`: `id`, `mime`, `name`, `size_bytes`, `created_by`, `created_at`, `width`, `height`, `duration_sec`, and `has_audio` once `hasAudio` has read a video |
 | `hasAudio(asset)` | Whether the asset holds sound: true for audio, false for an image or other file, and for a video the stored `has_audio`; the first read of a video probes it with ffprobe and appends the answer to the index |
 | `mediaType(asset)` | The top-level type of the asset's MIME type, such as `video` for `video/mp4`; other packages ask the pool instead of reading the MIME type |
 | `path(asset)` / `read(asset)` | The stored file's absolute path, or its bytes |
-| `has(asset)` / `list()` | Membership, and every asset oldest first |
+| `has(asset)` | Whether the folder of a project holds the asset |
 | `url(asset)` | `<publicBaseUrl>/dv/assets/<AssetId>` |
 | `grabStill(video, at, dir)` | Writes one frame of a video as `still.png` into `dir` and returns its path; the operation imports it |
 
-`get`, `hasAudio`, `mediaType`, `path`, and `read` throw `ProjectError` with code `unknown_asset` for an asset the pool does not hold. `GET /dv/assets/<AssetId>` answers the whole file with its media type and an immutable cache header; any other path or method under `/dv/assets` is 404.
+Reads take an asset ID alone and find the bytes in any project folder that holds them. `get`, `hasAudio`, `mediaType`, `path`, and `read` throw `ProjectError` with code `unknown_asset` for an asset that no project folder holds. `GET /dv/assets/<AssetId>` answers the whole file with its media type and an immutable cache header; any other path or method under `/dv/assets` is 404.
 
 -----
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-`importAsset` writes the bytes to `objects/<sha>.partial` and renames the file into place, so a crash never leaves a half-written object under its hash. The index is one `Asset` JSON line per asset, appended after the object exists; at start the service replays the index and skips lines whose object file is missing. `asset.import` reads the width, height, and duration of an image or video that the entry does not know yet with ffprobe (`dvFfmpeg.probe`); a video whose header has no duration (a WebM file a browser recorded) is decoded once with `-progress pipe:1`, and the last `out_time` is its duration. `describe` appends the updated entry to the index, and the last line of an ID wins at replay. A probe failure leaves the facts null and does not fail the import. `grabStill` seeks to the first frame or the given time; for the last frame it probes the video and tries an input seek just before the video stream's end, then a full decode that keeps the last frame, because a fragmented MP4 from a streaming backend has no reliable duration in its header. `asset.cut_segment` runs ffmpeg with `-ss` and `-to` after `-i` and re-encodes the video with libx264 and the audio with AAC, so the segment starts and ends on the exact frames, like the clip trimming of `@dv/deliver`. It probes the segment, fails the record when the file holds no video stream (a range that starts after the video's end), and imports the segment with its pixel size and duration. The route registers on `webServer` through `ctx.inject`, so the plugin also works in compositions without a web server.
+`importAsset` writes the bytes to `objects/<sha>.partial` in the project's `.dreamverse/assets/` directory and renames the file into place, so a crash never leaves a half-written object under its hash. The index is one `Asset` JSON line per asset, appended after the object exists. The service replays a folder's index the first time it needs that folder and skips lines whose object file is missing. A read looks in the folders it has read; when none holds the asset, it reads the folders of the projects of `dvProject.listProjects()` that it has not read yet, such as a copied folder added after start, and looks once more. The same bytes in two projects are two files under one ID, and a read may answer either file. `asset.import` reads the width, height, and duration of an image or video that the entry does not know yet with ffprobe (`dvFfmpeg.probe`); a video whose header has no duration (a WebM file a browser recorded) is decoded once with `-progress pipe:1`, and the last `out_time` is its duration. `describe` appends the updated entry to the importing project's index, and the last line of an ID wins at replay. A probe failure leaves the facts null and does not fail the import. `grabStill` seeks to the first frame or the given time; for the last frame it probes the video and tries an input seek just before the video stream's end, then a full decode that keeps the last frame, because a fragmented MP4 from a streaming backend has no reliable duration in its header. `asset.cut_segment` runs ffmpeg with `-ss` and `-to` after `-i` and re-encodes the video with libx264 and the audio with AAC, so the segment starts and ends on the exact frames, like the clip trimming of `@dv/deliver`. It probes the segment, fails the record when the file holds no video stream (a range that starts after the video's end), and imports the segment with its pixel size and duration. The route registers on `webServer` through `ctx.inject`, so the plugin also works in compositions without a web server.
 
 | File | Content |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `dvAssetPool`: the store, the index replay, the route, the five operations, `mediaType`, and `grabStill` |
+| [`src/index.ts`](src/index.ts) | `dvAssetPool`: the store in the project folders, the index replay, the route, the five operations, `mediaType`, and `grabStill` |
 | [`src/imports.ts`](src/imports.ts) | `importedAssets(records)`, the project's first finished `asset.import` record of each imported asset, and `placeable(state, imported, asset)`, the rule of `asset.place`; `@dv/api` and `@dv/chat-references` use both |
 | [`src/reducer.ts`](src/reducer.ts) | The `asset` reducer: `placed` from `asset.place`, `asset.unplace`, and `asset.import` with `place` |
 | [`src/types.ts`](src/types.ts) | `Asset`, one line of `index.jsonl`, and the `asset` slice `AssetState` |
@@ -121,4 +120,5 @@ The result is appended to the conversation after the call; the cached prefix sta
 
 - **No `Range` requests**: the route sends whole files; seeking inside a long video through this route downloads it from the start.
 - **No deletion**: a project's unreferenced assets stay on disk; garbage collection is deferred until projects can be deleted.
-- **Index grows without compaction**: replay reads every line at start; a pool with very many assets starts slowly.
+- **Index grows without compaction**: the first read of a folder replays every line of its index; a project with very many assets opens slowly.
+- **Removed projects stay readable until restart**: the service keeps every folder it has read, so the assets of a removed project still answer by ID until the server restarts.

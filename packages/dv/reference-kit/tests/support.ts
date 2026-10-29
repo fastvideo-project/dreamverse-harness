@@ -78,7 +78,7 @@ class MemoryAssets implements AssetStore {
     return file
   }
   read(asset: AssetId): Uint8Array { return this.files.get(asset)?.bytes ?? new Uint8Array() }
-  importAsset(source: Uint8Array | { path: string }, meta: { mime: string; name: string }): AssetId {
+  importAsset(_project: ProjectId, source: Uint8Array | { path: string }, meta: { mime: string; name: string }): AssetId {
     const bytes = source instanceof Uint8Array ? source : Buffer.from(source.path)
     const id = brandString<AssetId>(createHash('sha256').update(bytes).digest('hex'))
     this.files.set(id, { mime: meta.mime, name: meta.name, bytes })
@@ -127,7 +127,7 @@ export async function start(): Promise<Fixture> {
   await testSkill.await()
   const project = (await ctx.dvProject.createProject(await ctx.dvProject.newProjectFolder('kit'), 'kit', HUMAN)).id
   return {
-    ctx, project, put: text => assets.importAsset(Buffer.from(text), { mime: 'image/png', name: `${text}.png` }),
+    ctx, project, put: text => assets.importAsset(project, Buffer.from(text), { mime: 'image/png', name: `${text}.png` }),
     disposeTestRef: async () => { await testRef.dispose() },
     disposeTestSkill: async () => { await testSkill.dispose() },
   }

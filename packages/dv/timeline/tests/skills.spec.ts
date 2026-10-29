@@ -48,7 +48,7 @@ async function start(withSkills: boolean): Promise<Context> {
   row('tools', 'ToolRuntime', [])
   row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`])
   row('dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe'])
-  row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
+  row('dv-asset-pool', 'DvAssetPool', [])
   row('dv-timeline', 'DvTimeline', [])
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
 

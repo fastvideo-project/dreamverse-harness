@@ -244,7 +244,7 @@ async function start(options: { tasks?: VideoTask[]; live?: FakeLiveStream } = {
     `projectsFolder: ${join(dir, 'projects')}`,
   ])
   row('dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, `ffprobePath: ${FFPROBE}`])
-  row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
+  row('dv-asset-pool', 'DvAssetPool', [])
   row('dv-models', 'DvModels', [])
   row('dv-shot-render', 'DvShotRender', [])
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
@@ -273,7 +273,7 @@ async function start(options: { tasks?: VideoTask[]; live?: FakeLiveStream } = {
   let calls = 0
   return {
     ctx, dir, reference, text, project,
-    put: (bytes, mime, name) => ctx.dvAssetPool.importAsset(bytes, { mime, name }, null),
+    put: (bytes, mime, name) => ctx.dvAssetPool.importAsset(project, bytes, { mime, name }, null),
     async record(operation, params, inputs = [], extra = {}) {
       const result = await ctx.dvProject.run({ ...origin, project, operation, params, inputs, intent: operation, ...extra })
       if (result.record === null) throw new Error(`${operation} wrote no record`)

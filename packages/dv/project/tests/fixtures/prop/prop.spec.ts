@@ -98,7 +98,7 @@ describe('the prop fixture', () => {
     const project = await chatProject(dv, services, 'props', user)
     const run = async (operation: string, params: Record<string, unknown>, inputs: RunRequest['inputs']) =>
       (await dv.run({ ...user, project, operation, params, inputs })).record?.id
-    const lamp = assets.importAsset(Buffer.from('lamp'), { mime: 'image/png', name: 'lamp.png' })
+    const lamp = assets.importAsset(project, Buffer.from('lamp'), { mime: 'image/png', name: 'lamp.png' })
     await run('prop.create', { prop: 'p1' }, [{ role: 'reference', ref: { asset: lamp } }])
     const inputsText = () => JSON.stringify(context.tools.schemas().find(tool => tool.name === 'dv_look_make')?.parameters)
     expect(dv.listReferenceKinds()).toEqual(['prop'])

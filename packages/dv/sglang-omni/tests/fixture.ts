@@ -76,7 +76,7 @@ export async function start(baseUrl: string): Promise<Fixture> {
     ['tools', 'ToolRuntime', []],
     ['dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`]],
     ['dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe']],
-    ['dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`]],
+    ['dv-asset-pool', 'DvAssetPool', []],
     ['dv-models', 'DvModels', []],
     ['dv-audio-generate', 'DvAudioGenerate', []],
     ['dv-sglang-omni', 'SglangOmni', ['models:', '  fish-audio-drama-3:', `    baseUrl: ${baseUrl}`]],

@@ -2,14 +2,15 @@
  * The Asset pool component of DreamVerse as the `dvAssetPool` Cordis service: every image, video, audio and text file
  * of a project, addressed by the SHA-256 of its bytes and never changed after it is written.
  *
- * Layout under the configured root:
+ * Each project keeps its assets in its own folder, so a copy of the folder holds the whole project:
  *
  * ```
- * <root>/objects/<sha256>     the bytes, written once
- * <root>/index.jsonl          one `Asset` line per asset, appended on import, replayed at start
+ * <folder>/.dreamverse/assets/objects/<sha256>   the bytes, written once
+ * <folder>/.dreamverse/assets/index.jsonl        one `Asset` line per asset, appended on import, replayed at first read
  * ```
  *
- * Two identical files become one asset. The service registers itself as Project's asset store, and five operations:
+ * Two identical files in one project become one asset; the same bytes in two projects are two files with one ID. The
+ * service registers itself as Project's asset store, and five operations:
  * - `asset.import`: a file on this machine, or base64 bytes, becomes an asset; with `place`, it also goes on the canvas;
  *   an image or video gets its pixel size and duration from `dvFfmpeg` the first time a record imports it;
  * - `asset.grab_still`: one frame of a video becomes a PNG still, through `dvFfmpeg`;
@@ -35,7 +36,8 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import z from '@deepseek-ai/schemastery'
 import { FfmpegError } from '@dv/ffmpeg'
 import type {} from '@dv/ffmpeg'
-import { ProjectError, type AssetId, type OperationContext, type OperationResult, type OperationSpec, type RecordId } from '@dv/project'
+import { ProjectError, type AssetId, type OperationContext, type OperationResult, type OperationSpec, type ProjectId, type RecordId } from '@dv/project'
+import { PROJECT_DIR } from '@dv/project/folder'
 import { importedAssets, placeable } from './imports.ts'
 import { assetReducer } from './reducer.ts'
 import type { Asset, StillAt } from './types.ts'
@@ -54,18 +56,16 @@ declare module '@deepseek-ai/cordis' {
 
 /** `dvAssetPool` plugin configuration. */
 export interface Config {
-  /** The directory holding `objects/` and `index.jsonl`; created when missing. */
-  root: string
   /** Base of the asset URLs that the agent and chat cards show, such as a tunnel origin; empty keeps them relative. */
   publicBaseUrl: string
 }
 
-/** Loader validation; `root` is required. */
+/** Loader validation. */
 export const Config: z<Config> = z.object({
-  root: z.string().required(),
   publicBaseUrl: z.string().default(''),
 })
 
+const ASSETS_DIR = 'assets'
 const INDEX_FILE = 'index.jsonl'
 const OBJECTS_DIR = 'objects'
 const ROUTE_PREFIX = '/dv/assets'
@@ -127,19 +127,18 @@ export default class DvAssetPool extends Service {
   static inject = ['dvProject', 'dvFfmpeg']
   static Config = Config
 
-  private readonly assets = new Map<AssetId, Asset>()
+  /** The `.dreamverse/assets/` directory of each project folder read so far → the assets its index holds. */
+  private readonly folders = new Map<string, Map<AssetId, Asset>>()
 
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'dvAssetPool')
-    mkdirSync(join(config.root, OBJECTS_DIR), { recursive: true })
-    this.replayIndex()
     // Project checks input assets, imports operation outputs, and describes outputs to the agent through the pool.
     ctx.effect(() => ctx.dvProject.registerAssetStore({
       has: asset => this.has(asset),
       get: asset => this.get(asset),
       read: asset => this.read(asset),
       url: asset => this.url(asset),
-      importAsset: (source, meta, createdBy) => this.importAsset(source, meta, createdBy),
+      importAsset: (project, source, meta, createdBy) => this.importAsset(project, source, meta, createdBy),
     }), 'dvAssetPool asset store')
     ctx.effect(() => ctx.dvProject.registerComponent('asset'), 'dvAssetPool component')
     ctx.effect(() => ctx.dvProject.registerReducer('asset', assetReducer), 'dvAssetPool reducer')
@@ -156,18 +155,23 @@ export default class DvAssetPool extends Service {
   }
 
   /**
-   * Store bytes, or a file's bytes, once; importing identical content again returns the existing ID and keeps the
-   * first asset's name and creator.
+   * Store bytes, or a file's bytes, once in a project's folder; importing identical content into the same project again
+   * returns the existing ID and keeps the first asset's name and creator.
+   * @param project - the project whose folder receives the bytes.
    * @param source - the bytes, or the path of a file to copy in.
    * @param meta - the media type, the display name, and the duration and pixel size when known.
    * @param createdBy - the record that created the asset; null outside any record.
    * @returns the asset ID.
+   * @throws ProjectError `unknown_project`, before anything is written, for an unknown project, also a registered folder
+   * without `.dreamverse/records.jsonl`.
    */
-  importAsset(source: Uint8Array | { path: string }, meta: ImportMeta, createdBy: RecordId | null): AssetId {
+  importAsset(project: ProjectId, source: Uint8Array | { path: string }, meta: ImportMeta, createdBy: RecordId | null): AssetId {
+    const dir = this.assetsDir(project)
     const bytes = source instanceof Uint8Array ? source : readFileSync(source.path)
     const id = brandString<AssetId>(createHash('sha256').update(bytes).digest('hex'))
-    if (this.assets.has(id)) return id
-    const objectPath = join(this.config.root, OBJECTS_DIR, id)
+    if (this.folder(dir).has(id)) return id
+    mkdirSync(join(dir, OBJECTS_DIR), { recursive: true })
+    const objectPath = join(dir, OBJECTS_DIR, id)
     // Write beside the final name and rename, so a crash never leaves a half-written object under its hash.
     const partial = `${objectPath}.partial`
     writeFileSync(partial, bytes)
@@ -183,38 +187,107 @@ export default class DvAssetPool extends Service {
       height: meta.height ?? null,
       duration_sec: meta.durationSec ?? null,
     }
-    appendFileSync(join(this.config.root, INDEX_FILE), `${JSON.stringify(asset)}\n`)
-    this.assets.set(id, asset)
+    this.append(dir, asset)
     return id
   }
 
   /**
-   * Fill the media facts an asset entry does not know yet: append the updated entry to `index.jsonl` (the last line of
-   * an ID wins at replay) and keep it in memory. Facts the entry already holds stay as they are.
-   * @param id - an asset the pool holds.
-   * @param media - the pixel size and the duration, each null when unknown.
-   * @returns the entry after the change. Throws `unknown_asset`.
+   * @param project - a project.
+   * @returns the `.dreamverse/assets/` directory of its folder; throws `unknown_project`.
    */
-  private describe(id: AssetId, media: { width: number | null; height: number | null; durationSec: number | null }): Asset {
-    const current = this.get(id)
+  private assetsDir(project: ProjectId): string {
+    return join(this.ctx.dvProject.openProject(project).path, PROJECT_DIR, ASSETS_DIR)
+  }
+
+  /**
+   * Append an entry to a folder's `index.jsonl` (the last line of an ID wins at replay) and keep it in memory.
+   * @param dir - a `.dreamverse/assets/` directory.
+   * @param asset - the entry.
+   */
+  private append(dir: string, asset: Asset): void {
+    appendFileSync(join(dir, INDEX_FILE), `${JSON.stringify(asset)}\n`)
+    this.folder(dir).set(asset.id, asset)
+  }
+
+  /**
+   * The assets of one `.dreamverse/assets/` directory, replayed from its `index.jsonl` at first use; a line whose object
+   * file is missing is skipped.
+   * @param dir - the directory.
+   * @returns asset ID → entry.
+   */
+  private folder(dir: string): Map<AssetId, Asset> {
+    const known = this.folders.get(dir)
+    if (known !== undefined) return known
+    const assets = new Map<AssetId, Asset>()
+    const indexPath = join(dir, INDEX_FILE)
+    if (existsSync(indexPath)) {
+      for (const line of readFileSync(indexPath, 'utf8').split('\n')) {
+        if (line.trim() === '') continue
+        const asset = JSON.parse(line) as Asset
+        if (existsSync(join(dir, OBJECTS_DIR, asset.id))) assets.set(asset.id, asset)
+      }
+    }
+    this.folders.set(dir, assets)
+    return assets
+  }
+
+  /**
+   * Find the folder that stores an asset among the folders read so far; on a miss, read the folders of the projects
+   * not read yet, such as a folder registered after start, and look once more.
+   * @param id - an asset ID.
+   * @returns the `.dreamverse/assets/` directory and the entry, or undefined.
+   */
+  private locate(id: AssetId): { dir: string; asset: Asset } | undefined {
+    const find = (): { dir: string; asset: Asset } | undefined => {
+      for (const [dir, assets] of this.folders) {
+        const asset = assets.get(id)
+        if (asset !== undefined) return { dir, asset }
+      }
+      return undefined
+    }
+    const found = find()
+    if (found !== undefined) return found
+    const unread = this.ctx.dvProject.listProjects().map(info => join(info.path, PROJECT_DIR, ASSETS_DIR))
+      .filter(dir => !this.folders.has(dir))
+    for (const dir of unread) this.folder(dir)
+    return unread.length === 0 ? undefined : find()
+  }
+
+  /**
+   * @param asset - an asset ID.
+   * @returns the folder and entry of an asset the pool holds.
+   * @throws ProjectError `unknown_asset` for an asset the pool does not hold.
+   */
+  private require(asset: AssetId): { dir: string; asset: Asset } {
+    const found = this.locate(asset)
+    if (found === undefined) throw new ProjectError('unknown_asset', `Asset '${asset}' is not in the asset pool.`)
+    return found
+  }
+
+  /**
+   * Fill the media facts an asset entry of one folder does not know yet: append the updated entry to the folder's
+   * `index.jsonl` and keep it in memory. Facts the entry already holds stay as they are.
+   * @param dir - the `.dreamverse/assets/` directory that holds the asset.
+   * @param current - the folder's entry.
+   * @param media - the pixel size and the duration, each null when unknown.
+   */
+  private describe(dir: string, current: Asset, media: { width: number | null; height: number | null; durationSec: number | null }): void {
     const next: Asset = {
       ...current,
       width: current.width ?? media.width,
       height: current.height ?? media.height,
       duration_sec: current.duration_sec ?? media.durationSec,
     }
-    if (next.width === current.width && next.height === current.height && next.duration_sec === current.duration_sec) return current
-    appendFileSync(join(this.config.root, INDEX_FILE), `${JSON.stringify(next)}\n`)
-    this.assets.set(id, next)
-    return next
+    if (next.width === current.width && next.height === current.height && next.duration_sec === current.duration_sec) return
+    this.append(dir, next)
   }
 
   /**
    * @param asset - an asset ID.
-   * @returns whether the pool holds it.
+   * @returns whether the folder of a project holds it.
    */
   has(asset: AssetId): boolean {
-    return this.assets.has(asset)
+    return this.locate(asset) !== undefined
   }
 
   /**
@@ -223,15 +296,13 @@ export default class DvAssetPool extends Service {
    * @throws ProjectError `unknown_asset` for an asset the pool does not hold.
    */
   get(asset: AssetId): Asset {
-    const found = this.assets.get(asset)
-    if (found === undefined) throw new ProjectError('unknown_asset', `Asset '${asset}' is not in the asset pool.`)
-    return found
+    return this.require(asset).asset
   }
 
   /**
    * Whether an asset holds sound: an audio file always, a video when ffprobe finds an audio stream, and any other asset
-   * never. The first read of a video probes the file and appends the answer to `index.jsonl`, so later reads and
-   * restarts reuse it.
+   * never. The first read of a video probes the file and appends the answer to the `index.jsonl` of the folder that
+   * holds it, so later reads and restarts reuse it.
    * @param asset - an asset ID.
    * @returns true when the asset holds sound.
    * @throws ProjectError `unknown_asset` for an asset the pool does not hold; FfmpegError when ffprobe cannot read the
@@ -240,12 +311,10 @@ export default class DvAssetPool extends Service {
   async hasAudio(asset: AssetId): Promise<boolean> {
     const mediaType = this.mediaType(asset)
     if (mediaType !== 'video') return mediaType === 'audio'
-    const known = this.get(asset).has_audio
-    if (known !== undefined) return known
-    const hasAudio = (await this.ctx.dvFfmpeg.probe(this.path(asset))).hasAudio
-    const next: Asset = { ...this.get(asset), has_audio: hasAudio }
-    appendFileSync(join(this.config.root, INDEX_FILE), `${JSON.stringify(next)}\n`)
-    this.assets.set(asset, next)
+    const { dir, asset: entry } = this.require(asset)
+    if (entry.has_audio !== undefined) return entry.has_audio
+    const hasAudio = (await this.ctx.dvFfmpeg.probe(join(dir, OBJECTS_DIR, asset))).hasAudio
+    this.append(dir, { ...entry, has_audio: hasAudio })
     return hasAudio
   }
 
@@ -264,8 +333,7 @@ export default class DvAssetPool extends Service {
    * @throws ProjectError `unknown_asset` for an asset the pool does not hold.
    */
   path(asset: AssetId): string {
-    this.get(asset)
-    return join(this.config.root, OBJECTS_DIR, asset)
+    return join(this.require(asset).dir, OBJECTS_DIR, asset)
   }
 
   /**
@@ -283,11 +351,6 @@ export default class DvAssetPool extends Service {
    */
   url(asset: AssetId): string {
     return `${this.config.publicBaseUrl.replace(/\/+$/, '')}${ROUTE_PREFIX}/${asset}`
-  }
-
-  /** @returns every asset, oldest first. */
-  list(): Asset[] {
-    return [...this.assets.values()]
   }
 
   /**
@@ -349,7 +412,7 @@ export default class DvAssetPool extends Service {
           name: text(context.params['name'], path === '' ? 'imported' : basename(path)),
         })
         // The import route and chat images store the bytes before this record runs, so the probe runs here for them too.
-        await this.probeMedia(asset)
+        await this.probeMedia(this.assetsDir(context.project), asset)
         return { outputs: [asset] }
       },
     }
@@ -401,20 +464,22 @@ export default class DvAssetPool extends Service {
   }
 
   /**
-   * Read the pixel size and duration of an image or video that the pool does not know yet, and store them with
-   * {@link DvAssetPool.describe}. ffprobe reads the header; a video whose header has no duration (a WebM file that a
-   * browser recorded) is decoded to measure it. A failure leaves the facts unknown and does not fail the import.
-   * @param id - an asset the pool holds.
+   * Read the pixel size and duration of an image or video that a project folder's entry does not know yet, and store
+   * them with {@link DvAssetPool.describe}. ffprobe reads the header; a video whose header has no duration (a WebM file
+   * that a browser recorded) is decoded to measure it. A failure leaves the facts unknown and does not fail the import.
+   * @param dir - the `.dreamverse/assets/` directory of the importing project.
+   * @param id - an asset that the directory holds.
    */
-  private async probeMedia(id: AssetId): Promise<void> {
-    const asset = this.get(id)
-    const mediaType = this.mediaType(id)
+  private async probeMedia(dir: string, id: AssetId): Promise<void> {
+    const asset = this.folder(dir).get(id) as Asset
+    const mediaType = asset.mime.split('/')[0]
     if (mediaType !== 'video' && mediaType !== 'image') return
     if (asset.width !== null && asset.height !== null && (mediaType !== 'video' || asset.duration_sec !== null)) return
     try {
-      const probed = await this.ctx.dvFfmpeg.probe(this.path(id))
-      const durationSec = mediaType === 'video' ? probed.videoDurationSec ?? probed.durationSec ?? await this.decodedDuration(id) : null
-      this.describe(id, { width: probed.width, height: probed.height, durationSec })
+      const file = join(dir, OBJECTS_DIR, id)
+      const probed = await this.ctx.dvFfmpeg.probe(file)
+      const durationSec = mediaType === 'video' ? probed.videoDurationSec ?? probed.durationSec ?? await this.decodedDuration(file) : null
+      this.describe(dir, asset, { width: probed.width, height: probed.height, durationSec })
     } catch (error) {
       this.ctx.logger('dvAssetPool').warn('could not read the media facts of asset %s: %s', id, error instanceof Error ? error.message : String(error))
     }
@@ -422,13 +487,13 @@ export default class DvAssetPool extends Service {
 
   /**
    * Decode a video's first video stream and read the last progress time ffmpeg reports.
-   * @param id - a video asset.
+   * @param file - a video file.
    * @returns the duration in seconds, or null when ffmpeg reports none.
    */
-  private async decodedDuration(id: AssetId): Promise<number | null> {
+  private async decodedDuration(file: string): Promise<number | null> {
     const result = await this.ctx.dvFfmpeg.run({
       argv: ['ffmpeg', '-v', 'error', '-i', '{{in:0}}', '-map', '0:v:0', '-f', 'null', '-progress', 'pipe:1', '-'],
-      inputs: [this.path(id)], outputs: [], dir: tmpdir(),
+      inputs: [file], outputs: [], dir: tmpdir(),
     })
     const times = [...result.stdout.matchAll(/^out_time=(\d+):(\d+):(\d+(?:\.\d+)?)$/gm)]
     const last = times.at(-1)
@@ -518,30 +583,19 @@ export default class DvAssetPool extends Service {
     }
   }
 
-  /** Rebuild the in-memory index from `index.jsonl`; a line whose object file is missing is skipped. */
-  private replayIndex(): void {
-    const indexPath = join(this.config.root, INDEX_FILE)
-    if (!existsSync(indexPath)) return
-    for (const line of readFileSync(indexPath, 'utf8').split('\n')) {
-      if (line.trim() === '') continue
-      const asset = JSON.parse(line) as Asset
-      if (existsSync(join(this.config.root, OBJECTS_DIR, asset.id))) this.assets.set(asset.id, asset)
-    }
-  }
-
   /** Answer `GET /dv/assets/<AssetId>` with the whole file and its media type; other paths under the prefix are 404. */
   private serveFile(request: IncomingMessage, response: ServerResponse): void {
     /* v8 ignore next -- Node sets `url` on every request it parses. */
     const url = new URL(request.url ?? '/', 'http://localhost')
     const match = FILE_ROUTE.exec(url.pathname)
-    const asset = match === null ? null : this.assets.get(brandString<AssetId>(String(match[1])))
-    if (request.method !== 'GET' || asset === null || asset === undefined) {
+    const found = match === null ? undefined : this.locate(brandString<AssetId>(String(match[1])))
+    if (request.method !== 'GET' || found === undefined) {
       response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end('Not found')
       return
     }
-    const filePath = this.path(asset.id)
+    const filePath = join(found.dir, OBJECTS_DIR, found.asset.id)
     response.writeHead(200, {
-      'content-type': asset.mime,
+      'content-type': found.asset.mime,
       'content-length': String(statSync(filePath).size),
       'cache-control': 'public, max-age=31536000, immutable',
     })

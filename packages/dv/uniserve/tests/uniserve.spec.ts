@@ -173,7 +173,7 @@ async function start(baseUrl: string): Promise<Context> {
     ['skills', 'SkillRegistry', []],
     ['dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`]],
     ['dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, `ffprobePath: ${FFPROBE}`]],
-    ['dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`]],
+    ['dv-asset-pool', 'DvAssetPool', []],
     ['dv-models', 'DvModels', []],
     ['dv-uniserve', 'Uniserve', [`baseUrl: ${baseUrl}`]],
   ] as const
@@ -188,6 +188,8 @@ async function start(baseUrl: string): Promise<Context> {
   ctx.loader.builtins.include = Include
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
   await ctx.loader.await()
+  const origin = { actor: 'user', surface: 'api', session: null, turn: null, tool_call: null, intent: 'create' } as const
+  await ctx.dvProject.createProject(await ctx.dvProject.newProjectFolder('render'), 'render', origin)
   cleanups.push(async () => {
     await ctx.fiber.dispose()
     rmSync(dir, { recursive: true, force: true })
@@ -214,9 +216,11 @@ async function collect(stream: AsyncIterable<RenderStreamEvent>): Promise<Render
   return events
 }
 
-/** Import bytes into the asset pool under a MIME type. */
+/** Import bytes into the asset pool, in the folder of the fixture's project, under a MIME type. */
 function importAsset(ctx: Context, bytes: Buffer, mime: string): AssetId {
-  return ctx.dvAssetPool.importAsset(bytes, { mime, name: 'asset' }, null)
+  const [project] = ctx.dvProject.listProjects()
+  if (project === undefined) throw new Error('The fixture has no project.')
+  return ctx.dvAssetPool.importAsset(project.id, bytes, { mime, name: 'asset' }, null)
 }
 
 /** A five-second 16:9 768p render request with the given input assets and `extra` values. */

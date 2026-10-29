@@ -46,7 +46,7 @@ async function importAsset(services: AssetImportServices, request: Request): Pro
   const bytes = new Uint8Array(await request.arrayBuffer())
   if (bytes.length === 0) throw new ApiRequestError(400, 'The import body is empty.', 'invalid_params')
   // Store the bytes first so the record names the stored file by path instead of carrying base64 in its params.
-  const stored = services.assets.importAsset(bytes, { mime, name }, null)
+  const stored = services.assets.importAsset(projectId, bytes, { mime, name }, null)
   const intent = `import ${name}`
   const { record } = await services.project.run({
     project: projectId, operation: 'asset.import', inputs: [], params: { path: services.assets.path(stored), mime, name, place: surface === 'canvas' },

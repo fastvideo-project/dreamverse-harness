@@ -3,7 +3,7 @@
  * `dvFfmpeg` and `dvAssetPool` through the Loader, with a stand-in web server as the only fake. The agent's
  * `dv_asset_*` calls and the human's `dvProject.run` calls write records whose outputs the pool holds.
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -22,7 +22,7 @@ import DvProject, {
   ProjectError, type AssetId, type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId, type RecordInput,
 } from '@dv/project'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { chatProject, provideChatServices } from '../../project/tests/workspaces.ts'
+import { chatProject, provideChatServices, type TestChatServices } from '../../project/tests/workspaces.ts'
 import DvAssetPool, { importedAssets, placeable } from '../src/index.ts'
 
 const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmpeg-native/bin/ffmpeg'
@@ -60,6 +60,7 @@ interface Fixture {
   ctx: Context
   dir: string
   web: FakeWebServer
+  services: TestChatServices
   project: ProjectId
   /** Run one tool as the agent of chat session `s1`, which runs in the folder of `project`. */
   call(name: string, args: Record<string, unknown>): Promise<ToolExecutionResult>
@@ -93,7 +94,7 @@ async function start(options: { dir?: string; publicBaseUrl?: string } = {}): Pr
   row('tools', 'ToolRuntime', [])
   row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`])
   row('dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, `ffprobePath: ${FFPROBE}`])
-  row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`, ...options.publicBaseUrl === undefined ? [] : [`publicBaseUrl: ${options.publicBaseUrl}`]])
+  row('dv-asset-pool', 'DvAssetPool', options.publicBaseUrl === undefined ? [] : [`publicBaseUrl: ${options.publicBaseUrl}`])
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
 
   const ctx = new Context()
@@ -118,7 +119,7 @@ async function start(options: { dir?: string; publicBaseUrl?: string } = {}): Pr
   const project = await chatProject(ctx.dvProject, services, 'pool', origin)
   let calls = 0
   return {
-    ctx, dir, web, project, stop,
+    ctx, dir, web, services, project, stop,
     call(name, args) {
       calls += 1
       return ctx.tools.execute({ callId: ToolCallId(`call-${calls}`), name, arguments: args, signal: new AbortController().signal, agent: { id: 's1' } as never })
@@ -206,7 +207,7 @@ describe('dvAssetPool', () => {
     expect(placed()).toEqual([a])
     await expect(fixture.run('asset.unplace', {}, [assetInput(b)])).rejects.toMatchObject({ code: 'invalid_params' })
     // An asset that no record of the current state created cannot go on the canvas.
-    const outside = fixture.ctx.dvAssetPool.importAsset(Buffer.from('outside'), { mime: 'image/png', name: 'o.png' }, null)
+    const outside = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('outside'), { mime: 'image/png', name: 'o.png' }, null)
     await expect(fixture.run('asset.place', {}, [assetInput(outside)])).rejects.toMatchObject({ code: 'invalid_inputs' })
     expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before + 1)
     await fixture.ctx.dvProject.undo(fixture.project)
@@ -242,16 +243,19 @@ describe('dvAssetPool', () => {
     expect(failure(await fixture.call('dv_asset_import', { reason: 'nothing', mime: 'text/plain' }))).toContain('needs `path` or `base64`')
   })
 
-  it('stores identical bytes once, replays the index after a restart, and refuses unknown assets', async () => {
+  it('stores identical bytes once in the project folder, finds them by ID after a restart, and refuses unknown assets', async () => {
     const first = await start()
     const pool = first.ctx.dvAssetPool
-    const kept = pool.importAsset(Buffer.from('kept'), { mime: 'text/plain', name: 'a.txt' }, null)
-    expect(pool.importAsset(Buffer.from('kept'), { mime: 'text/plain', name: 'b.txt' }, null)).toBe(kept)
-    const lost = pool.importAsset(Buffer.from('lost'), { mime: 'text/plain', name: 'lost.txt', width: 4, height: 3, durationSec: 1.5 }, null)
+    const folder = first.ctx.dvProject.openProject(first.project).path
+    const kept = pool.importAsset(first.project, Buffer.from('kept'), { mime: 'text/plain', name: 'a.txt' }, null)
+    expect(pool.importAsset(first.project, Buffer.from('kept'), { mime: 'text/plain', name: 'b.txt' }, null)).toBe(kept)
+    const lost = pool.importAsset(first.project, Buffer.from('lost'), { mime: 'text/plain', name: 'lost.txt', width: 4, height: 3, durationSec: 1.5 }, null)
     expect(pool.get(lost)).toMatchObject({ width: 4, height: 3, duration_sec: 1.5, created_by: null })
     expect(pool.get(kept).name).toBe('a.txt')
-    expect(pool.list().map(asset => asset.id)).toEqual([kept, lost])
-    expect(JSON.parse(readFileSync(join(first.dir, 'assets', 'index.jsonl'), 'utf8').split('\n')[0] ?? '{}')).toMatchObject({ id: kept, size_bytes: 4 })
+    expect(pool.path(kept)).toBe(join(folder, '.dreamverse', 'assets', 'objects', kept))
+    expect(readFileSync(pool.path(kept), 'utf8')).toBe('kept')
+    const index = readFileSync(join(folder, '.dreamverse', 'assets', 'index.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line) as { id: string })
+    expect(index.map(entry => entry.id)).toEqual([kept, lost])
     const missing = brandString<AssetId>('0'.repeat(64))
     expect(pool.has(missing)).toBe(false)
     expect(pool.mediaType(kept)).toBe('text')
@@ -259,14 +263,57 @@ describe('dvAssetPool', () => {
     expect(() => pool.get(missing)).toThrow(ProjectError)
     expect(() => pool.path(missing)).toThrow(expect.objectContaining({ code: 'unknown_asset' }))
     await first.stop()
-    rmSync(join(first.dir, 'assets', 'objects', lost))
+    rmSync(join(folder, '.dreamverse', 'assets', 'objects', lost))
+    // The Workspace registry of the next server lists the folder again.
     const second = await start({ dir: first.dir })
-    expect(second.ctx.dvAssetPool.list().map(asset => asset.id)).toEqual([kept])
+    await second.ctx.dvProject.createProject(folder, 'pool', { actor: 'user', surface: 'api', session: null, turn: null, tool_call: null, intent: 'add' })
+    expect(second.ctx.dvAssetPool.read(kept).toString()).toBe('kept')
+    expect(second.ctx.dvAssetPool.get(kept).name).toBe('a.txt')
+    expect(second.ctx.dvAssetPool.has(lost)).toBe(false)
+  })
+
+  it('stores the same bytes in two projects as two files, and refuses an import into a folder that is no project', async () => {
+    const fixture = await start()
+    const origin = { actor: 'user', surface: 'api', session: null, turn: null, tool_call: null, intent: 'create' } as const
+    const other = (await fixture.ctx.dvProject.createProject(await fixture.ctx.dvProject.newProjectFolder('other'), 'other', origin)).id
+    const pool = fixture.ctx.dvAssetPool
+    const one = pool.importAsset(fixture.project, Buffer.from('same'), { mime: 'text/plain', name: 'one.txt' }, null)
+    expect(pool.importAsset(other, Buffer.from('same'), { mime: 'text/plain', name: 'two.txt' }, null)).toBe(one)
+    for (const project of [fixture.project, other]) {
+      expect(readFileSync(join(fixture.ctx.dvProject.openProject(project).path, '.dreamverse', 'assets', 'objects', one), 'utf8')).toBe('same')
+    }
+    const plain = join(fixture.dir, 'plain')
+    mkdirSync(plain)
+    const workspace = await fixture.services.workspaces.create(plain)
+    expect(() => pool.importAsset(brandString<ProjectId>(workspace.id), Buffer.from('nowhere'), { mime: 'text/plain', name: 'n.txt' }, null))
+      .toThrow(expect.objectContaining({ code: 'unknown_project' }))
+    expect(readdirSync(plain)).toEqual([])
+  })
+
+  it('serves the assets of a copied folder that is added as a new project, after the original folder is gone', async () => {
+    const first = await start()
+    const original = first.ctx.dvProject.openProject(first.project).path
+    const image = (await first.run('asset.import', { base64: Buffer.from('<svg/>').toString('base64'), mime: 'image/svg+xml', name: 'a.svg', place: true })).outputs[0] as AssetId
+    await first.stop()
+    const copy = join(first.dir, 'copy')
+    cpSync(original, copy, { recursive: true })
+    rmSync(original, { recursive: true })
+    const second = await start({ dir: first.dir })
+    const added = await second.ctx.dvProject.createProject(copy, 'copy', { actor: 'user', surface: 'api', session: null, turn: null, tool_call: null, intent: 'add' })
+    expect(added.id).not.toBe(first.project)
+    expect(second.ctx.dvProject.getState(added.id).components.asset.placed).toEqual([image])
+    expect(second.ctx.dvAssetPool.path(image)).toBe(join(added.path, '.dreamverse', 'assets', 'objects', image))
+    const base = await second.web.listen()
+    try {
+      expect(await (await fetch(`${base}/dv/assets/${image}`)).text()).toBe('<svg/>')
+    } finally {
+      await second.web.close()
+    }
   })
 
   it('serves asset files on /dv/assets/<AssetId>', async () => {
     const fixture = await start()
-    const asset = fixture.ctx.dvAssetPool.importAsset(Buffer.from('<svg/>'), { mime: 'image/svg+xml', name: 'a.svg' }, null)
+    const asset = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('<svg/>'), { mime: 'image/svg+xml', name: 'a.svg' }, null)
     expect(fixture.ctx.dvAssetPool.url(asset)).toBe(`/dv/assets/${asset}`)
     const base = await fixture.web.listen()
     try {
@@ -294,7 +341,7 @@ describe('dvAssetPool', () => {
         argv: ['ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi', '-i', `color=c=${color}:s=160x90:d=${String(seconds)}:r=10`, '-pix_fmt', 'yuv420p', ...layout, `{{out:${name}}}`],
         inputs: [], outputs: [name], dir: fixture.dir,
       })
-      return fixture.ctx.dvAssetPool.importAsset({ path: outputs[0] as string }, { mime: 'video/mp4', name }, null)
+      return fixture.ctx.dvAssetPool.importAsset(fixture.project, { path: outputs[0] as string }, { mime: 'video/mp4', name }, null)
     }
 
     it('grabs the first, last and a timed still of a video as records whose output is a PNG', async () => {
@@ -316,7 +363,7 @@ describe('dvAssetPool', () => {
       expect(['first', 2, ' 1.5 ', '', 'x', -1, true, undefined].map(at => spec?.summarize({ ...record, params: at === undefined ? {} : { at } })))
         .toEqual(['still at first', 'still at 2', 'still at 1.5', 'still at last', 'still at last', 'still at last', 'still at last', 'still at last'])
       await expect(fixture.run('asset.grab_still', { at: true }, [videoInput(red)])).rejects.toMatchObject({ code: 'invalid_params' })
-      const text = fixture.ctx.dvAssetPool.importAsset(Buffer.from('notes'), { mime: 'text/plain', name: 'notes.txt' }, null)
+      const text = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('notes'), { mime: 'text/plain', name: 'notes.txt' }, null)
       expect(await fixture.run('asset.grab_still', { at: 'first' }, [videoInput(text)])).toMatchObject({ status: 'failed', error: { code: 'operation_failed' } })
       expect(failure(await fixture.call('dv_asset_grab_still', { reason: 'no video' }))).toContain('needs input "video"')
     })
@@ -330,7 +377,7 @@ describe('dvAssetPool', () => {
         ],
         inputs: [], outputs: ['talk.mp4'], dir: fixture.dir,
       })
-      const talk = fixture.ctx.dvAssetPool.importAsset({ path: outputs[0] as string }, { mime: 'video/mp4', name: 'talk.mp4' }, null)
+      const talk = fixture.ctx.dvAssetPool.importAsset(fixture.project, { path: outputs[0] as string }, { mime: 'video/mp4', name: 'talk.mp4' }, null)
       const cut = value(await fixture.call('dv_asset_cut_segment', { reason: 'the middle second as reference', in_sec: 1, out_sec: 2, inputs: { video: talk } }))
       expect(cut).toMatchObject({ status: 'done', summary: 'segment 1–2 s', outputs: [{ role: 'segment', mime: 'video/mp4' }] })
       const record = fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(cut.record))
@@ -349,11 +396,12 @@ describe('dvAssetPool', () => {
       await expect(fixture.run('asset.cut_segment', { in_sec: 0 }, [videoInput(talk)])).rejects.toMatchObject({ code: 'invalid_params' })
       expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
       // A range after the video's end holds no frame; the record fails and no file enters the pool.
-      const assets = fixture.ctx.dvAssetPool.list().length
+      const objects = join(fixture.ctx.dvProject.openProject(fixture.project).path, '.dreamverse', 'assets', 'objects')
+      const files = readdirSync(objects).length
       expect(await fixture.run('asset.cut_segment', { in_sec: 5, out_sec: 6 }, [videoInput(talk)])).toMatchObject({
         status: 'failed', error: { code: 'operation_failed', message: 'The video has no frame between 5s and 6s.' },
       })
-      expect(fixture.ctx.dvAssetPool.list()).toHaveLength(assets)
+      expect(readdirSync(objects)).toHaveLength(files)
       expect(failure(await fixture.call('dv_asset_cut_segment', { reason: 'no video', in_sec: 0, out_sec: 1 }))).toContain('needs input "video"')
     })
 
@@ -391,16 +439,18 @@ describe('dvAssetPool', () => {
         ],
         inputs: [], outputs: ['talk.mp4'], dir: fixture.dir,
       })
-      const talk = pool.importAsset({ path: outputs[0] as string }, { mime: 'video/mp4', name: 'talk.mp4' }, null)
+      const talk = pool.importAsset(fixture.project, { path: outputs[0] as string }, { mime: 'video/mp4', name: 'talk.mp4' }, null)
       const silent = await video(fixture, 'blue', 1)
-      const audio = pool.importAsset(Buffer.from('AUD1'), { mime: 'audio/wav', name: 'a.wav' }, null)
-      const image = pool.importAsset(Buffer.from('IMG1'), { mime: 'image/png', name: 'a.png' }, null)
+      const audio = pool.importAsset(fixture.project, Buffer.from('AUD1'), { mime: 'audio/wav', name: 'a.wav' }, null)
+      const image = pool.importAsset(fixture.project, Buffer.from('IMG1'), { mime: 'image/png', name: 'a.png' }, null)
       expect(pool.get(talk).has_audio).toBeUndefined()
       const answers = [await pool.hasAudio(talk), await pool.hasAudio(silent), await pool.hasAudio(audio), await pool.hasAudio(image)]
       expect(answers).toEqual([true, false, true, false])
       expect(pool.get(talk).has_audio).toBe(true)
+      const folder = fixture.ctx.dvProject.openProject(fixture.project).path
       await fixture.stop()
       const second = await start({ dir: fixture.dir })
+      await second.ctx.dvProject.createProject(folder, 'pool', { actor: 'user', surface: 'api', session: null, turn: null, tool_call: null, intent: 'add' })
       const probe = vi.spyOn(second.ctx.dvFfmpeg, 'probe')
       expect([await second.ctx.dvAssetPool.hasAudio(talk), await second.ctx.dvAssetPool.hasAudio(silent)]).toEqual([true, false])
       expect(probe).not.toHaveBeenCalled()

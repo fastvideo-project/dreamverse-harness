@@ -105,7 +105,7 @@ async function start(options: { models?: boolean; imageInput?: boolean } = {}): 
   row('tools', 'ToolRuntime', [])
   row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`])
   row('dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, `ffprobePath: ${FFPROBE}`])
-  row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
+  row('dv-asset-pool', 'DvAssetPool', [])
   row('dv-inspector', 'DvInspector', options.imageInput === false ? ['imageInput: false'] : [])
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
 
@@ -132,7 +132,7 @@ async function start(options: { models?: boolean; imageInput?: boolean } = {}): 
   let calls = 0
   return {
     ctx, dir, llm, attachments, route, project,
-    put: (bytes, mime, name) => ctx.dvAssetPool.importAsset(bytes, { mime, name }, null),
+    put: (bytes, mime, name) => ctx.dvAssetPool.importAsset(project, bytes, { mime, name }, null),
     call(name, args) {
       calls += 1
       return ctx.tools.execute({ callId: ToolCallId(`call-${calls}`), name, arguments: args, signal: new AbortController().signal, agent: { id: 's1' } as never })
@@ -230,7 +230,7 @@ describe('dvInspector', () => {
       argv: ['ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=160x90:d=1:r=10', '-pix_fmt', 'yuv420p', '{{out:clip.mp4}}'],
       inputs: [], outputs: ['clip.mp4'], dir: fixture.dir,
     })
-    const clip = fixture.ctx.dvAssetPool.importAsset({ path: clipPath }, { mime: 'video/mp4', name: 'clip.mp4' }, null)
+    const clip = fixture.ctx.dvAssetPool.importAsset(fixture.project, { path: clipPath }, { mime: 'video/mp4', name: 'clip.mp4' }, null)
     const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
     const read = value(await fixture.call('dv_inspect_asset', { reason: 'how long is it', inputs: { asset: clip } }))
     expect(read).toMatchObject({ record: '', outputs: [], report: { width: 160, height: 90, has_audio: false, codec: 'h264', video_duration_sec: expect.any(Number) } })

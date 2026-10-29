@@ -66,7 +66,7 @@ async function start(): Promise<Fixture> {
   row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`])
   // The agent tools describe outputs through the asset pool, so the pool and its ffmpeg runner are mounted too.
   row('dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe'])
-  row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
+  row('dv-asset-pool', 'DvAssetPool', [])
   row('dv-timeline', 'DvTimeline', [])
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
 

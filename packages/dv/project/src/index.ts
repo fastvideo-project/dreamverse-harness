@@ -164,7 +164,7 @@ export default class DvProject extends Service {
       store: this.store, reducers: this.reducers, scheduler: this.scheduler,
       assets: {
         has: asset => this.requireAssetStore().has(asset),
-        importAsset: (source, meta, createdBy) => this.requireAssetStore().importAsset(source, meta, createdBy),
+        importAsset: (project, source, meta, createdBy) => this.requireAssetStore().importAsset(project, source, meta, createdBy),
       },
     })
     this.sessions = new Sessions()

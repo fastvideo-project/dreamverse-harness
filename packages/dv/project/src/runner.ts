@@ -36,13 +36,15 @@ export interface RunnerAssets {
    */
   has(asset: AssetId): boolean
   /**
-   * Import a file or bytes into the asset store.
+   * Import a file or bytes into the asset store, in the project's folder.
+   * @param project - the project whose folder receives the bytes.
    * @param source - the bytes, or a file path to copy.
    * @param meta - the media type, the display name, the duration for audio and video, and the pixel size when known.
    * @param createdBy - the record that created the asset; null for a read-only operation.
    * @returns the asset's ID.
    */
   importAsset(
+    project: ProjectId,
     source: Parameters<OperationContext['importAsset']>[0],
     meta: Parameters<OperationContext['importAsset']>[1],
     createdBy: RecordId | null,
@@ -250,7 +252,7 @@ export class Runner {
       const result = await spec.execute({
         project, record: running, params: running.params, inputs: running.inputs, state, scratchDir,
         signal: controller.signal,
-        importAsset: (source, meta) => assets.importAsset(source, meta, record),
+        importAsset: (source, meta) => assets.importAsset(project, source, meta, record),
       })
       const wallSeconds = Math.round(performance.now() - started) / 1000
       return await this.update(project, {
@@ -378,7 +380,7 @@ export class Runner {
       const result = await spec.execute({
         project: request.project, record: null, params: request.params, inputs, state, scratchDir,
         signal: request.signal ?? new AbortController().signal,
-        importAsset: (source, meta) => assets.importAsset(source, meta, null),
+        importAsset: (source, meta) => assets.importAsset(request.project, source, meta, null),
       })
       return { record: null, outputs: result.outputs, report: result.report ?? null }
     } finally {

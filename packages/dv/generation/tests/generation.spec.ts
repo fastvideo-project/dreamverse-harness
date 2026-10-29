@@ -181,7 +181,7 @@ async function start(serve = true, declaration: 'DvProbeGenerate' | 'DvPlainGene
   row('tools', 'ToolRuntime')
   row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`])
   row('dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe'])
-  row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
+  row('dv-asset-pool', 'DvAssetPool', [])
   row('dv-models', 'DvModels')
   row('dv-generate', declaration)
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
@@ -249,7 +249,7 @@ describe('defineGeneration', () => {
     expect(Object.keys(first.report ?? {})).toEqual(['seed', 'model_id', 'references'])
     expect(fixture.model.requests[0]).toMatchObject({ prompt: 'dawn', seed: first.report?.['seed'], numFrames: 24 })
     // A scheduled call resolves its record and asset inputs when it runs, keeps the seed it names, and stores its starter.
-    const image = ctx.dvAssetPool.importAsset(Buffer.from('face'), { mime: 'text/plain', name: 'face.txt' }, null)
+    const image = ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('face'), { mime: 'text/plain', name: 'face.txt' }, null)
     let release = (): void => {}
     fixture.model.hold = new Promise((resolve) => { release = resolve })
     const startedBy = { record: first.id, slot: 2, lane: '9:16' }

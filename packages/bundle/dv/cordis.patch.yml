@@ -1,7 +1,6 @@
 # The DreamVerse bundle patch: the DreamVerse plugins over dsh-base, for a profile that also stacks dsh-web-app (the
 # chat page) or dsh-headless (one task per process). Rows that read the environment read these variables, which
 # scripts/video-harness/launch.sh prepares:
-#   DV_STATE_ROOT    the parent of the asset store's `assets` folder (default ~/.local/state/dv)
 #   DV_PROJECTS_FOLDER  the folder that holds the folders of new chats and projects (default <Documents>/deepseek-harness/DreamVerse)
 #   DV_FFMPEG / DV_FFPROBE  media binaries
 #   DV_PUBLIC_URL    origin that serves /dv/assets to remote viewers, for links in chat cards
@@ -53,10 +52,6 @@
       name: '@dv/asset-pool'
       config:
         publicBaseUrl: !!js process.env.DV_PUBLIC_URL || ''
-        root: !!js >-
-          process.getBuiltinModule('node:path').join(
-          process.env.DV_STATE_ROOT || process.getBuiltinModule('node:path').join(
-          process.getBuiltinModule('node:os').homedir(), '.local/state/dv'), 'assets')
 
     - id: dv-inspector
       name: '@dv/inspector'

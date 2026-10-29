@@ -84,7 +84,7 @@ async function start(options: { model?: boolean } = {}): Promise<Fixture> {
     `projectsFolder: ${join(dir, 'projects')}`,
   ])
   row('dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe'])
-  row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
+  row('dv-asset-pool', 'DvAssetPool', [])
   row('dv-models', 'DvModels', [])
   row('dv-audio-generate', 'DvAudioGenerate', [])
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)

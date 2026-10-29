@@ -244,7 +244,8 @@ export interface OperationContext {
   /** Aborted when the caller's run request aborts. */
   signal: AbortSignal
   /**
-   * Import a file or bytes the operation produced into the asset pool, as an asset created by this record.
+   * Import a file or bytes the operation produced into the asset pool, in the project's folder, as an asset created by
+   * this record.
    * @param source - the bytes, or a file path to copy.
    * @param meta - the asset's media type, display name, duration for audio and video, and pixel width and height of
    *   images and video when the operation knows them.
@@ -453,13 +454,15 @@ export interface AssetStore {
    */
   read(asset: AssetId): Uint8Array
   /**
-   * Import a file or bytes into the asset pool.
+   * Import a file or bytes into the asset pool, in the project's folder.
+   * @param project - the project whose folder receives the bytes.
    * @param source - the bytes, or a file path to copy.
    * @param meta - the media type, the display name, the duration for audio and video, and the pixel size when known.
    * @param createdBy - the record that created the asset; null for a read-only operation.
-   * @returns the asset's ID.
+   * @returns the asset's ID; throws `unknown_project`.
    */
   importAsset(
+    project: ProjectId,
     source: Parameters<OperationContext['importAsset']>[0],
     meta: Parameters<OperationContext['importAsset']>[1],
     createdBy: RecordId | null,

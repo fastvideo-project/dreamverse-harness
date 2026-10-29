@@ -63,7 +63,7 @@ async function start(): Promise<Fixture> {
   row('tools', 'ToolRuntime', [])
   row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`])
   row('dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, `ffprobePath: ${FFPROBE}`])
-  row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
+  row('dv-asset-pool', 'DvAssetPool', [])
   row('dv-timeline', 'DvTimeline', [])
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
 
@@ -90,7 +90,7 @@ async function start(): Promise<Fixture> {
         argv: ['ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi', '-i', `color=c=${color}:s=${size}:d=${seconds}:r=10`, '-pix_fmt', 'yuv420p', `{{out:${name}}}`],
         inputs: [], outputs: [name], dir,
       })
-      return ctx.dvAssetPool.importAsset({ path: join(dir, name) }, { mime: 'video/mp4', name }, null)
+      return ctx.dvAssetPool.importAsset(project, { path: join(dir, name) }, { mime: 'video/mp4', name }, null)
     },
     run: (operation, params) => ctx.dvProject.run({ project, operation, params, inputs: [], ...origin, intent: operation }),
     call(name, args) {
@@ -153,7 +153,7 @@ describe('timeline.export', () => {
       expect(found).toHaveLength(2)
       return found
     })
-    const ready = fixture.ctx.dvAssetPool.importAsset(Buffer.from('ready'), { mime: 'video/mp4', name: 'ready.mp4' }, null)
+    const ready = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('ready'), { mime: 'video/mp4', name: 'ready.mp4' }, null)
     await fixture.ctx.dvProject.run({
       ...origin, project: fixture.project, operation: 'timeline.create', params: { timeline: 't1' },
       inputs: [{ role: 'clip', ref: { asset: ready } }, ...pending.reverse().map(record => ({ role: 'clip', ref: { record, output: 0 } }))],
