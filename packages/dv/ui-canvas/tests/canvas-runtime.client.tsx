@@ -14,7 +14,8 @@ import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-righ
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { FeatureHandle } from '@deepseek-ai/dsh-client-test-runtime'
 import type { NodeAction, NodeType, RecordsInUse } from '../src/client/contract/index.ts'
-import type { CanvasLayout, CanvasViewport, NodePosition, WireOperation, WireProject } from '@dv/ui-kit/types.ts'
+import type { WireOperation, WireProject } from '@dv/ui-kit/types.ts'
+import type { CanvasLayout, CanvasViewport, NodePosition } from '../src/canvas-layout.ts'
 import { asset, fixtureState, OPERATIONS, PROJECT, record, scriptedFetch, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState, Recorded } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
@@ -56,7 +57,7 @@ export interface ServerOptions {
    * makes the layout read fail.
    */
   layout?: CanvasLayout | null
-  /** Leave `GET /api/dv/layout` unanswered until {@link CanvasServer.releaseLayout} answers it. */
+  /** Leave `GET /api/dv/canvas/layout` unanswered until {@link CanvasServer.releaseLayout} answers it. */
   holdLayout?: boolean
   /** Leave `POST /api/dv/operation` unanswered until {@link CanvasServer.releaseOperations} answers it. */
   holdOperations?: boolean
@@ -68,7 +69,7 @@ export interface ServerOptions {
   refuse?: (path: string, body: unknown) => string | null
 }
 
-/** One `POST /api/dv/layout` body; a save after a gesture also carries the viewport. */
+/** One `POST /api/dv/canvas/layout` body; a save after a gesture also carries the viewport. */
 export interface LayoutWrite {
   project: string
   positions: Record<string, NodePosition>
@@ -149,7 +150,7 @@ export function serveCanvas(options: ServerOptions = {}): CanvasServer {
   }
   const fetchImpl: typeof fetch = (input, init) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://host')
-    if (url.pathname === '/api/dv/layout') {
+    if (url.pathname === '/api/dv/canvas/layout') {
       const project = url.searchParams.get('project') ?? ''
       const stored = project === 'p1' ? layout : { positions: {}, viewport: null }
       if (init?.method === 'POST' && typeof init.body === 'string') layoutWrites.push(JSON.parse(init.body) as LayoutWrite)

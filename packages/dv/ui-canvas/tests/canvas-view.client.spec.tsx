@@ -692,7 +692,7 @@ describe('the viewport', () => {
   })
 
   it('leaves the canvas working when the server refuses to store the layout', async () => {
-    const { runtime, view, node, server, canvasOf } = await mountCanvas({ refuse: path => path === '/api/dv/layout' ? 'read-only' : null })
+    const { runtime, view, node, server, canvasOf } = await mountCanvas({ refuse: path => path === '/api/dv/canvas/layout' ? 'read-only' : null })
     await waitFor(() => { node('g3') })
     await waitFor(() => { expect(server.layoutWrites).toHaveLength(1) })
     act(() => { canvasOf().dispatchEvent(new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true })) })

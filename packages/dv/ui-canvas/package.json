@@ -27,11 +27,16 @@
   "scripts": {
     "bundle": "tsdown"
   },
+  "dependencies": {
+    "@deepseek-ai/dsh-workspace": "workspace:*",
+    "@dv/project": "workspace:*"
+  },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-client-connection": "workspace:*",
     "@deepseek-ai/dsh-client-locale": "workspace:*",
     "@deepseek-ai/dsh-client-test-runtime": "workspace:*",
     "@deepseek-ai/dsh-client-ui-renderer": "workspace:*",
@@ -42,6 +47,7 @@
     "@dv/ui-media": "workspace:*",
     "@dv/ui-shell": "workspace:*",
     "@testing-library/react": "^16.1.0",
+    "@types/node": "^22.20.0",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.0",
     "react": "^18.2.0",

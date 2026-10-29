@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在叠了 `dsh-web-app`（提供右侧栏、locale 服务和客户端模块加载器）和 `@dv/api`（提供画布调用的路由）的 profile 里挂载插件。先构建浏览器 bundle：`pnpm run build` 会写出 `lib/client.js`。
+在叠了 `dsh-web-app`（提供右侧栏、locale 服务和客户端模块加载器）和 `@dv/api`（提供画布调用的项目路由）的 profile 里挂载插件。先构建浏览器 bundle：`pnpm run build` 会写出 `lib/client.js`。
 
 画布只显示项目的当前状态，不显示历史，每个节点都来自一个已注册的 `NodeType`。一种类型有切片条目、认领节点，或两者都有。切片条目（`entries`）是类型从状态中自己的切片读出的 `NodeEntry`，例如 `@dv/ui-character` 的角色。认领节点（`claimed`）代表该类型认领的操作的当前记录，例如 `@dv/ui-shot-render` 的版本认领 `shot.render`。画布从记录构建每个认领节点：节点 ID 是记录 ID，节点的素材是记录的产出，它的边是记录的输入和 `based_on`；类型只提供标题、`meta`、预览和主体高度。没有类型认领其操作的记录不画节点。节点 ID 唯一：两个绘出的节点 ID 相同时，构建画布图会抛错，错误信息给出两个节点类型。由 `based_on` 相连的记录组成一组；多于一个记录的组里，每个记录按记录顺序得到从 1 开始的 `version` 编号。已注册的 `RecordsInUse` 为某个素材报告的标记，例如时间线裁剪的片段的 已裁剪 / Trimmed，按原文显示在该素材的节点上。切片条目的素材归这些条目所有，然后是已注册的 `VersionKind` 画成切片条目的条目的每个更早版本的素材，再然后是认领节点的产出。带 `standIn` 的条目，例如 `@dv/ui-asset-pool` 为画布列表（`asset` 切片的 `placed`）上每个素材画的素材节点，只在没有其他节点拥有它的任何素材时才画出。用户把文件或素材库缩略图拖到画布上，或在对话消息里以附加图片或 `dv:asset/<id>` 标签发出某个素材（由 `@dv/chat-references` 放置）时，该素材放到画布上。这些都是历史中的步骤，所以历史会列出它们，撤销能退回它们。当前状态改变时画布跟着改变，画布的修改立即成为历史中的步骤。
 
@@ -33,7 +33,9 @@ kind: "package-reference"
   name: '@dv/ui-canvas'
 ```
 
-Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanvas`（`@dv/ui-canvas/contract` 的 `DvCanvas`），它的四个注册表在插件的 UI 半边向其中注册之前是空的：`nodeTypes`（`NodeType`，以 `type` 以及每个认领操作的 `op:<operation>` 为键，所以两种类型不会认领同一个操作）、`recordsInUse`（`RecordsInUse`，以 `id` 为键）、`versionKinds`（`@dv/ui-kit/registries.ts` 的 `VersionKind`，以 `kind` 为键）和 `actions`（`NodeAction`，以 `id` 为键）。插件的 UI 半边在 `ctx.inject(['dvCanvas'], …)` 里注册它的描述符，并保留返回的注销函数；键已被占用的第二个描述符会抛出指名占用者的错误。浏览器半边注册 `dv.canvas` 组件工厂，它接收属性 `projectId`、`session` 和 `focus`，通过注入的 `hooks` 读取注册表，并声明四个键控子插槽，节点类型以其 `NodeType.type` 为键填充：`dv.canvas.card`（卡片主体，所有者属性为 `CardOwner`：节点、它每个素材的 wire 素材、文字缩放倍数和一个 `CardHost`；没有条目时卡片显示类型标签）、`dv.canvas.editor`（切片节点的编辑器主体，所有者属性为 `EditorOwner`，其中的 `EditorHost` 另有编辑器的素材选择窗口）、`dv.canvas.editor.claimed`（认领节点的编辑器主体，所有者属性为 `EditorOwner<ClaimedNodeView>`）和 `dv.canvas.picker`（素材选择窗口里的素材库，键为 `assets`，所有者属性为 `PickerOwner`）。没有条目的编辑器只显示标题栏。它还注册 `dv-canvas` 标签类型（侧栏指南页以"视频画布"提供的页面）、中英文的 `dvCanvas` locale 命名空间、以自身 id `@dv/ui-canvas` 为键的标签主体，并把 `CanvasCenter` 注册为 `dv.center.view` 条目 `canvas`（顺序 0，标签为标签类型的 画布 / Canvas）。中间区域视图和标签主体各自为自己的项目和对话会话渲染一个 `dv.canvas` 实例，所以两者画出相同的卡片、编辑器和选择窗口。卡片主体和编辑器主体通过 `@dv/ui-media` 的 `dv.media` 组件工厂绘制媒体。`NodeAction` 显示在其 `shows` 返回 true 的每个节点上，按 `order` 排列：显示在编辑器标题栏里，以及失败的认领节点的画框里；它的 `run` 接收节点和一个没有素材选择窗口的 `NodeHost`。
+Host 半边注入 DSH Workspace 注册表，并在 Connection 服务挂载期间注册经认证的 Fetch 路由 `/api/dv/canvas/layout`。该路由把每个项目以画布节点 ID 为键的节点位置和视口存放在 `<项目文件夹>/.dreamverse/canvas-layout.json`，项目文件夹是 ID 等于项目 ID 的 Workspace 的路径。`GET ?project=<id>` 返回 `{positions, viewport}`，文件缺失或无法读取时返回空布局；`POST {project, positions?, viewport?}` 把位置合并进已存的位置，给出视口时替换视口，原子地写入文件，并返回存储后的布局。一个布局最多保留 5000 个位置。错误使用每个 `/api/dv` 路由的响应体 `{error, code}`：项目格式错误或位置过多时为 400 `invalid_params`；ID 不对应任何 Workspace，或写入没有 `.dreamverse/` 的文件夹时为 404 `unknown_project`，此时不创建任何东西。布局是视图状态：它不写记录，所以撤销不会移动节点，移除项目时文件留在文件夹里。
+
+浏览器半边提供客户端服务 `dvCanvas`（`@dv/ui-canvas/contract` 的 `DvCanvas`），它的四个注册表在插件的 UI 半边向其中注册之前是空的：`nodeTypes`（`NodeType`，以 `type` 以及每个认领操作的 `op:<operation>` 为键，所以两种类型不会认领同一个操作）、`recordsInUse`（`RecordsInUse`，以 `id` 为键）、`versionKinds`（`@dv/ui-kit/registries.ts` 的 `VersionKind`，以 `kind` 为键）和 `actions`（`NodeAction`，以 `id` 为键）。插件的 UI 半边在 `ctx.inject(['dvCanvas'], …)` 里注册它的描述符，并保留返回的注销函数；键已被占用的第二个描述符会抛出指名占用者的错误。浏览器半边注册 `dv.canvas` 组件工厂，它接收属性 `projectId`、`session` 和 `focus`，通过注入的 `hooks` 读取注册表，并声明四个键控子插槽，节点类型以其 `NodeType.type` 为键填充：`dv.canvas.card`（卡片主体，所有者属性为 `CardOwner`：节点、它每个素材的 wire 素材、文字缩放倍数和一个 `CardHost`；没有条目时卡片显示类型标签）、`dv.canvas.editor`（切片节点的编辑器主体，所有者属性为 `EditorOwner`，其中的 `EditorHost` 另有编辑器的素材选择窗口）、`dv.canvas.editor.claimed`（认领节点的编辑器主体，所有者属性为 `EditorOwner<ClaimedNodeView>`）和 `dv.canvas.picker`（素材选择窗口里的素材库，键为 `assets`，所有者属性为 `PickerOwner`）。没有条目的编辑器只显示标题栏。它还注册 `dv-canvas` 标签类型（侧栏指南页以"视频画布"提供的页面）、中英文的 `dvCanvas` locale 命名空间、以自身 id `@dv/ui-canvas` 为键的标签主体，并把 `CanvasCenter` 注册为 `dv.center.view` 条目 `canvas`（顺序 0，标签为标签类型的 画布 / Canvas）。中间区域视图和标签主体各自为自己的项目和对话会话渲染一个 `dv.canvas` 实例，所以两者画出相同的卡片、编辑器和选择窗口。卡片主体和编辑器主体通过 `@dv/ui-media` 的 `dv.media` 组件工厂绘制媒体。`NodeAction` 显示在其 `shows` 返回 true 的每个节点上，按 `order` 排列：显示在编辑器标题栏里，以及失败的认领节点的画框里；它的 `run` 接收节点和一个没有素材选择窗口的 `NodeHost`。
 
 填充画布的 UI 插件有：`@dv/ui-asset-pool`（素材节点类型、它的卡片和编辑器主体、"从画布移除"动作，以及选择窗口里的素材库）、`@dv/ui-timeline`（时间线片段使用的记录及其裁剪标记）和 `@dv/ui-composer`（"问 agent"动作，通过 `dv:compose` 窗口事件预填对话输入框）。由 [`@dv/ui-generation`](../ui-generation/README.zh.md) 的 `defineGenerationUi` 定义的每个生成 UI 插件（例如镜头渲染版本的 `@dv/ui-shot-render`）注册一个认领节点类型、它的卡片和认领编辑器主体，以及失败版本的"重试"动作。参考名词 `@dv/ui-character`、`@dv/ui-location` 和 `@dv/ui-style` 来自 [`@dv/ui-reference-kit`](../ui-reference-kit/README.zh.md) 的 `defineReferenceUi`：每个注册一个带切片条目的节点类型、它的卡片和编辑器主体、一个版本种类，以及它的参考使用的记录。
 
@@ -45,8 +47,8 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanva
 | 把素材库缩略图拖到画布上 | 素材已有节点时，把该节点移到指针下；素材库面板中的其他素材则由 `POST /api/dv/operation` 执行 `asset.place`，该素材作为输入角色 `asset`，新节点放在指针下 |
 | `host.setPlaced`，例如素材节点编辑器里的"从画布移除" | `POST /api/dv/operation` 执行 `asset.place` 或 `asset.unplace`，该素材作为输入角色 `asset`；本视图立即显示改变，请求被拒绝时恢复原样 |
 | 在过期节点的编辑器里点"仍然保留" | 对节点的记录调用 `POST /api/dv/stale/accept`（作为历史中的一步运行 `proj.stale_accept`） |
-| 拖动节点、平移或缩放 | `POST /api/dv/layout`，带以节点 ID 为键的移动位置和视口 |
-| 出现一个没有存储位置的节点，或它的记录结束渲染 | `POST /api/dv/layout`，带它的位置：默认布局位置，每次下移一行，直到不压住其他节点。节点的记录在等待或运行中时，这个位置会画出来，其他节点也会避开它，但不存储；记录结束渲染时，画布按节点的最终高度重新放置它，再存储该位置。拖动会立即存储拖到的位置 |
+| 拖动节点、平移或缩放 | `POST /api/dv/canvas/layout`，带以节点 ID 为键的移动位置和视口 |
+| 出现一个没有存储位置的节点，或它的记录结束渲染 | `POST /api/dv/canvas/layout`，带它的位置：默认布局位置，每次下移一行，直到不压住其他节点。节点的记录在等待或运行中时，这个位置会画出来，其他节点也会避开它，但不存储；记录结束渲染时，画布按节点的最终高度重新放置它，再存储该位置。拖动会立即存储拖到的位置 |
 
 除布局请求外，每个请求都带 `surface: 'canvas'` 和画布旁边的对话，记录把该对话存为它的 `session`。工作区中间区域把请求 `{ record: <id> }` 交给中间区域视图时，视图打开该记录的节点；这个请求由 `@dv/ui-shell/contract` 的 `dvCenter.show({ view: 'canvas', target: { record } })` 给出，历史在选中记录时就这样做。画布把记录自己的节点移到中央、选中并打开；没有时是 `record` 为该记录的节点，再没有时是 `records` 列出该记录的条目节点（例如较早版本的记录对应角色），否则是包含该记录第一个产出的节点。没有节点匹配时请求会等待，所以后注册的节点类型仍能打开它的节点；画布打开节点时取走该请求，所以重新挂载的画布不会再次打开该节点。标签主体不传焦点。
 
@@ -64,10 +66,14 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanva
 <details>
 <summary>实现内部——点击展开</summary>
 
-`CanvasView` 用 `@dv/ui-kit/useProject.ts` 的 `useProjectState` 和 `useOperations` 读取项目的当前状态和操作；`graph.ts` 的 `buildCanvasGraph` 把它们和已注册的描述符变成节点、边和默认布局：每个节点位于其类型的 `column` 列；从某个节点读取 `deepenOn` 输入角色（例如接续上一个镜头的视频版本的 `first_frame`）的节点位于该节点右边一列；重跑紧跟在源节点之后，位于源节点的列。同一列中，认领节点按记录顺序排列；节点数超过共用行数的列会分成几个子列。切片节点的 ID 是其条目自己的 ID，例如 `character:<id>`；认领节点的 ID 是它的记录 ID。认领节点为每个输入画一条边：输入为 `<id>@<version>` 且版本种类画出了所指条目的节点时，从该节点连过来，否则从输入素材的节点连过来（拥有该素材的节点，没有时是沿产出链向上最近的已画出认领记录）；另有一条从 `based_on` 记录来的谱系边；切片节点不画边。`NodeEntry.bodyHeight` 在挂载前给出节点高度（标题行和主体），空闲位置、边的端点和焦点都用它。`/api/dv/layout` 中存下的位置覆盖默认布局；布局读写失败时忽略。每收到一帧 `/dv/events`，状态就重新拉取，所以对话消息放上的素材不用刷新就会出现；本视图发出的摆放立即显示，直到状态显示它为止，被拒绝的摆放会恢复原样。
+`CanvasView` 用 `@dv/ui-kit/useProject.ts` 的 `useProjectState` 和 `useOperations` 读取项目的当前状态和操作；`graph.ts` 的 `buildCanvasGraph` 把它们和已注册的描述符变成节点、边和默认布局：每个节点位于其类型的 `column` 列；从某个节点读取 `deepenOn` 输入角色（例如接续上一个镜头的视频版本的 `first_frame`）的节点位于该节点右边一列；重跑紧跟在源节点之后，位于源节点的列。同一列中，认领节点按记录顺序排列；节点数超过共用行数的列会分成几个子列。切片节点的 ID 是其条目自己的 ID，例如 `character:<id>`；认领节点的 ID 是它的记录 ID。认领节点为每个输入画一条边：输入为 `<id>@<version>` 且版本种类画出了所指条目的节点时，从该节点连过来，否则从输入素材的节点连过来（拥有该素材的节点，没有时是沿产出链向上最近的已画出认领记录）；另有一条从 `based_on` 记录来的谱系边；切片节点不画边。`NodeEntry.bodyHeight` 在挂载前给出节点高度（标题行和主体），空闲位置、边的端点和焦点都用它。`/api/dv/canvas/layout` 中存下的位置覆盖默认布局；布局读写失败时忽略。每收到一帧 `/dv/events`，状态就重新拉取，所以对话消息放上的素材不用刷新就会出现；本视图发出的摆放立即显示，直到状态显示它为止，被拒绝的摆放会恢复原样。
 
 | 文件 | 内容 |
 | --- | --- |
+| [`src/index.ts`](src/index.ts) | Host 半边：布局存储及其路由的注册 |
+| [`src/layout.ts`](src/layout.ts) | `CanvasLayoutStore` 和布局路由 |
+| [`src/canvas-layout.ts`](src/canvas-layout.ts) | 两个半边共用的布局类型和路由路径 |
+| [`src/client/layout-client.ts`](src/client/layout-client.ts) | 布局路由的浏览器客户端 |
 | [`src/client/contract/index.ts`](src/client/contract/index.ts) | `@dv/ui-canvas/contract`：节点契约、`DvCanvas` 和 `dv.canvas.*` 插槽（只有类型） |
 | [`src/client/index.ts`](src/client/index.ts) | `dvCanvas` 服务和注册 |
 | [`src/client/dv-canvas.ts`](src/client/dv-canvas.ts) | 四个 `dvCanvas` 注册表 |
@@ -88,7 +94,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanva
 <a id="further-exploration"></a>
 ## 进一步探索
 
-- [`@dv/api`](../api/README.zh.md) — 每个手势背后的路由。
+- [`@dv/api`](../api/README.zh.md) — 除布局请求外每个手势背后的路由。
 - [`@dv/ui-kit`](../ui-kit/README.zh.md) — API 客户端、wire 类型、注册表和 hook。
 - [`@dv/ui-shell`](../ui-shell/README.zh.md) — 工作区中间区域和把它移到画布的 `dvCenter`。
 - [`@dv/ui-media`](../ui-media/README.zh.md) — 绘制画布素材的 `dv.media` 组件工厂，以及素材预览。

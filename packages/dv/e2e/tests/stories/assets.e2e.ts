@@ -1,7 +1,7 @@
 // The asset pool panel (素材库): user stories driven in Chromium against the shipped profile with the fake video backend and
 // a scripted model. Each story opens a fresh browser context and its own project, then checks the screen against the
 // UI state contract: the destination is shown, nothing is left over, and the log holds what the user did.
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { crc32, deflateSync } from 'node:zlib'
 import type { Browser, BrowserContext, Locator, Page } from 'playwright'
@@ -426,13 +426,14 @@ describe('The asset pool panel', () => {
   })
 
   describe('project deletion', () => {
-    it('deletes the project\'s canvas layout file with the project', async () => {
+    it('keeps the canvas layout file in the project folder after the project is removed', async () => {
       const project = await createProject()
-      await harness.api.post('/api/dv/layout', { project: project.id, positions: { n1: { x: 10, y: 20 } } })
-      const file = join(harness.stateRoot, 'canvas-layout', `${project.id}.json`)
-      expect(existsSync(file)).toBe(true)
+      await harness.api.post('/api/dv/canvas/layout', { project: project.id, positions: { n1: { x: 10, y: 20 } } })
+      const { path } = (await harness.api.get('/api/dv/workspaces') as { projects: Array<{ id: string; path: string }> }).projects.find(row => row.id === project.id) ?? { path: '' }
+      const file = join(path, '.dreamverse', 'canvas-layout.json')
+      expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ positions: { n1: { x: 10, y: 20 } }, viewport: null })
       await harness.api.post('/api/dv/projects/delete', { project: project.id })
-      expect(existsSync(file)).toBe(false)
+      expect(existsSync(file)).toBe(true)
     })
   })
 

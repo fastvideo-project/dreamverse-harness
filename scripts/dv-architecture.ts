@@ -275,9 +275,9 @@ function layerOf(pkg: string, facts: Facts): Layer {
 
 /**
  * R7 (a): whether package `from` may import `specifier`. Every UI layer value-imports `@dv/ui-kit` and type-imports the
- * `./contract` entry of a UI-core package; UI core alone also value-imports the kernel's pure grammar entry
- * `@dv/project/grammar`; a UI plugin also value-imports a kit (`ui-lib`) and type-imports its host package's `./types`;
- * UI core imports no kit.
+ * `./contract` entry of a UI-core package; UI core alone also value-imports the kernel's pure entries
+ * `@dv/project/grammar` and `@dv/project/folder`; a UI plugin also value-imports a kit (`ui-lib`) and type-imports its
+ * host package's `./types`; UI core imports no kit.
  * @param typeOnly - the import is `import type` or `export type`.
  */
 function importAllowed(from: string, specifier: string, typeOnly: boolean, facts: Facts): boolean {
@@ -287,7 +287,7 @@ function importAllowed(from: string, specifier: string, typeOnly: boolean, facts
   if (UI_LAYERS.includes(source)) {
     if (to === 'ui-kit') return true
     if (typeOnly && target === 'ui-core' && specifier === `@dv/${to}/contract`) return true
-    if (source === 'ui-core' && specifier === '@dv/project/grammar') return true
+    if (source === 'ui-core' && (specifier === '@dv/project/grammar' || specifier === '@dv/project/folder')) return true
     if (source !== 'ui') return false
     return target === 'ui-lib' || (typeOnly && specifier === `@dv/${from.slice('ui-'.length)}/types`)
   }

@@ -6,7 +6,6 @@ import type { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar
 import { usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
 import { CANVAS_ID, CANVAS_KIND } from '../src/client/definition.ts'
 import { en, zh } from '../src/client/locales.ts'
-import { apply as hostApply } from '../src/index.ts'
 import { forgetCanvasStorage, mountCanvas } from './canvas-runtime.client.tsx'
 
 usePinnedBrowserLanguages('zh-CN')
@@ -18,10 +17,6 @@ afterEach(() => {
 })
 
 describe('ui-canvas apply', () => {
-  it('keeps the host Loader entry inert', () => {
-    expect(hostApply).not.toThrow()
-  })
-
   it('registers the dv-canvas tab type with its guide entry, the tab body, and the 画布 center view first in the view control', async () => {
     const { runtime, view } = await mountCanvas({ kinds: [], surfaces: ['center', 'tab'] })
     const definition = (runtime.ctx.get('sidebarRightTabs') as SidebarRightTabRegistry).get(CANVAS_KIND)

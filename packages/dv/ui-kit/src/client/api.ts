@@ -5,7 +5,7 @@
  * @module @dv/ui-kit/api
  */
 import type {
-  CanvasLayout, HistoryQuery, OperationCheck, OperationRequest, ProjectEvent,
+  HistoryQuery, OperationCheck, OperationRequest, ProjectEvent,
   ProjectInfo, ProjectRecord, SummaryQuery, WireHistory, WireLine, WireModelEntry,
   WireOperation, WireProject, WireProjectCover, WireProjectSummary,
   WireState, WireWorkspaces,
@@ -318,25 +318,6 @@ export class DvClient {
    */
   acceptStale(project: string, record: string, surface: ViewSurface, session: string | null = null): Promise<ProjectRecord> {
     return this.post('/api/dv/stale/accept', { project, record, surface, ...session === null ? {} : { session } })
-  }
-
-  /**
-   * @param project - the project.
-   * @returns the project's stored canvas layout.
-   */
-  async getLayout(project: string): Promise<CanvasLayout> {
-    const layout = await this.get<Partial<CanvasLayout>>('/api/dv/layout', { project })
-    return { positions: layout.positions ?? {}, viewport: layout.viewport ?? null }
-  }
-
-  /**
-   * Merge node positions into the project's canvas layout and store the viewport.
-   * @param project - the project.
-   * @param patch - the positions moved since the last save, and the viewport.
-   * @returns the stored layout.
-   */
-  updateLayout(project: string, patch: Partial<CanvasLayout>): Promise<CanvasLayout> {
-    return this.post('/api/dv/layout', { project, ...patch })
   }
 
   /**

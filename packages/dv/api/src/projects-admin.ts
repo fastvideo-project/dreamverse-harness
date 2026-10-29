@@ -1,11 +1,10 @@
 /**
  * Project removal and renaming for the DreamVerse shell, through `dvProject`. Removal unregisters the project's DSH
  * Workspace, after which the project is no longer listed; its folder stays on disk, so adding the folder again
- * restores the project. The project's canvas layout file is view state and is deleted.
+ * restores the project.
  *
  * Routes:
- * - `POST /api/dv/projects/delete` with `{project}` removes the project and deletes its canvas layout file, and
- *   returns `{ok}`.
+ * - `POST /api/dv/projects/delete` with `{project}` removes the project and returns `{ok}`.
  * - `POST /api/dv/projects/rename` with `{project, title}` stores a title that no other project has, appending ` 2`,
  *   ` 3`, … on a clash, and returns `{title}`.
  *
@@ -17,7 +16,6 @@
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import type DvProject from '@dv/project'
 import { answer, requireProject } from './api.ts'
-import type { CanvasLayoutStore } from './layout.ts'
 
 /** The Fetch route paths. */
 export const PROJECT_ADMIN_ROUTES = {
@@ -28,10 +26,9 @@ export const PROJECT_ADMIN_ROUTES = {
 /**
  * The project deletion and rename Fetch routes.
  * @param project - the Project service, which owns the project files.
- * @param layouts - the canvas layout files; removal deletes the project's file.
  * @returns the routes.
  */
-export function projectAdminRoutes(project: DvProject, layouts: CanvasLayoutStore): ConnectionFetchRoute[] {
+export function projectAdminRoutes(project: DvProject): ConnectionFetchRoute[] {
   const bodyOf = async (request: Request): Promise<Record<string, unknown>> => {
     const body: unknown = await request.json().catch(() => ({}))
     return typeof body === 'object' && body !== null ? body as Record<string, unknown> : {}
@@ -39,7 +36,6 @@ export function projectAdminRoutes(project: DvProject, layouts: CanvasLayoutStor
   const remove = async (request: Request): Promise<unknown> => {
     const projectId = requireProject(project, (await bodyOf(request))['project'])
     await project.removeProject(projectId)
-    layouts.delete(projectId)
     return { ok: true }
   }
   const rename = async (request: Request): Promise<unknown> => {

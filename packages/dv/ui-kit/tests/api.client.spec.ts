@@ -24,13 +24,12 @@ describe('DvClient', () => {
     await client.acceptStale('p1', 'g2', 'canvas')
     await client.renameProject('p1', 'Demo 3')
     await client.deleteProject('p1')
-    await client.updateLayout('p1', { positions: { g1: { x: 1, y: 2 } } })
     await client.placeOnCanvas('p1', ['a1'], true, 's5')
     await client.placeOnCanvas('p1', ['a1'], false)
     await client.untitledFolder('Untitled project')
     expect(writes.map(write => write.path)).toEqual([
       '/api/dv/projects', '/api/dv/operation', '/api/dv/undo', '/api/dv/undo', '/api/dv/redo', '/api/dv/stale/accept', '/api/dv/stale/accept',
-      '/api/dv/projects/rename', '/api/dv/projects/delete', '/api/dv/layout', '/api/dv/operation', '/api/dv/operation',
+      '/api/dv/projects/rename', '/api/dv/projects/delete', '/api/dv/operation', '/api/dv/operation',
       '/api/dv/projects/untitled',
     ])
     expect(writes[0]?.body).toEqual({ title: 'Demo 2', surface: 'canvas' })
@@ -39,27 +38,21 @@ describe('DvClient', () => {
     expect(writes[4]?.body).toEqual({ project: 'p1' })
     expect(writes[5]?.body).toEqual({ project: 'p1', record: 'g2', surface: 'timeline', session: 's5' })
     expect(writes[6]?.body).toEqual({ project: 'p1', record: 'g2', surface: 'canvas' })
-    expect(writes[9]?.body).toEqual({ project: 'p1', positions: { g1: { x: 1, y: 2 } } })
-    expect(writes[10]?.body).toEqual({ project: 'p1', operation: 'asset.place', surface: 'canvas', inputs: [{ role: 'asset', ref: 'a1' }], session: 's5' })
-    expect(writes[11]?.body).toEqual({ project: 'p1', operation: 'asset.unplace', surface: 'canvas', inputs: [{ role: 'asset', ref: 'a1' }] })
-    expect(writes[12]?.body).toEqual({ name: 'Untitled project' })
+    expect(writes[9]?.body).toEqual({ project: 'p1', operation: 'asset.place', surface: 'canvas', inputs: [{ role: 'asset', ref: 'a1' }], session: 's5' })
+    expect(writes[10]?.body).toEqual({ project: 'p1', operation: 'asset.unplace', surface: 'canvas', inputs: [{ role: 'asset', ref: 'a1' }] })
+    expect(writes[11]?.body).toEqual({ name: 'Untitled project' })
     expect(assetUrl('a/b')).toBe('/dv/assets/a%2Fb')
   })
 
-  it('reads the stored canvas layout, an empty one for a project that stored none, and the Workspaces', async () => {
+  it('reads the Workspaces', async () => {
     const paths: string[] = []
     const answering = (body: unknown): typeof fetch => (input) => {
       paths.push(typeof input === 'string' ? input : '')
       return Promise.resolve(new Response(JSON.stringify(body)))
     }
-    const stored = { positions: { g1: { x: 1, y: 2 } }, viewport: { x: 0, y: 0, zoom: 2 } }
-    expect(await new DvClient(answering(stored)).getLayout('p1')).toEqual(stored)
-    expect(await new DvClient(answering({})).getLayout('p1')).toEqual({ positions: {}, viewport: null })
     const workspaces = { entry_path: '/dv', projects: [{ id: 'p1', title: 'Demo', created_at: '2026-10-05T00:00:00Z', path: '/dv/Demo', workspace_id: 'p1' }] }
     expect(await new DvClient(answering(workspaces)).listWorkspaces()).toEqual(workspaces)
-    expect(paths).toEqual([
-      '/api/dv/layout?project=p1', '/api/dv/layout?project=p1', '/api/dv/workspaces',
-    ])
+    expect(paths).toEqual(['/api/dv/workspaces'])
   })
 
   it('imports a file as its body, with its MIME type or a generic one, and the chat session when given', async () => {

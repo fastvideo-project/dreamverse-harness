@@ -2,7 +2,7 @@
  * The project canvas: a pan-and-zoom surface that draws the nodes of the registered node types in the canvas chrome
  * (a caption above a frame) around each type's `dv.canvas.card` body, and opens a clicked node's editor panel, which
  * grows out of the node and shrinks back into it (`@dv/ui-kit/zoom.ts`). Node positions and the viewport are stored per
- * project through `/api/dv/layout`; a node without a stored position gets the first free spot at or below its
+ * project through `/api/dv/canvas/layout`; a node without a stored position gets the first free spot at or below its
  * automatic position, and that spot is stored once the node's record stops rendering, so a node that appears later
  * never moves or covers another. The opened nodes are kept per
  * project in `localStorage` for the unseen dot. Colors come from the `--dv-*` theme variables that `@dv/ui-shell`
@@ -14,16 +14,18 @@ import type { PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots'
 import { errorMessage } from '@dv/ui-kit/api.ts'
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import { useLanguage } from '@dv/ui-kit/locale.ts'
-import type { Asset, CanvasViewport, NodePosition, OperationRequest, ProjectRecord } from '@dv/ui-kit/types.ts'
+import type { Asset, OperationRequest, ProjectRecord } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { useOperations, useProjectState } from '@dv/ui-kit/useProject.ts'
 import { useZoomPresence } from '@dv/ui-kit/zoom.ts'
+import type { CanvasViewport, NodePosition } from '../canvas-layout.ts'
 import type { CanvasRequest, EditorHost, NodeAction, NodeHost, NodeView, RerunRequest } from './contract/index.ts'
 import { buildCanvasGraph, freePositions, isFinished, NODE_WIDTH, previewOf, ROW } from './graph.ts'
 import type { CanvasEdge, CanvasNode, CanvasRegistrations } from './graph.ts'
 import { cardHeight, edgeAnchorY, NodeCard, textScaleAt, TypeLabelBody } from './NodeCard.tsx'
 import type { CanvasTranslate } from './NodeCard.tsx'
+import { readLayout, writeLayout } from './layout-client.ts'
 import { NodeEditor } from './NodeEditor.tsx'
 import type { EditorArea, RenderCanvasSlot, SurfaceHosts } from './NodeEditor.tsx'
 
@@ -279,7 +281,7 @@ export function CanvasView(
     let live = true
     setLayoutReady(false)
     // A canvas without stored positions still works with the automatic layout, so a failed read counts as empty.
-    void client.getLayout(projectId).catch(() => ({ positions: {}, viewport: null })).then((layout) => {
+    void readLayout(projectId).catch(() => ({ positions: {}, viewport: null })).then((layout) => {
       if (!live) return
       // The stored layout wins over a drag made before it arrived.
       moved.current.clear()
@@ -293,7 +295,7 @@ export function CanvasView(
       live = false
       if (saveTimer.current !== null) clearTimeout(saveTimer.current)
     }
-  }, [client, projectId])
+  }, [projectId])
 
   /** Store the moved positions and the viewport after the gesture settles. */
   const scheduleSave = useCallback(() => {
@@ -303,9 +305,9 @@ export function CanvasView(
       const patch = Object.fromEntries(moved.current)
       moved.current.clear()
       // The next save carries the viewport again; lost positions fall back to the automatic layout.
-      void client.updateLayout(projectId, { positions: patch, viewport: viewportRef.current }).catch(() => null)
+      void writeLayout(projectId, { positions: patch, viewport: viewportRef.current }).catch(() => null)
     }, SAVE_DELAY_MS)
-  }, [client, projectId])
+  }, [projectId])
 
   const positionOf = useCallback((node: CanvasNode): NodePosition => positions[node.id] ?? { x: node.x, y: node.y }, [positions])
 
@@ -452,8 +454,8 @@ export function CanvasView(
     positionsRef.current = { ...added, ...kept }
     setPositions(all => ({ ...added, ...withoutProperties(all, settled) }))
     const final = Object.fromEntries(Object.entries(added).filter(([id]) => !rendering.has(id)))
-    if (Object.keys(final).length > 0) void client.updateLayout(projectId, { positions: final }).catch(() => null)
-  }, [layoutReady, graph, client, projectId])
+    if (Object.keys(final).length > 0) void writeLayout(projectId, { positions: final }).catch(() => null)
+  }, [layoutReady, graph, projectId])
 
   const awaitedRender = useRef<AwaitedRender | null>(null)
   const [rerunning, setRerunning] = useState<{ record: string; action: string | null } | null>(null)

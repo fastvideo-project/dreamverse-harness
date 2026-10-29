@@ -7,7 +7,8 @@
 import type { DvLanguage } from '@dv/ui-kit/locale.ts'
 import { versionRefOf } from '@dv/ui-kit/references.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
-import type { NodePosition, ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
+import type { ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
+import type { NodePosition } from '../canvas-layout.ts'
 import type {
   ClaimedEntry, ClaimedRecord, NodeEntry, NodeFlags, NodeInput, NodeType, OperationRecord, RecordsInUse,
 } from './contract/index.ts'

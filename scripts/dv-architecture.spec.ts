@@ -176,6 +176,9 @@ describe('rule clauses', () => {
     ['R7a UI core imports the kernel grammar', [
       source('ui-canvas', "import { formatCitation } from '@dv/project/grammar'\nimport type { PromptCitation } from '@dv/project/grammar'\n"),
     ], []],
+    ['R7a UI core imports the kernel folder layout but not the kernel service', [
+      source('ui-canvas', "import { PROJECT_DIR } from '@dv/project/folder'\nimport type DvProject from '@dv/project'\n"),
+    ], ['R7a']],
     ['R7a UI core imports another kernel entry', [
       source('ui-canvas', "import { run } from '@dv/project'\nimport type { RecordId } from '@dv/project/types'\n"),
     ], ['R7a', 'R7a']],

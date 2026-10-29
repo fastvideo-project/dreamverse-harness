@@ -455,6 +455,7 @@
     { "path": "./packages/video-harness/stream" },
     { "path": "./packages/dv/project" },
     { "path": "./packages/dv/api" },
+    { "path": "./packages/dv/ui-canvas/tsconfig.host.json" },
     { "path": "./packages/dv/chat-references" },
     { "path": "./packages/dv/ffmpeg" },
     { "path": "./packages/dv/asset-pool" },

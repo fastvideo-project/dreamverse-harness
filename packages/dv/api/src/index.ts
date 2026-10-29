@@ -8,7 +8,6 @@
  * @module @dv/api
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { join } from 'node:path'
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
@@ -19,14 +18,12 @@ import type {} from '@dv/models'
 import { answer, ApiHandlers, ApiRequestError, type ApiServices, requireProject } from './api.ts'
 import { assetImportRoutes } from './asset-import.ts'
 import { serveEventStream } from './events.ts'
-import { CanvasLayoutStore, layoutRoutes } from './layout.ts'
 import { projectAdminRoutes } from './projects-admin.ts'
 import { workspaceRoutes } from './workspaces.ts'
 
 export { answer, ApiHandlers, ApiRequestError, messageOf, type ApiServices, type OperationRequest, type WireProject } from './api.ts'
 export { ASSET_IMPORT_ROUTE } from './asset-import.ts'
 export { frameOf, serveEventStream, type EventStreamSources } from './events.ts'
-export { LAYOUT_ROUTE, type CanvasLayout, type CanvasViewport, type NodePosition } from './layout.ts'
 export { PROJECT_ADMIN_ROUTES } from './projects-admin.ts'
 export type { WireProjectCover, WireProjectSummary } from './summaries.ts'
 export { WORKSPACE_ROUTES } from './workspaces.ts'
@@ -45,7 +42,7 @@ declare module '@deepseek-ai/cordis' {
 export interface Config {
   /** Milliseconds between keep-alive comments on the event stream. */
   keepaliveMs: number
-  /** The state directory: canvas layouts under `canvas-layout/` and the entry Workspace under `entry/`. */
+  /** The state directory: the entry Workspace under `entry/`. */
   stateRoot: string
 }
 
@@ -124,8 +121,6 @@ export default class DvApi extends Service {
       const body = await bodyOf(request)
       return answer(() => run(body))
     }
-    // The layout route writes the layout files and project deletion deletes them.
-    const layouts = new CanvasLayoutStore(join(this.config.stateRoot, 'canvas-layout'))
     return [
       {
         path: ROUTES.projects, methods: ['GET', 'POST'], requestBody: 'buffered',
@@ -152,9 +147,8 @@ export default class DvApi extends Service {
       { path: ROUTES.redo, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.redo(body)) },
       { path: ROUTES.acceptStale, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.acceptStale(body)) },
       { path: ROUTES.history, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.listHistory(body)) },
-      ...layoutRoutes(this.ctx.dvProject, layouts),
       ...workspaceRoutes(this.ctx.dvProject, this.config.stateRoot),
-      ...projectAdminRoutes(this.ctx.dvProject, layouts),
+      ...projectAdminRoutes(this.ctx.dvProject),
       ...assetImportRoutes({ project: this.ctx.dvProject, assets: this.ctx.dvAssetPool }),
     ]
   }

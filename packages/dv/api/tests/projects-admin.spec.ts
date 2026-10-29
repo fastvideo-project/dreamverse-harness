@@ -1,6 +1,6 @@
 /**
  * Project rename and delete routes over the real Project service: renamed titles stay unique and reach the project list,
- * a removed project leaves the list with its Workspace link and canvas layout file while its folder stays on disk, and
+ * a removed project leaves the list with its Workspace link while its folder stays on disk, and
  * the sessions route finds a project's DSH sessions by directory.
  */
 import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
@@ -10,7 +10,6 @@ import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import type { RecordOrigin } from '@dv/project'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { startBase, type BaseFixture } from './support.ts'
-import { CanvasLayoutStore } from '../src/layout.ts'
 import { PROJECT_ADMIN_ROUTES, projectAdminRoutes } from '../src/projects-admin.ts'
 import { WORKSPACE_ROUTES, workspaceRoutes } from '../src/workspaces.ts'
 
@@ -45,12 +44,9 @@ async function call(
 
 it('renames a project to a unique title and removes it from the list while its folder stays on disk', async () => {
   fixture = await startBase({ generation: 'none', root })
-  const layouts = new CanvasLayoutStore(join(root, 'canvas-layout'))
-  const routes = [...workspaceRoutes(fixture.project, root), ...projectAdminRoutes(fixture.project, layouts)]
+  const routes = [...workspaceRoutes(fixture.project, root), ...projectAdminRoutes(fixture.project)]
   const first = (await fixture.project.createProject(await fixture.project.newProjectFolder('未命名项目'), '未命名项目', HUMAN)).id
   const second = (await fixture.project.createProject(await fixture.project.newProjectFolder('未命名项目'), '未命名项目', HUMAN)).id
-  layouts.write(first, { positions: { n1: { x: 1, y: 2 } } })
-  layouts.write(second, { positions: { n1: { x: 3, y: 4 } } })
 
   expect((await call(routes, PROJECT_ADMIN_ROUTES.rename, { json: { project: second, title: '未命名项目' } })).json).toEqual({ title: '未命名项目 2' })
   expect((await call(routes, PROJECT_ADMIN_ROUTES.rename, { json: { project: first, title: '  广告  ' } })).json).toEqual({ title: '广告' })
@@ -64,7 +60,6 @@ it('renames a project to a unique title and removes it from the list while its f
   expect(fixture.services.workspaces.get(second)).toBeUndefined()
   expect(existsSync(join(root, 'projects', '未命名项目 2', '.dreamverse', 'records.jsonl'))).toBe(true)
   expect(readdirSync(join(root, 'projects')).sort()).toEqual(['未命名项目', '未命名项目 2'])
-  expect(readdirSync(join(root, 'canvas-layout'))).toEqual([`${first}.json`])
   const listed = (await call(routes, WORKSPACE_ROUTES.workspaces)).json as { projects: Array<{ id: string; workspace_id: string }> }
   expect(listed.projects).toMatchObject([{ id: first, workspace_id: first }])
   // A removed project is unknown to both routes.
