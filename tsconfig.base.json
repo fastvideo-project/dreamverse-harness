@@ -360,6 +360,8 @@
       "@dv/shot-render": ["./packages/dv/shot-render/src/index.ts"],
       "@dv/style": ["./packages/dv/style/src/index.ts"],
       "@dv/style/types": ["./packages/dv/style/src/types.ts"],
+      "@dv/text-node": ["./packages/dv/text-node/src/index.ts"],
+      "@dv/text-node/types": ["./packages/dv/text-node/src/types.ts"],
       "@dv/timeline": ["./packages/dv/timeline/src/index.ts"],
       "@dv/timeline/types": ["./packages/dv/timeline/src/types.ts"],
       "@dv/uniserve": ["./packages/dv/uniserve/src/index.ts"],
