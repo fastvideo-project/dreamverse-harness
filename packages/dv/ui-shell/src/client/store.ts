@@ -1,8 +1,8 @@
 /**
  * Browser state the DreamVerse shell shares between its center panel and its left navigator: the open project, the
  * center view, the open project's center fields, the request that `dvCenter.show` handed the shown view, the main chat
- * session, and the project ↔ Workspace links read from `/api/dv/workspaces`. Both components live in this one bundle, so
- * a module-level store is enough.
+ * session, and the project list read from `/api/dv/projects`. Both components live in this one bundle, so a module-level
+ * store is enough.
  *
  * The location (project, view, center fields, chat session) is mirrored into the URL hash, for example
  * `#project=<id>&view=<view>&timeline=t2&session=<id>`, so a reload restores it. Every change of the open project is
@@ -13,14 +13,14 @@
 import { useSyncExternalStore } from 'react'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
-import type { WireProjectLink, WireWorkspaces } from '@dv/ui-kit/types.ts'
+import type { WireProject } from '@dv/ui-kit/types.ts'
 import type { CenterFields, CenterRequest, CenterTarget } from './contract/index.ts'
 
 /** The client of every `/api/dv` call the shell makes. */
 export const shellClient = new DvClient()
 
-/** The project list before the links arrive; one instance so selectors return a stable value. */
-export const NO_PROJECTS: WireProjectLink[] = []
+/** The project list before it arrives; one instance so selectors return a stable value. */
+export const NO_PROJECTS: WireProject[] = []
 
 /** What the shell components share. */
 export interface ShellState {
@@ -33,7 +33,8 @@ export interface ShellState {
   fields: CenterFields
   /** The request of the latest `dvCenter.show` that its view has not taken, with the view's `id`. */
   request: { view: string; request: CenterRequest } | null
-  links: WireWorkspaces | null
+  /** Every project, newest first, or null before the first read. */
+  projects: WireProject[] | null
 }
 
 /** The location fields of the URL hash. */
@@ -98,7 +99,7 @@ export const initialLocation: ShellLocation = parseLocation(window.location.hash
 // view mounts from this state before the restore runs, so the URL's center fields are in place right away.
 let state: ShellState = {
   projectId: initialLocation.projectId, view: initialLocation.view, fields: initialLocation.fields, request: null,
-  sessionId: undefined, links: null,
+  sessionId: undefined, projects: null,
 }
 const listeners = new Set<() => void>()
 publishCurrentProject(state.projectId)
@@ -213,28 +214,31 @@ export function useShell<T>(select: (value: ShellState) => T): T {
   )
 }
 
+let startedReads = 0
+/** The newest started read whose answer is in the state; an older answer arriving later is dropped. */
+let appliedRead = 0
+
 /**
- * Fetch `/api/dv/workspaces` into the shared state.
- * @returns the links.
+ * Fetch `/api/dv/projects` into the shared state.
+ * @returns the projects.
  */
-export async function refreshLinks(): Promise<WireWorkspaces> {
-  const links = await shellClient.listWorkspaces()
-  setShell({ links })
-  return links
+export async function refreshProjects(): Promise<WireProject[]> {
+  const read = ++startedReads
+  const projects = await shellClient.listProjects()
+  if (read > appliedRead) {
+    appliedRead = read
+    setShell({ projects })
+  }
+  return projects
 }
 
 /**
  * The project a session works on: the project whose Workspace holds it.
- * @param links - the links.
- * @param sessionId - the session.
+ * @param projects - the projects.
  * @param workspace - the session's Workspace, when known.
  * @returns the project ID, or null.
  */
-export function projectOfSession(
-  links: WireWorkspaces | null,
-  sessionId: string | undefined,
-  workspace: { workspaceId: string } | undefined,
-): string | null {
-  if (links === null || sessionId === undefined || workspace === undefined) return null
-  return links.projects.find(p => p.workspace_id === workspace.workspaceId)?.id ?? null
+export function projectOfWorkspace(projects: readonly WireProject[] | null, workspace: { workspaceId: string } | undefined): string | null {
+  if (projects === null || workspace === undefined) return null
+  return projects.find(p => p.id === workspace.workspaceId)?.id ?? null
 }

@@ -49,7 +49,7 @@ export function asset(
 }
 
 /** The project of the fixture. */
-export const PROJECT: WireProject = { id: 'p1', title: 'Demo', created_at: '2026-10-05T00:00:00Z' }
+export const PROJECT: WireProject = { id: 'p1', title: 'Demo', created_at: '2026-10-05T00:00:00Z', path: '/dv/Demo' }
 
 /** The fixture state: a wire state that holds the `timeline` slice and no noun slice. */
 export type FixtureState = WireState & { components: Pick<ComponentStates, 'timeline'> }

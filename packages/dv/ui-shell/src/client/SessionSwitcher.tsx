@@ -9,7 +9,7 @@ import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import type { PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots'
 import { useText } from '@dv/ui-kit/locale.ts'
-import type { WireProjectCover, WireProjectLink } from '@dv/ui-kit/types.ts'
+import type { WireProject, WireProjectCover } from '@dv/ui-kit/types.ts'
 import type { ShellActions } from './actions.ts'
 import { CoverFrame } from './cover.tsx'
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon, HomeIcon, PlusIcon } from './icons.tsx'
@@ -20,7 +20,7 @@ import css from './shell.module.css'
 /** Props of the switcher. */
 export interface SessionSwitcherProps extends SessionListHooks, PropsRenderFactories {
   shell: ShellActions
-  project: WireProjectLink
+  project: WireProject
   /** The cover of the open project, or null while it loads or when the project has none. */
   cover: WireProjectCover | null
   /** The main session's title, or null for a blank or foreign session. */
@@ -47,7 +47,7 @@ export function SessionSwitcher(props: SessionSwitcherProps): ReactNode {
   const root = useRef<HTMLDivElement>(null)
   const button = useRef<HTMLButtonElement>(null)
   const current = useShell(s => s.sessionId)
-  const projects = useShell(s => s.links?.projects ?? NO_PROJECTS)
+  const projects = useShell(s => s.projects ?? NO_PROJECTS)
   const sessions = useProjectSessions(props, project)
   const others = [...projects].filter(p => p.id !== project.id).sort((a, b) => b.created_at.localeCompare(a.created_at))
   useEffect(() => {

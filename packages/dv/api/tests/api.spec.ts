@@ -17,7 +17,7 @@ import DvModels from '@dv/models'
 import type { AssetId, OperationSpec, ProjectEvent, ProjectId, ProjectRecord, RecordId, RecordOrigin, SessionId, TurnId } from '@dv/project'
 import { FakeModel, FFMPEG, startBase, type BaseFixture } from './support.ts'
 import { answer } from '../src/api.ts'
-import DvApi, { ApiRequestError, EVENTS_PATH, ROUTES, WORKSPACE_ROUTES, frameOf, mentionedAssets, messageOf, type ApiHandlers } from '../src/index.ts'
+import DvApi, { ApiRequestError, EVENTS_PATH, ROUTES, frameOf, mentionedAssets, messageOf, type ApiHandlers } from '../src/index.ts'
 
 /** Keeps the registered Fetch routes and admits every request. */
 class FakeConnection {
@@ -95,7 +95,7 @@ async function start(): Promise<Fixture> {
   const web = new FakeWebServer()
   base.context.provide('connection', connection)
   base.context.provide('webServer', web)
-  await base.context.plugin(DvApi, { keepaliveMs: 50, stateRoot: base.root }).await()
+  await base.context.plugin(DvApi, { keepaliveMs: 50 }).await()
   let calls = 0
   const fixture: Fixture = {
     ...base, dvApi: base.context.dvApi, handlers: base.context.dvApi.api, connection, web,
@@ -159,15 +159,11 @@ describe('dvApi', () => {
 
     const projects = fixture.handlers.listProjects()
     expect(projects.map(entry => entry.id)).toContain(projectId)
-    expect(projects.find(entry => entry.id === projectId)).toEqual({ id: projectId, title: 'demo', created_at: expect.any(String), current: false })
-    expect(projects.every(entry => !entry.current)).toBe(true)
-    // The project of a chat session's folder comes first and is marked, whatever its age.
+    expect(projects.find(entry => entry.id === projectId)).toMatchObject({ id: projectId, title: 'demo', path: join(fixture.root, 'projects', 'demo') })
     fixture.services.chats.open('anonymous', await fixture.project.newProjectFolder('from chat'))
-    const bound = (await fixture.call('dv_proj_create', { title: 'from chat' })).value as { project_id: string }
+    await fixture.call('dv_proj_create', { title: 'from chat' })
     await fixture.newProject('newest')
-    expect(fixture.handlers.listProjects('anonymous').map(entry => [entry.title, entry.current])).toEqual([['from chat', true], ['newest', false], ['demo', false]])
-    expect(fixture.handlers.listProjects('').map(entry => entry.title)).toEqual(['newest', 'from chat', 'demo'])
-    expect(bound.project_id).toBe(fixture.project.sessionProject(brandString<SessionId>('anonymous')))
+    expect(fixture.handlers.listProjects().map(entry => entry.title)).toEqual(['newest', 'from chat', 'demo'])
     const made = await fixture.handlers.createProject({ title: 'from the timeline', surface: 'timeline' })
     expect(made).toMatchObject({ title: 'from the timeline', created_at: expect.any(String) })
     expect(fixture.handlers.getState(made.id).components.proj.records[0]).toMatchObject({ surface: 'timeline', actor: 'user', operation: 'proj.create' })
@@ -312,7 +308,7 @@ describe('dvApi', () => {
     const projectId = await fixture.newProject('demo')
     for (const path of Object.values(ROUTES)) expect(fixture.connection.routes.has(path)).toBe(true)
 
-    const projects = await call(fixture, ROUTES.projects, { query: { session: 'anonymous' } })
+    const projects = await call(fixture, ROUTES.projects)
     expect(projects.status).toBe(200)
     expect(JSON.stringify(projects.json)).toContain(projectId)
     const created = await call(fixture, ROUTES.projects, { method: 'POST', body: { title: 'posted', surface: 'canvas' } })
@@ -670,17 +666,11 @@ describe('dvApi', () => {
     expect(mentionedAssets(fixture.project.getState(projectId), imports)).toEqual([...first.outputs, ...second.outputs])
   })
 
-  it('lists each project with its folder and Workspace, and marks the project of a chat that runs in its folder', async () => {
+  it('lists each project with its folder through the projects route, and serves no Workspace route', async () => {
     const fixture = await start()
-    const root = fixture.root
     const projectId = await fixture.newProject('linked')
-    const listed = await call(fixture, WORKSPACE_ROUTES.workspaces)
-    const rows = (listed.json as { entry_path: string; projects: Array<{ id: string; path: string; workspace_id: string }> })
-    expect(rows.entry_path).toBe(join(root, 'entry'))
-    expect(rows.projects.find(row => row.id === projectId)).toMatchObject({ path: join(root, 'projects', 'linked'), workspace_id: projectId })
-    for (const gone of ['/api/dv/workspaces/bind', '/api/dv/workspaces/sessions']) expect(fixture.connection.routes.has(gone)).toBe(false)
-    expect(fixture.handlers.listProjects('chat-1').every(entry => !entry.current)).toBe(true)
-    fixture.services.chats.open('chat-1', join(root, 'projects', 'linked'))
-    expect(fixture.handlers.listProjects('chat-1')[0]).toMatchObject({ id: projectId, current: true })
+    const listed = await call(fixture, ROUTES.projects)
+    expect(listed.json).toMatchObject([{ id: projectId, title: 'linked', path: join(fixture.root, 'projects', 'linked') }])
+    for (const gone of ['/api/dv/workspaces', '/api/dv/workspaces/bind', '/api/dv/workspaces/sessions']) expect(fixture.connection.routes.has(gone)).toBe(false)
   })
 })

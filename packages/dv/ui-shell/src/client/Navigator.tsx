@@ -1,8 +1,7 @@
 /**
  * The DreamVerse left navigator, shadowing the DSH sidebar's Workspace browser: 新建项目, 首页, the DSH sidebar pages
- * (插件, MCP, …), the 对话 list of chats started on 首页 that no project holds, and the project → session tree. Each
- * project lists the chat sessions of its Workspace and the sessions bound to it, with a row menu to rename or delete the
- * project or a session.
+ * (插件, MCP, …), and the project → session tree. Each project lists the chat sessions of its Workspace, with a row
+ * menu to rename or delete the project or a session.
  *
  * @module @dv/ui-shell/Navigator
  */
@@ -18,10 +17,10 @@ import type { ShellInjected } from './Center.tsx'
 import { ChevronDownIcon, ChevronRightIcon, HomeIcon, PlugIcon, PluginsIcon, PlusIcon, SkillsIcon } from './icons.tsx'
 import { InlineRename, RowMenu } from './InlineRename.tsx'
 import { DREAMVERSE_WORDMARK } from './logo.ts'
-import type { WireProjectLink } from '@dv/ui-kit/types.ts'
+import type { WireProject } from '@dv/ui-kit/types.ts'
 import { usePanelEntries } from './panels.ts'
-import { useEntrySessions, useProjectSessions } from './sessions.ts'
-import { markSessionChoice, NO_PROJECTS, useShell } from './store.ts'
+import { useProjectSessions } from './sessions.ts'
+import { NO_PROJECTS, useShell } from './store.ts'
 import css from './shell.module.css'
 
 /** Props of the navigator entry. */
@@ -32,9 +31,6 @@ const PAGE_ICONS: Readonly<Record<string, () => ReactNode>> = { plugins: Plugins
 
 /** How many projects the tree lists before 项目 expands it to all. */
 const SHOWN_PROJECTS = 12
-
-/** How many entry chats the 对话 section lists before 全部对话 expands it to all. */
-const SHOWN_CHATS = 5
 
 /**
  * Run an action and log its failure; navigation failures leave the page as it was.
@@ -55,11 +51,9 @@ export function Navigator(props: NavigatorProps): ReactNode {
   const projectId = useShell(s => s.projectId)
   const pages = usePanelEntries()
   const activePage = usePanelInfo(info => info.activePanelId)
-  const projects = useShell(s => s.links?.projects ?? NO_PROJECTS)
+  const projects = useShell(s => s.projects ?? NO_PROJECTS)
   const [showAll, setShowAll] = useState(false)
-  const loaded = useShell(s => s.links !== null)
-  const current = useShell(s => s.sessionId)
-  const chats = useEntrySessions(props)
+  const loaded = useShell(s => s.projects !== null)
   if (!wide) return null
   const sorted = [...projects].sort((a, b) => b.created_at.localeCompare(a.created_at))
   const shown = showAll ? sorted : sorted.slice(0, SHOWN_PROJECTS)
@@ -77,13 +71,11 @@ export function Navigator(props: NavigatorProps): ReactNode {
       <button type="button" className={css.navSecondary} onClick={() => { run(() => shell.newProject()) }}>
         <PlusIcon />{t('新建项目', 'Create project')}
       </button>
-      {/* 首页 is the blank entry chat; a started entry chat highlights its own 对话 row instead. */}
-      {nav(t('首页', 'Home'), projectId === null && activePage === null && !chats.some(summary => summary.id === current), () => { run(() => shell.goHome()) }, <HomeIcon />)}
+      {nav(t('首页', 'Home'), projectId === null && activePage === null, () => { run(() => shell.goHome()) }, <HomeIcon />)}
       {pages.map((page) => {
         const PageIcon = PAGE_ICONS[page.id] ?? PluginsIcon
         return <Fragment key={page.id}>{nav(page.label, activePage === page.id, () => { shell.openPage(page.id) }, <PageIcon />)}</Fragment>
       })}
-      <EntryChats chats={chats} current={current} shell={shell} />
       {sorted.length > SHOWN_PROJECTS && nav(showAll ? t('收起项目', 'Fewer projects') : t('全部项目', 'All projects'), false, () => { setShowAll(value => !value) })}
       <div className={css.section}>{t('项目', 'Projects')}</div>
       {loaded && sorted.length === 0 && (
@@ -102,47 +94,11 @@ export function Navigator(props: NavigatorProps): ReactNode {
 }
 
 /**
- * The 对话 section: the entry chats, newest first, each opening its chat on the entry page. It lists the newest
- * {@link SHOWN_CHATS} chats until 全部对话 expands it, and is absent while there is no entry chat.
- * @param props - the entry chats, the main session, and the shell actions.
- * @returns the section, or nothing.
- */
-function EntryChats({ chats, current, shell }: { chats: SessionSummary[]; current: string | undefined } & ShellInjected): ReactNode {
-  const t = useText()
-  const [showAll, setShowAll] = useState(false)
-  if (chats.length === 0) return null
-  const shown = showAll ? chats : chats.slice(0, SHOWN_CHATS)
-  // The open chat always has a row, also when SHOWN_CHATS newer chats push it out of the list.
-  const openRow = chats.find(summary => summary.id === current)
-  if (openRow !== undefined && !shown.includes(openRow)) shown.push(openRow)
-  return (
-    <div data-dv-entry-chats="">
-      <div className={css.section}>{t('对话', 'Chats')}</div>
-      {shown.map(summary => (
-        <SessionRow
-          key={summary.id} summary={summary} active={summary.id === current} shell={shell}
-          open={() => {
-            // Opening another chat is the user's session choice, so browser Back returns to the chat before it.
-            if (summary.id !== current) markSessionChoice()
-            run(() => shell.goHome(summary.id))
-          }}
-        />
-      ))}
-      {chats.length > SHOWN_CHATS && (
-        <button type="button" className={css.navItem} onClick={() => { setShowAll(value => !value) }}>
-          {showAll ? t('收起对话', 'Fewer chats') : t('全部对话', 'All chats')}
-        </button>
-      )}
-    </div>
-  )
-}
-
-/**
  * One project with a row menu to rename or delete it, its chat sessions, and a ＋ that starts a chat session in it.
  * @param props - the DSH UI slot props, the project, and whether it is the open one.
  * @returns the rows.
  */
-function ProjectTree(props: NavigatorProps & { project: WireProjectLink; open: boolean }): ReactNode {
+function ProjectTree(props: NavigatorProps & { project: WireProject; open: boolean }): ReactNode {
   const { project, open, shell } = props
   const t = useText()
   const [expanded, setExpanded] = useState(open)

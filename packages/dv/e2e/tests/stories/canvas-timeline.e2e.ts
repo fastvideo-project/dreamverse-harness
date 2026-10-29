@@ -115,8 +115,8 @@ async function openPage(options: { lang?: string; scheme?: 'light' | 'dark' } = 
  * @param view - the center view.
  */
 async function gotoProject(page: Page, project: string, view: 'canvas' | 'timeline' = 'canvas'): Promise<void> {
-  const links = await harness.api.get('/api/dv/workspaces') as { projects: Array<{ id: string; title: string }> }
-  const title = links.projects.find(entry => entry.id === project)?.title ?? project
+  const projects = await harness.api.get('/api/dv/projects') as Array<{ id: string; title: string }>
+  const title = projects.find(entry => entry.id === project)?.title ?? project
   await page.goto(`${harness.origin}/#project=${project}${view === 'timeline' ? '&view=timeline' : ''}`)
   await page.reload({ waitUntil: 'load' })
   const crumb = page.locator('[data-dv-workspace] header').first()

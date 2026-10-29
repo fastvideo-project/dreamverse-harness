@@ -6,7 +6,7 @@
 import { readdirSync } from 'node:fs'
 import type { Browser, BrowserContext, Page } from 'playwright'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import type { WireProjectLink } from '@dv/ui-kit/types.ts'
+import type { WireProject } from '@dv/ui-kit/types.ts'
 import { bootHarness, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import { startScriptedModel, type ScriptedModel, type ScriptedRule } from '../scripted-model.ts'
 
@@ -24,7 +24,6 @@ const RULES: ScriptedRule[] = [
   { match: '入口请求', steps: [{ calls: [{ name: 'dv_proj_state', args: {} }] }], endText: '项目已建好。' },
 ]
 
-/** One project as `/api/dv/workspaces` lists it. */
 /** The location fields of the URL hash. */
 interface Location { project: string | null; session: string | null; view: string | null }
 
@@ -106,8 +105,8 @@ describe('navigation, projects, sessions, and panels', () => {
   }
 
   /** The projects the server lists. */
-  async function projects(): Promise<WireProjectLink[]> {
-    return (await harness.api.get('/api/dv/workspaces') as { projects: WireProjectLink[] }).projects
+  async function projects(): Promise<WireProject[]> {
+    return await harness.api.get('/api/dv/projects') as WireProject[]
   }
 
   /** The title of a project ID. */
@@ -123,10 +122,6 @@ describe('navigation, projects, sessions, and panels', () => {
   const sessionRows = (page: Page) => navigator(page).locator(':scope > div[role="button"]')
   /** The highlighted chat session row of a project. */
   const activeSessionRow = (page: Page) => navigator(page).locator(':scope > div[role="button"][data-active]')
-  /** The rows of the navigator's 对话 section (chats started on 首页 that no project holds), newest first. */
-  const entryRows = (page: Page) => navigator(page).locator('[data-dv-entry-chats] div[role="button"]')
-  /** The highlighted row of the 对话 section. */
-  const activeEntryRow = (page: Page) => navigator(page).locator('[data-dv-entry-chats] div[role="button"][data-active]')
 
   /** The highlighted project row's title, or null. */
   async function activeProject(page: Page): Promise<string | null> {
@@ -293,8 +288,6 @@ describe('navigation, projects, sessions, and panels', () => {
     expect(project.title).toMatch(/^未命名项目( \d+)?$/)
     await waitProject(page, project.title)
     await expectProjectShown(page, project.id)
-    // The bound chat moved from the 对话 section to the project's chat rows.
-    await waitFor(async () => await activeEntryRow(page).count() === 0, 'the bound chat to leave 对话', 10_000)
     expect(await activeSessionRow(page).count()).toBe(1)
     // The request that started the project stays visible in the project's 对话 tab.
     await waitFor(async () => (await rightTabs(page)).includes('对话'), 'the 对话 tab', 10_000)
@@ -314,7 +307,6 @@ describe('navigation, projects, sessions, and panels', () => {
     const project = await waitFor(async () => (await projects()).find(candidate => !known.has(candidate.id)), 'the entry chat\'s project', 30_000)
     await expectProjectShown(first, project.id)
     await chat(first).getByText('收到首页聊').first().waitFor({ timeout: 30_000 })
-    expect(await entryRows(first).count()).toBe(0)
     const started = locationOf(first).session
     const folders = readdirSync(harness.projectsFolder).length
     const { page: second, errors } = await openPage({ context })
@@ -368,6 +360,16 @@ describe('navigation, projects, sessions, and panels', () => {
     }, 'two new projects', 20_000)
     expect(created).toHaveLength(2)
     expect(created[0]?.title).not.toBe(created[1]?.title)
+  })
+
+  it('a project made outside this tab shows in its navigator before a 4 s poll could, without a reload', async () => {
+    const { page, errors } = await openPage()
+    await page.locator('[data-dv-entry]').waitFor()
+    await page.getByText('今天想拍点什么？').waitFor({ timeout: 20_000 })
+    const title = 'NAV 别处新建'
+    await createProject(title)
+    await projectRow(page, title).waitFor({ timeout: 3000 })
+    expect(errors).toEqual([])
   })
 
   it('renames a project from its row menu; the switcher follows, Escape and an empty title change nothing, and titles stay unique', async () => {

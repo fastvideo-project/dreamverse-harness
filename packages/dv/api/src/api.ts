@@ -57,8 +57,8 @@ export interface WireProject {
   id: ProjectId
   title: string
   created_at: string
-  /** Whether the chat session the view sits beside is bound to this project. */
-  current: boolean
+  /** The project folder. */
+  path: string
 }
 
 /**
@@ -243,19 +243,11 @@ function humanOrigin(body: Record<string, unknown>, intent: string): RecordOrigi
 export class ApiHandlers {
   constructor(private readonly services: ApiServices) {}
 
-  /**
-   * Every project, newest first. When a chat session is named and it runs in a project's folder, that project is
-   * flagged `current` and listed first, so a view opened beside the chat shows what the agent works on.
-   * @param session - the agent session ID the view sits beside, when known.
-   * @returns the project rows.
-   */
-  listProjects(session: string | null = null): WireProject[] {
-    const bound = session === null || session.length === 0 ? null : this.services.project.sessionProject(brandString<SessionId>(session))
+  /** @returns every project, newest first. */
+  listProjects(): WireProject[] {
     return this.services.project.listProjects()
-      .map(info => ({
-        id: info.id, title: info.title, created_at: info.created_at, current: info.id === bound,
-      }))
-      .sort((a, b) => Number(b.current) - Number(a.current) || b.created_at.localeCompare(a.created_at))
+      .map(info => ({ id: info.id, title: info.title, created_at: info.created_at, path: info.path }))
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
   }
 
   /**

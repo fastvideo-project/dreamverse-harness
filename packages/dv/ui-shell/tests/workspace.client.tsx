@@ -18,20 +18,12 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type { TimelineId } from '@dv/timeline/types'
 import type { CenterTarget } from '@dv/ui-shell/contract'
-import type { WireProject, WireWorkspaces } from '@dv/ui-kit/types.ts'
+import type { WireProject } from '@dv/ui-kit/types.ts'
 import { fixtureState, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 
-const LINKS: WireWorkspaces = {
-  entry_path: '/dv/entry',
-  projects: [
-    { id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z', path: '/dv/p1', workspace_id: 'p1' },
-    { id: 'p2', title: 'Music video', created_at: '2026-02-05T12:00:00Z', path: '/dv/p2', workspace_id: 'p2' },
-  ],
-}
-
 const PROJECTS: WireProject[] = [
-  { id: 'p2', title: 'Music video', created_at: '2026-02-05T12:00:00Z' },
-  { id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z' },
+  { id: 'p2', title: 'Music video', created_at: '2026-02-05T12:00:00Z', path: '/dv/p2' },
+  { id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z', path: '/dv/p1' },
 ]
 
 /** A mounted workspace and what the tests drive and read. */
@@ -79,7 +71,6 @@ export async function mountWorkspace(hash: string): Promise<Workspace> {
   const json = (body: unknown): Promise<Response> => Promise.resolve(new Response(JSON.stringify(body), { status: 200 }))
   vi.stubGlobal('fetch', ((input, init) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://host')
-    if (url.pathname === '/api/dv/workspaces') return json(LINKS)
     if (url.pathname === '/api/dv/projects/summary') {
       summaries.push(Object.fromEntries(url.searchParams))
       return json([])

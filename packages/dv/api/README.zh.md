@@ -26,24 +26,22 @@ kind: "package-reference"
 
 在 `@dv/project` 和 `@dv/asset-pool` 之后挂载插件，并且 profile 还要挂载 `dsh-web-app`（提供 `connection` 和 `webServer` 服务）。没有 `connection` 时 Fetch 路由不会注册；没有 `webServer` 时事件流不会注册。
 
-这些 Fetch 路由列出、新建、重命名、删除和汇总项目，把项目的当前状态读成 JSON，列出操作声明，读取任务标签，以人的身份运行一个操作，把文件导入素材库，撤销和重做，接受一条过期记录，列出历史，以及把项目关联到 DSH Workspace。事件流用同一个 Connection cookie 放行浏览器。
+这些 Fetch 路由列出、新建、重命名、删除和汇总项目，把项目的当前状态读成 JSON，列出操作声明，读取任务标签，以人的身份运行一个操作，把文件导入素材库，撤销和重做，接受一条过期记录，以及列出历史。事件流用同一个 Connection cookie 放行浏览器。
 
 ```yaml
 - id: dv-api
   name: '@dv/api'
   config:
     keepaliveMs: 15000
-    stateRoot: /home/me/.local/state/dv
 ```
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `keepaliveMs` | `15000` | 空闲事件流多久发一行注释，让代理保持连接 |
-| `stateRoot` | 必填 | 状态目录：`entry/` 里的入口 Workspace；bundle 用 `DV_STATE_ROOT` 设置它 |
 
 | 路由 | 方法 | 请求 | 响应 |
 | --- | --- | --- | --- |
-| `/api/dv/projects` | GET | 可选 `session`（对话 ID） | `WireProject[]`（`{id, title, created_at, current}`），最新在前；给出 `session` 时，该活动对话所在文件夹的项目排第一并带 `current: true` |
+| `/api/dv/projects` | GET | 无 | `WireProject[]`（`{id, title, created_at, path}`），最新在前；`id` 是项目文件夹的 DSH Workspace 的 ID，`path` 是该文件夹 |
 | `/api/dv/projects` | POST | `{title, surface}`，或 `{folder, session}` | 从视图新建的项目，位于 DreamVerse 文件夹中以其标题命名的新文件夹；或对话会话 `session` 在其文件夹 `folder` 中的项目，以文件夹名为标题，其 `proj.create` 记录的界面为 `chat`（已是项目的文件夹保持不变）：`ProjectInfo` `{id, title, created_at, path}` |
 | `/api/dv/projects/untitled` | POST | `{name}` | `{path}`：在 `@dv/project` 的 DreamVerse 文件夹中新建的空文件夹（`newProjectFolder`），供还没有项目的对话使用 |
 | `/api/dv/projects/summary` | GET | 可选 `project`、可选 `timeline` | `WireProjectSummary[]`（`{project, cover, edited_at}`），每个项目一条，或只有指定的项目：`cover` 是 `timeline` 指定的时间线（带 `project` 且该项目有这条时间线时）上第一个有素材的片段，否则是第一条时间线上的，形式为视频或图片的 `{asset, mime}`（素材 ID 及其 MIME 类型）；没有这样的片段时，是已完成记录的第一张图片产出的 `{asset, mime}`，否则为 null；`edited_at` 是最后一条记录的时间。每条从项目的当前状态读取。列出所有项目时，读不出状态的项目得到空条目（`cover` 和 `edited_at` 为 null），服务器在控制台输出警告；带 `project` 时，该项目的错误就是响应 |
@@ -60,7 +58,6 @@ kind: "package-reference"
 | `/api/dv/redo` | POST | `{project}`：把当前位置往前移一步；不写记录 | `{tip, at}` |
 | `/api/dv/stale/accept` | POST | `{project, record, session?, surface}` | `proj.stale_accept` 记录 |
 | `/api/dv/history` | POST | `{project, actor?, component?, operation?, kind?, status?, session?, turn?, tool_call?, records?, before?, limit?}`；`records` 是数组；`limit` 取 1 到 200，默认 50 | `WireHistory` `{entries, assets}`：`dvProject.listHistory` 的条目 `{record, place}`，即历史列表中的步骤（最新的在前），`place` 是相对当前位置的 `before`、`current` 或 `after`，以及条目提到的每个素材；这是只读请求，不写记录 |
-| `/api/dv/workspaces` | GET | 无 | `{entry_path, projects: [{id, title, created_at, path, workspace_id}]}`；`workspace_id` 就是项目 ID |
 | `/dv/events?project=<id>` | GET | — | `text/event-stream`：先 `ready`，再是 `record`、`update` 和 `line` 事件，每个事件带一个 `ProjectEvent`；每次写入和每次移动之后都有一个 `line` 事件 `{kind: 'line', tip, at}` |
 
 `surface` 是 `canvas`、`timeline` 或 `asset_pool`；其他值都按 `canvas` 处理，素材导入除外：它只接受 `canvas` 或 `asset_pool`。一次运行以人的身份调用 `dvProject.run`，作为项目当前位置之后的一步，请求所属的对话记为记录的 `session`；当某个输入指向尚未完成的记录时改为排队。每条路由（包括事件流）的每个错误都以 JSON 体 `{error, code, ...details}` 回答：`error` 是消息文本，`code` 是下表中的一个错误码；`details` 携带拒绝的附加字段。
@@ -90,7 +87,6 @@ kind: "package-reference"
 | [`src/wire.ts`](src/wire.ts) | `WireState`、`WireHistory`、`WireOperation`、`toWireState`、`toWireOperation`、`mentionedAssets`、`projectIdOf` |
 | [`src/api.ts`](src/api.ts) | `ApiHandlers`、`ApiRequestError`、`OperationRequest`、`WireProject`：每条路由背后的校验和 `dvProject` 调用；所有路由共用的 `answer`、`json` 和 `requireProject` |
 | [`src/asset-import.ts`](src/asset-import.ts) | 素材导入路由 |
-| [`src/workspaces.ts`](src/workspaces.ts) | 项目列表，带每个项目的文件夹和 Workspace |
 | [`src/projects-admin.ts`](src/projects-admin.ts) | 项目重命名和删除 |
 | [`src/summaries.ts`](src/summaries.ts) | `WireProjectSummary` 和 `summarizeProject`：项目卡片摘要（封面和最后编辑时间），从每个项目的当前状态读取 |
 | [`src/events.ts`](src/events.ts) | `frameOf` 和 `serveEventStream` |

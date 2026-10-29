@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包把 DSH web 应用变成 DreamVerse。没有打开项目时，中间区域显示首页：对话输入框、模板标签、最近项目和 探索。探索 为其他插件在 `dv.explore` 插槽（由中间区域声明）里注册的每一项显示一个标签，标签名和顺序由该项决定，例如 `@dv/ui-mcp-presets` 的 MCP 标签和 `@dv/ui-skills` 的 技能 标签，并显示选中标签的内容；它默认展开，点 收起 折叠，没有插件注册内容时不显示。打开项目后，它显示项目的一个视图，左侧栏默认收起。视图是其他插件在 `dv.center.view` 插槽（由中间区域声明）里注册的条目，每项是视图切换中的一个标签，标签名和顺序由该项决定：`@dv/ui-canvas` 的 画布 和 `@dv/ui-timeline` 的 时间线。左侧栏显示导航：新建项目、首页、DSH 侧栏页面（插件、MCP、技能，以及其他任何 `sidebar.panellist` 入口）、对话（在首页开始且没有项目持有的对话，最新的在前），以及 项目 → 对话 树。首页 打开本浏览器标签页的空白首页对话，只在这个对话打开时高亮；对话 里的一行在首页打开它的对话，并在该对话打开时高亮。外壳的每次导航都会关闭打开的侧栏页面，所以 首页 能离开插件页或 MCP 页。右侧面板多出 对话 和 轨迹 标签。外壳还注入 DreamVerse 主题：所有 DreamVerse 包使用的 `--dv-*` 变量，以及指向同一套配色的 DSH 别名变量。在文本框以外，Ctrl+Z（macOS 上用 Cmd+Z）把所打开项目往回移一步，Shift+Ctrl+Z（Shift+Cmd+Z）往前移一步；这些按键移动历史列表的当前位置，不写记录。
+使用本包把 DSH web 应用变成 DreamVerse。没有打开项目时，中间区域显示首页：对话输入框、模板标签、最近项目和 探索。探索 为其他插件在 `dv.explore` 插槽（由中间区域声明）里注册的每一项显示一个标签，标签名和顺序由该项决定，例如 `@dv/ui-mcp-presets` 的 MCP 标签和 `@dv/ui-skills` 的 技能 标签，并显示选中标签的内容；它默认展开，点 收起 折叠，没有插件注册内容时不显示。打开项目后，它显示项目的一个视图，左侧栏默认收起。视图是其他插件在 `dv.center.view` 插槽（由中间区域声明）里注册的条目，每项是视图切换中的一个标签，标签名和顺序由该项决定：`@dv/ui-canvas` 的 画布 和 `@dv/ui-timeline` 的 时间线。左侧栏显示导航：新建项目、首页、DSH 侧栏页面（插件、MCP、技能，以及其他任何 `sidebar.panellist` 入口），以及 项目 → 对话 树。首页 打开本浏览器标签页的空白首页对话，在没有打开项目和侧栏页面时高亮。外壳的每次导航都会关闭打开的侧栏页面，所以 首页 能离开插件页或 MCP 页。右侧面板多出 对话 和 轨迹 标签。外壳还注入 DreamVerse 主题：所有 DreamVerse 包使用的 `--dv-*` 变量，以及指向同一套配色的 DSH 别名变量。在文本框以外，Ctrl+Z（macOS 上用 Cmd+Z）把所打开项目往回移一步，Shift+Ctrl+Z（Shift+Cmd+Z）往前移一步；这些按键移动历史列表的当前位置，不写记录。
 
 ## 目录
 
@@ -35,8 +35,9 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCente
 
 | 手势 | 请求或事件 |
 | --- | --- |
-| 页面加载，之后每 4 秒 | `GET /api/dv/workspaces`，读取项目及其文件夹和 Workspace |
-| 新建项目 | `POST /api/dv/projects`，标题取第一个未被占用的 未命名项目（带编号），宿主为它注册 Workspace；在其中打开一个空白对话 |
+| 页面加载，以及 DSH Workspace 列表的每次变化（任一标签页或智能体创建、重命名或移除项目） | `GET /api/dv/projects`，读取项目及其文件夹；读取失败时 2 秒后重试 |
+| DSH 的首次使用启动（还没有 Workspace 和对话） | 首页；不创建 Workspace |
+| 新建项目 | `POST /api/dv/projects`，标题为 未命名项目，其他项目已用该标题时宿主为它加编号，并为它注册 Workspace；在其中打开一个空白对话 |
 | 首页 | 本标签页的空白首页对话仍空白且不在任何 Workspace 中时打开它，否则以 未命名项目 调用 `POST /api/dv/projects/untitled`，并新建一个以返回的文件夹为工作目录的对话 |
 | 在本标签页的首页对话中发送，且该对话不在任何 Workspace 中 | 消息到达主机之前，以 `{folder, session}` 调用 `POST /api/dv/projects`，把该对话的文件夹变成以文件夹名为标题的项目，中间区域打开它；请求期间的发送等待它完成，请求失败时不发送，保留草稿，并在输入框中显示错误 |
 | 有项目的首页 | 一次 `GET /api/dv/projects/summary` 得到每张卡片的封面（项目第一条时间线上第一个有素材的片段，否则是项目产出的第一张图片）和最后编辑时间；项目列表变化时重新读取。切换器的封面使用中间区域字段指定的时间线 |
@@ -45,7 +46,6 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCente
 | 项目行上的 ＋、会话切换器里的 新建会话，或 DSH 的新会话 | 在项目的 Workspace 里新建空白对话；在首页上，DSH 的新会话等于 首页 |
 | 重命名项目（行菜单） | `POST /api/dv/projects/rename`；宿主设置项目的 Workspace 标题 |
 | 删除项目（行菜单，然后确认） | `POST /api/dv/projects/delete`（宿主注销项目的 Workspace，项目文件夹留在磁盘上）；打开中的项目回到 首页 |
-| 导航中 对话 的一行（不在任何 Workspace 中的已开始的顶层对话） | 首页，主会话为该对话；智能体把该对话的文件夹变成项目后，它离开列表 |
 | 重命名或删除对话（行菜单） | DSH 的会话重命名，或停止其活动后归档；没有打开项目时删除打开的对话，会打开本标签页的空白首页对话 |
 | `ctx.dvCenter.show({ view, target })`，例如选中的历史行（`@dv/ui-history`）或素材预览里的 插入片段（`@dv/ui-timeline`） | 显示 `view` 条目，并把 `target` 作为它的 owner prop `request` 的值交给它，直到它取走该请求；再次 `show`、换到另一个视图或另一个项目会丢掉视图还没取走的请求 |
 | 视图的 owner prop `note(fields)`，例如用户在 时间线 视图（`@dv/ui-timeline`）里选的时间线 | 打开项目的中间区域字段改变（null 删除一个字段），URL hash 显示它们；已不再打开的项目的 note 不改变任何东西 |
@@ -61,20 +61,20 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCente
 <details>
 <summary>实现内部——点击展开</summary>
 
-`CenterPanel` 在项目关联和 DSH 的会话、Workspace 列表就绪后恢复 URL 位置，并等到 DSH 自己在启动时恢复上次会话（或 4 秒内没有）之后，因为 DSH 迟到的恢复会替换外壳打开的会话。此后，主会话自己移到另一个项目时（例如首页对话的第一条消息把其文件夹变成项目），中间区域跟随该项目。项目的对话是其 Workspace 的会话。每个浏览器标签页在 `sessionStorage` 里为每个 Workspace 保留自己的空白对话，因为 DSH 的 `openWorkspace` 会复用任何空白会话，两个标签页会共用一个对话。首页 Workspace（`<state root>/entry`，标题为 DreamVerse）替代 DSH 首次使用时的默认 Workspace；新对话不在其中开始，因为 首页 让每个对话在自己的文件夹中开始。左侧栏的折叠状态从 DSH 应用框架的 `data-sidebar-collapsed` 属性读取，通过 `ctx.layout.toggleSidebar()` 改变。框架要等 React 渲染了切换之后才更新该属性，所以外壳记住自己上一次切换要求的折叠状态，直到属性显示出来；这样恢复之后紧接着的收起（从首页打开项目）会再切换一次，而不是读取过时的属性。只有工作区收起了左侧栏、并且用户之后没有在 DSH 的侧栏条上折叠或展开它时，首页才会重新展开它。右侧面板 448 px 的默认宽度通过布局 store 的私有 `setRightbar` 动作设置，因为 `ctx.layout` 没有宽度设置；每次页面加载只设置一次，所以布局插件重新加载时保留用户拖动的宽度，布局服务缺少该动作时在控制台输出警告。关闭 轨迹 会重新挂载 对话 标签的对话，因为 轨迹 中隐藏的输入框在卸载时解除了会话输入编辑器的绑定。
+`CenterPanel` 在项目列表和 DSH 的会话、Workspace 列表就绪后恢复 URL 位置，并等到 DSH 自己在启动时恢复上次会话（或 4 秒内没有）之后，因为 DSH 迟到的恢复会替换外壳打开的会话。此后，主会话自己移到另一个项目时（例如首页对话的第一条消息把其文件夹变成项目），中间区域跟随该项目。项目的对话是其 Workspace 的会话。每个浏览器标签页在 `sessionStorage` 里为每个 Workspace 保留自己的空白对话，因为 DSH 的 `openWorkspace` 会复用任何空白会话，两个标签页会共用一个对话。DSH 首次使用启动时打开 首页，而不是 DSH 的默认 Workspace，因为 首页 让每个对话在自己的文件夹中开始。左侧栏的折叠状态从 DSH 应用框架的 `data-sidebar-collapsed` 属性读取，通过 `ctx.layout.toggleSidebar()` 改变。框架要等 React 渲染了切换之后才更新该属性，所以外壳记住自己上一次切换要求的折叠状态，直到属性显示出来；这样恢复之后紧接着的收起（从首页打开项目）会再切换一次，而不是读取过时的属性。只有工作区收起了左侧栏、并且用户之后没有在 DSH 的侧栏条上折叠或展开它时，首页才会重新展开它。右侧面板 448 px 的默认宽度通过布局 store 的私有 `setRightbar` 动作设置，因为 `ctx.layout` 没有宽度设置；每次页面加载只设置一次，所以布局插件重新加载时保留用户拖动的宽度，布局服务缺少该动作时在控制台输出警告。关闭 轨迹 会重新挂载 对话 标签的对话，因为 轨迹 中隐藏的输入框在卸载时解除了会话输入编辑器的绑定。
 
 | 文件 | 内容 |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | Host 半边，不注册任何东西 |
 | [`src/css-modules.d.ts`](src/css-modules.d.ts) | CSS Module 导入的类型 |
 | [`src/client/contract/index.ts`](src/client/contract/index.ts) | `@dv/ui-shell/contract`：`DvCenter`、`CenterTarget`、`CenterRequest`、`CenterFields`，以及 `dv.explore` 和 `dv.center.view` 插槽 |
-| [`src/client/index.ts`](src/client/index.ts) | `dvCenter`、注册、新会话和首次使用默认 Workspace 的覆盖、关联轮询，以及 `dv:trajectory-focus` 监听 |
+| [`src/client/index.ts`](src/client/index.ts) | `dvCenter`、注册、新会话和首次使用启动的覆盖、Workspace 列表每次变化时对项目列表的读取，以及 `dv:trajectory-focus` 监听 |
 | [`src/client/actions.ts`](src/client/actions.ts) | `ShellActions`：新建、打开、重命名和删除项目与对话，首页，以及右侧面板标签 |
-| [`src/client/store.ts`](src/client/store.ts) | 共享状态（打开的项目、视图、中间区域字段、所显示视图的请求、主会话、关联）、`dvCenter.show` 和视图的 `note`、URL hash 同步，以及会话 → 项目查找 |
+| [`src/client/store.ts`](src/client/store.ts) | 共享状态（打开的项目、视图、中间区域字段、所显示视图的请求、主会话、项目列表）、`dvCenter.show` 和视图的 `note`、URL hash 同步，以及会话 → 项目查找 |
 | [`src/client/Center.tsx`](src/client/Center.tsx) | 中间区域：URL 恢复、首页、模板标签、最近项目、工作区顶栏、所显示的中间区域视图及其请求和中间区域字段，以及后退、前进和 hash 修改的监听 |
 | [`src/client/SessionSwitcher.tsx`](src/client/SessionSwitcher.tsx) | 工作区顶栏的会话切换按钮和菜单 |
 | [`src/client/cover.tsx`](src/client/cover.tsx) | 从 `/api/dv/projects/summary` 读取的项目封面和最后编辑时间；通过 `dv.media` 绘制的封面素材 |
-| [`src/client/sessions.ts`](src/client/sessions.ts) | 一个项目的对话，导航和会话切换器共用；以及导航 对话 区列出的首页对话 |
+| [`src/client/sessions.ts`](src/client/sessions.ts) | 一个项目的对话，导航和会话切换器共用 |
 | [`src/client/sidebar.ts`](src/client/sidebar.ts) | DSH 左侧栏的折叠状态，以及外壳的收起和恢复 |
 | [`src/client/right-panel.ts`](src/client/right-panel.ts) | 右侧面板 448 px 的默认宽度 |
 | [`src/client/theme.ts`](src/client/theme.ts) | DreamVerse 主题样式表：`--dv-*` 变量（其中有每个画布节点类型各取一个位置的节点色板 `--dv-node-1` 到 `--dv-node-8`，以及波形颜色）和 DSH 别名映射 |
@@ -120,4 +120,3 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCente
 <a id="known-limitations-and-deferred-work"></a>
 
 - **隐藏 DSH 界面依赖 DSH 内部实现** — 外壳按 CSS Module 类名后缀和无障碍标签找到要隐藏的控件，通过私有字段改写 DSH 词典条目、Host 命令获取函数和右侧面板的宽度偏好，从框架属性读取左侧栏的折叠状态，并替换服务上的 `uiWorkspace.startSession` 和 `workspaces.initializeDefault`；DSH 改动其中任何一项，被隐藏的界面会重新出现，或覆盖失效而不报错；只有缺少 `setRightbar` 动作时会在控制台输出警告。
-- **关联轮询** — 智能体创建的项目最多 4 秒后才出现在导航里。

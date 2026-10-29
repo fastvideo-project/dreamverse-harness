@@ -185,11 +185,12 @@ export interface WireOperation {
 
 /** A project row. */
 export interface WireProject {
+  /** The project ID, which is the ID of the project folder's DSH Workspace. */
   id: string
   title: string
   created_at: string
-  /** Whether the chat session the view sits beside is bound to this project. */
-  current?: boolean
+  /** The project folder. */
+  path: string
 }
 
 /** The media a project card shows as its cover, with its MIME type: a video, whose first frame the card shows, or an image. */
@@ -298,21 +299,4 @@ export interface WireModelEntry {
   description: string
   /** The entry's `schema()`, whose fields its primitive owns; null when the backend cannot be reached. */
   schema: unknown
-}
-
-/** One project as `GET /api/dv/workspaces` lists it. */
-export interface WireProjectLink {
-  id: string
-  title: string
-  created_at: string
-  /** The project's directory, which is its Workspace's directory. */
-  path: string
-  /** The project's Workspace, whose ID is the project ID. */
-  workspace_id: string
-}
-
-/** The `GET /api/dv/workspaces` answer. */
-export interface WireWorkspaces {
-  entry_path: string
-  projects: WireProjectLink[]
 }

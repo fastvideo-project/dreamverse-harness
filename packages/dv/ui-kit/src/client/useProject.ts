@@ -53,11 +53,10 @@ export function useLoader<T>(load: (signal: AbortSignal) => Promise<T>, deps: un
 /**
  * The project list.
  * @param client - the API client.
- * @param session - the chat session the view sits beside, when known; its project is flagged `current`.
- * @returns the projects, the session's first, then newest first.
+ * @returns the projects, newest first.
  */
-export function useProjects(client: DvClient, session: string | null = null): Loading<WireProject[]> {
-  return useLoader(signal => client.listProjects(signal, session), [client, session])
+export function useProjects(client: DvClient): Loading<WireProject[]> {
+  return useLoader(signal => client.listProjects(signal), [client])
 }
 
 /**

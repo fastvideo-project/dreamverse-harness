@@ -10,7 +10,6 @@ describe('DvClient', () => {
     const { fetch, writes } = scriptedFetch()
     const client = new DvClient(fetch)
     expect(await client.listProjects()).toEqual([PROJECT])
-    expect(await client.listProjects(undefined, 's1')).toEqual([PROJECT])
     expect(await client.createProject('Demo 2', 'canvas')).toMatchObject({ record: { id: 'b1' } })
     expect((await client.getState('p1')).project.id).toBe('p1')
     expect((await client.listOperations()).map(operation => operation.name)).toContain('shot.render')
@@ -42,17 +41,6 @@ describe('DvClient', () => {
     expect(writes[10]?.body).toEqual({ project: 'p1', operation: 'asset.unplace', surface: 'canvas', inputs: [{ role: 'asset', ref: 'a1' }] })
     expect(writes[11]?.body).toEqual({ name: 'Untitled project' })
     expect(assetUrl('a/b')).toBe('/dv/assets/a%2Fb')
-  })
-
-  it('reads the Workspaces', async () => {
-    const paths: string[] = []
-    const answering = (body: unknown): typeof fetch => (input) => {
-      paths.push(typeof input === 'string' ? input : '')
-      return Promise.resolve(new Response(JSON.stringify(body)))
-    }
-    const workspaces = { entry_path: '/dv', projects: [{ id: 'p1', title: 'Demo', created_at: '2026-10-05T00:00:00Z', path: '/dv/Demo', workspace_id: 'p1' }] }
-    expect(await new DvClient(answering(workspaces)).listWorkspaces()).toEqual(workspaces)
-    expect(paths).toEqual(['/api/dv/workspaces'])
   })
 
   it('imports a file as its body, with its MIME type or a generic one, and the chat session when given', async () => {

@@ -19,14 +19,12 @@ import { answer, ApiHandlers, ApiRequestError, type ApiServices, requireProject 
 import { assetImportRoutes } from './asset-import.ts'
 import { serveEventStream } from './events.ts'
 import { projectAdminRoutes } from './projects-admin.ts'
-import { workspaceRoutes } from './workspaces.ts'
 
 export { answer, ApiHandlers, ApiRequestError, messageOf, type ApiServices, type OperationRequest, type WireProject } from './api.ts'
 export { ASSET_IMPORT_ROUTE } from './asset-import.ts'
 export { frameOf, serveEventStream, type EventStreamSources } from './events.ts'
 export { PROJECT_ADMIN_ROUTES } from './projects-admin.ts'
 export type { WireProjectCover, WireProjectSummary } from './summaries.ts'
-export { WORKSPACE_ROUTES } from './workspaces.ts'
 export {
   mentionedAssets, projectIdOf, toWireOperation, toWireState, type ProjectAsset, type WireHistory, type WireOperation, type WireState,
 } from './wire.ts'
@@ -42,14 +40,11 @@ declare module '@deepseek-ai/cordis' {
 export interface Config {
   /** Milliseconds between keep-alive comments on the event stream. */
   keepaliveMs: number
-  /** The state directory: the entry Workspace under `entry/`. */
-  stateRoot: string
 }
 
 /** Runtime schema of {@link Config}. */
 export const Config: z<Config> = z.object({
   keepaliveMs: z.number().default(15_000),
-  stateRoot: z.string().required(),
 })
 
 /** The path below the web root where the event stream is served. */
@@ -125,7 +120,7 @@ export default class DvApi extends Service {
       {
         path: ROUTES.projects, methods: ['GET', 'POST'], requestBody: 'buffered',
         fetch: request => request.method === 'GET'
-          ? answer(() => api.listProjects(query(request, 'session')))
+          ? answer(() => api.listProjects())
           : withBody(body => api.createProject(body))(request),
       },
       { path: ROUTES.untitled, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.untitledFolder(body)) },
@@ -147,7 +142,6 @@ export default class DvApi extends Service {
       { path: ROUTES.redo, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.redo(body)) },
       { path: ROUTES.acceptStale, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.acceptStale(body)) },
       { path: ROUTES.history, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.listHistory(body)) },
-      ...workspaceRoutes(this.ctx.dvProject, this.config.stateRoot),
       ...projectAdminRoutes(this.ctx.dvProject),
       ...assetImportRoutes({ project: this.ctx.dvProject, assets: this.ctx.dvAssetPool }),
     ]

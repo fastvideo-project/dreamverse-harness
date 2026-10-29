@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import type { DvClient, ViewSurface } from './api.ts'
+import { useCurrentProject } from './current-project.ts'
 import type { WireOperation, WireProject, WireState } from './types.ts'
 import { useOperations, useProjectState, useProjects } from './useProject.ts'
 import type { Loading } from './useProject.ts'
@@ -36,29 +37,20 @@ export interface ViewSession {
 }
 
 /**
- * The chat session a view sits beside, read from the page address (`?session=<id>`), or null.
- * @param search - the page's query string; defaults to the browser's.
- * @returns the session ID or null.
- */
-export function sessionFromLocation(search: string = window.location.search): string | null {
-  const value = new URLSearchParams(search).get('session')
-  return value === null || value.length === 0 ? null : value
-}
-
-/**
  * Keep a view's project, state, and operations, and bind the project and undo bar's gestures to the API. The first project
- * shown is the one the beside chat session is bound to when the address names a session, else the newest.
+ * shown is the project the DreamVerse shell has open when the list has it, else the newest.
  * @param client - the API client.
  * @param surface - the view's name in the records it writes.
- * @param session - the chat session the view sits beside; defaults to the page address.
+ * @param session - the chat session the view sits beside, or null.
  * @returns the session.
  */
-export function useViewSession(client: DvClient, surface: ViewSurface, session: string | null = sessionFromLocation()): ViewSession {
-  const projects = useProjects(client, session)
+export function useViewSession(client: DvClient, surface: ViewSurface, session: string | null = null): ViewSession {
+  const projects = useProjects(client)
+  const open = useCurrentProject()
   const [project, setProject] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const list = projects.value
-  const first = list === null ? null : (list.find(row => row.current === true) ?? list[0])?.id ?? null
+  const first = list === null ? null : (list.find(row => row.id === open) ?? list[0])?.id ?? null
   useEffect(() => {
     if (project === null && first !== null) setProject(first)
   }, [project, first])
@@ -82,10 +74,8 @@ export function useViewSession(client: DvClient, surface: ViewSurface, session: 
     onProject: setProject,
     onUndo: () => { if (project !== null) void run(() => client.undo(project)) },
     onCreate: (title) => {
-      void run(() => client.createProject(title, surface)).then((ok) => {
-        if (!ok) return
-        projects.reload()
-        setProject(null)
+      void run(async () => { setProject((await client.createProject(title, surface)).id) }).then((ok) => {
+        if (ok) projects.reload()
       })
     },
   }

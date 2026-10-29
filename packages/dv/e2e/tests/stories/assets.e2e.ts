@@ -429,7 +429,7 @@ describe('The asset pool panel', () => {
     it('keeps the canvas layout file in the project folder after the project is removed', async () => {
       const project = await createProject()
       await harness.api.post('/api/dv/canvas/layout', { project: project.id, positions: { n1: { x: 10, y: 20 } } })
-      const { path } = (await harness.api.get('/api/dv/workspaces') as { projects: Array<{ id: string; path: string }> }).projects.find(row => row.id === project.id) ?? { path: '' }
+      const { path } = (await harness.api.get('/api/dv/projects') as Array<{ id: string; path: string }>).find(row => row.id === project.id) ?? { path: '' }
       const file = join(path, '.dreamverse', 'canvas-layout.json')
       expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ positions: { n1: { x: 10, y: 20 } }, viewport: null })
       await harness.api.post('/api/dv/projects/delete', { project: project.id })

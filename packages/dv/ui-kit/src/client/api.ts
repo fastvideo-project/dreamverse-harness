@@ -8,7 +8,7 @@ import type {
   HistoryQuery, OperationCheck, OperationRequest, ProjectEvent,
   ProjectInfo, ProjectRecord, SummaryQuery, WireHistory, WireLine, WireModelEntry,
   WireOperation, WireProject, WireProjectCover, WireProjectSummary,
-  WireState, WireWorkspaces,
+  WireState,
 } from './types.ts'
 import type { WireTaskLabels } from './tool-labels.ts'
 
@@ -147,17 +147,16 @@ function isProjectSummary(value: unknown): value is WireProjectSummary {
     && isStringOrNull(fields['edited_at'])
 }
 
-/** Every `/api/dv` call of the browser: project state, operations, task labels, history, undo and redo, layout, workspaces. */
+/** Every `/api/dv` call of the browser: projects, project state, operations, task labels, history, undo and redo, and asset imports. */
 export class DvClient {
   constructor(private readonly fetchImpl: typeof fetch = (input, init) => fetch(input, init)) {}
 
   /**
    * @param signal - cancels the request.
-   * @param session - the chat session the view sits beside; its bound project comes first, flagged `current`.
    * @returns every project, newest first.
    */
-  listProjects(signal?: AbortSignal, session: string | null = null): Promise<WireProject[]> {
-    return this.get('/api/dv/projects', session === null ? {} : { session }, signal)
+  listProjects(signal?: AbortSignal): Promise<WireProject[]> {
+    return this.get('/api/dv/projects', {}, signal)
   }
 
   /**
@@ -180,7 +179,7 @@ export class DvClient {
 
   /**
    * Create a project.
-   * @param title - the project title.
+   * @param title - the project title; the host adds the smallest free number from 2 when another project has it.
    * @param surface - where the gesture came from.
    * @returns the project's identity.
    */
@@ -334,11 +333,6 @@ export class DvClient {
       project, operation: on ? 'asset.place' : 'asset.unplace', surface: 'canvas', inputs: assetIds.map(ref => ({ role: 'asset', ref })),
       ...session === null ? {} : { session },
     })
-  }
-
-  /** @returns the entry Workspace's directory, and every project with its directory and Workspace. */
-  listWorkspaces(): Promise<WireWorkspaces> {
-    return this.get('/api/dv/workspaces', {})
   }
 
   /**

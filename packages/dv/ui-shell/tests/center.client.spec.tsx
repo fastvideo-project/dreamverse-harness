@@ -17,19 +17,19 @@ import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-righ
 import type { FactoryComponentPropsOf, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
-import type { WireProjectLink, WireProjectSummary, WireWorkspaces } from '@dv/ui-kit/types.ts'
+import type { WireProject, WireProjectSummary } from '@dv/ui-kit/types.ts'
 import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
 import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import type { ShellActions } from '../src/client/actions.ts'
 
-const PROJECTS: WireProjectLink[] = [
-  { id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z', path: '/dv/p1', workspace_id: 'p1' },
-  { id: 'p2', title: 'Music video', created_at: '2026-02-05T12:00:00Z', path: '/dv/p2', workspace_id: 'p2' },
-  { id: 'p3', title: 'Drama', created_at: '2026-03-05T12:00:00Z', path: '/dv/p3', workspace_id: 'p3' },
+const PROJECTS: WireProject[] = [
+  { id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z', path: '/dv/p1' },
+  { id: 'p2', title: 'Music video', created_at: '2026-02-05T12:00:00Z', path: '/dv/p2' },
+  { id: 'p3', title: 'Drama', created_at: '2026-03-05T12:00:00Z', path: '/dv/p3' },
 ]
 
 const WORKSPACES = [
-  { workspaceId: 'ws-entry', path: '/dv/entry', sessionIds: ['s0'] },
+  { workspaceId: 'ws-plain', path: '/dv/plain', sessionIds: ['s0'] },
   { workspaceId: 'p1', path: '/dv/p1', sessionIds: ['s1', 's4'] },
   { workspaceId: 'p2', path: '/dv/p2', sessionIds: ['s2'] },
   { workspaceId: 'p3', path: '/dv/p3', sessionIds: [] },
@@ -44,7 +44,7 @@ const SESSIONS: SessionFixture[] = [
 ]
 
 interface Server {
-  links: WireWorkspaces
+  projects: WireProject[]
   summaries: WireProjectSummary[]
 }
 
@@ -78,13 +78,12 @@ function standInShell(failures: Set<string>): StandInShell {
     openProject: (projectId, sessionId) => later('openProject', projectId, sessionId),
     openSession: (sessionId) => { record('openSession', sessionId) },
     newSession: projectId => later('newSession', projectId),
-    goHome: sessionId => later('goHome', sessionId),
+    goHome: () => later('goHome'),
     openPage: (panelId) => { record('openPage', panelId) },
     renameProject: (projectId, title) => later('renameProject', projectId, title),
     deleteProject: projectId => later('deleteProject', projectId),
     renameSession: (sessionId, title) => later('renameSession', sessionId, title),
     deleteSession: sessionId => later('deleteSession', sessionId),
-    entryWorkspace: () => Promise.reject(new Error('entryWorkspace is not scripted')),
     showPanels: () => { record('showPanels') },
     hidePanels: () => { record('hidePanels') },
     collapseSidebar: () => { record('collapseSidebar') },
@@ -104,7 +103,7 @@ function serverFetch(server: Server): typeof fetch {
   const json = (body: unknown, status = 200): Promise<Response> => Promise.resolve(new Response(JSON.stringify(body), { status }))
   return (input) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://host')
-    if (url.pathname === '/api/dv/workspaces') return json(server.links)
+    if (url.pathname === '/api/dv/projects') return json(server.projects)
     if (url.pathname === '/api/dv/projects/summary') return json(server.summaries)
     if (url.pathname === '/api/dv/state') return json({ components: {} })
     return json({ error: `no route ${url.pathname}` }, 404)
@@ -138,7 +137,7 @@ interface MountOptions {
   listsLoading?: boolean
   entries?: boolean
   failures?: readonly string[]
-  links?: Partial<WireWorkspaces>
+  projects?: WireProject[]
   summaries?: WireProjectSummary[]
   fakeTimers?: boolean
 }
@@ -150,7 +149,7 @@ interface Bench {
   stand: StandInShell
   view: SlotView<'main.conversation'>
   show(sessionId: string | undefined): void
-  refreshLinks(): Promise<void>
+  refreshProjects(): Promise<void>
 }
 
 const runtimes: SlotTestRuntime[] = []
@@ -175,7 +174,7 @@ async function mountCenter(options: MountOptions = {}): Promise<Bench> {
   window.history.replaceState(null, '', `/${options.hash ?? ''}`)
   vi.resetModules()
   const server: Server = {
-    links: { entry_path: '/dv/entry', projects: PROJECTS, ...options.links },
+    projects: options.projects ?? PROJECTS,
     summaries: options.summaries ?? [],
   }
   vi.stubGlobal('fetch', serverFetch(server))
@@ -271,7 +270,7 @@ async function mountCenter(options: MountOptions = {}): Promise<Bench> {
     stand,
     view,
     show(sessionId) { view.update({}, { session: reference(sessionId) }) },
-    async refreshLinks() { await act(async () => { await store.refreshLinks() }) },
+    async refreshProjects() { await act(async () => { await store.refreshProjects() }) },
   }
 }
 
@@ -321,7 +320,7 @@ describe('the entry page', () => {
         { project: 'p1', cover: null, edited_at: null },
       ],
     })
-    await bench.refreshLinks()
+    await bench.refreshProjects()
     const page = bench.view.view
     expect(page.getByRole('heading', { level: 1 }).textContent).toBe('What are we making today?')
     expect(page.getByTestId('composer').getAttribute('data-phase')).toBe('active')
@@ -403,9 +402,9 @@ describe('the entry page', () => {
   })
 
   it('has no recent projects or explore section without projects and entries', async () => {
-    const bench = await mountCenter({ main: 's0', entries: false, links: { projects: [] } })
+    const bench = await mountCenter({ main: 's0', entries: false, projects: [] })
     expect(bench.view.view.queryByRole('region')).toBeNull()
-    await bench.refreshLinks()
+    await bench.refreshProjects()
     expect(bench.view.view.queryByRole('region')).toBeNull()
     expect(bench.view.view.getByRole('heading', { level: 1 })).toBeDefined()
   })
@@ -426,24 +425,24 @@ describe('the URL restore', () => {
     const bench = await mountCenter({ hash: '#project=p1&view=timeline&timeline=t2&session=s1', main: 's1' })
     expect(bench.view.view.getByTestId('center-view').textContent).toBe('p1|none|{"timeline":"t2"}|null')
     expect(bench.stand.calls.filter(call => call.startsWith('openProject'))).toEqual([])
-    await bench.refreshLinks()
+    await bench.refreshProjects()
     await waitFor(() => { expect(bench.stand.calls).toContain('openProject(p1,s1)') })
     expect(bench.view.view.getByTestId('center-view').textContent).toBe('p1|s1|{"timeline":"t2"}|null')
     expect(window.location.hash).toBe('#project=p1&view=timeline&timeline=t2&session=s1')
   })
 
-  it('shows the entry page for a project the links do not list, with the URL\'s session, and logs a failed navigation', async () => {
+  it('shows the entry page for a project the list does not have, and logs a failed navigation', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const bench = await mountCenter({ hash: '#project=gone&session=s0', main: 's0', failures: ['goHome'] })
     expect(bench.view.view.getByTitle('Switch chat or project').textContent).toContain('gone')
-    await bench.refreshLinks()
+    await bench.refreshProjects()
     await waitFor(() => { expect(warn).toHaveBeenCalledWith('ui-shell: navigation failed', expect.any(Error)) })
-    expect(bench.stand.calls).toContain('goHome(s0)')
+    expect(bench.stand.calls).toContain('goHome()')
   })
 
   it('waits for the DSH session and Workspace lists', async () => {
     const bench = await mountCenter({ main: 's0', listsLoading: true })
-    await bench.refreshLinks()
+    await bench.refreshProjects()
     await bench.runtime.workspaces.update((draft) => { draft.phase = 'ready' })
     expect(bench.stand.calls.filter(call => call.startsWith('goHome'))).toEqual([])
     act(() => { bench.runtime.sessions.list.update((draft) => { draft.phase = 'ready' }) })
@@ -452,7 +451,7 @@ describe('the URL restore', () => {
 
   it('waits for DSH\'s startup session, and proceeds without one after the wait', async () => {
     const bench = await mountCenter({ fakeTimers: true })
-    await bench.refreshLinks()
+    await bench.refreshProjects()
     await advance(3_999)
     expect(bench.stand.calls.filter(call => call.startsWith('goHome'))).toEqual([])
     await advance(1)
@@ -465,7 +464,7 @@ describe('Back, Forward, and an edited hash', () => {
     const bench = await mountCenter({ hash: '#project=p1', main: 's1' })
     navigateTo('#project=p3')
     expect(bench.stand.calls.filter(call => call.startsWith('openProject'))).toEqual([])
-    await bench.refreshLinks()
+    await bench.refreshProjects()
     await waitFor(() => { expect(bench.stand.calls).toContain('openProject(p3)') })
     const opened = (): string[] => bench.stand.calls.filter(call => call.startsWith('openProject') || call.startsWith('goHome'))
 
@@ -482,7 +481,7 @@ describe('Back, Forward, and an edited hash', () => {
 describe('the main session\'s project', () => {
   it('takes the center along when the host attaches the entry chat to a project\'s Workspace after the restore', async () => {
     const bench = await mountCenter({ main: 's0' })
-    await bench.refreshLinks()
+    await bench.refreshProjects()
     await waitFor(() => { expect(bench.stand.calls).toContain('goHome()') })
     expect(bench.view.container.querySelector('[data-dv-entry]')).not.toBeNull()
     await attach(bench, 's0', 'p2')
@@ -492,7 +491,7 @@ describe('the main session\'s project', () => {
 
   it('leaves the URL\'s project open when the main session\'s project resolves late or is the open project', async () => {
     const bench = await mountCenter({ hash: '#project=p1', main: 'elsewhere', sessions: [{ id: 'elsewhere' }] })
-    await bench.refreshLinks()
+    await bench.refreshProjects()
     await waitFor(() => { expect(bench.stand.calls).toContain('openProject(p1)') })
     await attach(bench, 'elsewhere', 'p2')
     expect(bench.store.getShell().projectId).toBe('p1')
@@ -507,7 +506,7 @@ describe('the workspace', () => {
       hash: '#project=p1&view=storyboard', main: 's1',
       summaries: [{ project: 'p1', cover: { asset: 'poster.png', mime: 'image/png' }, edited_at: null }],
     })
-    await bench.refreshLinks()
+    await bench.refreshProjects()
     const page = bench.view.view
     expect(bench.stand.calls).toContain('collapseSidebar()')
     const switcher = page.getByTitle('Switch chat or project')
@@ -525,7 +524,7 @@ describe('the workspace', () => {
 
   it('records no session for its views while the main session is another project\'s, and opens no panels for it', async () => {
     const bench = await mountCenter({ hash: '#project=p1', main: 's0' })
-    await bench.refreshLinks()
+    await bench.refreshProjects()
     const page = bench.view.view
     expect(page.getByTitle('Switch chat or project').textContent).toBe('Launch film/New chat')
     expect(page.getByTestId('center-view').textContent).toBe('p1|none|{}|null')
@@ -543,7 +542,7 @@ describe('the workspace', () => {
   it('opens the panels once when the session\'s seat mounts, and offers the open button only while the panel is hidden', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const bench = await mountCenter({ hash: '#project=p1', main: 's1' })
-    await bench.refreshLinks()
+    await bench.refreshProjects()
     const panels = (): number => bench.stand.calls.filter(call => call === 'showPanels()').length
     act(() => { bench.stand.mounted.set('s1' as SessionId) })
     expect(panels()).toBe(1)
@@ -564,7 +563,7 @@ describe('the workspace', () => {
   it('retries opening the panels on a timer and when the seat binds again, and gives up after 20 attempts', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const bench = await mountCenter({ hash: '#project=p1', main: 's1', failures: ['showPanels'], fakeTimers: true })
-    await bench.refreshLinks()
+    await bench.refreshProjects()
     const panels = (): number => bench.stand.calls.filter(call => call === 'showPanels()').length
     act(() => { bench.stand.mounted.set('s1' as SessionId) })
     expect(panels()).toBe(1)
@@ -586,7 +585,7 @@ describe('the workspace', () => {
     const bench = await mountCenter({
       hash: '#project=p1', main: 's1', failures: ['showPanels'], fakeTimers: true, sessions: [{ id: 's6' }],
     })
-    await bench.refreshLinks()
+    await bench.refreshProjects()
     const panels = (): number => bench.stand.calls.filter(call => call === 'showPanels()').length
     act(() => { bench.stand.mounted.set('s1' as SessionId) })
     await advance(250)
@@ -612,7 +611,7 @@ describe('the session switcher', () => {
   it('goes home, creates a project, switches among the project\'s chats or starts one, and opens another project', async () => {
     const bench = await mountCenter({ hash: '#project=p1', main: 's4' })
     await attach(bench, 's5', 'p1')
-    await bench.refreshLinks()
+    await bench.refreshProjects()
     const page = bench.view.view
     const switcher = page.getByTitle('Switch chat or project')
     expect(switcher.textContent).toBe('Launch film/New chat')
@@ -643,8 +642,8 @@ describe('the session switcher', () => {
   })
 
   it('closes on a click outside it and on Escape, which returns the focus to the button', async () => {
-    const bench = await mountCenter({ hash: '#project=p1', main: 's1', links: { projects: PROJECTS.slice(0, 1) } })
-    await bench.refreshLinks()
+    const bench = await mountCenter({ hash: '#project=p1', main: 's1', projects: PROJECTS.slice(0, 1) })
+    await bench.refreshProjects()
     const page = bench.view.view
     const switcher = page.getByTitle('Switch chat or project')
     fireEvent.click(switcher)

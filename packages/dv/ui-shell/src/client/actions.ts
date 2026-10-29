@@ -9,16 +9,14 @@
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
-import type { WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { pickText } from '@dv/ui-kit/locale.ts'
-import { isEntryChat } from './sessions.ts'
 import { createSidebarFold } from './sidebar.ts'
-import { getShell, markSessionChoice, refreshLinks, setShell, shellClient } from './store.ts'
+import { getShell, markSessionChoice, refreshProjects, setShell, shellClient } from './store.ts'
 
 /** The right-panel kind of the asset pool tab that `@dv/ui-asset-pool` registers. */
 export const ASSET_POOL_KIND = 'dv-asset-pool'
@@ -49,11 +47,10 @@ export interface ShellActions {
   /** Start a chat session in the project's Workspace. */
   newSession(projectId: string): Promise<void>
   /**
-   * Show the entry page: `sessionId` when it is an entry chat (a URL restore or a row of the navigator's 对话 section),
-   * else this browser tab's blank entry chat while it is still blank and in no Workspace, else a new chat in a fresh
-   * folder of the DreamVerse folder.
+   * Show the entry page: this browser tab's blank entry chat while it is still blank and in no Workspace, else a new
+   * chat in a fresh folder of the DreamVerse folder.
    */
-  goHome(sessionId?: string): Promise<void>
+  goHome(): Promise<void>
   /** Open a DSH sidebar page (Plugins, MCP, or another `sidebar.panellist` entry) in the main column. */
   openPage(panelId: string): void
   /** Store a unique project title; the host sets it as the project's Workspace title. */
@@ -67,11 +64,6 @@ export interface ShellActions {
    * tab's blank entry chat when no project is open.
    */
   deleteSession(sessionId: string): Promise<void>
-  /**
-   * The entry Workspace (the directory that holds chats started before a project exists), created and titled
-   * DreamVerse when missing. DSH's first-use default Workspace is replaced by it.
-   */
-  entryWorkspace(): Promise<WorkspaceView>
   /** Expand the right panel and open 对话, 素材库, and 历史, with 对话 in front. Throws while no session seat is mounted. */
   showPanels(): void
   /** Collapse the right panel of the mounted session. */
@@ -191,19 +183,25 @@ export function createActions(ctx: ClientContext): ShellActions {
     showSession(sessionId as SessionId)
   }
 
-  const goHome = async (sessionId?: string): Promise<void> => {
+  // Concurrent 首页 calls (DSH's first-use start and the URL restore) share one entry chat, so they make one folder.
+  let entryChat: Promise<void> | undefined
+  const goHome = async (): Promise<void> => {
     leavePage()
     setShell({ projectId: null })
+    entryChat ??= openEntryChat().finally(() => { entryChat = undefined })
+    await entryChat
+  }
+
+  /** Show this tab's blank entry chat, made in a fresh folder of the DreamVerse folder when it has none. */
+  const openEntryChat = async (): Promise<void> => {
     await Promise.all([whenReady(ctx.sessions.list), whenReady(ctx.workspaces.list)])
     if (getShell().projectId !== null) return
     const sessions = ctx.sessions.list.getSnapshot()
     const workspaces = ctx.workspaces.list.getSnapshot().items
-    const summary = sessionId === undefined ? undefined : sessions.byId[sessionId as SessionId]
     const reused = tabBlanks.get(UNTITLED_KEY)
-    let entry = isEntryChat(summary, workspaces) ? summary.id : undefined
     const reusable = reused !== undefined && sessions.byId[reused]?.blank === true
       && !workspaces.some(item => item.sessionIds.includes(reused))
-    if (entry === undefined && reusable) entry = reused
+    let entry = reusable ? reused : undefined
     if (entry === undefined) {
       const { path } = await shellClient.untitledFolder(pickText('未命名项目', 'Untitled project'))
       entry = await ctx.sessions.create({ cwd: path })
@@ -221,7 +219,7 @@ export function createActions(ctx: ClientContext): ShellActions {
     const attached = ctx.workspaces.list.getSnapshot().items.some(item => item.sessionIds.includes(sessionId))
     if (sessionId !== tabBlanks.get(UNTITLED_KEY) || folder === undefined || attached) return Promise.resolve()
     const creating = chatProjects.get(sessionId) ?? shellClient.createChatProject(folder, sessionId).then(
-      () => { refreshLinks().catch((error: unknown) => { console.warn('ui-shell: links read failed', error) }) },
+      () => undefined,
       (error: unknown) => {
         chatProjects.delete(sessionId)
         const reason = error instanceof Error ? error.message : String(error)
@@ -270,13 +268,8 @@ export function createActions(ctx: ClientContext): ShellActions {
   return {
     async newProject() {
       leavePage()
-      const links = getShell().links ?? await refreshLinks()
-      const base = pickText('未命名项目', 'Untitled project')
-      const titles = new Set(links.projects.map(p => p.title))
-      let title = base
-      for (let n = 2; titles.has(title); n += 1) title = `${base} ${String(n)}`
-      const created = await shellClient.createProject(title, 'canvas')
-      await refreshLinks()
+      const created = await shellClient.createProject(pickText('未命名项目', 'Untitled project'), 'canvas')
+      await refreshProjects()
       setShell({ projectId: created.id, view: 'canvas' })
       await openBlank(created.id as WorkspaceId, () => getShell().projectId === created.id)
     },
@@ -294,11 +287,11 @@ export function createActions(ctx: ClientContext): ShellActions {
     },
     async renameProject(projectId, title) {
       await shellClient.renameProject(projectId, title)
-      await refreshLinks()
+      await refreshProjects()
     },
     async deleteProject(projectId) {
       await shellClient.deleteProject(projectId)
-      await refreshLinks()
+      await refreshProjects()
       if (getShell().projectId === projectId) await goHome()
     },
     async renameSession(sessionId, title) {
@@ -314,15 +307,6 @@ export function createActions(ctx: ClientContext): ShellActions {
       const open = getShell().sessionId === sessionId
       await ctx.uiWorkspace.archiveSession(sessionId as SessionId, { stopActivity: true })
       if (open) await (projectId === null ? goHome() : openProject(projectId))
-    },
-    async entryWorkspace() {
-      const links = getShell().links ?? await refreshLinks()
-      const existing = ctx.workspaces.list.getSnapshot().items.find(item => item.path === links.entry_path)
-      if (existing !== undefined) return existing
-      const created = await ctx.workspaces.create({ path: links.entry_path })
-      // The Workspace controller refuses a title another Workspace has; the entry Workspace then keeps its folder name.
-      await ctx.workspaces.rename(created.workspaceId, 'DreamVerse').catch((error: unknown) => { console.warn('ui-shell: entry Workspace rename failed', error) })
-      return created
     },
     showPanels,
     hidePanels() {

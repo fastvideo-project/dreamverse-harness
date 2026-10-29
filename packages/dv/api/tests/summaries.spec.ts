@@ -138,7 +138,7 @@ describe(ROUTES.projectSummaries, () => {
     fixture = base
     const connection = new FakeConnection()
     base.context.provide('connection', connection)
-    await base.context.plugin(DvApi, { keepaliveMs: 50, stateRoot: base.root }).await()
+    await base.context.plugin(DvApi, { keepaliveMs: 50 }).await()
     const imported = (await base.project.createProject(await base.project.newProjectFolder('imported'), 'imported', HUMAN)).id
     const chatted = (await base.project.createProject(await base.project.newProjectFolder('chatted'), 'chatted', HUMAN)).id
     const blank = (await base.project.createProject(await base.project.newProjectFolder('blank'), 'blank', HUMAN)).id
@@ -183,7 +183,7 @@ describe(ROUTES.projectSummaries, () => {
     fixture = base
     const connection = new FakeConnection()
     base.context.provide('connection', connection)
-    await base.context.plugin(DvApi, { keepaliveMs: 50, stateRoot: base.root }).await()
+    await base.context.plugin(DvApi, { keepaliveMs: 50 }).await()
     const healthy = (await base.project.createProject(await base.project.newProjectFolder('healthy'), 'healthy', HUMAN)).id
     const broken = (await base.project.createProject(await base.project.newProjectFolder('broken'), 'broken', HUMAN)).id
     const getState = base.project.getState.bind(base.project)

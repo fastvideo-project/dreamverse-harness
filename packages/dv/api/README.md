@@ -26,24 +26,22 @@ Use this package to let browser views read and change a DreamVerse project throu
 
 Mount the plugin after `@dv/project` and `@dv/asset-pool`, in a profile that also mounts `dsh-web-app` (for the `connection` and `webServer` services). Without `connection` the Fetch routes stay unregistered; without `webServer` the event stream does.
 
-The Fetch routes list, create, rename, delete, and summarize projects, read the project's current state as JSON, list the operation declarations, read the task labels, run an operation as the human, import a file into the asset pool, undo and redo, accept a stale record, list the history, and link projects to DSH Workspaces. The event stream admits a browser through the same Connection cookie.
+The Fetch routes list, create, rename, delete, and summarize projects, read the project's current state as JSON, list the operation declarations, read the task labels, run an operation as the human, import a file into the asset pool, undo and redo, accept a stale record, and list the history. The event stream admits a browser through the same Connection cookie.
 
 ```yaml
 - id: dv-api
   name: '@dv/api'
   config:
     keepaliveMs: 15000
-    stateRoot: /home/me/.local/state/dv
 ```
 
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `keepaliveMs` | `15000` | How often an idle event stream sends a comment line so proxies keep the connection open |
-| `stateRoot` | required | The state directory: the entry Workspace in `entry/`; the bundle sets it from `DV_STATE_ROOT` |
 
 | Route | Method | Request | Response |
 | --- | --- | --- | --- |
-| `/api/dv/projects` | GET | optional `session` (a chat session ID) | `WireProject[]` (`{id, title, created_at, current}`), newest first; with `session`, the project whose folder that live session runs in comes first with `current: true` |
+| `/api/dv/projects` | GET | none | `WireProject[]` (`{id, title, created_at, path}`), newest first; `id` is the ID of the project folder's DSH Workspace, and `path` is the folder |
 | `/api/dv/projects` | POST | `{title, surface}`, or `{folder, session}` | The project started from a view, in a fresh folder named after its title in the DreamVerse folder, or the project of the chat session `session` in its folder `folder`, titled after the folder's name, with its `proj.create` record on surface `chat` (a folder that is a project already stays as it is): `ProjectInfo` `{id, title, created_at, path}` |
 | `/api/dv/projects/untitled` | POST | `{name}` | `{path}`: a fresh empty folder in the DreamVerse folder of `@dv/project` (`newProjectFolder`), for a chat that has no project yet |
 | `/api/dv/projects/summary` | GET | optional `project`, optional `timeline` | `WireProjectSummary[]` (`{project, cover, edited_at}`), one per project, or only the named project: `cover` is the first clip with media on the timeline that `timeline` names (with `project`, when the project has it), else on the first timeline, as `{asset, mime}` (the asset ID and its MIME type) of a video or an image; without such a clip it is `{asset, mime}` of the first image output of a finished record, else null; `edited_at` is the time of the last record. Each is read from the project's current state. In the list of every project, a project whose state cannot be read gets that empty entry (`cover` and `edited_at` null) and a server console warning; with `project`, its error is the response |
@@ -60,7 +58,6 @@ The Fetch routes list, create, rename, delete, and summarize projects, read the 
 | `/api/dv/redo` | POST | `{project}`: moves the current position one step forward; writes no record | `{tip, at}` |
 | `/api/dv/stale/accept` | POST | `{project, record, session?, surface}` | the `proj.stale_accept` record |
 | `/api/dv/history` | POST | `{project, actor?, component?, operation?, kind?, status?, session?, turn?, tool_call?, records?, before?, limit?}`; `records` is an array; `limit` is 1 to 200, default 50 | `WireHistory` `{entries, assets}`: the `dvProject.listHistory` entries `{record, place}`, the steps of the history list newest first with `place` `before`, `current` or `after` relative to the current position, and every asset they name; a read that writes no record |
-| `/api/dv/workspaces` | GET | none | `{entry_path, projects: [{id, title, created_at, path, workspace_id}]}`; `workspace_id` is the project ID |
 | `/dv/events?project=<id>` | GET | — | `text/event-stream`: `ready`, then `record`, `update` and `line` events, each carrying one `ProjectEvent`; a `line` event `{kind: 'line', tip, at}` follows each write and each move |
 
 `surface` is `canvas`, `timeline` or `asset_pool`; anything else counts as `canvas`, except on the asset import, which takes `canvas` or `asset_pool` only. A run calls `dvProject.run` as the human, as a step after the project's current position, with the request's chat session as the record's `session`, or schedules the call when an input names a record that has not finished. Every error of every route, the event stream included, answers with the JSON body `{error, code, ...details}`: `error` is the message text and `code` is one of the codes below; `details` carries extra fields of a refusal.
@@ -90,7 +87,6 @@ The Fetch routes list, create, rename, delete, and summarize projects, read the 
 | [`src/wire.ts`](src/wire.ts) | `WireState`, `WireHistory`, `WireOperation`, `toWireState`, `toWireOperation`, `mentionedAssets`, `projectIdOf` |
 | [`src/api.ts`](src/api.ts) | `ApiHandlers`, `ApiRequestError`, `OperationRequest`, `WireProject`: validation and the `dvProject` calls behind each route; `answer`, `json` and `requireProject`, shared by every route |
 | [`src/asset-import.ts`](src/asset-import.ts) | The asset import route |
-| [`src/workspaces.ts`](src/workspaces.ts) | The project list with each project's folder and Workspace |
 | [`src/projects-admin.ts`](src/projects-admin.ts) | Project rename and delete |
 | [`src/summaries.ts`](src/summaries.ts) | `WireProjectSummary` and `summarizeProject`: the project card summaries (cover and last edit time), read from each project's current state |
 | [`src/events.ts`](src/events.ts) | `frameOf` and `serveEventStream` |

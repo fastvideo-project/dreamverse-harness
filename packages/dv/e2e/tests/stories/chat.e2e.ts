@@ -388,8 +388,8 @@ describe('chat with the agent', () => {
     expect(await userMessages(page)).toEqual([])
     expect(await composer(page).innerText()).not.toContain('还没发出去的话')
     const firstTitle = await page.evaluate(async (id) => {
-      const links = await (await fetch('/api/dv/workspaces')).json() as { projects: Array<{ id: string; title: string }> }
-      return links.projects.find(project => project.id === id)?.title ?? ''
+      const projects = await (await fetch('/api/dv/projects')).json() as Array<{ id: string; title: string }>
+      return projects.find(project => project.id === id)?.title ?? ''
     }, first)
     await pickFromSwitcher(page, firstTitle)
     await waitFor(() => Promise.resolve(locationOf(page).project === first), 'the first project in the URL', 15_000)
@@ -591,7 +591,7 @@ describe('chat with the agent', () => {
 
   it('the first message on the entry page makes the chat\'s folder a project before the agent starts, with its attached image', async () => {
     const { page, errors } = await openPage()
-    const projectsNow = async () => (await harness.api.get('/api/dv/workspaces') as { projects: Array<{ id: string; title: string; path: string }> }).projects
+    const projectsNow = async () => await harness.api.get('/api/dv/projects') as Array<{ id: string; title: string; path: string }>
     const known = new Set((await projectsNow()).map(project => project.id))
     await page.locator('[data-dv-entry] [contenteditable="true"]').first().click({ timeout: 30_000 })
     await page.locator('[data-dv-entry] input[type="file"]').first().setInputFiles({ name: 'entry.png', mimeType: 'image/png', buffer: Buffer.from(BLUE_PNG, 'base64') })

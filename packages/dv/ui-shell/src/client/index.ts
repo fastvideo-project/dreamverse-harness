@@ -20,7 +20,7 @@ import { followPanelEntries } from './panels.ts'
 import { applyRightPanelWidth } from './right-panel.ts'
 import { followSlotTabs } from './slot-tabs.ts'
 import type { DvCenter } from './contract/index.ts'
-import { getShell, refreshLinks, showInCenter } from './store.ts'
+import { getShell, refreshProjects, showInCenter } from './store.ts'
 import { applyTheme } from './theme.ts'
 import { CHAT_ID, ChatTab, chatDefinition, TRAJECTORY_ID, TrajectoryTab, trajectoryDefinition } from './tabs.tsx'
 import { listenHistoryKeys } from './undo-keys.ts'
@@ -31,8 +31,8 @@ export type { ShellInjected } from './Center.tsx'
 /** Services the shell uses. */
 export const inject = ['slots', 'sidebarRightTabs', 'sidebarRight', 'workspaces', 'sessions', 'uiWorkspace']
 
-/** Milliseconds between reads of the project ↔ Workspace links, which pick up projects the agent creates. */
-const LINKS_POLL_MS = 4000
+/** Milliseconds before a failed project list read is tried again. */
+const PROJECT_READ_RETRY_MS = 2000
 
 /**
  * Provide `dvCenter`, and register the shell's DSH UI slot entries and tab types. The center and the navigator shadow
@@ -90,21 +90,30 @@ export function apply(ctx: ClientContext): void {
   }, 'ui-shell: New Session in the open project')
   ctx.effect(() => {
     // DSH's first-use start creates a default Workspace in the user's documents folder, which fails on hosts without
-    // one and toasts "Unable to create default workspace". First-use initialization prepares the entry Workspace
-    // instead.
+    // one and toasts "Unable to create default workspace".
     const workspaces = ctx.workspaces
     Object.defineProperty(workspaces, 'initializeDefault', {
       configurable: true, writable: true,
-      value: () => injected.shell.entryWorkspace(),
+      value: async () => { await injected.shell.goHome().catch((error: unknown) => { console.warn('ui-shell: entry page failed', error) }) },
     })
     return () => { Reflect.deleteProperty(workspaces, 'initializeDefault') }
-  }, 'ui-shell: entry Workspace as the default Workspace')
+  }, 'ui-shell: entry page as the first-use start')
   ctx.effect(() => {
-    const read = (): void => { refreshLinks().catch((error: unknown) => { console.warn('ui-shell: links read failed', error) }) }
+    // Every project is a Workspace, so a project that is created, renamed or removed in any tab or by the agent
+    // changes the Workspace feed; each change reads the project list again.
+    // A failed read is tried again after a pause, because no Workspace change may follow it.
+    let retry: ReturnType<typeof setTimeout> | undefined
+    const read = (): void => {
+      clearTimeout(retry)
+      refreshProjects().catch((error: unknown) => {
+        console.warn('ui-shell: project list read failed', error)
+        retry = setTimeout(read, PROJECT_READ_RETRY_MS)
+      })
+    }
     read()
-    const timer = setInterval(read, LINKS_POLL_MS)
-    return () => { clearInterval(timer) }
-  }, 'ui-shell: links poll')
+    const unsubscribe = ctx.workspaces.list.subscribe(read)
+    return () => { unsubscribe(); clearTimeout(retry) }
+  }, 'ui-shell: project list follows the Workspace feed')
   ctx.effect(listenHistoryKeys, 'ui-shell: Ctrl+Z undo and Shift+Ctrl+Z redo of the open project')
   ctx.effect(() => {
     const seat = injected.shell.mountedSeat

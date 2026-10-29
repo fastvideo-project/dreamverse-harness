@@ -4,34 +4,30 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { DvClient } from '../src/client/api.ts'
 import { useProjectState } from '../src/client/useProject.ts'
-import { sessionFromLocation, useViewSession } from '../src/client/useView.ts'
+import { publishCurrentProject } from '../src/client/current-project.ts'
+import { useViewSession } from '../src/client/useView.ts'
 import { fixtureState, PROJECT, scriptedFetch } from './fixture.client.tsx'
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers() })
-
-describe('sessionFromLocation', () => {
-  it('reads the chat session from the page address', () => {
-    expect(sessionFromLocation('?session=s1&x=1')).toBe('s1')
-    expect(sessionFromLocation('?session=')).toBeNull()
-    expect(sessionFromLocation('')).toBeNull()
-    expect(sessionFromLocation()).toBeNull()
-  })
-})
+afterEach(() => { cleanup(); publishCurrentProject(null); vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe('useViewSession', () => {
-  it('asks for the session\'s projects, shows the bound one first, and switches to a project it creates', async () => {
+  it('shows the project the shell has open first, and switches to a project it creates', async () => {
     const reads: string[] = []
-    const { fetch, writes } = scriptedFetch({ projects: [PROJECT, { ...PROJECT, id: 'p2', title: 'Bound', current: true }] })
+    const { fetch, writes } = scriptedFetch({
+      projects: [PROJECT, { ...PROJECT, id: 'p2', title: 'Open' }],
+      post: () => ({ status: 200, body: { id: 'p3', title: 'Demo 3', created_at: '2026-10-06T00:00:00Z' } }),
+    })
     const logging: typeof fetch = (input, init) => { reads.push(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url); return fetch(input, init) }
     const client = new DvClient(logging)
+    publishCurrentProject('p2')
     const { result } = renderHook(() => useViewSession(client, 'timeline', 's1'))
     await waitFor(() => { expect(result.current.project).toBe('p2') })
-    expect(reads[0]).toBe('/api/dv/projects?session=s1')
+    expect(reads[0]).toBe('/api/dv/projects')
     act(() => { result.current.bar.onProject('p1') })
     act(() => { result.current.bar.onCreate('Demo 3') })
     await waitFor(() => { expect(writes).toHaveLength(1) })
     expect(writes[0]).toEqual({ path: '/api/dv/projects', body: { title: 'Demo 3', surface: 'timeline' } })
-    await waitFor(() => { expect(result.current.project).toBe('p2') })
+    await waitFor(() => { expect(result.current.project).toBe('p3') })
   })
 
   it('selects the first project, loads its state and the operations, and binds the bar gestures', async () => {

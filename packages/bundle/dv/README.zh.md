@@ -27,7 +27,7 @@ scripts/video-harness/launch.sh web --trusted-host <public host>   # chat page o
 scripts/video-harness/launch.sh headless "给我一个这个人跳舞的视频" --session-id demo   # one task, printed result
 ```
 
-patch 读取的环境变量：`DV_STATE_ROOT`（默认 `~/.local/state/dv`；下有 `assets`，以及 `@dv/api` 保存的入口 Workspace，patch 把它作为 `@dv/api` 的 `stateRoot` 传入）、`DV_PROJECTS_FOLDER`（存放新对话和新项目文件夹的 DreamVerse 文件夹；未设置时 `@dv/project` 使用 `<Documents>/deepseek-harness/DreamVerse`，在没有文档文件夹的主机上启动失败）、`DV_FFMPEG`、`DV_FFPROBE`、`DV_PUBLIC_URL`（聊天卡片里素材链接的来源）、`DV_AGENT_PROVIDER` 与 `DV_AGENT_MODEL`（默认 `deepseek-local` / `deepseek-v4.1`；备选 `groq` / `qwen/qwen3.8-27b`）、`DV_AGENT_REASONING`（默认 `low`）、`DV_DEEPSEEK_BASE_URL`（OpenAI 兼容的 SGLang 端点；启动脚本默认为 `http://10.244.6.153:30000/v1`）、`DV_DEEPSEEK_API_KEY`（服务器无需密钥，但 pi-ai 的 OpenAI 路由坚持要一个 bearer token，启动脚本导出 `none`）、`DV_AGENT_VISION`（`0` 让 `inspect.image` 报告不支持图片而不调用模型），以及启动脚本从 `DV_ENV_FILE` 读入的备选密钥 `GROQ_API_KEY`。
+patch 读取的环境变量：`DV_STATE_ROOT`（默认 `~/.local/state/dv`；下有 `@dv/asset-pool` 的 `assets` 文件夹）、`DV_PROJECTS_FOLDER`（存放新对话和新项目文件夹的 DreamVerse 文件夹；未设置时 `@dv/project` 使用 `<Documents>/deepseek-harness/DreamVerse`，在没有文档文件夹的主机上启动失败）、`DV_FFMPEG`、`DV_FFPROBE`、`DV_PUBLIC_URL`（聊天卡片里素材链接的来源）、`DV_AGENT_PROVIDER` 与 `DV_AGENT_MODEL`（默认 `deepseek-local` / `deepseek-v4.1`；备选 `groq` / `qwen/qwen3.8-27b`）、`DV_AGENT_REASONING`（默认 `low`）、`DV_DEEPSEEK_BASE_URL`（OpenAI 兼容的 SGLang 端点；启动脚本默认为 `http://10.244.6.153:30000/v1`）、`DV_DEEPSEEK_API_KEY`（服务器无需密钥，但 pi-ai 的 OpenAI 路由坚持要一个 bearer token，启动脚本导出 `none`）、`DV_AGENT_VISION`（`0` 让 `inspect.image` 报告不支持图片而不调用模型），以及启动脚本从 `DV_ENV_FILE` 读入的备选密钥 `GROQ_API_KEY`。
 
 <a id="understand-the-implementation"></a>
 ## 理解实现

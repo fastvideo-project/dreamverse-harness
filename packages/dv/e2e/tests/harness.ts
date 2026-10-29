@@ -169,7 +169,7 @@ export interface BootedHarness {
   tokenUrl: string
   /** The origin without the token. */
   origin: string
-  /** The profile's `DV_STATE_ROOT` directory (assets, the entry Workspace). */
+  /** The profile's `DV_STATE_ROOT` directory, which holds the asset store. */
   stateRoot: string
   /** The profile's `DV_PROJECTS_FOLDER`, which holds the folders of new projects. */
   projectsFolder: string

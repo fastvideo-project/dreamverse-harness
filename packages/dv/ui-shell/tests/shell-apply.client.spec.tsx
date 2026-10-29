@@ -2,7 +2,7 @@
 /**
  * The shell plugin in a slot test runtime with stand-ins for the DSH layout, right panel and navigation services.
  */
-import { act, fireEvent, waitFor, within } from '@testing-library/react'
+import { act, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -13,13 +13,10 @@ import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-righ
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
-import type { WireWorkspaces } from '@dv/ui-kit/types.ts'
+import type { WireProject } from '@dv/ui-kit/types.ts'
 import { DV_TRAJECTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 
-const LINKS: WireWorkspaces = {
-  entry_path: '/dv/entry',
-  projects: [{ id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z', path: '/dv/p1', workspace_id: 'p1' }],
-}
+const PROJECTS: WireProject[] = [{ id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z', path: '/dv/p1' }]
 
 const runtimes: SlotTestRuntime[] = []
 
@@ -39,9 +36,13 @@ afterEach(async () => {
 async function mountShell() {
   vi.resetModules()
   const json = (body: unknown, status = 200): Promise<Response> => Promise.resolve(new Response(JSON.stringify(body), { status }))
+  const server = { projects: PROJECTS, reads: 0, down: false }
   const serverFetch: typeof fetch = (input) => {
     const path = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://host').pathname
-    if (path === '/api/dv/workspaces') return json(LINKS)
+    if (path === '/api/dv/projects') {
+      server.reads += 1
+      return server.down ? json({ error: 'restarting' }, 503) : json(server.projects)
+    }
     if (path === '/api/dv/projects/untitled') return json({ path: '/dv/DreamVerse/Untitled project' })
     if (path === '/api/dv/projects/summary') return json([])
     return json({ error: `no route ${path}` }, 404)
@@ -75,7 +76,6 @@ async function mountShell() {
   await runtime.sessions.add({ id: 'blank-p1', snapshot: { blank: true }, summary: { blank: true } })
   await runtime.workspaces.update((draft) => {
     draft.items = [
-      { workspaceId: 'ws-entry' as WorkspaceId, path: '/dv/entry', title: 'DreamVerse', sessionIds: [], createdAt: '', updatedAt: '' },
       { workspaceId: 'p1' as WorkspaceId, path: '/dv/p1', title: 'Launch film', sessionIds: [], createdAt: '', updatedAt: '' },
     ]
   })
@@ -86,122 +86,48 @@ async function mountShell() {
     'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: tabInfoFactory } } },
   })
   const shell = await runtime.mount({ inject: [...inject], apply })
-  await waitFor(() => { expect(store.getShell().links).toEqual(LINKS) })
-  return { runtime, shell, store, openTab, mounted, openSession, archiveSession, setRightbar, tabKeys: [CHAT_ID, TRAJECTORY_ID] }
-}
-
-/** Entry chats beside the blank entry chat: two started, one in `p1`'s Workspace, and one archived. */
-const ENTRY_CHATS = [
-  { id: 'chat-old', displayTitle: 'Old idea', updatedAt: 10 },
-  { id: 'chat-new', displayTitle: 'New idea', updatedAt: 30 },
-  { id: 'chat-bound', displayTitle: 'Bound idea', updatedAt: 40 },
-  { id: 'chat-gone', displayTitle: 'Deleted idea', updatedAt: 50 },
-]
-
-/**
- * Mount the shell with entry chats in the entry Workspace, render the navigator, and let 首页 create `blank-entry`.
- * @param chats - the entry chats besides `blank-entry`.
- * @returns the bench and the rendered navigator.
- */
-async function mountWithEntryChats(chats = ENTRY_CHATS) {
-  const bench = await mountShell()
-  for (const { id, ...summary } of chats) await bench.runtime.sessions.add({ id, summary })
-  await bench.runtime.workspaces.update((draft) => {
-    draft.items = draft.items.map(item => item.workspaceId === 'p1' ? { ...item, sessionIds: ['chat-bound' as SessionId] } : item)
-    draft.archivedSessionIds = ['chat-gone' as SessionId]
-  })
-  bench.runtime.sessions.stubCreate(() => Promise.resolve('blank-entry' as SessionId))
-  const navigator = bench.runtime.renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {} })
-  return { bench, navigator }
-}
-
-/** The labels of the navigator's 对话 rows, in order. */
-function entryRows(container: HTMLElement): string[] {
-  return [...container.querySelectorAll('[data-dv-entry-chats] [role="button"]')].map(row => row.textContent)
-}
-
-/** The navigator's 对话 row labelled `title`. */
-function entryRow(container: HTMLElement, title: string): HTMLElement {
-  const row = [...container.querySelectorAll<HTMLElement>('[data-dv-entry-chats] [role="button"]')].find(item => item.textContent === title)
-  if (row === undefined) throw new Error(`no 对话 row ${title}`)
-  return row
+  await waitFor(() => { expect(store.getShell().projects).toEqual(PROJECTS) })
+  return { runtime, shell, store, server, openTab, mounted, openSession, archiveSession, setRightbar, tabKeys: [CHAT_ID, TRAJECTORY_ID] }
 }
 
 function focusTrajectory(detail: unknown): void {
   act(() => { window.dispatchEvent(new CustomEvent(DV_TRAJECTORY_FOCUS_EVENT, { detail })) })
 }
 
-describe('the navigator\'s 对话 section', () => {
-  it('lists the started entry chats that no project holds, newest first, and a chat whose project\'s Workspace goes away', async () => {
-    const { bench, navigator } = await mountWithEntryChats()
-    const { container } = navigator
-    await waitFor(() => { expect(entryRows(container)).toEqual(['New idea', 'Old idea']) })
-    expect(within(container.querySelector<HTMLElement>('[data-dv-entry-chats]') ?? container).getByText('Chats')).toBeDefined()
+describe('the project list', () => {
+  it('reads the projects again at each Workspace feed change, and not after the plugin is disposed', async () => {
+    const bench = await mountShell()
+    const navigator = bench.runtime.renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {} })
+    const reads = bench.server.reads
+    const added: WireProject = { id: 'p2', title: 'Music video', created_at: '2026-02-05T12:00:00Z', path: '/dv/p2' }
+    bench.server.projects = [added, ...PROJECTS]
     await act(async () => {
-      await bench.runtime.workspaces.update((draft) => { draft.items = draft.items.filter(item => item.workspaceId !== 'p1') })
+      await bench.runtime.workspaces.update((draft) => {
+        draft.items = [...draft.items, { workspaceId: 'p2' as WorkspaceId, path: '/dv/p2', title: 'Music video', sessionIds: [], createdAt: '', updatedAt: '' }]
+      })
     })
-    await waitFor(() => { expect(entryRows(container)).toEqual(['Bound idea', 'New idea', 'Old idea']) })
-  })
-
-  it('lists the newest 5 chats and the open one, and 全部对话 / 收起对话 show and hide the rest', async () => {
-    const chats = Array.from({ length: 7 }, (_, index) => ({ id: `chat-${String(index)}`, displayTitle: `Idea ${String(index)}`, updatedAt: index + 10 }))
-    const { bench, navigator } = await mountWithEntryChats(chats)
-    const { container, view } = navigator
-    await waitFor(() => { expect(entryRows(container)).toEqual(['Idea 6', 'Idea 5', 'Idea 4', 'Idea 3', 'Idea 2']) })
-    act(() => { bench.store.setShell({ sessionId: 'chat-0' }) })
-    expect(entryRows(container)).toEqual(['Idea 6', 'Idea 5', 'Idea 4', 'Idea 3', 'Idea 2', 'Idea 0'])
-    fireEvent.click(view.getByRole('button', { name: 'All chats' }))
-    expect(entryRows(container)).toEqual(['Idea 6', 'Idea 5', 'Idea 4', 'Idea 3', 'Idea 2', 'Idea 1', 'Idea 0'])
-    fireEvent.click(view.getByRole('button', { name: 'Fewer chats' }))
-    expect(entryRows(container)).toHaveLength(6)
-  })
-
-  it('opens a row\'s chat on the entry page, also from an open project', async () => {
-    const { bench, navigator } = await mountWithEntryChats()
-    act(() => { bench.store.setShell({ projectId: 'p1' }) })
-    await waitFor(() => { expect(entryRows(navigator.container)).toContain('Old idea') })
-    fireEvent.click(entryRow(navigator.container, 'Old idea'))
-    await waitFor(() => { expect(bench.openSession).toHaveBeenLastCalledWith('chat-old') })
-    expect(bench.store.getShell().projectId).toBeNull()
-  })
-
-  it('highlights the open chat\'s row, and 首页 only while the blank entry chat is open', async () => {
-    const { bench, navigator } = await mountWithEntryChats()
-    const home = navigator.view.getByRole('button', { name: 'Home' })
-    act(() => { bench.store.setShell({ sessionId: 'blank-entry' }) })
-    await waitFor(() => { expect(entryRows(navigator.container)).toHaveLength(2) })
-    expect(home.hasAttribute('data-active')).toBe(true)
-    expect(navigator.container.querySelector('[data-dv-entry-chats] [data-active]')).toBeNull()
-    act(() => { bench.store.setShell({ sessionId: 'chat-new' }) })
-    expect(entryRow(navigator.container, 'New idea').hasAttribute('data-active')).toBe(true)
-    expect(home.hasAttribute('data-active')).toBe(false)
-  })
-
-  it('首页 opens this tab\'s blank chat while started entry chats exist', async () => {
-    const { bench, navigator } = await mountWithEntryChats()
-    act(() => { bench.store.setShell({ sessionId: 'chat-new' }) })
-    fireEvent.click(navigator.view.getByRole('button', { name: 'Home' }))
-    await waitFor(() => { expect(bench.openSession).toHaveBeenLastCalledWith('blank-entry') })
-    expect(bench.openSession).not.toHaveBeenCalledWith('chat-new')
-  })
-
-  it('deleting the open entry chat archives it and opens the blank entry chat', async () => {
-    const { bench, navigator } = await mountWithEntryChats()
-    vi.stubGlobal('confirm', () => true)
-    act(() => { bench.store.setShell({ sessionId: 'chat-new' }) })
-    await waitFor(() => { expect(entryRows(navigator.container)).toContain('New idea') })
-    const row = within(entryRow(navigator.container, 'New idea'))
-    fireEvent.click(row.getByRole('button', { name: 'Conversation menu' }))
-    fireEvent.click(row.getByRole('menuitem', { name: 'Delete chat' }))
-    await waitFor(() => { expect(bench.openSession).toHaveBeenLastCalledWith('blank-entry') })
-    expect(bench.archiveSession).toHaveBeenCalledWith('chat-new', { stopActivity: true })
-  })
-
-  it('is absent while the entry Workspace holds only blank chats', async () => {
-    const { navigator } = await mountWithEntryChats([])
-    await waitFor(() => { expect(navigator.view.getByRole('button', { name: 'Home' })).toBeDefined() })
-    expect(navigator.container.querySelector('[data-dv-entry-chats]')).toBeNull()
+    await waitFor(() => { expect(navigator.view.getByText('Music video')).toBeDefined() })
+    expect(bench.server.reads).toBeGreaterThan(reads)
     expect(navigator.view.queryByText('Chats')).toBeNull()
+
+    await bench.shell.dispose()
+    const disposed = bench.server.reads
+    await bench.runtime.workspaces.update((draft) => { draft.items = draft.items.filter(item => item.workspaceId !== 'p2') })
+    expect(bench.server.reads).toBe(disposed)
+  })
+
+  it('reads the projects again after a failed read, with no further Workspace change', async () => {
+    const bench = await mountShell()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    bench.server.down = true
+    await act(async () => {
+      await bench.runtime.workspaces.update((draft) => { draft.archivedSessionIds = ['blank-p1' as SessionId] })
+    })
+    await waitFor(() => { expect(warn).toHaveBeenCalledWith('ui-shell: project list read failed', expect.any(Error)) })
+    const added: WireProject = { id: 'p2', title: 'Music video', created_at: '2026-02-05T12:00:00Z', path: '/dv/p2' }
+    bench.server.projects = [added, ...PROJECTS]
+    bench.server.down = false
+    await waitFor(() => { expect(bench.store.getShell().projects).toEqual([added, ...PROJECTS]) }, { timeout: 4000 })
   })
 })
 
@@ -278,13 +204,25 @@ describe('the shell plugin', () => {
     expect(creates).toEqual([{ folder, session: 'entry-chat' }, { folder, session: 'entry-chat' }])
   })
 
-  it('prepares the entry Workspace for DSH\'s first-use initialization while it is loaded', async () => {
+  it('opens the entry page\'s blank chat for DSH\'s first-use start, in one folder when 首页 runs at the same time, and creates no Workspace while it is loaded', async () => {
     const bench = await mountShell()
+    const created: unknown[] = []
+    bench.runtime.sessions.stubCreate((options) => {
+      created.push(options)
+      return Promise.resolve('blank-entry' as SessionId)
+    })
     const workspaces = bench.runtime.ctx.workspaces
+    const listed = workspaces.list.getSnapshot().items
     const request = { directoryName: 'Default', title: 'Default' }
-    await expect(workspaces.initializeDefault(request)).resolves.toMatchObject({ workspaceId: 'ws-entry' })
+    const firstUse = workspaces.initializeDefault(request)
+    bench.runtime.ctx.uiWorkspace.startSession()
+    await expect(firstUse).resolves.toBeUndefined()
+    expect(bench.openSession).toHaveBeenLastCalledWith('blank-entry')
+    expect(created).toEqual([{ cwd: '/dv/DreamVerse/Untitled project' }])
+    expect(workspaces.list.getSnapshot().items).toEqual(listed)
     await bench.shell.dispose()
     await expect(workspaces.initializeDefault(request)).resolves.toBeUndefined()
+    expect(created).toHaveLength(1)
   })
 
   it('opens 轨迹 at the event\'s tool call once the event\'s session is mounted, moving the main session there first', async () => {

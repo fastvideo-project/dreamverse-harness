@@ -106,8 +106,8 @@ async function openPage(): Promise<Page & { errors: string[] }> {
  * @param project - the project.
  */
 async function gotoProject(page: Page, project: string): Promise<void> {
-  const links = await harness.api.get('/api/dv/workspaces') as { projects: Array<{ id: string; title: string }> }
-  const title = links.projects.find(entry => entry.id === project)?.title ?? project
+  const projects = await harness.api.get('/api/dv/projects') as Array<{ id: string; title: string }>
+  const title = projects.find(entry => entry.id === project)?.title ?? project
   await page.goto(`${harness.origin}/#project=${project}`)
   await page.reload({ waitUntil: 'load' })
   const crumb = page.locator('[data-dv-workspace] header').first()

@@ -21,7 +21,7 @@ import type { PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deep
 import { useText } from '@dv/ui-kit/locale.ts'
 import type {} from './contract/index.ts'
 import { useProjectState } from '@dv/ui-kit/useProject.ts'
-import type { WireProjectSummary, WireWorkspaces } from '@dv/ui-kit/types.ts'
+import type { WireProject, WireProjectSummary } from '@dv/ui-kit/types.ts'
 import type { ShellActions } from './actions.ts'
 import { CoverFrame, editedText, useProjectSummaries } from './cover.tsx'
 import { SidebarRightIcon } from './icons.tsx'
@@ -29,7 +29,7 @@ import { SessionSwitcher } from './SessionSwitcher.tsx'
 import { useSlotTabs } from './slot-tabs.ts'
 import type { ShellLocation } from './store.ts'
 import {
-  applyingLocation, formatLocation, getShell, locationOf, NO_PROJECTS, noteInCenter, parseLocation, projectOfSession,
+  applyingLocation, formatLocation, getShell, locationOf, NO_PROJECTS, noteInCenter, parseLocation, projectOfWorkspace,
   setShell, shellClient, showLocation, startUrlMirror, useShell,
 } from './store.ts'
 import css from './shell.module.css'
@@ -77,16 +77,16 @@ function NoWidthControls(): ReactNode {
  * Move the page to a location the URL names, without adding browser history entries: open its project (and its
  * session), or the entry page, then its center view and center fields.
  * @param shell - the shell actions.
- * @param links - the project links.
+ * @param projects - the projects.
  * @param target - the location.
  * @param restore - whether this is the page-load restore, which opens the project's session even though the shell
  *   state already names the URL's project.
  */
-function applyLocation(shell: ShellActions, links: WireWorkspaces, target: ShellLocation, restore: boolean): void {
+function applyLocation(shell: ShellActions, projects: readonly WireProject[], target: ShellLocation, restore: boolean): void {
   applyingLocation(() => {
-    const projectId = target.projectId !== null && links.projects.some(p => p.id === target.projectId) ? target.projectId : null
+    const projectId = target.projectId !== null && projects.some(p => p.id === target.projectId) ? target.projectId : null
     if (projectId === null) {
-      run(() => shell.goHome(target.sessionId))
+      run(() => shell.goHome())
       return
     }
     const current = getShell()
@@ -105,12 +105,12 @@ function applyLocation(shell: ShellActions, links: WireWorkspaces, target: Shell
  */
 export function CenterPanel(props: CenterProps): ReactNode {
   const { sessionId, useWorkspaces, useSessions, shell } = props
-  const links = useShell(s => s.links)
+  const projects = useShell(s => s.projects)
   const projectId = useShell(s => s.projectId)
   const workspace = useWorkspaces(s => sessionId === undefined ? undefined : s.items.find(item => item.sessionIds.includes(sessionId)))
   const workspacesReady = useWorkspaces(s => s.phase === 'ready')
   const sessionsReady = useSessions(s => s.phase === 'ready')
-  const sessionProject = projectOfSession(links, sessionId, workspace)
+  const sessionProject = projectOfWorkspace(projects, workspace)
   const previousProject = useRef<string | null>(null)
   const [restoreTimedOut, setRestoreTimedOut] = useState(false)
   useEffect(() => {
@@ -118,15 +118,15 @@ export function CenterPanel(props: CenterProps): ReactNode {
   }, [sessionId])
   useEffect(() => {
     // Restore the URL location once: the URL's project wins over the session DSH restored, and the main session
-    // follows it. The entry page keeps a restored entry chat and otherwise opens the blank entry session.
+    // follows it.
     // DSH restores its own main session on startup without yielding to later navigation, so the shell waits for that
     // session (or a timeout) before it opens the URL's location; otherwise DSH's late restore replaces it.
-    if (restored || links === null || !workspacesReady || !sessionsReady || (sessionId === undefined && !restoreTimedOut)) return
+    if (restored || projects === null || !workspacesReady || !sessionsReady || (sessionId === undefined && !restoreTimedOut)) return
     restored = true
     previousProject.current = sessionProject
     startUrlMirror()
-    applyLocation(shell, links, parseLocation(window.location.hash), true)
-  }, [links, workspacesReady, sessionsReady, sessionId, sessionProject, shell, restoreTimedOut])
+    applyLocation(shell, projects, parseLocation(window.location.hash), true)
+  }, [projects, workspacesReady, sessionsReady, sessionId, sessionProject, shell, restoreTimedOut])
   useEffect(() => {
     const timer = setTimeout(() => { setRestoreTimedOut(true) }, DSH_RESTORE_WAIT_MS)
     return () => { clearTimeout(timer) }
@@ -135,8 +135,8 @@ export function CenterPanel(props: CenterProps): ReactNode {
     // Back, Forward, and an edited hash move the page to the location the URL names.
     const follow = (): void => {
       const current = getShell()
-      if (!restored || current.links === null || window.location.hash === formatLocation(locationOf(current))) return
-      applyLocation(shell, current.links, parseLocation(window.location.hash), false)
+      if (!restored || current.projects === null || window.location.hash === formatLocation(locationOf(current))) return
+      applyLocation(shell, current.projects, parseLocation(window.location.hash), false)
     }
     window.addEventListener('popstate', follow)
     window.addEventListener('hashchange', follow)
@@ -239,7 +239,7 @@ function TemplateChips(): ReactNode {
  */
 function RecentProjects({ shell, renderFactorySlot }: Pick<ShellInjected, 'shell'> & PropsRenderFactories): ReactNode {
   const t = useText()
-  const projects = useShell(s => s.links?.projects ?? NO_PROJECTS)
+  const projects = useShell(s => s.projects ?? NO_PROJECTS)
   const [showAll, setShowAll] = useState(false)
   const sorted = useMemo(() => [...projects].sort((a, b) => b.created_at.localeCompare(a.created_at)), [projects])
   // One summaries read for every card; a project added to the list reads them again.
@@ -344,8 +344,8 @@ function WorkspacePage(props: CenterProps & { projectId: string; projectSession:
   // The registered center views; an unknown view in the URL shows the first one.
   const views = useSlotTabs('dv.center.view')
   const shown = views.find(tab => tab.id === view)?.id ?? views[0]?.id
-  const listed = useShell(s => s.links?.projects.find(p => p.id === projectId))
-  const project = useMemo(() => listed ?? { id: projectId, title: projectId, created_at: '', path: '', workspace_id: projectId }, [listed, projectId])
+  const listed = useShell(s => s.projects?.find(p => p.id === projectId))
+  const project = useMemo(() => listed ?? { id: projectId, title: projectId, created_at: '', path: '' }, [listed, projectId])
   const sessionTitle = useSessions((s) => {
     const row = sessionId === undefined ? undefined : s.byId[sessionId]
     return row?.blank === false ? row.displayTitle : undefined
