@@ -40,7 +40,7 @@ The package reads the mentions of a message with `parsePromptCitations` of `@dv/
 
 | File | Role |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `DvChatReferences`: the `agent/pre-step` listener that appends the `dv-mentions` message, the project a mention resolves against (the session's bound project, else the newest project that produced a mentioned asset, else the newest project), and the `session/event` listener that imports chat attachments and places mentioned assets |
+| [`src/index.ts`](src/index.ts) | `DvChatReferences`: the `agent/pre-step` listener that appends the `dv-mentions` message, the project a mention resolves against (the session's bound project only), and the `session/event` listener that imports chat attachments and places mentioned assets |
 | [`src/expand.ts`](src/expand.ts) | `describeMention` and `expansionBlock`: each mention URI described with concrete IDs and the record that produced it |
 
 A mention of a clip names the clip by its `ClipId`, which is unique in the project; a placeholder clip names the render record it waits for. A mention of a reference kind reads only kernel methods of `dvProject`: the newest version from `latestVersion` and the version's assets from `assetsOf`. Its line is `<kind> <id>@<n>, reference assets [<assets>]; pass it as input <id>@<n>`, or `no <kind> <id> in the current state` for an ID without a version.
@@ -60,7 +60,7 @@ A mention of a clip names the clip by its `ClipId`, which is unique in the proje
 
 #### What the model sees
 
-When a new user message holds `@[<label>](dv:<kind>/<id>)` mentions, a context message of source `dv-mentions` follows it: "The user referenced these project items:" and one line per mention with the asset, record, version of a reference kind, or clip and the record that produced it (tool, status, prompt, duration, inputs, outputs). An imported chat attachment adds no text of its own; it appears as an asset in the project summary of `@dv/project`.
+When a new user message holds `@[<label>](dv:<kind>/<id>)` mentions, a context message of source `dv-mentions` follows it: "The user referenced these project items:" and one line per mention with the asset, record, version of a reference kind, or clip and the record that produced it (tool, status, prompt, duration, inputs, outputs). In a conversation without a project, each line ends with "this conversation has no project yet; call dv_proj_create first". An imported chat attachment adds no text of its own; it appears as an asset in the project summary of `@dv/project`.
 
 #### Token effect
 

@@ -147,9 +147,22 @@ describe('mention expansion', () => {
     expect(await preStep('hello')).toHaveLength(1)
   })
 
+  it('expands a mention in a chat without a project to the no-project line, even when a project made the asset', async () => {
+    const chat = await start()
+    const { fixture } = chat
+    const user: RecordOrigin = { actor: 'user', surface: 'canvas', session: null, turn: null, tool_call: null, intent: 'set up' }
+    const info = await fixture.project.createProject('elsewhere', user)
+    const picture = await fixture.project.run({
+      ...user, project: info.id, operation: 'asset.import', inputs: [], params: { path: fixture.writeFile('face.png'), mime: 'image/png' },
+    })
+    const messages = await chat.preStep(`look at @[face](dv:asset/${String(picture.outputs[0])})`)
+    expect(textOf(messages[1])).toBe(
+      `The user referenced these project items:\n- face (dv:asset/${String(picture.outputs[0])}): this conversation has no project yet; call dv_proj_create first`,
+    )
+  })
+
   it('removes the expansion and the image import on disposal', async () => {
     const { fixture, plugin, preStep } = await start()
-    await fixture.project.createProject('p', { actor: 'user', surface: 'canvas', session: null, turn: null, tool_call: null, intent: 'set up' })
     expect(await preStep('@[a](dv:asset/none)')).toHaveLength(2)
     await plugin.dispose()
     expect(fixture.context.get('dvChatReferences')).toBeUndefined()

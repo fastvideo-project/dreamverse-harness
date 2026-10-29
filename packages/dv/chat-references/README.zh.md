@@ -40,7 +40,7 @@ kind: "package-reference"
 
 | 文件 | 作用 |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `DvChatReferences`：追加 `dv-mentions` 消息的 `agent/pre-step` 监听、提及所对应的项目（对话绑定的项目，否则产生被提及素材的最新项目，否则最新项目），以及导入对话附件并放置被提及素材的 `session/event` 监听 |
+| [`src/index.ts`](src/index.ts) | `DvChatReferences`：追加 `dv-mentions` 消息的 `agent/pre-step` 监听、提及所对应的项目（只用对话绑定的项目），以及导入对话附件并放置被提及素材的 `session/event` 监听 |
 | [`src/expand.ts`](src/expand.ts) | `describeMention` 与 `expansionBlock`：用具体 ID 和产生它的记录描述每个提及 URI |
 
 片段提及用 `ClipId` 指明片段，`ClipId` 在项目内唯一；占位片段写出它等待的渲染记录。引用种类的提及只读 `dvProject` 的内核方法：最新版本来自 `latestVersion`，该版本的素材来自 `assetsOf`。它的一行为 `<kind> <id>@<n>, reference assets [<assets>]; pass it as input <id>@<n>`；没有版本的 ID 为 `no <kind> <id> in the current state`。
@@ -60,7 +60,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-新用户消息里有 `@[<label>](dv:<kind>/<id>)` 提及时，它后面跟一条来源为 `dv-mentions` 的上下文消息："The user referenced these project items:"，每个提及一行，写出素材、记录、引用种类的版本或片段，以及产生它的记录（工具、状态、prompt、时长、输入、输出）。导入的对话附件本身不加文字；它作为素材出现在 `@dv/project` 的项目摘要里。
+新用户消息里有 `@[<label>](dv:<kind>/<id>)` 提及时，它后面跟一条来源为 `dv-mentions` 的上下文消息："The user referenced these project items:"，每个提及一行，写出素材、记录、引用种类的版本或片段，以及产生它的记录（工具、状态、prompt、时长、输入、输出）。在没有项目的对话中，每行以 "this conversation has no project yet; call dv_proj_create first" 结尾。导入的对话附件本身不加文字；它作为素材出现在 `@dv/project` 的项目摘要里。
 
 #### Token 影响
 

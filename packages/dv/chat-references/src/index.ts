@@ -14,7 +14,7 @@ import type { PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, type ContextFormed, type FileBlock, type ImageBlock, type UserMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, SessionEventMap } from '@deepseek-ai/dsh-session'
 import { importedAssets, placeable } from '@dv/asset-pool'
-import { promptAssets, type AssetId, type ProjectId, type SessionId } from '@dv/project'
+import { promptAssets, type AssetId, type SessionId } from '@dv/project'
 import mime from 'mime-types'
 import { expansionBlock, type ExpansionSources } from './expand.ts'
 
@@ -79,26 +79,12 @@ export default class DvChatReferences extends Service {
       .flatMap(message => message.content.flatMap(block => block.type === 'text' ? [block.text] : []))
       .join('\n')
     const session = brandString<SessionId>(sessionId)
-    const block = expansionBlock(text, this.projectFor(session, text), this.expansionSources())
+    const block = expansionBlock(text, this.ctx.dvProject.sessionProject(session), this.expansionSources())
     if (block === null) return null
     return createUserMessage({
       content: [{ type: 'text', text: block }],
       source: { kind: 'dv-mentions', form: 'snapshot', sections: [{ name: 'dv-mentions', text: block }] },
     })
-  }
-
-  /** The session's bound project, else the newest project whose records produced a mentioned asset, else the newest project. */
-  private projectFor(session: SessionId, text: string): ProjectId | null {
-    const project = this.ctx.dvProject
-    const bound = project.sessionProject(session)
-    if (bound !== null) return bound
-    const assets = promptAssets(text)
-    const projects = project.listProjects().sort((a, b) => b.created_at.localeCompare(a.created_at))
-    const match = projects.find((info) => {
-      const createdBy = project.getState(info.id).components.proj.created_by
-      return assets.some(asset => createdBy[asset] !== undefined)
-    })
-    return match?.id ?? projects[0]?.id ?? null
   }
 
   /** The Project reads expansion needs: mentions resolve against the project's current state. */
