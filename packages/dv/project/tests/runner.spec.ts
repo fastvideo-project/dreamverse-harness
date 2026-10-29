@@ -313,11 +313,11 @@ describe('Runner', () => {
     const m = startModules()
     const project = await createTestProject(m)
     m.runner.registerOperation(operation({
-      name: 'plan.approve', component: 'plan', confirm: 'always', confirmSummary: () => ({ text: 'approve' }),
+      name: 'shot.approve', component: 'shot', confirm: 'always', confirmSummary: () => ({ text: 'approve' }),
     }))
     // The agent's agreement is checked by the operation's tool; the run path itself never waits for it.
-    expect((await m.runner.run(request(project, 'plan.approve', agentOrigin()))).record?.status).toBe('done')
-    expect((await m.runner.run(request(project, 'plan.approve', userOrigin()))).record?.status).toBe('done')
+    expect((await m.runner.run(request(project, 'shot.approve', agentOrigin()))).record?.status).toBe('done')
+    expect((await m.runner.run(request(project, 'shot.approve', userOrigin()))).record?.status).toBe('done')
     expect(() => m.runner.registerOperation(operation({ name: 'shot.render_t2va', component: 'shot', confirm: 'always' })))
       .toThrow(expect.objectContaining({ code: 'invalid_params' }))
   })
@@ -388,7 +388,7 @@ describe('Runner', () => {
       { ...origin, id: 'r1', parents: [], kind: 'operation', component: 'proj', operation: 'proj.create', params: { title: 'Old' },
         inputs: [], outputs: [], created_at: '2026-10-07T23:40:00.000Z' },
       { ...origin, id: 'r2', parents: ['r1'], kind: 'operation', component: 'shot', operation: 'shot.render_ref2va',
-        params: { prompt: 'dance', plan: 'p1', plan_version: 1, shot: 1 }, outputs: [take], created_at: '2026-10-07T23:41:00.000Z',
+        params: { prompt: 'dance' }, outputs: [take], created_at: '2026-10-07T23:41:00.000Z',
         inputs: [{ role: 'reference', ref: { character: 'c1', version: 1 }, resolved_asset: face }] },
       { ...origin, id: 'r3', parents: ['r2'], kind: 'operation', component: 'deliver', operation: 'deliver.timeline_export',
         params: { timeline: 't1' }, inputs: [], outputs: [], created_at: '2026-10-07T23:42:00.000Z' },

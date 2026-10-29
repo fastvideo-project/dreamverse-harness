@@ -12,8 +12,7 @@
  * The operations that add clips assign the new clip IDs and store them in the record's `report.clips`; the `timeline`
  * reducer folds the records into the `timeline` slice. `timeline.create` and `timeline.update` declare the `clip` input
  * role in `pendingInputRoles`: a clip input may name a render that is not done, and the clip is a placeholder until
- * the render is done. A workflow lays clips out with the service method `layout` and reads the newest layout record of
- * a timeline with `lastWrite`. `dvProject` turns each operation into its agent tool
+ * the render is done. `dvProject` turns each operation into its agent tool
  * (`dv_timeline_create`, `dv_timeline_clip_move`, `dv_timeline_export`, ...). While the DSH skill registry is mounted,
  * the component registers the `timeline-editing` skill: the user's editing phrasings mapped to the exact `dv_*` calls.
  *
@@ -24,14 +23,14 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-skill'
 import z from '@deepseek-ai/schemastery'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { OperationContext, OperationResult, OperationSpec, ProjectId, ProjectRecord, ProjectState, RecordId } from '@dv/project'
+import type { OperationContext, OperationResult, OperationSpec, ProjectId, ProjectRecord } from '@dv/project'
 import { exportOperation, exportTimeline } from './export.ts'
 import {
-  addedClipCount, clipProblem, laidOutTimeline, namedTimeline, nextTimelineId, OPERATIONS, reportedClips, timelineReducer,
+  addedClipCount, clipProblem, namedTimeline, OPERATIONS, reportedClips, timelineReducer,
 } from './reducer.ts'
-import type { ClipId, LayoutCall, Timeline, TimelineId } from './types.ts'
+import type { ClipId, Timeline } from './types.ts'
 
-export type { Clip, ClipId, ClipStatus, LayoutCall, Timeline, TimelineId, TimelineState } from './types.ts'
+export type { Clip, ClipId, ClipStatus, Timeline, TimelineId, TimelineState } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -154,39 +153,6 @@ export default class DvTimeline extends Service {
    */
   exportTimeline(timeline: Timeline, dir: string): Promise<string> {
     return exportTimeline(this.ctx, timeline, dir)
-  }
-
-  /**
-   * Lay clips out on a timeline with one record: `timeline.update` of `call.timeline` when the state holds it, else
-   * `timeline.create` of the next free ID (`t<n>` one above the highest number in use, `t1` in a project without
-   * timelines). The record runs at once, copies the call's origin and `started_by`, and has the param `timeline` only.
-   * A clip whose producer is not done is a placeholder until it is done.
-   * @param call - the origin, the project, the timeline (null for a new one) and the clips in playback order.
-   * @returns the record and the timeline it lays the clips on.
-   */
-  async layout(call: LayoutCall): Promise<{ record: RecordId; timeline: TimelineId }> {
-    const { timeline: requested, clips, ...request } = call
-    const slice = this.ctx.dvProject.getState(call.project).components.timeline
-    const kept = slice.timelines.find(entry => entry.id === requested)?.id
-    const timeline = kept ?? nextTimelineId(slice)
-    const result = await this.ctx.dvProject.run({
-      ...request, operation: kept === undefined ? OPERATIONS.create : OPERATIONS.update, params: { timeline },
-      inputs: clips.map(ref => ({ role: 'clip', ref })),
-    })
-    /* v8 ignore next -- the edit operations are not read-only, so a run always returns its record. */
-    if (result.record === null) throw new Error('A timeline layout returned no record.')
-    return { record: result.record.id, timeline }
-  }
-
-  /**
-   * The newest finished record that set the clips of a timeline: a done `timeline.create` or `timeline.update` that
-   * names it (a create without the param names `t1`), among the records up to the state's position.
-   * @param state - the project state.
-   * @param timeline - the timeline.
-   * @returns the record, or null when no such record exists.
-   */
-  lastWrite(state: ProjectState, timeline: TimelineId): ProjectRecord | null {
-    return state.components.proj.records.findLast(record => record.status === 'done' && laidOutTimeline(record) === timeline) ?? null
   }
 
   /**

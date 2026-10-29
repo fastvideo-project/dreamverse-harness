@@ -47,11 +47,11 @@ The whole-timeline operations, `timeline.clip_insert` and `timeline.export` name
 | `timeline.clip_replace` | `dv_timeline_clip_replace` | `clip`, `asset` | Puts another asset in the clip, keeps its clip ID and resets its points |
 | `timeline.export` | `dv_timeline_export` | `timeline` | Writes the timeline to one MP4 file, the record's output `video`; changes no timeline |
 
-The `timeline` slice is `{timelines: Timeline[]}`; a `Timeline` is `{id, name, clips}` and a `Clip` is `{id, asset, source, in_sec, out_sec}`, where `id` is the clip ID, `source` is the render output `{record, output}` the clip was laid out from (null for a clip of an existing asset), and null points mean the asset's start and end. A clip is ready when `asset` is not null; a clip whose `asset` is null is a placeholder for a render that is not done. Its `ClipStatus` is derived from the source record and never stored: `ready`, `rendering` while the source record is pending or running, else `failed`. The package exports the types `Timeline`, `Clip`, `ClipId`, `ClipStatus`, `TimelineId`, `TimelineState` (the slice) and `LayoutCall` (the argument of `layout`).
+The `timeline` slice is `{timelines: Timeline[]}`; a `Timeline` is `{id, name, clips}` and a `Clip` is `{id, asset, source, in_sec, out_sec}`, where `id` is the clip ID, `source` is the render output `{record, output}` the clip was laid out from (null for a clip of an existing asset), and null points mean the asset's start and end. A clip is ready when `asset` is not null; a clip whose `asset` is null is a placeholder for a render that is not done. Its `ClipStatus` is derived from the source record and never stored: `ready`, `rendering` while the source record is pending or running, else `failed`. The package exports the types `Timeline`, `Clip`, `ClipId`, `ClipStatus`, `TimelineId`, and `TimelineState` (the slice).
 
 `timeline.export` is not deterministic, because its output depends on the timeline's clips in the project state, which the params do not name; every call exports again. It runs in the `cpu` resource class and never asks for confirmation. A call fails its record for an unknown timeline, for a project without timelines, and for a timeline without clips. While a clip of the timeline is a placeholder, the call is refused before its record with the clip positions, such as "Clips 3, 5 of timeline t1 are not ready yet."; `exportTimeline` throws the same error. The service method `exportTimeline(timeline, dir)` writes the joined file into `dir` for other callers and returns its path.
 
-Workflows lay renders out through two service methods. `layout(call)` lays out `call.clips` (`{record, output}` refs in playback order) with one record: `timeline.update` of `call.timeline` when the state holds that timeline, else `timeline.create` of the next free ID, `t<n>` one above the highest number in use (`t1` in a project without timelines). The record runs at once, so a clip whose producer is not done is a placeholder. The record copies the call's `RecordOrigin` fields and `started_by`, and its only param is `timeline`. `layout` returns the record and the timeline. `lastWrite(state, timeline)` returns the newest done `timeline.create` or `timeline.update` record of the timeline among the records up to the state's position, or null. A clip edit does not count, and the caller decides what the record means.
+A workflow skill, such as `story-directing` of `@dv/workflow-skills`, lays renders out with the agent tools `dv_timeline_create` and `dv_timeline_update`: each `clip` input names a render output `<record>#<output>`, and a clip whose render is not done is a placeholder until it is done.
 
 -----
 
@@ -68,10 +68,10 @@ The edit operations write only their records. Each one's `execute` checks the ca
 
 | File | Content |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `dvTimeline`: the ten edit operation specs, the registration of all eleven operations, clip ID assignment, `layout` and `lastWrite` |
+| [`src/index.ts`](src/index.ts) | `dvTimeline`: the ten edit operation specs, the registration of all eleven operations, and clip ID assignment |
 | [`src/export.ts`](src/export.ts) | The `timeline.export` operation spec and `exportTimeline` |
 | [`src/reducer.ts`](src/reducer.ts) | The `timeline` reducer and the clip checks it shares with the operations |
-| [`src/types.ts`](src/types.ts) | `Timeline`, `Clip`, `ClipId`, `TimelineId`, `LayoutCall`, and the `timeline` slice declaration |
+| [`src/types.ts`](src/types.ts) | `Timeline`, `Clip`, `ClipId`, `TimelineId`, and the `timeline` slice declaration |
 | [`skills/timeline-editing/SKILL.md`](skills/timeline-editing/SKILL.md) | The body of the `timeline-editing` skill |
 
 -----

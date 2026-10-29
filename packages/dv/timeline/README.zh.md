@@ -47,11 +47,11 @@ kind: "package-reference"
 | `timeline.clip_replace` | `dv_timeline_clip_replace` | `clip`、`asset` | 把片段换成另一个素材，保留其片段 ID 并重置入点和出点 |
 | `timeline.export` | `dv_timeline_export` | `timeline` | 把时间线写成一个 MP4 文件，作为记录的输出 `video`；不改变时间线 |
 
-`timeline` 切片为 `{timelines: Timeline[]}`；`Timeline` 为 `{id, name, clips}`，`Clip` 为 `{id, asset, source, in_sec, out_sec}`，其中 `id` 是片段 ID，`source` 是片段所来自的渲染输出 `{record, output}`（已有素材的片段为 null），入点或出点为 null 表示素材的开头或结尾。`asset` 不为 null 时片段就绪；`asset` 为 null 的片段是尚未完成的渲染的占位片段。它的 `ClipStatus` 由来源记录推导，从不存储：`ready`；来源记录为 pending 或 running 时为 `rendering`；否则为 `failed`。本包导出类型 `Timeline`、`Clip`、`ClipId`、`ClipStatus`、`TimelineId`、`TimelineState`（切片）和 `LayoutCall`（`layout` 的参数）。
+`timeline` 切片为 `{timelines: Timeline[]}`；`Timeline` 为 `{id, name, clips}`，`Clip` 为 `{id, asset, source, in_sec, out_sec}`，其中 `id` 是片段 ID，`source` 是片段所来自的渲染输出 `{record, output}`（已有素材的片段为 null），入点或出点为 null 表示素材的开头或结尾。`asset` 不为 null 时片段就绪；`asset` 为 null 的片段是尚未完成的渲染的占位片段。它的 `ClipStatus` 由来源记录推导，从不存储：`ready`；来源记录为 pending 或 running 时为 `rendering`；否则为 `failed`。本包导出类型 `Timeline`、`Clip`、`ClipId`、`ClipStatus`、`TimelineId`和 `TimelineState`（切片）。
 
 `timeline.export` 不是确定性的，因为它的输出取决于项目状态中时间线的片段，而参数并不指明这些片段；每次调用都重新导出。它在 `cpu` 资源类别中运行，从不请求确认。时间线未知、项目没有时间线或时间线没有片段时，调用让记录失败。时间线中有占位片段时，调用在写下记录之前被拒绝，并列出片段位置，例如 "Clips 3, 5 of timeline t1 are not ready yet."；`exportTimeline` 抛出同样的错误。服务方法 `exportTimeline(timeline, dir)` 为其他调用方把拼好的文件写入 `dir` 并返回其路径。
 
-工作流通过两个服务方法排布渲染结果。`layout(call)` 用一条记录排布 `call.clips`（按播放顺序的 `{record, output}` 引用）：状态中有 `call.timeline` 这条时间线时，用 `timeline.update` 替换它的片段；否则用 `timeline.create` 创建下一个空闲 ID，即比已用最大编号大一的 `t<n>`（没有时间线的项目为 `t1`）。记录立即运行，所以生产者尚未完成的片段是占位片段。记录复制调用的 `RecordOrigin` 字段和 `started_by`，唯一的参数是 `timeline`。`layout` 返回记录和时间线。`lastWrite(state, timeline)` 在状态位置之前的记录中返回该时间线最新的已完成 `timeline.create` 或 `timeline.update` 记录，没有时返回 null。片段编辑不算在内，记录的含义由调用方决定。
+工作流技能（例如 `@dv/workflow-skills` 的 `story-directing`）用智能体工具 `dv_timeline_create` 和 `dv_timeline_update` 排布渲染结果：每个 `clip` 输入指明一个渲染输出 `<record>#<output>`，渲染尚未完成的片段在完成前是占位片段。
 
 -----
 
@@ -68,10 +68,10 @@ kind: "package-reference"
 
 | 文件 | 内容 |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `dvTimeline`：十个编辑操作 spec、全部十一个操作的注册、片段 ID 的分配以及 `layout` 和 `lastWrite` |
+| [`src/index.ts`](src/index.ts) | `dvTimeline`：十个编辑操作 spec、全部十一个操作的注册、以及片段 ID 的分配 |
 | [`src/export.ts`](src/export.ts) | `timeline.export` 操作 spec 和 `exportTimeline` |
 | [`src/reducer.ts`](src/reducer.ts) | `timeline` 归约函数及其与操作共用的片段检查 |
-| [`src/types.ts`](src/types.ts) | `Timeline`、`Clip`、`ClipId`、`TimelineId`、`LayoutCall` 以及 `timeline` 切片声明 |
+| [`src/types.ts`](src/types.ts) | `Timeline`、`Clip`、`ClipId`、`TimelineId` 以及 `timeline` 切片声明 |
 | [`skills/timeline-editing/SKILL.md`](skills/timeline-editing/SKILL.md) | `timeline-editing` 技能的正文 |
 
 -----

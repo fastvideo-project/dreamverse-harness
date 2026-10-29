@@ -64,18 +64,6 @@ function createdTimeline(params: Record<string, unknown>): TimelineId {
   return namedTimeline(params) ?? FIRST_TIMELINE_ID
 }
 
-/** The timeline whose clips a `timeline.create` or `timeline.update` call sets, or null for any other call. */
-export function laidOutTimeline(call: Pick<ProjectRecord, 'operation' | 'params'>): TimelineId | null {
-  if (call.operation === OPERATIONS.create) return createdTimeline(call.params)
-  return call.operation === OPERATIONS.update ? namedTimeline(call.params) : null
-}
-
-/** The next free timeline ID: `t<n>` one above the highest number of a `t<n>` ID in the slice, `t1` for none. */
-export function nextTimelineId(slice: Slice): TimelineId {
-  const highest = Math.max(0, ...slice.timelines.map(timeline => Number(/^t(\d+)$/.exec(timeline.id)?.[1] ?? 0)))
-  return brandString<TimelineId>(`t${String(highest + 1)}`)
-}
-
 /**
  * The clips a `timeline.create` or `timeline.update` lays out, without their IDs: its `assets` param, else its `clip`
  * inputs in order. An input that names a render output keeps it as `source`, and its asset is null until the render is

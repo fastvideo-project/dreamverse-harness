@@ -37,7 +37,7 @@ The plugin has no configuration.
 | --- | --- | --- | --- |
 | `audio.generate` | `dv_audio_generate` | no inputs; params `modality`, `task`, `provider` and `model` (required: the key of a catalog entry, as `dv_models_list` lists it), `prompt` (required: the text to speak, in the markup of the model's prompt skill), `extra` (the model's own parameters, as `dv_models_get` lists them) | output `audio`, one `audio/wav` asset named `<record ID, 8 characters>.wav` with its `duration_sec`; report `{model_id, duration_sec}` |
 
-The operation uses the GPU, is not deterministic, and declares `confirm: never`. The operation has no `seed` param, draws no seed and reports none (`seed: false` in the declaration), because the speech backends take no seed; the same prompt gives a different clip. Workflows call the `GenerationApi` methods of [`@dv/generation`](../generation/README.md) on `dvAudioGenerate`: `render`, `check`, `findTake` and `parseInputs`.
+The operation uses the GPU, is not deterministic, and declares `confirm: never`. The operation has no `seed` param, draws no seed and reports none (`seed: false` in the declaration), because the speech backends take no seed; the same prompt gives a different clip. Workflows call the `GenerationApi` methods of [`@dv/generation`](../generation/README.md) on `dvAudioGenerate`: `render`, `check` and `parseInputs`.
 
 -----
 

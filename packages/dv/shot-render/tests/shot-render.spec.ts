@@ -622,8 +622,6 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     const id = await fixture.ctx.dvShotRender.render({ ...call, ...take, started_by })
     expect(fixture.ctx.dvProject.getRecord(fixture.project, id)).toMatchObject({ status: 'done', started_by, report: { seed: 3 } })
     expect(fixture.reference.requests[0]?.references).toEqual([face])
-    expect(fixture.ctx.dvShotRender.findTake(state(), take, record => record.started_by?.slot === 2)).toBe(id)
-    expect(fixture.ctx.dvShotRender.findTake(state(), take, () => false)).toBeNull()
   })
 
   it('refuses requests outside the model\'s facts before recording, and records stream failures', async () => {

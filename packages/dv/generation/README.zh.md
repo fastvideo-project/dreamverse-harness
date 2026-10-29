@@ -39,7 +39,6 @@ kind: "package-reference"
 | ------------------------------ | ----------------------------------------------------------------------------------------------------- |
 | `render(call)`                 | 带着调用的 `started_by` 通过 `dvProject.run` 运行该操作；带 `after` 的调用被排期                      |
 | `check(call, state, chained?)` | 调用能运行时为 `[]`，否则为第一个拒绝理由，或合为一条理由的模型问题；`chained` 角色算作输入；从不写入 |
-| `findTake(state, call, where)` | 该操作中 `where` 接受的、声明参数与输入都相等的最新完成记录                                           |
 | `parseInputs(raw, state)`      | 针对该操作的 `dvProject.parseInputs`                                                                  |
 
 `importOne(run, file)` 把运行中调用的一个输出导入为资产，名为 `<记录 ID 的前 8 个字符>.<mime 子类型>`，例如 `a1b2c3d4.png`。调用没有记录时它抛出错误。
@@ -51,7 +50,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-该服务在存续期间注册组件，然后用 `dvModels.labelTasks` 注册任务标签；为同一任务再加标签的第二个声明无法启动。该操作把模型键和 `prompt` 放在声明的参数之前，把 `seed`（除非 `seed` 为 `false`）和 `extra` 放在其后。它不是确定性的，使用 GPU，版本为 `1`，以 `never` 确认。前置条件以 `check` 的理由拒绝调用，agent 工具也运行它；它不传任何链式角色，所以渲染从不接受链式角色。`check` 只读取调用的项目、参数和输入。它用 `dvModels.resolve` 解析条目，把每个输入解析为其资产，把每个链式角色加为 `{ role, ref: null, resolved_asset: null }`，并构建请求。当每个输入都有资产时，它加入 `validateGenerationRequest` 的问题；否则 `execute` 在模型运行前检查完整请求。`execute` 使用 `seed` 参数或抽取一个种子（`seed` 为 `false` 时没有种子），再次构建并验证请求，渲染，并把结果交给 `toOutputs`。它把 `seed` 加入报告。`findTake` 以 JSON 比较声明的参数（操作 `params` 的键）和输入，所以键的顺序无关，并按顺序比较每个角色的输入。内核也会存下未声明的参数，例如多余的 `seed`；它不改变 `findTake` 的结果。
+该服务在存续期间注册组件，然后用 `dvModels.labelTasks` 注册任务标签；为同一任务再加标签的第二个声明无法启动。该操作把模型键和 `prompt` 放在声明的参数之前，把 `seed`（除非 `seed` 为 `false`）和 `extra` 放在其后。它不是确定性的，使用 GPU，版本为 `1`，以 `never` 确认。前置条件以 `check` 的理由拒绝调用，agent 工具也运行它；它不传任何链式角色，所以渲染从不接受链式角色。`check` 只读取调用的项目、参数和输入。它用 `dvModels.resolve` 解析条目，把每个输入解析为其资产，把每个链式角色加为 `{ role, ref: null, resolved_asset: null }`，并构建请求。当每个输入都有资产时，它加入 `validateGenerationRequest` 的问题；否则 `execute` 在模型运行前检查完整请求。`execute` 使用 `seed` 参数或抽取一个种子（`seed` 为 `false` 时没有种子），再次构建并验证请求，渲染，并把结果交给 `toOutputs`。它把 `seed` 加入报告。
 
 | 文件                           | 内容                                                                                                                |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------- |

@@ -18,11 +18,11 @@ import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvProject, {
-  type OperationToolValue, type ProjectId, type ProjectRecord, type ProjectState, type RecordId, type RunRequest, type RunResult,
+  type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId, type RunRequest, type RunResult,
   type SessionId,
 } from '@dv/project'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import DvTimeline, { type TimelineId } from '../src/index.ts'
+import DvTimeline from '../src/index.ts'
 
 /** The plugin classes the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
 const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, DvTimeline }
@@ -312,80 +312,5 @@ describe('dvTimeline', () => {
     const [take] = fixture.ctx.dvProject.getRecord(fixture.project, render).outputs
     expect(t1()).toEqual([{ id: 'cl1', asset: take, source: { record: render, output: 0 }, in_sec: null, out_sec: null }])
     expect(timelines().map(entry => entry.id)).toEqual(['t1'])
-  })
-
-  it('lays clips out with timeline.create of the next free t<n>, or timeline.update of a timeline the state holds', async () => {
-    const fixture = await start()
-    const held = gate()
-    fixture.ctx.dvProject.registerComponent('shot')
-    fixture.ctx.dvProject.registerOperation({
-      name: 'shot.render', component: 'shot', version: '1', description: 'stand-in', params: {}, inputs: {},
-      outputs: [{ role: 'video', type: 'video' }], confirm: 'never', deterministic: false, resource: 'none', summarize: () => 'stand-in',
-      execute: async (context) => {
-        await held.promise
-        return { outputs: [context.importAsset(Buffer.from('take'), { mime: 'video/mp4', name: 'take.mp4' })] }
-      },
-    })
-    const origin = { actor: 'system' as const, surface: 'chat' as const, session: null, turn: null, tool_call: null, intent: 'lay out the takes' }
-    const scheduled = await fixture.ctx.dvProject.run({ ...origin, project: fixture.project, operation: 'shot.render', params: {}, inputs: [], after: [] })
-    const render = scheduled.record?.id
-    if (render === undefined) throw new Error('the render wrote no record')
-    const startedBy = { record: render, slot: null }
-    const layout = (timeline: string | null, withStart = false): Promise<{ record: RecordId; timeline: TimelineId }> =>
-      fixture.ctx.dvTimeline.layout({
-        ...origin, project: fixture.project, timeline: timeline === null ? null : brandString<TimelineId>(timeline),
-        clips: [{ record: render, output: 0 }], ...withStart ? { started_by: startedBy } : {},
-      })
-    const record = (id: RecordId): ProjectRecord => fixture.ctx.dvProject.getRecord(fixture.project, id)
-    const timelines = (): Array<[string, string, unknown[]]> => fixture.ctx.dvProject.getState(fixture.project).components.timeline
-      .timelines.map(entry => [entry.id, entry.name, entry.clips.map(clip => [clip.id, clip.asset === null ? null : 'ready', clip.source?.record])])
-
-    // A project without timelines gets t1 at once, with a placeholder clip while the render is pending.
-    const first = await layout(null, true)
-    expect(first.timeline).toBe('t1')
-    expect(record(first.record)).toMatchObject({
-      actor: 'system', surface: 'chat', intent: 'lay out the takes', operation: 'timeline.create', status: 'done',
-      params: { timeline: 't1' }, inputs: [{ role: 'clip', ref: { record: render, output: 0 } }], started_by: startedBy,
-    })
-    expect(timelines()).toEqual([['t1', '', [['cl1', null, render]]]])
-
-    // The next free ID is one above the highest t<n> in use; a call without started_by writes no started_by.
-    await fixture.run('timeline.create', { timeline: 'intro', assets: [] })
-    await fixture.run('timeline.create', { timeline: 't3', name: '片尾', assets: [] })
-    const fourth = await layout(null)
-    expect([fourth.timeline, record(fourth.record).operation]).toEqual(['t4', 'timeline.create'])
-    expect(record(fourth.record)).not.toHaveProperty('started_by')
-
-    // A timeline the state holds keeps its name and gets new clips; a deleted one is replaced by the next free ID.
-    const kept = await layout('t3', true)
-    expect(record(kept.record)).toMatchObject({ operation: 'timeline.update', params: { timeline: 't3' }, started_by: startedBy })
-    await fixture.run('timeline.delete', { timeline: 't3' })
-    expect((await layout('t3')).timeline).toBe('t5')
-    held.resolve()
-    await vi.waitFor(() => {
-      expect(record(render).status).toBe('done')
-    })
-    expect(timelines()).toEqual([
-      ['t1', '', [['cl1', 'ready', render]]], ['intro', '', []], ['t4', '', [['cl2', 'ready', render]]], ['t5', '', [['cl4', 'ready', render]]],
-    ])
-  })
-
-  it('reads the newest done create or update of a timeline as its last write, at the current position', async () => {
-    const fixture = await start()
-    const state = (): ProjectState => fixture.ctx.dvProject.getState(fixture.project)
-    const lastWrite = (timeline: string): string | undefined =>
-      fixture.ctx.dvTimeline.lastWrite(state(), brandString<TimelineId>(timeline))?.id
-    expect(lastWrite('t1')).toBeUndefined()
-    // A create without the param created t1; clip edits, a failed create and other timelines do not set its clips.
-    const created = await fixture.run('timeline.create', { assets: ['a1'] })
-    await fixture.run('timeline.clip_move', { clip: 'cl1', to: 1 })
-    expect(await fixture.run('timeline.create', { assets: [] })).toMatchObject({ status: 'failed' })
-    const second = await fixture.run('timeline.create', { timeline: 't2', assets: [] })
-    expect([lastWrite('t1'), lastWrite('t2'), lastWrite('t9')]).toEqual([created.id, second.id, undefined])
-    const updated = await fixture.run('timeline.update', { timeline: 't1', assets: ['a2'] })
-    expect(lastWrite('t1')).toBe(updated.id)
-    // An undone update is no longer in the records up to the current position.
-    await fixture.ctx.dvProject.undo(fixture.project)
-    expect(lastWrite('t1')).toBe(created.id)
   })
 })

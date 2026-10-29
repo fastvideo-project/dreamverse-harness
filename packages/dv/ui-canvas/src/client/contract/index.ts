@@ -97,7 +97,7 @@ export interface ClaimedRecord {
 /** The anchored chain of a record: the record that started it, the node that it hangs off, its slot and lane. */
 export interface AnchoredChain {
   starter: string
-  /** The node ID that the chain hangs off, such as 'plan:p1'. */
+  /** The node ID that the chain hangs off, such as 'storyboard:s1'. */
   anchor: string
   slot: number | null
   lane?: string
@@ -105,7 +105,7 @@ export interface AnchoredChain {
 
 /** One node as a type supplies it. */
 export interface NodeEntry {
-  /** Stable: other plugins name it (a `ChainAnchor` returns 'plan:<id>'); positions and the unseen set store it. */
+  /** Stable: other plugins name it (a `ChainAnchor` returns '<type>:<id>'); positions and the unseen set store it. */
   id: string
   /** The accessible name, the caption title and the text of the canvas's write intents. */
   title: string
@@ -209,7 +209,7 @@ export interface EditorHost extends Omit<NodeHost, 'rerun'> {
 export interface ChainAnchor {
   /** The operation of a starting record. */
   starter: string
-  /** The node ID that the records it started hang off, such as 'plan:p1'. */
+  /** The node ID that the records it started hang off, such as 'storyboard:s1'. */
   anchor(starter: ProjectRecord): string
   /** The approved versions of the node, read from the workflow's own slice. */
   approvedVersions?(state: WireState, anchorId: string): number[]

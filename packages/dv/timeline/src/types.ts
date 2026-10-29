@@ -7,7 +7,7 @@
  * @module @dv/timeline/types
  */
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { AssetId, ProjectId, RecordId, RecordInputRef, RecordOrigin, StartedBy } from '@dv/project/types'
+import type { AssetId, RecordId } from '@dv/project/types'
 
 /** The ID of a timeline, such as `t1`; the operations name it in their `timeline` param. */
 export type TimelineId = Branded<'DvTimelineId'>
@@ -50,17 +50,6 @@ export interface Timeline {
 /** The Timeline component's slice: every timeline of the project, in creation order. */
 export interface TimelineState {
   timelines: Timeline[]
-}
-
-/** One call of `dvTimeline.layout`: who lays the clips out, on which timeline, and in what order. */
-export interface LayoutCall extends RecordOrigin {
-  project: ProjectId
-  /** The timeline to replace the clips of; null, or a timeline no longer in the state, creates the next free t<n>. */
-  timeline: TimelineId | null
-  /** {record, output} refs in playback order; producers may be pending (pendingInputRoles ['clip']). */
-  clips: RecordInputRef[]
-  /** The record whose execute lays the clips out; the layout record copies it. */
-  started_by?: StartedBy
 }
 
 declare module '@dv/project/types' {

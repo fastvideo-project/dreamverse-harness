@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/dv/audio-generate/README.md
-README.md: a62a2cc43d4ac207531929da23760d70debda90d
-README.zh.md: 7e6cbb94a7a8993d5f30b96f23aaebb0e7e418d2
+README.md: 5d150f336917de54165d40404366cc182cd4fc0c
+README.zh.md: 49d493d94286f4ed6de32ce0e759b333a0d918e1

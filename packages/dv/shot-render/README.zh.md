@@ -37,7 +37,7 @@ kind: "package-reference"
 | --- | --- | --- | --- |
 | `shot.render` | `dv_shot_render` | 输入 `reference`（模型为该角色声明的任意媒体类型的素材，或角色、场景、风格版本 `<id>@<n>`，按提示词顺序）和 `first_frame`（一张图片），各自只在模型接受时可用；参数 `modality`、`task`、`provider` 和 `model`（必填：一个模型目录条目的键，即 `dv_models_list` 列出的键）、`prompt`（必填）、`duration_sec`、`aspect_ratio`、`resolution`、`seed`、`extra`（模型自己的参数，即 `dv_models_get` 列出的额外参数）；仅工具参数 `continue_from`（一条渲染记录，其输出 `#1` 成为 `first_frame`） | 输出 `video`、`last_still`；报告 `{seed, model_id, aspect_ratio, resolution, duration_sec, frame_width, frame_height, num_frames, modality, task, provider, model, timings}`，元素展开改变了提示词时还有 `expanded_prompt` |
 
-该操作使用 GPU，不是确定性的，并声明 `confirm: never`。省略的参数取模型的第一个画面比例和分辨率以及最短时长；调用未给出种子时抽取一个。`based_on` 更早渲染记录的调用是该镜头的新版本，不论每个版本用的是哪个模型。工作流在 `dvShotRender` 上调用 [`@dv/generation`](../generation/README.zh.md) 的 `GenerationApi` 方法：`render`、`check`、`findTake` 和 `parseInputs`。
+该操作使用 GPU，不是确定性的，并声明 `confirm: never`。省略的参数取模型的第一个画面比例和分辨率以及最短时长；调用未给出种子时抽取一个。`based_on` 更早渲染记录的调用是该镜头的新版本，不论每个版本用的是哪个模型。工作流在 `dvShotRender` 上调用 [`@dv/generation`](../generation/README.zh.md) 的 `GenerationApi` 方法：`render`、`check` 和 `parseInputs`。
 
 -----
 

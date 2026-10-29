@@ -232,25 +232,25 @@ describe('agent tools', () => {
     const fixture = await start()
     const projectId = await boundProject(fixture)
     fixture.project.registerOperation(operation({
-      name: 'plan.approve', component: 'plan', confirm: 'always',
+      name: 'shot.approve', component: 'shot', confirm: 'always',
       confirmSummary: call => ({ text: `1. ${String(call.request.params['prompt'])} (5 s)` }),
     }))
-    const properties = Object.keys((fixture.context.tools.schemas().find(tool => tool.name === 'dv_plan_approve')?.parameters as { properties: object }).properties)
+    const properties = Object.keys((fixture.context.tools.schemas().find(tool => tool.name === 'dv_shot_approve')?.parameters as { properties: object }).properties)
     expect(properties).toContain('user_approved')
     const before = fixture.project.listHistory({ project: projectId }).length
-    const refused = await fixture.call('dv_plan_approve', { reason: 'approve', prompt: 'kite' })
+    const refused = await fixture.call('dv_shot_approve', { reason: 'approve', prompt: 'kite' })
     expect(refused.isError && refused.error.message).toBe([
-      'dv_plan_approve needs the user\'s agreement.', 'What it will do:', '1. kite (5 s)',
+      'dv_shot_approve needs the user\'s agreement.', 'What it will do:', '1. kite (5 s)',
       'Show this to the user and ask in the conversation, with the question in bold (for example **Run this now?**). '
         + 'Wait for the user\'s answer, then call again with user_approved: true.',
     ].join('\n'))
     expect(fixture.project.listHistory({ project: projectId })).toHaveLength(before)
-    const approved = value(await fixture.call('dv_plan_approve', { reason: 'approve', prompt: 'kite', user_approved: true }))
+    const approved = value(await fixture.call('dv_shot_approve', { reason: 'approve', prompt: 'kite', user_approved: true }))
     expect(approved).toMatchObject({ status: 'done', params: { prompt: 'kite' } })
     expect(fixture.project.getRecord(projectId, brandString<RecordId>(approved.record)).params).toEqual({ prompt: 'kite' })
     // A human call through the run path is never refused.
     const origin = { actor: 'user' as const, surface: 'canvas' as const, session: null, turn: null, tool_call: null, intent: 'approve' }
-    const human = await fixture.project.run({ ...origin, project: projectId, operation: 'plan.approve', params: { prompt: 'kite' }, inputs: [] })
+    const human = await fixture.project.run({ ...origin, project: projectId, operation: 'shot.approve', params: { prompt: 'kite' }, inputs: [] })
     expect(human.record?.status).toBe('done')
   })
 
@@ -264,7 +264,7 @@ describe('agent tools', () => {
 
   it('refuses to register an operation that asks for confirmation without a confirmSummary', async () => {
     const fixture = await start()
-    expect(() => fixture.project.registerOperation(operation({ name: 'plan.approve', component: 'plan', confirm: 'always' })))
+    expect(() => fixture.project.registerOperation(operation({ name: 'shot.approve', component: 'shot', confirm: 'always' })))
       .toThrow(expect.objectContaining({ code: 'invalid_params' }))
     expect(fixture.project.listOperations()).toEqual([])
   })
@@ -351,7 +351,7 @@ describe('agent tools', () => {
     fixture.project.registerOperation(operation({ name: 'shot.render', component: 'shot', inputs: {
       first_frame: { type: 'image', description: 'A frame.', required: true }, reference: { type: 'image', description: 'refs', many: true, versioned: true },
     } }))
-    fixture.project.registerOperation(operation({ name: 'plan.create', component: 'plan', inputs: {} }))
+    fixture.project.registerOperation(operation({ name: 'shot.list', component: 'shot', inputs: {} }))
     const creators: Record<string, RecordId> = {
       'test_location:l1@2': brandString<RecordId>('r-location'), 'test_location:dup@1': brandString<RecordId>('r1'), 'test_style:dup@1': brandString<RecordId>('r2'),
     }
@@ -380,7 +380,7 @@ describe('agent tools', () => {
     expect(() => parse('shot.render', { first_frame: ['a', 'b'] })).toThrow('takes one reference')
     expect(() => parse('shot.render', { first_frame: 1 })).toThrow('must be <asset>, <record>#<output>, or <id>@<version>')
     expect(() => parse('shot.render', { first_frame: 'a', other: 'b' })).toThrow('Unknown input role "other"')
-    expect(() => parse('plan.create', { first_frame: 'a' })).toThrow('roles: none')
+    expect(() => parse('shot.list', { first_frame: 'a' })).toThrow('roles: none')
     expect(() => parse('no.such', {})).toThrow(expect.objectContaining({ code: 'unknown_operation' }))
     // formatInputRef writes each reference form as the text parseInputs reads back.
     const inputs = parse('shot.render', { first_frame: 'r1#1', reference: ['a1', 'l1@2'] })

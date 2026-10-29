@@ -165,7 +165,7 @@ export interface ProjectModules {
 }
 
 /** The component keys that the fake operations of the Project tests use. */
-export const STAND_IN_COMPONENTS = ['asset', 'bible', 'plan', 'shot', 'timeline', 'inspect']
+export const STAND_IN_COMPONENTS = ['asset', 'bible', 'shot', 'timeline', 'inspect']
 
 /**
  * Build the module set on a temporary root, load it, and register the `proj` reducer.

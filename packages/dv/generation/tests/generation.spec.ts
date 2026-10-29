@@ -363,43 +363,6 @@ describe('defineGeneration', () => {
     expect(refused.isError ? refused.error.message : '').toContain('cannot generate this: It takes no first frame. Nothing was generated;')
   })
 
-  it('finds the newest equal take among the records the caller accepts', async () => {
-    const fixture = await start()
-    const { ctx, project } = fixture
-    const a = await ctx.dvProbeGenerate.render(fixture.call({ prompt: 'dawn', duration_sec: 1 }))
-    const b = await ctx.dvProbeGenerate.render(fixture.call({ duration_sec: 2, prompt: 'dawn' }))
-    const c = await ctx.dvProbeGenerate.render(fixture.call({ prompt: 'dawn' }, [
-      { role: 'reference', ref: { record: a, output: 0 } }, { role: 'first_frame', ref: { record: b, output: 0 } },
-    ]))
-    const d = await ctx.dvProbeGenerate.render(fixture.call({ duration_sec: 1, prompt: 'dawn' }))
-    const state = ctx.dvProject.getState(project)
-    const take = (params: Record<string, unknown>, inputs: RunRequest['inputs'], where: (record: ProjectRecord) => boolean = () => true) =>
-      ctx.dvProbeGenerate.findTake(state, { params: { ...TXT, ...params }, inputs }, where)
-    // The newest equal take wins unless the caller's test leaves it out; key order does not matter.
-    expect(take({ prompt: 'dawn', duration_sec: 1 }, [])).toBe(d)
-    expect(take({ prompt: 'dawn', duration_sec: 1 }, [], record => record.id !== d)).toBe(a)
-    expect(take({ prompt: 'dawn', duration_sec: 2 }, [])).toBe(b)
-    expect(take({ prompt: 'dawn', duration_sec: 3 }, [])).toBeNull()
-    expect(take({ prompt: 'dawn' }, [])).toBeNull()
-    // Inputs match role by role, so the order of the roles does not matter.
-    expect(take({ prompt: 'dawn' }, ctx.dvProbeGenerate.parseInputs({ first_frame: `${b}#0`, reference: [`${a}#0`] }, state))).toBe(c)
-    expect(take({ prompt: 'dawn' }, [{ role: 'reference', ref: { record: b, output: 0 } }])).toBeNull()
-  })
-
-  it('compares only the declared params, so a stray seed changes no take', async () => {
-    const fixture = await start(true, 'DvPlainGenerate')
-    const { ctx, project } = fixture
-    // The declaration has no seed param; the kernel still stores a seed that a call names.
-    const stray = await ctx.dvPlainGenerate.render(fixture.call({ prompt: 'rain', seed: 7 }))
-    expect(fixture.record(stray)).toMatchObject({ status: 'done', params: { prompt: 'rain', seed: 7 } })
-    const state = ctx.dvProject.getState(project)
-    const take = (params: Record<string, unknown>) =>
-      ctx.dvPlainGenerate.findTake(state, { params: { ...TXT, ...params }, inputs: [] }, () => true)
-    expect(take({ prompt: 'rain' })).toBe(stray)
-    expect(take({ prompt: 'rain', seed: 8 })).toBe(stray)
-    expect(take({ prompt: 'snow', seed: 7 })).toBeNull()
-  })
-
   it('runs a declaration without a seed, and names its output after the record', async () => {
     const fixture = await start(true, 'DvPlainGenerate')
     const { ctx, project } = fixture

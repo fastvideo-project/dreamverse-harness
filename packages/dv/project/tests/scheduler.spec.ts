@@ -196,8 +196,8 @@ describe('Scheduler', () => {
     const project = await createTestProject(m)
     const followUps: RecordId[] = []
     m.runner.registerOperation(operation({
-      name: 'plan.approve', component: 'plan',
-      // Like a plan approval, the call schedules one more record while it runs.
+      name: 'shot.batch', component: 'shot',
+      // The call schedules one more record while it runs.
       execute: async () => {
         await new Promise(resolve => setTimeout(resolve, 10))
         const scheduled = await m.runner.run({
@@ -215,13 +215,13 @@ describe('Scheduler', () => {
       },
     }))
 
-    const approve = await schedule(m, project, 'plan.approve', 'plan 1')
+    const batch = await schedule(m, project, 'shot.batch', 'batch 1')
     await m.scheduler.wait(project)
 
-    expect(m.store.getRecord(project, approve.id).status).toBe('done')
+    expect(m.store.getRecord(project, batch.id).status).toBe('done')
     expect(followUps).toHaveLength(1)
     expect(m.store.getRecord(project, followUps[0] as RecordId).status).toBe('done')
-    await expect(m.scheduler.wait(project, [approve.id])).resolves.toBeUndefined()
+    await expect(m.scheduler.wait(project, [batch.id])).resolves.toBeUndefined()
     await expect(m.scheduler.wait(project, [brandString<RecordId>('no-such-record')])).rejects.toMatchObject({ code: 'unknown_record' })
   })
 })

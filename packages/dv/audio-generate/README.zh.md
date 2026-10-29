@@ -37,7 +37,7 @@ kind: "package-reference"
 | --- | --- | --- | --- |
 | `audio.generate` | `dv_audio_generate` | 没有输入；参数 `modality`、`task`、`provider` 和 `model`（必填：一个模型目录条目的键，即 `dv_models_list` 列出的键）、`prompt`（必填：要说的文字，使用模型提示词 skill 的标记）、`extra`（模型自己的参数，即 `dv_models_get` 列出的额外参数） | 输出 `audio`，一个名为 `<记录 ID 前 8 个字符>.wav`、带 `duration_sec` 的 `audio/wav` 素材；报告 `{model_id, duration_sec}` |
 
-该操作使用 GPU，不是确定性的，并声明 `confirm: never`。该操作没有 `seed` 参数，不抽取也不报告种子（声明中的 `seed: false`），因为语音后端不接受种子；同一个提示词会得到不同的片段。工作流在 `dvAudioGenerate` 上调用 [`@dv/generation`](../generation/README.zh.md) 的 `GenerationApi` 方法：`render`、`check`、`findTake` 和 `parseInputs`。
+该操作使用 GPU，不是确定性的，并声明 `confirm: never`。该操作没有 `seed` 参数，不抽取也不报告种子（声明中的 `seed: false`），因为语音后端不接受种子；同一个提示词会得到不同的片段。工作流在 `dvAudioGenerate` 上调用 [`@dv/generation`](../generation/README.zh.md) 的 `GenerationApi` 方法：`render`、`check` 和 `parseInputs`。
 
 -----
 

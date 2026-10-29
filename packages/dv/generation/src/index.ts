@@ -8,7 +8,6 @@
  */
 import { randomInt } from 'node:crypto'
 import { Service, type Context } from '@deepseek-ai/cordis'
-import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
 import {
   formatModelKey, type ModelEntry, type PrimitiveId, type PrimitiveTypes, type TaskOfPrimitive,
 } from '@dv/models'
@@ -50,14 +49,6 @@ export interface GenerationApi {
    */
   check(call: Pick<GenerationCall, 'project' | 'params' | 'inputs'>, state: ProjectState,
     chained?: readonly string[]): Promise<string[]>
-  /**
-   * The newest done record of the operation in `state` that `where` accepts and whose declared params (the keys of the
-   * operation's `params`) and inputs equal the call's (inputs sorted by role, order kept inside a role); null when none.
-   * An undeclared param, such as a stray `seed`, is stored and changes nothing here. The caller decides which records
-   * are candidates.
-   */
-  findTake(state: ProjectState, call: Pick<GenerationCall, 'params' | 'inputs'>,
-    where: (record: ProjectRecord) => boolean): RecordId | null
   /** Parse reference text by role against the operation's input roles, as `dvProject.parseInputs` does. */
   parseInputs(raw: Record<string, string | string[]>, state: ProjectState): RunRequest['inputs']
 }
@@ -150,16 +141,6 @@ function requestOf<P extends PrimitiveId>(spec: GenerationSpec<P>, facts: Primit
   return { request: spec.toRequest(facts, params, inputs, seed), seed }
 }
 
-/** The params of a call that the operation declares, for comparing two calls; an undeclared param is left out. */
-function declaredParams(params: Record<string, unknown>, declared: readonly string[]): Record<string, unknown> {
-  return Object.fromEntries(declared.filter(key => Object.hasOwn(params, key)).map(key => [key, params[key]]))
-}
-
-/** The roles and references of inputs, sorted by role with the order inside a role kept, for comparing two calls. */
-function inputRefs(inputs: ReadonlyArray<{ role: string; ref: RecordInputRef }>): Array<{ role: string; ref: RecordInputRef }> {
-  return [...inputs].sort((a, b) => a.role.localeCompare(b.role)).map(({ role, ref }) => ({ role, ref }))
-}
-
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -219,8 +200,6 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
   const operationParams: OperationSpec['params'] = {
     ...KEY_PARAMS, ...spec.params, ...spec.seed === false ? {} : SEED_PARAM, ...EXTRA_PARAM,
   }
-  // findTake compares only these keys, because the kernel also stores undeclared params.
-  const declared = Object.keys(operationParams)
   return class GenerationService extends Service implements GenerationApi {
     static inject = ['dvProject', 'dvModels']
 
@@ -265,14 +244,6 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
       } catch (error) {
         return { reasons: [messageOf(error)], end: error instanceof Unavailable ? UNAVAILABLE_END : REFUSAL_END }
       }
-    }
-
-    findTake(state: ProjectState, call: Pick<GenerationCall, 'params' | 'inputs'>,
-      where: (record: ProjectRecord) => boolean): RecordId | null {
-      const wanted = { params: declaredParams(call.params, declared), inputs: inputRefs(call.inputs) }
-      return state.components.proj.records.findLast(record => record.operation === spec.operation
-        && record.status === 'done' && where(record)
-        && deepEqualJson({ params: declaredParams(record.params, declared), inputs: inputRefs(record.inputs) }, wanted))?.id ?? null
     }
 
     parseInputs(raw: Record<string, string | string[]>, state: ProjectState): RunRequest['inputs'] {

@@ -427,7 +427,7 @@ export interface SlotFrame {
  * The frame of each slot of a node's frame grid: the newest done claimed node whose anchored chain hangs off that node
  * with that slot (a rerun has the chain of its root) and that has a preview.
  * @param nodes - the drawn nodes, claimed nodes in record order.
- * @param nodeId - the node of the grid, such as `plan:p1`.
+ * @param nodeId - the node of the grid, such as `storyboard:s1`.
  * @param slots - the number of slots.
  * @returns one frame per slot, null for a slot without one.
  */
