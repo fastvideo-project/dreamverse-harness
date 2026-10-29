@@ -12,12 +12,12 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import DvProject, {
   type AssetId, type OperationSpec, type OperationToolValue, type ProjectId, type SessionId,
 } from '../src/index.ts'
 import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot } from './support.ts'
-import { provideChatServices, type TestChatServices } from './workspaces.ts'
+import { provideChatServices, type TestChatServices, TestWorkspace } from './workspaces.ts'
 
 declare module '@dv/project' {
   interface ComponentStates {
@@ -400,6 +400,20 @@ describe('projects as Workspace folders', () => {
     expect(again.id).not.toBe(first.id)
     expect(fixture.project.listRecords(again.id).map(record => record.operation)).toEqual(['proj.create'])
     expect(fixture.services.workspaces.get(again.id)?.sessionIds).toEqual(['s-old'])
+  })
+
+  it('ends a create with a Workspace change after the first record, so a browser that reads the list at that change sees the project', async () => {
+    const fixture = await start()
+    const folder = await fixture.project.newProjectFolder('reel')
+    const listedAtTitle: string[][] = []
+    const setTitle = vi.spyOn(TestWorkspace.prototype, 'setTitle').mockImplementation(function (this: TestWorkspace, title: string) {
+      this.title = title
+      listedAtTitle.push(fixture.project.listProjects().map(info => info.title))
+      return Promise.resolve()
+    })
+    await fixture.project.createProject(folder, 'reel', HUMAN)
+    setTitle.mockRestore()
+    expect(listedAtTitle).toEqual([[], ['reel']])
   })
 
   it('removes a project\'s Workspace and keeps its files; a new chat in the folder makes it a project again', async () => {

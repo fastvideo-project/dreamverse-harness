@@ -247,9 +247,10 @@ export default class DvProject extends Service {
 
   /**
    * Make a folder a project: register it as a DSH Workspace titled `title`, then write the project's first record,
-   * `proj.create` with `params {title}`, on `main` with status `done`, into its `.dreamverse/records.jsonl`, and attach
-   * every stored or live chat session whose working directory is the folder. A folder that is a project already keeps
-   * its records, and a call repeated after a crash finishes the work.
+   * `proj.create` with `params {title}`, on `main` with status `done`, into its `.dreamverse/records.jsonl`, write the
+   * title once more so the last Workspace change of the create follows the record, and attach every stored or live chat
+   * session whose working directory is the folder. A folder that is a project already keeps its records, and a call
+   * repeated after a crash finishes the work.
    * @param folder - an existing folder.
    * @param title - the project title.
    * @param origin - who creates it, from where.

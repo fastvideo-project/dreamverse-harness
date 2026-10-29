@@ -87,7 +87,11 @@ export class ProjectFolders {
       const workspace = known ?? await this.registry.create(path)
       const started = !isProject(workspace)
       if (started || known === undefined) await workspace.setTitle(title)
-      if (started) await writeFirst(brandString<ProjectId>(workspace.id), join(path, PROJECT_DIR))
+      if (started) {
+        await writeFirst(brandString<ProjectId>(workspace.id), join(path, PROJECT_DIR))
+        // Browsers read the project list again at each Workspace change; this one comes after the folder is a project.
+        await workspace.setTitle(title)
+      }
       for (const chat of await this.chats()) {
         if (chat.cwd === undefined || canonicalPath(chat.cwd) !== path) continue
         await workspace.attachSession(chat.id).catch((error: unknown) => {
