@@ -14,16 +14,25 @@
  * message after the step's claimed messages; the agent loop logs it as a `user/message`, appended after the cached
  * history, so each request extends the previous one.
  *
+ * Records that a session started (its agent's calls and the `system` records its approvals scheduled) usually finish
+ * after the tool call that started them returned. When such a record that the agent saw unfinished has finished and no
+ * project message showed it yet, the agent is told even when no step would otherwise run: an idle agent gets a render
+ * wake in its next-turn inbox, which opens a turn, and a running agent whose turn would end gets a render wake in its
+ * next-step inbox at `agent/turn-stopping`, which keeps the turn open for one more step. A render wake carries no update
+ * text: the `agent/pre-step` listener replaces it with the project update message, so the update is logged once, as the
+ * step's `user/message`, and only the inbox splice logs the wake. Each finished record causes at most one render wake
+ * per live Agent; a session without a live Agent is not woken.
+ *
  * Calls the `dvProject` service's public reads and the project summary of the `proj-tools` module. Called by the
  * service, which registers the listener and the projection while the DSH `sessionProjections` service is mounted.
  *
  * @module @dv/project/project-updates
  */
 import type { Context } from '@deepseek-ai/cordis'
-import type { PreStepDecision } from '@deepseek-ai/dsh-agent'
+import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { boundContextSummary, createUserMessage, type ContextFormed, type UserMessage } from '@deepseek-ai/dsh-llm'
-import { isReplacementSurfaceEvent, type SessionEvent } from '@deepseek-ai/dsh-session'
+import { isReplacementSurfaceEvent, type SessionId as DshSessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { z as zod } from 'zod'
@@ -37,6 +46,12 @@ declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
     /** A project message: the project state message (`snapshot`) or a project update message (`notice`). */
     'dv-project': { kind: 'dv-project'; shown: ProjectShown } & Extract<ContextFormed, { form: 'snapshot' | 'notice' }>
+    /**
+     * A render wake: queued in an agent's inbox when records its session started finished unseen. The `agent/pre-step`
+     * listener replaces it with the project update message, so it reaches a model request only when that listener is
+     * not mounted.
+     */
+    'dv-project-wake': { kind: 'dv-project-wake'; project: ProjectId; records: RecordId[] } & Extract<ContextFormed, { form: 'notice' }>
   }
 }
 
@@ -68,6 +83,9 @@ export type SessionSeen =
 /** The message source kind of the project state message and the project update message. */
 export const PROJECT_MESSAGE_KIND = 'dv-project'
 
+/** The message source kind of a render wake. */
+export const WAKE_KIND = 'dv-project-wake'
+
 /** The first line of every project state message. */
 export const STATE_HEAD = 'DreamVerse project state.'
 
@@ -94,6 +112,9 @@ const seenSchema = zod.union([
     records: shownRecords,
   }),
 ])
+
+/** A session state that has a project state message. */
+type SeenProject = Extract<SessionSeen, { from: number }>
 
 /** The state of a session whose log holds no project state message. */
 const UNSEEN: SessionSeen = { from: null }
@@ -195,6 +216,26 @@ export function renderState(project: DvProject, deps: ProjToolDeps, id: ProjectI
 }
 
 /**
+ * What a project update for `seen` reports: `listed`, each record of the `parents[0]` ancestry of `at` that the session
+ * never saw, or saw unfinished and is finished now, in write order; and `moved`, whether the current position changed
+ * in a way the listed records do not explain (the new position is a record the session saw, or the old one left the
+ * history list).
+ * @param records - every record of the project, in write order.
+ * @param at - the current position.
+ * @param seen - the session's state for that project.
+ * @returns the listed records and whether the position moved.
+ */
+function unseenChanges(records: readonly ProjectRecord[], at: RecordId, seen: SeenProject): { listed: ProjectRecord[]; moved: boolean } {
+  const chain = ancestry(new Map(records.map(record => [record.id, record])), at)
+  const shown = new Map(records.map((record, index) => [record.id, seen.records[record.id] ?? (index < seen.base ? 'done' : undefined)]))
+  const listed = records.filter((record) => {
+    const status = shown.get(record.id)
+    return chain.has(record.id) && (status === undefined || (!finished(status) && finished(record.status)))
+  })
+  return { listed, moved: at !== seen.at && (shown.get(at) !== undefined || !chain.has(seen.at)) }
+}
+
+/**
  * The project message one step of a session needs, or null.
  * - No bound project: null.
  * - No project state message in the state, or one of another project: the project state message, whose source shows
@@ -238,13 +279,7 @@ export function projectMessage(project: DvProject, deps: ProjToolDeps, session: 
       },
     })
   }
-  const chain = ancestry(new Map(records.map(record => [record.id, record])), at)
-  const shown = new Map(records.map((record, index) => [record.id, seen.records[record.id] ?? (index < seen.base ? 'done' : undefined)]))
-  const listed = records.filter((record) => {
-    const status = shown.get(record.id)
-    return chain.has(record.id) && (status === undefined || (!finished(status) && finished(record.status)))
-  })
-  const moved = at !== seen.at && (shown.get(at) !== undefined || !chain.has(seen.at))
+  const { listed, moved } = unseenChanges(records, at, seen)
   if (listed.length === 0 && !moved) return null
   const lines = [
     UPDATE_HEAD,
@@ -262,25 +297,110 @@ export function projectMessage(project: DvProject, deps: ProjToolDeps, session: 
 }
 
 /**
- * Register the `dvProjectSight` projection and the `agent/pre-step` listener under `ctx`. The listener awaits `next()`
- * and returns a reject decision, an aborted step, and an empty decision of a step that will not run (the first step of
- * a turn, or a step whose claimed messages a later listener removed) unchanged; otherwise it inserts
- * {@link projectMessage}'s message right after the last claimed message, so the user's own message precedes it.
- * @param ctx - a context with the `sessionProjections` service; disposal removes both.
+ * The records the agent of `session` must be told about without waiting for its next step: those a project update
+ * would list that the session started (an `agent` or `system` record of this session), that the agent saw unfinished,
+ * and that are `done`, `failed` or `cancelled` now. A record that a move or a write after an undo discarded is off the
+ * history list, and a record that a project message or a tool result already showed finished is listed by no update,
+ * so neither is returned. Empty for a session without a bound project or without a project state message of it.
+ * @param project - the service.
+ * @param session - the agent's session ID.
+ * @param seen - the session's `dvProjectSight` state.
+ * @returns the record IDs, in write order.
+ */
+export function unreportedFinishes(project: DvProject, session: SessionId, seen: SessionSeen): RecordId[] {
+  const id = project.sessionProject(session)
+  if (id === null || seen.from === null || seen.project !== id) return []
+  return unseenChanges(project.listRecords(id), project.line(id).at, seen).listed
+    .filter(record => record.actor !== 'user' && record.session === session && seen.records[record.id] !== undefined)
+    .map(record => record.id)
+}
+
+/**
+ * The render wake for `records`, a user message whose source is
+ * `{kind: 'dv-project-wake', form: 'notice', summary: '<n> finished: <ids>', project, records}` and whose text is
+ * `DreamVerse operations you started have finished: <ids>. A DreamVerse project update follows with their results.`
+ * A model reads the text only when no `agent/pre-step` listener of this module replaces the wake.
+ * @param project - the project of the records.
+ * @param records - the finished records.
+ * @returns the message.
+ */
+export function renderWake(project: ProjectId, records: readonly RecordId[]): UserMessage {
+  const ids = records.join(', ')
+  return createUserMessage({
+    content: [{ type: 'text', text: `DreamVerse operations you started have finished: ${ids}. A DreamVerse project update follows with their results.` }],
+    source: {
+      kind: WAKE_KIND, form: 'notice', summary: boundContextSummary(`${String(records.length)} finished: ${ids}`), project, records: [...records],
+    },
+  })
+}
+
+/**
+ * Register the `dvProjectSight` projection, the `agent/pre-step` listener and render wake delivery under `ctx`.
+ *
+ * The listener awaits `next()` and returns a reject decision and an aborted step unchanged. It removes every render
+ * wake from the decision's messages. When it removed none and none are left, a step that will not run (the first step
+ * of a turn, or a step whose claimed messages a later listener removed) is returned unchanged. Otherwise it inserts
+ * {@link projectMessage}'s message right after the last claimed message that is not a render wake, so the user's own
+ * message precedes it, or returns the messages without the wakes when there is no message; a first step left empty
+ * this way ends its turn without a model call.
+ *
+ * Delivery sends one render wake naming {@link unreportedFinishes} minus the records the Agent was already woken for:
+ * - at `agent/turn-stopping`, into the next-step inbox without waking, which keeps the closing turn open for one step;
+ * - after `agent/status` enters `idle`, into the next-turn inbox with a wakeup, when the Agent is still idle;
+ * - after the returned finish handler saw a record of a session with a live Agent finish, likewise when it is idle.
+ * The last two run in a microtask, outside the project lock and after the scheduler started the dependents of the
+ * record; finishes that land in one synchronous burst share it.
+ * @param ctx - a context with the `sessionProjections` service; disposal removes the projection and the listeners and
+ *   stops delivery.
  * @param project - the service.
  * @param deps - the asset store and the reducers' summaries.
+ * @returns the finish handler, which the service calls inside the project lock with each record whose update made its
+ *   status `done`, `failed` or `cancelled`.
  */
-export function registerProjectUpdates(ctx: Context, project: DvProject, deps: ProjToolDeps): void {
+export function registerProjectUpdates(ctx: Context, project: DvProject, deps: ProjToolDeps): (record: ProjectRecord) => void {
   ctx.sessionProjections.register(seenProjection())
   ctx.on('agent/pre-step', async ({ agent, messages, step, signal }, next): Promise<PreStepDecision> => {
     const decision = await next()
     if (decision.kind === 'reject' || signal.aborted) return decision
-    if (decision.messages.length === 0 && (step === 1 || messages.length > 0)) return decision
+    const kept = decision.messages.filter(entry => entry.source.kind !== WAKE_KIND)
+    const removedWake = kept.length !== decision.messages.length
+    if (!removedWake && kept.length === 0 && (step === 1 || messages.length > 0)) return decision
     const seen = ctx.sessionProjections.stateOf(agent.session, SEEN_PROJECTION)
-    if (seen === undefined) return decision
-    const message = projectMessage(project, deps, brandString<SessionId>(agent.id), seen)
-    if (message === null) return decision
-    const last = decision.messages.findLastIndex(entry => messages.includes(entry))
-    return { ...decision, messages: decision.messages.toSpliced(last + 1, 0, message) }
+    const message = seen === undefined ? null : projectMessage(project, deps, brandString<SessionId>(agent.id), seen)
+    if (message === null) return removedWake ? { ...decision, messages: kept } : decision
+    const last = kept.findLastIndex(entry => messages.includes(entry))
+    return { ...decision, messages: kept.toSpliced(last + 1, 0, message) }
   })
+
+  // A wake whose step never logged its update (a rejected step, a cancel that cleared the inbox) is not sent again,
+  // so delivery cannot loop.
+  const woken = new WeakMap<Agent, ReadonlySet<RecordId>>()
+  const pending = new WeakSet<Agent>()
+  let live = true
+  ctx.effect(() => () => { live = false }, 'dvProject render wakes')
+
+  const notify = (agent: Agent, target: 'next-turn' | 'next-step'): void => {
+    const seen = ctx.sessionProjections.stateOf(agent.session, SEEN_PROJECTION)
+    if (seen === undefined || seen.from === null) return
+    const before = woken.get(agent) ?? new Set<RecordId>()
+    const records = unreportedFinishes(project, brandString<SessionId>(agent.id), seen).filter(id => !before.has(id))
+    if (records.length === 0) return
+    woken.set(agent, new Set([...before, ...records]))
+    agent.send(renderWake(seen.project, records), target, target === 'next-turn')
+  }
+  const wakeLater = (agent: Agent): void => {
+    if (pending.has(agent)) return
+    pending.add(agent)
+    queueMicrotask(() => {
+      pending.delete(agent)
+      if (live && agent.status === 'idle' && ctx.get('agents')?.get(agent.id) === agent) notify(agent, 'next-turn')
+    })
+  }
+  ctx.on('agent/turn-stopping', ({ agent }) => { notify(agent, 'next-step') })
+  ctx.on('agent/status', ({ agent, status }) => { if (status === 'idle') wakeLater(agent) })
+  return (record) => {
+    if (!live || record.actor === 'user' || record.session === null) return
+    const agent = ctx.get('agents')?.get(brandString<DshSessionId>(record.session))
+    if (agent !== undefined) wakeLater(agent)
+  }
 }

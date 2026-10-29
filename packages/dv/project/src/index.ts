@@ -24,7 +24,9 @@
  * service is mounted, Project's rules reach the agent as the `dv:project` prompt section (the `agent-context` module),
  * whose text is the same at every step. While the DSH `sessionProjections` service is mounted, the project's state
  * reaches the agent as the project state message and afterwards as project update messages appended to the
- * conversation (the `project-updates` module), folded from what the session's log shows the agent saw.
+ * conversation (the `project-updates` module), folded from what the session's log shows the agent saw. When records
+ * that a session started finish after its tool calls returned, the same module wakes the session's idle agent, or keeps
+ * its closing turn open, so the agent reads the finish as a project update without being asked.
  *
  * The asset pool registers itself with {@link DvProject.registerAssetStore}; until it does, a run that names an input
  * asset or imports an output fails.
@@ -123,16 +125,25 @@ export default class DvProject extends Service {
    */
   private registerOperationTool: ((spec: OperationSpec) => () => void) | null = null
   private readonly toolDisposers = new Map<string, () => void>()
+  /**
+   * Hands each record that reached `done`, `failed` or `cancelled` to the render wakes of the `project-updates` module
+   * while the DSH `sessionProjections` service is mounted, else null.
+   */
+  private recordFinished: ((record: ProjectRecord) => void) | null = null
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'dvProject')
     this.subscriptions.onListenerError = (error) => {
       ctx.logger('dvProject').warn('a project subscriber threw: %s', error instanceof Error ? error.message : String(error))
     }
-    // Every change on disk reaches the subscribers; a finished record also lets the scheduler start its dependents.
+    // Every change on disk reaches the subscribers; a finished record also lets the scheduler start its dependents and
+    // then reaches the render wakes, so a dependent it released is already queued when the agent is told.
     this.store = new RecordStore(config.root, (project, event) => {
       this.subscriptions.emit(project, event)
-      if (event.kind === 'update' && ['done', 'failed', 'cancelled'].includes(event.record.status)) this.scheduler.recordFinished(project)
+      if (event.kind === 'update' && ['done', 'failed', 'cancelled'].includes(event.record.status)) {
+        this.scheduler.recordFinished(project)
+        this.recordFinished?.(event.record)
+      }
     })
     this.reducers = new ReducerRegistry(this.store)
     this.history = new History(this.store)
@@ -192,7 +203,13 @@ export default class DvProject extends Service {
         text: () => projectContext(this),
       }), 'dvProject prompt section')
     })
-    ctx.inject(['sessionProjections'], (child) => { registerProjectUpdates(child, this, projToolDeps) })
+    ctx.inject(['sessionProjections'], (child) => {
+      const finished = registerProjectUpdates(child, this, projToolDeps)
+      child.effect(() => {
+        this.recordFinished = finished
+        return () => { this.recordFinished = null }
+      }, 'dvProject render wake handler')
+    })
     ctx.effect(() => () => { this.scheduler.dispose() }, 'dvProject stop scheduling')
     this.runner.recover().catch((error: unknown) => {
       ctx.logger('dvProject').warn('could not end unfinished records: %s', error instanceof Error ? error.message : String(error))

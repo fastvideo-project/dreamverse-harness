@@ -1,33 +1,20 @@
 // Project updates: the shipped video-harness profile (`dsh web`, the llm-pi-ai openai-completions route, the fake video
 // backend) drives a scripted model through steps that change the project, including a canvas import and a render that
-// finishes between two steps of one turn and an undo between turns. Every agent request of the chat session extends the
-// request before it token for token: the same request fields, the same earlier messages, new messages only appended.
+// finishes between two steps of one turn, renders that finish during the agent's final step and keep its turn open for
+// one more step, and an undo between turns. Every agent request of the chat session extends the request before it token
+// for token: the same request fields, the same earlier messages, new messages only appended.
 import type { Browser, Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { bootHarness, playwright, waitFor, type BootedHarness } from '../harness.ts'
+import { bootHarness, playwright, waitFor, waitForRecords, type BootedHarness } from '../harness.ts'
 import {
-  assetIdOf, scheduledOf, startScriptedModel, textOf, type ChatRequest, type ScriptedModel, type ScriptedRule,
+  UPDATE_HEAD, assetIdOf, expectEachRequestExtendsThePrevious, scheduledOf, startScriptedModel, textOf, type ChatRequest,
+  type ScriptedModel, type ScriptedRule,
 } from '../scripted-model.ts'
 
 /** A 1×1 opaque PNG, the agent's product image. */
 const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 /** A red 1×1 PNG, the image the user imports on the canvas. */
 const RED_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGM4IScHAAK2AQU0pnWqAAAAAElFTkSuQmCC'
-
-/**
- * Assert that each request extends the one before it: every request field other than the messages is equal, and the
- * earlier messages are unchanged at the start of the later request.
- * @param requests - the agent requests of one chat session, in arrival order.
- */
-function expectEachRequestExtendsThePrevious(requests: readonly ChatRequest[]): void {
-  for (let index = 1; index < requests.length; index += 1) {
-    const { messages: previous, ...previousFields } = requests[index - 1] as ChatRequest
-    const { messages: next, ...nextFields } = requests[index] as ChatRequest
-    expect(nextFields, `request ${String(index)} fields`).toEqual(previousFields)
-    expect(next.length, `request ${String(index)} length`).toBeGreaterThan(previous.length)
-    expect(next.slice(0, previous.length), `request ${String(index)} prefix`).toEqual(previous)
-  }
-}
 
 /** The project state and project update messages of one request, as text. */
 function projectMessages(request: ChatRequest): string[] {
@@ -44,9 +31,10 @@ describe('project updates reach the agent as appended messages', () => {
 
   // The scripted agent: imports a product image, plans two shots, approves them with renders held, then, between two
   // steps, the user imports an image on the canvas and the first render finishes; the agent reads the plan again and
-  // waits for the renders.
+  // ends its turn while the other records finish, and answers the project update that keeps its turn open.
   const rules: ScriptedRule[] = [
     { match: /只回复\S+/, steps: [view => ({ text: `收到${/只回复(\S+)/.exec(view.userText)?.[1] ?? ''}` })] },
+    { match: /^DreamVerse project updates since your last step:/, steps: [{ text: '两个镜头已渲染。' }] },
     {
       match: '做两个镜头的广告',
       steps: [
@@ -75,12 +63,12 @@ describe('project updates reach the agent as appended messages', () => {
           }, 'the first render', 60_000)
           return { calls: [{ name: 'dv_story_preview', args: { reason: '再看计划', plan: 'p1' } }] }
         },
-        () => {
+        async () => {
           harness.backend.releaseAll()
-          return { calls: [{ name: 'dv_proj_wait', args: { records: scheduled } }] }
+          await waitForRecords(harness.api, projectId, scheduled)
+          return { text: '两个镜头已开始渲染。' }
         },
       ],
-      endText: '两个镜头已渲染。',
     },
   ]
 
@@ -119,7 +107,7 @@ describe('project updates reach the agent as appended messages', () => {
     await page.locator('[data-dv-chat]:visible').first().getByText(reply, { exact: false }).first().waitFor({ timeout: 90_000 })
   }
 
-  it('keeps one prefix across tool steps, a canvas import, a background render finish, and an undo between turns', async () => {
+  it('keeps one prefix across tool steps, a canvas import, background render finishes, and an undo between turns', async () => {
     const page = await openProject()
     harness.backend.hold()
     await chat(page, '做两个镜头的广告', '两个镜头已渲染')
@@ -139,15 +127,19 @@ describe('project updates reach the agent as appended messages', () => {
     expect(system).toContain('DreamVerse project rules:')
     expect(system).not.toContain('"head"')
     const updates = (requests.at(-1) as ChatRequest).messages.filter(message => message.role === 'user').map(message => textOf(message.content))
-      .filter(text => text.startsWith('DreamVerse project updates since your last step:'))
+      .filter(text => text.startsWith(UPDATE_HEAD))
     const text = updates.join('\n')
-    // The agent's own import, plan, approval and wait are never repeated.
+    // The agent's own import, plan and approval are never repeated.
     expect(text).not.toContain('(your call)')
     // The step after the canvas import and the first render's finish names both, once.
     expect(text.match(/^- done \S+ \(user on canvas\): imported knife\.png$/gm)).toHaveLength(1)
     expect(text.match(/^- done \S+ \(scheduled\): shot 1\b/gm)).toHaveLength(1)
-    // dv_proj_wait showed the second render finished, so no update repeats it.
-    expect(text).not.toMatch(/\(scheduled\): shot 2\b/)
+    // The second render finished during the agent's final step, which ended its reply; the turn went on with one more step
+    // whose request ends with the update right after that reply.
+    expect(text.match(/^- done \S+ \(scheduled\): shot 2\b/gm)).toHaveLength(1)
+    const kept = (requests[6] as ChatRequest).messages
+    expect(textOf(kept.at(-1)?.content)).toMatch(/^- done \S+ \(scheduled\): shot 2\b/m)
+    expect([kept.at(-2)?.role, textOf(kept.at(-2)?.content)]).toEqual(['assistant', '两个镜头已开始渲染。'])
     // The undo between turns reaches the next turn as a move.
     expect(updates.at(-1)).toMatch(new RegExp(`^- history: the current step is ${beforeTip}; dv_proj_history_list shows which steps are undone or discarded\\.$`, 'm'))
     // No record line is sent twice.

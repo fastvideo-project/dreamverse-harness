@@ -105,11 +105,11 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-挂载了 DSH `systemPrompt` 服务时，每一步的系统提示词都带有 `dv:project` 段落，其中只有项目的规则：没有项目的对话用 `dv_proj_create` 开始，一旦项目状态消息、`dv_proj_create` 或 `dv_proj_open` 给出了本对话的项目，所有工作都留在该项目中；智能体自己的工具结果没有展示过的变化以 DreamVerse 项目更新到达，`dv_proj_state` 随时读取整个项目；智能体的每次调用和用户的每次编辑都立即成为项目历史中的一步，用户不需要接受修改；回滚调用 `dv_proj_undo`（一步，或 `to` 某一步），`dv_proj_redo` 往前移一步，这些移动不加一步，移动之后的新修改会永久丢弃后面的步骤，所以用户可能还需要它们时，智能体先询问；回滚从不用新编辑重建之前的状态；用项目摘要中的 ID 指称对象（记录、`<record>#<n>`、已注册引用种类的版本 `<id>@<version>`（规则列出这些种类）、素材，以及其他任何条目的 ID），用户用 `dv:` 提及指出对象，有歧义的指称要询问而不是猜；因需要用户同意而被拒绝的调用要给用户看，并在对话中用粗体提问；过期记录只在用户同意时重新渲染。该段落不含项目状态、选中项，也不含用户看不到的偏好。
+挂载了 DSH `systemPrompt` 服务时，每一步的系统提示词都带有 `dv:project` 段落，其中只有项目的规则：没有项目的对话用 `dv_proj_create` 开始，一旦项目状态消息、`dv_proj_create` 或 `dv_proj_open` 给出了本对话的项目，所有工作都留在该项目中；智能体自己的工具结果没有展示过的变化以 DreamVerse 项目更新到达，`dv_proj_state` 随时读取整个项目；结果为 pending 的调用，以及结果在 `scheduled` 下列出的记录，在后台运行，没有什么会等待它们，智能体继续工作或结束本轮；它们结束时，一条项目更新逐条列出，轮次结束之后也是如此，智能体检查结果并告诉用户：完成的渲染给出链接，失败的给出错误；智能体的每次调用和用户的每次编辑都立即成为项目历史中的一步，用户不需要接受修改；回滚调用 `dv_proj_undo`（一步，或 `to` 某一步），`dv_proj_redo` 往前移一步，这些移动不加一步，移动之后的新修改会永久丢弃后面的步骤，所以用户可能还需要它们时，智能体先询问；回滚从不用新编辑重建之前的状态；用项目摘要中的 ID 指称对象（记录、`<record>#<n>`、已注册引用种类的版本 `<id>@<version>`（规则列出这些种类）、素材，以及其他任何条目的 ID），用户用 `dv:` 提及指出对象，有歧义的指称要询问而不是猜；因需要用户同意而被拒绝的调用要给用户看，并在对话中用粗体提问；过期记录只在用户同意时重新渲染。该段落不含项目状态、选中项，也不含用户看不到的偏好。
 
 #### Token 影响
 
-无论项目多大，每一步约 500 个 token。
+无论项目多大，每一步约 560 个 token。
 
 #### KV Cache 影响
 
@@ -119,7 +119,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-挂载了 DSH `sessionProjections` 服务时，绑定了项目的聊天会话的每一步最多在该步自己的消息之后得到一条用户角色消息。项目状态消息出现在第一个没有项目视图的步骤（绑定会话的第一步，智能体用 `dv_proj_create` 或 `dv_proj_open` 绑定未绑定会话之后的第一步，或压缩、工具结果裁剪遮蔽了该消息之后的第一步）："DreamVerse project state. This conversation belongs to project <ProjectId>: do all work in it and never call dv_proj_create or dv_proj_open. Later changes that your own tool results did not show reach you as DreamVerse project updates. The project summary, as dv_proj_state returns it without the reports of recent records:"，然后是缩进 JSON 形式的该摘要。之后，项目以智能体没见过的方式发生变化的步骤会得到项目更新消息："DreamVerse project updates since your last step:"，撤销、重做或移动改变了当前位置时，后面先有一行 `- history: the current step is <record>; dv_proj_history_list shows which steps are undone or discarded.`；然后，直到当前位置的历史列表中智能体没见过的每条记录，以及其中它见过未完成、之后已结束的每条记录，各一行 `- <status> <record> (<who>): <text>`，其中 who 是 `user on canvas`、`user on timeline`、`user in asset pool`、`user in chat`、`user in history`、`user via API`、`your call`、`another chat` 或 `scheduled`，text 对完成的记录是操作的摘要（每个输出再缩进一行 `- <role>: <asset> (<mime>) <url>`），对失败或取消的记录是 `<intent>: <error>`，对未结束的记录是意图。同一会话的操作工具结果、`dv_proj_wait` 结果或项目摘要工具结果展示过的记录不再重复，没有新内容的步骤不得到消息。
+挂载了 DSH `sessionProjections` 服务时，绑定了项目的聊天会话的每一步最多在该步自己的消息之后得到一条用户角色消息。项目状态消息出现在第一个没有项目视图的步骤（绑定会话的第一步，智能体用 `dv_proj_create` 或 `dv_proj_open` 绑定未绑定会话之后的第一步，或压缩、工具结果裁剪遮蔽了该消息之后的第一步）："DreamVerse project state. This conversation belongs to project <ProjectId>: do all work in it and never call dv_proj_create or dv_proj_open. Later changes that your own tool results did not show reach you as DreamVerse project updates. The project summary, as dv_proj_state returns it without the reports of recent records:"，然后是缩进 JSON 形式的该摘要。之后，项目以智能体没见过的方式发生变化的步骤会得到项目更新消息："DreamVerse project updates since your last step:"，撤销、重做或移动改变了当前位置时，后面先有一行 `- history: the current step is <record>; dv_proj_history_list shows which steps are undone or discarded.`；然后，直到当前位置的历史列表中智能体没见过的每条记录，以及其中它见过未完成、之后已结束的每条记录，各一行 `- <status> <record> (<who>): <text>`，其中 who 是 `user on canvas`、`user on timeline`、`user in asset pool`、`user in chat`、`user in history`、`user via API`、`your call`、`another chat` 或 `scheduled`，text 对完成的记录是操作的摘要（每个输出再缩进一行 `- <role>: <asset> (<mime>) <url>`），对失败或取消的记录是 `<intent>: <error>`，对未结束的记录是意图。同一会话的操作工具结果、`dv_proj_wait` 结果或项目摘要工具结果展示过的记录不再重复，没有新内容的步骤不得到消息。没有步骤要运行时，智能体也会得到更新。由本会话开始（本会话的智能体记录，或其分镜计划批准写下的 `scheduled` 记录）、且智能体见过未完成的记录，在项目消息或工具结果展示其结束之前结束时，会引起一次渲染唤醒。智能体空闲时，渲染唤醒开启一个新轮次，其第一步只带项目更新，紧跟在智能体的上一条回复之后。智能体的最后一步正在运行时，该轮次再多运行一步，这一步带着项目更新。渲染唤醒本身（来源种类 `dv-project-wake`，文本 "DreamVerse operations you started have finished: <records>. A DreamVerse project update follows with their results."）在智能体的收件箱中等待，从不到达模型：项目更新取代它，所以每次结束只报告一次。
 
 #### Token 影响
 
@@ -127,7 +127,7 @@ kind: "package-reference"
 
 #### KV Cache 影响
 
-每条消息都记录为 `user/message`，追加在已缓存的历史之后，所以请求逐个 token 地延伸上一个请求。压缩开始新的请求序列，下一步会再次发送项目状态消息。
+每条消息都记录为 `user/message`，追加在已缓存的历史之后，所以请求逐个 token 地延伸上一个请求。渲染唤醒开启的轮次和它增加的步骤只追加智能体的上一条回复和项目更新，所以它们的请求同样延伸上一个请求。压缩开始新的请求序列，下一步会再次发送项目状态消息。
 
 ## 已知限制与延期工作
 
@@ -137,4 +137,6 @@ kind: "package-reference"
 - 移动行不说明是谁移动的，也不列出被撤销或被丢弃的步骤，因为 `line.json` 不记录谁移动了当前位置；`dv_proj_history_list` 给出每个步骤的位置。
 - 项目更新不报告改名，也不报告变为过期的记录；下一份项目摘要会展示两者。
 - 从 `pending` 到 `running` 的变化，以及记录运行期间写入的输出和报告不报告；结束会报告。
+- 渲染唤醒只到达智能体在宿主中存活的会话。没有智能体加载的会话（重启之后，遗留记录被取消为 `stopped`）在下一步才得知结束。无头运行在一个任务之后结束，所以结束时仍在运行的记录会在下次启动时被取消为 `stopped`，不唤醒任何智能体。
+- 用户停止开始了某个计划渲染的轮次之后，该渲染继续运行，它结束时会唤醒智能体。
 - 引用种类不给出素材的版本解析后不产生任何输入，所以指向这种版本的记录不留下它的痕迹，版本变化后也不会过期。

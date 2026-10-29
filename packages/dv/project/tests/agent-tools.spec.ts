@@ -282,6 +282,10 @@ describe('agent tools', () => {
       + 'state message, dv_proj_create or dv_proj_open names this conversation\'s project, do all work in it and never call '
       + 'dv_proj_create or dv_proj_open again. Changes of the project that your own tool results did not show reach you as '
       + 'DreamVerse project updates; dv_proj_state reads the whole project at any time.')
+    expect(unbound).toContain('- Calls whose result says pending, and the records a result lists under scheduled, run in the '
+      + 'background; nothing waits for them. Keep working or end your turn. When they finish, a DreamVerse project update lists '
+      + 'each one, also after your turn ended; then check the result and tell the user: the link of a done render, the error of '
+      + 'a failed one.')
     expect(unbound).toContain('ask in the conversation with the question in bold')
     expect(unbound).toContain('is a step of the project history at once; the user does not accept changes.')
     expect(unbound).toContain('dv_proj_redo goes forward one step. These moves add no step.')

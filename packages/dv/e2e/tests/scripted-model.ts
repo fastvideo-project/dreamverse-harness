@@ -4,12 +4,15 @@
  * points `DV_DEEPSEEK_BASE_URL` here. Each request is answered from the rules: the first rule whose `match` fits the
  * newest user message supplies the reply, and the number of assistant messages after that user message picks the
  * step, so one user message can drive several tool calls in a row; a step function may be async, so a story can change
- * the project between two steps of one turn before the model answers. Requests without tools (session titles) get a
- * short text.
+ * the project between two steps of one turn before the model answers. A request whose newest assistant message ended a
+ * turn (no tool calls) and whose later messages hold no user message but a project update answers that update: the
+ * update is the message rules match, and the step count starts again after it, so a story scripts the agent's reaction
+ * to a finished render. Requests without tools (session titles) get a short text.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { once } from 'node:events'
 import type { AddressInfo } from 'node:net'
+import { expect } from 'vitest'
 
 /** One chat-completions message as the agent sends it. */
 export interface ChatMessage {
@@ -93,6 +96,31 @@ export function scheduledOf(result: unknown): string[] {
   return /^scheduled: (.+)$/m.exec(String(result))?.[1]?.split(', ') ?? []
 }
 
+/**
+ * The project of the conversation, from the project state message of a request.
+ * @param request - an agent request of a session bound to a project.
+ * @returns the project ID, or the empty string.
+ */
+export function projectOf(request: ChatRequest): string {
+  const texts = request.messages.filter(message => message.role === 'user').map(message => textOf(message.content))
+  return texts.map(text => /^DreamVerse project state\. This conversation belongs to project (\S+):/.exec(text)?.[1]).find(id => id !== undefined) ?? ''
+}
+
+/**
+ * Assert that each request extends the one before it: every request field other than the messages is equal, and the
+ * earlier messages are unchanged at the start of the later request.
+ * @param requests - the agent requests of one chat session, in arrival order.
+ */
+export function expectEachRequestExtendsThePrevious(requests: readonly ChatRequest[]): void {
+  for (let index = 1; index < requests.length; index += 1) {
+    const { messages: previous, ...previousFields } = requests[index - 1] as ChatRequest
+    const { messages: next, ...nextFields } = requests[index] as ChatRequest
+    expect(nextFields, `request ${String(index)} fields`).toEqual(previousFields)
+    expect(next.length, `request ${String(index)} length`).toBeGreaterThan(previous.length)
+    expect(next.slice(0, previous.length), `request ${String(index)} prefix`).toEqual(previous)
+  }
+}
+
 /** Parse a tool message into JSON when possible. */
 function parseResult(content: unknown): unknown {
   const text = textOf(content)
@@ -108,6 +136,24 @@ function parseResult(content: unknown): unknown {
 export const CONTEXT_MESSAGE
   = /^(<system-reminder>|Current runtime context|Attached image|The user referenced these project items|DreamVerse project)/
 
+/** The first line of a project update message. */
+export const UPDATE_HEAD = 'DreamVerse project updates since your last step:'
+
+/**
+ * The index of the message a reply answers: the newest user message that is not context, unless an assistant message
+ * without tool calls (the end of a turn) comes after it and a project update follows that assistant message; then the
+ * first such project update.
+ * @param messages - the request's messages.
+ * @returns the index, or -1 when the request has no user message.
+ */
+function anchorOf(messages: readonly ChatMessage[]): number {
+  const last = messages.findLastIndex(message => message.role === 'user' && !CONTEXT_MESSAGE.test(textOf(message.content)))
+  const ended = messages.findLastIndex((message, index) => index > last && message.role === 'assistant' && (message.tool_calls ?? []).length === 0)
+  if (ended < 0) return last
+  const update = messages.findIndex((message, index) => index > ended && message.role === 'user' && textOf(message.content).startsWith(UPDATE_HEAD))
+  return update < 0 ? last : update
+}
+
 /**
  * Pick the reply for one agent request.
  * @param rules - the script.
@@ -116,10 +162,7 @@ export const CONTEXT_MESSAGE
  */
 async function replyFor(rules: ScriptedRule[], request: ChatRequest): Promise<ScriptedStep> {
   const messages = request.messages
-  let last = -1
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index]?.role === 'user' && !CONTEXT_MESSAGE.test(textOf(messages[index]?.content))) { last = index; break }
-  }
+  const last = anchorOf(messages)
   const userText = last < 0 ? '' : textOf(messages[last]?.content)
   const after = messages.slice(last + 1)
   const stepIndex = after.filter(message => message.role === 'assistant').length

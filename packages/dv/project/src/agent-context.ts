@@ -1,7 +1,8 @@
 /**
- * The `dv:project` system-prompt section: Project's general rules (the conversation's project, the history list, undo
- * and redo, confirmation, stale records, and how to name records, assets, versions of the registered reference kinds
- * and other items). The text depends only on the registered reference kinds, which change only together with the
+ * The `dv:project` system-prompt section: Project's general rules (the conversation's project, background records and
+ * how their finishes arrive, the history list, undo and redo, confirmation, stale records, and how to name records,
+ * assets, versions of the registered reference kinds and other items). The text depends only on the registered reference
+ * kinds, which change only together with the
  * operation tool definitions, so it is the same at every step of a session; the project's state reaches the agent
  * through the project messages of the `project-updates` module. It holds nothing that the user cannot see in the views
  * or the conversation.
@@ -34,6 +35,9 @@ export function projectContext(project: Pick<DvProject, 'listReferenceKinds'>): 
       + 'dv_proj_create or dv_proj_open names this conversation\'s project, do all work in it and never call dv_proj_create '
       + 'or dv_proj_open again. Changes of the project that your own tool results did not show reach you as DreamVerse '
       + 'project updates; dv_proj_state reads the whole project at any time.',
+    '- Calls whose result says pending, and the records a result lists under scheduled, run in the background; nothing waits '
+      + 'for them. Keep working or end your turn. When they finish, a DreamVerse project update lists each one, also after your '
+      + 'turn ended; then check the result and tell the user: the link of a done render, the error of a failed one.',
     '- Every call of yours and every edit of the user is a step of the project history at once; the user does not accept changes.',
     '- When the user asks to undo, roll back or go back to an earlier state, call dv_proj_undo: without to it goes back one '
       + 'step; with to = a record ID from dv_proj_history_list the project shows its state just after that step. dv_proj_redo goes '

@@ -338,6 +338,21 @@ export async function waitFor<T>(check: () => Promise<T | null | undefined | fal
 }
 
 /**
+ * Wait until every named record is `done`, `failed` or `cancelled`, polling `/api/dv/history`.
+ * @param api - the harness API.
+ * @param project - the project of the records.
+ * @param records - the record IDs.
+ * @param timeoutMs - how long to wait.
+ */
+export async function waitForRecords(api: HarnessApi, project: string, records: readonly string[], timeoutMs = 60_000): Promise<void> {
+  await waitFor(async () => {
+    const history = await api.post('/api/dv/history', { project, records }) as { entries: Array<{ record: { id: string; status: string } }> }
+    const finished = new Set(history.entries.filter(entry => ['done', 'failed', 'cancelled'].includes(entry.record.status)).map(entry => entry.record.id))
+    return records.every(record => finished.has(record))
+  }, `records ${records.join(', ')} finished`, timeoutMs)
+}
+
+/**
  * Escape a literal string for use inside a regular expression, so a title such as `a+b (1)` matches only itself.
  * @param text - the literal text.
  * @returns the text with every regular-expression metacharacter escaped.
