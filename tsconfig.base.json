@@ -372,6 +372,7 @@
       "@dv/ui-history": ["./packages/dv/ui-history/src/index.ts"],
       "@dv/ui-skills": ["./packages/dv/ui-skills/src/index.ts"],
       "@dv/ui-style": ["./packages/dv/ui-style/src/index.ts"],
+      "@dv/ui-text-node": ["./packages/dv/ui-text-node/src/index.ts"],
       "@dv/ui-kit": ["./packages/dv/ui-kit/src/index.ts"],
       "@dv/ui-location": ["./packages/dv/ui-location/src/index.ts"],
       "@dv/ui-mcp-presets": ["./packages/dv/ui-mcp-presets/src/index.ts"],

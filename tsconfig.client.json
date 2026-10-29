@@ -157,6 +157,7 @@
     { "path": "./packages/dv/ui-character" },
     { "path": "./packages/dv/ui-location" },
     { "path": "./packages/dv/ui-style" },
+    { "path": "./packages/dv/ui-text-node" },
     { "path": "./packages/dv/ui-shot-plan" },
     { "path": "./packages/dv/ui-shot-render" },
     { "path": "./packages/dv/ui-image-generate" },
