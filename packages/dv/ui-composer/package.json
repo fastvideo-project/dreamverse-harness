@@ -11,6 +11,9 @@
       "default": "./lib/client.js"
     },
     "./contract": "./src/client/contract/index.ts",
+    "./mention": "./src/client/mention.ts",
+    "./reference-face": "./src/client/ReferenceFace.tsx",
+    "./reference-model": "./src/client/reference-model.ts",
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },

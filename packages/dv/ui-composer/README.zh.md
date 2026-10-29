@@ -55,6 +55,8 @@ Host 半边不注册任何东西。浏览器半边在 `apply` 顶层提供 `dvMe
 
 浏览器半边注册根作用域组件工厂 `dv.prompt`，即单个生成调用的输入框；插件用一个空的 `import type {} from '@dv/ui-composer/contract'` 获得它，并用 `renderFactorySlot('dv.prompt', props)` 绘制它。它的属性是 `projectId`、`call`（一个 `PromptCall`：`operation`，`params`，其中 `prompt` 是带引用的提示词，以及 `{role, ref}` 形式的请求输入 `inputs`）、`state` 和 `operations`（宿主绘制的项目状态和操作声明，输入框据此解析每个引用并找到调用的操作）、`readOnly`、`surface`（用户编辑调用的位置，例如 `canvas`，检查会写出它）、`host` 和可选的 `onSubmit(call)`，后者接收改过的调用，并决定发送做什么。宿主是一个 `PromptHost`：可选的 `pickAssets(chosen, done)` 打开宿主的素材选择窗口，可选的 `importFiles(files)` 把本地文件导入项目，并按文件顺序给出它们的素材 ID，`preview(asset, opener)` 打开素材的预览，`openNode(nodeId)` 打开画布节点的编辑器。宿主传入另一个 `call` 时，该实例在这个调用上重新开始，撤销历史为空，所以撤销不能带回被替换的调用。[`@dv/ui-generation`](../ui-generation/README.zh.md) 的版本编辑器在版本的调用上绘制它，[`@dv/ui-shot-plan`](../ui-shot-plan/README.zh.md) 的分镜计划编辑器在每个镜头的调用上以只读方式绘制它。
 
+任何文本框都可以提供同样的 `@` 选择器和标签。三个入口导出对话框和 `dv.prompt` 使用的代码：`@dv/ui-composer/mention` 提供 `MENTION_SOURCE`（源名称 `dv-project`）和 `projectMentionSource`，`@dv/ui-composer/reference-face` 提供标签外观 `ReferenceFace`，`@dv/ui-composer/reference-model` 提供 `editorContent`，它把文本中的每个引用 `@[label](dv:…)` 变成一个标签。文本框用 `sources: [MENTION_SOURCE]` 和来源为 `MENTION_SOURCE` 的标签绘制 `renderFactorySlot('conversation.prompt', { model })`；本插件为该来源注册的外观绘制每个标签，`faceContext` 为 null 时外观读取已打开项目的状态，与对话标签相同。
+
 输入框从上到下绘制以下部分：
 
 - 参考栏，每个调用输入一个参考项：通过 `dv.media` 以用途 `thumb` 绘制的预览、名称、它发送的版本（例如 `v2`）、没有标签引用该输入时的 未引用 / uncited、有更新版本时的 用 vN / Use vN，以及移除该输入的 ×。所选模型不接受其媒体类型的参考项变暗；按输入顺序数 `reference` 输入的素材，素材数超过模型 `maxReferences` 的每个 `reference` 输入也变暗，版本按它的素材数计，其他没有素材的输入算一个；点击参考项打开条目的节点或素材的预览。宿主提供 `pickAssets` 时，添加素材 / Add asset 带着已持有的引用打开它，并把每个新选中的引用追加为一个 `reference` 输入。宿主提供 `importFiles` 时，上传文件 / Upload files 导入所选文件，并按文件顺序把每个文件追加为一个 `reference` 输入。
