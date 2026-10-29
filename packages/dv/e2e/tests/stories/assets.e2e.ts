@@ -7,8 +7,8 @@ import { crc32, deflateSync } from 'node:zlib'
 import type { Browser, BrowserContext, Locator, Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { ProjectRecord, WireState } from '../wire-state.ts'
-import { bootHarness, escapeRegExp, playwright, waitFor, type BootedHarness } from '../harness.ts'
-import { assetIdOf, scheduledOf, startScriptedModel, type ScriptedModel, type ScriptedRule } from '../scripted-model.ts'
+import { bootHarness, escapeRegExp, playwright, waitFor, waitForRecords, type BootedHarness } from '../harness.ts'
+import { assetIdOf, projectOf, scheduledOf, startScriptedModel, type ScriptedModel, type ScriptedRule } from '../scripted-model.ts'
 
 /**
  * A 16×16 PNG of one color, built in memory so every test can import distinct bytes.
@@ -41,12 +41,17 @@ function freshPng(): Buffer {
   return solidPng([colorSeed % 256, (colorSeed * 7) % 256, (colorSeed * 13) % 256])
 }
 
+/** The booted profile; the scripted agent's steps hold and release its renders. */
+let harness: BootedHarness
+
 /**
- * The scripted agent. `只回复<X>` answers `收到<X>`; `做广告` imports a reference, plans one shot, approves, and waits;
- * every record goes at the end of the project's history at once.
+ * The scripted agent. `只回复<X>` answers `收到<X>`; `做广告` imports a reference, plans one shot, approves, ends its turn
+ * while the render finishes, and answers the project update; every record goes at the end of the project's history at
+ * once.
  */
 const RULES: ScriptedRule[] = [
   { match: /只回复\S+/, steps: [view => ({ text: `收到${/只回复(\S+)/.exec(view.userText)?.[1] ?? ''}` })] },
+  { match: /^DreamVerse project updates since your last step:/, steps: [{ text: '镜头已渲染。' }] },
   {
     match: '做广告',
     steps: [
@@ -57,15 +62,21 @@ const RULES: ScriptedRule[] = [
       } }] }),
       // The story's project is new, so its first plan is p1.
       { calls: [{ name: 'dv_story_preview', args: { reason: '预览计划', plan: 'p1' } }] },
-      { calls: [{ name: 'dv_story_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
-      view => ({ calls: [{ name: 'dv_proj_wait', args: { records: scheduledOf(view.toolResults.at(-1)) } }] }),
+      () => {
+        harness.backend.hold()
+        return { calls: [{ name: 'dv_story_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] }
+      },
+      // The renders finish during the final step, so the turn goes on with one step that answers the project update.
+      async (view) => {
+        harness.backend.releaseAll()
+        await waitForRecords(harness.api, projectOf(view.request), scheduledOf(view.toolResults.at(-1)))
+        return { text: '镜头已开始渲染。' }
+      },
     ],
-    endText: '镜头已渲染。',
   },
 ]
 
 describe('The asset pool panel', () => {
-  let harness: BootedHarness
   let model: ScriptedModel
   let browser: Browser
   const contexts: BrowserContext[] = []

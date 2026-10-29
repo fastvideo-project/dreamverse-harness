@@ -1,13 +1,12 @@
 /**
- * Project's own agent tools, `dv_proj_*`: create, open and rename projects, read state and history, undo and redo, accept a
- * stale record, and wait for named records. `dv_proj_wait` returns each record it waited for, and every tool except it and
- * `dv_proj_history_list` returns the project summary of the current state: Project's fields (title, head, record count,
- * stale records, recent records) and the fields each component's reducer adds
+ * Project's own agent tools, `dv_proj_*`: create, open and rename projects, read state and history, undo and redo, and
+ * accept a stale record. Every tool except `dv_proj_history_list` returns the project summary of the current state:
+ * Project's fields (title, head, record count, stale records, recent records) and the fields each component's reducer adds
  * through `Reducer.agentSummary`. A tool that writes records leads its summary with `record`, the newest record the call wrote, and
  * names that record in its presentation metadata (`{record}`), as the operation tools do. Every tool except
  * `dv_proj_history_list` also stores what its result showed of the project as `dv_seen` (a `ProjectShown`) in its
  * presentation metadata, which the model never reads: a summary tool names the summary's project, its head as the
- * position and its recent records, and `dv_proj_wait` names the records it waited for.
+ * position and its recent records.
  * `dv_proj_create` and `dv_proj_open` bind the chat session to its project; `dv_proj_rename` renames only that project.
  *
  * Calls the `dvProject` service's public methods and, through {@link ProjToolDeps}, the asset store, the reducers'
@@ -19,7 +18,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { OUTPUT_SCHEMA, callProject, outputLine, outputsOf, sessionOf, toJson, type ToolOutput } from './agent-tools.ts'
+import { callProject, sessionOf, toJson } from './agent-tools.ts'
 import type DvProject from './index.ts'
 import type { OperationSpec } from './operation-types.ts'
 import { ProjectError, SEEN_META_KEY } from './shared.ts'
@@ -48,31 +47,6 @@ const HISTORY_LIMIT = 20
 
 /** A project summary the agent can read. */
 const STATE_SCHEMA = { type: 'json' } as const
-
-/** The value of `dv_proj_wait`: the project, and each named record after it finished, in the order named. */
-const WAIT_SCHEMA = {
-  type: 'object', additionalProperties: false,
-  properties: {
-    project: { type: 'string', required: true },
-    records: {
-      type: 'array', required: true,
-      items: {
-        type: 'object', additionalProperties: false,
-        properties: {
-          record: { type: 'string', required: true }, status: { type: 'string', required: true }, intent: { type: 'string', required: true },
-          summary: { type: 'string', required: true, description: 'The operation summary of a done record, else its error.' },
-          outputs: { type: 'array', required: true, items: OUTPUT_SCHEMA },
-        },
-      },
-    },
-  },
-} as const
-
-/** One record in the value of `dv_proj_wait`. */
-type WaitedRecord = { record: string; status: string; intent: string; summary: string; outputs: ToolOutput[] }
-
-/** The value of `dv_proj_wait`; the model reads only the records. */
-type WaitValue = { project: string; records: WaitedRecord[] }
 
 /**
  * The refusal a bound conversation gets when it tries to start or switch to another project: the user opened this
@@ -159,31 +133,6 @@ export function summaryOf(project: DvProject, record: ProjectRecord): string {
  */
 export function specOf(project: DvProject, record: ProjectRecord): OperationSpec | undefined {
   return project.listOperations().find(candidate => candidate.name === record.operation)
-}
-
-/**
- * A record as `dv_proj_wait` returns it.
- * @param project - the service.
- * @param assets - the asset store.
- * @param record - the record.
- * @returns its ID, status, intent, summary or error, and outputs named by role.
- */
-function waitedRecord(project: DvProject, assets: AssetStore, record: ProjectRecord): WaitedRecord {
-  return {
-    record: record.id, status: record.status, intent: record.intent, summary: recordSummary(project, record),
-    outputs: outputsOf(specOf(project, record)?.outputs ?? [], record, assets),
-  }
-}
-
-/**
- * The text of a `dv_proj_wait` result: per record the line `<status> <record> (<intent>): <summary>`, then one line per
- * output.
- * @param value - the result.
- * @returns the text.
- */
-function waitText(value: WaitValue): string {
-  return value.records.flatMap(entry => [`${entry.status} ${entry.record} (${entry.intent}): ${entry.summary}`, ...entry.outputs.map(outputLine)])
-    .join('\n')
 }
 
 /**
@@ -344,37 +293,6 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
         const projectId = projectOf(exec, args.project_id)
         await project.acceptStale(projectId, brandString<RecordId>(args.record), originOf(deps, exec, `accept ${args.record}`))
         return written(exec, projectId)
-      },
-    }),
-    defineTool({
-      name: 'dv_proj_wait',
-      description: 'Wait until the records you name have finished or failed, then read each one: its status, its summary or '
-        + 'error, and its outputs.',
-      parameters: {
-        ...projectParam,
-        records: {
-          type: 'array', required: true, items: { type: 'string' },
-          description: 'The record IDs to wait for: the records a result listed under scheduled, or a record whose status was pending.',
-        },
-      },
-      output: {
-        schema: WAIT_SCHEMA,
-        render: (_args: unknown, value: WaitValue): ContentBlock[] => [{ type: 'text', text: waitText(value) }],
-        presentationMeta: (_args: unknown, value: WaitValue): JsonValue => {
-          const shown: ProjectShown = {
-            project: brandString<ProjectId>(value.project),
-            records: Object.fromEntries(value.records.map(entry => [entry.record, entry.status as RecordStatus])),
-          }
-          return { [SEEN_META_KEY]: toJson(shown) }
-        },
-      },
-      execute: async (args, exec) => {
-        const projectId = projectOf(exec, args.project_id)
-        const records = args.records.map(id => brandString<RecordId>(id))
-        if (records.length === 0) throw new Error('Name at least one record ID to wait for.')
-        await project.wait(projectId, records)
-        const assets = deps.assets()
-        return { project: projectId, records: records.map(id => waitedRecord(project, assets, project.getRecord(projectId, id))) }
       },
     }),
   ]

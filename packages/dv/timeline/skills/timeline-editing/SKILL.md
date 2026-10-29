@@ -24,5 +24,5 @@ Resolve "clip N" first: it is clip N of the first timeline in the project block,
 
 - A retake keeps the base record's `modality`, `task`, `provider` and `model`. In task `ref2v`, copy the base record's references every time: the model's schema gives the reference count, and `fasth3` needs at least one. A task `t2v` retake takes no references.
 - `supersedes` marks the records that used the old output stale (stills, exports). Nothing reruns by itself: list them and redo only what the user agrees to. When the user keeps a stale result as it is, call `dv_proj_stale_accept` with its record.
-- After any render, `dv_proj_wait` then `dv_proj_state`, and report the last frame and link.
+- After a render finishes (its result says done, or a DreamVerse project update reports it), call `dv_proj_state` and report the last frame and link. A render whose result says pending runs in the background; keep working until the update arrives.
 - When "clip N" or "this" fits two clips and the message names no reference (a `dv:` mention), ask.

@@ -265,7 +265,8 @@ export default class DvStory extends Service {
       label: { zh: '批准分镜计划', en: 'Approve plan' },
       description: 'Record the user\'s approval of a plan version and render its new or changed shots in order, each with the shot\'s '
         + 'model; unchanged shots keep their takes, and the plan\'s timeline gets every shot. Call it only after you showed the '
-        + 'dv_story_preview lines and the user agreed in the conversation. Then call dv_proj_wait and read dv_proj_state.',
+        + 'dv_story_preview lines and the user agreed in the conversation. The renders run in the background; a DreamVerse project '
+        + 'update reports each one when it finishes.',
       inputs: {},
       params: storyParamsSchema('approve'),
       outputs: [],

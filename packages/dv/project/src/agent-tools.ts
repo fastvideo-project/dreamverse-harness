@@ -77,7 +77,7 @@ const CONFIRM_PARAMS: Record<OperationSpec['confirm'], ParameterSchemaSpec> = {
 export type ReferenceKindLookup = Pick<AgentToolDeps, 'listReferenceKinds' | 'kindsWithVersion'>
 
 /** One output of a record in a tool result: its role, asset ID, media type and URL. */
-export const OUTPUT_SCHEMA = {
+const OUTPUT_SCHEMA = {
   type: 'object', additionalProperties: false,
   properties: {
     role: { type: 'string', required: true }, asset_id: { type: 'string', required: true }, mime: { type: 'string', required: true },
@@ -92,12 +92,12 @@ const RESULT_SCHEMA = {
   properties: {
     project: { type: 'string', required: true, description: 'The project of this call; not shown to the model.' },
     record: { type: 'string', required: true, description: 'The record of this call; empty for a read, which writes no record.' },
-    status: { type: 'string', required: true, description: 'done, or pending (scheduled behind records that have not finished).' },
+    status: { type: 'string', required: true, description: 'done, or pending (scheduled behind records that have not finished; it runs in the background).' },
     summary: { type: 'string', required: true },
     outputs: { type: 'array', required: true, items: OUTPUT_SCHEMA },
     scheduled: {
       type: 'array', required: true, items: { type: 'string' },
-      description: 'Records this call scheduled to run later, after the records they wait for.',
+      description: 'Records this call scheduled to run in the background, after the records they wait for; a DreamVerse project update reports each one when it finishes.',
     },
     params: { type: 'json', required: true, description: 'The recorded params.' },
     report: {

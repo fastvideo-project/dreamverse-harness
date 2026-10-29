@@ -279,18 +279,12 @@ describe('project update message', () => {
     expect(fixture.log.step()).toBeNull()
   })
 
-  it('repeats nothing that the agent\'s own tool results showed: an operation call, dv_proj_undo, and a finish dv_proj_wait returned', async () => {
+  it('repeats nothing that the agent\'s own tool results showed: an operation call and dv_proj_undo', async () => {
     const fixture = await start()
     fixture.log.step()
     fixture.log.toolResult(await fixture.call('dv_asset_import', { reason: 'product', name: 'product.png' }))
     expect(fixture.log.step()).toBeNull()
     fixture.log.toolResult(await fixture.call('dv_proj_undo', {}))
-    expect(fixture.log.step()).toBeNull()
-    const render = await fixture.run(scheduler('shot 1'), 'shot.render', { prompt: 'one' }, { after: [] })
-    fixture.log.toolResult({ isError: false, value: {}, content: [], meta: { dv_seen: { project: fixture.projectId, at: render.id, records: { [render.id]: 'pending' } } } })
-    await until(fixture.project, fixture.projectId, render.id, 'running')
-    fixture.release('one')
-    fixture.log.toolResult(await fixture.call('dv_proj_wait', { records: [render.id] }))
     expect(fixture.log.step()).toBeNull()
   })
 

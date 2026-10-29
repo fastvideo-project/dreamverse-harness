@@ -111,6 +111,8 @@ describe('finished renders reach the agent without being asked', () => {
 
     const requests = model.requests
     expectEachRequestExtendsThePrevious(requests)
+    // The agent has no tool that waits for records.
+    expect(requests[0]?.tools?.map(tool => tool.function?.name)).not.toContain('dv_proj_wait')
     // The finished render opened a turn: its first request ends with the update right after the agent's last reply.
     const woken = (requests[answered] as ChatRequest).messages
     const at = woken.findLastIndex(message => message.role === 'user' && textOf(message.content).startsWith(UPDATE_HEAD))

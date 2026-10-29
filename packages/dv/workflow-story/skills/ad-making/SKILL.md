@@ -64,9 +64,9 @@ Load the prompt skill of the video model and task, and follow it.
 1. `dv_story_preview` with `plan` for each plan. When `problems` is not empty, or the user changes the plan later, update it with `dv_plan_update`: `plan` and the complete plan (`title`, `aspect_ratio`, `references`, every shot in `shots`); then preview again.
 2. Reply with the spec, a beat table (time, picture, camera, copy, sound), one line per plan (ratio, length, `version`), and the voice clip links. End the turn with one question in bold, such as **Render both cuts now?** Do not call `dv_story_approve` in this turn.
 
-## 7. Approve and wait
+## 7. Approve
 
-When the user agrees in the next message, `dv_story_approve` with `plan`, `version` (from its preview) and `user_approved: true` for each plan, then `dv_proj_wait`. Each approval reports the plan's `timeline`; the cut is the `asset` of that timeline's clip in the project summary.
+When the user agrees in the next message, `dv_story_approve` with `plan`, `version` (from its preview) and `user_approved: true` for each plan. The renders run in the background; tell the user they started. Each approval reports the plan's `timeline`; when a DreamVerse project update reports its records finished, the cut is the `asset` of that timeline's clip in the project summary (`dv_proj_state`).
 
 ## 8. Ranked review
 

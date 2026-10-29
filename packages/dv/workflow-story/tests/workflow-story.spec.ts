@@ -6,7 +6,8 @@ import { globSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync }
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { AssetId, OperationSpec, OperationToolValue, RunRequest } from '@dv/project'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { AssetId, OperationSpec, OperationToolValue, RecordId, RunRequest } from '@dv/project'
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { storyReducer } from '../src/reducer.ts'
 import { disposeAll, REF, start, TXT, USER, type Fixture } from './fixture.ts'
@@ -81,7 +82,7 @@ describe('dvStory', () => {
     expect(await served()).toEqual([])
   })
 
-  it('the agent creates a plan, previews it, approves it with user_approved and waits; no tool is dv_plan_approve', async () => {
+  it('the agent creates a plan, previews it, approves it with user_approved, and its renders finish; no tool is dv_plan_approve', async () => {
     const fixture = await start()
     const tools = fixture.ctx.tools.schemas().map(tool => tool.name).filter(name => /^dv_(?:plan|story)_/u.test(name))
     expect(tools.sort()).toEqual(['dv_plan_create', 'dv_plan_update', 'dv_story_approve', 'dv_story_preview'])
@@ -97,7 +98,7 @@ describe('dvStory', () => {
       results.push(result)
     }
     const { scheduled } = (results.at(-1)?.value as OperationToolValue).report as { scheduled: string[] }
-    expect(refusal(await fixture.call('dv_proj_wait', { records: scheduled })), 'dv_proj_wait').toBe('')
+    await fixture.ctx.dvProject.wait(fixture.project, scheduled.map(id => brandString<RecordId>(id)))
     const records = fixture.ctx.dvProject.getState(fixture.project).components.proj.records
     expect(records.map(record => [record.operation, record.status])).toEqual([
       ['proj.create', 'done'], ['plan.create', 'done'], ['story.approve', 'done'], ['shot.render', 'done'], ['timeline.create', 'done'],
@@ -211,7 +212,7 @@ describe('dvStory', () => {
     const report = (result.value as OperationToolValue).report
     expect(report).toEqual({ plan: 'p1', version: 1, timeline: 't1', scheduled: [expect.any(String), expect.any(String), expect.any(String)] })
     const { scheduled } = report as { scheduled: string[] }
-    expect(refusal(await fixture.call('dv_proj_wait', { records: scheduled }))).toBe('')
+    await fixture.ctx.dvProject.wait(fixture.project, scheduled.map(id => brandString<RecordId>(id)))
     const records = fixture.ctx.dvProject.getState(fixture.project).components.proj.records
     const approve = records.find(record => record.operation === 'story.approve')
     const written = scheduled.map(id => records.find(record => record.id === id))

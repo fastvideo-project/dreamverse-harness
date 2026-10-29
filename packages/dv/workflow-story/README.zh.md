@@ -78,7 +78,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-两个工具，采用 `@dv/project` 为每个操作工具提供的格式。`dv_story_preview` 带提示 "A read that writes no record."。其描述说明该调用在不渲染的情况下预览批准计划某个版本会渲染什么，列出报告字段，要求智能体把这些行展示给用户，并在 `problems` 不为空时用 `dv_plan_update` 更新计划后再次预览。`dv_story_approve` 接受 `user_approved`。其描述说明该调用渲染新增或改动的镜头并填充计划的时间线，智能体只在展示预览且用户同意之后才调用它，然后调用 `dv_proj_wait` 并读取 `dv_proj_state`。
+两个工具，采用 `@dv/project` 为每个操作工具提供的格式。`dv_story_preview` 带提示 "A read that writes no record."。其描述说明该调用在不渲染的情况下预览批准计划某个版本会渲染什么，列出报告字段，要求智能体把这些行展示给用户，并在 `problems` 不为空时用 `dv_plan_update` 更新计划后再次预览。`dv_story_approve` 接受 `user_approved`。其描述说明该调用渲染新增或改动的镜头并填充计划的时间线，智能体只在展示预览且用户同意之后才调用它，渲染在后台运行，每次渲染结束时由一条 DreamVerse 项目更新报告。
 
 #### Token 影响
 
@@ -106,7 +106,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-技能目录列出每个工作流技能及其描述。智能体加载 `story-directing` 时，读到调用顺序：`dv_plan_create` 或 `dv_plan_update`，然后 `dv_story_preview`（`problems` 不为空时用 `dv_plan_update` 修改后再次预览），给出镜头表格并以粗体提一个问题，下一轮用 `user_approved: true` 调用 `dv_story_approve`，然后调用 `dv_proj_wait`。它还告诉智能体如何延长、缩短或修改由计划生成的故事。
+技能目录列出每个工作流技能及其描述。智能体加载 `story-directing` 时，读到调用顺序：`dv_plan_create` 或 `dv_plan_update`，然后 `dv_story_preview`（`problems` 不为空时用 `dv_plan_update` 修改后再次预览），给出镜头表格并以粗体提一个问题，下一轮用 `user_approved: true` 调用 `dv_story_approve`；渲染在后台运行，并以 DreamVerse 项目更新到达智能体。它还告诉智能体如何延长、缩短或修改由计划生成的故事。
 
 #### Token 影响
 

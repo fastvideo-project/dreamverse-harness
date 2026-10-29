@@ -78,7 +78,7 @@ The `story` reducer folds each finished `story.approve` into `approvals` (per pl
 
 #### What the model sees
 
-Two tools in the format `@dv/project` gives every operation tool. `dv_story_preview` has the hint "A read that writes no record." Its description says that the call previews what approving a plan version renders without rendering, names the report fields, tells the agent to show the lines to the user, and to update the plan with `dv_plan_update` and preview again when `problems` is not empty. `dv_story_approve` takes `user_approved`. Its description says that the call renders the new or changed shots and fills the plan's timeline, that the agent calls it only after it showed the preview and the user agreed, and that it then calls `dv_proj_wait` and reads `dv_proj_state`.
+Two tools in the format `@dv/project` gives every operation tool. `dv_story_preview` has the hint "A read that writes no record." Its description says that the call previews what approving a plan version renders without rendering, names the report fields, tells the agent to show the lines to the user, and to update the plan with `dv_plan_update` and preview again when `problems` is not empty. `dv_story_approve` takes `user_approved`. Its description says that the call renders the new or changed shots and fills the plan's timeline, that the agent calls it only after it showed the preview and the user agreed, and that the renders run in the background and a DreamVerse project update reports each one when it finishes.
 
 #### Token effect
 
@@ -106,7 +106,7 @@ Each result is appended to the conversation after its call; the cached prefix st
 
 #### What the model sees
 
-The skill catalog lists each workflow skill with its description. When the agent loads `story-directing`, it reads the order of calls: `dv_plan_create` or `dv_plan_update`, then `dv_story_preview` (with `dv_plan_update` and a new preview while `problems` is not empty), a table of the shots and one question in bold, and in the next turn `dv_story_approve` with `user_approved: true`, then `dv_proj_wait`. It also tells the agent how to extend, shorten or change a story that a plan made.
+The skill catalog lists each workflow skill with its description. When the agent loads `story-directing`, it reads the order of calls: `dv_plan_create` or `dv_plan_update`, then `dv_story_preview` (with `dv_plan_update` and a new preview while `problems` is not empty), a table of the shots and one question in bold, and in the next turn `dv_story_approve` with `user_approved: true`; the renders run in the background and reach the agent as DreamVerse project updates. It also tells the agent how to extend, shorten or change a story that a plan made.
 
 #### Token effect
 

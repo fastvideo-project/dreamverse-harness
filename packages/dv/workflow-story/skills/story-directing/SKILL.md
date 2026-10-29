@@ -1,20 +1,20 @@
 ---
 name: story-directing
-description: "The order of calls from planned shots to rendered shots on the plan's timeline: create or update the plan, preview it, ask the user in bold, approve it, and wait."
+description: "The order of calls from planned shots to rendered shots on the plan's timeline: create or update the plan, preview it, ask the user in bold, and approve it; the renders run in the background."
 whenToUse: "The shots of a story are planned and must be rendered, or the user wants a story that a plan made extended, shortened or changed."
 ---
 
 # Story directing
 
-The order of calls from planned shots to rendered shots on the plan's timeline: create the plan, preview it, ask the user, approve it, and wait. Write each shot's model, task, inputs and prompt first. The project block in your system prompt is the current state; read it before every call.
+The order of calls from planned shots to rendered shots on the plan's timeline: create the plan, preview it, ask the user, and approve it; the renders run in the background. Write each shot's model, task, inputs and prompt first. The project block in your system prompt is the current state; read it before every call.
 
 ## 1. Create the plan, preview it, and ask
 
 1. `dv_plan_create` with `title`, `references` when shots share them, and `shots` (`modality`, `task`, `provider`, `model`, `prompt`, `duration_sec`, and per shot `references` or `continue_previous` when needed). The call needs no agreement; it records version 1. Its report names the plan ID (such as `p1`) and the version.
 2. `dv_story_preview` with `plan`. Its report gives one line per shot (`shots`), the number of shots that render (`rendered`), and why a render would be refused (`problems`). When `problems` is not empty, fix the named shots with `dv_plan_update` and preview again.
 3. Reply with a table (shot, model and task, duration, continues from the previous shot or not, one line of action, camera). End the turn with one question in bold, such as **Render these 3 shots?** Do not call `dv_story_approve` in this turn.
-4. When the user agrees in the next message: `dv_story_approve` with `plan`, the preview's `version` and `user_approved: true`, then `dv_proj_wait`, then `dv_proj_state`. The approval renders every shot with its model and task and lays every shot on the plan's timeline.
-5. Report each finished shot with its last frame (you receive it as an image) and its link. Inside an approved plan, never ask again.
+4. When the user agrees in the next message: `dv_story_approve` with `plan`, the preview's `version` and `user_approved: true`. The approval renders every shot with its model and task in the background and lays every shot on the plan's timeline; tell the user the renders started.
+5. When a DreamVerse project update reports the shots finished, call `dv_proj_state` and report each finished shot with its last frame (you receive it as an image) and its link, or the error of a failed one. Inside an approved plan, never ask again.
 
 If the user changes the plan before agreeing, call `dv_plan_update` with `plan` and the changed shots, then `dv_story_preview`, show the changed plan, and ask again.
 
@@ -22,6 +22,6 @@ If the user changes the plan before agreeing, call `dv_plan_update` with `plan` 
 
 One story is one plan. To extend, shorten or change it, also after it was approved, update that plan; create a new plan with `dv_plan_create` only for a separate story. The user asks for this about a timeline that a plan made, with words such as "make the story longer", "add a few more shots" or "change the story".
 
-1. While the plan's renders are pending or running, call `dv_proj_wait` first. Then `dv_plan_update` with `plan` = the plan ID from the project block and the complete next version: every shot in order, the unchanged shots copied exactly (same `modality`, `task`, `provider`, `model`, prompt, duration, references, `continue_previous` and seed) so their takes are kept. A shot added after six shots is shot 7.
+1. While the plan's renders are pending or running, tell the user and change the plan after a DreamVerse project update reports them finished. Then `dv_plan_update` with `plan` = the plan ID from the project block and the complete next version: every shot in order, the unchanged shots copied exactly (same `modality`, `task`, `provider`, `model`, prompt, duration, references, `continue_previous` and seed) so their takes are kept. A shot added after six shots is shot 7.
 2. `dv_story_preview` with `plan`. Show only the new or changed shots (the preview's lines name the shots that keep their takes), and ask in bold.
-3. When the user agrees: `dv_story_approve` with `plan`, the preview's `version` and `user_approved: true`, then `dv_proj_wait`. Only new or changed shots render, and a shot with `continue_previous` after a rendered shot renders too; the plan's timeline gets every shot in order. Never lay a plan's shots onto a timeline by hand.
+3. When the user agrees: `dv_story_approve` with `plan`, the preview's `version` and `user_approved: true`. Only new or changed shots render, in the background, and a shot with `continue_previous` after a rendered shot renders too; the plan's timeline gets every shot in order. Never lay a plan's shots onto a timeline by hand.

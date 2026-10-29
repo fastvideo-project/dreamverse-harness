@@ -2,4 +2,4 @@
 ctx.dvModels.register(entry)
 export const served = { skill: { description: 'Prompt rules for model fasth3; read dv_models_get first.' } }
 --- packages/dv/fastvideo/skills/prompting.md
-Wait with `dv_proj_wait`, then read the facts with `dv_models_get`.
+Read the project with `dv_proj_state`, then read the facts with `dv_models_get`.

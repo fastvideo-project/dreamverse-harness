@@ -5,10 +5,10 @@
 import type { Browser, BrowserContext, Locator, Page } from 'playwright'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { ProjectRecord, WireState } from '../wire-state.ts'
-import { bootHarness, playwright, waitFor, type BootedHarness } from '../harness.ts'
+import { bootHarness, playwright, waitFor, waitForRecords, type BootedHarness } from '../harness.ts'
 import {
-  CONTEXT_MESSAGE, assetIdOf, scheduledOf, startScriptedModel, textOf, type ChatRequest, type ScriptedModel, type ScriptedRule,
-  type ScriptedStep, type TurnView,
+  CONTEXT_MESSAGE, assetIdOf, projectOf, scheduledOf, startScriptedModel, textOf, type ChatRequest, type ScriptedModel,
+  type ScriptedRule, type ScriptedStep, type TurnView,
 } from '../scripted-model.ts'
 
 /** A 1×1 opaque PNG. */
@@ -34,16 +34,21 @@ function planCall(view: TurnView, title: string): ScriptedStep {
   } }] }
 }
 
+/** The booted profile; the scripted agent's steps hold and release its renders. */
+let harness: BootedHarness
+
 /**
  * The scripted agent. `只回复<X>` answers `收到<X>`; `慢慢想` streams for six seconds; `加人物` registers a character;
  * `慢慢做` imports an image and then streams for eight seconds, so a stop lands while the turn runs; `新建项目` creates a
  * project as the agent does from the entry page; `做两个镜头的广告` imports a reference, plans two shots, approves, and
- * waits; every record goes at the end of the project's history at once; `先给我看计划` imports a reference, plans two shots,
- * calls the plan approval without the user's agreement (Project refuses it), and asks in bold; `可以渲染` approves that
- * plan with the user's agreement and waits; `两段渲染` renders two shots at once.
+ * ends its turn while the renders finish, then answers the project update; every record goes at the end of the project's
+ * history at once; `先给我看计划` imports a reference, plans two shots, calls the plan approval without the user's
+ * agreement (Project refuses it), and asks in bold; `可以渲染` approves that plan with the user's agreement and answers
+ * the project update of its renders in the same way; `两段渲染` renders two shots at once.
  */
 const RULES: ScriptedRule[] = [
   { match: /只回复\S+/, steps: [view => ({ text: `收到${/只回复(\S+)/.exec(view.userText)?.[1] ?? ''}` })] },
+  { match: /^DreamVerse project updates since your last step:/, steps: [{ text: '两个镜头已渲染。' }] },
   { match: '慢慢想', steps: [{ text: '想好了', delayMs: 6000 }] },
   { match: '新建项目', steps: [{ calls: [{ name: 'dv_proj_create', args: { title: '入口创建的项目' } }] }], endText: '项目建好了，收到十六' },
   {
@@ -92,10 +97,17 @@ const RULES: ScriptedRule[] = [
       view => planCall(view, '产品广告'),
       // The story's project is new, so its first plan is p1.
       { calls: [{ name: 'dv_story_preview', args: { reason: '预览计划', plan: 'p1' } }] },
-      { calls: [{ name: 'dv_story_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
-      view => ({ calls: [{ name: 'dv_proj_wait', args: { records: scheduledOf(view.toolResults.at(-1)) } }] }),
+      () => {
+        harness.backend.hold()
+        return { calls: [{ name: 'dv_story_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] }
+      },
+      // The renders finish during the final step, so the turn goes on with one step that answers the project update.
+      async (view) => {
+        harness.backend.releaseAll()
+        await waitForRecords(harness.api, projectOf(view.request), scheduledOf(view.toolResults.at(-1)))
+        return { text: '两个镜头已开始渲染。' }
+      },
     ],
-    endText: '两个镜头已渲染。',
   },
   {
     match: '先给我看计划',
@@ -112,10 +124,17 @@ const RULES: ScriptedRule[] = [
     match: '可以渲染',
     steps: [
       { calls: [{ name: 'dv_story_preview', args: { reason: '预览计划', plan: 'p1' } }] },
-      { calls: [{ name: 'dv_story_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
-      view => ({ calls: [{ name: 'dv_proj_wait', args: { records: scheduledOf(view.toolResults.at(-1)) } }] }),
+      () => {
+        harness.backend.hold()
+        return { calls: [{ name: 'dv_story_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] }
+      },
+      // The renders finish during the final step, so the turn goes on with one step that answers the project update.
+      async (view) => {
+        harness.backend.releaseAll()
+        await waitForRecords(harness.api, projectOf(view.request), scheduledOf(view.toolResults.at(-1)))
+        return { text: '两个镜头已开始渲染。' }
+      },
     ],
-    endText: '两个镜头已渲染。',
   },
   {
     match: '两段渲染',
@@ -131,7 +150,6 @@ const RULES: ScriptedRule[] = [
 ]
 
 describe('chat with the agent', () => {
-  let harness: BootedHarness
   let model: ScriptedModel
   let browser: Browser
   const contexts: BrowserContext[] = []
@@ -433,10 +451,12 @@ describe('chat with the agent', () => {
     const workspace = page.locator('[data-dv-workspace]')
     await workspace.locator('[data-node-type="plan"]').first().waitFor({ timeout: 15_000 })
     expect(await workspace.getByRole('button', { name: '接受', exact: true }).count()).toBe(0)
-    // The agent read only the records it waited for: each render with its intent, and no project summary or report.
-    const waited = textOf(requestFor('做两个镜头的广告')?.messages.filter(message => message.role === 'tool').at(-1)?.content)
-    expect(waited).toMatch(/^done \S+ \(shot 1 of plan p1 v1\): /m)
-    expect(waited).not.toContain('"report"')
+    // The renders finished during the agent's final step; the next step's project update named each render with its
+    // summary, and no project summary or report.
+    const finished = textOf(requestFor('做两个镜头的广告')?.messages.at(-1)?.content)
+    expect(finished).toMatch(/^- done \S+ \(scheduled\): shot 1\b/m)
+    expect(finished).toMatch(/^- done \S+ \(scheduled\): shot 2\b/m)
+    expect(finished).not.toContain('"report"')
     await send(page, '只回复八')
     await waitChat(page, '收到八')
     // The project state reached the agent once, as the project state message; the system prompt holds only the rules.
