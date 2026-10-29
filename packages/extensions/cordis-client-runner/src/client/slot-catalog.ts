@@ -1943,6 +1943,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       '@dv/ui-generation TakeCard',
       '@dv/ui-reference-kit Card',
       '@dv/ui-shot-plan PlanCard key \'plan\'',
+      '@dv/ui-text-node TextCard',
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.canvas.card\', () => ctx.slots.register(\n      { name: \'dv.canvas.card\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
@@ -2028,6 +2029,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     declaredBy: 'factory \'dv.canvas\' (@dv/ui-canvas), so it exists while that definition is registered',
     occupants: [
       '@dv/ui-generation TakeEditor',
+      '@dv/ui-text-node TextEditor',
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.canvas.editor.claimed\', () => ctx.slots.register(\n      { name: \'dv.canvas.editor.claimed\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
