@@ -104,6 +104,9 @@
     - id: dv-style
       name: '@dv/style'
 
+    - id: dv-text-node
+      name: '@dv/text-node'
+
     - id: dv-timeline
       name: '@dv/timeline'
 
@@ -178,7 +181,7 @@
       name: '@dv/ui-skills'
 
 # The video-directing skill ships in this bundle's skills directory; skill-filesystem discovers it beside the user's own.
-# The model, character, location, style, timeline and story skills are registered by their plugins through ctx.skills.
+# The model, character, location, style, text node, timeline and story skills are registered by their plugins through ctx.skills.
 - id: skill-filesystem
   config:
     customSkillDirs:

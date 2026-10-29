@@ -2176,6 +2176,9 @@ importers:
       '@dv/style':
         specifier: workspace:*
         version: link:../../dv/style
+      '@dv/text-node':
+        specifier: workspace:*
+        version: link:../../dv/text-node
       '@dv/timeline':
         specifier: workspace:*
         version: link:../../dv/timeline

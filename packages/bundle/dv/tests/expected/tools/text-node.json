@@ -1,0 +1,163 @@
+[
+  {
+    "name": "dv_textnode_write",
+    "description": "Write the whole Markdown text of a text node as its next version; a new path starts at version 1. A text node holds planning text such as a script, story beats or an ad spec. Pass base_version so you never overwrite a version you have not read. For a small change to a long text, call dv_textnode_edit instead.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "The text node, as a relative path such as beats.md or 剧集/EP001/剧本.md (no @, # or .., no leading /)."
+        },
+        "body": {
+          "type": "string",
+          "description": "The complete Markdown text of the new version."
+        },
+        "title": {
+          "type": "string",
+          "description": "The title; defaults to the previous title, else the first heading, else the path."
+        },
+        "base_version": {
+          "type": "integer",
+          "description": "The version you last read (`version` in dv_proj_state `texts` or in the dv_textnode_read report); 0 for a new text node. The call is refused when the text node has another version."
+        },
+        "from": {
+          "type": "array",
+          "description": "The paths of the text nodes this version was built from, such as the beats a script follows; a later version of one of them marks this version stale. Omit it to keep the sources of the previous version; [] for none.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why you call this, in the user's words or your own summary; recorded as the intent of the record."
+        },
+        "project_id": {
+          "type": "string",
+          "description": "The project; defaults to this conversation's project from dv_proj_create or dv_proj_open."
+        },
+        "inputs": {
+          "type": "object",
+          "description": "Input references by role: <asset> (an asset ID), <record>#<output> (an output of an earlier record), or <id>@<version> (a character, location, style or textnode version; dv_proj_state lists IDs); a list for roles marked []. Roles: source?: text[].",
+          "additionalProperties": true
+        },
+        "supersedes": {
+          "type": "array",
+          "description": "Records whose outputs this call replaces, such as an earlier take; their consumers become stale.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "based_on": {
+          "type": "string",
+          "description": "The record this call is a changed copy of; the takes of one original share it."
+        }
+      },
+      "required": [
+        "path",
+        "body",
+        "reason"
+      ]
+    }
+  },
+  {
+    "name": "dv_textnode_edit",
+    "description": "Change a text node by literal replacements and write the result as its next version. The edits apply in order; each old_text must occur exactly once in the text, so copy it from dv_textnode_read without the line numbers and add neighboring lines when it repeats. When any edit does not apply, nothing is written. Pass base_version.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "The text node, as a relative path such as beats.md or 剧集/EP001/剧本.md (no @, # or .., no leading /)."
+        },
+        "edits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "old_text": {
+                "type": "string",
+                "description": "Text that occurs exactly once."
+              },
+              "new_text": {
+                "type": "string",
+                "description": "Its replacement; empty to delete it."
+              }
+            },
+            "required": [
+              "old_text",
+              "new_text"
+            ]
+          }
+        },
+        "base_version": {
+          "type": "integer",
+          "description": "The version you last read (`version` in dv_proj_state `texts` or in the dv_textnode_read report); 0 for a new text node. The call is refused when the text node has another version."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why you call this, in the user's words or your own summary; recorded as the intent of the record."
+        },
+        "project_id": {
+          "type": "string",
+          "description": "The project; defaults to this conversation's project from dv_proj_create or dv_proj_open."
+        },
+        "inputs": {
+          "type": "object",
+          "description": "Input references by role: <asset> (an asset ID), <record>#<output> (an output of an earlier record), or <id>@<version> (a character, location, style or textnode version; dv_proj_state lists IDs); a list for roles marked []. Roles: source?: text[].",
+          "additionalProperties": true
+        },
+        "supersedes": {
+          "type": "array",
+          "description": "Records whose outputs this call replaces, such as an earlier take; their consumers become stale.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "based_on": {
+          "type": "string",
+          "description": "The record this call is a changed copy of; the takes of one original share it."
+        }
+      },
+      "required": [
+        "path",
+        "edits",
+        "reason"
+      ]
+    }
+  },
+  {
+    "name": "dv_textnode_read",
+    "description": "Read a text node with line numbers: the whole text, or one section (a heading and its lines up to the next heading of the same or a higher level). The newest version unless you pass version. dv_proj_state lists the text nodes under texts. A read that writes no record.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "The text node, as a relative path such as beats.md or 剧集/EP001/剧本.md (no @, # or .., no leading /)."
+        },
+        "section": {
+          "type": "string",
+          "description": "The text of a heading, without the # marks."
+        },
+        "version": {
+          "type": "integer",
+          "description": "A version number; defaults to the newest version."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why you call this, in the user's words or your own summary; recorded as the intent of the record."
+        },
+        "project_id": {
+          "type": "string",
+          "description": "The project; defaults to this conversation's project from dv_proj_create or dv_proj_open."
+        }
+      },
+      "required": [
+        "path",
+        "reason"
+      ]
+    }
+  }
+]

@@ -26,10 +26,17 @@ describe('DreamVerse bundle composition', () => {
     expect(ids.indexOf('dv-ui-style')).toBe(ids.indexOf('dv-ui-shot-plan') - 1)
   })
 
+  it('pins the definitions of the text node tools that the agent sees', async () => {
+    const { ctx, dispose } = await bootBundle()
+    disposers.push(dispose)
+    const tools = ctx.tools.schemas().filter(tool => tool.name.startsWith('dv_textnode_'))
+    await expect(`${JSON.stringify(tools, null, 2)}\n`).toMatchFileSnapshot('./expected/tools/text-node.json')
+  })
+
   it('boots the bundle rows through the Loader and turns a model tool call into a durable record', async () => {
     const rows = bundleRows()
     expect(rows.map(row => row.id)).toEqual(expect.arrayContaining([
-      'dv-models', 'dv-fastvideo', 'dv-uniserve', 'dv-project', 'dv-shot-plan', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
+      'dv-models', 'dv-fastvideo', 'dv-uniserve', 'dv-project', 'dv-text-node', 'dv-shot-plan', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
       'dv-sglang-diffusion', 'dv-image-generate', 'dv-sglang-omni', 'dv-audio-generate',
     ]))
     const { ctx, dir, dispose } = await bootBundle()
