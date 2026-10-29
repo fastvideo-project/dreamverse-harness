@@ -1,5 +1,6 @@
 /**
- * Values that every module of the Project service uses: the error classes.
+ * Values that several modules of the Project service use: the error classes, and the metadata key of what a tool result
+ * showed of the project.
  *
  * @module @dv/project/shared
  */
@@ -34,3 +35,9 @@ export class ProjectError extends Error {
     this.name = 'ProjectError'
   }
 }
+
+/**
+ * The key of a DreamVerse tool result's persisted metadata that holds the `ProjectShown` of what the result showed;
+ * the operation tools and the `dv_proj_*` tools write it, the `project-updates` module reads it.
+ */
+export const SEEN_META_KEY = 'dv_seen'

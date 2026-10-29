@@ -408,37 +408,19 @@ export interface ProjectLine {
 }
 
 /**
- * One complete view of a project that reached a chat session's agent: what a project state message, a project update
- * message, or a `dv_proj_*` tool result that returns the project summary showed. A project update is the difference
- * between the mark the agent last saw and the project as it stands. Written to the DSH session log inside the source
- * of a project message and inside the persisted metadata of a tool result.
+ * What one logged project message or DreamVerse tool result showed a chat session's agent of one project. Written to
+ * the DSH session log inside the source of a project message, and as `dv_seen` inside the persisted metadata of a tool
+ * result (`tool/result.meta`), which the model never reads. A project update lists what the session's entries have not
+ * shown.
  */
-export interface ProjectMark {
-  project: ProjectId
-  /** The project title the view showed. */
-  title: string
-  /** How many records the project had in write order, discarded ones included; later records were written after the view. */
-  written: number
-  /** The current position the view showed. */
-  at: RecordId
-  /** Records the view showed unfinished (`pending` or `running`), in write order; their finish is reported later. */
-  open: RecordId[]
-  /** Records the view showed stale, in write order; a record that becomes stale later is reported. */
-  stale: RecordId[]
-}
-
-/**
- * What one DreamVerse tool result showed the agent about its project, stored as `dv_seen` in the result's persisted
- * metadata (`tool/result.meta`). The model never reads it; it keeps project updates from repeating what a tool result
- * already showed.
- * - `whole`: a result that returns the project summary (`dv_proj_create`, `dv_proj_open`, `dv_proj_rename`,
- *   `dv_proj_state`, `dv_proj_undo`, `dv_proj_redo`, `dv_proj_stale_accept`).
- * - `records`: an operation tool result (its record in the status it returned, and each record it scheduled as
- *   `pending`), and a `dv_proj_wait` result (each record it waited for, in its final status).
- */
-export type ProjectSighting =
-  | { kind: 'whole'; mark: ProjectMark }
-  | { kind: 'records'; project: ProjectId; records: Array<{ record: RecordId; status: RecordStatus }> }
+export type ProjectShown =
+  /** A project update message or a tool result: each record listed, in the status listed, and the position if shown. */
+  | { project: ProjectId; records: Partial<Record<RecordId, RecordStatus>>; at?: RecordId | undefined; base?: undefined }
+  /**
+   * The project state message: records `[0, base)` in write order count as shown in a final status, except the
+   * unfinished ones, which `records` lists in their status.
+   */
+  | { project: ProjectId; records: Partial<Record<RecordId, RecordStatus>>; at: RecordId; base: number }
 
 /** What a subscriber learns about a project change. */
 export type ProjectEvent =

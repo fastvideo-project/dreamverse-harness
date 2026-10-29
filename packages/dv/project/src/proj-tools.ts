@@ -5,9 +5,9 @@
  * stale records, recent records) and the fields each component's reducer adds
  * through `Reducer.agentSummary`. A tool that writes records leads its summary with `record`, the newest record the call wrote, and
  * names that record in its presentation metadata (`{record}`), as the operation tools do. Every tool except
- * `dv_proj_history_list` also stores what its result showed of the project as `dv_seen` in its presentation metadata
- * (a `ProjectSighting` of the `project-sight` module), which the model never reads: a summary tool's value is
- * `{summary, mark}`, of which the model reads only the summary, and `dv_proj_wait` names the records it waited for.
+ * `dv_proj_history_list` also stores what its result showed of the project as `dv_seen` (a `ProjectShown`) in its
+ * presentation metadata, which the model never reads: a summary tool names the summary's project, its head as the
+ * position and its recent records, and `dv_proj_wait` names the records it waited for.
  * `dv_proj_create` and `dv_proj_open` bind the chat session to its project; `dv_proj_rename` renames only that project.
  *
  * Calls the `dvProject` service's public methods and, through {@link ProjToolDeps}, the asset store, the reducers'
@@ -22,10 +22,9 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { OUTPUT_SCHEMA, callProject, outputLine, outputsOf, sessionOf, toJson, type ToolOutput } from './agent-tools.ts'
 import type DvProject from './index.ts'
 import type { OperationSpec } from './operation-types.ts'
-import { SIGHTING_META_KEY, markOf, readProject } from './project-sight.ts'
-import { ProjectError } from './shared.ts'
+import { ProjectError, SEEN_META_KEY } from './shared.ts'
 import type {
-  AssetStore, ProjectId, ProjectRecord, ProjectSighting, ProjectState, RecordId, RecordOrigin, RecordStatus, TurnId,
+  AssetStore, ProjectId, ProjectRecord, ProjectShown, ProjectState, RecordId, RecordOrigin, RecordStatus, TurnId,
 } from './types.ts'
 
 /** What the `dv_proj_*` tools read besides the service's public methods. */
@@ -42,22 +41,13 @@ export interface ProjToolDeps {
 }
 
 /** The recent records a project summary lists. */
-export const RECENT_RECORDS = 12
+const RECENT_RECORDS = 12
 
 /** The history entries `dv_proj_history_list` returns when the call names no limit. */
 const HISTORY_LIMIT = 20
 
-/** A JSON value the agent can read: the history list. */
+/** A project summary the agent can read. */
 const STATE_SCHEMA = { type: 'json' } as const
-
-/** The value of a summary tool: the project summary the agent reads, and the mark of the same moment. */
-const SUMMARY_SCHEMA = {
-  type: 'object', additionalProperties: false,
-  properties: { summary: { type: 'json', required: true }, mark: { type: 'json', required: true } },
-} as const
-
-/** The value of a summary tool. */
-type SummaryValue = { summary: JsonValue; mark: JsonValue }
 
 /** The value of `dv_proj_wait`: the project, and each named record after it finished, in the order named. */
 const WAIT_SCHEMA = {
@@ -207,12 +197,17 @@ function writtenMeta(value: JsonValue): { record: string } {
 }
 
 /**
- * The `whole` sighting of a summary tool's value.
- * @param value - the value.
- * @returns `{dv_seen}` with the value's mark.
+ * What a project summary showed, for its `dv_seen` metadata.
+ * @param value - a summary of {@link projectSummary}.
+ * @returns `{dv_seen}`: the summary's project, its head as the position, and each recent record in its status.
  */
-function wholeMeta(value: SummaryValue): { [SIGHTING_META_KEY]: { kind: 'whole'; mark: JsonValue } } {
-  return { [SIGHTING_META_KEY]: { kind: 'whole', mark: value.mark } }
+function seenMeta(value: JsonValue): { [SEEN_META_KEY]: JsonValue } {
+  const summary = value as { project_id: string; head: string; recent: Array<{ record: string; status: RecordStatus }> }
+  const shown: ProjectShown = {
+    project: brandString<ProjectId>(summary.project_id), at: brandString<RecordId>(summary.head),
+    records: Object.fromEntries(summary.recent.map(entry => [entry.record, entry.status])),
+  }
+  return { [SEEN_META_KEY]: toJson(shown) }
 }
 
 /**
@@ -224,24 +219,20 @@ function wholeMeta(value: SummaryValue): { [SIGHTING_META_KEY]: { kind: 'whole';
 export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinition[] {
   const projectParam = { project_id: { type: 'string', description: 'Defaults to this conversation\'s project.' } } as const
   const projectOf = (exec: ToolRunContext, projectId: unknown): ProjectId => callProject(projectId, project.sessionProject(sessionOf(exec)))
-  // The project's current state, led by the record a write wrote, and the mark of the same moment.
-  const summary = (projectId: ProjectId, record: RecordId | null = null): SummaryValue => ({
-    summary: projectSummary(project, deps, projectId, project.getState(projectId), { written: record, reports: true }),
-    mark: toJson(markOf(readProject(project, projectId), projectId)),
-  })
+  // The project's current state, led by the record a write wrote.
+  const summary = (projectId: ProjectId, record: RecordId | null = null): JsonValue =>
+    projectSummary(project, deps, projectId, project.getState(projectId), { written: record, reports: true })
   // The summary after a write, led by the newest record the call wrote.
-  const written = (exec: ToolRunContext, projectId: ProjectId): SummaryValue => {
+  const written = (exec: ToolRunContext, projectId: ProjectId): JsonValue => {
     const [entry] = project.listHistory({ project: projectId, tool_call: exec.callId, limit: 1 })
     return summary(projectId, entry?.record.id ?? null)
   }
-  const stateOutput = {
-    schema: SUMMARY_SCHEMA,
-    render: (_args: unknown, value: SummaryValue): ContentBlock[] => [{ type: 'text', text: JSON.stringify(value.summary, null, 1) }],
-    presentationMeta: (_args: unknown, value: SummaryValue): JsonValue => wholeMeta(value),
+  const historyOutput = {
+    schema: STATE_SCHEMA, render: (_args: unknown, value: JsonValue): ContentBlock[] => [{ type: 'text', text: JSON.stringify(value, null, 1) }],
   }
+  const stateOutput = { ...historyOutput, presentationMeta: (_args: unknown, value: JsonValue): JsonValue => seenMeta(value) }
   const writeOutput = {
-    ...stateOutput,
-    presentationMeta: (_args: unknown, value: SummaryValue): JsonValue => ({ ...writtenMeta(value.summary), ...wholeMeta(value) }),
+    ...historyOutput, presentationMeta: (_args: unknown, value: JsonValue): JsonValue => ({ ...writtenMeta(value), ...seenMeta(value) }),
   }
   return [
     defineTool({
@@ -302,9 +293,7 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
         limit: { type: 'integer', description: `At most this many records; default ${HISTORY_LIMIT}.` },
         operation: { type: 'string', description: 'Only records of this operation, such as proj.create.' },
       },
-      output: {
-        schema: STATE_SCHEMA, render: (_args: unknown, value: JsonValue): ContentBlock[] => [{ type: 'text', text: JSON.stringify(value, null, 1) }],
-      },
+      output: historyOutput,
       execute: (args, exec) => {
         const projectId = projectOf(exec, args.project_id)
         const entries = project.listHistory({
@@ -372,11 +361,11 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
         schema: WAIT_SCHEMA,
         render: (_args: unknown, value: WaitValue): ContentBlock[] => [{ type: 'text', text: waitText(value) }],
         presentationMeta: (_args: unknown, value: WaitValue): JsonValue => {
-          const sighting: ProjectSighting = {
-            kind: 'records', project: brandString<ProjectId>(value.project),
-            records: value.records.map(entry => ({ record: brandString<RecordId>(entry.record), status: entry.status as RecordStatus })),
+          const shown: ProjectShown = {
+            project: brandString<ProjectId>(value.project),
+            records: Object.fromEntries(value.records.map(entry => [entry.record, entry.status as RecordStatus])),
           }
-          return { [SIGHTING_META_KEY]: toJson(sighting) }
+          return { [SEEN_META_KEY]: toJson(shown) }
         },
       },
       execute: async (args, exec) => {

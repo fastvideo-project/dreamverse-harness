@@ -2,16 +2,15 @@
  * Project messages: how the agent of a chat session learns about its project without a per-step system prompt.
  *
  * The agent gets the project state once, as the project state message: at the first step that has a bound project and
- * no view of it, and again when compaction or tool-result trimming shadowed the view it relied on. Afterwards each step
- * whose project changed in a way the agent has not seen gets one project update message: records that the user,
- * another chat or the scheduler wrote, finishes of records the agent saw unfinished, moves of the current position, new
- * stale marks, and a new title. Records that the agent's own tool results showed are not repeated, and a step with
- * nothing new gets no message. What the agent saw is the `dvProjectSight` session projection of the `project-sight`
- * module, so an update is a pure function of that sight and the project store.
+ * no view of it, and again when compaction or tool-result trimming shadowed that message. Afterwards each step whose
+ * project changed in a way the agent has not seen gets one project update message: each record of the history list up
+ * to the current position that the agent never saw, each such record it saw unfinished that has finished since, and
+ * one line when the current position moved. Records that the agent's own tool results showed are not repeated, and a
+ * step with nothing new gets no message.
  *
- * The `agent/pre-step` listener adds the message after the step's claimed messages; the agent loop logs it as a
- * `user/message` whose source carries the mark it reported up to, appended after the cached history, so each request
- * extends the previous one and a replay reads the same text from the log.
+ * What the agent saw is the `dvProjectSight` session projection of the `project-sight` module, folded from the
+ * session's own log. The `agent/pre-step` listener adds the message after the step's claimed messages; the agent loop
+ * logs it as a `user/message`, appended after the cached history, so each request extends the previous one.
  *
  * Calls the `dvProject` service's public reads and the project summary of the `proj-tools` module. Called by the
  * service, which registers the listener and the projection while the DSH `sessionProjections` service is mounted.
@@ -27,11 +26,10 @@ import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { outputLine, outputsOf } from './agent-tools.ts'
 import type DvProject from './index.ts'
 import {
-  PROJECT_MESSAGE_KIND, SIGHT_PROJECTION, ancestry, finished, markOf, readProject, sightProjection, type ProjectReads,
-  type SessionSight,
+  PROJECT_MESSAGE_KIND, SEEN_PROJECTION, ancestry, finished, seenProjection, type SessionSeen,
 } from './project-sight.ts'
-import { RECENT_RECORDS, projectSummary, specOf, summaryOf, type ProjToolDeps } from './proj-tools.ts'
-import type { ProjectId, ProjectMark, ProjectRecord, RecordId, SessionId, Surface } from './types.ts'
+import { projectSummary, specOf, summaryOf, type ProjToolDeps } from './proj-tools.ts'
+import type { ProjectId, ProjectRecord, SessionId, Surface } from './types.ts'
 
 /** The first line of every project state message. */
 export const STATE_HEAD = 'DreamVerse project state.'
@@ -39,86 +37,10 @@ export const STATE_HEAD = 'DreamVerse project state.'
 /** The first line of every project update message. */
 export const UPDATE_HEAD = 'DreamVerse project updates since your last step:'
 
-/**
- * One change of the project that the agent has not seen. The update message renders one line per change: moves first,
- * then records in write order, then stale marks, then the title.
- */
-export type ProjectChange =
-  /** The current position moved by undo, redo or a move to a step; who moved it is not recorded. */
-  | { kind: 'moved'; at: RecordId; undone: RecordId[]; discarded: RecordId[]; back: RecordId[] }
-  /** A record the agent never saw, in its status now, or a record it saw unfinished that has finished since. */
-  | { kind: 'record'; record: ProjectRecord }
-  /** Records that became stale, each with the record that replaced one of its inputs. */
-  | { kind: 'stale'; records: Array<{ record: RecordId; reason: RecordId }> }
-  | { kind: 'title'; title: string }
-
 /** Who a user record line names, by surface. */
 const USER_SURFACE: Record<Surface, string> = {
   chat: 'user in chat', canvas: 'user on canvas', timeline: 'user on timeline', asset_pool: 'user in asset pool',
   api: 'user via API', history: 'user in history',
-}
-
-/**
- * The changes between what the agent saw and the project as it stands, and the mark after them. Pure: running it twice
- * on the same inputs gives the same answer, and a later run on a store that moved forward gives a superset of the net
- * changes, because statuses only move forward and records are only appended.
- *
- * With `believed` = the history list up to `mark.at` plus the records written since the mark that `seen` names (the
- * agent's own calls appended them):
- * - a record written since the mark (index ≥ `mark.written`) that is on the history list up to the current position is
- *   reported unless `seen` names it, and its finish is reported when `seen` names it unfinished; one that is not on
- *   that list is skipped (it left the state before the agent saw it);
- * - a record written before the mark that the mark or `seen` shows unfinished is reported when it has finished, unless
- *   `seen` shows it finished;
- * - `moved` lists the records of `believed` that left the history list up to the current position (`undone` while
- *   they stay on the list after it, else `discarded`) and the records written before the mark that came back to it
- *   (`back`);
- * - `stale` lists stale records that the mark does not; `title` reports a changed title.
- * @param reads - the project reads.
- * @param sight - what the agent saw; its mark is for this project.
- * @returns the changes in render order, and the mark after them, whose `open` holds the records still unfinished among
- *   the history list up to the current position, the mark's open records, and the unfinished records `seen` names.
- */
-export function projectChanges(
-  reads: ProjectReads, sight: SessionSight & { mark: ProjectMark },
-): { changes: ProjectChange[]; mark: ProjectMark } {
-  const { mark, seen } = sight
-  const byId = new Map(reads.records.map(record => [record.id, record]))
-  const chain = ancestry(byId, reads.at)
-  const tipChain = ancestry(byId, reads.tip)
-  const believed = ancestry(byId, mark.at)
-  // `shownOpen`: a tool result showed the record unfinished and none showed it finished since the mark.
-  const shownOpen = (id: RecordId): boolean => seen[id] !== undefined && !finished(seen[id])
-  const records: ProjectChange[] = []
-  const back: RecordId[] = []
-  reads.records.forEach((record, index) => {
-    const shown = seen[record.id]
-    if (index >= mark.written) {
-      if (shown !== undefined) believed.add(record.id)
-      const unseen = shown === undefined || (shownOpen(record.id) && finished(record.status))
-      if (chain.has(record.id) && unseen) records.push({ kind: 'record', record })
-      return
-    }
-    const knownOpen = mark.open.includes(record.id) || shownOpen(record.id)
-    if (knownOpen && finished(record.status) && (shown === undefined || shownOpen(record.id))) records.push({ kind: 'record', record })
-    if (chain.has(record.id) && !believed.has(record.id)) back.push(record.id)
-  })
-  const left = reads.records.map(record => record.id).filter(id => believed.has(id) && !chain.has(id))
-  const changes: ProjectChange[] = []
-  if (left.length > 0 || back.length > 0) {
-    changes.push({
-      kind: 'moved', at: reads.at, undone: left.filter(id => tipChain.has(id)), discarded: left.filter(id => !tipChain.has(id)), back,
-    })
-  }
-  changes.push(...records)
-  const stale = reads.records.filter(record => Object.hasOwn(reads.stale, record.id) && !mark.stale.includes(record.id))
-    .map(record => ({ record: record.id, reason: reads.stale[record.id] as RecordId }))
-  if (stale.length > 0) changes.push({ kind: 'stale', records: stale })
-  if (reads.title !== mark.title) changes.push({ kind: 'title', title: reads.title })
-  const now = markOf(reads, mark.project)
-  const open = reads.records.filter(record => !finished(record.status)
-    && (chain.has(record.id) || mark.open.includes(record.id) || shownOpen(record.id))).map(record => record.id)
-  return { changes, mark: { ...now, open } }
 }
 
 /** Who a record line names: the user's surface, `your call`, `another chat`, or `scheduled`. */
@@ -147,53 +69,6 @@ function recordLines(project: DvProject, deps: ProjToolDeps, record: ProjectReco
   }
 }
 
-/** The line of a move: the current position, then the records that left the state or came back to it. */
-function movedLine(change: Extract<ProjectChange, { kind: 'moved' }>): string {
-  const parts = [`- history: the current step is ${change.at}.`]
-  if (change.undone.length > 0) parts.push(`Undone (dv_proj_redo can bring them back): ${change.undone.join(', ')}.`)
-  if (change.discarded.length > 0) parts.push(`Discarded for good: ${change.discarded.join(', ')}.`)
-  if (change.back.length > 0) parts.push(`Back in the state: ${change.back.join(', ')}.`)
-  return parts.join(' ')
-}
-
-/**
- * The text of a project update message.
- * ```
- * DreamVerse project updates since your last step:
- * - history: the current step is r_9f30. Undone (dv_proj_redo can bring them back): r_a1, r_a2. Discarded for good: r_c4.
- * - done r_5a10 (user on canvas): imported knife.png
- *   - asset: 7be3… (image/png) https://…/dv/assets/7be3…
- * - failed r_7c22 (scheduled): shot 3 of plan p1 v2: The backend refused the request.
- * - running r_5b20 (user on canvas): render shot 3 again
- * - stale: r_7c21 (an input was replaced by r_5a10)
- * - title: "Knife ad 2"
- * ```
- * A record line names the user's surface for a user record, `your call` for an agent record of this session,
- * `another chat` for an agent record of another session, and `scheduled` for a system record; its text is the
- * operation's summary for a done record, `<intent>: <error message>` for a failed or cancelled one, and the intent for
- * an unfinished one. A done record's outputs follow in the output line format of the operation tool results.
- * @param project - the service, for the operation summaries.
- * @param deps - the asset store, for output media types and URLs.
- * @param changes - the changes, not empty.
- * @param session - the agent's session.
- * @returns the text.
- */
-export function renderUpdate(project: DvProject, deps: ProjToolDeps, changes: readonly ProjectChange[], session: SessionId): string {
-  const lines = [UPDATE_HEAD]
-  for (const change of changes) {
-    switch (change.kind) {
-      case 'moved': lines.push(movedLine(change)); break
-      case 'record': lines.push(...recordLines(project, deps, change.record, session)); break
-      case 'stale':
-        lines.push(`- stale: ${change.records.map(entry => `${entry.record} (an input was replaced by ${entry.reason})`).join(', ')}`)
-        break
-      case 'title': lines.push(`- title: ${JSON.stringify(change.title)}`); break
-      default: assertNever(change)
-    }
-  }
-  return lines.join('\n')
-}
-
 /**
  * The text of a project state message: the binding sentence, then the project summary of the current state without
  * the `report` of its recent records, as indented JSON (the format `dv_proj_state` returns).
@@ -212,51 +87,70 @@ export function renderState(project: DvProject, deps: ProjToolDeps, id: ProjectI
   ].join('\n')
 }
 
-/** The ID one change names in the notice summary. */
-function changeId(change: ProjectChange): string {
-  switch (change.kind) {
-    case 'moved': return change.at
-    case 'record': return change.record.id
-    case 'stale': return change.records.map(entry => entry.record).join(', ')
-    case 'title': return 'title'
-    default: return assertNever(change)
-  }
-}
-
 /**
  * The project message one step of a session needs, or null.
  * - No bound project: null.
- * - No mark, or a mark of another project: the project state message.
- * - Otherwise {@link projectChanges}: null without a change; the project state message instead of an update that would
- *   list more records than a project summary lists recent records, so one message never grows with the length of an
- *   absence; else the project update message.
- * The message's source is `{kind: 'dv-project', mark, form: 'snapshot', sections}` for a state message and
- * `{kind: 'dv-project', mark, form: 'notice', summary}` for an update, with the mark it reported up to.
+ * - No project state message in the state, or one of another project: the project state message, whose source shows
+ *   every record written so far (`base`), the unfinished ones in their status, and the current position.
+ * - Otherwise the project update message, or null when it would be empty. It lists, in write order, each record of the
+ *   history list up to the current position that the session never saw, or saw unfinished and is finished now. Before
+ *   them, when the current position changed and the listed records do not explain it (the new position is a record the
+ *   session saw, or the old one left the history list), it says
+ *   `- history: the current step is <at>; dv_proj_history_list shows which steps are undone or discarded.`
+ *   Its source shows the listed records in their status and the current position.
+ * ```
+ * DreamVerse project updates since your last step:
+ * - done r_5a10 (user on canvas): imported knife.png
+ *   - asset: 7be3… (image/png) https://…/dv/assets/7be3…
+ * - failed r_7c22 (scheduled): shot 3 of plan p1 v2: The backend refused the request.
+ * - running r_5b20 (user on canvas): render shot 3 again
+ * ```
+ * A record line names the user's surface for a user record, `your call` for an agent record of this session,
+ * `another chat` for an agent record of another session, and `scheduled` for a system record; its text is the
+ * operation's summary for a done record, `<intent>: <error message>` for a failed or cancelled one, and the intent for
+ * an unfinished one. A done record's outputs follow in the output line format of the operation tool results.
  * @param project - the service.
  * @param deps - the asset store and the reducers' summaries.
  * @param session - the agent's session ID.
- * @param sight - the session's `dvProjectSight` state.
+ * @param seen - the session's `dvProjectSight` state.
  * @returns the message, or null.
  */
-export function projectMessage(project: DvProject, deps: ProjToolDeps, session: SessionId, sight: SessionSight): UserMessage | null {
+export function projectMessage(project: DvProject, deps: ProjToolDeps, session: SessionId, seen: SessionSeen): UserMessage | null {
   const id = project.sessionProject(session)
   if (id === null) return null
-  const reads = readProject(project, id)
-  const state = (): UserMessage => {
+  const records = project.listRecords(id)
+  const { at } = project.line(id)
+  if (seen.from === null || seen.project !== id) {
     const text = renderState(project, deps, id)
+    const open = Object.fromEntries(records.filter(record => !finished(record.status)).map(record => [record.id, record.status]))
     return createUserMessage({
       content: [{ type: 'text', text }],
-      source: { kind: PROJECT_MESSAGE_KIND, mark: markOf(reads, id), form: 'snapshot', sections: [{ name: PROJECT_MESSAGE_KIND, text }] },
+      source: {
+        kind: PROJECT_MESSAGE_KIND, shown: { project: id, base: records.length, at, records: open }, form: 'snapshot',
+        sections: [{ name: PROJECT_MESSAGE_KIND, text }],
+      },
     })
   }
-  if (sight.mark === null || sight.mark.project !== id) return state()
-  const { changes, mark } = projectChanges(reads, { ...sight, mark: sight.mark })
-  if (changes.length === 0) return null
-  if (changes.filter(change => change.kind === 'record').length > RECENT_RECORDS) return state()
-  const summary = boundContextSummary(`${String(changes.length)} project changes: ${changes.map(changeId).join(', ')}`)
+  const chain = ancestry(new Map(records.map(record => [record.id, record])), at)
+  const shown = new Map(records.map((record, index) => [record.id, seen.records[record.id] ?? (index < seen.base ? 'done' : undefined)]))
+  const listed = records.filter((record) => {
+    const status = shown.get(record.id)
+    return chain.has(record.id) && (status === undefined || (!finished(status) && finished(record.status)))
+  })
+  const moved = at !== seen.at && (shown.get(at) !== undefined || !chain.has(seen.at))
+  if (listed.length === 0 && !moved) return null
+  const lines = [
+    UPDATE_HEAD,
+    ...moved ? [`- history: the current step is ${at}; dv_proj_history_list shows which steps are undone or discarded.`] : [],
+    ...listed.flatMap(record => recordLines(project, deps, record, session)),
+  ]
+  const ids = [...moved ? [at] : [], ...listed.map(record => record.id)]
   return createUserMessage({
-    content: [{ type: 'text', text: renderUpdate(project, deps, changes, session) }],
-    source: { kind: PROJECT_MESSAGE_KIND, mark, form: 'notice', summary },
+    content: [{ type: 'text', text: lines.join('\n') }],
+    source: {
+      kind: PROJECT_MESSAGE_KIND, form: 'notice', summary: boundContextSummary(`${String(ids.length)} project changes: ${ids.join(', ')}`),
+      shown: { project: id, at, records: Object.fromEntries(listed.map(record => [record.id, record.status])) },
+    },
   })
 }
 
@@ -270,14 +164,14 @@ export function projectMessage(project: DvProject, deps: ProjToolDeps, session: 
  * @param deps - the asset store and the reducers' summaries.
  */
 export function registerProjectUpdates(ctx: Context, project: DvProject, deps: ProjToolDeps): void {
-  ctx.sessionProjections.register(sightProjection())
+  ctx.sessionProjections.register(seenProjection())
   ctx.on('agent/pre-step', async ({ agent, messages, step, signal }, next): Promise<PreStepDecision> => {
     const decision = await next()
     if (decision.kind === 'reject' || signal.aborted) return decision
     if (decision.messages.length === 0 && (step === 1 || messages.length > 0)) return decision
-    const sight = ctx.sessionProjections.stateOf(agent.session, SIGHT_PROJECTION)
-    if (sight === undefined) return decision
-    const message = projectMessage(project, deps, brandString<SessionId>(agent.id), sight)
+    const seen = ctx.sessionProjections.stateOf(agent.session, SEEN_PROJECTION)
+    if (seen === undefined) return decision
+    const message = projectMessage(project, deps, brandString<SessionId>(agent.id), seen)
     if (message === null) return decision
     const last = decision.messages.findLastIndex(entry => messages.includes(entry))
     return { ...decision, messages: decision.messages.toSpliced(last + 1, 0, message) }

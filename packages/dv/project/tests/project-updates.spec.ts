@@ -14,8 +14,8 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvProject, { type OperationSpec, type ProjectId, type ProjectRecord, type RecordId, type RecordOrigin, type SessionId } from '../src/index.ts'
-import { foldSight, markOf, readProject, sightProjection, type SessionSight } from '../src/project-sight.ts'
-import { STATE_HEAD, UPDATE_HEAD, projectChanges, projectMessage } from '../src/project-updates.ts'
+import { foldSeen, seenProjection, type SessionSeen } from '../src/project-sight.ts'
+import { STATE_HEAD, UPDATE_HEAD, projectMessage } from '../src/project-updates.ts'
 import type { ProjToolDeps } from '../src/proj-tools.ts'
 import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot } from './support.ts'
 
@@ -37,19 +37,19 @@ const user = (intent: string): RecordOrigin => ({ actor: 'user', surface: 'canva
 const scheduler = (intent: string): RecordOrigin => ({ actor: 'system', surface: 'api', session: SESSION, turn: null, tool_call: null, intent })
 
 /**
- * A session log of one agent: the events appended so far and the sight folded from them, the way the agent loop logs
+ * A session log of one agent: the events appended so far and the state folded from them, the way the agent loop logs
  * project messages and tool results.
  */
 class AgentLog {
   readonly events: SessionEvent[] = []
-  sight: SessionSight = sightProjection().init({} as never, 0 as never)
+  seen: SessionSeen = seenProjection().init({} as never, 0 as never)
 
   constructor(private readonly project: DvProject, private readonly deps: ProjToolDeps) {}
 
   /** Append an event and fold it. */
   append(event: SessionEvent): void {
     this.events.push(event)
-    this.sight = foldSight(this.sight, event)
+    this.seen = foldSeen(this.seen, event)
   }
 
   /** The seq the next event gets. */
@@ -68,7 +68,7 @@ class AgentLog {
 
   /** Run the pre-step computation of one step and log its message; returns the message text, or null. */
   step(): string | null {
-    const message = projectMessage(this.project, this.deps, SESSION, this.sight)
+    const message = projectMessage(this.project, this.deps, SESSION, this.seen)
     if (message === null) return null
     this.logMessage(message)
     return textOf(message)
@@ -102,10 +102,11 @@ interface Fixture {
 /**
  * Mount the DSH tool registry and `dvProject` with an in-memory asset store, two operations (`asset.import`, and a GPU
  * `shot.render` that waits until the test releases its prompt and fails for the prompt `broken`), and a project bound
- * to {@link SESSION}.
+ * to {@link SESSION} unless `bound` is false.
+ * @param bound - whether {@link SESSION} starts bound to the project.
  * @returns the fixture.
  */
-async function start(): Promise<Fixture> {
+async function start(bound = true): Promise<Fixture> {
   const root = tempRoot()
   const context = new Context()
   contexts.push(context)
@@ -147,7 +148,7 @@ async function start(): Promise<Fixture> {
     },
   } satisfies OperationSpec)
   const info = await project.createProject('Knife ad', user('create'))
-  project.bindSession(SESSION, info.id)
+  if (bound) project.bindSession(SESSION, info.id)
   const deps: ProjToolDeps = { assets: () => assets, agentSummaries: () => [], turnOf: () => null }
   let calls = 0
   return {
@@ -180,41 +181,43 @@ async function until(project: DvProject, projectId: ProjectId, record: RecordId,
 const update = (...lines: string[]): string => [UPDATE_HEAD, ...lines].join('\n')
 
 describe('project state message', () => {
-  it('starts with the binding sentence and the project summary without reports, and logs the mark it showed', async () => {
+  it('starts with the binding sentence and the project summary without reports, and logs what it showed', async () => {
     const fixture = await start()
     const record = await fixture.run(user('import knife'), 'asset.import', { name: 'knife.png' })
-    const message = projectMessage(fixture.project, fixture.deps, SESSION, fixture.log.sight)
+    const render = await fixture.run(user('render'), 'shot.render', { prompt: 'held' }, { after: [] })
+    await until(fixture.project, fixture.projectId, render.id, 'running')
+    const message = projectMessage(fixture.project, fixture.deps, SESSION, fixture.log.seen)
     const text = message === null ? '' : textOf(message)
     const [head, ...json] = text.split('\n')
     expect(head).toBe(`${STATE_HEAD} This conversation belongs to project ${fixture.projectId}: do all work in it and never call `
       + 'dv_proj_create or dv_proj_open. Later changes that your own tool results did not show reach you as DreamVerse project '
       + 'updates. The project summary, as dv_proj_state returns it without the reports of recent records:')
     const summary = JSON.parse(json.join('\n')) as { project_id: string; head: string; recent: Array<Record<string, unknown>> }
-    expect(summary).toMatchObject({ project_id: fixture.projectId, head: record.id })
-    expect(summary.recent.at(-1)).toEqual({
+    expect(summary).toMatchObject({ project_id: fixture.projectId, head: render.id })
+    expect(summary.recent.at(-2)).toEqual({
       record: record.id, operation: 'asset.import', status: 'done', intent: 'import knife', summary: 'imported knife.png',
       outputs: [`https://assets.example/${assetOf('knife.png')}`], based_on: null, supersedes: [],
     })
     expect(message?.source).toEqual({
       kind: 'dv-project', form: 'snapshot', sections: [{ name: 'dv-project', text }],
-      mark: { project: fixture.projectId, title: 'Knife ad', written: 2, at: record.id, open: [], stale: [] },
+      shown: { project: fixture.projectId, base: 3, at: render.id, records: { [render.id]: 'running' } },
     })
   })
 
-  it('sends nothing for a session without a project, and a state message for a sight of another project', async () => {
+  it('sends nothing for a session without a project, and a state message when the session saw another project', async () => {
     const fixture = await start()
-    expect(projectMessage(fixture.project, fixture.deps, brandString<SessionId>('unbound'), fixture.log.sight)).toBeNull()
+    expect(projectMessage(fixture.project, fixture.deps, brandString<SessionId>('unbound'), fixture.log.seen)).toBeNull()
     expect(fixture.log.step()).toMatch(/^DreamVerse project state\./)
     const other = await fixture.project.createProject('Other', user('create'))
     fixture.project.bindSession(SESSION, other.id)
     expect(fixture.log.step()).toContain(`This conversation belongs to project ${other.id}`)
   })
 
-  it('replaces an update that would list more than twelve records', async () => {
-    const fixture = await start()
-    fixture.log.step()
-    for (let index = 0; index < 13; index += 1) await fixture.run(user(`import ${String(index)}`), 'asset.import', { name: `${String(index)}.png` })
-    expect(fixture.log.step()).toMatch(/^DreamVerse project state\./)
+  it('sends the state message after the agent binds an unbound conversation with dv_proj_create', async () => {
+    const fixture = await start(false)
+    expect(fixture.log.step()).toBeNull()
+    fixture.log.toolResult(await fixture.call('dv_proj_create', { title: 'From chat' }))
+    expect(fixture.log.step()).toMatch(/^DreamVerse project state\. This conversation belongs to project /)
     expect(fixture.log.step()).toBeNull()
   })
 })
@@ -246,7 +249,7 @@ describe('project update message', () => {
     fixture.log.toolResult(await fixture.call('dv_proj_undo', {}))
     expect(fixture.log.step()).toBeNull()
     const render = await fixture.run(scheduler('shot 1'), 'shot.render', { prompt: 'one' }, { after: [] })
-    fixture.log.toolResult({ isError: false, value: {}, content: [], meta: { dv_seen: { kind: 'records', project: fixture.projectId, records: [{ record: render.id, status: 'pending' }] } } })
+    fixture.log.toolResult({ isError: false, value: {}, content: [], meta: { dv_seen: { project: fixture.projectId, at: render.id, records: { [render.id]: 'pending' } } } })
     await until(fixture.project, fixture.projectId, render.id, 'running')
     fixture.release('one')
     fixture.log.toolResult(await fixture.call('dv_proj_wait', { records: [render.id] }))
@@ -261,7 +264,7 @@ describe('project update message', () => {
     // The approval result listed both renders under scheduled.
     fixture.log.toolResult({
       isError: false, value: {}, content: [],
-      meta: { dv_seen: { kind: 'records', project: fixture.projectId, records: [{ record: one.id, status: 'pending' }, { record: broken.id, status: 'pending' }] } },
+      meta: { dv_seen: { project: fixture.projectId, at: broken.id, records: { [one.id]: 'pending', [broken.id]: 'pending' } } },
     })
     expect(fixture.log.step()).toBeNull()
     await until(fixture.project, fixture.projectId, broken.id, 'running')
@@ -292,21 +295,21 @@ describe('project update message', () => {
     expect(fixture.log.step()).toBeNull()
   })
 
-  it('reports an undo as a move whose steps stay redoable, and an undo followed by a write as discarded steps', async () => {
+  it('reports an undo and a redo as moves, and an undo followed by a write as a move with the new record', async () => {
     const fixture = await start()
     const first = await fixture.run(user('a'), 'asset.import', { name: 'a.png' })
     const second = await fixture.run(user('b'), 'asset.import', { name: 'b.png' })
-    const third = await fixture.run(user('c'), 'asset.import', { name: 'c.png' })
+    await fixture.run(user('c'), 'asset.import', { name: 'c.png' })
     fixture.log.step()
     await fixture.project.undo(fixture.projectId)
     await fixture.project.undo(fixture.projectId)
-    expect(fixture.log.step()).toBe(update(`- history: the current step is ${first.id}. Undone (dv_proj_redo can bring them back): ${second.id}, ${third.id}.`))
+    expect(fixture.log.step()).toBe(update(`- history: the current step is ${first.id}; dv_proj_history_list shows which steps are undone or discarded.`))
     await fixture.project.redo(fixture.projectId)
-    expect(fixture.log.step()).toBe(update(`- history: the current step is ${second.id}. Back in the state: ${second.id}.`))
+    expect(fixture.log.step()).toBe(update(`- history: the current step is ${second.id}; dv_proj_history_list shows which steps are undone or discarded.`))
     await fixture.project.undo(fixture.projectId)
     const written = await fixture.run(user('d'), 'asset.import', { name: 'd.png' })
     expect(fixture.log.step()).toBe(update(
-      `- history: the current step is ${written.id}. Discarded for good: ${second.id}.`,
+      `- history: the current step is ${written.id}; dv_proj_history_list shows which steps are undone or discarded.`,
       `- done ${written.id} (user on canvas): imported d.png`, `  - asset: ${assetOf('d.png')} (image/png) https://assets.example/${assetOf('d.png')}`,
     ))
   })
@@ -316,10 +319,9 @@ describe('project update message', () => {
     fixture.log.step()
     const own = await fixture.call('dv_asset_import', { reason: 'product', name: 'product.png' })
     fixture.log.toolResult(own)
-    const record = (own.isError ? {} : own.value) as { record: string }
     await fixture.project.undo(fixture.projectId)
     const head = fixture.project.line(fixture.projectId).at
-    expect(fixture.log.step()).toBe(update(`- history: the current step is ${head}. Undone (dv_proj_redo can bring them back): ${record.record}.`))
+    expect(fixture.log.step()).toBe(update(`- history: the current step is ${head}; dv_proj_history_list shows which steps are undone or discarded.`))
     await fixture.project.moveTo(fixture.projectId, head)
     await fixture.run(user('passing'), 'asset.import', { name: 'passing.png' })
     await fixture.project.undo(fixture.projectId)
@@ -340,34 +342,13 @@ describe('project update message', () => {
     ))
   })
 
-  it('reports a record that became stale with the record that replaced its input, and a new title', async () => {
-    const fixture = await start()
-    const source = await fixture.run(user('source'), 'asset.import', { name: 'source.png' })
-    const consumer = await fixture.run(user('consumer'), 'asset.import', { name: 'consumer.png' }, {
-      inputs: [{ role: 'reference', ref: { record: source.id, output: 0 } }],
-    })
-    fixture.log.step()
-    const retake = await fixture.run(user('retake'), 'asset.import', { name: 'retake.png' }, { supersedes: [source.id] })
-    await fixture.project.renameProject(fixture.projectId, 'Knife ad 2')
-    expect(fixture.log.step()).toBe(update(
-      `- done ${retake.id} (user on canvas): imported retake.png`, `  - asset: ${assetOf('retake.png')} (image/png) https://assets.example/${assetOf('retake.png')}`,
-      `- stale: ${consumer.id} (an input was replaced by ${retake.id})`,
-      '- title: "Knife ad 2"',
-    ))
-  })
-
-  it('nets out an undo followed by a redo, and gives the same answer when it runs twice on the same store and sight', async () => {
+  it('nets out an undo followed by a redo', async () => {
     const fixture = await start()
     await fixture.run(user('a'), 'asset.import', { name: 'a.png' })
     fixture.log.step()
     await fixture.project.undo(fixture.projectId)
     await fixture.project.redo(fixture.projectId)
     expect(fixture.log.step()).toBeNull()
-    await fixture.run(user('b'), 'asset.import', { name: 'b.png' })
-    const reads = readProject(fixture.project, fixture.projectId)
-    const sight = { ...fixture.log.sight, mark: fixture.log.sight.mark ?? markOf(reads, fixture.projectId) }
-    expect(projectChanges(reads, sight)).toEqual(projectChanges(reads, sight))
-    expect(projectChanges(reads, sight).changes).toHaveLength(1)
   })
 })
 
@@ -375,46 +356,47 @@ describe('dvProjectSight fold', () => {
   it('ignores the metadata of other tools and returns the same state for events it does not read', async () => {
     const fixture = await start()
     fixture.log.step()
-    const before = fixture.log.sight
+    const before = fixture.log.seen
     fixture.log.toolResult({ isError: false, value: {}, content: [], meta: { record: 'r1', tool: 'other' } })
     fixture.log.toolResult({ isError: false, value: {}, content: [], meta: { dv_seen: { kind: 'unknown' } } })
+    fixture.log.toolResult({ isError: false, value: {}, content: [], meta: { dv_seen: { project: 'other', records: {} } } })
     fixture.log.append({ type: 'turn/start', seq: fixture.log.next, time: 0, data: { turn: 2 } })
-    expect(fixture.log.sight).toBe(before)
+    expect(fixture.log.seen).toBe(before)
   })
 
-  it('resets when a surface replacement reaches the view the mark builds on, and only then', async () => {
+  it('resets when a surface replacement reaches the project state message, and only then', async () => {
     const fixture = await start()
     fixture.log.append({ type: 'turn/start', seq: fixture.log.next, time: 0, data: { turn: 1 } })
     fixture.log.step()
-    const from = fixture.log.sight.from ?? -1
+    const from = fixture.log.seen.from ?? -1
     expect(from).toBe(1)
     const checkpoint = (endSeq: number): SessionEvent => ({
       type: 'user/message', seq: fixture.log.next, time: 0, surfaceOp: { op: 'replace', startSeq: SessionSeq(0), endSeq: SessionSeq(endSeq) },
       data: createUserMessage({ content: [{ type: 'text', text: 'Summary of the earlier conversation.' }], source: { kind: 'user' } }),
     })
-    const before = fixture.log.sight
+    const before = fixture.log.seen
     fixture.log.append(checkpoint(0))
-    expect(fixture.log.sight).toBe(before)
+    expect(fixture.log.seen).toBe(before)
     fixture.log.append(checkpoint(from))
-    expect(fixture.log.sight).toEqual({ from: null, mark: null, seen: {} })
+    expect(fixture.log.seen).toEqual({ from: null })
     expect(fixture.log.step()).toMatch(/^DreamVerse project state\./)
   })
 
-  it('recovers the same sight and the same next message when the log is folded again after a restart', async () => {
+  it('recovers the same state and the same next message when the log is folded again after a restart', async () => {
     const fixture = await start()
     fixture.log.step()
     fixture.log.toolResult(await fixture.call('dv_asset_import', { reason: 'product', name: 'product.png' }))
     const render = await fixture.run(user('render'), 'shot.render', { prompt: 'four' }, { after: [] })
     await until(fixture.project, fixture.projectId, render.id, 'running')
     fixture.log.step()
-    const definition = sightProjection()
+    const definition = seenProjection()
     const replayed = fixture.log.events.reduce(definition.apply, definition.init({} as never, 0 as never))
-    expect(replayed).toEqual(fixture.log.sight)
+    expect(replayed).toEqual(fixture.log.seen)
     expect(definition.stateSchema.parse(JSON.parse(JSON.stringify(replayed)))).toEqual(replayed)
     fixture.release('four')
     await fixture.project.wait(fixture.projectId)
     expect(projectMessage(fixture.project, fixture.deps, SESSION, replayed)).toEqual(
-      expect.objectContaining({ content: projectMessage(fixture.project, fixture.deps, SESSION, fixture.log.sight)?.content }),
+      expect.objectContaining({ content: projectMessage(fixture.project, fixture.deps, SESSION, fixture.log.seen)?.content }),
     )
   })
 })

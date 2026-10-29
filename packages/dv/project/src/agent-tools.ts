@@ -4,8 +4,8 @@
  * `inputs` names assets, versions of the registered reference kinds, or outputs of earlier records by role, and the
  * result names the record, its outputs with their URLs, and the records the call scheduled. Image outputs also reach
  * the model as image blocks through the attachment service. The result's presentation metadata also stores, as
- * `dv_seen`, the record in the status the result returned and each scheduled record as `pending` (a `records`
- * sighting of the `project-sight` module), so the project updates do not repeat them; a read stores none.
+ * `dv_seen` (a `ProjectShown`), the record in the status the result returned, each scheduled record as `pending`, and
+ * the newest of them as the position, so the project updates do not repeat them; a read stores none.
  *
  * Confirmation: an operation whose `confirm` is `always` gets the tool-only argument `user_approved`; a call that
  * lacks it is refused, before anything is written, with the operation's `confirmSummary` and the instruction to ask
@@ -29,12 +29,11 @@ import type {} from '@deepseek-ai/dsh-session-projection'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { splitInputRef } from './grammar.ts'
 import type { OperationSpec, OperationToolCall } from './operation-types.ts'
-import { SIGHTING_META_KEY } from './project-sight.ts'
 import type { Sessions } from './sessions.ts'
-import { ProjectError } from './shared.ts'
+import { ProjectError, SEEN_META_KEY } from './shared.ts'
 import type {
   AssetId, AssetStore, HistoryEntry, HistoryQuery, OperationOutput, ProjectId, ProjectRecord, ProjectState, RecordId,
-  ProjectSighting, RecordInputRef, RecordOrigin, RecordStatus, RunRequest, RunResult, SessionId, TurnId,
+  ProjectShown, RecordInputRef, RecordOrigin, RecordStatus, RunRequest, RunResult, SessionId, TurnId,
 } from './types.ts'
 
 /** What the agent tools read and call. */
@@ -364,14 +363,11 @@ export class AgentTools {
         presentationMeta: (_args, value) => {
           const card = { record: value.record, tool: spec.name, status: value.status, outputs: value.outputs }
           if (value.record === '') return card
-          const sighting: ProjectSighting = {
-            kind: 'records', project: brandString<ProjectId>(value.project),
-            records: [
-              { record: brandString<RecordId>(value.record), status: value.status as RecordStatus },
-              ...value.scheduled.map(id => ({ record: brandString<RecordId>(id), status: 'pending' as const })),
-            ],
+          const shown: ProjectShown = {
+            project: brandString<ProjectId>(value.project), at: brandString<RecordId>(value.scheduled.at(-1) ?? value.record),
+            records: { [value.record]: value.status as RecordStatus, ...Object.fromEntries(value.scheduled.map(id => [id, 'pending'])) },
           }
-          return { ...card, [SIGHTING_META_KEY]: toJson(sighting) }
+          return { ...card, [SEEN_META_KEY]: toJson(shown) }
         },
       },
       execute: (args, exec) => this.call(spec, args, exec),

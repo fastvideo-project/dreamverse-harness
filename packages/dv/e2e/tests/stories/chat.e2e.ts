@@ -476,7 +476,7 @@ describe('chat with the agent', () => {
     await send(page, '只回复九')
     await waitChat(page, '收到九')
     // The undo in the timeline view reached the agent as a project update.
-    expect(projectTextOf(requestFor('只回复九'))).toMatch(new RegExp(`^- history: the current step is \\S+\\. Undone \\(dv_proj_redo can bring them back\\): ${last}\\.$`, 'm'))
+    expect(projectTextOf(requestFor('只回复九'))).toMatch(/^- history: the current step is \S+; dv_proj_history_list shows which steps are undone or discarded\.$/m)
     expect(errors).toEqual([])
   })
 

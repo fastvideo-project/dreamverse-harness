@@ -119,11 +119,11 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-挂载了 DSH `sessionProjections` 服务时，绑定了项目的聊天会话的每一步最多在该步自己的消息之后得到一条用户角色消息。项目状态消息出现在第一个没有项目视图的步骤（绑定会话的第一步，或压缩、工具结果裁剪遮蔽了该视图之后的第一步），以及更新会列出超过十二条记录时："DreamVerse project state. This conversation belongs to project <ProjectId>: do all work in it and never call dv_proj_create or dv_proj_open. Later changes that your own tool results did not show reach you as DreamVerse project updates. The project summary, as dv_proj_state returns it without the reports of recent records:"，然后是缩进 JSON 形式的该摘要。之后，项目以智能体没见过的方式发生变化的步骤会得到项目更新消息："DreamVerse project updates since your last step:"，后面每个变化一行：`- history: the current step is <record>.`，以及撤销或移动拿掉的记录（`Undone (dv_proj_redo can bring them back): …`、`Discarded for good: …`）或带回的记录（`Back in the state: …`）；智能体没见过的每条记录，以及它见过未完成、之后已结束的每条记录，各一行 `- <status> <record> (<who>): <text>`，其中 who 是 `user on canvas`、`user on timeline`、`user in asset pool`、`user in chat`、`user in history`、`user via API`、`your call`、`another chat` 或 `scheduled`，text 对完成的记录是操作的摘要（每个输出再缩进一行 `- <role>: <asset> (<mime>) <url>`），对失败或取消的记录是 `<intent>: <error>`，对未结束的记录是意图；`- stale: <record> (an input was replaced by <record>), …`；以及 `- title: "<title>"`。同一会话的操作工具结果、`dv_proj_wait` 结果或项目摘要工具结果展示过的记录不再重复，没有新内容的步骤不得到消息。
+挂载了 DSH `sessionProjections` 服务时，绑定了项目的聊天会话的每一步最多在该步自己的消息之后得到一条用户角色消息。项目状态消息出现在第一个没有项目视图的步骤（绑定会话的第一步，智能体用 `dv_proj_create` 或 `dv_proj_open` 绑定未绑定会话之后的第一步，或压缩、工具结果裁剪遮蔽了该消息之后的第一步）："DreamVerse project state. This conversation belongs to project <ProjectId>: do all work in it and never call dv_proj_create or dv_proj_open. Later changes that your own tool results did not show reach you as DreamVerse project updates. The project summary, as dv_proj_state returns it without the reports of recent records:"，然后是缩进 JSON 形式的该摘要。之后，项目以智能体没见过的方式发生变化的步骤会得到项目更新消息："DreamVerse project updates since your last step:"，撤销、重做或移动改变了当前位置时，后面先有一行 `- history: the current step is <record>; dv_proj_history_list shows which steps are undone or discarded.`；然后，直到当前位置的历史列表中智能体没见过的每条记录，以及其中它见过未完成、之后已结束的每条记录，各一行 `- <status> <record> (<who>): <text>`，其中 who 是 `user on canvas`、`user on timeline`、`user in asset pool`、`user in chat`、`user in history`、`user via API`、`your call`、`another chat` 或 `scheduled`，text 对完成的记录是操作的摘要（每个输出再缩进一行 `- <role>: <asset> (<mime>) <url>`），对失败或取消的记录是 `<intent>: <error>`，对未结束的记录是意图。同一会话的操作工具结果、`dv_proj_wait` 结果或项目摘要工具结果展示过的记录不再重复，没有新内容的步骤不得到消息。
 
 #### Token 影响
 
-项目状态消息约 60 个 token，另加不含报告的项目摘要（新项目约 150 个 token，随项目增长）。一条更新约 15 个 token，每个变化行另加约 20 个，每个输出行另加约 40 个；它最多列出十二条记录。
+项目状态消息约 60 个 token，另加不含报告的项目摘要（新项目约 150 个 token，随项目增长）。一条更新约 15 个 token，移动行另加约 25 个，每个记录行另加约 20 个，每个输出行另加约 40 个；长时间离开后，它列出期间写入的每条记录。
 
 #### KV Cache 影响
 
@@ -133,7 +133,8 @@ kind: "package-reference"
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- 只由 `dv_proj_history_list` 结果或失败的操作工具调用展示过的记录，仍会在下一条项目更新中报告，因为这些结果不存 `dv_seen` 视图记录。
-- 移动行不说明是谁移动的，因为 `line.json` 不记录谁移动了当前位置。
+- 只由 `dv_proj_history_list` 结果或失败的操作工具调用展示过的记录，仍会在下一条项目更新中报告，因为这些结果不存 `dv_seen` 元数据。
+- 移动行不说明是谁移动的，也不列出被撤销或被丢弃的步骤，因为 `line.json` 不记录谁移动了当前位置；`dv_proj_history_list` 给出每个步骤的位置。
+- 项目更新不报告改名，也不报告变为过期的记录；下一份项目摘要会展示两者。
 - 从 `pending` 到 `running` 的变化，以及记录运行期间写入的输出和报告不报告；结束会报告。
 - 引用种类不给出素材的版本解析后不产生任何输入，所以指向这种版本的记录不留下它的痕迹，版本变化后也不会过期。

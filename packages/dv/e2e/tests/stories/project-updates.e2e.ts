@@ -123,8 +123,8 @@ describe('project updates reach the agent as appended messages', () => {
     const page = await openProject()
     harness.backend.hold()
     await chat(page, '做两个镜头的广告', '两个镜头已渲染')
-    const history = await harness.api.post('/api/dv/history', { project: projectId, limit: 1 }) as { entries: Array<{ record: { id: string } }> }
-    const tip = history.entries[0]?.record.id ?? ''
+    const history = await harness.api.post('/api/dv/history', { project: projectId, limit: 2 }) as { entries: Array<{ record: { id: string } }> }
+    const beforeTip = history.entries[1]?.record.id ?? ''
     await harness.api.post('/api/dv/undo', { project: projectId })
     await chat(page, '只回复十', '收到十')
 
@@ -149,7 +149,7 @@ describe('project updates reach the agent as appended messages', () => {
     // dv_proj_wait showed the second render finished, so no update repeats it.
     expect(text).not.toMatch(/\(scheduled\): shot 2\b/)
     // The undo between turns reaches the next turn as a move.
-    expect(updates.at(-1)).toMatch(new RegExp(`^- history: the current step is \\S+\\. Undone \\(dv_proj_redo can bring them back\\): ${tip}\\.$`, 'm'))
+    expect(updates.at(-1)).toMatch(new RegExp(`^- history: the current step is ${beforeTip}; dv_proj_history_list shows which steps are undone or discarded\\.$`, 'm'))
     // No record line is sent twice.
     const lines = [...text.matchAll(/^- (\w+) (\S+) \(/gm)].map(match => `${match[1] ?? ''} ${match[2] ?? ''}`)
     expect(new Set(lines).size, text).toBe(lines.length)

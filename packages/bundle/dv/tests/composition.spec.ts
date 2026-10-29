@@ -192,7 +192,7 @@ describe('DreamVerse bundle composition', () => {
       return result
     }
     const created = await call('dv_proj_create', { title: 'composed' })
-    const projectId = (created.value as { summary: { project_id: ProjectId } }).summary.project_id
+    const projectId = (created.value as { project_id: ProjectId }).project_id
     writeFileSync(join(dir, 'ref.png'), 'PNG-FAKE')
     await call('dv_asset_import', { reason: 'reference', path: join(dir, 'ref.png'), mime: 'image/png' })
     const reference = ctx.dvAssetPool.list().map(asset => asset.id)

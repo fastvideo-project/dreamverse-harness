@@ -161,7 +161,7 @@ describe('agent tools', () => {
     expect(result.content.filter(block => block.type === 'image')).toHaveLength(1)
     expect(result.meta).toMatchObject({
       record: grabbed.record, tool: 'asset.grab_still', status: 'done',
-      dv_seen: { kind: 'records', project: projectId, records: [{ record: grabbed.record, status: 'done' }] },
+      dv_seen: { project: projectId, at: grabbed.record, records: { [grabbed.record]: 'done' } },
     })
     // An empty reason falls back to the operation name; based_on and supersedes reach the record.
     const again = value(await fixture.call('dv_asset_grab_still', { reason: '', prompt: 'kite 2', based_on: grabbed.record, supersedes: [grabbed.record] }))
