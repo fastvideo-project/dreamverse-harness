@@ -59,7 +59,7 @@ Host 半边不注册任何东西。浏览器半边注册下列条目，全部通
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`src/client/index.ts` 导出一次 `defineGenerationUi` 调用的 `inject` 和 `apply`，该调用的 `bar` 就是参数栏。文本模型（例如任务 `t2v` 的 `fasth3`）的 schema 没有 `reference` 输入，所以参数栏的过滤条件不写出任何媒体类型，版本编辑器不提供参考。声明的 `preview` 选出图片产出，套件把它用作卡片的媒体、编辑器和对话卡片的封面、历史缩略图，以及分镜计划画框网格中的画面。套件在对话卡片或版本编辑器第一次订阅时读取 `GET /api/dv/operations` 和 `GET /api/dv/tasks`，读取失败后在下一次订阅时再读取（`@dv/ui-kit` 的 `loadedOnce`）；解析后的参数、产出和历史链接来自 `@dv/ui-kit/tool-rows.tsx`。
+`src/client/index.ts` 导出一次 `defineGenerationUi` 调用的 `inject` 和 `apply`，该调用的 `bar` 就是参数栏。文本模型（例如任务 `t2v` 的 `fasth3`）的 schema 没有 `reference` 输入，所以参数栏的过滤条件不写出任何媒体类型，版本编辑器不提供参考。声明的 `preview` 选出图片产出，套件把它用作卡片的媒体、编辑器和对话卡片的封面，以及历史缩略图。套件在对话卡片或版本编辑器第一次订阅时读取 `GET /api/dv/operations` 和 `GET /api/dv/tasks`，读取失败后在下一次订阅时再读取（`@dv/ui-kit` 的 `loadedOnce`）；解析后的参数、产出和历史链接来自 `@dv/ui-kit/tool-rows.tsx`。
 
 | 文件 | 内容 |
 | --- | --- |

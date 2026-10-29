@@ -9,7 +9,7 @@ import type { FactoryComponentPropsOf, HostObservable } from '@deepseek-ai/dsh-c
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import type { Asset } from '@dv/ui-kit/types.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
-import type { ChainAnchor, NodeAction, NodeType, RecordsInUse } from './contract/index.ts'
+import type { NodeAction, NodeType, RecordsInUse } from './contract/index.ts'
 import { CanvasView } from './CanvasView.tsx'
 import type { CanvasFocus } from './CanvasView.tsx'
 import type {} from './locales.ts'
@@ -21,7 +21,6 @@ export interface CanvasFactoryInjected {
   preview(projectId: string, asset: Asset, opener: Element | null): void
   hooks: {
     nodeTypes: HostObservable<readonly NodeType[]>
-    chainAnchors: HostObservable<readonly ChainAnchor[]>
     recordsInUse: HostObservable<readonly RecordsInUse[]>
     versionKinds: HostObservable<readonly VersionKind[]>
     actions: HostObservable<readonly NodeAction[]>
@@ -53,13 +52,12 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
  */
 export function CanvasFactory(props: FactoryComponentPropsOf<'dv.canvas'>): ReactNode {
   const nodeTypes = props.useNodeTypes(value => value)
-  const chainAnchors = props.useChainAnchors(value => value)
   const recordsInUse = props.useRecordsInUse(value => value)
   const versionKinds = props.useVersionKinds(value => value)
   const actions = props.useActions(value => value)
   const descriptors = useMemo(
-    () => ({ nodeTypes, chainAnchors, recordsInUse, versionKinds, actions }),
-    [nodeTypes, chainAnchors, recordsInUse, versionKinds, actions],
+    () => ({ nodeTypes, recordsInUse, versionKinds, actions }),
+    [nodeTypes, recordsInUse, versionKinds, actions],
   )
   return (
     <CanvasView

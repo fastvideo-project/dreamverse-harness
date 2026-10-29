@@ -273,7 +273,7 @@ describe('one dv.media Factory under parents of both scopes', () => {
     }, { session: reference, entryKey: 'dv_shot_render', hookContext: { callId: 'call-1', assistant: undefined } })
     const node: NodeView = {
       id: 'u1', type: 'asset', title: 'v1.mp4', record: null, assets: ['v1.mp4'], standIn: true, bodyHeight: 117, claimed: false,
-      flags: { stale: false, rendering: false, failed: false, superseded: false }, badges: [], chain: null, version: null, unseen: false,
+      flags: { stale: false, rendering: false, failed: false, superseded: false }, badges: [], version: null, unseen: false,
       rerunning: false,
     }
     const card = runtime.renderSlot('dv.canvas.card', {

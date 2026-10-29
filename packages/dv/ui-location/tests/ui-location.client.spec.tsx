@@ -78,7 +78,7 @@ async function mountLocation() {
 function nodeOf(runtime: SlotTestRuntime, state: WireState, id: string): NodeView | undefined {
   const canvas = runtime.ctx.dvCanvas
   const graph = buildCanvasGraph(state, new Set(), [], 'zh', {
-    nodeTypes: canvas.nodeTypes.getSnapshot(), chainAnchors: canvas.chainAnchors.getSnapshot(),
+    nodeTypes: canvas.nodeTypes.getSnapshot(),
     recordsInUse: canvas.recordsInUse.getSnapshot(), versionKinds: canvas.versionKinds.getSnapshot(),
   })
   const found = graph.nodes.find(node => node.id === id)

@@ -34,8 +34,8 @@ interface NodeTypeCore {
 
 /**
  * How a type draws the current records of its operations. The canvas builds each claimed node itself: `id` is the
- * record ID, `record` the record, `assets` its outputs, and its edges are the record's inputs, its chain and its
- * `based_on`; so a claimed node cannot disagree with its record.
+ * record ID, `record` the record, `assets` its outputs, and its edges are the record's inputs and its `based_on`;
+ * so a claimed node cannot disagree with its record.
  */
 export interface ClaimedNodes {
   /** One registry key `op:<operation>` per name, so two types never claim one operation. */
@@ -85,27 +85,16 @@ export type OperationRecord = ProjectRecord & { operation: string }
 /** One claimed record of the current state, with the lineage that the canvas derived. */
 export interface ClaimedRecord {
   record: OperationRecord
-  /** The anchored chain (the record's `started_by`, else its `based_on` root's, resolved by a `ChainAnchor`), or null. */
-  chain: AnchoredChain | null
   /**
-   * The 1-based number in its group when the group has several records: records linked by `based_on` are one group,
-   * else records of one anchor, slot and lane; null for a record alone in its group.
+   * The 1-based number in its group when the group has several records: records linked by `based_on` are one group;
+   * null for a record alone in its group.
    */
   version: number | null
 }
 
-/** The anchored chain of a record: the record that started it, the node that it hangs off, its slot and lane. */
-export interface AnchoredChain {
-  starter: string
-  /** The node ID that the chain hangs off, such as 'storyboard:s1'. */
-  anchor: string
-  slot: number | null
-  lane?: string
-}
-
 /** One node as a type supplies it. */
 export interface NodeEntry {
-  /** Stable: other plugins name it (a `ChainAnchor` returns '<type>:<id>'); positions and the unseen set store it. */
+  /** Stable: other plugins name it; positions and the unseen set store it. */
   id: string
   /** The accessible name, the caption title and the text of the canvas's write intents. */
   title: string
@@ -119,14 +108,12 @@ export interface NodeEntry {
   assets: readonly string[]
   /** A stand-in draws only when no other node owns one of its assets; of two stand-ins for one asset, the first. */
   standIn?: true
-  /** One of `assets` that stands for the node in small views, such as a frame of its anchor's grid; default `assets[0]`. */
+  /** One of `assets` that stands for the node in small views; default `assets[0]`. */
   preview?: string
-  /** A frame grid of n slots that the canvas fills with the previews of the nodes anchored here by slot. */
-  slots?: number
   /**
    * The frame height in canvas units, which the body fills: a body that shows a picture of known size declares the
    * height of the picture at the 208-unit frame width (`frameHeight` of `@dv/ui-kit/frame.ts`). The canvas computes
-   * the node height as caption + frame grid (when a slot has a frame) + `bodyHeight` without measuring the node; a
+   * the node height as caption + `bodyHeight` without measuring the node; a
    * failed claimed node keeps this height.
    */
   bodyHeight: number
@@ -147,7 +134,6 @@ export type NodeView = NodeEntry & ({ claimed: true; record: OperationRecord } |
   flags: NodeFlags
   /** Labels that `RecordsInUse.badges` reports for the node's assets, such as 已裁剪. */
   badges: readonly string[]
-  chain: AnchoredChain | null
   version: number | null
   /** A finished claimed node that the user has not opened; the caption shows the unseen dot. */
   unseen: boolean
@@ -205,16 +191,6 @@ export interface EditorHost extends Omit<NodeHost, 'rerun'> {
   importFiles(files: readonly File[]): Promise<string[]>
 }
 
-/** The node that the records started by one operation hang off. */
-export interface ChainAnchor {
-  /** The operation of a starting record. */
-  starter: string
-  /** The node ID that the records it started hang off, such as 'storyboard:s1'. */
-  anchor(starter: ProjectRecord): string
-  /** The approved versions of the node, read from the workflow's own slice. */
-  approvedVersions?(state: WireState, anchorId: string): number[]
-}
-
 /** Records whose outputs a plugin's data uses. */
 export interface RecordsInUse {
   /** The registering package. */
@@ -244,8 +220,6 @@ export interface NodeAction<N extends NodeView = NodeView> {
 export interface DvCanvas {
   /** Keyed by `type` and by `op:<operation>` per claimed operation. */
   nodeTypes: Registry<NodeType>
-  /** Keyed by `starter`. */
-  chainAnchors: Registry<ChainAnchor>
   /** Keyed by `id`. */
   recordsInUse: Registry<RecordsInUse>
   /** Keyed by `kind`. */
@@ -258,8 +232,8 @@ export interface DvCanvas {
  * Owner props of a card body, which owns the inside of the node's frame and paints its own fill: a card-like body
  * paints `CARD_SURFACE` of `@dv/ui-kit/frame.ts`, and a body that shows a picture paints only the picture. The canvas
  * draws the caption above the frame (`title`, unseen dot, stale tag, `meta`), the frame outline and selection ring,
- * the status words over the body, the failed words with the actions that show on them in place of the body, the
- * badges, and the frame grid of a node with `slots`.
+ * the status words over the body, the failed words with the actions that show on them in place of the body, and the
+ * badges.
  */
 export interface CardOwner {
   node: NodeView

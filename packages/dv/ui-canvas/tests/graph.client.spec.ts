@@ -8,8 +8,8 @@ import { assetNodeType } from '../../ui-asset-pool/src/client/canvas.tsx'
 import { asset, fixtureState, OPERATIONS, record, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
 import { referenceDescriptors } from '../../ui-reference-kit/src/client/reference-kit.tsx'
 import { apply as shotRenderApply, inject as shotRenderInject } from '../../ui-shot-render/src/client/index.ts'
-import type { ChainAnchor, NodeEntry, NodeType, RecordsInUse } from '../src/client/contract/index.ts'
-import { buildCanvasGraph, freePositions, NODE_WIDTH, previewOf, ROW, slotFrames } from '../src/client/graph.ts'
+import type { NodeEntry, NodeType, RecordsInUse } from '../src/client/contract/index.ts'
+import { buildCanvasGraph, freePositions, NODE_WIDTH, previewOf, ROW } from '../src/client/graph.ts'
 import type { CanvasGraph, CanvasRegistrations } from '../src/client/graph.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { CLIPS } from './fixtures/conformance-states.client.ts'
@@ -40,15 +40,15 @@ afterEach(async () => {
 
 /**
  * @param parts - the descriptors that the test registers.
- * @returns the registrations, with no chain anchor, records in use or version kind unless `parts` names them.
+ * @returns the registrations, with no records in use or version kind unless `parts` names them.
  */
 function kinds(parts: Partial<CanvasRegistrations> & Pick<CanvasRegistrations, 'nodeTypes'>): CanvasRegistrations {
-  return { chainAnchors: [], recordsInUse: [], versionKinds: [], ...parts }
+  return { recordsInUse: [], versionKinds: [], ...parts }
 }
 
 function allKinds(): CanvasRegistrations {
   return {
-    nodeTypes: [testRef.nodeType, assetNodeType, take], chainAnchors: [],
+    nodeTypes: [testRef.nodeType, assetNodeType, take],
     recordsInUse: [testRef.referencesInUse, CLIPS], versionKinds: [testRef.versionKind],
   }
 }
@@ -63,8 +63,6 @@ function allKinds(): CanvasRegistrations {
 function graphOf(state: WireState, registrations: CanvasRegistrations, placed: readonly string[] = [], language: 'zh' | 'en' = 'zh'): CanvasGraph {
   return buildCanvasGraph(state, new Set(placed), OPERATIONS, language, registrations)
 }
-
-const anchorOf = (starter: string): ChainAnchor => ({ starter, anchor: start => `board:${String(start.params['board'])}` })
 
 function sliceType(entries: ReadonlyArray<Omit<NodeEntry, 'bodyHeight'>>, column = 0): NodeType {
   return {
@@ -248,28 +246,27 @@ describe('buildCanvasGraph', () => {
       id: `@dv/ui-test-${type}`, type, label: () => type, color: '', column: 0,
       entries: () => [{ id: 'twin:1', title: type, record: null, assets: [], bodyHeight: 30 }],
     })
-    const registrations = { nodeTypes: [twin('left'), twin('right')], chainAnchors: [], recordsInUse: [], versionKinds: [] }
+    const registrations = { nodeTypes: [twin('left'), twin('right')], recordsInUse: [], versionKinds: [] }
     expect(() => buildCanvasGraph(fixtureState(), new Set(), OPERATIONS, 'zh', registrations))
       .toThrow('canvas node ID "twin:1" is drawn by the node types left and right')
   })
 
-  it('draws each current record of a claimed type with its outputs as assets, numbers its based_on family, and leaves a chain with an unloaded starter unanchored', () => {
+  it('draws each current record of a claimed type with its outputs as assets and numbers its based_on family', () => {
     const image: NodeType = {
       id: '@dv/ui-test-image', type: 'image', label: () => 'image', color: '', column: 2,
       claimed: { operations: ['image.generate'], status: { running: () => '', failed: () => '' }, entry: ({ record: { id } }) => ({ title: id, bodyHeight: 117 }) },
     }
     const state = fixtureState()
     state.components.proj.records.push(
-      record({ id: 'w0', operation: 'w.start', params: { board: 'b1' } }),
       record({ id: 'i1', operation: 'image.generate', deterministic: false, outputs: ['cat.png'] }),
-      record({ id: 'i2', operation: 'image.generate', deterministic: false, based_on: 'i1', started_by: { record: 'w1', slot: 2 }, outputs: ['cat2.png'] }),
+      record({ id: 'i2', operation: 'image.generate', deterministic: false, based_on: 'i1', outputs: ['cat2.png'] }),
     )
     state.assets.push(asset('cat.png', 'image/png', 'i1'), asset('cat2.png', 'image/png', 'i2'))
     Object.assign(state.components.proj.created_by, { 'cat.png': 'i1', 'cat2.png': 'i2' })
-    const graph = graphOf(state, kinds({ nodeTypes: [assetNodeType, image], chainAnchors: [anchorOf('w.start')] }), ['cat.png'])
+    const graph = graphOf(state, kinds({ nodeTypes: [assetNodeType, image] }), ['cat.png'])
     const byId = new Map(graph.nodes.map(node => [node.id, node]))
-    expect([byId.get('i1'), byId.get('i2')].map(node => node === undefined ? null : [node.claimed, node.assets, node.version, node.chain]))
-      .toEqual([[true, ['cat.png'], 1, null], [true, ['cat2.png'], 2, null]])
+    expect([byId.get('i1'), byId.get('i2')].map(node => node === undefined ? null : [node.claimed, node.assets, node.version]))
+      .toEqual([[true, ['cat.png'], 1], [true, ['cat2.png'], 2]])
     expect(graph.edges).toEqual([{ from: 'i1', to: 'i2', kind: 'lineage' }])
     expect(graph.nodes.filter(node => node.type === 'asset')).toEqual([])
     expect(graph.assetNodes).toMatchObject({ 'cat.png': 'i1', 'cat2.png': 'i2' })
@@ -302,19 +299,6 @@ describe('buildCanvasGraph', () => {
     expect(graph.edges.filter(edge => edge.to === 'g9')).toEqual([])
   })
 
-  it('anchors no chain on a record without an operation', () => {
-    const state = fixtureState()
-    state.components.proj.records.push(
-      record({ id: 'n0', params: { board: 'b1' } }),
-      record({
-        id: 'g9', operation: 'shot.render', deterministic: false, params: { prompt: 'free' }, started_by: { record: 'n0', slot: 1 },
-      }),
-    )
-    const graph = graphOf(state, kinds({ nodeTypes: [take], chainAnchors: [anchorOf('a.start')] }))
-    expect(graph.nodes.find(node => node.id === 'g9')?.chain).toBeNull()
-    expect(graph.edges.some(edge => edge.kind === 'chain')).toBe(false)
-  })
-
   it('shows a badge label once on the node of its asset, and no badge for an asset that no node shows', () => {
     const { recordsInUse } = allKinds()
     const repeated: RecordsInUse = {
@@ -338,77 +322,6 @@ describe('buildCanvasGraph', () => {
     ]))
     const column = byId.get('g1')?.x
     expect([byId.get('k1')?.x, byId.get('k2')?.x]).toEqual([column, column])
-  })
-})
-
-describe('chain grouping', () => {
-  const takeRecord = (id: string, startedBy: ProjectRecord['started_by'], basedOn: string | null = null): ProjectRecord => record({
-    id, operation: 'shot.render', deterministic: false, based_on: basedOn, outputs: [`${id}.png`],
-    ...startedBy === undefined ? {} : { started_by: startedBy },
-  })
-
-  /**
-   * The shared fixture plus the takes of two `a.start` starters, one `b.start` starter and one unloaded starter on board b1.
-   * @param extra - more takes, placed right after h2.
-   * @returns the state.
-   */
-  function chainState(extra: ProjectRecord[] = []): WireState {
-    const state = fixtureState()
-    const added = [
-      record({ id: 'st0', operation: 'a.start', params: { board: 'b1' } }), takeRecord('n1', { record: 'st0', slot: 2 }),
-      record({ id: 'st1', operation: 'a.start', params: { board: 'b1' } }), takeRecord('h1', { record: 'st1', slot: 1 }), takeRecord('h2', undefined, 'h1'),
-      ...extra,
-      record({ id: 'ad1', operation: 'b.start', params: { board: 'b1' } }),
-      takeRecord('v9', { record: 'ad1', slot: 1, lane: '9:16' }), takeRecord('v16', { record: 'ad1', slot: 1, lane: '16:9' }),
-      takeRecord('o1', { record: 'zz1', slot: 2 }),
-    ]
-    state.components.proj.records.push(...added)
-    for (const { id } of added.filter(entry => entry.operation === 'shot.render')) {
-      state.assets.push(asset(`${id}.png`, 'image/png', id))
-      state.components.proj.created_by[`${id}.png`] = id
-    }
-    return state
-  }
-  const ANCHORS = [anchorOf('a.start'), anchorOf('b.start')]
-
-  it('draws the chain of the newest starter of each operation on each node, every free take, and the records a RecordsInUse uses', () => {
-    const takes = (state: WireState, recordsInUse: RecordsInUse[] = []): string[] =>
-      graphOf(state, kinds({ nodeTypes: [take], chainAnchors: ANCHORS, recordsInUse })).nodes.map(node => node.id)
-    expect(takes(chainState())).toEqual(['g1', 'g2', 'g3', 'h1', 'h2', 'v9', 'v16', 'o1'])
-    expect(takes(chainState(), [{ id: 'test-uses', uses: () => ['n1'] }])).toEqual(['g1', 'g2', 'g3', 'n1', 'h1', 'h2', 'v9', 'v16', 'o1'])
-    const otherBoard = chainState()
-    otherBoard.components.proj.records.push(record({ id: 'st2', operation: 'a.start', params: { board: 'b2' } }))
-    expect(takes(otherBoard)).toEqual(['g1', 'g2', 'g3', 'h1', 'h2', 'v9', 'v16', 'o1'])
-    expect(graphOf(chainState(), kinds({ nodeTypes: [take] })).nodes.some(node => node.id === 'n1')).toBe(true)
-  })
-
-  it('numbers records by based_on family, else by anchor, slot and lane, and fills each slot frame from the newest take anchored there', () => {
-    const state = chainState([takeRecord('n2', { record: 'st1', slot: 2 })])
-    const graph = graphOf(state, kinds({ nodeTypes: [sliceType([{ id: 'board:b1', title: 'b1', record: null, assets: [], slots: 2 }]), take], chainAnchors: ANCHORS, recordsInUse: [{ id: 'test-uses', uses: () => ['n1'] }] }), [], 'en')
-    const byId = new Map(graph.nodes.map(node => [node.id, node]))
-    expect(['h1', 'h2', 'n1', 'n2', 'v9', 'v16', 'o1'].map(id => [byId.get(id)?.chain ?? null, byId.get(id)?.version])).toEqual([
-      [{ starter: 'st1', anchor: 'board:b1', slot: 1 }, 1], [{ starter: 'st1', anchor: 'board:b1', slot: 1 }, 2],
-      [{ starter: 'st0', anchor: 'board:b1', slot: 2 }, 1], [{ starter: 'st1', anchor: 'board:b1', slot: 2 }, 2],
-      [{ starter: 'ad1', anchor: 'board:b1', slot: 1, lane: '9:16' }, null], [{ starter: 'ad1', anchor: 'board:b1', slot: 1, lane: '16:9' }, null],
-      [null, null],
-    ])
-    expect(graph.edges.filter(edge => edge.kind === 'chain').map(edge => `${edge.from}>${edge.to}`).sort())
-      .toEqual(['h1', 'h2', 'n1', 'n2', 'v16', 'v9'].map(id => `board:b1>${id}`))
-    expect(slotFrames(graph.nodes, 'board:b1', 2)).toEqual([{ node: 'v16', preview: 'v16.png' }, { node: 'n2', preview: 'n2.png' }])
-  })
-
-  it('lays out six takes in two lanes by anchor, slot (null last), lane in first-record order, then record order', () => {
-    const state = fixtureState()
-    const laneTake = (id: string, slot: number | null, lane: string): ProjectRecord => takeRecord(id, { record: 'ad1', slot, lane })
-    state.components.proj.records.push(
-      record({ id: 'ad1', operation: 'b.start', params: { board: 'b1' } }),
-      laneTake('m0', null, '9:16'), laneTake('m2', 2, '9:16'), laneTake('m1', 1, '9:16'),
-      laneTake('w2', 2, '16:9'), laneTake('w0', null, '16:9'), laneTake('w1', 1, '16:9'),
-    )
-    const graph = graphOf(state, kinds({ nodeTypes: [take], chainAnchors: [anchorOf('b.start')] }))
-    const placed = graph.nodes.filter(node => node.id !== 'g2').sort((a, b) => a.x - b.x || a.y - b.y).map(node => node.id)
-    expect(placed).toEqual(['g1', 'g3', 'm1', 'w1', 'm2', 'w2', 'm0', 'w0'])
-    expect(graph.nodes.map(node => node.id)).toEqual(['g1', 'g2', 'g3', 'm0', 'm2', 'm1', 'w2', 'w0', 'w1'])
   })
 })
 

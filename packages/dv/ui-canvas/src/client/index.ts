@@ -40,7 +40,7 @@ export function apply(ctx: ClientContext): void {
     client,
     preview: (projectId, asset, opener) => { ctx.get('dvMedia')?.preview(projectId, asset, opener) },
     hooks: {
-      nodeTypes: canvas.nodeTypes, chainAnchors: canvas.chainAnchors, recordsInUse: canvas.recordsInUse,
+      nodeTypes: canvas.nodeTypes, recordsInUse: canvas.recordsInUse,
       versionKinds: canvas.versionKinds, actions: canvas.actions,
     },
   }

@@ -1,10 +1,10 @@
 /**
- * The `dvCanvas` service that the canvas provides: its five registries.
+ * The `dvCanvas` service that the canvas provides: its four registries.
  *
  * @module @dv/ui-canvas/dv-canvas
  */
 import { createRegistry, type VersionKind } from '@dv/ui-kit/registries.ts'
-import type { ChainAnchor, DvCanvas, NodeAction, NodeType, RecordsInUse } from './contract/index.ts'
+import type { DvCanvas, NodeAction, NodeType, RecordsInUse } from './contract/index.ts'
 
 /**
  * Create empty canvas registries.
@@ -15,7 +15,6 @@ export function createDvCanvas(): DvCanvas {
     nodeTypes: createRegistry<NodeType>(
       type => [type.type, ...(type.claimed?.operations ?? []).map(operation => `op:${operation}`)], type => type.id,
     ),
-    chainAnchors: createRegistry<ChainAnchor>(anchor => [anchor.starter], anchor => `the anchor of ${anchor.starter}`),
     recordsInUse: createRegistry<RecordsInUse>(uses => [uses.id], uses => uses.id),
     versionKinds: createRegistry<VersionKind>(kind => [kind.kind], kind => `the version kind ${kind.kind}`),
     actions: createRegistry<NodeAction>(action => [action.id], action => action.id.replace(/:.*/su, '')),

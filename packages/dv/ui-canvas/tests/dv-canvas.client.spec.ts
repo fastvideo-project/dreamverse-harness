@@ -11,10 +11,10 @@ const claiming = (id: string, type: 'test_clip' | 'test_cut', operations: string
 })
 
 describe('createDvCanvas', () => {
-  it('creates five empty registries', () => {
+  it('creates four empty registries', () => {
     const canvas = createDvCanvas()
-    const registries = [canvas.nodeTypes, canvas.chainAnchors, canvas.recordsInUse, canvas.versionKinds, canvas.actions]
-    expect(registries.map(registry => registry.getSnapshot())).toEqual([[], [], [], [], []])
+    const registries = [canvas.nodeTypes, canvas.recordsInUse, canvas.versionKinds, canvas.actions]
+    expect(registries.map(registry => registry.getSnapshot())).toEqual([[], [], [], []])
   })
 
   it('keys a node type by its type and each claimed operation, and a refusal names the package that holds the key', () => {
@@ -27,11 +27,8 @@ describe('createDvCanvas', () => {
     expect(() => canvas.nodeTypes.register(claiming('@dv/ui-other', 'test_cut', ['clip.export']))).not.toThrow()
   })
 
-  it('refuses a second chain anchor of a starter, records in use of a package, version kind of a kind, and action of an id', () => {
+  it('refuses a second records in use of a package, version kind of a kind, and action of an id', () => {
     const canvas = createDvCanvas()
-    canvas.chainAnchors.register({ starter: 'test.start', anchor: () => 'board:b1' })
-    expect(() => canvas.chainAnchors.register({ starter: 'test.start', anchor: () => 'board:b2' }))
-      .toThrow('registry key "test.start" is already registered by the anchor of test.start')
     canvas.recordsInUse.register({ id: '@dv/ui-timeline', uses: () => [] })
     expect(() => canvas.recordsInUse.register({ id: '@dv/ui-timeline', uses: () => ['r1'] })).toThrow('registry key "@dv/ui-timeline" is already registered by @dv/ui-timeline')
     const props: VersionKind = { kind: 'prop', label: () => '道具', node: id => `prop:${id}`, latest: () => [], name: () => null, assets: () => [] }

@@ -37,7 +37,7 @@ async function registered(): Promise<{ registrations: CanvasRegistrations; runti
   return {
     runtime,
     registrations: {
-      nodeTypes: canvas.nodeTypes.getSnapshot(), chainAnchors: canvas.chainAnchors.getSnapshot(),
+      nodeTypes: canvas.nodeTypes.getSnapshot(),
       recordsInUse: canvas.recordsInUse.getSnapshot(), versionKinds: canvas.versionKinds.getSnapshot(),
     },
   }
@@ -60,18 +60,13 @@ describe('fixture project', () => {
 })
 
 describe('claims of an unloaded type', () => {
-  /**
-   * A state with an `image.generate` record of the chain of starter `a1`, a newer starter `a9` on the same board, and a
-   * free `shot.render` record that reads the image as its first frame.
-   */
+  /** A state with an `image.generate` record and a `shot.render` record that reads the image as its first frame. */
   function imageState(): WireState {
     const state = fixtureProject()
     const base = state.components.proj.records[0]
     if (base === undefined) throw new Error('no record')
     state.components.proj.records.push(
-      { ...base, id: 'a1', operation: 'test.start', params: { board: 'b1' } },
-      { ...base, id: 'i1', operation: 'image.generate', deterministic: false, inputs: [], outputs: ['i1.png'], params: {}, started_by: { record: 'a1', slot: 1 } },
-      { ...base, id: 'a9', operation: 'test.start', params: { board: 'b1' } },
+      { ...base, id: 'i1', operation: 'image.generate', deterministic: false, inputs: [], outputs: ['i1.png'], params: {} },
       {
         ...base, id: 'i2', operation: 'shot.render', deterministic: false, outputs: ['i2.mp4'], params: {},
         inputs: [{ role: 'first_frame', ref: { record: 'i1', output: 0 }, resolved_asset: 'i1.png' }],
@@ -91,24 +86,18 @@ describe('claims of an unloaded type', () => {
     await runtime.dispose()
   })
 
-  it('keeps a claimed record of an earlier chain drawn while a current record of another type reads it as its first frame', async () => {
+  it('draws a claimed record of another type left of the take that reads it as its first frame, with a first-frame edge', async () => {
     const { registrations, runtime } = await registered()
     const still: NodeType = {
       id: '@dv/ui-test-still', type: 'still', label: () => 'still', color: '', column: 2,
       claimed: { operations: ['image.generate'], status: { running: () => '', failed: () => '' }, entry: () => ({ title: 'i1', bodyHeight: 117 }) },
     }
-    const withStill: CanvasRegistrations = {
-      ...registrations, nodeTypes: [...registrations.nodeTypes, still],
-      chainAnchors: [{ starter: 'test.start', anchor: start => `board:${String(start.params['board'])}` }],
-    }
+    const withStill: CanvasRegistrations = { ...registrations, nodeTypes: [...registrations.nodeTypes, still] }
     const graph = buildCanvasGraph(imageState(), new Set(), OPS, 'zh', withStill)
     const image = graph.nodes.find(node => node.id === 'i1')
     const take = graph.nodes.find(node => node.id === 'i2')
     expect(graph.edges.filter(edge => edge.to === 'i2')).toEqual([{ from: 'i1', to: 'i2', kind: 'input', role: 'first_frame' }])
     expect(image !== undefined && take !== undefined && take.x > image.x).toBe(true)
-    const unread = imageState()
-    unread.components.proj.records = unread.components.proj.records.filter(entry => entry.id !== 'i2')
-    expect(buildCanvasGraph(unread, new Set(), OPS, 'zh', withStill).nodes.some(node => node.id === 'i1')).toBe(false)
     await runtime.dispose()
   })
 })

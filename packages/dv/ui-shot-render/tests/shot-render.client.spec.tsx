@@ -65,7 +65,7 @@ async function mountShotRender() {
 
 function takesOf(canvas: ReturnType<typeof createDvCanvas>, state = fixtureState()): Map<string, ClaimedNodeView & { x: number }> {
   const graph = buildCanvasGraph(state, new Set(), OPERATIONS, 'zh', {
-    nodeTypes: canvas.nodeTypes.getSnapshot(), chainAnchors: [], recordsInUse: [], versionKinds: [],
+    nodeTypes: canvas.nodeTypes.getSnapshot(), recordsInUse: [], versionKinds: [],
   })
   return new Map(graph.nodes.flatMap(node => node.type === 'take' && node.claimed ? [[node.id, { ...node, unseen: false, rerunning: false }] as const] : []))
 }

@@ -59,7 +59,7 @@ The card shows what it has while the arguments stream. Until the two lists load,
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-`src/client/index.ts` exports the `inject` and the `apply` of one `defineGenerationUi` call, whose `bar` is the parameter bar. A text model, such as `fasth3` for task `t2v`, has no `reference` input in its schema, so the bar's filter names no media type and the take editor offers no reference. The declaration's `preview` picks the image output, which the kit uses as the card's media, the poster of the editor and of the chat card, the History thumbnail, and the frame of a plan's frame grid. The kit reads `GET /api/dv/operations` and `GET /api/dv/tasks` on the first subscription of the chat card or the take editor, and again on the next one after a failed read (`loadedOnce` of `@dv/ui-kit`); the parsed arguments, the outputs, and the history link come from `@dv/ui-kit/tool-rows.tsx`.
+`src/client/index.ts` exports the `inject` and the `apply` of one `defineGenerationUi` call, whose `bar` is the parameter bar. A text model, such as `fasth3` for task `t2v`, has no `reference` input in its schema, so the bar's filter names no media type and the take editor offers no reference. The declaration's `preview` picks the image output, which the kit uses as the card's media, the poster of the editor and of the chat card, and the History thumbnail. The kit reads `GET /api/dv/operations` and `GET /api/dv/tasks` on the first subscription of the chat card or the take editor, and again on the next one after a failed read (`loadedOnce` of `@dv/ui-kit`); the parsed arguments, the outputs, and the history link come from `@dv/ui-kit/tool-rows.tsx`.
 
 | File | Content |
 | --- | --- |

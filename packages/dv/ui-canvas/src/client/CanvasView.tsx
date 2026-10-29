@@ -20,8 +20,8 @@ import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { useOperations, useProjectState } from '@dv/ui-kit/useProject.ts'
 import { useZoomPresence } from '@dv/ui-kit/zoom.ts'
 import type { CanvasRequest, EditorHost, NodeAction, NodeHost, NodeView, RerunRequest } from './contract/index.ts'
-import { buildCanvasGraph, freePositions, isFinished, NODE_WIDTH, previewOf, ROW, slotFrames } from './graph.ts'
-import type { CanvasEdge, CanvasNode, CanvasRegistrations, SlotFrame } from './graph.ts'
+import { buildCanvasGraph, freePositions, isFinished, NODE_WIDTH, previewOf, ROW } from './graph.ts'
+import type { CanvasEdge, CanvasNode, CanvasRegistrations } from './graph.ts'
 import { cardHeight, edgeAnchorY, NodeCard, textScaleAt, TypeLabelBody } from './NodeCard.tsx'
 import type { CanvasTranslate } from './NodeCard.tsx'
 import { NodeEditor } from './NodeEditor.tsx'
@@ -242,14 +242,7 @@ export function CanvasView(
     if (base.value === null || base.value.project.id !== projectId) return null
     return { state: base.value, ...buildCanvasGraph(base.value, placed, operations.value ?? [], language, descriptors) }
   }, [base.value, placed, projectId, operations.value, language, descriptors])
-  // The frame grid of each node with slots. Memoized on the graph, because a pan or zoom re-renders the view on every
-  // pointer move.
-  const grids = useMemo(() => new Map(graph === null ? [] : graph.nodes.flatMap(node => node.slots !== undefined
-    ? [[node.id, slotFrames(graph.nodes, node.id, node.slots)] as const]
-    : [])), [graph])
   const assetById = useMemo(() => new Map<string, Asset>((graph?.state.assets ?? []).map(asset => [asset.id, asset])), [graph])
-  const framesShow = useCallback((node: CanvasNode): boolean => grids.get(node.id)?.some(frame => frame !== null) === true, [grids])
-  const heightOf = useCallback((node: CanvasNode): number => cardHeight(node, framesShow(node)), [framesShow])
 
   const [positions, setPositions] = useState<Record<string, NodePosition>>({})
   const [viewport, setViewport] = useState<CanvasViewport>({ x: 40, y: 40, zoom: 1 })
@@ -398,9 +391,9 @@ export function CanvasView(
     setViewport(current => ({
       ...current,
       x: width / 2 - (position.x + NODE_WIDTH / 2) * current.zoom,
-      y: height / 2 - (position.y + heightOf(node) / 2) * current.zoom,
+      y: height / 2 - (position.y + cardHeight(node) / 2) * current.zoom,
     }))
-  }, [heightOf])
+  }, [])
 
   // A focus request waits while no drawn node matches it, so a node type that registers later still opens its node;
   // only opening the node takes the request.
@@ -453,7 +446,7 @@ export function CanvasView(
     const settled = [...unsavedSpots.current].filter(id => !rendering.has(id))
     for (const id of settled) unsavedSpots.current.delete(id)
     const kept = withoutProperties(positionsRef.current, settled)
-    const added = freePositions(graph.nodes, kept, node => cardHeight(node, true))
+    const added = freePositions(graph.nodes, kept, cardHeight)
     if (settled.length === 0 && Object.keys(added).length === 0) return
     for (const id of Object.keys(added)) if (rendering.has(id)) unsavedSpots.current.add(id)
     positionsRef.current = { ...added, ...kept }
@@ -682,10 +675,6 @@ export function CanvasView(
   const viewFor = (node: CanvasNode): NodeView => viewOf(
     node, seenNodes !== null && isFinished(node) && !wasSeen(seenNodes, node), node.record !== null && node.record.id === rerunning?.record,
   )
-  const frameMedia = (frame: SlotFrame | null): ReactNode => {
-    const asset = frame === null ? undefined : assetById.get(frame.preview)
-    return asset === undefined ? null : renderFactorySlot('dv.media', { asset, purpose: 'thumb' })
-  }
   let content: ReactNode = null
   if (graph === null) {
     content = <p style={centered}>{base.error !== null ? t('error', { message: base.error }) : t('loading')}</p>
@@ -696,7 +685,7 @@ export function CanvasView(
     const touchesSelected = (edge: CanvasEdge): boolean => selected !== null && (edge.from === selected || edge.to === selected)
     const links = [...graph.links.filter(link => !touchesSelected(link.edge)), ...graph.links.filter(link => touchesSelected(link.edge))]
     const textScale = textScaleAt(viewport.zoom)
-    const anchorOf = (node: CanvasNode): number => edgeAnchorY(node, framesShow(node), textScale)
+    const anchorOf = (node: CanvasNode): number => edgeAnchorY(node, textScale)
     const hosts = hostsOf(() => { setEditing(null) })
     content = (
       <div style={{ position: 'absolute', left: 0, top: 0, transform: `translate(${String(viewport.x)}px, ${String(viewport.y)}px) scale(${String(viewport.zoom)})`, transformOrigin: '0 0' }}>
@@ -746,7 +735,6 @@ export function CanvasView(
               body={renderSlot('dv.canvas.card', { node: view, assets, textScale, host: hosts.card }, {
                 entryKey: node.type, fallback: <TypeLabelBody label={node.nodeType.label()} textScale={textScale} />,
               })}
-              frames={(grids.get(node.id) ?? []).map(frameMedia)}
               failedActions={node.claimed && node.flags.failed ? actionsFor(view) : []}
               rerunningAction={view.rerunning ? rerunning?.action ?? null : null}
               onAction={(action) => { action.run(view, hosts.action(action.id)) }}

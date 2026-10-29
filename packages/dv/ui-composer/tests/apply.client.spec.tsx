@@ -59,7 +59,7 @@ function node(
 ): NodeView {
   return {
     record: null, assets: [], bodyHeight: 0, type: 'note', claimed: false,
-    flags: { stale: false, rendering: false, failed: false, superseded: false }, badges: [], chain: null, version: null,
+    flags: { stale: false, rendering: false, failed: false, superseded: false }, badges: [], version: null,
     unseen: false, rerunning: false, ...changes,
   }
 }

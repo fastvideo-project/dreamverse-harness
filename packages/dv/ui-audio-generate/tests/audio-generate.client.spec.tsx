@@ -45,7 +45,7 @@ describe('@dv/ui-audio-generate', () => {
   it('claims audio.generate as the audio node type with its label, palette slot, body height and status words', async () => {
     const { runtime, canvas } = await mountPlugin()
     const type = canvas.nodeTypes.getSnapshot().find(entry => entry.id === '@dv/ui-audio-generate')
-    const entry = type?.claimed?.entry({ record: { outputs: [] } as never, chain: null, version: null }, {
+    const entry = type?.claimed?.entry({ record: { outputs: [] } as never, version: null }, {
       state: { assets: [] } as never, operations: [], language: 'zh', placed: new Set(), records: [],
     })
     expect({

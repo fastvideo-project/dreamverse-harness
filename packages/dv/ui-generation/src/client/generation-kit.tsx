@@ -102,12 +102,9 @@ function TakeCard({ node, assets, renderFactorySlot }: PropsRuntime<'dv.canvas.c
 export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
   const operations = new Set(spec.operations)
   const fallbackHeight = spec.bodyHeight ?? NODE_FRAME_HEIGHT
-  const titleOf = ({ record, chain, version }: ClaimedRecord, input: NodeInput): string => {
+  const titleOf = ({ record, version }: ClaimedRecord, input: NodeInput): string => {
     const pick = (zh: string, en: string): string => input.language === 'zh' ? zh : en
-    const declared = input.operations.find(operation => operation.name === record.operation)?.label?.[input.language]
-    const slot = chain?.slot ?? null
-    const lane = chain?.lane === undefined ? '' : ` · ${chain.lane}`
-    const base = slot === null ? declared ?? record.operation : pick(`镜头 ${String(slot)}${lane}`, `Shot ${String(slot)}${lane}`)
+    const base = input.operations.find(operation => operation.name === record.operation)?.label?.[input.language] ?? record.operation
     return version === null ? base : pick(`${base} · 第 ${String(version)} 次`, `${base} · take ${String(version)}`)
   }
   const entry = (claimed: ClaimedRecord, input: NodeInput): ClaimedEntry => {

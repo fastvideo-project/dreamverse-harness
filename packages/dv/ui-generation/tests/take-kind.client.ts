@@ -10,7 +10,7 @@ import type { ChildrenDecl } from '@deepseek-ai/dsh-client-ui-slots'
 import type { HistoryRow } from '@dv/ui-history/contract'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type { WireOperation, WireState } from '@dv/ui-kit/types.ts'
-import type { ChainAnchor, ClaimedNodeView, DvCanvas, EditorHost, NodeView } from '../../ui-canvas/src/client/contract/index.ts'
+import type { ClaimedNodeView, DvCanvas, EditorHost, NodeView } from '../../ui-canvas/src/client/contract/index.ts'
 import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
 import { buildCanvasGraph } from '../../ui-canvas/src/client/graph.ts'
 import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
@@ -25,9 +25,6 @@ export const testTake = defineGenerationUi({
   status: { running: ['生成中…', 'Generating…'], failed: ['没生成', 'Not generated'], done: ['已生成', 'Generated'] },
   preview: outputs => outputs.find(output => output.mime === 'image/png')?.id,
 })
-
-/** The chain anchor of the starter `a1` (operation `test.start`): the records it started hang off `board:b1`. */
-export const STARTER: ChainAnchor = { starter: 'test.start', anchor: () => 'board:b1' }
 
 /** The `clip.extend` declaration: no label and no reference input. */
 export const CLIP_EXTEND: WireOperation = {
@@ -76,7 +73,7 @@ export async function mountKit(children: ChildrenDecl, kind: typeof testTake = t
  */
 export function nodesOf(canvas: DvCanvas, state: WireState, operations: readonly WireOperation[], language: 'zh' | 'en'): Map<string, NodeView> {
   const graph = buildCanvasGraph(state, new Set(), operations, language, {
-    nodeTypes: canvas.nodeTypes.getSnapshot(), chainAnchors: canvas.chainAnchors.getSnapshot(),
+    nodeTypes: canvas.nodeTypes.getSnapshot(),
     recordsInUse: canvas.recordsInUse.getSnapshot(), versionKinds: canvas.versionKinds.getSnapshot(),
   })
   return new Map(graph.nodes.map(node => [node.id, { ...node, unseen: false, rerunning: false }]))

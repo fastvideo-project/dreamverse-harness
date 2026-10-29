@@ -13,7 +13,7 @@ import type { NodeType } from '../../ui-canvas/src/client/contract/index.ts'
 import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { defineGenerationUi } from '../src/client/generation-kit.tsx'
-import { claimedOf, CLIP_EXTEND, mountKit, nodesOf, recordingHost, STARTER, testTake } from './take-kind.client.ts'
+import { claimedOf, CLIP_EXTEND, mountKit, nodesOf, recordingHost, testTake } from './take-kind.client.ts'
 
 const LABELLED = [{ ...OPERATIONS[0]!, label: { zh: '渲染镜头', en: 'Render shot' } }, CLIP_EXTEND]
 
@@ -24,17 +24,12 @@ afterEach(() => {
 })
 
 /**
- * The fixture state plus the starter `a1`, its chained `shot.render` takes, and an unchained `clip.extend` take.
+ * The fixture state plus a `clip.extend` take.
  * @returns the state.
  */
-function chainedState(): FixtureState {
+function extendedState(): FixtureState {
   const state = fixtureState()
-  const render = (id: string, slot: number, lane?: string) => record({
-    id, operation: 'shot.render', deterministic: false, outputs: [], started_by: { record: 'a1', slot, ...lane === undefined ? {} : { lane } },
-  })
   state.components.proj.records.push(
-    record({ id: 'a1', operation: 'test.start' }),
-    render('k1', 1), render('k2', 2, 'b'), render('k3', 3), render('k4', 3),
     record({ id: 'x1', operation: 'clip.extend', deterministic: false, outputs: ['x1.png', 'x1.mp4'] }),
   )
   state.assets.push(asset('x1.png', 'image/png', 'x1'), asset('x1.mp4', 'video/mp4', 'x1', 2.5))
@@ -43,26 +38,24 @@ function chainedState(): FixtureState {
 }
 
 describe('the claimed node type of a generation kind', () => {
-  it('titles a take by its chain\'s shot, lane and number, else by its operation\'s wire label, else by the operation name', async () => {
+  it('titles a take by its operation\'s wire label, else by the operation name, and its number in its based_on family', async () => {
     const { runtime, canvas } = await mountKit({})
-    canvas.chainAnchors.register(STARTER)
     const titles = (operations = LABELLED, language: 'zh' | 'en' = 'zh') => {
-      const nodes = nodesOf(canvas, chainedState(), operations, language)
-      return Object.fromEntries(['k1', 'k2', 'k3', 'k4', 'g1', 'g2', 'x1'].map(id => [id, nodes.get(id)?.title]))
+      const nodes = nodesOf(canvas, extendedState(), operations, language)
+      return Object.fromEntries(['g1', 'g2', 'x1'].map(id => [id, nodes.get(id)?.title]))
     }
     expect(titles()).toEqual({
-      k1: '镜头 1', k2: '镜头 2 · b', k3: '镜头 3 · 第 1 次', k4: '镜头 3 · 第 2 次',
       // g3 is a rerun of g1, so the two are takes 1 and 2 of one group.
       g1: '渲染镜头 · 第 1 次', g2: '渲染镜头', x1: 'clip.extend',
     })
-    expect(titles(LABELLED, 'en')).toMatchObject({ k2: 'Shot 2 · b', k4: 'Shot 3 · take 2', g1: 'Render shot · take 1', g2: 'Render shot' })
+    expect(titles(LABELLED, 'en')).toMatchObject({ g1: 'Render shot · take 1', g2: 'Render shot' })
     expect(titles([], 'en')).toMatchObject({ g2: 'shot.render', x1: 'clip.extend' })
     await runtime.dispose()
   })
 
   it('shows the duration of the first timed output as meta, the still the spec picks as preview, and the frame height of the shown asset', async () => {
     const { runtime, canvas } = await mountKit({})
-    const state = chainedState()
+    const state = extendedState()
     state.assets = state.assets.map(entry => entry.id === 'shot1-last.png' ? { ...entry, width: 768, height: 1024 } : entry)
     const nodes = nodesOf(canvas, state, LABELLED, 'en')
     const facts = (id: string) => {

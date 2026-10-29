@@ -158,32 +158,6 @@ describe('the canvas over the real kinds', () => {
     await runtime.dispose()
   })
 
-  it('hangs and titles the takes of a chain off its anchor while a registered chain anchor lasts', async () => {
-    const { runtime, view, node } = await mountCanvas({
-      edit: (state) => {
-        const records = state.components.proj.records.map(entry => entry.id === 'g1' ? { ...entry, started_by: { record: 'st1', slot: 1 } } : entry)
-        state.components.proj.records = [...records, record({ id: 'st1', operation: 'test.start', params: { board: 'b1' } })]
-      },
-    })
-    const edge = (id: string): Element | null => view.container.querySelector(`path[data-edge="board:b1>${id}"]`)
-    await waitFor(() => { node('g1') })
-    expect(edge('g1')).toBeNull()
-    const board: NodeType = {
-      id: '@dv/ui-test-board', type: 'test_board', label: () => 'board', color: '', column: 1,
-      entries: () => [{ id: 'board:b1', title: 'b1', record: null, assets: [], bodyHeight: 30 }],
-    }
-    const anchor = await mountDescriptors(runtime, {
-      nodeType: board, anchor: { starter: 'test.start', anchor: start => `board:${String(start.params['board'])}` },
-    })
-    await waitFor(() => { expect(edge('g1')).not.toBeNull() })
-    expect(edge('g3')).not.toBeNull()
-    expect([node('g1'), node('g3')].map(card => card.getAttribute('aria-label'))).toEqual(['镜头 1 · 第 1 次', '镜头 1 · 第 2 次'])
-    await anchor.dispose()
-    await waitFor(() => { expect(edge('g1')).toBeNull() })
-    expect(edge('g3')).toBeNull()
-    await runtime.dispose()
-  })
-
   it('keeps the node selected after its editor closes; a click on empty canvas then clears the selection', async () => {
     const { runtime, view, node, open, canvasOf } = await mountCanvas()
     await open('g1')

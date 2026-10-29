@@ -50,7 +50,7 @@ export const { inject, apply } = defineGenerationUi({
 
 插件在 `dvCanvas` 和插槽注册表存在时注册它的画布部分（节点类型、重试、卡片和版本编辑器），在插槽注册表存在时注册它的对话卡片，在 `dvHistory` 存在时注册它的历史行，任何加载顺序都有效。节点类型在画布部分中最先注册，所以节点类型被拒绝时，该种类不留下其他画布部分；对话卡片和历史行以工具和操作为键，所以 `@dv/ui-canvas` 未加载时它们也会注册。每个注册随它的服务或插件一起离开：
 
-- **认领式节点类型。** `dvCanvas.nodeTypes` 以 `type` 和每个操作的 `op:<operation>` 为键，所以认领了其中某个操作的第二个类型会抛错并给出持有者的名字，例如 `registry key "op:shot.render" is already registered by @dv/ui-shot-render`。画布从记录构建每个认领式节点；工具包提供标题、meta、预览、主体高度和状态文字。锚定链上的版本以它的位置和分支为标题，例如 镜头 1 · 9:16 / Shot 1 · 9:16；其他版本以界面语言的操作标签为标题，没有时用操作名。同组有多个版本时追加编号，例如 ` · 第 2 次` / ` · take 2`。meta 是第一个有时长的输出的时长，例如 `2.5s`。
+- **认领式节点类型。** `dvCanvas.nodeTypes` 以 `type` 和每个操作的 `op:<operation>` 为键，所以认领了其中某个操作的第二个类型会抛错并给出持有者的名字，例如 `registry key "op:shot.render" is already registered by @dv/ui-shot-render`。画布从记录构建每个认领式节点；工具包提供标题、meta、预览、主体高度和状态文字。版本以界面语言的操作标签为标题，没有时用操作名。同组有多个版本时追加编号，例如 ` · 第 2 次` / ` · take 2`。meta 是第一个有时长的输出的时长，例如 `2.5s`。
 - **卡片主体**，以 `type` 为键的 `dv.canvas.card` 条目。它通过 `dv.media` 以用途 `card` 绘制版本所显示的素材，即版本的预览，没有时为第一个输出。版本的画框高度是 `@dv/ui-kit/frame.ts` 的 `frameHeight` 对所显示素材的计算结果：208 单位宽度按素材宽高比换算，宽高比限制在 3:4 到 16:9 之间；素材宽或高未知或版本没有输出时，取该类型的 `bodyHeight`。尺寸已知的素材不加底色地填满画框；其他版本（例如音频波形，或在画布的运行中文字下的待处理版本）画出 `CARD_SURFACE`。
 - **版本编辑器**，以 `type` 为键的 `dv.canvas.editor.claimed` 条目。它通过 `dv.media` 以用途 `loop` 播放第一个输出，以版本的预览作为静帧，并在失败版本的失败带有消息时显示失败原因。它显示模型和生成任务（任务在 `GET /api/dv/tasks` 中的标签，没有时用任务名）。`GET /api/dv/operations` 声明了版本的操作时，它接着在版本的调用上绘制 [`@dv/ui-composer`](../ui-composer/README.zh.md) 的 `dv.prompt` 输入框：版本的操作和参数，以 `@dv/ui-kit` 的 `requestInputsOf(record)` 为输入。输入框根据操作的输入和套件按声明注册的参数栏决定参考、参数标签和文字。输入框的宿主打开带版本条目的画布素材选择窗口（`host.pickAssets(…, { versions: true }, …)`），把上传的文件作为画布导入导入（`host.importFiles`），并打开素材的预览（`host.preview`）和另一个节点的编辑器（`host.openNode`）。发送调用 `host.rerun`，带改过的调用、设为该版本的 `based_on`，以及意图 在画布上生成 {title} 的新版本 / Generate a new version of {title} from the canvas；重跑等待期间，输入框的发送按钮禁用并显示它的发送中文字，输入框显示被拒绝的请求的错误。操作不在该列表中的版本不显示输入框。
 - **重试 / Retry 动作**，`dvCanvas.actions` 中的 `<id>:<type>:retry`，顺序 0，所以同一个包的每个种类各有一个。它只在原语操作的失败认领式版本上显示，并用记录自己的操作和参数、作为输入的 `requestInputsOf(record)`（所以记录按素材各存一次的版本只发送一次）调用 `host.rerun`，`based_on` 为该记录。
@@ -67,7 +67,7 @@ export const { inject, apply } = defineGenerationUi({
 <details>
 <summary>实现内部——点击展开</summary>
 
-`defineGenerationUi` 从声明一次性构建节点类型、重试 动作和历史行，然后在 `apply` 中用一个 `dvCanvas` 和 `slots` 的 `ctx.inject` 块注册它们，历史行在其中嵌套的 `dvHistory` 块里注册。画布计算每个版本的谱系（它的锚定链和在组内的编号）并交给节点类型的 `entry`，所以认领式节点不会与它的记录不一致。版本编辑器从画布传入的 `operations` 所有者属性读取版本的操作是否已声明；`dv.prompt` 输入框自己读取声明的参数，所以工具包不读取 `@dv/ui-kit/form.ts`。
+`defineGenerationUi` 从声明一次性构建节点类型、重试 动作和历史行，然后在 `apply` 中用一个 `dvCanvas` 和 `slots` 的 `ctx.inject` 块注册它们，历史行在其中嵌套的 `dvHistory` 块里注册。画布计算每个版本的谱系（它在组内的编号）并交给节点类型的 `entry`，所以认领式节点不会与它的记录不一致。版本编辑器从画布传入的 `operations` 所有者属性读取版本的操作是否已声明；`dv.prompt` 输入框自己读取声明的参数，所以工具包不读取 `@dv/ui-kit/form.ts`。
 
 `tests/` 下的测试在 `@deepseek-ai/dsh-client-test-runtime` 的 `SlotTestRuntime` 下挂载工具包，由真实的 `@dv/ui-media` 和 `@dv/ui-asset-pool` 插件绘制媒体。`tests/take-kind.client.ts` 定义认领 `shot.render` 和 `clip.extend` 的测试种类 `test_take`，挂载版本编辑器所绘制的输入框栈（`../ui-composer/tests/composer-stack.client.ts` 的 `composerStack`），并定义一个记录调用的画布 host。`generation-kit.client.spec.tsx` 检查标题、meta、预览、状态文字、卡片主体、重试 动作，以及卸载时移除每个注册。`take-editor.client.spec.tsx` 检查播放器、模式行、版本调用上的输入框、重跑请求（展开的版本只发送一次）、改过的参数标签、发送中文字、输入框打开和选择的参考、操作没有声明 `reference` 输入的版本，以及错误；`generation-card.client.spec.tsx` 在对话会话中检查对话卡片。`plugin-proofs.client.tsx` 存放每个原语自己的测试在其插件上运行的检查：它在 `@dv/ui-canvas` 之前挂载插件并挂载画布，找到某条记录唯一的节点，渲染已结束调用的对话卡片，并列出每个不是 JSON 数据或函数的注入值或所有者值。`plugin-proofs.client.spec.tsx` 在 `@dv/ui-shot-render` 上运行这些检查。
 
@@ -109,7 +109,7 @@ export const { inject, apply } = defineGenerationUi({
 
 - **视图通过 `@dv/ui-kit` 的 hook 读取文案。** `TakeEditor` 和 `GenerationCard` 用 `useText` 选择文本，节点类型标签、状态文字和 重试 标签用 `pickText`，它们都跟随 `<html lang>`，而不是使用注入的 `hooks` 源和插槽的 `t`。
 - **每个生成插件自己加载标签。** `apply` 为标签源创建自己的 `DvClient`，所以每个插件各请求一次 `GET /api/dv/operations` 和 `GET /api/dv/tasks`，对话卡片从这份副本读取操作标签，而版本编辑器读取画布的 `operations`。
-- **版本标题用镜头命名。** 工具包把锚定的版本命名为 镜头 N / Shot N，把带编号的版本命名为 第 N 次 / take N；`GenerationUiSpec` 没有字段可以改变这些文字。
+- **版本编号文字固定。** 工具包把带编号的版本命名为 第 N 次 / take N；`GenerationUiSpec` 没有字段可以改变这些文字。
 
 <a id="dev-note"></a>
 ### 开发备注

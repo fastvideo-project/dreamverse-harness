@@ -70,7 +70,7 @@ export async function disposeRuntimes(): Promise<void> {
 export function canvasNodes(runtime: SlotTestRuntime, state: WireState, placed: readonly string[]): NodeView[] {
   const canvas = runtime.ctx.dvCanvas
   const graph = buildCanvasGraph(state, new Set(placed), OPERATIONS, 'zh', {
-    nodeTypes: canvas.nodeTypes.getSnapshot(), chainAnchors: canvas.chainAnchors.getSnapshot(),
+    nodeTypes: canvas.nodeTypes.getSnapshot(),
     recordsInUse: canvas.recordsInUse.getSnapshot(), versionKinds: canvas.versionKinds.getSnapshot(),
   })
   return graph.nodes.map(node => ({ ...node, unseen: false, rerunning: false }))

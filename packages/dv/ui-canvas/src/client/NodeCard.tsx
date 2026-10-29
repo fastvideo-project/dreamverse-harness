@@ -1,7 +1,7 @@
 /**
  * The chrome of one canvas node on the `--dv-*` theme variables: a caption above a frame. The caption is one line with
  * the title, the unseen dot, the stale tag and `meta`. The frame is a rounded outline that wears the selection ring and
- * holds the frame grid and the `dv.canvas.card` body, which paints its own fill, or, for a failed claimed node, the
+ * holds the `dv.canvas.card` body, which paints its own fill, or, for a failed claimed node, the
  * failed words and actions on the card surface. The chrome names no node type.
  */
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
@@ -17,40 +17,26 @@ export type CanvasTranslate = TranslateNS<'dvCanvas'>
 
 /** Height of the caption above the frame at base text size. */
 export const CAPTION_HEIGHT = 20
-/** Height of the frame grid of a node with slots, when a slot has a frame. */
-export const GRID_HEIGHT = 64
 
-type SizedNode = Pick<CanvasNode, 'slots' | 'bodyHeight'>
-
-/**
- * The frame height: the frame grid of a node with slots, when it shows, above the body.
- * @param node - the node.
- * @param hasFrames - for a node with slots, whether its frame grid shows.
- * @returns the height in canvas units.
- */
-function frameHeightOf(node: SizedNode, hasFrames: boolean): number {
-  return (node.slots !== undefined && hasFrames ? GRID_HEIGHT : 0) + node.bodyHeight
-}
+type SizedNode = Pick<CanvasNode, 'bodyHeight'>
 
 /**
  * The node height at base text size, caption + frame, computed from the node without measuring it.
  * @param node - the node.
- * @param hasFrames - for a node with slots, whether its frame grid shows.
  * @returns the height in canvas units.
  */
-export function cardHeight(node: SizedNode, hasFrames = false): number {
-  return CAPTION_HEIGHT + frameHeightOf(node, hasFrames)
+export function cardHeight(node: SizedNode): number {
+  return CAPTION_HEIGHT + node.bodyHeight
 }
 
 /**
  * The height where edges meet a node, below its top: the middle of the frame under the caption at the text scale.
  * @param node - the node.
- * @param hasFrames - for a node with slots, whether its frame grid shows.
  * @param textScale - the text enlargement ({@link textScaleAt}).
  * @returns the offset in canvas units.
  */
-export function edgeAnchorY(node: SizedNode, hasFrames: boolean, textScale: number): number {
-  return Math.round(CAPTION_HEIGHT * textScale) + frameHeightOf(node, hasFrames) / 2
+export function edgeAnchorY(node: SizedNode, textScale: number): number {
+  return Math.round(CAPTION_HEIGHT * textScale) + node.bodyHeight / 2
 }
 
 /** The zoom at and above which node text keeps its base size; below it text scales up to stay readable. */
@@ -84,8 +70,6 @@ export interface NodeCardProps {
   onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
   /** The body: the `dv.canvas.card` entry of the node's type. */
   body: ReactNode
-  /** For a node with slots, the media of each slot's frame; null for a slot without one. */
-  frames: ReadonlyArray<ReactNode | null>
   /** For a failed claimed node, the actions that show on it; empty when the canvas is read-only. */
   failedActions: readonly NodeAction[]
   /** The action whose rerun the node waits for, whose button reads the running words; null for none. */
@@ -95,7 +79,7 @@ export interface NodeCardProps {
 
 /**
  * The node: the caption above the frame.
- * @param props - the node, its position, the canvas zoom, the body and frames, and the gesture and action callbacks.
+ * @param props - the node, its position, the canvas zoom, the body, and the gesture and action callbacks.
  * @returns the element.
  */
 export function NodeCard(props: NodeCardProps): ReactNode {
@@ -105,7 +89,6 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   const size = (base: number): number => Math.round(base * scale)
   const text = (base: 12 | 13): CSSProperties => ({ fontSize: size(base), lineHeight: `${String(size({ 12: 16, 13: 20 }[base]))}px` })
   const failed = node.claimed && flags.failed
-  const showGrid = props.frames.some(frame => frame !== null)
   // A selected frame wears the accent ring; a stale frame a danger outline; a failed frame the soft outline; any other
   // frame the plain outline.
   let ring = '0 0 0 1px var(--dv-line-strong)'
@@ -151,15 +134,6 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   } else {
     content = (
       <>
-        {showGrid
-          ? (
-            <div style={{ ...CARD_SURFACE, height: GRID_HEIGHT, padding: '10px 10px 0', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 3, alignContent: 'start', overflow: 'hidden' }}>
-              {props.frames.map((frame, index) => (
-                <div key={index} style={{ aspectRatio: '16 / 9', borderRadius: 3, overflow: 'hidden', background: 'var(--dv-surface-3)' }}>{frame}</div>
-              ))}
-            </div>
-          )
-          : null}
         <div style={{ position: 'relative', height: node.bodyHeight }}>
           {props.body}
           {marker !== null
@@ -191,7 +165,7 @@ export function NodeCard(props: NodeCardProps): ReactNode {
       title={failed ? node.record.error?.message : undefined}
     >
       {caption}
-      <div data-node-frame="" style={{ position: 'relative', height: frameHeightOf(node, showGrid), overflow: 'hidden', borderRadius: 'var(--dv-radius-lg)', boxShadow: ring }}>
+      <div data-node-frame="" style={{ position: 'relative', height: node.bodyHeight, overflow: 'hidden', borderRadius: 'var(--dv-radius-lg)', boxShadow: ring }}>
         {content}
       </div>
     </div>

@@ -4,13 +4,12 @@
  * slice, and one claimed node per current record of an operation that a type claims. A record that no type claims
  * draws no node. The builder names no node type.
  */
-import { chainOf } from '@dv/ui-kit/chain.ts'
 import type { DvLanguage } from '@dv/ui-kit/locale.ts'
 import { versionRefOf } from '@dv/ui-kit/references.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
-import type { NodePosition, ProjectRecord, RecordInput, WireOperation, WireState } from '@dv/ui-kit/types.ts'
+import type { NodePosition, ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import type {
-  AnchoredChain, ChainAnchor, ClaimedEntry, ClaimedRecord, NodeEntry, NodeFlags, NodeInput, NodeType, OperationRecord, RecordsInUse,
+  ClaimedEntry, ClaimedRecord, NodeEntry, NodeFlags, NodeInput, NodeType, OperationRecord, RecordsInUse,
 } from './contract/index.ts'
 
 /** One drawn node: its entry, its type, and the facts that the canvas derived. */
@@ -19,7 +18,6 @@ export type CanvasNode = NodeEntry & ({ claimed: true; record: OperationRecord }
   nodeType: NodeType
   flags: NodeFlags
   badges: string[]
-  chain: AnchoredChain | null
   version: number | null
   /** The default position when the user has not placed the node. */
   x: number
@@ -28,11 +26,11 @@ export type CanvasNode = NodeEntry & ({ claimed: true; record: OperationRecord }
 
 type ClaimedCanvasNode = Extract<CanvasNode, { claimed: true }>
 
-/** How one node fed another: an input of the target's record (with its role), its chain anchor, or its `based_on`. */
+/** How one node fed another: an input of the target's record (with its role) or its `based_on`. */
 export interface CanvasEdge {
   from: string
   to: string
-  kind: 'input' | 'chain' | 'lineage'
+  kind: 'input' | 'lineage'
   /** The input role of an `input` edge, such as 'reference' or 'first_frame'. */
   role?: string
 }
@@ -57,7 +55,6 @@ export interface CanvasGraph {
 /** The registered descriptors that the builder reads. */
 export interface CanvasRegistrations {
   nodeTypes: readonly NodeType[]
-  chainAnchors: readonly ChainAnchor[]
   recordsInUse: readonly RecordsInUse[]
   versionKinds: readonly VersionKind[]
 }
@@ -69,116 +66,17 @@ const COLUMN = 240
 /** Row pitch; it leaves room for a 147-unit card whose text has grown at a low zoom. */
 export const ROW = 200
 
-/** The anchored chains of a project's records ({@link anchorChains}). */
-interface ChainIndex {
-  /** The anchored chain of a record; null for a record without a chain and for a chain without an anchor. */
-  anchored: (record: ProjectRecord) => AnchoredChain | null
-  /** The newest starter record of each starter operation on each anchor node. */
-  newest: ReadonlySet<string>
-}
-
-/**
- * Anchor the chains of a project's records. The chain of a record (`chainOf`: its own `started_by`, else the
- * `started_by` of its `based_on` root) is anchored when its starter record is loaded and a `ChainAnchor` is registered
- * for the starter's operation.
- * @param records - the loaded records by ID, in log order.
- * @param anchors - the registered chain anchors.
- * @returns the index.
- */
-function anchorChains(records: ReadonlyMap<string, ProjectRecord>, anchors: readonly ChainAnchor[]): ChainIndex {
-  const anchorOf = new Map(anchors.map(anchor => [anchor.starter, anchor]))
-  const nodeOf = new Map<string, string>()
-  const newest = new Map<string, string>()
-  for (const record of records.values()) {
-    const anchor = anchorOf.get(record.operation ?? '')
-    if (anchor === undefined) continue
-    const node = anchor.anchor(record)
-    nodeOf.set(record.id, node)
-    newest.set(`${anchor.starter}>${node}`, record.id)
-  }
-  return {
-    anchored: (record) => {
-      const chain = chainOf(record, records)
-      const anchor = chain === null ? undefined : nodeOf.get(chain.record)
-      if (chain === null || anchor === undefined) return null
-      return { starter: chain.record, anchor, slot: chain.slot, ...chain.lane === undefined ? {} : { lane: chain.lane } }
-    },
-    newest: new Set(newest.values()),
-  }
-}
-
-/**
- * The claimed records in the current state: for each anchor node and starter operation, the records of the chain that
- * the newest starter started; every claimed record without an anchored chain; every claimed record whose outputs are in
- * use (`used`), walking up records that no type claims; and, for each of these, the claimed records it read its inputs
- * from and its `based_on` family. Records of an earlier starter's chain that nothing uses are left out, so an undo or a
- * jump to an earlier step changes what the canvas shows.
- * @param state - a project state.
- * @param isClaimed - whether a registered type claims a record's operation.
- * @param chains - the anchored chains of the records.
- * @param used - the records whose outputs are in use.
- * @returns the record IDs.
- */
-function currentRecords(
-  state: WireState, isClaimed: (record: ProjectRecord) => boolean, chains: ChainIndex, used: readonly string[],
-): Set<string> {
-  const proj = state.components.proj
-  const records = new Map(proj.records.map(record => [record.id, record]))
-  const claimed = proj.records.filter(isClaimed)
-  const rootOf = (id: string): string => {
-    let current = id
-    for (let depth = 0; depth < 64; depth++) {
-      const base = records.get(current)?.based_on
-      if (base === null || base === undefined || !records.has(base)) break
-      current = base
-    }
-    return current
-  }
-  const roots = claimed.map(record => ({ id: record.id, root: rootOf(record.id) }))
-  const familyOf = (id: string): string[] => roots.filter(each => each.root === rootOf(id)).map(each => each.id)
-  // A version reference may carry any kind key, so only a reference without `version` is a record output.
-  const producerOf = (input: RecordInput): string | undefined => !('version' in input.ref) && 'record' in input.ref
-    ? input.ref.record : input.resolved_asset === null ? undefined : proj.created_by[input.resolved_asset]
-  const sourceOf = (recordId: string | undefined, depth = 0): ProjectRecord | undefined => {
-    const record = recordId === undefined ? undefined : records.get(recordId)
-    if (record === undefined || depth > 16 || isClaimed(record)) return record
-    const input = record.inputs.find(entry => producerOf(entry) !== undefined)
-    return input === undefined ? undefined : sourceOf(producerOf(input), depth + 1)
-  }
-  const claimedOf = (recordId: string | undefined): string[] => {
-    const source = sourceOf(recordId)
-    return source !== undefined && isClaimed(source) ? [source.id] : []
-  }
-  const newestOrFree = claimed.filter((record) => {
-    const chain = chains.anchored(record)
-    return chain === null || chains.newest.has(chain.starter)
-  })
-  const queue = [...newestOrFree.map(record => record.id), ...used.flatMap(claimedOf)]
-  const shown = new Set<string>()
-  for (let id = queue.pop(); id !== undefined; id = queue.pop()) {
-    const record = records.get(id)
-    if (shown.has(id) || record === undefined) continue
-    shown.add(id)
-    queue.push(...record.inputs.flatMap(input => claimedOf(producerOf(input))), ...familyOf(id))
-  }
-  return shown
-}
-
 /**
  * Number the current claimed records of each group in log order, so an original and its reruns read differently.
  * @param current - the current claimed records, in log order.
- * @param anchored - the anchored chain of a record.
  * @returns record ID → its number, or null when its group has one record.
  */
-function versionsOf(
-  current: readonly ProjectRecord[], anchored: (record: ProjectRecord) => AnchoredChain | null,
-): Map<string, number | null> {
+function versionsOf(current: readonly ProjectRecord[]): Map<string, number | null> {
   const byId = new Map(current.map(record => [record.id, record]))
   const groupOf = (record: ProjectRecord, depth = 0): string => {
     const base = record.based_on === null ? undefined : byId.get(record.based_on)
     if (base !== undefined && depth < 64) return groupOf(base, depth + 1)
-    const chain = anchored(record)
-    return chain === null ? record.id : `${chain.anchor}#${String(chain.slot)}#${chain.lane ?? ''}`
+    return record.id
   }
   const groups = new Map<string, ProjectRecord[]>()
   for (const record of current) groups.set(groupOf(record), [...groups.get(groupOf(record)) ?? [], record])
@@ -201,12 +99,12 @@ function nodesOf(
   nodeType: NodeType, input: NodeInput, flagsOf: (record: ProjectRecord | null) => NodeFlags,
 ): { slice: CanvasNode[]; standIns: CanvasNode[]; claimed: ClaimedCanvasNode[] } {
   const sliceNode = (entry: NodeEntry): CanvasNode => ({
-    ...entry, type: nodeType.type, nodeType, claimed: false, flags: flagsOf(entry.record), badges: [], chain: null, version: null,
+    ...entry, type: nodeType.type, nodeType, claimed: false, flags: flagsOf(entry.record), badges: [], version: null,
     x: 0, y: 0,
   })
   const claimedNode = (each: ClaimedRecord, entry: ClaimedEntry): ClaimedCanvasNode => ({
     ...entry, id: each.record.id, assets: each.record.outputs, type: nodeType.type, nodeType, claimed: true, record: each.record,
-    flags: flagsOf(each.record), badges: [], chain: each.chain, version: each.version, x: 0, y: 0,
+    flags: flagsOf(each.record), badges: [], version: each.version, x: 0, y: 0,
   })
   const entries = nodeType.entries?.(input) ?? []
   const claimedNodes = nodeType.claimed
@@ -222,8 +120,8 @@ function nodesOf(
  * right of the node it reads a `deepenOn` input from, a rerun in its source's column. The assets of slice nodes belong
  * to them, then the assets of every earlier version of an item that a `VersionKind` draws as a slice node, then the
  * outputs of claimed nodes, then the assets of stand-ins. A claimed node draws one edge per input (from the node of the
- * versioned item it names, else from the node of the asset), a chain edge from its anchor, and a lineage edge from its
- * `based_on` record; a slice node draws none.
+ * versioned item it names, else from the node of the asset) and a lineage edge from its `based_on` record; a slice
+ * node draws none.
  * @param state - a project state.
  * @param placed - the assets on the canvas.
  * @param operations - the operation declarations.
@@ -236,7 +134,7 @@ export function buildCanvasGraph(
   state: WireState, placed: ReadonlySet<string>, operations: readonly WireOperation[], language: DvLanguage,
   registered: CanvasRegistrations,
 ): CanvasGraph {
-  const { nodeTypes, chainAnchors, recordsInUse, versionKinds } = registered
+  const { nodeTypes, recordsInUse, versionKinds } = registered
   const proj = state.components.proj
   const records = new Map(proj.records.map(record => [record.id, record]))
   const ownerOf = new Map<string, NodeType>()
@@ -248,17 +146,15 @@ export function buildCanvasGraph(
     failed: record?.status === 'failed',
     superseded: record !== null && proj.superseded[record.id] !== undefined,
   })
-  const chains = anchorChains(records, chainAnchors)
-  const current = currentRecords(state, isClaimed, chains, recordsInUse.flatMap(descriptor => descriptor.uses(state)))
-  const currentList = proj.records.filter((record): record is OperationRecord => isClaimed(record) && current.has(record.id))
-  const versions = versionsOf(currentList, record => chains.anchored(record))
+  const currentList = proj.records.filter(isClaimed)
+  const versions = versionsOf(currentList)
   const base = { state, operations, language, placed }
   const slice: CanvasNode[] = []
   const claimed: ClaimedCanvasNode[] = []
   const standIns: CanvasNode[] = []
   for (const nodeType of nodeTypes) {
     const mine = currentList.filter(record => ownerOf.get(record.operation) === nodeType)
-      .map((record): ClaimedRecord => ({ record, chain: chains.anchored(record), version: versions.get(record.id) ?? null }))
+      .map((record): ClaimedRecord => ({ record, version: versions.get(record.id) ?? null }))
     const nodes = nodesOf(nodeType, { ...base, records: mine }, flagsOf)
     slice.push(...nodes.slice)
     standIns.push(...nodes.standIns)
@@ -322,39 +218,19 @@ export function buildCanvasGraph(
       const item = named === null ? undefined : versionKinds.find(kind => kind.kind === named.kind)?.node(named.id)
       addEdge(item !== undefined && byId.has(item) ? item : nodeOfAsset(input.resolved_asset), entry, { kind: 'input', role: input.role })
     }
-    if (entry.chain !== null) addEdge(entry.chain.anchor, entry, { kind: 'chain' })
     if (record.based_on !== null) addEdge(recordNode.get(record.based_on), entry, { kind: 'lineage' })
   }
   for (const { asset, label } of recordsInUse.flatMap(descriptor => descriptor.badges?.(state) ?? [])) {
     const badged = byId.get(nodeOfAsset(asset) ?? '')
     if (badged !== undefined && !badged.badges.includes(label)) badged.badges.push(label)
   }
-  layout([...slice, ...inChainOrder(claimed), ...kept], links)
+  layout([...slice, ...claimed, ...kept], links)
   const assetNodes: Record<string, string> = {}
   for (const asset of state.assets) {
     const shown = nodeOfAsset(asset.id)
     if (shown !== null && byId.has(shown)) assetNodes[asset.id] = shown
   }
   return { nodes, edges: links.map(link => link.edge), links, assetNodes }
-}
-
-/**
- * The order in which the layout places the claimed nodes: by the anchor of their chain in first-record order (a node
- * without a chain is its own group at its own record), then slot (null last), then lane in first-record order, then
- * record order. Version numbers and slot frames read the record order, so the order goes to the layout in a copy.
- * @param claimed - the drawn claimed nodes, in record order.
- * @returns a copy of the claimed nodes in that order.
- */
-function inChainOrder(claimed: readonly ClaimedCanvasNode[]): ClaimedCanvasNode[] {
-  const firstOf = (key: (entry: ClaimedCanvasNode) => string) => (entry: ClaimedCanvasNode): number =>
-    claimed.findIndex(other => key(other) === key(entry))
-  const anchor = firstOf(entry => entry.chain?.anchor ?? entry.id)
-  const lane = firstOf(entry => entry.chain?.lane ?? '')
-  const keyed = claimed.map(entry => ({
-    entry, anchor: anchor(entry), slot: entry.chain?.slot ?? Number.MAX_SAFE_INTEGER, lane: lane(entry),
-  }))
-  // The sort is stable, so nodes with equal keys keep their record order.
-  return keyed.toSorted((a, b) => a.anchor - b.anchor || a.slot - b.slot || a.lane - b.lane).map(each => each.entry)
 }
 
 /**
@@ -415,29 +291,6 @@ function layout(nodes: CanvasNode[], links: readonly EdgeLink[]): void {
  */
 export function previewOf(entry: Pick<NodeEntry, 'preview' | 'assets'>): string | null {
   return entry.preview ?? entry.assets[0] ?? null
-}
-
-/** The frame of one grid slot: the anchored node that fills it and its preview asset. */
-export interface SlotFrame {
-  node: string
-  preview: string
-}
-
-/**
- * The frame of each slot of a node's frame grid: the newest done claimed node whose anchored chain hangs off that node
- * with that slot (a rerun has the chain of its root) and that has a preview.
- * @param nodes - the drawn nodes, claimed nodes in record order.
- * @param nodeId - the node of the grid, such as `storyboard:s1`.
- * @param slots - the number of slots.
- * @returns one frame per slot, null for a slot without one.
- */
-export function slotFrames(nodes: readonly CanvasNode[], nodeId: string, slots: number): Array<SlotFrame | null> {
-  return Array.from({ length: slots }, (_unused, index) => {
-    const filled = nodes.findLast(entry => entry.claimed && entry.record.status === 'done' && entry.chain?.anchor === nodeId
-      && entry.chain.slot === index + 1 && previewOf(entry) !== null)
-    const preview = filled === undefined ? null : previewOf(filled)
-    return filled === undefined || preview === null ? null : { node: filled.id, preview }
-  })
 }
 
 /**
