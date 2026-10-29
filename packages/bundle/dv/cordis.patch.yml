@@ -170,6 +170,9 @@
     - id: dv-ui-shot-plan
       name: '@dv/ui-shot-plan'
 
+    - id: dv-ui-text-node
+      name: '@dv/ui-text-node'
+
     - id: dv-ui-shell
       name: '@dv/ui-shell'
 

@@ -2227,6 +2227,9 @@ importers:
       '@dv/ui-style':
         specifier: workspace:*
         version: link:../../dv/ui-style
+      '@dv/ui-text-node':
+        specifier: workspace:*
+        version: link:../../dv/ui-text-node
       '@dv/ui-timeline':
         specifier: workspace:*
         version: link:../../dv/ui-timeline

@@ -50,6 +50,7 @@
     "@dv/ui-shot-plan": "workspace:*",
     "@dv/ui-shot-render": "workspace:*",
     "@dv/ui-style": "workspace:*",
+    "@dv/ui-text-node": "workspace:*",
     "@dv/ui-timeline": "workspace:*",
     "@dv/ui-workflow-story": "workspace:*",
     "@dv/workflow-story": "workspace:*"
