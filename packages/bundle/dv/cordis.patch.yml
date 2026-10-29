@@ -155,9 +155,6 @@
     - id: dv-ui-history
       name: '@dv/ui-history'
 
-    - id: dv-ui-workflow-story
-      name: '@dv/ui-workflow-story'
-
     - id: dv-ui-character
       name: '@dv/ui-character'
 
@@ -166,9 +163,6 @@
 
     - id: dv-ui-style
       name: '@dv/ui-style'
-
-    - id: dv-ui-shot-plan
-      name: '@dv/ui-shot-plan'
 
     - id: dv-ui-text-node
       name: '@dv/ui-text-node'

@@ -377,10 +377,8 @@
       "@dv/ui-location": ["./packages/dv/ui-location/src/index.ts"],
       "@dv/ui-mcp-presets": ["./packages/dv/ui-mcp-presets/src/index.ts"],
       "@dv/ui-shell": ["./packages/dv/ui-shell/src/index.ts"],
-      "@dv/ui-shot-plan": ["./packages/dv/ui-shot-plan/src/index.ts"],
       "@dv/ui-shot-render": ["./packages/dv/ui-shot-render/src/index.ts"],
       "@dv/ui-timeline": ["./packages/dv/ui-timeline/src/index.ts"],
-      "@dv/ui-workflow-story": ["./packages/dv/ui-workflow-story/src/index.ts"],
       "@dv/workflow-kit": ["./packages/dv/workflow-kit/src/index.ts"],
       "@dv/workflow-story": ["./packages/dv/workflow-story/src/index.ts"],
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths

@@ -6,8 +6,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, createEvent, fireEvent, waitFor, within } from '@testing-library/react'
 import { usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
-import type { RecordId } from '@dv/project/types'
-import type { PlanId } from '@dv/shot-plan/types'
 import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { asset, record } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
@@ -15,7 +13,7 @@ import type { NodeAction, NodeType, NodeView } from '../src/client/contract/inde
 import { NODE_WIDTH } from '../src/client/graph.ts'
 import { EDITOR_RECT_KEY } from '../src/client/NodeEditor.tsx'
 import { zh } from '../src/client/locales.ts'
-import { APPROVAL, forgetCanvasStorage, KINDS, mountCanvas, mountDescriptors } from './canvas-runtime.client.tsx'
+import { forgetCanvasStorage, KINDS, mountCanvas, mountDescriptors } from './canvas-runtime.client.tsx'
 
 usePinnedBrowserLanguages('zh-CN')
 
@@ -111,13 +109,13 @@ describe('the canvas over the real kinds', () => {
     expect(within(node('g2')).getByText('已裁剪')).toBeTruthy()
     await waitFor(() => { expect(server.layoutWrites).toHaveLength(1) })
     const stored = server.layoutWrites[0] as { project: string; positions: Record<string, unknown> }
-    expect([Object.keys(stored).sort(), stored.project, stored.positions['g2']]).toEqual([['positions', 'project'], 'p1', { x: 720, y: 0 }])
+    expect([Object.keys(stored).sort(), stored.project, stored.positions['g2']]).toEqual([['positions', 'project'], 'p1', { x: 480, y: 0 }])
     expect(Object.keys(stored.positions)).not.toContain('g1')
     fireEvent.pointerDown(node('g2'), { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
     fireEvent.pointerMove(canvasOf(), { clientX: 50, clientY: 30, pointerId: 1 })
     fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
     await waitFor(() => { expect(server.layoutWrites).toHaveLength(2) }, { timeout: 2000 })
-    expect(server.layoutWrites[1]).toMatchObject({ project: 'p1', positions: { g2: { x: 770, y: 30 } } })
+    expect(server.layoutWrites[1]).toMatchObject({ project: 'p1', positions: { g2: { x: 530, y: 30 } } })
     await runtime.dispose()
   })
 
@@ -163,13 +161,20 @@ describe('the canvas over the real kinds', () => {
   it('hangs and titles the takes of a chain off its anchor while a registered chain anchor lasts', async () => {
     const { runtime, view, node } = await mountCanvas({
       edit: (state) => {
-        state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g1' ? { ...entry, started_by: { record: 'a1', slot: 1 } } : entry)
+        const records = state.components.proj.records.map(entry => entry.id === 'g1' ? { ...entry, started_by: { record: 'st1', slot: 1 } } : entry)
+        state.components.proj.records = [...records, record({ id: 'st1', operation: 'test.start', params: { board: 'b1' } })]
       },
     })
-    const edge = (id: string): Element | null => view.container.querySelector(`path[data-edge="plan:p1>${id}"]`)
+    const edge = (id: string): Element | null => view.container.querySelector(`path[data-edge="board:b1>${id}"]`)
     await waitFor(() => { node('g1') })
     expect(edge('g1')).toBeNull()
-    const anchor = await mountDescriptors(runtime, { anchor: APPROVAL })
+    const board: NodeType = {
+      id: '@dv/ui-test-board', type: 'test_board', label: () => 'board', color: '', column: 1,
+      entries: () => [{ id: 'board:b1', title: 'b1', record: null, assets: [], bodyHeight: 30 }],
+    }
+    const anchor = await mountDescriptors(runtime, {
+      nodeType: board, anchor: { starter: 'test.start', anchor: start => `board:${String(start.params['board'])}` },
+    })
     await waitFor(() => { expect(edge('g1')).not.toBeNull() })
     expect(edge('g3')).not.toBeNull()
     expect([node('g1'), node('g3')].map(card => card.getAttribute('aria-label'))).toEqual(['镜头 1 · 第 1 次', '镜头 1 · 第 2 次'])
@@ -324,21 +329,6 @@ describe('the canvas over the real kinds', () => {
     await runtime.dispose()
   })
 
-  it('opens the plan node for a center request on the record that wrote an earlier plan version', async () => {
-    const { runtime, view, node } = await mountCanvas({
-      request: { value: { record: 'p1' }, take: () => {} },
-      edit: (state) => {
-        const [v1] = state.components.plan.plans['p1' as PlanId] ?? []
-        if (v1 === undefined) throw new Error('fixture lacks plan p1')
-        state.components.plan.plans['p1' as PlanId] = [v1, { ...v1, version: 2, created_by: 'q2' as RecordId }]
-      },
-    })
-    const editor = await view.findByTestId('dv-canvas-node-editor')
-    expect(editor.getAttribute('aria-label')).toBe(node('plan:p1').getAttribute('aria-label'))
-    expect(node('plan:p1').getAttribute('data-node-selected')).toBe('true')
-    await runtime.dispose()
-  })
-
   it('opens the editor centered, moves and resizes it, remembers the rectangle for the next node, and resets on a double click', async () => {
     // jsdom has no layout; a 1200 × 800 canvas area gives the default rectangle 240, 80, 720 × 640.
     vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1200)
@@ -390,7 +380,7 @@ describe('the canvas over the real kinds', () => {
 
   it('a wheel over the open editor leaves the canvas viewport alone; a wheel over empty canvas zooms it', async () => {
     const { runtime, open, canvasOf } = await mountCanvas()
-    const editor = await open('plan:p1')
+    const editor = await open('g1')
     const canvas = canvasOf()
     const transform = (): string => (canvas.querySelector('div[style*="transform"]') as HTMLElement).style.transform
     const before = transform()
@@ -935,7 +925,7 @@ describe('drags over the canvas', () => {
   })
 
   it('keeps a dropped file\'s spot until a node type that draws it registers', async () => {
-    const { runtime, view, node, server, canvasOf } = await mountCanvas({ kinds: ['reference', 'plan', 'takes', 'media'] })
+    const { runtime, view, node, server, canvasOf } = await mountCanvas({ kinds: ['reference', 'takes', 'media'] })
     await waitFor(() => { node('g1') })
     dropAt(canvasOf(), { types: ['Files'], getData: () => '', files: [new File(['x'], 'later.png', { type: 'image/png' })] })
     await waitFor(() => { expect(server.imports).toHaveLength(1) })
@@ -965,7 +955,7 @@ describe('the node card', () => {
   it('draws every node as a caption above a frame that holds its body, with no card fill or shadow, and rings the selected frame', async () => {
     const { runtime, node, open } = await mountCanvas()
     await waitFor(() => { node('test_ref:hero') })
-    for (const id of ['test_ref:hero', 'plan:p1', 'g1']) {
+    for (const id of ['test_ref:hero', 'g1']) {
       const frame = node(id).querySelector<HTMLElement>(':scope > [data-node-frame]')
       if (frame === null) throw new Error(`no frame of ${id}`)
       expect([node(id).style.background, node(id).style.boxShadow, frame.style.background]).toEqual(['', '', ''])
@@ -975,7 +965,6 @@ describe('the node card', () => {
       expect(frame.contains(node(id).firstElementChild)).toBe(false)
     }
     expect(node('test_ref:hero').querySelector('[data-node-frame]')?.textContent).toBe('参考')
-    expect(node('plan:p1').querySelector('[data-node-frame]')?.textContent).toContain('分镜计划 · 第 1 版')
     await open('g1')
     expect(node('g1').querySelector<HTMLElement>('[data-node-frame]')?.style.boxShadow).toBe('0 0 0 2px var(--dv-accent), 0 0 0 6px var(--dv-accent-soft)')
     await runtime.dispose()

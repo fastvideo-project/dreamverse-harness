@@ -21,7 +21,6 @@ import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-ass
 import { composerStack } from '../../ui-composer/tests/composer-stack.client.ts'
 import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import { defineReferenceUi } from '../../ui-reference-kit/src/client/reference-kit.tsx'
-import { apply as shotPlanApply, inject as shotPlanInject } from '../../ui-shot-plan/src/client/index.ts'
 import { apply as shotRenderApply, inject as shotRenderInject } from '../../ui-shot-render/src/client/index.ts'
 import { CANVAS_ID } from '../src/client/definition.ts'
 import { apply, inject } from '../src/client/index.ts'
@@ -36,7 +35,6 @@ export const testRef = defineReferenceUi({
 /** The kind plugins a canvas test can mount, each the real plugin that the bundle loads. */
 export const KINDS = {
   reference: { inject: [...testRef.inject], apply: testRef.apply },
-  plan: { inject: [...shotPlanInject], apply: shotPlanApply },
   assets: { inject: [...assetPoolInject], apply: assetPoolApply },
   takes: { inject: [...shotRenderInject], apply: shotRenderApply },
   media: { inject: [...mediaInject], apply: mediaApply },
@@ -47,10 +45,7 @@ export const KINDS = {
 export type Kind = keyof typeof KINDS
 
 /** Every kind plugin, in the order the bundle lists them. */
-export const ALL_KINDS: readonly Kind[] = ['reference', 'plan', 'assets', 'takes', 'media', 'composer']
-
-/** The chain anchor of the fixture's approval `a1`: it hangs the records it started off `plan:p1`. */
-export const APPROVAL: ChainAnchor = { starter: 'plan.approve', anchor: approval => `plan:${String(approval.params['plan'])}` }
+export const ALL_KINDS: readonly Kind[] = ['reference', 'assets', 'takes', 'media', 'composer']
 
 /** What the scripted server serves. */
 export interface ServerOptions {

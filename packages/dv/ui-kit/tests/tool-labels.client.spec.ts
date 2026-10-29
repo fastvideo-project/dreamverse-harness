@@ -8,21 +8,21 @@ import type { WireOperation } from '../src/client/types.ts'
 import { OPERATIONS, TASK_LABELS } from './fixture.client.tsx'
 
 /** A workflow operation that declares its label and has no `DV_TOOL_LABELS` entry. */
-const APPROVE: WireOperation = {
-  name: 'story.approve', version: '1', description: 'Approve a plan version.', label: { zh: '批准分镜计划', en: 'Approve plan' },
+const ASSEMBLE: WireOperation = {
+  name: 'cut.assemble', version: '1', description: 'Assemble a cut.', label: { zh: '拼接成片', en: 'Assemble cut' },
   inputs: {}, params: {}, outputs: [], deterministic: false, resource: 'none', confirm: 'always',
 }
 
 describe('operationLabel', () => {
   it('names an operation by the label that its declaration on the wire carries', () => {
-    expect(operationLabel('story.approve', [...OPERATIONS, APPROVE])).toEqual(['批准分镜计划', 'Approve plan'])
+    expect(operationLabel('cut.assemble', [...OPERATIONS, ASSEMBLE])).toEqual(['拼接成片', 'Assemble cut'])
     const relabelled = { ...OPERATIONS[0]!, label: { zh: '生成镜头', en: 'Generate shot' } }
     expect(operationLabel('shot.render', [relabelled])).toEqual(['生成镜头', 'Generate shot'])
   })
 
   it('falls back to the tool label, then to the operation name, and names nothing for a record without an operation', () => {
     expect(operationLabel('asset.import', OPERATIONS)).toEqual(['导入素材', 'Import asset'])
-    expect(operationLabel('story.approve', OPERATIONS)).toEqual(['story.approve', 'story.approve'])
+    expect(operationLabel('cut.assemble', OPERATIONS)).toEqual(['cut.assemble', 'cut.assemble'])
     expect(operationLabel(null, OPERATIONS)).toEqual(['', ''])
   })
 

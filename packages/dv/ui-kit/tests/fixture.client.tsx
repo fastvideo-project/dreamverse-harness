@@ -1,10 +1,9 @@
 /**
- * A project state the view tests share: the record that created character `hero` (the state holds no noun slice), one
- * approved plan whose shots were rendered and put on a timeline, a failed export, and a running retake as the last
- * record. Also a scripted `fetch` that answers the `/api/dv` routes from such a state and records every write.
+ * A project state the view tests share: the record that created character `hero` (the state holds no noun slice), two
+ * rendered shots put on a timeline, a failed export, and a running retake as the last record. Also a scripted `fetch`
+ * that answers the `/api/dv` routes from such a state and records every write.
  */
-import type { AssetId, RecordId } from '@dv/project/types'
-import type { PlanId } from '@dv/shot-plan/types'
+import type { AssetId } from '@dv/project/types'
 import type { ClipId, TimelineId } from '@dv/timeline/types'
 import type { WireReferenceVersion } from '../../ui-reference-kit/src/client/reference-kit.tsx'
 import type { WireTaskLabels } from '../src/client/tool-labels.ts'
@@ -52,8 +51,8 @@ export function asset(
 /** The project of the fixture. */
 export const PROJECT: WireProject = { id: 'p1', title: 'Demo', created_at: '2026-10-05T00:00:00Z' }
 
-/** The fixture state: a wire state that holds the `plan` and `timeline` slices and no noun slice. */
-export type FixtureState = WireState & { components: Pick<ComponentStates, 'plan' | 'timeline'> }
+/** The fixture state: a wire state that holds the `timeline` slice and no noun slice. */
+export type FixtureState = WireState & { components: Pick<ComponentStates, 'timeline'> }
 
 /**
  * The shared state.
@@ -64,11 +63,6 @@ export function fixtureState(): FixtureState {
   const records = [
     record({ id: 'u1', operation: 'asset.import', params: { name: 'ref.png' }, outputs: ['ref.png'] }),
     record({ id: 'e1', operation: 'character.create', params: { character: 'hero', name: 'Hero' } }),
-    record({
-      id: 'p1', turn: 't2', actor: 'agent', operation: 'plan.create', params: { shots: [{ prompt: 'hero walks', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }, { prompt: 'hero turns', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }] },
-      report: { plan: 'p1', version: 1 },
-    }),
-    record({ id: 'a1', turn: 't3', operation: 'plan.approve', params: { plan: 'p1' } }),
     record({
       id: 'g1', turn: 't3', actor: 'agent', operation: 'shot.render', deterministic: false, inputs: [hero],
       params: { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'hero walks through the rain at night in the city' }, outputs: ['shot1.mp4', 'shot1-last.png'],
@@ -107,7 +101,6 @@ export function fixtureState(): FixtureState {
           'export-last.png': 'x1',
         },
       },
-      plan: { plans: { ['p1' as PlanId]: [{ version: 1, shots: [{ prompt: 'hero walks', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }, { prompt: 'hero turns', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', continue_previous: true }], created_by: 'p1' as RecordId }] } },
       asset: { placed: [] },
       timeline: {
         timelines: [{
@@ -158,10 +151,6 @@ export const OPERATIONS: WireOperation[] = [
       aspect: { type: 'string', enum: ['16:9', '9:16'] }, loop: { type: 'boolean' }, extra: { type: 'object' },
     },
     outputs: [{ role: 'video', type: 'video' }, { role: 'last_still', type: 'image' }], deterministic: false, resource: 'gpu', confirm: 'never',
-  },
-  {
-    name: 'plan.create', version: '1', description: 'A plan.', inputs: {}, params: { shots: { type: 'array', items: { type: 'object' } } }, outputs: [],
-    deterministic: true, resource: 'none', confirm: 'never',
   },
   {
     name: 'timeline.create', version: '1', description: 'Create a timeline.', inputs: {}, params: {}, outputs: [], deterministic: true, resource: 'none',

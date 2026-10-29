@@ -24,7 +24,6 @@ const declared = (name: string, zh: string, en: string): WireOperation => ({
 
 /** The labelled operations that the label tests name. */
 const DECLARED: WireOperation[] = [
-  declared('plan.create', '新建分镜计划', 'Create plan'), declared('plan.update', '修改分镜计划', 'Update plan'),
   declared('timeline.create', '新建时间线', 'Create timeline'), declared('timeline.update', '修改时间线', 'Update timeline'),
   declared('character.create', '新建角色', 'Create character'), declared('shot.render', '渲染镜头', 'Render shot'),
 ]
@@ -42,7 +41,7 @@ describe('actionRows', () => {
       entry({ id: 'tl', actor: 'system', operation: 'timeline.update', started_by: { record: 'ap', slot: null } }),
       entry({ id: 'g2', actor: 'system', operation: 'shot.render', started_by: { record: 'ap', slot: 2 } }),
       entry({ id: 'g1', actor: 'system', operation: 'shot.render', started_by: { record: 'ap', slot: 1 } }),
-      entry({ id: 'ap', turn: 't2', operation: 'story.approve', report: { plan: 'p1', version: 2 } }),
+      entry({ id: 'ap', turn: 't2', operation: 'cut.assemble' }),
       entry({ id: 'h1', operation: 'timeline.clip_move' }),
     ])
     expect(rows.map(row => [row.entry.record.id, row.children.map(child => child.record.id)])).toEqual([
@@ -57,16 +56,8 @@ describe('actionRows', () => {
 })
 
 describe('labels and times', () => {
-  it('names no subject of plan, timeline and character actions without a registered row', () => {
-    // The UI halves of the shot plan, the timeline and the character noun register the rows that name these subjects.
-    expect(actionLabel(record({ id: 'a', operation: 'plan.create', params: { title: '猫' }, report: { plan: 'p1', version: 1 } }), labels()))
-      .toEqual(['新建分镜计划', 'Create plan'])
-    expect(actionLabel(record({ id: 'c', operation: 'plan.update', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } }), labels()))
-      .toEqual(['修改分镜计划', 'Update plan'])
-    // A workflow's registered row names the subject of its approval; a plan.approve record of an old log has no subject, and
-    // no operation on the wire labels it.
-    expect(actionLabel(record({ id: 'd', operation: 'plan.approve', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } }), labels()))
-      .toEqual(['plan.approve', 'plan.approve'])
+  it('names no subject of timeline and character actions without a registered row', () => {
+    // The UI halves of the timeline and the character noun register the rows that name these subjects.
     expect(actionLabel(record({ id: 'tc', operation: 'timeline.create', params: { timeline: 't2' } }), labels())).toEqual(['新建时间线', 'Create timeline'])
     expect(actionLabel(record({ id: 'tu', operation: 'timeline.update', params: { timeline: 't2' } }), labels())).toEqual(['修改时间线', 'Update timeline'])
     expect(actionLabel(record({ id: 'g', component: 'character', operation: 'character.create', params: { character: 'c1', name: '阿明' } }), labels()))
@@ -90,13 +81,13 @@ describe('labels and times', () => {
     const rows: HistoryRow[] = [
       { match: 'timeline.', subject: () => [' 全部', ' all'] },
       { match: 'timeline.create', subject: () => [' t2', ' t2'] },
-      { match: 'plan.update', subject: () => null },
+      { match: 'character.create', subject: () => null },
     ]
     expect(actionLabel(record({ id: 'tc', operation: 'timeline.create', params: { timeline: 't2' } }), labels({ rows })))
       .toEqual(['新建时间线 t2', 'Create timeline t2'])
     expect(actionLabel(record({ id: 'tu', operation: 'timeline.update' }), labels({ rows }))).toEqual(['修改时间线 全部', 'Update timeline all'])
-    expect(actionLabel(record({ id: 'c', operation: 'plan.update', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } }), labels({ rows })))
-      .toEqual(['修改分镜计划', 'Update plan'])
+    expect(actionLabel(record({ id: 'c', operation: 'character.create', params: { character: 'c1' } }), labels({ rows })))
+      .toEqual(['新建角色', 'Create character'])
   })
 
   it('gives a record without an operation no subject from a row of its component key', () => {
@@ -115,12 +106,12 @@ describe('labels and times', () => {
 
 describe('operation labels', () => {
   it('labels an action by the label of its operation on the wire, else by its tool label, and an unknown one by its name', () => {
-    const approve: WireOperation = {
-      name: 'story.approve', version: '1', description: 'Approve a plan version.', label: { zh: '批准分镜计划', en: 'Approve plan' },
-      inputs: {}, params: {}, outputs: [], deterministic: false, resource: 'none', confirm: 'always',
+    const assemble: WireOperation = {
+      name: 'cut.assemble', version: '1', description: 'Assemble a cut.', label: { zh: '拼接成片', en: 'Assemble cut' },
+      inputs: {}, params: {}, outputs: [], deterministic: false, resource: 'none', confirm: 'never',
     }
-    const operations = [approve]
-    expect(actionLabel(record({ id: 's', operation: 'story.approve', params: { plan: 'p1' } }), labels({ operations }))).toEqual(['批准分镜计划', 'Approve plan'])
+    const operations = [assemble]
+    expect(actionLabel(record({ id: 's', operation: 'cut.assemble' }), labels({ operations }))).toEqual(['拼接成片', 'Assemble cut'])
     expect(actionLabel(record({ id: 'm', operation: 'asset.import' }), labels({ operations }))).toEqual(['导入素材', 'Import asset'])
     expect(actionLabel(record({ id: 'o', operation: 'other.thing' }), labels({ operations }))).toEqual(['other.thing', 'other.thing'])
   })

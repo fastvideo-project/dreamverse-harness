@@ -13,7 +13,7 @@ import type { NodeType } from '../../ui-canvas/src/client/contract/index.ts'
 import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { defineGenerationUi } from '../src/client/generation-kit.tsx'
-import { APPROVAL, claimedOf, CLIP_EXTEND, mountKit, nodesOf, recordingHost, testTake } from './take-kind.client.ts'
+import { claimedOf, CLIP_EXTEND, mountKit, nodesOf, recordingHost, STARTER, testTake } from './take-kind.client.ts'
 
 const LABELLED = [{ ...OPERATIONS[0]!, label: { zh: '渲染镜头', en: 'Render shot' } }, CLIP_EXTEND]
 
@@ -24,7 +24,7 @@ afterEach(() => {
 })
 
 /**
- * The fixture state plus chained `shot.render` takes of approval `a1` and an unchained `clip.extend` take.
+ * The fixture state plus the starter `a1`, its chained `shot.render` takes, and an unchained `clip.extend` take.
  * @returns the state.
  */
 function chainedState(): FixtureState {
@@ -33,6 +33,7 @@ function chainedState(): FixtureState {
     id, operation: 'shot.render', deterministic: false, outputs: [], started_by: { record: 'a1', slot, ...lane === undefined ? {} : { lane } },
   })
   state.components.proj.records.push(
+    record({ id: 'a1', operation: 'test.start' }),
     render('k1', 1), render('k2', 2, 'b'), render('k3', 3), render('k4', 3),
     record({ id: 'x1', operation: 'clip.extend', deterministic: false, outputs: ['x1.png', 'x1.mp4'] }),
   )
@@ -44,7 +45,7 @@ function chainedState(): FixtureState {
 describe('the claimed node type of a generation kind', () => {
   it('titles a take by its chain\'s shot, lane and number, else by its operation\'s wire label, else by the operation name', async () => {
     const { runtime, canvas } = await mountKit({})
-    canvas.chainAnchors.register(APPROVAL)
+    canvas.chainAnchors.register(STARTER)
     const titles = (operations = LABELLED, language: 'zh' | 'en' = 'zh') => {
       const nodes = nodesOf(canvas, chainedState(), operations, language)
       return Object.fromEntries(['k1', 'k2', 'k3', 'k4', 'g1', 'g2', 'x1'].map(id => [id, nodes.get(id)?.title]))

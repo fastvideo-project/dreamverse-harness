@@ -9,13 +9,13 @@ import type { WireOperation } from '@dv/ui-kit/types.ts'
 import { addToolNames, registerOperationRows } from '../src/client/tool-labels.ts'
 
 /** A workflow operation that declares its label and has no `DV_TOOL_LABELS` entry. */
-const APPROVE: WireOperation = {
-  name: 'story.approve', version: '1', description: 'Approve a plan version.', label: { zh: '批准分镜计划', en: 'Approve plan' },
+const ASSEMBLE: WireOperation = {
+  name: 'cut.assemble', version: '1', description: 'Assemble a cut.', label: { zh: '拼接成片', en: 'Assemble cut' },
   inputs: {}, params: {}, outputs: [], deterministic: false, resource: 'none', confirm: 'always',
 }
 /** An operation without a label or a `DV_TOOL_LABELS` entry. */
 const PREVIEW: WireOperation = {
-  name: 'story.preview', version: '1', description: 'Preview a plan version.', inputs: {}, params: {}, outputs: [], deterministic: true,
+  name: 'cut.preview', version: '1', description: 'Preview a cut.', inputs: {}, params: {}, outputs: [], deterministic: true,
   resource: 'none', confirm: 'never',
 }
 
@@ -30,8 +30,8 @@ afterEach(() => {
 })
 
 describe('registerOperationRows', () => {
-  it('shows the label of a story.approve row, registers its rows again when the list changes, and removes them on unload', async () => {
-    const lists = { current: [APPROVE] }
+  it('shows the label of a cut.assemble row, registers its rows again when the list changes, and removes them on unload', async () => {
+    const lists = { current: [ASSEMBLE] }
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(Response.json(lists.current))))
     const runtime = await SlotTestRuntime.create()
     await runtime.declare({
@@ -40,16 +40,16 @@ describe('registerOperationRows', () => {
     const entries = () => runtime.slots.entries('tool.call.toolview')
     const plugin = await runtime.mount({ inject: ['slots'], apply: registerOperationRows })
     await vi.waitFor(() => { expect(entries()).toHaveLength(1) })
-    expect(entries()[0]!.options).toMatchObject({ key: 'dv_story_approve', priority: 1 })
+    expect(entries()[0]!.options).toMatchObject({ key: 'dv_cut_assemble', priority: 1 })
     const Row = entries()[0]!.component as ComponentType<RowProps>
-    const { container } = render(createElement(Row, { toolName: 'dv_story_approve', sessionId: 's1', callId: 'call-1', phase: 'start', block: {} }))
-    expect(container.textContent).toContain('批准分镜计划')
-    expect(container.textContent).not.toContain('dv_story_approve')
+    const { container } = render(createElement(Row, { toolName: 'dv_cut_assemble', sessionId: 's1', callId: 'call-1', phase: 'start', block: {} }))
+    expect(container.textContent).toContain('拼接成片')
+    expect(container.textContent).not.toContain('dv_cut_assemble')
 
     // Opening a project reads the list again: a changed list replaces every row, an unchanged one keeps them.
-    lists.current = [APPROVE, PREVIEW]
+    lists.current = [ASSEMBLE, PREVIEW]
     act(() => { publishCurrentProject('p1') })
-    await vi.waitFor(() => { expect(entries().map(entry => entry.options.key)).toEqual(['dv_story_approve', 'dv_story_preview']) })
+    await vi.waitFor(() => { expect(entries().map(entry => entry.options.key)).toEqual(['dv_cut_assemble', 'dv_cut_preview']) })
     const shown = entries()
     act(() => { publishCurrentProject('p2') })
     await new Promise(resolve => setTimeout(resolve, 0))
@@ -66,9 +66,9 @@ describe('addToolNames', () => {
   it('writes the group-title name of every labelled tool and of every operation', () => {
     const zh: Record<string, string> = {}
     const en: Record<string, string> = {}
-    addToolNames({ dicts: new Map([['chat', new Map([['zh', zh], ['en', en]])]]) }, [APPROVE, PREVIEW])
-    expect([zh['tool.name.dv_story_approve'], en['tool.name.dv_story_approve']]).toEqual(['批准分镜计划', 'Approve plan'])
-    expect(zh['tool.name.dv_story_preview']).toBe('story.preview')
+    addToolNames({ dicts: new Map([['chat', new Map([['zh', zh], ['en', en]])]]) }, [ASSEMBLE, PREVIEW])
+    expect([zh['tool.name.dv_cut_assemble'], en['tool.name.dv_cut_assemble']]).toEqual(['拼接成片', 'Assemble cut'])
+    expect(zh['tool.name.dv_cut_preview']).toBe('cut.preview')
     expect(zh['tool.name.dv_asset_import']).toBe('导入素材')
   })
 })

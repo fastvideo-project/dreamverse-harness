@@ -29,9 +29,9 @@ describe('createDvCanvas', () => {
 
   it('refuses a second chain anchor of a starter, records in use of a package, version kind of a kind, and action of an id', () => {
     const canvas = createDvCanvas()
-    canvas.chainAnchors.register({ starter: 'story.approve', anchor: () => 'plan:p1' })
-    expect(() => canvas.chainAnchors.register({ starter: 'story.approve', anchor: () => 'plan:p2' }))
-      .toThrow('registry key "story.approve" is already registered by the anchor of story.approve')
+    canvas.chainAnchors.register({ starter: 'test.start', anchor: () => 'board:b1' })
+    expect(() => canvas.chainAnchors.register({ starter: 'test.start', anchor: () => 'board:b2' }))
+      .toThrow('registry key "test.start" is already registered by the anchor of test.start')
     canvas.recordsInUse.register({ id: '@dv/ui-timeline', uses: () => [] })
     expect(() => canvas.recordsInUse.register({ id: '@dv/ui-timeline', uses: () => ['r1'] })).toThrow('registry key "@dv/ui-timeline" is already registered by @dv/ui-timeline')
     const props: VersionKind = { kind: 'prop', label: () => '道具', node: id => `prop:${id}`, latest: () => [], name: () => null, assets: () => [] }

@@ -43,7 +43,7 @@ describe('the dv.canvas Factory', () => {
 
 describe('kind plugins', () => {
   it('gives each node type of today\'s kinds its own slot of the theme\'s node palette', async () => {
-    const { runtime } = await mountCanvas({ kinds: ['plan', 'assets', 'takes', 'media'] })
+    const { runtime } = await mountCanvas({ kinds: ['assets', 'takes', 'media'] })
     const nouns = [
       { inject: characterInject, apply: characterApply }, { inject: locationInject, apply: locationApply },
       { inject: styleInject, apply: styleApply },
@@ -51,7 +51,7 @@ describe('kind plugins', () => {
     for (const noun of nouns) await runtime.mount({ inject: [...noun.inject], apply: noun.apply })
     const colors = runtime.ctx.dvCanvas.nodeTypes.getSnapshot().map(type => [type.type, type.color]).sort()
     expect(colors).toEqual([
-      ['asset', 'var(--dv-node-6)'], ['character', 'var(--dv-node-1)'], ['location', 'var(--dv-node-5)'], ['plan', 'var(--dv-node-2)'],
+      ['asset', 'var(--dv-node-6)'], ['character', 'var(--dv-node-1)'], ['location', 'var(--dv-node-5)'],
       ['style', 'var(--dv-node-7)'], ['take', 'var(--dv-node-3)'],
     ])
     await runtime.dispose()

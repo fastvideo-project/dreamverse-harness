@@ -3,20 +3,16 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
-import type { AssetId, RecordId } from '@dv/project/types'
-import type { PlanId, PlanVersion } from '@dv/shot-plan/types'
-import type { ClipId, TimelineId } from '@dv/timeline/types'
 import type { ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
 import { assetNodeType } from '../../ui-asset-pool/src/client/canvas.tsx'
 import { asset, fixtureState, OPERATIONS, record, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
 import { referenceDescriptors } from '../../ui-reference-kit/src/client/reference-kit.tsx'
-import { planNodeType, planReferencesInUse } from '../../ui-shot-plan/src/client/index.ts'
 import { apply as shotRenderApply, inject as shotRenderInject } from '../../ui-shot-render/src/client/index.ts'
 import type { ChainAnchor, NodeEntry, NodeType, RecordsInUse } from '../src/client/contract/index.ts'
 import { buildCanvasGraph, freePositions, NODE_WIDTH, previewOf, ROW, slotFrames } from '../src/client/graph.ts'
 import type { CanvasGraph, CanvasRegistrations } from '../src/client/graph.ts'
 import { apply, inject } from '../src/client/index.ts'
-import { APPROVAL, CLIPS } from './fixtures/conformance-states.client.ts'
+import { CLIPS } from './fixtures/conformance-states.client.ts'
 
 const testRef = referenceDescriptors({
   id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref, color: 'var(--dv-node-1)',
@@ -52,8 +48,8 @@ function kinds(parts: Partial<CanvasRegistrations> & Pick<CanvasRegistrations, '
 
 function allKinds(): CanvasRegistrations {
   return {
-    nodeTypes: [testRef.nodeType, planNodeType, assetNodeType, take], chainAnchors: [APPROVAL],
-    recordsInUse: [testRef.referencesInUse, planReferencesInUse, CLIPS], versionKinds: [testRef.versionKind],
+    nodeTypes: [testRef.nodeType, assetNodeType, take], chainAnchors: [],
+    recordsInUse: [testRef.referencesInUse, CLIPS], versionKinds: [testRef.versionKind],
   }
 }
 
@@ -68,7 +64,7 @@ function graphOf(state: WireState, registrations: CanvasRegistrations, placed: r
   return buildCanvasGraph(state, new Set(placed), OPERATIONS, language, registrations)
 }
 
-const anchorOf = (starter: string): ChainAnchor => ({ starter, anchor: approval => `plan:${String(approval.params['plan'])}` })
+const anchorOf = (starter: string): ChainAnchor => ({ starter, anchor: start => `board:${String(start.params['board'])}` })
 
 function sliceType(entries: ReadonlyArray<Omit<NodeEntry, 'bodyHeight'>>, column = 0): NodeType {
   return {
@@ -77,87 +73,11 @@ function sliceType(entries: ReadonlyArray<Omit<NodeEntry, 'bodyHeight'>>, column
   }
 }
 
-/** Six shot prompts of plan p1 version 1; versions 2 and 3 change shot 3 and add shot 7, version 4 returns to these. */
-const PROMPTS = ['rain', 'alley', 'door', 'stairs', 'roof', 'dawn']
-
-/**
- * A project shaped like a creator's real one: plan p1 v1 with 6 shots approved and rendered (r1–r6); v2 changes shot 3
- * and adds shot 7 (s3, s7), with a retake of shot 7 (x7); v3 changes shot 5 (w5); the agent then put the v1 take of shot
- * 3 back on the timeline and wrote v4 equal to v1, whose approval reuses every v1 take. Records after `until` are left
- * out, as an undo or a jump to that record leaves the state.
- * @param until - the last record ID kept; every record by default.
- * @returns the state.
- */
-function rollbackProject(until?: string): WireState {
-  const hero = { role: 'reference', ref: { test_ref: 'hero', version: 1 }, resolved_asset: 'ref.png' }
-  // The approval of version n is a<n>: it starts each render, with its shot as slot, and its timeline record; a retake
-  // has no started_by of its own.
-  const render = (id: string, version: number, shot: number, basedOn: string | null = null): ProjectRecord => record({
-    id, operation: 'shot.render', deterministic: false, inputs: [hero], based_on: basedOn, outputs: [`${id}.mp4`, `${id}.png`],
-    params: { prompt: `shot ${String(shot)} v${String(version)}`, plan: 'p1', plan_version: version, shot },
-    ...basedOn === null ? { started_by: { record: `a${String(version)}`, slot: shot } } : {},
-  })
-  const layout = (id: string, operation: string, clips: string[]): ProjectRecord => record({
-    id, operation, params: { timeline: 't1', plan: 'p1' }, started_by: { record: `a${id.slice(1)}`, slot: null },
-    inputs: clips.map(clip => ({ role: 'clip', ref: { record: clip, output: 0 }, resolved_asset: `${clip}.mp4` })),
-  })
-  const approve = (id: string, version: number): ProjectRecord => record({ id, operation: 'plan.approve', params: { plan: 'p1', version } })
-  const v1 = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6']
-  const all = [
-    record({ id: 'u1', operation: 'asset.import', params: { name: 'ref.png' }, outputs: ['ref.png'] }),
-    record({ id: 'e1', operation: 'test_ref.create', params: { test_ref: 'hero', name: 'Hero' } }),
-    record({ id: 'q1', operation: 'plan.create', report: { plan: 'p1', version: 1 } }),
-    approve('a1', 1), ...v1.map((id, index) => render(id, 1, index + 1)), layout('l1', 'timeline.create', v1),
-    record({ id: 'q2', operation: 'plan.update', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } }),
-    approve('a2', 2), render('s3', 2, 3), render('s7', 2, 7), layout('l2', 'timeline.update', ['r1', 'r2', 's3', 'r4', 'r5', 'r6', 's7']),
-    render('x7', 2, 7, 's7'),
-    record({ id: 'q3', operation: 'plan.update', params: { plan: 'p1' }, report: { plan: 'p1', version: 3 } }),
-    approve('a3', 3), render('w5', 3, 5), layout('l3', 'timeline.update', ['r1', 'r2', 's3', 'r4', 'w5', 'r6', 's7']),
-    record({ id: 'k1', operation: 'timeline.clip_replace', params: { timeline: 't1', clip: 'cl3' }, inputs: [{ role: 'clip', ref: { asset: 'r3.mp4' }, resolved_asset: 'r3.mp4' }] }),
-    record({ id: 'q4', operation: 'plan.update', params: { plan: 'p1' }, report: { plan: 'p1', version: 4 } }),
-    approve('a4', 4), layout('l4', 'timeline.update', v1),
-  ]
-  const kept = until === undefined ? all : all.slice(0, all.findIndex(entry => entry.id === until) + 1)
-  const ids = new Set(kept.map(entry => entry.id))
-  const shots = (count: number, changed: Record<number, string> = {}): PlanVersion['shots'] =>
-    Array.from({ length: count }, (_, index) => ({ prompt: changed[index + 1] ?? PROMPTS[index] ?? 'end', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3' }))
-  const versions: PlanVersion[] = [
-    { version: 1, shots: shots(6), created_by: 'q1' as RecordId },
-    { version: 2, shots: shots(7, { 3: 'door, closer' }), created_by: 'q2' as RecordId },
-    { version: 3, shots: shots(7, { 3: 'door, closer', 5: 'roof, wider' }), created_by: 'q3' as RecordId },
-    { version: 4, shots: shots(6), created_by: 'q4' as RecordId },
-  ].filter(version => ids.has(version.created_by))
-  const clips = (kept.findLast(entry => entry.operation?.startsWith('timeline.') === true && entry.id.startsWith('l'))?.inputs ?? [])
-    .map((input, index) => ({ id: `cl${String(index + 1)}` as ClipId, asset: input.resolved_asset as AssetId | null, source: null, in_sec: null, out_sec: null }))
-  if (ids.has('k1') && !ids.has('l4')) clips[2] = { id: 'cl3' as ClipId, asset: 'r3.mp4' as AssetId, source: null, in_sec: null, out_sec: null }
-  const renders = kept.filter(entry => entry.operation === 'shot.render')
-  const state = withTestRef(fixtureState())
-  state.components.proj = {
-    records: kept, stale: {}, superseded: {},
-    created_by: Object.fromEntries<string>([['ref.png', 'u1'], ...renders.flatMap(entry => entry.outputs.map(output => [output, entry.id] as const))]),
-  }
-  state.components.plan.plans = { ['p1' as PlanId]: versions }
-  state.components.timeline.timelines = [{ id: 't1' as TimelineId, name: '', clips }]
-  state.assets = [
-    asset('ref.png', 'image/png', 'u1'),
-    ...renders.flatMap(entry => [asset(`${entry.id}.mp4`, 'video/mp4', entry.id, 1), asset(`${entry.id}.png`, 'image/png', entry.id)]),
-  ]
-  return state
-}
-
-/**
- * @param state - a project state.
- * @returns the `[id, type]` pairs of the nodes that every kind package draws for it, in node order.
- */
-function drawn(state: WireState): string[][] {
-  return graphOf(state, allKinds()).nodes.map(node => [node.id, node.type])
-}
-
 describe('buildCanvasGraph', () => {
-  it('draws the reference item, the plan and the takes with their input, first-frame and lineage edges, flags, badges and versions', () => {
+  it('draws the reference item and the takes with their input, first-frame and lineage edges, flags, badges and versions', () => {
     const graph = graphOf(withTestRef(fixtureState()), allKinds())
     expect(graph.nodes.map(node => [node.id, node.type])).toEqual([
-      ['test_ref:hero', 'test_ref'], ['plan:p1', 'plan'], ['g1', 'take'], ['g2', 'take'], ['g3', 'take'],
+      ['test_ref:hero', 'test_ref'], ['g1', 'take'], ['g2', 'take'], ['g3', 'take'],
     ])
     const byId = new Map(graph.nodes.map(node => [node.id, node]))
     const g1 = byId.get('g1')
@@ -190,9 +110,10 @@ describe('buildCanvasGraph', () => {
   it('draws only the nodes of registered types and only the badges that a RecordsInUse reports', () => {
     const { nodeTypes, recordsInUse } = allKinds()
     const graph = graphOf(withTestRef(fixtureState()), {
-      ...allKinds(), nodeTypes: nodeTypes.filter(type => type !== planNodeType), recordsInUse: recordsInUse.filter(uses => uses !== CLIPS),
+      ...allKinds(), nodeTypes: nodeTypes.filter(type => type !== testRef.nodeType),
+      recordsInUse: recordsInUse.filter(uses => uses !== CLIPS),
     })
-    expect(graph.nodes.some(node => node.id === 'plan:p1')).toBe(false)
+    expect(graph.nodes.some(node => node.id === 'test_ref:hero')).toBe(false)
     expect(graph.nodes.find(node => node.id === 'g2')?.badges).toEqual([])
   })
 
@@ -313,14 +234,13 @@ describe('buildCanvasGraph', () => {
     const prop = sliceType([{ id: 'prop:m1', record: m1, title: 'Red umbrella', assets: ['umbrella.png'] }], 1)
     const placed = ['umbrella.png']
     expect(graphOf(state, kinds({ nodeTypes: [assetNodeType, take] }), placed).nodes.some(node => node.id === 'u2')).toBe(true)
-    const graph = graphOf(state, kinds({ nodeTypes: [prop, planNodeType, assetNodeType, take] }), placed)
+    const graph = graphOf(state, kinds({ nodeTypes: [prop, assetNodeType, take] }), placed)
     const byId = new Map(graph.nodes.map(node => [node.id, node]))
     expect(byId.get('prop:m1')).toMatchObject({ nodeType: prop, claimed: false, title: 'Red umbrella', assets: ['umbrella.png'], record: m1 })
     expect(byId.has('u2')).toBe(false)
     expect(graph.assetNodes['umbrella.png']).toBe('prop:m1')
     expect(graph.edges).toContainEqual({ from: 'prop:m1', to: 'g4', kind: 'input', role: 'reference' })
     expect(graph.edges.some(edge => edge.to === 'prop:m1')).toBe(false)
-    expect(byId.get('prop:m1')?.x).toBe(byId.get('plan:p1')?.x)
   })
 
   it('refuses to draw two nodes with one ID and names both node types', () => {
@@ -340,13 +260,13 @@ describe('buildCanvasGraph', () => {
     }
     const state = fixtureState()
     state.components.proj.records.push(
-      record({ id: 'w0', operation: 'w.approve', params: { plan: 'p1' } }),
+      record({ id: 'w0', operation: 'w.start', params: { board: 'b1' } }),
       record({ id: 'i1', operation: 'image.generate', deterministic: false, outputs: ['cat.png'] }),
       record({ id: 'i2', operation: 'image.generate', deterministic: false, based_on: 'i1', started_by: { record: 'w1', slot: 2 }, outputs: ['cat2.png'] }),
     )
     state.assets.push(asset('cat.png', 'image/png', 'i1'), asset('cat2.png', 'image/png', 'i2'))
     Object.assign(state.components.proj.created_by, { 'cat.png': 'i1', 'cat2.png': 'i2' })
-    const graph = graphOf(state, kinds({ nodeTypes: [assetNodeType, image], chainAnchors: [anchorOf('w.approve')] }), ['cat.png'])
+    const graph = graphOf(state, kinds({ nodeTypes: [assetNodeType, image], chainAnchors: [anchorOf('w.start')] }), ['cat.png'])
     const byId = new Map(graph.nodes.map(node => [node.id, node]))
     expect([byId.get('i1'), byId.get('i2')].map(node => node === undefined ? null : [node.claimed, node.assets, node.version, node.chain]))
       .toEqual([[true, ['cat.png'], 1, null], [true, ['cat2.png'], 2, null]])
@@ -385,12 +305,12 @@ describe('buildCanvasGraph', () => {
   it('anchors no chain on a record without an operation', () => {
     const state = fixtureState()
     state.components.proj.records.push(
-      record({ id: 'n0', params: { plan: 'p1' } }),
+      record({ id: 'n0', params: { board: 'b1' } }),
       record({
         id: 'g9', operation: 'shot.render', deterministic: false, params: { prompt: 'free' }, started_by: { record: 'n0', slot: 1 },
       }),
     )
-    const graph = graphOf(state, kinds({ nodeTypes: [take], chainAnchors: [anchorOf('story.approve')] }))
+    const graph = graphOf(state, kinds({ nodeTypes: [take], chainAnchors: [anchorOf('a.start')] }))
     expect(graph.nodes.find(node => node.id === 'g9')?.chain).toBeNull()
     expect(graph.edges.some(edge => edge.kind === 'chain')).toBe(false)
   })
@@ -421,43 +341,6 @@ describe('buildCanvasGraph', () => {
   })
 })
 
-describe('current state', () => {
-  it('shows the latest plan version and the current take of each of its shots, not every take ever rendered', () => {
-    const graph = graphOf(rollbackProject(), allKinds())
-    expect(graph.nodes.map(node => [node.id, node.type])).toEqual([
-      ['test_ref:hero', 'test_ref'], ['plan:p1', 'plan'], ...['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => [id, 'take']),
-    ])
-    const plan = graph.nodes.find(node => node.id === 'plan:p1')
-    expect([plan?.slots, plan?.record?.id]).toEqual([6, 'q4'])
-    expect(graph.nodes.filter(node => node.type === 'take').map(node => [node.chain?.slot, node.version]))
-      .toEqual([1, 2, 3, 4, 5, 6].map(shot => [shot, null]))
-    expect(graph.edges.filter(edge => edge.kind === 'chain').map(edge => [edge.from, edge.to]))
-      .toEqual(['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => ['plan:p1', id]))
-    expect(graph.assetNodes['s7.mp4']).toBeUndefined()
-    expect(graph.assetNodes['r3.mp4']).toBe('r3')
-  })
-
-  it('a jump back to an earlier step changes the canvas to that step\'s plan version and takes', () => {
-    const l3 = graphOf(rollbackProject('l3'), allKinds())
-    expect(l3.nodes.map(node => [node.id, node.type])).toEqual([
-      ['test_ref:hero', 'test_ref'], ['plan:p1', 'plan'], ...['r1', 'r2', 'r4', 'r6', 's3', 's7', 'x7', 'w5'].map(id => [id, 'take']),
-    ])
-    expect(l3.nodes.find(node => node.id === 'plan:p1')?.slots).toBe(7)
-    expect(drawn(rollbackProject('l1'))).toEqual([
-      ['test_ref:hero', 'test_ref'], ['plan:p1', 'plan'], ...['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => [id, 'take']),
-    ])
-    expect(drawn(rollbackProject('e1'))).toEqual([['test_ref:hero', 'test_ref']])
-  })
-
-  it('keeps a take that a timeline clip plays current, and an unapproved latest version keeps the played takes', () => {
-    const takesOf = (state: WireState): string[] => drawn(state).filter(([, type]) => type === 'take').map(([id]) => id ?? '')
-    expect(takesOf(rollbackProject('k1'))).toEqual(['r1', 'r2', 'r3', 'r4', 'r6', 's7', 'x7', 'w5'])
-    const pending = rollbackProject('q4')
-    expect(pending.components.proj.records.some(entry => entry.id === 'a4')).toBe(false)
-    expect(takesOf(pending)).toEqual(['r1', 'r2', 'r3', 'r4', 'r6', 's7', 'x7', 'w5'])
-  })
-})
-
 describe('chain grouping', () => {
   const takeRecord = (id: string, startedBy: ProjectRecord['started_by'], basedOn: string | null = null): ProjectRecord => record({
     id, operation: 'shot.render', deterministic: false, based_on: basedOn, outputs: [`${id}.png`],
@@ -465,17 +348,17 @@ describe('chain grouping', () => {
   })
 
   /**
-   * The shared fixture plus the takes of two story approvals, one ad approval and one unloaded starter on plan p1.
+   * The shared fixture plus the takes of two `a.start` starters, one `b.start` starter and one unloaded starter on board b1.
    * @param extra - more takes, placed right after h2.
    * @returns the state.
    */
   function chainState(extra: ProjectRecord[] = []): WireState {
     const state = fixtureState()
     const added = [
-      record({ id: 'st0', operation: 'story.approve', params: { plan: 'p1' } }), takeRecord('n1', { record: 'st0', slot: 2 }),
-      record({ id: 'st1', operation: 'story.approve', params: { plan: 'p1' } }), takeRecord('h1', { record: 'st1', slot: 1 }), takeRecord('h2', undefined, 'h1'),
+      record({ id: 'st0', operation: 'a.start', params: { board: 'b1' } }), takeRecord('n1', { record: 'st0', slot: 2 }),
+      record({ id: 'st1', operation: 'a.start', params: { board: 'b1' } }), takeRecord('h1', { record: 'st1', slot: 1 }), takeRecord('h2', undefined, 'h1'),
       ...extra,
-      record({ id: 'ad1', operation: 'ad.approve', params: { plan: 'p1' } }),
+      record({ id: 'ad1', operation: 'b.start', params: { board: 'b1' } }),
       takeRecord('v9', { record: 'ad1', slot: 1, lane: '9:16' }), takeRecord('v16', { record: 'ad1', slot: 1, lane: '16:9' }),
       takeRecord('o1', { record: 'zz1', slot: 2 }),
     ]
@@ -486,43 +369,43 @@ describe('chain grouping', () => {
     }
     return state
   }
-  const ANCHORS = [anchorOf('story.approve'), anchorOf('ad.approve')]
+  const ANCHORS = [anchorOf('a.start'), anchorOf('b.start')]
 
   it('draws the chain of the newest starter of each operation on each node, every free take, and the records a RecordsInUse uses', () => {
     const takes = (state: WireState, recordsInUse: RecordsInUse[] = []): string[] =>
       graphOf(state, kinds({ nodeTypes: [take], chainAnchors: ANCHORS, recordsInUse })).nodes.map(node => node.id)
     expect(takes(chainState())).toEqual(['g1', 'g2', 'g3', 'h1', 'h2', 'v9', 'v16', 'o1'])
     expect(takes(chainState(), [{ id: 'test-uses', uses: () => ['n1'] }])).toEqual(['g1', 'g2', 'g3', 'n1', 'h1', 'h2', 'v9', 'v16', 'o1'])
-    const otherPlan = chainState()
-    otherPlan.components.proj.records.push(record({ id: 'st2', operation: 'story.approve', params: { plan: 'p2' } }))
-    expect(takes(otherPlan)).toEqual(['g1', 'g2', 'g3', 'h1', 'h2', 'v9', 'v16', 'o1'])
+    const otherBoard = chainState()
+    otherBoard.components.proj.records.push(record({ id: 'st2', operation: 'a.start', params: { board: 'b2' } }))
+    expect(takes(otherBoard)).toEqual(['g1', 'g2', 'g3', 'h1', 'h2', 'v9', 'v16', 'o1'])
     expect(graphOf(chainState(), kinds({ nodeTypes: [take] })).nodes.some(node => node.id === 'n1')).toBe(true)
   })
 
   it('numbers records by based_on family, else by anchor, slot and lane, and fills each slot frame from the newest take anchored there', () => {
     const state = chainState([takeRecord('n2', { record: 'st1', slot: 2 })])
-    const graph = graphOf(state, kinds({ nodeTypes: [planNodeType, take], chainAnchors: ANCHORS, recordsInUse: [{ id: 'test-uses', uses: () => ['n1'] }] }), [], 'en')
+    const graph = graphOf(state, kinds({ nodeTypes: [sliceType([{ id: 'board:b1', title: 'b1', record: null, assets: [], slots: 2 }]), take], chainAnchors: ANCHORS, recordsInUse: [{ id: 'test-uses', uses: () => ['n1'] }] }), [], 'en')
     const byId = new Map(graph.nodes.map(node => [node.id, node]))
     expect(['h1', 'h2', 'n1', 'n2', 'v9', 'v16', 'o1'].map(id => [byId.get(id)?.chain ?? null, byId.get(id)?.version])).toEqual([
-      [{ starter: 'st1', anchor: 'plan:p1', slot: 1 }, 1], [{ starter: 'st1', anchor: 'plan:p1', slot: 1 }, 2],
-      [{ starter: 'st0', anchor: 'plan:p1', slot: 2 }, 1], [{ starter: 'st1', anchor: 'plan:p1', slot: 2 }, 2],
-      [{ starter: 'ad1', anchor: 'plan:p1', slot: 1, lane: '9:16' }, null], [{ starter: 'ad1', anchor: 'plan:p1', slot: 1, lane: '16:9' }, null],
+      [{ starter: 'st1', anchor: 'board:b1', slot: 1 }, 1], [{ starter: 'st1', anchor: 'board:b1', slot: 1 }, 2],
+      [{ starter: 'st0', anchor: 'board:b1', slot: 2 }, 1], [{ starter: 'st1', anchor: 'board:b1', slot: 2 }, 2],
+      [{ starter: 'ad1', anchor: 'board:b1', slot: 1, lane: '9:16' }, null], [{ starter: 'ad1', anchor: 'board:b1', slot: 1, lane: '16:9' }, null],
       [null, null],
     ])
     expect(graph.edges.filter(edge => edge.kind === 'chain').map(edge => `${edge.from}>${edge.to}`).sort())
-      .toEqual(['h1', 'h2', 'n1', 'n2', 'v16', 'v9'].map(id => `plan:p1>${id}`))
-    expect(slotFrames(graph.nodes, 'plan:p1', 2)).toEqual([{ node: 'v16', preview: 'v16.png' }, { node: 'n2', preview: 'n2.png' }])
+      .toEqual(['h1', 'h2', 'n1', 'n2', 'v16', 'v9'].map(id => `board:b1>${id}`))
+    expect(slotFrames(graph.nodes, 'board:b1', 2)).toEqual([{ node: 'v16', preview: 'v16.png' }, { node: 'n2', preview: 'n2.png' }])
   })
 
   it('lays out six takes in two lanes by anchor, slot (null last), lane in first-record order, then record order', () => {
     const state = fixtureState()
     const laneTake = (id: string, slot: number | null, lane: string): ProjectRecord => takeRecord(id, { record: 'ad1', slot, lane })
     state.components.proj.records.push(
-      record({ id: 'ad1', operation: 'ad.approve', params: { plan: 'p1' } }),
+      record({ id: 'ad1', operation: 'b.start', params: { board: 'b1' } }),
       laneTake('m0', null, '9:16'), laneTake('m2', 2, '9:16'), laneTake('m1', 1, '9:16'),
       laneTake('w2', 2, '16:9'), laneTake('w0', null, '16:9'), laneTake('w1', 1, '16:9'),
     )
-    const graph = graphOf(state, kinds({ nodeTypes: [take], chainAnchors: [anchorOf('ad.approve')] }))
+    const graph = graphOf(state, kinds({ nodeTypes: [take], chainAnchors: [anchorOf('b.start')] }))
     const placed = graph.nodes.filter(node => node.id !== 'g2').sort((a, b) => a.x - b.x || a.y - b.y).map(node => node.id)
     expect(placed).toEqual(['g1', 'g3', 'm1', 'w1', 'm2', 'w2', 'm0', 'w0'])
     expect(graph.nodes.map(node => node.id)).toEqual(['g1', 'g2', 'g3', 'm0', 'm2', 'm1', 'w2', 'w0', 'w1'])

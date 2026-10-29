@@ -67,7 +67,6 @@ describe('node types', () => {
     expect(node('prop:p1').textContent).toBe('红伞第 1 版道具')
     expect(node('prop:p1').innerHTML).not.toContain('rgb(1, 2, 3)')
     expect(card('asset:umbrella.png')).toBeNull()
-    expect(node('prop:p1').style.left).toBe(node('plan:p1').style.left)
 
     const bodies = await runtime.mount({
       inject: ['slots'],

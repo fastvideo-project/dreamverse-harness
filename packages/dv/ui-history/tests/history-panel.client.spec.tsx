@@ -13,7 +13,6 @@ import type { HistoryEntry, HistoryQuery, ProjectRecord, WireHistory, WireOperat
 import { DV_HISTORY_FOCUS_EVENT, DV_TRAJECTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply as shotRenderApply, inject as shotRenderInject } from '../../ui-shot-render/src/client/index.ts'
-import { storyApprovalRow } from '../../ui-workflow-story/src/client/index.ts'
 import type { HistoryRow } from '../src/client/contract/index.ts'
 import { HistoryPanel } from '../src/client/HistoryPanel.tsx'
 import { disposeHistories, mountHistory } from './runtime.client.tsx'
@@ -44,10 +43,10 @@ const ENTRIES: HistoryEntry[] = [
     }),
     place: 'before',
   },
-  { record: record({ id: 'p1', turn: 't3', actor: 'agent', session: 's5', tool_call: 'call-p1', operation: 'plan.create' }), place: 'before' },
+  { record: record({ id: 'p1', turn: 't3', actor: 'agent', session: 's5', tool_call: 'call-p1', operation: 'character.create' }), place: 'before' },
 ]
 
-/** The operations on the wire: the fixture's, a clip move and the story approval, with the labels their packages declare. */
+/** The operations on the wire: the fixture's, a clip move and a starter of a chain, with the labels their packages declare. */
 const WIRE_OPERATIONS: WireOperation[] = [
   ...OPERATIONS.map(operation => operation.name === 'shot.render' ? { ...operation, label: { zh: '渲染镜头', en: 'Render shot' } } : operation),
   {
@@ -55,10 +54,17 @@ const WIRE_OPERATIONS: WireOperation[] = [
     deterministic: false, resource: 'none', confirm: 'never',
   },
   {
-    name: 'story.approve', version: '1', description: 'Approve a plan version.', label: { zh: '批准分镜计划', en: 'Approve plan' }, inputs: {}, params: {},
-    outputs: [], deterministic: false, resource: 'none', confirm: 'always',
+    name: 'cut.assemble', version: '1', description: 'Assemble a cut.', label: { zh: '拼接成片', en: 'Assemble cut' }, inputs: {}, params: {},
+    outputs: [], deterministic: false, resource: 'none', confirm: 'never',
   },
 ]
+
+/** The History row of the chain starter `cut.assemble`, with a fold label over its folded media rows. */
+const STARTER_ROW: HistoryRow = {
+  match: 'cut.assemble',
+  fold: count => [`渲染 ${String(count)} 个镜头`, `Render ${String(count)} shots`],
+  subject: () => null,
+}
 
 type HistoryServer = (query: HistoryQuery, signal: AbortSignal | null) => Promise<WireHistory>
 
@@ -236,14 +242,14 @@ describe('the History tab', () => {
     expect(row('g1').querySelector('[data-testid="dv-history-thumb"]')).toBeNull()
   })
 
-  it('folds the renders a plan approval started under its row, labeled by the approval row\'s fold, until the toggle opens them', async () => {
-    const approval: HistoryEntry[] = [
+  it('folds the renders a starter record started under its row, labeled by the starter row\'s fold, until the toggle opens them', async () => {
+    const chain: HistoryEntry[] = [
       {
-        record: record({ id: 'g2', actor: 'system', operation: 'shot.render', params: { plan: 'p1', shot: 2 }, started_by: { record: 'ap', slot: 2 }, status: 'running' }),
+        record: record({ id: 'g2', actor: 'system', operation: 'shot.render', started_by: { record: 'ap', slot: 2 }, status: 'running' }),
         place: 'current',
       },
       {
-        record: record({ id: 'g1', actor: 'system', operation: 'shot.render', params: { plan: 'p1', shot: 1 }, started_by: { record: 'ap', slot: 1 }, outputs: ['shot1.mp4'] }),
+        record: record({ id: 'g1', actor: 'system', operation: 'shot.render', started_by: { record: 'ap', slot: 1 }, outputs: ['shot1.mp4'] }),
         place: 'before',
       },
       {
@@ -251,14 +257,14 @@ describe('the History tab', () => {
         place: 'before',
       },
       {
-        record: record({ id: 'ap', actor: 'agent', operation: 'story.approve', params: { plan: 'p1' }, report: { plan: 'p1', version: 1, scheduled: ['g1', 'g2'] } }),
+        record: record({ id: 'ap', actor: 'agent', operation: 'cut.assemble', report: { scheduled: ['g1', 'g2'] } }),
         place: 'before',
       },
     ]
-    const { view, row } = await mount(approval, () => {}, [storyApprovalRow])
+    const { view, row } = await mount(chain, () => {}, [STARTER_ROW])
     await waitFor(() => { row('ap') })
     expect(view.container.querySelectorAll('[data-testid="dv-history-row"]').length).toBe(1)
-    await waitFor(() => { expect(row('ap').textContent).toContain('Approve plan p1 v1') })
+    await waitFor(() => { expect(row('ap').textContent).toContain('Assemble cut') })
     const fold = view.getByTestId('dv-history-fold')
     // The timeline record folds too, but only the media records count: two renders, one finished.
     expect(fold.textContent).toContain('Render 2 shots (1/2)')
@@ -274,11 +280,11 @@ describe('the History tab', () => {
   })
 
   it('labels a fold by its first folded record when the starter\'s row has no fold', async () => {
-    const approval: HistoryEntry[] = [
+    const chain: HistoryEntry[] = [
       { record: record({ id: 'g1', actor: 'system', operation: 'shot.render', started_by: { record: 'ap', slot: 1 }, outputs: ['shot1.mp4'] }), place: 'current' },
-      { record: record({ id: 'ap', actor: 'agent', operation: 'story.approve', params: { plan: 'p1' } }), place: 'before' },
+      { record: record({ id: 'ap', actor: 'agent', operation: 'cut.assemble' }), place: 'before' },
     ]
-    const { view } = await mount(approval)
+    const { view } = await mount(chain)
     await waitFor(() => { expect(view.getByTestId('dv-history-fold').textContent).toBe('▸ Render shot 1') })
   })
 
@@ -527,14 +533,14 @@ describe('the History tab', () => {
 
 describe('dv:history-focus', () => {
   it('opens the fold that holds the focused record', async () => {
-    const approval: HistoryEntry[] = [
+    const chain: HistoryEntry[] = [
       {
         record: record({ id: 'g1', actor: 'system', session: 's5', tool_call: 'call-g1', operation: 'shot.render', started_by: { record: 'ap', slot: 1 } }),
         place: 'current',
       },
-      { record: record({ id: 'ap', actor: 'agent', operation: 'story.approve', params: { plan: 'p1' } }), place: 'before' },
+      { record: record({ id: 'ap', actor: 'agent', operation: 'cut.assemble' }), place: 'before' },
     ]
-    const { view, row } = await mount(approval)
+    const { view, row } = await mount(chain)
     await waitFor(() => { row('ap') })
     focusCall('call-g1')
     await waitFor(() => { expect(row('g1').getAttribute('aria-selected')).toBe('true') })

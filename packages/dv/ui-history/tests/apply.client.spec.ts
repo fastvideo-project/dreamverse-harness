@@ -69,11 +69,11 @@ describe('ui-history apply', () => {
 
   it('provides dvHistory, whose rows reach the tab body, refuse a second row of one operation, and leave on disposal', async () => {
     const { ctx, registered } = await boot()
-    const row: HistoryRow = { match: 'story.approve', subject: () => [' p1 v1', ' p1 v1'] }
+    const row: HistoryRow = { match: 'cut.assemble', subject: () => [' c1', ' c1'] }
     const dispose = ctx.dvHistory.rows.register(row)
     expect(registered[0]?.inject().hooks.rows).toBe(ctx.dvHistory.rows)
     expect(ctx.dvHistory.rows.getSnapshot()).toEqual([row])
-    expect(() => ctx.dvHistory.rows.register({ ...row })).toThrow('already registered by the History row of story.approve')
+    expect(() => ctx.dvHistory.rows.register({ ...row })).toThrow('already registered by the History row of cut.assemble')
     dispose()
     expect(ctx.dvHistory.rows.getSnapshot()).toEqual([])
   })
@@ -81,9 +81,9 @@ describe('ui-history apply', () => {
   it('describes a record of a media row by its operation label and its subject, and no record of any other row', async () => {
     const { ctx } = await boot()
     ctx.dvHistory.rows.register({ match: 'shot.render', subject: () => [' 7', ' 7'], media: { thumbnail: () => null } })
-    ctx.dvHistory.rows.register({ match: 'plan.', subject: () => [' p1', ' p1'] })
+    ctx.dvHistory.rows.register({ match: 'character.', subject: () => [' c1', ' c1'] })
     expect(ctx.dvHistory.describe(record({ id: 'g1', operation: 'shot.render' }), { operations: OPERATIONS, records: {} })?.[1]).toMatch(/ 7$/)
-    expect(ctx.dvHistory.describe(record({ id: 'q1', operation: 'plan.create' }), { operations: OPERATIONS, records: {} })).toBeNull()
+    expect(ctx.dvHistory.describe(record({ id: 'e1', operation: 'character.create' }), { operations: OPERATIONS, records: {} })).toBeNull()
     expect(ctx.dvHistory.describe(record({ id: 'o', operation: 'other.thing' }), { operations: OPERATIONS, records: {} })).toBeNull()
   })
 

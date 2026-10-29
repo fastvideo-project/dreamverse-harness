@@ -27,7 +27,7 @@ describe('canvas tab body and center view', () => {
     const { runtime, view } = await mountCanvas({ surfaces: ['center', 'tab'] })
     const cards = (surface: Surface): Array<[string | null, string]> =>
       [...view.getByTestId(surface).querySelectorAll('[data-node-id]')].map(card => [card.getAttribute('data-node-id'), card.innerHTML])
-    await waitFor(() => { expect(cards('tab').map(([id]) => id)).toEqual(['test_ref:hero', 'plan:p1', 'g1', 'g2', 'g3']) })
+    await waitFor(() => { expect(cards('tab').map(([id]) => id)).toEqual(['test_ref:hero', 'g1', 'g2', 'g3']) })
     expect(within(view.getByTestId('tab')).getByTestId('dv-canvas-body')).toBeTruthy()
     const tab = cards('tab')
     expect(tab.find(([id]) => id === 'test_ref:hero')?.[1]).toContain('参考')
@@ -38,10 +38,6 @@ describe('canvas tab body and center view', () => {
 
   it('opens a node in the tab with its kind\'s editor body, and the editor\'s picker lists the asset pool tiles', async () => {
     const { runtime, view, open } = await mountCanvas({ surfaces: ['tab'] })
-    const plan = await open('plan:p1', 'tab')
-    expect(within(plan).getByRole('group', { name: '分镜计划版次' })).toBeTruthy()
-    expect(plan.querySelectorAll('li[data-shot]')).toHaveLength(2)
-    fireEvent.keyDown(window, { key: 'Escape' })
     const take = await open('g1', 'tab')
     expect(await waitFor(() => within(take).getByRole('button', { name: '渲染新版本' }))).toBeTruthy()
     fireEvent.click(within(take).getByRole('button', { name: '添加素材' }))

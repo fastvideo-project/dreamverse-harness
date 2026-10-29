@@ -26,8 +26,8 @@ export const testTake = defineGenerationUi({
   preview: outputs => outputs.find(output => output.mime === 'image/png')?.id,
 })
 
-/** The chain anchor of the fixture's approval `a1`: the records it started hang off `plan:p1`. */
-export const APPROVAL: ChainAnchor = { starter: 'plan.approve', anchor: record => `plan:${String(record.params['plan'])}` }
+/** The chain anchor of the starter `a1` (operation `test.start`): the records it started hang off `board:b1`. */
+export const STARTER: ChainAnchor = { starter: 'test.start', anchor: () => 'board:b1' }
 
 /** The `clip.extend` declaration: no label and no reference input. */
 export const CLIP_EXTEND: WireOperation = {

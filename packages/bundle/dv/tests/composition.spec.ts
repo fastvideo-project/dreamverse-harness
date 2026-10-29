@@ -23,7 +23,6 @@ describe('DreamVerse bundle composition', () => {
     const ids = insertRows().map(row => row.id)
     const nouns = ids.filter(id => /^dv-(ui-)?(character|location|style)$/.test(id))
     expect(nouns).toEqual(['dv-character', 'dv-location', 'dv-style', 'dv-ui-character', 'dv-ui-location', 'dv-ui-style'])
-    expect(ids.indexOf('dv-ui-style')).toBe(ids.indexOf('dv-ui-shot-plan') - 1)
   })
 
   it('pins the definitions of the text node tools that the agent sees', async () => {
