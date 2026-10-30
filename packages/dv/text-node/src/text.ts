@@ -64,19 +64,33 @@ export function applyEdits(body: string, edits: readonly TextEdit[]): EditOutcom
   return problems.length === 0 ? { ok: true, body: text } : { ok: false, problems }
 }
 
-/** A Markdown ATX heading line: its level and its text without closing `#` marks. */
-function headingOf(line: string): { level: number; text: string } | null {
-  const match = /^(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/u.exec(line)
-  return match === null ? null : { level: match[1]?.length ?? 0, text: match[2] ?? '' }
+/** A Markdown ATX heading: its level and its text without closing `#` marks. */
+type Heading = { level: number; text: string }
+
+/**
+ * The heading of each line, or null for a line that is not a heading. A line in a fenced code block, from a line that
+ * opens with three or more backticks or tildes to the next line that opens with at least as many of them, is not a
+ * heading.
+ * @param lines - the lines of a body.
+ * @returns one entry per line.
+ */
+function headingsOf(lines: readonly string[]): Array<Heading | null> {
+  let fence: string | null = null
+  return lines.map((line) => {
+    const marks = /^ {0,3}(`{3,}|~{3,})/u.exec(line)?.[1]
+    if (marks !== undefined && (fence === null || (marks[0] === fence[0] && marks.length >= fence.length))) {
+      fence = fence === null ? marks : null
+      return null
+    }
+    if (fence !== null) return null
+    const match = /^(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/u.exec(line)
+    return match === null ? null : { level: match[1]?.length ?? 0, text: match[2] ?? '' }
+  })
 }
 
 /** The text of the first heading of a body, or null when it has none. */
 export function firstHeading(body: string): string | null {
-  for (const line of body.split('\n')) {
-    const heading = headingOf(line)
-    if (heading !== null) return heading.text
-  }
-  return null
+  return headingsOf(body.split('\n')).find(heading => heading !== null)?.text ?? null
 }
 
 /**
@@ -91,7 +105,7 @@ export function numberedLines(body: string, section?: string): string {
   const lines = body.split('\n')
   let [start, end] = [0, lines.length]
   if (section !== undefined) {
-    const headings = lines.map(headingOf)
+    const headings = headingsOf(lines)
     start = headings.findIndex(heading => heading?.text === section.trim())
     if (start < 0) {
       const names = headings.flatMap(heading => heading === null ? [] : [heading.text])

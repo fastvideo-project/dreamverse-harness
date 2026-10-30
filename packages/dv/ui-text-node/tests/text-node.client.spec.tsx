@@ -40,7 +40,7 @@ const SCRIPT = 'INT. OFFICE - NIGHT'
 /** One version of a path, written by record `<prefix><version>` into asset `<prefix>-v<version>.md`. */
 function version(path: string, prefix: string, number: number, body: string): TextVersion {
   return {
-    path: path as TextPath, version: number, title: body.split('\n')[0]?.slice(2) ?? path, body,
+    version: number, title: body.split('\n')[0]?.slice(2) ?? path, body,
     asset: `${prefix}-v${String(number)}.md` as TextVersion['asset'], created_by: `${prefix}${String(number)}` as TextVersion['created_by'],
   }
 }
@@ -74,7 +74,7 @@ async function mountTexts() {
         inputs: [{ role: 'source', ref: { record: 'tw2', output: 0 }, resolved_asset: 'tw-v2.md' }],
         report: { path: 'script.md', version: 1, title: 'Script', chars: Array.from(SCRIPT).length },
       }))
-      state.components.textnode = { texts: { [PATH]: [...versions], [script.path]: [script] } }
+      state.components.textnode = { texts: { [PATH]: [...versions], 'script.md': [script] } }
     },
     refuse: (path, body) => {
       const request = body as { operation?: string; params?: { body: string; base_version: number } }

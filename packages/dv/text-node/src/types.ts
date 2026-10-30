@@ -23,7 +23,6 @@ export interface TextEdit {
 
 /** One version of a text node: `textnode.write` or `textnode.edit` writes the next one. */
 export interface TextVersion {
-  path: TextPath
   /** 1-based. */
   version: number
   /** The `title` of the latest write that passed one, else the first heading of version 1, else the path. */

@@ -30,9 +30,12 @@ export function reportedVersion(record: ProjectRecord): number | null {
   return typeof version === 'number' ? version : null
 }
 
-/** The newest version of every text node of a state, in slice order. */
-export function newestTexts(state: WireState): TextVersion[] {
-  return Object.values(textsOf(state)).flatMap(versions => versions.at(-1) ?? [])
+/** The path and the newest version of every text node of a state, in slice order. */
+export function newestTexts(state: WireState): Array<[string, TextVersion]> {
+  return Object.entries(textsOf(state)).flatMap(([path, versions]) => {
+    const latest = versions.at(-1)
+    return latest === undefined ? [] : [[path, latest] as [string, TextVersion]]
+  })
 }
 
 /**

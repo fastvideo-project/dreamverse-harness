@@ -57,18 +57,16 @@ export const textReducer: Reducer<'textnode'> = {
     const next = nextText(record.operation, record.params, versions.at(-1))
     const asset = record.outputs[0]
     if (!next.ok || asset === undefined) return slice
-    const version: TextVersion = {
-      path, version: versions.length + 1, title: next.title, body: next.body, asset, created_by: record.id,
-    }
+    const version: TextVersion = { version: versions.length + 1, title: next.title, body: next.body, asset, created_by: record.id }
     return { texts: { ...slice.texts, [path]: [...versions, version] } }
   },
   agentSummary(slice) {
     // Each text node once: its newest version, without the body.
     return {
-      texts: Object.values(slice.texts).flatMap((versions) => {
+      texts: Object.entries(slice.texts).flatMap(([path, versions]) => {
         const latest = versions.at(-1)
         if (latest === undefined) return []
-        const { path, title, version, asset } = latest
+        const { title, version, asset } = latest
         return [{ path, title, version, chars: Array.from(latest.body).length, asset }]
       }),
     }

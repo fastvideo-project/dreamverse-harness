@@ -72,8 +72,8 @@ export const textMentionKind = (t: TranslateNS<typeof NS>): MentionKind => ({
   kind: TEXT_KIND,
   order: 4,
   section: () => t('mention.section'),
-  items: state => newestTexts(state).map(latest => ({
-    uri: citationUri(TEXT_KIND, latest.path),
+  items: state => newestTexts(state).map(([path, latest]) => ({
+    uri: citationUri(TEXT_KIND, path),
     label: latest.title,
     description: extractMarkdownPlainText(withLabels(latest.body, parsePromptCitations(latest.body)), { mode: 'first-line' }).slice(0, 40),
   })),
