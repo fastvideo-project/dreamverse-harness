@@ -1,16 +1,51 @@
 /**
- * The sign-in block of a provider card: signed-in state with sign-out, or the
- * running attempt's notices (page link and code) and its open question.
+ * Codex settings page: signed-in state with sign-out, or the running attempt's
+ * notices (page link and code) and its open question.
  */
 
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { AuthorizationFlowView } from '@deepseek-ai/dsh-api-remotes/client'
-import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
+import type { AuthorizationFlowView } from '../types.ts'
 import type { en } from './locales.ts'
 import { signInKey } from './sign-in.ts'
 import type { OpenSignInPrompt, SignInAttempt, SignInState, SignInStore } from './sign-in.ts'
-import styles from './ModelsSection.module.css'
+import styles from './CodexSignIn.module.css'
+
+/** Settings namespace `llm-pi-ai` writes its Codex credential under. */
+const CODEX_SETTINGS_NS = 'llm-pi-ai'
+/** Route id of the Codex subscription flow. */
+const CODEX_PROVIDER = 'openai-codex'
+
+/** Data the settings page receives from the client plugin. */
+export interface CodexSignInInjected {
+  /** The store the actions go to. */
+  store: SignInStore
+  hooks: {
+    /** Page snapshot bound by the UI renderer as useSignIn. */
+    signIn: SignInStore['store']
+  }
+  /** Page copy. */
+  t: (key: keyof typeof en) => string
+}
+
+/** Props of {@link CodexSignInSection}. Injected fields are absent until the slot runtime fills them. */
+export type CodexSignInProps = Partial<InjectFace<CodexSignInInjected>>
+
+/**
+ * The Codex settings page body.
+ * @param props - the store, its snapshot hook, and copy.
+ * @returns the page, or null before injection.
+ */
+export function CodexSignInSection({ store, useSignIn, t }: CodexSignInProps): ReactNode {
+  if (store === undefined || useSignIn === undefined || t === undefined) return null
+  return (
+    <div className={styles['page']}>
+      <p className={styles['advancedHint']}>{t('intro')}</p>
+      <SignInArea store={store} useSignIn={useSignIn} settingsNs={CODEX_SETTINGS_NS} provider={CODEX_PROVIDER} t={t} />
+    </div>
+  )
+}
 
 /** Props of {@link SignInArea}. */
 export interface SignInAreaProps {

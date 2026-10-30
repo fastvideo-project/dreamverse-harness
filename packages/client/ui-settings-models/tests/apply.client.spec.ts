@@ -10,8 +10,7 @@ import { TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import { remoteDefaultResponses } from '@deepseek-ai/dsh-client-test-runtime/src/assembly/remote-default-responses.ts'
 import { ok, RemoteMock } from '@deepseek-ai/dsh-remote-mock'
 import { apply as settingsApply, inject as settingsInject } from '@deepseek-ai/dsh-client-ui-settings/client'
-import { apply, inject, refreshIfLoaded, refreshSignInIfLoaded } from '@deepseek-ai/dsh-client-ui-settings-models/client'
-import { SignInStore } from '../src/client/sign-in.ts'
+import { apply, inject, refreshIfLoaded } from '@deepseek-ai/dsh-client-ui-settings-models/client'
 import {
   WELCOME_NOTICE_ACK_FIELD, WELCOME_NOTICE_SETTINGS_NAMESPACE, WELCOME_NOTICE_VERSION,
 } from '../src/onboarding-copy.ts'
@@ -35,9 +34,7 @@ async function bench(isLoopback = true, mock = RemoteMock.create().load(remoteDe
   const locale = new LocaleRuntime(ctx)
   locale.setLocale('zh')
   ctx.provide('locale', locale)
-  const authorizationList = vi.fn(() => Promise.resolve({ ok: true as const, value: [] }))
   const remote = new TestRemote(ctx, {
-    authorization: { list: authorizationList },
     credentials: {
       describe: vi.fn(() => Promise.resolve({ ok: true, value: {} })),
       set: vi.fn(),
@@ -54,7 +51,7 @@ async function bench(isLoopback = true, mock = RemoteMock.create().load(remoteDe
   // The fixed Host facts the settings provider reads its persistence from.
   remote.$host = { home: undefined, isLoopback }
   await ctx.plugin({ inject: [...settingsInject], apply: settingsApply }).await()
-  return { ctx, slots: ctx.get('slots') as SlotRegistry, locale, remote, authorizationList }
+  return { ctx, slots: ctx.get('slots') as SlotRegistry, locale, remote }
 }
 
 function declare(slots: SlotRegistry): () => void {
@@ -112,7 +109,7 @@ describe('ui-settings-models apply', () => {
 
   it('declares the services it uses', () => {
     expect(inject).toEqual([
-      'slots', 'locale', 'remote', 'remote.authorization', 'remote.credentials', 'remote.llm', 'remote.settings',
+      'slots', 'locale', 'remote', 'remote.credentials', 'remote.llm', 'remote.settings',
       'configForms', 'settingsSchema',
     ])
   })
@@ -134,7 +131,6 @@ describe('ui-settings-models apply', () => {
     expect(injected.t('deleteTitle')).toBe('删除 {provider}？')
     expect(typeof injected.controller.load).toBe('function')
     expect(injected.hooks.snapshot).toBe(injected.controller.store)
-    expect(injected.hooks.signIn).toBe(injected.signIn.store)
     expect(typeof injected.operations.writeSettings).toBe('function')
     const onboarding = before.slots.entries('settings.onboarding')
     expect(onboarding).toHaveLength(2)
@@ -283,29 +279,6 @@ describe('pushed invalidations', () => {
     }
     refreshIfLoaded(idle as import('../src/client/store.ts').ModelsSettingsStore)
     expect(loads).toHaveLength(1)
-  })
-
-  it('leaves unlisted sign-ins alone on reconnect and ends attempts with the plugin', async () => {
-    const b = await bench()
-    declare(b.slots)
-    const dispose = vi.spyOn(SignInStore.prototype, 'dispose')
-    onTestFinished(() => { dispose.mockRestore() })
-    const fiber = b.ctx.plugin({ inject: [...inject], apply })
-    await fiber.await()
-    b.ctx.emit('connection/reset')
-    expect(b.authorizationList).not.toHaveBeenCalled()
-    await fiber.dispose()
-    expect(dispose).toHaveBeenCalledTimes(1)
-  })
-
-  it('relists a sign-in store that has listed and skips an idle one', async () => {
-    const list = vi.fn(() => Promise.resolve({ ok: true as const, value: [] }))
-    const signIn = new SignInStore({ list, begin: vi.fn(), answer: vi.fn(), decline: vi.fn(), cancel: vi.fn(), signOut: vi.fn() })
-    refreshSignInIfLoaded(signIn)
-    expect(list).not.toHaveBeenCalled()
-    await signIn.load()
-    refreshSignInIfLoaded(signIn)
-    expect(list).toHaveBeenCalledTimes(2)
   })
 
   it('routes pushed credential invalidation into the shared onboarding join', async () => {

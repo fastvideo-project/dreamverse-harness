@@ -3,14 +3,14 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bindSnapshotSelector, RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
+import type { RemoteResult, RemoteStreamHandle } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  AuthorizationAttemptFrame, AuthorizationFlowView, AuthorizationPromptId, CredentialKey, RemoteResult,
-} from '@deepseek-ai/dsh-api-remotes/client'
-import type { RemoteStreamHandle } from '@deepseek-ai/dsh-typert-protocol'
+  AuthorizationAttemptFrame, AuthorizationFlowView, AuthorizationPromptId, CredentialKey,
+} from '../src/types.ts'
 import { signInKey, SignInStore } from '../src/client/sign-in.ts'
 import type { AuthorizationRemote } from '../src/client/sign-in.ts'
-import { SignInArea, SignInPanel } from '../src/client/SignInPanel.tsx'
-import type { SignInPanelProps } from '../src/client/SignInPanel.tsx'
+import { CodexSignInSection, SignInArea, SignInPanel } from '../src/client/CodexSignIn.tsx'
+import type { SignInPanelProps } from '../src/client/CodexSignIn.tsx'
 import { en } from '../src/client/locales.ts'
 
 afterEach(cleanup)
@@ -384,5 +384,20 @@ describe('SignInPanel', () => {
     expect(decline).toHaveBeenCalledWith(KEY)
     rerender({ attempt: { status: 'running', notices: [], prompt: { id: PROMPT, prompt: { kind: 'secret', message: 'Token' } } } })
     expect(screen.getByLabelText('Token').getAttribute('type')).toBe('password')
+  })
+})
+
+describe('CodexSignInSection', () => {
+  it('renders nothing until the slot runtime injects the store', () => {
+    const { container } = render(<CodexSignInSection />)
+    expect(container.childNodes.length).toBe(0)
+  })
+
+  it('renders the Codex flow and the page introduction', async () => {
+    const { store } = scripted()
+    const useSignIn = bindSnapshotSelector(store.store)
+    render(<CodexSignInSection store={store} useSignIn={useSignIn} t={t} />)
+    expect(screen.getByText(en.intro)).toBeTruthy()
+    expect(await screen.findByText('ChatGPT · Not signed in')).toBeTruthy()
   })
 })

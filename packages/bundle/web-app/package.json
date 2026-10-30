@@ -172,7 +172,6 @@
     "commander": "^15.0.0",
     "open": "^11.0.0",
     "@deepseek-ai/dsh-api-account-controller": "workspace:*",
-    "@deepseek-ai/dsh-api-authorization-controller": "workspace:*",
     "@deepseek-ai/dsh-client-ui-settings-account": "workspace:*"
   },
   "peerDependencies": {

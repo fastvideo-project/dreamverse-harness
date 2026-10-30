@@ -1,22 +1,56 @@
 /**
- * Provider sign-in state for the Models cards: the flows the Host offers over
- * the `authorization` Remote namespace and, per flow, the running attempt's
- * notices and open prompt. A card's flow key is `<settingsNs>/<provider>`,
- * which is the record key `llm-pi-ai` writes while its Loader entry keeps the
- * shipped `llm-pi-ai` id. Tokens never reach this store.
+ * Codex sign-in state for this plugin's settings page: the flows the Host
+ * offers over the `authorization` Remote namespace and, per flow, the running
+ * attempt's notices and open prompt. The page asks for `llm-pi-ai/openai-codex`,
+ * the record key `llm-pi-ai` writes. Tokens never reach this store.
  */
 
-import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import type {
-  AuthorizationAttemptFrame, AuthorizationFlowView, AuthorizationNotice, AuthorizationPromptId,
-  AuthorizationPromptView,
-} from '@deepseek-ai/dsh-api-remotes/client'
+import type { RemoteResult, RemoteStreamHandle } from '@deepseek-ai/dsh-typert-protocol'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
+import type {
+  AuthorizationAttemptFrame, AuthorizationBeginRequest, AuthorizationFlowView, AuthorizationNotice,
+  AuthorizationPromptId, AuthorizationPromptView,
+} from '../types.ts'
 
-/** The generated `authorization` Remote namespace this store calls. */
-export type AuthorizationRemote = ClientContext['remote']['authorization']
+/**
+ * The `authorization` Remote methods this store calls. Matches the generated
+ * namespace without importing it, so the store tests do not load the client gateway.
+ */
+export interface AuthorizationRemote {
+  /** Offered flows that are registered now. */
+  list(): Promise<RemoteResult<AuthorizationFlowView[]>>
+  /**
+   * Start one attempt and stream its frames.
+   * @param request - the credential key and optional method.
+   * @param signal - aborts this browser's attempt.
+   */
+  begin(request: AuthorizationBeginRequest, signal?: AbortSignal): RemoteStreamHandle<AuthorizationAttemptFrame, never>
+  /**
+   * Answer the open prompt.
+   * @param key - credential key.
+   * @param id - prompt id from the stream.
+   * @param value - the typed or selected answer.
+   */
+  answer(key: string, id: AuthorizationPromptId, value: string): Promise<RemoteResult<void>>
+  /**
+   * Decline the open prompt.
+   * @param key - credential key.
+   * @param id - prompt id from the stream.
+   */
+  decline(key: string, id: AuthorizationPromptId): Promise<RemoteResult<void>>
+  /**
+   * Withdraw a running attempt.
+   * @param key - credential key.
+   */
+  cancel(key: string): Promise<RemoteResult<void>>
+  /**
+   * Delete the stored credential.
+   * @param key - credential key.
+   */
+  signOut(key: string): Promise<RemoteResult<void>>
+}
 
 /** The prompt an attempt is waiting on. */
 export interface OpenSignInPrompt {

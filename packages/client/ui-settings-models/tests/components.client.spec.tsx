@@ -5,9 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import Schema from '@deepseek-ai/schemastery'
 import { bindSnapshotSelector, RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
 import type {
-  CredentialInfo, CredentialKey, RemoteResult, SettingsNamespaceView,
+  CredentialInfo, RemoteResult, SettingsNamespaceView,
 } from '@deepseek-ai/dsh-api-remotes/client'
-import { SignInStore } from '../src/client/sign-in.ts'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import {
   ModelsSection, needsSetup, providerCopy, providerTargetLabel, removeProviderProfile,
@@ -261,7 +260,7 @@ function cardSeatCalls(
     ])
 }
 
-async function mountFace(scripted: ReturnType<typeof scriptedFace>, extra: Partial<ModelsSectionProps> = {}) {
+async function mountFace(scripted: ReturnType<typeof scriptedFace>) {
   const { face, update, mutate, set, unset } = scripted
   const ctx = ctxWith(face)
   const mirror = new SettingsDescribeMirror(ctx)
@@ -275,7 +274,6 @@ async function mountFace(scripted: ReturnType<typeof scriptedFace>, extra: Parti
     schema: settingsSchema,
     t,
     renderSlot: renderSlot as unknown as ModelsSectionProps['renderSlot'],
-    ...extra,
   }
   const view = render(<ModelsSection {...injected} />)
   return { view, ctx, face, update, mutate, set, unset, controller, mirror, renderSlot }
@@ -1819,17 +1817,6 @@ describe('ModelsSection', () => {
     expect(mutate).not.toHaveBeenCalled()
   })
 
-  it('shows the offered sign-in on the card whose route it signs in', async () => {
-    const list = vi.fn(() => Promise.resolve(remoteOk([{
-      key: 'llm-pi-ai/openai' as CredentialKey, label: 'ChatGPT', methods: [], inFlight: false, signedIn: true,
-    }])))
-    const signIn = new SignInStore({ list, begin: vi.fn(), answer: vi.fn(), decline: vi.fn(), cancel: vi.fn(), signOut: vi.fn() })
-    await mountFace(scriptedFace(), { signIn, useSignIn: bindSnapshotSelector(signIn.store) })
-    const region = await screen.findByRole('region', { name: 'Sign in to ChatGPT' })
-    expect(region.closest('li')?.textContent).toContain('openai')
-    expect(screen.getAllByRole('region', { name: /^Sign in to / })).toHaveLength(1)
-    expect(list).toHaveBeenCalledTimes(1)
-  })
 })
 
 describe('apiKeyFailure', () => {

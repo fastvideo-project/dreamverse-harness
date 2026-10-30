@@ -82,9 +82,6 @@
     },
     {
       "path": "../account-controller"
-    },
-    {
-      "path": "../authorization-controller"
     }
   ]
 }

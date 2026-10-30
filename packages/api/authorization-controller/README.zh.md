@@ -20,7 +20,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用此包
 
-挂载 `AuthorizationController` 时提供 `flows`，即浏览器可以访问其流程的凭证键（`<scope>/<id>`）。格式错误的键在加载时失败。已注册但不在 `flows` 中的流程只在 Host 内可用；Web App profile 只列出 `llm-pi-ai/openai-codex`。`preferredOptions` 把可用键映射到浏览器优先展示的单选提问选项；包含该选项的单选提问带有 `preferred`，不在 `flows` 中的键在加载时失败。Web App profile 为 Codex 优先选择 `device_code`。
+挂载 `AuthorizationController` 时提供 `flows`，即浏览器可以访问其流程的凭证键（`<scope>/<id>`）。格式错误的键在加载时失败。已注册但不在 `flows` 中的流程只在 Host 内可用。`preferredOptions` 把可用键映射到浏览器优先展示的单选提问选项；包含该选项的单选提问带有 `preferred`，不在 `flows` 中的键在加载时失败。本包的 patch 只列出 `llm-pi-ai/openai-codex`，并优先选择 `device_code`，因为浏览器登录要等 Host 本机回环上的回调。默认 Web App profile 不包含这份 patch：用 `--patch` 传入，或用 `dsh plugin add` 安装本包。浏览器入口自行挂载 `authorization` 命名空间，并添加 OpenAI Codex 设置页。
 
 `authorization` 命名空间提供 `list`、`begin`、`answer`、`decline`、`cancel` 和 `signOut`。`list` 返回当前已注册的可用流程，包括其方法、是否有正在进行的尝试，以及是否已存储凭证。`begin` 依次流式发送 `notice`、`prompt` 和 `prompt-withdrawn` 帧，最后发送一个 `settled` 帧，状态为 `authorized` 或 `cancelled`；尝试失败时流以 `authorization/failed` 结束。`answer` 和 `decline` 使用提问帧中的 id 指定提问。关闭流或调用 `cancel` 会撤回尝试。`signOut` 撤回正在进行的尝试并删除已存储的凭证。
 

@@ -34,8 +34,6 @@ import type { ModelsSettingsStore, ProviderRow } from './store.ts'
 import type { ModelsOperations } from './operations.ts'
 import type { SettingsSchemaOperations } from './schema-operations.ts'
 import { ProviderEditor, type ProviderEditorProps } from './ProviderEditor.tsx'
-import { SignInArea } from './SignInPanel.tsx'
-import type { SignInStore } from './sign-in.ts'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
 
@@ -46,11 +44,7 @@ export interface ModelsSectionInjected {
   hooks: {
     /** Page snapshot bound by the UI renderer as useSnapshot. */
     snapshot: ModelsSettingsStore['store']
-    /** Sign-in snapshot bound by the UI renderer as useSignIn. */
-    signIn: SignInStore['store']
   }
-  /** Provider sign-in through the Host's offered authorization flows. */
-  signIn: SignInStore
   /** The Host operations the section and its cards invoke. */
   operations: ModelsOperations
   /** Settings schema and immutable path callbacks. */
@@ -80,9 +74,7 @@ type ModelsRenderSlot = PropsRenderSlots<ModelsChildSlots>['renderSlot']
  */
 export type ModelsSectionProps = Partial<InjectFace<ModelsSectionInjected>> & PropsRenderSlots<ModelsChildSlots>
 
-/** The face {@link Loaded} needs; sign-in stays optional so a shell without it still renders the page. */
-type ModelsSectionFace = Omit<InjectFace<ModelsSectionInjected>, 'signIn' | 'useSignIn'>
-  & Partial<Pick<InjectFace<ModelsSectionInjected>, 'signIn' | 'useSignIn'>>
+type ModelsSectionFace = InjectFace<ModelsSectionInjected>
 
 /** Provider identity shared by row actions and confirmation copy. */
 export interface ProviderIdentity {
@@ -229,25 +221,17 @@ export function providerCopy(template: string, target: ProviderIdentity): string
  * @returns the section, or null while the shell has not injected yet.
  */
 export function ModelsSection(props: ModelsSectionProps): ReactNode {
-  const { controller, useSnapshot, operations, schema, t, signIn, useSignIn, renderSlot } = props
+  const { controller, useSnapshot, operations, schema, t, renderSlot } = props
   if (
     controller === undefined || useSnapshot === undefined || operations === undefined
     || schema === undefined || t === undefined
   ) return null
-  const injected: ModelsSectionFace = {
-    controller, useSnapshot, operations, schema, t,
-    ...signIn === undefined || useSignIn === undefined ? {} : { signIn, useSignIn },
-  }
-  return <Loaded injected={injected} renderSlot={renderSlot} />
+  return <Loaded injected={{ controller, useSnapshot, operations, schema, t }} renderSlot={renderSlot} />
 }
 
 function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderSlot: ModelsRenderSlot }): ReactNode {
-  const { controller, operations, schema, t, signIn, useSignIn } = injected
+  const { controller, operations, schema, t } = injected
   const state = injected.useSnapshot(snapshot => snapshot)
-  const signInArea = (entry: { settingsNs: string; provider: string }): ReactNode =>
-    signIn === undefined || useSignIn === undefined
-      ? null
-      : <SignInArea store={signIn} useSignIn={useSignIn} settingsNs={entry.settingsNs} provider={entry.provider} t={t} />
   const [editing, setEditing] = useState<EditorTarget | undefined>(undefined)
   const [addOpen, setAddOpen] = useState(false)
   const [addMode, setAddMode] = useState<AddMode>('catalog')
@@ -439,7 +423,6 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                   { provider: row.entry, configured: row.configured, keyConfigured: keyConfiguredOf(row) },
                   { entryKey: row.entry.settingsNs },
                 )}
-                {signInArea(row.entry)}
               </li>
             )
           }
@@ -520,7 +503,6 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                 { provider: row.entry, configured: row.configured, keyConfigured: keyConfiguredOf(row) },
                 { entryKey: row.entry.settingsNs },
               )}
-              {signInArea(row.entry)}
               {open
                 ? renderProviderEditor({
                   target,
@@ -622,15 +604,10 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                     />
                     {addRow === undefined
                       ? null
-                      : (
-                        <>
-                          {renderSlot(
-                            'settings.models.provider-card',
-                            { provider: addRow.entry, configured: addRow.configured, keyConfigured: keyConfiguredOf(addRow) },
-                            { entryKey: addRow.entry.settingsNs },
-                          )}
-                          {signInArea(addRow.entry)}
-                        </>
+                      : renderSlot(
+                        'settings.models.provider-card',
+                        { provider: addRow.entry, configured: addRow.configured, keyConfigured: keyConfiguredOf(addRow) },
+                        { entryKey: addRow.entry.settingsNs },
                       )}
                   </div>
                 )
