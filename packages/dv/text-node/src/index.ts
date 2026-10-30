@@ -69,14 +69,22 @@ const BASE_PARAM = {
 } as const
 
 /**
- * Refuse a write whose `base_version` is not the text node's newest version.
+ * Refuse a write while another write of the same text node has not finished, or whose `base_version` is not the text
+ * node's newest version. The runner calls it under the project lock, so of two concurrent writes on one base only the
+ * first one passes.
  * @param params - the call's params; `path` is parsed first, so a bad path is refused too.
  * @param state - the project's current state.
  * @returns the newest version, when the text node has one.
- * @throws Error that tells the caller to read the text node again.
+ * @throws Error that tells the caller to wait or to read the text node again.
  */
 function checkBase(params: Record<string, unknown>, state: ProjectState): TextVersion | undefined {
   const path = parseTextPath(String(params['path']))
+  const unfinished = state.components.proj.records.find(record => (record.status === 'pending' || record.status === 'running')
+    && (record.operation === 'textnode.write' || record.operation === 'textnode.edit') && record.params['path'] === path)
+  if (unfinished !== undefined) {
+    throw new Error(`Text node ${path} has a write that has not finished (record ${unfinished.id}). Wait for it with dv_proj_wait, `
+      + `then call dv_textnode_read on ${path} and make your change on the new version.`)
+  }
   const latest = latestVersion(state, path)
   const current = latest?.version ?? 0
   const base = params['base_version']

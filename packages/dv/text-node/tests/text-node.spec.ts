@@ -176,6 +176,21 @@ describe('dvTextNode', () => {
     expect(fixture.records()).toHaveLength(before)
   })
 
+  it('refuses a second concurrent write on the same base while the first one has not finished', async () => {
+    const fixture = await start()
+    await fixture.call('dv_textnode_write', { path: 'beats.md', body: BEATS, base_version: 0 })
+    const results = await Promise.allSettled([
+      fixture.call('dv_textnode_write', { path: 'beats.md', body: 'mine', base_version: 1 }),
+      fixture.call('dv_textnode_edit', { path: 'beats.md', base_version: 1, edits: [{ old_text: 'The storm.', new_text: 'The calm.' }] }),
+    ])
+    expect(results.map(result => result.status)).toEqual(['fulfilled', 'rejected'])
+    expect(results[1]?.status === 'rejected' ? String(results[1].reason) : '').toMatch(/has a write that has not finished/u)
+    const versions = versionsOf(fixture, 'beats.md')
+    expect(versions.map(version => version.version)).toEqual([1, 2])
+    const asset = versions[1]?.asset
+    expect(asset === undefined ? null : fixture.ctx.dvAssetPool.read(asset).toString()).toBe('mine')
+  })
+
   it('reads one section with its line numbers, or an older version, and writes no record', async () => {
     const fixture = await start()
     await fixture.call('dv_textnode_write', { path: 'beats.md', body: BEATS })
