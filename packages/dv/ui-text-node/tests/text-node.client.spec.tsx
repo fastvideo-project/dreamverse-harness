@@ -16,7 +16,7 @@ import { asset, record } from '../../ui-kit/tests/fixture.client.tsx'
 import { forgetCanvasStorage, mountCanvas, type CanvasServer } from '../../ui-canvas/tests/canvas-runtime.client.tsx'
 import { apply, inject } from '../src/client/index.ts'
 
-usePinnedBrowserLanguages('zh-CN')
+usePinnedBrowserLanguages('en-US')
 
 beforeEach(() => {
   // jsdom gives a Range no layout; the editor measures the caret's range to scroll it into view after a paste.
@@ -128,8 +128,8 @@ describe('text node', () => {
     expect(card.textContent).toContain('Beats')
     await waitFor(() => { expect(within(card).getByTestId('dv-text-excerpt').textContent).toContain('Hero opens the door.') })
     expect(within(card).getByTestId('dv-text-excerpt').textContent).not.toContain('@')
-    expect(card.textContent).toContain(`第 2 版 · ${String(Array.from(V2).length)} 字`)
-    expect(node('tw1').textContent).toContain('第 1 版')
+    expect(card.textContent).toContain(`v2 · ${String(Array.from(V2).length)} chars`)
+    expect(node('tw1').textContent).toContain('v1 · ')
   })
 
   it('draws an edge from a source version to the text built from it, and a lineage edge between versions', async () => {
@@ -166,7 +166,7 @@ describe('text node', () => {
   it('opens the @ menu below the editor, inside the scrolling editor body', async () => {
     const { open } = await mountTexts()
     const editor = await open('tw2')
-    fireEvent.click(within(editor).getByRole('button', { name: '编辑' }))
+    fireEvent.click(within(editor).getByRole('button', { name: 'Edit' }))
     await waitFor(() => { expect(box(editor).getAttribute('contenteditable')).toBe('true') })
     act(() => { box(editor).focus() })
     // jsdom fires no beforeinput, so the text arrives through the editor's paste path, which `@` detection follows.
@@ -182,19 +182,19 @@ describe('text node', () => {
   it('offers no edit on an older version and opens the newest one instead', async () => {
     const { open } = await mountTexts()
     const editor = await open('tw1')
-    expect(within(editor).queryByRole('button', { name: '编辑' })).toBeNull()
-    expect(within(editor).getByRole('button', { name: '打开第 2 版' })).toBeTruthy()
+    expect(within(editor).queryByRole('button', { name: 'Edit' })).toBeNull()
+    expect(within(editor).getByRole('button', { name: 'Open version 2' })).toBeTruthy()
   })
 
   it('saves the draft as the next version with the version it started from, its sources and its lineage', async () => {
     const { open, server } = await mountTexts()
     const editor = await open('sc1')
-    fireEvent.click(within(editor).getByRole('button', { name: '编辑' }))
+    fireEvent.click(within(editor).getByRole('button', { name: 'Edit' }))
     await waitFor(() => { expect(box(editor).getAttribute('contenteditable')).toBe('true') })
     act(() => { box(editor).focus() })
     fireEvent.paste(box(editor), { clipboardData: { items: [], getData: (type: string) => type === 'text/plain' ? ' EXT.' : '' } })
     await waitFor(() => { expect(box(editor).textContent).toContain('EXT.') })
-    fireEvent.click(within(editor).getByRole('button', { name: '保存' }))
+    fireEvent.click(within(editor).getByRole('button', { name: 'Save' }))
     await waitFor(() => { expect(textWrites(server)).toHaveLength(1) })
     type Write = { params: { path: string; body: string; base_version: number }; inputs: unknown; based_on: unknown }
     const [write] = textWrites(server) as Write[]
@@ -207,13 +207,13 @@ describe('text node', () => {
   it('names the newest version and the draft\'s version when a save is refused over a newer version, and keeps the draft', async () => {
     const { open, server, versions } = await mountTexts()
     const editor = await open('tw2')
-    fireEvent.click(within(editor).getByRole('button', { name: '编辑' }))
+    fireEvent.click(within(editor).getByRole('button', { name: 'Edit' }))
     await waitFor(() => { expect(box(editor).getAttribute('contenteditable')).toBe('true') })
     versions.push(version(PATH, 'tw', 3, '# Beats\n\nThe agent rewrote this.'))
     server.notify()
     await waitFor(() => { expect(versions).toHaveLength(3) })
-    fireEvent.click(within(editor).getByRole('button', { name: '保存' }))
-    await waitFor(() => { expect(within(editor).getByRole('alert').textContent).toBe('有人先保存了第 3 版。你的草稿基于第 2 版。') })
+    fireEvent.click(within(editor).getByRole('button', { name: 'Save' }))
+    await waitFor(() => { expect(within(editor).getByRole('alert').textContent).toBe('Someone saved version 3 first. Your draft is based on version 2.') })
     expect(box(editor).getAttribute('contenteditable')).toBe('true')
     expect(textWrites(server).map(write => (write as { params: { base_version: number } }).params.base_version)).toEqual([2])
   })

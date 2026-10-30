@@ -5,12 +5,12 @@
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { extractMarkdownPlainText } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsLocale, PropsRuntime, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { parsePromptCitations } from '@dv/project/grammar'
 import type {} from '@dv/ui-canvas/contract'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
-import { useText } from '@dv/ui-kit/locale.ts'
+import type { NS } from './locales.ts'
 import { reportedVersion, withLabels } from './texts.ts'
 
 /** The lines of the opening text that the card shows at text scale 1. */
@@ -41,21 +41,20 @@ export function readBody(asset: string): Promise<string> {
  * The footer of a text card, such as `v3 · 1,240 chars`.
  * @param version - the 1-based version.
  * @param chars - the Unicode code points of the body.
- * @returns the footer text in Chinese and English.
+ * @param t - translates a key of the text node dictionary.
+ * @returns the footer text.
  */
-export function footerText(version: number, chars: number): readonly [zh: string, en: string] {
-  const count = chars.toLocaleString('en-US')
-  return [`第 ${String(version)} 版 · ${count} 字`, `v${String(version)} · ${count} chars`]
+export function footerText(version: number, chars: number, t: TranslateNS<typeof NS>): string {
+  return t('card.footer', { version: String(version), chars: chars.toLocaleString('en-US') })
 }
 
 /**
  * The card body of a text node version on the card surface: the opening lines of its Markdown as plain text with each
  * citation as its label, and a footer with its version and size. The canvas caption above it shows the title.
- * @param props - the node and the text scale.
+ * @param props - the node, the text scale, and the translate function.
  * @returns the element.
  */
-export function TextCard({ node, textScale }: PropsRuntime<'dv.canvas.card'>): ReactNode {
-  const pick = useText()
+export function TextCard({ node, textScale, t }: PropsRuntime<'dv.canvas.card'> & PropsLocale<typeof NS>): ReactNode {
   const asset = node.assets[0]
   const [body, setBody] = useState<string | null>(null)
   useEffect(() => {
@@ -79,7 +78,7 @@ export function TextCard({ node, textScale }: PropsRuntime<'dv.canvas.card'>): R
         {excerpt}
       </p>
       <div style={{ flex: 'none', display: 'flex', alignItems: 'center', height: FOOTER_HEIGHT, padding: '0 12px', fontFamily: 'var(--dv-font-mono)', fontSize: size(11), lineHeight: 1, color: 'var(--dv-text-2)' }}>
-        {version === null || typeof chars !== 'number' ? null : pick(...footerText(version, chars))}
+        {version === null || typeof chars !== 'number' ? null : footerText(version, chars, t)}
       </div>
     </div>
   )

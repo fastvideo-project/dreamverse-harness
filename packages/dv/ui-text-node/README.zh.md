@@ -48,12 +48,15 @@ kind: "package-reference"
 
 编辑器和标签复用 `@dv/ui-composer` 的入口：`@dv/ui-composer/mention` 的 `MENTION_SOURCE`，`@dv/ui-composer/reference-model` 的 `editorContent`、`resolveAtom` 和 `faceOf`，以及 `@dv/ui-composer/reference-face` 的标签外观 `ReferenceFace`。阅读模式用 `@deepseek-ai/dsh-client-ui-primitives` 的 `MarkdownText`（DSH 对话的渲染器）渲染 Markdown，并用 `MarkdownDelegateProvider` 通过 Factory `dv.text.reference` 绘制每个引用链接；本包注册该 Factory，其组件为 `ReferenceFace`。每个标签携带它的外观，外观按画布状态和 `dvCanvas` 的版本类型解析，所以标签显示被引用条目的最新版本。编辑模式下编辑器传入为 null 的 `faceContext`，所以每个标签读取已打开项目的状态，与对话标签相同。
 
+每个界面文本都来自 `dv-text-node` 词典，`apply` 通过 `@deepseek-ai/dsh-client-locale` 的 `ctx.locale` 注册它。保存的 `intent` 由智能体读取，为英文。
+
 | 文件 | 内容 |
 | --- | --- |
 | [`src/client/index.ts`](src/client/index.ts) | 节点类型、提及类型、历史行和 `apply` |
 | [`src/client/TextCard.tsx`](src/client/TextCard.tsx) | 卡片正文、Markdown 读取和页脚 |
 | [`src/client/TextEditor.tsx`](src/client/TextEditor.tsx) | 编辑器及其保存 |
 | [`src/client/texts.ts`](src/client/texts.ts) | `textnode` 切片和记录读取函数 |
+| [`src/client/locales.ts`](src/client/locales.ts) | 基于 `locales/en.json` 和 `locales/zh.json` 的 `dv-text-node` 词典命名空间 |
 | [`src/index.ts`](src/index.ts) | 空的宿主半边 |
 
 -----

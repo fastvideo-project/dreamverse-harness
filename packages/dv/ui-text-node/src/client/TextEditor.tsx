@@ -9,15 +9,15 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import type { PromptContent, PromptHostModel } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { MarkdownDelegateProvider, MarkdownText, type MarkdownElementRenderer, type MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { HostObservable, InjectFace, PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { HostObservable, InjectFace, PropsLocale, PropsRenderFactories, PropsRuntime, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { formatInputRef, parsePromptCitations } from '@dv/project/grammar'
 import type {} from '@dv/ui-canvas/contract'
 import { MENTION_SOURCE } from '@dv/ui-composer/mention'
 import { editorContent, faceOf, resolveAtom } from '@dv/ui-composer/reference-model'
 import { DvClient, errorMessage } from '@dv/ui-kit/api.ts'
-import { useText } from '@dv/ui-kit/locale.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import type { ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
+import type { NS } from './locales.ts'
 import { footerText } from './TextCard.tsx'
 import { pathOf, textsOf, withLabels } from './texts.ts'
 
@@ -62,18 +62,19 @@ function contentOf(body: string): PromptContent {
 /**
  * The read view of a Markdown body: DSH's chat Markdown renderer, with each citation as the chip face of the `@`
  * source, which shows the cited item's newest version.
- * @param props - the Markdown, the project state and version kinds that resolve each chip, and the Factory renderer.
+ * @param props - the Markdown, the project state and version kinds that resolve each chip, the Factory renderer, and the
+ *   translate function.
  * @returns the element.
  */
-function MarkdownView({ body, state, versions, renderFactorySlot }: {
+function MarkdownView({ body, state, versions, renderFactorySlot, t }: {
   readonly body: string
   readonly state: WireState
   readonly versions: readonly VersionKind[]
+  readonly t: TranslateNS<typeof NS>
 } & PropsRenderFactories): ReactNode {
-  const pick = useText()
   const labels = useMemo<MarkdownLabels>(() => ({
-    code: { copyLabel: pick('复制', 'Copy'), copiedLabel: pick('已复制', 'Copied') }, footnotes: pick('脚注', 'Footnotes'),
-  }), [pick])
+    code: { copyLabel: t('markdown.copy'), copiedLabel: t('markdown.copied') }, footnotes: t('markdown.footnotes'),
+  }), [t])
   const citations = parsePromptCitations(body)
   // Without its `@`, a citation `@[label](dv:…)` is a Markdown link to its URI, which the renderer hands to the chip.
   const text = withLabels(body, citations.map(citation => ({ ...citation, label: body.slice(citation.start + 1, citation.end) })))
@@ -103,11 +104,11 @@ function sourcesOf(record: ProjectRecord | undefined): Array<{ role: string; ref
  * over a version that the draft did not start from is refused; the editor then names the newest version and the
  * draft's version, and keeps the draft. Any other refusal shows its own text. A saved draft closes the editor, and the
  * canvas draws the new version as the next node.
- * @param props - the node, the state, the canvas host, and the Factory renderer.
+ * @param props - the node, the state, the canvas host, the version kinds, the Factory renderer, and the translate
+ *   function.
  * @returns the element.
  */
-export function TextEditor({ node, state, host, renderFactorySlot, useVersionKinds }: PropsRuntime<'dv.canvas.editor.claimed'> & InjectFace<TextEditorInjected> & PropsRenderFactories): ReactNode {
-  const pick = useText()
+export function TextEditor({ node, state, host, renderFactorySlot, useVersionKinds, t }: PropsRuntime<'dv.canvas.editor.claimed'> & InjectFace<TextEditorInjected> & PropsRenderFactories & PropsLocale<typeof NS>): ReactNode {
   const [editor, setEditor] = useState<EditorMode>(READ)
   const versionKinds = useVersionKinds(kinds => kinds)
   const path = pathOf(node.record)
@@ -121,7 +122,7 @@ export function TextEditor({ node, state, host, renderFactorySlot, useVersionKin
     try {
       await client.runOperation({
         project: state.project.id, operation: 'textnode.write', surface: 'canvas', based_on: latest.created_by,
-        params: { path, body, base_version: base }, inputs: sourcesOf(newest), intent: pick(`在画布上保存 ${path}`, `Save ${path} from the canvas`),
+        params: { path, body, base_version: base }, inputs: sourcesOf(newest), intent: `Save ${path} from the canvas`,
       })
       host.close()
     } catch (error) {
@@ -130,31 +131,31 @@ export function TextEditor({ node, state, host, renderFactorySlot, useVersionKin
   }
   const model = (readOnly: boolean, content: PromptContent, onChange: (text: string) => void): PromptHostModel => ({
     content, readOnly, sources: readOnly ? [] : [MENTION_SOURCE], sourceContext: null, faceContext: null,
-    onChange: (text) => { onChange(text) }, placeholder: pick('Markdown 文本', 'Markdown text'), ariaLabel: pick('Markdown 文本', 'Markdown text'),
+    onChange: (text) => { onChange(text) }, placeholder: t('editor.markdown'), ariaLabel: t('editor.markdown'),
   })
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span data-testid="dv-text-version" style={meta}>{pick(...footerText(shown.version, Array.from(shown.body).length))}</span>
+        <span data-testid="dv-text-version" style={meta}>{footerText(shown.version, Array.from(shown.body).length, t)}</span>
         <span style={{ flex: 1 }} />
         {editor.mode === 'edit'
           ? (
             <>
-              <button type="button" className="dv-canvas-btn" style={button} disabled={editor.saving} onClick={() => { setEditor(READ) }}>{pick('取消', 'Cancel')}</button>
+              <button type="button" className="dv-canvas-btn" style={button} disabled={editor.saving} onClick={() => { setEditor(READ) }}>{t('editor.cancel')}</button>
               <button type="button" className="dv-canvas-btn" style={button} disabled={editor.saving} onClick={() => { void save(editor.base, editor.start, editor.body) }}>
-                {editor.saving ? pick('保存中…', 'Saving…') : pick('保存', 'Save')}
+                {editor.saving ? t('editor.saving') : t('editor.save')}
               </button>
             </>
           )
           : shown !== latest
             ? (
               <button type="button" className="dv-canvas-btn" style={button} onClick={() => { host.openNode(latest.created_by) }}>
-                {pick(`打开第 ${String(latest.version)} 版`, `Open version ${String(latest.version)}`)}
+                {t('editor.openVersion', { version: String(latest.version) })}
               </button>
             )
             : (
               <button type="button" className="dv-canvas-btn" style={button} onClick={() => { setEditor({ mode: 'edit', base: latest.version, start: latest.body, body: latest.body, saving: false, refusal: null }) }}>
-                {pick('编辑', 'Edit')}
+                {t('editor.edit')}
               </button>
             )}
       </div>
@@ -163,17 +164,14 @@ export function TextEditor({ node, state, host, renderFactorySlot, useVersionKin
           <div role="alert" style={{ padding: '8px 12px', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-3)', color: 'var(--dv-danger)', fontSize: 13, lineHeight: '20px' }}>
             {latest.version === editor.base
               ? editor.refusal
-              : pick(
-                `有人先保存了第 ${String(latest.version)} 版。你的草稿基于第 ${String(editor.base)} 版。`,
-                `Someone saved version ${String(latest.version)} first. Your draft is based on version ${String(editor.base)}.`,
-              )}
+              : t('editor.newerVersion', { newest: String(latest.version), base: String(editor.base) })}
           </div>
         )
         : null}
       {/* A new key per mode and version gives the editor a fresh occurrence, which opens on its first revision. */}
       <div key={`${editor.mode}:${shown.created_by}`} data-testid="dv-text-markdown" style={box}>
         {editor.mode === 'read'
-          ? <MarkdownView body={shown.body} state={state} versions={versionKinds} renderFactorySlot={renderFactorySlot} />
+          ? <MarkdownView body={shown.body} state={state} versions={versionKinds} renderFactorySlot={renderFactorySlot} t={t} />
           : (
             <>
               <style>{MENU_BELOW_CSS}</style>

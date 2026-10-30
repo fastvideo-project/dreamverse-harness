@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to show and edit the text nodes of [`@dv/text-node`](../text-node/README.md) on the canvas. Each version of a text node is one canvas node; its caption shows the title and `v<version>`, and its card shows the opening lines as plain text and a footer such as `v3 · 1,240 chars`. Its editor shows the Markdown with each citation as a chip, and 保存 / Save writes the next version with `textnode.write` and the draft's `base_version`. The package also lists text nodes in the `@` menu and names the path and version of each `textnode.` record in History.
+Use this package to show and edit the text nodes of [`@dv/text-node`](../text-node/README.md) on the canvas. Each version of a text node is one canvas node; its caption shows the title and `v<version>`, and its card shows the opening lines as plain text and a footer such as `v3 · 1,240 chars`. Its editor shows the Markdown with each citation as a chip, and Save writes the next version with `textnode.write` and the draft's `base_version`. The package also lists text nodes in the `@` menu and names the path and version of each `textnode.` record in History.
 
 ## Table of Contents
 
@@ -33,10 +33,10 @@ Mount the plugin in a profile that stacks `dsh-web-app`, `@dv/api`, `@dv/text-no
 
 | Descriptor | Registry | Value |
 | --- | --- | --- |
-| `textNodeType` | `dvCanvas.nodeTypes` | `id: '@dv/ui-text-node'`, `type: 'textnode'`, label `文本` / `Text`, color `var(--dv-node-5)`, column 0; it claims the operations `textnode.write` and `textnode.edit`, so each record is one node: title the report's `title` (else the path), meta `v<version>`, and `bodyHeight` 106 |
+| `textNodeType` | `dvCanvas.nodeTypes` | `id: '@dv/ui-text-node'`, `type: 'textnode'`, label `Text`, color `var(--dv-node-5)`, column 0; it claims the operations `textnode.write` and `textnode.edit`, so each record is one node: title the report's `title` (else the path), meta `v<version>`, and `bodyHeight` 106 |
 | `TextCard` | the `dv.canvas.card` slot | key `textnode`; the opening lines of the version's Markdown, read from `/dv/assets/<asset>` once per asset, as plain text with each citation as its label, and the footer with the version and the code points of the body |
-| `TextEditor` | the `dv.canvas.editor.claimed` slot | key `textnode`; the footer, and the body rendered as Markdown with each citation as a chip of the `@` source `dv-project` of `@dv/ui-composer`; on the newest version 编辑 / Edit opens a `conversation.prompt` editor with the same chips and the `@` picker, whose menu opens below the editor, and on an older version 打开第 N 版 / Open version N opens the newest one |
-| `textMentionKind` | `dvMentions.kinds` | `id: '@dv/ui-text-node'`, `kind: 'textnode'`, order 4, section `文本` / `Texts`; one item per text node: URI `dv:textnode/<path>`, label the title, and description the first 40 characters of the first line |
+| `TextEditor` | the `dv.canvas.editor.claimed` slot | key `textnode`; the footer, and the body rendered as Markdown with each citation as a chip of the `@` source `dv-project` of `@dv/ui-composer`; on the newest version Edit opens a `conversation.prompt` editor with the same chips and the `@` picker, whose menu opens below the editor, and on an older version Open version N opens the newest one |
+| `textMentionKind` | `dvMentions.kinds` | `id: '@dv/ui-text-node'`, `kind: 'textnode'`, order 4, section `Texts`; one item per text node: URI `dv:textnode/<path>`, label the title, and description the first 40 characters of the first line |
 | `textHistoryRow` | `dvHistory.rows` | `match: 'textnode.'`; the subject is ` <path> v<version>`, else ` <path>` |
 
 -----
@@ -44,9 +44,11 @@ Mount the plugin in a profile that stacks `dsh-web-app`, `@dv/api`, `@dv/text-no
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-A text node version is a claimed node, so the canvas draws its edges from the record with no code here: a `source` input `{record, output}` that `@dv/text-node` writes for each text node a version was built from draws an edge from that source version, and the `based_on` of each version after the first draws the lineage edge from the previous version. The stale tag comes from the kernel's stale mark of the record. A save runs `POST /api/dv/operation` through its own `DvClient` with `textnode.write`, the params `path`, `body` and `base_version`, the `source` inputs of the newest version, and `based_on` the newest version's record; a saved draft closes the editor. A refused save keeps the draft and shows `有人先保存了第 N 版。你的草稿基于第 M 版。` / `Someone saved version N first. Your draft is based on version M.` when the newest version N is past the draft's version M, else the error of the refusal. A draft stays open when a newer version arrives.
+A text node version is a claimed node, so the canvas draws its edges from the record with no code here: a `source` input `{record, output}` that `@dv/text-node` writes for each text node a version was built from draws an edge from that source version, and the `based_on` of each version after the first draws the lineage edge from the previous version. The stale tag comes from the kernel's stale mark of the record. A save runs `POST /api/dv/operation` through its own `DvClient` with `textnode.write`, the params `path`, `body` and `base_version`, the `source` inputs of the newest version, and `based_on` the newest version's record; a saved draft closes the editor. A refused save keeps the draft and shows `Someone saved version N first. Your draft is based on version M.` when the newest version N is past the draft's version M, else the error of the refusal. A draft stays open when a newer version arrives.
 
 The editor and the chips reuse entries of `@dv/ui-composer`: `MENTION_SOURCE` of `@dv/ui-composer/mention`, `editorContent`, `resolveAtom` and `faceOf` of `@dv/ui-composer/reference-model`, and the chip face `ReferenceFace` of `@dv/ui-composer/reference-face`. Read mode renders the Markdown with `MarkdownText` of `@deepseek-ai/dsh-client-ui-primitives`, the renderer of DSH chat, and a `MarkdownDelegateProvider` that draws each citation link through the Factory `dv.text.reference`, which this package registers with `ReferenceFace` as its component. Each chip carries its face, resolved against the canvas state and the version kinds of `dvCanvas`, so it shows the cited item's newest version. In edit mode the editor passes a `faceContext` of null, so each chip reads the state of the open project, as a chat chip does.
+
+Every UI string comes from the `dv-text-node` dictionary, which `apply` registers through `ctx.locale` of `@deepseek-ai/dsh-client-locale`. The `intent` of a save, which the agent reads, is English.
 
 | File | Content |
 | --- | --- |
@@ -54,6 +56,7 @@ The editor and the chips reuse entries of `@dv/ui-composer`: `MENTION_SOURCE` of
 | [`src/client/TextCard.tsx`](src/client/TextCard.tsx) | The card body, the Markdown read and the footer |
 | [`src/client/TextEditor.tsx`](src/client/TextEditor.tsx) | The editor and its save |
 | [`src/client/texts.ts`](src/client/texts.ts) | The `textnode` slice and record readers |
+| [`src/client/locales.ts`](src/client/locales.ts) | The `dv-text-node` dictionary namespace over `locales/en.json` and `locales/zh.json` |
 | [`src/index.ts`](src/index.ts) | The empty host half |
 
 -----

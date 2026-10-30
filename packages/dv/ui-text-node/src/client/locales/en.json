@@ -1,0 +1,17 @@
+{
+  "node.label": "Text",
+  "node.saving": "Saving…",
+  "node.saveFailed": "Save failed",
+  "mention.section": "Texts",
+  "card.footer": "v{version} · {chars} chars",
+  "editor.edit": "Edit",
+  "editor.cancel": "Cancel",
+  "editor.save": "Save",
+  "editor.saving": "Saving…",
+  "editor.openVersion": "Open version {version}",
+  "editor.markdown": "Markdown text",
+  "editor.newerVersion": "Someone saved version {newest} first. Your draft is based on version {base}.",
+  "markdown.copy": "Copy",
+  "markdown.copied": "Copied",
+  "markdown.footnotes": "Footnotes"
+}
