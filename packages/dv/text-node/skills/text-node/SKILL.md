@@ -1,6 +1,6 @@
 # Text nodes
 
-A text node is one Markdown document of the project, such as a script, story beats, an ad spec or review notes. It has a relative path that you choose, such as `beats.md` or `剧集/EP001/剧本.md`, and numbered versions. The project block lists each text node under `texts` with its `path`, `title`, newest `version`, `chars` and `asset`, without its text.
+A text node is one Markdown document of the project, such as a script, story beats, an ad spec or review notes. It has a relative path that you choose, such as `beats.md` or `episodes/ep001/script.md`, and numbered versions. The project block lists each text node under `texts` with its `path`, `title`, newest `version`, `chars` and `asset`, without its text.
 
 Keep planning text in text nodes, not only in chat replies. A text node keeps its versions across turns and conversations, and the user sees it on the canvas.
 

@@ -1,7 +1,7 @@
 /**
  * The Text node component of DreamVerse as the `dvTextNode` Cordis service: versioned Markdown documents of a project
  * for planning text, such as a script, story beats or an ad spec. A text node is named by its caller-chosen
- * `TextPath` (`beats.md`, `剧集/EP001/剧本.md`), and each write stores the next version. It owns three operations:
+ * `TextPath` (`beats.md`, `episodes/ep001/script.md`), and each write stores the next version. It owns three operations:
  * - `textnode.write`: the whole body as the next version; version 1 for a new path;
  * - `textnode.edit`: literal replacements on the newest version, each `old_text` occurring exactly once;
  * - `textnode.read`: a read that writes no record, of one version or one heading's section, with line numbers.
@@ -55,7 +55,7 @@ const TEXT_SKILL = {
 const PATH_PARAM = {
   path: {
     type: 'string', required: true,
-    description: 'The text node, as a relative path such as beats.md or 剧集/EP001/剧本.md (no @, # or .., no leading /).',
+    description: 'The text node, as a relative path such as beats.md or episodes/ep001/script.md (no @, # or .., no leading /).',
   },
 } as const
 

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to keep a video's planning text in the project, such as a script, story beats, an ad spec or review notes. A text node is one Markdown document at a path that the caller chooses, such as `beats.md`, with numbered versions that survive new turns and new conversations. The agent writes with `dv_textnode_write`, edits lines with `dv_textnode_edit` and reads with `dv_textnode_read`; a `base_version` that is not the newest version refuses a write. The interface shows the tools as 写入文本 / Write text, 修改文本 / Edit text and 读取文本 / Read text.
+Use this package to keep a video's planning text in the project, such as a script, story beats, an ad spec or review notes. A text node is one Markdown document at a path that the caller chooses, such as `beats.md`, with numbered versions that survive new turns and new conversations. The agent writes with `dv_textnode_write`, edits lines with `dv_textnode_edit` and reads with `dv_textnode_read`; a `base_version` that is not the newest version refuses a write. The interface shows the tools as Write text, Edit text and Read text, with Chinese names in the Chinese interface.
 
 ## Table of Contents
 

@@ -9,7 +9,7 @@ import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { AssetId, RecordId } from '@dv/project/types'
 
 /**
- * The address of a text node, chosen by the caller: a relative path such as `beats.md` or `剧集/EP001/剧本.md`. It
+ * The address of a text node, chosen by the caller: a relative path such as `beats.md` or `episodes/ep001/script.md`. It
  * holds no `@`, `#` or `..` and does not start with `/`. `parseTextPath` of `@dv/text-node` makes one; a citation names
  * it as `dv:textnode/<path>`.
  */

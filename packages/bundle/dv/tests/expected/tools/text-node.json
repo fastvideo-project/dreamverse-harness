@@ -7,7 +7,7 @@
       "properties": {
         "path": {
           "type": "string",
-          "description": "The text node, as a relative path such as beats.md or 剧集/EP001/剧本.md (no @, # or .., no leading /)."
+          "description": "The text node, as a relative path such as beats.md or episodes/ep001/script.md (no @, # or .., no leading /)."
         },
         "body": {
           "type": "string",
@@ -68,7 +68,7 @@
       "properties": {
         "path": {
           "type": "string",
-          "description": "The text node, as a relative path such as beats.md or 剧集/EP001/剧本.md (no @, # or .., no leading /)."
+          "description": "The text node, as a relative path such as beats.md or episodes/ep001/script.md (no @, # or .., no leading /)."
         },
         "edits": {
           "type": "array",
@@ -135,7 +135,7 @@
       "properties": {
         "path": {
           "type": "string",
-          "description": "The text node, as a relative path such as beats.md or 剧集/EP001/剧本.md (no @, # or .., no leading /)."
+          "description": "The text node, as a relative path such as beats.md or episodes/ep001/script.md (no @, # or .., no leading /)."
         },
         "section": {
           "type": "string",

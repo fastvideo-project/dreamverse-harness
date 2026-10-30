@@ -129,14 +129,14 @@ describe('dvTextNode', () => {
 
   it('lists each text node in the project summary with its metadata and without its body', async () => {
     const fixture = await start()
-    await fixture.call('dv_textnode_write', { path: '剧集/EP001/剧本.md', body: '# 第一集\n\n她跑。\n', title: 'EP001 script' })
+    await fixture.call('dv_textnode_write', { path: 'episodes/ep001/script.md', body: '# Episode one\n\nShe runs.\n', title: 'EP001 script' })
     const state = await fixture.ctx.tools.execute({
       callId: ToolCallId('state'), name: 'dv_proj_state', arguments: {}, signal: new AbortController().signal, agent: { id: 's1' } as never,
     })
     const summary = state.isError ? null : state.value as { texts: unknown[] }
-    const [latest] = versionsOf(fixture, '剧集/EP001/剧本.md')
-    expect(summary?.texts).toEqual([{ path: '剧集/EP001/剧本.md', title: 'EP001 script', version: 1, chars: 11, asset: latest?.asset }])
-    expect(JSON.stringify(summary)).not.toContain('她跑')
+    const [latest] = versionsOf(fixture, 'episodes/ep001/script.md')
+    expect(summary?.texts).toEqual([{ path: 'episodes/ep001/script.md', title: 'EP001 script', version: 1, chars: 25, asset: latest?.asset }])
+    expect(JSON.stringify(summary)).not.toContain('She runs')
   })
 
   it('edits a unique old_text into the next version and keeps the title', async () => {
