@@ -61,7 +61,7 @@ const PATH_PARAM = {
 /** The `base_version` param of the writing operations. */
 const BASE_PARAM = {
   base_version: {
-    type: 'integer',
+    type: 'integer', required: true,
     description: 'The version you last read (`version` in dv_proj_state `texts` or in the dv_textnode_read report); 0 for a new text '
       + 'node. The call is refused when the text node has another version.',
   },
@@ -69,7 +69,7 @@ const BASE_PARAM = {
 
 /**
  * Refuse a write while another write of the same text node has not finished, or whose `base_version` is not the text
- * node's newest version. The runner calls it under the project lock, so of two concurrent writes on one base only the
+ * node's newest version (0 for a new path). The runner calls it under the project lock, so of two concurrent writes on one base only the
  * first one passes.
  * @param params - the call's params; `path` is parsed first, so a bad path is refused too.
  * @param state - the project's current state.
@@ -87,7 +87,7 @@ function checkBase(params: Record<string, unknown>, state: ProjectState): TextVe
   const latest = latestVersion(state, path)
   const current = latest?.version ?? 0
   const base = params['base_version']
-  if (typeof base === 'number' && base !== current) {
+  if (base !== current) {
     throw new Error(`Text node ${path} is at version ${String(current)}, not base_version ${String(base)}: it changed since you `
       + `read it. Call dv_textnode_read on ${path} again, then make your change on version ${String(current)}.`)
   }
@@ -192,8 +192,8 @@ function operations(): OperationSpec[] {
       component: 'textnode',
       label: { zh: '写入文本', en: 'Write text' },
       description: 'Write the whole Markdown text of a text node as its next version; a new path starts at version 1. A text node '
-        + 'holds planning text such as a script, story beats or an ad spec. Pass base_version so you never overwrite a version '
-        + 'you have not read. For a small change to a long text, call dv_textnode_edit instead.',
+        + 'holds planning text such as a script, story beats or an ad spec. base_version is the version you read, so you never '
+        + 'overwrite a version you have not read; 0 for a new path. For a small change to a long text, call dv_textnode_edit instead.',
       params: {
         ...PATH_PARAM,
         body: { type: 'string', required: true, description: 'The complete Markdown text of the new version.' },
@@ -218,7 +218,8 @@ function operations(): OperationSpec[] {
       label: { zh: '修改文本', en: 'Edit text' },
       description: 'Change a text node by literal replacements and write the result as its next version. The edits apply in '
         + 'order; each old_text must occur exactly once in the text, so copy it from dv_textnode_read without the line numbers and '
-        + 'add neighboring lines when it repeats. When any edit does not apply, nothing is written. Pass base_version.',
+        + 'add neighboring lines when it repeats. When any edit does not apply, nothing is written. base_version is the version '
+        + 'you read.',
       params: {
         ...PATH_PARAM,
         edits: {

@@ -1,7 +1,7 @@
 [
   {
     "name": "dv_textnode_write",
-    "description": "Write the whole Markdown text of a text node as its next version; a new path starts at version 1. A text node holds planning text such as a script, story beats or an ad spec. Pass base_version so you never overwrite a version you have not read. For a small change to a long text, call dv_textnode_edit instead.",
+    "description": "Write the whole Markdown text of a text node as its next version; a new path starts at version 1. A text node holds planning text such as a script, story beats or an ad spec. base_version is the version you read, so you never overwrite a version you have not read; 0 for a new path. For a small change to a long text, call dv_textnode_edit instead.",
     "parameters": {
       "type": "object",
       "properties": {
@@ -56,13 +56,14 @@
       "required": [
         "path",
         "body",
+        "base_version",
         "reason"
       ]
     }
   },
   {
     "name": "dv_textnode_edit",
-    "description": "Change a text node by literal replacements and write the result as its next version. The edits apply in order; each old_text must occur exactly once in the text, so copy it from dv_textnode_read without the line numbers and add neighboring lines when it repeats. When any edit does not apply, nothing is written. Pass base_version.",
+    "description": "Change a text node by literal replacements and write the result as its next version. The edits apply in order; each old_text must occur exactly once in the text, so copy it from dv_textnode_read without the line numbers and add neighboring lines when it repeats. When any edit does not apply, nothing is written. base_version is the version you read.",
     "parameters": {
       "type": "object",
       "properties": {
@@ -123,6 +124,7 @@
       "required": [
         "path",
         "edits",
+        "base_version",
         "reason"
       ]
     }

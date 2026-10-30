@@ -129,7 +129,7 @@ describe('dvTextNode', () => {
 
   it('lists each text node in the project summary with its metadata and without its body', async () => {
     const fixture = await start()
-    await fixture.call('dv_textnode_write', { path: 'episodes/ep001/script.md', body: '# Episode one\n\nShe runs.\n', title: 'EP001 script' })
+    await fixture.call('dv_textnode_write', { path: 'episodes/ep001/script.md', base_version: 0, body: '# Episode one\n\nShe runs.\n', title: 'EP001 script' })
     const state = await fixture.ctx.tools.execute({
       callId: ToolCallId('state'), name: 'dv_proj_state', arguments: {}, signal: new AbortController().signal, agent: { id: 's1' } as never,
     })
@@ -141,7 +141,7 @@ describe('dvTextNode', () => {
 
   it('edits a unique old_text into the next version and keeps the title', async () => {
     const fixture = await start()
-    await fixture.call('dv_textnode_write', { path: 'beats.md', body: BEATS })
+    await fixture.call('dv_textnode_write', { path: 'beats.md', base_version: 0, body: BEATS })
     const edited = await fixture.call('dv_textnode_edit', {
       path: 'beats.md', base_version: 1, edits: [{ old_text: 'Mia finds the map.', new_text: 'Mia steals the map.' }],
     })
@@ -154,25 +154,34 @@ describe('dvTextNode', () => {
     ['occurs twice', 'She runs.'],
   ])('refuses an edit whose old_text %s and writes no record', async (_case, oldText) => {
     const fixture = await start()
-    await fixture.call('dv_textnode_write', { path: 'beats.md', body: BEATS })
+    await fixture.call('dv_textnode_write', { path: 'beats.md', base_version: 0, body: BEATS })
     const before = fixture.records().length
     await expect(fixture.call('dv_textnode_edit', {
-      path: 'beats.md', edits: [{ old_text: 'The storm.', new_text: 'The calm.' }, { old_text: oldText, new_text: 'x' }],
+      path: 'beats.md', base_version: 1, edits: [{ old_text: 'The storm.', new_text: 'The calm.' }, { old_text: oldText, new_text: 'x' }],
     })).rejects.toThrow(/Edit 2: old_text occurs [02] times/u)
     expect(fixture.records()).toHaveLength(before)
     expect(versionsOf(fixture, 'beats.md')).toHaveLength(1)
   })
 
-  it('refuses a stale base_version with a hint to read again, for a write and an edit', async () => {
+  it('refuses an edit with no edits and writes no record', async () => {
     const fixture = await start()
-    await fixture.call('dv_textnode_write', { path: 'beats.md', body: BEATS })
-    await fixture.call('dv_textnode_write', { path: 'beats.md', body: `${BEATS}More.\n` })
+    await fixture.call('dv_textnode_write', { path: 'beats.md', base_version: 0, body: BEATS })
+    const before = fixture.records().length
+    await expect(fixture.call('dv_textnode_edit', { path: 'beats.md', base_version: 1, edits: [] })).rejects.toThrow(/edits is empty/u)
+    expect(fixture.records()).toHaveLength(before)
+  })
+
+  it('refuses a missing or stale base_version with a hint to read again, for a write and an edit', async () => {
+    const fixture = await start()
+    await fixture.call('dv_textnode_write', { path: 'beats.md', base_version: 0, body: BEATS })
+    await fixture.call('dv_textnode_write', { path: 'beats.md', base_version: 1, body: `${BEATS}More.\n` })
     const before = fixture.records().length
     await expect(fixture.call('dv_textnode_write', { path: 'beats.md', body: 'mine', base_version: 1 })).rejects.toThrow(/dv_textnode_read/u)
     await expect(fixture.call('dv_textnode_edit', {
       path: 'beats.md', base_version: 1, edits: [{ old_text: 'More.', new_text: 'Less.' }],
     })).rejects.toThrow(/at version 2, not base_version 1/u)
     await expect(fixture.call('dv_textnode_write', { path: 'new.md', body: 'x', base_version: 1 })).rejects.toThrow(/at version 0/u)
+    await expect(fixture.call('dv_textnode_write', { path: 'beats.md', body: 'mine' })).rejects.toThrow(/base_version/u)
     expect(fixture.records()).toHaveLength(before)
   })
 
@@ -193,8 +202,8 @@ describe('dvTextNode', () => {
 
   it('reads one section with its line numbers, or an older version, and writes no record', async () => {
     const fixture = await start()
-    await fixture.call('dv_textnode_write', { path: 'beats.md', body: BEATS })
-    await fixture.call('dv_textnode_write', { path: 'beats.md', body: '# Beats\n' })
+    await fixture.call('dv_textnode_write', { path: 'beats.md', base_version: 0, body: BEATS })
+    await fixture.call('dv_textnode_write', { path: 'beats.md', base_version: 1, body: '# Beats\n' })
     const before = fixture.records().length
     const section = await fixture.call('dv_textnode_read', { path: 'beats.md', version: 1, section: 'Act 1' })
     expect(section).toMatchObject({ record: '', report: { version: 1, section: 'Act 1', text: '3\t## Act 1\n4\tMia finds the map.\n5\tShe runs.\n6\t' } })
@@ -213,11 +222,11 @@ describe('dvTextNode', () => {
       inputs: { text: { type: 'text', description: 'A text.', required: true } }, outputs: [], deterministic: false,
       resource: 'none', summarize: () => 'used', execute: () => Promise.resolve({ outputs: [] }),
     })
-    await fixture.call('dv_textnode_write', { path: 'beats.md', body: BEATS })
+    await fixture.call('dv_textnode_write', { path: 'beats.md', base_version: 0, body: BEATS })
     const asset = versionsOf(fixture, 'beats.md')[0]?.asset
     const probe = await fixture.call('dv_probe_use', { inputs: { text: asset } })
     expect(fixture.ctx.dvProject.getState(fixture.project).components.proj.stale[probe.record as RecordId]).toBeUndefined()
-    const second = await fixture.call('dv_textnode_edit', { path: 'beats.md', edits: [{ old_text: 'The storm.', new_text: 'The calm.' }] })
+    const second = await fixture.call('dv_textnode_edit', { path: 'beats.md', base_version: 1, edits: [{ old_text: 'The storm.', new_text: 'The calm.' }] })
     expect(fixture.ctx.dvProject.getState(fixture.project).components.proj.stale[probe.record as RecordId]).toBe(second.record)
   })
 
@@ -226,8 +235,8 @@ describe('dvTextNode', () => {
     async (path) => {
       const fixture = await start()
       const before = fixture.records().length
-      await expect(fixture.call('dv_textnode_write', { path, body: 'x' })).rejects.toThrow(/Text node path/u)
-      await expect(fixture.call('dv_textnode_edit', { path, edits: [{ old_text: 'x', new_text: 'y' }] })).rejects.toThrow(/Text node path/u)
+      await expect(fixture.call('dv_textnode_write', { path, base_version: 0, body: 'x' })).rejects.toThrow(/Text node path/u)
+      await expect(fixture.call('dv_textnode_edit', { path, base_version: 1, edits: [{ old_text: 'x', new_text: 'y' }] })).rejects.toThrow(/Text node path/u)
       await expect(fixture.call('dv_textnode_read', { path })).rejects.toThrow(/Text node path/u)
       expect(fixture.records()).toHaveLength(before)
     },
@@ -235,28 +244,28 @@ describe('dvTextNode', () => {
 
   it('links a write to the current records of its from paths, and a later source version marks it stale', async () => {
     const fixture = await start()
-    const beats = await fixture.call('dv_textnode_write', { path: 'beats.md', body: BEATS })
-    const script = await fixture.call('dv_textnode_write', { path: 'script.md', body: '# Script\n', from: ['beats.md'] })
+    const beats = await fixture.call('dv_textnode_write', { path: 'beats.md', base_version: 0, body: BEATS })
+    const script = await fixture.call('dv_textnode_write', { path: 'script.md', base_version: 0, body: '# Script\n', from: ['beats.md'] })
     const record = (id: string) => fixture.ctx.dvProject.getRecord(fixture.project, id as RecordId)
     expect(record(script.record).inputs.map(input => [input.role, input.ref, input.resolved_asset])).toEqual([
       ['source', { record: beats.record, output: 0 }, versionsOf(fixture, 'beats.md')[0]?.asset],
     ])
     const stale = () => fixture.ctx.dvProject.getState(fixture.project).components.proj.stale
     expect(stale()[script.record as RecordId]).toBeUndefined()
-    const next = await fixture.call('dv_textnode_edit', { path: 'beats.md', edits: [{ old_text: 'The storm.', new_text: 'The calm.' }] })
+    const next = await fixture.call('dv_textnode_edit', { path: 'beats.md', base_version: 1, edits: [{ old_text: 'The storm.', new_text: 'The calm.' }] })
     expect(stale()[script.record as RecordId]).toBe(next.record)
     expect(record(next.record).based_on).toBe(beats.record)
   })
 
   it('keeps the sources of the previous version when a write or an edit names no from, and drops them for from: []', async () => {
     const fixture = await start()
-    const beats = await fixture.call('dv_textnode_write', { path: 'beats.md', body: BEATS })
-    await fixture.call('dv_textnode_write', { path: 'script.md', body: '# Script\nA.\n', from: ['beats.md'] })
-    const edited = await fixture.call('dv_textnode_edit', { path: 'script.md', edits: [{ old_text: 'A.', new_text: 'B.' }] })
+    const beats = await fixture.call('dv_textnode_write', { path: 'beats.md', base_version: 0, body: BEATS })
+    await fixture.call('dv_textnode_write', { path: 'script.md', base_version: 0, body: '# Script\nA.\n', from: ['beats.md'] })
+    const edited = await fixture.call('dv_textnode_edit', { path: 'script.md', base_version: 1, edits: [{ old_text: 'A.', new_text: 'B.' }] })
     const refs = (id: string) => fixture.ctx.dvProject.getRecord(fixture.project, id as RecordId).inputs.map(input => input.ref)
     expect(refs(edited.record)).toEqual([{ record: beats.record, output: 0 }])
-    const cleared = await fixture.call('dv_textnode_write', { path: 'script.md', body: '# Script\n', from: [] })
+    const cleared = await fixture.call('dv_textnode_write', { path: 'script.md', base_version: 2, body: '# Script\n', from: [] })
     expect(refs(cleared.record)).toEqual([])
-    await expect(fixture.call('dv_textnode_write', { path: 'x.md', body: 'x', from: ['missing.md'] })).rejects.toThrow(/No text node missing.md/u)
+    await expect(fixture.call('dv_textnode_write', { path: 'x.md', base_version: 0, body: 'x', from: ['missing.md'] })).rejects.toThrow(/No text node missing.md/u)
   })
 })

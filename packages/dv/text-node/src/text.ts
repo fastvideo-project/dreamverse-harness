@@ -38,12 +38,13 @@ export type EditOutcome = { ok: true; body: string } | { ok: false; problems: st
 
 /**
  * Apply literal edits in order, each to the text that the edits before it left. An edit applies when its `old_text`
- * is not empty and occurs exactly once.
+ * is not empty and occurs exactly once; an empty list of edits does not apply.
  * @param body - the text of the version the edits start from.
  * @param edits - the edits.
  * @returns the edited body, or the problems of every edit that does not apply.
  */
 export function applyEdits(body: string, edits: readonly TextEdit[]): EditOutcome {
+  if (edits.length === 0) return { ok: false, problems: ['edits is empty; pass at least one edit, or write nothing.'] }
   let text = body
   const problems: string[] = []
   edits.forEach((edit, index) => {
