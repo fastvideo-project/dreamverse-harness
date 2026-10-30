@@ -10,8 +10,7 @@ import type { AssetId, RecordId } from '@dv/project/types'
 
 /**
  * The address of a text node, chosen by the caller: a relative path such as `beats.md` or `episodes/ep001/script.md`. It
- * holds no `@`, `#` or `..` and does not start with `/`. `parseTextPath` of `@dv/text-node` makes one; a citation names
- * it as `dv:textnode/<path>`.
+ * holds no `@`, `#` or `..` and does not start with `/`. `parseTextPath` of `@dv/text-node` makes one.
  */
 export type TextPath = Branded<'DvTextPath'>
 
@@ -45,9 +44,5 @@ declare module '@dv/project/types' {
   interface ComponentStates {
     /** Text nodes and their versions (the Text node component's reducer). */
     textnode: TextState
-  }
-  interface ReferenceKinds {
-    /** A text node by its path; `<path>@<version>` names one version. */
-    textnode: TextPath
   }
 }

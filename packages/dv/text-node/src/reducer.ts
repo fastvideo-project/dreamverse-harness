@@ -1,11 +1,11 @@
 /**
  * The pure reducer of the Text node component: the `textnode` slice from the finished `textnode.write` and
- * `textnode.edit` records, and the reference kind that answers for its versions.
+ * `textnode.edit` records.
  *
  * @module @dv/text-node/reducer
  */
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { ProjectState, Reducer, ReferenceKindSpec } from '@dv/project'
+import type { ProjectState, Reducer } from '@dv/project'
 import { applyEdits, firstHeading } from './text.ts'
 import type { TextEdit, TextPath, TextState, TextVersion } from './types.ts'
 
@@ -73,19 +73,4 @@ export const textReducer: Reducer<'textnode'> = {
       }),
     }
   },
-}
-
-/**
- * The reference kind `textnode`: a text node's path is its ID, so a chat mention `dv:textnode/<path>` and an input
- * `<path>@<version>` name one version, whose asset is its Markdown file and whose producer is the record that wrote it.
- */
-export const textKind: ReferenceKindSpec<'textnode'> = {
-  kind: 'textnode',
-  component: 'textnode',
-  assetsOf: (slice, id, version) => {
-    const found = slice.texts[brandString<TextPath>(id)]?.[version - 1]
-    return found === undefined ? null : [found.asset]
-  },
-  createdBy: (slice, id, version) => slice.texts[brandString<TextPath>(id)]?.[version - 1]?.created_by ?? null,
-  latest: (slice, id) => latestIn(slice, id)?.version ?? null,
 }

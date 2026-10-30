@@ -259,13 +259,4 @@ describe('dvTextNode', () => {
     expect(refs(cleared.record)).toEqual([])
     await expect(fixture.call('dv_textnode_write', { path: 'x.md', body: 'x', from: ['missing.md'] })).rejects.toThrow(/No text node missing.md/u)
   })
-
-  it('answers for text node versions as the reference kind textnode', async () => {
-    const fixture = await start()
-    await fixture.call('dv_textnode_write', { path: 'acts/beats.md', body: BEATS })
-    const state = fixture.ctx.dvProject.getState(fixture.project)
-    expect(fixture.ctx.dvProject.listReferenceKinds()).toContain('textnode')
-    expect(fixture.ctx.dvProject.assetsOf(state, { textnode: brandString<TextPath>('acts/beats.md'), version: 1 }))
-      .toEqual([versionsOf(fixture, 'acts/beats.md')[0]?.asset])
-  })
 })

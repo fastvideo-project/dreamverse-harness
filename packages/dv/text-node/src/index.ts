@@ -9,10 +9,9 @@
  * Each write stores the body as a `text/markdown` asset and supersedes the record of the previous version, so records
  * that took the previous asset become stale. `base_version` refuses a write over a version the caller has not read.
  * A write names the text nodes it was built from as `source` inputs on their current records, so a later version of a
- * source makes it stale; a write without that list keeps the sources of the previous version. The component registers
- * the reference kind `textnode`, so `dv:textnode/<path>` mentions and `<path>@<version>` inputs name a version.
- * `dvProject` turns each operation into its agent tool (`dv_textnode_write`, `dv_textnode_edit`, `dv_textnode_read`).
- * While the DSH skill registry is mounted, the component registers the `text-node` skill.
+ * source makes it stale; a write without that list keeps the sources of the previous version. `dvProject` turns each
+ * operation into its agent tool (`dv_textnode_write`, `dv_textnode_edit`, `dv_textnode_read`). While the DSH skill
+ * registry is mounted, the component registers the `text-node` skill.
  *
  * @module @dv/text-node
  */
@@ -21,7 +20,7 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-skill'
 import z from '@deepseek-ai/schemastery'
 import type { OperationResult, OperationSpec, OperationToolCall, ProjectState, RecordId, RunRequest } from '@dv/project'
-import { latestVersion, nextText, textKind, textReducer } from './reducer.ts'
+import { latestVersion, nextText, textReducer } from './reducer.ts'
 import { numberedLines, parseTextPath } from './text.ts'
 import type { TextVersion } from './types.ts'
 
@@ -134,7 +133,7 @@ function previousSources(state: ProjectState, record: RecordId): RunRequest['inp
   return (written?.inputs ?? []).filter(input => input.role === SOURCE).map(({ role, ref }) => ({ role, ref }))
 }
 
-/** The Text node service: the component, the reducer, the reference kind, the three operations and the skill. */
+/** The Text node service: the component, the reducer, the three operations and the skill. */
 export default class DvTextNode extends Service {
   static inject = ['dvProject']
   static Config = Config
@@ -143,7 +142,6 @@ export default class DvTextNode extends Service {
     super(ctx, 'dvTextNode')
     ctx.effect(() => ctx.dvProject.registerComponent('textnode'), 'dvTextNode component')
     ctx.effect(() => ctx.dvProject.registerReducer('textnode', textReducer), 'dvTextNode reducer')
-    ctx.effect(() => ctx.dvProject.registerReferenceKind(textKind), 'dvTextNode kind')
     for (const spec of operations()) ctx.effect(() => ctx.dvProject.registerOperation(spec), `dvTextNode ${spec.name}`)
     ctx.inject(['skills'], (child) => {
       child.effect(() => child.skills.register(TEXT_SKILL), `dvTextNode ${TEXT_SKILL.name}`)
