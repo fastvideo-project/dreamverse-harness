@@ -15,11 +15,13 @@ import type { TextEdit, TextPath } from './types.ts'
  * @throws Error that names the rule the path breaks.
  */
 export function parseTextPath(raw: string): TextPath {
-  const rule = raw.trim() === '' ? 'is empty'
-    : raw.startsWith('/') ? 'starts with /'
-      : /[@#]/u.test(raw) ? 'contains @ or #'
-        : raw.includes('..') ? 'contains ..'
-          : null
+  const rule = raw === '' ? 'is empty'
+    : /\s/u.test(raw) ? 'contains whitespace'
+      : raw.startsWith('/') ? 'starts with /'
+        : /[@#]/u.test(raw) ? 'contains @ or #'
+          : raw.includes('..') ? 'contains ..'
+            : raw.split('/').some(part => part === '' || part === '.') ? 'has an empty or . part'
+              : null
   if (rule !== null) {
     throw new Error(`Text node path '${raw}' ${rule}; use a relative path such as beats.md or scripts/ep1.md.`)
   }

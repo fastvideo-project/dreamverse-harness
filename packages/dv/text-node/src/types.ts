@@ -10,7 +10,8 @@ import type { AssetId, RecordId } from '@dv/project/types'
 
 /**
  * The address of a text node, chosen by the caller: a relative path such as `beats.md` or `episodes/ep001/script.md`. It
- * holds no `@`, `#` or `..` and does not start with `/`. `parseTextPath` of `@dv/text-node` makes one.
+ * holds no whitespace, `@`, `#` or `..`, does not start with `/`, and has no empty or `.` part between slashes.
+ * `parseTextPath` of `@dv/text-node` makes one.
  */
 export type TextPath = Branded<'DvTextPath'>
 

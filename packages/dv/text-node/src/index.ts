@@ -54,7 +54,8 @@ const TEXT_SKILL = {
 const PATH_PARAM = {
   path: {
     type: 'string', required: true,
-    description: 'The text node, as a relative path such as beats.md or episodes/ep001/script.md (no @, # or .., no leading /).',
+    description: 'The text node, as a relative path such as beats.md or episodes/ep001/script.md (no whitespace, @, # or .., '
+      + 'no leading /, no empty or . part).',
   },
 } as const
 

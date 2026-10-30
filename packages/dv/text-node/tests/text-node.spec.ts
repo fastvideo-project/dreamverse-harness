@@ -230,7 +230,7 @@ describe('dvTextNode', () => {
     expect(fixture.ctx.dvProject.getState(fixture.project).components.proj.stale[probe.record as RecordId]).toBe(second.record)
   })
 
-  it.each(['/beats.md', 'beats@2.md', 'beats.md#act-1', '../beats.md', 'acts/../beats.md', ' '])(
+  it.each(['/beats.md', 'beats@2.md', 'beats.md#act-1', '../beats.md', 'acts/../beats.md', ' ', '', 'my beats.md', ' beats.md', 'acts//beats.md', 'acts/', './beats.md', 'acts/./beats.md'])(
     'refuses the path %j for every operation and writes no record',
     async (path) => {
       const fixture = await start()
