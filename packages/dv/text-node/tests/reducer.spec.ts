@@ -1,6 +1,6 @@
 /** The pure `textnode` reducer and the heading rules of `text.ts`: each operation, the ignored records and the agent summary. */
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { AssetId, ProjectRecord, RecordId } from '@dv/project'
+import type { AssetId, ProjectRecord, ProjectState, RecordId } from '@dv/project'
 import { describe, expect, it } from 'vitest'
 import { textReducer } from '../src/reducer.ts'
 import { firstHeading, numberedLines } from '../src/text.ts'
@@ -75,7 +75,7 @@ describe('textReducer', () => {
       step('textnode.write', { path: 'beats.md', body: '# Beats\nAB.' }),
     ])
     const newest = slice.texts[brandString<TextPath>('beats.md')]?.[1]
-    expect(textReducer.agentSummary?.(slice)).toEqual({ texts: [{ path: 'beats.md', title: 'Beats', version: 2, chars: 11, asset: newest?.asset }] })
+    expect(textReducer.agentSummary?.(slice, { url: asset => asset }, {} as ProjectState)).toEqual({ texts: [{ path: 'beats.md', title: 'Beats', version: 2, chars: 11, asset: newest?.asset }] })
   })
 })
 
