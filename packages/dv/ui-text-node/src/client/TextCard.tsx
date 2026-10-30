@@ -28,13 +28,29 @@ const bodies = new Map<string, Promise<string>>()
  * @param asset - the version's `text/markdown` asset.
  * @returns the body; a failed read is not kept, so a later card reads again.
  */
-export function readBody(asset: string): Promise<string> {
+function readBody(asset: string): Promise<string> {
   const held = bodies.get(asset)
   if (held !== undefined) return held
   const read = fetch(assetUrl(asset)).then(response => response.ok ? response.text() : Promise.reject(new Error(`HTTP ${String(response.status)}`)))
   bodies.set(asset, read)
   read.catch(() => { bodies.delete(asset) })
   return read
+}
+
+/**
+ * The Markdown of a text node version, read from its asset. The card and the editor both read the body this way, so
+ * they show the same bytes.
+ * @param asset - the version's `text/markdown` asset, or undefined while the version is unknown.
+ * @returns the body, or null until the read finishes and after a failed read.
+ */
+export function useBody(asset: string | undefined): string | null {
+  const [body, setBody] = useState<{ asset: string; text: string } | null>(null)
+  useEffect(() => {
+    let live = true
+    if (asset !== undefined) readBody(asset).then((text) => { if (live) setBody({ asset, text }) }, () => { if (live) setBody(null) })
+    return () => { live = false }
+  }, [asset])
+  return body !== null && body.asset === asset ? body.text : null
 }
 
 /**
@@ -55,13 +71,7 @@ export function footerText(version: number, chars: number, t: TranslateNS<typeof
  * @returns the element.
  */
 export function TextCard({ node, textScale, t }: PropsRuntime<'dv.canvas.card'> & PropsLocale<typeof NS>): ReactNode {
-  const asset = node.assets[0]
-  const [body, setBody] = useState<string | null>(null)
-  useEffect(() => {
-    let live = true
-    if (asset !== undefined) readBody(asset).then((text) => { if (live) setBody(text) }, () => { if (live) setBody(null) })
-    return () => { live = false }
-  }, [asset])
+  const body = useBody(node.assets[0])
   const excerpt = useMemo(() => body === null ? '' : extractMarkdownPlainText(withLabels(body, parsePromptCitations(body))), [body])
   const version = node.record === null ? null : reportedVersion(node.record)
   const chars = node.record?.report?.['chars']

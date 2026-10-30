@@ -18,7 +18,7 @@ import { DvClient, errorMessage } from '@dv/ui-kit/api.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import type { ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
 import type { NS } from './locales.ts'
-import { footerText } from './TextCard.tsx'
+import { footerText, useBody } from './TextCard.tsx'
 import { pathOf, textsOf, withLabels } from './texts.ts'
 
 /** The apply-world face of the editor entry: the version kinds of the canvas, which resolve each chip's face. */
@@ -90,20 +90,30 @@ function MarkdownView({ body, state, versions, renderFactorySlot, t }: {
   return <MarkdownDelegateProvider renderElement={renderElement}><MarkdownText text={text} labels={labels} /></MarkdownDelegateProvider>
 }
 
-/** The `source` inputs of a record, as request inputs, so the next version keeps the text nodes it was built from. */
-function sourcesOf(record: ProjectRecord | undefined): Array<{ role: string; ref: string }> {
-  return (record?.inputs ?? []).filter(input => input.role === 'source')
-    .map(input => ({ role: input.role, ref: formatInputRef(input.ref as Parameters<typeof formatInputRef>[0]) }))
+/**
+ * The `source` inputs of a record as request inputs, each moved to the newest version of the text node it names, so
+ * the next version keeps the text nodes it was built from and does not start stale.
+ * @param state - the project state.
+ * @param record - the record of the newest version.
+ * @returns the request inputs, one per source text node.
+ */
+function currentSources(state: WireState, record: ProjectRecord | undefined): Array<{ role: string; ref: string }> {
+  const refs = (record?.inputs ?? []).filter(input => input.role === 'source').map(({ ref }) => {
+    const producer = 'record' in ref ? state.components.proj.records.find(each => each.id === ref.record) : undefined
+    const newest = producer === undefined ? undefined : textsOf(state)[pathOf(producer)]?.at(-1)
+    return newest === undefined ? formatInputRef(ref as Parameters<typeof formatInputRef>[0]) : `${newest.created_by}#0`
+  })
+  return [...new Set(refs)].map(ref => ({ role: 'source', ref }))
 }
 
 /**
- * The editor of one text node version. Read mode renders the version's Markdown with its citations as chips; on the
- * newest version, edit mode opens the same editor with the `@` picker and keeps its draft when a newer version
- * arrives. Its save writes the next version with `textnode.write`, the draft's `base_version`, the sources of the
- * newest version, and `based_on` its record. A save
- * over a version that the draft did not start from is refused; the editor then names the newest version and the
- * draft's version, and keeps the draft. Any other refusal shows its own text. A saved draft closes the editor, and the
- * canvas draws the new version as the next node.
+ * The editor of one text node version. Both modes read the version's Markdown from its asset, as the card does. Read
+ * mode renders it with its citations as chips; on the newest version, edit mode opens the same editor with the `@`
+ * picker and keeps its draft when a newer version arrives. Its save writes the next version with `textnode.write`, the
+ * draft's `base_version`, the sources of the newest version at their own newest versions, and `based_on` its record.
+ * When a newer version than the draft's exists, the editor names both versions, keeps the draft, and offers to save it
+ * on top of the newest version. A refusal or a failed record shows its own text and keeps the draft. A saved draft
+ * closes the editor, and the canvas draws the new version as the next node.
  * @param props - the node, the state, the canvas host, the version kinds, the Factory renderer, and the translate
  *   function.
  * @returns the element.
@@ -115,20 +125,30 @@ export function TextEditor({ node, state, host, renderFactorySlot, useVersionKin
   const versions = textsOf(state)[path] ?? []
   const shown = versions.find(version => version.created_by === node.record.id)
   const latest = versions.at(-1)
+  const shownBody = useBody(shown?.asset)
+  const latestBody = useBody(latest?.asset)
   if (shown === undefined || latest === undefined) return null
+  const chars = node.record.report?.['chars']
   const save = async (base: number, start: string, body: string): Promise<void> => {
     setEditor({ mode: 'edit', base, start, body, saving: true, refusal: null })
     const newest = state.components.proj.records.find(record => record.id === latest.created_by)
+    let refusal: string
     try {
-      await client.runOperation({
+      const record = await client.runOperation({
         project: state.project.id, operation: 'textnode.write', surface: 'canvas', based_on: latest.created_by,
-        params: { path, body, base_version: base }, inputs: sourcesOf(newest), intent: `Save ${path} from the canvas`,
+        params: { path, body, base_version: base }, inputs: currentSources(state, newest), intent: `Save ${path} from the canvas`,
       })
-      host.close()
+      if (record.status !== 'failed' && record.status !== 'cancelled') {
+        host.close()
+        return
+      }
+      refusal = record.error?.message ?? t('node.saveFailed')
     } catch (error) {
-      setEditor({ mode: 'edit', base, start, body, saving: false, refusal: errorMessage(error) })
+      refusal = errorMessage(error)
     }
+    setEditor({ mode: 'edit', base, start, body, saving: false, refusal })
   }
+  const behind = editor.mode === 'edit' && latest.version !== editor.base
   const model = (readOnly: boolean, content: PromptContent, onChange: (text: string) => void): PromptHostModel => ({
     content, readOnly, sources: readOnly ? [] : [MENTION_SOURCE], sourceContext: null, faceContext: null,
     onChange: (text) => { onChange(text) }, placeholder: t('editor.markdown'), ariaLabel: t('editor.markdown'),
@@ -136,14 +156,14 @@ export function TextEditor({ node, state, host, renderFactorySlot, useVersionKin
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span data-testid="dv-text-version" style={meta}>{footerText(shown.version, Array.from(shown.body).length, t)}</span>
+        <span data-testid="dv-text-version" style={meta}>{typeof chars === 'number' ? footerText(shown.version, chars, t) : null}</span>
         <span style={{ flex: 1 }} />
         {editor.mode === 'edit'
           ? (
             <>
               <button type="button" className="dv-canvas-btn" style={button} disabled={editor.saving} onClick={() => { setEditor(READ) }}>{t('editor.cancel')}</button>
-              <button type="button" className="dv-canvas-btn" style={button} disabled={editor.saving} onClick={() => { void save(editor.base, editor.start, editor.body) }}>
-                {editor.saving ? t('editor.saving') : t('editor.save')}
+              <button type="button" className="dv-canvas-btn" style={button} disabled={editor.saving} onClick={() => { void save(latest.version, editor.start, editor.body) }}>
+                {editor.saving ? t('editor.saving') : behind ? t('editor.saveOnTop', { version: String(latest.version) }) : t('editor.save')}
               </button>
             </>
           )
@@ -154,24 +174,25 @@ export function TextEditor({ node, state, host, renderFactorySlot, useVersionKin
               </button>
             )
             : (
-              <button type="button" className="dv-canvas-btn" style={button} onClick={() => { setEditor({ mode: 'edit', base: latest.version, start: latest.body, body: latest.body, saving: false, refusal: null }) }}>
+              <button
+                type="button" className="dv-canvas-btn" style={button} disabled={latestBody === null}
+                onClick={() => { if (latestBody !== null) setEditor({ mode: 'edit', base: latest.version, start: latestBody, body: latestBody, saving: false, refusal: null }) }}
+              >
                 {t('editor.edit')}
               </button>
             )}
       </div>
-      {editor.mode === 'edit' && editor.refusal !== null
+      {editor.mode === 'edit' && (behind || editor.refusal !== null)
         ? (
           <div role="alert" style={{ padding: '8px 12px', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-3)', color: 'var(--dv-danger)', fontSize: 13, lineHeight: '20px' }}>
-            {latest.version === editor.base
-              ? editor.refusal
-              : t('editor.newerVersion', { newest: String(latest.version), base: String(editor.base) })}
+            {behind ? t('editor.newerVersion', { newest: String(latest.version), base: String(editor.base) }) : editor.refusal}
           </div>
         )
         : null}
       {/* A new key per mode and version gives the editor a fresh occurrence, which opens on its first revision. */}
       <div key={`${editor.mode}:${shown.created_by}`} data-testid="dv-text-markdown" style={box}>
         {editor.mode === 'read'
-          ? <MarkdownView body={shown.body} state={state} versions={versionKinds} renderFactorySlot={renderFactorySlot} t={t} />
+          ? <MarkdownView body={shownBody ?? ''} state={state} versions={versionKinds} renderFactorySlot={renderFactorySlot} t={t} />
           : (
             <>
               <style>{MENU_BELOW_CSS}</style>

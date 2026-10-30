@@ -11,6 +11,7 @@
   "editor.openVersion": "Open version {version}",
   "editor.markdown": "Markdown text",
   "editor.newerVersion": "Someone saved version {newest} first. Your draft is based on version {base}.",
+  "editor.saveOnTop": "Save on top of v{version}",
   "markdown.copy": "Copy",
   "markdown.copied": "Copied",
   "markdown.footnotes": "Footnotes"

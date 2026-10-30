@@ -21,8 +21,6 @@ import { TEXT_CARD_HEIGHT, TextCard } from './TextCard.tsx'
 import { TextEditor } from './TextEditor.tsx'
 import { newestTexts, pathOf, reportedVersion, TEXT_KIND, TEXT_OPERATIONS, withLabels } from './texts.ts'
 
-export { textsOf } from './texts.ts'
-
 const ID = '@dv/ui-text-node'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {

@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
  * The text node UI on the real canvas: its card, its edges, its editor's read mode with citation chips, and its save
- * through `textnode.write`, over the scripted `/api/dv` server of the canvas tests. The server keeps the versions of
- * `beats.md` and refuses a write whose `base_version` is not the newest version, as `@dv/text-node` refuses it.
+ * through `textnode.write`, over the scripted `/api/dv` server of the canvas tests. The server keeps the versions of each
+ * path and refuses a write whose `base_version` is not the newest version, as `@dv/text-node` refuses it.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
@@ -37,53 +37,55 @@ const V1 = '# Beats\n\nThe detective wakes up.'
 const V2 = '# Beats\n\n@[Hero](dv:test_ref/hero) opens the door.\n\nRain falls on the city.'
 const SCRIPT = 'INT. OFFICE - NIGHT'
 
-/** One version of a path, written by record `<prefix><version>` into asset `<prefix>-v<version>.md`. */
-function version(path: string, prefix: string, number: number, body: string): TextVersion {
+/** One version written by record `<prefix><version>` into asset `<prefix>-v<version>.md`. */
+function version(prefix: string, number: number, body: string): TextVersion {
   return {
-    version: number, title: body.split('\n')[0]?.slice(2) ?? path, body,
+    version: number, title: body.split('\n')[0]?.slice(2) ?? '', body,
     asset: `${prefix}-v${String(number)}.md` as TextVersion['asset'], created_by: `${prefix}${String(number)}` as TextVersion['created_by'],
   }
 }
 
+/** The record prefix of each path's versions. */
+const PREFIX: Record<string, string> = { [PATH]: 'tw', 'script.md': 'sc' }
+
 /**
  * Mount the canvas with the reference noun, the media plugins, the composer stack and the text node plugin, over a
  * server whose `beats.md` holds v1 and v2 and whose `script.md` v1 was built from `beats.md` v2. An accepted
- * `textnode.write` appends the next version of `beats.md` and announces the change. The asset pool serves each
- * version's Markdown.
- * @returns the mounted canvas and the versions of `beats.md` the server holds.
+ * `textnode.write` appends the next version of its path and announces the change; a body that contains `FAIL` gives a
+ * failed record, and a body that contains `REFUSE` is refused. The asset pool serves each version's Markdown.
+ * @returns the mounted canvas and the versions of each path that the server holds.
  */
 async function mountTexts() {
-  const versions = [version(PATH, 'tw', 1, V1), version(PATH, 'tw', 2, V2)]
-  const script = version('script.md', 'sc', 1, SCRIPT)
-  const all = (): TextVersion[] => [...versions, script]
+  const texts: Record<string, TextVersion[]> = { [PATH]: [version('tw', 1, V1), version('tw', 2, V2)], 'script.md': [version('sc', 1, SCRIPT)] }
+  const all = (): TextVersion[] => Object.values(texts).flat()
   let server: CanvasServer | null = null
   const mounted = await mountCanvas({
     kinds: ['reference', 'media', 'assets', 'composer'],
     edit: (state) => {
-      versions.forEach((each, index) => {
-        state.assets.push(asset(each.asset, 'text/markdown', each.created_by))
-        state.components.proj.records.push(record({
-          id: each.created_by, operation: 'textnode.write', params: { path: PATH }, outputs: [each.asset],
-          based_on: index === 0 ? null : versions[index - 1]?.created_by ?? null,
-          report: { path: PATH, version: each.version, title: each.title, chars: Array.from(each.body).length },
-        }))
-      })
-      state.assets.push(asset(script.asset, 'text/markdown', script.created_by))
-      state.components.proj.records.push(record({
-        id: script.created_by, operation: 'textnode.write', params: { path: 'script.md' }, outputs: [script.asset],
-        inputs: [{ role: 'source', ref: { record: 'tw2', output: 0 }, resolved_asset: 'tw-v2.md' }],
-        report: { path: 'script.md', version: 1, title: 'Script', chars: Array.from(SCRIPT).length },
-      }))
-      state.components.textnode = { texts: { [PATH]: [...versions], 'script.md': [script] } }
+      for (const [path, versions] of Object.entries(texts)) {
+        versions.forEach((each, index) => {
+          state.assets.push(asset(each.asset, 'text/markdown', each.created_by))
+          state.components.proj.records.push(record({
+            id: each.created_by, operation: 'textnode.write', params: { path }, outputs: [each.asset],
+            based_on: index === 0 ? null : versions[index - 1]?.created_by ?? null,
+            inputs: path === 'script.md' && index === 0 ? [{ role: 'source', ref: { record: 'tw2', output: 0 }, resolved_asset: 'tw-v2.md' }] : [],
+            report: { path, version: each.version, title: each.title, chars: Array.from(each.body).length },
+          }))
+        })
+      }
+      state.components.textnode = { texts: Object.fromEntries(Object.entries(texts).map(([path, versions]) => [path, [...versions]])) }
     },
     refuse: (path, body) => {
-      const request = body as { operation?: string; params?: { body: string; base_version: number } }
+      const request = body as { operation?: string; params?: { path: string; body: string; base_version: number } }
       if (path !== '/api/dv/operation' || request.operation !== 'textnode.write' || request.params === undefined) return null
+      if (request.params.body.includes('REFUSE')) return 'Text node script.md is too long.'
+      if (request.params.body.includes('FAIL')) return null
+      const versions = texts[request.params.path] ?? []
       const newest = versions.length
       if (request.params.base_version !== newest) {
-        return `Text node ${PATH} is at version ${String(newest)}, not base_version ${String(request.params.base_version)}: it changed since you read it.`
+        return `Text node ${request.params.path} is at version ${String(newest)}, not base_version ${String(request.params.base_version)}: it changed since you read it.`
       }
-      versions.push(version(PATH, 'tw', newest + 1, request.params.body))
+      versions.push(version(PREFIX[request.params.path] ?? 'x', newest + 1, request.params.body))
       queueMicrotask(() => { server?.notify() })
       return null
     },
@@ -91,7 +93,12 @@ async function mountTexts() {
       const served = globalThis.fetch
       vi.stubGlobal('fetch', (input: string, init?: RequestInit) => {
         const found = all().find(each => input === assetUrl(each.asset))
-        return found === undefined ? served(input, init) : Promise.resolve(new Response(found.body))
+        if (found !== undefined) return Promise.resolve(new Response(found.body))
+        if (input.endsWith('/api/dv/operation') && typeof init?.body === 'string' && init.body.includes('FAIL')) {
+          const failed = record({ id: 'f1', operation: 'textnode.write', status: 'failed', error: { code: 'operation_failed', message: 'The disk is full.' } })
+          return Promise.resolve(new Response(JSON.stringify(failed), { headers: { 'content-type': 'application/json' } }))
+        }
+        return served(input, init)
       })
       // The `@` source and its mention kinds, which the bundle's `@dv/ui-composer` provides.
       const mentions = { kinds: createRegistry<MentionKind>(kind => [kind.id], kind => kind.id) }
@@ -103,7 +110,7 @@ async function mountTexts() {
     },
   })
   server = mounted.server
-  return { ...mounted, versions }
+  return { ...mounted, texts }
 }
 
 /** @returns the text node writes that the server received, with their params, inputs and `based_on`. */
@@ -166,6 +173,7 @@ describe('text node', () => {
   it('opens the @ menu below the editor, inside the scrolling editor body', async () => {
     const { open } = await mountTexts()
     const editor = await open('tw2')
+    await waitFor(() => { expect(within(editor).getByRole<HTMLButtonElement>('button', { name: 'Edit' }).disabled).toBe(false) })
     fireEvent.click(within(editor).getByRole('button', { name: 'Edit' }))
     await waitFor(() => { expect(box(editor).getAttribute('contenteditable')).toBe('true') })
     act(() => { box(editor).focus() })
@@ -186,35 +194,63 @@ describe('text node', () => {
     expect(within(editor).getByRole('button', { name: 'Open version 2' })).toBeTruthy()
   })
 
-  it('saves the draft as the next version with the version it started from, its sources and its lineage', async () => {
-    const { open, server } = await mountTexts()
-    const editor = await open('sc1')
+  /**
+   * Open the editor of a node, enter edit mode, and append text to the draft.
+   * @returns the editor.
+   */
+  async function draft(open: (id: string) => Promise<HTMLElement>, id: string, text: string): Promise<HTMLElement> {
+    const editor = await open(id)
+    await waitFor(() => { expect(within(editor).getByRole<HTMLButtonElement>('button', { name: 'Edit' }).disabled).toBe(false) })
     fireEvent.click(within(editor).getByRole('button', { name: 'Edit' }))
     await waitFor(() => { expect(box(editor).getAttribute('contenteditable')).toBe('true') })
     act(() => { box(editor).focus() })
-    fireEvent.paste(box(editor), { clipboardData: { items: [], getData: (type: string) => type === 'text/plain' ? ' EXT.' : '' } })
-    await waitFor(() => { expect(box(editor).textContent).toContain('EXT.') })
+    fireEvent.paste(box(editor), { clipboardData: { items: [], getData: (type: string) => type === 'text/plain' ? text : '' } })
+    await waitFor(() => { expect(box(editor).textContent).toContain(text.trim()) })
+    return editor
+  }
+
+  type Write = { params: { path: string; body: string; base_version: number }; inputs: unknown; based_on: unknown }
+
+  it('saves the draft as the next version with the version it started from, its sources at their newest versions and its lineage', async () => {
+    const { open, server, texts, node } = await mountTexts()
+    texts[PATH]?.push(version('tw', 3, '# Beats\n\nThe agent rewrote this.'))
+    server.notify()
+    await waitFor(() => node('tw3'))
+    const editor = await draft(open, 'sc1', ' EXT.')
     fireEvent.click(within(editor).getByRole('button', { name: 'Save' }))
     await waitFor(() => { expect(textWrites(server)).toHaveLength(1) })
-    type Write = { params: { path: string; body: string; base_version: number }; inputs: unknown; based_on: unknown }
     const [write] = textWrites(server) as Write[]
     expect(write?.params).toMatchObject({ path: 'script.md', base_version: 1 })
     expect(write?.params.body).toContain(' EXT.')
-    expect(write?.inputs).toEqual([{ role: 'source', ref: 'tw2#0' }])
+    expect(write?.inputs).toEqual([{ role: 'source', ref: 'tw3#0' }])
     expect(write?.based_on).toBe('sc1')
+    await waitFor(() => { expect(editor.isConnected).toBe(false) })
+    await waitFor(() => { expect(node('sc2').textContent).toContain('v2 · ') })
   })
 
-  it('names the newest version and the draft\'s version when a save is refused over a newer version, and keeps the draft', async () => {
-    const { open, server, versions } = await mountTexts()
-    const editor = await open('tw2')
-    fireEvent.click(within(editor).getByRole('button', { name: 'Edit' }))
-    await waitFor(() => { expect(box(editor).getAttribute('contenteditable')).toBe('true') })
-    versions.push(version(PATH, 'tw', 3, '# Beats\n\nThe agent rewrote this.'))
+  it('names the newest version and the draft\'s version when a newer version arrives, and saves the draft on top of it', async () => {
+    const { open, server, texts, node } = await mountTexts()
+    const editor = await draft(open, 'tw2', ' Mine.')
+    texts[PATH]?.push(version('tw', 3, '# Beats\n\nThe agent rewrote this.'))
     server.notify()
-    await waitFor(() => { expect(versions).toHaveLength(3) })
-    fireEvent.click(within(editor).getByRole('button', { name: 'Save' }))
     await waitFor(() => { expect(within(editor).getByRole('alert').textContent).toBe('Someone saved version 3 first. Your draft is based on version 2.') })
+    expect(box(editor).textContent).toContain('Mine.')
+    fireEvent.click(within(editor).getByRole('button', { name: 'Save on top of v3' }))
+    await waitFor(() => { expect(editor.isConnected).toBe(false) })
+    expect(textWrites(server).map(write => (write as Write).params.base_version)).toEqual([3])
+    await waitFor(() => { expect(node('tw4').textContent).toContain('v4 · ') })
+  })
+
+  it.each([
+    ['refused', ' REFUSE', 'Text node script.md is too long.'],
+    ['failed', ' FAIL', 'The disk is full.'],
+  ])('shows the error of a %s save and keeps the draft open', async (_case, text, message) => {
+    const { open } = await mountTexts()
+    const editor = await draft(open, 'sc1', text)
+    fireEvent.click(within(editor).getByRole('button', { name: 'Save' }))
+    await waitFor(() => { expect(within(editor).getByRole('alert').textContent).toBe(message) })
+    expect(editor.isConnected).toBe(true)
     expect(box(editor).getAttribute('contenteditable')).toBe('true')
-    expect(textWrites(server).map(write => (write as { params: { base_version: number } }).params.base_version)).toEqual([2])
+    expect(box(editor).textContent).toContain(text.trim())
   })
 })
