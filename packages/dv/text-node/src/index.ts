@@ -19,10 +19,10 @@ import { readFileSync } from 'node:fs'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-skill'
 import z from '@deepseek-ai/schemastery'
-import type { OperationResult, OperationSpec, OperationToolCall, ProjectState, RecordId, RunRequest } from '@dv/project'
+import type { OperationResult, OperationSpec, OperationToolCall, ProjectRecord, ProjectState, RecordId, RunRequest } from '@dv/project'
 import { latestVersion, nextText, textReducer } from './reducer.ts'
 import { numberedLines, parseTextPath } from './text.ts'
-import type { TextVersion } from './types.ts'
+import type { TextPath, TextVersion } from './types.ts'
 
 export type { TextEdit, TextPath, TextState, TextVersion } from './types.ts'
 export { parseTextPath } from './text.ts'
@@ -68,6 +68,12 @@ const BASE_PARAM = {
   },
 } as const
 
+/** The pending or running `textnode.write` or `textnode.edit` record of a path, when it has one. */
+function unfinishedWrite(state: ProjectState, path: TextPath): ProjectRecord | undefined {
+  return state.components.proj.records.find(record => (record.status === 'pending' || record.status === 'running')
+    && (record.operation === 'textnode.write' || record.operation === 'textnode.edit') && record.params['path'] === path)
+}
+
 /**
  * Refuse a write while another write of the same text node has not finished, or whose `base_version` is not the text
  * node's newest version (0 for a new path). The runner calls it under the project lock, so of two concurrent writes on one base only the
@@ -79,8 +85,7 @@ const BASE_PARAM = {
  */
 function checkBase(params: Record<string, unknown>, state: ProjectState): TextVersion | undefined {
   const path = parseTextPath(String(params['path']))
-  const unfinished = state.components.proj.records.find(record => (record.status === 'pending' || record.status === 'running')
-    && (record.operation === 'textnode.write' || record.operation === 'textnode.edit') && record.params['path'] === path)
+  const unfinished = unfinishedWrite(state, path)
   if (unfinished !== undefined) {
     throw new Error(`Text node ${path} has a write that has not finished (record ${unfinished.id}). Wait for it with dv_proj_wait, `
       + `then call dv_textnode_read on ${path} and make your change on the new version.`)
@@ -107,17 +112,22 @@ const SOURCE = 'source'
  * Point a writing call's `source` inputs at the current records of the text nodes it names in `from`, or, without
  * `from`, at the sources of the previous version, so an edit keeps its links and its stale mark.
  * @param call - the parsed agent call; its request's `inputs` and `based_on` are set here.
+ * @throws Error for `from` beside `inputs`, a source that is the text node itself, and a source without a version.
  */
 function linkSources({ args, request, state }: OperationToolCall): Promise<void> {
   const path = parseTextPath(String(request.params['path']))
   const latest = latestVersion(state, path)
   const from = args['from']
   if (Array.isArray(from)) {
-    request.inputs = from.map((raw) => {
-      const source = parseTextPath(String(raw))
+    if (request.inputs.length > 0) throw new Error('Name the sources in from only; pass no inputs beside from.')
+    request.inputs = [...new Set(from.map(raw => parseTextPath(String(raw))))].map((source) => {
       const found = latestVersion(state, source)
       if (source === path) throw new Error(`Text node ${path} cannot be built from itself.`)
-      if (found === undefined) throw new Error(`No text node ${source}; dv_proj_state lists the text nodes under texts.`)
+      if (found === undefined) {
+        throw new Error(unfinishedWrite(state, source) !== undefined
+          ? `Text node ${source} has no finished version yet. Wait for its write with dv_proj_wait, then call again.`
+          : `No text node ${source}; dv_proj_state lists the text nodes under texts.`)
+      }
       return { role: SOURCE, ref: { record: found.created_by, output: 0 } }
     })
   } else if (request.inputs.length === 0 && latest !== undefined) {

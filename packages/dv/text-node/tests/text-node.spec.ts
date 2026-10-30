@@ -18,7 +18,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvProject, { type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId, type SessionId } from '@dv/project'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import DvTextNode, { type TextPath } from '../src/index.ts'
 
 const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmpeg-native/bin/ffmpeg'
@@ -267,5 +267,38 @@ describe('dvTextNode', () => {
     const cleared = await fixture.call('dv_textnode_write', { path: 'script.md', base_version: 2, body: '# Script\n', from: [] })
     expect(refs(cleared.record)).toEqual([])
     await expect(fixture.call('dv_textnode_write', { path: 'x.md', base_version: 0, body: 'x', from: ['missing.md'] })).rejects.toThrow(/No text node missing.md/u)
+  })
+
+  it('links each from path once, and refuses inputs beside from and a source whose first write has not finished', async () => {
+    const fixture = await start()
+    const beats = await fixture.call('dv_textnode_write', { path: 'beats.md', base_version: 0, body: BEATS })
+    const script = await fixture.call('dv_textnode_write', { path: 'script.md', base_version: 0, body: '# Script\n', from: ['beats.md', 'beats.md'] })
+    expect(fixture.ctx.dvProject.getRecord(fixture.project, script.record as RecordId).inputs.map(input => input.ref))
+      .toEqual([{ record: beats.record, output: 0 }])
+    await expect(fixture.call('dv_textnode_write', {
+      path: 'notes.md', base_version: 0, body: 'x', from: ['beats.md'], inputs: { source: [`${beats.record}#0`] },
+    })).rejects.toThrow(/pass no inputs beside from/u)
+    // A write whose input comes from a running record waits as a pending record until that record finishes.
+    let release = (): void => {}
+    fixture.ctx.dvProject.registerComponent('probe')
+    fixture.ctx.dvProject.registerOperation({
+      name: 'probe.slow', component: 'probe', version: '1', confirm: 'never', description: 'Write a text later.', params: {},
+      inputs: {}, outputs: [{ role: 'text', type: 'text' }], deterministic: false, resource: 'none', summarize: () => 'slow',
+      execute: context => new Promise((resolve) => {
+        release = () => { resolve({ outputs: [context.importAsset(Buffer.from('later'), { mime: 'text/markdown', name: 'later.md' })] }) }
+      }),
+    })
+    const slow = fixture.call('dv_probe_slow', {})
+    const running = await vi.waitFor(() => {
+      const found = fixture.records().find(each => each.operation === 'probe.slow' && each.status === 'running')
+      if (found === undefined) throw new Error('probe.slow is not running')
+      return found
+    })
+    const ads = await fixture.call('dv_textnode_write', { path: 'ads.md', base_version: 0, body: '# Ads\n', inputs: { source: [`${running.id}#0`] } })
+    expect(ads.status).toBe('pending')
+    await expect(fixture.call('dv_textnode_write', { path: 'spec.md', base_version: 0, body: 'x', from: ['ads.md'] }))
+      .rejects.toThrow(/ads.md has no finished version yet/u)
+    release()
+    await slow
   })
 })
