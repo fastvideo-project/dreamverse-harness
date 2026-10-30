@@ -46,6 +46,9 @@ const button: CSSProperties = {
 const meta: CSSProperties = { fontFamily: 'var(--dv-font-mono)', fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }
 const box: CSSProperties = { minHeight: 320, padding: '10px 12px', borderRadius: 'var(--dv-radius-md)', boxShadow: 'inset 0 0 0 1px var(--dv-line)', background: 'var(--dv-surface-1)' }
 
+// The `@` menu of `conversation.prompt` opens above the editor, where the scrolling editor body clips it; it opens below.
+const MENU_BELOW_CSS = '[data-testid="dv-text-markdown"] [data-trigger-menu] { top: calc(100% + 4px); bottom: auto; }'
+
 /**
  * The editor content of a Markdown body: the text, and a chip of the `@` source for each citation.
  * @param body - the Markdown.
@@ -171,9 +174,14 @@ export function TextEditor({ node, state, host, renderFactorySlot, useVersionKin
       <div key={`${editor.mode}:${shown.created_by}`} data-testid="dv-text-markdown" style={box}>
         {editor.mode === 'read'
           ? <MarkdownView body={shown.body} state={state} versions={versionKinds} renderFactorySlot={renderFactorySlot} />
-          : renderFactorySlot('conversation.prompt', {
-            model: model(editor.saving, contentOf(editor.start), (text) => { setEditor(current => current.mode === 'edit' ? { ...current, body: text } : current) }),
-          })}
+          : (
+            <>
+              <style>{MENU_BELOW_CSS}</style>
+              {renderFactorySlot('conversation.prompt', {
+                model: model(editor.saving, contentOf(editor.start), (text) => { setEditor(current => current.mode === 'edit' ? { ...current, body: text } : current) }),
+              })}
+            </>
+          )}
       </div>
     </div>
   )

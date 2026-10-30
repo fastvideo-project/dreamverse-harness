@@ -8,7 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
 import type { TextPath, TextVersion } from '@dv/text-node/types'
+import { projectMentionSource } from '@dv/ui-composer/mention'
 import { assetUrl } from '@dv/ui-kit/api.ts'
+import { createRegistry, type MentionKind } from '@dv/ui-kit/registries.ts'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { asset, record } from '../../ui-kit/tests/fixture.client.tsx'
 import { forgetCanvasStorage, mountCanvas, type CanvasServer } from '../../ui-canvas/tests/canvas-runtime.client.tsx'
@@ -19,6 +21,8 @@ usePinnedBrowserLanguages('zh-CN')
 beforeEach(() => {
   // jsdom gives a Range no layout; the editor measures the caret's range to scroll it into view after a paste.
   Range.prototype.getBoundingClientRect = () => new DOMRect()
+  // jsdom has no layout; the `@` menu scrolls its highlighted row into view.
+  Element.prototype.scrollIntoView = vi.fn()
 })
 
 afterEach(() => {
@@ -89,6 +93,10 @@ async function mountTexts() {
         const found = all().find(each => input === assetUrl(each.asset))
         return found === undefined ? served(input, init) : Promise.resolve(new Response(found.body))
       })
+      // The `@` source and its mention kinds, which the bundle's `@dv/ui-composer` provides.
+      const mentions = { kinds: createRegistry<MentionKind>(kind => [kind.id], kind => kind.id) }
+      runtime.ctx.provide('dvMentions', mentions)
+      runtime.ctx.effect(() => runtime.ctx.inputTriggers.registerSource(projectMentionSource(mentions, () => [])))
       await runtime.mount({ inject: [...inject], apply })
       // A chip outside a `dv.prompt` call reads the state of the project the shell has open.
       publishCurrentProject('p1')
@@ -153,6 +161,22 @@ describe('text node', () => {
     expect([...markdown.querySelectorAll('p')].map(paragraph => paragraph.textContent)).toEqual(['Hero opens the door.', 'Rain falls on the city.'])
     expect(markdown.textContent).not.toContain('#')
     expect(markdown.textContent).not.toContain('dv:')
+  })
+
+  it('opens the @ menu below the editor, inside the scrolling editor body', async () => {
+    const { open } = await mountTexts()
+    const editor = await open('tw2')
+    fireEvent.click(within(editor).getByRole('button', { name: '编辑' }))
+    await waitFor(() => { expect(box(editor).getAttribute('contenteditable')).toBe('true') })
+    act(() => { box(editor).focus() })
+    // jsdom fires no beforeinput, so the text arrives through the editor's paste path, which `@` detection follows.
+    fireEvent.paste(box(editor), { clipboardData: { items: [], getData: (type: string) => type === 'text/plain' ? ' @' : '' } })
+    const menu = await waitFor(() => {
+      const found = editor.querySelector<HTMLElement>('[data-trigger-menu]')
+      if (found === null) throw new Error('no menu')
+      return found
+    })
+    expect([getComputedStyle(menu).top, getComputedStyle(menu).bottom]).toEqual(['calc(100% + 4px)', 'auto'])
   })
 
   it('offers no edit on an older version and opens the newest one instead', async () => {
