@@ -1,22 +1,30 @@
 /**
- * The text node editor: the `dv.canvas.editor.claimed` entry that the canvas shows for a text node version. Its
- * Markdown shows each citation as a chip through the `conversation.prompt` editor and the `@` source and chip face of
- * `@dv/ui-composer`, and a save writes the next version through its own `/api/dv` call.
+ * The text node editor: the `dv.canvas.editor.claimed` entry that the canvas shows for a text node version. Read mode
+ * renders its Markdown through DSH's Markdown renderer; edit mode opens the `conversation.prompt` editor with the `@`
+ * source of `@dv/ui-composer`. Both show each citation as the chip face of `@dv/ui-composer`, and a save writes the next
+ * version through its own `/api/dv` call.
  *
  * @module @dv/ui-text-node/TextEditor
  */
-import { useState, type CSSProperties, type ReactNode } from 'react'
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import type { PromptContent, PromptHostModel } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type { PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { formatInputRef } from '@dv/project/grammar'
+import { MarkdownDelegateProvider, MarkdownText, type MarkdownElementRenderer, type MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { HostObservable, InjectFace, PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import { formatInputRef, parsePromptCitations } from '@dv/project/grammar'
 import type {} from '@dv/ui-canvas/contract'
 import { MENTION_SOURCE } from '@dv/ui-composer/mention'
-import { editorContent } from '@dv/ui-composer/reference-model'
+import { editorContent, faceOf, resolveAtom } from '@dv/ui-composer/reference-model'
 import { DvClient, errorMessage } from '@dv/ui-kit/api.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
-import type { ProjectRecord } from '@dv/ui-kit/types.ts'
+import type { VersionKind } from '@dv/ui-kit/registries.ts'
+import type { ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
 import { footerText } from './TextCard.tsx'
-import { pathOf, textsOf } from './texts.ts'
+import { pathOf, textsOf, withLabels } from './texts.ts'
+
+/** The apply-world face of the editor entry: the version kinds of the canvas, which resolve each chip's face. */
+export interface TextEditorInjected {
+  readonly hooks: { readonly versionKinds: HostObservable<readonly VersionKind[]> }
+}
 
 /**
  * What the editor shows: the version in read mode, or a draft with the version it started from. A refused save keeps
@@ -48,6 +56,36 @@ function contentOf(body: string): PromptContent {
   return { revision: 0, history: 'reset', text, chips: chips.map(chip => ({ source: MENTION_SOURCE, ...chip, clipboardText: chip.ref })) }
 }
 
+/**
+ * The read view of a Markdown body: DSH's chat Markdown renderer, with each citation as the chip face of the `@`
+ * source, which shows the cited item's newest version.
+ * @param props - the Markdown, the project state and version kinds that resolve each chip, and the Factory renderer.
+ * @returns the element.
+ */
+function MarkdownView({ body, state, versions, renderFactorySlot }: {
+  readonly body: string
+  readonly state: WireState
+  readonly versions: readonly VersionKind[]
+} & PropsRenderFactories): ReactNode {
+  const pick = useText()
+  const labels = useMemo<MarkdownLabels>(() => ({
+    code: { copyLabel: pick('复制', 'Copy'), copiedLabel: pick('已复制', 'Copied') }, footnotes: pick('脚注', 'Footnotes'),
+  }), [pick])
+  const citations = parsePromptCitations(body)
+  // Without its `@`, a citation `@[label](dv:…)` is a Markdown link to its URI, which the renderer hands to the chip.
+  const text = withLabels(body, citations.map(citation => ({ ...citation, label: body.slice(citation.start + 1, citation.end) })))
+  const renderElement: MarkdownElementRenderer = (element, fallback) => {
+    const citation = element.kind === 'link' ? citations.find(each => each.uri === element.href) : undefined
+    if (citation === undefined) return fallback
+    const face = faceOf(resolveAtom({ label: citation.label, uri: citation.uri }, { state, versions, inputs: null, filter: null }))
+    return renderFactorySlot('dv.text.reference', {
+      source: MENTION_SOURCE, reference: body.slice(citation.start, citation.end), label: citation.label, invalid: false,
+      context: { faces: { [citation.uri]: face } },
+    })
+  }
+  return <MarkdownDelegateProvider renderElement={renderElement}><MarkdownText text={text} labels={labels} /></MarkdownDelegateProvider>
+}
+
 /** The `source` inputs of a record, as request inputs, so the next version keeps the text nodes it was built from. */
 function sourcesOf(record: ProjectRecord | undefined): Array<{ role: string; ref: string }> {
   return (record?.inputs ?? []).filter(input => input.role === 'source')
@@ -55,7 +93,7 @@ function sourcesOf(record: ProjectRecord | undefined): Array<{ role: string; ref
 }
 
 /**
- * The editor of one text node version. Read mode draws the version's Markdown with its citations as chips; on the
+ * The editor of one text node version. Read mode renders the version's Markdown with its citations as chips; on the
  * newest version, edit mode opens the same editor with the `@` picker and keeps its draft when a newer version
  * arrives. Its save writes the next version with `textnode.write`, the draft's `base_version`, the sources of the
  * newest version, and `based_on` its record. A save
@@ -65,9 +103,10 @@ function sourcesOf(record: ProjectRecord | undefined): Array<{ role: string; ref
  * @param props - the node, the state, the canvas host, and the Factory renderer.
  * @returns the element.
  */
-export function TextEditor({ node, state, host, renderFactorySlot }: PropsRuntime<'dv.canvas.editor.claimed'> & PropsRenderFactories): ReactNode {
+export function TextEditor({ node, state, host, renderFactorySlot, useVersionKinds }: PropsRuntime<'dv.canvas.editor.claimed'> & InjectFace<TextEditorInjected> & PropsRenderFactories): ReactNode {
   const pick = useText()
   const [editor, setEditor] = useState<EditorMode>(READ)
+  const versionKinds = useVersionKinds(kinds => kinds)
   const path = pathOf(node.record)
   const versions = textsOf(state)[path] ?? []
   const shown = versions.find(version => version.created_by === node.record.id)
@@ -131,7 +170,7 @@ export function TextEditor({ node, state, host, renderFactorySlot }: PropsRuntim
       {/* A new key per mode and version gives the editor a fresh occurrence, which opens on its first revision. */}
       <div key={`${editor.mode}:${shown.created_by}`} data-testid="dv-text-markdown" style={box}>
         {editor.mode === 'read'
-          ? renderFactorySlot('conversation.prompt', { model: model(true, contentOf(shown.body), () => {}) })
+          ? <MarkdownView body={shown.body} state={state} versions={versionKinds} renderFactorySlot={renderFactorySlot} />
           : renderFactorySlot('conversation.prompt', {
             model: model(editor.saving, contentOf(editor.start), (text) => { setEditor(current => current.mode === 'edit' ? { ...current, body: text } : current) }),
           })}

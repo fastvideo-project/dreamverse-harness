@@ -5,10 +5,14 @@
  * @module @dv/ui-text-node/client
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { ReferenceFaceOwner } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { extractMarkdownPlainText } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import { citationUri, parsePromptCitations } from '@dv/project/grammar'
 import type { ClaimedEntry, NodeType } from '@dv/ui-canvas/contract'
+import type { ReferenceFaceInjected } from '@dv/ui-composer/contract'
+import { ReferenceFace } from '@dv/ui-composer/reference-face'
 import type { HistoryRow } from '@dv/ui-history/contract'
 import { pickText } from '@dv/ui-kit/locale.ts'
 import type { MentionKind } from '@dv/ui-kit/registries.ts'
@@ -19,6 +23,16 @@ import { newestTexts, pathOf, reportedVersion, TEXT_KIND, TEXT_OPERATIONS, withL
 export { textsOf } from './texts.ts'
 
 const ID = '@dv/ui-text-node'
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface SlotFactoryMap {
+    /** The chip face of the `@` source of `@dv/ui-composer` for one citation of the editor's read view. */
+    'dv.text.reference': { scope: 'session-maybe'; props: ReferenceFaceOwner; inject: ReferenceFaceInjected }
+  }
+}
+
+// A read view chip carries its face in its context, so the face reads no open project and no project state.
+const NONE: HostObservable<null> = { getSnapshot: () => null, subscribe: () => () => {} }
 
 /**
  * The canvas node type of text nodes: one claimed node per `textnode.write` or `textnode.edit` record, so each version
@@ -83,8 +97,13 @@ export function apply(ctx: ClientContext): void {
   })
   ctx.inject(['slots'], (scope) => {
     scope.effect(() => scope.slots.inject('dv.canvas.card', () => scope.slots.register({ name: 'dv.canvas.card', key: TEXT_KIND }, TextCard)), 'ui-text-node: card')
+  })
+  ctx.inject(['slots', 'dvCanvas'], (scope) => {
+    const versionKinds = scope.dvCanvas.versionKinds
+    const face: ReferenceFaceInjected = { hooks: { currentProject: NONE, versionKinds }, keyedHooks: { projectState: () => NONE } }
+    scope.effect(() => scope.slots.registerFactory({ name: 'dv.text.reference', scope: 'session-maybe', inject: () => face }, ReferenceFace), 'ui-text-node: chip face')
     scope.effect(() => scope.slots.inject('dv.canvas.editor.claimed', () => scope.slots.register(
-      { name: 'dv.canvas.editor.claimed', key: TEXT_KIND }, TextEditor,
+      { name: 'dv.canvas.editor.claimed', key: TEXT_KIND, inject: () => ({ hooks: { versionKinds } }) }, TextEditor,
     )), 'ui-text-node: editor')
   })
   ctx.inject(['dvMentions'], (scope) => {

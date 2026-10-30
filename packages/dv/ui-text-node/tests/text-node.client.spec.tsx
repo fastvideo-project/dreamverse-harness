@@ -144,6 +144,17 @@ describe('text node', () => {
     expect(markdown.textContent).toContain('Rain falls on the city.')
   })
 
+  it('renders the Markdown in read mode, with a heading as a heading and no citation source', async () => {
+    const { open } = await mountTexts()
+    const editor = await open('tw2')
+    const markdown = within(editor).getByTestId('dv-text-markdown')
+    await waitFor(() => { expect(markdown.querySelector('[data-dv-chip="dv:test_ref/hero"]')).not.toBeNull() })
+    expect(markdown.querySelector('h1')?.textContent).toBe('Beats')
+    expect([...markdown.querySelectorAll('p')].map(paragraph => paragraph.textContent)).toEqual(['Hero opens the door.', 'Rain falls on the city.'])
+    expect(markdown.textContent).not.toContain('#')
+    expect(markdown.textContent).not.toContain('dv:')
+  })
+
   it('offers no edit on an older version and opens the newest one instead', async () => {
     const { open } = await mountTexts()
     const editor = await open('tw1')
