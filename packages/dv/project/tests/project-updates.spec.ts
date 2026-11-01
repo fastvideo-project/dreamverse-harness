@@ -14,7 +14,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvProject, { type OperationSpec, type ProjectId, type ProjectRecord, type RecordId, type RecordOrigin, type SessionId } from '../src/index.ts'
-import { STATE_HEAD, UPDATE_HEAD, foldSeen, projectMessage, seenProjection, type SessionSeen } from '../src/project-updates.ts'
+import { STATE_HEAD, UPDATE_HEAD, foldSeen, projectMessage, recordNotice, seenProjection, withClaimed, type SessionSeen } from '../src/project-updates.ts'
 import type { ProjToolDeps } from '../src/proj-tools.ts'
 import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot } from './support.ts'
 import { chatProject, provideChatServices, type TestChatServices } from './workspaces.ts'
@@ -248,7 +248,7 @@ describe('project update message', () => {
     expect(fixture.log.step()).toBeNull()
   })
 
-  it('repeats nothing that the agent\'s own tool results showed: an operation call, dv_proj_undo, and a finish dv_proj_wait returned', async () => {
+  it('repeats nothing that the agent\'s own tool results showed: an operation call, dv_proj_undo, and a finish a record notice showed', async () => {
     const fixture = await start()
     fixture.log.step()
     fixture.log.toolResult(await fixture.call('dv_asset_import', { reason: 'product', name: 'product.png' }))
@@ -259,7 +259,13 @@ describe('project update message', () => {
     fixture.log.toolResult({ isError: false, value: {}, content: [], meta: { dv_seen: { project: fixture.projectId, at: render.id, records: { [render.id]: 'pending' } } } })
     await until(fixture.project, fixture.projectId, render.id, 'running')
     fixture.release('one')
-    fixture.log.toolResult(await fixture.call('dv_proj_wait', { records: [render.id] }))
+    await fixture.project.wait(fixture.projectId, [render.id])
+    const finished = fixture.project.getRecord(fixture.projectId, render.id)
+    const notice = recordNotice(fixture.project, fixture.deps, SESSION, fixture.projectId, finished, [])
+    // Claimed at this step, the notice already shows the finish.
+    expect(projectMessage(fixture.project, fixture.deps, SESSION, withClaimed(fixture.log.seen, [notice]))).toBeNull()
+    expect(projectMessage(fixture.project, fixture.deps, SESSION, fixture.log.seen)).not.toBeNull()
+    fixture.log.logMessage(notice)
     expect(fixture.log.step()).toBeNull()
   })
 

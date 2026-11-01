@@ -66,7 +66,7 @@ Load the prompt skill of the video model and task, and follow it.
 
 ## 6. Render and lay out each cut
 
-When the user agrees, read `ad/spec.md` with `dv_textnode_read` and render from it. Per aspect ratio, `dv_shot_render` with `modality`, `task`, `provider`, `model`, `duration_sec`, `aspect_ratio`, `prompt` and `inputs.reference` (the photo's asset ID, and any voice clip's). Fix any value a refusal names and call again. Then call `dv_proj_wait`. Per aspect ratio, `dv_timeline_create` with a new `timeline` ID, `name` (such as "Mug ad 9:16") and `inputs.clip` = output #0 of that ratio's render.
+When the user agrees, read `ad/spec.md` with `dv_textnode_read` and render from it. Per aspect ratio, `dv_shot_render` with `modality`, `task`, `provider`, `model`, `duration_sec`, `aspect_ratio`, `prompt` and `inputs.reference` (the photo's asset ID, and any voice clip's). Fix any value a refusal names and call again. Then, per aspect ratio, `dv_timeline_create` with a new `timeline` ID, `name` (such as "Mug ad 9:16") and `inputs.clip` = output #0 of that ratio's render (a placeholder until done), then end your turn.
 
 ## 7. Ranked review
 
@@ -74,7 +74,7 @@ If `dv_asset_grab_still` is in your tool list, call it once per still with `inpu
 
 Write the notes to `ad/review.md` with `dv_textnode_write` and `from: [ad/spec.md]`, one line per problem as `t=4.2s · where · problem → exact change · what stays`, ranked. P0 breaks the ad: misspelled or doubled copy, a wrong color, a banned item, a wrong ratio. P1 weakens it: over 3 s with nothing new, a soft ending. P2 is polish. Never score the cut.
 
-To fix a cut, change its prompt in `ad/spec.md` with `dv_textnode_edit`, wait for the user to agree, then call `dv_shot_render` with `based_on` = the cut's render, wait with `dv_proj_wait`, and call `dv_timeline_update` with `timeline` = that ratio's timeline and `inputs.clip` = output #0 of the new render.
+To fix a cut, change its prompt in `ad/spec.md` with `dv_textnode_edit`, wait for the user to agree, then call `dv_shot_render` with `based_on` = the cut's render and `dv_timeline_update` with `timeline` = that ratio's timeline and `inputs.clip` = output #0 of the new render.
 
 ## 8. Deliver
 

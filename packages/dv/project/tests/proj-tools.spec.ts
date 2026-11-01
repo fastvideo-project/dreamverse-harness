@@ -4,7 +4,6 @@
  * renaming the session's project, the project summary with the reducers' `agentSummary` fields, the history list, undo
  * and redo, moves to a step, stale acceptance, and waiting for named records.
  */
-import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -28,7 +27,7 @@ declare module '@dv/project' {
 
 /** Every `dv_proj_*` tool. */
 const PROJ_TOOLS = [
-  'dv_proj_create', 'dv_proj_rename', 'dv_proj_state', 'dv_proj_history_list', 'dv_proj_undo', 'dv_proj_redo', 'dv_proj_stale_accept', 'dv_proj_wait',
+  'dv_proj_create', 'dv_proj_rename', 'dv_proj_state', 'dv_proj_history_list', 'dv_proj_undo', 'dv_proj_redo', 'dv_proj_stale_accept',
 ]
 
 interface Fixture {
@@ -120,6 +119,7 @@ describe('dv_proj_* tools', () => {
   it('registers every dv_proj_* tool while the registry is mounted and removes them with the service', async () => {
     const fixture = await start()
     for (const name of PROJ_TOOLS) expect(fixture.context.tools.get(name), name).toBeDefined()
+    expect(fixture.context.tools.get('dv_proj_wait')).toBeUndefined()
     const state = await fixture.context.tools.get('dv_proj_state')?.output?.render?.({}, { project_id: 'p' })
     expect(state).toEqual([{ type: 'text', text: '{\n "project_id": "p"\n}' }])
     await fixture.fiber.dispose()
@@ -140,7 +140,7 @@ describe('dv_proj_* tools', () => {
   it('creates this conversation\'s project, and keeps a bound conversation in its project', async () => {
     const fixture = await start()
     const calls: Array<[string, Record<string, unknown>]> = [
-      ['dv_proj_state', {}], ['dv_proj_history_list', {}], ['dv_proj_undo', {}], ['dv_proj_redo', {}], ['dv_proj_wait', { records: ['r'] }],
+      ['dv_proj_state', {}], ['dv_proj_history_list', {}], ['dv_proj_undo', {}], ['dv_proj_redo', {}],
       ['dv_proj_stale_accept', { record: 'r' }],
     ]
     for (const [name, args] of calls) {
@@ -319,45 +319,6 @@ describe('dv_proj_* tools', () => {
     expect(['pending', 'running']).toContain(pending.at(-1)?.summary)
     release()
     await fixture.project.wait(projectId)
-  })
-
-  it('dv_proj_wait reads the named records after they finish', async () => {
-    const fixture = await start()
-    let release = (): void => {}
-    const held = new Promise<void>((resolve) => { release = resolve })
-    fixture.project.registerOperation(still({ resource: 'gpu', execute: async (context) => {
-      if (context.params['prompt'] === 'broken') throw new Error('The ink ran out.')
-      if (context.params['prompt'] === 'slow') await held
-      return { outputs: [context.importAsset(Buffer.from(`still ${String(context.params['prompt'])}`), { mime: 'image/png', name: 'still.png' })] }
-    } }))
-    const projectId = brandString<ProjectId>(String(json(await fixture.call('dv_proj_create', { title: 'wait' }))['project_id']))
-    const early = value(await fixture.call('dv_asset_grab_still', { reason: 'an early still', prompt: 'kite' }))
-    const origin = { actor: 'system' as const, surface: 'api' as const, session: null, turn: null, tool_call: null }
-    const scheduled = async (prompt: string, intent: string): Promise<string> => {
-      const result = await fixture.project.run({ ...origin, intent, project: projectId, operation: 'asset.grab_still', params: { prompt }, inputs: [], after: [] })
-      return String(result.record?.id)
-    }
-    const slow = await scheduled('slow', 'a slow still')
-    const broken = await scheduled('broken', 'a broken still')
-    expect(errorOf(await fixture.call('dv_proj_wait', { records: [] }))).toBe('Name at least one record ID to wait for.')
-    expect(errorOf(await fixture.call('dv_proj_wait', { records: [slow, 'missing'] }))).toContain(`Project ${projectId} has no record missing.`)
-    const waiting = fixture.call('dv_proj_wait', { records: [slow, early.record, broken] })
-    release()
-    const result = await waiting
-    const asset = (prompt: string): string => createHash('sha256').update(`still ${prompt}`).digest('hex')
-    expect(result.content).toEqual([{ type: 'text', text: [
-      `done ${slow} (a slow still): made from slow`,
-      `- still: ${asset('slow')} (image/png) https://assets.example/${asset('slow')}`,
-      `done ${early.record} (an early still): made from kite`,
-      `- still: ${asset('kite')} (image/png) https://assets.example/${asset('kite')}`,
-      `failed ${broken} (a broken still): The ink ran out.`,
-    ].join('\n') }])
-    expect(json(result)).toEqual({ project: projectId, records: [
-      expect.objectContaining({ record: slow, status: 'done' }), expect.objectContaining({ record: early.record, status: 'done' }),
-      { record: broken, status: 'failed', intent: 'a broken still', summary: 'The ink ran out.', outputs: [] },
-    ] })
-    // The metadata names each record the result showed, in the status it showed.
-    expect(result.meta).toEqual({ dv_seen: { project: projectId, records: { [slow]: 'done', [early.record]: 'done', [broken]: 'failed' } } })
   })
 })
 

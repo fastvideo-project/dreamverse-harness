@@ -17,7 +17,6 @@ export const DV_TOOL_LABELS: Readonly<Record<string, readonly [string, string]>>
   dv_proj_redo: ['重做', 'Redo'],
   dv_proj_stale_accept: ['仍然保留', 'Keep anyway'],
   dv_proj_history_list: ['查看历史', 'List history'],
-  dv_proj_wait: ['等待记录完成', 'Wait for records'],
   dv_asset_import: ['导入素材', 'Import asset'],
   dv_asset_place: ['放到画布', 'Put on canvas'],
   dv_asset_unplace: ['从画布移除', 'Remove from canvas'],

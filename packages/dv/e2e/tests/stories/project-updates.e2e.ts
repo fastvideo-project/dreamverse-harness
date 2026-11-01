@@ -1,7 +1,8 @@
 // Project updates: the shipped video-harness profile (`dsh web`, the llm-pi-ai openai-completions route, the fake video
-// backend) drives a scripted model through steps that change the project, including a canvas import and a render that
-// finishes between two steps of one turn and an undo between turns. Every agent request of the chat session extends the
-// request before it token for token: the same request fields, the same earlier messages, new messages only appended.
+// backend) drives a scripted model through steps that change the project, including a canvas import, two renders that run
+// in the background and finish between steps of one turn, and an undo between turns. Each render's result reaches the
+// agent once, as a record notice. Every agent request of the chat session extends the request before it token for token:
+// the same request fields, the same earlier messages, new messages only appended.
 import type { Browser, Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { bootHarness, playwright, waitFor, type BootedHarness } from '../harness.ts'
@@ -42,9 +43,9 @@ describe('project updates reach the agent as appended messages', () => {
   let projectId = ''
   let scheduled: string[] = []
 
-  // The scripted agent: imports a product image and renders two shots with renders held, then, between two steps, the
-  // user imports an image on the canvas and the first render finishes; the agent reads the project state and waits for
-  // the renders.
+  // The scripted agent: imports a product image and starts two renders with the backend held, then, between two steps,
+  // the user imports an image on the canvas and the first render finishes; the agent reads the project state, and reads it
+  // again after the second render finishes.
   const rules: ScriptedRule[] = [
     { match: /只回复\S+/, steps: [view => ({ text: `收到${/只回复(\S+)/.exec(view.userText)?.[1] ?? ''}` })] },
     {
@@ -74,9 +75,15 @@ describe('project updates reach the agent as appended messages', () => {
           }, 'the first render', 60_000)
           return { calls: [{ name: 'dv_proj_state', args: {} }] }
         },
-        () => {
+        async () => {
           harness.backend.releaseAll()
-          return { calls: [{ name: 'dv_proj_wait', args: { records: scheduled } }] }
+          await waitFor(async () => {
+            const history = await harness.api.post('/api/dv/history', { project: projectId, records: scheduled }) as {
+              entries: Array<{ record: { status: string } }>
+            }
+            return history.entries.every(entry => entry.record.status === 'done')
+          }, 'the second render', 60_000)
+          return { calls: [{ name: 'dv_proj_state', args: {} }] }
         },
       ],
       endText: '两个镜头已渲染。',
@@ -118,7 +125,7 @@ describe('project updates reach the agent as appended messages', () => {
     await page.locator('[data-dv-chat]:visible').first().getByText(reply, { exact: false }).first().waitFor({ timeout: 90_000 })
   }
 
-  it('keeps one prefix across tool steps, a canvas import, a background render finish, and an undo between turns', async () => {
+  it('keeps one prefix across tool steps, a canvas import, background render notices, and an undo between turns', async () => {
     const page = await openProject()
     harness.backend.hold()
     await chat(page, '做两个镜头的广告', '两个镜头已渲染')
@@ -137,16 +144,18 @@ describe('project updates reach the agent as appended messages', () => {
     const system = first.messages.filter(message => message.role === 'system').map(message => textOf(message.content)).join('\n')
     expect(system).toContain('DreamVerse project rules:')
     expect(system).not.toContain('"head"')
-    const updates = (requests.at(-1) as ChatRequest).messages.filter(message => message.role === 'user').map(message => textOf(message.content))
-      .filter(text => text.startsWith('DreamVerse project updates since your last step:'))
+    const userTexts = (requests.at(-1) as ChatRequest).messages.filter(message => message.role === 'user').map(message => textOf(message.content))
+    const updates = userTexts.filter(text => text.startsWith('DreamVerse project updates since your last step:'))
     const text = updates.join('\n')
+    // Each render's result reaches the agent once, as its record notice.
+    const notices = userTexts.filter(text => text.startsWith('DreamVerse notice: a call you started finished.')).join('\n')
+    for (const record of scheduled) expect(notices.match(new RegExp(`^- done ${record} \\(your call\\): `, 'gm'))).toHaveLength(1)
     // The agent's own import is never repeated.
     expect(text).not.toContain('imported product.png')
-    // The step after the canvas import and the first render's finish names both, once.
+    // The step after the canvas import names it once.
     expect(text.match(/^- done \S+ \(user on canvas\): imported knife\.png$/gm)).toHaveLength(1)
-    expect(text.match(new RegExp(`^- done ${scheduled[0] ?? ''} \\(your call\\): `, 'gm'))).toHaveLength(1)
-    // dv_proj_wait showed the second render finished, so no update repeats it.
-    expect(text).not.toContain(scheduled[1] ?? '')
+    // The notices showed both renders finished, so no update repeats them.
+    for (const record of scheduled) expect(text).not.toContain(record)
     // The undo between turns reaches the next turn as a move.
     expect(updates.at(-1)).toMatch(new RegExp(`^- history: the current step is ${beforeTip}; dv_proj_history_list shows which steps are undone or discarded\\.$`, 'm'))
     // No record line is sent twice.

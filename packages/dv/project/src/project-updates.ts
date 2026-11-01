@@ -8,6 +8,10 @@
  * one line when the current position moved. Records that the agent's own tool results showed are not repeated, and a
  * step with nothing new gets no message.
  *
+ * A record notice (`recordNotice`) reports one record that the agent's own call started in the background, when it
+ * finishes; the record-notices module delivers it. Its source shows the record in its final status, so the project
+ * update messages do not repeat it, including at the step that claims the notice.
+ *
  * What the agent saw is the `dvProjectSight` session projection, folded from the session's own log: the
  * {@link ProjectShown} in the source of each project message and in the `dv_seen` metadata of each DreamVerse tool
  * result. A restart, a resume and a replay recover the same state from the log. The `agent/pre-step` listener adds the
@@ -22,6 +26,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { brandString } from '@deepseek-ai/dsh-brand'
+import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { boundContextSummary, createUserMessage, type ContextFormed, type UserMessage } from '@deepseek-ai/dsh-llm'
 import { isReplacementSurfaceEvent, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
@@ -73,6 +78,9 @@ export const STATE_HEAD = 'DreamVerse project state.'
 
 /** The first line of every project update message. */
 export const UPDATE_HEAD = 'DreamVerse project updates since your last step:'
+
+/** The first line of every record notice. */
+export const NOTICE_HEAD = 'DreamVerse notice: a call you started finished.'
 
 /** The projection key. */
 const SEEN_PROJECTION = 'dvProjectSight'
@@ -136,10 +144,29 @@ function shownBy(event: SessionEvent): ProjectShown | null {
 export function foldSeen(state: SessionSeen, event: SessionEvent): SessionSeen {
   if (isReplacementSurfaceEvent(event)) return state.from !== null && event.surfaceOp.endSeq >= state.from ? UNSEEN : state
   const shown = shownBy(event)
-  if (shown === null) return state
-  if (shown.base !== undefined) return { from: event.seq, project: shown.project, base: shown.base, at: shown.at, records: shown.records }
+  return shown === null ? state : addShown(state, shown, event.seq)
+}
+
+/** The state after a project message or tool result at `seq` showed `shown`. */
+function addShown(state: SessionSeen, shown: ProjectShown, seq: number): SessionSeen {
+  if (shown.base !== undefined) return { from: seq, project: shown.project, base: shown.base, at: shown.at, records: shown.records }
   if (state.from === null || state.project !== shown.project) return state
   return { ...state, at: shown.at ?? state.at, records: { ...state.records, ...shown.records } }
+}
+
+/**
+ * The state as it will be once the messages a step claimed are logged: a project update message or a record notice
+ * among them adds what it shows. A claimed project state message counts as logged at the state's own `from`.
+ * @param state - the session's state before the step.
+ * @param messages - the step's claimed messages.
+ * @returns the state.
+ */
+export function withClaimed(state: SessionSeen, messages: readonly UserMessage[]): SessionSeen {
+  let next = state
+  for (const message of messages) {
+    if (message.source.kind === PROJECT_MESSAGE_KIND) next = addShown(next, message.source.shown, next.from ?? 0)
+  }
+  return next
 }
 
 /**
@@ -264,6 +291,37 @@ export function projectMessage(project: DvProject, deps: ProjToolDeps, session: 
 }
 
 /**
+ * The record notice of one finished record of the agent's own call, a `notice` project message:
+ * ```
+ * DreamVerse notice: a call you started finished.
+ * - done r_5b20 (your call): rendered shot 3
+ *   - video: 9c1e… (video/mp4) https://…/dv/assets/9c1e…
+ * ```
+ * The record line is the project update message's line of the record. The image outputs of a done record follow as
+ * image blocks. The source shows the record in its status.
+ * @param project - the service.
+ * @param deps - the asset store and the reducers' summaries.
+ * @param session - the agent's session ID.
+ * @param id - the record's project.
+ * @param record - the finished record.
+ * @param images - attachment references of the record's image outputs.
+ * @returns the message.
+ */
+export function recordNotice(
+  project: DvProject, deps: ProjToolDeps, session: SessionId, id: ProjectId, record: ProjectRecord,
+  images: readonly ImageAttachmentRef[],
+): UserMessage {
+  const text = [NOTICE_HEAD, ...recordLines(project, deps, record, session)].join('\n')
+  return createUserMessage({
+    content: [{ type: 'text', text }, ...images.map(attachment => ({ type: 'image' as const, attachment }))],
+    source: {
+      kind: PROJECT_MESSAGE_KIND, form: 'notice', summary: boundContextSummary(`${record.status} ${record.id}`),
+      shown: { project: id, records: { [record.id]: record.status } },
+    },
+  })
+}
+
+/**
  * Register the `dvProjectSight` projection and the `agent/pre-step` listener under `ctx`. The listener awaits `next()`
  * and returns a reject decision, an aborted step, and an empty decision of a step that will not run (the first step of
  * a turn, or a step whose claimed messages a later listener removed) unchanged; otherwise it inserts
@@ -280,7 +338,7 @@ export function registerProjectUpdates(ctx: Context, project: DvProject, deps: P
     if (decision.messages.length === 0 && (step === 1 || messages.length > 0)) return decision
     const seen = ctx.sessionProjections.stateOf(agent.session, SEEN_PROJECTION)
     if (seen === undefined) return decision
-    const message = projectMessage(project, deps, brandString<SessionId>(agent.id), seen)
+    const message = projectMessage(project, deps, brandString<SessionId>(agent.id), withClaimed(seen, decision.messages))
     if (message === null) return decision
     const last = decision.messages.findLastIndex(entry => messages.includes(entry))
     return { ...decision, messages: decision.messages.toSpliced(last + 1, 0, message) }

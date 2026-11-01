@@ -356,6 +356,9 @@ describe('defineGeneration', () => {
     const first = await ctx.dvProbeGenerate.render(fixture.call({ prompt: 'dawn' }))
     const result = await fixture.tool('dv_probe_generate', { ...TXT, reason: 'next', prompt: 'noon', continue_from: first })
     expect(result.isError).toBe(false)
+    // An agent call of a GPU operation runs in the background.
+    expect(result.isError ? '' : result.value).toMatchObject({ status: 'pending' })
+    await ctx.dvProject.wait(fixture.project)
     const next = ctx.dvProject.getState(fixture.project).components.proj.records.at(-1)
     expect(next?.inputs).toEqual([{ role: 'first_frame', ref: { record: first, output: 0 }, resolved_asset: fixture.record(first).outputs[0] }])
     expect(fixture.model.requests.at(-1)?.firstFrame).toBe(fixture.record(first).outputs[0])
@@ -383,6 +386,7 @@ describe('defineGeneration', () => {
     expect(await ctx.dvPlainGenerate.check(fixture.call({ prompt: 'boom' }), ctx.dvProject.getState(project))).toEqual(['The prompt is a bomb.'])
     const result = await fixture.tool('dv_plain_generate', { ...TXT, reason: 'plain', prompt: 'rain' })
     expect(result.isError).toBe(false)
+    await ctx.dvProject.wait(project)
     const record = ctx.dvProject.getState(project).components.proj.records.at(-1)
     expect(record).toMatchObject({ operation: 'plain.generate', status: 'done' })
     expect(record?.report ?? {}).not.toHaveProperty('seed')
