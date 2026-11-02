@@ -91,11 +91,13 @@ describe('DreamVerse bundle composition', () => {
       modality: 'video', task: 'ref2v', provider: 'uniserve', model: 'fasth3', reason: 'the opening shot', prompt: 'Picture 1 looks up', duration_sec: 1, inputs: { reference: 'c1@1' },
     })
     const shotValue = shot.value as OperationToolValue
-    expect(shotValue.status).toBe('done')
-    // Model-visible: the rendered text names the record and the asset URLs.
+    // A GPU render runs in the background: the call returns the pending record at once.
+    expect(shotValue.status).toBe('pending')
+    // Model-visible: the rendered text names the record and says it runs in the background.
     const text = shot.content.find(block => block.type === 'text')
-    expect(text?.type === 'text' ? text.text : '').toContain(`done ${shotValue.record}`)
-    expect(text?.type === 'text' ? text.text : '').toContain('/dv/assets/')
+    expect(text?.type === 'text' ? text.text : '').toContain(`pending ${shotValue.record}`)
+    expect(text?.type === 'text' ? text.text : '').toContain('This call runs in the background.')
+    await ctx.dvProject.wait(projectId, [shotValue.record as RecordId])
     // Durable: the project's history holds the record with its outputs, and the asset pool holds the bytes.
     const record = ctx.dvProject.getRecord(projectId, shotValue.record as RecordId)
     expect(record).toMatchObject({ status: 'done', intent: 'the opening shot', operation: 'shot.render', actor: 'agent' })

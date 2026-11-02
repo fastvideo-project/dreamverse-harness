@@ -274,6 +274,13 @@ function sharedParams(spec: OperationSpec, kinds: readonly string[]): ParameterS
   const versionText = kinds.length === 0 ? '' : `, or <id>@<version> (a ${kindListText(kinds)} version; dv_proj_state lists IDs)`
   const roles = Object.entries(spec.inputs).map(([role, input]) => `${role}${input.required === true ? '' : '?'}: ${input.type}`
     + `${input.many === true ? '[]' : ''}${input.versioned === true ? ' (<asset> or <id>@<version>)' : ''}`)
+  // A call runs after the unfinished records its inputs name, except for inputs of `pendingInputRoles` (a timeline clip
+  // becomes a placeholder instead), so the text promises the wait only when some role waits.
+  const waits = Object.keys(spec.inputs).some(role => spec.pendingInputRoles?.includes(role) !== true)
+  const recordText = waits
+    ? 'an output of an earlier record, which may still be running: the call then runs after it, and a DreamVerse notice reports '
+      + 'the call\'s result'
+    : 'an output of an earlier record'
   return {
     reason: {
       type: 'string', required: true,
@@ -282,7 +289,7 @@ function sharedParams(spec: OperationSpec, kinds: readonly string[]): ParameterS
     ...Object.keys(spec.inputs).length === 0 ? {} : {
       inputs: {
         type: 'object', additionalProperties: true,
-        description: 'Input references by role: <asset> (an asset ID), <record>#<output> (an output of an earlier record)'
+        description: `Input references by role: <asset> (an asset ID), <record>#<output> (${recordText})`
           + `${versionText}; a list for roles marked []. Roles: ${roles.join('; ')}.`,
       },
     },
