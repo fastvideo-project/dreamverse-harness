@@ -53,7 +53,7 @@ export const textNodeType = (t: TranslateNS<typeof NS>): NodeType => ({
       const title = record.report?.['title']
       const version = reportedVersion(record)
       return {
-        title: typeof title === 'string' ? title : pathOf(record), bodyHeight: TEXT_CARD_HEIGHT,
+        title: typeof title === 'string' ? title : pathOf(record), sizing: { heightAt: () => TEXT_CARD_HEIGHT },
         ...version === null ? {} : { meta: `v${String(version)}` },
       }
     },

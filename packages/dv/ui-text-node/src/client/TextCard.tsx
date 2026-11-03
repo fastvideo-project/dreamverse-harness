@@ -17,7 +17,7 @@ import { reportedVersion, withLabels } from './texts.ts'
 const EXCERPT_LINES = 4
 const LINE_HEIGHT = 16
 const FOOTER_HEIGHT = 28
-/** The body height of a text card: the opening lines with their padding, and the footer. */
+/** The frame height of a text card at any frame width: the opening lines with their padding, and the footer. */
 export const TEXT_CARD_HEIGHT = 10 + EXCERPT_LINES * LINE_HEIGHT + 4 + FOOTER_HEIGHT
 
 // An asset ID names fixed bytes, so one read of a version's Markdown serves every card that shows it.
@@ -65,8 +65,9 @@ export function footerText(version: number, chars: number, t: TranslateNS<typeof
 }
 
 /**
- * The card body of a text node version on the card surface: the opening lines of its Markdown as plain text with each
- * citation as its label, and a footer with its version and size. The canvas caption above it shows the title.
+ * The card body of a text node version on the card surface, filling the frame the canvas sizes: the opening lines of
+ * its Markdown as plain text with each citation as its label, taking the height above the footer, and a footer with
+ * its version and size. The canvas caption above it shows the title.
  * @param props - the node, the text scale, and the translate function.
  * @returns the element.
  */
