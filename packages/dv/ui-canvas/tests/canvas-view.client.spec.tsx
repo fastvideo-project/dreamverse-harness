@@ -163,6 +163,35 @@ describe('the canvas over the real kinds', () => {
     await runtime.dispose()
   })
 
+  it('a click selects a node without opening its editor; a second click on it soon after opens it; two presses on a handle do not', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const { runtime, view, node, canvasOf } = await mountCanvas()
+    await waitFor(() => { node('g1') })
+    const press = (target: Element, pointerId: number): void => {
+      fireEvent.pointerDown(target, { button: 0, clientX: 5, clientY: 5, pointerId })
+      fireEvent.pointerUp(canvasOf(), { pointerId })
+    }
+    press(node('g1'), 1)
+    expect([node('g1').getAttribute('data-node-selected'), view.queryByTestId('dv-canvas-node-editor')]).toEqual(['true', null])
+    expect(node('g1').querySelectorAll('[data-node-handle]')).toHaveLength(4)
+    // A second click after the double-click pause is another single click.
+    vi.setSystemTime(Date.now() + 401)
+    press(node('g1'), 2)
+    expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
+    vi.setSystemTime(Date.now() + 200)
+    press(node('g1'), 3)
+    expect(view.getByTestId('dv-canvas-node-editor').getAttribute('aria-label')).toBe(node('g1').getAttribute('aria-label'))
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => { expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull() })
+    const handle = node('g1').querySelector('[data-node-handle="se"]')
+    if (handle === null) throw new Error('no south-east handle')
+    press(handle, 4)
+    press(handle, 5)
+    expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
+    vi.useRealTimers()
+    await runtime.dispose()
+  })
+
   it('keeps the node selected after its editor closes; a click on empty canvas then clears the selection', async () => {
     const { runtime, view, node, open, canvasOf } = await mountCanvas()
     await open('g1')

@@ -1,11 +1,11 @@
 /**
  * The project canvas: a pan-and-zoom surface that draws the nodes of the registered node types in the canvas chrome
- * (a caption above a frame) around each type's `dv.canvas.card` body, and opens a clicked node's editor panel, which
- * grows out of the node and shrinks back into it (`@dv/ui-kit/zoom.ts`). Node positions, frame sizes, and the viewport
- * are stored per project through `/api/dv/canvas/layout`; a node without a stored position gets its type's default size
- * at the first free spot at or below its automatic position, and that box is stored once the node's record stops
- * rendering, so a node that appears later never moves or covers another. The corner handles of the selected node
- * resize it within its type's sizing. The opened nodes are kept per
+ * (a caption above a frame) around each type's `dv.canvas.card` body; a click selects a node, and a double click opens
+ * its editor panel, which grows out of the node and shrinks back into it (`@dv/ui-kit/zoom.ts`). Node positions, frame
+ * sizes, and the viewport are stored per project through `/api/dv/canvas/layout`; a node without a stored position
+ * gets its type's default size at the first free spot at or below its automatic position, and that box is stored once
+ * the node's record stops rendering, so a node that appears later never moves or covers another. The corner handles of
+ * the selected node resize it within its type's sizing. The opened nodes are kept per
  * project in `localStorage` for the unseen dot. Colors come from the `--dv-*` theme variables that `@dv/ui-shell`
  * defines and from each type's `color`. The canvas names no node type.
  */
@@ -71,6 +71,8 @@ const DROP_OFFSET_Y = 40
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 2
 const DRAG_THRESHOLD = 4
+/** The longest pause between two clicks on one node that opens its editor, in ms. */
+const DOUBLE_CLICK_MS = 400
 const SAVE_DELAY_MS = 500
 /** The zoom ref of a stacked editor, which opens and closes without the zoom transition. */
 const noZoom = (element: HTMLElement | null): void => { void element }
@@ -275,6 +277,10 @@ export function CanvasView(
   const [notice, setNotice] = useState<string | null>(null)
   const container = useRef<HTMLDivElement | null>(null)
   const gesture = useRef<Gesture | null>(null)
+  // The last click on a node, so a second click on it within DOUBLE_CLICK_MS opens the editor. The canvas captures the
+  // pointer on each press, which makes the browser fire `dblclick` on the canvas instead of the card, so the card's own
+  // double-click event cannot serve.
+  const lastClick = useRef<{ id: string; at: number } | null>(null)
   const viewportRef = useRef(viewport)
   viewportRef.current = viewport
   const positionsRef = useRef(positions)
@@ -605,9 +611,16 @@ export function CanvasView(
     const current = gesture.current
     gesture.current = null
     if (current === null) return
+    // A click on a node selects it; a second click on the same node soon after opens its editor.
     if (current.kind === 'node' && !current.moved) {
       setSelected(current.id)
-      setEditing(current.id)
+      const previous = lastClick.current
+      const at = Date.now()
+      lastClick.current = { id: current.id, at }
+      if (previous !== null && previous.id === current.id && at - previous.at <= DOUBLE_CLICK_MS) {
+        lastClick.current = null
+        setEditing(current.id)
+      }
       return
     }
     // A click on empty canvas closes the floating editor, or clears the selection when no editor is open.
