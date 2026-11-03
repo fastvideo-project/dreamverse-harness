@@ -14,9 +14,15 @@ describe('frameHeight', () => {
     expect(frameHeight({ width: 720, height: 1920 }, 50)).toBe(277)
   })
 
-  it('returns the fallback for a picture of unknown size', () => {
+  it('sizes a frame of another width at the same clamped aspect ratio', () => {
+    expect(frameHeight({ width: 1920, height: 1080 }, 50, 416)).toBe(234)
+    expect(frameHeight({ width: 720, height: 1920 }, 50, 104)).toBe(139)
+  })
+
+  it('returns the fallback for a picture of unknown size, at any width', () => {
     expect(frameHeight({ width: null, height: 1080 }, 50)).toBe(50)
     expect(frameHeight({ width: 1920, height: null }, 50)).toBe(50)
     expect(frameHeight(undefined, 50)).toBe(50)
+    expect(frameHeight(undefined, 50, 416)).toBe(50)
   })
 })

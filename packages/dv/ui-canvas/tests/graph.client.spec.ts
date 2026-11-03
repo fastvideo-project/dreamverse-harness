@@ -64,7 +64,7 @@ function graphOf(state: WireState, registrations: CanvasRegistrations, placed: r
   return buildCanvasGraph(state, new Set(placed), OPERATIONS, language, registrations)
 }
 
-function sliceType(entries: ReadonlyArray<Omit<NodeEntry, 'bodyHeight'>>, column = 0): NodeType {
+function sliceType(entries: ReadonlyArray<Omit<NodeEntry, 'bodyHeight' | 'sizing'>>, column = 0): NodeType {
   return {
     id: '@dv/ui-test-slice', type: 'slice', label: () => 'slice', color: '', column,
     entries: () => entries.map(entry => ({ ...entry, bodyHeight: 30 })),

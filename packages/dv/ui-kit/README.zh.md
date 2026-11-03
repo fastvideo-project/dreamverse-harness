@@ -54,7 +54,7 @@ import { DV_HISTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 | `tool-rows.tsx` | 工具调用在对话里的行的共用部分：`argsOf(raw)`（解析后的调用参数，流式到达时为 `{}`）、`wroteRecord(block)`（结果元数据是否写明了写出的记录）、`outputsOf(block)`（每个产出素材的角色、素材 ID、URL 和 MIME 类型），以及 `HistoryLink`（在历史中查看 / Show in history，测试 ID `dv-composer-open-history`，派发 `dv:history-focus`；每个调用方传入自己 CSS 模块里的按钮类名） |
 | `current-project.ts` | 打开的项目，存在 `window.__dvCurrentProject` 上，用 `dv:current-project` 通知 |
 | `zoom.ts` | `useZoomPresence(value, openerOf, onOpened?)`：弹窗（画布节点编辑器和 `@dv/ui-media` 的素材预览）的缩放过渡。弹窗用 300 ms 从打开它的元素放大出来，关闭时用 250 ms 缩回该元素，背景同时淡入淡出；无论用哪种方式关闭，弹窗都等缩回结束才移除。打开它的元素已不存在或在屏幕外时，弹窗改为轻微缩放加淡出；开启 `prefers-reduced-motion` 时只淡入淡出。弹窗还在放大时被关闭，会从屏幕上的当前状态开始缩回。`mediaBox(width, height, maxWidth, maxHeight)` 在已知尺寸的图片或视频加载前就定好它的大小，这样由媒体决定大小的弹窗在过渡测量时已是最终尺寸 |
-| `frame.ts` | 画布节点的画框，即标题行下方的圆角轮廓，节点的 `dv.canvas.card` 主体画在其中：`NODE_FRAME_HEIGHT`，节点 208 单位宽度下 16:9 画框的高度，117 单位；`frameHeight(size, fallback)`，图片的画框高度，即 208 单位宽度按图片宽高比换算、宽高比限制在 3:4 到 16:9 之间，宽或高未知时取 `fallback`；`CARD_SURFACE`，卡片式主体自己画的底色（卡片表面色和文字色，占满画框高度），显示已知尺寸图片的主体不画其他内容 |
+| `frame.ts` | 画布节点的画框，即标题行下方的圆角轮廓，节点的 `dv.canvas.card` 主体画在其中：`NODE_FRAME_HEIGHT`，节点 208 单位宽度下 16:9 画框的高度，117 单位；`frameHeight(size, fallback, width?)`，图片的画框高度，即画框宽度（省略时为 208 单位）按图片宽高比换算、宽高比限制在 3:4 到 16:9 之间，宽或高未知时取 `fallback`；`CARD_SURFACE`，卡片式主体自己画的底色（卡片表面色和文字色，占满画框高度），显示已知尺寸图片的主体不画其他内容 |
 | `locale.ts` | `useText`、`pickText`：按 `<html lang>` 取一对中英文字符串中的一个 |
 
 `subscribe` 在浏览器有 `EventSource` 时用它，否则每三秒轮询一次。跟随项目的每个 bundle 通过 `window.__dvEventSources` 为每个项目共享一条流；`window.__dvStreams` 记录打开的流数。

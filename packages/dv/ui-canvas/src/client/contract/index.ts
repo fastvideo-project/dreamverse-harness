@@ -47,7 +47,7 @@ export interface ClaimedNodes {
 }
 
 /** What a type supplies for one claimed node. */
-export type ClaimedEntry = Pick<NodeEntry, 'title' | 'bodyHeight'> & Partial<Pick<NodeEntry, 'meta' | 'preview'>>
+export type ClaimedEntry = Pick<NodeEntryFields, 'title'> & NodeSize & Partial<Pick<NodeEntryFields, 'meta' | 'preview'>>
 
 /** The nodes that a type reads from its own slice, such as nouns and plans. Pure. */
 export type SliceEntries = (input: Omit<NodeInput, 'records'>) => NodeEntry[]
@@ -92,8 +92,38 @@ export interface ClaimedRecord {
   version: number | null
 }
 
+/**
+ * How a node's frame height follows its frame width, declared by the type from the node's own data, so the canvas
+ * computes the node height without measuring the node.
+ */
+export interface NodeSizing {
+  /**
+   * The frame height in canvas units at a frame width: a body that shows a picture of known size returns the picture
+   * height at that width (`frameHeight` of `@dv/ui-kit/frame.ts`). The canvas draws every frame 208 units wide, so
+   * it calls this with 208; a failed claimed node keeps the height.
+   * @param width - the frame width in canvas units.
+   * @returns the frame height in canvas units.
+   */
+  heightAt(width: number): number
+}
+
+/** The frame height of a node: its `sizing` rule, else `bodyHeight`, the height at the 208-unit frame width alone. */
+export type NodeSize =
+  | { sizing: NodeSizing; bodyHeight?: never }
+  | {
+    sizing?: never
+    /**
+     * The frame height in canvas units at the 208-unit frame width, which the body fills. The canvas computes the
+     * node height as caption + `bodyHeight` without measuring the node; a failed claimed node keeps this height.
+     */
+    bodyHeight: number
+  }
+
 /** One node as a type supplies it. */
-export interface NodeEntry {
+export type NodeEntry = NodeEntryFields & NodeSize
+
+/** The fields of a node entry other than its frame height. */
+export interface NodeEntryFields {
   /** Stable: other plugins name it; positions and the unseen set store it. */
   id: string
   /** The accessible name, the caption title and the text of the canvas's write intents. */
@@ -110,13 +140,6 @@ export interface NodeEntry {
   standIn?: true
   /** One of `assets` that stands for the node in small views; default `assets[0]`. */
   preview?: string
-  /**
-   * The frame height in canvas units, which the body fills: a body that shows a picture of known size declares the
-   * height of the picture at the 208-unit frame width (`frameHeight` of `@dv/ui-kit/frame.ts`). The canvas computes
-   * the node height as caption + `bodyHeight` without measuring the node; a
-   * failed claimed node keeps this height.
-   */
-  bodyHeight: number
   /** The kernel reference that this node stands for in a prompt, when it is not its record. */
   ref?: { kind: string; id: string }
 }
