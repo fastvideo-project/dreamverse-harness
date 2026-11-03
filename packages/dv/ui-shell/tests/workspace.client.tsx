@@ -77,6 +77,8 @@ export async function mountWorkspace(hash: string): Promise<Workspace> {
     }
     return fetch(input, init)
   }) satisfies typeof globalThis.fetch)
+  // The canvas holds its agent stream open; jsdom has no EventSource, and no test here sends on that stream.
+  vi.stubGlobal('EventSource', class extends EventTarget { close(): void {} })
   const shell = await import('../src/client/index.ts')
   const timeline = await import('../../ui-timeline/src/client/index.ts')
   const canvas = await import('../../ui-canvas/src/client/index.ts')

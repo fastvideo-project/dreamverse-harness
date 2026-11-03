@@ -1,0 +1,39 @@
+# Agent Note: The DreamVerse agent reads canvas nodes from the open canvas and moves them from the host
+
+Status: implemented
+
+English | [中文](2026-10-26-dv-agent-canvas-tools.zh.md)
+
+## Problem
+
+A user who asks the DreamVerse agent to arrange the canvas, such as "images on the left, characters in the middle, the plan on the right", gets a refusal: `dv_asset_place` and `dv_asset_unplace` put an asset on the canvas or take it off, and no tool sets where a node sits (issue #87). Three facts of the code shape a tool that moves nodes. Node positions live in `CanvasLayoutStore` (`packages/dv/ui-canvas/src/layout.ts`), one JSON file per project at `<project folder>/.dreamverse/canvas-layout.json`, which the route `POST /api/dv/canvas/layout` of the host half of `@dv/ui-canvas` writes. The node list, the default positions, and the card heights come from `buildCanvasGraph` in `packages/dv/ui-canvas/src/client/graph.ts`, which runs only in the browser, so the host does not know them. `CanvasView` reads the layout once when a project opens, so an open canvas draws a later write only when something tells it to. The issue also requires a choice between an undoable project operation and view state for a move.
+
+## Decision
+
+The host half of `@dv/ui-canvas` (`src/index.ts`, built by `tsconfig.host.json`) registers the agent tools `dv_canvas_read` and `dv_canvas_move`, and it keeps no copy of the canvas. A call from an agent that another agent started fails at once and tells that agent to put the canvas change in its final result. Otherwise the host half finds the project of the agent's chat session, the Workspace whose folder is the session's working directory (`workspaceOfSession` of `@dv/project/folder`), and both tools read the canvas through `CanvasChannel` (`src/agent-channel.ts`). In the browser half, `CanvasViews` (`src/client/agent-canvas.ts`) keeps the mounted canvases by project and chat session, and for each pair it holds the streaming Fetch route `GET /api/dv/canvas/agent?project=<id>&session=<id>` open through `EventSource`. The host half writes a `read` frame `{ id, stream }` on every open stream of the project beside the agent's session (`agent.session.id`), and the first mounted canvas of a stream answers `POST /api/dv/canvas/agent/answer` with `{ id, stream, project, cards }` from what it draws. The read id and the stream id are random UUIDs, and an answer settles the read only when it names a stream that the read was written to; any other answer gets 404. Answering draws and stores nothing. When no such stream is open, the call fails at once with "No open canvas shows project <id>" and moves nothing; Config `answerTimeoutMs` (10000 by default) limits only this read.
+
+The host half lays the positions that `CanvasLayoutStore.read` returns over the answered cards, because a canvas may not yet draw a drag from another tab. `planMove` (`src/canvas.ts`) refuses a node listed twice, an unknown node, and a moved card that would come closer than 24 units to another card. A call that is cancelled before the write moves nothing. The host half then writes the moved positions once, with `CanvasLayoutStore.write`, and writes a `moved` frame `{ project, positions }` on every open stream of the project, beside any session. Every mounted canvas of the project, in every tab, draws the move with `place`. `place` also removes the moved nodes from the unsaved automatic spots and from the pending drag save, so neither overwrites the agent's positions.
+
+Both routes are exact Fetch routes of `@dv/ui-canvas` on the Connection's `/api` channel, so they admit only the authenticated browser, and no package outside `packages/dv/` changes. The Connection's HTTP bridge writes each chunk of a route's response body as it comes and aborts the request's signal on a disconnect; the stream ends its body on that abort, and the host half ends every stream when it unloads.
+
+A move is view state, the same as a drag. It writes no record, and `dv_proj_undo` does not revert it; the tool description tells the agent to move the nodes back instead. `CORE_TOOL` in `scripts/dv-architecture.ts` admits `dv_canvas_*`, because the tool names are literals in UI-core source, which R5 (f) of the [fitness test](../process/2026-10-17-dv-architecture-fitness-test.md) checks.
+
+## Alternatives considered
+
+**An undoable project operation that writes a record.** `dv_proj_undo` would revert a move. It lost because the layout is view state that `CanvasLayoutStore` never writes as records, and a drag by the user writes no record either; an agent move and a drag write the same layout.
+
+**An open canvas that plans, draws, and stores the move, then answers.** It lost because the host half writes the `read` frame on every open stream of the project beside the session, so each tab and each canvas of the session acted on one call. Two canvases could write, the first answer settled the call and could disagree with what another canvas did, and a cancel or timeout could report "Nothing was moved" after a canvas had stored the move.
+
+**A host half that builds the canvas graph itself.** It lost because the node list, the default positions, and the card heights exist only in the browser, so the host would need a second copy of `buildCanvasGraph` to plan a move.
+
+**Two forwarded harness events, `client-tool/call` and `client-tool/applied`, in `@deepseek-ai/dsh-api-remotes`.** They reach the calling agent's Clients through `scopeTarget(agent, agent)`. It lost because it changes harness packages (`packages/api/remotes`, `packages/core/scope`) for one DreamVerse feature.
+
+**The `moved` push on `/dv/events` of `@dv/api`.** It would save one HTTP connection per page and project. It lost because that stream carries only Project changes from `dvProject.subscribe`, the layout is not one, and the read still needs a stream of its own.
+
+## Consequences
+
+The agent arranges the canvas in one call, the call writes the layout once, and every open canvas of the project shows the move without a reload. A call needs an open canvas of the conversation's project beside the conversation, and a canvas of the project beside another chat never answers: with the Timeline view in the center and no canvas tab open, both tools fail at once. A subagent can neither read nor move the canvas. The chat shows the raw tool names, because `DV_TOOL_LABELS` of `@dv/ui-kit` has no `dv_canvas_*` row.
+
+`@dv/ui-canvas` is the one UI-core package with a host half that registers tools. That host half owns the layout store, so the move needs no route call, and of the `@dv/` packages it imports only `@dv/project/folder`, which the [layers](../architecture/2026-10-17-dv-architecture-layers.md) rule admits for UI-core packages. `@dv/api` does not learn the canvas node shape. Each page holds one more long-lived HTTP connection per open project and chat session beside `/dv/events`, which counts toward the browser's six HTTP/1.1 connections per host.
+
+`packages/dv/ui-canvas/tests/tools.spec.ts` covers the host tools through the two routes: one write that every open canvas of the project draws, a read that reaches only the canvas beside the calling session, a closed stream, a cancel or timeout before the answer, a write that started before a cancel, the stored positions, the refused subagent, and each failure. `tests/canvas.spec.ts` covers `planMove` and the wire parsers, `tests/agent-canvas.client.spec.ts` covers `CanvasViews`, and `tests/canvas-view.client.spec.tsx` covers two canvases of different projects and both overwrite races. The story "the agent reads the open canvas and moves two nodes" in `packages/dv/e2e/tests/stories/canvas-timeline.e2e.ts` checks that two open pages draw the move, that no page writes it, and that it survives a reload.

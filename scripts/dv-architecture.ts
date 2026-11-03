@@ -101,7 +101,7 @@ const SKILL_ORDER: Layer[] = ['kernel', 'base', 'provider', 'domain', 'workflow'
 const KERNEL_WORDS = /\b(?:character|location|style|shot|timeline|clip)s?\b/giu
 const OPERATION = /^([a-z_]+)\.([a-z_]*)$/u
 const TOOL = /(?<!\w)dv_([a-z]+)_\w+/gu
-const CORE_TOOL = /^dv_(?:proj|asset|models)_/u
+const CORE_TOOL = /^dv_(?:proj|asset|models|canvas)_/u
 const DIRECTING = /\b([a-z]+)-directing\b/gu
 /** The start of a skill line, or of its list item, that lets a workflow skill name a tool outside its dependencies (R8 g). */
 const TOOL_GUARD = /^\s*(?:(?:[-*+]|\d+\.)\s+)?If `(dv_[a-z]+_\w+)` is in your tool list/u

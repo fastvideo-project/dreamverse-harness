@@ -35,6 +35,8 @@ The canvas shows the project's current state only, with no history view, and eve
 
 The Host half injects the DSH Workspace registry and, while a Connection service is mounted, registers the authenticated Fetch route `/api/dv/canvas/layout`. The route keeps each project's node positions, keyed by canvas node ID, and its viewport in `<project folder>/.dreamverse/canvas-layout.json`, where the project folder is the path of the Workspace whose ID is the project ID. `GET ?project=<id>` returns `{positions, viewport}`, an empty layout when the file is missing or unreadable; `POST {project, positions?, viewport?}` merges the positions into the stored ones, replaces the viewport when given, writes the file atomically, and returns the stored layout. A layout keeps at most 5000 positions. Errors use the body `{error, code}` of every `/api/dv` route: 400 `invalid_params` for a malformed project or too many positions, 404 `unknown_project` for an ID that names no Workspace and for a write to a folder without `.dreamverse/`, which creates nothing. The layout is view state: it writes no record, so undo never moves a node, and removing a project leaves the file in the folder.
 
+The Host half also registers the agent's tools `dv_canvas_read` and `dv_canvas_move`, which refuse an agent that another agent started, and two more Fetch routes for them. Each mounted canvas holds `GET /api/dv/canvas/agent?project=<id>&session=<id>` open, one stream per project and chat session in a page, which sends `text/event-stream` frames: `ready`, `read` with `{id, stream}`, and `moved` with `{project, positions}`. Each call finds the project of the agent's chat session, the Workspace whose folder is the session's working directory, and writes a `read` frame on every open stream of that project beside that session; the first canvas that answers with `POST /api/dv/canvas/agent/answer` and `{id, stream, project, cards}` settles the read, and an answer that names an unknown read or a stream that the read was not written to gets 404, and answering draws and stores nothing. When no such stream is open, the call fails at once and moves nothing; Config `answerTimeoutMs` (10000 by default) limits the wait for an answer. The Host half plans a move against the stored layout, writes it once to the layout store, and then writes a `moved` frame on every open stream of the project, beside any session.
+
 The browser half provides the client service `dvCanvas` (`DvCanvas` of `@dv/ui-canvas/contract`), whose four registries stay empty until plugin UI halves register into them: `nodeTypes` (`NodeType`, keyed by `type` and by `op:<operation>` for each claimed operation, so two types never claim one operation), `recordsInUse` (`RecordsInUse`, keyed by `id`), `versionKinds` (`VersionKind` of `@dv/ui-kit/registries.ts`, keyed by `kind`), and `actions` (`NodeAction`, keyed by `id`). A plugin's UI half registers its descriptors inside `ctx.inject(['dvCanvas'], …)` and keeps the disposers; a second descriptor with a held key throws an error that names the holder. The browser half registers the `dv.canvas` Component Factory, which takes the props `projectId`, `session`, and `focus`, reads the registries through its inject `hooks`, and declares four keyed child slots that a node type fills under its `NodeType.type`: `dv.canvas.card` (the card body, with the owner props `CardOwner`: the node, the wire asset of each of its assets, the text scale, and a `CardHost`; without an entry the card shows the type label), `dv.canvas.editor` (the editor body of a slice node, with the owner props `EditorOwner`, whose `EditorHost` adds the editor's asset picker), `dv.canvas.editor.claimed` (the editor body of a claimed node, with the owner props `EditorOwner<ClaimedNodeView>`), and `dv.canvas.picker` (the asset pool inside the asset picker, at key `assets`, with the owner props `PickerOwner`). An editor without an entry shows only its header. It also registers the `dv-canvas` tab type (a page the Sidebar's guide offers as "Video canvas"), the `dvCanvas` locale namespace in Chinese and English, the tab body under its own id `@dv/ui-canvas`, and `CanvasCenter` as the `dv.center.view` entry `canvas` (order 0, labeled with the tab type's label 画布 / Canvas). The center view and the tab body each render a `dv.canvas` occurrence for their project and chat session, so both draw the same cards, editors, and picker. Card and editor bodies draw media through the `dv.media` Factory of `@dv/ui-media`. A `NodeAction` shows on each node for which its `shows` returns true, in `order`: in the editor header and inside the frame of a failed claimed node; its `run` receives the node and a `NodeHost`, which has no asset picker.
 
 The UI plugins that fill the canvas are `@dv/ui-asset-pool` (the asset node type, its card and editor bodies, the "Remove from canvas" action, and the picker's asset pool), `@dv/ui-timeline` (the records that timeline clips use and their trim badges), and `@dv/ui-composer` (the "Ask the agent" action, which prefills the chat composer through the `dv:compose` window event). Each generation UI plugin that `defineGenerationUi` of [`@dv/ui-generation`](../ui-generation/README.md) defines, such as `@dv/ui-shot-render` for the shot render takes, registers a claimed node type, its card and claimed-editor bodies, and the "Retry" action of a failed take. The reference nouns `@dv/ui-character`, `@dv/ui-location`, and `@dv/ui-style` come from `defineReferenceUi` of [`@dv/ui-reference-kit`](../ui-reference-kit/README.md): each registers a node type with slice entries, its card and editor bodies, a version kind, and the records that its references use.
@@ -48,6 +50,7 @@ The UI plugins that fill the canvas are `@dv/ui-asset-pool` (the asset node type
 | `host.setPlaced`, such as "Remove from canvas" in the editor of an asset node | `POST /api/dv/operation` with `asset.place` or `asset.unplace` and the asset as input role `asset`; the view shows the change at once and puts it back when the request is refused |
 | "Keep anyway" in the editor of a stale node | `POST /api/dv/stale/accept` for the node's record (`proj.stale_accept` as a step of the history) |
 | Drag a node, pan, or zoom | `POST /api/dv/canvas/layout` with the moved positions, keyed by node ID, and the viewport |
+| The agent's `dv_canvas_move` | no request from the page: the Host half stores the move, and every mounted canvas of the project, in every tab, draws the moved nodes at once on the `moved` frame of its stream; a drag that waits to be saved no longer carries them |
 | A node without a stored position appears, or its record stops rendering | `POST /api/dv/canvas/layout` with its spot: its default layout position, moved down one row at a time until it covers no other node. While the node's record is pending or running, the spot is drawn and kept free of other nodes but not stored; when the record stops rendering, the canvas places the node again at its final height and stores that spot. A drag stores the dragged spot at once |
 
 Every request except the layout requests carries `surface: 'canvas'` and the chat session the canvas sits beside, which the record stores as its `session`. The center view opens the node of a record when the workspace center hands it the request `{ record: <id> }`, which `dvCenter.show({ view: 'canvas', target: { record } })` of `@dv/ui-shell/contract` names, as History does for a selected record. The canvas centers, selects, and opens the record's own node, else the node whose `record` is that record, else the entry node whose `records` lists it (such as a character for the record of an earlier version), else the node that holds the record's first output. A request waits while no node matches, so a node type that registers later still opens its node; the canvas takes the request when it opens the node, so a remounted canvas does not open the node again. The tab body passes no focus.
@@ -70,11 +73,12 @@ The canvas draws every node in one chrome: a caption above a frame. The caption 
 
 | File | Content |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | The Host half: the layout store and the registration of its route |
+| [`src/index.ts`](src/index.ts) | The Host half: the layout store, the registration of its route, and the agent's tools |
 | [`src/layout.ts`](src/layout.ts) | `CanvasLayoutStore` and the layout route |
 | [`src/canvas-layout.ts`](src/canvas-layout.ts) | The layout types and the route path, shared by both halves |
 | [`src/client/layout-client.ts`](src/client/layout-client.ts) | The browser client of the layout route |
 | [`src/client/contract/index.ts`](src/client/contract/index.ts) | `@dv/ui-canvas/contract`: the node contract, `DvCanvas`, and the `dv.canvas.*` slots (types only) |
+| [`src/types.ts`](src/types.ts), [`src/canvas.ts`](src/canvas.ts), [`src/client/agent-canvas.ts`](src/client/agent-canvas.ts) | The values that the agent's tools exchange with the canvas, the rules of `dv_canvas_move`, and `CanvasViews`, which answers the reads and draws the stored moves |
 | [`src/client/index.ts`](src/client/index.ts) | The `dvCanvas` service and registrations |
 | [`src/client/dv-canvas.ts`](src/client/dv-canvas.ts) | The four `dvCanvas` registries |
 | [`src/client/definition.ts`](src/client/definition.ts) | The tab type |
@@ -105,11 +109,40 @@ The canvas draws every node in one chrome: a caption above a frame. The caption 
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through `@dv/project`; the records its gestures write reach the model only through the project state and update messages and the `dv_proj_*` and operation tools of [`@dv/project`](../project/README.md).
+### `dv_canvas_read` and `dv_canvas_move` tool definitions and results
+
+#### What the model sees
+
+While the DSH tool registry is mounted, the agent sees the tools `dv_canvas_read`, which has no arguments, and `dv_canvas_move`, with the descriptions and the argument below. A `dv_canvas_read` call returns one text block with JSON: `project` and `cards`, one per drawn node with `id`, `type`, `title`, `record`, `x`, `y`, `width`, `height` (the finished height of a rendering card), and `rendering`. With no canvas of the project open beside the conversation, either call fails with `No open canvas shows project <id>, so no node is known. Ask the user to open the canvas of this project, then call dv_canvas_read again. Nothing was moved.` A `dv_canvas_move` call returns `project`, `moved`, the number of moved nodes, and `cards` with the positions after the move. A refused move fails with one sentence that names the nodes listed twice, the unknown nodes with the known ones, or each pair of cards closer than 24 units with their boxes. Every failure that the tools state, including a call without a bound project, a call from a subagent, and a cancel before the write, ends with `Nothing was moved.` The records that canvas gestures write reach the model through the project state and update messages and the tools of [`@dv/project`](../project/README.md).
+
+##### dv_canvas_read description
+
+```markdown
+Read the canvas of this project that the user has open: every node with its id, type, title and record, its card box (x and y of the top-left corner, width, height; canvas units, y grows downward), and rendering: true while the node's record is still being generated. The height of a rendering card is the height that the finished card takes, so plan with it as given. Fails when no canvas of this project is open.
+```
+
+##### dv_canvas_move description
+
+```markdown
+Move canvas nodes in one call: list each node you place with the new x and y of the top-left corner of its card, planned from the boxes that dv_canvas_read returned. Keep at least 24 units between a moved card and every other card. Nodes you do not list stay where they are. The call moves nothing when a node is unknown or listed twice, or when a moved card would come closer than 24 units to another card. The user sees the move at once. A move is not a step of the project history: dv_proj_undo does not revert it; to restore, move the nodes back. Returns the canvas after the move.
+```
+
+##### dv_canvas_move argument descriptions
+
+```markdown
+- moves: The nodes to move, each with the new top-left corner of its card.
+  - node: The node id, as dv_canvas_read lists it.
+  - x: The new left edge of the card.
+  - y: The new top edge of the card.
+```
+
+#### Token effect
+
+About 290 tokens for the two definitions, in every request while the tool registry is mounted. A result costs about 50 tokens per card.
 
 #### KV Cache effect
 
-None; the canvas sends nothing to a model.
+The definitions are fixed text in the stable tool section; mounting or removing this package changes the tool list and invalidates the cached prefix from the tool section on. The conversation gets each result after its call.
 
 ## Known Limitations and Deferred Work
 

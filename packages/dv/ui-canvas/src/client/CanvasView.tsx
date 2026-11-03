@@ -20,6 +20,8 @@ import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { useOperations, useProjectState } from '@dv/ui-kit/useProject.ts'
 import { useZoomPresence } from '@dv/ui-kit/zoom.ts'
 import type { CanvasViewport, NodePosition } from '../canvas-layout.ts'
+import { cardsOf } from './agent-canvas.ts'
+import type { CanvasViews } from './agent-canvas.ts'
 import type { CanvasRequest, EditorHost, NodeAction, NodeHost, NodeView, RerunRequest } from './contract/index.ts'
 import { buildCanvasGraph, freePositions, isFinished, NODE_WIDTH, previewOf, ROW } from './graph.ts'
 import type { CanvasEdge, CanvasNode, CanvasRegistrations } from './graph.ts'
@@ -39,6 +41,8 @@ export interface CanvasViewProps extends PropsRenderFactories {
   /** The project to draw. */
   projectId: string
   client: DvClient
+  /** The registry in which the canvas, while loaded, answers the canvas tools' reads and draws their stored moves. */
+  views: CanvasViews
   /** The chat session the canvas sits beside, recorded as the `session` of the canvas's writes. */
   session: string | null
   t: CanvasTranslate
@@ -202,7 +206,7 @@ function viewOf(node: CanvasNode, unseen: boolean, rerunning: boolean): NodeView
  * @returns the element.
  */
 export function CanvasView(
-  { projectId, client, session, t, descriptors, renderSlot, renderFactorySlot, preview, focus }: CanvasViewProps,
+  { projectId, client, views, session, t, descriptors, renderSlot, renderFactorySlot, preview, focus }: CanvasViewProps,
 ): ReactNode {
   const language = useLanguage()
   const base = useProjectState(client, projectId)
@@ -456,6 +460,27 @@ export function CanvasView(
     const final = Object.fromEntries(Object.entries(added).filter(([id]) => !rendering.has(id)))
     if (Object.keys(final).length > 0) void writeLayout(projectId, { positions: final }).catch(() => null)
   }, [layoutReady, graph, projectId])
+
+  // Registered once per load, so that a graph refetch neither re-registers the canvas nor reorders the registry.
+  const drawnRef = useRef(graph?.nodes ?? [])
+  drawnRef.current = graph?.nodes ?? []
+  const loaded = layoutReady && graph !== null
+  useEffect(() => {
+    if (!loaded) return undefined
+    return views.mount({
+      projectId, session,
+      cards: () => cardsOf(drawnRef.current, node => ({ x: node.x, y: node.y, ...positionsRef.current[node.id] }), cardHeight),
+      // An agent's move is drawn as a drop is, and a drag that waits to be saved no longer carries its nodes.
+      place: (patch) => {
+        for (const id of Object.keys(patch)) {
+          unsavedSpots.current.delete(id)
+          moved.current.delete(id)
+        }
+        positionsRef.current = { ...positionsRef.current, ...patch }
+        setPositions(all => ({ ...all, ...patch }))
+      },
+    })
+  }, [loaded, projectId, session, views])
 
   const awaitedRender = useRef<AwaitedRender | null>(null)
   const [rerunning, setRerunning] = useState<{ record: string; action: string | null } | null>(null)

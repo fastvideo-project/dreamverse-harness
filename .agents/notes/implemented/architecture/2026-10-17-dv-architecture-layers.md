@@ -53,7 +53,7 @@ An import may point only down this table. The fitness test checks every `@dv/` i
 | `ui-core`      | `@dv/ui-kit`                                         | nothing more                                                                                                |
 | `ui`           | `@dv/ui-kit`                                         | `@dv/<x>/types` of its paired host package, and `import type {}` of a UI-core package that merges `SlotMap` |
 
-A domain plugin never imports another domain plugin, so composition across nouns happens only in a workflow, which reaches each domain plugin through its service in `static inject` (`workflow-story` injects `dvProject`, `dvShotPlan`, `dvShotRender` and `dvTimeline`). A UI package never imports another UI package or a value from a host package; it registers into the registries and slots that UI-core packages provide, and it reads its host package only through types.
+A domain plugin never imports another domain plugin, so composition across nouns happens only in a workflow, which reaches each domain plugin through its service in `static inject` (`workflow-story` injects `dvProject`, `dvShotPlan`, `dvShotRender` and `dvTimeline`). A UI package never imports another UI package or a value from a host package; it registers into the registries and slots that UI-core packages provide, and it reads its host package only through types. `@dv/ui-canvas` also has a host half, which registers the agent's canvas tools, owns the canvas layout store, and of the `@dv/` packages imports only `@dv/project/folder` ([agent canvas tools](../feature/2026-10-26-dv-agent-canvas-tools.md)).
 
 ### Host face and client face
 

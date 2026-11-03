@@ -7,6 +7,7 @@ import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import { afterEach, describe, expect, it } from 'vitest'
 import { CANVAS_LAYOUT_ROUTE } from '../src/canvas-layout.ts'
+import { CANVAS_AGENT_ROUTE, CANVAS_ANSWER_ROUTE } from '../src/canvas.ts'
 import * as canvas from '../src/index.ts'
 import { CanvasLayoutStore, layoutRoutes } from '../src/layout.ts'
 
@@ -92,7 +93,7 @@ describe('the host half', () => {
     ctx.provide('connection', connection)
     const fiber = ctx.plugin(canvas)
     await fiber.await()
-    expect([...routes.keys()]).toEqual([CANVAS_LAYOUT_ROUTE])
+    expect([...routes.keys()]).toEqual([CANVAS_LAYOUT_ROUTE, CANVAS_AGENT_ROUTE, CANVAS_ANSWER_ROUTE])
     await fiber.dispose()
     expect(routes.size).toBe(0)
   })

@@ -6,7 +6,9 @@
   },
   "include": [
     "src/client",
-    "src/canvas-layout.ts"
+    "src/canvas-layout.ts",
+    "src/canvas.ts",
+    "src/types.ts"
   ],
   "references": [
     {

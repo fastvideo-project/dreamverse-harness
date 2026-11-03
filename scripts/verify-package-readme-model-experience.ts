@@ -232,7 +232,6 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/dv/api': { kind: 'indirect', reason: 'The routes record view gestures as user records; @dv/project decides what the model learns about them.' },
   'packages/video-harness/stream': { kind: 'none', reason: 'The service relays media bytes to browsers; no model request reads them.' },
   'packages/dv/ui-kit': { kind: 'none', reason: 'Browser-side graph, form, and track helpers; they touch no prompt, schema, or tool result.' },
-  'packages/dv/ui-canvas': { kind: 'indirect', reason: 'Browser-side canvas; the records its gestures write reach the model only through the dv:project prompt section and the dv_proj_* and operation tools of @dv/project.' },
   'packages/dv/ui-timeline': { kind: 'indirect', reason: 'Browser-side timeline; the records its gestures write reach the model only through the dv:project prompt section and the dv_proj_* and operation tools of @dv/project.' },
   'packages/dv/ui-history': { kind: 'indirect', reason: 'Browser-side History panel; the records its undo, redo, and branch switches write reach the model only through the dv:project prompt section and the dv_proj_* and operation tools of @dv/project.' },
   'packages/dv/ui-asset-pool': { kind: 'indirect', reason: 'Browser-side asset pool panel; the asset.import records its imports write reach the model only through the dv:project prompt section and the dv_proj_* and operation tools of @dv/project.' },

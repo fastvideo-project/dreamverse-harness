@@ -562,6 +562,71 @@ describe('canvas stories', () => {
     expect((await stateOf(project.id)).components.proj.records.filter(record => record.operation === RENDER_OPERATION)).toHaveLength(3)
   })
 
+  it('the agent reads the open canvas and moves two nodes, which every open page of the project shows at once and keeps after a reload', async () => {
+    const project = await seedProject('canvas-agent-move', 2)
+    let results: unknown[] = []
+    const targets: Array<{ node: string; x: number; y: number }> = []
+    model.rules.push({
+      match: 'agent-move-please',
+      steps: [
+        { calls: [{ name: 'dv_canvas_read', args: {} }] },
+        (view) => {
+          const read = view.toolResults[0] as { cards?: Array<{ id: string }> }
+          for (const [index, card] of (read.cards ?? []).slice(0, 2).entries()) targets.push({ node: card.id, x: 2000 + index * 300, y: 0 })
+          return { calls: [{ name: 'dv_canvas_move', args: { moves: targets } }] }
+        },
+        (view) => {
+          results = view.toolResults
+          return { text: '挪好了' }
+        },
+      ],
+    })
+    const page = await openPage()
+    await gotoProject(page, project.id)
+    await page.locator('[data-node-id]').first().waitFor({ timeout: 30_000 })
+    const other = await openPage()
+    await gotoProject(other, project.id)
+    await other.locator('[data-node-id]').first().waitFor({ timeout: 30_000 })
+    const layoutPosts: string[] = []
+    for (const each of [page, other]) {
+      each.on('request', (request) => {
+        if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/dv/canvas/layout') layoutPosts.push(request.postData() ?? '')
+      })
+    }
+    const drawn = await page.locator('[data-testid="dv-canvas-view"]').first().locator('[data-node-id]')
+      .evaluateAll(nodes => nodes.map(node => node.getAttribute('data-node-id') ?? ''))
+    expect(drawn.length, 'the seeded canvas draws at least two nodes').toBeGreaterThanOrEqual(2)
+    const composer = page.locator('[data-dv-chat] [contenteditable="true"]').first()
+    await composer.waitFor({ timeout: 30_000 })
+    await composer.click()
+    await page.keyboard.type('agent-move-please')
+    await page.keyboard.press('Enter')
+    await expect.poll(() => results.length, { timeout: 60_000, message: 'the agent turn reaches the reply after dv_canvas_move' }).toBe(2)
+    const [read, moved] = results as [
+      { project?: string; cards?: Array<{ id: string }> } | string,
+      { project?: string; moved?: number; cards?: Array<{ id: string; x: number; y: number }> } | string,
+    ]
+    if (typeof read !== 'object' || typeof moved !== 'object') throw new Error(`a canvas tool failed: ${JSON.stringify(results)}`)
+    expect([read.project, moved.project], 'both canvas tools act on the open project').toEqual([project.id, project.id])
+    expect((read.cards ?? []).map(card => card.id).sort(), 'dv_canvas_read lists the nodes that the page draws').toEqual([...drawn].sort())
+    expect(moved.moved, 'dv_canvas_move moves both nodes').toBe(2)
+    for (const target of targets) {
+      expect(moved.cards?.find(card => card.id === target.node), `dv_canvas_move returns ${target.node} at its target`).toMatchObject({ x: target.x, y: target.y })
+    }
+    const placed = (on: Page) => async (): Promise<string[]> => await Promise.all(targets.map(async target => await on.locator('[data-testid="dv-canvas-view"]').first()
+      .locator(`[data-node-id="${target.node}"]`).evaluate(el => `${(el as HTMLElement).style.left},${(el as HTMLElement).style.top}`)))
+    const expected = targets.map(target => `${String(target.x)}px,${String(target.y)}px`)
+    await expect.poll(placed(page), { timeout: 10_000, message: 'the page that asked draws the moved nodes at their targets without a reload' }).toEqual(expected)
+    await expect.poll(placed(other), { timeout: 10_000, message: 'the other page of the project draws them too without a reload' }).toEqual(expected)
+    const stored = await harness.api.get(`/api/dv/canvas/layout?project=${project.id}`) as { positions: Record<string, { x: number; y: number }> }
+    expect(targets.map(target => stored.positions[target.node]), 'the layout store holds the move').toEqual(targets.map(({ x, y }) => ({ x, y })))
+    expect(layoutPosts.filter(body => targets.some(target => body.includes(`"${target.node}"`))), 'no page writes the move: the host stores it').toEqual([])
+    await page.reload({ waitUntil: 'load' })
+    await page.locator('[data-node-id]').first().waitFor({ timeout: 30_000 })
+    await expect.poll(placed(page), { timeout: 10_000, message: 'the moved nodes stay at their targets after a reload' }).toEqual(expected)
+    expect([page.errors, other.errors]).toEqual([[], []])
+  })
+
   it('an image imported in 素材库 joins the canvas when dragged there, stays after a reload, and 从画布移除 leaves it in 素材库; both are records', async () => {
     const project = await seedProject('canvas-drop', 2)
     const extra = await harness.api.post('/api/dv/operation', {

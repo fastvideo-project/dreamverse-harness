@@ -53,7 +53,7 @@ import 只能指向本表中更下层的包。适应度测试按下表检查 `sr
 | `ui-core`      | `@dv/ui-kit`                                   | 无其他                                                                    |
 | `ui`           | `@dv/ui-kit`                                   | 配对宿主包的 `@dv/<x>/types`，以及向 `SlotMap` 合并插槽的 UI core 包的 `import type {}` |
 
-领域插件从不 import 另一个领域插件，因此跨名词的组合只发生在工作流中；工作流通过 `static inject` 中的服务访问每个领域插件（`workflow-story` 注入 `dvProject`、`dvShotPlan`、`dvShotRender` 和 `dvTimeline`）。UI 包从不 import 另一个 UI 包，也不 import 宿主包中的值；它向 UI core 包提供的注册表和插槽注册，并且只通过类型读取自己的宿主包。
+领域插件从不 import 另一个领域插件，因此跨名词的组合只发生在工作流中；工作流通过 `static inject` 中的服务访问每个领域插件（`workflow-story` 注入 `dvProject`、`dvShotPlan`、`dvShotRender` 和 `dvTimeline`）。UI 包从不 import 另一个 UI 包，也不 import 宿主包中的值；它向 UI core 包提供的注册表和插槽注册，并且只通过类型读取自己的宿主包。`@dv/ui-canvas` 还有一个宿主一半，它注册 agent 的画布工具，拥有画布布局存储，在 `@dv/` 包中只 import `@dv/project/folder`（[agent 画布工具](../feature/2026-10-26-dv-agent-canvas-tools.zh.md)）。
 
 ### 宿主面与客户端面
 

@@ -35,6 +35,8 @@ kind: "package-reference"
 
 Host 半边注入 DSH Workspace 注册表，并在 Connection 服务挂载期间注册经认证的 Fetch 路由 `/api/dv/canvas/layout`。该路由把每个项目以画布节点 ID 为键的节点位置和视口存放在 `<项目文件夹>/.dreamverse/canvas-layout.json`，项目文件夹是 ID 等于项目 ID 的 Workspace 的路径。`GET ?project=<id>` 返回 `{positions, viewport}`，文件缺失或无法读取时返回空布局；`POST {project, positions?, viewport?}` 把位置合并进已存的位置，给出视口时替换视口，原子地写入文件，并返回存储后的布局。一个布局最多保留 5000 个位置。错误使用每个 `/api/dv` 路由的响应体 `{error, code}`：项目格式错误或位置过多时为 400 `invalid_params`；ID 不对应任何 Workspace，或写入没有 `.dreamverse/` 的文件夹时为 404 `unknown_project`，此时不创建任何东西。布局是视图状态：它不写记录，所以撤销不会移动节点，移除项目时文件留在文件夹里。
 
+Host 半边还注册 agent 的工具 `dv_canvas_read` 和 `dv_canvas_move`，它们拒绝由另一个 agent 启动的 agent，并为它们另注册两条 Fetch 路由。每个已挂载画布保持 `GET /api/dv/canvas/agent?project=<id>&session=<id>` 打开，一个页面中每个项目和对话会话一条流，流发送 `text/event-stream` 帧：`ready`、带 `{id, stream}` 的 `read` 和带 `{project, positions}` 的 `moved`。每次调用找到该 agent 对话会话的项目，即文件夹为该会话工作目录的 Workspace，并在该项目位于该会话旁的每条已打开流上写一个 `read` 帧；第一个用 `POST /api/dv/canvas/agent/answer` 和 `{id, stream, project, cards}` 作答的画布了结这次读取，指向未知读取或未收到该读取的流的回答得到 404，作答时不绘制也不保存任何东西。没有这样的流打开时，调用立即失败且不移动任何节点；Config `answerTimeoutMs`（默认 10000）限制等待回答的时间。Host 半边按保存的布局规划移动，只向布局存储写入一次，然后在该项目的每条已打开流上写一个 `moved` 帧，不论它位于哪个会话旁。
+
 浏览器半边提供客户端服务 `dvCanvas`（`@dv/ui-canvas/contract` 的 `DvCanvas`），它的四个注册表在插件的 UI 半边向其中注册之前是空的：`nodeTypes`（`NodeType`，以 `type` 以及每个认领操作的 `op:<operation>` 为键，所以两种类型不会认领同一个操作）、`recordsInUse`（`RecordsInUse`，以 `id` 为键）、`versionKinds`（`@dv/ui-kit/registries.ts` 的 `VersionKind`，以 `kind` 为键）和 `actions`（`NodeAction`，以 `id` 为键）。插件的 UI 半边在 `ctx.inject(['dvCanvas'], …)` 里注册它的描述符，并保留返回的注销函数；键已被占用的第二个描述符会抛出指名占用者的错误。浏览器半边注册 `dv.canvas` 组件工厂，它接收属性 `projectId`、`session` 和 `focus`，通过注入的 `hooks` 读取注册表，并声明四个键控子插槽，节点类型以其 `NodeType.type` 为键填充：`dv.canvas.card`（卡片主体，所有者属性为 `CardOwner`：节点、它每个素材的 wire 素材、文字缩放倍数和一个 `CardHost`；没有条目时卡片显示类型标签）、`dv.canvas.editor`（切片节点的编辑器主体，所有者属性为 `EditorOwner`，其中的 `EditorHost` 另有编辑器的素材选择窗口）、`dv.canvas.editor.claimed`（认领节点的编辑器主体，所有者属性为 `EditorOwner<ClaimedNodeView>`）和 `dv.canvas.picker`（素材选择窗口里的素材库，键为 `assets`，所有者属性为 `PickerOwner`）。没有条目的编辑器只显示标题栏。它还注册 `dv-canvas` 标签类型（侧栏指南页以"视频画布"提供的页面）、中英文的 `dvCanvas` locale 命名空间、以自身 id `@dv/ui-canvas` 为键的标签主体，并把 `CanvasCenter` 注册为 `dv.center.view` 条目 `canvas`（顺序 0，标签为标签类型的 画布 / Canvas）。中间区域视图和标签主体各自为自己的项目和对话会话渲染一个 `dv.canvas` 实例，所以两者画出相同的卡片、编辑器和选择窗口。卡片主体和编辑器主体通过 `@dv/ui-media` 的 `dv.media` 组件工厂绘制媒体。`NodeAction` 显示在其 `shows` 返回 true 的每个节点上，按 `order` 排列：显示在编辑器标题栏里，以及失败的认领节点的画框里；它的 `run` 接收节点和一个没有素材选择窗口的 `NodeHost`。
 
 填充画布的 UI 插件有：`@dv/ui-asset-pool`（素材节点类型、它的卡片和编辑器主体、"从画布移除"动作，以及选择窗口里的素材库）、`@dv/ui-timeline`（时间线片段使用的记录及其裁剪标记）和 `@dv/ui-composer`（"问 agent"动作，通过 `dv:compose` 窗口事件预填对话输入框）。由 [`@dv/ui-generation`](../ui-generation/README.zh.md) 的 `defineGenerationUi` 定义的每个生成 UI 插件（例如镜头渲染版本的 `@dv/ui-shot-render`）注册一个认领节点类型、它的卡片和认领编辑器主体，以及失败版本的"重试"动作。参考名词 `@dv/ui-character`、`@dv/ui-location` 和 `@dv/ui-style` 来自 [`@dv/ui-reference-kit`](../ui-reference-kit/README.zh.md) 的 `defineReferenceUi`：每个注册一个带切片条目的节点类型、它的卡片和编辑器主体、一个版本种类，以及它的参考使用的记录。
@@ -48,6 +50,7 @@ Host 半边注入 DSH Workspace 注册表，并在 Connection 服务挂载期间
 | `host.setPlaced`，例如素材节点编辑器里的"从画布移除" | `POST /api/dv/operation` 执行 `asset.place` 或 `asset.unplace`，该素材作为输入角色 `asset`；本视图立即显示改变，请求被拒绝时恢复原样 |
 | 在过期节点的编辑器里点"仍然保留" | 对节点的记录调用 `POST /api/dv/stale/accept`（作为历史中的一步运行 `proj.stale_accept`） |
 | 拖动节点、平移或缩放 | `POST /api/dv/canvas/layout`，带以节点 ID 为键的移动位置和视口 |
+| agent 的 `dv_canvas_move` | 页面不发请求：Host 半边保存这次移动，该项目在每个标签页中的每个已挂载画布在收到其流的 `moved` 帧时立即画出被移动的节点；等待保存的拖动不再携带这些节点 |
 | 出现一个没有存储位置的节点，或它的记录结束渲染 | `POST /api/dv/canvas/layout`，带它的位置：默认布局位置，每次下移一行，直到不压住其他节点。节点的记录在等待或运行中时，这个位置会画出来，其他节点也会避开它，但不存储；记录结束渲染时，画布按节点的最终高度重新放置它，再存储该位置。拖动会立即存储拖到的位置 |
 
 除布局请求外，每个请求都带 `surface: 'canvas'` 和画布旁边的对话，记录把该对话存为它的 `session`。工作区中间区域把请求 `{ record: <id> }` 交给中间区域视图时，视图打开该记录的节点；这个请求由 `@dv/ui-shell/contract` 的 `dvCenter.show({ view: 'canvas', target: { record } })` 给出，历史在选中记录时就这样做。画布把记录自己的节点移到中央、选中并打开；没有时是 `record` 为该记录的节点，再没有时是 `records` 列出该记录的条目节点（例如较早版本的记录对应角色），否则是包含该记录第一个产出的节点。没有节点匹配时请求会等待，所以后注册的节点类型仍能打开它的节点；画布打开节点时取走该请求，所以重新挂载的画布不会再次打开该节点。标签主体不传焦点。
@@ -70,11 +73,12 @@ Host 半边注入 DSH Workspace 注册表，并在 Connection 服务挂载期间
 
 | 文件 | 内容 |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | Host 半边：布局存储及其路由的注册 |
+| [`src/index.ts`](src/index.ts) | Host 半边：布局存储、其路由的注册，以及 agent 的工具 |
 | [`src/layout.ts`](src/layout.ts) | `CanvasLayoutStore` 和布局路由 |
 | [`src/canvas-layout.ts`](src/canvas-layout.ts) | 两个半边共用的布局类型和路由路径 |
 | [`src/client/layout-client.ts`](src/client/layout-client.ts) | 布局路由的浏览器客户端 |
 | [`src/client/contract/index.ts`](src/client/contract/index.ts) | `@dv/ui-canvas/contract`：节点契约、`DvCanvas` 和 `dv.canvas.*` 插槽（只有类型） |
+| [`src/types.ts`](src/types.ts)、[`src/canvas.ts`](src/canvas.ts)、[`src/client/agent-canvas.ts`](src/client/agent-canvas.ts) | agent 的工具与画布交换的值、`dv_canvas_move` 的规则，以及回答读取并画出已保存移动的 `CanvasViews` |
 | [`src/client/index.ts`](src/client/index.ts) | `dvCanvas` 服务和注册 |
 | [`src/client/dv-canvas.ts`](src/client/dv-canvas.ts) | 四个 `dvCanvas` 注册表 |
 | [`src/client/definition.ts`](src/client/definition.ts) | 标签类型 |
@@ -105,11 +109,40 @@ Host 半边注入 DSH Workspace 注册表，并在 Connection 服务挂载期间
 <a id="model-experience"></a>
 ## 模型体验
 
-间接地，通过 `@dv/project`；其手势写下的记录只经由 [`@dv/project`](../project/README.zh.md) 的项目状态消息、项目更新消息以及 `dv_proj_*` 和操作工具到达模型。
+### `dv_canvas_read` 和 `dv_canvas_move` 工具定义与结果
+
+#### 模型看到什么
+
+DSH 工具注册表挂载期间，agent 看到没有参数的工具 `dv_canvas_read` 和工具 `dv_canvas_move`，带下面的描述和参数。一次 `dv_canvas_read` 调用返回一个文本块，内容是 JSON：`project` 和 `cards`，每个已画节点一项，包含 `id`、`type`、`title`、`record`、`x`、`y`、`width`、`height`（渲染中卡片完成后的高度）和 `rendering`。本对话旁没有打开该项目的画布时，两个工具的调用都以 `No open canvas shows project <id>, so no node is known. Ask the user to open the canvas of this project, then call dv_canvas_read again. Nothing was moved.` 失败。一次 `dv_canvas_move` 调用返回 `project`、移动的节点数 `moved`，以及带移动后位置的 `cards`。被拒绝的移动以一句话失败：指出被列出两次的节点、未知节点及已知节点，或每对相距不足 24 单位的卡片及其方框。工具陈述的每种失败，包括没有绑定项目的调用、来自子 agent 的调用和在写入之前取消的调用，都以 `Nothing was moved.` 结尾。画布手势写下的记录经由 [`@dv/project`](../project/README.zh.md) 的项目状态消息、项目更新消息和工具到达模型。
+
+##### dv_canvas_read 描述
+
+```markdown
+Read the canvas of this project that the user has open: every node with its id, type, title and record, its card box (x and y of the top-left corner, width, height; canvas units, y grows downward), and rendering: true while the node's record is still being generated. The height of a rendering card is the height that the finished card takes, so plan with it as given. Fails when no canvas of this project is open.
+```
+
+##### dv_canvas_move 描述
+
+```markdown
+Move canvas nodes in one call: list each node you place with the new x and y of the top-left corner of its card, planned from the boxes that dv_canvas_read returned. Keep at least 24 units between a moved card and every other card. Nodes you do not list stay where they are. The call moves nothing when a node is unknown or listed twice, or when a moved card would come closer than 24 units to another card. The user sees the move at once. A move is not a step of the project history: dv_proj_undo does not revert it; to restore, move the nodes back. Returns the canvas after the move.
+```
+
+##### dv_canvas_move 参数描述
+
+```markdown
+- moves: The nodes to move, each with the new top-left corner of its card.
+  - node: The node id, as dv_canvas_read lists it.
+  - x: The new left edge of the card.
+  - y: The new top edge of the card.
+```
+
+#### Token 影响
+
+工具注册表挂载期间，每次请求中两个定义约 290 token。每张卡片的结果约 50 token。
 
 #### KV Cache 影响
 
-无；画布不向模型发送任何内容。
+两个定义是稳定工具段中的固定文本；挂载或移除本包会改变工具列表，使工具段及之后的缓存前缀失效。对话在每次调用之后收到其结果。
 
 ## 已知限制与延期工作
 

@@ -9,6 +9,7 @@ import type { FactoryComponentPropsOf, HostObservable } from '@deepseek-ai/dsh-c
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import type { Asset } from '@dv/ui-kit/types.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
+import type { CanvasViews } from './agent-canvas.ts'
 import type { NodeAction, NodeType, RecordsInUse } from './contract/index.ts'
 import { CanvasView } from './CanvasView.tsx'
 import type { CanvasFocus } from './CanvasView.tsx'
@@ -17,6 +18,8 @@ import type {} from './locales.ts'
 /** What the canvas plugin injects into the Factory definition. */
 export interface CanvasFactoryInjected {
   client: DvClient
+  /** The mounted canvases that answer the canvas tools' reads and draw their stored moves. */
+  views: CanvasViews
   /** Open the `dvMedia` preview of an asset; nothing opens while no media plugin is loaded. */
   preview(projectId: string, asset: Asset, opener: Element | null): void
   hooks: {
@@ -61,8 +64,9 @@ export function CanvasFactory(props: FactoryComponentPropsOf<'dv.canvas'>): Reac
   )
   return (
     <CanvasView
-      projectId={props.projectId} session={props.session} client={props.client} t={props.t} descriptors={descriptors}
-      renderSlot={props.renderSlot} renderFactorySlot={props.renderFactorySlot} preview={props.preview} focus={props.focus}
+      projectId={props.projectId} session={props.session} client={props.client} views={props.views} t={props.t}
+      descriptors={descriptors} renderSlot={props.renderSlot} renderFactorySlot={props.renderFactorySlot}
+      preview={props.preview} focus={props.focus}
     />
   )
 }

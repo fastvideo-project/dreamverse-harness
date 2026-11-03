@@ -8,11 +8,8 @@
 /** The Fetch route path of the canvas layout. */
 export const CANVAS_LAYOUT_ROUTE = '/api/dv/canvas/layout'
 
-/** Where a canvas node sits, in canvas units. */
-export interface NodePosition {
-  x: number
-  y: number
-}
+/** Where a canvas node sits, in canvas units. A type alias, so that a positions map is a `JsonValue` of an event. */
+export type NodePosition = { x: number; y: number }
 
 /** The canvas pan offset, in screen pixels, and zoom. */
 export interface CanvasViewport {

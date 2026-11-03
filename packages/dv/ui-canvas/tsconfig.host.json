@@ -6,13 +6,20 @@
     "tsBuildInfoFile": "lib/tsconfig.host.tsbuildinfo"
   },
   "files": [
+    "src/agent-channel.ts",
+    "src/canvas.ts",
     "src/canvas-layout.ts",
     "src/index.ts",
-    "src/layout.ts"
+    "src/layout.ts",
+    "src/types.ts"
   ],
   "references": [
     { "path": "../../../vendor/cordis" },
+    { "path": "../../../vendor/schemastery" },
     { "path": "../../client/connection/tsconfig.host.json" },
+    { "path": "../../core/agent" },
+    { "path": "../../core/tools" },
+    { "path": "../../util/values" },
     { "path": "../../workspace/workspace" },
     { "path": "../project" }
   ]

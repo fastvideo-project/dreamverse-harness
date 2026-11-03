@@ -2,7 +2,8 @@
  * Browser half: provide `dvCanvas`, the registries that plugin UI halves fill; register the `dv.canvas` Component
  * Factory and its child slots; register `dv-canvas` as a right-Sidebar tab type, its dictionaries, and its body; and
  * register the canvas as the 画布 view of the workspace center (`dv.center.view`). The tab body and the center view
- * each render a `dv.canvas` occurrence.
+ * each render a `dv.canvas` occurrence. A mounted canvas answers the canvas tools' reads of its project and draws
+ * their stored moves, through the canvas stream that `CanvasViews` holds open.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -10,6 +11,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import type {} from '@dv/ui-media/contract'
+import { CanvasViews } from './agent-canvas.ts'
 import { CanvasBody } from './CanvasBody.tsx'
 import type { CanvasInjected } from './CanvasBody.tsx'
 import { CanvasCenter } from './CanvasCenter.tsx'
@@ -36,8 +38,10 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.sidebarRightTabs.register(canvasDefinition(t)), 'ui-canvas: tab type')
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-canvas: dictionaries')
   const client = new DvClient()
+  const views = new CanvasViews()
   const factory: CanvasFactoryInjected = {
     client,
+    views,
     preview: (projectId, asset, opener) => { ctx.get('dvMedia')?.preview(projectId, asset, opener) },
     hooks: {
       nodeTypes: canvas.nodeTypes, recordsInUse: canvas.recordsInUse,

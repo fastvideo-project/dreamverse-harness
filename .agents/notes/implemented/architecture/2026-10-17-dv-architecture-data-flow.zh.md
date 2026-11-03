@@ -40,7 +40,7 @@ agent tool call   view (POST /api/dv/operation)   plugin service (ctx.dv<Name>.<
                                         canvas, timeline, history, asset pool
 ```
 
-视图和 agent 从不直接编辑切片。它们只通过运行操作来写入，并在修改之后重新读取状态。[适应度测试](../process/2026-10-17-dv-architecture-fitness-test.zh.md) 检查 `packages/dv/project/src` 不提任何插件键或名词，也从不读取 `started_by`。
+视图和 agent 从不直接编辑切片。它们只通过运行操作来写入项目数据，并在修改之后重新读取状态。画布节点位置是记录之外的视图状态，由 `@dv/ui-canvas` 的布局存储保存：拖拽经由它的路由保存位置，agent 的 `dv_canvas_move` 由它的宿主一半保存位置（[agent 画布工具](../feature/2026-10-26-dv-agent-canvas-tools.zh.md)）。[适应度测试](../process/2026-10-17-dv-architecture-fitness-test.zh.md) 检查 `packages/dv/project/src` 不提任何插件键或名词，也从不读取 `started_by`。
 
 ## 记录、组件与切片
 

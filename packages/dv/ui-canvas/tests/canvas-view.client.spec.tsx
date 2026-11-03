@@ -7,9 +7,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, createEvent, fireEvent, waitFor, within } from '@testing-library/react'
 import { usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
 import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
-import { asset, record } from '../../ui-kit/tests/fixture.client.tsx'
+import { asset, PROJECT, record } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import type { NodeAction, NodeType, NodeView } from '../src/client/contract/index.ts'
+import { CanvasViews, httpLink } from '../src/client/agent-canvas.ts'
+import type { StreamListener } from '../src/client/agent-canvas.ts'
+import type { CanvasDrawn } from '../src/types.ts'
 import { NODE_WIDTH } from '../src/client/graph.ts'
 import { EDITOR_RECT_KEY } from '../src/client/NodeEditor.tsx'
 import { zh } from '../src/client/locales.ts'
@@ -1017,6 +1020,114 @@ describe('the editor panel', () => {
     })
     const editor = await open('note:1')
     expect(editor.querySelector('header')?.textContent).toBe('Note')
+    await runtime.dispose()
+  })
+})
+
+describe('the canvas answering the canvas tools', () => {
+  /**
+   * Mount the canvas over a scripted canvas link, and return `ask`, which writes a read frame on every open stream of a
+   * project and returns the answer, `apply`, which writes a `moved` frame there, and the streams opened so far.
+   */
+  async function mountForAgent(options: Parameters<typeof mountCanvas>[0] = {}) {
+    const streams: Array<{ project: string; session: string | null; listener: StreamListener; open: boolean }> = []
+    vi.spyOn(httpLink, 'open').mockImplementation((project, session, listener) => {
+      const stream = { project, session, listener, open: true }
+      streams.push(stream)
+      return () => { stream.open = false }
+    })
+    const answers: CanvasDrawn[] = []
+    vi.spyOn(httpLink, 'answer').mockImplementation((drawn) => { answers.push(drawn) })
+    const mounted = await mountCanvas(options)
+    const live = (project: string) => streams.filter(stream => stream.open && stream.project === project)
+    let reads = 0
+    const ask = (project: string): CanvasDrawn | undefined => {
+      const id = `read-${String(reads += 1)}`
+      act(() => { for (const stream of live(project)) stream.listener.read({ id, stream: project }) })
+      return answers.find(answer => answer.id === id)
+    }
+    const apply = (project: string, positions: Record<string, { x: number; y: number }>, frameProject = project): void => {
+      act(() => { for (const stream of live(project)) stream.listener.moved({ project: frameProject, positions }) })
+    }
+    return { ...mounted, ask, apply, streams }
+  }
+
+  /** The id and the drawn corner of each card of a read answer. */
+  const cornersOf = (answer: CanvasDrawn | undefined): unknown => answer?.cards.map(({ id, x, y }) => [id, x, y])
+
+  it('opens one stream beside its chat session, reads the drawn cards, draws a stored move at once without writing it, and ignores a move of another project', async () => {
+    const { runtime, node, server, ask, apply, streams } = await mountForAgent()
+    await waitFor(() => { expect(server.layoutWrites).toHaveLength(1) })
+    expect(streams.map(({ project, session, open }) => [project, session, open])).toEqual([['p1', 's5', true]])
+    const read = ask('p1')
+    expect(read?.project).toBe('p1')
+    expect(read?.cards.find(card => card.id === 'g1')).toMatchObject({ x: 10, y: 20, width: NODE_WIDTH })
+    apply('p1', { g1: { x: 2000, y: 0 }, g2: { x: 2300, y: 0 } })
+    expect([node('g1').style.left, node('g2').style.left]).toEqual(['2000px', '2300px'])
+    expect(cornersOf(ask('p1'))).toContainEqual(['g1', 2000, 0])
+    apply('p1', { g1: { x: 9000, y: 0 } }, 'p9')
+    expect(node('g1').style.left).toBe('2000px')
+    await settle()
+    expect(server.layoutWrites).toHaveLength(1)
+    await runtime.dispose()
+    expect(streams.map(stream => stream.open)).toEqual([false])
+  })
+
+  it('keeps two canvases of different projects apart: each read and each stored move reaches only its project\'s canvas', async () => {
+    const mount = vi.spyOn(CanvasViews.prototype, 'mount')
+    const other = { id: 'p2', title: 'Other', created_at: '2026-10-06T00:00:00Z', path: '/dv/Other' }
+    const { runtime, node, server, canvasOf, ask, apply } = await mountForAgent({ surfaces: ['center', 'tab'], projects: [other, PROJECT] })
+    await waitFor(() => { expect(server.layoutWrites.map(write => write.project).sort()).toEqual(['p1', 'p2']) })
+    await waitFor(() => { expect(mount).toHaveBeenCalledTimes(2) })
+    const center = cornersOf(ask('p1'))
+    const tab = cornersOf(ask('p2'))
+    expect(center).toContainEqual(['g1', 10, 20])
+    expect(tab).not.toContainEqual(['g1', 10, 20])
+    server.notify()
+    await settle()
+    expect(cornersOf(ask('p1'))).toEqual(center)
+    expect(mount).toHaveBeenCalledTimes(2)
+    const tabLeft = node('g2', 'tab').style.left
+    fireEvent.pointerDown(node('g2', 'tab'), { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
+    fireEvent.pointerMove(canvasOf('tab'), { clientX: 50, clientY: 30, pointerId: 1 })
+    fireEvent.pointerUp(canvasOf('tab'), { pointerId: 1 })
+    const dragged = node('g2', 'tab').style.left
+    apply('p1', { g2: { x: 3000, y: 0 } })
+    expect([node('g2').style.left, node('g2', 'tab').style.left]).toEqual(['3000px', dragged])
+    expect(dragged).not.toBe(tabLeft)
+    await waitFor(() => { expect(server.layoutWrites.at(-1)).toMatchObject({ project: 'p2', positions: { g2: { x: parseFloat(dragged), y: expect.any(Number) as number } } }) }, { timeout: 2000 })
+    apply('p2', { g1: { x: 4000, y: 0 } })
+    expect([node('g1', 'tab').style.left, node('g1').style.left]).toEqual(['4000px', '10px'])
+    await runtime.dispose()
+  })
+
+  it('keeps an agent move over a drag that waits to be saved, and saves the other dragged node', async () => {
+    const { runtime, node, server, canvasOf, apply } = await mountForAgent()
+    await waitFor(() => { expect(server.layoutWrites).toHaveLength(1) })
+    for (const id of ['g1', 'g2']) {
+      fireEvent.pointerDown(node(id), { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
+      fireEvent.pointerMove(canvasOf(), { clientX: 50, clientY: 30, pointerId: 1 })
+      fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
+    }
+    apply('p1', { g2: { x: 3000, y: 0 } })
+    await waitFor(() => { expect(server.layoutWrites).toHaveLength(2) }, { timeout: 2000 })
+    expect(server.layoutWrites[1]?.positions).toEqual({ g1: { x: 60, y: 50 } })
+    expect([node('g1').style.left, node('g2').style.left]).toEqual(['60px', '3000px'])
+    await runtime.dispose()
+  })
+
+  it('keeps an agent move of a rendering node when the node finishes', async () => {
+    let finished = false
+    const { runtime, node, server, apply } = await mountForAgent({ edit: paintRecords(() => finished) })
+    await mountDescriptors(runtime, { nodeType: PAINT })
+    await waitFor(() => { node('pa') })
+    apply('p1', { pa: { x: 3000, y: 0 } })
+    finished = true
+    server.notify()
+    await waitFor(() => { expect(node('pa').textContent).not.toContain('渲染中') })
+    await settle()
+    expect(server.layoutWrites.filter(write => 'pa' in write.positions)).toEqual([])
+    expect(node('pa').style.left).toBe('3000px')
     await runtime.dispose()
   })
 })
