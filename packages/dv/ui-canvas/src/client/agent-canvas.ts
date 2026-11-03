@@ -18,25 +18,25 @@ export interface MountedCanvas {
   readonly session: string | null
   /** The cards as drawn now. */
   cards(): CanvasCard[]
-  /** Draw stored positions at once, as a drop does. */
+  /** Draw stored positions at once, as a drop does; a position without a width keeps the node's stored width. */
   place(positions: Readonly<Record<string, NodePosition>>): void
 }
 
 /**
  * The cards of the drawn graph, in graph order.
  * @param nodes - the graph's nodes.
- * @param positionOf - the drawn position of a node.
- * @param heightOf - the card height of a node.
- * @returns the cards.
+ * @param positionOf - the drawn position of a node, with its stored width when the user resized it.
+ * @param heightOf - the card height of a node at a frame width.
+ * @returns the cards, each as wide as its stored width, else the 208-unit default.
  */
 export function cardsOf(
-  nodes: readonly CanvasNode[], positionOf: (node: CanvasNode) => NodePosition, heightOf: (node: CanvasNode) => number,
+  nodes: readonly CanvasNode[], positionOf: (node: CanvasNode) => NodePosition, heightOf: (node: CanvasNode, width: number) => number,
 ): CanvasCard[] {
   return nodes.map((node) => {
-    const { x, y } = positionOf(node)
+    const { x, y, width = NODE_WIDTH } = positionOf(node)
     return {
       id: node.id, type: node.type, title: node.title, record: node.record?.id ?? null,
-      x, y, width: NODE_WIDTH, height: heightOf(node), rendering: node.flags.rendering,
+      x, y, width, height: heightOf(node, width), rendering: node.flags.rendering,
     }
   })
 }

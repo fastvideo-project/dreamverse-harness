@@ -26,14 +26,14 @@ kind: "package-reference"
 
 在叠了 `dsh-web-app`（提供右侧栏、locale 服务和客户端模块加载器）和 `@dv/api`（提供画布调用的项目路由）的 profile 里挂载插件。先构建浏览器 bundle：`pnpm run build` 会写出 `lib/client.js`。
 
-画布只显示项目的当前状态，不显示历史，每个节点都来自一个已注册的 `NodeType`。一种类型有切片条目、认领节点，或两者都有。切片条目（`entries`）是类型从状态中自己的切片读出的 `NodeEntry`，例如 `@dv/ui-character` 的角色。认领节点（`claimed`）代表该类型认领的操作的当前记录，例如 `@dv/ui-shot-render` 的版本认领 `shot.render`。画布从记录构建每个认领节点：节点 ID 是记录 ID，节点的素材是记录的产出，它的边是记录的输入和 `based_on`；类型只提供标题、`meta`、预览和尺寸。没有类型认领其操作的记录不画节点。节点 ID 唯一：两个绘出的节点 ID 相同时，构建画布图会抛错，错误信息给出两个节点类型。由 `based_on` 相连的记录组成一组；多于一个记录的组里，每个记录按记录顺序得到从 1 开始的 `version` 编号。已注册的 `RecordsInUse` 为某个素材报告的标记，例如时间线裁剪的片段的 已裁剪 / Trimmed，按原文显示在该素材的节点上。切片条目的素材归这些条目所有，然后是已注册的 `VersionKind` 画成切片条目的条目的每个更早版本的素材，再然后是认领节点的产出。带 `standIn` 的条目，例如 `@dv/ui-asset-pool` 为画布列表（`asset` 切片的 `placed`）上每个素材画的素材节点，只在没有其他节点拥有它的任何素材时才画出。用户把文件或素材库缩略图拖到画布上，或在对话消息里以附加图片或 `dv:asset/<id>` 标签发出某个素材（由 `@dv/chat-references` 放置）时，该素材放到画布上。这些都是历史中的步骤，所以历史会列出它们，撤销能退回它们。当前状态改变时画布跟着改变，画布的修改立即成为历史中的步骤。
+画布只显示项目的当前状态，不显示历史，每个节点都来自一个已注册的 `NodeType`。一种类型有切片条目、认领节点，或两者都有。切片条目（`entries`）是类型从状态中自己的切片读出的 `NodeEntry`，例如 `@dv/ui-character` 的角色。认领节点（`claimed`）代表该类型认领的操作的当前记录，例如 `@dv/ui-shot-render` 的版本认领 `shot.render`。画布从记录构建每个认领节点：节点 ID 是记录 ID，节点的素材是记录的产出，它的边是记录的输入和 `based_on`；类型只提供标题、`meta`、预览和画框高度。没有类型认领其操作的记录不画节点。节点 ID 唯一：两个绘出的节点 ID 相同时，构建画布图会抛错，错误信息给出两个节点类型。由 `based_on` 相连的记录组成一组；多于一个记录的组里，每个记录按记录顺序得到从 1 开始的 `version` 编号。已注册的 `RecordsInUse` 为某个素材报告的标记，例如时间线裁剪的片段的 已裁剪 / Trimmed，按原文显示在该素材的节点上。切片条目的素材归这些条目所有，然后是已注册的 `VersionKind` 画成切片条目的条目的每个更早版本的素材，再然后是认领节点的产出。带 `standIn` 的条目，例如 `@dv/ui-asset-pool` 为画布列表（`asset` 切片的 `placed`）上每个素材画的素材节点，只在没有其他节点拥有它的任何素材时才画出。用户把文件或素材库缩略图拖到画布上，或在对话消息里以附加图片或 `dv:asset/<id>` 标签发出某个素材（由 `@dv/chat-references` 放置）时，该素材放到画布上。这些都是历史中的步骤，所以历史会列出它们，撤销能退回它们。当前状态改变时画布跟着改变，画布的修改立即成为历史中的步骤。
 
 ```yaml
 - id: dv-ui-canvas
   name: '@dv/ui-canvas'
 ```
 
-Host 半边注入 DSH Workspace 注册表，并在 Connection 服务挂载期间注册经认证的 Fetch 路由 `/api/dv/canvas/layout`。该路由把每个项目以画布节点 ID 为键的节点位置和视口存放在 `<项目文件夹>/.dreamverse/canvas-layout.json`，项目文件夹是 ID 等于项目 ID 的 Workspace 的路径。`GET ?project=<id>` 返回 `{positions, viewport}`，文件缺失或无法读取时返回空布局；`POST {project, positions?, viewport?}` 把位置合并进已存的位置，给出视口时替换视口，原子地写入文件，并返回存储后的布局。一个布局最多保留 5000 个位置。错误使用每个 `/api/dv` 路由的响应体 `{error, code}`：项目格式错误或位置过多时为 400 `invalid_params`；ID 不对应任何 Workspace，或写入没有 `.dreamverse/` 的文件夹时为 404 `unknown_project`，此时不创建任何东西。布局是视图状态：它不写记录，所以撤销不会移动节点，移除项目时文件留在文件夹里。
+Host 半边注入 DSH Workspace 注册表，并在 Connection 服务挂载期间注册经认证的 Fetch 路由 `/api/dv/canvas/layout`。该路由把每个项目以画布节点 ID 为键的节点位置（含用户调整过大小的节点的画框宽度 `width`）和视口存放在 `<项目文件夹>/.dreamverse/canvas-layout.json`，项目文件夹是 ID 等于项目 ID 的 Workspace 的路径。`GET ?project=<id>` 返回 `{positions, viewport}`，文件缺失或无法读取时返回空布局；`POST {project, positions?, viewport?}` 把位置逐字段合并进已存的位置，所以不带 `width` 的位置保留已存的宽度，给出视口时替换视口，原子地写入文件，并返回存储后的布局。不是有限正数的 `width` 会被丢弃。一个布局最多保留 5000 个位置。错误使用每个 `/api/dv` 路由的响应体 `{error, code}`：项目格式错误或位置过多时为 400 `invalid_params`；ID 不对应任何 Workspace，或写入没有 `.dreamverse/` 的文件夹时为 404 `unknown_project`，此时不创建任何东西。布局是视图状态：它不写记录，所以撤销不会移动节点，移除项目时文件留在文件夹里。
 
 Host 半边还注册 agent 的工具 `dv_canvas_read` 和 `dv_canvas_move`，它们拒绝由另一个 agent 启动的 agent，并为它们另注册两条 Fetch 路由。每个已挂载画布保持 `GET /api/dv/canvas/agent?project=<id>&session=<id>` 打开，一个页面中每个项目和对话会话一条流，流发送 `text/event-stream` 帧：`ready`、带 `{id, stream}` 的 `read` 和带 `{project, positions}` 的 `moved`。每次调用找到该 agent 对话会话的项目，即文件夹为该会话工作目录的 Workspace，并在该项目位于该会话旁的每条已打开流上写一个 `read` 帧；第一个用 `POST /api/dv/canvas/agent/answer` 和 `{id, stream, project, cards}` 作答的画布了结这次读取，指向未知读取或未收到该读取的流的回答得到 404，作答时不绘制也不保存任何东西。没有这样的流打开时，调用立即失败且不移动任何节点；Config `answerTimeoutMs`（默认 10000）限制等待回答的时间。Host 半边按保存的布局规划移动，只向布局存储写入一次，然后在该项目的每条已打开流上写一个 `moved` 帧，不论它位于哪个会话旁。
 
@@ -50,7 +50,8 @@ Host 半边还注册 agent 的工具 `dv_canvas_read` 和 `dv_canvas_move`，它
 | `host.setPlaced`，例如素材节点编辑器里的"从画布移除" | `POST /api/dv/operation` 执行 `asset.place` 或 `asset.unplace`，该素材作为输入角色 `asset`；本视图立即显示改变，请求被拒绝时恢复原样 |
 | 在过期节点的编辑器里点"仍然保留" | 对节点的记录调用 `POST /api/dv/stale/accept`（作为历史中的一步运行 `proj.stale_accept`） |
 | 拖动节点、平移或缩放 | `POST /api/dv/canvas/layout`，带以节点 ID 为键的移动位置和视口 |
-| agent 的 `dv_canvas_move` | 页面不发请求：Host 半边保存这次移动，该项目在每个标签页中的每个已挂载画布在收到其流的 `moved` 帧时立即画出被移动的节点；等待保存的拖动不再携带这些节点 |
+| agent 的 `dv_canvas_move` | 页面不发请求：Host 半边保存这次移动，该项目在每个标签页中的每个已挂载画布在收到其流的 `moved` 帧时立即画出被移动的节点，每个节点保持用户调整后的宽度；等待保存的拖动不再携带这些节点 |
+| 拖动选中节点的一个角把手 | `POST /api/dv/canvas/layout`，带该节点的位置和新的 `width`。宽度跟随指针，范围是 208 单位默认宽度的一半到五倍；画框高度按节点的 `sizing.heightAt` 规则在该宽度下计算，所以图片保持宽高比；拖西边或北边的角时节点同时移动，使对角保持原位。按住把手不动则什么都不改，也不打开编辑器 |
 | 出现一个没有存储位置的节点，或它的记录结束渲染 | `POST /api/dv/canvas/layout`，带它的位置：默认布局位置，每次下移一行，直到不压住其他节点。节点的记录在等待或运行中时，这个位置会画出来，其他节点也会避开它，但不存储；记录结束渲染时，画布按节点的最终高度重新放置它，再存储该位置。拖动会立即存储拖到的位置 |
 
 除布局请求外，每个请求都带 `surface: 'canvas'` 和画布旁边的对话，记录把该对话存为它的 `session`。工作区中间区域把请求 `{ record: <id> }` 交给中间区域视图时，视图打开该记录的节点；这个请求由 `@dv/ui-shell/contract` 的 `dvCenter.show({ view: 'canvas', target: { record } })` 给出，历史在选中记录时就这样做。画布把记录自己的节点移到中央、选中并打开；没有时是 `record` 为该记录的节点，再没有时是 `records` 列出该记录的条目节点（例如较早版本的记录对应角色），否则是包含该记录第一个产出的节点。没有节点匹配时请求会等待，所以后注册的节点类型仍能打开它的节点；画布打开节点时取走该请求，所以重新挂载的画布不会再次打开该节点。标签主体不传焦点。
@@ -69,7 +70,7 @@ Host 半边还注册 agent 的工具 `dv_canvas_read` 和 `dv_canvas_move`，它
 <details>
 <summary>实现内部——点击展开</summary>
 
-`CanvasView` 用 `@dv/ui-kit/useProject.ts` 的 `useProjectState` 和 `useOperations` 读取项目的当前状态和操作；`graph.ts` 的 `buildCanvasGraph` 把它们和已注册的描述符变成节点、边和默认布局：每个节点位于其类型的 `column` 列；从某个节点读取 `deepenOn` 输入角色（例如接续上一个镜头的视频版本的 `first_frame`）的节点位于该节点右边一列；重跑紧跟在源节点之后，位于源节点的列。同一列中，认领节点按记录顺序排列；节点数超过共用行数的列会分成几个子列。切片节点的 ID 是其条目自己的 ID，例如 `character:<id>`；认领节点的 ID 是它的记录 ID。认领节点为每个输入画一条边：输入为 `<id>@<version>` 且版本种类画出了所指条目的节点时，从该节点连过来，否则从输入素材的节点连过来（拥有该素材的节点，没有时是沿产出链向上最近的已画出认领记录）；另有一条从 `based_on` 记录来的谱系边；切片节点不画边。条目的画框尺寸在挂载前给出节点的范围（标题行和画框）：边的端点用它的宽和高，空闲位置和焦点用它的高。尺寸是以画布单位计的画框范围，画框上方的标题行不在其中。条目的 `sizing` 声明节点的 `defaultSize`、`minSize` 和种类：`window` 节点的画框变化时显示更多或更少的主体，`media` 节点的图片随画框缩放，它还声明 `aspectRatio`：`ratio` 是图片的宽 ÷ 高，`fixedHeight` 是图片之外固定栏的高度，所以它的画框高度为 宽度 / `ratio` + `fixedHeight`。画布按条目的 `defaultSize` 画出每个画框；没有 `sizing` 的条目给出 `bodyHeight`，即 208 单位宽的画框。`/api/dv/canvas/layout` 中存下的位置覆盖默认布局；布局读写失败时忽略。每收到一帧 `/dv/events`，状态就重新拉取，所以对话消息放上的素材不用刷新就会出现；本视图发出的摆放立即显示，直到状态显示它为止，被拒绝的摆放会恢复原样。
+`CanvasView` 用 `@dv/ui-kit/useProject.ts` 的 `useProjectState` 和 `useOperations` 读取项目的当前状态和操作；`graph.ts` 的 `buildCanvasGraph` 把它们和已注册的描述符变成节点、边和默认布局：每个节点位于其类型的 `column` 列；从某个节点读取 `deepenOn` 输入角色（例如接续上一个镜头的视频版本的 `first_frame`）的节点位于该节点右边一列；重跑紧跟在源节点之后，位于源节点的列。同一列中，认领节点按记录顺序排列；节点数超过共用行数的列会分成几个子列。切片节点的 ID 是其条目自己的 ID，例如 `character:<id>`；认领节点的 ID 是它的记录 ID。认领节点为每个输入画一条边：输入为 `<id>@<version>` 且版本种类画出了所指条目的节点时，从该节点连过来，否则从输入素材的节点连过来（拥有该素材的节点，没有时是沿产出链向上最近的已画出认领记录）；另有一条从 `based_on` 记录来的谱系边；切片节点不画边。条目的画框高度在挂载前给出节点高度（标题行和画框），空闲位置、边的端点、适应视图和焦点都用它：有 `sizing.heightAt` 规则时取它在节点宽度（已存的宽度，否则 208）下的值，否则取 `bodyHeight`，即只在 208 宽度下的高度。`/api/dv/canvas/layout` 中存下的位置覆盖默认布局；布局读写失败时忽略。每收到一帧 `/dv/events`，状态就重新拉取，所以对话消息放上的素材不用刷新就会出现；本视图发出的摆放立即显示，直到状态显示它为止，被拒绝的摆放会恢复原样。
 
 | 文件 | 内容 |
 | --- | --- |
@@ -113,7 +114,7 @@ Host 半边还注册 agent 的工具 `dv_canvas_read` 和 `dv_canvas_move`，它
 
 #### 模型看到什么
 
-DSH 工具注册表挂载期间，agent 看到没有参数的工具 `dv_canvas_read` 和工具 `dv_canvas_move`，带下面的描述和参数。一次 `dv_canvas_read` 调用返回一个文本块，内容是 JSON：`project` 和 `cards`，每个已画节点一项，包含 `id`、`type`、`title`、`record`、`x`、`y`、`width`、`height`（渲染中卡片完成后的高度）和 `rendering`。本对话旁没有打开该项目的画布时，两个工具的调用都以 `No open canvas shows project <id>, so no node is known. Ask the user to open the canvas of this project, then call dv_canvas_read again. Nothing was moved.` 失败。一次 `dv_canvas_move` 调用返回 `project`、移动的节点数 `moved`，以及带移动后位置的 `cards`。被拒绝的移动以一句话失败：指出被列出两次的节点、未知节点及已知节点，或每对相距不足 24 单位的卡片及其方框。工具陈述的每种失败，包括没有绑定项目的调用、来自子 agent 的调用和在写入之前取消的调用，都以 `Nothing was moved.` 结尾。画布手势写下的记录经由 [`@dv/project`](../project/README.zh.md) 的项目状态消息、项目更新消息和工具到达模型。
+DSH 工具注册表挂载期间，agent 看到没有参数的工具 `dv_canvas_read` 和工具 `dv_canvas_move`，带下面的描述和参数。一次 `dv_canvas_read` 调用返回一个文本块，内容是 JSON：`project` 和 `cards`，每个已画节点一项，包含 `id`、`type`、`title`、`record`、`x`、`y`、`width`（用户调整后的卡片宽度，否则为 208）、`height`（渲染中卡片完成后的高度）和 `rendering`。本对话旁没有打开该项目的画布时，两个工具的调用都以 `No open canvas shows project <id>, so no node is known. Ask the user to open the canvas of this project, then call dv_canvas_read again. Nothing was moved.` 失败。一次 `dv_canvas_move` 调用返回 `project`、移动的节点数 `moved`，以及带移动后位置的 `cards`。被拒绝的移动以一句话失败：指出被列出两次的节点、未知节点及已知节点，或每对相距不足 24 单位的卡片及其方框。工具陈述的每种失败，包括没有绑定项目的调用、来自子 agent 的调用和在写入之前取消的调用，都以 `Nothing was moved.` 结尾。画布手势写下的记录经由 [`@dv/project`](../project/README.zh.md) 的项目状态消息、项目更新消息和工具到达模型。
 
 ##### dv_canvas_read 描述
 
@@ -149,5 +150,6 @@ Move canvas nodes in one call: list each node you place with the new x and y of 
 <a id="known-limitations-and-deferred-work"></a>
 
 - **画布上不能新建节点** — 已注册的主体和动作只重跑已有记录、修改角色、场景、风格的参考，以及放置或移除素材；新建角色留给对话。
+- **调整大小只改宽度** — 画框高度始终按节点类型的规则在新宽度下计算，所以规则不看宽度的卡片（例如文本或音频卡）不能拉高；不存储高度，也没有按类型的最小尺寸。
 - **整图重建** — 每个项目事件都重新拉取状态并重建图；长项目重画慢。
 - **通过 `@dv/ui-kit` hook 读取状态** — `CanvasView` 通过 `@dv/ui-kit` 的 `useProjectState`、`useOperations` 和 `useLanguage` 读取项目状态、操作和界面语言，而不是通过注入的 `hooks` 来源；插件向 `dv.canvas` 组件工厂和标签主体注入一个 `DvClient` 实例，而不是普通回调（[客户端规则](../../client/AGENTS.md)）。没有契约类型指名 `DvClient` 或 React hook。

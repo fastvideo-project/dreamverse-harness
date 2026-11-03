@@ -8,8 +8,16 @@
 /** The Fetch route path of the canvas layout. */
 export const CANVAS_LAYOUT_ROUTE = '/api/dv/canvas/layout'
 
-/** Where a canvas node sits, in canvas units. A type alias, so that a positions map is a `JsonValue` of an event. */
-export type NodePosition = { x: number; y: number }
+/**
+ * Where a canvas node sits, in canvas units, and the frame width the user resized it to. A type alias, so that a
+ * positions map is a `JsonValue` of an event.
+ */
+export type NodePosition = {
+  x: number
+  y: number
+  /** The frame width in canvas units; absent for the 208-unit default. A write without it keeps the stored width. */
+  width?: number
+}
 
 /** The canvas pan offset, in screen pixels, and zoom. */
 export interface CanvasViewport {

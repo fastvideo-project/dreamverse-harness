@@ -52,6 +52,13 @@ describe('layoutRoutes', () => {
     expect((await call('GET', '?project=p1')).json).not.toHaveProperty('placed')
   })
 
+  it('keeps a stored width through a write that sends only a position, and drops a width that is not a positive number', async () => {
+    const { call } = route()
+    await call('POST', '', { project: 'p1', positions: { g1: { x: 1, y: 2, width: 416 }, g2: { x: 0, y: 0, width: 0 }, g3: { x: 0, y: 0, width: 'wide' } } })
+    await call('POST', '', { project: 'p1', positions: { g1: { x: 5, y: 6 } } })
+    expect((await call('GET', '?project=p1')).json).toEqual({ positions: { g1: { x: 5, y: 6, width: 416 }, g2: { x: 0, y: 0 }, g3: { x: 0, y: 0 } }, viewport: null })
+  })
+
   it('keeps at most 5000 positions', async () => {
     const { call } = route()
     const positions = (from: number, count: number) => Object.fromEntries(Array.from({ length: count }, (_, i) => [`n${String(from + i)}`, { x: i, y: i }]))

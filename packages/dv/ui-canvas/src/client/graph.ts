@@ -308,32 +308,34 @@ export function isFinished(entry: Pick<CanvasNode, 'claimed' | 'flags' | 'assets
 const NODE_GAP = 12
 
 /**
- * Positions for the nodes that have no stored position: each node's automatic position, moved down one row at a time
- * until its card overlaps neither a stored node nor a node placed before it. A node that appears later therefore never
- * covers a node that the user moved.
+ * Positions for the nodes that have no stored position: each node's automatic position at the default width, moved
+ * down one row at a time until its card overlaps neither a stored node at its stored width nor a node placed before
+ * it. A node that appears later therefore never covers a node that the user moved or resized.
  * @param nodes - the graph's nodes, in graph order.
- * @param stored - the stored positions by node ID.
- * @param heightOf - a node's card height in canvas units.
+ * @param stored - the stored positions by node ID, with the width of each resized node.
+ * @param heightOf - a node's card height in canvas units at a frame width.
  * @returns the positions of the nodes that had none, by node ID.
  */
 export function freePositions(
-  nodes: readonly CanvasNode[], stored: Readonly<Record<string, NodePosition>>, heightOf: (entry: CanvasNode) => number,
+  nodes: readonly CanvasNode[], stored: Readonly<Record<string, NodePosition>>, heightOf: (entry: CanvasNode, width: number) => number,
 ): Record<string, NodePosition> {
   const boxes = nodes.flatMap((entry) => {
     const at = stored[entry.id]
-    return at === undefined ? [] : [{ ...at, height: heightOf(entry) }]
+    if (at === undefined) return []
+    const width = at.width ?? NODE_WIDTH
+    return [{ x: at.x, y: at.y, width, height: heightOf(entry, width) }]
   })
   const placed: Record<string, NodePosition> = {}
   for (const entry of nodes) {
     if (stored[entry.id] !== undefined) continue
-    const height = heightOf(entry)
+    const height = heightOf(entry, NODE_WIDTH)
     let y = entry.y
-    const overlaps = (box: { x: number; y: number; height: number }): boolean =>
-      box.x < entry.x + NODE_WIDTH + NODE_GAP && entry.x < box.x + NODE_WIDTH + NODE_GAP
+    const overlaps = (box: { x: number; y: number; width: number; height: number }): boolean =>
+      box.x < entry.x + NODE_WIDTH + NODE_GAP && entry.x < box.x + box.width + NODE_GAP
       && box.y < y + height + NODE_GAP && y < box.y + box.height + NODE_GAP
     while (boxes.some(overlaps)) y += ROW
     placed[entry.id] = { x: entry.x, y }
-    boxes.push({ x: entry.x, y, height })
+    boxes.push({ x: entry.x, y, width: NODE_WIDTH, height })
   }
   return placed
 }

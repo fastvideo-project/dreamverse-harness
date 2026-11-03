@@ -968,6 +968,75 @@ describe('the node card', () => {
     await runtime.dispose()
   })
 
+  it('draws a node at its stored width, resizes the selected node from its south-east handle at the zoom, stores the width, and keeps it through a drag', async () => {
+    const { runtime, node, open, server, canvasOf } = await mountCanvas({
+      layout: { positions: { g1: { x: 10, y: 20, width: 312 } }, viewport: { x: 0, y: 0, zoom: 0.5 } },
+    })
+    await waitFor(() => { node('g1') })
+    expect(node('g1').style.width).toBe('312px')
+    expect(node('g1').querySelector('[data-node-handle]')).toBeNull()
+    await open('g1')
+    expect(node('g1').querySelectorAll('[data-node-handle]')).toHaveLength(4)
+    const handle = node('g1').querySelector('[data-node-handle="se"]')
+    if (handle === null) throw new Error('no south-east handle')
+    fireEvent.pointerDown(handle, { button: 0, clientX: 0, clientY: 0, pointerId: 2 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 52, clientY: 0, pointerId: 2 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 2 })
+    // 52 px at 50% zoom are 104 units; the top-left corner stays.
+    expect([node('g1').style.left, node('g1').style.top, node('g1').style.width]).toEqual(['10px', '20px', '416px'])
+    await waitFor(() => { expect(server.layoutWrites.some(write => 'g1' in write.positions)).toBe(true) }, { timeout: 2000 })
+    expect(server.layoutWrites.find(write => 'g1' in write.positions)?.positions['g1']).toEqual({ x: 10, y: 20, width: 416 })
+    fireEvent.pointerDown(node('g1'), { button: 0, clientX: 0, clientY: 0, pointerId: 3 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 10, clientY: 10, pointerId: 3 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 3 })
+    await waitFor(() => { expect(server.layoutWrites.some(write => write.positions['g1']?.x === 30)).toBe(true) }, { timeout: 2000 })
+    expect(server.layoutWrites.at(-1)?.positions['g1']).toEqual({ x: 30, y: 40, width: 416 })
+    await runtime.dispose()
+  })
+
+  it('a north-west handle keeps the opposite corner in place under the node\'s height rule and stops at the narrowest width; a still press or another button changes nothing', async () => {
+    const { runtime, view, node, canvasOf } = await mountCanvas({ layout: { positions: { g1: { x: 10, y: 20 }, 'half:1': { x: 100, y: 100 } }, viewport: { x: 0, y: 0, zoom: 1 } } })
+    await mountDescriptors(runtime, {
+      nodeType: {
+        id: '@dv/ui-test-half', type: 'half', label: () => 'Half', color: '', column: 0,
+        entries: () => [{ id: 'half:1', title: 'Half', record: null, assets: [], sizing: { heightAt: width => width / 2 } }],
+      },
+    })
+    await waitFor(() => { node('half:1') })
+    fireEvent.pointerDown(node('half:1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
+    await waitFor(() => { expect(node('half:1').getAttribute('data-node-selected')).toBe('true') })
+    const handle = (): Element => {
+      const found = node('half:1').querySelector('[data-node-handle="nw"]')
+      if (found === null) throw new Error('no north-west handle')
+      return found
+    }
+    const box = (): string[] => [
+      node('half:1').style.left, node('half:1').style.top, node('half:1').style.width, node('half:1').querySelector<HTMLElement>('[data-node-frame]')?.style.height ?? '',
+    ]
+    fireEvent.pointerDown(handle(), { button: 0, clientX: 0, clientY: 0, pointerId: 2 })
+    fireEvent.pointerMove(canvasOf(), { clientX: -100, clientY: 0, pointerId: 2 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 2 })
+    // 100 units wider: the frame grows from 104 to 154, and the node moves up and left so its bottom-right corner stays.
+    expect(box()).toEqual(['0px', '50px', '308px', '154px'])
+    fireEvent.pointerDown(handle(), { button: 0, clientX: 0, clientY: 0, pointerId: 3 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 500, clientY: 0, pointerId: 3 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 3 })
+    expect(box()).toEqual(['204px', '152px', '104px', '52px'])
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => { expect(view.queryAllByTestId('dv-canvas-node-editor')).toHaveLength(0) })
+    fireEvent.pointerDown(handle(), { button: 0, clientX: 0, clientY: 0, pointerId: 4 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 4 })
+    await settle()
+    expect([node('half:1').getAttribute('data-node-selected'), view.queryAllByTestId('dv-canvas-node-editor')]).toEqual(['true', []])
+    // A press of another button than the primary one starts no resize.
+    fireEvent.pointerDown(handle(), { button: 2, clientX: 0, clientY: 0, pointerId: 5 })
+    fireEvent.pointerMove(canvasOf(), { clientX: -300, clientY: 0, pointerId: 5 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 5 })
+    expect(box()).toEqual(['204px', '152px', '104px', '52px'])
+    await runtime.dispose()
+  })
+
   it('keeps the frame height of a failed take and draws its failed words and 重试 inside the frame', async () => {
     const { runtime, node } = await mountCanvas({ edit: failG1 })
     await waitFor(() => { node('g1') })
@@ -1092,6 +1161,19 @@ describe('the canvas answering the canvas tools', () => {
     expect(server.layoutWrites).toHaveLength(1)
     await runtime.dispose()
     expect(streams.map(stream => stream.open)).toEqual([false])
+  })
+
+  it('reads a resized node at its stored width, and keeps the width through a stored move', async () => {
+    const layout = { positions: { g1: { x: 10, y: 20, width: 312 } }, viewport: { x: 0, y: 0, zoom: 1 } }
+    const { runtime, node, server, ask, apply } = await mountForAgent({ layout })
+    await waitFor(() => { expect(server.layoutWrites.length).toBeGreaterThan(0) })
+    const [resized, plain] = ['g1', 'g2'].map(id => ask('p1')?.cards.find(card => card.id === id))
+    expect(resized).toMatchObject({ x: 10, y: 20, width: 312 })
+    expect(plain?.width).toBe(NODE_WIDTH)
+    apply('p1', { g1: { x: 2000, y: 0 } })
+    expect([node('g1').style.left, node('g1').style.width]).toEqual(['2000px', '312px'])
+    expect(ask('p1')?.cards.find(card => card.id === 'g1')).toMatchObject({ x: 2000, y: 0, width: 312 })
+    await runtime.dispose()
   })
 
   it('keeps two canvases of different projects apart: each read and each stored move reaches only its project\'s canvas', async () => {
