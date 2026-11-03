@@ -46,8 +46,9 @@ export interface GenerationUiSpec {
   column?: number
   deepenOn?: readonly string[]
   /**
-   * The frame height of a take whose shown asset has an unknown width or height, such as an audio take; default 117,
-   * the 16:9 frame at the 208 node width. A take whose shown asset has a known size gets the frame of that size.
+   * The frame height, at any frame width, of a take whose shown asset has an unknown width or height, such as an audio
+   * take; default 117, the 16:9 frame at the 208 node width. A take whose shown asset has a known size gets the frame
+   * of that size at the frame's width.
    */
   bodyHeight?: number
   status: StatusWords
@@ -75,12 +76,12 @@ export interface GenerationBar extends Pick<ParamBar, 'chips' | 'candidates'> {
 const outputsIn = (record: ProjectRecord, state: WireState): Asset[] =>
   record.outputs.flatMap(id => state.assets.find(asset => asset.id === id) ?? [])
 
-const frame: CSSProperties = { display: 'flex', width: '100%', overflow: 'hidden' }
+const frame: CSSProperties = { display: 'flex', width: '100%', height: '100%', overflow: 'hidden' }
 
 /**
- * The card body of a take: its shown asset (its preview, else its first output) through `dv.media`. A picture of known
- * size fills the frame bare; any other asset, such as an audio waveform, and a take without outputs sit on the card
- * surface.
+ * The card body of a take: its shown asset (its preview, else its first output) through `dv.media`, filling the frame
+ * the canvas sizes. A picture of known size fills the frame bare; any other asset, such as an audio waveform, and a take
+ * without outputs sit on the card surface.
  * @param props - the node, its assets, and the Factory renderer.
  * @returns the element.
  */
@@ -88,7 +89,7 @@ function TakeCard({ node, assets, renderFactorySlot }: PropsRuntime<'dv.canvas.c
   const shown = assets[node.preview ?? node.assets[0] ?? '']
   const bare = shown !== undefined && shown.width !== null && shown.height !== null
   return (
-    <div style={{ ...bare ? {} : CARD_SURFACE, ...frame, height: node.bodyHeight }}>
+    <div style={{ ...bare ? {} : CARD_SURFACE, ...frame }}>
       {shown === undefined ? null : renderFactorySlot('dv.media', { asset: shown, purpose: 'card' })}
     </div>
   )
@@ -113,7 +114,7 @@ export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
     const preview = spec.preview?.(outputsIn(claimed.record, input.state))
     const shown = input.state.assets.find(asset => asset.id === (preview ?? claimed.record.outputs[0]))
     return {
-      title: titleOf(claimed, input), bodyHeight: frameHeight(shown, fallbackHeight),
+      title: titleOf(claimed, input), sizing: { heightAt: width => frameHeight(shown, fallbackHeight, width) },
       ...timed === undefined ? {} : { meta: `${timed.toFixed(1)}s` }, ...preview === undefined ? {} : { preview },
     }
   }

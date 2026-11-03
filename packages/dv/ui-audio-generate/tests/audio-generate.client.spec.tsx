@@ -49,7 +49,8 @@ describe('@dv/ui-audio-generate', () => {
       state: { assets: [] } as never, operations: [], language: 'zh', placed: new Set(), records: [],
     })
     expect({
-      type: type?.type, label: type?.label(), color: type?.color, operations: type?.claimed?.operations, bodyHeight: entry?.bodyHeight,
+      type: type?.type, label: type?.label(), color: type?.color, operations: type?.claimed?.operations,
+      bodyHeight: entry?.sizing?.heightAt(208),
       running: type?.claimed?.status.running(), failed: type?.claimed?.status.failed(),
     }).toEqual({
       type: 'audio', label: '音频', color: 'var(--dv-node-8)', operations: ['audio.generate'], bodyHeight: 72,

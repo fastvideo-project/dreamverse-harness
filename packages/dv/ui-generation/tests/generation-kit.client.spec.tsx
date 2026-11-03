@@ -53,19 +53,20 @@ describe('the claimed node type of a generation kind', () => {
     await runtime.dispose()
   })
 
-  it('shows the duration of the first timed output as meta, the still the spec picks as preview, and the frame height of the shown asset', async () => {
+  it('shows the duration of the first timed output as meta, the still the spec picks as preview, and the frame height of the shown asset at the frame width', async () => {
     const { runtime, canvas } = await mountKit({})
     const state = extendedState()
     state.assets = state.assets.map(entry => entry.id === 'shot1-last.png' ? { ...entry, width: 768, height: 1024 } : entry)
     const nodes = nodesOf(canvas, state, LABELLED, 'en')
     const facts = (id: string) => {
       const node = nodes.get(id)
-      return [node?.meta, node?.preview, node?.bodyHeight]
+      return [node?.meta, node?.preview, node?.sizing?.heightAt(208), node?.sizing?.heightAt(416)]
     }
-    // A 3:4 preview gets the 208 × 277 frame; a shown asset of unknown size and a take without outputs the 16:9 frame.
-    expect(facts('g1')).toEqual(['4.0s', 'shot1-last.png', 277])
-    expect(facts('x1')).toEqual(['2.5s', 'x1.png', 117])
-    expect(facts('g3')).toEqual([undefined, undefined, 117])
+    // A 3:4 preview gets the 208 × 277 frame, 555 tall at twice the width; a shown asset of unknown size and a take
+    // without outputs the 16:9 frame's 117 at any width.
+    expect(facts('g1')).toEqual(['4.0s', 'shot1-last.png', 277, 555])
+    expect(facts('x1')).toEqual(['2.5s', 'x1.png', 117, 117])
+    expect(facts('g3')).toEqual([undefined, undefined, 117, 117])
     await runtime.dispose()
   })
 
@@ -152,7 +153,7 @@ describe('the card body of a take', () => {
     await runtime.dispose()
   })
 
-  it('draws the card body in a frame of the body height that the kind declares', async () => {
+  it('sizes a take of unknown aspect at the height the kind declares, at any width, and draws its body filling the frame', async () => {
     const { runtime, canvas } = await mountKit({ 'dv.canvas.card': { kind: 'keyed', scope: 'root' } })
     const low = defineGenerationUi({
       id: '@dv/ui-test-low', type: 'test_low', operations: ['audio.generate'], label: ['矮', 'Low'], color: '', bodyHeight: 72,
@@ -165,7 +166,7 @@ describe('the card body of a take', () => {
     if (node === undefined) throw new Error('no node a9')
     const card = runtime.renderSlot('dv.canvas.card', { node, assets: {}, textScale: 1, host: recordingHost() }, { entryKey: 'test_low' })
     const frame = card.container.firstElementChild
-    expect([node.bodyHeight, frame instanceof HTMLElement ? frame.style.height : null]).toEqual([72, '72px'])
+    expect([node.sizing?.heightAt(208), node.sizing?.heightAt(500), frame instanceof HTMLElement ? frame.style.height : null]).toEqual([72, 72, '100%'])
     await runtime.dispose()
   })
 })
