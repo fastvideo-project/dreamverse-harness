@@ -30,7 +30,8 @@ export const assetNodeType: NodeType = {
       const asset = assets.get(assetId)
       const seconds = asset?.duration_sec ?? null
       return {
-        id, title: asset?.name ?? assetId, record, assets: [assetId], standIn: true, bodyHeight: frameHeight(asset, NODE_FRAME_HEIGHT),
+        id, title: asset?.name ?? assetId, record, assets: [assetId], standIn: true,
+        sizing: { heightAt: width => frameHeight(asset, NODE_FRAME_HEIGHT, width) },
         ...seconds === null ? {} : { meta: `${seconds.toFixed(1)}s` }, ...record === null ? { ref: { kind: 'asset', id: assetId } } : {},
       }
     }

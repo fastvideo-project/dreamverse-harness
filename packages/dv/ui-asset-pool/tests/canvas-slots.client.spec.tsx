@@ -46,7 +46,8 @@ function importedState(): ReturnType<typeof fixtureState> {
 
 function assetNodes(nodes: readonly NodeView[]): Record<string, object> {
   return Object.fromEntries(nodes.filter(node => node.type === 'asset').map(node => [node.id, {
-    title: node.title, meta: node.meta, record: node.record?.id ?? null, assets: node.assets, ref: node.ref, bodyHeight: node.bodyHeight,
+    title: node.title, meta: node.meta, record: node.record?.id ?? null, assets: node.assets, ref: node.ref,
+    height: node.sizing?.heightAt(208),
   }]))
 }
 
@@ -56,23 +57,25 @@ describe('the asset node type', () => {
   it('draws each placed asset as the node of the first asset.import record of the current state that imported it, titled by the asset', async () => {
     const { runtime } = await mountAssetPool(() => null)
     expect(assetNodes(canvasNodes(runtime, importedState(), ['poster.png', 'clip.mp4']))).toEqual({
-      u2: { title: '海报', record: 'u2', assets: ['poster.png'], bodyHeight: 117 },
-      u3: { title: 'clip.mp4', meta: '2.5s', record: 'u3', assets: ['clip.mp4'], bodyHeight: 117 },
+      u2: { title: '海报', record: 'u2', assets: ['poster.png'], height: 117 },
+      u3: { title: 'clip.mp4', meta: '2.5s', record: 'u3', assets: ['clip.mp4'], height: 117 },
     })
   })
 
-  it('sizes the frame of an asset of known size to its aspect ratio, and gives an asset of unknown size the 16:9 frame', async () => {
+  it('sizes the frame of an asset of known size to its aspect ratio at any frame width, and gives an asset of unknown size the 16:9 frame', async () => {
     const { runtime } = await mountAssetPool(() => null)
     const state = importedState()
     state.assets = state.assets.map(item => item.id === 'poster.png' ? { ...item, width: 768, height: 1024 } : item)
-    const heights = Object.fromEntries(canvasNodes(runtime, state, ['poster.png', 'clip.mp4']).map(node => [node.id, node.bodyHeight]))
-    expect(heights).toMatchObject({ u2: 277, u3: 117 })
+    const heights = (width: number): Record<string, number | undefined> =>
+      Object.fromEntries(canvasNodes(runtime, state, ['poster.png', 'clip.mp4']).map(node => [node.id, node.sizing?.heightAt(width)]))
+    expect(heights(208)).toMatchObject({ u2: 277, u3: 117 })
+    expect(heights(416)).toMatchObject({ u2: 555, u3: 117 })
   })
 
   it('draws a placed asset that no record of the current state imported as asset:<id>, which names the asset in a prompt', async () => {
     const { runtime } = await mountAssetPool(() => null)
     expect(assetNodes(canvasNodes(runtime, importedState(), ['undone.png']))).toEqual({
-      'asset:undone.png': { title: 'undone.png', record: null, assets: ['undone.png'], ref: { kind: 'asset', id: 'undone.png' }, bodyHeight: 117 },
+      'asset:undone.png': { title: 'undone.png', record: null, assets: ['undone.png'], ref: { kind: 'asset', id: 'undone.png' }, height: 117 },
     })
   })
 
@@ -81,7 +84,7 @@ describe('the asset node type', () => {
     const { runtime } = await mountAssetPool(() => null)
     expect(runtime.ctx.dvCanvas.nodeTypes.getSnapshot().map(type => type.label())).toEqual(['素材'])
     expect(assetNodes(canvasNodes(runtime, importedState(), ['fresh.png']))).toEqual({
-      'asset:fresh.png': { title: 'fresh.png', record: null, assets: ['fresh.png'], ref: { kind: 'asset', id: 'fresh.png' }, bodyHeight: 117 },
+      'asset:fresh.png': { title: 'fresh.png', record: null, assets: ['fresh.png'], ref: { kind: 'asset', id: 'fresh.png' }, height: 117 },
     })
   })
 
