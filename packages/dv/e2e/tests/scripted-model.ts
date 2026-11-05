@@ -104,9 +104,9 @@ function parseResult(content: unknown): unknown {
 }
 
 /** The user messages that DSH and DreamVerse add as context: runtime context, system reminders, tool-result images, the
- *  @ reference expansion, the project state and update messages, and the record notices. */
+ *  @ reference expansion, and the project state and update messages. */
 export const CONTEXT_MESSAGE
-  = /^(<system-reminder>|Current runtime context|Attached image|The user referenced these project items|DreamVerse (project|notice))/
+  = /^(<system-reminder>|Current runtime context|Attached image|The user referenced these project items|DreamVerse project)/
 
 /**
  * Pick the reply for one agent request.

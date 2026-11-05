@@ -33,8 +33,8 @@
  *
  * Background calls. An agent tool call of a GPU operation, or of a call whose input names an unfinished record, is
  * scheduled and returns its `pending` record at once. When the record finishes, the agent of the calling session gets
- * a record notice (the `record-notices` module): injected into its next step while it runs, or as a new turn while it is
- * idle.
+ * a wake (the `record-notices` module): injected into its next step while it runs, or as a new turn while it is idle.
+ * The project update message of that step reports the record's result.
  *
  * The asset pool registers itself with {@link DvProject.registerAssetStore}; until it does, a run that names an input
  * asset or imports an output fails.
@@ -113,8 +113,8 @@ export interface Config {
   /** Order of the `dv:project` section in the system prompt; before the tool SDK section at 5000. */
   promptSectionOrder: number
   /**
-   * Turns one agent may open by record notice wakes before its next message from the user; further notices wait
-   * without a wake until that message. Absent: every notice to an idle agent with no other watched record wakes it.
+   * Turns one agent may open by record wakes before its next message from the user; further wakes wait in its inbox
+   * until that message. Absent: every finished record of an idle agent with no other watched record wakes it.
    */
   maxConsecutiveWakes?: number
 }
@@ -205,7 +205,7 @@ export default class DvProject extends Service {
       turnOf: exec => turnOf(ctx, exec),
       chatFolder: session => this.chatFolder(session),
     }
-    this.notices = new RecordNotices(ctx, this, projToolDeps, config.maxConsecutiveWakes)
+    this.notices = new RecordNotices(ctx, this, config.maxConsecutiveWakes)
     // Every registered operation has its agent tool while the DSH tool registry is mounted.
     ctx.inject(['tools'], (child) => {
       // The registry stays in this closure: read through the service from another plugin, it would bind each tool to

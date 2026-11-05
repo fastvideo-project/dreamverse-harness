@@ -8,9 +8,11 @@
  * one line when the current position moved. Records that the agent's own tool results showed are not repeated, and a
  * step with nothing new gets no message.
  *
- * A record notice (`recordNotice`) reports one record that the agent's own call started in the background, when it
- * finishes; the record-notices module delivers it. Its source shows the record in its final status, so the project
- * update messages do not repeat it, including at the step that claims the notice.
+ * The project update messages are the only messages that report a record's result. When a record that the agent's own
+ * call started in the background finishes, the record-notices module queues a wake (`wakeMessage`), which names the
+ * record and carries no result. The `agent/pre-step` listener removes every wake from the step's messages, so a model
+ * never receives one, and the project update message of that step lists the finish, unless an earlier message or tool
+ * result already showed it.
  *
  * What the agent saw is the `dvProjectSight` session projection, folded from the session's own log: the
  * {@link ProjectShown} in the source of each project message and in the `dv_seen` metadata of each DreamVerse tool
@@ -26,7 +28,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { boundContextSummary, createUserMessage, type ContextFormed, type UserMessage } from '@deepseek-ai/dsh-llm'
 import { isReplacementSurfaceEvent, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
@@ -42,6 +43,11 @@ declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
     /** A project message: the project state message (`snapshot`) or a project update message (`notice`). */
     'dv-project': { kind: 'dv-project'; shown: ProjectShown } & Extract<ContextFormed, { form: 'snapshot' | 'notice' }>
+    /**
+     * A wake: queued for an agent when a record that its call started finished. The `agent/pre-step` listener removes it
+     * from every step, so it reaches a model request only while that listener is not mounted.
+     */
+    'dv-project-wake': { kind: 'dv-project-wake'; records: RecordId[] } & Extract<ContextFormed, { form: 'notice' }>
   }
 }
 
@@ -79,8 +85,8 @@ export const STATE_HEAD = 'DreamVerse project state.'
 /** The first line of every project update message. */
 export const UPDATE_HEAD = 'DreamVerse project updates since your last step:'
 
-/** The first line of every record notice. */
-export const NOTICE_HEAD = 'DreamVerse notice: a call you started finished.'
+/** The message source kind of a wake. */
+const WAKE_KIND = 'dv-project-wake'
 
 /** The projection key. */
 const SEEN_PROJECTION = 'dvProjectSight'
@@ -144,29 +150,10 @@ function shownBy(event: SessionEvent): ProjectShown | null {
 export function foldSeen(state: SessionSeen, event: SessionEvent): SessionSeen {
   if (isReplacementSurfaceEvent(event)) return state.from !== null && event.surfaceOp.endSeq >= state.from ? UNSEEN : state
   const shown = shownBy(event)
-  return shown === null ? state : addShown(state, shown, event.seq)
-}
-
-/** The state after a project message or tool result at `seq` showed `shown`. */
-function addShown(state: SessionSeen, shown: ProjectShown, seq: number): SessionSeen {
-  if (shown.base !== undefined) return { from: seq, project: shown.project, base: shown.base, at: shown.at, records: shown.records }
+  if (shown === null) return state
+  if (shown.base !== undefined) return { from: event.seq, project: shown.project, base: shown.base, at: shown.at, records: shown.records }
   if (state.from === null || state.project !== shown.project) return state
   return { ...state, at: shown.at ?? state.at, records: { ...state.records, ...shown.records } }
-}
-
-/**
- * The state as it will be once the messages a step claimed are logged: a project update message or a record notice
- * among them adds what it shows. A claimed project state message counts as logged at the state's own `from`.
- * @param state - the session's state before the step.
- * @param messages - the step's claimed messages.
- * @returns the state.
- */
-export function withClaimed(state: SessionSeen, messages: readonly UserMessage[]): SessionSeen {
-  let next = state
-  for (const message of messages) {
-    if (message.source.kind === PROJECT_MESSAGE_KIND) next = addShown(next, message.source.shown, next.from ?? 0)
-  }
-  return next
 }
 
 /**
@@ -291,41 +278,30 @@ export function projectMessage(project: DvProject, deps: ProjToolDeps, session: 
 }
 
 /**
- * The record notice of one finished record of the agent's own call, a `notice` project message:
- * ```
- * DreamVerse notice: a call you started finished.
- * - done r_5b20 (your call): rendered shot 3
- *   - video: 9c1e… (video/mp4) https://…/dv/assets/9c1e…
- * ```
- * The record line is the project update message's line of the record. The image outputs of a done record follow as
- * image blocks. The source shows the record in its status.
- * @param project - the service.
- * @param deps - the asset store and the reducers' summaries.
- * @param session - the agent's session ID.
- * @param id - the record's project.
- * @param record - the finished record.
- * @param images - attachment references of the record's image outputs.
+ * The wake of finished records, a user message whose source is
+ * `{kind: 'dv-project-wake', form: 'notice', summary: '<n> finished: <ids>', records}` and whose text is
+ * `DreamVerse operations you started have finished: <ids>. A DreamVerse project update follows with their results.`
+ * A model reads the text only while the `agent/pre-step` listener of this module is not mounted.
+ * @param records - the finished records.
  * @returns the message.
  */
-export function recordNotice(
-  project: DvProject, deps: ProjToolDeps, session: SessionId, id: ProjectId, record: ProjectRecord,
-  images: readonly ImageAttachmentRef[],
-): UserMessage {
-  const text = [NOTICE_HEAD, ...recordLines(project, deps, record, session)].join('\n')
+export function wakeMessage(records: readonly RecordId[]): UserMessage {
+  const ids = records.join(', ')
   return createUserMessage({
-    content: [{ type: 'text', text }, ...images.map(attachment => ({ type: 'image' as const, attachment }))],
-    source: {
-      kind: PROJECT_MESSAGE_KIND, form: 'notice', summary: boundContextSummary(`${record.status} ${record.id}`),
-      shown: { project: id, records: { [record.id]: record.status } },
-    },
+    content: [{ type: 'text', text: `DreamVerse operations you started have finished: ${ids}. A DreamVerse project update follows with their results.` }],
+    source: { kind: WAKE_KIND, form: 'notice', summary: boundContextSummary(`${String(records.length)} finished: ${ids}`), records: [...records] },
   })
 }
 
 /**
  * Register the `dvProjectSight` projection and the `agent/pre-step` listener under `ctx`. The listener awaits `next()`
- * and returns a reject decision, an aborted step, and an empty decision of a step that will not run (the first step of
- * a turn, or a step whose claimed messages a later listener removed) unchanged; otherwise it inserts
- * {@link projectMessage}'s message right after the last claimed message, so the user's own message precedes it.
+ * and returns a reject decision and an aborted step unchanged. It removes every wake from the decision's messages. When
+ * it removed none and none are left, a step that will not run (the first step of a turn, or a step whose claimed
+ * messages a later listener removed) is returned unchanged. Otherwise it inserts {@link projectMessage}'s message right
+ * after the last claimed message that is not a wake, so the user's own message precedes it, or returns the messages
+ * without the wakes when there is no message. A step left without messages this way sends no model request unless tool
+ * results keep its turn running: the agent loop ends the turn at a first step without messages, and at a later step
+ * without messages after the model ended the turn.
  * @param ctx - a context with the `sessionProjections` service; disposal removes both.
  * @param project - the service.
  * @param deps - the asset store and the reducers' summaries.
@@ -335,12 +311,13 @@ export function registerProjectUpdates(ctx: Context, project: DvProject, deps: P
   ctx.on('agent/pre-step', async ({ agent, messages, step, signal }, next): Promise<PreStepDecision> => {
     const decision = await next()
     if (decision.kind === 'reject' || signal.aborted) return decision
-    if (decision.messages.length === 0 && (step === 1 || messages.length > 0)) return decision
+    const kept = decision.messages.filter(entry => entry.source.kind !== WAKE_KIND)
+    const woken = kept.length !== decision.messages.length
+    if (!woken && kept.length === 0 && (step === 1 || messages.length > 0)) return decision
     const seen = ctx.sessionProjections.stateOf(agent.session, SEEN_PROJECTION)
-    if (seen === undefined) return decision
-    const message = projectMessage(project, deps, brandString<SessionId>(agent.id), withClaimed(seen, decision.messages))
-    if (message === null) return decision
-    const last = decision.messages.findLastIndex(entry => messages.includes(entry))
-    return { ...decision, messages: decision.messages.toSpliced(last + 1, 0, message) }
+    const message = seen === undefined ? null : projectMessage(project, deps, brandString<SessionId>(agent.id), seen)
+    if (message === null) return woken ? { ...decision, messages: kept } : decision
+    const last = kept.findLastIndex(entry => messages.includes(entry))
+    return { ...decision, messages: kept.toSpliced(last + 1, 0, message) }
   })
 }

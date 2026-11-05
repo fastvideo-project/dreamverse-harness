@@ -8,8 +8,8 @@
  * the newest of them as the position, so the project updates do not repeat them; a read stores none.
  *
  * A call is scheduled, and its result is `pending`, when its operation uses the GPU or an input names an output of a
- * record that has not finished. The agent's session then watches the record (`AgentToolDeps.watch`), and the record
- * notices tell the agent when it finishes.
+ * record that has not finished. The agent's session then watches the record (`AgentToolDeps.watch`); when it finishes,
+ * the record notices wake the agent, and a project update message reports the result.
  *
  * The record's turn is the DSH turn number of the calling agent's session, read from the `turnBoundary` session
  * projection.
@@ -54,7 +54,7 @@ export interface AgentToolDeps {
   run(request: RunRequest): Promise<RunResult>
   getRecord(project: ProjectId, record: RecordId): ProjectRecord
   listHistory(query: HistoryQuery): HistoryEntry[]
-  /** Deliver a record notice to the agent of `session` when the record finishes. */
+  /** Wake the agent of `session` when the record finishes. */
   watch(project: ProjectId, record: RecordId, session: SessionId): void
 }
 
@@ -86,7 +86,7 @@ const RESULT_SCHEMA = {
   properties: {
     project: { type: 'string', required: true, description: 'The project of this call; not shown to the model.' },
     record: { type: 'string', required: true, description: 'The record of this call; empty for a read, which writes no record.' },
-    status: { type: 'string', required: true, description: 'done, or pending (runs in the background; a notice reports when it finishes).' },
+    status: { type: 'string', required: true, description: 'done, or pending (runs in the background; a project update reports when it finishes).' },
     summary: { type: 'string', required: true },
     outputs: { type: 'array', required: true, items: OUTPUT_SCHEMA },
     scheduled: {
@@ -278,8 +278,8 @@ function sharedParams(spec: OperationSpec, kinds: readonly string[]): ParameterS
   // becomes a placeholder instead), so the text promises the wait only when some role waits.
   const waits = Object.keys(spec.inputs).some(role => spec.pendingInputRoles?.includes(role) !== true)
   const recordText = waits
-    ? 'an output of an earlier record, which may still be running: the call then runs after it, and a DreamVerse notice reports '
-      + 'the call\'s result'
+    ? 'an output of an earlier record, which may still be running: the call then runs after it, and a DreamVerse project update '
+      + 'reports the call\'s result'
     : 'an output of an earlier record'
   return {
     reason: {
@@ -321,31 +321,12 @@ export function formatToolResult(value: OperationToolValue, spec: Pick<Operation
 }
 
 /** The line a `pending` result ends with. */
-export const PENDING_LINE = 'This call runs in the background. A DreamVerse notice reports its result when it finishes; until then, keep working or end your turn.'
+export const PENDING_LINE = 'This call runs in the background. A DreamVerse project update reports its result when it finishes; until then, keep working or end your turn.'
 
 /** Whether a JSON value is an attachment reference. */
 function isImageRef(value: JsonValue): value is JsonValue & ImageAttachmentRef {
   return typeof value === 'object' && value !== null && !Array.isArray(value) && typeof value['attachmentId'] === 'string'
     && typeof value['mediaType'] === 'string'
-}
-
-/**
- * Attachment references of the image outputs, which reach the model as image blocks.
- * @param ctx - a context that may hold the attachment service.
- * @param assets - the asset store.
- * @param outputs - the outputs.
- * @returns one reference per raster image output; none while no attachment service is mounted.
- */
-export async function imagesOf(ctx: Context, assets: AssetStore, outputs: readonly AssetId[]): Promise<ImageAttachmentRef[]> {
-  const attachments = ctx.get('attachments')
-  if (attachments === undefined) return []
-  const refs: ImageAttachmentRef[] = []
-  for (const id of outputs) {
-    const meta = assets.get(id)
-    if (!IMAGE_MEDIA_TYPES.has(meta.mime)) continue
-    refs.push(await attachments.saveImage({ data: assets.read(id), mediaType: meta.mime as ImageMediaType, name: meta.name }))
-  }
-  return refs
 }
 
 /** Builds the DSH tool of an operation and runs its calls. */
@@ -459,12 +440,26 @@ export class AgentTools {
     })
   }
 
+  /** Attachment references of the image outputs, when an attachment service is mounted. */
+  private async imagesOf(outputs: AssetId[]): Promise<ImageAttachmentRef[]> {
+    const attachments = this.ctx.get('attachments')
+    if (attachments === undefined) return []
+    const assets = this.deps.assets()
+    const refs: ImageAttachmentRef[] = []
+    for (const id of outputs) {
+      const meta = assets.get(id)
+      if (!IMAGE_MEDIA_TYPES.has(meta.mime)) continue
+      refs.push(await attachments.saveImage({ data: assets.read(id), mediaType: meta.mime as ImageMediaType, name: meta.name }))
+    }
+    return refs
+  }
+
   /** The result value of a record. */
   private async valueOf(
     spec: OperationSpec, project: ProjectId, record: ProjectRecord, scheduled: RecordId[],
   ): Promise<OperationToolValue> {
     const assets = this.deps.assets()
-    const images = record.status === 'done' ? await imagesOf(this.ctx, assets, record.outputs) : []
+    const images = record.status === 'done' ? await this.imagesOf(record.outputs) : []
     return {
       project,
       record: record.id,

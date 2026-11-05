@@ -175,7 +175,7 @@ describe('dvImageGenerate', () => {
     const { ctx } = fixture
     const args = { ...KEY, reason: 'poster', prompt: 'A tea shop poster that reads "Moon Garden Tea"', size: '768x1024', seed: 7 }
     const result = value(await fixture.tool('dv_image_generate', args))
-    // An agent call of a GPU operation runs in the background; its record notice shows the image to the agent.
+    // An agent call of a GPU operation runs in the background; a project update reports its result to the agent.
     expect(result).toMatchObject({ status: 'pending', outputs: [] })
     await ctx.dvProject.wait(fixture.project)
     expect(fixture.model.requests).toEqual([{ prompt: 'A tea shop poster that reads "Moon Garden Tea"', size: { width: 768, height: 1024 }, seed: 7, extra: {} }])

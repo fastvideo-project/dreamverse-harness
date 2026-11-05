@@ -168,7 +168,7 @@ describe('dvAudioGenerate', () => {
     const args = { ...KEY, reason: 'greeting', prompt: '  <|speaker:0|> Welcome, traveler.  ', extra: { speed: 1.1 } }
     const result = await fixture.call('dv_audio_generate', args)
     const take = value(result)
-    // An agent call of a GPU operation runs in the background; its record notice reports the summary and outputs.
+    // An agent call of a GPU operation runs in the background; a project update reports the summary and outputs.
     expect(take.status).toBe('pending')
     await fixture.ctx.dvProject.wait(fixture.project)
     expect(fixture.speech.requests).toEqual([{ prompt: '<|speaker:0|> Welcome, traveler.', extra: { speed: 1.1 } }])

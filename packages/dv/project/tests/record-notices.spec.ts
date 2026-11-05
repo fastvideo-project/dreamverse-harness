@@ -1,10 +1,9 @@
 /**
  * Record notices through the `dvProject` service with the real DSH tool registry: a GPU operation call runs in the
- * background and returns `pending`, and the agent of the calling session gets the record's notice when it finishes,
- * as a wake while it is idle or an injection while it runs or still waits for its other records. The `agents`
- * registry is a stand-in whose agents record the messages they get.
+ * background and returns `pending`, and the agent of the calling session gets the record's wake when it finishes, as a
+ * followup that opens a turn while it is idle or an injection while it runs or still waits for its other records. The
+ * `agents` registry is a stand-in whose agents record the messages they get.
  */
-import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -14,7 +13,6 @@ import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it } from 'vitest'
 import { PENDING_LINE } from '../src/agent-tools.ts'
 import DvProject, { type OperationSpec, type ProjectId, type RecordId, type SessionId } from '../src/index.ts'
-import { NOTICE_HEAD } from '../src/project-updates.ts'
 import { RecordNotices } from '../src/record-notices.ts'
 import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot } from './support.ts'
 import { chatProject, provideChatServices } from './workspaces.ts'
@@ -60,23 +58,22 @@ interface Fixture {
   context: Context
   project: DvProject
   projectId: ProjectId
-  assets: MemoryAssets
   agents: Map<string, FakeAgent>
-  /** Images saved through the stand-in attachment service; a hook runs before each save. */
-  beforeSave: { hook: () => void }
+  /** The names of the images saved through the stand-in attachment service. */
+  savedImages: string[]
   /** Run one tool as the agent of a session. */
   call(name: string, args: Record<string, unknown>, session?: SessionId): Promise<ToolExecutionResult>
   /** Let the render of `prompt` finish. */
   release(prompt: string): void
-  /** Wait until every record of the project finished and every notice was delivered. */
+  /** Wait until every record of the project finished. */
   settle(): Promise<void>
 }
 
 /**
  * Mount the DSH tool registry and `dvProject` with an in-memory asset store, a stand-in `agents` registry with an agent
- * for {@link SESSION}, a stand-in attachment service, and two operations: a GPU `shot.render` that waits until the test
- * releases its prompt, outputs a video and a still, and fails for the prompt `broken`; and an `asset.import` of resource
- * `none`.
+ * for {@link SESSION}, a stand-in attachment service that records each save, and two operations: a GPU `shot.render`
+ * that waits until the test releases its prompt, outputs a video and a still, and fails for the prompt `broken`; and an
+ * `asset.import` of resource `none`.
  * @param config - extra `dvProject` config.
  * @returns the fixture.
  */
@@ -85,13 +82,13 @@ async function start(config: { maxConsecutiveWakes?: number } = {}): Promise<Fix
   const context = new Context()
   contexts.push(context)
   const agents = new Map<string, FakeAgent>([[SESSION, new FakeAgent(SESSION)]])
-  const beforeSave = { hook: (): void => {} }
+  const savedImages: string[] = []
   const services = provideChatServices(context)
   context.provide('sessionProjections', { stateOf: () => undefined, register: () => () => {} } as never)
   context.provide('agents', { get: (id: string) => agents.get(id) } as never)
   context.provide('attachments', {
     saveImage: (image: { mediaType: string; name: string }) => {
-      beforeSave.hook()
+      savedImages.push(image.name)
       return Promise.resolve({ attachmentId: `att-${image.name}`, mediaType: image.mediaType })
     },
   } as never)
@@ -141,7 +138,7 @@ async function start(config: { maxConsecutiveWakes?: number } = {}): Promise<Fix
   services.chats.open(ANONYMOUS, folder)
   let calls = 0
   return {
-    context, project, projectId, assets, agents, beforeSave,
+    context, project, projectId, agents, savedImages,
     call(name, args, session = SESSION) {
       calls += 1
       const agent = session === ANONYMOUS ? undefined : { id: session, session: { id: session } }
@@ -152,8 +149,6 @@ async function start(config: { maxConsecutiveWakes?: number } = {}): Promise<Fix
     },
     async settle() {
       await project.wait(projectId)
-      // Delivery awaits the image attachments before it hands the notice over.
-      for (let turn = 0; turn < 5; turn += 1) await new Promise(resolve => setImmediate(resolve))
     },
   }
 }
@@ -168,8 +163,9 @@ function recordOf(result: ToolExecutionResult): RecordId {
   return brandString<RecordId>((result.value as { record: string }).record)
 }
 
-/** The asset ID of the bytes of a text. */
-const assetOf = (text: string): string => createHash('sha256').update(text).digest('hex')
+/** The text of the wake of one record. */
+const wakeText = (record: RecordId): string =>
+  `DreamVerse operations you started have finished: ${record}. A DreamVerse project update follows with their results.`
 
 describe('record notices', () => {
   it('runs a GPU call in the background and returns it pending; a call of a none operation still returns its final record', async () => {
@@ -186,7 +182,7 @@ describe('record notices', () => {
     await fixture.settle()
   })
 
-  it('wakes an idle agent with the notice of a done record: its line, its outputs and its image', async () => {
+  it('wakes an idle agent with a wake that names a done record and carries no result and no image', async () => {
     const fixture = await start()
     const agent = fixture.agents.get(SESSION)
     const record = recordOf(await fixture.call('dv_shot_render', { reason: 'dunk', prompt: 'dunk' }))
@@ -195,28 +191,20 @@ describe('record notices', () => {
     await fixture.settle()
     expect(agent?.hows).toEqual(['followup'])
     const message = agent?.got[0]?.message
-    const video = assetOf('video dunk')
-    const frame = assetOf('frame dunk')
-    expect(textOf(message)).toBe([
-      NOTICE_HEAD,
-      `- done ${record} (your call): shot dunk`,
-      `  - video: ${video} (video/mp4) https://assets.example/${video}`,
-      `  - last_frame: ${frame} (image/png) https://assets.example/${frame}`,
-    ].join('\n'))
-    expect(message?.content.at(-1)).toEqual({ type: 'image', attachment: { attachmentId: 'att-last.png', mediaType: 'image/png' } })
-    expect(message?.source).toEqual({
-      kind: 'dv-project', form: 'notice', summary: `done ${record}`, shown: { project: fixture.projectId, records: { [record]: 'done' } },
-    })
+    expect(message?.content).toEqual([{ type: 'text', text: wakeText(record) }])
+    expect(message?.source).toEqual({ kind: 'dv-project-wake', form: 'notice', summary: `1 finished: ${record}`, records: [record] })
+    // The render's last frame is an image output; no message the agent gets attaches it.
+    expect(fixture.savedImages).toEqual([])
   })
 
-  it('reports a failed record with its intent and error', async () => {
+  it('wakes an idle agent for a failed record', async () => {
     const fixture = await start()
     const record = recordOf(await fixture.call('dv_shot_render', { reason: 'a broken dunk', prompt: 'broken' }))
     fixture.release('broken')
     await fixture.settle()
     const agent = fixture.agents.get(SESSION)
     expect(agent?.hows).toEqual(['followup'])
-    expect(textOf(agent?.got[0]?.message)).toBe(`${NOTICE_HEAD}\n- failed ${record} (your call): a broken dunk: The backend refused the request.`)
+    expect(textOf(agent?.got[0]?.message)).toBe(wakeText(record))
   })
 
   it('injects without a wake while other records of the session run, and wakes with the last one', async () => {
@@ -253,7 +241,7 @@ describe('record notices', () => {
     await render('one')
     await render('two')
     expect(agent?.hows).toEqual(['followup', 'inject'])
-    // Claiming its own notice does not refill the budget; the user's message does.
+    // Claiming its own wake does not refill the budget; the user's message does.
     const notice = agent?.got[1]?.message
     if (notice !== undefined) fixture.context.emit('agent/inbox/claimed', { agent: agent as never, message: notice, turn: 2 })
     await render('three')
@@ -280,7 +268,7 @@ describe('record notices', () => {
     expect(fixture.agents.get(SESSION)?.got).toEqual([])
   })
 
-  it('sends no notice for a record that no agent call started', async () => {
+  it('sends no wake for a record that no agent call started', async () => {
     const fixture = await start()
     await fixture.project.run({
       actor: 'user', surface: 'canvas', session: SESSION, turn: null, tool_call: null, intent: 'retry on the canvas',
@@ -300,42 +288,16 @@ describe('record notices', () => {
     expect(fixture.agents.get(SESSION)?.got).toEqual([])
   })
 
-  it('drops the notice when the agent leaves while its images are saved', async () => {
-    const fixture = await start()
-    await fixture.call('dv_shot_render', { reason: 'dunk', prompt: 'dunk' })
-    const agent = fixture.agents.get(SESSION)
-    fixture.beforeSave.hook = () => { fixture.agents.delete(SESSION) }
-    fixture.release('dunk')
-    await fixture.settle()
-    expect(agent?.got).toEqual([])
-  })
-
-  it('logs a delivery that fails and keeps delivering others', async () => {
-    const fixture = await start()
-    await fixture.call('dv_shot_render', { reason: 'dunk', prompt: 'dunk' })
-    fixture.beforeSave.hook = () => { throw new Error('disk full') }
-    fixture.release('dunk')
-    await fixture.settle()
-    expect(fixture.agents.get(SESSION)?.got).toEqual([])
-    fixture.beforeSave.hook = () => {}
-    await fixture.call('dv_shot_render', { reason: 'again', prompt: 'again' })
-    fixture.release('again')
-    await fixture.settle()
-    expect(fixture.agents.get(SESSION)?.hows).toEqual(['followup'])
-  })
-
   it('delivers at once a record that finished before its watch, and ignores a watch of another project', async () => {
     const fixture = await start()
-    const notices = new RecordNotices(fixture.context, fixture.project, {
-      assets: () => fixture.assets, agentSummaries: () => [], turnOf: () => null,
-    }, undefined)
+    const notices = new RecordNotices(fixture.context, fixture.project, undefined)
     const imported = recordOf(await fixture.call('dv_asset_import', { reason: 'photo', name: 'photo.png' }))
     const record = fixture.project.getRecord(fixture.projectId, imported)
     notices.recordFinished(brandString<ProjectId>('elsewhere'), record)
     notices.watch(fixture.projectId, imported, SESSION)
     await fixture.settle()
     expect(fixture.agents.get(SESSION)?.hows).toEqual(['followup'])
-    expect(textOf(fixture.agents.get(SESSION)?.got[0]?.message)).toContain(`- done ${imported} (your call): imported photo.png`)
+    expect(textOf(fixture.agents.get(SESSION)?.got[0]?.message)).toBe(wakeText(imported))
     notices.recordFinished(fixture.projectId, record)
     await fixture.settle()
     expect(fixture.agents.get(SESSION)?.hows).toEqual(['followup'])

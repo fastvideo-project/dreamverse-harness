@@ -1,8 +1,9 @@
 /**
  * The project messages through the `dvProject` service with the real DSH tool registry: the project state message, the
- * project update message for each kind of change, the records that the agent's own tool results showed, and the
- * `dvProjectSight` fold over a session log built from the logged messages and tool results. Expected texts are written
- * from the rendering rules in `project-updates.ts`.
+ * project update message for each kind of change, the records that the agent's own tool results showed, the
+ * `dvProjectSight` fold over a session log built from the logged messages and tool results, and the `agent/pre-step`
+ * listener with the wakes of the record notices. Expected texts are written from the rendering rules in
+ * `project-updates.ts`.
  */
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
@@ -15,7 +16,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvProject, { type OperationSpec, type ProjectId, type ProjectRecord, type RecordId, type RecordOrigin, type SessionId } from '../src/index.ts'
-import { STATE_HEAD, UPDATE_HEAD, foldSeen, projectMessage, recordNotice, seenProjection, withClaimed, type SessionSeen } from '../src/project-updates.ts'
+import { STATE_HEAD, UPDATE_HEAD, foldSeen, projectMessage, seenProjection, wakeMessage, type SessionSeen } from '../src/project-updates.ts'
 import type { ProjToolDeps } from '../src/proj-tools.ts'
 import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot } from './support.ts'
 import { chatProject, provideChatServices, type TestChatServices } from './workspaces.ts'
@@ -283,24 +284,12 @@ describe('project update message', () => {
     expect(fixture.log.step()).toBeNull()
   })
 
-  it('repeats nothing that the agent\'s own tool results showed: an operation call, dv_proj_undo, and a finish a record notice showed', async () => {
+  it('repeats nothing that the agent\'s own tool results showed: an operation call and dv_proj_undo', async () => {
     const fixture = await start()
     fixture.log.step()
     fixture.log.toolResult(await fixture.call('dv_asset_import', { reason: 'product', name: 'product.png' }))
     expect(fixture.log.step()).toBeNull()
     fixture.log.toolResult(await fixture.call('dv_proj_undo', {}))
-    expect(fixture.log.step()).toBeNull()
-    const render = await fixture.run(scheduler('shot 1'), 'shot.render', { prompt: 'one' }, { after: [] })
-    fixture.log.toolResult({ isError: false, value: {}, content: [], meta: { dv_seen: { project: fixture.projectId, at: render.id, records: { [render.id]: 'pending' } } } })
-    await until(fixture.project, fixture.projectId, render.id, 'running')
-    fixture.release('one')
-    await fixture.project.wait(fixture.projectId, [render.id])
-    const finished = fixture.project.getRecord(fixture.projectId, render.id)
-    const notice = recordNotice(fixture.project, fixture.deps, SESSION, fixture.projectId, finished, [])
-    // Claimed at this step, the notice already shows the finish.
-    expect(projectMessage(fixture.project, fixture.deps, SESSION, withClaimed(fixture.log.seen, [notice]))).toBeNull()
-    expect(projectMessage(fixture.project, fixture.deps, SESSION, fixture.log.seen)).not.toBeNull()
-    fixture.log.logMessage(notice)
     expect(fixture.log.step()).toBeNull()
   })
 
@@ -477,13 +466,67 @@ describe('finished records in the agent\'s messages', () => {
     return record
   }
 
+  /** The `- done` line and the video output line of a finished render of `prompt`. */
+  function doneLines(record: RecordId, prompt: string): string[] {
+    return [`- done ${record} (your call): shot ${prompt}`, `  - video: ${assetOf(prompt)} (video/mp4) https://assets.example/${assetOf(prompt)}`]
+  }
+
   it('lists a render once when a project update reported it before the step that claims the record notice', async () => {
     const fixture = await start()
     fixture.agent.status = 'running'
     fixture.log.step()
     const record = await finishedRender(fixture, 'one')
-    await runStep(fixture, [], 2)
-    await runStep(fixture, fixture.agent.claim(), 3)
+    expect((await runStep(fixture, [], 2)).map(textOf)).toEqual([update(...doneLines(record, 'one'))])
+    // The busy agent's step that claims the late wake has no message, so the loop ends the turn without a model request.
+    expect(await runStep(fixture, fixture.agent.claim(), 3)).toEqual([])
     expect(resultLines(fixture.log, record)).toHaveLength(1)
+  })
+
+  it('lists a render once when the step that claims the wake comes first, as the project update of that step', async () => {
+    const fixture = await start()
+    fixture.log.step()
+    const record = await finishedRender(fixture, 'one')
+    expect((await runStep(fixture, fixture.agent.claim(), 1)).map(textOf)).toEqual([update(...doneLines(record, 'one'))])
+    expect(await runStep(fixture, [], 2)).toEqual([])
+    expect(resultLines(fixture.log, record)).toHaveLength(1)
+  })
+
+  it('leaves the first step of a turn opened by a late wake empty, so an idle agent makes no model request', async () => {
+    const fixture = await start()
+    fixture.log.step()
+    const record = await finishedRender(fixture, 'one')
+    const wake = fixture.agent.claim()
+    const typed = createUserMessage({ content: [{ type: 'text', text: 'how is it going?' }], source: { kind: 'user' } })
+    // The user's message opened the turn before the wake: its step lists the finish after the message.
+    expect((await runStep(fixture, [typed], 1)).map(textOf)).toEqual(['how is it going?', update(...doneLines(record, 'one'))])
+    expect(await runStep(fixture, wake, 1)).toEqual([])
+    expect(resultLines(fixture.log, record)).toHaveLength(1)
+  })
+
+  it('merges the wakes of one step into one project update after the user\'s message, and logs no wake', async () => {
+    const fixture = await start()
+    fixture.agent.status = 'running'
+    fixture.log.step()
+    const one = await finishedRender(fixture, 'one')
+    const first = fixture.agent.claim()
+    const two = await finishedRender(fixture, 'two')
+    const typed = createUserMessage({ content: [{ type: 'text', text: 'and now?' }], source: { kind: 'user' } })
+    const messages = await runStep(fixture, [...first, typed, ...fixture.agent.claim()], 2)
+    expect(messages.map(textOf)).toEqual(['and now?', update(...doneLines(one, 'one'), ...doneLines(two, 'two'))])
+    expect(fixture.log.events.some(event => event.type === 'user/message' && event.data.source.kind === 'dv-project-wake')).toBe(false)
+  })
+
+  it('carries only text in every message a step gets, and no image', async () => {
+    const fixture = await start()
+    fixture.log.step()
+    await finishedRender(fixture, 'one')
+    const messages = await runStep(fixture, fixture.agent.claim(), 1)
+    expect(messages.flatMap(message => message.content.map(block => block.type))).toEqual(['text'])
+  })
+
+  it('removes a wake even when nothing is bound, and returns other steps unchanged', async () => {
+    const fixture = await start(false)
+    expect(await runStep(fixture, [wakeMessage([brandString<RecordId>('r1')])], 1)).toEqual([])
+    expect(await runStep(fixture, [], 1)).toEqual([])
   })
 })
