@@ -10,6 +10,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { once } from 'node:events'
 import type { AddressInfo } from 'node:net'
+import { expect } from 'vitest'
 
 /** One chat-completions message as the agent sends it. */
 export interface ChatMessage {
@@ -91,6 +92,21 @@ export function assetIdOf(result: unknown, role: string): string {
  */
 export function scheduledOf(result: unknown): string[] {
   return /^scheduled: (.+)$/m.exec(String(result))?.[1]?.split(', ') ?? []
+}
+
+/**
+ * Assert that each request extends the one before it: every request field other than the messages is equal, and the
+ * earlier messages are unchanged at the start of the later request.
+ * @param requests - the agent requests of one chat session, in arrival order.
+ */
+export function expectEachRequestExtendsThePrevious(requests: readonly ChatRequest[]): void {
+  for (let index = 1; index < requests.length; index += 1) {
+    const { messages: previous, ...previousFields } = requests[index - 1] as ChatRequest
+    const { messages: next, ...nextFields } = requests[index] as ChatRequest
+    expect(nextFields, `request ${String(index)} fields`).toEqual(previousFields)
+    expect(next.length, `request ${String(index)} length`).toBeGreaterThan(previous.length)
+    expect(next.slice(0, previous.length), `request ${String(index)} prefix`).toEqual(previous)
+  }
 }
 
 /** Parse a tool message into JSON when possible. */

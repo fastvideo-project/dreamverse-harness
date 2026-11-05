@@ -7,28 +7,14 @@ import type { Browser, Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { bootHarness, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import {
-  assetIdOf, startScriptedModel, textOf, type ChatRequest, type ScriptedModel, type ScriptedRule,
+  assetIdOf, expectEachRequestExtendsThePrevious, startScriptedModel, textOf, type ChatRequest, type ScriptedModel,
+  type ScriptedRule,
 } from '../scripted-model.ts'
 
 /** A 1×1 opaque PNG, the agent's product image. */
 const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 /** A red 1×1 PNG, the image the user imports on the canvas. */
 const RED_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGM4IScHAAK2AQU0pnWqAAAAAElFTkSuQmCC'
-
-/**
- * Assert that each request extends the one before it: every request field other than the messages is equal, and the
- * earlier messages are unchanged at the start of the later request.
- * @param requests - the agent requests of one chat session, in arrival order.
- */
-function expectEachRequestExtendsThePrevious(requests: readonly ChatRequest[]): void {
-  for (let index = 1; index < requests.length; index += 1) {
-    const { messages: previous, ...previousFields } = requests[index - 1] as ChatRequest
-    const { messages: next, ...nextFields } = requests[index] as ChatRequest
-    expect(nextFields, `request ${String(index)} fields`).toEqual(previousFields)
-    expect(next.length, `request ${String(index)} length`).toBeGreaterThan(previous.length)
-    expect(next.slice(0, previous.length), `request ${String(index)} prefix`).toEqual(previous)
-  }
-}
 
 /** The project state and project update messages of one request, as text. */
 function projectMessages(request: ChatRequest): string[] {

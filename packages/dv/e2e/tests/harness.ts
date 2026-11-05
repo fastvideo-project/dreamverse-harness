@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { startMockLlmServer, type MockLlmServer } from '@deepseek-ai/dsh-llm-mock-server'
 import { encodeClip } from '../../api/tests/support.ts'
+import type { Config as StepGateConfig } from './step-gate-plugin.ts'
 
 /** The repository root, four levels above this file. */
 export const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url))
@@ -217,10 +218,11 @@ async function sessionCookie(tokenUrl: string): Promise<string> {
  * @param options - `modelBaseUrl` points the agent's OpenAI-compatible route (with `/v1`) at a test model, such as
  *   `startScriptedModel` from `scripted-model.ts`; by default the route points at the Messages mock.
  *   `playableVideos` makes the fake backend encode VP9 videos with a per-prompt color, which Chromium can play.
+ *   `stepGate` mounts `tests/step-gate-plugin.ts` with this config.
  * @returns the booted harness; call `close` in teardown even on failure.
  */
 export async function bootHarness(
-  options: { modelBaseUrl?: string; playableVideos?: boolean } = {},
+  options: { modelBaseUrl?: string; playableVideos?: boolean; stepGate?: StepGateConfig } = {},
 ): Promise<BootedHarness> {
   const scratch = mkdtempSync(join(tmpdir(), 'dv-e2e-'))
   const backend = await startFakeBackend(join(scratch, 'backend'), { playable: options.playableVideos === true })
@@ -242,7 +244,12 @@ export async function bootHarness(
   }))
   writeFileSync(join(profileDir, 'cordis.patch.yml'), [
     '- id: dv-fastvideo', '  disabled: false', '  config:', '    models:', '      fasth3:', '        ref2v:',
-    `          baseUrl: ${backend.url}`, '- id: dv-uniserve', '  disabled: true', '',
+    `          baseUrl: ${backend.url}`, '- id: dv-uniserve', '  disabled: true',
+    ...options.stepGate === undefined ? [] : [
+      '- insert:', '    - id: dv-e2e-step-gate', `      name: ${JSON.stringify(fileURLToPath(new URL('step-gate-plugin.ts', import.meta.url)))}`,
+      '      config:', `        url: ${JSON.stringify(options.stepGate.url)}`, `        holdText: ${JSON.stringify(options.stepGate.holdText)}`,
+    ],
+    '',
   ].join('\n'))
   symlinkSync(join(REPO_ROOT, 'packages/bundle/dv'), join(profileDir, 'node_modules', '@dv', 'bundle'))
   const port = await freePort()
