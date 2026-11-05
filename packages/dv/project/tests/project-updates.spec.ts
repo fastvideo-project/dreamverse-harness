@@ -7,6 +7,7 @@
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'
+import { agentEvents, type AgentEventDispatch } from '@deepseek-ai/dsh-agent'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { ToolCallId, createToolResultMessage, createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session'
@@ -35,6 +36,28 @@ const assetOf = (text: string): string => createHash('sha256').update(text).dige
 const user = (intent: string): RecordOrigin => ({ actor: 'user', surface: 'canvas', session: null, turn: null, tool_call: null, intent })
 /** A record the scheduler runs. */
 const scheduler = (intent: string): RecordOrigin => ({ actor: 'system', surface: 'api', session: SESSION, turn: null, tool_call: null, intent })
+
+/** The agent of {@link SESSION} as the record notices and the `agent/pre-step` listener read it. */
+class FakeAgent {
+  readonly id = SESSION
+  readonly session = { id: SESSION }
+  status: 'idle' | 'running' = 'idle'
+  /** The messages queued for the agent and not claimed yet. */
+  readonly queued: UserMessage[] = []
+
+  followup(message: UserMessage): void {
+    this.queued.push(message)
+  }
+
+  inject(message: UserMessage): void {
+    this.queued.push(message)
+  }
+
+  /** Claim every queued message, as the agent loop claims its inbox at a step. */
+  claim(): UserMessage[] {
+    return this.queued.splice(0)
+  }
+}
 
 /**
  * A session log of one agent: the events appended so far and the state folded from them, the way the agent loop logs
@@ -92,6 +115,10 @@ interface Fixture {
   services: TestChatServices
   deps: ProjToolDeps
   log: AgentLog
+  /** The agent of {@link SESSION}, which the `agents` stand-in returns. */
+  agent: FakeAgent
+  /** The agent events of {@link agent}. */
+  events: AgentEventDispatch
   /** Run one tool as the agent of {@link SESSION}. */
   call(name: string, args: Record<string, unknown>): Promise<ToolExecutionResult>
   /** Run one operation and return its record. */
@@ -103,7 +130,8 @@ interface Fixture {
 /**
  * Mount the DSH tool registry and `dvProject` with an in-memory asset store, two operations (`asset.import`, and a GPU
  * `shot.render` that waits until the test releases its prompt and fails for the prompt `broken`), and a project bound
- * to {@link SESSION} unless `bound` is false.
+ * to {@link SESSION} unless `bound` is false. The `sessionProjections` stand-in answers the agent's session with the
+ * fixture log's state, and the `agents` stand-in returns the fixture's agent for {@link SESSION}.
  * @param bound - whether {@link SESSION} starts bound to the project.
  * @returns the fixture.
  */
@@ -111,7 +139,12 @@ async function start(bound = true): Promise<Fixture> {
   const root = tempRoot()
   const context = new Context()
   contexts.push(context)
-  context.provide('sessionProjections', { stateOf: () => undefined, register: () => () => {} } as never)
+  const agent = new FakeAgent()
+  const holder: { log?: AgentLog } = {}
+  context.provide('sessionProjections', {
+    stateOf: (session: unknown) => (session === agent.session ? holder.log?.seen : undefined), register: () => () => {},
+  } as never)
+  context.provide('agents', { get: (id: string) => (id === SESSION ? agent : undefined) } as never)
   const services = provideChatServices(context)
   await context.plugin(SystemPrompt, {}).await()
   await context.plugin(ToolRuntime).await()
@@ -156,8 +189,10 @@ async function start(bound = true): Promise<Fixture> {
     : (await project.createProject(await project.newProjectFolder('Knife ad'), 'Knife ad', user('create'))).id
   const deps: ProjToolDeps = { assets: () => assets, agentSummaries: () => [], turnOf: () => null, chatFolder: () => null }
   let calls = 0
+  const log = new AgentLog(project, deps)
+  holder.log = log
   return {
-    context, project, projectId, services, deps, log: new AgentLog(project, deps),
+    context, project, projectId, services, deps, log, agent, events: agentEvents(context, agent as never),
     call(name, args) {
       calls += 1
       const agent = { id: SESSION, session: { id: SESSION } }
@@ -411,5 +446,44 @@ describe('dvProjectSight fold', () => {
     expect(projectMessage(fixture.project, fixture.deps, SESSION, replayed)).toEqual(
       expect.objectContaining({ content: projectMessage(fixture.project, fixture.deps, SESSION, fixture.log.seen)?.content }),
     )
+  })
+})
+
+describe('finished records in the agent\'s messages', () => {
+  /** Run the `agent/pre-step` waterfall of one step that claimed `messages`, and log the step's messages. */
+  async function runStep(fixture: Fixture, messages: UserMessage[], step: number): Promise<UserMessage[]> {
+    const decision = await fixture.events.waterfall('agent/pre-step', { messages, turn: 1, step, signal: new AbortController().signal },
+      () => Promise.resolve({ kind: 'enter' as const, messages }))
+    if (decision.kind !== 'enter') throw new Error('expected step entry')
+    for (const message of decision.messages) fixture.log.logMessage(message)
+    return decision.messages
+  }
+
+  /** The result lines of a record in every logged user message. */
+  function resultLines(log: AgentLog, record: RecordId): string[] {
+    return log.events.flatMap(event => (event.type === 'user/message' ? textOf(event.data).split('\n') : []))
+      .filter(line => line.startsWith(`- done ${record} `))
+  }
+
+  /** Start a render as the agent's call, log its pending result, and wait until it finished and its notice was queued. */
+  async function finishedRender(fixture: Fixture, prompt: string): Promise<RecordId> {
+    const result = await fixture.call('dv_shot_render', { reason: prompt, prompt })
+    fixture.log.toolResult(result)
+    const record = brandString<RecordId>((result.value as { record: string }).record)
+    fixture.release(prompt)
+    await fixture.project.wait(fixture.projectId, [record])
+    for (let turn = 0; turn < 5; turn += 1) await new Promise(resolve => setImmediate(resolve))
+    expect(fixture.agent.queued).toHaveLength(1)
+    return record
+  }
+
+  it('lists a render once when a project update reported it before the step that claims the record notice', async () => {
+    const fixture = await start()
+    fixture.agent.status = 'running'
+    fixture.log.step()
+    const record = await finishedRender(fixture, 'one')
+    await runStep(fixture, [], 2)
+    await runStep(fixture, fixture.agent.claim(), 3)
+    expect(resultLines(fixture.log, record)).toHaveLength(1)
   })
 })
