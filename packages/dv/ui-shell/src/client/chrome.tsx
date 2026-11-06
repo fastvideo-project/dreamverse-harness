@@ -135,18 +135,19 @@ export interface GuideSource {
 }
 
 /**
- * Whether a registered guide entry belongs on the DreamVerse guide: a tab type of a DreamVerse plugin (`@dv/…`) that
+ * Whether a registered guide entry belongs on the DreamVerse guide: a tab type that a plugin outside DSH's own packages
+ * (`@deepseek-ai/…`) registers, such as a DreamVerse plugin (`@dv/…`) or an installed one (`@dreamverse/…`), and that
  * the four fixed panels do not already offer.
  * @param box - a guide entry of the registry.
  * @returns whether the guide lists it after the four panels.
  */
 export function isPluginPanel(box: SidebarRightGuideBox): boolean {
-  return box.providerId.startsWith('@dv/') && !(GUIDE_KINDS as readonly string[]).includes(box.kind)
+  return !box.providerId.startsWith('@deepseek-ai/') && !(GUIDE_KINDS as readonly string[]).includes(box.kind)
 }
 
 /**
  * The right-panel guide (the page a new tab shows): a short hint, the four DreamVerse panels, and the panels that other
- * DreamVerse plugins register, in their guide order. The canvas and the timeline live in the center and DSH's tab types
+ * plugins outside DSH register, in their guide order. The canvas and the timeline live in the center and DSH's tab types
  * do not belong to a creator, so neither is offered.
  * @param props - the guide chain props and the tab registry.
  * @returns the guide.

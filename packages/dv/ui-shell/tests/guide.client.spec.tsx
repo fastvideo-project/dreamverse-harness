@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The DreamVerse right-panel guide: the four fixed panels, then the panels that other DreamVerse plugins register, such
- * as a plugin's own tab, each opening its tab type; DSH tab types and the fixed panels' own registrations are not repeated.
+ * The DreamVerse right-panel guide: the four fixed panels, then the panels that plugins outside DSH register, such as a
+ * DreamVerse plugin's or an installed plugin's own tab, each opening its tab type; DSH tab types and the fixed panels'
+ * own registrations are not repeated.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
@@ -41,8 +42,9 @@ describe('the DreamVerse guide', () => {
     expect(titles()).toEqual(['Chat', 'Asset pool', 'History', 'Trajectory', 'Example', 'Notes'])
   })
 
-  it('takes only DreamVerse tab types that the fixed panels do not offer', () => {
+  it('takes tab types from plugins outside DSH that the fixed panels do not offer', () => {
     expect(isPluginPanel(box('@dv/ui-example', 'dv-example', 'Example'))).toBe(true)
+    expect(isPluginPanel(box('@dreamverse/ui-voice-convert', 'dv-voice', 'Voice'))).toBe(true)
     expect(isPluginPanel(box('@dv/ui-history', 'dv-history', 'History'))).toBe(false)
     expect(isPluginPanel(box('@deepseek-ai/dsh-client-ui-terminal', 'terminal', 'Terminal'))).toBe(false)
   })
