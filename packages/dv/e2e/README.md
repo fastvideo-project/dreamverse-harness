@@ -45,6 +45,7 @@ DSH_PLAYWRIGHT_EXECUTABLE_PATH=/path/to/chrome-linux/chrome \
 | [`tests/stories/chat.e2e.ts`](tests/stories/chat.e2e.ts) | The chat and its composer: agent changes as steps of the history at once across turns, the agent's change after an undo that discards the undone step, attached images, `@` mentions, and what the model request received |
 | [`tests/stories/navigation.e2e.ts`](tests/stories/navigation.e2e.ts) | Projects, chat sessions, panels, reloads, project links, browser history, and the language switch |
 | [`tests/stories/project-updates.e2e.ts`](tests/stories/project-updates.e2e.ts) | The project state and update messages across tool steps, a canvas import and a render finish between two steps, and an undo between turns; every agent request extends the previous one with equal request fields |
+| [`tests/stories/late-wake.e2e.ts`](tests/stories/late-wake.e2e.ts) | A render that finishes while the step gate holds the first step of the next turn: that step's project update reports the finish once, and the wake that arrives during the hold ends the turn without a model request. An idle agent cannot get a late wake, because `recordFinished` of `@dv/project` queues the wake synchronously when the record finishes, and the turn that the wake opens claims it before any other step reads the project |
 
 -----
 
@@ -59,7 +60,8 @@ DSH_PLAYWRIGHT_EXECUTABLE_PATH=/path/to/chrome-linux/chrome \
 | File | Content |
 | --- | --- |
 | [`tests/harness.ts`](tests/harness.ts) | `bootHarness`, `startFakeBackend`, `waitFor`, `escapeRegExp`, and the Playwright export |
-| [`tests/scripted-model.ts`](tests/scripted-model.ts) | `startScriptedModel`, `textOf`, `assetIdOf`, `scheduledOf`, `CONTEXT_MESSAGE` |
+| [`tests/scripted-model.ts`](tests/scripted-model.ts) | `startScriptedModel`, `textOf`, `assetIdOf`, `scheduledOf`, `expectEachRequestExtendsThePrevious`, `CONTEXT_MESSAGE` |
+| [`tests/step-gate-plugin.ts`](tests/step-gate-plugin.ts) | The test-only Cordis plugin that `bootHarness({ stepGate })` inserts into the isolated profile: a step whose claimed user message contains `holdText` waits for the story's test server before the other `agent/pre-step` listeners run, and each claimed wake is reported to that server |
 | [`tests/fake-backend-main.ts`](tests/fake-backend-main.ts) | Runs the fake backend as a long-lived process for manual browser testing |
 | [`vitest.e2e.config.ts`](vitest.e2e.config.ts) | The story lane: one file at a time, 180-second test timeout |
 

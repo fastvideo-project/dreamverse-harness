@@ -7,6 +7,10 @@
  * `dv_seen` (a `ProjectShown`), the record in the status the result returned, each scheduled record as `pending`, and
  * the newest of them as the position, so the project updates do not repeat them; a read stores none.
  *
+ * A call is scheduled, and its result is `pending`, when its operation uses the GPU or an input names an output of a
+ * record that has not finished. The agent's session then watches the record (`AgentToolDeps.watch`); when it finishes,
+ * the record notices wake the agent, and a project update message reports the result.
+ *
  * The record's turn is the DSH turn number of the calling agent's session, read from the `turnBoundary` session
  * projection.
  *
@@ -50,6 +54,8 @@ export interface AgentToolDeps {
   run(request: RunRequest): Promise<RunResult>
   getRecord(project: ProjectId, record: RecordId): ProjectRecord
   listHistory(query: HistoryQuery): HistoryEntry[]
+  /** Wake the agent of `session` when the record finishes. */
+  watch(project: ProjectId, record: RecordId, session: SessionId): void
 }
 
 /** The session of a call without an agent: direct SDK calls. */
@@ -80,7 +86,7 @@ const RESULT_SCHEMA = {
   properties: {
     project: { type: 'string', required: true, description: 'The project of this call; not shown to the model.' },
     record: { type: 'string', required: true, description: 'The record of this call; empty for a read, which writes no record.' },
-    status: { type: 'string', required: true, description: 'done, or pending (scheduled behind records that have not finished).' },
+    status: { type: 'string', required: true, description: 'done, or pending (runs in the background; a project update reports when it finishes).' },
     summary: { type: 'string', required: true },
     outputs: { type: 'array', required: true, items: OUTPUT_SCHEMA },
     scheduled: {
@@ -268,6 +274,13 @@ function sharedParams(spec: OperationSpec, kinds: readonly string[]): ParameterS
   const versionText = kinds.length === 0 ? '' : `, or <id>@<version> (a ${kindListText(kinds)} version; dv_proj_state lists IDs)`
   const roles = Object.entries(spec.inputs).map(([role, input]) => `${role}${input.required === true ? '' : '?'}: ${input.type}`
     + `${input.many === true ? '[]' : ''}${input.versioned === true ? ' (<asset> or <id>@<version>)' : ''}`)
+  // A call runs after the unfinished records its inputs name, except for inputs of `pendingInputRoles` (a timeline clip
+  // becomes a placeholder instead), so the text promises the wait only when some role waits.
+  const waits = Object.keys(spec.inputs).some(role => spec.pendingInputRoles?.includes(role) !== true)
+  const recordText = waits
+    ? 'an output of an earlier record, which may still be running: the call then runs after it, and a DreamVerse project update '
+      + 'reports the call\'s result'
+    : 'an output of an earlier record'
   return {
     reason: {
       type: 'string', required: true,
@@ -276,7 +289,7 @@ function sharedParams(spec: OperationSpec, kinds: readonly string[]): ParameterS
     ...Object.keys(spec.inputs).length === 0 ? {} : {
       inputs: {
         type: 'object', additionalProperties: true,
-        description: 'Input references by role: <asset> (an asset ID), <record>#<output> (an output of an earlier record)'
+        description: `Input references by role: <asset> (an asset ID), <record>#<output> (${recordText})`
           + `${versionText}; a list for roles marked []. Roles: ${roles.join('; ')}.`,
       },
     },
@@ -302,9 +315,13 @@ export function formatToolResult(value: OperationToolValue, spec: Pick<Operation
   if (value.scheduled.length > 0) lines.push(`scheduled: ${value.scheduled.join(', ')}`)
   if (spec.omitParamsFromResult !== true) lines.push(`params: ${JSON.stringify(value.params)}`)
   if (value.report !== undefined) lines.push(`report: ${JSON.stringify(value.report)}`)
+  if (value.status === 'pending') lines.push(PENDING_LINE)
   const images = (value.images ?? []).flatMap((image): ContentBlock[] => isImageRef(image) ? [{ type: 'image', attachment: image }] : [])
   return [{ type: 'text', text: lines.join('\n') }, ...images]
 }
+
+/** The line a `pending` result ends with. */
+export const PENDING_LINE = 'This call runs in the background. A DreamVerse project update reports its result when it finishes; until then, keep working or end your turn.'
 
 /** Whether a JSON value is an attachment reference. */
 function isImageRef(value: JsonValue): value is JsonValue & ImageAttachmentRef {
@@ -386,7 +403,8 @@ export class AgentTools {
       ...Array.isArray(supersedes) ? { supersedes: supersedes.map(id => brandString<RecordId>(String(id))) } : {},
     }
     await spec.prepareToolCall?.({ args, request, state, exec })
-    if (this.waitsForProducer(project, spec, request.inputs)) request.after = []
+    // A GPU operation runs in the background so the agent keeps working; so does a call behind an unfinished input.
+    if (spec.resource === 'gpu' || this.waitsForProducer(project, spec, request.inputs)) request.after = []
     const before = new Set(this.deps.listHistory({ project }).map(entry => entry.record.id))
     const result = await this.deps.run(request)
     const record = result.record
@@ -398,6 +416,7 @@ export class AgentTools {
       }
     }
     if (record.status === 'failed' || record.status === 'cancelled') throw failureOf(spec, record)
+    if (record.status === 'pending' && exec.agent !== undefined) this.deps.watch(project, record.id, session)
     // The records this call scheduled: `system` records of the same session that did not exist before the call.
     const scheduled = this.deps.listHistory({ project, actor: 'system', kind: 'operation' })
       .map(entry => entry.record).filter(other => !before.has(other.id) && other.session === session)

@@ -13,7 +13,7 @@ Keep planning text in text nodes, not only in chat replies. A text node keeps it
 
 Rules:
 
-1. Every write and edit needs `base_version`: the `version` from the project block or from the `dv_textnode_read` report that you based your change on, and `0` for a new path. A call refused with "it changed since you read it" means that the user or another call wrote a newer version. Call `dv_textnode_read` again and make your change on the newer text. A call refused with "has a write that has not finished" means that another write of the same text node still runs. Wait for it with `dv_proj_wait`, then read the text node again.
+1. Every write and edit needs `base_version`: the `version` from the project block or from the `dv_textnode_read` report that you based your change on, and `0` for a new path. A call refused with "it changed since you read it" means that the user or another call wrote a newer version. Call `dv_textnode_read` again and make your change on the newer text. A call refused with "has a write that has not finished" means that another write of the same text node still runs. After a DreamVerse project update reports it finished, read the text node again.
 2. Prefer `dv_textnode_edit` for a change of a few lines in a long text. Copy each `old_text` from `dv_textnode_read` without the line number and the tab before each line. When the text occurs more than once, add neighboring lines until it occurs exactly once. When any edit does not apply, the call writes nothing; fix the named edits and call again.
 3. Use `dv_textnode_write` for a new document or when most of the text changes. `body` is the complete text, never a fragment.
 4. Read a long document one section at a time with `section`.

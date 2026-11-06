@@ -208,9 +208,9 @@ describe('chat with the agent', () => {
     await page.keyboard.press('Enter')
   }
 
-  /** Wait until the right-panel chat shows `text`. */
+  /** Wait until the right-panel chat shows `text`; a closed turn hides its earlier replies, so a hidden match does not count. */
   async function waitChat(page: Page, text: string, timeout = 30_000): Promise<void> {
-    await chat(page).getByText(text, { exact: false }).first().waitFor({ timeout })
+    await chat(page).getByText(text, { exact: false }).filter({ visible: true }).first().waitFor({ timeout })
   }
 
   /** The system and developer prompt of a model request, joined. */

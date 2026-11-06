@@ -279,6 +279,9 @@ describe('dv-sglang-diffusion', () => {
     const server = await startFakeServer()
     const fixture = await start(server.url)
     const result = operationValue(await fixture.tool('dv_image_generate', { ...KEY, reason: 'lantern', prompt: 'a red paper lantern', size: '1024x768', seed: 1234 }))
+    // An agent call of a GPU operation runs in the background.
+    expect(result.status).toBe('pending')
+    await fixture.ctx.dvProject.wait(fixture.project)
     expect(server.generations).toEqual([
       { prompt: 'a red paper lantern', size: '1024x768', seed: 1234, n: 1, response_format: 'b64_json', output_format: 'png' },
     ])
@@ -288,12 +291,13 @@ describe('dv-sglang-diffusion', () => {
       id: result.record, status: 'done',
       report: { seed: 1234, model_id: 'Qwen/Qwen-Image-2.1-Turbo', size: '1024x768' },
     })
-    const asset = brandString<AssetId>(String(result.outputs[0]?.asset_id))
+    const asset = record?.outputs[0] ?? brandString<AssetId>('none')
     expect(fixture.ctx.dvAssetPool.read(asset)).toEqual(PNG)
     expect(fixture.ctx.dvAssetPool.get(asset)).toMatchObject({ mime: 'image/png', width: 1024, height: 768 })
-    const square = operationValue(await fixture.tool('dv_image_generate', { ...KEY, reason: 'square', prompt: 'a lantern', seed: 1 }))
+    operationValue(await fixture.tool('dv_image_generate', { ...KEY, reason: 'square', prompt: 'a lantern', seed: 1 }))
+    await fixture.ctx.dvProject.wait(fixture.project)
     expect(server.generations[1]).toMatchObject({ size: '1024x1024' })
-    expect(square.report).toMatchObject({ size: '1024x1024' })
+    expect(fixture.records().at(-1)?.report).toMatchObject({ size: '1024x1024' })
   })
 
   it('fails a render whose answer holds no PNG image', async () => {
@@ -305,7 +309,8 @@ describe('dv-sglang-diffusion', () => {
       server.generation = json({ data })
       await expect(fixture.entry().render(request(null))).rejects.toThrow(noPng)
     }
-    expect(failure(await fixture.tool('dv_image_generate', { ...KEY, reason: 'try', prompt: 'x' }))).toBe(noPng)
+    expect(operationValue(await fixture.tool('dv_image_generate', { ...KEY, reason: 'try', prompt: 'x' })).status).toBe('pending')
+    await fixture.ctx.dvProject.wait(fixture.project)
     expect(fixture.records().at(-1)).toMatchObject({ status: 'failed', error: { message: noPng } })
   })
 
@@ -331,7 +336,8 @@ describe('dv-sglang-diffusion', () => {
     const fixture = await start(server.url)
     const route = `The server at ${server.url} answered POST /v1/images/generations with HTTP`
     server.generation = { status: 500, type: 'text/plain; charset=utf-8', body: 'Internal Server Error' }
-    expect(failure(await fixture.tool('dv_image_generate', { ...KEY, reason: 'try', prompt: 'x' }))).toBe(`${route} 500: Internal Server Error`)
+    expect(operationValue(await fixture.tool('dv_image_generate', { ...KEY, reason: 'try', prompt: 'x' })).status).toBe('pending')
+    await fixture.ctx.dvProject.wait(fixture.project)
     expect(fixture.records().at(-1)).toMatchObject({ status: 'failed', error: { message: `${route} 500: Internal Server Error` } })
     server.generation = { status: 400, type: 'application/json', body: '{"detail":"size must be formatted as positive WIDTHxHEIGHT"}' }
     await expect(fixture.entry().render(request(null))).rejects.toThrow(`${route} 400: size must be formatted as positive WIDTHxHEIGHT`)

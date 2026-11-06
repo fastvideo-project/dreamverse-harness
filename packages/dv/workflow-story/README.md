@@ -91,7 +91,7 @@ Nothing is appended to the conversation, so the cached prefix stays intact.
 
 #### What the model sees
 
-The skill catalog lists each workflow skill with its description. When the agent loads `story-directing`, it reads the order of calls: `dv_textnode_write` for the text nodes `story/theme.md`, `story/beats.md` and `story/storyboard.md`, each built from the text that `dv_textnode_read` returns for the stage before it and naming that stage in `from`; a summary and one question in bold, and no generation before the user agrees; then `dv_shot_render` per shot (with `continue_from` for a shot that continues the previous one), `dv_proj_wait` and `dv_timeline_create`. It also tells the agent how to extend, shorten or change a story on a timeline.
+The skill catalog lists each workflow skill with its description. When the agent loads `story-directing`, it reads the order of calls: `dv_textnode_write` for the text nodes `story/theme.md`, `story/beats.md` and `story/storyboard.md`, each built from the text that `dv_textnode_read` returns for the stage before it and naming that stage in `from`; a summary and one question in bold, and no generation before the user agrees; then `dv_shot_render` per shot (with `continue_from` for a shot that continues the previous one), and `dv_timeline_create` right away, with each render's result arriving later in a DreamVerse project update. It also tells the agent how to extend, shorten or change a story on a timeline.
 
 #### Token effect
 

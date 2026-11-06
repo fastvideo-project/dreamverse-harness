@@ -451,15 +451,17 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     const fixture = await start()
     const image = await withCharacter(fixture)
     const shot = value(await fixture.call('dv_shot_render', { ...REF, reason: 'first shot', prompt: 'Picture 1 waves', duration_sec: 1, inputs: { reference: 'c1@1' } }))
-    expect(shot).toMatchObject({ status: 'done', scheduled: [], params: { prompt: 'Picture 1 waves', duration_sec: 1 } })
-    expect(shot.outputs.map(output => output.role)).toEqual(['video', 'last_still'])
+    // An agent call of a GPU operation runs in the background.
+    expect(shot).toMatchObject({ status: 'pending', scheduled: [], outputs: [], params: { prompt: 'Picture 1 waves', duration_sec: 1 } })
+    await fixture.ctx.dvProject.wait(fixture.project)
     const record = fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(shot.record))
+    expect(record.outputs).toHaveLength(2)
     expect(record).toMatchObject({ actor: 'agent', surface: 'chat', intent: 'first shot', component: 'shot', operation: 'shot.render' })
     expect(record.inputs).toEqual([{ role: 'reference', ref: { test_character: 'c1', version: 1 }, resolved_asset: image }])
     const next = value(await fixture.call('dv_shot_render', { ...REF, reason: 'second shot', prompt: 'keeps waving', inputs: { reference: [image] }, continue_from: shot.record }))
     expect(next.params).not.toHaveProperty('continue_from')
     expect(fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(next.record)).inputs.find(input => input.role === 'first_frame'))
-      .toEqual({ role: 'first_frame', ref: { record: shot.record, output: 1 }, resolved_asset: shot.outputs[1]?.asset_id })
+      .toEqual({ role: 'first_frame', ref: { record: shot.record, output: 1 }, resolved_asset: record.outputs[1] })
     // The precondition counts an output the record does not have as one without an asset; Project then refuses the call.
     expect(failure(await fixture.call('dv_shot_render', { ...REF, reason: 'third shot', prompt: 'x', inputs: { reference: `${shot.record}#7` } })))
       .toContain('has no output 7')
@@ -593,7 +595,9 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     const prompt = 'The shot starts from @[首帧](dv:input/first_frame).'
     const args = { ...REF, prompt, inputs: { reference: 'c1@1' } }
     const next = value(await fixture.call('dv_shot_render', { ...args, reason: 'next', continue_from: shot.id }))
-    expect(next.status).toBe('done')
+    expect(next.status).toBe('pending')
+    await fixture.ctx.dvProject.wait(fixture.project)
+    expect(fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(next.record)).status).toBe('done')
     expect(fixture.reference.requests[1]).toMatchObject({ prompt, firstFrame: shot.outputs[1] })
     expect(failure(await fixture.call('dv_shot_render', { ...args, reason: 'no frame' })))
       .toContain('The prompt cites the input first_frame, which this call does not have.')

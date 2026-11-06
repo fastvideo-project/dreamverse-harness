@@ -1,12 +1,14 @@
 /**
  * The project messages through the `dvProject` service with the real DSH tool registry: the project state message, the
- * project update message for each kind of change, the records that the agent's own tool results showed, and the
- * `dvProjectSight` fold over a session log built from the logged messages and tool results. Expected texts are written
- * from the rendering rules in `project-updates.ts`.
+ * project update message for each kind of change, the records that the agent's own tool results showed, the
+ * `dvProjectSight` fold over a session log built from the logged messages and tool results, and the `agent/pre-step`
+ * listener with the wakes of the record notices. Expected texts are written from the rendering rules in
+ * `project-updates.ts`.
  */
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'
+import { agentEvents, type AgentEventDispatch } from '@deepseek-ai/dsh-agent'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { ToolCallId, createToolResultMessage, createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session'
@@ -14,7 +16,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvProject, { type OperationSpec, type ProjectId, type ProjectRecord, type RecordId, type RecordOrigin, type SessionId } from '../src/index.ts'
-import { STATE_HEAD, UPDATE_HEAD, foldSeen, projectMessage, seenProjection, type SessionSeen } from '../src/project-updates.ts'
+import { STATE_HEAD, UPDATE_HEAD, foldSeen, projectMessage, seenProjection, wakeMessage, type SessionSeen } from '../src/project-updates.ts'
 import type { ProjToolDeps } from '../src/proj-tools.ts'
 import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot } from './support.ts'
 import { chatProject, provideChatServices, type TestChatServices } from './workspaces.ts'
@@ -35,6 +37,28 @@ const assetOf = (text: string): string => createHash('sha256').update(text).dige
 const user = (intent: string): RecordOrigin => ({ actor: 'user', surface: 'canvas', session: null, turn: null, tool_call: null, intent })
 /** A record the scheduler runs. */
 const scheduler = (intent: string): RecordOrigin => ({ actor: 'system', surface: 'api', session: SESSION, turn: null, tool_call: null, intent })
+
+/** The agent of {@link SESSION} as the record notices and the `agent/pre-step` listener read it. */
+class FakeAgent {
+  readonly id = SESSION
+  readonly session = { id: SESSION }
+  status: 'idle' | 'running' = 'idle'
+  /** The messages queued for the agent and not claimed yet. */
+  readonly queued: UserMessage[] = []
+
+  followup(message: UserMessage): void {
+    this.queued.push(message)
+  }
+
+  inject(message: UserMessage): void {
+    this.queued.push(message)
+  }
+
+  /** Claim every queued message, as the agent loop claims its inbox at a step. */
+  claim(): UserMessage[] {
+    return this.queued.splice(0)
+  }
+}
 
 /**
  * A session log of one agent: the events appended so far and the state folded from them, the way the agent loop logs
@@ -92,6 +116,10 @@ interface Fixture {
   services: TestChatServices
   deps: ProjToolDeps
   log: AgentLog
+  /** The agent of {@link SESSION}, which the `agents` stand-in returns. */
+  agent: FakeAgent
+  /** The agent events of {@link agent}. */
+  events: AgentEventDispatch
   /** Run one tool as the agent of {@link SESSION}. */
   call(name: string, args: Record<string, unknown>): Promise<ToolExecutionResult>
   /** Run one operation and return its record. */
@@ -103,7 +131,8 @@ interface Fixture {
 /**
  * Mount the DSH tool registry and `dvProject` with an in-memory asset store, two operations (`asset.import`, and a GPU
  * `shot.render` that waits until the test releases its prompt and fails for the prompt `broken`), and a project bound
- * to {@link SESSION} unless `bound` is false.
+ * to {@link SESSION} unless `bound` is false. The `sessionProjections` stand-in answers the agent's session with the
+ * fixture log's state, and the `agents` stand-in returns the fixture's agent for {@link SESSION}.
  * @param bound - whether {@link SESSION} starts bound to the project.
  * @returns the fixture.
  */
@@ -111,7 +140,12 @@ async function start(bound = true): Promise<Fixture> {
   const root = tempRoot()
   const context = new Context()
   contexts.push(context)
-  context.provide('sessionProjections', { stateOf: () => undefined, register: () => () => {} } as never)
+  const agent = new FakeAgent()
+  const holder: { log?: AgentLog } = {}
+  context.provide('sessionProjections', {
+    stateOf: (session: unknown) => (session === agent.session ? holder.log?.seen : undefined), register: () => () => {},
+  } as never)
+  context.provide('agents', { get: (id: string) => (id === SESSION ? agent : undefined) } as never)
   const services = provideChatServices(context)
   await context.plugin(SystemPrompt, {}).await()
   await context.plugin(ToolRuntime).await()
@@ -156,8 +190,10 @@ async function start(bound = true): Promise<Fixture> {
     : (await project.createProject(await project.newProjectFolder('Knife ad'), 'Knife ad', user('create'))).id
   const deps: ProjToolDeps = { assets: () => assets, agentSummaries: () => [], turnOf: () => null, chatFolder: () => null }
   let calls = 0
+  const log = new AgentLog(project, deps)
+  holder.log = log
   return {
-    context, project, projectId, services, deps, log: new AgentLog(project, deps),
+    context, project, projectId, services, deps, log, agent, events: agentEvents(context, agent as never),
     call(name, args) {
       calls += 1
       const agent = { id: SESSION, session: { id: SESSION } }
@@ -248,18 +284,12 @@ describe('project update message', () => {
     expect(fixture.log.step()).toBeNull()
   })
 
-  it('repeats nothing that the agent\'s own tool results showed: an operation call, dv_proj_undo, and a finish dv_proj_wait returned', async () => {
+  it('repeats nothing that the agent\'s own tool results showed: an operation call and dv_proj_undo', async () => {
     const fixture = await start()
     fixture.log.step()
     fixture.log.toolResult(await fixture.call('dv_asset_import', { reason: 'product', name: 'product.png' }))
     expect(fixture.log.step()).toBeNull()
     fixture.log.toolResult(await fixture.call('dv_proj_undo', {}))
-    expect(fixture.log.step()).toBeNull()
-    const render = await fixture.run(scheduler('shot 1'), 'shot.render', { prompt: 'one' }, { after: [] })
-    fixture.log.toolResult({ isError: false, value: {}, content: [], meta: { dv_seen: { project: fixture.projectId, at: render.id, records: { [render.id]: 'pending' } } } })
-    await until(fixture.project, fixture.projectId, render.id, 'running')
-    fixture.release('one')
-    fixture.log.toolResult(await fixture.call('dv_proj_wait', { records: [render.id] }))
     expect(fixture.log.step()).toBeNull()
   })
 
@@ -405,5 +435,98 @@ describe('dvProjectSight fold', () => {
     expect(projectMessage(fixture.project, fixture.deps, SESSION, replayed)).toEqual(
       expect.objectContaining({ content: projectMessage(fixture.project, fixture.deps, SESSION, fixture.log.seen)?.content }),
     )
+  })
+})
+
+describe('finished records in the agent\'s messages', () => {
+  /** Run the `agent/pre-step` waterfall of one step that claimed `messages`, and log the step's messages. */
+  async function runStep(fixture: Fixture, messages: UserMessage[], step: number): Promise<UserMessage[]> {
+    const decision = await fixture.events.waterfall('agent/pre-step', { messages, turn: 1, step, signal: new AbortController().signal },
+      () => Promise.resolve({ kind: 'enter' as const, messages }))
+    if (decision.kind !== 'enter') throw new Error('expected step entry')
+    for (const message of decision.messages) fixture.log.logMessage(message)
+    return decision.messages
+  }
+
+  /** The result lines of a record in every logged user message. */
+  function resultLines(log: AgentLog, record: RecordId): string[] {
+    return log.events.flatMap(event => (event.type === 'user/message' ? textOf(event.data).split('\n') : []))
+      .filter(line => line.startsWith(`- done ${record} `))
+  }
+
+  /** Start a render as the agent's call, log its pending result, and wait until it finished and its notice was queued. */
+  async function finishedRender(fixture: Fixture, prompt: string): Promise<RecordId> {
+    const result = await fixture.call('dv_shot_render', { reason: prompt, prompt })
+    fixture.log.toolResult(result)
+    const record = brandString<RecordId>((result.value as { record: string }).record)
+    fixture.release(prompt)
+    await fixture.project.wait(fixture.projectId, [record])
+    for (let turn = 0; turn < 5; turn += 1) await new Promise(resolve => setImmediate(resolve))
+    expect(fixture.agent.queued).toHaveLength(1)
+    return record
+  }
+
+  /** The `- done` line and the video output line of a finished render of `prompt`. */
+  function doneLines(record: RecordId, prompt: string): string[] {
+    return [`- done ${record} (your call): shot ${prompt}`, `  - video: ${assetOf(prompt)} (video/mp4) https://assets.example/${assetOf(prompt)}`]
+  }
+
+  it('lists a render once when a project update reported it before the step that claims the record notice', async () => {
+    const fixture = await start()
+    fixture.agent.status = 'running'
+    fixture.log.step()
+    const record = await finishedRender(fixture, 'one')
+    expect((await runStep(fixture, [], 2)).map(textOf)).toEqual([update(...doneLines(record, 'one'))])
+    // The busy agent's step that claims the late wake has no message, so the loop ends the turn without a model request.
+    expect(await runStep(fixture, fixture.agent.claim(), 3)).toEqual([])
+    expect(resultLines(fixture.log, record)).toHaveLength(1)
+  })
+
+  it('lists a render once when the step that claims the wake comes first, as the project update of that step', async () => {
+    const fixture = await start()
+    fixture.log.step()
+    const record = await finishedRender(fixture, 'one')
+    expect((await runStep(fixture, fixture.agent.claim(), 1)).map(textOf)).toEqual([update(...doneLines(record, 'one'))])
+    expect(await runStep(fixture, [], 2)).toEqual([])
+    expect(resultLines(fixture.log, record)).toHaveLength(1)
+  })
+
+  it('leaves the first step of a turn opened by a late wake empty, so an idle agent makes no model request', async () => {
+    const fixture = await start()
+    fixture.log.step()
+    const record = await finishedRender(fixture, 'one')
+    const wake = fixture.agent.claim()
+    const typed = createUserMessage({ content: [{ type: 'text', text: 'how is it going?' }], source: { kind: 'user' } })
+    // The user's message opened the turn before the wake: its step lists the finish after the message.
+    expect((await runStep(fixture, [typed], 1)).map(textOf)).toEqual(['how is it going?', update(...doneLines(record, 'one'))])
+    expect(await runStep(fixture, wake, 1)).toEqual([])
+    expect(resultLines(fixture.log, record)).toHaveLength(1)
+  })
+
+  it('merges the wakes of one step into one project update after the user\'s message, and logs no wake', async () => {
+    const fixture = await start()
+    fixture.agent.status = 'running'
+    fixture.log.step()
+    const one = await finishedRender(fixture, 'one')
+    const first = fixture.agent.claim()
+    const two = await finishedRender(fixture, 'two')
+    const typed = createUserMessage({ content: [{ type: 'text', text: 'and now?' }], source: { kind: 'user' } })
+    const messages = await runStep(fixture, [...first, typed, ...fixture.agent.claim()], 2)
+    expect(messages.map(textOf)).toEqual(['and now?', update(...doneLines(one, 'one'), ...doneLines(two, 'two'))])
+    expect(fixture.log.events.some(event => event.type === 'user/message' && event.data.source.kind === 'dv-project-wake')).toBe(false)
+  })
+
+  it('carries only text in every message a step gets, and no image', async () => {
+    const fixture = await start()
+    fixture.log.step()
+    await finishedRender(fixture, 'one')
+    const messages = await runStep(fixture, fixture.agent.claim(), 1)
+    expect(messages.flatMap(message => message.content.map(block => block.type))).toEqual(['text'])
+  })
+
+  it('removes a wake even when nothing is bound, and returns other steps unchanged', async () => {
+    const fixture = await start(false)
+    expect(await runStep(fixture, [wakeMessage([brandString<RecordId>('r1')])], 1)).toEqual([])
+    expect(await runStep(fixture, [], 1)).toEqual([])
   })
 })

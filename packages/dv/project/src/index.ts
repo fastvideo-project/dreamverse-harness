@@ -31,11 +31,16 @@
  * reaches the agent as the project state message and afterwards as project update messages appended to the
  * conversation (the `project-updates` module), folded from what the session's log shows the agent saw.
  *
+ * Background calls. An agent tool call of a GPU operation, or of a call whose input names an unfinished record, is
+ * scheduled and returns its `pending` record at once. When the record finishes, the agent of the calling session gets
+ * a wake (the `record-notices` module): injected into its next step while it runs, or as a new turn while it is idle.
+ * The project update message of that step reports the record's result.
+ *
  * The asset pool registers itself with {@link DvProject.registerAssetStore}; until it does, a run that names an input
  * asset or imports an output fails.
  *
  * The internal modules (`folders`, `record-store`, `runner`, `scheduler`, `history`, `reducers`, `subscriptions`,
- * `sessions`, `agent-tools`, `proj-tools`, `agent-context`, `project-updates`) are private;
+ * `sessions`, `agent-tools`, `proj-tools`, `agent-context`, `project-updates`, `record-notices`) are private;
  * `CONTRACTS.md` in this package specifies each of them.
  *
  * @module @dv/project
@@ -58,6 +63,7 @@ import type { OperationSpec } from './operation-types.ts'
 import { canonicalPath, ProjectFolders } from './folders.ts'
 import { projTools, type ProjToolDeps } from './proj-tools.ts'
 import { registerProjectUpdates } from './project-updates.ts'
+import { RecordNotices } from './record-notices.ts'
 import { RecordStore } from './record-store.ts'
 import { projReducer, ReducerRegistry } from './reducers.ts'
 import { Runner } from './runner.ts'
@@ -106,6 +112,11 @@ export interface Config {
   gpuConcurrency: number
   /** Order of the `dv:project` section in the system prompt; before the tool SDK section at 5000. */
   promptSectionOrder: number
+  /**
+   * Turns one agent may open by record wakes before its next message from the user; further wakes wait in its inbox
+   * until that message. Absent: every finished record of an idle agent with no other watched record wakes it.
+   */
+  maxConsecutiveWakes?: number
 }
 
 /** Loader validation. */
@@ -114,6 +125,7 @@ export const Config: z<Config> = z.object({
   cpuConcurrency: z.number().default(4),
   gpuConcurrency: z.number().default(1),
   promptSectionOrder: z.number().default(4900),
+  maxConsecutiveWakes: z.natural().min(1),
 })
 
 /** The Project service. */
@@ -131,6 +143,7 @@ export default class DvProject extends Service {
   private readonly scheduler: Scheduler
   private readonly sessions: Sessions
   private readonly agentTools: AgentTools
+  private readonly notices: RecordNotices
   private assetStore: AssetStore | null = null
   /**
    * Registers one operation's agent tool while the DSH tool registry is mounted, else null; and the disposer of each
@@ -151,7 +164,10 @@ export default class DvProject extends Service {
     // Every change on disk reaches the subscribers; a finished record also lets the scheduler start its dependents.
     this.store = new RecordStore(this.folders, (project, event) => {
       this.subscriptions.emit(project, event)
-      if (event.kind === 'update' && ['done', 'failed', 'cancelled'].includes(event.record.status)) this.scheduler.recordFinished(project)
+      if (event.kind === 'update' && ['done', 'failed', 'cancelled'].includes(event.record.status)) {
+        this.scheduler.recordFinished(project)
+        this.notices.recordFinished(project, event.record)
+      }
     })
     this.reducers = new ReducerRegistry(this.store)
     this.history = new History(this.store)
@@ -178,6 +194,7 @@ export default class DvProject extends Service {
       run: request => this.run(request),
       getRecord: (project, record) => this.getRecord(project, record),
       listHistory: query => this.listHistory(query),
+      watch: (project, record, session) => { this.notices.watch(project, record, session) },
     })
     this.runner.registerComponent('proj')
     this.reducers.register('proj', projReducer)
@@ -188,6 +205,7 @@ export default class DvProject extends Service {
       turnOf: exec => turnOf(ctx, exec),
       chatFolder: session => this.chatFolder(session),
     }
+    this.notices = new RecordNotices(ctx, this, config.maxConsecutiveWakes)
     // Every registered operation has its agent tool while the DSH tool registry is mounted.
     ctx.inject(['tools'], (child) => {
       // The registry stays in this closure: read through the service from another plugin, it would bind each tool to

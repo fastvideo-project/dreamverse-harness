@@ -310,7 +310,12 @@ describe('agent tools', () => {
     const fixture = await start()
     fixture.project.registerOperation(operation({ name: 'asset.grab_still', component: 'asset' }))
     const inputsText = () => JSON.stringify(fixture.context.tools.schemas().find(tool => tool.name === 'dv_asset_grab_still')?.parameters)
-    expect(inputsText()).toContain('<asset> (an asset ID), <record>#<output> (an output of an earlier record); a list')
+    expect(inputsText()).toContain('<asset> (an asset ID), <record>#<output> (an output of an earlier record, which may still be '
+      + 'running: the call then runs after it, and a DreamVerse project update reports the call\'s result); a list')
+    // An operation whose every role is a pending input role does not run after its inputs, so its text promises no wait.
+    fixture.project.registerOperation(operation({ name: 'asset.lay_out', component: 'asset', pendingInputRoles: ['reference'] }))
+    const layOutText = JSON.stringify(fixture.context.tools.schemas().find(tool => tool.name === 'dv_asset_lay_out')?.parameters)
+    expect(layOutText).toContain('<record>#<output> (an output of an earlier record); a list')
     expect(() => fixture.project.registerReferenceKind(testKind('test_location'))).toThrow(expect.objectContaining({ code: 'invalid_params' }))
     fixture.project.registerComponent('test_bible')
     // The other arms of an input reference use these keys, so no kind may take one.

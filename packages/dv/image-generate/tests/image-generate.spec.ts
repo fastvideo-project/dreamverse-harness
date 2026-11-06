@@ -170,44 +170,38 @@ describe('dvImageGenerate', () => {
     expect(ctx.dvModels.taskLabels()).toEqual({})
   })
 
-  it('generates one image per agent call, records it with its size and seed, and shows the image to the agent', async () => {
+  it('generates one image per agent call in the background, and records it with its size and seed', async () => {
     const fixture = await start()
     const { ctx } = fixture
     const args = { ...KEY, reason: 'poster', prompt: 'A tea shop poster that reads "Moon Garden Tea"', size: '768x1024', seed: 7 }
     const result = value(await fixture.tool('dv_image_generate', args))
+    // An agent call of a GPU operation runs in the background; a project update reports its result to the agent.
+    expect(result).toMatchObject({ status: 'pending', outputs: [] })
+    await ctx.dvProject.wait(fixture.project)
     expect(fixture.model.requests).toEqual([{ prompt: 'A tea shop poster that reads "Moon Garden Tea"', size: { width: 768, height: 1024 }, seed: 7, extra: {} }])
     const record = ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(result.record))
     expect(record).toMatchObject({
       actor: 'agent', component: 'image', operation: 'image.generate', status: 'done', intent: 'poster',
       report: { seed: 7, model_id: 'fake-image-1', size: '768x1024' },
     })
-    const [asset] = result.outputs
-    const assetId = brandString<AssetId>(String(asset?.asset_id))
+    const assetId = record.outputs[0] ?? brandString<AssetId>('none')
     expect(ctx.dvAssetPool.get(assetId)).toMatchObject({
       mime: 'image/png', width: 768, height: 1024, name: `${record.id.slice(0, 8)}.png`, created_by: record.id,
     })
     expect(ctx.dvAssetPool.read(assetId)).toEqual(PNG)
-    expect(ctx.tools.get('dv_image_generate')?.output?.render?.(args, result)).toEqual([
-      {
-        type: 'text',
-        text: `done ${record.id}: image "A tea shop poster that reads \\"Moon Garden Tea\\"" (768x1024, seed 7)\n`
-          + `- image: ${String(asset?.asset_id)} (image/png) ${String(asset?.url)}\n`
-          + `params: ${JSON.stringify(record.params)}\n`
-          + 'report: {"seed":7,"model_id":"fake-image-1","size":"768x1024"}',
-      },
-      { type: 'image', attachment: { attachmentId: 'att-1', mediaType: 'image/png', bytes: PNG.byteLength, width: 1, height: 1 } },
-    ])
-    expect(fixture.attachments.saved).toMatchObject([{ mediaType: 'image/png', name: `${record.id.slice(0, 8)}.png` }])
+    expect(fixture.spec()?.summarize(record)).toBe('image "A tea shop poster that reads \\"Moon Garden Tea\\"" (768x1024, seed 7)')
   })
 
   it('trims the prompt, leaves the size to the model when the call names none, and draws a seed', async () => {
     const fixture = await start()
     const result = value(await fixture.tool('dv_image_generate', { ...KEY, reason: 'square', prompt: ' a lantern\n' }))
+    await fixture.ctx.dvProject.wait(fixture.project)
     const [request] = fixture.model.requests
     expect(request).toMatchObject({ prompt: 'a lantern', size: null, extra: {} })
     expect(Number.isInteger(request?.seed)).toBe(true)
-    expect(result.report).toEqual({ seed: request?.seed, model_id: 'fake-image-1', size: '1024x1024' })
-    expect(result.summary).toBe(`image "a lantern" (1024x1024, seed ${String(request?.seed)})`)
+    const record = fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(result.record))
+    expect(record.report).toEqual({ seed: request?.seed, model_id: 'fake-image-1', size: '1024x1024' })
+    expect(fixture.spec()?.summarize(record)).toBe(`image "a lantern" (1024x1024, seed ${String(request?.seed)})`)
   })
 
   it('refuses an empty prompt, a malformed size and a request the model refuses, before any record', async () => {
@@ -240,8 +234,11 @@ describe('dvImageGenerate', () => {
       + 'Nothing was generated; no change to the call helps while the model is unavailable.')
     fixture.model.facts = () => Promise.resolve({ modelId: 'fake-image-1' })
     fixture.model.failure = new Error('The server at http://127.0.0.1:1 answered POST /v1/images/generations with HTTP 500: busy')
-    expect(failure(await fixture.tool('dv_image_generate', { ...KEY, reason: 'try', prompt: 'a cat' })))
-      .toBe('The server at http://127.0.0.1:1 answered POST /v1/images/generations with HTTP 500: busy')
-    expect(fixture.ctx.dvProject.getState(fixture.project).components.proj.records.at(-1)).toMatchObject({ operation: 'image.generate', status: 'failed' })
+    expect(value(await fixture.tool('dv_image_generate', { ...KEY, reason: 'try', prompt: 'a cat' })).status).toBe('pending')
+    await fixture.ctx.dvProject.wait(fixture.project)
+    expect(fixture.ctx.dvProject.getState(fixture.project).components.proj.records.at(-1)).toMatchObject({
+      operation: 'image.generate', status: 'failed',
+      error: { message: 'The server at http://127.0.0.1:1 answered POST /v1/images/generations with HTTP 500: busy' },
+    })
   })
 })

@@ -45,6 +45,7 @@ DSH_PLAYWRIGHT_EXECUTABLE_PATH=/path/to/chrome-linux/chrome \
 | [`tests/stories/chat.e2e.ts`](tests/stories/chat.e2e.ts) | 对话及其输入框：跨轮次立即成为历史步骤的智能体修改、撤销之后智能体的修改丢弃被撤销的步骤、附上的图片、`@` 提及，以及模型请求收到的内容 |
 | [`tests/stories/navigation.e2e.ts`](tests/stories/navigation.e2e.ts) | 项目、对话、面板、重新加载、项目链接、浏览器历史和语言切换 |
 | [`tests/stories/project-updates.e2e.ts`](tests/stories/project-updates.e2e.ts) | 跨工具步骤、两步之间的画布导入和渲染结束、两轮之间的撤销时的项目状态消息和项目更新消息；每个智能体请求都以相同的请求字段延伸上一个请求 |
+| [`tests/stories/late-wake.e2e.ts`](tests/stories/late-wake.e2e.ts) | 渲染在步骤闸门挡住下一轮第一步时结束：这一步的项目更新只报告一次结束，挡住期间到达的唤醒让这一轮不发模型请求就结束。空闲的智能体不会收到迟到的唤醒，因为 `@dv/project` 的 `recordFinished` 在记录结束时同步排入唤醒，唤醒开启的那一轮会在任何其他步骤读取项目之前认领它 |
 
 -----
 
@@ -59,7 +60,8 @@ DSH_PLAYWRIGHT_EXECUTABLE_PATH=/path/to/chrome-linux/chrome \
 | 文件 | 内容 |
 | --- | --- |
 | [`tests/harness.ts`](tests/harness.ts) | `bootHarness`、`startFakeBackend`、`waitFor`、`escapeRegExp` 和 Playwright 导出 |
-| [`tests/scripted-model.ts`](tests/scripted-model.ts) | `startScriptedModel`、`textOf`、`assetIdOf`、`scheduledOf`、`CONTEXT_MESSAGE` |
+| [`tests/scripted-model.ts`](tests/scripted-model.ts) | `startScriptedModel`、`textOf`、`assetIdOf`、`scheduledOf`、`expectEachRequestExtendsThePrevious`、`CONTEXT_MESSAGE` |
+| [`tests/step-gate-plugin.ts`](tests/step-gate-plugin.ts) | `bootHarness({ stepGate })` 插入隔离 profile 的仅测试用 Cordis 插件：认领的用户消息含有 `holdText` 的步骤在其他 `agent/pre-step` 监听器运行之前等待故事的测试服务器，每个被认领的唤醒都报告给这个服务器 |
 | [`tests/fake-backend-main.ts`](tests/fake-backend-main.ts) | 把假后端作为长期运行的进程启动，供手动浏览器测试使用 |
 | [`vitest.e2e.config.ts`](vitest.e2e.config.ts) | 故事测试配置：一次一个文件，测试超时 180 秒 |
 

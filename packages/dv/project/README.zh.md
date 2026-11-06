@@ -43,11 +43,12 @@ kind: "package-reference"
 | `cpuConcurrency` | `4` | 可同时运行的已调度 `cpu` 记录数 |
 | `gpuConcurrency` | `1` | 可同时运行的已调度 `gpu` 记录数 |
 | `promptSectionOrder` | `4900` | `dv:project` 段落在系统提示词中的顺序；在 5000 的工具 SDK 段落之前 |
+| `maxConsecutiveWakes` | 无 | 一个智能体在用户下一条消息之前最多可由记录唤醒开启的轮次数；超出后的唤醒留在其收件箱中，等到那条消息。不设置时，空闲且没有其他被监视记录的智能体的每条已结束记录都会唤醒它 |
 
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`src/index.ts` 中的服务委托给十二个私有模块：项目文件夹（唯一写入 Workspace 注册表的代码，注册表列出所有项目）和记录存储（唯一读写各项目文件夹 `.dreamverse/` 目录中 `records.jsonl` 和 `line.json` 的代码，在第一次调用指名某项目时读入该项目）、运行器、调度器、历史、归约函数注册表、订阅、聊天会话（暂缓的工具调用）、智能体工具（每个操作一个 DSH 工具）、`dv_proj_*` 工具、智能体上下文（`dv:project` 提示词段落）和项目更新（项目状态消息和项目更新消息，在 `agent/pre-step` 加入；以及会话的智能体看到过的项目内容，由 `dvProjectSight` 会话投影从会话日志折叠得出）。每个项目的 `line.json` 存放 `{tip, at}`：`tip` 是最后一步，历史列表是 `tip` 的 `parents[0]` 祖先链，`at` 是当前位置。每个执行者的每次写入都把记录追加在 `at` 之后，并让它同时成为 `tip` 和 `at`，因此原来在 `at` 之后的步骤被丢弃：它们永久离开历史列表，运行器取消其中每个尚未结束的步骤（`error.code: 'discarded'`）。`undo(project)` 把 `at` 往回移一步（在第一条记录处为 `nothing_to_undo`）；`moveTo(project, to)` 把它移到历史列表中的那一步，可在 `at` 之前或之后（被丢弃的记录为 `invalid_params`）；`redo(project)` 把 `at` 往前移一步（在 `tip` 处为 `nothing_to_redo`）；`line(project)` 返回 `{tip, at}`。这些移动不写记录，并发出 `line` 事件。当前状态（`getState(project)`）折叠以 `at` 结尾的链。记录带有 `session`、`turn` 和 `tool_call`，作为指向 DSH 会话日志的链接：智能体工具在工具运行时读取轮次，即调用方智能体会话的 DSH 轮次编号，来自智能体循环注册的 `turnBoundary` 会话投影（不在轮次中或没有智能体时为 null）。`CONTRACTS.md` 列出每个模块的函数、规则、错误和测试。`listHistory(query)` 是唯一的历史查询：`dv_proj_history_list` 工具和 `@dv/api` 的 `POST /api/dv/history` 路由都调用它。它按从新到旧列出历史列表中的步骤，每项为 `{record, place}`，`place` 是相对 `at` 的 `before`、`current` 或 `after`；被丢弃的记录不列出，`listRecords(project)` 返回包括被丢弃记录在内的每条记录。它的筛选条件（`actor`、`component`、`operation`、`kind`、`status`、`session`、`turn`、`tool_call`、`records`、`before`）以“且”组合，`limit` 在筛选之后生效。
+`src/index.ts` 中的服务委托给十三个私有模块：项目文件夹（唯一写入 Workspace 注册表的代码，注册表列出所有项目）和记录存储（唯一读写各项目文件夹 `.dreamverse/` 目录中 `records.jsonl` 和 `line.json` 的代码，在第一次调用指名某项目时读入该项目）、运行器、调度器、历史、归约函数注册表、订阅、聊天会话（暂缓的工具调用）、智能体工具（每个操作一个 DSH 工具）、`dv_proj_*` 工具、智能体上下文（`dv:project` 提示词段落）、项目更新（项目状态消息和项目更新消息，在 `agent/pre-step` 加入；以及会话的智能体看到过的项目内容，由 `dvProjectSight` 会话投影从会话日志折叠得出），以及记录通知（智能体工具调用在后台启动的记录，以及每条记录结束时给发起调用的会话的智能体的唤醒）。每个项目的 `line.json` 存放 `{tip, at}`：`tip` 是最后一步，历史列表是 `tip` 的 `parents[0]` 祖先链，`at` 是当前位置。每个执行者的每次写入都把记录追加在 `at` 之后，并让它同时成为 `tip` 和 `at`，因此原来在 `at` 之后的步骤被丢弃：它们永久离开历史列表，运行器取消其中每个尚未结束的步骤（`error.code: 'discarded'`）。`undo(project)` 把 `at` 往回移一步（在第一条记录处为 `nothing_to_undo`）；`moveTo(project, to)` 把它移到历史列表中的那一步，可在 `at` 之前或之后（被丢弃的记录为 `invalid_params`）；`redo(project)` 把 `at` 往前移一步（在 `tip` 处为 `nothing_to_redo`）；`line(project)` 返回 `{tip, at}`。这些移动不写记录，并发出 `line` 事件。当前状态（`getState(project)`）折叠以 `at` 结尾的链。记录带有 `session`、`turn` 和 `tool_call`，作为指向 DSH 会话日志的链接：智能体工具在工具运行时读取轮次，即调用方智能体会话的 DSH 轮次编号，来自智能体循环注册的 `turnBoundary` 会话投影（不在轮次中或没有智能体时为 null）。`CONTRACTS.md` 列出每个模块的函数、规则、错误和测试。`listHistory(query)` 是唯一的历史查询：`dv_proj_history_list` 工具和 `@dv/api` 的 `POST /api/dv/history` 路由都调用它。它按从新到旧列出历史列表中的步骤，每项为 `{record, place}`，`place` 是相对 `at` 的 `before`、`current` 或 `after`；被丢弃的记录不列出，`listRecords(project)` 返回包括被丢弃记录在内的每条记录。它的筛选条件（`actor`、`component`、`operation`、`kind`、`status`、`session`、`turn`、`tool_call`、`records`、`before`）以“且”组合，`limit` 在筛选之后生效。
 
 <a id="further-exploration"></a>
 ## 进一步探索
@@ -75,7 +76,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-一次调用返回一个文本块：`<status> <record>: <summary>`（只读操作不写记录，为 `<status>: <summary>`）、每个输出一行带素材 ID、媒体类型和 URL、调度的记录、参数和报告；设置了 `OperationSpec.omitParamsFromResult` 的操作（例如分镜计划组件的 `plan.create` 和 `plan.update`）不含参数，因为参数重复模型自己的工具调用。挂载了附件服务时，每个图片输出再跟一个图片块。失败或取消的记录返回带其消息的工具错误，被停止的记录返回 "dv_<name> was stopped before it finished."。
+一次调用返回一个文本块：`<status> <record>: <summary>`（只读操作不写记录，为 `<status>: <summary>`）、每个输出一行带素材 ID、媒体类型和 URL、调度的记录、参数和报告；设置了 `OperationSpec.omitParamsFromResult` 的操作（例如分镜计划组件的 `plan.create` 和 `plan.update`）不含参数，因为参数重复模型自己的工具调用。挂载了附件服务时，每个图片输出再跟一个图片块。GPU 操作的调用，或输入指向尚未结束的记录输出的调用，在后台运行：它立即返回其 `pending` 记录，后面跟一行 "This call runs in the background. A DreamVerse project update reports its result when it finishes; until then, keep working or end your turn."，其结果在项目更新消息中送达。失败或取消的记录返回带其消息的工具错误，被停止的记录返回 "dv_<name> was stopped before it finished."。
 
 #### Token 影响
 
@@ -89,15 +90,15 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-八个工具：`dv_proj_create`、`dv_proj_rename`、`dv_proj_state`、`dv_proj_history_list`、`dv_proj_undo`、`dv_proj_redo`、`dv_proj_stale_accept` 和 `dv_proj_wait`。没有工具接受项目参数：`dv_proj_create` 把本对话的文件夹（其工作目录）变成项目，在已有项目的对话中拒绝（"This conversation's folder is already the project "<title>"; keep all work in it. Start a new conversation for a new project."），其他每个工具和每个操作工具只作用于该项目；在没有项目的对话中，它们以 "This conversation has no project yet: call dv_proj_create first." 失败。`dv_proj_history_list` 按从新到旧返回步骤（默认 20 条），每条带 `place`（`current`、`before` 或 `after`）、操作、状态、发起者、意图和输出。`dv_proj_wait` 接受 `records`，即要等待的记录 ID（某个结果在 `scheduled` 下列出的记录，或状态为 pending 的记录），等到每条记录完成或失败，然后按给出的顺序为每条记录返回一行 `<status> <record> (<intent>): <summary>`，每行后面跟着每个输出一行 `- <role>: <asset> (<mime>) <url>`；失败记录的摘要是它的错误，空列表或未知记录 ID 在任何等待之前被拒绝。其他工具以缩进 JSON 返回当前状态的项目摘要：`record`（只在写记录的工具之后出现：该调用写下的最新记录）、`project_id`、`title`、`head`、`records`（数量），然后按组件键的字母顺序是各组件的 `agentSummary` 字段（角色 `characters`、场景 `locations`、分镜 `plans`、风格 `styles`、时间线 `timelines`），最后是 `stale` 和 `recent`（最多十二条记录，带摘要和输出 URL）。`dv_proj_undo` 不带 `to` 时往回移一步，带 `to`（`dv_proj_history_list` 里的记录 ID）时移到那一步，可在当前一步之前或之后；`dv_proj_redo` 往前移一步。这些移动不加一步；之后的修改会丢弃当前一步之后的步骤。`dv_proj_rename` 接受 `title`，只重命名本对话的项目；它去掉标题首尾空白，拒绝空标题，标题已被其他项目使用时加后缀 ` 2`、` 3`、…，不写记录。除 `dv_proj_history_list` 之外的每个工具，以及每个写记录的操作工具，还把结果展示过的内容作为 `dv_seen` 存入结果的持久化元数据，模型从不读取它；项目更新消息不再列出这些记录。
+七个工具：`dv_proj_create`、`dv_proj_rename`、`dv_proj_state`、`dv_proj_history_list`、`dv_proj_undo`、`dv_proj_redo` 和 `dv_proj_stale_accept`。没有工具接受项目参数：`dv_proj_create` 把本对话的文件夹（其工作目录）变成项目，在已有项目的对话中拒绝（"This conversation's folder is already the project "<title>"; keep all work in it. Start a new conversation for a new project."），其他每个工具和每个操作工具只作用于该项目；在没有项目的对话中，它们以 "This conversation has no project yet: call dv_proj_create first." 失败。`dv_proj_history_list` 按从新到旧返回步骤（默认 20 条），每条带 `place`（`current`、`before` 或 `after`）、操作、状态、发起者、意图和输出。其他工具以缩进 JSON 返回当前状态的项目摘要：`record`（只在写记录的工具之后出现：该调用写下的最新记录）、`project_id`、`title`、`head`、`records`（数量），然后按组件键的字母顺序是各组件的 `agentSummary` 字段（角色 `characters`、场景 `locations`、分镜 `plans`、风格 `styles`、时间线 `timelines`），最后是 `stale` 和 `recent`（最多十二条记录，带摘要和输出 URL）。`dv_proj_undo` 不带 `to` 时往回移一步，带 `to`（`dv_proj_history_list` 里的记录 ID）时移到那一步，可在当前一步之前或之后；`dv_proj_redo` 往前移一步。这些移动不加一步；之后的修改会丢弃当前一步之后的步骤。`dv_proj_rename` 接受 `title`，只重命名本对话的项目；它去掉标题首尾空白，拒绝空标题，标题已被其他项目使用时加后缀 ` 2`、` 3`、…，不写记录。除 `dv_proj_history_list` 之外的每个工具，以及每个写记录的操作工具，还把结果展示过的内容作为 `dv_seen` 存入结果的持久化元数据，模型从不读取它；项目更新消息不再列出这些记录。
 
 #### Token 影响
 
-插件挂载期间，九个定义固定约 800 个 token。项目摘要起始约 150 个 token，并随项目增长：每条最近记录、每个角色、场景、风格、分镜计划和片段都加上自己的字段。无论项目多大，`dv_proj_wait` 的结果每条记录约 30 个 token，每个输出再加约 40 个。
+插件挂载期间，八个定义固定约 700 个 token。项目摘要起始约 150 个 token，并随项目增长：每条最近记录、每个角色、场景、风格、分镜计划和片段都加上自己的字段。
 
 #### KV Cache 影响
 
-九个定义是固定工具段中不变的一部分；每个结果在调用之后追加到对话中，所以已缓存的前缀保持不变。
+八个定义是固定工具段中不变的一部分；每个结果在调用之后追加到对话中，所以已缓存的前缀保持不变。
 
 ### 项目提示词段落
 
@@ -117,7 +118,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-挂载了 DSH `sessionProjections` 服务时，绑定了项目的聊天会话的每一步最多在该步自己的消息之后得到一条用户角色消息。项目状态消息出现在第一个没有项目视图的步骤（绑定会话的第一步，智能体用 `dv_proj_create` 绑定未绑定会话之后的第一步，或压缩、工具结果裁剪遮蔽了该消息之后的第一步）："DreamVerse project state. This conversation belongs to the project "<title>" in the folder <path>: do all work in it and never call dv_proj_create. Later changes that your own tool results did not show reach you as DreamVerse project updates. The project summary, as dv_proj_state returns it without the reports of recent records:"，然后是缩进 JSON 形式的该摘要。之后，项目以智能体没见过的方式发生变化的步骤会得到项目更新消息："DreamVerse project updates since your last step:"，撤销、重做或移动改变了当前位置时，后面先有一行 `- history: the current step is <record>; dv_proj_history_list shows which steps are undone or discarded.`；然后，直到当前位置的历史列表中智能体没见过的每条记录，以及其中它见过未完成、之后已结束的每条记录，各一行 `- <status> <record> (<who>): <text>`，其中 who 是 `user on canvas`、`user on timeline`、`user in asset pool`、`user in chat`、`user in history`、`user via API`、`your call`、`another chat` 或 `scheduled`，text 对完成的记录是操作的摘要（每个输出再缩进一行 `- <role>: <asset> (<mime>) <url>`），对失败或取消的记录是 `<intent>: <error>`，对未结束的记录是意图。同一会话的操作工具结果、`dv_proj_wait` 结果或项目摘要工具结果展示过的记录不再重复，没有新内容的步骤不得到消息。
+挂载了 DSH `sessionProjections` 服务时，绑定了项目的聊天会话的每一步最多在该步自己的消息之后得到一条用户角色消息。项目状态消息出现在第一个没有项目视图的步骤（绑定会话的第一步，智能体用 `dv_proj_create` 绑定未绑定会话之后的第一步，或压缩、工具结果裁剪遮蔽了该消息之后的第一步）："DreamVerse project state. This conversation belongs to the project "<title>" in the folder <path>: do all work in it and never call dv_proj_create. Later changes that your own tool results did not show reach you as DreamVerse project updates. The project summary, as dv_proj_state returns it without the reports of recent records:"，然后是缩进 JSON 形式的该摘要。之后，项目以智能体没见过的方式发生变化的步骤会得到项目更新消息："DreamVerse project updates since your last step:"，撤销、重做或移动改变了当前位置时，后面先有一行 `- history: the current step is <record>; dv_proj_history_list shows which steps are undone or discarded.`；然后，直到当前位置的历史列表中智能体没见过的每条记录，以及其中它见过未完成、之后已结束的每条记录，各一行 `- <status> <record> (<who>): <text>`，其中 who 是 `user on canvas`、`user on timeline`、`user in asset pool`、`user in chat`、`user in history`、`user via API`、`your call`、`another chat` 或 `scheduled`，text 对完成的记录是操作的摘要（每个输出再缩进一行 `- <role>: <asset> (<mime>) <url>`），对失败或取消的记录是 `<intent>: <error>`，对未结束的记录是意图。同一会话的操作工具结果或项目摘要工具结果展示过的记录不再重复；没有新内容的步骤不得到消息。项目更新消息是唯一报告记录结果的消息：每条已结束的记录在其中出现一次，其输出以素材 ID 和 URL 行给出，不带图片。
 
 #### Token 影响
 
@@ -127,6 +128,20 @@ kind: "package-reference"
 
 每条消息都记录为 `user/message`，追加在已缓存的历史之后，所以请求逐个 token 地延伸上一个请求。压缩开始新的请求序列，下一步会再次发送项目状态消息。
 
+### 记录通知
+
+#### 模型看到什么
+
+智能体某次操作工具调用返回为 `pending` 的记录结束时，该聊天会话的智能体得到一条唤醒：来源为 `{kind: 'dv-project-wake', records: [<record>]}` 的用户消息，不带结果。认领唤醒的步骤在其项目更新消息中得到该记录的结果；`agent/pre-step` 监听器从该步移除每条唤醒，所以模型从不读到唤醒。正在运行的智能体在下一步得到唤醒，该轮在那一步之前不会结束。空闲的智能体以新一轮得到它，除非同一会话中由智能体调用启动的另一条记录尚未结束；此时唤醒等待而不唤醒智能体，由最后一条记录开启的那一轮认领所有等待中的唤醒。设置了 `maxConsecutiveWakes` 时，自用户上一条消息以来超过该次数的唤醒会等到用户的下一条消息。若更早的步骤已经报告了该记录，认领其唤醒的步骤没有消息：由唤醒开启的一轮不发模型请求即结束，模型已经结束的一轮也不再发请求即结束。当时没有智能体的会话不得到唤醒；下一条项目更新消息会列出该记录。
+
+#### Token 影响
+
+无：唤醒不进入任何模型请求。记录的结果计入其项目更新行的 token。
+
+#### KV 缓存影响
+
+无：唤醒从不记录为 `user/message`，所以请求与没有唤醒时相同。
+
 ## 已知限制与延期工作
 
 <a id="known-limitations-and-deferred-work"></a>
@@ -135,4 +150,6 @@ kind: "package-reference"
 - 移动行不说明是谁移动的，也不列出被撤销或被丢弃的步骤，因为 `line.json` 不记录谁移动了当前位置；`dv_proj_history_list` 给出每个步骤的位置。
 - 项目更新不报告改名，也不报告变为过期的记录；下一份项目摘要会展示两者。
 - 从 `pending` 到 `running` 的变化，以及记录运行期间写入的输出和报告不报告；结束会报告。
+- 停止一轮不会停止该轮在后台启动的调用；在这样的记录结束前撤销并做出新的修改，会丢弃并停止它。
+- 记录通知只在内存中监视：重启之前智能体启动的记录不会发送唤醒，因为重启会取消它。
 - 引用种类不给出素材的版本解析后不产生任何输入，所以指向这种版本的记录不留下它的痕迹，版本变化后也不会过期。

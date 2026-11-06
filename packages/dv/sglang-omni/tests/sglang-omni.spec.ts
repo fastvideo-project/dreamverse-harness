@@ -118,13 +118,17 @@ describe('dv-sglang-omni', () => {
     const { fake, fixture } = await boot()
     const prompt = '<|speaker:0|> Welcome to DreamVerse, traveler. [laughs] Rest here tonight.'
     const take = value(await fixture.call('dv_audio_generate', { ...KEY, reason: 'greeting', prompt, extra: { speed: 1.1 } }))
+    // An agent call of a GPU operation runs in the background.
+    expect(take.status).toBe('pending')
+    await fixture.ctx.dvProject.wait(fixture.project)
     expect(fake.requests).toEqual([{ speed: 1.1, input: prompt, response_format: 'wav' }])
     const record = fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(take.record))
     expect(record).toMatchObject({ status: 'done', report: { model_id: 'fishaudio/drama-3', duration_sec: 1.5 } })
     const asset = record.outputs[0] as AssetId
     expect(fixture.ctx.dvAssetPool.get(asset)).toMatchObject({ mime: 'audio/wav', duration_sec: 1.5 })
     expect(fixture.ctx.dvAssetPool.read(asset).equals(wav(132_300))).toBe(true)
-    expect(take.summary).toBe('audio "<|speaker:0|> Welcome to DreamVerse, traveler. [laughs] Rest…" (1.5s)')
+    const spec = fixture.ctx.dvProject.listOperations().find(operation => operation.name === 'audio.generate')
+    expect(spec?.summarize(record)).toBe('audio "<|speaker:0|> Welcome to DreamVerse, traveler. [laughs] Rest…" (1.5s)')
   })
 
   it('reads the duration past other chunks, and refuses a body that is not a WAV file with a duration or holds no samples', async () => {
@@ -153,10 +157,13 @@ describe('dv-sglang-omni', () => {
   it('fails a clip that the server cut at its length limit, and names the server\'s error text', async () => {
     const { fake, fixture } = await boot()
     fake.speech = { status: 200, headers: speechHeaders('length'), body: wav(65_536) }
-    expect(failure(await fixture.call('dv_audio_generate', { ...KEY, reason: 'long', prompt: 'A very long story.' })))
-      .toBe('The server stopped the clip at its length limit before the text ended; split the text into shorter clips.')
+    expect(value(await fixture.call('dv_audio_generate', { ...KEY, reason: 'long', prompt: 'A very long story.' })).status).toBe('pending')
+    await fixture.ctx.dvProject.wait(fixture.project)
     const [cut] = fixture.ctx.dvProject.listHistory({ project: fixture.project, operation: 'audio.generate' })
-    expect(cut?.record).toMatchObject({ status: 'failed', outputs: [] })
+    expect(cut?.record).toMatchObject({
+      status: 'failed', outputs: [],
+      error: { message: 'The server stopped the clip at its length limit before the text ended; split the text into shorter clips.' },
+    })
     const render = () => fixture.entry().render(speech('Hello.'))
     const { 'x-finish-reason': _stop, ...noReason } = speechHeaders('stop')
     for (const [headers, reason] of [[noReason, 'null'], [{ ...noReason, 'x-finish-reason': 'abort' }, '"abort"']] as const) {

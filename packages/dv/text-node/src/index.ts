@@ -87,8 +87,8 @@ function checkBase(params: Record<string, unknown>, state: ProjectState): TextVe
   const path = parseTextPath(String(params['path']))
   const unfinished = unfinishedWrite(state, path)
   if (unfinished !== undefined) {
-    throw new Error(`Text node ${path} has a write that has not finished (record ${unfinished.id}). Wait for it with dv_proj_wait, `
-      + `then call dv_textnode_read on ${path} and make your change on the new version.`)
+    throw new Error(`Text node ${path} has a write that has not finished (record ${unfinished.id}). After a DreamVerse project update `
+      + `reports it finished, call dv_textnode_read on ${path} and make your change on the new version.`)
   }
   const latest = latestVersion(state, path)
   const current = latest?.version ?? 0
@@ -125,7 +125,7 @@ function linkSources({ args, request, state }: OperationToolCall): Promise<void>
       if (source === path) throw new Error(`Text node ${path} cannot be built from itself.`)
       if (found === undefined) {
         throw new Error(unfinishedWrite(state, source) !== undefined
-          ? `Text node ${source} has no finished version yet. Wait for its write with dv_proj_wait, then call again.`
+          ? `Text node ${source} has no finished version yet. Call again after a DreamVerse project update reports its write finished.`
           : `No text node ${source}; dv_proj_state lists the text nodes under texts.`)
       }
       return { role: SOURCE, ref: { record: found.created_by, output: 0 } }

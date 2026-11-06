@@ -91,7 +91,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-技能目录列出每个工作流技能及其描述。智能体加载 `story-directing` 时，读到调用顺序：用 `dv_textnode_write` 写文本节点 `story/theme.md`、`story/beats.md` 和 `story/storyboard.md`，每个阶段都基于 `dv_textnode_read` 为上一阶段返回的文本，并在 `from` 中写明上一阶段；给出摘要并以粗体提一个问题，用户同意前不做任何生成；然后每个镜头调用一次 `dv_shot_render`（接续上一镜头的镜头传 `continue_from`），再调用 `dv_proj_wait` 和 `dv_timeline_create`。它还告诉智能体如何延长、缩短或修改时间线上的故事。
+技能目录列出每个工作流技能及其描述。智能体加载 `story-directing` 时，读到调用顺序：用 `dv_textnode_write` 写文本节点 `story/theme.md`、`story/beats.md` 和 `story/storyboard.md`，每个阶段都基于 `dv_textnode_read` 为上一阶段返回的文本，并在 `from` 中写明上一阶段；给出摘要并以粗体提一个问题，用户同意前不做任何生成；然后每个镜头调用一次 `dv_shot_render`（接续上一镜头的镜头传 `continue_from`），并立即调用 `dv_timeline_create`，每次渲染的结果之后在 DreamVerse 项目更新中送达。它还告诉智能体如何延长、缩短或修改时间线上的故事。
 
 #### Token 影响
 

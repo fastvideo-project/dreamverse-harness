@@ -163,11 +163,14 @@ describe('dvAudioGenerate', () => {
     expect(fixture.ctx.tools.get('dv_audio_generate')).toBeUndefined()
   })
 
-  it('stores one clip with its duration and the backend time as its cost, and gives the agent the result text', async () => {
+  it('stores one clip with its duration and the backend time as its cost, and summarizes it for the agent', async () => {
     const fixture = await start()
     const args = { ...KEY, reason: 'greeting', prompt: '  <|speaker:0|> Welcome, traveler.  ', extra: { speed: 1.1 } }
     const result = await fixture.call('dv_audio_generate', args)
     const take = value(result)
+    // An agent call of a GPU operation runs in the background; a project update reports the summary and outputs.
+    expect(take.status).toBe('pending')
+    await fixture.ctx.dvProject.wait(fixture.project)
     expect(fixture.speech.requests).toEqual([{ prompt: '<|speaker:0|> Welcome, traveler.', extra: { speed: 1.1 } }])
     const record = fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(take.record))
     expect(record).toMatchObject({ status: 'done', component: 'audio', operation: 'audio.generate', actor: 'agent', inputs: [] })
@@ -175,14 +178,7 @@ describe('dvAudioGenerate', () => {
     expect(record.report).toEqual({ model_id: 'test-speech', duration_sec: 2.25 })
     const asset = record.outputs[0] as AssetId
     expect(fixture.ctx.dvAssetPool.get(asset)).toMatchObject({ mime: 'audio/wav', duration_sec: 2.25, name: `${record.id.slice(0, 8)}.wav`, created_by: record.id })
-    const blocks = fixture.ctx.tools.get('dv_audio_generate')?.output.render(args, take)
-    expect(blocks).toEqual([{
-      type: 'text',
-      text: `done ${record.id}: audio "<|speaker:0|> Welcome, traveler." (2.3s)\n`
-        + `- audio: ${asset} (audio/wav) ${fixture.ctx.dvAssetPool.url(asset)}\n`
-        + `params: ${JSON.stringify({ modality: 'audio', task: 't2a', provider: 'test', model: 'fake', prompt: args.prompt, extra: { speed: 1.1 } })}\n`
-        + 'report: {"model_id":"test-speech","duration_sec":2.25}',
-    }])
+    expect(audioSpec(fixture)?.summarize(record)).toBe('audio "<|speaker:0|> Welcome, traveler." (2.3s)')
     const { report: _report, ...withoutReport } = record
     expect(audioSpec(fixture)?.summarize(withoutReport)).toBe('audio "<|speaker:0|> Welcome, traveler." (?s)')
   })
@@ -205,9 +201,9 @@ describe('dvAudioGenerate', () => {
   it('fails the record with the model\'s message when the render fails', async () => {
     const fixture = await start()
     fixture.speech.failure = new Error('The server at http://127.0.0.1:1 cannot be reached.')
-    expect(failure(await fixture.call('dv_audio_generate', { ...KEY, reason: 'x', prompt: 'Hello.' })))
-      .toBe('The server at http://127.0.0.1:1 cannot be reached.')
+    expect(value(await fixture.call('dv_audio_generate', { ...KEY, reason: 'x', prompt: 'Hello.' })).status).toBe('pending')
+    await fixture.ctx.dvProject.wait(fixture.project)
     const [entry] = fixture.ctx.dvProject.listHistory({ project: fixture.project, operation: 'audio.generate' })
-    expect(entry?.record).toMatchObject({ status: 'failed', outputs: [] })
+    expect(entry?.record).toMatchObject({ status: 'failed', outputs: [], error: { message: 'The server at http://127.0.0.1:1 cannot be reached.' } })
   })
 })

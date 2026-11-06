@@ -32,7 +32,7 @@ When shots share a character, a location or a look, load the skill of that refer
 
 1. Call `dv_shot_render` once per shot, in story order, with `modality`, `task`, `provider`, `model`, `prompt` and `duration_sec`; for task `ref2v` also `inputs.reference`, with each reference cited in the prompt. When a call is refused, fix the named value and call again.
 2. A shot that continues the previous shot passes `continue_from` = the record ID of the previous shot's render. Call it right after that render; the project waits for the previous take's last frame before the shot starts.
-3. Call `dv_proj_wait`, then `dv_proj_state`. Report each finished shot with its last frame (you receive it as an image) and its link.
+3. Each render runs in the background. Lay the takes on a timeline (step 5) right away, then end your turn. A DreamVerse project update reports each render when it finishes, with its last frame's asset ID and link; report each finished shot with them.
 
 ## 5. Lay the takes on a timeline
 
@@ -44,4 +44,4 @@ One story is one timeline and one storyboard. The user asks for this about a tim
 
 1. Change `story/storyboard.md` with `dv_textnode_edit`, show the new or changed shots, and wait for the user to agree as in step 2. A shot added after six shots is shot 7.
 2. Render only the new or changed shots with `dv_shot_render`; a changed shot passes `based_on` = its earlier render, and a shot that continues a changed shot renders again with `continue_from` = the new render.
-3. Wait with `dv_proj_wait`, then call `dv_timeline_update` with `timeline` = the story's timeline and every clip in order, the unchanged clips as their earlier takes.
+3. Right away, call `dv_timeline_update` with `timeline` = the story's timeline and every clip in order, the unchanged clips as their earlier takes; a render that is not done yet becomes a placeholder clip.
