@@ -10,13 +10,21 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { AssetId, OperationToolValue, ProjectId, RecordId } from '@dv/project'
 import { formatModelKey } from '@dv/models'
 import { afterEach, describe, expect, it } from 'vitest'
-import { bootBundle, bundleRows, fastVideo, insertRows, renderer, uniserve } from './bundle.ts'
+import { bootBundle, bundleRows, fastVideo, insertRows, loadPatch, renderer, type Row, uniserve } from './bundle.ts'
 
 const disposers: Array<() => Promise<void> | void> = []
 
 afterEach(async () => {
   for (const dispose of disposers.splice(0).reverse()) await dispose()
 })
+
+interface PresetConfig { id: string; plugins: Array<Row & { config?: Record<string, unknown> }> }
+
+function presetConfig(path: string, id: string): PresetConfig {
+  const row = loadPatch(path).flatMap(patch => patch.insert ?? []).find(entry => entry.id === id)
+  if (row === undefined) throw new Error(`${path} inserts no row ${id}`)
+  return row.config as PresetConfig
+}
 
 describe('DreamVerse bundle composition', () => {
   it('mounts the reference nouns in the order character, location, style, on the host and in the browser', () => {
@@ -110,5 +118,38 @@ describe('DreamVerse bundle composition', () => {
     // The bundle's `!!js` configuration put the project folder in the DreamVerse folder the test set.
     expect(readFileSync(join(dir, 'projects', 'composed', '.dreamverse', 'records.jsonl'), 'utf8')).toContain('"shot.render"')
     expect(ctx.dvAssetPool.path(video as AssetId)).toBe(join(realpathSync(dir), 'projects', 'composed', '.dreamverse', 'assets', 'objects', video as string))
+  })
+})
+
+describe('DreamVerse Creator preset', () => {
+  const creator = presetConfig('../cordis.patch.yml', 'preset-dreamverse-creator')
+  const dreamverse = presetConfig('../cordis.patch.yml', 'preset-dreamverse')
+  const cordis = presetConfig('../../web-app/presets/cordis.patch.yml', 'preset-cordis')
+  const child = (preset: PresetConfig, id: string): PresetConfig['plugins'][number] => {
+    const found = preset.plugins.find(row => row.id === id)
+    if (found === undefined) throw new Error(`preset ${preset.id} has no child ${id}`)
+    return found
+  }
+  const ownFields = (preset: PresetConfig): Record<string, unknown> =>
+    Object.fromEntries(Object.entries(preset).filter(([key]) => !['id', 'name', 'description', 'order', 'plugins'].includes(key)))
+
+  it('ships off in this bundle', () => {
+    const row = loadPatch('../cordis.patch.yml').flatMap(patch => patch.insert ?? []).find(entry => entry.id === 'preset-dreamverse-creator')
+    expect(row?.disabled).toBe(true)
+    expect(creator.id).toBe('dreamverse-creator')
+  })
+
+  it('is the Creator-mode preset cordis with the DreamVerse persona prefix and skill roots and no personal skill roots', () => {
+    expect(ownFields(creator)).toEqual(ownFields(cordis))
+    const persona = child(cordis, 'persona')
+    const skills = child(cordis, 'skill-filesystem')
+    const dreamversePrefix = child(dreamverse, 'persona').config?.prefix
+    expect(dreamversePrefix).toEqual(expect.any(String))
+    expect(creator.plugins).toEqual(cordis.plugins.map((row) => {
+      if (row === persona) return { ...row, config: { ...row.config, prefix: dreamversePrefix, suffix: child(creator, 'persona').config?.suffix } }
+      if (row !== skills) return row
+      const dirs = (preset: PresetConfig): unknown[] => child(preset, 'skill-filesystem').config?.customSkillDirs as unknown[]
+      return { ...row, config: { ...row.config, includeDefaultRoots: false, customSkillDirs: [...dirs(dreamverse), ...dirs(cordis)] } }
+    }))
   })
 })

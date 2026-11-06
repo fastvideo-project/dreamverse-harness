@@ -34,6 +34,7 @@ export default defineConfig(({ env }) => {
         'packages/dv/ui-generation/**',
         'packages/video-harness/stream/**',
         'packages/bundle/dv/**',
+        'packages/bundle/dv-creator/**',
         // The DreamVerse browser stories are tests only and have no build output.
         'packages/dv/e2e/**',
       ],

@@ -95,9 +95,16 @@ export function bundleRows(): Row[] {
 
 /** @returns every row of the bundle patch's first insert list, in patch order. */
 export function insertRows(): Row[] {
-  const patch = yaml.load(readFileSync(fileURLToPath(new URL('../cordis.patch.yml', import.meta.url)), 'utf8'), { schema: entryListSchema })
-  const [first] = patch as Array<{ insert?: Row[] }>
+  const [first] = loadPatch('../cordis.patch.yml')
   return first?.insert ?? []
+}
+
+/**
+ * @param path - a patch file relative to this directory.
+ * @returns the patches of the file, read with the `!!js` schema of the Loader.
+ */
+export function loadPatch(path: string): Array<{ insert?: Row[] }> {
+  return yaml.load(readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8'), { schema: entryListSchema }) as Array<{ insert?: Row[] }>
 }
 
 /** A booted composition, its temporary directory, its stand-in Workspace and chat services, and its teardown. */

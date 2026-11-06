@@ -24,6 +24,7 @@ Use this bundle to run DreamVerse as a `dsh` profile. It inserts the model catal
 
 ```sh
 scripts/video-harness/launch.sh web --trusted-host <public host>   # chat page on DV_PORT (default 8092)
+scripts/video-harness/launch.sh creator --trusted-host <public host>   # the same page with DreamVerse Creator and live reload
 scripts/video-harness/launch.sh headless "给我一个这个人跳舞的视频" --session-id demo   # one task, printed result
 ```
 
@@ -33,6 +34,8 @@ Environment the patch reads: `DV_PROJECTS_FOLDER` (the DreamVerse folder that ho
 ## Understand the implementation
 
 [`cordis.patch.yml`](cordis.patch.yml) has one `insert` list for the DreamVerse rows and three overrides. The `dv-models` row mounts the model catalog without configuration; the `dv-fastvideo` row names the servers explicitly: `fasth3` for task `ref2v` on `http://10.244.19.118:8029`, and for task `t2v` on `http://10.244.16.130:8031`. The `dv-fastvideo` row is `disabled: true`, so a default deployment does not mount it and has no `fasth3` entry for task `t2v`; a deployment sets `disabled: false` on that row in its profile patch to mount it. The `dv-uniserve` row after it serves `fasth3` for task `ref2v` on the UniServe server `http://10.244.8.35:8000`, so the catalog lists `video/ref2v/uniserve/fasth3`. The `dv-sglang-diffusion` row serves `qwen-image-2.1-turbo` on `http://127.0.0.1:30010`, a server on the same machine, and the `dv-image-generate` row after it mounts the tool `dv_image_generate`. The `dv-sglang-omni` row serves `fish-audio-drama-3` for task `t2a` on `http://127.0.0.1:8000`, and the `dv-audio-generate` row adds `dv_audio_generate` while that model is registered. A deployment with other servers replaces these rows' config in its profile patch. The overrides are: `skill-filesystem` (the skills directory, which holds `video-directing`; `video-model-selection`, the prompt skills of the video models, `character`, `location`, `style` and `timeline-editing` are registered by their own plugins through `ctx.skills`, and `@dv/workflow-story` serves the workflow skills of `packages/dv/workflow-story/skills/`), `llm-pi-ai` (the hand-declared `deepseek-local` route: `openai-completions` at `DV_DEEPSEEK_BASE_URL` with one model `deepseek-v4.1` declared as text and image input, and `compat.supportsDeveloperRole: false`, so pi-ai sends the system prompt as role `system`, which SGLang keeps also in a request without tools; plus the Groq route), and `agent-default-model` (provider, model, and reasoning effort from the environment). No web server row is included: the web profile takes its page from `dsh-web-app`, and `dvAssetPool` registers `/dv/assets` on that server. [`tests/composition.spec.ts`](tests/composition.spec.ts) boots the rows of the patch through the Loader, with their `!!js` configuration and `disabled` flags and with fakes in place of the video model backends and without a call to the image or speech server, and turns a model tool call into a record. [`tests/skills.spec.ts`](tests/skills.spec.ts) boots the same rows with the skill registry. For each workflow skill of `packages/dv/workflow-story/skills/`, it checks that the bundle registers every tool the skill names, and it compares the catalog line and the loaded body with `tests/expected/skills/<name>.txt`.
+
+The patch also ships the `preset-dreamverse-creator` row, off in this bundle: the agent preset DreamVerse Creator, which keeps the children of the Creator-mode preset `preset-cordis` of `dsh-web-app` with two changes. Its `persona` uses the DreamVerse persona prefix and a suffix that names this checkout's `packages/dv`, says that saved edits to loaded TypeScript modules there reload without a restart, and names the edits that need a plugin reload or a restart, and its `skill-filesystem` mounts the DreamVerse skills and the plugin-development skills without the personal skill roots. A Loader patch replaces a preset's whole config, so the row restates the other children; [`tests/composition.spec.ts`](tests/composition.spec.ts) fails when they differ from `preset-cordis`. [`@dv/bundle-creator`](../dv-creator/README.md) turns the row on in profile `video-harness-creator`.
 
 <a id="further-exploration"></a>
 ## Further Exploration
@@ -51,7 +54,7 @@ Environment the patch reads: `DV_PROJECTS_FOLDER` (the DreamVerse folder that ho
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through the tools, the `dv:project` prompt section and the project state and update messages of `@dv/project`, the mention context of `@dv/chat-references`, and the skills the bundle mounts; the bundle itself adds no model-visible text.
+Indirectly, through the tools, the `dv:project` prompt section and the project state and update messages of `@dv/project`, the mention context of `@dv/chat-references`, and the skills the bundle mounts; the bundle itself adds the persona text of its two agent presets. The DreamVerse Creator persona suffix names `packages/dv` of the checkout, tells the agent that saved edits to loaded TypeScript modules there reload without a restart, and names the files whose edits need a plugin reload or a restart.
 
 #### KV Cache effect
 

@@ -1,0 +1,20 @@
+{
+  "name": "@dv/bundle-creator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The DreamVerse Creator profile layer over @dv/bundle: the DreamVerse Creator preset, the preset chooser with DreamVerse and DreamVerse Creator, and live reload of the checkout's packages/dv.",
+  "exports": {
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis-plugin-include": "workspace:~",
+    "@deepseek-ai/cordis-plugin-loader": "workspace:~"
+  }
+}

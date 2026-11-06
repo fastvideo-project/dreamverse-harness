@@ -1,0 +1,35 @@
+# The DreamVerse Creator layer: stacked over @dv/bundle in the `video-harness-creator` profile, which
+# scripts/video-harness/launch.sh creator starts beside the browser bundle watcher.
+
+# The chooser policy lives in this bundle layer, below the profile patch, so Settings → Agent presets writes are accepted.
+- id: preset-dreamverse-creator
+  disabled: false
+
+- id: preset-standard
+  disabled: true
+
+- id: preset-ptc
+  disabled: true
+
+- id: preset-minimal
+  disabled: true
+
+- id: preset-cordis
+  disabled: true
+
+- id: agent-preset-registry
+  config:
+    default: dreamverse
+    modeSelectionEnabled: true
+
+# Host HMR of the linked checkout's packages/dv. Network mounts deliver no inotify events, so the watcher polls. It skips
+# lib, which the browser bundle watcher rewrites and the Host never loads.
+- id: hmr
+  config:
+    base: !!js >-
+      process.getBuiltinModule('node:path').resolve(process.getBuiltinModule('node:path').dirname(
+      process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@dv/bundle/package.json')), '../../dv')
+    root: ['.']
+    ignored: ['**/node_modules', '**/.*', '**/lib']
+    usePolling: true
+    interval: 500

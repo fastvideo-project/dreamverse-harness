@@ -35,6 +35,8 @@ const windowsUnsupportedPackages = process.platform === 'win32'
       'packages/sandbox/sandbox-local',
       // OpenSSH multiplexing and Unix-socket helper streams require POSIX endpoints.
       'packages/ssh/*',
+      // The profile test runs scripts/video-harness/setup-profile.sh, which needs bash and symlinks.
+      'packages/bundle/dv-creator',
     ]
   : []
 
