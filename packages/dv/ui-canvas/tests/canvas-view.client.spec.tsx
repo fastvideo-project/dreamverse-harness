@@ -941,7 +941,7 @@ describe('the node card', () => {
       expect(node(id).firstElementChild?.textContent).toContain(node(id).getAttribute('aria-label'))
       expect(frame.contains(node(id).firstElementChild)).toBe(false)
     }
-    expect(node('test_ref:hero').querySelector('[data-node-frame]')?.textContent).toBe('参考')
+    expect(node('test_ref:hero').querySelector('[data-node-frame]')?.textContent).toBe('参考1 张参考图 · 第 1 版')
     await open('g1')
     expect(node('g1').querySelector<HTMLElement>('[data-node-frame]')?.style.boxShadow).toBe('0 0 0 2px var(--dv-accent), 0 0 0 6px var(--dv-accent-soft)')
     await runtime.dispose()
@@ -967,7 +967,7 @@ describe('the node card', () => {
     const [x1, y1] = points
     const [x2, y2] = points.slice(-2)
     const top = (id: string): number => Number.parseFloat(node(id).style.top)
-    expect([x1, y1]).toEqual([Number.parseFloat(node('test_ref:hero').style.left) + NODE_WIDTH, top('test_ref:hero') + 20 + 30 / 2])
+    expect([x1, y1]).toEqual([Number.parseFloat(node('test_ref:hero').style.left) + NODE_WIDTH, top('test_ref:hero') + 20 + 188 / 2])
     expect([x2, y2]).toEqual([Number.parseFloat(node('g1').style.left), top('g1') + 20 + 117 / 2])
     await runtime.dispose()
   })
