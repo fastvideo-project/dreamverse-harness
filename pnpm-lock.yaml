@@ -2167,6 +2167,9 @@ importers:
       '@dv/openrouter':
         specifier: workspace:*
         version: link:../../dv/openrouter
+      '@dv/plugin-catalog':
+        specifier: workspace:*
+        version: link:../../dv/plugin-catalog
       '@dv/project':
         specifier: workspace:*
         version: link:../../dv/project
@@ -2221,6 +2224,9 @@ importers:
       '@dv/ui-openrouter':
         specifier: workspace:*
         version: link:../../dv/ui-openrouter
+      '@dv/ui-plugin-catalog':
+        specifier: workspace:*
+        version: link:../../dv/ui-plugin-catalog
       '@dv/ui-shell':
         specifier: workspace:*
         version: link:../../dv/ui-shell
@@ -7696,6 +7702,22 @@ importers:
         specifier: ^22.20.0
         version: 22.20.0
 
+  packages/dv/plugin-catalog:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-client-connection':
+        specifier: workspace:*
+        version: link:../../client/connection
+      '@types/node':
+        specifier: ^22.20.0
+        version: 22.20.0
+
   packages/dv/project:
     dependencies:
       '@deepseek-ai/dsh-agent':
@@ -8649,6 +8671,42 @@ importers:
       '@dv/ui-kit':
         specifier: workspace:*
         version: link:../ui-kit
+      '@types/react':
+        specifier: ~18.3.1
+        version: 18.3.31
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
+
+  packages/dv/ui-plugin-catalog:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-api-remotes':
+        specifier: workspace:*
+        version: link:../../api/remotes
+      '@deepseek-ai/dsh-client-ui-layout':
+        specifier: workspace:*
+        version: link:../../client/ui-layout
+      '@deepseek-ai/dsh-client-ui-renderer':
+        specifier: workspace:*
+        version: link:../../client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: workspace:*
+        version: link:../../client/ui-slots
+      '@deepseek-ai/dsh-util-crypto':
+        specifier: workspace:*
+        version: link:../../util/crypto
+      '@dv/plugin-catalog':
+        specifier: workspace:*
+        version: link:../plugin-catalog
+      '@dv/ui-kit':
+        specifier: workspace:*
+        version: link:../ui-kit
+      '@dv/ui-shell':
+        specifier: workspace:*
+        version: link:../ui-shell
       '@types/react':
         specifier: ~18.3.1
         version: 18.3.31

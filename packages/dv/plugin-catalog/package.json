@@ -1,0 +1,23 @@
+{
+  "name": "@dv/plugin-catalog",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The DreamVerse plugin catalog: the curated list of npm plugins the start page offers to install, answered at GET /api/dv/plugins/catalog.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts",
+    "./catalog.json": "./catalog.json",
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/schemastery": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-client-connection": "workspace:*",
+    "@deepseek-ai/schemastery": "workspace:~",
+    "@types/node": "^22.20.0"
+  }
+}

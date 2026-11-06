@@ -2168,6 +2168,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     declaredBy: 'an entry in \'main.conversation\' (@dv/ui-shell), so it exists while that entry is mounted',
     occupants: [
       '@dv/ui-mcp-presets McpShelf id \'mcp\'',
+      '@dv/ui-plugin-catalog CatalogShelf id \'plugins\'',
       '@dv/ui-skills SkillsShelf id \'skills\'',
     ],
     replaceRisk: 'none',
