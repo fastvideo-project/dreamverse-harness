@@ -42,7 +42,7 @@ describe('@dv/ui-audio-generate', () => {
     expect(hostApply).not.toThrow()
   })
 
-  it('claims audio.generate as the audio node type with its label, palette slot, body height and status words', async () => {
+  it('claims audio.generate as the audio node type with its label, palette slot, media sizing and status words', async () => {
     const { runtime, canvas } = await mountPlugin()
     const type = canvas.nodeTypes.getSnapshot().find(entry => entry.id === '@dv/ui-audio-generate')
     const entry = type?.claimed?.entry({ record: { outputs: [] } as never, version: null }, {
@@ -50,10 +50,11 @@ describe('@dv/ui-audio-generate', () => {
     })
     expect({
       type: type?.type, label: type?.label(), color: type?.color, operations: type?.claimed?.operations,
-      bodyHeight: entry?.sizing?.heightAt(208),
+      sizing: entry?.sizing,
       running: type?.claimed?.status.running(), failed: type?.claimed?.status.failed(),
     }).toEqual({
-      type: 'audio', label: '音频', color: 'var(--dv-node-8)', operations: ['audio.generate'], bodyHeight: 72,
+      type: 'audio', label: '音频', color: 'var(--dv-node-8)', operations: ['audio.generate'],
+      sizing: { kind: 'media', defaultSize: { width: 208, height: 72 }, minSize: { width: 104, height: 36 }, aspectRatio: { ratio: 26 / 9, fixedHeight: 0 } },
       running: '生成中…', failed: '生成失败',
     })
     await runtime.dispose()

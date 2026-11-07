@@ -14,7 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import type { ClaimedEntry, ClaimedNodeView, ClaimedRecord, NodeAction, NodeInput, NodeType } from '@dv/ui-canvas/contract'
 import type { HistoryRow, Text } from '@dv/ui-history/contract'
 import { DvClient } from '@dv/ui-kit/api.ts'
-import { CARD_SURFACE, frameHeight, NODE_FRAME_HEIGHT } from '@dv/ui-kit/frame.ts'
+import { CARD_SURFACE, mediaSizing, WIDE_RATIO } from '@dv/ui-kit/frame.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
 import { requestInputsOf } from '@dv/ui-kit/references.ts'
 import type { UiPlugin } from '@dv/ui-kit/registries.ts'
@@ -46,11 +46,10 @@ export interface GenerationUiSpec {
   column?: number
   deepenOn?: readonly string[]
   /**
-   * The frame height, at any frame width, of a take whose shown asset has an unknown width or height, such as an audio
-   * take; default 117, the 16:9 frame at the 208 node width. A take whose shown asset has a known size gets the frame
-   * of that size at the frame's width.
+   * The frame aspect ratio (width ÷ height) of a take whose shown asset has an unknown width or height, such as an audio
+   * take; default 16:9. A take whose shown asset has a known size gets the frame at that asset's aspect ratio.
    */
-  bodyHeight?: number
+  fallbackRatio?: number
   status: StatusWords
   /** The History subject of a record; default none. */
   subject?(record: ProjectRecord): Text | null
@@ -102,7 +101,7 @@ function TakeCard({ node, assets, renderFactorySlot }: PropsRuntime<'dv.canvas.c
  */
 export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
   const operations = new Set(spec.operations)
-  const fallbackHeight = spec.bodyHeight ?? NODE_FRAME_HEIGHT
+  const fallbackRatio = spec.fallbackRatio ?? WIDE_RATIO
   const titleOf = ({ record, version }: ClaimedRecord, input: NodeInput): string => {
     const pick = (zh: string, en: string): string => input.language === 'zh' ? zh : en
     const base = input.operations.find(operation => operation.name === record.operation)?.label?.[input.language] ?? record.operation
@@ -114,7 +113,7 @@ export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
     const preview = spec.preview?.(outputsIn(claimed.record, input.state))
     const shown = input.state.assets.find(asset => asset.id === (preview ?? claimed.record.outputs[0]))
     return {
-      title: titleOf(claimed, input), sizing: { heightAt: width => frameHeight(shown, fallbackHeight, width) },
+      title: titleOf(claimed, input), sizing: mediaSizing(shown, fallbackRatio, 0),
       ...timed === undefined ? {} : { meta: `${timed.toFixed(1)}s` }, ...preview === undefined ? {} : { preview },
     }
   }
