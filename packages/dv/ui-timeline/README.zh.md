@@ -46,7 +46,7 @@ Host 半边不注册任何东西。浏览器半边注册 `dv-timeline` 标签类
 | 导出 | 一次 `timeline.export {timeline}` 调用；链接打开导出的视频 |
 | 对选中的过期片段点"仍然保留" | 对创建该片段素材的记录调用 `POST /api/dv/stale/accept`（`proj.stale_accept`） |
 
-每条记录都带 `surface: 'timeline'`、视图旁边的对话（存为记录的 `session`；记录是项目当前位置之后的一步），以及一句用 DSH 界面语言说明手势的意图。`TimelineView` 显示打开项目的中间区域字段 `timeline` 指定的时间线，否则显示第一条时间线；用户在那里选中或新建的时间线经所有者属性 `note` 设置该字段，因此 shell 把它写进 URL，会话切换器的封面也跟随它。标签主体为每个项目保留自己的所选时间线，不影响中间区域。`TimelineView` 通过 `@dv/ui-kit/locale.ts` 跟随 `<html lang>`；切换时间线标签会停止播放，并重置预览和播放头。点一个片段会选中它，不发送任何请求。素材没有时长时片段按五秒画。
+每条记录都带 `surface: 'timeline'`、视图旁边的对话（存为记录的 `session`；记录是项目当前位置之后的一步），以及一句用 DSH 界面语言说明手势的意图。`TimelineView` 显示打开项目的中间区域字段 `timeline` 指定的时间线，否则显示第一条时间线；用户在那里选中或新建的时间线经所有者属性 `note` 设置该字段，因此 shell 把它写进 URL，会话切换器的封面也跟随它。标签主体为每个项目保留自己的所选时间线，不影响中间区域。`TimelineView` 通过 `@dv/ui-kit/locale.ts` 跟随 `<html lang>`；切换时间线标签会停止播放，并重置预览和播放头。点一个片段会选中它，不发送任何请求。用关闭按钮、Esc 或点击窗口外面关闭 ＋ 的选择窗口时，不插入素材。素材没有时长时片段按五秒画。
 
 DOM 带测试 ID `dv-timeline-body`、`dv-timeline-editor`、`dv-timeline-viewer`、`dv-timeline-viewer-empty`、`dv-timeline-time`、`dv-timeline-exported`、`dv-timeline-ruler` 和 `dv-timeline-playhead`；每个片段带 `data-clip`（片段 ID）、`data-clip-position` 和 `data-clip-stale`，每个标签带 `data-timeline`。
 

@@ -440,6 +440,39 @@ describe('timeline editor gestures', () => {
     expect(requests()).toEqual([])
   })
 
+  it('closes the asset picker with its close button, Escape, a press outside it, or ＋, and inserts nothing', async () => {
+    const { view, requests, track } = mount()
+    await track()
+    const add = (): HTMLElement => view.getByLabelText('插入片段')
+    const picker = (): HTMLElement | null => view.queryByRole('dialog')
+    fireEvent.click(add())
+    expect(add().getAttribute('aria-expanded')).toBe('true')
+    fireEvent.click(within(picker() as HTMLElement).getByRole('button', { name: '关闭' }))
+    expect(picker()).toBeNull()
+    expect(document.activeElement).toBe(add())
+
+    fireEvent.click(add())
+    fireEvent.keyDown(window, { key: 'a' })
+    fireEvent.pointerDown(within(picker() as HTMLElement).getByText('shot1.mp4'))
+    expect(picker()).not.toBeNull()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(picker()).toBeNull()
+    expect(document.activeElement).toBe(add())
+
+    fireEvent.click(add())
+    fireEvent.pointerDown(document.body)
+    expect(picker()).toBeNull()
+
+    fireEvent.click(add())
+    fireEvent.pointerDown(add())
+    expect(picker()).not.toBeNull()
+    fireEvent.click(add())
+    expect(picker()).toBeNull()
+    expect(add().getAttribute('aria-expanded')).toBe('false')
+    await act(async () => { await Promise.resolve() })
+    expect(requests()).toEqual([])
+  })
+
   it('returns to the shown timeline when creating one fails, and keeps the selection when a removal or a move fails', async () => {
     const { view, clip, requests, track } = mount({ state: twoTimelines, post: () => ({ status: 500, body: { error: 'busy' } }) })
     await track()

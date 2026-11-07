@@ -176,6 +176,7 @@ const ICON_PATHS = {
   skipForward: 'M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5',
   export: 'M12 3v12M7 10l5 5 5-5M5 21h14',
   add: 'M12 5v14M5 12h14',
+  close: 'M6 6l12 12M18 6 6 18',
 }
 
 /**
@@ -375,6 +376,8 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const [dropNotice, setDropNotice] = useState(false)
   const [drag, setDrag] = useState<ClipDrag | null>(null)
   const [picking, setPicking] = useState(false)
+  const pickerRef = useRef<HTMLDivElement | null>(null)
+  const addRef = useRef<HTMLButtonElement | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exported, setExported] = useState<string | null>(null)
   const scroller = useRef<HTMLDivElement | null>(null)
@@ -429,6 +432,26 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     window.addEventListener('keydown', close)
     return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', close) }
   }, [menu])
+
+  // Escape or a press outside the asset picker closes it without inserting; Escape returns focus to ＋. A press on ＋
+  // counts as inside, so its click toggles the picker closed instead of reopening it.
+  useEffect(() => {
+    if (!picking) return
+    const close = (event: Event): void => {
+      if (event instanceof KeyboardEvent) {
+        if (event.key !== 'Escape') return
+        setPicking(false)
+        addRef.current?.focus()
+        return
+      }
+      const { target } = event
+      const inside = target instanceof Node && [pickerRef.current, addRef.current].some(element => element?.contains(target) === true)
+      if (!inside) setPicking(false)
+    }
+    window.addEventListener('pointerdown', close)
+    window.addEventListener('keydown', close)
+    return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', close) }
+  }, [picking])
 
   // A timeline without a stored name shows the numbered default name of its ID in the interface language.
   const numbered = (n: number): string => t('tabs.defaultTitle', { n })
@@ -899,7 +922,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
           })}
           {timeline === null ? null : (
             <button
-              type="button" className="dv-tl-btn" aria-label={t('track.add')} title={t('track.add')} onClick={() => { setPicking(!picking) }}
+              ref={addRef} type="button" className="dv-tl-btn" aria-label={t('track.add')} title={t('track.add')} aria-expanded={picking} onClick={() => { setPicking(!picking) }}
               style={{ ...button, position: 'absolute', left: total * px + 8, top: (VIDEO_HEIGHT - 32) / 2, width: 32, height: 32, padding: 0, justifyContent: 'center', color: palette.muted }}
             >
               <Icon name="add" />
@@ -934,23 +957,29 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   )
 
   // The toolbar, the tracks, and the asset picker share one panel; the picker opens under the toolbar, outside the
-  // horizontally scrolling tracks, so the scroll area does not clip it. A resized panel gives its extra height to the
-  // scrolling track rows, which keep their own heights at the top.
+  // horizontally scrolling tracks, so the scroll area does not clip it. The picker ends 8 px above the panel's bottom,
+  // which sits on the window's bottom edge, and only its list scrolls, so its title and close button stay in view. A
+  // resized panel gives its extra height to the scrolling track rows, which keep their own heights at the top.
   const editPanel = (
     <div ref={panel} style={{ flex: 'none', ...trackHeight === null ? {} : { height: trackHeight }, display: 'flex', flexDirection: 'column', position: 'relative', background: palette.panel }}>
       {toolbar}
       {tracks}
       {picking ? (
-        <div role="dialog" aria-label={t('track.pick')} style={{ position: 'absolute', right: 12, top: 44, maxHeight: 180, overflow: 'auto', background: palette.panel, border: `1px solid ${palette.line}`, borderRadius: 'var(--dv-radius-lg)', boxShadow: 'var(--dv-shadow-1)', padding: 6, zIndex: 5, minWidth: 180 }}>
-          <p style={{ margin: '0 0 4px', color: palette.muted, fontSize: 12, lineHeight: '16px' }}>{t('track.pick')}</p>
-          {candidates.length === 0 ? <p style={{ margin: 0 }}>{t('track.noAssets')}</p> : candidates.map(entry => (
-            <button
-              key={entry.id} type="button" className="dv-tl-btn" style={{ ...menuItem, marginTop: 4 }}
-              onClick={() => { setPicking(false); insert(clips.length + 1, entry.id) }}
-            >
-              {entry.name}
-            </button>
-          ))}
+        <div ref={pickerRef} role="dialog" aria-label={t('track.pick')} style={{ position: 'absolute', right: 12, top: 44, boxSizing: 'border-box', maxHeight: 'min(194px, calc(100% - 52px))', display: 'flex', flexDirection: 'column', background: palette.panel, border: `1px solid ${palette.line}`, borderRadius: 'var(--dv-radius-lg)', boxShadow: 'var(--dv-shadow-1)', padding: 6, zIndex: 5, minWidth: 180 }}>
+          <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <p style={{ flex: 1, margin: 0, color: palette.muted, fontSize: 12, lineHeight: '16px' }}>{t('track.pick')}</p>
+            <IconButton icon="close" label={t('track.pickClose')} onClick={() => { setPicking(false); addRef.current?.focus() }} />
+          </div>
+          <div style={{ minHeight: 0, overflow: 'auto' }}>
+            {candidates.length === 0 ? <p style={{ margin: 0 }}>{t('track.noAssets')}</p> : candidates.map(entry => (
+              <button
+                key={entry.id} type="button" className="dv-tl-btn" style={{ ...menuItem, marginTop: 4 }}
+                onClick={() => { setPicking(false); insert(clips.length + 1, entry.id) }}
+              >
+                {entry.name}
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
     </div>
