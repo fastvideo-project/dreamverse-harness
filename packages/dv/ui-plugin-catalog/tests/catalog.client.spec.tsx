@@ -24,16 +24,16 @@ const OTHER = '@fastvideo/other'
 const CATALOG: CatalogAnswer = {
   plugins: [
     {
-      package: VOICE, title: { zh: '配音', en: 'Voice acting' }, description: { zh: '录音并转换。', en: 'Record and convert.' },
+      package: VOICE, version: '0.1.0', title: { zh: '配音', en: 'Voice acting' }, description: { zh: '录音并转换。', en: 'Record and convert.' },
       setup: { zh: '需要 Seed-VC 服务器。', en: 'Needs a Seed-VC server.' }, source: 'shipped',
     },
-    { package: OTHER, title: { zh: '其他', en: 'Other' }, description: { zh: '另一个。', en: 'Another one.' }, source: 'shipped' },
+    { package: OTHER, version: '1.0.0', title: { zh: '其他', en: 'Other' }, description: { zh: '另一个。', en: 'Another one.' }, source: 'shipped' },
   ],
   problems: [{ source: 'https://example.com/catalog.json', message: 'the server answered HTTP 500' }],
 }
 
-const bundle = (name: string, enabled: boolean): BundleInfo => ({
-  name, enabled, installed: true, optional: false, removable: true, rows: [], overrides: [],
+const bundle = (name: string, enabled: boolean, version?: string): BundleInfo => ({
+  name, enabled, ...version === undefined ? {} : { version }, installed: true, optional: false, removable: true, rows: [], overrides: [],
 })
 
 const change = (fields: Partial<ChangeResult>): ChangeResult => ({ changed: true, application: 'applied', stage: 'install', target: VOICE, ...fields })
@@ -78,23 +78,25 @@ function card(view: ReturnType<SlotTestRuntime['renderRoot']>, pkg: string): HTM
 
 describe('ui-plugin-catalog', () => {
   it('lists the catalog in 探索 with each plugin\'s state, and leaves when the plugin is disposed', async () => {
-    const { runtime, plugin, view, fetched } = await mountTab([bundle(OTHER, false)])
+    const { runtime, plugin, view, fetched } = await mountTab([bundle(OTHER, false, '0.9.0')])
     expect(runtime.slots.entries('dv.explore').map(entry => entry.options.id)).toEqual(['plugins'])
     expect(fetched).toEqual([CATALOG_ROUTE])
     expect(card(view, VOICE).getAttribute('data-state')).toBe('absent')
     expect(card(view, OTHER).getAttribute('data-state')).toBe('off')
     expect(view.getByText('Needs a Seed-VC server.')).toBeTruthy()
+    expect(view.getByText(`${VOICE}@0.1.0`)).toBeTruthy()
+    expect(view.getByText('Version 0.9.0 is installed; the catalog lists 1.0.0.')).toBeTruthy()
     expect(view.getByText('Catalog source https://example.com/catalog.json could not be used: the server answered HTTP 500')).toBeTruthy()
     await plugin.dispose()
     expect(runtime.slots.entries('dv.explore')).toEqual([])
     await runtime.dispose()
   })
 
-  it('installs a plugin with its bundle switched on and says when a restart loads it', async () => {
+  it('installs a plugin at its catalog version with its bundle switched on and says when a restart loads it', async () => {
     const { runtime, view, manager, setListed } = await mountTab([])
     fireEvent.click(view.getAllByRole('button', { name: 'Install' })[0] as HTMLElement)
     await act(async () => { await runtime.flush() })
-    expect(manager.installBundle).toHaveBeenCalledWith(VOICE, expect.objectContaining({ enabled: true }))
+    expect(manager.installBundle).toHaveBeenCalledWith(`${VOICE}@0.1.0`, expect.objectContaining({ enabled: true }))
     expect(view.getByText('Installed. Restart the harness to load it.')).toBeTruthy()
     setListed([bundle(VOICE, true)])
     await act(async () => { runtime.remote.emit('plugin-manager/changed', [{ reason: 'install' }]); await runtime.flush() })

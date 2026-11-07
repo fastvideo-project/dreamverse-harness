@@ -42,7 +42,7 @@ export function CatalogShelf(): ReactNode {
             {state.catalog.plugins.map(entry => (
               <PluginCard
                 key={entry.package} entry={entry} state={pluginState(state, entry.package)} manageable={state.manageable}
-                outcome={state.outcomes.get(entry.package)}
+                installedVersion={state.bundles?.get(entry.package)?.version} outcome={state.outcomes.get(entry.package)}
               />
             ))}
           </div>
@@ -53,16 +53,17 @@ export function CatalogShelf(): ReactNode {
 
 /**
  * One catalog plugin.
- * @param props - the entry, its state, whether the plugin manager is reachable, and the last outcome.
+ * @param props - the entry, its state, whether the plugin manager is reachable, the installed version, and the last outcome.
  * @returns the card.
  */
 function PluginCard(props: {
   entry: CatalogEntry
   state: PluginState
   manageable: boolean
+  installedVersion: string | undefined
   outcome: PluginOutcome | undefined
 }): ReactNode {
-  const { entry, state, manageable, outcome } = props
+  const { entry, state, manageable, installedVersion, outcome } = props
   const t = useText()
   const [confirming, setConfirming] = useState(false)
   const status: Record<PluginState, string> = {
@@ -78,17 +79,22 @@ function PluginCard(props: {
     <article className={css.card} data-plugin={entry.package} data-state={state}>
       <header className={css.head}>
         <span className={css.title}>{t(entry.title.zh, entry.title.en)}</span>
-        <code className={css.package}>{entry.package}</code>
+        <code className={css.package}>{entry.package}@{entry.version}</code>
         {status[state] === '' ? null : <span className={css.status} data-state={state}>{status[state]}</span>}
       </header>
       <p className={css.description}>{t(entry.description.zh, entry.description.en)}</p>
       {entry.setup === undefined ? null : (
         <p className={css.setup}><span className={css.setupLabel}>{t('还需要', 'Also needs')}</span>{t(entry.setup.zh, entry.setup.en)}</p>
       )}
+      {installedVersion !== undefined && installedVersion !== entry.version && (
+        <p className={css.setup}>
+          {t(`已安装 ${installedVersion}；目录审核的版本是 ${entry.version}。`, `Version ${installedVersion} is installed; the catalog lists ${entry.version}.`)}
+        </p>
+      )}
       {entry.homepage === undefined ? null : <a className={css.link} href={entry.homepage} target="_blank" rel="noreferrer">{t('主页', 'Homepage')}</a>}
       {manageable && (
         <div className={css.actions}>
-          {state === 'absent' && <button type="button" className={css.primary} onClick={() => { installPlugin(entry.package) }}>{t('安装', 'Install')}</button>}
+          {state === 'absent' && <button type="button" className={css.primary} onClick={() => { installPlugin(entry) }}>{t('安装', 'Install')}</button>}
           {state === 'off' && <button type="button" className={css.primary} onClick={() => { enablePlugin(entry.package) }}>{t('开启', 'Turn on')}</button>}
           {(state === 'on' || state === 'off') && !confirming && (
             <button type="button" className={css.secondary} onClick={() => { setConfirming(true) }}>{t('移除', 'Remove')}</button>

@@ -24,7 +24,7 @@ class FakeConnection {
   }
 }
 
-const entry = (pkg: string, en: string) => ({ package: pkg, title: { zh: en, en }, description: { zh: en, en } })
+const entry = (pkg: string, en: string) => ({ package: pkg, version: '1.0.0', title: { zh: en, en }, description: { zh: en, en } })
 
 const cleanups: Array<() => void | Promise<void>> = []
 afterEach(async () => {
@@ -52,9 +52,9 @@ async function serve(status: number, body: string): Promise<string> {
 }
 
 describe('the shipped catalog', () => {
-  it('is valid and lists voice acting under @fastvideo', () => {
+  it('is valid and lists voice acting under @fastvideo at an exact version', () => {
     const plugins = Catalog.parseCatalog(readFileSync(Catalog.SHIPPED_CATALOG, 'utf8'), 'shipped')
-    expect(plugins.map(plugin => plugin.package)).toContain('@fastvideo/dreamverse-voice-acting')
+    expect(plugins.map(plugin => [plugin.package, plugin.version])).toContainEqual(['@fastvideo/dreamverse-voice-acting', '0.1.0'])
   })
 })
 
@@ -62,16 +62,19 @@ describe('parseCatalog', () => {
   it('keeps the fields and records the source', () => {
     const text = JSON.stringify({ plugins: [{ ...entry('@fastvideo/a', 'A'), setup: { zh: '要', en: 'Needs' }, homepage: 'https://example.com/a' }] })
     expect(Catalog.parseCatalog(text, '/catalogs/x.json')).toEqual([{
-      package: '@fastvideo/a', title: { zh: 'A', en: 'A' }, description: { zh: 'A', en: 'A' },
+      package: '@fastvideo/a', version: '1.0.0', title: { zh: 'A', en: 'A' }, description: { zh: 'A', en: 'A' },
       setup: { zh: '要', en: 'Needs' }, homepage: 'https://example.com/a', source: '/catalogs/x.json',
     }])
   })
 
   it.each([
     ['not JSON', '{', /JSON/],
-    ['a missing title', JSON.stringify({ plugins: [{ package: 'a', description: { zh: 'a', en: 'a' } }] }), /title/],
+    ['a missing title', JSON.stringify({ plugins: [{ package: 'a', version: '1.0.0', description: { zh: 'a', en: 'a' } }] }), /title/],
     ['a title in one language', JSON.stringify({ plugins: [{ ...entry('a', 'x'), title: { en: 'x' } }] }), /needs both a zh and an en text/],
     ['an invalid package name', JSON.stringify({ plugins: [entry('Not A Name', 'x')] }), /not an npm package name/],
+    ['a missing version', JSON.stringify({ plugins: [{ package: 'a', title: { zh: 'a', en: 'a' }, description: { zh: 'a', en: 'a' } }] }), /version/],
+    ['a version range', JSON.stringify({ plugins: [{ ...entry('a', 'x'), version: '^1.0.0' }] }), /not an exact version/],
+    ['a dist-tag as the version', JSON.stringify({ plugins: [{ ...entry('a', 'x'), version: 'latest' }] }), /not an exact version/],
     ['a package listed twice', JSON.stringify({ plugins: [entry('a', 'x'), entry('a', 'y')] }), /listed twice/],
     ['a homepage that is not https', JSON.stringify({ plugins: [{ ...entry('a', 'x'), homepage: 'http://example.com' }] }), /not an https URL/],
   ])('refuses %s', (_case, text, error) => {

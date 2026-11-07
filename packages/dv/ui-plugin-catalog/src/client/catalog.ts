@@ -11,7 +11,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { BundleInfo, ChangeResult, PluginInstallRequestId } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
-import type { CatalogAnswer } from '@dv/plugin-catalog/types'
+import type { CatalogAnswer, CatalogEntry } from '@dv/plugin-catalog/types'
 
 /** The route of `@dv/plugin-catalog` that answers the catalog. */
 export const CATALOG_ROUTE = '/api/dv/plugins/catalog'
@@ -43,7 +43,7 @@ export interface CatalogView {
 
 /** The plugin manager calls, bound while its Remote is mounted. */
 interface ManagerActions {
-  install(pkg: string): Promise<ChangeResult>
+  install(spec: string): Promise<ChangeResult>
   remove(pkg: string): Promise<ChangeResult>
   enable(pkg: string): Promise<ChangeResult>
 }
@@ -138,11 +138,11 @@ function track(
 }
 
 /**
- * Install a catalog plugin and switch its bundle on.
- * @param pkg - the plugin's package name.
+ * Install a catalog plugin at the version its entry names and switch its bundle on.
+ * @param entry - the plugin's catalog entry.
  */
-export function installPlugin(pkg: string): void {
-  track(pkg, 'installing', actions => actions.install(pkg), 'installed', 'installed-restart')
+export function installPlugin(entry: Pick<CatalogEntry, 'package' | 'version'>): void {
+  track(entry.package, 'installing', actions => actions.install(`${entry.package}@${entry.version}`), 'installed', 'installed-restart')
 }
 
 /**
@@ -217,7 +217,7 @@ export function followCatalog(ctx: Context): void {
     }
     scope.effect(() => {
       manager = {
-        install: pkg => unwrap(scope.remote.pluginManager.installBundle(pkg, {
+        install: spec => unwrap(scope.remote.pluginManager.installBundle(spec, {
           enabled: true, requestId: randomUUID() as PluginInstallRequestId,
         })),
         remove: pkg => unwrap(scope.remote.pluginManager.removeBundle(pkg)),

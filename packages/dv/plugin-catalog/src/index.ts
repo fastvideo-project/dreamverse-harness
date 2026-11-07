@@ -50,6 +50,7 @@ interface TextFields {
 
 interface EntryFields {
   package: string
+  version: string
   title: TextFields
   description: TextFields
   setup?: TextFields
@@ -61,6 +62,7 @@ const Text: z<TextFields> = z.object({ zh: z.string(), en: z.string() })
 const CatalogFile: z<{ plugins: EntryFields[] }> = z.object({
   plugins: z.array(z.object({
     package: z.string().required(),
+    version: z.string().required(),
     title: Text.required(),
     description: Text.required(),
     setup: Text,
@@ -85,6 +87,9 @@ function localized(text: TextFields, where: string): LocalizedText {
 /** An npm package name, scoped or not, as the registry accepts it. */
 const PACKAGE_NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/
 
+/** An exact semantic version, with an optional prerelease and build: no range, tag or `v` prefix. */
+const EXACT_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
+
 /** Whether a source is a URL the plugin fetches: https anywhere, http only on the loopback host. */
 function isUrlSource(source: string): boolean {
   if (source.startsWith('https://')) return true
@@ -98,14 +103,17 @@ function isUrlSource(source: string): boolean {
  * @param text - the file's text.
  * @param source - `shipped`, or the configured path or URL, recorded on each entry.
  * @returns the entries in file order.
- * @throws {Error} when the text is not JSON, misses a field, names an invalid package, lists a package twice, or gives a
- * homepage that is not https.
+ * @throws {Error} when the text is not JSON, misses a field, names an invalid package, gives a version that is not exact,
+ * lists a package twice, or gives a homepage that is not https.
  */
 export function parseCatalog(text: string, source: string): CatalogEntry[] {
   const file = CatalogFile(JSON.parse(text) as { plugins: EntryFields[] })
   const seen = new Set<string>()
   return file.plugins.map((entry) => {
     if (!PACKAGE_NAME.test(entry.package)) throw new Error(`"${entry.package}" is not an npm package name`)
+    if (!EXACT_VERSION.test(entry.version)) {
+      throw new Error(`the version "${entry.version}" of "${entry.package}" is not an exact version such as 1.2.0`)
+    }
     if (seen.has(entry.package)) throw new Error(`"${entry.package}" is listed twice`)
     seen.add(entry.package)
     if (entry.homepage !== undefined && !entry.homepage.startsWith('https://')) {
@@ -115,6 +123,7 @@ export function parseCatalog(text: string, source: string): CatalogEntry[] {
       ? undefined : localized(entry.setup, `the setup of "${entry.package}"`)
     return {
       package: entry.package,
+      version: entry.version,
       title: localized(entry.title, `the title of "${entry.package}"`),
       description: localized(entry.description, `the description of "${entry.package}"`),
       ...setup === undefined ? {} : { setup },

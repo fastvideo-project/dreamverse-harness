@@ -31,11 +31,11 @@ kind: "package-reference"
   name: '@dv/ui-plugin-catalog'
 ```
 
-Host 半边不注册任何东西。卡片的状态按包名取自 `pluginManager.listBundles()`：未安装、已安装 · 已开启 或 已安装 · 已关闭；每次 `plugin-manager/changed` 事件后都会重新读取列表。没有插件管理器的 profile 会列出目录，并说明这里无法安装插件。
+Host 半边不注册任何东西。卡片的状态按包名取自 `pluginManager.listBundles()`：未安装、已安装 · 已开启 或 已安装 · 已关闭；每次 `plugin-manager/changed` 事件后都会重新读取列表。卡片显示包名和目录中的版本，已安装版本与之不同时会注明。没有插件管理器的 profile 会列出目录，并说明这里无法安装插件。
 
 | 手势 | 请求 |
 | --- | --- |
-| 安装 | `pluginManager.installBundle(<package>, { enabled: true, requestId })`，从插件管理器配置的 registry 安装。卡片显示 安装中…，然后显示 已安装并开启。；profile 在下次启动时才应用变更时显示 已安装。重启 harness 后生效。 |
+| 安装 | `pluginManager.installBundle(<package>@<version>, { enabled: true, requestId })`，使用目录条目的确切版本，从插件管理器配置的 registry 安装。卡片显示 安装中…，然后显示 已安装并开启。；profile 在下次启动时才应用变更时显示 已安装。重启 harness 后生效。 |
 | 对已安装但关闭的插件点 开启 | `pluginManager.setBundleEnabled(<package>, true)` |
 | 移除，然后 确认移除 | `pluginManager.removeBundle(<package>)`；取消 会保留插件 |
 

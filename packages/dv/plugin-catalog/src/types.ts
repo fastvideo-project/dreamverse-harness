@@ -14,6 +14,8 @@ export interface LocalizedText {
 export interface CatalogEntry {
   /** The npm package that installs the plugin, a bundle that declares `dsh.bundle`, such as `@fastvideo/dreamverse-voice-acting`. */
   package: string
+  /** The exact version that 安装 / Install requests, the one the catalog's review approved, such as `0.1.0`. */
+  version: string
   title: LocalizedText
   description: LocalizedText
   /** What the plugin needs besides the install, such as a server to run; absent when it needs nothing. */

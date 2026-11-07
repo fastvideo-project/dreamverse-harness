@@ -14,7 +14,7 @@ Use this package to decide which plugins DreamVerse offers to install. It holds 
 ## Table of Contents
 
 - [Use this package](#use-this-package)
-- [List a plugin](#list-a-plugin)
+- [Write and list a plugin](#list-a-plugin)
 - [Understand the implementation](#understand-the-implementation)
 - [Further Exploration](#further-exploration)
 - [Model Experience](#model-experience)
@@ -42,26 +42,36 @@ The DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.md) mounts the plugi
 `GET /api/dv/plugins/catalog` answers `{ plugins, problems }`: `plugins` holds the shipped catalog's entries in file order, then the entries the sources add, each with the `source` that listed it; `problems` holds one `{ source, message }` for each source that could not be read or is malformed, which the Plugins tab shows and the Host logs. A malformed shipped catalog fails the plugin at load.
 
 <a id="list-a-plugin"></a>
-## List a plugin
+## Write and list a plugin
 
-A plugin is listed by a pull request that adds an entry to [`catalog.json`](catalog.json):
+A DreamVerse plugin reaches people as one npm bundle package that the Plugins tab installs; `@fastvideo/dreamverse-voice-acting` and its four plugin packages are the worked example.
+
+1. **Develop in a fork.** Add the plugin's packages under `packages/dv/<name>/` in a fork of this repository, so the `@dv/*` and `@deepseek-ai/*` packages it builds on resolve from the workspace with their types and tests; [`packages/dv/COMPONENT-TEMPLATE.md`](../COMPONENT-TEMPLATE.md) describes each package's files.
+2. **Make a bundle.** One package lists the plugin's packages in `dependencies` and declares `dsh.bundle.patch`, a `cordis.patch.yml` that inserts their plugin entries, so the install switches them on; an entry that needs configuration, such as a server address, ships `disabled: true`, and the README says what to set. [Package and install a plugin](../../../docs/user/develop/basic/publish.md) covers bundles in general.
+3. **Declare the harness as peers.** Each `@dv/*` and `@deepseek-ai/*` package the code imports is a `peerDependency`, which resolves from the running harness, and `publishConfig` points the published package at its built `lib/`.
+4. **Name and publish.** Publish on npm under your own scope or user name with a package name that starts with `dreamverse-`, such as `@alice/dreamverse-subtitles`; the `@fastvideo` scope holds the DreamVerse team's plugins. Run `pnpm run build`, then `pnpm --filter "<your packages>" publish --access public`.
+5. **Try the install.** Install the published version into a DreamVerse profile with `dsh plugin --profile video-harness add <package>@<version>` and use it.
+6. **Open a pull request** that adds an entry to [`catalog.json`](catalog.json):
 
 ```json
 {
-  "package": "@fastvideo/dreamverse-voice-acting",
-  "title": { "zh": "配音", "en": "Voice acting" },
+  "package": "@alice/dreamverse-subtitles",
+  "version": "1.0.0",
+  "title": { "zh": "…", "en": "…" },
   "description": { "zh": "…", "en": "…" },
   "setup": { "zh": "…", "en": "…" },
-  "homepage": "https://…"
+  "homepage": "https://github.com/alice/dreamverse-subtitles"
 }
 ```
 
-`package`, `title` and `description` are required, and each text needs both `zh` and `en`; `setup` says what the plugin needs besides the install, such as a server, and `homepage` must be an https URL. A package appears at most once. The review checks that the package:
+`package`, `version`, `title` and `description` are required, and each text needs both `zh` and `en`. `version` is one exact published version, such as `1.0.0`, never a range or a tag: 安装 / Install requests exactly that version, so a later publish reaches people only through another pull request that changes it. `setup` says what the plugin needs besides the install, such as a server, and `homepage` must be an https URL. A package appears at most once. An installed plugin runs inside the harness with its access to the machine and the person's files, so the review reads the code and checks that:
 
-- is published on npm under the `@fastvideo` scope with a name that starts with `dreamverse-`, such as `@fastvideo/dreamverse-voice-acting`, so the registry install that the plugin manager runs finds it;
-- is a bundle: its `package.json` declares `dsh.bundle.patch`, which inserts its plugins, so the install can switch it on; `@fastvideo/dreamverse-voice-acting` is the example;
-- declares the DreamVerse and DSH packages it uses, such as `@dv/generation` or `@deepseek-ai/cordis`, as `peerDependencies`, which resolve from the running harness, and runs its built `lib/` through `publishConfig`;
-- installs and loads in a DreamVerse profile, and the README states its setup.
+- the package exists on npm at that version, and its name follows step 4;
+- `homepage` links the public source of that version, and the published `lib/` is built from it;
+- the package is a bundle that inserts its plugins through `dsh.bundle.patch`, and declares the harness packages as peers;
+- it installs and loads in a DreamVerse profile, and its README states its setup and its model effects.
+
+To release a new version, publish it and open a pull request that changes `version`; a card whose installed version differs from the catalog says so.
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
@@ -69,7 +79,7 @@ A plugin is listed by a pull request that adds an entry to [`catalog.json`](cata
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`apply` checks every source's form and reads the shipped catalog with `parseCatalog`, which validates the file with Schemastery and then the package names, duplicates, both languages of each text and the homepage scheme. The route handler calls `loadCatalog`, which reads each source again on every request, so an edited source file or hosted catalog shows without a restart, while the shipped catalog is read once at load. The route registers through `ctx.inject(['connection'])` and leaves with the Connection service or the plugin.
+`apply` checks every source's form and reads the shipped catalog with `parseCatalog`, which validates the file with Schemastery and then the package names, exact versions, duplicates, both languages of each text and the homepage scheme. The route handler calls `loadCatalog`, which reads each source again on every request, so an edited source file or hosted catalog shows without a restart, while the shipped catalog is read once at load. The route registers through `ctx.inject(['connection'])` and leaves with the Connection service or the plugin.
 
 | File | Content |
 | --- | --- |
@@ -104,4 +114,5 @@ No direct effect.
 <a id="known-limitations-and-deferred-work"></a>
 
 - **Catalog updates need a harness update** — the shipped catalog is read from the checkout at load, so a newly listed plugin appears after `git pull` and a restart; a hosted catalog in `sources` would show new entries at once.
-- **No version requirements** — an entry names a package, not a version range or a minimum harness version; the plugin manager installs the newest version and its compatibility check refuses one that declares an incompatible DSH peer.
+- **No update in the tab** — an entry pins one version and 安装 / Install requests it, but the tab does not upgrade an installed plugin to a newer catalog version; the card notes the difference, and removing and installing again, then restarting, upgrades it.
+- **No minimum harness version** — an entry does not say which harness versions the plugin needs; the plugin manager's compatibility check refuses a version that declares an incompatible DSH peer.

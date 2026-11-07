@@ -31,11 +31,11 @@ Mount the plugin in a profile that stacks `dsh-web-app` and `@dv/ui-shell`, besi
   name: '@dv/ui-plugin-catalog'
 ```
 
-The Host half registers nothing. A card's state comes from `pluginManager.listBundles()` by package name: 未安装 / Not installed, 已安装 · 已开启 / Installed · On, or 已安装 · 已关闭 / Installed · Off; the list is read again after every `plugin-manager/changed` event. A profile without the plugin manager lists the catalog and says that plugins cannot be installed there.
+The Host half registers nothing. A card's state comes from `pluginManager.listBundles()` by package name: 未安装 / Not installed, 已安装 · 已开启 / Installed · On, or 已安装 · 已关闭 / Installed · Off; the list is read again after every `plugin-manager/changed` event. A card shows the package with the catalog's version, and notes when the installed version differs from it. A profile without the plugin manager lists the catalog and says that plugins cannot be installed there.
 
 | Gesture | Request |
 | --- | --- |
-| 安装 / Install | `pluginManager.installBundle(<package>, { enabled: true, requestId })`, from the registry the plugin manager is configured with. The card shows 安装中… / Installing…, then 已安装并开启。 / Installed and turned on., or 已安装。重启 harness 后生效。 / Installed. Restart the harness to load it. when the profile applies the change at its next start |
+| 安装 / Install | `pluginManager.installBundle(<package>@<version>, { enabled: true, requestId })` with the exact version of the catalog entry, from the registry the plugin manager is configured with. The card shows 安装中… / Installing…, then 已安装并开启。 / Installed and turned on., or 已安装。重启 harness 后生效。 / Installed. Restart the harness to load it. when the profile applies the change at its next start |
 | 开启 / Turn on, on an installed plugin that is off | `pluginManager.setBundleEnabled(<package>, true)` |
 | 移除 / Remove, then 确认移除 / Confirm remove | `pluginManager.removeBundle(<package>)`; 取消 / Cancel keeps the plugin |
 
