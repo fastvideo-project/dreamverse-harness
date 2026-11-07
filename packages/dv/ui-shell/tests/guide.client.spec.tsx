@@ -44,7 +44,7 @@ describe('the DreamVerse guide', () => {
 
   it('takes tab types from plugins outside DSH that the fixed panels do not offer', () => {
     expect(isPluginPanel(box('@dv/ui-example', 'dv-example', 'Example'))).toBe(true)
-    expect(isPluginPanel(box('@dreamverse/ui-voice-convert', 'dv-voice', 'Voice'))).toBe(true)
+    expect(isPluginPanel(box('@fastvideo/dreamverse-ui-voice-convert', 'dv-voice', 'Voice'))).toBe(true)
     expect(isPluginPanel(box('@dv/ui-history', 'dv-history', 'History'))).toBe(false)
     expect(isPluginPanel(box('@deepseek-ai/dsh-client-ui-terminal', 'terminal', 'Terminal'))).toBe(false)
   })

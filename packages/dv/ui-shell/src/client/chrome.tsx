@@ -136,7 +136,7 @@ export interface GuideSource {
 
 /**
  * Whether a registered guide entry belongs on the DreamVerse guide: a tab type that a plugin outside DSH's own packages
- * (`@deepseek-ai/…`) registers, such as a DreamVerse plugin (`@dv/…`) or an installed one (`@dreamverse/…`), and that
+ * (`@deepseek-ai/…`) registers, such as a DreamVerse plugin (`@dv/…`) or an installed one (`@fastvideo/…`), and that
  * the four fixed panels do not already offer.
  * @param box - a guide entry of the registry.
  * @returns whether the guide lists it after the four panels.
