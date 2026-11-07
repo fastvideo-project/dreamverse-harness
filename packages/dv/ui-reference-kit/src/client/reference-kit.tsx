@@ -10,7 +10,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { NodeEntry, NodeType, RecordsInUse } from '@dv/ui-canvas/contract'
+import type { NodeEntry, NodeSizing, NodeType, RecordsInUse, Size } from '@dv/ui-canvas/contract'
 import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
 import { pickText, useText } from '@dv/ui-kit/locale.ts'
 import type { HistoryRow } from '@dv/ui-history/contract'
@@ -54,14 +54,16 @@ const FOOTER_HEIGHT = 32
 const STRIP_MAX = 4
 
 /**
- * The frame height of a noun card at a frame width: the first reference at 4:3 of the width, the thumbnail row when
- * the item has two or more references, and the footer.
- * @param width - the frame width in canvas units.
+ * The sizing of a noun card, a window node: a frame 208 units wide by default and 104 at the narrowest, each as tall as
+ * the first reference at 4:3 of that width, the thumbnail row when the item has two or more references, and the footer.
  * @param references - how many references the item has.
- * @returns the height in canvas units.
+ * @returns the sizing.
  */
-const cardHeightAt = (width: number, references: number): number =>
-  Math.round(width / HERO_ASPECT) + (references > 1 ? STRIP_HEIGHT : 0) + FOOTER_HEIGHT
+function sizingOf(references: number): NodeSizing {
+  const below = (references > 1 ? STRIP_HEIGHT : 0) + FOOTER_HEIGHT
+  const at = (width: number): Size => ({ width, height: Math.round(width / HERO_ASPECT) + below })
+  return { kind: 'window', defaultSize: at(208), minSize: at(104) }
+}
 
 /** Every item of a noun by ID; a state without the noun's slice holds none, as the initial slice of the host half. */
 const itemsOf = <V extends WireReferenceVersion>(
@@ -115,7 +117,7 @@ export function referenceDescriptors<V extends WireReferenceVersion>(spec: Refer
       return newestOf(spec, state).map(({ id, latest, versions }): NodeEntry => ({
         id: node(id), title: latest.name || id, record: records.get(latest.created_by) ?? null,
         records: versions.slice(0, -1).map(entry => entry.created_by), assets: [...latest.references],
-        sizing: { heightAt: width => cardHeightAt(width, latest.references.length) },
+        sizing: sizingOf(latest.references.length),
         ref: { kind: key, id },
       }))
     },
@@ -222,7 +224,7 @@ function ReferenceCard(
   const rest = references.length - shown.length
   const count = node.assets.length
   const version = (node.records?.length ?? 0) + 1
-  const thumb: CSSProperties = { position: 'relative', flex: 'none', display: 'flex', width: 44, height: 44, borderRadius: 'var(--dv-radius-sm)', overflow: 'hidden', background: 'var(--dv-surface-3)' }
+  const thumb: CSSProperties = { position: 'relative', flex: '0 1 44px', minWidth: 0, display: 'flex', height: 44, borderRadius: 'var(--dv-radius-sm)', overflow: 'hidden', background: 'var(--dv-surface-3)' }
   return (
     <div style={{ ...CARD_SURFACE, display: 'flex', flexDirection: 'column' }}>
       <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden', background: 'var(--dv-surface-3)' }}>

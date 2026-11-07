@@ -17,7 +17,7 @@ import { ReferenceFace } from '@dv/ui-composer/reference-face'
 import type { HistoryRow } from '@dv/ui-history/contract'
 import type { MentionKind } from '@dv/ui-kit/registries.ts'
 import { en, NS, zh } from './locales.ts'
-import { TEXT_CARD_HEIGHT, TextCard } from './TextCard.tsx'
+import { TEXT_CARD_SIZING, TextCard } from './TextCard.tsx'
 import { TextEditor } from './TextEditor.tsx'
 import { newestTexts, pathOf, reportedVersion, TEXT_KIND, TEXT_OPERATIONS, withLabels } from './texts.ts'
 
@@ -53,7 +53,7 @@ export const textNodeType = (t: TranslateNS<typeof NS>): NodeType => ({
       const title = record.report?.['title']
       const version = reportedVersion(record)
       return {
-        title: typeof title === 'string' ? title : pathOf(record), sizing: { heightAt: () => TEXT_CARD_HEIGHT },
+        title: typeof title === 'string' ? title : pathOf(record), sizing: TEXT_CARD_SIZING,
         ...version === null ? {} : { meta: `v${String(version)}` },
       }
     },

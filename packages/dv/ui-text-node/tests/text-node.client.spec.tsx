@@ -137,8 +137,8 @@ describe('text node', () => {
     expect(within(card).getByTestId('dv-text-excerpt').textContent).not.toContain('@')
     expect(card.textContent).toContain(`v2 · ${String(Array.from(V2).length)} chars`)
     expect(node('tw1').textContent).toContain('v1 · ')
-    // The frame is 106 units at the canvas's 208-unit width: four opening lines with their padding, and the footer.
-    expect(card.querySelector<HTMLElement>('[data-node-frame]')?.style.height).toBe('106px')
+    // The default frame is 208 × 106: four opening lines with their padding, and the footer.
+    expect([node('tw2').style.width, card.querySelector<HTMLElement>('[data-node-frame]')?.style.height]).toEqual(['208px', '106px'])
   })
 
   it('draws an edge from a source version to the text built from it, and a lineage edge between versions', async () => {
