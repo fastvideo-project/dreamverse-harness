@@ -25,7 +25,7 @@ import type { CanvasViews } from './agent-canvas.ts'
 import type { CanvasRequest, EditorHost, NodeAction, NodeHost, NodeView, RerunRequest } from './contract/index.ts'
 import { buildCanvasGraph, freePositions, isFinished, NODE_WIDTH, previewOf, ROW } from './graph.ts'
 import type { CanvasEdge, CanvasNode, CanvasRegistrations } from './graph.ts'
-import { cardHeight, edgeAnchorY, NodeCard, textScaleAt, TypeLabelBody } from './NodeCard.tsx'
+import { cardHeight, edgeAnchorY, frameSizeOf, NodeCard, textScaleAt, TypeLabelBody } from './NodeCard.tsx'
 import type { CanvasTranslate } from './NodeCard.tsx'
 import { readLayout, writeLayout } from './layout-client.ts'
 import { NodeEditor } from './NodeEditor.tsx'
@@ -720,7 +720,7 @@ export function CanvasView(
           {links.map(({ edge, source: from, target: to }) => {
             const a = positionOf(from)
             const b = positionOf(to)
-            const x1 = a.x + NODE_WIDTH
+            const x1 = a.x + frameSizeOf(from).width
             const y1 = a.y + anchorOf(from)
             const x2 = b.x
             const y2 = b.y + anchorOf(to)

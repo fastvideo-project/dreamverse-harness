@@ -947,24 +947,24 @@ describe('the node card', () => {
     await runtime.dispose()
   })
 
-  it('draws the frame of a node with a sizing rule at the rule\'s height for the 208-unit width, and anchors its edges there', async () => {
+  it('draws the frame of a node with a sizing at its default size, and anchors its edges there', async () => {
     const { runtime, view, node } = await mountCanvas()
     await mountDescriptors(runtime, {
       nodeType: {
         id: '@dv/ui-test-half', type: 'half', label: () => 'Half', color: '', column: 0,
         // The slice node owns g1's last frame, so g2's first-frame edge starts at it.
-        entries: () => [{ id: 'half:1', title: 'Half', record: null, assets: ['shot1-last.png'], sizing: { heightAt: width => width / 2 } }],
+        entries: () => [{ id: 'half:1', title: 'Half', record: null, assets: ['shot1-last.png'], sizing: { kind: 'window', defaultSize: { width: 312, height: 104 }, minSize: { width: 104, height: 52 } } }],
       },
     })
     await waitFor(() => { node('half:1') })
-    expect(node('half:1').querySelector<HTMLElement>('[data-node-frame]')?.style.height).toBe('104px')
+    expect([node('half:1').style.width, node('half:1').querySelector<HTMLElement>('[data-node-frame]')?.style.height]).toEqual(['312px', '104px'])
     const edge = await waitFor(() => {
       const found = view.container.querySelector('path[data-edge="half:1>g2"]')
       if (found === null) throw new Error('no edge from half:1')
       return found
     })
     const [x1, y1] = (edge.getAttribute('d') ?? '').match(/-?[\d.]+/g)?.map(Number) ?? []
-    expect([x1, y1]).toEqual([Number.parseFloat(node('half:1').style.left) + NODE_WIDTH, Number.parseFloat(node('half:1').style.top) + 20 + 104 / 2])
+    expect([x1, y1]).toEqual([Number.parseFloat(node('half:1').style.left) + 312, Number.parseFloat(node('half:1').style.top) + 20 + 104 / 2])
     await runtime.dispose()
   })
 

@@ -92,22 +92,21 @@ export interface ClaimedRecord {
   version: number | null
 }
 
-/**
- * How a node's frame height follows its frame width, declared by the type from the node's own data, so the canvas
- * computes the node height without measuring the node.
- */
-export interface NodeSizing {
-  /**
-   * The frame height in canvas units at a frame width: a body that shows a picture of known size returns the picture
-   * height at that width (`frameHeight` of `@dv/ui-kit/frame.ts`). The canvas draws every frame 208 units wide, so
-   * it calls this with 208; a failed claimed node keeps the height.
-   * @param width - the frame width in canvas units.
-   * @returns the frame height in canvas units.
-   */
-  heightAt(width: number): number
-}
+/** A box size in canvas units. */
+export type Size = { width: number; height: number }
 
-/** The frame height of a node: its `sizing` rule, else `bodyHeight`, the height at the 208-unit frame width alone. */
+/**
+ * How the canvas sizes a node, declared by the type from the node's own data. A size is the node's frame box in canvas
+ * units; the caption above the frame is not part of it. The canvas takes `defaultSize` for a node that has no size yet
+ * and keeps a node at or above `minSize`. A window node shows more or less of its body as its frame changes; a media
+ * node shows a picture that scales with its frame, so its frame keeps height = width / `aspectRatio.ratio` +
+ * `aspectRatio.fixedHeight`, where `fixedHeight` is the height of the fixed bars outside the picture (0 for none).
+ */
+export type NodeSizing =
+  | { kind: 'window'; defaultSize: Size; minSize: Size }
+  | { kind: 'media'; defaultSize: Size; minSize: Size; aspectRatio: { ratio: number; fixedHeight: number } }
+
+/** The size of a node: its `sizing`, else `bodyHeight`, a 208-unit-wide frame of that height. */
 export type NodeSize =
   | { sizing: NodeSizing; bodyHeight?: never }
   | {
