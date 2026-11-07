@@ -52,17 +52,17 @@ async function serve(status: number, body: string): Promise<string> {
 }
 
 describe('the shipped catalog', () => {
-  it('is valid and lists voice acting under @dreamverse', () => {
+  it('is valid and lists voice acting under @fastvideo', () => {
     const plugins = Catalog.parseCatalog(readFileSync(Catalog.SHIPPED_CATALOG, 'utf8'), 'shipped')
-    expect(plugins.map(plugin => plugin.package)).toContain('@dreamverse/voice-acting')
+    expect(plugins.map(plugin => plugin.package)).toContain('@fastvideo/dreamverse-voice-acting')
   })
 })
 
 describe('parseCatalog', () => {
   it('keeps the fields and records the source', () => {
-    const text = JSON.stringify({ plugins: [{ ...entry('@dreamverse/a', 'A'), setup: { zh: '要', en: 'Needs' }, homepage: 'https://example.com/a' }] })
+    const text = JSON.stringify({ plugins: [{ ...entry('@fastvideo/a', 'A'), setup: { zh: '要', en: 'Needs' }, homepage: 'https://example.com/a' }] })
     expect(Catalog.parseCatalog(text, '/catalogs/x.json')).toEqual([{
-      package: '@dreamverse/a', title: { zh: 'A', en: 'A' }, description: { zh: 'A', en: 'A' },
+      package: '@fastvideo/a', title: { zh: 'A', en: 'A' }, description: { zh: 'A', en: 'A' },
       setup: { zh: '要', en: 'Needs' }, homepage: 'https://example.com/a', source: '/catalogs/x.json',
     }])
   })
@@ -83,15 +83,15 @@ describe('loadCatalog', () => {
   it('merges sources after the shipped entries, a later source replacing an earlier entry, and reports failing sources', async () => {
     const dir = tempDir()
     const file = join(dir, 'extra.json')
-    writeFileSync(file, JSON.stringify({ plugins: [entry('@dreamverse/a', 'A again'), entry('@dreamverse/c', 'C')] }))
-    const url = await serve(200, JSON.stringify({ plugins: [entry('@dreamverse/d', 'D')] }))
+    writeFileSync(file, JSON.stringify({ plugins: [entry('@fastvideo/a', 'A again'), entry('@fastvideo/c', 'C')] }))
+    const url = await serve(200, JSON.stringify({ plugins: [entry('@fastvideo/d', 'D')] }))
     const broken = await serve(500, 'no')
-    const shipped = [{ ...entry('@dreamverse/a', 'A'), source: 'shipped' }, { ...entry('@dreamverse/b', 'B'), source: 'shipped' }]
+    const shipped = [{ ...entry('@fastvideo/a', 'A'), source: 'shipped' }, { ...entry('@fastvideo/b', 'B'), source: 'shipped' }]
     const answer = await Catalog.loadCatalog(shipped, {
       sources: [file, url, broken, join(dir, 'missing.json')], sourceTimeoutMs: 5000,
     })
     expect(answer.plugins.map(plugin => [plugin.package, plugin.title.en, plugin.source])).toEqual([
-      ['@dreamverse/a', 'A again', file], ['@dreamverse/b', 'B', 'shipped'], ['@dreamverse/c', 'C', file], ['@dreamverse/d', 'D', url],
+      ['@fastvideo/a', 'A again', file], ['@fastvideo/b', 'B', 'shipped'], ['@fastvideo/c', 'C', file], ['@fastvideo/d', 'D', url],
     ])
     expect(answer.problems.map(problem => problem.source)).toEqual([broken, join(dir, 'missing.json')])
     expect(answer.problems[0]?.message).toBe('the server answered HTTP 500')
@@ -106,13 +106,13 @@ describe('the plugin', () => {
     ctx.provide('connection', connection)
     const dir = tempDir()
     const extra = join(dir, 'extra.json')
-    writeFileSync(extra, JSON.stringify({ plugins: [entry('@dreamverse/extra', 'Extra')] }))
+    writeFileSync(extra, JSON.stringify({ plugins: [entry('@fastvideo/extra', 'Extra')] }))
     const plugin = ctx.plugin(Catalog, { sources: [extra], sourceTimeoutMs: 5000 })
     await plugin
     const route = connection.routes.get(Catalog.CATALOG_ROUTE)
     expect(route?.methods).toEqual(['GET'])
     const answer = await (await (route as ConnectionFetchRoute).fetch(new Request(`http://host${Catalog.CATALOG_ROUTE}`))).json() as CatalogAnswer
-    expect(answer.plugins.map(plugin => plugin.package)).toEqual(['@dreamverse/voice-acting', '@dreamverse/extra'])
+    expect(answer.plugins.map(plugin => plugin.package)).toEqual(['@fastvideo/dreamverse-voice-acting', '@fastvideo/extra'])
     expect(answer.problems).toEqual([])
     await plugin.dispose()
     expect(connection.routes.has(Catalog.CATALOG_ROUTE)).toBe(false)

@@ -12,7 +12,7 @@ export interface LocalizedText {
 
 /** One plugin a catalog lists. */
 export interface CatalogEntry {
-  /** The npm package that installs the plugin, a bundle that declares `dsh.bundle`, such as `@dreamverse/voice-acting`. */
+  /** The npm package that installs the plugin, a bundle that declares `dsh.bundle`, such as `@fastvideo/dreamverse-voice-acting`. */
   package: string
   title: LocalizedText
   description: LocalizedText

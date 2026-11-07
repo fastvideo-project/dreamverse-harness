@@ -1,7 +1,7 @@
 {
   "plugins": [
     {
-      "package": "@dreamverse/voice-acting",
+      "package": "@fastvideo/dreamverse-voice-acting",
       "title": {
         "zh": "配音",
         "en": "Voice acting"

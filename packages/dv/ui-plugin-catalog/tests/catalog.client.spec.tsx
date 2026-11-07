@@ -18,8 +18,8 @@ afterEach(() => {
   document.documentElement.lang = ''
 })
 
-const VOICE = '@dreamverse/voice-acting'
-const OTHER = '@dreamverse/other'
+const VOICE = '@fastvideo/dreamverse-voice-acting'
+const OTHER = '@fastvideo/other'
 
 const CATALOG: CatalogAnswer = {
   plugins: [

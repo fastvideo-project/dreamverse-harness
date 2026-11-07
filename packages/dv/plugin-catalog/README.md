@@ -48,7 +48,7 @@ A plugin is listed by a pull request that adds an entry to [`catalog.json`](cata
 
 ```json
 {
-  "package": "@dreamverse/voice-acting",
+  "package": "@fastvideo/dreamverse-voice-acting",
   "title": { "zh": "配音", "en": "Voice acting" },
   "description": { "zh": "…", "en": "…" },
   "setup": { "zh": "…", "en": "…" },
@@ -58,8 +58,8 @@ A plugin is listed by a pull request that adds an entry to [`catalog.json`](cata
 
 `package`, `title` and `description` are required, and each text needs both `zh` and `en`; `setup` says what the plugin needs besides the install, such as a server, and `homepage` must be an https URL. A package appears at most once. The review checks that the package:
 
-- is published on npm under the `@dreamverse` scope, so the registry install that the plugin manager runs finds it;
-- is a bundle: its `package.json` declares `dsh.bundle.patch`, which inserts its plugins, so the install can switch it on; `@dreamverse/voice-acting` is the example;
+- is published on npm under the `@fastvideo` scope with a name that starts with `dreamverse-`, such as `@fastvideo/dreamverse-voice-acting`, so the registry install that the plugin manager runs finds it;
+- is a bundle: its `package.json` declares `dsh.bundle.patch`, which inserts its plugins, so the install can switch it on; `@fastvideo/dreamverse-voice-acting` is the example;
 - declares the DreamVerse and DSH packages it uses, such as `@dv/generation` or `@deepseek-ai/cordis`, as `peerDependencies`, which resolve from the running harness, and runs its built `lib/` through `publishConfig`;
 - installs and loads in a DreamVerse profile, and the README states its setup.
 

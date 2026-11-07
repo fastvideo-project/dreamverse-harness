@@ -48,7 +48,7 @@ DreamVerse 套件 [`@dv/bundle`](../../bundle/dv/README.zh.md) 挂载本插件�
 
 ```json
 {
-  "package": "@dreamverse/voice-acting",
+  "package": "@fastvideo/dreamverse-voice-acting",
   "title": { "zh": "配音", "en": "Voice acting" },
   "description": { "zh": "…", "en": "…" },
   "setup": { "zh": "…", "en": "…" },
@@ -58,8 +58,8 @@ DreamVerse 套件 [`@dv/bundle`](../../bundle/dv/README.zh.md) 挂载本插件�
 
 `package`、`title` 和 `description` 是必填项，每段文字都需要 `zh` 和 `en`；`setup` 说明安装之外插件还需要什么，例如一个服务器，`homepage` 必须是 https URL。一个包最多出现一次。审核检查该包：
 
-- 以 `@dreamverse` scope 发布在 npm 上，这样插件管理器运行的 registry 安装能找到它；
-- 是一个套件：它的 `package.json` 声明 `dsh.bundle.patch`，用来插入它的插件，这样安装后可以开启它；示例是 `@dreamverse/voice-acting`；
+- 以 `@fastvideo` scope 发布在 npm 上，名称以 `dreamverse-` 开头，例如 `@fastvideo/dreamverse-voice-acting`，这样插件管理器运行的 registry 安装能找到它；
+- 是一个套件：它的 `package.json` 声明 `dsh.bundle.patch`，用来插入它的插件，这样安装后可以开启它；示例是 `@fastvideo/dreamverse-voice-acting`；
 - 把它用到的 DreamVerse 和 DSH 包，例如 `@dv/generation` 或 `@deepseek-ai/cordis`，声明为 `peerDependencies`，由正在运行的 harness 解析，并通过 `publishConfig` 运行构建出的 `lib/`；
 - 能在 DreamVerse profile 中安装并加载，且 README 写明了它的设置。
 
