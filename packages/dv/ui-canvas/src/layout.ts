@@ -1,13 +1,13 @@
 /**
- * Canvas node positions, the width of each resized node, and the viewport per project, so a user's arrangement
- * survives reloads. The layout is view state, not project history: it lives in
+ * Canvas node positions and frame sizes, and the viewport per project, so a user's arrangement survives reloads. The
+ * layout is view state, not project history: it lives in
  * `<project folder>/.dreamverse/canvas-layout.json` and is never written as records, so undo never moves or resizes a
  * node. The keys of `positions` are canvas node IDs. A project ID is the ID of the DSH Workspace whose folder holds the
  * project, so the store finds the folder through the Workspace registry.
  *
  * Route: `GET /api/dv/canvas/layout?project=<id>` returns the stored layout; `POST /api/dv/canvas/layout` with
- * `{project, positions?, viewport?}` merges the given node positions into the stored ones, field by field, so a
- * position without `width` keeps the stored width, and replaces the viewport.
+ * `{project, positions?, viewport?}` merges the given node entries into the stored ones field by field, so an entry
+ * with only `x` and `y` keeps the stored `width` and `height`, and replaces the viewport.
  * Errors use the body `{error, code}` of every `/api/dv` route: 400 `invalid_params` for a malformed project or too many
  * positions, 404 `unknown_project` for an ID that names no Workspace, or for a write to a folder without `.dreamverse/`.
  *
@@ -18,7 +18,7 @@ import { join } from 'node:path'
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import { WorkspaceId, type WorkspaceRegistry } from '@deepseek-ai/dsh-workspace'
 import { PROJECT_DIR } from '@dv/project/folder'
-import { CANVAS_LAYOUT_ROUTE, type CanvasLayout, type CanvasLayoutPatch, type CanvasViewport, type NodePosition } from './canvas-layout.ts'
+import { CANVAS_LAYOUT_ROUTE, type CanvasLayout, type CanvasLayoutPatch, type CanvasViewport, type LayoutEntry } from './canvas-layout.ts'
 
 /** The layout file's name inside the project's `.dreamverse/` directory. */
 const LAYOUT_FILE = 'canvas-layout.json'
@@ -59,11 +59,11 @@ export class CanvasLayoutStore {
   }
 
   /**
-   * Merge positions field by field, so a position without `width` keeps the stored width, replace the viewport when
-   * given, then write atomically. The store creates no directory, so a write that arrives after the user deleted
+   * Merge node entries field by field, so an entry with only `x` and `y` keeps the stored size, replace the viewport
+   * when given, then write atomically. The store creates no directory, so a write that arrives after the user deleted
    * `.dreamverse/` recreates nothing.
    * @param project - a project.
-   * @param patch - the positions to set and the viewport, when given.
+   * @param patch - the node entries to merge and the viewport, when given.
    * @returns the stored layout afterwards.
    * @throws LayoutRequestError `unknown_project` when no Workspace has the ID or its folder has no `.dreamverse/`,
    *   `invalid_params` when the merged layout would keep more than 5000 positions.
@@ -72,7 +72,7 @@ export class CanvasLayoutStore {
     const target = this.path(project)
     const current = this.read(project)
     const positions = { ...current.positions }
-    for (const [id, position] of Object.entries(patch.positions ?? {})) positions[id] = { ...positions[id], ...position }
+    for (const [id, entry] of Object.entries(patch.positions ?? {})) positions[id] = { ...positions[id], ...entry }
     const next: CanvasLayout = { positions, viewport: patch.viewport === undefined ? current.viewport : patch.viewport }
     if (Object.keys(next.positions).length > MAX_POSITIONS) {
       throw new LayoutRequestError(400, `A layout keeps at most ${String(MAX_POSITIONS)} positions.`, 'invalid_params')
@@ -95,22 +95,23 @@ export class CanvasLayoutStore {
 }
 
 /**
- * The positions and viewport in a raw JSON value, keeping only finite numbers: a position with finite `x` and `y`,
- * and its `width` when that is a finite positive number.
+ * The positions and viewport in a raw JSON value, keeping only finite numbers: an entry with finite `x` and `y`, and
+ * its `width` and `height` when each is a finite positive number.
  * @param value - parsed JSON.
  * @returns the layout, or null when the value is not an object.
  */
 export function layoutOf(value: unknown): CanvasLayout | null {
   if (typeof value !== 'object' || value === null) return null
   const record = value as Record<string, unknown>
-  const positions: Record<string, NodePosition> = {}
+  const positions: Record<string, LayoutEntry> = {}
   const rawPositions = record['positions']
+  const size = (raw: unknown): raw is number => typeof raw === 'number' && Number.isFinite(raw) && raw > 0
   if (typeof rawPositions === 'object' && rawPositions !== null) {
     for (const [id, position] of Object.entries(rawPositions as Record<string, unknown>)) {
       if (typeof position !== 'object' || position === null) continue
-      const { x, y, width } = position as Record<string, unknown>
+      const { x, y, width, height } = position as Record<string, unknown>
       if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) continue
-      positions[id] = { x, y, ...typeof width === 'number' && Number.isFinite(width) && width > 0 ? { width } : {} }
+      positions[id] = { x, y, ...size(width) ? { width } : {}, ...size(height) ? { height } : {} }
     }
   }
   const rawViewport = record['viewport']

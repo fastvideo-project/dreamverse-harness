@@ -17,6 +17,12 @@ const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk
 /** The Shot render operation of every seeded shot; the e2e profile serves fasth3 for task ref2v only. */
 const RENDER_OPERATION = 'shot.render'
 
+/**
+ * The minimum frame height of each window node type that the resize story puts on the canvas: a text card's one line
+ * and footer, and a reference card of one reference at 4:3 of its 104-unit minimum width above its footer.
+ */
+const WINDOW_MIN_HEIGHTS: Readonly<Record<string, number>> = { character: 110, location: 110, style: 110, textnode: 58 }
+
 /** A seeded project: its ID, the rendered take assets in shot order (the clips of timeline t1), and the shot records. */
 interface Seeded { id: string; clipAssets: string[]; shots: string[] }
 
@@ -618,13 +624,100 @@ describe('canvas stories', () => {
     const expected = targets.map(target => `${String(target.x)}px,${String(target.y)}px`)
     await expect.poll(placed(page), { timeout: 10_000, message: 'the page that asked draws the moved nodes at their targets without a reload' }).toEqual(expected)
     await expect.poll(placed(other), { timeout: 10_000, message: 'the other page of the project draws them too without a reload' }).toEqual(expected)
+    const sizeOf = (id: string): object | undefined => {
+      const card = ((read.cards ?? []) as Array<{ id: string; width: number; height: number }>).find(each => each.id === id)
+      return card === undefined ? undefined : { width: card.width, height: card.height }
+    }
     const stored = await harness.api.get(`/api/dv/canvas/layout?project=${project.id}`) as { positions: Record<string, { x: number; y: number }> }
-    expect(targets.map(target => stored.positions[target.node]), 'the layout store holds the move').toEqual(targets.map(({ x, y }) => ({ x, y })))
+    expect(targets.map(target => stored.positions[target.node]), 'the layout store holds the move, and each moved node keeps its stored size')
+      .toEqual(targets.map(({ node, x, y }) => ({ x, y, ...sizeOf(node) })))
     expect(layoutPosts.filter(body => targets.some(target => body.includes(`"${target.node}"`))), 'no page writes the move: the host stores it').toEqual([])
     await page.reload({ waitUntil: 'load' })
     await page.locator('[data-node-id]').first().waitFor({ timeout: 30_000 })
     await expect.poll(placed(page), { timeout: 10_000, message: 'the moved nodes stay at their targets after a reload' }).toEqual(expected)
     expect([page.errors, other.errors]).toEqual([[], []])
+  })
+
+  it('a corner handle resizes every kind of node: a media node keeps its aspect ratio, a window node changes width and height apart, each stops at its minimum size, and dv_canvas_read and a reload keep the size', async () => {
+    const project = await seedProject('canvas-resize', 1)
+    const reference = (await stateOf(project.id)).assets[0]?.id ?? ''
+    const extra = await runOperation(project.id, 'asset.import', { base64: OTHER_PNG_BASE64, mime: 'image/png', name: 'extra.png' })
+    await runOperation(project.id, 'asset.place', {}, [{ role: 'asset', ref: extra.outputs[0] ?? '' }])
+    await runOperation(project.id, 'location.create', { location: 'l1', name: 'Street' }, [{ role: 'reference', ref: reference }])
+    await runOperation(project.id, 'style.create', { style: 's1', name: 'Noir' }, [{ role: 'reference', ref: reference }])
+    await runOperation(project.id, 'textnode.write', { path: 'beats.md', body: 'Hero opens the door.', base_version: 0 })
+    // The e2e profile runs no image or audio server, so these takes fail; a failed take keeps its frame and its handles.
+    await runOperation(project.id, 'image.generate', { modality: 'image', task: 't2i', provider: 'sglang-diffusion', model: 'qwen-image-2.1-turbo', prompt: 'a door' })
+    await runOperation(project.id, 'audio.generate', { modality: 'audio', task: 't2a', provider: 'sglang-omni', model: 'fish-audio-drama-3', prompt: 'a knock' })
+    let read: unknown[] = []
+    model.rules.push({
+      match: 'resize-read-please',
+      steps: [{ calls: [{ name: 'dv_canvas_read', args: {} }] }, (view) => { read = view.toolResults; return { text: '读好了' } }],
+    })
+    const page = await openPage()
+    await gotoProject(page, project.id)
+    await page.locator('[data-node-id]').first().waitFor({ timeout: 30_000 })
+    await fitCanvas(page)
+    const zoom = Number(/scale\(([\d.]+)\)/.exec(await page.locator('[data-testid="dv-canvas-view"] > div[style*="transform"]').evaluate(el => (el as HTMLElement).style.transform))?.[1])
+    // The frame box of a node in canvas units, as the canvas stores it.
+    const boxOf = async (node: Locator): Promise<{ width: number; height: number }> => await node.evaluate(el => ({
+      width: Number.parseFloat((el as HTMLElement).style.width), height: Number.parseFloat(el.querySelector<HTMLElement>('[data-node-frame]')?.style.height ?? ''),
+    }))
+    const drag = async (node: Locator, dx: number, dy: number): Promise<void> => {
+      const handle = await node.locator('[data-node-handle="se"]').boundingBox()
+      if (handle === null) throw new Error('the selected node shows no south-east handle')
+      await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
+      await page.mouse.down()
+      await page.mouse.move(handle.x + handle.width / 2 + dx, handle.y + handle.height / 2 + dy, { steps: 8 })
+      await page.mouse.up()
+    }
+    const kinds = { media: ['asset', 'take', 'image', 'audio'], window: Object.keys(WINDOW_MIN_HEIGHTS) }
+    const resized: Record<string, { width: number; height: number }> = {}
+    for (const [kind, types] of Object.entries(kinds)) {
+      for (const type of types) {
+        const node = page.locator(`[data-testid="dv-canvas-view"] [data-node-type="${type}"]`).first()
+        const id = await node.getAttribute('data-node-id') ?? ''
+        await node.click({ position: { x: 12, y: 8 } })
+        await page.keyboard.press('Escape')
+        await expect.poll(() => page.locator('[data-testid="dv-canvas-node-editor"]').count()).toBe(0)
+        const before = await boxOf(node)
+        await drag(node, 60, 40)
+        const after = await boxOf(node)
+        expect([after.width !== before.width, after.height !== before.height], `a ${type} node changes both width and height`).toEqual([true, true])
+        if (kind === 'media') {
+          expect(Math.abs(after.height - after.width * before.height / before.width), `a ${type} node keeps its aspect ratio`).toBeLessThanOrEqual(1)
+        } else {
+          expect([Math.abs(after.width - before.width - 60 / zoom), Math.abs(after.height - before.height - 40 / zoom)].every(off => off <= 2), `a ${type} node follows the pointer in width and height apart`).toBe(true)
+        }
+        await drag(node, -2000, -2000)
+        const smallest = await boxOf(node)
+        await drag(node, -200, -200)
+        expect(await boxOf(node), `a ${type} node stays at its minimum size`).toEqual(smallest)
+        const minimum = WINDOW_MIN_HEIGHTS[type]
+        expect(Math.abs(smallest.width - 104), `a ${type} node stops at its minimum width`).toBeLessThanOrEqual(1)
+        expect(Math.abs(smallest.height - (minimum ?? smallest.width * before.height / before.width)), `a ${type} node stops at its minimum height`).toBeLessThanOrEqual(1)
+        resized[id] = smallest
+      }
+    }
+    await page.waitForTimeout(1200)
+    const stored = await harness.api.get(`/api/dv/canvas/layout?project=${project.id}`) as { positions: Record<string, { width: number; height: number }> }
+    // A frame's style rounds its size to three decimals.
+    const near = (actual: { width: number; height: number } | undefined, size: { width: number; height: number }): boolean =>
+      actual !== undefined && Math.abs(actual.width - size.width) < 0.01 && Math.abs(actual.height - size.height) < 0.01
+    for (const [id, size] of Object.entries(resized)) expect(near(stored.positions[id], size), `the layout store holds the size of ${id}`).toBe(true)
+    const composer = page.locator('[data-dv-chat] [contenteditable="true"]').first()
+    await composer.click()
+    await page.keyboard.type('resize-read-please')
+    await page.keyboard.press('Enter')
+    await expect.poll(() => read.length, { timeout: 60_000, message: 'the agent turn reaches the reply after dv_canvas_read' }).toBe(1)
+    const cards = (read[0] as { cards?: Array<{ id: string; width: number; height: number }> }).cards ?? []
+    for (const [id, size] of Object.entries(resized)) expect(near(cards.find(card => card.id === id), size), `dv_canvas_read reports the stored size of ${id}`).toBe(true)
+    await page.reload({ waitUntil: 'load' })
+    await page.locator('[data-node-id]').first().waitFor({ timeout: 30_000 })
+    for (const [id, size] of Object.entries(resized)) {
+      expect(await boxOf(page.locator(`[data-testid="dv-canvas-view"] [data-node-id="${id}"]`)), `${id} keeps its size after a reload`).toEqual(size)
+    }
+    expect(page.errors).toEqual([])
   })
 
   it('an image imported in 素材库 joins the canvas when dragged there, stays after a reload, and 从画布移除 leaves it in 素材库; both are records', async () => {

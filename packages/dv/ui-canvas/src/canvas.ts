@@ -4,7 +4,8 @@
  *
  * @module @dv/ui-canvas/canvas
  */
-import type { NodePosition } from './canvas-layout.ts'
+import { CAPTION_HEIGHT } from './canvas-layout.ts'
+import type { LayoutEntry, NodeSpot } from './canvas-layout.ts'
 import type { CanvasCard, CanvasMoved, CanvasQuery, NodeMove } from './types.ts'
 
 /** The tool that reads the open canvas. */
@@ -21,7 +22,7 @@ export const CANVAS_ANSWER_ROUTE = '/api/dv/canvas/agent/answer'
 
 /** A move's outcome: the positions to store, or the refusal. */
 export type MovePlan =
-  | { kind: 'move'; positions: Record<string, NodePosition> }
+  | { kind: 'move'; positions: Record<string, NodeSpot> }
   | { kind: 'duplicate_nodes'; ids: string[] }
   | { kind: 'unknown_nodes'; ids: string[]; known: string[] }
   | { kind: 'too_close'; pairs: Array<[CanvasCard, CanvasCard]> }
@@ -45,10 +46,10 @@ export function planMove(cards: readonly CanvasCard[], moves: readonly NodeMove[
   if (unknown.length > 0) return { kind: 'unknown_nodes', ids: unknown, known: [...known.keys()] }
   const positions = Object.fromEntries(moves.map(move => [move.node, { x: move.x, y: move.y }]))
   const after = cardsAfter(cards, positions)
+  const bottom = (card: CanvasCard): number => card.y + CAPTION_HEIGHT + card.height
   const pairs = after.flatMap((card, index) => after.slice(index + 1)
     .filter(other => (card.id in positions || other.id in positions) && card.x < other.x + other.width + CARD_GAP
-      && other.x < card.x + card.width + CARD_GAP && card.y < other.y + other.height + CARD_GAP
-      && other.y < card.y + card.height + CARD_GAP)
+      && other.x < card.x + card.width + CARD_GAP && card.y < bottom(other) + CARD_GAP && other.y < bottom(card) + CARD_GAP)
     .map((other): [CanvasCard, CanvasCard] => [card, other]))
   return pairs.length > 0 ? { kind: 'too_close', pairs } : { kind: 'move', positions }
 }
@@ -65,7 +66,7 @@ export function refusalSentence(refusal: Exclude<MovePlan, { kind: 'move' }>): s
     case 'unknown_nodes':
       return `The canvas has no node ${refusal.ids.join(', ')}. Its nodes are: ${refusal.known.join(', ')}. Nothing was moved.`
     case 'too_close': {
-      const box = (card: CanvasCard): string => `${card.id} (x ${String(card.x)}, y ${String(card.y)}, ${String(card.width)} wide, ${String(card.height)} tall)`
+      const box = (card: CanvasCard): string => `${card.id} (x ${String(card.x)}, y ${String(card.y)}, frame ${String(card.width)} wide and ${String(card.height)} tall)`
       const pairs = refusal.pairs.map(([card, other]) => `${box(card)} and ${box(other)}`).join('; ')
       return `The move would leave cards closer than ${String(CARD_GAP)} units: ${pairs}. Keep at least ${String(CARD_GAP)} units between the cards and call dv_canvas_move again. Nothing was moved.`
     }
@@ -73,19 +74,19 @@ export function refusalSentence(refusal: Exclude<MovePlan, { kind: 'move' }>): s
 }
 
 /**
- * The cards with stored positions applied.
+ * The cards with stored entries applied: each entry's top-left corner, and its frame size when the entry holds one.
  * @param cards - the cards as drawn.
- * @param positions - the new top-left corners by node id.
+ * @param positions - the stored entries by node id.
  * @returns the cards after the move, in the same order.
  */
-export function cardsAfter(cards: readonly CanvasCard[], positions: Readonly<Record<string, NodePosition>>): CanvasCard[] {
+export function cardsAfter(cards: readonly CanvasCard[], positions: Readonly<Record<string, LayoutEntry>>): CanvasCard[] {
   return cards.map(card => ({ ...card, ...positions[card.id] }))
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 const isNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
-const isSpot = (value: unknown): value is NodePosition => isObject(value) && isNumber(value['x']) && isNumber(value['y'])
-const isSpots = (value: unknown): value is Record<string, NodePosition> => isObject(value) && Object.values(value).every(isSpot)
+const isSpot = (value: unknown): value is NodeSpot => isObject(value) && isNumber(value['x']) && isNumber(value['y'])
+const isSpots = (value: unknown): value is Record<string, NodeSpot> => isObject(value) && Object.values(value).every(isSpot)
 const isCard = (value: unknown): value is CanvasCard => isObject(value)
   && ['id', 'type', 'title'].every(key => typeof value[key] === 'string')
   && (value['record'] === null || typeof value['record'] === 'string')

@@ -9,8 +9,8 @@ import { asset, fixtureState, OPERATIONS, record, withTestRef } from '../../ui-k
 import { referenceDescriptors } from '../../ui-reference-kit/src/client/reference-kit.tsx'
 import { apply as shotRenderApply, inject as shotRenderInject } from '../../ui-shot-render/src/client/index.ts'
 import type { NodeEntry, NodeType, RecordsInUse } from '../src/client/contract/index.ts'
-import { buildCanvasGraph, freePositions, NODE_WIDTH, previewOf, ROW } from '../src/client/graph.ts'
-import type { CanvasGraph, CanvasRegistrations } from '../src/client/graph.ts'
+import { buildCanvasGraph, freePositions, previewOf, ROW } from '../src/client/graph.ts'
+import type { CanvasGraph, CanvasNode, CanvasRegistrations } from '../src/client/graph.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { CLIPS } from './fixtures/conformance-states.client.ts'
 
@@ -64,10 +64,10 @@ function graphOf(state: WireState, registrations: CanvasRegistrations, placed: r
   return buildCanvasGraph(state, new Set(placed), OPERATIONS, language, registrations)
 }
 
-function sliceType(entries: ReadonlyArray<Omit<NodeEntry, 'bodyHeight' | 'sizing'>>, column = 0): NodeType {
+function sliceType(entries: ReadonlyArray<Omit<NodeEntry, 'sizing'>>, column = 0): NodeType {
   return {
     id: '@dv/ui-test-slice', type: 'slice', label: () => 'slice', color: '', column,
-    entries: () => entries.map(entry => ({ ...entry, bodyHeight: 30 })),
+    entries: () => entries.map(entry => ({ ...entry, sizing: { kind: 'window', defaultSize: { width: 208, height: 30 }, minSize: { width: 104, height: 30 } } })),
   }
 }
 
@@ -244,7 +244,7 @@ describe('buildCanvasGraph', () => {
   it('refuses to draw two nodes with one ID and names both node types', () => {
     const twin = (type: string): NodeType => ({
       id: `@dv/ui-test-${type}`, type, label: () => type, color: '', column: 0,
-      entries: () => [{ id: 'twin:1', title: type, record: null, assets: [], bodyHeight: 30 }],
+      entries: () => [{ id: 'twin:1', title: type, record: null, assets: [], sizing: { kind: 'window', defaultSize: { width: 208, height: 30 }, minSize: { width: 104, height: 30 } } }],
     })
     const registrations = { nodeTypes: [twin('left'), twin('right')], recordsInUse: [], versionKinds: [] }
     expect(() => buildCanvasGraph(fixtureState(), new Set(), OPERATIONS, 'zh', registrations))
@@ -254,7 +254,7 @@ describe('buildCanvasGraph', () => {
   it('draws each current record of a claimed type with its outputs as assets and numbers its based_on family', () => {
     const image: NodeType = {
       id: '@dv/ui-test-image', type: 'image', label: () => 'image', color: '', column: 2,
-      claimed: { operations: ['image.generate'], status: { running: () => '', failed: () => '' }, entry: ({ record: { id } }) => ({ title: id, bodyHeight: 117 }) },
+      claimed: { operations: ['image.generate'], status: { running: () => '', failed: () => '' }, entry: ({ record: { id } }) => ({ title: id, sizing: { kind: 'window', defaultSize: { width: 208, height: 117 }, minSize: { width: 104, height: 117 } } }) },
     }
     const state = fixtureState()
     state.components.proj.records.push(
@@ -326,13 +326,23 @@ describe('buildCanvasGraph', () => {
 })
 
 describe('freePositions', () => {
-  it('moves a node whose automatic spot is taken down a row at a time, and leaves stored nodes alone', () => {
+  it('moves a node whose automatic spot is taken down a row at a time at its default size, and leaves stored nodes alone', () => {
     const [template] = graphOf(fixtureState(), kinds({ nodeTypes: [take] })).nodes
     if (template === undefined) throw new Error('fixture has no nodes')
-    const at = (id: string, x: number, y: number) => ({ ...template, id, x, y })
+    const size = { width: 208, height: 130 }
+    const at = (id: string, x: number, y: number): CanvasNode => ({ ...template, id, x, y, sizing: { kind: 'window', defaultSize: size, minSize: size } })
     // `moved` is stored half a card to the right of `a`'s automatic spot; `b`'s automatic spot is where `a` moves to.
     const nodes = [at('moved', 0, 0), at('a', 0, 0), at('b', 0, ROW)]
-    const placed = freePositions(nodes, { moved: { x: NODE_WIDTH / 2, y: 0 } }, () => 150)
-    expect(placed).toEqual({ a: { x: 0, y: ROW }, b: { x: 0, y: 2 * ROW } })
+    const placed = freePositions(nodes, { moved: { x: 104, y: 0, ...size } }, {}, box => 20 + box.height)
+    expect(placed).toEqual({ a: { x: 0, y: ROW, ...size }, b: { x: 0, y: 2 * ROW, ...size } })
+  })
+
+  it('keeps a stored corner without a size where it is, at the default size, even where another node sits', () => {
+    const [template] = graphOf(fixtureState(), kinds({ nodeTypes: [take] })).nodes
+    if (template === undefined) throw new Error('fixture has no nodes')
+    const size = { width: 208, height: 130 }
+    const at = (id: string): CanvasNode => ({ ...template, id, x: 0, y: 0, sizing: { kind: 'window', defaultSize: size, minSize: size } })
+    expect(freePositions([at('stored'), at('old')], { stored: { x: 0, y: 0, ...size } }, { old: { x: 10, y: 10 } }, box => 20 + box.height))
+      .toEqual({ old: { x: 10, y: 10, ...size } })
   })
 })

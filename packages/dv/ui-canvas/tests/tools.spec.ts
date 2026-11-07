@@ -313,15 +313,16 @@ describe('the canvas tools', () => {
     const { ctx } = await start()
     const descriptionOf = (name: string): string | undefined => ctx.tools.schemas().find(tool => tool.name === name)?.description
     expect(descriptionOf('dv_canvas_read')).toBe('Read the canvas of this project that the user has open: every node with its id, type, '
-      + 'title and record, its card box (x and y of the top-left corner, width, height; canvas units, y grows downward), and '
-      + 'rendering: true while the node\'s record is still being generated. The height of a rendering card is the height that '
-      + 'the finished card takes, so plan with it as given. Fails when no canvas of this project is open.')
+      + 'title and record, its box (x and y of the top-left corner of the node; width and height of its frame, which sits '
+      + 'below a 20-unit caption, so the node spans y to y + 20 + height; canvas units, y grows downward), and rendering: true '
+      + 'while the node\'s record is still being generated. A rendering node can change size and position when it finishes. Fails when no '
+      + 'canvas of this project is open.')
     expect(descriptionOf('dv_canvas_move')).toBe('Move canvas nodes in one call: list each node you place with the new x and y of '
       + 'the top-left corner of its card, planned from the boxes that dv_canvas_read returned. Keep at least 24 units between a '
-      + 'moved card and every other card. Nodes you do not list stay where they are. The call moves nothing when a node is '
-      + 'unknown or listed twice, or when a moved card would come closer than 24 units to another card. The user sees the move '
-      + 'at once. A move is not a step of the project history: dv_proj_undo does not revert it; to restore, move the nodes '
-      + 'back. Returns the canvas after the move.')
+      + 'moved card and every other card. Nodes you do not list stay where they are, and every node keeps its width and '
+      + 'height. The call moves nothing when a node is unknown or listed twice, or when a moved card would come closer than 24 '
+      + 'units to another card. The user sees the move at once. A move is not a step of the project history: dv_proj_undo '
+      + 'does not revert it; to restore, move the nodes back. Returns the canvas after the move.')
   })
 
   it('leave the tool registry and the Connection when the plugin is disposed', async () => {

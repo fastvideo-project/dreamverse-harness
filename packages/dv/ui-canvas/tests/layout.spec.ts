@@ -52,11 +52,16 @@ describe('layoutRoutes', () => {
     expect((await call('GET', '?project=p1')).json).not.toHaveProperty('placed')
   })
 
-  it('keeps a stored width through a write that sends only a position, and drops a width that is not a positive number', async () => {
+  it('keeps a stored size through a write that sends only a position, and drops a width or height that is not a positive number', async () => {
     const { call } = route()
-    await call('POST', '', { project: 'p1', positions: { g1: { x: 1, y: 2, width: 416 }, g2: { x: 0, y: 0, width: 0 }, g3: { x: 0, y: 0, width: 'wide' } } })
+    await call('POST', '', {
+      project: 'p1',
+      positions: { g1: { x: 1, y: 2, width: 416, height: 234 }, g2: { x: 0, y: 0, width: 0, height: 50 }, g3: { x: 0, y: 0, width: 'wide', height: -1 } },
+    })
     await call('POST', '', { project: 'p1', positions: { g1: { x: 5, y: 6 } } })
-    expect((await call('GET', '?project=p1')).json).toEqual({ positions: { g1: { x: 5, y: 6, width: 416 }, g2: { x: 0, y: 0 }, g3: { x: 0, y: 0 } }, viewport: null })
+    expect((await call('GET', '?project=p1')).json).toEqual({
+      positions: { g1: { x: 5, y: 6, width: 416, height: 234 }, g2: { x: 0, y: 0, height: 50 }, g3: { x: 0, y: 0 } }, viewport: null,
+    })
   })
 
   it('keeps at most 5000 positions', async () => {

@@ -90,7 +90,7 @@ describe('claims of an unloaded type', () => {
     const { registrations, runtime } = await registered()
     const still: NodeType = {
       id: '@dv/ui-test-still', type: 'still', label: () => 'still', color: '', column: 2,
-      claimed: { operations: ['image.generate'], status: { running: () => '', failed: () => '' }, entry: () => ({ title: 'i1', bodyHeight: 117 }) },
+      claimed: { operations: ['image.generate'], status: { running: () => '', failed: () => '' }, entry: () => ({ title: 'i1', sizing: { kind: 'window', defaultSize: { width: 208, height: 117 }, minSize: { width: 104, height: 117 } } }) },
     }
     const withStill: CanvasRegistrations = { ...registrations, nodeTypes: [...registrations.nodeTypes, still] }
     const graph = buildCanvasGraph(imageState(), new Set(), OPS, 'zh', withStill)

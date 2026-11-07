@@ -1,11 +1,11 @@
 /**
  * The project canvas: a pan-and-zoom surface that draws the nodes of the registered node types in the canvas chrome
  * (a caption above a frame) around each type's `dv.canvas.card` body, and opens a clicked node's editor panel, which
- * grows out of the node and shrinks back into it (`@dv/ui-kit/zoom.ts`). Node positions, the width of each node the
- * user resized from a corner handle of the selected node, and the viewport are stored per project through
- * `/api/dv/canvas/layout`; a node without a stored position gets the first free spot at or below its automatic
- * position, and that spot is stored once the node's record stops rendering, so a node that appears later never moves
- * or covers another. The opened nodes are kept per
+ * grows out of the node and shrinks back into it (`@dv/ui-kit/zoom.ts`). Node positions, frame sizes, and the viewport
+ * are stored per project through `/api/dv/canvas/layout`; a node without a stored position gets its type's default size
+ * at the first free spot at or below its automatic position, and that box is stored once the node's record stops
+ * rendering, so a node that appears later never moves or covers another. The corner handles of the selected node
+ * resize it within its type's sizing. The opened nodes are kept per
  * project in `localStorage` for the unseen dot. Colors come from the `--dv-*` theme variables that `@dv/ui-shell`
  * defines and from each type's `color`. The canvas names no node type.
  */
@@ -20,17 +20,19 @@ import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { useOperations, useProjectState } from '@dv/ui-kit/useProject.ts'
 import { useZoomPresence } from '@dv/ui-kit/zoom.ts'
-import type { CanvasViewport, NodePosition } from '../canvas-layout.ts'
+import type { CanvasViewport, NodePosition, NodeSpot } from '../canvas-layout.ts'
 import { cardsOf } from './agent-canvas.ts'
 import type { CanvasViews } from './agent-canvas.ts'
 import type { CanvasRequest, EditorHost, NodeAction, NodeHost, NodeView, RerunRequest } from './contract/index.ts'
-import { buildCanvasGraph, freePositions, isFinished, NODE_WIDTH, previewOf, ROW } from './graph.ts'
+import { buildCanvasGraph, freePositions, isFinished, previewOf, ROW } from './graph.ts'
 import type { CanvasEdge, CanvasNode, CanvasRegistrations } from './graph.ts'
 import { cardHeight, edgeAnchorY, NodeCard, textScaleAt, TypeLabelBody } from './NodeCard.tsx'
-import type { CanvasTranslate, ResizeCorner } from './NodeCard.tsx'
+import type { CanvasTranslate } from './NodeCard.tsx'
 import { readLayout, writeLayout } from './layout-client.ts'
 import { NodeEditor } from './NodeEditor.tsx'
 import type { EditorArea, RenderCanvasSlot, SurfaceHosts } from './NodeEditor.tsx'
+import { resizedBox } from './resize.ts'
+import type { ResizeCorner } from './resize.ts'
 
 /** The registered descriptors that the canvas draws with. */
 export interface CanvasDescriptors extends CanvasRegistrations {
@@ -66,10 +68,6 @@ export interface CanvasFocus {
 const FIT_NODE_HEIGHT = ROW - 20
 /** How far above the pointer a dropped node's top edge lands, in canvas units, so the pointer rests on its caption. */
 const DROP_OFFSET_Y = 40
-/** The narrowest frame a corner handle leaves, in canvas units: half the default width. */
-const MIN_NODE_WIDTH = NODE_WIDTH / 2
-/** The widest frame a corner handle reaches, in canvas units: five times the default width. */
-const MAX_NODE_WIDTH = NODE_WIDTH * 5
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 2
 const DRAG_THRESHOLD = 4
@@ -174,36 +172,19 @@ interface AwaitedRender {
   resolve: () => void
 }
 
-/** A node's position with its frame width, as a resize reads and writes it. */
-type NodeBox = NodePosition & { width: number }
-
-/**
- * An in-progress pointer gesture. A resize drags one corner of the selected node: the width follows the pointer, the
- * height follows the node's frame height rule at that width, and the opposite corner keeps its place.
- */
+/** An in-progress pointer gesture. A resize drags one corner of the selected node ({@link resizedBox}). */
 type Gesture =
   | { kind: 'pan'; startX: number; startY: number; origin: CanvasViewport; moved: boolean }
   | { kind: 'node'; id: string; startX: number; startY: number; origin: NodePosition; at: NodePosition; moved: boolean }
-  | { kind: 'resize'; node: CanvasNode; corner: ResizeCorner; startX: number; startY: number; origin: NodeBox; at: NodeBox; moved: boolean }
+  | { kind: 'resize'; node: CanvasNode; corner: ResizeCorner; startX: number; startY: number; origin: NodePosition; at: NodePosition; moved: boolean }
 
 /**
- * The box of a node after a corner drag: the width clamped between the narrowest and the widest frame, the left edge
- * moved for a west corner and the top edge for a north corner, so that the opposite corner stays in place.
- * @param node - the node, whose frame height rule gives the height at each width.
- * @param origin - the box when the drag started.
- * @param corner - the dragged corner.
- * @param dx - the pointer's horizontal movement in canvas units.
- * @returns the box.
+ * @param boxes - the boxes that the canvas gave the nodes, by node ID.
+ * @param node - a node.
+ * @returns its box, else, until the canvas gives it one, its automatic position at its type's default size.
  */
-function resizedBox(node: CanvasNode, origin: NodeBox, corner: ResizeCorner, dx: number): NodeBox {
-  const west = corner.endsWith('w')
-  const width = Math.min(MAX_NODE_WIDTH, Math.max(MIN_NODE_WIDTH, origin.width + (west ? -dx : dx)))
-  return {
-    width,
-    x: west ? origin.x + origin.width - width : origin.x,
-    y: corner.startsWith('n') ? origin.y + cardHeight(node, origin.width) - cardHeight(node, width) : origin.y,
-  }
-}
+const boxIn = (boxes: Readonly<Record<string, NodePosition>>, node: CanvasNode): NodePosition =>
+  boxes[node.id] ?? { x: node.x, y: node.y, ...node.sizing.defaultSize }
 
 /**
  * @param map - a map.
@@ -299,15 +280,19 @@ export function CanvasView(
   const positionsRef = useRef(positions)
   positionsRef.current = positions
   const moved = useRef(new Map<string, NodePosition>())
-  // The nodes whose spot the canvas chose while their record was rendering. Such a spot is drawn and counts as occupied,
-  // but is not stored until the node's height is final.
+  // The nodes whose box the canvas chose while their record was rendering. Such a box is drawn and counts as occupied,
+  // but is not stored until the node's default size is final.
   const unsavedSpots = useRef(new Set<string>())
+  // Stored corners without a size, from a layout file written before nodes had a stored size or from an agent's move
+  // of a node that this canvas has not given a final box yet: the canvas gives each node its default size there once
+  // and stores the box.
+  const sizeless = useRef<Record<string, NodeSpot>>({})
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const needsFit = useRef(false)
   // True while the viewport is an automatic fit; resizing the canvas refits until the user pans or zooms.
   const autoFit = useRef(false)
   // Imported or dropped assets waiting for their node to appear, with the canvas point they were dropped at.
-  const pendingDrops = useRef(new Map<string, NodePosition>())
+  const pendingDrops = useRef(new Map<string, NodeSpot>())
   const [dragOver, setDragOver] = useState(false)
   // The node the user last dragged or dropped is drawn above the others.
   const [topNode, setTopNode] = useState<string | null>(null)
@@ -321,7 +306,13 @@ export function CanvasView(
       // The stored layout wins over a drag made before it arrived.
       moved.current.clear()
       unsavedSpots.current.clear()
-      setPositions(layout.positions)
+      const stored: Record<string, NodePosition> = {}
+      sizeless.current = {}
+      for (const [id, { x, y, width, height }] of Object.entries(layout.positions)) {
+        if (width === undefined || height === undefined) sizeless.current[id] = { x, y }
+        else stored[id] = { x, y, width, height }
+      }
+      setPositions(stored)
       if (layout.viewport !== null) setViewport(layout.viewport)
       needsFit.current = layout.viewport === null
       setLayoutReady(true)
@@ -344,24 +335,20 @@ export function CanvasView(
     }, SAVE_DELAY_MS)
   }, [projectId])
 
-  const positionOf = useCallback((node: CanvasNode): NodePosition => positions[node.id] ?? { x: node.x, y: node.y }, [positions])
-  /** The frame width a node is drawn at: its stored width, else the default. */
-  const widthOf = useCallback((node: CanvasNode): number => positions[node.id]?.width ?? NODE_WIDTH, [positions])
+  const boxOf = useCallback((node: CanvasNode): NodePosition => boxIn(positions, node), [positions])
 
   /** Pan and zoom so every node is visible, at 100% at most: content that fits the view keeps its true size. */
   const fit = useCallback(() => {
     if (graph === null || graph.nodes.length === 0) return
     const { width, height } = sizeOf(container.current)
-    const boxes = graph.nodes.map(node => ({
-      ...positionOf(node), width: widthOf(node), height: Math.max(FIT_NODE_HEIGHT, cardHeight(node, widthOf(node))),
-    }))
+    const boxes = graph.nodes.map(boxOf)
     const minX = Math.min(...boxes.map(box => box.x))
     const minY = Math.min(...boxes.map(box => box.y))
     const spanX = Math.max(...boxes.map(box => box.x + box.width)) - minX
-    const spanY = Math.max(...boxes.map(box => box.y + box.height)) - minY
+    const spanY = Math.max(...boxes.map(box => box.y + Math.max(FIT_NODE_HEIGHT, cardHeight(box)))) - minY
     const zoom = clampZoom(Math.min((width - 80) / spanX, (height - 80) / spanY, 1))
     setViewport({ x: (width - spanX * zoom) / 2 - minX * zoom, y: (height - spanY * zoom) / 2 - minY * zoom, zoom })
-  }, [graph, positionOf, widthOf])
+  }, [graph, boxOf])
 
   useEffect(() => {
     if (layoutReady && needsFit.current && graph !== null && graph.nodes.length > 0) {
@@ -427,13 +414,12 @@ export function CanvasView(
   /** Pan so a node sits at the center of the canvas, keeping the zoom. */
   const centerOn = useCallback((node: CanvasNode) => {
     const { width, height } = sizeOf(container.current)
-    const position = positionsRef.current[node.id] ?? { x: node.x, y: node.y }
-    const nodeWidth = position.width ?? NODE_WIDTH
+    const box = boxIn(positionsRef.current, node)
     autoFit.current = false
     setViewport(current => ({
       ...current,
-      x: width / 2 - (position.x + nodeWidth / 2) * current.zoom,
-      y: height / 2 - (position.y + cardHeight(node, nodeWidth) / 2) * current.zoom,
+      x: width / 2 - (box.x + box.width / 2) * current.zoom,
+      y: height / 2 - (box.y + cardHeight(box) / 2) * current.zoom,
     }))
   }, [])
 
@@ -454,12 +440,15 @@ export function CanvasView(
     setEditing(node.id)
   }, [focus, layoutReady, graph, centerOn])
 
-  /** Move a node to a canvas point and store the position; a resized node keeps its width. */
-  const placeNode = useCallback((id: string, position: NodePosition) => {
-    setPositions(all => ({ ...all, [id]: { ...all[id], ...position } }))
-    setTopNode(id)
-    moved.current.set(id, position)
-    unsavedSpots.current.delete(id)
+  /** Move a node so that its top edge is centered on a dropped canvas point, and store its box; the node keeps its size. */
+  const placeNode = useCallback((node: CanvasNode, point: NodeSpot) => {
+    const size = boxIn(positionsRef.current, node)
+    const box = { ...size, x: point.x - size.width / 2, y: point.y }
+    positionsRef.current = { ...positionsRef.current, [node.id]: box }
+    setPositions(all => ({ ...all, [node.id]: box }))
+    setTopNode(node.id)
+    moved.current.set(node.id, box)
+    unsavedSpots.current.delete(node.id)
     scheduleSave()
   }, [scheduleSave])
 
@@ -469,31 +458,33 @@ export function CanvasView(
   const placePending = useCallback(() => {
     const current = graphRef.current
     if (current === null) return
-    for (const [assetId, position] of pendingDrops.current) {
-      const id = current.assetNodes[assetId]
-      if (id === undefined) continue
+    for (const [assetId, spot] of pendingDrops.current) {
+      const node = current.nodes.find(entry => entry.id === current.assetNodes[assetId])
+      if (node === undefined) continue
       pendingDrops.current.delete(assetId)
-      placeNode(id, position)
+      placeNode(node, spot)
     }
   }, [placeNode])
   useEffect(() => { placePending() }, [graph, placePending])
 
-  // Give a free spot to every node without a position, and store it once the node's height is final. A rendering node's
-  // spot stays unsaved: it is drawn and occupied, and when the node stops rendering the canvas drops the spot and places
-  // the node again at its final height, then stores that spot. The ref is updated at once so that the reveal of a new
-  // node below centers on its spot; an earlier queued position, such as a dropped asset's, wins over the free spot.
+  // Give every node without a stored box its default size at a free spot, or at its stored corner of an older layout
+  // file, and store the box once the node's default size is final. A rendering node's box stays unsaved: it is drawn and
+  // occupied, and when the node stops rendering the canvas drops the box and places the node again at its final default
+  // size, then stores that box. The ref is updated at once so that the reveal of a new node below centers on its spot;
+  // an earlier queued position, such as a dropped asset's, wins over the free spot.
   useEffect(() => {
     if (!layoutReady || graph === null) return
     const rendering = new Set(graph.nodes.flatMap(node => node.flags.rendering ? [node.id] : []))
     const settled = [...unsavedSpots.current].filter(id => !rendering.has(id))
     for (const id of settled) unsavedSpots.current.delete(id)
     const kept = withoutProperties(positionsRef.current, settled)
-    const added = freePositions(graph.nodes, kept, cardHeight)
+    const added = freePositions(graph.nodes, kept, sizeless.current, cardHeight)
     if (settled.length === 0 && Object.keys(added).length === 0) return
     for (const id of Object.keys(added)) if (rendering.has(id)) unsavedSpots.current.add(id)
     positionsRef.current = { ...added, ...kept }
     setPositions(all => ({ ...added, ...withoutProperties(all, settled) }))
     const final = Object.fromEntries(Object.entries(added).filter(([id]) => !rendering.has(id)))
+    sizeless.current = withoutProperties(sizeless.current, Object.keys(final))
     if (Object.keys(final).length > 0) void writeLayout(projectId, { positions: final }).catch(() => null)
   }, [layoutReady, graph, projectId])
 
@@ -505,18 +496,18 @@ export function CanvasView(
     if (!loaded) return undefined
     return views.mount({
       projectId, session,
-      cards: () => cardsOf(drawnRef.current, node => ({ x: node.x, y: node.y, ...positionsRef.current[node.id] }), cardHeight),
-      // An agent's move is drawn as a drop is, keeps the width the user resized the node to, and a drag that waits to be
-      // saved no longer carries its nodes.
+      cards: () => cardsOf(drawnRef.current, node => boxIn(positionsRef.current, node)),
+      // An agent's move is drawn as a drop is, and a drag that waits to be saved no longer carries its nodes.
       place: (patch) => {
-        for (const id of Object.keys(patch)) {
-          unsavedSpots.current.delete(id)
+        const placed: Record<string, NodePosition> = {}
+        for (const [id, spot] of Object.entries(patch)) {
           moved.current.delete(id)
+          const box = positionsRef.current[id]
+          if (box === undefined || unsavedSpots.current.has(id)) sizeless.current[id] = spot
+          if (box !== undefined) placed[id] = { ...box, ...spot }
         }
-        const merged = (all: Record<string, NodePosition>): Record<string, NodePosition> =>
-          ({ ...all, ...Object.fromEntries(Object.entries(patch).map(([id, position]) => [id, { ...all[id], ...position }])) })
-        positionsRef.current = merged(positionsRef.current)
-        setPositions(merged)
+        positionsRef.current = { ...positionsRef.current, ...placed }
+        setPositions(all => ({ ...all, ...placed }))
       },
     })
   }, [loaded, projectId, session, views])
@@ -575,14 +566,14 @@ export function CanvasView(
   const onNodeDown = (node: CanvasNode) => (event: ReactPointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0) return
     event.stopPropagation()
-    const origin = positionOf(node)
+    const origin = boxOf(node)
     gesture.current = { kind: 'node', id: node.id, startX: event.clientX, startY: event.clientY, origin, at: origin, moved: false }
     capture(event)
   }
   // The handle stops the press before the card's `onNodeDown`, so a resize starts no move and opens no editor.
   const onResizeDown = (node: CanvasNode) => (corner: ResizeCorner, event: ReactPointerEvent<HTMLElement>): void => {
     if (event.button !== 0) return
-    const origin = { ...positionOf(node), width: widthOf(node) }
+    const origin = boxOf(node)
     gesture.current = { kind: 'resize', node, corner, startX: event.clientX, startY: event.clientY, origin, at: origin, moved: false }
     capture(event)
   }
@@ -601,7 +592,7 @@ export function CanvasView(
     }
     const zoom = viewportRef.current.zoom
     if (current.kind === 'resize') {
-      const at = resizedBox(current.node, current.origin, current.corner, dx / zoom)
+      const at = resizedBox(current.node.sizing, current.origin, current.corner, dx / zoom, dy / zoom)
       current.at = at
       setPositions(all => ({ ...all, [current.node.id]: at }))
       return
@@ -711,14 +702,14 @@ export function CanvasView(
     const rect = event.currentTarget.getBoundingClientRect()
     const view = viewportRef.current
     const point = {
-      x: (event.clientX - rect.left - view.x) / view.zoom - NODE_WIDTH / 2,
+      x: (event.clientX - rect.left - view.x) / view.zoom,
       y: (event.clientY - rect.top - view.y) / view.zoom - DROP_OFFSET_Y,
     }
     setNotice(null)
     const assetId = event.dataTransfer.getData(DV_ASSET_DRAG_TYPE)
     if (assetId !== '') {
-      const id = graph?.assetNodes[assetId]
-      if (id !== undefined) { placeNode(id, point); return }
+      const node = graph?.nodes.find(entry => entry.id === graph.assetNodes[assetId])
+      if (node !== undefined) { placeNode(node, point); return }
       // Any other asset of the asset pool panel goes on the canvas, with its node under the pointer.
       pendingDrops.current.set(assetId, point)
       void run(() => changePlacement(assetId, true))
@@ -767,15 +758,15 @@ export function CanvasView(
     const touchesSelected = (edge: CanvasEdge): boolean => selected !== null && (edge.from === selected || edge.to === selected)
     const links = [...graph.links.filter(link => !touchesSelected(link.edge)), ...graph.links.filter(link => touchesSelected(link.edge))]
     const textScale = textScaleAt(viewport.zoom)
-    const anchorOf = (node: CanvasNode): number => edgeAnchorY(node, widthOf(node), textScale)
+    const anchorOf = (node: CanvasNode): number => edgeAnchorY(boxOf(node), textScale)
     const hosts = hostsOf(() => { setEditing(null) })
     content = (
       <div style={{ position: 'absolute', left: 0, top: 0, transform: `translate(${String(viewport.x)}px, ${String(viewport.y)}px) scale(${String(viewport.zoom)})`, transformOrigin: '0 0' }}>
         <svg style={{ position: 'absolute', left: 0, top: 0, width: 1, height: 1, overflow: 'visible', pointerEvents: 'none' }} aria-hidden="true">
           {links.map(({ edge, source: from, target: to }) => {
-            const a = positionOf(from)
-            const b = positionOf(to)
-            const x1 = a.x + widthOf(from)
+            const a = boxOf(from)
+            const b = boxOf(to)
+            const x1 = a.x + a.width
             const y1 = a.y + anchorOf(from)
             const x2 = b.x
             const y2 = b.y + anchorOf(to)
@@ -796,7 +787,6 @@ export function CanvasView(
           })}
         </svg>
         {[...graph.nodes.filter(node => node.id !== topNode), ...graph.nodes.filter(node => node.id === topNode)].map((node) => {
-          const position = positionOf(node)
           const view = viewFor(node)
           const assets: Record<string, Asset> = {}
           for (const id of [...node.assets, previewOf(node) ?? '']) {
@@ -808,9 +798,7 @@ export function CanvasView(
               key={node.id}
               node={node}
               view={view}
-              x={position.x}
-              y={position.y}
-              width={widthOf(node)}
+              box={boxOf(node)}
               selected={node.id === selected}
               zoom={viewport.zoom}
               t={t}

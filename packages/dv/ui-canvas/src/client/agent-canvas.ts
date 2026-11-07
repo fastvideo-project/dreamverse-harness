@@ -5,10 +5,9 @@
  *
  * @module @dv/ui-canvas/agent-canvas
  */
-import type { NodePosition } from '../canvas-layout.ts'
+import type { NodePosition, NodeSpot } from '../canvas-layout.ts'
 import { CANVAS_AGENT_ROUTE, CANVAS_ANSWER_ROUTE, parseMoved, parseQuery } from '../canvas.ts'
 import type { CanvasCard, CanvasDrawn, CanvasQuery } from '../types.ts'
-import { NODE_WIDTH } from './graph.ts'
 import type { CanvasNode } from './graph.ts'
 
 /** One mounted canvas as the registry sees it, registered while its layout and graph are loaded. */
@@ -18,27 +17,20 @@ export interface MountedCanvas {
   readonly session: string | null
   /** The cards as drawn now. */
   cards(): CanvasCard[]
-  /** Draw stored positions at once, as a drop does; a position without a width keeps the node's stored width. */
-  place(positions: Readonly<Record<string, NodePosition>>): void
+  /** Draw stored moves at once, as a drop does; each moved node keeps its size. */
+  place(positions: Readonly<Record<string, NodeSpot>>): void
 }
 
 /**
  * The cards of the drawn graph, in graph order.
  * @param nodes - the graph's nodes.
- * @param positionOf - the drawn position of a node, with its stored width when the user resized it.
- * @param heightOf - the card height of a node at a frame width.
- * @returns the cards, each as wide as its stored width, else the 208-unit default.
+ * @param boxOf - the stored position and frame size of a node.
+ * @returns the cards.
  */
-export function cardsOf(
-  nodes: readonly CanvasNode[], positionOf: (node: CanvasNode) => NodePosition, heightOf: (node: CanvasNode, width: number) => number,
-): CanvasCard[] {
-  return nodes.map((node) => {
-    const { x, y, width = NODE_WIDTH } = positionOf(node)
-    return {
-      id: node.id, type: node.type, title: node.title, record: node.record?.id ?? null,
-      x, y, width, height: heightOf(node, width), rendering: node.flags.rendering,
-    }
-  })
+export function cardsOf(nodes: readonly CanvasNode[], boxOf: (node: CanvasNode) => NodePosition): CanvasCard[] {
+  return nodes.map(node => ({
+    id: node.id, type: node.type, title: node.title, record: node.record?.id ?? null, ...boxOf(node), rendering: node.flags.rendering,
+  }))
 }
 
 /** What a canvas stream delivers: a read, and the data of a `moved` frame. */

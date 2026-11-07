@@ -47,7 +47,7 @@ export interface ClaimedNodes {
 }
 
 /** What a type supplies for one claimed node. */
-export type ClaimedEntry = Pick<NodeEntryFields, 'title'> & NodeSize & Partial<Pick<NodeEntryFields, 'meta' | 'preview'>>
+export type ClaimedEntry = Pick<NodeEntry, 'title' | 'sizing'> & Partial<Pick<NodeEntry, 'meta' | 'preview'>>
 
 /** The nodes that a type reads from its own slice, such as nouns and plans. Pure. */
 export type SliceEntries = (input: Omit<NodeInput, 'records'>) => NodeEntry[]
@@ -106,23 +106,8 @@ export type NodeSizing =
   | { kind: 'window'; defaultSize: Size; minSize: Size }
   | { kind: 'media'; defaultSize: Size; minSize: Size; aspectRatio: { ratio: number; fixedHeight: number } }
 
-/** The size of a node: its `sizing`, else `bodyHeight`, a 208-unit-wide frame of that height. */
-export type NodeSize =
-  | { sizing: NodeSizing; bodyHeight?: never }
-  | {
-    sizing?: never
-    /**
-     * The frame height in canvas units at the 208-unit frame width, which the body fills. The canvas computes the
-     * node height as caption + `bodyHeight` without measuring the node; a failed claimed node keeps this height.
-     */
-    bodyHeight: number
-  }
-
 /** One node as a type supplies it. */
-export type NodeEntry = NodeEntryFields & NodeSize
-
-/** The fields of a node entry other than its frame height. */
-export interface NodeEntryFields {
+export interface NodeEntry {
   /** Stable: other plugins name it; positions and the unseen set store it. */
   id: string
   /** The accessible name, the caption title and the text of the canvas's write intents. */
@@ -139,6 +124,11 @@ export interface NodeEntryFields {
   standIn?: true
   /** One of `assets` that stands for the node in small views; default `assets[0]`. */
   preview?: string
+  /**
+   * The node's sizing. The canvas computes the node's box from the stored size without measuring the node; a failed
+   * claimed node keeps its size.
+   */
+  sizing: NodeSizing
   /** The kernel reference that this node stands for in a prompt, when it is not its record. */
   ref?: { kind: string; id: string }
 }

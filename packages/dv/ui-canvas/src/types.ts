@@ -6,9 +6,12 @@
  *
  * @module @dv/ui-canvas/types
  */
-import type { NodePosition } from './canvas-layout.ts'
+import type { NodeSpot } from './canvas-layout.ts'
 
-/** One card as the agent reads it: its node and its box in canvas units, with y growing downward. */
+/**
+ * One card as the agent reads it: its node and its stored box in canvas units, with y growing downward. `x` and `y` are
+ * the top-left corner of the node, the top of its caption; `width` and `height` are its frame, below the caption.
+ */
 export type CanvasCard = {
   id: string
   type: string
@@ -17,7 +20,6 @@ export type CanvasCard = {
   x: number
   y: number
   width: number
-  /** The drawn height; while `rendering`, the height that the finished card takes. */
   height: number
   rendering: boolean
 }
@@ -32,4 +34,4 @@ export type CanvasQuery = { id: string; stream: string }
 export type CanvasDrawn = CanvasQuery & { project: string; cards: CanvasCard[] }
 
 /** The `moved` frame of a stored move: every open canvas of `project` draws `positions`. */
-export type CanvasMoved = { project: string; positions: Record<string, NodePosition> }
+export type CanvasMoved = { project: string; positions: Record<string, NodeSpot> }

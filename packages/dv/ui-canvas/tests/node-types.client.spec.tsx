@@ -25,7 +25,7 @@ afterEach(() => {
 const PROPS: NodeType = {
   id: '@dv/ui-test-prop', type: 'test_prop', label: () => '道具', color: 'rgb(1, 2, 3)', column: 1,
   entries: ({ state }) => [{
-    id: `prop:${state.project.id}`, title: '红伞', meta: '第 1 版', record: null, assets: ['umbrella.png'], bodyHeight: 40,
+    id: `prop:${state.project.id}`, title: '红伞', meta: '第 1 版', record: null, assets: ['umbrella.png'], sizing: { kind: 'window', defaultSize: { width: 208, height: 40 }, minSize: { width: 104, height: 40 } },
   }],
 }
 
