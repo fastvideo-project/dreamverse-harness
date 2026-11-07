@@ -23,6 +23,7 @@ afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  vi.useRealTimers()
   forgetCanvasStorage()
 })
 
@@ -188,7 +189,6 @@ describe('the canvas over the real kinds', () => {
     press(handle, 4)
     press(handle, 5)
     expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
-    vi.useRealTimers()
     await runtime.dispose()
   })
 
@@ -1060,8 +1060,6 @@ describe('the node card', () => {
     expect(box()).toEqual(['0px', '90px', '308px', '114px'])
     drag(500, 500, 3)
     expect(box()).toEqual(['188px', '144px', '120px', '60px'])
-    fireEvent.keyDown(window, { key: 'Escape' })
-    await waitFor(() => { expect(view.queryAllByTestId('dv-canvas-node-editor')).toHaveLength(0) })
     fireEvent.pointerDown(handle(), { button: 0, clientX: 0, clientY: 0, pointerId: 4 })
     fireEvent.pointerUp(canvasOf(), { pointerId: 4 })
     await settle()

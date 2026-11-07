@@ -541,8 +541,8 @@ describe('chat with the agent', () => {
     await waitFor(() => Promise.resolve(locationOf(page).project === projectId), 'the seeded project in the URL', 15_000)
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
     await waitFor(async () => {
-      // The canvas fits its view after the nodes load; a click during that move can miss, so click until it opens.
-      await page.locator('[data-dv-workspace] [data-node-type="take"]').first().click({ timeout: 10_000 })
+      // The canvas fits its view after the nodes load; a double click during that move can miss, so double click until it opens.
+      await page.locator('[data-dv-workspace] [data-node-type="take"]').first().dblclick({ timeout: 10_000 })
       return await editor.isVisible()
     }, 'the take editor', 30_000)
     await editor.getByRole('button', { name: '问 agent', exact: true }).click()

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to give the web application a canvas over a DreamVerse project beside the chat. `CanvasView` draws the project's current state as nodes of plugin node types (`@dv/ui-canvas/contract`) on a surface that pans and zooms, linked by the assets that flowed between them, with stale records marked. Clicking a node opens a floating editor that reruns a take, adds references from the asset pool, or prefills the chat composer. The canvas is the 画布 / Canvas view of the shell's center (`dv.center.view`); the `dv-canvas` right-Sidebar tab type shows the same canvas under the project bar.
+Use this package to give the web application a canvas over a DreamVerse project beside the chat. `CanvasView` draws the project's current state as nodes of plugin node types (`@dv/ui-canvas/contract`) on a surface that pans and zooms, linked by the assets that flowed between them, with stale records marked. Double-clicking a node opens a floating editor that reruns a take, adds references from the asset pool, or prefills the chat composer. The canvas is the 画布 / Canvas view of the shell's center (`dv.center.view`); the `dv-canvas` right-Sidebar tab type shows the same canvas under the project bar.
 
 ## Table of Contents
 

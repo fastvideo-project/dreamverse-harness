@@ -214,7 +214,7 @@ export interface MountedCanvas {
    */
   node: (id: string, surface?: Surface) => HTMLElement
   /**
-   * Click a node and wait for its editor.
+   * Double click a node and wait for its editor.
    * @param id - the node ID.
    * @param surface - the surface whose canvas draws it; the center by default.
    * @returns the editor panel.
