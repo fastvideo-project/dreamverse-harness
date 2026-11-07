@@ -9,7 +9,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type { PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { NodeAction, NodeEntry, NodeType, NodeView } from '@dv/ui-canvas/contract'
-import { CARD_SURFACE, frameHeight, NODE_FRAME_HEIGHT } from '@dv/ui-kit/frame.ts'
+import { CARD_SURFACE, mediaSizing, WIDE_RATIO } from '@dv/ui-kit/frame.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
 import { playerBox } from '@dv/ui-kit/player-box.ts'
 import type { ProjectRecord } from '@dv/ui-kit/types.ts'
@@ -31,7 +31,7 @@ export const assetNodeType: NodeType = {
       const seconds = asset?.duration_sec ?? null
       return {
         id, title: asset?.name ?? assetId, record, assets: [assetId], standIn: true,
-        sizing: { heightAt: width => frameHeight(asset, NODE_FRAME_HEIGHT, width) },
+        sizing: mediaSizing(asset, WIDE_RATIO, 0),
         ...seconds === null ? {} : { meta: `${seconds.toFixed(1)}s` }, ...record === null ? { ref: { kind: 'asset', id: assetId } } : {},
       }
     }

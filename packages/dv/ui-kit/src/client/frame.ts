@@ -8,9 +8,6 @@
 import type { CSSProperties } from 'react'
 import type { Asset } from './types.ts'
 
-/** The height of the 16:9 frame at the 208-unit width of a canvas node, in canvas units. */
-export const NODE_FRAME_HEIGHT = 117
-
 /** The default width of a canvas node's frame, in canvas units. */
 const FRAME_WIDTH = 208
 /** The narrowest and the widest frame aspect ratio (width ÷ height); a picture outside this range is cover-fitted. */
@@ -24,17 +21,6 @@ const FRAME_ASPECT = { min: 3 / 4, max: 16 / 9 }
 function clampedRatio(size: Pick<Asset, 'width' | 'height'> | undefined): number | undefined {
   if (size === undefined || size.width === null || size.height === null) return undefined
   return Math.min(FRAME_ASPECT.max, Math.max(FRAME_ASPECT.min, size.width / size.height))
-}
-
-/**
- * The frame height of a picture: the 208-unit frame width at the picture's aspect ratio, clamped between 3:4 and 16:9.
- * @param size - the picture's pixel size; undefined when the state holds no such asset.
- * @param fallback - the height for a picture of unknown width or height.
- * @returns the height in canvas units.
- */
-export function frameHeight(size: Pick<Asset, 'width' | 'height'> | undefined, fallback: number): number {
-  const ratio = clampedRatio(size)
-  return ratio === undefined ? fallback : Math.round(FRAME_WIDTH / ratio)
 }
 
 /** The 16:9 aspect ratio (width ÷ height): the frame of a picture of unknown size. */
