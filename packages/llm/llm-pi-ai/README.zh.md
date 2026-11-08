@@ -47,6 +47,7 @@ kind: "package-reference"
         reasoning: high
         requestImagePixelBudget: 4194304 # total pixels; 2048 by 2048 default
         requestImageMaxBytes: 1048576    # raw bytes before base64 expansion
+        requestImageMediaTypes: [image/png, image/jpeg, image/webp, image/gif] # formats the provider accepts
         maxRequestImageBytes: 20971520   # accumulated base64 payload
         retryPolicy:
           mode: normal
@@ -85,6 +86,7 @@ kind: "package-reference"
 | `defaultMaxTokens` | `32,768` | 未描述模型的输出上限回退 |
 | `requestImagePixelBudget` | `4,194,304` | 每张确定性请求图片的总像素预算 |
 | `requestImageMaxBytes` | `1 MiB` | 每张请求图片在 base64 扩展前的编码字节目标 |
+| `requestImageMediaTypes` | PNG、JPEG、WebP、GIF | 提供方接受的图片格式；其他格式的图片会重新编码为列表中的格式，列表必须包含 PNG、JPEG 或 WebP。例如 Cerebras 拒绝 WebP，因此其路由列出 `[image/png, image/jpeg]` |
 | `maxRequestImageBytes` | `20 MiB` | base64 图片载荷总上限，保留图片超过时请求以 `IMAGE_OFFLOAD_REQUIRED` 失败 |
 | `retryPolicy` | normal，5 次重试 | 由 `dsh-llm-retry` 执行的提供方自有重试策略 |
 

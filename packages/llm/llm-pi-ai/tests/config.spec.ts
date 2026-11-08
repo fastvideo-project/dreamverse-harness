@@ -91,6 +91,8 @@ describe('request image policy bounds', () => {
     ['requestImagePixelBudget', Number.MAX_SAFE_INTEGER + 1, /requestImagePixelBudget must be a positive safe integer/],
     ['requestImageMaxBytes', 0, /requestImageMaxBytes must be a positive safe integer/],
     ['requestImageMaxBytes', 1.5, /requestImageMaxBytes must be a positive safe integer/],
+    ['requestImageMediaTypes', ['image/gif'], /requestImageMediaTypes must name image\/png, image\/jpeg or image\/webp/],
+    ['requestImageMediaTypes', [], /requestImageMediaTypes must name image\/png, image\/jpeg or image\/webp/],
   ] as const)('rejects %s=%s at service resolution', (field, value, message) => {
     const programmatic = {
       providers: {
@@ -105,5 +107,25 @@ describe('request image policy bounds', () => {
     expect(() => {
       assertServiceable(programmatic)
     }).toThrow(message)
+  })
+})
+
+describe('request image formats', () => {
+  const route = (formats?: string[]): Options => ({
+    providers: {
+      'acme-gateway': {
+        api: 'openai-completions',
+        baseURL: 'https://acme.test',
+        models: [{ id: 'm' }],
+        ...formats === undefined ? {} : { requestImageMediaTypes: formats },
+      },
+    },
+  }) as Options
+
+  it('accepts every stored format unless the profile names fewer', () => {
+    expect(resolveProfiles(route().providers).get('acme-gateway')?.requestImageMediaTypes)
+      .toEqual(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
+    expect(resolveProfiles(route(['image/png', 'image/jpeg']).providers).get('acme-gateway')?.requestImageMediaTypes)
+      .toEqual(['image/png', 'image/jpeg'])
   })
 })

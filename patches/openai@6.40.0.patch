@@ -1,0 +1,28 @@
+diff --git a/core/error.js b/core/error.js
+index 548c0c2044f90b13b830073bdbafaf982b6cd49f..88e4486d05d294a1566115caead445971a17c364 100644
+--- a/core/error.js
++++ b/core/error.js
+@@ -40,7 +40,8 @@ class APIError extends OpenAIError {
+         if (!status || !headers) {
+             return new APIConnectionError({ message, cause: (0, errors_1.castToError)(errorResponse) });
+         }
+-        const error = errorResponse?.['error'];
++        // Some OpenAI-compatible servers (Cerebras) send `{message, type, code}` without the `error` wrapper.
++        const error = errorResponse?.['error'] ?? (typeof errorResponse?.['message'] === 'string' ? errorResponse : undefined);
+         if (status === 400) {
+             return new BadRequestError(status, error, message, headers);
+         }
+diff --git a/core/error.mjs b/core/error.mjs
+index bfa952a189c341224d3a110e01d39877833b99d8..d4d4f1db6da82d6f4b0a477503a6432c3955d827 100644
+--- a/core/error.mjs
++++ b/core/error.mjs
+@@ -36,7 +36,8 @@ export class APIError extends OpenAIError {
+         if (!status || !headers) {
+             return new APIConnectionError({ message, cause: castToError(errorResponse) });
+         }
+-        const error = errorResponse?.['error'];
++        // Some OpenAI-compatible servers (Cerebras) send `{message, type, code}` without the `error` wrapper.
++        const error = errorResponse?.['error'] ?? (typeof errorResponse?.['message'] === 'string' ? errorResponse : undefined);
+         if (status === 400) {
+             return new BadRequestError(status, error, message, headers);
+         }

@@ -18,6 +18,8 @@ import LocalAttachmentStore, {
   DEFAULT_MAX_MESSAGE_IMAGE_BYTES,
 } from '../src/index.ts'
 
+const ANY_FORMAT = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const
+
 describe('local attachment service', () => {
   it('resolves every omitted admission limit explicitly', () => {
     const service = new LocalAttachmentStore(new Context(), {})
@@ -85,7 +87,7 @@ describe('local attachment service', () => {
         String(ref.attachmentId).slice('sha256:'.length),
       ))
       await expect(readFile(hostPath)).resolves.toEqual(Buffer.from(data))
-      const request = await service.readImageRequest(ref, { width: 1, height: 1, maxBytes: 1024 })
+      const request = await service.readImageRequest(ref, { width: 1, height: 1, maxBytes: 1024, mediaTypes: ANY_FORMAT })
       expect(request).not.toHaveProperty('access')
 
       const fileData = Uint8Array.of(0, 1, 2, 255)

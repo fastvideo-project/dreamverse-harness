@@ -47,6 +47,7 @@ Each profile may set a `retryPolicy`; omission uses normal mode with five retrie
         reasoning: high
         requestImagePixelBudget: 4194304 # total pixels; 2048 by 2048 default
         requestImageMaxBytes: 1048576    # raw bytes before base64 expansion
+        requestImageMediaTypes: [image/png, image/jpeg, image/webp, image/gif] # formats the provider accepts
         maxRequestImageBytes: 20971520   # accumulated base64 payload
         retryPolicy:
           mode: normal
@@ -85,6 +86,7 @@ Each profile may set a `retryPolicy`; omission uses normal mode with five retrie
 | `defaultMaxTokens` | `32,768` | Output-cap fallback for undescribed models |
 | `requestImagePixelBudget` | `4,194,304` | Total-pixel budget for each deterministic request image |
 | `requestImageMaxBytes` | `1 MiB` | Encoded-byte target for each request image before base64 expansion |
+| `requestImageMediaTypes` | PNG, JPEG, WebP, GIF | Image formats the provider accepts; an image in another format is re-encoded into a listed one, and the list must name PNG, JPEG or WebP. Cerebras, for example, rejects WebP, so its route lists `[image/png, image/jpeg]` |
 | `maxRequestImageBytes` | `20 MiB` | Aggregate base64 image-payload bound; a request whose retained images exceed it fails with `IMAGE_OFFLOAD_REQUIRED` |
 | `retryPolicy` | normal, 5 retries | Provider-owned retry policy executed by `dsh-llm-retry` |
 

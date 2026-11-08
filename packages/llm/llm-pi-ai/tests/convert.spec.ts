@@ -119,7 +119,7 @@ describe('toPiContext', () => {
 
     expect(readImageRequest).toHaveBeenCalledWith(
       attachment,
-      { width: 1, height: 1, maxBytes: 1024 * 1024 },
+      { width: 1, height: 1, maxBytes: 1024 * 1024, mediaTypes: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] },
       undefined,
     )
     expect(context.messages[0]).toEqual({

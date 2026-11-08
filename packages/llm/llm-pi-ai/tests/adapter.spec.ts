@@ -328,6 +328,7 @@ describe('PiAiAdapter provider routing', () => {
       width: 1,
       height: 1,
       maxBytes: 1024 * 1024,
+      mediaTypes: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'],
     }, expect.any(AbortSignal))
     expect(JSON.stringify(server.requests[0])).toContain(MODEL_IMAGE_PATH)
     expect(server.paths).toEqual(['/v1/responses'])
@@ -386,6 +387,20 @@ describe('PiAiAdapter provider routing', () => {
     const result = await assemble(ctx, { model: 'deepseek-v4-flash', messages: [] })
     expect(result.finish).toMatchObject({ kind: 'error', failure: { code } })
     expect(server.paths).toEqual(['/chat/completions'])
+  })
+
+  // Cerebras sends its error fields without the `error` wrapper; patches/openai@6.40.0.patch keeps the message.
+  it.each([
+    [{ message: "unsupported image format: 'image/webp'", type: 'invalid_request_error', code: 'invalid_multimodal_input' },
+      { code: 'INVALID_REQUEST', message: expect.stringContaining("unsupported image format: 'image/webp'") as string }],
+    [{ message: 'Please reduce the length of the messages or completion. Current length is 300052 while limit is 131072',
+      type: 'invalid_request_error', code: 'context_length_exceeded' },
+    { code: CONTEXT_WINDOW_EXCEEDED_CODE }],
+  ] as const)('reports an unwrapped 400 body by its message: %j', async (body, failure) => {
+    const server = await mockServer([{ status: 400, body: JSON.stringify(body) }])
+    const ctx = await harness(server.url)
+    const result = await assemble(ctx, { model: 'deepseek-v4-flash', messages: [] })
+    expect(result.finish).toMatchObject({ kind: 'error', failure })
   })
 
   it('uses the resolved catalog context window for usage-based overflow detection', async () => {

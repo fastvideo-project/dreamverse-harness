@@ -12,7 +12,7 @@
 import { offloadedImageText, requestImageHandleText, textOnlyImageText } from '@deepseek-ai/dsh-llm'
 import type { ImageAttachmentAccessResolver, ImageBlock, LlmImageRequestPrice, LlmImageRequestPricing } from '@deepseek-ai/dsh-llm'
 import { longEdgeDimensions, requestImageDimensions } from '@deepseek-ai/dsh-attachment'
-import type { ImageAttachmentRef, ImageRequestTarget } from '@deepseek-ai/dsh-attachment'
+import type { ImageAttachmentRef, ImageMediaType, ImageRequestTarget } from '@deepseek-ai/dsh-attachment'
 import { deepSeekImageTokens, deepSeekRequestImageDimensions } from './image-tokens.ts'
 import type { DeepSeekCatalogModel, DeepSeekConnectionOptions } from './types.ts'
 
@@ -30,6 +30,9 @@ export const DEFAULT_REQUEST_IMAGE_MAX_BYTES = 2 * 1024 * 1024
  */
 export const REQUEST_IMAGE_MAX_DIMENSION = 4096
 
+/** Image formats the DeepSeek API accepts in a request: every format the attachment store keeps. */
+export const REQUEST_IMAGE_MEDIA_TYPES: readonly ImageMediaType[] = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
+
 /**
  * Resolve the encoded-byte target one DeepSeek model route applies to every request image.
  * @param model - Advertised model route and its optional image overrides.
@@ -44,7 +47,7 @@ export function resolveRequestImageMaxBytes(model: DeepSeekCatalogModel): number
  * Resolve the deterministic request target one DeepSeek model route chooses
  * for one source image: the published token grid unless the model overrides
  * it with a pixel budget, then the provider per-side limit, then the route's
- * encoded-byte target. Small images are never enlarged.
+ * encoded-byte target, with every stored format accepted. Small images are never enlarged.
  * @param model - Advertised model route and its optional image overrides.
  * @param source - intrinsic dimensions of the normalized attachment.
  * @returns Complete request dimensions and encoded-byte target.
@@ -61,7 +64,7 @@ export function resolveRequestImageTarget(
   const capped = Math.max(projected.width, projected.height) > REQUEST_IMAGE_MAX_DIMENSION
     ? longEdgeDimensions(source.width, source.height, REQUEST_IMAGE_MAX_DIMENSION)
     : projected
-  return { ...capped, maxBytes: resolveRequestImageMaxBytes(model) }
+  return { ...capped, maxBytes: resolveRequestImageMaxBytes(model), mediaTypes: REQUEST_IMAGE_MEDIA_TYPES }
 }
 
 /**

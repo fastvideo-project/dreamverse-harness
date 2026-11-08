@@ -31,6 +31,8 @@ import { closeMockServers, mockServer, textEvents } from './mock-server.ts'
 import type { Behavior } from './mock-server.ts'
 import { requestImageStore } from './helpers.ts'
 
+const ANY_FORMAT = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
+
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
     'test': { kind: 'test' } & ContextFormed
@@ -155,15 +157,15 @@ describe('request image target', () => {
   it.each([
     [
       { id: 'default' },
-      { width: 1302, height: 1302, maxBytes: 2 * 1024 * 1024 },
+      { width: 1302, height: 1302, maxBytes: 2 * 1024 * 1024, mediaTypes: ANY_FORMAT },
     ],
     [
       { id: 'low', imagePixelBudget: 'low' as const },
-      { width: 512, height: 512, maxBytes: 2 * 1024 * 1024 },
+      { width: 512, height: 512, maxBytes: 2 * 1024 * 1024, mediaTypes: ANY_FORMAT },
     ],
     [
       { id: 'custom', imagePixelBudget: 320_000, imageMaxBytes: 512_000 },
-      { width: 565, height: 565, maxBytes: 512_000 },
+      { width: 565, height: 565, maxBytes: 512_000, mediaTypes: ANY_FORMAT },
     ],
   ])('resolves route-owned defaults and overrides for %s on a 4096x4096 source', (model, expected) => {
     expect(resolveRequestImageTarget(model, { width: 4096, height: 4096 })).toEqual(expected)
@@ -171,9 +173,9 @@ describe('request image target', () => {
 
   it('caps every request image at the provider per-side limit', () => {
     expect(resolveRequestImageTarget({ id: 'default' }, { width: 8192, height: 78 }))
-      .toEqual({ width: 4096, height: 39, maxBytes: 2 * 1024 * 1024 })
+      .toEqual({ width: 4096, height: 39, maxBytes: 2 * 1024 * 1024, mediaTypes: ANY_FORMAT })
     expect(resolveRequestImageTarget({ id: 'custom', imagePixelBudget: 640_000 }, { width: 10_000, height: 100 }))
-      .toEqual({ width: 4096, height: 41, maxBytes: 2 * 1024 * 1024 })
+      .toEqual({ width: 4096, height: 41, maxBytes: 2 * 1024 * 1024, mediaTypes: ANY_FORMAT })
   })
 
   it('answers image request pricing from the current connection snapshot', () => {
@@ -423,7 +425,7 @@ describe('DeepSeekAdapter against a mock server', () => {
       bytes: 3,
     }])
     expect(signalSeen[0]).toBeInstanceOf(AbortSignal)
-    expect(policies).toEqual([{ width: 1, height: 1, maxBytes: 2 * 1024 * 1024 }])
+    expect(policies).toEqual([{ width: 1, height: 1, maxBytes: 2 * 1024 * 1024, mediaTypes: ANY_FORMAT }])
   })
 
   it('rejects unknown plugin content without preparing nested images', async () => {
@@ -648,7 +650,7 @@ describe('DeepSeekAdapter against a mock server', () => {
 
     expect(attachmentMocks.readImageRequest).toHaveBeenCalledWith(
       recent,
-      { width: 1, height: 1, maxBytes: 2 * 1024 * 1024 },
+      { width: 1, height: 1, maxBytes: 2 * 1024 * 1024, mediaTypes: ANY_FORMAT },
       expect.any(AbortSignal),
     )
     const body = server.requests[0] as { messages: unknown[] }
@@ -700,13 +702,13 @@ describe('DeepSeekAdapter against a mock server', () => {
     expect(attachmentMocks.readImageRequest).toHaveBeenNthCalledWith(
       1,
       imageRef,
-      { width: 1, height: 1, maxBytes: 512_000 },
+      { width: 1, height: 1, maxBytes: 512_000, mediaTypes: ANY_FORMAT },
       expect.any(AbortSignal),
     )
     expect(attachmentMocks.readImageRequest).toHaveBeenNthCalledWith(
       2,
       imageRef,
-      { width: 1, height: 1, maxBytes: 2 * 1024 * 1024 },
+      { width: 1, height: 1, maxBytes: 2 * 1024 * 1024, mediaTypes: ANY_FORMAT },
       expect.any(AbortSignal),
     )
   })

@@ -11,13 +11,14 @@ import type {
   AttachmentId,
   AttachmentStore,
   ImageAttachmentRef,
+  ImageMediaType,
   ImageRequestTarget,
   RequestImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
 import type { Context as PiContext, ImageContent, Message as PiMessage, TextContent, Tool as PiTool } from '@earendil-works/pi-ai'
 import { toPiAssistant } from './replay.ts'
 import { requestImageDimensions } from '@deepseek-ai/dsh-attachment'
-import { DEFAULT_REQUEST_IMAGE_MAX_BYTES, DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET } from './config.ts'
+import { DEFAULT_REQUEST_IMAGE_MAX_BYTES, DEFAULT_REQUEST_IMAGE_MEDIA_TYPES, DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET } from './config.ts'
 
 /** Join the text blocks of a harness message. */
 function flattenText(message: RequestMessage): string {
@@ -243,11 +244,13 @@ export interface PiImageRequestBudget {
   maxPixels: number
   /** Encoded-byte target for one request image. */
   maxBytes: number
+  /** Image formats the provider accepts; images in other formats are re-encoded into one of them. */
+  mediaTypes: readonly ImageMediaType[]
 }
 
 /** Deterministic request target for one source under the route budgets. */
 function requestImageTarget(ref: ImageAttachmentRef, budget: PiImageRequestBudget): ImageRequestTarget {
-  return { ...requestImageDimensions(ref.width, ref.height, budget.maxPixels), maxBytes: budget.maxBytes }
+  return { ...requestImageDimensions(ref.width, ref.height, budget.maxPixels), maxBytes: budget.maxBytes, mediaTypes: budget.mediaTypes }
 }
 
 /**
@@ -300,6 +303,7 @@ async function toPiContextWithImages(
   const requestImagePolicy = images.requestImagePolicy ?? {
     maxPixels: DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET,
     maxBytes: DEFAULT_REQUEST_IMAGE_MAX_BYTES,
+    mediaTypes: DEFAULT_REQUEST_IMAGE_MEDIA_TYPES,
   }
   assertSupportedHistory(options.messages)
   const split = splitSystemPrompt(options)

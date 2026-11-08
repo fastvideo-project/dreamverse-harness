@@ -375,6 +375,7 @@ export class PiAiAdapter extends LlmAdapter {
           requestImagePolicy: {
             maxPixels: profile.requestImagePixelBudget,
             maxBytes: profile.requestImageMaxBytes,
+            mediaTypes: profile.requestImageMediaTypes,
           },
         }, onReplayDegrade)
       const events = snapshot.models.streamSimple(model, context, {

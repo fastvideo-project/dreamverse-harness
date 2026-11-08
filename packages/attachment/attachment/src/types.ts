@@ -140,6 +140,11 @@ export interface ImageRequestTarget {
   height: number
   /** Encoded-byte target before base64 expansion or Files API upload; the smallest quality-ladder output is kept when no quality fits. */
   maxBytes: number
+  /**
+   * Image formats the model route accepts; it names at least one of JPEG, PNG and WebP. The stored image is sent as is
+   * only when its format is listed; otherwise it is re-encoded into a listed format.
+   */
+  mediaTypes: readonly ImageMediaType[]
 }
 
 /** Cached request version derived from one provider-independent normalized attachment. */

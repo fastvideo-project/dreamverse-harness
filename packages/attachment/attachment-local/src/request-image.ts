@@ -14,16 +14,19 @@ import type {
 } from '@deepseek-ai/dsh-attachment'
 import {
   IMAGE_ENCODING_QUALITIES,
+  PNG_COMPRESSION_LEVEL,
   WEBP_ENCODING_EFFORT,
   encodeFirstWithinLimit,
-  encodingLadder,
   isExhaustedEncoding,
+  requestEncodingLadder,
+  requestMediaType,
 } from './encoding.ts'
+import type { EncodedImage } from './encoding.ts'
 import { detectImage, encodedAlphaIsCompatible, probeImage } from './image.ts'
 import { requireSharp } from './sharp.ts'
 
 /** Transform version included in every cache and upload-index identity. */
-export const REQUEST_IMAGE_TRANSFORM_VERSION = 'request-image-v6'
+export const REQUEST_IMAGE_TRANSFORM_VERSION = 'request-image-v7'
 
 interface EncodedRequestImage {
   data: Uint8Array
@@ -51,7 +54,12 @@ function validateTarget(target: ImageRequestTarget): void {
   checkedInteger(target.width, 'Image request width')
   checkedInteger(target.height, 'Image request height')
   checkedInteger(target.maxBytes, 'Image request maxBytes')
+  if (!ENCODABLE_MEDIA_TYPES.some(mediaType => target.mediaTypes.includes(mediaType))) {
+    throw new AttachmentError('Image request mediaTypes must name image/jpeg, image/png or image/webp.', 'INVALID_ATTACHMENT_REF')
+  }
 }
+
+const ENCODABLE_MEDIA_TYPES: readonly ImageMediaType[] = ['image/jpeg', 'image/png', 'image/webp']
 
 function descriptor(attachment: ImageAttachmentRef, target: ImageRequestTarget): string {
   return JSON.stringify({
@@ -60,11 +68,13 @@ function descriptor(attachment: ImageAttachmentRef, target: ImageRequestTarget):
     targetWidth: target.width,
     targetHeight: target.height,
     encodedByteBudget: target.maxBytes,
+    acceptedMediaTypes: [...target.mediaTypes].sort(),
     encoding: {
       webpQualities: IMAGE_ENCODING_QUALITIES,
       webpEffort: WEBP_ENCODING_EFFORT,
       jpegQualities: IMAGE_ENCODING_QUALITIES,
-      order: ['alpha:webp', 'opaque:jpeg'],
+      pngCompressionLevel: PNG_COMPRESSION_LEVEL,
+      order: ['alpha:webp,png,jpeg-on-white', 'opaque:jpeg,webp,png'],
       colourspace: 'srgb',
     },
   })
@@ -95,14 +105,37 @@ function sourcePipeline(attachment: StoredImageAttachment): Sharp {
   return sharp(attachment.data, { failOn: 'error', limitInputPixels: false }).toColourspace('srgb')
 }
 
+/** The stored bytes go unchanged when they fit the target and the route accepts their format. */
+function sendsStoredBytes(attachment: StoredImageAttachment, target: ImageRequestTarget): boolean {
+  return target.width >= attachment.ref.width
+    && target.height >= attachment.ref.height
+    && attachment.data.byteLength <= target.maxBytes
+    && target.mediaTypes.includes(attachment.ref.mediaType)
+}
+
+/** The bytes and alpha fact a request version gets: the stored bytes, or an encoding in the chosen format. */
+interface RequestPlan {
+  /** Format to encode into; undefined when the stored bytes go unchanged. */
+  mediaType: EncodedImage['mediaType'] | undefined
+  /** Whether the request version keeps an alpha channel. */
+  hasAlpha: boolean
+}
+
+function requestPlan(attachment: StoredImageAttachment, target: ImageRequestTarget, sourceHasAlpha: boolean): RequestPlan {
+  if (sendsStoredBytes(attachment, target)) return { mediaType: undefined, hasAlpha: sourceHasAlpha }
+  const mediaType = requestMediaType(sourceHasAlpha, target.mediaTypes)
+  /* v8 ignore next -- validateTarget requires JPEG, PNG or WebP among the accepted formats. */
+  if (mediaType === undefined) throw new AttachmentError('No accepted image format can encode the request.', 'INVALID_ATTACHMENT_REF')
+  return { mediaType, hasAlpha: sourceHasAlpha && mediaType !== 'image/jpeg' }
+}
+
 async function createRequestImage(
   attachment: StoredImageAttachment,
   target: ImageRequestTarget,
-  hasAlpha: boolean,
+  sourceHasAlpha: boolean,
+  plan: RequestPlan,
 ): Promise<EncodedRequestImage> {
-  if (target.width >= attachment.ref.width
-    && target.height >= attachment.ref.height
-    && attachment.data.byteLength <= target.maxBytes) {
+  if (plan.mediaType === undefined) {
     return {
       data: attachment.data,
       mediaType: attachment.ref.mediaType,
@@ -111,7 +144,7 @@ async function createRequestImage(
     }
   }
   const encodedVersion = await encodeFirstWithinLimit(
-    encodingLadder(pipeline(attachment, target), hasAlpha),
+    requestEncodingLadder(pipeline(attachment, target), sourceHasAlpha, plan.mediaType),
     target.maxBytes,
   )
   return isExhaustedEncoding(encodedVersion) ? encodedVersion.smallest : encodedVersion
@@ -188,11 +221,12 @@ export async function readRequestImageFile(
   const variantId = requestImageVariantId(attachment.ref, target)
   const hash = String(variantId).slice('sha256:'.length)
   const path = cachePath(root, hash)
-  const cached = await readCached(path, target, source.hasAlpha, signal)
-  const created = cached ?? await createRequestImage(attachment, target, source.hasAlpha)
+  const plan = requestPlan(attachment, target, source.hasAlpha)
+  const cached = await readCached(path, target, plan.hasAlpha, signal)
+  const created = cached ?? await createRequestImage(attachment, target, source.hasAlpha, plan)
   const version = cached ?? (created.data === attachment.data
     ? { ...created, hasAlpha: source.hasAlpha }
-    : await verifyRequestImage(created, source.hasAlpha))
+    : await verifyRequestImage(created, plan.hasAlpha))
   signal?.throwIfAborted()
   if (cached === undefined && version.data !== attachment.data) await writeCached(path, version.data)
   return {
