@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { WireOperation } from '@dv/ui-kit/types.ts'
 import { actionLabel, matchingRow } from '../../ui-history/src/client/rows.ts'
-import { fixtureState, OPERATIONS, record } from '../../ui-kit/tests/fixture.client.tsx'
+import { canvasNode, fixtureState, OPERATIONS, record } from '../../ui-kit/tests/fixture.client.tsx'
 import type { NodeType } from '../src/client/contract/index.ts'
 import { createDvCanvas } from '../src/client/dv-canvas.ts'
 import { positionRow } from '../src/client/history-row.ts'
@@ -40,6 +40,10 @@ describe('the canvas.node_position History row', () => {
     expect(actionLabel(move, { operations: OPERATION_LABELS, rows, records: new Map(), state: null })).toEqual(['移动节点', 'Moved “g2”'])
     const gone = record({ id: 'm3', operation: 'canvas.node_position', params: { node: 'zz', x: 0, y: 0 } })
     expect(actionLabel(gone, { operations: OPERATION_LABELS, rows, records: new Map(), state: fixtureState() })).toEqual(['移动节点', 'Moved “zz”'])
+    const state = fixtureState()
+    state.components.canvas.nodes['n9'] = canvasNode('shot', ['missing'])
+    const lost = record({ id: 'm4', operation: 'canvas.node_position', params: { node: 'n9', x: 0, y: 0 } })
+    expect(actionLabel(lost, { operations: OPERATION_LABELS, rows, records: new Map(), state })).toEqual(['移动节点', 'Moved “n9”'])
   })
 
   it('matches the operation and moves the center to the canvas node that the record names', () => {
