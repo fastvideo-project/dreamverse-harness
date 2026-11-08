@@ -45,9 +45,9 @@ kind: "package-reference"
 | 路由 | 准入 | 作用 |
 | --- | --- | --- |
 | `/dv/blender/ws`（Web 服务器的 WebSocket 升级） | `Authorization: Bearer <配对码>` 且没有 `Origin` 请求头；配对码错误回 HTTP 401，带 `Origin` 的请求回 403 | 到 Blender 的连接；新的连接替换旧的连接，旧连接以代码 4000 关闭 |
+| `/dv/blender/view`（Web 服务器的 WebSocket 升级） | Connection 的 Host、Origin 和浏览器认证检查 | 视口：立即以及每次变化时发送文本消息 `{type: 'status', linked, state}`，每一帧先发送文本消息 `{type: 'frame', seq, width, height, mime}`，再发送一条包含 JPEG 或 PNG 的二进制消息。WebSocket 不占用浏览器到 harness 为数不多的 HTTP/1.1 连接，而长时间打开的 HTTP 流会占用一个 |
 | `GET /api/dv/blender/status` | Connection 的浏览器认证 | `{linked, state, token, link_path, viewers}`；`state` 是插件的 `{blender_version, addon_version, file, allow_code}` |
 | `POST /api/dv/blender/token` | 同上 | 更换配对码，并以代码 4001 关闭连接；返回新的状态 |
-| `GET /api/dv/blender/view` | 同上 | 事件流：`status` 事件 `{linked, state}`，以及带 base64 JPEG 或 PNG 的 `frame` 事件 `{seq, width, height, mime, data}` |
 | `GET /api/dv/blender/addon.zip` | 同上 | Blender 扩展格式的插件 zip，每次下载都从 `addon/` 读取 |
 
 | 操作 | 工具 | 参数 | 输出和报告 |
@@ -62,19 +62,19 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-连接上传送 JSON 文本消息和二进制消息。harness 发送 `request`（`id`、`op`、`params`）、`stream`（`on`）和 `frame_ack`（`seq`）。插件发送 `hello` 和 `state`（自身状态）、`response`（`id`、`ok`、`result` 或 `error`），以及二进制消息：4 字节大端的头部长度之后是 JSON 头部和载荷；`frame` 头部携带一帧视口画面，`chunk` 头部携带对应 `id` 请求返回的文件的一部分，在该请求的 `response` 之前发送。`BlenderLink` 保存唯一的套接字、插件的状态、带时限的等待中请求，以及观看者。它只在有观看者时让插件推流，转发每一帧后确认该帧，流队列已满的观看者会跳过帧。挂载了 DSH 凭据存储时，配对码保存在其中的 `dv-blender/pairing-token` 下，所以重启后不变。
+连接上传送 JSON 文本消息和二进制消息。harness 发送 `request`（`id`、`op`、`params`）、`stream`（`on`）和 `frame_ack`（`seq`）。插件发送 `hello` 和 `state`（自身状态）、`response`（`id`、`ok`、`result` 或 `error`），以及二进制消息：4 字节大端的头部长度之后是 JSON 头部和载荷；`frame` 头部携带一帧视口画面，`chunk` 头部携带对应 `id` 请求返回的文件的一部分，在该请求的 `response` 之前发送。`BlenderLink` 保存唯一的套接字、插件的状态、带时限的等待中请求，以及观看者。它只在有观看者时让插件推流，转发每一帧后确认该帧，待发送数据超过 1 MiB 的观看者套接字会跳过帧。挂载了 DSH 凭据存储时，配对码保存在其中的 `dv-blender/pairing-token` 下，所以重启后不变。
 
 插件的所有 `bpy` 调用都在 Blender 主线程上进行：一个定时器取出连接收到的消息。最大的 3D 视图上的 `POST_PIXEL` 绘制回调在 Blender 绘制时复制该区域的像素，所以画面跟随重绘，不需要再渲染一次；随后一个定时器通过一张临时图像把它编码成 JPEG 并发送，每秒最多 `max fps` 帧，同时最多有一帧未被确认。查看相机视图时，同一个回调把场景相机的视图画进离屏缓冲区。
 
 | 文件 | 内容 |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `dvBlender`：配置、连接路由及其准入，以及路由、工具和操作的注册 |
+| [`src/index.ts`](src/index.ts) | `dvBlender`：配置、连接路由和视口路由及其准入，以及 Fetch 路由、工具和操作的注册 |
 | [`src/link.ts`](src/link.ts) | `BlenderLink`：套接字、请求及其文件、观看者和帧确认 |
 | [`src/protocol.ts`](src/protocol.ts) | 连接消息及其解析 |
 | [`src/token.ts`](src/token.ts) | 配对码 |
 | [`src/tools.ts`](src/tools.ts) | `dv_blender_scene`、`dv_blender_run` 和 `dv_blender_look` |
 | [`src/render.ts`](src/render.ts) | `blender.render` 和 `blender.animation_render` |
-| [`src/routes.ts`](src/routes.ts) | 浏览器路由和插件 zip |
+| [`src/routes.ts`](src/routes.ts) | 浏览器的 Fetch 路由和插件 zip |
 | [`addon/`](addon/__init__.py) | Blender 插件：面板和偏好设置（`__init__.py`）、WebSocket 客户端（`link.py`）、请求处理（`commands.py`）、视口流（`viewport.py`）和不依赖 `bpy` 的辅助函数（`protocol.py`） |
 | [`tests/blender-bridge.spec.ts`](tests/blender-bridge.spec.ts) | 一个带 Web 服务器、在连接上使用假 Blender 的 Loader 组合：准入、替换、配对码、zip、视口流、工具、渲染以及卸载时的移除 |
 

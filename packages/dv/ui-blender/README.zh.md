@@ -38,12 +38,12 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-标签页正文挂载期间读取一次 `GET /api/dv/blender/status`，并用 `EventSource` 打开 `GET /api/dv/blender/view`；`status` 事件在两种视图之间切换，每个 `frame` 事件用其 data URL 替换画面。正文不依赖打开的项目，因为一个 Blender 服务整个 harness。版本来自 [`@dv/ui-generation`](../ui-generation/README.zh.md) 的一个 `defineGenerationUi` 声明，节点类型为 `blender`。
+标签页正文挂载期间读取一次 `GET /api/dv/blender/status`，并监听视口 WebSocket `/dv/blender/view`。页面上所有挂载的标签页共用一个套接字，断开两秒后重新打开；长时间打开的 HTTP 流会占用浏览器到 harness 为数不多的 HTTP/1.1 连接，使页面的其他请求停滞。`status` 消息在两种视图之间切换，每一帧用一个 object URL 替换画面。插件下载通过 `fetch` 进行，下载失败时显示其 HTTP 状态。正文不依赖打开的项目，因为一个 Blender 服务整个 harness。版本来自 [`@dv/ui-generation`](../ui-generation/README.zh.md) 的一个 `defineGenerationUi` 声明，节点类型为 `blender`。
 
 | 文件 | 内容 |
 | --- | --- |
 | [`src/client/index.ts`](src/client/index.ts) | 标签页类型、标签页正文注册和版本 |
-| [`src/client/BlenderPanel.tsx`](src/client/BlenderPanel.tsx) | 面板，以及它通过 `fetch` 和 `EventSource` 访问路由的方式 |
+| [`src/client/BlenderPanel.tsx`](src/client/BlenderPanel.tsx) | 面板、它的 `fetch` 调用，以及页面共用的视口套接字 |
 | [`src/index.ts`](src/index.ts) | 不做任何事的宿主 Loader 入口 |
 | [`tests/plugin.client.spec.tsx`](tests/plugin.client.spec.tsx) | 在真实插槽运行时下的注册及其移除，以及面板在假宿主端上的两种视图 |
 

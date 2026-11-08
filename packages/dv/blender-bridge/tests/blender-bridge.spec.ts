@@ -22,7 +22,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import WebSocket from 'ws'
 import { chatProject, provideChatServices } from '../../project/tests/workspaces.ts'
 import DvBlender, {
-  ADDON_ROUTE, LINK_PATH, NOT_LINKED, STATUS_ROUTE, TOKEN_ROUTE, VIEW_ROUTE, bridgeRoutes, encodeBinary, type BlenderStatus,
+  ADDON_ROUTE, LINK_PATH, NOT_LINKED, STATUS_ROUTE, TOKEN_ROUTE, VIEW_PATH, VIEWER_BACKLOG_BYTES, bridgeRoutes, encodeBinary, relayView,
+  type BlenderStatus,
 } from '../src/index.ts'
 
 /** The plugin classes the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
@@ -178,7 +179,7 @@ async function start(config: string[] = []): Promise<Fixture> {
       })
     },
     route(path, method = 'GET') {
-      const routes = bridgeRoutes(ctx.dvBlender.link, ctx.dvBlender.token, { addonDir: join(import.meta.dirname, '../addon'), pingMs: 60_000 })
+      const routes = bridgeRoutes(ctx.dvBlender.link, ctx.dvBlender.token, { addonDir: join(import.meta.dirname, '../addon') })
       const found = routes.find(candidate => candidate.path === path && candidate.methods.includes(method))
       if (found === undefined) throw new Error(`no route ${method} ${path}`)
       return request => found.fetch(request ?? new Request(`http://harness${path}`, { method }))
@@ -195,28 +196,20 @@ function failure(result: ToolExecutionResult): string {
   return result.isError ? result.error.message : ''
 }
 
-/** Read the events of a view stream until `count` have arrived. */
-async function readEvents(response: Response, count: number): Promise<Array<{ event: string; data: Record<string, unknown> }>> {
-  const reader = (response.body as ReadableStream<Uint8Array>).getReader()
-  const decoder = new TextDecoder()
-  const events: Array<{ event: string; data: Record<string, unknown> }> = []
-  let text = ''
-  while (events.length < count) {
-    const { value: chunk, done } = await reader.read()
-    if (done) break
-    text += decoder.decode(chunk)
-    let end = text.indexOf('\n\n')
-    while (end !== -1) {
-      const block = text.slice(0, end)
-      text = text.slice(end + 2)
-      const event = /^event: (.+)$/mu.exec(block)?.[1]
-      const data = /^data: (.+)$/mu.exec(block)?.[1]
-      if (event !== undefined && data !== undefined) events.push({ event, data: JSON.parse(data) as Record<string, unknown> })
-      end = text.indexOf('\n\n')
-    }
-  }
-  reader.releaseLock()
-  return events
+/** A browser viewer on the viewport route: its messages in arrival order, a binary message as `bytes:<base64>`. */
+async function openViewer(port: number): Promise<{ socket: WebSocket; messages: unknown[] }> {
+  const socket = new WebSocket(`ws://127.0.0.1:${String(port)}${VIEW_PATH}`)
+  cleanups.push(() => { socket.terminate() })
+  const messages: unknown[] = []
+  socket.on('message', (data, isBinary) => {
+    const bytes = Buffer.from(data as Buffer)
+    messages.push(isBinary ? `bytes:${bytes.toString('base64')}` : JSON.parse(bytes.toString()) as unknown)
+  })
+  await new Promise<void>((resolve, reject) => {
+    socket.once('open', () => { resolve() })
+    socket.once('error', reject)
+  })
+  return { socket, messages }
 }
 
 describe('dvBlender link', () => {
@@ -269,38 +262,45 @@ describe('dvBlender viewport stream', () => {
     const fixture = await start()
     const blender = await fixture.connect()
     expect(blender.streams).toEqual([false])
-    const controller = new AbortController()
-    const response = await fixture.route(VIEW_ROUTE)(new Request(`http://harness${VIEW_ROUTE}`, { signal: controller.signal }))
-    expect(response.headers.get('content-type')).toBe('text/event-stream')
+    const viewer = await openViewer(fixture.port)
     await until(() => blender.streams.length === 2, 'the stream request')
     expect(blender.streams).toEqual([false, true])
     blender.frame(1)
     await until(() => blender.acks.includes(1), 'the frame ack')
     blender.socket.close(1000, 'bye')
-    const events = await readEvents(response, 3)
-    expect(events).toEqual([
-      { event: 'status', data: { linked: true, state: HELLO } },
-      { event: 'frame', data: { seq: 1, width: 4, height: 3, mime: 'image/jpeg', data: Buffer.from([0xff, 0xd8, 1]).toString('base64') } },
-      { event: 'status', data: { linked: false, state: null } },
+    await until(() => viewer.messages.length === 4, 'four viewer messages')
+    expect(viewer.messages).toEqual([
+      { type: 'status', linked: true, state: HELLO },
+      { type: 'frame', seq: 1, width: 4, height: 3, mime: 'image/jpeg' },
+      `bytes:${Buffer.from([0xff, 0xd8, 1]).toString('base64')}`,
+      { type: 'status', linked: false, state: null },
     ])
-    controller.abort()
+    viewer.socket.close()
     await until(() => fixture.ctx.dvBlender.link.viewerCount === 0, 'the viewer to leave')
   })
 
-  it('skips frames for a viewer that has not read the earlier ones, and stops the stream when the last viewer leaves', async () => {
+  it('stops the stream when the last viewer leaves', async () => {
     const fixture = await start()
     const blender = await fixture.connect()
-    const controller = new AbortController()
-    const response = await fixture.route(VIEW_ROUTE)(new Request(`http://harness${VIEW_ROUTE}`, { signal: controller.signal }))
-    await until(() => blender.streams.at(-1) === true, 'the stream request')
-    for (let seq = 1; seq <= 6; seq += 1) blender.frame(seq)
-    await until(() => blender.acks.length === 6, 'six acks')
-    // The status event and the first frame fill the viewer's queue of two; later frames wait for room or are skipped.
-    const events = await readEvents(response, 2)
-    expect(events.map(event => event.event)).toEqual(['status', 'frame'])
-    expect(events[1]?.data['seq']).toBe(1)
-    controller.abort()
+    const first = await openViewer(fixture.port)
+    const second = await openViewer(fixture.port)
+    await until(() => fixture.ctx.dvBlender.link.viewerCount === 2, 'two viewers')
+    first.socket.close()
+    await until(() => fixture.ctx.dvBlender.link.viewerCount === 1, 'one viewer')
+    expect(blender.streams).toEqual([false, true])
+    second.socket.close()
     await until(() => blender.streams.at(-1) === false, 'the stream to stop')
+  })
+
+  it('skips a frame for a viewer with a large backlog, and always sends a status', () => {
+    const sent: unknown[] = []
+    const viewer = { bufferedAmount: VIEWER_BACKLOG_BYTES + 1, send: (data: unknown) => { sent.push(data) } }
+    const frame = { type: 'frame' as const, seq: 2, width: 4, height: 3, mime: 'image/jpeg' as const, data: new Uint8Array([1]) }
+    expect(relayView(viewer as never, frame)).toBe(false)
+    expect(relayView(viewer as never, { type: 'status', linked: true, state: HELLO })).toBe(true)
+    viewer.bufferedAmount = 0
+    expect(relayView(viewer as never, frame)).toBe(true)
+    expect(sent).toEqual([JSON.stringify({ type: 'status', linked: true, state: HELLO }), JSON.stringify({ type: 'frame', seq: 2, width: 4, height: 3, mime: 'image/jpeg' }), frame.data])
   })
 })
 

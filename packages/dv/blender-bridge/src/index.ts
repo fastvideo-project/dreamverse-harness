@@ -9,7 +9,12 @@
  * - The agent tools `dv_blender_scene`, `dv_blender_run` and `dv_blender_look` (see `tools.ts`).
  * - The operations `blender.render` and `blender.animation_render` (see `render.ts`), registered while `dvProject` is
  *   mounted, which put renders of the scene camera into the project.
- * - The browser's Fetch routes (see `routes.ts`): status, pairing token, the viewport stream and the add-on download.
+ * - The viewport route `/dv/blender/view`, a WebSocket upgrade route admitted by the Connection's browser checks: a
+ *   text message `{type: 'status', linked, state}` at once and at every change, and per frame a text message
+ *   `{type: 'frame', seq, width, height, mime}` followed by one binary message with the JPEG or PNG. A viewer with more
+ *   than {@link VIEWER_BACKLOG_BYTES} unsent skips frames. A WebSocket does not hold one of the browser's few HTTP/1.1
+ *   connections to the harness, which a long-lived HTTP stream would.
+ * - The browser's Fetch routes (see `routes.ts`): status, pairing token and the add-on download.
  *
  * @module @fastvideo/dreamverse-blender-bridge
  */
@@ -22,16 +27,16 @@ import type {} from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@dv/project'
-import { WebSocketServer } from 'ws'
-import { BlenderLink } from './link.ts'
+import WebSocket, { WebSocketServer } from 'ws'
+import { BlenderLink, type ViewEvent } from './link.ts'
 import { animationOperation, stillOperation } from './render.ts'
-import { bridgeRoutes, LINK_PATH } from './routes.ts'
+import { bridgeRoutes, LINK_PATH, VIEW_PATH } from './routes.ts'
 import { PairingToken } from './token.ts'
 import { registerTools } from './tools.ts'
 
 export { BlenderLink, NOT_LINKED, type BlenderReply, type ViewEvent } from './link.ts'
 export { encodeBinary, parseBlenderBinary, parseBlenderText, type BlenderOp, type BlenderState, type FrameMime } from './protocol.ts'
-export { ADDON_ROUTE, LINK_PATH, STATUS_ROUTE, TOKEN_ROUTE, VIEW_ROUTE, bridgeRoutes, zipAddon, type BlenderStatus } from './routes.ts'
+export { ADDON_ROUTE, LINK_PATH, STATUS_ROUTE, TOKEN_ROUTE, VIEW_PATH, bridgeRoutes, zipAddon, type BlenderStatus } from './routes.ts'
 export { LOOK_TOOL, RUN_TOOL, SCENE_TOOL, lookContent, type LookValue } from './tools.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -61,6 +66,27 @@ export const Config: z<Config> = z.object({
   pingMs: z.natural().min(1).default(20_000),
 })
 
+/** A viewer socket with more bytes than this waiting to be sent skips frames until it catches up. */
+export const VIEWER_BACKLOG_BYTES = 1_048_576
+
+/**
+ * Send one viewport event to a viewer socket: a status always, a frame (its text message, then its bytes) only while
+ * fewer than {@link VIEWER_BACKLOG_BYTES} wait to be sent.
+ * @param viewer - the socket's unsent byte count and its send.
+ * @param event - the event.
+ * @returns whether the event was sent.
+ */
+export function relayView(viewer: Pick<WebSocket, 'bufferedAmount' | 'send'>, event: ViewEvent): boolean {
+  if (event.type === 'status') {
+    viewer.send(JSON.stringify({ type: 'status', linked: event.linked, state: event.state }))
+    return true
+  }
+  if (viewer.bufferedAmount > VIEWER_BACKLOG_BYTES) return false
+  viewer.send(JSON.stringify({ type: 'frame', seq: event.seq, width: event.width, height: event.height, mime: event.mime }))
+  viewer.send(event.data)
+  return true
+}
+
 /** The add-on folder that ships beside `src/` and `lib/`. */
 const ADDON_DIR = fileURLToPath(new URL('../addon', import.meta.url))
 
@@ -83,13 +109,15 @@ export default class DvBlender extends Service {
   /** The pairing token a Blender presents. */
   readonly token: PairingToken
   private readonly sockets = new WebSocketServer({ noServer: true })
+  private readonly viewers = new Set<WebSocket>()
 
-  constructor(ctx: Context, config: Config) {
+  constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'dvBlender')
     this.link = new BlenderLink({ maxFileBytes: config.maxFileBytes, pingMs: config.pingMs }, (message) => { ctx.logger('dvBlender').warn(message) })
     this.token = new PairingToken(() => ctx.get('credentials'))
     ctx.effect(() => () => {
       this.link.close(1001, 'The harness is shutting down.')
+      for (const viewer of this.viewers) viewer.close(1001)
       this.sockets.close()
     }, 'dvBlender link')
     ctx.inject(['webServer'], (web) => {
@@ -97,9 +125,13 @@ export default class DvBlender extends Service {
         path: LINK_PATH,
         handler: (request, socket, head) => this.admit(request, socket, head),
       }), `dvBlender ${LINK_PATH}`)
+      web.effect(() => web.webServer.registerUpgrade({
+        path: VIEW_PATH,
+        handler: (request, socket, head) => { this.watch(web, request, socket, head) },
+      }), `dvBlender ${VIEW_PATH}`)
     })
     ctx.inject(['connection'], (connected) => {
-      for (const route of bridgeRoutes(this.link, this.token, { addonDir: ADDON_DIR, pingMs: config.pingMs })) {
+      for (const route of bridgeRoutes(this.link, this.token, { addonDir: ADDON_DIR })) {
         connected.effect(() => {
           const dispose = connected.connection.fetch.register(route)
           return () => { void dispose() }
@@ -131,5 +163,32 @@ export default class DvBlender extends Service {
       return
     }
     this.sockets.handleUpgrade(request, socket, head, (websocket) => { this.link.attach(websocket) })
+  }
+
+  /**
+   * Admit one viewer when the Connection accepts the request (or no Connection is mounted), then send it the viewport.
+   * @param web - the context that holds the web server and the optional Connection.
+   * @param request - the upgrade request.
+   * @param socket - its socket.
+   * @param head - the bytes after the request head.
+   */
+  private watch(web: Context, request: IncomingMessage, socket: Duplex, head: Buffer): void {
+    const rejection = web.get('connection')?.requestRejection({ headers: request.headers })
+    if (rejection !== undefined) {
+      refuse(socket, rejection, rejection === 401 ? 'Unauthorized' : 'Forbidden')
+      return
+    }
+    this.sockets.handleUpgrade(request, socket, head, (viewer) => {
+      this.viewers.add(viewer)
+      const unwatch = this.link.watch((event) => { relayView(viewer, event) })
+      const pings = setInterval(() => { viewer.ping() }, this.config.pingMs)
+      pings.unref()
+      viewer.on('close', () => {
+        clearInterval(pings)
+        unwatch()
+        this.viewers.delete(viewer)
+      })
+      viewer.on('error', (error) => { this.ctx.logger('dvBlender').warn('blender viewer error: %s', error.message) })
+    })
   }
 }

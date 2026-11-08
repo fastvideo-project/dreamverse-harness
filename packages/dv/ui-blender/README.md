@@ -38,12 +38,12 @@ The plugin has no configuration. The guide of the right Sidebar offers the tab a
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The tab body reads `GET /api/dv/blender/status` once and opens `GET /api/dv/blender/view` with `EventSource` while it is mounted; `status` events switch between the two views, and each `frame` event replaces the picture with its data URL. The body does not depend on the open project, because one Blender serves the harness. The takes come from one `defineGenerationUi` declaration of [`@dv/ui-generation`](../ui-generation/README.md) with the node type `blender`.
+The tab body reads `GET /api/dv/blender/status` once and watches the viewport WebSocket `/dv/blender/view` while it is mounted. Every mounted tab of the page shares one socket, which reopens two seconds after it drops; a long-lived HTTP stream would hold one of the browser's few HTTP/1.1 connections to the harness and stall the page's other requests. `status` messages switch between the two views, and each frame replaces the picture with an object URL. The add-on download goes through `fetch`, and a failed download shows its HTTP status. The body does not depend on the open project, because one Blender serves the harness. The takes come from one `defineGenerationUi` declaration of [`@dv/ui-generation`](../ui-generation/README.md) with the node type `blender`.
 
 | File | Content |
 | --- | --- |
 | [`src/client/index.ts`](src/client/index.ts) | The tab type, the tab body registration and the takes |
-| [`src/client/BlenderPanel.tsx`](src/client/BlenderPanel.tsx) | The panel and its link to the routes over `fetch` and `EventSource` |
+| [`src/client/BlenderPanel.tsx`](src/client/BlenderPanel.tsx) | The panel, its `fetch` calls and the page's shared viewport socket |
 | [`src/index.ts`](src/index.ts) | The inert host Loader entry |
 | [`tests/plugin.client.spec.tsx`](tests/plugin.client.spec.tsx) | The registrations under the real slot runtime and their removal, and the panel's two views over a fake host half |
 

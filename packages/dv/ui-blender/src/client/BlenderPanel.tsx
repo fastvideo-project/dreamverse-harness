@@ -1,6 +1,8 @@
 /**
  * The Blender panel: how to connect the user's Blender while none is connected, and its live viewport while one is.
- * The viewport is the frame stream of `GET /api/dv/blender/view`; the connection string is the page's own origin, the
+ * The viewport arrives over the WebSocket route `/dv/blender/view`, one socket per page however many Blender tabs are
+ * mounted, because a long-lived HTTP stream would hold one of the browser's few HTTP/1.1 connections to the harness and
+ * stall the page's other requests. The connection string is the page's own origin, the
  * address Blender must dial (through the SSH tunnel it is the tunnel's local address), `#`, and the pairing token.
  *
  * @module @fastvideo/dreamverse-ui-blender/BlenderPanel
@@ -47,7 +49,7 @@ export interface BlenderSource {
 
 const STATUS_ROUTE = '/api/dv/blender/status'
 const TOKEN_ROUTE = '/api/dv/blender/token'
-const VIEW_ROUTE = '/api/dv/blender/view'
+const VIEW_PATH = '/dv/blender/view'
 const ADDON_ROUTE = '/api/dv/blender/addon.zip'
 
 async function json(response: Response): Promise<BlenderStatus> {
@@ -55,22 +57,88 @@ async function json(response: Response): Promise<BlenderStatus> {
   return await response.json() as BlenderStatus
 }
 
-/** The host half over same-origin `fetch` and `EventSource`, with the session cookie. */
+type ViewListener = Parameters<BlenderSource['watch']>[0]
+
+/** A text message of the viewport socket. */
+interface ViewMessage {
+  type: string
+  linked?: boolean
+  state?: BlenderState | null
+  width?: number
+  height?: number
+  mime?: string
+}
+
+/**
+ * The page's one viewport socket, shared by every mounted panel: opened for the first listener, reopened two seconds
+ * after it drops while a listener remains, and closed after the last one leaves. A frame message names the size and
+ * format of the binary message that follows it; each frame becomes an object URL, revoked when the next one replaces it.
+ */
+class SharedViewer {
+  private readonly listeners = new Set<ViewListener>()
+  private socket: WebSocket | null = null
+  private retry: ReturnType<typeof setTimeout> | null = null
+  private pending: { width: number; height: number; mime: string } | null = null
+  private url: string | null = null
+
+  watch(listener: ViewListener): () => void {
+    this.listeners.add(listener)
+    if (this.socket === null && this.retry === null) this.open()
+    return () => {
+      this.listeners.delete(listener)
+      if (this.listeners.size > 0) return
+      if (this.retry !== null) clearTimeout(this.retry)
+      this.retry = null
+      const socket = this.socket
+      this.socket = null
+      socket?.close()
+    }
+  }
+
+  private open(): void {
+    const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    const socket = new WebSocket(`${scheme}://${window.location.host}${VIEW_PATH}`)
+    socket.binaryType = 'blob'
+    this.socket = socket
+    socket.addEventListener('message', (event: MessageEvent<string | Blob>) => {
+      if (typeof event.data !== 'string') {
+        const meta = this.pending
+        this.pending = null
+        if (meta === null) return
+        if (this.url !== null) URL.revokeObjectURL(this.url)
+        this.url = URL.createObjectURL(new Blob([event.data], { type: meta.mime }))
+        for (const listener of this.listeners) listener.frame({ src: this.url, width: meta.width, height: meta.height })
+        return
+      }
+      const message = JSON.parse(event.data) as ViewMessage
+      if (message.type === 'status') {
+        for (const listener of this.listeners) listener.status(message.linked === true, message.state ?? null)
+      } else if (message.type === 'frame') {
+        this.pending = { width: message.width ?? 0, height: message.height ?? 0, mime: message.mime ?? 'image/jpeg' }
+      }
+    })
+    socket.addEventListener('close', () => {
+      if (this.socket !== socket) return
+      this.socket = null
+      this.pending = null
+      for (const listener of this.listeners) listener.status(false, null)
+      if (this.listeners.size > 0) {
+        this.retry = setTimeout(() => {
+          this.retry = null
+          if (this.listeners.size > 0) this.open()
+        }, 2000)
+      }
+    })
+  }
+}
+
+const viewer = new SharedViewer()
+
+/** The host half over same-origin `fetch` with the session cookie, and the page's shared viewport socket. */
 export const httpBlenderSource: BlenderSource = {
   status: async () => json(await fetch(STATUS_ROUTE)),
   regenerate: async () => json(await fetch(TOKEN_ROUTE, { method: 'POST' })),
-  watch: (listener) => {
-    const source = new EventSource(VIEW_ROUTE)
-    source.addEventListener('status', (event) => {
-      const data = JSON.parse((event as MessageEvent<string>).data) as { linked: boolean; state: BlenderState | null }
-      listener.status(data.linked, data.state)
-    })
-    source.addEventListener('frame', (event) => {
-      const data = JSON.parse((event as MessageEvent<string>).data) as { width: number; height: number; mime: string; data: string }
-      listener.frame({ src: `data:${data.mime};base64,${data.data}`, width: data.width, height: data.height })
-    })
-    return () => { source.close() }
-  },
+  watch: listener => viewer.watch(listener),
   addon: async () => {
     const response = await fetch(ADDON_ROUTE)
     if (!response.ok) throw new Error(`HTTP ${String(response.status)}`)

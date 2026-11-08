@@ -45,9 +45,9 @@ The user connects Blender in three steps that the Blender tab shows: download th
 | Route | Admission | What it does |
 | --- | --- | --- |
 | `/dv/blender/ws` (WebSocket upgrade of the web server) | `Authorization: Bearer <pairing token>` and no `Origin` header; HTTP 401 for a wrong token, 403 for a request with `Origin` | The link to Blender; a newer link replaces the older one, which is closed with code 4000 |
+| `/dv/blender/view` (WebSocket upgrade of the web server) | The Connection's Host, Origin and browser authentication checks | The viewport: a text message `{type: 'status', linked, state}` at once and at each change, and per frame a text message `{type: 'frame', seq, width, height, mime}` followed by one binary message with the JPEG or PNG. A WebSocket does not hold one of the browser's few HTTP/1.1 connections to the harness, which a long-lived HTTP stream would |
 | `GET /api/dv/blender/status` | The Connection's browser authentication | `{linked, state, token, link_path, viewers}`; `state` is the add-on's `{blender_version, addon_version, file, allow_code}` |
 | `POST /api/dv/blender/token` | Same | Replaces the pairing token and closes the link with code 4001; answers the new status |
-| `GET /api/dv/blender/view` | Same | Event stream: `status` events `{linked, state}` and `frame` events `{seq, width, height, mime, data}` with the base64 JPEG or PNG |
 | `GET /api/dv/blender/addon.zip` | Same | The add-on as a Blender extension zip, read from `addon/` on every download |
 
 | Operation | Tool | Params | Outputs and report |
@@ -62,19 +62,19 @@ Both operations render with the scene camera and the scene's own engine, resolut
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The link speaks JSON text messages and binary messages. The harness sends `request` (`id`, `op`, `params`), `stream` (`on`) and `frame_ack` (`seq`). The add-on sends `hello` and `state` (its state), `response` (`id`, `ok`, `result` or `error`), and binary messages whose 4-byte big-endian header length precedes a JSON header and the payload: `frame` headers carry a viewport frame, and `chunk` headers carry a part of the file that the request with that `id` returns, before its `response`. `BlenderLink` keeps the one socket, the add-on's state, the waiting requests with their time limits, and the viewers. It tells the add-on to stream only while a viewer watches, acknowledges each frame after relaying it, and a viewer whose stream queue is full skips frames. The pairing token lives in the DSH credential store under `dv-blender/pairing-token` while a store is mounted, so it survives a restart.
+The link speaks JSON text messages and binary messages. The harness sends `request` (`id`, `op`, `params`), `stream` (`on`) and `frame_ack` (`seq`). The add-on sends `hello` and `state` (its state), `response` (`id`, `ok`, `result` or `error`), and binary messages whose 4-byte big-endian header length precedes a JSON header and the payload: `frame` headers carry a viewport frame, and `chunk` headers carry a part of the file that the request with that `id` returns, before its `response`. `BlenderLink` keeps the one socket, the add-on's state, the waiting requests with their time limits, and the viewers. It tells the add-on to stream only while a viewer watches, acknowledges each frame after relaying it, and a viewer socket with more than 1 MiB waiting to be sent skips frames. The pairing token lives in the DSH credential store under `dv-blender/pairing-token` while a store is mounted, so it survives a restart.
 
 The add-on keeps every `bpy` call on Blender's main thread: a timer drains the link's messages. A `POST_PIXEL` draw handler on the largest 3D view copies that region's pixels while Blender draws it, so frames follow redraws and cost no second render; a timer encodes them as JPEG through a temporary image and sends them, at most `max fps` per second and one unacknowledged frame at a time. A look of the camera view draws the scene camera's view into an offscreen buffer in the same handler.
 
 | File | Content |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `dvBlender`: the config, the link route and its admission, and the registration of the routes, tools and operations |
+| [`src/index.ts`](src/index.ts) | `dvBlender`: the config, the link and viewport routes and their admission, and the registration of the Fetch routes, tools and operations |
 | [`src/link.ts`](src/link.ts) | `BlenderLink`: the socket, the requests and their files, the viewers and the frame acknowledgement |
 | [`src/protocol.ts`](src/protocol.ts) | The link messages and their parsers |
 | [`src/token.ts`](src/token.ts) | The pairing token |
 | [`src/tools.ts`](src/tools.ts) | `dv_blender_scene`, `dv_blender_run` and `dv_blender_look` |
 | [`src/render.ts`](src/render.ts) | `blender.render` and `blender.animation_render` |
-| [`src/routes.ts`](src/routes.ts) | The browser routes and the add-on zip |
+| [`src/routes.ts`](src/routes.ts) | The browser's Fetch routes and the add-on zip |
 | [`addon/`](addon/__init__.py) | The Blender add-on: panel and preferences (`__init__.py`), the WebSocket client (`link.py`), the requests (`commands.py`), the viewport stream (`viewport.py`) and the helpers without `bpy` (`protocol.py`) |
 | [`tests/blender-bridge.spec.ts`](tests/blender-bridge.spec.ts) | A Loader composition with the web server and a fake Blender on the link: admission, replacement, the token, the zip, the stream, the tools, the renders and the removal on disposal |
 
