@@ -41,7 +41,7 @@ kind: "package-reference"
 
 | 方法 | 注册 | 使用者 |
 | --- | --- | --- |
-| `registerMaker({operations, kind, column, makes?})` | `operations` 的记录在布局列 `column`（最左为 0）产生 `kind` 节点；`makes(record)` 返回 false 时跳过该记录 | `@dv/generation` 的 `defineGeneration`（`shot`、`image`、`audio`，第 2 列），`@dv/reference-kit` 的 `defineReference`（`<k>.create`，kind `<k>`，第 0 列），`@dv/text-node`（`textnode.write`，kind `text`，第 0 列），`@dv/asset-pool`（带 `place: true` 的 `asset.import`，kind `asset`，第 0 列） |
+| `registerMaker({operations, kind, column, makes?})` | `operations` 的记录在布局列 `column`（最左为 0）产生 `kind` 节点；`makes(record)` 收到记录的 `params` 和 `status`，返回 false 时跳过该记录 | `@dv/generation` 的 `defineGeneration`（`shot`、`image`、`audio`，第 2 列），`@dv/reference-kit` 的 `defineReference`（`<k>.create`，kind `<k>`，第 0 列），`@dv/text-node`（`textnode.write`，kind `text`，第 0 列），`@dv/asset-pool`（已完成且带 `place: true` 的 `asset.import`，kind `asset`，第 0 列） |
 | `registerPlacement({place, unplace, kind, column})` | 已完成的 `place` 记录为每个还没有节点显示的输入素材添加一个 `kind` 节点；已完成的 `unplace` 记录删除显示其某个输入素材的 `kind` 节点 | `@dv/asset-pool`（`asset.place`、`asset.unplace`，kind `asset`，第 0 列） |
 
 每个方法返回其注册的注销函数。某个 maker 或 placement 已指名的操作会抛出 `invalid_params`。`kind` 是浏览器半边绘制该节点所用的节点类型键：UI 插件注册一个 `type` 为同一字符串的 `@dv/ui-canvas/contract` `NodeType`，没有对应类型的 kind 画成普通卡片。
@@ -56,7 +56,7 @@ kind: "package-reference"
 <details>
 <summary>实现内部——点击展开</summary>
 
-归约函数从旧到新读取直到当前位置的链上每条记录，并应用第一条匹配的规则。(1) `based_on` 是节点 N 某个版本的记录成为 N 的最新版本。(2) 某个 maker 指名的操作、且 `makes` 接受的记录，在其列的第一个空行创建一个该 maker kind 的节点，使用默认尺寸。(3) 已完成的 placement `place` 记录为每个还没有节点显示的输入素材创建一个节点。(4) 已完成的 placement `unplace` 记录删除该 placement 中显示其某个输入素材的节点。(5) 已完成的 `canvas.node_position` 记录在切片持有的节点上设置其参数给出的位置字段。(6) 其他记录保持切片不变。规则 1 和 2 接受任何状态的记录，所以等待中、运行中或失败的版本在节点上显示其状态；失败的渲染仍是一个版本，带有它的重试动作。`assets` 把 placement 节点放置的素材和每个节点最新版本的产出映射到该节点。
+归约函数从旧到新读取直到当前位置的链上每条记录，并应用第一条匹配的规则。(1) `based_on` 是节点 N 某个版本的记录成为 N 的最新版本，除非其操作是 `canvas.node_position`、某个 placement 的操作，或 kind 与 N 不同的 maker 的操作；这样的记录继续匹配后面的规则。(2) 某个 maker 指名的操作、且 `makes` 接受的记录，在其列的第一个空行创建一个该 maker kind 的节点，使用默认尺寸。(3) 已完成的 placement `place` 记录为每个还没有节点显示的输入素材创建一个节点。(4) 已完成的 placement `unplace` 记录删除该 placement 中显示其某个输入素材的节点。(5) 已完成的 `canvas.node_position` 记录在切片持有的节点上设置其参数给出的位置字段。(6) 其他记录保持切片不变。规则 1 和 2 接受任何状态的记录，所以等待中、运行中或失败的版本在节点上显示其状态；失败的渲染仍是一个版本，带有它的重试动作。`assets` 把 placement 节点放置的素材和每个节点最新版本的产出映射到该节点。
 
 生产者无需画布字段即可设置 `based_on`。编辑器的提示词修改、重跑和重试以被重跑的版本作为 `based_on`。调用方没有给出 `based_on` 时，`@dv/project` 的 `OperationSpec.basedOn` 填写它：`@dv/reference-kit` 的 `<k>.update` 以及 `@dv/text-node` 的 `textnode.write` 和 `textnode.edit` 指名该条目最新版本的记录，所以角色、场景、风格或文本路径的每个版本都加入同一个节点。`based_on` 指名的记录不在任何节点中时，该记录落到规则 2。
 

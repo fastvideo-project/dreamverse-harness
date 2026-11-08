@@ -100,7 +100,7 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 
 ## 操作如何运行
 
-视图和智能体到达同样的操作。画布、时间线、素材库面板或历史面板上的手势通过 `@dv/api` 的路由运行一个操作，带 `actor: 'user'`，`surface` 设为该视图。智能体调用该操作的 `dv_*` 工具，工具以 `actor: 'agent'`、`surface: 'chat'`、对话、轮次和工具调用 ID 运行它。智能体的调用运行之前，操作的 `prepareToolCall` 可以拒绝或修改它。每次调用都经过 `dvProject.run` 的运行器。运行器先校验参数；然后在项目锁内把每个输入解析为素材，并调用操作的 `precondition`，它在写入任何记录之前拒绝调用，对每个调用方都生效（`shot.render` 拒绝模型的目录条目所拒绝的渲染请求，例如生成任务 `ref2v` 下没有参考素材的 `fasth3` 渲染）。运行器随后追加 `pending` 记录，并把操作自己的 `supersedes` 指出的记录加入该记录的 `supersedes`。最后运行器在锁外运行所属组件的实现，并追加带输出、成本和报告的最终更新行。输入指向未完成记录的调用在项目组件的调度器中等待，直到其输入完成。画布节点位置是这条路径之外的视图状态。拖拽、调整大小和 `dv_canvas_node_position` 调用各写一条 `canvas.node_position` 记录；平移或缩放修改 `@dv/ui-canvas` 保存在项目文件夹中的视口，不写记录。
+视图和智能体到达同样的操作。画布、时间线、素材库面板或历史面板上的手势通过 `@dv/api` 的路由运行一个操作，带 `actor: 'user'`，`surface` 设为该视图。智能体调用该操作的 `dv_*` 工具，工具以 `actor: 'agent'`、`surface: 'chat'`、对话、轮次和工具调用 ID 运行它。智能体的调用运行之前，操作的 `prepareToolCall` 可以拒绝或修改它。每次调用都经过 `dvProject.run` 的运行器。运行器先校验参数；然后在项目锁内把每个输入解析为素材，并调用操作的 `precondition`，它在写入任何记录之前拒绝调用，对每个调用方都生效（`shot.render` 拒绝模型的目录条目所拒绝的渲染请求，例如生成任务 `ref2v` 下没有参考素材的 `fasth3` 渲染）。运行器随后追加 `pending` 记录，并把操作自己的 `supersedes` 指出的记录加入该记录的 `supersedes`。最后运行器在锁外运行所属组件的实现，并追加带输出、成本和报告的最终更新行。输入指向未完成记录的调用在项目组件的调度器中等待，直到其输入完成。拖拽、调整大小和 `dv_canvas_node_position` 调用各写一条 `canvas.node_position` 记录；平移或缩放修改 `@dv/ui-canvas` 保存在项目文件夹中的视口，不写记录。
 
 ## 项目状态
 
@@ -294,7 +294,7 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 
 | zh                               | en                                                             | 用途                                                             |
 | -------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------- |
-| 渲染新版本                            | Render new take                                                | 再次渲染一个版本；渲染 是 render 的 zh 动词。                                  |
+| 渲染新版本                            | Render new version                                             | 再次渲染一个版本；渲染 是 render 的 zh 动词。                                  |
 | 模型和生成方式 / 参考图生成 / 文字生成           | Model and mode / From references / From text                   | 版本或镜头的模型和生成任务（`ref2v`、`t2v`）。                                  |
 | 渲染镜头 / 列出模型 / 查看模型               | Render shot / List models / Get model                          | 对话和历史中的工具 `dv_shot_render`、`dv_models_list` 和 `dv_models_get`。 |
 | 渲染结果                             | Rendered                                                       | 版本的素材筛选。                                                       |

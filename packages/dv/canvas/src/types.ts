@@ -9,7 +9,7 @@
  * @module @dv/canvas/types
  */
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { AssetId, RecordId } from '@dv/project/types'
+import type { AssetId, RecordId, RecordStatus } from '@dv/project/types'
 
 /**
  * The ID of a canvas node: the ID of the record that created the node. A record that places several assets creates one
@@ -62,7 +62,7 @@ export interface NodeMaker {
   /** The layout column of new nodes, from 0 at the left. */
   column: number
   /** Whether a record of the operations makes a node; absent means every record does. */
-  makes?(record: { params: Record<string, unknown> }): boolean
+  makes?(record: { params: Record<string, unknown>; status: RecordStatus }): boolean
 }
 
 /**

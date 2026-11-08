@@ -1,7 +1,7 @@
 /**
  * The canvas node type of assets, its card and editor bodies, and the 从画布移除 action. The host's node list has one
- * `asset` node per asset on the canvas: a node that `asset.place` made shows its placed asset, and a node that an
- * `asset.import` with `place` made shows the imported asset.
+ * `asset` node per asset on the canvas: a node that `asset.place` made shows its placed asset, and a node that a
+ * finished `asset.import` with `place` made shows the imported asset.
  *
  * @module @dv/ui-asset-pool/canvas
  */
