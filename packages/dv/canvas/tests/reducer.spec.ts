@@ -193,6 +193,12 @@ describe('canvasReducer', () => {
     expect(reduceAll([shot]).nodes[brandString<NodeId>(shot.id)]?.name).toBeNull()
   })
 
+  it('renames a node for a rename record based on its version, without a version', () => {
+    const shot = record('shot.render')
+    const rename = record('canvas.node_rename', { based_on: shot.id, params: { node: shot.id, name: 'Harbor' } })
+    expect(reduceAll([shot, rename]).nodes[brandString<NodeId>(shot.id)]).toMatchObject({ name: 'Harbor', versions: [shot.id] })
+  })
+
   it('skips the rows that a moved or resized node covers', () => {
     const first = record('shot.render')
     const grow = record('canvas.node_position', { params: { node: first.id, height: ROW + 30 } })

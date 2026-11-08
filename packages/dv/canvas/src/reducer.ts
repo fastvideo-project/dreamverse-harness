@@ -2,7 +2,8 @@
  * The reducer of the `canvas` slice. It reads every record of the chain, oldest first, and applies the first rule that
  * matches:
  * 1. a record whose `based_on` is a version of node N becomes the newest version of N, unless its operation is one of
- *    the canvas's own (`canvas.node_position`, `canvas.node_remove`), a placement's, or a maker's of another kind;
+ *    the canvas's own (`canvas.node_position`, `canvas.node_remove`, `canvas.node_rename`), a placement's, or a maker's
+ *    of another kind;
  * 2. a record of an operation that a {@link NodeMaker} names creates a node of its kind in the first free row of its
  *    column (a full column continues in a sub-column), with the default size;
  * 3. a finished `place` record of an {@link AssetPlacement} creates a node for each input asset that no node shows;
@@ -27,7 +28,7 @@ export const NODE_REMOVE = 'canvas.node_remove'
 /** The operation that names a node. */
 export const NODE_RENAME = 'canvas.node_rename'
 /** The canvas's own operations, which change nodes and never become a version of one. */
-const CANVAS_OPERATIONS: ReadonlySet<string> = new Set([NODE_POSITION, NODE_REMOVE])
+const CANVAS_OPERATIONS: ReadonlySet<string> = new Set([NODE_POSITION, NODE_REMOVE, NODE_RENAME])
 /** The longest node name, in characters. */
 export const NAME_MAX = 80
 

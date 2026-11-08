@@ -13,7 +13,7 @@ import type { DvLanguage } from '@dv/ui-kit/locale.ts'
 import type { Registry } from '@dv/ui-kit/registries.ts'
 import type { ProjectRecord, WireCanvasNode, WireState } from '@dv/ui-kit/types.ts'
 import type { NodeType } from './contract/index.ts'
-import { buildCanvasGraph, nodeTitle, withNames } from './graph.ts'
+import { nodeTitle, withNames } from './graph.ts'
 import { en, zh } from './locales.ts'
 
 /** The operations whose records the rows name. */
@@ -89,13 +89,12 @@ export function renameRow(nodeTypes: Registry<NodeType>): HistoryRow {
       const param = step.params['name']
       // The name as the `canvas.node_rename` reducer of `@dv/canvas` stores it: trimmed, with each line break as a space.
       const given = typeof param === 'string' ? param.replace(/\s*[\r\n]+\s*/gu, ' ').trim() : ''
-      const registered = { nodeTypes: nodeTypes.getSnapshot(), recordsInUse: [], versionKinds: [] }
       // A cleared name reads as the title the node's type computes, which the card shows after the record.
       const nameIn = (language: DvLanguage): string => {
         if (given !== '') return given
         if (state === null) return nodeOf(step)
-        const graph = buildCanvasGraph(withNames(state, { [nodeOf(step)]: null }), operations, language, registered)
-        return graph.nodes.find(node => node.id === nodeOf(step))?.title ?? nodeOf(step)
+        const cleared = withNames(state, { [nodeOf(step)]: null })
+        return nodeTitle(cleared, operations, language, nodeTypes.getSnapshot(), nodeOf(step)) ?? nodeOf(step)
       }
       return [zh['history.renamed'].replace('{name}', nameIn('zh')), en['history.renamed'].replace('{name}', nameIn('en'))]
     },
