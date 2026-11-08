@@ -39,8 +39,8 @@ export interface BlenderSource {
   regenerate(): Promise<BlenderStatus>
   /** @returns the close of the stream. */
   watch(listener: { status(linked: boolean, state: BlenderState | null): void; frame(frame: ViewFrame): void }): () => void
-  /** The address the add-on download link opens. */
-  addonUrl: string
+  /** The add-on zip; a failed request rejects with its HTTP status. */
+  addon(): Promise<Blob>
   /** The origin Blender must connect to. */
   origin: string
 }
@@ -71,7 +71,11 @@ export const httpBlenderSource: BlenderSource = {
     })
     return () => { source.close() }
   },
-  addonUrl: ADDON_ROUTE,
+  addon: async () => {
+    const response = await fetch(ADDON_ROUTE)
+    if (!response.ok) throw new Error(`HTTP ${String(response.status)}`)
+    return await response.blob()
+  },
   get origin() {
     return window.location.origin
   },
@@ -91,11 +95,31 @@ const view: CSSProperties = {
 }
 
 /**
+ * Save a file the page holds, through a temporary object URL and a programmatic link click.
+ * @param blob - the file.
+ * @param name - the file name the browser saves it under.
+ */
+function save(blob: Blob, name: string): void {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  document.body.append(link)
+  link.click()
+  link.remove()
+  setTimeout(() => { URL.revokeObjectURL(url) }, 60_000)
+}
+
+/**
  * The Blender panel.
  * @param props - the host half, and the clipboard writer.
  * @returns the panel.
  */
-export function BlenderPanel(props: { source: BlenderSource; copy?: (text: string) => Promise<void> }): ReactNode {
+export function BlenderPanel(props: {
+  source: BlenderSource
+  copy?: (text: string) => Promise<void>
+  save?: (blob: Blob, name: string) => void
+}): ReactNode {
   const { source } = props
   const t = useText()
   const [status, setStatus] = useState<BlenderStatus | null>(null)
@@ -103,6 +127,7 @@ export function BlenderPanel(props: { source: BlenderSource; copy?: (text: strin
   const [frame, setFrame] = useState<ViewFrame | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
 
   useEffect(() => {
     let live = true
@@ -124,6 +149,12 @@ export function BlenderPanel(props: { source: BlenderSource; copy?: (text: strin
 
   const connection = status === null ? '' : `${source.origin}#${status.token}`
   const copy = props.copy ?? ((text: string) => navigator.clipboard.writeText(text))
+  const download = (): void => {
+    setDownloadError(null)
+    source.addon().then((blob) => { (props.save ?? save)(blob, 'dreamverse_blender.zip') }, (failure: unknown) => {
+      setDownloadError(failure instanceof Error ? failure.message : String(failure))
+    })
+  }
   const regenerate = (): void => {
     source.regenerate().then(setStatus, (failure: unknown) => { setError(failure instanceof Error ? failure.message : String(failure)) })
   }
@@ -160,8 +191,9 @@ export function BlenderPanel(props: { source: BlenderSource; copy?: (text: strin
       </p>
       <h3 style={heading}>{t('1. 下载插件', '1. Download the add-on')}</h3>
       <div style={row}>
-        <a href={source.addonUrl} download="dreamverse_blender.zip">{t('下载 dreamverse_blender.zip', 'Download dreamverse_blender.zip')}</a>
+        <button type="button" onClick={download}>{t('下载 dreamverse_blender.zip', 'Download dreamverse_blender.zip')}</button>
       </div>
+      {downloadError === null ? null : <p style={problem}>{t(`下载失败：${downloadError}`, `The download failed: ${downloadError}`)}</p>}
       <h3 style={heading}>{t('2. 在 Blender 里安装', '2. Install it in Blender')}</h3>
       <p style={note}>
         {t('Blender 5.3：编辑 → 偏好设置 → 获取扩展 → 右上角菜单 → 从磁盘安装，选择下载的 zip。',

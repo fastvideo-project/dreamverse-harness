@@ -27,7 +27,12 @@ const STATE: BlenderState = { blender_version: '5.3.0', addon_version: '0.1.0', 
 
 /** A host half whose stream the test drives. */
 class FakeSource implements BlenderSource {
-  addonUrl = '/api/dv/blender/addon.zip'
+  addonFailure: Error | null = null
+
+  addon(): Promise<Blob> {
+    return this.addonFailure === null ? Promise.resolve(new Blob(['zip'], { type: 'application/zip' })) : Promise.reject(this.addonFailure)
+  }
+
   origin = 'http://127.0.0.1:18094'
   token = 'tok-1'
   watchers = 0
@@ -125,7 +130,15 @@ describe('BlenderPanel', () => {
     render(<BlenderPanel source={source} copy={copy} />)
     const connection = await screen.findByTestId('dv-blender-connection')
     expect(connection.textContent).toBe('http://127.0.0.1:18094#tok-1')
-    expect(screen.getByText('Download dreamverse_blender.zip').getAttribute('href')).toBe('/api/dv/blender/addon.zip')
+    const save = vi.fn()
+    cleanup()
+    render(<BlenderPanel source={source} copy={copy} save={save} />)
+    await screen.findByTestId('dv-blender-connection')
+    fireEvent.click(screen.getByText('Download dreamverse_blender.zip'))
+    await vi.waitFor(() => { expect(save).toHaveBeenCalledWith(expect.any(Blob), 'dreamverse_blender.zip') })
+    source.addonFailure = new Error('HTTP 401')
+    fireEvent.click(screen.getByText('Download dreamverse_blender.zip'))
+    expect(await screen.findByText('The download failed: HTTP 401')).toBeTruthy()
     fireEvent.click(screen.getByText('Copy the connection string'))
     expect(copy).toHaveBeenCalledWith('http://127.0.0.1:18094#tok-1')
     expect(await screen.findByText('Copied')).toBeTruthy()
