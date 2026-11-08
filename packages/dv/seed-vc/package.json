@@ -1,0 +1,64 @@
+{
+  "name": "@fastvideo/dreamverse-seed-vc",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Provider plugin seed-vc of DreamVerse for voice conversion on a local Seed-VC server: registers one dvModels entry (seed-vc-v1) for task a2a whose voices are the allowed voices of its config, each with the target clip the server converts to.",
+  "keywords": [
+    "dreamverse-plugin"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fastvideo-project/dreamverse-harness.git",
+    "directory": "packages/dv/seed-vc"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "main": "lib/index.js",
+    "types": "lib/types/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./lib/types/index.d.ts",
+        "default": "./lib/index.js"
+      },
+      "./package.json": "./package.json"
+    }
+  },
+  "files": [
+    "lib/index.js",
+    "lib/types/**/*.d.ts",
+    "README.md",
+    "README.zh.md"
+  ],
+  "dependencies": {
+    "@fastvideo/dreamverse-voice-convert": "workspace:*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-util-values": "workspace:*",
+    "@deepseek-ai/schemastery": "workspace:~",
+    "@dv/asset-pool": "workspace:*",
+    "@dv/models": "workspace:*"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/cordis-plugin-include": "workspace:~",
+    "@deepseek-ai/cordis-plugin-loader": "workspace:~",
+    "@deepseek-ai/dsh-brand": "workspace:*",
+    "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-system-prompt": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-util-values": "workspace:*",
+    "@deepseek-ai/schemastery": "workspace:~",
+    "@dv/asset-pool": "workspace:*",
+    "@dv/ffmpeg": "workspace:*",
+    "@dv/models": "workspace:*",
+    "@dv/project": "workspace:*",
+    "@types/node": "^22.20.0"
+  }
+}

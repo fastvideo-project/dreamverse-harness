@@ -1,0 +1,13 @@
+# The voice acting layer, stacked on @dv/bundle. A profile installs it with `dsh plugin add @fastvideo/dreamverse-voice-acting`.
+# dv-seed-vc is off until the profile's own cordis.patch.yml switches it on with the Seed-VC server and the allowed
+# voices, as the README shows; the Voice tab then lists those voices.
+- insert:
+    - id: dv-voice-convert
+      name: '@fastvideo/dreamverse-voice-convert'
+    - id: dv-seed-vc
+      name: '@fastvideo/dreamverse-seed-vc'
+      disabled: true
+    - id: dv-ui-voice-convert
+      name: '@fastvideo/dreamverse-ui-voice-convert'
+    - id: dv-workflow-voice
+      name: '@fastvideo/dreamverse-workflow-voice'

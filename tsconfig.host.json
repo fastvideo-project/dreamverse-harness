@@ -470,6 +470,8 @@
     { "path": "./packages/dv/sglang-diffusion" },
     { "path": "./packages/dv/audio-generate" },
     { "path": "./packages/dv/sglang-omni" },
+    { "path": "./packages/dv/seed-vc" },
+    { "path": "./packages/dv/voice-convert" },
     { "path": "./packages/dv/uniserve" },
     { "path": "./packages/dv/timeline" },
     { "path": "./packages/dv/reference-kit" },
@@ -478,6 +480,7 @@
     { "path": "./packages/dv/style" },
     { "path": "./packages/dv/text-node" },
     { "path": "./packages/dv/workflow-story" },
+    { "path": "./packages/dv/workflow-voice" },
     { "path": "./apps/cli" },
     { "path": "./apps/desktop-host" },
     { "path": "./apps/desktop/tsconfig.host.json" }

@@ -354,6 +354,7 @@
       "@dv/project/types": ["./packages/dv/project/src/types.ts"],
       "@dv/reference-kit": ["./packages/dv/reference-kit/src/index.ts"],
       "@dv/reference-kit/types": ["./packages/dv/reference-kit/src/types.ts"],
+      "@fastvideo/dreamverse-seed-vc": ["./packages/dv/seed-vc/src/index.ts"],
       "@dv/sglang-diffusion": ["./packages/dv/sglang-diffusion/src/index.ts"],
       "@dv/sglang-omni": ["./packages/dv/sglang-omni/src/index.ts"],
       "@dv/shot-render": ["./packages/dv/shot-render/src/index.ts"],
@@ -364,6 +365,7 @@
       "@dv/timeline": ["./packages/dv/timeline/src/index.ts"],
       "@dv/timeline/types": ["./packages/dv/timeline/src/types.ts"],
       "@dv/uniserve": ["./packages/dv/uniserve/src/index.ts"],
+      "@fastvideo/dreamverse-voice-convert": ["./packages/dv/voice-convert/src/index.ts"],
       "@dv/ui-asset-pool": ["./packages/dv/ui-asset-pool/src/index.ts"],
       "@dv/ui-canvas": ["./packages/dv/ui-canvas/src/index.ts"],
       "@dv/ui-character": ["./packages/dv/ui-character/src/index.ts"],
@@ -379,6 +381,7 @@
       "@dv/ui-shot-render": ["./packages/dv/ui-shot-render/src/index.ts"],
       "@dv/ui-timeline": ["./packages/dv/ui-timeline/src/index.ts"],
       "@dv/workflow-story": ["./packages/dv/workflow-story/src/index.ts"],
+      "@fastvideo/dreamverse-workflow-voice": ["./packages/dv/workflow-voice/src/index.ts"],
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@deepseek-ai/dsh-acp": ["./packages/acp/acp/src"],
       "@deepseek-ai/dsh-acp-app": ["./packages/bundle/acp-app/src"],

@@ -1,0 +1,44 @@
+{
+  "name": "@fastvideo/dreamverse-voice-acting",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Installable DreamVerse voice acting bundle: record your lines in a Voice tab, convert them to an allowed voice with a Seed-VC server, and render shots lip-synced to them; it adds @fastvideo/dreamverse-voice-convert, @fastvideo/dreamverse-seed-vc, @fastvideo/dreamverse-ui-voice-convert, and @fastvideo/dreamverse-workflow-voice to a DreamVerse profile and ships the Seed-VC server.",
+  "keywords": [
+    "dreamverse-plugin"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fastvideo-project/dreamverse-harness.git",
+    "directory": "packages/dv/voice-acting"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "cordis.patch.yml",
+    "server/*.py",
+    "server/*.sh",
+    "server/requirements.txt",
+    "README.md",
+    "README.zh.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@fastvideo/dreamverse-seed-vc": "workspace:*",
+    "@fastvideo/dreamverse-ui-voice-convert": "workspace:*",
+    "@fastvideo/dreamverse-voice-convert": "workspace:*",
+    "@fastvideo/dreamverse-workflow-voice": "workspace:*"
+  },
+  "peerDependencies": {
+    "@dv/bundle": "workspace:*"
+  }
+}

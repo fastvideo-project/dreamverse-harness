@@ -34,6 +34,8 @@ export default defineConfig(({ env }) => {
         'packages/dv/ui-generation/**',
         'packages/video-harness/stream/**',
         'packages/bundle/dv/**',
+        // The voice acting bundle ships a patch and the Seed-VC server's Python files, no TypeScript.
+        'packages/dv/voice-acting/**',
         // The DreamVerse browser stories are tests only and have no build output.
         'packages/dv/e2e/**',
       ],

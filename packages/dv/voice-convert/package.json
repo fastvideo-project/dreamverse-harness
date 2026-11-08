@@ -1,0 +1,58 @@
+{
+  "name": "@fastvideo/dreamverse-voice-convert",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Voice conversion component of DreamVerse: declares the voice primitive and task a2a in the model catalog of @dv/models, and voice.convert converts one speech recording into an allowed voice with the model the call names by its key.",
+  "keywords": [
+    "dreamverse-plugin"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fastvideo-project/dreamverse-harness.git",
+    "directory": "packages/dv/voice-convert"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "main": "lib/index.js",
+    "types": "lib/types/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./lib/types/index.d.ts",
+        "default": "./lib/index.js"
+      },
+      "./package.json": "./package.json"
+    }
+  },
+  "files": [
+    "lib/index.js",
+    "lib/types/**/*.d.ts",
+    "README.md",
+    "README.zh.md"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@dv/generation": "workspace:*",
+    "@dv/models": "workspace:*",
+    "@dv/project": "workspace:*"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/cordis-plugin-include": "workspace:~",
+    "@deepseek-ai/cordis-plugin-loader": "workspace:~",
+    "@deepseek-ai/dsh-brand": "workspace:*",
+    "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-system-prompt": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@dv/asset-pool": "workspace:*",
+    "@dv/ffmpeg": "workspace:*",
+    "@dv/generation": "workspace:*",
+    "@dv/models": "workspace:*",
+    "@dv/project": "workspace:*",
+    "@types/node": "^22.20.0"
+  }
+}

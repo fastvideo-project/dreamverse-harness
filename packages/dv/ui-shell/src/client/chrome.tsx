@@ -158,7 +158,7 @@ export function DreamVerseGuide({ useTabInfo, tabs }: PropsRuntime<'sidebar.righ
   const plugins = useSyncExternalStore(tabs.subscribe, tabs.guide).filter(isPluginPanel)
   const labels: Record<(typeof GUIDE_KINDS)[number], [string, string]> = {
     'dv-chat': [t('对话', 'Chat'), t('和智能体对话，让它规划和渲染', 'Talk with the agent to plan and render')],
-    [ASSET_POOL_KIND]: [t('素材库', 'Asset pool'), t('项目的图片和视频', "The project's images and videos")],
+    [ASSET_POOL_KIND]: [t('素材库', 'Asset pool'), t('项目的图片、视频和音频', "The project's images, videos and audio")],
     [HISTORY_KIND]: [t('历史', 'History'), t('项目的每一条记录：谁在哪里做了什么', 'Every record of the project: who did what, and where')],
     'dv-trajectory': [t('轨迹', 'Trajectory'), t('智能体的每一步调用（开发者视图）', 'Every agent step (developer view)')],
   }

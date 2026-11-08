@@ -1,0 +1,58 @@
+{
+  "name": "@fastvideo/dreamverse-workflow-voice",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Voice workflow skill of DreamVerse: serves skills/voice-acting/SKILL.md, the procedure for a shot whose dialogue the user performs and voice.convert speaks in an allowed voice, through one FileSystemSkillProvider while the DSH skill registry is mounted.",
+  "keywords": [
+    "dreamverse-plugin"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fastvideo-project/dreamverse-harness.git",
+    "directory": "packages/dv/workflow-voice"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "main": "lib/index.js",
+    "types": "lib/types/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./lib/types/index.d.ts",
+        "default": "./lib/index.js"
+      },
+      "./package.json": "./package.json"
+    }
+  },
+  "files": [
+    "lib/index.js",
+    "lib/types/**/*.d.ts",
+    "skills/**/*.md",
+    "README.md",
+    "README.zh.md"
+  ],
+  "dependencies": {
+    "@fastvideo/dreamverse-voice-convert": "workspace:*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-skill": "workspace:*",
+    "@deepseek-ai/dsh-skill-filesystem": "workspace:*",
+    "@deepseek-ai/schemastery": "workspace:~",
+    "@dv/shot-render": "workspace:*"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/cordis-plugin-include": "workspace:~",
+    "@deepseek-ai/cordis-plugin-loader": "workspace:~",
+    "@deepseek-ai/dsh-skill": "workspace:*",
+    "@deepseek-ai/dsh-skill-filesystem": "workspace:*",
+    "@deepseek-ai/schemastery": "workspace:~",
+    "@dv/shot-render": "workspace:*",
+    "@types/node": "^22.20.0"
+  }
+}

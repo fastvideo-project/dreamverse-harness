@@ -1,0 +1,5 @@
+# Installed into the Seed-VC venv on top of Seed-VC's own requirements.txt. Versions are the ones tested.
+remotezip==0.12.6
+librosa>=0.10.2
+soundfile>=0.12.1
+huggingface-hub>=0.28.1
