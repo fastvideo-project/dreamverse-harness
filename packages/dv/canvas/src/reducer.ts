@@ -72,7 +72,7 @@ function nodeOfVersion(slice: CanvasState, record: RecordId): NodeId | undefined
  * @returns the map without the assets that the node shows.
  */
 function withoutNode(assets: CanvasState['assets'], node: NodeId): CanvasState['assets'] {
-  return Object.fromEntries(Object.entries(assets).filter(([, shown]) => shown !== node)) as CanvasState['assets']
+  return Object.fromEntries(Object.entries(assets).filter(([, shown]) => shown !== node))
 }
 
 /**

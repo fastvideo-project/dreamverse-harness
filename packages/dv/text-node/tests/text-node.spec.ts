@@ -137,7 +137,7 @@ describe('dvTextNode', () => {
     const second = await fixture.call('dv_textnode_write', { path: 'beats.md', body: '# Beats\n\nOne act.\n', base_version: 1 })
     const canvas = fixture.ctx.dvProject.getState(fixture.project).components.canvas
     expect(canvas.order).toEqual([first.record, other.record])
-    expect(canvas.nodes[brandString<NodeId>(String(first.record))]).toMatchObject({ kind: 'text', versions: [first.record, second.record] })
+    expect(canvas.nodes[brandString<NodeId>(first.record)]).toMatchObject({ kind: 'text', versions: [first.record, second.record] })
   })
 
   it('lists each text node in the project summary with its metadata and without its body', async () => {

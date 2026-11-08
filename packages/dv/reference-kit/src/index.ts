@@ -231,8 +231,9 @@ export function defineReference<K extends ReferenceKey>(spec: ReferenceSpec<K>):
       ctx.inject(['skills'], (child) => {
         child.effect(() => child.skills.register(skill), `${spec.service} skill`)
       })
+      const key: string = spec.component
       ctx.inject(['dvCanvasNodes'], (canvas) => {
-        canvas.effect(() => canvas.dvCanvasNodes.registerMaker({ operations: [`${spec.component}.create`], kind: spec.component, column: 0 }),
+        canvas.effect(() => canvas.dvCanvasNodes.registerMaker({ operations: [`${key}.create`], kind: key, column: 0 }),
           `${spec.service} canvas nodes`)
       })
     }
