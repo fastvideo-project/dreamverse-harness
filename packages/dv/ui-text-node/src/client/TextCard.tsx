@@ -75,7 +75,8 @@ export function footerText(version: number, chars: number, t: TranslateNS<typeof
 /**
  * The card body of a text node version on the card surface, filling the frame the canvas sizes: the opening lines of
  * its Markdown as plain text with each citation as its label, taking the height above the footer, and a footer with
- * its version and size. The canvas caption above it shows the title.
+ * its version and size. Above text scale 1 the enlarged text shares a frame of unchanged size, so the card drops the
+ * footer and fades out the last visible lines. The canvas caption above it shows the title.
  * @param props - the node, the text scale, and the translate function.
  * @returns the element.
  */
@@ -85,20 +86,26 @@ export function TextCard({ node, textScale, t }: PropsRuntime<'dv.canvas.card'> 
   const version = node.record === null ? null : reportedVersion(node.record)
   const chars = node.record?.report?.['chars']
   const size = (base: number): number => Math.round(base * textScale)
+  const enlarged = textScale > 1
   return (
     <div style={{ ...CARD_SURFACE, display: 'flex', flexDirection: 'column' }}>
       <p
         data-testid="dv-text-excerpt"
         style={{
-          margin: '10px 12px 4px', flex: 1, minHeight: 0, overflow: 'hidden', whiteSpace: 'pre-line', overflowWrap: 'anywhere',
+          margin: enlarged ? '10px 12px' : '10px 12px 4px', flex: 1, minHeight: 0, overflow: 'hidden', whiteSpace: 'pre-line', overflowWrap: 'anywhere',
           fontSize: size(12), lineHeight: `${String(size(LINE_HEIGHT))}px`, color: 'var(--dv-text)',
+          ...enlarged ? { maskImage: 'linear-gradient(to bottom, #000 50%, transparent)' } : {},
         }}
       >
         {excerpt}
       </p>
-      <div style={{ flex: 'none', display: 'flex', alignItems: 'center', height: FOOTER_HEIGHT, padding: '0 12px', fontFamily: 'var(--dv-font-mono)', fontSize: size(11), lineHeight: 1, color: 'var(--dv-text-2)' }}>
-        {version === null || typeof chars !== 'number' ? null : footerText(version, chars, t)}
-      </div>
+      {enlarged
+        ? null
+        : (
+          <div style={{ flex: 'none', display: 'flex', alignItems: 'center', height: FOOTER_HEIGHT, padding: '0 12px', fontFamily: 'var(--dv-font-mono)', fontSize: size(11), lineHeight: 1, color: 'var(--dv-text-2)' }}>
+            {version === null || typeof chars !== 'number' ? null : footerText(version, chars, t)}
+          </div>
+        )}
     </div>
   )
 }

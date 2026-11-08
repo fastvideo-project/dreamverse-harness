@@ -54,14 +54,16 @@ const PREFIX: Record<string, string> = { [PATH]: 'tw', 'script.md': 'sc' }
  * node, named by the record of its first version, whose versions are the records of the path's versions. An accepted
  * `textnode.write` appends the next version of its path and announces the change; a body that contains `FAIL` gives a
  * failed record, and a body that contains `REFUSE` is refused. The asset pool serves each version's Markdown.
+ * @param zoom - the stored canvas zoom; the default layout of the canvas tests when omitted.
  * @returns the mounted canvas and the versions of each path that the server holds.
  */
-async function mountTexts() {
+async function mountTexts(zoom?: number) {
   const texts: Record<string, TextVersion[]> = { [PATH]: [version('tw', 1, V1), version('tw', 2, V2)], 'script.md': [version('sc', 1, SCRIPT)] }
   const all = (): TextVersion[] => Object.values(texts).flat()
   let server: CanvasServer | null = null
   const mounted = await mountCanvas({
     kinds: ['reference', 'media', 'assets', 'composer'],
+    ...zoom === undefined ? {} : { layout: { positions: {}, viewport: { x: 0, y: 0, zoom } } },
     edit: (state) => {
       for (const [path, versions] of Object.entries(texts)) {
         versions.forEach((each, index) => {
@@ -156,6 +158,14 @@ describe('text node', () => {
     expect(view.container.querySelector('[data-node-id="tw2"]')).toBeNull()
     // The default frame is 208 × 106: four opening lines with their padding, and the footer.
     expect([node('tw1').style.width, card.querySelector<HTMLElement>('[data-node-frame]')?.style.height]).toEqual(['208px', '106px'])
+  })
+
+  it('drops the footer and keeps only the enlarged opening lines when the zoomed-out canvas enlarges the text', async () => {
+    const { node } = await mountTexts(0.4)
+    const card = await waitFor(() => node('tw1'))
+    const excerpt = within(card).getByTestId('dv-text-excerpt')
+    await waitFor(() => { expect(excerpt.textContent).toContain('Hero opens the door.') })
+    expect([excerpt.style.fontSize, card.textContent?.includes(' chars')]).toEqual(['24px', false])
   })
 
   it('draws an edge from the node of a source version to the text built from it, and none between the versions of a node', async () => {

@@ -34,7 +34,7 @@ kind: "package-reference"
 | 描述符 | 注册表 | 值 |
 | --- | --- | --- |
 | `textNodeType` | `dvCanvas.nodeTypes` | `id: '@dv/ui-text-node'`、`type: 'text'`（`@dv/text-node` 为一个路径的第一次 `textnode.write` 注册的 kind）、标签 `文本` / `Text`、颜色 `var(--dv-node-5)`；对一个版本，标题是报告的 `title`（否则是路径），`sizing` 为窗口节点，默认 208 × 106（四行开头文字和底栏），至少 104 × 58（一行开头文字和底栏）；画框越大，显示的开头文字越多 |
-| `TextCard` | `dv.canvas.card` 插槽 | 键 `text`；版本 Markdown 的开头几行，从 `/dv/assets/<asset>` 读取，每个素材只读一次，以纯文本显示，每个引用显示为其标签，以及含版本和正文码位数的页脚 |
+| `TextCard` | `dv.canvas.card` 插槽 | 键 `text`；版本 Markdown 的开头几行，从 `/dv/assets/<asset>` 读取，每个素材只读一次，以纯文本显示，每个引用显示为其标签，以及含版本和正文码位数的页脚；`textScale` 大于 1 时去掉页脚，最后几行渐隐，使放大的文字放得下 |
 | `TextEditor` | `dv.canvas.editor` 插槽 | 键 `text`；对画布版本条选中的版本，页脚，以及与卡片相同地从版本素材读取、渲染为 Markdown 的正文，其每个引用是 `@dv/ui-composer` 的 `@` 源 `dv-project` 的标签；在最新版本上，编辑 / Edit 打开带同样标签和 `@` 选择器的 `conversation.prompt` 编辑器，其菜单在编辑器下方打开，较早的版本只读 |
 | `textMentionKind` | `dvMentions.kinds` | `id: '@dv/ui-text-node'`、`kind: 'textnode'`、顺序 4、分组 `文本` / `Texts`；每个文本节点一项：URI `dv:textnode/<path>`，标签为标题，描述为第一行的前 40 个字符 |
 | `textHistoryRow` | `dvHistory.rows` | `match: 'textnode.'`；主题是 ` <path> v<version>`，否则是 ` <path>` |

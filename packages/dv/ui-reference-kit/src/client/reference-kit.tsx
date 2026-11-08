@@ -215,7 +215,8 @@ export function defineReferenceUi<V extends WireReferenceVersion>(spec: Referenc
 /**
  * The card body of a noun node on the card surface, filling the frame the canvas sizes: its first reference with the
  * noun's label on it, taking the height above the row and the footer, a row of reference thumbnails when it has two or
- * more, and a footer with the reference count and the version on show.
+ * more, and a footer with the reference count and the version on show. Above text scale 1 the enlarged text shares a
+ * frame of unchanged size, so the card drops the footer.
  * @param props - the node, its assets, the text scale, the noun's label and color, and the Factory renderer.
  * @returns the element.
  */
@@ -255,9 +256,13 @@ function ReferenceCard(
           </div>
         )
         : null}
-      <div style={{ flex: 'none', display: 'flex', alignItems: 'center', height: FOOTER_HEIGHT, padding: '0 12px', fontFamily: 'var(--dv-font-mono)', fontSize: size(11), lineHeight: 1, color: 'var(--dv-text-2)' }}>
-        {pick(`${String(count)} 张参考图 · 第 ${String(version)} 版`, `${String(count)} ${count === 1 ? 'reference' : 'references'} · v${String(version)}`)}
-      </div>
+      {textScale > 1
+        ? null
+        : (
+          <div style={{ flex: 'none', display: 'flex', alignItems: 'center', height: FOOTER_HEIGHT, padding: '0 12px', fontFamily: 'var(--dv-font-mono)', fontSize: size(11), lineHeight: 1, color: 'var(--dv-text-2)' }}>
+            {pick(`${String(count)} 张参考图 · 第 ${String(version)} 版`, `${String(count)} ${count === 1 ? 'reference' : 'references'} · v${String(version)}`)}
+          </div>
+        )}
     </div>
   )
 }

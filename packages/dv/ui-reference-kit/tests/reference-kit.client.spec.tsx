@@ -277,6 +277,16 @@ describe('the plugin of a reference noun', () => {
     await runtime.dispose()
   })
 
+  it('drops the footer of a noun card and keeps its label when the zoomed-out canvas enlarges the text', async () => {
+    document.documentElement.lang = 'en'
+    const { runtime } = await mountKit()
+    const state = heroWith(['ref.png'])
+    const node = nodeOf(runtime, state, 'test_ref:hero')
+    const { view } = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 2, host: cardHost() }, { entryKey: 'test_ref' })
+    expect([view.queryByText(/reference · v/), view.getByText('Reference').style.fontSize]).toEqual([null, '22px'])
+    await runtime.dispose()
+  })
+
   it('counts a reference whose asset the state lacks without drawing it, and names the version count of the node', async () => {
     document.documentElement.lang = 'en'
     const { runtime } = await mountKit()
