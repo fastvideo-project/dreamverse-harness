@@ -51,7 +51,7 @@ Host 半边还注册 agent 的工具 `dv_canvas_read`，它拒绝由另一个 ag
 | 在过期节点的编辑器里点"仍然保留" | 对节点的记录调用 `POST /api/dv/stale/accept`（作为历史中的一步运行 `proj.stale_accept`） |
 | 拖动节点 | 拖动结束时 `POST /api/dv/operation` 执行 `canvas.node_position`，带节点新的 `x` 和 `y`，每次拖动一条记录；画布立即画出新位置，请求被拒绝时把节点放回原处 |
 | 平移或缩放 | `POST /api/dv/canvas/layout`，带视口 |
-| 在选中的节点上按 F2，或点击其编辑器的标题 | 回车或离开输入框保存改过的名称时，`POST /api/dv/operation` 执行 `canvas.node_rename`，带该节点和新的 `name`；清空的输入框发送 `name: null`，即清除名称。F2 把标题行变成名称输入框，它随缩放变化，按下它不会开始拖动；缩放低于 50% 时以及编辑器打开时，F2 改为打开编辑器的标题输入框。有文本框获得焦点或编辑器的素材选择窗口打开时，F2 不起作用。超过 80 个字符的名称让输入框保持打开，并显示 名称最多 80 个字符。 / The name can have at most 80 characters. Escape 取消重命名并保持编辑器打开。画布立即画出新名称，请求被拒绝时恢复旧名称 |
+| 在选中的节点上按 F2、在其右键菜单中选择 重命名 / Rename，或点击其编辑器的标题 | 回车或离开输入框保存改过的名称时，`POST /api/dv/operation` 执行 `canvas.node_rename`，带该节点和新的 `name`；清空的输入框发送 `name: null`，即清除名称。F2 和该菜单项把标题行变成名称输入框，它随缩放变化，按下它不会开始拖动；缩放低于 50% 时以及编辑器打开时，它们改为打开编辑器的标题输入框。有文本框获得焦点或编辑器的素材选择窗口打开时，F2 不起作用。超过 80 个字符的名称让输入框保持打开，并显示 名称最多 80 个字符。 / The name can have at most 80 characters. Escape 取消重命名并保持编辑器打开。画布立即画出新名称，请求被拒绝时恢复旧名称 |
 | 拖动选中节点的一个角把手 | 拖动结束时 `POST /api/dv/operation` 执行 `canvas.node_position`，带节点新的 `x`、`y`、`width` 和 `height`，尺寸均不小于节点的 `minSize`。窗口节点取指针要求的宽度和高度，主体显示更多或更少的内容；媒体节点的画框高度保持为 宽度 / `ratio` + `fixedHeight`，跟随指针移动更多的那个方向，图片随画框缩放。拖西边或北边的角时节点同时移动，使对角保持原位。按住把手不动则什么都不改，也不打开编辑器 |
 | `@dv/canvas` 中 agent 的 `dv_canvas_node_position` 或 `dv_canvas_node_rename` | 页面不发请求：该记录改变 `canvas` 切片，该项目的每个已挂载画布在下一帧 `/dv/events` 到来、重新拉取状态时，把节点画在新位置或带上新名称 |
 | `@dv/canvas` 中 agent 的 `dv_canvas_node_remove` | 页面不发请求：该项目的每个已挂载画布在下一帧 `/dv/events` 到来时去掉该节点、它的连线以及它的选中、菜单和编辑器，不显示提示；历史显示这一步 |

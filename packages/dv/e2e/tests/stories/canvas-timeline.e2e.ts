@@ -1003,7 +1003,7 @@ describe('the canvas node list', () => {
 })
 
 describe('renaming canvas nodes', () => {
-  it('F2 renames a shot and the agent renames a text node; a rerun keeps the name, a reload keeps both, and Undo clears the agent\'s', async () => {
+  it('F2 renames a shot and the agent renames a text node; a rerun keeps the name, a reload keeps both, Undo clears the agent\'s, and 重命名 in the menu names it again', async () => {
     const project = await seedProject('nodes-rename', 2)
     const text = await runOperation(project.id, 'textnode.write', { path: 'beats.md', body: 'Hero opens the door.', base_version: 0 })
     const page = await openPage()
@@ -1066,6 +1066,14 @@ describe('renaming canvas nodes', () => {
     await expect.poll(async () => (await stateOf(project.id)).components.canvas.nodes[text.id]?.name, { timeout: 15_000, message: 'Undo clears the agent\'s name' }).toBeNull()
     await expect.poll(() => card(text.id).getAttribute('aria-label'), { timeout: 15_000 }).not.toBe('Story beats')
     expect(await card(shot).getAttribute('aria-label'), 'Undo leaves the earlier rename').toBe('港口黎明')
+
+    await card(text.id).click({ button: 'right', position: { x: 40, y: 40 } })
+    await page.getByRole('menu', { name: '节点操作' }).getByRole('menuitem', { name: '重命名' }).click()
+    const menuField = card(text.id).getByRole('textbox', { name: '节点名称' })
+    await menuField.fill('Beat sheet')
+    await page.keyboard.press('Enter')
+    await expect.poll(async () => (await newestRecord(project.id))?.params, { timeout: 10_000, message: 'the menu rename writes one canvas.node_rename' }).toEqual({ node: text.id, name: 'Beat sheet' })
+    await expect.poll(() => card(text.id).getAttribute('aria-label')).toBe('Beat sheet')
     expect(page.errors).toEqual([])
   })
 })

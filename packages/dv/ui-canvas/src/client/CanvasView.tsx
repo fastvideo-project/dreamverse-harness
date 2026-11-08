@@ -533,17 +533,21 @@ export function CanvasView(
     onSave: (title) => { renameNode(node, title) },
     onClose: () => { setRenaming(null) },
   })
-  /** F2 renames the selected node: in its caption, or in its editor when the editor is open or the zoom is low. */
-  const renameKey = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    const id = editing ?? selected
-    if (event.key !== 'F2' || inTextField(event.target) || id === null) return
-    event.preventDefault()
+  /** Rename a node in its caption, or in its editor when the editor is open or the zoom is low. */
+  const startRename = (id: string): void => {
     if (editing === null && viewport.zoom >= CAPTION_RENAME_ZOOM) {
       setRenaming({ node: id, place: 'caption' })
       return
     }
     setEditing(id)
     setRenaming({ node: id, place: 'editor' })
+  }
+  /** F2 renames the selected node, or the node of the open editor. */
+  const renameKey = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    const id = editing ?? selected
+    if (event.key !== 'F2' || inTextField(event.target) || id === null) return
+    event.preventDefault()
+    startRename(id)
   }
 
   /** Move a node so that its top edge is centered on a dropped canvas point; the node keeps its size. */
@@ -981,6 +985,7 @@ export function CanvasView(
         id: action.id, label: action.label(), disabled: view.rerunning,
         run: () => { setMenu(null); action.run(view, host.action(action.id)) },
       })),
+      { id: 'rename', label: t('node.rename'), run: () => { setMenu(null); startRename(node.id) } },
       { id: 'remove', label: t('node.remove'), danger: true, shortcut: { glyph: '⌫', keys: 'Delete Backspace' }, run: () => { removeNode(node) } },
     ]
   }

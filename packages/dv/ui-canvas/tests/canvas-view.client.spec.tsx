@@ -556,7 +556,7 @@ describe('removing a node', () => {
     operationsOf(server.writes).filter(write => (write as { operation: string }).operation === 'canvas.node_remove')
   const menuOf = (view: { getByRole: (role: 'menu') => HTMLElement }): HTMLElement => view.getByRole('menu')
 
-  it('opens the right-click menu of a node with its actions above 从画布移除, and OK removes the node, its edges and its selection', async () => {
+  it('opens the right-click menu of a node with its actions and 重命名 above 从画布移除, and OK removes the node, its edges and its selection', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const { runtime, view, node, server, canvasOf } = await mountCanvas()
     await mountDescriptors(runtime, { actions: [{ id: '@dv/ui-test-probe:look', label: () => 'look', order: 1, shows: (entry): entry is NodeView => entry.id === 'g1', run: () => undefined }] })
@@ -565,7 +565,7 @@ describe('removing a node', () => {
     fireEvent.contextMenu(node('g1'), { clientX: 300, clientY: 200 })
     const menu = menuOf(view)
     expect(menu.getAttribute('aria-label')).toBe('节点操作')
-    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['look', '从画布移除⌫'])
+    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['look', '重命名', '从画布移除⌫'])
     expect(within(menu).getByRole('menuitem', { name: /从画布移除/ }).getAttribute('aria-keyshortcuts')).toBe('Delete Backspace')
     expect(node('g1').getAttribute('data-node-selected')).toBe('true')
     fireEvent.click(within(menu).getByRole('menuitem', { name: /从画布移除/ }))
@@ -603,14 +603,14 @@ describe('removing a node', () => {
     await runtime.dispose()
   })
 
-  it('disables the menu\'s node actions while the node waits for a rerun, and keeps 从画布移除 enabled', async () => {
+  it('disables the menu\'s node actions while the node waits for a rerun, and keeps 重命名 and 从画布移除 enabled', async () => {
     const { runtime, view, node } = await mountCanvas({ edit: failG1, holdOperations: true })
     await waitFor(() => { within(node('g1')).getByRole('button', { name: '重试' }) })
     fireEvent.click(within(node('g1')).getByRole('button', { name: '重试' }))
     await waitFor(() => { within(node('g1')).getByRole('button', { name: '渲染中…' }) })
     fireEvent.contextMenu(node('g1'), { clientX: 300, clientY: 200 })
     const items = within(menuOf(view)).getAllByRole('menuitem')
-    expect(items.map(item => [item.textContent, item.hasAttribute('disabled')])).toEqual([['重试', true], ['从画布移除⌫', false]])
+    expect(items.map(item => [item.textContent, item.hasAttribute('disabled')])).toEqual([['重试', true], ['重命名', false], ['从画布移除⌫', false]])
     const inner = createEvent.contextMenu(items[0] as HTMLElement)
     fireEvent(items[0] as HTMLElement, inner)
     expect(inner.defaultPrevented).toBe(true)
@@ -1660,6 +1660,22 @@ describe('renaming a node', () => {
     await waitFor(() => { expect(renameWrites(server)).toEqual([{ node: 'g2', name: 'Harbor' }]) })
     expect(server.positionWrites).toEqual([])
     expect(node('g2').getAttribute('aria-label')).toBe('Harbor')
+    await runtime.dispose()
+  })
+
+  it('重命名 in the right-click menu closes the menu and turns the caption into the focused name field', async () => {
+    const { runtime, view, node, server } = await mountCanvas()
+    await waitFor(() => { node('g2') })
+    const title = node('g2').getAttribute('aria-label') ?? ''
+    fireEvent.contextMenu(node('g2'), { clientX: 300, clientY: 200 })
+    fireEvent.click(within(view.getByRole('menu')).getByRole('menuitem', { name: '重命名' }))
+    expect(view.queryByRole('menu')).toBeNull()
+    const input = field(node('g2'))
+    expect([document.activeElement, input.value]).toEqual([input, title])
+    fireEvent.change(input, { target: { value: 'Harbor' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => { expect(renameWrites(server)).toEqual([{ node: 'g2', name: 'Harbor' }]) })
+    expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
     await runtime.dispose()
   })
 
