@@ -1,8 +1,9 @@
 /**
  * The chrome of one canvas node on the `--dv-*` theme variables: a caption above a frame. The caption is one line with
- * the title, the unseen dot, the stale tag and `meta`. The frame is a rounded outline that wears the selection ring and
- * holds the `dv.canvas.card` body, which paints its own fill, or, for a failed claimed node, the
- * failed words and actions on the card surface. The selected node has a resize handle at each corner of its frame.
+ * the title, the unseen dot, the stale tag, the version count of a node with several versions, and `meta`. The frame is
+ * a rounded outline that wears the selection ring and holds the `dv.canvas.card` body, which paints its own fill, or,
+ * for a node whose newest version failed, the failed words and actions on the card surface. A node with several
+ * versions has two offset frames behind its frame. The selected node has a resize handle at each corner of its frame.
  * The chrome names no node type.
  */
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
@@ -38,6 +39,8 @@ export function edgeAnchorY(frame: Pick<Size, 'height'>, textScale: number): num
 }
 
 const CORNERS: readonly ResizeCorner[] = ['nw', 'ne', 'sw', 'se']
+/** How far each frame behind a node with several versions sits up and right of the one in front, in canvas units. */
+const VERSION_OFFSET = 4
 /** The side of a handle square that overhangs the frame's corner, in canvas units. */
 const HANDLE_SIZE = 10
 
@@ -74,7 +77,7 @@ export interface NodeCardProps {
   onResizeDown: (corner: ResizeCorner, event: ReactPointerEvent<HTMLElement>) => void
   /** The body: the `dv.canvas.card` entry of the node's type. */
   body: ReactNode
-  /** For a failed claimed node, the actions that show on it; empty when the canvas is read-only. */
+  /** For a node whose newest version failed, the actions that show on it; empty when the canvas is read-only. */
   failedActions: readonly NodeAction[]
   /** The action whose rerun the node waits for, whose button reads the running words; null for none. */
   rerunningAction: string | null
@@ -92,7 +95,7 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   const scale = textScaleAt(zoom)
   const size = (base: number): number => Math.round(base * scale)
   const text = (base: 12 | 13): CSSProperties => ({ fontSize: size(base), lineHeight: `${String(size({ 12: 16, 13: 20 }[base]))}px` })
-  const failed = node.claimed && flags.failed
+  const failed = flags.failed
   // A selected frame wears the accent ring; a stale frame a danger outline; a failed frame the soft outline; any other
   // frame the plain outline.
   let ring = '0 0 0 1px var(--dv-line-strong)'
@@ -103,11 +106,13 @@ export function NodeCard(props: NodeCardProps): ReactNode {
     position: 'absolute', left: box.x, top: box.y, width: box.width, boxSizing: 'border-box', color: 'var(--dv-text)', cursor: 'grab', userSelect: 'none',
     opacity: flags.superseded ? 0.55 : 1, touchAction: 'none',
   }
-  const status = node.claimed ? node.nodeType.claimed?.status : undefined
+  const status = node.nodeType.status
   const running = status?.running() ?? t('node.running')
   let marker: string | null = null
   if (flags.rendering) marker = running
   else if (flags.failed) marker = status?.failed() ?? t('node.failed')
+  const count = node.versions.length
+  const meta = [count > 1 ? t('node.version', { n: String(count) }) : '', node.meta ?? ''].filter(part => part !== '').join(' · ')
   const caption = (
     <div style={{ ...text(12), height: size(CAPTION_HEIGHT), boxSizing: 'border-box', padding: '0 2px 4px', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--dv-text-2)' }}>
       <span style={{ flex: 1, minWidth: 0, ...ellipsis }}>{node.title}</span>
@@ -115,7 +120,7 @@ export function NodeCard(props: NodeCardProps): ReactNode {
         ? <span role="img" aria-label={t('node.unseen')} title={t('node.unseen')} style={{ flex: 'none', width: size(8), height: size(8), borderRadius: 9999, background: 'var(--dv-accent)' }} />
         : null}
       {flags.stale ? <span style={{ flex: 'none', color: 'var(--dv-danger)' }}>{t('node.stale')}</span> : null}
-      {node.meta === undefined ? null : <span style={{ ...mono, flex: 'none' }}>{node.meta}</span>}
+      {meta === '' ? null : <span style={{ ...mono, flex: 'none' }}>{meta}</span>}
     </div>
   )
   let content: ReactNode
@@ -169,6 +174,14 @@ export function NodeCard(props: NodeCardProps): ReactNode {
       title={failed ? node.record.error?.message : undefined}
     >
       {caption}
+      {count > 1
+        ? [2, 1].map(step => (
+          <div
+            key={step} aria-hidden="true" data-node-version-frame=""
+            style={{ position: 'absolute', left: step * VERSION_OFFSET, top: size(CAPTION_HEIGHT) - step * VERSION_OFFSET, width: '100%', height: box.height, boxSizing: 'border-box', borderRadius: 'var(--dv-radius-lg)', background: 'var(--dv-surface-2)', boxShadow: '0 0 0 1px var(--dv-line-strong)', opacity: step === 2 ? 0.5 : 0.8 }}
+          />
+        ))
+        : null}
       <div data-node-frame="" style={{ position: 'relative', height: box.height, overflow: 'hidden', borderRadius: 'var(--dv-radius-lg)', boxShadow: ring }}>
         {content}
       </div>

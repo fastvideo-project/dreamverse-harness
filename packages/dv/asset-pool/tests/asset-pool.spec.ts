@@ -63,8 +63,8 @@ class FakeWebServer {
  */
 function placedOf(state: ProjectState): AssetId[] {
   const { nodes, order, assets } = state.components.canvas
-  const shown = Object.entries(assets) as Array<[AssetId, string]>
-  return order.flatMap(node => nodes[node]?.kind === 'asset' ? shown.flatMap(([asset, by]) => by === node ? [asset] : []) : [])
+  const shown = Object.entries(assets)
+  return order.flatMap(node => nodes[node]?.kind === 'asset' ? shown.flatMap(([asset, by]) => by === node ? [brandString<AssetId>(asset)] : []) : [])
 }
 
 const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvCanvasNodes, DvAssetPool }

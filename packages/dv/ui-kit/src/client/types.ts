@@ -119,6 +119,37 @@ export interface ProjectAsset extends Asset {
   made_by: string | null
 }
 
+/**
+ * Where a canvas node sits and how large its frame is, in canvas units: the top-left corner of the node, the top of its
+ * caption, and the frame below the caption; a null width or height is the default size of the node's type.
+ */
+export interface WireNodePosition {
+  x: number
+  y: number
+  width: number | null
+  height: number | null
+}
+
+/** One node of the canvas's node list. */
+export interface WireCanvasNode {
+  /** The node type key, which picks the registered node type that draws the node. */
+  kind: string
+  /** The name the user gave the node; null shows the title that the node type computes. */
+  name: string | null
+  /** The records the node shows, oldest first; the card shows the newest. */
+  versions: string[]
+  /** The placed asset of a node that a placement made. */
+  asset?: string
+  position: WireNodePosition
+}
+
+/** The `canvas` slice: the nodes by ID, their creation order, and the node that shows each asset. */
+export interface WireCanvas {
+  nodes: Record<string, WireCanvasNode>
+  order: string[]
+  assets: Record<string, string>
+}
+
 /** The state slices of the components the browser reads, sent verbatim by the server. */
 export interface ComponentStates {
   proj: {
@@ -131,8 +162,8 @@ export interface ComponentStates {
     /** The record that created each output asset. */
     created_by: Record<string, string>
   }
-  /** The assets on the canvas, in the order they were placed. */
-  asset: { placed: string[] }
+  /** The nodes of the canvas, rebuilt from the records by `@dv/canvas`. */
+  canvas: WireCanvas
   /**
    * The slice of any other loaded component. A UI half whose host package has a client face merges the slice type of
    * that face here; any other UI half narrows its own slice with a guard.
@@ -140,9 +171,9 @@ export interface ComponentStates {
   [key: string]: unknown
 }
 
-/** The slices of one wire state: `proj` and `asset` always (the `@dv/api` plugin injects `dvProject` and `dvAssetPool`
- *  in `static inject` of `DvApi`); any other slice only while the server loads the plugin that owns it. */
-export type WireComponents = Pick<ComponentStates, 'proj' | 'asset'> & Partial<ComponentStates>
+/** The slices of one wire state: `proj` and `canvas` always (the `@dv/api` plugin injects `dvProject` and
+ *  `dvCanvasNodes` in `static inject` of `DvApi`); any other slice only while the server loads the plugin that owns it. */
+export type WireComponents = Pick<ComponentStates, 'proj' | 'canvas'> & Partial<ComponentStates>
 
 /** The project's current state, with the assets the views need beside it. */
 export interface WireState {

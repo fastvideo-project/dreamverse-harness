@@ -1,39 +1,31 @@
 /**
- * Canvas nodes and edges derived from a project state and the registered node types. The canvas shows the project's
- * current state only, and every node comes from a registered `NodeType`: the slice nodes that a type reads from its own
- * slice, and one claimed node per current record of an operation that a type claims. A record that no type claims
- * draws no node. The builder names no node type.
+ * Canvas nodes and edges derived from a project state and the registered node types. Every node comes from the
+ * canvas's node list (`state.components.canvas`), in creation order, at its stored position; the node type whose `type`
+ * is the node's kind draws it, and a kind without a registered type draws a plain card. The builder names no node type.
  */
 import type { DvLanguage } from '@dv/ui-kit/locale.ts'
 import { versionRefOf } from '@dv/ui-kit/references.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
-import type { ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
-import type { NodePosition, NodeSpot } from '../canvas-layout.ts'
-import type {
-  ClaimedEntry, ClaimedRecord, NodeEntry, NodeFlags, NodeInput, NodeType, OperationRecord, RecordsInUse, Size,
-} from './contract/index.ts'
+import type { ProjectRecord, WireCanvasNode, WireOperation, WireState } from '@dv/ui-kit/types.ts'
+import type { NodePosition } from '../canvas-layout.ts'
+import type { NodeEntry, NodeFlags, NodeType, OperationRecord, RecordsInUse, TypeEntry } from './contract/index.ts'
 
-/** One drawn node: its entry, its type, and the facts that the canvas derived. */
-export type CanvasNode = NodeEntry & ({ claimed: true; record: OperationRecord } | { claimed: false }) & {
+/** One drawn node: its entry at the newest version, its type, and the facts that the canvas derived. */
+export type CanvasNode = NodeEntry & {
   type: string
   nodeType: NodeType
+  /** The node of the node list. */
+  node: WireCanvasNode
   flags: NodeFlags
   badges: string[]
-  version: number | null
-  /** The default position when the user has not placed the node. */
-  x: number
-  y: number
 }
 
-type ClaimedCanvasNode = Extract<CanvasNode, { claimed: true }>
-
-/** How one node fed another: an input of the target's record (with its role) or its `based_on`. */
+/** How one node fed another: an input of the target's newest version, with its role. */
 export interface CanvasEdge {
   from: string
   to: string
-  kind: 'input' | 'lineage'
-  /** The input role of an `input` edge, such as 'reference' or 'first_frame'. */
-  role?: string
+  /** The input role, such as 'reference' or 'first_frame'. */
+  role: string
 }
 
 /** A drawn edge with the nodes it joins. */
@@ -51,6 +43,13 @@ export interface CanvasGraph {
   links: EdgeLink[]
   /** The node that shows each asset: the node that owns it, else the nearest drawn record up its producer chain. */
   assetNodes: Record<string, string>
+  /**
+   * The node at one of its versions, as the editor's version strip shows it.
+   * @param node - a drawn node.
+   * @param record - one of its versions.
+   * @returns the node with that version's entry, or the node itself for its newest version or an unknown record.
+   */
+  atVersion(node: CanvasNode, record: string): CanvasNode
 }
 
 /** The registered descriptors that the builder reads. */
@@ -60,227 +59,123 @@ export interface CanvasRegistrations {
   versionKinds: readonly VersionKind[]
 }
 
-/** Default spacing of the automatic layout, in canvas units. */
-const COLUMN = 240
-/** Row pitch; it leaves room for a 147-unit card whose text has grown at a low zoom. */
-export const ROW = 200
+/** The frame of a node of a kind without a registered type: a 16:9 card. */
+const PLAIN_SIZE = { width: 208, height: 117 }
 
 /**
- * Number the current claimed records of each group in log order, so an original and its reruns read differently.
- * @param current - the current claimed records, in log order.
- * @returns record ID → its number, or null when its group has one record.
+ * The type that draws the nodes of a kind without a registered type: the operation label as the title, on a plain card.
+ * @param kind - the node's kind.
+ * @returns the type.
  */
-function versionsOf(current: readonly ProjectRecord[]): Map<string, number | null> {
-  const byId = new Map(current.map(record => [record.id, record]))
-  const groupOf = (record: ProjectRecord, depth = 0): string => {
-    const base = record.based_on === null ? undefined : byId.get(record.based_on)
-    if (base !== undefined && depth < 64) return groupOf(base, depth + 1)
-    return record.id
-  }
-  const groups = new Map<string, ProjectRecord[]>()
-  for (const record of current) groups.set(groupOf(record), [...groups.get(groupOf(record)) ?? [], record])
-  const numbers = new Map<string, number | null>()
-  for (const members of groups.values()) {
-    members.forEach((record, index) => { numbers.set(record.id, members.length > 1 ? index + 1 : null) })
-  }
-  return numbers
-}
-
-/**
- * The nodes of one type: its slice nodes, split into stand-ins and the rest, and a claimed node for each current record
- * that it claims.
- * @param nodeType - the type.
- * @param input - what the canvas hands the type, with the current records that it claims.
- * @param flagsOf - the display states of a record.
- * @returns the type's nodes.
- */
-function nodesOf(
-  nodeType: NodeType, input: NodeInput, flagsOf: (record: ProjectRecord | null) => NodeFlags,
-): { slice: CanvasNode[]; standIns: CanvasNode[]; claimed: ClaimedCanvasNode[] } {
-  const sliceNode = (entry: NodeEntry): CanvasNode => ({
-    ...entry, type: nodeType.type, nodeType, claimed: false, flags: flagsOf(entry.record), badges: [], version: null,
-    x: 0, y: 0,
-  })
-  const claimedNode = (each: ClaimedRecord, entry: ClaimedEntry): ClaimedCanvasNode => ({
-    ...entry, id: each.record.id, assets: each.record.outputs, type: nodeType.type, nodeType, claimed: true, record: each.record,
-    flags: flagsOf(each.record), badges: [], version: each.version, x: 0, y: 0,
-  })
-  const entries = nodeType.entries?.(input) ?? []
-  const claimedNodes = nodeType.claimed
+function plainType(kind: string): NodeType {
   return {
-    slice: entries.filter(entry => entry.standIn !== true).map(sliceNode),
-    standIns: entries.filter(entry => entry.standIn === true).map(sliceNode),
-    claimed: claimedNodes === undefined ? [] : input.records.map(each => claimedNode(each, claimedNodes.entry(each, input))),
+    id: '@dv/ui-canvas', type: kind, label: () => kind, color: 'var(--dv-node-1)',
+    entry: ({ record, operations, language }) => ({
+      title: operations.find(operation => operation.name === record.operation)?.label?.[language] ?? record.operation,
+      sizing: { kind: 'window', defaultSize: PLAIN_SIZE, minSize: { width: 104, height: 59 } },
+    }),
   }
 }
 
 /**
- * The canvas graph of a project state, with a default layout: each node in its type's `column`, a node one column
- * right of the node it reads a `deepenOn` input from, a rerun in its source's column. The assets of slice nodes belong
- * to them, then the assets of every earlier version of an item that a `VersionKind` draws as a slice node, then the
- * outputs of claimed nodes, then the assets of stand-ins. A claimed node draws one edge per input (from the node of the
- * versioned item it names, else from the node of the asset) and a lineage edge from its `based_on` record; a slice
- * node draws none.
+ * The box of a node in canvas units: its stored position, with its type's default size where the stored size is null.
+ * @param node - a drawn node.
+ * @returns the box.
+ */
+export function boxOf(node: Pick<CanvasNode, 'node' | 'sizing'>): NodePosition {
+  const { x, y, width, height } = node.node.position
+  return { x, y, width: width ?? node.sizing.defaultSize.width, height: height ?? node.sizing.defaultSize.height }
+}
+
+/**
+ * The canvas graph of a project state. A node owns the assets of its entry, then the outputs of its earlier versions.
+ * A node draws one edge per input of its newest version: from the node of the versioned item it names, else from the
+ * node of the asset.
  * @param state - a project state.
- * @param placed - the assets on the canvas.
  * @param operations - the operation declarations.
  * @param language - the interface language.
  * @param registered - the registered descriptors.
  * @returns the nodes and edges.
- * @throws when two drawn nodes have one ID, naming both node types.
  */
 export function buildCanvasGraph(
-  state: WireState, placed: ReadonlySet<string>, operations: readonly WireOperation[], language: DvLanguage,
-  registered: CanvasRegistrations,
+  state: WireState, operations: readonly WireOperation[], language: DvLanguage, registered: CanvasRegistrations,
 ): CanvasGraph {
   const { nodeTypes, recordsInUse, versionKinds } = registered
   const proj = state.components.proj
+  const canvas = state.components.canvas
   const records = new Map(proj.records.map(record => [record.id, record]))
-  const ownerOf = new Map<string, NodeType>()
-  for (const type of nodeTypes) for (const operation of type.claimed?.operations ?? []) ownerOf.set(operation, type)
-  const isClaimed = (record: ProjectRecord): record is OperationRecord => record.operation !== null && ownerOf.has(record.operation)
-  const flagsOf = (record: ProjectRecord | null): NodeFlags => ({
-    stale: record !== null && proj.stale[record.id] !== undefined,
-    rendering: record !== null && (record.status === 'pending' || record.status === 'running'),
-    failed: record?.status === 'failed',
-    superseded: record !== null && proj.superseded[record.id] !== undefined,
+  const flagsOf = (record: ProjectRecord): NodeFlags => ({
+    stale: proj.stale[record.id] !== undefined,
+    rendering: record.status === 'pending' || record.status === 'running',
+    failed: record.status === 'failed',
+    superseded: proj.superseded[record.id] !== undefined,
   })
-  const currentList = proj.records.filter(isClaimed)
-  const versions = versionsOf(currentList)
-  const base = { state, operations, language, placed }
-  const slice: CanvasNode[] = []
-  const claimed: ClaimedCanvasNode[] = []
-  const standIns: CanvasNode[] = []
-  for (const nodeType of nodeTypes) {
-    const mine = currentList.filter(record => ownerOf.get(record.operation) === nodeType)
-      .map((record): ClaimedRecord => ({ record, version: versions.get(record.id) ?? null }))
-    const nodes = nodesOf(nodeType, { ...base, records: mine }, flagsOf)
-    slice.push(...nodes.slice)
-    standIns.push(...nodes.standIns)
-    claimed.push(...nodes.claimed)
-  }
-  claimed.sort((a, b) => currentList.indexOf(a.record) - currentList.indexOf(b.record))
-  const owner = new Map<string, string>()
-  const own = (entry: CanvasNode): void => { for (const asset of entry.assets) if (!owner.has(asset)) owner.set(asset, entry.id) }
-  slice.forEach(own)
-  const sliceIds = new Set(slice.map(entry => entry.id))
-  for (const kind of versionKinds) {
-    for (const { id, version } of kind.latest(state)) {
-      const item = kind.node(id)
-      if (!sliceIds.has(item)) continue
-      for (let earlier = 1; earlier < version; earlier++) {
-        for (const asset of kind.assets(state, id, earlier)) if (!owner.has(asset)) owner.set(asset, item)
-      }
+  const typeOf = (kind: string): NodeType => nodeTypes.find(type => type.type === kind) ?? plainType(kind)
+  const drawn = (id: string, node: WireCanvasNode, record: OperationRecord): CanvasNode => {
+    const nodeType = typeOf(node.kind)
+    const entry: TypeEntry = nodeType.entry({ id, node, record, state, operations, language })
+    return {
+      ...entry, id, assets: entry.assets ?? record.outputs, record, versions: node.versions, type: node.kind, nodeType, node,
+      flags: flagsOf(record), badges: [],
     }
   }
-  claimed.forEach(own)
-  const kept = standIns.filter((entry) => {
-    if (entry.assets.some(asset => owner.has(asset))) return false
-    own(entry)
-    return true
-  })
-  const nodes = [...slice, ...claimed, ...kept]
-  const byId = new Map<string, CanvasNode>()
-  for (const entry of nodes) {
-    const held = byId.get(entry.id)
-    if (held !== undefined) throw new Error(`canvas node ID "${entry.id}" is drawn by the node types ${held.type} and ${entry.type}`)
-    byId.set(entry.id, entry)
+  const recordOf = (id: string | undefined): OperationRecord | undefined => {
+    const record = id === undefined ? undefined : records.get(id)
+    return record?.operation === null || record === undefined ? undefined : { ...record, operation: record.operation }
   }
-  const recordNode = new Map(claimed.map(entry => [entry.id, entry.id]))
-  /** The node an asset comes from: its owner, else the nearest drawn claimed record up its producer chain. */
+  const nodes = canvas.order.flatMap((id) => {
+    const node = canvas.nodes[id]
+    const record = recordOf(node?.versions.at(-1))
+    return node === undefined || record === undefined ? [] : [drawn(id, node, record)]
+  })
+  const byId = new Map(nodes.map(entry => [entry.id, entry]))
+  const owner = new Map<string, string>()
+  for (const entry of nodes) for (const asset of entry.assets) if (!owner.has(asset)) owner.set(asset, entry.id)
+  for (const entry of nodes) {
+    for (const version of entry.versions) {
+      for (const asset of records.get(version)?.outputs ?? []) if (!owner.has(asset)) owner.set(asset, entry.id)
+    }
+  }
+  const recordNode = new Map(nodes.flatMap(entry => entry.versions.map(version => [version, entry.id] as const)))
+  /** The node an asset comes from: its owner, else the nearest record up its producer chain that a node shows. */
   const nodeOfAsset = (assetId: string | null, depth = 0): string | null => {
     if (assetId === null) return null
     const mine = owner.get(assetId)
     if (mine !== undefined) return mine
     const producer = proj.created_by[assetId]
     if (producer === undefined || depth > 16) return null
-    const drawn = recordNode.get(producer)
-    if (drawn !== undefined) return drawn
-    const produced = records.get(producer)
-    // A claimed record that is not current has no node to stand for its assets.
-    if (produced !== undefined && isClaimed(produced)) return null
-    const source = produced?.inputs.find(input => input.resolved_asset !== null)?.resolved_asset
+    const shown = recordNode.get(producer)
+    if (shown !== undefined) return shown
+    const source = records.get(producer)?.inputs.find(input => input.resolved_asset !== null)?.resolved_asset
     return source === undefined || source === null ? null : nodeOfAsset(source, depth + 1)
   }
   const links: EdgeLink[] = []
   const seen = new Set<string>()
-  const addEdge = (from: string | null | undefined, target: CanvasNode, edge: Omit<CanvasEdge, 'from' | 'to'>): void => {
-    const source = byId.get(from ?? '')
-    if (source === undefined || source === target || seen.has(`${source.id}>${target.id}`)) return
-    seen.add(`${source.id}>${target.id}`)
-    links.push({ source, target, edge: { from: source.id, to: target.id, ...edge } })
-  }
-  for (const entry of claimed) {
-    const record = entry.record
-    for (const input of record.inputs) {
+  for (const target of nodes) {
+    for (const input of target.record.inputs) {
       const named = versionRefOf(input.ref)
-      const item = named === null ? undefined : versionKinds.find(kind => kind.kind === named.kind)?.node(named.id)
-      addEdge(item !== undefined && byId.has(item) ? item : nodeOfAsset(input.resolved_asset), entry, { kind: 'input', role: input.role })
+      const item = named === null ? null : versionKinds.find(kind => kind.kind === named.kind)?.node(state, named.id) ?? null
+      const source = byId.get((item !== null && byId.has(item) ? item : nodeOfAsset(input.resolved_asset)) ?? '')
+      if (source === undefined || source === target || seen.has(`${source.id}>${target.id}`)) continue
+      seen.add(`${source.id}>${target.id}`)
+      links.push({ source, target, edge: { from: source.id, to: target.id, role: input.role } })
     }
-    if (record.based_on !== null) addEdge(recordNode.get(record.based_on), entry, { kind: 'lineage' })
   }
   for (const { asset, label } of recordsInUse.flatMap(descriptor => descriptor.badges?.(state) ?? [])) {
     const badged = byId.get(nodeOfAsset(asset) ?? '')
     if (badged !== undefined && !badged.badges.includes(label)) badged.badges.push(label)
   }
-  layout([...slice, ...claimed, ...kept], links)
   const assetNodes: Record<string, string> = {}
   for (const asset of state.assets) {
     const shown = nodeOfAsset(asset.id)
     if (shown !== null && byId.has(shown)) assetNodes[asset.id] = shown
   }
-  return { nodes, edges: links.map(link => link.edge), links, assetNodes }
-}
-
-/**
- * Assign default positions in place. Each column wraps into several sub-columns once it holds more nodes than the
- * shared row count, so a long shot list forms a block that fits the screen. A rerun sits right after its source.
- * @param nodes - the nodes.
- * @param links - the edges with the nodes they leave, read for `deepenOn` depth and rerun columns.
- */
-function layout(nodes: CanvasNode[], links: readonly EdgeLink[]): void {
-  const column = new Map<string, number>()
-  const incoming = (id: string, match: (edge: CanvasEdge) => boolean): CanvasNode[] =>
-    links.filter(link => link.edge.to === id && match(link.edge)).map(link => link.source)
-  const columnOf = (entry: CanvasNode, depth = 0): number => {
-    const known = column.get(entry.id)
-    if (known !== undefined) return known
-    let value = entry.nodeType.column
-    if (depth < 64) {
-      const base = incoming(entry.id, edge => edge.kind === 'lineage')[0]
-      if (base !== undefined) value = columnOf(base, depth + 1)
-      else {
-        const roles = entry.nodeType.deepenOn ?? []
-        for (const source of incoming(entry.id, edge => edge.kind === 'input' && roles.some(role => role === edge.role))) {
-          value = Math.max(value, columnOf(source, depth + 1) + 1)
-        }
-      }
-    }
-    column.set(entry.id, value)
-    return value
+  const atVersion = (entry: CanvasNode, record: string): CanvasNode => {
+    const version = recordOf(entry.versions.includes(record) ? record : undefined)
+    if (version === undefined || version.id === entry.record.id) return entry
+    return { ...drawn(entry.id, entry.node, version), badges: entry.badges }
   }
-  const columns = new Map<number, CanvasNode[]>()
-  for (const entry of nodes) columns.set(columnOf(entry), [...columns.get(columnOf(entry)) ?? [], entry])
-  const baseOf = new Map(links.filter(link => link.edge.kind === 'lineage').map(link => [link.edge.to, link.source.id]))
-  const tallest = Math.max(0, ...[...columns.values()].map(members => members.length))
-  // About 1.5 rows per sub-column keeps a wrapped block close to the shape of a landscape screen.
-  const rowsPer = Math.max(4, Math.ceil(Math.sqrt(tallest * 1.5)))
-  let x = 0
-  for (const [, members] of [...columns].sort(([a], [b]) => a - b)) {
-    const ordered: CanvasNode[] = []
-    const place = (entry: CanvasNode): void => {
-      if (ordered.includes(entry)) return
-      ordered.push(entry)
-      for (const other of members) if (baseOf.get(other.id) === entry.id) place(other)
-    }
-    for (const entry of members) if (!members.some(other => other.id === baseOf.get(entry.id))) place(entry)
-    for (const entry of members) place(entry)
-    ordered.forEach((entry, index) => {
-      entry.x = x + Math.floor(index / rowsPer) * COLUMN
-      entry.y = (index % rowsPer) * ROW
-    })
-    x += Math.ceil(ordered.length / rowsPer) * COLUMN
-  }
+  return { nodes, edges: links.map(link => link.edge), links, assetNodes, atVersion }
 }
 
 /**
@@ -293,48 +188,11 @@ export function previewOf(entry: Pick<NodeEntry, 'preview' | 'assets'>): string 
 }
 
 /**
- * Whether a node counts as a finished result that the user has not seen until its editor opens: a claimed node that is
- * not rendering and has an output.
+ * Whether a node counts as a finished result that the user has not seen until its editor opens: a node whose newest
+ * version is not rendering and has an output.
  * @param entry - the node.
  * @returns whether the unseen dot applies.
  */
-export function isFinished(entry: Pick<CanvasNode, 'claimed' | 'flags' | 'assets'>): boolean {
-  return entry.claimed && !entry.flags.rendering && entry.assets.length > 0
-}
-
-/** The least space between two node cards that {@link freePositions} keeps, in canvas units. */
-const NODE_GAP = 12
-
-/**
- * Positions and frame sizes for the nodes that have none stored, each at its type's default size. A node with a stored
- * corner but no size keeps that corner; any other node takes its automatic position, moved down one row at a time until
- * its card overlaps neither a stored node nor a node placed before it. A node that appears later therefore never covers
- * a node that the user moved or resized.
- * @param nodes - the graph's nodes, in graph order.
- * @param stored - the stored positions and frame sizes by node ID.
- * @param spots - stored corners without a size by node ID, such as the entries of a layout file older than stored sizes.
- * @param heightOf - the card height in canvas units of a frame size: the caption and the frame.
- * @returns the positions and sizes of the nodes that had none, by node ID.
- */
-export function freePositions(
-  nodes: readonly CanvasNode[], stored: Readonly<Record<string, NodePosition>>, spots: Readonly<Record<string, NodeSpot>>,
-  heightOf: (size: Size) => number,
-): Record<string, NodePosition> {
-  const boxes = nodes.flatMap(entry => stored[entry.id] ?? [])
-  const placed: Record<string, NodePosition> = {}
-  for (const entry of nodes) {
-    if (stored[entry.id] !== undefined) continue
-    const size = entry.sizing.defaultSize
-    const spot = spots[entry.id]
-    const x = spot?.x ?? entry.x
-    let y = spot?.y ?? entry.y
-    const overlaps = (box: NodePosition): boolean =>
-      box.x < x + size.width + NODE_GAP && x < box.x + box.width + NODE_GAP
-      && box.y < y + heightOf(size) + NODE_GAP && y < box.y + heightOf(box) + NODE_GAP
-    if (spot === undefined) while (boxes.some(overlaps)) y += ROW
-    const box = { x, y, ...size }
-    placed[entry.id] = box
-    boxes.push(box)
-  }
-  return placed
+export function isFinished(entry: Pick<CanvasNode, 'flags' | 'record'>): boolean {
+  return !entry.flags.rendering && entry.record.outputs.length > 0
 }

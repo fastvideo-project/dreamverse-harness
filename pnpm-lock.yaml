@@ -8095,6 +8095,9 @@ importers:
       '@dv/ui-asset-pool':
         specifier: workspace:*
         version: link:../ui-asset-pool
+      '@dv/ui-history':
+        specifier: workspace:*
+        version: link:../ui-history
       '@dv/ui-kit':
         specifier: workspace:*
         version: link:../ui-kit

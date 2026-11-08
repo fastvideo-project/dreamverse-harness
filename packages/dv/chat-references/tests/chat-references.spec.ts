@@ -59,8 +59,8 @@ class FakeAttachments {
  */
 function placedOf(state: ProjectState): AssetId[] {
   const { nodes, order, assets } = state.components.canvas
-  const shown = Object.entries(assets) as Array<[AssetId, string]>
-  return order.flatMap(node => nodes[node]?.kind === 'asset' ? shown.flatMap(([asset, by]) => by === node ? [asset] : []) : [])
+  const shown = Object.entries(assets)
+  return order.flatMap(node => nodes[node]?.kind === 'asset' ? shown.flatMap(([asset, by]) => by === node ? [brandString<AssetId>(asset)] : []) : [])
 }
 
 /** The mounted base fixture with the chat references plugin, a live session `s1`, and its fake agent. */

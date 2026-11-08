@@ -4,7 +4,7 @@
 // asserts what the creator must see after the action; a story whose expected behavior is not built yet fails.
 import type { Browser, BrowserContext, Locator, Page } from 'playwright'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import type { ProjectRecord, WireState } from '../wire-state.ts'
+import { placedAssets, type ProjectRecord, type WireState } from '../wire-state.ts'
 import { bootHarness, escapeRegExp, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import { startScriptedModel, type ScriptedModel } from '../scripted-model.ts'
 
@@ -752,7 +752,7 @@ describe('canvas stories', () => {
     }, { timeout: 5000 }).toBe(true)
     expect(await page.locator('[data-node-id]').count()).toBe(nodes + 1)
     // The placement is an asset.place record of the project, so the node is still there after a reload.
-    await expect.poll(async () => (await stateOf(project.id)).components.asset.placed, { timeout: 5000 }).toEqual([extra.outputs[0]])
+    await expect.poll(async () => placedAssets(await stateOf(project.id)), { timeout: 5000 }).toEqual([extra.outputs[0]])
     await gotoProject(page, project.id)
     await node.waitFor({ timeout: 15_000 })
     // 从画布移除 takes the node off the canvas list; the image stays in 素材库.
@@ -763,7 +763,7 @@ describe('canvas stories', () => {
     }, 'the asset editor', 30_000)
     await editor.getByRole('button', { name: '从画布移除', exact: true }).click()
     await expect.poll(() => node.count(), { timeout: 10_000 }).toBe(0)
-    await expect.poll(async () => (await stateOf(project.id)).components.asset.placed).toEqual([])
+    await expect.poll(async () => placedAssets(await stateOf(project.id))).toEqual([])
     const placements = (await stateOf(project.id)).components.proj.records.filter(record => record.operation?.startsWith('asset.') === true && record.operation !== 'asset.import')
     expect(placements.map(record => [record.operation, record.surface])).toEqual([['asset.place', 'canvas'], ['asset.unplace', 'canvas']])
     await openAssets(page)

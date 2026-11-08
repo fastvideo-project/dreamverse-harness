@@ -8,7 +8,6 @@
   "editor.cancel": "取消",
   "editor.save": "保存",
   "editor.saving": "保存中…",
-  "editor.openVersion": "打开第 {version} 版",
   "editor.markdown": "Markdown 文本",
   "editor.newerVersion": "有人先保存了第 {newest} 版。你的草稿基于第 {base} 版。",
   "editor.saveOnTop": "保存为 v{version} 之后的新版本",

@@ -19,6 +19,13 @@ export interface HistoryRow {
   match: string
   /** The subject after the label, with its own separator, such as [' p1 v1', ' p1 v1']; null names the record's chain slot, if any. */
   subject(record: ProjectRecord): Text | null
+  /**
+   * The whole action label, in place of the operation label and the subject, for a label that reads the project state,
+   * such as the title of the canvas node that a record moved; null falls back to the operation label and the subject.
+   * @param record - the record.
+   * @param context - the project's current state, null while it is not loaded, and the operation declarations.
+   */
+  label?(record: ProjectRecord, context: { state: WireState | null; operations: readonly WireOperation[] }): Text | null
   /** Where selecting the record moves the center; absent: the record's canvas node (`{ view: 'canvas', target: { record } }`). */
   focus?(record: ProjectRecord, records: readonly ProjectRecord[]): CenterTarget | null
   /**

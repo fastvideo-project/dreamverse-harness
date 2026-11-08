@@ -69,8 +69,8 @@ export interface VersionKind {
   kind: string
   /** The section title of the kind's items in the asset picker, such as 角色. */
   label(): string
-  /** The canvas node ID of an item, such as 'character:c1'. */
-  node(id: string): string
+  /** The canvas node that shows an item, or null while no node shows it. */
+  node(state: WireState, id: string): string | null
   /** Every item at its newest version. */
   latest(state: WireState): Array<{ id: string; version: number }>
   name(state: WireState, id: string, version: number): string | null

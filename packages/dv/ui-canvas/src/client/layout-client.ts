@@ -4,7 +4,7 @@
  *
  * @module @dv/ui-canvas/client/layout-client
  */
-import { CANVAS_LAYOUT_ROUTE, type CanvasLayout, type CanvasLayoutPatch } from '../canvas-layout.ts'
+import { CANVAS_LAYOUT_ROUTE, type CanvasLayout } from '../canvas-layout.ts'
 
 /**
  * @param response - a layout route answer.
@@ -25,11 +25,11 @@ export async function readLayout(project: string): Promise<CanvasLayout> {
 }
 
 /**
- * Merge node positions into the project's canvas layout and store the viewport when given.
+ * Store the project's canvas viewport.
  * @param project - the project.
- * @param patch - the positions moved since the last save, and the viewport.
+ * @param patch - the viewport.
  * @returns the stored layout.
  */
-export async function writeLayout(project: string, patch: CanvasLayoutPatch): Promise<CanvasLayout> {
+export async function writeLayout(project: string, patch: CanvasLayout): Promise<CanvasLayout> {
   return layoutOf(await fetch(CANVAS_LAYOUT_ROUTE, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ project, ...patch }) }))
 }

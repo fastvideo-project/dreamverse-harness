@@ -12,9 +12,7 @@ import type { DvCanvas, NodeAction, NodeType, RecordsInUse } from './contract/in
  */
 export function createDvCanvas(): DvCanvas {
   return {
-    nodeTypes: createRegistry<NodeType>(
-      type => [type.type, ...(type.claimed?.operations ?? []).map(operation => `op:${operation}`)], type => type.id,
-    ),
+    nodeTypes: createRegistry<NodeType>(type => [type.type], type => type.id),
     recordsInUse: createRegistry<RecordsInUse>(uses => [uses.id], uses => uses.id),
     versionKinds: createRegistry<VersionKind>(kind => [kind.kind], kind => `the version kind ${kind.kind}`),
     actions: createRegistry<NodeAction>(action => [action.id], action => action.id.replace(/:.*/su, '')),

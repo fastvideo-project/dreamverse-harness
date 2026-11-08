@@ -16,6 +16,7 @@ import { SkillRegistry } from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
+import DvCanvasNodes, { type NodeId } from '@dv/canvas'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvProject, { type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId } from '@dv/project'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -26,7 +27,7 @@ const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmpeg-nati
 const FFPROBE = process.env['DV_FFPROBE'] ?? 'ffprobe'
 
 /** The plugin classes the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
-const PLUGINS = { SkillRegistry, SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, DvTextNode }
+const PLUGINS = { SkillRegistry, SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, DvCanvasNodes, DvTextNode }
 
 const BEATS = '# Beats\n\n## Act 1\nMia finds the map.\nShe runs.\n\n## Act 2\nThe storm.\nShe runs.\n'
 
@@ -64,6 +65,7 @@ async function start(): Promise<Fixture> {
   row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`])
   row('dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, `ffprobePath: ${FFPROBE}`])
   row('dv-asset-pool', 'DvAssetPool', [])
+  row('dv-canvas', 'DvCanvasNodes', [])
   row('dv-text-node', 'DvTextNode', [])
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
 
@@ -126,6 +128,16 @@ describe('dvTextNode', () => {
     expect(asset === undefined ? null : [fixture.ctx.dvAssetPool.get(asset).mime, fixture.ctx.dvAssetPool.read(asset).toString()])
       .toEqual(['text/markdown', '# Beats\n\nOne act.\n'])
     expect(fixture.ctx.dvProject.getRecord(fixture.project, second.record as RecordId).supersedes).toEqual([first.record])
+  })
+
+  it('makes one text node on the canvas per path, whose versions are every write and edit of the path', async () => {
+    const fixture = await start()
+    const first = await fixture.call('dv_textnode_write', { path: 'beats.md', body: BEATS, base_version: 0 })
+    const other = await fixture.call('dv_textnode_write', { path: 'cast.md', body: '# Cast\n', base_version: 0 })
+    const second = await fixture.call('dv_textnode_write', { path: 'beats.md', body: '# Beats\n\nOne act.\n', base_version: 1 })
+    const canvas = fixture.ctx.dvProject.getState(fixture.project).components.canvas
+    expect(canvas.order).toEqual([first.record, other.record])
+    expect(canvas.nodes[brandString<NodeId>(String(first.record))]).toMatchObject({ kind: 'text', versions: [first.record, second.record] })
   })
 
   it('lists each text node in the project summary with its metadata and without its body', async () => {

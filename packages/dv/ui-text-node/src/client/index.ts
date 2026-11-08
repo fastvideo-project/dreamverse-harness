@@ -1,5 +1,5 @@
 /**
- * Browser half of the text node: the canvas node type that claims the `textnode.write` and `textnode.edit` records,
+ * Browser half of the text node: the canvas node type `text`, whose nodes the host makes from `textnode.write` records,
  * with its card and editor, the `@` mention kind `textnode`, and the History row of `textnode.` records.
  *
  * @module @dv/ui-text-node/client
@@ -11,7 +11,7 @@ import { extractMarkdownPlainText } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { HostObservable, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { citationUri, parsePromptCitations } from '@dv/project/grammar'
-import type { ClaimedEntry, NodeType } from '@dv/ui-canvas/contract'
+import type { NodeType, TypeEntry } from '@dv/ui-canvas/contract'
 import type { ReferenceFaceInjected } from '@dv/ui-composer/contract'
 import { ReferenceFace } from '@dv/ui-composer/reference-face'
 import type { HistoryRow } from '@dv/ui-history/contract'
@@ -19,7 +19,7 @@ import type { MentionKind } from '@dv/ui-kit/registries.ts'
 import { en, NS, zh } from './locales.ts'
 import { TEXT_CARD_SIZING, TextCard } from './TextCard.tsx'
 import { TextEditor } from './TextEditor.tsx'
-import { newestTexts, pathOf, reportedVersion, TEXT_KIND, TEXT_OPERATIONS, withLabels } from './texts.ts'
+import { newestTexts, pathOf, reportedVersion, TEXT_KIND, TEXT_NODE, withLabels } from './texts.ts'
 
 const ID = '@dv/ui-text-node'
 
@@ -34,29 +34,21 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 const NONE: HostObservable<null> = { getSnapshot: () => null, subscribe: () => () => {} }
 
 /**
- * The canvas node type of text nodes: one claimed node per `textnode.write` or `textnode.edit` record, so each version
- * is a node, a version is linked to the previous one by its `based_on` lineage edge, and a `source` input draws an
- * edge from the version that it was built from. The caption shows the title and the version.
+ * The canvas node type of text nodes: one node per path, whose versions are the `textnode.write` and `textnode.edit`
+ * records of the path, so a `source` input draws an edge from the node that it was built from. The caption shows the
+ * title of the version on show.
  * @param t - translates a key of the text node dictionary.
  * @returns the node type.
  */
 export const textNodeType = (t: TranslateNS<typeof NS>): NodeType => ({
   id: ID,
-  type: TEXT_KIND,
+  type: TEXT_NODE,
   label: () => t('node.label'),
   color: 'var(--dv-node-5)',
-  column: 0,
-  claimed: {
-    operations: TEXT_OPERATIONS,
-    status: { running: () => t('node.saving'), failed: () => t('node.saveFailed') },
-    entry({ record }): ClaimedEntry {
-      const title = record.report?.['title']
-      const version = reportedVersion(record)
-      return {
-        title: typeof title === 'string' ? title : pathOf(record), sizing: TEXT_CARD_SIZING,
-        ...version === null ? {} : { meta: `v${String(version)}` },
-      }
-    },
+  status: { running: () => t('node.saving'), failed: () => t('node.saveFailed') },
+  entry({ record }): TypeEntry {
+    const title = record.report?.['title']
+    return { title: typeof title === 'string' ? title : pathOf(record), sizing: TEXT_CARD_SIZING }
   },
 })
 
@@ -103,14 +95,14 @@ export function apply(ctx: ClientContext): void {
     scope.effect(() => scope.dvCanvas.nodeTypes.register(textNodeType(t)), 'ui-text-node: node type')
   })
   ctx.inject(['slots'], (scope) => {
-    scope.effect(() => scope.slots.inject('dv.canvas.card', () => scope.slots.register({ name: 'dv.canvas.card', key: TEXT_KIND, locale: NS }, TextCard)), 'ui-text-node: card')
+    scope.effect(() => scope.slots.inject('dv.canvas.card', () => scope.slots.register({ name: 'dv.canvas.card', key: TEXT_NODE, locale: NS }, TextCard)), 'ui-text-node: card')
   })
   ctx.inject(['slots', 'dvCanvas'], (scope) => {
     const versionKinds = scope.dvCanvas.versionKinds
     const face: ReferenceFaceInjected = { hooks: { currentProject: NONE, versionKinds }, keyedHooks: { projectState: () => NONE } }
     scope.effect(() => scope.slots.registerFactory({ name: 'dv.text.reference', scope: 'session-maybe', inject: () => face }, ReferenceFace), 'ui-text-node: chip face')
-    scope.effect(() => scope.slots.inject('dv.canvas.editor.claimed', () => scope.slots.register(
-      { name: 'dv.canvas.editor.claimed', key: TEXT_KIND, locale: NS, inject: () => ({ hooks: { versionKinds } }) }, TextEditor,
+    scope.effect(() => scope.slots.inject('dv.canvas.editor', () => scope.slots.register(
+      { name: 'dv.canvas.editor', key: TEXT_NODE, locale: NS, inject: () => ({ hooks: { versionKinds } }) }, TextEditor,
     )), 'ui-text-node: editor')
   })
   ctx.inject(['dvMentions'], (scope) => {

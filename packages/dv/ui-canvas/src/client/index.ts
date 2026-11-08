@@ -2,14 +2,16 @@
  * Browser half: provide `dvCanvas`, the registries that plugin UI halves fill; register the `dv.canvas` Component
  * Factory and its child slots; register `dv-canvas` as a right-Sidebar tab type, its dictionaries, and its body; and
  * register the canvas as the 画布 view of the workspace center (`dv.center.view`). The tab body and the center view
- * each render a `dv.canvas` occurrence. A mounted canvas answers the canvas tools' reads of its project and draws
- * their stored moves, through the canvas stream that `CanvasViews` holds open.
+ * each render a `dv.canvas` occurrence. A mounted canvas answers the `dv_canvas_read` reads of its project through the
+ * canvas stream that `CanvasViews` holds open. While `dvHistory` is loaded, the History row of `canvas.node_position`
+ * names each move and resize.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { DvClient } from '@dv/ui-kit/api.ts'
+import type {} from '@dv/ui-history/contract'
 import type {} from '@dv/ui-media/contract'
 import { CanvasViews } from './agent-canvas.ts'
 import { CanvasBody } from './CanvasBody.tsx'
@@ -19,6 +21,7 @@ import { CanvasFactory } from './CanvasFactory.tsx'
 import type { CanvasFactoryInjected } from './CanvasFactory.tsx'
 import { CANVAS_ID, canvasDefinition } from './definition.ts'
 import { createDvCanvas } from './dv-canvas.ts'
+import { positionRow } from './history-row.ts'
 import { en, NS, zh } from './locales.ts'
 
 export type { DvCanvasKey } from './locales.ts'
@@ -54,7 +57,6 @@ export function apply(ctx: ClientContext): void {
       children: {
         'dv.canvas.card': { kind: 'keyed', scope: 'root' },
         'dv.canvas.editor': { kind: 'keyed', scope: 'root' },
-        'dv.canvas.editor.claimed': { kind: 'keyed', scope: 'root' },
         'dv.canvas.picker': { kind: 'keyed', scope: 'root' },
       },
     },
@@ -69,4 +71,7 @@ export function apply(ctx: ClientContext): void {
     { name: 'dv.center.view', id: 'canvas', order: 0, label: () => t('type.label') },
     CanvasCenter,
   )), 'ui-canvas: center view')
+  ctx.inject(['dvHistory'], (history) => {
+    history.effect(() => history.dvHistory.rows.register(positionRow(canvas.nodeTypes)), 'ui-canvas: history row')
+  })
 }

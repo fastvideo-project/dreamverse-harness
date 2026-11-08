@@ -7,7 +7,7 @@
  */
 import { chainOf } from '@dv/ui-kit/chain.ts'
 import { operationLabel } from '@dv/ui-kit/tool-labels.ts'
-import type { HistoryEntry, ProjectRecord, WireOperation } from '@dv/ui-kit/types.ts'
+import type { HistoryEntry, ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import type { CenterTarget } from '@dv/ui-shell/contract'
 import type { HistoryRow, Text } from './contract/index.ts'
 
@@ -56,10 +56,13 @@ export interface LabelContext {
   rows: readonly HistoryRow[]
   /** The loaded records by ID, for the chain of a retake. */
   records: ReadonlyMap<string, ProjectRecord>
+  /** The project's current state, for a row's `label`; null while it is not loaded. */
+  state: WireState | null
 }
 
 /**
- * The label a row shows for its action: the operation label (`operationLabel` of `@dv/ui-kit`) followed by its subject.
+ * The label a row shows for its action: the `label` of the registered row that matches the operation, else the
+ * operation label (`operationLabel` of `@dv/ui-kit`) followed by its subject.
  * The subject comes from the registered row that matches the operation (an exact name first, then `'<key>.'`). When no
  * row matches or the row gives no subject, a record with a chain slot (`chainOf`) names the slot and its lane.
  * @param record - the operation record.
@@ -67,8 +70,11 @@ export interface LabelContext {
  * @returns the Chinese and English label.
  */
 export function actionLabel(record: ProjectRecord, context: LabelContext): Text {
+  const row = matchingRow(record, context.rows)
+  const labeled = row?.label?.(record, { state: context.state, operations: context.operations }) ?? null
+  if (labeled !== null) return labeled
   const [zh, en] = operationLabel(record.operation, context.operations)
-  const subject = matchingRow(record, context.rows)?.subject(record) ?? null
+  const subject = row?.subject(record) ?? null
   if (subject !== null) return [`${zh}${subject[0]}`, `${en}${subject[1]}`]
   const chain = chainOf(record, context.records)
   if (chain === null || chain.slot === null) return [zh, en]

@@ -37,7 +37,7 @@ export function apply(ctx: ClientContext): void {
     describe: (record, { operations, records }) => {
       const registered = rows.getSnapshot()
       if (matchingRow(record, registered)?.media === undefined) return null
-      return actionLabel(record, { operations, rows: registered, records: new Map(Object.entries(records)) })
+      return actionLabel(record, { operations, rows: registered, records: new Map(Object.entries(records)), state: null })
     },
   }
   ctx.reflect.provide('dvHistory', history)

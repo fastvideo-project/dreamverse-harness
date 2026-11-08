@@ -1,5 +1,5 @@
-/** The canvas layout route over project folders: read, merge, the position cap, refusals, and route disposal. */
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+/** The canvas viewport route over project folders: read, replace, refusals, and route disposal. */
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -37,53 +37,35 @@ function route() {
 }
 
 describe('layoutRoutes', () => {
-  it('stores merged positions and the viewport in the project folder', async () => {
+  it('stores the viewport in the project folder and ignores node positions, which are project content', async () => {
     const { root, entry, call } = route()
     expect(entry.methods).toEqual(['GET', 'POST'])
-    expect((await call('GET', '?project=p1')).json).toEqual({ positions: {}, viewport: null })
+    expect((await call('GET', '?project=p1')).json).toEqual({ viewport: null })
     await call('POST', '', { project: 'p1', positions: { g1: { x: 1, y: 2 } }, viewport: { x: 0, y: 0, zoom: 1 } })
-    await call('POST', '', { project: 'p1', positions: { g2: { x: 3, y: 4 }, bad: { x: 'no', y: 1 } } })
-    const merged = { positions: { g1: { x: 1, y: 2 }, g2: { x: 3, y: 4 } }, viewport: { x: 0, y: 0, zoom: 1 } }
-    expect((await call('GET', '?project=p1')).json).toEqual(merged)
-    expect(JSON.parse(readFileSync(join(root, 'p1', '.dreamverse', 'canvas-layout.json'), 'utf8'))).toEqual(merged)
+    const stored = { viewport: { x: 0, y: 0, zoom: 1 } }
+    expect((await call('GET', '?project=p1')).json).toEqual(stored)
+    expect(JSON.parse(readFileSync(join(root, 'p1', '.dreamverse', 'canvas-layout.json'), 'utf8'))).toEqual(stored)
     expect(readdirSync(join(root, 'p1', '.dreamverse'))).toEqual(['canvas-layout.json'])
-    // Which assets are on the canvas is project content, so the layout ignores placement fields.
-    await call('POST', '', { project: 'p1', placed: ['a1'], removed: ['a2'] })
-    expect((await call('GET', '?project=p1')).json).not.toHaveProperty('placed')
+    await call('POST', '', { project: 'p1', viewport: { x: 1, y: 2, zoom: 0 } })
+    expect((await call('GET', '?project=p1')).json).toEqual({ viewport: null })
   })
 
-  it('keeps a stored size through a write that sends only a position, and drops a width or height that is not a positive number', async () => {
-    const { call } = route()
-    await call('POST', '', {
-      project: 'p1',
-      positions: { g1: { x: 1, y: 2, width: 416, height: 234 }, g2: { x: 0, y: 0, width: 0, height: 50 }, g3: { x: 0, y: 0, width: 'wide', height: -1 } },
-    })
-    await call('POST', '', { project: 'p1', positions: { g1: { x: 5, y: 6 } } })
-    expect((await call('GET', '?project=p1')).json).toEqual({
-      positions: { g1: { x: 5, y: 6, width: 416, height: 234 }, g2: { x: 0, y: 0, height: 50 }, g3: { x: 0, y: 0 } }, viewport: null,
-    })
-  })
-
-  it('keeps at most 5000 positions', async () => {
-    const { call } = route()
-    const positions = (from: number, count: number) => Object.fromEntries(Array.from({ length: count }, (_, i) => [`n${String(from + i)}`, { x: i, y: i }]))
-    expect((await call('POST', '', { project: 'p1', positions: positions(0, 4999) })).status).toBe(200)
-    expect((await call('POST', '', { project: 'p1', positions: positions(4999, 1) })).status).toBe(200)
-    expect(await call('POST', '', { project: 'p1', positions: positions(5000, 1) }))
-      .toEqual({ status: 400, json: { error: 'A layout keeps at most 5000 positions.', code: 'invalid_params' } })
-    expect(Object.keys(((await call('GET', '?project=p1')).json as { positions: object }).positions)).toHaveLength(5000)
+  it('reads the viewport of a layout file that also holds node positions', async () => {
+    const { root, call } = route()
+    writeFileSync(join(root, 'p1', '.dreamverse', 'canvas-layout.json'), JSON.stringify({ positions: { g1: { x: 1, y: 2 } }, viewport: { x: 3, y: 4, zoom: 2 } }))
+    expect((await call('GET', '?project=p1')).json).toEqual({ viewport: { x: 3, y: 4, zoom: 2 } })
   })
 
   it('answers 400 invalid_params without a project and 404 unknown_project for an unknown one', async () => {
     const { call } = route()
     expect(await call('GET', '')).toEqual({ status: 400, json: { error: "'project' must name a project.", code: 'invalid_params' } })
     expect(await call('GET', '?project=nope')).toEqual({ status: 404, json: { error: "Unknown project 'nope'.", code: 'unknown_project' } })
-    expect(await call('POST', '', { project: 'nope', positions: {} })).toEqual({ status: 404, json: { error: "Unknown project 'nope'.", code: 'unknown_project' } })
+    expect(await call('POST', '', { project: 'nope', viewport: null })).toEqual({ status: 404, json: { error: "Unknown project 'nope'.", code: 'unknown_project' } })
   })
 
   it('refuses a write to a folder without .dreamverse and creates nothing', async () => {
     const { root, call } = route()
-    expect(await call('POST', '', { project: 'plain', positions: { g1: { x: 1, y: 2 } } }))
+    expect(await call('POST', '', { project: 'plain', viewport: { x: 0, y: 0, zoom: 1 } }))
       .toEqual({ status: 404, json: { error: "Project 'plain' has no .dreamverse folder.", code: 'unknown_project' } })
     expect(readdirSync(join(root, 'plain'))).toEqual([])
   })

@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Browser, BrowserContext, Locator, Page } from 'playwright'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import type { ProjectRecord, WireState } from '../wire-state.ts'
+import { placedAssets, type ProjectRecord, type WireState } from '../wire-state.ts'
 import { bootHarness, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import {
   CONTEXT_MESSAGE, assetIdOf, startScriptedModel, textOf, type ChatRequest, type ScriptedModel, type ScriptedRule,
@@ -469,7 +469,7 @@ describe('chat with the agent', () => {
     expect(state, 'the chat attachment is recorded as a project asset').not.toBeNull()
     // The import of a sent image also puts it on the canvas, so the canvas draws it.
     const imageId = state?.assets.find(asset => asset.mime.startsWith('image/'))?.id
-    await expect.poll(async () => (await harness.api.get(`/api/dv/state?project=${projectId}`) as WireState).components.asset.placed, { timeout: 10_000 })
+    await expect.poll(async () => placedAssets(await harness.api.get(`/api/dv/state?project=${projectId}`) as WireState), { timeout: 10_000 })
       .toEqual([imageId])
     await page.locator('[data-dv-workspace] [data-node-type="asset"]').first().waitFor({ timeout: 15_000 })
     expect(errors).toEqual([])

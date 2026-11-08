@@ -269,7 +269,7 @@ export function HistoryPanel(props: HistoryPanelProps): ReactNode {
     const stateAssets = current.value?.assets ?? []
     const shared: RowContext = {
       now, selected, onChoose: choose, rowRef, onJump: jump, state: current.value, renderFactorySlot,
-      labels: { operations: operations.value ?? [], rows: registered, records: recordsById },
+      labels: { operations: operations.value ?? [], rows: registered, records: recordsById, state: current.value },
       rowOf: record => matchingRow(record, registered),
       assetOf: id => loaded.assets.get(id) ?? stateAssets.find(item => item.id === id),
     }

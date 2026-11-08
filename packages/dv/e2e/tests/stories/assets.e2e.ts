@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { crc32, deflateSync } from 'node:zlib'
 import type { Browser, BrowserContext, Locator, Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import type { ProjectRecord, WireState } from '../wire-state.ts'
+import { placedAssets, type ProjectRecord, type WireState } from '../wire-state.ts'
 import { bootHarness, escapeRegExp, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import { assetIdOf, startScriptedModel, type ScriptedModel, type ScriptedRule } from '../scripted-model.ts'
 
@@ -316,7 +316,7 @@ describe('The asset pool panel', () => {
       const canvas = page.locator('[data-testid="dv-canvas-view"]')
       await canvas.waitFor()
       await assetsPanel(page).locator(`[data-asset-id="${undone}"]`).first().dragTo(canvas)
-      await expect.poll(async () => (await stateOf(project.id)).components.asset.placed, { timeout: 10_000 }).toEqual([undone])
+      await expect.poll(async () => placedAssets(await stateOf(project.id)), { timeout: 10_000 }).toEqual([undone])
       await expect.poll(() => page.locator(`[data-node-id="asset:${undone}"]`).count(), { timeout: 15_000 }).toBe(1)
       const listed = (await harness.api.post('/api/dv/history', { project: project.id, limit: 200 }) as { entries: Array<{ record: ProjectRecord }> }).entries
       expect(listed.some(entry => entry.record.outputs.includes(undone))).toBe(false)

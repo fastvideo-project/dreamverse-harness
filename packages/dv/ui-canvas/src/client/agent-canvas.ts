@@ -1,12 +1,12 @@
 /**
  * The agent's view of the mounted canvases of a page: the cards of a drawn graph, and the registry of mounted canvases
  * by project and chat session. For each project and session that a mounted canvas draws, the registry holds one canvas
- * stream of the host half open (`/api/dv/canvas/agent`), answers its reads, and draws its stored moves.
+ * stream of the host half open (`/api/dv/canvas/agent`) and answers its reads.
  *
  * @module @dv/ui-canvas/agent-canvas
  */
-import type { NodePosition, NodeSpot } from '../canvas-layout.ts'
-import { CANVAS_AGENT_ROUTE, CANVAS_ANSWER_ROUTE, parseMoved, parseQuery } from '../canvas.ts'
+import type { NodePosition } from '../canvas-layout.ts'
+import { CANVAS_AGENT_ROUTE, CANVAS_ANSWER_ROUTE, parseQuery } from '../canvas.ts'
 import type { CanvasCard, CanvasDrawn, CanvasQuery } from '../types.ts'
 import type { CanvasNode } from './graph.ts'
 
@@ -17,8 +17,6 @@ export interface MountedCanvas {
   readonly session: string | null
   /** The cards as drawn now. */
   cards(): CanvasCard[]
-  /** Draw stored moves at once, as a drop does; each moved node keeps its size. */
-  place(positions: Readonly<Record<string, NodeSpot>>): void
 }
 
 /**
@@ -29,14 +27,14 @@ export interface MountedCanvas {
  */
 export function cardsOf(nodes: readonly CanvasNode[], boxOf: (node: CanvasNode) => NodePosition): CanvasCard[] {
   return nodes.map(node => ({
-    id: node.id, type: node.type, title: node.title, record: node.record?.id ?? null, ...boxOf(node), rendering: node.flags.rendering,
+    id: node.id, type: node.type, title: node.title, shown: node.record.id, versions: node.versions.length, ...boxOf(node),
+    rendering: node.flags.rendering,
   }))
 }
 
-/** What a canvas stream delivers: a read, and the data of a `moved` frame. */
+/** What a canvas stream delivers: a read. */
 export interface StreamListener {
   read(query: CanvasQuery): void
-  moved(data: unknown): void
 }
 
 /** The page's link to the host half: open a canvas stream, and send an answer. */
@@ -56,7 +54,6 @@ export const httpLink: CanvasLink = {
       const read = parseQuery(data(event))
       if (read !== null) listener.read(read)
     })
-    source.addEventListener('moved', (event) => { listener.moved(data(event)) })
     return () => { source.close() }
   },
   answer: (drawn) => {
@@ -94,11 +91,6 @@ export class CanvasViews {
         read: (query) => {
           const [first] = opened.canvases
           if (first !== undefined) this.link.answer({ ...query, project: projectId, cards: first.cards() })
-        },
-        moved: (data) => {
-          const move = parseMoved(data)
-          if (move?.project !== projectId) return
-          for (const each of opened.canvases) each.place(move.positions)
         },
       })
       group = opened
