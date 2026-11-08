@@ -148,18 +148,34 @@ describe('BlenderPanel', () => {
 
   it('shows the live viewport while a Blender is connected, and the steps again after it disconnects', async () => {
     const source = new FakeSource()
-    render(<BlenderPanel source={source} />)
+    const drawn: number[] = []
+    const releases: Array<() => void> = []
+    // Each draw stays pending until the test releases it, so frames that arrive meanwhile wait.
+    const draw = (_canvas: HTMLCanvasElement, next: ViewFrame): Promise<void> => {
+      drawn.push(next.width)
+      return new Promise((resolve) => { releases.push(resolve) })
+    }
+    render(<BlenderPanel source={source} draw={draw} />)
     await screen.findByTestId('dv-blender-connection')
     source.link(STATE)
     expect(screen.getByText('Connected to Blender 5.3.0')).toBeTruthy()
     expect(screen.getByText('shot.blend')).toBeTruthy()
     expect(screen.getByText('Waiting for the viewport…')).toBeTruthy()
-    source.frame({ src: 'data:image/jpeg;base64,AAAA', width: 640, height: 360 })
-    expect(screen.getByTestId('dv-blender-view').getAttribute('src')).toBe('data:image/jpeg;base64,AAAA')
+    const frame = (width: number): ViewFrame => ({ image: new Blob(['jpeg'], { type: 'image/jpeg' }), width, height: 360 })
+    source.frame(frame(640))
+    expect(screen.queryByText('Waiting for the viewport…')).toBeNull()
+    expect(drawn).toEqual([640])
+    // While the first frame is drawn, two more arrive: only the newest is drawn next.
+    source.frame(frame(641))
+    source.frame(frame(642))
+    expect(drawn).toEqual([640])
+    await act(async () => { releases.shift()?.() })
+    await vi.waitFor(() => { expect(drawn).toEqual([640, 642]) })
     source.link({ ...STATE, allow_code: false })
     expect(screen.getByText('This Blender has code from the harness switched off; the agent can only look.')).toBeTruthy()
     source.link(null)
     expect(screen.queryByTestId('dv-blender-view')).toBeNull()
+    expect(source.watchers).toBe(1)
     expect(screen.getByText('Connect Blender')).toBeTruthy()
   })
 })

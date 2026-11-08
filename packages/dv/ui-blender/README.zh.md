@@ -38,7 +38,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-标签页正文挂载期间读取一次 `GET /api/dv/blender/status`，并监听视口 WebSocket `/dv/blender/view`。页面上所有挂载的标签页共用一个套接字，断开两秒后重新打开；长时间打开的 HTTP 流会占用浏览器到 harness 为数不多的 HTTP/1.1 连接，使页面的其他请求停滞。`status` 消息在两种视图之间切换，每一帧用一个 object URL 替换画面。插件下载通过 `fetch` 进行，下载失败时显示其 HTTP 状态。正文不依赖打开的项目，因为一个 Blender 服务整个 harness。版本来自 [`@dv/ui-generation`](../ui-generation/README.zh.md) 的一个 `defineGenerationUi` 声明，节点类型为 `blender`。
+标签页正文挂载期间读取一次 `GET /api/dv/blender/status`，并监听视口 WebSocket `/dv/blender/view`。页面上所有挂载的标签页共用一个套接字，断开两秒后重新打开；长时间打开的 HTTP 流会占用浏览器到 harness 为数不多的 HTTP/1.1 连接，使页面的其他请求停滞。标签页只在显示在屏幕上且页面可见时监听。`status` 消息在两种视图之间切换，每一帧用 `createImageBitmap` 解码后画到画布上；一帧正在绘制时，只有期间到达的最新一帧会等待，所以画面不会堆积成图片加载请求。插件下载通过 `fetch` 进行，下载失败时显示其 HTTP 状态。正文不依赖打开的项目，因为一个 Blender 服务整个 harness。版本来自 [`@dv/ui-generation`](../ui-generation/README.zh.md) 的一个 `defineGenerationUi` 声明，节点类型为 `blender`。
 
 | 文件 | 内容 |
 | --- | --- |
