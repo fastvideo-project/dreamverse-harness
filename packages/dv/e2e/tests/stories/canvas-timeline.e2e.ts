@@ -17,6 +17,12 @@ const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk
 /** The Shot render operation of every seeded shot; the e2e profile serves fasth3 for task ref2v only. */
 const RENDER_OPERATION = 'shot.render'
 
+/**
+ * The minimum frame height of each window node type that the resize story puts on the canvas: a text card's one line
+ * and footer, and a reference card of one reference at 4:3 of its 104-unit minimum width above its footer.
+ */
+const WINDOW_MIN_HEIGHTS: Readonly<Record<string, number>> = { character: 110, location: 110, style: 110, textnode: 58 }
+
 /** A seeded project: its ID, the rendered take assets in shot order (the clips of timeline t1), and the shot records. */
 interface Seeded { id: string; clipAssets: string[]; shots: string[] }
 
@@ -326,23 +332,23 @@ describe('canvas stories', () => {
     expect(page.errors).toEqual([])
   })
 
-  it('clicking a node opens the floating editor; ✕ and Escape close it', async () => {
+  it('double-clicking a node opens the floating editor; ✕ and Escape close it', async () => {
     const project = await seedProject('canvas-editor')
     const page = await openPage()
     await gotoProject(page, project.id)
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
-    await page.locator('[data-node-type="take"]').first().click()
+    await page.locator('[data-node-type="take"]').first().dblclick()
     await expect.poll(() => editor.count()).toBe(1)
     // The take editor names the model and task of the take's record.
     expect(await editor.locator('[data-testid="dv-canvas-render-mode"]').textContent()).toBe('fasth3 · 参考图生成')
     await editor.getByRole('button', { name: '关闭' }).click()
     await expect.poll(() => editor.count()).toBe(0)
-    await page.locator('[data-node-type="take"]').first().click()
+    await page.locator('[data-node-type="take"]').first().dblclick()
     await page.locator('#dv-canvas-editor-prompt').click()
     await page.keyboard.press('Escape')
     await expect.poll(() => editor.count()).toBe(0)
     // Escape also closes the editor when focus left it, for example after clicking the editor's video.
-    await page.locator('[data-node-type="take"]').first().click()
+    await page.locator('[data-node-type="take"]').first().dblclick()
     await expect.poll(() => editor.count()).toBe(1)
     await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur() })
     await page.keyboard.press('Escape')
@@ -354,7 +360,7 @@ describe('canvas stories', () => {
     const page = await openPage()
     await gotoProject(page, project.id)
     await fitCanvas(page)
-    await page.locator('[data-node-type="character"]').first().click()
+    await page.locator('[data-node-type="character"]').first().dblclick()
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
     await expect.poll(() => editor.count()).toBe(1)
     const frame = await page.locator('[data-testid="dv-canvas-view"]').boundingBox()
@@ -370,7 +376,7 @@ describe('canvas stories', () => {
     const page = await openPage()
     await gotoProject(page, first.id)
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
-    await page.locator('[data-node-type="take"]').first().click()
+    await page.locator('[data-node-type="take"]').first().dblclick()
     await expect.poll(() => editor.count()).toBe(1)
     await viewToggle(page, '时间线').click()
     await page.locator('[data-testid="dv-timeline-editor"]').waitFor()
@@ -378,7 +384,7 @@ describe('canvas stories', () => {
     await viewToggle(page, '画布').click()
     await page.locator('[data-node-id]').first().waitFor()
     expect(await editor.count()).toBe(0)
-    await page.locator('[data-node-type="take"]').first().click()
+    await page.locator('[data-node-type="take"]').first().dblclick()
     await expect.poll(() => editor.count()).toBe(1)
     await openProjectByTitle(page, 'canvas-leave-b')
     await expect.poll(() => page.locator('[data-dv-workspace] header').first().textContent()).toContain('canvas-leave-b')
@@ -390,7 +396,7 @@ describe('canvas stories', () => {
     const project = await seedProject('canvas-play', 2)
     const page = await openPage()
     await gotoProject(page, project.id)
-    await page.locator('[data-node-type="take"]').first().click()
+    await page.locator('[data-node-type="take"]').first().dblclick()
     const video = page.locator('[data-testid="dv-canvas-node-editor"] video')
     await video.waitFor()
     await expect.poll(
@@ -407,7 +413,7 @@ describe('canvas stories', () => {
     const takes = page.locator('[data-node-type="take"]')
     await expect.poll(() => takes.count()).toBe(2)
     const original = await takes.first().getAttribute('data-node-id') ?? ''
-    await takes.first().click()
+    await takes.first().dblclick()
     await page.locator('#dv-canvas-editor-prompt').fill('canvas-take shot 1, take two')
     const requests = harness.backend.requests.length
     await page.getByRole('button', { name: '渲染新版本' }).click()
@@ -426,7 +432,7 @@ describe('canvas stories', () => {
     const page = await openPage()
     await gotoProject(page, project.id)
     const takes = page.locator('[data-node-type="take"]')
-    await takes.first().click()
+    await takes.first().dblclick()
     await page.locator('#dv-canvas-editor-prompt').fill('canvas-take-names shot 1, take two')
     await page.getByRole('button', { name: '渲染新版本' }).click()
     await expect.poll(() => takes.count(), { timeout: 30_000 }).toBe(3)
@@ -439,7 +445,7 @@ describe('canvas stories', () => {
     const project = await seedProject('canvas-ask', 2)
     const page = await openPage()
     await gotoProject(page, project.id)
-    await page.locator('[data-node-type="take"]').first().click()
+    await page.locator('[data-node-type="take"]').first().dblclick()
     await page.getByRole('button', { name: '问 agent' }).click()
     await expect.poll(() => page.locator('[data-testid="dv-canvas-node-editor"]').count()).toBe(0)
     await expect.poll(() => page.locator('[data-dv-chat] [contenteditable="true"]').first().innerText(), { timeout: 10_000 }).toContain('镜头 1')
@@ -618,13 +624,98 @@ describe('canvas stories', () => {
     const expected = targets.map(target => `${String(target.x)}px,${String(target.y)}px`)
     await expect.poll(placed(page), { timeout: 10_000, message: 'the page that asked draws the moved nodes at their targets without a reload' }).toEqual(expected)
     await expect.poll(placed(other), { timeout: 10_000, message: 'the other page of the project draws them too without a reload' }).toEqual(expected)
+    const sizeOf = (id: string): object | undefined => {
+      const card = ((read.cards ?? []) as Array<{ id: string; width: number; height: number }>).find(each => each.id === id)
+      return card === undefined ? undefined : { width: card.width, height: card.height }
+    }
     const stored = await harness.api.get(`/api/dv/canvas/layout?project=${project.id}`) as { positions: Record<string, { x: number; y: number }> }
-    expect(targets.map(target => stored.positions[target.node]), 'the layout store holds the move').toEqual(targets.map(({ x, y }) => ({ x, y })))
+    expect(targets.map(target => stored.positions[target.node]), 'the layout store holds the move, and each moved node keeps its stored size')
+      .toEqual(targets.map(({ node, x, y }) => ({ x, y, ...sizeOf(node) })))
     expect(layoutPosts.filter(body => targets.some(target => body.includes(`"${target.node}"`))), 'no page writes the move: the host stores it').toEqual([])
     await page.reload({ waitUntil: 'load' })
     await page.locator('[data-node-id]').first().waitFor({ timeout: 30_000 })
     await expect.poll(placed(page), { timeout: 10_000, message: 'the moved nodes stay at their targets after a reload' }).toEqual(expected)
     expect([page.errors, other.errors]).toEqual([[], []])
+  })
+
+  it('a corner handle resizes every kind of node: a media node keeps its aspect ratio, a window node changes width and height apart, each stops at its minimum size, and dv_canvas_read and a reload keep the size', async () => {
+    const project = await seedProject('canvas-resize', 1)
+    const reference = (await stateOf(project.id)).assets[0]?.id ?? ''
+    const extra = await runOperation(project.id, 'asset.import', { base64: OTHER_PNG_BASE64, mime: 'image/png', name: 'extra.png' })
+    await runOperation(project.id, 'asset.place', {}, [{ role: 'asset', ref: extra.outputs[0] ?? '' }])
+    await runOperation(project.id, 'location.create', { location: 'l1', name: 'Street' }, [{ role: 'reference', ref: reference }])
+    await runOperation(project.id, 'style.create', { style: 's1', name: 'Noir' }, [{ role: 'reference', ref: reference }])
+    await runOperation(project.id, 'textnode.write', { path: 'beats.md', body: 'Hero opens the door.', base_version: 0 })
+    // The e2e profile runs no image or audio server, so these takes fail; a failed take keeps its frame and its handles.
+    await runOperation(project.id, 'image.generate', { modality: 'image', task: 't2i', provider: 'sglang-diffusion', model: 'qwen-image-2.1-turbo', prompt: 'a door' })
+    await runOperation(project.id, 'audio.generate', { modality: 'audio', task: 't2a', provider: 'sglang-omni', model: 'fish-audio-drama-3', prompt: 'a knock' })
+    let read: unknown[] = []
+    model.rules.push({
+      match: 'resize-read-please',
+      steps: [{ calls: [{ name: 'dv_canvas_read', args: {} }] }, (view) => { read = view.toolResults; return { text: '读好了' } }],
+    })
+    const page = await openPage()
+    await gotoProject(page, project.id)
+    await page.locator('[data-node-id]').first().waitFor({ timeout: 30_000 })
+    await fitCanvas(page)
+    const zoom = Number(/scale\(([\d.]+)\)/.exec(await page.locator('[data-testid="dv-canvas-view"] > div[style*="transform"]').evaluate(el => (el as HTMLElement).style.transform))?.[1])
+    // The frame box of a node in canvas units, as the canvas stores it.
+    const boxOf = async (node: Locator): Promise<{ width: number; height: number }> => await node.evaluate(el => ({
+      width: Number.parseFloat((el as HTMLElement).style.width), height: Number.parseFloat(el.querySelector<HTMLElement>('[data-node-frame]')?.style.height ?? ''),
+    }))
+    const drag = async (node: Locator, dx: number, dy: number): Promise<void> => {
+      const handle = await node.locator('[data-node-handle="se"]').boundingBox()
+      if (handle === null) throw new Error('the selected node shows no south-east handle')
+      await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
+      await page.mouse.down()
+      await page.mouse.move(handle.x + handle.width / 2 + dx, handle.y + handle.height / 2 + dy, { steps: 8 })
+      await page.mouse.up()
+    }
+    const kinds = { media: ['asset', 'take', 'image', 'audio'], window: Object.keys(WINDOW_MIN_HEIGHTS) }
+    const resized: Record<string, { width: number; height: number }> = {}
+    for (const [kind, types] of Object.entries(kinds)) {
+      for (const type of types) {
+        const node = page.locator(`[data-testid="dv-canvas-view"] [data-node-type="${type}"]`).first()
+        const id = await node.getAttribute('data-node-id') ?? ''
+        await node.click({ position: { x: 12, y: 8 } })
+        const before = await boxOf(node)
+        await drag(node, 60, 40)
+        const after = await boxOf(node)
+        expect([after.width !== before.width, after.height !== before.height], `a ${type} node changes both width and height`).toEqual([true, true])
+        if (kind === 'media') {
+          expect(Math.abs(after.height - after.width * before.height / before.width), `a ${type} node keeps its aspect ratio`).toBeLessThanOrEqual(1)
+        } else {
+          expect([Math.abs(after.width - before.width - 60 / zoom), Math.abs(after.height - before.height - 40 / zoom)].every(off => off <= 2), `a ${type} node follows the pointer in width and height apart`).toBe(true)
+        }
+        await drag(node, -2000, -2000)
+        const smallest = await boxOf(node)
+        await drag(node, -200, -200)
+        expect(await boxOf(node), `a ${type} node stays at its minimum size`).toEqual(smallest)
+        const minimum = WINDOW_MIN_HEIGHTS[type]
+        expect(Math.abs(smallest.width - 104), `a ${type} node stops at its minimum width`).toBeLessThanOrEqual(1)
+        expect(Math.abs(smallest.height - (minimum ?? smallest.width * before.height / before.width)), `a ${type} node stops at its minimum height`).toBeLessThanOrEqual(1)
+        resized[id] = smallest
+      }
+    }
+    await page.waitForTimeout(1200)
+    const stored = await harness.api.get(`/api/dv/canvas/layout?project=${project.id}`) as { positions: Record<string, { width: number; height: number }> }
+    // A frame's style rounds its size to three decimals.
+    const near = (actual: { width: number; height: number } | undefined, size: { width: number; height: number }): boolean =>
+      actual !== undefined && Math.abs(actual.width - size.width) < 0.01 && Math.abs(actual.height - size.height) < 0.01
+    for (const [id, size] of Object.entries(resized)) expect(near(stored.positions[id], size), `the layout store holds the size of ${id}`).toBe(true)
+    const composer = page.locator('[data-dv-chat] [contenteditable="true"]').first()
+    await composer.click()
+    await page.keyboard.type('resize-read-please')
+    await page.keyboard.press('Enter')
+    await expect.poll(() => read.length, { timeout: 60_000, message: 'the agent turn reaches the reply after dv_canvas_read' }).toBe(1)
+    const cards = (read[0] as { cards?: Array<{ id: string; width: number; height: number }> }).cards ?? []
+    for (const [id, size] of Object.entries(resized)) expect(near(cards.find(card => card.id === id), size), `dv_canvas_read reports the stored size of ${id}`).toBe(true)
+    await page.reload({ waitUntil: 'load' })
+    await page.locator('[data-node-id]').first().waitFor({ timeout: 30_000 })
+    for (const [id, size] of Object.entries(resized)) {
+      expect(await boxOf(page.locator(`[data-testid="dv-canvas-view"] [data-node-id="${id}"]`)), `${id} keeps its size after a reload`).toEqual(size)
+    }
+    expect(page.errors).toEqual([])
   })
 
   it('an image imported in 素材库 joins the canvas when dragged there, stays after a reload, and 从画布移除 leaves it in 素材库; both are records', async () => {
@@ -667,7 +758,7 @@ describe('canvas stories', () => {
     // 从画布移除 takes the node off the canvas list; the image stays in 素材库.
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
     await waitFor(async () => {
-      await node.click({ timeout: 10_000 })
+      await node.dblclick({ timeout: 10_000 })
       return await editor.isVisible()
     }, 'the asset editor', 30_000)
     await editor.getByRole('button', { name: '从画布移除', exact: true }).click()
@@ -774,11 +865,12 @@ function expectSameBox(actual: Box | undefined, expected: Box): void {
  * @param opener - the element that opens the pop-up.
  * @param popup - the element that grows and shrinks.
  * @param close - closes the pop-up.
+ * @param gesture - the gesture on the opener that opens the pop-up; a canvas node opens its editor on a double click.
  */
-async function expectZoomFrom(page: Page, opener: Locator, popup: Locator, close: () => Promise<void>): Promise<void> {
+async function expectZoomFrom(page: Page, opener: Locator, popup: Locator, close: () => Promise<void>, gesture: 'click' | 'dblclick' = 'click'): Promise<void> {
   const origin = await boxOf(opener)
   const before = (await recordedZooms(page)).length
-  await opener.click()
+  await opener[gesture]()
   await popup.waitFor()
   // The open transition lasts 300 ms; the pop-up then rests at its final box.
   await page.waitForTimeout(600)
@@ -801,7 +893,7 @@ describe('node states and pop-ups', () => {
     await recordZooms(page)
     const take = page.locator('[data-node-type="take"]').first()
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
-    await expectZoomFrom(page, take, editor, async () => { await editor.getByRole('button', { name: '关闭' }).click() })
+    await expectZoomFrom(page, take, editor, async () => { await editor.getByRole('button', { name: '关闭' }).click() }, 'dblclick')
     // The ring tells the creator which node the closed editor belonged to; empty canvas clears it.
     expect(await take.getAttribute('data-node-selected')).toBe('true')
     const frame = await boxOf(page.locator('[data-testid="dv-canvas-view"]'))
@@ -816,7 +908,7 @@ describe('node states and pop-ups', () => {
     const takes = page.locator('[data-node-type="take"]')
     await expect.poll(() => takes.count()).toBe(2)
     const original = takes.first()
-    await original.click()
+    await original.dblclick()
     const requests = harness.backend.requests.length
     // The render stays running until the story releases it, as a real render does for a minute.
     harness.backend.hold()
@@ -837,7 +929,7 @@ describe('node states and pop-ups', () => {
       const node = page.locator(`[data-node-id="${freshId}"]`)
       await expect.poll(() => node.getAttribute('data-node-unseen'), { timeout: 30_000 }).toBe('true')
       expect(await original.getAttribute('data-node-unseen')).toBeNull()
-      await node.click()
+      await node.dblclick()
       await expect.poll(() => node.getAttribute('data-node-unseen')).toBeNull()
     } finally {
       harness.backend.releaseAll()
@@ -1397,7 +1489,7 @@ describe('going back and keep anyway', () => {
     await gotoProject(page, project.id)
     const staleTakes = page.locator('[data-node-type="take"][data-node-stale="true"]')
     await expect.poll(() => staleTakes.count()).toBe(2)
-    await staleTakes.first().click()
+    await staleTakes.first().dblclick()
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
     await editor.getByRole('button', { name: '仍然保留', exact: true }).click()
     await expect.poll(() => staleTakes.count()).toBe(1)
@@ -1437,7 +1529,7 @@ describe('English interface', () => {
     })
     expect(await chinese()).toEqual([])
     for (const kind of ['take', 'character']) {
-      await page.locator(`[data-node-type="${kind}"]`).first().click()
+      await page.locator(`[data-node-type="${kind}"]`).first().dblclick()
       await page.locator('[data-testid="dv-canvas-node-editor"]').waitFor()
       expect(await chinese()).toEqual([])
       await page.locator('[data-testid="dv-canvas-node-editor"]').getByRole('button', { name: 'Close' }).click()

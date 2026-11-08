@@ -40,15 +40,16 @@ function scripted() {
 }
 
 describe('cardsOf', () => {
-  it('lists each node with its type, record, drawn position, card width and height, and rendering flag', () => {
+  it('lists each node with its type, record, stored position and frame size, and rendering flag', () => {
     const node = {
       id: 'r1', type: 'take', title: 'Take 1', record: { id: 'r1' },
       flags: { rendering: true }, x: 5, y: 6,
     } as CanvasNode
     const plain = { ...node, id: 'n2', record: null, flags: { rendering: false } } as CanvasNode
-    expect(cardsOf([node, plain], current => current.id === 'r1' ? { x: 10, y: 20 } : current, () => 150)).toEqual([
-      { id: 'r1', type: 'take', title: 'Take 1', record: 'r1', x: 10, y: 20, width: 208, height: 150, rendering: true },
-      { id: 'n2', type: 'take', title: 'Take 1', record: null, x: 5, y: 6, width: 208, height: 150, rendering: false },
+    const boxOf = (current: CanvasNode) => current.id === 'r1' ? { x: 10, y: 20, width: 312, height: 150 } : { x: 5, y: 6, width: 208, height: 117 }
+    expect(cardsOf([node, plain], boxOf)).toEqual([
+      { id: 'r1', type: 'take', title: 'Take 1', record: 'r1', x: 10, y: 20, width: 312, height: 150, rendering: true },
+      { id: 'n2', type: 'take', title: 'Take 1', record: null, x: 5, y: 6, width: 208, height: 117, rendering: false },
     ])
   })
 })

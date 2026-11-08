@@ -78,7 +78,7 @@ These rules tell which changes are steps. They also tell what undo, redo, and "g
 1. **A change to the project content is a step.**
    - The project content is the assets, the assets on the canvas, the characters, locations and styles, the renders, the timelines, and the exports.
    - The steps of the user and the steps of the agent are in one history list, in the sequence of time.
-   - A change to the view is not a step. The view is the pan, the zoom, the node positions, the selection, the shown view, and the open panels.
+   - A change to the view is not a step. The view is the pan, the zoom, the node positions and sizes, the selection, the shown view, and the open panels.
    - A change to the project name is not a step. The deletion of a project is not a step.
 2. **Undo, redo, and "go back to a step" move the current position.**
    - The current position is one step of the history list. The project shows its state at that step.

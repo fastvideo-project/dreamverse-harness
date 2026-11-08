@@ -58,7 +58,7 @@ function node(
   changes: Partial<Pick<NodeView, 'record' | 'assets' | 'preview' | 'ref'>> & { id: string; title: string },
 ): NodeView {
   return {
-    record: null, assets: [], bodyHeight: 0, type: 'note', claimed: false,
+    record: null, assets: [], sizing: { kind: 'window', defaultSize: { width: 208, height: 0 }, minSize: { width: 104, height: 0 } }, type: 'note', claimed: false,
     flags: { stale: false, rendering: false, failed: false, superseded: false }, badges: [], version: null,
     unseen: false, rerunning: false, ...changes,
   }

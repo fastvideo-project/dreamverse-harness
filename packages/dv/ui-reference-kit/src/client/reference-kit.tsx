@@ -10,7 +10,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { NodeEntry, NodeType, RecordsInUse } from '@dv/ui-canvas/contract'
+import type { NodeEntry, NodeSizing, NodeType, RecordsInUse, Size } from '@dv/ui-canvas/contract'
 import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
 import { pickText, useText } from '@dv/ui-kit/locale.ts'
 import type { HistoryRow } from '@dv/ui-history/contract'
@@ -44,8 +44,8 @@ export interface ReferenceUiSpec<V extends WireReferenceVersion = WireReferenceV
   mention: { section: readonly [zh: string, en: string]; order: number }
 }
 
-/** The height of the first reference: the 208-unit card width at 4:3. */
-const HERO_HEIGHT = 156
+/** The aspect ratio (width ÷ height) of the first reference's box. */
+const HERO_ASPECT = 4 / 3
 /** The height of the row of reference thumbnails, shown for an item with two or more references. */
 const STRIP_HEIGHT = 52
 /** The height of the footer that counts the references and names the version. */
@@ -54,12 +54,16 @@ const FOOTER_HEIGHT = 32
 const STRIP_MAX = 4
 
 /**
- * The body height of a noun card: the first reference, the thumbnail row when the item has two or more references,
- * and the footer.
+ * The sizing of a noun card, a window node: a frame 208 units wide by default and 104 at the narrowest, each as tall as
+ * the first reference at 4:3 of that width, the thumbnail row when the item has two or more references, and the footer.
  * @param references - how many references the item has.
- * @returns the height in canvas units.
+ * @returns the sizing.
  */
-const cardHeightOf = (references: number): number => HERO_HEIGHT + (references > 1 ? STRIP_HEIGHT : 0) + FOOTER_HEIGHT
+function sizingOf(references: number): NodeSizing {
+  const below = (references > 1 ? STRIP_HEIGHT : 0) + FOOTER_HEIGHT
+  const at = (width: number): Size => ({ width, height: Math.round(width / HERO_ASPECT) + below })
+  return { kind: 'window', defaultSize: at(208), minSize: at(104) }
+}
 
 /** Every item of a noun by ID; a state without the noun's slice holds none, as the initial slice of the host half. */
 const itemsOf = <V extends WireReferenceVersion>(
@@ -113,7 +117,7 @@ export function referenceDescriptors<V extends WireReferenceVersion>(spec: Refer
       return newestOf(spec, state).map(({ id, latest, versions }): NodeEntry => ({
         id: node(id), title: latest.name || id, record: records.get(latest.created_by) ?? null,
         records: versions.slice(0, -1).map(entry => entry.created_by), assets: [...latest.references],
-        bodyHeight: cardHeightOf(latest.references.length),
+        sizing: sizingOf(latest.references.length),
         ref: { kind: key, id },
       }))
     },
@@ -200,8 +204,9 @@ export function defineReferenceUi<V extends WireReferenceVersion>(spec: Referenc
 }
 
 /**
- * The card body of a noun node on the card surface: its first reference at 4:3 with the noun's label on it, a row of
- * reference thumbnails when it has two or more, and a footer with the reference count and the version on show.
+ * The card body of a noun node on the card surface, filling the frame the canvas sizes: its first reference with the
+ * noun's label on it, taking the height above the row and the footer, a row of reference thumbnails when it has two or
+ * more, and a footer with the reference count and the version on show.
  * @param props - the node, its assets, the text scale, the noun's label and color, and the Factory renderer.
  * @returns the element.
  */
@@ -219,10 +224,10 @@ function ReferenceCard(
   const rest = references.length - shown.length
   const count = node.assets.length
   const version = (node.records?.length ?? 0) + 1
-  const thumb: CSSProperties = { position: 'relative', flex: 'none', display: 'flex', width: 44, height: 44, borderRadius: 'var(--dv-radius-sm)', overflow: 'hidden', background: 'var(--dv-surface-3)' }
+  const thumb: CSSProperties = { position: 'relative', flex: '0 1 44px', minWidth: 0, display: 'flex', height: 44, borderRadius: 'var(--dv-radius-sm)', overflow: 'hidden', background: 'var(--dv-surface-3)' }
   return (
     <div style={{ ...CARD_SURFACE, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ position: 'relative', flex: 'none', display: 'flex', height: HERO_HEIGHT, overflow: 'hidden', background: 'var(--dv-surface-3)' }}>
+      <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden', background: 'var(--dv-surface-3)' }}>
         {first === undefined ? null : renderFactorySlot('dv.media', { asset: first, purpose: 'card' })}
         <span style={{ position: 'absolute', left: 8, top: 8, display: 'flex', alignItems: 'center', gap: 5, height: size(20), padding: '0 8px 0 7px', borderRadius: 9999, background: 'var(--dv-surface-1)', color: 'var(--dv-text)', fontSize: size(11), lineHeight: 1, fontWeight: 500 }}>
           <span style={{ flex: 'none', width: 7, height: 7, borderRadius: 9999, background: color }} />

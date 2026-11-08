@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { cardsAfter, parseDrawn, parseMoved, parseQuery, planMove, refusalSentence } from '../src/canvas.ts'
 import type { CanvasCard } from '../src/types.ts'
 
-/** A drawn card of 208 × 100 at (x, y). */
+/** A drawn card at (x, y) with a frame of 208 × 100 below its caption. */
 function card(id: string, x: number, y: number): CanvasCard {
   return { id, type: 'text', title: id, record: null, x, y, width: 208, height: 100, rendering: false }
 }
@@ -12,8 +12,8 @@ const CARDS = [card('a', 0, 0), card('b', 240, 0), card('c', 0, 200)]
 
 describe('planMove', () => {
   it('places the listed nodes at their corners 24 units apart, and keeps an overlap between two cards that do not move', () => {
-    expect(planMove([...CARDS, card('d', 10, 210)], [{ node: 'a', x: 500, y: 0 }, { node: 'b', x: 500, y: 124 }]))
-      .toEqual({ kind: 'move', positions: { a: { x: 500, y: 0 }, b: { x: 500, y: 124 } } })
+    expect(planMove([...CARDS, card('d', 10, 210)], [{ node: 'a', x: 500, y: 0 }, { node: 'b', x: 500, y: 144 }]))
+      .toEqual({ kind: 'move', positions: { a: { x: 500, y: 0 }, b: { x: 500, y: 144 } } })
   })
 
   it('refuses a node listed twice, then an unknown node, then a moved card that overlaps another or comes within 24 units', () => {
@@ -22,7 +22,7 @@ describe('planMove', () => {
     expect(planMove(CARDS, [{ node: 'zz', x: 0, y: 0 }])).toEqual({ kind: 'unknown_nodes', ids: ['zz'], known: ['a', 'b', 'c'] })
     expect(planMove(CARDS, [{ node: 'c', x: 100, y: 50 }]))
       .toEqual({ kind: 'too_close', pairs: [[card('a', 0, 0), card('c', 100, 50)], [card('b', 240, 0), card('c', 100, 50)]] })
-    expect(planMove(CARDS, [{ node: 'c', x: 0, y: 123 }])).toEqual({ kind: 'too_close', pairs: [[card('a', 0, 0), card('c', 0, 123)]] })
+    expect(planMove(CARDS, [{ node: 'c', x: 0, y: 143 }])).toEqual({ kind: 'too_close', pairs: [[card('a', 0, 0), card('c', 0, 143)]] })
   })
 })
 
@@ -33,7 +33,7 @@ describe('refusalSentence', () => {
     expect(refusalSentence({ kind: 'unknown_nodes', ids: ['zz'], known: ['a', 'b'] }))
       .toBe('The canvas has no node zz. Its nodes are: a, b. Nothing was moved.')
     expect(refusalSentence({ kind: 'too_close', pairs: [[card('a', 0, 0), card('c', 100, 50)]] })).toBe(
-      'The move would leave cards closer than 24 units: a (x 0, y 0, 208 wide, 100 tall) and c (x 100, y 50, 208 wide, 100 tall). '
+      'The move would leave cards closer than 24 units: a (x 0, y 0, frame 208 wide and 100 tall) and c (x 100, y 50, frame 208 wide and 100 tall). '
       + 'Keep at least 24 units between the cards and call dv_canvas_move again. Nothing was moved.',
     )
   })

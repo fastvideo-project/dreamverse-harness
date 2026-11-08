@@ -272,7 +272,7 @@ describe('one dv.media Factory under parents of both scopes', () => {
       openFile: () => undefined, loadImage: () => Promise.resolve(''), phase: 'result', block,
     }, { session: reference, entryKey: 'dv_shot_render', hookContext: { callId: 'call-1', assistant: undefined } })
     const node: NodeView = {
-      id: 'u1', type: 'asset', title: 'v1.mp4', record: null, assets: ['v1.mp4'], standIn: true, bodyHeight: 117, claimed: false,
+      id: 'u1', type: 'asset', title: 'v1.mp4', record: null, assets: ['v1.mp4'], standIn: true, sizing: { kind: 'window', defaultSize: { width: 208, height: 117 }, minSize: { width: 104, height: 117 } }, claimed: false,
       flags: { stale: false, rendering: false, failed: false, superseded: false }, badges: [], version: null, unseen: false,
       rerunning: false,
     }

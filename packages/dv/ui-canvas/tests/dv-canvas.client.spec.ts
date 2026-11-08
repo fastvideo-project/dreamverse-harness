@@ -7,7 +7,7 @@ import { createDvCanvas } from '../src/client/dv-canvas.ts'
 
 const claiming = (id: string, type: 'test_clip' | 'test_cut', operations: string[]): NodeType => ({
   id, type, label: () => type, color: '#888', column: 2,
-  claimed: { operations, status: { running: () => '', failed: () => '' }, entry: () => ({ title: '', bodyHeight: 117 }) },
+  claimed: { operations, status: { running: () => '', failed: () => '' }, entry: () => ({ title: '', sizing: { kind: 'window', defaultSize: { width: 208, height: 117 }, minSize: { width: 104, height: 117 } } }) },
 })
 
 describe('createDvCanvas', () => {

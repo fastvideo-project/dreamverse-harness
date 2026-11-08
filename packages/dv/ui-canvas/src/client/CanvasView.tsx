@@ -1,10 +1,11 @@
 /**
  * The project canvas: a pan-and-zoom surface that draws the nodes of the registered node types in the canvas chrome
- * (a caption above a frame) around each type's `dv.canvas.card` body, and opens a clicked node's editor panel, which
- * grows out of the node and shrinks back into it (`@dv/ui-kit/zoom.ts`). Node positions and the viewport are stored per
- * project through `/api/dv/canvas/layout`; a node without a stored position gets the first free spot at or below its
- * automatic position, and that spot is stored once the node's record stops rendering, so a node that appears later
- * never moves or covers another. The opened nodes are kept per
+ * (a caption above a frame) around each type's `dv.canvas.card` body; a click selects a node, and a double click opens
+ * its editor panel, which grows out of the node and shrinks back into it (`@dv/ui-kit/zoom.ts`). Node positions, frame
+ * sizes, and the viewport are stored per project through `/api/dv/canvas/layout`; a node without a stored position
+ * gets its type's default size at the first free spot at or below its automatic position, and that box is stored once
+ * the node's record stops rendering, so a node that appears later never moves or covers another. The corner handles of
+ * the selected node resize it within its type's sizing. The opened nodes are kept per
  * project in `localStorage` for the unseen dot. Colors come from the `--dv-*` theme variables that `@dv/ui-shell`
  * defines and from each type's `color`. The canvas names no node type.
  */
@@ -19,17 +20,19 @@ import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { useOperations, useProjectState } from '@dv/ui-kit/useProject.ts'
 import { useZoomPresence } from '@dv/ui-kit/zoom.ts'
-import type { CanvasViewport, NodePosition } from '../canvas-layout.ts'
+import type { CanvasViewport, NodePosition, NodeSpot } from '../canvas-layout.ts'
 import { cardsOf } from './agent-canvas.ts'
 import type { CanvasViews } from './agent-canvas.ts'
 import type { CanvasRequest, EditorHost, NodeAction, NodeHost, NodeView, RerunRequest } from './contract/index.ts'
-import { buildCanvasGraph, freePositions, isFinished, NODE_WIDTH, previewOf, ROW } from './graph.ts'
+import { buildCanvasGraph, freePositions, isFinished, previewOf, ROW } from './graph.ts'
 import type { CanvasEdge, CanvasNode, CanvasRegistrations } from './graph.ts'
 import { cardHeight, edgeAnchorY, NodeCard, textScaleAt, TypeLabelBody } from './NodeCard.tsx'
 import type { CanvasTranslate } from './NodeCard.tsx'
 import { readLayout, writeLayout } from './layout-client.ts'
 import { NodeEditor } from './NodeEditor.tsx'
 import type { EditorArea, RenderCanvasSlot, SurfaceHosts } from './NodeEditor.tsx'
+import { resizedBox } from './resize.ts'
+import type { ResizeCorner } from './resize.ts'
 
 /** The registered descriptors that the canvas draws with. */
 export interface CanvasDescriptors extends CanvasRegistrations {
@@ -68,6 +71,8 @@ const DROP_OFFSET_Y = 40
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 2
 const DRAG_THRESHOLD = 4
+/** The longest pause between two clicks on one node that opens its editor, in ms. */
+const DOUBLE_CLICK_MS = 400
 const SAVE_DELAY_MS = 500
 /** The zoom ref of a stacked editor, which opens and closes without the zoom transition. */
 const noZoom = (element: HTMLElement | null): void => { void element }
@@ -169,10 +174,19 @@ interface AwaitedRender {
   resolve: () => void
 }
 
-/** An in-progress pointer gesture. */
+/** An in-progress pointer gesture. A resize drags one corner of the selected node ({@link resizedBox}). */
 type Gesture =
   | { kind: 'pan'; startX: number; startY: number; origin: CanvasViewport; moved: boolean }
   | { kind: 'node'; id: string; startX: number; startY: number; origin: NodePosition; at: NodePosition; moved: boolean }
+  | { kind: 'resize'; node: CanvasNode; corner: ResizeCorner; startX: number; startY: number; origin: NodePosition; at: NodePosition; moved: boolean }
+
+/**
+ * @param boxes - the boxes that the canvas gave the nodes, by node ID.
+ * @param node - a node.
+ * @returns its box, else, until the canvas gives it one, its automatic position at its type's default size.
+ */
+const boxIn = (boxes: Readonly<Record<string, NodePosition>>, node: CanvasNode): NodePosition =>
+  boxes[node.id] ?? { x: node.x, y: node.y, ...node.sizing.defaultSize }
 
 /**
  * @param map - a map.
@@ -263,20 +277,28 @@ export function CanvasView(
   const [notice, setNotice] = useState<string | null>(null)
   const container = useRef<HTMLDivElement | null>(null)
   const gesture = useRef<Gesture | null>(null)
+  // The last click on a node, so a second click on it within DOUBLE_CLICK_MS opens the editor. The canvas captures the
+  // pointer on each press, which makes the browser fire `dblclick` on the canvas instead of the card, so the card's own
+  // double-click event cannot serve.
+  const lastClick = useRef<{ id: string; at: number } | null>(null)
   const viewportRef = useRef(viewport)
   viewportRef.current = viewport
   const positionsRef = useRef(positions)
   positionsRef.current = positions
   const moved = useRef(new Map<string, NodePosition>())
-  // The nodes whose spot the canvas chose while their record was rendering. Such a spot is drawn and counts as occupied,
-  // but is not stored until the node's height is final.
+  // The nodes whose box the canvas chose while their record was rendering. Such a box is drawn and counts as occupied,
+  // but is not stored until the node's default size is final.
   const unsavedSpots = useRef(new Set<string>())
+  // Stored corners without a size, from a layout file written before nodes had a stored size or from an agent's move
+  // of a node that this canvas has not given a final box yet: the canvas gives each node its default size there once
+  // and stores the box.
+  const sizeless = useRef<Record<string, NodeSpot>>({})
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const needsFit = useRef(false)
   // True while the viewport is an automatic fit; resizing the canvas refits until the user pans or zooms.
   const autoFit = useRef(false)
   // Imported or dropped assets waiting for their node to appear, with the canvas point they were dropped at.
-  const pendingDrops = useRef(new Map<string, NodePosition>())
+  const pendingDrops = useRef(new Map<string, NodeSpot>())
   const [dragOver, setDragOver] = useState(false)
   // The node the user last dragged or dropped is drawn above the others.
   const [topNode, setTopNode] = useState<string | null>(null)
@@ -290,7 +312,13 @@ export function CanvasView(
       // The stored layout wins over a drag made before it arrived.
       moved.current.clear()
       unsavedSpots.current.clear()
-      setPositions(layout.positions)
+      const stored: Record<string, NodePosition> = {}
+      sizeless.current = {}
+      for (const [id, { x, y, width, height }] of Object.entries(layout.positions)) {
+        if (width === undefined || height === undefined) sizeless.current[id] = { x, y }
+        else stored[id] = { x, y, width, height }
+      }
+      setPositions(stored)
       if (layout.viewport !== null) setViewport(layout.viewport)
       needsFit.current = layout.viewport === null
       setLayoutReady(true)
@@ -313,20 +341,20 @@ export function CanvasView(
     }, SAVE_DELAY_MS)
   }, [projectId])
 
-  const positionOf = useCallback((node: CanvasNode): NodePosition => positions[node.id] ?? { x: node.x, y: node.y }, [positions])
+  const boxOf = useCallback((node: CanvasNode): NodePosition => boxIn(positions, node), [positions])
 
   /** Pan and zoom so every node is visible, at 100% at most: content that fits the view keeps its true size. */
   const fit = useCallback(() => {
     if (graph === null || graph.nodes.length === 0) return
     const { width, height } = sizeOf(container.current)
-    const points = graph.nodes.map(positionOf)
-    const minX = Math.min(...points.map(point => point.x))
-    const minY = Math.min(...points.map(point => point.y))
-    const spanX = Math.max(...points.map(point => point.x)) + NODE_WIDTH - minX
-    const spanY = Math.max(...points.map(point => point.y)) + FIT_NODE_HEIGHT - minY
+    const boxes = graph.nodes.map(boxOf)
+    const minX = Math.min(...boxes.map(box => box.x))
+    const minY = Math.min(...boxes.map(box => box.y))
+    const spanX = Math.max(...boxes.map(box => box.x + box.width)) - minX
+    const spanY = Math.max(...boxes.map(box => box.y + Math.max(FIT_NODE_HEIGHT, cardHeight(box)))) - minY
     const zoom = clampZoom(Math.min((width - 80) / spanX, (height - 80) / spanY, 1))
     setViewport({ x: (width - spanX * zoom) / 2 - minX * zoom, y: (height - spanY * zoom) / 2 - minY * zoom, zoom })
-  }, [graph, positionOf])
+  }, [graph, boxOf])
 
   useEffect(() => {
     if (layoutReady && needsFit.current && graph !== null && graph.nodes.length > 0) {
@@ -392,12 +420,12 @@ export function CanvasView(
   /** Pan so a node sits at the center of the canvas, keeping the zoom. */
   const centerOn = useCallback((node: CanvasNode) => {
     const { width, height } = sizeOf(container.current)
-    const position = positionsRef.current[node.id] ?? { x: node.x, y: node.y }
+    const box = boxIn(positionsRef.current, node)
     autoFit.current = false
     setViewport(current => ({
       ...current,
-      x: width / 2 - (position.x + NODE_WIDTH / 2) * current.zoom,
-      y: height / 2 - (position.y + cardHeight(node) / 2) * current.zoom,
+      x: width / 2 - (box.x + box.width / 2) * current.zoom,
+      y: height / 2 - (box.y + cardHeight(box) / 2) * current.zoom,
     }))
   }, [])
 
@@ -418,12 +446,15 @@ export function CanvasView(
     setEditing(node.id)
   }, [focus, layoutReady, graph, centerOn])
 
-  /** Move a node to a canvas point and store the position. */
-  const placeNode = useCallback((id: string, position: NodePosition) => {
-    setPositions(all => ({ ...all, [id]: position }))
-    setTopNode(id)
-    moved.current.set(id, position)
-    unsavedSpots.current.delete(id)
+  /** Move a node so that its top edge is centered on a dropped canvas point, and store its box; the node keeps its size. */
+  const placeNode = useCallback((node: CanvasNode, point: NodeSpot) => {
+    const size = boxIn(positionsRef.current, node)
+    const box = { ...size, x: point.x - size.width / 2, y: point.y }
+    positionsRef.current = { ...positionsRef.current, [node.id]: box }
+    setPositions(all => ({ ...all, [node.id]: box }))
+    setTopNode(node.id)
+    moved.current.set(node.id, box)
+    unsavedSpots.current.delete(node.id)
     scheduleSave()
   }, [scheduleSave])
 
@@ -433,31 +464,33 @@ export function CanvasView(
   const placePending = useCallback(() => {
     const current = graphRef.current
     if (current === null) return
-    for (const [assetId, position] of pendingDrops.current) {
-      const id = current.assetNodes[assetId]
-      if (id === undefined) continue
+    for (const [assetId, spot] of pendingDrops.current) {
+      const node = current.nodes.find(entry => entry.id === current.assetNodes[assetId])
+      if (node === undefined) continue
       pendingDrops.current.delete(assetId)
-      placeNode(id, position)
+      placeNode(node, spot)
     }
   }, [placeNode])
   useEffect(() => { placePending() }, [graph, placePending])
 
-  // Give a free spot to every node without a position, and store it once the node's height is final. A rendering node's
-  // spot stays unsaved: it is drawn and occupied, and when the node stops rendering the canvas drops the spot and places
-  // the node again at its final height, then stores that spot. The ref is updated at once so that the reveal of a new
-  // node below centers on its spot; an earlier queued position, such as a dropped asset's, wins over the free spot.
+  // Give every node without a stored box its default size at a free spot, or at its stored corner of an older layout
+  // file, and store the box once the node's default size is final. A rendering node's box stays unsaved: it is drawn and
+  // occupied, and when the node stops rendering the canvas drops the box and places the node again at its final default
+  // size, then stores that box. The ref is updated at once so that the reveal of a new node below centers on its spot;
+  // an earlier queued position, such as a dropped asset's, wins over the free spot.
   useEffect(() => {
     if (!layoutReady || graph === null) return
     const rendering = new Set(graph.nodes.flatMap(node => node.flags.rendering ? [node.id] : []))
     const settled = [...unsavedSpots.current].filter(id => !rendering.has(id))
     for (const id of settled) unsavedSpots.current.delete(id)
     const kept = withoutProperties(positionsRef.current, settled)
-    const added = freePositions(graph.nodes, kept, cardHeight)
+    const added = freePositions(graph.nodes, kept, sizeless.current, cardHeight)
     if (settled.length === 0 && Object.keys(added).length === 0) return
     for (const id of Object.keys(added)) if (rendering.has(id)) unsavedSpots.current.add(id)
     positionsRef.current = { ...added, ...kept }
     setPositions(all => ({ ...added, ...withoutProperties(all, settled) }))
     const final = Object.fromEntries(Object.entries(added).filter(([id]) => !rendering.has(id)))
+    sizeless.current = withoutProperties(sizeless.current, Object.keys(final))
     if (Object.keys(final).length > 0) void writeLayout(projectId, { positions: final }).catch(() => null)
   }, [layoutReady, graph, projectId])
 
@@ -469,15 +502,18 @@ export function CanvasView(
     if (!loaded) return undefined
     return views.mount({
       projectId, session,
-      cards: () => cardsOf(drawnRef.current, node => ({ x: node.x, y: node.y, ...positionsRef.current[node.id] }), cardHeight),
+      cards: () => cardsOf(drawnRef.current, node => boxIn(positionsRef.current, node)),
       // An agent's move is drawn as a drop is, and a drag that waits to be saved no longer carries its nodes.
       place: (patch) => {
-        for (const id of Object.keys(patch)) {
-          unsavedSpots.current.delete(id)
+        const placed: Record<string, NodePosition> = {}
+        for (const [id, spot] of Object.entries(patch)) {
           moved.current.delete(id)
+          const box = positionsRef.current[id]
+          if (box === undefined || unsavedSpots.current.has(id)) sizeless.current[id] = spot
+          if (box !== undefined) placed[id] = { ...box, ...spot }
         }
-        positionsRef.current = { ...positionsRef.current, ...patch }
-        setPositions(all => ({ ...all, ...patch }))
+        positionsRef.current = { ...positionsRef.current, ...placed }
+        setPositions(all => ({ ...all, ...placed }))
       },
     })
   }, [loaded, projectId, session, views])
@@ -536,8 +572,15 @@ export function CanvasView(
   const onNodeDown = (node: CanvasNode) => (event: ReactPointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0) return
     event.stopPropagation()
-    const origin = positionOf(node)
+    const origin = boxOf(node)
     gesture.current = { kind: 'node', id: node.id, startX: event.clientX, startY: event.clientY, origin, at: origin, moved: false }
+    capture(event)
+  }
+  // The handle stops the press before the card's `onNodeDown`, so a resize starts no move and opens no editor.
+  const onResizeDown = (node: CanvasNode) => (corner: ResizeCorner, event: ReactPointerEvent<HTMLElement>): void => {
+    if (event.button !== 0) return
+    const origin = boxOf(node)
+    gesture.current = { kind: 'resize', node, corner, startX: event.clientX, startY: event.clientY, origin, at: origin, moved: false }
     capture(event)
   }
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -554,7 +597,13 @@ export function CanvasView(
       return
     }
     const zoom = viewportRef.current.zoom
-    const at = { x: current.origin.x + dx / zoom, y: current.origin.y + dy / zoom }
+    if (current.kind === 'resize') {
+      const at = resizedBox(current.node.sizing, current.origin, current.corner, dx / zoom, dy / zoom)
+      current.at = at
+      setPositions(all => ({ ...all, [current.node.id]: at }))
+      return
+    }
+    const at = { ...current.origin, x: current.origin.x + dx / zoom, y: current.origin.y + dy / zoom }
     current.at = at
     setPositions(all => ({ ...all, [current.id]: at }))
   }
@@ -562,9 +611,16 @@ export function CanvasView(
     const current = gesture.current
     gesture.current = null
     if (current === null) return
+    // A click on a node selects it; a second click on the same node soon after opens its editor.
     if (current.kind === 'node' && !current.moved) {
       setSelected(current.id)
-      setEditing(current.id)
+      const previous = lastClick.current
+      const at = Date.now()
+      lastClick.current = { id: current.id, at }
+      if (previous !== null && previous.id === current.id && at - previous.at <= DOUBLE_CLICK_MS) {
+        lastClick.current = null
+        setEditing(current.id)
+      }
       return
     }
     // A click on empty canvas closes the floating editor, or clears the selection when no editor is open.
@@ -573,9 +629,12 @@ export function CanvasView(
       else setEditing(null)
       return
     }
-    if (current.kind === 'node') {
-      moved.current.set(current.id, current.at)
-      unsavedSpots.current.delete(current.id)
+    // A press on a handle without movement changes nothing.
+    if (current.kind === 'resize' && !current.moved) return
+    if (current.kind === 'node' || current.kind === 'resize') {
+      const id = current.kind === 'node' ? current.id : current.node.id
+      moved.current.set(id, current.at)
+      unsavedSpots.current.delete(id)
     }
     scheduleSave()
   }
@@ -656,14 +715,14 @@ export function CanvasView(
     const rect = event.currentTarget.getBoundingClientRect()
     const view = viewportRef.current
     const point = {
-      x: (event.clientX - rect.left - view.x) / view.zoom - NODE_WIDTH / 2,
+      x: (event.clientX - rect.left - view.x) / view.zoom,
       y: (event.clientY - rect.top - view.y) / view.zoom - DROP_OFFSET_Y,
     }
     setNotice(null)
     const assetId = event.dataTransfer.getData(DV_ASSET_DRAG_TYPE)
     if (assetId !== '') {
-      const id = graph?.assetNodes[assetId]
-      if (id !== undefined) { placeNode(id, point); return }
+      const node = graph?.nodes.find(entry => entry.id === graph.assetNodes[assetId])
+      if (node !== undefined) { placeNode(node, point); return }
       // Any other asset of the asset pool panel goes on the canvas, with its node under the pointer.
       pendingDrops.current.set(assetId, point)
       void run(() => changePlacement(assetId, true))
@@ -712,15 +771,15 @@ export function CanvasView(
     const touchesSelected = (edge: CanvasEdge): boolean => selected !== null && (edge.from === selected || edge.to === selected)
     const links = [...graph.links.filter(link => !touchesSelected(link.edge)), ...graph.links.filter(link => touchesSelected(link.edge))]
     const textScale = textScaleAt(viewport.zoom)
-    const anchorOf = (node: CanvasNode): number => edgeAnchorY(node, textScale)
+    const anchorOf = (node: CanvasNode): number => edgeAnchorY(boxOf(node), textScale)
     const hosts = hostsOf(() => { setEditing(null) })
     content = (
       <div style={{ position: 'absolute', left: 0, top: 0, transform: `translate(${String(viewport.x)}px, ${String(viewport.y)}px) scale(${String(viewport.zoom)})`, transformOrigin: '0 0' }}>
         <svg style={{ position: 'absolute', left: 0, top: 0, width: 1, height: 1, overflow: 'visible', pointerEvents: 'none' }} aria-hidden="true">
           {links.map(({ edge, source: from, target: to }) => {
-            const a = positionOf(from)
-            const b = positionOf(to)
-            const x1 = a.x + NODE_WIDTH
+            const a = boxOf(from)
+            const b = boxOf(to)
+            const x1 = a.x + a.width
             const y1 = a.y + anchorOf(from)
             const x2 = b.x
             const y2 = b.y + anchorOf(to)
@@ -741,7 +800,6 @@ export function CanvasView(
           })}
         </svg>
         {[...graph.nodes.filter(node => node.id !== topNode), ...graph.nodes.filter(node => node.id === topNode)].map((node) => {
-          const position = positionOf(node)
           const view = viewFor(node)
           const assets: Record<string, Asset> = {}
           for (const id of [...node.assets, previewOf(node) ?? '']) {
@@ -753,12 +811,12 @@ export function CanvasView(
               key={node.id}
               node={node}
               view={view}
-              x={position.x}
-              y={position.y}
+              box={boxOf(node)}
               selected={node.id === selected}
               zoom={viewport.zoom}
               t={t}
               onPointerDown={onNodeDown(node)}
+              onResizeDown={onResizeDown(node)}
               body={renderSlot('dv.canvas.card', { node: view, assets, textScale, host: hosts.card }, {
                 entryKey: node.type, fallback: <TypeLabelBody label={node.nodeType.label()} textScale={textScale} />,
               })}

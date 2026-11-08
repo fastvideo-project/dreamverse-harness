@@ -8,9 +8,9 @@ import type { DvLanguage } from '@dv/ui-kit/locale.ts'
 import { versionRefOf } from '@dv/ui-kit/references.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import type { ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
-import type { NodePosition } from '../canvas-layout.ts'
+import type { NodePosition, NodeSpot } from '../canvas-layout.ts'
 import type {
-  ClaimedEntry, ClaimedRecord, NodeEntry, NodeFlags, NodeInput, NodeType, OperationRecord, RecordsInUse,
+  ClaimedEntry, ClaimedRecord, NodeEntry, NodeFlags, NodeInput, NodeType, OperationRecord, RecordsInUse, Size,
 } from './contract/index.ts'
 
 /** One drawn node: its entry, its type, and the facts that the canvas derived. */
@@ -60,8 +60,6 @@ export interface CanvasRegistrations {
   versionKinds: readonly VersionKind[]
 }
 
-/** Width of every node card, in canvas units: a 16:9 frame fills it (208 × 117 at 100%). */
-export const NODE_WIDTH = 208
 /** Default spacing of the automatic layout, in canvas units. */
 const COLUMN = 240
 /** Row pitch; it leaves room for a 147-unit card whose text has grown at a low zoom. */
@@ -308,32 +306,35 @@ export function isFinished(entry: Pick<CanvasNode, 'claimed' | 'flags' | 'assets
 const NODE_GAP = 12
 
 /**
- * Positions for the nodes that have no stored position: each node's automatic position, moved down one row at a time
- * until its card overlaps neither a stored node nor a node placed before it. A node that appears later therefore never
- * covers a node that the user moved.
+ * Positions and frame sizes for the nodes that have none stored, each at its type's default size. A node with a stored
+ * corner but no size keeps that corner; any other node takes its automatic position, moved down one row at a time until
+ * its card overlaps neither a stored node nor a node placed before it. A node that appears later therefore never covers
+ * a node that the user moved or resized.
  * @param nodes - the graph's nodes, in graph order.
- * @param stored - the stored positions by node ID.
- * @param heightOf - a node's card height in canvas units.
- * @returns the positions of the nodes that had none, by node ID.
+ * @param stored - the stored positions and frame sizes by node ID.
+ * @param spots - stored corners without a size by node ID, such as the entries of a layout file older than stored sizes.
+ * @param heightOf - the card height in canvas units of a frame size: the caption and the frame.
+ * @returns the positions and sizes of the nodes that had none, by node ID.
  */
 export function freePositions(
-  nodes: readonly CanvasNode[], stored: Readonly<Record<string, NodePosition>>, heightOf: (entry: CanvasNode) => number,
+  nodes: readonly CanvasNode[], stored: Readonly<Record<string, NodePosition>>, spots: Readonly<Record<string, NodeSpot>>,
+  heightOf: (size: Size) => number,
 ): Record<string, NodePosition> {
-  const boxes = nodes.flatMap((entry) => {
-    const at = stored[entry.id]
-    return at === undefined ? [] : [{ ...at, height: heightOf(entry) }]
-  })
+  const boxes = nodes.flatMap(entry => stored[entry.id] ?? [])
   const placed: Record<string, NodePosition> = {}
   for (const entry of nodes) {
     if (stored[entry.id] !== undefined) continue
-    const height = heightOf(entry)
-    let y = entry.y
-    const overlaps = (box: { x: number; y: number; height: number }): boolean =>
-      box.x < entry.x + NODE_WIDTH + NODE_GAP && entry.x < box.x + NODE_WIDTH + NODE_GAP
-      && box.y < y + height + NODE_GAP && y < box.y + box.height + NODE_GAP
-    while (boxes.some(overlaps)) y += ROW
-    placed[entry.id] = { x: entry.x, y }
-    boxes.push({ x: entry.x, y, height })
+    const size = entry.sizing.defaultSize
+    const spot = spots[entry.id]
+    const x = spot?.x ?? entry.x
+    let y = spot?.y ?? entry.y
+    const overlaps = (box: NodePosition): boolean =>
+      box.x < x + size.width + NODE_GAP && x < box.x + box.width + NODE_GAP
+      && box.y < y + heightOf(size) + NODE_GAP && y < box.y + heightOf(box) + NODE_GAP
+    if (spot === undefined) while (boxes.some(overlaps)) y += ROW
+    const box = { x, y, ...size }
+    placed[entry.id] = box
+    boxes.push(box)
   }
   return placed
 }

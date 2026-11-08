@@ -2,42 +2,44 @@
  * The chrome of one canvas node on the `--dv-*` theme variables: a caption above a frame. The caption is one line with
  * the title, the unseen dot, the stale tag and `meta`. The frame is a rounded outline that wears the selection ring and
  * holds the `dv.canvas.card` body, which paints its own fill, or, for a failed claimed node, the
- * failed words and actions on the card surface. The chrome names no node type.
+ * failed words and actions on the card surface. The selected node has a resize handle at each corner of its frame.
+ * The chrome names no node type.
  */
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
 import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
-import type { NodeAction, NodeView } from './contract/index.ts'
-import { NODE_WIDTH } from './graph.ts'
+import { CAPTION_HEIGHT } from '../canvas-layout.ts'
+import type { NodePosition } from '../canvas-layout.ts'
+import type { NodeAction, NodeView, Size } from './contract/index.ts'
 import type { CanvasNode } from './graph.ts'
 import type {} from './locales.ts'
+import type { ResizeCorner } from './resize.ts'
 
 /** The canvas namespace translate. */
 export type CanvasTranslate = TranslateNS<'dvCanvas'>
 
-/** Height of the caption above the frame at base text size. */
-export const CAPTION_HEIGHT = 20
-
-type SizedNode = Pick<CanvasNode, 'bodyHeight'>
-
 /**
- * The node height at base text size, caption + frame, computed from the node without measuring it.
- * @param node - the node.
+ * The node height at base text size, caption + frame, computed from the frame size without measuring the node.
+ * @param frame - the frame size in canvas units.
  * @returns the height in canvas units.
  */
-export function cardHeight(node: SizedNode): number {
-  return CAPTION_HEIGHT + node.bodyHeight
+export function cardHeight(frame: Pick<Size, 'height'>): number {
+  return CAPTION_HEIGHT + frame.height
 }
 
 /**
  * The height where edges meet a node, below its top: the middle of the frame under the caption at the text scale.
- * @param node - the node.
+ * @param frame - the frame size in canvas units.
  * @param textScale - the text enlargement ({@link textScaleAt}).
  * @returns the offset in canvas units.
  */
-export function edgeAnchorY(node: SizedNode, textScale: number): number {
-  return Math.round(CAPTION_HEIGHT * textScale) + node.bodyHeight / 2
+export function edgeAnchorY(frame: Pick<Size, 'height'>, textScale: number): number {
+  return Math.round(CAPTION_HEIGHT * textScale) + frame.height / 2
 }
+
+const CORNERS: readonly ResizeCorner[] = ['nw', 'ne', 'sw', 'se']
+/** The side of a handle square that overhangs the frame's corner, in canvas units. */
+const HANDLE_SIZE = 10
 
 /** The zoom at and above which node text keeps its base size; below it text scales up to stay readable. */
 const READABLE_ZOOM = 0.8
@@ -61,13 +63,15 @@ export interface NodeCardProps {
   node: CanvasNode
   /** The node as its card body and actions receive it. */
   view: NodeView
-  x: number
-  y: number
+  /** The node's stored position and frame size. */
+  box: NodePosition
   selected: boolean
   /** The canvas zoom; text grows in canvas units below {@link READABLE_ZOOM} so it stays legible on screen. */
   zoom: number
   t: CanvasTranslate
   onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
+  /** A press on one of the selected node's corner handles, which the card keeps from `onPointerDown`. */
+  onResizeDown: (corner: ResizeCorner, event: ReactPointerEvent<HTMLElement>) => void
   /** The body: the `dv.canvas.card` entry of the node's type. */
   body: ReactNode
   /** For a failed claimed node, the actions that show on it; empty when the canvas is read-only. */
@@ -78,12 +82,12 @@ export interface NodeCardProps {
 }
 
 /**
- * The node: the caption above the frame.
- * @param props - the node, its position, the canvas zoom, the body, and the gesture and action callbacks.
+ * The node: the caption above the frame, and on the selected node a handle at each corner of the frame.
+ * @param props - the node, its position and frame size, the canvas zoom, the body, and the gesture and action callbacks.
  * @returns the element.
  */
 export function NodeCard(props: NodeCardProps): ReactNode {
-  const { node, view, x, y, selected, zoom, t } = props
+  const { node, view, box, selected, zoom, t } = props
   const { flags } = node
   const scale = textScaleAt(zoom)
   const size = (base: number): number => Math.round(base * scale)
@@ -96,7 +100,7 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   else if (flags.stale) ring = '0 0 0 1px var(--dv-danger)'
   else if (failed) ring = '0 0 0 1px var(--dv-line)'
   const style: CSSProperties = {
-    position: 'absolute', left: x, top: y, width: NODE_WIDTH, boxSizing: 'border-box', color: 'var(--dv-text)', cursor: 'grab', userSelect: 'none',
+    position: 'absolute', left: box.x, top: box.y, width: box.width, boxSizing: 'border-box', color: 'var(--dv-text)', cursor: 'grab', userSelect: 'none',
     opacity: flags.superseded ? 0.55 : 1, touchAction: 'none',
   }
   const status = node.claimed ? node.nodeType.claimed?.status : undefined
@@ -134,7 +138,7 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   } else {
     content = (
       <>
-        <div style={{ position: 'relative', height: node.bodyHeight }}>
+        <div style={{ position: 'relative', height: box.height }}>
           {props.body}
           {marker !== null
             ? <span style={{ ...text(13), position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dv-overlay)', color: flags.failed ? 'var(--dv-danger)' : 'var(--dv-text)', fontWeight: 500 }}>{marker}</span>
@@ -165,9 +169,28 @@ export function NodeCard(props: NodeCardProps): ReactNode {
       title={failed ? node.record.error?.message : undefined}
     >
       {caption}
-      <div data-node-frame="" style={{ position: 'relative', height: node.bodyHeight, overflow: 'hidden', borderRadius: 'var(--dv-radius-lg)', boxShadow: ring }}>
+      <div data-node-frame="" style={{ position: 'relative', height: box.height, overflow: 'hidden', borderRadius: 'var(--dv-radius-lg)', boxShadow: ring }}>
         {content}
       </div>
+      {selected
+        ? CORNERS.map(corner => (
+          <span
+            key={corner}
+            role="button"
+            aria-label={t('node.resize')}
+            title={t('node.resize')}
+            data-node-handle={corner}
+            style={{
+              position: 'absolute', width: HANDLE_SIZE, height: HANDLE_SIZE, boxSizing: 'border-box', borderRadius: 2,
+              background: 'var(--dv-surface-1)', border: '2px solid var(--dv-accent)', touchAction: 'none',
+              cursor: corner === 'nw' || corner === 'se' ? 'nwse-resize' : 'nesw-resize',
+              ...corner.startsWith('n') ? { top: size(CAPTION_HEIGHT) - HANDLE_SIZE / 2 } : { bottom: -HANDLE_SIZE / 2 },
+              ...corner.endsWith('w') ? { left: -HANDLE_SIZE / 2 } : { right: -HANDLE_SIZE / 2 },
+            }}
+            onPointerDown={(event) => { event.stopPropagation(); props.onResizeDown(corner, event) }}
+          />
+        ))
+        : null}
     </div>
   )
 }

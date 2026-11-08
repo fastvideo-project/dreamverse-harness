@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Browser half of DreamVerse audio generation: the audio.generate records as audio takes, with their label, status words, node palette slot and body height, declared with defineGenerationUi.",
+  "description": "Browser half of DreamVerse audio generation: the audio.generate records as audio takes, with their label, status words, node palette slot and frame aspect ratio, declared with defineGenerationUi.",
   "exports": {
     ".": "./src/index.ts",
     "./client": {

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { HistoryRow } from '@dv/ui-history/contract'
-import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
+import { CARD_SURFACE, mediaSizing, WIDE_RATIO } from '@dv/ui-kit/frame.ts'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type { NodeType } from '../../ui-canvas/src/client/contract/index.ts'
 import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
@@ -53,19 +53,20 @@ describe('the claimed node type of a generation kind', () => {
     await runtime.dispose()
   })
 
-  it('shows the duration of the first timed output as meta, the still the spec picks as preview, and the frame height of the shown asset', async () => {
+  it('shows the duration of the first timed output as meta, the still the spec picks as preview, and the media sizing of the shown asset', async () => {
     const { runtime, canvas } = await mountKit({})
     const state = extendedState()
     state.assets = state.assets.map(entry => entry.id === 'shot1-last.png' ? { ...entry, width: 768, height: 1024 } : entry)
     const nodes = nodesOf(canvas, state, LABELLED, 'en')
     const facts = (id: string) => {
       const node = nodes.get(id)
-      return [node?.meta, node?.preview, node?.bodyHeight]
+      return [node?.meta, node?.preview, node?.sizing]
     }
-    // A 3:4 preview gets the 208 × 277 frame; a shown asset of unknown size and a take without outputs the 16:9 frame.
-    expect(facts('g1')).toEqual(['4.0s', 'shot1-last.png', 277])
-    expect(facts('x1')).toEqual(['2.5s', 'x1.png', 117])
-    expect(facts('g3')).toEqual([undefined, undefined, 117])
+    const wide = { kind: 'media', defaultSize: { width: 208, height: 117 }, minSize: { width: 104, height: 59 }, aspectRatio: { ratio: 16 / 9, fixedHeight: 0 } }
+    // A 3:4 preview gets the 208 × 277 frame at 3:4; a shown asset of unknown size and a take without outputs the 16:9 frame.
+    expect(facts('g1')).toEqual(['4.0s', 'shot1-last.png', { ...wide, defaultSize: { width: 208, height: 277 }, minSize: { width: 104, height: 139 }, aspectRatio: { ratio: 3 / 4, fixedHeight: 0 } }])
+    expect(facts('x1')).toEqual(['2.5s', 'x1.png', wide])
+    expect(facts('g3')).toEqual([undefined, undefined, wide])
     await runtime.dispose()
   })
 
@@ -152,10 +153,10 @@ describe('the card body of a take', () => {
     await runtime.dispose()
   })
 
-  it('draws the card body in a frame of the body height that the kind declares', async () => {
+  it('sizes a take of unknown aspect at the ratio the kind declares, and draws its body filling the frame', async () => {
     const { runtime, canvas } = await mountKit({ 'dv.canvas.card': { kind: 'keyed', scope: 'root' } })
     const low = defineGenerationUi({
-      id: '@dv/ui-test-low', type: 'test_low', operations: ['audio.generate'], label: ['矮', 'Low'], color: '', bodyHeight: 72,
+      id: '@dv/ui-test-low', type: 'test_low', operations: ['audio.generate'], label: ['矮', 'Low'], color: '', fallbackRatio: 26 / 9,
       status: { running: ['生成中…', 'Generating…'], failed: ['没生成', 'Not generated'], done: ['已生成', 'Generated'] },
     })
     await runtime.mount({ inject: [...low.inject], apply: low.apply })
@@ -165,7 +166,8 @@ describe('the card body of a take', () => {
     if (node === undefined) throw new Error('no node a9')
     const card = runtime.renderSlot('dv.canvas.card', { node, assets: {}, textScale: 1, host: recordingHost() }, { entryKey: 'test_low' })
     const frame = card.container.firstElementChild
-    expect([node.bodyHeight, frame instanceof HTMLElement ? frame.style.height : null]).toEqual([72, '72px'])
+    expect([node.sizing?.defaultSize, node.sizing?.kind === 'media' ? node.sizing.aspectRatio.ratio : null, frame instanceof HTMLElement ? frame.style.height : null])
+      .toEqual([{ width: 208, height: 72 }, 26 / 9, '100%'])
     await runtime.dispose()
   })
 })
@@ -173,7 +175,7 @@ describe('the card body of a take', () => {
 describe('the 重试 action of a generation kind', () => {
   const IMAGE: NodeType = {
     id: '@dv/ui-test-image', type: 'image', label: () => 'image', color: '', column: 2,
-    claimed: { operations: ['image.generate'], status: { running: () => '', failed: () => '' }, entry: () => ({ title: 'image', bodyHeight: 117 }) },
+    claimed: { operations: ['image.generate'], status: { running: () => '', failed: () => '' }, entry: () => ({ title: 'image', sizing: mediaSizing(undefined, WIDE_RATIO, 0) }) },
   }
 
   it('shows only on a failed claimed take of its own operations and reruns the record\'s operation, inputs and params based on it', async () => {
@@ -187,7 +189,7 @@ describe('the 重试 action of a generation kind', () => {
     // A slice node of another type that shows the failed record g2 without claiming it.
     canvas.nodeTypes.register({
       id: '@dv/ui-test-slice', type: 'slice', label: () => 'slice', color: '', column: 0,
-      entries: () => [{ id: 'slice:g2', title: 'slice', record: state.components.proj.records.find(entry => entry.id === 'g2') ?? null, assets: [], bodyHeight: 60 }],
+      entries: () => [{ id: 'slice:g2', title: 'slice', record: state.components.proj.records.find(entry => entry.id === 'g2') ?? null, assets: [], sizing: { kind: 'window', defaultSize: { width: 208, height: 60 }, minSize: { width: 104, height: 60 } } }],
     })
     const nodes = nodesOf(canvas, state, OPERATIONS, 'zh')
     const retry = canvas.actions.getSnapshot().find(action => action.id === '@dv/ui-test-take:test_take:retry')

@@ -7,18 +7,26 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { extractMarkdownPlainText } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { parsePromptCitations } from '@dv/project/grammar'
-import type {} from '@dv/ui-canvas/contract'
+import type { NodeSizing } from '@dv/ui-canvas/contract'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
 import type { NS } from './locales.ts'
 import { reportedVersion, withLabels } from './texts.ts'
 
-/** The lines of the opening text that the card shows at text scale 1. */
+/** The opening lines that a text card of the default size shows at text scale 1. */
 const EXCERPT_LINES = 4
 const LINE_HEIGHT = 16
 const FOOTER_HEIGHT = 28
-/** The body height of a text card: the opening lines with their padding, and the footer. */
-export const TEXT_CARD_HEIGHT = 10 + EXCERPT_LINES * LINE_HEIGHT + 4 + FOOTER_HEIGHT
+/** The frame height of a text card that shows a number of opening lines: the lines with their padding, and the footer. */
+const heightFor = (lines: number): number => 10 + lines * LINE_HEIGHT + 4 + FOOTER_HEIGHT
+
+/**
+ * The sizing of a text card, a window node: 208 × 106 by default (four opening lines and the footer), and at least
+ * 104 units wide and one opening line and the footer tall.
+ */
+export const TEXT_CARD_SIZING: NodeSizing = {
+  kind: 'window', defaultSize: { width: 208, height: heightFor(EXCERPT_LINES) }, minSize: { width: 104, height: heightFor(1) },
+}
 
 // An asset ID names fixed bytes, so one read of a version's Markdown serves every card that shows it.
 const bodies = new Map<string, Promise<string>>()
@@ -65,8 +73,9 @@ export function footerText(version: number, chars: number, t: TranslateNS<typeof
 }
 
 /**
- * The card body of a text node version on the card surface: the opening lines of its Markdown as plain text with each
- * citation as its label, and a footer with its version and size. The canvas caption above it shows the title.
+ * The card body of a text node version on the card surface, filling the frame the canvas sizes: the opening lines of
+ * its Markdown as plain text with each citation as its label, taking the height above the footer, and a footer with
+ * its version and size. The canvas caption above it shows the title.
  * @param props - the node, the text scale, and the translate function.
  * @returns the element.
  */

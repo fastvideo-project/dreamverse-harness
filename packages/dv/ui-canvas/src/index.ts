@@ -124,14 +124,14 @@ export function apply(ctx: Context, config: Config): void {
   ctx.inject(['tools'], (tooled) => {
     tooled.effect(() => tooled.tools.register(defineTool({
       name: CANVAS_READ,
-      description: 'Read the canvas of this project that the user has open: every node with its id, type, title and record, its card box (x and y of the top-left corner, width, height; canvas units, y grows downward), and rendering: true while the node\'s record is still being generated. The height of a rendering card is the height that the finished card takes, so plan with it as given. Fails when no canvas of this project is open.',
+      description: 'Read the canvas of this project that the user has open: every node with its id, type, title and record, its box (x and y of the top-left corner of the node; width and height of its frame, which sits below a 20-unit caption, so the node spans y to y + 20 + height; canvas units, y grows downward), and rendering: true while the node\'s record is still being generated. A rendering node can change size and position when it finishes. Fails when no canvas of this project is open.',
       parameters: {},
       output: JSON_OUTPUT,
       execute: (_args, exec) => run(null, exec),
     })), 'ui-canvas: dv_canvas_read')
     tooled.effect(() => tooled.tools.register(defineTool({
       name: CANVAS_MOVE,
-      description: 'Move canvas nodes in one call: list each node you place with the new x and y of the top-left corner of its card, planned from the boxes that dv_canvas_read returned. Keep at least 24 units between a moved card and every other card. Nodes you do not list stay where they are. The call moves nothing when a node is unknown or listed twice, or when a moved card would come closer than 24 units to another card. The user sees the move at once. A move is not a step of the project history: dv_proj_undo does not revert it; to restore, move the nodes back. Returns the canvas after the move.',
+      description: 'Move canvas nodes in one call: list each node you place with the new x and y of the top-left corner of its card, planned from the boxes that dv_canvas_read returned. Keep at least 24 units between a moved card and every other card. Nodes you do not list stay where they are, and every node keeps its width and height. The call moves nothing when a node is unknown or listed twice, or when a moved card would come closer than 24 units to another card. The user sees the move at once. A move is not a step of the project history: dv_proj_undo does not revert it; to restore, move the nodes back. Returns the canvas after the move.',
       parameters: {
         moves: {
           type: 'array', required: true, description: 'The nodes to move, each with the new top-left corner of its card.',

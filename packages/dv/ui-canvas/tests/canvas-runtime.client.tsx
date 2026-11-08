@@ -53,8 +53,8 @@ export interface ServerOptions {
   /** Changes to the fixture state, applied to every state the server serves. */
   edit?: (state: FixtureState) => void
   /**
-   * The stored layout of p1, by default g1 at (10, 20) and the viewport at 100%; any other project has none stored. Null
-   * makes the layout read fail.
+   * The stored layout of p1, by default g1 at (10, 20) in a 208 × 117 frame and the viewport at 100%; any other project
+   * has none stored. Null makes the layout read fail.
    */
   layout?: CanvasLayout | null
   /** Leave `GET /api/dv/canvas/layout` unanswered until {@link CanvasServer.releaseLayout} answers it. */
@@ -135,7 +135,8 @@ export function serveCanvas(options: ServerOptions = {}): CanvasServer {
   }
   const scripted = scriptedFetch({ state, operations: options.operations ?? OPERATIONS, projects: options.projects ?? [PROJECT] })
   const layoutWrites: LayoutWrite[] = []
-  const layout: CanvasLayout = options.layout ?? { positions: { g1: { x: 10, y: 20 } }, viewport: { x: 0, y: 0, zoom: 1 } }
+  const layout: CanvasLayout = options.layout
+    ?? { positions: { g1: { x: 10, y: 20, width: 208, height: 117 } }, viewport: { x: 0, y: 0, zoom: 1 } }
   const notify = (): void => {
     for (const source of ScriptedEventSource.open) source.dispatchEvent(new MessageEvent('record', { data: 'null' }))
   }
@@ -213,7 +214,7 @@ export interface MountedCanvas {
    */
   node: (id: string, surface?: Surface) => HTMLElement
   /**
-   * Click a node and wait for its editor.
+   * Double click a node and wait for its editor.
    * @param id - the node ID.
    * @param surface - the surface whose canvas draws it; the center by default.
    * @returns the editor panel.
@@ -290,8 +291,11 @@ export async function mountCanvas(options: MountOptions = {}): Promise<MountedCa
   }
   const open = async (id: string, surface: Surface = 'center'): Promise<HTMLElement> => {
     const card = await waitFor(() => node(id, surface))
-    fireEvent.pointerDown(card, { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
-    fireEvent.pointerUp(canvasOf(surface), { pointerId: 1 })
+    // Two quick clicks on the card: the canvas opens the editor on the second.
+    for (const pointerId of [1, 2]) {
+      fireEvent.pointerDown(card, { button: 0, clientX: 5, clientY: 5, pointerId })
+      fireEvent.pointerUp(canvasOf(surface), { pointerId })
+    }
     return waitFor(() => {
       const editors = within(view.getByTestId(surface)).getAllByTestId('dv-canvas-node-editor')
       const editor = editors.find(panel => panel.getAttribute('aria-label') === card.getAttribute('aria-label'))

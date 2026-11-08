@@ -47,7 +47,7 @@ export interface ClaimedNodes {
 }
 
 /** What a type supplies for one claimed node. */
-export type ClaimedEntry = Pick<NodeEntry, 'title' | 'bodyHeight'> & Partial<Pick<NodeEntry, 'meta' | 'preview'>>
+export type ClaimedEntry = Pick<NodeEntry, 'title' | 'sizing'> & Partial<Pick<NodeEntry, 'meta' | 'preview'>>
 
 /** The nodes that a type reads from its own slice, such as nouns and plans. Pure. */
 export type SliceEntries = (input: Omit<NodeInput, 'records'>) => NodeEntry[]
@@ -92,6 +92,20 @@ export interface ClaimedRecord {
   version: number | null
 }
 
+/** A box size in canvas units. */
+export type Size = { width: number; height: number }
+
+/**
+ * How the canvas sizes a node, declared by the type from the node's own data. A size is the node's frame box in canvas
+ * units; the caption above the frame is not part of it. The canvas takes `defaultSize` for a node that has no size yet
+ * and keeps a node at or above `minSize`. A window node shows more or less of its body as its frame changes; a media
+ * node shows a picture that scales with its frame, so its frame keeps height = width / `aspectRatio.ratio` +
+ * `aspectRatio.fixedHeight`, where `fixedHeight` is the height of the fixed bars outside the picture (0 for none).
+ */
+export type NodeSizing =
+  | { kind: 'window'; defaultSize: Size; minSize: Size }
+  | { kind: 'media'; defaultSize: Size; minSize: Size; aspectRatio: { ratio: number; fixedHeight: number } }
+
 /** One node as a type supplies it. */
 export interface NodeEntry {
   /** Stable: other plugins name it; positions and the unseen set store it. */
@@ -111,12 +125,10 @@ export interface NodeEntry {
   /** One of `assets` that stands for the node in small views; default `assets[0]`. */
   preview?: string
   /**
-   * The frame height in canvas units, which the body fills: a body that shows a picture of known size declares the
-   * height of the picture at the 208-unit frame width (`frameHeight` of `@dv/ui-kit/frame.ts`). The canvas computes
-   * the node height as caption + `bodyHeight` without measuring the node; a
-   * failed claimed node keeps this height.
+   * The node's sizing. The canvas computes the node's box from the stored size without measuring the node; a failed
+   * claimed node keeps its size.
    */
-  bodyHeight: number
+  sizing: NodeSizing
   /** The kernel reference that this node stands for in a prompt, when it is not its record. */
   ref?: { kind: string; id: string }
 }

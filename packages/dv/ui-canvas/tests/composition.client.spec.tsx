@@ -27,7 +27,7 @@ const keysOf = (runtime: SlotTestRuntime, slot: 'dv.canvas.card' | 'dv.canvas.ed
 
 const OTHER_RENDER: NodeType = {
   id: '@dv/ui-other-render', type: 'other', label: () => 'other', color: '', column: 2,
-  claimed: { operations: ['shot.render'], status: { running: () => '', failed: () => '' }, entry: () => ({ title: '', bodyHeight: 117 }) },
+  claimed: { operations: ['shot.render'], status: { running: () => '', failed: () => '' }, entry: () => ({ title: '', sizing: { kind: 'window', defaultSize: { width: 208, height: 117 }, minSize: { width: 104, height: 117 } } }) },
 }
 
 describe('the dv.canvas Factory', () => {

@@ -13,7 +13,6 @@ import type { NodeAction, NodeType, NodeView } from '../src/client/contract/inde
 import { CanvasViews, httpLink } from '../src/client/agent-canvas.ts'
 import type { StreamListener } from '../src/client/agent-canvas.ts'
 import type { CanvasDrawn } from '../src/types.ts'
-import { NODE_WIDTH } from '../src/client/graph.ts'
 import { EDITOR_RECT_KEY } from '../src/client/NodeEditor.tsx'
 import { zh } from '../src/client/locales.ts'
 import { forgetCanvasStorage, KINDS, mountCanvas, mountDescriptors } from './canvas-runtime.client.tsx'
@@ -24,6 +23,7 @@ afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  vi.useRealTimers()
   forgetCanvasStorage()
 })
 
@@ -87,7 +87,10 @@ const PAINT: NodeType = {
   claimed: {
     operations: ['test.paint'],
     status: { running: () => '渲染中', failed: () => '失败' },
-    entry: ({ record: { status } }) => ({ title: 'Paint', bodyHeight: status === 'done' ? 400 : 117 }),
+    entry: ({ record: { status } }) => {
+      const height = status === 'done' ? 400 : 117
+      return { title: 'Paint', sizing: { kind: 'window', defaultSize: { width: 208, height }, minSize: { width: 104, height } } }
+    },
   },
 }
 
@@ -112,7 +115,7 @@ describe('the canvas over the real kinds', () => {
     expect(within(node('g2')).getByText('已裁剪')).toBeTruthy()
     await waitFor(() => { expect(server.layoutWrites).toHaveLength(1) })
     const stored = server.layoutWrites[0] as { project: string; positions: Record<string, unknown> }
-    expect([Object.keys(stored).sort(), stored.project, stored.positions['g2']]).toEqual([['positions', 'project'], 'p1', { x: 480, y: 0 }])
+    expect([Object.keys(stored).sort(), stored.project, stored.positions['g2']]).toEqual([['positions', 'project'], 'p1', { x: 480, y: 0, width: 208, height: 117 }])
     expect(Object.keys(stored.positions)).not.toContain('g1')
     fireEvent.pointerDown(node('g2'), { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
     fireEvent.pointerMove(canvasOf(), { clientX: 50, clientY: 30, pointerId: 1 })
@@ -137,12 +140,12 @@ describe('the canvas over the real kinds', () => {
     server.notify()
     await waitFor(() => { expect(server.layoutWrites.some(write => 'pa' in write.positions)).toBe(true) })
     // At its final height the node no longer fits above pb, which is 420 units tall from y 200, so it lands below pb.
-    expect(server.layoutWrites.filter(write => 'pa' in write.positions).map(write => write.positions['pa'])).toEqual([{ x: below?.x, y: 800 }])
+    expect(server.layoutWrites.filter(write => 'pa' in write.positions).map(write => write.positions['pa'])).toEqual([{ x: below?.x, y: 800, width: 208, height: 400 }])
     expect(node('pa').style.top).toBe('800px')
     await runtime.dispose()
   })
 
-  it('stores a dragged rendering node at once and keeps it there when it finishes', async () => {
+  it('stores a dragged rendering node at once with its size then, and keeps both when it finishes', async () => {
     let finished = false
     const { runtime, node, server, canvasOf } = await mountCanvas({ edit: paintRecords(() => finished) })
     await mountDescriptors(runtime, { nodeType: PAINT })
@@ -156,8 +159,36 @@ describe('the canvas over the real kinds', () => {
     server.notify()
     await waitFor(() => { expect(node('pa').textContent).not.toContain('渲染中') })
     await settle()
-    expect(server.layoutWrites.filter(write => 'pa' in write.positions).map(write => write.positions['pa'])).toEqual([{ x: left, y: 900 }])
-    expect(node('pa').style.top).toBe('900px')
+    expect(server.layoutWrites.filter(write => 'pa' in write.positions).map(write => write.positions['pa'])).toEqual([{ x: left, y: 900, width: 208, height: 117 }])
+    expect([node('pa').style.top, node('pa').querySelector<HTMLElement>('[data-node-frame]')?.style.height]).toEqual(['900px', '117px'])
+    await runtime.dispose()
+  })
+
+  it('a click selects a node without opening its editor; a second click on it soon after opens it; two presses on a handle do not', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const { runtime, view, node, canvasOf } = await mountCanvas()
+    await waitFor(() => { node('g1') })
+    const press = (target: Element, pointerId: number): void => {
+      fireEvent.pointerDown(target, { button: 0, clientX: 5, clientY: 5, pointerId })
+      fireEvent.pointerUp(canvasOf(), { pointerId })
+    }
+    press(node('g1'), 1)
+    expect([node('g1').getAttribute('data-node-selected'), view.queryByTestId('dv-canvas-node-editor')]).toEqual(['true', null])
+    expect(node('g1').querySelectorAll('[data-node-handle]')).toHaveLength(4)
+    // A second click after the double-click pause is another single click.
+    vi.setSystemTime(Date.now() + 401)
+    press(node('g1'), 2)
+    expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
+    vi.setSystemTime(Date.now() + 200)
+    press(node('g1'), 3)
+    expect(view.getByTestId('dv-canvas-node-editor').getAttribute('aria-label')).toBe(node('g1').getAttribute('aria-label'))
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => { expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull() })
+    const handle = node('g1').querySelector('[data-node-handle="se"]')
+    if (handle === null) throw new Error('no south-east handle')
+    press(handle, 4)
+    press(handle, 5)
+    expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
     await runtime.dispose()
   })
 
@@ -484,7 +515,7 @@ describe('drops on the canvas', () => {
     await waitFor(() => { node('g1') })
     expect(view.container.querySelector('[data-node-id="u2"]')).toBeNull()
     dropAt(canvasOf(), tileDrag('pool.png'))
-    await waitFor(() => { expect(node('u2').style.left).toBe(`${String(500 - NODE_WIDTH / 2)}px`) })
+    await waitFor(() => { expect(node('u2').style.left).toBe(`${String(500 - 208 / 2)}px`) })
     const placement = (operation: string) => ({ project: 'p1', operation, surface: 'canvas', inputs: [{ role: 'asset', ref: 'pool.png' }], session: 's5' })
     await waitFor(() => { expect(operationsOf(server.writes)).toContainEqual(placement('asset.place')) })
     const editor = await open('u2')
@@ -534,7 +565,7 @@ describe('drops on the canvas', () => {
     dropAt(canvasOf(), { types: ['Files'], getData: () => '', files: [file] })
     await waitFor(() => { expect(server.imports).toHaveLength(1) })
     expect(server.imports[0]).toEqual({ project: 'p1', name: 'brief.pdf', mime: 'application/pdf', surface: 'canvas', session: 's5' })
-    await waitFor(() => { expect(node('imp1').style.left).toBe(`${String(500 - NODE_WIDTH / 2)}px`) })
+    await waitFor(() => { expect(node('imp1').style.left).toBe(`${String(500 - 208 / 2)}px`) })
     const card = node('imp1').querySelector('[data-dv-media="file"]')
     expect(card?.textContent).toContain('brief.pdf')
     expect(card?.textContent).toContain('application/pdf')
@@ -555,7 +586,7 @@ function cardsOutside(canvas: HTMLElement, width: number, height: number): strin
   return [...canvas.querySelectorAll<HTMLElement>('[data-node-id]')].filter((card) => {
     const left = x + parseFloat(card.style.left) * zoom
     const top = y + parseFloat(card.style.top) * zoom
-    return left < 0 || top < 0 || left + NODE_WIDTH * zoom > width || top + 180 * zoom > height
+    return left < 0 || top < 0 || left + 208 * zoom > width || top + 180 * zoom > height
   }).map(card => card.getAttribute('data-node-id') ?? '')
 }
 
@@ -891,11 +922,13 @@ describe('drags over the canvas', () => {
     await runtime.dispose()
   })
 
-  it('moves the node of a dropped 素材 tile that the canvas already draws under the pointer, and writes no placement', async () => {
-    const { runtime, node, server, canvasOf } = await mountCanvas()
+  it('moves the node of a dropped 素材 tile that the canvas already draws under the pointer, centered at its stored width, and writes no placement', async () => {
+    const { runtime, node, server, canvasOf } = await mountCanvas({
+      layout: { positions: { g1: { x: 10, y: 20, width: 312, height: 176 } }, viewport: { x: 0, y: 0, zoom: 1 } },
+    })
     await waitFor(() => { node('g1') })
     dropAt(canvasOf(), tileDrag('shot1.mp4'))
-    expect(node('g1').style.left).toBe(`${String(500 - NODE_WIDTH / 2)}px`)
+    expect([node('g1').style.left, node('g1').style.width]).toEqual([`${String(500 - 312 / 2)}px`, '312px'])
     await settle()
     expect(operationsOf(server.writes)).toEqual([])
     await runtime.dispose()
@@ -909,7 +942,7 @@ describe('drags over the canvas', () => {
     await settle()
     expect(view.container.querySelector('[data-node-id="imp1"]')).toBeNull()
     await runtime.mount(KINDS.assets)
-    await waitFor(() => { expect(node('imp1').style.left).toBe(`${String(500 - NODE_WIDTH / 2)}px`) })
+    await waitFor(() => { expect(node('imp1').style.left).toBe(`${String(500 - 208 / 2)}px`) })
     await runtime.dispose()
   })
 })
@@ -947,6 +980,104 @@ describe('the node card', () => {
     await runtime.dispose()
   })
 
+  it('draws the frame of a node with a sizing at its default size, and anchors its edges there', async () => {
+    const { runtime, view, node } = await mountCanvas()
+    await mountDescriptors(runtime, {
+      nodeType: {
+        id: '@dv/ui-test-half', type: 'half', label: () => 'Half', color: '', column: 0,
+        // The slice node owns g1's last frame, so g2's first-frame edge starts at it.
+        entries: () => [{ id: 'half:1', title: 'Half', record: null, assets: ['shot1-last.png'], sizing: { kind: 'window', defaultSize: { width: 312, height: 104 }, minSize: { width: 104, height: 52 } } }],
+      },
+    })
+    await waitFor(() => { node('half:1') })
+    expect([node('half:1').style.width, node('half:1').querySelector<HTMLElement>('[data-node-frame]')?.style.height]).toEqual(['312px', '104px'])
+    const edge = await waitFor(() => {
+      const found = view.container.querySelector('path[data-edge="half:1>g2"]')
+      if (found === null) throw new Error('no edge from half:1')
+      return found
+    })
+    const [x1, y1] = (edge.getAttribute('d') ?? '').match(/-?[\d.]+/g)?.map(Number) ?? []
+    expect([x1, y1]).toEqual([Number.parseFloat(node('half:1').style.left) + 312, Number.parseFloat(node('half:1').style.top) + 20 + 104 / 2])
+    await runtime.dispose()
+  })
+
+  it('draws a node at its stored size, resizes the selected node from its south-east handle at the zoom, stores the size, and keeps it through a drag', async () => {
+    const { runtime, node, open, server, canvasOf } = await mountCanvas({
+      layout: { positions: { g1: { x: 10, y: 20, width: 312, height: 90 } }, viewport: { x: 0, y: 0, zoom: 0.5 } },
+    })
+    await waitFor(() => { node('g1') })
+    const box = (): string[] => [node('g1').style.left, node('g1').style.top, node('g1').style.width, node('g1').querySelector<HTMLElement>('[data-node-frame]')?.style.height ?? '']
+    expect(box()).toEqual(['10px', '20px', '312px', '90px'])
+    expect(node('g1').querySelector('[data-node-handle]')).toBeNull()
+    await open('g1')
+    expect(node('g1').querySelectorAll('[data-node-handle]')).toHaveLength(4)
+    const handle = node('g1').querySelector('[data-node-handle="se"]')
+    if (handle === null) throw new Error('no south-east handle')
+    fireEvent.pointerDown(handle, { button: 0, clientX: 0, clientY: 0, pointerId: 2 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 52, clientY: 0, pointerId: 2 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 2 })
+    // 52 px at 50% zoom are 104 units; g1 is a 16:9 take, so its frame keeps 16:9 and its top-left corner stays.
+    expect(box()).toEqual(['10px', '20px', '416px', '234px'])
+    await waitFor(() => { expect(server.layoutWrites.some(write => 'g1' in write.positions)).toBe(true) }, { timeout: 2000 })
+    expect(server.layoutWrites.find(write => 'g1' in write.positions)?.positions['g1']).toEqual({ x: 10, y: 20, width: 416, height: 234 })
+    fireEvent.pointerDown(node('g1'), { button: 0, clientX: 0, clientY: 0, pointerId: 3 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 10, clientY: 10, pointerId: 3 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 3 })
+    await waitFor(() => { expect(server.layoutWrites.some(write => write.positions['g1']?.x === 30)).toBe(true) }, { timeout: 2000 })
+    expect(server.layoutWrites.at(-1)?.positions['g1']).toEqual({ x: 30, y: 40, width: 416, height: 234 })
+    await runtime.dispose()
+  })
+
+  it('a north-west handle resizes a window node in width and height apart, keeps the opposite corner in place, and stops at its minimum size; a still press or another button changes nothing', async () => {
+    const { runtime, view, node, canvasOf } = await mountCanvas({
+      layout: { positions: { 'half:1': { x: 100, y: 100, width: 208, height: 104 } }, viewport: { x: 0, y: 0, zoom: 1 } },
+    })
+    await mountDescriptors(runtime, {
+      nodeType: {
+        id: '@dv/ui-test-half', type: 'half', label: () => 'Half', color: '', column: 0,
+        entries: () => [{ id: 'half:1', title: 'Half', record: null, assets: [], sizing: { kind: 'window', defaultSize: { width: 208, height: 104 }, minSize: { width: 120, height: 60 } } }],
+      },
+    })
+    await waitFor(() => { node('half:1') })
+    fireEvent.pointerDown(node('half:1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
+    await waitFor(() => { expect(node('half:1').getAttribute('data-node-selected')).toBe('true') })
+    const handle = (): Element => {
+      const found = node('half:1').querySelector('[data-node-handle="nw"]')
+      if (found === null) throw new Error('no north-west handle')
+      return found
+    }
+    const box = (): string[] => [
+      node('half:1').style.left, node('half:1').style.top, node('half:1').style.width, node('half:1').querySelector<HTMLElement>('[data-node-frame]')?.style.height ?? '',
+    ]
+    const drag = (dx: number, dy: number, pointerId: number, button = 0): void => {
+      fireEvent.pointerDown(handle(), { button, clientX: 0, clientY: 0, pointerId })
+      fireEvent.pointerMove(canvasOf(), { clientX: dx, clientY: dy, pointerId })
+      fireEvent.pointerUp(canvasOf(), { pointerId })
+    }
+    // 100 units wider and 10 taller: the node moves up and left so its bottom-right corner stays at (308, 204).
+    drag(-100, -10, 2)
+    expect(box()).toEqual(['0px', '90px', '308px', '114px'])
+    drag(500, 500, 3)
+    expect(box()).toEqual(['188px', '144px', '120px', '60px'])
+    fireEvent.pointerDown(handle(), { button: 0, clientX: 0, clientY: 0, pointerId: 4 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 4 })
+    await settle()
+    expect([node('half:1').getAttribute('data-node-selected'), view.queryAllByTestId('dv-canvas-node-editor')]).toEqual(['true', []])
+    drag(-300, 0, 5, 2)
+    expect(box()).toEqual(['188px', '144px', '120px', '60px'])
+    await runtime.dispose()
+  })
+
+  it('gives a node of an older layout file, stored without a size, its default size once and stores it', async () => {
+    const layout = { positions: { g1: { x: 10, y: 20 } }, viewport: { x: 0, y: 0, zoom: 1 } }
+    const { runtime, node, server } = await mountCanvas({ layout })
+    await waitFor(() => { expect(server.layoutWrites.some(write => 'g1' in write.positions)).toBe(true) })
+    expect(server.layoutWrites.find(write => 'g1' in write.positions)?.positions['g1']).toEqual({ x: 10, y: 20, width: 208, height: 117 })
+    expect([node('g1').style.left, node('g1').style.top, node('g1').style.width]).toEqual(['10px', '20px', '208px'])
+    await runtime.dispose()
+  })
+
   it('keeps the frame height of a failed take and draws its failed words and 重试 inside the frame', async () => {
     const { runtime, node } = await mountCanvas({ edit: failG1 })
     await waitFor(() => { node('g1') })
@@ -967,7 +1098,7 @@ describe('the node card', () => {
     const [x1, y1] = points
     const [x2, y2] = points.slice(-2)
     const top = (id: string): number => Number.parseFloat(node(id).style.top)
-    expect([x1, y1]).toEqual([Number.parseFloat(node('test_ref:hero').style.left) + NODE_WIDTH, top('test_ref:hero') + 20 + 30 / 2])
+    expect([x1, y1]).toEqual([Number.parseFloat(node('test_ref:hero').style.left) + 208, top('test_ref:hero') + 20 + 30 / 2])
     expect([x2, y2]).toEqual([Number.parseFloat(node('g1').style.left), top('g1') + 20 + 117 / 2])
     await runtime.dispose()
   })
@@ -1015,7 +1146,7 @@ describe('the editor panel', () => {
     await mountDescriptors(runtime, {
       nodeType: {
         id: '@dv/ui-test-note', type: 'note', label: () => 'Note', color: '', column: 0,
-        entries: () => [{ id: 'note:1', title: 'Note', record: null, assets: [], bodyHeight: 30 }],
+        entries: () => [{ id: 'note:1', title: 'Note', record: null, assets: [], sizing: { kind: 'window', defaultSize: { width: 208, height: 30 }, minSize: { width: 104, height: 30 } } }],
       },
     })
     const editor = await open('note:1')
@@ -1055,18 +1186,20 @@ describe('the canvas answering the canvas tools', () => {
   /** The id and the drawn corner of each card of a read answer. */
   const cornersOf = (answer: CanvasDrawn | undefined): unknown => answer?.cards.map(({ id, x, y }) => [id, x, y])
 
-  it('opens one stream beside its chat session, reads the drawn cards, draws a stored move at once without writing it, and ignores a move of another project', async () => {
+  it('opens one stream beside its chat session, reads the drawn cards, draws a stored move at once without writing it, keeping each moved node\'s size, and ignores a move of another project', async () => {
     const { runtime, node, server, ask, apply, streams } = await mountForAgent()
     await waitFor(() => { expect(server.layoutWrites).toHaveLength(1) })
     expect(streams.map(({ project, session, open }) => [project, session, open])).toEqual([['p1', 's5', true]])
     const read = ask('p1')
     expect(read?.project).toBe('p1')
-    expect(read?.cards.find(card => card.id === 'g1')).toMatchObject({ x: 10, y: 20, width: NODE_WIDTH })
+    expect(read?.cards.find(card => card.id === 'g1')).toMatchObject({ x: 10, y: 20, width: 208, height: 117 })
     apply('p1', { g1: { x: 2000, y: 0 }, g2: { x: 2300, y: 0 } })
     expect([node('g1').style.left, node('g2').style.left]).toEqual(['2000px', '2300px'])
-    expect(cornersOf(ask('p1'))).toContainEqual(['g1', 2000, 0])
+    expect(ask('p1')?.cards.find(card => card.id === 'g1')).toMatchObject({ x: 2000, y: 0, width: 208, height: 117 })
     apply('p1', { g1: { x: 9000, y: 0 } }, 'p9')
     expect(node('g1').style.left).toBe('2000px')
+    apply('p1', { gone: { x: 0, y: 0 } })
+    expect(ask('p1')?.cards.map(card => card.id)).not.toContain('gone')
     await settle()
     expect(server.layoutWrites).toHaveLength(1)
     await runtime.dispose()
@@ -1111,12 +1244,12 @@ describe('the canvas answering the canvas tools', () => {
     }
     apply('p1', { g2: { x: 3000, y: 0 } })
     await waitFor(() => { expect(server.layoutWrites).toHaveLength(2) }, { timeout: 2000 })
-    expect(server.layoutWrites[1]?.positions).toEqual({ g1: { x: 60, y: 50 } })
+    expect(server.layoutWrites[1]?.positions).toEqual({ g1: { x: 60, y: 50, width: 208, height: 117 } })
     expect([node('g1').style.left, node('g2').style.left]).toEqual(['60px', '3000px'])
     await runtime.dispose()
   })
 
-  it('keeps an agent move of a rendering node when the node finishes', async () => {
+  it('keeps an agent move of a rendering node when the node finishes, and stores the node there at its final default size', async () => {
     let finished = false
     const { runtime, node, server, apply } = await mountForAgent({ edit: paintRecords(() => finished) })
     await mountDescriptors(runtime, { nodeType: PAINT })
@@ -1126,8 +1259,8 @@ describe('the canvas answering the canvas tools', () => {
     server.notify()
     await waitFor(() => { expect(node('pa').textContent).not.toContain('渲染中') })
     await settle()
-    expect(server.layoutWrites.filter(write => 'pa' in write.positions)).toEqual([])
-    expect(node('pa').style.left).toBe('3000px')
+    expect(server.layoutWrites.filter(write => 'pa' in write.positions).map(write => write.positions['pa'])).toEqual([{ x: 3000, y: 0, width: 208, height: 400 }])
+    expect([node('pa').style.left, node('pa').style.top, node('pa').querySelector<HTMLElement>('[data-node-frame]')?.style.height]).toEqual(['3000px', '0px', '400px'])
     await runtime.dispose()
   })
 })
