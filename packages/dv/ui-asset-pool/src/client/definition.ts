@@ -21,6 +21,6 @@ export const assetPoolDefinition: SidebarRightTabDefinition = {
   title: () => pickText('素材库', 'Asset pool'),
   guide: [{
     id: 'assets', order: 35, title: () => pickText('素材库', 'Asset pool'),
-    description: () => pickText('项目的图片和视频', "The project's images and videos"),
+    description: () => pickText('项目的图片、视频和音频', "The project's images, videos and audio"),
   }],
 }

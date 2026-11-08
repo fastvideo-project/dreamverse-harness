@@ -59,13 +59,14 @@ export function AssetsPanel(props: AssetsPanelProps): ReactNode {
 
   let body: ReactNode
   if (library === null) body = <p className={css.note}>{state.error === null ? t('正在读取…', 'Loading…') : t(`读取失败：${state.error}`, `Failed to load: ${state.error}`)}</p>
-  else if (library.images.length + library.videos.length + library.extracted.length === 0) {
+  else if (library.images.length + library.videos.length + library.audios.length + library.extracted.length === 0) {
     body = <p className={css.note}>{t('暂无', 'None yet')}</p>
   } else {
     body = (
       <>
         <Section title={t('图片', 'Images')} assets={library.images} onOpen={onOpen} renderFactorySlot={props.renderFactorySlot} />
         <Section title={t('视频', 'Videos')} assets={library.videos} onOpen={onOpen} renderFactorySlot={props.renderFactorySlot} />
+        <Section title={t('音频', 'Audio')} assets={library.audios} onOpen={onOpen} renderFactorySlot={props.renderFactorySlot} />
         <Section
           title={t('从生成中截取的帧', 'Extracted from generation')} assets={library.extracted} onOpen={onOpen}
           renderFactorySlot={props.renderFactorySlot}
@@ -82,7 +83,7 @@ export function AssetsPanel(props: AssetsPanelProps): ReactNode {
 }
 
 /**
- * The drop zone that imports image and video files through `POST /api/dv/assets/import`, and names each other file it
+ * The drop zone that imports image, video and audio files through `POST /api/dv/assets/import`, and names each other file it
  * refuses; also opens a file chooser on click.
  * @param props - the API client, the project, and the chat session the panel sits beside.
  * @returns the zone.
@@ -96,7 +97,7 @@ function ImportZone(props: { client: DvClient; projectId: string; session: strin
   const t = useText()
   const importFiles = useCallback((files: Iterable<File> | null) => {
     const chosen = [...new Set(files)]
-    const accepted = chosen.filter(file => file.type.startsWith('image/') || file.type.startsWith('video/'))
+    const accepted = chosen.filter(file => ['image/', 'video/', 'audio/'].some(prefix => file.type.startsWith(prefix)))
     setRefused(chosen.filter(file => !accepted.includes(file)).map(file => file.name))
     for (const file of accepted) {
       setPending(count => count + 1)
@@ -117,14 +118,14 @@ function ImportZone(props: { client: DvClient; projectId: string; session: strin
     >
       {pending > 0
         ? t(`导入中（${String(pending)}）…`, `Importing (${String(pending)})…`)
-        : t('拖入图片或视频导入，或点击选择文件', 'Drop images or videos here to import, or click to choose files')}
+        : t('拖入图片、视频或音频导入，或点击选择文件', 'Drop images, videos or audio here to import, or click to choose files')}
       {error === null ? null : <div className={css.error}>{error}</div>}
       {refused.map(name => (
         <div key={name} className={css.error}>
-          {t(`「${name}」不是图片或视频，没有导入。`, `"${name}" is not an image or a video, so it was not imported.`)}
+          {t(`「${name}」不是图片、视频或音频，没有导入。`, `"${name}" is not an image, a video or audio, so it was not imported.`)}
         </div>
       ))}
-      <input ref={input} type="file" accept="image/*,video/*" multiple hidden onChange={(event) => { importFiles(event.currentTarget.files); event.currentTarget.value = '' }} />
+      <input ref={input} type="file" accept="image/*,video/*,audio/*" multiple hidden onChange={(event) => { importFiles(event.currentTarget.files); event.currentTarget.value = '' }} />
     </div>
   )
 }

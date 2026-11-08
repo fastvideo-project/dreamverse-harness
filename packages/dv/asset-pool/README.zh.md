@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在 `@dv/project` 和 `@dv/ffmpeg` 之后挂载插件。其他插件注入 `dvAssetPool`。本服务经 `dvProject.registerAssetStore` 注册自己，因此同一文件导入同一项目两次只是一个素材。项目把素材保存在自己的文件夹里，因此复制文件夹就复制了整个项目：`<项目文件夹>/.dreamverse/assets/` 下，字节在 `objects/<sha256>`，`index.jsonl` 里每个素材一行 `Asset`。`asset.import` 经 `dvFfmpeg` 读取图片或视频的像素尺寸和时长，`asset.grab_still` 和 `asset.cut_segment` 经 `dvFfmpeg` 运行，`dvProject` 把这五个操作变成智能体工具 `dv_asset_import`、`dv_asset_grab_still`、`dv_asset_cut_segment`、`dv_asset_place` 和 `dv_asset_unplace`。`asset` 归约函数维护 `placed`，即当前状态中画布上的素材，按放上的顺序排列；`proj` 切片的 `created_by` 记着创建每个素材的记录。画布上有哪些素材属于项目内容：每次摆放都是一条记录，因此历史会列出它，撤销能把它退回。
+在 `@dv/project` 和 `@dv/ffmpeg` 之后挂载插件。其他插件注入 `dvAssetPool`。本服务经 `dvProject.registerAssetStore` 注册自己，因此同一文件导入同一项目两次只是一个素材。项目把素材保存在自己的文件夹里，因此复制文件夹就复制了整个项目：`<项目文件夹>/.dreamverse/assets/` 下，字节在 `objects/<sha256>`，`index.jsonl` 里每个素材一行 `Asset`。`asset.import` 经 `dvFfmpeg` 读取图片或视频的像素尺寸和时长，以及音频文件的时长，`asset.grab_still` 和 `asset.cut_segment` 经 `dvFfmpeg` 运行，`dvProject` 把这五个操作变成智能体工具 `dv_asset_import`、`dv_asset_grab_still`、`dv_asset_cut_segment`、`dv_asset_place` 和 `dv_asset_unplace`。`asset` 归约函数维护 `placed`，即当前状态中画布上的素材，按放上的顺序排列；`proj` 切片的 `created_by` 记着创建每个素材的记录。画布上有哪些素材属于项目内容：每次摆放都是一条记录，因此历史会列出它，撤销能把它退回。
 
 ```yaml
 - id: dv-asset-pool
@@ -63,7 +63,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`importAsset` 先把字节写到项目 `.dreamverse/assets/` 目录里的 `objects/<sha>.partial`，再改名到位，因此崩溃不会在哈希名下留下写了一半的对象。索引每个素材一行 `Asset` JSON，在对象文件存在之后追加。服务第一次需要某个文件夹时重放它的索引，跳过对象文件缺失的行。读取先在已读过的文件夹里查找；都没有该素材时，它读取 `dvProject.listProjects()` 中尚未读过的项目文件夹（例如启动后加入的复制文件夹），再查找一次。两个项目中的相同字节是同一 ID 下的两个文件，读取可能返回其中任一文件。`asset.import` 用 ffprobe（`dvFfmpeg.probe`）读取条目还不知道的图片或视频的宽、高和时长；文件头里没有时长的视频（浏览器录制的 WebM 文件）用 `-progress pipe:1` 解码一遍，最后一个 `out_time` 就是它的时长。`describe` 把更新后的条目追加到导入项目的索引，重放时同一 ID 以最后一行为准。探测失败时这些值保持为 null，导入不会因此失败。`grabStill` 对第一帧或给定时间直接定位；对最后一帧，它先探测视频，尝试在视频流结尾前做输入定位，再尝试保留最后一帧的完整解码，因为来自流式后端的分片 MP4 头部没有可靠的时长。`asset.cut_segment` 运行 ffmpeg，把 `-ss` 和 `-to` 放在 `-i` 之后，用 libx264 重新编码视频、用 AAC 重新编码音频，因此片段在准确的帧上开始和结束，与 `@dv/deliver` 的片段裁剪相同。它探测片段，文件里没有视频流时（区间从视频结尾之后开始）记录失败，否则带着像素尺寸和时长导入片段。路由通过 `ctx.inject` 注册在 `webServer` 上，因此插件在没有 web server 的组合中也能工作。
+`importAsset` 先把字节写到项目 `.dreamverse/assets/` 目录里的 `objects/<sha>.partial`，再改名到位，因此崩溃不会在哈希名下留下写了一半的对象。索引每个素材一行 `Asset` JSON，在对象文件存在之后追加。服务第一次需要某个文件夹时重放它的索引，跳过对象文件缺失的行。读取先在已读过的文件夹里查找；都没有该素材时，它读取 `dvProject.listProjects()` 中尚未读过的项目文件夹（例如启动后加入的复制文件夹），再查找一次。两个项目中的相同字节是同一 ID 下的两个文件，读取可能返回其中任一文件。`asset.import` 用 ffprobe（`dvFfmpeg.probe`）读取条目还不知道的图片或视频的宽、高和时长，以及音频文件的时长；文件头里没有时长的视频（浏览器录制的 WebM 文件）用 `-progress pipe:1` 解码一遍，最后一个 `out_time` 就是它的时长。`describe` 把更新后的条目追加到导入项目的索引，重放时同一 ID 以最后一行为准。探测失败时这些值保持为 null，导入不会因此失败。`grabStill` 对第一帧或给定时间直接定位；对最后一帧，它先探测视频，尝试在视频流结尾前做输入定位，再尝试保留最后一帧的完整解码，因为来自流式后端的分片 MP4 头部没有可靠的时长。`asset.cut_segment` 运行 ffmpeg，把 `-ss` 和 `-to` 放在 `-i` 之后，用 libx264 重新编码视频、用 AAC 重新编码音频，因此片段在准确的帧上开始和结束，与 `@dv/deliver` 的片段裁剪相同。它探测片段，文件里没有视频流时（区间从视频结尾之后开始）记录失败，否则带着像素尺寸和时长导入片段。路由通过 `ctx.inject` 注册在 `webServer` 上，因此插件在没有 web server 的组合中也能工作。
 
 | 文件 | 内容 |
 | --- | --- |

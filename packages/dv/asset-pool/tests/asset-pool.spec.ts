@@ -429,6 +429,23 @@ describe('dvAssetPool', () => {
       expect(fixture.ctx.dvAssetPool.get(bare.outputs[0] as AssetId).duration_sec).toBeCloseTo(3, 1)
     })
 
+    it('reads the duration of an imported audio file', async () => {
+      const fixture = await start()
+      const { outputs } = await fixture.ctx.dvFfmpeg.run({
+        argv: ['ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=d=2.5', '{{out:line.wav}}'],
+        inputs: [], outputs: ['line.wav'], dir: fixture.dir,
+      })
+      const imported = await fixture.run('asset.import', { path: outputs[0], mime: 'audio/wav' })
+      const asset = fixture.ctx.dvAssetPool.get(imported.outputs[0] as AssetId)
+      expect(asset).toMatchObject({ width: null, height: null })
+      expect(asset.duration_sec).toBeCloseTo(2.5, 1)
+      // A second import of the same bytes keeps the known duration without probing again.
+      const probe = vi.spyOn(fixture.ctx.dvFfmpeg, 'probe')
+      await fixture.run('asset.import', { path: outputs[0], mime: 'audio/wav' })
+      expect(probe).not.toHaveBeenCalled()
+      probe.mockRestore()
+    })
+
     it('reads whether an asset holds sound, probing a video once and keeping the answer across a restart', async () => {
       const fixture = await start()
       const pool = fixture.ctx.dvAssetPool

@@ -12,7 +12,8 @@
  * Two identical files in one project become one asset; the same bytes in two projects are two files with one ID. The
  * service registers itself as Project's asset store, and five operations:
  * - `asset.import`: a file on this machine, or base64 bytes, becomes an asset; with `place`, it also goes on the canvas;
- *   an image or video gets its pixel size and duration from `dvFfmpeg` the first time a record imports it;
+ *   an image or video gets its pixel size and duration, and an audio file its duration, from `dvFfmpeg` the first time a
+ *   record imports it;
  * - `asset.grab_still`: one frame of a video becomes a PNG still, through `dvFfmpeg`;
  * - `asset.cut_segment`: the part of a video between two times becomes a re-encoded MP4 video with its sound, through
  *   `dvFfmpeg`;
@@ -464,21 +465,24 @@ export default class DvAssetPool extends Service {
   }
 
   /**
-   * Read the pixel size and duration of an image or video that a project folder's entry does not know yet, and store
-   * them with {@link DvAssetPool.describe}. ffprobe reads the header; a video whose header has no duration (a WebM file
-   * that a browser recorded) is decoded to measure it. A failure leaves the facts unknown and does not fail the import.
+   * Read the pixel size and duration of an image or video, and the duration of an audio file, that a project folder's
+   * entry does not know yet, and store them with {@link DvAssetPool.describe}. ffprobe reads the header; a video whose
+   * header has no duration (a WebM file that a browser recorded) is decoded to measure it. A failure leaves the facts
+   * unknown and does not fail the import.
    * @param dir - the `.dreamverse/assets/` directory of the importing project.
    * @param id - an asset that the directory holds.
    */
   private async probeMedia(dir: string, id: AssetId): Promise<void> {
     const asset = this.folder(dir).get(id) as Asset
     const mediaType = asset.mime.split('/')[0]
-    if (mediaType !== 'video' && mediaType !== 'image') return
-    if (asset.width !== null && asset.height !== null && (mediaType !== 'video' || asset.duration_sec !== null)) return
+    if (mediaType !== 'video' && mediaType !== 'image' && mediaType !== 'audio') return
+    if (mediaType === 'audio' ? asset.duration_sec !== null
+      : asset.width !== null && asset.height !== null && (mediaType !== 'video' || asset.duration_sec !== null)) return
     try {
       const file = join(dir, OBJECTS_DIR, id)
       const probed = await this.ctx.dvFfmpeg.probe(file)
-      const durationSec = mediaType === 'video' ? probed.videoDurationSec ?? probed.durationSec ?? await this.decodedDuration(file) : null
+      const durationSec = mediaType === 'video' ? probed.videoDurationSec ?? probed.durationSec ?? await this.decodedDuration(file)
+        : mediaType === 'audio' ? probed.durationSec : null
       this.describe(dir, asset, { width: probed.width, height: probed.height, durationSec })
     } catch (error) {
       this.ctx.logger('dvAssetPool').warn('could not read the media facts of asset %s: %s', id, error instanceof Error ? error.message : String(error))

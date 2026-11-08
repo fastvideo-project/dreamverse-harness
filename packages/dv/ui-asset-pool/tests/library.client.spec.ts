@@ -23,13 +23,15 @@ describe('assetLibrary over a synthetic state', () => {
     asset('out', 'video/mp4', 'timeline.export', '2026-10-05T09:03:00.000Z'),
   ]
 
-  it('groups images and videos, newest first, and leaves out assets of other media types', () => {
+  it('groups images, videos and audio files, newest first, and leaves out assets of other media types', () => {
     const library = assetLibrary(stateOf([
       ...assets, asset('notes', 'application/pdf', 'asset.import'), asset('older', 'video/mp4', 'asset.import', '2025-12-31T00:00:00.000Z'),
+      asset('line', 'audio/wav', 'asset.import', '2026-10-05T09:02:00.000Z'), asset('take', 'audio/wav', 'voice.convert', '2026-10-05T09:04:00.000Z'),
     ]))
     expect(library.images.map(row => row.id)).toEqual(['img'])
     expect(library.videos.map(row => row.id)).toEqual(['out', 'vid', 'older'])
-    expect([...library.images, ...library.videos, ...library.extracted].map(row => row.id)).not.toContain('notes')
+    expect(library.audios.map(row => row.id)).toEqual(['take', 'line'])
+    expect([...library.images, ...library.videos, ...library.audios, ...library.extracted].map(row => row.id)).not.toContain('notes')
   })
 
   it('lists the images whose producer also output a video under extracted, and grabbed stills, image-only outputs and referenced images under images', () => {
