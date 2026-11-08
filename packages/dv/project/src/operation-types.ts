@@ -67,6 +67,13 @@ export interface OperationSpec {
    */
   supersedes?(params: Record<string, unknown>, state: ProjectState): RecordId[]
   /**
+   * The record a call of this operation is a changed copy of, for a call whose caller names no `based_on`.
+   * @param params - the call's parameters.
+   * @param state - the project's current state, which the call writes after.
+   * @returns the record, or null for none; omit the function for operations whose calls copy no record by themselves.
+   */
+  basedOn?(params: Record<string, unknown>, state: ProjectState): RecordId | null
+  /**
    * One line for a chat card or a canvas node.
    * @param record - a finished record of this operation.
    * @returns the line.

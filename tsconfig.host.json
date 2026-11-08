@@ -459,6 +459,7 @@
     { "path": "./packages/dv/chat-references" },
     { "path": "./packages/dv/ffmpeg" },
     { "path": "./packages/dv/asset-pool" },
+    { "path": "./packages/dv/canvas" },
     { "path": "./packages/dv/inspector" },
     { "path": "./packages/dv/mcp-presets" },
     { "path": "./packages/dv/shot-render" },

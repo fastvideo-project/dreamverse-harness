@@ -48,6 +48,9 @@
       config:
         projectsFolder: !!js process.env.DV_PROJECTS_FOLDER
 
+    - id: dv-canvas
+      name: '@dv/canvas'
+
     - id: dv-asset-pool
       name: '@dv/asset-pool'
       config:
