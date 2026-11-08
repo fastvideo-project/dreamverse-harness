@@ -153,6 +153,21 @@ describe('canvasReducer', () => {
     expect(nodesOf(reduceAll([shot, move]))).toEqual([`${shot.id} shot [${shot.id}] 600,40 null×null`])
   })
 
+  it('names a node, clears the name with an empty or null name, keeps it across a rerun, and a shorter chain restores it', () => {
+    const shot = record('shot.render')
+    const rename = record('canvas.node_rename', { params: { node: shot.id, name: '  Harbor\n at dawn ' } })
+    const rerun = record('shot.render', { based_on: shot.id })
+    const unknown = record('canvas.node_rename', { params: { node: 'gone', name: 'x' } })
+    const pending = record('canvas.node_rename', { params: { node: shot.id, name: 'Later' }, status: 'pending' })
+    const named = reduceAll([shot, rename, rerun, unknown, pending])
+    expect(named.nodes[brandString<NodeId>(shot.id)]).toMatchObject({ name: 'Harbor at dawn', versions: [shot.id, rerun.id] })
+    for (const name of ['', '  ', null]) {
+      const cleared = reducer.reduce(named, record('canvas.node_rename', { params: { node: shot.id, name } }))
+      expect(cleared.nodes[brandString<NodeId>(shot.id)]?.name).toBeNull()
+    }
+    expect(reduceAll([shot]).nodes[brandString<NodeId>(shot.id)]?.name).toBeNull()
+  })
+
   it('skips the rows that a moved or resized node covers', () => {
     const first = record('shot.render')
     const grow = record('canvas.node_position', { params: { node: first.id, height: ROW + 30 } })

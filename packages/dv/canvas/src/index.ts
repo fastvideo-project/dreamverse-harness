@@ -1,10 +1,10 @@
 /**
  * The Canvas component of DreamVerse as the `dvCanvasNodes` Cordis service: the node list of a project. The `canvas`
  * slice holds every node with its kind, name, versions and position, and the reducer rebuilds it from the records up to
- * the current position, so undo, redo and History cover every change to a node. The service owns two operations:
- * `canvas.node_position`, which moves or resizes one node, and `canvas.node_remove`, which takes nodes off the canvas;
- * `dvProject` turns them into the agent tools `dv_canvas_node_position` and `dv_canvas_node_remove`, which work whether
- * or not a canvas is open.
+ * the current position, so undo, redo and History cover every change to a node. The service owns three operations:
+ * `canvas.node_position`, which moves or resizes one node, `canvas.node_remove`, which takes nodes off the canvas, and
+ * `canvas.node_rename`, which names one node; `dvProject` turns them into the agent tools `dv_canvas_node_position`,
+ * `dv_canvas_node_remove` and `dv_canvas_node_rename`, which work whether or not a canvas is open.
  *
  * A producer names its operations through the service, inside `ctx.inject(['dvCanvasNodes'], …)`, so it loads without
  * this package: `registerMaker` for the operations whose records make nodes, `registerPlacement` for the operation that
@@ -16,7 +16,7 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import z from '@deepseek-ai/schemastery'
 import { ProjectError, type OperationResult, type OperationSpec, type ProjectState } from '@dv/project'
-import { canvasReducer, NODE_POSITION, NODE_REMOVE } from './reducer.ts'
+import { canvasReducer, NAME_MAX, NODE_POSITION, NODE_REMOVE, NODE_RENAME, nodeName } from './reducer.ts'
 import type { AssetPlacement, NodeId, NodeMaker } from './types.ts'
 
 export type * from './types.ts'
@@ -56,6 +56,7 @@ export default class DvCanvasNodes extends Service {
     ctx.effect(() => ctx.dvProject.registerReducer('canvas', canvasReducer(registered)), 'dvCanvasNodes reducer')
     ctx.effect(() => ctx.dvProject.registerOperation(positionOperation()), `dvCanvasNodes ${NODE_POSITION}`)
     ctx.effect(() => ctx.dvProject.registerOperation(removeOperation()), `dvCanvasNodes ${NODE_REMOVE}`)
+    ctx.effect(() => ctx.dvProject.registerOperation(renameOperation()), `dvCanvasNodes ${NODE_RENAME}`)
   }
 
   /**
@@ -187,4 +188,51 @@ function removeOperation(): OperationSpec {
 function knownNodes(state: ProjectState): string {
   const known = state.components.canvas.order.join(', ')
   return known === '' ? 'none' : known
+}
+
+/**
+ * `canvas.node_rename`: set the name that one node's card shows. It refuses an unknown node, a name longer than
+ * {@link NAME_MAX} characters, and the node's current name, before any record.
+ * @returns the operation.
+ */
+function renameOperation(): OperationSpec {
+  return {
+    name: NODE_RENAME,
+    component: 'canvas',
+    version: '1',
+    label: { zh: '重命名节点', en: 'Rename node' },
+    description: 'Rename one canvas node: the name replaces the title on its card, in dv_canvas_read and in dv_proj_state. '
+      + `The name is trimmed, line breaks become spaces, and it has at most ${String(NAME_MAX)} characters; an empty or null `
+      + 'name clears it, so the card shows the title its type computes again. The name is only the canvas label: the node '
+      + 'keeps its id, versions, assets, files, text path and character, location or style name, and nothing becomes stale. '
+      + 'Names need not be unique. Works whether or not the user has a canvas open. The change is a step of the project '
+      + 'history, so dv_proj_undo reverts it.',
+    params: {
+      node: { type: 'string', required: true, description: 'The node ID, as dv_proj_state or dv_canvas_read lists it.' },
+      name: { oneOf: [{ type: 'string' }, { type: 'null' }], required: true, description: 'The new name; empty or null clears it.' },
+    },
+    inputs: {},
+    outputs: [],
+    deterministic: false,
+    resource: 'none',
+    summarize: (record) => {
+      const name = nodeName(record.params['name'])
+      return `${name === null ? 'cleared the name of' : 'renamed'} node ${String(record.params['node'])}${name === null ? '' : ` to "${name}"`}`
+    },
+    precondition: (request, state): Promise<void> => {
+      const id = brandString<NodeId>(String(request.params['node']))
+      const node = state.components.canvas.nodes[id]
+      if (node === undefined) throw new ProjectError('invalid_params', `The canvas has no node ${id}. Its nodes are: ${knownNodes(state)}.`)
+      const name = nodeName(request.params['name'])
+      const length = name?.length ?? 0
+      if (length > NAME_MAX) {
+        throw new ProjectError('invalid_params', `The name can have at most ${String(NAME_MAX)} characters; this one has ${String(length)}.`)
+      }
+      if (name === node.name) {
+        throw new ProjectError('invalid_params', name === null ? 'The node has no name to clear.' : `The node is already named "${name}".`)
+      }
+      return Promise.resolve()
+    },
+    execute: (): Promise<OperationResult> => Promise.resolve({ outputs: [] }),
+  }
 }

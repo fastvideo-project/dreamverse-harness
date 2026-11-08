@@ -185,6 +185,42 @@ describe('dvCanvasNodes', () => {
     expect(fixture.ctx.dvProject.getState(fixture.project).components.canvas.order).toEqual([made.id])
   })
 
+  it('renames a node with dv_canvas_node_rename and no canvas open; a rerun keeps the name, undo restores it, and dv_proj_state lists it', async () => {
+    const fixture = await start()
+    const made = await fixture.make()
+    const node = brandString<NodeId>(made.id)
+    const name = (): unknown => fixture.ctx.dvProject.getState(fixture.project).components.canvas.nodes[node]?.name
+    const renamed = await fixture.call('dv_canvas_node_rename', { node: made.id, name: ' Harbor at dawn ' })
+    expect(renamed.isError ? '' : JSON.stringify(renamed.value)).toContain(`renamed node ${made.id} to \\"Harbor at dawn\\"`)
+    await fixture.make(made)
+    expect(name()).toBe('Harbor at dawn')
+    const summary = await fixture.call('dv_proj_state', {})
+    expect(summary.isError ? null : (summary.value as { canvas?: Array<{ name: unknown }> }).canvas?.[0]?.name).toBe('Harbor at dawn')
+    expect(failure(await fixture.call('dv_canvas_node_rename', { node: made.id, name: null }))).toBe('')
+    expect(name()).toBeNull()
+    await fixture.ctx.dvProject.undo(fixture.project)
+    expect(name()).toBe('Harbor at dawn')
+    await fixture.ctx.dvProject.undo(fixture.project)
+    await fixture.ctx.dvProject.undo(fixture.project)
+    expect(name()).toBeNull()
+  })
+
+  it('refuses an unknown node, a name over 80 characters, and the current name before any record', async () => {
+    const fixture = await start()
+    expect(failure(await fixture.call('dv_canvas_node_rename', { node: 'n0', name: 'x' }))).toContain('The canvas has no node n0. Its nodes are: none.')
+    const made = await fixture.make()
+    const records = (): number => fixture.ctx.dvProject.listRecords(fixture.project).length
+    const before = records()
+    expect(failure(await fixture.call('dv_canvas_node_rename', { node: 'n9', name: 'x' }))).toContain(`The canvas has no node n9. Its nodes are: ${made.id}.`)
+    expect(failure(await fixture.call('dv_canvas_node_rename', { node: made.id, name: '镜'.repeat(81) })))
+      .toContain('The name can have at most 80 characters; this one has 81.')
+    expect(failure(await fixture.call('dv_canvas_node_rename', { node: made.id, name: '' }))).toContain('The node has no name to clear.')
+    expect(records()).toBe(before)
+    expect(failure(await fixture.call('dv_canvas_node_rename', { node: made.id, name: '镜'.repeat(80) }))).toBe('')
+    expect(failure(await fixture.call('dv_canvas_node_rename', { node: made.id, name: `${'镜'.repeat(80)}\n` }))).toContain('The node is already named')
+    expect(records()).toBe(before + 1)
+  })
+
   it('removes canvas.node_position, canvas.node_remove, their tools and the slice when the plugin is disposed', async () => {
     const fixture = await start()
     expect(fixture.ctx.dvProject.listOperations().map(spec => spec.name)).toContain('canvas.node_position')
