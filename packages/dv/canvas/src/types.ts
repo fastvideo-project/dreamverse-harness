@@ -66,13 +66,11 @@ export interface NodeMaker {
 }
 
 /**
- * The operations that put assets on the canvas and take them off: a finished `place` record makes one node of `kind`
- * per input asset that no node shows yet, and a finished `unplace` record deletes the nodes of `kind` that show one of
- * its input assets.
+ * The operation that puts assets on the canvas: a finished `place` record makes one node of `kind` per input asset that
+ * no node shows yet. `canvas.node_remove` takes such a node off the canvas, as any other node.
  */
 export interface AssetPlacement {
   place: string
-  unplace: string
   kind: string
   column: number
 }

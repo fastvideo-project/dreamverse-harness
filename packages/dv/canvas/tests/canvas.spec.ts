@@ -112,13 +112,13 @@ describe('dvCanvasNodes', () => {
     })
     expect(() => fixture.ctx.dvCanvasNodes.registerMaker({ operations: ['demo.make'], kind: 'other', column: 0 }))
       .toThrow('The canvas already has a node registration for demo.make.')
-    const placement = { place: 'demo.place', unplace: 'demo.unplace', kind: 'demo', column: 0 }
+    const placement = { place: 'demo.place', kind: 'demo', column: 0 }
     const dispose = fixture.ctx.dvCanvasNodes.registerPlacement(placement)
     dispose()
     fixture.ctx.dvCanvasNodes.registerPlacement({ ...placement })
     // A second call of a spent disposer leaves the newer registration in place.
     dispose()
-    expect(() => fixture.ctx.dvCanvasNodes.registerPlacement(placement)).toThrow('The canvas already has a node registration for demo.place, demo.unplace.')
+    expect(() => fixture.ctx.dvCanvasNodes.registerPlacement(placement)).toThrow('The canvas already has a node registration for demo.place.')
   })
 
   it('moves and resizes a node with dv_canvas_node_position and no canvas open; undo restores each step, and dv_proj_state lists the node', async () => {
@@ -152,14 +152,49 @@ describe('dvCanvasNodes', () => {
     expect(records()).toBe(before)
   })
 
-  it('removes canvas.node_position, its tool and the slice when the plugin is disposed', async () => {
+  it('removes nodes with dv_canvas_node_remove and no canvas open, reports them, and undo brings each back as it was', async () => {
+    const fixture = await start()
+    const first = await fixture.make()
+    const rerun = await fixture.make(first)
+    const other = await fixture.make()
+    expect(failure(await fixture.call('dv_canvas_node_position', { node: first.id, x: 600, y: 40 }))).toBe('')
+    const canvas = (): ReturnType<Context['dvProject']['getState']>['components']['canvas'] => fixture.ctx.dvProject.getState(fixture.project).components.canvas
+    const before = canvas()
+    const removed = await fixture.call('dv_canvas_node_remove', { nodes: [first.id, other.id] })
+    expect(failure(removed)).toBe('')
+    expect(removed.isError ? null : removed.value).toMatchObject({ summary: `removed node ${first.id}, ${other.id} from the canvas` })
+    expect(canvas()).toEqual({ nodes: {}, order: [], assets: {} })
+    const record = fixture.ctx.dvProject.listRecords(fixture.project).at(-1)
+    expect(record).toMatchObject({ operation: 'canvas.node_remove', actor: 'agent', status: 'done', params: { nodes: [first.id, other.id] } })
+    const kept = (id: string): unknown => before.nodes[brandString<NodeId>(id)]
+    expect(record?.report).toEqual({ removed: { [first.id]: kept(first.id), [other.id]: kept(other.id) } })
+    expect(before.nodes[brandString<NodeId>(first.id)]).toMatchObject({ versions: [first.id, rerun.id], position: { x: 600, y: 40 } })
+    await fixture.ctx.dvProject.undo(fixture.project)
+    expect(canvas()).toEqual(before)
+  })
+
+  it('refuses a call that names no node or a node the canvas does not hold, before any record', async () => {
+    const fixture = await start()
+    const made = await fixture.make()
+    const records = (): number => fixture.ctx.dvProject.listRecords(fixture.project).length
+    const before = records()
+    expect(failure(await fixture.call('dv_canvas_node_remove', { nodes: [made.id, 'n9'] })))
+      .toContain(`The canvas has no node n9; its nodes are: ${made.id}. Nothing was removed.`)
+    expect(failure(await fixture.call('dv_canvas_node_remove', { nodes: [] }))).toContain('Name at least one node. Nothing was removed.')
+    expect(records()).toBe(before)
+    expect(fixture.ctx.dvProject.getState(fixture.project).components.canvas.order).toEqual([made.id])
+  })
+
+  it('removes canvas.node_position, canvas.node_remove, their tools and the slice when the plugin is disposed', async () => {
     const fixture = await start()
     expect(fixture.ctx.dvProject.listOperations().map(spec => spec.name)).toContain('canvas.node_position')
     expect(fixture.ctx.tools.get('dv_canvas_node_position')).toBeDefined()
+    expect(fixture.ctx.tools.get('dv_canvas_node_remove')).toBeDefined()
     const entry = [...fixture.ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-canvas.mjs'))
     await entry?.fiber?.dispose()
     expect(fixture.ctx.dvProject.listOperations().map(spec => spec.name)).not.toContain('canvas.node_position')
     expect(fixture.ctx.tools.get('dv_canvas_node_position')).toBeUndefined()
+    expect(fixture.ctx.tools.get('dv_canvas_node_remove')).toBeUndefined()
     expect(fixture.ctx.dvProject.getState(fixture.project).components).not.toHaveProperty('canvas')
   })
 })

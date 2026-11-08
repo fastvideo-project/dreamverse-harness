@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-11-08-dv-canvas-node-list.md
-2026-11-08-dv-canvas-node-list.md: 5c56d88623ee269d1642384db73c12e548368901
-2026-11-08-dv-canvas-node-list.zh.md: 32dfd0b7d75a49ec8953517a48ec13d2fddffaab
+2026-11-08-dv-canvas-node-list.md: 30d24b352520fa06480403310f3f5681af88c25c
+2026-11-08-dv-canvas-node-list.zh.md: 289c34adf79df30f0a49022c55dcaee87aa706aa

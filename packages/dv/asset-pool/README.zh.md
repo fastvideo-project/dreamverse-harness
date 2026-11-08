@@ -1,5 +1,5 @@
 ---
-description: "DreamVerse 的素材库组件：dvAssetPool 服务、带 /dv/assets 路由的内容寻址素材存储、它向画布节点列表注册的素材节点，以及操作 asset.import、asset.grab_still、asset.cut_segment、asset.place 和 asset.unplace 及其智能体工具。"
+description: "DreamVerse 的素材库组件：dvAssetPool 服务、带 /dv/assets 路由的内容寻址素材存储、它向画布节点列表注册的素材节点，以及操作 asset.import、asset.grab_still、asset.cut_segment 和 asset.place 及其智能体工具。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包把项目的每张图片、每段视频、每个音频和文本文件只保存一次，并且永不修改。素材的 ID 是其字节的 SHA-256，因此引用某个素材的记录永远指向同样的字节。本服务是项目的素材存储，并向 `dvProject` 注册五个操作：`asset.import`，把一个文件或 base64 字节变成素材；`asset.grab_still`，把视频的一帧变成 PNG 静帧；`asset.cut_segment`，把视频中两个时间点之间的部分变成一个带声音的新 MP4 视频；`asset.place` 和 `asset.unplace`，把素材放到画布上和从画布移除。DSH web server 运行时，本服务在 `/dv/assets/<AssetId>` 提供素材文件。
+使用本包把项目的每张图片、每段视频、每个音频和文本文件只保存一次，并且永不修改。素材的 ID 是其字节的 SHA-256，因此引用某个素材的记录永远指向同样的字节。本服务是项目的素材存储，并向 `dvProject` 注册四个操作：`asset.import`，把一个文件或 base64 字节变成素材；`asset.grab_still`，把视频的一帧变成 PNG 静帧；`asset.cut_segment`，把视频中两个时间点之间的部分变成一个带声音的新 MP4 视频；`asset.place`，把素材放到画布上。`@dv/canvas` 的 `canvas.node_remove` 把素材节点从画布移除，素材仍留在素材库。DSH web server 运行时，本服务在 `/dv/assets/<AssetId>` 提供素材文件。
 
 ## 目录
 
@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在 `@dv/project` 和 `@dv/ffmpeg` 之后挂载插件。其他插件注入 `dvAssetPool`。本服务经 `dvProject.registerAssetStore` 注册自己，因此同一文件导入同一项目两次只是一个素材。项目把素材保存在自己的文件夹里，因此复制文件夹就复制了整个项目：`<项目文件夹>/.dreamverse/assets/` 下，字节在 `objects/<sha256>`，`index.jsonl` 里每个素材一行 `Asset`。`asset.import` 经 `dvFfmpeg` 读取图片或视频的像素尺寸和时长，`asset.grab_still` 和 `asset.cut_segment` 经 `dvFfmpeg` 运行，`dvProject` 把这五个操作变成智能体工具 `dv_asset_import`、`dv_asset_grab_still`、`dv_asset_cut_segment`、`dv_asset_place` 和 `dv_asset_unplace`。组件键 `asset` 没有归约函数：本服务在 `ctx.inject(['dvCanvasNodes'], …)` 里向 [`@dv/canvas`](../canvas/README.zh.md) 的 `dvCanvasNodes` 注册：已完成的带 `place: true` 的 `asset.import` 和每次 `asset.place` 产生 kind 为 `asset` 的节点，`asset.unplace` 删除它们；`asset.place` 和 `asset.unplace` 也只在该服务加载期间注册。`proj` 切片的 `created_by` 记着创建每个素材的记录。画布上有哪些素材属于项目内容：每次摆放都是一条记录，因此历史会列出它，撤销能撤回它。
+在 `@dv/project` 和 `@dv/ffmpeg` 之后挂载插件。其他插件注入 `dvAssetPool`。本服务经 `dvProject.registerAssetStore` 注册自己，因此同一文件导入同一项目两次只是一个素材。项目把素材保存在自己的文件夹里，因此复制文件夹就复制了整个项目：`<项目文件夹>/.dreamverse/assets/` 下，字节在 `objects/<sha256>`，`index.jsonl` 里每个素材一行 `Asset`。`asset.import` 经 `dvFfmpeg` 读取图片或视频的像素尺寸和时长，`asset.grab_still` 和 `asset.cut_segment` 经 `dvFfmpeg` 运行，`dvProject` 把这四个操作变成智能体工具 `dv_asset_import`、`dv_asset_grab_still`、`dv_asset_cut_segment` 和 `dv_asset_place`。组件键 `asset` 没有归约函数：本服务在 `ctx.inject(['dvCanvasNodes'], …)` 里向 [`@dv/canvas`](../canvas/README.zh.md) 的 `dvCanvasNodes` 注册：已完成的带 `place: true` 的 `asset.import` 和每次 `asset.place` 产生 kind 为 `asset` 的节点；`asset.place` 也只在该服务加载期间注册。`proj` 切片的 `created_by` 记着创建每个素材的记录。画布上有哪些素材属于项目内容：每次摆放都是一条记录，因此历史会列出它，撤销能撤回它。
 
 ```yaml
 - id: dv-asset-pool
@@ -43,7 +43,6 @@ kind: "package-reference"
 | `asset.grab_still` | `dv_asset_grab_still` | 输入 `video`，参数 `at`：`first`、`last`（默认）或以秒计的时间 | `still`（PNG） |
 | `asset.cut_segment` | `dv_asset_cut_segment` | 输入 `video`，参数 `in_sec` 和 `out_sec`（都必填，从视频开头起的秒数）；不满足 `0 <= in_sec < out_sec` 时返回 `invalid_params`；区间内没有视频帧时记录失败 | `segment`（MP4，带声音、像素尺寸和时长） |
 | `asset.place` | `dv_asset_place` | 输入 `asset`（一个或多个）；素材既不是项目的任何记录（包括被丢弃的记录）导入的、也不是当前状态中某一步生成的时返回 `invalid_inputs`，全部素材已在画布上（即已有画布节点显示它）时返回 `invalid_params` | 无 |
-| `asset.unplace` | `dv_asset_unplace` | 输入 `asset`（一个或多个）；没有一个素材有素材节点时返回 `invalid_params`；删除这些素材的素材节点，素材仍留在素材库 | 无 |
 
 | 方法 | 行为 |
 | --- | --- |
@@ -89,7 +88,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-五个工具 `dv_asset_import`、`dv_asset_grab_still`、`dv_asset_cut_segment`、`dv_asset_place` 和 `dv_asset_unplace`（后两个在 `@dv/canvas` 加载期间才有），采用 `@dv/project` 给每个操作工具的格式。`dv_asset_import` 的描述是 "Bring a file into the asset pool: a path on this machine, or base64 bytes. Returns the asset ID to reference later."，参数为 `path`、`base64`、`mime`（必填）、`name` 和 `place`（"Also put the asset on the canvas."）。`dv_asset_grab_still` 的描述是 "Grab one frame of a video as a PNG still, to look at it or to use it as a reference." 和 "Runs on the CPU."，接受输入 `video` 和参数 `at`（`'first'`、`'last'` 或以秒计的时间；默认 last）。`dv_asset_cut_segment` 的描述是 "Cut the part of a video between two times into a new video asset with its sound, for example to use it as a reference." 和 "Runs on the CPU."，接受输入 `video` 和必填参数 `in_sec`、`out_sec`（从视频开头起的秒数）。这三个描述都以 "Repeating a call with the same inputs and params reuses the earlier result." 结尾。`dv_asset_place` 的描述是 "Put assets of the project on the canvas, where the user sees each one as a node. The assets must come from a record in the current state of the project."，`dv_asset_unplace` 的描述是 "Take assets off the canvas. The assets stay in the asset pool."；两者都接受输入 `asset`。
+四个工具 `dv_asset_import`、`dv_asset_grab_still`、`dv_asset_cut_segment` 和 `dv_asset_place`（最后一个在 `@dv/canvas` 加载期间才有），采用 `@dv/project` 给每个操作工具的格式。`dv_asset_import` 的描述是 "Bring a file into the asset pool: a path on this machine, or base64 bytes. Returns the asset ID to reference later."，参数为 `path`、`base64`、`mime`（必填）、`name` 和 `place`（"Also put the asset on the canvas."）。`dv_asset_grab_still` 的描述是 "Grab one frame of a video as a PNG still, to look at it or to use it as a reference." 和 "Runs on the CPU."，接受输入 `video` 和参数 `at`（`'first'`、`'last'` 或以秒计的时间；默认 last）。`dv_asset_cut_segment` 的描述是 "Cut the part of a video between two times into a new video asset with its sound, for example to use it as a reference." 和 "Runs on the CPU."，接受输入 `video` 和必填参数 `in_sec`、`out_sec`（从视频开头起的秒数）。这三个描述都以 "Repeating a call with the same inputs and params reuses the earlier result." 结尾。`dv_asset_place` 的描述是 "Put assets of the project on the canvas, where the user sees each one as a node. The assets must come from a record in the current state of the project."，接受输入 `asset`。
 
 #### Token 影响
 

@@ -1,5 +1,5 @@
 ---
-description: "DreamVerse 的画布组件：dvCanvasNodes 服务和 canvas 切片，即从记录重建的项目节点列表，含每个节点的 kind、版本和位置；canvas.node_position 操作及其智能体工具；以及生产者用来指名会产生节点的操作的注册。"
+description: "DreamVerse 的画布组件：dvCanvasNodes 服务和 canvas 切片，即从记录重建的项目节点列表，含每个节点的 kind、版本和位置；canvas.node_position 和 canvas.node_remove 操作及其智能体工具；以及生产者用来指名会产生节点的操作的注册。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包把项目画布上有什么作为项目的一部分保存下来。`canvas` 切片列出每个节点及其 kind、版本、位置和尺寸，并从记录重建，所以撤销、重做和历史覆盖每个新节点、新版本、移动和调整大小。重跑会加入被重跑版本所在的节点，而不是新增节点。用户和智能体用一条 `canvas.node_position` 记录移动或调整一个节点的大小；智能体的工具 `dv_canvas_node_position` 无论画布是否打开都能用。
+使用本包把项目画布上有什么作为项目的一部分保存下来。`canvas` 切片列出每个节点及其 kind、版本、位置和尺寸，并从记录重建，所以撤销、重做和历史覆盖每个新节点、新版本、移动和调整大小。重跑会加入被重跑版本所在的节点，而不是新增节点。用户和智能体用一条 `canvas.node_position` 记录移动或调整一个节点的大小，用一条 `canvas.node_remove` 记录把节点从画布移除，撤销会让每个节点带着名称、版本和位置回来；智能体的工具 `dv_canvas_node_position` 和 `dv_canvas_node_remove` 无论画布是否打开都能用。
 
 ## 目录
 
@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在 `@dv/project` 之后挂载插件，服务注入 `@dv/project`。服务没有配置。它向 `dvProject` 注册组件键 `canvas`、`canvas` 归约函数和操作 `canvas.node_position`，`dvProject` 把该操作变成智能体工具 `dv_canvas_node_position`。`@dv/api` 注入 `dvCanvasNodes`，所以浏览器总能收到 `canvas` 切片。
+在 `@dv/project` 之后挂载插件，服务注入 `@dv/project`。服务没有配置。它向 `dvProject` 注册组件键 `canvas`、`canvas` 归约函数和操作 `canvas.node_position` 与 `canvas.node_remove`，`dvProject` 把它们变成智能体工具 `dv_canvas_node_position` 和 `dv_canvas_node_remove`。`@dv/api` 注入 `dvCanvasNodes`，所以浏览器总能收到 `canvas` 切片。
 
 ```yaml
 - id: dv-canvas
@@ -34,15 +34,16 @@ kind: "package-reference"
 | 操作 | 工具 | 输入和参数 | 产出 |
 | --- | --- | --- | --- |
 | `canvas.node_position` | `dv_canvas_node_position` | 参数 `node`（必填，一个节点 ID）、`x`、`y`、`width`、`height`；四者至少给一个；`width` 和 `height` 大于 0 | 无 |
+| `canvas.node_remove` | `dv_canvas_node_remove` | 参数 `nodes`（必填，一个或多个节点 ID）；记录的 `report.removed` 保留每个被移除节点移除前的样子 | 无 |
 
-对每个调用方，前置条件在写任何记录之前拒绝当前状态中没有的节点（消息列出节点 ID），以及 `x`、`y`、`width`、`height` 一个都没给的调用。它不检查与其他节点的重叠。调用没给的字段保持原值。
+对每个调用方，前置条件在写任何记录之前拒绝当前状态中没有的节点（消息列出节点 ID），以及 `x`、`y`、`width`、`height` 一个都没给的调用。它不检查与其他节点的重叠。调用没给的字段保持原值。`canvas.node_remove` 的前置条件在写任何记录之前拒绝空的 `nodes` 和当前状态中没有的节点；每条消息都以 `Nothing was removed.` 结尾。被移除节点的版本、这些版本的素材以及对它们的每个引用都保留：镜头输入、时间线片段、对话提及、`based_on` 和素材库。最新版本处于等待或运行中的节点也可以移除；它的渲染继续，产出进入素材库。
 
 生产者在 `ctx.inject(['dvCanvasNodes'], …)` 里指名其记录会产生节点的操作，所以它不依赖本包也能加载，并在画布加载时重新注册：
 
 | 方法 | 注册 | 使用者 |
 | --- | --- | --- |
 | `registerMaker({operations, kind, column, makes?})` | `operations` 的记录在布局列 `column`（最左为 0）产生 `kind` 节点；`makes(record)` 返回 false 时跳过该记录 | `@dv/generation` 的 `defineGeneration`（`shot`、`image`、`audio`，第 2 列），`@dv/reference-kit` 的 `defineReference`（`<k>.create`，kind `<k>`，第 0 列），`@dv/text-node`（`textnode.write`，kind `text`，第 0 列），`@dv/asset-pool`（带 `place: true` 的 `asset.import`，kind `asset`，第 0 列） |
-| `registerPlacement({place, unplace, kind, column})` | 已完成的 `place` 记录为每个还没有节点显示的输入素材添加一个 `kind` 节点；已完成的 `unplace` 记录删除显示其某个输入素材的 `kind` 节点 | `@dv/asset-pool`（`asset.place`、`asset.unplace`，kind `asset`，第 0 列） |
+| `registerPlacement({place, kind, column})` | 已完成的 `place` 记录为每个还没有节点显示的输入素材添加一个 `kind` 节点；`canvas.node_remove` 像移除其他节点一样移除这样的节点 | `@dv/asset-pool`（`asset.place`，kind `asset`，第 0 列） |
 
 每个方法返回其注册的注销函数。某个 maker 或 placement 已指名的操作会抛出 `invalid_params`。`kind` 是浏览器半边绘制该节点所用的节点类型键：UI 插件注册一个 `type` 为同一字符串的 `@dv/ui-canvas/contract` `NodeType`，没有对应类型的 kind 画成普通卡片。
 
@@ -56,15 +57,15 @@ kind: "package-reference"
 <details>
 <summary>实现内部——点击展开</summary>
 
-归约函数从旧到新读取直到当前位置的链上每条记录，并应用第一条匹配的规则。(1) `based_on` 是节点 N 某个版本的记录成为 N 的最新版本。(2) 某个 maker 指名的操作、且 `makes` 接受的记录，在其列的第一个空行创建一个该 maker kind 的节点，使用默认尺寸。(3) 已完成的 placement `place` 记录为每个还没有节点显示的输入素材创建一个节点。(4) 已完成的 placement `unplace` 记录删除该 placement 中显示其某个输入素材的节点。(5) 已完成的 `canvas.node_position` 记录在切片持有的节点上设置其参数给出的位置字段。(6) 其他记录保持切片不变。规则 1 和 2 接受任何状态的记录，所以等待中、运行中或失败的版本在节点上显示其状态；失败的渲染仍是一个版本，带有它的重试动作。`assets` 把 placement 节点放置的素材和每个节点最新版本的产出映射到该节点。
+归约函数从旧到新读取直到当前位置的链上每条记录，并应用第一条匹配的规则。(1) `based_on` 是节点 N 某个版本的记录成为 N 的最新版本。(2) 某个 maker 指名的操作、且 `makes` 接受的记录，在其列的第一个空行创建一个该 maker kind 的节点，使用默认尺寸。(3) 已完成的 placement `place` 记录为每个还没有节点显示的输入素材创建一个节点。(4) 已完成的 `canvas.node_remove` 记录从 `nodes`、`order` 和 `assets` 中删除其 `nodes` 参数指名的节点；撤销会重放不含该记录的链，所以每个节点带着名称、版本和位置回来。(5) 已完成的 `canvas.node_position` 记录在切片持有的节点上设置其参数给出的位置字段。(6) 其他记录保持切片不变。规则 1 和 2 接受任何状态的记录，所以等待中、运行中或失败的版本在节点上显示其状态；失败的渲染仍是一个版本，带有它的重试动作。`assets` 把 placement 节点放置的素材和每个节点最新版本的产出映射到该节点。
 
-生产者无需画布字段即可设置 `based_on`。编辑器的提示词修改、重跑和重试以被重跑的版本作为 `based_on`。调用方没有给出 `based_on` 时，`@dv/project` 的 `OperationSpec.basedOn` 填写它：`@dv/reference-kit` 的 `<k>.update` 以及 `@dv/text-node` 的 `textnode.write` 和 `textnode.edit` 指名该条目最新版本的记录，所以角色、场景、风格或文本路径的每个版本都加入同一个节点。`based_on` 指名的记录不在任何节点中时，该记录落到规则 2。
+生产者无需画布字段即可设置 `based_on`。编辑器的提示词修改、重跑和重试以被重跑的版本作为 `based_on`。调用方没有给出 `based_on` 时，`@dv/project` 的 `OperationSpec.basedOn` 填写它：`@dv/reference-kit` 的 `<k>.update` 以及 `@dv/text-node` 的 `textnode.write` 和 `textnode.edit` 指名该条目最新版本的记录，所以角色、场景、风格或文本路径的每个版本都加入同一个节点。`based_on` 指名的记录不在任何节点中时，例如被移除节点的某个版本，该记录落到规则 2 并产生一个新节点。
 
 新节点取其列中第一个没有节点覆盖其格子的行：一列宽 240 单位、一行高 200 单位，默认尺寸的节点在其角上覆盖一个格子，因为只有浏览器知道节点类型的默认尺寸。切片在每次读取时从记录计算，所以它跟随该次读取时已加载的注册。
 
 | 文件 | 内容 |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `dvCanvasNodes`：组件、归约函数、`canvas.node_position`、`registerMaker` 和 `registerPlacement` |
+| [`src/index.ts`](src/index.ts) | `dvCanvasNodes`：组件、归约函数、`canvas.node_position`、`canvas.node_remove`、`registerMaker` 和 `registerPlacement` |
 | [`src/reducer.ts`](src/reducer.ts) | 带六条规则的 `canvas` 归约函数、空行放置和智能体摘要 |
 | [`src/types.ts`](src/types.ts) | `NodeId`、`NodePosition`、`CanvasNode`、`CanvasState`、`NodeMaker`、`AssetPlacement` 和 `canvas` 切片声明 |
 
@@ -76,8 +77,8 @@ kind: "package-reference"
 ## 进一步探索
 
 - [`@dv/project`](../project/README.zh.md)：归约函数、`based_on`、`OperationSpec.basedOn`、撤销，以及每个操作的智能体工具。
-- [`@dv/ui-canvas`](../ui-canvas/README.zh.md)：绘制节点列表、并为拖动或调整大小写入 `canvas.node_position` 的浏览器画布。
-- [`@dv/asset-pool`](../asset-pool/README.zh.md)：素材节点以及操作 `asset.place` 和 `asset.unplace`。
+- [`@dv/ui-canvas`](../ui-canvas/README.zh.md)：绘制节点列表、为拖动或调整大小写入 `canvas.node_position`、为 从画布移除 / Remove from canvas 写入 `canvas.node_remove` 的浏览器画布。
+- [`@dv/asset-pool`](../asset-pool/README.zh.md)：素材节点以及操作 `asset.place`。
 - [画布节点列表](../../../.agents/notes/implemented/architecture/2026-11-08-dv-canvas-node-list.zh.md)：为什么节点列表是宿主基础包，以及为什么移动是记录。
 
 -----
@@ -129,6 +130,46 @@ Move or resize one canvas node: give the new x and y of the top-left corner of t
 
 结果在调用之后追加到对话中；已缓存的前缀保持不变。
 
+### `dv_canvas_node_remove` 工具定义
+
+#### 模型看到什么
+
+一个工具 `dv_canvas_node_remove`，格式相同，带共享参数 `reason`、`supersedes` 和 `based_on`，没有 `inputs`。描述和参数描述见下文。
+
+##### dv_canvas_node_remove 描述
+
+```markdown
+Remove nodes from the canvas. Each node goes with all its versions and the edges to and from it. Its assets stay in the asset pool, and every use of them stays: shot inputs, timeline clips, and nodes made from its outputs. A node that is still rendering can be removed; its output goes to the asset pool. A later step based on a version of a removed node makes a new node. Works whether or not the user has a canvas open. The removal is a step of the project history, so dv_proj_undo brings the nodes back with their versions and positions.
+```
+
+##### dv_canvas_node_remove 参数描述
+
+```markdown
+- nodes: The node IDs to remove, as dv_proj_state or dv_canvas_read lists them.
+```
+
+#### Token 影响
+
+约 330 个 token，插件挂载期间固定不变；其中约 200 个是 `@dv/project` 的共享参数。
+
+#### KV Cache 影响
+
+该定义位于每次智能体请求中固定的工具部分；挂载或移除插件会改变工具列表，使缓存前缀从工具部分起失效。
+
+### `dv_canvas_node_remove` 结果
+
+#### 模型看到什么
+
+一次调用返回一个文本块：`done <record>: removed node <ids> from the canvas`、参数，以及 `report: {"removed": {<id>: <node>}}`，即每个被移除节点移除前的样子，含 `kind`、`name`、`versions` 和 `position`。指名画布中没有的节点的调用以 `The canvas has no node <ids>; its nodes are: <ids>. Nothing was removed.` 失败，`nodes` 为空的调用以 `Name at least one node. Nothing was removed.` 失败。用户的移除以项目更新行的形式到达智能体，例如 `- done <record> (user on canvas): removed node <id> from the canvas`。
+
+#### Token 影响
+
+每次调用约 60 个 token，报告中每个被移除的节点另加约 60 个。
+
+#### KV Cache 影响
+
+结果在调用之后追加到对话中；已缓存的前缀保持不变。
+
 ### 项目摘要的 `canvas` 字段
 
 #### 模型看到什么
@@ -150,5 +191,5 @@ Move or resize one canvas node: give the new x and y of the top-left corner of t
 - **新节点可能与高卡片重叠**：宿主按名义上 240 × 200 的格子放置新节点，因为只有浏览器知道每种节点类型的默认尺寸，所以高于一行的默认卡片可能与下一行放置的节点重叠，直到用户或智能体移动它。
 - **移动不检查重叠**：`canvas.node_position` 接受覆盖另一个节点的位置，因为宿主只有在调整大小之后才知道节点的尺寸。
 - **没有节点名称**：没有操作设置 `name`，所以每个节点显示其节点类型计算出的标题。
-- **节点只因撤下放置而离开列表**：`asset.unplace` 删除素材节点；没有操作能从画布上移除镜头、图片、音频、文本或参考节点。
+- **含 `asset.unplace` 记录的项目**：该操作已删除，所以归约函数跳过旧版本写下的这种记录，它移除过的素材节点会重新显示，直到用户或智能体用 `canvas.node_remove` 移除它。
 - **节点跟随已加载的生产者**：某个生产者未加载时，它的记录不产生节点，这些节点的移动也不起作用，直到它再次加载。

@@ -12,10 +12,10 @@ const makers: NodeMaker[] = [
   { operations: ['character.create'], kind: 'character', column: 0 },
   { operations: ['asset.import'], kind: 'asset', column: 0, makes: record => record.params['place'] === true },
 ]
-const placement: AssetPlacement = { place: 'asset.place', unplace: 'asset.unplace', kind: 'asset', column: 0 }
+const placement: AssetPlacement = { place: 'asset.place', kind: 'asset', column: 0 }
 const reducer = canvasReducer({
   maker: operation => makers.find(maker => maker.operations.includes(operation)),
-  placement: operation => [placement.place, placement.unplace].includes(operation) ? placement : undefined,
+  placement: operation => operation === placement.place ? placement : undefined,
 })
 
 let counter = 0
@@ -84,12 +84,12 @@ describe('canvasReducer', () => {
     expect(nodesOf(reduceAll([quiet, placed]))).toEqual([`${placed.id} asset [${placed.id}] 0,0 null×null`])
   })
 
-  it('places each input asset that no node shows, and unplaces the asset nodes of its input assets', () => {
+  it('places each input asset that no node shows, and removes an asset node as any other node', () => {
     const shot = record('shot.render', { outputs: [asset('v1')] })
     // An input whose asset is not resolved names no asset to place.
     const place = record('asset.place', { inputs: [...inputs('a1', 'v1', 'a2'), { role: 'asset', ref: { record: shot.id, output: 0 }, resolved_asset: null }] })
     const again = record('asset.place', { inputs: inputs('a1') })
-    const unplace = record('asset.unplace', { inputs: inputs('a1', 'v1') })
+    const remove = record('canvas.node_remove', { params: { nodes: [place.id] } })
     const placed = reduceAll([shot, place, again])
     expect(nodesOf(placed)).toEqual([
       `${shot.id} shot [${shot.id}] ${String(2 * COLUMN)},0 null×null`,
@@ -97,7 +97,7 @@ describe('canvasReducer', () => {
       `${place.id}.2 asset [${place.id}] 0,${String(ROW)} null×null`,
     ])
     expect([placed.nodes[brandString<NodeId>(place.id)]?.asset, placed.nodes[brandString<NodeId>(`${place.id}.2`)]?.asset]).toEqual(['a1', 'a2'])
-    const after = reducer.reduce(placed, unplace)
+    const after = reducer.reduce(placed, remove)
     expect(nodesOf(after)).toEqual([
       `${shot.id} shot [${shot.id}] ${String(2 * COLUMN)},0 null×null`,
       `${place.id}.2 asset [${place.id}] 0,${String(ROW)} null×null`,
@@ -105,10 +105,38 @@ describe('canvasReducer', () => {
     expect(after.assets).toEqual({ v1: shot.id, a2: `${place.id}.2` })
   })
 
-  it('leaves the slice as it is for an unplacement of assets that no asset node shows', () => {
-    const shot = record('shot.render', { outputs: [asset('v1')] })
-    const slice = reduceAll([shot])
-    expect(reducer.reduce(slice, record('asset.unplace', { inputs: inputs('v1', 'a9') }))).toBe(slice)
+  it('removes the named nodes with the assets they show, and keeps the other nodes and their edges\' sources', () => {
+    const image = record('shot.render', { outputs: [asset('v1')] })
+    const shot = record('shot.render', { inputs: inputs('v1'), outputs: [asset('v2')] })
+    const character = record('character.create', { outputs: [asset('c1')] })
+    const slice = reduceAll([image, shot, character, record('canvas.node_remove', { params: { nodes: [image.id, character.id] } })])
+    expect(nodesOf(slice)).toEqual([`${shot.id} shot [${shot.id}] ${String(2 * COLUMN)},${String(ROW)} null×null`])
+    expect(slice.assets).toEqual({ v2: shot.id })
+  })
+
+  it('brings a removed node back with its name, versions and position when a shorter chain replays, as an undo does', () => {
+    const first = record('shot.render', { outputs: [asset('v1')] })
+    const rerun = record('shot.render', { based_on: first.id, outputs: [asset('v2')] })
+    const move = record('canvas.node_position', { params: { node: first.id, x: 600, y: 40, width: 320, height: 180 } })
+    const before = reduceAll([first, rerun, move])
+    const removed = reducer.reduce(before, record('canvas.node_remove', { params: { nodes: [first.id] } }))
+    expect(removed).toEqual({ nodes: {}, order: [], assets: {} })
+    expect(reduceAll([first, rerun, move])).toEqual(before)
+    expect(nodesOf(before)).toEqual([`${first.id} shot [${first.id},${rerun.id}] 600,40 320×180`])
+  })
+
+  it('makes a new node for a later record based on a version of a removed node', () => {
+    const first = record('shot.render', { outputs: [asset('v1')] })
+    const remove = record('canvas.node_remove', { params: { nodes: [first.id] } })
+    const rerun = record('shot.render', { based_on: first.id, outputs: [asset('v2')] })
+    expect(nodesOf(reduceAll([first, remove, rerun]))).toEqual([`${rerun.id} shot [${rerun.id}] ${String(2 * COLUMN)},0 null×null`])
+  })
+
+  it('keeps a node removed while its newest version is running, after the render finishes', () => {
+    const running = record('shot.render', { status: 'running' })
+    const remove = record('canvas.node_remove', { params: { nodes: [running.id] } })
+    expect(nodesOf(reduceAll([running, remove]))).toEqual([])
+    expect(nodesOf(reduceAll([{ ...running, status: 'done', outputs: [asset('v1')] }, remove]))).toEqual([])
   })
 
   it('ignores a placement that has not finished', () => {

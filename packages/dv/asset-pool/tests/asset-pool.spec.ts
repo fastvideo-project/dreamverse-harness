@@ -170,9 +170,9 @@ describe('dvAssetPool', () => {
     const specs = fixture.ctx.dvProject.listOperations().filter(spec => spec.component === 'asset')
     expect(specs.map(spec => [spec.name, spec.deterministic, spec.resource])).toEqual([
       ['asset.import', true, 'none'], ['asset.grab_still', true, 'cpu'], ['asset.cut_segment', true, 'cpu'], ['asset.place', false, 'none'],
-      ['asset.unplace', false, 'none'],
     ])
-    for (const tool of ['dv_asset_import', 'dv_asset_grab_still', 'dv_asset_cut_segment', 'dv_asset_place', 'dv_asset_unplace']) {
+    expect(fixture.ctx.tools.get('dv_asset_unplace')).toBeUndefined()
+    for (const tool of ['dv_asset_import', 'dv_asset_grab_still', 'dv_asset_cut_segment', 'dv_asset_place']) {
       expect(fixture.ctx.tools.get(tool)).toBeDefined()
     }
     expect(fixture.web.routes.has('/dv/assets')).toBe(true)
@@ -203,7 +203,7 @@ describe('dvAssetPool', () => {
     expect(spec?.summarize(bare)).toBe('imported bytes')
   })
 
-  it('puts assets on the canvas and takes them off as records, refuses a call that changes nothing, and undo takes a placement back', async () => {
+  it('puts assets on the canvas as records, refuses a call that changes nothing, keeps a removed node\'s asset in the pool, and undo takes a placement back', async () => {
     const fixture = await start()
     const placed = (): AssetId[] => placedOf(fixture.ctx.dvProject.getState(fixture.project))
     const assetInput = (asset: AssetId): RecordInput => ({ role: 'asset', ref: { asset }, resolved_asset: asset })
@@ -214,12 +214,13 @@ describe('dvAssetPool', () => {
     expect(placed()).toEqual([b])
     const put = await fixture.run('asset.place', {}, [assetInput(a), assetInput(b)])
     expect(put).toMatchObject({ status: 'done', component: 'asset', operation: 'asset.place', outputs: [] })
+    expect(fixture.ctx.dvProject.listOperations().find(spec => spec.name === 'asset.place')?.summarize(put)).toBe('placed 2 asset(s) on the canvas')
     expect(placed()).toEqual([b, a])
     const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
     await expect(fixture.run('asset.place', {}, [assetInput(a)])).rejects.toMatchObject({ code: 'invalid_params' })
-    await fixture.run('asset.unplace', {}, [assetInput(b)])
+    await fixture.run('canvas.node_remove', { nodes: [fixture.ctx.dvProject.getState(fixture.project).components.canvas.assets[b]] })
     expect(placed()).toEqual([a])
-    await expect(fixture.run('asset.unplace', {}, [assetInput(b)])).rejects.toMatchObject({ code: 'invalid_params' })
+    expect(fixture.ctx.dvAssetPool.get(b)).toMatchObject({ id: b })
     // An asset that no record of the current state created cannot go on the canvas.
     const outside = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('outside'), { mime: 'image/png', name: 'o.png' }, null)
     await expect(fixture.run('asset.place', {}, [assetInput(outside)])).rejects.toMatchObject({ code: 'invalid_inputs' })

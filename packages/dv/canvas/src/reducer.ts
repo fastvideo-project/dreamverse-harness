@@ -5,11 +5,12 @@
  * 2. a record of an operation that a {@link NodeMaker} names creates a node of its kind in the first free row of its
  *    column (a full column continues in a sub-column), with the default size;
  * 3. a finished `place` record of an {@link AssetPlacement} creates a node for each input asset that no node shows;
- * 4. a finished `unplace` record deletes the placement's nodes that show one of its input assets;
+ * 4. a finished `canvas.node_remove` record deletes the nodes that its params name;
  * 5. a finished `canvas.node_position` record sets the fields of the node's position that its params give;
  * 6. every other record leaves the slice as it is.
  * Rules 1 and 2 take records in any status, so a running or failed version shows its state. The slice follows the
- * records of the chain, so an undo of a move or a resize restores the earlier position.
+ * records of the chain, so an undo of a move or a resize restores the earlier position, and an undo of a removal
+ * restores the node with its name, versions and position.
  *
  * @module @dv/canvas/reducer
  */
@@ -19,6 +20,8 @@ import type { AssetPlacement, CanvasNode, CanvasState, NodeId, NodeMaker, NodePo
 
 /** The operation that moves or resizes a node. */
 export const NODE_POSITION = 'canvas.node_position'
+/** The operation that removes nodes from the canvas. */
+export const NODE_REMOVE = 'canvas.node_remove'
 
 /** The width of a layout column, in canvas units. */
 export const COLUMN = 240
@@ -114,15 +117,11 @@ function place(slice: CanvasState, record: ProjectRecord, placement: AssetPlacem
 }
 
 /**
- * Rule 4: delete the placement's nodes that show an input asset.
+ * Rule 4: delete the nodes that the params name, with the assets they show.
  * @returns the slice after the record.
  */
-function unplace(slice: CanvasState, record: ProjectRecord, placement: AssetPlacement): CanvasState {
-  const removed = new Set(inputAssets(record).flatMap((asset) => {
-    const id = slice.assets[asset]
-    return id !== undefined && slice.nodes[id]?.kind === placement.kind ? [id] : []
-  }))
-  if (removed.size === 0) return slice
+function remove(slice: CanvasState, record: ProjectRecord): CanvasState {
+  const removed = new Set(record.params['nodes'] as NodeId[])
   let assets = slice.assets
   for (const id of removed) assets = withoutNode(assets, id)
   const nodes = Object.fromEntries(Object.entries(slice.nodes).filter(([id]) => !removed.has(id as NodeId))) as CanvasState['nodes']
@@ -168,8 +167,9 @@ export function canvasReducer(registered: CanvasRegistrations): Reducer<'canvas'
       }
       if (record.status !== 'done') return slice
       const placement = registered.placement(operation)
-      if (placement === undefined) return operation === NODE_POSITION ? position(slice, record) : slice
-      return placement.place === operation ? place(slice, record, placement) : unplace(slice, record, placement)
+      if (placement !== undefined) return place(slice, record, placement)
+      if (operation === NODE_REMOVE) return remove(slice, record)
+      return operation === NODE_POSITION ? position(slice, record) : slice
     },
     agentSummary: slice => ({
       // The nodes object keeps creation order: every node is added once under a new ID.
