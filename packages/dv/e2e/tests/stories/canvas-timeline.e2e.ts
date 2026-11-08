@@ -763,12 +763,13 @@ describe('canvas stories', () => {
       await node.dblclick({ timeout: 10_000 })
       return await editor.isVisible()
     }, 'the asset editor', 30_000)
+    page.once('dialog', (dialog) => { void dialog.accept() })
     await editor.getByRole('button', { name: '从画布移除', exact: true }).click()
     await expect.poll(() => node.count(), { timeout: 10_000 }).toBe(0)
     await expect.poll(async () => placedAssets(await stateOf(project.id))).toEqual([])
-    // The drop is two records, asset.place then canvas.node_position under the pointer; the removal is asset.unplace.
-    const placements = (await stateOf(project.id)).components.proj.records.filter(record => record.operation !== null && ['asset.place', 'asset.unplace', 'canvas.node_position'].includes(record.operation))
-    expect(placements.map(record => [record.operation, record.surface])).toEqual([['asset.place', 'canvas'], ['canvas.node_position', 'canvas'], ['asset.unplace', 'canvas']])
+    // The drop is two records, asset.place then canvas.node_position under the pointer; the removal is canvas.node_remove.
+    const placements = (await stateOf(project.id)).components.proj.records.filter(record => record.operation !== null && ['asset.place', 'canvas.node_remove', 'canvas.node_position'].includes(record.operation))
+    expect(placements.map(record => [record.operation, record.surface])).toEqual([['asset.place', 'canvas'], ['canvas.node_position', 'canvas'], ['canvas.node_remove', 'canvas']])
     expect(placements[0]?.id).toBe(nodeId)
     expect(placements[1]?.params['node']).toBe(nodeId)
     await openAssets(page)
@@ -931,6 +932,73 @@ describe('the canvas node list', () => {
     await node.waitFor({ timeout: 30_000 })
     await expect.poll(async () => { const box = await styleBoxOf(node); return { x: box.x, y: box.y } }).toEqual(target)
     expect(page.errors).toEqual([])
+  })
+
+  it('从画布移除 in the right-click menu asks first, removes the node in one step that a reload keeps, and Undo brings it back at its old position', async () => {
+    const project = await seedProject('nodes-remove', 2)
+    const page = await openPage()
+    await gotoProject(page, project.id)
+    const id = project.shots[0] ?? ''
+    const node = page.locator(`[data-testid="dv-canvas-view"] [data-node-id="${id}"]`)
+    await node.waitFor({ timeout: 30_000 })
+    const before = await styleBoxOf(node)
+    const title = await node.getAttribute('aria-label') ?? ''
+    const records = (await stateOf(project.id)).components.proj.records.length
+    const removeFromMenu = async (): Promise<void> => {
+      await node.click({ button: 'right', position: { x: 40, y: 40 } })
+      await page.getByRole('menu', { name: '节点操作' }).getByRole('menuitem', { name: /从画布移除/ }).click()
+    }
+    const asked: string[] = []
+    page.once('dialog', (dialog) => { asked.push(dialog.message()); void dialog.dismiss() })
+    await removeFromMenu()
+    await expect.poll(() => asked).toEqual([`从画布移除「${title}」？它的版本保留在素材库中，可在历史记录中恢复该节点。`])
+    expect([await node.count(), (await stateOf(project.id)).components.proj.records.length], 'Cancel removes nothing').toEqual([1, records])
+    page.once('dialog', (dialog) => { void dialog.accept() })
+    await removeFromMenu()
+    await expect.poll(() => node.count(), { timeout: 10_000, message: 'OK removes the node' }).toBe(0)
+    const removal = await newestRecord(project.id)
+    expect(removal).toMatchObject({ operation: 'canvas.node_remove', actor: 'user', surface: 'canvas', params: { nodes: [id] } })
+    expect((await stateOf(project.id)).components.canvas.nodes[id], 'the node list no longer holds the node').toBeUndefined()
+    await page.reload({ waitUntil: 'load' })
+    await page.locator('[data-testid="dv-canvas-view"] [data-node-id]').first().waitFor({ timeout: 30_000 })
+    expect(await node.count(), 'a reload keeps the removal').toBe(0)
+    await openHistory(page)
+    const row = historyPanel(page).locator(`[data-testid="dv-history-row"][data-record="${removal?.id ?? ''}"]`)
+    await expect.poll(() => row.innerText(), { timeout: 15_000 }).toContain(`从画布移除「${title}」`)
+    await historyPanel(page).locator('[data-testid="dv-history-undo"]').click()
+    await node.waitFor({ timeout: 15_000 })
+    await expect.poll(() => styleBoxOf(node), { timeout: 15_000, message: 'Undo draws the node back at its old position' }).toEqual(before)
+    expect(page.errors).toEqual([])
+  })
+
+  it('the agent removes a node with dv_canvas_node_remove, and both open pages of the project drop it at once', async () => {
+    const project = await seedProject('nodes-agent-remove', 2)
+    const id = project.shots[1] ?? ''
+    let results: unknown[] = []
+    model.rules.push({
+      match: 'node-remove-please',
+      steps: [
+        { calls: [{ name: 'dv_canvas_node_remove', args: { reason: 'drop the second shot', nodes: [id] } }] },
+        (view) => { results = view.toolResults; return { text: '移除了' } },
+      ],
+    })
+    const page = await openPage()
+    await gotoProject(page, project.id)
+    const other = await openPage()
+    await gotoProject(other, project.id)
+    const nodeOn = (on: Page): Locator => on.locator(`[data-testid="dv-canvas-view"] [data-node-id="${id}"]`)
+    await nodeOn(page).waitFor({ timeout: 30_000 })
+    await nodeOn(other).waitFor({ timeout: 30_000 })
+    const composer = page.locator('[data-dv-chat] [contenteditable="true"]').first()
+    await composer.waitFor({ timeout: 30_000 })
+    await composer.click()
+    await page.keyboard.type('node-remove-please')
+    await page.keyboard.press('Enter')
+    await expect.poll(() => results.length, { timeout: 60_000, message: 'the agent turn reaches the reply after dv_canvas_node_remove' }).toBe(1)
+    expect((await stateOf(project.id)).components.proj.records.at(-1), JSON.stringify(results)).toMatchObject({ operation: 'canvas.node_remove', actor: 'agent', status: 'done' })
+    await expect.poll(() => nodeOn(page).count(), { timeout: 10_000, message: 'the page that asked drops the node without a reload' }).toBe(0)
+    await expect.poll(() => nodeOn(other).count(), { timeout: 10_000, message: 'the other page drops the node without a reload' }).toBe(0)
+    expect([page.errors, other.errors]).toEqual([[], []])
   })
 })
 
