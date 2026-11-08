@@ -33,7 +33,7 @@ function known(schema: unknown): boolean {
 export const shotRenderBar = {
   copy: {
     placeholder: ['描述画面，输入 @ 引用素材', 'Describe the shot; type @ to cite an item'],
-    send: ['渲染新版本', 'Render new take'],
+    send: ['渲染新版本', 'Render new version'],
   },
   chips({ schema, params }) {
     if (!known(schema)) return []

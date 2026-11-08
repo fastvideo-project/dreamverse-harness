@@ -77,6 +77,31 @@ function plainType(kind: string): NodeType {
   }
 }
 
+/** @returns the registered type of a kind, else the plain type. */
+function typeOf(nodeTypes: readonly NodeType[], kind: string): NodeType {
+  return nodeTypes.find(type => type.type === kind) ?? plainType(kind)
+}
+
+/**
+ * The title that the card of one node shows, from that node alone.
+ * @param state - a project state.
+ * @param operations - the operation declarations.
+ * @param language - the interface language.
+ * @param nodeTypes - the registered node types.
+ * @param id - the node.
+ * @returns the title, or undefined for a node that the canvas does not draw.
+ */
+export function nodeTitle(
+  state: WireState, operations: readonly WireOperation[], language: DvLanguage, nodeTypes: readonly NodeType[], id: string,
+): string | undefined {
+  const node = state.components.canvas.nodes[id]
+  if (node === undefined) return undefined
+  const record = state.components.proj.records.find(entry => entry.id === node.versions.at(-1))
+  if (record === undefined || record.operation === null) return undefined
+  const shown: OperationRecord = { ...record, operation: record.operation }
+  return typeOf(nodeTypes, node.kind).entry({ id, node, record: shown, state, operations, language }).title
+}
+
 /**
  * The box of a node in canvas units: its stored position, with its type's default size where the stored size is null.
  * @param node - a drawn node.
@@ -110,9 +135,8 @@ export function buildCanvasGraph(
     failed: record.status === 'failed',
     superseded: proj.superseded[record.id] !== undefined,
   })
-  const typeOf = (kind: string): NodeType => nodeTypes.find(type => type.type === kind) ?? plainType(kind)
   const drawn = (id: string, node: WireCanvasNode, record: OperationRecord): CanvasNode => {
-    const nodeType = typeOf(node.kind)
+    const nodeType = typeOf(nodeTypes, node.kind)
     const entry: TypeEntry = nodeType.entry({ id, node, record, state, operations, language })
     return {
       ...entry, id, assets: entry.assets ?? record.outputs, record, versions: node.versions, type: node.kind, nodeType, node,

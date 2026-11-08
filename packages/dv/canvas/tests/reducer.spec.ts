@@ -78,6 +78,25 @@ describe('canvasReducer', () => {
     ])
   })
 
+  it('creates its own node for a record of a maker of another kind based on a node', () => {
+    const shot = record('shot.render')
+    const character = record('character.create', { based_on: shot.id })
+    expect(nodesOf(reduceAll([shot, character]))).toEqual([
+      `${shot.id} shot [${shot.id}] ${String(2 * COLUMN)},0 null×null`,
+      `${character.id} character [${character.id}] 0,0 null×null`,
+    ])
+  })
+
+  it('moves a node for a position record based on it, and places assets for a placement record based on a node, without a version', () => {
+    const shot = record('shot.render')
+    const move = record('canvas.node_position', { based_on: shot.id, params: { node: shot.id, x: 600, y: 40 } })
+    const place = record('asset.place', { based_on: shot.id, inputs: inputs('a1') })
+    expect(nodesOf(reduceAll([shot, move, place]))).toEqual([
+      `${shot.id} shot [${shot.id}] 600,40 null×null`,
+      `${place.id} asset [${place.id}] 0,0 null×null`,
+    ])
+  })
+
   it('takes a record only when the maker filter accepts it', () => {
     const quiet = record('asset.import', { outputs: [asset('a1')] })
     const placed = record('asset.import', { params: { place: true }, outputs: [asset('a2')] })
