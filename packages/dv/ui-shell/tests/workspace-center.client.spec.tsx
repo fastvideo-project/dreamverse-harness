@@ -20,6 +20,30 @@ async function settle(): Promise<void> {
 }
 
 describe('the workspace center', () => {
+  it('opens a sidebar chat with its own project canvas and breadcrumb, and Back restores the previous project and chat', async () => {
+    const workspace = await mountWorkspace('#project=p1&timeline=t2&session=s1')
+    await waitFor(() => { expect(workspace.center.container.querySelector('[data-node-id]')).not.toBeNull() })
+    await settle()
+    const historyLength = window.history.length
+    fireEvent.click(workspace.navigator.view.getByRole('button', { name: '展开会话' }))
+    fireEvent.click(workspace.navigator.view.getByText('Chorus'))
+    await waitFor(() => {
+      expect(workspace.center.view.getByText('Music video')).toBeTruthy()
+      expect(workspace.center.view.getByText('Chorus')).toBeTruthy()
+      expect(workspace.stateReads).toContain('p2')
+      expect(workspace.hash()).toBe('#project=p2&session=s2')
+    })
+    expect(workspace.center.view.queryByText('Launch film')).toBeNull()
+    expect(window.history.length).toBe(historyLength + 1)
+
+    act(() => { window.history.back() })
+    await waitFor(() => {
+      expect(workspace.center.view.getByText('Launch film')).toBeTruthy()
+      expect(workspace.center.view.getByText('Opening scene')).toBeTruthy()
+      expect(workspace.hash()).toBe('#project=p1&timeline=t2&session=s1')
+    })
+  })
+
   it('leaves the open project\'s timeline, URL and cover alone when the tab body of another project picks a timeline', async () => {
     const workspace = await mountWorkspace('#project=p1&view=timeline&session=s1')
     await waitFor(async () => { expect(timelineTabs(await timelineEditor(workspace.center))).toEqual(['*时间线 1', '片尾']) })

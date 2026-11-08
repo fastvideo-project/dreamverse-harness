@@ -30,10 +30,13 @@ const PROJECTS: WireProject[] = [
 export interface Workspace {
   runtime: SlotTestRuntime
   center: SlotView<'main.conversation'>
+  navigator: SlotView<'sidebar.workspaces'>
   /** The timeline tab body. */
   tab: SlotView<'sidebar.right.pane.tab'>
   /** The query fields of the summary requests, in order. */
   summaries: Array<Record<string, string>>
+  /** Projects whose canvas state was requested. */
+  stateReads: string[]
   /** Call `dvCenter.show`, as History does for a selected record. */
   show(target: CenterTarget): void
   hash(): string
@@ -68,9 +71,11 @@ export async function mountWorkspace(hash: string): Promise<Workspace> {
   state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', clips: [] })
   const { fetch } = scriptedFetch({ state, projects: PROJECTS })
   const summaries: Array<Record<string, string>> = []
+  const stateReads: string[] = []
   const json = (body: unknown): Promise<Response> => Promise.resolve(new Response(JSON.stringify(body), { status: 200 }))
   vi.stubGlobal('fetch', ((input, init) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://host')
+    if (url.pathname === '/api/dv/state') stateReads.push(url.searchParams.get('project') ?? '')
     if (url.pathname === '/api/dv/projects/summary') {
       summaries.push(Object.fromEntries(url.searchParams))
       return json([])
@@ -96,7 +101,13 @@ export async function mountWorkspace(hash: string): Promise<Workspace> {
     openTab: () => {}, isExpanded: () => true, toggleExpanded: () => {},
     mounted: createSnapshotStore<SessionId | undefined>(undefined), expanded: createSnapshotStore(true),
   } as never)
-  runtime.ctx.provide('uiWorkspace', { openSession: () => {} } as never)
+  runtime.ctx.provide('uiWorkspace', {
+    openSession: (sessionId: SessionId) => {
+      const reference = runtime.sessions.retain(sessionId)
+      retained.push(reference)
+      center.update({}, { session: reference })
+    },
+  } as never)
   runtime.ctx.provide('layout', {
     panels: { setRightbar: () => {} }, beginNavigation: () => {}, selectPanel: () => {}, toggleSidebar: () => {},
   } as never)
@@ -116,6 +127,7 @@ export async function mountWorkspace(hash: string): Promise<Workspace> {
   })
   await runtime.declare({
     'main.conversation': { kind: 'single', scope: 'session-maybe' },
+    'sidebar.workspaces': { kind: 'single', scope: 'root' },
     'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: tabInfoFactory } } },
   })
   await runtime.mount({ inject: [...shell.inject], apply: shell.apply })
@@ -125,9 +137,10 @@ export async function mountWorkspace(hash: string): Promise<Workspace> {
   const session = runtime.sessions.retain('s1' as SessionId)
   retained.push(session)
   const center = runtime.renderSlot('main.conversation', {}, { session })
+  const navigator = runtime.renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {} })
   const tab = runtime.renderSlot('sidebar.right.pane.tab', {}, { session, entryKey: TIMELINE_ID, hookContext: {} })
   return {
-    runtime, center, tab, summaries,
+    runtime, center, navigator, tab, summaries, stateReads,
     show(target) { act(() => { runtime.ctx.dvCenter.show(target) }) },
     hash: () => decodeURIComponent(window.location.hash),
   }
