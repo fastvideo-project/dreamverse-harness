@@ -69,4 +69,12 @@ describe('InlineRename', () => {
     fireEvent.blur(input)
     expect(props.onSave).toHaveBeenCalledWith('Dawn')
   })
+
+  it('closes on an unchanged title that the check would refuse', () => {
+    const { props, input, view } = mount({ value: 'Harbor at dawn', check: () => 'Too long.' })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(view.queryByRole('alert')).toBeNull()
+    expect(props.onSave).not.toHaveBeenCalled()
+    expect(props.onClose).toHaveBeenCalledOnce()
+  })
 })

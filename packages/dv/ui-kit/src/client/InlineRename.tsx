@@ -14,7 +14,7 @@ export interface InlineRenameProps {
   /** Save a changed title, trimmed; it can be empty. */
   onSave: (title: string) => void
   onClose: () => void
-  /** The message that keeps the field open for a trimmed title, such as one that is too long; null accepts it. */
+  /** The message that keeps the field open for a changed trimmed title, such as one that is too long; null accepts it. */
   check?: (title: string) => string | null
   /** The field's accessible name. */
   label?: string
@@ -33,8 +33,9 @@ const below: CSSProperties = {
 
 /**
  * A text field that replaces a title while it is renamed: Enter or leaving the field saves a changed title, and Escape
- * cancels. A title that `check` refuses keeps the field open with a danger border and the message under it. The field
- * keeps its key and pointer events from the elements around it, so Escape closes no dialog and a press starts no drag.
+ * cancels. A changed title that `check` refuses keeps the field open with a danger border and the message under it. The
+ * field keeps its key and pointer events from the elements around it, so Escape closes no dialog and a press starts no
+ * drag.
  * @param props - the current title, the save and close callbacks, the check, and the field's label, hint and style.
  * @returns the field.
  */
@@ -45,7 +46,7 @@ export function InlineRename({ value, onSave, onClose, check, label, hint, class
   const finish = (save: boolean): void => {
     if (settled.current) return
     const title = text.trim()
-    const refused = save ? check?.(title) ?? null : null
+    const refused = save && title !== value ? check?.(title) ?? null : null
     setMessage(refused)
     if (refused !== null) return
     settled.current = true

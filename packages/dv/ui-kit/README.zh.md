@@ -49,7 +49,7 @@ import { DV_HISTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 | `useProject.ts` | `useProjects`、`useOperations`、`useTaskLabels`、`useProjectState`：每次项目事件都重新拉取的加载器；`useLoader(load, deps)` 是它们共用的请求流程，会中止过期的请求，并在重新加载时保留上一次的值 |
 | `loaded.ts` | `loadedOnce(empty, load)`：一个可观察的来源，起始值为 `empty`，在第一次订阅时加载它的值，供插槽注册的 inject `hooks` 来源使用；加载失败时保持 `empty`，下一次订阅再加载 |
 | `useView.ts` | `useViewSession(client, surface, session?)`：项目选择、项目的当前状态、操作、最近一次失败和项目栏回调；视图打开外壳已打开的项目（`useCurrentProject`），否则打开最新的项目 |
-| `InlineRename.tsx` | `InlineRename`：重命名时替换标题的文本框，用于 `@dv/ui-shell` 的项目和对话，以及 `@dv/ui-canvas` 的节点名称。它选中标题，按回车或失去焦点时保存改过并去掉首尾空白的标题，按 Esc 取消；`check` 拒绝的标题让文本框保持打开，显示危险色边框，并在下方显示消息。它不把按键和指针事件传给外围元素，所以 Esc 不会关闭对话框，按下也不会开始拖动 |
+| `InlineRename.tsx` | `InlineRename`：重命名时替换标题的文本框，用于 `@dv/ui-shell` 的项目和对话，以及 `@dv/ui-canvas` 的节点名称。它选中标题，按回车或失去焦点时保存改过并去掉首尾空白的标题，按 Esc 取消；`check` 拒绝的改过的标题让文本框保持打开，显示危险色边框，并在下方显示消息。它不把按键和指针事件传给外围元素，所以 Esc 不会关闭对话框，按下也不会开始拖动 |
 | `ProjectBar.tsx` | 侧栏的栏（测试 ID `dv-kit-project-bar`）：项目选择器、新建项目按钮和撤销，用 `--dv-*` 主题变量画成 28 px 的次要控件；文案以 `labels` 传入，由所属插件先本地化 |
 | `compose.ts`、`workspace-events.ts` | 窗口事件 `dv:compose`、`dv:history-focus`、`dv:trajectory-focus`（`DV_*_EVENT`）和素材拖拽类型 `application/x-dv-asset` |
 | `tool-labels.ts` | `DV_TOOL_LABELS`：每个 `dv_proj_*`、`dv_asset_*` 和 `dv_models_*` 工具的中英文标签，这些工具所在的包不声明操作标签；`operationLabel`：操作的中英文名称（它在 `/api/dv/operations` 里的 `label`，没有时用它的工具在 `DV_TOOL_LABELS` 里的条目，再没有时用操作名）；`toolNameOf`：操作的工具名。输入框的工具行和历史面板显示这些名称。`taskLabel`：生成任务的中英文名称（它在 `WireTaskLabels`，即模型目录在 `GET /api/dv/tasks` 提供的标签里的标签，没有时用任务名），`@dv/ui-generation` 的版本编辑器和对话卡片显示它 |
