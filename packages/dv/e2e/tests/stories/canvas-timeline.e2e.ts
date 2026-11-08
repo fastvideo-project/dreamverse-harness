@@ -1002,6 +1002,74 @@ describe('the canvas node list', () => {
   })
 })
 
+describe('renaming canvas nodes', () => {
+  it('F2 renames a shot and the agent renames a text node; a rerun keeps the name, a reload keeps both, and Undo clears the agent\'s', async () => {
+    const project = await seedProject('nodes-rename', 2)
+    const text = await runOperation(project.id, 'textnode.write', { path: 'beats.md', body: 'Hero opens the door.', base_version: 0 })
+    const page = await openPage()
+    await gotoProject(page, project.id)
+    const shot = project.shots[0] ?? ''
+    const card = (id: string): Locator => page.locator(`[data-testid="dv-canvas-view"] [data-node-id="${id}"]`)
+    await card(shot).waitFor({ timeout: 30_000 })
+    await card(shot).click({ position: { x: 12, y: 8 } })
+    await page.keyboard.press('F2')
+    const field = card(shot).getByRole('textbox', { name: '节点名称' })
+    await field.waitFor()
+    await field.fill('港口黎明')
+    await page.keyboard.press('Enter')
+    const rename = await waitFor(async () => {
+      const record = await newestRecord(project.id)
+      return record?.operation === 'canvas.node_rename' ? record : null
+    }, 'the canvas.node_rename record of the F2 rename', 10_000)
+    expect([rename.params, rename.actor, rename.surface]).toEqual([{ node: shot, name: '港口黎明' }, 'user', 'canvas'])
+    await expect.poll(() => card(shot).getAttribute('aria-label')).toBe('港口黎明')
+
+    // A rerun of the renamed shot adds a version to the same node, which keeps its name.
+    const original = (await stateOf(project.id)).components.proj.records.find(record => record.id === shot)
+    const rerun = await harness.api.post('/api/dv/operation', {
+      project: project.id, operation: RENDER_OPERATION, params: { ...original?.params, prompt: 'nodes-rename shot 1, take two' },
+      inputs: [{ role: 'reference', ref: 'c1@1' }], based_on: shot, surface: 'canvas', intent: 'rerun the renamed shot',
+    }) as ProjectRecord
+    await waitFor(async () => (await stateOf(project.id)).components.proj.records.find(record => record.id === rerun.id)?.status === 'done' || null, 'the rerun renders')
+    expect((await stateOf(project.id)).components.canvas.nodes[shot]).toMatchObject({ name: '港口黎明', versions: [shot, rerun.id] })
+    await expect.poll(() => card(shot).locator('span', { hasText: /^v2( · |$)/ }).count(), { timeout: 15_000 }).toBe(1)
+    expect(await card(shot).getAttribute('aria-label')).toBe('港口黎明')
+
+    const staleBefore = Object.keys((await stateOf(project.id)).components.proj.stale)
+    let results: unknown[] = []
+    model.rules.push({
+      match: 'node-rename-text-please',
+      steps: [
+        { calls: [{ name: 'dv_canvas_node_rename', args: { reason: 'name the beats', node: text.id, name: 'Story beats' } }] },
+        (view) => { results = view.toolResults; return { text: '改好了' } },
+      ],
+    })
+    const composer = page.locator('[data-dv-chat] [contenteditable="true"]').first()
+    await composer.waitFor({ timeout: 30_000 })
+    await composer.click()
+    await page.keyboard.type('node-rename-text-please')
+    await page.keyboard.press('Enter')
+    await expect.poll(() => results.length, { timeout: 60_000, message: 'the agent turn reaches the reply after dv_canvas_node_rename' }).toBe(1)
+    await expect.poll(() => card(text.id).getAttribute('aria-label'), { timeout: 15_000, message: `the open canvas shows the agent's name: ${JSON.stringify(results)}` }).toBe('Story beats')
+    const renamed = await stateOf(project.id)
+    expect(renamed.components.proj.records.at(-1)).toMatchObject({ operation: 'canvas.node_rename', actor: 'agent', status: 'done' })
+    expect(Object.keys((renamed.components['textnode'] as { texts: Record<string, unknown> }).texts), 'the text node keeps its path').toEqual(['beats.md'])
+    expect(Object.keys(renamed.components.proj.stale), 'a rename makes nothing stale').toEqual(staleBefore)
+
+    await page.reload({ waitUntil: 'load' })
+    await card(text.id).waitFor({ timeout: 30_000 })
+    expect([await card(shot).getAttribute('aria-label'), await card(text.id).getAttribute('aria-label')], 'a reload keeps both names').toEqual(['港口黎明', 'Story beats'])
+    await openHistory(page)
+    const row = historyPanel(page).locator(`[data-testid="dv-history-row"][data-record="${rename.id}"]`)
+    await expect.poll(() => row.innerText(), { timeout: 15_000 }).toContain('重命名为「港口黎明」')
+    await historyPanel(page).locator('[data-testid="dv-history-undo"]').click()
+    await expect.poll(async () => (await stateOf(project.id)).components.canvas.nodes[text.id]?.name, { timeout: 15_000, message: 'Undo clears the agent\'s name' }).toBeNull()
+    await expect.poll(() => card(text.id).getAttribute('aria-label'), { timeout: 15_000 }).not.toBe('Story beats')
+    expect(await card(shot).getAttribute('aria-label'), 'Undo leaves the earlier rename').toBe('港口黎明')
+    expect(page.errors).toEqual([])
+  })
+})
+
 /** A screen box: left, top, width, height in CSS pixels. */
 type Box = [number, number, number, number]
 
