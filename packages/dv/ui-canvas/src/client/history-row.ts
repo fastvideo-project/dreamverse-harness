@@ -70,6 +70,6 @@ export function removeRow(nodeTypes: Registry<NodeType>): HistoryRow {
       }
       return [zh['history.removed'].replace('{title}', titleIn('zh')), en['history.removed'].replace('{title}', titleIn('en'))]
     },
-    focus: step => ({ view: 'canvas', target: { record: removedOf(step)[0] } }),
+    focus: () => ({ view: 'canvas', target: {} }),
   }
 }
