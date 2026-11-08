@@ -1154,6 +1154,40 @@ describe('refused position writes', () => {
     await waitFor(() => { expect(node('g2').style.width).toBe('208px') })
     await runtime.dispose()
   })
+
+  it('keeps a resized box while a later state shows its record pending, and draws the stored size once the record is done', async () => {
+    const { runtime, node, open, server, canvasOf } = await mountCanvas()
+    // The host answers a queued record as pending; until it runs, each state has the record but not the new size.
+    let pending: string | null = null
+    const served = globalThis.fetch
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const response = await served(input, init)
+      const path = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://host').pathname
+      if (path === '/api/dv/operation') pending = (await response.clone().json() as { id: string }).id
+      if (path !== '/api/dv/state' || pending === null) return response
+      const body = await response.json() as FixtureState
+      const g2 = body.components.canvas.nodes['g2']
+      if (g2 !== undefined) g2.position = { ...g2.position, width: null, height: null }
+      body.components.proj.records.push(record({ id: pending, operation: 'canvas.node_position', status: 'pending' }))
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+    await open('g2')
+    const handle = node('g2').querySelector('[data-node-handle="se"]')
+    if (handle === null) throw new Error('no south-east handle')
+    fireEvent.pointerDown(handle, { button: 0, clientX: 0, clientY: 0, pointerId: 2 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 104, clientY: 0, pointerId: 2 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 2 })
+    await waitFor(() => { expect(pending).not.toBeNull() })
+    await settle()
+    server.notify()
+    await settle()
+    expect(node('g2').style.width).toBe('312px')
+    pending = null
+    server.notify()
+    await settle()
+    expect(node('g2').style.width).toBe('312px')
+    await runtime.dispose()
+  })
 })
 
 describe('node actions', () => {
