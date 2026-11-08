@@ -20,7 +20,7 @@ import { errorMessage } from '@dv/ui-kit/api.ts'
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import type { InlineRenameProps } from '@dv/ui-kit/InlineRename.tsx'
 import { useLanguage } from '@dv/ui-kit/locale.ts'
-import type { Asset, OperationRequest, ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
+import type { Asset, OperationRequest, ProjectRecord } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { useOperations, useProjectState } from '@dv/ui-kit/useProject.ts'
@@ -228,25 +228,6 @@ const boxIn = (boxes: Readonly<Record<string, NodePosition>>, node: CanvasNode):
  */
 function withoutProperties<V>(record: Readonly<Record<string, V>>, keys: readonly string[]): Record<string, V> {
   return Object.fromEntries(Object.entries(record).filter(([key]) => !keys.includes(key)))
-}
-
-/** A write the server answered: the project state on show then, and the written record. */
-interface Answer {
-  state: WireState | null | undefined
-  record: string
-}
-
-/**
- * @param answer - the answered write of a node, if any.
- * @param state - the project state on show now.
- * @returns whether the state is later than the answer and does not hold the written record pending or running. A state
- *   fetched before the record finished can arrive after the answer; it holds the record pending or running and does not
- *   show the write.
- */
-function pastWrite(answer: Answer | undefined, state: WireState): boolean {
-  if (answer === undefined || answer.state === state) return false
-  const written = state.components.proj.records.find(each => each.id === answer.record)?.status
-  return written !== 'pending' && written !== 'running'
 }
 
 function viewOf(node: CanvasNode, unseen: boolean, rerunning: boolean): NodeView {
@@ -482,13 +463,12 @@ export function CanvasView(
     setEditing(node.id)
   }, [focus, layoutReady, graph, centerOn])
 
-  // The answered `canvas.node_position` write of each node, by node ID.
-  const answered = useRef(new Map<string, Answer>())
+  // The project state on show when the server answered each node's write; a later state is past the write.
+  const answered = useRef(new Map<string, unknown>())
   /**
    * Write a node's new box as one `canvas.node_position` record: the corner of a move, or the whole box of a resize. The
-   * canvas draws the box until the project state shows it, or until the first state after the server answered that does
-   * not hold the record pending or running, such as the state of an undo that came first; it drops the box again when the
-   * write is refused.
+   * canvas draws the box until the project state shows it, or until the first state after the server answered, such as
+   * the state of an undo that came first; it drops the box again when the write is refused.
    * @param node - the node.
    * @param box - the new box.
    * @param resized - whether the size changed too.
@@ -504,8 +484,8 @@ export function CanvasView(
       project: projectId, operation: NODE_POSITION, surface: 'canvas', ...session === null ? {} : { session },
       params: resized ? { ...corner, width: box.width, height: box.height } : corner,
       intent: `${resized ? 'resize' : 'move'} ${node.title} on the canvas`,
-    }).then((record) => {
-      if (positionsRef.current[node.id] === box) answered.current.set(node.id, { state: graphRef.current?.state, record: record.id })
+    }).then(() => {
+      if (positionsRef.current[node.id] === box) answered.current.set(node.id, graphRef.current?.state)
     }, (error: unknown) => {
       setPositions(all => all[node.id] === box ? withoutProperties(all, [node.id]) : all)
       setNotice(t('error', { message: errorMessage(error) }))
@@ -522,18 +502,17 @@ export function CanvasView(
       const stored = node.node.position
       const showsWrite = fields !== undefined
         && Object.entries(fields).every(([field, value]) => stored[field as keyof NodePosition] === value)
-      const settled = pastWrite(answered.current.get(node.id), graph.state)
+      const settled = answered.current.has(node.id) && answered.current.get(node.id) !== graph.state
       return box !== undefined && gesture.current === null && (showsWrite || settled) ? [node.id] : []
     })
     for (const id of shown) answered.current.delete(id)
     if (shown.length > 0) setPositions(all => withoutProperties(all, shown))
   }, [graph, positions])
 
-  const renamedAt = useRef(new Map<string, Answer>())
+  const renamedAt = useRef(new Map<string, unknown>())
   /**
    * Write a node's new name as one `canvas.node_rename` record. The canvas draws the name until the project state shows
-   * it, or until the first state after the server answered that does not hold the record pending or running, and drops
-   * it again when the write is refused.
+   * it, or until the first state after the server answered, and drops it again when the write is refused.
    * @param node - the node.
    * @param title - the trimmed name; empty clears it.
    */
@@ -544,9 +523,7 @@ export function CanvasView(
     renamedAt.current.delete(node.id)
     setNotice(null)
     client.runOperation(canvasRequest({ operation: NODE_RENAME, params: { node: node.id, name }, intent: `rename ${node.title} on the canvas` }))
-      .then((record) => {
-        if (namesRef.current[node.id] === name) renamedAt.current.set(node.id, { state: baseRef.current, record: record.id })
-      }, (error: unknown) => {
+      .then(() => { if (namesRef.current[node.id] === name) renamedAt.current.set(node.id, baseRef.current) }, (error: unknown) => {
         setNames(all => all[node.id] === name ? withoutProperties(all, [node.id]) : all)
         setNotice(t('error', { message: errorMessage(error) }))
       })
@@ -555,7 +532,7 @@ export function CanvasView(
     const state = base.value
     if (state === null) return
     const shown = Object.keys(names).filter(id => state.components.canvas.nodes[id]?.name === names[id]
-      || pastWrite(renamedAt.current.get(id), state))
+      || (renamedAt.current.has(id) && renamedAt.current.get(id) !== state))
     for (const id of shown) renamedAt.current.delete(id)
     if (shown.length > 0) setNames(all => withoutProperties(all, shown))
   }, [base.value, names])

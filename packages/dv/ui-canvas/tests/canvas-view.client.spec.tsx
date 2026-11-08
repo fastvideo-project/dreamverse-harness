@@ -89,30 +89,6 @@ const failG1 = (state: FixtureState): void => {
  * @param id - the node ID.
  * @param node - the node.
  */
-/**
- * Serve, once after a canvas write's answer, a state fetched while its record was still running: the state holds the
- * record `running` and, through `undo`, not the write's change. Every other state is current.
- * @param undo - takes the write's change out of the served state.
- * @returns whether that state was served.
- */
-function serveRunningStateOnce(undo: (state: FixtureState) => void): () => boolean {
-  let written: string | null = null
-  let served = false
-  const current = globalThis.fetch
-  vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const response = await current(input, init)
-    const path = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://host').pathname
-    if (path === '/api/dv/operation') written = (await response.clone().json() as { id: string }).id
-    if (path !== '/api/dv/state' || written === null || served) return response
-    served = true
-    const body = await response.json() as FixtureState
-    undo(body)
-    body.components.proj.records.push(record({ id: written, status: 'running' }))
-    return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
-  })
-  return () => served
-}
-
 function addNode(state: FixtureState, id: string, node: ReturnType<typeof canvasNode>): void {
   const canvas = state.components.canvas
   if (canvas.nodes[id] === undefined) canvas.order.push(id)
@@ -1057,44 +1033,6 @@ describe('the viewport', () => {
 })
 
 describe('writes and failures', () => {
-  it('keeps the box of a later move while the state shows only the earlier move that the server answered', async () => {
-    const { runtime, node, server, canvasOf } = await mountCanvas({ holdOperations: true })
-    await waitFor(() => { node('g2') })
-    for (const pointerId of [1, 2]) {
-      fireEvent.pointerDown(node('g2'), { button: 0, clientX: 0, clientY: 0, pointerId })
-      fireEvent.pointerMove(canvasOf(), { clientX: 50, clientY: 0, pointerId })
-      fireEvent.pointerUp(canvasOf(), { pointerId })
-    }
-    server.releaseOperations(1)
-    await settle()
-    expect(node('g2').style.left).toBe('580px')
-    server.releaseOperations()
-    await settle()
-    expect(node('g2').style.left).toBe('580px')
-    await runtime.dispose()
-  })
-
-  it('keeps a resized box through a state fetched while its record was running, then draws the stored size', async () => {
-    const { runtime, node, open, server, canvasOf } = await mountCanvas()
-    const served = serveRunningStateOnce((state) => {
-      const g2 = state.components.canvas.nodes['g2']
-      if (g2 !== undefined) g2.position = { ...g2.position, width: null, height: null }
-    })
-    await open('g2')
-    const handle = node('g2').querySelector('[data-node-handle="se"]')
-    if (handle === null) throw new Error('no south-east handle')
-    fireEvent.pointerDown(handle, { button: 0, clientX: 0, clientY: 0, pointerId: 2 })
-    fireEvent.pointerMove(canvasOf(), { clientX: 104, clientY: 0, pointerId: 2 })
-    fireEvent.pointerUp(canvasOf(), { pointerId: 2 })
-    await waitFor(() => { expect(served()).toBe(true) })
-    await settle()
-    expect(node('g2').style.width).toBe('312px')
-    server.notify()
-    await settle()
-    expect(node('g2').style.width).toBe('312px')
-    await runtime.dispose()
-  })
-
   it('draws the canvas and opens an editor while the operation declarations fail to load', async () => {
     const { runtime, node, open } = await mountCanvas({ operations: null })
     const editor = await open('g1')
@@ -1203,6 +1141,23 @@ describe('refused position writes', () => {
     await runtime.dispose()
   })
 
+  it('keeps the box of a later move while the state shows only the earlier move that the server answered', async () => {
+    const { runtime, node, server, canvasOf } = await mountCanvas({ holdOperations: true })
+    await waitFor(() => { node('g2') })
+    for (const pointerId of [1, 2]) {
+      fireEvent.pointerDown(node('g2'), { button: 0, clientX: 0, clientY: 0, pointerId })
+      fireEvent.pointerMove(canvasOf(), { clientX: 50, clientY: 0, pointerId })
+      fireEvent.pointerUp(canvasOf(), { pointerId })
+    }
+    server.releaseOperations(1)
+    await settle()
+    expect(node('g2').style.left).toBe('580px')
+    server.releaseOperations()
+    await settle()
+    expect(node('g2').style.left).toBe('580px')
+    await runtime.dispose()
+  })
+
   it('draws a resized node back at its stored size when the server refuses the resize', async () => {
     const { runtime, view, node, open, canvasOf } = await mountCanvas({ refuse: refuseOperation('canvas.node_position', 'read-only project') })
     await open('g2')
@@ -1216,7 +1171,6 @@ describe('refused position writes', () => {
     await waitFor(() => { expect(node('g2').style.width).toBe('208px') })
     await runtime.dispose()
   })
-
 })
 
 describe('node actions', () => {
@@ -1695,26 +1649,6 @@ describe('renaming a node', () => {
     fireEvent.pointerUp(canvas, { pointerId: 9 })
   }
   const field = (within_: HTMLElement): HTMLInputElement => within(within_).getByLabelText<HTMLInputElement>(zh['node.renameAria'])
-
-  it('keeps the drawn name through a state fetched while its record was running, then shows the stored name', async () => {
-    const { runtime, node, server, canvasOf } = await mountCanvas()
-    const served = serveRunningStateOnce((state) => {
-      const g2 = state.components.canvas.nodes['g2']
-      if (g2 !== undefined) g2.name = null
-    })
-    await waitFor(() => { node('g2') })
-    select(node('g2'), canvasOf())
-    fireEvent.keyDown(node('g2'), { key: 'F2' })
-    fireEvent.change(field(node('g2')), { target: { value: 'Harbor' } })
-    fireEvent.keyDown(field(node('g2')), { key: 'Enter' })
-    await waitFor(() => { expect(served()).toBe(true) })
-    await settle()
-    expect(node('g2').getAttribute('aria-label')).toBe('Harbor')
-    server.notify()
-    await settle()
-    expect(node('g2').getAttribute('aria-label')).toBe('Harbor')
-    await runtime.dispose()
-  })
 
   it('a click on the editor title renames the node with one canvas.node_rename; the card and the title show the name at once', async () => {
     const { runtime, view, node, server, open } = await mountCanvas({ holdOperations: true })
