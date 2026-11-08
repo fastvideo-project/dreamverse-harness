@@ -86,7 +86,8 @@ describe('canvasReducer', () => {
 
   it('places each input asset that no node shows, and unplaces the asset nodes of its input assets', () => {
     const shot = record('shot.render', { outputs: [asset('v1')] })
-    const place = record('asset.place', { inputs: inputs('a1', 'v1', 'a2') })
+    // An input whose asset is not resolved names no asset to place.
+    const place = record('asset.place', { inputs: [...inputs('a1', 'v1', 'a2'), { role: 'asset', ref: { record: shot.id, output: 0 }, resolved_asset: null }] })
     const again = record('asset.place', { inputs: inputs('a1') })
     const unplace = record('asset.unplace', { inputs: inputs('a1', 'v1') })
     const placed = reduceAll([shot, place, again])
@@ -102,6 +103,12 @@ describe('canvasReducer', () => {
       `${place.id}.2 asset [${place.id}] 0,${String(ROW)} null×null`,
     ])
     expect(after.assets).toEqual({ v1: shot.id, a2: `${place.id}.2` })
+  })
+
+  it('leaves the slice as it is for an unplacement of assets that no asset node shows', () => {
+    const shot = record('shot.render', { outputs: [asset('v1')] })
+    const slice = reduceAll([shot])
+    expect(reducer.reduce(slice, record('asset.unplace', { inputs: inputs('v1', 'a9') }))).toBe(slice)
   })
 
   it('ignores a placement that has not finished', () => {
@@ -129,6 +136,7 @@ describe('canvasReducer', () => {
   it('ignores records of other operations', () => {
     const slice = reduceAll([record('shot.render')])
     expect(reducer.reduce(slice, record('timeline.create'))).toBe(slice)
+    expect(reducer.reduce(slice, { ...record('proj.request'), operation: null })).toBe(slice)
   })
 
   it('lists every node with its kind, name, shown version and position in the agent summary', () => {

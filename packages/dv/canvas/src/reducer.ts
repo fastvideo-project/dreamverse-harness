@@ -165,11 +165,12 @@ export function canvasReducer(registered: CanvasRegistrations): Reducer<'canvas'
       return placement.place === operation ? place(slice, record, placement) : unplace(slice, record, placement)
     },
     agentSummary: slice => ({
-      canvas: slice.order.flatMap((id) => {
-        const node = slice.nodes[id]
-        if (node === undefined) return []
+      // The nodes object keeps creation order: every node is added once under a new ID.
+      canvas: Object.entries(slice.nodes).map(([id, node]) => {
         const { x, y, width, height } = node.position
-        return [{ node: id, kind: node.kind, name: node.name, shown: node.versions.at(-1) ?? null, x, y, width, height }]
+        /* v8 ignore next -- every node holds the record that created it, so its versions are never empty. */
+        const shown = node.versions.at(-1) ?? null
+        return { node: id, kind: node.kind, name: node.name, shown, x, y, width, height }
       }),
     }),
   }

@@ -112,9 +112,13 @@ describe('dvCanvasNodes', () => {
     })
     expect(() => fixture.ctx.dvCanvasNodes.registerMaker({ operations: ['demo.make'], kind: 'other', column: 0 }))
       .toThrow('The canvas already has a node registration for demo.make.')
-    const dispose = fixture.ctx.dvCanvasNodes.registerPlacement({ place: 'demo.place', unplace: 'demo.unplace', kind: 'demo', column: 0 })
+    const placement = { place: 'demo.place', unplace: 'demo.unplace', kind: 'demo', column: 0 }
+    const dispose = fixture.ctx.dvCanvasNodes.registerPlacement(placement)
     dispose()
-    expect(() => fixture.ctx.dvCanvasNodes.registerPlacement({ place: 'demo.place', unplace: 'demo.unplace', kind: 'demo', column: 0 })).not.toThrow()
+    fixture.ctx.dvCanvasNodes.registerPlacement({ ...placement })
+    // A second call of a spent disposer leaves the newer registration in place.
+    dispose()
+    expect(() => fixture.ctx.dvCanvasNodes.registerPlacement(placement)).toThrow('The canvas already has a node registration for demo.place, demo.unplace.')
   })
 
   it('moves and resizes a node with dv_canvas_node_position and no canvas open; undo restores each step, and dv_proj_state lists the node', async () => {
@@ -138,6 +142,7 @@ describe('dvCanvasNodes', () => {
 
   it('refuses an unknown node, a call without a field, and a size of 0 before any record', async () => {
     const fixture = await start()
+    expect(failure(await fixture.call('dv_canvas_node_position', { node: 'n0', x: 1 }))).toContain('The canvas has no node n0. Its nodes are: none.')
     const made = await fixture.make()
     const records = (): number => fixture.ctx.dvProject.listRecords(fixture.project).length
     const before = records()
