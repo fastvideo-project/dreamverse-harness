@@ -2,8 +2,9 @@
  * The History rows of the canvas's own operations. A `canvas.node_position` record reads 移动节点 / Moved “{title}” for
  * a move and 调整大小 / Resized “{title}” for a resize, where the title is the one the node's card shows now. A
  * `canvas.node_remove` record reads 从画布移除「{title}」 / Removed “{title}”, where the title is the one the node's
- * card showed before the removal, drawn from the node that the record's report keeps. Selecting either row opens the
- * node on the canvas.
+ * card showed before the removal, drawn from the node that the record's report keeps. A `canvas.node_rename` record
+ * reads 重命名为「{name}」 / Renamed to “{name}”, where a cleared name reads as the title that the node's type computes.
+ * Selecting a row opens the node on the canvas.
  *
  * @module @dv/ui-canvas/history-row
  */
@@ -12,12 +13,13 @@ import type { DvLanguage } from '@dv/ui-kit/locale.ts'
 import type { Registry } from '@dv/ui-kit/registries.ts'
 import type { ProjectRecord, WireCanvasNode, WireState } from '@dv/ui-kit/types.ts'
 import type { NodeType } from './contract/index.ts'
-import { buildCanvasGraph } from './graph.ts'
+import { buildCanvasGraph, withNames } from './graph.ts'
 import { en, zh } from './locales.ts'
 
 /** The operations whose records the rows name. */
 const NODE_POSITION = 'canvas.node_position'
 const NODE_REMOVE = 'canvas.node_remove'
+const NODE_RENAME = 'canvas.node_rename'
 
 /** @returns the node that a position record names, from its params. */
 function nodeOf(step: ProjectRecord): string {
@@ -71,5 +73,32 @@ export function removeRow(nodeTypes: Registry<NodeType>): HistoryRow {
       return [zh['history.removed'].replace('{title}', titleIn('zh')), en['history.removed'].replace('{title}', titleIn('en'))]
     },
     focus: step => ({ view: 'canvas', target: { record: removedOf(step)[0] } }),
+  }
+}
+
+/**
+ * The History row of `canvas.node_rename` records, which names the node's new name.
+ * @param nodeTypes - the registered node types, read when a row is labeled.
+ * @returns the row.
+ */
+export function renameRow(nodeTypes: Registry<NodeType>): HistoryRow {
+  return {
+    match: NODE_RENAME,
+    subject: () => null,
+    label(step, { state, operations }) {
+      const param = step.params['name']
+      // The name as the `canvas.node_rename` reducer of `@dv/canvas` stores it: trimmed, with each line break as a space.
+      const given = typeof param === 'string' ? param.replace(/\s*[\r\n]+\s*/gu, ' ').trim() : ''
+      const registered = { nodeTypes: nodeTypes.getSnapshot(), recordsInUse: [], versionKinds: [] }
+      // A cleared name reads as the title the node's type computes, which the card shows after the record.
+      const nameIn = (language: DvLanguage): string => {
+        if (given !== '') return given
+        if (state === null) return nodeOf(step)
+        const graph = buildCanvasGraph(withNames(state, { [nodeOf(step)]: null }), operations, language, registered)
+        return graph.nodes.find(node => node.id === nodeOf(step))?.title ?? nodeOf(step)
+      }
+      return [zh['history.renamed'].replace('{name}', nameIn('zh')), en['history.renamed'].replace('{name}', nameIn('en'))]
+    },
+    focus: step => ({ view: 'canvas', target: { record: nodeOf(step) } }),
   }
 }

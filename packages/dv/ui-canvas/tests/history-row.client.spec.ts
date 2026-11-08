@@ -1,11 +1,15 @@
-/** The History rows of `canvas.node_position` and `canvas.node_remove` records: their copy with the node's title, and their focus. */
+/**
+ * The History rows of `canvas.node_position` records, with their move and resize copy and the node's title, of
+ * `canvas.node_remove` records, with the removed node's title, and of `canvas.node_rename` records, with the name; and
+ * their focus.
+ */
 import { describe, expect, it } from 'vitest'
 import type { WireOperation } from '@dv/ui-kit/types.ts'
 import { actionLabel, matchingRow } from '../../ui-history/src/client/rows.ts'
 import { canvasNode, fixtureState, OPERATIONS, record } from '../../ui-kit/tests/fixture.client.tsx'
 import type { NodeType } from '../src/client/contract/index.ts'
 import { createDvCanvas } from '../src/client/dv-canvas.ts'
-import { positionRow, removeRow } from '../src/client/history-row.ts'
+import { positionRow, removeRow, renameRow } from '../src/client/history-row.ts'
 
 const SHOT: NodeType = {
   id: '@dv/ui-test-shot', type: 'shot', label: () => 'Shot', color: '',
@@ -78,5 +82,40 @@ describe('the canvas.node_remove History row', () => {
     const row = rowOfRemoval()
     expect([matchingRow(removal, [row]), row.subject(removal)]).toEqual([row, null])
     expect(row.focus?.(removal, [removal])).toEqual({ view: 'canvas', target: { record: 'g2' } })
+  })
+})
+
+describe('the canvas.node_rename History row', () => {
+  const rows = (): ReturnType<typeof renameRow>[] => {
+    const canvas = createDvCanvas()
+    canvas.nodeTypes.register(SHOT)
+    return [renameRow(canvas.nodeTypes)]
+  }
+  const named = (state: ReturnType<typeof fixtureState>): ReturnType<typeof fixtureState> => {
+    const g2 = state.components.canvas.nodes['g2']
+    if (g2 !== undefined) g2.name = 'Later name'
+    return state
+  }
+
+  it('labels a rename 重命名为「name」 / Renamed to “name” with the name the record gave, line breaks as spaces', () => {
+    const rename = record({ id: 'r1', operation: 'canvas.node_rename', params: { node: 'g2', name: ' Harbor\n at dawn ' } })
+    const context = { operations: OPERATION_LABELS, rows: rows(), records: new Map(), state: named(fixtureState()) }
+    expect(actionLabel(rename, context)).toEqual(['重命名为「Harbor at dawn」', 'Renamed to “Harbor at dawn”'])
+  })
+
+  it('labels a cleared name with the title the node type computes, else the node ID', () => {
+    const clear = record({ id: 'r2', operation: 'canvas.node_rename', params: { node: 'g2', name: null } })
+    const gone = record({ id: 'r3', operation: 'canvas.node_rename', params: { node: 'zz', name: '' } })
+    const context = { operations: OPERATION_LABELS, rows: rows(), records: new Map(), state: named(fixtureState()) }
+    expect(actionLabel(clear, context)).toEqual(['重命名为「镜头一」', 'Renamed to “Shot one”'])
+    expect(actionLabel(gone, context)).toEqual(['重命名为「zz」', 'Renamed to “zz”'])
+    expect(actionLabel(clear, { ...context, state: null })).toEqual(['重命名为「g2」', 'Renamed to “g2”'])
+  })
+
+  it('matches the operation and moves the center to the canvas node that the record names', () => {
+    const [row] = rows()
+    const rename = record({ id: 'r1', operation: 'canvas.node_rename', params: { node: 'g2', name: 'x' } })
+    expect([matchingRow(rename, rows()), row?.subject(rename)]).toEqual([expect.objectContaining({ match: 'canvas.node_rename' }), null])
+    expect(row?.focus?.(rename, [rename])).toEqual({ view: 'canvas', target: { record: 'g2' } })
   })
 })

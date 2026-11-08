@@ -1514,7 +1514,7 @@ describe('the editor panel', () => {
     await runtime.dispose()
   })
 
-  it('shows the type label once in the header of a node titled by its type', async () => {
+  it('shows the type and the newest version above the title in the header', async () => {
     const { runtime, open } = await mountCanvas({ edit: (state) => { addNode(state, 'n1', canvasNode('note', ['x1'], 0, 400)) } })
     await mountDescriptors(runtime, {
       nodeType: {
@@ -1523,7 +1523,7 @@ describe('the editor panel', () => {
       },
     })
     const editor = await open('n1')
-    expect(editor.querySelector('header')?.textContent).toBe('Note')
+    expect(editor.querySelector('header')?.textContent).toBe('Note · v1Note')
     await runtime.dispose()
   })
 })
@@ -1593,4 +1593,163 @@ describe('the canvas answering the canvas tools', () => {
     await runtime.dispose()
   })
 
+})
+
+describe('renaming a node', () => {
+  const renameWrites = (server: { writes: ReadonlyArray<{ path: string; body: unknown }> }): unknown[] => operationsOf(server.writes)
+    .filter(body => (body as { operation?: string }).operation === 'canvas.node_rename').map(body => (body as { params?: unknown }).params)
+  /** Select a node with one click. */
+  const select = (card: HTMLElement, canvas: HTMLElement): void => {
+    fireEvent.pointerDown(card, { button: 0, clientX: 5, clientY: 5, pointerId: 9 })
+    fireEvent.pointerUp(canvas, { pointerId: 9 })
+  }
+  const field = (within_: HTMLElement): HTMLInputElement => within(within_).getByLabelText<HTMLInputElement>(zh['node.renameAria'])
+
+  it('a click on the editor title renames the node with one canvas.node_rename; the card and the title show the name at once', async () => {
+    const { runtime, view, node, server, open } = await mountCanvas({ holdOperations: true })
+    const editor = await open('g2')
+    const before = node('g2').getAttribute('aria-label') ?? ''
+    expect(within(editor).getByText(`镜头 · ${zh['node.version'].replace('{n}', '1')}`)).toBeTruthy()
+    fireEvent.click(within(editor).getByTestId('dv-canvas-editor-title'))
+    const input = field(editor)
+    expect([input.value, input.selectionStart, input.selectionEnd]).toEqual([before, 0, before.length])
+    expect(within(editor).getByText(zh['node.renameHint'])).toBeTruthy()
+    fireEvent.change(input, { target: { value: ' 港口黎明 ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(node('g2').getAttribute('aria-label')).toBe('港口黎明')
+    expect(within(editor).getByTestId('dv-canvas-editor-title').textContent).toBe('港口黎明')
+    expect(renameWrites(server)).toEqual([{ node: 'g2', name: '港口黎明' }])
+    expect(operationsOf(server.writes)).toContainEqual(expect.objectContaining({ project: 'p1', operation: 'canvas.node_rename', surface: 'canvas', session: 's5' }))
+    server.releaseOperations()
+    await settle()
+    expect(node('g2').getAttribute('aria-label')).toBe('港口黎明')
+    expect(view.queryByRole('alert')).toBeNull()
+    await runtime.dispose()
+  })
+
+  it('Escape in the title field cancels the rename and leaves the editor open; the next Escape closes it', async () => {
+    const { runtime, view, server, open } = await mountCanvas()
+    const editor = await open('g2')
+    fireEvent.click(within(editor).getByTestId('dv-canvas-editor-title'))
+    fireEvent.change(field(editor), { target: { value: 'Other' } })
+    fireEvent.doubleClick(field(editor))
+    fireEvent.keyDown(field(editor), { key: 'Escape' })
+    expect(view.getByTestId('dv-canvas-node-editor')).toBe(editor)
+    expect(within(editor).queryByLabelText(zh['node.renameAria'])).toBeNull()
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
+    expect(renameWrites(server)).toEqual([])
+    await runtime.dispose()
+  })
+
+  it('F2 on the selected node turns its caption into the name field, whose presses start no drag', async () => {
+    const { runtime, node, server, canvasOf } = await mountCanvas()
+    await waitFor(() => { node('g2') })
+    fireEvent.keyDown(node('g2'), { key: 'F2' })
+    expect(within(node('g2')).queryByLabelText(zh['node.renameAria'])).toBeNull()
+    select(node('g2'), canvasOf())
+    fireEvent.keyDown(node('g2'), { key: 'Enter' })
+    fireEvent.keyDown(node('g2'), { key: 'F2' })
+    const input = field(node('g2'))
+    fireEvent.pointerDown(input, { button: 0, clientX: 0, clientY: 0, pointerId: 3 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 60, clientY: 40, pointerId: 3 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 3 })
+    expect(node('g2').style.left).toBe('480px')
+    fireEvent.change(input, { target: { value: 'Harbor' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => { expect(renameWrites(server)).toEqual([{ node: 'g2', name: 'Harbor' }]) })
+    expect(server.positionWrites).toEqual([])
+    expect(node('g2').getAttribute('aria-label')).toBe('Harbor')
+    await runtime.dispose()
+  })
+
+  it('keeps the field open with the message for a name over 80 characters, and clears a name with an empty field', async () => {
+    const named = (state: FixtureState): void => { const g2 = state.components.canvas.nodes['g2']; if (g2 !== undefined && g2.name === null && !cleared) g2.name = 'Harbor' }
+    let cleared = false
+    const { runtime, view, node, server, open } = await mountCanvas({ edit: named })
+    const editor = await open('g2')
+    expect(node('g2').getAttribute('aria-label')).toBe('Harbor')
+    fireEvent.click(within(editor).getByTestId('dv-canvas-editor-title'))
+    fireEvent.change(field(editor), { target: { value: '镜'.repeat(81) } })
+    fireEvent.keyDown(field(editor), { key: 'Enter' })
+    expect(within(editor).getByRole('alert').textContent).toBe(zh['node.renameTooLong'].replace('{max}', '80'))
+    expect(field(editor).getAttribute('aria-invalid')).toBe('true')
+    expect(renameWrites(server)).toEqual([])
+    cleared = true
+    fireEvent.change(field(editor), { target: { value: '  ' } })
+    fireEvent.blur(field(editor))
+    await waitFor(() => { expect(renameWrites(server)).toEqual([{ node: 'g2', name: null }]) })
+    await waitFor(() => { expect(node('g2').getAttribute('aria-label')).not.toBe('Harbor') })
+    // Clearing a node that has no name writes nothing.
+    fireEvent.click(within(view.getByTestId('dv-canvas-node-editor')).getByTestId('dv-canvas-editor-title'))
+    fireEvent.change(field(editor), { target: { value: '' } })
+    fireEvent.keyDown(field(editor), { key: 'Enter' })
+    await settle()
+    expect(renameWrites(server)).toHaveLength(1)
+    await runtime.dispose()
+  })
+
+  it('draws the name back and shows the error when the server refuses the rename; a later name stays while an earlier refusal arrives', async () => {
+    const { runtime, view, node, server, canvasOf } = await mountCanvas({ holdOperations: true, refuse: refuseOperation('canvas.node_rename', 'read-only project') })
+    await waitFor(() => { node('g2') })
+    const before = node('g2').getAttribute('aria-label')
+    select(node('g2'), canvasOf())
+    for (const name of ['One', 'Two']) {
+      fireEvent.keyDown(node('g2'), { key: 'F2' })
+      fireEvent.change(field(node('g2')), { target: { value: name } })
+      fireEvent.keyDown(field(node('g2')), { key: 'Enter' })
+    }
+    expect(node('g2').getAttribute('aria-label')).toBe('Two')
+    server.releaseOperations()
+    expect((await view.findByRole('alert')).textContent).toBe('失败：read-only project')
+    await waitFor(() => { expect(node('g2').getAttribute('aria-label')).toBe(before) })
+    await runtime.dispose()
+  })
+
+  it('drops the drawn name once a state after the answer does not show it, as after an undo that came first', async () => {
+    const { runtime, node, server, canvasOf } = await mountCanvas()
+    // Every served state shows g2 without a name, as the state after an undo of the rename does.
+    const served = globalThis.fetch
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const response = await served(input, init)
+      if (!(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).includes('/api/dv/state')) return response
+      const body = await response.json() as FixtureState
+      const g2 = body.components.canvas.nodes['g2']
+      if (g2 !== undefined) g2.name = null
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+    await waitFor(() => { node('g2') })
+    const before = node('g2').getAttribute('aria-label')
+    select(node('g2'), canvasOf())
+    fireEvent.keyDown(node('g2'), { key: 'F2' })
+    fireEvent.change(field(node('g2')), { target: { value: 'Gone' } })
+    fireEvent.keyDown(field(node('g2')), { key: 'Enter' })
+    expect(node('g2').getAttribute('aria-label')).toBe('Gone')
+    await waitFor(() => { expect(renameWrites(server)).toHaveLength(1) })
+    await waitFor(() => { expect(node('g2').getAttribute('aria-label')).toBe(before) })
+    await runtime.dispose()
+  })
+
+  it('F2 below 50% zoom opens the editor with its title field; F2 with the editor open renames there, but not from a text field or the picker', async () => {
+    const { runtime, view, node, canvasOf } = await mountCanvas({ layout: { viewport: { x: 0, y: 0, zoom: 0.4 } } })
+    await waitFor(() => { node('g2') })
+    select(node('g2'), canvasOf())
+    fireEvent.keyDown(node('g2'), { key: 'F2' })
+    const editor = await view.findByTestId('dv-canvas-node-editor')
+    expect(document.activeElement).toBe(field(editor))
+    fireEvent.keyDown(field(editor), { key: 'Escape' })
+    // A text field of the editor body, such as a prompt, keeps F2.
+    const textField = editor.appendChild(document.createElement('textarea'))
+    fireEvent.keyDown(textField, { key: 'F2' })
+    textField.remove()
+    expect(within(editor).queryByLabelText(zh['node.renameAria'])).toBeNull()
+    fireEvent.click(await waitFor(() => within(editor).getByRole('button', { name: '添加素材' })))
+    const picker = await view.findByTestId('dv-canvas-asset-picker')
+    fireEvent.keyDown(picker, { key: 'F2' })
+    expect(within(editor).queryByLabelText(zh['node.renameAria'])).toBeNull()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    fireEvent.keyDown(node('g2'), { key: 'F2' })
+    expect(field(editor)).toBeTruthy()
+    await runtime.dispose()
+  })
 })

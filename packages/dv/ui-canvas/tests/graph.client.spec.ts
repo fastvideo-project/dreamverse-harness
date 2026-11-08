@@ -9,7 +9,7 @@ import { asset, canvasNode, fixtureState, OPERATIONS, record, withTestRef } from
 import { referenceDescriptors } from '../../ui-reference-kit/src/client/reference-kit.tsx'
 import { apply as shotRenderApply, inject as shotRenderInject } from '../../ui-shot-render/src/client/index.ts'
 import type { NodeType, RecordsInUse } from '../src/client/contract/index.ts'
-import { boxOf, buildCanvasGraph, previewOf } from '../src/client/graph.ts'
+import { boxOf, buildCanvasGraph, previewOf, withNames } from '../src/client/graph.ts'
 import type { CanvasGraph, CanvasRegistrations } from '../src/client/graph.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { CLIPS } from './fixtures/conformance-states.client.ts'
@@ -72,6 +72,16 @@ describe('buildCanvasGraph', () => {
     expect(graph.assetNodes).toMatchObject({
       'ref.png': 'e1', 'shot1.mp4': 'g1', 'shot2.mp4': 'g2', 'export.mp4': 'g2', 'export-last.png': 'g2',
     })
+  })
+
+  it('titles a node with its name at every version, and with the title its type computes once withNames clears the name', () => {
+    const named = withNames(withTestRef(fixtureState()), { g1: 'Harbor at dawn', e1: 'Lighthouse keeper', gone: 'x' })
+    const graph = graphOf(named)
+    const g1 = graph.nodes.find(node => node.id === 'g1')
+    expect(graph.nodes.map(node => node.title)).toEqual(['Lighthouse keeper', 'Harbor at dawn', 'shot.render'])
+    expect(g1 === undefined ? null : graph.atVersion(g1, 'g1').title).toBe('Harbor at dawn')
+    expect(named.components.canvas.nodes).not.toHaveProperty('gone')
+    expect(graphOf(withNames(named, { e1: null })).nodes[0]?.title).toBe('Hero')
   })
 
   it('draws edges only from the inputs of each node\'s newest version, none between the versions of a node', () => {

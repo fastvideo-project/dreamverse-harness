@@ -3,8 +3,8 @@
  * Factory and its child slots; register `dv-canvas` as a right-Sidebar tab type, its dictionaries, and its body; and
  * register the canvas as the 画布 view of the workspace center (`dv.center.view`). The tab body and the center view
  * each render a `dv.canvas` occurrence. A mounted canvas answers the `dv_canvas_read` reads of its project through the
- * canvas stream that `CanvasViews` holds open. While `dvHistory` is loaded, the History rows of `canvas.node_position`
- * and `canvas.node_remove` name each move, resize and removal.
+ * canvas stream that `CanvasViews` holds open. While `dvHistory` is loaded, the History rows of `canvas.node_position`,
+ * `canvas.node_remove` and `canvas.node_rename` name each move, resize, removal and rename.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -21,7 +21,7 @@ import { CanvasFactory } from './CanvasFactory.tsx'
 import type { CanvasFactoryInjected } from './CanvasFactory.tsx'
 import { CANVAS_ID, canvasDefinition } from './definition.ts'
 import { createDvCanvas } from './dv-canvas.ts'
-import { positionRow, removeRow } from './history-row.ts'
+import { positionRow, removeRow, renameRow } from './history-row.ts'
 import { en, NS, zh } from './locales.ts'
 
 export type { DvCanvasKey } from './locales.ts'
@@ -74,5 +74,6 @@ export function apply(ctx: ClientContext): void {
   ctx.inject(['dvHistory'], (history) => {
     history.effect(() => history.dvHistory.rows.register(positionRow(canvas.nodeTypes)), 'ui-canvas: history row')
     history.effect(() => history.dvHistory.rows.register(removeRow(canvas.nodeTypes)), 'ui-canvas: removal history row')
+    history.effect(() => history.dvHistory.rows.register(renameRow(canvas.nodeTypes)), 'ui-canvas: rename history row')
   })
 }

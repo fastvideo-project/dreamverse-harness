@@ -39,7 +39,7 @@ Host 半边还注册 agent 的工具 `dv_canvas_read`，它拒绝由另一个 ag
 
 浏览器半边提供客户端服务 `dvCanvas`（`@dv/ui-canvas/contract` 的 `DvCanvas`），它的四个注册表在插件的 UI 半边向其中注册之前是空的：`nodeTypes`（`NodeType`，以 `type` 为键，即宿主生产者注册该 `kind` 时用的节点类型键）、`recordsInUse`（`RecordsInUse`，以 `id` 为键）、`versionKinds`（`@dv/ui-kit/registries.ts` 的 `VersionKind`，以 `kind` 为键）和 `actions`（`NodeAction`，以 `id` 为键）。插件的 UI 半边在 `ctx.inject(['dvCanvas'], …)` 里注册它的描述符，并保留返回的注销函数；键已被占用的第二个描述符会抛出指名占用者的错误。浏览器半边注册 `dv.canvas` 组件工厂，它接收属性 `projectId`、`session` 和 `focus`，通过注入的 `hooks` 读取注册表，并声明三个键控子插槽，节点类型以其 `NodeType.type` 为键填充：`dv.canvas.card`（卡片主体，所有者属性为 `CardOwner`：节点、它每个素材的 wire 素材、文字缩放倍数和一个 `CardHost`；没有条目时卡片显示类型标签）、`dv.canvas.editor`（编辑器主体，所有者属性为 `EditorOwner`，其中的 `EditorHost` 另有编辑器的素材选择窗口）和 `dv.canvas.picker`（素材选择窗口里的素材库，键为 `assets`，所有者属性为 `PickerOwner`）。没有条目的编辑器只显示标题栏。它还注册 `dv-canvas` 标签类型（侧栏指南页以"视频画布"提供的页面）、中英文的 `dvCanvas` locale 命名空间、以自身 id `@dv/ui-canvas` 为键的标签主体，并把 `CanvasCenter` 注册为 `dv.center.view` 条目 `canvas`（顺序 0，标签为标签类型的 画布 / Canvas）。中间区域视图和标签主体各自为自己的项目和对话会话渲染一个 `dv.canvas` 实例，所以两者画出相同的卡片、编辑器和选择窗口。卡片主体和编辑器主体通过 `@dv/ui-media` 的 `dv.media` 组件工厂绘制媒体。`NodeAction` 显示在其 `shows` 返回 true 的每个节点上，按 `order` 排列：显示在编辑器标题栏里，以及最新版本失败的节点的画框里；它的 `run` 接收节点和一个没有素材选择窗口的 `NodeHost`。
 
-填充画布的 UI 插件有：`@dv/ui-asset-pool`（`asset` 节点类型、它的卡片和编辑器主体，以及选择窗口里的素材库）、`@dv/ui-text-node`（`text` 节点类型）、`@dv/ui-timeline`（时间线片段使用的记录及其裁剪标记）和 `@dv/ui-composer`（"问 agent"动作，通过 `dv:compose` 窗口事件预填对话输入框）。由 [`@dv/ui-generation`](../ui-generation/README.zh.md) 的 `defineGenerationUi` 定义的每个生成 UI 插件（例如 `shot` 节点的 `@dv/ui-shot-render`）注册一个节点类型、它的卡片和编辑器主体，以及最新版本失败的节点的"重试"动作。参考名词 `@dv/ui-character`、`@dv/ui-location` 和 `@dv/ui-style` 来自 [`@dv/ui-reference-kit`](../ui-reference-kit/README.zh.md) 的 `defineReferenceUi`：每个注册一个节点类型、它的卡片和编辑器主体、一个版本种类，以及它的参考使用的记录。`@dv/ui-history` 的 `dvHistory` 加载期间，浏览器半边还注册 `canvas.node_position` 的历史行：移动时为 移动节点 / Moved “{title}”，调整大小时为 调整大小 / Resized “{title}”，标题为该节点卡片显示的标题；以及 `canvas.node_remove` 的历史行：从画布移除「{title}」 / Removed “{title}”，标题为移除前该节点卡片显示的标题，取自记录的 `report.removed` 保留的节点；选中一行会打开该节点。
+填充画布的 UI 插件有：`@dv/ui-asset-pool`（`asset` 节点类型、它的卡片和编辑器主体，以及选择窗口里的素材库）、`@dv/ui-text-node`（`text` 节点类型）、`@dv/ui-timeline`（时间线片段使用的记录及其裁剪标记）和 `@dv/ui-composer`（"问 agent"动作，通过 `dv:compose` 窗口事件预填对话输入框）。由 [`@dv/ui-generation`](../ui-generation/README.zh.md) 的 `defineGenerationUi` 定义的每个生成 UI 插件（例如 `shot` 节点的 `@dv/ui-shot-render`）注册一个节点类型、它的卡片和编辑器主体，以及最新版本失败的节点的"重试"动作。参考名词 `@dv/ui-character`、`@dv/ui-location` 和 `@dv/ui-style` 来自 [`@dv/ui-reference-kit`](../ui-reference-kit/README.zh.md) 的 `defineReferenceUi`：每个注册一个节点类型、它的卡片和编辑器主体、一个版本种类，以及它的参考使用的记录。`@dv/ui-history` 的 `dvHistory` 加载期间，浏览器半边还注册 `canvas.node_position` 的历史行：移动时为 移动节点 / Moved “{title}”，调整大小时为 调整大小 / Resized “{title}”，标题为该节点卡片显示的标题；以及 `canvas.node_remove` 的历史行：从画布移除「{title}」 / Removed “{title}”，标题为移除前该节点卡片显示的标题，取自记录的 `report.removed` 保留的节点；以及 `canvas.node_rename` 的历史行：重命名为「{name}」 / Renamed to “{name}”，清除的名称显示为节点类型计算出的标题；选中一行会打开该节点。
 
 | 手势 | 请求 |
 | --- | --- |
@@ -51,13 +51,14 @@ Host 半边还注册 agent 的工具 `dv_canvas_read`，它拒绝由另一个 ag
 | 在过期节点的编辑器里点"仍然保留" | 对节点的记录调用 `POST /api/dv/stale/accept`（作为历史中的一步运行 `proj.stale_accept`） |
 | 拖动节点 | 拖动结束时 `POST /api/dv/operation` 执行 `canvas.node_position`，带节点新的 `x` 和 `y`，每次拖动一条记录；画布立即画出新位置，请求被拒绝时把节点放回原处 |
 | 平移或缩放 | `POST /api/dv/canvas/layout`，带视口 |
+| 在选中的节点上按 F2，或点击其编辑器的标题 | 回车或离开输入框保存改过的名称时，`POST /api/dv/operation` 执行 `canvas.node_rename`，带该节点和新的 `name`；清空的输入框发送 `name: null`，即清除名称。F2 把标题行变成名称输入框，它随缩放变化，按下它不会开始拖动；缩放低于 50% 时以及编辑器打开时，F2 改为打开编辑器的标题输入框。有文本框获得焦点或编辑器的素材选择窗口打开时，F2 不起作用。超过 80 个字符的名称让输入框保持打开，并显示 名称最多 80 个字符。 / The name can have at most 80 characters. Escape 取消重命名并保持编辑器打开。画布立即画出新名称，请求被拒绝时恢复旧名称 |
 | 拖动选中节点的一个角把手 | 拖动结束时 `POST /api/dv/operation` 执行 `canvas.node_position`，带节点新的 `x`、`y`、`width` 和 `height`，尺寸均不小于节点的 `minSize`。窗口节点取指针要求的宽度和高度，主体显示更多或更少的内容；媒体节点的画框高度保持为 宽度 / `ratio` + `fixedHeight`，跟随指针移动更多的那个方向，图片随画框缩放。拖西边或北边的角时节点同时移动，使对角保持原位。按住把手不动则什么都不改，也不打开编辑器 |
-| `@dv/canvas` 中 agent 的 `dv_canvas_node_position` | 页面不发请求：该记录改变 `canvas` 切片，该项目的每个已挂载画布在下一帧 `/dv/events` 到来、重新拉取状态时，把节点画在新位置 |
+| `@dv/canvas` 中 agent 的 `dv_canvas_node_position` 或 `dv_canvas_node_rename` | 页面不发请求：该记录改变 `canvas` 切片，该项目的每个已挂载画布在下一帧 `/dv/events` 到来、重新拉取状态时，把节点画在新位置或带上新名称 |
 | `@dv/canvas` 中 agent 的 `dv_canvas_node_remove` | 页面不发请求：该项目的每个已挂载画布在下一帧 `/dv/events` 到来时去掉该节点、它的连线以及它的选中、菜单和编辑器，不显示提示；历史显示这一步 |
 
 除布局请求外，每个请求都带 `surface: 'canvas'` 和画布旁边的对话，记录把该对话存为它的 `session`。工作区中间区域把请求 `{ record: <id> }` 交给中间区域视图时，视图打开一个节点；这个请求由 `@dv/ui-shell/contract` 的 `dvCenter.show({ view: 'canvas', target: { record } })` 给出，历史在选中记录时就这样做。画布把 ID 等于该 ID 的节点移到中央、选中并打开；没有时是把该记录作为版本的节点，否则是包含该记录第一个产出的节点。没有节点匹配时请求会等待，所以后注册的节点类型仍能打开它的节点；画布打开节点时取走该请求，所以重新挂载的画布不会再次打开该节点。标签主体不传焦点。
 
-浮动编辑器打开时位于变暗画布的中央，宽度最多 720 px，高度约为画布的 80%。拖动标题行可移动编辑器；拖动右边缘、下边缘或右下角可调整大小，也可以聚焦右下角的调整手柄后按方向键（每次 16 px）；双击标题行恢复到居中的默认位置和大小。浏览器在 `localStorage` 中为所有节点保存同一个最近的位置和大小，下次打开编辑器时把它放进画布范围内。点击变暗的画布或按 Escape 关闭编辑器；上面叠着第二个编辑器时，同样的操作只关闭上面那个。编辑器打开时从它的节点放大出来，关闭时缩回该节点，变暗的画布同时淡入淡出（`@dv/ui-kit/zoom.ts`）。它的标题栏显示类型圆点和类型标签（与标题相同时省略）、标题、显示在该节点上的动作和关闭按钮；过期节点在主体上方显示 已过期 / Stale 和"仍然保留"。有多个版本的节点在标题栏下方显示版本条：版本 / Versions、每个版本一张按时间排列的缩略图（显示中的那张有轮廓），以及 第 {i} / {n} 版 / Version {i} of {n}。选中一张缩略图会在编辑器里显示该版本，卡片保持不变，因为卡片总是显示最新版本；每个版本挂载自己的主体，所以一个版本的草稿不会带到另一个版本。
+浮动编辑器打开时位于变暗画布的中央，宽度最多 720 px，高度约为画布的 80%。拖动标题行可移动编辑器；拖动右边缘、下边缘或右下角可调整大小，也可以聚焦右下角的调整手柄后按方向键（每次 16 px）；双击标题行恢复到居中的默认位置和大小。浏览器在 `localStorage` 中为所有节点保存同一个最近的位置和大小，下次打开编辑器时把它放进画布范围内。点击变暗的画布或按 Escape 关闭编辑器；上面叠着第二个编辑器时，同样的操作只关闭上面那个。编辑器打开时从它的节点放大出来，关闭时缩回该节点，变暗的画布同时淡入淡出（`@dv/ui-kit/zoom.ts`）。它的标题栏在标题上方显示类型圆点、类型标签和最新版本（例如 镜头 · v3），然后是显示在该节点上的动作和关闭按钮。标题在节点有名称时显示名称，否则显示节点类型计算出的标题；悬停时它带 surface-3 填充和铅笔图标，点击它会变成名称输入框；过期节点在主体上方显示 已过期 / Stale 和"仍然保留"。有多个版本的节点在标题栏下方显示版本条：版本 / Versions、每个版本一张按时间排列的缩略图（显示中的那张有轮廓），以及 第 {i} / {n} 版 / Version {i} of {n}。选中一张缩略图会在编辑器里显示该版本，卡片保持不变，因为卡片总是显示最新版本；每个版本挂载自己的主体，所以一个版本的草稿不会带到另一个版本。
 
 单击节点会选中它（显示强调色描边和四角把手）；双击打开它的编辑器。关闭编辑器后描边保留，方便找回该节点；没有打开编辑器时点击空白画布会清除描边。右键单击节点会选中它，并在指针处打开它的菜单，样式与时间线标签菜单一致：先是该节点上显示的节点动作，然后是危险色、带 ⌫ 提示的 从画布移除 / Remove from canvas。画布右侧或下方放不下时，菜单移到指针左侧或上方；在菜单外按下、按 Escape、平移或缩放画布都会关闭它。主体或动作调用 `host.rerun` 后，该节点的动作被禁用（`NodeView.rerunning`），失败画框里发起重跑的那个动作的按钮显示类型的运行文字，直到该节点有了一个之前没有的版本；然后编辑器关闭，画布把该节点移到中央并选中它。如果请求先返回，编辑器在那时关闭。新版本出现之前请求失败时，编辑器主体的 `host.rerun`（`EditorHost`）以该请求的错误拒绝。画布一次只等一个重跑，所以后来的重跑替换它时，它会完成，不显示失败。错误由主体显示，动作或卡片主体的重跑（`NodeHost`）把该错误显示在画布的提示里，盖在打开的编辑器上方，编辑器标题栏和失败画框都一样。最新版本已完成并有产出、而用户在本浏览器中还没打开过的节点，标题旁显示一个强调色圆点，打开它的编辑器后消失。浏览器在 `localStorage` 中按项目保存已打开的版本；某个项目在一个浏览器中第一次打开时，所有已完成的版本都算作已打开。
 
@@ -81,16 +82,16 @@ Host 半边还注册 agent 的工具 `dv_canvas_read`，它拒绝由另一个 ag
 | [`src/client/layout-client.ts`](src/client/layout-client.ts) | 布局路由的浏览器客户端 |
 | [`src/client/contract/index.ts`](src/client/contract/index.ts) | `@dv/ui-canvas/contract`：节点契约、`DvCanvas` 和 `dv.canvas.*` 插槽（只有类型） |
 | [`src/types.ts`](src/types.ts)、[`src/canvas.ts`](src/canvas.ts)、[`src/client/agent-canvas.ts`](src/client/agent-canvas.ts) | `dv_canvas_read` 与画布交换的值、它们的解析器，以及回答读取的 `CanvasViews` |
-| [`src/client/index.ts`](src/client/index.ts)、[`src/client/history-row.ts`](src/client/history-row.ts) | `dvCanvas` 服务和注册，以及 `canvas.node_position` 和 `canvas.node_remove` 的历史行 |
+| [`src/client/index.ts`](src/client/index.ts)、[`src/client/history-row.ts`](src/client/history-row.ts) | `dvCanvas` 服务和注册，以及 `canvas.node_position`、`canvas.node_remove` 和 `canvas.node_rename` 的历史行 |
 | [`src/client/dv-canvas.ts`](src/client/dv-canvas.ts) | 四个 `dvCanvas` 注册表 |
 | [`src/client/definition.ts`](src/client/definition.ts) | 标签类型 |
 | [`src/client/CanvasFactory.tsx`](src/client/CanvasFactory.tsx) | `dv.canvas` 组件工厂：通过注入的 hooks 读取注册表并交给 `CanvasView` |
 | [`src/client/CanvasBody.tsx`](src/client/CanvasBody.tsx) | 标签主体：项目栏下的 `dv.canvas` 实例 |
 | [`src/client/CanvasCenter.tsx`](src/client/CanvasCenter.tsx) | 中间区域视图：打开请求记录节点的 `dv.canvas` 实例 |
-| [`src/client/CanvasView.tsx`](src/client/CanvasView.tsx) | 画布：平移、缩放、拖动、拖放、`canvas.node_position` 和 `canvas.node_remove` 写入、节点菜单的条目、焦点、重跑、节点宿主 |
+| [`src/client/CanvasView.tsx`](src/client/CanvasView.tsx) | 画布：平移、缩放、拖动、拖放、`canvas.node_position`、`canvas.node_remove` 和 `canvas.node_rename` 写入、节点菜单的条目、F2、焦点、重跑、节点宿主 |
 | [`src/client/graph.ts`](src/client/graph.ts) | 来自节点列表的节点、边，以及每个版本的条目 |
 | [`src/client/resize.ts`](src/client/resize.ts) | `resizedBox`：角拖动后节点的范围，不超出其类型的尺寸声明 |
-| [`src/client/NodeCard.tsx`](src/client/NodeCard.tsx)、[`src/client/NodeEditor.tsx`](src/client/NodeEditor.tsx) | 带版本画框的节点外框和节点菜单，以及带版本条和垃圾桶按钮的浮动编辑器外壳 |
+| [`src/client/NodeCard.tsx`](src/client/NodeCard.tsx)、[`src/client/NodeEditor.tsx`](src/client/NodeEditor.tsx) | 带版本画框和标题行名称输入框的节点外框和节点菜单，以及带标题名称输入框、版本条和垃圾桶按钮的浮动编辑器外壳 |
 | [`src/client/AssetPicker.tsx`](src/client/AssetPicker.tsx) | 素材选择窗口，渲染版本种类的条目和 `dv.canvas.picker` 条目 |
 | [`src/client/locales.ts`](src/client/locales.ts) | `dvCanvas` 词典 |
 
@@ -116,12 +117,12 @@ Host 半边还注册 agent 的工具 `dv_canvas_read`，它拒绝由另一个 ag
 
 #### 模型看到什么
 
-DSH 工具注册表挂载期间，agent 看到没有参数的工具 `dv_canvas_read`，带下面的描述。一次调用返回一个文本块，内容是 JSON：`project` 和 `cards`，每个已画节点一项，包含 `id`（节点 ID）、`type`（节点的 `kind`）、`title`、`versions`（节点持有的版本数）、`shown`（卡片显示的最新版本的记录）、`x`、`y`、`width`、`height`（节点的位置和其画框的尺寸，画框在标题行下方；节点列表中没有尺寸时为类型的默认尺寸）和 `rendering`。本对话旁没有打开该项目的画布时，调用以 `No open canvas shows project <id>. Ask the user to open the canvas of this project, then call dv_canvas_read again; dv_proj_state lists the canvas nodes with their positions.` 失败。来自子 agent 的调用以 `dv_canvas_read serves only the agent of the user's conversation, and another agent started this one. dv_proj_state lists the canvas nodes with their positions.` 失败。画布手势写下的记录（包括移动和调整大小）经由 [`@dv/project`](../project/README.zh.md) 的项目状态消息、项目更新消息和工具到达模型；[`@dv/canvas`](../canvas/README.zh.md) 负责 `dv_canvas_node_position` 和项目摘要中的 `canvas` 字段。
+DSH 工具注册表挂载期间，agent 看到没有参数的工具 `dv_canvas_read`，带下面的描述。一次调用返回一个文本块，内容是 JSON：`project` 和 `cards`，每个已画节点一项，包含 `id`（节点 ID）、`type`（节点的 `kind`）、`title`（节点有名称时为名称，否则为其类型计算出的标题）、`versions`（节点持有的版本数）、`shown`（卡片显示的最新版本的记录）、`x`、`y`、`width`、`height`（节点的位置和其画框的尺寸，画框在标题行下方；节点列表中没有尺寸时为类型的默认尺寸）和 `rendering`。本对话旁没有打开该项目的画布时，调用以 `No open canvas shows project <id>. Ask the user to open the canvas of this project, then call dv_canvas_read again; dv_proj_state lists the canvas nodes with their positions.` 失败。来自子 agent 的调用以 `dv_canvas_read serves only the agent of the user's conversation, and another agent started this one. dv_proj_state lists the canvas nodes with their positions.` 失败。画布手势写下的记录（包括移动、调整大小和重命名）经由 [`@dv/project`](../project/README.zh.md) 的项目状态消息、项目更新消息和工具到达模型；[`@dv/canvas`](../canvas/README.zh.md) 负责 `dv_canvas_node_position`、`dv_canvas_node_rename` 和项目摘要中的 `canvas` 字段。
 
 ##### dv_canvas_read 描述
 
 ```markdown
-Read the canvas of this project that the user has open: every node with its id, type, title, versions (how many versions it holds) and shown (the record of the version it shows), its box (x and y of the top-left corner of the node; width and height of its frame, which sits below a 20-unit caption, so the node spans y to y + 20 + height; canvas units, y grows downward), and rendering: true while the shown version is still being generated. To redo or change a node's content, pass based_on with the shown id. To move or resize a node, call dv_canvas_node_position. Fails when no canvas of this project is open.
+Read the canvas of this project that the user has open: every node with its id, type, title (its name when it has one), versions (how many versions it holds) and shown (the record of the version it shows), its box (x and y of the top-left corner of the node; width and height of its frame, which sits below a 20-unit caption, so the node spans y to y + 20 + height; canvas units, y grows downward), and rendering: true while the shown version is still being generated. To redo or change a node's content, pass based_on with the shown id. To move or resize a node, call dv_canvas_node_position; to rename it, call dv_canvas_node_rename. Fails when no canvas of this project is open.
 ```
 
 #### Token 影响

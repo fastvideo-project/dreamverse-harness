@@ -1,15 +1,18 @@
 /**
  * The chrome of one canvas node on the `--dv-*` theme variables: a caption above a frame. The caption is one line with
- * the title, the unseen dot, the stale tag, the version count of a node with several versions, and `meta`. The frame is
- * a rounded outline that wears the selection ring and holds the `dv.canvas.card` body, which paints its own fill, or,
- * for a node whose newest version failed, the failed words and actions on the card surface. A node with several
- * versions has two offset frames behind its frame. The selected node has a resize handle at each corner of its frame.
- * {@link NodeMenu} draws a node's right-click menu. The chrome names no node type.
+ * the title, or the name field while the node is renamed, the unseen dot, the stale tag, the version count of a node
+ * with several versions, and `meta`. The frame is a rounded outline that wears the selection ring and holds the
+ * `dv.canvas.card` body, which paints its own fill, or, for a node whose newest version failed, the failed words and
+ * actions on the card surface. A node with several versions has two offset frames behind its frame. The selected node
+ * has a resize handle at each corner of its frame. {@link NodeMenu} draws a node's right-click menu. The chrome names
+ * no node type.
  */
 import { useCallback, useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent, MutableRefObject, ReactNode } from 'react'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
 import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
+import { InlineRename } from '@dv/ui-kit/InlineRename.tsx'
+import type { InlineRenameProps } from '@dv/ui-kit/InlineRename.tsx'
 import { CAPTION_HEIGHT } from '../canvas-layout.ts'
 import type { NodePosition } from '../canvas-layout.ts'
 import type { NodeAction, NodeView, Size } from './contract/index.ts'
@@ -83,6 +86,8 @@ export interface NodeCardProps {
   /** The action whose rerun the node waits for, whose button reads the running words; null for none. */
   rerunningAction: string | null
   onAction: (action: NodeAction) => void
+  /** The name field that replaces the title while the node is renamed on the canvas; null for none. */
+  rename: Omit<InlineRenameProps, 'value'> | null
 }
 
 /**
@@ -116,7 +121,14 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   const meta = [count > 1 ? t('node.version', { n: String(count) }) : '', node.meta ?? ''].filter(part => part !== '').join(' · ')
   const caption = (
     <div style={{ ...text(12), height: size(CAPTION_HEIGHT), boxSizing: 'border-box', padding: '0 2px 4px', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--dv-text-2)' }}>
-      <span style={{ flex: 1, minWidth: 0, ...ellipsis }}>{node.title}</span>
+      {props.rename === null
+        ? <span style={{ flex: 1, minWidth: 0, ...ellipsis }}>{node.title}</span>
+        : (
+          <InlineRename
+            {...props.rename} value={node.title}
+            style={{ ...text(12), height: size(CAPTION_HEIGHT - 4), boxSizing: 'border-box', padding: `0 ${String(size(4))}px`, border: '1px solid var(--dv-accent)', borderRadius: 'var(--dv-radius-sm)', background: 'var(--dv-surface-1)', color: 'var(--dv-text)', fontFamily: 'inherit', outline: 'none' }}
+          />
+        )}
       {view.unseen
         ? <span role="img" aria-label={t('node.unseen')} title={t('node.unseen')} style={{ flex: 'none', width: size(8), height: size(8), borderRadius: 9999, background: 'var(--dv-accent)' }} />
         : null}

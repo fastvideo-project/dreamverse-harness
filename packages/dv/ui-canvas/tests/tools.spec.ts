@@ -256,12 +256,12 @@ describe('dv_canvas_read', () => {
   it('describes itself to the model in English', async () => {
     const { ctx } = await start()
     expect(ctx.tools.schemas().find(tool => tool.name === 'dv_canvas_read')?.description).toBe('Read the canvas of this project '
-      + 'that the user has open: every node with its id, type, title, versions (how many versions it holds) and shown (the '
-      + 'record of the version it shows), its box (x and y of the top-left corner of the node; width and height of its '
-      + 'frame, which sits below a 20-unit caption, so the node spans y to y + 20 + height; canvas units, y grows downward), '
-      + 'and rendering: true while the shown version is still being generated. To redo or change a node\'s content, pass '
-      + 'based_on with the shown id. To move or resize a node, call dv_canvas_node_position. Fails when no canvas of this '
-      + 'project is open.')
+      + 'that the user has open: every node with its id, type, title (its name when it has one), versions (how many versions '
+      + 'it holds) and shown (the record of the version it shows), its box (x and y of the top-left corner of the node; '
+      + 'width and height of its frame, which sits below a 20-unit caption, so the node spans y to y + 20 + height; canvas '
+      + 'units, y grows downward), and rendering: true while the shown version is still being generated. To redo or change '
+      + 'a node\'s content, pass based_on with the shown id. To move or resize a node, call dv_canvas_node_position; to '
+      + 'rename it, call dv_canvas_node_rename. Fails when no canvas of this project is open.')
   })
 
   it('leave the tool registry and the Connection when the plugin is disposed', async () => {

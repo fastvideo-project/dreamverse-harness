@@ -32,10 +32,10 @@ describe('ui-canvas apply', () => {
     await runtime.dispose()
   })
 
-  it('registers the History rows of canvas.node_position and canvas.node_remove while dvHistory is loaded, and removes them with its fiber', async () => {
+  it('registers the History rows of canvas.node_position, canvas.node_remove and canvas.node_rename while dvHistory is loaded, and removes them with its fiber', async () => {
     const rows = createRegistry<HistoryRow>(row => [row.match], row => row.match)
     const { runtime, canvas } = await mountCanvas({ kinds: [], beforeCanvas: (mounted) => { mounted.ctx.provide('dvHistory', { rows, describe: () => null }) } })
-    expect(rows.getSnapshot().map(row => row.match)).toEqual(['canvas.node_position', 'canvas.node_remove'])
+    expect(rows.getSnapshot().map(row => row.match)).toEqual(['canvas.node_position', 'canvas.node_remove', 'canvas.node_rename'])
     await canvas.dispose()
     expect(rows.getSnapshot()).toEqual([])
     await runtime.dispose()

@@ -6,7 +6,9 @@
  * of a resize from a corner handle of the selected node writes one `canvas.node_position` record, so undo reverts it; the
  * canvas draws the new box at once and drops it again when the write is refused. A node's right-click menu, the trash
  * button of its editor, and Delete or Backspace on the selected node remove it from the canvas with one
- * `canvas.node_remove` record after the user confirms. The viewport is view state, stored
+ * `canvas.node_remove` record after the user confirms. F2 on the selected node, its menu's Rename item, or a click on
+ * the editor's title renames the node with one `canvas.node_rename` record, drawn at once the same way. The viewport
+ * is view state, stored
  * per project through `/api/dv/canvas/layout`. The opened versions are kept per project in `localStorage` for the unseen
  * dot. Colors come from the `--dv-*` theme variables that `@dv/ui-shell`
  * defines and from each type's `color`. The canvas names no node type.
@@ -16,6 +18,7 @@ import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as React
 import type { PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots'
 import { errorMessage } from '@dv/ui-kit/api.ts'
 import type { DvClient } from '@dv/ui-kit/api.ts'
+import type { InlineRenameProps } from '@dv/ui-kit/InlineRename.tsx'
 import { useLanguage } from '@dv/ui-kit/locale.ts'
 import type { Asset, OperationRequest, ProjectRecord } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
@@ -26,7 +29,7 @@ import type { CanvasViewport, NodePosition, NodeSpot } from '../canvas-layout.ts
 import { cardsOf } from './agent-canvas.ts'
 import type { CanvasViews } from './agent-canvas.ts'
 import type { CanvasRequest, EditorHost, NodeAction, NodeHost, NodeView, RerunRequest } from './contract/index.ts'
-import { boxOf as storedBox, buildCanvasGraph, isFinished, previewOf } from './graph.ts'
+import { boxOf as storedBox, buildCanvasGraph, isFinished, previewOf, withNames } from './graph.ts'
 import type { CanvasEdge, CanvasNode, CanvasRegistrations } from './graph.ts'
 import { cardHeight, edgeAnchorY, NodeCard, NodeMenu, textScaleAt, TypeLabelBody } from './NodeCard.tsx'
 import type { CanvasTranslate, NodeMenuItem } from './NodeCard.tsx'
@@ -81,6 +84,11 @@ const SAVE_DELAY_MS = 500
 const NODE_POSITION = 'canvas.node_position'
 /** The operation that removes nodes from the canvas's node list. */
 const NODE_REMOVE = 'canvas.node_remove'
+/** The operation that names a node, and the longest name it takes, in characters. */
+const NODE_RENAME = 'canvas.node_rename'
+const NAME_MAX = 80
+/** The zoom below which F2 renames a node in its editor, because the caption is too small to type in. */
+const CAPTION_RENAME_ZOOM = 0.5
 /** The zoom ref of a stacked editor, which opens and closes without the zoom transition. */
 const noZoom = (element: HTMLElement | null): void => { void element }
 /** Canvas dot grid pitch at 100%, in canvas units. */
@@ -93,10 +101,15 @@ const CANVAS_CSS = `
 .dv-canvas-btn:hover:not(:disabled) { background: var(--dv-surface-3); }
 .dv-canvas-btn:focus-visible, .dv-canvas-soft:focus-visible, [data-node-id]:focus-visible > [data-node-frame] { outline: 2px solid var(--dv-accent); outline-offset: 2px; }
 [data-node-id]:focus-visible { outline: none; }
+.dv-canvas-title { background: transparent; transition: background-color 120ms var(--dv-ease); }
+.dv-canvas-title:hover, .dv-canvas-title:focus-visible { background: var(--dv-surface-3); }
+.dv-canvas-title:focus-visible { outline: 2px solid var(--dv-accent); outline-offset: 2px; }
+.dv-canvas-title > svg { opacity: 0; }
+.dv-canvas-title:hover > svg, .dv-canvas-title:focus-visible > svg { opacity: 1; }
 .dv-canvas-soft { background: var(--dv-accent-soft); color: var(--dv-accent-text); }
 .dv-canvas-danger { color: var(--dv-text-2); }
 .dv-canvas-danger:hover:not(:disabled) { color: var(--dv-danger); }
-@media (prefers-reduced-motion: reduce) { .dv-canvas-btn { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .dv-canvas-btn, .dv-canvas-title { transition: none; } }
 `
 
 const clampZoom = (zoom: number): number => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
@@ -184,6 +197,17 @@ interface AwaitedRender {
   resolve: () => void
 }
 
+/** Where a node's name field shows: in its caption on the canvas, or in the title of its open editor. */
+interface Renaming {
+  node: string
+  place: 'caption' | 'editor'
+}
+
+/** Whether a key event comes from a field that takes text, where F2 belongs to the field. */
+function inTextField(target: EventTarget): boolean {
+  return target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+}
+
 /** An in-progress pointer gesture. A resize drags one corner of the selected node ({@link resizedBox}). */
 type Gesture =
   | { kind: 'pan'; startX: number; startY: number; origin: CanvasViewport; moved: boolean }
@@ -229,11 +253,16 @@ export function CanvasView(
    * @returns settles when the record is written.
    */
   const placeAsset = (assetId: string): Promise<unknown> => client.placeOnCanvas(projectId, [assetId], session)
+  // The names of `canvas.node_rename` writes until the project state shows them, by node ID; null clears a name.
+  const [names, setNames] = useState<Record<string, string | null>>({})
+  const baseRef = useRef(base.value)
+  baseRef.current = base.value
   // The previous project's state stays loaded until the next project's arrives; the canvas draws only this project's.
   const graph = useMemo(() => {
     if (base.value === null || base.value.project.id !== projectId) return null
-    return { state: base.value, ...buildCanvasGraph(base.value, operations.value ?? [], language, descriptors) }
-  }, [base.value, projectId, operations.value, language, descriptors])
+    const state = Object.keys(names).length === 0 ? base.value : withNames(base.value, names)
+    return { state, ...buildCanvasGraph(state, operations.value ?? [], language, descriptors) }
+  }, [base.value, names, projectId, operations.value, language, descriptors])
   const assetById = useMemo(() => new Map<string, Asset>((graph?.state.assets ?? []).map(asset => [asset.id, asset])), [graph])
 
   // The boxes of a gesture and of a `canvas.node_position` write until the project state shows them, by node ID.
@@ -243,6 +272,7 @@ export function CanvasView(
   // The node with the accent ring, and the node whose editor is open; closing the editor keeps the ring.
   const [selected, setSelected] = useState<string | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState<Renaming | null>(null)
   // The editor a reference chip opened over the `editing` one; it closes first, and with the editor beneath it.
   const [stacked, setStacked] = useState<string | null>(null)
   useEffect(() => { setStacked(null) }, [editing])
@@ -469,6 +499,53 @@ export function CanvasView(
     if (shown.length > 0) setPositions(all => withoutProperties(all, shown))
   }, [graph, positions])
 
+  const renamedAt = useRef(new Map<string, unknown>())
+  /**
+   * Write a node's new name as one `canvas.node_rename` record. The canvas draws the name until the project state shows
+   * it, or until the first state after the server answered, and drops it again when the write is refused.
+   * @param node - the node.
+   * @param title - the trimmed name; empty clears it.
+   */
+  const renameNode = (node: CanvasNode, title: string): void => {
+    const name = title === '' ? null : title
+    if (name === node.node.name) return
+    setNames(all => ({ ...all, [node.id]: name }))
+    renamedAt.current.delete(node.id)
+    setNotice(null)
+    client.runOperation(canvasRequest({ operation: NODE_RENAME, params: { node: node.id, name }, intent: `rename ${node.title} on the canvas` }))
+      .then(() => { renamedAt.current.set(node.id, baseRef.current) }, (error: unknown) => {
+        setNames(all => all[node.id] === name ? withoutProperties(all, [node.id]) : all)
+        setNotice(t('error', { message: errorMessage(error) }))
+      })
+  }
+  useEffect(() => {
+    const state = base.value
+    if (state === null) return
+    const shown = Object.keys(names).filter(id => state.components.canvas.nodes[id]?.name === names[id]
+      || (renamedAt.current.has(id) && renamedAt.current.get(id) !== state))
+    for (const id of shown) renamedAt.current.delete(id)
+    if (shown.length > 0) setNames(all => withoutProperties(all, shown))
+  }, [base.value, names])
+  /** The name field of a node, which saves through {@link renameNode} and refuses a name over {@link NAME_MAX}. */
+  const renameField = (node: CanvasNode): Omit<InlineRenameProps, 'value'> => ({
+    label: t('node.renameAria'),
+    check: title => title.length > NAME_MAX ? t('node.renameTooLong', { max: String(NAME_MAX) }) : null,
+    onSave: (title) => { renameNode(node, title) },
+    onClose: () => { setRenaming(null) },
+  })
+  /** F2 renames the selected node: in its caption, or in its editor when the editor is open or the zoom is low. */
+  const renameKey = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    const id = editing ?? selected
+    if (event.key !== 'F2' || inTextField(event.target) || id === null) return
+    event.preventDefault()
+    if (editing === null && viewport.zoom >= CAPTION_RENAME_ZOOM) {
+      setRenaming({ node: id, place: 'caption' })
+      return
+    }
+    setEditing(id)
+    setRenaming({ node: id, place: 'editor' })
+  }
+
   /** Move a node so that its top edge is centered on a dropped canvas point; the node keeps its size. */
   const placeNode = useCallback((node: CanvasNode, point: NodeSpot) => {
     const size = boxIn(positionsRef.current, node)
@@ -656,11 +733,12 @@ export function CanvasView(
     void run(() => client.runOperation(canvasRequest({ operation: NODE_REMOVE, params: { nodes: [node.id] }, intent: `remove ${node.title} from the canvas` })))
   }
   /**
-   * Delete or Backspace removes the selected node while no editor, asset picker or media preview is open and the key
-   * does not go to a text field.
+   * F2 renames the selected node ({@link renameKey}). Delete or Backspace removes the selected node while no editor, asset
+   * picker or media preview is open and the key does not go to a text field.
    * @param event - the key press inside the canvas.
    */
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    renameKey(event)
     if (event.key !== 'Delete' && event.key !== 'Backspace') return
     const target = event.target as HTMLElement
     if (editing !== null || target.closest('input, textarea, [contenteditable="true"], [contenteditable=""]') !== null) return
@@ -845,6 +923,7 @@ export function CanvasView(
               failedActions={node.flags.failed ? actionsFor(view) : []}
               rerunningAction={view.rerunning ? rerunning?.action ?? null : null}
               onAction={(action) => { action.run(view, hosts.action(action.id)) }}
+              rename={renaming?.place === 'caption' && renaming.node === node.id ? renameField(node) : null}
             />
           )
         })}
@@ -915,6 +994,8 @@ export function CanvasView(
       actions: actionsFor(view), project: projectId, session, t, hosts: hostsOf(close), area, renderSlot, renderFactorySlot,
       onAcceptStale: (record: string) => { void run(() => client.acceptStale(projectId, record, 'canvas', session)) },
       onRemove: () => { removeNode(node) },
+      rename: renaming?.place === 'editor' && renaming.node === node.id ? { ...renameField(node), hint: t('node.renameHint') } : null,
+      onRename: () => { setRenaming({ node: node.id, place: 'editor' }) },
       onClose: close,
     }
   }

@@ -1,7 +1,8 @@
 /**
  * Canvas nodes and edges derived from a project state and the registered node types. Every node comes from the
- * canvas's node list (`state.components.canvas`), in creation order, at its stored position; the node type whose `type`
- * is the node's kind draws it, and a kind without a registered type draws a plain card. The builder names no node type.
+ * canvas's node list (`state.components.canvas`), in creation order, at its stored position, titled with its name when it
+ * has one; the node type whose `type` is the node's kind draws it, and a kind without a registered type draws a plain
+ * card. The builder names no node type.
  */
 import type { DvLanguage } from '@dv/ui-kit/locale.ts'
 import { versionRefOf } from '@dv/ui-kit/references.ts'
@@ -78,6 +79,22 @@ function plainType(kind: string): NodeType {
 }
 
 /**
+ * A project state with other names on some nodes of the node list, such as the names of renames still in flight.
+ * @param state - a project state.
+ * @param names - the name of each node to change, by node ID; null clears it.
+ * @returns the state with those names.
+ */
+export function withNames(state: WireState, names: Readonly<Record<string, string | null>>): WireState {
+  const canvas = state.components.canvas
+  const nodes = { ...canvas.nodes }
+  for (const [id, name] of Object.entries(names)) {
+    const node = nodes[id]
+    if (node !== undefined) nodes[id] = { ...node, name }
+  }
+  return { ...state, components: { ...state.components, canvas: { ...canvas, nodes } } }
+}
+
+/**
  * The box of a node in canvas units: its stored position, with its type's default size where the stored size is null.
  * @param node - a drawn node.
  * @returns the box.
@@ -115,8 +132,8 @@ export function buildCanvasGraph(
     const nodeType = typeOf(node.kind)
     const entry: TypeEntry = nodeType.entry({ id, node, record, state, operations, language })
     return {
-      ...entry, id, assets: entry.assets ?? record.outputs, record, versions: node.versions, type: node.kind, nodeType, node,
-      flags: flagsOf(record), badges: [],
+      ...entry, title: node.name ?? entry.title, id, assets: entry.assets ?? record.outputs, record, versions: node.versions,
+      type: node.kind, nodeType, node, flags: flagsOf(record), badges: [],
     }
   }
   const recordOf = (id: string | undefined): OperationRecord | undefined => {

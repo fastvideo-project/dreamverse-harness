@@ -109,12 +109,13 @@ export function apply(ctx: Context, config: Config): void {
   ctx.inject(['tools'], (tooled) => {
     tooled.effect(() => tooled.tools.register(defineTool({
       name: CANVAS_READ,
-      description: 'Read the canvas of this project that the user has open: every node with its id, type, title, versions '
-        + '(how many versions it holds) and shown (the record of the version it shows), its box (x and y of the top-left '
-        + 'corner of the node; width and height of its frame, which sits below a 20-unit caption, so the node spans y to '
-        + 'y + 20 + height; canvas units, y grows downward), and rendering: true while the shown version is still being '
-        + 'generated. To redo or change a node\'s content, pass based_on with the shown id. To move or resize a node, call '
-        + 'dv_canvas_node_position. Fails when no canvas of this project is open.',
+      description: 'Read the canvas of this project that the user has open: every node with its id, type, title (its name '
+        + 'when it has one), versions (how many versions it holds) and shown (the record of the version it shows), its box '
+        + '(x and y of the top-left corner of the node; width and height of its frame, which sits below a 20-unit caption, '
+        + 'so the node spans y to y + 20 + height; canvas units, y grows downward), and rendering: true while the shown '
+        + 'version is still being generated. To redo or change a node\'s content, pass based_on with the shown id. To move '
+        + 'or resize a node, call dv_canvas_node_position; to rename it, call dv_canvas_node_rename. Fails when no canvas of '
+        + 'this project is open.',
       parameters: {},
       output: JSON_OUTPUT,
       execute: (_args, exec) => read(exec),

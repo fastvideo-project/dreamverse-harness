@@ -3,11 +3,14 @@
  * shared by every node, is kept in `localStorage` and fitted into the canvas when restored. The body is the entry of
  * the node's type in `dv.canvas.editor`; a type without an entry shows only the header. A node with several versions
  * shows a version strip above the body: selecting a version shows it in the editor, and the card keeps the newest. The
- * header's trash button removes the node from the canvas.
+ * header shows the node's type and newest version above its title; a click on the title, or F2 on the canvas, turns the
+ * title into the name field. The header's trash button removes the node from the canvas.
  */
 import { useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import type { PropsRenderFactories, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
+import { InlineRename } from '@dv/ui-kit/InlineRename.tsx'
+import type { InlineRenameProps } from '@dv/ui-kit/InlineRename.tsx'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import type { WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
@@ -52,6 +55,10 @@ export interface NodeEditorProps extends PropsRenderFactories {
   onAcceptStale: (record: string) => void
   /** Remove the node from the canvas, after the user confirms. */
   onRemove: () => void
+  /** The name field that replaces the title while the node is renamed in the editor; null for none. */
+  rename: Omit<InlineRenameProps, 'value'> | null
+  /** Turn the title into the name field. */
+  onRename: () => void
   onClose: () => void
   /** The zoom transition's ref for the panel, which grows out of the node and shrinks back into it. */
   zoomRef: (element: HTMLElement | null) => void
@@ -243,6 +250,7 @@ const button: CSSProperties = {
 }
 /** A secondary button: 1px border, transparent fill (the `dv-canvas-btn` class paints the fill and the hover). */
 const secondaryButton: CSSProperties = { ...button, border: '1px solid var(--dv-line-strong)', color: 'var(--dv-text)' }
+const titleText: CSSProperties = { fontFamily: 'inherit', fontSize: 16, lineHeight: '24px', fontWeight: 600, color: 'var(--dv-text)' }
 
 /** What {@link useEditorPlacement} gives the panel. */
 interface EditorPlacement {
@@ -340,7 +348,7 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
   const version = node.versions.includes(chosen) ? chosen : node.record.id
   const view = version === node.record.id ? props.view : props.viewAt(version)
   const title = view.title
-  const type = node.nodeType.label()
+  const type = `${node.nodeType.label()} · ${t('node.version', { n: String(node.versions.length) })}`
   const staleRecord = view.flags.stale ? view.record : null
   const placement = useEditorPlacement(props.area)
   const [picking, setPicking] = useState<Picking | null>(null)
@@ -361,18 +369,39 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
       ref={props.zoomRef}
       style={{ ...panel, left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
       role="dialog" aria-label={title} data-testid="dv-canvas-node-editor" data-dv-scroll-island="" onPointerDown={(event) => { event.stopPropagation() }}
+      // F2 in the asset picker renames nothing.
+      onKeyDown={(event) => { if (event.key === 'F2' && picking !== null) event.stopPropagation() }}
     >
       <header style={{ flex: 'none', padding: '16px 16px 12px 20px', display: 'flex', flexDirection: 'column', gap: 12, borderBottom: '1px solid var(--dv-line)' }}>
         <div
           data-testid="dv-canvas-editor-title-row" style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'move', touchAction: 'none', userSelect: 'none' }}
           onPointerDown={begin(null)} {...gestureHandlers}
-          onDoubleClick={(event) => { if (!(event.target instanceof Element && event.target.closest('button') !== null)) reset() }}
+          onDoubleClick={(event) => { if (!(event.target instanceof Element && event.target.closest('button, input') !== null)) reset() }}
         >
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }}>
-            <span style={{ width: 6, height: 6, borderRadius: 9999, background: node.nodeType.color }} />
-            {type === title ? null : type}
-          </span>
-          <h2 style={{ flex: 1, minWidth: 0, margin: 0, fontSize: 16, lineHeight: '24px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</h2>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }}>
+              <span style={{ width: 6, height: 6, borderRadius: 9999, background: node.nodeType.color }} />
+              {type}
+            </span>
+            {props.rename === null
+              ? (
+                <h2 style={{ alignSelf: 'flex-start', maxWidth: 'calc(100% + 6px)', margin: '0 0 0 -6px', ...titleText }}>
+                  <button
+                    type="button" className="dv-canvas-title" title={t('node.rename')} data-testid="dv-canvas-editor-title" onClick={props.onRename}
+                    style={{ ...titleText, maxWidth: '100%', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 6px', border: 'none', borderRadius: 'var(--dv-radius-sm)', cursor: 'text' }}
+                  >
+                    <span style={{ minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flex: 'none', color: 'var(--dv-text-2)' }}><path d="M4 20h4L19 9l-4-4L4 16v4zM13 7l4 4" /></svg>
+                  </button>
+                </h2>
+              )
+              : (
+                <InlineRename
+                  {...props.rename} value={props.view.title}
+                  style={{ ...titleText, height: 26, boxSizing: 'border-box', margin: '-1px -6px', padding: '0 5px', border: '1px solid var(--dv-accent)', borderRadius: 'var(--dv-radius-sm)', background: 'var(--dv-surface-1)', outline: 'none' }}
+                />
+              )}
+          </div>
           {props.actions.map(action => (
             <button key={action.id} type="button" className="dv-canvas-soft" style={button} disabled={view.rerunning} onClick={() => { action.run(view, props.hosts.action(action.id)) }}>{action.label()}</button>
           ))}
