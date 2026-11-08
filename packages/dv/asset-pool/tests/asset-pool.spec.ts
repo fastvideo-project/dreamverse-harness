@@ -212,6 +212,9 @@ describe('dvAssetPool', () => {
     // An import with `place` puts its output on the canvas.
     const b = (await fixture.run('asset.import', { base64: Buffer.from('b').toString('base64'), mime: 'image/png', place: true })).outputs[0] as AssetId
     expect(placed()).toEqual([b])
+    // An import with `place` that fails makes no node.
+    expect(await fixture.run('asset.import', { mime: 'image/png', place: true })).toMatchObject({ status: 'failed' })
+    expect(fixture.ctx.dvProject.getState(fixture.project).components.canvas.order).toHaveLength(1)
     const put = await fixture.run('asset.place', {}, [assetInput(a), assetInput(b)])
     expect(put).toMatchObject({ status: 'done', component: 'asset', operation: 'asset.place', outputs: [] })
     expect(fixture.ctx.dvProject.listOperations().find(spec => spec.name === 'asset.place')?.summarize(put)).toBe('placed 2 asset(s) on the canvas')

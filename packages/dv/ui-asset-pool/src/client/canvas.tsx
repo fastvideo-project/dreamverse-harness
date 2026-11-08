@@ -1,7 +1,7 @@
 /**
  * The canvas node type of assets and its card and editor bodies. The host's node list has one `asset` node per asset
- * on the canvas: a node that `asset.place` made shows its placed asset, and a node that an
- * `asset.import` with `place` made shows the imported asset.
+ * on the canvas: a node that `asset.place` made shows its placed asset, and a node that a
+ * finished `asset.import` with `place` made shows the imported asset.
  *
  * @module @dv/ui-asset-pool/canvas
  */

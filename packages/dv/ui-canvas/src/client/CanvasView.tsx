@@ -463,6 +463,8 @@ export function CanvasView(
     setEditing(node.id)
   }, [focus, layoutReady, graph, centerOn])
 
+  // The project state on show when the server answered each node's write; a later state is past the write.
+  const answered = useRef(new Map<string, unknown>())
   /**
    * Write a node's new box as one `canvas.node_position` record: the corner of a move, or the whole box of a resize. The
    * canvas draws the box until the project state shows it, or until the first state after the server answered, such as
@@ -471,8 +473,6 @@ export function CanvasView(
    * @param box - the new box.
    * @param resized - whether the size changed too.
    */
-  // The project state on show when the server answered each node's write; a later state is past the write.
-  const answered = useRef(new Map<string, unknown>())
   const writePosition = useCallback((node: CanvasNode, box: NodePosition, resized: boolean) => {
     positionsRef.current = { ...positionsRef.current, [node.id]: box }
     setPositions(all => ({ ...all, [node.id]: box }))
@@ -710,6 +710,18 @@ export function CanvasView(
     }
     const node = current.kind === 'resize' ? current.node : graph?.nodes.find(candidate => candidate.id === current.id)
     if (node !== undefined) writePosition(node, current.at, current.kind === 'resize')
+  }
+  // A cancelled drag or resize writes no position, so the node goes back to the box it showed before.
+  const onPointerCancel = (): void => {
+    const current = gesture.current
+    gesture.current = null
+    if (current === null || !current.moved) return
+    if (current.kind === 'pan') {
+      scheduleSave()
+      return
+    }
+    const id = current.kind === 'resize' ? current.node.id : current.id
+    setPositions(all => withoutProperties(all, [id]))
   }
   const zoomBy = (factor: number): void => {
     autoFit.current = false
@@ -1021,7 +1033,7 @@ export function CanvasView(
       onPointerDown={onBackgroundDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
       onDragLeave={(event) => { if (event.currentTarget === event.target) setDragOver(false) }}

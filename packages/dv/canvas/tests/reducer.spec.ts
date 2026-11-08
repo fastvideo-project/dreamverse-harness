@@ -78,6 +78,25 @@ describe('canvasReducer', () => {
     ])
   })
 
+  it('creates its own node for a record of a maker of another kind based on a node', () => {
+    const shot = record('shot.render')
+    const character = record('character.create', { based_on: shot.id })
+    expect(nodesOf(reduceAll([shot, character]))).toEqual([
+      `${shot.id} shot [${shot.id}] ${String(2 * COLUMN)},0 null×null`,
+      `${character.id} character [${character.id}] 0,0 null×null`,
+    ])
+  })
+
+  it('moves a node for a position record based on it, and places assets for a placement record based on a node, without a version', () => {
+    const shot = record('shot.render')
+    const move = record('canvas.node_position', { based_on: shot.id, params: { node: shot.id, x: 600, y: 40 } })
+    const place = record('asset.place', { based_on: shot.id, inputs: inputs('a1') })
+    expect(nodesOf(reduceAll([shot, move, place]))).toEqual([
+      `${shot.id} shot [${shot.id}] 600,40 null×null`,
+      `${place.id} asset [${place.id}] 0,0 null×null`,
+    ])
+  })
+
   it('takes a record only when the maker filter accepts it', () => {
     const quiet = record('asset.import', { outputs: [asset('a1')] })
     const placed = record('asset.import', { params: { place: true }, outputs: [asset('a2')] })
@@ -123,6 +142,12 @@ describe('canvasReducer', () => {
     expect(removed).toEqual({ nodes: {}, order: [], assets: {} })
     expect(reduceAll([first, rerun, move])).toEqual(before)
     expect(nodesOf(before)).toEqual([`${first.id} shot [${first.id},${rerun.id}] 600,40 320×180`])
+  })
+
+  it('removes a node for a removal record based on its version, without a version', () => {
+    const shot = record('shot.render', { outputs: [asset('v1')] })
+    const remove = record('canvas.node_remove', { based_on: shot.id, params: { nodes: [shot.id] } })
+    expect(reduceAll([shot, remove])).toEqual({ nodes: {}, order: [], assets: {} })
   })
 
   it('makes a new node for a later record based on a version of a removed node', () => {

@@ -175,6 +175,34 @@ describe('the canvas over the real kinds', () => {
     await runtime.dispose()
   })
 
+  it('puts a node back and writes no position when the browser cancels its drag or resize, and stores a cancelled pan', async () => {
+    const { runtime, node, open, server, canvasOf, view } = await mountCanvas()
+    await open('g2')
+    fireEvent.click(view.getByRole('button', { name: zh['editor.close'] }))
+    fireEvent.pointerCancel(canvasOf(), { pointerId: 1 })
+    fireEvent.pointerDown(node('g2'), { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
+    fireEvent.pointerCancel(canvasOf(), { pointerId: 1 })
+    fireEvent.pointerDown(node('g2'), { button: 0, clientX: 0, clientY: 0, pointerId: 2 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 50, clientY: 30, pointerId: 2 })
+    expect([node('g2').style.left, node('g2').style.top]).toEqual(['530px', '230px'])
+    fireEvent.pointerCancel(canvasOf(), { pointerId: 2 })
+    expect([node('g2').style.left, node('g2').style.top]).toEqual(['480px', '200px'])
+    const handle = node('g2').querySelector('[data-node-handle="se"]')
+    if (handle === null) throw new Error('no south-east handle')
+    const width = node('g2').style.width
+    fireEvent.pointerDown(handle, { button: 0, clientX: 0, clientY: 0, pointerId: 3 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 104, clientY: 0, pointerId: 3 })
+    expect(node('g2').style.width).not.toBe(width)
+    fireEvent.pointerCancel(canvasOf(), { pointerId: 3 })
+    expect(node('g2').style.width).toBe(width)
+    fireEvent.pointerDown(canvasOf(), { button: 0, clientX: 700, clientY: 500, pointerId: 4 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 760, clientY: 540, pointerId: 4 })
+    fireEvent.pointerCancel(canvasOf(), { pointerId: 4 })
+    await waitFor(() => { expect(server.layoutWrites).toEqual([{ project: 'p1', viewport: { x: 60, y: 40, zoom: 1 } }]) }, { timeout: 2000 })
+    expect(server.positionWrites).toEqual([])
+    await runtime.dispose()
+  })
+
   it('writes only the corner of a dragged rendering node, which keeps its type\'s default size when it finishes', async () => {
     let finished = false
     const { runtime, node, server, canvasOf } = await mountCanvas({ edit: paintRecords(() => finished) })

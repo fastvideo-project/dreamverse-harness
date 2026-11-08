@@ -21,9 +21,9 @@
  *   the asset left in the pool.
  *
  * `dvProject` turns each operation into its agent tool (`dv_asset_import`, `dv_asset_grab_still`,
- * `dv_asset_cut_segment`, `dv_asset_place`). The service registers with `dvCanvasNodes` that an import with `place`
- * and each placement make `asset` nodes; the `proj` slice's `created_by` names the record that created each asset.
- * While the DSH web server is mounted, the service serves `GET /dv/assets/<AssetId>`.
+ * `dv_asset_cut_segment`, `dv_asset_place`). The service registers with `dvCanvasNodes` that a finished import with
+ * `place` and each placement make `asset` nodes; the `proj` slice's `created_by` names the record that created each
+ * asset. While the DSH web server is mounted, the service serves `GET /dv/assets/<AssetId>`.
  *
  * @module @dv/asset-pool
  */
@@ -149,7 +149,7 @@ export default class DvAssetPool extends Service {
     // Assets go on the canvas as nodes of the canvas's node list, so the placements exist while the canvas is loaded.
     ctx.inject(['dvCanvasNodes'], (canvas) => {
       canvas.effect(() => canvas.dvCanvasNodes.registerMaker({
-        operations: ['asset.import'], kind: 'asset', column: 0, makes: record => record.params['place'] === true,
+        operations: ['asset.import'], kind: 'asset', column: 0, makes: record => record.params['place'] === true && record.status === 'done',
       }), 'dvAssetPool canvas imports')
       canvas.effect(() => canvas.dvCanvasNodes.registerPlacement({ place: 'asset.place', kind: 'asset', column: 0 }),
         'dvAssetPool canvas placements')
