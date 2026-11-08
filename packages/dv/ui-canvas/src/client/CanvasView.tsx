@@ -255,6 +255,8 @@ export function CanvasView(
   const placeAsset = (assetId: string): Promise<unknown> => client.placeOnCanvas(projectId, [assetId], session)
   // The names of `canvas.node_rename` writes until the project state shows them, by node ID; null clears a name.
   const [names, setNames] = useState<Record<string, string | null>>({})
+  const namesRef = useRef(names)
+  namesRef.current = names
   const baseRef = useRef(base.value)
   baseRef.current = base.value
   // The previous project's state stays loaded until the next project's arrives; the canvas draws only this project's.
@@ -276,6 +278,10 @@ export function CanvasView(
   // The editor a reference chip opened over the `editing` one; it closes first, and with the editor beneath it.
   const [stacked, setStacked] = useState<string | null>(null)
   useEffect(() => { setStacked(null) }, [editing])
+  // A name field in an editor closes with that editor.
+  useEffect(() => {
+    setRenaming(current => current?.place !== 'editor' || current.node === editing || current.node === stacked ? current : null)
+  }, [editing, stacked])
   const [seen, setSeen] = useState<{ project: string; seen: Seen } | null>(null)
   // The node whose right-click menu is open, at the click point in px from the canvas's top-left corner.
   const [menu, setMenu] = useState<{ node: string; x: number; y: number } | null>(null)
@@ -426,7 +432,8 @@ export function CanvasView(
     if (gone(editing)) setEditing(null)
     if (gone(stacked)) setStacked(null)
     if (gone(menu?.node ?? null)) setMenu(null)
-  }, [graph, selected, editing, stacked, menu])
+    if (gone(renaming?.node ?? null)) setRenaming(null)
+  }, [graph, selected, editing, stacked, menu, renaming])
 
   /** Pan so a node sits at the center of the canvas, keeping the zoom. */
   const centerOn = useCallback((node: CanvasNode) => {
@@ -513,7 +520,7 @@ export function CanvasView(
     renamedAt.current.delete(node.id)
     setNotice(null)
     client.runOperation(canvasRequest({ operation: NODE_RENAME, params: { node: node.id, name }, intent: `rename ${node.title} on the canvas` }))
-      .then(() => { renamedAt.current.set(node.id, baseRef.current) }, (error: unknown) => {
+      .then(() => { if (namesRef.current[node.id] === name) renamedAt.current.set(node.id, baseRef.current) }, (error: unknown) => {
         setNames(all => all[node.id] === name ? withoutProperties(all, [node.id]) : all)
         setNotice(t('error', { message: errorMessage(error) }))
       })
@@ -539,12 +546,12 @@ export function CanvasView(
       setRenaming({ node: id, place: 'caption' })
       return
     }
-    setEditing(id)
+    if (id !== stacked) setEditing(id)
     setRenaming({ node: id, place: 'editor' })
   }
-  /** F2 renames the selected node, or the node of the open editor. */
+  /** F2 renames the node of the top open editor, or the selected node. */
   const renameKey = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    const id = editing ?? selected
+    const id = stacked ?? editing ?? selected
     if (event.key !== 'F2' || inTextField(event.target) || id === null) return
     event.preventDefault()
     startRename(id)

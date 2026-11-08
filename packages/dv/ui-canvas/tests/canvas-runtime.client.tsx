@@ -93,8 +93,8 @@ export interface CanvasServer {
   notify: () => void
   /** Answer the held layout reads of one project. */
   releaseLayout: (project: string) => void
-  /** Answer every held operation request. */
-  releaseOperations: () => void
+  /** Answer the held operation requests, oldest first: the first `count` of them, or every one. */
+  releaseOperations: (count?: number) => void
 }
 
 class ScriptedEventSource extends EventTarget {
@@ -245,7 +245,7 @@ export function serveCanvas(options: ServerOptions = {}): CanvasServer {
   const releaseLayout = (project: string): void => {
     for (const held of heldLayouts.filter(each => each.project === project)) held.answer()
   }
-  const releaseOperations = (): void => { heldOperations.splice(0).forEach((answer) => { answer() }) }
+  const releaseOperations = (count = heldOperations.length): void => { heldOperations.splice(0, count).forEach((answer) => { answer() }) }
   vi.stubGlobal('fetch', fetchImpl)
   vi.stubGlobal('EventSource', ScriptedEventSource)
   return { writes: scripted.writes, layoutWrites, imports, positionWrites, notify, releaseLayout, releaseOperations }
