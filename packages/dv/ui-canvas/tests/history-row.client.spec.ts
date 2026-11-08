@@ -1,11 +1,11 @@
-/** The History row of `canvas.node_position` records: its move and resize copy with the node's title, and its focus. */
+/** The History rows of `canvas.node_position` and `canvas.node_remove` records: their copy with the node's title, and their focus. */
 import { describe, expect, it } from 'vitest'
 import type { WireOperation } from '@dv/ui-kit/types.ts'
 import { actionLabel, matchingRow } from '../../ui-history/src/client/rows.ts'
-import { fixtureState, OPERATIONS, record } from '../../ui-kit/tests/fixture.client.tsx'
+import { canvasNode, fixtureState, OPERATIONS, record } from '../../ui-kit/tests/fixture.client.tsx'
 import type { NodeType } from '../src/client/contract/index.ts'
 import { createDvCanvas } from '../src/client/dv-canvas.ts'
-import { positionRow } from '../src/client/history-row.ts'
+import { positionRow, removeRow } from '../src/client/history-row.ts'
 
 const SHOT: NodeType = {
   id: '@dv/ui-test-shot', type: 'shot', label: () => 'Shot', color: '',
@@ -46,5 +46,37 @@ describe('the canvas.node_position History row', () => {
     const row = rowWithShot()
     expect([matchingRow(move, [row]), row.subject(move)]).toEqual([row, null])
     expect(row.focus?.(move, [move])).toEqual({ view: 'canvas', target: { record: 'g2' } })
+  })
+})
+
+describe('the canvas.node_remove History row', () => {
+  /** @returns the row over a registry that holds the shot type. */
+  const rowOfRemoval = () => {
+    const canvas = createDvCanvas()
+    canvas.nodeTypes.register(SHOT)
+    return removeRow(canvas.nodeTypes)
+  }
+  const removal = record({ id: 'rm1', operation: 'canvas.node_remove', params: { nodes: ['g2'] }, report: { removed: { g2: canvasNode('shot', ['g2'], 480, 200) } } })
+
+  it('labels a removal 从画布移除「title」 / Removed “title”, with the title the node showed before the removal', () => {
+    const rows = [rowOfRemoval()]
+    const state = fixtureState()
+    const canvas = state.components.canvas
+    canvas.nodes = Object.fromEntries(Object.entries(canvas.nodes).filter(([id]) => id !== 'g2'))
+    canvas.order = canvas.order.filter(id => id !== 'g2')
+    expect(actionLabel(removal, { operations: OPERATIONS, rows, records: new Map(), state })).toEqual(['从画布移除「镜头一」', 'Removed “Shot one”'])
+  })
+
+  it('names the nodes by their IDs while the state is not loaded or the record keeps no node', () => {
+    const rows = [rowOfRemoval()]
+    expect(actionLabel(removal, { operations: OPERATIONS, rows, records: new Map(), state: null })).toEqual(['从画布移除「g2」', 'Removed “g2”'])
+    const bare = record({ id: 'rm2', operation: 'canvas.node_remove', params: { nodes: ['g1', 'g2'] } })
+    expect(actionLabel(bare, { operations: OPERATIONS, rows, records: new Map(), state: fixtureState() })).toEqual(['从画布移除「g1, g2」', 'Removed “g1, g2”'])
+  })
+
+  it('matches the operation and moves the center to the canvas node that the record removed', () => {
+    const row = rowOfRemoval()
+    expect([matchingRow(removal, [row]), row.subject(removal)]).toEqual([row, null])
+    expect(row.focus?.(removal, [removal])).toEqual({ view: 'canvas', target: { record: 'g2' } })
   })
 })

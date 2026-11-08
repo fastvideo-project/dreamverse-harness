@@ -113,7 +113,8 @@ class ScriptedEventSource extends EventTarget {
 
 /**
  * Apply an accepted canvas write to the canvas slice as the host's node list does: `canvas.node_position` sets the
- * fields its params give, `asset.place` adds an `asset` node per asset that no node shows, `asset.unplace` deletes them.
+ * fields its params give, `asset.place` adds an `asset` node per asset that no node shows, `canvas.node_remove` deletes
+ * the nodes its params name.
  * @param state - the served state.
  * @param request - the accepted request.
  * @param index - the request's position among the accepted writes, for the IDs of placement nodes.
@@ -138,11 +139,8 @@ function applyCanvasWrite(state: FixtureState, request: OperationRequest, index:
       canvas.order.push(node)
       canvas.assets[placed] = node
     }
-  } else if (request.operation === 'asset.unplace') {
-    const removed = new Set(assets.flatMap((placed) => {
-      const node = canvas.assets[placed]
-      return node !== undefined && canvas.nodes[node]?.kind === 'asset' ? [node] : []
-    }))
+  } else if (request.operation === 'canvas.node_remove') {
+    const removed = new Set(request.params?.['nodes'] as string[])
     canvas.nodes = Object.fromEntries(Object.entries(canvas.nodes).filter(([id]) => !removed.has(id)))
     canvas.assets = Object.fromEntries(Object.entries(canvas.assets).filter(([, id]) => !removed.has(id)))
     canvas.order = canvas.order.filter(each => !removed.has(each))
@@ -150,7 +148,7 @@ function applyCanvasWrite(state: FixtureState, request: OperationRequest, index:
 }
 
 /** The operations whose accepted writes change the served canvas slice. */
-const CANVAS_WRITES = new Set(['canvas.node_position', 'asset.place', 'asset.unplace'])
+const CANVAS_WRITES = new Set(['canvas.node_position', 'asset.place', 'canvas.node_remove'])
 
 /**
  * Replace the global `fetch` and `EventSource` with a server of the fixture project and its `test_ref` noun. An

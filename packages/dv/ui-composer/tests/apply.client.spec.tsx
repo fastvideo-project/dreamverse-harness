@@ -73,7 +73,7 @@ function host(): { value: NodeHost; close: ReturnType<typeof vi.fn<() => void>> 
   const close = vi.fn<() => void>()
   const value: NodeHost = {
     run: vi.fn(), rerun: vi.fn(), preview: vi.fn(),
-    openNode: vi.fn(), setPlaced: vi.fn(), close,
+    openNode: vi.fn(), close,
   }
   return { value, close }
 }

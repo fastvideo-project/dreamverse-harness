@@ -5,7 +5,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** Canvas tab name, guide entry, node chrome, editor shell, asset picker, and project bar copy. */
+    /** Canvas tab name, guide entry, node chrome, node menu, editor shell, asset picker, and project bar copy. */
     dvCanvas: DvCanvasKey
   }
 }
@@ -38,6 +38,9 @@ export const zh = {
   'node.unseen': '未查看',
   'node.resize': '调整节点大小',
   'node.version': 'v{n}',
+  'node.remove': '从画布移除',
+  'node.removeConfirm': '从画布移除「{title}」？它的版本保留在素材库中，可在历史记录中恢复该节点。',
+  'menu.label': '节点操作',
   'editor.close': '关闭',
   'editor.keepAnyway': '仍然保留',
   'editor.resize': '调整面板大小',
@@ -45,6 +48,7 @@ export const zh = {
   'editor.versionOf': '第 {i} / {n} 版',
   'history.moved': '移动节点',
   'history.resized': '调整大小',
+  'history.removed': '从画布移除「{title}」',
   'picker.title': '添加素材',
   'picker.cancel': '取消',
   'picker.confirm': '确认（{count}）',
@@ -78,6 +82,9 @@ export const en = {
   'node.unseen': 'Not viewed yet',
   'node.resize': 'Resize the node',
   'node.version': 'v{n}',
+  'node.remove': 'Remove from canvas',
+  'node.removeConfirm': 'Remove “{title}” from the canvas? Its versions stay in the asset pool, and History can bring the node back.',
+  'menu.label': 'Node actions',
   'editor.close': 'Close',
   'editor.keepAnyway': 'Keep anyway',
   'editor.resize': 'Resize the panel',
@@ -85,6 +92,7 @@ export const en = {
   'editor.versionOf': 'Version {i} of {n}',
   'history.moved': 'Moved “{title}”',
   'history.resized': 'Resized “{title}”',
+  'history.removed': 'Removed “{title}”',
   'picker.title': 'Add assets',
   'picker.cancel': 'Cancel',
   'picker.confirm': 'Confirm ({count})',

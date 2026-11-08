@@ -20,7 +20,6 @@ export const DV_TOOL_LABELS: Readonly<Record<string, readonly [string, string]>>
   dv_proj_wait: ['等待记录完成', 'Wait for records'],
   dv_asset_import: ['导入素材', 'Import asset'],
   dv_asset_place: ['放到画布', 'Put on canvas'],
-  dv_asset_unplace: ['从画布移除', 'Remove from canvas'],
   dv_models_list: ['列出模型', 'List models'],
   dv_models_get: ['查看模型', 'Get model'],
   dv_asset_grab_still: ['截取静帧', 'Grab still'],

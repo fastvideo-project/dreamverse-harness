@@ -131,8 +131,6 @@ export interface NodeHost {
   preview(asset: string, opener: Element | null): void
   /** Open another node's editor over this one, which keeps its unsaved changes. */
   openNode(nodeId: string): void
-  /** Put an asset on the canvas (`asset.place`) or take its asset node off (`asset.unplace`). */
-  setPlaced(asset: string, on: boolean): void
   /** Close the editor and clear the selection. */
   close(): void
 }

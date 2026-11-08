@@ -4,9 +4,10 @@
  * a rounded outline that wears the selection ring and holds the `dv.canvas.card` body, which paints its own fill, or,
  * for a node whose newest version failed, the failed words and actions on the card surface. A node with several
  * versions has two offset frames behind its frame. The selected node has a resize handle at each corner of its frame.
- * The chrome names no node type.
+ * {@link NodeMenu} draws a node's right-click menu. The chrome names no node type.
  */
-import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import { useCallback, useState } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent, MutableRefObject, ReactNode } from 'react'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
 import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
 import { CAPTION_HEIGHT } from '../canvas-layout.ts'
@@ -215,4 +216,71 @@ export function NodeCard(props: NodeCardProps): ReactNode {
  */
 export function TypeLabelBody({ label, textScale }: { label: string; textScale: number }): ReactNode {
   return <span style={{ ...CARD_SURFACE, display: 'flex', alignItems: 'center', padding: '0 10px', fontSize: Math.round(12 * textScale), color: 'var(--dv-text-2)' }}>{label}</span>
+}
+
+/** One item of a node's right-click menu. */
+export interface NodeMenuItem {
+  id: string
+  label: string
+  /** Draws the item in the danger color, for an item that takes something away. */
+  danger?: boolean
+  /** The key that does the same on the selected node: the glyph at the item's end and its `aria-keyshortcuts`. */
+  shortcut?: { glyph: string; keys: string }
+  disabled?: boolean
+  run: () => void
+}
+
+/** Props of {@link NodeMenu}. */
+export interface NodeMenuProps {
+  /** Where the right click landed, in px from the canvas area's top-left corner. */
+  at: { x: number; y: number }
+  /** The size of the canvas area, which the menu stays inside. */
+  area: { width: number; height: number }
+  items: readonly NodeMenuItem[]
+  /** The menu's accessible name. */
+  label: string
+  /** The menu element, so the canvas can tell a press inside it from one outside. */
+  menuRef: MutableRefObject<HTMLDivElement | null>
+}
+
+/** The space in px the menu keeps from the canvas area's edges. */
+const MENU_MARGIN = 8
+
+/**
+ * A node's right-click menu, in the timeline tab menu's style: one row per item, opening at the pointer and moved left
+ * or up of it when the canvas area has no room on the right or below.
+ * @param props - the click point, the canvas area, the items, the label and the menu ref.
+ * @returns the element.
+ */
+export function NodeMenu({ at, area, items, label, menuRef }: NodeMenuProps): ReactNode {
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null)
+  // The menu draws once at the pointer, then moves by its measured size; the canvas mounts a new menu per right click.
+  const attach = useCallback((element: HTMLDivElement | null) => {
+    menuRef.current = element
+    if (element !== null) setSize({ width: element.offsetWidth, height: element.offsetHeight })
+  }, [menuRef])
+  const fit = (point: number, extent: number, room: number): number =>
+    point + extent + MENU_MARGIN <= room ? point : Math.max(MENU_MARGIN, point - extent)
+  const left = size === null ? at.x : fit(at.x, size.width, area.width)
+  const top = size === null ? at.y : fit(at.y, size.height, area.height)
+  return (
+    <div
+      ref={attach} role="menu" aria-label={label} data-testid="dv-canvas-node-menu"
+      style={{ position: 'absolute', left, top, zIndex: 12, minWidth: 180, padding: 6, boxSizing: 'border-box', background: 'var(--dv-surface-1)', boxShadow: '0 0 0 1px var(--dv-line-strong), var(--dv-shadow-2)', borderRadius: 'var(--dv-radius-xl)' }}
+      onPointerDown={(event) => { event.stopPropagation() }}
+      onContextMenu={(event) => { event.preventDefault() }}
+    >
+      {items.map(item => (
+        <button
+          key={item.id} type="button" role="menuitem" className="dv-canvas-btn" disabled={item.disabled}
+          aria-keyshortcuts={item.shortcut?.keys}
+          style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', height: 32, padding: '0 10px', border: 'none', borderRadius: 'var(--dv-radius-md)', fontFamily: 'inherit', fontSize: 13, lineHeight: '20px', textAlign: 'left', cursor: item.disabled === true ? 'default' : 'pointer', opacity: item.disabled === true ? 0.6 : 1, color: item.danger === true ? 'var(--dv-danger)' : 'var(--dv-text)' }}
+          onClick={item.run}
+        >
+          <span style={{ flex: 1 }}>{item.label}</span>
+          {item.shortcut === undefined ? null : <span aria-hidden="true" style={{ ...mono, fontSize: 12, color: 'var(--dv-text-3)' }}>{item.shortcut.glyph}</span>}
+        </button>
+      ))}
+    </div>
+  )
 }

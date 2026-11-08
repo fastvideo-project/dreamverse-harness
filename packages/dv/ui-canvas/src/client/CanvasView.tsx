@@ -4,13 +4,15 @@
  * its editor panel, which grows out of the node and shrinks back into it (`@dv/ui-kit/zoom.ts`). Every node sits at the
  * position of the canvas's node list, with its type's default size where the stored size is null. The end of a drag or
  * of a resize from a corner handle of the selected node writes one `canvas.node_position` record, so undo reverts it; the
- * canvas draws the new box at once and drops it again when the write is refused. The viewport is view state, stored
+ * canvas draws the new box at once and drops it again when the write is refused. A node's right-click menu, the trash
+ * button of its editor, and Delete or Backspace on the selected node remove it from the canvas with one
+ * `canvas.node_remove` record after the user confirms. The viewport is view state, stored
  * per project through `/api/dv/canvas/layout`. The opened versions are kept per project in `localStorage` for the unseen
  * dot. Colors come from the `--dv-*` theme variables that `@dv/ui-shell`
  * defines and from each type's `color`. The canvas names no node type.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import type { PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots'
 import { errorMessage } from '@dv/ui-kit/api.ts'
 import type { DvClient } from '@dv/ui-kit/api.ts'
@@ -26,8 +28,8 @@ import type { CanvasViews } from './agent-canvas.ts'
 import type { CanvasRequest, EditorHost, NodeAction, NodeHost, NodeView, RerunRequest } from './contract/index.ts'
 import { boxOf as storedBox, buildCanvasGraph, isFinished, previewOf } from './graph.ts'
 import type { CanvasEdge, CanvasNode, CanvasRegistrations } from './graph.ts'
-import { cardHeight, edgeAnchorY, NodeCard, textScaleAt, TypeLabelBody } from './NodeCard.tsx'
-import type { CanvasTranslate } from './NodeCard.tsx'
+import { cardHeight, edgeAnchorY, NodeCard, NodeMenu, textScaleAt, TypeLabelBody } from './NodeCard.tsx'
+import type { CanvasTranslate, NodeMenuItem } from './NodeCard.tsx'
 import { readLayout, writeLayout } from './layout-client.ts'
 import { NodeEditor } from './NodeEditor.tsx'
 import type { EditorArea, RenderCanvasSlot, SurfaceHosts } from './NodeEditor.tsx'
@@ -77,6 +79,8 @@ const DOUBLE_CLICK_MS = 400
 const SAVE_DELAY_MS = 500
 /** The operation that moves or resizes a node of the canvas's node list. */
 const NODE_POSITION = 'canvas.node_position'
+/** The operation that removes nodes from the canvas's node list. */
+const NODE_REMOVE = 'canvas.node_remove'
 /** The zoom ref of a stacked editor, which opens and closes without the zoom transition. */
 const noZoom = (element: HTMLElement | null): void => { void element }
 /** Canvas dot grid pitch at 100%, in canvas units. */
@@ -90,6 +94,8 @@ const CANVAS_CSS = `
 .dv-canvas-btn:focus-visible, .dv-canvas-soft:focus-visible, [data-node-id]:focus-visible > [data-node-frame] { outline: 2px solid var(--dv-accent); outline-offset: 2px; }
 [data-node-id]:focus-visible { outline: none; }
 .dv-canvas-soft { background: var(--dv-accent-soft); color: var(--dv-accent-text); }
+.dv-canvas-danger { color: var(--dv-text-2); }
+.dv-canvas-danger:hover:not(:disabled) { color: var(--dv-danger); }
 @media (prefers-reduced-motion: reduce) { .dv-canvas-btn { transition: none; } }
 `
 
@@ -218,12 +224,11 @@ export function CanvasView(
   const base = useProjectState(client, projectId)
   const operations = useOperations(client)
   /**
-   * Put an asset on the project's canvas or take its asset node off, through an `asset.place` or `asset.unplace` record.
+   * Put an asset on the project's canvas through an `asset.place` record.
    * @param assetId - the asset.
-   * @param on - true to place it, false to remove it.
    * @returns settles when the record is written.
    */
-  const changePlacement = (assetId: string, on: boolean): Promise<unknown> => client.placeOnCanvas(projectId, [assetId], on, session)
+  const placeAsset = (assetId: string): Promise<unknown> => client.placeOnCanvas(projectId, [assetId], session)
   // The previous project's state stays loaded until the next project's arrives; the canvas draws only this project's.
   const graph = useMemo(() => {
     if (base.value === null || base.value.project.id !== projectId) return null
@@ -242,6 +247,9 @@ export function CanvasView(
   const [stacked, setStacked] = useState<string | null>(null)
   useEffect(() => { setStacked(null) }, [editing])
   const [seen, setSeen] = useState<{ project: string; seen: Seen } | null>(null)
+  // The node whose right-click menu is open, at the click point in px from the canvas's top-left corner.
+  const [menu, setMenu] = useState<{ node: string; x: number; y: number } | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const container = useRef<HTMLDivElement | null>(null)
   const gesture = useRef<Gesture | null>(null)
@@ -367,6 +375,28 @@ export function CanvasView(
     window.addEventListener('keydown', onKey)
     return () => { window.removeEventListener('keydown', onKey) }
   }, [editing, stacked])
+
+  // A press outside the node menu, Escape, and a pan or zoom close the menu.
+  useEffect(() => {
+    if (menu === null) return
+    const close = (event: Event): void => {
+      if (event instanceof KeyboardEvent ? event.key === 'Escape' : !(event.target instanceof Node && menuRef.current?.contains(event.target) === true)) setMenu(null)
+    }
+    window.addEventListener('pointerdown', close)
+    window.addEventListener('keydown', close)
+    return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', close) }
+  }, [menu])
+  useEffect(() => { setMenu(null) }, [viewport])
+
+  // A node that leaves the list, such as after a removal, takes its selection, editor and menu with it.
+  useEffect(() => {
+    if (graph === null) return
+    const gone = (id: string | null): boolean => id !== null && !graph.nodes.some(node => node.id === id)
+    if (gone(selected)) setSelected(null)
+    if (gone(editing)) setEditing(null)
+    if (gone(stacked)) setStacked(null)
+    if (gone(menu?.node ?? null)) setMenu(null)
+  }, [graph, selected, editing, stacked, menu])
 
   /** Pan so a node sits at the center of the canvas, keeping the zoom. */
   const centerOn = useCallback((node: CanvasNode) => {
@@ -616,6 +646,44 @@ export function CanvasView(
     ...request, project: projectId, surface: 'canvas', ...session === null ? {} : { session },
   })
   /**
+   * Ask the user to confirm, then remove a node from the canvas with one `canvas.node_remove` record. The node leaves
+   * once the project state shows the record, and its selection and editor go with it.
+   * @param node - the node.
+   */
+  const removeNode = (node: CanvasNode): void => {
+    setMenu(null)
+    if (!window.confirm(t('node.removeConfirm', { title: node.title }))) return
+    void run(() => client.runOperation(canvasRequest({ operation: NODE_REMOVE, params: { nodes: [node.id] }, intent: `remove ${node.title} from the canvas` })))
+  }
+  /**
+   * Delete or Backspace removes the selected node while no editor, asset picker or media preview is open and the key
+   * does not go to a text field.
+   * @param event - the key press inside the canvas.
+   */
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (event.key !== 'Delete' && event.key !== 'Backspace') return
+    const target = event.target as HTMLElement
+    if (editing !== null || target.closest('input, textarea, [contenteditable="true"], [contenteditable=""]') !== null) return
+    if (document.querySelector('[aria-modal="true"]') !== null) return
+    const node = graph?.nodes.find(candidate => candidate.id === selected)
+    if (node === undefined) return
+    event.preventDefault()
+    removeNode(node)
+  }
+  /**
+   * A right click on a node selects it and opens its menu at the pointer; elsewhere the browser's menu opens.
+   * @param event - the right click inside the canvas.
+   */
+  const onContextMenu = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    const card = (event.target as Element).closest('[data-node-id]')
+    const node = graph?.nodes.find(candidate => candidate.id === card?.getAttribute('data-node-id'))
+    if (node === undefined) return
+    event.preventDefault()
+    const rect = event.currentTarget.getBoundingClientRect()
+    setSelected(node.id)
+    setMenu({ node: node.id, x: event.clientX - rect.left, y: event.clientY - rect.top })
+  }
+  /**
    * Start a rerun of a version and wait for the node's new version, which the canvas reveals as soon as the project
    * state shows it because `runOperation` resolves only when the operation ends.
    * @param request - the request; its `based_on` is the version it runs again.
@@ -680,7 +748,7 @@ export function CanvasView(
       if (node !== undefined) { placeNode(node, point); return }
       // Any other asset of the asset pool panel goes on the canvas, with its node under the pointer.
       pendingDrops.current.set(assetId, point)
-      void run(() => changePlacement(assetId, true))
+      void run(() => placeAsset(assetId))
       return
     }
     Array.from(event.dataTransfer.files).forEach((file, index) => {
@@ -804,7 +872,6 @@ export function CanvasView(
         if (asset !== undefined) preview(projectId, asset, opener)
       },
       openNode: setStacked,
-      setPlaced: (assetId, on) => { void run(() => changePlacement(assetId, on)) },
       close,
     }
     const shown = (action: string | null): NodeHost['rerun'] => (request) => { void run(() => rerun(request, action)) }
@@ -821,6 +888,24 @@ export function CanvasView(
     }
     return { card: { run: services.run, rerun: shown(null) }, action: id => ({ ...services, rerun: shown(id) }), editor }
   }
+  /**
+   * The items of a node's right-click menu: the node actions that show on it, then 从画布移除. Every menu item of the
+   * canvas goes in this one list.
+   * @param node - the node.
+   * @returns the items, top first.
+   */
+  const menuItems = (node: CanvasNode): NodeMenuItem[] => {
+    const view = viewFor(node)
+    const host = hostsOf(() => { setEditing(null) })
+    return [
+      ...actionsFor(view).map(action => ({
+        id: action.id, label: action.label(), disabled: view.rerunning,
+        run: () => { setMenu(null); action.run(view, host.action(action.id)) },
+      })),
+      { id: 'remove', label: t('node.remove'), danger: true, shortcut: { glyph: '⌫', keys: 'Delete Backspace' }, run: () => { removeNode(node) } },
+    ]
+  }
+  const menuNode = menu === null ? undefined : graph?.nodes.find(node => node.id === menu.node)
   /** The props that the editor of the open node and the stacked editor share. */
   const sharedEditorProps = (shown: NonNullable<typeof graph>, node: CanvasNode, close: () => void) => {
     const view = viewFor(node)
@@ -829,6 +914,7 @@ export function CanvasView(
       operations: operations.value ?? [], versionKinds: descriptors.versionKinds,
       actions: actionsFor(view), project: projectId, session, t, hosts: hostsOf(close), area, renderSlot, renderFactorySlot,
       onAcceptStale: (record: string) => { void run(() => client.acceptStale(projectId, record, 'canvas', session)) },
+      onRemove: () => { removeNode(node) },
       onClose: close,
     }
   }
@@ -847,9 +933,14 @@ export function CanvasView(
       onDragOver={onDragOver}
       onDragLeave={(event) => { if (event.currentTarget === event.target) setDragOver(false) }}
       onDrop={onDrop}
+      onKeyDown={onKeyDown}
+      onContextMenu={onContextMenu}
     >
       <style>{CANVAS_CSS}</style>
       {content}
+      {menu !== null && menuNode !== undefined
+        ? <NodeMenu key={`${menu.node}@${String(menu.x)},${String(menu.y)}`} at={menu} area={area} items={menuItems(menuNode)} label={t('menu.label')} menuRef={menuRef} />
+        : null}
       {notice !== null ? <p role="alert" style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', margin: 0, padding: '6px 10px', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-1)', border: '1px solid var(--dv-danger)', color: 'var(--dv-danger)', fontSize: 13, lineHeight: '20px', zIndex: 12 }}>{notice}</p> : null}
       <div role="toolbar" aria-label={t('canvas.zoom')} style={{ ...floating, position: 'absolute', left: 16, bottom: 16, display: 'flex', alignItems: 'center', gap: 2, padding: 4, borderRadius: 10 }} onPointerDown={(event) => { event.stopPropagation() }}>
         <button type="button" className="dv-canvas-btn" aria-label={t('canvas.zoomOut')} title={t('canvas.zoomOut')} style={toolButton} onClick={() => { zoomBy(1 / 1.2) }}>

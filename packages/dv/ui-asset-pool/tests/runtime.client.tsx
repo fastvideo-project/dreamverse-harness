@@ -80,7 +80,7 @@ export function canvasNodes(runtime: SlotTestRuntime, state: WireState, added: R
 }
 
 /**
- * An editor host that records each call as one line, such as `setPlaced poster.png false`.
+ * An editor host that records each call as one line, such as `preview poster.png`.
  * @param calls - the list the host appends to.
  * @returns the host.
  */
@@ -93,7 +93,6 @@ export function recordingHost(calls: string[]): EditorHost {
     preview: (asset) => { log('preview', asset) },
     importFiles: (files) => { log('importFiles', ...files.map(file => file.name)); return Promise.resolve([]) },
     openNode: (nodeId) => { log('openNode', nodeId) },
-    setPlaced: (asset, on) => { log('setPlaced', asset, on) },
     close: () => { log('close') },
   }
 }

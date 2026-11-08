@@ -1,7 +1,7 @@
 /**
  * Browser half: register `dv-asset-pool` as a right-Sidebar tab type and its body; fill the canvas's picker slot at key
  * `assets` with the asset pool panel, whose tiles open the `dvMedia` preview; register the canvas node type of assets
- * with its card, editor and 从画布移除 action; register the image, video and audio media types and their
+ * with its card and editor; register the image, video and audio media types and their
  * `dv.media.view` entries, because every asset enters a project through `asset.import`; and export the asset pool panel
  * for the workspace shell to render directly.
  *
@@ -14,7 +14,7 @@ import { DvClient } from '@dv/ui-kit/api.ts'
 import type {} from '@dv/ui-media/contract'
 import { AssetsPanel, AssetsTabBody } from './AssetsPanel.tsx'
 import type { AssetsTabInjected } from './AssetsPanel.tsx'
-import { AssetCard, AssetEditor, assetNodeType, unplaceAction } from './canvas.tsx'
+import { AssetCard, AssetEditor, assetNodeType } from './canvas.tsx'
 import { ASSET_POOL_ID, ASSET_POOL_KIND, assetPoolDefinition } from './definition.ts'
 import { MEDIA_TYPES } from './media.tsx'
 
@@ -46,7 +46,6 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.slots.inject('dv.canvas.editor', () => ctx.slots.register({ name: 'dv.canvas.editor', key: 'asset' }, AssetEditor)), 'ui-asset-pool: editor')
   ctx.inject(['dvCanvas'], (scope) => {
     scope.effect(() => scope.dvCanvas.nodeTypes.register(assetNodeType), 'ui-asset-pool: node type')
-    scope.effect(() => scope.dvCanvas.actions.register(unplaceAction), 'ui-asset-pool: remove from canvas')
   })
   ctx.inject(['dvMedia', 'slots'], (scope) => {
     for (const { type, View } of MEDIA_TYPES) {

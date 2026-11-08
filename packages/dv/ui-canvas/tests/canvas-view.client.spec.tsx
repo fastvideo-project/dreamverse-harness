@@ -550,8 +550,215 @@ describe('the canvas over the real kinds', () => {
   })
 })
 
+describe('removing a node', () => {
+  const removal = (...nodes: string[]) => ({ project: 'p1', operation: 'canvas.node_remove', surface: 'canvas', session: 's5', params: { nodes }, intent: expect.stringContaining('remove') as string })
+  const removals = (server: { writes: ReadonlyArray<{ path: string; body: unknown }> }): unknown[] =>
+    operationsOf(server.writes).filter(write => (write as { operation: string }).operation === 'canvas.node_remove')
+  const menuOf = (view: { getByRole: (role: 'menu') => HTMLElement }): HTMLElement => view.getByRole('menu')
+
+  it('opens the right-click menu of a node with its actions above 从画布移除, and OK removes the node, its edges and its selection', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { runtime, view, node, server, canvasOf } = await mountCanvas()
+    await mountDescriptors(runtime, { actions: [{ id: '@dv/ui-test-probe:look', label: () => 'look', order: 1, shows: (entry): entry is NodeView => entry.id === 'g1', run: () => undefined }] })
+    await waitFor(() => { node('g1') })
+    expect(canvasOf().querySelector('[data-edge^="g1>"], [data-edge$=">g1"]')).not.toBeNull()
+    fireEvent.contextMenu(node('g1'), { clientX: 300, clientY: 200 })
+    const menu = menuOf(view)
+    expect(menu.getAttribute('aria-label')).toBe('节点操作')
+    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['look', '从画布移除⌫'])
+    expect(within(menu).getByRole('menuitem', { name: /从画布移除/ }).getAttribute('aria-keyshortcuts')).toBe('Delete Backspace')
+    expect(node('g1').getAttribute('data-node-selected')).toBe('true')
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /从画布移除/ }))
+    expect(confirm).toHaveBeenCalledWith(`从画布移除「${String(node('g1').getAttribute('aria-label'))}」？它的版本保留在素材库中，可在历史记录中恢复该节点。`)
+    expect(view.queryByRole('menu')).toBeNull()
+    await waitFor(() => { expect(view.container.querySelector('[data-node-id="g1"]')).toBeNull() })
+    expect(removals(server)).toEqual([removal('g1')])
+    expect(canvasOf().querySelector('[data-edge^="g1>"], [data-edge$=">g1"]')).toBeNull()
+    expect(view.container.querySelector('[data-node-selected="true"]')).toBeNull()
+    await runtime.dispose()
+  })
+
+  it('removes nothing when the user cancels the confirmation', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const { runtime, view, node, server } = await mountCanvas()
+    await waitFor(() => { node('g1') })
+    fireEvent.contextMenu(node('g1'), { clientX: 300, clientY: 200 })
+    fireEvent.click(within(menuOf(view)).getByRole('menuitem', { name: /从画布移除/ }))
+    expect(confirm).toHaveBeenCalledTimes(1)
+    await settle()
+    expect([removals(server), view.queryByRole('menu')]).toEqual([[], null])
+    expect(node('g1').getAttribute('data-node-selected')).toBe('true')
+    await runtime.dispose()
+  })
+
+  it('runs a node action from the menu and closes the menu', async () => {
+    const run = vi.fn<NodeAction['run']>((_node, host) => { host.close() })
+    const { runtime, view, node } = await mountCanvas()
+    await mountDescriptors(runtime, { actions: [{ id: '@dv/ui-test-probe:look', label: () => 'look', order: 1, shows: (entry): entry is NodeView => entry.id === 'g1', run }] })
+    await waitFor(() => { node('g1') })
+    fireEvent.contextMenu(node('g1'), { clientX: 300, clientY: 200 })
+    fireEvent.click(within(menuOf(view)).getByRole('menuitem', { name: 'look' }))
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({ id: 'g1' }), expect.anything())
+    expect(view.queryByRole('menu')).toBeNull()
+    await runtime.dispose()
+  })
+
+  it('disables the menu\'s node actions while the node waits for a rerun, and keeps 从画布移除 enabled', async () => {
+    const { runtime, view, node } = await mountCanvas({ edit: failG1, holdOperations: true })
+    await waitFor(() => { within(node('g1')).getByRole('button', { name: '重试' }) })
+    fireEvent.click(within(node('g1')).getByRole('button', { name: '重试' }))
+    await waitFor(() => { within(node('g1')).getByRole('button', { name: '渲染中…' }) })
+    fireEvent.contextMenu(node('g1'), { clientX: 300, clientY: 200 })
+    const items = within(menuOf(view)).getAllByRole('menuitem')
+    expect(items.map(item => [item.textContent, item.hasAttribute('disabled')])).toEqual([['重试', true], ['从画布移除⌫', false]])
+    const inner = createEvent.contextMenu(items[0] as HTMLElement)
+    fireEvent(items[0] as HTMLElement, inner)
+    expect(inner.defaultPrevented).toBe(true)
+    await runtime.dispose()
+  })
+
+  it('closes a stacked editor whose node is removed and keeps the editor beneath it', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { runtime, view, open } = await mountCanvas()
+    const editor = await open('g1')
+    fireEvent.click(await tileIn(editor, 'hero@1'))
+    const stacked = view.getAllByTestId('dv-canvas-node-editor')[1]
+    if (stacked === undefined) throw new Error('no stacked editor')
+    fireEvent.click(within(stacked).getByRole('button', { name: zh['node.remove'] }))
+    await waitFor(() => { expect(view.getAllByTestId('dv-canvas-node-editor')).toEqual([editor]) })
+    await runtime.dispose()
+  })
+
+  it('closes the menu on Escape, on a press outside it, and on a zoom, and opens none on empty canvas', async () => {
+    const { runtime, view, node, canvasOf } = await mountCanvas()
+    await waitFor(() => { node('g1') })
+    const open = (): void => { fireEvent.contextMenu(node('g1'), { clientX: 300, clientY: 200 }) }
+    open()
+    fireEvent.pointerDown(menuOf(view), { button: 0 })
+    expect(view.queryByRole('menu')).not.toBeNull()
+    fireEvent.keyDown(window, { key: 'a' })
+    expect(view.queryByRole('menu')).not.toBeNull()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(view.queryByRole('menu')).toBeNull()
+    open()
+    fireEvent.pointerDown(document.body, { button: 0 })
+    expect(view.queryByRole('menu')).toBeNull()
+    open()
+    fireEvent.click(view.getByRole('button', { name: zh['canvas.zoomIn'] }))
+    expect(view.queryByRole('menu')).toBeNull()
+    const empty = createEvent.contextMenu(canvasOf(), { clientX: 700, clientY: 500 })
+    fireEvent(canvasOf(), empty)
+    expect([view.queryByRole('menu'), empty.defaultPrevented]).toEqual([null, false])
+    await runtime.dispose()
+  })
+
+  it('keeps the menu inside the canvas: it opens at the pointer where it fits, and left of and above it near the far edges', async () => {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(600)
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(180)
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(80)
+    const { runtime, view, node } = await mountCanvas()
+    await waitFor(() => { node('g1') })
+    fireEvent.contextMenu(node('g1'), { clientX: 100, clientY: 100 })
+    expect([menuOf(view).style.left, menuOf(view).style.top]).toEqual(['100px', '100px'])
+    fireEvent.keyDown(window, { key: 'Escape' })
+    fireEvent.contextMenu(node('g1'), { clientX: 790, clientY: 590 })
+    expect([menuOf(view).style.left, menuOf(view).style.top]).toEqual(['610px', '510px'])
+    await runtime.dispose()
+  })
+
+  it('removes the selected node on Delete or Backspace after the confirmation, and not while focus is in a text field, an editor is open, or a dialog is up', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { runtime, view, node, open, server, canvasOf } = await mountCanvas()
+    await waitFor(() => { node('g1') })
+    // No node is selected yet.
+    fireEvent.keyDown(canvasOf(), { key: 'Delete' })
+    fireEvent.pointerDown(node('g1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
+    for (const tag of ['input', 'textarea']) {
+      const field = document.createElement(tag)
+      canvasOf().append(field)
+      fireEvent.keyDown(field, { key: 'Backspace' })
+      field.remove()
+    }
+    const editable = document.createElement('div')
+    editable.setAttribute('contenteditable', 'true')
+    canvasOf().append(editable)
+    fireEvent.keyDown(editable, { key: 'Delete' })
+    editable.remove()
+    const modal = document.createElement('div')
+    modal.setAttribute('aria-modal', 'true')
+    document.body.append(modal)
+    fireEvent.keyDown(node('g1'), { key: 'Delete' })
+    modal.remove()
+    fireEvent.keyDown(node('g1'), { key: 'Enter' })
+    expect(confirm).not.toHaveBeenCalled()
+    const editor = await open('g2')
+    fireEvent.keyDown(editor, { key: 'Delete' })
+    expect(confirm).not.toHaveBeenCalled()
+    fireEvent.click(within(editor).getByRole('button', { name: zh['editor.close'] }))
+    await waitFor(() => { expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull() })
+    fireEvent.keyDown(node('g2'), { key: 'Backspace' })
+    expect(confirm).toHaveBeenCalledTimes(1)
+    await waitFor(() => { expect(view.container.querySelector('[data-node-id="g2"]')).toBeNull() })
+    expect(removals(server)).toEqual([removal('g2')])
+    await runtime.dispose()
+  })
+
+  it('removes the node of the open editor with its header\'s trash button after the confirmation, and closes the editor', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValue(true)
+    const { runtime, view, open, server } = await mountCanvas()
+    const editor = await open('g1')
+    const trash = within(editor).getByRole('button', { name: zh['node.remove'] })
+    expect(trash.getAttribute('title')).toBe('从画布移除')
+    const buttons = within(editor).getAllByRole('button')
+    expect(buttons.indexOf(trash)).toBe(buttons.indexOf(within(editor).getByRole('button', { name: zh['editor.close'] })) - 1)
+    fireEvent.click(trash)
+    await settle()
+    expect([removals(server), view.queryByTestId('dv-canvas-node-editor')]).toEqual([[], editor])
+    fireEvent.click(trash)
+    expect(confirm).toHaveBeenCalledTimes(2)
+    await waitFor(() => { expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull() })
+    expect(removals(server)).toEqual([removal('g1')])
+    expect(view.container.querySelector('[data-node-id="g1"]')).toBeNull()
+    await runtime.dispose()
+  })
+
+  it('drops the selection, the editor and the menu of a node that another writer removed, with no notice', async () => {
+    let removed = false
+    const { runtime, view, node, open, server } = await mountCanvas({
+      edit: (state) => {
+        if (!removed) return
+        const canvas = state.components.canvas
+        canvas.nodes = Object.fromEntries(Object.entries(canvas.nodes).filter(([id]) => id !== 'g1'))
+        canvas.order = canvas.order.filter(id => id !== 'g1')
+      },
+    })
+    await open('g1')
+    fireEvent.contextMenu(node('g1'), { clientX: 300, clientY: 200 })
+    removed = true
+    server.notify()
+    await waitFor(() => { expect(view.container.querySelector('[data-node-id="g1"]')).toBeNull() })
+    expect([view.queryByTestId('dv-canvas-node-editor'), view.queryByRole('menu'), view.queryByRole('alert')]).toEqual([null, null, null])
+    expect(view.container.querySelector('[data-node-selected="true"]')).toBeNull()
+    await runtime.dispose()
+  })
+
+  it('shows the error of a refused removal and keeps the node', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { runtime, view, node } = await mountCanvas({ refuse: (_path, body) => (body as { operation?: string }).operation === 'canvas.node_remove' ? 'The canvas has no node g1. Nothing was removed.' : null })
+    await waitFor(() => { node('g1') })
+    fireEvent.contextMenu(node('g1'), { clientX: 300, clientY: 200 })
+    fireEvent.click(within(menuOf(view)).getByRole('menuitem', { name: /从画布移除/ }))
+    await waitFor(() => { expect(view.getByRole('alert').textContent).toContain('Nothing was removed.') })
+    expect(node('g1')).toBeTruthy()
+    await runtime.dispose()
+  })
+})
+
 describe('drops on the canvas', () => {
-  it('puts a dropped 素材 tile on the canvas with asset.place, moves its node under the pointer, and 从画布移除 takes it off with asset.unplace', async () => {
+  it('puts a dropped 素材 tile on the canvas with asset.place, moves its node under the pointer, and 从画布移除 takes it off with canvas.node_remove', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const { runtime, view, node, open, server, canvasOf } = await mountCanvas({
       edit: (state) => {
         state.assets.push(asset('pool.png', 'image/png', 'u2'))
@@ -569,7 +776,7 @@ describe('drops on the canvas', () => {
     const editor = await open('place1')
     fireEvent.click(within(editor).getByRole('button', { name: '从画布移除' }))
     await waitFor(() => { expect(view.container.querySelector('[data-node-id="place1"]')).toBeNull() })
-    await waitFor(() => { expect(operationsOf(server.writes)).toContainEqual(placement('asset.unplace')) })
+    expect(operationsOf(server.writes)).toContainEqual(expect.objectContaining({ operation: 'canvas.node_remove', params: { nodes: ['place1'] } }))
     expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
     await runtime.dispose()
   })

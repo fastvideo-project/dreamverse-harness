@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
  * The asset pool on the canvas, with the real asset pool and media plugins mounted: the asset node type drawn by the
- * canvas graph builder, the asset card and editor drawing the asset through `dv.media`, the 从画布移除 action, the
- * asset pool panel in the canvas's picker, and the removal of each of them with the plugin.
+ * canvas graph builder, the asset card and editor drawing the asset through `dv.media`, the asset pool panel in the
+ * canvas's picker, and the removal of each of them with the plugin.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, waitFor, within } from '@testing-library/react'
@@ -164,26 +164,6 @@ describe('the asset card and editor', () => {
   })
 })
 
-describe('从画布移除', () => {
-  it('shows on asset nodes only, and closes the editor and takes the asset off the canvas list through the host', async () => {
-    document.documentElement.lang = 'zh-CN'
-    const { runtime } = await mountAssetPool(() => null)
-    const nodes = canvasNodes(runtime, importedState(), { u2: IMPORTS.u2 })
-    const poster = nodes.find(node => node.id === 'u2')
-    // The fixture's shot node g2, which its kind's type does not draw here, shows assets too.
-    const owner = nodes.find(node => node.id === 'g2')
-    if (poster === undefined || owner === undefined) throw new Error('no poster or shot node')
-    const assets = new Map(importedState().assets.map(each => [each.id, each]))
-    const [action, ...others] = runtime.ctx.dvCanvas.actions.getSnapshot()
-    if (action === undefined) throw new Error('no action')
-    expect([others.length, action.label(), action.shows(poster, assets), action.shows(owner, assets)]).toEqual([0, '从画布移除', true, false])
-
-    const calls: string[] = []
-    action.run(poster, recordingHost(calls))
-    expect(calls).toEqual(['close', 'setPlaced poster.png false'])
-  })
-})
-
 describe('the canvas picker entry', () => {
   it('shows the asset pool panel at key assets, whose tile click picks the asset instead of opening its preview', async () => {
     vi.stubGlobal('fetch', scriptedFetch().fetch)
@@ -202,7 +182,7 @@ describe('the canvas picker entry', () => {
 })
 
 describe('disposal of the canvas registrations', () => {
-  it('removes the picker, card and editor entries, the node type and the action with the plugin, and their output', async () => {
+  it('removes the picker, card and editor entries and the node type with the plugin, and their output', async () => {
     vi.stubGlobal('fetch', scriptedFetch().fetch)
     const state = importedState()
     let nodes: NodeView[] = []
@@ -222,7 +202,7 @@ describe('disposal of the canvas registrations', () => {
     const view = runtime.renderRoot()
     const ledger = (): number[] => (['dv.canvas.picker', 'dv.canvas.card', 'dv.canvas.editor'] as const).map(name => runtime.slots.entries(name).length)
     const canvas = runtime.ctx.dvCanvas
-    expect([ledger(), canvas.nodeTypes.getSnapshot().length, canvas.actions.getSnapshot().length]).toEqual([[1, 1, 1], 1, 1])
+    expect([ledger(), canvas.nodeTypes.getSnapshot().length, canvas.actions.getSnapshot().length]).toEqual([[1, 1, 1], 1, 0])
     expect(view.getByTestId('card').querySelector('img')).not.toBeNull()
     expect(view.getByTestId('editor').querySelector('img')).not.toBeNull()
     await waitFor(() => { expect(view.container.querySelector('[data-asset-id="shot1.mp4"]')).not.toBeNull() })

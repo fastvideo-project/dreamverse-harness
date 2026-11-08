@@ -2,7 +2,8 @@
  * The editor shell that a canvas node opens: a movable, resizable panel over a dimmed canvas. One position and size,
  * shared by every node, is kept in `localStorage` and fitted into the canvas when restored. The body is the entry of
  * the node's type in `dv.canvas.editor`; a type without an entry shows only the header. A node with several versions
- * shows a version strip above the body: selecting a version shows it in the editor, and the card keeps the newest.
+ * shows a version strip above the body: selecting a version shows it in the editor, and the card keeps the newest. The
+ * header's trash button removes the node from the canvas.
  */
 import { useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
@@ -49,6 +50,8 @@ export interface NodeEditorProps extends PropsRenderFactories {
   hosts: SurfaceHosts
   /** Keep a stale record as it is. */
   onAcceptStale: (record: string) => void
+  /** Remove the node from the canvas, after the user confirms. */
+  onRemove: () => void
   onClose: () => void
   /** The zoom transition's ref for the panel, which grows out of the node and shrinks back into it. */
   zoomRef: (element: HTMLElement | null) => void
@@ -373,6 +376,9 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
           {props.actions.map(action => (
             <button key={action.id} type="button" className="dv-canvas-soft" style={button} disabled={view.rerunning} onClick={() => { action.run(view, props.hosts.action(action.id)) }}>{action.label()}</button>
           ))}
+          <button type="button" className="dv-canvas-btn dv-canvas-danger" aria-label={t('node.remove')} title={t('node.remove')} style={{ ...button, width: 32, padding: 0 }} onClick={props.onRemove}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3" /></svg>
+          </button>
           <button type="button" className="dv-canvas-btn" aria-label={t('editor.close')} title={t('editor.close')} style={{ ...button, width: 32, padding: 0, color: 'var(--dv-text-2)' }} onClick={onClose}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
           </button>

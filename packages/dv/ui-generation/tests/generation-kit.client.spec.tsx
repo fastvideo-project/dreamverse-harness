@@ -263,7 +263,7 @@ describe('defineGenerationUi apply', () => {
       card: keys('dv.canvas.card'), editor: keys('dv.canvas.editor'), chat: keys('tool.call.toolview'),
       history: rows.getSnapshot().map(row => row.match),
     }).toEqual({
-      types: ['asset', 'test_take'], actions: ['@dv/ui-asset-pool:unplace', '@dv/ui-test-take:test_take:retry'],
+      types: ['asset', 'test_take'], actions: ['@dv/ui-test-take:test_take:retry'],
       card: ['test_take'], editor: ['test_take'], chat: ['dv_shot_render', 'dv_clip_extend', 'dv_image_generate'],
       history: ['shot.render', 'clip.extend', 'image.generate'],
     })

@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, waitFor, within } from '@testing-library/react'
 import type { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import { usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
+import type { HistoryRow } from '@dv/ui-history/contract'
+import { createRegistry } from '@dv/ui-kit/registries.ts'
 import { CANVAS_ID, CANVAS_KIND } from '../src/client/definition.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { forgetCanvasStorage, mountCanvas } from './canvas-runtime.client.tsx'
@@ -27,6 +29,15 @@ describe('ui-canvas apply', () => {
     await waitFor(() => { within(view.getByTestId('center')).getByTestId('dv-canvas-view') })
     within(view.getByTestId('tab')).getByTestId('dv-canvas-view')
     expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort())
+    await runtime.dispose()
+  })
+
+  it('registers the History rows of canvas.node_position and canvas.node_remove while dvHistory is loaded, and removes them with its fiber', async () => {
+    const rows = createRegistry<HistoryRow>(row => [row.match], row => row.match)
+    const { runtime, canvas } = await mountCanvas({ kinds: [], beforeCanvas: (mounted) => { mounted.ctx.provide('dvHistory', { rows, describe: () => null }) } })
+    expect(rows.getSnapshot().map(row => row.match)).toEqual(['canvas.node_position', 'canvas.node_remove'])
+    await canvas.dispose()
+    expect(rows.getSnapshot()).toEqual([])
     await runtime.dispose()
   })
 

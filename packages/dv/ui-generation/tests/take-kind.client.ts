@@ -130,7 +130,6 @@ export function recordingHost(rerun: () => Promise<void> = () => Promise.resolve
     preview: vi.fn<EditorHost['preview']>(),
     importFiles: vi.fn<EditorHost['importFiles']>(files => Promise.resolve(files.map(file => file.name))),
     openNode: vi.fn<EditorHost['openNode']>(),
-    setPlaced: vi.fn<EditorHost['setPlaced']>(),
     close: vi.fn<EditorHost['close']>(),
   }
 }
