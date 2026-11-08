@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包在 DreamVerse 视图中显示 `@dv/character` 的角色。`@dv/ui-reference-kit/reference-kit.tsx` 的一个 `defineReferenceUi` 声明给这个名词它的画布节点类型 `character`（名称 角色 / Character，节点 ID `character:<id>`）、版本种类、在用参考、`dv.canvas.card` 和 `dv.canvas.editor` 条目（套件默认的卡片和 `ReferenceEditor`）、`@` 菜单种类（分区 角色 / Characters，顺序 1，地址 `dv:character/<id>`）和历史行（`character.`）。
+使用本包在 DreamVerse 视图中显示 `@dv/character` 的角色。`@dv/ui-reference-kit/reference-kit.tsx` 的一个 `defineReferenceUi` 声明给这个名词它的画布节点类型 `character`（名称 角色 / Character，每个条目一个由 `character.create` 产生的节点）、版本种类、在用参考、`dv.canvas.card` 和 `dv.canvas.editor` 条目（套件默认的卡片和 `ReferenceEditor`）、`@` 菜单种类（分区 角色 / Characters，顺序 1，地址 `dv:character/<id>`）和历史行（`character.`）。
 
 ## 目录
 
@@ -66,4 +66,4 @@ Host 半边不注册任何东西。浏览器半边在各服务存在时注册每
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **第 0 列** —— 节点类型和其他名词一起位于第 0 列，颜色为 `var(--dv-node-1)`，因为 `ReferenceUiSpec` 没有列字段。
+- **第 0 列** —— 节点类型和其他名词一起位于第 0 列，颜色为 `var(--dv-node-1)`，因为 `@dv/reference-kit` 的 `defineReference` 把每个名词节点放在那里，且没有列字段。

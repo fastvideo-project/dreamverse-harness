@@ -1,5 +1,5 @@
 ---
-description: "Audio generation in the DreamVerse browser workspace: one defineGenerationUi declaration of @dv/ui-generation that claims the audio.generate records as audio takes, with their label, status words, node palette slot and frame aspect ratio."
+description: "Audio generation in the DreamVerse browser workspace: one defineGenerationUi declaration of @dv/ui-generation that draws the audio nodes of audio.generate records, with their label, status words, node palette slot and frame aspect ratio."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to show audio generation in the DreamVerse workspace. It declares the `audio.generate` records as audio takes through `defineGenerationUi` of `@dv/ui-generation`, with their label, status words, node palette slot, and frame aspect ratio. The kit draws the takes on the canvas, in the take editor, in the chat, and in History. The takes appear only in a composition whose host plugins declare the `audio.generate` operation, such as `@dv/audio-generate`.
+Use this package to show audio generation in the DreamVerse workspace. It declares how the `audio` nodes of `audio.generate` records look through `defineGenerationUi` of `@dv/ui-generation`, with their label, status words, node palette slot, and frame aspect ratio. The kit draws the nodes on the canvas, each with every version of one generation, and the records in the node editor, in the chat, and in History. The nodes appear only in a composition whose host plugins declare the `audio.generate` operation, such as `@dv/audio-generate`.
 
 ## Table of Contents
 
@@ -44,7 +44,7 @@ The Host half (`src/index.ts`) is an `apply` that does nothing. The browser half
 | `fallbackRatio` | `26 / 9`, a frame lower than 16:9 (208 × 72 at the default width), which the waveform and the play button of the audio view fill |
 | `status` | running 生成中… / Generating…, failed 生成失败 / Generation failed, done 已生成 / Generated |
 
-The declaration sets no `preview` and no field beyond the table, so the takes use the kit's defaults for the others. The canvas card, the take editor, the 重试 / Retry action, the chat card, and the History row of the takes are the kit's; [`@dv/ui-generation`](../ui-generation/README.md) documents them and every `GenerationUiSpec` field.
+The declaration sets no `preview` and no field beyond the table, so the nodes use the kit's defaults for the others. The canvas card, the node editor, the 重试 / Retry action, the chat card, and the History row are the kit's; [`@dv/ui-generation`](../ui-generation/README.md) documents them and every `GenerationUiSpec` field.
 
 -----
 
@@ -56,7 +56,7 @@ The declaration sets no `preview` and no field beyond the table, so the takes us
 
 The package holds no logic of its own: every registration comes from `defineGenerationUi`, and no UI core package names the `audio` type.
 
-`tests/audio-generate.client.spec.tsx` checks only what the plugin registers. It checks that the package exports only `inject` and `apply`, that the node type `audio` claims `audio.generate` with the label, the palette slot, the media sizing, and the status words of the declaration, and that the entries keyed by the type, the tool `dv_audio_generate`, and the operation register and leave with the plugin.
+`tests/audio-generate.client.spec.tsx` checks only what the plugin registers. It checks that the package exports only `inject` and `apply`, that the node type `audio` draws the `audio` nodes with the label, the palette slot, the media sizing, and the status words of the declaration, and that the entries keyed by the type, the tool `dv_audio_generate`, and the operation register and leave with the plugin.
 
 | File | Content |
 | --- | --- |
@@ -70,8 +70,8 @@ The package holds no logic of its own: every registration comes from `defineGene
 <a id="further-exploration"></a>
 ## Further Exploration
 
-- [`@dv/ui-generation`](../ui-generation/README.md) owns the kit that this package declares: the take card, the take editor, 重试 / Retry, the chat card, and the History rows.
-- [`@dv/ui-canvas`](../ui-canvas/README.md) draws the takes.
+- [`@dv/ui-generation`](../ui-generation/README.md) owns the kit that this package declares: the node card, the node editor, 重试 / Retry, the chat card, and the History rows.
+- [`@dv/ui-canvas`](../ui-canvas/README.md) draws the nodes of the node list of [`@dv/canvas`](../canvas/README.md).
 - [`@dv/audio-generate`](../audio-generate/README.md) owns the `audio.generate` operation.
 
 -----
@@ -89,7 +89,7 @@ None; the package sends nothing to a model.
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **The kit's deferred work applies.** The take card, take editor and chat card of this plugin come from `@dv/ui-generation`; see [its Known Limitations](../ui-generation/README.md#known-limitations-and-deferred-work).
+- **The kit's deferred work applies.** The node card, node editor and chat card of this plugin come from `@dv/ui-generation`; see [its Known Limitations](../ui-generation/README.md#known-limitations-and-deferred-work).
 
 <a id="dev-note"></a>
 ### Dev Note

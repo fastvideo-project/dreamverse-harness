@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包，用一份声明为参考名词（例如角色、场景或风格）提供浏览器端的呈现。`defineReferenceUi` 返回的插件为每个条目以最新版本画一个画布节点，在素材选择窗口和 `@` 菜单中提供每个条目，在历史中为该名词的记录命名，并打开一个可以添加或移除条目参考素材的编辑器。`@dv/ui-character`、`@dv/ui-location` 和 `@dv/ui-style` 各是一份声明。
+使用本包，用一份声明为参考名词（例如角色、场景或风格）提供浏览器端的呈现。`defineReferenceUi` 返回的插件绘制每个条目的画布节点，该节点持有条目的每个版本，在素材选择窗口和 `@` 菜单中提供每个条目，在历史中为该名词的记录命名，并打开一个可以添加或移除条目参考素材的编辑器。`@dv/ui-character`、`@dv/ui-location` 和 `@dv/ui-style` 各是一份声明。
 
 ## 目录
 
@@ -40,22 +40,22 @@ export const { inject, apply } = defineReferenceUi({
 
 | 符号 | 含义 |
 | --- | --- |
-| `ReferenceUiSpec<V>` | 一个名词：`id`（包名，每个描述符的所有者）、`key`（组件键，同时也是参考种类、节点类型和节点 ID 前缀）、`color`（名词在主题节点色板中的位置，例如 `var(--dv-node-1)`）、`slice(state)`（名词的切片，从条目 ID 到其各版本的映射，名词的 Host 半边未加载时为 `undefined`）、`label`（卡片标签和选择窗口分区的中英文文本对），以及 `mention`（`@` 菜单分区的 `{ section, order }`） |
+| `ReferenceUiSpec<V>` | 一个名词：`id`（包名，每个描述符的所有者）、`key`（组件键，同时也是参考种类和节点类型键）、`color`（名词在主题节点色板中的位置，例如 `var(--dv-node-1)`）、`slice(state)`（名词的切片，从条目 ID 到其各版本的映射，名词的 Host 半边未加载时为 `undefined`）、`label`（卡片标签和选择窗口分区的中英文文本对），以及 `mention`（`@` 菜单分区的 `{ section, order }`） |
 | `WireReferenceVersion` | wire 发送的条目的一个版本：`id`、`version`、`name`、`description`、`references` 和 `created_by`（写下它的记录） |
 | `referenceDescriptors(spec)` | 为一个名词返回 `{ nodeType, versionKind, referencesInUse, mentionKind, historyRow }` |
 | `defineReferenceUi(spec)` | 返回注册这些描述符以及卡片和编辑器条目的 `UiPlugin`（`{ inject: [], apply }`） |
 
-描述符只读取名词自己的切片和 `proj` 记录：
+描述符只读取名词自己的切片、`proj` 记录和 [`@dv/canvas`](../canvas/README.zh.md) 的节点列表；在节点列表中，`@dv/reference-kit` 的 `<key>.create` 在第 0 列产生条目的节点，每个 `<key>.update` 是它的一个版本：
 
-- `nodeType` 是带切片条目的 `NodeType`：每个有版本的条目一个节点 `<key>:<id>`，位于第 0 列，颜色为声明的 `color`，主体高 30 px。标题是最新版本的名称，没有时为条目 ID。它的 `record` 是写下最新版本的 `proj` 记录，`records` 是较早版本的记录，`assets` 是最新的参考，`ref` 是 `{ kind: key, id }`。
-- `versionKind` 是一个 `VersionKind`：`node(id)` 为 `<key>:<id>`，`latest(state)` 列出每个条目的最新版本，`name` 和 `assets` 读取某个版本，版本不存在时分别为 null 和空。
-- `referencesInUse` 是一个 `RecordsInUse`：`uses(state)` 列出最新参考的产出记录（`proj.created_by`），所以画布会保留这些版本的绘制。
+- `nodeType` 是一个绘制 kind 为 `key` 的节点的 `NodeType`，颜色为声明的 `color`，主体高 30 px。对一个版本，它读取记录的 `<key>` 参数指名的条目：标题是最新版本的名称，没有时为记录的 `name` 参数（用于失败的新建），再没有时为条目 ID；`assets` 是最新的参考，`ref` 是 `{ kind: key, id }`。
+- `versionKind` 是一个 `VersionKind`：`node(state, id)` 为持有该条目最新版本记录的节点，没有时为 null，`latest(state)` 列出每个条目的最新版本，`name` 和 `assets` 读取某个版本，版本不存在时分别为 null 和空。
+- `referencesInUse` 是一个 `RecordsInUse`：`uses(state)` 列出最新参考的产出记录（`proj.created_by`）。
 - `mentionKind` 是 `@dv/ui-composer` 的 `MentionKind`：条目为 `dv:<key>/<id>`，标签为名称（没有时为 ID），描述为说明的前 40 个字符，第一个参考作为缩略图。
 - `historyRow` 是一个 `HistoryRow`：匹配 `<key>.`，主题取记录的 `name` 参数，没有时取它的 `<key>` 参数，显示为 「名称」（中文）或 “name”（英文），都没有时无主题。
 
 在 `dvCanvas` 和插槽注册表存在时，插件先注册节点类型，再注册使用中的参考、版本种类，以及画布声明 `dv.canvas.card` 和 `dv.canvas.editor` 插槽后以 `key` 为键的条目；在此之内，它在 `dvMentions` 存在时注册 mention 种类。所以节点类型被拒绝时，该名词不留下这些注册中的任何一个。插件在 `dvHistory` 存在时注册历史行，`@dv/ui-canvas` 未加载时也会注册，因为历史行以该名词的操作为键。每个注册在任何加载顺序下都有效，并随它的服务或插件一起离开。
 
-卡片主体画出 `@dv/ui-kit/frame.ts` 的 `CARD_SURFACE`，并在其上绘制三部分。第一个参考通过 `dv.media` 以用途 `card` 填满缩略图行和底栏上方的框，左上角覆盖一个带名词颜色和标签的标签块。条目有两个或更多参考时，下面是一行缩略图（用途 `thumb`），每个高 44 单位、宽至多 44 单位，画框放不下这一行时变窄，第一个带描边；参考超过四个时显示三个缩略图和其余参考的 `+N`。底栏给出参考数量和当前版本，例如 2 张参考图 · 第 2 版 / 2 references · v2。文字按 `textScale` 缩放。节点是窗口节点：它的 `sizing` 默认画框宽 208 单位，最窄画框宽 104 单位，高度均为该宽度的 4:3（第一个参考）加 32 单位的底栏，有两个或更多参考时再加 52 单位的缩略图行（默认为 208 × 188 和 208 × 240）。主体填满画布给定尺寸的画框，所以更大的画框在同样的缩略图行和底栏上方显示更大的第一个参考。编辑器主体通过 `dv.media` 以用途 `card` 绘制最新的参考，每个参考在高 220 px、比例与素材相同的框里（尺寸未知的素材为正方形）。点击属于项目素材的参考会打开 `host.preview`；× 移除该参考，只剩最后一个时禁用。说明不为空时编辑器显示说明。＋ 添加素材 / + Add asset 打开 `host.pickAssets(references, { versions: false }, …)`，并追加条目尚未持有的选中项。每次修改都调用 `host.run`，操作为 `<key>.update`，参数为 `{ [key]: id }`，参考作为角色 `reference` 的输入，意图为 在画布上给 <name> 添加参考 / Add references to <name> from the canvas，或 在画布上移除 <name> 的一个参考 / Remove a reference of <name> from the canvas。对不是该名词某个条目 `<key>:<id>` 的节点，编辑器不绘制任何内容。
+卡片主体画出 `@dv/ui-kit/frame.ts` 的 `CARD_SURFACE`，并在其上绘制三部分。第一个参考通过 `dv.media` 以用途 `card` 填满缩略图行和底栏上方的框，左上角覆盖一个带名词颜色和标签的标签块。条目有两个或更多参考时，下面是一行缩略图（用途 `thumb`），每个高 44 单位、宽至多 44 单位，画框放不下这一行时变窄，第一个带描边；参考超过四个时显示三个缩略图和其余参考的 `+N`。底栏给出参考数量和当前版本，例如 2 张参考图 · 第 2 版 / 2 references · v2。文字按 `textScale` 缩放。节点是窗口节点：它的 `sizing` 默认画框宽 208 单位，最窄画框宽 104 单位，高度均为该宽度的 4:3（第一个参考）加 32 单位的底栏，有两个或更多参考时再加 52 单位的缩略图行（默认为 208 × 188 和 208 × 240）。主体填满画布给定尺寸的画框，所以更大的画框在同样的缩略图行和底栏上方显示更大的第一个参考。编辑器主体通过 `dv.media` 以用途 `card` 绘制显示中版本的参考，即所显示记录写下的条目版本，没有时为最新版本，每个参考在高 220 px、比例与素材相同的框里（尺寸未知的素材为正方形）。点击属于项目素材的参考会打开 `host.preview`；× 移除该参考，只剩最后一个时禁用。说明不为空时编辑器显示说明。＋ 添加素材 / + Add asset 打开 `host.pickAssets(references, { versions: false }, …)`，并追加条目尚未持有的选中项。每次修改都调用 `host.run`，操作为 `<key>.update`，参数为 `{ [key]: id }`，参考作为角色 `reference` 的输入，意图为 在画布上给 <name> 添加参考 / Add references to <name> from the canvas，或 在画布上移除 <name> 的一个参考 / Remove a reference of <name> from the canvas。条目还没有版本时，编辑器不绘制任何内容。
 
 -----
 
@@ -103,7 +103,7 @@ export const { inject, apply } = defineReferenceUi({
 <a id="known-limitations-and-deferred-work"></a>
 
 - **卡片和编辑器通过 `@dv/ui-kit` 的 hook 读取文案。** `ReferenceCard` 和 `ReferenceEditor` 用 `useText` 选择文本，节点类型、版本种类和 mention 种类的标签用 `pickText`，它们都跟随 `<html lang>`，而不是使用注入的 `hooks` 源和插槽的 `t`。
-- **所有名词使用同一列。** 每个名词节点都位于第 0 列；`ReferenceUiSpec` 没有字段可以改变它。
+- **所有名词使用同一列。** `@dv/reference-kit` 的 `defineReference` 把每个名词节点放在第 0 列；`ReferenceUiSpec` 和 `ReferenceSpec` 都没有字段可以改变它。
 - **最后一个参考不能移除。** 不带参考的 `<key>.update` 会保留当前的参考，所以编辑器在最后一个参考上禁用 ×。
 
 <a id="dev-note"></a>

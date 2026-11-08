@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在 `@dv/project` 和 `@dv/asset-pool` 之后挂载插件，并且 profile 还要挂载 `dsh-web-app`（提供 `connection` 和 `webServer` 服务）。没有 `connection` 时 Fetch 路由不会注册；没有 `webServer` 时事件流不会注册。
+在 `@dv/project`、`@dv/asset-pool` 和 `@dv/canvas` 之后挂载插件（它注入 `@dv/canvas` 的 `dvCanvasNodes`，所以每个状态都带 `canvas` 切片），并且 profile 还要挂载 `dsh-web-app`（提供 `connection` 和 `webServer` 服务）。没有 `connection` 时 Fetch 路由不会注册；没有 `webServer` 时事件流不会注册。
 
 这些 Fetch 路由列出、新建、重命名、删除和汇总项目，把项目的当前状态读成 JSON，列出操作声明，读取任务标签，以人的身份运行一个操作，把文件导入素材库，撤销和重做，接受一条过期记录，以及列出历史。事件流用同一个 Connection cookie 放行浏览器。
 

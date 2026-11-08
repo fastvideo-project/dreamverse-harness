@@ -4,6 +4,8 @@ Status: implemented
 
 [English](2026-10-26-dv-agent-canvas-tools.md) | 中文
 
+下文的移动部分，即 `dv_canvas_move` 及其 `moved` 帧和 `CanvasLayoutStore` 中的位置，已由[画布节点列表](../architecture/2026-11-08-dv-canvas-node-list.zh.md)替代：节点位置是 `canvas.node_position` 的记录，agent 用 `@dv/canvas` 的 `dv_canvas_node_position` 写入，撤销能还原，布局存储只保存视口。读取部分仍然适用：`dv_canvas_read` 通过 `CanvasChannel` 读取打开画布的卡片，以节点 ID 为键，带 `versions` 和 `shown`。
+
 ## 问题
 
 用户请 DreamVerse agent 整理画布，例如“图片放左边，角色放中间，计划放右边”，会被拒绝：`dv_asset_place` 和 `dv_asset_unplace` 只能把素材放上画布或移出画布，没有工具能设置节点的位置（issue #87）。代码中的三个事实决定了移动节点的工具的形态。节点位置存放在 `CanvasLayoutStore`（`packages/dv/ui-canvas/src/layout.ts`）中，每个项目一个 JSON 文件，位于 `<项目文件夹>/.dreamverse/canvas-layout.json`，由 `@dv/ui-canvas` 宿主一半的路由 `POST /api/dv/canvas/layout` 写入。节点列表、默认位置和卡片高度来自 `packages/dv/ui-canvas/src/client/graph.ts` 的 `buildCanvasGraph`，它只在浏览器中运行，所以宿主不知道这些值。`CanvasView` 只在打开项目时读取一次布局，所以已打开的画布只有在收到通知时才会画出之后的写入。该 issue 还要求在可撤销的项目操作与视图状态之间为移动做出选择。

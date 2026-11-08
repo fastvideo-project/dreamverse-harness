@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包在 DreamVerse 视图中显示 `@dv/location` 的场景。`@dv/ui-reference-kit/reference-kit.tsx` 的一个 `defineReferenceUi` 声明给这个名词它的画布节点类型 `location`（名称 场景 / Location，节点 ID `location:<id>`）、版本种类、在用参考、`dv.canvas.card` 和 `dv.canvas.editor` 条目（套件默认的卡片和 `ReferenceEditor`）、`@` 菜单种类（分区 场景 / Locations，顺序 2，地址 `dv:location/<id>`）和历史行（`location.`）。
+使用本包在 DreamVerse 视图中显示 `@dv/location` 的场景。`@dv/ui-reference-kit/reference-kit.tsx` 的一个 `defineReferenceUi` 声明给这个名词它的画布节点类型 `location`（名称 场景 / Location，每个条目一个由 `location.create` 产生的节点）、版本种类、在用参考、`dv.canvas.card` 和 `dv.canvas.editor` 条目（套件默认的卡片和 `ReferenceEditor`）、`@` 菜单种类（分区 场景 / Locations，顺序 2，地址 `dv:location/<id>`）和历史行（`location.`）。
 
 ## 目录
 
@@ -66,4 +66,4 @@ Host 半边不注册任何东西。浏览器半边在各服务存在时注册每
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **第 0 列** —— 节点类型和其他名词一起位于第 0 列，颜色为 `var(--dv-node-5)`，因为 `ReferenceUiSpec` 没有列字段。
+- **第 0 列** —— 节点类型和其他名词一起位于第 0 列，颜色为 `var(--dv-node-5)`，因为 `@dv/reference-kit` 的 `defineReference` 把每个名词节点放在那里，且没有列字段。

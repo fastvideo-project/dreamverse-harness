@@ -23,7 +23,7 @@ workflows      @dv/workflow-story                  │
 components     @dv/asset-pool @dv/character       chat references   @dv/chat-references   dv: mentions, chat images
                @dv/location @dv/style
                @dv/shot-render @dv/image-generate
-               @dv/timeline @dv/inspector
+               @dv/timeline @dv/inspector @dv/canvas
                @dv/audio-generate
   │ defineGeneration, defineReference
   ▼
@@ -47,7 +47,7 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 | ------ | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 注册表    | [`@dv/project`](../../packages/dv/project/README.zh.md)                                                                      | `dvProject` 服务：组件向它注册操作和归约函数，就像工具向 `ctx.tools` 注册一样。它是项目文件唯一的写入者，把每个操作变成一个 DSH 工具，注册只含规则的 `dv:project` 系统提示词段，并把项目状态消息和项目更新消息追加到每个聊天会话。                 |
 | 工作流    | `@dv/workflow-story`                                                                                                         | 以 skill 写成的制作流程，每个是调用各组件工具的顺序。                                                                                                                          |
-| 组件     | `@dv/asset-pool`、`@dv/character`、`@dv/location`、`@dv/style`、`@dv/shot-render`、`@dv/image-generate`、`@dv/audio-generate`、`@dv/timeline`、`@dv/inspector`                 | 各自拥有一项能力的插件：它的数据（一个状态切片及其归约函数）、它的操作，以及智能体读到的关于它们的文字。外部程序经 [`@dv/ffmpeg`](../../packages/dv/ffmpeg/README.zh.md) 运行。                                     |
+| 组件     | `@dv/asset-pool`、`@dv/character`、`@dv/location`、`@dv/style`、`@dv/shot-render`、`@dv/image-generate`、`@dv/audio-generate`、`@dv/timeline`、`@dv/inspector`、`@dv/canvas`   | 各自拥有一项能力的插件：它的数据（一个状态切片及其归约函数）、它的操作，以及智能体读到的关于它们的文字。外部程序经 [`@dv/ffmpeg`](../../packages/dv/ffmpeg/README.zh.md) 运行。                                     |
 | 基础库    | `@dv/generation`、`@dv/reference-kit`                                                                                         | `defineGeneration` 和 `defineReference` 构建生成原语或引用名词的服务。                                                                                                  |
 | 模型     | [`@dv/models`](../../packages/dv/models/README.zh.md)、[`@dv/fastvideo`](../../packages/dv/fastvideo/README.zh.md)、[`@dv/uniserve`](../../packages/dv/uniserve/README.zh.md)、[`@dv/sglang-diffusion`](../../packages/dv/sglang-diffusion/README.zh.md)、[`@dv/sglang-omni`](../../packages/dv/sglang-omni/README.zh.md) | 模型目录：`@dv/models` 持有 `dvModels` Service Definition 以及 `PrimitiveTypes` 和 `TaskMap`，`@dv/fastvideo` 这样的提供方插件是 Service Provider，注册自己服务的模型，镜头渲染、图片和音频是 Consumer。 |
 | API    | [`@dv/api`](../../packages/dv/api/README.zh.md)                                                                              | DSH `connection` 服务上的 Fetch 路由和 `webServer` 上的事件流；视图读取或修改项目的唯一途径。                                                                                       |
@@ -55,7 +55,7 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 | 视图     | UI 核心（`@dv/ui-kit`、`@dv/ui-canvas`、`@dv/ui-history`、`@dv/ui-shell`、`@dv/ui-composer`）和 UI 插件 `@dv/ui-<name>`                 | DSH Web 客户端的右侧栏标签类型和中央视图；`@dv/ui-kit` 是它们共用的库。                                                                                                          |
 | bundle | [`@dv/bundle`](../../packages/bundle/dv/README.zh.md)                                                                        | profile 层：把每一行组成 `video-harness` 和 `video-harness-headless` 两个 profile，并附带 `video-directing` skill。                                                     |
 
-组件用 `dvProject.registerOperation` 注册操作，用 `dvProject.registerReducer` 注册归约函数。每个操作同时是智能体工具 `dv_<操作名，点换成下划线>`，一次调用成为一条记录。素材库的 `dv_asset_import`、`dv_asset_grab_still` 和 `dv_asset_cut_segment` 添加素材，`dv_asset_place` 和 `dv_asset_unplace` 把素材放到画布上和从画布移除；角色、场景和风格组件的 `dv_character_*`、`dv_location_*` 和 `dv_style_*` 工具创建和更新各自的版本；镜头渲染的 `dv_shot_render` 按调用指定的[模型](#model-catalog)渲染镜头的一个版本，`duration_sec` 是该模型范围内的整秒数（默认为模型的最小值）；音频的 `dv_audio_generate` 用调用指定的模型说出一个片段；时间线的 `dv_timeline_*` 工具创建、更新、重命名和删除时间线，并插入、移动、移除、拆分、裁剪和替换片段，不创建文件，它的 `dv_timeline_export` 把一条时间线写成一个视频；检查器的 `dv_inspect_image` 和 `dv_inspect_asset` 读取素材，不写记录。[`@dv/ui-canvas`](../../packages/dv/ui-canvas/README.zh.md) 的两个工具不是操作，也不写记录。`dv_canvas_read` 返回每个画布节点的 ID、类型、标题、记录和卡片框，`dv_canvas_move` 设置它所列节点的位置。项目组件自己的 `dv_proj_*` 工具创建、打开和重命名项目、读取状态和历史、撤销、接受过期记录，以及等待排定的记录。操作声明资源类别（`none`、`cpu`、`gpu`）；项目组件的调度器按类别并发上限运行排定的记录。
+组件用 `dvProject.registerOperation` 注册操作，用 `dvProject.registerReducer` 注册归约函数。每个操作同时是智能体工具 `dv_<操作名，点换成下划线>`，一次调用成为一条记录。素材库的 `dv_asset_import`、`dv_asset_grab_still` 和 `dv_asset_cut_segment` 添加素材，`dv_asset_place` 和 `dv_asset_unplace` 把素材放到画布上和从画布移除；画布组件的 `dv_canvas_node_position` 移动节点列表中的一个画布节点或调整其大小；角色、场景和风格组件的 `dv_character_*`、`dv_location_*` 和 `dv_style_*` 工具创建和更新各自的版本；镜头渲染的 `dv_shot_render` 按调用指定的[模型](#model-catalog)渲染镜头的一个版本，`duration_sec` 是该模型范围内的整秒数（默认为模型的最小值）；音频的 `dv_audio_generate` 用调用指定的模型说出一个片段；时间线的 `dv_timeline_*` 工具创建、更新、重命名和删除时间线，并插入、移动、移除、拆分、裁剪和替换片段，不创建文件，它的 `dv_timeline_export` 把一条时间线写成一个视频；检查器的 `dv_inspect_image` 和 `dv_inspect_asset` 读取素材，不写记录。[`@dv/ui-canvas`](../../packages/dv/ui-canvas/README.zh.md) 的工具 `dv_canvas_read` 不是操作，也不写记录：它返回打开的画布画出的每个节点，带节点 ID、类型、标题、版本数（`versions`）、所显示的记录（`shown`）和卡片框。项目组件自己的 `dv_proj_*` 工具创建、打开和重命名项目、读取状态和历史、撤销、接受过期记录，以及等待排定的记录。操作声明资源类别（`none`、`cpu`、`gpu`）；项目组件的调度器按类别并发上限运行排定的记录。
 
 片段有一个 `ClipId`（`cl1`、`cl2`、…），由插入它的时间线操作分配并存入记录的 `report.clips`；该 ID 在项目内唯一、从不复用，每个片段操作都用 `clip` 参数按它指定片段。
 
@@ -76,9 +76,9 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 这些规则说明哪些修改是步骤。这些规则也说明撤销、重做和"回到某一步"做什么。这些规则适用于用户、智能体和系统。这个模型和图片编辑软件的历史面板相同。
 
 1. **修改项目内容是一步。**
-   - 项目内容是素材、画布上的素材、角色、场景、风格、渲染、时间线和导出。
+   - 项目内容是素材、画布节点及其版本、位置和大小、角色、场景、风格、渲染、时间线和导出。
    - 用户的步骤和智能体的步骤在同一个历史列表中，按时间顺序排列。
-   - 修改视图不是一步。视图是平移、缩放、节点位置和大小、选中项、所显示的视图和打开的面板。
+   - 修改视图不是一步。视图是平移、缩放、选中项、所显示的视图和打开的面板。
    - 修改项目名称不是一步。删除项目不是一步。
 2. **撤销、重做和"回到某一步"移动当前位置。**
    - 当前位置是历史列表中的一步。项目显示这一步的状态。
@@ -100,11 +100,11 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 
 ## 操作如何运行
 
-视图和智能体到达同样的操作。画布、时间线、素材库面板或历史面板上的手势通过 `@dv/api` 的路由运行一个操作，带 `actor: 'user'`，`surface` 设为该视图。智能体调用该操作的 `dv_*` 工具，工具以 `actor: 'agent'`、`surface: 'chat'`、对话、轮次和工具调用 ID 运行它。智能体的调用运行之前，操作的 `prepareToolCall` 可以拒绝或修改它。每次调用都经过 `dvProject.run` 的运行器。运行器先校验参数；然后在项目锁内把每个输入解析为素材，并调用操作的 `precondition`，它在写入任何记录之前拒绝调用，对每个调用方都生效（`shot.render` 拒绝模型的目录条目所拒绝的渲染请求，例如生成任务 `ref2v` 下没有参考素材的 `fasth3` 渲染）。运行器随后追加 `pending` 记录，并把操作自己的 `supersedes` 指出的记录加入该记录的 `supersedes`。最后运行器在锁外运行所属组件的实现，并追加带输出、成本和报告的最终更新行。输入指向未完成记录的调用在项目组件的调度器中等待，直到其输入完成。画布节点位置是这条路径之外的视图状态。拖拽和 `dv_canvas_move` 调用修改 `@dv/ui-canvas` 保存在项目文件夹中的画布布局，不写记录。
+视图和智能体到达同样的操作。画布、时间线、素材库面板或历史面板上的手势通过 `@dv/api` 的路由运行一个操作，带 `actor: 'user'`，`surface` 设为该视图。智能体调用该操作的 `dv_*` 工具，工具以 `actor: 'agent'`、`surface: 'chat'`、对话、轮次和工具调用 ID 运行它。智能体的调用运行之前，操作的 `prepareToolCall` 可以拒绝或修改它。每次调用都经过 `dvProject.run` 的运行器。运行器先校验参数；然后在项目锁内把每个输入解析为素材，并调用操作的 `precondition`，它在写入任何记录之前拒绝调用，对每个调用方都生效（`shot.render` 拒绝模型的目录条目所拒绝的渲染请求，例如生成任务 `ref2v` 下没有参考素材的 `fasth3` 渲染）。运行器随后追加 `pending` 记录，并把操作自己的 `supersedes` 指出的记录加入该记录的 `supersedes`。最后运行器在锁外运行所属组件的实现，并追加带输出、成本和报告的最终更新行。输入指向未完成记录的调用在项目组件的调度器中等待，直到其输入完成。画布节点位置是这条路径之外的视图状态。拖拽、调整大小和 `dv_canvas_node_position` 调用各写一条 `canvas.node_position` 记录；平移或缩放修改 `@dv/ui-canvas` 保存在项目文件夹中的视口，不写记录。
 
 ## 项目状态
 
-归约函数读取记录并计算状态；它不写记录。运行器和记录存储是仅有的写入者。当前状态是把以当前位置结尾的链交给归约函数折叠的结果：项目组件从这条记录沿 `parents[0]` 往回走，再把这些记录按从旧到新的顺序交给每个已注册的归约函数。每个组件的归约函数把自己的记录变成 `ProjectState.components` 中自己的切片（角色 `character`、场景 `location`、风格 `style`、时间线 `timeline`），项目组件自己的归约函数维护 `proj` 切片：这条链上的记录、过期和被替代的记录，以及创建每个素材的记录。归约函数的 `agentSummary` 把该组件的字段加入 `dv_proj_*` 工具和 `dv:project` 提示词段交给智能体的项目摘要。
+归约函数读取记录并计算状态；它不写记录。运行器和记录存储是仅有的写入者。当前状态是把以当前位置结尾的链交给归约函数折叠的结果：项目组件从这条记录沿 `parents[0]` 往回走，再把这些记录按从旧到新的顺序交给每个已注册的归约函数。每个组件的归约函数把自己的记录变成 `ProjectState.components` 中自己的切片（角色 `character`、场景 `location`、风格 `style`、时间线 `timeline`、画布 `canvas`，即 [`@dv/canvas`](../../packages/dv/canvas/README.zh.md) 从其生产者所注册的记录构建的节点列表），项目组件自己的归约函数维护 `proj` 切片：这条链上的记录、过期和被替代的记录，以及创建每个素材的记录。归约函数的 `agentSummary` 把该组件的字段加入 `dv_proj_*` 工具和 `dv:project` 提示词段交给智能体的项目摘要。
 
 视图显示的要么是记录，要么是状态。历史面板列出记录：历史列表中的步骤，最新的在前；被丢弃的记录不显示。画布、时间线编辑器和素材库面板显示状态：当前状态，因此撤销、重做或移到某一步会改变它们画出的内容。素材库面板列出当前状态中的每个素材，以及项目中每个导入的素材，包括被丢弃的步骤导入的素材（[历史规则](#history-rules)第 4 条）。没有视图持有项目状态：每个视图获取当前状态，并在实时事件流的每个事件后重新获取。
 
@@ -133,9 +133,9 @@ skill 承载工作流程和模型专属的规则，各由其主人注册：
 
 ## API 和视图
 
-[`@dv/api`](../../packages/dv/api/README.zh.md) 是项目组件面向浏览器的 HTTP 面：`/api/dv/state` 把项目的当前状态返回为一份 JSON 文档，`/api/dv/operations` 列出已注册的操作，`/api/dv/operation` 以用户身份运行一个操作，其记录带 `surface: 'canvas'`、`'timeline'` 或 `'asset_pool'`，`/api/dv/history` 返回历史的一页，`/api/dv/undo`、`/api/dv/redo` 和 `/api/dv/stale/accept` 暴露撤销、重做和过期操作，其他路由管理项目、素材导入和 Workspace 链接，`/dv/events` 推送每一次记录追加、记录更新和当前位置的移动。[`@dv/ui-canvas`](../../packages/dv/ui-canvas/README.zh.md) 的 Host 半边提供 `/api/dv/canvas/layout`，它把画布节点位置和视口作为视图状态存放在项目文件夹的 `.dreamverse/canvas-layout.json`，不进入历史。
+[`@dv/api`](../../packages/dv/api/README.zh.md) 是项目组件面向浏览器的 HTTP 面：`/api/dv/state` 把项目的当前状态返回为一份 JSON 文档，`/api/dv/operations` 列出已注册的操作，`/api/dv/operation` 以用户身份运行一个操作，其记录带 `surface: 'canvas'`、`'timeline'` 或 `'asset_pool'`，`/api/dv/history` 返回历史的一页，`/api/dv/undo`、`/api/dv/redo` 和 `/api/dv/stale/accept` 暴露撤销、重做和过期操作，其他路由管理项目、素材导入和 Workspace 链接，`/dv/events` 推送每一次记录追加、记录更新和当前位置的移动。[`@dv/ui-canvas`](../../packages/dv/ui-canvas/README.zh.md) 的 Host 半边提供 `/api/dv/canvas/layout`，它把画布视口作为视图状态存放在项目文件夹的 `.dreamverse/canvas-layout.json`，不进入历史。
 
-界面各包是 web 应用的右侧栏标签类型和中央视图，因此在同一个 profile 里与对话页并存。[`@dv/ui-shell`](../../packages/dv/ui-shell/README.zh.md) 把项目工作区放在中央，把 对话 / Chat 和 轨迹 / Trajectory 标签放在右侧，把 画布 / Canvas 和 时间线 / Timeline 切换按钮放在顶栏，并把 Ctrl+Z 绑定到撤销，把 Shift+Ctrl+Z 绑定到重做。[`@dv/ui-canvas`](../../packages/dv/ui-canvas/README.zh.md) 把当前状态画成按素材流向相连的节点，每个节点都来自 UI 插件通过 `@dv/ui-canvas/contract` 注册的节点类型：画布上的素材（`@dv/ui-asset-pool`），带模型和生成任务的版本（`@dv/ui-shot-render`，用 `@dv/ui-generation` 的 `defineGenerationUi` 声明），以及处于当前版本的角色、场景和风格（`@dv/ui-character`、`@dv/ui-location`、`@dv/ui-style`，用 `@dv/ui-reference-kit` 的 `defineReferenceUi` 声明）。`@dv/ui-canvas` 标记过期记录，它的编辑器以用户记录渲染新版本或替换参考图。UI 插件还添加节点动作，例如 `@dv/ui-composer` 的 问 agent / Ask the agent（预填对话输入框）和 `@dv/ui-asset-pool` 的 从画布移除 / Remove from canvas。[`@dv/ui-timeline`](../../packages/dv/ui-timeline/README.zh.md) 把每条时间线画成一条轨道，把插入、移动、移除、拆分和裁剪手势变成按 `ClipId` 指定片段的 `timeline.*` 记录，把导出变成一条 `timeline.export` 记录。`@dv/ui-asset-pool` 列出项目的每个素材并导入文件；`@dv/ui-composer` 为对话加上 `@` 和 `+ → 引用` 引用和面向创作者的工具名，`@dv/ui-shot-render` 加上 `dv_shot_render` 的对话卡片。[`@dv/ui-media`](../../packages/dv/ui-media/README.zh.md) 通过它的 `dv.media` 组件工厂、按 `@dv/ui-asset-pool` 注册的图片、视频和音频视图绘制这些视图里的每个素材，并打开素材预览，预览里的按钮 插入片段 和 让智能体使用 分别来自 `@dv/ui-timeline` 和 `@dv/ui-composer`。
+界面各包是 web 应用的右侧栏标签类型和中央视图，因此在同一个 profile 里与对话页并存。[`@dv/ui-shell`](../../packages/dv/ui-shell/README.zh.md) 把项目工作区放在中央，把 对话 / Chat 和 轨迹 / Trajectory 标签放在右侧，把 画布 / Canvas 和 时间线 / Timeline 切换按钮放在顶栏，并把 Ctrl+Z 绑定到撤销，把 Shift+Ctrl+Z 绑定到重做。[`@dv/ui-canvas`](../../packages/dv/ui-canvas/README.zh.md) 把 `canvas` 切片中的节点画成按素材流向相连的节点，每个节点持有一个条目的每个版本，卡片显示最新版本，由 UI 插件以节点 kind 为键通过 `@dv/ui-canvas/contract` 注册的节点类型绘制：画布上的素材（`@dv/ui-asset-pool`），带模型和生成任务的镜头（`@dv/ui-shot-render`，用 `@dv/ui-generation` 的 `defineGenerationUi` 声明），以及角色、场景和风格（`@dv/ui-character`、`@dv/ui-location`、`@dv/ui-style`，用 `@dv/ui-reference-kit` 的 `defineReferenceUi` 声明）。`@dv/ui-canvas` 标记过期记录，它的编辑器以用户记录渲染新版本或替换参考图，拖动或调整大小写一条 `canvas.node_position` 记录。UI 插件还添加节点动作，例如 `@dv/ui-composer` 的 问 agent / Ask the agent（预填对话输入框）和 `@dv/ui-asset-pool` 的 从画布移除 / Remove from canvas。[`@dv/ui-timeline`](../../packages/dv/ui-timeline/README.zh.md) 把每条时间线画成一条轨道，把插入、移动、移除、拆分和裁剪手势变成按 `ClipId` 指定片段的 `timeline.*` 记录，把导出变成一条 `timeline.export` 记录。`@dv/ui-asset-pool` 列出项目的每个素材并导入文件；`@dv/ui-composer` 为对话加上 `@` 和 `+ → 引用` 引用和面向创作者的工具名，`@dv/ui-shot-render` 加上 `dv_shot_render` 的对话卡片。[`@dv/ui-media`](../../packages/dv/ui-media/README.zh.md) 通过它的 `dv.media` 组件工厂、按 `@dv/ui-asset-pool` 注册的图片、视频和音频视图绘制这些视图里的每个素材，并打开素材预览，预览里的按钮 插入片段 和 让智能体使用 分别来自 `@dv/ui-timeline` 和 `@dv/ui-composer`。
 
 ## 历史和轨迹
 
@@ -147,7 +147,7 @@ skill 承载工作流程和模型专属的规则，各由其主人注册：
 
 ## 确定性复用
 
-当 `deterministic: true` 的操作以与一条更早的 `done` 记录相同的操作和版本、相等的参数和相同的已解析输入素材被调用时，运行器复用那条记录的输出而不运行该操作；本次调用仍被记录，并带 `cost.reused: true`。渲染不是确定性的：再次渲染一个镜头得到一个新版本，即一条 `based_on` 指向更早那次渲染的 `shot.render` 记录，不论每个版本用的是哪个模型和哪个生成任务。
+当 `deterministic: true` 的操作以与一条更早的 `done` 记录相同的操作和版本、相等的参数和相同的已解析输入素材被调用时，运行器复用那条记录的输出而不运行该操作；本次调用仍被记录，并带 `cost.reused: true`。渲染不是确定性的：再次渲染一个镜头得到一个新版本，即一条 `based_on` 指向更早那次渲染的 `shot.render` 记录，不论每个版本用的是哪个模型和哪个生成任务，画布节点列表把它加入那次更早渲染所在的节点。
 
 <a id="where-new-behavior-goes"></a>
 ## 新行为的归属位置
@@ -260,6 +260,7 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 | -------------------- | ---------- | -------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Project 项目           | `proj`     | `@dv/project`        | `dvProject`    | `proj.create` `proj.stale_accept`；历史工具 `dv_proj_undo` `dv_proj_redo`；读取工具 `dv_proj_state` `dv_proj_history_list` `dv_proj_wait`；重命名工具 `dv_proj_rename`                                                                          |
 | Asset pool 素材库       | `asset`    | `@dv/asset-pool`     | `dvAssetPool`  | `asset.import` `asset.grab_still` `asset.cut_segment` `asset.place` `asset.unplace`                                                                                                                                             |
+| Canvas 画布             | `canvas`   | `@dv/canvas`         | `dvCanvasNodes` | `canvas.node_position`；`asset.place`、带 `place` 的 `asset.import`、各生成操作、`<k>.create` 和 `textnode.write` 向其添加节点的节点列表                                                                                       |
 | Character 角色         | `character` | `@dv/character`      | `dvCharacter`  | `character.create` `character.update`                                                                                                                                                                                           |
 | Location 场景          | `location` | `@dv/location`       | `dvLocation`   | `location.create` `location.update`                                                                                                                                                                                             |
 | Style 风格             | `style`    | `@dv/style`          | `dvStyle`      | `style.create` `style.update`                                                                                                                                                                                                   |

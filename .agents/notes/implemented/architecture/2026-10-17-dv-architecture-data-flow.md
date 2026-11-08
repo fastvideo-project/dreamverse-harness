@@ -40,7 +40,7 @@ agent tool call   view (POST /api/dv/operation)   plugin service (ctx.dv<Name>.<
                                         canvas, timeline, history, asset pool
 ```
 
-Views and the agent never edit a slice. They write project data only by running an operation, and they read the state again after the change. Canvas node positions are view state outside the records, which the layout store of `@dv/ui-canvas` keeps: a drag stores them through its route, and the agent's `dv_canvas_move` stores them from its host half ([agent canvas tools](../feature/2026-10-26-dv-agent-canvas-tools.md)). The [fitness test](../process/2026-10-17-dv-architecture-fitness-test.md) checks that `packages/dv/project/src` names no plugin key or noun and never reads `started_by`.
+Views and the agent never edit a slice. They write project data only by running an operation, and they read the state again after the change. The canvas node list, with each node's versions, position and size, is the `canvas` slice that `@dv/canvas` rebuilds from the records, so a drag, a resize, and the agent's `dv_canvas_node_position` each write one `canvas.node_position` record ([canvas node list](2026-11-08-dv-canvas-node-list.md)); only the viewport stays view state in the layout store of `@dv/ui-canvas` ([agent canvas tools](../feature/2026-10-26-dv-agent-canvas-tools.md)). The [fitness test](../process/2026-10-17-dv-architecture-fitness-test.md) checks that `packages/dv/project/src` names no plugin key or noun and never reads `started_by`.
 
 ## Records, components and slices
 

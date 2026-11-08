@@ -39,9 +39,9 @@ kind: "package-reference"
 | 操作 | 参数 | 效果 |
 | --- | --- | --- |
 | `<k>.create` | `<k>`（ID，不含 `@` 或 `#`）、`name`、`description`、每个 `fields` 参数 | 新 ID 的第 1 版；`dvProject.kindsWithId` 列出该 ID 时失败 |
-| `<k>.update` | `<k>`（ID）、`name`、`description`、每个 `fields` 参数 | 下一版；保留调用未改的内容；取代上一版的记录；ID 未知时失败 |
+| `<k>.update` | `<k>`（ID）、`name`、`description`、每个 `fields` 参数 | 下一版；保留调用未改的内容；取代上一版的记录，并以它为 `based_on`，所以加入该条目的画布节点；ID 未知时失败 |
 
-名词的切片是 `ReferenceSlice<V>`：从 ID 到按时间先后排列的版本的映射。一个版本（`ReferenceVersion<I>`）有 `id`、`version`、`name`、`description`、`references`（资产 ID）和 `created_by`（写出它的记录），以及每个 `fields` 值。`referenceReducer(spec)` 是服务注册的归约函数。
+名词的切片是 `ReferenceSlice<V>`：从 ID 到按时间先后排列的版本的映射。一个版本（`ReferenceVersion<I>`）有 `id`、`version`、`name`、`description`、`references`（资产 ID）和 `created_by`（写出它的记录），以及每个 `fields` 值。[`@dv/canvas`](../canvas/README.zh.md) 的 `dvCanvasNodes` 加载期间，该服务把 `<k>.create` 注册为第 0 列 `<k>` 节点的 maker，所以每个条目是一个持有所有版本的画布节点。`referenceReducer(spec)` 是服务注册的归约函数。
 
 -----
 

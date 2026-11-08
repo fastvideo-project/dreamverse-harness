@@ -4,6 +4,8 @@ Status: implemented
 
 English | [中文](2026-10-26-dv-agent-canvas-tools.zh.md)
 
+The move half below, `dv_canvas_move` with its `moved` frame and the positions in `CanvasLayoutStore`, is superseded by the [canvas node list](../architecture/2026-11-08-dv-canvas-node-list.md): node positions are records of `canvas.node_position`, which the agent writes with `dv_canvas_node_position` of `@dv/canvas` and Undo reverts, and the layout store keeps only the viewport. The read half remains current: `dv_canvas_read` reads the cards of an open canvas through `CanvasChannel`, keyed by node ID with `versions` and `shown`.
+
 ## Problem
 
 A user who asks the DreamVerse agent to arrange the canvas, such as "images on the left, characters in the middle, the plan on the right", gets a refusal: `dv_asset_place` and `dv_asset_unplace` put an asset on the canvas or take it off, and no tool sets where a node sits (issue #87). Three facts of the code shape a tool that moves nodes. Node positions live in `CanvasLayoutStore` (`packages/dv/ui-canvas/src/layout.ts`), one JSON file per project at `<project folder>/.dreamverse/canvas-layout.json`, which the route `POST /api/dv/canvas/layout` of the host half of `@dv/ui-canvas` writes. The node list, the default positions, and the card heights come from `buildCanvasGraph` in `packages/dv/ui-canvas/src/client/graph.ts`, which runs only in the browser, so the host does not know them. `CanvasView` reads the layout once when a project opens, so an open canvas draws a later write only when something tells it to. The issue also requires a choice between an undoable project operation and view state for a move.
