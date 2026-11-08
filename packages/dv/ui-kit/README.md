@@ -49,6 +49,7 @@ import { DV_HISTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 | `useProject.ts` | `useProjects`, `useOperations`, `useTaskLabels`, `useProjectState`: loaders that refetch on every project event; `useLoader(load, deps)`, the request lifecycle they share, which aborts a stale request and keeps the last value while it reloads |
 | `loaded.ts` | `loadedOnce(empty, load)`: an observable source that starts at `empty` and loads its value on its first subscription, for the inject `hooks` source of a slot registration; a failed load keeps `empty`, and the next subscription loads again |
 | `useView.ts` | `useViewSession(client, surface, session?)`: the project choice, the project's current state, the operations, the last failure, and the project-bar callbacks; the view opens on the project the shell has open (`useCurrentProject`), else on the newest |
+| `InlineRename.tsx` | `InlineRename`: the text field that replaces a title while it is renamed, for the projects and chats of `@dv/ui-shell` and the node names of `@dv/ui-canvas`. It selects the title, saves a changed, trimmed title on Enter or blur, and cancels on Escape; a title that `check` refuses keeps the field open with a danger border and the message under it. It keeps its key and pointer events from the elements around it, so Escape closes no dialog and a press starts no drag |
 | `ProjectBar.tsx` | The Sidebar bar (test ID `dv-kit-project-bar`): the project picker, a new-project button, and undo, drawn as 28 px secondary controls with the `--dv-*` theme tokens; its copy arrives as `labels`, already localized by the owning plugin |
 | `compose.ts`, `workspace-events.ts` | The window events `dv:compose`, `dv:history-focus`, `dv:trajectory-focus` (`DV_*_EVENT`) and the asset drag type `application/x-dv-asset` |
 | `tool-labels.ts` | `DV_TOOL_LABELS`: the zh and en label of each `dv_proj_*`, `dv_asset_*` and `dv_models_*` tool, whose packages declare no operation label; `operationLabel`: the zh and en name of an operation (its `label` in `/api/dv/operations`, else the `DV_TOOL_LABELS` entry of its tool, else the operation name); `toolNameOf`: the tool name of an operation. The composer's tool rows and the History panel show these names. `taskLabel`: the zh and en name of a generation task (its label in `WireTaskLabels`, the model catalog's labels of `GET /api/dv/tasks`, else the task name), shown by the take editor and the chat card of `@dv/ui-generation` |
@@ -78,6 +79,7 @@ import { DV_HISTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 | [`src/client/references.ts`](src/client/references.ts) | Stored input references, record request inputs and shot reference assets |
 | [`src/client/zoom.ts`](src/client/zoom.ts) | The pop-up zoom transition |
 | [`src/client/useProject.ts`](src/client/useProject.ts), [`src/client/useView.ts`](src/client/useView.ts) | The hooks |
+| [`src/client/InlineRename.tsx`](src/client/InlineRename.tsx) | The inline title field |
 | [`src/client/ProjectBar.tsx`](src/client/ProjectBar.tsx) | The shared bar |
 
 </details>

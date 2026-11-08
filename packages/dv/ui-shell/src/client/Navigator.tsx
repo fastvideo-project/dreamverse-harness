@@ -12,11 +12,12 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import { InlineRename } from '@dv/ui-kit/InlineRename.tsx'
 import { pickText, useText } from '@dv/ui-kit/locale.ts'
 import type { ShellInjected } from './Center.tsx'
 import { ChevronDownIcon, ChevronRightIcon, HomeIcon, PlugIcon, PluginsIcon, PlusIcon, SkillsIcon } from './icons.tsx'
-import { InlineRename, RowMenu } from './InlineRename.tsx'
 import { DREAMVERSE_WORDMARK } from './logo.ts'
+import { RowMenu } from './RowMenu.tsx'
 import type { WireProject } from '@dv/ui-kit/types.ts'
 import { usePanelEntries } from './panels.ts'
 import { useProjectSessions } from './sessions.ts'
@@ -124,8 +125,8 @@ function ProjectTree(props: NavigatorProps & { project: WireProject; open: boole
         {renaming === project.id
           ? (
             <InlineRename
-              value={project.title} onClose={() => { setRenaming(null) }}
-              onSave={(title) => { run(() => shell.renameProject(project.id, title)) }}
+              className={css.renameInput} value={project.title} onClose={() => { setRenaming(null) }}
+              onSave={(title) => { if (title !== '') run(() => shell.renameProject(project.id, title)) }}
             />
           )
           : (
@@ -178,8 +179,8 @@ function SessionRow({ summary, active, open, shell }: {
       {renaming
         ? (
           <InlineRename
-            value={summary.displayTitle} onClose={() => { setRenaming(false) }}
-            onSave={(title) => { run(() => shell.renameSession(summary.id, title)) }}
+            className={css.renameInput} value={summary.displayTitle} onClose={() => { setRenaming(false) }}
+            onSave={(title) => { if (title !== '') run(() => shell.renameSession(summary.id, title)) }}
           />
         )
         : <span className={css.treeLabel} title={summary.displayTitle}>{summary.blank ? t('新对话', 'New chat') : summary.displayTitle}</span>}

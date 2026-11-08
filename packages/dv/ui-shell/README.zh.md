@@ -86,7 +86,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCente
 | [`src/client/undo-keys.ts`](src/client/undo-keys.ts) | `historyKey` 和 `listenHistoryKeys`：窗口监听，Ctrl+Z（Cmd+Z）时调用 `/api/dv/undo`，Shift+Ctrl+Z（Shift+Cmd+Z）时调用 `/api/dv/redo` |
 | [`src/client/chrome.tsx`](src/client/chrome.tsx) | 隐藏和改写的 DSH 界面、右侧面板指南页，以及随界面语言变化的标签标题 |
 | [`src/client/logo.ts`](src/client/logo.ts) | DreamVerse logo 的 SVG 路径数据：侧边栏字标和浏览器标签页图标 |
-| [`src/client/InlineRename.tsx`](src/client/InlineRename.tsx) | 行内标题输入框和 ⋯ 行菜单 |
+| [`src/client/RowMenu.tsx`](src/client/RowMenu.tsx) | ⋯ 行菜单；行内标题输入框是 `@dv/ui-kit` 的 `InlineRename` |
 | [`src/client/shell.module.css`](src/client/shell.module.css) | 中间区域、导航和标签的样式 |
 | [`src/client/chrome.module.css`](src/client/chrome.module.css) | 右侧面板指南页的样式 |
 

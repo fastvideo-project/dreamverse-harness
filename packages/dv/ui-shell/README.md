@@ -86,7 +86,7 @@ The workspace renders the shown view with the owner props `projectId` (the open 
 | [`src/client/undo-keys.ts`](src/client/undo-keys.ts) | `historyKey` and `listenHistoryKeys`: the window listener that calls `/api/dv/undo` on Ctrl+Z (Cmd+Z) and `/api/dv/redo` on Shift+Ctrl+Z (Shift+Cmd+Z) |
 | [`src/client/chrome.tsx`](src/client/chrome.tsx) | Hidden and reworded DSH chrome, the right-panel guide, and tab titles that follow the interface language |
 | [`src/client/logo.ts`](src/client/logo.ts) | The DreamVerse logo's SVG path data: the sidebar wordmark and the browser tab mark |
-| [`src/client/InlineRename.tsx`](src/client/InlineRename.tsx) | The inline title field and the ⋯ row menu |
+| [`src/client/RowMenu.tsx`](src/client/RowMenu.tsx) | The ⋯ row menu; the inline title field is `InlineRename` of `@dv/ui-kit` |
 | [`src/client/shell.module.css`](src/client/shell.module.css) | Styles of the center, the navigator, and the tabs |
 | [`src/client/chrome.module.css`](src/client/chrome.module.css) | Styles of the right-panel guide |
 
