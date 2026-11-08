@@ -1,0 +1,9 @@
+# The Blender layer, stacked on @dv/bundle. A profile installs it with `dsh plugin add @fastvideo/dreamverse-blender`.
+# The user then connects Blender from the Blender tab of the right Sidebar; nothing here needs a profile setting.
+- insert:
+    - id: dv-blender
+      name: '@fastvideo/dreamverse-blender-bridge'
+    - id: dv-ui-blender
+      name: '@fastvideo/dreamverse-ui-blender'
+    - id: dv-workflow-blender
+      name: '@fastvideo/dreamverse-workflow-blender'

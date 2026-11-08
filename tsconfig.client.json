@@ -160,6 +160,7 @@
     { "path": "./packages/dv/ui-shot-render" },
     { "path": "./packages/dv/ui-image-generate" },
     { "path": "./packages/dv/ui-audio-generate" },
+    { "path": "./packages/dv/ui-blender" },
     { "path": "./apps/web" }
   ]
 }

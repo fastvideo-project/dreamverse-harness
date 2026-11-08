@@ -1,0 +1,141 @@
+---
+description: "Blender component of DreamVerse: the dvBlender service owns the link that the DreamVerse add-on opens from the user's Blender to the harness, the agent tools dv_blender_scene, dv_blender_run and dv_blender_look, the operations blender.render and blender.animation_render, and the browser routes that stream the viewport and serve the add-on."
+kind: "package-reference"
+---
+
+# @fastvideo/dreamverse-blender-bridge
+
+English | [中文](README.zh.md)
+
+## Summary
+
+Use this package to let the agent work in the user's own Blender. The DreamVerse add-on, which ships in `addon/`, opens a WebSocket from Blender to the harness, so Blender can run on the user's computer (through the same SSH tunnel as the browser) or on the harness's machine. The agent reads the scene, runs Python, looks at the viewport, and renders stills and animations into the project. The browser shows the viewport live in the Blender tab of [`@fastvideo/dreamverse-ui-blender`](../ui-blender/README.md).
+
+## Table of Contents
+
+- [Use this package](#use-this-package)
+- [Understand the implementation](#understand-the-implementation)
+- [Further Exploration](#further-exploration)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+
+-----
+
+<a id="use-this-package"></a>
+## Use this package
+
+Mount the plugin in a DreamVerse profile; [`@fastvideo/dreamverse-blender`](../blender/README.md) inserts it. The link route needs the DSH web server (`webServer`), the browser routes need the Connection (`connection`), the render operations need `dvProject`, and `dv_blender_look` needs the attachment store (`attachments`); each part exists while its service does.
+
+```yaml
+- id: dv-blender
+  name: '@fastvideo/dreamverse-blender-bridge'
+  config:
+    requestTimeoutMs: 60000
+```
+
+| Config | Default | Meaning |
+| --- | --- | --- |
+| `requestTimeoutMs` | 60000 | How long a scene read, a code run or a look waits for Blender |
+| `renderTimeoutMs` | 1800000 | How long a render waits for Blender |
+| `maxFileBytes` | 536870912 | The most bytes one file from Blender (a look or a render) may hold |
+| `pingMs` | 20000 | Interval of the keepalive pings on the link and the viewport stream |
+
+The user connects Blender in three steps that the Blender tab shows: download the add-on (`GET /api/dv/blender/addon.zip`), install it in Blender (Edit → Preferences → Get Extensions → Install from Disk; Blender 4.2 or later), and paste the connection string into the DreamVerse panel of the 3D view's sidebar. The connection string is the page's origin, `#`, and the pairing token, such as `http://127.0.0.1:18094#<token>`; through an SSH tunnel the page's origin is the tunnel's local address, which is also where Blender on the same computer reaches the harness.
+
+| Route | Admission | What it does |
+| --- | --- | --- |
+| `/dv/blender/ws` (WebSocket upgrade of the web server) | `Authorization: Bearer <pairing token>` and no `Origin` header; HTTP 401 for a wrong token, 403 for a request with `Origin` | The link to Blender; a newer link replaces the older one, which is closed with code 4000 |
+| `GET /api/dv/blender/status` | The Connection's browser authentication | `{linked, state, token, link_path, viewers}`; `state` is the add-on's `{blender_version, addon_version, file, allow_code}` |
+| `POST /api/dv/blender/token` | Same | Replaces the pairing token and closes the link with code 4001; answers the new status |
+| `GET /api/dv/blender/view` | Same | Event stream: `status` events `{linked, state}` and `frame` events `{seq, width, height, mime, data}` with the base64 JPEG or PNG |
+| `GET /api/dv/blender/addon.zip` | Same | The add-on as a Blender extension zip, read from `addon/` on every download |
+
+| Operation | Tool | Params | Outputs and report |
+| --- | --- | --- | --- |
+| `blender.render` | `dv_blender_render` | `frame` (default: the scene's current frame) | output `image`, one `image/png` asset; report `{width, height, frame, engine}` |
+| `blender.animation_render` | `dv_blender_animation_render` | `frame_start`, `frame_end` (default: the scene's range) | output `video`, one `video/mp4` asset with its duration; report `{width, height, frame_start, frame_end, fps, duration_sec, engine}` |
+
+Both operations render with the scene camera and the scene's own engine, resolution and frame rate, are not deterministic, and run in the background like every generation; Blender is busy until a render finishes.
+
+-----
+
+<a id="understand-the-implementation"></a>
+## Understand the implementation
+
+The link speaks JSON text messages and binary messages. The harness sends `request` (`id`, `op`, `params`), `stream` (`on`) and `frame_ack` (`seq`). The add-on sends `hello` and `state` (its state), `response` (`id`, `ok`, `result` or `error`), and binary messages whose 4-byte big-endian header length precedes a JSON header and the payload: `frame` headers carry a viewport frame, and `chunk` headers carry a part of the file that the request with that `id` returns, before its `response`. `BlenderLink` keeps the one socket, the add-on's state, the waiting requests with their time limits, and the viewers. It tells the add-on to stream only while a viewer watches, acknowledges each frame after relaying it, and a viewer whose stream queue is full skips frames. The pairing token lives in the DSH credential store under `dv-blender/pairing-token` while a store is mounted, so it survives a restart.
+
+The add-on keeps every `bpy` call on Blender's main thread: a timer drains the link's messages. A `POST_PIXEL` draw handler on the largest 3D view copies that region's pixels while Blender draws it, so frames follow redraws and cost no second render; a timer encodes them as JPEG through a temporary image and sends them, at most `max fps` per second and one unacknowledged frame at a time. A look of the camera view draws the scene camera's view into an offscreen buffer in the same handler.
+
+| File | Content |
+| --- | --- |
+| [`src/index.ts`](src/index.ts) | `dvBlender`: the config, the link route and its admission, and the registration of the routes, tools and operations |
+| [`src/link.ts`](src/link.ts) | `BlenderLink`: the socket, the requests and their files, the viewers and the frame acknowledgement |
+| [`src/protocol.ts`](src/protocol.ts) | The link messages and their parsers |
+| [`src/token.ts`](src/token.ts) | The pairing token |
+| [`src/tools.ts`](src/tools.ts) | `dv_blender_scene`, `dv_blender_run` and `dv_blender_look` |
+| [`src/render.ts`](src/render.ts) | `blender.render` and `blender.animation_render` |
+| [`src/routes.ts`](src/routes.ts) | The browser routes and the add-on zip |
+| [`addon/`](addon/__init__.py) | The Blender add-on: panel and preferences (`__init__.py`), the WebSocket client (`link.py`), the requests (`commands.py`), the viewport stream (`viewport.py`) and the helpers without `bpy` (`protocol.py`) |
+| [`tests/blender-bridge.spec.ts`](tests/blender-bridge.spec.ts) | A Loader composition with the web server and a fake Blender on the link: admission, replacement, the token, the zip, the stream, the tools, the renders and the removal on disposal |
+
+-----
+
+<a id="further-exploration"></a>
+## Further Exploration
+
+- [`@fastvideo/dreamverse-ui-blender`](../ui-blender/README.md): the Blender tab and the Blender takes on the canvas.
+- [`@fastvideo/dreamverse-workflow-blender`](../workflow-blender/README.md): the skill that teaches the agent to use these tools.
+- [`@dv/mcp-presets`](../mcp-presets/README.md): the Blender MCP preset, which needs Blender on the harness's machine.
+
+-----
+
+<a id="model-experience"></a>
+## Model Experience
+
+### Tool definitions
+
+#### What the model sees
+
+Three plain tools while the tool registry is mounted (`dv_blender_look` also needs the attachment store), and the two operation tools while `dvProject` is mounted, in the format `@dv/project` gives every operation tool. `dv_blender_run` takes `code`; `dv_blender_look` takes `view` (`viewport` or `camera`).
+
+##### Verbatim tool descriptions
+
+```markdown
+dv_blender_scene: Read the scene of the Blender that the user connected to the harness: the open file, the frame range and frames per second, the render engine and resolution, the active camera, the selection, and every object with its type, parent, location, rotation (degrees), scale, dimensions, visibility and materials. Read it before you change the scene, and again when the user may have changed it.
+dv_blender_run: Run Python in the connected Blender, with bpy, mathutils and math imported. The user sees each change in their Blender at once. Make one small change per call. Assign a JSON value to `result` to return it; print() output returns as stdout. A Python error returns its traceback, and the changes made before the error stay. The user can undo a call in Blender with Ctrl+Z.
+dv_blender_look: Look at the connected Blender: a PNG of the 3D viewport as the user sees it (`viewport`, the default), or of what the scene camera frames (`camera`), at most 1280 px wide. Look after a visible change to check it.
+dv_blender_render: Render one frame of the connected Blender's scene with its scene camera, render engine and resolution, as a PNG image in the project, for use as a still or as the reference image of a shot. Check the framing with dv_blender_look view camera first. Blender is busy until the render finishes.
+dv_blender_animation_render: Render a frame range of the connected Blender's scene with its scene camera, render engine, resolution and frame rate, as an MP4 video in the project that the timeline can use as a shot. Rendering many frames takes long; keep ranges short and the resolution modest unless the user asks for more. Blender is busy until it finishes.
+```
+
+#### Token effect
+
+About 750 tokens for the five definitions, the shared arguments of `@dv/project` included, fixed while the plugin is mounted.
+
+#### KV Cache effect
+
+The definitions sit in the stable tool section of every agent request; mounting or removing the plugin changes the tool list and invalidates the cached prefix from the tool section on. Connecting or disconnecting Blender changes nothing.
+
+### Tool results
+
+#### What the model sees
+
+`dv_blender_scene` and `dv_blender_run` return the JSON that Blender answers: the scene facts, or `{"stdout": …, "result": …}`. `dv_blender_look` returns the line `A picture of the Blender viewport as the user sees it, <w>x<h> px.` (or `the scene camera's view`) and the picture as an image block. The render tools return the operation tool text of `@dv/project` with the asset line and the report. Every tool fails with "No Blender is connected to the harness. Ask the user to open the Blender tab on the right panel and connect Blender with the DreamVerse add-on, then try again." while no Blender is connected; a Python error returns its traceback; `dv_blender_run` fails without asking Blender while the add-on has code from the harness switched off; `dv_blender_look` fails when the model takes no images.
+
+#### Token effect
+
+A scene read is about 40 tokens per object; a code run returns its output, at most 20000 characters of stdout; a look is one image of at most 1280 px width plus about 20 tokens.
+
+#### KV Cache effect
+
+Each result is appended to the conversation after its call; the cached prefix stays intact.
+
+## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
+
+- **One Blender per harness**: a second Blender that connects replaces the first; the link carries no project, so every chat of the harness talks to the same Blender.
+- **The viewport is view-only**: the Blender tab shows frames; orbiting or selecting from the browser is not supported.
+- **Frame rate**: the add-on encodes frames in Blender's Python, so the stream reaches about 5 to 15 frames per second at 1280 px; the preferences set the rate, width and JPEG quality.
+- **No Linux arm64 Blender**: Blender publishes no Linux arm64 build, so on an arm64 harness machine Blender runs on another computer.
+- **Untested on real Blender in CI**: the tests drive the link with a fake Blender; the add-on's `bpy` code is checked by hand in Blender 5.3.

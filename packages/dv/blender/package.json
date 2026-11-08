@@ -1,0 +1,40 @@
+{
+  "name": "@fastvideo/dreamverse-blender",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Installable DreamVerse Blender bundle: connect your own Blender to the harness with the DreamVerse add-on, watch its viewport live in a Blender tab, and let the agent read the scene, run Python, look at the viewport and render stills and animations into the project; it adds @fastvideo/dreamverse-blender-bridge, @fastvideo/dreamverse-ui-blender, and @fastvideo/dreamverse-workflow-blender to a DreamVerse profile.",
+  "keywords": [
+    "dreamverse-plugin"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fastvideo-project/dreamverse-harness.git",
+    "directory": "packages/dv/blender"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@fastvideo/dreamverse-blender-bridge": "workspace:*",
+    "@fastvideo/dreamverse-ui-blender": "workspace:*",
+    "@fastvideo/dreamverse-workflow-blender": "workspace:*"
+  },
+  "peerDependencies": {
+    "@dv/bundle": "workspace:*"
+  }
+}

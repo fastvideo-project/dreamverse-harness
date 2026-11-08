@@ -384,6 +384,8 @@
       "@dv/ui-shot-render": ["./packages/dv/ui-shot-render/src/index.ts"],
       "@dv/ui-timeline": ["./packages/dv/ui-timeline/src/index.ts"],
       "@dv/workflow-story": ["./packages/dv/workflow-story/src/index.ts"],
+      "@fastvideo/dreamverse-blender-bridge": ["./packages/dv/blender-bridge/src/index.ts"],
+      "@fastvideo/dreamverse-workflow-blender": ["./packages/dv/workflow-blender/src/index.ts"],
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@deepseek-ai/dsh-acp": ["./packages/acp/acp/src"],
       "@deepseek-ai/dsh-acp-app": ["./packages/bundle/acp-app/src"],

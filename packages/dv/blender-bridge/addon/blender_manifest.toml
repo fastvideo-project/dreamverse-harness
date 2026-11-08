@@ -1,0 +1,18 @@
+schema_version = "1.0.0"
+
+id = "dreamverse_blender"
+version = "0.1.0"
+name = "DreamVerse"
+tagline = "Connect Blender to a DreamVerse harness and stream its viewport"
+maintainer = "FastVideo"
+type = "add-on"
+website = "https://github.com/fastvideo-project/dreamverse-harness/tree/main/packages/dv/blender-bridge"
+tags = ["3D View", "Render"]
+
+blender_version_min = "4.2.0"
+
+license = ["SPDX:MIT"]
+
+[permissions]
+network = "Connect to a DreamVerse harness and stream the viewport"
+files = "Write temporary render files"

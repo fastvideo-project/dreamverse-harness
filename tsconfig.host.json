@@ -481,6 +481,8 @@
     { "path": "./packages/dv/style" },
     { "path": "./packages/dv/text-node" },
     { "path": "./packages/dv/workflow-story" },
+    { "path": "./packages/dv/blender-bridge" },
+    { "path": "./packages/dv/workflow-blender" },
     { "path": "./apps/cli" },
     { "path": "./apps/desktop-host" },
     { "path": "./apps/desktop/tsconfig.host.json" }
