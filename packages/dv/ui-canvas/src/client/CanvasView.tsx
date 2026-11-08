@@ -396,14 +396,16 @@ export function CanvasView(
     setEditing(node.id)
   }, [focus, layoutReady, graph, centerOn])
 
-  /** Move a node so that its top edge is centered on a dropped canvas point, and store its box; the node keeps its size. */
   /**
    * Write a node's new box as one `canvas.node_position` record: the corner of a move, or the whole box of a resize. The
-   * canvas draws the box until the project state shows it, and drops it again when the write is refused.
+   * canvas draws the box until the project state shows it, or until the first state after the server answered, such as
+   * the state of an undo that came first; it drops the box again when the write is refused.
    * @param node - the node.
    * @param box - the new box.
    * @param resized - whether the size changed too.
    */
+  // The project state on show when the server answered each node's write; a later state is past the write.
+  const answered = useRef(new Map<string, unknown>())
   const writePosition = useCallback((node: CanvasNode, box: NodePosition, resized: boolean) => {
     positionsRef.current = { ...positionsRef.current, [node.id]: box }
     setPositions(all => ({ ...all, [node.id]: box }))
@@ -414,7 +416,7 @@ export function CanvasView(
       project: projectId, operation: NODE_POSITION, surface: 'canvas', ...session === null ? {} : { session },
       params: resized ? { ...corner, width: box.width, height: box.height } : corner,
       intent: `${resized ? 'resize' : 'move'} ${node.title} on the canvas`,
-    }).catch((error: unknown) => {
+    }).then(() => { answered.current.set(node.id, graphRef.current?.state) }, (error: unknown) => {
       setPositions(all => all[node.id] === box ? withoutProperties(all, [node.id]) : all)
       setNotice(t('error', { message: errorMessage(error) }))
     })
@@ -430,8 +432,10 @@ export function CanvasView(
       const stored = node.node.position
       const showsWrite = fields !== undefined
         && Object.entries(fields).every(([field, value]) => stored[field as keyof NodePosition] === value)
-      return box !== undefined && gesture.current === null && showsWrite ? [node.id] : []
+      const settled = answered.current.has(node.id) && answered.current.get(node.id) !== graph.state
+      return box !== undefined && gesture.current === null && (showsWrite || settled) ? [node.id] : []
     })
+    for (const id of shown) answered.current.delete(id)
     if (shown.length > 0) setPositions(all => withoutProperties(all, shown))
   }, [graph, positions])
 

@@ -3,7 +3,7 @@
  * matches:
  * 1. a record whose `based_on` is a version of node N becomes the newest version of N;
  * 2. a record of an operation that a {@link NodeMaker} names creates a node of its kind in the first free row of its
- *    column, with the default size;
+ *    column (a full column continues in a sub-column), with the default size;
  * 3. a finished `place` record of an {@link AssetPlacement} creates a node for each input asset that no node shows;
  * 4. a finished `unplace` record deletes the placement's nodes that show one of its input assets;
  * 5. a finished `canvas.node_position` record sets the fields of the node's position that its params give;
@@ -24,6 +24,10 @@ export const NODE_POSITION = 'canvas.node_position'
 export const COLUMN = 240
 /** The height of a layout row, in canvas units. */
 export const ROW = 200
+/** The rows of one layout column before new nodes continue in the next sub-column. */
+const ROWS = 6
+/** How far right a column's next sub-column sits, in columns: the producers use columns 0 to 2. */
+const COLUMN_STRIDE = 3
 /** The height of the caption above a node's frame, in canvas units. */
 const CAPTION = 20
 
@@ -34,20 +38,23 @@ export interface CanvasRegistrations {
 }
 
 /**
- * The top of the first row of a column whose cell no node covers. A node of the default size covers one cell at its
- * corner, because only the browser knows the default size of its type.
+ * The first cell of a column that no node covers: its six rows, then the rows of each sub-column three columns further
+ * right. A node of the default size covers one cell at its corner, because only the browser knows the default size of
+ * its type.
  * @param slice - the slice.
  * @param column - the column.
  * @returns the position of a new node, with the default size.
  */
 function freeRow(slice: CanvasState, column: number): NodePosition {
-  const x = column * COLUMN
   const boxes = Object.values(slice.nodes).map(({ position: at }) => ({
     x: at.x, y: at.y, width: at.width ?? COLUMN, height: at.height === null ? ROW : at.height + CAPTION,
   }))
-  let y = 0
-  while (boxes.some(box => box.x < x + COLUMN && x < box.x + box.width && box.y < y + ROW && y < box.y + box.height)) y += ROW
-  return { x, y, width: null, height: null }
+  const covered = (x: number, y: number): boolean =>
+    boxes.some(box => box.x < x + COLUMN && x < box.x + box.width && box.y < y + ROW && y < box.y + box.height)
+  // A full column continues in a sub-column further right, so a long list forms a block that fits the screen.
+  for (let x = column * COLUMN; ; x += COLUMN_STRIDE * COLUMN) {
+    for (let y = 0; y < ROWS * ROW; y += ROW) if (!covered(x, y)) return { x, y, width: null, height: null }
+  }
 }
 
 /**

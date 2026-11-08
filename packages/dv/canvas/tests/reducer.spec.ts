@@ -133,6 +133,12 @@ describe('canvasReducer', () => {
     expect(nodes[1]).toBe(`${second.id} shot [${second.id}] ${String(2 * COLUMN)},${String(2 * ROW)} null×null`)
   })
 
+  it('continues a full column of six rows in a sub-column three columns to the right', () => {
+    const nodes = nodesOf(reduceAll(Array.from({ length: 7 }, () => record('shot.render'))))
+    expect(nodes[5]).toMatch(new RegExp(` ${String(2 * COLUMN)},${String(5 * ROW)} `, 'u'))
+    expect(nodes[6]).toMatch(new RegExp(` ${String(5 * COLUMN)},0 `, 'u'))
+  })
+
   it('ignores records of other operations', () => {
     const slice = reduceAll([record('shot.render')])
     expect(reducer.reduce(slice, record('timeline.create'))).toBe(slice)

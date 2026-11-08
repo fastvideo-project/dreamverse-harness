@@ -913,8 +913,10 @@ describe('the canvas node list', () => {
       ],
     })
     const page = await openPage()
-    await gotoProject(page, project.id, 'timeline')
-    expect(await page.locator('[data-testid="dv-canvas-view"]').count(), 'the page shows no canvas').toBe(0)
+    await gotoProject(page, project.id)
+    await viewToggle(page, '时间线').click()
+    await page.locator('[data-testid="dv-timeline-editor"]').waitFor()
+    await expect.poll(() => page.locator('[data-testid="dv-canvas-view"]').count(), { message: 'the page shows no canvas' }).toBe(0)
     const composer = page.locator('[data-dv-chat] [contenteditable="true"]').first()
     await composer.waitFor({ timeout: 30_000 })
     await composer.click()
