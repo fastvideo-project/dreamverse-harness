@@ -11,6 +11,7 @@ import type { Registry } from '@dv/ui-kit/registries.ts'
 import type { ProjectRecord } from '@dv/ui-kit/types.ts'
 import type { NodeType } from './contract/index.ts'
 import { buildCanvasGraph } from './graph.ts'
+import { en, zh } from './locales.ts'
 
 /** The operation whose records the row names. */
 const NODE_POSITION = 'canvas.node_position'
@@ -34,7 +35,9 @@ export function positionRow(nodeTypes: Registry<NodeType>): HistoryRow {
       const titleIn = (language: DvLanguage): string => state === null
         ? nodeOf(step)
         : buildCanvasGraph(state, operations, language, registered).nodes.find(node => node.id === nodeOf(step))?.title ?? nodeOf(step)
-      return resized ? ['调整大小', `Resized “${titleIn('en')}”`] : ['移动节点', `Moved “${titleIn('en')}”`]
+      const key = resized ? 'history.resized' : 'history.moved'
+      // A History row is a pair of texts, so it takes both dictionaries; the Chinese copy names no title.
+      return [zh[key], en[key].replace('{title}', titleIn('en'))]
     },
     focus: step => ({ view: 'canvas', target: { record: nodeOf(step) } }),
   }

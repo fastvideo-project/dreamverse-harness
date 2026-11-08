@@ -13,7 +13,7 @@ declare module '@dv/ui-kit/types.ts' { interface ComponentStates { textnode: Tex
 export const TEXT_KIND = 'textnode'
 
 /** The node type key of text nodes, the kind that `@dv/text-node` registers its canvas nodes under. */
-export const TEXT_NODE = 'text'
+export const NODE_KIND = 'text'
 
 /** The versions of every text node by path, oldest first; a state without the `textnode` slice holds none. */
 export const textsOf = (state: WireState): Readonly<Record<string, readonly TextVersion[]>> => state.components.textnode?.texts ?? {}

@@ -19,7 +19,7 @@ import type { MentionKind } from '@dv/ui-kit/registries.ts'
 import { en, NS, zh } from './locales.ts'
 import { TEXT_CARD_SIZING, TextCard } from './TextCard.tsx'
 import { TextEditor } from './TextEditor.tsx'
-import { newestTexts, pathOf, reportedVersion, TEXT_KIND, TEXT_NODE, withLabels } from './texts.ts'
+import { newestTexts, pathOf, reportedVersion, TEXT_KIND, NODE_KIND, withLabels } from './texts.ts'
 
 const ID = '@dv/ui-text-node'
 
@@ -42,7 +42,7 @@ const NONE: HostObservable<null> = { getSnapshot: () => null, subscribe: () => (
  */
 export const textNodeType = (t: TranslateNS<typeof NS>): NodeType => ({
   id: ID,
-  type: TEXT_NODE,
+  type: NODE_KIND,
   label: () => t('node.label'),
   color: 'var(--dv-node-5)',
   status: { running: () => t('node.saving'), failed: () => t('node.saveFailed') },
@@ -95,14 +95,14 @@ export function apply(ctx: ClientContext): void {
     scope.effect(() => scope.dvCanvas.nodeTypes.register(textNodeType(t)), 'ui-text-node: node type')
   })
   ctx.inject(['slots'], (scope) => {
-    scope.effect(() => scope.slots.inject('dv.canvas.card', () => scope.slots.register({ name: 'dv.canvas.card', key: TEXT_NODE, locale: NS }, TextCard)), 'ui-text-node: card')
+    scope.effect(() => scope.slots.inject('dv.canvas.card', () => scope.slots.register({ name: 'dv.canvas.card', key: NODE_KIND, locale: NS }, TextCard)), 'ui-text-node: card')
   })
   ctx.inject(['slots', 'dvCanvas'], (scope) => {
     const versionKinds = scope.dvCanvas.versionKinds
     const face: ReferenceFaceInjected = { hooks: { currentProject: NONE, versionKinds }, keyedHooks: { projectState: () => NONE } }
     scope.effect(() => scope.slots.registerFactory({ name: 'dv.text.reference', scope: 'session-maybe', inject: () => face }, ReferenceFace), 'ui-text-node: chip face')
     scope.effect(() => scope.slots.inject('dv.canvas.editor', () => scope.slots.register(
-      { name: 'dv.canvas.editor', key: TEXT_NODE, locale: NS, inject: () => ({ hooks: { versionKinds } }) }, TextEditor,
+      { name: 'dv.canvas.editor', key: NODE_KIND, locale: NS, inject: () => ({ hooks: { versionKinds } }) }, TextEditor,
     )), 'ui-text-node: editor')
   })
   ctx.inject(['dvMentions'], (scope) => {
