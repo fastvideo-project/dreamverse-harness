@@ -3,7 +3,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { AssetId, ComponentStates, ProjectRecord, RecordId } from '@dv/project'
 import { describe, expect, it } from 'vitest'
 import { canvasReducer, COLUMN, ROW } from '../src/reducer.ts'
-import type { AssetPlacement, NodeMaker } from '../src/types.ts'
+import type { AssetPlacement, NodeId, NodeMaker } from '../src/types.ts'
 
 type Slice = ComponentStates['canvas']
 
@@ -95,7 +95,7 @@ describe('canvasReducer', () => {
       `${place.id} asset [${place.id}] 0,0 null×null`,
       `${place.id}.2 asset [${place.id}] 0,${String(ROW)} null×null`,
     ])
-    expect([placed.nodes[brandString(place.id)]?.asset, placed.nodes[brandString(`${place.id}.2`)]?.asset]).toEqual(['a1', 'a2'])
+    expect([placed.nodes[brandString<NodeId>(place.id)]?.asset, placed.nodes[brandString<NodeId>(`${place.id}.2`)]?.asset]).toEqual(['a1', 'a2'])
     const after = reducer.reduce(placed, unplace)
     expect(nodesOf(after)).toEqual([
       `${shot.id} shot [${shot.id}] ${String(2 * COLUMN)},0 null×null`,

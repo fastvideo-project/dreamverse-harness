@@ -82,11 +82,13 @@ const UI_ROWS: Readonly<Record<string, [OwnerWhat, string]>> = {
   NodeType: ['node type', 'type'], VersionKind: ['version kind', 'kind'], MentionKind: ['mention kind', 'kind'], HistoryRow: ['history row', 'match'],
 }
 
-const BASE = ['models', 'generation', 'asset-pool', 'ffmpeg', 'reference-kit']
+const BASE = ['models', 'generation', 'asset-pool', 'canvas', 'ffmpeg', 'reference-kit']
 const SURFACE = ['api', 'chat-references', 'mcp-presets']
 const UI_CORE = ['ui-kit', 'ui-canvas', 'ui-history', 'ui-shell', 'ui-composer', 'ui-media']
 /** Kit libraries that one family of UI plugins value-imports: the UI halves of host base kits. */
 const UI_LIB = ['ui-reference-kit', 'ui-generation']
+/** The component keys whose slices and operations UI core reads: the kernel's, the asset pool's and the canvas's. */
+const UI_CORE_KEYS = ['proj', 'asset', 'canvas']
 const UI_LAYERS: readonly Layer[] = ['ui-core', 'ui-lib', 'ui']
 /** Value-import targets, then extra `import type` targets, of each host layer (R7). */
 const IMPORTS: Partial<Record<Layer, [Layer[], Layer[]]>> = {
@@ -431,7 +433,7 @@ function scanSource({ path, pkg, sf }: Source, facts: Facts, out: Violation[]): 
   const layer = layerOf(pkg, facts)
   const pluginKeys = new Set([...facts.owners].filter(([key, owners]) => key !== 'proj' && [...owners].some(o => o !== 'project'))
     .map(([key]) => key))
-  const uiPluginKeys = new Set([...pluginKeys].filter(key => key !== 'asset'))
+  const uiPluginKeys = new Set([...pluginKeys].filter(key => !UI_CORE_KEYS.includes(key)))
   const mirrors = layer === 'ui-core' || layer === 'ui-lib' ? markdownMirrors(sf) : new Set<string>()
   const inAlias = (node: ts.Node, name: string): boolean =>
     ts.findAncestor(node, n => ts.isTypeAliasDeclaration(n) && n.name.text === name) !== undefined
@@ -497,8 +499,8 @@ function scanSource({ path, pkg, sf }: Source, facts: Facts, out: Violation[]): 
     if (host && operationKey !== undefined && ownedElsewhere(operationKey, pkg, facts) && !surfaceAsset) report('R4', literal ?? '')
     if (layer === 'ui-core' || layer === 'ui-lib') scanUiLiteral(node, sf, layer, facts, mirrors, uiPluginKeys, report)
     if (layer === 'ui-core') {
-      if (key !== null && !['proj', 'asset'].includes(key[1] ?? '') && facts.owners.has(key[1] ?? '')) report('R5a', key[0])
-      if (object === 'components' && !['proj', 'asset'].includes(member) && ts.isPropertyAccessExpression(node)) report('R5b', read)
+      if (key !== null && !UI_CORE_KEYS.includes(key[1] ?? '') && facts.owners.has(key[1] ?? '')) report('R5a', key[0])
+      if (object === 'components' && !UI_CORE_KEYS.includes(member) && ts.isPropertyAccessExpression(node)) report('R5b', read)
       if (pkg === 'ui-kit' && bibleProperty) report('R5c', 'bible')
       const params = (ts.isPropertyAccessExpression(node) && node.name.text === 'params') || (ts.isElementAccessExpression(node) && textOf(node.argumentExpression) === 'params')
       if (params && ts.isIdentifier(node.expression) && node.expression.text === 'record') report('R5k', node.getText(sf))

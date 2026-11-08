@@ -7042,6 +7042,9 @@ importers:
       '@dv/asset-pool':
         specifier: workspace:*
         version: link:../asset-pool
+      '@dv/canvas':
+        specifier: workspace:*
+        version: link:../canvas
       '@dv/models':
         specifier: workspace:*
         version: link:../models
@@ -7097,6 +7100,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
+      '@dv/canvas':
+        specifier: workspace:*
+        version: link:../canvas
       '@dv/ffmpeg':
         specifier: workspace:*
         version: link:../ffmpeg
@@ -7254,6 +7260,9 @@ importers:
       '@dv/asset-pool':
         specifier: workspace:*
         version: link:../asset-pool
+      '@dv/canvas':
+        specifier: workspace:*
+        version: link:../canvas
       '@dv/project':
         specifier: workspace:*
         version: link:../project
@@ -7375,6 +7384,9 @@ importers:
 
   packages/dv/generation:
     dependencies:
+      '@dv/canvas':
+        specifier: workspace:*
+        version: link:../canvas
       '@dv/models':
         specifier: workspace:*
         version: link:../models
@@ -7652,6 +7664,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
+      '@dv/canvas':
+        specifier: workspace:*
+        version: link:../canvas
       '@dv/project':
         specifier: workspace:*
         version: link:../project
@@ -7861,6 +7876,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
+      '@dv/canvas':
+        specifier: workspace:*
+        version: link:../canvas
       '@dv/project':
         specifier: workspace:*
         version: link:../project

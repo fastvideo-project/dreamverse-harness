@@ -15,6 +15,7 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
+import DvCanvasNodes, { type NodeId } from '@dv/canvas'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvModels, { type ModelEntry, type RenderModelFacts, type RenderRequest, type RenderStreamEvent, type TaskOfPrimitive } from '@dv/models'
 import DvProject, {
@@ -31,6 +32,7 @@ const DvProbeGenerate = defineGeneration({
   service: 'dvProbeGenerate',
   component: 'probe',
   operation: 'probe.generate',
+  node: { kind: 'probe', column: 2 },
   primitive: 'video',
   tasks: { t2v: { zh: '探针文字', en: 'Probe from text' }, ref2v: { zh: '探针参考', en: 'Probe from references' } },
   label: { zh: '生成探针', en: 'Generate a probe' },
@@ -79,7 +81,7 @@ const DvProbeGenerate = defineGeneration({
  * `plain.generate`, the same video tasks as the probe, so a composition mounts one of the two.
  */
 const DvPlainGenerate = defineGeneration({
-  service: 'dvPlainGenerate', component: 'plain', operation: 'plain.generate', primitive: 'video',
+  service: 'dvPlainGenerate', component: 'plain', operation: 'plain.generate', node: { kind: 'plain', column: 1 }, primitive: 'video',
   tasks: { t2v: { zh: '普通文字', en: 'Plain from text' }, ref2v: { zh: '普通参考', en: 'Plain from references' } },
   label: { zh: '普通生成', en: 'Generate plainly' }, description: 'Generate a plain clip.', params: {}, inputs: {},
   outputs: [{ role: 'clip', type: 'video' }], seed: false,
@@ -141,7 +143,7 @@ class FakeModel {
 }
 
 /** The plugin classes the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
-const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, DvModels, DvProbeGenerate, DvPlainGenerate }
+const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, DvCanvasNodes, DvModels, DvProbeGenerate, DvPlainGenerate }
 
 const ORIGIN: RecordOrigin = { actor: 'user', surface: 'api', session: null, turn: null, tool_call: null, intent: 'test' }
 
@@ -182,6 +184,7 @@ async function start(serve = true, declaration: 'DvProbeGenerate' | 'DvPlainGene
   row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`])
   row('dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe'])
   row('dv-asset-pool', 'DvAssetPool', [])
+  row('dv-canvas', 'DvCanvasNodes')
   row('dv-models', 'DvModels')
   row('dv-generate', declaration)
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
@@ -238,6 +241,19 @@ describe('defineGeneration', () => {
     expect(ctx.tools.get('dv_probe_generate')).toBeUndefined()
     expect(ctx.dvModels.taskLabels()).toEqual({})
     expect(() => ctx.effect(() => ctx.dvProject.registerComponent('probe'))).not.toThrow()
+  })
+
+  it('makes one canvas node of the declared kind and column per render, and a render based on it a version of that node', async () => {
+    const fixture = await start()
+    const { ctx } = fixture
+    const first = await ctx.dvProbeGenerate.render(fixture.call({ prompt: 'dawn' }))
+    const rerun = await ctx.dvProbeGenerate.render(fixture.call({ prompt: 'dusk' }, [], { based_on: first }))
+    const canvas = ctx.dvProject.getState(fixture.project).components.canvas
+    expect(canvas.order).toEqual([first])
+    expect(canvas.nodes[brandString<NodeId>(first)]).toMatchObject({ kind: 'probe', versions: [first, rerun], position: { x: 480, y: 0 } })
+    const entry = [...ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-generate.mjs'))
+    await entry?.fiber?.dispose()
+    expect(ctx.dvProject.getState(fixture.project).components.canvas.order).toEqual([])
   })
 
   it('renders one record per call, with the seed drawn or given, and schedules a call with after', async () => {

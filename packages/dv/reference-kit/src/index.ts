@@ -12,6 +12,7 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-skill'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
+import type {} from '@dv/canvas'
 import type {
   AssetId, ComponentStates, OperationContext, OperationResult, OperationSpec, ProjectRecord, ProjectState, Reducer, RecordId,
   ReferenceKindSpec,
@@ -168,7 +169,7 @@ function createOperation<K extends ReferenceKey>(spec: ReferenceSpec<K>, project
 
 /**
  * `<k>.update`: the next version of an ID. It supersedes the record that wrote the current version, so the records
- * that read that version become stale.
+ * that read that version become stale, and is based on that record, so it is a version of the item's canvas node.
  * @param spec - the noun.
  * @returns the operation.
  */
@@ -191,6 +192,9 @@ function updateOperation<K extends ReferenceKey>(spec: ReferenceSpec<K>): Operat
       const current = latest(state, text(values[key]))
       return current === undefined ? [] : [current.created_by]
     },
+    // The next version joins the canvas node of the item.
+    basedOn: (values: Record<string, unknown>, state: ProjectState): RecordId | null =>
+      latest(state, text(values[key]))?.created_by ?? null,
     summarize: record => `${key} ${text(record.params[key])} updated`,
     execute(context: OperationContext): Promise<OperationResult> {
       const id = text(context.params[key])
@@ -226,6 +230,10 @@ export function defineReference<K extends ReferenceKey>(spec: ReferenceSpec<K>):
       }
       ctx.inject(['skills'], (child) => {
         child.effect(() => child.skills.register(skill), `${spec.service} skill`)
+      })
+      ctx.inject(['dvCanvasNodes'], (canvas) => {
+        canvas.effect(() => canvas.dvCanvasNodes.registerMaker({ operations: [`${spec.component}.create`], kind: spec.component, column: 0 }),
+          `${spec.service} canvas nodes`)
       })
     }
   }

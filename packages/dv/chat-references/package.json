@@ -15,6 +15,7 @@
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
     "@dv/asset-pool": "workspace:*",
+    "@dv/canvas": "workspace:*",
     "@dv/project": "workspace:*",
     "@dv/timeline": "workspace:*",
     "mime-types": "^3.0.2"

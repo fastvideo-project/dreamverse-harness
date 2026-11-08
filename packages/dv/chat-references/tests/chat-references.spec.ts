@@ -10,7 +10,7 @@ import type { FileAttachmentRef, ImageAttachmentRef, SaveImageAttachment } from 
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { createUserMessage, ToolCallId, type UserMessage } from '@deepseek-ai/dsh-llm'
 import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
-import type { AssetId, ProjectId, RecordOrigin, RunRequest, SessionId } from '@dv/project'
+import type { AssetId, ProjectId, ProjectState, RecordOrigin, RunRequest, SessionId } from '@dv/project'
 import type { CharacterId } from '@dv/character'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvChatReferences from '../src/index.ts'
@@ -50,6 +50,17 @@ class FakeAttachments {
   fileHostPath(ref: FileAttachmentRef): string | undefined {
     return this.files.get(ref.attachmentId)
   }
+}
+
+/**
+ * The assets that the asset nodes of a state show, in node order.
+ * @param state - a project state.
+ * @returns the asset IDs.
+ */
+function placedOf(state: ProjectState): AssetId[] {
+  const { nodes, order, assets } = state.components.canvas
+  const shown = Object.entries(assets) as Array<[AssetId, string]>
+  return order.flatMap(node => nodes[node]?.kind === 'asset' ? shown.flatMap(([asset, by]) => by === node ? [asset] : []) : [])
 }
 
 /** The mounted base fixture with the chat references plugin, a live session `s1`, and its fake agent. */
@@ -197,7 +208,7 @@ describe('chat attachments', () => {
     })])
     const asset = imported[0]?.outputs[0] as AssetId
     expect(fixture.assets.read(asset).toString()).toBe('chat-image')
-    expect(fixture.project.getState(projectId).components.asset.placed).toEqual([asset])
+    expect(placedOf(fixture.project.getState(projectId))).toEqual([asset])
   })
 
   it('imports a first message\'s image into the project that the chat\'s send made of its folder before the message', async () => {
@@ -216,7 +227,7 @@ describe('chat attachments', () => {
     const history = fixture.project.listHistory({ project: projectId })
     expect(history.map(entry => [entry.record.operation, entry.record.surface, entry.record.session]))
       .toEqual([['timeline.create', 'chat', 's1'], ['asset.import', 'chat', 's1'], ['proj.create', 'chat', 's1']])
-    const [asset] = fixture.project.getState(projectId).components.asset.placed
+    const [asset] = placedOf(fixture.project.getState(projectId))
     expect(fixture.assets.read(asset as AssetId).toString()).toBe('first-image')
   })
 
@@ -240,7 +251,7 @@ describe('chat attachments', () => {
     ])
     const assets = imported.flatMap(record => record.outputs as AssetId[])
     expect(assets.map(asset => fixture.assets.read(asset).toString())).toEqual(Object.values(contents))
-    expect(fixture.project.getState(projectId).components.asset.placed).toEqual(assets)
+    expect(placedOf(fixture.project.getState(projectId))).toEqual(assets)
   })
 
   it('imports nothing for a file the DSH attachment store keeps off this machine, and the next tool call still runs', async () => {
@@ -268,7 +279,7 @@ describe('chat attachments', () => {
     const places = () => fixture.project.listHistory({ project: projectId, operation: 'asset.place' }).map(entry => entry.record)
     await expect.poll(() => places().length).toBe(1)
     expect(places()[0]).toMatchObject({ actor: 'user', surface: 'chat', session: 's1', inputs: [expect.objectContaining({ role: 'asset', resolved_asset: asset })] })
-    expect(fixture.project.getState(projectId).components.asset.placed).toEqual([asset])
+    expect(placedOf(fixture.project.getState(projectId))).toEqual([asset])
     // A second mention of an asset already on the canvas writes nothing.
     emit('user/message', { source: { kind: 'user' }, content: [{ type: 'text', text }] })
     await new Promise(resolve => setTimeout(resolve, 50))
@@ -287,6 +298,6 @@ describe('chat attachments', () => {
     await fixture.project.undo(projectId)
     await fixture.project.run({ ...user, project: projectId, operation: 'asset.import', inputs: [], params: { path: fixture.writeFile('new.png'), mime: 'image/png' } })
     emit('user/message', { source: { kind: 'user' }, content: [{ type: 'text', text: `use @[old.png](dv:asset/${asset})` }] })
-    await expect.poll(() => fixture.project.getState(projectId).components.asset.placed).toEqual([asset])
+    await expect.poll(() => placedOf(fixture.project.getState(projectId))).toEqual([asset])
   })
 })

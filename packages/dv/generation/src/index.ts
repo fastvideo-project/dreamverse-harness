@@ -8,6 +8,7 @@
  */
 import { randomInt } from 'node:crypto'
 import { Service, type Context } from '@deepseek-ai/cordis'
+import type {} from '@dv/canvas'
 import {
   formatModelKey, type ModelEntry, type PrimitiveId, type PrimitiveTypes, type TaskOfPrimitive,
 } from '@dv/models'
@@ -60,6 +61,11 @@ interface GenerationSpecFields<P extends PrimitiveId> {
   component: string
   /** The operation name, `<component>.<verb>`. */
   operation: string
+  /**
+   * The canvas nodes of the operation's records: the node type key that the browser draws them with, and their layout
+   * column. The service registers them with `dvCanvasNodes` while the canvas is loaded.
+   */
+  node: { kind: string; column: number }
   primitive: P
   /**
    * The catalog tasks of the operation, each with its label in Chinese and English. The operation is registered while
@@ -209,6 +215,9 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
       ctx.effect(() => ctx.dvModels.labelTasks(spec.tasks), `${spec.service} task labels`)
       ctx.effect(() => ctx.dvModels.whileServing(tasks, () => ctx.dvProject.registerOperation(this.operation())),
         `${spec.service} ${spec.operation}`)
+      ctx.inject(['dvCanvasNodes'], (canvas) => {
+        canvas.effect(() => canvas.dvCanvasNodes.registerMaker({ operations: [spec.operation], ...spec.node }), `${spec.service} canvas nodes`)
+      })
     }
 
     async render(call: GenerationCall): Promise<RecordId> {

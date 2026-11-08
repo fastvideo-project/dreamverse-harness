@@ -83,7 +83,7 @@ async function bodyOf(request: Request): Promise<unknown> {
 
 /** The API service. */
 export default class DvApi extends Service {
-  static inject = ['dvProject', 'dvAssetPool']
+  static inject = ['dvProject', 'dvAssetPool', 'dvCanvasNodes']
   static Config = Config
 
   /** The transport-independent route handlers. */
