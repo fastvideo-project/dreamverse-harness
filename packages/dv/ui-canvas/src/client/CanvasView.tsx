@@ -239,8 +239,9 @@ interface Answer {
 /**
  * @param answer - the answered write of a node, if any.
  * @param state - the project state on show now.
- * @returns whether the state is later than the answer and does not hold the written record pending or running. The host
- *   answers a queued record before it runs, and the states until then do not show the write.
+ * @returns whether the state is later than the answer and does not hold the written record pending or running. A state
+ *   fetched before the record finished can arrive after the answer; it holds the record pending or running and does not
+ *   show the write.
  */
 function pastWrite(answer: Answer | undefined, state: WireState): boolean {
   if (answer === undefined || answer.state === state) return false
@@ -493,6 +494,7 @@ export function CanvasView(
    * @param resized - whether the size changed too.
    */
   const writePosition = useCallback((node: CanvasNode, box: NodePosition, resized: boolean) => {
+    answered.current.delete(node.id)
     positionsRef.current = { ...positionsRef.current, [node.id]: box }
     setPositions(all => ({ ...all, [node.id]: box }))
     setNotice(null)
@@ -502,7 +504,9 @@ export function CanvasView(
       project: projectId, operation: NODE_POSITION, surface: 'canvas', ...session === null ? {} : { session },
       params: resized ? { ...corner, width: box.width, height: box.height } : corner,
       intent: `${resized ? 'resize' : 'move'} ${node.title} on the canvas`,
-    }).then((record) => { answered.current.set(node.id, { state: graphRef.current?.state, record: record.id }) }, (error: unknown) => {
+    }).then((record) => {
+      if (positionsRef.current[node.id] === box) answered.current.set(node.id, { state: graphRef.current?.state, record: record.id })
+    }, (error: unknown) => {
       setPositions(all => all[node.id] === box ? withoutProperties(all, [node.id]) : all)
       setNotice(t('error', { message: errorMessage(error) }))
     })
