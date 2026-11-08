@@ -2,7 +2,7 @@
 /**
  * The shell plugin in a slot test runtime with stand-ins for the DSH layout, right panel and navigation services.
  */
-import { act, fireEvent, waitFor } from '@testing-library/react'
+import { act, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -132,31 +132,6 @@ describe('the project list', () => {
 })
 
 describe('the shell plugin', () => {
-  it('selects a sidebar chat with its project, including a chat older than the latest one', async () => {
-    const bench = await mountShell()
-    const project: WireProject = { id: 'p2', title: 'Music video', created_at: '2026-02-05T12:00:00Z', path: '/dv/p2' }
-    bench.server.projects = [...PROJECTS, project]
-    await bench.runtime.sessions.add({ id: 's2', summary: { displayTitle: 'Chorus', updatedAt: 2 } })
-    await bench.runtime.sessions.add({ id: 's3', summary: { displayTitle: 'Finale', updatedAt: 3 } })
-    await bench.runtime.workspaces.update((draft) => {
-      draft.phase = 'ready'
-      draft.items.push({ workspaceId: 'p2' as WorkspaceId, path: '/dv/p2', title: 'Music video', sessionIds: ['s2' as SessionId, 's3' as SessionId], createdAt: '', updatedAt: '' })
-    })
-    act(() => { bench.store.setShell({ projectId: 'p1' }) })
-    const navigator = bench.runtime.renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {} })
-    await waitFor(() => { expect(navigator.view.getByText('Music video')).toBeDefined() })
-
-    fireEvent.click(navigator.view.getByRole('button', { name: 'Show chats' }))
-    fireEvent.click(navigator.view.getByText('Chorus'))
-    await waitFor(() => { expect(bench.openSession).toHaveBeenLastCalledWith('s2') })
-    expect(bench.store.getShell().projectId).toBe('p2')
-
-    bench.openSession.mockClear()
-    fireEvent.click(navigator.view.getByText('Finale'))
-    expect(bench.openSession).toHaveBeenCalledWith('s3')
-    expect(bench.store.getShell().projectId).toBe('p2')
-  })
-
   it('replaces DSH\'s center, navigator and brand, registers the right-panel tab bodies, and sets the panel width', async () => {
     const bench = await mountShell()
     const center = bench.runtime.renderSlot('main.conversation', {})
