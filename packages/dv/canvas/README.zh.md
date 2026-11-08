@@ -57,7 +57,7 @@ kind: "package-reference"
 <details>
 <summary>实现内部——点击展开</summary>
 
-归约函数从旧到新读取直到当前位置的链上每条记录，并应用第一条匹配的规则。(1) `based_on` 是节点 N 某个版本的记录成为 N 的最新版本，除非其操作是 `canvas.node_position`、某个 placement 的操作，或 kind 与 N 不同的 maker 的操作；这样的记录继续匹配后面的规则。(2) 某个 maker 指名的操作、且 `makes` 接受的记录，在其列的第一个空行创建一个该 maker kind 的节点，使用默认尺寸。(3) 已完成的 placement `place` 记录为每个还没有节点显示的输入素材创建一个节点。(4) 已完成的 `canvas.node_remove` 记录从 `nodes`、`order` 和 `assets` 中删除其 `nodes` 参数指名的节点；撤销会重放不含该记录的链，所以每个节点带着名称、版本和位置回来。(5) 已完成的 `canvas.node_position` 记录在切片持有的节点上设置其参数给出的位置字段。(6) 其他记录保持切片不变。规则 1 和 2 接受任何状态的记录，所以等待中、运行中或失败的版本在节点上显示其状态；失败的渲染仍是一个版本，带有它的重试动作。`assets` 把 placement 节点放置的素材和每个节点最新版本的产出映射到该节点。
+归约函数从旧到新读取直到当前位置的链上每条记录，并应用第一条匹配的规则。(1) `based_on` 是节点 N 某个版本的记录成为 N 的最新版本，除非其操作是画布自己的操作（`canvas.node_position`、`canvas.node_remove`）、某个 placement 的操作，或 kind 与 N 不同的 maker 的操作；这样的记录继续匹配后面的规则。(2) 某个 maker 指名的操作、且 `makes` 接受的记录，在其列的第一个空行创建一个该 maker kind 的节点，使用默认尺寸。(3) 已完成的 placement `place` 记录为每个还没有节点显示的输入素材创建一个节点。(4) 已完成的 `canvas.node_remove` 记录从 `nodes`、`order` 和 `assets` 中删除其 `nodes` 参数指名的节点；撤销会重放不含该记录的链，所以每个节点带着名称、版本和位置回来。(5) 已完成的 `canvas.node_position` 记录在切片持有的节点上设置其参数给出的位置字段。(6) 其他记录保持切片不变。规则 1 和 2 接受任何状态的记录，所以等待中、运行中或失败的版本在节点上显示其状态；失败的渲染仍是一个版本，带有它的重试动作。`assets` 把 placement 节点放置的素材和每个节点最新版本的产出映射到该节点。
 
 生产者无需画布字段即可设置 `based_on`。编辑器的提示词修改、重跑和重试以被重跑的版本作为 `based_on`。调用方没有给出 `based_on` 时，`@dv/project` 的 `OperationSpec.basedOn` 填写它：`@dv/reference-kit` 的 `<k>.update` 以及 `@dv/text-node` 的 `textnode.write` 和 `textnode.edit` 指名该条目最新版本的记录，所以角色、场景、风格或文本路径的每个版本都加入同一个节点。`based_on` 指名的记录不在任何节点中时，例如被移除节点的某个版本，该记录落到规则 2 并产生一个新节点。
 

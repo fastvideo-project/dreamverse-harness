@@ -76,6 +76,8 @@ describe('the canvas.node_remove History row', () => {
     expect(actionLabel(removal, { operations: OPERATIONS, rows, records: new Map(), state: null })).toEqual(['从画布移除「g2」', 'Removed “g2”'])
     const bare = record({ id: 'rm2', operation: 'canvas.node_remove', params: { nodes: ['g1', 'g2'] } })
     expect(actionLabel(bare, { operations: OPERATIONS, rows, records: new Map(), state: fixtureState() })).toEqual(['从画布移除「g1, g2」', 'Removed “g1, g2”'])
+    const lost = record({ id: 'rm3', operation: 'canvas.node_remove', params: { nodes: ['n9'] }, report: { removed: { n9: canvasNode('shot', ['missing']) } } })
+    expect(actionLabel(lost, { operations: OPERATIONS, rows, records: new Map(), state: fixtureState() })).toEqual(['从画布移除「n9」', 'Removed “n9”'])
   })
 
   it('matches the operation and moves the center to the canvas without a node to open, since the node is gone', () => {

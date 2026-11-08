@@ -1,8 +1,8 @@
 /**
  * The reducer of the `canvas` slice. It reads every record of the chain, oldest first, and applies the first rule that
  * matches:
- * 1. a record whose `based_on` is a version of node N becomes the newest version of N, unless its operation is
- *    `canvas.node_position`, a placement's, or a maker's of another kind;
+ * 1. a record whose `based_on` is a version of node N becomes the newest version of N, unless its operation is one of
+ *    the canvas's own (`canvas.node_position`, `canvas.node_remove`), a placement's, or a maker's of another kind;
  * 2. a record of an operation that a {@link NodeMaker} names creates a node of its kind in the first free row of its
  *    column (a full column continues in a sub-column), with the default size;
  * 3. a finished `place` record of an {@link AssetPlacement} creates a node for each input asset that no node shows;
@@ -23,6 +23,8 @@ import type { AssetPlacement, CanvasNode, CanvasState, NodeId, NodeMaker, NodePo
 export const NODE_POSITION = 'canvas.node_position'
 /** The operation that removes nodes from the canvas. */
 export const NODE_REMOVE = 'canvas.node_remove'
+/** The canvas's own operations, which change nodes and never become a version of one. */
+const CANVAS_OPERATIONS: ReadonlySet<string> = new Set([NODE_POSITION, NODE_REMOVE])
 
 /** The width of a layout column, in canvas units. */
 export const COLUMN = 240
@@ -157,7 +159,7 @@ export function canvasReducer(registered: CanvasRegistrations): Reducer<'canvas'
       const operation = record.operation ?? ''
       const maker = registered.maker(operation)
       const placement = registered.placement(operation)
-      const versioned = operation !== NODE_POSITION && placement === undefined
+      const versioned = !CANVAS_OPERATIONS.has(operation) && placement === undefined
       const base = versioned && record.based_on !== null ? nodeOfVersion(slice, record.based_on) : undefined
       const node = base === undefined ? undefined : slice.nodes[base]
       if (base !== undefined && node !== undefined && (maker === undefined || maker.kind === node.kind)) {

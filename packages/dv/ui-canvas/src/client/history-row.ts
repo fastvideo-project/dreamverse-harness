@@ -12,7 +12,7 @@ import type { DvLanguage } from '@dv/ui-kit/locale.ts'
 import type { Registry } from '@dv/ui-kit/registries.ts'
 import type { ProjectRecord, WireCanvasNode, WireState } from '@dv/ui-kit/types.ts'
 import type { NodeType } from './contract/index.ts'
-import { buildCanvasGraph, nodeTitle } from './graph.ts'
+import { nodeTitle } from './graph.ts'
 import { en, zh } from './locales.ts'
 
 /** The operations whose records the rows name. */
@@ -58,13 +58,14 @@ export function removeRow(nodeTypes: Registry<NodeType>): HistoryRow {
     subject: () => null,
     label(step, { state, operations }) {
       const kept = (step.report?.['removed'] ?? {}) as Record<string, WireCanvasNode>
-      const registered = { nodeTypes: nodeTypes.getSnapshot(), recordsInUse: [], versionKinds: [] }
-      // The removed nodes are drawn alone, over the current records, which still hold their versions.
-      const before = (shown: WireState): WireState => ({
-        ...shown, components: { ...shown.components, canvas: { nodes: kept, order: Object.keys(kept), assets: {} } },
-      })
+      // The removed nodes are titled alone, over the current records, which still hold their versions.
+      const before: WireState | null = state === null ? null : {
+        ...state, components: { ...state.components, canvas: { nodes: kept, order: Object.keys(kept), assets: {} } },
+      }
       const titleIn = (language: DvLanguage): string => {
-        const titles = state === null ? [] : buildCanvasGraph(before(state), operations, language, registered).nodes.map(node => node.title)
+        const titles = before === null
+          ? []
+          : Object.keys(kept).flatMap(id => nodeTitle(before, operations, language, nodeTypes.getSnapshot(), id) ?? [])
         return titles.length === 0 ? removedOf(step).join(', ') : titles.join(', ')
       }
       return [zh['history.removed'].replace('{title}', titleIn('zh')), en['history.removed'].replace('{title}', titleIn('en'))]

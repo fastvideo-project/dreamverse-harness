@@ -144,6 +144,12 @@ describe('canvasReducer', () => {
     expect(nodesOf(before)).toEqual([`${first.id} shot [${first.id},${rerun.id}] 600,40 320×180`])
   })
 
+  it('removes a node for a removal record based on its version, without a version', () => {
+    const shot = record('shot.render', { outputs: [asset('v1')] })
+    const remove = record('canvas.node_remove', { based_on: shot.id, params: { nodes: [shot.id] } })
+    expect(reduceAll([shot, remove])).toEqual({ nodes: {}, order: [], assets: {} })
+  })
+
   it('makes a new node for a later record based on a version of a removed node', () => {
     const first = record('shot.render', { outputs: [asset('v1')] })
     const remove = record('canvas.node_remove', { params: { nodes: [first.id] } })
