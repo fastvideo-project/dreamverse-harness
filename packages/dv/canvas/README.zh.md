@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包把项目画布上有什么作为项目的一部分保存下来。`canvas` 切片列出每个节点及其 kind、版本、位置和尺寸，并从记录重建，所以撤销、重做和历史覆盖每个新节点、新版本、移动和调整大小。重跑会加入被重跑版本所在的节点，而不是新增节点。用户和智能体用一条 `canvas.node_position` 记录移动或调整一个节点的大小，用一条 `canvas.node_remove` 记录把节点从画布移除，撤销会让每个节点带着名称、版本和位置回来；智能体的工具 `dv_canvas_node_position` 和 `dv_canvas_node_remove` 无论画布是否打开都能用。
+使用本包把项目画布上有什么作为项目的一部分保存下来。`canvas` 切片列出每个节点及其 kind、版本、位置和尺寸，并从记录重建，所以撤销、重做和历史覆盖每个新节点、新版本、移动和调整大小。重跑会加入被重跑版本所在的节点，而不是新增节点。一条 `canvas.node_position` 记录移动或调整一个节点的大小，一条 `canvas.node_remove` 记录移除节点；智能体的工具 `dv_canvas_node_position` 和 `dv_canvas_node_remove` 无论画布是否打开都能用。
 
 ## 目录
 

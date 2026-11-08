@@ -47,8 +47,9 @@ export function positionRow(nodeTypes: Registry<NodeType>): HistoryRow {
 }
 
 /**
+ * The History row of `canvas.node_remove`, titled by the nodes that the record's report keeps.
  * @param nodeTypes - the registered node types, read when a row is labeled.
- * @returns the History row of `canvas.node_remove`.
+ * @returns the row.
  */
 export function removeRow(nodeTypes: Registry<NodeType>): HistoryRow {
   // The precondition of `canvas.node_remove` refuses a call that names no node.

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to keep what sits on a project's canvas as part of the project. The `canvas` slice lists every node with its kind, its versions, and its position and size, and it is rebuilt from the records, so undo, redo, and History cover every new node, new version, move, and resize. A rerun joins the node of the version it reruns instead of adding a node. The user and the agent move or resize a node with one `canvas.node_position` record, and remove nodes from the canvas with one `canvas.node_remove` record, which undo reverts with each node's name, versions, and position; the agent's tools `dv_canvas_node_position` and `dv_canvas_node_remove` work whether or not a canvas is open.
+Use this package to keep what sits on a project's canvas as part of the project. The `canvas` slice lists every node with its kind, its versions, and its position and size, and it is rebuilt from the records, so undo, redo, and History cover every new node, new version, move, and resize. A rerun joins the node of the version it reruns instead of adding a node. One `canvas.node_position` record moves or resizes a node, and one `canvas.node_remove` record removes nodes; the agent's tools `dv_canvas_node_position` and `dv_canvas_node_remove` work whether or not a canvas is open.
 
 ## Table of Contents
 

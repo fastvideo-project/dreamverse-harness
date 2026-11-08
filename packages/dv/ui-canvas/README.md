@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to give the web application a canvas over a DreamVerse project beside the chat. `CanvasView` draws each node of the project's node list on a surface that pans and zooms, linked by the assets that flowed between them, with stale records marked. A node keeps every version of one shot, image, text, or reference and shows the newest. Double-clicking a node opens a floating editor that shows its versions, reruns a version, adds references, or prefills the chat composer. A right click opens the node's menu, and 从画布移除 / Remove from canvas there, in the editor, or on Delete takes the node off the canvas as one step of the history. The canvas is the 画布 / Canvas center view; the `dv-canvas` right-Sidebar tab shows the same canvas.
+Use this package to give the web application a canvas over a DreamVerse project beside the chat. `CanvasView` draws each node of the project's node list on a surface that pans and zooms, linked by the assets that flowed between them, with stale records marked. A node keeps every version of one shot, image, text, or reference and shows the newest. Double-clicking a node opens a floating editor that shows its versions, reruns a version, adds references, or prefills the chat composer. The canvas is the 画布 / Canvas center view; the `dv-canvas` right-Sidebar tab shows the same canvas.
 
 ## Table of Contents
 
