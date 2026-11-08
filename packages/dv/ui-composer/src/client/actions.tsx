@@ -22,7 +22,7 @@ export const askAgentAction: NodeAction = {
   shows: (_node): _node is NodeView => true,
   run(node, host) {
     const shown = node.preview ?? node.assets[0]
-    const ref = node.ref ?? { kind: 'record', id: node.record?.id ?? node.id }
+    const ref = node.ref ?? { kind: 'record', id: node.record.id }
     dispatchCompose({
       text: pickText(`修改 ${node.title}：`, `Change ${node.title}: `),
       refs: [{ ...ref, label: node.title, ...shown === undefined ? {} : { assetId: shown } }],

@@ -9,7 +9,7 @@ import type { FeatureHandle } from '@deepseek-ai/dsh-client-test-runtime'
 import { tabInfoFactory } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-info.ts'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import type { ComposedProps } from '@deepseek-ai/dsh-client-ui-slots'
-import type { WireState } from '@dv/ui-kit/types.ts'
+import type { WireCanvasNode, WireState } from '@dv/ui-kit/types.ts'
 import type { EditorHost, NodeView } from '../../ui-canvas/src/client/contract/index.ts'
 import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
 import { buildCanvasGraph } from '../../ui-canvas/src/client/graph.ts'
@@ -60,16 +60,19 @@ export async function disposeRuntimes(): Promise<void> {
 }
 
 /**
- * The nodes that the canvas draws for a state from the node types registered in the runtime's `dvCanvas`, as the canvas
- * hands them to a card, an editor and an action.
- * @param runtime - a runtime from {@link mountAssetPool}.
+ * The canvas nodes that the real graph builder draws from a state with the given nodes added to its node list, with
+ * the registered node types, as their cards and editors receive them.
+ * @param runtime - the runtime with `dvCanvas`.
  * @param state - the project state.
- * @param placed - the assets on the project's canvas list.
+ * @param added - the nodes to add, by node ID, in order.
  * @returns the nodes.
  */
-export function canvasNodes(runtime: SlotTestRuntime, state: WireState, placed: readonly string[]): NodeView[] {
+export function canvasNodes(runtime: SlotTestRuntime, state: WireState, added: Readonly<Record<string, WireCanvasNode>>): NodeView[] {
   const canvas = runtime.ctx.dvCanvas
-  const graph = buildCanvasGraph(state, new Set(placed), OPERATIONS, 'zh', {
+  const list = state.components.canvas
+  const nodeList = { ...list, nodes: { ...list.nodes, ...added }, order: [...list.order, ...Object.keys(added)] }
+  const withNodes = { ...state, components: { ...state.components, canvas: nodeList } }
+  const graph = buildCanvasGraph(withNodes, OPERATIONS, 'zh', {
     nodeTypes: canvas.nodeTypes.getSnapshot(),
     recordsInUse: canvas.recordsInUse.getSnapshot(), versionKinds: canvas.versionKinds.getSnapshot(),
   })

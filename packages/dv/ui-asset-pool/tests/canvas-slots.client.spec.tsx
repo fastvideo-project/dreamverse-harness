@@ -8,8 +8,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
 import type { Asset } from '@dv/ui-kit/types.ts'
-import type { NodeType, NodeView } from '../../ui-canvas/src/client/contract/index.ts'
-import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import type { NodeView } from '../../ui-canvas/src/client/contract/index.ts'
+import { asset, canvasNode, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { canvasNodes, disposeRuntimes, mountAssetPool, recordingHost } from './runtime.client.tsx'
 
 afterEach(async () => {
@@ -19,14 +19,9 @@ afterEach(async () => {
   document.documentElement.lang = ''
 })
 
-const OWNER: NodeType = {
-  id: '@dv/test-owner', type: 'owner', label: () => 'owner', color: '', column: 1,
-  entries: () => [{ id: 'owner', title: 'owner', record: null, assets: ['ref.png'], sizing: { kind: 'window', defaultSize: { width: 208, height: 60 }, minSize: { width: 104, height: 60 } } }],
-}
-
 /**
- * The fixture state plus an image that two `asset.import` records imported, a video, and an image that no record of the
- * state imported.
+ * The fixture state plus an image that two `asset.import` records imported, a video, an image that no record of the
+ * state imported, and the `asset.place` record `p1` that put it and the not yet listed fresh.png on the canvas.
  * @returns the state.
  */
 function importedState(): ReturnType<typeof fixtureState> {
@@ -40,9 +35,20 @@ function importedState(): ReturnType<typeof fixtureState> {
     record({ id: 'u2', operation: 'asset.import', outputs: ['poster.png'], surface: 'asset_pool' }),
     record({ id: 'u3', operation: 'asset.import', outputs: ['clip.mp4'], surface: 'asset_pool' }),
     record({ id: 'u4', operation: 'asset.import', outputs: ['poster.png'], surface: 'chat' }),
+    record({ id: 'p1', operation: 'asset.place', surface: 'canvas' }),
   )
   return state
 }
+
+/** The asset nodes of the two imports of {@link importedState} that put their output on the canvas. */
+const IMPORTS = { u2: canvasNode('asset', ['u2']), u3: canvasNode('asset', ['u3']) }
+
+/**
+ * @param assets - the placed assets.
+ * @returns the asset nodes that the placement record p1 made, `p1` for the first and `p1.<n>` for the others.
+ */
+const placed = (...assets: string[]) => Object.fromEntries(assets.map((each, index) =>
+  [index === 0 ? 'p1' : `p1.${String(index + 1)}`, canvasNode('asset', ['p1'], 0, 0, { asset: each })]))
 
 function assetNodes(nodes: readonly NodeView[]): Record<string, object> {
   return Object.fromEntries(nodes.filter(node => node.type === 'asset').map(node => [node.id, {
@@ -54,9 +60,9 @@ function assetNodes(nodes: readonly NodeView[]): Record<string, object> {
 const byId = (assets: readonly Asset[]): Record<string, Asset> => Object.fromEntries(assets.map(each => [each.id, each]))
 
 describe('the asset node type', () => {
-  it('draws each placed asset as the node of the first asset.import record of the current state that imported it, titled by the asset', async () => {
+  it('draws the node of an import that put its asset on the canvas as the import\'s output, titled by the asset', async () => {
     const { runtime } = await mountAssetPool(() => null)
-    expect(assetNodes(canvasNodes(runtime, importedState(), ['poster.png', 'clip.mp4']))).toEqual({
+    expect(assetNodes(canvasNodes(runtime, importedState(), IMPORTS))).toEqual({
       u2: { title: '海报', record: 'u2', assets: ['poster.png'], size: { width: 208, height: 117 } },
       u3: { title: 'clip.mp4', meta: '2.5s', record: 'u3', assets: ['clip.mp4'], size: { width: 208, height: 117 } },
     })
@@ -66,35 +72,31 @@ describe('the asset node type', () => {
     const { runtime } = await mountAssetPool(() => null)
     const state = importedState()
     state.assets = state.assets.map(item => item.id === 'poster.png' ? { ...item, width: 768, height: 1024 } : item)
-    const sizings = Object.fromEntries(canvasNodes(runtime, state, ['poster.png', 'clip.mp4']).map(node => [node.id, node.sizing]))
+    const sizings = Object.fromEntries(canvasNodes(runtime, state, IMPORTS).map(node => [node.id, node.sizing]))
     expect(sizings).toMatchObject({
       u2: { kind: 'media', defaultSize: { width: 208, height: 277 }, minSize: { width: 104, height: 139 }, aspectRatio: { ratio: 3 / 4, fixedHeight: 0 } },
       u3: { kind: 'media', defaultSize: { width: 208, height: 117 }, minSize: { width: 104, height: 59 }, aspectRatio: { ratio: 16 / 9, fixedHeight: 0 } },
     })
   })
 
-  it('draws a placed asset that no record of the current state imported as asset:<id>, which names the asset in a prompt', async () => {
-    const { runtime } = await mountAssetPool(() => null)
-    expect(assetNodes(canvasNodes(runtime, importedState(), ['undone.png']))).toEqual({
-      'asset:undone.png': { title: 'undone.png', record: null, assets: ['undone.png'], ref: { kind: 'asset', id: 'undone.png' }, size: { width: 208, height: 117 } },
-    })
-  })
-
-  it('labels the node type 素材, and draws a placed asset that the state does not list yet as asset:<id> titled by the ID', async () => {
+  it('draws the node of a placement as its placed asset, which names the asset in a prompt, titled by the ID while the state does not list it yet', async () => {
     document.documentElement.lang = 'zh-CN'
     const { runtime } = await mountAssetPool(() => null)
     expect(runtime.ctx.dvCanvas.nodeTypes.getSnapshot().map(type => type.label())).toEqual(['素材'])
-    expect(assetNodes(canvasNodes(runtime, importedState(), ['fresh.png']))).toEqual({
-      'asset:fresh.png': { title: 'fresh.png', record: null, assets: ['fresh.png'], ref: { kind: 'asset', id: 'fresh.png' }, size: { width: 208, height: 117 } },
+    expect(assetNodes(canvasNodes(runtime, importedState(), placed('undone.png', 'fresh.png')))).toEqual({
+      p1: { title: 'undone.png', record: 'p1', assets: ['undone.png'], ref: { kind: 'asset', id: 'undone.png' }, size: { width: 208, height: 117 } },
+      'p1.2': { title: 'fresh.png', record: 'p1', assets: ['fresh.png'], ref: { kind: 'asset', id: 'fresh.png' }, size: { width: 208, height: 117 } },
     })
   })
 
-  it('draws no node for an asset off the canvas list, nor for a placed asset that a node of another type owns', async () => {
+  it('draws no asset node for an import or an asset outside the node list, and an untitled node for an import without an output', async () => {
     const { runtime } = await mountAssetPool(() => null)
-    expect(assetNodes(canvasNodes(runtime, importedState(), []))).toEqual({})
-    expect(Object.keys(assetNodes(canvasNodes(runtime, importedState(), ['ref.png'])))).toEqual(['u1'])
-    runtime.ctx.dvCanvas.nodeTypes.register(OWNER)
-    expect(assetNodes(canvasNodes(runtime, importedState(), ['ref.png']))).toEqual({})
+    expect(assetNodes(canvasNodes(runtime, importedState(), {}))).toEqual({})
+    const state = importedState()
+    state.components.proj.records.push(record({ id: 'u5', operation: 'asset.import', outputs: [], status: 'failed' }))
+    expect(assetNodes(canvasNodes(runtime, state, { u5: canvasNode('asset', ['u5']) }))).toEqual({
+      u5: { title: '', record: 'u5', assets: [''], size: { width: 208, height: 117 } },
+    })
   })
 })
 
@@ -110,7 +112,7 @@ describe('the asset card and editor', () => {
         <div data-testid={`${node.id}:editor`}>{renderSlot('dv.canvas.editor', { node, state, operations: OPERATIONS, host }, { entryKey: node.type })}</div>
       </section>
     )))
-    nodes = canvasNodes(runtime, state, ['poster.png', 'clip.mp4'])
+    nodes = canvasNodes(runtime, state, IMPORTS)
     const view = runtime.renderRoot()
 
     const posterCard = view.getByTestId('u2:card').querySelector('img')
@@ -135,7 +137,7 @@ describe('the asset card and editor', () => {
     const { runtime } = await mountAssetPool(({ renderSlot }) => nodes.map(node => (
       <div key={node.id} data-testid={`${node.id}:editor`}>{renderSlot('dv.canvas.editor', { node, state, operations: OPERATIONS, host }, { entryKey: node.type })}</div>
     )))
-    nodes = canvasNodes(runtime, state, ['poster.png', 'clip.mp4'])
+    nodes = canvasNodes(runtime, state, IMPORTS)
     const view = runtime.renderRoot()
     const box = (id: string): string[] => {
       const frame = view.getByTestId(`${id}:editor`).querySelector('img, video')?.closest('[style*="360px"]')
@@ -154,7 +156,7 @@ describe('the asset card and editor', () => {
         <div data-testid="editor">{renderSlot('dv.canvas.editor', { node, state, operations: OPERATIONS, host }, { entryKey: node.type })}</div>
       </section>
     )))
-    nodes = canvasNodes(runtime, state, ['fresh.png'])
+    nodes = canvasNodes(runtime, state, placed('fresh.png')).filter(node => node.type === 'asset')
     const view = runtime.renderRoot()
     expect(view.getByTestId('card').querySelector('img, video, audio, [data-dv-media]')).toBeNull()
     expect(view.getByTestId('editor').textContent).toBe('')
@@ -166,11 +168,11 @@ describe('从画布移除', () => {
   it('shows on asset nodes only, and closes the editor and takes the asset off the canvas list through the host', async () => {
     document.documentElement.lang = 'zh-CN'
     const { runtime } = await mountAssetPool(() => null)
-    runtime.ctx.dvCanvas.nodeTypes.register(OWNER)
-    const nodes = canvasNodes(runtime, importedState(), ['poster.png'])
+    const nodes = canvasNodes(runtime, importedState(), { u2: IMPORTS.u2 })
     const poster = nodes.find(node => node.id === 'u2')
-    const owner = nodes.find(node => node.id === 'owner')
-    if (poster === undefined || owner === undefined) throw new Error('no poster or owner node')
+    // The fixture's shot node g2, which its kind's type does not draw here, shows assets too.
+    const owner = nodes.find(node => node.id === 'g2')
+    if (poster === undefined || owner === undefined) throw new Error('no poster or shot node')
     const assets = new Map(importedState().assets.map(each => [each.id, each]))
     const [action, ...others] = runtime.ctx.dvCanvas.actions.getSnapshot()
     if (action === undefined) throw new Error('no action')
@@ -216,7 +218,7 @@ describe('disposal of the canvas registrations', () => {
         {renderSlot('dv.canvas.picker', { projectId: 'p1', session: 's5', onOpen: () => {} }, { entryKey: 'assets' })}
       </>
     ))
-    nodes = canvasNodes(runtime, state, ['poster.png'])
+    nodes = canvasNodes(runtime, state, { u2: IMPORTS.u2 }).filter(node => node.type === 'asset')
     const view = runtime.renderRoot()
     const ledger = (): number[] => (['dv.canvas.picker', 'dv.canvas.card', 'dv.canvas.editor'] as const).map(name => runtime.slots.entries(name).length)
     const canvas = runtime.ctx.dvCanvas
@@ -227,7 +229,8 @@ describe('disposal of the canvas registrations', () => {
 
     await assetPool.dispose()
     expect([ledger(), canvas.nodeTypes.getSnapshot().length, canvas.actions.getSnapshot().length]).toEqual([[0, 0, 0], 0, 0])
-    expect(assetNodes(canvasNodes(runtime, state, ['poster.png']))).toEqual({})
+    // Without its type, the node of the import draws as a plain card titled by its operation.
+    expect(canvasNodes(runtime, state, { u2: IMPORTS.u2 }).find(node => node.id === 'u2')?.title).toBe('asset.import')
     expect(view.getByTestId('card').querySelector('img')).toBeNull()
     expect(view.getByTestId('editor').querySelector('img')).toBeNull()
     expect(view.queryByTestId('dv-asset-pool-panel')).toBeNull()

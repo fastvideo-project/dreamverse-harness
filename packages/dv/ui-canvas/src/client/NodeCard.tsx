@@ -146,7 +146,7 @@ export function NodeCard(props: NodeCardProps): ReactNode {
         <div style={{ position: 'relative', height: box.height }}>
           {props.body}
           {marker !== null
-            ? <span style={{ ...text(13), position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dv-overlay)', color: flags.failed ? 'var(--dv-danger)' : 'var(--dv-text)', fontWeight: 500 }}>{marker}</span>
+            ? <span style={{ ...text(13), position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dv-overlay)', color: 'var(--dv-text)', fontWeight: 500 }}>{marker}</span>
             : null}
           {node.badges.length === 0
             ? null

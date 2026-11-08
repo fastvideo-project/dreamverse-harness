@@ -23,9 +23,9 @@ describe('the generation plugin checks', () => {
     const operation = OPERATIONS[0]
     if (operation === undefined) throw new Error('no shot.render declaration')
     const canvas = await mountPrimitive(
-      shotRender, { operation, type: 'take', output: { id: 'p1d.mp4', mime: 'video/mp4' } }, false, ['reference', 'assets', 'media'],
+      shotRender, { operation, type: 'shot', output: { id: 'p1d.mp4', mime: 'video/mp4' } }, false, ['reference', 'assets', 'media'],
     )
-    const node = await onlyNodeOf(canvas, 'p1d', 'take')
+    const node = await onlyNodeOf(canvas, 'p1d', 'shot')
     await waitFor(() => { expect(node.querySelector('video')?.getAttribute('src')).toBe(`${assetUrl('p1d.mp4')}#t=0.1`) })
     await canvas.runtime.dispose()
   })

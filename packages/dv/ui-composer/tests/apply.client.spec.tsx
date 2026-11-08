@@ -8,7 +8,7 @@ import { createElement, type ComponentType } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
-import type { NodeHost, NodeView } from '@dv/ui-canvas/contract'
+import type { NodeHost, NodeView, OperationRecord } from '@dv/ui-canvas/contract'
 import { createDvCanvas } from '@dv/ui-canvas/src/client/dv-canvas.ts'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { dispatchCompose, DV_COMPOSE_EVENT, type DvComposeDetail } from '@dv/ui-kit/compose.ts'
@@ -54,12 +54,17 @@ async function mountComposer() {
   return { runtime, composer, view, sources, composed, stop }
 }
 
+/** @returns a record of an operation call, as a canvas node shows it. */
+const shownRecord = (fields: Partial<ProjectRecord> & { id: string; operation: string }): OperationRecord =>
+  ({ ...record(fields), operation: fields.operation })
+
 function node(
   changes: Partial<Pick<NodeView, 'record' | 'assets' | 'preview' | 'ref'>> & { id: string; title: string },
 ): NodeView {
   return {
-    record: null, assets: [], sizing: { kind: 'window', defaultSize: { width: 208, height: 0 }, minSize: { width: 104, height: 0 } }, type: 'note', claimed: false,
-    flags: { stale: false, rendering: false, failed: false, superseded: false }, badges: [], version: null,
+    record: shownRecord({ id: changes.id, operation: 'note.write' }), versions: [changes.id], assets: [],
+    sizing: { kind: 'window', defaultSize: { width: 208, height: 0 }, minSize: { width: 104, height: 0 } }, type: 'note',
+    flags: { stale: false, rendering: false, failed: false, superseded: false }, badges: [],
     unseen: false, rerunning: false, ...changes,
   }
 }
@@ -74,26 +79,27 @@ function host(): { value: NodeHost; close: ReturnType<typeof vi.fn<() => void>> 
 }
 
 describe('问 agent', () => {
-  it('shows on every node and prefills 修改 {title}： with the node\'s reference, its record, or the node, then closes the editor', async () => {
+  it('shows on every node and prefills 修改 {title}： with the node\'s reference, else the record of its shown version, then closes the editor', async () => {
     const { runtime, composer, composed, stop } = await mountComposer()
     const [action] = runtime.ctx.dvCanvas.actions.getSnapshot()
     if (action === undefined) throw new Error('no node action')
     expect([action.id, action.label()]).toEqual(['@dv/ui-composer:ask-agent', '问 agent'])
-    const take: ProjectRecord = record({ id: 'g1', operation: 'shot.render', outputs: ['shot1.mp4', 'shot1-last.png'] })
+    // The rerun g3 is the version on show of the node g1.
+    const take = shownRecord({ id: 'g3', operation: 'shot.render', outputs: ['shot1.mp4', 'shot1-last.png'] })
     const nodes = [
       node({ id: 'g1', title: '镜头 1', record: take, assets: ['shot1.mp4', 'shot1-last.png'], preview: 'shot1-last.png' }),
-      node({ id: 'asset:ref.png', title: 'ref.png', assets: ['ref.png'], ref: { kind: 'asset', id: 'ref.png' } }),
-      node({ id: 'character:hero', title: 'Hero', ref: { kind: 'character', id: 'hero' } }),
-      node({ id: 'plan:p1', title: '分镜计划' }),
+      node({ id: 'p2', title: 'ref.png', assets: ['ref.png'], ref: { kind: 'asset', id: 'ref.png' } }),
+      node({ id: 'e1', title: 'Hero', ref: { kind: 'character', id: 'hero' } }),
+      node({ id: 'n1', title: '分镜计划' }),
     ]
     expect(nodes.map(each => action.shows(each, new Map()))).toEqual([true, true, true, true])
     const hosts = nodes.map(() => host())
     nodes.forEach((each, index) => { action.run(each, (hosts[index] ?? host()).value) })
     expect(composed).toEqual([
-      { text: '修改 镜头 1：', refs: [{ kind: 'record', id: 'g1', label: '镜头 1', assetId: 'shot1-last.png' }] },
+      { text: '修改 镜头 1：', refs: [{ kind: 'record', id: 'g3', label: '镜头 1', assetId: 'shot1-last.png' }] },
       { text: '修改 ref.png：', refs: [{ kind: 'asset', id: 'ref.png', label: 'ref.png', assetId: 'ref.png' }] },
       { text: '修改 Hero：', refs: [{ kind: 'character', id: 'hero', label: 'Hero' }] },
-      { text: '修改 分镜计划：', refs: [{ kind: 'record', id: 'plan:p1', label: '分镜计划' }] },
+      { text: '修改 分镜计划：', refs: [{ kind: 'record', id: 'n1', label: '分镜计划' }] },
     ])
     expect(hosts.map(each => each.close.mock.calls.length)).toEqual([1, 1, 1, 1])
     document.documentElement.lang = 'en'

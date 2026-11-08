@@ -14,6 +14,9 @@ const OTHER_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQV
 /** A 1×1 opaque PNG. */
 const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 
+/** The prompt field of the `dv.prompt` composer in the open node editor. */
+const EDITOR_PROMPT = '[data-testid="dv-canvas-node-editor"] [data-dv-prompt] [contenteditable="true"]'
+
 /** The Shot render operation of every seeded shot; the e2e profile serves fasth3 for task ref2v only. */
 const RENDER_OPERATION = 'shot.render'
 
@@ -21,7 +24,7 @@ const RENDER_OPERATION = 'shot.render'
  * The minimum frame height of each window node type that the resize story puts on the canvas: a text card's one line
  * and footer, and a reference card of one reference at 4:3 of its 104-unit minimum width above its footer.
  */
-const WINDOW_MIN_HEIGHTS: Readonly<Record<string, number>> = { character: 110, location: 110, style: 110, textnode: 58 }
+const WINDOW_MIN_HEIGHTS: Readonly<Record<string, number>> = { character: 110, location: 110, style: 110, text: 58 }
 
 /** A seeded project: its ID, the rendered take assets in shot order (the clips of timeline t1), and the shot records. */
 interface Seeded { id: string; clipAssets: string[]; shots: string[] }
@@ -296,7 +299,7 @@ describe('canvas stories', () => {
       }).map(node => node.getAttribute('aria-label'))
     })
     expect(outside).toEqual([])
-    const take = page.locator('[data-node-type="take"]').first()
+    const take = page.locator('[data-node-type="shot"]').first()
     const id = await take.getAttribute('data-node-id') ?? ''
     const before = await take.boundingBox()
     if (before === null) throw new Error('take node has no box')
@@ -337,18 +340,18 @@ describe('canvas stories', () => {
     const page = await openPage()
     await gotoProject(page, project.id)
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
-    await page.locator('[data-node-type="take"]').first().dblclick()
+    await page.locator('[data-node-type="shot"]').first().dblclick()
     await expect.poll(() => editor.count()).toBe(1)
     // The take editor names the model and task of the take's record.
     expect(await editor.locator('[data-testid="dv-canvas-render-mode"]').textContent()).toBe('fasth3 · 参考图生成')
     await editor.getByRole('button', { name: '关闭' }).click()
     await expect.poll(() => editor.count()).toBe(0)
-    await page.locator('[data-node-type="take"]').first().dblclick()
-    await page.locator('#dv-canvas-editor-prompt').click()
+    await page.locator('[data-node-type="shot"]').first().dblclick()
+    await page.locator(EDITOR_PROMPT).click()
     await page.keyboard.press('Escape')
     await expect.poll(() => editor.count()).toBe(0)
     // Escape also closes the editor when focus left it, for example after clicking the editor's video.
-    await page.locator('[data-node-type="take"]').first().dblclick()
+    await page.locator('[data-node-type="shot"]').first().dblclick()
     await expect.poll(() => editor.count()).toBe(1)
     await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur() })
     await page.keyboard.press('Escape')
@@ -376,7 +379,7 @@ describe('canvas stories', () => {
     const page = await openPage()
     await gotoProject(page, first.id)
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
-    await page.locator('[data-node-type="take"]').first().dblclick()
+    await page.locator('[data-node-type="shot"]').first().dblclick()
     await expect.poll(() => editor.count()).toBe(1)
     await viewToggle(page, '时间线').click()
     await page.locator('[data-testid="dv-timeline-editor"]').waitFor()
@@ -384,7 +387,7 @@ describe('canvas stories', () => {
     await viewToggle(page, '画布').click()
     await page.locator('[data-node-id]').first().waitFor()
     expect(await editor.count()).toBe(0)
-    await page.locator('[data-node-type="take"]').first().dblclick()
+    await page.locator('[data-node-type="shot"]').first().dblclick()
     await expect.poll(() => editor.count()).toBe(1)
     await openProjectByTitle(page, 'canvas-leave-b')
     await expect.poll(() => page.locator('[data-dv-workspace] header').first().textContent()).toContain('canvas-leave-b')
@@ -396,7 +399,7 @@ describe('canvas stories', () => {
     const project = await seedProject('canvas-play', 2)
     const page = await openPage()
     await gotoProject(page, project.id)
-    await page.locator('[data-node-type="take"]').first().dblclick()
+    await page.locator('[data-node-type="shot"]').first().dblclick()
     const video = page.locator('[data-testid="dv-canvas-node-editor"] video')
     await video.waitFor()
     await expect.poll(
@@ -406,49 +409,54 @@ describe('canvas stories', () => {
       .toEqual({ error: 0, moving: true })
   })
 
-  it('渲染新版本 adds a take linked to the original by a take edge', async () => {
+  it('渲染新版本 adds a version to the same node: the card shows v2 with version frames behind it, and the editor lists both versions', async () => {
     const project = await seedProject('canvas-take', 2)
     const page = await openPage()
     await gotoProject(page, project.id)
-    const takes = page.locator('[data-node-type="take"]')
+    const takes = page.locator('[data-node-type="shot"]')
     await expect.poll(() => takes.count()).toBe(2)
     const original = await takes.first().getAttribute('data-node-id') ?? ''
-    await takes.first().dblclick()
-    await page.locator('#dv-canvas-editor-prompt').fill('canvas-take shot 1, take two')
+    const node = page.locator(`[data-testid="dv-canvas-view"] [data-node-id="${original}"]`)
+    expect(await node.locator('[data-node-version-frame]').count(), 'a node of one version has no version frames').toBe(0)
+    await node.dblclick()
+    const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
+    expect(await editor.locator('[data-testid="dv-canvas-version-strip"]').count(), 'a node of one version has no version strip').toBe(0)
+    await page.locator(EDITOR_PROMPT).fill('canvas-take shot 1, take two')
     const requests = harness.backend.requests.length
     await page.getByRole('button', { name: '渲染新版本' }).click()
-    await expect.poll(() => page.locator('[data-testid="dv-canvas-node-editor"]').count()).toBe(0)
-    await expect.poll(() => takes.count(), { timeout: 30_000 }).toBe(3)
+    await expect.poll(() => editor.count()).toBe(0)
     await expect.poll(() => harness.backend.requests.length, { timeout: 30_000 }).toBe(requests + 1)
     const retake = await waitFor(async () => {
       const latest = (await stateOf(project.id)).components.proj.records.filter(record => record.operation === RENDER_OPERATION).at(-1)
-      return latest?.status === 'done' ? latest : null
-    }, 'the new take renders')
-    expect(await page.locator(`path[data-edge="${original}>${retake?.id ?? ''}"]`).count()).toBe(1)
-  })
-
-  it('the original take and its new take are told apart on the canvas', async () => {
-    const project = await seedProject('canvas-take-names', 2)
-    const page = await openPage()
-    await gotoProject(page, project.id)
-    const takes = page.locator('[data-node-type="take"]')
-    await takes.first().dblclick()
-    await page.locator('#dv-canvas-editor-prompt').fill('canvas-take-names shot 1, take two')
-    await page.getByRole('button', { name: '渲染新版本' }).click()
-    await expect.poll(() => takes.count(), { timeout: 30_000 }).toBe(3)
-    // Two cards that both read 镜头 1 leave the creator guessing which is the new version.
-    const titles = await takes.evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label')))
-    expect(new Set(titles).size).toBe(titles.length)
+      return latest?.status === 'done' && latest.based_on === original ? latest : null
+    }, 'the new version renders')
+    // The new version joins the original node: no new node, and the card shows the newest version.
+    expect((await stateOf(project.id)).components.canvas.nodes[original]?.versions).toEqual([original, retake.id])
+    expect(await takes.count()).toBe(2)
+    await expect.poll(() => node.locator('span', { hasText: /^v2( · |$)/ }).count(), { timeout: 15_000 }).toBe(1)
+    expect(await node.locator('[data-node-version-frame]').count()).toBe(2)
+    await node.dblclick()
+    const strip = editor.locator('[data-testid="dv-canvas-version-strip"]')
+    await strip.waitFor()
+    expect(await strip.locator('[data-version]').evaluateAll(buttons => buttons.map(button => button.getAttribute('data-version')))).toEqual([original, retake.id])
+    expect(await strip.textContent()).toContain('第 2 / 2 版')
+    await strip.locator(`[data-version="${original}"]`).click()
+    await expect.poll(() => strip.textContent()).toContain('第 1 / 2 版')
+    expect(page.errors).toEqual([])
   })
 
   it('问 agent prefills the chat with a reference to the node and closes the editor', async () => {
     const project = await seedProject('canvas-ask', 2)
     const page = await openPage()
     await gotoProject(page, project.id)
-    await page.locator('[data-node-type="take"]').first().dblclick()
+    const node = page.locator('[data-node-type="shot"]').first()
+    const title = await node.getAttribute('aria-label') ?? ''
+    expect(title).not.toBe('')
+    await node.dblclick()
     await page.getByRole('button', { name: '问 agent' }).click()
     await expect.poll(() => page.locator('[data-testid="dv-canvas-node-editor"]').count()).toBe(0)
-    await expect.poll(() => page.locator('[data-dv-chat] [contenteditable="true"]').first().innerText(), { timeout: 10_000 }).toContain('镜头 1')
+    // The reference names the node by the title its card shows.
+    await expect.poll(() => page.locator('[data-dv-chat] [contenteditable="true"]').first().innerText(), { timeout: 10_000 }).toContain(title)
   })
 
   it('the canvas follows the light and the dark theme', async () => {
@@ -456,11 +464,11 @@ describe('canvas stories', () => {
     const light = await openPage({ scheme: 'light' })
     await gotoProject(light, project.id)
     expect(luminance(await backgroundOf(light.locator('[data-testid="dv-canvas-view"]')))).toBeGreaterThan(0.8)
-    expect(luminance(await backgroundOf(light.locator('[data-node-type="take"]').first()))).toBeGreaterThan(0.8)
+    expect(luminance(await backgroundOf(light.locator('[data-node-type="shot"]').first()))).toBeGreaterThan(0.8)
     const dark = await openPage({ scheme: 'dark' })
     await gotoProject(dark, project.id)
     expect(luminance(await backgroundOf(dark.locator('[data-testid="dv-canvas-view"]')))).toBeLessThan(0.25)
-    expect(luminance(await backgroundOf(dark.locator('[data-node-type="take"]').first()))).toBeLessThan(0.3)
+    expect(luminance(await backgroundOf(dark.locator('[data-node-type="shot"]').first()))).toBeLessThan(0.3)
   })
 
   it('at fit zoom node text is readable and cards do not overlap, also after a trim badge', async () => {
@@ -498,7 +506,7 @@ describe('canvas stories', () => {
     const project = await seedProject('canvas-many', 22)
     const page = await openPage()
     await gotoProject(page, project.id)
-    await expect.poll(() => page.locator('[data-node-type="take"]').count(), { timeout: 30_000 }).toBe(22)
+    await expect.poll(() => page.locator('[data-node-type="shot"]').count(), { timeout: 30_000 }).toBe(22)
     await fitCanvas(page)
     expect(await overlappingNodes(page)).toEqual([])
     const outside = await page.locator('[data-testid="dv-canvas-view"]').evaluate((canvas) => {
@@ -526,10 +534,10 @@ describe('canvas stories', () => {
     await runOperation(project.id, 'character.update', { character: 'c1' }, [{ role: 'reference', ref: frame?.id ?? '' }])
     const page = await openPage()
     await gotoProject(page, project.id)
-    const staleTakes = page.locator('[data-node-type="take"][data-node-stale="true"]')
+    const staleTakes = page.locator('[data-node-type="shot"][data-node-stale="true"]')
     await expect.poll(() => staleTakes.count()).toBe(2)
-    // The stale card's outline is the first ring of its box shadow.
-    const border = await staleTakes.first().evaluate(el => getComputedStyle(el).boxShadow)
+    // The stale card's outline is the first ring of its frame's box shadow.
+    const border = await staleTakes.first().locator('[data-node-frame]').evaluate(el => getComputedStyle(el).boxShadow)
     const [r = 0, g = 0, b = 0] = border.match(/\d+/g)?.map(Number) ?? []
     expect(r).toBeGreaterThan(150)
     expect(g + b).toBeLessThan(r)
@@ -560,7 +568,7 @@ describe('canvas stories', () => {
     await composer.click()
     await page.keyboard.type('agent-shot-please')
     await page.keyboard.press('Enter')
-    const takes = page.locator('[data-node-type="take"]')
+    const takes = page.locator('[data-node-type="shot"]')
     await expect.poll(() => takes.count(), { timeout: 60_000 }).toBe(3)
     const outlines = await takes.evaluateAll(elements => elements.map(element => getComputedStyle(element).outlineStyle))
     expect(outlines).not.toContain('dashed')
@@ -568,7 +576,7 @@ describe('canvas stories', () => {
     expect((await stateOf(project.id)).components.proj.records.filter(record => record.operation === RENDER_OPERATION)).toHaveLength(3)
   })
 
-  it('the agent reads the open canvas and moves two nodes, which every open page of the project shows at once and keeps after a reload', async () => {
+  it('the agent reads the open canvas and moves two nodes with dv_canvas_node_position, which every open page of the project shows at once and keeps after a reload', async () => {
     const project = await seedProject('canvas-agent-move', 2)
     let results: unknown[] = []
     const targets: Array<{ node: string; x: number; y: number }> = []
@@ -579,7 +587,7 @@ describe('canvas stories', () => {
         (view) => {
           const read = view.toolResults[0] as { cards?: Array<{ id: string }> }
           for (const [index, card] of (read.cards ?? []).slice(0, 2).entries()) targets.push({ node: card.id, x: 2000 + index * 300, y: 0 })
-          return { calls: [{ name: 'dv_canvas_move', args: { moves: targets } }] }
+          return { calls: targets.map(target => ({ name: 'dv_canvas_node_position', args: { reason: 'tidy the canvas', ...target } })) }
         },
         (view) => {
           results = view.toolResults
@@ -593,12 +601,6 @@ describe('canvas stories', () => {
     const other = await openPage()
     await gotoProject(other, project.id)
     await other.locator('[data-node-id]').first().waitFor({ timeout: 30_000 })
-    const layoutPosts: string[] = []
-    for (const each of [page, other]) {
-      each.on('request', (request) => {
-        if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/dv/canvas/layout') layoutPosts.push(request.postData() ?? '')
-      })
-    }
     const drawn = await page.locator('[data-testid="dv-canvas-view"]').first().locator('[data-node-id]')
       .evaluateAll(nodes => nodes.map(node => node.getAttribute('data-node-id') ?? ''))
     expect(drawn.length, 'the seeded canvas draws at least two nodes').toBeGreaterThanOrEqual(2)
@@ -607,31 +609,21 @@ describe('canvas stories', () => {
     await composer.click()
     await page.keyboard.type('agent-move-please')
     await page.keyboard.press('Enter')
-    await expect.poll(() => results.length, { timeout: 60_000, message: 'the agent turn reaches the reply after dv_canvas_move' }).toBe(2)
-    const [read, moved] = results as [
-      { project?: string; cards?: Array<{ id: string }> } | string,
-      { project?: string; moved?: number; cards?: Array<{ id: string; x: number; y: number }> } | string,
-    ]
-    if (typeof read !== 'object' || typeof moved !== 'object') throw new Error(`a canvas tool failed: ${JSON.stringify(results)}`)
-    expect([read.project, moved.project], 'both canvas tools act on the open project').toEqual([project.id, project.id])
+    await expect.poll(() => results.length, { timeout: 60_000, message: 'the agent turn reaches the reply after dv_canvas_node_position' }).toBe(3)
+    const read = results[0] as { project?: string; cards?: Array<{ id: string; type: string; versions: number }> } | string
+    if (typeof read !== 'object') throw new Error(`dv_canvas_read failed: ${JSON.stringify(results)}`)
+    expect(read.project, 'dv_canvas_read reads the open project').toBe(project.id)
     expect((read.cards ?? []).map(card => card.id).sort(), 'dv_canvas_read lists the nodes that the page draws').toEqual([...drawn].sort())
-    expect(moved.moved, 'dv_canvas_move moves both nodes').toBe(2)
-    for (const target of targets) {
-      expect(moved.cards?.find(card => card.id === target.node), `dv_canvas_move returns ${target.node} at its target`).toMatchObject({ x: target.x, y: target.y })
-    }
+    const state = await stateOf(project.id)
+    expect(targets.map(target => state.components.canvas.nodes[target.node]?.position), 'the node list holds the moves; each node keeps its size')
+      .toEqual(targets.map(({ node, x, y }) => ({ ...state.components.canvas.nodes[node]?.position, x, y })))
+    const moves = state.components.proj.records.filter(record => record.operation === 'canvas.node_position')
+    expect(moves.map(record => [record.actor, record.params['node']]), 'each move is one record of the agent').toEqual(targets.map(target => ['agent', target.node]))
     const placed = (on: Page) => async (): Promise<string[]> => await Promise.all(targets.map(async target => await on.locator('[data-testid="dv-canvas-view"]').first()
       .locator(`[data-node-id="${target.node}"]`).evaluate(el => `${(el as HTMLElement).style.left},${(el as HTMLElement).style.top}`)))
     const expected = targets.map(target => `${String(target.x)}px,${String(target.y)}px`)
     await expect.poll(placed(page), { timeout: 10_000, message: 'the page that asked draws the moved nodes at their targets without a reload' }).toEqual(expected)
     await expect.poll(placed(other), { timeout: 10_000, message: 'the other page of the project draws them too without a reload' }).toEqual(expected)
-    const sizeOf = (id: string): object | undefined => {
-      const card = ((read.cards ?? []) as Array<{ id: string; width: number; height: number }>).find(each => each.id === id)
-      return card === undefined ? undefined : { width: card.width, height: card.height }
-    }
-    const stored = await harness.api.get(`/api/dv/canvas/layout?project=${project.id}`) as { positions: Record<string, { x: number; y: number }> }
-    expect(targets.map(target => stored.positions[target.node]), 'the layout store holds the move, and each moved node keeps its stored size')
-      .toEqual(targets.map(({ node, x, y }) => ({ x, y, ...sizeOf(node) })))
-    expect(layoutPosts.filter(body => targets.some(target => body.includes(`"${target.node}"`))), 'no page writes the move: the host stores it').toEqual([])
     await page.reload({ waitUntil: 'load' })
     await page.locator('[data-node-id]').first().waitFor({ timeout: 30_000 })
     await expect.poll(placed(page), { timeout: 10_000, message: 'the moved nodes stay at their targets after a reload' }).toEqual(expected)
@@ -654,10 +646,20 @@ describe('canvas stories', () => {
       match: 'resize-read-please',
       steps: [{ calls: [{ name: 'dv_canvas_read', args: {} }] }, (view) => { read = view.toolResults; return { text: '读好了' } }],
     })
+    const kinds = { media: ['asset', 'shot', 'image', 'audio'], window: Object.keys(WINDOW_MIN_HEIGHTS) }
     const page = await openPage()
     await gotoProject(page, project.id)
     await page.locator('[data-node-id]').first().waitFor({ timeout: 30_000 })
     await fitCanvas(page)
+    // Every host producer's node kind is a registered UI node type key: its card carries the kind and is no plain card,
+    // whose frame shows only the kind.
+    const listed = (await stateOf(project.id)).components.canvas
+    expect(new Set(Object.values(listed.nodes).map(node => node.kind)), 'the seeded canvas holds every node kind').toEqual(new Set([...kinds.media, ...kinds.window]))
+    for (const id of listed.order) {
+      const card = page.locator(`[data-testid="dv-canvas-view"] [data-node-id="${id}"]`)
+      const kind = listed.nodes[id]?.kind ?? ''
+      expect([await card.getAttribute('data-node-type'), (await card.locator('[data-node-frame]').textContent())?.trim() === kind], `node ${id} of kind ${kind} is drawn by its node type`).toEqual([kind, false])
+    }
     const zoom = Number(/scale\(([\d.]+)\)/.exec(await page.locator('[data-testid="dv-canvas-view"] > div[style*="transform"]').evaluate(el => (el as HTMLElement).style.transform))?.[1])
     // The frame box of a node in canvas units, as the canvas stores it.
     const boxOf = async (node: Locator): Promise<{ width: number; height: number }> => await node.evaluate(el => ({
@@ -671,7 +673,6 @@ describe('canvas stories', () => {
       await page.mouse.move(handle.x + handle.width / 2 + dx, handle.y + handle.height / 2 + dy, { steps: 8 })
       await page.mouse.up()
     }
-    const kinds = { media: ['asset', 'take', 'image', 'audio'], window: Object.keys(WINDOW_MIN_HEIGHTS) }
     const resized: Record<string, { width: number; height: number }> = {}
     for (const [kind, types] of Object.entries(kinds)) {
       for (const type of types) {
@@ -697,12 +698,12 @@ describe('canvas stories', () => {
         resized[id] = smallest
       }
     }
-    await page.waitForTimeout(1200)
-    const stored = await harness.api.get(`/api/dv/canvas/layout?project=${project.id}`) as { positions: Record<string, { width: number; height: number }> }
+    const stored = async (): Promise<Record<string, { width: number | null; height: number | null }>> =>
+      Object.fromEntries(Object.entries((await stateOf(project.id)).components.canvas.nodes).map(([id, node]) => [id, node.position]))
     // A frame's style rounds its size to three decimals.
-    const near = (actual: { width: number; height: number } | undefined, size: { width: number; height: number }): boolean =>
-      actual !== undefined && Math.abs(actual.width - size.width) < 0.01 && Math.abs(actual.height - size.height) < 0.01
-    for (const [id, size] of Object.entries(resized)) expect(near(stored.positions[id], size), `the layout store holds the size of ${id}`).toBe(true)
+    const near = (actual: { width: number | null; height: number | null } | undefined, size: { width: number; height: number }): boolean =>
+      typeof actual?.width === 'number' && typeof actual.height === 'number' && Math.abs(actual.width - size.width) < 0.01 && Math.abs(actual.height - size.height) < 0.01
+    for (const [id, size] of Object.entries(resized)) await expect.poll(async () => near((await stored())[id], size), { message: `the node list holds the size of ${id}` }).toBe(true)
     const composer = page.locator('[data-dv-chat] [contenteditable="true"]').first()
     await composer.click()
     await page.keyboard.type('resize-read-please')
@@ -732,7 +733,7 @@ describe('canvas stories', () => {
     const frame = await canvas.boundingBox()
     if (frame === null) throw new Error('canvas has no box')
     const tile = page.locator(`[data-asset-id="${extra.outputs[0] ?? ''}"]`)
-    expect(await page.locator(`[data-node-id="${extra.id}"]`).count()).toBe(0)
+    expect(await page.locator('[data-node-type="asset"]').count()).toBe(0)
     // The canvas accepts a 素材库 tile drag.
     const accepted = await canvas.evaluate((element, assetId) => {
       const transfer = new DataTransfer()
@@ -743,8 +744,9 @@ describe('canvas stories', () => {
     }, extra.outputs[0] ?? '')
     expect(accepted).toBe(true)
     await tile.dragTo(canvas, { targetPosition: { x: 120, y: frame.height - 140 } })
-    // Dropping puts the asset on the canvas, with its node under the pointer.
-    const node = page.locator(`[data-node-id="${extra.id}"]`)
+    // Dropping puts the asset on the canvas, with its node under the pointer; the node ID is the asset.place record.
+    const nodeId = await waitFor(async () => (await stateOf(project.id)).components.canvas.assets[extra.outputs[0] ?? ''], 'the asset node of the drop', 5000)
+    const node = page.locator(`[data-node-id="${nodeId}"]`)
     await expect.poll(async () => {
       const box = await node.boundingBox()
       const point = { x: frame.x + 120, y: frame.y + frame.height - 140 }
@@ -764,8 +766,11 @@ describe('canvas stories', () => {
     await editor.getByRole('button', { name: '从画布移除', exact: true }).click()
     await expect.poll(() => node.count(), { timeout: 10_000 }).toBe(0)
     await expect.poll(async () => placedAssets(await stateOf(project.id))).toEqual([])
-    const placements = (await stateOf(project.id)).components.proj.records.filter(record => record.operation?.startsWith('asset.') === true && record.operation !== 'asset.import')
-    expect(placements.map(record => [record.operation, record.surface])).toEqual([['asset.place', 'canvas'], ['asset.unplace', 'canvas']])
+    // The drop is two records, asset.place then canvas.node_position under the pointer; the removal is asset.unplace.
+    const placements = (await stateOf(project.id)).components.proj.records.filter(record => record.operation !== null && ['asset.place', 'asset.unplace', 'canvas.node_position'].includes(record.operation))
+    expect(placements.map(record => [record.operation, record.surface])).toEqual([['asset.place', 'canvas'], ['canvas.node_position', 'canvas'], ['asset.unplace', 'canvas']])
+    expect(placements[0]?.id).toBe(nodeId)
+    expect(placements[1]?.params['node']).toBe(nodeId)
     await openAssets(page)
     expect(await page.locator(`[data-testid="dv-asset-pool-panel"]:visible [data-asset-id="${extra.outputs[0] ?? ''}"]`).count()).toBe(1)
   })
@@ -786,10 +791,15 @@ describe('canvas stories', () => {
     }, OTHER_PNG_BASE64)
     const at = { clientX: frame.x + 160, clientY: frame.y + 160 }
     for (const type of ['dragenter', 'dragover', 'drop']) await canvas.dispatchEvent(type, { dataTransfer: transfer, ...at })
-    // The dropped image joins the canvas list, with its node under the drop point.
-    await expect.poll(() => page.locator('[data-node-type="asset"]').count(), { timeout: 10_000 }).toBe(1)
+    // Each dropped file joins the canvas list as an asset node; the first, the image, sits under the drop point.
+    await expect.poll(() => page.locator('[data-node-type="asset"]').count(), { timeout: 10_000 }).toBe(2)
+    const image = await waitFor(async () => {
+      const state = await stateOf(project.id)
+      const asset = state.assets.find(each => each.name === 'dropped-on-canvas.png')?.id
+      return asset === undefined ? undefined : state.components.canvas.assets[asset]
+    }, 'the node of the dropped image', 10_000)
     await expect.poll(async () => {
-      const box = await page.locator('[data-node-type="asset"]').boundingBox()
+      const box = await page.locator(`[data-node-id="${image}"]`).boundingBox()
       if (box === null) return false
       return box.x <= at.clientX && at.clientX <= box.x + box.width && box.y <= at.clientY && at.clientY <= box.y + box.height
     }, { timeout: 5000 }).toBe(true)
@@ -797,6 +807,128 @@ describe('canvas stories', () => {
     await page.waitForTimeout(500)
     const outside = await page.getByText('notes-on-canvas.txt').evaluateAll(nodes => nodes.filter(node => node.closest('[data-testid="dv-canvas-view"]') === null).length)
     expect(outside).toBe(0)
+  })
+})
+
+/** @returns the style box of a drawn node in canvas units: left and top of the node, width and height of its frame. */
+async function styleBoxOf(node: Locator): Promise<{ x: number; y: number; width: number; height: number }> {
+  return await node.evaluate((element) => {
+    const style = (element as HTMLElement).style
+    const frame = element.querySelector<HTMLElement>('[data-node-frame]')?.style.height ?? ''
+    const number = Number.parseFloat
+    return { x: number(style.left), y: number(style.top), width: number(style.width), height: number(frame) }
+  })
+}
+
+/** @returns the newest record of the current state, which a canvas gesture writes. */
+async function newestRecord(project: string): Promise<ProjectRecord | undefined> {
+  return (await stateOf(project)).components.proj.records.at(-1)
+}
+
+describe('the canvas node list', () => {
+  it('a drag writes one 移动节点 step that a reload keeps and Undo reverts to the old position', async () => {
+    const project = await seedProject('nodes-move', 2)
+    const page = await openPage()
+    await gotoProject(page, project.id)
+    const id = project.shots[0] ?? ''
+    const node = page.locator(`[data-testid="dv-canvas-view"] [data-node-id="${id}"]`)
+    await node.waitFor({ timeout: 30_000 })
+    const before = await styleBoxOf(node)
+    const stored = (await stateOf(project.id)).components.canvas.nodes[id]?.position
+    const screen = await node.boundingBox()
+    if (screen === null) throw new Error('the shot node has no box')
+    await page.mouse.move(screen.x + 40, screen.y + 40)
+    await page.mouse.down()
+    await page.mouse.move(screen.x + 160, screen.y + 90, { steps: 8 })
+    await page.mouse.up()
+    const move = await waitFor(async () => {
+      const record = await newestRecord(project.id)
+      return record?.operation === 'canvas.node_position' ? record : null
+    }, 'the canvas.node_position record of the drag', 10_000)
+    expect(move.params['node']).toBe(id)
+    expect(Object.keys(move.params).sort(), 'a move gives the corner only').toEqual(['node', 'x', 'y'])
+    const moved = await styleBoxOf(node)
+    expect([moved.x !== before.x, moved.y !== before.y]).toEqual([true, true])
+    expect((await stateOf(project.id)).components.canvas.nodes[id]?.position).toEqual({ ...stored, x: moved.x, y: moved.y })
+    await page.reload({ waitUntil: 'load' })
+    await node.waitFor({ timeout: 30_000 })
+    await expect.poll(() => styleBoxOf(node), { message: 'a reload keeps the moved position' }).toEqual(moved)
+    await openHistory(page)
+    const row = historyPanel(page).locator(`[data-testid="dv-history-row"][data-record="${move.id}"]`)
+    await expect.poll(() => row.innerText(), { timeout: 15_000 }).toContain('移动节点')
+    expect(await historyPanel(page).locator('[data-testid="dv-history-row"]').evaluateAll(rows => rows.filter(each => each.textContent?.includes('移动节点')).length), 'the drag is one step').toBe(1)
+    await historyPanel(page).locator('[data-testid="dv-history-undo"]').click()
+    await expect.poll(async () => (await stateOf(project.id)).components.canvas.nodes[id]?.position, { timeout: 15_000, message: 'Undo restores the old position in the node list' }).toEqual(stored)
+    await expect.poll(() => styleBoxOf(node), { timeout: 15_000, message: 'Undo draws the node at its old position' }).toEqual(before)
+    expect(page.errors).toEqual([])
+  })
+
+  it('a corner resize writes one 调整大小 step and Undo reverts to the old size', async () => {
+    const project = await seedProject('nodes-resize', 2)
+    const page = await openPage()
+    await gotoProject(page, project.id)
+    const id = project.shots[0] ?? ''
+    const node = page.locator(`[data-testid="dv-canvas-view"] [data-node-id="${id}"]`)
+    await node.waitFor({ timeout: 30_000 })
+    const before = await styleBoxOf(node)
+    const stored = (await stateOf(project.id)).components.canvas.nodes[id]?.position
+    expect([stored?.width, stored?.height], 'a new node has the default size of its type').toEqual([null, null])
+    await node.click({ position: { x: 12, y: 8 } })
+    const handle = await node.locator('[data-node-handle="se"]').boundingBox()
+    if (handle === null) throw new Error('the selected node shows no south-east handle')
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(handle.x + handle.width / 2 + 60, handle.y + handle.height / 2 + 40, { steps: 8 })
+    await page.mouse.up()
+    const resize = await waitFor(async () => {
+      const record = await newestRecord(project.id)
+      return record?.operation === 'canvas.node_position' ? record : null
+    }, 'the canvas.node_position record of the resize', 10_000)
+    expect(resize.params['node']).toBe(id)
+    const resized = await styleBoxOf(node)
+    expect([resized.width > before.width, resized.height > before.height]).toEqual([true, true])
+    const position = (await stateOf(project.id)).components.canvas.nodes[id]?.position
+    // A frame's style rounds its size to three decimals.
+    expect([Math.abs((position?.width ?? 0) - resized.width), Math.abs((position?.height ?? 0) - resized.height)].every(off => off < 0.01), 'the node list holds the new size').toBe(true)
+    await openHistory(page)
+    const row = historyPanel(page).locator(`[data-testid="dv-history-row"][data-record="${resize.id}"]`)
+    await expect.poll(() => row.innerText(), { timeout: 15_000 }).toContain('调整大小')
+    expect(await historyPanel(page).locator('[data-testid="dv-history-row"]').evaluateAll(rows => rows.filter(each => each.textContent?.includes('调整大小')).length), 'the resize is one step').toBe(1)
+    await historyPanel(page).locator('[data-testid="dv-history-undo"]').click()
+    await expect.poll(async () => (await stateOf(project.id)).components.canvas.nodes[id]?.position, { timeout: 15_000, message: 'Undo restores the old size in the node list' }).toEqual(stored)
+    await expect.poll(() => styleBoxOf(node), { timeout: 15_000, message: 'Undo draws the node at its old size' }).toEqual(before)
+    expect(page.errors).toEqual([])
+  })
+
+  it('the agent moves a node with dv_canvas_node_position while no canvas is open; the project state shows it and the canvas draws it once opened', async () => {
+    const project = await seedProject('nodes-agent-closed', 2)
+    const id = project.shots[1] ?? ''
+    const target = { x: 1500, y: 600 }
+    let results: unknown[] = []
+    model.rules.push({
+      match: 'node-position-closed-please',
+      steps: [
+        { calls: [{ name: 'dv_canvas_node_position', args: { reason: 'move the second shot', node: id, ...target } }] },
+        (view) => { results = view.toolResults; return { text: '移好了' } },
+      ],
+    })
+    const page = await openPage()
+    await gotoProject(page, project.id, 'timeline')
+    expect(await page.locator('[data-testid="dv-canvas-view"]').count(), 'the page shows no canvas').toBe(0)
+    const composer = page.locator('[data-dv-chat] [contenteditable="true"]').first()
+    await composer.waitFor({ timeout: 30_000 })
+    await composer.click()
+    await page.keyboard.type('node-position-closed-please')
+    await page.keyboard.press('Enter')
+    await expect.poll(() => results.length, { timeout: 60_000, message: 'the agent turn reaches the reply after dv_canvas_node_position' }).toBe(1)
+    const state = await stateOf(project.id)
+    expect(state.components.canvas.nodes[id]?.position, `the node list holds the move: ${JSON.stringify(results)}`).toEqual({ ...target, width: null, height: null })
+    expect(state.components.proj.records.at(-1)).toMatchObject({ operation: 'canvas.node_position', actor: 'agent', status: 'done' })
+    await viewToggle(page, '画布').click()
+    const node = page.locator(`[data-testid="dv-canvas-view"] [data-node-id="${id}"]`)
+    await node.waitFor({ timeout: 30_000 })
+    await expect.poll(async () => { const box = await styleBoxOf(node); return { x: box.x, y: box.y } }).toEqual(target)
+    expect(page.errors).toEqual([])
   })
 })
 
@@ -891,7 +1023,7 @@ describe('node states and pop-ups', () => {
     await gotoProject(page, project.id)
     await fitCanvas(page)
     await recordZooms(page)
-    const take = page.locator('[data-node-type="take"]').first()
+    const take = page.locator('[data-node-type="shot"]').first()
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
     await expectZoomFrom(page, take, editor, async () => { await editor.getByRole('button', { name: '关闭' }).click() }, 'dblclick')
     // The ring tells the creator which node the closed editor belonged to; empty canvas clears it.
@@ -901,13 +1033,14 @@ describe('node states and pop-ups', () => {
     await expect.poll(() => take.getAttribute('data-node-selected')).toBeNull()
   })
 
-  it('渲染新版本 renders once on a double click, then selects the new take, which shows 渲染中… and then an unseen dot until opened', async () => {
+  it('渲染新版本 renders once on a double click, then keeps its node selected, which shows 渲染中… for the new version and then an unseen dot until opened', async () => {
     const project = await seedProject('canvas-render-feedback', 2)
     const page = await openPage()
     await gotoProject(page, project.id)
-    const takes = page.locator('[data-node-type="take"]')
+    const takes = page.locator('[data-node-type="shot"]')
     await expect.poll(() => takes.count()).toBe(2)
     const original = takes.first()
+    const originalId = await original.getAttribute('data-node-id') ?? ''
     await original.dblclick()
     const requests = harness.backend.requests.length
     // The render stays running until the story releases it, as a real render does for a minute.
@@ -915,20 +1048,21 @@ describe('node states and pop-ups', () => {
     try {
       await page.getByRole('button', { name: '渲染新版本' }).dblclick()
       await expect.poll(() => page.locator('[data-testid="dv-canvas-node-editor"]').count(), { timeout: 15_000 }).toBe(0)
-      const fresh = page.locator('[data-node-type="take"][data-node-selected="true"]')
+      // The new version joins the original node, so the selection stays on it.
+      const fresh = page.locator('[data-node-type="shot"][data-node-selected="true"]')
       await expect.poll(() => fresh.count(), { timeout: 15_000 }).toBe(1)
-      expect(await fresh.textContent()).toContain('渲染中…')
-      expect(await original.getAttribute('data-node-selected')).toBeNull()
+      expect(await fresh.getAttribute('data-node-id')).toBe(originalId)
+      await expect.poll(() => fresh.textContent(), { timeout: 15_000 }).toContain('渲染中…')
       await expect.poll(() => harness.backend.requests.length, { timeout: 15_000 }).toBe(requests + 1)
       // The second click of the double click started no second render.
       await page.waitForTimeout(1000)
-      expect(await takes.count()).toBe(3)
+      expect(await takes.count()).toBe(2)
       expect(harness.backend.requests.length).toBe(requests + 1)
-      const freshId = await fresh.getAttribute('data-node-id') ?? ''
+      expect((await stateOf(project.id)).components.canvas.nodes[originalId]?.versions).toHaveLength(2)
       harness.backend.releaseAll()
-      const node = page.locator(`[data-node-id="${freshId}"]`)
+      const node = page.locator(`[data-node-id="${originalId}"]`)
       await expect.poll(() => node.getAttribute('data-node-unseen'), { timeout: 30_000 }).toBe('true')
-      expect(await original.getAttribute('data-node-unseen')).toBeNull()
+      expect(await takes.nth(1).getAttribute('data-node-unseen')).toBeNull()
       await node.dblclick()
       await expect.poll(() => node.getAttribute('data-node-unseen')).toBeNull()
     } finally {
@@ -1308,7 +1442,7 @@ describe('timeline stories', () => {
       await expect.poll(clipAssets).toEqual([null, null, null])
       const page = await openPage()
       await gotoProject(page, project)
-      const takes = page.locator('[data-node-type="take"]')
+      const takes = page.locator('[data-node-type="shot"]')
       await expect.poll(() => takes.count()).toBe(3)
       expect(await takes.allTextContents()).toEqual([expect.stringContaining('渲染中…'), expect.stringContaining('渲染中…'), expect.stringContaining('渲染中…')])
       await viewToggle(page, '时间线').click()
@@ -1452,7 +1586,7 @@ describe('going back and keep anyway', () => {
     const project = await seedProject('go-back', 1)
     const page = await openPage()
     await gotoProject(page, project.id)
-    const takes = page.locator('[data-node-type="take"]')
+    const takes = page.locator('[data-node-type="shot"]')
     await expect.poll(() => takes.count(), { timeout: 15_000 }).toBe(1)
     expect(await page.locator('[data-testid="dv-kit-branch-menu"]').count()).toBe(0)
     // A plain edit is the step to come back to.
@@ -1487,7 +1621,7 @@ describe('going back and keep anyway', () => {
     await runOperation(project.id, 'character.update', { character: 'c1' }, [{ role: 'reference', ref: frame?.id ?? '' }])
     const page = await openPage()
     await gotoProject(page, project.id)
-    const staleTakes = page.locator('[data-node-type="take"][data-node-stale="true"]')
+    const staleTakes = page.locator('[data-node-type="shot"][data-node-stale="true"]')
     await expect.poll(() => staleTakes.count()).toBe(2)
     await staleTakes.first().dblclick()
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
@@ -1528,7 +1662,7 @@ describe('English interface', () => {
       return [...found]
     })
     expect(await chinese()).toEqual([])
-    for (const kind of ['take', 'character']) {
+    for (const kind of ['shot', 'character']) {
       await page.locator(`[data-node-type="${kind}"]`).first().dblclick()
       await page.locator('[data-testid="dv-canvas-node-editor"]').waitFor()
       expect(await chinese()).toEqual([])

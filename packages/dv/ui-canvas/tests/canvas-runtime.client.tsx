@@ -14,9 +14,9 @@ import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-righ
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { FeatureHandle } from '@deepseek-ai/dsh-client-test-runtime'
 import type { NodeAction, NodeType, RecordsInUse } from '../src/client/contract/index.ts'
-import type { WireOperation, WireProject } from '@dv/ui-kit/types.ts'
-import type { CanvasLayout, CanvasViewport, NodePosition } from '../src/canvas-layout.ts'
-import { asset, fixtureState, OPERATIONS, PROJECT, record, scriptedFetch, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
+import type { OperationRequest, WireOperation, WireProject } from '@dv/ui-kit/types.ts'
+import type { CanvasLayout, CanvasViewport } from '../src/canvas-layout.ts'
+import { asset, canvasNode, fixtureState, OPERATIONS, PROJECT, record, scriptedFetch, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState, Recorded } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
 import { composerStack } from '../../ui-composer/tests/composer-stack.client.ts'
@@ -52,10 +52,7 @@ export const ALL_KINDS: readonly Kind[] = ['reference', 'assets', 'takes', 'medi
 export interface ServerOptions {
   /** Changes to the fixture state, applied to every state the server serves. */
   edit?: (state: FixtureState) => void
-  /**
-   * The stored layout of p1, by default g1 at (10, 20) in a 208 × 117 frame and the viewport at 100%; any other project
-   * has none stored. Null makes the layout read fail.
-   */
+  /** The stored layout of p1, by default the viewport at 100%; any other project has none stored. Null makes the layout read fail. */
   layout?: CanvasLayout | null
   /** Leave `GET /api/dv/canvas/layout` unanswered until {@link CanvasServer.releaseLayout} answers it. */
   holdLayout?: boolean
@@ -69,11 +66,10 @@ export interface ServerOptions {
   refuse?: (path: string, body: unknown) => string | null
 }
 
-/** One `POST /api/dv/canvas/layout` body; a save after a gesture also carries the viewport. */
+/** One `POST /api/dv/canvas/layout` body. */
 export interface LayoutWrite {
   project: string
-  positions: Record<string, NodePosition>
-  viewport?: CanvasViewport
+  viewport: CanvasViewport
 }
 
 /** One file that `POST /api/dv/assets/import` received. */
@@ -91,6 +87,8 @@ export interface CanvasServer {
   writes: Recorded[]
   layoutWrites: LayoutWrite[]
   imports: ImportRequest[]
+  /** The params of every `canvas.node_position` request, in request order. */
+  positionWrites: Array<Record<string, unknown>>
   /** Announce a project change on every open `/dv/events` stream. */
   notify: () => void
   /** Answer the held layout reads of one project. */
@@ -114,13 +112,56 @@ class ScriptedEventSource extends EventTarget {
 }
 
 /**
+ * Apply an accepted canvas write to the canvas slice as the host's node list does: `canvas.node_position` sets the
+ * fields its params give, `asset.place` adds an `asset` node per asset that no node shows, `asset.unplace` deletes them.
+ * @param state - the served state.
+ * @param request - the accepted request.
+ * @param index - the request's position among the accepted writes, for the IDs of placement nodes.
+ */
+function applyCanvasWrite(state: FixtureState, request: OperationRequest, index: number): void {
+  const canvas = state.components.canvas
+  const assets = (request.inputs ?? []).map(input => input.ref)
+  if (request.operation === 'canvas.node_position') {
+    const params = request.params ?? {}
+    const node = canvas.nodes[String(params['node'])]
+    if (node === undefined) return
+    for (const field of ['x', 'y', 'width', 'height'] as const) {
+      const value = params[field]
+      if (typeof value === 'number') node.position = { ...node.position, [field]: value }
+    }
+  } else if (request.operation === 'asset.place') {
+    const id = `place${String(index + 1)}`
+    state.components.proj.records.push(record({ id, operation: 'asset.place', inputs: assets.map(ref => ({ role: 'asset', ref: { asset: ref }, resolved_asset: ref })) }))
+    for (const [n, placed] of assets.filter(each => canvas.assets[each] === undefined).entries()) {
+      const node = n === 0 ? id : `${id}.${String(n + 1)}`
+      canvas.nodes[node] = canvasNode('asset', [id], 0, 0, { asset: placed })
+      canvas.order.push(node)
+      canvas.assets[placed] = node
+    }
+  } else if (request.operation === 'asset.unplace') {
+    const removed = new Set(assets.flatMap((placed) => {
+      const node = canvas.assets[placed]
+      return node !== undefined && canvas.nodes[node]?.kind === 'asset' ? [node] : []
+    }))
+    canvas.nodes = Object.fromEntries(Object.entries(canvas.nodes).filter(([id]) => !removed.has(id)))
+    canvas.assets = Object.fromEntries(Object.entries(canvas.assets).filter(([, id]) => !removed.has(id)))
+    canvas.order = canvas.order.filter(each => !removed.has(each))
+  }
+}
+
+/** The operations whose accepted writes change the served canvas slice. */
+const CANVAS_WRITES = new Set(['canvas.node_position', 'asset.place', 'asset.unplace'])
+
+/**
  * Replace the global `fetch` and `EventSource` with a server of the fixture project and its `test_ref` noun. An
- * imported file becomes an asset placed on the project's canvas and created by an `asset.import` record.
+ * imported file becomes an asset created by an `asset.import` record and shown by an `asset` node of that record. An
+ * accepted canvas write changes the canvas slice of every later state and announces a project change.
  * @param options - what the server serves.
  * @returns the server's records and its change announcement.
  */
 export function serveCanvas(options: ServerOptions = {}): CanvasServer {
   const imports: ImportRequest[] = []
+  const accepted: OperationRequest[] = []
   const state = (): FixtureState => {
     const served = withTestRef(fixtureState())
     imports.forEach((file, index) => {
@@ -128,15 +169,18 @@ export function serveCanvas(options: ServerOptions = {}): CanvasServer {
       served.assets.push(asset(file.name, file.mime, id, null, 'asset.import'))
       served.components.proj.records.push(record({ id, operation: 'asset.import', params: { name: file.name }, outputs: [file.name], surface: 'canvas' }))
       served.components.proj.created_by[file.name] = id
-      served.components.asset.placed = [...served.components.asset.placed, file.name]
+      served.components.canvas.nodes[id] = canvasNode('asset', [id], 0, 0)
+      served.components.canvas.order.push(id)
+      served.components.canvas.assets[file.name] = id
     })
     options.edit?.(served)
+    accepted.forEach((request, index) => { applyCanvasWrite(served, request, index) })
     return served
   }
   const scripted = scriptedFetch({ state, operations: options.operations ?? OPERATIONS, projects: options.projects ?? [PROJECT] })
   const layoutWrites: LayoutWrite[] = []
-  const layout: CanvasLayout = options.layout
-    ?? { positions: { g1: { x: 10, y: 20, width: 208, height: 117 } }, viewport: { x: 0, y: 0, zoom: 1 } }
+  const layout: CanvasLayout = options.layout ?? { viewport: { x: 0, y: 0, zoom: 1 } }
+  const positionWrites: Array<Record<string, unknown>> = []
   const notify = (): void => {
     for (const source of ScriptedEventSource.open) source.dispatchEvent(new MessageEvent('record', { data: 'null' }))
   }
@@ -153,7 +197,7 @@ export function serveCanvas(options: ServerOptions = {}): CanvasServer {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://host')
     if (url.pathname === '/api/dv/canvas/layout') {
       const project = url.searchParams.get('project') ?? ''
-      const stored = project === 'p1' ? layout : { positions: {}, viewport: null }
+      const stored = project === 'p1' ? layout : { viewport: null }
       if (init?.method === 'POST' && typeof init.body === 'string') layoutWrites.push(JSON.parse(init.body) as LayoutWrite)
       const refused = refusal(url.pathname, init)
       if (refused !== null) return Promise.resolve(refused)
@@ -181,10 +225,20 @@ export function serveCanvas(options: ServerOptions = {}): CanvasServer {
     const answer = scripted.fetch(input, init)
     const refused = refusal(url.pathname, init)
     const response = refused === null ? answer : Promise.resolve(refused)
-    if (options.holdOperations === true && url.pathname === '/api/dv/operation' && init?.method === 'POST') {
-      return new Promise<Response>((resolve) => { heldOperations.push(() => { resolve(response) }) })
+    const request = url.pathname === '/api/dv/operation' && typeof init?.body === 'string' ? JSON.parse(init.body) as OperationRequest : null
+    if (request?.operation === 'canvas.node_position') positionWrites.push(request.params ?? {})
+    // The host announces a change once the record is written, so a canvas write reaches the state on the answer.
+    const answered = (): Promise<Response> => {
+      if (request !== null && refused === null && CANVAS_WRITES.has(request.operation)) {
+        accepted.push(request)
+        queueMicrotask(notify)
+      }
+      return response
     }
-    return response
+    if (options.holdOperations === true && request !== null) {
+      return new Promise<Response>((resolve) => { heldOperations.push(() => { resolve(answered()) }) })
+    }
+    return answered()
   }
   const releaseLayout = (project: string): void => {
     for (const held of heldLayouts.filter(each => each.project === project)) held.answer()
@@ -192,7 +246,7 @@ export function serveCanvas(options: ServerOptions = {}): CanvasServer {
   const releaseOperations = (): void => { heldOperations.splice(0).forEach((answer) => { answer() }) }
   vi.stubGlobal('fetch', fetchImpl)
   vi.stubGlobal('EventSource', ScriptedEventSource)
-  return { writes: scripted.writes, layoutWrites, imports, notify, releaseLayout, releaseOperations }
+  return { writes: scripted.writes, layoutWrites, imports, positionWrites, notify, releaseLayout, releaseOperations }
 }
 
 /** Where the root frame shows the canvas. */

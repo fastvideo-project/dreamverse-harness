@@ -29,7 +29,7 @@ async function mountPlugin() {
   runtime.ctx.provide('dvHistory', { rows })
   await runtime.declare({
     'dv.canvas.card': { kind: 'keyed', scope: 'root' },
-    'dv.canvas.editor.claimed': { kind: 'keyed', scope: 'root' },
+    'dv.canvas.editor': { kind: 'keyed', scope: 'root' },
     'tool.call.toolview': { kind: 'keyed', scope: 'session', inject: { hooks: { toolCallArgumentsPartial: () => () => '' } } },
   })
   const handle = await runtime.mount({ inject: [...plugin.inject], apply: plugin.apply })
@@ -42,18 +42,19 @@ describe('@dv/ui-audio-generate', () => {
     expect(hostApply).not.toThrow()
   })
 
-  it('claims audio.generate as the audio node type with its label, palette slot, media sizing and status words', async () => {
+  it('draws the audio nodes with its label, palette slot, media sizing and status words', async () => {
     const { runtime, canvas } = await mountPlugin()
     const type = canvas.nodeTypes.getSnapshot().find(entry => entry.id === '@dv/ui-audio-generate')
-    const entry = type?.claimed?.entry({ record: { outputs: [] } as never, version: null }, {
-      state: { assets: [] } as never, operations: [], language: 'zh', placed: new Set(), records: [],
+    const record = { id: 'a1', operation: 'audio.generate', outputs: [] } as never
+    const entry = type?.entry({
+      id: 'a1', node: { kind: 'audio', name: null, versions: ['a1'], position: { x: 0, y: 0, width: null, height: null } },
+      record, state: { assets: [] } as never, operations: [], language: 'zh',
     })
     expect({
-      type: type?.type, label: type?.label(), color: type?.color, operations: type?.claimed?.operations,
-      sizing: entry?.sizing,
-      running: type?.claimed?.status.running(), failed: type?.claimed?.status.failed(),
+      type: type?.type, label: type?.label(), color: type?.color, sizing: entry?.sizing,
+      running: type?.status?.running(), failed: type?.status?.failed(),
     }).toEqual({
-      type: 'audio', label: '音频', color: 'var(--dv-node-8)', operations: ['audio.generate'],
+      type: 'audio', label: '音频', color: 'var(--dv-node-8)',
       sizing: { kind: 'media', defaultSize: { width: 208, height: 72 }, minSize: { width: 104, height: 36 }, aspectRatio: { ratio: 26 / 9, fixedHeight: 0 } },
       running: '生成中…', failed: '生成失败',
     })
@@ -66,7 +67,7 @@ describe('@dv/ui-audio-generate', () => {
       types: canvas.nodeTypes.getSnapshot().length,
       actions: canvas.actions.getSnapshot().length,
       card: runtime.slots.entries('dv.canvas.card').map(entry => entry.options.key),
-      editor: runtime.slots.entries('dv.canvas.editor.claimed').map(entry => entry.options.key),
+      editor: runtime.slots.entries('dv.canvas.editor').map(entry => entry.options.key),
       chat: runtime.slots.entries('tool.call.toolview').map(entry => entry.options.key),
       history: rows.getSnapshot().map(row => row.match),
     })

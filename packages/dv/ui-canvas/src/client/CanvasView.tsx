@@ -191,8 +191,6 @@ type Gesture =
  */
 const boxIn = (boxes: Readonly<Record<string, NodePosition>>, node: CanvasNode): NodePosition => boxes[node.id] ?? storedBox(node)
 
-const sameBox = (a: NodePosition, b: NodePosition): boolean => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
-
 /**
  * @param record - boxes or any other record keyed by node ID.
  * @param keys - the keys to drop.
@@ -255,6 +253,8 @@ export function CanvasView(
   viewportRef.current = viewport
   const positionsRef = useRef(positions)
   positionsRef.current = positions
+  // The position fields of each node's last `canvas.node_position` write, by node ID.
+  const written = useRef<Record<string, Partial<NodePosition>>>({})
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const needsFit = useRef(false)
   // True while the viewport is an automatic fit; resizing the canvas refits until the user pans or zooms.
@@ -409,6 +409,7 @@ export function CanvasView(
     setPositions(all => ({ ...all, [node.id]: box }))
     setNotice(null)
     const corner = { node: node.id, x: box.x, y: box.y }
+    written.current = { ...written.current, [node.id]: resized ? box : { x: box.x, y: box.y } }
     client.runOperation({
       project: projectId, operation: NODE_POSITION, surface: 'canvas', ...session === null ? {} : { session },
       params: resized ? { ...corner, width: box.width, height: box.height } : corner,
@@ -419,12 +420,17 @@ export function CanvasView(
     })
   }, [client, projectId, session, t])
 
-  // A box in flight leaves once the project state shows it.
+  // A box in flight leaves once the project state shows the fields its write set. A move sets only the corner, so a node
+  // without a stored size takes its type's default size then, even when that size changed since the drag.
   useEffect(() => {
     if (graph === null) return
     const shown = graph.nodes.flatMap((node) => {
       const box = positions[node.id]
-      return box !== undefined && gesture.current === null && sameBox(box, storedBox(node)) ? [node.id] : []
+      const fields = written.current[node.id]
+      const stored = node.node.position
+      const showsWrite = fields !== undefined
+        && Object.entries(fields).every(([field, value]) => stored[field as keyof NodePosition] === value)
+      return box !== undefined && gesture.current === null && showsWrite ? [node.id] : []
     })
     if (shown.length > 0) setPositions(all => withoutProperties(all, shown))
   }, [graph, positions])
@@ -812,10 +818,10 @@ export function CanvasView(
     return { card: { run: services.run, rerun: shown(null) }, action: id => ({ ...services, rerun: shown(id) }), editor }
   }
   /** The props that the editor of the open node and the stacked editor share. */
-  const sharedEditorProps = (node: CanvasNode, close: () => void) => {
+  const sharedEditorProps = (shown: NonNullable<typeof graph>, node: CanvasNode, close: () => void) => {
     const view = viewFor(node)
     return {
-      node, view, viewAt: (record: string) => viewFor(graph === null ? node : graph.atVersion(node, record)),
+      node, view, viewAt: (record: string) => viewFor(shown.atVersion(node, record)),
       operations: operations.value ?? [], versionKinds: descriptors.versionKinds,
       actions: actionsFor(view), project: projectId, session, t, hosts: hostsOf(close), area, renderSlot, renderFactorySlot,
       onAcceptStale: (record: string) => { void run(() => client.acceptStale(projectId, record, 'canvas', session)) },
@@ -857,7 +863,7 @@ export function CanvasView(
             <div ref={editorZoom.fadeRef} aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'var(--dv-overlay)', zIndex: 9 }} />
             <NodeEditor
               key={editingNode.id} zoomRef={editorZoom.targetRef} state={graph.state}
-              {...sharedEditorProps(editingNode, () => { setEditing(null) })}
+              {...sharedEditorProps(graph, editingNode, () => { setEditing(null) })}
             />
           </>
         )
@@ -867,7 +873,7 @@ export function CanvasView(
           // The stacked editor covers the canvas area; a press outside its panel closes it, not the editor beneath.
           <div style={{ position: 'absolute', inset: 0, zIndex: 11 }} onPointerDown={(event) => { event.stopPropagation(); setStacked(null) }}>
             <div aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'var(--dv-overlay)' }} />
-            <NodeEditor key={`stacked:${stackedNode.id}`} zoomRef={noZoom} {...sharedEditorProps(stackedNode, () => { setStacked(null) })} state={graph.state} />
+            <NodeEditor key={`stacked:${stackedNode.id}`} zoomRef={noZoom} {...sharedEditorProps(graph, stackedNode, () => { setStacked(null) })} state={graph.state} />
           </div>
         )
         : null}

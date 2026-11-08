@@ -12,9 +12,9 @@ import { projectMentionSource } from '@dv/ui-composer/mention'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { createRegistry, type MentionKind } from '@dv/ui-kit/registries.ts'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
-import { asset, record } from '../../ui-kit/tests/fixture.client.tsx'
+import { asset, canvasNode, record } from '../../ui-kit/tests/fixture.client.tsx'
 import { forgetCanvasStorage, mountCanvas, type CanvasServer } from '../../ui-canvas/tests/canvas-runtime.client.tsx'
-import { apply, inject } from '../src/client/index.ts'
+import { apply, inject, textNodeType } from '../src/client/index.ts'
 
 usePinnedBrowserLanguages('en-US')
 
@@ -50,7 +50,8 @@ const PREFIX: Record<string, string> = { [PATH]: 'tw', 'script.md': 'sc' }
 
 /**
  * Mount the canvas with the reference noun, the media plugins, the composer stack and the text node plugin, over a
- * server whose `beats.md` holds v1 and v2 and whose `script.md` v1 was built from `beats.md` v2. An accepted
+ * server whose `beats.md` holds v1 and v2 and whose `script.md` v1 was built from `beats.md` v2. Each path is one `text`
+ * node, named by the record of its first version, whose versions are the records of the path's versions. An accepted
  * `textnode.write` appends the next version of its path and announces the change; a body that contains `FAIL` gives a
  * failed record, and a body that contains `REFUSE` is refused. The asset pool serves each version's Markdown.
  * @returns the mounted canvas and the versions of each path that the server holds.
@@ -72,6 +73,10 @@ async function mountTexts() {
             report: { path, version: each.version, title: each.title, chars: Array.from(each.body).length },
           }))
         })
+        const [first] = versions
+        if (first === undefined) continue
+        state.components.canvas.nodes[first.created_by] = canvasNode('text', versions.map(each => each.created_by), 0, 400)
+        state.components.canvas.order.push(first.created_by)
       }
       state.components.textnode = { texts: Object.fromEntries(Object.entries(texts).map(([path, versions]) => [path, [...versions]])) }
     },
@@ -128,28 +133,42 @@ const box = (element: HTMLElement): HTMLElement => {
   return found
 }
 
+describe('textNodeType', () => {
+  it('titles a version by its reported title, else by its path, and names the saving and failed states', () => {
+    const type = textNodeType(key => key)
+    const input = (report?: Record<string, unknown>) => ({
+      id: 'tw1', node: canvasNode('text', ['tw1']), state: {} as never, operations: [], language: 'zh' as const,
+      record: { ...record({ id: 'tw1', operation: 'textnode.write', params: { path: 'beats.md' }, ...report === undefined ? {} : { report } }), operation: 'textnode.write' },
+    })
+    expect([type.entry(input({ title: 'Beats' })).title, type.entry(input()).title]).toEqual(['Beats', 'beats.md'])
+    expect([type.status?.running(), type.status?.failed()]).toEqual(['node.saving', 'node.saveFailed'])
+  })
+})
+
 describe('text node', () => {
-  it('draws one card per version with its title, version, and opening lines with each citation as its label', async () => {
-    const { node } = await mountTexts()
-    const card = await waitFor(() => node('tw2'))
+  it('draws one card per path at its newest version with its title, version, and opening lines with each citation as its label', async () => {
+    const { node, view } = await mountTexts()
+    const card = await waitFor(() => node('tw1'))
     expect(card.textContent).toContain('Beats')
     await waitFor(() => { expect(within(card).getByTestId('dv-text-excerpt').textContent).toContain('Hero opens the door.') })
     expect(within(card).getByTestId('dv-text-excerpt').textContent).not.toContain('@')
     expect(card.textContent).toContain(`v2 · ${String(Array.from(V2).length)} chars`)
-    expect(node('tw1').textContent).toContain('v1 · ')
+    expect(view.container.querySelector('[data-node-id="tw2"]')).toBeNull()
     // The default frame is 208 × 106: four opening lines with their padding, and the footer.
-    expect([node('tw2').style.width, card.querySelector<HTMLElement>('[data-node-frame]')?.style.height]).toEqual(['208px', '106px'])
+    expect([node('tw1').style.width, card.querySelector<HTMLElement>('[data-node-frame]')?.style.height]).toEqual(['208px', '106px'])
   })
 
-  it('draws an edge from a source version to the text built from it, and a lineage edge between versions', async () => {
+  it('draws an edge from the node of a source version to the text built from it, and none between the versions of a node', async () => {
     const { view } = await mountTexts()
-    await waitFor(() => { expect(view.container.querySelector('path[data-edge="tw2>sc1"]')).not.toBeNull() })
-    expect(view.container.querySelector('path[data-edge="tw1>tw2"]')).not.toBeNull()
+    await waitFor(() => { expect(view.container.querySelector('path[data-edge="tw1>sc1"]')).not.toBeNull() })
+    const textEdges = [...view.container.querySelectorAll('path[data-edge]')].map(edge => edge.getAttribute('data-edge'))
+      .filter(edge => edge?.includes('tw') === true || edge?.includes('sc') === true)
+    expect(textEdges).toEqual(['tw1>sc1'])
   })
 
   it('reads the Markdown in the editor and draws a citation as a chip with the cited item\'s picture', async () => {
     const { open } = await mountTexts()
-    const editor = await open('tw2')
+    const editor = await open('tw1')
     const markdown = within(editor).getByTestId('dv-text-markdown')
     const chip = await waitFor(() => {
       const found = markdown.querySelector('[data-dv-chip="dv:test_ref/hero"]')
@@ -163,7 +182,7 @@ describe('text node', () => {
 
   it('renders the Markdown in read mode, with a heading as a heading and no citation source', async () => {
     const { open } = await mountTexts()
-    const editor = await open('tw2')
+    const editor = await open('tw1')
     const markdown = within(editor).getByTestId('dv-text-markdown')
     await waitFor(() => { expect(markdown.querySelector('[data-dv-chip="dv:test_ref/hero"]')).not.toBeNull() })
     expect(markdown.querySelector('h1')?.textContent).toBe('Beats')
@@ -174,7 +193,7 @@ describe('text node', () => {
 
   it('opens the @ menu below the editor, inside the scrolling editor body', async () => {
     const { open } = await mountTexts()
-    const editor = await open('tw2')
+    const editor = await open('tw1')
     await waitFor(() => { expect(within(editor).getByRole<HTMLButtonElement>('button', { name: 'Edit' }).disabled).toBe(false) })
     fireEvent.click(within(editor).getByRole('button', { name: 'Edit' }))
     await waitFor(() => { expect(box(editor).getAttribute('contenteditable')).toBe('true') })
@@ -189,11 +208,15 @@ describe('text node', () => {
     expect([getComputedStyle(menu).top, getComputedStyle(menu).bottom]).toEqual(['calc(100% + 4px)', 'auto'])
   })
 
-  it('offers no edit on an older version and opens the newest one instead', async () => {
+  it('offers no edit on an older version chosen in the version strip, and edit again on the newest', async () => {
     const { open } = await mountTexts()
     const editor = await open('tw1')
+    await waitFor(() => { expect(within(editor).getByRole('button', { name: 'Edit' })).toBeTruthy() })
+    fireEvent.click(within(editor).getByRole('option', { name: 'v1' }))
+    await waitFor(() => { expect(within(editor).getByTestId('dv-text-markdown').textContent).toContain('The detective wakes up.') })
     expect(within(editor).queryByRole('button', { name: 'Edit' })).toBeNull()
-    expect(within(editor).getByRole('button', { name: 'Open version 2' })).toBeTruthy()
+    fireEvent.click(within(editor).getByRole('option', { name: 'v2' }))
+    await waitFor(() => { expect(within(editor).getByRole('button', { name: 'Edit' })).toBeTruthy() })
   })
 
   /**
@@ -217,7 +240,7 @@ describe('text node', () => {
     const { open, server, texts, node } = await mountTexts()
     texts[PATH]?.push(version('tw', 3, '# Beats\n\nThe agent rewrote this.'))
     server.notify()
-    await waitFor(() => node('tw3'))
+    await waitFor(() => { expect(node('tw1').textContent).toContain('v3 · ') })
     const editor = await draft(open, 'sc1', ' EXT.')
     fireEvent.click(within(editor).getByRole('button', { name: 'Save' }))
     await waitFor(() => { expect(textWrites(server)).toHaveLength(1) })
@@ -227,12 +250,12 @@ describe('text node', () => {
     expect(write?.inputs).toEqual([{ role: 'source', ref: 'tw3#0' }])
     expect(write?.based_on).toBe('sc1')
     await waitFor(() => { expect(editor.isConnected).toBe(false) })
-    await waitFor(() => { expect(node('sc2').textContent).toContain('v2 · ') })
+    await waitFor(() => { expect(node('sc1').textContent).toContain('v2 · ') })
   })
 
   it('names the newest version and the draft\'s version when a newer version arrives, and saves the draft on top of it', async () => {
     const { open, server, texts, node } = await mountTexts()
-    const editor = await draft(open, 'tw2', ' Mine.')
+    const editor = await draft(open, 'tw1', ' Mine.')
     texts[PATH]?.push(version('tw', 3, '# Beats\n\nThe agent rewrote this.'))
     server.notify()
     await waitFor(() => { expect(within(editor).getByRole('alert').textContent).toBe('Someone saved version 3 first. Your draft is based on version 2.') })
@@ -240,7 +263,7 @@ describe('text node', () => {
     fireEvent.click(within(editor).getByRole('button', { name: 'Save on top of v3' }))
     await waitFor(() => { expect(editor.isConnected).toBe(false) })
     expect(textWrites(server).map(write => (write as Write).params.base_version)).toEqual([3])
-    await waitFor(() => { expect(node('tw4').textContent).toContain('v4 · ') })
+    await waitFor(() => { expect(node('tw1').textContent).toContain('v4 · ') })
   })
 
   it.each([

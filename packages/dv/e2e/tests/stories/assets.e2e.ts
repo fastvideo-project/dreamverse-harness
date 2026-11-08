@@ -317,13 +317,15 @@ describe('The asset pool panel', () => {
       await canvas.waitFor()
       await assetsPanel(page).locator(`[data-asset-id="${undone}"]`).first().dragTo(canvas)
       await expect.poll(async () => placedAssets(await stateOf(project.id)), { timeout: 10_000 }).toEqual([undone])
-      await expect.poll(() => page.locator(`[data-node-id="asset:${undone}"]`).count(), { timeout: 15_000 }).toBe(1)
+      const placed = (await stateOf(project.id)).components.canvas.assets[undone]
+      await expect.poll(() => page.locator(`[data-node-id="${placed ?? ''}"][data-node-type="asset"]`).count(), { timeout: 15_000 }).toBe(1)
       const listed = (await harness.api.post('/api/dv/history', { project: project.id, limit: 200 }) as { entries: Array<{ record: ProjectRecord }> }).entries
       expect(listed.some(entry => entry.record.outputs.includes(undone))).toBe(false)
       expect(await assetsPanel(page).locator(`[data-asset-id="${undone}"]`).count()).toBe(1)
-      // Undo the drop and then the render: the render's video leaves the panel, the imported asset stays.
-      await harness.api.post('/api/dv/undo', { project: project.id })
-      await harness.api.post('/api/dv/undo', { project: project.id })
+      // Undo the drop (asset.place and the canvas.node_position under the pointer) and then the render: the render's
+      // video leaves the panel, the imported asset stays.
+      await expect.poll(async () => (await stateOf(project.id)).components.proj.records.at(-1)?.operation, { timeout: 10_000 }).toBe('canvas.node_position')
+      for (let step = 0; step < 3; step += 1) await harness.api.post('/api/dv/undo', { project: project.id })
       await expect.poll(() => assetsPanel(page).locator(`[data-asset-id="${video}"]`).count(), { timeout: 15_000 }).toBe(0)
       expect(await assetsPanel(page).locator(`[data-asset-id="${undone}"]`).count()).toBe(1)
       expect(errors).toEqual([])
@@ -428,10 +430,10 @@ describe('The asset pool panel', () => {
   describe('project deletion', () => {
     it('keeps the canvas layout file in the project folder after the project is removed', async () => {
       const project = await createProject()
-      await harness.api.post('/api/dv/canvas/layout', { project: project.id, positions: { n1: { x: 10, y: 20 } } })
+      await harness.api.post('/api/dv/canvas/layout', { project: project.id, viewport: { x: 10, y: 20, zoom: 1.5 } })
       const { path } = (await harness.api.get('/api/dv/projects') as Array<{ id: string; path: string }>).find(row => row.id === project.id) ?? { path: '' }
       const file = join(path, '.dreamverse', 'canvas-layout.json')
-      expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ positions: { n1: { x: 10, y: 20 } }, viewport: null })
+      expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ viewport: { x: 10, y: 20, zoom: 1.5 } })
       await harness.api.post('/api/dv/projects/delete', { project: project.id })
       expect(existsSync(file)).toBe(true)
     })

@@ -23,11 +23,11 @@ afterEach(() => {
   forgetCanvasStorage()
 })
 
-const keysOf = (runtime: SlotTestRuntime, slot: 'dv.canvas.card' | 'dv.canvas.editor.claimed'): Array<string | undefined> => runtime.slots.entries(slot).map(entry => entry.options.key)
+const keysOf = (runtime: SlotTestRuntime, slot: 'dv.canvas.card' | 'dv.canvas.editor'): Array<string | undefined> => runtime.slots.entries(slot).map(entry => entry.options.key)
 
-const OTHER_RENDER: NodeType = {
-  id: '@dv/ui-other-render', type: 'other', label: () => 'other', color: '', column: 2,
-  claimed: { operations: ['shot.render'], status: { running: () => '', failed: () => '' }, entry: () => ({ title: '', sizing: { kind: 'window', defaultSize: { width: 208, height: 117 }, minSize: { width: 104, height: 117 } } }) },
+const OTHER_SHOT: NodeType = {
+  id: '@dv/ui-other-render', type: 'shot', label: () => 'other', color: '',
+  entry: () => ({ title: 'other shot', sizing: { kind: 'window', defaultSize: { width: 208, height: 117 }, minSize: { width: 104, height: 117 } } }),
 }
 
 describe('the dv.canvas Factory', () => {
@@ -52,34 +52,35 @@ describe('kind plugins', () => {
     const colors = runtime.ctx.dvCanvas.nodeTypes.getSnapshot().map(type => [type.type, type.color]).sort()
     expect(colors).toEqual([
       ['asset', 'var(--dv-node-6)'], ['character', 'var(--dv-node-1)'], ['location', 'var(--dv-node-5)'],
-      ['style', 'var(--dv-node-7)'], ['take', 'var(--dv-node-3)'],
+      ['shot', 'var(--dv-node-3)'], ['style', 'var(--dv-node-7)'],
     ])
     await runtime.dispose()
   })
 
-  it('disposing the video takes\' fiber removes their node type, operation claim, card and editor entries, 重试 action and nodes', async () => {
-    const { runtime, node, kinds, view } = await mountCanvas()
+  it('disposing the shots\' fiber removes their node type, card and editor entries and 重试 action, and their nodes draw as plain cards', async () => {
+    const { runtime, node, kinds } = await mountCanvas()
     const canvas = runtime.ctx.dvCanvas
     await waitFor(() => { node('g1') })
-    expect(canvas.nodeTypes.getSnapshot().map(type => type.type)).toContain('take')
-    expect(keysOf(runtime, 'dv.canvas.card')).toContain('take')
-    expect(keysOf(runtime, 'dv.canvas.editor.claimed')).toContain('take')
-    expect(canvas.actions.getSnapshot().map(action => action.id)).toContain('@dv/ui-shot-render:take:retry')
+    expect(canvas.nodeTypes.getSnapshot().map(type => type.type)).toContain('shot')
+    expect(keysOf(runtime, 'dv.canvas.card')).toContain('shot')
+    expect(keysOf(runtime, 'dv.canvas.editor')).toContain('shot')
+    expect(canvas.actions.getSnapshot().map(action => action.id)).toContain('@dv/ui-shot-render:shot:retry')
+    await waitFor(() => { expect(node('g2').querySelector('[data-node-frame] img')).not.toBeNull() })
 
     await kinds.takes?.dispose()
-    expect(canvas.nodeTypes.getSnapshot().map(type => type.type)).not.toContain('take')
-    expect(keysOf(runtime, 'dv.canvas.card')).not.toContain('take')
-    expect(keysOf(runtime, 'dv.canvas.editor.claimed')).not.toContain('take')
-    expect(canvas.actions.getSnapshot().map(action => action.id)).not.toContain('@dv/ui-shot-render:take:retry')
-    await waitFor(() => { expect(view.container.querySelector('[data-node-id="g1"]')).toBeNull() })
-    expect(() => canvas.nodeTypes.register(OTHER_RENDER)).not.toThrow()
+    expect(canvas.nodeTypes.getSnapshot().map(type => type.type)).not.toContain('shot')
+    expect(keysOf(runtime, 'dv.canvas.card')).not.toContain('shot')
+    expect(keysOf(runtime, 'dv.canvas.editor')).not.toContain('shot')
+    expect(canvas.actions.getSnapshot().map(action => action.id)).not.toContain('@dv/ui-shot-render:shot:retry')
+    await waitFor(() => { expect(node('g2').querySelector('[data-node-frame]')?.textContent).toBe('shot') })
+    expect(() => canvas.nodeTypes.register(OTHER_SHOT)).not.toThrow()
     await runtime.dispose()
   })
 
-  it('refuses a second type that claims shot.render, naming the package that holds it', async () => {
+  it('refuses a second type of the shot kind, naming the package that holds it', async () => {
     const { runtime } = await mountCanvas({ kinds: ['takes'] })
-    expect(() => runtime.ctx.dvCanvas.nodeTypes.register(OTHER_RENDER))
-      .toThrow('registry key "op:shot.render" is already registered by @dv/ui-shot-render')
+    expect(() => runtime.ctx.dvCanvas.nodeTypes.register(OTHER_SHOT))
+      .toThrow('registry key "shot" is already registered by @dv/ui-shot-render')
     await runtime.dispose()
   })
 
@@ -90,20 +91,20 @@ describe('kind plugins', () => {
       beforeCanvas: (mounted) => { before = { canvas: mounted.ctx.get('dvCanvas'), cards: keysOf(mounted, 'dv.canvas.card') } },
     })
     expect(before).toEqual({ canvas: undefined, cards: [] })
-    expect(runtime.ctx.dvCanvas.nodeTypes.getSnapshot().map(type => type.type).sort()).toEqual(['take', 'test_ref'])
-    expect(keysOf(runtime, 'dv.canvas.card').sort()).toEqual(['take', 'test_ref'])
-    await waitFor(() => { node('g1') })
-    // ui-media mounts last; the takes' card then draws the still through its `dv.media` occurrence.
-    expect(node('g1').querySelector('img')).toBeNull()
+    expect(runtime.ctx.dvCanvas.nodeTypes.getSnapshot().map(type => type.type).sort()).toEqual(['shot', 'test_ref'])
+    expect(keysOf(runtime, 'dv.canvas.card').sort()).toEqual(['shot', 'test_ref'])
+    await waitFor(() => { node('g2') })
+    // ui-media mounts last; the shots' card then draws the still through its `dv.media` occurrence.
+    expect(node('g2').querySelector('img')).toBeNull()
     await runtime.mount(KINDS.media)
     await runtime.mount(KINDS.assets)
-    await waitFor(() => { expect(node('g1').querySelector('img')?.getAttribute('src')).toBe(assetUrl('shot1-last.png')) })
+    await waitFor(() => { expect(node('g2').querySelector('img')?.getAttribute('src')).toBe(assetUrl('shot2-last.png')) })
 
     await canvas.dispose()
     expect(keysOf(runtime, 'dv.canvas.card')).toEqual([])
     const reloaded = await runtime.mount({ inject: [...inject], apply })
-    expect(runtime.ctx.dvCanvas.nodeTypes.getSnapshot().map(type => type.type).sort()).toEqual(['asset', 'take', 'test_ref'])
-    expect(keysOf(runtime, 'dv.canvas.card').sort()).toEqual(['asset', 'take', 'test_ref'])
+    expect(runtime.ctx.dvCanvas.nodeTypes.getSnapshot().map(type => type.type).sort()).toEqual(['asset', 'shot', 'test_ref'])
+    expect(keysOf(runtime, 'dv.canvas.card').sort()).toEqual(['asset', 'shot', 'test_ref'])
     await reloaded.dispose()
     await runtime.dispose()
   })

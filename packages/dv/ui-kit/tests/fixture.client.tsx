@@ -1,6 +1,7 @@
 /**
  * A project state the view tests share: the record that created character `hero` (the state holds no noun slice), two
- * rendered shots put on a timeline, a failed export, and a running retake as the last record. Also a scripted `fetch`
+ * rendered shots put on a timeline, a failed export, and a running retake as the last record. The canvas's node list
+ * holds the character node and the two shot nodes; the retake is the second version of the first shot. Also a scripted `fetch`
  * that answers the `/api/dv` routes from such a state and records every write.
  */
 import type { AssetId } from '@dv/project/types'
@@ -8,7 +9,8 @@ import type { ClipId, TimelineId } from '@dv/timeline/types'
 import type { WireReferenceVersion } from '../../ui-reference-kit/src/client/reference-kit.tsx'
 import type { WireTaskLabels } from '../src/client/tool-labels.ts'
 import type {
-  ComponentStates, OperationRequest, ProjectAsset, ProjectRecord, WireModelEntry, WireOperation, WireProject, WireState,
+  ComponentStates, OperationRequest, ProjectAsset, ProjectRecord, WireCanvas, WireCanvasNode, WireModelEntry, WireOperation, WireProject,
+  WireState,
 } from '../src/client/types.ts'
 
 // The slice of the test-only reference noun `test_ref`.
@@ -46,6 +48,37 @@ export function asset(
     id, mime, name: id, size_bytes: 3, created_by: createdBy, created_at: `2026-10-05T00:00:0${String(id.length % 10)}Z`,
     width: null, height: null, duration_sec: durationSec, made_by: madeBy,
   }
+}
+
+/**
+ * A node of the canvas's node list, at the default size of its type.
+ * @param kind - the node type key.
+ * @param versions - the records it shows, oldest first.
+ * @param x - the left edge.
+ * @param y - the top edge.
+ * @param extra - fields that matter to the test, such as `asset` or a stored size.
+ * @returns the node.
+ */
+export function canvasNode(
+  kind: string, versions: string[], x = 0, y = 0, extra: Partial<WireCanvasNode> = {},
+): WireCanvasNode {
+  return { kind, name: null, versions, position: { x, y, width: null, height: null }, ...extra }
+}
+
+/**
+ * A canvas slice from nodes keyed by ID, in key order; each node shows the outputs of its versions.
+ * @param nodes - the nodes.
+ * @param records - the records whose outputs the nodes show.
+ * @returns the slice.
+ */
+export function canvasOf(nodes: Record<string, WireCanvasNode>, records: readonly ProjectRecord[] = []): WireCanvas {
+  const assets: Record<string, string> = {}
+  for (const [id, node] of Object.entries(nodes)) {
+    if (node.asset !== undefined) assets[node.asset] = id
+    const outputs = node.versions.flatMap(version => records.find(entry => entry.id === version)?.outputs ?? [])
+    for (const output of outputs) assets[output] = id
+  }
+  return { nodes, order: Object.keys(nodes), assets }
 }
 
 /** The project of the fixture. */
@@ -101,7 +134,11 @@ export function fixtureState(): FixtureState {
           'export-last.png': 'x1',
         },
       },
-      asset: { placed: [] },
+      canvas: canvasOf({
+        e1: canvasNode('character', ['e1'], 0, 0),
+        g1: canvasNode('shot', ['g1', 'g3'], 480, 0),
+        g2: canvasNode('shot', ['g2'], 480, 200),
+      }, records),
       timeline: {
         timelines: [{
           id: 't1' as TimelineId, name: '', clips: [
@@ -125,18 +162,19 @@ export function fixtureState(): FixtureState {
 
 /**
  * A copy of a state that holds the test-only reference noun `test_ref`: its slice holds the versions of `hero`, and the
- * record `e1` that wrote them is the one record `test_ref.create`.
+ * record `e1` that wrote them is the one record `test_ref.create`, shown by the `test_ref` node `e1`.
  * @param state - a state such as {@link fixtureState}.
  * @returns the copy.
  */
 export function withTestRef<S extends WireState>(state: S): S {
-  const proj = state.components.proj
+  const { proj, canvas } = state.components
   const create = record({ id: 'e1', operation: 'test_ref.create', params: { test_ref: 'hero', name: 'Hero' } })
   return {
     ...state,
     components: {
       ...state.components,
       proj: { ...proj, records: proj.records.map(entry => entry.id === create.id ? create : entry) },
+      canvas: { ...canvas, nodes: { ...canvas.nodes, e1: canvasNode('test_ref', ['e1'], 0, 0) } },
       test_ref: { hero: [{ id: 'hero', version: 1, name: 'Hero', description: 'A tired detective.', references: ['ref.png'], created_by: create.id }] },
     },
   }

@@ -19,7 +19,7 @@ import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-ass
 import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
 import { buildCanvasGraph } from '../../ui-canvas/src/client/graph.ts'
 import { apply as historyApply, inject as historyInject } from '../../ui-history/src/client/index.ts'
-import { asset, fixtureState, record, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
+import { asset, canvasNode, fixtureState, record, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import { defineReferenceUi, referenceDescriptors } from '../src/client/reference-kit.tsx'
 import type { ReferenceUiSpec } from '../src/client/reference-kit.tsx'
@@ -37,13 +37,20 @@ afterEach(() => {
 })
 
 /**
- * The fixture with `test_ref` plus a second version of `hero` and the items `alley` without a name, `noir` without
- * references and `ghost` without versions.
+ * The fixture with `test_ref` plus a second version of `hero` by `e2`, the items `alley` without a name by `e3` and
+ * `noir` without references by `e4`, each the node of its create record, and `ghost` without versions.
  * @returns the state.
  */
 function refState(): WireState {
   const state = withTestRef(fixtureState())
-  state.components.proj.records = [...state.components.proj.records, record({ id: 'e2', operation: 'test_ref.update' })]
+  state.components.proj.records = [
+    ...state.components.proj.records, record({ id: 'e2', operation: 'test_ref.update', based_on: 'e1', params: { test_ref: 'hero' } }),
+    record({ id: 'e3', operation: 'test_ref.create', params: { test_ref: 'alley', name: '' } }),
+    record({ id: 'e4', operation: 'test_ref.create', params: { test_ref: 'noir', name: 'Noir' } }),
+  ]
+  const canvas = state.components.canvas
+  canvas.nodes = { ...canvas.nodes, e1: canvasNode('test_ref', ['e1', 'e2']), e3: canvasNode('test_ref', ['e3']), e4: canvasNode('test_ref', ['e4']) }
+  canvas.order.push('e3', 'e4')
   const hero = state.components.test_ref?.['hero'] ?? []
   state.components.test_ref = {
     hero: [...hero, { id: 'hero', version: 2, name: 'Hero', description: '', references: ['shot1-last.png', 'ref.png'], created_by: 'e2' }],
@@ -62,27 +69,42 @@ function heroWith(references: string[]): WireState {
   return state
 }
 
+/**
+ * The entry of one node of a state at its newest version.
+ * @param state - the state.
+ * @param id - the node ID.
+ * @returns the entry.
+ */
+function entryOf(state: WireState, id: string) {
+  const node = state.components.canvas.nodes[id]
+  const version = state.components.proj.records.find(each => each.id === node?.versions.at(-1))
+  if (node === undefined || version === undefined) throw new Error(`no node ${id}`)
+  return descriptors.nodeType.entry({ id, node, record: { ...version, operation: version.operation ?? '' }, state, operations: [], language: 'zh' })
+}
+
 describe('referenceDescriptors', () => {
-  it('draws one node <key>:<id> per item at its newest version, with its references, under the label in the interface language', () => {
+  it('draws the node of a <key>.create record as the item its params name at its newest version, under the label in the interface language', () => {
     document.documentElement.lang = 'zh-CN'
-    const { nodeType } = descriptors
-    const entries = nodeType.entries?.({ state: refState(), operations: [], language: 'zh', placed: new Set() }) ?? []
-    const facts = entries.map(entry => [entry.id, entry.title, entry.assets, entry.record?.id, entry.records, entry.ref])
+    const state = refState()
+    const facts = ['e1', 'e3', 'e4'].map((id) => {
+      const entry = entryOf(state, id)
+      return [entry.title, entry.assets, entry.ref]
+    })
     expect(facts).toEqual([
-      ['test_ref:hero', 'Hero', ['shot1-last.png', 'ref.png'], 'e2', ['e1'], { kind: 'test_ref', id: 'hero' }],
-      ['test_ref:alley', 'alley', ['alley.png'], undefined, [], { kind: 'test_ref', id: 'alley' }],
-      ['test_ref:noir', 'Noir', [], undefined, [], { kind: 'test_ref', id: 'noir' }],
+      ['Hero', ['shot1-last.png', 'ref.png'], { kind: 'test_ref', id: 'hero' }],
+      ['alley', ['alley.png'], { kind: 'test_ref', id: 'alley' }],
+      ['Noir', [], { kind: 'test_ref', id: 'noir' }],
     ])
-    expect([nodeType.id, nodeType.type, nodeType.column, nodeType.color, nodeType.label()])
-      .toEqual(['@dv/ui-test-ref', 'test_ref', 0, 'var(--dv-node-1)', '参考'])
+    const { nodeType } = descriptors
+    expect([nodeType.id, nodeType.type, nodeType.color, nodeType.label()]).toEqual(['@dv/ui-test-ref', 'test_ref', 'var(--dv-node-1)', '参考'])
     document.documentElement.lang = 'en'
     expect(nodeType.label()).toBe('Reference')
   })
 
-  it('reads the node, the newest versions, and the name and references of each version', () => {
+  it('reads the node of an item\'s newest version, the newest versions, and the name and references of each version', () => {
     const state = refState()
     const { versionKind } = descriptors
-    expect([versionKind.kind, versionKind.node('hero'), versionKind.label()]).toEqual(['test_ref', 'test_ref:hero', 'Reference'])
+    expect([versionKind.kind, versionKind.node(state, 'hero'), versionKind.node(state, 'ghost'), versionKind.label()]).toEqual(['test_ref', 'e1', null, 'Reference'])
     expect(versionKind.latest(state)).toEqual([{ id: 'hero', version: 2 }, { id: 'alley', version: 1 }, { id: 'noir', version: 1 }])
     expect([versionKind.name(state, 'hero', 1), versionKind.assets(state, 'hero', 1)]).toEqual(['Hero', ['ref.png']])
     expect([versionKind.name(state, 'hero', 9), versionKind.assets(state, 'ghost', 1)]).toEqual([null, []])
@@ -106,11 +128,12 @@ describe('referenceDescriptors', () => {
     expect(mentionKind.section()).toBe('References')
   })
 
-  it('draws no node, @ item or version for a state without the slice of the noun', () => {
-    const state = fixtureState()
-    const { nodeType, mentionKind, versionKind } = descriptors
-    expect([nodeType.entries?.({ state, operations: [], language: 'zh', placed: new Set() }), mentionKind.items(state), versionKind.latest(state)])
-      .toEqual([[], [], []])
+  it('titles a node by the name its record gives while the state has no version of the item, and lists no @ item or version', () => {
+    const state = withTestRef(fixtureState())
+    state.components.test_ref = {}
+    const { mentionKind, versionKind } = descriptors
+    const entry = entryOf(state, 'e1')
+    expect([entry.title, entry.assets, mentionKind.items(state), versionKind.latest(state)]).toEqual(['Hero', [], [], []])
     expect(versionKind.name(state, 'hero', 1)).toBeNull()
   })
 
@@ -138,7 +161,7 @@ async function mountKit(): Promise<{ runtime: SlotTestRuntime; plugin: FeatureHa
 
 function nodeOf(runtime: SlotTestRuntime, state: WireState, id: string): NodeView {
   const canvas = runtime.ctx.dvCanvas
-  const graph = buildCanvasGraph(state, new Set(), [], 'zh', {
+  const graph = buildCanvasGraph(state, [], 'zh', {
     nodeTypes: canvas.nodeTypes.getSnapshot(),
     recordsInUse: canvas.recordsInUse.getSnapshot(), versionKinds: canvas.versionKinds.getSnapshot(),
   })
@@ -179,7 +202,7 @@ describe('the plugin of a reference noun', () => {
       ])
     })
     const state = withTestRef(fixtureState())
-    const node = nodeOf(runtime, state, 'test_ref:hero')
+    const node = nodeOf(runtime, state, 'e1')
     const { container } = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'test_ref' })
     expect(container.textContent).toContain('参考')
 
@@ -215,14 +238,14 @@ describe('the plugin of a reference noun', () => {
     const references = ['ref.png', 'r2.png', 'r3.png', 'r4.png', 'r5.png', 'r6.png']
     const state = heroWith(references)
     state.assets.push(...references.slice(1).map(id => asset(id, 'image/png', 'u1')))
-    const node = nodeOf(runtime, state, 'test_ref:hero')
+    const node = nodeOf(runtime, state, 'e1')
     const { container, view } = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'test_ref' })
     // 4:3 of the width above the 52-unit row and the 32-unit footer; the picture box takes that height itself.
     expect(node.sizing).toEqual({ kind: 'window', defaultSize: { width: 208, height: 240 }, minSize: { width: 104, height: 162 } })
     expect((container.firstElementChild?.firstElementChild as HTMLElement).style.height).toBe('')
     expect([...container.querySelectorAll('img')].map(image => image.getAttribute('src')))
       .toEqual(['ref.png', 'ref.png', 'r2.png', 'r3.png'].map(assetUrl))
-    expect([view.getByText('参考'), view.getByText('+3'), view.getByText(`6 张参考图 · 第 ${String((node.records?.length ?? 0) + 1)} 版`)]).toHaveLength(3)
+    expect([view.getByText('参考'), view.getByText('+3'), view.getByText('6 张参考图 · 第 1 版')]).toHaveLength(3)
     expect((container.firstElementChild as HTMLElement).style.background).toBe(CARD_SURFACE.background)
     await runtime.dispose()
   })
@@ -231,11 +254,11 @@ describe('the plugin of a reference noun', () => {
     document.documentElement.lang = 'en'
     const { runtime } = await mountKit()
     const state = heroWith([])
-    const node = nodeOf(runtime, state, 'test_ref:hero')
+    const node = nodeOf(runtime, state, 'e1')
     const { container } = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'test_ref' })
     expect(node.sizing).toEqual({ kind: 'window', defaultSize: { width: 208, height: 188 }, minSize: { width: 104, height: 110 } })
     expect(container.querySelector('img, video, [data-dv-media]')).toBeNull()
-    expect(container.textContent).toBe(`Reference0 references · v${String((node.records?.length ?? 0) + 1)}`)
+    expect(container.textContent).toBe('Reference0 references · v1')
     await runtime.dispose()
   })
 
@@ -243,25 +266,27 @@ describe('the plugin of a reference noun', () => {
     document.documentElement.lang = 'en'
     const { runtime } = await mountKit()
     const single = heroWith(['ref.png'])
-    const one = nodeOf(runtime, single, 'test_ref:hero')
+    const one = nodeOf(runtime, single, 'e1')
     const card = runtime.renderSlot('dv.canvas.card', { node: one, assets: assetsOf(single, one), textScale: 1, host: cardHost() }, { entryKey: 'test_ref' })
     expect([one.sizing?.defaultSize.height, card.container.querySelectorAll('img').length, card.view.getByText(/^1 reference · v/).textContent !== null]).toEqual([188, 1, true])
     const state = heroWith(['shot1.mp4', 'ref.png'])
-    const node = nodeOf(runtime, state, 'test_ref:hero')
+    const node = nodeOf(runtime, state, 'e1')
     const { container } = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'test_ref' })
     expect(container.querySelector('video')?.getAttribute('src')).toBe(`${assetUrl('shot1.mp4')}#t=0.1`)
     expect(container.textContent).toContain('2 references')
     await runtime.dispose()
   })
 
-  it('counts a reference whose asset the state lacks without drawing it, and names v1 for a node without earlier versions', async () => {
+  it('counts a reference whose asset the state lacks without drawing it, and names the version count of the node', async () => {
     document.documentElement.lang = 'en'
     const { runtime } = await mountKit()
     const state = heroWith(['ref.png', 'gone.png'])
-    const { records: _records, ...node } = nodeOf(runtime, state, 'test_ref:hero')
+    const node = nodeOf(runtime, state, 'e1')
     const { container } = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'test_ref' })
     expect([...container.querySelectorAll('img')].map(image => image.getAttribute('src'))).toEqual(['ref.png', 'ref.png'].map(assetUrl))
     expect(container.textContent).toBe('Reference2 references · v1')
+    const later = runtime.renderSlot('dv.canvas.card', { node: { ...node, versions: ['e1', 'e2', 'e5'] }, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'test_ref' })
+    expect(later.container.textContent).toBe('Reference2 references · v3')
     await runtime.dispose()
   })
 })
@@ -272,7 +297,7 @@ describe('the editor of a reference noun', () => {
     const { runtime, plugin } = await mountKit()
     const state = withTestRef(fixtureState())
     const host = hostMock()
-    const slot = runtime.renderSlot('dv.canvas.editor', { node: nodeOf(runtime, state, 'test_ref:hero'), state, operations: [], host }, { entryKey: 'test_ref' })
+    const slot = runtime.renderSlot('dv.canvas.editor', { node: nodeOf(runtime, state, 'e1'), state, operations: [], host }, { entryKey: 'test_ref' })
     const { container, view } = slot
 
     expect(view.getByRole('button', { name: '移除 ref.png' }).hasAttribute('disabled')).toBe(true)
@@ -290,8 +315,10 @@ describe('the editor of a reference noun', () => {
       inputs: [{ role: 'reference', ref: 'ref.png' }, { role: 'reference', ref: 'shot1.mp4' }], intent: '在画布上给 Hero 添加参考',
     })
 
-    state.components.test_ref?.['hero']?.push({ id: 'hero', version: 2, name: 'Hero', description: '', references: ['ref.png', 'shot1.mp4'], created_by: 'e1' })
-    slot.update({ node: nodeOf(runtime, state, 'test_ref:hero'), state, operations: [], host }, { entryKey: 'test_ref' })
+    state.components.proj.records.push(record({ id: 'e2', operation: 'test_ref.update', based_on: 'e1', params: { test_ref: 'hero' } }))
+    state.components.canvas.nodes['e1'] = canvasNode('test_ref', ['e1', 'e2'])
+    state.components.test_ref?.['hero']?.push({ id: 'hero', version: 2, name: 'Hero', description: '', references: ['ref.png', 'shot1.mp4'], created_by: 'e2' })
+    slot.update({ node: nodeOf(runtime, state, 'e1'), state, operations: [], host }, { entryKey: 'test_ref' })
     expect(view.queryByText('A tired detective.')).toBeNull()
     expect(view.getByRole('button', { name: '查看 shot1.mp4' }).querySelector('video')?.getAttribute('src')).toBe(`${assetUrl('shot1.mp4')}#t=0.1`)
     fireEvent.click(view.getByRole('button', { name: '移除 ref.png' }))
@@ -300,10 +327,11 @@ describe('the editor of a reference noun', () => {
       intent: '在画布上移除 Hero 的一个参考',
     })
 
-    slot.update({ node: { ...nodeOf(runtime, state, 'test_ref:hero'), id: 'test_ref:gone' }, state, operations: [], host }, { entryKey: 'test_ref' })
+    const shown = nodeOf(runtime, state, 'e1')
+    slot.update({ node: { ...shown, record: { ...shown.record, params: { test_ref: 'gone' } } }, state, operations: [], host }, { entryKey: 'test_ref' })
     expect(container.textContent).toBe('')
 
-    slot.update({ node: nodeOf(runtime, state, 'test_ref:hero'), state, operations: [], host }, { entryKey: 'test_ref' })
+    slot.update({ node: nodeOf(runtime, state, 'e1'), state, operations: [], host }, { entryKey: 'test_ref' })
     await plugin.dispose()
     expect(runtime.slots.entries('dv.canvas.editor').map(entry => entry.options.key)).toEqual(['asset'])
     expect(container.textContent).toBe('')
@@ -315,8 +343,9 @@ describe('the editor of a reference noun', () => {
     const { runtime } = await mountKit()
     const state = withTestRef(fixtureState())
     state.assets = state.assets.map(item => item.id === 'ref.png' ? { ...item, width: 1920, height: 1080 } : item)
-    state.components.test_ref?.['hero']?.push({ id: 'hero', version: 2, name: 'Hero', description: '', references: ['ref.png', 'shot1.mp4'], created_by: 'e1' })
-    const { view } = runtime.renderSlot('dv.canvas.editor', { node: nodeOf(runtime, state, 'test_ref:hero'), state, operations: [], host: hostMock() }, { entryKey: 'test_ref' })
+    const hero = state.components.test_ref?.['hero']?.[0]
+    if (hero !== undefined) hero.references = ['ref.png', 'shot1.mp4']
+    const { view } = runtime.renderSlot('dv.canvas.editor', { node: nodeOf(runtime, state, 'e1'), state, operations: [], host: hostMock() }, { entryKey: 'test_ref' })
     const box = (name: string): string => {
       const found = view.getByRole('button', { name }).firstElementChild
       return found instanceof HTMLElement ? found.style.aspectRatio : ''
@@ -330,7 +359,7 @@ describe('the editor of a reference noun', () => {
     const { runtime } = await mountKit()
     const state = refState()
     const host = hostMock()
-    const { container, view } = runtime.renderSlot('dv.canvas.editor', { node: nodeOf(runtime, state, 'test_ref:alley'), state, operations: [], host }, { entryKey: 'test_ref' })
+    const { container, view } = runtime.renderSlot('dv.canvas.editor', { node: nodeOf(runtime, state, 'e3'), state, operations: [], host }, { entryKey: 'test_ref' })
 
     const opener = view.getByRole('button', { name: 'View alley.png' })
     expect(container.querySelector('img, video')).toBeNull()
@@ -349,10 +378,11 @@ describe('the editor of a reference noun', () => {
     await runtime.dispose()
   })
 
-  it('draws nothing for a node whose ID belongs to another noun', async () => {
+  it('draws nothing for a node whose record names no item of the noun', async () => {
     const { runtime } = await mountKit()
     const state = refState()
-    const node = { ...nodeOf(runtime, state, 'test_ref:hero'), id: 'character:hero' }
+    const shown = nodeOf(runtime, state, 'e1')
+    const node = { ...shown, record: { ...shown.record, params: { character: 'hero' } } }
     const { container } = runtime.renderSlot('dv.canvas.editor', { node, state, operations: [], host: hostMock() }, { entryKey: 'test_ref' })
     expect(container.textContent).toBe('')
     await runtime.dispose()

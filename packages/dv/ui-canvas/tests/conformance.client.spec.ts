@@ -44,23 +44,25 @@ async function registered(): Promise<{ registrations: CanvasRegistrations; runti
 }
 
 describe('fixture project', () => {
-  it('draws a pending claimed record before it has outputs, with its type\'s running words', async () => {
+  it('draws a node at its running newest version before it has outputs, with its type\'s running words', async () => {
     document.documentElement.lang = 'zh-CN'
     const { registrations, runtime } = await registered()
     const state = fixtureProject()
-    const pending = buildCanvasGraph(state, new Set(), OPS, 'zh', registrations).nodes.find(node => node.id === 'g3')
+    const pending = buildCanvasGraph(state, OPS, 'zh', registrations).nodes.find(node => node.id === 'g1')
     const facts = pending === undefined
       ? null
-      : [pending.claimed, pending.assets, pending.flags.rendering, pending.nodeType.claimed?.status.running(), previewOf(pending)]
-    expect(facts)
-      .toEqual([true, [], true, '渲染中…', null])
+      : [
+        pending.record.id, pending.versions, pending.assets, pending.flags.rendering, pending.nodeType.status?.running(),
+        previewOf(pending),
+      ]
+    expect(facts).toEqual(['g3', ['g1', 'g3'], [], true, '渲染中…', null])
     document.documentElement.lang = ''
     await runtime.dispose()
   })
 })
 
-describe('claims of an unloaded type', () => {
-  /** A state with an `image.generate` record and a `shot.render` record that reads the image as its first frame. */
+describe('nodes of a kind without a loaded type', () => {
+  /** A state with an `image` node of an `image.generate` record and a `shot` node that reads the image as its first frame. */
   function imageState(): WireState {
     const state = fixtureProject()
     const base = state.components.proj.records[0]
@@ -75,29 +77,32 @@ describe('claims of an unloaded type', () => {
     state.components.proj.created_by['i1.png'] = 'i1'
     state.components.proj.created_by['i2.mp4'] = 'i2'
     state.assets.push({ ...state.assets[0]!, id: 'i1.png', created_by: 'i1' }, { ...state.assets[1]!, id: 'i2.mp4', created_by: 'i2' })
+    const canvas = state.components.canvas
+    canvas.nodes['i1'] = { kind: 'image', name: null, versions: ['i1'], position: { x: 480, y: 400, width: null, height: null } }
+    canvas.nodes['i2'] = { kind: 'shot', name: null, versions: ['i2'], position: { x: 720, y: 400, width: null, height: null } }
+    canvas.order.push('i1', 'i2')
     return state
   }
 
-  it('draws no node for a record whose operation no loaded type claims, and links no edge from it', async () => {
+  it('draws a node of an unregistered kind as a plain card titled by its operation, with its first-frame edge', async () => {
     const { registrations, runtime } = await registered()
-    const graph = buildCanvasGraph(imageState(), new Set(), OPS, 'zh', registrations)
-    expect(graph.nodes.some(node => node.id === 'i1')).toBe(false)
-    expect(graph.edges.filter(edge => edge.to === 'i2')).toEqual([])
+    const graph = buildCanvasGraph(imageState(), OPS, 'zh', registrations)
+    const image = graph.nodes.find(node => node.id === 'i1')
+    expect([image?.type, image?.title]).toEqual(['image', 'image.generate'])
+    expect(graph.edges.filter(edge => edge.to === 'i2')).toEqual([{ from: 'i1', to: 'i2', role: 'first_frame' }])
     await runtime.dispose()
   })
 
-  it('draws a claimed record of another type left of the take that reads it as its first frame, with a first-frame edge', async () => {
+  it('draws the node with the type registered for its kind once one is', async () => {
     const { registrations, runtime } = await registered()
     const still: NodeType = {
-      id: '@dv/ui-test-still', type: 'still', label: () => 'still', color: '', column: 2,
-      claimed: { operations: ['image.generate'], status: { running: () => '', failed: () => '' }, entry: () => ({ title: 'i1', sizing: { kind: 'window', defaultSize: { width: 208, height: 117 }, minSize: { width: 104, height: 117 } } }) },
+      id: '@dv/ui-test-still', type: 'image', label: () => 'still', color: '',
+      entry: () => ({ title: 'still i1', sizing: { kind: 'window', defaultSize: { width: 208, height: 117 }, minSize: { width: 104, height: 117 } } }),
     }
     const withStill: CanvasRegistrations = { ...registrations, nodeTypes: [...registrations.nodeTypes, still] }
-    const graph = buildCanvasGraph(imageState(), new Set(), OPS, 'zh', withStill)
-    const image = graph.nodes.find(node => node.id === 'i1')
-    const take = graph.nodes.find(node => node.id === 'i2')
-    expect(graph.edges.filter(edge => edge.to === 'i2')).toEqual([{ from: 'i1', to: 'i2', kind: 'input', role: 'first_frame' }])
-    expect(image !== undefined && take !== undefined && take.x > image.x).toBe(true)
+    const graph = buildCanvasGraph(imageState(), OPS, 'zh', withStill)
+    expect(graph.nodes.find(node => node.id === 'i1')?.title).toBe('still i1')
+    expect(graph.edges.filter(edge => edge.to === 'i2')).toEqual([{ from: 'i1', to: 'i2', role: 'first_frame' }])
     await runtime.dispose()
   })
 })

@@ -274,7 +274,8 @@ describe('History panel', () => {
     // One thumbnail per row: the take's still, which the browser loads.
     const thumb = render.locator('[data-testid="dv-history-thumb"]')
     expect(await thumb.count()).toBe(1)
-    await expect.poll(() => thumb.evaluate(element => element instanceof HTMLImageElement && element.complete && element.naturalWidth > 0))
+    // The thumbnail span holds the `dv.media` image of the still.
+    await expect.poll(() => thumb.locator('img').evaluate(element => element instanceof HTMLImageElement && element.complete && element.naturalWidth > 0))
       .toBe(true)
     expect(await historyPanel(page).locator('[data-testid="dv-history-turn"]').count()).toBe(0)
     expect(await rowOf(page, project.timeline.id).innerText()).toContain('新建时间线')

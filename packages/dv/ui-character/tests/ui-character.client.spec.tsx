@@ -17,7 +17,7 @@ import { apply as composerApply, inject as composerInject } from '../../ui-compo
 import type { projectMentionSource } from '../../ui-composer/src/client/mention.ts'
 import { apply as historyApply, inject as historyInject } from '../../ui-history/src/client/index.ts'
 import { actionLabel } from '../../ui-history/src/client/rows.ts'
-import { fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { canvasNode, fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
@@ -41,8 +41,10 @@ function nounState(): WireState {
   state.components.proj.records = [
     ...state.components.proj.records,
     record({ id: 'n1', operation: 'character.create', params: { character: 'c1', name: '阿明' } }),
-    record({ id: 'n2', operation: 'character.update', params: { character: 'c1' } }),
+    record({ id: 'n2', operation: 'character.update', based_on: 'n1', params: { character: 'c1' } }),
   ]
+  state.components.canvas.nodes['n1'] = canvasNode('character', ['n1', 'n2'], 0, 400)
+  state.components.canvas.order.push('n1')
   const id = 'c1' as CharacterId
   state.components.character = { [id]: [
     { id, version: 1, name: '阿明', description: 'A short description of the character.', references: ['ref.png' as AssetId], created_by: 'n1' as RecordId },
@@ -77,7 +79,7 @@ async function mountCharacter() {
 
 function nodeOf(runtime: SlotTestRuntime, state: WireState, id: string): NodeView | undefined {
   const canvas = runtime.ctx.dvCanvas
-  const graph = buildCanvasGraph(state, new Set(), [], 'zh', {
+  const graph = buildCanvasGraph(state, [], 'zh', {
     nodeTypes: canvas.nodeTypes.getSnapshot(),
     recordsInUse: canvas.recordsInUse.getSnapshot(), versionKinds: canvas.versionKinds.getSnapshot(),
   })
@@ -106,16 +108,16 @@ const declared = (name: string, zh: string, en: string): WireOperation => ({
 })
 
 describe('the character plugin', () => {
-  it('draws character:c1 as a 角色 card titled 阿明 under the picker section 角色, whose editor writes character.update', async () => {
+  it('draws the node n1 of the item as a 角色 card titled 阿明 under the picker section 角色, whose editor writes character.update', async () => {
     document.documentElement.lang = 'zh-CN'
     const { runtime } = await mountCharacter()
     const state = nounState()
-    const node = nodeOf(runtime, state, 'character:c1')
-    if (node === undefined) throw new Error('no node character:c1')
+    const node = nodeOf(runtime, state, 'n1')
+    if (node === undefined) throw new Error('no node n1')
     expect([node.type, node.title, node.assets]).toEqual(['character', '阿明', ['shot1-last.png', 'ref.png']])
     const card = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'character' })
     expect([card.view.getByText('角色'), card.view.getByText('2 张参考图 · 第 2 版')]).toHaveLength(2)
-    expect(runtime.ctx.dvCanvas.versionKinds.getSnapshot().map(kind => [kind.kind, kind.label(), kind.node('c1')])).toEqual([['character', '角色', 'character:c1']])
+    expect(runtime.ctx.dvCanvas.versionKinds.getSnapshot().map(kind => [kind.kind, kind.label(), kind.node(state, 'c1')])).toEqual([['character', '角色', 'n1']])
 
     const host = {
       run: vi.fn<EditorHost['run']>(), rerun: vi.fn<EditorHost['rerun']>(), pickAssets: vi.fn<EditorHost['pickAssets']>(), preview: vi.fn<EditorHost['preview']>(),
@@ -155,7 +157,7 @@ describe('the character plugin', () => {
     const { runtime } = await mountCharacter()
     const context = {
       operations: [declared('character.create', '新建角色', 'Create character'), declared('character.update', '修改角色', 'Update character')],
-      rows: runtime.ctx.dvHistory.rows.getSnapshot(), records: new Map(),
+      rows: runtime.ctx.dvHistory.rows.getSnapshot(), records: new Map(), state: null,
     }
     const row = (operation: string, params: Record<string, unknown>) => actionLabel(record({ id: 'h', operation, params }), context)
     expect(row('character.create', { character: 'c1', name: '阿明' })).toEqual(['新建角色「阿明」', 'Create character “阿明”'])
@@ -178,15 +180,16 @@ describe('the character plugin', () => {
     ]
     expect(registered()).toEqual([['@dv/ui-character'], ['character'], ['@dv/ui-character'], ['@dv/ui-character'], ['character.'], ['character'], ['character']])
     const state = nounState()
-    const node = nodeOf(runtime, state, 'character:c1')
-    if (node === undefined) throw new Error('no node character:c1')
+    const node = nodeOf(runtime, state, 'n1')
+    if (node === undefined) throw new Error('no node n1')
     const { container } = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'character' })
     expect(container.textContent).toContain('角色')
 
     await plugin.dispose()
     expect(registered()).toEqual([[], [], [], [], [], [], []])
     expect(container.textContent).toBe('')
-    expect(nodeOf(runtime, state, 'character:c1')).toBeUndefined()
+    // Without its type, the node draws as a plain card titled by its operation.
+    expect(nodeOf(runtime, state, 'n1')?.title).toBe('character.update')
     expect((await candidates(sources)).map(candidate => candidate.name)).not.toContain('阿明')
     await runtime.dispose()
   })

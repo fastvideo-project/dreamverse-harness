@@ -29,7 +29,7 @@ async function mountPlugin() {
   runtime.ctx.provide('dvHistory', { rows })
   await runtime.declare({
     'dv.canvas.card': { kind: 'keyed', scope: 'root' },
-    'dv.canvas.editor.claimed': { kind: 'keyed', scope: 'root' },
+    'dv.canvas.editor': { kind: 'keyed', scope: 'root' },
     'tool.call.toolview': { kind: 'keyed', scope: 'session', inject: { hooks: { toolCallArgumentsPartial: () => () => '' } } },
   })
   const handle = await runtime.mount({ inject: [...plugin.inject], apply: plugin.apply })
@@ -42,14 +42,13 @@ describe('@dv/ui-image-generate', () => {
     expect(hostApply).not.toThrow()
   })
 
-  it('claims image.generate as the image node type with its label, palette slot and status words', async () => {
+  it('draws the image nodes with its label, palette slot and status words', async () => {
     const { runtime, canvas } = await mountPlugin()
     const type = canvas.nodeTypes.getSnapshot().find(entry => entry.id === '@dv/ui-image-generate')
     expect({
-      type: type?.type, label: type?.label(), color: type?.color, operations: type?.claimed?.operations,
-      running: type?.claimed?.status.running(), failed: type?.claimed?.status.failed(),
+      type: type?.type, label: type?.label(), color: type?.color, running: type?.status?.running(), failed: type?.status?.failed(),
     }).toEqual({
-      type: 'image', label: '图片', color: 'var(--dv-node-4)', operations: ['image.generate'], running: '生成中…', failed: '生成失败',
+      type: 'image', label: '图片', color: 'var(--dv-node-4)', running: '生成中…', failed: '生成失败',
     })
     await runtime.dispose()
   })
@@ -60,7 +59,7 @@ describe('@dv/ui-image-generate', () => {
       types: canvas.nodeTypes.getSnapshot().length,
       actions: canvas.actions.getSnapshot().length,
       card: runtime.slots.entries('dv.canvas.card').map(entry => entry.options.key),
-      editor: runtime.slots.entries('dv.canvas.editor.claimed').map(entry => entry.options.key),
+      editor: runtime.slots.entries('dv.canvas.editor').map(entry => entry.options.key),
       chat: runtime.slots.entries('tool.call.toolview').map(entry => entry.options.key),
       history: rows.getSnapshot().map(row => row.match),
     })

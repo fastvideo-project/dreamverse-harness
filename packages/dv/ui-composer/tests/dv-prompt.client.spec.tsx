@@ -722,7 +722,7 @@ describe('what the references open', () => {
     fireEvent.click(await found(take, '[data-dv-chip="dv:test_ref/hero"] img'), { detail: 1 })
     fireEvent.click(await found(take, '[data-dv-chip="dv:asset/shot1-last.png"] img'), { detail: 1 })
     fireEvent.click(await found(take, '[data-dv-chip="dv:test_prop/p1"]'), { detail: 1 })
-    expect([host.openNode.mock.calls, host.preview.mock.calls]).toEqual([[['test_ref:hero']], [['shot1-last.png', null]]])
+    expect([host.openNode.mock.calls, host.preview.mock.calls]).toEqual([[['e1']], [['shot1-last.png', null]]])
   })
 
   it('previews an asset tile from the tile, and opens nothing for a tile of an asset that the project lacks', async () => {

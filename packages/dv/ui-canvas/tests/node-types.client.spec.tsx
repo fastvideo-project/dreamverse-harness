@@ -10,7 +10,7 @@ import type { ReactNode } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
-import { asset } from '../../ui-kit/tests/fixture.client.tsx'
+import { asset, canvasNode, record } from '../../ui-kit/tests/fixture.client.tsx'
 import type { NodeType } from '../src/client/contract/index.ts'
 import { forgetCanvasStorage, mountCanvas } from './canvas-runtime.client.tsx'
 
@@ -23,10 +23,10 @@ afterEach(() => {
 })
 
 const PROPS: NodeType = {
-  id: '@dv/ui-test-prop', type: 'test_prop', label: () => '道具', color: 'rgb(1, 2, 3)', column: 1,
-  entries: ({ state }) => [{
-    id: `prop:${state.project.id}`, title: '红伞', meta: '第 1 版', record: null, assets: ['umbrella.png'], sizing: { kind: 'window', defaultSize: { width: 208, height: 40 }, minSize: { width: 104, height: 40 } },
-  }],
+  id: '@dv/ui-test-prop', type: 'test_prop', label: () => '道具', color: 'rgb(1, 2, 3)',
+  entry: () => ({
+    title: '红伞', meta: '第 1 版', assets: ['umbrella.png'], sizing: { kind: 'window', defaultSize: { width: 208, height: 40 }, minSize: { width: 104, height: 40 } },
+  }),
 }
 
 /**
@@ -48,25 +48,23 @@ function PropEditor({ node, state }: PropsRuntime<'dv.canvas.editor'>): ReactNod
 }
 
 describe('node types', () => {
-  it('draws a slice node in its chrome around the type\'s card body, else its type label, opens its editor body, and drops each with its fiber', async () => {
-    const { runtime, view, node, open } = await mountCanvas({
+  it('draws a node of a registered kind in its chrome around the type\'s card body, else its type label, opens its editor body, and drops each with its fiber', async () => {
+    const { runtime, node, open } = await mountCanvas({
       edit: (state) => {
         state.assets.push(asset('umbrella.png', 'image/png', null))
-        state.components.asset.placed = ['umbrella.png']
+        state.components.proj.records.push(record({ id: 'm1', operation: 'test_prop.create' }))
+        state.components.canvas.nodes['m1'] = canvasNode('test_prop', ['m1'], 0, 400)
+        state.components.canvas.order.push('m1')
       },
     })
-    const card = (id: string): Element | null => view.container.querySelector(`[data-node-id="${id}"]`)
-    await waitFor(() => { node('g1') })
-    await waitFor(() => { expect(card('asset:umbrella.png')).not.toBeNull() })
+    await waitFor(() => { expect(node('m1').getAttribute('aria-label')).toBe('test_prop.create') })
     const type = await runtime.mount({
       inject: ['dvCanvas'],
       apply: (ctx: Context) => { ctx.effect(() => ctx.dvCanvas.nodeTypes.register(PROPS), 'test: prop type') },
     })
-    await waitFor(() => { node('prop:p1') })
-    expect(node('prop:p1').getAttribute('data-node-type')).toBe('test_prop')
-    expect(node('prop:p1').textContent).toBe('红伞第 1 版道具')
-    expect(node('prop:p1').innerHTML).not.toContain('rgb(1, 2, 3)')
-    expect(card('asset:umbrella.png')).toBeNull()
+    await waitFor(() => { expect(node('m1').textContent).toBe('红伞第 1 版道具') })
+    expect(node('m1').getAttribute('data-node-type')).toBe('test_prop')
+    expect(node('m1').innerHTML).not.toContain('rgb(1, 2, 3)')
 
     const bodies = await runtime.mount({
       inject: ['slots'],
@@ -75,25 +73,26 @@ describe('node types', () => {
         ctx.effect(() => ctx.slots.inject('dv.canvas.editor', () => ctx.slots.register({ name: 'dv.canvas.editor', key: 'test_prop' }, PropEditor)), 'test: editor')
       },
     })
-    await waitFor(() => { expect(within(node('prop:p1')).getByTestId('prop-card').textContent).toBe('matte · prop:p1') })
-    const editor = await open('prop:p1')
+    await waitFor(() => { expect(within(node('m1')).getByTestId('prop-card').textContent).toBe('matte · m1') })
+    const editor = await open('m1')
     expect(within(editor).getByRole('heading').textContent).toBe('红伞')
     expect(within(editor).getByTestId('prop-editor').textContent).toBe('红伞 · p1')
 
     await bodies.dispose()
     await waitFor(() => { expect(within(editor).queryByTestId('prop-editor')).toBeNull() })
     expect(within(editor).getByRole('heading').textContent).toBe('红伞')
-    expect(node('prop:p1').textContent).toBe('红伞第 1 版道具')
+    expect(node('m1').textContent).toBe('红伞第 1 版道具')
 
     await type.dispose()
-    await waitFor(() => { expect(card('prop:p1')).toBeNull() })
+    // Without its type, the node draws as a plain card titled by its operation.
+    await waitFor(() => { expect(node('m1').getAttribute('aria-label')).toBe('test_prop.create') })
     expect(runtime.ctx.dvCanvas.nodeTypes.getSnapshot().map(each => each.type)).not.toContain('test_prop')
     await runtime.dispose()
   })
 
   it('lends the editor body its writes, picker and preview: the noun\'s editor previews a reference and appends picked assets', async () => {
     const { runtime, view, open, server } = await mountCanvas()
-    const editor = await open('test_ref:hero')
+    const editor = await open('e1')
     const opened = vi.spyOn(runtime.ctx.dvMedia, 'preview')
     const reference = within(editor).getByRole('button', { name: '查看 ref.png' })
     fireEvent.click(reference)

@@ -542,7 +542,7 @@ describe('chat with the agent', () => {
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
     await waitFor(async () => {
       // The canvas fits its view after the nodes load; a double click during that move can miss, so double click until it opens.
-      await page.locator('[data-dv-workspace] [data-node-type="take"]').first().dblclick({ timeout: 10_000 })
+      await page.locator('[data-dv-workspace] [data-node-type="shot"]').first().dblclick({ timeout: 10_000 })
       return await editor.isVisible()
     }, 'the take editor', 30_000)
     await editor.getByRole('button', { name: '问 agent', exact: true }).click()

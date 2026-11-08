@@ -10,7 +10,8 @@ import type { ChildrenDecl } from '@deepseek-ai/dsh-client-ui-slots'
 import type { HistoryRow } from '@dv/ui-history/contract'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type { WireOperation, WireState } from '@dv/ui-kit/types.ts'
-import type { ClaimedNodeView, DvCanvas, EditorHost, NodeView } from '../../ui-canvas/src/client/contract/index.ts'
+import { canvasNode } from '../../ui-kit/tests/fixture.client.tsx'
+import type { DvCanvas, EditorHost, NodeView } from '../../ui-canvas/src/client/contract/index.ts'
 import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
 import { buildCanvasGraph } from '../../ui-canvas/src/client/graph.ts'
 import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
@@ -63,8 +64,32 @@ export async function mountKit(children: ChildrenDecl, kind: typeof testTake = t
 }
 
 /**
- * The canvas nodes that the real graph builder draws from a state with the registered node types, as their cards and
- * editors receive them.
+ * Add a node of one version to the canvas slice of a state, after its other nodes.
+ * @param state - the project state, changed in place.
+ * @param id - the node ID and its one version.
+ * @param kind - the node's kind.
+ */
+export function addNode(state: WireState, id: string, kind: string): void {
+  state.components.canvas.nodes[id] = canvasNode(kind, [id], 0, 0)
+  state.components.canvas.order.push(id)
+}
+
+/**
+ * The canvas graph that the real graph builder draws from a state with the registered node types, with the fixture's
+ * `shot` nodes drawn as nodes of the test kind.
+ */
+function graphOf(canvas: DvCanvas, state: WireState, operations: readonly WireOperation[], language: 'zh' | 'en') {
+  const nodes = Object.fromEntries(Object.entries(state.components.canvas.nodes)
+    .map(([id, node]) => [id, node.kind === 'shot' ? { ...node, kind: 'test_take' } : node]))
+  const retyped = { ...state, components: { ...state.components, canvas: { ...state.components.canvas, nodes } } }
+  return buildCanvasGraph(retyped, operations, language, {
+    nodeTypes: canvas.nodeTypes.getSnapshot(),
+    recordsInUse: canvas.recordsInUse.getSnapshot(), versionKinds: canvas.versionKinds.getSnapshot(),
+  })
+}
+
+/**
+ * The canvas nodes as their cards and editors receive them, each at its newest version.
  * @param canvas - the canvas registries.
  * @param state - the project state.
  * @param operations - the operation declarations.
@@ -72,23 +97,24 @@ export async function mountKit(children: ChildrenDecl, kind: typeof testTake = t
  * @returns the node of each ID.
  */
 export function nodesOf(canvas: DvCanvas, state: WireState, operations: readonly WireOperation[], language: 'zh' | 'en'): Map<string, NodeView> {
-  const graph = buildCanvasGraph(state, new Set(), operations, language, {
-    nodeTypes: canvas.nodeTypes.getSnapshot(),
-    recordsInUse: canvas.recordsInUse.getSnapshot(), versionKinds: canvas.versionKinds.getSnapshot(),
-  })
+  const graph = graphOf(canvas, state, operations, language)
   return new Map(graph.nodes.map(node => [node.id, { ...node, unseen: false, rerunning: false }]))
 }
 
 /**
- * The claimed nodes that the real graph builder draws, as the editor of their type's claimed nodes receives them.
+ * One canvas node at one of its versions, as the editor's version strip shows it.
  * @param canvas - the canvas registries.
  * @param state - the project state.
  * @param operations - the operation declarations.
- * @param language - the interface language.
- * @returns the claimed node of each record ID.
+ * @param id - the node ID.
+ * @param version - one of its versions.
+ * @returns the node at that version.
  */
-export function claimedOf(canvas: DvCanvas, state: WireState, operations: readonly WireOperation[], language: 'zh' | 'en'): Map<string, ClaimedNodeView> {
-  return new Map([...nodesOf(canvas, state, operations, language)].flatMap(([id, node]) => node.claimed ? [[id, node] as const] : []))
+export function nodeAt(canvas: DvCanvas, state: WireState, operations: readonly WireOperation[], id: string, version: string): NodeView {
+  const graph = graphOf(canvas, state, operations, 'en')
+  const node = graph.nodes.find(each => each.id === id)
+  if (node === undefined) throw new Error(`no node ${id}`)
+  return { ...graph.atVersion(node, version), unseen: false, rerunning: false }
 }
 
 /**
