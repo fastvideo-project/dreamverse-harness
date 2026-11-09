@@ -99,17 +99,23 @@ interface ViewMessage {
 /**
  * The page's one viewport socket, shared by every mounted view: opened for the first listener, reopened two seconds
  * after it drops while a listener remains, and closed after the last one leaves. A frame message names the size and
- * format of the binary message that follows it.
+ * format of the binary message that follows it. The bridge sends the link status only when the socket opens and when
+ * it changes, and Blender sends a frame only when its view redraws, so a listener that joins an open socket receives
+ * the last status and the newest frame at once.
  */
-class SharedViewer {
+export class SharedViewer {
   private readonly listeners = new Set<ViewListener>()
   private socket: WebSocket | null = null
   private retry: ReturnType<typeof setTimeout> | null = null
   private pending: { width: number; height: number; mime: string } | null = null
+  private status: { linked: boolean; state: BlenderState | null } | null = null
+  private latest: ViewFrame | null = null
 
   watch(listener: ViewListener): () => void {
     this.listeners.add(listener)
     if (this.socket === null && this.retry === null) this.open()
+    if (this.status !== null) listener.status(this.status.linked, this.status.state)
+    if (this.latest !== null) listener.frame(this.latest)
     return () => {
       this.listeners.delete(listener)
       if (this.listeners.size > 0) return
@@ -117,6 +123,9 @@ class SharedViewer {
       this.retry = null
       const socket = this.socket
       this.socket = null
+      this.pending = null
+      this.status = null
+      this.latest = null
       socket?.close()
     }
   }
@@ -135,13 +144,17 @@ class SharedViewer {
         const meta = this.pending
         this.pending = null
         if (meta === null) return
-        const image = new Blob([event.data], { type: meta.mime })
-        for (const listener of this.listeners) listener.frame({ image, width: meta.width, height: meta.height })
+        const frame = { image: new Blob([event.data], { type: meta.mime }), width: meta.width, height: meta.height }
+        this.latest = frame
+        for (const listener of this.listeners) listener.frame(frame)
         return
       }
       const message = JSON.parse(event.data) as ViewMessage
       if (message.type === 'status') {
-        for (const listener of this.listeners) listener.status(message.linked === true, message.state ?? null)
+        const status = { linked: message.linked === true, state: message.state ?? null }
+        this.status = status
+        if (!status.linked) this.latest = null
+        for (const listener of this.listeners) listener.status(status.linked, status.state)
       } else if (message.type === 'frame') {
         this.pending = { width: message.width ?? 0, height: message.height ?? 0, mime: message.mime ?? 'image/jpeg' }
       }
@@ -150,6 +163,8 @@ class SharedViewer {
       if (this.socket !== socket) return
       this.socket = null
       this.pending = null
+      this.status = null
+      this.latest = null
       for (const listener of this.listeners) listener.status(false, null)
       if (this.listeners.size > 0) {
         this.retry = setTimeout(() => {

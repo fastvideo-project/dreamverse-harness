@@ -50,7 +50,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-标签页正文挂载期间读取一次 `GET /api/dv/blender/status`，并监听视口 WebSocket `/dv/blender/view`。页面上所有挂载的标签页共用一个套接字，断开两秒后重新打开；长时间打开的 HTTP 流会占用浏览器到 harness 为数不多的 HTTP/1.1 连接，使页面的其他请求停滞。标签页只在显示在屏幕上且页面可见时监听。`status` 消息在两种视图之间切换，每一帧用 `createImageBitmap` 解码后画到画布上；一帧正在绘制时，只有期间到达的最新一帧会等待，所以画面不会堆积成图片加载请求。插件下载通过 `fetch` 进行，下载失败时显示其 HTTP 状态。连接步骤和视口不依赖打开的项目，因为一个 Blender 服务整个 harness；只有放置按钮读取打开的项目。标签页、卡片和编辑器各自通过 `useLiveView` 在同一个套接字上监听，并画在自己的画布上。编辑器收集拖动和滚轮的移动量，每个动画帧最多通过同一个套接字发送一次，以所显示画面的比例表示，每个数限制在 ±10 以内；滚轮监听器是原生的非被动监听器，所以页面不会滚动。版本来自 [`@dv/ui-generation`](../ui-generation/README.zh.md) 的一个 `defineGenerationUi` 声明，节点类型为 `blender`。
+标签页正文挂载期间读取一次 `GET /api/dv/blender/status`，并监听视口 WebSocket `/dv/blender/view`。页面上所有挂载的标签页共用一个套接字，断开两秒后重新打开；长时间打开的 HTTP 流会占用浏览器到 harness 为数不多的 HTTP/1.1 连接，使页面的其他请求停滞。标签页只在显示在屏幕上且页面可见时监听。`status` 消息在两种视图之间切换，每一帧用 `createImageBitmap` 解码后画到画布上；一帧正在绘制时，只有期间到达的最新一帧会等待，所以画面不会堆积成图片加载请求。插件下载通过 `fetch` 进行，下载失败时显示其 HTTP 状态。连接步骤和视口不依赖打开的项目，因为一个 Blender 服务整个 harness；只有放置按钮读取打开的项目。标签页、卡片和编辑器各自通过 `useLiveView` 在同一个套接字上监听，并画在自己的画布上。桥接端只在套接字打开和连接变化时发送 `status`，Blender 也只在视图重绘时发送画面，所以加入已打开套接字的视图（例如从卡片打开的编辑器）会立即收到上一次的状态和最新一帧。编辑器收集拖动和滚轮的移动量，每个动画帧最多通过同一个套接字发送一次，以所显示画面的比例表示，每个数限制在 ±10 以内；滚轮监听器是原生的非被动监听器，所以页面不会滚动。版本来自 [`@dv/ui-generation`](../ui-generation/README.zh.md) 的一个 `defineGenerationUi` 声明，节点类型为 `blender`。
 
 | 文件 | 内容 |
 | --- | --- |

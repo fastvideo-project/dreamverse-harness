@@ -22,6 +22,7 @@ import {
   blenderDefinition, inject, shownSize, viewportNode, viewportNodeType, type BlenderSource, type BlenderState, type BlenderStatus,
   type ViewCommand, type ViewFrame,
 } from '../src/client/index.ts'
+import { SharedViewer } from '../src/client/viewer.ts'
 import { apply as hostApply } from '../src/index.ts'
 
 const SLOTS = {
@@ -359,5 +360,62 @@ describe('BlenderPanel placing', () => {
     source.placeFailure = new Error('The Blender viewport is already on the canvas.')
     fireEvent.click(button())
     expect(await screen.findByText('The viewport was not put on the canvas: The Blender viewport is already on the canvas.')).toBeTruthy()
+  })
+})
+
+/** A WebSocket stand-in for the shared viewport socket: the test delivers its messages. */
+class FakeSocket {
+  static readonly OPEN = 1
+  static readonly opened: FakeSocket[] = []
+  readyState = FakeSocket.OPEN
+  binaryType = 'blob'
+  private readonly handlers = new Map<string, Array<(event: { data?: unknown }) => void>>()
+  constructor(readonly url: string) { FakeSocket.opened.push(this) }
+  addEventListener(type: string, handler: (event: { data?: unknown }) => void): void {
+    this.handlers.set(type, [...this.handlers.get(type) ?? [], handler])
+  }
+  send(): void {}
+  close(): void {}
+  deliver(type: string, data?: unknown): void {
+    for (const handler of this.handlers.get(type) ?? []) handler({ data })
+  }
+}
+
+describe('SharedViewer', () => {
+  /** A listener that records what it receives. */
+  function recorder() {
+    const seen: string[] = []
+    return {
+      seen,
+      listener: {
+        status: (linked: boolean, state: BlenderState | null) => { seen.push(`status ${String(linked)} ${state?.file ?? '-'}`) },
+        frame: (next: ViewFrame) => { seen.push(`frame ${String(next.width)}x${String(next.height)}`) },
+      },
+    }
+  }
+
+  it('gives a listener that joins an open socket the last status and the newest frame, and forgets both on a disconnect', () => {
+    vi.stubGlobal('WebSocket', FakeSocket)
+    FakeSocket.opened.length = 0
+    const viewer = new SharedViewer()
+    const card = recorder()
+    const stopCard = viewer.watch(card.listener)
+    const [socket] = FakeSocket.opened
+    socket?.deliver('message', JSON.stringify({ type: 'status', linked: true, state: STATE }))
+    socket?.deliver('message', JSON.stringify({ type: 'frame', width: 640, height: 360, mime: 'image/jpeg' }))
+    socket?.deliver('message', new Blob(['jpeg']))
+    expect(card.seen).toEqual(['status true shot.blend', 'frame 640x360'])
+
+    const editor = recorder()
+    const stopEditor = viewer.watch(editor.listener)
+    expect(FakeSocket.opened).toHaveLength(1)
+    expect(editor.seen).toEqual(['status true shot.blend', 'frame 640x360'])
+
+    socket?.deliver('message', JSON.stringify({ type: 'status', linked: false, state: null }))
+    stopEditor()
+    const late = recorder()
+    viewer.watch(late.listener)
+    expect(late.seen).toEqual(['status false -'])
+    stopCard()
   })
 })
