@@ -12,7 +12,7 @@ import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/c
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { tabInfoFactory } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-info.ts'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
-import type { ComposedProps } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ComposedProps, GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
 import type { EditorHost, NodeView } from '@dv/ui-canvas/contract'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
@@ -28,7 +28,6 @@ const SLOTS = {
   'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: tabInfoFactory } } },
   'dv.canvas.card': { kind: 'keyed', scope: 'root' },
   'dv.canvas.editor': { kind: 'keyed', scope: 'root' },
-  'dv.canvas.editor.claimed': { kind: 'keyed', scope: 'root' },
 } as const
 
 type FrameProps = ComposedProps<'root', never, keyof typeof SLOTS, undefined, object>
@@ -238,6 +237,8 @@ describe('the viewport node type', () => {
 
 const frame = (width: number, height = 360): ViewFrame => ({ image: new Blob(['jpeg'], { type: 'image/jpeg' }), width, height })
 const noDraw = (): Promise<void> => Promise.resolve()
+// The slot runtime's standard hooks, which the viewport card and editor never call.
+const STANDARD = {} as GlobalStandardProps
 const nodeView = { id: 'r1', type: VIEWPORT_TYPE } as unknown as NodeView
 
 describe('ViewportCard', () => {
@@ -247,7 +248,7 @@ describe('ViewportCard', () => {
     render(
       <div onPointerDown={pressed}>
         <ViewportCard
-          node={nodeView} assets={{}} textScale={1} host={{ run: vi.fn(), rerun: vi.fn() }} source={source} draw={noDraw} {...{} as never}
+          node={nodeView} assets={{}} textScale={1} host={{ run: vi.fn(), rerun: vi.fn() }} source={source} draw={noDraw} {...STANDARD}
         />
       </div>,
     )
@@ -271,7 +272,7 @@ describe('ViewportEditor', () => {
     render(
       <ViewportEditor
         node={nodeView} state={stateWith(true)} operations={[]} host={host} source={source} draw={noDraw}
-        schedule={(flush) => { frames.push(flush) }} {...{} as never}
+        schedule={(flush) => { frames.push(flush) }} {...STANDARD}
       />,
     )
     const runFrame = (): void => { act(() => { for (const flush of frames.splice(0)) flush() }) }
