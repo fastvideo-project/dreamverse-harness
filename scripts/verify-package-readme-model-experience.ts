@@ -49,6 +49,8 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/experimental/speech-to-text-sensevoice': { kind: 'none', reason: 'Local recognition returns transient text without modifying model context.' },
   'packages/experimental/client-ui-voice-input': { kind: 'none', reason: 'Inserts reviewable text into the unsent draft without submitting to the Agent.' },
   'packages/dv/mcp-presets': { kind: 'none', reason: 'Offers MCP presets to the roster; a person adds them, and the added servers own every model-facing tool.' },
+  'packages/dv/feedback': { kind: 'none', reason: 'Sends a person\'s feedback to a sheet outside the harness without adding model requests or Session events.' },
+  'packages/dv/ui-feedback': { kind: 'none', reason: 'Collects feedback in a sidebar dialog for the feedback route without adding model requests or Session events.' },
   'packages/dv/ui-mcp-presets': { kind: 'none', reason: 'Shows MCP tool cards that add presets to the roster; the added servers own every model-facing tool.' },
   'packages/mcp/mcp-bundle': { kind: 'none', reason: 'Composes the MCP server roster and its dashboard; the roster\'s servers own every model-facing contribution.' },
   'packages/client/ui-mcp-servers': { kind: 'none', reason: 'Edits the MCP server roster from the browser without adding model requests or Session events.' },

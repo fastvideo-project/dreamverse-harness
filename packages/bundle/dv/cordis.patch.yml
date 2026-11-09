@@ -9,6 +9,7 @@
 #   DV_DEEPSEEK_API_KEY   bearer token for that endpoint; the launch script exports `none` when unset
 #   DV_AGENT_VISION       `0` makes inspect.image report that images are unsupported instead of calling the model
 #   GROQ_API_KEY          key of the documented fallback route
+#   DV_FEEDBACK_URL       the HTTPS web app that stores feedback rows; unset leaves out the Feedback button and its route
 
 - insert:
     # The model catalog: the models dv_shot_render and plans can name, which the agent reads through dv_models_list and
@@ -159,6 +160,11 @@
     - id: dv-ui-skills
       name: '@dv/ui-skills'
 
+    # The Feedback row above Settings; it sends to the route of the dv-feedback row, so both rows follow DV_FEEDBACK_URL.
+    - id: dv-ui-feedback
+      name: '@dv/ui-feedback'
+      disabled: !!js '!process.env.DV_FEEDBACK_URL'
+
 # The video-directing skill ships in this bundle's skills directory; skill-filesystem discovers it beside the user's own.
 # The model, character, location, style, text node, timeline and story skills are registered by their plugins through ctx.skills.
 - id: skill-filesystem
@@ -282,6 +288,15 @@
 - id: ui-chat
   config:
     performanceUsage: compact
+
+# Feedback from the sidebar's Feedback dialog goes to the web app at DV_FEEDBACK_URL, which appends one row per submission
+# to a sheet; nothing reaches the project, the session log or GitHub. Without the variable the row stays off.
+- insert:
+    - id: dv-feedback
+      name: '@dv/feedback'
+      disabled: !!js '!process.env.DV_FEEDBACK_URL'
+      config:
+        endpoint: !!js process.env.DV_FEEDBACK_URL
 
 # The MCP servers DreamVerse suggests on the entry page's 探索 section. The row offers them to the MCP plugin's roster
 # while that plugin is on and offers nothing while it is off; adding one is the person's choice.

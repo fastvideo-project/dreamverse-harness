@@ -83,7 +83,7 @@ const UI_ROWS: Readonly<Record<string, [OwnerWhat, string]>> = {
 }
 
 const BASE = ['models', 'generation', 'asset-pool', 'ffmpeg', 'reference-kit']
-const SURFACE = ['api', 'chat-references', 'mcp-presets']
+const SURFACE = ['api', 'chat-references', 'feedback', 'mcp-presets']
 const UI_CORE = ['ui-kit', 'ui-canvas', 'ui-history', 'ui-shell', 'ui-composer', 'ui-media']
 /** Kit libraries that one family of UI plugins value-imports: the UI halves of host base kits. */
 const UI_LIB = ['ui-reference-kit', 'ui-generation']

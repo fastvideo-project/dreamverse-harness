@@ -457,6 +457,7 @@
     { "path": "./packages/dv/api" },
     { "path": "./packages/dv/ui-canvas/tsconfig.host.json" },
     { "path": "./packages/dv/chat-references" },
+    { "path": "./packages/dv/feedback" },
     { "path": "./packages/dv/ffmpeg" },
     { "path": "./packages/dv/asset-pool" },
     { "path": "./packages/dv/inspector" },

@@ -2140,6 +2140,9 @@ importers:
       '@dv/fastvideo':
         specifier: workspace:*
         version: link:../../dv/fastvideo
+      '@dv/feedback':
+        specifier: workspace:*
+        version: link:../../dv/feedback
       '@dv/ffmpeg':
         specifier: workspace:*
         version: link:../../dv/ffmpeg
@@ -2194,6 +2197,9 @@ importers:
       '@dv/ui-composer':
         specifier: workspace:*
         version: link:../../dv/ui-composer
+      '@dv/ui-feedback':
+        specifier: workspace:*
+        version: link:../../dv/ui-feedback
       '@dv/ui-history':
         specifier: workspace:*
         version: link:../../dv/ui-history
@@ -7323,6 +7329,22 @@ importers:
         specifier: ^22.20.0
         version: 22.20.0
 
+  packages/dv/feedback:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-client-connection':
+        specifier: workspace:*
+        version: link:../../client/connection
+      '@types/node':
+        specifier: ^22.20.0
+        version: 22.20.0
+
   packages/dv/ffmpeg:
     dependencies:
       '@deepseek-ai/dsh-subprocess':
@@ -8184,6 +8206,36 @@ importers:
       react-dom:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
+
+  packages/dv/ui-feedback:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-client-ui-primitives':
+        specifier: workspace:*
+        version: link:../../client/ui-primitives
+      '@deepseek-ai/dsh-client-ui-renderer':
+        specifier: workspace:*
+        version: link:../../client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-sidebar':
+        specifier: workspace:*
+        version: link:../../client/ui-sidebar
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: workspace:*
+        version: link:../../client/ui-slots
+      '@dv/feedback':
+        specifier: workspace:*
+        version: link:../feedback
+      '@dv/ui-kit':
+        specifier: workspace:*
+        version: link:../ui-kit
+      '@types/react':
+        specifier: ~18.3.1
+        version: 18.3.31
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
 
   packages/dv/ui-generation:
     devDependencies:
@@ -18726,6 +18778,7 @@ packages:
   '@smithy/core@3.24.7':
     resolution: {integrity: sha512-KoUi4M1f3BG6kzN1FnCwL7oyFptTbyBJKjR6yhSib+JHRdUmM1o+VwsFtJ66NZCkCzVfJMWRHJNo0R0jznp0Pg==}
     engines: {node: '>=18.0.0'}
+    deprecated: Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/credential-provider-imds@4.3.9':
     resolution: {integrity: sha512-ZlfJ/4Fa3jYb+3eaohPfG9utX9HmdhFNcFtpoGAhUhdynAOmGXtmigbi7eEiONKM+ykHw8RwKuDEb85Lx7t7fA==}

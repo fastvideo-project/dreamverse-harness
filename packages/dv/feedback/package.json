@@ -1,0 +1,22 @@
+{
+  "name": "@dv/feedback",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Feedback of DreamVerse: an authenticated route that checks a submission of the sidebar's Feedback dialog and sends it as one row to a configured sheet.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts",
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/schemastery": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-client-connection": "workspace:*",
+    "@deepseek-ai/schemastery": "workspace:~",
+    "@types/node": "^22.20.0"
+  }
+}

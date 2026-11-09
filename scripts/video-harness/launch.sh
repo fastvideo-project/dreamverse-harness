@@ -7,8 +7,8 @@
 #
 # Provider keys are sourced from DV_ENV_FILE (default /mnt/lustre/vlm-d1su/codes/fv-hub/.env) and never printed. The
 # bundle patch (packages/bundle/dv/cordis.patch.yml) reads DV_PROJECTS_FOLDER, DV_PUBLIC_URL,
-# DV_AGENT_PROVIDER, DV_AGENT_MODEL, DV_AGENT_REASONING, DV_AGENT_VISION, DV_DEEPSEEK_BASE_URL, and DV_DEEPSEEK_API_KEY
-# from this environment. The agent model defaults to DeepSeek V4.1 on the cluster's SGLang server
+# DV_AGENT_PROVIDER, DV_AGENT_MODEL, DV_AGENT_REASONING, DV_AGENT_VISION, DV_DEEPSEEK_BASE_URL, DV_DEEPSEEK_API_KEY, and
+# DV_FEEDBACK_URL from this environment. The agent model defaults to DeepSeek V4.1 on the cluster's SGLang server
 # (http://10.244.6.153:30000/v1, no key); DV_AGENT_PROVIDER=groq DV_AGENT_MODEL=qwen/qwen3.8-27b is the fallback.
 # DSH_HOME defaults to $HOME/.local/state/dsh-video-harness. Extra arguments are forwarded to dsh, for example
 # --trusted-host <host>.
