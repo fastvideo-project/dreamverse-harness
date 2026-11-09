@@ -38,7 +38,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`apply` 等待 `skills`，并把提供方注册为副作用，所以技能随插件或注册表一起移除。`package.json` 的 `dependencies` 列出技能无需条件即可调用其工具的包：`@dv/canvas`（`dv_canvas_node_rename`）、`@dv/project`（`dv_proj_*`）、`@dv/shot-render`（`dv_shot_render`）和 `@dv/timeline`（`dv_timeline_*`）。
+`apply` 等待 `skills`，并把提供方注册为副作用，所以技能随插件或注册表一起移除。`package.json` 的 `dependencies` 列出技能无需条件即可调用其工具的包：`@dv/project`（`dv_proj_*`）、`@dv/shot-render`（`dv_shot_render`）和 `@dv/timeline`（`dv_timeline_*`）。
 
 | 文件 | 内容 |
 | --- | --- |
@@ -91,7 +91,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-技能目录列出每个工作流技能及其描述。智能体加载 `story-directing` 时，读到调用顺序：用 `dv_textnode_write` 写文本节点 `story/theme.md`、`story/beats.md` 和 `story/storyboard.md`，每个阶段都基于 `dv_textnode_read` 为上一阶段返回的文本，并在 `from` 中写明上一阶段；给出摘要并以粗体提一个问题，用户同意前不做任何生成；然后每个镜头调用一次 `dv_shot_render`（接续上一镜头的镜头传 `continue_from`），再调用 `dv_proj_wait` 和 `dv_timeline_create`。每个新镜头生成后，智能体在 `dv_proj_state` 中找到其画布节点，并调用 `dv_canvas_node_rename`，使用 `<shot number> · <short shot description>` 命名（简短描述最多四个词）；重拍时保留已有名称，也保留用户选择的名称，讨论镜头时使用该名称。它还告诉智能体如何延长、缩短或修改时间线上的故事。
+技能目录列出每个工作流技能及其描述。智能体加载 `story-directing` 时，读到调用顺序：用 `dv_textnode_write` 写文本节点 `story/theme.md`、`story/beats.md` 和 `story/storyboard.md`，每个阶段都基于 `dv_textnode_read` 为上一阶段返回的文本，并在 `from` 中写明上一阶段；给出摘要并以粗体提一个问题，用户同意前不做任何生成；然后每个镜头调用一次 `dv_shot_render`（接续上一镜头的镜头传 `continue_from`），再调用 `dv_proj_wait` 和 `dv_timeline_create`。它还告诉智能体如何延长、缩短或修改时间线上的故事。
 
 #### Token 影响
 

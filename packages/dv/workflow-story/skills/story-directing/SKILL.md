@@ -33,7 +33,7 @@ When shots share a character, a location or a look, load the skill of that refer
 1. Call `dv_shot_render` once per shot, in story order, with `modality`, `task`, `provider`, `model`, `prompt` and `duration_sec`; for task `ref2v` also `inputs.reference`, with each reference cited in the prompt. When a call is refused, fix the named value and call again.
 2. A shot that continues the previous shot passes `continue_from` = the record ID of the previous shot's render. Call it right after that render; the project waits for the previous take's last frame before the shot starts.
 3. Call `dv_proj_wait`, then `dv_proj_state`. Report each finished shot with its last frame (you receive it as an image) and its link.
-4. After rendering each new shot, find its canvas node ID in `dv_proj_state` and call `dv_canvas_node_rename` with `name: "<shot number> · <short shot description>"`, using the storyboard's shot number. Keep the short description to 4 words maximum. Use that name when discussing the shot. Preserve existing names on retakes and names chosen by the user.
+4. If `dv_canvas_node_rename` is in your tool list, after rendering each new shot, find its canvas node ID in `dv_proj_state` and call `dv_canvas_node_rename` with `name: "<shot number> · <short shot description>"`, using the storyboard's shot number. Keep the short description to 4 words maximum. Use that name when discussing the shot. Preserve existing names on retakes and names chosen by the user.
 
 ## 5. Lay the takes on a timeline
 
