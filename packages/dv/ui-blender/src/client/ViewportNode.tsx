@@ -159,11 +159,17 @@ export function ViewportEditor(props: PropsRuntime<'dv.canvas.editor'> & {
   const queueRef = useRef(queue)
   queueRef.current = queue
 
-  // React registers `onWheel` as passive, so the wheel listener is native to stop the page from scrolling.
+  const navigable = live.linked.linked && live.linked.state !== null && addonNavigates(live.linked.state.addon_version)
+  const navigableRef = useRef(navigable)
+  navigableRef.current = navigable
+
+  // React registers `onWheel` as passive, so the wheel listener is native to stop the page from scrolling. Like a drag,
+  // the wheel moves the view only while it can move; otherwise it scrolls the editor as usual.
   useEffect(() => {
     const element = view.current
     if (element === null) return
     const onWheel = (event: WheelEvent): void => {
+      if (!navigableRef.current) return
       event.preventDefault()
       const lines = event.deltaMode === 1 ? event.deltaY : event.deltaY / 100
       gathered.current.zoom += lines
@@ -173,7 +179,6 @@ export function ViewportEditor(props: PropsRuntime<'dv.canvas.editor'> & {
     return () => { element.removeEventListener('wheel', onWheel) }
   }, [])
 
-  const navigable = live.linked.linked && live.linked.state !== null && addonNavigates(live.linked.state.addon_version)
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
     if (!navigable || (event.button !== 0 && event.button !== 2)) return
     event.preventDefault()
