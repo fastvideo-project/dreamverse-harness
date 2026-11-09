@@ -14,7 +14,6 @@
   },
   "exports": {
     ".": "./src/index.ts",
-    "./types": "./src/types.ts",
     "./package.json": "./package.json"
   },
   "publishConfig": {
@@ -25,9 +24,6 @@
       ".": {
         "types": "./lib/types/index.d.ts",
         "default": "./lib/index.js"
-      },
-      "./types": {
-        "types": "./lib/types/types.d.ts"
       },
       "./package.json": "./package.json"
     }
@@ -50,6 +46,7 @@
     "@deepseek-ai/dsh-credentials": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
+    "@dv/canvas": "workspace:*",
     "@dv/generation": "workspace:*",
     "@dv/project": "workspace:*"
   },
@@ -68,6 +65,7 @@
     "@deepseek-ai/dsh-util-values": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
     "@dv/asset-pool": "workspace:*",
+    "@dv/canvas": "workspace:*",
     "@dv/ffmpeg": "workspace:*",
     "@dv/generation": "workspace:*",
     "@dv/project": "workspace:*",

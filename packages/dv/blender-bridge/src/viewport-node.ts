@@ -1,60 +1,67 @@
 /**
- * The Blender viewport node of the project canvas: the `blender` state slice, which says whether the live viewport of
- * the connected Blender is on the canvas, and the `blender.viewport` operation that puts it there or takes it off. The
- * node shows the viewport whether or not a Blender is connected at the time; the slice records only the placement.
+ * The Blender viewport node of the project canvas: the `blender.viewport` operation, whose finished record makes one
+ * node of kind {@link VIEWPORT_KIND} in the canvas's node list. The node shows the live viewport of the connected
+ * Blender whether or not a Blender is connected at the time; the canvas's own `canvas.node_remove` takes it off.
  *
  * @module @fastvideo/dreamverse-blender-bridge/viewport-node
  */
-import type { OperationSpec, ProjectState, Reducer } from '@dv/project'
-import type {} from './types.ts'
+import type { NodeMaker } from '@dv/canvas'
+import type { OperationSpec, ProjectState } from '@dv/project'
 
-/** The operation that puts the viewport on the canvas or takes it off. */
+/** The operation that puts the viewport on the canvas. */
 export const VIEWPORT_OPERATION = 'blender.viewport'
 
+/** The node kind of the viewport node, shared with the browser's node type. */
+export const VIEWPORT_KIND = 'blender-viewport'
+
+/** The canvas registration through which a finished `blender.viewport` record makes the viewport node. */
+export const viewportMaker: NodeMaker = {
+  operations: [VIEWPORT_OPERATION],
+  kind: VIEWPORT_KIND,
+  column: 0,
+  makes: record => record.status === 'done',
+}
+
+/** The node kind of render takes, shared with the browser's `blender` generation kind. */
+export const RENDER_KIND = 'blender'
+
 /**
- * The `blender` reducer: a finished `blender.viewport` record with `on: true` places the viewport, one with `on: false`
- * removes it; every other record leaves the slice unchanged.
+ * The canvas registration through which each render record makes a take node; a running or failed render shows its
+ * state on the node.
+ * @param operations - the render operations.
+ * @returns the registration.
  */
-export const blenderReducer: Reducer<'blender'> = {
-  initial: () => ({ viewport: null }),
-  reduce(slice, record) {
-    if (record.status !== 'done' || record.operation !== VIEWPORT_OPERATION) return slice
-    return { viewport: record.params['on'] === true ? record.id : null }
-  },
-  agentSummary: slice => ({ blender_viewport_on_canvas: slice.viewport !== null }),
+export function renderMaker(operations: readonly string[]): NodeMaker {
+  return { operations, kind: RENDER_KIND, column: 2 }
 }
 
 function placed(state: ProjectState): boolean {
-  return state.components.blender.viewport !== null
+  return Object.values(state.components.canvas.nodes).some(node => node.kind === VIEWPORT_KIND)
 }
 
 /**
- * The `blender.viewport` operation. A call that would change nothing is refused, so every record changes the canvas.
+ * The `blender.viewport` operation. A call while the viewport is already on the canvas is refused, so the canvas holds
+ * at most one viewport node.
  * @returns the operation spec.
  */
 export function viewportOperation(): OperationSpec {
   return {
     name: VIEWPORT_OPERATION,
     component: 'blender',
-    version: '1',
+    version: '2',
     label: { zh: 'Blender 视口节点', en: 'Blender viewport node' },
-    description: 'Put the live viewport of the user\'s Blender on the project canvas as a node (on: true), or take it off '
-      + '(on: false). The node shows what Blender\'s 3D viewport shows, and the user can open it to orbit, pan and zoom the '
-      + 'view; it changes nothing in the scene.',
-    params: {
-      on: { type: 'boolean', required: true, description: 'true puts the viewport on the canvas; false takes it off.' },
-    },
+    description: 'Put the live viewport of the user\'s Blender on the project canvas as a node. The node shows what '
+      + 'Blender\'s 3D viewport shows, and the user can open it to orbit, pan and zoom the view; it changes nothing in the '
+      + 'scene. To take it off the canvas, remove its node with dv_canvas_node_remove.',
+    params: {},
     inputs: {},
     outputs: [],
     deterministic: false,
     resource: 'none',
-    summarize: record => record.params['on'] === true ? 'put the Blender viewport on the canvas' : 'took the Blender viewport off the canvas',
-    precondition: (request, state) => {
-      const on = request.params['on'] === true
-      if (on && placed(state)) return Promise.reject(new Error('The Blender viewport is already on the canvas.'))
-      if (!on && !placed(state)) return Promise.reject(new Error('The Blender viewport is not on the canvas.'))
-      return Promise.resolve()
-    },
-    execute: run => Promise.resolve({ outputs: [], report: { on: run.params['on'] === true } }),
+    summarize: () => 'put the Blender viewport on the canvas',
+    precondition: (_request, state) => placed(state)
+      ? Promise.reject(new Error('The Blender viewport is already on the canvas.'))
+      : Promise.resolve(),
+    execute: () => Promise.resolve({ outputs: [], report: {} }),
   }
 }

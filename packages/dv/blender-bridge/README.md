@@ -1,5 +1,5 @@
 ---
-description: "Blender component of DreamVerse: the dvBlender service owns the link that the DreamVerse add-on opens from the user's Blender to the harness, the agent tools dv_blender_scene, dv_blender_run and dv_blender_look, the operations blender.render, blender.animation_render and blender.viewport with the blender state slice, and the browser routes that stream the viewport, move its view and serve the add-on."
+description: "Blender component of DreamVerse: the dvBlender service owns the link that the DreamVerse add-on opens from the user's Blender to the harness, the agent tools dv_blender_scene, dv_blender_run and dv_blender_look, the operations blender.render, blender.animation_render and blender.viewport with the canvas nodes they make, and the browser routes that stream the viewport, move its view and serve the add-on."
 kind: "package-reference"
 ---
 
@@ -24,7 +24,7 @@ Use this package to let the agent work in the user's own Blender. The DreamVerse
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin in a DreamVerse profile; [`@fastvideo/dreamverse-blender`](../blender/README.md) inserts it. The link route needs the DSH web server (`webServer`), the browser routes need the Connection (`connection`), the operations and the `blender` slice need `dvProject`, and `dv_blender_look` needs the attachment store (`attachments`); each part exists while its service does.
+Mount the plugin in a DreamVerse profile; [`@fastvideo/dreamverse-blender`](../blender/README.md) inserts it. The link route needs the DSH web server (`webServer`), the browser routes need the Connection (`connection`), the operations need `dvProject`, the canvas nodes and `blender.viewport` also need the canvas node list (`dvCanvasNodes`), and `dv_blender_look` needs the attachment store (`attachments`); each part exists while its service does.
 
 ```yaml
 - id: dv-blender
@@ -54,9 +54,9 @@ The user connects Blender in three steps that the Blender tab shows: download th
 | --- | --- | --- | --- |
 | `blender.render` | `dv_blender_render` | `frame` (default: the scene's current frame) | output `image`, one `image/png` asset; report `{width, height, frame, engine}` |
 | `blender.animation_render` | `dv_blender_animation_render` | `frame_start`, `frame_end` (default: the scene's range) | output `video`, one `video/mp4` asset with its duration; report `{width, height, frame_start, frame_end, fps, duration_sec, engine}` |
-| `blender.viewport` | `dv_blender_viewport` | `on` (required) | no output; report `{on}` |
+| `blender.viewport` | `dv_blender_viewport` | none | no output; report `{}` |
 
-Both render operations render with the scene camera and the scene's own engine, resolution and frame rate, are not deterministic, and run in the background like every generation; Blender is busy until a render finishes. `blender.viewport` puts the viewport on the canvas (`on: true`) or takes it off (`on: false`) and needs no connected Blender; a call that would change nothing is refused (`The Blender viewport is already on the canvas.` or `The Blender viewport is not on the canvas.`). The `blender` slice is `{viewport}`, the ID of the `blender.viewport` record that put the viewport on the canvas, or null; the project summary of the `dv_proj_*` tools carries `blender_viewport_on_canvas`.
+Both render operations render with the scene camera and the scene's own engine, resolution and frame rate, are not deterministic, and run in the background like every generation; Blender is busy until a render finishes. Each render record makes a take node of kind `blender` in column 2 of the canvas, which shows a running or failed render too. `blender.viewport` puts the viewport on the canvas and needs no connected Blender: its finished record makes the one node of kind `blender-viewport`, and a call while the canvas holds that node is refused (`The Blender viewport is already on the canvas.`). `canvas.node_remove` (`dv_canvas_node_remove`) takes the node off, like any node.
 
 | View change | Fields | What Blender does |
 | --- | --- | --- |
@@ -85,8 +85,7 @@ The add-on keeps every `bpy` call on Blender's main thread: a timer drains the l
 | [`src/token.ts`](src/token.ts) | The pairing token |
 | [`src/tools.ts`](src/tools.ts) | `dv_blender_scene`, `dv_blender_run` and `dv_blender_look` |
 | [`src/render.ts`](src/render.ts) | `blender.render` and `blender.animation_render` |
-| [`src/viewport-node.ts`](src/viewport-node.ts) | The `blender` reducer and `blender.viewport` |
-| [`src/types.ts`](src/types.ts) | The `blender` slice type, the client face `./types` that the browser half reads |
+| [`src/viewport-node.ts`](src/viewport-node.ts) | `blender.viewport` and the canvas registrations of the viewport node and the render takes |
 | [`src/routes.ts`](src/routes.ts) | The browser's Fetch routes and the add-on zip |
 | [`addon/`](addon/__init__.py) | The Blender add-on: panel and preferences (`__init__.py`), the WebSocket client (`link.py`), the requests (`commands.py`), the viewport stream (`viewport.py`), the view changes (`navigate.py`) and the helpers without `bpy` (`protocol.py`) |
 | [`tests/blender-bridge.spec.ts`](tests/blender-bridge.spec.ts) | A Loader composition with the web server and a fake Blender on the link: admission, replacement, the token, the zip, the stream, the view changes, the tools, the renders, the viewport node and the removal on disposal |
@@ -119,7 +118,7 @@ dv_blender_run: Run Python in the connected Blender, with bpy, mathutils and mat
 dv_blender_look: Look at the connected Blender: a PNG of the 3D viewport as the user sees it (`viewport`, the default), or of what the scene camera frames (`camera`), at most 1280 px wide. Look after a visible change to check it.
 dv_blender_render: Render one frame of the connected Blender's scene with its scene camera, render engine and resolution, as a PNG image in the project, for use as a still or as the reference image of a shot. Check the framing with dv_blender_look view camera first. Blender is busy until the render finishes.
 dv_blender_animation_render: Render a frame range of the connected Blender's scene with its scene camera, render engine, resolution and frame rate, as an MP4 video in the project that the timeline can use as a shot. Rendering many frames takes long; keep ranges short and the resolution modest unless the user asks for more. Blender is busy until it finishes.
-dv_blender_viewport: Put the live viewport of the user's Blender on the project canvas as a node (on: true), or take it off (on: false). The node shows what Blender's 3D viewport shows, and the user can open it to orbit, pan and zoom the view; it changes nothing in the scene.
+dv_blender_viewport: Put the live viewport of the user's Blender on the project canvas as a node. The node shows what Blender's 3D viewport shows, and the user can open it to orbit, pan and zoom the view; it changes nothing in the scene. To take it off the canvas, remove its node with dv_canvas_node_remove.
 ```
 
 #### Token effect
@@ -128,7 +127,7 @@ About 870 tokens for the six definitions, the shared arguments of `@dv/project` 
 
 #### KV Cache effect
 
-The definitions sit in the stable tool section of every agent request; mounting or removing the plugin changes the tool list and invalidates the cached prefix from the tool section on. Connecting or disconnecting Blender, and putting the viewport on the canvas, change nothing; the project summary's `blender_viewport_on_canvas` field arrives in `dv_proj_*` results.
+The definitions sit in the stable tool section of every agent request; mounting or removing the plugin changes the tool list and invalidates the cached prefix from the tool section on. Connecting or disconnecting Blender, and putting the viewport on the canvas, change nothing.
 
 ### Tool results
 

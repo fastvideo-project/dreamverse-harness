@@ -36,6 +36,9 @@
       "path": "../../util/values"
     },
     {
+      "path": "../canvas"
+    },
+    {
       "path": "../generation"
     },
     {

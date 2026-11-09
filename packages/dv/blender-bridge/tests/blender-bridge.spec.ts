@@ -15,6 +15,7 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
+import DvCanvasNodes from '@dv/canvas'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvProject, { type AssetId, type OperationToolValue, type ProjectId, type RecordId } from '@dv/project'
 import { unzipSync } from 'fflate'
@@ -27,7 +28,7 @@ import DvBlender, {
 } from '../src/index.ts'
 
 /** The plugin classes the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
-const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, WebServer, DvBlender }
+const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvCanvasNodes, DvFfmpeg, DvAssetPool, WebServer, DvBlender }
 
 const HELLO = { blender_version: '5.3.0', addon_version: '0.1.0', file: 'shot.blend', allow_code: true }
 
@@ -131,6 +132,7 @@ async function start(config: string[] = []): Promise<Fixture> {
   row('system-prompt', 'SystemPrompt', [])
   row('tools', 'ToolRuntime', [])
   row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`])
+  row('dv-canvas', 'DvCanvasNodes', [])
   row('dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe'])
   row('dv-asset-pool', 'DvAssetPool', [])
   row('web-server', 'WebServer', ['host: 127.0.0.1', 'port: 0'])
@@ -371,9 +373,9 @@ describe('dvBlender tools', () => {
       dv_blender_animation_render: 'Render a frame range of the connected Blender\'s scene with its scene camera, render engine, '
         + 'resolution and frame rate, as an MP4 video in the project that the timeline can use as a shot. Rendering many frames '
         + 'takes long; keep ranges short and the resolution modest unless the user asks for more. Blender is busy until it finishes.',
-      dv_blender_viewport: 'Put the live viewport of the user\'s Blender on the project canvas as a node (on: true), or take it '
-        + 'off (on: false). The node shows what Blender\'s 3D viewport shows, and the user can open it to orbit, pan and zoom the '
-        + 'view; it changes nothing in the scene.',
+      dv_blender_viewport: 'Put the live viewport of the user\'s Blender on the project canvas as a node. The node shows what '
+        + 'Blender\'s 3D viewport shows, and the user can open it to orbit, pan and zoom the view; it changes nothing in the '
+        + 'scene. To take it off the canvas, remove its node with dv_canvas_node_remove.',
     })
   })
 
@@ -461,6 +463,8 @@ describe('dvBlender render operations', () => {
     expect(clip).toMatchObject({ status: 'done', operation: 'blender.animation_render' })
     expect(fixture.ctx.dvAssetPool.get(clip.outputs[0] as AssetId)).toMatchObject({ mime: 'video/mp4', duration_sec: 2 })
     expect(animation.summary).toBe('Blender frames 1–48 (640x360, 2.0s)')
+    const canvas = fixture.ctx.dvProject.getState(fixture.project).components.canvas
+    expect(canvas.order.map(id => [id, canvas.nodes[id]?.kind])).toEqual([[record.id, 'blender'], [clip.id, 'blender']])
     expect(blender.requests.map(request => request.params)).toEqual([{ kind: 'still', frame: 12 }, { kind: 'animation', frame_start: 1, frame_end: 48 }])
   })
 
@@ -476,20 +480,23 @@ describe('dvBlender render operations', () => {
 })
 
 describe('dvBlender viewport node', () => {
-  it('puts the viewport on the canvas and takes it off, without a connected Blender, and refuses a call that changes nothing', async () => {
+  it('puts the viewport on the canvas as one node, without a connected Blender, until the canvas removes it', async () => {
     const fixture = await start()
-    const placed = () => fixture.ctx.dvProject.getState(fixture.project).components.blender.viewport
-    expect(placed()).toBeNull()
-    const on = value(await fixture.call('dv_blender_viewport', { reason: 'show it', on: true }, 's1')) as OperationToolValue
-    const record = fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(on.record))
-    expect(record).toMatchObject({ status: 'done', component: 'blender', operation: 'blender.viewport', outputs: [], report: { on: true } })
-    expect(on.summary).toBe('put the Blender viewport on the canvas')
-    expect(placed()).toBe(record.id)
-    expect(failure(await fixture.call('dv_blender_viewport', { reason: 'again', on: true }, 's1'))).toBe('The Blender viewport is already on the canvas.')
-    const off = value(await fixture.call('dv_blender_viewport', { reason: 'hide it', on: false }, 's1')) as OperationToolValue
-    expect(off.summary).toBe('took the Blender viewport off the canvas')
-    expect(placed()).toBeNull()
-    expect(failure(await fixture.call('dv_blender_viewport', { reason: 'again', on: false }, 's1'))).toBe('The Blender viewport is not on the canvas.')
+    const kinds = () => {
+      const canvas = fixture.ctx.dvProject.getState(fixture.project).components.canvas
+      return canvas.order.map(id => [id, canvas.nodes[id]?.kind])
+    }
+    expect(kinds()).toEqual([])
+    const placed = value(await fixture.call('dv_blender_viewport', { reason: 'show it' }, 's1')) as OperationToolValue
+    const record = fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(placed.record))
+    expect(record).toMatchObject({ status: 'done', component: 'blender', operation: 'blender.viewport', outputs: [], report: {} })
+    expect(placed.summary).toBe('put the Blender viewport on the canvas')
+    expect(kinds()).toEqual([[record.id, 'blender-viewport']])
+    expect(failure(await fixture.call('dv_blender_viewport', { reason: 'again' }, 's1'))).toBe('The Blender viewport is already on the canvas.')
+    value(await fixture.call('dv_canvas_node_remove', { reason: 'hide it', nodes: [record.id] }, 's1'))
+    expect(kinds()).toEqual([])
+    const again = value(await fixture.call('dv_blender_viewport', { reason: 'show it again' }, 's1')) as OperationToolValue
+    expect(kinds()).toEqual([[again.record, 'blender-viewport']])
   })
 })
 

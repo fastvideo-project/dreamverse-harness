@@ -139,7 +139,6 @@
     { "path": "./packages/dv/style/tsconfig.client.json" },
     { "path": "./packages/dv/timeline/tsconfig.client.json" },
     { "path": "./packages/dv/text-node/tsconfig.client.json" },
-    { "path": "./packages/dv/blender-bridge/tsconfig.client.json" },
     { "path": "./packages/dv/asset-pool/tsconfig.client.json" },
     { "path": "./packages/dv/ui-kit" },
     { "path": "./packages/dv/ui-media" },

@@ -11,6 +11,12 @@ import { importOne } from '@dv/generation'
 import type { OperationContext, OperationResult, OperationSpec, ProjectRecord } from '@dv/project'
 import type { BlenderLink } from './link.ts'
 
+/** The operation that renders a still of the scene camera into the project. */
+export const STILL_OPERATION = 'blender.render'
+
+/** The operation that renders a frame range of the scene camera into the project. */
+export const ANIMATION_OPERATION = 'blender.animation_render'
+
 /** Time limit of a render. */
 export interface RenderLimits {
   renderTimeoutMs: number
@@ -62,7 +68,7 @@ async function renderInto(link: BlenderLink, limits: RenderLimits, run: Operatio
  */
 export function stillOperation(link: BlenderLink, limits: RenderLimits): OperationSpec {
   return {
-    name: 'blender.render',
+    name: STILL_OPERATION,
     component: 'blender',
     version: '1',
     label: { zh: 'Blender 渲染', en: 'Blender render' },
@@ -92,7 +98,7 @@ export function stillOperation(link: BlenderLink, limits: RenderLimits): Operati
  */
 export function animationOperation(link: BlenderLink, limits: RenderLimits): OperationSpec {
   return {
-    name: 'blender.animation_render',
+    name: ANIMATION_OPERATION,
     component: 'blender',
     version: '1',
     label: { zh: 'Blender 动画渲染', en: 'Blender animation render' },

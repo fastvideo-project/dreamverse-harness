@@ -74,7 +74,6 @@
     "@dv/ui-history": "workspace:*",
     "@dv/ui-kit": "workspace:*",
     "@dv/ui-media": "workspace:*",
-    "@fastvideo/dreamverse-blender-bridge": "workspace:*",
     "@testing-library/react": "^16.1.0",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.0",

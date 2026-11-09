@@ -18,9 +18,6 @@
       "path": "../ui-kit"
     },
     {
-      "path": "../blender-bridge/tsconfig.client.json"
-    },
-    {
       "path": "../ui-canvas"
     },
     {

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/dv/ui-blender/README.md
-README.md: 6c94faba901798055640380c0097c5fc6ad72777
-README.zh.md: 879320fe18d4ad862ae928ec7c789f38109bb4c7
+README.md: 5906770dba6eb1325d83cbb8c1d6a7c5f7042211
+README.zh.md: 03c66ccfd56d840abcf25275f047c2fdc988a34c

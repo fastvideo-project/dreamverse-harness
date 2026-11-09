@@ -18,9 +18,9 @@ import type { EditorHost, NodeView } from '@dv/ui-canvas/contract'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
 import {
-  BLENDER_ID, BlenderPanel, VIEWPORT_NODE, VIEWPORT_SIZING, VIEWPORT_TYPE, ViewportCard, ViewportEditor, addonNavigates, applyWith,
-  blenderDefinition, inject, shownSize, viewportNodeType, type BlenderSource, type BlenderState, type BlenderStatus, type ViewCommand,
-  type ViewFrame,
+  BLENDER_ID, BlenderPanel, VIEWPORT_SIZING, VIEWPORT_TYPE, ViewportCard, ViewportEditor, addonNavigates, applyWith,
+  blenderDefinition, inject, shownSize, viewportNode, viewportNodeType, type BlenderSource, type BlenderState, type BlenderStatus,
+  type ViewCommand, type ViewFrame,
 } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
 
@@ -133,12 +133,11 @@ describe('@fastvideo/dreamverse-ui-blender', () => {
       .toEqual({ kind: 'dv-blender', title: 'Blender', guide: [['Blender', 'Connect Blender and watch its viewport live']] })
   })
 
-  it('claims both render operations as the blender node type, draws the Blender panel, and removes both with the plugin', async () => {
+  it('registers the blender take node type, draws the Blender panel, and removes both with the plugin', async () => {
     const source = new FakeSource()
     const { runtime, handle, tab } = await mount(source)
-    const blenderType = () => runtime.ctx.dvCanvas.nodeTypes.getSnapshot().find(type => type.id === BLENDER_ID)
-    expect({ type: blenderType()?.type, operations: blenderType()?.claimed?.operations })
-      .toEqual({ type: 'blender', operations: ['blender.render', 'blender.animation_render'] })
+    const blenderType = () => runtime.ctx.dvCanvas.nodeTypes.getSnapshot().find(type => type.type === 'blender')
+    expect(blenderType()?.id).toBe(BLENDER_ID)
     const viewportType = () => runtime.ctx.dvCanvas.nodeTypes.getSnapshot().find(type => type.type === VIEWPORT_TYPE)
     expect(viewportType()?.id).toBe(BLENDER_ID)
     expect(await tab().findByTestId('dv-blender-panel')).toBeTruthy()
@@ -207,28 +206,27 @@ describe('BlenderPanel', () => {
   })
 })
 
-/** A project state whose `blender` slice places the viewport with record r1, or holds no `blender` slice. */
-function stateWith(blender: { viewport: string | null } | undefined): WireState {
-  const record = { id: 'r1', operation: 'blender.viewport', status: 'done', params: { on: true } }
+/** A project state whose canvas holds the viewport node r1 beside an asset node, or only the asset node. */
+function stateWith(viewport: boolean): WireState {
+  const record = { id: 'r1', operation: 'blender.viewport', status: 'done', params: {} }
+  const node = (kind: string) => ({ kind, name: null, versions: [], position: { x: 0, y: 0, width: null, height: null } })
   return {
     project: { id: 'p1' }, head: 'r1', tip: 'r1', assets: [],
     components: {
       proj: { records: [record], stale: {}, superseded: {}, created_by: {} },
-      asset: { placed: [] },
-      ...blender === undefined ? {} : { blender },
+      canvas: {
+        nodes: { a1: node('asset'), ...viewport ? { r1: node(VIEWPORT_TYPE) } : {} }, order: ['a1', ...viewport ? ['r1'] : []], assets: {},
+      },
     },
   } as never
 }
 
 describe('the viewport node type', () => {
-  it('draws one 16:9 media node while the blender slice places the viewport, and none otherwise', () => {
+  it('draws the viewport node as a 16:9 media node and finds it on the canvas', () => {
     const type = viewportNodeType(BLENDER_ID)
-    const input = (state: WireState) => ({ state, operations: [], language: 'en' as const, placed: new Set<string>() })
-    expect(type.entries?.(input(stateWith(undefined)))).toEqual([])
-    expect(type.entries?.(input(stateWith({ viewport: null })))).toEqual([])
-    const [node] = type.entries?.(input(stateWith({ viewport: 'r1' }))) ?? []
-    expect(node).toMatchObject({ id: VIEWPORT_NODE, title: 'Blender viewport', record: { id: 'r1' }, assets: [], sizing: VIEWPORT_SIZING })
+    expect(type.entry({} as never)).toEqual({ title: 'Blender viewport', assets: [], sizing: VIEWPORT_SIZING })
     expect(VIEWPORT_SIZING).toMatchObject({ kind: 'media', aspectRatio: { ratio: 16 / 9, fixedHeight: 0 } })
+    expect([viewportNode(stateWith(true)), viewportNode(stateWith(false))]).toEqual(['r1', null])
   })
 
   it('fits a frame into a box and knows which add-on versions move the view', () => {
@@ -240,7 +238,7 @@ describe('the viewport node type', () => {
 
 const frame = (width: number, height = 360): ViewFrame => ({ image: new Blob(['jpeg'], { type: 'image/jpeg' }), width, height })
 const noDraw = (): Promise<void> => Promise.resolve()
-const nodeView = { id: VIEWPORT_NODE, type: VIEWPORT_TYPE } as unknown as NodeView
+const nodeView = { id: 'r1', type: VIEWPORT_TYPE } as unknown as NodeView
 
 describe('ViewportCard', () => {
   it('shows the live viewport and leaves every pointer press to the canvas', () => {
@@ -272,7 +270,7 @@ describe('ViewportEditor', () => {
     const host = { run: vi.fn(), close: vi.fn() } as unknown as EditorHost
     render(
       <ViewportEditor
-        node={nodeView} state={stateWith({ viewport: 'r1' })} operations={[]} host={host} source={source} draw={noDraw}
+        node={nodeView} state={stateWith(true)} operations={[]} host={host} source={source} draw={noDraw}
         schedule={(flush) => { frames.push(flush) }} {...{} as never}
       />,
     )
@@ -317,7 +315,7 @@ describe('ViewportEditor', () => {
     ])
   })
 
-  it('switches views, frames the scene, and takes the node off the canvas through blender.viewport', () => {
+  it('switches views and frames the scene, and leaves removing the node to the canvas', () => {
     const source = new FakeSource()
     const { host } = mountEditor(source)
     source.link(STATE)
@@ -325,9 +323,8 @@ describe('ViewportEditor', () => {
     fireEvent.click(screen.getByText('Camera'))
     fireEvent.click(screen.getByText('Frame selected'))
     expect(source.sent).toEqual([{ action: 'preset', preset: 'top' }, { action: 'preset', preset: 'camera' }, { action: 'frame', target: 'selected' }])
-    fireEvent.click(screen.getByText('Remove from the canvas'))
-    expect(host.run).toHaveBeenCalledWith({ operation: 'blender.viewport', params: { on: false }, intent: 'Take the Blender viewport off the canvas' })
-    expect(host.close).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText('Remove from the canvas')).toBeNull()
+    expect(host.run).not.toHaveBeenCalled()
   })
 
   it('moves nothing while Blender is not connected or its add-on predates view changes, and says to update it', () => {

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to show the user's Blender in DreamVerse. It registers the `dv-blender` tab type of the right Sidebar. While no Blender is connected, the tab shows the three connection steps: download the add-on, install it, and paste the connection string. While one is connected, the tab shows its viewport live, with Blender's version and file. It also claims the records of `blender.render` and `blender.animation_render` as the `blender` takes of the canvas, and draws the Blender viewport node of the canvas while the project's `blender` slice places it. The routes it reads belong to [`@fastvideo/dreamverse-blender-bridge`](../blender-bridge/README.md).
+Use this package to show the user's Blender in DreamVerse. It registers the `dv-blender` tab type of the right Sidebar. While no Blender is connected, the tab shows the three connection steps: download the add-on, install it, and paste the connection string. While one is connected, the tab shows its viewport live, with Blender's version and file. It also draws the canvas nodes of kind `blender`, the takes of `blender.render` and `blender.animation_render`, and of kind `blender-viewport`, the Blender viewport node; the bridge registers both kinds with the canvas node list. The routes it reads belong to [`@fastvideo/dreamverse-blender-bridge`](../blender-bridge/README.md).
 
 ## Table of Contents
 
@@ -31,9 +31,9 @@ Mount the plugin with `@fastvideo/dreamverse-blender-bridge`; [`@fastvideo/dream
   name: '@fastvideo/dreamverse-ui-blender'
 ```
 
-The plugin has no configuration. The guide of the right Sidebar offers the tab as Blender, "Connect Blender and watch its viewport live". The connection string is the page's own origin, `#`, and the pairing token; through an SSH tunnel, the page's origin is the tunnel's local address, which a Blender on the same computer reaches. The tab's buttons copy the string and replace the pairing token, which disconnects the connected Blender. While a Blender is connected and a project is open, the tab's "Put the viewport on the canvas" button runs `blender.viewport` with `on: true` for the open project; a refusal shows under it.
+The plugin has no configuration. The guide of the right Sidebar offers the tab as Blender, "Connect Blender and watch its viewport live". The connection string is the page's own origin, `#`, and the pairing token; through an SSH tunnel, the page's origin is the tunnel's local address, which a Blender on the same computer reaches. The tab's buttons copy the string and replace the pairing token, which disconnects the connected Blender. While a Blender is connected and a project is open, the tab's "Put the viewport on the canvas" button runs `blender.viewport` for the open project; a refusal shows under it.
 
-The viewport node is one 16:9 media node with the ID `blender:viewport`. Its card shows the live viewport, letterboxed, and takes no pointer input, so the canvas moves, selects, resizes and opens it like any node. A double click opens its editor, which shows the viewport large and moves Blender's view:
+The viewport node is a 16:9 media node of kind `blender-viewport`; the canvas holds at most one. Its card shows the live viewport, letterboxed, and takes no pointer input, so the canvas moves, selects, resizes and opens it like any node. A double click opens its editor, which shows the viewport large and moves Blender's view:
 
 | Input | View change |
 | --- | --- |
@@ -43,7 +43,7 @@ The viewport node is one 16:9 media node with the ID `blender:viewport`. Its car
 | Front, Back, Left, Right, Top, Bottom, Camera | `preset` |
 | Frame all, Frame selected | `frame` |
 
-Remove from the canvas runs `blender.viewport` with `on: false` and closes the editor. The view changes need add-on 0.2.0 or later; with an older add-on, or no connected Blender, the controls are off and the editor says why.
+The canvas's own remove button and the Delete key take the node off the canvas (`canvas.node_remove`). The view changes need add-on 0.2.0 or later; with an older add-on, or no connected Blender, the controls are off and the editor says why.
 
 -----
 
@@ -60,7 +60,7 @@ The tab body reads `GET /api/dv/blender/status` once and watches the viewport We
 | [`src/client/live-view.ts`](src/client/live-view.ts) | `useLiveView`: watching while on screen and drawing the newest frame |
 | [`src/client/ViewportNode.tsx`](src/client/ViewportNode.tsx) | The viewport node type, its card and its editor |
 | [`src/index.ts`](src/index.ts) | The inert host Loader entry |
-| [`tests/plugin.client.spec.tsx`](tests/plugin.client.spec.tsx) | The registrations under the real slot runtime and their removal, the panel's two views and its place button over a fake host half, and the viewport node's entries, card and editor |
+| [`tests/plugin.client.spec.tsx`](tests/plugin.client.spec.tsx) | The registrations under the real slot runtime and their removal, the panel's two views and its place button over a fake host half, and the viewport node's type, card and editor |
 
 -----
 

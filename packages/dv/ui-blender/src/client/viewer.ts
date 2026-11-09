@@ -173,7 +173,7 @@ export const httpBlenderSource: BlenderSource = {
   place: async () => {
     const project = getCurrentProject()
     if (project === null) throw new Error('no project is open')
-    await client.runOperation({ project, operation: VIEWPORT_OPERATION, params: { on: true }, surface: 'canvas' })
+    await client.runOperation({ project, operation: VIEWPORT_OPERATION, params: {}, surface: 'canvas' })
   },
   addon: async () => {
     const response = await fetch(ADDON_ROUTE)

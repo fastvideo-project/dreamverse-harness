@@ -1,30 +1,24 @@
 /**
- * The Blender viewport node of the canvas: one node while the project's `blender` slice says the viewport is on the
- * canvas. Its card shows the live viewport and takes no pointer input, so the canvas moves, selects, resizes and opens
- * the node as any other. Its editor, open after a double click, shows the viewport large and moves Blender's view:
- * a drag orbits, a Shift-drag or right-drag pans, the wheel zooms, and buttons switch to the standard views, frame the
- * scene or the selection, and take the node off the canvas. Each change is sent at most once per animation frame,
- * with the movement since the last one.
+ * The Blender viewport node of the canvas: the node of kind {@link VIEWPORT_TYPE} that a `blender.viewport` record puts
+ * in the canvas's node list. Its card shows the live viewport and takes no pointer input, so the canvas moves, selects,
+ * resizes and opens the node as any other. Its editor, open after a double click, shows the viewport large and moves
+ * Blender's view: a drag orbits, a Shift-drag or right-drag pans, the wheel zooms, and buttons switch to the standard
+ * views and frame the scene or the selection; the canvas's own remove button and the Delete key take the node off the
+ * canvas. Each change is sent at most once per animation frame, with the movement since the last one.
  *
  * @module @fastvideo/dreamverse-ui-blender/ViewportNode
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { BlenderSlice } from '@fastvideo/dreamverse-blender-bridge/types'
-import type { NodeEntry, NodeSizing, NodeType } from '@dv/ui-canvas/contract'
+import type { NodeSizing, NodeType, TypeEntry } from '@dv/ui-canvas/contract'
 import { pickText, useText } from '@dv/ui-kit/locale.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
 import { useLiveView, type FrameDrawer } from './live-view.ts'
-import { addonNavigates, VIEW_COMMAND_LIMIT, VIEWPORT_OPERATION, type BlenderSource, type ViewCommand, type ViewPreset } from './viewer.ts'
+import { addonNavigates, VIEW_COMMAND_LIMIT, type BlenderSource, type ViewCommand, type ViewPreset } from './viewer.ts'
 
-declare module '@dv/ui-kit/types.ts' { interface ComponentStates { blender: BlenderSlice } }
-
-/** The node type of the viewport node, its card and editor key. */
+/** The node kind of the viewport node: its node type, card and editor key, as the bridge registers it with the canvas. */
 export const VIEWPORT_TYPE = 'blender-viewport'
-
-/** The ID of the one viewport node. */
-export const VIEWPORT_NODE = 'blender:viewport'
 
 /** A media node at 16:9, the default aspect of Blender's viewport; a picture of another aspect is letterboxed. */
 export const VIEWPORT_SIZING: NodeSizing = {
@@ -32,12 +26,12 @@ export const VIEWPORT_SIZING: NodeSizing = {
 }
 
 /**
- * The record that put the viewport on the canvas, when it is there.
+ * The viewport node of the canvas, when the viewport is on it.
  * @param state - the project state.
- * @returns the record ID, or null when the viewport is not on the canvas or the server has no Blender component.
+ * @returns the node ID, or null when the canvas holds no viewport node.
  */
-export function placedRecord(state: WireState): string | null {
-  return state.components.blender?.viewport ?? null
+export function viewportNode(state: WireState): string | null {
+  return state.components.canvas.order.find(id => state.components.canvas.nodes[id]?.kind === VIEWPORT_TYPE) ?? null
 }
 
 /**
@@ -51,13 +45,7 @@ export function viewportNodeType(id: string): NodeType {
     type: VIEWPORT_TYPE,
     label: () => pickText('Blender 视口', 'Blender viewport'),
     color: 'var(--dv-node-4)',
-    column: 0,
-    entries({ state }): NodeEntry[] {
-      const placed = placedRecord(state)
-      if (placed === null) return []
-      const record = state.components.proj.records.find(candidate => candidate.id === placed) ?? null
-      return [{ id: VIEWPORT_NODE, title: pickText('Blender 视口', 'Blender viewport'), record, assets: [], sizing: VIEWPORT_SIZING }]
-    },
+    entry: (): TypeEntry => ({ title: pickText('Blender 视口', 'Blender viewport'), assets: [], sizing: VIEWPORT_SIZING }),
   }
 }
 
@@ -141,14 +129,13 @@ export function ViewportEditor(props: PropsRuntime<'dv.canvas.editor'> & {
   draw?: FrameDrawer
   schedule?: (flush: () => void) => void
 }): ReactNode {
-  const { source, host } = props
+  const { source } = props
   const t = useText()
   const live = useLiveView(source, props.draw)
   const view = useRef<HTMLDivElement>(null)
   const drag = useRef<{ mode: 'orbit' | 'pan'; x: number; y: number } | null>(null)
   const gathered = useRef<Gathered>({ orbit: [0, 0], pan: [0, 0], zoom: 0 })
   const queued = useRef(false)
-  const [removing, setRemoving] = useState(false)
   const frameRef = useRef(live.frame)
   frameRef.current = live.frame
   const schedule = props.schedule ?? ((flush: () => void) => { requestAnimationFrame(flush) })
@@ -213,11 +200,6 @@ export function ViewportEditor(props: PropsRuntime<'dv.canvas.editor'> & {
     queue()
   }
   const onPointerUp = (): void => { drag.current = null }
-  const remove = (): void => {
-    setRemoving(true)
-    host.run({ operation: VIEWPORT_OPERATION, params: { on: false }, intent: t('把 Blender 视口从画布上拿下', 'Take the Blender viewport off the canvas') })
-    host.close()
-  }
 
   const state = live.linked.state
   return (
@@ -229,8 +211,6 @@ export function ViewportEditor(props: PropsRuntime<'dv.canvas.editor'> & {
         <span style={{ width: 8 }} />
         <button type="button" disabled={!navigable} onClick={() => { source.navigate({ action: 'frame', target: 'all' }) }}>{t('显示全部', 'Frame all')}</button>
         <button type="button" disabled={!navigable} onClick={() => { source.navigate({ action: 'frame', target: 'selected' }) }}>{t('显示所选', 'Frame selected')}</button>
-        <span style={{ flex: 1 }} />
-        <button type="button" disabled={removing} onClick={remove}>{t('从画布移除', 'Remove from the canvas')}</button>
       </div>
       <div
         ref={view} data-testid="dv-blender-node-surface"

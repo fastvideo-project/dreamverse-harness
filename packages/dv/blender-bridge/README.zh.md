@@ -1,5 +1,5 @@
 ---
-description: "DreamVerse 的 Blender 组件：dvBlender 服务负责 DreamVerse 插件从用户的 Blender 向 harness 打开的连接、智能体工具 dv_blender_scene、dv_blender_run 和 dv_blender_look、操作 blender.render、blender.animation_render 和 blender.viewport 及其 blender 状态切片，以及向浏览器推送视口、移动视图并提供插件下载的路由。"
+description: "DreamVerse 的 Blender 组件：dvBlender 服务负责 DreamVerse 插件从用户的 Blender 向 harness 打开的连接、智能体工具 dv_blender_scene、dv_blender_run 和 dv_blender_look、操作 blender.render、blender.animation_render 和 blender.viewport 及其生成的画布节点，以及向浏览器推送视口、移动视图并提供插件下载的路由。"
 kind: "package-reference"
 ---
 
@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在 DreamVerse 配置中挂载本插件；[`@fastvideo/dreamverse-blender`](../blender/README.zh.md) 会插入它。连接路由需要 DSH Web 服务器（`webServer`），浏览器路由需要 Connection（`connection`），这些操作和 `blender` 切片需要 `dvProject`，`dv_blender_look` 需要附件存储（`attachments`）；每一部分在对应服务存在期间存在。
+在 DreamVerse 配置中挂载本插件；[`@fastvideo/dreamverse-blender`](../blender/README.zh.md) 会插入它。连接路由需要 DSH Web 服务器（`webServer`），浏览器路由需要 Connection（`connection`），这些操作需要 `dvProject`，画布节点和 `blender.viewport` 还需要画布节点列表（`dvCanvasNodes`），`dv_blender_look` 需要附件存储（`attachments`）；每一部分在对应服务存在期间存在。
 
 ```yaml
 - id: dv-blender
@@ -54,9 +54,9 @@ kind: "package-reference"
 | --- | --- | --- | --- |
 | `blender.render` | `dv_blender_render` | `frame`（默认：场景的当前帧） | 输出 `image`，一个 `image/png` 素材；报告 `{width, height, frame, engine}` |
 | `blender.animation_render` | `dv_blender_animation_render` | `frame_start`、`frame_end`（默认：场景的帧范围） | 输出 `video`，一个带时长的 `video/mp4` 素材；报告 `{width, height, frame_start, frame_end, fps, duration_sec, engine}` |
-| `blender.viewport` | `dv_blender_viewport` | `on`（必填） | 没有输出；报告 `{on}` |
+| `blender.viewport` | `dv_blender_viewport` | 无 | 没有输出；报告 `{}` |
 
-两个渲染操作都用场景相机以及场景自己的引擎、分辨率和帧率渲染，结果不确定，并像所有生成一样在后台运行；渲染结束前 Blender 处于忙碌状态。`blender.viewport` 把视口放到画布上（`on: true`）或拿下（`on: false`），不需要已连接的 Blender；不会改变任何东西的调用被拒绝（`The Blender viewport is already on the canvas.` 或 `The Blender viewport is not on the canvas.`）。`blender` 切片是 `{viewport}`，即把视口放到画布上的 `blender.viewport` 记录的 ID，或 null；`dv_proj_*` 工具的项目摘要包含 `blender_viewport_on_canvas`。
+两个渲染操作都用场景相机以及场景自己的引擎、分辨率和帧率渲染，结果不确定，并像所有生成一样在后台运行；渲染结束前 Blender 处于忙碌状态。每条渲染记录在画布第 2 列生成一个类型为 `blender` 的版本节点，渲染进行中或失败时节点也会显示其状态。`blender.viewport` 把视口放到画布上，不需要已连接的 Blender：它完成的记录生成唯一一个类型为 `blender-viewport` 的节点，画布已有该节点时调用被拒绝（`The Blender viewport is already on the canvas.`）。`canvas.node_remove`（`dv_canvas_node_remove`）像对待其他节点一样把它拿下。
 
 | 视图变化 | 字段 | Blender 的动作 |
 | --- | --- | --- |
@@ -85,8 +85,7 @@ kind: "package-reference"
 | [`src/token.ts`](src/token.ts) | 配对码 |
 | [`src/tools.ts`](src/tools.ts) | `dv_blender_scene`、`dv_blender_run` 和 `dv_blender_look` |
 | [`src/render.ts`](src/render.ts) | `blender.render` 和 `blender.animation_render` |
-| [`src/viewport-node.ts`](src/viewport-node.ts) | `blender` reducer 和 `blender.viewport` |
-| [`src/types.ts`](src/types.ts) | `blender` 切片类型，即浏览器部分读取的客户端接口 `./types` |
+| [`src/viewport-node.ts`](src/viewport-node.ts) | `blender.viewport`，以及视口节点和渲染版本在画布上的注册 |
 | [`src/routes.ts`](src/routes.ts) | 浏览器的 Fetch 路由和插件 zip |
 | [`addon/`](addon/__init__.py) | Blender 插件：面板和偏好设置（`__init__.py`）、WebSocket 客户端（`link.py`）、请求处理（`commands.py`）、视口流（`viewport.py`）、视图变化（`navigate.py`）和不依赖 `bpy` 的辅助函数（`protocol.py`） |
 | [`tests/blender-bridge.spec.ts`](tests/blender-bridge.spec.ts) | 一个带 Web 服务器、在连接上使用假 Blender 的 Loader 组合：准入、替换、配对码、zip、视口流、视图变化、工具、渲染、视口节点以及卸载时的移除 |
@@ -119,7 +118,7 @@ dv_blender_run: Run Python in the connected Blender, with bpy, mathutils and mat
 dv_blender_look: Look at the connected Blender: a PNG of the 3D viewport as the user sees it (`viewport`, the default), or of what the scene camera frames (`camera`), at most 1280 px wide. Look after a visible change to check it.
 dv_blender_render: Render one frame of the connected Blender's scene with its scene camera, render engine and resolution, as a PNG image in the project, for use as a still or as the reference image of a shot. Check the framing with dv_blender_look view camera first. Blender is busy until the render finishes.
 dv_blender_animation_render: Render a frame range of the connected Blender's scene with its scene camera, render engine, resolution and frame rate, as an MP4 video in the project that the timeline can use as a shot. Rendering many frames takes long; keep ranges short and the resolution modest unless the user asks for more. Blender is busy until it finishes.
-dv_blender_viewport: Put the live viewport of the user's Blender on the project canvas as a node (on: true), or take it off (on: false). The node shows what Blender's 3D viewport shows, and the user can open it to orbit, pan and zoom the view; it changes nothing in the scene.
+dv_blender_viewport: Put the live viewport of the user's Blender on the project canvas as a node. The node shows what Blender's 3D viewport shows, and the user can open it to orbit, pan and zoom the view; it changes nothing in the scene. To take it off the canvas, remove its node with dv_canvas_node_remove.
 ```
 
 #### Token 影响
@@ -128,7 +127,7 @@ dv_blender_viewport: Put the live viewport of the user's Blender on the project 
 
 #### KV 缓存影响
 
-定义位于每个智能体请求的稳定工具段；挂载或移除插件会改变工具列表，使从工具段开始的缓存前缀失效。连接或断开 Blender，以及把视口放到画布上，都不改变任何内容；项目摘要的 `blender_viewport_on_canvas` 字段出现在 `dv_proj_*` 的结果中。
+定义位于每个智能体请求的稳定工具段；挂载或移除插件会改变工具列表，使从工具段开始的缓存前缀失效。连接或断开 Blender，以及把视口放到画布上，都不改变任何内容。
 
 ### 工具结果
 
