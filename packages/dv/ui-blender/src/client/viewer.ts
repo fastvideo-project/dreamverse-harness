@@ -111,6 +111,12 @@ export class SharedViewer {
   private status: { linked: boolean; state: BlenderState | null } | null = null
   private latest: ViewFrame | null = null
 
+  /**
+   * Add a listener, opening the socket for the first one; a listener that joins an open socket receives the last status
+   * and the newest frame at once.
+   * @param listener - the listener.
+   * @returns the removal of the listener, which closes the socket after the last one leaves.
+   */
   watch(listener: ViewListener): () => void {
     this.listeners.add(listener)
     if (this.socket === null && this.retry === null) this.open()
@@ -130,6 +136,10 @@ export class SharedViewer {
     }
   }
 
+  /**
+   * Send one view change to Blender; it is dropped while the socket is not open.
+   * @param command - the view change.
+   */
   send(command: ViewCommand): void {
     if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify({ type: 'view', ...command }))
   }

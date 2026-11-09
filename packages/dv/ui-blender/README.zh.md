@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概要
 
-使用本包在 DreamVerse 中显示用户的 Blender。它注册右侧栏的 `dv-blender` 标签页类型。没有连接 Blender 时，标签页显示三个连接步骤：下载插件、安装插件、粘贴连接串。连接后，标签页实时显示它的视口，以及 Blender 的版本和文件。它还画出类型为 `blender` 的画布节点，即 `blender.render` 和 `blender.animation_render` 的版本，以及类型为 `blender-viewport` 的 Blender 视口节点；这两种类型由桥接端注册到画布节点列表。它读取的路由属于 [`@fastvideo/dreamverse-blender-bridge`](../blender-bridge/README.zh.md)。
+使用本包在 DreamVerse 中显示用户的 Blender。它注册右侧栏的 `dv-blender` 标签页类型。没有连接 Blender 时，标签页显示三个连接步骤：下载插件、安装插件、粘贴连接串。连接后，标签页实时显示它的视口，带有与视口节点编辑器相同的视口控件，以及 Blender 的版本和文件。它还画出类型为 `blender` 的画布节点，即 `blender.render` 和 `blender.animation_render` 的版本，以及类型为 `blender-viewport` 的 Blender 视口节点；这两种类型由桥接端注册到画布节点列表。它读取的路由属于 [`@fastvideo/dreamverse-blender-bridge`](../blender-bridge/README.zh.md)。
 
 ## 目录
 
@@ -33,7 +33,7 @@ kind: "package-reference"
 
 插件没有配置。右侧栏的引导以 Blender、"连接 Blender，查看它的实时视口" 提供该标签页。连接串是页面自己的源地址、`#` 和配对码；经由 SSH 隧道时，页面的源地址就是隧道的本地地址，同一台电脑上的 Blender 可以连到这里。标签页的按钮可以复制连接串，也可以更换配对码，更换会断开已连接的 Blender。已连接 Blender 且打开了项目时，标签页的"把视口放到画布上"按钮为打开的项目运行 `blender.viewport`；被拒绝时在按钮下方显示原因。
 
-视口节点是一个类型为 `blender-viewport` 的 16:9 媒体节点；画布上最多有一个。它的卡片以留边方式显示实时视口，不处理指针输入，所以画布像对待其他节点一样移动、选择、缩放和打开它。双击打开它的编辑器，编辑器放大显示视口并移动 Blender 的视图：
+视口节点是一个类型为 `blender-viewport` 的 16:9 媒体节点；画布上最多有一个。它的卡片以留边方式显示实时视口，不处理指针输入，所以画布像对待其他节点一样移动、选择、缩放和打开它。双击打开它的编辑器，编辑器放大显示视口。编辑器和 Blender 标签页共用一套视口控件（`controls.tsx`），用来移动 Blender 的视图：
 
 | 输入 | 视图变化 |
 | --- | --- |
@@ -43,7 +43,7 @@ kind: "package-reference"
 | 前、后、左、右、顶、底、相机 | `preset` |
 | 显示全部、显示所选 | `frame` |
 
-画布自己的移除按钮和 Delete 键把节点从画布上拿下（`canvas.node_remove`）。视图变化需要插件 0.2.0 或更高版本；插件较旧或没有连接 Blender 时，控件不可用，编辑器会说明原因。
+画布自己的移除按钮和 Delete 键把节点从画布上拿下（`canvas.node_remove`）。视图变化需要插件 0.2.0 或更高版本；插件较旧或没有连接 Blender 时，控件不可用，滚轮滚动页面，视口下方的一行文字会说明原因。标准视图是一个与 画布 | 时间线 切换相同样式的分段控件，按钮沿用画布编辑器的样式：描边按钮，或每种状态的主要操作用强调色填充，全部基于 `--dv-*` 主题变量。
 
 -----
 
@@ -56,6 +56,8 @@ kind: "package-reference"
 | --- | --- |
 | [`src/client/index.ts`](src/client/index.ts) | 标签页类型、标签页正文注册、版本，以及视口节点类型及其卡片和编辑器 |
 | [`src/client/BlenderPanel.tsx`](src/client/BlenderPanel.tsx) | 面板和它的放置按钮 |
+| [`src/client/controls.tsx`](src/client/controls.tsx) | 标签页和编辑器的视口控件、实时画面，以及共用的按钮样式类 |
+| [`src/client/controls.module.css`](src/client/controls.module.css) | 控件和按钮的样式 |
 | [`src/client/viewer.ts`](src/client/viewer.ts) | `fetch` 调用、`blender.viewport` 的运行、页面共用的视口套接字和视图变化 |
 | [`src/client/live-view.ts`](src/client/live-view.ts) | `useLiveView`：在屏幕上时监听，并画出最新一帧 |
 | [`src/client/ViewportNode.tsx`](src/client/ViewportNode.tsx) | 视口节点类型、它的卡片和编辑器 |

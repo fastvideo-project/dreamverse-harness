@@ -1,0 +1,124 @@
+/* The Blender controls on the `--dv-*` theme variables of @dv/ui-shell, so they match the app in both themes: the
+   standard views as a segmented control like the 画布 | 时间线 switch, and buttons like the canvas editor's. */
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.presets {
+  display: inline-flex;
+  flex-wrap: wrap;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--dv-surface-3);
+}
+
+.preset {
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--dv-text-2);
+  font: inherit;
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+  transition: background-color 120ms var(--dv-ease), color 120ms var(--dv-ease);
+}
+
+.preset:hover:not(:disabled) {
+  background: var(--dv-surface-1);
+  color: var(--dv-text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.button,
+.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--dv-radius-md);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 120ms var(--dv-ease);
+}
+
+.button {
+  border: 1px solid var(--dv-line-strong);
+  background: transparent;
+  color: var(--dv-text);
+}
+
+.button:hover:not(:disabled) {
+  background: var(--dv-surface-3);
+}
+
+.primary {
+  border: 1px solid transparent;
+  background: var(--dv-accent);
+  color: #fff;
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--dv-accent-hover);
+}
+
+.small {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.preset:disabled,
+.button:disabled,
+.primary:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.preset:focus-visible,
+.button:focus-visible,
+.primary:focus-visible {
+  outline: 2px solid var(--dv-accent);
+  outline-offset: 1px;
+}
+
+.surface {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--dv-radius-lg);
+  background: var(--dv-media-bg);
+  touch-action: none;
+}
+
+.surface[data-navigable] {
+  cursor: grab;
+}
+
+.surface[data-navigable]:active {
+  cursor: grabbing;
+}
+
+.hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dv-text-2);
+}

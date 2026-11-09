@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to show the user's Blender in DreamVerse. It registers the `dv-blender` tab type of the right Sidebar. While no Blender is connected, the tab shows the three connection steps: download the add-on, install it, and paste the connection string. While one is connected, the tab shows its viewport live, with Blender's version and file. It also draws the canvas nodes of kind `blender`, the takes of `blender.render` and `blender.animation_render`, and of kind `blender-viewport`, the Blender viewport node; the bridge registers both kinds with the canvas node list. The routes it reads belong to [`@fastvideo/dreamverse-blender-bridge`](../blender-bridge/README.md).
+Use this package to show the user's Blender in DreamVerse. It registers the `dv-blender` tab type of the right Sidebar. While no Blender is connected, the tab shows the three connection steps: download the add-on, install it, and paste the connection string. While one is connected, the tab shows its viewport live with the viewport controls, the same as the viewport node's editor, and Blender's version and file. It also draws the canvas nodes of kind `blender`, the takes of `blender.render` and `blender.animation_render`, and of kind `blender-viewport`, the Blender viewport node; the bridge registers both kinds with the canvas node list. The routes it reads belong to [`@fastvideo/dreamverse-blender-bridge`](../blender-bridge/README.md).
 
 ## Table of Contents
 
@@ -33,7 +33,7 @@ Mount the plugin with `@fastvideo/dreamverse-blender-bridge`; [`@fastvideo/dream
 
 The plugin has no configuration. The guide of the right Sidebar offers the tab as Blender, "Connect Blender and watch its viewport live". The connection string is the page's own origin, `#`, and the pairing token; through an SSH tunnel, the page's origin is the tunnel's local address, which a Blender on the same computer reaches. The tab's buttons copy the string and replace the pairing token, which disconnects the connected Blender. While a Blender is connected and a project is open, the tab's "Put the viewport on the canvas" button runs `blender.viewport` for the open project; a refusal shows under it.
 
-The viewport node is a 16:9 media node of kind `blender-viewport`; the canvas holds at most one. Its card shows the live viewport, letterboxed, and takes no pointer input, so the canvas moves, selects, resizes and opens it like any node. A double click opens its editor, which shows the viewport large and moves Blender's view:
+The viewport node is a 16:9 media node of kind `blender-viewport`; the canvas holds at most one. Its card shows the live viewport, letterboxed, and takes no pointer input, so the canvas moves, selects, resizes and opens it like any node. A double click opens its editor, which shows the viewport large. The editor and the Blender tab share one set of viewport controls (`controls.tsx`), which move Blender's view:
 
 | Input | View change |
 | --- | --- |
@@ -43,7 +43,7 @@ The viewport node is a 16:9 media node of kind `blender-viewport`; the canvas ho
 | Front, Back, Left, Right, Top, Bottom, Camera | `preset` |
 | Frame all, Frame selected | `frame` |
 
-The canvas's own remove button and the Delete key take the node off the canvas (`canvas.node_remove`). The view changes need add-on 0.2.0 or later; with an older add-on, or no connected Blender, the controls are off and the editor says why.
+The canvas's own remove button and the Delete key take the node off the canvas (`canvas.node_remove`). The view changes need add-on 0.2.0 or later; with an older add-on, or no connected Blender, the controls are off, the wheel scrolls the page, and the line under the viewport says why. The standard views form a segmented control like the 画布 | 时间线 switch, and the buttons follow the canvas editor's: outlined, or filled with the accent color for the main action of each state, all on the `--dv-*` theme variables.
 
 -----
 
@@ -56,6 +56,8 @@ The tab body reads `GET /api/dv/blender/status` once and watches the viewport We
 | --- | --- |
 | [`src/client/index.ts`](src/client/index.ts) | The tab type, the tab body registration, the takes, and the viewport node type with its card and editor |
 | [`src/client/BlenderPanel.tsx`](src/client/BlenderPanel.tsx) | The panel and its place button |
+| [`src/client/controls.tsx`](src/client/controls.tsx) | The viewport controls of the tab and the editor, the live picture, and the shared button classes |
+| [`src/client/controls.module.css`](src/client/controls.module.css) | The styles of the controls and the buttons |
 | [`src/client/viewer.ts`](src/client/viewer.ts) | The `fetch` calls, the `blender.viewport` run, the page's shared viewport socket and the view changes |
 | [`src/client/live-view.ts`](src/client/live-view.ts) | `useLiveView`: watching while on screen and drawing the newest frame |
 | [`src/client/ViewportNode.tsx`](src/client/ViewportNode.tsx) | The viewport node type, its card and its editor |

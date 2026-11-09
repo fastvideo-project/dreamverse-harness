@@ -1,7 +1,8 @@
 /**
- * The Blender panel: how to connect the user's Blender while none is connected, and its live viewport while one is,
- * with the button that puts the viewport on the open project's canvas. The connection string is the page's own origin,
- * the address Blender must dial (through the SSH tunnel it is the tunnel's local address), `#`, and the pairing token.
+ * The Blender panel: how to connect the user's Blender while none is connected, and its live viewport with the
+ * viewport controls (see `controls.tsx`) while one is, with the button that puts the viewport on the open project's
+ * canvas. The connection string is the page's own origin, the address Blender must dial (through the SSH tunnel it is
+ * the tunnel's local address), `#`, and the pairing token.
  *
  * @module @fastvideo/dreamverse-ui-blender/BlenderPanel
  */
@@ -10,21 +11,22 @@ import type { CSSProperties, ReactNode } from 'react'
 import { errorMessage } from '@dv/ui-kit/api.ts'
 import { useCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
+import { buttons, ViewportControls } from './controls.tsx'
 import { useLiveView, type FrameDrawer } from './live-view.ts'
 import type { BlenderSource, BlenderStatus } from './viewer.ts'
 
-const column: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 8, padding: 16 }
+// The panel draws on the `--dv-*` theme variables of @dv/ui-shell, so it matches the app in both themes.
+const column: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 10, padding: 16, fontSize: 13, lineHeight: '20px', color: 'var(--dv-text)' }
 const row: CSSProperties = { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }
-const heading: CSSProperties = { marginTop: 8, marginBottom: 0, fontSize: 13, fontWeight: 600 }
-const note: CSSProperties = { margin: 0, fontSize: 12, color: 'var(--dv-text-muted, inherit)' }
+const heading: CSSProperties = { marginTop: 6, marginBottom: 0, fontSize: 13, lineHeight: '20px', fontWeight: 600 }
+const note: CSSProperties = { margin: 0, fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }
 const problem: CSSProperties = { ...note, color: 'var(--dv-danger)' }
 const code: CSSProperties = {
-  display: 'block', padding: 8, fontSize: 12, wordBreak: 'break-all', borderRadius: 'var(--dv-radius-md, 6px)',
-  background: 'var(--dv-media-bg, rgba(127, 127, 127, 0.12))', userSelect: 'all',
+  display: 'block', padding: '8px 10px', fontFamily: 'var(--dv-font-mono)', fontSize: 12, lineHeight: '16px', wordBreak: 'break-all',
+  borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-3)', boxShadow: 'inset 0 0 0 1px var(--dv-line)', userSelect: 'all',
 }
-const view: CSSProperties = {
-  width: '100%', height: 'auto', borderRadius: 'var(--dv-radius-lg, 8px)', background: 'var(--dv-media-bg, #111)', display: 'block',
-}
+const statusDot: CSSProperties = { width: 8, height: 8, flex: 'none', borderRadius: 9999, background: 'var(--dv-ok)' }
+const divider: CSSProperties = { height: 1, margin: '2px 0', background: 'var(--dv-line)' }
 
 /**
  * Save a file the page holds, through a temporary object URL and a programmatic link click.
@@ -58,7 +60,7 @@ export function BlenderPanel(props: {
   const project = useCurrentProject()
   const [status, setStatus] = useState<BlenderStatus | null>(null)
   const live = useLiveView(source, props.draw)
-  const { linked, frame } = live
+  const { linked } = live
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
@@ -98,24 +100,22 @@ export function BlenderPanel(props: {
       <div ref={live.root}>
         <div data-testid="dv-blender-panel" style={column}>
           <div style={row}>
-            <strong style={{ fontSize: 13 }}>{t(`已连接 Blender ${state.blender_version}`, `Connected to Blender ${state.blender_version}`)}</strong>
+            <span style={statusDot} />
+            <strong style={{ fontWeight: 600 }}>{t(`已连接 Blender ${state.blender_version}`, `Connected to Blender ${state.blender_version}`)}</strong>
             <span style={note}>{state.file === '' ? t('未保存的文件', 'Unsaved file') : state.file}</span>
           </div>
-          {frame === null ? <p style={note}>{t('等待视口画面…', 'Waiting for the viewport…')}</p> : null}
-          <canvas
-            ref={live.canvas} data-testid="dv-blender-view" aria-label={t('Blender 视口', 'Blender viewport')}
-            style={frame === null ? { display: 'none' } : view}
-          />
+          <ViewportControls live={live} source={source} surfaceTestId="dv-blender-surface" viewTestId="dv-blender-view" />
+          <div style={divider} />
           <p style={note}>
             {state.allow_code
               ? t('agent 可以在这个 Blender 里运行 Python。', 'The agent can run Python in this Blender.')
               : t('这个 Blender 关闭了来自 harness 的代码，agent 只能查看。', 'This Blender has code from the harness switched off; the agent can only look.')}
           </p>
           <div style={row}>
-            <button type="button" disabled={project === null || placing.busy} onClick={place}>
+            <button type="button" className={buttons.primary} disabled={project === null || placing.busy} onClick={place}>
               {t('把视口放到画布上', 'Put the viewport on the canvas')}
             </button>
-            <button type="button" onClick={regenerate}>{t('断开并更换配对码', 'Disconnect and replace the pairing token')}</button>
+            <button type="button" className={buttons.button} onClick={regenerate}>{t('断开并更换配对码', 'Disconnect and replace the pairing token')}</button>
           </div>
           {project === null ? <p style={note}>{t('打开一个项目后才能把视口放到它的画布上。', 'Open a project to put the viewport on its canvas.')}</p> : null}
           {placing.error === null ? null : <p style={problem}>{t(`没有放到画布上：${placing.error}`, `The viewport was not put on the canvas: ${placing.error}`)}</p>}
@@ -134,7 +134,7 @@ export function BlenderPanel(props: {
         </p>
         <h3 style={heading}>{t('1. 下载插件', '1. Download the add-on')}</h3>
         <div style={row}>
-          <button type="button" onClick={download}>{t('下载 dreamverse_blender.zip', 'Download dreamverse_blender.zip')}</button>
+          <button type="button" className={buttons.primary} onClick={download}>{t('下载 dreamverse_blender.zip', 'Download dreamverse_blender.zip')}</button>
         </div>
         {downloadError === null ? null : <p style={problem}>{t(`下载失败：${downloadError}`, `The download failed: ${downloadError}`)}</p>}
         <h3 style={heading}>{t('2. 在 Blender 里安装', '2. Install it in Blender')}</h3>
@@ -153,10 +153,10 @@ export function BlenderPanel(props: {
             <>
               <code data-testid="dv-blender-connection" style={code}>{connection}</code>
               <div style={row}>
-                <button type="button" onClick={() => { void copy(connection).then(() => { setCopied(true) }, () => { setCopied(false) }) }}>
+                <button type="button" className={buttons.primary} onClick={() => { void copy(connection).then(() => { setCopied(true) }, () => { setCopied(false) }) }}>
                   {copied ? t('已复制', 'Copied') : t('复制连接串', 'Copy the connection string')}
                 </button>
-                <button type="button" onClick={regenerate}>{t('更换配对码', 'Replace the pairing token')}</button>
+                <button type="button" className={buttons.button} onClick={regenerate}>{t('更换配对码', 'Replace the pairing token')}</button>
               </div>
               <p style={note}>
                 {t('连接串里的配对码让 Blender 连到这个 harness，请像密码一样保管。Blender 在另一台电脑上时，地址要和浏览器用的一样（例如 SSH 隧道的本地地址）。',

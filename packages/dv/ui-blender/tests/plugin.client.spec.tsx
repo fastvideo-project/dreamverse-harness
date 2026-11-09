@@ -346,6 +346,30 @@ describe('ViewportEditor', () => {
   })
 })
 
+describe('BlenderPanel viewport controls', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('moves Blender\'s view from the tab with the same controls as the node editor', async () => {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(320)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(180)
+    const source = new FakeSource()
+    render(<BlenderPanel source={source} draw={noDraw} />)
+    await screen.findByTestId('dv-blender-connection')
+    source.link(STATE)
+    source.frame(frame(640))
+    fireEvent.click(screen.getByText('Front'))
+    fireEvent.click(screen.getByText('Frame all'))
+    const surface = screen.getByTestId('dv-blender-surface')
+    fireEvent.pointerDown(surface, { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
+    fireEvent.pointerMove(surface, { clientX: 32, clientY: 0, pointerId: 1 })
+    fireEvent.pointerUp(surface, { pointerId: 1 })
+    await vi.waitFor(() => { expect(source.sent).toHaveLength(3) })
+    expect(source.sent.slice(0, 2)).toEqual([{ action: 'preset', preset: 'front' }, { action: 'frame', target: 'all' }])
+    expect(source.sent[2]).toMatchObject({ action: 'orbit', dy: 0 })
+    expect(screen.getByText('Drag to orbit · Shift-drag or right-drag to pan · Scroll to zoom. This moves only the view, never the scene.')).toBeTruthy()
+  })
+})
+
 describe('BlenderPanel placing', () => {
   it('puts the viewport on the open project\'s canvas, shows a refusal, and needs an open project', async () => {
     const source = new FakeSource()

@@ -24,7 +24,8 @@ export {
   addonNavigates, httpBlenderSource, VIEW_COMMAND_LIMIT, VIEWPORT_OPERATION,
   type BlenderSource, type BlenderState, type BlenderStatus, type ViewCommand, type ViewFrame, type ViewListener, type ViewPreset,
 } from './viewer.ts'
-export { shownSize, VIEWPORT_SIZING, VIEWPORT_TYPE, ViewportCard, ViewportEditor, viewportNode, viewportNodeType } from './ViewportNode.tsx'
+export { buttons, LivePicture, shownSize, ViewportControls } from './controls.tsx'
+export { VIEWPORT_SIZING, VIEWPORT_TYPE, ViewportCard, ViewportEditor, viewportNode, viewportNodeType } from './ViewportNode.tsx'
 
 /** The tab kind this package owns. */
 export const BLENDER_KIND = 'dv-blender'
