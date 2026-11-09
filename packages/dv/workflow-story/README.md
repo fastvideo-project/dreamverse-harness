@@ -38,7 +38,7 @@ To add a workflow, add `skills/<name>/SKILL.md` with the frontmatter fields `nam
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-`apply` waits for `skills` and registers the provider as an effect, so the skills leave with the plugin or with the registry. The `dependencies` of `package.json` name the packages whose tools the skills call without a guard: `@dv/project` (`dv_proj_*`), `@dv/shot-render` (`dv_shot_render`) and `@dv/timeline` (`dv_timeline_*`).
+`apply` waits for `skills` and registers the provider as an effect, so the skills leave with the plugin or with the registry. The `dependencies` of `package.json` name the packages whose tools the skills call without a guard: `@dv/canvas` (`dv_canvas_node_rename`), `@dv/project` (`dv_proj_*`), `@dv/shot-render` (`dv_shot_render`) and `@dv/timeline` (`dv_timeline_*`).
 
 | File | Content |
 | --- | --- |
@@ -91,7 +91,7 @@ Nothing is appended to the conversation, so the cached prefix stays intact.
 
 #### What the model sees
 
-The skill catalog lists each workflow skill with its description. When the agent loads `story-directing`, it reads the order of calls: `dv_textnode_write` for the text nodes `story/theme.md`, `story/beats.md` and `story/storyboard.md`, each built from the text that `dv_textnode_read` returns for the stage before it and naming that stage in `from`; a summary and one question in bold, and no generation before the user agrees; then `dv_shot_render` per shot (with `continue_from` for a shot that continues the previous one), `dv_proj_wait` and `dv_timeline_create`. It also tells the agent how to extend, shorten or change a story on a timeline.
+The skill catalog lists each workflow skill with its description. When the agent loads `story-directing`, it reads the order of calls: `dv_textnode_write` for the text nodes `story/theme.md`, `story/beats.md` and `story/storyboard.md`, each built from the text that `dv_textnode_read` returns for the stage before it and naming that stage in `from`; a summary and one question in bold, and no generation before the user agrees; then `dv_shot_render` per shot (with `continue_from` for a shot that continues the previous one), `dv_proj_wait` and `dv_timeline_create`. After each new shot, the agent finds its canvas node in `dv_proj_state` and calls `dv_canvas_node_rename` with `<shot number> · <short shot description>` (at most four words in the description), preserving names on retakes and names chosen by the user, and uses the name when discussing the shot. It also tells the agent how to extend, shorten or change a story on a timeline.
 
 #### Token effect
 
