@@ -50,19 +50,17 @@ export interface ReferenceUiSpec<V extends WireReferenceVersion = WireReferenceV
 const HERO_ASPECT = 4 / 3
 /** The height of the row of reference thumbnails, shown for an item with two or more references. */
 const STRIP_HEIGHT = 52
-/** The height of the footer that counts the references and names the version. */
-const FOOTER_HEIGHT = 32
 /** The most references that the thumbnail row shows; the last thumbnail of a longer list counts the rest. */
 const STRIP_MAX = 4
 
 /**
  * The sizing of a noun card, a window node: a frame 208 units wide by default and 104 at the narrowest, each as tall as
- * the first reference at 4:3 of that width, the thumbnail row when the item has two or more references, and the footer.
+ * the first reference at 4:3 of that width, plus the thumbnail row when the item has two or more references.
  * @param references - how many references the item has.
  * @returns the sizing.
  */
 function sizingOf(references: number): NodeSizing {
-  const below = (references > 1 ? STRIP_HEIGHT : 0) + FOOTER_HEIGHT
+  const below = references > 1 ? STRIP_HEIGHT : 0
   const at = (width: number): Size => ({ width, height: Math.round(width / HERO_ASPECT) + below })
   return { kind: 'window', defaultSize: at(208), minSize: at(104) }
 }
@@ -214,9 +212,7 @@ export function defineReferenceUi<V extends WireReferenceVersion>(spec: Referenc
 
 /**
  * The card body of a noun node on the card surface, filling the frame the canvas sizes: its first reference with the
- * noun's label on it, taking the height above the row and the footer, a row of reference thumbnails when it has two or
- * more, and a footer with the reference count and the version on show. Above text scale 1 the enlarged text shares a
- * frame of unchanged size, so the card drops the footer.
+ * noun's label on it, taking the height above the row, and a row of reference thumbnails when it has two or more.
  * @param props - the node, its assets, the text scale, the noun's label and color, and the Factory renderer.
  * @returns the element.
  */
@@ -233,7 +229,6 @@ function ReferenceCard(
   const shown = references.length > STRIP_MAX ? references.slice(0, STRIP_MAX - 1) : references
   const rest = references.length - shown.length
   const count = node.assets.length
-  const version = node.versions.length
   const thumb: CSSProperties = { position: 'relative', flex: '0 1 44px', minWidth: 0, display: 'flex', height: 44, borderRadius: 'var(--dv-radius-sm)', overflow: 'hidden', background: 'var(--dv-surface-3)' }
   return (
     <div style={{ ...CARD_SURFACE, display: 'flex', flexDirection: 'column' }}>
@@ -256,13 +251,6 @@ function ReferenceCard(
           </div>
         )
         : null}
-      {textScale > 1
-        ? null
-        : (
-          <div style={{ flex: 'none', display: 'flex', alignItems: 'center', height: FOOTER_HEIGHT, padding: '0 12px', fontFamily: 'var(--dv-font-mono)', fontSize: size(11), lineHeight: 1, color: 'var(--dv-text-2)' }}>
-            {pick(`${String(count)} 张参考图 · 第 ${String(version)} 版`, `${String(count)} ${count === 1 ? 'reference' : 'references'} · v${String(version)}`)}
-          </div>
-        )}
     </div>
   )
 }

@@ -54,16 +54,14 @@ const PREFIX: Record<string, string> = { [PATH]: 'tw', 'script.md': 'sc' }
  * node, named by the record of its first version, whose versions are the records of the path's versions. An accepted
  * `textnode.write` appends the next version of its path and announces the change; a body that contains `FAIL` gives a
  * failed record, and a body that contains `REFUSE` is refused. The asset pool serves each version's Markdown.
- * @param zoom - the stored canvas zoom; the default layout of the canvas tests when omitted.
  * @returns the mounted canvas and the versions of each path that the server holds.
  */
-async function mountTexts(zoom?: number) {
+async function mountTexts() {
   const texts: Record<string, TextVersion[]> = { [PATH]: [version('tw', 1, V1), version('tw', 2, V2)], 'script.md': [version('sc', 1, SCRIPT)] }
   const all = (): TextVersion[] => Object.values(texts).flat()
   let server: CanvasServer | null = null
   const mounted = await mountCanvas({
     kinds: ['reference', 'media', 'assets', 'composer'],
-    ...zoom === undefined ? {} : { layout: { positions: {}, viewport: { x: 0, y: 0, zoom } } },
     edit: (state) => {
       for (const [path, versions] of Object.entries(texts)) {
         versions.forEach((each, index) => {
@@ -148,24 +146,15 @@ describe('textNodeType', () => {
 })
 
 describe('text node', () => {
-  it('draws one card per path at its newest version with its title, version, and opening lines with each citation as its label', async () => {
+  it('draws one card per path at its newest version with its title and opening lines with each citation as its label', async () => {
     const { node, view } = await mountTexts()
     const card = await waitFor(() => node('tw1'))
     expect(card.textContent).toContain('Beats')
     await waitFor(() => { expect(within(card).getByTestId('dv-text-excerpt').textContent).toContain('Hero opens the door.') })
     expect(within(card).getByTestId('dv-text-excerpt').textContent).not.toContain('@')
-    expect(card.textContent).toContain(`v2 · ${String(Array.from(V2).length)} chars`)
     expect(view.container.querySelector('[data-node-id="tw2"]')).toBeNull()
-    // The default frame is 208 × 106: four opening lines with their padding, and the footer.
-    expect([node('tw1').style.width, card.querySelector<HTMLElement>('[data-node-frame]')?.style.height]).toEqual(['208px', '106px'])
-  })
-
-  it('drops the footer and keeps only the enlarged opening lines when the zoomed-out canvas enlarges the text', async () => {
-    const { node } = await mountTexts(0.4)
-    const card = await waitFor(() => node('tw1'))
-    const excerpt = within(card).getByTestId('dv-text-excerpt')
-    await waitFor(() => { expect(excerpt.textContent).toContain('Hero opens the door.') })
-    expect([excerpt.style.fontSize, card.textContent?.includes(' chars')]).toEqual(['24px', false])
+    // The default frame is 208 × 84: four opening lines with their padding.
+    expect([node('tw1').style.width, card.querySelector<HTMLElement>('[data-node-frame]')?.style.height]).toEqual(['208px', '84px'])
   })
 
   it('draws an edge from the node of a source version to the text built from it, and none between the versions of a node', async () => {
@@ -250,7 +239,7 @@ describe('text node', () => {
     const { open, server, texts, node } = await mountTexts()
     texts[PATH]?.push(version('tw', 3, '# Beats\n\nThe agent rewrote this.'))
     server.notify()
-    await waitFor(() => { expect(node('tw1').textContent).toContain('v3 · ') })
+    await waitFor(() => { expect(node('tw1').textContent).toContain('The agent rewrote this.') })
     const editor = await draft(open, 'sc1', ' EXT.')
     fireEvent.click(within(editor).getByRole('button', { name: 'Save' }))
     await waitFor(() => { expect(textWrites(server)).toHaveLength(1) })
@@ -260,7 +249,7 @@ describe('text node', () => {
     expect(write?.inputs).toEqual([{ role: 'source', ref: 'tw3#0' }])
     expect(write?.based_on).toBe('sc1')
     await waitFor(() => { expect(editor.isConnected).toBe(false) })
-    await waitFor(() => { expect(node('sc1').textContent).toContain('v2 · ') })
+    await waitFor(() => { expect(node('sc1').textContent).toContain(' EXT.') })
   })
 
   it('names the newest version and the draft\'s version when a newer version arrives, and saves the draft on top of it', async () => {
@@ -273,7 +262,7 @@ describe('text node', () => {
     fireEvent.click(within(editor).getByRole('button', { name: 'Save on top of v3' }))
     await waitFor(() => { expect(editor.isConnected).toBe(false) })
     expect(textWrites(server).map(write => (write as Write).params.base_version)).toEqual([3])
-    await waitFor(() => { expect(node('tw1').textContent).toContain('v4 · ') })
+    await waitFor(() => { expect(node('tw1').textContent).toContain('Mine.') })
   })
 
   it.each([

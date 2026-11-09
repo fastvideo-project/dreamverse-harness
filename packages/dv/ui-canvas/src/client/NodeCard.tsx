@@ -33,13 +33,13 @@ export function cardHeight(frame: Pick<Size, 'height'>): number {
 }
 
 /**
- * The height where edges meet a node, below its top: the middle of the frame under the caption at the text scale.
+ * The height where edges meet a node, below its top: the middle of the frame under the caption at the zoom.
  * @param frame - the frame size in canvas units.
- * @param textScale - the text enlargement ({@link textScaleAt}).
+ * @param zoom - the canvas zoom.
  * @returns the offset in canvas units.
  */
-export function edgeAnchorY(frame: Pick<Size, 'height'>, textScale: number): number {
-  return Math.round(CAPTION_HEIGHT * textScale) + frame.height / 2
+export function edgeAnchorY(frame: Pick<Size, 'height'>, zoom: number): number {
+  return Math.round(CAPTION_HEIGHT * captionScaleAt(zoom)) + frame.height / 2
 }
 
 const CORNERS: readonly ResizeCorner[] = ['nw', 'ne', 'sw', 'se']
@@ -60,6 +60,23 @@ const MAX_TEXT_SCALE = 2.6
  */
 export function textScaleAt(zoom: number): number {
   return Math.min(MAX_TEXT_SCALE, Math.max(1, READABLE_ZOOM / zoom))
+}
+
+/**
+ * The largest caption enlargement. A caption grows into the free space above its node, which the node positions keep
+ * fixed, so it grows at most 8 units.
+ */
+const MAX_CAPTION_SCALE = 1.4
+/** The smallest caption font size on screen, in screen pixels; a node hides a caption that would render smaller. */
+const MIN_CAPTION_PX = 8
+
+/**
+ * The caption enlargement at a canvas zoom: the text enlargement up to {@link MAX_CAPTION_SCALE}.
+ * @param zoom - the canvas zoom.
+ * @returns the enlargement factor.
+ */
+function captionScaleAt(zoom: number): number {
+  return Math.min(MAX_CAPTION_SCALE, textScaleAt(zoom))
 }
 
 export const ellipsis: CSSProperties = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
@@ -101,6 +118,9 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   const scale = textScaleAt(zoom)
   const size = (base: number): number => Math.round(base * scale)
   const text = (base: 12 | 13): CSSProperties => ({ fontSize: size(base), lineHeight: `${String(size({ 12: 16, 13: 20 }[base]))}px` })
+  const captionScale = captionScaleAt(zoom)
+  const captionSize = (base: number): number => Math.round(base * captionScale)
+  const captionText: CSSProperties = { fontSize: captionSize(12), lineHeight: `${String(captionSize(16))}px` }
   const failed = flags.failed
   // A selected frame wears the accent ring; a stale frame a danger outline; a failed frame the soft outline; any other
   // frame the plain outline.
@@ -120,17 +140,17 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   const count = node.versions.length
   const meta = [count > 1 ? t('node.version', { n: String(count) }) : '', node.meta ?? ''].filter(part => part !== '').join(' · ')
   const caption = (
-    <div style={{ ...text(12), height: size(CAPTION_HEIGHT), boxSizing: 'border-box', padding: '0 2px 4px', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--dv-text-2)' }}>
+    <div style={{ ...captionText, height: captionSize(CAPTION_HEIGHT), boxSizing: 'border-box', padding: '0 2px 4px', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--dv-text-2)', visibility: 12 * captionScale * zoom < MIN_CAPTION_PX ? 'hidden' : undefined }}>
       {props.rename === null
         ? <span style={{ flex: 1, minWidth: 0, ...ellipsis }}>{node.title}</span>
         : (
           <InlineRename
             {...props.rename} value={node.title}
-            style={{ ...text(12), height: size(CAPTION_HEIGHT - 4), boxSizing: 'border-box', padding: `0 ${String(size(4))}px`, border: '1px solid var(--dv-accent)', borderRadius: 'var(--dv-radius-sm)', background: 'var(--dv-surface-1)', color: 'var(--dv-text)', fontFamily: 'inherit', outline: 'none' }}
+            style={{ ...captionText, height: captionSize(CAPTION_HEIGHT - 4), boxSizing: 'border-box', padding: `0 ${String(captionSize(4))}px`, border: '1px solid var(--dv-accent)', borderRadius: 'var(--dv-radius-sm)', background: 'var(--dv-surface-1)', color: 'var(--dv-text)', fontFamily: 'inherit', outline: 'none' }}
           />
         )}
       {view.unseen
-        ? <span role="img" aria-label={t('node.unseen')} title={t('node.unseen')} style={{ flex: 'none', width: size(8), height: size(8), borderRadius: 9999, background: 'var(--dv-accent)' }} />
+        ? <span role="img" aria-label={t('node.unseen')} title={t('node.unseen')} style={{ flex: 'none', width: captionSize(8), height: captionSize(8), borderRadius: 9999, background: 'var(--dv-accent)' }} />
         : null}
       {flags.stale ? <span style={{ flex: 'none', color: 'var(--dv-danger)' }}>{t('node.stale')}</span> : null}
       {meta === '' ? null : <span style={{ ...mono, flex: 'none' }}>{meta}</span>}
@@ -191,7 +211,7 @@ export function NodeCard(props: NodeCardProps): ReactNode {
         ? [2, 1].map(step => (
           <div
             key={step} aria-hidden="true" data-node-version-frame=""
-            style={{ position: 'absolute', left: step * VERSION_OFFSET, top: size(CAPTION_HEIGHT) - step * VERSION_OFFSET, width: '100%', height: box.height, boxSizing: 'border-box', borderRadius: 'var(--dv-radius-lg)', background: 'var(--dv-surface-2)', boxShadow: '0 0 0 1px var(--dv-line-strong)', opacity: step === 2 ? 0.5 : 0.8 }}
+            style={{ position: 'absolute', left: step * VERSION_OFFSET, top: captionSize(CAPTION_HEIGHT) - step * VERSION_OFFSET, width: '100%', height: box.height, boxSizing: 'border-box', borderRadius: 'var(--dv-radius-lg)', background: 'var(--dv-surface-2)', boxShadow: '0 0 0 1px var(--dv-line-strong)', opacity: step === 2 ? 0.5 : 0.8 }}
           />
         ))
         : null}
@@ -210,7 +230,7 @@ export function NodeCard(props: NodeCardProps): ReactNode {
               position: 'absolute', width: HANDLE_SIZE, height: HANDLE_SIZE, boxSizing: 'border-box', borderRadius: 2,
               background: 'var(--dv-surface-1)', border: '2px solid var(--dv-accent)', touchAction: 'none',
               cursor: corner === 'nw' || corner === 'se' ? 'nwse-resize' : 'nesw-resize',
-              ...corner.startsWith('n') ? { top: size(CAPTION_HEIGHT) - HANDLE_SIZE / 2 } : { bottom: -HANDLE_SIZE / 2 },
+              ...corner.startsWith('n') ? { top: captionSize(CAPTION_HEIGHT) - HANDLE_SIZE / 2 } : { bottom: -HANDLE_SIZE / 2 },
               ...corner.endsWith('w') ? { left: -HANDLE_SIZE / 2 } : { right: -HANDLE_SIZE / 2 },
             }}
             onPointerDown={(event) => { event.stopPropagation(); props.onResizeDown(corner, event) }}
