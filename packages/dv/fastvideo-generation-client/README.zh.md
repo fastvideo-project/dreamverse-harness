@@ -102,6 +102,8 @@ API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/streamv2
 
 `references` 是由 `{"media_type": str, "data": <base64 字节>}` 组成的有序列表，由 `SegmentRequest.references` 构建；客户端不检查媒体类型，后端按每个参考的 `media_type` 解码。在生成开始前发现的请求问题返回 HTTP 400 `{"code": "invalid_request", "message": str}`。后端在并发请求之间串行生成，并且即使客户端取消，也会完成已经开始生成的片段。
 
+对于 MiniMax-H3/Pika OpenAI 服务器，`SegmentRequest.task` 可选发送原生 `t2va`、`i2va`、`l2va`、`fl2va` 或 `ref2va` 选择器。提供方负责端点顺序：关键帧管线将前两张图像参考分别作为首尾条件图像。显式 `l2va` 选择器要求后端把单张图像映射为尾帧条件；旧服务器将其映射为首帧或拒绝此选择器。streaming_v2 传输没有原生任务选择器。
+
 -----
 
 <a id="understand-the-implementation"></a>

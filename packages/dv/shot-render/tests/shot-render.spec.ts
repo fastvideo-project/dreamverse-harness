@@ -258,7 +258,7 @@ async function start(options: { tasks?: VideoTask[]; live?: FakeLiveStream } = {
   ctx.loader.builtins.include = Include
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
   await ctx.loader.await()
-  const lanes: Record<VideoTask, FakeLane> = { ref2v: reference, t2v: text }
+  const lanes: Record<VideoTask, FakeLane> = { ref2v: reference, t2v: text, fl2v: reference, i2v: reference, l2v: reference }
   for (const task of tasks) ctx.effect(() => ctx.dvModels.register(fakeEntry(task, lanes[task])))
   disposers.push(async () => {
     await ctx.fiber.dispose()
@@ -315,6 +315,64 @@ function renderSpec(fixture: Fixture, name = 'shot.render'): OperationSpec | und
 }
 
 describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
+  it('renders generic i2v from one first frame and refuses other role combinations', async () => {
+    const fixture = await start({ tasks: ['i2v'] })
+    const image = fixture.put(Buffer.from('FIRST'), 'image/png', 'first.png')
+    const params = { ...TXT, task: 'i2v', prompt: 'A door opens' }
+    await expect(fixture.record('shot.render', params)).rejects.toThrow('i2v needs one first_frame')
+    const first = { role: 'first_frame', ref: { asset: image } }
+    await expect(fixture.record('shot.render', params, [first, { ...first, role: 'last_frame' }])).rejects.toThrow('no reference or last_frame')
+    const record = await fixture.record('shot.render', params, [first])
+    expect(record.status).toBe('done')
+    expect(fixture.reference.requests[0]).toMatchObject({ references: [], firstFrame: image, lastFrame: null })
+  })
+
+  it('renders generic l2v toward one last frame and refuses other role combinations', async () => {
+    const fixture = await start({ tasks: ['l2v'] })
+    const image = fixture.put(Buffer.from('LAST'), 'image/png', 'last.png')
+    const params = { ...TXT, task: 'l2v', prompt: 'A door closes' }
+    await expect(fixture.record('shot.render', params)).rejects.toThrow('l2v needs one last_frame')
+    const last = { role: 'last_frame', ref: { asset: image } }
+    await expect(fixture.record('shot.render', params, [last, { ...last, role: 'first_frame' }])).rejects.toThrow('no reference or first_frame')
+    const record = await fixture.record('shot.render', params, [last])
+    expect(record.status).toBe('done')
+    expect(fixture.reference.requests[0]).toMatchObject({ references: [], firstFrame: null, lastFrame: image })
+  })
+
+  it('renders generic fl2v with distinct durable endpoints regardless of input order', async () => {
+    const fixture = await start({ tasks: ['fl2v'] })
+    const first = fixture.put(Buffer.from('FIRST'), 'image/png', 'first.png')
+    const last = fixture.put(Buffer.from('LAST'), 'image/png', 'last.png')
+    const params = { ...TXT, task: 'fl2v', prompt: 'A door opens', seed: 2 }
+    const inputs = [{ role: 'last_frame', ref: { asset: last } }, { role: 'first_frame', ref: { asset: first } }]
+    const record = await fixture.record('shot.render', params, inputs)
+    expect(record.status).toBe('done')
+    expect(record.inputs).toEqual([
+      { role: 'last_frame', ref: { asset: last }, resolved_asset: last },
+      { role: 'first_frame', ref: { asset: first }, resolved_asset: first },
+    ])
+    expect(fixture.reference.requests[0]).toMatchObject({ references: [], firstFrame: first, lastFrame: last, prompt: params.prompt })
+    expect(fixture.ctx.dvProject.getState(fixture.project).components.proj.records.find(item => item.id === record.id)?.inputs)
+      .toEqual(record.inputs)
+  })
+
+  it('refuses generic fl2v missing or duplicate endpoints and reference media before recording', async () => {
+    const fixture = await start({ tasks: ['fl2v'] })
+    const image = fixture.put(Buffer.from('IMAGE'), 'image/png', 'frame.png')
+    const params = { ...TXT, task: 'fl2v', prompt: 'A door opens' }
+    const first = { role: 'first_frame', ref: { asset: image } }
+    const last = { role: 'last_frame', ref: { asset: image } }
+    const count = () => fixture.ctx.dvProject.getState(fixture.project).components.proj.records.length
+    const before = count()
+    await expect(fixture.record('shot.render', params, [last])).rejects.toThrow('fl2v needs one first_frame')
+    await expect(fixture.record('shot.render', params, [first])).rejects.toThrow('fl2v needs one last_frame')
+    await expect(fixture.record('shot.render', params, [first, { role: 'last_frame', ref: { asset: 'missing-image' as AssetId } }])).rejects.toThrow()
+    await expect(fixture.record('shot.render', params, [first, last, last])).rejects.toThrow('takes one last_frame')
+    await expect(fixture.record('shot.render', params, [first, last, { role: 'reference', ref: { asset: image } }])).rejects.toThrow('no reference input')
+    expect(count()).toBe(before)
+    expect(fixture.reference.requests).toEqual([])
+  })
+
   it('registers shot.render while the catalog holds a model, and removes it on disposal', async () => {
     const fixture = await start()
     expect(renderSpec(fixture)).toMatchObject({
@@ -335,7 +393,7 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(tool?.description).toContain('Uses the GPU.')
     expect(JSON.stringify(tool?.parameters)).toContain('continue_from')
     // The catalog serves the labels of both tasks while the service lives.
-    const labels = { t2v: { zh: '文字生成', en: 'From text' }, ref2v: { zh: '参考图生成', en: 'From references' } }
+    const labels = { t2v: { zh: '文字生成', en: 'From text' }, ref2v: { zh: '参考图生成', en: 'From references' }, fl2v: { zh: '首尾帧生成', en: 'From first and last frames' }, i2v: { zh: '首帧生成', en: 'From first frame' }, l2v: { zh: '尾帧生成', en: 'From last frame' } }
     expect(fixture.ctx.dvModels.taskLabels()).toEqual(labels)
     const entry = [...fixture.ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-shot-render.mjs'))
     await entry?.fiber?.dispose()
@@ -434,7 +492,7 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     const shot = await fixture.record('shot.render', { ...TXT, prompt: 'A baker opens the shutters', duration_sec: 3, seed: 5, aspect_ratio: '9:16' })
     expect(shot).toMatchObject({ status: 'done', component: 'shot', operation: 'shot.render', inputs: [] })
     expect(fixture.text.requests).toEqual([{
-      prompt: 'A baker opens the shutters', references: [], firstFrame: null, frameWidth: 112, frameHeight: 192, numFrames: 73, seed: 5, extra: {},
+      prompt: 'A baker opens the shutters', references: [], firstFrame: null, lastFrame: null, frameWidth: 112, frameHeight: 192, numFrames: 73, seed: 5, extra: {},
     }])
     expect(fixture.reference.requests).toHaveLength(0)
     expect(shot.report).toMatchObject({ seed: 5, ...TXT, model_id: 'test-t2v', aspect_ratio: '9:16', resolution: '720p', duration_sec: 3, frame_width: 112 })

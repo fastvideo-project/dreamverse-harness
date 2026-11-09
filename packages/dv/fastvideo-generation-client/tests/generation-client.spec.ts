@@ -121,6 +121,15 @@ describe('HTTP routes', () => {
 })
 
 describe('segment generation', () => {
+  it('refuses a native task selector on streaming_v2 before sending a request', async () => {
+    const fake = await startFakeBackend((_path, _request, response) => { response.end() })
+    const generation = client(fake.port)
+    expect(() => generation.generateSegment({
+      prompt: 'Frames', task: 'fl2va', frameWidth: 64, frameHeight: 64, numFrames: 24, references: [], returnLastFrame: false,
+    })).toThrow('requires the OpenAI transport')
+    expect(fake.paths).toEqual([])
+  })
+
   it('posts one request per segment and yields the event stream in arrival order', async () => {
     const fake = await startFakeBackend((_path, request, response) => {
       const lastFrame = request!['return_last_frame'] === true

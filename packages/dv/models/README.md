@@ -50,7 +50,7 @@ A provider is a video generation system, such as FastVideo, fal, or SGLang. A se
 | Field | Meaning | Values in this package |
 | --- | --- | --- |
 | `modality` | The output that the task produces: the `modality` of the primitive that the task runs on. | `video` |
-| `task` | The generation task. `TaskMap` declares each task name and maps it to the primitive that it runs on. | `t2v`: a video from the prompt only. `ref2v`: a video from reference media and the prompt, with an optional first frame. |
+| `task` | The generation task. `TaskMap` declares each task name and maps it to the primitive that it runs on. | `t2v`: a video from the prompt only. `ref2v`: a video from reference media and the prompt, with an optional first frame. `i2v`: a video beginning at one image. `l2v`: a video ending at one image. `fl2v`: a video between first and last images. These endpoint tasks use a prompt and no reference media. |
 | `provider` | The name of the provider. The provider plugin sets this name. | Each provider plugin sets its own name, such as `fastvideo`. |
 | `model` | The name that the provider gives to the model. | Each provider plugin sets its own names, such as `fasth3`. |
 
@@ -78,12 +78,13 @@ A provider plugin implements one `ModelEntry` for each key. `ModelEntry<T>` take
 | `prompt` | The text prompt. |
 | `references` | The reference assets as asset IDs, in input order. The list is empty for a task without references. |
 | `firstFrame` | The asset ID of the image that the video starts from, or `null`. |
+| `lastFrame` | The asset ID of the image that the video ends at, or `null`. |
 | `frameWidth`, `frameHeight` | The frame size in pixels. A consumer takes it from `frameSizes` in the facts. |
 | `numFrames` | The frame count. A consumer takes it from `numFramesByDurationSec` in the facts. |
 | `seed` | The random seed. |
 | `extra` | The values of the model's own parameters. `schema()` describes them, and `validateGenerationRequest` checks them. |
 
-`references` and `firstFrame` carry the `reference` and `first_frame` inputs of `dv_shot_render`.
+`references`, `firstFrame` and `lastFrame` carry the distinct `reference`, `first_frame` and `last_frame` inputs of `dv_shot_render`. Providers opt into `fl2v` by registering a catalog entry for that task and validating both image endpoints. Existing records without a last-frame input resolve to `lastFrame: null`. The task does not require audio; sound depends on the selected model.
 
 | `RenderModelFacts` field | Meaning |
 | --- | --- |

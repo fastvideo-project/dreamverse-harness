@@ -102,6 +102,8 @@ FastVideo owns the API; the client uses two routes. `GET /v1/streamv2/capabiliti
 
 `references` is an ordered list of `{"media_type": str, "data": <base64 bytes>}`, built from `SegmentRequest.references`; the client does not check the media types, and the backend decodes each reference by its `media_type`. A request problem found before generation starts answers HTTP 400 `{"code": "invalid_request", "message": str}`. The backend serializes generation across concurrent requests and finishes a segment whose generation has started, even after the client cancels.
 
+For MiniMax-H3/Pika OpenAI servers, `SegmentRequest.task` optionally sends the native `t2va`, `i2va`, `l2va`, `fl2va` or `ref2va` selector. The provider owns endpoint ordering: the first two image references become first and last conditioning images on the keyframe pipeline. An explicit `l2va` selector requires a backend that maps a sole image to last-frame conditioning; older servers map it to the first frame or reject the selector. The streaming_v2 transport has no native task selector.
+
 -----
 
 <a id="understand-the-implementation"></a>

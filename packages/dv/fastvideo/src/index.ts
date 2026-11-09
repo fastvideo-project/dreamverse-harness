@@ -3,13 +3,13 @@
  * `ctx.dvModels` one entry per model that its `models` config names and per task the config gives a server for; a model
  * or task the config leaves out is not registered. Each task of a model is served by its own server. The configured
  * transport of `@dv/fastvideo-generation-client` sends each render with MIME types and bytes from `dvAssetPool`.
- * It includes references and an optional first frame, with each citation
+ * It includes references and distinct first/last frame inputs, with each citation
  * of a reference in the prompt replaced by the label that the served model gives the reference. Each entry describes
  * in `schema()` the durations, aspect ratios and resolutions of its server and the inputs and `extra` parameters it
  * accepts, and checks the inputs and `extra` in `validateGenerationRequest`. Each entry carries the prompt skill of its
  * model and task, which the catalog registers.
  *
- * Served models: `fasth3` (MiniMax H3 as FastH3), for task `ref2v` (FastH3 Ref2VA) and task `t2v` (FastH3 8-Step V2).
+ * Served models: `fasth3` for `ref2v` and `t2v`, and `pika-h3-flex` for `t2v` and `fl2v`.
  *
  * @module @dv/fastvideo
  */
@@ -23,6 +23,7 @@ import { DvFastvideoGeneration, type Config as GenerationConfig, type ModelFacts
 import type {} from '@dv/asset-pool'
 import type { ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent, TaskId } from '@dv/models'
 import { FASTH3 } from './fasth3.ts'
+import { PIKA_H3_FLEX } from './pika-h3-flex.ts'
 import { modelPrompt } from './reference-labels.ts'
 import type { AssignReferenceLabels } from './reference-labels.ts'
 import type { InputRole, MediaType, ServedTask, TaskInputs } from './types.ts'
@@ -58,6 +59,7 @@ type TaskInputLimits = Partial<Record<InputRole, InputLimits>>
 /** The models this plugin can serve, with the tasks it can serve each for. */
 const SERVED: Record<string, { [T in TaskId]?: ServedTask }> = {
   fasth3: FASTH3,
+  'pika-h3-flex': PIKA_H3_FLEX,
 }
 
 /** Plugin name. */
@@ -76,7 +78,10 @@ function checkConfig(config: Config): void {
     const served = SERVED[model]
     if (served === undefined) throw new Error(`dv-fastvideo serves no model "${model}"; it serves: ${Object.keys(SERVED).join(', ')}.`)
     if (Object.keys(tasks).length === 0) throw new Error(`dv-fastvideo: model "${model}" names no task.`)
-    for (const task of Object.keys(tasks)) {
+    for (const [task, server] of Object.entries(tasks)) {
+      if (served[task as TaskId]?.openaiTask !== undefined && server.openai == null) {
+        throw new Error(`dv-fastvideo: ${model} task ${task} requires the OpenAI transport.`)
+      }
       if (!Object.hasOwn(served, task)) {
         throw new Error(`dv-fastvideo serves model "${model}" for no task "${task}"; its tasks: ${Object.keys(served).join(', ')}.`)
       }
@@ -85,25 +90,30 @@ function checkConfig(config: Config): void {
 }
 
 /**
- * The count limits of a task's inputs, from the server's reference limits. The server counts the first frame among its
- * references, so the first frame takes one slot of the server's total and one slot of each media type that the
- * `first_frame` input accepts, and the `reference` input keeps the rest. A media type that the `reference` input
- * declares and the server does not accept has a limit of 0.
- * @param inputs - the inputs the task declares; `SERVED` declares `reference` and `first_frame` together or neither.
+ * The server counts frame inputs among its references. Each declared frame role reserves one slot of the total
+ * and of each media type it accepts; the reference role keeps the remaining slots. Reference-only tasks keep every
+ * server reference slot. Frame roles accept at most one asset; undeclared media types have no server capacity.
+ * @param inputs - the inputs the task declares.
  * @param facts - the server's facts.
- * @returns the limits by declared input; empty for a task without references.
+ * @returns the limits by declared input; empty for a task without inputs.
  */
 function deriveInputLimits(inputs: TaskInputs, facts: ModelFacts): TaskInputLimits {
-  const { reference, first_frame: firstFrame } = inputs
-  if (reference === undefined || firstFrame === undefined) return {}
-  const firstFrameTypes = new Set(firstFrame.mediaTypes)
-  const maxCountByMediaType = Object.fromEntries(reference.mediaTypes.map(mediaType => [
-    mediaType, (facts.referenceMediaTypes[mediaType]?.maxCount ?? 0) - (firstFrameTypes.has(mediaType) ? 1 : 0),
-  ]))
-  return {
-    reference: { maxCount: facts.maxReferences - 1, maxCountByMediaType },
-    first_frame: { maxCount: 1, maxCountByMediaType: {} },
+  const frames = [inputs.first_frame, inputs.last_frame].filter(input => input !== undefined)
+  const limits: TaskInputLimits = {}
+  for (const role of ['first_frame', 'last_frame'] as const) {
+    if (inputs[role] !== undefined) limits[role] = { maxCount: 1, maxCountByMediaType: {} }
   }
+  const reference = inputs.reference
+  if (reference !== undefined) {
+    limits.reference = {
+      maxCount: Math.max(0, facts.maxReferences - frames.length),
+      maxCountByMediaType: Object.fromEntries(reference.mediaTypes.map(mediaType => [
+        mediaType, Math.max(0, (facts.referenceMediaTypes[mediaType]?.maxCount ?? 0)
+          - frames.filter(frame => frame.mediaTypes.includes(mediaType)).length),
+      ])),
+    }
+  }
+  return limits
 }
 
 /**
@@ -142,6 +152,7 @@ function requestProblems(
   const problems: string[] = []
   const roles: Array<[InputRole, RenderRequest['references']]> = [
     ['reference', request.references], ['first_frame', request.firstFrame === null ? [] : [request.firstFrame]],
+    ['last_frame', request.lastFrame === null ? [] : [request.lastFrame]],
   ]
   for (const [role, assets] of roles) {
     const declared = inputs[role]
@@ -248,15 +259,23 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
       }
     },
     async validateGenerationRequest(request: RenderRequest): Promise<string[]> {
-      const limits = deriveInputLimits(inputs, await client.model())
+      const facts = await client.model()
+      const limits = deriveInputLimits(inputs, facts)
+      const frameCount = (request.firstFrame === null ? 0 : 1) + (request.lastFrame === null ? 0 : 1)
+      const frameOnly = inputs.reference === undefined && (inputs.first_frame !== undefined || inputs.last_frame !== undefined)
+      const frameCapacity = Math.min(facts.maxReferences, facts.referenceMediaTypes['image']?.maxCount ?? 0)
       return [
         ...requestProblems(inputs, limits, request, asset => ctx.dvAssetPool.mediaType(asset)),
+        ...frameOnly && frameCount > frameCapacity
+          ? ['The server accepts fewer keyframe images than this shot needs.'] : [],
+        ...served.inputProblems?.(request, asset => ctx.dvAssetPool.mediaType(asset)) ?? [],
         ...extraProblems(model, task, extra, request.extra),
         ...served.promptProblems?.(request) ?? [],
       ]
     },
     render(request: RenderRequest, signal?: AbortSignal): AsyncIterable<RenderStreamEvent> {
-      const assets = request.firstFrame === null ? request.references : [...request.references, request.firstFrame]
+      const assets = [...request.references, ...request.firstFrame === null ? [] : [request.firstFrame],
+        ...request.lastFrame === null ? [] : [request.lastFrame]]
       return (async function* () {
         // Video and audio references can be tens of megabytes each, so they are read concurrently off the event loop.
         const references = await Promise.all(assets.map(async id => ({
@@ -270,6 +289,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
         yield* client.generateSegment({
           prompt: modelPrompt(request, labels, media),
           references,
+          ...served.openaiTask === undefined ? {} : { task: served.openaiTask },
           frameWidth: request.frameWidth,
           frameHeight: request.frameHeight,
           numFrames: request.numFrames,

@@ -32,12 +32,16 @@ export type PrimitiveId = keyof PrimitiveTypes
 
 /**
  * The generation tasks, each mapped to the primitive it runs on. `t2v`: a video from the prompt alone; `ref2v`: a video
- * from reference media and the prompt, optionally from a first frame. A plugin adds a task through declaration merging:
+ * from reference media and the prompt, optionally from a first frame; `fl2v`: a video between first and last images.
+ * `i2v`: a video beginning at one image; `l2v`: a video ending at one image. A plugin adds a task through declaration merging:
  * `declare module '@dv/models' { interface TaskMap { v2v: 'video' } }`.
  */
 export interface TaskMap {
   t2v: 'video'
   ref2v: 'video'
+  fl2v: 'video'
+  i2v: 'video'
+  l2v: 'video'
 }
 
 /** One generation task, such as `ref2v`. */
@@ -91,6 +95,8 @@ export interface RenderRequest {
   references: AssetId[]
   /** The asset the video starts from, or null. */
   firstFrame: AssetId | null
+  /** The asset the video ends at, or null. Separate from general reference media. */
+  lastFrame: AssetId | null
   frameWidth: number
   frameHeight: number
   numFrames: number

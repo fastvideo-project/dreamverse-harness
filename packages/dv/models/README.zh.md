@@ -50,7 +50,7 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 | 字段 | 含义 | 本包中的值 |
 | --- | --- | --- |
 | `modality` | 任务产生的输出：该任务所用原语的 `modality`。 | `video` |
-| `task` | 生成任务。`TaskMap` 声明每个任务名称，并把它映射到该任务所用的原语。 | `t2v`：只由提示词生成视频。`ref2v`：由参考媒体和提示词生成视频，可选首帧。 |
+| `task` | 生成任务。`TaskMap` 声明每个任务名称，并把它映射到该任务所用的原语。 | `t2v`：只由提示词生成视频。`ref2v`：由参考媒体和提示词生成视频，可选首帧。`i2v`：从一张首帧图像开始生成视频。`l2v`：向一张尾帧图像生成视频。`fl2v`：在首尾两张图像之间生成视频。这些端点任务使用提示词，不接受参考媒体。 |
 | `provider` | 提供方的名称。提供方插件设定该名称。 | 每个提供方插件自己设定名称，如 `fastvideo`。 |
 | `model` | 提供方为模型取的名称。 | 每个提供方插件自己设定名称，如 `fasth3`。 |
 
@@ -78,6 +78,7 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 | `prompt` | 文本提示词。 |
 | `references` | 参考素材的素材 ID，按输入顺序排列。没有参考素材的任务中该列表为空。 |
 | `firstFrame` | 视频起始图像的素材 ID，或 `null`。 |
+| `lastFrame` | 视频结束图像的素材 ID，或 `null`。 |
 | `frameWidth`、`frameHeight` | 以像素为单位的帧尺寸。消费方从 facts 的 `frameSizes` 中取得它。 |
 | `numFrames` | 帧数。消费方从 facts 的 `numFramesByDurationSec` 中取得它。 |
 | `seed` | 随机种子。 |

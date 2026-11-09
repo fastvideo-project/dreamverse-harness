@@ -10,8 +10,8 @@ export const inject = ['tools', 'attachments']
 export async function apply(ctx) {
   const modelFacts = {
     modelId: 'snapshot-video', aspectRatios: ['16:9'], resolutions: ['480p'],
-    minSegmentDurationSec: 5, maxSegmentDurationSec: 5, maxReferences: 0,
-    referenceMediaTypes: {}, frameSizes: { '16:9': { '480p': [832, 480] } },
+    minSegmentDurationSec: 5, maxSegmentDurationSec: 5, maxReferences: 2,
+    referenceMediaTypes: { image: { maxCount: 2 } }, frameSizes: { '16:9': { '480p': [832, 480] } },
     numFramesByDurationSec: { 5: 124 },
   }
   const requests = []
@@ -53,7 +53,11 @@ export async function apply(ctx) {
       const facts = await client.model()
       const events = []
       for await (const event of client.generateSegment({
-        prompt: 'A lake', frameWidth: 832, frameHeight: 480, numFrames: 124, references: [], returnLastFrame: false,
+        prompt: 'A lake', task: 'fl2va', frameWidth: 832, frameHeight: 480, numFrames: 124,
+        references: [
+          { mediaType: 'image', mimeType: 'image/png', bytes: Buffer.from('FIRST') },
+          { mediaType: 'image', mimeType: 'image/jpeg', bytes: Buffer.from('LAST') },
+        ], returnLastFrame: false,
       })) events.push(event.kind === 'chunk' ? { kind: event.kind, bytes: event.bytes.length } : event)
       let failure
       try {

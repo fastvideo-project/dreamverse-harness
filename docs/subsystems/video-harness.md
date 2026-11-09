@@ -183,6 +183,8 @@ When you add something, answer these questions in order:
 
 Then check that the owner's one sentence still holds, that no plugin name of another package is written into code, and that no dependency points against the direction of principle 5.
 
+The generic video task `fl2v` connects distinct `first_frame` and `last_frame` image inputs with a prompt, without general reference media. Any provider can register a catalog entry for this task; Shot render stores both roles and passes `RenderRequest.firstFrame` and `RenderRequest.lastFrame` separately. See [model requests](../../packages/dv/models/README.md#model-keys) and [Shot render](../../packages/dv/shot-render/README.md) for validation and provider requirements.
+
 ### Lookup table
 
 | To add                           | Do this                                                                                                                                                                                                                                                                          | Example                                           |

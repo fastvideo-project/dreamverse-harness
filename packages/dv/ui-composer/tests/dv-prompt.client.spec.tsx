@@ -143,7 +143,7 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
     return options.holdSend === true ? new Promise<void>((resolve) => { answers.push(resolve) }) : Promise.resolve()
   }
   const props = (shown: PromptCall, state: WireState): DvPromptProps => ({
-    projectId: 'p1', call: shown, state, operations: [...OPERATIONS, STILL], readOnly: options.readOnly === true, host,
+    projectId: 'p1', call: shown, state, operations: [...OPERATIONS.map(operation => operation.name !== 'shot.render' ? operation : { ...operation, inputs: { ...operation.inputs, first_frame: { type: 'image', description: 'First frame' }, last_frame: { type: 'image', description: 'Last frame' } } }), STILL], readOnly: options.readOnly === true, host,
     surface: options.surface ?? 'canvas',
     ...options.noSend === true || options.readOnly === true ? {} : { onSubmit },
   })
@@ -648,6 +648,31 @@ describe('the modes of an occurrence', () => {
     await sendOf(take, 'Render new version')
     expect([within(take).queryByRole('button', { name: 'Add asset' }), within(take).queryByTestId('dv-prompt-upload')]).toEqual([null, null])
     expect(box(take).getAttribute('contenteditable')).toBe('true')
+  })
+
+  it('picks and replaces distinct first/last roles for any catalog provider without changing the prompt or references', async () => {
+    const key = { modality: 'video', task: 'fl2v', provider: 'another-provider', model: 'keyframe-model' }
+    const model: WireModelEntry = { ...MODELS[0]!, ...key, schema: { inputs: {
+      first_frame: { min: 1, max: 1, media_types: { image: {} } }, last_frame: { min: 1, max: 1, media_types: { image: {} } },
+    } } }
+    const stored = { operation: 'shot.render', params: { ...key, prompt: 'A door opens' }, inputs: [{ role: 'reference', ref: 'ref.png' }] }
+    const { take, host, sent } = await mount(stored, { models: [model] })
+    fireEvent.click(await waitFor(() => within(take).getByRole('button', { name: 'Choose last frame' })))
+    act(() => { host.pickAssets?.mock.calls.at(-1)?.[1](['shot1-last.png', 'export-last.png']) })
+    await waitFor(() => { expect(within(take).getByRole('alert').textContent).toContain('Choose one endpoint image.') })
+    expect(take.querySelector('[data-reference-tile="shot1-last.png"]')).toBeNull()
+    act(() => { host.pickAssets?.mock.calls.at(-1)?.[1](['shot1-last.png']) })
+    fireEvent.click(within(take).getByRole('button', { name: 'Choose first frame' }))
+    act(() => { host.pickAssets?.mock.calls.at(-1)?.[1](['ref.png']) })
+    fireEvent.click(within(take).getByRole('button', { name: 'Choose last frame' }))
+    expect(host.pickAssets?.mock.calls.at(-1)?.[0]).toEqual(['shot1-last.png'])
+    act(() => { host.pickAssets?.mock.calls.at(-1)?.[1](['export-last.png']) })
+    await waitFor(() => { expect(take.querySelector('[data-reference-tile="export-last.png"]')?.textContent).toContain('Last frame') })
+    fireEvent.click(await sendOf(take, 'Render new version'))
+    await waitFor(() => { expect(sent).toEqual([{ ...stored, inputs: [
+      ...stored.inputs, { role: 'last_frame', ref: 'export-last.png' }, { role: 'first_frame', ref: 'ref.png' },
+    ] }]) })
+    expect(within(take).queryByRole('button', { name: 'Add asset' })).toBeNull()
   })
 
   it('imports uploaded files through the host and sends each as a reference in file order; a change without files imports nothing', async () => {

@@ -245,7 +245,10 @@ function modelEntry(ctx: Context, config: Config): ModelEntry {
     },
     async validateGenerationRequest(request: RenderRequest): Promise<string[]> {
       const { conditions } = await readFacts()
-      return fasth3OmniProblems(conditions, request, asset => ctx.dvAssetPool.mediaType(asset))
+      return [
+        ...request.lastFrame === null ? [] : ['It takes no last_frame input; this shot has 1.'],
+        ...fasth3OmniProblems(conditions, request, asset => ctx.dvAssetPool.mediaType(asset)),
+      ]
     },
     render(request: RenderRequest, signal?: AbortSignal): AsyncIterable<RenderStreamEvent> {
       // The server receives the references in input order, then the first frame.

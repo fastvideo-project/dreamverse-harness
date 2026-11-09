@@ -1,0 +1,7 @@
+# Pika H3 Flex text and keyframe prompts
+
+Read the configured model's schema for duration, aspect ratio and resolution. Task `t2v` uses text alone. Task `i2v` uses one `first_frame` image and no reference or last-frame input. Task `fl2v` uses distinct `first_frame` and `last_frame` image inputs, in that order, with no general reference media. Both frames are required. Task `l2v` uses one `last_frame` image and no reference or first-frame input. It requires a FastVideo server that supports the explicit Pika `l2va` task and maps its lone image to last-frame conditioning; older servers interpret a lone image as the first frame.
+
+Describe the scene, motion connecting the frames, camera movement, dialogue, soundscape and music. For a frame citation, write `@[first frame](dv:input/first_frame)` or `@[last frame](dv:input/last_frame)`. The provider replaces these with `<Picture 1>` and `<Picture 2>` respectively when both endpoints are present; a sole endpoint is `<Picture 1>`. The image inputs condition the endpoints even when the prompt does not cite them. Do not add the endpoint images to the reference input.
+
+Pika H3 Flex's text/keyframe pipeline and reference pipeline are separate server configurations. An unavailable catalog task means it is not enabled in the deployment. Both the BF16-attention and FP4-attention NVFP4 QAD releases support the model's text, first-frame, last-frame, first-and-last-frame and reference task families; choose precision in the server configuration.

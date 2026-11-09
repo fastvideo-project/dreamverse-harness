@@ -7,6 +7,7 @@
  */
 import { Service, type Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { GenerationSegmentError } from './errors.ts'
 import { generateSegment } from './generation-stream.ts'
 import { checkedResponse, generateOpenAI, OpenAIConfig } from './openai.ts'
 import type { ModelFacts, SegmentOutput, SegmentRequest } from './types.ts'
@@ -100,9 +101,11 @@ export class DvFastvideoGeneration extends Service {
    * `signal.reason`. Local OpenAI frame extraction exits and removes its temporary files before cancellation settles.
    * @param request - the segment inputs and an optional abort signal.
    * @returns last frame when requested, video start, video bytes and completion timings.
+   * @throws GenerationSegmentError when a native task selector is used without OpenAI transport.
    */
   generateSegment(request: SegmentRequest): AsyncIterable<SegmentOutput> {
     if (this.config.openai != null) return generateOpenAI(this.baseUrl, this.config.openai, request)
+    if (request.task !== undefined) throw new GenerationSegmentError('A native task selector requires the OpenAI transport', 'invalid_request')
     return generateSegment(new URL('/v1/streamv2/generate', this.baseUrl), request)
   }
 }

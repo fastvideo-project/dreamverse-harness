@@ -45,7 +45,9 @@ kind: "package-reference"
 
 每个任务还接受[生成客户端](../fastvideo-generation-client/README.zh.md#openai-api-configuration)描述的可选 `openai` 对象。设置显式部署事实和 ffmpeg 可执行文件即可使用 `/v1/model_info` 和 `/v1/videos/sync`；省略则使用 streaming_v2。OpenAI 参考保留素材 MIME，并按后端顺序编号：图片、视频、音频，视频声音在独立音频文件之前计数。
 
-`models` 列出 `fasth3` 以外的模型、模型不提供的任务（`fasth3`：`ref2v`、`t2v`），或没有任何任务的模型时，加载失败。本插件挂载期间，模型目录为每个配置的任务持有一个 provider 为 `fastvideo`、模型为 `fasth3` 的条目，如 `video/ref2v/fastvideo/fasth3`。同时挂载 DSH skill 注册表（`@deepseek-ai/dsh-skill`），智能体才能加载提示词 skill。
+`models` 列出 `fasth3` 或 `pika-h3-flex` 以外的模型、模型不提供的任务（`fasth3`：`ref2v`、`t2v`；`pika-h3-flex`：`t2v`、`i2v`、`l2v`、`fl2v`、`ref2v`），或没有任何任务的模型时，加载失败。本插件挂载期间，模型目录为每个配置的任务持有一个 provider 为 `fastvideo`、模型为配置名称的条目，如 `video/ref2v/fastvideo/fasth3`。同时挂载 DSH skill 注册表（`@deepseek-ai/dsh-skill`），智能体才能加载提示词 skill。
+
+模型 `pika-h3-flex` 的所有任务均要求 OpenAI 传输。在 `models.pika-h3-flex` 下明确配置所需任务；省略的任务不可用。`fl2v` 要求各一张 `first_frame` 和 `last_frame` 图像，不接受 `reference` 输入，并发送原生任务 `fl2va` 与有序的 `image_reference` 条目（先首帧，后尾帧）。`t2v` 发送不含媒体的 `t2va`。两者使用服务器的 Pika 文本/关键帧管线。精度和限制由部署事实决定，不由 harness 模型键决定。任务 `i2v` 和 `l2v` 以原生选择器 `i2va` 和 `l2va` 发送一张端点图像。这些选择器要求实现 Pika 端点任务选择的 FastVideo 后端；旧后端会拒绝它们或把单张图像解释为首帧。任务 `ref2v` 使用独立配置的参考管线，只接受参考媒体，且至少需要一张图像或一个视频；纯音频被拒绝。其选择器为 `ref2va`。
 
 -----
 

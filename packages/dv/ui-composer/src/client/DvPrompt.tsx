@@ -143,6 +143,13 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
   const entry = modelOf(models, params)
   const copy = { ...NEUTRAL_COPY, ...bar?.copy }
   const filter: CandidateFilter | null = entry === undefined ? null : bar?.candidates?.(entry.schema) ?? null
+  const frameRoles = (['first_frame', 'last_frame'] as const).filter((role) => {
+    const schema = entry?.schema
+    if (schema === null || typeof schema !== 'object' || Array.isArray(schema)) return false
+    const inputs: unknown = new Map(Object.entries(schema)).get('inputs')
+    return operation?.inputs[role] !== undefined && inputs !== null && typeof inputs === 'object'
+      && !Array.isArray(inputs) && Object.hasOwn(inputs, role)
+  })
   const offersReferences = catalog !== null && operation?.inputs['reference'] !== undefined && filter?.mediaTypes.length !== 0
   const editedKey = JSON.stringify(edited)
   // An answer or a failure of another call does not count for the edited call.
@@ -234,6 +241,21 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
           )
           : null}
       </div>}
+      {frameRoles.length === 0 || picker === undefined ? null : <div style={row}>
+        {frameRoles.map(role => <button
+          key={role} type="button" className="dv-canvas-btn" style={select}
+          onClick={() => {
+            picker(document.inputs.filter(input => input.role === role).map(input => input.ref), (refs) => {
+              if (refs.length > 1) {
+                dispatch({ type: 'failed', key: editedKey, message: pick('请选择一张端点图像。', 'Choose one endpoint image.') })
+                return
+              }
+              const ref = refs[0]
+              if (ref !== undefined) dispatch({ type: 'framePicked', role, ref })
+            })
+          }}
+        >{role === 'first_frame' ? pick('选择首帧', 'Choose first frame') : pick('选择尾帧', 'Choose last frame')}</button>)}
+      </div>}
       {renderFactorySlot('conversation.prompt', { model })}
       <div style={{ ...row, justifyContent: 'space-between' }}>
         <span style={row}>
@@ -281,6 +303,8 @@ function Tile({ input, view, cited, renderFactorySlot, onOpen, onRemove, onPin }
         {view.label}
         {version === null ? null : <span style={{ color: 'var(--dv-text-2)' }}>{`v${String(version.sent)}`}</span>}
       </button>
+      {input.role === 'first_frame' || input.role === 'last_frame'
+        ? <span>{input.role === 'first_frame' ? pick('首帧', 'First frame') : pick('尾帧', 'Last frame')}</span> : null}
       {cited ? null : <span style={{ color: 'var(--dv-text-3)' }}>{pick('未引用', 'uncited')}</span>}
       {onPin === undefined || version === null || version.newest === version.sent
         ? null

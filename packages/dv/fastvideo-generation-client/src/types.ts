@@ -44,6 +44,8 @@ export interface SegmentReference {
 
 /** The inputs of one segment generation request. */
 export interface SegmentRequest {
+  /** Native MiniMax-H3/Pika task selector for OpenAI servers; omit for inferred-task servers. */
+  task?: 't2va' | 'i2va' | 'l2va' | 'fl2va' | 'ref2va'
   prompt: string
   frameWidth: number
   frameHeight: number

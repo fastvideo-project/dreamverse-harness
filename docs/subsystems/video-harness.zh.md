@@ -183,6 +183,8 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 
 最后检查：主人的那一句话仍然成立；代码里没有写死另一个包的插件名；没有依赖违背原则 5 的方向。
 
+通用视频任务 `fl2v` 根据提示词连接独立的 `first_frame` 和 `last_frame` 图像输入，不使用普通参考媒体。任意提供方均可注册此任务的模型目录条目；Shot render 存储两个角色并分别传递 `RenderRequest.firstFrame` 和 `RenderRequest.lastFrame`。校验与提供方要求见[模型请求](../../packages/dv/models/README.zh.md#model-keys)和 [Shot render](../../packages/dv/shot-render/README.zh.md)。
+
 ### 查表
 
 | 要加的东西       | 做法                                                                                                                                                                                                    | 例子                         |

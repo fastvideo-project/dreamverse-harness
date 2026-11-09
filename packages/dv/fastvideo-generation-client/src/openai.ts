@@ -93,6 +93,7 @@ export async function* generateOpenAI(
   signal?.throwIfAborted()
   const body: Record<string, unknown> = {
     model: config.modelFacts.modelId,
+    ...(request.task === undefined ? {} : { task: request.task }),
     prompt: request.prompt,
     width: request.frameWidth,
     height: request.frameHeight,

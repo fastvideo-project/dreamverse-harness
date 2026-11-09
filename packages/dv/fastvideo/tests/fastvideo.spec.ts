@@ -124,13 +124,13 @@ const PLUGINS = {
  * @param tasks - the server URL of each task of `fasth3` to configure.
  * @returns the root context.
  */
-async function start(tasks: { ref2v?: string | FastVideo.TaskServer; t2v?: string | FastVideo.TaskServer }): Promise<Context> {
+async function start(tasks: Partial<Record<VideoTask, string | FastVideo.TaskServer>>, model = 'fasth3'): Promise<Context> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-fastvideo-'))
   const globals = globalThis as typeof globalThis & { __dvFastVideo?: typeof PLUGINS }
   globals.__dvFastVideo = PLUGINS
   const servers = Object.fromEntries(Object.entries(tasks).map(([task, server]) => [task,
     typeof server === 'string' ? { baseUrl: server } : server]))
-  const config = [`models: ${JSON.stringify({ fasth3: servers })}`]
+  const config = [`models: ${JSON.stringify({ [model]: servers })}`]
   const rows: string[] = []
   const plugins = [
     ['skills', 'SkillRegistry', []],
@@ -188,7 +188,7 @@ function importAsset(ctx: Context, bytes: Buffer, mime: string): AssetId {
 
 /** A render request with the given input assets and `extra` values. */
 function request(references: AssetId[], firstFrame: AssetId | null, extra: Record<string, unknown> = {}) {
-  return { prompt: '<Picture 1> smiles', references, firstFrame, frameWidth: 1344, frameHeight: 768, numFrames: 124, seed: 7, extra }
+  return { prompt: '<Picture 1> smiles', references, firstFrame, lastFrame: null, frameWidth: 1344, frameHeight: 768, numFrames: 124, seed: 7, extra }
 }
 
 /** The wire form of one reference: its media type and its base64 bytes. */
@@ -241,6 +241,8 @@ describe('dv-fastvideo', () => {
       ...request(references, firstFrame), prompt: firstFrame === null ? '<Picture 1> smiles' : '@[first frame](dv:input/first_frame) smiles',
     })
     expect(await check(referenceTask, [video, image], image)).toEqual([])
+    expect(await referenceTask.validateGenerationRequest({ ...request([image], null), lastFrame: image }))
+      .toEqual(['It takes no last_frame input; this shot has 1.'])
     expect(await referenceTask.validateGenerationRequest(request([image], image))).toEqual([
       'Its prompt does not cite the first frame; write "@[first frame](dv:input/first_frame) is the first frame of [Shot 1]".',
     ])
@@ -334,11 +336,97 @@ describe('dv-fastvideo', () => {
     const reference = await startFakeServer(REFERENCE_CAPABILITIES)
     const ctx = await start({ ref2v: reference.url })
     const server = { baseUrl: reference.url }
-    expect(() => { FastVideo.apply(ctx, { models: { wan: { t2v: server } } }) }).toThrow('dv-fastvideo serves no model "wan"; it serves: fasth3.')
+    expect(() => { FastVideo.apply(ctx, { models: { wan: { t2v: server } } }) }).toThrow('dv-fastvideo serves no model "wan"; it serves: fasth3, pika-h3-flex.')
     expect(() => { FastVideo.apply(ctx, { models: { fasth3: { reference: server } } }) })
       .toThrow('dv-fastvideo serves model "fasth3" for no task "reference"; its tasks: ref2v, t2v.')
     expect(() => { FastVideo.apply(ctx, { models: { fasth3: {} } }) }).toThrow('dv-fastvideo: model "fasth3" names no task.')
     expect(ctx.dvModels.list().map(entry => entry.task)).toEqual(['ref2v'])
+  })
+
+  it.skipIf(!existsSync(FFMPEG))('maps Pika endpoints to native fl2va in first/last order and preserves text mode', async () => {
+    const video = await sampleVideo(false)
+    const requests: Record<string, unknown>[] = []
+    const server = createServer((incoming, response) => {
+      if (incoming.url === '/v1/model_info') {
+        response.end(JSON.stringify({ served_model_name: 'pika-test' }))
+        return
+      }
+      const parts: Buffer[] = []
+      incoming.on('data', (part: Buffer) => { parts.push(part) })
+      incoming.once('end', () => {
+        requests.push(JSON.parse(Buffer.concat(parts).toString()) as Record<string, unknown>)
+        response.writeHead(200, { 'content-type': 'video/mp4' })
+        response.end(video)
+      })
+    })
+    cleanups.push(async () => {
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => { server.close(() => { resolve() }) })
+    })
+    server.listen(0, '127.0.0.1')
+    await once(server, 'listening')
+    const facts: ModelFacts = {
+      modelId: 'pika-test', aspectRatios: ['16:9'], resolutions: ['480p'], minSegmentDurationSec: 5, maxSegmentDurationSec: 5,
+      maxReferences: 2, referenceMediaTypes: { image: { maxCount: 2 } }, frameSizes: { '16:9': { '480p': [832, 480] } }, numFramesByDurationSec: { 5: 124 },
+    }
+    const config = { baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, openai: { modelFacts: facts, ffmpegPath: FFMPEG } }
+    const referenceConfig = { ...config, openai: { ...config.openai, modelFacts: { ...facts, maxReferences: 12,
+      referenceMediaTypes: { image: { maxCount: 9 }, video: { maxCount: 3 }, audio: { maxCount: 3 } } } } }
+    const ctx = await start({ fl2v: config, t2v: config, i2v: config, l2v: config, ref2v: referenceConfig }, 'pika-h3-flex')
+    const entry = ctx.dvModels.list().filter(isVideoEntry).find(item => item.task === 'fl2v')!
+    const text = ctx.dvModels.list().filter(isVideoEntry).find(item => item.task === 't2v')!
+    const first = importAsset(ctx, Buffer.from('FIRST'), 'image/png')
+    const last = importAsset(ctx, Buffer.from('LAST'), 'image/jpeg')
+    const audio = importAsset(ctx, Buffer.from('SOUND'), 'audio/mpeg')
+    const render = { ...request([], first), lastFrame: last, prompt: '@[start](dv:input/first_frame) to @[end](dv:input/last_frame)' }
+    expect(await entry.schema()).toMatchObject({ inputs: {
+      first_frame: { min: 1, max: 1, media_types: { image: {} } }, last_frame: { min: 1, max: 1, media_types: { image: {} } },
+    } })
+    expect(await entry.validateGenerationRequest(render)).toEqual([])
+    const limited = await start({ fl2v: { ...config, openai: { ...config.openai, modelFacts: { ...facts, maxReferences: 1 } } } }, 'pika-h3-flex')
+    const limitedEntry = limited.dvModels.list().filter(isVideoEntry)[0]!
+    const limitedFirst = importAsset(limited, Buffer.from('FIRST'), 'image/png')
+    const limitedLast = importAsset(limited, Buffer.from('LAST'), 'image/png')
+    expect(await limitedEntry.validateGenerationRequest({ ...render, firstFrame: limitedFirst, lastFrame: limitedLast }))
+      .toContain('The server accepts fewer keyframe images than this shot needs.')
+    expect(await entry.validateGenerationRequest({ ...render, firstFrame: null })).toContain('Its first_frame input needs at least 1 of type image; this shot has 0.')
+    expect(await entry.validateGenerationRequest({ ...render, lastFrame: null })).toContain('Its last_frame input needs at least 1 of type image; this shot has 0.')
+    expect(await entry.validateGenerationRequest({ ...render, lastFrame: audio })).toContain(`Its last_frame input takes assets of type image; asset ${audio} is of type audio.`)
+    expect(await entry.validateGenerationRequest({ ...render, references: [first] })).toContain('It takes no reference input; this shot has 1.')
+    await collect(entry.render(render))
+    expect(requests[0]).toMatchObject({ task: 'fl2va', prompt: '<Picture 1> to <Picture 2>', image_reference: [
+      { image_url: `data:image/png;base64,${Buffer.from('FIRST').toString('base64')}` },
+      { image_url: `data:image/jpeg;base64,${Buffer.from('LAST').toString('base64')}` },
+    ] })
+    await collect(text.render(request([], null)))
+    expect(requests[1]).toMatchObject({ task: 't2va' })
+    expect(requests[1]).not.toHaveProperty('image_reference')
+    const entries = ctx.dvModels.list().filter(isVideoEntry)
+    const imageEntry = entries.find(item => item.task === 'i2v')!
+    const lastEntry = entries.find(item => item.task === 'l2v')!
+    const referenceEntry = entries.find(item => item.task === 'ref2v')!
+    expect(await imageEntry.validateGenerationRequest(request([], first))).toEqual([])
+    expect(await lastEntry.validateGenerationRequest({ ...request([], null), lastFrame: last })).toEqual([])
+    await collect(imageEntry.render(request([], first)))
+    await collect(lastEntry.render({ ...request([], null), lastFrame: last }))
+    expect(requests[2]).toMatchObject({ task: 'i2va', image_reference: [{ image_url: `data:image/png;base64,${Buffer.from('FIRST').toString('base64')}` }] })
+    expect(requests[3]).toMatchObject({ task: 'l2va', image_reference: [{ image_url: `data:image/jpeg;base64,${Buffer.from('LAST').toString('base64')}` }] })
+    expect(await referenceEntry.schema()).toMatchObject({ inputs: {
+      reference: { min: 1, max: 12, media_types: { image: { max: 9 }, video: { max: 3 }, audio: { max: 3 } } },
+    } })
+    expect(await referenceEntry.validateGenerationRequest(request([first, audio], null))).toEqual([])
+    expect(await referenceEntry.validateGenerationRequest(request([audio], null)))
+      .toContain('Its reference input needs at least one image or video; audio alone is insufficient.')
+    expect(await referenceEntry.validateGenerationRequest(request([first], first)))
+      .toContain('It takes no first_frame input; this shot has 1.')
+    await collect(referenceEntry.render(request([first, audio], null)))
+    expect(requests[4]).toMatchObject({ task: 'ref2va', image_reference: [{ image_url: `data:image/png;base64,${Buffer.from('FIRST').toString('base64')}` }] })
+
+    expect(await text.validateGenerationRequest(render)).toContain('It takes no last_frame input; this shot has 1.')
+    expect(() => { FastVideo.apply(ctx, { models: { 'pika-h3-flex': { fl2v: { baseUrl: config.baseUrl } } } }) }).toThrow('requires the OpenAI transport')
+    const mounted = [...ctx.loader.entries()].find(candidate => candidate.options.id === 'dv-fastvideo')
+    await mounted?.fiber?.dispose()
+    expect(ctx.dvModels.list()).toEqual([])
   })
 
   it.skipIf(!existsSync(FFMPEG))('renders through the OpenAI API and numbers references in the backend media order', async () => {
@@ -405,7 +493,7 @@ describe('dv-fastvideo', () => {
     const [width, height] = facts.frameSizes[facts.aspectRatios[0] ?? '']?.[facts.resolutions[0] ?? ''] ?? [0, 0]
     const events = await collect(fasth3(ctx, 'ref2v').render({
       prompt: '<Picture 1> is a man speaking to the camera in a bright office, slow push-in, natural light.',
-      references: [importAsset(ctx, readFileSync(REAL_REFERENCE), 'image/jpeg')], firstFrame: null, frameWidth: width, frameHeight: height,
+      references: [importAsset(ctx, readFileSync(REAL_REFERENCE), 'image/jpeg')], firstFrame: null, lastFrame: null, frameWidth: width, frameHeight: height,
       numFrames: facts.numFramesByDurationSec['5'] ?? 0, seed: 1, extra: {},
     }))
     expect(events.map(event => event.kind)).toEqual(expect.arrayContaining(['last_frame', 'video_start', 'chunk', 'done']))

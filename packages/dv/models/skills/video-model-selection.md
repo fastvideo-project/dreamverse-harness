@@ -5,6 +5,8 @@ Each shot renders with one video model. Each video model has a key of four field
 ## Procedure
 
 1. Find the task of the shot.
+   - Use `i2v` when the shot begins at one first-frame image, or `l2v` when it ends at one last-frame image. Neither accepts reference media.
+   - Use `fl2v` when the shot must connect explicit first and last images. Both endpoint image inputs are required; general reference media are not accepted.
    - Use `t2v` when the shot has only a prompt.
    - Use `ref2v` when the shot has reference media and a prompt. A `ref2v` shot can also have a first frame.
 2. If the user named a model, call `dv_models_list` with the task of the shot. Use the entry of that model. If that model has no entry for the task, tell the user. Go to step 9.
