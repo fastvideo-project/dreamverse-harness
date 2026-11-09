@@ -203,7 +203,7 @@ export function ViewportEditor(props: PropsRuntime<'dv.canvas.editor'> & {
 
   const state = live.linked.state
   return (
-    <div ref={live.root} data-testid="dv-blender-node-editor" style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%', padding: 12, boxSizing: 'border-box' }}>
+    <div ref={live.root} data-testid="dv-blender-node-editor" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div role="toolbar" aria-label={t('视图', 'Views')} style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
         {PRESETS.map(([preset, zh, en]) => (
           <button key={preset} type="button" disabled={!navigable} onClick={() => { source.navigate({ action: 'preset', preset }) }}>{t(zh, en)}</button>
@@ -212,9 +212,10 @@ export function ViewportEditor(props: PropsRuntime<'dv.canvas.editor'> & {
         <button type="button" disabled={!navigable} onClick={() => { source.navigate({ action: 'frame', target: 'all' }) }}>{t('显示全部', 'Frame all')}</button>
         <button type="button" disabled={!navigable} onClick={() => { source.navigate({ action: 'frame', target: 'selected' }) }}>{t('显示所选', 'Frame selected')}</button>
       </div>
+      {/* The canvas puts the editor body in a box of its content's height, so the surface sizes itself at 16:9. */}
       <div
         ref={view} data-testid="dv-blender-node-surface"
-        style={{ position: 'relative', flex: 1, minHeight: 0, borderRadius: 'var(--dv-radius-lg, 8px)', overflow: 'hidden', background: 'var(--dv-media-bg, #111)', cursor: navigable ? 'grab' : 'default', touchAction: 'none' }}
+        style={{ position: 'relative', width: '100%', aspectRatio: '16 / 9', borderRadius: 'var(--dv-radius-lg, 8px)', overflow: 'hidden', background: 'var(--dv-media-bg, #111)', cursor: navigable ? 'grab' : 'default', touchAction: 'none' }}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
         onContextMenu={(event) => { event.preventDefault() }}
       >
