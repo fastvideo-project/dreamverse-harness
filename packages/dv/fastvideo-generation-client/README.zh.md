@@ -1,5 +1,5 @@
 ---
-description: "FastVideo streaming_v2 生成后端的客户端：所服务模型的事实，以及带服务器发送事件和错误的单个流式片段请求。"
+description: "FastVideo OpenAI 和 streaming_v2 生成 API 客户端：部署事实、带类型的参考、视频事件与取消。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包访问 FastVideo 生成后端。它读取所服务模型的事实（时长、帧尺寸、每种媒体类型的参考上限），并为每个请求流式传输一个片段：先是末帧，然后是分块的 fragmented MP4，最后是耗时。后端错误变为带类型的错误，中止请求会立即取消它。后端在请求之间不保留状态，因此调用方每次请求都要发送所有参考。
+使用本包通过 FastVideo 生成视频片段。返回完整 MP4 的服务器选择 OpenAI API；保留默认配置则使用 streaming_v2。两者都提供末帧、视频和耗时事件。请求携带所有参考；取消会关闭 HTTP 请求，但后端可能继续完成已经开始的生成。
 
 ## 目录
 
@@ -39,13 +39,34 @@ kind: "package-reference"
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `baseUrl` | 必填 | 生成后端的 HTTP 基础 URL |
+| `openai` | `null` | 设置下述 OpenAI 部署配置；省略则使用 streaming_v2 |
 
-### 服务
+<a id="openai-api-configuration"></a>
+### OpenAI API 配置
+
+对于提供 `GET /v1/model_info` 和 `POST /v1/videos/sync` 的服务器，在 `baseUrl` 同级设置 `openai`。`modelFacts` 填写已经验证的部署限制，`ffmpegPath` 指向已安装的 ffmpeg。`model()` 在缓存事实前检查 `served_model_name` 是否等于 `modelFacts.modelId`。不匹配时失败，避免公布其他模型的信息。
+
+| `openai` 内的字段 | 默认值 | 含义 |
+| --- | --- | --- |
+| `ffmpegPath` | 必填 | 本地提取末帧的可执行文件；`returnLastFrame` 为 false 时不用 |
+| `modelFacts.modelId` | 必填 | 精确的服务模型别名 |
+| `modelFacts.aspectRatios` / `resolutions` | 必填 | 模型目录支持的选项 |
+| `modelFacts.minSegmentDurationSec` / `maxSegmentDurationSec` | 必填 | 包含端点的整数秒时长范围 |
+| `modelFacts.maxReferences` | 必填 | 包含首帧的参考总数上限 |
+| `modelFacts.referenceMediaTypes` | 必填 | 各类型带 `maxCount` 的对象 |
+| `modelFacts.frameSizes` | 必填 | 宽高比到分辨率到 `[width, height]` 的映射 |
+| `modelFacts.numFramesByDurationSec` | 必填 | 整数秒时长到帧数的映射 |
+
+`generateSegment` 发送 `model`、`prompt`、`width`、`height`、`num_frames` 和可选的 `seed`。它把参考分组为 `image_reference`、`video_reference` 和 `audio_reference`，各 `*_url` 中使用带类型的 data URI。设置每个参考的 `mimeType` 可保留 JPEG、MPEG 音频等格式；省略时使用 `<mediaType>/octet-stream`。其他媒体类型和不匹配的 MIME 在发送 HTTP 前失败。
+
+响应必须带 `video/*` 内容类型。客户端缓存完整 MP4，可用 ffmpeg 提取末帧 PNG，然后产出与 streaming_v2 相同种类的事件。它把 `X-Inference-Time-S` 映射为 `done.timings.inference_s`。HTTP 400 或 422 变为带 `invalid_request` 的 `GenerationSegmentError`；其他 HTTP 失败保留状态和受限长度的后端消息。Python traceback 仅保留最后的异常行；超过 2,048 字符的消息会截断，完整详情留在服务器日志中。中止会在本地 ffmpeg 退出、临时文件删除后，以调用方的原因拒绝。
+
+### Streaming API 服务
 
 - `model()` 读取 `GET /v1/streamv2/capabilities` 并缓存第一次成功的结果。它补充取自 `frame_sizes` 键的宽高比与分辨率。
 - `generateSegment(request)` 发送一个 `POST /v1/streamv2/generate`，并按到达顺序产出 `last_frame`、`video_start`、`chunk` 和 `done` 输出。HTTP 400 和 `error` 事件以 `GenerationSegmentError(message, errorType)` 拒绝，其中 `errorType` 是后端的错误码。在 `done` 之前结束的流以 `Error` 拒绝。离开迭代或中止 `request.signal` 会取消 HTTP 请求；中止以 `signal.reason` 拒绝。
 
-### 后端 API
+### Streaming 后端 API
 
 API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/streamv2/capabilities` 返回模型的事实：
 
@@ -89,11 +110,12 @@ API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/streamv2
 <details>
 <summary>实现细节——点击展开</summary>
 
-该服务的每次调用都使用 `fetch`。`generateSegment` 逐行解析服务器发送事件流，并在每个事件完整时立即产出对应输出，因此调用方可以在后端仍在生成时转发视频分块。
+两种传输都使用 `fetch`。OpenAI 传输缓存一个 MP4，仅在本地提取末帧期间持有临时文件。Streaming 传输不使用本地媒体文件。`generateSegment` 逐行解析服务器发送事件流，并在每个事件完整时立即产出对应输出，因此调用方可以在后端仍在生成时转发视频分块。
 
 | 文件 | 内容 |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `dvFastvideoGeneration` 服务：模型事实与片段请求 |
+| [`src/openai.ts`](src/openai.ts) | OpenAI 部署验证、同步 MP4 响应和本地末帧提取 |
 | [`src/generation-stream.ts`](src/generation-stream.ts) | 请求体与事件流解析器 |
 | [`src/types.ts`](src/types.ts) | 模型事实、带类型参考的片段请求与片段输出 |
 | [`src/errors.ts`](src/errors.ts) | 片段错误 |
@@ -118,7 +140,7 @@ API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/streamv2
 
 #### 模型看到什么
 
-视频模型收到 `generateSegment` 构建的请求体：保持不变的 `prompt`、按调用方顺序由带 base64 字节的 `{media_type, data}` 条目组成的 `references`、`width`、`height`、`num_frames`、仅在调用方设置时才发送的 `seed`，以及 `return_last_frame`。模型按列表顺序为每种媒体类型分别编号，调用方的提示词使用模型的编号指称这些参考，例如第一张图片为 `Picture 1`。
+对于 streaming_v2，视频模型收到 `generateSegment` 构建的请求体：保持不变的 `prompt`、按调用方顺序由带 base64 字节的 `{media_type, data}` 条目组成的 `references`、`width`、`height`、`num_frames`、仅在调用方设置时才发送的 `seed`，以及 `return_last_frame`。模型按列表顺序为每种媒体类型分别编号，调用方的提示词使用模型的编号指称这些参考，例如第一张图片为 `Picture 1`。 使用 OpenAI 时，模型收到相同的提示词和画面参数、配置的模型别名，以及独立的图片、视频和音频列表。标签必须遵循后端顺序；`@dv/fastvideo` 在替换引用时处理这一点。本客户端不添加任何参考或首帧标签。
 
 #### Token 影响
 
@@ -133,6 +155,8 @@ API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/streamv2
 <a id="known-limitations-and-deferred-work"></a>
 
 - **模型事实从不刷新**——`model()` 在插件生命周期内保留第一次成功的能力结果。若后端以另一个模型重启，harness 会一直保留旧事实，直到插件重新加载。
+- **显式 OpenAI 限制**：该 API 没有能力端点。操作者必须让配置的事实与部署的权重及采样设置一致。
+- **OpenAI 完整响应输出**：没有逐步预览；完整 MP4 保留在内存中，请求末帧需要本地 ffmpeg。
 - **没有请求截止时间**——客户端不为能力或生成请求设置超时。停止发送事件的后端会一直占用请求，直到调用方中止它。
 
 <a id="dev-note"></a>

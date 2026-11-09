@@ -1,5 +1,5 @@
 ---
-description: "DreamVerse 面向本地 FastVideo streaming_v2 服务器上视频模型的 provider 插件 fastvideo：把配置的模型 fasth3 按任务 ref2v（FastH3 Ref2VA）和 t2v（FastH3 8-Step V2）各注册一个 dvModels 模型目录条目，并附带每个条目的输入与额外参数 schema、请求校验和提示词 skill。"
+description: "DreamVerse 面向本地 FastVideo 服务器上视频模型的 provider 插件 fastvideo：把配置的模型 fasth3 按任务 ref2v（FastH3 Ref2VA）和 t2v（FastH3 8-Step V2）各注册一个 dvModels 模型目录条目，并附带每个条目的输入与额外参数 schema、请求校验和提示词 skill。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包以本地 FastVideo streaming_v2 服务器上的视频模型渲染镜头。函数插件 `dv-fastvideo` 是 [`@dv/models`](../models/README.zh.md) 模型目录的 provider `fastvideo`：它为 `models` 配置列出的每个模型、为配置给它指定了服务器的每个任务注册一个目录条目，每个任务一个服务器。它为任务 `ref2v`（FastH3 Ref2VA：提示词、参考图片、视频和音频，以及可选的首帧）和任务 `t2v`（FastH3 8-Step V2：只有提示词）提供 `fasth3`（以 FastH3 形式提供的 MiniMax H3）。DSH skill 注册表挂载期间，它为每个配置的条目注册提示词 skill。
+使用本包以本地 FastVideo 服务器上的视频模型渲染镜头。函数插件 `dv-fastvideo` 是 [`@dv/models`](../models/README.zh.md) 模型目录的 provider `fastvideo`：它为 `models` 配置列出的每个模型、为配置给它指定了服务器的每个任务注册一个目录条目，每个任务一个服务器。它为任务 `ref2v`（FastH3 Ref2VA：提示词、参考图片、视频和音频，以及可选的首帧）和任务 `t2v`（FastH3 8-Step V2：只有提示词）提供 `fasth3`（以 FastH3 形式提供的 MiniMax H3）。DSH skill 注册表挂载期间，它为每个配置的条目注册提示词 skill。
 
 ## 目录
 
@@ -41,7 +41,9 @@ kind: "package-reference"
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `models` | 必填 | 要注册的模型（按模型名），以及每个模型要为哪些任务提供（按任务 ID）；未列出的模型或任务不会注册 |
-| `models.<model>.<task>.baseUrl` | 必填 | 为该任务渲染该模型的 FastVideo streaming_v2 服务器的 HTTP 基础 URL，如 `http://127.0.0.1:8029` |
+| `models.<model>.<task>.baseUrl` | 必填 | 为该任务渲染该模型的 FastVideo 服务器的 HTTP 基础 URL，如 `http://127.0.0.1:8029` |
+
+每个任务还接受[生成客户端](../fastvideo-generation-client/README.zh.md#openai-api-configuration)描述的可选 `openai` 对象。设置显式部署事实和 ffmpeg 可执行文件即可使用 `/v1/model_info` 和 `/v1/videos/sync`；省略则使用 streaming_v2。OpenAI 参考保留素材 MIME，并按后端顺序编号：图片、视频、音频，视频声音在独立音频文件之前计数。
 
 `models` 列出 `fasth3` 以外的模型、模型不提供的任务（`fasth3`：`ref2v`、`t2v`），或没有任何任务的模型时，加载失败。本插件挂载期间，模型目录为每个配置的任务持有一个 provider 为 `fastvideo`、模型为 `fasth3` 的条目，如 `video/ref2v/fastvideo/fasth3`。同时挂载 DSH skill 注册表（`@deepseek-ai/dsh-skill`），智能体才能加载提示词 skill。
 
@@ -50,7 +52,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`src/index.ts` 中的表 `SERVED` 把本插件能提供的每个模型映射到该模型自己的文件声明的任务，例如 `src/fasth3.ts` 中的 `FASTH3`：每个任务的条目描述（模型的长处和短处）、接受的输入、额外参数 schema、参考标签和提示词 skill。`fasth3` 在任务 `ref2v` 下接受至少一个媒体类型为 `image`、`video` 或 `audio` 的 `reference` 资产和一个可选的、媒体类型为 `image` 的 `first_frame`，在任务 `t2v` 下不接受任何输入；两个任务都没有额外参数。任务 `ref2v` 的服务器提供 FastH3 Ref2VA，任务 `t2v` 的服务器提供 FastH3 8-Step V2（`FastVideo/FastVideo-FastH3-8-Step-V2`）。本插件为每个配置的任务注册一个条目，模态为 `video`，带该任务、provider `fastvideo` 和模型名，并在隔离的 `dvFastvideoGeneration` 作用域中创建一个 `@dv/fastvideo-generation-client` 的 streaming_v2 客户端，所以宿主不会多出 `dvFastvideoGeneration` 服务。`facts()` 从该任务的服务器读取 `GET /v1/streamv2/capabilities`，报告服务器的模型 ID、宽高比、分辨率、画面尺寸、时长范围和帧数。输入上限来自服务器的 `max_references` 和每种媒体类型的 `max_count`。服务器把首帧算作一个参考，所以在任务 `ref2v` 下，`reference` 输入的总数比服务器的总数少一，图片数比服务器的图片数少一（`first_frame` 接受的每种媒体类型都少一），`first_frame` 最多一个资产，服务器未列出的已声明媒体类型上限为 0；任务 `t2v` 没有输入。`schema()` 根据同一份 capabilities 报告 agent 需要的时长范围（带 `min` 和 `max` 的 `duration_sec`）、`aspect_ratios` 和 `resolutions`，以及每个已声明输入的 `min`、总数 `max`、媒体类型及每种类型的 `max`，再加上额外参数 schema；对于一台支持 12 个参考、9 张图片、3 个视频和 3 个音频文件的服务器，任务 `ref2v` 的 `inputs` 和 `extra` 是 `{"inputs": {"reference": {"min": 1, "max": 11, "media_types": {"image": {"max": 8}, "video": {"max": 3}, "audio": {"max": 3}}}, "first_frame": {"min": 0, "max": 1, "media_types": {"image": {}}}}, "extra": {}}`。`validateGenerationRequest(request)` 按该任务声明的输入和它自己服务器的上限检查请求：拒绝放在该任务未声明的输入里的素材、少于输入 `min` 的素材、媒体类型（用 `dvAssetPool.mediaType` 读取）不在输入声明内的素材，以及某个输入的素材总数或某一媒体类型的数量超过上限的情况。随后检查 `extra`：该任务不接受的参数名用一句列出该任务额外参数的话拒绝，已知参数名的值用 `@deepseek-ai/dsh-tools` 的 `validateArgs` 按其 schema 检查。声明了 `promptProblems` 的任务还按模型自己的提示词规则检查提示词：`fasth3` 拒绝有首帧、但提示词没有以 `dv:input/first_frame` 引用首帧的请求，因为只有提示词写明时，H3 才把一张图当作首帧。每个问题一句话。`render(request, signal)` 按每个输入资产 ID 从 `dvAssetPool` 读取媒体类型和字节，向该任务的服务器发送一个 `POST /v1/streamv2/generate`，参考按输入顺序在前，首帧在后，每个都带媒体类型和 base64 字节，向服务器请求最后一帧，并传递 `signal` 以取消 HTTP 请求。发送提示词之前，`render` 把每个参考的引用（`@[<label>](dv:asset/<AssetId>)`，用 `@dv/project` 的 `parsePromptCitations` 读取）和首帧的引用（`dv:input/first_frame`）换成所服务模型给这个媒体的标签。`SERVED` 中该任务的 `assignReferenceLabels` 按服务器接收的顺序（先是按输入顺序的参考，然后是首帧）接收请求的媒体及其媒体类型和是否有声音，为每个媒体返回一个标签，模型不命名的媒体返回 null。`assignFasth3ReferenceLabels` 把第 k 张图片标为 `<Picture k>`，把第 k 个视频标为 `<Video k>`，给每个音频文件一个 `<Audio N>`，所以首帧是参考图片之后的那张图片。MiniMax H3 还会给带声音的视频一个 `<Audio N>`，和音频文件在同一个序列里，所以带声音的视频在它之后的音频文件之前占一个音频编号。媒体中有音频文件时，`render` 用 `dvAssetPool.hasAudio` 读取每个参考视频有没有声音。没有标签的引用换成引用自己的标签。每个条目通过 `ctx.effect` 注册，并以 `promptSkill` 携带其任务的提示词 skill，skill 文件的文本作为 `content`。条目存在且 skill 注册表挂载期间，模型目录注册该 skill，所以插件或注册表移除时 skill 消失。
+`src/index.ts` 中的表 `SERVED` 把本插件能提供的每个模型映射到该模型自己的文件声明的任务，例如 `src/fasth3.ts` 中的 `FASTH3`：每个任务的条目描述（模型的长处和短处）、接受的输入、额外参数 schema、参考标签和提示词 skill。`fasth3` 在任务 `ref2v` 下接受至少一个媒体类型为 `image`、`video` 或 `audio` 的 `reference` 资产和一个可选的、媒体类型为 `image` 的 `first_frame`，在任务 `t2v` 下不接受任何输入；两个任务都没有额外参数。任务 `ref2v` 的服务器提供 FastH3 Ref2VA，任务 `t2v` 的服务器提供 FastH3 8-Step V2（`FastVideo/FastVideo-FastH3-8-Step-V2`）。本插件为每个配置的任务注册一个条目，模态为 `video`，带该任务、provider `fastvideo` 和模型名，并在隔离的 `dvFastvideoGeneration` 作用域中创建一个 `@dv/fastvideo-generation-client` 的客户端，所以宿主不会多出 `dvFastvideoGeneration` 服务。`facts()` 读取所选客户端传输的模型事实，报告服务器的模型 ID、宽高比、分辨率、画面尺寸、时长范围和帧数。输入上限来自服务器的 `max_references` 和每种媒体类型的 `max_count`。服务器把首帧算作一个参考，所以在任务 `ref2v` 下，`reference` 输入的总数比服务器的总数少一，图片数比服务器的图片数少一（`first_frame` 接受的每种媒体类型都少一），`first_frame` 最多一个资产，服务器未列出的已声明媒体类型上限为 0；任务 `t2v` 没有输入。`schema()` 根据同一份 capabilities 报告 agent 需要的时长范围（带 `min` 和 `max` 的 `duration_sec`）、`aspect_ratios` 和 `resolutions`，以及每个已声明输入的 `min`、总数 `max`、媒体类型及每种类型的 `max`，再加上额外参数 schema；对于一台支持 12 个参考、9 张图片、3 个视频和 3 个音频文件的服务器，任务 `ref2v` 的 `inputs` 和 `extra` 是 `{"inputs": {"reference": {"min": 1, "max": 11, "media_types": {"image": {"max": 8}, "video": {"max": 3}, "audio": {"max": 3}}}, "first_frame": {"min": 0, "max": 1, "media_types": {"image": {}}}}, "extra": {}}`。`validateGenerationRequest(request)` 按该任务声明的输入和它自己服务器的上限检查请求：拒绝放在该任务未声明的输入里的素材、少于输入 `min` 的素材、媒体类型（用 `dvAssetPool.mediaType` 读取）不在输入声明内的素材，以及某个输入的素材总数或某一媒体类型的数量超过上限的情况。随后检查 `extra`：该任务不接受的参数名用一句列出该任务额外参数的话拒绝，已知参数名的值用 `@deepseek-ai/dsh-tools` 的 `validateArgs` 按其 schema 检查。声明了 `promptProblems` 的任务还按模型自己的提示词规则检查提示词：`fasth3` 拒绝有首帧、但提示词没有以 `dv:input/first_frame` 引用首帧的请求，因为只有提示词写明时，H3 才把一张图当作首帧。每个问题一句话。`render(request, signal)` 按每个输入资产 ID 从 `dvAssetPool` 读取媒体类型和字节，通过所选传输向该任务的服务器发送一个生成请求，参考按输入顺序在前，首帧在后，每个都带媒体类型和 base64 字节，向服务器请求最后一帧，并传递 `signal` 以取消 HTTP 请求。发送提示词之前，`render` 把每个参考的引用（`@[<label>](dv:asset/<AssetId>)`，用 `@dv/project` 的 `parsePromptCitations` 读取）和首帧的引用（`dv:input/first_frame`）换成所服务模型给这个媒体的标签。`SERVED` 中该任务的 `assignReferenceLabels` 按服务器接收的顺序（先是按输入顺序的参考，然后是首帧）接收请求的媒体及其媒体类型和是否有声音，为每个媒体返回一个标签，模型不命名的媒体返回 null。`assignFasth3ReferenceLabels` 把第 k 张图片标为 `<Picture k>`，把第 k 个视频标为 `<Video k>`，给每个音频文件一个 `<Audio N>`，所以首帧是参考图片之后的那张图片。MiniMax H3 还会给带声音的视频一个 `<Audio N>`，和音频文件在同一个序列里，所以带声音的视频在它之后的音频文件之前占一个音频编号。媒体中有音频文件时，`render` 用 `dvAssetPool.hasAudio` 读取每个参考视频有没有声音。没有标签的引用换成引用自己的标签。每个条目通过 `ctx.effect` 注册，并以 `promptSkill` 携带其任务的提示词 skill，skill 文件的文本作为 `content`。条目存在且 skill 注册表挂载期间，模型目录注册该 skill，所以插件或注册表移除时 skill 消失。
 
 | 文件 | 内容 |
 | --- | --- |
@@ -60,7 +62,7 @@ kind: "package-reference"
 | [`src/fasth3.ts`](src/fasth3.ts) | `FASTH3`（本插件为 MiniMax H3 提供的任务），以及 `assignFasth3ReferenceLabels`：分配 MiniMax H3 的参考标签 |
 | [`skills/fasth3-reference-prompting.md`](skills/fasth3-reference-prompting.md) | `fasth3` 在任务 `ref2v` 下的 skill 正文：DreamVerse 对接说明，后接原样复制的 MiniMax-H3 官方全参考提示词指南 |
 | [`skills/fasth3-text-prompting.md`](skills/fasth3-text-prompting.md) | `fasth3` 在任务 `t2v` 下的 skill 正文：DreamVerse 对接说明，后接原样复制的 MiniMax-H3 官方提示词指南（T2VA / I2VA / FL2VA / L2VA） |
-| [`tests/fastvideo.spec.ts`](tests/fastvideo.spec.ts) | 用 Loader 组装 skill 注册表、Project、ffmpeg、资产池、模型目录和本插件，每个任务对接一台假的 streaming_v2 服务器；一个可选测试对 `DV_FASTVIDEO_TEST_URL` 指定的服务器做真实渲染 |
+| [`tests/fastvideo.spec.ts`](tests/fastvideo.spec.ts) | 用 Loader 组装 skill 注册表、Project、ffmpeg、资产池、模型目录和本插件，对接假的 streaming_v2 和 OpenAI HTTP 后端；一个可选测试对 `DV_FASTVIDEO_TEST_URL` 指定的服务器做真实渲染 |
 
 -----
 
@@ -69,7 +71,7 @@ kind: "package-reference"
 
 - [`@dv/models`](../models/README.zh.md)：本插件注册进的模型目录。
 - [`@dv/shot-render`](../shot-render/README.zh.md)：consumer，提供工具 `dv_shot_render`。
-- [`@dv/fastvideo-generation-client`](../fastvideo-generation-client/README.zh.md)：streaming_v2 客户端。
+- [`@dv/fastvideo-generation-client`](../fastvideo-generation-client/README.zh.md)：生成传输。
 - [`dsh-tool-skill`](../../skill/tool-skill/README.zh.md)：智能体如何看到 skill 目录并加载 skill。
 
 -----

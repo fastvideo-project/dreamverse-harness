@@ -1,9 +1,9 @@
 /**
- * Provider plugin `fastvideo` of DreamVerse for models served by local FastVideo streaming_v2 servers. It registers into
+ * Provider plugin `fastvideo` of DreamVerse for models served by local FastVideo servers. It registers into
  * `ctx.dvModels` one entry per model that its `models` config names and per task the config gives a server for; a model
- * or task the config leaves out is not registered. Each task of a model is served by its own server: the streaming_v2
- * client of `@dv/fastvideo-generation-client` sends each render as one `POST /v1/streamv2/generate`, with the references
- * first and the first frame after them, each as its media type and bytes read from `dvAssetPool`, and with each citation
+ * or task the config leaves out is not registered. Each task of a model is served by its own server. The configured
+ * transport of `@dv/fastvideo-generation-client` sends each render with MIME types and bytes from `dvAssetPool`.
+ * It includes references and an optional first frame, with each citation
  * of a reference in the prompt replaced by the label that the served model gives the reference. Each entry describes
  * in `schema()` the durations, aspect ratios and resolutions of its server and the inputs and `extra` parameters it
  * accepts, and checks the inputs and `extra` in `validateGenerationRequest`. Each entry carries the prompt skill of its
@@ -19,18 +19,16 @@ import type { Context } from '@deepseek-ai/cordis'
 import { validateArgs, type ParameterSchemaSpec } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
-import { DvFastvideoGeneration, type ModelFacts } from '@dv/fastvideo-generation-client'
+import { DvFastvideoGeneration, type Config as GenerationConfig, type ModelFacts } from '@dv/fastvideo-generation-client'
 import type {} from '@dv/asset-pool'
 import type { ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent, TaskId } from '@dv/models'
 import { FASTH3 } from './fasth3.ts'
 import { modelPrompt } from './reference-labels.ts'
+import type { AssignReferenceLabels } from './reference-labels.ts'
 import type { InputRole, MediaType, ServedTask, TaskInputs } from './types.ts'
 
-/** One task of one model: the streaming_v2 server that renders it. */
-export interface TaskServer {
-  /** HTTP base URL of the FastVideo streaming_v2 server, such as `http://127.0.0.1:8029`. */
-  baseUrl: string
-}
+/** One task of one model: the generation server and transport that render it. */
+export type TaskServer = GenerationConfig
 
 /** `dv-fastvideo` configuration. */
 export interface Config {
@@ -40,9 +38,7 @@ export interface Config {
 
 /** Loader validation. */
 export const Config: z<Config> = z.object({
-  models: z.dict(z.dict(z.object({
-    baseUrl: z.string().required(),
-  }))).required(),
+  models: z.dict(z.dict(DvFastvideoGeneration.Config)).required(),
 })
 
 /** The provider name of every entry this plugin registers. */
@@ -195,8 +191,20 @@ function extraProblems(model: string, task: TaskId, schema: ParameterSchemaSpec,
   return validateArgs(schema, extra).map(message => `extra${message.startsWith('.') ? '' : '.'}${message}`)
 }
 
+/** OpenAI sends images, videos and audio in separate lists; return labels at the caller's original positions. */
+function openAIReferenceLabels(assign: AssignReferenceLabels): AssignReferenceLabels {
+  return (media) => {
+    const order = ['image', 'video', 'audio']
+    const ordered = media.map((item, index) => ({ item, index }))
+      .sort((a, b) => order.indexOf(a.item.mediaType) - order.indexOf(b.item.mediaType))
+    const labels = assign(ordered.map(({ item }) => item))
+    const byPosition = new Map(ordered.map(({ index }, position) => [index, labels[position] ?? null]))
+    return media.map((_, index) => byPosition.get(index) ?? null)
+  }
+}
+
 /**
- * A catalog entry for one configured model and task, rendered through one streaming_v2 client of the task's server.
+ * A catalog entry for one configured model and task, rendered through one generation client of the task's server.
  * @param ctx - the plugin context; the client lives in an isolated `dvFastvideoGeneration` scope, and `render` reads
  *   each input asset from `ctx.dvAssetPool`.
  * @param model - the model name.
@@ -209,7 +217,8 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
   /* v8 ignore next -- checkConfig refuses unknown models and tasks before any entry is built. */
   if (served === undefined) throw new Error(`dv-fastvideo serves no model "${model}" for task "${task}".`)
   const { inputs, extra, assignReferenceLabels, skill } = served
-  const client = new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), { baseUrl: server.baseUrl })
+  const labels = server.openai == null ? assignReferenceLabels : openAIReferenceLabels(assignReferenceLabels)
+  const client = new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), server)
   return {
     modality: 'video',
     task,
@@ -251,7 +260,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
       return (async function* () {
         // Video and audio references can be tens of megabytes each, so they are read concurrently off the event loop.
         const references = await Promise.all(assets.map(async id => ({
-          mediaType: ctx.dvAssetPool.mediaType(id), bytes: await readFile(ctx.dvAssetPool.path(id)),
+          mediaType: ctx.dvAssetPool.mediaType(id), mimeType: ctx.dvAssetPool.get(id).mime, bytes: await readFile(ctx.dvAssetPool.path(id)),
         })))
         // The sound of a video changes only the labels of audio, so the pool reads it only when the media hold audio.
         const audio = references.some(reference => reference.mediaType === 'audio')
@@ -259,7 +268,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
           asset, mediaType: ctx.dvAssetPool.mediaType(asset), hasAudio: audio && await ctx.dvAssetPool.hasAudio(asset),
         })))
         yield* client.generateSegment({
-          prompt: modelPrompt(request, assignReferenceLabels, media),
+          prompt: modelPrompt(request, labels, media),
           references,
           frameWidth: request.frameWidth,
           frameHeight: request.frameHeight,

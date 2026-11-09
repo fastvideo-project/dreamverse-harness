@@ -20,6 +20,7 @@ import Loader from '@deepseek-ai/cordis-plugin-loader'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import DvAssetPool, { type AssetId } from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
+import type { ModelFacts } from '@dv/fastvideo-generation-client'
 import DvModels, { type ModelEntry, type RenderStreamEvent, type TaskOfPrimitive } from '@dv/models'
 import DvProject from '@dv/project'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -123,13 +124,13 @@ const PLUGINS = {
  * @param tasks - the server URL of each task of `fasth3` to configure.
  * @returns the root context.
  */
-async function start(tasks: { ref2v?: string; t2v?: string }): Promise<Context> {
+async function start(tasks: { ref2v?: string | FastVideo.TaskServer; t2v?: string | FastVideo.TaskServer }): Promise<Context> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-fastvideo-'))
   const globals = globalThis as typeof globalThis & { __dvFastVideo?: typeof PLUGINS }
   globals.__dvFastVideo = PLUGINS
-  const config = ['models:', '  fasth3:', ...Object.entries(tasks).flatMap(([task, url]) => [
-    `    ${task}:`, `      baseUrl: ${url}`,
-  ])]
+  const servers = Object.fromEntries(Object.entries(tasks).map(([task, server]) => [task,
+    typeof server === 'string' ? { baseUrl: server } : server]))
+  const config = [`models: ${JSON.stringify({ fasth3: servers })}`]
   const rows: string[] = []
   const plugins = [
     ['skills', 'SkillRegistry', []],
@@ -338,6 +339,64 @@ describe('dv-fastvideo', () => {
       .toThrow('dv-fastvideo serves model "fasth3" for no task "reference"; its tasks: ref2v, t2v.')
     expect(() => { FastVideo.apply(ctx, { models: { fasth3: {} } }) }).toThrow('dv-fastvideo: model "fasth3" names no task.')
     expect(ctx.dvModels.list().map(entry => entry.task)).toEqual(['ref2v'])
+  })
+
+  it.skipIf(!existsSync(FFMPEG))('renders through the OpenAI API and numbers references in the backend media order', async () => {
+    const video = await sampleVideo(true)
+    const requests: Array<{ path: string; body: Record<string, unknown> }> = []
+    const server = createServer((incoming, response) => {
+      if (incoming.method === 'GET') {
+        response.setHeader('content-type', 'application/json')
+        response.end(JSON.stringify({ served_model_name: 'fake-openai-ref2va' }))
+        return
+      }
+      const parts: Buffer[] = []
+      incoming.on('data', (part: Buffer) => { parts.push(part) })
+      incoming.once('end', () => {
+        requests.push({ path: incoming.url ?? '', body: JSON.parse(Buffer.concat(parts).toString()) as Record<string, unknown> })
+        response.writeHead(200, { 'content-type': 'video/mp4', 'x-inference-time-s': '1.5' })
+        response.end(video)
+      })
+    })
+    cleanups.push(async () => {
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => { server.close(() => { resolve() }) })
+    })
+    server.listen(0, '127.0.0.1')
+    await once(server, 'listening')
+    const facts: ModelFacts = {
+      modelId: 'fake-openai-ref2va', aspectRatios: ['16:9'], resolutions: ['480p'],
+      minSegmentDurationSec: 5, maxSegmentDurationSec: 5, maxReferences: 12,
+      referenceMediaTypes: { image: { maxCount: 9 }, video: { maxCount: 3 }, audio: { maxCount: 3 } },
+      frameSizes: { '16:9': { '480p': [832, 480] } }, numFramesByDurationSec: { 5: 124 },
+    }
+    const ctx = await start({ ref2v: {
+      baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+      openai: { modelFacts: facts, ffmpegPath: FFMPEG },
+    } })
+    const entry = fasth3(ctx, 'ref2v')
+    expect(await entry.facts()).toMatchObject({ modelId: 'fake-openai-ref2va', numFramesByDurationSec: { 5: 124 } })
+    expect(await entry.schema()).toMatchObject({ duration_sec: { min: 5, max: 5 }, resolutions: ['480p'] })
+    const audio = importAsset(ctx, Buffer.from('SOUND'), 'audio/mpeg')
+    const clip = importAsset(ctx, video, 'video/mp4')
+    const image = importAsset(ctx, Buffer.from('IMAGE'), 'image/jpeg')
+    const prompt = `@[song](dv:asset/${audio}) behind @[clip](dv:asset/${clip}) with @[portrait](dv:asset/${image}) from @[first](dv:input/first_frame)`
+    const events = await collect(entry.render({ ...request([audio, clip, image], image), prompt, frameWidth: 832, frameHeight: 480 }))
+    expect(events.map(event => event.kind)).toEqual(['last_frame', 'video_start', 'chunk', 'done'])
+    expect(requests[0]?.path).toBe('/v1/videos/sync')
+    expect(requests[0]?.body).toMatchObject({
+      model: 'fake-openai-ref2va', width: 832, height: 480, num_frames: 124,
+      prompt: '<Audio 2> behind <Video 1> with <Picture 1> from <Picture 2>',
+      image_reference: [
+        { image_url: `data:image/jpeg;base64,${Buffer.from('IMAGE').toString('base64')}` },
+        { image_url: `data:image/jpeg;base64,${Buffer.from('IMAGE').toString('base64')}` },
+      ],
+      audio_reference: [{ audio_url: `data:audio/mpeg;base64,${Buffer.from('SOUND').toString('base64')}` }],
+    })
+    expect(events[3]).toEqual({ kind: 'done', timings: { inference_s: 1.5 } })
+    const mounted = [...ctx.loader.entries()].find(candidate => candidate.options.id === 'dv-fastvideo')
+    await mounted?.fiber?.dispose()
+    expect(ctx.dvModels.list()).toEqual([])
   })
 
   it.skipIf(REAL_BACKEND === undefined || !existsSync(REAL_REFERENCE))('renders a real five-second shot against the running server', async () => {

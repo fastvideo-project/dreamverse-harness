@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The FastVideo streaming_v2 client of DreamVerse: reads the served model's facts and streams one generated segment per request.",
+  "description": "DreamVerse client for FastVideo OpenAI and streaming_v2 generation APIs.",
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json"

@@ -1,0 +1,9 @@
+version: 1
+scenario: fastvideo-openai
+profile: headless
+composition: fastvideo-openai
+recording: authored
+header:
+  class: fastvideo-openai
+  pin: true
+  systemPromptSource: text-turn

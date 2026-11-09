@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Provider plugin fastvideo of DreamVerse for models on local FastVideo streaming_v2 servers: registers one dvModels entry per configured model (fasth3) and task (ref2v, t2v), each with its input and extra parameter schema and request validation, plus the prompt skill of each entry.",
+  "description": "Provider plugin fastvideo of DreamVerse for models on local FastVideo servers: registers one dvModels entry per configured model (fasth3) and task (ref2v, t2v), each with its input and extra parameter schema and request validation, plus the prompt skill of each entry.",
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json"
