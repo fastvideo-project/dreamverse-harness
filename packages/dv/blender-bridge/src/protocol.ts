@@ -6,8 +6,9 @@
  * Harness to Blender: `request` (`id`, `op`, `params`), `stream` (`on`), `frame_ack` (`seq`), and `view` (a
  * {@link ViewCommand}), which moves the view of the main 3D viewport and gets no answer.
  * Blender to harness: `hello` and `state` ({@link BlenderState} fields), `response` (`id`, `ok`, `result` or `error`),
- * binary `frame` headers (`seq`, `width`, `height`, `mime`; a JPEG or PNG payload) and binary `chunk` headers (`id`, payload bytes of the
- * file that the request with that ID returns; its `response` follows the last chunk).
+ * binary `frame` headers (`seq`, `width`, `height`, `mime`, and from add-on 0.3.0 `timing`; a JPEG or PNG payload) and
+ * binary `chunk` headers (`id`, payload bytes of the file that the request with that ID returns; its `response` follows
+ * the last chunk).
  *
  * @module @fastvideo/dreamverse-blender-bridge/protocol
  */
@@ -36,9 +37,15 @@ export type BlenderText =
   | { type: 'response'; id: string; ok: true; result: Record<string, unknown> }
   | { type: 'response'; id: string; ok: false; error: string }
 
+/** How long the add-on took for one frame, in milliseconds: drawing and reading the view, and encoding the image. */
+export interface FrameTiming {
+  draw_ms: number
+  encode_ms: number
+}
+
 /** A binary message from the add-on, after {@link parseBlenderBinary} checked its header. */
 export type BlenderBinary =
-  | { kind: 'frame'; seq: number; width: number; height: number; mime: FrameMime; payload: Uint8Array }
+  | { kind: 'frame'; seq: number; width: number; height: number; mime: FrameMime; timing?: FrameTiming; payload: Uint8Array }
   | { kind: 'chunk'; id: string; payload: Uint8Array }
 
 /** The standard views of {@link ViewCommand} `preset`; `camera` looks through the scene camera. */
@@ -129,6 +136,18 @@ export function parseViewCommand(text: string): ViewCommand | null {
 }
 
 /**
+ * The timing of a frame header; an add-on before 0.3.0 sends none, and a malformed one is dropped with the frame kept.
+ * @param value - the header's `timing`.
+ * @returns the timing, or null.
+ */
+function frameTiming(value: unknown): FrameTiming | null {
+  if (!isRecord(value)) return null
+  const { draw_ms: draw, encode_ms: encode } = value
+  const valid = (ms: unknown): ms is number => typeof ms === 'number' && Number.isFinite(ms) && ms >= 0
+  return valid(draw) && valid(encode) ? { draw_ms: draw, encode_ms: encode } : null
+}
+
+/**
  * Read one binary message of the add-on.
  * @param data - the message bytes.
  * @returns the frame or chunk, or null when the header is malformed.
@@ -150,7 +169,9 @@ export function parseBlenderBinary(data: Uint8Array): BlenderBinary | null {
     const { seq, width, height, mime } = header
     if (!Number.isSafeInteger(seq) || !Number.isSafeInteger(width) || !Number.isSafeInteger(height)) return null
     if (mime !== 'image/jpeg' && mime !== 'image/png') return null
-    return { kind: 'frame', seq: seq as number, width: width as number, height: height as number, mime, payload }
+    const timing = frameTiming(header['timing'])
+    const size = { width: width as number, height: height as number }
+    return { kind: 'frame', seq: seq as number, ...size, mime, ...timing === null ? {} : { timing }, payload }
   }
   if (header['kind'] === 'chunk' && typeof header['id'] === 'string') return { kind: 'chunk', id: header['id'], payload }
   return null

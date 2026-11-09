@@ -6,7 +6,7 @@
  * @module @fastvideo/dreamverse-ui-blender/live-view
  */
 import { useEffect, useRef, useState, type RefObject } from 'react'
-import type { BlenderSource, BlenderState, ViewFrame } from './viewer.ts'
+import type { BlenderSource, BlenderState, FrameStats, ViewFrame } from './viewer.ts'
 
 /** Draws one frame onto the canvas; the page decodes it with `createImageBitmap`. */
 export type FrameDrawer = (canvas: HTMLCanvasElement, frame: ViewFrame) => Promise<void>
@@ -37,7 +37,12 @@ export interface LiveView {
   linked: { linked: boolean; state: BlenderState | null }
   /** The pixel size of the newest frame; null before the first frame and after a disconnect. */
   frame: { width: number; height: number } | null
+  /** How the stream performs, updated at most every {@link STATS_INTERVAL_MS}; null before the first measured frame. */
+  stats: FrameStats | null
 }
+
+/** How often a view refreshes its {@link LiveView.stats}, in milliseconds, so the numbers stay readable. */
+export const STATS_INTERVAL_MS = 500
 
 /**
  * Watch the viewport for one view.
@@ -48,6 +53,8 @@ export interface LiveView {
 export function useLiveView(source: BlenderSource, draw: FrameDrawer = drawFrame): LiveView {
   const [linked, setLinked] = useState<LiveView['linked']>({ linked: false, state: null })
   const [frame, setFrame] = useState<LiveView['frame']>(null)
+  const [stats, setStats] = useState<FrameStats | null>(null)
+  const statsAt = useRef(0)
   const [visible, setVisible] = useState(true)
   const root = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
@@ -92,12 +99,19 @@ export function useLiveView(source: BlenderSource, draw: FrameDrawer = drawFrame
     return source.watch({
       status: (isLinked, state) => {
         setLinked({ linked: isLinked, state })
-        if (!isLinked) setFrame(null)
+        if (!isLinked) {
+          setFrame(null)
+          setStats(null)
+        }
       },
       frame: (next) => {
         setFrame(current => (current?.width === next.width && current.height === next.height
           ? current
           : { width: next.width, height: next.height }))
+        if (next.stats !== undefined && performance.now() - statsAt.current >= STATS_INTERVAL_MS) {
+          statsAt.current = performance.now()
+          setStats(next.stats)
+        }
         paint.current(next)
       },
     })
@@ -109,5 +123,5 @@ export function useLiveView(source: BlenderSource, draw: FrameDrawer = drawFrame
     if (frame !== null && waiting !== null && !drawing.current.busy) paint.current(waiting)
   }, [frame])
 
-  return { root, canvas, linked, frame }
+  return { root, canvas, linked, frame, stats }
 }

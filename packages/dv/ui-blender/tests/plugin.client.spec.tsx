@@ -22,6 +22,7 @@ import {
   blenderDefinition, inject, shownSize, viewportNode, viewportNodeType, type BlenderSource, type BlenderState, type BlenderStatus,
   type ViewCommand, type ViewFrame,
 } from '../src/client/index.ts'
+import { statsText } from '../src/client/controls.tsx'
 import { SharedViewer } from '../src/client/viewer.ts'
 import { apply as hostApply } from '../src/index.ts'
 
@@ -444,5 +445,52 @@ describe('SharedViewer', () => {
     viewer.watch(late.listener)
     expect(late.seen).toEqual(['status false -'])
     stopCard()
+  })
+})
+
+describe('viewport stream measurements', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('times a move to its frame, counts the frames of the last second, and keeps the add-on\'s timing', () => {
+    vi.stubGlobal('WebSocket', FakeSocket)
+    FakeSocket.opened.length = 0
+    let now = 1000
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+    const viewer = new SharedViewer()
+    const frames: ViewFrame[] = []
+    viewer.watch({ status: () => {}, frame: (next) => { frames.push(next) } })
+    const [socket] = FakeSocket.opened
+    const deliver = (timing?: Record<string, number>): void => {
+      socket?.deliver('message', JSON.stringify({ type: 'frame', width: 640, height: 360, mime: 'image/jpeg', ...timing === undefined ? {} : { timing } }))
+      socket?.deliver('message', new Blob(['jpeg']))
+    }
+    viewer.send({ action: 'orbit', dx: 0.1, dy: 0 })
+    now += 40
+    viewer.send({ action: 'orbit', dx: 0.1, dy: 0 })
+    now += 80
+    deliver({ draw_ms: 5.2, encode_ms: 31.6 })
+    now += 50
+    viewer.send({ action: 'preset', preset: 'top' })
+    deliver()
+    now += 2000
+    deliver()
+    expect(frames.map(frame => frame.stats)).toEqual([
+      { fps: 1, responseMs: 120, drawMs: 5.2, encodeMs: 31.6 },
+      { fps: 2, responseMs: null, drawMs: null, encodeMs: null },
+      { fps: 1, responseMs: null, drawMs: null, encodeMs: null },
+    ])
+  })
+
+  it('reads the stream measurements out in the controls of a connected view', async () => {
+    const t = (_zh: string, en: string): string => en
+    expect(statsText({ fps: 22, responseMs: 140, drawMs: 5.2, encodeMs: 31.6 }, t)).toBe('22 fps · response 140 ms · Blender draw 5 ms, encode 32 ms')
+    expect(statsText({ fps: 9, responseMs: null, drawMs: null, encodeMs: null }, t)).toBe('9 fps')
+    const source = new FakeSource()
+    render(<BlenderPanel source={source} draw={noDraw} />)
+    await screen.findByTestId('dv-blender-connection')
+    source.link(STATE)
+    expect(screen.queryByTestId('dv-blender-stats')).toBeNull()
+    source.frame({ ...frame(640), stats: { fps: 12, responseMs: 90, drawMs: 4, encodeMs: 20 } })
+    expect(screen.getByTestId('dv-blender-stats').textContent).toBe('12 fps · response 90 ms · Blender draw 4 ms, encode 20 ms')
   })
 })

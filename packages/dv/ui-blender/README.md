@@ -43,7 +43,7 @@ The viewport node is a 16:9 media node of kind `blender-viewport`; the canvas ho
 | Front, Back, Left, Right, Top, Bottom, Camera | `preset` |
 | Frame all, Frame selected | `frame` |
 
-The canvas's own remove button and the Delete key take the node off the canvas (`canvas.node_remove`). The view changes need add-on 0.2.0 or later; with an older add-on, or no connected Blender, the controls are off, the wheel scrolls the page, and the line under the viewport says why. The standard views form a segmented control like the 画布 | 时间线 switch, and the buttons follow the canvas editor's: outlined, or filled with the accent color for the main action of each state, all on the `--dv-*` theme variables.
+The canvas's own remove button and the Delete key take the node off the canvas (`canvas.node_remove`). The view changes need add-on 0.2.0 or later; with an older add-on, or no connected Blender, the controls are off, the wheel scrolls the page, and the line under the viewport says why. Under the viewport, a small line reads out the stream: frames per second, the time from a drag or wheel step to the next frame (`response`), and, from add-on 0.3.0, Blender's draw and encode times per frame; it refreshes twice a second. The standard views form a segmented control like the 画布 | 时间线 switch, and the buttons follow the canvas editor's: outlined, or filled with the accent color for the main action of each state, all on the `--dv-*` theme variables.
 
 -----
 

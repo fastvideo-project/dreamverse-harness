@@ -12,7 +12,7 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from
 import { useText } from '@dv/ui-kit/locale.ts'
 import css from './controls.module.css'
 import type { LiveView } from './live-view.ts'
-import { addonNavigates, VIEW_COMMAND_LIMIT, type BlenderSource, type ViewCommand, type ViewPreset } from './viewer.ts'
+import { addonNavigates, VIEW_COMMAND_LIMIT, type BlenderSource, type FrameStats, type ViewCommand, type ViewPreset } from './viewer.ts'
 
 /** The class names of the shared buttons: `button` (outlined), `primary` (accent fill), `small` (28 px tall). */
 export const buttons = { button: css.button, primary: css.primary, small: css.small }
@@ -50,6 +50,22 @@ const PRESETS: ReadonlyArray<[ViewPreset, string, string]> = [
 ]
 
 const clampCommand = (value: number): number => Math.max(-VIEW_COMMAND_LIMIT, Math.min(VIEW_COMMAND_LIMIT, value))
+
+/**
+ * The stream readout: frames per second, the time from a move to its frame, and the add-on's draw and encode times.
+ * @param stats - the measurements.
+ * @param t - the locale's text picker.
+ * @returns the readout's parts, joined by ` · `.
+ */
+export function statsText(stats: FrameStats, t: (zh: string, en: string) => string): string {
+  const parts = [`${String(stats.fps)} fps`]
+  if (stats.responseMs !== null) parts.push(t(`响应 ${String(stats.responseMs)} ms`, `response ${String(stats.responseMs)} ms`))
+  if (stats.drawMs !== null && stats.encodeMs !== null) {
+    parts.push(t(`Blender 绘制 ${String(Math.round(stats.drawMs))} ms，编码 ${String(Math.round(stats.encodeMs))} ms`,
+      `Blender draw ${String(Math.round(stats.drawMs))} ms, encode ${String(Math.round(stats.encodeMs))} ms`))
+  }
+  return parts.join(' · ')
+}
 
 /** A width and height in pixels. */
 type PixelSize = { width: number; height: number }
@@ -188,6 +204,7 @@ export function ViewportControls(props: {
           waiting={t('等待视口画面…', 'Waiting for the viewport…')} offline={t('Blender 未连接', 'Blender is not connected')}
         />
       </div>
+      {live.stats === null || !live.linked.linked ? null : <p data-testid="dv-blender-stats" className={css.stats}>{statsText(live.stats, t)}</p>}
       <p className={css.hint}>
         {state !== null && !addonNavigates(state.addon_version)
           ? t('请在 Blender 里更新 DreamVerse 插件，才能从这里移动视图。', 'Update the DreamVerse add-on in Blender to move the view from here.')

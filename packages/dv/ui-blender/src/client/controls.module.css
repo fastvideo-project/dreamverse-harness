@@ -122,3 +122,11 @@
   line-height: 16px;
   color: var(--dv-text-2);
 }
+
+.stats {
+  margin: 0;
+  font-family: var(--dv-font-mono);
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dv-text-3);
+}

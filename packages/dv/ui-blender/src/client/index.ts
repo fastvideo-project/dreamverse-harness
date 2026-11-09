@@ -22,7 +22,8 @@ export { BlenderPanel } from './BlenderPanel.tsx'
 export { drawFrame, useLiveView, type FrameDrawer, type LiveView } from './live-view.ts'
 export {
   addonNavigates, httpBlenderSource, VIEW_COMMAND_LIMIT, VIEWPORT_OPERATION,
-  type BlenderSource, type BlenderState, type BlenderStatus, type ViewCommand, type ViewFrame, type ViewListener, type ViewPreset,
+  type BlenderSource, type BlenderState, type BlenderStatus, type FrameStats, type ViewCommand, type ViewFrame, type ViewListener,
+  type ViewPreset,
 } from './viewer.ts'
 export { buttons, LivePicture, shownSize, ViewportControls } from './controls.tsx'
 export { VIEWPORT_SIZING, VIEWPORT_TYPE, ViewportCard, ViewportEditor, viewportNode, viewportNodeType } from './ViewportNode.tsx'

@@ -8,12 +8,12 @@
  */
 import type WebSocket from 'ws'
 import type { RawData } from 'ws'
-import { parseBlenderBinary, parseBlenderText, type BlenderOp, type BlenderState, type FrameMime, type ViewCommand } from './protocol.ts'
+import { parseBlenderBinary, parseBlenderText, type BlenderOp, type BlenderState, type FrameMime, type FrameTiming, type ViewCommand } from './protocol.ts'
 
 /** What a viewer of the viewport receives. */
 export type ViewEvent =
   | { type: 'status'; linked: boolean; state: BlenderState | null }
-  | { type: 'frame'; seq: number; width: number; height: number; mime: FrameMime; data: Uint8Array }
+  | { type: 'frame'; seq: number; width: number; height: number; mime: FrameMime; timing?: FrameTiming; data: Uint8Array }
 
 /** One answered request: the add-on's result fields, and the bytes of the file it sent, when it sent one. */
 export interface BlenderReply {
@@ -222,7 +222,8 @@ export class BlenderLink {
       return
     }
     if (message.kind === 'frame') {
-      this.latest = { type: 'frame', seq: message.seq, width: message.width, height: message.height, mime: message.mime, data: message.payload }
+      const { seq, width, height, mime, timing, payload } = message
+      this.latest = { type: 'frame', seq, width, height, mime, ...timing === undefined ? {} : { timing }, data: payload }
       this.broadcast(this.latest)
       this.socket?.send(JSON.stringify({ type: 'frame_ack', seq: message.seq }))
       return

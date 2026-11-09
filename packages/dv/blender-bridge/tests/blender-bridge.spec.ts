@@ -59,8 +59,8 @@ class FakeBlender {
     this.socket.send(JSON.stringify(message))
   }
 
-  frame(seq: number, bytes = new Uint8Array([0xff, 0xd8, seq])): void {
-    this.socket.send(encodeBinary({ kind: 'frame', seq, width: 4, height: 3, mime: 'image/jpeg' }, bytes))
+  frame(seq: number, bytes = new Uint8Array([0xff, 0xd8, seq]), extra: Record<string, unknown> = {}): void {
+    this.socket.send(encodeBinary({ kind: 'frame', seq, width: 4, height: 3, mime: 'image/jpeg', ...extra }, bytes))
   }
 
   private respond(id: string, op: string, params: Record<string, unknown>): void {
@@ -281,6 +281,22 @@ describe('dvBlender viewport stream', () => {
     ])
     viewer.socket.close()
     await until(() => fixture.ctx.dvBlender.link.viewerCount === 0, 'the viewer to leave')
+  })
+
+  it('passes the add-on\'s frame timing to the viewer and drops a malformed one with its frame kept', async () => {
+    const fixture = await start()
+    const blender = await fixture.connect()
+    const viewer = await openViewer(fixture.port)
+    await until(() => blender.streams.at(-1) === true, 'the stream request')
+    blender.frame(1, undefined, { timing: { draw_ms: 4.5, encode_ms: 12 } })
+    blender.frame(2, undefined, { timing: { draw_ms: -1, encode_ms: 'slow' } })
+    await until(() => viewer.messages.length === 5, 'two relayed frames')
+    expect(viewer.messages.filter(message => typeof message !== 'string')).toEqual([
+      { type: 'status', linked: true, state: HELLO },
+      { type: 'frame', seq: 1, width: 4, height: 3, mime: 'image/jpeg', timing: { draw_ms: 4.5, encode_ms: 12 } },
+      { type: 'frame', seq: 2, width: 4, height: 3, mime: 'image/jpeg' },
+    ])
+    viewer.socket.close()
   })
 
   it('stops the stream when the last viewer leaves', async () => {

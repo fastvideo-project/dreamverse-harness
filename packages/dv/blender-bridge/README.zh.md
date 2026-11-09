@@ -73,9 +73,9 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-连接上传送 JSON 文本消息和二进制消息。harness 发送 `request`（`id`、`op`、`params`）、`stream`（`on`）、`frame_ack`（`seq`）和 `view`（一次视图变化，没有回答）。插件发送 `hello` 和 `state`（自身状态）、`response`（`id`、`ok`、`result` 或 `error`），以及二进制消息：4 字节大端的头部长度之后是 JSON 头部和载荷；`frame` 头部携带一帧视口画面，`chunk` 头部携带对应 `id` 请求返回的文件的一部分，在该请求的 `response` 之前发送。`BlenderLink` 保存唯一的套接字、插件的状态、带时限的等待中请求，以及观看者。它只在有观看者时让插件推流，转发每一帧后确认该帧，待发送数据超过 1 MiB 的观看者套接字会跳过帧。挂载了 DSH 凭据存储时，配对码保存在其中的 `dv-blender/pairing-token` 下，所以重启后不变。
+连接上传送 JSON 文本消息和二进制消息。harness 发送 `request`（`id`、`op`、`params`）、`stream`（`on`）、`frame_ack`（`seq`）和 `view`（一次视图变化，没有回答）。插件发送 `hello` 和 `state`（自身状态）、`response`（`id`、`ok`、`result` 或 `error`），以及二进制消息：4 字节大端的头部长度之后是 JSON 头部和载荷；`frame` 头部携带一帧视口画面（从插件 0.3.0 起带有 `timing`，即该帧的绘制和编码毫秒数，观看者也会收到），`chunk` 头部携带对应 `id` 请求返回的文件的一部分，在该请求的 `response` 之前发送。`BlenderLink` 保存唯一的套接字、插件的状态、带时限的等待中请求，以及观看者。它只在有观看者时让插件推流，转发每一帧后确认该帧，待发送数据超过 1 MiB 的观看者套接字会跳过帧。挂载了 DSH 凭据存储时，配对码保存在其中的 `dv-blender/pairing-token` 下，所以重启后不变。
 
-插件的所有 `bpy` 调用都在 Blender 主线程上进行：一个定时器取出连接收到的消息。最大的 3D 视图上的 `POST_PIXEL` 绘制回调以该视图的矩阵、着色、叠加层和色彩管理，按推流宽度把该视图再画进一个离屏缓冲区（回调中当前的帧缓冲区只含叠加层和界面，因为 Blender 在回调之后才合成着色后的场景），所以画面跟随重绘，每帧多一次视图绘制；随后一个定时器通过一张临时图像把它编码成 JPEG 并发送，每秒最多 `max fps` 帧，同时最多有一帧未被确认。查看相机视图时，同一个回调把场景相机的视图画进离屏缓冲区。视图变化在定时器中设置主 3D 视图的 `view_rotation`、`view_location`、`view_distance` 或 `view_perspective`，或在那里运行 `view3d.view_all` 或 `view3d.view_selected`；失败的变化打印到 Blender 的控制台。
+插件的所有 `bpy` 调用都在 Blender 主线程上进行：一个定时器取出连接收到的消息，harness 移动视图时每 5 ms 一次，推流时每 20 ms 一次，其他时候每 50 ms 一次。最大的 3D 视图上的 `POST_PIXEL` 绘制回调以该视图的矩阵、着色、叠加层和色彩管理，按推流宽度把该视图再画进一个离屏缓冲区（回调中当前的帧缓冲区只含叠加层和界面，因为 Blender 在回调之后才合成着色后的场景），所以画面跟随重绘，每帧多一次视图绘制；随后一个定时器通过一张临时图像把它编码成 JPEG 并发送，每秒最多 `max fps` 帧，同时最多有两帧未被确认，这样一帧在网络上传输时下一帧已在绘制。harness 旋转、平移或缩放视图期间及其后 0.3 秒内，画面使用插件的“移动时”偏好设置（默认每秒 24 帧、宽 640 像素、JPEG 质量 50）；最后一次移动之后再发送一帧完整设置的画面。查看相机视图时，同一个回调把场景相机的视图画进离屏缓冲区。视图变化在定时器中设置主 3D 视图的 `view_rotation`、`view_location`、`view_distance` 或 `view_perspective`，或在那里运行 `view3d.view_all` 或 `view3d.view_selected`；失败的变化打印到 Blender 的控制台。
 
 | 文件 | 内容 |
 | --- | --- |
@@ -150,6 +150,6 @@ dv_blender_viewport: Put the live viewport of the user's Blender on the project 
 - **每个 harness 一个 Blender**：第二个连接的 Blender 会替换第一个；连接不带项目，所以 harness 的所有对话都使用同一个 Blender。
 - **浏览器只移动视图**：打开的视口节点可以旋转、平移、缩放和切换视图；不支持在浏览器中选择、编辑或点击物体，每次移动要经过一次到 Blender 的往返和一帧才显示。
 - **每个项目一个视口节点**：节点显示唯一连接的 Blender，所以两个显示它的项目显示同一个视口。
-- **帧率**：插件在 Blender 的 Python 中编码画面，所以宽 1280 像素时视口流约为每秒 5 到 15 帧；偏好设置可以调整帧率、宽度和 JPEG 质量。
+- **帧率**：插件在 Blender 主线程的 Python 中编码画面，所以宽 1280 像素时视口流约为每秒 5 到 15 帧，视图移动时画面较小，帧率更高；偏好设置可以分别调整静止和移动时的帧率、宽度和 JPEG 质量。每次移动和每一帧都要经过网络，所以经由 SSH 隧道时视图会比拖动晚一个往返；Blender 控件会显示帧率、这段延迟，以及插件的绘制和编码时间。
 - **没有 Linux arm64 版 Blender**：Blender 不发布 Linux arm64 版本，所以 harness 在 arm64 机器上时，Blender 运行在另一台电脑上。
 - **CI 不在真实 Blender 上测试**：测试用假 Blender 驱动连接；插件的 `bpy` 代码在 Blender 5.3 中手动检查。

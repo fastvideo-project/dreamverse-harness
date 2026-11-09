@@ -17,7 +17,7 @@ from . import commands, navigate, viewport
 from .link import HandshakeError, Link
 from .protocol import ConnectionStringError, encode_binary, is_local_host, parse_connection
 
-ADDON_VERSION = "0.2.0"
+ADDON_VERSION = "0.3.0"
 CHUNK_BYTES = 1 << 20
 # Close codes after which reconnecting would only repeat the refusal.
 FINAL_CLOSE_CODES = {4000, 4001}
@@ -108,8 +108,7 @@ class _Controller:
             if kind == "connected":
                 self.link, self.connecting = event[1], False
                 self.status = "Connected"
-                prefs = _prefs()
-                viewport.configure(self.send_frame, prefs.max_fps, prefs.max_width, prefs.jpeg_quality)
+                _configure_stream(self.send_frame)
                 viewport.start()
                 self.send_state("hello")
                 _redraw_panels()
@@ -129,7 +128,10 @@ class _Controller:
         if self.retry and self.link is None and not self.connecting:
             self.connect()
             return 3.0
-        return 0.05
+        # While the harness moves the view, its next move is applied within a few milliseconds instead of a tick later.
+        if viewport.moving():
+            return 0.005
+        return 0.02 if viewport.streaming() else 0.05
 
     def _handle(self, kind, data):
         if kind != "text":
@@ -148,7 +150,10 @@ class _Controller:
             self._request(str(message.get("id")), message.get("op"), message.get("params") or {})
 
     def _view(self, message):
-        # A view change gets no answer; a failure only shows in Blender's console.
+        # A view change gets no answer; a failure only shows in Blender's console. A drag or the wheel streams the
+        # smaller moving frames until it stops; a standard view or a framing is one jump.
+        if message.get("action") in ("orbit", "pan", "zoom"):
+            viewport.note_move()
         try:
             problem = navigate.apply(message)
         except Exception as error:  # A bad view change must not stop the link.
@@ -203,10 +208,15 @@ def _tick():
     return controller.tick()
 
 
+def _configure_stream(send):
+    prefs = _prefs()
+    viewport.configure(
+        send, prefs.max_fps, prefs.max_width, prefs.jpeg_quality, prefs.moving_fps, prefs.moving_width, prefs.moving_quality)
+
+
 def _on_prefs_change(_self, _context):
     controller.send_state()
-    prefs = _prefs()
-    viewport.configure(controller.send_frame if controller.link else None, prefs.max_fps, prefs.max_width, prefs.jpeg_quality)
+    _configure_stream(controller.send_frame if controller.link else None)
 
 
 @persistent
@@ -229,6 +239,15 @@ class DreamVersePreferences(bpy.types.AddonPreferences):
     max_fps: bpy.props.IntProperty(name="Viewport frames per second", default=10, min=1, max=30, update=_on_prefs_change)
     max_width: bpy.props.IntProperty(name="Viewport frame width", default=1280, min=320, max=3840, update=_on_prefs_change)
     jpeg_quality: bpy.props.IntProperty(name="Viewport JPEG quality", default=70, min=10, max=95, update=_on_prefs_change)
+    moving_fps: bpy.props.IntProperty(
+        name="Frames per second while moving", default=24, min=1, max=30, update=_on_prefs_change,
+        description="The frame rate while the harness orbits, pans or zooms the view")
+    moving_width: bpy.props.IntProperty(
+        name="Frame width while moving", default=640, min=160, max=3840, update=_on_prefs_change,
+        description="The frame width while the harness moves the view; one frame at the full width follows the last move")
+    moving_quality: bpy.props.IntProperty(
+        name="JPEG quality while moving", default=50, min=10, max=95, update=_on_prefs_change,
+        description="The JPEG quality while the harness moves the view")
 
     def draw(self, _context):
         layout = self.layout
@@ -239,6 +258,10 @@ class DreamVersePreferences(bpy.types.AddonPreferences):
         column.prop(self, "max_fps")
         column.prop(self, "max_width")
         column.prop(self, "jpeg_quality")
+        column = layout.column(heading="While the harness moves the view")
+        column.prop(self, "moving_fps")
+        column.prop(self, "moving_width")
+        column.prop(self, "moving_quality")
 
 
 class DREAMVERSE_OT_connect(bpy.types.Operator):

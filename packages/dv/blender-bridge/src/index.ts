@@ -11,7 +11,8 @@
  *   mounted, which put renders of the scene camera into the project.
  * - The viewport route `/dv/blender/view`, a WebSocket upgrade route admitted by the Connection's browser checks: a
  *   text message `{type: 'status', linked, state}` at once and at every change, and per frame a text message
- *   `{type: 'frame', seq, width, height, mime}` followed by one binary message with the JPEG or PNG. A viewer with more
+ *   `{type: 'frame', seq, width, height, mime, timing?}` followed by one binary message with the JPEG or PNG; `timing`
+ *   is the add-on's draw and encode time of the frame, from add-on 0.3.0. A viewer with more
  *   than {@link VIEWER_BACKLOG_BYTES} unsent skips frames. A viewer's text message `{type: 'view', ...}` (a
  *   {@link ViewCommand}) moves the view of Blender's main 3D viewport; a message that does not parse is dropped. A
  *   WebSocket does not hold one of the browser's few HTTP/1.1 connections to the harness, which a long-lived HTTP
@@ -45,7 +46,7 @@ import { renderMaker, viewportMaker, viewportOperation } from './viewport-node.t
 export { BlenderLink, NOT_LINKED, type BlenderReply, type ViewEvent } from './link.ts'
 export {
   encodeBinary, parseBlenderBinary, parseBlenderText, parseViewCommand, VIEW_COMMAND_LIMIT, VIEW_PRESETS,
-  type BlenderOp, type BlenderState, type FrameMime, type ViewCommand, type ViewPreset,
+  type BlenderOp, type BlenderState, type FrameMime, type FrameTiming, type ViewCommand, type ViewPreset,
 } from './protocol.ts'
 export { ADDON_ROUTE, LINK_PATH, STATUS_ROUTE, TOKEN_ROUTE, VIEW_PATH, bridgeRoutes, zipAddon, type BlenderStatus } from './routes.ts'
 export { LOOK_TOOL, RUN_TOOL, SCENE_TOOL, lookContent, type LookValue } from './tools.ts'
@@ -94,7 +95,8 @@ export function relayView(viewer: Pick<WebSocket, 'bufferedAmount' | 'send'>, ev
     return true
   }
   if (viewer.bufferedAmount > VIEWER_BACKLOG_BYTES) return false
-  viewer.send(JSON.stringify({ type: 'frame', seq: event.seq, width: event.width, height: event.height, mime: event.mime }))
+  const { seq, width, height, mime, timing } = event
+  viewer.send(JSON.stringify({ type: 'frame', seq, width, height, mime, ...timing === undefined ? {} : { timing } }))
   viewer.send(event.data)
   return true
 }

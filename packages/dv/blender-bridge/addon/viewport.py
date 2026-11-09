@@ -6,8 +6,11 @@ holds only overlays and UI, because Blender composites the shaded scene into the
 handler only runs when Blender redraws, so frames follow changes. Blender forbids writing data blocks while drawing,
 so the handler only copies the pixels, and a timer encodes and sends them right after.
 
-Streaming sends a frame when the harness has acknowledged the previous one and the frame interval has passed; a redraw
-that comes too early marks the view dirty, and a timer redraws it once the next frame may go.
+Streaming sends a frame while fewer than ``MAX_IN_FLIGHT`` sent frames wait for the harness's acknowledgement and the
+frame interval has passed; a redraw that comes too early marks the view dirty, and a timer or the next acknowledgement
+redraws it once the next frame may go. While the harness moves the view (``note_move``), frames are smaller, coarser
+and more frequent (the "while moving" preferences), and ``MOVING_SECONDS`` after the last move one frame at the full
+settings follows. Each frame header carries the milliseconds the frame took to draw and to encode.
 """
 
 import math
@@ -25,14 +28,60 @@ FRAME_IMAGE = ".dreamverse_frame"
 
 _handle = None
 _captures = []
-_stream = {"on": False, "awaiting_ack": False, "last": 0.0, "dirty": False, "seq": 0, "redraw_queued": False}
+# Frames sent and not yet acknowledged before the next one waits: two keep one frame crossing the network while the
+# next is drawn, instead of a full round trip of idle time per frame.
+MAX_IN_FLIGHT = 2
+# How long after the last move of the view the stream counts as moving.
+MOVING_SECONDS = 0.3
+
+_stream = {
+    "on": False, "acked": 0, "last": 0.0, "dirty": False, "seq": 0, "redraw_queued": False,
+    "moving_until": 0.0, "settle_queued": False,
+}
 _drawing = {"offscreen": False}
-_settings = {"send": None, "max_fps": 10.0, "max_width": 1280, "quality": 70}
+_settings = {
+    "send": None, "max_fps": 10.0, "max_width": 1280, "quality": 70,
+    "moving_fps": 24.0, "moving_width": 640, "moving_quality": 50,
+}
 
 
-def configure(send, max_fps, max_width, quality):
-    """Set the frame sender ``send(header, payload)`` and the stream limits from the add-on preferences."""
-    _settings.update(send=send, max_fps=max(1.0, float(max_fps)), max_width=max(160, int(max_width)), quality=int(quality))
+def configure(send, max_fps, max_width, quality, moving_fps, moving_width, moving_quality):
+    """Set the frame sender ``send(header, payload)`` and the stream limits from the add-on preferences: frames per
+    second, frame width and JPEG quality at rest and while the view moves."""
+    _settings.update(
+        send=send, max_fps=max(1.0, float(max_fps)), max_width=max(160, int(max_width)), quality=int(quality),
+        moving_fps=max(1.0, float(moving_fps)), moving_width=max(160, int(moving_width)), moving_quality=int(moving_quality),
+    )
+
+
+def streaming():
+    """Whether the harness asked for frames."""
+    return _stream["on"]
+
+
+def moving(now=None):
+    """Whether the harness moved the view within the last ``MOVING_SECONDS``."""
+    return (time.monotonic() if now is None else now) < _stream["moving_until"]
+
+
+def note_move():
+    """The harness moved the view: stream the moving frames until ``MOVING_SECONDS`` pass without a move, then one frame
+    at the full settings."""
+    _stream["moving_until"] = time.monotonic() + MOVING_SECONDS
+    if _stream["settle_queued"]:
+        return
+    _stream["settle_queued"] = True
+
+    def settle():
+        remaining = _stream["moving_until"] - time.monotonic()
+        if remaining > 0:
+            return remaining + 0.01
+        _stream["settle_queued"] = False
+        _stream["dirty"] = True
+        _redraw()
+        return None
+
+    bpy.app.timers.register(settle, first_interval=MOVING_SECONDS + 0.01)
 
 
 def start():
@@ -59,15 +108,15 @@ def stop():
 
 def set_streaming(on):
     """Start or stop streaming frames, as the harness asks while viewers watch."""
-    _stream.update(on=bool(on), awaiting_ack=False, dirty=bool(on))
+    _stream.update(on=bool(on), acked=_stream["seq"], dirty=bool(on))
     if on:
         _redraw()
 
 
 def ack(seq):
-    """The harness relayed frame ``seq``; the next frame may go."""
-    if seq == _stream["seq"]:
-        _stream["awaiting_ack"] = False
+    """The harness relayed frame ``seq`` and every frame before it."""
+    if isinstance(seq, int) and _stream["acked"] < seq <= _stream["seq"]:
+        _stream["acked"] = seq
         if _stream["dirty"]:
             _queue_redraw(0.0)
 
@@ -200,48 +249,58 @@ def _draw():
             bpy.app.timers.register(lambda c=capture, p=pixels, w=width, h=height: c["done"](p.tobytes(), w, h), first_interval=0.0)
     if not _stream["on"] or _settings["send"] is None:
         return
-    interval = 1.0 / _settings["max_fps"]
     now = time.monotonic()
-    if _stream["awaiting_ack"] or now - _stream["last"] < interval:
+    fast = moving(now)
+    interval = 1.0 / (_settings["moving_fps"] if fast else _settings["max_fps"])
+    waiting = _stream["seq"] - _stream["acked"] >= MAX_IN_FLIGHT
+    if waiting or now - _stream["last"] < interval:
         _stream["dirty"] = True
-        if not _stream["awaiting_ack"]:
+        if not waiting:
             _queue_redraw(interval - (now - _stream["last"]))
         return
-    pixels = _shrink(_read_view(region, _settings["max_width"]), _settings["max_width"])
-    _stream.update(last=now, awaiting_ack=True, dirty=False, seq=_stream["seq"] + 1)
+    width = min(_settings["moving_width"], _settings["max_width"]) if fast else _settings["max_width"]
+    quality = _settings["moving_quality"] if fast else _settings["quality"]
+    started = time.perf_counter()
+    pixels = _shrink(_read_view(region, width), width)
+    draw_ms = (time.perf_counter() - started) * 1000.0
+    _stream.update(last=now, dirty=False, seq=_stream["seq"] + 1)
     seq = _stream["seq"]
-    bpy.app.timers.register(lambda: _send_frame(seq, pixels), first_interval=0.0)
+    bpy.app.timers.register(lambda: _send_frame(seq, pixels, quality, draw_ms), first_interval=0.0)
 
 
-def _send_frame(seq, pixels):
+def _send_frame(seq, pixels, quality, draw_ms):
     send = _settings["send"]
     if send is None or not _stream["on"]:
         return None
     height, width = pixels.shape[0], pixels.shape[1]
+    started = time.perf_counter()
     try:
-        payload = _jpeg(pixels)
+        payload = _jpeg(pixels, quality)
         mime = "image/jpeg"
     except Exception:  # A failed JPEG save falls back to PNG, which needs no data block.
         payload = encode_png(pixels.tobytes(), width, height, 4)
         mime = "image/png"
-    send({"kind": "frame", "seq": seq, "width": width, "height": height, "mime": mime}, payload)
+    timing = {"draw_ms": round(draw_ms, 1), "encode_ms": round((time.perf_counter() - started) * 1000.0, 1)}
+    send({"kind": "frame", "seq": seq, "width": width, "height": height, "mime": mime, "timing": timing}, payload)
     return None
 
 
-def _jpeg(pixels):
+def _jpeg(pixels, quality):
     height, width = pixels.shape[0], pixels.shape[1]
     image = bpy.data.images.get(FRAME_IMAGE)
     if image is None:
         image = bpy.data.images.new(FRAME_IMAGE, width, height, alpha=False)
     elif tuple(image.size) != (width, height):
         image.scale(width, height)
-    # Blender images store rows bottom-up.
-    image.pixels.foreach_set((pixels[::-1].astype(np.float32) / 255.0).ravel())
+    # Blender images store rows bottom-up; the scaling happens in place on the one float copy.
+    floats = pixels[::-1].astype(np.float32)
+    floats *= 1.0 / 255.0
+    image.pixels.foreach_set(floats.ravel())
     image.file_format = "JPEG"
     handle, path = tempfile.mkstemp(suffix=".jpg", prefix="dreamverse-frame-")
     os.close(handle)
     try:
-        image.save(filepath=path, quality=_settings["quality"])
+        image.save(filepath=path, quality=quality)
         with open(path, "rb") as stream:
             return stream.read()
     finally:
