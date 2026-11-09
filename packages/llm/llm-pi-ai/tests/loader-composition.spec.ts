@@ -83,6 +83,35 @@ async function loadComposition(): Promise<{ ctx: Context; settingsPath: string }
 }
 
 describe('llm-pi-ai real dormant composition', () => {
+  it('surfaces an exhausted estimated context budget without sending a request', async () => {
+    const server = await mockServer([])
+    const { ctx, settingsPath } = await loadComposition()
+    await writeFile(settingsPath, [
+      '- id: llm-pi-ai',
+      '  config:',
+      '    providers:',
+      '      deepseek:',
+      '        apiKeyEnv: PI_COMPOSITION_KEY',
+      '        api: openai-completions',
+      `        baseURL: ${server.url}`,
+      '        models:',
+      '          - id: budget-test',
+      '            contextWindow: 8192',
+      '            maxTokens: 128',
+      '',
+    ].join('\n'))
+    await vi.waitFor(() => expect(ctx.llm.listProviders().map(provider => provider.id)).toContain('deepseek'), { timeout: 5000 })
+    const result = await assemble(ctx, {
+      model: 'budget-test',
+      messages: [createUserMessage({
+        content: [{ type: 'text', text: 'word '.repeat(10000) }],
+        source: { kind: 'model', provider: 'deepseek', model: 'budget-test' },
+      })],
+    })
+    expect(result.finish).toMatchObject({ kind: 'error', failure: { code: 'CONTEXT_BUDGET_EXHAUSTED' } })
+    expect(server.requests).toHaveLength(0)
+  }, 10_000)
+
   it('boots with zero routes and registers one the moment settings supply a profile', async () => {
     vi.stubEnv('PI_COMPOSITION_KEY', '')
     const server = await mockServer([{ events: textEvents }])

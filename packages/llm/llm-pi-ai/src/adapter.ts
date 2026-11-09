@@ -37,6 +37,7 @@ import type {
   SimpleStreamOptions,
   ThinkingLevel,
 } from '@earendil-works/pi-ai'
+import { clampMaxTokensToContext } from '@earendil-works/pi-ai/api/simple-options'
 import {
   attributionHeaders,
   contentHasImage,
@@ -377,6 +378,14 @@ export class PiAiAdapter extends LlmAdapter {
             maxBytes: profile.requestImageMaxBytes,
           },
         }, onReplayDegrade)
+      const requestedMaxTokens = options.maxTokens ?? model.maxTokens
+      if (model.api === 'openai-completions' && requestedMaxTokens > 1
+        && clampMaxTokensToContext(model, context, requestedMaxTokens) === 1) {
+        throw new LlmError(
+          `pi-ai estimated that the request leaves only one output token in the configured ${model.contextWindow}-token context window for "${model.provider}/${model.id}"; compact the conversation or check the model's contextWindow configuration`,
+          'CONTEXT_BUDGET_EXHAUSTED',
+        )
+      }
       const events = snapshot.models.streamSimple(model, context, {
         ...profileOptions(profile, reasoning, apiKey),
         ...options.temperature === undefined ? {} : { temperature: options.temperature },
