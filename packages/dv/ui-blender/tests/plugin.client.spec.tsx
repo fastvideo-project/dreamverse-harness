@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 /**
  * What `@fastvideo/dreamverse-ui-blender` registers: the Blender takes on the canvas, the Blender right-Sidebar tab type
- * and its body under the real slot runtime, and their removal with the plugin; and the panel's two states over a fake
- * host half: the connection steps while no Blender is connected, the live viewport while one is.
+ * and its body under the real slot runtime, the Blender viewport node type with its card and editor, and their removal
+ * with the plugin; the panel's two states over a fake host half (the connection steps while no Blender is connected,
+ * the live viewport while one is); and the viewport node's card, which leaves the pointer to the canvas, and editor,
+ * which turns drags, the wheel and its buttons into view changes.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
@@ -12,18 +14,26 @@ import { tabInfoFactory } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/cli
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import type { ComposedProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
-import { BLENDER_ID, BlenderPanel, applyWith, blenderDefinition, inject, type BlenderSource, type BlenderState, type BlenderStatus, type ViewFrame } from '../src/client/index.ts'
+import type { EditorHost, NodeView } from '@dv/ui-canvas/contract'
+import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
+import type { WireState } from '@dv/ui-kit/types.ts'
+import {
+  BLENDER_ID, BlenderPanel, VIEWPORT_NODE, VIEWPORT_SIZING, VIEWPORT_TYPE, ViewportCard, ViewportEditor, addonNavigates, applyWith,
+  blenderDefinition, inject, shownSize, viewportNodeType, type BlenderSource, type BlenderState, type BlenderStatus, type ViewCommand,
+  type ViewFrame,
+} from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
 
 const SLOTS = {
   'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: tabInfoFactory } } },
   'dv.canvas.card': { kind: 'keyed', scope: 'root' },
+  'dv.canvas.editor': { kind: 'keyed', scope: 'root' },
   'dv.canvas.editor.claimed': { kind: 'keyed', scope: 'root' },
 } as const
 
 type FrameProps = ComposedProps<'root', never, keyof typeof SLOTS, undefined, object>
 
-const STATE: BlenderState = { blender_version: '5.3.0', addon_version: '0.1.0', file: 'shot.blend', allow_code: true }
+const STATE: BlenderState = { blender_version: '5.3.0', addon_version: '0.2.0', file: 'shot.blend', allow_code: true }
 
 /** A host half whose stream the test drives. */
 class FakeSource implements BlenderSource {
@@ -36,7 +46,20 @@ class FakeSource implements BlenderSource {
   origin = 'http://127.0.0.1:18094'
   token = 'tok-1'
   watchers = 0
-  private listener: Parameters<BlenderSource['watch']>[0] | null = null
+  readonly sent: ViewCommand[] = []
+  placeFailure: Error | null = null
+  placed = 0
+
+  navigate(command: ViewCommand): void {
+    this.sent.push(command)
+  }
+
+  place(): Promise<void> {
+    this.placed += 1
+    return this.placeFailure === null ? Promise.resolve() : Promise.reject(this.placeFailure)
+  }
+
+  private readonly listeners = new Set<Parameters<BlenderSource['watch']>[0]>()
 
   status(): Promise<BlenderStatus> {
     return Promise.resolve({ linked: false, state: null, token: this.token, link_path: '/dv/blender/ws', viewers: this.watchers })
@@ -49,20 +72,20 @@ class FakeSource implements BlenderSource {
 
   watch(listener: Parameters<BlenderSource['watch']>[0]): () => void {
     this.watchers += 1
-    this.listener = listener
+    this.listeners.add(listener)
     listener.status(false, null)
     return () => {
       this.watchers -= 1
-      this.listener = null
+      this.listeners.delete(listener)
     }
   }
 
   link(state: BlenderState | null): void {
-    act(() => { this.listener?.status(state !== null, state) })
+    act(() => { for (const listener of this.listeners) listener.status(state !== null, state) })
   }
 
   frame(frame: ViewFrame): void {
-    act(() => { this.listener?.frame(frame) })
+    act(() => { for (const listener of this.listeners) listener.frame(frame) })
   }
 }
 
@@ -74,6 +97,7 @@ afterEach(async () => {
   for (const session of sessions.splice(0)) session[Symbol.dispose]()
   for (const runtime of runtimes.splice(0)) await runtime.dispose()
   vi.unstubAllGlobals()
+  publishCurrentProject(null)
 })
 
 /** Mount the plugin with the canvas and the tab registry, and draw its tab body in chat session s5. */
@@ -115,10 +139,13 @@ describe('@fastvideo/dreamverse-ui-blender', () => {
     const blenderType = () => runtime.ctx.dvCanvas.nodeTypes.getSnapshot().find(type => type.id === BLENDER_ID)
     expect({ type: blenderType()?.type, operations: blenderType()?.claimed?.operations })
       .toEqual({ type: 'blender', operations: ['blender.render', 'blender.animation_render'] })
+    const viewportType = () => runtime.ctx.dvCanvas.nodeTypes.getSnapshot().find(type => type.type === VIEWPORT_TYPE)
+    expect(viewportType()?.id).toBe(BLENDER_ID)
     expect(await tab().findByTestId('dv-blender-panel')).toBeTruthy()
     expect(source.watchers).toBe(1)
     await handle.dispose()
     expect(blenderType()).toBeUndefined()
+    expect(viewportType()).toBeUndefined()
     expect(source.watchers).toBe(0)
   })
 })
@@ -177,5 +204,162 @@ describe('BlenderPanel', () => {
     expect(screen.queryByTestId('dv-blender-view')).toBeNull()
     expect(source.watchers).toBe(1)
     expect(screen.getByText('Connect Blender')).toBeTruthy()
+  })
+})
+
+/** A project state whose `blender` slice places the viewport with record r1, or holds no `blender` slice. */
+function stateWith(blender: { viewport: string | null } | undefined): WireState {
+  const record = { id: 'r1', operation: 'blender.viewport', status: 'done', params: { on: true } }
+  return {
+    project: { id: 'p1' }, head: 'r1', tip: 'r1', assets: [],
+    components: {
+      proj: { records: [record], stale: {}, superseded: {}, created_by: {} },
+      asset: { placed: [] },
+      ...blender === undefined ? {} : { blender },
+    },
+  } as never
+}
+
+describe('the viewport node type', () => {
+  it('draws one 16:9 media node while the blender slice places the viewport, and none otherwise', () => {
+    const type = viewportNodeType(BLENDER_ID)
+    const input = (state: WireState) => ({ state, operations: [], language: 'en' as const, placed: new Set<string>() })
+    expect(type.entries?.(input(stateWith(undefined)))).toEqual([])
+    expect(type.entries?.(input(stateWith({ viewport: null })))).toEqual([])
+    const [node] = type.entries?.(input(stateWith({ viewport: 'r1' }))) ?? []
+    expect(node).toMatchObject({ id: VIEWPORT_NODE, title: 'Blender viewport', record: { id: 'r1' }, assets: [], sizing: VIEWPORT_SIZING })
+    expect(VIEWPORT_SIZING).toMatchObject({ kind: 'media', aspectRatio: { ratio: 16 / 9, fixedHeight: 0 } })
+  })
+
+  it('fits a frame into a box and knows which add-on versions move the view', () => {
+    expect(shownSize({ width: 320, height: 320 }, { width: 640, height: 360 })).toEqual({ width: 320, height: 180 })
+    expect(shownSize({ width: 320, height: 180 }, null)).toEqual({ width: 320, height: 180 })
+    expect([addonNavigates('0.1.0'), addonNavigates('0.2.0'), addonNavigates('0.10.1'), addonNavigates('1.0.0')]).toEqual([false, true, true, true])
+  })
+})
+
+const frame = (width: number, height = 360): ViewFrame => ({ image: new Blob(['jpeg'], { type: 'image/jpeg' }), width, height })
+const noDraw = (): Promise<void> => Promise.resolve()
+const nodeView = { id: VIEWPORT_NODE, type: VIEWPORT_TYPE } as unknown as NodeView
+
+describe('ViewportCard', () => {
+  it('shows the live viewport and leaves every pointer press to the canvas', () => {
+    const source = new FakeSource()
+    const pressed = vi.fn()
+    render(
+      <div onPointerDown={pressed}>
+        <ViewportCard
+          node={nodeView} assets={{}} textScale={1} host={{ run: vi.fn(), rerun: vi.fn() }} source={source} draw={noDraw} {...{} as never}
+        />
+      </div>,
+    )
+    expect(screen.getByText('Blender is not connected')).toBeTruthy()
+    source.link(STATE)
+    expect(screen.getByText('Waiting for the viewport…')).toBeTruthy()
+    source.frame(frame(640))
+    expect(screen.queryByText('Waiting for the viewport…')).toBeNull()
+    fireEvent.pointerDown(screen.getByTestId('dv-blender-node-view'))
+    expect(pressed).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('ViewportEditor', () => {
+  /** Mount the editor over a 320 × 180 surface, with changes flushed only when the test runs the queued frame. */
+  function mountEditor(source: FakeSource) {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(320)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(180)
+    const frames: Array<() => void> = []
+    const host = { run: vi.fn(), close: vi.fn() } as unknown as EditorHost
+    render(
+      <ViewportEditor
+        node={nodeView} state={stateWith({ viewport: 'r1' })} operations={[]} host={host} source={source} draw={noDraw}
+        schedule={(flush) => { frames.push(flush) }} {...{} as never}
+      />,
+    )
+    const runFrame = (): void => { act(() => { for (const flush of frames.splice(0)) flush() }) }
+    return { host, runFrame, surface: screen.getByTestId('dv-blender-node-surface') }
+  }
+
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('turns drags into one orbit or pan per frame and the wheel into zoom steps, as fractions of the shown picture', () => {
+    const source = new FakeSource()
+    const { runFrame, surface } = mountEditor(source)
+    source.link(STATE)
+    source.frame(frame(640))
+    fireEvent.pointerDown(surface, { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
+    fireEvent.pointerMove(surface, { clientX: 16, clientY: 9, pointerId: 1 })
+    fireEvent.pointerMove(surface, { clientX: 32, clientY: -18, pointerId: 1 })
+    runFrame()
+    fireEvent.pointerUp(surface, { pointerId: 1 })
+    fireEvent.pointerMove(surface, { clientX: 64, clientY: 0, pointerId: 1 })
+    runFrame()
+    fireEvent.pointerDown(surface, { button: 0, shiftKey: true, clientX: 0, clientY: 0, pointerId: 2 })
+    fireEvent.pointerMove(surface, { clientX: -32, clientY: 0, pointerId: 2 })
+    runFrame()
+    fireEvent.pointerUp(surface, { pointerId: 2 })
+    fireEvent.pointerDown(surface, { button: 2, clientX: 0, clientY: 0, pointerId: 3 })
+    fireEvent.pointerMove(surface, { clientX: 0, clientY: 90, pointerId: 3 })
+    runFrame()
+    fireEvent.pointerUp(surface, { pointerId: 3 })
+    fireEvent.wheel(surface, { deltaY: 100 })
+    fireEvent.wheel(surface, { deltaY: 100 })
+    runFrame()
+    fireEvent.wheel(surface, { deltaY: -6000 })
+    runFrame()
+    const rounded = (value: number): number => Math.round(value * 1e6) / 1e6
+    expect(source.sent.map(command => 'dx' in command ? { ...command, dx: rounded(command.dx), dy: rounded(command.dy) } : command)).toEqual([
+      { action: 'orbit', dx: 0.1, dy: -0.1 },
+      { action: 'pan', dx: -0.1, dy: 0 },
+      { action: 'pan', dx: 0, dy: 0.5 },
+      { action: 'zoom', steps: 2 },
+      { action: 'zoom', steps: -10 },
+    ])
+  })
+
+  it('switches views, frames the scene, and takes the node off the canvas through blender.viewport', () => {
+    const source = new FakeSource()
+    const { host } = mountEditor(source)
+    source.link(STATE)
+    fireEvent.click(screen.getByText('Top'))
+    fireEvent.click(screen.getByText('Camera'))
+    fireEvent.click(screen.getByText('Frame selected'))
+    expect(source.sent).toEqual([{ action: 'preset', preset: 'top' }, { action: 'preset', preset: 'camera' }, { action: 'frame', target: 'selected' }])
+    fireEvent.click(screen.getByText('Remove from the canvas'))
+    expect(host.run).toHaveBeenCalledWith({ operation: 'blender.viewport', params: { on: false }, intent: 'Take the Blender viewport off the canvas' })
+    expect(host.close).toHaveBeenCalledTimes(1)
+  })
+
+  it('moves nothing while Blender is not connected or its add-on predates view changes, and says to update it', () => {
+    const source = new FakeSource()
+    const { runFrame, surface } = mountEditor(source)
+    expect(screen.getByText<HTMLButtonElement>('Top').disabled).toBe(true)
+    source.link({ ...STATE, addon_version: '0.1.0' })
+    expect(screen.getByText('Update the DreamVerse add-on in Blender to move the view from here.')).toBeTruthy()
+    fireEvent.pointerDown(surface, { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
+    fireEvent.pointerMove(surface, { clientX: 32, clientY: 0, pointerId: 1 })
+    runFrame()
+    expect(screen.getByText<HTMLButtonElement>('Top').disabled).toBe(true)
+    expect(source.sent).toEqual([])
+  })
+})
+
+describe('BlenderPanel placing', () => {
+  it('puts the viewport on the open project\'s canvas, shows a refusal, and needs an open project', async () => {
+    const source = new FakeSource()
+    render(<BlenderPanel source={source} draw={noDraw} />)
+    await screen.findByTestId('dv-blender-connection')
+    source.link(STATE)
+    const button = (): HTMLButtonElement => screen.getByText('Put the viewport on the canvas') as HTMLButtonElement
+    expect(button().disabled).toBe(true)
+    expect(screen.getByText('Open a project to put the viewport on its canvas.')).toBeTruthy()
+    act(() => { publishCurrentProject('p1') })
+    expect(button().disabled).toBe(false)
+    fireEvent.click(button())
+    await vi.waitFor(() => { expect(source.placed).toBe(1) })
+    await vi.waitFor(() => { expect(button().disabled).toBe(false) })
+    source.placeFailure = new Error('The Blender viewport is already on the canvas.')
+    fireEvent.click(button())
+    expect(await screen.findByText('The viewport was not put on the canvas: The Blender viewport is already on the canvas.')).toBeTruthy()
   })
 })

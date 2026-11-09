@@ -5,7 +5,7 @@ description: "The procedure for building, checking and rendering a 3D scene in t
 
 # Blender scenes
 
-The user's own Blender is connected to the harness through the DreamVerse add-on, and the user watches its viewport in the Blender tab of the right Sidebar while you work. `dv_blender_scene` reads the scene, `dv_blender_run` runs Python in Blender, `dv_blender_look` shows you the viewport or the camera view, and `dv_blender_render` and `dv_blender_animation_render` put renders into the project.
+The user's own Blender is connected to the harness through the DreamVerse add-on, and the user watches its viewport in the Blender tab of the right Sidebar while you work. `dv_blender_scene` reads the scene, `dv_blender_run` runs Python in Blender, `dv_blender_look` shows you the viewport or the camera view, and `dv_blender_render` and `dv_blender_animation_render` put renders into the project. When the user wants to watch Blender on the canvas, `dv_blender_viewport` with `on: true` puts the live viewport there as a node; opening it lets the user orbit, pan and zoom the view.
 
 ## When to use it
 

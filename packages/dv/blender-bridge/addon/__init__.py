@@ -13,11 +13,11 @@ import threading
 import bpy
 from bpy.app.handlers import persistent
 
-from . import commands, viewport
+from . import commands, navigate, viewport
 from .link import HandshakeError, Link
 from .protocol import ConnectionStringError, encode_binary, is_local_host, parse_connection
 
-ADDON_VERSION = "0.1.0"
+ADDON_VERSION = "0.2.0"
 CHUNK_BYTES = 1 << 20
 # Close codes after which reconnecting would only repeat the refusal.
 FINAL_CLOSE_CODES = {4000, 4001}
@@ -142,8 +142,19 @@ class _Controller:
             viewport.set_streaming(bool(message.get("on")))
         elif message.get("type") == "frame_ack":
             viewport.ack(message.get("seq"))
+        elif message.get("type") == "view":
+            self._view(message)
         elif message.get("type") == "request":
             self._request(str(message.get("id")), message.get("op"), message.get("params") or {})
+
+    def _view(self, message):
+        # A view change gets no answer; a failure only shows in Blender's console.
+        try:
+            problem = navigate.apply(message)
+        except Exception as error:  # A bad view change must not stop the link.
+            problem = str(error)
+        if problem is not None:
+            print("DreamVerse: the view change %r did not apply: %s" % (message.get("action"), problem))
 
     def _request(self, request_id, op, params):
         link = self.link

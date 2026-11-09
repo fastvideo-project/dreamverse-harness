@@ -12,8 +12,12 @@
  * - The viewport route `/dv/blender/view`, a WebSocket upgrade route admitted by the Connection's browser checks: a
  *   text message `{type: 'status', linked, state}` at once and at every change, and per frame a text message
  *   `{type: 'frame', seq, width, height, mime}` followed by one binary message with the JPEG or PNG. A viewer with more
- *   than {@link VIEWER_BACKLOG_BYTES} unsent skips frames. A WebSocket does not hold one of the browser's few HTTP/1.1
- *   connections to the harness, which a long-lived HTTP stream would.
+ *   than {@link VIEWER_BACKLOG_BYTES} unsent skips frames. A viewer's text message `{type: 'view', ...}` (a
+ *   {@link ViewCommand}) moves the view of Blender's main 3D viewport; a message that does not parse is dropped. A
+ *   WebSocket does not hold one of the browser's few HTTP/1.1 connections to the harness, which a long-lived HTTP
+ *   stream would.
+ * - The `blender` state slice and the `blender.viewport` operation (see `viewport-node.ts`), which put the viewport on
+ *   the project canvas as a node or take it off.
  * - The browser's Fetch routes (see `routes.ts`): status, pairing token and the add-on download.
  *
  * @module @fastvideo/dreamverse-blender-bridge
@@ -29,15 +33,22 @@ import z from '@deepseek-ai/schemastery'
 import type {} from '@dv/project'
 import WebSocket, { WebSocketServer } from 'ws'
 import { BlenderLink, type ViewEvent } from './link.ts'
+import { parseViewCommand, type ViewCommand } from './protocol.ts'
 import { animationOperation, stillOperation } from './render.ts'
 import { bridgeRoutes, LINK_PATH, VIEW_PATH } from './routes.ts'
 import { PairingToken } from './token.ts'
 import { registerTools } from './tools.ts'
+import { blenderReducer, viewportOperation } from './viewport-node.ts'
 
 export { BlenderLink, NOT_LINKED, type BlenderReply, type ViewEvent } from './link.ts'
-export { encodeBinary, parseBlenderBinary, parseBlenderText, type BlenderOp, type BlenderState, type FrameMime } from './protocol.ts'
+export {
+  encodeBinary, parseBlenderBinary, parseBlenderText, parseViewCommand, VIEW_COMMAND_LIMIT, VIEW_PRESETS,
+  type BlenderOp, type BlenderState, type FrameMime, type ViewCommand, type ViewPreset,
+} from './protocol.ts'
 export { ADDON_ROUTE, LINK_PATH, STATUS_ROUTE, TOKEN_ROUTE, VIEW_PATH, bridgeRoutes, zipAddon, type BlenderStatus } from './routes.ts'
 export { LOOK_TOOL, RUN_TOOL, SCENE_TOOL, lookContent, type LookValue } from './tools.ts'
+export type { BlenderSlice } from './types.ts'
+export { VIEWPORT_OPERATION, blenderReducer, viewportOperation } from './viewport-node.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -141,6 +152,8 @@ export default class DvBlender extends Service {
     registerTools(ctx, this.link, { requestTimeoutMs: config.requestTimeoutMs })
     ctx.inject(['dvProject'], (projected) => {
       projected.effect(() => projected.dvProject.registerComponent('blender'), 'dvBlender component')
+      projected.effect(() => projected.dvProject.registerReducer('blender', blenderReducer), 'dvBlender reducer')
+      projected.effect(() => projected.dvProject.registerOperation(viewportOperation()), 'dvBlender blender.viewport')
       projected.effect(() => projected.dvProject.registerOperation(stillOperation(this.link, config)), 'dvBlender blender.render')
       projected.effect(() => projected.dvProject.registerOperation(animationOperation(this.link, config)), 'dvBlender blender.animation_render')
     })
@@ -187,6 +200,11 @@ export default class DvBlender extends Service {
         clearInterval(pings)
         unwatch()
         this.viewers.delete(viewer)
+      })
+      viewer.on('message', (data, isBinary) => {
+        const text = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data instanceof ArrayBuffer ? new Uint8Array(data) : data)
+        const command: ViewCommand | null = isBinary ? null : parseViewCommand(text.toString())
+        if (command !== null) this.link.navigate(command)
       })
       viewer.on('error', (error) => { this.ctx.logger('dvBlender').warn('blender viewer error: %s', error.message) })
     })

@@ -8,7 +8,7 @@
  */
 import type WebSocket from 'ws'
 import type { RawData } from 'ws'
-import { parseBlenderBinary, parseBlenderText, type BlenderOp, type BlenderState, type FrameMime } from './protocol.ts'
+import { parseBlenderBinary, parseBlenderText, type BlenderOp, type BlenderState, type FrameMime, type ViewCommand } from './protocol.ts'
 
 /** What a viewer of the viewport receives. */
 export type ViewEvent =
@@ -142,6 +142,18 @@ export class BlenderLink {
       })
       socket.send(JSON.stringify({ type: 'request', id, op, params }))
     })
+  }
+
+  /**
+   * Move the view of the main 3D viewport; the add-on applies the command and answers nothing, and the next frame
+   * shows the result.
+   * @param command - the checked command.
+   * @returns whether a Blender was linked to receive it.
+   */
+  navigate(command: ViewCommand): boolean {
+    if (this.socket === null || this.current === null) return false
+    this.socket.send(JSON.stringify({ type: 'view', ...command }))
+    return true
   }
 
   /**

@@ -3,7 +3,8 @@
  * binary framing of images and file chunks. Text messages are JSON objects with a `type`. A binary message is a 4-byte
  * big-endian header length, that many bytes of JSON header, then the payload bytes.
  *
- * Harness to Blender: `request` (`id`, `op`, `params`), `stream` (`on`), `frame_ack` (`seq`).
+ * Harness to Blender: `request` (`id`, `op`, `params`), `stream` (`on`), `frame_ack` (`seq`), and `view` (a
+ * {@link ViewCommand}), which moves the view of the main 3D viewport and gets no answer.
  * Blender to harness: `hello` and `state` ({@link BlenderState} fields), `response` (`id`, `ok`, `result` or `error`),
  * binary `frame` headers (`seq`, `width`, `height`, `mime`; a JPEG or PNG payload) and binary `chunk` headers (`id`, payload bytes of the
  * file that the request with that ID returns; its `response` follows the last chunk).
@@ -40,6 +41,27 @@ export type BlenderBinary =
   | { kind: 'frame'; seq: number; width: number; height: number; mime: FrameMime; payload: Uint8Array }
   | { kind: 'chunk'; id: string; payload: Uint8Array }
 
+/** The standard views of {@link ViewCommand} `preset`; `camera` looks through the scene camera. */
+export const VIEW_PRESETS = ['front', 'back', 'left', 'right', 'top', 'bottom', 'camera'] as const
+
+/** One standard view. */
+export type ViewPreset = typeof VIEW_PRESETS[number]
+
+/**
+ * A change to the view of the main 3D viewport, sent by a viewer of the viewport and relayed to Blender. `orbit` and
+ * `pan` take the drag as fractions of the shown picture's width (`dx`, rightward) and height (`dy`, downward); a drag
+ * across the whole width orbits half a turn. `zoom` takes wheel steps, positive away from the scene. `frame` fits
+ * every object (`all`) or the selection (`selected`) into the view.
+ */
+export type ViewCommand =
+  | { action: 'orbit' | 'pan'; dx: number; dy: number }
+  | { action: 'zoom'; steps: number }
+  | { action: 'preset'; preset: ViewPreset }
+  | { action: 'frame'; target: 'all' | 'selected' }
+
+/** The largest drag of one `orbit` or `pan`, and the most wheel steps of one `zoom`, that a viewer may send. */
+export const VIEW_COMMAND_LIMIT = 10
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -71,6 +93,38 @@ export function parseBlenderText(text: string): BlenderText | null {
   if (value['type'] !== 'response' || typeof value['id'] !== 'string') return null
   if (value['ok'] === true && isRecord(value['result'])) return { type: 'response', id: value['id'], ok: true, result: value['result'] }
   if (value['ok'] === false && typeof value['error'] === 'string') return { type: 'response', id: value['id'], ok: false, error: value['error'] }
+  return null
+}
+
+function bounded(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= VIEW_COMMAND_LIMIT
+}
+
+/**
+ * Read one text message of a viewer; the viewer socket is a wire boundary, so every field is checked.
+ * @param text - the message text.
+ * @returns the command, or null when it is not JSON, names no known action, or has a field out of range.
+ */
+export function parseViewCommand(text: string): ViewCommand | null {
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch {
+    // Not JSON: the viewer's message is dropped.
+    return null
+  }
+  if (!isRecord(value) || value['type'] !== 'view') return null
+  const { action } = value
+  if (action === 'orbit' || action === 'pan') {
+    const { dx, dy } = value
+    return bounded(dx) && bounded(dy) ? { action, dx, dy } : null
+  }
+  if (action === 'zoom') return bounded(value['steps']) ? { action, steps: value['steps'] } : null
+  if (action === 'preset') {
+    const preset = VIEW_PRESETS.find(candidate => candidate === value['preset'])
+    return preset === undefined ? null : { action, preset }
+  }
+  if (action === 'frame' && (value['target'] === 'all' || value['target'] === 'selected')) return { action, target: value['target'] }
   return null
 }
 

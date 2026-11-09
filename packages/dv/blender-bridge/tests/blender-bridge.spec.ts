@@ -22,8 +22,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import WebSocket from 'ws'
 import { chatProject, provideChatServices } from '../../project/tests/workspaces.ts'
 import DvBlender, {
-  ADDON_ROUTE, LINK_PATH, NOT_LINKED, STATUS_ROUTE, TOKEN_ROUTE, VIEW_PATH, VIEWER_BACKLOG_BYTES, bridgeRoutes, encodeBinary, relayView,
-  type BlenderStatus,
+  ADDON_ROUTE, LINK_PATH, NOT_LINKED, STATUS_ROUTE, TOKEN_ROUTE, VIEW_PATH, VIEWER_BACKLOG_BYTES, bridgeRoutes, encodeBinary,
+  parseViewCommand, relayView, type BlenderStatus,
 } from '../src/index.ts'
 
 /** The plugin classes the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
@@ -38,6 +38,7 @@ class FakeBlender {
   readonly requests: Array<{ id: string; op: string; params: Record<string, unknown> }> = []
   readonly streams: boolean[] = []
   readonly acks: number[] = []
+  readonly views: Array<Record<string, unknown>> = []
   closed: { code: number; reason: string } | null = null
   answer: (op: string, params: Record<string, unknown>) => Answer = () => ({ result: {} })
 
@@ -47,6 +48,7 @@ class FakeBlender {
       const message = JSON.parse(Buffer.from(data as Buffer).toString()) as Record<string, unknown>
       if (message['type'] === 'stream') this.streams.push(message['on'] === true)
       if (message['type'] === 'frame_ack') this.acks.push(message['seq'] as number)
+      if (message['type'] === 'view') this.views.push(message)
       if (message['type'] === 'request') this.respond(message['id'] as string, message['op'] as string, message['params'] as Record<string, unknown>)
     })
     socket.on('close', (code, reason) => { this.closed = { code, reason: reason.toString() } })
@@ -292,6 +294,50 @@ describe('dvBlender viewport stream', () => {
     await until(() => blender.streams.at(-1) === false, 'the stream to stop')
   })
 
+  it('relays a viewer\'s view changes to Blender and drops the ones that do not parse', async () => {
+    const fixture = await start()
+    const blender = await fixture.connect()
+    const viewer = await openViewer(fixture.port)
+    await until(() => fixture.ctx.dvBlender.link.viewerCount === 1, 'the viewer')
+    const sends = [
+      { type: 'view', action: 'orbit', dx: 0.25, dy: -0.1 },
+      { type: 'view', action: 'orbit', dx: 11, dy: 0 },
+      { type: 'view', action: 'spin', dx: 1, dy: 1 },
+      { type: 'view', action: 'preset', preset: 'side' },
+      { type: 'stream', on: false },
+      { type: 'view', action: 'zoom', steps: -2 },
+      { type: 'view', action: 'preset', preset: 'camera' },
+      { type: 'view', action: 'frame', target: 'selected' },
+    ]
+    for (const message of sends) viewer.socket.send(JSON.stringify(message))
+    viewer.socket.send('not json')
+    viewer.socket.send(Buffer.from([1, 2, 3]))
+    viewer.socket.send(JSON.stringify({ type: 'view', action: 'pan', dx: 0.5, dy: 0.5 }))
+    await until(() => blender.views.length === 5, 'five view changes')
+    expect(blender.views).toEqual([
+      { type: 'view', action: 'orbit', dx: 0.25, dy: -0.1 },
+      { type: 'view', action: 'zoom', steps: -2 },
+      { type: 'view', action: 'preset', preset: 'camera' },
+      { type: 'view', action: 'frame', target: 'selected' },
+      { type: 'view', action: 'pan', dx: 0.5, dy: 0.5 },
+    ])
+    expect(blender.streams).toEqual([false, true])
+  })
+
+  it('reads a view change field by field and drops it while no Blender is connected', async () => {
+    expect(parseViewCommand('{"type":"view","action":"zoom","steps":10}')).toEqual({ action: 'zoom', steps: 10 })
+    expect(parseViewCommand('{"type":"view","action":"zoom","steps":10.5}')).toBeNull()
+    expect(parseViewCommand('{"type":"view","action":"pan","dx":"1","dy":0}')).toBeNull()
+    expect(parseViewCommand('{"type":"view","action":"frame","target":"none"}')).toBeNull()
+    expect(parseViewCommand('{"action":"zoom","steps":1}')).toBeNull()
+    expect(parseViewCommand('[1]')).toBeNull()
+    const fixture = await start()
+    expect(fixture.ctx.dvBlender.link.navigate({ action: 'zoom', steps: 1 })).toBe(false)
+    const blender = await fixture.connect()
+    expect(fixture.ctx.dvBlender.link.navigate({ action: 'zoom', steps: 1 })).toBe(true)
+    await until(() => blender.views.length === 1, 'the view change')
+  })
+
   it('skips a frame for a viewer with a large backlog, and always sends a status', () => {
     const sent: unknown[] = []
     const viewer = { bufferedAmount: VIEWER_BACKLOG_BYTES + 1, send: (data: unknown) => { sent.push(data) } }
@@ -305,7 +351,7 @@ describe('dvBlender viewport stream', () => {
 })
 
 describe('dvBlender tools', () => {
-  it('describes the five tools to the model in the words the README quotes', async () => {
+  it('describes the six tools to the model in the words the README quotes', async () => {
     const fixture = await start()
     const described = Object.fromEntries(fixture.ctx.tools.schemas().filter(schema => schema.name.startsWith('dv_blender')).map(schema => [schema.name, schema.description]))
     expect(described).toEqual({
@@ -325,6 +371,9 @@ describe('dvBlender tools', () => {
       dv_blender_animation_render: 'Render a frame range of the connected Blender\'s scene with its scene camera, render engine, '
         + 'resolution and frame rate, as an MP4 video in the project that the timeline can use as a shot. Rendering many frames '
         + 'takes long; keep ranges short and the resolution modest unless the user asks for more. Blender is busy until it finishes.',
+      dv_blender_viewport: 'Put the live viewport of the user\'s Blender on the project canvas as a node (on: true), or take it '
+        + 'off (on: false). The node shows what Blender\'s 3D viewport shows, and the user can open it to orbit, pan and zoom the '
+        + 'view; it changes nothing in the scene.',
     })
   })
 
@@ -426,6 +475,24 @@ describe('dvBlender render operations', () => {
   })
 })
 
+describe('dvBlender viewport node', () => {
+  it('puts the viewport on the canvas and takes it off, without a connected Blender, and refuses a call that changes nothing', async () => {
+    const fixture = await start()
+    const placed = () => fixture.ctx.dvProject.getState(fixture.project).components.blender.viewport
+    expect(placed()).toBeNull()
+    const on = value(await fixture.call('dv_blender_viewport', { reason: 'show it', on: true }, 's1')) as OperationToolValue
+    const record = fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(on.record))
+    expect(record).toMatchObject({ status: 'done', component: 'blender', operation: 'blender.viewport', outputs: [], report: { on: true } })
+    expect(on.summary).toBe('put the Blender viewport on the canvas')
+    expect(placed()).toBe(record.id)
+    expect(failure(await fixture.call('dv_blender_viewport', { reason: 'again', on: true }, 's1'))).toBe('The Blender viewport is already on the canvas.')
+    const off = value(await fixture.call('dv_blender_viewport', { reason: 'hide it', on: false }, 's1')) as OperationToolValue
+    expect(off.summary).toBe('took the Blender viewport off the canvas')
+    expect(placed()).toBeNull()
+    expect(failure(await fixture.call('dv_blender_viewport', { reason: 'again', on: false }, 's1'))).toBe('The Blender viewport is not on the canvas.')
+  })
+})
+
 describe('dvBlender disposal', () => {
   it('removes the link route, the tools and the operations, and closes the link, when its fiber is disposed', async () => {
     const fixture = await start()
@@ -435,7 +502,7 @@ describe('dvBlender disposal', () => {
     await entry?.fiber?.dispose()
     await until(() => blender.closed !== null, 'the link to close')
     expect(blender.closed?.code).toBe(1001)
-    for (const name of ['dv_blender_scene', 'dv_blender_run', 'dv_blender_look', 'dv_blender_render', 'dv_blender_animation_render']) {
+    for (const name of ['dv_blender_scene', 'dv_blender_run', 'dv_blender_look', 'dv_blender_render', 'dv_blender_animation_render', 'dv_blender_viewport']) {
       expect(fixture.ctx.tools.get(name)).toBeUndefined()
     }
     expect(fixture.ctx.dvProject.listOperations().map(spec => spec.name).filter(name => name.startsWith('blender.'))).toEqual([])

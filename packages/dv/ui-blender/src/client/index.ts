@@ -1,7 +1,8 @@
 /**
  * Browser half of the Blender component: the `dv-blender` right-Sidebar tab type, whose body is the Blender panel (how
- * to connect Blender, then its live viewport), and the takes of `blender.render` and `blender.animation_render` on the
- * canvas through one `defineGenerationUi` declaration of `@dv/ui-generation`.
+ * to connect Blender, then its live viewport), the takes of `blender.render` and `blender.animation_render` on the
+ * canvas through one `defineGenerationUi` declaration of `@dv/ui-generation`, and the Blender viewport node of the
+ * canvas with its card and editor (see `ViewportNode.tsx`).
  *
  * @module @fastvideo/dreamverse-ui-blender/client
  */
@@ -13,9 +14,17 @@ import type { SidebarRightTabDefinition } from '@deepseek-ai/dsh-client-ui-sideb
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { defineGenerationUi } from '@dv/ui-generation/generation-kit.tsx'
 import { pickText } from '@dv/ui-kit/locale.ts'
-import { BlenderPanel, httpBlenderSource, type BlenderSource } from './BlenderPanel.tsx'
+import { BlenderPanel } from './BlenderPanel.tsx'
+import { httpBlenderSource, type BlenderSource } from './viewer.ts'
+import { VIEWPORT_TYPE, ViewportCard, ViewportEditor, viewportNodeType } from './ViewportNode.tsx'
 
-export { BlenderPanel, httpBlenderSource, type BlenderSource, type BlenderState, type BlenderStatus, type ViewFrame } from './BlenderPanel.tsx'
+export { BlenderPanel } from './BlenderPanel.tsx'
+export { drawFrame, useLiveView, type FrameDrawer, type LiveView } from './live-view.ts'
+export {
+  addonNavigates, httpBlenderSource, VIEW_COMMAND_LIMIT, VIEWPORT_OPERATION,
+  type BlenderSource, type BlenderState, type BlenderStatus, type ViewCommand, type ViewFrame, type ViewListener, type ViewPreset,
+} from './viewer.ts'
+export { placedRecord, shownSize, VIEWPORT_NODE, VIEWPORT_SIZING, VIEWPORT_TYPE, ViewportCard, ViewportEditor, viewportNodeType } from './ViewportNode.tsx'
 
 /** The tab kind this package owns. */
 export const BLENDER_KIND = 'dv-blender'
@@ -36,9 +45,27 @@ export const blenderDefinition: SidebarRightTabDefinition = {
   }],
 }
 
-/** What the plugin hands the tab body. */
+/** What the plugin hands the tab body and the viewport node's card and editor. */
 interface BlenderTabInjected {
   source: BlenderSource
+}
+
+/**
+ * The card body of the viewport node over the plugin's link to the bridge.
+ * @param props - the card's props and the link.
+ * @returns the card.
+ */
+function ViewportCardBody(props: PropsRuntime<'dv.canvas.card'> & BlenderTabInjected): ReactNode {
+  return createElement(ViewportCard, props)
+}
+
+/**
+ * The editor body of the viewport node over the plugin's link to the bridge.
+ * @param props - the editor's props and the link.
+ * @returns the editor.
+ */
+function ViewportEditorBody(props: PropsRuntime<'dv.canvas.editor'> & BlenderTabInjected): ReactNode {
+  return createElement(ViewportEditor, props)
 }
 
 /**
@@ -84,4 +111,14 @@ function mount(ctx: ClientContext, source: BlenderSource): void {
     { name: 'sidebar.right.pane.tab', key: BLENDER_ID, inject: () => injected },
     BlenderTabBody,
   )), 'ui-blender: tab body')
+  // The viewport node type and its card and editor share one scope, so they come and go with the canvas together.
+  ctx.inject(['dvCanvas'], (scope) => {
+    scope.effect(() => scope.dvCanvas.nodeTypes.register(viewportNodeType(BLENDER_ID)), 'ui-blender: viewport node type')
+    scope.effect(() => scope.slots.inject('dv.canvas.card', () => scope.slots.register(
+      { name: 'dv.canvas.card', key: VIEWPORT_TYPE, inject: () => injected }, ViewportCardBody,
+    )), 'ui-blender: viewport card')
+    scope.effect(() => scope.slots.inject('dv.canvas.editor', () => scope.slots.register(
+      { name: 'dv.canvas.editor', key: VIEWPORT_TYPE, inject: () => injected }, ViewportEditorBody,
+    )), 'ui-blender: viewport editor')
+  })
 }
