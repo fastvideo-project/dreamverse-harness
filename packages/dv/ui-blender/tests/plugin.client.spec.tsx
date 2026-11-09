@@ -367,7 +367,7 @@ describe('BlenderPanel viewport controls', () => {
     await vi.waitFor(() => { expect(source.sent).toHaveLength(3) })
     expect(source.sent.slice(0, 2)).toEqual([{ action: 'preset', preset: 'front' }, { action: 'frame', target: 'all' }])
     expect(source.sent[2]).toMatchObject({ action: 'orbit', dy: 0 })
-    expect(screen.getByText('Drag to orbit · Shift-drag or right-drag to pan · Scroll to zoom. This moves only the view, never the scene.')).toBeTruthy()
+    expect(screen.getByText('Drag to orbit · Shift-drag or right-drag to pan · Scroll to zoom. This moves only the view.')).toBeTruthy()
   })
 })
 

@@ -208,8 +208,8 @@ export function ViewportControls(props: {
       <p className={css.hint}>
         {state !== null && !addonNavigates(state.addon_version)
           ? t('请在 Blender 里更新 DreamVerse 插件，才能从这里移动视图。', 'Update the DreamVerse add-on in Blender to move the view from here.')
-          : t('拖动旋转 · Shift 拖动或右键拖动平移 · 滚轮缩放。这里只移动视图，不改场景。',
-            'Drag to orbit · Shift-drag or right-drag to pan · Scroll to zoom. This moves only the view, never the scene.')}
+          : t('拖动旋转 · Shift 拖动或右键拖动平移 · 滚轮缩放。这里只移动视图。',
+            'Drag to orbit · Shift-drag or right-drag to pan · Scroll to zoom. This moves only the view.')}
       </p>
     </div>
   )
