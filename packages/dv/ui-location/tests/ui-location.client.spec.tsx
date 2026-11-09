@@ -17,7 +17,7 @@ import { apply as composerApply, inject as composerInject } from '../../ui-compo
 import type { projectMentionSource } from '../../ui-composer/src/client/mention.ts'
 import { apply as historyApply, inject as historyInject } from '../../ui-history/src/client/index.ts'
 import { actionLabel } from '../../ui-history/src/client/rows.ts'
-import { fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { canvasNode, fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
@@ -41,8 +41,10 @@ function nounState(): WireState {
   state.components.proj.records = [
     ...state.components.proj.records,
     record({ id: 'n1', operation: 'location.create', params: { location: 'l1', name: '小巷' } }),
-    record({ id: 'n2', operation: 'location.update', params: { location: 'l1' } }),
+    record({ id: 'n2', operation: 'location.update', based_on: 'n1', params: { location: 'l1' } }),
   ]
+  state.components.canvas.nodes['n1'] = canvasNode('location', ['n1', 'n2'], 0, 400)
+  state.components.canvas.order.push('n1')
   const id = 'l1' as LocationId
   state.components.location = { [id]: [
     { id, version: 1, name: '小巷', description: 'A short description of the location.', references: ['ref.png' as AssetId], created_by: 'n1' as RecordId },
@@ -77,7 +79,7 @@ async function mountLocation() {
 
 function nodeOf(runtime: SlotTestRuntime, state: WireState, id: string): NodeView | undefined {
   const canvas = runtime.ctx.dvCanvas
-  const graph = buildCanvasGraph(state, new Set(), [], 'zh', {
+  const graph = buildCanvasGraph(state, [], 'zh', {
     nodeTypes: canvas.nodeTypes.getSnapshot(),
     recordsInUse: canvas.recordsInUse.getSnapshot(), versionKinds: canvas.versionKinds.getSnapshot(),
   })
@@ -106,21 +108,21 @@ const declared = (name: string, zh: string, en: string): WireOperation => ({
 })
 
 describe('the location plugin', () => {
-  it('draws location:l1 as a 场景 card titled 小巷 under the picker section 场景, whose editor writes location.update', async () => {
+  it('draws the node n1 of the item as a 场景 card titled 小巷 under the picker section 场景, whose editor writes location.update', async () => {
     document.documentElement.lang = 'zh-CN'
     const { runtime } = await mountLocation()
     const state = nounState()
-    const node = nodeOf(runtime, state, 'location:l1')
-    if (node === undefined) throw new Error('no node location:l1')
+    const node = nodeOf(runtime, state, 'n1')
+    if (node === undefined) throw new Error('no node n1')
     expect([node.type, node.title, node.assets]).toEqual(['location', '小巷', ['shot1-last.png', 'ref.png']])
     const card = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'location' })
     expect([card.view.getByText('场景'), card.view.getByText('2 张参考图 · 第 2 版')]).toHaveLength(2)
-    expect(runtime.ctx.dvCanvas.versionKinds.getSnapshot().map(kind => [kind.kind, kind.label(), kind.node('l1')])).toEqual([['location', '场景', 'location:l1']])
+    expect(runtime.ctx.dvCanvas.versionKinds.getSnapshot().map(kind => [kind.kind, kind.label(), kind.node(state, 'l1')])).toEqual([['location', '场景', 'n1']])
 
     const host = {
       run: vi.fn<EditorHost['run']>(), rerun: vi.fn<EditorHost['rerun']>(), pickAssets: vi.fn<EditorHost['pickAssets']>(), preview: vi.fn<EditorHost['preview']>(),
       importFiles: vi.fn<EditorHost['importFiles']>(),
-      openNode: vi.fn<EditorHost['openNode']>(), setPlaced: vi.fn<EditorHost['setPlaced']>(), close: vi.fn<EditorHost['close']>(),
+      openNode: vi.fn<EditorHost['openNode']>(), close: vi.fn<EditorHost['close']>(),
     } satisfies EditorHost
     const { view } = runtime.renderSlot('dv.canvas.editor', { node, state, operations: [], host }, { entryKey: 'location' })
     fireEvent.click(view.getByRole('button', { name: '移除 ref.png' }))
@@ -155,7 +157,7 @@ describe('the location plugin', () => {
     const { runtime } = await mountLocation()
     const context = {
       operations: [declared('location.create', '新建场景', 'Create location'), declared('location.update', '修改场景', 'Update location')],
-      rows: runtime.ctx.dvHistory.rows.getSnapshot(), records: new Map(),
+      rows: runtime.ctx.dvHistory.rows.getSnapshot(), records: new Map(), state: null,
     }
     const row = (operation: string, params: Record<string, unknown>) => actionLabel(record({ id: 'h', operation, params }), context)
     expect(row('location.create', { location: 'l1', name: '小巷' })).toEqual(['新建场景「小巷」', 'Create location “小巷”'])
@@ -178,15 +180,16 @@ describe('the location plugin', () => {
     ]
     expect(registered()).toEqual([['@dv/ui-location'], ['location'], ['@dv/ui-location'], ['@dv/ui-location'], ['location.'], ['location'], ['location']])
     const state = nounState()
-    const node = nodeOf(runtime, state, 'location:l1')
-    if (node === undefined) throw new Error('no node location:l1')
+    const node = nodeOf(runtime, state, 'n1')
+    if (node === undefined) throw new Error('no node n1')
     const { container } = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'location' })
     expect(container.textContent).toContain('场景')
 
     await plugin.dispose()
     expect(registered()).toEqual([[], [], [], [], [], [], []])
     expect(container.textContent).toBe('')
-    expect(nodeOf(runtime, state, 'location:l1')).toBeUndefined()
+    // Without its type, the node draws as a plain card titled by its operation.
+    expect(nodeOf(runtime, state, 'n1')?.title).toBe('location.update')
     expect((await candidates(sources)).map(candidate => candidate.name)).not.toContain('小巷')
     await runtime.dispose()
   })

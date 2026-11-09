@@ -1,7 +1,7 @@
 /**
  * The host end of the canvas tools' channel to the open canvases. A mounted canvas holds the streaming route
  * `GET /api/dv/canvas/agent?project=<id>&session=<id>` open; the host writes a `read` frame `{id, stream}` to ask it for
- * the cards it draws, and a `moved` frame {@link CanvasMoved} after a stored move. The canvas answers a read with
+ * the cards it draws. The canvas answers a read with
  * `POST /api/dv/canvas/agent/answer` and the body `{id, stream, project, cards}`. An answer settles the read only when
  * it names a stream that the read was written to. Both routes sit on the Connection's `/api` channel, so they admit only
  * the authenticated browser.
@@ -11,14 +11,13 @@
 import { randomUUID } from 'node:crypto'
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import { CANVAS_AGENT_ROUTE, CANVAS_ANSWER_ROUTE, parseQuery } from './canvas.ts'
-import type { CanvasMoved } from './types.ts'
 
 /** One open canvas stream: the project it draws and the chat session it sits beside. */
 interface CanvasStream {
   readonly id: string
   readonly project: string
   readonly session: string | null
-  send(event: 'read' | 'moved', data: unknown): void
+  send(event: 'read', data: unknown): void
   /** End the response; the browser's `EventSource` reconnects. */
   end(): void
 }
@@ -52,14 +51,6 @@ export class CanvasChannel {
       this.waiting.delete(id)
       signal.removeEventListener('abort', stop)
     })
-  }
-
-  /**
-   * Tell every open canvas of the project, beside any session, to draw a stored move.
-   * @param move - the project and the stored positions.
-   */
-  moved(move: CanvasMoved): void {
-    for (const stream of this.streams) if (stream.project === move.project) stream.send('moved', move)
   }
 
   /** End every open stream, when the host half unloads. */

@@ -309,8 +309,9 @@ function elementView(
 ): ReferenceView {
   const assets = assetsIn(reader.assets(ctx.state, id, version), ctx.state)
   const newest = reader.latest(ctx.state).find(item => item.id === id)?.version ?? version
+  const node = reader.node(ctx.state, id)
   return {
-    uri, label, input, assets, preview: assets[0] ?? null, open: { node: reader.node(id) }, satisfied: true,
+    uri, label, input, assets, preview: assets[0] ?? null, open: node === null ? null : { node }, satisfied: true,
     fits: fitsFilter(assets, ctx.filter), version: input === null ? null : { sent: version, newest },
   }
 }

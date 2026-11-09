@@ -19,7 +19,7 @@ import { assetUrl } from '@dv/ui-kit/api.ts'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
 import type { Asset } from '@dv/ui-kit/types.ts'
 import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
-import { scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply as shotRenderApply, inject as shotRenderInject } from '../../ui-shot-render/src/client/index.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
@@ -272,8 +272,9 @@ describe('one dv.media Factory under parents of both scopes', () => {
       openFile: () => undefined, loadImage: () => Promise.resolve(''), phase: 'result', block,
     }, { session: reference, entryKey: 'dv_shot_render', hookContext: { callId: 'call-1', assistant: undefined } })
     const node: NodeView = {
-      id: 'u1', type: 'asset', title: 'v1.mp4', record: null, assets: ['v1.mp4'], standIn: true, sizing: { kind: 'window', defaultSize: { width: 208, height: 117 }, minSize: { width: 104, height: 117 } }, claimed: false,
-      flags: { stale: false, rendering: false, failed: false, superseded: false }, badges: [], version: null, unseen: false,
+      id: 'u1', type: 'asset', title: 'v1.mp4', record: { ...record({ id: 'u1', operation: 'asset.import', outputs: ['v1.mp4'] }), operation: 'asset.import' },
+      versions: ['u1'], assets: ['v1.mp4'], sizing: { kind: 'window', defaultSize: { width: 208, height: 117 }, minSize: { width: 104, height: 117 } },
+      flags: { stale: false, rendering: false, failed: false, superseded: false }, badges: [], unseen: false,
       rerunning: false,
     }
     const card = runtime.renderSlot('dv.canvas.card', {

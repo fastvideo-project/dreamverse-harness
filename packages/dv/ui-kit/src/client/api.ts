@@ -320,17 +320,15 @@ export class DvClient {
   }
 
   /**
-   * Put assets on the project's canvas (`asset.place`), or take them off it (`asset.unplace`);
-   * the assets stay in the asset pool either way.
+   * Put assets on the project's canvas (`asset.place`).
    * @param project - the project.
    * @param assetIds - the assets.
-   * @param on - true to put them on the canvas, false to take them off.
    * @param session - the chat session the view sits beside, recorded as the record's `session`.
    * @returns the record.
    */
-  placeOnCanvas(project: string, assetIds: string[], on: boolean, session: string | null = null): Promise<ProjectRecord> {
+  placeOnCanvas(project: string, assetIds: string[], session: string | null = null): Promise<ProjectRecord> {
     return this.runOperation({
-      project, operation: on ? 'asset.place' : 'asset.unplace', surface: 'canvas', inputs: assetIds.map(ref => ({ role: 'asset', ref })),
+      project, operation: 'asset.place', surface: 'canvas', inputs: assetIds.map(ref => ({ role: 'asset', ref })),
       ...session === null ? {} : { session },
     })
   }

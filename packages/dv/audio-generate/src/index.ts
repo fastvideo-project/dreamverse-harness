@@ -81,6 +81,7 @@ export default class DvAudioGenerate extends defineGeneration({
   service: 'dvAudioGenerate',
   component: 'audio',
   operation: 'audio.generate',
+  node: { kind: 'audio', column: 2 },
   primitive: 'audio',
   tasks: { t2a: { zh: '文字生成音频', en: 'Audio from text' } },
   label: { zh: '生成音频', en: 'Generate audio' },

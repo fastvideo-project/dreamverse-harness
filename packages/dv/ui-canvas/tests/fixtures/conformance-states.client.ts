@@ -20,7 +20,10 @@ export const OPS: WireOperation[] = [{
   outputs: [{ role: 'video', type: 'video' }, { role: 'still', type: 'image' }], label: { zh: '渲染镜头', en: 'Render shot' }, params: {}, inputs: {},
 }]
 
-/** The shared view fixture: a first-frame chain, a running retake, a failed export, and a still grab. */
+/**
+ * The shared view fixture: a first-frame chain, a running retake, a failed export, and a still grab. The canvas's node
+ * list holds the reference node and the two shot nodes; the retake is the second version of the first shot.
+ */
 export function fixtureProject(): WireState {
   const hero = { role: 'reference', ref: { test_ref: 'hero', version: 1 }, resolved_asset: 'ref.png' }
   const records = [
@@ -43,7 +46,15 @@ export function fixtureProject(): WireState {
         records, stale: { g2: 'g1' }, superseded: { c1: 'c2' },
         created_by: { 'ref.png': 'u1', 'shot1.mp4': 'g1', 'shot1-last.png': 'g1', 'shot2.mp4': 'g2', 'shot2-last.png': 'g2', 'export.mp4': 'c1', 'export-last.png': 'x1' },
       },
-      asset: { placed: [] },
+      canvas: {
+        nodes: {
+          e1: { kind: 'test_ref', name: null, versions: ['e1'], position: { x: 0, y: 0, width: null, height: null } },
+          g1: { kind: 'shot', name: null, versions: ['g1', 'g3'], position: { x: 480, y: 0, width: null, height: null } },
+          g2: { kind: 'shot', name: null, versions: ['g2'], position: { x: 480, y: 200, width: null, height: null } },
+        },
+        order: ['e1', 'g1', 'g2'],
+        assets: { 'shot1.mp4': 'g1', 'shot1-last.png': 'g1', 'shot2.mp4': 'g2', 'shot2-last.png': 'g2' },
+      },
       timeline: {
         timelines: [{
           id: 't1' as TimelineId, name: '', clips: [

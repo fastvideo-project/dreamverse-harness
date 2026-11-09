@@ -248,7 +248,7 @@ describe('dv.prompt on the real stack', () => {
     fireEvent.mouseDown(option)
     await waitFor(() => { expect(take.querySelectorAll('[data-dv-chip="dv:test_ref/hero"]')).toHaveLength(2) })
     expect(take.querySelectorAll('[data-reference-tile]')).toHaveLength(1)
-    fireEvent.click(await sendOf(take, 'Render new take'))
+    fireEvent.click(await sendOf(take, 'Render new version'))
     await waitFor(() => { expect(sent).toHaveLength(1) })
     expect(sent[0]).toEqual({
       operation: 'shot.render', params: { ...KEY, prompt: `${HERO} runs with ${HERO} `, duration_sec: 2 }, inputs: [{ role: 'reference', ref: 'hero@1' }],
@@ -263,7 +263,7 @@ describe('dv.prompt on the real stack', () => {
     }
     const { take, sent } = await mount(stored)
     await waitFor(() => { expect(take.querySelector('[data-reference-tile="hero@1"]')?.getAttribute('data-cited')).toBe('false') })
-    fireEvent.click(await sendOf(take, 'Render new take'))
+    fireEvent.click(await sendOf(take, 'Render new version'))
     await waitFor(() => { expect(sent).toEqual([stored]) })
   })
 
@@ -281,7 +281,7 @@ describe('dv.prompt on the real stack', () => {
     fireEvent.keyDown(box(take), { key: 'z', code: 'KeyZ', ctrlKey: true })
     await waitFor(() => { expect(take.querySelector('[data-dv-chip="dv:test_ref/hero"]')).not.toBeNull() })
     expect([...take.querySelectorAll('[data-reference-tile]')].map(tile => tile.getAttribute('data-reference-tile'))).toEqual(['hero@1', 'shot1-last.png'])
-    fireEvent.click(await sendOf(take, 'Render new take'))
+    fireEvent.click(await sendOf(take, 'Render new version'))
     await waitFor(() => { expect(sent).toEqual([stored]) })
   })
 
@@ -352,7 +352,7 @@ describe('chips that the editor\'s clipboard carries', () => {
     pasteText(take, clipboard)
     await found(take, '[data-dv-chip="dv:test_ref/hero"] img')
     expect([box(take).textContent, take.querySelector('[data-reference-tile]')?.getAttribute('data-reference-tile')]).toEqual(['Herov1 runs', 'hero@1'])
-    fireEvent.click(await sendOf(take, 'Render new take'))
+    fireEvent.click(await sendOf(take, 'Render new version'))
     await waitFor(() => { expect(sent).toEqual([stored]) })
   })
 })
@@ -371,7 +371,7 @@ describe('R3′ in the real composer', () => {
     await waitFor(() => { expect(take.querySelector('[data-reference-tile]')).toBeNull() })
     press(take, 'z')
     await waitFor(() => { expect(take.querySelectorAll('[data-reference-tile]')).toHaveLength(2) })
-    fireEvent.click(await sendOf(take, 'Render new take'))
+    fireEvent.click(await sendOf(take, 'Render new version'))
     await waitFor(() => { expect(sent).toEqual([stored]) })
   })
 })
@@ -391,7 +391,7 @@ describe('the undo memo', () => {
     press(take, 'z')
     await found(take, '[data-dv-chip="dv:asset/shot1-last.png"]')
     expect([...take.querySelectorAll('[data-reference-tile]')].map(tile => tile.getAttribute('data-reference-tile'))).toEqual(['shot1-last.png', 'hero@1'])
-    fireEvent.click(await sendOf(take, 'Render new take'))
+    fireEvent.click(await sendOf(take, 'Render new version'))
     await waitFor(() => { expect(sent).toEqual([stored]) })
   })
 
@@ -409,7 +409,7 @@ describe('the undo memo', () => {
     press(take, 'z')
     await waitFor(() => { expect(take.querySelectorAll('[data-reference-tile]')).toHaveLength(2) })
     expect([...take.querySelectorAll('[data-reference-tile]')].map(tile => tile.getAttribute('data-reference-tile'))).toEqual(['shot1-last.png', 'hero@1'])
-    fireEvent.click(await sendOf(take, 'Render new take'))
+    fireEvent.click(await sendOf(take, 'Render new version'))
     await waitFor(() => { expect(sent).toEqual([stored]) })
   })
 
@@ -433,7 +433,7 @@ describe('the undo memo', () => {
     })
     fireEvent.mouseDown(option)
     await found(take, '[data-reference-tile="hero@2"]')
-    fireEvent.click(await sendOf(take, 'Render new take'))
+    fireEvent.click(await sendOf(take, 'Render new version'))
     await waitFor(() => { expect(sent[0]?.inputs).toEqual([{ role: 'reference', ref: 'hero@2' }]) })
   })
 })
@@ -441,7 +441,7 @@ describe('the undo memo', () => {
 describe('one draft per occurrence', () => {
   it('keeps an editor edit that the user makes while the picker is open when the pick arrives', async () => {
     const { take, host, sent } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] })
-    await sendOf(take, 'Render new take')
+    await sendOf(take, 'Render new version')
     fireEvent.click(within(take).getByRole('button', { name: 'Add asset' }))
     const done = host.pickAssets?.mock.calls[0]?.[1]
     act(() => { box(take).focus() })
@@ -449,7 +449,7 @@ describe('one draft per occurrence', () => {
     await waitFor(() => { expect(box(take).textContent).toBe('rain falls') })
     act(() => { done?.(['shot1-last.png']) })
     await found(take, '[data-reference-tile="shot1-last.png"]')
-    fireEvent.click(await sendOf(take, 'Render new take'))
+    fireEvent.click(await sendOf(take, 'Render new version'))
     await waitFor(() => {
       expect(sent).toEqual([{ operation: 'shot.render', params: { ...KEY, prompt: 'rain falls' }, inputs: [{ role: 'reference', ref: 'shot1-last.png' }] }])
     })
@@ -545,7 +545,7 @@ describe('the @ menu of an occurrence', () => {
     runtime.ctx.dvMentions.kinds.register({
       id: 'test_clip', kind: 'test_clip', order: 0, section: () => 'Clips', items: () => [{ uri: 'dv:test_clip/c1', label: 'Clip 1' }],
     })
-    await sendOf(take, 'Render new take')
+    await sendOf(take, 'Render new version')
     act(() => { box(take).focus() })
     pasteText(take, ' @')
     await waitFor(() => { expect(view.container.querySelectorAll('[role="option"]').length).toBeGreaterThan(1) })
@@ -566,13 +566,13 @@ describe('what the editor shows and takes', () => {
 
   it('imports an image that the user pastes into the editor, and sends it as a reference', async () => {
     const { take, host, sent } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] })
-    await sendOf(take, 'Render new take')
+    await sendOf(take, 'Render new version')
     const image = new File(['a'], 'ref.png', { type: 'image/png' })
     act(() => { box(take).focus() })
     fireEvent.paste(box(take), { clipboardData: { items: [{ kind: 'file', getAsFile: () => image }], getData: () => '' } })
     await found(take, '[data-reference-tile="ref.png"]')
     expect(host.importFiles?.mock.calls).toEqual([[[image]]])
-    fireEvent.click(await sendOf(take, 'Render new take'))
+    fireEvent.click(await sendOf(take, 'Render new version'))
     await waitFor(() => { expect(sent[0]?.inputs).toEqual([{ role: 'reference', ref: 'ref.png' }]) })
   })
 })
@@ -591,7 +591,7 @@ describe('the words of an occurrence', () => {
 
   it('names the shot where the shot.render bar gives its words', async () => {
     const shot = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] }, { holdSend: true })
-    fireEvent.click(await sendOf(shot.take, 'Render new take'))
+    fireEvent.click(await sendOf(shot.take, 'Render new version'))
     expect(box(shot.take).getAttribute('data-placeholder')).toBe('Describe the shot; type @ to cite an item')
     await waitFor(() => { expect(within(shot.take).getByRole('button', { name: 'Rendering…' })).toBeTruthy() })
   })
@@ -611,7 +611,7 @@ describe('the modes of an occurrence', () => {
     const { take, writes, requested } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: `${HERO} runs` }, inputs: [{ role: 'reference', ref: 'hero@1' }] }, { readOnly: true })
     await waitFor(() => { expect(take.querySelector('[data-reference-tile="hero@1"]')?.textContent).toBe('Herov1') })
     expect([within(take).queryByRole('button', { name: 'Remove Hero' }), within(take).queryByRole('button', { name: 'Add asset' })]).toEqual([null, null])
-    expect([within(take).queryByTestId('dv-prompt-model'), within(take).queryByRole('button', { name: 'Render new take' })]).toEqual([null, null])
+    expect([within(take).queryByTestId('dv-prompt-model'), within(take).queryByRole('button', { name: 'Render new version' })]).toEqual([null, null])
     expect(box(take).getAttribute('contenteditable')).toBe('false')
     await act(() => new Promise((resolve) => { setTimeout(resolve, 300) }))
     expect([writes.filter(write => write.path === '/api/dv/operation/check'), requested.filter(path => path === '/api/dv/models')]).toEqual([[], []])
@@ -645,7 +645,7 @@ describe('the modes of an occurrence', () => {
 
   it('offers no add and no upload to an occurrence whose host lends neither, and keeps its prompt editable', async () => {
     const { take } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] }, { noPicker: true })
-    await sendOf(take, 'Render new take')
+    await sendOf(take, 'Render new version')
     expect([within(take).queryByRole('button', { name: 'Add asset' }), within(take).queryByTestId('dv-prompt-upload')]).toEqual([null, null])
     expect(box(take).getAttribute('contenteditable')).toBe('true')
   })
@@ -657,7 +657,7 @@ describe('the modes of an occurrence', () => {
     expect(host.importFiles).not.toHaveBeenCalled()
     fireEvent.change(upload, { target: { files: [new File(['a'], 'ref.png', { type: 'image/png' }), new File(['b'], 'shot1-last.png', { type: 'image/png' })] } })
     await found(take, '[data-reference-tile="shot1-last.png"]')
-    fireEvent.click(await sendOf(take, 'Render new take'))
+    fireEvent.click(await sendOf(take, 'Render new version'))
     await waitFor(() => { expect(sent[0]?.inputs).toEqual([{ role: 'reference', ref: 'ref.png' }, { role: 'reference', ref: 'shot1-last.png' }]) })
   })
 
@@ -722,7 +722,7 @@ describe('what the references open', () => {
     fireEvent.click(await found(take, '[data-dv-chip="dv:test_ref/hero"] img'), { detail: 1 })
     fireEvent.click(await found(take, '[data-dv-chip="dv:asset/shot1-last.png"] img'), { detail: 1 })
     fireEvent.click(await found(take, '[data-dv-chip="dv:test_prop/p1"]'), { detail: 1 })
-    expect([host.openNode.mock.calls, host.preview.mock.calls]).toEqual([[['test_ref:hero']], [['shot1-last.png', null]]])
+    expect([host.openNode.mock.calls, host.preview.mock.calls]).toEqual([[['e1']], [['shot1-last.png', null]]])
   })
 
   it('previews an asset tile from the tile, and opens nothing for a tile of an asset that the project lacks', async () => {
@@ -749,7 +749,7 @@ describe('what the references open', () => {
     await waitFor(() => { expect(take.querySelector('[data-reference-tile="hero@2"]')?.textContent).toBe('Herov2×') })
     await waitFor(() => { expect(take.querySelector('[data-dv-chip="dv:test_ref/hero"]')?.textContent).toBe('Herov2') })
     expect(take.querySelector('[data-dv-chip="dv:test_ref/hero"] img')?.getAttribute('src')).toContain('shot2-last.png')
-    fireEvent.click(await sendOf(take, 'Render new take'))
+    fireEvent.click(await sendOf(take, 'Render new version'))
     await waitFor(() => { expect(sent).toEqual([{ ...stored, inputs: [{ role: 'reference', ref: 'hero@2' }] }]) })
   })
 })
@@ -777,7 +777,7 @@ describe('the chips of the parameter bar', () => {
     fireEvent.click(loop)
     fireEvent.change(take.querySelector('[data-param-chip="extra"]')!, { target: { value: '{"camera":"fast"}' } })
     fireEvent.change(seed, { target: { value: '4' } })
-    fireEvent.click(await sendOf(take, 'Render new take'))
+    fireEvent.click(await sendOf(take, 'Render new version'))
     await waitFor(() => { expect(sent[0]?.params).toEqual({ ...KEY, prompt: 'rain', extra: { camera: 'fast' }, loop: true, seed: 4 }) })
   })
 
@@ -788,7 +788,7 @@ describe('the chips of the parameter bar', () => {
     expect(model.value).toBe('')
     fireEvent.change(model, { target: { value: '' } })
     expect([...take.querySelectorAll('[data-param-chip]')].map(chip => chip.getAttribute('data-param-chip'))).toEqual(['seed', 'aspect', 'loop', 'extra'])
-    fireEvent.click(await sendOf(take, 'Render new take'))
+    fireEvent.click(await sendOf(take, 'Render new version'))
     await waitFor(() => { expect(sent).toEqual([stored]) })
   })
 
@@ -810,10 +810,10 @@ describe('the chips of the parameter bar', () => {
     const { take, sent } = await mount(stored, { models: [bare] })
     fireEvent.change(await found(take, 'input[data-param-chip="resolution"]'), { target: { value: '4k' } })
     fireEvent.change(take.querySelector('[data-param-chip="duration_sec"]')!, { target: { value: '9' } })
-    fireEvent.click(await sendOf(take, 'Render new take'))
+    fireEvent.click(await sendOf(take, 'Render new version'))
     await waitFor(() => { expect(sent).toEqual([{ ...stored, params: { ...stored.params, resolution: '4k' } }]) })
     fireEvent.change(take.querySelector('[data-param-chip="resolution"]')!, { target: { value: '' } })
-    fireEvent.click(await sendOf(take, 'Render new take'))
+    fireEvent.click(await sendOf(take, 'Render new version'))
     await waitFor(() => { expect(sent.at(-1)).toEqual(stored) })
   })
 })

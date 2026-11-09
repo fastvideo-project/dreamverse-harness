@@ -18,6 +18,7 @@
 import { readFileSync } from 'node:fs'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-skill'
+import type {} from '@dv/canvas'
 import z from '@deepseek-ai/schemastery'
 import type { OperationResult, OperationSpec, OperationToolCall, ProjectRecord, ProjectState, RecordId, RunRequest } from '@dv/project'
 import { latestVersion, nextText, textReducer } from './reducer.ts'
@@ -111,7 +112,7 @@ const SOURCE = 'source'
 /**
  * Point a writing call's `source` inputs at the current records of the text nodes it names in `from`, or, without
  * `from`, at the sources of the previous version, so an edit keeps its links and its stale mark.
- * @param call - the parsed agent call; its request's `inputs` and `based_on` are set here.
+ * @param call - the parsed agent call; its request's `inputs` are set here.
  * @throws Error for `from` beside `inputs`, a source that is the text node itself, and a source without a version.
  */
 function linkSources({ args, request, state }: OperationToolCall): Promise<void> {
@@ -133,8 +134,6 @@ function linkSources({ args, request, state }: OperationToolCall): Promise<void>
   } else if (request.inputs.length === 0 && latest !== undefined) {
     request.inputs = previousSources(state, latest.created_by)
   }
-  // Each version is a changed copy of the previous one, so the canvas draws one lineage per text node.
-  if (request.based_on === undefined && latest !== undefined) request.based_on = latest.created_by
   return Promise.resolve()
 }
 
@@ -156,6 +155,10 @@ export default class DvTextNode extends Service {
     for (const spec of operations()) ctx.effect(() => ctx.dvProject.registerOperation(spec), `dvTextNode ${spec.name}`)
     ctx.inject(['skills'], (child) => {
       child.effect(() => child.skills.register(TEXT_SKILL), `dvTextNode ${TEXT_SKILL.name}`)
+    })
+    // A write over an existing path is a version of the path's node, so only the first write of a path makes a node.
+    ctx.inject(['dvCanvasNodes'], (canvas) => {
+      canvas.effect(() => canvas.dvCanvasNodes.registerMaker({ operations: ['textnode.write'], kind: 'text', column: 0 }), 'dvTextNode canvas nodes')
     })
   }
 }
@@ -179,6 +182,8 @@ function writing(
       const latest = latestVersion(state, String(params['path']))
       return latest === undefined ? [] : [latest.created_by]
     },
+    // Each version is a changed copy of the previous one, so one canvas node holds every version of a path.
+    basedOn: (params, state) => latestVersion(state, String(params['path']))?.created_by ?? null,
     summarize: (record) => {
       const version = record.report?.['version']
       return `${name === 'textnode.edit' ? 'edited' : 'wrote'} ${String(record.params['path'])} v${typeof version === 'number' ? String(version) : '?'}`

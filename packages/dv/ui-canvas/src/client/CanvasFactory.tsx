@@ -39,7 +39,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       children: {
         'dv.canvas.card': { kind: 'keyed'; scope: 'root' }
         'dv.canvas.editor': { kind: 'keyed'; scope: 'root' }
-        'dv.canvas.editor.claimed': { kind: 'keyed'; scope: 'root' }
         'dv.canvas.picker': { kind: 'keyed'; scope: 'root' }
       }
       inject: CanvasFactoryInjected

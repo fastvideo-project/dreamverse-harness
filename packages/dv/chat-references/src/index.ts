@@ -14,6 +14,7 @@ import type { PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, type ContextFormed, type FileBlock, type ImageBlock, type UserMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, SessionEventMap } from '@deepseek-ai/dsh-session'
 import { importedAssets, placeable } from '@dv/asset-pool'
+import type {} from '@dv/canvas'
 import { promptAssets, type AssetId, type SessionId } from '@dv/project'
 import mime from 'mime-types'
 import { expansionBlock, type ExpansionSources } from './expand.ts'
@@ -122,20 +123,22 @@ export default class DvChatReferences extends Service {
    * Put the assets a user message mentions (`dv:asset/<id>`) on the canvas of the session's project with one
    * `asset.place` by the user, in the chat. Only assets that `asset.place` accepts (an import of the project anywhere in its
    * history, or an asset a record of the current state created) and that are not on the canvas yet count; a message without
-   * such a mention, or a session without a project, places nothing.
+   * such a mention, a session without a project, or a process without the canvas places nothing.
    * @param session - the chat session.
    * @param message - the appended user message, which the user typed.
    */
   private placeMentionedAssets(session: SessionId, message: SessionEventMap['user/message']): void {
     const project = this.ctx.dvProject
     const projectId = project.sessionProject(session)
-    if (projectId === null) return
+    // `asset.place` exists while the canvas is loaded.
+    if (projectId === null || this.ctx.get('dvCanvasNodes') === undefined) return
     const mentioned = promptAssets(message.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n'))
     if (mentioned.length === 0) return
     const state = project.getState(projectId)
-    const placed = new Set(state.components.asset.placed)
+    // An asset that any canvas node shows is on the canvas already.
+    const placed = state.components.canvas.assets
     const imported = importedAssets(project.listRecords(projectId))
-    const assets = mentioned.filter(asset => placeable(state, imported, asset) && !placed.has(asset))
+    const assets = mentioned.filter(asset => placeable(state, imported, asset) && placed[asset] === undefined)
     if (assets.length === 0) return
     project.run({
       project: projectId, operation: 'asset.place', params: {}, inputs: assets.map(asset => ({ role: 'asset', ref: { asset } })),

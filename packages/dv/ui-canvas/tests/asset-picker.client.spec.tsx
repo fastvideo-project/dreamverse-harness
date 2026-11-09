@@ -22,7 +22,7 @@ import { zh } from '../src/client/locales.ts'
  */
 function namedKind(kind: string, label: string, names: Record<string, string>): VersionKind {
   return {
-    kind, label: () => label, node: id => `${kind}:${id}`,
+    kind, label: () => label, node: (_state, id) => `${kind}:${id}`,
     latest: () => Object.keys(names).map(id => ({ id, version: 1 })),
     name: (_state, id) => names[id] ?? null, assets: () => [],
   }

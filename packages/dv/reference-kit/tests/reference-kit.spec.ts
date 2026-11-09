@@ -5,6 +5,8 @@
  * ID check spans every reference kind.
  */
 import type { Context } from '@deepseek-ai/cordis'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import DvCanvasNodes, { type NodeId } from '@dv/canvas'
 import type { ProjectRecord, RecordId, RunRequest } from '@dv/project'
 import { describe, expect, it } from 'vitest'
 import { HUMAN, start, type Fixture } from './support.ts'
@@ -114,6 +116,19 @@ describe('defineReference', () => {
     expect(records.find(entry => entry.id === restyled.id)?.supersedes).toEqual([renamed.id])
     expect(after.components.proj.stale).toEqual({ [render.id]: renamed.id })
     expect(ctx.dvProject.latestVersion(after, 'test_ref', 'r1')).toBe(3)
+  })
+
+  it('makes one canvas node per create, with each update based on the newest version as a version of that node', async () => {
+    const fixture = await start()
+    const { ctx } = fixture
+    await ctx.plugin(DvCanvasNodes).await()
+    const created = await run(fixture, 'test_ref.create', { test_ref: 'r1', name: 'Lead' }, [{ role: 'reference', ref: { asset: fixture.put('face') } }])
+    const renamed = await run(fixture, 'test_ref.update', { test_ref: 'r1', name: 'Hero' })
+    const again = await run(fixture, 'test_ref.update', { test_ref: 'r1', name: 'Hero 2' })
+    expect([renamed.based_on, again.based_on]).toEqual([created.id, renamed.id])
+    const canvas = ctx.dvProject.getState(fixture.project).components.canvas
+    expect(canvas.order).toEqual([created.id])
+    expect(canvas.nodes[brandString<NodeId>(created.id)]).toMatchObject({ kind: 'test_ref', versions: [created.id, renamed.id, again.id] })
   })
 
   it('resolves no assets for a version that the ID does not have, or for an unknown ID', async () => {

@@ -17,7 +17,7 @@ import { apply as composerApply, inject as composerInject } from '../../ui-compo
 import type { projectMentionSource } from '../../ui-composer/src/client/mention.ts'
 import { apply as historyApply, inject as historyInject } from '../../ui-history/src/client/index.ts'
 import { actionLabel } from '../../ui-history/src/client/rows.ts'
-import { fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { canvasNode, fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
@@ -41,8 +41,10 @@ function nounState(): WireState {
   state.components.proj.records = [
     ...state.components.proj.records,
     record({ id: 'n1', operation: 'style.create', params: { style: 's1', name: '胶片' } }),
-    record({ id: 'n2', operation: 'style.update', params: { style: 's1' } }),
+    record({ id: 'n2', operation: 'style.update', based_on: 'n1', params: { style: 's1' } }),
   ]
+  state.components.canvas.nodes['n1'] = canvasNode('style', ['n1', 'n2'], 0, 400)
+  state.components.canvas.order.push('n1')
   const id = 's1' as StyleId
   state.components.style = { [id]: [
     { id, version: 1, name: '胶片', description: 'A short description of the style.', references: ['ref.png' as AssetId], created_by: 'n1' as RecordId },
@@ -77,7 +79,7 @@ async function mountStyle() {
 
 function nodeOf(runtime: SlotTestRuntime, state: WireState, id: string): NodeView | undefined {
   const canvas = runtime.ctx.dvCanvas
-  const graph = buildCanvasGraph(state, new Set(), [], 'zh', {
+  const graph = buildCanvasGraph(state, [], 'zh', {
     nodeTypes: canvas.nodeTypes.getSnapshot(),
     recordsInUse: canvas.recordsInUse.getSnapshot(), versionKinds: canvas.versionKinds.getSnapshot(),
   })
@@ -106,21 +108,21 @@ const declared = (name: string, zh: string, en: string): WireOperation => ({
 })
 
 describe('the style plugin', () => {
-  it('draws style:s1 as a 风格 card titled 胶片 under the picker section 风格, whose editor writes style.update', async () => {
+  it('draws the node n1 of the item as a 风格 card titled 胶片 under the picker section 风格, whose editor writes style.update', async () => {
     document.documentElement.lang = 'zh-CN'
     const { runtime } = await mountStyle()
     const state = nounState()
-    const node = nodeOf(runtime, state, 'style:s1')
-    if (node === undefined) throw new Error('no node style:s1')
+    const node = nodeOf(runtime, state, 'n1')
+    if (node === undefined) throw new Error('no node n1')
     expect([node.type, node.title, node.assets]).toEqual(['style', '胶片', ['shot1-last.png', 'ref.png']])
     const card = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'style' })
     expect([card.view.getByText('风格'), card.view.getByText('2 张参考图 · 第 2 版')]).toHaveLength(2)
-    expect(runtime.ctx.dvCanvas.versionKinds.getSnapshot().map(kind => [kind.kind, kind.label(), kind.node('s1')])).toEqual([['style', '风格', 'style:s1']])
+    expect(runtime.ctx.dvCanvas.versionKinds.getSnapshot().map(kind => [kind.kind, kind.label(), kind.node(state, 's1')])).toEqual([['style', '风格', 'n1']])
 
     const host = {
       run: vi.fn<EditorHost['run']>(), rerun: vi.fn<EditorHost['rerun']>(), pickAssets: vi.fn<EditorHost['pickAssets']>(), preview: vi.fn<EditorHost['preview']>(),
       importFiles: vi.fn<EditorHost['importFiles']>(),
-      openNode: vi.fn<EditorHost['openNode']>(), setPlaced: vi.fn<EditorHost['setPlaced']>(), close: vi.fn<EditorHost['close']>(),
+      openNode: vi.fn<EditorHost['openNode']>(), close: vi.fn<EditorHost['close']>(),
     } satisfies EditorHost
     const { view } = runtime.renderSlot('dv.canvas.editor', { node, state, operations: [], host }, { entryKey: 'style' })
     fireEvent.click(view.getByRole('button', { name: '移除 ref.png' }))
@@ -155,7 +157,7 @@ describe('the style plugin', () => {
     const { runtime } = await mountStyle()
     const context = {
       operations: [declared('style.create', '新建风格', 'Create style'), declared('style.update', '修改风格', 'Update style')],
-      rows: runtime.ctx.dvHistory.rows.getSnapshot(), records: new Map(),
+      rows: runtime.ctx.dvHistory.rows.getSnapshot(), records: new Map(), state: null,
     }
     const row = (operation: string, params: Record<string, unknown>) => actionLabel(record({ id: 'h', operation, params }), context)
     expect(row('style.create', { style: 's1', name: '胶片' })).toEqual(['新建风格「胶片」', 'Create style “胶片”'])
@@ -178,15 +180,16 @@ describe('the style plugin', () => {
     ]
     expect(registered()).toEqual([['@dv/ui-style'], ['style'], ['@dv/ui-style'], ['@dv/ui-style'], ['style.'], ['style'], ['style']])
     const state = nounState()
-    const node = nodeOf(runtime, state, 'style:s1')
-    if (node === undefined) throw new Error('no node style:s1')
+    const node = nodeOf(runtime, state, 'n1')
+    if (node === undefined) throw new Error('no node n1')
     const { container } = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'style' })
     expect(container.textContent).toContain('风格')
 
     await plugin.dispose()
     expect(registered()).toEqual([[], [], [], [], [], [], []])
     expect(container.textContent).toBe('')
-    expect(nodeOf(runtime, state, 'style:s1')).toBeUndefined()
+    // Without its type, the node draws as a plain card titled by its operation.
+    expect(nodeOf(runtime, state, 'n1')?.title).toBe('style.update')
     expect((await candidates(sources)).map(candidate => candidate.name)).not.toContain('胶片')
     await runtime.dispose()
   })

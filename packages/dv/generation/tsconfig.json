@@ -5,6 +5,7 @@
   "references": [
     { "path": "../../../vendor/cordis" },
     { "path": "../../util/values" },
+    { "path": "../canvas" },
     { "path": "../project" },
     { "path": "../models" }
   ]

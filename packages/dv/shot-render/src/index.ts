@@ -298,6 +298,7 @@ const RENDER_DECLARATION: GenerationSpec<'video'> = {
   service: 'dvShotRender',
   component: 'shot',
   operation: 'shot.render',
+  node: { kind: 'shot', column: 2 },
   primitive: 'video',
   tasks: { t2v: { zh: '文字生成', en: 'From text' }, ref2v: { zh: '参考图生成', en: 'From references' } },
   label: { zh: '渲染镜头', en: 'Render shot' },

@@ -1,9 +1,9 @@
 /**
  * The browser twin of `defineGeneration`: one `defineGenerationUi` call per generation primitive defines the UI plugin
- * that registers the primitive's claimed node type, its `dv.canvas.card` and `dv.canvas.editor.claimed` entries, the
- * 重试 action of its failed takes, the chat card of each operation's agent tool, the History row of each operation, and
- * the composer's parameter bar of each operation. The canvas computes the takes' lineage; the kit supplies the title, the
- * media, the copy and the rerun UI.
+ * that registers the primitive's node type, its `dv.canvas.card` and `dv.canvas.editor` entries, the 重试 action of a
+ * node whose shown version failed, the chat card of each operation's agent tool, the History row of each operation, and
+ * the composer's parameter bar of each operation. The host's node list holds every version of a node; the kit supplies
+ * the title, the media, the copy and the rerun UI.
  *
  * @module @dv/ui-generation/generation-kit
  */
@@ -11,7 +11,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
-import type { ClaimedEntry, ClaimedNodeView, ClaimedRecord, NodeAction, NodeInput, NodeType } from '@dv/ui-canvas/contract'
+import type { NodeAction, NodeInput, NodeType, NodeView, TypeEntry } from '@dv/ui-canvas/contract'
 import type { HistoryRow, Text } from '@dv/ui-history/contract'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { CARD_SURFACE, mediaSizing, WIDE_RATIO } from '@dv/ui-kit/frame.ts'
@@ -34,20 +34,17 @@ export type { StatusWords } from './GenerationCard.tsx'
 export interface GenerationUiSpec {
   /** The registering package. */
   id: string
-  /** The node type key, such as 'audio'. */
+  /** The node type key, such as 'audio': the kind that the host primitive's `node` declares. */
   type: string
-  /** The generation operations whose records are this kind's takes. */
+  /** The generation operations of the kind, for the chat cards, the History rows and the parameter bars. */
   operations: readonly string[]
   /** The type label, such as ['音频', 'Audio']: the editor header and the accessible names. */
   label: Text
   /** A slot of the theme's node palette, such as `var(--dv-node-3)`. */
   color: string
-  /** Default 2, the column of takes. */
-  column?: number
-  deepenOn?: readonly string[]
   /**
-   * The frame aspect ratio (width ÷ height) of a take whose shown asset has an unknown width or height, such as an audio
-   * take; default 16:9. A take whose shown asset has a known size gets the frame at that asset's aspect ratio.
+   * The frame aspect ratio (width ÷ height) of a node whose shown asset has an unknown width or height, such as an audio
+   * node; default 16:9. A node whose shown asset has a known size gets the frame at that asset's aspect ratio.
    */
   fallbackRatio?: number
   status: StatusWords
@@ -102,35 +99,30 @@ function TakeCard({ node, assets, renderFactorySlot }: PropsRuntime<'dv.canvas.c
 export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
   const operations = new Set(spec.operations)
   const fallbackRatio = spec.fallbackRatio ?? WIDE_RATIO
-  const titleOf = ({ record, version }: ClaimedRecord, input: NodeInput): string => {
-    const pick = (zh: string, en: string): string => input.language === 'zh' ? zh : en
-    const base = input.operations.find(operation => operation.name === record.operation)?.label?.[input.language] ?? record.operation
-    return version === null ? base : pick(`${base} · 第 ${String(version)} 次`, `${base} · take ${String(version)}`)
-  }
-  const entry = (claimed: ClaimedRecord, input: NodeInput): ClaimedEntry => {
-    const timed = claimed.record.outputs.map(id => input.state.assets.find(asset => asset.id === id)?.duration_sec ?? null)
+  // The title is the operation label, the same for every version of the node.
+  const titleOf = ({ record, operations: declared, language }: NodeInput): string =>
+    declared.find(operation => operation.name === record.operation)?.label?.[language] ?? record.operation
+  const entry = (input: NodeInput): TypeEntry => {
+    const { record, state } = input
+    const timed = record.outputs.map(id => state.assets.find(asset => asset.id === id)?.duration_sec ?? null)
       .find(seconds => seconds !== null)
-    const preview = spec.preview?.(outputsIn(claimed.record, input.state))
-    const shown = input.state.assets.find(asset => asset.id === (preview ?? claimed.record.outputs[0]))
+    const preview = spec.preview?.(outputsIn(record, state))
+    const shown = state.assets.find(asset => asset.id === (preview ?? record.outputs[0]))
     return {
-      title: titleOf(claimed, input), sizing: mediaSizing(shown, fallbackRatio, 0),
+      title: titleOf(input), sizing: mediaSizing(shown, fallbackRatio, 0),
       ...timed === undefined ? {} : { meta: `${timed.toFixed(1)}s` }, ...preview === undefined ? {} : { preview },
     }
   }
   const nodeType: NodeType = {
-    id: spec.id, type: spec.type, label: () => pickText(...spec.label), color: spec.color, column: spec.column ?? 2,
-    ...spec.deepenOn === undefined ? {} : { deepenOn: spec.deepenOn },
-    claimed: {
-      operations: spec.operations,
-      status: { running: () => pickText(...spec.status.running), failed: () => pickText(...spec.status.failed) },
-      entry,
-    },
+    id: spec.id, type: spec.type, label: () => pickText(...spec.label), color: spec.color,
+    status: { running: () => pickText(...spec.status.running), failed: () => pickText(...spec.status.failed) },
+    entry,
   }
-  const retry: NodeAction<ClaimedNodeView> = {
+  const retry: NodeAction = {
     id: `${spec.id}:${spec.type}:retry`,
     label: () => pickText('重试', 'Retry'),
     order: 0,
-    shows: (node): node is ClaimedNodeView => node.claimed && node.flags.failed && operations.has(node.record.operation),
+    shows: (node): node is NodeView => node.flags.failed && operations.has(node.record.operation),
     run({ record, title }, host) {
       host.rerun({
         operation: record.operation, inputs: requestInputsOf(record),
@@ -158,8 +150,8 @@ export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
         scope.effect(() => scope.slots.inject('dv.canvas.card', () => scope.slots.register(
           { name: 'dv.canvas.card', key: spec.type }, TakeCard,
         )), `${spec.id}: card`)
-        scope.effect(() => scope.slots.inject('dv.canvas.editor.claimed', () => scope.slots.register(
-          { name: 'dv.canvas.editor.claimed', key: spec.type, inject: () => editor }, TakeEditor,
+        scope.effect(() => scope.slots.inject('dv.canvas.editor', () => scope.slots.register(
+          { name: 'dv.canvas.editor', key: spec.type, inject: () => editor }, TakeEditor,
         )), `${spec.id}: editor`)
       })
       // Chat cards and History rows are keyed by tool and operation, so they register while the canvas is not loaded.

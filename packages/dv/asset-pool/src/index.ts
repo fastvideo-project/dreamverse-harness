@@ -10,18 +10,20 @@
  * ```
  *
  * Two identical files in one project become one asset; the same bytes in two projects are two files with one ID. The
- * service registers itself as Project's asset store, and five operations:
+ * service registers itself as Project's asset store, and four operations:
  * - `asset.import`: a file on this machine, or base64 bytes, becomes an asset; with `place`, it also goes on the canvas;
  *   an image or video gets its pixel size and duration from `dvFfmpeg` the first time a record imports it;
  * - `asset.grab_still`: one frame of a video becomes a PNG still, through `dvFfmpeg`;
  * - `asset.cut_segment`: the part of a video between two times becomes a re-encoded MP4 video with its sound, through
  *   `dvFfmpeg`;
- * - `asset.place` and `asset.unplace`: assets go on the canvas or come off it, and stay in the pool either way.
+ * - `asset.place`: assets go on the canvas as `asset` nodes; it exists while the canvas service `dvCanvasNodes` of
+ *   `@dv/canvas` is loaded, and `canvas.node_remove` of that service takes an asset node off the canvas again, with
+ *   the asset left in the pool.
  *
  * `dvProject` turns each operation into its agent tool (`dv_asset_import`, `dv_asset_grab_still`,
- * `dv_asset_cut_segment`, `dv_asset_place`, `dv_asset_unplace`). The `asset` reducer keeps the canvas placements of the
- * state; the `proj` slice's `created_by` names the record that created each asset. While the DSH web server is mounted,
- * the service serves `GET /dv/assets/<AssetId>`.
+ * `dv_asset_cut_segment`, `dv_asset_place`). The service registers with `dvCanvasNodes` that a finished import with
+ * `place` and each placement make `asset` nodes; the `proj` slice's `created_by` names the record that created each
+ * asset. While the DSH web server is mounted, the service serves `GET /dv/assets/<AssetId>`.
  *
  * @module @dv/asset-pool
  */
@@ -34,16 +36,16 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import z from '@deepseek-ai/schemastery'
+import type {} from '@dv/canvas'
 import { FfmpegError } from '@dv/ffmpeg'
 import type {} from '@dv/ffmpeg'
 import { ProjectError, type AssetId, type OperationContext, type OperationResult, type OperationSpec, type ProjectId, type RecordId } from '@dv/project'
 import { PROJECT_DIR } from '@dv/project/folder'
 import { importedAssets, placeable } from './imports.ts'
-import { assetReducer } from './reducer.ts'
 import type { Asset, StillAt } from './types.ts'
 
 export { importedAssets, placeable } from './imports.ts'
-export type { Asset, AssetState } from './types.ts'
+export type { Asset } from './types.ts'
 /** The SHA-256 hex digest of an asset's bytes; defined by `@dv/project`. */
 export type { AssetId } from '@dv/project'
 
@@ -141,10 +143,18 @@ export default class DvAssetPool extends Service {
       importAsset: (project, source, meta, createdBy) => this.importAsset(project, source, meta, createdBy),
     }), 'dvAssetPool asset store')
     ctx.effect(() => ctx.dvProject.registerComponent('asset'), 'dvAssetPool component')
-    ctx.effect(() => ctx.dvProject.registerReducer('asset', assetReducer), 'dvAssetPool reducer')
-    for (const spec of [this.importOperation(), this.grabStillOperation(), this.cutSegmentOperation(), this.placementOperation('asset.place'), this.placementOperation('asset.unplace')]) {
+    for (const spec of [this.importOperation(), this.grabStillOperation(), this.cutSegmentOperation()]) {
       ctx.effect(() => ctx.dvProject.registerOperation(spec), `dvAssetPool ${spec.name}`)
     }
+    // Assets go on the canvas as nodes of the canvas's node list, so the placements exist while the canvas is loaded.
+    ctx.inject(['dvCanvasNodes'], (canvas) => {
+      canvas.effect(() => canvas.dvCanvasNodes.registerMaker({
+        operations: ['asset.import'], kind: 'asset', column: 0, makes: record => record.params['place'] === true && record.status === 'done',
+      }), 'dvAssetPool canvas imports')
+      canvas.effect(() => canvas.dvCanvasNodes.registerPlacement({ place: 'asset.place', kind: 'asset', column: 0 }),
+        'dvAssetPool canvas placements')
+      canvas.effect(() => canvas.dvProject.registerOperation(this.placeOperation()), 'dvAssetPool asset.place')
+    })
     ctx.inject(['webServer'], (webCtx) => {
       webCtx.effect(() => webCtx.webServer.register({
         kind: 'prefix',
@@ -419,44 +429,36 @@ export default class DvAssetPool extends Service {
   }
 
   /**
-   * The `asset.place` or `asset.unplace` operation: put assets on the canvas (an asset the project imported anywhere in
-   * its history, or one a record of the current state made), or take assets off it. A call that changes nothing (every
-   * asset already placed, or none of them placed) is refused before any record.
-   * @param name - which of the two operations.
+   * The `asset.place` operation: put assets on the canvas, an asset the project imported anywhere in its history or one
+   * a record of the current state made. A call whose assets are all on the canvas already is refused before any record.
    * @returns the operation spec.
    */
-  private placementOperation(name: 'asset.place' | 'asset.unplace'): OperationSpec {
-    const place = name === 'asset.place'
+  private placeOperation(): OperationSpec {
     return {
-      name,
+      name: 'asset.place',
       component: 'asset',
       version: '1',
-      description: place
-        ? 'Put assets of the project on the canvas, where the user sees each one as a node. An asset the project imported '
-          + 'anywhere in its history can go on the canvas, and an asset a step of the current state made.'
-        : 'Take assets off the canvas. The assets stay in the asset pool.',
-      inputs: { asset: { type: 'any', required: true, many: true, description: place ? 'The assets to put on the canvas.' : 'The assets to take off the canvas.' } },
+      description: 'Put assets of the project on the canvas, where the user sees each one as a node. An asset the project imported '
+        + 'anywhere in its history can go on the canvas, and an asset a step of the current state made.',
+      inputs: { asset: { type: 'any', required: true, many: true, description: 'The assets to put on the canvas.' } },
       params: {},
       outputs: [],
       deterministic: false,
       resource: 'none',
-      summarize: record => `${place ? 'placed' : 'took off'} ${String(record.inputs.length)} asset(s) ${place ? 'on' : 'from'} the canvas`,
+      summarize: record => `placed ${String(record.inputs.length)} asset(s) on the canvas`,
       precondition: (request, state): Promise<void> => {
         const assets = request.inputs.flatMap(input => input.role === 'asset' && 'asset' in input.ref ? [input.ref.asset] : [])
-        const placed = new Set(state.components.asset.placed)
-        if (place) {
-          // The records are read only when an asset was not created by a record of the current state.
-          const imported = assets.every(asset => asset in state.components.proj.created_by)
-            ? new Map<AssetId, unknown>()
-            : importedAssets(this.ctx.dvProject.listRecords(request.project))
-          const missing = assets.filter(asset => !placeable(state, imported, asset))
-          if (missing.length > 0) {
-            throw new ProjectError('invalid_inputs', `Asset ${missing.join(', ')} is neither an import of this project nor made by a step of its current state.`)
-          }
-          if (assets.every(asset => placed.has(asset))) throw new ProjectError('invalid_params', 'Every asset is already on the canvas.')
-        } else if (!assets.some(asset => placed.has(asset))) {
-          throw new ProjectError('invalid_params', 'None of the assets is on the canvas.')
+        // An asset counts as on the canvas while any node shows it.
+        const placed = state.components.canvas.assets
+        // The records are read only when an asset was not created by a record of the current state.
+        const imported = assets.every(asset => asset in state.components.proj.created_by)
+          ? new Map<AssetId, unknown>()
+          : importedAssets(this.ctx.dvProject.listRecords(request.project))
+        const missing = assets.filter(asset => !placeable(state, imported, asset))
+        if (missing.length > 0) {
+          throw new ProjectError('invalid_inputs', `Asset ${missing.join(', ')} is neither an import of this project nor made by a step of its current state.`)
         }
+        if (assets.every(asset => placed[asset] !== undefined)) throw new ProjectError('invalid_params', 'Every asset is already on the canvas.')
         return Promise.resolve()
       },
       execute: (): Promise<OperationResult> => Promise.resolve({ outputs: [] }),

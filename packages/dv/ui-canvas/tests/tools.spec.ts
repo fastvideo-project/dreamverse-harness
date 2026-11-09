@@ -1,8 +1,8 @@
 /**
- * The host half's canvas tools under the DSH tool registry, over project folders in a temporary directory that a fake
+ * The host half's `dv_canvas_read` under the DSH tool registry, over project folders in a temporary directory that a fake
  * Workspace registry lists, and open canvases that hold the canvas stream route open and answer through the answer route.
  */
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -12,7 +12,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import { afterEach, describe, expect, it } from 'vitest'
-import { CANVAS_AGENT_ROUTE, CANVAS_ANSWER_ROUTE, parseMoved, parseQuery } from '../src/canvas.ts'
+import { CANVAS_AGENT_ROUTE, CANVAS_ANSWER_ROUTE, parseQuery } from '../src/canvas.ts'
 import * as canvasPlugin from '../src/index.ts'
 import type { CanvasCard, CanvasQuery } from '../src/index.ts'
 
@@ -28,8 +28,6 @@ afterEach(async () => {
 interface StartOptions {
   /** The calling agent's working directory, by name of a folder in the root; `p1` by default. */
   cwd?: string | null
-  /** Positions in the layout file of `p1` before the first call. */
-  stored?: Record<string, { x: number; y: number }>
   /** Runs at each Workspace registry `list()`. */
   onList?: () => void
   answerTimeoutMs?: number
@@ -39,15 +37,13 @@ interface StartOptions {
 /**
  * Boot the system prompt, the tool registry and the host half over Workspaces `p0` and `p1` (project folders) and
  * `plain` (a folder without `.dreamverse/`), and optionally an agent registry.
- * @returns the context, the calling agent, the log, and `stored()`, which reads the layout file of `p1`.
+ * @returns the context, the calling agent, and the routes.
  */
 async function start(options: StartOptions = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'dv-canvas-tools-')))
   roots.push(root)
   const workspaces = ['p0', 'p1', 'plain'].map(id => ({ id, path: join(root, id) }) as Workspace)
   for (const { id, path } of workspaces) mkdirSync(id === 'plain' ? path : join(path, '.dreamverse'), { recursive: true })
-  const file = join(root, 'p1', '.dreamverse', 'canvas-layout.json')
-  if (options.stored !== undefined) writeFileSync(file, JSON.stringify({ positions: options.stored, viewport: null }))
   const ctx = new Context()
   contexts.push(ctx)
   const routes = new Map<string, ConnectionFetchRoute>()
@@ -72,25 +68,17 @@ async function start(options: StartOptions = {}) {
   await ctx.plugin(canvasPlugin, { answerTimeoutMs: options.answerTimeoutMs ?? 10_000 })
   const cwd = options.cwd === undefined ? 'p1' : options.cwd
   const agent = { id: 's1', session: { id: 's1', header: cwd === null ? {} : { cwd: join(root, cwd) } } }
-  const stored = (): unknown => {
-    try {
-      return (JSON.parse(readFileSync(file, 'utf8')) as { positions: unknown }).positions
-    } catch {
-      // No layout file: nothing was stored.
-      return null
-    }
-  }
   const route = (path: string): ConnectionFetchRoute => {
     const found = routes.get(path)
     if (found === undefined) throw new Error(`no route ${path}`)
     return found
   }
-  return { ctx, root, agent, log: [] as string[], stored, routes, route }
+  return { ctx, root, agent, routes, route }
 }
 
 type World = Awaited<ReturnType<typeof start>>
 
-/** An open canvas as its browser half acts on its stream: it answers a read with `cards` and logs each move it draws. */
+/** An open canvas as its browser half acts on its stream: it answers a read with `cards`. */
 interface Tab {
   /** Every frame the tab has read, as `event data`. */
   frames: string[]
@@ -130,8 +118,6 @@ async function tab(
           const body = answer === undefined ? { ...read, project, cards } : answer(read)
           if (body !== undefined) void post(world, body)
         }
-        const move = event === 'moved' ? parseMoved(JSON.parse(data)) : null
-        if (move?.project === project) world.log.push(`draw ${project} ${String(session)} ${JSON.stringify(move.positions)}`)
       }
     }
   })()
@@ -157,33 +143,25 @@ function messageOf(result: Awaited<ReturnType<typeof call>>): string | null {
 
 /** A drawn card of 208 × 130 at (x, y). */
 function card(id: string, x: number, y: number): CanvasCard {
-  return { id, type: 'text', title: id, record: null, x, y, width: 208, height: 130, rendering: false }
+  return { id, type: 'text', title: id, shown: id, versions: 1, x, y, width: 208, height: 130, rendering: false }
 }
 
-const CARDS = [card('a', 0, 0), card('b', 240, 0)]
-const MOVES = { moves: [{ node: 'a', x: 600, y: 0 }, { node: 'b', x: 900, y: 0 }] }
-const AT = { a: { x: 600, y: 0 }, b: { x: 900, y: 0 } }
-const DRAW_P1 = `draw p1 s1 ${JSON.stringify(AT)}`
-const NO_PROJECT = 'This conversation has no project yet: call dv_proj_create first. Nothing was moved.'
-const NO_CANVAS = 'No open canvas shows project p1, so no node is known. Ask the user to open the canvas of this project, then '
-  + 'call dv_canvas_read again. Nothing was moved.'
-const CANCELLED = 'The call was cancelled before the move was stored. Nothing was moved.'
+const CARDS = [card('a', 0, 0), { ...card('b', 240, 0), shown: 'b2', versions: 2 }]
+const NO_PROJECT = 'This conversation has no project yet: call dv_proj_create first.'
+const NO_CANVAS = 'No open canvas shows project p1. Ask the user to open the canvas of this project, then call '
+  + 'dv_canvas_read again; dv_proj_state lists the canvas nodes with their positions.'
+const CANCELLED = 'The call was cancelled before the open canvas answered.'
 
-describe('the canvas tools', () => {
-  it('read the chat project from a canvas beside the chat, store a move once, and then every canvas of the project draws it', async () => {
+describe('dv_canvas_read', () => {
+  it('reads the cards keyed by node id, with their versions and the version on show, from a canvas beside the chat only', async () => {
     const world = await start()
     const other = await tab(world, 'p0', 's1', [card('x', 0, 0)])
     const beside = await tab(world, 'p1', 's1', CARDS)
     const elsewhere = await tab(world, 'p1', 's2', [])
     const alone = await tab(world, 'p1', null, [])
     expect(await call(world, 'dv_canvas_read', {})).toMatchObject({ isError: false, value: { project: 'p1', cards: CARDS } })
-    expect(await call(world, 'dv_canvas_move', MOVES))
-      .toMatchObject({ isError: false, value: { project: 'p1', moved: 2, cards: [card('a', 600, 0), card('b', 900, 0)] } })
-    expect(world.stored()).toEqual(AT)
-    await expect.poll(() => world.log.length).toBe(3)
-    expect(world.log).toEqual([DRAW_P1, `draw p1 s2 ${JSON.stringify(AT)}`, `draw p1 null ${JSON.stringify(AT)}`])
     const reads = (each: Tab): number => each.frames.filter(frame => frame.startsWith('read ')).length
-    expect([other, beside, elsewhere, alone].map(reads)).toEqual([0, 2, 0, 0])
+    expect([other, beside, elsewhere, alone].map(reads)).toEqual([0, 1, 0, 0])
   })
 
   it('stop asking a canvas whose stream closed, and refuse an answer that no read waits for', async () => {
@@ -196,35 +174,23 @@ describe('the canvas tools', () => {
     expect(await post(world, { id: 'nobody', project: 'p1', cards: CARDS })).toBe(404)
   })
 
-  it('store and draw nothing when the call is cancelled before the canvas answers, or no canvas answers in time', async () => {
+  it('fails when the call is cancelled before the canvas answers, or no canvas answers in time', async () => {
     const world = await start()
     const asked = Promise.withResolvers<CanvasQuery>()
     await tab(world, 'p1', 's1', CARDS, (read) => { asked.resolve(read); return undefined })
     const stopped = new AbortController()
-    const pending = call(world, 'dv_canvas_move', MOVES, stopped.signal)
+    const pending = call(world, 'dv_canvas_read', {}, stopped.signal)
     const read = await asked.promise
     stopped.abort(new Error('the user stopped the turn'))
     expect(messageOf(await pending)).toBe(CANCELLED)
     expect(await post(world, { ...read, project: 'p1', cards: CARDS })).toBe(404)
-    expect([world.stored(), world.log]).toEqual([null, []])
-    const answering = await start()
-    const stopping = new AbortController()
-    await tab(answering, 'p1', 's1', CARDS, (read) => {
-      void post(answering, { ...read, project: 'p1', cards: CARDS }).then(() => { stopping.abort(new Error('the user stopped the turn')) })
-      return undefined
-    })
-    await tab(answering, 'p1', 's2', CARDS)
-    expect(messageOf(await call(answering, 'dv_canvas_move', MOVES, stopping.signal))).toBe(CANCELLED)
-    expect([answering.stored(), answering.log]).toEqual([null, []])
     const looking = new AbortController()
     const lookup = await start({ onList: () => { looking.abort(new Error('the user stopped the turn')) } })
     await tab(lookup, 'p1', 's1', CARDS)
-    expect(messageOf(await call(lookup, 'dv_canvas_move', MOVES, looking.signal))).toBe(CANCELLED)
-    expect([lookup.stored(), lookup.log]).toEqual([null, []])
+    expect(messageOf(await call(lookup, 'dv_canvas_read', {}, looking.signal))).toBe(CANCELLED)
     const late = await start({ answerTimeoutMs: 20 })
     await tab(late, 'p1', 's1', CARDS, () => undefined)
-    expect(messageOf(await call(late, 'dv_canvas_move', MOVES))).toBe(NO_CANVAS)
-    expect(late.stored()).toBeNull()
+    expect(messageOf(await call(late, 'dv_canvas_read', {}))).toBe(NO_CANVAS)
   })
 
   it('settle a read only with an answer that names the read and a stream it was written to, and only once', async () => {
@@ -247,30 +213,19 @@ describe('the canvas tools', () => {
     expect(await post(world, { ...read, project: 'p1', cards: CARDS })).toBe(404)
   })
 
-  it('plan from the stored positions when the answering canvas has not drawn a drag of another page', async () => {
-    const world = await start({ stored: { b: { x: 600, y: 0 } } })
-    await tab(world, 'p1', 's1', CARDS)
-    expect(await call(world, 'dv_canvas_read', {}))
-      .toMatchObject({ isError: false, value: { cards: [card('a', 0, 0), card('b', 600, 0)] } })
-    expect(messageOf(await call(world, 'dv_canvas_move', { moves: [{ node: 'a', x: 620, y: 0 }] })))
-      .toMatch(/^The move would leave cards closer than 24 units: a \(x 620, y 0, .*\) and b \(x 600, y 0, /)
-    expect([world.stored(), world.log]).toEqual([{ b: { x: 600, y: 0 } }, []])
-  })
-
   it('refuse an agent that another agent started, before any canvas is asked', async () => {
     const agents: unknown[] = []
     const world = await start({ roots: () => agents })
     const beside = await tab(world, 'p1', 's1', CARDS)
-    expect(messageOf(await call(world, 'dv_canvas_move', MOVES))).toBe('The canvas tools serve only the agent of the user\'s '
-      + 'conversation, and another agent started this one. Put the canvas change you want in your final result, so that the '
-      + 'agent that started you can make it. Nothing was moved.')
-    expect([beside.frames, world.stored(), world.log]).toEqual([['ready {}'], null, []])
+    expect(messageOf(await call(world, 'dv_canvas_read', {}))).toBe('dv_canvas_read serves only the agent of the user\'s '
+      + 'conversation, and another agent started this one. dv_proj_state lists the canvas nodes with their positions.')
+    expect(beside.frames).toEqual(['ready {}'])
     agents.push(world.agent)
     expect(await call(world, 'dv_canvas_read', {})).toMatchObject({ isError: false, value: { project: 'p1' } })
     expect(beside.frames).toHaveLength(2)
   })
 
-  it('fail at once when no canvas of the project is open beside the chat, and fail on an unreadable answer, a refused move, or a refused write', async () => {
+  it('fails at once when no canvas of the project is open beside the chat, and fails on an unreadable answer', async () => {
     const world = await start()
     await tab(world, 'p0', 's1', [])
     await tab(world, 'p1', 's2', CARDS)
@@ -280,20 +235,9 @@ describe('the canvas tools', () => {
     const answers: unknown[] = [{ project: 'p1', cards: [{ id: 'a' }] }, { project: 'p0', cards: CARDS }]
     const unreadable = await tab(world, 'p1', 's1', CARDS, read => ({ ...read, ...answers.shift() as object }))
     for (const _answer of [0, 1]) {
-      expect(messageOf(await call(world, 'dv_canvas_read', {}))).toBe('The open canvas sent an answer that the canvas tools '
-        + 'cannot read. Nothing was moved.')
+      expect(messageOf(await call(world, 'dv_canvas_read', {}))).toBe('The open canvas sent an answer that dv_canvas_read cannot read.')
     }
     unreadable.close()
-    await tab(world, 'p1', 's1', CARDS)
-    expect(messageOf(await call(world, 'dv_canvas_move', { moves: [{ node: 'zz', x: 0, y: 0 }] })))
-      .toBe('The canvas has no node zz. Its nodes are: a, b. Nothing was moved.')
-    expect([world.stored(), world.log]).toEqual([null, []])
-    const full = Object.fromEntries(Array.from({ length: 5000 }, (_, index) => [`n${String(index)}`, { x: index * 300, y: 2000 }]))
-    const refusing = await start({ stored: full })
-    await tab(refusing, 'p1', 's1', CARDS)
-    expect(messageOf(await call(refusing, 'dv_canvas_move', MOVES))).toBe('The layout store refused the move: A layout keeps '
-      + 'at most 5000 positions. Nothing was moved.')
-    expect([refusing.stored(), refusing.log]).toEqual([full, []])
   })
 
   it('fail with the next step when the conversation has no project, without asking a canvas', async () => {
@@ -309,30 +253,25 @@ describe('the canvas tools', () => {
     })
     expect(messageOf(withoutAgent)).toBe(NO_PROJECT)
   })
-  it('describe themselves to the model in English', async () => {
+  it('describes itself to the model in English', async () => {
     const { ctx } = await start()
-    const descriptionOf = (name: string): string | undefined => ctx.tools.schemas().find(tool => tool.name === name)?.description
-    expect(descriptionOf('dv_canvas_read')).toBe('Read the canvas of this project that the user has open: every node with its id, type, '
-      + 'title and record, its box (x and y of the top-left corner of the node; width and height of its frame, which sits '
-      + 'below a 20-unit caption, so the node spans y to y + 20 + height; canvas units, y grows downward), and rendering: true '
-      + 'while the node\'s record is still being generated. A rendering node can change size and position when it finishes. Fails when no '
-      + 'canvas of this project is open.')
-    expect(descriptionOf('dv_canvas_move')).toBe('Move canvas nodes in one call: list each node you place with the new x and y of '
-      + 'the top-left corner of its card, planned from the boxes that dv_canvas_read returned. Keep at least 24 units between a '
-      + 'moved card and every other card. Nodes you do not list stay where they are, and every node keeps its width and '
-      + 'height. The call moves nothing when a node is unknown or listed twice, or when a moved card would come closer than 24 '
-      + 'units to another card. The user sees the move at once. A move is not a step of the project history: dv_proj_undo '
-      + 'does not revert it; to restore, move the nodes back. Returns the canvas after the move.')
+    expect(ctx.tools.schemas().find(tool => tool.name === 'dv_canvas_read')?.description).toBe('Read the canvas of this project '
+      + 'that the user has open: every node with its id, type, title (its name when it has one), versions (how many versions '
+      + 'it holds) and shown (the record of the version it shows), its box (x and y of the top-left corner of the node; '
+      + 'width and height of its frame, which sits below a 20-unit caption, so the node spans y to y + 20 + height; canvas '
+      + 'units, y grows downward), and rendering: true while the shown version is still being generated. To redo or change '
+      + 'a node\'s content, pass based_on with the shown id. To move or resize a node, call dv_canvas_node_position; to '
+      + 'rename it, call dv_canvas_node_rename. Fails when no canvas of this project is open.')
   })
 
   it('leave the tool registry and the Connection when the plugin is disposed', async () => {
     const world = await start()
     const { ctx, routes } = world
     const open = await tab(world, 'p1', 's1', CARDS)
-    expect([ctx.tools.get('dv_canvas_read')?.name, ctx.tools.get('dv_canvas_move')?.name]).toEqual(['dv_canvas_read', 'dv_canvas_move'])
+    expect([ctx.tools.get('dv_canvas_read')?.name, ctx.tools.get('dv_canvas_move')]).toEqual(['dv_canvas_read', undefined])
     expect([...routes.keys()].sort()).toEqual([CANVAS_AGENT_ROUTE, CANVAS_ANSWER_ROUTE, '/api/dv/canvas/layout'])
     for (const fiber of ctx.registry.get(canvasPlugin)?.fibers ?? []) await fiber.dispose()
-    expect([ctx.tools.get('dv_canvas_read'), ctx.tools.get('dv_canvas_move'), routes.size]).toEqual([undefined, undefined, 0])
+    expect([ctx.tools.get('dv_canvas_read'), routes.size]).toEqual([undefined, 0])
     await open.ended
   })
 })

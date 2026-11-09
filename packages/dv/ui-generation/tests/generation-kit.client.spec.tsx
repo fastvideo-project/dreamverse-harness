@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * `defineGenerationUi` mounted as a plugin: the claimed node type, the card body, the 重试 action, and the removal of
+ * `defineGenerationUi` mounted as a plugin: the node type, the card body, the 重试 action, and the removal of
  * every registration when the plugin unloads.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -9,11 +9,11 @@ import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { HistoryRow } from '@dv/ui-history/contract'
 import { CARD_SURFACE, mediaSizing, WIDE_RATIO } from '@dv/ui-kit/frame.ts'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
-import type { NodeType } from '../../ui-canvas/src/client/contract/index.ts'
+import type { NodeType, NodeView } from '../../ui-canvas/src/client/contract/index.ts'
 import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { defineGenerationUi } from '../src/client/generation-kit.tsx'
-import { claimedOf, CLIP_EXTEND, mountKit, nodesOf, recordingHost, testTake } from './take-kind.client.ts'
+import { addNode, CLIP_EXTEND, mountKit, nodeAt, nodesOf, recordingHost, testTake } from './take-kind.client.ts'
 
 const LABELLED = [{ ...OPERATIONS[0]!, label: { zh: '渲染镜头', en: 'Render shot' } }, CLIP_EXTEND]
 
@@ -24,7 +24,7 @@ afterEach(() => {
 })
 
 /**
- * The fixture state plus a `clip.extend` take.
+ * The fixture state plus a node of a `clip.extend` take.
  * @returns the state.
  */
 function extendedState(): FixtureState {
@@ -32,23 +32,23 @@ function extendedState(): FixtureState {
   state.components.proj.records.push(
     record({ id: 'x1', operation: 'clip.extend', deterministic: false, outputs: ['x1.png', 'x1.mp4'] }),
   )
+  addNode(state, 'x1', 'test_take')
   state.assets.push(asset('x1.png', 'image/png', 'x1'), asset('x1.mp4', 'video/mp4', 'x1', 2.5))
   Object.assign(state.components.proj.created_by, { 'x1.png': 'x1', 'x1.mp4': 'x1' })
   return state
 }
 
-describe('the claimed node type of a generation kind', () => {
-  it('titles a take by its operation\'s wire label, else by the operation name, and its number in its based_on family', async () => {
+describe('the node type of a generation kind', () => {
+  it('titles a node by its operation\'s wire label, else by the operation name, the same at every version', async () => {
     const { runtime, canvas } = await mountKit({})
     const titles = (operations = LABELLED, language: 'zh' | 'en' = 'zh') => {
       const nodes = nodesOf(canvas, extendedState(), operations, language)
       return Object.fromEntries(['g1', 'g2', 'x1'].map(id => [id, nodes.get(id)?.title]))
     }
-    expect(titles()).toEqual({
-      // g3 is a rerun of g1, so the two are takes 1 and 2 of one group.
-      g1: '渲染镜头 · 第 1 次', g2: '渲染镜头', x1: 'clip.extend',
-    })
-    expect(titles(LABELLED, 'en')).toMatchObject({ g1: 'Render shot · take 1', g2: 'Render shot' })
+    // g1 shows its second version g3, a rerun of g1.
+    expect(titles()).toEqual({ g1: '渲染镜头', g2: '渲染镜头', x1: 'clip.extend' })
+    expect(titles(LABELLED, 'en')).toMatchObject({ g1: 'Render shot', g2: 'Render shot' })
+    expect(nodeAt(canvas, extendedState(), LABELLED, 'g1', 'g1').title).toBe('Render shot')
     expect(titles([], 'en')).toMatchObject({ g2: 'shot.render', x1: 'clip.extend' })
     await runtime.dispose()
   })
@@ -58,15 +58,20 @@ describe('the claimed node type of a generation kind', () => {
     const state = extendedState()
     state.assets = state.assets.map(entry => entry.id === 'shot1-last.png' ? { ...entry, width: 768, height: 1024 } : entry)
     const nodes = nodesOf(canvas, state, LABELLED, 'en')
-    const facts = (id: string) => {
-      const node = nodes.get(id)
+    const facts = (id: string, version?: string) => {
+      const node = version === undefined ? nodes.get(id) : nodeAt(canvas, state, LABELLED, id, version)
       return [node?.meta, node?.preview, node?.sizing]
     }
     const wide = { kind: 'media', defaultSize: { width: 208, height: 117 }, minSize: { width: 104, height: 59 }, aspectRatio: { ratio: 16 / 9, fixedHeight: 0 } }
     // A 3:4 preview gets the 208 × 277 frame at 3:4; a shown asset of unknown size and a take without outputs the 16:9 frame.
-    expect(facts('g1')).toEqual(['4.0s', 'shot1-last.png', { ...wide, defaultSize: { width: 208, height: 277 }, minSize: { width: 104, height: 139 }, aspectRatio: { ratio: 3 / 4, fixedHeight: 0 } }])
+    expect(facts('g1', 'g1')).toEqual(['4.0s', 'shot1-last.png', { ...wide, defaultSize: { width: 208, height: 277 }, minSize: { width: 104, height: 139 }, aspectRatio: { ratio: 3 / 4, fixedHeight: 0 } }])
     expect(facts('x1')).toEqual(['2.5s', 'x1.png', wide])
-    expect(facts('g3')).toEqual([undefined, undefined, wide])
+    // g1's newest version g3 is still running.
+    expect(facts('g1')).toEqual([undefined, undefined, wide])
+    // An output that the state does not list yet gives no meta and no preview.
+    state.components.proj.records.push(record({ id: 'z1', operation: 'clip.extend', deterministic: false, outputs: ['z1.png'] }))
+    addNode(state, 'z1', 'test_take')
+    expect([nodesOf(canvas, state, LABELLED, 'en').get('z1')?.meta, nodesOf(canvas, state, LABELLED, 'en').get('z1')?.preview]).toEqual([undefined, undefined])
     await runtime.dispose()
   })
 
@@ -74,9 +79,9 @@ describe('the claimed node type of a generation kind', () => {
     document.documentElement.lang = 'zh-CN'
     const { runtime, canvas } = await mountKit({})
     const type = canvas.nodeTypes.getSnapshot().find(entry => entry.type === 'test_take')
-    expect([type?.label(), type?.column, type?.claimed?.status.running(), type?.claimed?.status.failed()]).toEqual(['测试版本', 2, '生成中…', '没生成'])
+    expect([type?.label(), type?.status?.running(), type?.status?.failed()]).toEqual(['测试版本', '生成中…', '没生成'])
     document.documentElement.lang = 'en'
-    expect([type?.label(), type?.claimed?.status.running(), type?.claimed?.status.failed()]).toEqual(['Test take', 'Generating…', 'Not generated'])
+    expect([type?.label(), type?.status?.running(), type?.status?.failed()]).toEqual(['Test take', 'Generating…', 'Not generated'])
     await runtime.dispose()
   })
 })
@@ -91,16 +96,17 @@ describe('a second generation kind', () => {
   it('composes the references of every take', async () => {
     document.documentElement.lang = 'zh-CN'
     vi.stubGlobal('fetch', scriptedFetch().fetch)
-    const { runtime, canvas } = await mountKit({ 'dv.canvas.editor.claimed': { kind: 'keyed', scope: 'root' } })
+    const { runtime, canvas } = await mountKit({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } })
     await runtime.mount({ inject: [...still.inject], apply: still.apply })
     const state = fixtureState()
     state.components.proj.records.push(record({
       id: 'i1', operation: 'image.generate', deterministic: false, params: { task: 't2v', model: 'qwen-image', prompt: 'a cat' },
       inputs: [{ role: 'reference', ref: { asset: 'ref.png' }, resolved_asset: 'ref.png' }],
     }))
-    const node = claimedOf(canvas, state, [IMAGE], 'zh').get('i1')!
+    addNode(state, 'i1', 'test_still')
+    const node = nodesOf(canvas, state, [IMAGE], 'zh').get('i1')!
     expect(node.type).toBe('test_still')
-    const editor = runtime.renderSlot('dv.canvas.editor.claimed', { node, state, operations: [IMAGE], host: recordingHost() }, { entryKey: 'test_still' })
+    const editor = runtime.renderSlot('dv.canvas.editor', { node, state, operations: [IMAGE], host: recordingHost() }, { entryKey: 'test_still' })
     await waitFor(() => { expect(editor.container.querySelector('[data-reference-tile="ref.png"]')?.textContent).toContain('ref.png') })
     await runtime.dispose()
   })
@@ -115,11 +121,11 @@ describe('the parameter bar of a generation kind', () => {
       status: { running: ['测试渲染中…', 'Test rendering…'], failed: ['失败', 'Failed'], done: ['好了', 'Done'] },
       bar: { copy: { send: ['测试渲染', 'Test render'], placeholder: ['描述测试', 'Describe the test'] } },
     })
-    const { runtime, canvas } = await mountKit({ 'dv.canvas.editor.claimed': { kind: 'keyed', scope: 'root' } }, kind)
+    const { runtime, canvas } = await mountKit({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } }, kind)
     const state = fixtureState()
-    const node = claimedOf(canvas, state, OPERATIONS, 'en').get('g1')!
+    const node = nodesOf(canvas, state, OPERATIONS, 'en').get('g1')!
     const host = recordingHost(() => new Promise<void>(() => {}))
-    const editor = runtime.renderSlot('dv.canvas.editor.claimed', { node, state, operations: OPERATIONS, host }, { entryKey: 'test_render' })
+    const editor = runtime.renderSlot('dv.canvas.editor', { node, state, operations: OPERATIONS, host }, { entryKey: 'test_render' })
     const send = await waitFor(() => {
       const button = editor.view.getByRole<HTMLButtonElement>('button', { name: 'Test render' })
       if (button.disabled) throw new Error('the call is not checked yet')
@@ -140,15 +146,16 @@ describe('the card body of a take', () => {
     state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g2' ? { ...entry, outputs: ['shot2.mp4'] } : entry)
     const nodes = nodesOf(canvas, state, OPERATIONS, 'en')
     const assets = Object.fromEntries(state.assets.map(entry => [entry.id, entry]))
-    const owner = (id: string) => ({ node: nodes.get(id)!, assets, textScale: 1, host: recordingHost() })
-    const card = runtime.renderSlot('dv.canvas.card', owner('g1'), { entryKey: 'test_take' })
+    const owner = (node: NodeView) => ({ node, assets, textScale: 1, host: recordingHost() })
+    const card = runtime.renderSlot('dv.canvas.card', owner(nodeAt(canvas, state, OPERATIONS, 'g1', 'g1')), { entryKey: 'test_take' })
     const media = () => [card.container.querySelector('img')?.getAttribute('src'), card.container.querySelector('video')?.getAttribute('src')]
     // A picture of known size fills the frame bare; an asset of unknown size and an empty take sit on the card surface.
     const fill = () => (card.container.firstElementChild as HTMLElement).style.background
     expect([media(), fill()]).toEqual([['/dv/assets/shot1-last.png', undefined], ''])
-    card.update(owner('g2'))
+    card.update(owner(nodes.get('g2')!))
     expect([media(), fill()]).toEqual([[undefined, '/dv/assets/shot2.mp4#t=0.1'], CARD_SURFACE.background])
-    card.update(owner('g3'))
+    // g1's newest version g3 has no outputs yet.
+    card.update(owner(nodes.get('g1')!))
     expect([media(), fill()]).toEqual([[undefined, undefined], CARD_SURFACE.background])
     await runtime.dispose()
   })
@@ -162,6 +169,7 @@ describe('the card body of a take', () => {
     await runtime.mount({ inject: [...low.inject], apply: low.apply })
     const state = fixtureState()
     state.components.proj.records.push(record({ id: 'a9', operation: 'audio.generate', deterministic: false, outputs: [] }))
+    addNode(state, 'a9', 'test_low')
     const node = nodesOf(canvas, state, OPERATIONS, 'en').get('a9')
     if (node === undefined) throw new Error('no node a9')
     const card = runtime.renderSlot('dv.canvas.card', { node, assets: {}, textScale: 1, host: recordingHost() }, { entryKey: 'test_low' })
@@ -174,11 +182,10 @@ describe('the card body of a take', () => {
 
 describe('the 重试 action of a generation kind', () => {
   const IMAGE: NodeType = {
-    id: '@dv/ui-test-image', type: 'image', label: () => 'image', color: '', column: 2,
-    claimed: { operations: ['image.generate'], status: { running: () => '', failed: () => '' }, entry: () => ({ title: 'image', sizing: mediaSizing(undefined, WIDE_RATIO, 0) }) },
+    id: '@dv/ui-test-image', type: 'image', label: () => 'image', color: '', entry: () => ({ title: 'image', sizing: mediaSizing(undefined, WIDE_RATIO, 0) }),
   }
 
-  it('shows only on a failed claimed take of its own operations and reruns the record\'s operation, inputs and params based on it', async () => {
+  it('shows on any node whose shown version of its own operations failed and reruns the record\'s operation, inputs and params based on it', async () => {
     document.documentElement.lang = 'zh-CN'
     const { runtime, canvas } = await mountKit({})
     canvas.nodeTypes.register(IMAGE)
@@ -186,11 +193,10 @@ describe('the 重试 action of a generation kind', () => {
     const failed = { status: 'failed' as const, error: { code: 'operation_failed', message: 'GPU out of memory' } }
     state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g2' ? { ...entry, ...failed } : entry)
     state.components.proj.records.push(record({ id: 'i1', operation: 'image.generate', deterministic: false, ...failed }))
-    // A slice node of another type that shows the failed record g2 without claiming it.
-    canvas.nodeTypes.register({
-      id: '@dv/ui-test-slice', type: 'slice', label: () => 'slice', color: '', column: 0,
-      entries: () => [{ id: 'slice:g2', title: 'slice', record: state.components.proj.records.find(entry => entry.id === 'g2') ?? null, assets: [], sizing: { kind: 'window', defaultSize: { width: 208, height: 60 }, minSize: { width: 104, height: 60 } } }],
-    })
+    addNode(state, 'i1', 'image')
+    // A node of a kind without a registered type whose version is the failed shot.render record g2.
+    state.components.canvas.nodes['other'] = { ...state.components.canvas.nodes['g2']!, kind: 'other' }
+    state.components.canvas.order.push('other')
     const nodes = nodesOf(canvas, state, OPERATIONS, 'zh')
     const retry = canvas.actions.getSnapshot().find(action => action.id === '@dv/ui-test-take:test_take:retry')
     const assets = new Map(state.assets.map(entry => [entry.id, entry]))
@@ -198,7 +204,7 @@ describe('the 重试 action of a generation kind', () => {
       const node = nodes.get(id)
       return node === undefined ? null : retry?.shows(node, assets)
     }
-    expect([retry?.label(), shows('g2'), shows('g1'), shows('i1'), shows('slice:g2')]).toEqual(['重试', true, false, false, false])
+    expect([retry?.label(), shows('g2'), shows('g1'), shows('i1'), shows('other')]).toEqual(['重试', true, false, false, true])
 
     const host = recordingHost()
     retry?.run(nodes.get('g2')!, host)
@@ -225,6 +231,8 @@ describe('the 重试 action of each kind of one package', () => {
     const state = fixtureState()
     const failed = { status: 'failed' as const, deterministic: false }
     state.components.proj.records.push(record({ id: 'i1', operation: 'image.generate', ...failed }), record({ id: 'v1', operation: 'video.generate', ...failed }))
+    addNode(state, 'i1', 'test_image')
+    addNode(state, 'v1', 'test_video')
     const nodes = nodesOf(canvas, state, OPERATIONS, 'en')
     const assets = new Map(state.assets.map(entry => [entry.id, entry]))
     const retries = (id: string) => canvas.actions.getSnapshot()
@@ -239,7 +247,7 @@ describe('defineGenerationUi apply', () => {
     vi.stubGlobal('fetch', scriptedFetch().fetch)
     const { runtime, canvas, rows } = await mountKit({
       'dv.canvas.card': { kind: 'keyed', scope: 'root' },
-      'dv.canvas.editor.claimed': { kind: 'keyed', scope: 'root' },
+      'dv.canvas.editor': { kind: 'keyed', scope: 'root' },
       'tool.call.toolview': { kind: 'keyed', scope: 'session', inject: { hooks: { toolCallArgumentsPartial: () => () => '' } } },
     })
     // The mounted test kind already holds the type key test_take.
@@ -248,14 +256,14 @@ describe('defineGenerationUi apply', () => {
       status: { running: ['生成中…', 'Generating…'], failed: ['没生成', 'Not generated'], done: ['已生成', 'Generated'] },
     })
     await runtime.mount({ inject: [...rival.inject], apply: rival.apply })
-    const keys = (name: 'dv.canvas.card' | 'dv.canvas.editor.claimed' | 'tool.call.toolview') =>
+    const keys = (name: 'dv.canvas.card' | 'dv.canvas.editor' | 'tool.call.toolview') =>
       runtime.slots.entries(name).map(entry => entry.options.key).filter(key => key !== 'asset')
     expect({
       types: canvas.nodeTypes.getSnapshot().map(type => type.type), actions: canvas.actions.getSnapshot().map(action => action.id),
-      card: keys('dv.canvas.card'), editor: keys('dv.canvas.editor.claimed'), chat: keys('tool.call.toolview'),
+      card: keys('dv.canvas.card'), editor: keys('dv.canvas.editor'), chat: keys('tool.call.toolview'),
       history: rows.getSnapshot().map(row => row.match),
     }).toEqual({
-      types: ['asset', 'test_take'], actions: ['@dv/ui-asset-pool:unplace', '@dv/ui-test-take:test_take:retry'],
+      types: ['asset', 'test_take'], actions: ['@dv/ui-test-take:test_take:retry'],
       card: ['test_take'], editor: ['test_take'], chat: ['dv_shot_render', 'dv_clip_extend', 'dv_image_generate'],
       history: ['shot.render', 'clip.extend', 'image.generate'],
     })
@@ -280,15 +288,15 @@ describe('defineGenerationUi apply', () => {
     vi.stubGlobal('fetch', scriptedFetch().fetch)
     const { runtime, kit, canvas, rows } = await mountKit({
       'dv.canvas.card': { kind: 'keyed', scope: 'root' },
-      'dv.canvas.editor.claimed': { kind: 'keyed', scope: 'root' },
+      'dv.canvas.editor': { kind: 'keyed', scope: 'root' },
       'tool.call.toolview': { kind: 'keyed', scope: 'session', inject: { hooks: { toolCallArgumentsPartial: () => () => '' } } },
     })
-    const keyed = (name: 'dv.canvas.card' | 'dv.canvas.editor.claimed' | 'tool.call.toolview') =>
+    const keyed = (name: 'dv.canvas.card' | 'dv.canvas.editor' | 'tool.call.toolview') =>
       runtime.slots.entries(name).map(entry => entry.options.key).filter(key => key !== 'asset')
     const registered = () => ({
       types: canvas.nodeTypes.getSnapshot().filter(type => type.id === '@dv/ui-test-take').map(type => type.type),
       actions: canvas.actions.getSnapshot().map(action => action.id).filter(id => id.startsWith('@dv/ui-test-take:')),
-      card: keyed('dv.canvas.card'), editor: keyed('dv.canvas.editor.claimed'), chat: keyed('tool.call.toolview'),
+      card: keyed('dv.canvas.card'), editor: keyed('dv.canvas.editor'), chat: keyed('tool.call.toolview'),
       history: rows.getSnapshot().map(row => [row.match, row.subject(record({ id: 'r', operation: row.match }))]),
       bars: runtime.ctx.dvComposer.paramBars.getSnapshot().map(bar => [bar.operation, bar.owner]),
     })
@@ -304,8 +312,8 @@ describe('defineGenerationUi apply', () => {
       media?.thumbnail(record({ id: 'r2', operation: 'shot.render', outputs: ['shot1.mp4'] }), state),
       media?.thumbnail(record({ id: 'r3', operation: 'shot.render', outputs: [] }), state),
     ]).toEqual(['shot1-last.png', 'shot1.mp4', null])
-    const node = claimedOf(canvas, state, OPERATIONS, 'en').get('g1')!
-    const editor = runtime.renderSlot('dv.canvas.editor.claimed', { node, state, operations: OPERATIONS, host: recordingHost() }, { entryKey: 'test_take' })
+    const node = nodesOf(canvas, state, OPERATIONS, 'en').get('g1')!
+    const editor = runtime.renderSlot('dv.canvas.editor', { node, state, operations: OPERATIONS, host: recordingHost() }, { entryKey: 'test_take' })
     expect(editor.view.getByRole('button', { name: 'Generate a new version' })).toBeTruthy()
 
     await kit.dispose()

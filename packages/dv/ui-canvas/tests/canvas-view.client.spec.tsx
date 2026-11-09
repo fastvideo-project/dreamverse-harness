@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, createEvent, fireEvent, waitFor, within } from '@testing-library/react'
 import { usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
 import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
-import { asset, PROJECT, record } from '../../ui-kit/tests/fixture.client.tsx'
+import { asset, canvasNode, PROJECT, record } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import type { NodeAction, NodeType, NodeView } from '../src/client/contract/index.ts'
 import { CanvasViews, httpLink } from '../src/client/agent-canvas.ts'
@@ -75,92 +75,147 @@ const tileIn = (editor: HTMLElement, ref: string): Promise<HTMLElement> => waitF
 
 const settle = (): Promise<void> => act(() => new Promise<void>((resolve) => { setTimeout(resolve, 200) }))
 
+/** Fail g1 and make it the one version of its node, so the node's newest version is the failed one. */
 const failG1 = (state: FixtureState): void => {
   state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g1'
     ? { ...entry, status: 'failed' as const, outputs: [], error: { code: 'operation_failed', message: 'GPU out of memory' } }
     : entry)
+  addNode(state, 'g1', canvasNode('shot', ['g1'], 480, 0))
 }
 
-/** A claimed node type whose node is 117 units tall while its record renders and 400 once it is done. */
+/**
+ * Put a node in the served canvas slice, replacing a node of the same ID in place or adding it last.
+ * @param state - the served state.
+ * @param id - the node ID.
+ * @param node - the node.
+ */
+function addNode(state: FixtureState, id: string, node: ReturnType<typeof canvasNode>): void {
+  const canvas = state.components.canvas
+  if (canvas.nodes[id] === undefined) canvas.order.push(id)
+  canvas.nodes[id] = node
+}
+
+/**
+ * @param id - a node ID.
+ * @param versions - its versions, oldest first.
+ * @returns a state edit that sets the node's versions and keeps its position.
+ */
+const withVersions = (id: string, versions: string[]) => (state: FixtureState): void => {
+  const node = state.components.canvas.nodes[id]
+  if (node !== undefined) node.versions = versions
+}
+
+/** A node type whose node is 117 units tall while its version renders and 400 once it is done. */
 const PAINT: NodeType = {
-  id: '@dv/ui-test-paint', type: 'paint', label: () => 'Paint', color: 'var(--dv-node-2)', column: 9,
-  claimed: {
-    operations: ['test.paint'],
-    status: { running: () => '渲染中', failed: () => '失败' },
-    entry: ({ record: { status } }) => {
-      const height = status === 'done' ? 400 : 117
-      return { title: 'Paint', sizing: { kind: 'window', defaultSize: { width: 208, height }, minSize: { width: 104, height } } }
-    },
+  id: '@dv/ui-test-paint', type: 'paint', label: () => 'Paint', color: 'var(--dv-node-2)',
+  status: { running: () => '渲染中', failed: () => '失败' },
+  entry: ({ record: { status } }) => {
+    const height = status === 'done' ? 400 : 117
+    return { title: 'Paint', sizing: { kind: 'window', defaultSize: { width: 208, height }, minSize: { width: 104, height } } }
   },
 }
 
 /**
  * @param finished - whether the record pa has finished.
- * @returns a state edit that adds the paint records pa, rendering until `finished`, and pb, done.
+ * @returns a state edit that adds the paint node pa at (0, 600) at its default size, rendering until `finished`.
  */
 const paintRecords = (finished: () => boolean) => (state: FixtureState): void => {
-  state.components.proj.records.push(
-    record({ id: 'pa', operation: 'test.paint', status: finished() ? 'done' : 'running' }),
-    record({ id: 'pb', operation: 'test.paint' }),
-  )
+  state.components.proj.records.push(record({ id: 'pa', operation: 'test.paint', status: finished() ? 'done' : 'running' }))
+  addNode(state, 'pa', canvasNode('paint', ['pa'], 0, 600))
+}
+
+/**
+ * @param sizing - the node's default and minimum frame.
+ * @returns a node type `half` titled Half that owns the asset shot1-last.png.
+ */
+const halfType = (sizing: { width: number; height: number; minWidth: number; minHeight: number }): NodeType => ({
+  id: '@dv/ui-test-half', type: 'half', label: () => 'Half', color: '',
+  entry: () => ({
+    title: 'Half', assets: ['shot1-last.png'],
+    sizing: { kind: 'window', defaultSize: { width: sizing.width, height: sizing.height }, minSize: { width: sizing.minWidth, height: sizing.minHeight } },
+  }),
+})
+
+/**
+ * @param position - the stored position of the node.
+ * @returns a state edit that puts the `half` node h1, a version of the record x1, first in the node list.
+ */
+const halfNode = (position: { x: number; y: number; width: number | null; height: number | null }) => (state: FixtureState): void => {
+  const canvas = state.components.canvas
+  canvas.nodes['h1'] = { ...canvasNode('half', ['x1']), position }
+  canvas.order.unshift('h1')
 }
 
 describe('the canvas over the real kinds', () => {
-  it('draws stored positions, stores a free spot once for every other node, stores a dragged position, and shows a reported badge', async () => {
+  it('draws each node at its stored position, shows a reported badge, and writes one canvas.node_position per drag end', async () => {
     const { runtime, node, server, canvasOf } = await mountCanvas()
     await mountDescriptors(runtime, { inUse: { id: 'clips', uses: () => [], badges: () => [{ asset: 'shot2.mp4', label: '已裁剪' }] } })
-    await waitFor(() => { node('g3') })
-    expect(node('g1').style.left).toBe('10px')
+    await waitFor(() => { node('g2') })
+    expect([node('g1').style.left, node('g1').style.top, node('g2').style.top]).toEqual(['480px', '0px', '200px'])
     expect(node('g2').getAttribute('data-node-stale')).toBe('true')
     expect(within(node('g2')).getByText('已裁剪')).toBeTruthy()
-    await waitFor(() => { expect(server.layoutWrites).toHaveLength(1) })
-    const stored = server.layoutWrites[0] as { project: string; positions: Record<string, unknown> }
-    expect([Object.keys(stored).sort(), stored.project, stored.positions['g2']]).toEqual([['positions', 'project'], 'p1', { x: 480, y: 0, width: 208, height: 117 }])
-    expect(Object.keys(stored.positions)).not.toContain('g1')
     fireEvent.pointerDown(node('g2'), { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 20, clientY: 10, pointerId: 1 })
     fireEvent.pointerMove(canvasOf(), { clientX: 50, clientY: 30, pointerId: 1 })
     fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
-    await waitFor(() => { expect(server.layoutWrites).toHaveLength(2) }, { timeout: 2000 })
-    expect(server.layoutWrites[1]).toMatchObject({ project: 'p1', positions: { g2: { x: 530, y: 30 } } })
+    expect(node('g2').style.left).toBe('530px')
+    await waitFor(() => { expect(server.positionWrites).toEqual([{ node: 'g2', x: 530, y: 230 }]) })
+    expect(operationsOf(server.writes)).toContainEqual(expect.objectContaining({ project: 'p1', operation: 'canvas.node_position', surface: 'canvas', session: 's5' }))
+    // The node stays at its new spot once the state shows it.
+    await settle()
+    expect([node('g2').style.left, node('g2').style.top]).toEqual(['530px', '230px'])
+    // A click on the node and a pan of empty canvas write no position.
+    fireEvent.pointerDown(node('g1'), { button: 0, clientX: 5, clientY: 5, pointerId: 2 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 2 })
+    fireEvent.pointerDown(canvasOf(), { button: 0, clientX: 700, clientY: 500, pointerId: 3 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 760, clientY: 540, pointerId: 3 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 3 })
+    await settle()
+    expect(server.positionWrites).toHaveLength(1)
     await runtime.dispose()
   })
 
-  it('stores the spot of a rendering node only once it finishes, placed again at its final height', async () => {
-    let finished = false
-    const { runtime, node, server } = await mountCanvas({ edit: paintRecords(() => finished) })
-    await mountDescriptors(runtime, { nodeType: PAINT })
-    await waitFor(() => { node('pb') })
-    await waitFor(() => { expect(server.layoutWrites.some(write => 'pb' in write.positions)).toBe(true) })
-    const below = server.layoutWrites.find(write => 'pb' in write.positions)?.positions['pb']
-    expect(below?.y).toBe(200)
-    // The rendering node is drawn at its spot above pb, which the canvas does not store.
-    expect([node('pa').style.left, node('pa').style.top]).toEqual([`${String(below?.x)}px`, '0px'])
-    expect(server.layoutWrites.some(write => 'pa' in write.positions)).toBe(false)
-    finished = true
-    server.notify()
-    await waitFor(() => { expect(server.layoutWrites.some(write => 'pa' in write.positions)).toBe(true) })
-    // At its final height the node no longer fits above pb, which is 420 units tall from y 200, so it lands below pb.
-    expect(server.layoutWrites.filter(write => 'pa' in write.positions).map(write => write.positions['pa'])).toEqual([{ x: below?.x, y: 800, width: 208, height: 400 }])
-    expect(node('pa').style.top).toBe('800px')
+  it('puts a node back and writes no position when the browser cancels its drag or resize, and stores a cancelled pan', async () => {
+    const { runtime, node, open, server, canvasOf, view } = await mountCanvas()
+    await open('g2')
+    fireEvent.click(view.getByRole('button', { name: zh['editor.close'] }))
+    fireEvent.pointerCancel(canvasOf(), { pointerId: 1 })
+    fireEvent.pointerDown(node('g2'), { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
+    fireEvent.pointerCancel(canvasOf(), { pointerId: 1 })
+    fireEvent.pointerDown(node('g2'), { button: 0, clientX: 0, clientY: 0, pointerId: 2 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 50, clientY: 30, pointerId: 2 })
+    expect([node('g2').style.left, node('g2').style.top]).toEqual(['530px', '230px'])
+    fireEvent.pointerCancel(canvasOf(), { pointerId: 2 })
+    expect([node('g2').style.left, node('g2').style.top]).toEqual(['480px', '200px'])
+    const handle = node('g2').querySelector('[data-node-handle="se"]')
+    if (handle === null) throw new Error('no south-east handle')
+    const width = node('g2').style.width
+    fireEvent.pointerDown(handle, { button: 0, clientX: 0, clientY: 0, pointerId: 3 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 104, clientY: 0, pointerId: 3 })
+    expect(node('g2').style.width).not.toBe(width)
+    fireEvent.pointerCancel(canvasOf(), { pointerId: 3 })
+    expect(node('g2').style.width).toBe(width)
+    fireEvent.pointerDown(canvasOf(), { button: 0, clientX: 700, clientY: 500, pointerId: 4 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 760, clientY: 540, pointerId: 4 })
+    fireEvent.pointerCancel(canvasOf(), { pointerId: 4 })
+    await waitFor(() => { expect(server.layoutWrites).toEqual([{ project: 'p1', viewport: { x: 60, y: 40, zoom: 1 } }]) }, { timeout: 2000 })
+    expect(server.positionWrites).toEqual([])
     await runtime.dispose()
   })
 
-  it('stores a dragged rendering node at once with its size then, and keeps both when it finishes', async () => {
+  it('writes only the corner of a dragged rendering node, which keeps its type\'s default size when it finishes', async () => {
     let finished = false
     const { runtime, node, server, canvasOf } = await mountCanvas({ edit: paintRecords(() => finished) })
     await mountDescriptors(runtime, { nodeType: PAINT })
     await waitFor(() => { node('pa') })
-    const left = Number.parseFloat(node('pa').style.left)
     fireEvent.pointerDown(node('pa'), { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
-    fireEvent.pointerMove(canvasOf(), { clientX: 0, clientY: 900, pointerId: 1 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 0, clientY: 300, pointerId: 1 })
     fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
-    await waitFor(() => { expect(server.layoutWrites.some(write => 'pa' in write.positions)).toBe(true) }, { timeout: 2000 })
+    await waitFor(() => { expect(server.positionWrites).toEqual([{ node: 'pa', x: 0, y: 900 }]) })
     finished = true
     server.notify()
     await waitFor(() => { expect(node('pa').textContent).not.toContain('渲染中') })
-    await settle()
-    expect(server.layoutWrites.filter(write => 'pa' in write.positions).map(write => write.positions['pa'])).toEqual([{ x: left, y: 900, width: 208, height: 117 }])
-    expect([node('pa').style.top, node('pa').querySelector<HTMLElement>('[data-node-frame]')?.style.height]).toEqual(['900px', '117px'])
+    expect([node('pa').style.top, node('pa').querySelector<HTMLElement>('[data-node-frame]')?.style.height]).toEqual(['900px', '400px'])
     await runtime.dispose()
   })
 
@@ -203,12 +258,14 @@ describe('the canvas over the real kinds', () => {
     await runtime.dispose()
   })
 
-  it('渲染新版本 runs the edited take based on it, reads 渲染中… until the new take appears, then closes the editor and selects the new take', async () => {
+  it('渲染新版本 runs the edited take based on it, reads 渲染中… until the new version appears, then closes the editor and selects the node', async () => {
     let started = false
     const { runtime, view, node, open, server } = await mountCanvas({
       holdOperations: true,
       edit: (state) => {
-        if (started) state.components.proj.records.push(record({ id: 'n1', operation: 'shot.render', deterministic: false, based_on: 'g1', params: { prompt: 'hero runs' }, status: 'running' }))
+        if (!started) return
+        state.components.proj.records.push(record({ id: 'n1', operation: 'shot.render', deterministic: false, based_on: 'g3', params: { prompt: 'hero runs' }, status: 'running' }))
+        withVersions('g1', ['g1', 'g3', 'n1'])(state)
       },
     })
     const editor = await open('g1')
@@ -217,17 +274,17 @@ describe('the canvas over the real kinds', () => {
     await waitFor(() => { expect(within(editor).getByRole('button', { name: '渲染中…' }).hasAttribute('disabled')).toBe(true) })
     await waitFor(() => { expect(operationsOf(server.writes)).toHaveLength(1) })
     expect(operationsOf(server.writes)[0]).toMatchObject({
-      project: 'p1', operation: 'shot.render', surface: 'canvas', session: 's5', based_on: 'g1',
-      params: { prompt: 'hero walks through the rain at night in the city', duration_sec: 3 },
+      project: 'p1', operation: 'shot.render', surface: 'canvas', session: 's5', based_on: 'g3',
+      params: { prompt: 'hero walks, wider', duration_sec: 3 },
     })
     server.notify()
     await settle()
     expect(within(editor).getByRole('button', { name: '渲染中…' })).toBeTruthy()
     started = true
     server.notify()
-    await waitFor(() => { expect(node('n1').getAttribute('data-node-selected')).toBe('true') })
-    expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
-    expect(node('g1').getAttribute('data-node-selected')).toBeNull()
+    await waitFor(() => { expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull() })
+    expect(node('g1').getAttribute('data-node-selected')).toBe('true')
+    expect(within(node('g1')).getByText('v3')).toBeTruthy()
     await open('g2')
     server.releaseOperations()
     await settle()
@@ -285,15 +342,15 @@ describe('the canvas over the real kinds', () => {
         state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g3' ? { ...entry, status: 'done' as const, outputs: ['shot2.mp4'], finished_at: '2026-10-06T00:00:00Z' } : entry)
       },
     })
-    await waitFor(() => { node('g3') })
+    await waitFor(() => { node('g1') })
     // Takes that were finished at the first load count as seen.
     expect(view.container.querySelectorAll('[data-node-unseen]')).toHaveLength(0)
     finished = true
     server.notify()
-    await waitFor(() => { expect(node('g3').getAttribute('data-node-unseen')).toBe('true') })
-    expect(within(node('g3')).getByRole('img', { name: zh['node.unseen'] })).toBeTruthy()
-    await open('g3')
-    expect(node('g3').getAttribute('data-node-unseen')).toBeNull()
+    await waitFor(() => { expect(node('g1').getAttribute('data-node-unseen')).toBe('true') })
+    expect(within(node('g1')).getByRole('img', { name: zh['node.unseen'] })).toBeTruthy()
+    await open('g1')
+    expect(node('g1').getAttribute('data-node-unseen')).toBeNull()
     expect((JSON.parse(window.localStorage.getItem('dv-canvas-seen:p1') ?? '{}') as { ids?: string[] }).ids).toContain('g3')
     await runtime.dispose()
   })
@@ -326,6 +383,24 @@ describe('the canvas over the real kinds', () => {
     fireEvent.keyDown(document.body, { key: 'Escape' })
     expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
     await runtime.dispose()
+  })
+
+  it('opens the node that has the requested record as a version, else the node that shows its first output, and nothing for a record no node shows', async () => {
+    const opened = async (record: string): Promise<string | null> => {
+      const take = vi.fn()
+      const { runtime, view, node } = await mountCanvas({ request: { value: { record }, take } })
+      await waitFor(() => { node('g1') })
+      await settle()
+      const editor = view.queryByTestId('dv-canvas-node-editor')
+      const id = editor === null ? null : [...view.container.querySelectorAll('[data-node-id]')]
+        .find(card => card.getAttribute('aria-label') === editor.getAttribute('aria-label'))?.getAttribute('data-node-id') ?? null
+      expect(take).toHaveBeenCalledTimes(id === null ? 0 : 1)
+      await runtime.dispose()
+      cleanup()
+      return id
+    }
+    // g3 is the second version of g1; the import u1 output ref.png, which the reference node e1 shows; c1 has no node.
+    expect([await opened('g3'), await opened('u1'), await opened('c1')]).toEqual(['g1', 'e1', null])
   })
 
   it('keeps a center request until a node type that registers later draws its node, then takes it', async () => {
@@ -503,8 +578,215 @@ describe('the canvas over the real kinds', () => {
   })
 })
 
+describe('removing a node', () => {
+  const removal = (...nodes: string[]) => ({ project: 'p1', operation: 'canvas.node_remove', surface: 'canvas', session: 's5', params: { nodes }, intent: expect.stringContaining('remove') as string })
+  const removals = (server: { writes: ReadonlyArray<{ path: string; body: unknown }> }): unknown[] =>
+    operationsOf(server.writes).filter(write => (write as { operation: string }).operation === 'canvas.node_remove')
+  const menuOf = (view: { getByRole: (role: 'menu') => HTMLElement }): HTMLElement => view.getByRole('menu')
+
+  it('opens the right-click menu of a node with its actions and 重命名 above 从画布移除, and OK removes the node, its edges and its selection', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { runtime, view, node, server, canvasOf } = await mountCanvas()
+    await mountDescriptors(runtime, { actions: [{ id: '@dv/ui-test-probe:look', label: () => 'look', order: 1, shows: (entry): entry is NodeView => entry.id === 'g1', run: () => undefined }] })
+    await waitFor(() => { node('g1') })
+    expect(canvasOf().querySelector('[data-edge^="g1>"], [data-edge$=">g1"]')).not.toBeNull()
+    fireEvent.contextMenu(node('g1'), { clientX: 300, clientY: 200 })
+    const menu = menuOf(view)
+    expect(menu.getAttribute('aria-label')).toBe('节点操作')
+    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['look', '重命名', '从画布移除⌫'])
+    expect(within(menu).getByRole('menuitem', { name: /从画布移除/ }).getAttribute('aria-keyshortcuts')).toBe('Delete Backspace')
+    expect(node('g1').getAttribute('data-node-selected')).toBe('true')
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /从画布移除/ }))
+    expect(confirm).toHaveBeenCalledWith(`从画布移除「${String(node('g1').getAttribute('aria-label'))}」？它的版本保留在素材库中，可在历史记录中恢复该节点。`)
+    expect(view.queryByRole('menu')).toBeNull()
+    await waitFor(() => { expect(view.container.querySelector('[data-node-id="g1"]')).toBeNull() })
+    expect(removals(server)).toEqual([removal('g1')])
+    expect(canvasOf().querySelector('[data-edge^="g1>"], [data-edge$=">g1"]')).toBeNull()
+    expect(view.container.querySelector('[data-node-selected="true"]')).toBeNull()
+    await runtime.dispose()
+  })
+
+  it('removes nothing when the user cancels the confirmation', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const { runtime, view, node, server } = await mountCanvas()
+    await waitFor(() => { node('g1') })
+    fireEvent.contextMenu(node('g1'), { clientX: 300, clientY: 200 })
+    fireEvent.click(within(menuOf(view)).getByRole('menuitem', { name: /从画布移除/ }))
+    expect(confirm).toHaveBeenCalledTimes(1)
+    await settle()
+    expect([removals(server), view.queryByRole('menu')]).toEqual([[], null])
+    expect(node('g1').getAttribute('data-node-selected')).toBe('true')
+    await runtime.dispose()
+  })
+
+  it('runs a node action from the menu and closes the menu', async () => {
+    const run = vi.fn<NodeAction['run']>((_node, host) => { host.close() })
+    const { runtime, view, node } = await mountCanvas()
+    await mountDescriptors(runtime, { actions: [{ id: '@dv/ui-test-probe:look', label: () => 'look', order: 1, shows: (entry): entry is NodeView => entry.id === 'g1', run }] })
+    await waitFor(() => { node('g1') })
+    fireEvent.contextMenu(node('g1'), { clientX: 300, clientY: 200 })
+    fireEvent.click(within(menuOf(view)).getByRole('menuitem', { name: 'look' }))
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({ id: 'g1' }), expect.anything())
+    expect(view.queryByRole('menu')).toBeNull()
+    await runtime.dispose()
+  })
+
+  it('disables the menu\'s node actions while the node waits for a rerun, and keeps 重命名 and 从画布移除 enabled', async () => {
+    const { runtime, view, node } = await mountCanvas({ edit: failG1, holdOperations: true })
+    await waitFor(() => { within(node('g1')).getByRole('button', { name: '重试' }) })
+    fireEvent.click(within(node('g1')).getByRole('button', { name: '重试' }))
+    await waitFor(() => { within(node('g1')).getByRole('button', { name: '渲染中…' }) })
+    fireEvent.contextMenu(node('g1'), { clientX: 300, clientY: 200 })
+    const items = within(menuOf(view)).getAllByRole('menuitem')
+    expect(items.map(item => [item.textContent, item.hasAttribute('disabled')])).toEqual([['重试', true], ['重命名', false], ['从画布移除⌫', false]])
+    const inner = createEvent.contextMenu(items[0] as HTMLElement)
+    fireEvent(items[0] as HTMLElement, inner)
+    expect(inner.defaultPrevented).toBe(true)
+    await runtime.dispose()
+  })
+
+  it('closes a stacked editor whose node is removed and keeps the editor beneath it', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { runtime, view, open } = await mountCanvas()
+    const editor = await open('g1')
+    fireEvent.click(await tileIn(editor, 'hero@1'))
+    const stacked = view.getAllByTestId('dv-canvas-node-editor')[1]
+    if (stacked === undefined) throw new Error('no stacked editor')
+    fireEvent.click(within(stacked).getByRole('button', { name: zh['node.remove'] }))
+    await waitFor(() => { expect(view.getAllByTestId('dv-canvas-node-editor')).toEqual([editor]) })
+    await runtime.dispose()
+  })
+
+  it('closes the menu on Escape, on a press outside it, and on a zoom, and opens none on empty canvas', async () => {
+    const { runtime, view, node, canvasOf } = await mountCanvas()
+    await waitFor(() => { node('g1') })
+    const open = (): void => { fireEvent.contextMenu(node('g1'), { clientX: 300, clientY: 200 }) }
+    open()
+    fireEvent.pointerDown(menuOf(view), { button: 0 })
+    expect(view.queryByRole('menu')).not.toBeNull()
+    fireEvent.keyDown(window, { key: 'a' })
+    expect(view.queryByRole('menu')).not.toBeNull()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(view.queryByRole('menu')).toBeNull()
+    open()
+    fireEvent.pointerDown(document.body, { button: 0 })
+    expect(view.queryByRole('menu')).toBeNull()
+    open()
+    fireEvent.click(view.getByRole('button', { name: zh['canvas.zoomIn'] }))
+    expect(view.queryByRole('menu')).toBeNull()
+    const empty = createEvent.contextMenu(canvasOf(), { clientX: 700, clientY: 500 })
+    fireEvent(canvasOf(), empty)
+    expect([view.queryByRole('menu'), empty.defaultPrevented]).toEqual([null, false])
+    await runtime.dispose()
+  })
+
+  it('keeps the menu inside the canvas: it opens at the pointer where it fits, and left of and above it near the far edges', async () => {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(600)
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(180)
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(80)
+    const { runtime, view, node } = await mountCanvas()
+    await waitFor(() => { node('g1') })
+    fireEvent.contextMenu(node('g1'), { clientX: 100, clientY: 100 })
+    expect([menuOf(view).style.left, menuOf(view).style.top]).toEqual(['100px', '100px'])
+    fireEvent.keyDown(window, { key: 'Escape' })
+    fireEvent.contextMenu(node('g1'), { clientX: 790, clientY: 590 })
+    expect([menuOf(view).style.left, menuOf(view).style.top]).toEqual(['610px', '510px'])
+    await runtime.dispose()
+  })
+
+  it('removes the selected node on Delete or Backspace after the confirmation, and not while focus is in a text field, an editor is open, or a dialog is up', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { runtime, view, node, open, server, canvasOf } = await mountCanvas()
+    await waitFor(() => { node('g1') })
+    // No node is selected yet.
+    fireEvent.keyDown(canvasOf(), { key: 'Delete' })
+    fireEvent.pointerDown(node('g1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
+    for (const tag of ['input', 'textarea']) {
+      const field = document.createElement(tag)
+      canvasOf().append(field)
+      fireEvent.keyDown(field, { key: 'Backspace' })
+      field.remove()
+    }
+    const editable = document.createElement('div')
+    editable.setAttribute('contenteditable', 'true')
+    canvasOf().append(editable)
+    fireEvent.keyDown(editable, { key: 'Delete' })
+    editable.remove()
+    const modal = document.createElement('div')
+    modal.setAttribute('aria-modal', 'true')
+    document.body.append(modal)
+    fireEvent.keyDown(node('g1'), { key: 'Delete' })
+    modal.remove()
+    fireEvent.keyDown(node('g1'), { key: 'Enter' })
+    expect(confirm).not.toHaveBeenCalled()
+    const editor = await open('g2')
+    fireEvent.keyDown(editor, { key: 'Delete' })
+    expect(confirm).not.toHaveBeenCalled()
+    fireEvent.click(within(editor).getByRole('button', { name: zh['editor.close'] }))
+    await waitFor(() => { expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull() })
+    fireEvent.keyDown(node('g2'), { key: 'Backspace' })
+    expect(confirm).toHaveBeenCalledTimes(1)
+    await waitFor(() => { expect(view.container.querySelector('[data-node-id="g2"]')).toBeNull() })
+    expect(removals(server)).toEqual([removal('g2')])
+    await runtime.dispose()
+  })
+
+  it('removes the node of the open editor with its header\'s trash button after the confirmation, and closes the editor', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValue(true)
+    const { runtime, view, open, server } = await mountCanvas()
+    const editor = await open('g1')
+    const trash = within(editor).getByRole('button', { name: zh['node.remove'] })
+    expect(trash.getAttribute('title')).toBe('从画布移除')
+    const buttons = within(editor).getAllByRole('button')
+    expect(buttons.indexOf(trash)).toBe(buttons.indexOf(within(editor).getByRole('button', { name: zh['editor.close'] })) - 1)
+    fireEvent.click(trash)
+    await settle()
+    expect([removals(server), view.queryByTestId('dv-canvas-node-editor')]).toEqual([[], editor])
+    fireEvent.click(trash)
+    expect(confirm).toHaveBeenCalledTimes(2)
+    await waitFor(() => { expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull() })
+    expect(removals(server)).toEqual([removal('g1')])
+    expect(view.container.querySelector('[data-node-id="g1"]')).toBeNull()
+    await runtime.dispose()
+  })
+
+  it('drops the selection, the editor and the menu of a node that another writer removed, with no notice', async () => {
+    let removed = false
+    const { runtime, view, node, open, server } = await mountCanvas({
+      edit: (state) => {
+        if (!removed) return
+        const canvas = state.components.canvas
+        canvas.nodes = Object.fromEntries(Object.entries(canvas.nodes).filter(([id]) => id !== 'g1'))
+        canvas.order = canvas.order.filter(id => id !== 'g1')
+      },
+    })
+    await open('g1')
+    fireEvent.contextMenu(node('g1'), { clientX: 300, clientY: 200 })
+    removed = true
+    server.notify()
+    await waitFor(() => { expect(view.container.querySelector('[data-node-id="g1"]')).toBeNull() })
+    expect([view.queryByTestId('dv-canvas-node-editor'), view.queryByRole('menu'), view.queryByRole('alert')]).toEqual([null, null, null])
+    expect(view.container.querySelector('[data-node-selected="true"]')).toBeNull()
+    await runtime.dispose()
+  })
+
+  it('shows the error of a refused removal and keeps the node', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { runtime, view, node } = await mountCanvas({ refuse: (_path, body) => (body as { operation?: string }).operation === 'canvas.node_remove' ? 'The canvas has no node g1. Nothing was removed.' : null })
+    await waitFor(() => { node('g1') })
+    fireEvent.contextMenu(node('g1'), { clientX: 300, clientY: 200 })
+    fireEvent.click(within(menuOf(view)).getByRole('menuitem', { name: /从画布移除/ }))
+    await waitFor(() => { expect(view.getByRole('alert').textContent).toContain('Nothing was removed.') })
+    expect(node('g1')).toBeTruthy()
+    await runtime.dispose()
+  })
+})
+
 describe('drops on the canvas', () => {
-  it('puts a dropped 素材 tile on the canvas under the pointer with asset.place, and 从画布移除 in its editor takes it off with asset.unplace', async () => {
+  it('puts a dropped 素材 tile on the canvas with asset.place, moves its node under the pointer, and 从画布移除 takes it off with canvas.node_remove', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const { runtime, view, node, open, server, canvasOf } = await mountCanvas({
       edit: (state) => {
         state.assets.push(asset('pool.png', 'image/png', 'u2'))
@@ -513,20 +795,21 @@ describe('drops on the canvas', () => {
       },
     })
     await waitFor(() => { node('g1') })
-    expect(view.container.querySelector('[data-node-id="u2"]')).toBeNull()
+    expect(view.container.querySelector('[data-node-id="place1"]')).toBeNull()
     dropAt(canvasOf(), tileDrag('pool.png'))
-    await waitFor(() => { expect(node('u2').style.left).toBe(`${String(500 - 208 / 2)}px`) })
+    await waitFor(() => { expect(node('place1').style.left).toBe(`${String(500 - 208 / 2)}px`) })
+    expect(server.positionWrites).toEqual([expect.objectContaining({ node: 'place1', x: 500 - 208 / 2 })])
     const placement = (operation: string) => ({ project: 'p1', operation, surface: 'canvas', inputs: [{ role: 'asset', ref: 'pool.png' }], session: 's5' })
     await waitFor(() => { expect(operationsOf(server.writes)).toContainEqual(placement('asset.place')) })
-    const editor = await open('u2')
+    const editor = await open('place1')
     fireEvent.click(within(editor).getByRole('button', { name: '从画布移除' }))
-    await waitFor(() => { expect(view.container.querySelector('[data-node-id="u2"]')).toBeNull() })
-    await waitFor(() => { expect(operationsOf(server.writes)).toContainEqual(placement('asset.unplace')) })
+    await waitFor(() => { expect(view.container.querySelector('[data-node-id="place1"]')).toBeNull() })
+    expect(operationsOf(server.writes)).toContainEqual(expect.objectContaining({ operation: 'canvas.node_remove', params: { nodes: ['place1'] } }))
     expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
     await runtime.dispose()
   })
 
-  it('places a dropped 素材 tile of an asset that no record of the current state imported, and draws it as asset:<id>', async () => {
+  it('places a dropped 素材 tile of an asset that no record of the current state imported, and draws its placement node', async () => {
     const { runtime, view, node, server, canvasOf } = await mountCanvas({
       edit: (state) => { state.assets.push(asset('undone.png', 'image/png', 'u9', null, 'asset.import')) },
     })
@@ -535,7 +818,7 @@ describe('drops on the canvas', () => {
     await waitFor(() => {
       expect(operationsOf(server.writes)).toContainEqual({ project: 'p1', operation: 'asset.place', surface: 'canvas', inputs: [{ role: 'asset', ref: 'undone.png' }], session: 's5' })
     })
-    await waitFor(() => { node('asset:undone.png') })
+    await waitFor(() => { expect(node('place1').getAttribute('aria-label')).toBe('undone.png') })
     expect(view.queryByRole('alert')).toBeNull()
     await runtime.dispose()
   })
@@ -547,7 +830,7 @@ describe('drops on the canvas', () => {
         state.assets.push(asset('chat.png', 'image/png', 'u2'))
         state.components.proj.records.push(record({ id: 'u2', operation: 'asset.import', params: { name: 'chat.png' }, outputs: ['chat.png'], surface: 'chat' }))
         state.components.proj.created_by['chat.png'] = 'u2'
-        state.components.asset.placed = [...placed]
+        if (placed.includes('chat.png')) addNode(state, 'u2', canvasNode('asset', ['u2'], 0, 400))
       },
     })
     await waitFor(() => { node('g1') })
@@ -628,8 +911,8 @@ describe('the viewport', () => {
   it('fits every node into view when no viewport is stored, refits on a resize until the user zooms, and 适应 fits again', async () => {
     const resize = stubResizeObservers()
     mockCanvasSize(1000, 700)
-    const { runtime, node, canvasOf } = await mountCanvas({ layout: { positions: {}, viewport: null } })
-    await waitFor(() => { node('g3') })
+    const { runtime, node, canvasOf } = await mountCanvas({ layout: { viewport: null } })
+    await waitFor(() => { node('g2') })
     const canvas = canvasOf()
     await waitFor(() => { expect(viewportOf(canvas)).not.toEqual({ x: 40, y: 40, zoom: 1 }) })
     expect(cardsOutside(canvas, 1000, 700)).toEqual([])
@@ -647,11 +930,11 @@ describe('the viewport', () => {
     await runtime.dispose()
   })
 
-  it('draws the automatic layout, fitted, when the stored layout cannot be read', async () => {
+  it('fits the nodes at their stored positions when the stored viewport cannot be read', async () => {
     const { runtime, node, canvasOf } = await mountCanvas({ layout: null })
     await waitFor(() => { node('g1') })
     await waitFor(() => { expect(cardsOutside(canvasOf(), 800, 600)).toEqual([]) })
-    expect(node('g1').style.left).not.toBe('10px')
+    expect(node('g1').style.left).toBe('480px')
     await runtime.dispose()
   })
 
@@ -669,8 +952,9 @@ describe('the viewport', () => {
     expect(canvas.style.cursor).toBe('grabbing')
     fireEvent.pointerUp(canvas, { pointerId: 1 })
     expect(node('g1').getAttribute('data-node-selected')).toBe('true')
-    const panned = { project: 'p1', positions: {}, viewport: { x: 60, y: 40, zoom: 1 } }
-    await waitFor(() => { expect(server.layoutWrites).toContainEqual(panned) }, { timeout: 2000 })
+    const panned = { project: 'p1', viewport: { x: 60, y: 40, zoom: 1 } }
+    await waitFor(() => { expect(server.layoutWrites).toEqual([panned]) }, { timeout: 2000 })
+    expect(server.positionWrites).toEqual([])
     await runtime.dispose()
   })
 
@@ -696,23 +980,22 @@ describe('the viewport', () => {
     fireEvent.pointerDown(zoomBar, { button: 0, clientX: 30, clientY: 580, pointerId: 1 })
     fireEvent.pointerUp(canvas, { pointerId: 1 })
     expect(node('g1').getAttribute('data-node-selected')).toBe('true')
-    await waitFor(() => { expect(server.layoutWrites).toHaveLength(1) })
     // jsdom lays out nothing, so the canvas counts as 800 × 600 and zooms around (400, 300).
     fireEvent.click(within(zoomBar).getByRole('button', { name: zh['canvas.zoomIn'] }))
     expect(viewportOf(canvas)).toEqual({ x: -80, y: -60, zoom: 1.2 })
     expect(zoomBar.textContent).toContain('120%')
     fireEvent.click(within(zoomBar).getByRole('button', { name: zh['canvas.zoomOut'] }))
     expect(zoomBar.textContent).toContain('100%')
-    await waitFor(() => { expect(server.layoutWrites).toHaveLength(2) }, { timeout: 2000 })
-    const { x, y, zoom } = server.layoutWrites[1]?.viewport ?? { x: NaN, y: NaN, zoom: NaN }
+    await waitFor(() => { expect(server.layoutWrites).toHaveLength(1) }, { timeout: 2000 })
+    const { x, y, zoom } = server.layoutWrites[0]?.viewport ?? { x: NaN, y: NaN, zoom: NaN }
     expect([x, y, zoom].map(value => Math.round(value * 1000) / 1000)).toEqual([0, 0, 1])
     await settle()
-    expect(server.layoutWrites).toHaveLength(2)
+    expect(server.layoutWrites).toHaveLength(1)
     await runtime.dispose()
   })
 
   it('适应 keeps the zoom of a canvas without nodes and of a project whose state fails to load, which shows the error', async () => {
-    const empty = await mountCanvas({ kinds: [] })
+    const empty = await mountCanvas({ kinds: [], edit: (state) => { state.components.canvas = { nodes: {}, order: [], assets: {} } } })
     await waitFor(() => { expect(empty.canvasOf().textContent).toContain(zh['canvas.empty']) })
     fireEvent.click(within(empty.canvasOf()).getByRole('button', { name: zh['canvas.fit'] }))
     expect(empty.canvasOf().textContent).toContain('100%')
@@ -727,25 +1010,24 @@ describe('the viewport', () => {
 
   it('leaves the canvas working when the server refuses to store the layout', async () => {
     const { runtime, view, node, server, canvasOf } = await mountCanvas({ refuse: path => path === '/api/dv/canvas/layout' ? 'read-only' : null })
-    await waitFor(() => { node('g3') })
-    await waitFor(() => { expect(server.layoutWrites).toHaveLength(1) })
+    await waitFor(() => { node('g1') })
     act(() => { canvasOf().dispatchEvent(new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true })) })
-    await waitFor(() => { expect(server.layoutWrites).toHaveLength(2) }, { timeout: 2000 })
+    await waitFor(() => { expect(server.layoutWrites).toHaveLength(1) }, { timeout: 2000 })
     await settle()
     expect(view.queryByRole('alert')).toBeNull()
     await runtime.dispose()
   })
 
-  it('drops a node dragged before the stored layout arrives back to its stored spot, and does not store the drag', async () => {
+  it('keeps a node dragged before the stored viewport arrives at its dragged spot, which its move record stores', async () => {
     const { runtime, node, server, canvasOf } = await mountCanvas({ holdLayout: true })
     await waitFor(() => { node('g1') })
     fireEvent.pointerDown(node('g1'), { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
     fireEvent.pointerMove(canvasOf(), { clientX: 300, clientY: 300, pointerId: 1 })
     fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
     server.releaseLayout('p1')
-    await waitFor(() => { expect(node('g1').style.left).toBe('10px') })
-    await waitFor(() => { expect(server.layoutWrites).toHaveLength(2) }, { timeout: 2000 })
-    expect(server.layoutWrites.map(write => write.positions['g1'])).toEqual([undefined, undefined])
+    await waitFor(() => { expect(server.positionWrites).toEqual([{ node: 'g1', x: 780, y: 300 }]) })
+    await settle()
+    expect([node('g1').style.left, node('g1').style.top]).toEqual(['780px', '300px'])
     await runtime.dispose()
   })
 })
@@ -789,22 +1071,24 @@ describe('writes and failures', () => {
       holdOperations: true, refuse: refuseOperation('shot.render', 'lost connection'),
       edit: (state) => {
         if (!started) return
-        const rerun = record({ id: 'n1', operation: 'shot.render', deterministic: false, based_on: 'g1', status: 'running' })
+        const rerun = record({ id: 'n1', operation: 'shot.render', deterministic: false, based_on: 'g3', status: 'running' })
         state.components.proj.records.push(rerun)
+        withVersions('g1', ['g1', 'g3', 'n1'])(state)
       },
     })
     const editor = await open('g1')
     fireEvent.click(await sendIn(editor))
     started = true
     server.notify()
-    await waitFor(() => { expect(node('n1').getAttribute('data-node-selected')).toBe('true') })
+    await waitFor(() => { expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull() })
+    expect(node('g1').getAttribute('data-node-selected')).toBe('true')
     server.releaseOperations()
     expect((await view.findByRole('alert')).textContent).toBe('失败：lost connection')
     await runtime.dispose()
   })
 
-  it('takes a dropped 素材 tile\'s node back off the canvas when the server refuses the placement, and shows the error', async () => {
-    const { runtime, view, node, canvasOf } = await mountCanvas({
+  it('draws no node for a dropped 素材 tile whose placement the server refuses, and shows the error', async () => {
+    const { runtime, view, node, server, canvasOf } = await mountCanvas({
       refuse: refuseOperation('asset.place', 'no room'),
       edit: (state) => {
         state.assets.push(asset('pool.png', 'image/png', 'u2'))
@@ -818,7 +1102,73 @@ describe('writes and failures', () => {
     await waitFor(() => { node('g1') })
     dropAt(canvasOf(), tileDrag('pool.png'))
     expect((await view.findByRole('alert')).textContent).toBe('失败：no room')
-    await waitFor(() => { expect(view.container.querySelector('[data-node-id="u2"]')).toBeNull() })
+    // A later state still draws no node for the refused drop.
+    server.notify()
+    await settle()
+    expect(view.container.querySelectorAll('[data-node-type="asset"]')).toHaveLength(0)
+    await runtime.dispose()
+  })
+})
+
+describe('refused position writes', () => {
+  it('draws a dragged node back at its stored spot and shows the error when the server refuses its move', async () => {
+    const { runtime, view, node, server, canvasOf } = await mountCanvas({ refuse: refuseOperation('canvas.node_position', 'read-only project') })
+    await waitFor(() => { node('g2') })
+    fireEvent.pointerDown(node('g2'), { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 50, clientY: 30, pointerId: 1 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
+    expect(node('g2').style.left).toBe('530px')
+    expect((await view.findByRole('alert')).textContent).toBe('失败：read-only project')
+    expect(server.positionWrites).toEqual([{ node: 'g2', x: 530, y: 230 }])
+    await waitFor(() => { expect([node('g2').style.left, node('g2').style.top]).toEqual(['480px', '200px']) })
+    await runtime.dispose()
+  })
+
+  it('keeps the box of a later move while the refusal of an earlier one arrives, then draws the node back at its stored spot', async () => {
+    const { runtime, view, node, server, canvasOf } = await mountCanvas({ holdOperations: true, refuse: refuseOperation('canvas.node_position', 'read-only project') })
+    await waitFor(() => { node('g2') })
+    // The second drag starts from the box of the first, which the server has not answered yet.
+    for (const pointerId of [1, 2]) {
+      fireEvent.pointerDown(node('g2'), { button: 0, clientX: 0, clientY: 0, pointerId })
+      fireEvent.pointerMove(canvasOf(), { clientX: 50, clientY: 0, pointerId })
+      fireEvent.pointerUp(canvasOf(), { pointerId })
+    }
+    expect(server.positionWrites).toEqual([{ node: 'g2', x: 530, y: 200 }, { node: 'g2', x: 580, y: 200 }])
+    expect(node('g2').style.left).toBe('580px')
+    server.releaseOperations()
+    expect((await view.findByRole('alert')).textContent).toBe('失败：read-only project')
+    await waitFor(() => { expect(node('g2').style.left).toBe('480px') })
+    await runtime.dispose()
+  })
+
+  it('keeps the box of a later move while the state shows only the earlier move that the server answered', async () => {
+    const { runtime, node, server, canvasOf } = await mountCanvas({ holdOperations: true })
+    await waitFor(() => { node('g2') })
+    for (const pointerId of [1, 2]) {
+      fireEvent.pointerDown(node('g2'), { button: 0, clientX: 0, clientY: 0, pointerId })
+      fireEvent.pointerMove(canvasOf(), { clientX: 50, clientY: 0, pointerId })
+      fireEvent.pointerUp(canvasOf(), { pointerId })
+    }
+    server.releaseOperations(1)
+    await settle()
+    expect(node('g2').style.left).toBe('580px')
+    server.releaseOperations()
+    await settle()
+    expect(node('g2').style.left).toBe('580px')
+    await runtime.dispose()
+  })
+
+  it('draws a resized node back at its stored size when the server refuses the resize', async () => {
+    const { runtime, view, node, open, canvasOf } = await mountCanvas({ refuse: refuseOperation('canvas.node_position', 'read-only project') })
+    await open('g2')
+    const handle = node('g2').querySelector('[data-node-handle="se"]')
+    if (handle === null) throw new Error('no south-east handle')
+    fireEvent.pointerDown(handle, { button: 0, clientX: 0, clientY: 0, pointerId: 2 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 104, clientY: 0, pointerId: 2 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 2 })
+    expect(node('g2').style.width).toBe('312px')
+    expect((await view.findByRole('alert')).textContent).toBe('失败：read-only project')
+    await waitFor(() => { expect(node('g2').style.width).toBe('208px') })
     await runtime.dispose()
   })
 })
@@ -846,10 +1196,24 @@ describe('node actions', () => {
     await runtime.dispose()
   })
 
+  it('closes the editor once a rerun of a record that no node shows ends', async () => {
+    const { runtime, view, open, server } = await mountCanvas({ holdOperations: true })
+    await mountDescriptors(runtime, {
+      actions: [onG1('rerun x1', 1, (_node, host) => { host.rerun({ operation: 'asset.grab_still', inputs: [], params: {}, intent: 'rerun x1', based_on: 'x1' }) })],
+    })
+    const editor = await open('g1')
+    fireEvent.click(within(editor).getByRole('button', { name: 'rerun x1' }))
+    await waitFor(() => { expect(operationsOf(server.writes)).toContainEqual(expect.objectContaining({ operation: 'asset.grab_still', based_on: 'x1' })) })
+    expect(view.getByTestId('dv-canvas-node-editor')).toBeTruthy()
+    server.releaseOperations()
+    await waitFor(() => { expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull() })
+    await runtime.dispose()
+  })
+
   it('ends the wait of a take editor whose rerun a rerun from a stacked editor replaces, with no failure notice', async () => {
     const { runtime, view, open } = await mountCanvas({ holdOperations: true })
     const rerunG2: NodeAction = {
-      id: '@dv/ui-test-probe:rerun', label: () => 'rerun g2', order: 1, shows: (node): node is NodeView => node.id === 'test_ref:hero',
+      id: '@dv/ui-test-probe:rerun', label: () => 'rerun g2', order: 1, shows: (node): node is NodeView => node.id === 'e1',
       run: (_node, host) => { host.rerun({ operation: 'shot.render', inputs: [], params: {}, intent: 'rerun g2', based_on: 'g2' }) },
     }
     await mountDescriptors(runtime, { actions: [rerunG2] })
@@ -924,48 +1288,50 @@ describe('drags over the canvas', () => {
 
   it('moves the node of a dropped 素材 tile that the canvas already draws under the pointer, centered at its stored width, and writes no placement', async () => {
     const { runtime, node, server, canvasOf } = await mountCanvas({
-      layout: { positions: { g1: { x: 10, y: 20, width: 312, height: 176 } }, viewport: { x: 0, y: 0, zoom: 1 } },
+      edit: (state) => { addNode(state, 'g1', canvasNode('shot', ['g1', 'g3'], 10, 20, { position: { x: 10, y: 20, width: 312, height: 176 } })) },
     })
     await waitFor(() => { node('g1') })
     dropAt(canvasOf(), tileDrag('shot1.mp4'))
     expect([node('g1').style.left, node('g1').style.width]).toEqual([`${String(500 - 312 / 2)}px`, '312px'])
     await settle()
-    expect(operationsOf(server.writes)).toEqual([])
+    expect(operationsOf(server.writes).map(write => (write as { operation: string }).operation)).toEqual(['canvas.node_position'])
+    expect(server.positionWrites).toEqual([expect.objectContaining({ node: 'g1', x: 500 - 312 / 2 })])
     await runtime.dispose()
   })
 
-  it('keeps a dropped file\'s spot until a node type that draws it registers', async () => {
-    const { runtime, view, node, server, canvasOf } = await mountCanvas({ kinds: ['reference', 'takes', 'media'] })
+  it('draws a dropped file\'s node as a plain card at the drop spot until the asset type registers, then as an asset', async () => {
+    const { runtime, node, server, canvasOf } = await mountCanvas({ kinds: ['reference', 'takes', 'media'] })
     await waitFor(() => { node('g1') })
     dropAt(canvasOf(), { types: ['Files'], getData: () => '', files: [new File(['x'], 'later.png', { type: 'image/png' })] })
     await waitFor(() => { expect(server.imports).toHaveLength(1) })
-    await settle()
-    expect(view.container.querySelector('[data-node-id="imp1"]')).toBeNull()
-    await runtime.mount(KINDS.assets)
     await waitFor(() => { expect(node('imp1').style.left).toBe(`${String(500 - 208 / 2)}px`) })
+    expect(node('imp1').getAttribute('aria-label')).toBe('asset.import')
+    await runtime.mount(KINDS.assets)
+    await waitFor(() => { expect(node('imp1').getAttribute('aria-label')).toBe('later.png') })
+    expect(node('imp1').style.left).toBe(`${String(500 - 208 / 2)}px`)
     await runtime.dispose()
   })
 })
 
 describe('the node card', () => {
-  it('fades a superseded take, and draws the failure words over the body of a slice node whose record failed', async () => {
+  it('fades a node whose newest version is superseded, and draws the failure words of a type without its own', async () => {
     const { runtime, node } = await mountCanvas({
       edit: (state) => {
-        state.components.proj.superseded = { g1: 'g3' }
+        state.components.proj.superseded = { g3: 'g9' }
         const records = state.components.proj.records
         state.components.proj.records = records.map(entry => entry.id === 'e1' ? { ...entry, status: 'failed' as const } : entry)
       },
     })
-    await waitFor(() => { node('test_ref:hero') })
-    expect(node('g1').style.opacity).toBe('0.55')
-    expect(node('test_ref:hero').textContent).toContain(zh['node.failed'])
+    await waitFor(() => { node('e1') })
+    expect([node('g1').style.opacity, node('g2').style.opacity]).toEqual(['0.55', '1'])
+    expect(node('e1').textContent).toContain(zh['node.failed'])
     await runtime.dispose()
   })
 
   it('draws every node as a caption above a frame that holds its body, with no card fill or shadow, and rings the selected frame', async () => {
-    const { runtime, node, open } = await mountCanvas()
-    await waitFor(() => { node('test_ref:hero') })
-    for (const id of ['test_ref:hero', 'g1']) {
+    const { runtime, node, open } = await mountCanvas({ edit: (state) => { addNode(state, 'n1', canvasNode('note', ['x1'], 0, 400)) } })
+    await waitFor(() => { node('e1') })
+    for (const id of ['e1', 'g1']) {
       const frame = node(id).querySelector<HTMLElement>(':scope > [data-node-frame]')
       if (frame === null) throw new Error(`no frame of ${id}`)
       expect([node(id).style.background, node(id).style.boxShadow, frame.style.background]).toEqual(['', '', ''])
@@ -974,36 +1340,35 @@ describe('the node card', () => {
       expect(node(id).firstElementChild?.textContent).toContain(node(id).getAttribute('aria-label'))
       expect(frame.contains(node(id).firstElementChild)).toBe(false)
     }
-    expect(node('test_ref:hero').querySelector('[data-node-frame]')?.textContent).toBe('参考')
+    // A kind without a card body draws its type label on the card surface.
+    expect(node('n1').querySelector('[data-node-frame]')?.textContent).toBe('note')
     await open('g1')
     expect(node('g1').querySelector<HTMLElement>('[data-node-frame]')?.style.boxShadow).toBe('0 0 0 2px var(--dv-accent), 0 0 0 6px var(--dv-accent-soft)')
     await runtime.dispose()
   })
 
-  it('draws the frame of a node with a sizing at its default size, and anchors its edges there', async () => {
-    const { runtime, view, node } = await mountCanvas()
-    await mountDescriptors(runtime, {
-      nodeType: {
-        id: '@dv/ui-test-half', type: 'half', label: () => 'Half', color: '', column: 0,
-        // The slice node owns g1's last frame, so g2's first-frame edge starts at it.
-        entries: () => [{ id: 'half:1', title: 'Half', record: null, assets: ['shot1-last.png'], sizing: { kind: 'window', defaultSize: { width: 312, height: 104 }, minSize: { width: 104, height: 52 } } }],
-      },
-    })
-    await waitFor(() => { node('half:1') })
-    expect([node('half:1').style.width, node('half:1').querySelector<HTMLElement>('[data-node-frame]')?.style.height]).toEqual(['312px', '104px'])
+  it('draws a node whose stored width and height are null at its type\'s default size, and anchors its edges there', async () => {
+    const { runtime, view, node, server } = await mountCanvas({ edit: halfNode({ x: 0, y: 400, width: null, height: null }) })
+    // The half node comes first in the node list and owns g1's last frame, so g2's first-frame edge starts at it.
+    await mountDescriptors(runtime, { nodeType: halfType({ width: 312, height: 104, minWidth: 104, minHeight: 52 }) })
+    await waitFor(() => { expect(node('h1').getAttribute('aria-label')).toBe('Half') })
+    expect([node('h1').style.width, node('h1').querySelector<HTMLElement>('[data-node-frame]')?.style.height]).toEqual(['312px', '104px'])
     const edge = await waitFor(() => {
-      const found = view.container.querySelector('path[data-edge="half:1>g2"]')
-      if (found === null) throw new Error('no edge from half:1')
+      const found = view.container.querySelector('path[data-edge="h1>g2"]')
+      if (found === null) throw new Error('no edge from h1')
       return found
     })
     const [x1, y1] = (edge.getAttribute('d') ?? '').match(/-?[\d.]+/g)?.map(Number) ?? []
-    expect([x1, y1]).toEqual([Number.parseFloat(node('half:1').style.left) + 312, Number.parseFloat(node('half:1').style.top) + 20 + 104 / 2])
+    expect([x1, y1]).toEqual([Number.parseFloat(node('h1').style.left) + 312, Number.parseFloat(node('h1').style.top) + 20 + 104 / 2])
+    await settle()
+    expect(server.positionWrites).toEqual([])
     await runtime.dispose()
   })
 
-  it('draws a node at its stored size, resizes the selected node from its south-east handle at the zoom, stores the size, and keeps it through a drag', async () => {
+  it('draws a node at its stored size, resizes the selected node from its south-east handle at the zoom, writes one request per resize end, and keeps the size through a drag', async () => {
     const { runtime, node, open, server, canvasOf } = await mountCanvas({
-      layout: { positions: { g1: { x: 10, y: 20, width: 312, height: 90 } }, viewport: { x: 0, y: 0, zoom: 0.5 } },
+      layout: { viewport: { x: 0, y: 0, zoom: 0.5 } },
+      edit: (state) => { addNode(state, 'g1', canvasNode('shot', ['g1', 'g3'], 0, 0, { position: { x: 10, y: 20, width: 312, height: 90 } })) },
     })
     await waitFor(() => { node('g1') })
     const box = (): string[] => [node('g1').style.left, node('g1').style.top, node('g1').style.width, node('g1').querySelector<HTMLElement>('[data-node-frame]')?.style.height ?? '']
@@ -1014,41 +1379,37 @@ describe('the node card', () => {
     const handle = node('g1').querySelector('[data-node-handle="se"]')
     if (handle === null) throw new Error('no south-east handle')
     fireEvent.pointerDown(handle, { button: 0, clientX: 0, clientY: 0, pointerId: 2 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 26, clientY: 0, pointerId: 2 })
     fireEvent.pointerMove(canvasOf(), { clientX: 52, clientY: 0, pointerId: 2 })
+    expect(server.positionWrites).toEqual([])
     fireEvent.pointerUp(canvasOf(), { pointerId: 2 })
     // 52 px at 50% zoom are 104 units; g1 is a 16:9 take, so its frame keeps 16:9 and its top-left corner stays.
     expect(box()).toEqual(['10px', '20px', '416px', '234px'])
-    await waitFor(() => { expect(server.layoutWrites.some(write => 'g1' in write.positions)).toBe(true) }, { timeout: 2000 })
-    expect(server.layoutWrites.find(write => 'g1' in write.positions)?.positions['g1']).toEqual({ x: 10, y: 20, width: 416, height: 234 })
+    await waitFor(() => { expect(server.positionWrites).toEqual([{ node: 'g1', x: 10, y: 20, width: 416, height: 234 }]) })
     fireEvent.pointerDown(node('g1'), { button: 0, clientX: 0, clientY: 0, pointerId: 3 })
     fireEvent.pointerMove(canvasOf(), { clientX: 10, clientY: 10, pointerId: 3 })
     fireEvent.pointerUp(canvasOf(), { pointerId: 3 })
-    await waitFor(() => { expect(server.layoutWrites.some(write => write.positions['g1']?.x === 30)).toBe(true) }, { timeout: 2000 })
-    expect(server.layoutWrites.at(-1)?.positions['g1']).toEqual({ x: 30, y: 40, width: 416, height: 234 })
+    await waitFor(() => { expect(server.positionWrites).toHaveLength(2) })
+    expect(server.positionWrites[1]).toEqual({ node: 'g1', x: 30, y: 40 })
+    await settle()
+    expect(box()).toEqual(['30px', '40px', '416px', '234px'])
     await runtime.dispose()
   })
 
   it('a north-west handle resizes a window node in width and height apart, keeps the opposite corner in place, and stops at its minimum size; a still press or another button changes nothing', async () => {
-    const { runtime, view, node, canvasOf } = await mountCanvas({
-      layout: { positions: { 'half:1': { x: 100, y: 100, width: 208, height: 104 } }, viewport: { x: 0, y: 0, zoom: 1 } },
-    })
-    await mountDescriptors(runtime, {
-      nodeType: {
-        id: '@dv/ui-test-half', type: 'half', label: () => 'Half', color: '', column: 0,
-        entries: () => [{ id: 'half:1', title: 'Half', record: null, assets: [], sizing: { kind: 'window', defaultSize: { width: 208, height: 104 }, minSize: { width: 120, height: 60 } } }],
-      },
-    })
-    await waitFor(() => { node('half:1') })
-    fireEvent.pointerDown(node('half:1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    const { runtime, view, node, canvasOf } = await mountCanvas({ edit: halfNode({ x: 100, y: 100, width: 208, height: 104 }) })
+    await mountDescriptors(runtime, { nodeType: halfType({ width: 208, height: 104, minWidth: 120, minHeight: 60 }) })
+    await waitFor(() => { expect(node('h1').getAttribute('aria-label')).toBe('Half') })
+    fireEvent.pointerDown(node('h1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
     fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
-    await waitFor(() => { expect(node('half:1').getAttribute('data-node-selected')).toBe('true') })
+    await waitFor(() => { expect(node('h1').getAttribute('data-node-selected')).toBe('true') })
     const handle = (): Element => {
-      const found = node('half:1').querySelector('[data-node-handle="nw"]')
+      const found = node('h1').querySelector('[data-node-handle="nw"]')
       if (found === null) throw new Error('no north-west handle')
       return found
     }
     const box = (): string[] => [
-      node('half:1').style.left, node('half:1').style.top, node('half:1').style.width, node('half:1').querySelector<HTMLElement>('[data-node-frame]')?.style.height ?? '',
+      node('h1').style.left, node('h1').style.top, node('h1').style.width, node('h1').querySelector<HTMLElement>('[data-node-frame]')?.style.height ?? '',
     ]
     const drag = (dx: number, dy: number, pointerId: number, button = 0): void => {
       fireEvent.pointerDown(handle(), { button, clientX: 0, clientY: 0, pointerId })
@@ -1063,18 +1424,9 @@ describe('the node card', () => {
     fireEvent.pointerDown(handle(), { button: 0, clientX: 0, clientY: 0, pointerId: 4 })
     fireEvent.pointerUp(canvasOf(), { pointerId: 4 })
     await settle()
-    expect([node('half:1').getAttribute('data-node-selected'), view.queryAllByTestId('dv-canvas-node-editor')]).toEqual(['true', []])
+    expect([node('h1').getAttribute('data-node-selected'), view.queryAllByTestId('dv-canvas-node-editor')]).toEqual(['true', []])
     drag(-300, 0, 5, 2)
     expect(box()).toEqual(['188px', '144px', '120px', '60px'])
-    await runtime.dispose()
-  })
-
-  it('gives a node of an older layout file, stored without a size, its default size once and stores it', async () => {
-    const layout = { positions: { g1: { x: 10, y: 20 } }, viewport: { x: 0, y: 0, zoom: 1 } }
-    const { runtime, node, server } = await mountCanvas({ layout })
-    await waitFor(() => { expect(server.layoutWrites.some(write => 'g1' in write.positions)).toBe(true) })
-    expect(server.layoutWrites.find(write => 'g1' in write.positions)?.positions['g1']).toEqual({ x: 10, y: 20, width: 208, height: 117 })
-    expect([node('g1').style.left, node('g1').style.top, node('g1').style.width]).toEqual(['10px', '20px', '208px'])
     await runtime.dispose()
   })
 
@@ -1090,7 +1442,7 @@ describe('the node card', () => {
   it('attaches an edge at the middle of each node\'s frame, below the caption', async () => {
     const { runtime, view, node } = await mountCanvas()
     const edge = await waitFor(() => {
-      const found = view.container.querySelector('path[data-edge="test_ref:hero>g1"]')
+      const found = view.container.querySelector('path[data-edge="e1>g1"]')
       if (found === null) throw new Error('no edge into g1')
       return found
     })
@@ -1098,8 +1450,74 @@ describe('the node card', () => {
     const [x1, y1] = points
     const [x2, y2] = points.slice(-2)
     const top = (id: string): number => Number.parseFloat(node(id).style.top)
-    expect([x1, y1]).toEqual([Number.parseFloat(node('test_ref:hero').style.left) + 208, top('test_ref:hero') + 20 + 30 / 2])
+    const frameHeight = (id: string): number => Number.parseFloat(node(id).querySelector<HTMLElement>('[data-node-frame]')?.style.height ?? '')
+    expect([x1, y1]).toEqual([Number.parseFloat(node('e1').style.left) + 208, top('e1') + 20 + frameHeight('e1') / 2])
     expect([x2, y2]).toEqual([Number.parseFloat(node('g1').style.left), top('g1') + 20 + 117 / 2])
+    await runtime.dispose()
+  })
+})
+
+describe('node versions', () => {
+  /** A state edit that finishes g3 and adds g4, a third version of g1 based on g3. */
+  const threeVersions = (state: FixtureState): void => {
+    const records = state.components.proj.records.map(entry => entry.id === 'g3' ? { ...entry, status: 'done' as const, outputs: ['shot3.mp4'] } : entry)
+    const g4 = record({ id: 'g4', operation: 'shot.render', deterministic: false, based_on: 'g3', params: { prompt: 'hero sits down' }, outputs: ['shot4.mp4'] })
+    state.components.proj.records = [...records, g4]
+    state.assets.push(asset('shot3.mp4', 'video/mp4', 'g3', 2, 'shot.render'), asset('shot4.mp4', 'video/mp4', 'g4', 5, 'shot.render'))
+    Object.assign(state.components.proj.created_by, { 'shot3.mp4': 'g3', 'shot4.mp4': 'g4' })
+    withVersions('g1', ['g1', 'g3', 'g4'])(state)
+  }
+
+  it('captions a node of several versions with its version count beside the type meta, and draws two frames behind it', async () => {
+    const { runtime, node } = await mountCanvas({ edit: threeVersions })
+    await waitFor(() => { expect(within(node('g1')).getByText('v3 · 5.0s')).toBeTruthy() })
+    expect(node('g1').querySelectorAll('[data-node-version-frame]')).toHaveLength(2)
+    expect(within(node('g2')).getByText('6.0s')).toBeTruthy()
+    expect(node('g2').querySelectorAll('[data-node-version-frame]')).toHaveLength(0)
+    await runtime.dispose()
+  })
+
+  it('shows the versions in order in the editor\'s strip; choosing one shows it in the editor while the card keeps the newest', async () => {
+    const { runtime, node, open } = await mountCanvas({ edit: threeVersions })
+    const editor = await open('g1')
+    const strip = within(editor).getByTestId('dv-canvas-version-strip')
+    const versions = (): Array<[string | null, string | null]> => [...strip.querySelectorAll('button[data-version]')]
+      .map(button => [button.getAttribute('data-version'), button.getAttribute('aria-selected')])
+    expect(versions()).toEqual([['g1', 'false'], ['g3', 'false'], ['g4', 'true']])
+    expect(strip.textContent).toContain('第 3 / 3 版')
+    await waitFor(() => { expect(editor.textContent).toContain('hero sits down') })
+    const card = node('g1').innerHTML
+    fireEvent.click(within(strip).getByRole('option', { name: 'v1' }))
+    expect(versions()).toEqual([['g1', 'true'], ['g3', 'false'], ['g4', 'false']])
+    await waitFor(() => { expect(editor.textContent).toContain('hero walks through the rain at night in the city') })
+    expect(editor.textContent).not.toContain('hero sits down')
+    expect(strip.textContent).toContain('第 1 / 3 版')
+    expect(node('g1').innerHTML).toBe(card)
+    await runtime.dispose()
+  })
+
+  it('shows the newest version again once the chosen version leaves the node', async () => {
+    let undone = false
+    const { runtime, open, server } = await mountCanvas({
+      edit: (state) => {
+        threeVersions(state)
+        if (undone) withVersions('g1', ['g1', 'g4'])(state)
+      },
+    })
+    const editor = await open('g1')
+    fireEvent.click(within(within(editor).getByTestId('dv-canvas-version-strip')).getByRole('option', { name: 'v2' }))
+    await waitFor(() => { expect(editor.textContent).toContain('hero walks, wider') })
+    undone = true
+    server.notify()
+    await waitFor(() => { expect(editor.textContent).toContain('hero sits down') })
+    expect(within(editor).getByTestId('dv-canvas-version-strip').textContent).toContain('第 2 / 2 版')
+    await runtime.dispose()
+  })
+
+  it('shows no version strip for a node of one version', async () => {
+    const { runtime, open } = await mountCanvas()
+    const editor = await open('g2')
+    expect(within(editor).queryByTestId('dv-canvas-version-strip')).toBeNull()
     await runtime.dispose()
   })
 })
@@ -1141,16 +1559,16 @@ describe('the editor panel', () => {
     await runtime.dispose()
   })
 
-  it('shows the type label once in the header of a node titled by its type', async () => {
-    const { runtime, open } = await mountCanvas()
+  it('shows the type and the newest version above the title in the header', async () => {
+    const { runtime, open } = await mountCanvas({ edit: (state) => { addNode(state, 'n1', canvasNode('note', ['x1'], 0, 400)) } })
     await mountDescriptors(runtime, {
       nodeType: {
-        id: '@dv/ui-test-note', type: 'note', label: () => 'Note', color: '', column: 0,
-        entries: () => [{ id: 'note:1', title: 'Note', record: null, assets: [], sizing: { kind: 'window', defaultSize: { width: 208, height: 30 }, minSize: { width: 104, height: 30 } } }],
+        id: '@dv/ui-test-note', type: 'note', label: () => 'Note', color: '',
+        entry: () => ({ title: 'Note', sizing: { kind: 'window', defaultSize: { width: 208, height: 30 }, minSize: { width: 104, height: 30 } } }),
       },
     })
-    const editor = await open('note:1')
-    expect(editor.querySelector('header')?.textContent).toBe('Note')
+    const editor = await open('n1')
+    expect(editor.querySelector('header')?.textContent).toBe('Note · v1Note')
     await runtime.dispose()
   })
 })
@@ -1158,7 +1576,7 @@ describe('the editor panel', () => {
 describe('the canvas answering the canvas tools', () => {
   /**
    * Mount the canvas over a scripted canvas link, and return `ask`, which writes a read frame on every open stream of a
-   * project and returns the answer, `apply`, which writes a `moved` frame there, and the streams opened so far.
+   * project and returns the answer, and the streams opened so far.
    */
   async function mountForAgent(options: Parameters<typeof mountCanvas>[0] = {}) {
     const streams: Array<{ project: string; session: string | null; listener: StreamListener; open: boolean }> = []
@@ -1177,90 +1595,297 @@ describe('the canvas answering the canvas tools', () => {
       act(() => { for (const stream of live(project)) stream.listener.read({ id, stream: project }) })
       return answers.find(answer => answer.id === id)
     }
-    const apply = (project: string, positions: Record<string, { x: number; y: number }>, frameProject = project): void => {
-      act(() => { for (const stream of live(project)) stream.listener.moved({ project: frameProject, positions }) })
-    }
-    return { ...mounted, ask, apply, streams }
+    return { ...mounted, ask, streams }
   }
 
   /** The id and the drawn corner of each card of a read answer. */
   const cornersOf = (answer: CanvasDrawn | undefined): unknown => answer?.cards.map(({ id, x, y }) => [id, x, y])
 
-  it('opens one stream beside its chat session, reads the drawn cards, draws a stored move at once without writing it, keeping each moved node\'s size, and ignores a move of another project', async () => {
-    const { runtime, node, server, ask, apply, streams } = await mountForAgent()
-    await waitFor(() => { expect(server.layoutWrites).toHaveLength(1) })
-    expect(streams.map(({ project, session, open }) => [project, session, open])).toEqual([['p1', 's5', true]])
+  it('opens one stream beside its chat session and answers a read with the drawn cards, their shown version and version count', async () => {
+    const { runtime, node, canvasOf, ask, streams } = await mountForAgent()
+    await waitFor(() => { node('g1') })
+    await waitFor(() => { expect(streams.map(({ project, session, open }) => [project, session, open])).toEqual([['p1', 's5', true]]) })
     const read = ask('p1')
     expect(read?.project).toBe('p1')
-    expect(read?.cards.find(card => card.id === 'g1')).toMatchObject({ x: 10, y: 20, width: 208, height: 117 })
-    apply('p1', { g1: { x: 2000, y: 0 }, g2: { x: 2300, y: 0 } })
-    expect([node('g1').style.left, node('g2').style.left]).toEqual(['2000px', '2300px'])
-    expect(ask('p1')?.cards.find(card => card.id === 'g1')).toMatchObject({ x: 2000, y: 0, width: 208, height: 117 })
-    apply('p1', { g1: { x: 9000, y: 0 } }, 'p9')
-    expect(node('g1').style.left).toBe('2000px')
-    apply('p1', { gone: { x: 0, y: 0 } })
-    expect(ask('p1')?.cards.map(card => card.id)).not.toContain('gone')
-    await settle()
-    expect(server.layoutWrites).toHaveLength(1)
+    expect(read?.cards.find(card => card.id === 'g1')).toMatchObject({ type: 'shot', shown: 'g3', versions: 2, x: 480, y: 0, width: 208, height: 117 })
+    // A drag shows in the next read at once, before the state shows the move.
+    fireEvent.pointerDown(node('g2'), { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 50, clientY: 30, pointerId: 1 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
+    expect(ask('p1')?.cards.find(card => card.id === 'g2')).toMatchObject({ x: 530, y: 230 })
     await runtime.dispose()
     expect(streams.map(stream => stream.open)).toEqual([false])
   })
 
-  it('keeps two canvases of different projects apart: each read and each stored move reaches only its project\'s canvas', async () => {
+  it('keeps two canvases of different projects apart: each read reaches only its project\'s canvas', async () => {
     const mount = vi.spyOn(CanvasViews.prototype, 'mount')
     const other = { id: 'p2', title: 'Other', created_at: '2026-10-06T00:00:00Z', path: '/dv/Other' }
-    const { runtime, node, server, canvasOf, ask, apply } = await mountForAgent({ surfaces: ['center', 'tab'], projects: [other, PROJECT] })
-    await waitFor(() => { expect(server.layoutWrites.map(write => write.project).sort()).toEqual(['p1', 'p2']) })
+    const { runtime, node, server, canvasOf, ask } = await mountForAgent({ surfaces: ['center', 'tab'], projects: [other, PROJECT] })
     await waitFor(() => { expect(mount).toHaveBeenCalledTimes(2) })
     const center = cornersOf(ask('p1'))
-    const tab = cornersOf(ask('p2'))
-    expect(center).toContainEqual(['g1', 10, 20])
-    expect(tab).not.toContainEqual(['g1', 10, 20])
+    expect(center).toContainEqual(['g2', 480, 200])
+    expect(ask('p2')?.project).toBe('p2')
     server.notify()
     await settle()
     expect(cornersOf(ask('p1'))).toEqual(center)
     expect(mount).toHaveBeenCalledTimes(2)
-    const tabLeft = node('g2', 'tab').style.left
+    // A drag on the tab's canvas shows in the read of its project and not in the other project's.
     fireEvent.pointerDown(node('g2', 'tab'), { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
     fireEvent.pointerMove(canvasOf('tab'), { clientX: 50, clientY: 30, pointerId: 1 })
     fireEvent.pointerUp(canvasOf('tab'), { pointerId: 1 })
-    const dragged = node('g2', 'tab').style.left
-    apply('p1', { g2: { x: 3000, y: 0 } })
-    expect([node('g2').style.left, node('g2', 'tab').style.left]).toEqual(['3000px', dragged])
-    expect(dragged).not.toBe(tabLeft)
-    await waitFor(() => { expect(server.layoutWrites.at(-1)).toMatchObject({ project: 'p2', positions: { g2: { x: parseFloat(dragged), y: expect.any(Number) as number } } }) }, { timeout: 2000 })
-    apply('p2', { g1: { x: 4000, y: 0 } })
-    expect([node('g1', 'tab').style.left, node('g1').style.left]).toEqual(['4000px', '10px'])
+    expect([cornersOf(ask('p2')), cornersOf(ask('p1'))]).toEqual([expect.arrayContaining([['g2', 530, 230]]), center])
+    expect(server.positionWrites).toEqual([{ node: 'g2', x: 530, y: 230 }])
     await runtime.dispose()
   })
 
-  it('keeps an agent move over a drag that waits to be saved, and saves the other dragged node', async () => {
-    const { runtime, node, server, canvasOf, apply } = await mountForAgent()
-    await waitFor(() => { expect(server.layoutWrites).toHaveLength(1) })
-    for (const id of ['g1', 'g2']) {
-      fireEvent.pointerDown(node(id), { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
-      fireEvent.pointerMove(canvasOf(), { clientX: 50, clientY: 30, pointerId: 1 })
-      fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
-    }
-    apply('p1', { g2: { x: 3000, y: 0 } })
-    await waitFor(() => { expect(server.layoutWrites).toHaveLength(2) }, { timeout: 2000 })
-    expect(server.layoutWrites[1]?.positions).toEqual({ g1: { x: 60, y: 50, width: 208, height: 117 } })
-    expect([node('g1').style.left, node('g2').style.left]).toEqual(['60px', '3000px'])
-    await runtime.dispose()
-  })
+})
 
-  it('keeps an agent move of a rendering node when the node finishes, and stores the node there at its final default size', async () => {
-    let finished = false
-    const { runtime, node, server, apply } = await mountForAgent({ edit: paintRecords(() => finished) })
-    await mountDescriptors(runtime, { nodeType: PAINT })
-    await waitFor(() => { node('pa') })
-    apply('p1', { pa: { x: 3000, y: 0 } })
-    finished = true
-    server.notify()
-    await waitFor(() => { expect(node('pa').textContent).not.toContain('渲染中') })
+describe('renaming a node', () => {
+  const renameWrites = (server: { writes: ReadonlyArray<{ path: string; body: unknown }> }): unknown[] => operationsOf(server.writes)
+    .filter(body => (body as { operation?: string }).operation === 'canvas.node_rename').map(body => (body as { params?: unknown }).params)
+  /** Select a node with one click. */
+  const select = (card: HTMLElement, canvas: HTMLElement): void => {
+    fireEvent.pointerDown(card, { button: 0, clientX: 5, clientY: 5, pointerId: 9 })
+    fireEvent.pointerUp(canvas, { pointerId: 9 })
+  }
+  const field = (within_: HTMLElement): HTMLInputElement => within(within_).getByLabelText<HTMLInputElement>(zh['node.renameAria'])
+
+  it('a click on the editor title renames the node with one canvas.node_rename; the card and the title show the name at once', async () => {
+    const { runtime, view, node, server, open } = await mountCanvas({ holdOperations: true })
+    const editor = await open('g2')
+    const before = node('g2').getAttribute('aria-label') ?? ''
+    expect(within(editor).getByText(`镜头 · ${zh['node.version'].replace('{n}', '1')}`)).toBeTruthy()
+    fireEvent.click(within(editor).getByTestId('dv-canvas-editor-title'))
+    const input = field(editor)
+    expect([input.value, input.selectionStart, input.selectionEnd]).toEqual([before, 0, before.length])
+    expect(within(editor).getByText(zh['node.renameHint'])).toBeTruthy()
+    fireEvent.change(input, { target: { value: ' 港口黎明 ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(node('g2').getAttribute('aria-label')).toBe('港口黎明')
+    expect(within(editor).getByTestId('dv-canvas-editor-title').textContent).toBe('港口黎明')
+    expect(renameWrites(server)).toEqual([{ node: 'g2', name: '港口黎明' }])
+    expect(operationsOf(server.writes)).toContainEqual(expect.objectContaining({ project: 'p1', operation: 'canvas.node_rename', surface: 'canvas', session: 's5' }))
+    server.releaseOperations()
     await settle()
-    expect(server.layoutWrites.filter(write => 'pa' in write.positions).map(write => write.positions['pa'])).toEqual([{ x: 3000, y: 0, width: 208, height: 400 }])
-    expect([node('pa').style.left, node('pa').style.top, node('pa').querySelector<HTMLElement>('[data-node-frame]')?.style.height]).toEqual(['3000px', '0px', '400px'])
+    expect(node('g2').getAttribute('aria-label')).toBe('港口黎明')
+    expect(view.queryByRole('alert')).toBeNull()
+    await runtime.dispose()
+  })
+
+  it('Escape in the title field cancels the rename and leaves the editor open; the next Escape closes it', async () => {
+    const { runtime, view, server, open } = await mountCanvas()
+    const editor = await open('g2')
+    fireEvent.click(within(editor).getByTestId('dv-canvas-editor-title'))
+    fireEvent.change(field(editor), { target: { value: 'Other' } })
+    fireEvent.doubleClick(field(editor))
+    fireEvent.keyDown(field(editor), { key: 'Escape' })
+    expect(view.getByTestId('dv-canvas-node-editor')).toBe(editor)
+    expect(within(editor).queryByLabelText(zh['node.renameAria'])).toBeNull()
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
+    expect(renameWrites(server)).toEqual([])
+    await runtime.dispose()
+  })
+
+  it('F2 on the selected node turns its caption into the name field, whose presses start no drag', async () => {
+    const { runtime, node, server, canvasOf } = await mountCanvas()
+    await waitFor(() => { node('g2') })
+    fireEvent.keyDown(node('g2'), { key: 'F2' })
+    expect(within(node('g2')).queryByLabelText(zh['node.renameAria'])).toBeNull()
+    select(node('g2'), canvasOf())
+    fireEvent.keyDown(node('g2'), { key: 'Enter' })
+    fireEvent.keyDown(node('g2'), { key: 'F2' })
+    const input = field(node('g2'))
+    fireEvent.pointerDown(input, { button: 0, clientX: 0, clientY: 0, pointerId: 3 })
+    fireEvent.pointerMove(canvasOf(), { clientX: 60, clientY: 40, pointerId: 3 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 3 })
+    expect(node('g2').style.left).toBe('480px')
+    fireEvent.change(input, { target: { value: 'Harbor' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => { expect(renameWrites(server)).toEqual([{ node: 'g2', name: 'Harbor' }]) })
+    expect(server.positionWrites).toEqual([])
+    expect(node('g2').getAttribute('aria-label')).toBe('Harbor')
+    await runtime.dispose()
+  })
+
+  it('重命名 in the right-click menu closes the menu and turns the caption into the focused name field', async () => {
+    const { runtime, view, node, server } = await mountCanvas()
+    await waitFor(() => { node('g2') })
+    const title = node('g2').getAttribute('aria-label') ?? ''
+    fireEvent.contextMenu(node('g2'), { clientX: 300, clientY: 200 })
+    fireEvent.click(within(view.getByRole('menu')).getByRole('menuitem', { name: '重命名' }))
+    expect(view.queryByRole('menu')).toBeNull()
+    const input = field(node('g2'))
+    expect([document.activeElement, input.value]).toEqual([input, title])
+    fireEvent.change(input, { target: { value: 'Harbor' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => { expect(renameWrites(server)).toEqual([{ node: 'g2', name: 'Harbor' }]) })
+    expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
+    await runtime.dispose()
+  })
+
+  it('keeps the field open with the message for a name over 80 characters, and clears a name with an empty field', async () => {
+    const named = (state: FixtureState): void => { const g2 = state.components.canvas.nodes['g2']; if (g2 !== undefined && g2.name === null && !cleared) g2.name = 'Harbor' }
+    let cleared = false
+    const { runtime, view, node, server, open } = await mountCanvas({ edit: named })
+    const editor = await open('g2')
+    expect(node('g2').getAttribute('aria-label')).toBe('Harbor')
+    fireEvent.click(within(editor).getByTestId('dv-canvas-editor-title'))
+    fireEvent.change(field(editor), { target: { value: '镜'.repeat(81) } })
+    fireEvent.keyDown(field(editor), { key: 'Enter' })
+    expect(within(editor).getByRole('alert').textContent).toBe(zh['node.renameTooLong'].replace('{max}', '80'))
+    expect(field(editor).getAttribute('aria-invalid')).toBe('true')
+    expect(renameWrites(server)).toEqual([])
+    cleared = true
+    fireEvent.change(field(editor), { target: { value: '  ' } })
+    fireEvent.blur(field(editor))
+    await waitFor(() => { expect(renameWrites(server)).toEqual([{ node: 'g2', name: null }]) })
+    await waitFor(() => { expect(node('g2').getAttribute('aria-label')).not.toBe('Harbor') })
+    // Clearing a node that has no name writes nothing.
+    fireEvent.click(within(view.getByTestId('dv-canvas-node-editor')).getByTestId('dv-canvas-editor-title'))
+    fireEvent.change(field(editor), { target: { value: '' } })
+    fireEvent.keyDown(field(editor), { key: 'Enter' })
+    await settle()
+    expect(renameWrites(server)).toHaveLength(1)
+    await runtime.dispose()
+  })
+
+  it('draws the name back and shows the error when the server refuses the rename; a later name stays while an earlier refusal arrives', async () => {
+    const refused = refuseOperation('canvas.node_rename', 'read-only project')
+    const { runtime, view, node, server, canvasOf } = await mountCanvas({
+      holdOperations: true, refuse: (path, body) => (body as { params?: { name?: unknown } }).params?.name === 'Two' ? null : refused(path, body),
+    })
+    await waitFor(() => { node('g2') })
+    const before = node('g2').getAttribute('aria-label')
+    select(node('g2'), canvasOf())
+    const rename = (name: string): void => {
+      fireEvent.keyDown(node('g2'), { key: 'F2' })
+      fireEvent.change(field(node('g2')), { target: { value: name } })
+      fireEvent.keyDown(field(node('g2')), { key: 'Enter' })
+    }
+    rename('Back')
+    expect(node('g2').getAttribute('aria-label')).toBe('Back')
+    server.releaseOperations()
+    expect((await view.findByRole('alert')).textContent).toBe('失败：read-only project')
+    await waitFor(() => { expect(node('g2').getAttribute('aria-label')).toBe(before) })
+    rename('One')
+    rename('Two')
+    server.releaseOperations(1)
+    expect((await view.findByRole('alert')).textContent).toBe('失败：read-only project')
+    await settle()
+    expect(node('g2').getAttribute('aria-label')).toBe('Two')
+    server.releaseOperations()
+    await settle()
+    expect(node('g2').getAttribute('aria-label')).toBe('Two')
+    await runtime.dispose()
+  })
+
+  it('keeps a later name while the state shows the earlier one that the server accepted first', async () => {
+    const { runtime, node, server, canvasOf } = await mountCanvas({ holdOperations: true })
+    await waitFor(() => { node('g2') })
+    select(node('g2'), canvasOf())
+    for (const name of ['One', 'Two']) {
+      fireEvent.keyDown(node('g2'), { key: 'F2' })
+      fireEvent.change(field(node('g2')), { target: { value: name } })
+      fireEvent.keyDown(field(node('g2')), { key: 'Enter' })
+    }
+    server.releaseOperations(1)
+    await settle()
+    expect(node('g2').getAttribute('aria-label')).toBe('Two')
+    server.releaseOperations()
+    await settle()
+    expect(node('g2').getAttribute('aria-label')).toBe('Two')
+    await runtime.dispose()
+  })
+
+  it('F2 over a stacked editor renames the stacked node and keeps both editors open', async () => {
+    const { runtime, view, server, open } = await mountCanvas()
+    const editor = await open('g1')
+    fireEvent.click(await tileIn(editor, 'hero@1'))
+    const stacked = view.getAllByTestId('dv-canvas-node-editor')[1]
+    if (stacked === undefined) throw new Error('no stacked editor')
+    const hero = view.getByTestId('center').querySelector('[data-node-id][aria-label="Hero"]')?.getAttribute('data-node-id')
+    fireEvent.keyDown(stacked, { key: 'F2' })
+    expect(within(editor).queryByLabelText(zh['node.renameAria'])).toBeNull()
+    fireEvent.change(field(stacked), { target: { value: 'Villain' } })
+    fireEvent.keyDown(field(stacked), { key: 'Enter' })
+    await waitFor(() => { expect(renameWrites(server)).toEqual([{ node: hero, name: 'Villain' }]) })
+    expect(view.getAllByTestId('dv-canvas-node-editor')).toEqual([editor, stacked])
+    await runtime.dispose()
+  })
+
+  it('closes a refused name field with its editor, and with its node when the node leaves the canvas', async () => {
+    let removed = false
+    const { runtime, view, node, server, open, canvasOf } = await mountCanvas({ edit: (state) => { if (removed) delete state.components.canvas.nodes['g2'] } })
+    const editor = await open('g2')
+    fireEvent.click(within(editor).getByTestId('dv-canvas-editor-title'))
+    fireEvent.change(field(editor), { target: { value: '镜'.repeat(81) } })
+    fireEvent.blur(field(editor))
+    expect(within(editor).getByRole('alert')).toBeTruthy()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => { expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull() })
+    expect(within(await open('g2')).queryByLabelText(zh['node.renameAria'])).toBeNull()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => { expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull() })
+    select(node('g2'), canvasOf())
+    fireEvent.keyDown(node('g2'), { key: 'F2' })
+    fireEvent.change(field(node('g2')), { target: { value: '镜'.repeat(81) } })
+    fireEvent.keyDown(field(node('g2')), { key: 'Enter' })
+    removed = true
+    server.notify()
+    await waitFor(() => { expect(view.getByTestId('center').querySelector('[data-node-id="g2"]')).toBeNull() })
+    removed = false
+    server.notify()
+    await waitFor(() => { node('g2') })
+    expect(within(node('g2')).queryByLabelText(zh['node.renameAria'])).toBeNull()
+    expect(renameWrites(server)).toEqual([])
+    await runtime.dispose()
+  })
+
+  it('drops the drawn name once a state after the answer does not show it, as after an undo that came first', async () => {
+    const { runtime, node, server, canvasOf } = await mountCanvas()
+    // Every served state shows g2 without a name, as the state after an undo of the rename does.
+    const served = globalThis.fetch
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const response = await served(input, init)
+      if (!(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).includes('/api/dv/state')) return response
+      const body = await response.json() as FixtureState
+      const g2 = body.components.canvas.nodes['g2']
+      if (g2 !== undefined) g2.name = null
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+    await waitFor(() => { node('g2') })
+    const before = node('g2').getAttribute('aria-label')
+    select(node('g2'), canvasOf())
+    fireEvent.keyDown(node('g2'), { key: 'F2' })
+    fireEvent.change(field(node('g2')), { target: { value: 'Gone' } })
+    fireEvent.keyDown(field(node('g2')), { key: 'Enter' })
+    expect(node('g2').getAttribute('aria-label')).toBe('Gone')
+    await waitFor(() => { expect(renameWrites(server)).toHaveLength(1) })
+    await waitFor(() => { expect(node('g2').getAttribute('aria-label')).toBe(before) })
+    await runtime.dispose()
+  })
+
+  it('F2 below 50% zoom opens the editor with its title field; F2 with the editor open renames there, but not from a text field or the picker', async () => {
+    const { runtime, view, node, canvasOf } = await mountCanvas({ layout: { viewport: { x: 0, y: 0, zoom: 0.4 } } })
+    await waitFor(() => { node('g2') })
+    select(node('g2'), canvasOf())
+    fireEvent.keyDown(node('g2'), { key: 'F2' })
+    const editor = await view.findByTestId('dv-canvas-node-editor')
+    expect(document.activeElement).toBe(field(editor))
+    fireEvent.keyDown(field(editor), { key: 'Escape' })
+    // A text field of the editor body, such as a prompt, keeps F2.
+    const textField = editor.appendChild(document.createElement('textarea'))
+    fireEvent.keyDown(textField, { key: 'F2' })
+    textField.remove()
+    expect(within(editor).queryByLabelText(zh['node.renameAria'])).toBeNull()
+    fireEvent.click(await waitFor(() => within(editor).getByRole('button', { name: '添加素材' })))
+    const picker = await view.findByTestId('dv-canvas-asset-picker')
+    fireEvent.keyDown(picker, { key: 'F2' })
+    expect(within(editor).queryByLabelText(zh['node.renameAria'])).toBeNull()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    fireEvent.keyDown(node('g2'), { key: 'F2' })
+    expect(field(editor)).toBeTruthy()
     await runtime.dispose()
   })
 })

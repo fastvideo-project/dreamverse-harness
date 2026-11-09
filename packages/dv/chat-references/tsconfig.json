@@ -30,6 +30,9 @@
       "path": "../asset-pool"
     },
     {
+      "path": "../canvas"
+    },
+    {
       "path": "../project"
     },
     {

@@ -31,7 +31,7 @@ kind: "package-reference"
   name: '@dv/ui-asset-pool'
 ```
 
-Host 半边不注册任何东西。浏览器半边注册 `dv-asset-pool` 标签类型（侧栏指南页以"素材库"提供的页面）和以自身 id `@dv/ui-asset-pool` 为键的标签主体。其他标签在前面时，该标签保持挂载。它填充 `@dv/ui-canvas/contract` 声明的三个键控插槽：以键 `assets` 在 `dv.canvas.picker` 填入 `AssetsPanel`，即画布素材选择窗口里的面板，点击缩略图调用选择窗口的 `onOpen` 并选中素材；以键 `asset` 在 `dv.canvas.card` 填入 `AssetCard`，它通过 `dv.media` 组件工厂以用途 `card` 绘制素材，填满节点的画框：素材节点是媒体节点，它的 `sizing` 是 `@dv/ui-kit/frame.ts` 的 `mediaSizing`，没有固定栏，所以图片随画框缩放：尺寸已知的图片或视频不加底色，画框按素材宽高比，宽高比限制在 3:4 到 16:9 之间，其他素材在 16:9 画框里的 `CARD_SURFACE` 上；以键 `asset` 在 `dv.canvas.editor` 填入 `AssetEditor`，它在 `@dv/ui-kit` 的 `playerBox(asset, 360)` 给定大小的框里以用途 `player` 绘制素材。只要画布服务 `dvCanvas` 存在，它就在 `dvCanvas.nodeTypes` 注册节点类型 `asset`（`assetNodeType`），在 `dvCanvas.actions` 注册动作 `@dv/ui-asset-pool:unplace`：从画布移除 / Remove from canvas（order 为 20，在 `asset` 节点上）关闭编辑器，并通过宿主的 `setPlaced` 把素材移出画布列表，素材仍留在素材库里。该节点类型为画布列表（`asset` 切片的 `placed`）上的每个素材画一个替身节点：取自当前状态中第一条导入该素材的 `asset.import` 记录，没有时为不带记录的 `asset:<id>`（撤销越过的导入、静帧或导出），标题为素材名称并带其时长；只有在没有其他节点拥有该素材时，替身节点才显示。只要 `@dv/ui-media` 的媒体服务 `dvMedia` 存在，它就在 `dvMedia.types` 中注册媒体类型 `image`、`video` 和 `audio`，每个类型与其视图（`ImageView`、`VideoView`、`AudioView`）在同一步里注册为同一个键上的 `dv.media.view` 条目，所以没注册成功的类型不留下视图；浏览器无法解码的图片、视频或音频播放器调用 `unsupported()`，由文件卡片代替它。每个素材都通过 `asset.import` 进入项目，所以这些媒体类型归本包所有。
+Host 半边不注册任何东西。浏览器半边注册 `dv-asset-pool` 标签类型（侧栏指南页以"素材库"提供的页面）和以自身 id `@dv/ui-asset-pool` 为键的标签主体。其他标签在前面时，该标签保持挂载。它填充 `@dv/ui-canvas/contract` 声明的三个键控插槽：以键 `assets` 在 `dv.canvas.picker` 填入 `AssetsPanel`，即画布素材选择窗口里的面板，点击缩略图调用选择窗口的 `onOpen` 并选中素材；以键 `asset` 在 `dv.canvas.card` 填入 `AssetCard`，它通过 `dv.media` 组件工厂以用途 `card` 绘制素材，填满节点的画框：素材节点是媒体节点，它的 `sizing` 是 `@dv/ui-kit/frame.ts` 的 `mediaSizing`，没有固定栏，所以图片随画框缩放：尺寸已知的图片或视频不加底色，画框按素材宽高比，宽高比限制在 3:4 到 16:9 之间，其他素材在 16:9 画框里的 `CARD_SURFACE` 上；以键 `asset` 在 `dv.canvas.editor` 填入 `AssetEditor`，它在 `@dv/ui-kit` 的 `playerBox(asset, 360)` 给定大小的框里以用途 `player` 绘制素材。只要画布服务 `dvCanvas` 存在，它就在 `dvCanvas.nodeTypes` 注册节点类型 `asset`（`assetNodeType`）。画布自己的 从画布移除 / Remove from canvas 像移除其他节点一样把素材节点移出画布，素材仍留在素材库里。该节点类型绘制 [`@dv/canvas`](../canvas/README.zh.md) 节点列表中 kind 为 `asset` 的节点：由 `asset.place` 产生的节点显示其放置的素材（`node.asset`），由带 `place: true` 的 `asset.import` 产生的节点显示导入的素材；标题均为素材名称并带其时长。只要 `@dv/ui-media` 的媒体服务 `dvMedia` 存在，它就在 `dvMedia.types` 中注册媒体类型 `image`、`video` 和 `audio`，每个类型与其视图（`ImageView`、`VideoView`、`AudioView`）在同一步里注册为同一个键上的 `dv.media.view` 条目，所以没注册成功的类型不留下视图；浏览器无法解码的图片、视频或音频播放器调用 `unsupported()`，由文件卡片代替它。每个素材都通过 `asset.import` 进入项目，所以这些媒体类型归本包所有。
 
 | 手势 | 请求或事件 |
 | --- | --- |
@@ -67,7 +67,7 @@ Host 半边不注册任何东西。浏览器半边注册 `dv-asset-pool` 标签�
 | [`src/client/AssetsPanel.module.css`](src/client/AssetsPanel.module.css) | 面板的样式 |
 | [`src/client/media.tsx`](src/client/media.tsx) | 图片、视频和音频媒体类型及其 `dv.media.view` 条目 |
 | [`src/client/library.ts`](src/client/library.ts) | 把项目的素材按媒体类型分组，并单列渲染静帧 |
-| [`src/client/canvas.tsx`](src/client/canvas.tsx) | `asset` 节点类型、其卡片和编辑器主体，以及 从画布移除 / Remove from canvas |
+| [`src/client/canvas.tsx`](src/client/canvas.tsx) | `asset` 节点类型及其卡片和编辑器主体 |
 
 </details>
 

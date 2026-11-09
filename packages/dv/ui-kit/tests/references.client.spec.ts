@@ -41,7 +41,7 @@ describe('versionRefOf', () => {
 function testKind(kind: string, versions: Record<string, Array<{ version: number; assets: string[] }>>): VersionKind {
   const find = (id: string, version: number) => versions[id]?.find(entry => entry.version === version)
   return {
-    kind, label: () => kind, node: id => `test:${id}`, latest: () => [], name: (_state, id, version) => find(id, version) === undefined ? null : id,
+    kind, label: () => kind, node: (_state, id) => `test:${id}`, latest: () => [], name: (_state, id, version) => find(id, version) === undefined ? null : id,
     assets: (_state, id, version) => find(id, version)?.assets ?? [],
   }
 }

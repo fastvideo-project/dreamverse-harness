@@ -9,7 +9,7 @@ import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { HistoryRow } from '@dv/ui-history/contract'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
-import type { ClaimedNodeView, EditorHost } from '../../ui-canvas/src/client/contract/index.ts'
+import type { EditorHost, NodeView } from '../../ui-canvas/src/client/contract/index.ts'
 import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
 import { buildCanvasGraph } from '../../ui-canvas/src/client/graph.ts'
 import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
@@ -36,7 +36,7 @@ afterEach(async () => {
 /** The slots that the canvas Factory and DSH's tool tree declare for the plugin's entries. */
 const CHILDREN = {
   'dv.canvas.card': { kind: 'keyed', scope: 'root' },
-  'dv.canvas.editor.claimed': { kind: 'keyed', scope: 'root' },
+  'dv.canvas.editor': { kind: 'keyed', scope: 'root' },
   'tool.call.toolview': { kind: 'keyed', scope: 'session', inject: { hooks: { toolCallArgumentsPartial: () => () => '' } } },
 } as const
 
@@ -63,16 +63,19 @@ async function mountShotRender() {
   return { runtime, plugin, canvas, rows }
 }
 
-function takesOf(canvas: ReturnType<typeof createDvCanvas>, state = fixtureState()): Map<string, ClaimedNodeView & { x: number }> {
-  const graph = buildCanvasGraph(state, new Set(), OPERATIONS, 'zh', {
+/** The fixture's shot nodes, each at its first version, as the shot editor and card receive them. */
+function shotsOf(canvas: ReturnType<typeof createDvCanvas>, state = fixtureState()): Map<string, NodeView> {
+  const graph = buildCanvasGraph(state, OPERATIONS, 'zh', {
     nodeTypes: canvas.nodeTypes.getSnapshot(), recordsInUse: [], versionKinds: [],
   })
-  return new Map(graph.nodes.flatMap(node => node.type === 'take' && node.claimed ? [[node.id, { ...node, unseen: false, rerunning: false }] as const] : []))
+  return new Map(graph.nodes.flatMap(node => node.type === 'shot'
+    ? [[node.id, { ...graph.atVersion(node, node.versions[0] ?? ''), unseen: false, rerunning: false }] as const]
+    : []))
 }
 
 function host(): EditorHost {
   return {
-    run: vi.fn(), rerun: vi.fn(() => Promise.resolve()), pickAssets: vi.fn(), preview: vi.fn(), openNode: vi.fn(), setPlaced: vi.fn(),
+    run: vi.fn(), rerun: vi.fn(() => Promise.resolve()), pickAssets: vi.fn(), preview: vi.fn(), openNode: vi.fn(),
     importFiles: vi.fn(() => Promise.resolve([])),
     close: vi.fn(),
   }
@@ -111,15 +114,27 @@ describe('the dv_shot_render chat card', () => {
     expect(entries().map(entry => [entry.options.key, entry.options.priority ?? 0])).toEqual([['dv_shot_render', 0], ['dv_shot_render', 1]])
     const own = () => ({
       types: canvas.nodeTypes.getSnapshot().filter(type => type.id === '@dv/ui-shot-render').map(type => type.type),
-      editor: mounted.slots.entries('dv.canvas.editor.claimed').map(entry => entry.options.key).filter(key => key === 'take'),
+      editor: mounted.slots.entries('dv.canvas.editor').map(entry => entry.options.key).filter(key => key === 'shot'),
       history: rows.getSnapshot().map(row => row.match),
       bars: mounted.ctx.dvComposer.paramBars.getSnapshot().map(bar => bar.owner),
     })
-    expect(own()).toEqual({ types: ['take'], editor: ['take'], history: ['shot.render'], bars: ['@dv/ui-shot-render'] })
+    expect(own()).toEqual({ types: ['shot'], editor: ['shot'], history: ['shot.render'], bars: ['@dv/ui-shot-render'] })
 
     await plugin.dispose()
     expect(entries().map(entry => entry.options.priority)).toEqual([1])
     expect(own()).toEqual({ types: [], editor: [], history: [], bars: [] })
+  })
+})
+
+describe('the shot node type', () => {
+  it('draws the nodes of kind shot, labeled 镜头 / Shot, with the shot status words', async () => {
+    const { canvas } = await mountShotRender()
+    const type = canvas.nodeTypes.getSnapshot().find(entry => entry.id === '@dv/ui-shot-render')
+    document.documentElement.lang = 'zh-CN'
+    expect([type?.type, type?.label(), type?.status?.running(), type?.status?.failed()]).toEqual(['shot', '镜头', '渲染中…', '生成失败'])
+    document.documentElement.lang = 'en'
+    expect([type?.label(), type?.status?.running()]).toEqual(['Shot', 'Rendering…'])
+    expect([...shotsOf(canvas).keys()]).toEqual(['g1', 'g2'])
   })
 })
 
@@ -130,14 +145,14 @@ describe('the shot render takes', () => {
     const state = fixtureState()
     const t2v = { task: 't2v', model: 'fastt2v' }
     state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g2' ? { ...entry, params: { ...entry.params, ...t2v } } : entry)
-    const takes = takesOf(canvas, state)
-    const editor = mounted.renderSlot('dv.canvas.editor.claimed', { node: takes.get('g1')!, state, operations: OPERATIONS, host: host() }, { entryKey: 'take' })
+    const takes = shotsOf(canvas, state)
+    const editor = mounted.renderSlot('dv.canvas.editor', { node: takes.get('g1')!, state, operations: OPERATIONS, host: host() }, { entryKey: 'shot' })
     await waitFor(() => { expect(editor.view.getByRole('button', { name: '添加素材' })).toBeTruthy() })
     expect(editor.view.getByRole('button', { name: '渲染新版本' })).toBeTruthy()
     expect(editor.container.querySelector('[data-composer-input]')?.getAttribute('data-placeholder')).toBe('描述画面，输入 @ 引用素材')
     expect([...editor.container.querySelectorAll('[data-param-chip]')].map(chip => chip.getAttribute('data-param-chip')))
       .toEqual(['seed', 'aspect', 'loop', 'extra', 'aspect_ratio', 'resolution', 'duration_sec'])
-    editor.update({ node: takes.get('g2')!, state, operations: OPERATIONS, host: host() }, { entryKey: 'take' })
+    editor.update({ node: takes.get('g2')!, state, operations: OPERATIONS, host: host() }, { entryKey: 'shot' })
     await waitFor(() => { expect(editor.view.getByTestId('dv-canvas-render-mode').textContent).toBe('fastt2v · 文字生成') })
     expect(editor.view.queryByRole('button', { name: '添加素材' })).toBeNull()
     expect(editor.view.getByRole('button', { name: '渲染新版本' })).toBeTruthy()
@@ -146,18 +161,11 @@ describe('the shot render takes', () => {
   it('draw the still output on the take card in place of the video', async () => {
     const { runtime: mounted, canvas } = await mountShotRender()
     const state = fixtureState()
-    const node = takesOf(canvas, state).get('g1')!
+    const node = shotsOf(canvas, state).get('g1')!
     const assets = Object.fromEntries(state.assets.map(entry => [entry.id, entry]))
-    const card = mounted.renderSlot('dv.canvas.card', { node, assets, textScale: 1, host: host() }, { entryKey: 'take' })
+    const card = mounted.renderSlot('dv.canvas.card', { node, assets, textScale: 1, host: host() }, { entryKey: 'shot' })
     expect(card.container.querySelector('img')?.getAttribute('src')).toBe('/dv/assets/shot1-last.png')
     expect(card.container.querySelector('video')).toBeNull()
-  })
-
-  it('place a take that continues the previous shot\'s first frame one column right of that shot', async () => {
-    const { canvas } = await mountShotRender()
-    const takes = takesOf(canvas)
-    // g2 reads g1's last still as its first frame; a column is 240 canvas units.
-    expect((takes.get('g2')?.x ?? 0) - (takes.get('g1')?.x ?? 0)).toBe(240)
   })
 })
 

@@ -9,11 +9,11 @@ import type { ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
 
 declare module '@dv/ui-kit/types.ts' { interface ComponentStates { textnode: TextState } }
 
-/** The node type, the reference kind and the component key of text nodes. */
+/** The reference kind and the component key of text nodes. */
 export const TEXT_KIND = 'textnode'
 
-/** The operations whose records are text node versions. */
-export const TEXT_OPERATIONS = ['textnode.write', 'textnode.edit'] as const
+/** The node type key of text nodes, the kind that `@dv/text-node` registers its canvas nodes under. */
+export const NODE_KIND = 'text'
 
 /** The versions of every text node by path, oldest first; a state without the `textnode` slice holds none. */
 export const textsOf = (state: WireState): Readonly<Record<string, readonly TextVersion[]>> => state.components.textnode?.texts ?? {}

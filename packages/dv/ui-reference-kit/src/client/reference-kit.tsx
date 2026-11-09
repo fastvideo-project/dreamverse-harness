@@ -2,15 +2,17 @@
  * The browser half of a reference noun: a component whose slice holds every version of each item, such as the
  * characters of `@dv/ui-character`. `defineReferenceUi` turns one declaration into the UI plugin that registers the
  * noun's canvas node type with its `dv.canvas.card` and `dv.canvas.editor` entries, its version kind, its references in
- * use, its `@` menu kind and its History row. Every descriptor reads only the noun's own slice and the `proj` records,
- * and every write runs `<key>.update` through the canvas host.
+ * use, its `@` menu kind and its History row. Every descriptor reads only the noun's own slice, the `proj` records and
+ * the canvas's node list, and every write runs `<key>.update` through the canvas host. The host's `<key>.create` makes
+ * the item's node, and each `<key>.update` is a version of it.
  *
  * @module @dv/ui-reference-kit/reference-kit
  */
 import type { CSSProperties, ReactNode } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { NodeEntry, NodeSizing, NodeType, RecordsInUse, Size } from '@dv/ui-canvas/contract'
+import type { NodeSizing, NodeType, RecordsInUse, Size, TypeEntry } from '@dv/ui-canvas/contract'
+import { nodeOfRecord } from '@dv/ui-kit/canvas-nodes.ts'
 import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
 import { pickText, useText } from '@dv/ui-kit/locale.ts'
 import type { HistoryRow } from '@dv/ui-history/contract'
@@ -32,7 +34,7 @@ export interface WireReferenceVersion {
 export interface ReferenceUiSpec<V extends WireReferenceVersion = WireReferenceVersion> {
   /** Package name, such as '@dv/ui-character': the owner of every descriptor. */
   id: string
-  /** Component key = reference kind = node type = node ID prefix, such as 'character'. */
+  /** Component key = reference kind = node type key, such as 'character'. */
   key: string
   /** The noun's slice, such as `state => state.components.character`; undefined while the host half is not loaded. */
   slice: (state: WireState) => Readonly<Record<string, readonly V[]>> | undefined
@@ -94,16 +96,25 @@ interface ReferenceDescriptors {
 }
 
 /**
- * Build the descriptors of one reference noun from its declaration: the node type draws one slice node `<key>:<id>`
- * per item at its newest version, the version kind reads every version, the references in use are the producers of
- * the newest references, the mention kind lists `dv:<key>/<id>` items, and the History row names the item of each
- * `<key>.` record.
+ * @param record - a record of the noun's operations.
+ * @param key - the noun's key, its ID param.
+ * @returns the item ID that the record names.
+ */
+function itemOf(record: { params: Record<string, unknown> }, key: string): string {
+  const id = record.params[key]
+  return typeof id === 'string' ? id : ''
+}
+
+/**
+ * Build the descriptors of one reference noun from its declaration: the node type draws a node of the canvas's node
+ * list at the item that its version names, the version kind reads every version and finds an item's node by the record
+ * of its newest version, the references in use are the producers of the newest references, the mention kind lists
+ * `dv:<key>/<id>` items, and the History row names the item of each `<key>.` record.
  * @param spec - the noun.
  * @returns the descriptors.
  */
 export function referenceDescriptors<V extends WireReferenceVersion>(spec: ReferenceUiSpec<V>): ReferenceDescriptors {
   const { key } = spec
-  const node = (id: string): string => `${key}:${id}`
   const versionOf = (state: WireState, id: string, version: number): V | undefined =>
     itemsOf(spec, state)[id]?.find(entry => entry.version === version)
   const nodeType: NodeType = {
@@ -111,21 +122,19 @@ export function referenceDescriptors<V extends WireReferenceVersion>(spec: Refer
     type: key,
     label: () => pickText(...spec.label),
     color: spec.color,
-    column: 0,
-    entries({ state }) {
-      const records = new Map(state.components.proj.records.map(record => [record.id, record]))
-      return newestOf(spec, state).map(({ id, latest, versions }): NodeEntry => ({
-        id: node(id), title: latest.name || id, record: records.get(latest.created_by) ?? null,
-        records: versions.slice(0, -1).map(entry => entry.created_by), assets: [...latest.references],
-        sizing: sizingOf(latest.references.length),
-        ref: { kind: key, id },
-      }))
+    entry({ record, state }): TypeEntry {
+      const id = itemOf(record, key)
+      const latest = itemsOf(spec, state)[id]?.at(-1)
+      // A failed create has no item yet; its record still names the item.
+      const name = latest?.name ?? itemOf(record, 'name')
+      const references = latest?.references ?? []
+      return { title: name || id, assets: [...references], sizing: sizingOf(references.length), ref: { kind: key, id } }
     },
   }
   const versionKind: VersionKind = {
     kind: spec.key,
     label: () => pickText(...spec.label),
-    node,
+    node: (state, id) => nodeOfRecord(state, itemsOf(spec, state)[id]?.at(-1)?.created_by),
     latest: state => newestOf(spec, state).map(({ id, latest }) => ({ id, version: latest.version })),
     name: (state, id, version) => versionOf(state, id, version)?.name ?? null,
     assets: (state, id, version) => [...versionOf(state, id, version)?.references ?? []],
@@ -223,7 +232,7 @@ function ReferenceCard(
   const shown = references.length > STRIP_MAX ? references.slice(0, STRIP_MAX - 1) : references
   const rest = references.length - shown.length
   const count = node.assets.length
-  const version = (node.records?.length ?? 0) + 1
+  const version = node.versions.length
   const thumb: CSSProperties = { position: 'relative', flex: '0 1 44px', minWidth: 0, display: 'flex', height: 44, borderRadius: 'var(--dv-radius-sm)', overflow: 'hidden', background: 'var(--dv-surface-3)' }
   return (
     <div style={{ ...CARD_SURFACE, display: 'flex', flexDirection: 'column' }}>
@@ -275,8 +284,8 @@ function referenceBox(asset: Asset | undefined): CSSProperties {
 type ReferenceEditorProps = PropsRuntime<'dv.canvas.editor'> & PropsRenderFactories & { spec: ReferenceUiSpec }
 
 /**
- * The references grid, the description and ＋ 添加素材 of one item, each change written as `<key>.update` through
- * `host.run`; nothing renders when no item of the noun has the node's ID.
+ * The references grid, the description and ＋ 添加素材 of one item at the version on show, each change written as
+ * `<key>.update` through `host.run`; nothing renders before the item has a version.
  * @param props - the node, the state it came from, the canvas host, the noun, and the Factory renderer.
  * @returns the element.
  */
@@ -284,10 +293,11 @@ function ReferenceEditor(props: ReferenceEditorProps): ReactNode {
   const { node, state, host, spec, renderFactorySlot } = props
   const pick = useText()
   const { key } = spec
-  const prefix = `${key}:`
-  const id = node.id.startsWith(prefix) ? node.id.slice(prefix.length) : null
-  const latest = id === null ? undefined : itemsOf(spec, state)[id]?.at(-1)
-  if (id === null || latest === undefined) return null
+  const id = itemOf(node.record, key)
+  const versions = itemsOf(spec, state)[id] ?? []
+  // A version whose record failed shows the newest item version.
+  const latest = versions.find(version => version.created_by === node.record.id) ?? versions.at(-1)
+  if (latest === undefined) return null
   const operation = `${key}.update`
   const name = latest.name || id
   const references = latest.references

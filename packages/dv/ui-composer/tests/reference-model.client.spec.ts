@@ -22,7 +22,7 @@ const MIA: VersionReader = {
   name: (_state, id, version) => id === 'c1' && (version === 1 || version === 2) ? 'Mia' : null,
   assets: (_state, id, version) => id !== 'c1' ? [] : version === 1 ? ['a1', 'a2'] : version === 2 ? ['a5'] : [],
   latest: () => [{ id: 'c1', version: 2 }],
-  node: id => `character:${id}`,
+  node: (_state, id) => `character:${id}`,
 }
 
 const BASE = fixtureState()
@@ -249,13 +249,13 @@ describe('the readers of a document', () => {
   })
 
   it('satisfies an element chip by no version without assets, which the kernel expands to nothing', () => {
-    const style: VersionReader = { kind: 'style', name: (_state, id) => id === 's1' ? 'Noir' : null, assets: () => [], latest: () => [], node: id => `style:${id}` }
+    const style: VersionReader = { kind: 'style', name: (_state, id) => id === 's1' ? 'Noir' : null, assets: () => [], latest: () => [], node: (_state, id) => `style:${id}` }
     const inputs = [reference('s1@1')]
     expect(satisfyingIndexes('dv:style/s1', inputs, { ...ctx(inputs), versions: [style] })).toEqual([])
   })
 
   it('reads a version through the reader of its kind only, and draws a version that no reader holds as an unknown asset', () => {
-    const style: VersionReader = { kind: 'style', name: (_state, id) => id === 's1' ? 'Noir' : null, assets: () => [], latest: () => [], node: id => `style:${id}` }
+    const style: VersionReader = { kind: 'style', name: (_state, id) => id === 's1' ? 'Noir' : null, assets: () => [], latest: () => [], node: (_state, id) => `style:${id}` }
     const readers = { ...ctx([reference('c1@1'), reference('s1@1')]), versions: [style, MIA] }
     expect(satisfyingIndexes('dv:character/c1', readers.inputs ?? [], readers)).toEqual([0])
     expect(resolveInput(reference('s1@1'), readers)).toMatchObject({ label: 'Noir', preview: null, open: { node: 'style:s1' } })

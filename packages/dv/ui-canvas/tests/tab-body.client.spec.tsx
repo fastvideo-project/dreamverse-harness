@@ -27,11 +27,11 @@ describe('canvas tab body and center view', () => {
     const { runtime, view } = await mountCanvas({ surfaces: ['center', 'tab'] })
     const cards = (surface: Surface): Array<[string | null, string]> =>
       [...view.getByTestId(surface).querySelectorAll('[data-node-id]')].map(card => [card.getAttribute('data-node-id'), card.innerHTML])
-    await waitFor(() => { expect(cards('tab').map(([id]) => id)).toEqual(['test_ref:hero', 'g1', 'g2', 'g3']) })
+    await waitFor(() => { expect(cards('tab').map(([id]) => id)).toEqual(['e1', 'g1', 'g2']) })
     expect(within(view.getByTestId('tab')).getByTestId('dv-canvas-body')).toBeTruthy()
     const tab = cards('tab')
-    expect(tab.find(([id]) => id === 'test_ref:hero')?.[1]).toContain('参考')
-    expect(tab.find(([id]) => id === 'g1')?.[1]).toContain(`<img src="${assetUrl('shot1-last.png')}"`)
+    expect(tab.find(([id]) => id === 'e1')?.[1]).toContain('参考')
+    expect(tab.find(([id]) => id === 'g2')?.[1]).toContain(`<img src="${assetUrl('shot2-last.png')}"`)
     expect(cards('center')).toEqual(tab)
     await runtime.dispose()
   })
@@ -71,6 +71,8 @@ describe('canvas tab body and center view', () => {
     const failG1 = (state: FixtureState): void => {
       const records = state.components.proj.records
       state.components.proj.records = records.map(entry => entry.id === 'g1' ? { ...entry, status: 'failed' as const, outputs: [] } : entry)
+      const g1 = state.components.canvas.nodes['g1']
+      if (g1 !== undefined) g1.versions = ['g1']
     }
     const { runtime, node, server } = await mountCanvas({ surfaces: ['tab'], edit: failG1 })
     const retry = await waitFor(() => within(node('g1', 'tab')).getByRole('button', { name: '重试' }))
@@ -82,17 +84,21 @@ describe('canvas tab body and center view', () => {
     await runtime.dispose()
   })
 
-  it('draws a project switched to before the earlier project\'s layout arrived with its own layout only', async () => {
+  it('draws a project switched to before the earlier project\'s layout arrived with its own viewport only', async () => {
     const second = { ...PROJECT, id: 'p2', title: 'Second' }
-    const { runtime, view, node, server } = await mountCanvas({ surfaces: ['tab'], projects: [PROJECT, second], holdLayout: true })
+    const { runtime, view, node, server } = await mountCanvas({
+      surfaces: ['tab'], projects: [PROJECT, second], holdLayout: true, layout: { viewport: { x: 333, y: 0, zoom: 1 } },
+    })
     await waitFor(() => { node('g1', 'tab') })
     fireEvent.change(within(view.getByTestId('tab')).getByRole('combobox', { name: zh['bar.project'] }), { target: { value: 'p2' } })
     server.releaseLayout('p2')
-    await waitFor(() => { expect(server.layoutWrites).toContainEqual(expect.objectContaining({ project: 'p2' })) })
-    const stored = server.layoutWrites.find(write => write.project === 'p2')?.positions['g1']
+    const layer = (): string => view.getByTestId('tab').querySelector<HTMLElement>('div[style*="transform"]')?.style.transform ?? ''
+    await waitFor(() => { expect(layer()).toMatch(/scale/u) })
+    const fitted = layer()
     server.releaseLayout('p1')
     await act(() => new Promise((resolve) => { setTimeout(resolve, 20) }))
-    expect(node('g1', 'tab').style.left).toBe(`${String(stored?.x)}px`)
+    expect(layer()).toBe(fitted)
+    expect(fitted).not.toContain('translate(333px')
     await runtime.dispose()
   })
 })

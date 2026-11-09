@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-26-dv-agent-canvas-tools.md
-2026-10-26-dv-agent-canvas-tools.md: 712995b4c818683d24d9fee6da99d033f9ec115a
-2026-10-26-dv-agent-canvas-tools.zh.md: 8ca2fd608a78f3656970fd35a93e035080287ae5
+2026-10-26-dv-agent-canvas-tools.md: 39f7f5273c4a2314d0b6f7f8b2282cafdf0ac550
+2026-10-26-dv-agent-canvas-tools.zh.md: 239c9c60e7b93b7eeae59dece9a808a7dff6a2cc

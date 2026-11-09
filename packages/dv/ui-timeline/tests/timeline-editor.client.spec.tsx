@@ -345,7 +345,7 @@ describe('TimelineView', () => {
 
 function withoutTimelineSlice(): WireState {
   const base = fixtureState()
-  return { ...base, components: { proj: base.components.proj, asset: base.components.asset } }
+  return { ...base, components: { proj: base.components.proj, canvas: base.components.canvas } }
 }
 
 describe('timeline editor gestures', () => {

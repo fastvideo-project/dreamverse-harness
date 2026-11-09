@@ -1,5 +1,5 @@
 ---
-description: "Image generation in the DreamVerse browser workspace: one defineGenerationUi declaration of @dv/ui-generation that claims the image.generate records as image takes, with their label, status words and node palette slot."
+description: "Image generation in the DreamVerse browser workspace: one defineGenerationUi declaration of @dv/ui-generation that draws the image nodes of image.generate records, with their label, status words and node palette slot."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to show image generation in the DreamVerse workspace. It declares the `image.generate` records as image takes through `defineGenerationUi` of `@dv/ui-generation`, with their label, status words, and node palette slot. The kit draws the takes on the canvas, in the take editor, in the chat, and in History. The takes appear only in a composition whose host plugins declare the `image.generate` operation, such as `@dv/image-generate`.
+Use this package to show image generation in the DreamVerse workspace. It declares how the `image` nodes of `image.generate` records look through `defineGenerationUi` of `@dv/ui-generation`, with their label, status words, and node palette slot. The kit draws the nodes on the canvas, each with every version of one generation, and the records in the node editor, in the chat, and in History. The nodes appear only in a composition whose host plugins declare the `image.generate` operation, such as `@dv/image-generate`.
 
 ## Table of Contents
 
@@ -43,7 +43,7 @@ The Host half (`src/index.ts`) is an `apply` that does nothing. The browser half
 | `color` | `var(--dv-node-4)`, slot 4 of the node palette of `@dv/ui-shell` |
 | `status` | running 生成中… / Generating…, failed 生成失败 / Generation failed, done 已生成 / Generated |
 
-The declaration sets no `preview` and no other field, so the takes use the kit's defaults. The canvas card, the take editor, the 重试 / Retry action, the chat card, and the History row of the takes are the kit's; [`@dv/ui-generation`](../ui-generation/README.md) documents them and every `GenerationUiSpec` field.
+The declaration sets no `preview` and no other field, so the nodes use the kit's defaults. The canvas card, the node editor, the 重试 / Retry action, the chat card, and the History row are the kit's; [`@dv/ui-generation`](../ui-generation/README.md) documents them and every `GenerationUiSpec` field.
 
 -----
 
@@ -55,7 +55,7 @@ The declaration sets no `preview` and no other field, so the takes use the kit's
 
 The package holds no logic of its own: every registration comes from `defineGenerationUi`, and no UI core package names the `image` type.
 
-`tests/image-generate.client.spec.tsx` checks only what the plugin registers. It checks that the package exports only `inject` and `apply`, that the node type `image` claims `image.generate` with the label, the palette slot, and the status words of the declaration, and that the entries keyed by the type, the tool `dv_image_generate`, and the operation register and leave with the plugin.
+`tests/image-generate.client.spec.tsx` checks only what the plugin registers. It checks that the package exports only `inject` and `apply`, that the node type `image` draws the `image` nodes with the label, the palette slot, and the status words of the declaration, and that the entries keyed by the type, the tool `dv_image_generate`, and the operation register and leave with the plugin.
 
 | File | Content |
 | --- | --- |
@@ -69,8 +69,8 @@ The package holds no logic of its own: every registration comes from `defineGene
 <a id="further-exploration"></a>
 ## Further Exploration
 
-- [`@dv/ui-generation`](../ui-generation/README.md) owns the kit that this package declares: the take card, the take editor, 重试 / Retry, the chat card, and the History rows.
-- [`@dv/ui-canvas`](../ui-canvas/README.md) draws the takes.
+- [`@dv/ui-generation`](../ui-generation/README.md) owns the kit that this package declares: the node card, the node editor, 重试 / Retry, the chat card, and the History rows.
+- [`@dv/ui-canvas`](../ui-canvas/README.md) draws the nodes of the node list of [`@dv/canvas`](../canvas/README.md).
 - [`@dv/image-generate`](../image-generate/README.md) owns the `image.generate` operation.
 
 -----
@@ -88,7 +88,7 @@ None; the package sends nothing to a model.
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **The kit's deferred work applies.** The take card, take editor and chat card of this plugin come from `@dv/ui-generation`; see [its Known Limitations](../ui-generation/README.md#known-limitations-and-deferred-work).
+- **The kit's deferred work applies.** The node card, node editor and chat card of this plugin come from `@dv/ui-generation`; see [its Known Limitations](../ui-generation/README.md#known-limitations-and-deferred-work).
 
 <a id="dev-note"></a>
 ### Dev Note

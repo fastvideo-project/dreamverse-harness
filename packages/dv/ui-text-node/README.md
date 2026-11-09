@@ -1,5 +1,5 @@
 ---
-description: "Browser half of the DreamVerse text node: the canvas node type that claims textnode.write and textnode.edit records, a card with the opening lines and the version, an editor whose Markdown shows citations as chips and saves the next version with base_version, the @ mention kind of text nodes, and the History row of text node records."
+description: "Browser half of the DreamVerse text node: the canvas node type text, whose nodes hold every textnode.write and textnode.edit version of one path, a card with the opening lines and the version, an editor whose Markdown shows citations as chips and saves the next version with base_version, the @ mention kind of text nodes, and the History row of text node records."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to show and edit the text nodes of [`@dv/text-node`](../text-node/README.md) on the canvas. Each version of a text node is one canvas node; its caption shows the title and `v<version>`, and its card shows the opening lines as plain text and a footer such as `v3 · 1,240 chars`. Its editor shows the Markdown with each citation as a chip, and Save writes the next version with `textnode.write` and the draft's `base_version`. The package also lists text nodes in the `@` menu and names the path and version of each `textnode.` record in History.
+Use this package to show and edit the text nodes of [`@dv/text-node`](../text-node/README.md) on the canvas. Each text node is one canvas node with all its versions; its caption shows the title and the version count, and its card shows the opening lines as plain text and a footer such as `v3 · 1,240 chars`. Its editor shows the Markdown with each citation as a chip, and Save writes the next version with `textnode.write` and the draft's `base_version`. The package also lists text nodes in the `@` menu and names the path and version of each `textnode.` record in History.
 
 ## Table of Contents
 
@@ -33,9 +33,9 @@ Mount the plugin in a profile that stacks `dsh-web-app`, `@dv/api`, `@dv/text-no
 
 | Descriptor | Registry | Value |
 | --- | --- | --- |
-| `textNodeType` | `dvCanvas.nodeTypes` | `id: '@dv/ui-text-node'`, `type: 'textnode'`, label `Text`, color `var(--dv-node-5)`, column 0; it claims the operations `textnode.write` and `textnode.edit`, so each record is one node: title the report's `title` (else the path), meta `v<version>`, and `sizing` a window node 208 × 106 by default (four opening lines and the footer) and at least 104 × 58 (one opening line and the footer); a larger frame shows more of the opening text |
-| `TextCard` | the `dv.canvas.card` slot | key `textnode`; the opening lines of the version's Markdown, read from `/dv/assets/<asset>` once per asset, as plain text with each citation as its label, and the footer with the version and the code points of the body |
-| `TextEditor` | the `dv.canvas.editor.claimed` slot | key `textnode`; the footer, and the body, read from the version's asset as the card reads it, rendered as Markdown with each citation as a chip of the `@` source `dv-project` of `@dv/ui-composer`; on the newest version Edit opens a `conversation.prompt` editor with the same chips and the `@` picker, whose menu opens below the editor, and on an older version Open version N opens the newest one |
+| `textNodeType` | `dvCanvas.nodeTypes` | `id: '@dv/ui-text-node'`, `type: 'text'` (the kind that `@dv/text-node` registers for the first `textnode.write` of a path), label `Text`, color `var(--dv-node-5)`; for a version, the title is the report's `title` (else the path), and `sizing` a window node 208 × 106 by default (four opening lines and the footer) and at least 104 × 58 (one opening line and the footer); a larger frame shows more of the opening text |
+| `TextCard` | the `dv.canvas.card` slot | key `text`; the opening lines of the version's Markdown, read from `/dv/assets/<asset>` once per asset, as plain text with each citation as its label, and the footer with the version and the code points of the body |
+| `TextEditor` | the `dv.canvas.editor` slot | key `text`; for the version that the canvas's version strip selects, the footer, and the body, read from the version's asset as the card reads it, rendered as Markdown with each citation as a chip of the `@` source `dv-project` of `@dv/ui-composer`; on the newest version Edit opens a `conversation.prompt` editor with the same chips and the `@` picker, whose menu opens below the editor, and an older version is read only |
 | `textMentionKind` | `dvMentions.kinds` | `id: '@dv/ui-text-node'`, `kind: 'textnode'`, order 4, section `Texts`; one item per text node: URI `dv:textnode/<path>`, label the title, and description the first 40 characters of the first line |
 | `textHistoryRow` | `dvHistory.rows` | `match: 'textnode.'`; the subject is ` <path> v<version>`, else ` <path>` |
 
@@ -44,7 +44,7 @@ Mount the plugin in a profile that stacks `dsh-web-app`, `@dv/api`, `@dv/text-no
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-A text node version is a claimed node, so the canvas draws its edges from the record with no code here: a `source` input `{record, output}` that `@dv/text-node` writes for each text node a version was built from draws an edge from that source version, and the `based_on` of each version after the first draws the lineage edge from the previous version. The stale tag comes from the kernel's stale mark of the record. A save runs `POST /api/dv/operation` through its own `DvClient` with `textnode.write`, the params `path`, `body` and `base_version`, the `source` inputs of the newest version, each moved to the newest version of its text node, and `based_on` the newest version's record; a saved draft closes the editor. When the newest version N is past the draft's version M, the editor keeps the draft, shows `Someone saved version N first. Your draft is based on version M.`, and its save button reads `Save on top of vN`, which saves with `base_version` N. Any other refusal and a record that comes back `failed` or `cancelled` show their error and keep the draft.
+The canvas draws a text node's edges from its newest version with no code here: a `source` input `{record, output}` that `@dv/text-node` writes for each text node a version was built from draws an edge from the node that holds that source version. Every version after the first is `based_on` the previous one, so it joins the same node. The stale tag comes from the kernel's stale mark of the record. A save runs `POST /api/dv/operation` through its own `DvClient` with `textnode.write`, the params `path`, `body` and `base_version`, the `source` inputs of the newest version, each moved to the newest version of its text node, and `based_on` the newest version's record; a saved draft closes the editor. When the newest version N is past the draft's version M, the editor keeps the draft, shows `Someone saved version N first. Your draft is based on version M.`, and its save button reads `Save on top of vN`, which saves with `base_version` N. Any other refusal and a record that comes back `failed` or `cancelled` show their error and keep the draft.
 
 The editor and the chips reuse entries of `@dv/ui-composer`: `MENTION_SOURCE` of `@dv/ui-composer/mention`, `editorContent`, `resolveAtom` and `faceOf` of `@dv/ui-composer/reference-model`, and the chip face `ReferenceFace` of `@dv/ui-composer/reference-face`. Read mode renders the Markdown with `MarkdownText` of `@deepseek-ai/dsh-client-ui-primitives`, the renderer of DSH chat, and a `MarkdownDelegateProvider` that draws each citation link through the Factory `dv.text.reference`, which this package registers with `ReferenceFace` as its component. Each chip carries its face, resolved against the canvas state and the version kinds of `dvCanvas`, so it shows the cited item's newest version. In edit mode the editor passes a `faceContext` of null, so each chip reads the state of the open project, as a chat chip does.
 
@@ -65,7 +65,7 @@ Every UI string comes from the `dv-text-node` dictionary, which `apply` register
 ## Further Exploration
 
 - [`@dv/text-node`](../text-node/README.md): the operations and the `source` inputs.
-- [`@dv/ui-canvas`](../ui-canvas/README.md): claimed nodes, edges and the editor slots.
+- [`@dv/ui-canvas`](../ui-canvas/README.md): the node contract, edges and the editor slots; [`@dv/canvas`](../canvas/README.md): the node list.
 - [`@dv/ui-composer`](../ui-composer/README.md): the `@` source and the chip face.
 
 -----
@@ -91,5 +91,5 @@ A save changes the project block from the next agent request on, as any canvas w
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **One node per version**: every version is its own canvas node, linked to the previous one by a lineage edge, as every claimed record is.
+- **One node per path**: every version of a path is a version of one canvas node, so an older version shows only in the editor's version strip, and a new path is a new node.
 - **No source picker on the canvas**: a canvas save keeps the sources of the newest version, each at its newest version; only an agent write sets `from`.

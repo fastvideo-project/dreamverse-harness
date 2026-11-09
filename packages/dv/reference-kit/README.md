@@ -39,9 +39,9 @@ A noun package declares its ID, version and slice types from `@dv/reference-kit/
 | Operation | Params | Effect |
 | --- | --- | --- |
 | `<k>.create` | `<k>` (the ID, without `@` or `#`), `name`, `description`, each `fields` param | Version 1 of a new ID; fails when `dvProject.kindsWithId` lists the ID |
-| `<k>.update` | `<k>` (the ID), `name`, `description`, each `fields` param | The next version; keeps what the call leaves out; supersedes the record of the previous version; fails for an unknown ID |
+| `<k>.update` | `<k>` (the ID), `name`, `description`, each `fields` param | The next version; keeps what the call leaves out; supersedes the record of the previous version and is `based_on` it, so it joins the item's canvas node; fails for an unknown ID |
 
-The slice of a noun is `ReferenceSlice<V>`: a map from ID to the versions oldest first. A version (`ReferenceVersion<I>`) has `id`, `version`, `name`, `description`, `references` (asset IDs) and `created_by` (the record that wrote it), plus each `fields` value. `referenceReducer(spec)` is the reducer the service registers.
+The slice of a noun is `ReferenceSlice<V>`: a map from ID to the versions oldest first. A version (`ReferenceVersion<I>`) has `id`, `version`, `name`, `description`, `references` (asset IDs) and `created_by` (the record that wrote it), plus each `fields` value. `referenceReducer(spec)` is the reducer the service registers. While `dvCanvasNodes` of [`@dv/canvas`](../canvas/README.md) is loaded, the service registers `<k>.create` as the maker of `<k>` nodes in column 0, so each item is one canvas node that holds every version.
 
 -----
 

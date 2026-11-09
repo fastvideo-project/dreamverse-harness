@@ -24,6 +24,9 @@
       "path": "../ffmpeg"
     },
     {
+      "path": "../canvas"
+    },
+    {
       "path": "../project"
     }
   ]

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to show the styles of `@dv/style` in the DreamVerse views. One `defineReferenceUi` declaration of `@dv/ui-reference-kit/reference-kit.tsx` gives the noun its canvas node type `style` (label 风格 / Style, node ID `style:<id>`), its version kind, its references in use, its `dv.canvas.card` and `dv.canvas.editor` entries (the kit's default card and `ReferenceEditor`), its `@` menu kind (section 风格 / Styles, order 3, address `dv:style/<id>`), and its History row (`style.`).
+Use this package to show the styles of `@dv/style` in the DreamVerse views. One `defineReferenceUi` declaration of `@dv/ui-reference-kit/reference-kit.tsx` gives the noun its canvas node type `style` (label 风格 / Style, one node per item that `style.create` makes), its version kind, its references in use, its `dv.canvas.card` and `dv.canvas.editor` entries (the kit's default card and `ReferenceEditor`), its `@` menu kind (section 风格 / Styles, order 3, address `dv:style/<id>`), and its History row (`style.`).
 
 ## Table of Contents
 
@@ -66,4 +66,4 @@ None; the package sends nothing to a model.
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **Column 0** — the node type sits in column 0 with every other noun, colored `var(--dv-node-7)`, because `ReferenceUiSpec` has no column field.
+- **Column 0** — the node type sits in column 0 with every other noun, colored `var(--dv-node-7)`, because `defineReference` of `@dv/reference-kit` places every noun node there and has no column field.

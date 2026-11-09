@@ -1,50 +1,12 @@
 /**
- * Inline title editing and the row menu the DreamVerse shell uses for projects and chat sessions.
+ * The row menu the DreamVerse shell uses for projects and chat sessions.
  *
- * @module @dv/ui-shell/InlineRename
+ * @module @dv/ui-shell/RowMenu
  */
 import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { MoreIcon } from './icons.tsx'
 import css from './shell.module.css'
-
-/**
- * A text field that replaces a title while it is renamed: Enter or leaving the field saves a changed, non-empty
- * title, and Escape cancels.
- * @param props - the current title, the save callback, and the close callback.
- * @returns the field.
- */
-export function InlineRename({ value, onSave, onClose }: {
-  value: string
-  onSave: (title: string) => void
-  onClose: () => void
-}): ReactNode {
-  const [text, setText] = useState(value)
-  const settled = useRef(false)
-  const finish = (save: boolean): void => {
-    if (settled.current) return
-    settled.current = true
-    const title = text.trim()
-    if (save && title.length > 0 && title !== value) onSave(title)
-    onClose()
-  }
-  return (
-    <input
-      className={css.renameInput}
-      value={text}
-      // The field opens in response to the user's rename request, so it takes focus.
-      autoFocus
-      onFocus={(event) => { event.currentTarget.select() }}
-      onChange={(event) => { setText(event.currentTarget.value) }}
-      onClick={(event) => { event.stopPropagation() }}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter') finish(true)
-        else if (event.key === 'Escape') finish(false)
-      }}
-      onBlur={() => { finish(true) }}
-    />
-  )
-}
 
 /** One entry of a {@link RowMenu}. */
 export interface RowMenuItem {

@@ -97,6 +97,7 @@ export default class DvImageGenerate extends defineGeneration({
   service: 'dvImageGenerate',
   component: 'image',
   operation: 'image.generate',
+  node: { kind: 'image', column: 2 },
   primitive: 'image',
   tasks: { t2i: { zh: '文字生成图片', en: 'Image from text' } },
   label: { zh: '生成图片', en: 'Generate image' },

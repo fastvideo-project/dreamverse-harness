@@ -47,7 +47,7 @@ Host 半边不注册任何东西。浏览器半边在 `apply` 顶层提供 `dvMe
 
 `@` 列表读项目的当前状态：每个已注册的提及类型的条目，按其 `order` 排列（相同时按注册顺序），归在其 `section()` 之下，条目的 `thumb` 素材显示为该素材的图标，以及所有媒体类型中最新的 40 个素材；素材的图标是 `@dv/ui-media` 的 `dvMedia.types` 中其媒体类型的 `poster` 给出的静帧，没有时是该类型的 `icon` 组件，再没有时是文件字形；选中一项会插入一个标签，其文字是 `@dv/project/grammar` 的 `formatCitation` 写出的引用 `@[<label>](dv:<kind>/<id>)`，`dv:compose` 预填也是如此。引用 行在草稿末尾打开同一个列表。每个有名称的工具行和每个操作行显示工具名称（操作行显示 `@dv/ui-kit` 的 `operationLabel`）和状态 进行中…、完成 或 未完成。调用写了记录的每个已结束的行都有 在历史中查看 链接。`dv:compose` 事件还会把 对话 标签提到前面。本包隐藏 DSH 的文件权限标签，并用 DreamVerse 主题变量绘制 对话 标签里的输入框卡片、＋ 按钮和发送按钮。
 
-在已结束的对话 Markdown 里，路径为 `/dv/assets/<id>` 且所打开项目持有该素材的链接变成一张 160 px 宽的 16:9 卡片，通过 `@dv/ui-media` 的 `dv.media` 组件工厂以用途 `thumb` 绘制该素材，下方是说明文字：历史把创建该素材的记录画成媒体（例如版本）时，为 `@dv/ui-history` 的 `dvHistory.describe` 给该记录的名称，否则为素材名称，例如导入文件的文件名。说明跟随 `dvHistory` 及其行，所以已绘制的卡片在一条历史行注册时会重新读取说明。每个表体行都链接这类素材的表格变成三列卡片网格，每张卡片的说明是该行其他单元格用 ` · ` 连接的文字（例如 `1 · 直播间开场「来一把吧」`）。这类素材的 Markdown 图片变成最宽 240 px 的缩略图；素材有尺寸时使用素材自身的宽度和宽高比，否则为 240 px 宽的 16:9。点击卡片或缩略图会通过 `dvMedia.preview` 打开从被点击元素放大出来的素材预览；`dvMedia` 不存在时什么也不打开。媒体类型没有 `dv.media.view` 条目的素材画成 `@dv/ui-media` 的文件卡片。素材和创建它们的记录来自所打开项目的当前状态，每次项目事件后重新获取。其他链接、图片和表格保持 DSH 的渲染。
+在已结束的对话 Markdown 里，路径为 `/dv/assets/<id>` 且所打开项目持有该素材的链接变成一张 160 px 宽的 16:9 卡片，通过 `@dv/ui-media` 的 `dv.media` 组件工厂以用途 `thumb` 绘制该素材，下方是说明文字：历史把创建该素材的记录画成媒体（例如镜头渲染）时，为 `@dv/ui-history` 的 `dvHistory.describe` 给该记录的名称，否则为素材名称，例如导入文件的文件名。说明跟随 `dvHistory` 及其行，所以已绘制的卡片在一条历史行注册时会重新读取说明。每个表体行都链接这类素材的表格变成三列卡片网格，每张卡片的说明是该行其他单元格用 ` · ` 连接的文字（例如 `1 · 直播间开场「来一把吧」`）。这类素材的 Markdown 图片变成最宽 240 px 的缩略图；素材有尺寸时使用素材自身的宽度和宽高比，否则为 240 px 宽的 16:9。点击卡片或缩略图会通过 `dvMedia.preview` 打开从被点击元素放大出来的素材预览；`dvMedia` 不存在时什么也不打开。媒体类型没有 `dv.media.view` 条目的素材画成 `@dv/ui-media` 的文件卡片。素材和创建它们的记录来自所打开项目的当前状态，每次项目事件后重新获取。其他链接、图片和表格保持 DSH 的渲染。
 
 ### `dv.prompt` 输入框
 
@@ -111,7 +111,7 @@ Host 半边不注册任何东西。浏览器半边在 `apply` 顶层提供 `dvMe
 
 - [`@dv/chat-references`](../chat-references/README.zh.md) — 把已发送消息里的 `dv:` 提及展开成一条带记录和素材 ID 的上下文消息。
 - [`@dv/ui-canvas`](../ui-canvas/README.zh.md) — 画布及其节点动作。
-- [`@dv/ui-generation`](../ui-generation/README.zh.md) — 版本编辑器，它在版本的调用上绘制 `dv.prompt`。
+- [`@dv/ui-generation`](../ui-generation/README.zh.md) — 生成节点的节点编辑器，它在版本的调用上绘制 `dv.prompt`。
 - [`@dv/ui-history`](../ui-history/README.zh.md) — 响应 `dv:history-focus` 的历史面板，以及对话卡片的记录名称。
 - [`@dv/ui-kit`](../ui-kit/README.zh.md) — API 客户端、wire 类型、compose 事件和工具名称。
 - [`@dv/ui-media`](../ui-media/README.zh.md) — 绘制对话卡片的 `dv.media` 组件工厂、绘制 `@` 菜单图标的媒体类型，以及素材预览。

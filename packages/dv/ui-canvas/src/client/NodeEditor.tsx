@@ -1,23 +1,28 @@
 /**
  * The editor shell that a canvas node opens: a movable, resizable panel over a dimmed canvas. One position and size,
  * shared by every node, is kept in `localStorage` and fitted into the canvas when restored. The body is the entry of
- * the node's type in `dv.canvas.editor.claimed` for a claimed node and in `dv.canvas.editor` for any other node; a type
- * without an entry shows only the header.
+ * the node's type in `dv.canvas.editor`; a type without an entry shows only the header. A node with several versions
+ * shows a version strip above the body: selecting a version shows it in the editor, and the card keeps the newest. The
+ * header shows the node's type and newest version above its title; a click on the title, or F2 on the canvas, turns the
+ * title into the name field. The header's trash button removes the node from the canvas.
  */
 import { useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import type { PropsRenderFactories, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
+import { InlineRename } from '@dv/ui-kit/InlineRename.tsx'
+import type { InlineRenameProps } from '@dv/ui-kit/InlineRename.tsx'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import type { WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { AssetPicker } from './AssetPicker.tsx'
 import type { CardHost, EditorHost, NodeAction, NodeHost, NodeView } from './contract/index.ts'
+import { previewOf } from './graph.ts'
 import type { CanvasNode } from './graph.ts'
 import type { CanvasTranslate } from './NodeCard.tsx'
 
 /** Renders the slots that the canvas's editors show: the `renderSlot` of the `dv.canvas` Factory. */
 export type RenderCanvasSlot = PropsRenderSlots<
-  'dv.canvas.card' | 'dv.canvas.editor' | 'dv.canvas.editor.claimed' | 'dv.canvas.picker'
+  'dv.canvas.card' | 'dv.canvas.editor' | 'dv.canvas.picker'
 >['renderSlot']
 
 /** The hosts that the canvas lends one surface. */
@@ -33,6 +38,8 @@ export interface NodeEditorProps extends PropsRenderFactories {
   node: CanvasNode
   /** The node as its editor body and actions receive it. */
   view: NodeView
+  /** The node at one of its versions, for the version strip. */
+  viewAt: (record: string) => NodeView
   state: WireState
   operations: readonly WireOperation[]
   /** The registered version kinds, whose items the picker lists when a body asks for them. */
@@ -46,6 +53,12 @@ export interface NodeEditorProps extends PropsRenderFactories {
   hosts: SurfaceHosts
   /** Keep a stale record as it is. */
   onAcceptStale: (record: string) => void
+  /** Remove the node from the canvas, after the user confirms. */
+  onRemove: () => void
+  /** The name field that replaces the title while the node is renamed in the editor; null for none. */
+  rename: Omit<InlineRenameProps, 'value'> | null
+  /** Turn the title into the name field. */
+  onRename: () => void
   onClose: () => void
   /** The zoom transition's ref for the panel, which grows out of the node and shrinks back into it. */
   zoomRef: (element: HTMLElement | null) => void
@@ -237,6 +250,7 @@ const button: CSSProperties = {
 }
 /** A secondary button: 1px border, transparent fill (the `dv-canvas-btn` class paints the fill and the hover). */
 const secondaryButton: CSSProperties = { ...button, border: '1px solid var(--dv-line-strong)', color: 'var(--dv-text)' }
+const titleText: CSSProperties = { fontFamily: 'inherit', fontSize: 16, lineHeight: '24px', fontWeight: 600, color: 'var(--dv-text)' }
 
 /** What {@link useEditorPlacement} gives the panel. */
 interface EditorPlacement {
@@ -328,10 +342,14 @@ interface Picking {
  * @returns the element.
  */
 export function NodeEditor(props: NodeEditorProps): ReactNode {
-  const { node, view, t, onClose } = props
-  const title = node.title
-  const type = node.nodeType.label()
-  const staleRecord = node.flags.stale ? node.record : null
+  const { node, t, onClose } = props
+  const [chosen, setChosen] = useState(node.record.id)
+  // A version that leaves the node, such as after an undo, gives way to the newest.
+  const version = node.versions.includes(chosen) ? chosen : node.record.id
+  const view = version === node.record.id ? props.view : props.viewAt(version)
+  const title = view.title
+  const type = `${node.nodeType.label()} · ${t('node.version', { n: String(node.versions.length) })}`
+  const staleRecord = view.flags.stale ? view.record : null
   const placement = useEditorPlacement(props.area)
   const [picking, setPicking] = useState<Picking | null>(null)
   const host: EditorHost = {
@@ -351,21 +369,45 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
       ref={props.zoomRef}
       style={{ ...panel, left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
       role="dialog" aria-label={title} data-testid="dv-canvas-node-editor" data-dv-scroll-island="" onPointerDown={(event) => { event.stopPropagation() }}
+      // F2 in the asset picker renames nothing.
+      onKeyDown={(event) => { if (event.key === 'F2' && picking !== null) event.stopPropagation() }}
     >
       <header style={{ flex: 'none', padding: '16px 16px 12px 20px', display: 'flex', flexDirection: 'column', gap: 12, borderBottom: '1px solid var(--dv-line)' }}>
         <div
           data-testid="dv-canvas-editor-title-row" style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'move', touchAction: 'none', userSelect: 'none' }}
           onPointerDown={begin(null)} {...gestureHandlers}
-          onDoubleClick={(event) => { if (!(event.target instanceof Element && event.target.closest('button') !== null)) reset() }}
+          onDoubleClick={(event) => { if (!(event.target instanceof Element && event.target.closest('button, input') !== null)) reset() }}
         >
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }}>
-            <span style={{ width: 6, height: 6, borderRadius: 9999, background: node.nodeType.color }} />
-            {type === title ? null : type}
-          </span>
-          <h2 style={{ flex: 1, minWidth: 0, margin: 0, fontSize: 16, lineHeight: '24px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</h2>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }}>
+              <span style={{ width: 6, height: 6, borderRadius: 9999, background: node.nodeType.color }} />
+              {type}
+            </span>
+            {props.rename === null
+              ? (
+                <h2 style={{ alignSelf: 'flex-start', maxWidth: 'calc(100% + 6px)', margin: '0 0 0 -6px', ...titleText }}>
+                  <button
+                    type="button" className="dv-canvas-title" title={t('node.rename')} data-testid="dv-canvas-editor-title" onClick={props.onRename}
+                    style={{ ...titleText, maxWidth: '100%', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 6px', border: 'none', borderRadius: 'var(--dv-radius-sm)', cursor: 'text' }}
+                  >
+                    <span style={{ minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flex: 'none', color: 'var(--dv-text-2)' }}><path d="M4 20h4L19 9l-4-4L4 16v4zM13 7l4 4" /></svg>
+                  </button>
+                </h2>
+              )
+              : (
+                <InlineRename
+                  {...props.rename} value={props.view.title}
+                  style={{ ...titleText, height: 26, boxSizing: 'border-box', margin: '-1px -6px', padding: '0 5px', border: '1px solid var(--dv-accent)', borderRadius: 'var(--dv-radius-sm)', background: 'var(--dv-surface-1)', outline: 'none' }}
+                />
+              )}
+          </div>
           {props.actions.map(action => (
             <button key={action.id} type="button" className="dv-canvas-soft" style={button} disabled={view.rerunning} onClick={() => { action.run(view, props.hosts.action(action.id)) }}>{action.label()}</button>
           ))}
+          <button type="button" className="dv-canvas-btn dv-canvas-danger" aria-label={t('node.remove')} title={t('node.remove')} style={{ ...button, width: 32, padding: 0 }} onClick={props.onRemove}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3" /></svg>
+          </button>
           <button type="button" className="dv-canvas-btn" aria-label={t('editor.close')} title={t('editor.close')} style={{ ...button, width: 32, padding: 0, color: 'var(--dv-text-2)' }} onClick={onClose}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
           </button>
@@ -382,9 +424,16 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
             </p>
           )
           : null}
-        {view.claimed
-          ? props.renderSlot('dv.canvas.editor.claimed', { node: view, state: props.state, operations: props.operations, host }, { entryKey: node.type })
-          : props.renderSlot('dv.canvas.editor', { node: view, state: props.state, operations: props.operations, host }, { entryKey: node.type })}
+        {node.versions.length > 1
+          ? (
+            <VersionStrip
+              node={node} version={version} viewAt={props.viewAt} state={props.state} t={t} onChoose={setChosen}
+              renderFactorySlot={props.renderFactorySlot}
+            />
+          )
+          : null}
+        {/* Each version mounts its own body, so a draft of one version never carries over to another. */}
+        <div key={version}>{props.renderSlot('dv.canvas.editor', { node: view, state: props.state, operations: props.operations, host }, { entryKey: node.type })}</div>
       </div>
       {picking === null
         ? null
@@ -407,5 +456,55 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.25} strokeLinecap="round" aria-hidden="true"><path d="M9 3 3 9M9 6.5 6.5 9" /></svg>
       </button>
     </section>
+  )
+}
+
+/** Props of {@link VersionStrip}. */
+interface VersionStripProps extends PropsRenderFactories {
+  node: CanvasNode
+  /** The version on show in the editor. */
+  version: string
+  viewAt: (record: string) => NodeView
+  state: WireState
+  t: CanvasTranslate
+  onChoose: (record: string) => void
+}
+
+/**
+ * The versions of a node as thumbnails in time order, the one on show outlined, and which version the editor shows.
+ * @param props - the node, the version on show, the version views, the state for the thumbnails, and the choice.
+ * @returns the element.
+ */
+function VersionStrip({ node, version, viewAt, state, t, onChoose, renderFactorySlot }: VersionStripProps): ReactNode {
+  const index = node.versions.indexOf(version)
+  const thumb: CSSProperties = {
+    position: 'relative', flex: 'none', width: 56, height: 40, padding: 0, borderRadius: 'var(--dv-radius-sm)', overflow: 'hidden',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dv-surface-3)', color: 'var(--dv-text-2)',
+    border: 'none', cursor: 'pointer', fontFamily: 'var(--dv-font-mono)', fontSize: 11,
+  }
+  return (
+    <div data-testid="dv-canvas-version-strip" style={{ margin: '0 0 12px' }}>
+      <span style={{ display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 500, color: 'var(--dv-text-2)', margin: '0 0 6px' }}>{t('editor.versions')}</span>
+      <div role="listbox" aria-label={t('editor.versions')} style={{ display: 'flex', gap: 6, overflowX: 'auto' }}>
+        {node.versions.map((record, at) => {
+          const each = record === node.record.id ? node : viewAt(record)
+          const preview = previewOf(each)
+          const asset = preview === null ? undefined : state.assets.find(candidate => candidate.id === preview)
+          const label = t('node.version', { n: String(at + 1) })
+          return (
+            <button
+              key={record} type="button" role="option" aria-selected={record === version} aria-label={label} title={label} data-version={record}
+              style={{ ...thumb, boxShadow: record === version ? '0 0 0 2px var(--dv-accent)' : '0 0 0 1px var(--dv-line)' }}
+              onClick={() => { onChoose(record) }}
+            >
+              {asset === undefined ? label : renderFactorySlot('dv.media', { asset, purpose: 'thumb' })}
+            </button>
+          )
+        })}
+      </div>
+      <span style={{ display: 'block', marginTop: 6, fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }}>
+        {t('editor.versionOf', { i: String(index + 1), n: String(node.versions.length) })}
+      </span>
+    </div>
   )
 }

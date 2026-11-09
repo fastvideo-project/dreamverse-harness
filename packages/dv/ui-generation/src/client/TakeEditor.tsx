@@ -1,10 +1,11 @@
 /**
- * The editor body of a generation take, which the canvas renders for a claimed node: its first output through
+ * The editor body of a generation node at one version, which the canvas renders in the node's editor: its first output through
  * `dv.media` at purpose 'loop' behind the take's preview as the poster, the failure reason of a failed take, its model
  * and generation task (the task's label in `GET /api/dv/tasks`, else its name), and the `dv.prompt` composer over the
  * take's call when `GET /api/dv/operations` declares its operation: the references, the prompt, the parameters and
- * the send. A send reruns the take's operation as edited, with the take as `based_on`; on success the canvas
- * closes the editor and selects the new take, and the composer shows a refused request's error. The composer's
+ * the send. A send reruns the take's operation as edited, with the take as `based_on`, so the new version joins the
+ * same node; once it appears the canvas closes the editor and selects the node, and the composer shows a refused
+ * request's error. The composer's
  * host opens the canvas's asset picker with the versioned items, imports uploaded files as canvas imports, opens the
  * preview of an asset, and opens the editor of a versioned item's node over this one.
  *
@@ -27,7 +28,7 @@ export interface TakeEditorInjected {
 }
 
 /** The take editor's composed props. */
-export type TakeEditorProps = PropsRuntime<'dv.canvas.editor.claimed'> & PropsRenderFactories & InjectFace<TakeEditorInjected>
+export type TakeEditorProps = PropsRuntime<'dv.canvas.editor'> & PropsRenderFactories & InjectFace<TakeEditorInjected>
 
 const label: CSSProperties = { display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 500, color: 'var(--dv-text-2)', margin: '12px 0 4px' }
 const player: CSSProperties = { display: 'flex', borderRadius: 'var(--dv-radius-lg)', overflow: 'hidden', background: 'var(--dv-media-bg)' }

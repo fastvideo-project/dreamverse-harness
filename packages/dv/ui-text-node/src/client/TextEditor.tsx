@@ -1,5 +1,5 @@
 /**
- * The text node editor: the `dv.canvas.editor.claimed` entry that the canvas shows for a text node version. Read mode
+ * The text node editor: the `dv.canvas.editor` entry that the canvas shows for a text node version. Read mode
  * renders its Markdown through DSH's Markdown renderer; edit mode opens the `conversation.prompt` editor with the `@`
  * source of `@dv/ui-composer`. Both show each citation as the chip face of `@dv/ui-composer`, and a save writes the next
  * version through its own `/api/dv` call.
@@ -113,12 +113,13 @@ function currentSources(state: WireState, record: ProjectRecord | undefined): Ar
  * draft's `base_version`, the sources of the newest version at their own newest versions, and `based_on` its record.
  * When a newer version than the draft's exists, the editor names both versions, keeps the draft, and offers to save it
  * on top of the newest version. A refusal or a failed record shows its own text and keeps the draft. A saved draft
- * closes the editor, and the canvas draws the new version as the next node.
+ * closes the editor, and the new version joins the node. An older version, chosen in the canvas's version strip, is
+ * read only.
  * @param props - the node, the state, the canvas host, the version kinds, the Factory renderer, and the translate
  *   function.
  * @returns the element.
  */
-export function TextEditor({ node, state, host, renderFactorySlot, useVersionKinds, t }: PropsRuntime<'dv.canvas.editor.claimed'> & InjectFace<TextEditorInjected> & PropsRenderFactories & PropsLocale<typeof NS>): ReactNode {
+export function TextEditor({ node, state, host, renderFactorySlot, useVersionKinds, t }: PropsRuntime<'dv.canvas.editor'> & InjectFace<TextEditorInjected> & PropsRenderFactories & PropsLocale<typeof NS>): ReactNode {
   const [editor, setEditor] = useState<EditorMode>(READ)
   const versionKinds = useVersionKinds(kinds => kinds)
   const path = pathOf(node.record)
@@ -168,11 +169,7 @@ export function TextEditor({ node, state, host, renderFactorySlot, useVersionKin
             </>
           )
           : shown !== latest
-            ? (
-              <button type="button" className="dv-canvas-btn" style={button} onClick={() => { host.openNode(latest.created_by) }}>
-                {t('editor.openVersion', { version: String(latest.version) })}
-              </button>
-            )
+            ? null
             : (
               <button
                 type="button" className="dv-canvas-btn" style={button} disabled={latestBody === null}

@@ -17,9 +17,11 @@ import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import DvCanvasNodes from '@dv/canvas'
 import DvFfmpeg, { FfmpegError } from '@dv/ffmpeg'
 import DvProject, {
-  ProjectError, type AssetId, type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId, type RecordInput,
+  ProjectError, type AssetId, type OperationToolValue, type ProjectId, type ProjectRecord, type ProjectState, type RecordId,
+  type RecordInput,
 } from '@dv/project'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { chatProject, provideChatServices, type TestChatServices } from '../../project/tests/workspaces.ts'
@@ -54,7 +56,18 @@ class FakeWebServer {
 }
 
 /** The plugin classes the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
-const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool }
+/**
+ * The assets that the asset nodes of a state show, in node order.
+ * @param state - a project state.
+ * @returns the asset IDs.
+ */
+function placedOf(state: ProjectState): AssetId[] {
+  const { nodes, order, assets } = state.components.canvas
+  const shown = Object.entries(assets)
+  return order.flatMap(node => nodes[node]?.kind === 'asset' ? shown.flatMap(([asset, by]) => by === node ? [brandString<AssetId>(asset)] : []) : [])
+}
+
+const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvCanvasNodes, DvAssetPool }
 
 interface Fixture {
   ctx: Context
@@ -94,6 +107,7 @@ async function start(options: { dir?: string; publicBaseUrl?: string } = {}): Pr
   row('tools', 'ToolRuntime', [])
   row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`])
   row('dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, `ffprobePath: ${FFPROBE}`])
+  row('dv-canvas', 'DvCanvasNodes', [])
   row('dv-asset-pool', 'DvAssetPool', options.publicBaseUrl === undefined ? [] : [`publicBaseUrl: ${options.publicBaseUrl}`])
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
 
@@ -156,9 +170,9 @@ describe('dvAssetPool', () => {
     const specs = fixture.ctx.dvProject.listOperations().filter(spec => spec.component === 'asset')
     expect(specs.map(spec => [spec.name, spec.deterministic, spec.resource])).toEqual([
       ['asset.import', true, 'none'], ['asset.grab_still', true, 'cpu'], ['asset.cut_segment', true, 'cpu'], ['asset.place', false, 'none'],
-      ['asset.unplace', false, 'none'],
     ])
-    for (const tool of ['dv_asset_import', 'dv_asset_grab_still', 'dv_asset_cut_segment', 'dv_asset_place', 'dv_asset_unplace']) {
+    expect(fixture.ctx.tools.get('dv_asset_unplace')).toBeUndefined()
+    for (const tool of ['dv_asset_import', 'dv_asset_grab_still', 'dv_asset_cut_segment', 'dv_asset_place']) {
       expect(fixture.ctx.tools.get(tool)).toBeDefined()
     }
     expect(fixture.web.routes.has('/dv/assets')).toBe(true)
@@ -189,23 +203,27 @@ describe('dvAssetPool', () => {
     expect(spec?.summarize(bare)).toBe('imported bytes')
   })
 
-  it('puts assets on the canvas and takes them off as records, refuses a call that changes nothing, and undo takes a placement back', async () => {
+  it('puts assets on the canvas as records, refuses a call that changes nothing, keeps a removed node\'s asset in the pool, and undo takes a placement back', async () => {
     const fixture = await start()
-    const placed = (): AssetId[] => fixture.ctx.dvProject.getState(fixture.project).components.asset.placed
+    const placed = (): AssetId[] => placedOf(fixture.ctx.dvProject.getState(fixture.project))
     const assetInput = (asset: AssetId): RecordInput => ({ role: 'asset', ref: { asset }, resolved_asset: asset })
     const a = (await fixture.run('asset.import', { base64: Buffer.from('a').toString('base64'), mime: 'image/png' })).outputs[0] as AssetId
     expect(placed()).toEqual([])
     // An import with `place` puts its output on the canvas.
     const b = (await fixture.run('asset.import', { base64: Buffer.from('b').toString('base64'), mime: 'image/png', place: true })).outputs[0] as AssetId
     expect(placed()).toEqual([b])
+    // An import with `place` that fails makes no node.
+    expect(await fixture.run('asset.import', { mime: 'image/png', place: true })).toMatchObject({ status: 'failed' })
+    expect(fixture.ctx.dvProject.getState(fixture.project).components.canvas.order).toHaveLength(1)
     const put = await fixture.run('asset.place', {}, [assetInput(a), assetInput(b)])
     expect(put).toMatchObject({ status: 'done', component: 'asset', operation: 'asset.place', outputs: [] })
+    expect(fixture.ctx.dvProject.listOperations().find(spec => spec.name === 'asset.place')?.summarize(put)).toBe('placed 2 asset(s) on the canvas')
     expect(placed()).toEqual([b, a])
     const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
     await expect(fixture.run('asset.place', {}, [assetInput(a)])).rejects.toMatchObject({ code: 'invalid_params' })
-    await fixture.run('asset.unplace', {}, [assetInput(b)])
+    await fixture.run('canvas.node_remove', { nodes: [fixture.ctx.dvProject.getState(fixture.project).components.canvas.assets[b]] })
     expect(placed()).toEqual([a])
-    await expect(fixture.run('asset.unplace', {}, [assetInput(b)])).rejects.toMatchObject({ code: 'invalid_params' })
+    expect(fixture.ctx.dvAssetPool.get(b)).toMatchObject({ id: b })
     // An asset that no record of the current state created cannot go on the canvas.
     const outside = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('outside'), { mime: 'image/png', name: 'o.png' }, null)
     await expect(fixture.run('asset.place', {}, [assetInput(outside)])).rejects.toMatchObject({ code: 'invalid_inputs' })
@@ -301,7 +319,7 @@ describe('dvAssetPool', () => {
     const second = await start({ dir: first.dir })
     const added = await second.ctx.dvProject.createProject(copy, 'copy', { actor: 'user', surface: 'api', session: null, turn: null, tool_call: null, intent: 'add' })
     expect(added.id).not.toBe(first.project)
-    expect(second.ctx.dvProject.getState(added.id).components.asset.placed).toEqual([image])
+    expect(placedOf(second.ctx.dvProject.getState(added.id))).toEqual([image])
     expect(second.ctx.dvAssetPool.path(image)).toBe(join(added.path, '.dreamverse', 'assets', 'objects', image))
     const base = await second.web.listen()
     try {
@@ -467,7 +485,7 @@ describe('dvAssetPool', () => {
       // Both steps are undone: the import still belongs to the project, the still does not.
       await expect(fixture.run('asset.place', {}, [input(still)])).rejects.toMatchObject({ code: 'invalid_inputs' })
       expect((await fixture.run('asset.place', {}, [input(imported)])).status).toBe('done')
-      expect(fixture.ctx.dvProject.getState(fixture.project).components.asset.placed).toEqual([imported])
+      expect(placedOf(fixture.ctx.dvProject.getState(fixture.project))).toEqual([imported])
     })
 
     it('reads the last frame of a fragmented video, falls through the seek attempts, and rethrows other failures', async () => {

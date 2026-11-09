@@ -1,19 +1,24 @@
 /**
  * The project canvas: a pan-and-zoom surface that draws the nodes of the registered node types in the canvas chrome
  * (a caption above a frame) around each type's `dv.canvas.card` body; a click selects a node, and a double click opens
- * its editor panel, which grows out of the node and shrinks back into it (`@dv/ui-kit/zoom.ts`). Node positions, frame
- * sizes, and the viewport are stored per project through `/api/dv/canvas/layout`; a node without a stored position
- * gets its type's default size at the first free spot at or below its automatic position, and that box is stored once
- * the node's record stops rendering, so a node that appears later never moves or covers another. The corner handles of
- * the selected node resize it within its type's sizing. The opened nodes are kept per
- * project in `localStorage` for the unseen dot. Colors come from the `--dv-*` theme variables that `@dv/ui-shell`
+ * its editor panel, which grows out of the node and shrinks back into it (`@dv/ui-kit/zoom.ts`). Every node sits at the
+ * position of the canvas's node list, with its type's default size where the stored size is null. The end of a drag or
+ * of a resize from a corner handle of the selected node writes one `canvas.node_position` record, so undo reverts it; the
+ * canvas draws the new box at once and drops it again when the write is refused. A node's right-click menu, the trash
+ * button of its editor, and Delete or Backspace on the selected node remove it from the canvas with one
+ * `canvas.node_remove` record after the user confirms. F2 on the selected node, its menu's Rename item, or a click on
+ * the editor's title renames the node with one `canvas.node_rename` record, drawn at once the same way. The viewport
+ * is view state, stored
+ * per project through `/api/dv/canvas/layout`. The opened versions are kept per project in `localStorage` for the unseen
+ * dot. Colors come from the `--dv-*` theme variables that `@dv/ui-shell`
  * defines and from each type's `color`. The canvas names no node type.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import type { PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots'
 import { errorMessage } from '@dv/ui-kit/api.ts'
 import type { DvClient } from '@dv/ui-kit/api.ts'
+import type { InlineRenameProps } from '@dv/ui-kit/InlineRename.tsx'
 import { useLanguage } from '@dv/ui-kit/locale.ts'
 import type { Asset, OperationRequest, ProjectRecord } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
@@ -24,10 +29,10 @@ import type { CanvasViewport, NodePosition, NodeSpot } from '../canvas-layout.ts
 import { cardsOf } from './agent-canvas.ts'
 import type { CanvasViews } from './agent-canvas.ts'
 import type { CanvasRequest, EditorHost, NodeAction, NodeHost, NodeView, RerunRequest } from './contract/index.ts'
-import { buildCanvasGraph, freePositions, isFinished, previewOf, ROW } from './graph.ts'
+import { boxOf as storedBox, buildCanvasGraph, isFinished, previewOf, withNames } from './graph.ts'
 import type { CanvasEdge, CanvasNode, CanvasRegistrations } from './graph.ts'
-import { cardHeight, edgeAnchorY, NodeCard, textScaleAt, TypeLabelBody } from './NodeCard.tsx'
-import type { CanvasTranslate } from './NodeCard.tsx'
+import { cardHeight, edgeAnchorY, NodeCard, NodeMenu, textScaleAt, TypeLabelBody } from './NodeCard.tsx'
+import type { CanvasTranslate, NodeMenuItem } from './NodeCard.tsx'
 import { readLayout, writeLayout } from './layout-client.ts'
 import { NodeEditor } from './NodeEditor.tsx'
 import type { EditorArea, RenderCanvasSlot, SurfaceHosts } from './NodeEditor.tsx'
@@ -44,7 +49,7 @@ export interface CanvasViewProps extends PropsRenderFactories {
   /** The project to draw. */
   projectId: string
   client: DvClient
-  /** The registry in which the canvas, while loaded, answers the canvas tools' reads and draws their stored moves. */
+  /** The registry in which the canvas, while loaded, answers the canvas tools' reads. */
   views: CanvasViews
   /** The chat session the canvas sits beside, recorded as the `session` of the canvas's writes. */
   session: string | null
@@ -59,13 +64,14 @@ export interface CanvasViewProps extends PropsRenderFactories {
 
 /** A request to open the node of a record, such as a History selection, until the canvas takes it. */
 export interface CanvasFocus {
+  /** A node ID, a version of a node, or a record whose first output a node shows. */
   record: string
   /** Mark the request as handled, so a remounted canvas does not open the node again. */
   take: () => void
 }
 
 /** The tallest a card grows (larger text at low zoom plus a badge row), used when fitting. */
-const FIT_NODE_HEIGHT = ROW - 20
+const FIT_NODE_HEIGHT = 180
 /** How far above the pointer a dropped node's top edge lands, in canvas units, so the pointer rests on its caption. */
 const DROP_OFFSET_Y = 40
 const MIN_ZOOM = 0.25
@@ -74,6 +80,15 @@ const DRAG_THRESHOLD = 4
 /** The longest pause between two clicks on one node that opens its editor, in ms. */
 const DOUBLE_CLICK_MS = 400
 const SAVE_DELAY_MS = 500
+/** The operation that moves or resizes a node of the canvas's node list. */
+const NODE_POSITION = 'canvas.node_position'
+/** The operation that removes nodes from the canvas's node list. */
+const NODE_REMOVE = 'canvas.node_remove'
+/** The operation that names a node, and the longest name it takes, in characters. */
+const NODE_RENAME = 'canvas.node_rename'
+const NAME_MAX = 80
+/** The zoom below which F2 renames a node in its editor, because the caption is too small to type in. */
+const CAPTION_RENAME_ZOOM = 0.5
 /** The zoom ref of a stacked editor, which opens and closes without the zoom transition. */
 const noZoom = (element: HTMLElement | null): void => { void element }
 /** Canvas dot grid pitch at 100%, in canvas units. */
@@ -86,8 +101,15 @@ const CANVAS_CSS = `
 .dv-canvas-btn:hover:not(:disabled) { background: var(--dv-surface-3); }
 .dv-canvas-btn:focus-visible, .dv-canvas-soft:focus-visible, [data-node-id]:focus-visible > [data-node-frame] { outline: 2px solid var(--dv-accent); outline-offset: 2px; }
 [data-node-id]:focus-visible { outline: none; }
+.dv-canvas-title { background: transparent; transition: background-color 120ms var(--dv-ease); }
+.dv-canvas-title:hover, .dv-canvas-title:focus-visible { background: var(--dv-surface-3); }
+.dv-canvas-title:focus-visible { outline: 2px solid var(--dv-accent); outline-offset: 2px; }
+.dv-canvas-title > svg { opacity: 0; }
+.dv-canvas-title:hover > svg, .dv-canvas-title:focus-visible > svg { opacity: 1; }
 .dv-canvas-soft { background: var(--dv-accent-soft); color: var(--dv-accent-text); }
-@media (prefers-reduced-motion: reduce) { .dv-canvas-btn { transition: none; } }
+.dv-canvas-danger { color: var(--dv-text-2); }
+.dv-canvas-danger:hover:not(:disabled) { color: var(--dv-danger); }
+@media (prefers-reduced-motion: reduce) { .dv-canvas-btn, .dv-canvas-title { transition: none; } }
 `
 
 const clampZoom = (zoom: number): number => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
@@ -118,8 +140,9 @@ export function wheelZoomFactor(event: Pick<WheelEvent, 'deltaY' | 'deltaMode' |
 }
 
 /**
- * The `localStorage` key prefix of a project's opened nodes: JSON `{ since, ids }`, where `since` is the newest finish (else
- * creation) time of a record when the project was first opened in this browser and `ids` are the node IDs opened since.
+ * The `localStorage` key prefix of a project's opened versions: JSON `{ since, ids }`, where `since` is the newest finish
+ * (else creation) time of a record when the project was first opened in this browser and `ids` are the record IDs of the
+ * versions opened since.
  */
 const SEEN_KEY = 'dv-canvas-seen:'
 
@@ -160,18 +183,29 @@ function writeSeen(projectId: string, seen: Seen): void {
 }
 
 function wasSeen(seen: Seen, node: CanvasNode): boolean {
-  return seen.ids.has(node.id) || (node.record !== null && settledAt(node.record) <= seen.since)
+  return seen.ids.has(node.record.id) || settledAt(node.record) <= seen.since
 }
 
 function settledAt(record: ProjectRecord): string {
   return record.finished_at ?? record.created_at
 }
 
-/** A rerun whose new node the canvas waits for; `known` holds the nodes drawn before the request. */
+/** A rerun whose new version the canvas waits for: the node, its versions before the request, and the settling. */
 interface AwaitedRender {
-  basedOn: string
+  node: string
   known: ReadonlySet<string>
   resolve: () => void
+}
+
+/** Where a node's name field shows: in its caption on the canvas, or in the title of its open editor. */
+interface Renaming {
+  node: string
+  place: 'caption' | 'editor'
+}
+
+/** Whether a key event comes from a field that takes text, where F2 belongs to the field. */
+function inTextField(target: EventTarget): boolean {
+  return target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
 }
 
 /** An in-progress pointer gesture. A resize drags one corner of the selected node ({@link resizedBox}). */
@@ -181,26 +215,14 @@ type Gesture =
   | { kind: 'resize'; node: CanvasNode; corner: ResizeCorner; startX: number; startY: number; origin: NodePosition; at: NodePosition; moved: boolean }
 
 /**
- * @param boxes - the boxes that the canvas gave the nodes, by node ID.
+ * @param boxes - the boxes of the gestures and writes in flight, by node ID.
  * @param node - a node.
- * @returns its box, else, until the canvas gives it one, its automatic position at its type's default size.
+ * @returns its box in flight, else its stored box.
  */
-const boxIn = (boxes: Readonly<Record<string, NodePosition>>, node: CanvasNode): NodePosition =>
-  boxes[node.id] ?? { x: node.x, y: node.y, ...node.sizing.defaultSize }
+const boxIn = (boxes: Readonly<Record<string, NodePosition>>, node: CanvasNode): NodePosition => boxes[node.id] ?? storedBox(node)
 
 /**
- * @param map - a map.
- * @param keys - the keys to drop.
- * @returns a copy of the map without those keys.
- */
-function withoutKeys<V>(map: ReadonlyMap<string, V>, keys: readonly string[]): Map<string, V> {
-  const next = new Map(map)
-  for (const key of keys) next.delete(key)
-  return next
-}
-
-/**
- * @param record - positions or any other record keyed by node ID.
+ * @param record - boxes or any other record keyed by node ID.
  * @param keys - the keys to drop.
  * @returns a copy of the record without those keys.
  */
@@ -209,7 +231,7 @@ function withoutProperties<V>(record: Readonly<Record<string, V>>, keys: readonl
 }
 
 function viewOf(node: CanvasNode, unseen: boolean, rerunning: boolean): NodeView {
-  const { nodeType: _nodeType, x: _x, y: _y, ...entry } = node
+  const { nodeType: _nodeType, node: _node, ...entry } = node
   return { ...entry, unseen, rerunning }
 }
 
@@ -225,55 +247,45 @@ export function CanvasView(
   const language = useLanguage()
   const base = useProjectState(client, projectId)
   const operations = useOperations(client)
-  // This view's placements whose record the project state does not show yet: asset ID → on the canvas.
-  const [inFlight, setInFlight] = useState<ReadonlyMap<string, boolean>>(new Map())
-  // The project's canvas, with this view's placements in flight already applied.
-  const placed = useMemo(() => {
-    const next = new Set(base.value?.components.asset.placed ?? [])
-    for (const [assetId, on] of inFlight) {
-      if (on) next.add(assetId)
-      else next.delete(assetId)
-    }
-    return next
-  }, [base.value, inFlight])
-  // A placement leaves the in-flight map once the project state shows it.
-  useEffect(() => {
-    if (base.value === null || inFlight.size === 0) return
-    const shown = new Set(base.value.components.asset.placed)
-    const settled = [...inFlight].filter(([assetId, on]) => shown.has(assetId) === on)
-    if (settled.length > 0) setInFlight(current => withoutKeys(current, settled.map(([assetId]) => assetId)))
-  }, [base.value, inFlight])
   /**
-   * Put an asset on the project's canvas or take it off: at once in this view, then through an `asset.place` or
-   * `asset.unplace` record.
+   * Put an asset on the project's canvas through an `asset.place` record.
    * @param assetId - the asset.
-   * @param on - true to place it, false to remove it.
-   * @returns settles when the record is written; a refused write puts the canvas back as it was.
+   * @returns settles when the record is written.
    */
-  const changePlacement = (assetId: string, on: boolean): Promise<unknown> => {
-    setInFlight(current => new Map(current).set(assetId, on))
-    return client.placeOnCanvas(projectId, [assetId], on, session).catch((error: unknown) => {
-      setInFlight(current => withoutKeys(current, [assetId]))
-      throw error
-    })
-  }
+  const placeAsset = (assetId: string): Promise<unknown> => client.placeOnCanvas(projectId, [assetId], session)
+  // The names of `canvas.node_rename` writes until the project state shows them, by node ID; null clears a name.
+  const [names, setNames] = useState<Record<string, string | null>>({})
+  const namesRef = useRef(names)
+  namesRef.current = names
+  const baseRef = useRef(base.value)
+  baseRef.current = base.value
   // The previous project's state stays loaded until the next project's arrives; the canvas draws only this project's.
   const graph = useMemo(() => {
     if (base.value === null || base.value.project.id !== projectId) return null
-    return { state: base.value, ...buildCanvasGraph(base.value, placed, operations.value ?? [], language, descriptors) }
-  }, [base.value, placed, projectId, operations.value, language, descriptors])
+    const state = Object.keys(names).length === 0 ? base.value : withNames(base.value, names)
+    return { state, ...buildCanvasGraph(state, operations.value ?? [], language, descriptors) }
+  }, [base.value, names, projectId, operations.value, language, descriptors])
   const assetById = useMemo(() => new Map<string, Asset>((graph?.state.assets ?? []).map(asset => [asset.id, asset])), [graph])
 
+  // The boxes of a gesture and of a `canvas.node_position` write until the project state shows them, by node ID.
   const [positions, setPositions] = useState<Record<string, NodePosition>>({})
   const [viewport, setViewport] = useState<CanvasViewport>({ x: 40, y: 40, zoom: 1 })
   const [layoutReady, setLayoutReady] = useState(false)
   // The node with the accent ring, and the node whose editor is open; closing the editor keeps the ring.
   const [selected, setSelected] = useState<string | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState<Renaming | null>(null)
   // The editor a reference chip opened over the `editing` one; it closes first, and with the editor beneath it.
   const [stacked, setStacked] = useState<string | null>(null)
   useEffect(() => { setStacked(null) }, [editing])
+  // A name field in an editor closes with that editor.
+  useEffect(() => {
+    setRenaming(current => current?.place !== 'editor' || current.node === editing || current.node === stacked ? current : null)
+  }, [editing, stacked])
   const [seen, setSeen] = useState<{ project: string; seen: Seen } | null>(null)
+  // The node whose right-click menu is open, at the click point in px from the canvas's top-left corner.
+  const [menu, setMenu] = useState<{ node: string; x: number; y: number } | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const container = useRef<HTMLDivElement | null>(null)
   const gesture = useRef<Gesture | null>(null)
@@ -285,14 +297,8 @@ export function CanvasView(
   viewportRef.current = viewport
   const positionsRef = useRef(positions)
   positionsRef.current = positions
-  const moved = useRef(new Map<string, NodePosition>())
-  // The nodes whose box the canvas chose while their record was rendering. Such a box is drawn and counts as occupied,
-  // but is not stored until the node's default size is final.
-  const unsavedSpots = useRef(new Set<string>())
-  // Stored corners without a size, from a layout file written before nodes had a stored size or from an agent's move
-  // of a node that this canvas has not given a final box yet: the canvas gives each node its default size there once
-  // and stores the box.
-  const sizeless = useRef<Record<string, NodeSpot>>({})
+  // The position fields of each node's last `canvas.node_position` write, by node ID.
+  const written = useRef<Record<string, Partial<NodePosition>>>({})
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const needsFit = useRef(false)
   // True while the viewport is an automatic fit; resizing the canvas refits until the user pans or zooms.
@@ -306,19 +312,10 @@ export function CanvasView(
   useEffect(() => {
     let live = true
     setLayoutReady(false)
-    // A canvas without stored positions still works with the automatic layout, so a failed read counts as empty.
-    void readLayout(projectId).catch(() => ({ positions: {}, viewport: null })).then((layout) => {
+    // A canvas without a stored viewport fits its nodes, so a failed read counts as none.
+    void readLayout(projectId).catch(() => ({ viewport: null })).then((layout) => {
       if (!live) return
-      // The stored layout wins over a drag made before it arrived.
-      moved.current.clear()
-      unsavedSpots.current.clear()
-      const stored: Record<string, NodePosition> = {}
-      sizeless.current = {}
-      for (const [id, { x, y, width, height }] of Object.entries(layout.positions)) {
-        if (width === undefined || height === undefined) sizeless.current[id] = { x, y }
-        else stored[id] = { x, y, width, height }
-      }
-      setPositions(stored)
+      setPositions({})
       if (layout.viewport !== null) setViewport(layout.viewport)
       needsFit.current = layout.viewport === null
       setLayoutReady(true)
@@ -329,15 +326,13 @@ export function CanvasView(
     }
   }, [projectId])
 
-  /** Store the moved positions and the viewport after the gesture settles. */
+  /** Store the viewport after the pan or zoom settles. */
   const scheduleSave = useCallback(() => {
     if (saveTimer.current !== null) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
       saveTimer.current = null
-      const patch = Object.fromEntries(moved.current)
-      moved.current.clear()
-      // The next save carries the viewport again; lost positions fall back to the automatic layout.
-      void writeLayout(projectId, { positions: patch, viewport: viewportRef.current }).catch(() => null)
+      // A lost save leaves the stored viewport; the next save carries the viewport again.
+      void writeLayout(projectId, { viewport: viewportRef.current }).catch(() => null)
     }, SAVE_DELAY_MS)
   }, [projectId])
 
@@ -417,6 +412,29 @@ export function CanvasView(
     return () => { window.removeEventListener('keydown', onKey) }
   }, [editing, stacked])
 
+  // A press outside the node menu, Escape, and a pan or zoom close the menu.
+  useEffect(() => {
+    if (menu === null) return
+    const close = (event: Event): void => {
+      if (event instanceof KeyboardEvent ? event.key === 'Escape' : !(event.target instanceof Node && menuRef.current?.contains(event.target) === true)) setMenu(null)
+    }
+    window.addEventListener('pointerdown', close)
+    window.addEventListener('keydown', close)
+    return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', close) }
+  }, [menu])
+  useEffect(() => { setMenu(null) }, [viewport])
+
+  // A node that leaves the list, such as after a removal, takes its selection, editor and menu with it.
+  useEffect(() => {
+    if (graph === null) return
+    const gone = (id: string | null): boolean => id !== null && !graph.nodes.some(node => node.id === id)
+    if (gone(selected)) setSelected(null)
+    if (gone(editing)) setEditing(null)
+    if (gone(stacked)) setStacked(null)
+    if (gone(menu?.node ?? null)) setMenu(null)
+    if (gone(renaming?.node ?? null)) setRenaming(null)
+  }, [graph, selected, editing, stacked, menu, renaming])
+
   /** Pan so a node sits at the center of the canvas, keeping the zoom. */
   const centerOn = useCallback((node: CanvasNode) => {
     const { width, height } = sizeOf(container.current)
@@ -436,8 +454,7 @@ export function CanvasView(
     const recordId = focus.record
     const firstOutput = graph.state.components.proj.records.find(record => record.id === recordId)?.outputs[0]
     const node = graph.nodes.find(candidate => candidate.id === recordId)
-      ?? graph.nodes.find(candidate => candidate.record?.id === recordId)
-      ?? graph.nodes.find(candidate => candidate.records?.includes(recordId) === true)
+      ?? graph.nodes.find(candidate => candidate.versions.includes(recordId))
       ?? graph.nodes.find(candidate => firstOutput !== undefined && candidate.assets.includes(firstOutput))
     if (node === undefined) return
     focus.take()
@@ -446,17 +463,109 @@ export function CanvasView(
     setEditing(node.id)
   }, [focus, layoutReady, graph, centerOn])
 
-  /** Move a node so that its top edge is centered on a dropped canvas point, and store its box; the node keeps its size. */
-  const placeNode = useCallback((node: CanvasNode, point: NodeSpot) => {
-    const size = boxIn(positionsRef.current, node)
-    const box = { ...size, x: point.x - size.width / 2, y: point.y }
+  // The project state on show when the server answered each node's write; a later state is past the write.
+  const answered = useRef(new Map<string, unknown>())
+  /**
+   * Write a node's new box as one `canvas.node_position` record: the corner of a move, or the whole box of a resize. The
+   * canvas draws the box until the project state shows it, or until the first state after the server answered, such as
+   * the state of an undo that came first; it drops the box again when the write is refused.
+   * @param node - the node.
+   * @param box - the new box.
+   * @param resized - whether the size changed too.
+   */
+  const writePosition = useCallback((node: CanvasNode, box: NodePosition, resized: boolean) => {
+    answered.current.delete(node.id)
     positionsRef.current = { ...positionsRef.current, [node.id]: box }
     setPositions(all => ({ ...all, [node.id]: box }))
+    setNotice(null)
+    const corner = { node: node.id, x: box.x, y: box.y }
+    written.current = { ...written.current, [node.id]: resized ? box : { x: box.x, y: box.y } }
+    client.runOperation({
+      project: projectId, operation: NODE_POSITION, surface: 'canvas', ...session === null ? {} : { session },
+      params: resized ? { ...corner, width: box.width, height: box.height } : corner,
+      intent: `${resized ? 'resize' : 'move'} ${node.title} on the canvas`,
+    }).then(() => {
+      if (positionsRef.current[node.id] === box) answered.current.set(node.id, graphRef.current?.state)
+    }, (error: unknown) => {
+      setPositions(all => all[node.id] === box ? withoutProperties(all, [node.id]) : all)
+      setNotice(t('error', { message: errorMessage(error) }))
+    })
+  }, [client, projectId, session, t])
+
+  // A box in flight leaves once the project state shows the fields its write set. A move sets only the corner, so a node
+  // without a stored size takes its type's default size then, even when that size changed since the drag.
+  useEffect(() => {
+    if (graph === null) return
+    const shown = graph.nodes.flatMap((node) => {
+      const box = positions[node.id]
+      const fields = written.current[node.id]
+      const stored = node.node.position
+      const showsWrite = fields !== undefined
+        && Object.entries(fields).every(([field, value]) => stored[field as keyof NodePosition] === value)
+      const settled = answered.current.has(node.id) && answered.current.get(node.id) !== graph.state
+      return box !== undefined && gesture.current === null && (showsWrite || settled) ? [node.id] : []
+    })
+    for (const id of shown) answered.current.delete(id)
+    if (shown.length > 0) setPositions(all => withoutProperties(all, shown))
+  }, [graph, positions])
+
+  const renamedAt = useRef(new Map<string, unknown>())
+  /**
+   * Write a node's new name as one `canvas.node_rename` record. The canvas draws the name until the project state shows
+   * it, or until the first state after the server answered, and drops it again when the write is refused.
+   * @param node - the node.
+   * @param title - the trimmed name; empty clears it.
+   */
+  const renameNode = (node: CanvasNode, title: string): void => {
+    const name = title === '' ? null : title
+    if (name === node.node.name) return
+    setNames(all => ({ ...all, [node.id]: name }))
+    renamedAt.current.delete(node.id)
+    setNotice(null)
+    client.runOperation(canvasRequest({ operation: NODE_RENAME, params: { node: node.id, name }, intent: `rename ${node.title} on the canvas` }))
+      .then(() => { if (namesRef.current[node.id] === name) renamedAt.current.set(node.id, baseRef.current) }, (error: unknown) => {
+        setNames(all => all[node.id] === name ? withoutProperties(all, [node.id]) : all)
+        setNotice(t('error', { message: errorMessage(error) }))
+      })
+  }
+  useEffect(() => {
+    const state = base.value
+    if (state === null) return
+    const shown = Object.keys(names).filter(id => state.components.canvas.nodes[id]?.name === names[id]
+      || (renamedAt.current.has(id) && renamedAt.current.get(id) !== state))
+    for (const id of shown) renamedAt.current.delete(id)
+    if (shown.length > 0) setNames(all => withoutProperties(all, shown))
+  }, [base.value, names])
+  /** The name field of a node, which saves through {@link renameNode} and refuses a name over {@link NAME_MAX}. */
+  const renameField = (node: CanvasNode): Omit<InlineRenameProps, 'value'> => ({
+    label: t('node.renameAria'),
+    check: title => title.length > NAME_MAX ? t('node.renameTooLong', { max: String(NAME_MAX) }) : null,
+    onSave: (title) => { renameNode(node, title) },
+    onClose: () => { setRenaming(null) },
+  })
+  /** Rename a node in its caption, or in its editor when the editor is open or the zoom is low. */
+  const startRename = (id: string): void => {
+    if (editing === null && viewport.zoom >= CAPTION_RENAME_ZOOM) {
+      setRenaming({ node: id, place: 'caption' })
+      return
+    }
+    if (id !== stacked) setEditing(id)
+    setRenaming({ node: id, place: 'editor' })
+  }
+  /** F2 renames the node of the top open editor, or the selected node. */
+  const renameKey = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    const id = stacked ?? editing ?? selected
+    if (event.key !== 'F2' || inTextField(event.target) || id === null) return
+    event.preventDefault()
+    startRename(id)
+  }
+
+  /** Move a node so that its top edge is centered on a dropped canvas point; the node keeps its size. */
+  const placeNode = useCallback((node: CanvasNode, point: NodeSpot) => {
+    const size = boxIn(positionsRef.current, node)
     setTopNode(node.id)
-    moved.current.set(node.id, box)
-    unsavedSpots.current.delete(node.id)
-    scheduleSave()
-  }, [scheduleSave])
+    writePosition(node, { ...size, x: point.x - size.width / 2, y: point.y }, false)
+  }, [writePosition])
 
   // Place dropped assets whose nodes have appeared.
   const graphRef = useRef(graph)
@@ -473,27 +582,6 @@ export function CanvasView(
   }, [placeNode])
   useEffect(() => { placePending() }, [graph, placePending])
 
-  // Give every node without a stored box its default size at a free spot, or at its stored corner of an older layout
-  // file, and store the box once the node's default size is final. A rendering node's box stays unsaved: it is drawn and
-  // occupied, and when the node stops rendering the canvas drops the box and places the node again at its final default
-  // size, then stores that box. The ref is updated at once so that the reveal of a new node below centers on its spot;
-  // an earlier queued position, such as a dropped asset's, wins over the free spot.
-  useEffect(() => {
-    if (!layoutReady || graph === null) return
-    const rendering = new Set(graph.nodes.flatMap(node => node.flags.rendering ? [node.id] : []))
-    const settled = [...unsavedSpots.current].filter(id => !rendering.has(id))
-    for (const id of settled) unsavedSpots.current.delete(id)
-    const kept = withoutProperties(positionsRef.current, settled)
-    const added = freePositions(graph.nodes, kept, sizeless.current, cardHeight)
-    if (settled.length === 0 && Object.keys(added).length === 0) return
-    for (const id of Object.keys(added)) if (rendering.has(id)) unsavedSpots.current.add(id)
-    positionsRef.current = { ...added, ...kept }
-    setPositions(all => ({ ...added, ...withoutProperties(all, settled) }))
-    const final = Object.fromEntries(Object.entries(added).filter(([id]) => !rendering.has(id)))
-    sizeless.current = withoutProperties(sizeless.current, Object.keys(final))
-    if (Object.keys(final).length > 0) void writeLayout(projectId, { positions: final }).catch(() => null)
-  }, [layoutReady, graph, projectId])
-
   // Registered once per load, so that a graph refetch neither re-registers the canvas nor reorders the registry.
   const drawnRef = useRef(graph?.nodes ?? [])
   drawnRef.current = graph?.nodes ?? []
@@ -503,23 +591,11 @@ export function CanvasView(
     return views.mount({
       projectId, session,
       cards: () => cardsOf(drawnRef.current, node => boxIn(positionsRef.current, node)),
-      // An agent's move is drawn as a drop is, and a drag that waits to be saved no longer carries its nodes.
-      place: (patch) => {
-        const placed: Record<string, NodePosition> = {}
-        for (const [id, spot] of Object.entries(patch)) {
-          moved.current.delete(id)
-          const box = positionsRef.current[id]
-          if (box === undefined || unsavedSpots.current.has(id)) sizeless.current[id] = spot
-          if (box !== undefined) placed[id] = { ...box, ...spot }
-        }
-        positionsRef.current = { ...positionsRef.current, ...placed }
-        setPositions(all => ({ ...all, ...placed }))
-      },
     })
   }, [loaded, projectId, session, views])
 
   const awaitedRender = useRef<AwaitedRender | null>(null)
-  const [rerunning, setRerunning] = useState<{ record: string; action: string | null } | null>(null)
+  const [rerunning, setRerunning] = useState<{ node: string; action: string | null } | null>(null)
   const settleAwaited = (): void => {
     awaitedRender.current = null
     setRerunning(null)
@@ -528,7 +604,7 @@ export function CanvasView(
     const awaited = awaitedRender.current
     if (awaited === null || graph === null) return
     const node = graph.nodes.find(candidate =>
-      candidate.claimed && candidate.record.based_on === awaited.basedOn && !awaited.known.has(candidate.id))
+      candidate.id === awaited.node && candidate.versions.some(version => !awaited.known.has(version)))
     if (node === undefined) return
     settleAwaited()
     setEditing(null)
@@ -551,7 +627,7 @@ export function CanvasView(
     }
     const opened = editing === null ? undefined : graph.nodes.find(node => node.id === editing)
     if (opened === undefined || !isFinished(opened) || wasSeen(seenNodes, opened)) return
-    const next = { since: seenNodes.since, ids: new Set(seenNodes.ids).add(opened.id) }
+    const next = { since: seenNodes.since, ids: new Set(seenNodes.ids).add(opened.record.id) }
     writeSeen(projectId, next)
     setSeen({ project: projectId, seen: next })
   }, [graph, seenNodes, editing, projectId])
@@ -631,12 +707,24 @@ export function CanvasView(
     }
     // A press on a handle without movement changes nothing.
     if (current.kind === 'resize' && !current.moved) return
-    if (current.kind === 'node' || current.kind === 'resize') {
-      const id = current.kind === 'node' ? current.id : current.node.id
-      moved.current.set(id, current.at)
-      unsavedSpots.current.delete(id)
+    if (current.kind === 'pan') {
+      scheduleSave()
+      return
     }
-    scheduleSave()
+    const node = current.kind === 'resize' ? current.node : graph?.nodes.find(candidate => candidate.id === current.id)
+    if (node !== undefined) writePosition(node, current.at, current.kind === 'resize')
+  }
+  // A cancelled drag or resize writes no position, so the node goes back to the box it showed before.
+  const onPointerCancel = (): void => {
+    const current = gesture.current
+    gesture.current = null
+    if (current === null || !current.moved) return
+    if (current.kind === 'pan') {
+      scheduleSave()
+      return
+    }
+    const id = current.kind === 'resize' ? current.node.id : current.id
+    setPositions(all => withoutProperties(all, [id]))
   }
   const zoomBy = (factor: number): void => {
     autoFit.current = false
@@ -661,19 +749,58 @@ export function CanvasView(
     ...request, project: projectId, surface: 'canvas', ...session === null ? {} : { session },
   })
   /**
-   * Start a rerun of a record and wait for its new node, which the canvas reveals as soon as the project state shows it
-   * because `runOperation` resolves only when the operation ends.
-   * @param request - the request; its `based_on` is the record it runs again.
+   * Ask the user to confirm, then remove a node from the canvas with one `canvas.node_remove` record. The node leaves
+   * once the project state shows the record, and its selection and editor go with it.
+   * @param node - the node.
+   */
+  const removeNode = (node: CanvasNode): void => {
+    setMenu(null)
+    if (!window.confirm(t('node.removeConfirm', { title: node.title }))) return
+    void run(() => client.runOperation(canvasRequest({ operation: NODE_REMOVE, params: { nodes: [node.id] }, intent: `remove ${node.title} from the canvas` })))
+  }
+  /**
+   * F2 renames the selected node ({@link renameKey}). Delete or Backspace removes the selected node while no editor, asset
+   * picker or media preview is open and the key does not go to a text field.
+   * @param event - the key press inside the canvas.
+   */
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    renameKey(event)
+    if (event.key !== 'Delete' && event.key !== 'Backspace') return
+    const target = event.target as HTMLElement
+    if (editing !== null || target.closest('input, textarea, [contenteditable="true"], [contenteditable=""]') !== null) return
+    if (document.querySelector('[aria-modal="true"]') !== null) return
+    const node = graph?.nodes.find(candidate => candidate.id === selected)
+    if (node === undefined) return
+    event.preventDefault()
+    removeNode(node)
+  }
+  /**
+   * A right click on a node selects it and opens its menu at the pointer; elsewhere the browser's menu opens.
+   * @param event - the right click inside the canvas.
+   */
+  const onContextMenu = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    const card = (event.target as Element).closest('[data-node-id]')
+    const node = graph?.nodes.find(candidate => candidate.id === card?.getAttribute('data-node-id'))
+    if (node === undefined) return
+    event.preventDefault()
+    const rect = event.currentTarget.getBoundingClientRect()
+    setSelected(node.id)
+    setMenu({ node: node.id, x: event.clientX - rect.left, y: event.clientY - rect.top })
+  }
+  /**
+   * Start a rerun of a version and wait for the node's new version, which the canvas reveals as soon as the project
+   * state shows it because `runOperation` resolves only when the operation ends.
+   * @param request - the request; its `based_on` is the version it runs again.
    * @param action - the node action that started the rerun, or null for a body.
-   * @returns settles once the new node is revealed or once a later rerun replaces this one; rejects with the error of a
-   *   request that fails before that.
+   * @returns settles once the new version is revealed or once a later rerun replaces this one; rejects with the error of
+   *   a request that fails before that.
    */
   const rerun = (request: RerunRequest, action: string | null): Promise<void> => new Promise((resolve, reject) => {
-    const known = new Set(graphRef.current?.nodes.map(node => node.id))
-    const awaited: AwaitedRender = { basedOn: request.based_on, known, resolve }
+    const node = graphRef.current?.nodes.find(candidate => candidate.versions.includes(request.based_on))
+    const awaited: AwaitedRender = { node: node?.id ?? request.based_on, known: new Set(node?.versions), resolve }
     awaitedRender.current?.resolve()
     awaitedRender.current = awaited
-    setRerunning({ record: request.based_on, action })
+    setRerunning({ node: awaited.node, action })
     setNotice(null)
     client.runOperation(canvasRequest(request)).then(() => {
       if (awaitedRender.current !== awaited) return
@@ -725,7 +852,7 @@ export function CanvasView(
       if (node !== undefined) { placeNode(node, point); return }
       // Any other asset of the asset pool panel goes on the canvas, with its node under the pointer.
       pendingDrops.current.set(assetId, point)
-      void run(() => changePlacement(assetId, true))
+      void run(() => placeAsset(assetId))
       return
     }
     Array.from(event.dataTransfer.files).forEach((file, index) => {
@@ -759,7 +886,7 @@ export function CanvasView(
   const actionsFor = (view: NodeView): NodeAction[] => descriptors.actions.filter(action => action.shows(view, assetById))
     .toSorted((a, b) => a.order - b.order)
   const viewFor = (node: CanvasNode): NodeView => viewOf(
-    node, seenNodes !== null && isFinished(node) && !wasSeen(seenNodes, node), node.record !== null && node.record.id === rerunning?.record,
+    node, seenNodes !== null && isFinished(node) && !wasSeen(seenNodes, node), node.id === rerunning?.node,
   )
   let content: ReactNode = null
   if (graph === null) {
@@ -793,7 +920,6 @@ export function CanvasView(
                 style={{ stroke: highlighted ? 'var(--dv-accent)' : from.nodeType.color, strokeOpacity: highlighted ? 0.9 : 0.6 }}
                 strokeWidth={highlighted ? 2 : 1.5}
                 vectorEffect="non-scaling-stroke"
-                strokeDasharray={edge.kind === 'lineage' ? '6 5' : undefined}
                 data-edge={`${edge.from}>${edge.to}`}
               />
             )
@@ -820,9 +946,10 @@ export function CanvasView(
               body={renderSlot('dv.canvas.card', { node: view, assets, textScale, host: hosts.card }, {
                 entryKey: node.type, fallback: <TypeLabelBody label={node.nodeType.label()} textScale={textScale} />,
               })}
-              failedActions={node.claimed && node.flags.failed ? actionsFor(view) : []}
+              failedActions={node.flags.failed ? actionsFor(view) : []}
               rerunningAction={view.rerunning ? rerunning?.action ?? null : null}
               onAction={(action) => { action.run(view, hosts.action(action.id)) }}
+              rename={renaming?.place === 'caption' && renaming.node === node.id ? renameField(node) : null}
             />
           )
         })}
@@ -850,7 +977,6 @@ export function CanvasView(
         if (asset !== undefined) preview(projectId, asset, opener)
       },
       openNode: setStacked,
-      setPlaced: (assetId, on) => { void run(() => changePlacement(assetId, on)) },
       close,
     }
     const shown = (action: string | null): NodeHost['rerun'] => (request) => { void run(() => rerun(request, action)) }
@@ -867,13 +993,36 @@ export function CanvasView(
     }
     return { card: { run: services.run, rerun: shown(null) }, action: id => ({ ...services, rerun: shown(id) }), editor }
   }
+  /**
+   * The items of a node's right-click menu: the node actions that show on it, then 从画布移除. Every menu item of the
+   * canvas goes in this one list.
+   * @param node - the node.
+   * @returns the items, top first.
+   */
+  const menuItems = (node: CanvasNode): NodeMenuItem[] => {
+    const view = viewFor(node)
+    const host = hostsOf(() => { setEditing(null) })
+    return [
+      ...actionsFor(view).map(action => ({
+        id: action.id, label: action.label(), disabled: view.rerunning,
+        run: () => { setMenu(null); action.run(view, host.action(action.id)) },
+      })),
+      { id: 'rename', label: t('node.rename'), run: () => { setMenu(null); startRename(node.id) } },
+      { id: 'remove', label: t('node.remove'), danger: true, shortcut: { glyph: '⌫', keys: 'Delete Backspace' }, run: () => { removeNode(node) } },
+    ]
+  }
+  const menuNode = menu === null ? undefined : graph?.nodes.find(node => node.id === menu.node)
   /** The props that the editor of the open node and the stacked editor share. */
-  const sharedEditorProps = (node: CanvasNode, close: () => void) => {
+  const sharedEditorProps = (shown: NonNullable<typeof graph>, node: CanvasNode, close: () => void) => {
     const view = viewFor(node)
     return {
-      node, view, operations: operations.value ?? [], versionKinds: descriptors.versionKinds,
+      node, view, viewAt: (record: string) => viewFor(shown.atVersion(node, record)),
+      operations: operations.value ?? [], versionKinds: descriptors.versionKinds,
       actions: actionsFor(view), project: projectId, session, t, hosts: hostsOf(close), area, renderSlot, renderFactorySlot,
       onAcceptStale: (record: string) => { void run(() => client.acceptStale(projectId, record, 'canvas', session)) },
+      onRemove: () => { removeNode(node) },
+      rename: renaming?.place === 'editor' && renaming.node === node.id ? { ...renameField(node), hint: t('node.renameHint') } : null,
+      onRename: () => { setRenaming({ node: node.id, place: 'editor' }) },
       onClose: close,
     }
   }
@@ -887,14 +1036,19 @@ export function CanvasView(
       onPointerDown={onBackgroundDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
       onDragLeave={(event) => { if (event.currentTarget === event.target) setDragOver(false) }}
       onDrop={onDrop}
+      onKeyDown={onKeyDown}
+      onContextMenu={onContextMenu}
     >
       <style>{CANVAS_CSS}</style>
       {content}
+      {menu !== null && menuNode !== undefined
+        ? <NodeMenu key={`${menu.node}@${String(menu.x)},${String(menu.y)}`} at={menu} area={area} items={menuItems(menuNode)} label={t('menu.label')} menuRef={menuRef} />
+        : null}
       {notice !== null ? <p role="alert" style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', margin: 0, padding: '6px 10px', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-1)', border: '1px solid var(--dv-danger)', color: 'var(--dv-danger)', fontSize: 13, lineHeight: '20px', zIndex: 12 }}>{notice}</p> : null}
       <div role="toolbar" aria-label={t('canvas.zoom')} style={{ ...floating, position: 'absolute', left: 16, bottom: 16, display: 'flex', alignItems: 'center', gap: 2, padding: 4, borderRadius: 10 }} onPointerDown={(event) => { event.stopPropagation() }}>
         <button type="button" className="dv-canvas-btn" aria-label={t('canvas.zoomOut')} title={t('canvas.zoomOut')} style={toolButton} onClick={() => { zoomBy(1 / 1.2) }}>
@@ -912,7 +1066,7 @@ export function CanvasView(
             <div ref={editorZoom.fadeRef} aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'var(--dv-overlay)', zIndex: 9 }} />
             <NodeEditor
               key={editingNode.id} zoomRef={editorZoom.targetRef} state={graph.state}
-              {...sharedEditorProps(editingNode, () => { setEditing(null) })}
+              {...sharedEditorProps(graph, editingNode, () => { setEditing(null) })}
             />
           </>
         )
@@ -922,7 +1076,7 @@ export function CanvasView(
           // The stacked editor covers the canvas area; a press outside its panel closes it, not the editor beneath.
           <div style={{ position: 'absolute', inset: 0, zIndex: 11 }} onPointerDown={(event) => { event.stopPropagation(); setStacked(null) }}>
             <div aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'var(--dv-overlay)' }} />
-            <NodeEditor key={`stacked:${stackedNode.id}`} zoomRef={noZoom} {...sharedEditorProps(stackedNode, () => { setStacked(null) })} state={graph.state} />
+            <NodeEditor key={`stacked:${stackedNode.id}`} zoomRef={noZoom} {...sharedEditorProps(graph, stackedNode, () => { setStacked(null) })} state={graph.state} />
           </div>
         )
         : null}

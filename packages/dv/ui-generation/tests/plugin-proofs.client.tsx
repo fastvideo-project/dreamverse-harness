@@ -12,7 +12,7 @@ import type { ToolResultNode } from '@deepseek-ai/dsh-client-ui-conversation/cli
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import type { UiPlugin } from '@dv/ui-kit/registries.ts'
 import type { WireOperation } from '@dv/ui-kit/types.ts'
-import { asset, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { asset, canvasNode, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { ALL_KINDS, mountCanvas } from '../../ui-canvas/tests/canvas-runtime.client.tsx'
 import { apply as historyApply, inject as historyInject } from '../../ui-history/src/client/index.ts'
@@ -47,7 +47,8 @@ export function generationOperation(name: string, type: string, label: { zh: str
 }
 
 /**
- * Add to the fixture state a done record `p1d` of the primitive with its output, and a running record `p1r` with none.
+ * Add to the fixture state a done record `p1d` of the primitive with its output, and a running record `p1r` with none,
+ * each the one version of a node of the primitive's kind.
  * @param primitive - the primitive.
  * @param params - the params of both records.
  * @returns the state edit.
@@ -61,6 +62,11 @@ export function withRecords(primitive: Primitive, params: Record<string, unknown
     )
     state.components.proj.created_by[id] = 'p1d'
     state.assets.push(asset(id, mime, 'p1d', durationSec ?? null, primitive.operation.name))
+    for (const [node, y] of [['p1d', 600], ['p1r', 800]] as const) {
+      state.components.canvas.nodes[node] = canvasNode(primitive.type, [node], 0, y)
+      state.components.canvas.order.push(node)
+    }
+    state.components.canvas.assets[id] = 'p1d'
   }
 }
 

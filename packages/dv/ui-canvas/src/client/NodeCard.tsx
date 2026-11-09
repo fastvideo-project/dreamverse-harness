@@ -1,13 +1,18 @@
 /**
  * The chrome of one canvas node on the `--dv-*` theme variables: a caption above a frame. The caption is one line with
- * the title, the unseen dot, the stale tag and `meta`. The frame is a rounded outline that wears the selection ring and
- * holds the `dv.canvas.card` body, which paints its own fill, or, for a failed claimed node, the
- * failed words and actions on the card surface. The selected node has a resize handle at each corner of its frame.
- * The chrome names no node type.
+ * the title, or the name field while the node is renamed, the unseen dot, the stale tag, the version count of a node
+ * with several versions, and `meta`. The frame is a rounded outline that wears the selection ring and holds the
+ * `dv.canvas.card` body, which paints its own fill, or, for a node whose newest version failed, the failed words and
+ * actions on the card surface. A node with several versions has two offset frames behind its frame. The selected node
+ * has a resize handle at each corner of its frame. {@link NodeMenu} draws a node's right-click menu. The chrome names
+ * no node type.
  */
-import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import { useCallback, useState } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent, MutableRefObject, ReactNode } from 'react'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
 import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
+import { InlineRename } from '@dv/ui-kit/InlineRename.tsx'
+import type { InlineRenameProps } from '@dv/ui-kit/InlineRename.tsx'
 import { CAPTION_HEIGHT } from '../canvas-layout.ts'
 import type { NodePosition } from '../canvas-layout.ts'
 import type { NodeAction, NodeView, Size } from './contract/index.ts'
@@ -38,6 +43,8 @@ export function edgeAnchorY(frame: Pick<Size, 'height'>, textScale: number): num
 }
 
 const CORNERS: readonly ResizeCorner[] = ['nw', 'ne', 'sw', 'se']
+/** How far each frame behind a node with several versions sits up and right of the one in front, in canvas units. */
+const VERSION_OFFSET = 4
 /** The side of a handle square that overhangs the frame's corner, in canvas units. */
 const HANDLE_SIZE = 10
 
@@ -74,11 +81,13 @@ export interface NodeCardProps {
   onResizeDown: (corner: ResizeCorner, event: ReactPointerEvent<HTMLElement>) => void
   /** The body: the `dv.canvas.card` entry of the node's type. */
   body: ReactNode
-  /** For a failed claimed node, the actions that show on it; empty when the canvas is read-only. */
+  /** For a node whose newest version failed, the actions that show on it; empty when the canvas is read-only. */
   failedActions: readonly NodeAction[]
   /** The action whose rerun the node waits for, whose button reads the running words; null for none. */
   rerunningAction: string | null
   onAction: (action: NodeAction) => void
+  /** The name field that replaces the title while the node is renamed on the canvas; null for none. */
+  rename: Omit<InlineRenameProps, 'value'> | null
 }
 
 /**
@@ -92,7 +101,7 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   const scale = textScaleAt(zoom)
   const size = (base: number): number => Math.round(base * scale)
   const text = (base: 12 | 13): CSSProperties => ({ fontSize: size(base), lineHeight: `${String(size({ 12: 16, 13: 20 }[base]))}px` })
-  const failed = node.claimed && flags.failed
+  const failed = flags.failed
   // A selected frame wears the accent ring; a stale frame a danger outline; a failed frame the soft outline; any other
   // frame the plain outline.
   let ring = '0 0 0 1px var(--dv-line-strong)'
@@ -103,19 +112,28 @@ export function NodeCard(props: NodeCardProps): ReactNode {
     position: 'absolute', left: box.x, top: box.y, width: box.width, boxSizing: 'border-box', color: 'var(--dv-text)', cursor: 'grab', userSelect: 'none',
     opacity: flags.superseded ? 0.55 : 1, touchAction: 'none',
   }
-  const status = node.claimed ? node.nodeType.claimed?.status : undefined
+  const status = node.nodeType.status
   const running = status?.running() ?? t('node.running')
   let marker: string | null = null
   if (flags.rendering) marker = running
   else if (flags.failed) marker = status?.failed() ?? t('node.failed')
+  const count = node.versions.length
+  const meta = [count > 1 ? t('node.version', { n: String(count) }) : '', node.meta ?? ''].filter(part => part !== '').join(' · ')
   const caption = (
     <div style={{ ...text(12), height: size(CAPTION_HEIGHT), boxSizing: 'border-box', padding: '0 2px 4px', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--dv-text-2)' }}>
-      <span style={{ flex: 1, minWidth: 0, ...ellipsis }}>{node.title}</span>
+      {props.rename === null
+        ? <span style={{ flex: 1, minWidth: 0, ...ellipsis }}>{node.title}</span>
+        : (
+          <InlineRename
+            {...props.rename} value={node.title}
+            style={{ ...text(12), height: size(CAPTION_HEIGHT - 4), boxSizing: 'border-box', padding: `0 ${String(size(4))}px`, border: '1px solid var(--dv-accent)', borderRadius: 'var(--dv-radius-sm)', background: 'var(--dv-surface-1)', color: 'var(--dv-text)', fontFamily: 'inherit', outline: 'none' }}
+          />
+        )}
       {view.unseen
         ? <span role="img" aria-label={t('node.unseen')} title={t('node.unseen')} style={{ flex: 'none', width: size(8), height: size(8), borderRadius: 9999, background: 'var(--dv-accent)' }} />
         : null}
       {flags.stale ? <span style={{ flex: 'none', color: 'var(--dv-danger)' }}>{t('node.stale')}</span> : null}
-      {node.meta === undefined ? null : <span style={{ ...mono, flex: 'none' }}>{node.meta}</span>}
+      {meta === '' ? null : <span style={{ ...mono, flex: 'none' }}>{meta}</span>}
     </div>
   )
   let content: ReactNode
@@ -141,7 +159,7 @@ export function NodeCard(props: NodeCardProps): ReactNode {
         <div style={{ position: 'relative', height: box.height }}>
           {props.body}
           {marker !== null
-            ? <span style={{ ...text(13), position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dv-overlay)', color: flags.failed ? 'var(--dv-danger)' : 'var(--dv-text)', fontWeight: 500 }}>{marker}</span>
+            ? <span style={{ ...text(13), position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dv-overlay)', color: 'var(--dv-text)', fontWeight: 500 }}>{marker}</span>
             : null}
           {node.badges.length === 0
             ? null
@@ -169,6 +187,14 @@ export function NodeCard(props: NodeCardProps): ReactNode {
       title={failed ? node.record.error?.message : undefined}
     >
       {caption}
+      {count > 1
+        ? [2, 1].map(step => (
+          <div
+            key={step} aria-hidden="true" data-node-version-frame=""
+            style={{ position: 'absolute', left: step * VERSION_OFFSET, top: size(CAPTION_HEIGHT) - step * VERSION_OFFSET, width: '100%', height: box.height, boxSizing: 'border-box', borderRadius: 'var(--dv-radius-lg)', background: 'var(--dv-surface-2)', boxShadow: '0 0 0 1px var(--dv-line-strong)', opacity: step === 2 ? 0.5 : 0.8 }}
+          />
+        ))
+        : null}
       <div data-node-frame="" style={{ position: 'relative', height: box.height, overflow: 'hidden', borderRadius: 'var(--dv-radius-lg)', boxShadow: ring }}>
         {content}
       </div>
@@ -202,4 +228,71 @@ export function NodeCard(props: NodeCardProps): ReactNode {
  */
 export function TypeLabelBody({ label, textScale }: { label: string; textScale: number }): ReactNode {
   return <span style={{ ...CARD_SURFACE, display: 'flex', alignItems: 'center', padding: '0 10px', fontSize: Math.round(12 * textScale), color: 'var(--dv-text-2)' }}>{label}</span>
+}
+
+/** One item of a node's right-click menu. */
+export interface NodeMenuItem {
+  id: string
+  label: string
+  /** Draws the item in the danger color, for an item that takes something away. */
+  danger?: boolean
+  /** The key that does the same on the selected node: the glyph at the item's end and its `aria-keyshortcuts`. */
+  shortcut?: { glyph: string; keys: string }
+  disabled?: boolean
+  run: () => void
+}
+
+/** Props of {@link NodeMenu}. */
+export interface NodeMenuProps {
+  /** Where the right click landed, in px from the canvas area's top-left corner. */
+  at: { x: number; y: number }
+  /** The size of the canvas area, which the menu stays inside. */
+  area: { width: number; height: number }
+  items: readonly NodeMenuItem[]
+  /** The menu's accessible name. */
+  label: string
+  /** The menu element, so the canvas can tell a press inside it from one outside. */
+  menuRef: MutableRefObject<HTMLDivElement | null>
+}
+
+/** The space in px the menu keeps from the canvas area's edges. */
+const MENU_MARGIN = 8
+
+/**
+ * A node's right-click menu, in the timeline tab menu's style: one row per item, opening at the pointer and moved left
+ * or up of it when the canvas area has no room on the right or below.
+ * @param props - the click point, the canvas area, the items, the label and the menu ref.
+ * @returns the element.
+ */
+export function NodeMenu({ at, area, items, label, menuRef }: NodeMenuProps): ReactNode {
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null)
+  // The menu draws once at the pointer, then moves by its measured size; the canvas mounts a new menu per right click.
+  const attach = useCallback((element: HTMLDivElement | null) => {
+    menuRef.current = element
+    if (element !== null) setSize({ width: element.offsetWidth, height: element.offsetHeight })
+  }, [menuRef])
+  const fit = (point: number, extent: number, room: number): number =>
+    point + extent + MENU_MARGIN <= room ? point : Math.max(MENU_MARGIN, point - extent)
+  const left = size === null ? at.x : fit(at.x, size.width, area.width)
+  const top = size === null ? at.y : fit(at.y, size.height, area.height)
+  return (
+    <div
+      ref={attach} role="menu" aria-label={label} data-testid="dv-canvas-node-menu"
+      style={{ position: 'absolute', left, top, zIndex: 12, minWidth: 180, padding: 6, boxSizing: 'border-box', background: 'var(--dv-surface-1)', boxShadow: '0 0 0 1px var(--dv-line-strong), var(--dv-shadow-2)', borderRadius: 'var(--dv-radius-xl)' }}
+      onPointerDown={(event) => { event.stopPropagation() }}
+      onContextMenu={(event) => { event.preventDefault() }}
+    >
+      {items.map(item => (
+        <button
+          key={item.id} type="button" role="menuitem" className="dv-canvas-btn" disabled={item.disabled}
+          aria-keyshortcuts={item.shortcut?.keys}
+          style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', height: 32, padding: '0 10px', border: 'none', borderRadius: 'var(--dv-radius-md)', fontFamily: 'inherit', fontSize: 13, lineHeight: '20px', textAlign: 'left', cursor: item.disabled === true ? 'default' : 'pointer', opacity: item.disabled === true ? 0.6 : 1, color: item.danger === true ? 'var(--dv-danger)' : 'var(--dv-text)' }}
+          onClick={item.run}
+        >
+          <span style={{ flex: 1 }}>{item.label}</span>
+          {item.shortcut === undefined ? null : <span aria-hidden="true" style={{ ...mono, fontSize: 12, color: 'var(--dv-text-3)' }}>{item.shortcut.glyph}</span>}
+        </button>
+      ))}
+    </div>
+  )
 }

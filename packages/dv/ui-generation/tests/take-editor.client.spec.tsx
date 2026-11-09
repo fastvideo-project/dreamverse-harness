@@ -1,16 +1,16 @@
 // @vitest-environment jsdom
 /**
- * The take editor of a generation kind through the kit plugin's `dv.canvas.editor.claimed` entry, with the real media,
+ * The take editor of a generation kind through the kit plugin's `dv.canvas.editor` entry, with the real media,
  * asset pool and composer plugins.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import type { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
-import { currentLanguage } from '@dv/ui-kit/locale.ts'
 import type { ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { testRef } from '../../ui-canvas/tests/canvas-runtime.client.tsx'
 import { fixtureState, OPERATIONS, record, scriptedFetch, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
-import { claimedOf, CLIP_EXTEND, mountKit, recordingHost } from './take-kind.client.ts'
+import { nodeOfRecord } from '@dv/ui-kit/canvas-nodes.ts'
+import { addNode, CLIP_EXTEND, mountKit, nodeAt, recordingHost } from './take-kind.client.ts'
 
 let runtime: SlotTestRuntime | undefined
 
@@ -28,7 +28,8 @@ afterEach(async () => {
 })
 
 /**
- * Open the take editor of one record of a state, as the canvas renders it for the node that the graph builder draws.
+ * Open the take editor of one record of a state, as the canvas renders it for the node that has the record as a version,
+ * at that version; an appended record gets a node of its own.
  * @param id - the record ID.
  * @param options - the record changes, a record to append, the declarations the canvas passes, and what the host's
  *   `rerun` returns.
@@ -40,7 +41,7 @@ async function openEditor(id: string, options: {
   operations?: WireOperation[]
   rerun?: () => Promise<void>
 } = {}) {
-  const mounted = await mountKit({ 'dv.canvas.editor.claimed': { kind: 'keyed', scope: 'root' } })
+  const mounted = await mountKit({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } })
   runtime = mounted.runtime
   // The reference noun whose version kind names the take's `hero@1` input.
   await runtime.mount({ inject: [...testRef.inject], apply: testRef.apply })
@@ -50,11 +51,13 @@ async function openEditor(id: string, options: {
     ...state.components.proj.records.map(record => record.id === id ? edit(record) : record),
     ...options.append === undefined ? [] : [options.append],
   ]
+  if (options.append !== undefined) addNode(state, options.append.id, 'test_take')
   const operations = options.operations ?? OPERATIONS
-  const node = claimedOf(mounted.canvas, state, operations, currentLanguage()).get(id)
-  if (node === undefined) throw new Error(`no node ${id}`)
+  const shown = nodeOfRecord(state, id)
+  if (shown === null) throw new Error(`no node of ${id}`)
+  const node = nodeAt(mounted.canvas, state, operations, shown, id)
   const host = recordingHost(options.rerun)
-  const slot = runtime.renderSlot('dv.canvas.editor.claimed', { node, state, operations, host }, { entryKey: 'test_take' })
+  const slot = runtime.renderSlot('dv.canvas.editor', { node, state, operations, host }, { entryKey: 'test_take' })
   return { ...slot, host }
 }
 
@@ -103,7 +106,7 @@ describe('the take editor', () => {
     expect(host.rerun).toHaveBeenCalledWith({
       operation: 'shot.render', inputs: [{ role: 'reference', ref: 'hero@1' }],
       params: { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'hero walks through the rain at night in the city' },
-      intent: '在画布上生成 shot.render · 第 1 次 的新版本', based_on: 'g1',
+      intent: '在画布上生成 shot.render 的新版本', based_on: 'g1',
     })
   })
 
@@ -145,7 +148,7 @@ describe('the take editor', () => {
       return tile!
     })
     fireEvent.click(hero)
-    expect(host.openNode).toHaveBeenCalledWith('test_ref:hero')
+    expect(host.openNode).toHaveBeenCalledWith('e1')
     fireEvent.click(view.getByRole('button', { name: '添加素材' }))
     expect(host.pickAssets).toHaveBeenCalledWith(['hero@1'], { versions: true }, expect.any(Function))
     act(() => { host.pickAssets.mock.calls[0]?.[2](['hero@1', 'shot1.mp4']) })

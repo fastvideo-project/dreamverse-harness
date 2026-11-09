@@ -33,7 +33,9 @@ const DECLARED: WireOperation[] = [
  * @param changes - the fields that differ from those operations, no registered rows and no records.
  * @returns the label context.
  */
-const labels = (changes: Partial<LabelContext> = {}): LabelContext => ({ operations: DECLARED, rows: [], records: new Map(), ...changes })
+const labels = (changes: Partial<LabelContext> = {}): LabelContext => ({
+  operations: DECLARED, rows: [], records: new Map(), state: null, ...changes,
+})
 
 describe('actionRows', () => {
   it('folds the loaded records a record started under its row, in log order', () => {
@@ -88,6 +90,23 @@ describe('labels and times', () => {
     expect(actionLabel(record({ id: 'tu', operation: 'timeline.update' }), labels({ rows }))).toEqual(['修改时间线 全部', 'Update timeline all'])
     expect(actionLabel(record({ id: 'c', operation: 'character.create', params: { character: 'c1' } }), labels({ rows })))
       .toEqual(['新建角色', 'Create character'])
+  })
+
+  it('takes the whole label from the matching row\'s label, given the current state and the operations, else the operation label and subject', () => {
+    const state = fixtureState()
+    const seen: unknown[] = []
+    const rows: HistoryRow[] = [{
+      match: 'timeline.create', subject: () => [' t2', ' t2'],
+      label: (item, context) => {
+        seen.push([context.state, context.operations])
+        return item.params['timeline'] === 't2' ? ['整个标签', 'Whole label'] : null
+      },
+    }]
+    expect(actionLabel(record({ id: 'tc', operation: 'timeline.create', params: { timeline: 't2' } }), labels({ rows, state })))
+      .toEqual(['整个标签', 'Whole label'])
+    expect(seen).toEqual([[state, DECLARED]])
+    expect(actionLabel(record({ id: 'tc', operation: 'timeline.create', params: { timeline: 't3' } }), labels({ rows })))
+      .toEqual(['新建时间线 t2', 'Create timeline t2'])
   })
 
   it('gives a record without an operation no subject from a row of its component key', () => {

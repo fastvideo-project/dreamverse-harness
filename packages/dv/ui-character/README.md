@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to show the characters of `@dv/character` in the DreamVerse views. One `defineReferenceUi` declaration of `@dv/ui-reference-kit/reference-kit.tsx` gives the noun its canvas node type `character` (label 角色 / Character, node ID `character:<id>`), its version kind, its references in use, its `dv.canvas.card` and `dv.canvas.editor` entries (the kit's default card and `ReferenceEditor`), its `@` menu kind (section 角色 / Characters, order 1, address `dv:character/<id>`), and its History row (`character.`).
+Use this package to show the characters of `@dv/character` in the DreamVerse views. One `defineReferenceUi` declaration of `@dv/ui-reference-kit/reference-kit.tsx` gives the noun its canvas node type `character` (label 角色 / Character, one node per item that `character.create` makes), its version kind, its references in use, its `dv.canvas.card` and `dv.canvas.editor` entries (the kit's default card and `ReferenceEditor`), its `@` menu kind (section 角色 / Characters, order 1, address `dv:character/<id>`), and its History row (`character.`).
 
 ## Table of Contents
 
@@ -66,4 +66,4 @@ None; the package sends nothing to a model.
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **Column 0** — the node type sits in column 0 with every other noun, colored `var(--dv-node-1)`, because `ReferenceUiSpec` has no column field.
+- **Column 0** — the node type sits in column 0 with every other noun, colored `var(--dv-node-1)`, because `defineReference` of `@dv/reference-kit` places every noun node there and has no column field.

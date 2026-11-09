@@ -119,6 +119,21 @@ describe('Runner', () => {
     expect(next.record?.supersedes).toEqual([update.record?.id])
   })
 
+  it('sets based_on from the operation when the caller names none, and keeps the caller\'s based_on', async () => {
+    const m = startModules()
+    const project = await createTestProject(m)
+    m.runner.registerOperation(operation({ name: 'timeline.clip_insert', component: 'timeline' }))
+    const first = (await m.runner.run(request(project, 'timeline.clip_insert'))).record!
+    // The spec copies the head of the state it is given, which is the project's state before the call.
+    m.runner.registerOperation(operation({ name: 'bible.character_update', component: 'bible', basedOn: (_params, state) => state.head }))
+    const copied = await m.runner.run(request(project, 'bible.character_update'))
+    expect(copied.record?.based_on).toBe(first.id)
+    const named = await m.runner.run(request(project, 'bible.character_update', userOrigin(), { based_on: first.id }))
+    expect(named.record?.based_on).toBe(first.id)
+    const unset = await m.runner.run(request(project, 'timeline.clip_insert'))
+    expect(unset.record?.based_on).toBeNull()
+  })
+
   it('copies started_by from the request onto the record of a run or a scheduled run', async () => {
     const m = startModules()
     const project = await createTestProject(m)

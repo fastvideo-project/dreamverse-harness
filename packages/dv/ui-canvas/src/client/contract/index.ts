@@ -9,12 +9,16 @@ import type {} from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type { DvLanguage } from '@dv/ui-kit/locale.ts'
 import type { Registry, VersionKind } from '@dv/ui-kit/registries.ts'
-import type { Asset, OperationRequest, ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
+import type { Asset, OperationRequest, ProjectRecord, WireCanvasNode, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 
-interface NodeTypeCore {
+/**
+ * One type of canvas node: how the canvas draws the nodes of one kind of the canvas's node list. Registry
+ * `dvCanvas.nodeTypes`, keyed by `type`, the node type key that the host producer registers the kind under.
+ */
+export interface NodeType {
   /** The registering package; a refused key names it. One package may register several types. */
   id: string
-  /** The `data-node-type` value, a registry key, and the key of its `dv.canvas.card` and `dv.canvas.editor` entries. */
+  /** The node type key: the `kind` of the nodes it draws, the `data-node-type` value, and the key of its slot entries. */
   type: string
   /** The type label in the interface language: the editor header and the accessible names. */
   label(): string
@@ -23,74 +27,49 @@ interface NodeTypeCore {
    * edge that leaves a node of this type.
    */
   color: string
-  /** The default layout column. */
-  column: number
-  /**
-   * Input roles that push a node one column right of the node it reads them from, such as ['first_frame'] for a video
-   * take that continues the previous shot. Absent means none.
-   */
-  deepenOn?: readonly string[]
-}
-
-/**
- * How a type draws the current records of its operations. The canvas builds each claimed node itself: `id` is the
- * record ID, `record` the record, `assets` its outputs, and its edges are the record's inputs and its `based_on`;
- * so a claimed node cannot disagree with its record.
- */
-export interface ClaimedNodes {
-  /** One registry key `op:<operation>` per name, so two types never claim one operation. */
-  operations: readonly string[]
   /** The words that the canvas draws over the body of a running node and inside the frame of a failed node. */
-  status: NodeStatusText
-  /** The parts of one claimed node that vary by type. A pending record draws before it has outputs. */
-  entry(claimed: ClaimedRecord, input: NodeInput): ClaimedEntry
+  status?: NodeStatusText
+  /** The parts of one node that vary by type, from the node and one of its versions; a pending version has no outputs. */
+  entry(node: NodeInput): TypeEntry
 }
 
-/** What a type supplies for one claimed node. */
-export type ClaimedEntry = Pick<NodeEntry, 'title' | 'sizing'> & Partial<Pick<NodeEntry, 'meta' | 'preview'>>
+/** What a type supplies for one node at one version. */
+export interface TypeEntry {
+  /** The accessible name, the caption title and the text of the canvas's write intents. */
+  title: string
+  /** Text right of the title in the caption, such as '2.0s', drawn in the mono style. */
+  meta?: string
+  /** Assets that belong to the node: input edges from them start here, badges land here; default the version's outputs. */
+  assets?: readonly string[]
+  /** One of `assets` that stands for the node in small views; default `assets[0]`. */
+  preview?: string
+  /** The node's sizing, for the default size of a node without a stored size and the limits of a resize. */
+  sizing: NodeSizing
+  /** The kernel reference that this node stands for in a prompt, when it is not its record. */
+  ref?: { kind: string; id: string }
+}
 
-/** The nodes that a type reads from its own slice, such as nouns and plans. Pure. */
-export type SliceEntries = (input: Omit<NodeInput, 'records'>) => NodeEntry[]
-
-/**
- * One type of canvas node. Registry `dvCanvas.nodeTypes`, keyed by `type` and by `op:<operation>` for each claimed
- * operation. A type has claimed nodes, slice nodes, or both; the union refuses a type with neither.
- */
-export type NodeType = NodeTypeCore & (
-  | { claimed: ClaimedNodes; entries?: SliceEntries }
-  | { claimed?: never; entries: SliceEntries }
-)
-
-/** The status words of a type's claimed nodes in the interface language. */
+/** The status words of a type's nodes in the interface language. */
 export interface NodeStatusText {
   /** While the record is pending or running, such as 渲染中…. */
   running(): string
   failed(): string
 }
 
-/** What the canvas hands a type. */
+/** What the canvas hands a type for one node. */
 export interface NodeInput {
+  /** The node's ID in the canvas's node list. */
+  id: string
+  node: WireCanvasNode
+  /** The version to draw: the newest on the card, any version in the editor's version strip. */
+  record: OperationRecord
   state: WireState
   operations: readonly WireOperation[]
   language: DvLanguage
-  /** The assets on the project's canvas list, with this view's placements in flight. */
-  placed: ReadonlySet<string>
-  /** The current records that this type claims, in log order. */
-  records: readonly ClaimedRecord[]
 }
 
-/** A record of an operation call: a record whose operation a node type can claim. */
+/** A record of an operation call: a record that a canvas node can show. */
 export type OperationRecord = ProjectRecord & { operation: string }
-
-/** One claimed record of the current state, with the lineage that the canvas derived. */
-export interface ClaimedRecord {
-  record: OperationRecord
-  /**
-   * The 1-based number in its group when the group has several records: records linked by `based_on` are one group;
-   * null for a record alone in its group.
-   */
-  version: number | null
-}
 
 /** A box size in canvas units. */
 export type Size = { width: number; height: number }
@@ -106,54 +85,32 @@ export type NodeSizing =
   | { kind: 'window'; defaultSize: Size; minSize: Size }
   | { kind: 'media'; defaultSize: Size; minSize: Size; aspectRatio: { ratio: number; fixedHeight: number } }
 
-/** One node as a type supplies it. */
-export interface NodeEntry {
-  /** Stable: other plugins name it; positions and the unseen set store it. */
+/** One drawn node: the type's entry with the facts of the node list. */
+export interface NodeEntry extends Omit<TypeEntry, 'assets'> {
+  /** The node ID of the canvas's node list: other plugins name it, and `canvas.node_position` moves it. */
   id: string
-  /** The accessible name, the caption title and the text of the canvas's write intents. */
-  title: string
-  /** Text right of the title in the caption, such as '2.0s', drawn in the mono style. */
-  meta?: string
-  /** The record behind the shown state: flags, focus. */
-  record: ProjectRecord | null
-  /** Records of earlier versions; a focus on one opens this node, and none draws a node of its own. */
-  records?: readonly string[]
-  /** Assets that belong to this node: input edges from them start here, badges land here, a drop moves it. */
   assets: readonly string[]
-  /** A stand-in draws only when no other node owns one of its assets; of two stand-ins for one asset, the first. */
-  standIn?: true
-  /** One of `assets` that stands for the node in small views; default `assets[0]`. */
-  preview?: string
-  /**
-   * The node's sizing. The canvas computes the node's box from the stored size without measuring the node; a failed
-   * claimed node keeps its size.
-   */
-  sizing: NodeSizing
-  /** The kernel reference that this node stands for in a prompt, when it is not its record. */
-  ref?: { kind: string; id: string }
+  /** The version on show; the card always shows the newest. */
+  record: OperationRecord
+  /** The node's versions, oldest first. */
+  versions: readonly string[]
 }
 
 /** Display states of a node, read from its record. */
 export interface NodeFlags { stale: boolean; rendering: boolean; failed: boolean; superseded: boolean }
 
-/**
- * A node as its card, its editor and an action receive it. JSON data only. A claimed node is built from its record, so
- * `record` is that record.
- */
-export type NodeView = NodeEntry & ({ claimed: true; record: OperationRecord } | { claimed: false }) & {
-  /** Its `NodeType.type`. */
+/** A node as its card, its editor and an action receive it. JSON data only. */
+export type NodeView = NodeEntry & {
+  /** Its `NodeType.type`, the node's kind. */
   type: string
   flags: NodeFlags
   /** Labels that `RecordsInUse.badges` reports for the node's assets, such as 已裁剪. */
   badges: readonly string[]
-  version: number | null
-  /** A finished claimed node that the user has not opened; the caption shows the unseen dot. */
+  /** A finished newest version that the user has not opened; the caption shows the unseen dot. */
   unseen: boolean
-  /** True while a `rerun` that this node started waits for its new node. */
+  /** True while a `rerun` that this node started waits for its new version. */
   rerunning: boolean
 }
-/** A claimed node as the editor of its type's claimed nodes and an action on it receive it. */
-export type ClaimedNodeView = Extract<NodeView, { claimed: true }>
 
 /** A write that the canvas completes with its project, chat session and surface. */
 export type CanvasRequest = Omit<OperationRequest, 'project' | 'surface' | 'session'>
@@ -168,14 +125,12 @@ export type RerunRequest = CanvasRequest & { based_on: string }
 export interface NodeHost {
   /** Run an operation as a canvas write (project, chat session, surface 'canvas'). */
   run(request: CanvasRequest): void
-  /** Run an operation again; once its node appears, the canvas closes the editor and selects and centers that node. */
+  /** Run an operation again; once its version joins the node, the canvas closes the editor and selects and centers the node. */
   rerun(request: RerunRequest): void
   /** The asset preview of `dvMedia`, growing out of `opener`. */
   preview(asset: string, opener: Element | null): void
   /** Open another node's editor over this one, which keeps its unsaved changes. */
   openNode(nodeId: string): void
-  /** Put an asset on the project's canvas list or take it off, at once in this view. */
-  setPlaced(asset: string, on: boolean): void
   /** Close the editor and clear the selection. */
   close(): void
 }
@@ -189,7 +144,7 @@ export type CardHost = Pick<NodeHost, 'run' | 'rerun'>
  */
 export interface EditorHost extends Omit<NodeHost, 'rerun'> {
   /**
-   * As `NodeHost.rerun`, and the body shows a refusal itself: settles once the new node appears or once a later rerun
+   * As `NodeHost.rerun`, and the body shows a refusal itself: settles once the new version appears or once a later rerun
    * replaces this one, rejects with the error of a refused request, and the canvas shows no refusal.
    */
   rerun(request: RerunRequest): Promise<void>
@@ -207,14 +162,14 @@ export interface EditorHost extends Omit<NodeHost, 'rerun'> {
 export interface RecordsInUse {
   /** The registering package. */
   id: string
-  /** Record IDs whose outputs the plugin's data uses; the canvas keeps the claimed record behind each one current. */
+  /** Record IDs whose outputs the plugin's data uses. */
   uses(state: WireState): string[]
   /** Labels on the node that owns an asset, such as the trim badge of a timeline clip. */
   badges?(state: WireState): Array<{ asset: string; label: string }>
 }
 
 /**
- * One command on a node, drawn by the canvas in the editor header and inside the frame of a failed claimed node.
+ * One command on a node, drawn by the canvas in the editor header and inside the frame of a node whose newest version failed.
  * `shows` alone decides where it applies, and it narrows the node that `run` receives to `N`.
  */
 export interface NodeAction<N extends NodeView = NodeView> {
@@ -222,7 +177,7 @@ export interface NodeAction<N extends NodeView = NodeView> {
   id: string
   label(): string
   order: number
-  /** Whether it shows for one node, such as "a failed claimed node" or "shows an image asset". */
+  /** Whether it shows for one node, such as "a node whose version failed" or "shows an image asset". */
   shows(node: NodeView, assets: ReadonlyMap<string, Asset>): node is N
   /** Runs only on a node for which `shows` returned true. */
   run(node: N, host: NodeHost): void
@@ -230,7 +185,7 @@ export interface NodeAction<N extends NodeView = NodeView> {
 
 /** The registries of the canvas, provided by `@dv/ui-canvas` as `ctx.dvCanvas`. */
 export interface DvCanvas {
-  /** Keyed by `type` and by `op:<operation>` per claimed operation. */
+  /** Keyed by `type`. */
   nodeTypes: Registry<NodeType>
   /** Keyed by `id`. */
   recordsInUse: Registry<RecordsInUse>
@@ -280,10 +235,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /** The inside of one node's frame, keyed by `NodeType.type`; fallback: the type label on the card surface. */
     'dv.canvas.card': { kind: 'keyed'; scope: 'root'; owner: CardOwner }
-    /** The editor body of the nodes of one node type that it does not claim, keyed by `NodeType.type`; fallback: none. */
+    /** The editor body of the nodes of one node type, keyed by `NodeType.type`; fallback: none. */
     'dv.canvas.editor': { kind: 'keyed'; scope: 'root'; owner: EditorOwner }
-    /** The editor body of the claimed nodes of one node type, keyed by `NodeType.type`; fallback: none. */
-    'dv.canvas.editor.claimed': { kind: 'keyed'; scope: 'root'; owner: EditorOwner<ClaimedNodeView> }
     /** The asset pool in the canvas's picker, at key 'assets'. */
     'dv.canvas.picker': { kind: 'keyed'; scope: 'root'; owner: PickerOwner }
   }

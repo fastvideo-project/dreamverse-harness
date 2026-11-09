@@ -34,6 +34,7 @@ kind: "package-reference"
 | `seed`、`toolParams`、`prepareToolCall`      | 对没有种子的模型设为 `false`；仅工具参数，以及检查前对 agent 调用的修改                    |
 | `toRequest`、`toOutputs`                     | 由事实、参数和 `RequestInput` 构建模型请求，有种子的声明还由种子构建；把模型结果导入为输出 |
 | `summarize`                                  | 一行记录摘要                                                                               |
+| `node`                                       | 记录的画布节点：`kind`，即浏览器绘制它们所用的节点类型键，以及布局列 `column`              |
 
 | `GenerationApi` 方法           | 行为                                                                                                  |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------- |
@@ -50,7 +51,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-该服务在存续期间注册组件，然后用 `dvModels.labelTasks` 注册任务标签；为同一任务再加标签的第二个声明无法启动。该操作把模型键和 `prompt` 放在声明的参数之前，把 `seed`（除非 `seed` 为 `false`）和 `extra` 放在其后。它不是确定性的，使用 GPU，版本为 `1`。前置条件以 `check` 的理由拒绝调用，agent 工具也运行它；它不传任何链式角色，所以渲染从不接受链式角色。`check` 只读取调用的项目、参数和输入。它用 `dvModels.resolve` 解析条目，把每个输入解析为其资产，把每个链式角色加为 `{ role, ref: null, resolved_asset: null }`，并构建请求。当每个输入都有资产时，它加入 `validateGenerationRequest` 的问题；否则 `execute` 在模型运行前检查完整请求。`execute` 使用 `seed` 参数或抽取一个种子（`seed` 为 `false` 时没有种子），再次构建并验证请求，渲染，并把结果交给 `toOutputs`。它把 `seed` 加入报告。
+该服务在存续期间注册组件，然后用 `dvModels.labelTasks` 注册任务标签，并在 [`@dv/canvas`](../canvas/README.zh.md) 的 `dvCanvasNodes` 加载期间把该操作注册为 `node.column` 列中 `node.kind` 节点的 maker，所以 `based_on` 不在任何节点中的记录产生一个节点，重跑则加入其版本所在的节点；为同一任务再加标签的第二个声明无法启动。该操作把模型键和 `prompt` 放在声明的参数之前，把 `seed`（除非 `seed` 为 `false`）和 `extra` 放在其后。它不是确定性的，使用 GPU，版本为 `1`。前置条件以 `check` 的理由拒绝调用，agent 工具也运行它；它不传任何链式角色，所以渲染从不接受链式角色。`check` 只读取调用的项目、参数和输入。它用 `dvModels.resolve` 解析条目，把每个输入解析为其资产，把每个链式角色加为 `{ role, ref: null, resolved_asset: null }`，并构建请求。当每个输入都有资产时，它加入 `validateGenerationRequest` 的问题；否则 `execute` 在模型运行前检查完整请求。`execute` 使用 `seed` 参数或抽取一个种子（`seed` 为 `false` 时没有种子），再次构建并验证请求，渲染，并把结果交给 `toOutputs`。它把 `seed` 加入报告。
 
 | 文件                           | 内容                                                                                                                |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------- |

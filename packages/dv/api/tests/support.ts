@@ -13,6 +13,7 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
+import DvCanvasNodes from '@dv/canvas'
 import DvCharacter from '@dv/character'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvLocation from '@dv/location'
@@ -180,6 +181,7 @@ export async function startBase(options: BaseFixtureOptions = {}): Promise<BaseF
     promptSectionOrder: 4900,
   }).await()
   await context.plugin(DvFfmpeg, { ffmpegPath: FFMPEG, ffprobePath: FFPROBE, outputLimitBytes: 1_048_576 }).await()
+  await context.plugin(DvCanvasNodes).await()
   await context.plugin(DvAssetPool, { publicBaseUrl: options.publicBaseUrl ?? '' }).await()
   await context.plugin(DvTimeline).await()
   await context.plugin(DvCharacter).await()

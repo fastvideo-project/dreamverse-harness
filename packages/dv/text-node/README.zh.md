@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在 `@dv/project` 之后挂载本插件；素材库为每个版本存储一个 `text/markdown` 文件。归约函数维护 `textnode` 切片：每个文本节点的每个版本。挂载 DSH 技能注册表时，本插件还注册 `text-node` 技能，它告诉智能体何时写入、何时修改，以及每次写入都传 `base_version`。
+在 `@dv/project` 之后挂载本插件；素材库为每个版本存储一个 `text/markdown` 文件。归约函数维护 `textnode` 切片：每个文本节点的每个版本。挂载 DSH 技能注册表时，本插件还注册 `text-node` 技能，它告诉智能体何时写入、何时修改，以及每次写入都传 `base_version`。[`@dv/canvas`](../canvas/README.zh.md) 的 `dvCanvasNodes` 加载期间，本插件把 `textnode.write` 注册为第 0 列 `text` 节点的 maker，所以一个路径的第一次写入产生它的画布节点。
 
 ```yaml
 - id: dv-text-node
@@ -48,7 +48,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`textnode.write` 和 `textnode.edit` 用同一个纯函数 `nextText` 计算下一个标题和正文，归约函数也用它，所以被拒绝的修改与被归约的修改一致。在写入记录之前，对每个调用方，它们拒绝错误的路径、缺失或过期的 `base_version`、该路径另一次写入尚未结束时的写入，以及（对 `textnode.edit`）空的 `edits` 列表和每个 `old_text` 为空或在前面的修改留下的文本中出现次数不恰好为一次的修改。每次调用通过 `context.importAsset` 导入正文，并取代上一个版本的记录，所以内核的过期规则会标记每条以上一个素材为输入的记录。对运行器而言，这两个操作都不是确定性的：修改依赖上一个正文，所以运行器从不复用更早的输出。`textnode.read` 是读取：它不写记录，并用从 1 开始的行号和一个制表符为每行编号。一节从它的标题开始，到下一个同级或更高级的标题为止；围栏代码块中的行从不算作标题。项目锁使版本检查串行进行，所以 `execute` 和归约函数从同一个上一版本开始，算出同一个正文。
+`textnode.write` 和 `textnode.edit` 用同一个纯函数 `nextText` 计算下一个标题和正文，归约函数也用它，所以被拒绝的修改与被归约的修改一致。在写入记录之前，对每个调用方，它们拒绝错误的路径、缺失或过期的 `base_version`、该路径另一次写入尚未结束时的写入，以及（对 `textnode.edit`）空的 `edits` 列表和每个 `old_text` 为空或在前面的修改留下的文本中出现次数不恰好为一次的修改。每次调用通过 `context.importAsset` 导入正文，并取代上一个版本的记录，所以内核的过期规则会标记每条以上一个素材为输入的记录。没有 `based_on` 的调用以该记录为 `based_on`（`OperationSpec.basedOn`），所以一个路径的每个版本都加入同一个画布节点。对运行器而言，这两个操作都不是确定性的：修改依赖上一个正文，所以运行器从不复用更早的输出。`textnode.read` 是读取：它不写记录，并用从 1 开始的行号和一个制表符为每行编号。一节从它的标题开始，到下一个同级或更高级的标题为止；围栏代码块中的行从不算作标题。项目锁使版本检查串行进行，所以 `execute` 和归约函数从同一个上一版本开始，算出同一个正文。
 
 归约函数忽略不是 `done` 的记录和其他操作的记录。智能体摘要把每个文本节点列出一次，形式为 `{path, title, version, chars, asset}`：最新版本，不含正文。`chars` 计算 Unicode 码位数。
 

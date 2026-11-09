@@ -24,7 +24,7 @@ Use this package to let browser views read and change a DreamVerse project throu
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin after `@dv/project` and `@dv/asset-pool`, in a profile that also mounts `dsh-web-app` (for the `connection` and `webServer` services). Without `connection` the Fetch routes stay unregistered; without `webServer` the event stream does.
+Mount the plugin after `@dv/project`, `@dv/asset-pool`, and `@dv/canvas`, whose `dvCanvasNodes` it injects so that every state carries the `canvas` slice, in a profile that also mounts `dsh-web-app` (for the `connection` and `webServer` services). Without `connection` the Fetch routes stay unregistered; without `webServer` the event stream does.
 
 The Fetch routes list, create, rename, delete, and summarize projects, read the project's current state as JSON, list the operation declarations, read the task labels, run an operation as the human, import a file into the asset pool, undo and redo, accept a stale record, and list the history. The event stream admits a browser through the same Connection cookie.
 
