@@ -653,18 +653,20 @@
   font: inherit;
 }
 
-/* Row menu: transparent until the row is hovered, holds focus, or the menu is open. It stays in the tab order, which
-   `visibility: hidden` would remove. */
+/* Row menu: transparent and ignoring pointer input until the row is hovered, holds focus, or the menu is open. It
+   stays in the tab order, which `visibility: hidden` would remove. */
 .rowMenu {
   position: relative;
   flex: none;
   opacity: 0;
+  pointer-events: none;
 }
 
 .treeRow:hover .rowMenu,
 .treeRow:focus-within .rowMenu,
 .rowMenu[data-open] {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .rowMenuButton {
