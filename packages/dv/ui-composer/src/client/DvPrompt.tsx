@@ -17,7 +17,7 @@
  *
  * @module @dv/ui-composer/DvPrompt
  */
-import { useEffect, useReducer, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useReducer, useRef, type CSSProperties, type ReactNode } from 'react'
 import type { PromptHostModel } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { FactoryComponentPropsOf, RenderFactorySlot } from '@deepseek-ai/dsh-client-ui-slots'
 import { parsePromptCitations } from '@dv/project/grammar'
@@ -26,7 +26,8 @@ import { useText } from '@dv/ui-kit/locale.ts'
 import type { WireModelEntry, WireOperation } from '@dv/ui-kit/types.ts'
 import type {} from '@dv/ui-media/contract'
 import type { CallInput, CandidateFilter, ParamBar, ParamChip, PromptCopy, PromptFaceContext, PromptHost, ReferenceView } from './contract/index.ts'
-import { draftOf, reduceDraft } from './draft.ts'
+import { draftOf, reduceDraft, startOf, type Draft } from './draft.ts'
+import { clearDraft, draftKey, readDraft, writeDraft } from './drafts.ts'
 import { MENTION_SOURCE } from './mention.ts'
 import { paramChips, typedValue } from './param-chips.ts'
 import { callOf, documentViews, faceOf, type ResolveContext } from './reference-model.ts'
@@ -96,7 +97,7 @@ function DvPromptView({ call, state, host, renderFactorySlot, useVersionKinds }:
   const versions = useVersionKinds(known => known) ?? []
   const [draft, dispatch] = useReducer(reduceDraft, call, draftOf)
   const callKey = JSON.stringify(call)
-  if (draft.callKey !== callKey) dispatch({ type: 'callLent', call })
+  if (draft.callKey !== callKey) dispatch({ type: 'callLent', call, stored: undefined })
   const views = documentViews(draft.document, { state, versions, inputs: null, filter: null })
   const model: PromptHostModel = {
     content: draft.content, readOnly: true, sources: [], sourceContext: null, faceContext: facesOf(views.atoms), onChange: () => {},
@@ -134,10 +135,14 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
   const models = catalog ?? []
   const bar = props.useParamBars(bars => bars.find(candidate => candidate.operation === call.operation) ?? null)
   const operation = props.operations.find(candidate => candidate.name === call.operation) ?? null
-  const [draft, dispatch] = useReducer(reduceDraft, call, draftOf)
   const callKey = JSON.stringify(call)
-  if (draft.callKey !== callKey) dispatch({ type: 'callLent', call })
+  // An unsent draft of this project and call, kept when the editor last closed, replaces the call's own draft.
+  const storeKey = draftKey(projectId, callKey)
+  const [draft, dispatch] = useReducer(reduceDraft, call, lent => startOf(lent, readDraft(storeKey)))
+  if (draft.callKey !== callKey) dispatch({ type: 'callLent', call, stored: readDraft(storeKey) })
   const { document, params, sending } = draft
+  // The call whose send succeeded: its draft stays out of the store until an edit changes the call.
+  const sentKey = useRef<string | null>(null)
 
   const edited = callOf(document, { ...call, params })
   const entry = modelOf(models, params)
@@ -148,6 +153,15 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
   // An answer or a failure of another call does not count for the edited call.
   const checked = draft.checked?.key === editedKey ? draft.checked.answer : null
   const failure = draft.failure?.key === editedKey ? draft.failure.message : null
+  useEffect(() => {
+    if (sentKey.current === editedKey) return
+    const base = draftOf(call)
+    const shape = (value: Draft): string => JSON.stringify([value.document, value.params, value.texts])
+    const unedited = shape(draft) === shape(base)
+    if (unedited) clearDraft(storeKey)
+    else writeDraft(storeKey, draft)
+    // The store follows the draft, which holds every edit; `call` is read only to tell an edited draft from its start.
+  }, [draft])
   useEffect(() => {
     let live = true
     const timer = setTimeout(() => {
@@ -174,7 +188,11 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
   const send = (): void => {
     if (onSubmit === undefined || sending || blocked) return
     dispatch({ type: 'sending' })
-    onSubmit(edited).then(() => { dispatch({ type: 'sent', key: editedKey, failure: null }) }, (error: unknown) => {
+    onSubmit(edited).then(() => {
+      sentKey.current = editedKey
+      clearDraft(storeKey)
+      dispatch({ type: 'sent', key: editedKey, failure: null })
+    }, (error: unknown) => {
       dispatch({ type: 'sent', key: editedKey, failure: errorMessage(error) })
     })
   }
