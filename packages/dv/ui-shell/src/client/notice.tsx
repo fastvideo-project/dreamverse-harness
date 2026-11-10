@@ -5,7 +5,7 @@
  * @module @dv/ui-shell/notice
  */
 import type { ReactNode } from 'react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { errorMessage } from '@dv/ui-kit/api.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import css from './shell.module.css'
@@ -17,15 +17,20 @@ export type ActionRunner = (work: () => Promise<void>) => void
  * Create the runner and the notice of one component.
  * @param floating - whether the alert floats below its container, for a container with no room of its own.
  * @returns `run`, which starts the action, logs a rejection with `console.warn` and keeps its message, and clears the
- *   message when the action succeeds; and `notice`, the dismissible alert for the message, or null without one.
+ *   message when the action succeeds, where only the latest action's outcome applies; and `notice`, the dismissible
+ *   alert for the message, or null without one.
  */
 export function useActionNotice(floating = false): { run: ActionRunner; notice: ReactNode } {
   const t = useText()
   const [message, setMessage] = useState<string | null>(null)
+  // Only the latest action sets or clears the message, so a slower earlier action cannot replace its outcome.
+  const latest = useRef(0)
   const run: ActionRunner = (work) => {
-    work().then(() => { setMessage(null) }, (error: unknown) => {
+    latest.current += 1
+    const action = latest.current
+    work().then(() => { if (action === latest.current) setMessage(null) }, (error: unknown) => {
       console.warn('ui-shell: navigation failed', error)
-      setMessage(errorMessage(error))
+      if (action === latest.current) setMessage(errorMessage(error))
     })
   }
   const notice = message === null
