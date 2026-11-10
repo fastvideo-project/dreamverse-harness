@@ -625,14 +625,21 @@ describe('the unsent draft of a take', () => {
     expect(readDraft(draftKey('p1', JSON.stringify(seeded)))).toBeUndefined()
   })
 
-  it('restores a draft that was mid-send as an ordinary draft, never as sending', async () => {
-    const mounted = await mount(STILL_CALL, { holdSend: true })
+  it('restores a draft that was mid-send as an ordinary draft, never as sending, whose send waits for a new check', async () => {
+    const mounted = await mount(STILL_CALL, { holdSend: true, holdChecks: true })
+    await waitFor(() => { expect(mounted.checks).toHaveLength(1) })
+    act(() => { mounted.checks[0]?.answer({ problems: [] }) })
     await sendOf(mounted.take, 'Generate a new version')
     editSeed(mounted.take, '5')
+    await waitFor(() => { expect(mounted.checks).toHaveLength(2) })
+    act(() => { mounted.checks[1]?.answer({ problems: [] }) })
     fireEvent.click(await sendOf(mounted.take, 'Generate a new version'))
     await waitFor(() => { expect(mounted.sent).toHaveLength(1) })
     const again = reopen(mounted)
     expect(seedOf(again)).toBe('5')
+    expect(within(again).getByRole<HTMLButtonElement>('button', { name: 'Generate a new version' }).disabled).toBe(true)
+    await waitFor(() => { expect(mounted.checks).toHaveLength(3) })
+    act(() => { mounted.checks[2]?.answer({ problems: [] }) })
     const button = await sendOf(again, 'Generate a new version')
     expect(button.disabled).toBe(false)
   })

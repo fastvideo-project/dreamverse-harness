@@ -85,11 +85,12 @@ export function draftOf(call: PromptCall): Draft {
  * @param call - the call that the host lent.
  * @param stored - the unsent draft kept for this call, or undefined when none is kept.
  * @returns the kept draft with editor content rebuilt from its document, since the editor owns the text between
- *   content revisions and the kept content may predate the typing; else the draft of the call.
+ *   content revisions and the kept content may predate the typing, and with no check answer or failure, since both
+ *   answered for the project as it was; else the draft of the call.
  */
 export function startOf(call: PromptCall, stored: Draft | undefined): Draft {
   if (stored === undefined) return draftOf(call)
-  return { ...stored, content: contentOf(stored.document, stored.content.revision + 1, 'reset') }
+  return { ...stored, content: contentOf(stored.document, stored.content.revision + 1, 'reset'), checked: null, failure: null }
 }
 
 /**
