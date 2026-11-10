@@ -13,9 +13,11 @@
  *   them opens claims them together.
  * - With `maxConsecutiveWakes` set, an agent that has already opened that many turns by wakes since its last message
  *   from the user gets further wakes injected without waking it; the next message from the user claims them.
- * - An agent that goes idle with wakes still in its next-step inbox (a Stop that keeps the inbox aborted the turn that
- *   would have claimed them, or they arrived while that turn unwound) is woken under the same rules: those wakes leave
- *   the next-step inbox and one wake that names all their records opens a turn.
+ * - An agent that goes idle with wakes still in its next-step inbox (they arrived while its last turn unwound, or that
+ *   turn ended with an error) is woken under the same rules: those wakes leave the next-step inbox and one wake that
+ *   names all their records opens a turn. An agent whose last turn a cancellation ended (a user Stop that keeps the
+ *   inbox), or whose next-turn inbox holds a message from the user, is not woken this way: its wakes stay in the
+ *   next-step inbox, and the next turn claims them, opened by the user's next message or by the next wake.
  *
  * Watches live in memory: a restart cancels every unfinished record (`Runner.recover`) while no agent turn is open. A
  * session without a registered agent when its record finishes gets no wake; the project update message shows the record
@@ -31,7 +33,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { SessionId as AgentSessionId } from '@deepseek-ai/dsh-session'
+import { SessionId as AgentSessionId, type Session } from '@deepseek-ai/dsh-session'
 import type DvProject from './index.ts'
 import { WAKE_KIND, wakeMessage } from './project-updates.ts'
 import type { ProjectId, ProjectRecord, RecordId, SessionId } from './types.ts'
@@ -47,6 +49,8 @@ export class RecordNotices {
   private readonly watches = new Map<RecordId, Watch>()
   /** Turns each agent opened by wakes since it last claimed a message from the user. */
   private readonly spentWakes = new WeakMap<Agent, number>()
+  /** Sessions whose last logged turn a cancellation ended (`turn/end` reason `aborted`). */
+  private readonly cancelledTurns = new WeakSet<Session>()
   /** False once {@link RecordNotices.close} ran: no watch is kept and no wake is delivered. */
   private open = true
 
@@ -66,6 +70,12 @@ export class RecordNotices {
         if (message.source.kind === 'user') this.spentWakes.delete(agent)
       })
     }
+    // The loop logs `turn/end` before the `idle` status of the activity that the turn belonged to.
+    ctx.on('session/event', (session, event) => {
+      if (event.type !== 'turn/end') return
+      if (event.data.reason.kind === 'aborted') this.cancelledTurns.add(session)
+      else this.cancelledTurns.delete(session)
+    })
     // The `idle` status precedes the loop's own replay of a latched wake, so the check waits for that replay.
     ctx.on('agent/status', ({ agent, status }) => {
       if (status === 'idle') queueMicrotask(() => { this.wakeStranded(agent) })
@@ -125,8 +135,9 @@ export class RecordNotices {
 
   /**
    * Wake an idle agent whose next-step inbox still holds wakes: no step of a running turn will claim them. The wakes
-   * leave the inbox and one wake naming all their records opens a turn, unless the session still watches another
-   * record or the wake budget is spent; then they stay for the turn that opens next.
+   * leave the inbox and one wake naming all their records opens a turn, unless a cancellation ended the agent's last
+   * turn, its next-turn inbox holds a message from the user, the session still watches another record, or the wake
+   * budget is spent; then they stay for the turn that opens next.
    * @param agent - an agent that has just become idle.
    */
   private wakeStranded(agent: Agent): void {
@@ -135,6 +146,8 @@ export class RecordNotices {
       const stranded = agent.inbox.nextStep
         .flatMap(message => message.source.kind === WAKE_KIND ? [{ message, source: message.source }] : [])
       if (stranded.length === 0 || this.ctx.get('agents')?.get(agent.id) !== agent) return
+      // A Stop leaves queued work queued: the user's next message, or the next wake, opens the turn that claims them.
+      if (this.cancelledTurns.has(agent.session) || agent.inbox.nextTurn.some(message => message.source.kind === 'user')) return
       const session = brandString<SessionId>(agent.id)
       if ([...this.watches.values()].some(watch => watch.session === session) || !this.spendWake(agent)) return
       for (const { message } of stranded) agent.inbox.remove(message.id)
