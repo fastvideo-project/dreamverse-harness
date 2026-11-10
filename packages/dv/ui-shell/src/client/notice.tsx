@@ -11,9 +11,6 @@ import { IconWarningOutlineRegular, Toast } from '@deepseek-ai/dsh-client-ui-pri
 import { errorMessage } from '@dv/ui-kit/api.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 
-/** Runs an asynchronous shell action, reporting its failure through the toast. */
-export type ActionRunner = (work: () => Promise<void>) => void
-
 /** Hold of the toast, which quotes the server's reason, as DSH's refused Session creation toast does. */
 const FAILURE_HOLD_MS = 6000
 
@@ -48,7 +45,7 @@ export function clearActionFailure(): void {
  * `clearActionFailure` changes no toast.
  * @param work - the action.
  */
-export const runAction: ActionRunner = (work) => {
+export function runAction(work: () => Promise<void>): void {
   const started = generation
   const seen = reports
   work().then(() => { if (failure !== null && failure.seq <= seen) publish(null) }, (error: unknown) => {

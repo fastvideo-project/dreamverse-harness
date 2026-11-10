@@ -17,7 +17,7 @@ import { pickText, useText } from '@dv/ui-kit/locale.ts'
 import type { ShellInjected } from './Center.tsx'
 import { ChevronDownIcon, ChevronRightIcon, HomeIcon, PlugIcon, PluginsIcon, PlusIcon, SkillsIcon } from './icons.tsx'
 import { DREAMVERSE_WORDMARK } from './logo.ts'
-import { type ActionRunner, runAction } from './notice.tsx'
+import { runAction } from './notice.tsx'
 import { RowMenu } from './RowMenu.tsx'
 import type { WireProject } from '@dv/ui-kit/types.ts'
 import { usePanelEntries } from './panels.ts'
@@ -95,7 +95,6 @@ export function Navigator(props: NavigatorProps): ReactNode {
           {...props}
           project={project}
           open={project.id === projectId}
-          run={runAction}
         />
       ))}
     </div>
@@ -104,11 +103,11 @@ export function Navigator(props: NavigatorProps): ReactNode {
 
 /**
  * One project with a row menu to rename or delete it, its chat sessions, and a ＋ that starts a chat session in it.
- * @param props - the DSH UI slot props, the project, whether it is the open one, and the runner of its actions.
+ * @param props - the DSH UI slot props, the project, and whether it is the open one.
  * @returns the rows.
  */
-function ProjectTree(props: NavigatorProps & { project: WireProject; open: boolean; run: ActionRunner }): ReactNode {
-  const { project, open, shell, run } = props
+function ProjectTree(props: NavigatorProps & { project: WireProject; open: boolean }): ReactNode {
+  const { project, open, shell } = props
   const t = useText()
   const [expanded, setExpanded] = useState(open)
   const [renaming, setRenaming] = useState<string | null>(null)
@@ -118,10 +117,10 @@ function ProjectTree(props: NavigatorProps & { project: WireProject; open: boole
   const toggle = (): void => {
     setExpanded(!isOpen)
   }
-  const openProject = (): void => { run(() => shell.openProject(project.id)) }
+  const openProject = (): void => { runAction(() => shell.openProject(project.id)) }
   const deleteProject = (): void => {
     if (!window.confirm(pickText(`删除项目“${project.title}”？项目会移到回收目录，可由管理员恢复。`, `Delete project "${project.title}"? It moves to the trash directory, where an administrator can restore it.`))) return
-    run(() => shell.deleteProject(project.id))
+    runAction(() => shell.deleteProject(project.id))
   }
   return (
     <>
@@ -135,7 +134,7 @@ function ProjectTree(props: NavigatorProps & { project: WireProject; open: boole
           ? (
             <InlineRename
               className={css.renameInput} value={project.title} onClose={() => { setRenaming(null) }}
-              onSave={(title) => { if (title !== '') run(() => shell.renameProject(project.id, title)) }}
+              onSave={(title) => { if (title !== '') runAction(() => shell.renameProject(project.id, title)) }}
             />
           )
           : (
@@ -153,17 +152,17 @@ function ProjectTree(props: NavigatorProps & { project: WireProject; open: boole
         />
         <button
           type="button" className={css.treeAdd} title={t('新对话', 'New chat')} aria-label={t('新对话', 'New chat')}
-          onClick={() => { run(() => shell.newSession(project.id)) }}
+          onClick={() => { runAction(() => shell.newSession(project.id)) }}
         >
           <PlusIcon />
         </button>
       </div>
       {isOpen && sessions.map(summary => (
         <SessionRow
-          key={summary.id} summary={summary} active={summary.id === current} shell={shell} run={run}
+          key={summary.id} summary={summary} active={summary.id === current} shell={shell}
           open={() => {
             if (open) shell.openSession(summary.id)
-            else run(() => shell.openProject(project.id, summary.id))
+            else runAction(() => shell.openProject(project.id, summary.id))
           }}
         />
       ))}
@@ -173,15 +172,13 @@ function ProjectTree(props: NavigatorProps & { project: WireProject; open: boole
 
 /**
  * One chat session row: its title, or 新对话 while it is blank, and a row menu to rename or delete it.
- * @param props - the session, whether it is the main session, the action that opens it, the shell actions, and the
- *   runner of the asynchronous ones.
+ * @param props - the session, whether it is the main session, the action that opens it, and the shell actions.
  * @returns the row.
  */
-function SessionRow({ summary, active, open, shell, run }: {
+function SessionRow({ summary, active, open, shell }: {
   summary: SessionSummary
   active: boolean
   open: () => void
-  run: ActionRunner
 } & ShellInjected): ReactNode {
   const t = useText()
   const [renaming, setRenaming] = useState(false)
@@ -194,7 +191,7 @@ function SessionRow({ summary, active, open, shell, run }: {
         ? (
           <InlineRename
             className={css.renameInput} value={summary.displayTitle} onClose={() => { setRenaming(false) }}
-            onSave={(title) => { if (title !== '') run(() => shell.renameSession(summary.id, title)) }}
+            onSave={(title) => { if (title !== '') runAction(() => shell.renameSession(summary.id, title)) }}
           />
         )
         : <span className={css.treeLabel} title={summary.displayTitle}>{summary.blank ? t('新对话', 'New chat') : summary.displayTitle}</span>}
@@ -206,7 +203,7 @@ function SessionRow({ summary, active, open, shell, run }: {
             label: t('删除对话', 'Delete chat'), danger: true,
             run: () => {
               if (!window.confirm(pickText(`删除对话“${summary.displayTitle}”？`, `Delete chat "${summary.displayTitle}"?`))) return
-              run(() => shell.deleteSession(summary.id))
+              runAction(() => shell.deleteSession(summary.id))
             },
           },
         ]}
