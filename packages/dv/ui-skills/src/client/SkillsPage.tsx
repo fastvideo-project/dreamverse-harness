@@ -111,10 +111,10 @@ function SkillList(props: SkillsInjected): ReactNode {
         <ul className={css.grid}>
           {state.skills.map(skill => (
             <li key={skill.name} className={css.card}>
-              <span className={css.name}>{skill.name}</span>
+              <span className={css.name} title={skill.name}>{skill.name}</span>
               <span className={css.description} title={skill.description}>{skill.description}</span>
               <span className={css.foot}>
-                <code className={css.command}>/{skill.name}</code>
+                <code className={css.command} title={`/${skill.name}`}>/{skill.name}</code>
                 <button
                   type="button" className={css.useButton} aria-label={t(`使用 ${skill.name}`, `Use ${skill.name}`)}
                   onClick={() => { use(skill.name) }}

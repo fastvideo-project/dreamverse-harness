@@ -37,11 +37,14 @@
   color: var(--dv-text-2);
   font-size: 12px;
   line-height: 16px;
+  overflow-wrap: break-word;
 }
 
 .prompt {
   margin-top: 4px;
   color: var(--dv-text-2);
+  overflow-wrap: break-word;
+  text-wrap: pretty;
 }
 
 .media {
