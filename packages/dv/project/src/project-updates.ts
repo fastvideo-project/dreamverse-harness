@@ -320,16 +320,15 @@ async function withOwnImages(
     if (status !== 'done') continue
     const record = project.getRecord(projectId, brandString<RecordId>(id))
     if (record.actor !== 'agent' || record.session !== session) continue
-    // An aborted step never runs, so the images it would carry are not saved.
-    if (signal.aborted) return message
     try {
-      images.push(...await imagesOf(ctx, deps.assets(), record.outputs))
+      images.push(...await imagesOf(ctx, deps.assets(), record.outputs, signal))
     } catch (error: unknown) {
       // The listener runs at every step: a failing read or save keeps that record's update text-only instead of failing the step.
       ctx.logger('dvProject').warn('could not attach the images of record %s: %s', record.id, error instanceof Error ? error.message : String(error))
     }
   }
-  if (images.length === 0) return message
+  // An aborted step never runs, so the images it would carry are not saved.
+  if (images.length === 0 || signal.aborted) return message
   return { ...message, content: [...message.content, ...images.map(attachment => ({ type: 'image' as const, attachment }))] }
 }
 

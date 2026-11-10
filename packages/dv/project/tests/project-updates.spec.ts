@@ -135,11 +135,12 @@ interface Fixture {
 }
 
 /**
- * Mount the DSH tool registry and `dvProject` with an in-memory asset store, two operations (`asset.import`, and a GPU
- * `shot.render` that waits until the test releases its prompt and fails for the prompt `broken`), and a project bound
- * to {@link SESSION} unless `bound` is false. The `sessionProjections` stand-in answers the agent's session with the
- * fixture log's state, and the `agents` stand-in returns the fixture's agent for {@link SESSION}. The `attachments`
- * stand-in refuses to save `unsaved.png`.
+ * Mount the DSH tool registry and `dvProject` with an in-memory asset store, four operations (`asset.import`, and the GPU
+ * operations `shot.render`, `shot.still` with one image output and `shot.pair` with two, which wait until the test
+ * releases their prompt; `shot.render` fails for the prompt `broken`), and a project bound to {@link SESSION} unless
+ * `bound` is false. The `sessionProjections` stand-in answers the agent's session with the fixture log's state, and the
+ * `agents` stand-in returns the fixture's agent for {@link SESSION}. The `attachments` stand-in refuses to save
+ * `unsaved.png`.
  * @param bound - whether {@link SESSION} starts bound to the project.
  * @returns the fixture.
  */
@@ -206,6 +207,16 @@ async function start(bound = true): Promise<Fixture> {
       const prompt = String(context.params['prompt'])
       await gate(prompt).promise
       return { outputs: [context.importAsset(Buffer.from(prompt), { mime: 'image/png', name: `${prompt}.png` })] }
+    },
+  } satisfies OperationSpec)
+  project.registerOperation({
+    ...base, name: 'shot.pair', component: 'shot', params: { prompt: { type: 'string' } },
+    outputs: [{ role: 'first', type: 'image' }, { role: 'last', type: 'image' }],
+    resource: 'gpu', summarize: record => `pair ${String(record.params['prompt'])}`,
+    execute: async (context) => {
+      const prompt = String(context.params['prompt'])
+      await gate(prompt).promise
+      return { outputs: ['first', 'last'].map(role => context.importAsset(Buffer.from(`${prompt} ${role}`), { mime: 'image/png', name: `${prompt}-${role}.png` })) }
     },
   } satisfies OperationSpec)
   // An unbound session runs in a folder of its own, which dv_proj_create can make a project.
@@ -595,6 +606,16 @@ describe('finished records in the agent\'s messages', () => {
     fixture.onSave((name) => { if (name === 'one.png') abort.abort() })
     await runStep(fixture, [...first, ...fixture.agent.claim()], 1, abort.signal)
     expect(fixture.savedImages).toEqual(['one.png'])
+  })
+
+  it('saves no further image of a record once the step is aborted', async () => {
+    const fixture = await start()
+    fixture.log.step()
+    await finishedRender(fixture, 'both', 'dv_shot_pair')
+    const abort = new AbortController()
+    fixture.onSave((name) => { if (name === 'both-first.png') abort.abort() })
+    await runStep(fixture, fixture.agent.claim(), 1, abort.signal)
+    expect(fixture.savedImages).toEqual(['both-first.png'])
   })
 
   it('shows no image for a finished record that the user started', async () => {
