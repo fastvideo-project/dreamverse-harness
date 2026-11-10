@@ -44,6 +44,7 @@
 .entryDescription {
   font-size: 12px;
   color: var(--dsw-alias-label-tertiary);
+  text-wrap: pretty;
 }
 
 .entry:focus-visible {

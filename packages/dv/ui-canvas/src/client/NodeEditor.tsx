@@ -480,7 +480,7 @@ function VersionStrip({ node, version, viewAt, state, t, onChoose, renderFactory
   const thumb: CSSProperties = {
     position: 'relative', flex: 'none', width: 56, height: 40, padding: 0, borderRadius: 'var(--dv-radius-sm)', overflow: 'hidden',
     display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dv-surface-3)', color: 'var(--dv-text-2)',
-    border: 'none', cursor: 'pointer', fontFamily: 'var(--dv-font-mono)', fontSize: 11,
+    border: 'none', cursor: 'pointer', fontFamily: 'var(--dv-font-mono)', fontSize: 12,
   }
   return (
     <div data-testid="dv-canvas-version-strip" style={{ margin: '0 0 12px' }}>

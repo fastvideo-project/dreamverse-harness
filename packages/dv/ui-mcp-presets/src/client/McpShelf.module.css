@@ -10,6 +10,7 @@
   font-size: 13px;
   line-height: 20px;
   color: var(--dv-text-2);
+  text-wrap: pretty;
 }
 
 /* The notice row while the MCP plugin is off. */
@@ -52,6 +53,7 @@
   font-size: 12px;
   line-height: 18px;
   color: var(--dv-text-2);
+  text-wrap: pretty;
 }
 
 .noticeButton {
@@ -169,7 +171,7 @@
   padding: 2px 8px;
   border-radius: 9999px;
   background: rgb(0 0 0 / 35%);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
   font-weight: 500;
 }
@@ -203,6 +205,7 @@
   font-size: 12px;
   line-height: 18px;
   color: var(--dv-text-2);
+  text-wrap: pretty;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }

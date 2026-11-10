@@ -49,6 +49,7 @@
   line-height: 40px;
   font-weight: 600;
   letter-spacing: -0.02em;
+  text-wrap: balance;
 }
 
 .templates {
@@ -177,6 +178,7 @@
   font-size: 12px;
   line-height: 16px;
   color: var(--dv-text-2);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Workspace header: left sidebar toggle and session switcher, the 画布 | 时间线 control, the right panel toggle. */
@@ -713,8 +715,9 @@
 .navHint {
   margin: 2px 10px 6px;
   font-size: 12px;
-  line-height: 16px;
+  line-height: 18px;
   color: var(--dv-text-2);
+  text-wrap: pretty;
 }
 
 /* Empty-state hint inside a right-panel tab. */
@@ -726,6 +729,7 @@
   line-height: 20px;
   text-align: center;
   color: var(--dv-text-2);
+  text-wrap: balance;
 }
 
 /* The blank chat's hint floats over the conversation so the composer keeps the tab's full width. */

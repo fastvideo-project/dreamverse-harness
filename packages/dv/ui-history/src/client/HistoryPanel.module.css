@@ -38,7 +38,8 @@
   margin: 8px 0;
   color: var(--dv-text-2);
   font-size: 12px;
-  line-height: 16px;
+  line-height: 18px;
+  text-wrap: pretty;
 }
 
 .notice {
@@ -237,6 +238,7 @@
   flex: none;
   color: var(--dv-text-2);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
   line-height: 16px;
   text-align: end;
   white-space: nowrap;
@@ -303,7 +305,7 @@
 .detailWords {
   color: var(--dv-text-2);
   font-size: 12px;
-  line-height: 16px;
+  line-height: 18px;
   white-space: pre-wrap;
 }
 
