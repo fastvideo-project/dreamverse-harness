@@ -7,7 +7,8 @@
  *
  * Delivery follows the agent's status when the record finishes:
  * - A running agent gets the wake injected into its next step. The agent loop does not end a turn while its next-step
- *   inbox holds a message, so a record that finishes during the last step of a turn still reaches that turn.
+ *   inbox holds a message, so a record that finishes during the last step of a turn reaches that turn, or the next one
+ *   when it finishes while that turn unwinds (the last rule below).
  * - An idle agent whose session watches no other unfinished record is woken: the wake opens a turn. An idle agent
  *   whose session still watches another record gets the wake injected without waking it, so the turn that the last of
  *   them opens claims them together.
