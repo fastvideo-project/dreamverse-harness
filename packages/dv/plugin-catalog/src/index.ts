@@ -1,5 +1,5 @@
 /**
- * The DreamVerse plugin catalog: the curated list of plugins a person can install from the start page's 探索 section.
+ * The DreamVerse plugin catalog: the curated list of plugins a person can install from the 插件市场 / Marketplace page of the left navigator.
  * The list is `catalog.json` beside this package's `src/`, reviewed like code, followed by the catalogs that `sources`
  * names; the plugin answers it at `GET /api/dv/plugins/catalog` while a Connection service is mounted. Installing is the
  * plugin manager's work (`@deepseek-ai/dsh-plugin-manager`), which the browser half `@dv/ui-plugin-catalog` calls.

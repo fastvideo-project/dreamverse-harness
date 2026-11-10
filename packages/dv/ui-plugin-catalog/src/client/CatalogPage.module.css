@@ -1,5 +1,28 @@
-/* The Plugins tab in 探索: an intro line, then one card per catalog plugin. */
-.shelf {
+/* The Marketplace page in the main column: a centered column of the page's width, then a grid of plugin cards. */
+.page {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 960px;
+  height: 100%;
+  margin-inline: auto;
+  padding: 48px 32px;
+  overflow-y: auto;
+  color: var(--dv-text);
+  font-family: var(--dv-font-sans);
+}
+
+.head {
+  margin-bottom: 24px;
+}
+
+.heading {
+  margin: 0 0 8px;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+}
+
+.list {
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -78,9 +101,13 @@
   border: none;
   background: none;
   font: inherit;
-  font-size: 12px;
+  font-size: inherit;
   color: var(--dv-accent-text);
   cursor: pointer;
+}
+
+.link {
+  font-size: 12px;
 }
 
 .actions {

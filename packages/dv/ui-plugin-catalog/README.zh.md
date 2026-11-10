@@ -1,5 +1,5 @@
 ---
-description: "DreamVerse 首页 探索 区的 插件 标签：经过审核的插件目录，通过插件管理器安装、开启和移除。"
+description: "DreamVerse 左侧导航的 插件市场 页面：经过审核的插件目录，通过插件管理器安装、开启和移除。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包让人在首页安装 DreamVerse 插件。它在 [`@dv/ui-shell`](../ui-shell/README.zh.md) 的 `dv.explore` 插槽里注册 插件 标签，列出 [`@dv/plugin-catalog`](../plugin-catalog/README.zh.md) 经过审核的目录：每个插件一张卡片，写明它的描述、安装之外还需要什么，以及它在 profile 中的状态。安装、开启 和 移除 调用[插件管理器](../../boot/plugin-manager/README.zh.md)，由它从 npm registry 安装包。没有本包时，探索 没有 插件 标签，插件要通过 DSH 的 插件 页面或 `dsh plugin` 安装。
+使用本包让人安装 DreamVerse 插件。它注册左侧导航的 插件市场 入口和它打开的页面，页面列出 [`@dv/plugin-catalog`](../plugin-catalog/README.zh.md) 经过审核的目录：每个插件一张卡片，写明它的描述、安装之外还需要什么，以及它在 profile 中的状态。安装、开启 和 移除 调用[插件管理器](../../boot/plugin-manager/README.zh.md)，由它从 npm registry 安装包。没有本包时，导航里没有 插件市场 入口，插件要通过 DSH 的 插件 页面或 `dsh plugin` 安装。
 
 ## 目录
 
@@ -24,14 +24,14 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在叠加了 `dsh-web-app` 和 `@dv/ui-shell` 的 profile 中、在 `@dv/plugin-catalog` 旁边挂载本插件；[`@dv/bundle`](../../bundle/dv/README.zh.md) 会挂载两者。先构建浏览器端产物：`pnpm run build` 会写出 `lib/client.js`。
+在叠加了 `dsh-web-app` 的 profile 中、在 `@dv/plugin-catalog` 旁边挂载本插件；[`@dv/bundle`](../../bundle/dv/README.zh.md) 会挂载两者。先构建浏览器端产物：`pnpm run build` 会写出 `lib/client.js`。
 
 ```yaml
 - id: dv-ui-plugin-catalog
   name: '@dv/ui-plugin-catalog'
 ```
 
-Host 半边不注册任何东西。卡片的状态按包名取自 `pluginManager.listBundles()`：未安装、已安装 · 已开启 或 已安装 · 已关闭；每次 `plugin-manager/changed` 事件后都会重新读取列表。卡片显示包名和目录中的版本，已安装版本与之不同时会注明。没有插件管理器的 profile 会列出目录，并说明这里无法安装插件。
+Host 半边不注册任何东西。浏览器端在 `main` 槽位以面板 id `marketplace` 注册页面，在 `sidebar.panellist` 以顺序 0.5 注册导航入口，位于 插件 / Plugins（顺序 0）和 MCP（顺序 1）之间；`@dv/ui-shell` 把它和其他侧栏页面一起列出。页面的介绍行链接到 DSH 的 插件 页面，已安装的插件在那里管理。卡片的状态按包名取自 `pluginManager.listBundles()`：未安装、已安装 · 已开启 或 已安装 · 已关闭；每次 `plugin-manager/changed` 事件后都会重新读取列表。卡片显示包名和目录中的版本，已安装版本与之不同时会注明。没有插件管理器的 profile 会列出目录，并说明这里无法安装插件。
 
 | 手势 | 请求 |
 | --- | --- |
@@ -49,16 +49,16 @@ Host 半边不注册任何东西。卡片的状态按包名取自 `pluginManager
 <details>
 <summary>实现细节 — 点击展开</summary>
 
-`followCatalog` 每次挂载时读取一次 `GET /api/dv/plugins/catalog`，通过 `ctx.inject(['remote', 'remote.pluginManager'])` 绑定插件管理器调用，所以按钮只在其 Remote 挂载时出现，并通过 `layout` 服务选中 DSH 的 插件 页面。每个包同一时间只运行一个请求；`outcomeOf` 把插件管理器的 `ChangeResult` 变成卡片下的那一行。目录类型来自 `@dv/plugin-catalog/types`，插槽类型来自 `@dv/ui-shell/contract`，两者都只导入类型。
+`followCatalog` 每次挂载时读取一次 `GET /api/dv/plugins/catalog`，通过 `ctx.inject(['remote', 'remote.pluginManager'])` 绑定插件管理器调用，所以按钮只在其 Remote 挂载时出现，并通过 `layout` 服务选中 DSH 的 插件 页面，供介绍行的链接和脚本审批链接使用。每个包同一时间只运行一个请求；`outcomeOf` 把插件管理器的 `ChangeResult` 变成卡片下的那一行。目录类型来自 `@dv/plugin-catalog/types`，插槽类型来自 `@deepseek-ai/dsh-client-ui-layout` 和 `@deepseek-ai/dsh-client-ui-sidebar`，全部只导入类型。
 
 | 文件 | 内容 |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | Host 半边，不注册任何东西 |
 | [`src/css-modules.d.ts`](src/css-modules.d.ts) | CSS Module 导入的类型 |
-| [`src/client/index.ts`](src/client/index.ts) | 在 `dv.explore` 中注册 插件 标签 |
+| [`src/client/index.ts`](src/client/index.ts) | 在 `main` 中注册 插件市场 页面，在 `sidebar.panellist` 中注册它的导航入口 |
 | [`src/client/catalog.ts`](src/client/catalog.ts) | 目录请求、profile 的套件，以及插件管理器请求和结果 |
-| [`src/client/CatalogShelf.tsx`](src/client/CatalogShelf.tsx) | 卡片及其中英文文案 |
-| [`src/client/CatalogShelf.module.css`](src/client/CatalogShelf.module.css) | 卡片的样式 |
+| [`src/client/CatalogPage.tsx`](src/client/CatalogPage.tsx) | 页面、导航图标、卡片及其中英文文案 |
+| [`src/client/CatalogPage.module.css`](src/client/CatalogPage.module.css) | 页面和卡片的样式 |
 
 </details>
 
@@ -69,14 +69,14 @@ Host 半边不注册任何东西。卡片的状态按包名取自 `pluginManager
 
 - [`@dv/plugin-catalog`](../plugin-catalog/README.zh.md) — 目录、它的来源，以及插件如何被收录。
 - [插件管理器](../../boot/plugin-manager/README.zh.md) — registry、安装、兼容性和脚本审批。
-- [`@dv/ui-shell`](../ui-shell/README.zh.md) — 首页及其 `dv.explore` 插槽。
+- [`@dv/ui-shell`](../ui-shell/README.zh.md) — 列出侧栏页面的左侧导航。
 
 -----
 
 <a id="model-experience"></a>
 ## 模型体验
 
-无，因为这个标签只安装、开启和移除套件；安装的插件各自说明其对模型的影响。
+无，因为这个页面只安装、开启和移除套件；安装的插件各自说明其对模型的影响。
 
 #### KV 缓存影响
 

@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包决定 DreamVerse 提供安装哪些插件。它保存 [`catalog.json`](catalog.json)，即 npm 上经过审核的插件包列表，并在 `GET /api/dv/plugins/catalog` 返回它，供首页 探索 区的 插件 标签使用，该标签由 [`@dv/ui-plugin-catalog`](../ui-plugin-catalog/README.zh.md) 绘制。安装由[插件管理器](../../boot/plugin-manager/README.zh.md)完成：标签请它从 npm registry 安装列出的包并开启其套件。没有本包时，插件 标签没有目录可显示。
+使用本包决定 DreamVerse 提供安装哪些插件。它保存 [`catalog.json`](catalog.json)，即 npm 上经过审核的插件包列表，并在 `GET /api/dv/plugins/catalog` 返回它，供左侧导航的 插件市场 页面使用，该页面由 [`@dv/ui-plugin-catalog`](../ui-plugin-catalog/README.zh.md) 绘制。安装由[插件管理器](../../boot/plugin-manager/README.zh.md)完成：页面请它从 npm registry 安装列出的包并开启其套件。没有本包时，插件市场 页面没有目录可显示。
 
 ## 目录
 
@@ -39,12 +39,12 @@ DreamVerse 套件 [`@dv/bundle`](../../bundle/dv/README.zh.md) 挂载本插件�
 | `sources` | `[]` | 在随包目录之后、每次请求都读取的其他目录：绝对路径，或 https URL（http 只限 `127.0.0.1`、`localhost` 或 `[::1]`）。较早目录已列出的包会被后来的条目替换。两者都不是的来源会让插件在加载时失败。 |
 | `sourceTimeoutMs` | `10000` | 一个 URL 来源最多等待的毫秒数。 |
 
-`GET /api/dv/plugins/catalog` 返回 `{ plugins, problems }`：`plugins` 先按文件顺序列出随包目录的条目，再列出各来源新增的条目，每条带有列出它的 `source`；`problems` 为每个无法读取或格式错误的来源给出一个 `{ source, message }`，插件 标签会显示它，Host 会记录日志。随包目录格式错误时插件在加载时失败。
+`GET /api/dv/plugins/catalog` 返回 `{ plugins, problems }`：`plugins` 先按文件顺序列出随包目录的条目，再列出各来源新增的条目，每条带有列出它的 `source`；`problems` 为每个无法读取或格式错误的来源给出一个 `{ source, message }`，插件市场 页面会显示它，Host 会记录日志。随包目录格式错误时插件在加载时失败。
 
 <a id="list-a-plugin"></a>
 ## 编写并收录一个插件
 
-DreamVerse 插件以一个 npm 套件包的形式到达用户，由 插件 标签页安装；`@fastvideo/dreamverse-voice-acting` 及其四个插件包是完整示例。
+DreamVerse 插件以一个 npm 套件包的形式到达用户，由 插件市场 页面安装；`@fastvideo/dreamverse-voice-acting` 及其四个插件包是完整示例。
 
 1. **在 fork 中开发。** 在本仓库的 fork 里把插件的包放在 `packages/dv/<name>/` 下，这样它依赖的 `@dv/*` 和 `@deepseek-ai/*` 包会连同类型和测试从工作区解析；[`packages/dv/COMPONENT-TEMPLATE.md`](../COMPONENT-TEMPLATE.md) 说明每个包的文件。
 2. **做成套件。** 由一个包在 `dependencies` 中列出插件的各个包，并声明 `dsh.bundle.patch`，即插入它们插件条目的 `cordis.patch.yml`，这样安装后会开启它们；需要配置的条目，例如服务器地址，以 `disabled: true` 发布，并由 README 说明要设置什么。[打包并安装插件](../../../docs/user/develop/basic/publish.zh.md) 介绍套件的一般用法。
@@ -94,7 +94,7 @@ DreamVerse 插件以一个 npm 套件包的形式到达用户，由 插件 标�
 <a id="further-exploration"></a>
 ## 进一步探索
 
-- [`@dv/ui-plugin-catalog`](../ui-plugin-catalog/README.zh.md) — 显示目录并从中安装的 插件 标签。
+- [`@dv/ui-plugin-catalog`](../ui-plugin-catalog/README.zh.md) — 显示目录并从中安装的 插件市场 页面。
 - [插件管理器](../../boot/plugin-manager/README.zh.md) — registry、安装、兼容性和脚本审批。
 - [打包并安装插件](../../../docs/user/develop/basic/publish.zh.md) — 套件、profile 和 `dsh plugin`。
 

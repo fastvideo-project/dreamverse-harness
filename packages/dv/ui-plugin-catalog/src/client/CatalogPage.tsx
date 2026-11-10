@@ -1,8 +1,9 @@
 /**
- * The Plugins tab in the entry page's 探索 section: one card per catalog plugin with its description, what it needs
- * besides the install, its state in the profile, and Install, Turn on, or Remove; a removal asks once more before it runs.
+ * The 插件市场 / Marketplace page in the main column, opened from its entry in the left navigator: a heading and an intro
+ * line, then one card per catalog plugin with its description, what it needs besides the install, its state in the
+ * profile, and Install, Turn on, or Remove; a removal asks once more before it runs.
  *
- * @module @dv/ui-plugin-catalog/CatalogShelf
+ * @module @dv/ui-plugin-catalog/CatalogPage
  */
 import { useState, type ReactNode } from 'react'
 import type { CatalogEntry } from '@dv/plugin-catalog/types'
@@ -10,13 +11,47 @@ import { useText } from '@dv/ui-kit/locale.ts'
 import {
   enablePlugin, installPlugin, openPluginsPage, pluginState, removePlugin, useCatalog, type PluginOutcome, type PluginState,
 } from './catalog.ts'
-import css from './CatalogShelf.module.css'
+import css from './CatalogPage.module.css'
 
 /**
- * The `dv.explore` entry: an intro line, the catalog's problems, and the cards.
- * @returns the Plugins tab.
+ * The navigator entry's icon: a shopping bag.
+ * @returns the icon element.
  */
-export function CatalogShelf(): ReactNode {
+export function MarketplacePanelIcon(): ReactNode {
+  return (
+    <svg
+      width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"
+    ><path d="M5 8h14l-1 12H6L5 8Z" /><path d="M9 8V6a3 3 0 0 1 6 0v2" /></svg>
+  )
+}
+
+/**
+ * The Marketplace page: the heading, the intro line, the catalog's problems, and the cards.
+ * @returns the page element.
+ */
+export function CatalogPage(): ReactNode {
+  const t = useText()
+  return (
+    <section className={css.page} data-dv-marketplace="">
+      <header className={css.head}>
+        <h1 className={css.heading}>{t('插件市场', 'Marketplace')}</h1>
+        <p className={css.intro}>
+          {t('这些插件经过审核，从 npm 安装到当前 profile。已安装的插件在', 'These plugins are reviewed and install from npm into this profile. Manage installed plugins on the ')}
+          <button type="button" className={css.inlineLink} onClick={openPluginsPage}>{t('插件', 'Plugins')}</button>
+          {t('页面管理。', ' page.')}
+        </p>
+      </header>
+      <CatalogList />
+    </section>
+  )
+}
+
+/**
+ * The catalog's problems and cards, or the line that stands in for them while the catalog is read or cannot be.
+ * @returns the list element.
+ */
+function CatalogList(): ReactNode {
   const t = useText()
   const state = useCatalog()
   if (state.catalogError !== null) {
@@ -24,12 +59,10 @@ export function CatalogShelf(): ReactNode {
   }
   if (state.catalog === null) return <p className={css.intro}>{t('正在读取插件目录…', 'Reading the plugin catalog…')}</p>
   return (
-    <div className={css.shelf}>
-      <p className={css.intro}>
-        {state.manageable
-          ? t('这些插件经过审核，从 npm 安装到当前 profile。', 'These plugins are reviewed and install from npm into this profile.')
-          : t('这个 profile 没有插件管理器，无法在这里安装插件。', 'This profile has no plugin manager, so plugins cannot be installed here.')}
-      </p>
+    <div className={css.list}>
+      {state.manageable ? null : (
+        <p className={css.intro}>{t('这个 profile 没有插件管理器，无法在这里安装插件。', 'This profile has no plugin manager, so plugins cannot be installed here.')}</p>
+      )}
       {state.catalog.problems.map(problem => (
         <p key={problem.source} className={css.error} role="alert">
           {t(`目录源 ${problem.source} 无法使用：${problem.message}`, `Catalog source ${problem.source} could not be used: ${problem.message}`)}

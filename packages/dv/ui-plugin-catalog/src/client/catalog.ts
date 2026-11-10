@@ -1,8 +1,8 @@
 /**
- * State of the Plugins tab in the entry page's 探索 section: the catalog that `@dv/plugin-catalog` answers, the profile's
- * bundles that the plugin manager lists, and the install and remove requests in flight with their outcomes. The
- * `pluginManager` Remote is mounted only in a profile that provides the plugin manager; without it the tab lists the
- * catalog and offers nothing to install.
+ * State of the Marketplace page: the catalog that `@dv/plugin-catalog` answers, the profile's bundles that the plugin
+ * manager lists, and the install and remove requests in flight with their outcomes. The `pluginManager` Remote is
+ * mounted only in a profile that provides the plugin manager; without it the page lists the catalog and offers nothing
+ * to install.
  *
  * @module @dv/ui-plugin-catalog/catalog
  */
@@ -25,7 +25,7 @@ export type PluginOutcome =
   | { readonly kind: 'scripts'; readonly packages: readonly string[] }
   | { readonly kind: 'failed'; readonly message: string }
 
-/** What the Plugins tab shows. */
+/** What the Marketplace page shows. */
 export interface CatalogView {
   /** The catalog, null until it is read. */
   readonly catalog: CatalogAnswer | null
@@ -73,7 +73,7 @@ function message(failure: unknown): string {
 }
 
 /**
- * Read the Plugins tab's state.
+ * Read the Marketplace page's state.
  * @returns the state; the same object until it changes.
  */
 export function useCatalog(): CatalogView {
@@ -85,7 +85,7 @@ export function useCatalog(): CatalogView {
 
 /**
  * Where one catalog plugin stands.
- * @param state - the tab's state.
+ * @param state - the page's state.
  * @param pkg - the plugin's package name.
  * @returns its state.
  */

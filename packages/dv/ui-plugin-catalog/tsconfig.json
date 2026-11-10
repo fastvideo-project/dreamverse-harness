@@ -21,6 +21,9 @@
       "path": "../../client/ui-renderer"
     },
     {
+      "path": "../../client/ui-sidebar"
+    },
+    {
       "path": "../../client/ui-slots"
     },
     {
@@ -31,9 +34,6 @@
     },
     {
       "path": "../ui-kit"
-    },
-    {
-      "path": "../ui-shell"
     }
   ]
 }

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to decide which plugins DreamVerse offers to install. It holds [`catalog.json`](catalog.json), the reviewed list of plugin packages on npm, and answers it at `GET /api/dv/plugins/catalog` for the Plugins tab of the entry page's 探索 / Explore section, which [`@dv/ui-plugin-catalog`](../ui-plugin-catalog/README.md) draws. Installing is the work of the [plugin manager](../../boot/plugin-manager/README.md): the tab asks it to install a listed package from the npm registry and switch its bundle on. Without this package, the Plugins tab has no catalog to show.
+Use this package to decide which plugins DreamVerse offers to install. It holds [`catalog.json`](catalog.json), the reviewed list of plugin packages on npm, and answers it at `GET /api/dv/plugins/catalog` for the 插件市场 / Marketplace page of the left navigator, which [`@dv/ui-plugin-catalog`](../ui-plugin-catalog/README.md) draws. Installing is the work of the [plugin manager](../../boot/plugin-manager/README.md): the page asks it to install a listed package from the npm registry and switch its bundle on. Without this package, the Marketplace page has no catalog to show.
 
 ## Table of Contents
 
@@ -39,12 +39,12 @@ The DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.md) mounts the plugi
 | `sources` | `[]` | Further catalogs, read on every request after the shipped one: absolute paths, or https URLs (http only on `127.0.0.1`, `localhost` or `[::1]`). An entry whose package an earlier catalog lists replaces it. A source that is neither fails the plugin at load. |
 | `sourceTimeoutMs` | `10000` | How long one URL source may take, in milliseconds. |
 
-`GET /api/dv/plugins/catalog` answers `{ plugins, problems }`: `plugins` holds the shipped catalog's entries in file order, then the entries the sources add, each with the `source` that listed it; `problems` holds one `{ source, message }` for each source that could not be read or is malformed, which the Plugins tab shows and the Host logs. A malformed shipped catalog fails the plugin at load.
+`GET /api/dv/plugins/catalog` answers `{ plugins, problems }`: `plugins` holds the shipped catalog's entries in file order, then the entries the sources add, each with the `source` that listed it; `problems` holds one `{ source, message }` for each source that could not be read or is malformed, which the Marketplace page shows and the Host logs. A malformed shipped catalog fails the plugin at load.
 
 <a id="list-a-plugin"></a>
 ## Write and list a plugin
 
-A DreamVerse plugin reaches people as one npm bundle package that the Plugins tab installs; `@fastvideo/dreamverse-voice-acting` and its four plugin packages are the worked example.
+A DreamVerse plugin reaches people as one npm bundle package that the Marketplace page installs; `@fastvideo/dreamverse-voice-acting` and its four plugin packages are the worked example.
 
 1. **Develop in a fork.** Add the plugin's packages under `packages/dv/<name>/` in a fork of this repository, so the `@dv/*` and `@deepseek-ai/*` packages it builds on resolve from the workspace with their types and tests; [`packages/dv/COMPONENT-TEMPLATE.md`](../COMPONENT-TEMPLATE.md) describes each package's files.
 2. **Make a bundle.** One package lists the plugin's packages in `dependencies` and declares `dsh.bundle.patch`, a `cordis.patch.yml` that inserts their plugin entries, so the install switches them on; an entry that needs configuration, such as a server address, ships `disabled: true`, and the README says what to set. [Package and install a plugin](../../../docs/user/develop/basic/publish.md) covers bundles in general.
@@ -94,7 +94,7 @@ To release a new version, publish it and open a pull request that changes `versi
 <a id="further-exploration"></a>
 ## Further Exploration
 
-- [`@dv/ui-plugin-catalog`](../ui-plugin-catalog/README.md) — the Plugins tab that shows the catalog and installs from it.
+- [`@dv/ui-plugin-catalog`](../ui-plugin-catalog/README.md) — the Marketplace page that shows the catalog and installs from it.
 - [Plugin manager](../../boot/plugin-manager/README.md) — registries, installation, compatibility and script approval.
 - [Package and install a plugin](../../../docs/user/develop/basic/publish.md) — bundles, profiles and `dsh plugin`.
 
