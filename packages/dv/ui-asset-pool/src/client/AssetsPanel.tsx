@@ -109,7 +109,10 @@ function ImportZone(props: { client: DvClient; projectId: string; session: strin
   const isFileDrag = (event: DragEvent): boolean => event.dataTransfer.types.includes('Files') && !event.dataTransfer.types.includes(DV_ASSET_DRAG_TYPE)
   return (
     <div
-      role="button" tabIndex={0} onClick={() => input.current?.click()} onKeyDown={(event) => { if (event.key === 'Enter') input.current?.click() }}
+      role="button" tabIndex={0} onClick={() => input.current?.click()} onKeyDown={(event) => {
+        if (event.key === 'Enter') input.current?.click()
+        else if (event.key === ' ') { event.preventDefault(); input.current?.click() }
+      }}
       onDragOver={(event) => { if (isFileDrag(event)) { event.preventDefault(); setOver(true) } }}
       onDragLeave={() => { setOver(false) }}
       onDrop={(event) => { if (!isFileDrag(event)) return; event.preventDefault(); setOver(false); importFiles(event.dataTransfer.files) }}

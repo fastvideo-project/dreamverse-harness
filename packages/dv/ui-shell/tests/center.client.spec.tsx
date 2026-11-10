@@ -342,8 +342,9 @@ describe('the entry page', () => {
 
     const chips = page.getAllByRole('button', { name: /Stream highlight|Product launch|Character drama|Music video$/u })
       .filter(chip => chip.title === 'Coming soon')
-    expect(chips.map(chip => [chip.textContent, (chip as HTMLButtonElement).disabled]))
-      .toEqual([['Stream highlight', true], ['Product launch', true], ['Character drama', true], ['Music video', true]])
+    expect(chips.map(chip => [chip.textContent, chip.getAttribute('aria-disabled'), chip.getAttribute('aria-describedby') === page.getByText('Coming soon', { selector: 'span' }).id]))
+      .toEqual([['Stream highlight', 'true', true], ['Product launch', 'true', true], ['Character drama', 'true', true], ['Music video', 'true', true]])
+    expect(chips.every(chip => (chip as HTMLButtonElement).disabled === false)).toBe(true)
 
     const recent = within(page.getByRole('region', { name: 'Recent projects' }))
     const cards = (): string[] => recent.getAllByRole('button').map(button => button.textContent ?? '')
@@ -354,6 +355,7 @@ describe('the entry page', () => {
     const video = drama.querySelector('video')
     expect([video?.getAttribute('src'), video?.muted]).toEqual(['/dv/assets/take3.mp4#t=0.1', true])
     expect(drama.querySelector('img')).toBeNull()
+    expect(drama.querySelector('span[title]')?.getAttribute('title')).toBe('Drama')
     const musicVideo = recent.getByRole('button', { name: /^Music video/u })
     expect(musicVideo.querySelector('img')?.getAttribute('src')).toBe('/dv/assets/poster2.png')
     expect(musicVideo.querySelector('video')).toBeNull()

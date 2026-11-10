@@ -138,7 +138,7 @@ describe('the import drop zone', () => {
     expect(server.imports).toEqual([])
   })
 
-  it('opens the file chooser on a click and on Enter, and imports the chosen files', () => {
+  it('opens the file chooser on a click, on Space and on Enter, and imports the chosen files', () => {
     const server = importServer()
     const { view, zone } = renderPanel(server.fetch)
     const chooser = view.container.querySelector('input[type="file"]')
@@ -146,9 +146,10 @@ describe('the import drop zone', () => {
     const opened = vi.fn()
     chooser.addEventListener('click', opened)
     fireEvent.click(zone)
-    fireEvent.keyDown(zone, { key: ' ' })
+    expect(fireEvent.keyDown(zone, { key: ' ' })).toBe(false)
     fireEvent.keyDown(zone, { key: 'Enter' })
-    expect(opened).toHaveBeenCalledTimes(2)
+    fireEvent.keyDown(zone, { key: 'a' })
+    expect(opened).toHaveBeenCalledTimes(3)
 
     fireEvent.change(chooser, { target: { files: [file('chosen.png', 'image/png')] } })
     expect(server.imports.map(held => new URLSearchParams(held.query).get('name'))).toEqual(['chosen.png'])

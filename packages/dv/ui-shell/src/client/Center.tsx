@@ -13,7 +13,7 @@
  * @module @dv/ui-shell/Center
  */
 import type { ReactNode } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
@@ -217,17 +217,18 @@ function EntryPage(props: CenterProps): ReactNode {
   )
 }
 
-/** The 从模板开始 row: four template chips, disabled until templates exist. */
+/** The 从模板开始 row: four template chips, inert until templates exist; `aria-disabled` keeps them focusable and described by the tag. */
 function TemplateChips(): ReactNode {
   const t = useText()
   const templates = [t('直播高光', 'Stream highlight'), t('产品发布会', 'Product launch'), t('角色短剧', 'Character drama'), t('音乐 MV', 'Music video')]
   const soon = t('即将推出', 'Coming soon')
+  const soonId = useId()
   return (
     <div className={css.templates}>
       <span className={css.templatesLabel}>{t('从模板开始', 'Start from a template')}</span>
-      <span className={css.soonTag}>{soon}</span>
+      <span id={soonId} className={css.soonTag}>{soon}</span>
       {templates.map(name => (
-        <button key={name} type="button" className={css.templateChip} disabled title={soon}>{name}</button>
+        <button key={name} type="button" className={css.templateChip} aria-disabled="true" aria-describedby={soonId} title={soon}>{name}</button>
       ))}
     </div>
   )
@@ -327,7 +328,7 @@ function ProjectCard(
     <button type="button" className={css.card} onClick={() => { runAction(() => shell.openProject(projectId)) }}>
       <CoverFrame cover={summary?.cover ?? null} purpose="card" className={css.cardCover} renderFactorySlot={renderFactorySlot} />
       <span className={css.cardText}>
-        <span className={css.cardTitle}>{title}</span>
+        <span className={css.cardTitle} title={title}>{title}</span>
         <span className={css.cardMeta}>{meta}</span>
       </span>
     </button>
