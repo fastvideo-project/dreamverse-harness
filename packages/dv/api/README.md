@@ -58,6 +58,7 @@ The Fetch routes list, create, rename, delete, and summarize projects, read the 
 | `/api/dv/redo` | POST | `{project}`: moves the current position one step forward; writes no record | `{tip, at}` |
 | `/api/dv/stale/accept` | POST | `{project, record, session?, surface}` | the `proj.stale_accept` record |
 | `/api/dv/operation/cancel` | POST | `{project, record}` | the record in its final status: a pending or running record ends `cancelled` with `error.code` `cancelled`; 404 `unknown_record`, 409 `not_running` for a record that already ended |
+| `/api/dv/operation/retry` | POST | `{project, record, surface, session?}` | the new records, as an array with the retried record's first: a `failed` or `cancelled` record is run again as a scheduled call together with the records that ended `failed` / `input_failed` only because of it, each reading the new record of its re-run producers; 404 `unknown_record`, 409 `not_failed` |
 | `/api/dv/history` | POST | `{project, actor?, component?, operation?, kind?, status?, session?, turn?, tool_call?, records?, before?, limit?}`; `records` is an array; `limit` is 1 to 200, default 50 | `WireHistory` `{entries, assets}`: the `dvProject.listHistory` entries `{record, place}`, the steps of the history list newest first with `place` `before`, `current` or `after` relative to the current position, and every asset they name; a read that writes no record |
 | `/dv/events?project=<id>` | GET | — | `text/event-stream`: `ready`, then `record`, `update` and `line` events, each carrying one `ProjectEvent`; a `line` event `{kind: 'line', tip, at}` follows each write and each move |
 
@@ -70,7 +71,7 @@ The Fetch routes list, create, rename, delete, and summarize projects, read the 
 | `unknown_project` | 404 | The request names no existing project |
 | `unknown_record`, `unknown_asset`, `unknown_operation` | 404 | The `ProjectError` code of another unknown resource |
 | `not_found` | 404 | An unknown resource without a `ProjectError` code; every resource this package reads has one |
-| Another `ProjectError` code | 400 or 409 | Project refused the change, such as `nothing_to_undo`, `nothing_to_redo` or `not_running` (409) |
+| Another `ProjectError` code | 400 or 409 | Project refused the change, such as `nothing_to_undo`, `nothing_to_redo`, `not_running` or `not_failed` (409) |
 | `internal_error` | 500 | An unexpected failure; `error` is the thrown error's text |
 
 -----

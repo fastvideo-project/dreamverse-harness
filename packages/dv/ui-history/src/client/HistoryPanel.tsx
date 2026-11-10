@@ -5,7 +5,8 @@
  * history row names, and for an agent action the intent the agent gave for the call. The records that a record started
  * (`started_by`) fold under its row. The step at the current position carries 当前; the steps after it, which redo brings
  * back, are greyed. Every other row's ⋮ menu offers 回到这一步, which moves the current position to that step; the ⋮ menu
- * of a pending or running row also offers 取消, which cancels the record. Selecting
+ * of a pending or running row also offers 取消, which cancels the record, and that of a failed or cancelled operation row
+ * offers 重试, which runs it again with the later shots that failed only because of it. Selecting
  * a row plays its output under the row and, for a step at or before the current position, moves the center
  * (`dvCenter.show`) where the registered history row's `focus` says, else to the record's canvas node. The header holds
  * undo and redo; moves write no record, and a new step after a move discards the greyed steps. Media is drawn through
@@ -30,7 +31,9 @@ import {
 import type {} from '@dv/ui-media/contract'
 import type { CenterTarget } from '@dv/ui-shell/contract'
 import type { HistoryRow } from './contract/index.ts'
-import { actionLabel, actionRows, centerFocus, matchingRow, relativeTime, type ActionRow, type LabelContext } from './rows.ts'
+import {
+  actionLabel, actionRows, canRetry, centerFocus, laterShotsOf, matchingRow, relativeTime, type ActionRow, type LabelContext,
+} from './rows.ts'
 import css from './HistoryPanel.module.css'
 
 /** What the plugin injects into the tab body. */
@@ -254,6 +257,11 @@ export function HistoryPanel(props: HistoryPanelProps): ReactNode {
     setNotice(null)
     client.cancelRecord(projectId, record).catch(report)
   }
+  // 重试: run the record again with the records that failed only because of it; a refusal shows in the notice.
+  const retry = (record: string): void => {
+    setNotice(null)
+    client.retryRecord(projectId, record, 'canvas').catch(report)
+  }
   // 回到这一步: move the current position to the step.
   const jump = (record: string): void => {
     setNotice(null)
@@ -274,7 +282,8 @@ export function HistoryPanel(props: HistoryPanelProps): ReactNode {
     const changes = loaded.entries.filter(entry => entry.record.operation !== 'proj.create')
     const stateAssets = current.value?.assets ?? []
     const shared: RowContext = {
-      now, selected, onChoose: choose, rowRef, onJump: jump, onCancel: cancel, state: current.value, renderFactorySlot,
+      now, selected, onChoose: choose, rowRef, onJump: jump, onCancel: cancel, onRetry: retry,
+      laterShots: record => laterShotsOf(record, loaded.entries), state: current.value, renderFactorySlot,
       labels: { operations: operations.value ?? [], rows: registered, records: recordsById },
       rowOf: record => matchingRow(record, registered),
       assetOf: id => loaded.assets.get(id) ?? stateAssets.find(item => item.id === id),
@@ -444,6 +453,10 @@ interface RowContext {
   onJump: (record: string) => void
   /** 取消 on a pending or running row. */
   onCancel: (record: string) => void
+  /** 重试 on a failed or cancelled row. */
+  onRetry: (record: string) => void
+  /** How many loaded records a retry of the record re-runs besides itself. */
+  laterShots: (record: ProjectRecord) => number
   state: WireState | null
   renderFactorySlot: RenderFactorySlot
   /** What the row labels read: the operation declarations, the registered rows and the records. */
@@ -518,6 +531,13 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
   const stepItems: StepItem[] = []
   if (record.status === 'pending' || record.status === 'running') {
     stepItems.push({ id: 'cancel', label: t('取消', 'Cancel'), run: () => { props.onCancel(record.id) } })
+  }
+  if (canRetry(record)) {
+    const later = props.laterShots(record)
+    stepItems.push({
+      id: 'retry', label: later === 0 ? t('重试', 'Retry') : t(`重试（含 ${String(later)} 个后续镜头）`, `Retry with ${String(later)} later shots`),
+      run: () => { props.onRetry(record.id) },
+    })
   }
   if (entry.place !== 'current') stepItems.push({ id: 'back', label: t('回到这一步', 'Go back to this step'), run: () => { props.onJump(record.id) } })
   return (

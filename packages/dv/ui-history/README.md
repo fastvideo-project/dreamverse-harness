@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to give the web application a History panel beside the chat. The panel works like the History panel of an image editor ([history rules](../../../docs/subsystems/video-harness.md#history-rules)): it is one list of the steps of the open project from every actor, surface, and chat session, newest first. The step at the current position carries 当前 / Current, and the steps after it, which redo brings back, are greyed. Each row shows who did it, when, the status, and a thumbnail; selecting a row plays its output and, for a step at or before the current position, focuses it on the canvas or timeline. The header holds the undo and redo buttons, and each row's ⋮ menu offers 回到这一步 / Go back to this step, and the menu of a pending or running row also offers 取消 / Cancel. These moves write no record; a new step after a move discards the greyed steps. The `dv-history` right-Sidebar tab type shows the panel of the project the shell has open.
+Use this package to give the web application a History panel beside the chat. The panel works like the History panel of an image editor ([history rules](../../../docs/subsystems/video-harness.md#history-rules)): it is one list of the steps of the open project from every actor, surface, and chat session, newest first. The step at the current position carries 当前 / Current, and the steps after it, which redo brings back, are greyed. Each row shows who did it, when, the status, and a thumbnail; selecting a row plays its output and, for a step at or before the current position, focuses it on the canvas or timeline. The header holds the undo and redo buttons, and each row's ⋮ menu offers 回到这一步 / Go back to this step, and the menu of a pending or running row also offers 取消 / Cancel, and the menu of a failed or cancelled operation row offers 重试 / Retry. These moves write no record; a new step after a move discards the greyed steps. The `dv-history` right-Sidebar tab type shows the panel of the project the shell has open.
 
 ## Table of Contents
 
@@ -44,6 +44,7 @@ The Host half registers nothing. The browser half provides the client service `d
 | Undo in the header (tooltip 撤销（Ctrl+Z / ⌘Z）) | `POST /api/dv/undo`; a refusal shows the server's message |
 | Redo in the header (tooltip 重做（Shift+Ctrl+Z / ⇧⌘Z）), disabled while the current position is the last step | `POST /api/dv/redo` |
 | 回到这一步 / Go back to this step in a row's ⋮ menu | `POST /api/dv/undo` `{to}` |
+| 重试 / Retry in the ⋮ menu of a failed or cancelled operation row; with later shots that failed with `input_failed` because of it, 重试（含 N 个后续镜头） / Retry with N later shots (counted from the loaded records) | `POST /api/dv/operation/retry` `{project, record, surface}`; the record and those shots run again as scheduled records; a refusal shows the server's message |
 | 取消 / Cancel in the ⋮ menu of a pending or running row | `POST /api/dv/operation/cancel` `{project, record}`; a refusal shows the server's message |
 
 A `dv:history-focus` event `{session, toolCall}` finds the record that tool call wrote, loads pages until its row is loaded, and selects it. Only steps at or before the current position move the center; greyed steps are only selected. A selection moves the center only while `@dv/ui-shell` provides `dvCenter`.

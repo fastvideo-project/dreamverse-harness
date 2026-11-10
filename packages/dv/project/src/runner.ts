@@ -337,6 +337,67 @@ export class Runner {
   }
 
   /**
+   * Run a failed or cancelled record again, together with the records that ended `failed` / `input_failed` only because
+   * of it. The record and each such dependent are re-run through {@link Runner.run} as scheduled calls (`after: []`)
+   * with their stored operation, params, input references, `started_by` and `based_on` set to the record they redo; an
+   * input that names a re-run record names its new record instead. Dependents are found from the stored `{record}`
+   * input references only, in the history list, in write order. A dependent that failed for another reason, or that
+   * waited only through the scheduler's `after` list, is not re-run.
+   * @param project - the project.
+   * @param record - a `failed` or `cancelled` record.
+   * @param origin - who retries.
+   * @returns the new records, the retried record's first, in the order created. Throws `unknown_record`, or `not_failed`
+   *   when the record is not `failed` or `cancelled` or has no operation; a refusal of one of the re-runs is thrown
+   *   with the number of records already queued in its message, and those records stay.
+   */
+  async retry(project: ProjectId, record: RecordId, origin: RecordOrigin): Promise<ProjectRecord[]> {
+    const { store } = this.deps
+    const target = store.getRecord(project, record)
+    if ((target.status !== 'failed' && target.status !== 'cancelled') || target.operation === null) {
+      throw new ProjectError('not_failed', `Record ${record} did not fail or get cancelled (status ${target.status}), so there is nothing to retry.`)
+    }
+    const inHistory = new Set(store.lineIds(project).ids)
+    const redo = [{ old: target, operation: target.operation }]
+    const names = new Set([target.id])
+    for (const candidate of store.listRecords(project)) {
+      if (!inHistory.has(candidate.id) || candidate.status !== 'failed' || candidate.error?.code !== 'input_failed') continue
+      if (candidate.operation === null) continue
+      if (!candidate.inputs.some(input => 'record' in input.ref && names.has(input.ref.record))) continue
+      names.add(candidate.id)
+      redo.push({ old: candidate, operation: candidate.operation })
+    }
+
+    const created = new Map<RecordId, RecordId>()
+    const records: ProjectRecord[] = []
+    for (const { old, operation } of redo) {
+      // A version reference was stored once per asset it names, and the run expands it again, so equal (role, ref)
+      // pairs collapse to one.
+      const inputs = new Map<string, RunRequest['inputs'][number]>()
+      for (const input of old.inputs) {
+        const renamed = 'record' in input.ref ? created.get(input.ref.record) : undefined
+        const ref = 'record' in input.ref && renamed !== undefined ? { record: renamed, output: input.ref.output } : input.ref
+        inputs.set(`${input.role}\u0000${canonicalJson(ref)}`, { role: input.role, ref })
+      }
+      try {
+        const result = await this.run({
+          project, operation, params: old.params, inputs: [...inputs.values()], ...origin, based_on: old.id, after: [],
+          ...old.started_by === undefined ? {} : { started_by: old.started_by },
+        })
+        // A scheduled call of a record-writing operation always returns its pending record.
+        const written = result.record as ProjectRecord
+        records.push(written)
+        created.set(old.id, written.id)
+      } catch (error: unknown) {
+        if (records.length === 0 || !(error instanceof ProjectError)) throw error
+        throw new ProjectError(
+          error.code, `${error.message} Only ${String(records.length)} of ${String(redo.length)} records were queued before this refusal.`,
+        )
+      }
+    }
+    return records
+  }
+
+  /**
    * At service start, end the records an earlier process left unfinished: every `pending` or `running` operation
    * record is updated to `cancelled` with `error {code: 'stopped', message}`, so no record stays unfinished forever.
    */

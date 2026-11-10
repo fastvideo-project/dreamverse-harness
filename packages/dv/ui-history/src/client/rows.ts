@@ -19,6 +19,32 @@ export interface ActionRow {
 }
 
 /**
+ * Whether the History panel offers 重试 for a record: it failed or was cancelled, and it is an operation call, not a
+ * `proj.*` record.
+ * @param record - a record.
+ * @returns whether it can be run again.
+ */
+export function canRetry(record: ProjectRecord): boolean {
+  return (record.status === 'failed' || record.status === 'cancelled') && record.operation !== null && !record.operation.startsWith('proj.')
+}
+
+/**
+ * How many loaded records a retry of `record` re-runs besides the record itself: the records that failed with
+ * `input_failed` and read an output of the record or of another such record (the rule of `retry` in `@dv/project`).
+ * @param record - the failed or cancelled record.
+ * @param entries - the loaded history entries, newest first.
+ * @returns the number of dependents.
+ */
+export function laterShotsOf(record: ProjectRecord, entries: readonly HistoryEntry[]): number {
+  const names = new Set([record.id])
+  for (const { record: candidate } of [...entries].reverse()) {
+    if (candidate.status !== 'failed' || candidate.error?.code !== 'input_failed') continue
+    if (candidate.inputs.some(input => 'record' in input.ref && names.has(input.ref.record))) names.add(candidate.id)
+  }
+  return names.size - 1
+}
+
+/**
  * Turn history entries into panel rows: one row per step, newest first. A loaded record whose `started_by.record` is the
  * record of a row folds under that row instead of standing alone, in log order (a plan approval's shot renders in shot
  * order, then its timeline record).

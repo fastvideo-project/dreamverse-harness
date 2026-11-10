@@ -40,7 +40,7 @@ The runner and history call the record store; the runner calls the reducer regis
         |  createProject renameProject removeProject openProject listProjects  |
         |  newProjectFolder                                -> folders          |
         |  getRecord                                       -> record-store     |
-        |  run acceptStale cancel registerOperation listOperations                    |
+        |  run acceptStale cancel retry registerOperation listOperations                    |
         |                                                  -> runner           |
         |  undo redo listHistory                            -> history          |
         |  getState registerReducer registerReferenceKind  -> reducers         |
@@ -203,6 +203,8 @@ Owner: agent B.
 
 **`cancel`.** `cancel(project, record)` decides under the lock and waits outside it. The record must exist (`unknown_record`) and be `pending` or `running`, else `not_running` ("Record <id> already ended <status>."). An executing record is aborted with the reason `cancelled`; a queued scheduled record leaves the queue through `scheduler.cancel` and is updated at once; a pending record that has not started is remembered and `execute` ends it when it starts. Each ends `cancelled` with `error {code: 'cancelled', message: 'Cancelled before it finished.'}`. After an abort, `cancel` waits through `scheduler.wait(project, [record])` and resolves with the record in its final status (`done` when the operation finished despite the abort). A scheduled record that waits for the cancelled one through an input ends `failed` / `input_failed`, as for any dependency that did not finish `done`.
 
+**`retry`.** `retry(project, record, origin)`: the record must exist (`unknown_record`), have an operation and be `failed` or `cancelled`, else `not_failed`. The dependents are the records of the history list, in write order, that are `failed` with `error.code: 'input_failed'` and have an input whose stored ref is `{record: X}` where X is the record or a dependent already collected; a dependent that failed for another reason, and anything that waited only through the scheduler's `after` list, is not collected. The record and then each dependent are re-run through `run` as scheduled calls (`after: []`, the given origin) with the same operation, params, input refs (a version ref once, not once per asset), `started_by`, and `based_on` set to the record they redo; an input ref `{record: X, output: n}` of a re-run record X becomes `{record: X′, output: n}`. The new records are returned in the order created. A refusal of a re-run is thrown with its code and the number of records already queued appended to the message; those records stay.
+
 **Discard.** Every record the runner appends goes after `at` and becomes `tip` and `at` (`appendStep`). The records of the history list that were after `at` leave the list. Each of them that is `pending` or `running` ends `cancelled` with `error {code: 'discarded'}`: an executing record is aborted; a queued scheduled record leaves the queue through `scheduler.cancel` and is updated at once; a record that has not started yet ends when `execute` starts it.
 
 **`recover`.** At start: under each project's lock, every `pending` or `running` operation record gets `{status: 'cancelled', finished_at, error: {code: 'stopped', message: 'The server stopped before the call finished.'}}`.
@@ -312,6 +314,7 @@ Each test file builds modules with `startModules()` and projects with `createTes
 - `lets other edits run while a render executes` (lock scope): an execute blocked on a promise; a second run on the same project finishes first.
 - `loads a stored log whose operations and reference kind have no owner, and refuses a new call with that version`: a log with `shot.render_ref2va`, `deliver.timeline_export` and an input `{character: 'c1', version: 1}` loads with only `proj` reduced and no stale mark; a new call with that input throws `invalid_inputs` and writes no record.
 - `cancel`: a running record aborts and ends `cancelled` / `cancelled`; a queued record never executes; a pending record that has not started ends when it starts; a record that waits on a cancelled one through an input ends `failed` / `input_failed`; an ended record throws `not_running` and an unknown one `unknown_record`.
+- `retry`: a failed chain A → B → C re-runs as A′, B′, C′ that read each other's new records and end `done`; a failed record without dependents re-runs alone; an unrelated failure is left alone; a dependent that failed for its own reason and what is downstream of it are not re-run; a cancelled record retries with its `input_failed` dependent; a `done` record throws `not_failed`; a refused re-run names how many records were queued.
 - `ends unfinished records at start`: a `pending` record from an earlier store → `cancelled` / `stopped` after `recover`.
 
 **`tests/scheduler.spec.ts` (B)**

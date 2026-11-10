@@ -330,6 +330,18 @@ export class DvClient {
   }
 
   /**
+   * Run a failed or cancelled record again, with the records that failed only because of it.
+   * @param project - the project.
+   * @param record - the failed or cancelled record.
+   * @param surface - where the decision was made.
+   * @param session - the chat session the view sits beside, or null.
+   * @returns the new, scheduled records, the retried record's first. Rejects with a 409 `DvApiError` when the record did not fail.
+   */
+  retryRecord(project: string, record: string, surface: ViewSurface, session: string | null = null): Promise<ProjectRecord[]> {
+    return this.post('/api/dv/operation/retry', { project, record, surface, ...session === null ? {} : { session } })
+  }
+
+  /**
    * Put assets on the project's canvas (`asset.place`), or take them off it (`asset.unplace`);
    * the assets stay in the asset pool either way.
    * @param project - the project.

@@ -407,6 +407,19 @@ export default class DvProject extends Service {
   }
 
   /**
+   * Run a failed or cancelled record again with the records that ended `failed` / `input_failed` only because of it;
+   * each is re-run as a scheduled call that reads the new record of its re-run producers.
+   * @param project - the project.
+   * @param record - a `failed` or `cancelled` record.
+   * @param origin - who retries.
+   * @returns the new records, the retried record's first. Throws `unknown_record`, or `not_failed` for a record that did
+   *   not fail.
+   */
+  retry(project: ProjectId, record: RecordId, origin: RecordOrigin): Promise<ProjectRecord[]> {
+    return this.runner.retry(project, record, origin)
+  }
+
+  /**
    * The project's current state: one slice per registered reducer, computed at the current position.
    * @param project - the project.
    * @returns the state. Throws `unknown_project`.

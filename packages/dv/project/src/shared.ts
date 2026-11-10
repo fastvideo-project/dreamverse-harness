@@ -22,6 +22,7 @@ export type ProjectErrorCode =
   | 'status_backwards'
   | 'record_finished'
   | 'not_running'
+  | 'not_failed'
   | 'nothing_to_undo'
   | 'nothing_to_redo'
 

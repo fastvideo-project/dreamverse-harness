@@ -527,4 +527,239 @@ describe('Runner', () => {
       expect(m.store.getRecord(project, done.id).status).toBe('done')
     })
   })
+
+  describe('retry', () => {
+    /** A render that imports one take, and throws for each prompt in `broken`; `ran` lists the prompts that executed. */
+    function setup(m: ProjectModules, broken: Set<string>, ran: string[]): void {
+      m.runner.registerOperation(operation({
+        name: 'shot.render', component: 'shot',
+        execute: (context) => {
+          const prompt = String(context.params['prompt'])
+          ran.push(prompt)
+          if (broken.has(prompt)) return Promise.reject(new Error(`${prompt} ran out of memory.`))
+          return Promise.resolve({ outputs: [context.importAsset(Buffer.from(prompt), { mime: 'video/mp4', name: 'take.mp4' })] })
+        },
+      }))
+    }
+
+    /** Schedule a render named `prompt`, reading output 0 of each record in `reads`. */
+    async function render(m: ProjectModules, project: ProjectId, prompt: string, reads: ProjectRecord[] = []): Promise<ProjectRecord> {
+      const result = await m.runner.run(request(project, 'shot.render', userOrigin(), {
+        params: { prompt }, after: [], inputs: reads.map(read => ({ role: 'reference', ref: { record: read.id, output: 0 } })),
+      }))
+      return result.record!
+    }
+
+    const RETRYER = userOrigin({ intent: 'retry from History' })
+
+    it('re-runs a failed record and the records that failed only because of it, each reading the new producer', async () => {
+      const m = startModules()
+      const project = await createTestProject(m)
+      const broken = new Set(['A'])
+      const ran: string[] = []
+      setup(m, broken, ran)
+      const a = await render(m, project, 'A')
+      const b = await render(m, project, 'B', [a])
+      const c = await render(m, project, 'C', [b])
+      await m.scheduler.wait(project)
+      expect(m.store.getRecord(project, a.id)).toMatchObject({ status: 'failed', error: { code: 'operation_failed' } })
+      for (const dependent of [b, c]) expect(m.store.getRecord(project, dependent.id)).toMatchObject({ status: 'failed', error: { code: 'input_failed' } })
+      expect(ran).toEqual(['A'])
+
+      broken.clear()
+      const created = await m.runner.retry(project, a.id, RETRYER)
+      expect(created.map(record => [record.params['prompt'], record.based_on, record.status, record.intent])).toEqual([
+        ['A', a.id, 'pending', 'retry from History'], ['B', b.id, 'pending', 'retry from History'], ['C', c.id, 'pending', 'retry from History'],
+      ])
+      const [a2, b2, c2] = created as [ProjectRecord, ProjectRecord, ProjectRecord]
+      expect(b2.inputs.map(input => input.ref)).toEqual([{ record: a2.id, output: 0 }])
+      expect(c2.inputs.map(input => input.ref)).toEqual([{ record: b2.id, output: 0 }])
+
+      await m.scheduler.wait(project)
+      for (const record of created) expect(m.store.getRecord(project, record.id).status).toBe('done')
+      expect(m.store.getRecord(project, b2.id).inputs[0]?.resolved_asset).toBe(m.store.getRecord(project, a2.id).outputs[0])
+      expect(ran).toEqual(['A', 'A', 'B', 'C'])
+      // The failed originals stay as they were.
+      expect(m.store.getRecord(project, b.id)).toMatchObject({ status: 'failed', error: { code: 'input_failed' } })
+    })
+
+    it('re-runs a failed record that has no dependents as one record, and leaves an unrelated failure alone', async () => {
+      const m = startModules()
+      const project = await createTestProject(m)
+      const broken = new Set(['X', 'Y'])
+      setup(m, broken, [])
+      const x = await render(m, project, 'X')
+      const y = await render(m, project, 'Y')
+      await m.scheduler.wait(project)
+
+      broken.delete('X')
+      const created = await m.runner.retry(project, x.id, RETRYER)
+      await m.scheduler.wait(project)
+
+      expect(created).toHaveLength(1)
+      expect(m.store.getRecord(project, created[0]!.id)).toMatchObject({ status: 'done', based_on: x.id, params: { prompt: 'X' } })
+      expect(recordsOf(m, project, 'shot.render').filter(record => record.params['prompt'] === 'Y').map(record => record.id)).toEqual([y.id])
+    })
+
+    it('does not re-run a dependent that failed for its own reason, or anything downstream of it', async () => {
+      const m = startModules()
+      const project = await createTestProject(m)
+      const broken = new Set(['A'])
+      setup(m, broken, [])
+      const a = await render(m, project, 'A')
+      const b = await render(m, project, 'B', [a])
+      await m.scheduler.wait(project)
+      // `own` read A and then failed in its execute; `downstream` read `own` and failed with input_failed.
+      const own = await m.store.lock(project, () => {
+        const record = m.store.append(project, {
+          parents: [m.store.line(project)!.at], kind: 'operation', component: 'shot', operation: 'shot.render', operation_version: '1',
+          ...userOrigin(), params: { prompt: 'own' }, inputs: [{ role: 'reference', ref: { record: a.id, output: 0 }, resolved_asset: null }],
+          outputs: [], based_on: null, supersedes: [], deterministic: false, status: 'pending',
+        })
+        return m.store.update(project, { update: record.id, status: 'failed', finished_at: new Date().toISOString(), error: { code: 'operation_failed', message: 'own failure' } })
+      })
+      const downstream = await m.store.lock(project, () => {
+        const record = m.store.append(project, {
+          parents: [m.store.line(project)!.at], kind: 'operation', component: 'shot', operation: 'shot.render', operation_version: '1',
+          ...userOrigin(), params: { prompt: 'downstream' }, inputs: [{ role: 'reference', ref: { record: own.id, output: 0 }, resolved_asset: null }],
+          outputs: [], based_on: null, supersedes: [], deterministic: false, status: 'pending',
+        })
+        return m.store.update(project, { update: record.id, status: 'failed', finished_at: new Date().toISOString(), error: { code: 'input_failed', message: 'upstream' } })
+      })
+
+      broken.clear()
+      const created = await m.runner.retry(project, a.id, RETRYER)
+      await m.scheduler.wait(project)
+
+      expect(created.map(record => record.params['prompt'])).toEqual(['A', 'B'])
+      expect(created.map(record => record.based_on)).toEqual([a.id, b.id])
+      const prompts = recordsOf(m, project, 'shot.render').map(record => record.params['prompt'])
+      expect(prompts.filter(prompt => prompt === 'own' || prompt === 'downstream')).toEqual(['own', 'downstream'])
+      expect(m.store.getRecord(project, own.id).status).toBe('failed')
+      expect(m.store.getRecord(project, downstream.id).status).toBe('failed')
+    })
+
+    it('does not re-run a dependent that a later step discarded', async () => {
+      const m = startModules()
+      const project = await createTestProject(m)
+      const broken = new Set(['A'])
+      setup(m, broken, [])
+      const a = await render(m, project, 'A')
+      const b = await render(m, project, 'B', [a])
+      await m.scheduler.wait(project)
+      // Moving back to A and writing a new step takes B out of the history list.
+      await m.store.lock(project, () => m.history.moveTo(project, a.id))
+      await m.runner.run(request(project, 'shot.render', userOrigin(), { params: { prompt: 'fresh' } }))
+      expect(m.history.list({ project }).map(entry => entry.record.id)).not.toContain(b.id)
+
+      broken.clear()
+      const created = await m.runner.retry(project, a.id, RETRYER)
+
+      expect(created.map(record => record.params['prompt'])).toEqual(['A'])
+    })
+
+    it('skips an in-history record that has no operation or no error, and one that reads nothing of the chain', async () => {
+      const m = startModules()
+      const project = await createTestProject(m)
+      const broken = new Set(['A'])
+      setup(m, broken, [])
+      const a = await render(m, project, 'A')
+      await m.scheduler.wait(project)
+      const written = await m.store.lock(project, () => ['none', 'noerror', 'assetonly'].map((kind) => {
+        const record = m.store.append(project, {
+          parents: [m.store.line(project)!.at], kind: 'operation', component: 'shot', operation: kind === 'none' ? null : 'shot.render',
+          operation_version: '1', ...userOrigin(), params: { prompt: kind },
+          inputs: [{ role: 'reference', ref: kind === 'assetonly' ? { asset: m.assets.importAsset(project, Buffer.from('x'), { mime: 'image/png', name: 'x.png' }, null) } : { record: a.id, output: 0 }, resolved_asset: null }],
+          outputs: [], based_on: null, supersedes: [], deterministic: false, status: 'pending',
+        })
+        return m.store.update(project, {
+          update: record.id, status: 'failed', finished_at: new Date().toISOString(),
+          ...kind === 'noerror' ? {} : { error: { code: 'input_failed', message: 'upstream' } },
+        })
+      }))
+      expect(written).toHaveLength(3)
+
+      broken.clear()
+      const created = await m.runner.retry(project, a.id, RETRYER)
+
+      expect(created.map(record => record.params['prompt'])).toEqual(['A'])
+    })
+
+    it('refuses a failed record that has no operation', async () => {
+      const m = startModules()
+      const project = await createTestProject(m)
+      const stored = await m.store.lock(project, () => {
+        const record = m.store.append(project, {
+          parents: [m.store.line(project)!.at], kind: 'operation', component: 'shot', operation: null, operation_version: null,
+          ...userOrigin(), params: {}, inputs: [], outputs: [], based_on: null, supersedes: [], deterministic: false, status: 'pending',
+        })
+        return m.store.update(project, { update: record.id, status: 'failed', finished_at: new Date().toISOString() })
+      })
+      await expect(m.runner.retry(project, stored.id, RETRYER)).rejects.toMatchObject({ code: 'not_failed' })
+    })
+
+    it('refuses a record that did not fail and an unknown record', async () => {
+      const m = startModules()
+      const project = await createTestProject(m)
+      setup(m, new Set(), [])
+      const done = (await m.runner.run(request(project, 'shot.render'))).record!
+      expect(done.status).toBe('done')
+
+      await expect(m.runner.retry(project, done.id, RETRYER)).rejects.toMatchObject({ code: 'not_failed' })
+      await expect(m.runner.retry(project, brandString<RecordId>('missing'), RETRYER)).rejects.toMatchObject({ code: 'unknown_record' })
+      expect(recordsOf(m, project, 'shot.render')).toHaveLength(1)
+    })
+
+    it('retries a cancelled record together with the record that waited on it', async () => {
+      const m = startModules({ cpu: 4, gpu: 1 })
+      const project = await createTestProject(m)
+      const started: string[] = []
+      let hold = true
+      m.runner.registerOperation(operation({
+        name: 'shot.render', component: 'shot', resource: 'gpu',
+        execute: async (context) => {
+          const prompt = String(context.params['prompt'])
+          started.push(prompt)
+          if (hold) {
+            await new Promise((_resolve, reject) => { context.signal.addEventListener('abort', () => { reject(new Error('aborted')) }, { once: true }) })
+          }
+          return { outputs: [context.importAsset(Buffer.from(prompt), { mime: 'video/mp4', name: 'take.mp4' })] }
+        },
+      }))
+      const a = await render(m, project, 'A')
+      await expect.poll(() => started).toEqual(['A'])
+      const b = await render(m, project, 'B', [a])
+      await m.runner.cancel(project, a.id)
+      await m.scheduler.wait(project)
+      expect(m.store.getRecord(project, b.id)).toMatchObject({ status: 'failed', error: { code: 'input_failed' } })
+
+      hold = false
+      const created = await m.runner.retry(project, a.id, RETRYER)
+      await m.scheduler.wait(project)
+
+      expect(created.map(record => [record.params['prompt'], m.store.getRecord(project, record.id).status])).toEqual([['A', 'done'], ['B', 'done']])
+      expect(created[1]!.inputs[0]?.ref).toEqual({ record: created[0]!.id, output: 0 })
+    })
+
+    it('names how many records were queued when a later re-run is refused, and keeps them', async () => {
+      const m = startModules()
+      const project = await createTestProject(m)
+      const broken = new Set(['A'])
+      setup(m, broken, [])
+      const a = await render(m, project, 'A')
+      await render(m, project, 'B', [a])
+      await m.scheduler.wait(project)
+      broken.clear()
+      // Unregistering is not possible for a test spec, so make the dependent's params invalid by editing the stored copy.
+      const stored = m.store.listRecords(project).find(record => record.params['prompt'] === 'B')!
+      stored.params['prompt'] = 7
+      const spy = vi.spyOn(m.store, 'listRecords').mockReturnValueOnce(m.store.listRecords(project).map(record => record.id === stored.id ? stored : record))
+
+      await expect(m.runner.retry(project, a.id, RETRYER)).rejects.toMatchObject({
+        code: 'invalid_params', message: expect.stringContaining('Only 1 of 2 records were queued') as string,
+      })
+      spy.mockRestore()
+      expect(recordsOf(m, project, 'shot.render').filter(record => record.based_on === a.id)).toHaveLength(1)
+    })
+  })
 })

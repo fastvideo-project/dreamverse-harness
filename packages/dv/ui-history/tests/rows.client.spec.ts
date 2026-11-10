@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import type { HistoryEntry, ProjectRecord, WireOperation } from '@dv/ui-kit/types.ts'
 import type { HistoryRow } from '../src/client/contract/index.ts'
 import { fixtureState, record } from '../../ui-kit/tests/fixture.client.tsx'
-import { actionLabel, actionRows, centerFocus, relativeTime, type LabelContext } from '../src/client/rows.ts'
+import { actionLabel, actionRows, canRetry, centerFocus, laterShotsOf, relativeTime, type LabelContext } from '../src/client/rows.ts'
 
 /** An entry of a record, at or before the current position unless `place` says otherwise. */
 const entry = (fields: Partial<ProjectRecord> & { id: string }, place: HistoryEntry['place'] = 'before'): HistoryEntry => ({ record: record(fields), place })
@@ -143,5 +143,33 @@ describe('focus', () => {
     expect(centerFocus({ record: move, place: 'before' }, rows, [])).toEqual({ view: 'canvas', target: { record: 'm' } })
     expect(centerFocus({ record: render, place: 'after' }, rows, [])).toBeNull()
     expect(centerFocus(entry({ id: 's', operation: 'proj.stale_accept' }), [], [])).toBeNull()
+  })
+})
+
+describe('canRetry and laterShotsOf', () => {
+  it('offers a retry for a failed or cancelled operation call, not for finished, unfinished or proj records', () => {
+    expect(canRetry(record({ id: 'a', operation: 'shot.render', status: 'failed' }))).toBe(true)
+    expect(canRetry(record({ id: 'a', operation: 'shot.render', status: 'cancelled' }))).toBe(true)
+    expect(canRetry(record({ id: 'a', operation: 'shot.render', status: 'done' }))).toBe(false)
+    expect(canRetry(record({ id: 'a', operation: 'shot.render', status: 'running' }))).toBe(false)
+    expect(canRetry(record({ id: 'a', operation: null, status: 'failed' }))).toBe(false)
+    expect(canRetry(record({ id: 'a', operation: 'proj.create', status: 'failed' }))).toBe(false)
+  })
+
+  it('counts the records that failed with input_failed through a chain of outputs, and no others', () => {
+    const reads = (id: string): ProjectRecord['inputs'] => [{ role: 'first_frame', ref: { record: id, output: 1 }, resolved_asset: null }]
+    const inputFailed = { code: 'input_failed', message: 'upstream' }
+    const a = record({ id: 'a', operation: 'shot.render', status: 'failed', error: { code: 'operation_failed', message: 'oom' } })
+    const entries: HistoryEntry[] = [
+      entry({ id: 'x', operation: 'shot.render', status: 'failed', error: inputFailed, inputs: reads('own') }),
+      entry({ id: 'own', operation: 'shot.render', status: 'failed', error: { code: 'operation_failed', message: 'own' }, inputs: reads('a') }),
+      entry({ id: 'd', operation: 'shot.render', status: 'failed', error: inputFailed, inputs: reads('c') }),
+      entry({ id: 'c', operation: 'shot.render', status: 'failed', error: inputFailed, inputs: reads('b') }),
+      entry({ id: 'b', operation: 'shot.render', status: 'failed', error: inputFailed, inputs: reads('a') }),
+      entry({ id: 'other', operation: 'shot.render', status: 'done', inputs: reads('a') }),
+      { record: a, place: 'before' },
+    ]
+    expect(laterShotsOf(a, entries)).toBe(3)
+    expect(laterShotsOf(record({ id: 'lonely', operation: 'shot.render', status: 'failed' }), entries)).toBe(0)
   })
 })
