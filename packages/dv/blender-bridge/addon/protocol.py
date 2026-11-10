@@ -49,6 +49,18 @@ def encode_binary(header, payload):
     return struct.pack(">I", len(head)) + head + bytes(payload)
 
 
+def drop_alpha(rows):
+    """RGB bytes from RGBA bytes: every fourth byte, the alpha, removed."""
+    data = bytes(rows)
+    if len(data) % 4 != 0:
+        raise ValueError("RGBA rows hold a multiple of 4 bytes")
+    rgb = bytearray(len(data) // 4 * 3)
+    rgb[0::3] = data[0::4]
+    rgb[1::3] = data[1::4]
+    rgb[2::3] = data[2::4]
+    return bytes(rgb)
+
+
 def encode_png(rows, width, height, channels):
     """An 8-bit PNG from ``rows``: ``height`` top-down rows of ``width * channels`` bytes each (bytes-like)."""
     if channels not in (3, 4):

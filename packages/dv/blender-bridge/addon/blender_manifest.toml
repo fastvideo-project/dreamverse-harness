@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "dreamverse_blender"
-version = "0.3.0"
+version = "0.3.1"
 name = "DreamVerse"
 tagline = "Connect Blender to a DreamVerse harness and stream its viewport"
 maintainer = "FastVideo"

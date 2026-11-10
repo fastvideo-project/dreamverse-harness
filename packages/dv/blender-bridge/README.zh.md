@@ -52,7 +52,7 @@ kind: "package-reference"
 
 | 操作 | 工具 | 参数 | 输出和报告 |
 | --- | --- | --- | --- |
-| `blender.render` | `dv_blender_render` | `frame`（默认：场景的当前帧） | 输出 `image`，一个 `image/png` 素材；报告 `{width, height, frame, engine}` |
+| `blender.render` | `dv_blender_render` | `frame`（默认：场景的当前帧） | 输出 `image`，一个 `image/png` 素材，场景不渲染透明胶片时为 RGB；报告 `{width, height, frame, engine}` |
 | `blender.animation_render` | `dv_blender_animation_render` | `frame_start`、`frame_end`（默认：场景的帧范围） | 输出 `video`，一个带时长的 `video/mp4` 素材；报告 `{width, height, frame_start, frame_end, fps, duration_sec, engine}` |
 | `blender.viewport` | `dv_blender_viewport` | 无 | 没有输出；报告 `{}` |
 
@@ -151,5 +151,6 @@ dv_blender_viewport: Put the live viewport of the user's Blender on the project 
 - **浏览器只移动视图**：打开的视口节点可以旋转、平移、缩放和切换视图；不支持在浏览器中选择、编辑或点击物体，每次移动要经过一次到 Blender 的往返和一帧才显示。
 - **每个项目一个视口节点**：节点显示唯一连接的 Blender，所以两个显示它的项目显示同一个视口。
 - **帧率**：插件在 Blender 主线程的 Python 中编码画面，所以宽 1280 像素时视口流约为每秒 5 到 15 帧，视图移动时画面较小，帧率更高；偏好设置可以分别调整静止和移动时的帧率、宽度和 JPEG 质量。每次移动和每一帧都要经过网络，所以经由 SSH 隧道时视图会比拖动晚一个往返；Blender 控件会显示帧率、这段延迟，以及插件的绘制和编码时间。
+- **拒绝 WebP 的模型服务**：harness 重新编码带 alpha 通道的图片时，会以 WebP 发给模型，而有些服务（例如 Cerebras）拒绝 WebP。插件的查看结果是 RGB PNG，渲染的静帧在场景不渲染透明胶片时也是 RGB，所以它们以 PNG 或 JPEG 到达这类服务；其他带 alpha 通道的图片和 WebP 上传，仍需要 harness 按服务调整请求图片的格式。
 - **没有 Linux arm64 版 Blender**：Blender 不发布 Linux arm64 版本，所以 harness 在 arm64 机器上时，Blender 运行在另一台电脑上。
 - **CI 不在真实 Blender 上测试**：测试用假 Blender 驱动连接；插件的 `bpy` 代码在 Blender 5.3 中手动检查。

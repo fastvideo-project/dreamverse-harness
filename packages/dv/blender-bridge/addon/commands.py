@@ -17,7 +17,7 @@ import bpy
 import mathutils
 
 from . import viewport
-from .protocol import encode_png
+from .protocol import drop_alpha, encode_png
 
 LOOK_MAX_WIDTH = 1280
 
@@ -97,13 +97,15 @@ def _push_undo():
 
 
 def look(view, reply):
-    """Capture the viewport or the camera view as a PNG, at the next redraw of the main 3D view."""
+    """Capture the viewport or the camera view as an RGB PNG, at the next redraw of the main 3D view. The PNG has no
+    alpha channel, because the harness sends an image with one to the model as WebP once it is re-encoded, and some
+    model providers reject WebP."""
     if view == "camera" and bpy.context.scene.camera is None:
         reply(None, error="The scene has no active camera; set one first, or look at the viewport.")
         return
 
     def done(rows, width, height):
-        reply({"view": view, "width": width, "height": height}, file_bytes=encode_png(rows, width, height, 4))
+        reply({"view": view, "width": width, "height": height}, file_bytes=encode_png(drop_alpha(rows), width, height, 3))
 
     if not viewport.capture_once(view, LOOK_MAX_WIDTH, done, lambda message: reply(None, error=message)):
         reply(None, error="Blender has no 3D viewport open to look at; ask the user to open one.")
@@ -157,7 +159,9 @@ def render(params):
             if hasattr(image, "media_type"):
                 image.media_type = "IMAGE"
             image.file_format = "PNG"
-            image.color_mode = "RGBA"
+            # An alpha channel only where the scene renders transparency: the harness sends an image with one to the
+            # model as WebP once it is re-encoded, and some model providers reject WebP.
+            image.color_mode = "RGBA" if render_settings.film_transparent else "RGB"
             render_settings.use_file_extension = False
             path = os.path.join(folder, "still.png")
             render_settings.filepath = path

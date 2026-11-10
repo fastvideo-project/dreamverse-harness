@@ -52,7 +52,7 @@ The user connects Blender in three steps that the Blender tab shows: download th
 
 | Operation | Tool | Params | Outputs and report |
 | --- | --- | --- | --- |
-| `blender.render` | `dv_blender_render` | `frame` (default: the scene's current frame) | output `image`, one `image/png` asset; report `{width, height, frame, engine}` |
+| `blender.render` | `dv_blender_render` | `frame` (default: the scene's current frame) | output `image`, one `image/png` asset, RGB unless the scene renders a transparent film; report `{width, height, frame, engine}` |
 | `blender.animation_render` | `dv_blender_animation_render` | `frame_start`, `frame_end` (default: the scene's range) | output `video`, one `video/mp4` asset with its duration; report `{width, height, frame_start, frame_end, fps, duration_sec, engine}` |
 | `blender.viewport` | `dv_blender_viewport` | none | no output; report `{}` |
 
@@ -151,5 +151,6 @@ Each result is appended to the conversation after its call; the cached prefix st
 - **The browser moves only the view**: the opened viewport node orbits, pans, zooms and switches views; selecting, editing or clicking objects from the browser is not supported, and each move shows after a round trip to Blender and one frame.
 - **One viewport node per project**: the node shows the one connected Blender, so two projects that show it show the same viewport.
 - **Frame rate**: the add-on encodes frames in Blender's Python on Blender's main thread, so the stream reaches about 5 to 15 frames per second at 1280 px, more at the smaller frames it sends while the view moves; the preferences set the rate, width and JPEG quality at rest and while moving. Each move and each frame crosses the network, so through an SSH tunnel the view follows a drag one round trip late; the Blender controls show the frame rate, that delay, and the add-on's draw and encode times.
+- **Model providers that reject WebP**: the harness sends an image that has an alpha channel to the model as WebP once it re-encodes it, and some providers, such as Cerebras, reject WebP. The add-on's looks are RGB PNGs, and its stills are RGB unless the scene renders a transparent film, so they reach such a provider as PNG or JPEG; other images with an alpha channel and WebP uploads still need the harness's request image formats to follow the provider.
 - **No Linux arm64 Blender**: Blender publishes no Linux arm64 build, so on an arm64 harness machine Blender runs on another computer.
 - **Untested on real Blender in CI**: the tests drive the link with a fake Blender; the add-on's `bpy` code is checked by hand in Blender 5.3.

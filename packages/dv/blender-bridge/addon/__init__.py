@@ -17,7 +17,7 @@ from . import commands, navigate, viewport
 from .link import HandshakeError, Link
 from .protocol import ConnectionStringError, encode_binary, is_local_host, parse_connection
 
-ADDON_VERSION = "0.3.0"
+ADDON_VERSION = "0.3.1"
 CHUNK_BYTES = 1 << 20
 # Close codes after which reconnecting would only repeat the refusal.
 FINAL_CLOSE_CODES = {4000, 4001}
