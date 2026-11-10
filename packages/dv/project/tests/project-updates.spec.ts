@@ -130,13 +130,16 @@ interface Fixture {
   release(prompt: string): void
   /** The name of each image saved through the `attachments` stand-in, in order. */
   savedImages: string[]
+  /** Call `listener` with the name of each image the `attachments` stand-in is asked to save, before it saves it. */
+  onSave(listener: (name: string) => void): void
 }
 
 /**
  * Mount the DSH tool registry and `dvProject` with an in-memory asset store, two operations (`asset.import`, and a GPU
  * `shot.render` that waits until the test releases its prompt and fails for the prompt `broken`), and a project bound
  * to {@link SESSION} unless `bound` is false. The `sessionProjections` stand-in answers the agent's session with the
- * fixture log's state, and the `agents` stand-in returns the fixture's agent for {@link SESSION}.
+ * fixture log's state, and the `agents` stand-in returns the fixture's agent for {@link SESSION}. The `attachments`
+ * stand-in refuses to save `unsaved.png`.
  * @param bound - whether {@link SESSION} starts bound to the project.
  * @returns the fixture.
  */
@@ -145,7 +148,7 @@ async function start(bound = true): Promise<Fixture> {
   const context = new Context()
   contexts.push(context)
   const agent = new FakeAgent()
-  const holder: { log?: AgentLog } = {}
+  const holder: { log?: AgentLog; onSave?: (name: string) => void } = {}
   context.provide('sessionProjections', {
     stateOf: (session: unknown) => (session === agent.session ? holder.log?.seen : undefined), register: () => () => {},
   } as never)
@@ -154,6 +157,8 @@ async function start(bound = true): Promise<Fixture> {
   const savedImages: string[] = []
   context.provide('attachments', {
     saveImage: (image: { mediaType: string; name: string }) => {
+      holder.onSave?.(image.name)
+      if (image.name === 'unsaved.png') return Promise.reject(new Error('the disk is full'))
       savedImages.push(image.name)
       return Promise.resolve({ attachmentId: `att-${image.name}`, mediaType: image.mediaType })
     },
@@ -214,6 +219,9 @@ async function start(bound = true): Promise<Fixture> {
   holder.log = log
   return {
     context, project, projectId, services, deps, log, agent, savedImages, events: agentEvents(context, agent as never),
+    onSave(listener) {
+      holder.onSave = listener
+    },
     call(name, args) {
       calls += 1
       const agent = { id: SESSION, session: { id: SESSION } }
@@ -460,8 +468,10 @@ describe('dvProjectSight fold', () => {
 
 describe('finished records in the agent\'s messages', () => {
   /** Run the `agent/pre-step` waterfall of one step that claimed `messages`, and log the step's messages. */
-  async function runStep(fixture: Fixture, messages: UserMessage[], step: number): Promise<UserMessage[]> {
-    const decision = await fixture.events.waterfall('agent/pre-step', { messages, turn: 1, step, signal: new AbortController().signal },
+  async function runStep(
+    fixture: Fixture, messages: UserMessage[], step: number, signal = new AbortController().signal,
+  ): Promise<UserMessage[]> {
+    const decision = await fixture.events.waterfall('agent/pre-step', { messages, turn: 1, step, signal },
       () => Promise.resolve({ kind: 'enter' as const, messages }))
     if (decision.kind !== 'enter') throw new Error('expected step entry')
     for (const message of decision.messages) fixture.log.logMessage(message)
@@ -558,6 +568,33 @@ describe('finished records in the agent\'s messages', () => {
     // Model-visible ⟺ logged: the logged project update carries the same image.
     const logged = fixture.log.events.findLast(event => event.type === 'user/message')
     expect(logged?.type === 'user/message' ? logged.data.content : []).toEqual(message?.content)
+  })
+
+  it('keeps the update text-only for a call whose images cannot be saved, logs it, and still attaches the others', async () => {
+    const fixture = await start()
+    const logged: unknown[][] = []
+    // Level 2 (WARN): an exporter without levels drops warnings.
+    fixture.context.logger.exporter({ levels: { default: 2 }, export: (message) => { if (message.name === 'dvProject') logged.push(message.args) } })
+    fixture.log.step()
+    const unsaved = await finishedRender(fixture, 'unsaved', 'dv_shot_still')
+    const first = fixture.agent.claim()
+    await finishedRender(fixture, 'frame', 'dv_shot_still')
+    const [message] = await runStep(fixture, [...first, ...fixture.agent.claim()], 1)
+    expect(message?.content.slice(1)).toEqual([{ type: 'image', attachment: { attachmentId: 'att-frame.png', mediaType: 'image/png' } }])
+    expect(logged).toEqual([['could not attach the images of record %s: %s', unsaved, 'the disk is full']])
+    expect(await runStep(fixture, [], 2)).toEqual([])
+  })
+
+  it('saves no further images once the step is aborted', async () => {
+    const fixture = await start()
+    fixture.log.step()
+    await finishedRender(fixture, 'one', 'dv_shot_still')
+    const first = fixture.agent.claim()
+    await finishedRender(fixture, 'two', 'dv_shot_still')
+    const abort = new AbortController()
+    fixture.onSave((name) => { if (name === 'one.png') abort.abort() })
+    await runStep(fixture, [...first, ...fixture.agent.claim()], 1, abort.signal)
+    expect(fixture.savedImages).toEqual(['one.png'])
   })
 
   it('shows no image for a finished record that the user started', async () => {
