@@ -2158,6 +2158,9 @@ importers:
       '@dv/location':
         specifier: workspace:*
         version: link:../../dv/location
+      '@dv/lora':
+        specifier: workspace:*
+        version: link:../../dv/lora
       '@dv/mcp-presets':
         specifier: workspace:*
         version: link:../../dv/mcp-presets

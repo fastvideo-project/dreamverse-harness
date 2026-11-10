@@ -26,9 +26,11 @@
     # providers offer their `extra.lora` parameter only for an adapter that both this row and the task's server allow,
     # so a server's allow-list must repeat each id it can load. The server was GPU-verified with the Realism People
     # adapter; the others list the strength range and trigger word of their model card, and a deployment widens
-    # `targets` only after it verifies the adapter on its own checkpoint.
+    # `targets` only after it verifies the adapter on its own checkpoint. The row is disabled with dv-fastvideo, the
+    # only provider of `extra.lora`; a deployment that sets `disabled: false` on dv-fastvideo also sets it on this row.
     - id: dv-lora
       name: '@dv/lora'
+      disabled: true
       config:
         adapters:
           - id: fal/MiniMax-H3-Realism-People-LoRA
