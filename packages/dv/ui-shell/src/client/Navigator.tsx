@@ -5,7 +5,7 @@
  *
  * @module @dv/ui-shell/Navigator
  */
-import type { ReactNode } from 'react'
+import type { KeyboardEvent, ReactNode } from 'react'
 import { Fragment, useState } from 'react'
 import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -17,6 +17,7 @@ import { pickText, useText } from '@dv/ui-kit/locale.ts'
 import type { ShellInjected } from './Center.tsx'
 import { ChevronDownIcon, ChevronRightIcon, HomeIcon, PlugIcon, PluginsIcon, PlusIcon, SkillsIcon } from './icons.tsx'
 import { DREAMVERSE_WORDMARK } from './logo.ts'
+import { type ActionRunner, useActionNotice } from './notice.tsx'
 import { RowMenu } from './RowMenu.tsx'
 import type { WireProject } from '@dv/ui-kit/types.ts'
 import { usePanelEntries } from './panels.ts'
@@ -34,11 +35,17 @@ const PAGE_ICONS: Readonly<Record<string, () => ReactNode>> = { plugins: Plugins
 const SHOWN_PROJECTS = 12
 
 /**
- * Run an action and log its failure; navigation failures leave the page as it was.
- * @param work - the action.
+ * The key handler of a focusable row: Enter or Space runs the action, as a click does. A key pressed in an element
+ * inside the row, such as its rename field, is left to that element.
+ * @param action - what the click does.
+ * @returns the `onKeyDown` handler.
  */
-function run(work: () => Promise<void>): void {
-  work().catch((error: unknown) => { console.warn('ui-shell: navigation failed', error) })
+function onActivate(action: () => void): (event: KeyboardEvent<HTMLElement>) => void {
+  return (event) => {
+    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return
+    event.preventDefault()
+    action()
+  }
 }
 
 /**
@@ -55,6 +62,7 @@ export function Navigator(props: NavigatorProps): ReactNode {
   const projects = useShell(s => s.projects ?? NO_PROJECTS)
   const [showAll, setShowAll] = useState(false)
   const loaded = useShell(s => s.projects !== null)
+  const { run, notice } = useActionNotice()
   if (!wide) return null
   const sorted = [...projects].sort((a, b) => b.created_at.localeCompare(a.created_at))
   const shown = showAll ? sorted : sorted.slice(0, SHOWN_PROJECTS)
@@ -69,6 +77,7 @@ export function Navigator(props: NavigatorProps): ReactNode {
   )
   return (
     <div className={css.nav} data-dv-navigator="">
+      {notice}
       <button type="button" className={css.navSecondary} onClick={() => { run(() => shell.newProject()) }}>
         <PlusIcon />{t('新建项目', 'Create project')}
       </button>
@@ -88,6 +97,7 @@ export function Navigator(props: NavigatorProps): ReactNode {
           {...props}
           project={project}
           open={project.id === projectId}
+          run={run}
         />
       ))}
     </div>
@@ -96,11 +106,11 @@ export function Navigator(props: NavigatorProps): ReactNode {
 
 /**
  * One project with a row menu to rename or delete it, its chat sessions, and a ＋ that starts a chat session in it.
- * @param props - the DSH UI slot props, the project, and whether it is the open one.
+ * @param props - the DSH UI slot props, the project, whether it is the open one, and the runner of its actions.
  * @returns the rows.
  */
-function ProjectTree(props: NavigatorProps & { project: WireProject; open: boolean }): ReactNode {
-  const { project, open, shell } = props
+function ProjectTree(props: NavigatorProps & { project: WireProject; open: boolean; run: ActionRunner }): ReactNode {
+  const { project, open, shell, run } = props
   const t = useText()
   const [expanded, setExpanded] = useState(open)
   const [renaming, setRenaming] = useState<string | null>(null)
@@ -110,6 +120,7 @@ function ProjectTree(props: NavigatorProps & { project: WireProject; open: boole
   const toggle = (): void => {
     setExpanded(!isOpen)
   }
+  const openProject = (): void => { run(() => shell.openProject(project.id)) }
   const deleteProject = (): void => {
     if (!window.confirm(pickText(`删除项目“${project.title}”？项目会移到回收目录，可由管理员恢复。`, `Delete project "${project.title}"? It moves to the trash directory, where an administrator can restore it.`))) return
     run(() => shell.deleteProject(project.id))
@@ -120,7 +131,7 @@ function ProjectTree(props: NavigatorProps & { project: WireProject; open: boole
         <span
           role="button" tabIndex={0} className={css.treeCaret} aria-expanded={isOpen}
           aria-label={isOpen ? t('收起会话', 'Hide chats') : t('展开会话', 'Show chats')}
-          onClick={toggle} onKeyDown={() => {}}
+          onClick={toggle} onKeyDown={onActivate(toggle)}
         >{isOpen ? <ChevronDownIcon /> : <ChevronRightIcon />}</span>
         {renaming === project.id
           ? (
@@ -132,7 +143,7 @@ function ProjectTree(props: NavigatorProps & { project: WireProject; open: boole
           : (
             <span
               className={css.treeLabel} role="button" tabIndex={0} title={project.title}
-              onClick={() => { run(() => shell.openProject(project.id)) }} onKeyDown={() => {}}
+              onClick={openProject} onKeyDown={onActivate(openProject)}
             >{project.title}</span>
           )}
         <RowMenu
@@ -151,7 +162,7 @@ function ProjectTree(props: NavigatorProps & { project: WireProject; open: boole
       </div>
       {isOpen && sessions.map(summary => (
         <SessionRow
-          key={summary.id} summary={summary} active={summary.id === current} shell={shell}
+          key={summary.id} summary={summary} active={summary.id === current} shell={shell} run={run}
           open={() => { shell.openSession(summary.id) }}
         />
       ))}
@@ -161,20 +172,22 @@ function ProjectTree(props: NavigatorProps & { project: WireProject; open: boole
 
 /**
  * One chat session row: its title, or 新对话 while it is blank, and a row menu to rename or delete it.
- * @param props - the session, whether it is the main session, the action that opens it, and the shell actions.
+ * @param props - the session, whether it is the main session, the action that opens it, the shell actions, and the
+ *   runner of the asynchronous ones.
  * @returns the row.
  */
-function SessionRow({ summary, active, open, shell }: {
+function SessionRow({ summary, active, open, shell, run }: {
   summary: SessionSummary
   active: boolean
   open: () => void
+  run: ActionRunner
 } & ShellInjected): ReactNode {
   const t = useText()
   const [renaming, setRenaming] = useState(false)
   return (
     <div
       role="button" tabIndex={0} className={`${css.treeRow} ${css.treeChild}`}
-      data-active={active ? '' : undefined} onClick={open} onKeyDown={() => {}}
+      data-active={active ? '' : undefined} onClick={open} onKeyDown={onActivate(open)}
     >
       {renaming
         ? (

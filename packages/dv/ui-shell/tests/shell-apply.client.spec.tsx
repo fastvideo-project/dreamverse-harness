@@ -2,7 +2,7 @@
 /**
  * The shell plugin in a slot test runtime with stand-ins for the DSH layout, right panel and navigation services.
  */
-import { act, waitFor } from '@testing-library/react'
+import { act, fireEvent, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -254,5 +254,65 @@ describe('the shell plugin', () => {
     act(() => { bench.mounted.set('s5' as SessionId) })
     focusTrajectory({ session: 's5', toolCall: 'c6' })
     expect(opened()).toHaveLength(3)
+  })
+})
+
+describe('the navigator', () => {
+  /** Mount the shell and give the project p1 one chat session, then render the navigator. */
+  async function mountNavigator() {
+    const bench = await mountShell()
+    await bench.runtime.sessions.add({ id: 'c1', summary: { blank: false, displayTitle: 'Chat one', updatedAt: 1 } })
+    await bench.runtime.workspaces.update((draft) => {
+      const item = draft.items.find(candidate => candidate.workspaceId === 'p1')
+      if (item !== undefined) item.sessionIds = ['c1' as SessionId]
+    })
+    const navigator = bench.runtime.renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {} })
+    return { bench, view: navigator.view }
+  }
+
+  it('toggles, opens and selects with Enter and Space on the caret, the project title and the chat row, and leaves keys typed inside the row alone', async () => {
+    const { bench, view } = await mountNavigator()
+    const caret = view.getByRole('button', { name: 'Show chats' })
+    fireEvent.keyDown(caret, { key: 'Enter' })
+    await waitFor(() => { expect(view.getByRole('button', { name: 'Hide chats' }).getAttribute('aria-expanded')).toBe('true') })
+    fireEvent.keyDown(view.getByRole('button', { name: 'Hide chats' }), { key: ' ' })
+    await waitFor(() => { expect(view.getByRole('button', { name: 'Show chats' }).getAttribute('aria-expanded')).toBe('false') })
+    fireEvent.keyDown(view.getByRole('button', { name: 'Show chats' }), { key: 'a' })
+    expect(view.queryByRole('button', { name: 'Hide chats' })).toBeNull()
+
+    const title = view.getByTitle('Launch film')
+    fireEvent.keyDown(title, { key: ' ' })
+    await waitFor(() => { expect(bench.store.getShell().projectId).toBe('p1') })
+    expect(view.getByRole('button', { name: 'Hide chats' })).toBeDefined()
+
+    const row = view.getByTitle('Chat one').parentElement!
+    fireEvent.keyDown(within(row).getByRole('button', { name: 'Conversation menu' }), { key: 'Enter' })
+    expect(bench.openSession).toHaveBeenCalledTimes(1)
+    bench.openSession.mockClear()
+    fireEvent.keyDown(row, { key: 'Enter' })
+    expect(bench.openSession).toHaveBeenLastCalledWith('c1')
+  })
+
+  it('shows the reason a failed action gave, clears it when a later action succeeds, and lets the person dismiss it', async () => {
+    const { bench, view } = await mountNavigator()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const serverFetch = globalThis.fetch
+    vi.stubGlobal('fetch', ((input, init) => {
+      if (input === '/api/dv/projects' && init?.method === 'POST') return Promise.resolve(new Response(JSON.stringify({ error: 'disk full' }), { status: 500 }))
+      return serverFetch(input, init)
+    }) satisfies typeof fetch)
+    fireEvent.click(view.getByRole('button', { name: 'Create project' }))
+    const alert = await view.findByRole('alert')
+    expect(alert.textContent).toContain("Couldn't complete that: ")
+    expect(alert.textContent).toContain('disk full')
+    fireEvent.click(within(alert).getByRole('button', { name: 'Dismiss' }))
+    expect(view.queryByRole('alert')).toBeNull()
+
+    fireEvent.click(view.getByRole('button', { name: 'Create project' }))
+    await view.findByRole('alert')
+    bench.runtime.sessions.stubCreate(() => Promise.resolve('blank-p1' as SessionId))
+    fireEvent.click(view.getByRole('button', { name: 'New chat' }))
+    await waitFor(() => { expect(view.queryByRole('alert')).toBeNull() })
+    expect(bench.store.getShell().projectId).toBe('p1')
   })
 })

@@ -41,7 +41,7 @@ The Host half registers nothing. The browser half provides `dvMentions` at its `
 | 问 agent / Ask the agent on a canvas node | `dv:compose` with the draft 修改 {title}： / Change {title}: and one reference to the node's `ref`, else its record, else the node, shown by the node's preview or first asset; the editor closes |
 | 让智能体使用 / Ask the agent to use it in the asset preview | `dv:compose` with the draft 使用这个素材： / Use this asset: and one reference to the asset; the preview closes |
 | `dv:compose` from another view | The newest mounted composer replaces its draft with the text and appends one chip per reference; nothing is sent |
-| Open a `dv.prompt` occurrence | `GET /api/dv/models` whenever an occurrence opens while no other is open; a failed read keeps the catalog it had |
+| Open a `dv.prompt` occurrence | `GET /api/dv/models` whenever an occurrence opens while no other is open; a failed read keeps the catalog it had, and while the editor has no catalog it shows 模型列表加载失败 / Couldn't load the model list with 重试 / Try again, which reads the catalog again (`dv-composer-models-failed`) |
 | Show a chip in the chat composer bar | `GET /api/dv/state` of the open project, fetched again 150 ms after each burst of its project events while a chat chip shows |
 | Edit the call in an editable `dv.prompt` occurrence, or lend it a new state | `POST /api/dv/operation/check` with the edited call and the host's `surface`, 250 ms after the last change; the route writes nothing |
 

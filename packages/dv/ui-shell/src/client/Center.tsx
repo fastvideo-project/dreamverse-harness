@@ -25,6 +25,7 @@ import type { WireProject, WireProjectSummary } from '@dv/ui-kit/types.ts'
 import type { ShellActions } from './actions.ts'
 import { CoverFrame, editedText, useProjectSummaries } from './cover.tsx'
 import { SidebarRightIcon } from './icons.tsx'
+import { type ActionRunner, useActionNotice } from './notice.tsx'
 import { SessionSwitcher } from './SessionSwitcher.tsx'
 import { useSlotTabs } from './slot-tabs.ts'
 import type { ShellLocation } from './store.ts'
@@ -56,7 +57,7 @@ const RECENT_COUNT = 2
 let restored = false
 
 /**
- * Run an action and log its failure; navigation failures leave the page as it was.
+ * Run a location-restore action and log its failure; a failed restore leaves the page as it was.
  * @param work - the action.
  */
 function run(work: () => Promise<void>): void {
@@ -244,6 +245,7 @@ function RecentProjects({ shell, renderFactorySlot }: Pick<ShellInjected, 'shell
   const sorted = useMemo(() => [...projects].sort((a, b) => b.created_at.localeCompare(a.created_at)), [projects])
   // One summaries read for every card; a project added to the list reads them again.
   const summaries = useProjectSummaries(null, sorted.map(project => project.id).join(' '))
+  const { run: runAction, notice } = useActionNotice()
   if (sorted.length === 0) return null
   const shown = showAll ? sorted : sorted.slice(0, RECENT_COUNT)
   return (
@@ -256,10 +258,11 @@ function RecentProjects({ shell, renderFactorySlot }: Pick<ShellInjected, 'shell
           </button>
         )}
       </div>
+      {notice}
       <div className={css.cards}>
         {shown.map(project => (
           <ProjectCard
-            key={project.id} shell={shell} projectId={project.id} title={project.title} createdAt={project.created_at}
+            key={project.id} shell={shell} run={runAction} projectId={project.id} title={project.title} createdAt={project.created_at}
             summary={summaries?.get(project.id) ?? null} renderFactorySlot={renderFactorySlot}
           />
         ))}
@@ -310,17 +313,18 @@ function Explore({ renderSlot }: Pick<CenterProps, 'renderSlot'>): ReactNode {
 
 /**
  * One recent project: its 16:9 cover, its title, and its last edit time.
- * @param props - the shell actions, the Factory renderer, the project, and its summary (null while the summaries load).
+ * @param props - the shell actions, the runner of their asynchronous ones, the Factory renderer, the project, and its
+ *   summary (null while the summaries load).
  * @returns the card.
  */
 function ProjectCard(
-  { shell, projectId, title, createdAt, summary, renderFactorySlot }: Pick<ShellInjected, 'shell'> & PropsRenderFactories
-    & { projectId: string; title: string; createdAt: string; summary: WireProjectSummary | null },
+  { shell, run: runAction, projectId, title, createdAt, summary, renderFactorySlot }: Pick<ShellInjected, 'shell'> & PropsRenderFactories
+    & { run: ActionRunner; projectId: string; title: string; createdAt: string; summary: WireProjectSummary | null },
 ): ReactNode {
   const t = useText()
   const meta = editedText(summary?.edited_at ?? createdAt, t)
   return (
-    <button type="button" className={css.card} onClick={() => { run(() => shell.openProject(projectId)) }}>
+    <button type="button" className={css.card} onClick={() => { runAction(() => shell.openProject(projectId)) }}>
       <CoverFrame cover={summary?.cover ?? null} purpose="card" className={css.cardCover} renderFactorySlot={renderFactorySlot} />
       <span className={css.cardText}>
         <span className={css.cardTitle}>{title}</span>

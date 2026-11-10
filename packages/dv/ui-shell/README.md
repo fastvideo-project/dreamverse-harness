@@ -72,6 +72,7 @@ The workspace renders the shown view with the owner props `projectId` (the open 
 | [`src/client/actions.ts`](src/client/actions.ts) | `ShellActions`: create, open, rename, and delete projects and chat sessions, the entry page, and the right-panel tabs |
 | [`src/client/store.ts`](src/client/store.ts) | The shared state (open project, view, center fields, the shown view's request, main session, project list), `dvCenter.show` and the views' `note`, the URL hash mirror, and the session → project lookup |
 | [`src/client/Center.tsx`](src/client/Center.tsx) | The center: URL restore, the entry page, template chips, recent projects, the workspace top bar, the shown center view with its request and center fields, and the Back, Forward, and edited-hash listeners |
+| [`src/client/notice.tsx`](src/client/notice.tsx) | `useActionNotice`: runs a shell action, logs a rejection, and shows its message as a dismissible alert (`dv-shell-notice`) that the next successful action clears; the navigator, the session switcher, and the recent projects use it |
 | [`src/client/SessionSwitcher.tsx`](src/client/SessionSwitcher.tsx) | The session switcher button and menu of the workspace top bar |
 | [`src/client/cover.tsx`](src/client/cover.tsx) | Project covers and last edit times read from `/api/dv/projects/summary`; the cover asset drawn through `dv.media` |
 | [`src/client/sessions.ts`](src/client/sessions.ts) | The chat sessions of one project, shared by the navigator and the session switcher |
@@ -79,7 +80,7 @@ The workspace renders the shown view with the owner props `projectId` (the open 
 | [`src/client/right-panel.ts`](src/client/right-panel.ts) | The right panel's 448 px default width |
 | [`src/client/theme.ts`](src/client/theme.ts) | The DreamVerse theme stylesheet: the `--dv-*` variables, among them the node palette `--dv-node-1` to `--dv-node-8` that each canvas node type picks a slot of and the waveform colors, and the DSH alias mapping |
 | [`src/client/icons.tsx`](src/client/icons.tsx) | The shell's 16 px stroke icons |
-| [`src/client/Navigator.tsx`](src/client/Navigator.tsx) | The left navigator and the brand name |
+| [`src/client/Navigator.tsx`](src/client/Navigator.tsx) | The left navigator and the brand name; the caret, the project title, and the chat row of the tree also act on Enter and Space |
 | [`src/client/panels.ts`](src/client/panels.ts) | The DSH sidebar page entries, mirrored for the navigator |
 | [`src/client/slot-tabs.ts`](src/client/slot-tabs.ts) | The 探索 tabs and the view control's tabs, mirrored from the `dv.explore` and `dv.center.view` entries |
 | [`src/client/tabs.tsx`](src/client/tabs.tsx) | The 对话 and 轨迹 tab types and bodies |

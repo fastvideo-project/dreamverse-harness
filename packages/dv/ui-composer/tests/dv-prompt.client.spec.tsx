@@ -60,6 +60,8 @@ interface MountOptions {
   holdChecks?: boolean
   /** The model catalog waits until the test releases it. */
   holdModels?: boolean
+  /** The model catalog read fails while `down` is true. */
+  modelsDown?: { down: boolean }
   /** The host's send refuses with this message. */
   refuseSend?: string
   /** The host's import refuses with this message. */
@@ -104,6 +106,7 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
     const answer = scripted.fetch(input, init)
     requested.push(path)
     if (options.holdState === true && path === '/api/dv/state') return new Promise((resolve) => { heldStates.push(() => { resolve(answer) }) })
+    if (options.modelsDown?.down === true && path === '/api/dv/models') return Promise.resolve(new Response(JSON.stringify({ error: 'The model service is down.' }), { status: 503, headers: { 'content-type': 'application/json' } }))
     if (options.holdModels === true && path === '/api/dv/models') return new Promise((resolve) => { heldModels.push(() => { resolve(answer) }) })
     if (options.holdChecks === true && path === '/api/dv/operation/check') {
       return new Promise((resolve, reject) => { checks.push({ answer: (body) => { resolve(json(body)) }, fail: reject }) })
@@ -313,6 +316,29 @@ describe('references and the model catalog', () => {
     expect(within(take).queryByRole('button', { name: 'Add asset' })).toBeNull()
     fireEvent.change(within(take).getByTestId('dv-prompt-model'), { target: { value: 'fastvideo/fasth3/ref2v' } })
     await waitFor(() => { expect(within(take).getByRole('button', { name: 'Add asset' })).toBeTruthy() })
+  })
+})
+
+describe('the model list failure', () => {
+  const FAILED = '[data-testid="dv-composer-models-failed"]'
+
+  it('says the model list failed to load, and offers Try again, which shows the model control once the read succeeds', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const modelsDown = { down: true }
+    const { take } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] }, { modelsDown })
+    const alert = await found(take, FAILED)
+    expect(alert.textContent).toContain("Couldn't load the model list")
+    expect(within(take).queryByRole('button', { name: 'Add asset' })).toBeNull()
+    modelsDown.down = false
+    fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }))
+    await waitFor(() => { expect(take.querySelector(FAILED)).toBeNull() })
+    await waitFor(() => { expect(within(take).getByRole('button', { name: 'Add asset' })).toBeTruthy() })
+  })
+
+  it('never shows it when the first load succeeds', async () => {
+    const { take } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] })
+    await waitFor(() => { expect(within(take).getByRole('button', { name: 'Add asset' })).toBeTruthy() })
+    expect(take.querySelector(FAILED)).toBeNull()
   })
 })
 
