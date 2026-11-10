@@ -147,8 +147,10 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
     if (options.refuseSend !== undefined) return Promise.reject(new Error(options.refuseSend))
     return options.holdSend === true ? new Promise<void>((resolve) => { answers.push(resolve) }) : Promise.resolve()
   }
+  // The record the host lends the call from; a test changes it to open another take with an equal call.
+  let draftId = 'r1'
   const props = (shown: PromptCall, state: WireState, projectId: string): DvPromptProps => ({
-    projectId, call: shown, state, operations: [...OPERATIONS, STILL], readOnly: options.readOnly === true, host,
+    projectId, draftId, call: shown, state, operations: [...OPERATIONS, STILL], readOnly: options.readOnly === true, host,
     surface: options.surface ?? 'canvas',
     ...options.noSend === true || options.readOnly === true ? {} : { onSubmit },
   })
@@ -182,6 +184,8 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
     releaseModels: () => { act(() => { heldModels.splice(0).forEach((release) => { release() }) }) },
     setCall: (next: PromptCall) => { act(() => { setCall(next) }) },
     setProject: (next: string) => { act(() => { setProject(next) }) },
+    /** Lend the next render's call from another record, as another take of an equal call does. */
+    lendFrom: (id: string) => { draftId = id },
     /** Lend a new state object of the same project, as the host's next fetch does. */
     relend: () => { act(() => { setLent(structuredClone(lent)) }) },
   }
@@ -604,6 +608,19 @@ describe('the unsent draft of a take', () => {
     await waitFor(() => { expect(seedOf(mounted.take)).toBe('7') })
   })
 
+  it('keeps a separate draft for another take whose call is equal', async () => {
+    const mounted = await mount(STILL_CALL)
+    await sendOf(mounted.take, 'Generate a new version')
+    editSeed(mounted.take, '5')
+    mounted.lendFrom('r2')
+    mounted.view.unmount()
+    const other = mounted.runtime.renderRoot()
+    expect(seedOf(other.getByTestId('take'))).toBe('')
+    mounted.lendFrom('r1')
+    other.unmount()
+    expect(seedOf(mounted.runtime.renderRoot().getByTestId('take'))).toBe('5')
+  })
+
   it('drops the draft once its send succeeds', async () => {
     const mounted = await mount(STILL_CALL)
     await sendOf(mounted.take, 'Generate a new version')
@@ -618,9 +635,9 @@ describe('the unsent draft of a take', () => {
     const mounted = await mount(STILL_CALL)
     await sendOf(mounted.take, 'Generate a new version')
     editSeed(mounted.take, '7')
-    expect(readDraft(draftKey('p1', JSON.stringify(STILL_CALL)))).toBeDefined()
+    expect(readDraft(draftKey('p1', 'r1', JSON.stringify(STILL_CALL)))).toBeDefined()
     editSeed(mounted.take, '')
-    expect(readDraft(draftKey('p1', JSON.stringify(STILL_CALL)))).toBeUndefined()
+    expect(readDraft(draftKey('p1', 'r1', JSON.stringify(STILL_CALL)))).toBeUndefined()
     expect(seedOf(reopen(mounted))).toBe('')
   })
 
@@ -629,9 +646,9 @@ describe('the unsent draft of a take', () => {
     const mounted = await mount(seeded)
     await sendOf(mounted.take, 'Generate a new version')
     editSeed(mounted.take, '6')
-    expect(readDraft(draftKey('p1', JSON.stringify(seeded)))).toBeDefined()
+    expect(readDraft(draftKey('p1', 'r1', JSON.stringify(seeded)))).toBeDefined()
     editSeed(mounted.take, '5')
-    expect(readDraft(draftKey('p1', JSON.stringify(seeded)))).toBeUndefined()
+    expect(readDraft(draftKey('p1', 'r1', JSON.stringify(seeded)))).toBeUndefined()
   })
 
   it('restores a draft that was mid-send as an ordinary draft, never as sending, whose send waits for a new check', async () => {

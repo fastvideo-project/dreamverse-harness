@@ -130,7 +130,7 @@ function DvPromptView({ call, state, host, renderFactorySlot, useVersionKinds }:
  * @returns the editor.
  */
 function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
-  const { projectId, call, state, host, onSubmit, surface, renderFactorySlot } = props
+  const { projectId, draftId, call, state, host, onSubmit, surface, renderFactorySlot } = props
   const pick = useText()
   // Null until the composer knows the canvas's version kinds; until then the editor is read-only, because the inputs
   // follow its edits by the kinds' rules.
@@ -143,8 +143,8 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
   const bar = props.useParamBars(bars => bars.find(candidate => candidate.operation === call.operation) ?? null)
   const operation = props.operations.find(candidate => candidate.name === call.operation) ?? null
   const callKey = JSON.stringify(call)
-  // An unsent draft of this project and call, kept when the editor last closed, replaces the call's own draft.
-  const storeKey = draftKey(projectId, callKey)
+  // An unsent draft of this project, draft id and call, kept when the editor last closed, replaces the call's own draft.
+  const storeKey = draftKey(projectId, draftId, callKey)
   const [draft, dispatch] = useReducer(reduceDraft, call, lent => startOf(lent, readDraft(storeKey)))
   if (draft.callKey !== callKey) dispatch({ type: 'callLent', call, stored: readDraft(storeKey) })
   const { document, params, sending } = draft

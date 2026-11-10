@@ -9,12 +9,13 @@ const draftFor = (prompt: string) => draftOf({ operation: 'shot.render', params:
 beforeEach(() => { resetDrafts() })
 
 describe('the draft store', () => {
-  it('reads back what was written under the project and call, and nothing under another key', () => {
-    const key = draftKey('p1', '{"a":1}')
+  it('reads back what was written under the project, draft id and call, and nothing under another key', () => {
+    const key = draftKey('p1', 'r1', '{"a":1}')
     expect(readDraft(key)).toBeUndefined()
     writeDraft(key, draftFor('rain'))
     expect(readDraft(key)?.params).toEqual({ prompt: 'rain' })
-    expect(readDraft(draftKey('p2', '{"a":1}'))).toBeUndefined()
+    expect(readDraft(draftKey('p2', 'r1', '{"a":1}'))).toBeUndefined()
+    expect(readDraft(draftKey('p1', 'r2', '{"a":1}'))).toBeUndefined()
     clearDraft(key)
     expect(readDraft(key)).toBeUndefined()
   })

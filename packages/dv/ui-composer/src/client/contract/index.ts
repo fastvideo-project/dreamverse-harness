@@ -91,6 +91,11 @@ export interface PromptHost {
 export interface DvPromptProps {
   readonly projectId: string
   readonly call: PromptCall
+  /**
+   * The identity of what the call belongs to, such as the record of a canvas take. An editable occurrence keeps its
+   * unsent draft under the project, this id, and the lent call, so two takes with equal calls keep separate drafts.
+   */
+  readonly draftId: string
   /** The project state that the host draws; the tray, the chips and the edits resolve every reference against it. */
   readonly state: WireState
   /** The operation declarations that the host reads; the composer finds the call's operation among them. */

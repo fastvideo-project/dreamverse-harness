@@ -1,7 +1,7 @@
 /**
- * The unsent drafts of the take editor, held in memory per project and lent call so that closing an editor keeps what
- * the person typed. A page reload clears them. At most {@link MAX_DRAFTS} drafts are kept; writing one beyond that
- * drops the one written longest ago.
+ * The unsent drafts of the take editor, held in memory per project, draft id, and lent call so that closing an editor
+ * keeps what the person typed. A page reload clears them. At most {@link MAX_DRAFTS} drafts are kept; writing one beyond
+ * that drops the one written longest ago.
  *
  * @module @dv/ui-composer/drafts
  */
@@ -15,11 +15,12 @@ const drafts = new Map<string, Draft>()
 /**
  * The store key of a draft.
  * @param projectId - the project the editor belongs to.
+ * @param draftId - the `draftId` of the occurrence, such as the record of the take.
  * @param callKey - the lent call as JSON, `Draft.callKey`.
  * @returns the key.
  */
-export function draftKey(projectId: string, callKey: string): string {
-  return `${projectId}\u0000${callKey}`
+export function draftKey(projectId: string, draftId: string, callKey: string): string {
+  return `${projectId}\u0000${draftId}\u0000${callKey}`
 }
 
 /**
