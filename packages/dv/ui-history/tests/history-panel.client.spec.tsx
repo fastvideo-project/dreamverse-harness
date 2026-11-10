@@ -374,6 +374,25 @@ describe('the History tab', () => {
     expect([reasonOf('f1')?.textContent, reasonOf('f1')?.title, reasonOf('c1')?.textContent, reasonOf('f2'), reasonOf('g1')]).toEqual(['GPU out of memory', 'GPU out of memory', 'Stopped by you', null, null])
   })
 
+  it('counts the time a running step has rendered, and shows how long a finished render took unless it was reused or took under a second', async () => {
+    const startedAt = new Date(Date.now() - 65_000).toISOString()
+    const step = (id: string, extra: Partial<ProjectRecord>): HistoryEntry => ({
+      record: record({ id, operation: 'shot.render', outputs: [], ...extra }), place: 'before',
+    })
+    const { row } = await mount([
+      step('u1', { status: 'running', started_at: startedAt }),
+      step('d1', { cost: { wall_seconds: 125.4, reused: false } }),
+      step('d2', { cost: { wall_seconds: 125.4, reused: true } }),
+      step('d3', { cost: { wall_seconds: 0.4, reused: false } }),
+      step('d4', {}),
+      ...ENTRIES,
+    ])
+    await waitFor(() => { row('u1') })
+    const durationOf = (id: string): string | undefined => row(id).querySelector('[data-testid="dv-history-duration"]')?.textContent ?? undefined
+    expect(row('u1').querySelector('[class*="status"]')?.textContent).toMatch(/1:0[5-7]$/)
+    expect([durationOf('u1'), durationOf('d1'), durationOf('d2'), durationOf('d3'), durationOf('d4')]).toEqual([undefined, 'took 2:05', undefined, undefined, undefined])
+  })
+
   it('greys a render step after the current one with a faded, black-and-white thumbnail', async () => {
     const { row } = await mount(ENTRIES.map(entry => entry.record.id === 'g1' ? { ...entry, place: 'after' as const } : entry))
     const thumb = await waitFor(() => {

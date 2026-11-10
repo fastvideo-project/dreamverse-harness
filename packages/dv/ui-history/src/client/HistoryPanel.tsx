@@ -19,6 +19,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { HostObservable, InjectFace, PropsRenderFactories, PropsRuntime, RenderFactorySlot } from '@deepseek-ai/dsh-client-ui-slots'
 import { errorMessage, type DvClient } from '@dv/ui-kit/api.ts'
 import { useCurrentProject } from '@dv/ui-kit/current-project.ts'
+import { formatElapsed, useElapsedSeconds } from '@dv/ui-kit/elapsed.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import type { Actor, Asset, HistoryEntry, HistoryQuery, ProjectRecord, RecordStatus, WireHistory, WireState } from '@dv/ui-kit/types.ts'
 import { useOperations, useProjectState } from '@dv/ui-kit/useProject.ts'
@@ -493,6 +494,9 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
   // The intent the agent gave for its call; a call without one records the operation name, which the label already shows.
   // A human action's intent repeats its label, so it stays in the tooltip.
   const words = record.actor === 'agent' && record.intent !== record.operation ? record.intent : ''
+  const elapsed = useElapsedSeconds(record.started_at, record.status === 'running')
+  // A render that ran for at least a second shows how long it took; a reused result took no time of its own.
+  const tookSeconds = record.status === 'done' && record.cost !== undefined && !record.cost.reused && record.cost.wall_seconds >= 1 ? record.cost.wall_seconds : null
   // Only a record that ended without output carries a reason worth a line of its own.
   const reason = (record.status === 'failed' || record.status === 'cancelled') && record.error?.message ? record.error.message : undefined
   const size = nested ? 28 : 40
@@ -532,7 +536,11 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
             <span title={record.error?.message ?? status} className={css.status}>
               <span className={css.dot} style={{ background: STATUS_COLORS[record.status] }} />
               {record.status === 'done' ? null : <span className={record.status === 'failed' ? css.error : undefined}>{status}</span>}
+              {elapsed === null ? null : <span className={css.duration}>{formatElapsed(elapsed)}</span>}
             </span>
+            {tookSeconds === null
+              ? null
+              : <span data-testid="dv-history-duration" className={css.duration}>{t('用时', 'took')} {formatElapsed(tookSeconds)}</span>}
             {entry.place === 'current'
               ? (
                 <span data-testid="dv-history-current" className={css.currentBadge}>

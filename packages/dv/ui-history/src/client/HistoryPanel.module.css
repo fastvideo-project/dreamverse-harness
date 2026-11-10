@@ -273,6 +273,10 @@
   color: var(--dv-danger);
 }
 
+.duration {
+  font-variant-numeric: tabular-nums;
+}
+
 .status {
   display: inline-flex;
   align-items: center;

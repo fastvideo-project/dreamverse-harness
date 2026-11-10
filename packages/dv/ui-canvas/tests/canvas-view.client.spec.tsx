@@ -1439,6 +1439,39 @@ describe('the node card', () => {
     await runtime.dispose()
   })
 
+  it('reads Queued… on a pending node and the running words on a running node that has no start time, neither with a time', async () => {
+    const { runtime, node } = await mountCanvas({
+      edit: (state) => {
+        state.components.proj.records.push(record({ id: 'pa', operation: 'test.paint', status: 'pending' }), record({ id: 'pb', operation: 'test.paint', status: 'running' }))
+        addNode(state, 'pa', canvasNode('paint', ['pa'], 0, 600))
+        addNode(state, 'pb', canvasNode('paint', ['pb'], 300, 600))
+      },
+    })
+    await mountDescriptors(runtime, { nodeType: PAINT })
+    await waitFor(() => { node('pb') })
+    expect([node('pa').textContent, node('pb').textContent]).toEqual([expect.stringContaining(zh['node.queued']), expect.stringContaining('渲染中')])
+    expect(node('pa').textContent).not.toMatch(/\d:\d\d/)
+    expect(node('pb').textContent).not.toMatch(/\d:\d\d/)
+    await runtime.dispose()
+  })
+
+  it('counts the time a running node has rendered, once a second, in tabular numerals', async () => {
+    const startedAt = new Date(Date.now() - 72_000).toISOString()
+    const { runtime, node } = await mountCanvas({
+      edit: (state) => {
+        state.components.proj.records.push(record({ id: 'pa', operation: 'test.paint', status: 'running', started_at: startedAt }))
+        addNode(state, 'pa', canvasNode('paint', ['pa'], 0, 600))
+      },
+    })
+    await mountDescriptors(runtime, { nodeType: PAINT })
+    const timeOf = (): string | undefined => node('pa').querySelector<HTMLElement>('span[style*="tabular-nums"]')?.textContent
+    await waitFor(() => { expect(timeOf()).toMatch(/^1:1[2-4]$/) })
+    const first = timeOf()
+    await waitFor(() => { expect(timeOf()).not.toBe(first) }, { timeout: 3000 })
+    expect(node('pa').textContent).toContain('渲染中')
+    await runtime.dispose()
+  })
+
   it('draws only the failed words of a failed take whose record carries no error', async () => {
     const { runtime, node } = await mountCanvas({
       edit: (state) => {
