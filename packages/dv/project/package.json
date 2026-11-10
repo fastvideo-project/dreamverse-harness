@@ -32,6 +32,7 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-agent-loop-testkit": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
     "@types/node": "^22.20.0"
   }

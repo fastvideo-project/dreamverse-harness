@@ -13,6 +13,9 @@
  *   them opens claims them together.
  * - With `maxConsecutiveWakes` set, an agent that has already opened that many turns by wakes since its last message
  *   from the user gets further wakes injected without waking it; the next message from the user claims them.
+ * - An agent that goes idle with wakes still in its next-step inbox (a Stop that keeps the inbox aborted the turn that
+ *   would have claimed them, or they arrived while that turn unwound) is woken under the same rules: those wakes leave
+ *   the next-step inbox and one wake that names all their records opens a turn.
  *
  * Watches live in memory: a restart cancels every unfinished record (`Runner.recover`) while no agent turn is open. A
  * session without a registered agent when its record finishes gets no wake; the project update message shows the record
@@ -28,9 +31,10 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent'
+import { brandString } from '@deepseek-ai/dsh-brand'
 import { SessionId as AgentSessionId } from '@deepseek-ai/dsh-session'
 import type DvProject from './index.ts'
-import { wakeMessage } from './project-updates.ts'
+import { WAKE_KIND, wakeMessage } from './project-updates.ts'
 import type { ProjectId, ProjectRecord, RecordId, SessionId } from './types.ts'
 
 /** One watched record: its project and the session whose agent gets its wake. */
@@ -63,6 +67,10 @@ export class RecordNotices {
         if (message.source.kind === 'user') this.spentWakes.delete(agent)
       })
     }
+    // The `idle` status precedes the loop's own replay of a latched wake, so the check waits for that replay.
+    ctx.on('agent/status', ({ agent, status }) => {
+      if (status === 'idle') queueMicrotask(() => { this.wakeStranded(agent) })
+    })
   }
 
   /**
@@ -114,6 +122,27 @@ export class RecordNotices {
   close(): void {
     this.open = false
     this.watches.clear()
+  }
+
+  /**
+   * Wake an idle agent whose next-step inbox still holds wakes: no step of a running turn will claim them. The wakes
+   * leave the inbox and one wake naming all their records opens a turn, unless the session still watches another
+   * record or the wake budget is spent; then they stay for the turn that opens next.
+   * @param agent - an agent that has just become idle.
+   */
+  private wakeStranded(agent: Agent): void {
+    if (!this.open || agent.status !== 'idle') return
+    try {
+      const stranded = agent.inbox.nextStep
+        .flatMap(message => message.source.kind === WAKE_KIND ? [{ message, source: message.source }] : [])
+      if (stranded.length === 0 || this.ctx.get('agents')?.get(agent.id) !== agent) return
+      const session = brandString<SessionId>(agent.id)
+      if ([...this.watches.values()].some(watch => watch.session === session) || !this.spendWake(agent)) return
+      for (const { message } of stranded) agent.inbox.remove(message.id)
+      agent.followup(wakeMessage(stranded.flatMap(({ source }) => source.records)))
+    } catch (error) {
+      this.ctx.logger('dvProject').warn('could not wake agent %s: %s', agent.id, error instanceof Error ? error.message : String(error))
+    }
   }
 
   /** Take one wake from the agent's budget; always true without a budget. */

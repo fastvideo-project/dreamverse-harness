@@ -86,7 +86,7 @@ export const STATE_HEAD = 'DreamVerse project state.'
 export const UPDATE_HEAD = 'DreamVerse project updates since your last step:'
 
 /** The message source kind of a wake. */
-const WAKE_KIND = 'dv-project-wake'
+export const WAKE_KIND = 'dv-project-wake'
 
 /** The projection key. */
 const SEEN_PROJECTION = 'dvProjectSight'
