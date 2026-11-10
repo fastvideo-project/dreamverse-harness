@@ -350,6 +350,7 @@ Each test file builds modules with `startModules()` and projects with `createTes
 - A GPU operation call returns `pending` with `PENDING_LINE` and runs in the background; a call of a `none` operation still returns its final record.
 - The wake text and source of a done record, with no image and no attachment saved for its image output, and the wake of a failed one.
 - An idle agent is woken by the wake of its last watched record; a wake while other watches of the session remain is injected without waking the agent; a running agent gets the wake injected.
+- A CPU call behind an unfinished input that another chat started returns `pending` and wakes the agent when it finishes, and a call that fails `input_failed` because its input's record failed wakes it too.
 - `maxConsecutiveWakes`: wakes past the budget are injected, and a user message refills the budget.
 - No agent for the session: no delivery; a record that is not watched, or watched for another project: no delivery; a record finished before `watch`: delivered at once.
 - With the production agent loop (`tests/record-notices-loop.spec.ts`): a wake injected into a running turn that a Stop keeping the inbox aborts opens a new turn whose last user message is the project update with the record's `your call` line, and no wake text reaches the model; a stranded wake while the session watches another record opens no turn, and the turn of the last one claims both.

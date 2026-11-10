@@ -131,6 +131,11 @@ async function start(config: { maxConsecutiveWakes?: number } = {}): Promise<Fix
     },
   } satisfies OperationSpec)
   project.registerOperation({
+    ...base, name: 'bible.note', component: 'bible', params: {}, outputs: [{ role: 'note', type: 'text' }], resource: 'cpu',
+    inputs: { source: { type: 'video', description: 'A rendered video.' } }, summarize: () => 'note',
+    execute: context => Promise.resolve({ outputs: [context.importAsset(Buffer.from('note'), { mime: 'text/plain', name: 'note.txt' })] }),
+  } satisfies OperationSpec)
+  project.registerOperation({
     ...base, name: 'asset.import', component: 'asset', params: { name: { type: 'string' } }, outputs: [{ role: 'asset', type: 'image' }],
     resource: 'none', summarize: record => `imported ${String(record.params['name'])}`,
     execute: context => Promise.resolve({ outputs: [context.importAsset(Buffer.from(String(context.params['name'])), { mime: 'image/png', name: 'x.png' })] }),
@@ -217,14 +222,41 @@ describe('record notices', () => {
   it('injects without a wake while other records of the session run, and wakes with the last one', async () => {
     const fixture = await start()
     const agent = fixture.agents.get(SESSION)
-    await fixture.call('dv_shot_render', { reason: 'one', prompt: 'one' })
+    const one = recordOf(await fixture.call('dv_shot_render', { reason: 'one', prompt: 'one' }))
     await fixture.call('dv_shot_render', { reason: 'two', prompt: 'two' })
     fixture.release('one')
-    await new Promise(resolve => setTimeout(resolve, 20))
+    await fixture.project.wait(fixture.projectId, [one])
     expect(agent?.hows).toEqual(['inject'])
     fixture.release('two')
     await fixture.settle()
     expect(agent?.hows).toEqual(['inject', 'followup'])
+  })
+
+  it('wakes the agent for a CPU call behind an unfinished input that another chat started', async () => {
+    const fixture = await start()
+    const render = recordOf(await fixture.call('dv_shot_render', { reason: 'theirs', prompt: 'theirs' }, OTHER))
+    const result = await fixture.call('dv_bible_note', { reason: 'note it', inputs: { source: `${render}#0` } })
+    expect(result.value).toMatchObject({ status: 'pending' })
+    const note = recordOf(result)
+    const agent = fixture.agents.get(SESSION)
+    expect(agent?.got).toEqual([])
+    fixture.release('theirs')
+    await fixture.settle()
+    expect(fixture.project.getRecord(fixture.projectId, note).status).toBe('done')
+    expect(agent?.hows).toEqual(['followup'])
+    expect(textOf(agent?.got[0]?.message)).toBe(wakeText(note))
+  })
+
+  it('wakes the agent for a call that failed because its input\'s record failed', async () => {
+    const fixture = await start()
+    const render = recordOf(await fixture.call('dv_shot_render', { reason: 'theirs', prompt: 'broken' }, OTHER))
+    const note = recordOf(await fixture.call('dv_bible_note', { reason: 'note it', inputs: { source: `${render}#0` } }))
+    fixture.release('broken')
+    await fixture.settle()
+    expect(fixture.project.getRecord(fixture.projectId, note)).toMatchObject({ status: 'failed', error: { code: 'input_failed' } })
+    const agent = fixture.agents.get(SESSION)
+    expect(agent?.hows).toEqual(['followup'])
+    expect(textOf(agent?.got[0]?.message)).toBe(wakeText(note))
   })
 
   it('injects into a running agent', async () => {
