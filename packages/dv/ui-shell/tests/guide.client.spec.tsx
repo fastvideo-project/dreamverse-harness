@@ -8,7 +8,7 @@ import { useSyncExternalStore } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { Context } from '@deepseek-ai/cordis'
-import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
+import { createSnapshotStore, type ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SidebarRightGuideBox } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import { canvasDefinition } from '../../ui-canvas/src/client/definition.ts'
@@ -39,23 +39,18 @@ const box = (providerId: string, kind: string, title: string, description?: stri
 
 describe('the DreamVerse guide', () => {
   it('lists the panels of DreamVerse plugins after the four fixed ones, follows the registry, and opens the picked one', () => {
-    let entries = [
+    const entries = createSnapshotStore<readonly SidebarRightGuideBox[]>([
       box('@dv/ui-asset-pool', 'dv-asset-pool', 'Asset pool'), box('@deepseek-ai/dsh-client-ui-files', 'files', 'Files'),
       box('@dv/ui-example', 'dv-example', 'Example', 'A panel of another DreamVerse plugin'),
-    ]
-    const listeners = new Set<() => void>()
-    const { view, titles, openTab } = renderGuide({
-      getSnapshot: () => entries,
-      subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener) } },
-    })
+    ])
+    const { view, titles, openTab } = renderGuide(entries)
     expect(titles()).toEqual(['Chat', 'Asset pool', 'History', 'Trajectory', 'Example'])
     expect(view.getByText('A panel of another DreamVerse plugin')).toBeTruthy()
     fireEvent.click(view.getByText('Example'))
     expect(openTab).toHaveBeenCalledWith('dv-example', { replaceTab: true })
     fireEvent.click(view.getByText('History'))
     expect(openTab).toHaveBeenLastCalledWith('dv-history', { replaceTab: true })
-    entries = [...entries, box('@dv/ui-notes', 'dv-notes', 'Notes')]
-    act(() => { for (const listener of listeners) listener() })
+    act(() => { entries.set([...entries.getSnapshot(), box('@dv/ui-notes', 'dv-notes', 'Notes')]) })
     expect(titles()).toEqual(['Chat', 'Asset pool', 'History', 'Trajectory', 'Example', 'Notes'])
   })
 
