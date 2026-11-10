@@ -203,11 +203,8 @@ export function importOne(run: OperationContext,
 export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>): new (ctx: Context) => Service & GenerationApi {
   // The task names are the keys of the label record; Object.keys loses their type.
   const tasks = Object.keys(spec.tasks) as Array<TaskOfPrimitive<P>>
-  const taskLabels: Record<string, { zh: string; en: string }> = {}
-  for (const task of tasks) {
-    const label = spec.tasks[task]
-    if (label !== undefined) taskLabels[task] = label
-  }
+  // Under exactOptionalPropertyTypes each key present in the partial record holds a label.
+  const taskLabels = spec.tasks as Readonly<Record<string, { zh: string; en: string }>>
   const operationParams: OperationSpec['params'] = {
     ...KEY_PARAMS, ...spec.params, ...spec.seed === false ? {} : SEED_PARAM, ...EXTRA_PARAM,
   }
