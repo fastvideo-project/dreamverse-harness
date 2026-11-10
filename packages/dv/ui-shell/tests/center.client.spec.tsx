@@ -344,7 +344,7 @@ describe('the entry page', () => {
       .filter(chip => chip.title === 'Coming soon')
     expect(chips.map(chip => [chip.textContent, chip.getAttribute('aria-disabled'), chip.getAttribute('aria-describedby') === page.getByText('Coming soon', { selector: 'span' }).id]))
       .toEqual([['Stream highlight', 'true', true], ['Product launch', 'true', true], ['Character drama', 'true', true], ['Music video', 'true', true]])
-    expect(chips.every(chip => (chip as HTMLButtonElement).disabled === false)).toBe(true)
+    expect(chips.every(chip => !(chip as HTMLButtonElement).disabled)).toBe(true)
 
     const recent = within(page.getByRole('region', { name: 'Recent projects' }))
     const cards = (): string[] => recent.getAllByRole('button').map(button => button.textContent ?? '')
