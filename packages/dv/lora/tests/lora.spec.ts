@@ -129,6 +129,14 @@ describe('dvLora', () => {
     expect(!none.isError && none.value).toEqual([])
   })
 
+  it('filters by task alone, listing only the adapters some target serves for that task', async () => {
+    const ctx = await start()
+    expect(ctx.dvLora.list({ task: 'ref2v' }).map(adapter => adapter.id)).toEqual(['fal/MiniMax-H3-Realism-People-LoRA'])
+    const ref2v = await call(ctx, 'dv_lora_list', { task: 'ref2v' })
+    if (ref2v.isError) throw new Error(ref2v.error.message)
+    expect((ref2v.value as Array<{ id: string }>).map(adapter => adapter.id)).toEqual(['fal/MiniMax-H3-Realism-People-LoRA'])
+  })
+
   it('answers dv_lora_get with one adapter, and names the served ids for an unknown one', async () => {
     const ctx = await start()
     const one = await call(ctx, 'dv_lora_get', { id: 'pablodawson/MiniMax-H3-360-Orbit-LoRA' })

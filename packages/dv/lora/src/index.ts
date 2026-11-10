@@ -182,9 +182,9 @@ export default class DvLora extends Service {
    * @returns the adapters in registry order.
    */
   list(filter: { model?: string; task?: TaskId } = {}): LoraDefinition[] {
-    return [...this.adapters.values()].filter(adapter => filter.model === undefined
-      || adapter.targets.some(target => target.model === filter.model
-        && (filter.task === undefined || target.tasks.includes(filter.task))))
+    return [...this.adapters.values()].filter(adapter => adapter.targets.some(target =>
+      (filter.model === undefined || target.model === filter.model)
+      && (filter.task === undefined || target.tasks.includes(filter.task))))
   }
 
   /**
