@@ -28,6 +28,8 @@ describe('a late wake with nothing left to report sends no model request', () =>
   let projectId = ''
   let record = ''
   let wakes = 0
+  /** The session ids of the reported `idle` statuses, in report order. */
+  const idles: string[] = []
 
   const rules: ScriptedRule[] = [
     {
@@ -48,10 +50,15 @@ describe('a late wake with nothing left to report sends no model request', () =>
   ]
 
   beforeAll(async () => {
-    // The step gate's test server: `/hold` answers once the render has finished, `/wake` counts claimed wakes.
+    // The step gate's test server: `/hold` answers once the render has finished, `/wake` counts claimed wakes, `/idle`
+    // records the session of each idle agent.
     gate = createServer((request, response) => {
       void (async () => {
-        if (request.url === '/hold') {
+        let body = ''
+        for await (const chunk of request) body += String(chunk)
+        if (request.url === '/idle') {
+          idles.push(body)
+        } else if (request.url === '/hold') {
           harness.backend.releaseAll()
           await waitFor(async () => {
             const history = await harness.api.post('/api/dv/history', { project: projectId, records: [record] }) as {
@@ -59,7 +66,7 @@ describe('a late wake with nothing left to report sends no model request', () =>
             }
             return history.entries[0]?.record.status === 'done'
           }, 'the render', 60_000)
-        } else {
+        } else if (request.url === '/wake') {
           wakes += 1
         }
         response.end()
@@ -111,10 +118,13 @@ describe('a late wake with nothing left to report sends no model request', () =>
     await page.locator('[data-dv-chat]:visible').first().getByText('已开始渲染', { exact: false }).first().waitFor({ timeout: 90_000 })
     expect(model.requests).toHaveLength(3)
     await send(page, HOLD_TEXT)
-    // The wake is claimed by the step after the reply of the held step.
+    // The wake is claimed by the step after the reply of the held step, and the turn ends at that step.
     await waitFor(() => Promise.resolve(wakes === 1), 'the claimed wake', 30_000)
-    // A model request for the wake's step would follow its claim within milliseconds.
-    await new Promise(resolve => setTimeout(resolve, 3000))
+    const history = await harness.api.post('/api/dv/history', { project: projectId, records: [record] }) as {
+      entries: Array<{ record: { session: string | null } }>
+    }
+    const session = history.entries[0]?.record.session ?? ''
+    await waitFor(() => Promise.resolve(idles.filter(id => id === session).length === 2), 'the end of the second turn', 30_000)
 
     const requests = model.requests
     expect(requests).toHaveLength(4)

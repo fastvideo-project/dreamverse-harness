@@ -2,7 +2,11 @@
 // ends its turn. When the backend lets the renders finish, the record notices wake the idle agent: one turn opens, and
 // its model request ends with the project update that reports each render as `(your call)`. With two renders, the first
 // finish waits while the second runs, and one woken turn reports both. The wake itself reaches no request; because each
-// request extends the previous one, no logged user message of the session carries a wake either.
+// request extends the previous one, no logged user message of the session carries a wake either. The step gate of
+// `tests/step-gate-plugin.ts` reports each wake's inbox and each idle agent; it holds no step.
+import { createServer, type Server } from 'node:http'
+import { once } from 'node:events'
+import type { AddressInfo } from 'node:net'
 import type { Browser, Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { bootHarness, playwright, waitFor, type BootedHarness } from '../harness.ts'
@@ -40,8 +44,13 @@ describe('a render that finishes while the agent is idle wakes it', () => {
   let harness: BootedHarness
   let model: ScriptedModel
   let browser: Browser
+  let gate: Server
   let projectId = ''
   const records: Record<string, string[]> = { one: [], two: [] }
+  /** The inbox (`next-step` or `next-turn`) of each wake that entered one, in report order. */
+  const inserted: string[] = []
+  /** The session ids of the reported `idle` statuses, in report order. */
+  const idles: string[] = []
 
   const rules: ScriptedRule[] = [
     {
@@ -72,8 +81,20 @@ describe('a render that finishes while the agent is idle wakes it', () => {
   ]
 
   beforeAll(async () => {
+    gate = createServer((request, response) => {
+      void (async () => {
+        let body = ''
+        for await (const chunk of request) body += String(chunk)
+        if (request.url === '/wake-inserted') inserted.push(body)
+        if (request.url === '/idle') idles.push(body)
+        response.end()
+      })()
+    })
+    gate.listen(0, '127.0.0.1')
+    await once(gate, 'listening')
+    const { port } = gate.address() as AddressInfo
     model = await startScriptedModel(rules)
-    harness = await bootHarness({ modelBaseUrl: model.baseURL })
+    harness = await bootHarness({ modelBaseUrl: model.baseURL, stepGate: { url: `http://127.0.0.1:${String(port)}`, holdText: 'never sent' } })
     const executablePath = process.env['DSH_PLAYWRIGHT_EXECUTABLE_PATH']
     browser = await playwright.chromium.launch(executablePath === undefined ? {} : { executablePath })
   }, 150_000)
@@ -82,6 +103,9 @@ describe('a render that finishes while the agent is idle wakes it', () => {
     await browser?.close().catch(() => undefined)
     await harness?.close()
     await model?.close()
+    if (gate === undefined) return
+    gate.closeAllConnections()
+    await new Promise<void>((resolve) => { gate.close(() => { resolve() }) })
   })
 
   /** Open the harness in a fresh browser context, create a project, and return the page with its chat composer up. */
@@ -106,14 +130,23 @@ describe('a render that finishes while the agent is idle wakes it', () => {
     await page.locator('[data-dv-chat]:visible').first().getByText(reply, { exact: false }).first().waitFor({ timeout: 90_000 })
   }
 
-  /** Wait until every named record of the project is done. */
-  async function done(ids: readonly string[]): Promise<void> {
-    await waitFor(async () => {
+  /**
+   * Wait until every named record of the project is done.
+   * @returns the session whose agent call started the first record.
+   */
+  async function done(ids: readonly string[]): Promise<string> {
+    return await waitFor(async () => {
       const history = await harness.api.post('/api/dv/history', { project: projectId, records: ids }) as {
-        entries: Array<{ record: { status: string } }>
+        entries: Array<{ record: { status: string; session: string | null } }>
       }
-      return history.entries.length === ids.length && history.entries.every(entry => entry.record.status === 'done')
+      const finished = history.entries.length === ids.length && history.entries.every(entry => entry.record.status === 'done')
+      return finished && (history.entries[0]?.record.session ?? '')
     }, 'the renders', 60_000)
+  }
+
+  /** Wait until the agent of a session has reported `count` idle statuses. */
+  async function idled(session: string, count: number): Promise<void> {
+    await waitFor(() => Promise.resolve(idles.filter(id => id === session).length >= count), 'the idle agent', 90_000)
   }
 
   /** The last user message of a request, as text. */
@@ -126,11 +159,13 @@ describe('a render that finishes while the agent is idle wakes it', () => {
     harness.backend.hold()
     await chat(page, '渲染一个镜头', '已开始渲染一个镜头')
     const before = model.requests.length
+    const insertedFrom = inserted.length
     harness.backend.releaseAll()
-    await done(records['one'] ?? [])
+    const session = await done(records['one'] ?? [])
     await page.locator('[data-dv-chat]:visible').first().getByText('一个镜头渲染好了', { exact: false }).first().waitFor({ timeout: 90_000 })
-    // A second woken request would follow the first within milliseconds.
-    await new Promise(resolve => setTimeout(resolve, 3000))
+    // The woken turn, the session's second, has ended, and its wake was the only one, queued for the next turn.
+    await idled(session, 2)
+    expect(inserted.slice(insertedFrom)).toEqual(['next-turn'])
 
     const requests = model.requests.slice(before - 3)
     expect(requests).toHaveLength(4)
@@ -147,15 +182,18 @@ describe('a render that finishes while the agent is idle wakes it', () => {
     await chat(page, '渲染两个镜头', '已开始渲染两个镜头')
     const [first = '', second = ''] = records['two'] ?? []
     const before = model.requests.length
+    const insertedFrom = inserted.length
     harness.backend.release()
-    await done([first])
-    // The first finish waits for the second render, which still runs: no turn opens.
-    await new Promise(resolve => setTimeout(resolve, 3000))
+    const session = await done([first])
+    // The first finish waits for the second render, which still runs: its wake waits for the next step, opening no turn.
+    await waitFor(() => Promise.resolve(inserted.length > insertedFrom), 'the first wake', 30_000)
+    expect(inserted.slice(insertedFrom)).toEqual(['next-step'])
     expect(model.requests).toHaveLength(before)
     harness.backend.releaseAll()
     await done([second])
     await page.locator('[data-dv-chat]:visible').first().getByText('两个镜头渲染好了', { exact: false }).first().waitFor({ timeout: 90_000 })
-    await new Promise(resolve => setTimeout(resolve, 3000))
+    await idled(session, 2)
+    expect(inserted.slice(insertedFrom)).toEqual(['next-step', 'next-turn'])
 
     const requests = model.requests.slice(before - 4)
     expect(requests).toHaveLength(5)

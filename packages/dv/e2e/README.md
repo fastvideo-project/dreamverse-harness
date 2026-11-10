@@ -62,7 +62,7 @@ DSH_PLAYWRIGHT_EXECUTABLE_PATH=/path/to/chrome-linux/chrome \
 | --- | --- |
 | [`tests/harness.ts`](tests/harness.ts) | `bootHarness`, `startFakeBackend`, `waitFor`, `escapeRegExp`, and the Playwright export |
 | [`tests/scripted-model.ts`](tests/scripted-model.ts) | `startScriptedModel`, `textOf`, `assetIdOf`, `scheduledOf`, `expectEachRequestExtendsThePrevious`, `CONTEXT_MESSAGE` |
-| [`tests/step-gate-plugin.ts`](tests/step-gate-plugin.ts) | The test-only Cordis plugin that `bootHarness({ stepGate })` inserts into the isolated profile: a step whose claimed user message contains `holdText` waits for the story's test server before the other `agent/pre-step` listeners run, and each claimed wake is reported to that server |
+| [`tests/step-gate-plugin.ts`](tests/step-gate-plugin.ts) | The test-only Cordis plugin that `bootHarness({ stepGate })` inserts into the isolated profile: a step whose claimed user message contains `holdText` waits for the story's test server before the other `agent/pre-step` listeners run, and each claimed wake, the inbox of each wake that enters one, and each idle agent are reported to that server |
 | [`tests/fake-backend-main.ts`](tests/fake-backend-main.ts) | Runs the fake backend as a long-lived process for manual browser testing |
 | [`vitest.e2e.config.ts`](vitest.e2e.config.ts) | The story lane: one file at a time, 180-second test timeout |
 

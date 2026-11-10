@@ -3,7 +3,9 @@
  * story change the project after a step has claimed its messages and before the `agent/pre-step` listeners read the
  * project. A step whose claimed user messages contain `holdText` waits for `GET <url>/hold` to answer before it
  * delegates to the later listeners. Each wake that an agent claims (message source kind `dv-project-wake`) is reported
- * with `POST <url>/wake`.
+ * with `POST <url>/wake`, each wake that enters an inbox with `POST <url>/wake-inserted` and the body `next-step` or
+ * `next-turn` (the inbox that holds it), and each `idle` status of an agent with `POST <url>/idle` and the agent's
+ * session id as the body. A story without a held step passes a `holdText` that it never sends.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { PreStepDecision } from '@deepseek-ai/dsh-agent'
@@ -18,8 +20,8 @@ export interface Config {
 }
 
 /**
- * Register the hold and the wake report under `ctx`.
- * @param ctx - the plugin context; disposal removes both listeners.
+ * Register the hold and the reports under `ctx`.
+ * @param ctx - the plugin context; disposal removes every listener.
  * @param config - the story's test server and hold text.
  */
 export function apply(ctx: Context, config: Config): void {
@@ -31,5 +33,13 @@ export function apply(ctx: Context, config: Config): void {
   })
   ctx.on('agent/inbox/claimed', ({ message }) => {
     if (message.source.kind === 'dv-project-wake') void fetch(`${config.url}/wake`, { method: 'POST' })
+  })
+  ctx.on('agent/inbox/inserted', ({ agent, message }) => {
+    if (message.source.kind !== 'dv-project-wake') return
+    const queue = agent.inbox.nextStep.some(queued => queued.id === message.id) ? 'next-step' : 'next-turn'
+    void fetch(`${config.url}/wake-inserted`, { method: 'POST', body: queue })
+  })
+  ctx.on('agent/status', ({ agent, status }) => {
+    if (status === 'idle') void fetch(`${config.url}/idle`, { method: 'POST', body: agent.id })
   })
 }
