@@ -138,7 +138,7 @@
   background: transparent;
   color: inherit;
   font: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
@@ -297,7 +297,7 @@
   position: absolute;
   z-index: 30;
   top: calc(100% + 6px);
-  left: 0;
+  inset-inline-start: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -327,7 +327,7 @@
   background: transparent;
   color: var(--dv-text);
   font: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
   transition: background-color 120ms var(--dv-ease);
 }
@@ -471,17 +471,17 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   height: 36px;
   margin: 2px 0 8px;
-  padding: 0 12px;
+  padding: 0 9px;
   border: 1px solid var(--dv-line-strong);
   border-radius: var(--dv-radius-md);
   background: transparent;
   color: var(--dv-text);
   font: inherit;
   font-weight: 500;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
   transition: background-color 120ms var(--dv-ease);
 }
@@ -505,14 +505,14 @@
   background: transparent;
   color: var(--dv-text);
   font: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
   transition: background-color 120ms var(--dv-ease);
 }
 
 .treeRow {
   gap: 6px;
-  padding-left: 4px;
+  padding-inline-start: 4px;
 }
 
 .navItem:hover,
@@ -541,7 +541,7 @@
 }
 
 .treeChild {
-  padding-left: 30px;
+  padding-inline-start: 30px;
   color: var(--dv-text-2);
 }
 
@@ -677,7 +677,7 @@
   position: absolute;
   z-index: 20;
   top: 100%;
-  right: 0;
+  inset-inline-end: 0;
   display: flex;
   flex-direction: column;
   min-width: 120px;
@@ -697,7 +697,7 @@
   font-size: 13px;
   line-height: 20px;
   font-weight: 400;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
@@ -732,8 +732,7 @@
 .chatHint {
   position: absolute;
   top: 35%;
-  left: 0;
-  right: 0;
+  inset-inline: 0;
   pointer-events: none;
 }
 

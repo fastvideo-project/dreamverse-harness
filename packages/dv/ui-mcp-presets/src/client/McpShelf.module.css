@@ -115,7 +115,7 @@
   background: transparent;
   color: inherit;
   font: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
@@ -162,7 +162,7 @@
 .badge {
   position: absolute;
   top: 12px;
-  left: 12px;
+  inset-inline-start: 12px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
