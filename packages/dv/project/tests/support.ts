@@ -1,7 +1,7 @@
 /**
  * Shared fixtures of the `@dv/project` unit tests: a temporary store root, record origins, in-memory asset stores,
- * a module set wired the same way as the `dvProject` service, without a Cordis context, and the `test_bible` slice
- * that the test reference kinds answer `createdBy` and `assetsOf` from.
+ * a module set wired the same way as the `dvProject` service, without a Cordis context, the `test_bible` slice
+ * that the test reference kinds answer `createdBy` and `assetsOf` from, and the text of a message.
  */
 import { createHash } from 'node:crypto'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -66,6 +66,15 @@ export function tempRoot(): string {
   const dir = mkdtempSync(join(tmpdir(), 'dv-project-test-'))
   onTestFinished(() => { rmSync(dir, { recursive: true, force: true }) })
   return dir
+}
+
+/**
+ * The text of a message's text blocks.
+ * @param message - a message, or undefined.
+ * @returns the texts joined; empty for undefined.
+ */
+export function textOf(message: { content: readonly { type: string; text?: string }[] } | undefined): string {
+  return message?.content.map(block => block.type === 'text' ? block.text ?? '' : '').join('') ?? ''
 }
 
 /** The session most tests use. */

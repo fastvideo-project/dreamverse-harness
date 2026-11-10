@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PENDING_LINE } from '../src/agent-tools.ts'
 import DvProject, { type OperationSpec, type ProjectId, type RecordId, type SessionId } from '../src/index.ts'
 import { RecordNotices } from '../src/record-notices.ts'
-import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot } from './support.ts'
+import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot, textOf } from './support.ts'
 import { chatProject, provideChatServices } from './workspaces.ts'
 
 /** The chat session of the agent under test, and a second one. */
@@ -170,11 +170,6 @@ async function start(config: { maxConsecutiveWakes?: number } = {}): Promise<Fix
       await project.wait(projectId)
     },
   }
-}
-
-/** The text of a message's text blocks. */
-function textOf(message: UserMessage | undefined): string {
-  return message?.content.map(block => block.type === 'text' ? block.text : '').join('') ?? ''
 }
 
 /** The record ID of an operation tool result. */

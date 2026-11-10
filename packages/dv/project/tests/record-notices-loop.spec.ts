@@ -14,7 +14,7 @@ import { LlmAdapter, createUserMessage, type GenerateOptions, type LlmResolvedMo
 import { SessionId as AgentSessionId } from '@deepseek-ai/dsh-session'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import DvProject, { type OperationSpec, type ProjectId, type RecordId, type SessionId } from '../src/index.ts'
-import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot } from './support.ts'
+import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot, textOf } from './support.ts'
 import { TestWorkspaces } from './workspaces.ts'
 
 const contexts: Context[] = []
@@ -61,11 +61,6 @@ class HangThenText extends LlmAdapter {
     yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 1 } }
     yield { type: 'finish', reason: { kind: 'stop' } }
   }
-}
-
-/** The text of a message's text blocks. */
-function textOf(message: { content: readonly { type: string; text?: string }[] } | undefined): string {
-  return message?.content.map(block => block.type === 'text' ? block.text ?? '' : '').join('') ?? ''
 }
 
 /** A started fixture: the service, the project, the agent, its model, and the claimed messages. */
@@ -177,6 +172,11 @@ function userTexts(request: GenerateOptions | undefined): string[] {
   return (request?.messages ?? []).filter(message => message.role === 'user').map(message => textOf(message))
 }
 
+/** The records that a wake names; none for another message. */
+function recordsOf(message: UserMessage): readonly RecordId[] {
+  return message.source.kind === 'dv-project-wake' ? message.source.records : []
+}
+
 /** The wakes among the claimed messages. */
 function wakes(fixture: Fixture): UserMessage[] {
   return fixture.claimed.filter(message => message.source.kind === 'dv-project-wake')
@@ -255,7 +255,7 @@ describe('record notices with the agent loop', () => {
     await settleIdle(fixture)
     expect(fixture.adapter.requests).toHaveLength(1)
     expect(fixture.agent.inbox.nextTurn.map(message => textOf(message))).toEqual(['queued'])
-    expect(fixture.agent.inbox.nextStep.map(message => message.source.kind === 'dv-project-wake' ? message.source.records : [])).toEqual([[first], [second]])
+    expect(fixture.agent.inbox.nextStep.map(recordsOf)).toEqual([[first], [second]])
   })
 
   it('opens no turn for a record that finishes after a Stop while the user\'s steer waits in the next-step inbox', async () => {
@@ -316,9 +316,8 @@ describe('record notices with the agent loop', () => {
       project: fixture.projectId, operation: 'shot.render', params: { prompt: 'canvas' }, inputs: [], after: [],
     })
 
-
     await vi.waitFor(() => { expect(fixture.adapter.requests).toHaveLength(1) })
-    expect(wakes(fixture).map(message => message.source.kind === 'dv-project-wake' ? message.source.records : [])).toEqual([[first]])
+    expect(wakes(fixture).map(recordsOf)).toEqual([[first]])
     expect(fixture.agent.inbox.nextStep).toEqual([])
     // The session's first step gets the project state message, which shows the finished render.
     expect(textOf(fixture.adapter.requests[0]?.messages.at(-1))).toContain(`"record": "${first}"`)
@@ -337,7 +336,7 @@ describe('record notices with the agent loop', () => {
     await fixture.finish('two', second)
 
     await vi.waitFor(() => { expect(fixture.adapter.requests).toHaveLength(1) })
-    expect(wakes(fixture).map(message => message.source.kind === 'dv-project-wake' ? message.source.records : [])).toEqual([[first]])
+    expect(wakes(fixture).map(recordsOf)).toEqual([[first]])
     expect(fixture.agent.inbox.nextStep).toEqual([])
     fixture.agent.cancel({ kind: 'user' })
     await fixture.agent.whenIdle()
@@ -392,10 +391,10 @@ describe('record notices with the agent loop', () => {
     expect(update).toContain(`- done ${first} (your call): shot one`)
     expect(update).toContain(`- done ${second} (your call): shot two`)
   })
+
   it('injects a wake past maxConsecutiveWakes until the user\'s message, claimed with it, refills the budget', async () => {
     const fixture = await start(1)
     fixture.adapter.hangFirst = false
-    const records = (source: UserMessage['source']): readonly RecordId[] => source.kind === 'dv-project-wake' ? source.records : []
     const one = await fixture.render('one')
     await fixture.finish('one', one)
     await vi.waitFor(() => { expect(fixture.adapter.requests).toHaveLength(1) })
@@ -405,7 +404,7 @@ describe('record notices with the agent loop', () => {
     await fixture.finish('two', two)
     await settleIdle(fixture)
     expect(fixture.adapter.requests).toHaveLength(1)
-    expect(fixture.agent.inbox.nextStep.map(message => records(message.source))).toEqual([[two]])
+    expect(fixture.agent.inbox.nextStep.map(recordsOf)).toEqual([[two]])
 
     fixture.agent.followup(userMessage('more'))
     await vi.waitFor(() => { expect(fixture.adapter.requests).toHaveLength(2) })
@@ -417,6 +416,6 @@ describe('record notices with the agent loop', () => {
     await fixture.finish('three', three)
     await vi.waitFor(() => { expect(fixture.adapter.requests).toHaveLength(3) })
     await settleIdle(fixture)
-    expect(wakes(fixture).map(message => records(message.source))).toEqual([[one], [two], [three]])
+    expect(wakes(fixture).map(recordsOf)).toEqual([[one], [two], [three]])
   })
 })

@@ -18,7 +18,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import DvProject, { type OperationSpec, type ProjectId, type ProjectRecord, type RecordId, type RecordOrigin, type SessionId } from '../src/index.ts'
 import { STATE_HEAD, UPDATE_HEAD, foldSeen, projectMessage, seenProjection, wakeMessage, type SessionSeen } from '../src/project-updates.ts'
 import type { ProjToolDeps } from '../src/proj-tools.ts'
-import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot } from './support.ts'
+import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot, textOf } from './support.ts'
 import { chatProject, provideChatServices, type TestChatServices } from './workspaces.ts'
 
 /** The chat session of the agent under test. */
@@ -106,11 +106,6 @@ class AgentLog {
   logMessage(message: UserMessage): void {
     this.append({ type: 'user/message', seq: this.next, time: 0, surfaceOp: 'append', data: message })
   }
-}
-
-/** The text of a message. */
-function textOf(message: UserMessage): string {
-  return message.content.map(block => block.type === 'text' ? block.text : '').join('')
 }
 
 interface Fixture {
