@@ -11,8 +11,8 @@ import type { Browser, Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { bootHarness, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import {
-  assetIdOf, expectEachRequestExtendsThePrevious, startScriptedModel, textOf, type ChatRequest, type ScriptedModel,
-  type ScriptedRule, type ScriptedStep, type TurnView,
+  assetIdOf, expectEachRequestExtendsThePrevious, recordIdOf, startScriptedModel, textOf, type ChatRequest,
+  type ScriptedModel, type ScriptedRule, type ScriptedStep, type TurnView,
 } from '../scripted-model.ts'
 
 /** A 1×1 opaque PNG, the agent's product image. */
@@ -35,11 +35,6 @@ const importStep: ScriptedStep = {
   calls: [{ name: 'dv_asset_import', args: { reason: '产品图', base64: PNG_BASE64, mime: 'image/png', name: 'product.png' } }],
 }
 
-/** The record ID of a pending operation tool result. */
-function recordOf(result: unknown): string {
-  return /^\w+ (\S+):/.exec(textOf(result))?.[1] ?? ''
-}
-
 describe('a render that finishes while the agent is idle wakes it', () => {
   let harness: BootedHarness
   let model: ScriptedModel
@@ -59,7 +54,7 @@ describe('a render that finishes while the agent is idle wakes it', () => {
         importStep,
         renderStep('产品特写'),
         (view) => {
-          records['one'] = [recordOf(view.toolResults[1])]
+          records['one'] = [recordIdOf(view.toolResults[1])]
           return { text: '已开始渲染一个镜头。' }
         },
         { text: '一个镜头渲染好了。' },
@@ -72,7 +67,7 @@ describe('a render that finishes while the agent is idle wakes it', () => {
         renderStep('产品特写'),
         renderStep('使用场景'),
         (view) => {
-          records['two'] = [recordOf(view.toolResults[1]), recordOf(view.toolResults[2])]
+          records['two'] = [recordIdOf(view.toolResults[1]), recordIdOf(view.toolResults[2])]
           return { text: '已开始渲染两个镜头。' }
         },
         { text: '两个镜头渲染好了。' },

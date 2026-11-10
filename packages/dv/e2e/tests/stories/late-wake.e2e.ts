@@ -10,7 +10,8 @@ import type { Browser, Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { bootHarness, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import {
-  assetIdOf, expectEachRequestExtendsThePrevious, startScriptedModel, textOf, type ScriptedModel, type ScriptedRule,
+  assetIdOf, expectEachRequestExtendsThePrevious, recordIdOf, startScriptedModel, textOf, type ScriptedModel,
+  type ScriptedRule,
 } from '../scripted-model.ts'
 
 /** A 1×1 opaque PNG, the agent's product image. */
@@ -41,7 +42,7 @@ describe('a late wake with nothing left to report sends no model request', () =>
           duration_sec: 1, inputs: { reference: assetIdOf(view.toolResults[0], 'asset') },
         } }] }),
         (view) => {
-          record = /^\w+ (\S+):/.exec(textOf(view.toolResults[1]))?.[1] ?? ''
+          record = recordIdOf(view.toolResults[1])
           return { text: '已开始渲染。' }
         },
       ],

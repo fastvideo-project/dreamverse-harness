@@ -61,7 +61,7 @@ DSH_PLAYWRIGHT_EXECUTABLE_PATH=/path/to/chrome-linux/chrome \
 | 文件 | 内容 |
 | --- | --- |
 | [`tests/harness.ts`](tests/harness.ts) | `bootHarness`、`startFakeBackend`、`waitFor`、`escapeRegExp` 和 Playwright 导出 |
-| [`tests/scripted-model.ts`](tests/scripted-model.ts) | `startScriptedModel`、`textOf`、`assetIdOf`、`scheduledOf`、`expectEachRequestExtendsThePrevious`、`CONTEXT_MESSAGE` |
+| [`tests/scripted-model.ts`](tests/scripted-model.ts) | `startScriptedModel`、`textOf`、`assetIdOf`、`recordIdOf`、`scheduledOf`、`expectEachRequestExtendsThePrevious`、`CONTEXT_MESSAGE` |
 | [`tests/step-gate-plugin.ts`](tests/step-gate-plugin.ts) | `bootHarness({ stepGate })` 插入隔离 profile 的仅测试用 Cordis 插件：认领的用户消息含有 `holdText` 的步骤在其他 `agent/pre-step` 监听器运行之前等待故事的测试服务器，每个被认领的唤醒、每个唤醒进入的收件箱和每个变为空闲的智能体都报告给这个服务器 |
 | [`tests/fake-backend-main.ts`](tests/fake-backend-main.ts) | 把假后端作为长期运行的进程启动，供手动浏览器测试使用 |
 | [`vitest.e2e.config.ts`](vitest.e2e.config.ts) | 故事测试配置：一次一个文件，测试超时 180 秒 |

@@ -86,6 +86,15 @@ export function assetIdOf(result: unknown, role: string): string {
 }
 
 /**
+ * The record of an operation tool result, from its first line `<status> <record>: <summary>`.
+ * @param result - one entry of `TurnView.toolResults`.
+ * @returns the record ID, or the empty string.
+ */
+export function recordIdOf(result: unknown): string {
+  return /^\w+ (\S+):/.exec(textOf(result))?.[1] ?? ''
+}
+
+/**
  * The records an operation tool result scheduled, from its `scheduled: <id>, <id>` line.
  * @param result - one entry of `TurnView.toolResults`.
  * @returns the record IDs; empty when the result scheduled none.

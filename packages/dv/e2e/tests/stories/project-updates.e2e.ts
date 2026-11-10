@@ -8,8 +8,8 @@ import type { Browser, Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { bootHarness, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import {
-  assetIdOf, expectEachRequestExtendsThePrevious, startScriptedModel, textOf, type ChatRequest, type ScriptedModel,
-  type ScriptedRule,
+  assetIdOf, expectEachRequestExtendsThePrevious, recordIdOf, startScriptedModel, textOf, type ChatRequest,
+  type ScriptedModel, type ScriptedRule,
 } from '../scripted-model.ts'
 
 /** A 1×1 opaque PNG, the agent's product image. */
@@ -48,7 +48,7 @@ describe('project updates reach the agent as appended messages', () => {
           duration_sec: 2, inputs: { reference: assetIdOf(view.toolResults[0], 'asset') },
         } }] }),
         async (view) => {
-          scheduled = view.toolResults.slice(1, 3).map(result => /^\w+ (\S+):/.exec(textOf(result))?.[1] ?? '')
+          scheduled = view.toolResults.slice(1, 3).map(recordIdOf)
           harness.backend.release()
           await harness.api.post('/api/dv/operation', {
             project: projectId, operation: 'asset.import', params: { base64: RED_PNG, mime: 'image/png', name: 'knife.png' },
