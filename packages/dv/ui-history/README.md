@@ -44,7 +44,7 @@ The Host half registers nothing. The browser half provides the client service `d
 | Undo in the header (tooltip 撤销（Ctrl+Z / ⌘Z）) | `POST /api/dv/undo`; a refusal shows the server's message |
 | Redo in the header (tooltip 重做（Shift+Ctrl+Z / ⇧⌘Z）), disabled while the current position is the last step | `POST /api/dv/redo` |
 | 回到这一步 / Go back to this step in a row's ⋮ menu | `POST /api/dv/undo` `{to}` |
-| 重试 / Retry in the ⋮ menu of a failed or cancelled operation row; with later shots that failed with `input_failed` because of it, 重试（含 N 个后续镜头） / Retry with N later shots (counted from the loaded records) | `POST /api/dv/operation/retry` `{project, record, surface}`; the record and those shots run again as scheduled records; a refusal shows the server's message |
+| 重试 / Retry in the ⋮ menu of a failed or cancelled operation row (not one that failed with `input_failed`, which waits on a failed producer: the producer's row carries the retry); with later shots that failed with `input_failed` because of it, 重试（含 N 个后续镜头） / Retry with N later shots, or Retry with 1 later shot (counted from the loaded records) | `POST /api/dv/operation/retry` `{project, record, surface}`; the record and those shots run again as scheduled records; a refusal shows the server's message |
 | 取消 / Cancel in the ⋮ menu of a pending or running row | `POST /api/dv/operation/cancel` `{project, record}`; a refusal shows the server's message |
 
 A `dv:history-focus` event `{session, toolCall}` finds the record that tool call wrote, loads pages until its row is loaded, and selects it. Only steps at or before the current position move the center; greyed steps are only selected. A selection moves the center only while `@dv/ui-shell` provides `dvCenter`.

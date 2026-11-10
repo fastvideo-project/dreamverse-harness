@@ -154,6 +154,10 @@ describe('canRetry and laterShotsOf', () => {
     expect(canRetry(record({ id: 'a', operation: 'shot.render', status: 'running' }))).toBe(false)
     expect(canRetry(record({ id: 'a', operation: null, status: 'failed' }))).toBe(false)
     expect(canRetry(record({ id: 'a', operation: 'proj.create', status: 'failed' }))).toBe(false)
+    // A record that failed because its producer failed is retried through the producer.
+    expect(canRetry(record({ id: 'a', operation: 'shot.render', status: 'failed', error: { code: 'input_failed', message: 'upstream' } }))).toBe(false)
+    expect(canRetry(record({ id: 'a', operation: 'shot.render', status: 'failed', error: { code: 'operation_failed', message: 'oom' } }))).toBe(true)
+    expect(canRetry(record({ id: 'a', operation: 'shot.render', status: 'cancelled', error: { code: 'input_failed', message: 'x' } }))).toBe(true)
   })
 
   it('counts the records that failed with input_failed through a chain of outputs, and no others', () => {

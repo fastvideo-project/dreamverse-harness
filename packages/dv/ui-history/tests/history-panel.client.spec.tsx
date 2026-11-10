@@ -462,13 +462,19 @@ describe('the History tab', () => {
       entry({ id: 'c', status: 'failed', error: inputFailed, inputs: reads('b') }),
       entry({ id: 'b', status: 'failed', error: inputFailed, inputs: reads('a') }),
       entry({ id: 'a', status: 'failed', error: { code: 'operation_failed', message: 'oom' } }),
+      entry({ id: 'b1', status: 'failed', error: inputFailed, inputs: reads('a1') }),
+      entry({ id: 'a1', status: 'failed', error: { code: 'operation_failed', message: 'oom' } }),
       entry({ id: 'k', status: 'cancelled' }),
       entry({ id: 'ok', status: 'done' }),
       { record: record({ id: 'pc', operation: 'proj.create', status: 'failed' }), place: 'before' },
     ])
     await waitFor(() => { row('a') })
     expect(menuOf(row('a'))).toEqual(['Retry with 2 later shots', 'Go back to this step'])
-    expect(menuOf(row('b'))).toEqual(['Retry with 1 later shots', 'Go back to this step'])
+    // One later shot reads in the singular.
+    expect(menuOf(row('a1'))).toEqual(['Retry with 1 later shot', 'Go back to this step'])
+    // A record that failed with input_failed has no retry of its own; its failed producer carries it.
+    expect(menuOf(row('b'))).toEqual(['Go back to this step'])
+    expect(menuOf(row('c'))).toEqual(['Go back to this step'])
     expect(menuOf(row('k'))).toEqual(['Retry', 'Go back to this step'])
     expect(menuOf(row('ok'))).toEqual(['Go back to this step'])
     expect(menuOf(row('pc'))).toEqual(['Go back to this step'])

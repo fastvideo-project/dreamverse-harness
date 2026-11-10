@@ -685,6 +685,21 @@ describe('Runner', () => {
       expect(created.map(record => record.params['prompt'])).toEqual(['A'])
     })
 
+    it('refuses to retry an input_failed dependent alone while its producer is still failed, and creates no record', async () => {
+      const m = startModules()
+      const project = await createTestProject(m)
+      setup(m, new Set(['A']), [])
+      const a = await render(m, project, 'A')
+      const b = await render(m, project, 'B', [a])
+      await m.scheduler.wait(project)
+      expect(m.store.getRecord(project, b.id)).toMatchObject({ status: 'failed', error: { code: 'input_failed' } })
+      const before = m.store.listRecords(project).length
+
+      await expect(m.runner.retry(project, b.id, RETRYER)).rejects.toMatchObject({ code: 'invalid_inputs' })
+
+      expect(m.store.listRecords(project)).toHaveLength(before)
+    })
+
     it('refuses a failed record that has no operation', async () => {
       const m = startModules()
       const project = await createTestProject(m)

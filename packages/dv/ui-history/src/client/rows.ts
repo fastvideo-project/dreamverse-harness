@@ -19,12 +19,14 @@ export interface ActionRow {
 }
 
 /**
- * Whether the History panel offers 重试 for a record: it failed or was cancelled, and it is an operation call, not a
- * `proj.*` record.
+ * Whether the History panel offers 重试 for a record: it failed or was cancelled, it is an operation call, not a
+ * `proj.*` record, and it did not fail with `input_failed`. A record that failed that way waits on a failed producer,
+ * so `retry` alone would be refused; the retry belongs on the producer, whose label counts it.
  * @param record - a record.
  * @returns whether it can be run again.
  */
 export function canRetry(record: ProjectRecord): boolean {
+  if (record.status === 'failed' && record.error?.code === 'input_failed') return false
   return (record.status === 'failed' || record.status === 'cancelled') && record.operation !== null && !record.operation.startsWith('proj.')
 }
 

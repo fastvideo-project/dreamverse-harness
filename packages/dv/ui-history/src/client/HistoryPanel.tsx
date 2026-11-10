@@ -535,7 +535,7 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
   if (canRetry(record)) {
     const later = props.laterShots(record)
     stepItems.push({
-      id: 'retry', label: later === 0 ? t('重试', 'Retry') : t(`重试（含 ${String(later)} 个后续镜头）`, `Retry with ${String(later)} later shots`),
+      id: 'retry', label: later === 0 ? t('重试', 'Retry') : t(`重试（含 ${String(later)} 个后续镜头）`, `Retry with ${String(later)} later ${later === 1 ? 'shot' : 'shots'}`),
       run: () => { props.onRetry(record.id) },
     })
   }
