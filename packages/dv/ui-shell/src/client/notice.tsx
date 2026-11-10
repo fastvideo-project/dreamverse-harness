@@ -1,45 +1,67 @@
 /**
- * The failure notice of the shell's actions: a runner that logs a rejected action and keeps its message,
- * and the alert that shows it until it is dismissed or the next action succeeds.
+ * The failure toast of the shell's navigation actions: a runner that logs a rejected action and keeps its message in a
+ * module store, and the `shell.overlay` entry that shows the message as a Toast. The entry outlives the navigator, the
+ * session switcher, and the recent projects, so a failure stays visible when the surface that reported it unmounts.
  *
  * @module @dv/ui-shell/notice
  */
 import type { ReactNode } from 'react'
-import { useRef, useState } from 'react'
+import { useSyncExternalStore } from 'react'
+import { IconWarningOutlineRegular, Toast } from '@deepseek-ai/dsh-client-ui-primitives'
 import { errorMessage } from '@dv/ui-kit/api.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
-import css from './shell.module.css'
 
-/** Runs an asynchronous shell action, reporting its failure through the notice. */
+/** Runs an asynchronous shell action, reporting its failure through the toast. */
 export type ActionRunner = (work: () => Promise<void>) => void
 
+/** Hold of the toast, which quotes the server's reason, as DSH's refused Session creation toast does. */
+const FAILURE_HOLD_MS = 6000
+
+/** The failure on display, with a per-report sequence that restarts the toast for a repeated message. */
+let failure: { seq: number; message: string } | null = null
+let reports = 0
+const listeners = new Set<() => void>()
+
 /**
- * Create the runner and the notice of one component.
- * @param floating - whether the alert floats below its container, for a container with no room of its own.
- * @returns `run`, which starts the action, logs a rejection with `console.warn` and keeps its message, and clears the
- *   message when the action succeeds, where only the latest action's outcome applies; and `notice`, the dismissible
- *   alert for the message, or null without one.
+ * Replace the failure on display and notify the toast.
+ * @param next - the failure, or null to clear it.
  */
-export function useActionNotice(floating = false): { run: ActionRunner; notice: ReactNode } {
+function publish(next: typeof failure): void {
+  failure = next
+  for (const listener of listeners) listener()
+}
+
+/**
+ * Start an asynchronous shell action. A rejection is logged with `console.warn` and shown in the toast; a success
+ * clears a failure still on display.
+ * @param work - the action.
+ */
+export const runAction: ActionRunner = (work) => {
+  work().then(() => { if (failure !== null) publish(null) }, (error: unknown) => {
+    console.warn('ui-shell: navigation failed', error)
+    reports += 1
+    publish({ seq: reports, message: errorMessage(error) })
+  })
+}
+
+/**
+ * The `shell.overlay` entry: the failure on display as a warning Toast, which removes it once the Toast fades.
+ * @returns the Toast, or null without a failure.
+ */
+export function ActionFailureToast(): ReactNode {
   const t = useText()
-  const [message, setMessage] = useState<string | null>(null)
-  // Only the latest action sets or clears the message, so a slower earlier action cannot replace its outcome.
-  const latest = useRef(0)
-  const run: ActionRunner = (work) => {
-    latest.current += 1
-    const action = latest.current
-    work().then(() => { if (action === latest.current) setMessage(null) }, (error: unknown) => {
-      console.warn('ui-shell: navigation failed', error)
-      if (action === latest.current) setMessage(errorMessage(error))
-    })
-  }
-  const notice = message === null
-    ? null
-    : (
-      <p className={floating ? `${css.notice} ${css.noticeFloating}` : css.notice} role="alert" data-testid="dv-shell-notice">
-        <span>{t(`操作失败：${message}`, `Couldn't complete that: ${message}`)}</span>
-        <button type="button" className={css.noticeDismiss} aria-label={t('关闭', 'Dismiss')} onClick={() => { setMessage(null) }}>×</button>
-      </p>
-    )
-  return { run, notice }
+  const shown = useSyncExternalStore((listener) => {
+    listeners.add(listener)
+    return () => { listeners.delete(listener) }
+  }, () => failure)
+  if (shown === null) return null
+  return (
+    <Toast
+      key={`toast-${String(shown.seq)}`}
+      text={t(`操作失败：${shown.message}`, `Couldn't complete that: ${shown.message}`)}
+      icon={<IconWarningOutlineRegular />}
+      holdMs={FAILURE_HOLD_MS}
+      onDone={() => { publish(null) }}
+    />
+  )
 }

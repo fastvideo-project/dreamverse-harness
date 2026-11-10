@@ -17,7 +17,7 @@ import { pickText, useText } from '@dv/ui-kit/locale.ts'
 import type { ShellInjected } from './Center.tsx'
 import { ChevronDownIcon, ChevronRightIcon, HomeIcon, PlugIcon, PluginsIcon, PlusIcon, SkillsIcon } from './icons.tsx'
 import { DREAMVERSE_WORDMARK } from './logo.ts'
-import { type ActionRunner, useActionNotice } from './notice.tsx'
+import { type ActionRunner, runAction } from './notice.tsx'
 import { RowMenu } from './RowMenu.tsx'
 import type { WireProject } from '@dv/ui-kit/types.ts'
 import { usePanelEntries } from './panels.ts'
@@ -62,7 +62,6 @@ export function Navigator(props: NavigatorProps): ReactNode {
   const projects = useShell(s => s.projects ?? NO_PROJECTS)
   const [showAll, setShowAll] = useState(false)
   const loaded = useShell(s => s.projects !== null)
-  const { run, notice } = useActionNotice()
   if (!wide) return null
   const sorted = [...projects].sort((a, b) => b.created_at.localeCompare(a.created_at))
   const shown = showAll ? sorted : sorted.slice(0, SHOWN_PROJECTS)
@@ -77,11 +76,10 @@ export function Navigator(props: NavigatorProps): ReactNode {
   )
   return (
     <div className={css.nav} data-dv-navigator="">
-      {notice}
-      <button type="button" className={css.navSecondary} onClick={() => { run(() => shell.newProject()) }}>
+      <button type="button" className={css.navSecondary} onClick={() => { runAction(() => shell.newProject()) }}>
         <PlusIcon />{t('新建项目', 'Create project')}
       </button>
-      {nav(t('首页', 'Home'), projectId === null && activePage === null, () => { run(() => shell.goHome()) }, <HomeIcon />)}
+      {nav(t('首页', 'Home'), projectId === null && activePage === null, () => { runAction(() => shell.goHome()) }, <HomeIcon />)}
       {pages.map((page) => {
         const PageIcon = PAGE_ICONS[page.id] ?? PluginsIcon
         return <Fragment key={page.id}>{nav(page.label, activePage === page.id, () => { shell.openPage(page.id) }, <PageIcon />)}</Fragment>
@@ -97,7 +95,7 @@ export function Navigator(props: NavigatorProps): ReactNode {
           {...props}
           project={project}
           open={project.id === projectId}
-          run={run}
+          run={runAction}
         />
       ))}
     </div>

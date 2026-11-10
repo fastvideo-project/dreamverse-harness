@@ -12,8 +12,8 @@ import { useText } from '@dv/ui-kit/locale.ts'
 import type { WireProject, WireProjectCover } from '@dv/ui-kit/types.ts'
 import type { ShellActions } from './actions.ts'
 import { CoverFrame } from './cover.tsx'
+import { runAction } from './notice.tsx'
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon, HomeIcon, PlusIcon } from './icons.tsx'
-import { useActionNotice } from './notice.tsx'
 import { type SessionListHooks, useProjectSessions } from './sessions.ts'
 import { NO_PROJECTS, useShell } from './store.ts'
 import css from './shell.module.css'
@@ -36,7 +36,6 @@ export interface SessionSwitcherProps extends SessionListHooks, PropsRenderFacto
 export function SessionSwitcher(props: SessionSwitcherProps): ReactNode {
   const { shell, project, cover, sessionTitle, renderFactorySlot } = props
   const t = useText()
-  const { run, notice } = useActionNotice(true)
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
   const button = useRef<HTMLButtonElement>(null)
@@ -79,13 +78,12 @@ export function SessionSwitcher(props: SessionSwitcherProps): ReactNode {
         <span className={css.switcherSession}>{sessionTitle ?? t('新对话', 'New chat')}</span>
         <span className={css.switcherChevron}><ChevronDownIcon /></span>
       </button>
-      {notice}
       {open && (
         <div className={css.menu} role="menu" aria-label={t('切换会话', 'Switch chat')}>
-          <button type="button" role="menuitem" className={css.menuItem} onClick={choose(() => { run(() => shell.goHome()) })}>
+          <button type="button" role="menuitem" className={css.menuItem} onClick={choose(() => { runAction(() => shell.goHome()) })}>
             <HomeIcon />{t('首页', 'Home')}
           </button>
-          <button type="button" role="menuitem" className={css.menuItem} onClick={choose(() => { run(() => shell.newProject()) })}>
+          <button type="button" role="menuitem" className={css.menuItem} onClick={choose(() => { runAction(() => shell.newProject()) })}>
             <PlusIcon />{t('新建项目', 'Create project')}
           </button>
           <div className={css.menuDivider} role="separator" />
@@ -102,7 +100,7 @@ export function SessionSwitcher(props: SessionSwitcherProps): ReactNode {
           ))}
           <button
             type="button" role="menuitem" className={`${css.menuItem} ${css.menuItemQuiet}`}
-            onClick={choose(() => { run(() => shell.newSession(project.id)) })}
+            onClick={choose(() => { runAction(() => shell.newSession(project.id)) })}
           >
             <PlusIcon />{t('新建会话', 'New chat')}
           </button>
@@ -114,7 +112,7 @@ export function SessionSwitcher(props: SessionSwitcherProps): ReactNode {
                 {others.map(other => (
                   <button
                     key={other.id} type="button" role="menuitem" className={css.menuItem}
-                    onClick={choose(() => { run(() => shell.openProject(other.id)) })}
+                    onClick={choose(() => { runAction(() => shell.openProject(other.id)) })}
                   >
                     <span className={css.menuLabel}>{other.title}</span>
                     <span className={css.menuTrail}><ChevronRightIcon /></span>

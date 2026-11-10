@@ -72,7 +72,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCente
 | [`src/client/actions.ts`](src/client/actions.ts) | `ShellActions`：新建、打开、重命名和删除项目与对话，首页，以及右侧面板标签 |
 | [`src/client/store.ts`](src/client/store.ts) | 共享状态（打开的项目、视图、中间区域字段、所显示视图的请求、主会话、项目列表）、`dvCenter.show` 和视图的 `note`、URL hash 同步，以及会话 → 项目查找 |
 | [`src/client/Center.tsx`](src/client/Center.tsx) | 中间区域：URL 恢复、首页、模板标签、最近项目、工作区顶栏、所显示的中间区域视图及其请求和中间区域字段，以及后退、前进和 hash 修改的监听 |
-| [`src/client/notice.tsx`](src/client/notice.tsx) | `useActionNotice`：运行外壳动作，记录被拒绝的错误，并用可关闭的提示（`dv-shell-notice`）显示错误信息；下一个成功动作清除提示，导航、会话切换器和最近项目都使用它 |
+| [`src/client/notice.tsx`](src/client/notice.tsx) | `runAction` 运行导航器、会话切换器或最近项目的一个 shell 操作，并记录失败；`ActionFailureToast` 是 `shell.overlay` 的条目 `dv.shell.failure`，把失败消息显示为 Toast，持续 6 秒或到下一个操作成功为止，发起操作的界面卸载后也保留 |
 | [`src/client/SessionSwitcher.tsx`](src/client/SessionSwitcher.tsx) | 工作区顶栏的会话切换按钮和菜单 |
 | [`src/client/cover.tsx`](src/client/cover.tsx) | 从 `/api/dv/projects/summary` 读取的项目封面和最后编辑时间；通过 `dv.media` 绘制的封面素材 |
 | [`src/client/sessions.ts`](src/client/sessions.ts) | 一个项目的对话，导航和会话切换器共用 |
