@@ -8,6 +8,7 @@ import { execFile } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import z from '@deepseek-ai/schemastery'
 import { GenerationSegmentError } from './errors.ts'
 import type { ModelFacts, SegmentOutput, SegmentRequest } from './types.ts'
@@ -18,6 +19,16 @@ export interface OpenAIConfig {
   modelFacts: ModelFacts
   /** ffmpeg executable used to extract the last frame when requested. */
   ffmpegPath: string
+  /** Use native catalog discovery, lifecycle controls, and tracked asynchronous jobs. */
+  managed?: boolean
+  /** Track native async jobs without requiring a dynamic model catalog, e.g. a fixed Ray deployment. */
+  asyncJobs?: boolean
+  /** Native task associated with this catalog entry. */
+  task?: string | null
+  /** Name shown in generation-model selectors. */
+  displayName?: string | null
+  /** Delay between asynchronous job-state reads. */
+  pollIntervalMs?: number
 }
 
 // Schemastery's tuple output is typed as optional even when both elements are required.
@@ -37,7 +48,50 @@ export const OpenAIConfig: z<OpenAIConfig> = z.object({
     numFramesByDurationSec: z.dict(z.natural().min(1)).required(),
   }).required(),
   ffmpegPath: z.string().required(),
+  managed: z.boolean().default(false),
+  asyncJobs: z.boolean().default(false),
+  task: z.union([z.const(null), z.string()]).default(null),
+  displayName: z.union([z.const(null), z.string()]).default(null),
+  pollIntervalMs: z.natural().min(1).default(1000),
 })
+
+/** Submit once, follow its job id, and retrieve the resulting media. */
+async function generateManaged(
+  baseUrl: URL, config: OpenAIConfig, body: Record<string, unknown>, headers: Record<string, string>,
+  signal: AbortSignal | undefined, fetchImpl: typeof fetch,
+): Promise<Response> {
+  const options = { headers, ...signal === undefined ? {} : { signal } }
+  const response = await checkedResponse(await fetchImpl(new URL('/v1/videos', baseUrl), {
+    ...options, method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify(body),
+  }))
+  const created: unknown = await response.json()
+  if (typeof created !== 'object' || created === null || !('id' in created) || typeof created.id !== 'string') {
+    throw new Error('FastVideo did not return a generation job id')
+  }
+  const route = new URL(`/v1/videos/${encodeURIComponent(created.id)}`, baseUrl)
+  try {
+    for (;;) {
+      const result = await checkedResponse(await fetchImpl(route, options))
+      const state: unknown = await result.json()
+      if (typeof state !== 'object' || state === null || !('status' in state)) throw new Error('Invalid FastVideo job state')
+      if (state.status === 'completed') return await checkedResponse(await fetchImpl(new URL(route.href + '/content'), options))
+      if (state.status === 'failed') {
+        const error = 'error' in state ? state.error : null
+        const message = typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string'
+          ? error.message : 'FastVideo generation failed'
+        throw new Error(message)
+      }
+      if (state.status !== 'queued' && state.status !== 'in_progress') throw new Error('Unknown FastVideo job status')
+      await delay(config.pollIntervalMs ?? 1000, undefined, options)
+    }
+  } catch (error) {
+    if (signal?.aborted === true) {
+      // Deletion cancels queued work; an active native generation retains its GPU lock until it settles.
+      await fetchImpl(route, { method: 'DELETE', headers }).catch(() => undefined)
+    }
+    throw error
+  }
+}
 
 /** Wait for ffmpeg to exit even when cancellation reports its error before process close. */
 async function extractFrame(file: string, args: string[], signal?: AbortSignal): Promise<void> {
@@ -79,7 +133,7 @@ export async function checkedResponse(response: Response): Promise<Response> {
 }
 
 /**
- * Generate a clip through the supported synchronous API and return its media and timing events.
+ * Generate a clip through the selected native video API and return its media and timing events.
  * @param baseUrl - FastVideo server location.
  * @param config - deployment limits and ffmpeg executable.
  * @param request - prompt, typed media, geometry, seed and cancellation signal.
@@ -88,12 +142,13 @@ export async function checkedResponse(response: Response): Promise<Response> {
  */
 export async function* generateOpenAI(
   baseUrl: URL, config: OpenAIConfig, request: SegmentRequest,
+  headers: Record<string, string> = {}, fetchImpl: typeof fetch = globalThis.fetch,
 ): AsyncGenerator<SegmentOutput> {
   const { signal } = request
   signal?.throwIfAborted()
   const body: Record<string, unknown> = {
     model: config.modelFacts.modelId,
-    ...(request.task === undefined ? {} : { task: request.task }),
+    ...(request.task === undefined && config.task == null ? {} : { task: request.task ?? config.task }),
     prompt: request.prompt,
     width: request.frameWidth,
     height: request.frameHeight,
@@ -114,10 +169,12 @@ export async function* generateOpenAI(
   Object.assign(body, references)
   let response: Response
   try {
-    response = await checkedResponse(await fetch(new URL('/v1/videos/sync', baseUrl), {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
-      ...(signal === undefined ? {} : { signal }),
-    }))
+    response = config.managed === true || config.asyncJobs === true
+      ? await generateManaged(baseUrl, config, body, headers, signal, fetchImpl)
+      : await checkedResponse(await fetchImpl(new URL('/v1/videos/sync', baseUrl), {
+        method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify(body),
+        ...(signal === undefined ? {} : { signal }),
+      }))
     const video = Buffer.from(await response.arrayBuffer())
     signal?.throwIfAborted()
     const mime = response.headers.get('content-type') ?? ''

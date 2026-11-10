@@ -120,6 +120,10 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 
 本服务还为 agent 注册工具 `dv_models_list` 和 `dv_models_get`、skill `video-model-selection`，以及每个条目的提示词 skill。它不向系统提示词添加任何内容。
 
+当 `dvProject` 存在时，`dv_models_select` 通过项目操作 `models.select` 保存当前对话的视频模型默认值。provider 和 model 都为空字符串时选择 Auto。此后的 agent 生成必须使用该 provider/model，直到用户或 agent 更改选择；已有生成保留其记录中的模型和任务。输入框在操作员 LLM 选择器旁显示此默认值，因此用户无需每次生成都重新选择。可选的 `models` 状态从成功操作中重建选择；旧项目从 Auto 开始。
+
+条目可以提供 `runtime.status`、`runtime.load` 和 `runtime.unload`。对应的操作工具为 `dv_models_status`、`dv_models_load` 和 `dv_models_unload`，参数为条目的四个键字段。这些工具管理已安装权重的 GPU 驻留，不下载权重。托管 FastVideo 后端在生成时加载所请求的配置，将模型切换与生成串行执行，并且仅保留文件和加载设置匹配的共享组件。未提供生命周期控制的 provider 保持原有生成行为，并在显式调用生命周期工具时报告该功能不可用。
+
 ### 提供方插件负责的部分
 
 提供方插件把一个提供方连接到模型目录。[`@dv/fastvideo`](../fastvideo/README.zh.md) 是应遵循的示例。提供方插件负责以下部分：

@@ -10,7 +10,7 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { AssetId, OperationToolValue, ProjectId, RecordId } from '@dv/project'
 import { formatModelKey } from '@dv/models'
 import { afterEach, describe, expect, it } from 'vitest'
-import { bootBundle, bundleRows, fastVideo, insertRows, renderer, uniserve } from './bundle.ts'
+import { bootBundle, bundleRows, fasth3, fastVideo, insertRows, renderer, uniserve } from './bundle.ts'
 
 const disposers: Array<() => Promise<void> | void> = []
 
@@ -19,6 +19,36 @@ afterEach(async () => {
 })
 
 describe('DreamVerse bundle composition', () => {
+  it('persists a conversation video choice, exposes lifecycle tools, and prevents a different agent render', async () => {
+    const { ctx, services, dispose } = await bootBundle()
+    disposers.push(dispose)
+    let loaded = false
+    const runtime = { status: async () => ({ installed: true, loaded, loading: false, busy: false }),
+      load: async () => { loaded = true }, unload: async () => { loaded = false } }
+    ctx.dvModels.register(Object.create(fasth3, { model: { value: 'pika' }, provider: { value: 'fastvideo' }, runtime: { value: runtime } }))
+    services.chats.open('anonymous', await ctx.dvProject.newProjectFolder('model-controls'))
+    const call = async (name: string, args: Record<string, unknown>) => ctx.tools.execute({
+      callId: ToolCallId(name), name, arguments: args, signal: new AbortController().signal,
+    })
+    const created = await call('dv_proj_create', { title: 'model-controls' })
+    if (created.isError) throw new Error(created.error.message)
+    const project = (created.value as { project_id: ProjectId }).project_id
+    const select = await call('dv_models_select', { provider: 'fastvideo', model: 'pika', reason: 'Use Pika in this chat' })
+    expect(select.isError).toBeFalsy()
+    expect(ctx.dvProject.getState(project).components.models).toEqual({ conversations: { anonymous: { provider: 'fastvideo', model: 'pika' } } })
+    const wrong = await call('dv_shot_render', { modality: 'video', task: 'ref2v', provider: 'uniserve', model: 'fasth3',
+      prompt: 'A lake', duration_sec: 1, reason: 'Render' })
+    expect(wrong.isError && wrong.error.message).toContain("This conversation's video model is fastvideo/pika")
+    const key = { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'pika', reason: 'Preload for next shot' }
+    expect((await call('dv_models_load', key)).isError).toBeFalsy()
+    expect(loaded).toBe(true)
+    expect((await call('dv_models_unload', key)).isError).toBeFalsy()
+    expect(loaded).toBe(false)
+    expect((await call('dv_models_select', { provider: '', model: '', reason: 'Let the operator choose' })).isError).toBeFalsy()
+    expect(ctx.dvProject.getState(project).components.models).toEqual({ conversations: { anonymous: null } })
+    const definitions = ctx.tools.schemas().filter(tool => ['dv_models_select', 'dv_models_load', 'dv_models_unload', 'dv_models_status'].includes(tool.name))
+    await expect(`${JSON.stringify(definitions, null, 2)}\n`).toMatchFileSnapshot('./expected/tools/model-controls.json')
+  })
   it('mounts the reference nouns in the order character, location, style, on the host and in the browser', () => {
     const ids = insertRows().map(row => row.id)
     const nouns = ids.filter(id => /^dv-(ui-)?(character|location|style)$/.test(id))

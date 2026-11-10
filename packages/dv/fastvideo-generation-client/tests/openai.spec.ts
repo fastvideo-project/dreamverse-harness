@@ -11,6 +11,7 @@ import { promisify } from 'node:util'
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvFastvideoGeneration, { GenerationSegmentError, type ModelFacts, type SegmentOutput, type SegmentRequest } from '../src/index.ts'
+import type { OpenAIConfig } from '../src/openai.ts'
 
 const FFMPEG = process.env['DV_FFMPEG'] ?? 'ffmpeg'
 const run = promisify(execFile)
@@ -34,14 +35,18 @@ afterEach(async () => {
 })
 
 /** Start a backend that records JSON requests and returns one configured response. */
-async function backend(reply: (path: string, response: ServerResponse) => void, ffmpegPath = FFMPEG) {
-  const requests: Array<{ path: string; body: Record<string, unknown> }> = []
+async function backend(
+  reply: (path: string, response: ServerResponse) => void, ffmpegPath = FFMPEG,
+  options: Partial<OpenAIConfig> = {}, apiKeyFile?: string,
+) {
+  const requests: Array<{ path: string; body: Record<string, unknown>; authorization?: string }> = []
   const server = createServer((request, response) => {
     const chunks: Buffer[] = []
     request.on('data', (chunk: Buffer) => { chunks.push(chunk) })
     request.once('end', () => {
       const path = request.url ?? ''
-      requests.push({ path, body: chunks.length === 0 ? {} : JSON.parse(Buffer.concat(chunks).toString()) as Record<string, unknown> })
+      requests.push({ path, body: chunks.length === 0 ? {} : JSON.parse(Buffer.concat(chunks).toString()) as Record<string, unknown>,
+        ...request.headers.authorization === undefined ? {} : { authorization: request.headers.authorization } })
       reply(path, response)
     })
   })
@@ -52,7 +57,8 @@ async function backend(reply: (path: string, response: ServerResponse) => void, 
   roots.push(root)
   const client = new DvFastvideoGeneration(root, {
     baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
-    openai: { modelFacts: facts, ffmpegPath },
+    openai: { modelFacts: facts, ffmpegPath, ...options },
+    ...apiKeyFile === undefined ? {} : { apiKeyFile },
   })
   return { client, requests }
 }
@@ -67,6 +73,83 @@ async function collect(client: DvFastvideoGeneration, updates: Partial<SegmentRe
 }
 
 describe('FastVideo OpenAI transport', () => {
+  it('authenticates discovery, lifecycle and every async job request using the worker credential file', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dv-worker-credential-'))
+    folders.push(dir)
+    const token = 'fixture-worker-credential-000000000000000000'
+    const credential = join(dir, 'worker.token')
+    await writeFile(credential, token, { mode: 0o600 })
+    const { client, requests } = await backend((path, response) => {
+      response.setHeader('content-type', 'application/json')
+      if (path.startsWith('/v1/model_info')) response.end(JSON.stringify({ served_model_name: facts.modelId }))
+      else if (path.startsWith('/v1/model_state')) response.end(JSON.stringify({ installed: true, loaded_model: facts.modelId, loading_model: null, busy: false }))
+      else if (path === '/v1/videos') response.end(JSON.stringify({ id: 'job-auth' }))
+      else if (path === '/v1/videos/job-auth') response.end(JSON.stringify({ status: 'completed' }))
+      else if (path.endsWith('/content')) { response.setHeader('content-type', 'video/mp4'); response.end('media') }
+      else response.end('{}')
+    }, FFMPEG, { managed: true, task: 'ref2va' }, credential)
+    await client.model()
+    await client.modelStatus()
+    await client.loadModel()
+    await client.unloadModel()
+    await collect(client)
+    expect(requests).toHaveLength(7)
+    expect(requests.every(request => request.authorization === `Bearer ${token}`)).toBe(true)
+    expect(requests.every(request => !JSON.stringify(request.body).includes(token))).toBe(true)
+  })
+
+  it('uses native async jobs on a fixed Ray server without model-catalog discovery', async () => {
+    const { client, requests } = await backend((path, response) => {
+      response.setHeader('content-type', 'application/json')
+      if (path === '/v1/videos') response.end(JSON.stringify({ id: 'ray-job' }))
+      else if (path === '/v1/videos/ray-job') response.end(JSON.stringify({ status: 'completed' }))
+      else { response.setHeader('content-type', 'video/mp4'); response.end('ray-video') }
+    }, FFMPEG, { asyncJobs: true })
+    await collect(client)
+    expect(requests.map(request => request.path)).toEqual(['/v1/videos', '/v1/videos/ray-job', '/v1/videos/ray-job/content'])
+  })
+  it('submits a managed generation once, polls the same job, and gets its media', async () => {
+    let polls = 0
+    const { client, requests } = await backend((path, response) => {
+      response.setHeader('content-type', 'application/json')
+      if (path === '/v1/videos') response.end(JSON.stringify({ id: 'job-1', status: 'queued' }))
+      else if (path === '/v1/videos/job-1') response.end(JSON.stringify({ id: 'job-1', status: ++polls === 1 ? 'in_progress' : 'completed' }))
+      else if (path === '/v1/videos/job-1/content') {
+        response.setHeader('content-type', 'video/mp4')
+        response.end('video-bytes')
+      } else { response.writeHead(404); response.end() }
+    }, FFMPEG, { managed: true, task: 'ref2va', pollIntervalMs: 1 })
+    const outputs = await collect(client)
+    expect(outputs.find(output => output.kind === 'chunk')).toMatchObject({ bytes: Buffer.from('video-bytes') })
+    expect(requests.map(request => request.path)).toEqual(['/v1/videos', '/v1/videos/job-1', '/v1/videos/job-1', '/v1/videos/job-1/content'])
+    expect(requests[0]?.body['task']).toBe('ref2va')
+  })
+
+  it('reports a failed native job without fetching content or resubmitting', async () => {
+    const { client, requests } = await backend((path, response) => {
+      response.setHeader('content-type', 'application/json')
+      response.end(JSON.stringify(path === '/v1/videos' ? { id: 'job-2' }
+        : { status: 'failed', error: { message: 'Insufficient GPU memory' } }))
+    }, FFMPEG, { managed: true })
+    await expect(collect(client)).rejects.toThrow('Insufficient GPU memory')
+    expect(requests.map(request => request.path)).toEqual(['/v1/videos', '/v1/videos/job-2'])
+  })
+
+  it('queries a catalog alias and sends native lifecycle requests without generating', async () => {
+    const { client, requests } = await backend((path, response) => {
+      response.setHeader('content-type', 'application/json')
+      response.end(JSON.stringify(path.startsWith('/v1/model_info') ? { served_model_name: facts.modelId }
+        : { installed: true, loaded_model: facts.modelId, loading_model: null, busy: false }))
+    }, FFMPEG, { managed: true, task: 'ref2va' })
+    expect(await client.model()).toEqual(facts)
+    expect(await client.modelStatus()).toEqual({ installed: true, loaded: true, loading: false, busy: false })
+    await client.loadModel()
+    await client.unloadModel()
+    expect(requests.map(request => request.path)).toEqual([
+      '/v1/model_info?model=fasth3-nvfp4&task=ref2va', '/v1/model_state?model=fasth3-nvfp4', '/v1/models/load', '/v1/models/unload',
+    ])
+    expect(requests[2]?.body).toEqual({ model: facts.modelId, task: 'ref2va' })
+  })
   it('checks the served alias before caching explicit deployment facts', async () => {
     const { client, requests } = await backend((_path, response) => {
       response.setHeader('content-type', 'application/json')

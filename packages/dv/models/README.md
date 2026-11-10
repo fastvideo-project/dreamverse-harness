@@ -120,6 +120,10 @@ A provider plugin calls `register`. A consumer calls the other methods.
 
 The service also registers the tools `dv_models_list` and `dv_models_get`, the skill `video-model-selection`, and the prompt skill of each entry for the agent. It adds nothing to the system prompt.
 
+When `dvProject` is present, `dv_models_select` saves the conversation's video-model default as a `models.select` project operation. Empty provider and model strings choose Auto. Subsequent agent generations must use that provider/model until the user or agent changes it; existing renders keep their recorded model and task. The composer exposes this default beside the operator LLM selector, so users do not need to choose again for each generation. The optional `models` slice rebuilds choices from successful operations; older projects start in Auto.
+
+Entries may provide `runtime.status`, `runtime.load`, and `runtime.unload`. Their operation tools are `dv_models_status`, `dv_models_load`, and `dv_models_unload`, with the entry's four key fields. These manage installed weights in GPU memory and never download weights. A managed FastVideo backend loads the requested profile when rendering, serializes model changes with generation, and retains only shared components whose files and loader settings match. Providers without lifecycle support keep their existing rendering behavior and report that explicit lifecycle controls are unavailable.
+
 ### What a provider plugin owns
 
 A provider plugin connects one provider to the catalog. [`@dv/fastvideo`](../fastvideo/README.md) is the example to follow. The provider plugin owns these parts:

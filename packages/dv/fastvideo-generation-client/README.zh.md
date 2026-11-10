@@ -49,6 +49,10 @@ kind: "package-reference"
 | `openai` 内的字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `ffmpegPath` | 必填 | 本地提取末帧的可执行文件；`returnLastFrame` 为 false 时不用 |
+| `managed` | `false` | 使用原生模型目录发现、生命周期控制和异步视频任务 |
+| `task` | `null` | 请求未指定时使用的原生任务 |
+| `displayName` | `null` | harness 模型选择器显示的名称 |
+| `pollIntervalMs` | `1000` | 托管任务状态请求之间的毫秒间隔 |
 | `modelFacts.modelId` | 必填 | 精确的服务模型别名 |
 | `modelFacts.aspectRatios` / `resolutions` | 必填 | 模型目录支持的选项 |
 | `modelFacts.minSegmentDurationSec` / `maxSegmentDurationSec` | 必填 | 包含端点的整数秒时长范围 |
@@ -58,6 +62,8 @@ kind: "package-reference"
 | `modelFacts.numFramesByDurationSec` | 必填 | 整数秒时长到帧数的映射 |
 
 `generateSegment` 发送 `model`、`prompt`、`width`、`height`、`num_frames` 和可选的 `seed`。它把参考分组为 `image_reference`、`video_reference` 和 `audio_reference`，各 `*_url` 中使用带类型的 data URI。设置每个参考的 `mimeType` 可保留 JPEG、MPEG 音频等格式；省略时使用 `<mediaType>/octet-stream`。其他媒体类型和不匹配的 MIME 在发送 HTTP 前失败。
+
+设置 `managed: true` 时，服务器必须提供原生模型目录。发现请求在 `/v1/model_info` 中指定模型别名和任务；`modelStatus()`、`loadModel()` 和 `unloadModel()` 使用 `/v1/model_state` 以及 `/v1/models/load` 或 `/unload`。生成仅向 `/v1/videos` 提交一次，轮询同一个任务 ID，再读取 `/v1/videos/{id}/content`。因此长时间推理无需一直等待同一个同步响应的头部。取消会请求删除任务；正在执行的 CUDA 调用仍持有生成锁，直到结束。原生服务器在内存中跟踪任务，不提供跨重启的恢复。
 
 响应必须带 `video/*` 内容类型。客户端缓存完整 MP4，可用 ffmpeg 提取末帧 PNG，然后产出与 streaming_v2 相同种类的事件。它把 `X-Inference-Time-S` 映射为 `done.timings.inference_s`。HTTP 400 或 422 变为带 `invalid_request` 的 `GenerationSegmentError`；其他 HTTP 失败保留状态和受限长度的后端消息。Python traceback 仅保留最后的异常行；超过 2,048 字符的消息会截断，完整详情留在服务器日志中。中止会在本地 ffmpeg 退出、临时文件删除后，以调用方的原因拒绝。
 

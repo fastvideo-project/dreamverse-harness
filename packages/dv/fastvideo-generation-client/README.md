@@ -49,6 +49,10 @@ Set `openai` beside `baseUrl` for a server with `GET /v1/model_info` and `POST /
 | Field in `openai` | Default | Meaning |
 | --- | --- | --- |
 | `ffmpegPath` | required | Executable for local last-frame extraction; unused when `returnLastFrame` is false |
+| `managed` | `false` | Use native model-catalog discovery, lifecycle controls and asynchronous video jobs |
+| `task` | `null` | Native task used when the request does not supply one |
+| `displayName` | `null` | Name shown by the harness model selector |
+| `pollIntervalMs` | `1000` | Interval between managed job-state requests |
 | `modelFacts.modelId` | required | Exact served model alias |
 | `modelFacts.aspectRatios` / `resolutions` | required | Supported catalog choices |
 | `modelFacts.minSegmentDurationSec` / `maxSegmentDurationSec` | required | Inclusive whole-second duration range |
@@ -58,6 +62,8 @@ Set `openai` beside `baseUrl` for a server with `GET /v1/model_info` and `POST /
 | `modelFacts.numFramesByDurationSec` | required | Whole-second duration to frame count |
 
 `generateSegment` sends `model`, `prompt`, `width`, `height`, `num_frames` and optional `seed`. It groups references into `image_reference`, `video_reference` and `audio_reference`, with typed data URIs in each `*_url`. Set each reference's `mimeType` to preserve formats such as JPEG or MPEG audio; an omitted MIME uses `<mediaType>/octet-stream`. Other media types and mismatched MIME types fail before HTTP.
+
+With `managed: true`, the server must expose a native model catalog. Discovery queries `/v1/model_info` with the model alias and task; `modelStatus()`, `loadModel()` and `unloadModel()` use `/v1/model_state` and `/v1/models/load` or `/unload`. Generation submits once to `/v1/videos`, polls that job ID, then retrieves `/v1/videos/{id}/content`. Long inference therefore does not leave one synchronous response waiting for headers. Cancellation requests deletion of the job; an active CUDA call still holds the generation lock until it settles. Job tracking is in memory on the native server, not restart-persistent recovery.
 
 The response must have a `video/*` content type. The client buffers the complete MP4, optionally extracts a last-frame PNG with ffmpeg, and then yields the same event kinds as streaming_v2. It maps `X-Inference-Time-S` to `done.timings.inference_s`. HTTP 400 or 422 becomes `GenerationSegmentError` with `invalid_request`; other HTTP failures retain the status and a bounded backend message. Python tracebacks become their final exception line; messages longer than 2,048 characters are truncated, with full details left in the server logs. Aborting rejects with the caller's reason after any local ffmpeg process exits and temporary files are removed.
 

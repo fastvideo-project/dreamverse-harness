@@ -10,6 +10,7 @@
  * @module @dv/ui-composer/prompt
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import { createElement, useSyncExternalStore } from 'react'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
@@ -22,6 +23,7 @@ import type { DvComposer, DvPromptInjected, ParamBar, ReferenceFaceInjected } fr
 import { DvPrompt } from './DvPrompt.tsx'
 import { MENTION_SOURCE } from './mention.ts'
 import { ReferenceFace } from './ReferenceFace.tsx'
+import { VideoModelPicker } from './VideoModelPicker.tsx'
 
 const REFETCH_DELAY_MS = 150
 
@@ -138,6 +140,18 @@ export function applyPrompt(ctx: ClientContext): void {
     window.addEventListener(DV_CURRENT_PROJECT_EVENT, follow)
     return () => { window.removeEventListener(DV_CURRENT_PROJECT_EVENT, follow) }
   }, 'dv-composer: open project')
+  function ConversationVideoModel({ sessionId }: { sessionId: string }) {
+    const projectId = useSyncExternalStore(currentProject.subscribe, currentProject.getSnapshot)
+    return createElement(VideoModelPicker, {
+      key: `${projectId ?? ''}:${sessionId}`, sessionId, state: states(projectId ?? ''), models,
+      save: selection => projectId === null ? Promise.reject(new Error('Open a project to choose its video model.'))
+        : client.runOperation({ project: projectId, session: sessionId, surface: 'chat',
+          operation: 'models.select', params: selection === null ? { provider: '', model: '' } : { ...selection } }),
+    })
+  }
+  ctx.effect(() => ctx.slots.inject('conversation.input.left', () => ctx.slots.register(
+    { name: 'conversation.input.left', id: 'dv-video-model', order: 40 }, ConversationVideoModel,
+  )), 'dv-composer: video model choice')
   const injected: DvPromptInjected = {
     check: request => client.checkOperation(request),
     hooks: { models, paramBars: composer.paramBars, versionKinds },

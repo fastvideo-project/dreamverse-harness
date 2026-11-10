@@ -229,12 +229,20 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
   if (served === undefined) throw new Error(`dv-fastvideo serves no model "${model}" for task "${task}".`)
   const { inputs, extra, assignReferenceLabels, skill } = served
   const labels = server.openai == null ? assignReferenceLabels : openAIReferenceLabels(assignReferenceLabels)
-  const client = new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), server)
+  const client = new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), {
+    ...server, ...server.openai == null ? {} : { openai: { ...server.openai, task: served.openaiTask ?? server.openai.task ?? null } },
+  })
   return {
     modality: 'video',
     task,
     provider: PROVIDER,
     model,
+    ...server.openai?.displayName == null ? {} : { displayName: server.openai.displayName },
+    ...server.openai?.managed !== true ? {} : { runtime: {
+      status: (signal?: AbortSignal) => client.modelStatus(signal),
+      load: (signal?: AbortSignal) => client.loadModel(signal),
+      unload: (signal?: AbortSignal) => client.unloadModel(signal),
+    } },
     description: served.description,
     promptSkill: {
       name: skill.name, description: skill.description,

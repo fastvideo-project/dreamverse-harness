@@ -18,6 +18,8 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
 import type { ModalityId, ModelEntry, ModelFilter, ModelKey, TaskId } from './types.ts'
+import { installModelControls } from './selection.ts'
+export { assertVideoSelection, videoSelection } from './selection.ts'
 
 export type * from './types.ts'
 
@@ -88,7 +90,8 @@ export function servesTask<E extends Pick<ModelEntry, 'task'>, T extends TaskId>
 
 /** Convert an entry to its key and its description, as `dv_models_list` and `dv_models_get` return them. */
 function toModelListItem(entry: ModelEntry): Record<string, JsonValue> {
-  return { modality: entry.modality, task: entry.task, provider: entry.provider, model: entry.model, description: entry.description }
+  return { modality: entry.modality, task: entry.task, provider: entry.provider, model: entry.model, description: entry.description,
+    ...entry.displayName === undefined ? {} : { display_name: entry.displayName } }
 }
 
 /** Render a tool's JSON value as the text the agent reads. */
@@ -110,6 +113,7 @@ export default class DvModels extends Service {
 
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'dvModels')
+    installModelControls(ctx, this)
     ctx.inject(['tools'], (child) => {
       child.effect(() => child.tools.register(this.defineModelsListTool()), 'dvModels dv_models_list')
       child.effect(() => child.tools.register(this.defineModelsGetTool()), 'dvModels dv_models_get')
@@ -285,9 +289,15 @@ export default class DvModels extends Service {
       let timer: ReturnType<typeof setTimeout> | undefined
       const late = new Promise<null>((resolve) => { timer = setTimeout(() => { resolve(null) }, this.config.catalogSchemaTimeoutMs) })
       // The schema of an unreachable or slow backend is unknown; the entry still lists its key and description.
-      const schema = await Promise.race([entry.schema().catch((_unreachable: unknown) => null), late])
+      const metadata = await Promise.race([Promise.all([
+        entry.schema().catch((_unreachable: unknown) => null),
+        entry.runtime === undefined ? undefined : entry.runtime.status().catch((_unreachable: unknown) => null),
+      ]), late])
       clearTimeout(timer)
-      return { ...toModelListItem(entry), schema }
+      const schema = metadata?.[0] ?? null
+      const runtime = metadata?.[1]
+      return { ...toModelListItem(entry), schema,
+        ...entry.runtime === undefined ? {} : { runtime: runtime == null ? null : { ...runtime } } }
     }))
   }
 

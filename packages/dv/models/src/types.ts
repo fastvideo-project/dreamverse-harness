@@ -7,7 +7,35 @@
  * @module @dv/models/types
  */
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import type { AssetId } from '@dv/project/types'
+import type { AssetId, SessionId } from '@dv/project/types'
+
+/** A conversation's explicit video-model default. */
+export interface VideoModelSelection { provider: string; model: string }
+
+/** Conversation defaults derived from models.select records. */
+export interface ModelSelections { conversations: Record<SessionId, VideoModelSelection | null> }
+
+declare module '@dv/project/types' {
+  interface ComponentStates {
+    /** Present while conversation model controls are mounted. */
+    models: ModelSelections
+  }
+}
+
+/** Provider-reported installation and GPU residency. */
+export interface ModelRuntimeState {
+  installed: boolean
+  loaded: boolean
+  loading: boolean
+  busy: boolean
+}
+
+/** Optional provider controls over an installed model's GPU residency. */
+export interface ModelRuntime {
+  status(signal?: AbortSignal): Promise<ModelRuntimeState>
+  load(signal?: AbortSignal): Promise<void>
+  unload(signal?: AbortSignal): Promise<void>
+}
 
 /**
  * The generation primitives: one row per input and output signature, with the output modality, the facts a request is
@@ -131,6 +159,10 @@ export type RenderStreamEvent =
  *   rejects for any backend failure. Aborting `signal` cancels the render and rejects with its reason.
  */
 export type ModelEntry<T extends TaskId = TaskId> = ModelKey<T> & PrimitiveTypes[TaskMap[T]]['entry'] & {
+  /** Creator-facing variant name; absent, use the model key. */
+  displayName?: string
+  /** Present when the provider supports native model loading and unloading. */
+  runtime?: ModelRuntime
   /** The model's strengths and weaknesses, for the agent and the user to choose between similar models. */
   description: string
   /**

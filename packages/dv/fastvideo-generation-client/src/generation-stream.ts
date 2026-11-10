@@ -101,16 +101,18 @@ async function* readEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<Str
  * @param request - the segment inputs and an optional abort signal.
  * @returns the backend outputs in arrival order.
  */
-export async function* generateSegment(url: URL, request: SegmentRequest): AsyncGenerator<SegmentOutput> {
+export async function* generateSegment(
+  url: URL, request: SegmentRequest, headers: Record<string, string> = {}, fetchImpl: typeof fetch = globalThis.fetch,
+): AsyncGenerator<SegmentOutput> {
   const { signal } = request
   signal?.throwIfAborted()
   const connection = new AbortController()
   const onAbort = (): void => { connection.abort(signal?.reason) }
   signal?.addEventListener('abort', onAbort, { once: true })
   try {
-    const response = await fetch(url, {
+    const response = await fetchImpl(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+      headers: { ...headers, 'content-type': 'application/json', accept: 'text/event-stream' },
       body: JSON.stringify(requestBody(request)),
       signal: connection.signal,
     })

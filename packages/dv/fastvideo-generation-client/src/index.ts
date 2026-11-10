@@ -6,6 +6,7 @@
  * @module @dv/fastvideo-generation-client
  */
 import { Service, type Context } from '@deepseek-ai/cordis'
+import { readFileSync } from 'node:fs'
 import z from '@deepseek-ai/schemastery'
 import { GenerationSegmentError } from './errors.ts'
 import { generateSegment } from './generation-stream.ts'
@@ -26,6 +27,8 @@ declare module '@deepseek-ai/cordis' {
 export interface Config {
   /** HTTP base URL of the generation backend, such as `http://127.0.0.1:8029`. */
   baseUrl: string
+  /** Owner-only bearer credential file for an authenticated worker. Never put its contents in config. */
+  apiKeyFile?: string | null
   /** Select the current OpenAI API with explicit deployment facts; omitted, use streaming_v2. */
   openai?: OpenAIConfig | null
 }
@@ -45,10 +48,12 @@ interface CapabilitiesBody {
 export class DvFastvideoGeneration extends Service {
   static Config: z<Config> = z.object({
     baseUrl: z.string().required(),
+    apiKeyFile: z.union([z.const(null), z.string()]).default(null),
     openai: z.union([z.const(null), OpenAIConfig]).default(null),
   })
 
   private readonly baseUrl: URL
+  private readonly headers: Record<string, string>
   /** The first successfully checked model facts; the served model stays fixed for the backend's lifetime. */
   private modelFacts: ModelFacts | null = null
 
@@ -56,9 +61,12 @@ export class DvFastvideoGeneration extends Service {
    * @param ctx - owning plugin context.
    * @param config - validated generation backend location.
    */
-  constructor(ctx: Context, private readonly config: Config) {
+  constructor(ctx: Context, private readonly config: Config, private readonly fetchImpl: typeof fetch = globalThis.fetch) {
     super(ctx, 'dvFastvideoGeneration')
     this.baseUrl = new URL(config.baseUrl)
+    const key = config.apiKeyFile == null ? null : readFileSync(config.apiKeyFile, 'utf8').trim()
+    if (key !== null && !/^[\x21-\x7e]+$/.test(key)) throw new Error('Worker API key must contain printable non-space ASCII characters.')
+    this.headers = key === null ? {} : { authorization: `Bearer ${key}` }
   }
 
   /**
@@ -66,10 +74,17 @@ export class DvFastvideoGeneration extends Service {
    * @returns the model facts.
    * @throws Error naming the route for a status other than 200, or the `fetch` error when the backend is unreachable.
    */
-  async model(): Promise<ModelFacts> {
+  async model(signal?: AbortSignal): Promise<ModelFacts> {
     if (this.modelFacts !== null) return this.modelFacts
     if (this.config.openai != null) {
-      const response = await checkedResponse(await fetch(new URL('/v1/model_info', this.baseUrl)))
+      const infoUrl = new URL('/v1/model_info', this.baseUrl)
+      if (this.config.openai.managed === true) {
+        infoUrl.searchParams.set('model', this.config.openai.modelFacts.modelId)
+        if (this.config.openai.task != null) infoUrl.searchParams.set('task', this.config.openai.task)
+      }
+      const response = await checkedResponse(await this.fetchImpl(infoUrl, {
+        headers: this.headers, ...signal === undefined ? {} : { signal },
+      }))
       const body = await response.json() as { served_model_name: string }
       if (body.served_model_name !== this.config.openai.modelFacts.modelId) {
         throw new Error(`FastVideo serves ${body.served_model_name}, expected ${this.config.openai.modelFacts.modelId}`)
@@ -78,7 +93,7 @@ export class DvFastvideoGeneration extends Service {
       return this.modelFacts
     }
     const route = '/v1/streamv2/capabilities'
-    const body = await readBody<CapabilitiesBody>(await fetch(new URL(route, this.baseUrl)), `GET ${route}`)
+    const body = await readBody<CapabilitiesBody>(await this.fetchImpl(new URL(route, this.baseUrl), { headers: this.headers, ...signal === undefined ? {} : { signal } }), `GET ${route}`)
     const referenceMediaTypes = Object.fromEntries(Object.entries(body.reference_media_types)
       .map(([mediaType, limit]) => [mediaType, { maxCount: limit.max_count }]))
     this.modelFacts = {
@@ -104,9 +119,40 @@ export class DvFastvideoGeneration extends Service {
    * @throws GenerationSegmentError when a native task selector is used without OpenAI transport.
    */
   generateSegment(request: SegmentRequest): AsyncIterable<SegmentOutput> {
-    if (this.config.openai != null) return generateOpenAI(this.baseUrl, this.config.openai, request)
+    if (this.config.openai != null) return generateOpenAI(this.baseUrl, this.config.openai, request, this.headers, this.fetchImpl)
     if (request.task !== undefined) throw new GenerationSegmentError('A native task selector requires the OpenAI transport', 'invalid_request')
-    return generateSegment(new URL('/v1/streamv2/generate', this.baseUrl), request)
+    return generateSegment(new URL('/v1/streamv2/generate', this.baseUrl), request, this.headers, this.fetchImpl)
+  }
+
+  /** Read native residency without loading a model or changing generation state. */
+  async modelStatus(signal?: AbortSignal): Promise<{ installed: boolean; loaded: boolean; loading: boolean; busy: boolean }> {
+    const config = this.config.openai
+    if (config?.managed !== true) throw new Error('This endpoint has no managed model catalog')
+    const url = new URL('/v1/model_state', this.baseUrl)
+    url.searchParams.set('model', config.modelFacts.modelId)
+    const response = await checkedResponse(await this.fetchImpl(url, { headers: this.headers, ...signal === undefined ? {} : { signal } }))
+    const state: unknown = await response.json()
+    if (typeof state !== 'object' || state === null || !('loaded_model' in state) || !('busy' in state) || typeof state.busy !== 'boolean'
+      || !('installed' in state) || typeof state.installed !== 'boolean') {
+      throw new Error('Invalid FastVideo model state')
+    }
+    return { installed: state.installed, loaded: state.loaded_model === config.modelFacts.modelId,
+      loading: 'loading_model' in state && state.loading_model === config.modelFacts.modelId, busy: state.busy }
+  }
+
+  /** Load an installed model through the native single-device manager. */
+  async loadModel(signal?: AbortSignal): Promise<void> { await this.modelAction('load', signal) }
+
+  /** Release the model's GPU residency while retaining downloaded weights. */
+  async unloadModel(signal?: AbortSignal): Promise<void> { await this.modelAction('unload', signal) }
+
+  private async modelAction(action: 'load' | 'unload', signal?: AbortSignal): Promise<void> {
+    const config = this.config.openai
+    if (config?.managed !== true) throw new Error('This endpoint has no managed model catalog')
+    await checkedResponse(await this.fetchImpl(new URL(`/v1/models/${action}`, this.baseUrl), {
+      method: 'POST', headers: { ...this.headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ model: config.modelFacts.modelId, task: config.task }), ...signal === undefined ? {} : { signal },
+    }))
   }
 }
 

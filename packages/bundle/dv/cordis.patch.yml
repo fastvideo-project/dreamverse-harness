@@ -277,9 +277,9 @@
 - id: ui-reference
   disabled: true
 
-# The model is fixed by agent-default-model; the composer shows no model picker and no /model command.
+# agent-default-model initializes each session; the operator picker changes its route for the next request.
 - id: ui-model-selection
-  disabled: true
+  disabled: false
 
 # Completed turns show no token-usage pill; the composer statistics are hidden by @dv/ui-shell.
 - id: ui-chat
