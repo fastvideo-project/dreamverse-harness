@@ -22,15 +22,16 @@
  * Watches live in memory: a restart cancels every unfinished record (`Runner.recover`) while no agent turn is open. A
  * session without a registered agent when its record finishes, or whose agent is being disposed (its `ctx` fiber is no
  * longer active), gets no wake; the project update message shows the record to the session's next step. A record that
- * a write after an undo discarded gets no wake: it left the history list, so no project update reports it. When it was
- * the last record that the session watched, the wakes that an idle agent holds for its other records open a turn under
- * the rules above. Removing a project drops the watches of its records and wakes no agent for the wakes they held
- * back: the sessions whose calls started those records have no project left to report. Closing the module (when the
- * service stops) drops every watch and delivers nothing afterwards. A delivery that throws is logged on the `dvProject`
- * logger and never fails the record write that finished the record.
+ * finishes off the history list up to the current position (undone, or discarded by a write after an undo) gets no
+ * wake: no project update reports it, until a redo brings an undone record back and the session's next step reports it.
+ * When it was the last record that the session watched, the wakes that an idle agent holds for its other records open
+ * a turn under the rules above. Removing a project drops the watches of its records and wakes no agent for the wakes
+ * they held back: the sessions whose calls started those records have no project left to report. Closing the module
+ * (when the service stops) drops every watch and delivers nothing afterwards. A delivery that throws is logged on the
+ * `dvProject` logger and never fails the record write that finished the record.
  *
- * Calls the `agents` registry, read at delivery time, and `dvProject.getRecord`. Called by the service: `watch` from the
- * operation tools, `recordFinished` from the record store's change callback.
+ * Calls the `agents` registry, read at delivery time, `dvProject.getRecord` and `dvProject.listHistory`. Called by the
+ * service: `watch` from the operation tools, `recordFinished` from the record store's change callback.
  *
  * @module @dv/project/record-notices
  */
@@ -102,8 +103,9 @@ export class RecordNotices {
 
   /**
    * Deliver the wake of a watched record that finished to the session's agent, if one is registered; other records are
-   * ignored. A record that a write after an undo discarded (`error.code` `discarded`) drops its watch without a wake;
-   * an idle agent whose next-step inbox holds the wakes that this watch held back is then woken for them.
+   * ignored. A record that is off the history list up to the current position (undone, or discarded by a write after
+   * an undo) drops its watch without a wake; an idle agent whose next-step inbox holds the wakes that this watch held
+   * back is then woken for them.
    * @param project - the project.
    * @param record - the record in its final status.
    */
@@ -116,9 +118,9 @@ export class RecordNotices {
       const agent = this.ctx.get('agents')?.get(AgentSessionId(watch.session))
       // An agent stays registered while its disposal unwinds its scope; a wake then would open a turn in it.
       if (agent === undefined || agent.ctx.fiber.state !== FiberState.ACTIVE) return
-      // A discarded record leaves the history list, so no project update reports it: its wake would open an empty turn.
-      // The wakes that this watch held back without waking the idle agent still need a turn.
-      if (record.error?.code === 'discarded') {
+      // A project update lists only records of the history list up to the current position: the wake of an undone or
+      // discarded record would open a turn that reports nothing of it. The wakes that this watch held back still need one.
+      if (!this.onHistory(project, record.id)) {
         this.wakeStranded(agent)
         return
       }
@@ -167,6 +169,12 @@ export class RecordNotices {
     } catch (error) {
       this.ctx.logger('dvProject').warn('could not wake agent %s: %s', agent.id, error instanceof Error ? error.message : String(error))
     }
+  }
+
+  /** Whether a record is on the project's history list at or before the current position. */
+  private onHistory(project: ProjectId, record: RecordId): boolean {
+    const [entry] = this.project.listHistory({ project, records: [record] })
+    return entry !== undefined && entry.place !== 'after'
   }
 
   /** Take one wake from the agent's budget; always true without a budget. */

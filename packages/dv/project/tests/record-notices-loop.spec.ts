@@ -279,6 +279,21 @@ describe('record notices with the agent loop', () => {
     if (write.record !== null) await fixture.finish('canvas', write.record.id)
   })
 
+  it('opens a turn for the held-back wake alone when the session\'s other render finishes undone', async () => {
+    const fixture = await start()
+    const first = await fixture.render('one')
+    const second = await fixture.render('two')
+    await fixture.finish('one', first)
+    await fixture.project.undo(fixture.projectId)
+    await fixture.finish('two', second)
+
+    await vi.waitFor(() => { expect(fixture.adapter.requests).toHaveLength(1) })
+    expect(wakes(fixture).map(message => message.source.kind === 'dv-project-wake' ? message.source.records : [])).toEqual([[first]])
+    expect(fixture.agent.inbox.nextStep).toEqual([])
+    fixture.agent.cancel({ kind: 'user' })
+    await fixture.agent.whenIdle()
+  })
+
   it('opens a turn for a wake that a turn ending with an error left behind', async () => {
     const fixture = await start()
     fixture.adapter.failFirst = true

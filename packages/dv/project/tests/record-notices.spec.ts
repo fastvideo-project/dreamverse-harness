@@ -286,6 +286,17 @@ describe('record notices', () => {
     expect(textOf(agent?.got[0]?.message)).toBe(wakeText(one))
   })
 
+  it('sends no wake for a record that finished while an undo left it after the current position', async () => {
+    const fixture = await start()
+    const agent = fixture.agents.get(SESSION)
+    const record = recordOf(await fixture.call('dv_shot_render', { reason: 'dunk', prompt: 'dunk' }))
+    await fixture.project.undo(fixture.projectId)
+    fixture.release('dunk')
+    await fixture.settle()
+    expect(fixture.project.getRecord(fixture.projectId, record).status).toBe('done')
+    expect(agent?.got).toEqual([])
+  })
+
   it('injects into a running agent', async () => {
     const fixture = await start()
     const agent = fixture.agents.get(SESSION)
