@@ -2270,6 +2270,9 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: workspace:*
         version: link:../../core/tools
+      '@dv/fastvideo-generation-client':
+        specifier: workspace:*
+        version: link:../../dv/fastvideo-generation-client
 
   packages/bundle/headless:
     dependencies:
@@ -7330,6 +7333,9 @@ importers:
       '@dv/fastvideo-generation-client':
         specifier: workspace:*
         version: link:../fastvideo-generation-client
+      '@dv/ffmpeg':
+        specifier: workspace:*
+        version: link:../ffmpeg
       '@dv/models':
         specifier: workspace:*
         version: link:../models
@@ -7346,9 +7352,6 @@ importers:
       '@deepseek-ai/cordis-plugin-loader':
         specifier: workspace:~
         version: link:../../../vendor/loader
-      '@dv/ffmpeg':
-        specifier: workspace:*
-        version: link:../ffmpeg
       '@types/node':
         specifier: ^22.20.0
         version: 22.20.0
@@ -7358,6 +7361,12 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
+      '@dv/models':
+        specifier: workspace:*
+        version: link:../models
+      undici:
+        specifier: ^8.10.0
+        version: 8.10.0
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:~
@@ -18781,7 +18790,9 @@ packages:
   '@smithy/core@3.24.7':
     resolution: {integrity: sha512-KoUi4M1f3BG6kzN1FnCwL7oyFptTbyBJKjR6yhSib+JHRdUmM1o+VwsFtJ66NZCkCzVfJMWRHJNo0R0jznp0Pg==}
     engines: {node: '>=18.0.0'}
-    deprecated: Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
+    deprecated: |-
+      Deprecated due to a bug in custom logger data redaction. Upgrade to the latest version. If you used a custom logger with this
+        version, review your logs and rotate any credentials or other secrets. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/credential-provider-imds@4.3.9':
     resolution: {integrity: sha512-ZlfJ/4Fa3jYb+3eaohPfG9utX9HmdhFNcFtpoGAhUhdynAOmGXtmigbi7eEiONKM+ykHw8RwKuDEb85Lx7t7fA==}

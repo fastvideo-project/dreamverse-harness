@@ -4,15 +4,7 @@
  * @module @dv/fastvideo-generation-client/errors
  */
 
-/** A segment failure that the generation backend reported, with HTTP 400 before its event stream or with an `error` event in it. */
+/** A segment request that FastVideo refuses: HTTP 400 from `POST /v1/videos/sync`, or a reference of another media type. */
 export class GenerationSegmentError extends Error {
   override name = 'GenerationSegmentError'
-
-  /**
-   * @param message - the backend's failure message.
-   * @param errorType - the backend's error code: `invalid_request` or `generation_failed`.
-   */
-  constructor(message: string, readonly errorType: string) {
-    super(message)
-  }
 }

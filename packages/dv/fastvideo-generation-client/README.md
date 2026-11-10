@@ -1,5 +1,5 @@
 ---
-description: "Client for FastVideo OpenAI and streaming_v2 generation APIs: deployment facts, typed references, video events and cancellation."
+description: "Client for the FastVideo POST /v1/videos/sync API: configured model facts, typed references, whole-MP4 segments and cancellation."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to generate a video segment with FastVideo. Select the OpenAI API for a server that returns a whole MP4, or leave the configuration at its default for streaming_v2. Both expose last-frame, video and timing events. Requests carry all references; cancellation closes the HTTP request, although the backend may finish an already running generation.
+Use this package to generate a video segment with FastVideo. The client checks the served model with `GET /v1/model_info`, sends one `POST /v1/videos/sync` per segment with every reference inline, and returns the whole MP4 with the backend timings. Cancellation closes the HTTP request, although the backend may finish an already running generation.
 
 ## Table of Contents
 
@@ -25,8 +25,9 @@ Use this package to generate a video segment with FastVideo. Select the OpenAI A
 <a id="use-this-package"></a>
 ## Use this package
 
-Construct one client per backend with the backend's base URL. `@dv/fastvideo` builds one client per configured model and task in an isolated `dvFastvideoGeneration` scope.
+Construct one client per backend with the backend's base URL and the `modelFacts` of its served model. `@dv/fastvideo` builds one client per configured model and task in an isolated `dvFastvideoGeneration` scope.
 
+<a id="minimal-configuration"></a>
 ### Minimal configuration
 
 ```yaml
@@ -34,73 +35,38 @@ Construct one client per backend with the backend's base URL. `@dv/fastvideo` bu
   name: '@dv/fastvideo-generation-client'
   config:
     baseUrl: http://127.0.0.1:8029
+    modelFacts:
+      modelId: fasth3
+      frameSizes: { '16:9': { 480p: [832, 480] } }
+      numFramesByDurationSec: { 5: 124 }
+      maxReferences: 12
+      referenceMediaTypes: { image: { maxCount: 9 }, video: { maxCount: 3 }, audio: { maxCount: 3 } }
 ```
+
+FastVideo serves no capabilities route, so the operator writes the facts of the served model. The client derives `aspectRatios` and `resolutions` from the keys of `frameSizes`, and `minDurationSec` and `maxDurationSec` from the keys of `numFramesByDurationSec`.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `baseUrl` | required | HTTP base URL of the generation backend |
-| `openai` | `null` | Set the OpenAI deployment configuration below; omit it for streaming_v2 |
-
-<a id="openai-api-configuration"></a>
-### OpenAI API configuration
-
-Set `openai` beside `baseUrl` for a server with `GET /v1/model_info` and `POST /v1/videos/sync`. Supply `modelFacts` with the verified limits of that deployment and `ffmpegPath` with an installed ffmpeg executable. `model()` checks that `served_model_name` matches `modelFacts.modelId` before caching these facts. A mismatch fails rather than advertising a different model.
-
-| Field in `openai` | Default | Meaning |
-| --- | --- | --- |
-| `ffmpegPath` | required | Executable for local last-frame extraction; unused when `returnLastFrame` is false |
-| `modelFacts.modelId` | required | Exact served model alias |
-| `modelFacts.aspectRatios` / `resolutions` | required | Supported catalog choices |
-| `modelFacts.minSegmentDurationSec` / `maxSegmentDurationSec` | required | Inclusive whole-second duration range |
+| `modelFacts.modelId` | required | Exact served model alias; `model()` compares it with `served_model_name` |
+| `modelFacts.frameSizes` | required | Aspect ratio to resolution to `[width, height]`; every aspect ratio lists the same resolutions |
+| `modelFacts.numFramesByDurationSec` | required | Whole-second duration to frame count, for every duration from the shortest to the longest, growing with the duration |
 | `modelFacts.maxReferences` | required | Total reference limit, including a first frame |
-| `modelFacts.referenceMediaTypes` | required | Per-type objects with `maxCount` |
-| `modelFacts.frameSizes` | required | Aspect ratio to resolution to `[width, height]` |
-| `modelFacts.numFramesByDurationSec` | required | Whole-second duration to frame count |
+| `modelFacts.referenceMediaTypes` | required | `image`, `video` or `audio` to `{maxCount}`, each at most `maxReferences`; a type left out is not accepted |
 
-`generateSegment` sends `model`, `prompt`, `width`, `height`, `num_frames` and optional `seed`. It groups references into `image_reference`, `video_reference` and `audio_reference`, with typed data URIs in each `*_url`. Set each reference's `mimeType` to preserve formats such as JPEG or MPEG audio; an omitted MIME uses `<mediaType>/octet-stream`. Other media types and mismatched MIME types fail before HTTP.
+Constructing the client throws an `Error` that names the inconsistency of facts that break these rules, so a plugin that builds the client fails at load.
 
-The response must have a `video/*` content type. The client buffers the complete MP4, optionally extracts a last-frame PNG with ffmpeg, and then yields the same event kinds as streaming_v2. It maps `X-Inference-Time-S` to `done.timings.inference_s`. HTTP 400 or 422 becomes `GenerationSegmentError` with `invalid_request`; other HTTP failures retain the status and a bounded backend message. Python tracebacks become their final exception line; messages longer than 2,048 characters are truncated, with full details left in the server logs. Aborting rejects with the caller's reason after any local ffmpeg process exits and temporary files are removed.
+### Service
 
-### Streaming API service
+- `facts` holds the derived facts from construction on, without a request; `model()` returns the same facts once the backend confirms the served alias.
+- `model()` sends `GET /v1/model_info` and returns the derived facts after the first answer whose `served_model_name` equals `modelFacts.modelId`. A status other than 200 throws an `Error` that names the route and the status; a body that is not JSON throws an `Error` that names the route; a missing or different `served_model_name` throws an `Error` that names both aliases.
+- `generateSegment(request)` sends one `POST /v1/videos/sync` and resolves `{video, mime, timings}` with the whole MP4. The request has no client-side headers timeout, because the backend sends its headers only after the whole video is generated. The body keeps the global dispatcher's body timeout, because the backend sends the body from the finished MP4 file. Aborting `request.signal` cancels the HTTP request and rejects with `signal.reason`.
 
-- `model()` reads `GET /v1/streamv2/capabilities` and caches the first successful result. It adds aspect ratios and resolutions from the `frame_sizes` keys.
-- `generateSegment(request)` sends one `POST /v1/streamv2/generate` and yields `last_frame`, `video_start`, `chunk`, and `done` outputs in arrival order. HTTP 400 and an `error` event reject with `GenerationSegmentError(message, errorType)`, where `errorType` is the backend's error code. A stream that ends before `done` rejects with `Error`. Leaving the iteration or aborting `request.signal` cancels the HTTP request; an abort rejects with `signal.reason`.
+### Backend API
 
-### Streaming backend API
+FastVideo owns the API; the client uses two routes. `GET /v1/model_info` answers `{"model_path", "served_model_name", "lora"}`. `POST /v1/videos/sync` takes `model`, `prompt`, `width`, `height`, `num_frames`, optional `seed`, and the lists `image_reference`, `video_reference` and `audio_reference`, each of `{"<type>_url": "data:<mime>;base64,..."}`. The Ref2VA pipeline reads the images, then the videos, then the audio, each list in its own order; `REFERENCE_FIELDS` records that order, and `backendOrder(items, mediaTypeOf)` returns items in it. A reference's media type is the top-level type of its `mimeType`; another type rejects with `GenerationSegmentError` before HTTP.
 
-FastVideo owns the API; the client uses two routes. `GET /v1/streamv2/capabilities` answers the model's facts:
-
-```json
-{
-  "model_id": "h3-ref2va",
-  "name": "H3 Ref2AV",
-  "min_segment_duration_sec": 5,
-  "max_segment_duration_sec": 15,
-  "max_references": 12,
-  "reference_media_types": {
-    "image": {"max_count": 9},
-    "video": {"max_count": 3},
-    "audio": {"max_count": 3}
-  },
-  "max_reference_aspect_ratio": 4.0,
-  "frame_sizes": {"16:9": {"720p": [1344, 768]}},
-  "num_frames_by_duration_sec": {"5": 124, "6": 158, "15": 362}
-}
-```
-
-`max_references` counts every reference of a request across media types. `reference_media_types` lists each accepted media type with its own `max_count`; a request image that continues a segment counts as an `image`. `num_frames_by_duration_sec` holds every whole duration from the minimum to the maximum.
-
-`POST /v1/streamv2/generate` takes `{"prompt", "references", "width", "height", "num_frames", "seed"?, "return_last_frame"}` and answers a `text/event-stream` of `event: <name>` records with one-line JSON `data:`, in this order:
-
-| Event | Data |
-| --- | --- |
-| `last_frame` | `{"data": <base64 PNG of the final decoded frame>}`, only when `return_last_frame` is true |
-| `video_start` | `{"mime": str}` |
-| `video_chunk` | `{"data": <base64 fMP4 bytes>}`, one or more; their concatenation is one fragmented MP4 |
-| `done` | `{"timings": {"generation_ms": float, "e2e_latency_ms": float}}`; the response ends |
-| `error` | `{"code": "invalid_request" \| "generation_failed", "message": str}`; the response ends |
-
-`references` is an ordered list of `{"media_type": str, "data": <base64 bytes>}`, built from `SegmentRequest.references`; the client does not check the media types, and the backend decodes each reference by its `media_type`. A request problem found before generation starts answers HTTP 400 `{"code": "invalid_request", "message": str}`. The backend serializes generation across concurrent requests and finishes a segment whose generation has started, even after the client cancels.
+The answer must have a `video/*` content type; another content type rejects with an `Error` that carries the body text. `renderTimings` of `@dv/models` reads the timings: `X-Inference-Time-S` becomes `timings.inference_s`, and each stage of the JSON object in `X-Stage-Durations` becomes `timings.<stage>_s`; an `X-Stage-Durations` that is not JSON adds no stage timing, and the video is kept. HTTP 400 becomes `GenerationSegmentError`; other HTTP failures keep the status and a bounded backend message. The message is `error.message` of an `application/json` body, else the body text. A Python traceback becomes its final exception line; a message longer than 2,048 characters is truncated, with full details left in the server logs.
 
 -----
 
@@ -110,14 +76,14 @@ FastVideo owns the API; the client uses two routes. `GET /v1/streamv2/capabiliti
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-Both transports use `fetch`. The OpenAI transport buffers one MP4 and owns temporary files only during local last-frame extraction. The streaming transport uses no local media files. `generateSegment` parses the server-sent event stream line by line and yields each output as soon as its event is complete, so a caller can forward video chunks while the backend still generates.
+Both routes use undici's `fetch`. The generation request passes the installed global dispatcher, composed to turn off the headers timeout of that one request, so it keeps the process proxy policy and connection pool. The client holds one MP4 in memory and writes no local files.
 
 | File | Content |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | The `dvFastvideoGeneration` service: model facts and the segment request |
-| [`src/openai.ts`](src/openai.ts) | OpenAI deployment validation, synchronous MP4 response and local last-frame extraction |
-| [`src/generation-stream.ts`](src/generation-stream.ts) | The request body and the event-stream parser |
-| [`src/types.ts`](src/types.ts) | Model facts, the segment request with its typed references, and the segment outputs |
+| [`src/index.ts`](src/index.ts) | The `dvFastvideoGeneration` service: the served-model check, the request body, the response checks and the timings |
+| [`src/model-facts.ts`](src/model-facts.ts) | The configured facts, their Loader validation and the derived `ModelFacts` |
+| [`src/references.ts`](src/references.ts) | The reference field of each media type, in the backend's reading order |
+| [`src/types.ts`](src/types.ts) | Model facts, the segment request with its references, and the segment video |
 | [`src/errors.ts`](src/errors.ts) | The segment error |
 
 The `tests/` directory runs the client against a local HTTP server that plays the backend.
@@ -140,7 +106,7 @@ The `tests/` directory runs the client against a local HTTP server that plays th
 
 #### What the model sees
 
-For streaming_v2, the video model receives the request body that `generateSegment` builds: `prompt` unchanged, `references` as `{media_type, data}` entries with base64 bytes in the caller's order, `width`, `height`, `num_frames`, `seed` only when the caller sets one, and `return_last_frame`. The model numbers the references per media type in list order, and the caller's prompt names them with the model's numbering, such as `Picture 1` for the first image. With OpenAI, the model receives the same prompt and geometry, a configured served alias, and separate image, video and audio lists. Labels must follow that backend order; `@dv/fastvideo` handles this when replacing citations. No reference or first-frame label is added by this client.
+The video model receives the request body that `generateSegment` builds: `prompt` unchanged, the configured served alias, `width`, `height`, `num_frames`, `seed` only when the caller sets one, and one list per media type with the caller's order kept within each type. The model numbers the references in the order it reads them: the images, then the videos, then the audio. The caller's prompt names them with that numbering, such as `Picture 1` for the first image; `@dv/fastvideo` assigns its labels in `backendOrder`. No reference or first-frame label is added by this client.
 
 #### Token effect
 
@@ -154,10 +120,10 @@ Independent request per segment: the backend keeps no state between requests, an
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **Model facts never refresh** — `model()` keeps the first successful capabilities result for the plugin's lifetime. A backend that restarts with another model keeps the old facts in the harness until the plugin reloads.
-- **Explicit OpenAI limits**: this API exposes no capabilities endpoint. The operator must keep configured facts consistent with the deployed weights and sampling setup.
-- **Whole-response OpenAI output**: there is no progressive preview; the complete MP4 is held in memory, and requesting its last frame requires local ffmpeg.
-- **No request deadline** — the client sets no timeout on the capabilities or generation requests. A backend that stops sending events holds the request until the caller aborts it.
+- **Model facts never refresh** — `model()` checks the served alias once for the plugin's lifetime. A backend that restarts with another model keeps the configured facts in the harness until the plugin reloads.
+- **Configured model facts** — FastVideo serves no capabilities route. The operator must keep the configured facts consistent with the deployed weights and sampling setup.
+- **Whole-response output** — there is no progressive preview; the complete MP4 is held in memory.
+- **No request deadline** — `GET /v1/model_info` keeps the timeouts of the global dispatcher and takes no abort signal. Only the wait for the headers of `POST /v1/videos/sync` has no deadline; a backend that never answers holds that request until the caller aborts it.
 
 <a id="dev-note"></a>
 ### Dev Note

@@ -9,10 +9,8 @@ export const inject = ['tools', 'attachments']
 /** Own the backend listener and register one deterministic adapter probe. */
 export async function apply(ctx) {
   const modelFacts = {
-    modelId: 'snapshot-video', aspectRatios: ['16:9'], resolutions: ['480p'],
-    minSegmentDurationSec: 5, maxSegmentDurationSec: 5, maxReferences: 0,
-    referenceMediaTypes: {}, frameSizes: { '16:9': { '480p': [832, 480] } },
-    numFramesByDurationSec: { 5: 124 },
+    modelId: 'snapshot-video', frameSizes: { '16:9': { '480p': [832, 480] } }, numFramesByDurationSec: { 5: 124 },
+    maxReferences: 0, referenceMediaTypes: {},
   }
   const requests = []
   const server = createServer(async (request, response) => {
@@ -44,26 +42,24 @@ export async function apply(ctx) {
   await once(server, 'listening')
   const client = new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), {
     baseUrl: `http://127.0.0.1:${server.address().port}`,
-    openai: { modelFacts, ffmpegPath: 'unused-for-no-last-frame' },
+    modelFacts,
   })
   ctx.effect(() => ctx.tools.register(createMcpToolDefinition(ctx, {
     name: 'mcp__fixture__fastvideo', rawName: 'fastvideo', description: 'Generate one deterministic FastVideo segment.',
     inputSchema: { type: 'object', properties: {} },
     call: async () => {
       const facts = await client.model()
-      const events = []
-      for await (const event of client.generateSegment({
-        prompt: 'A lake', frameWidth: 832, frameHeight: 480, numFrames: 124, references: [], returnLastFrame: false,
-      })) events.push(event.kind === 'chunk' ? { kind: event.kind, bytes: event.bytes.length } : event)
+      const { video, mime, timings } = await client.generateSegment({
+        prompt: 'A lake', frameWidth: 832, frameHeight: 480, numFrames: 124, references: [],
+      })
       let failure
       try {
-        for await (const event of client.generateSegment({
-          prompt: 'Failure', frameWidth: 832, frameHeight: 480, numFrames: 124, references: [], returnLastFrame: false,
-        })) events.push(event)
+        await client.generateSegment({ prompt: 'Failure', frameWidth: 832, frameHeight: 480, numFrames: 124, references: [] })
       } catch (error) {
         failure = error.message
       }
-      return { content: [{ type: 'text', text: JSON.stringify({ model: facts.modelId, requests, events, failure }) }] }
+      const segment = { bytes: video.length, mime, timings }
+      return { content: [{ type: 'text', text: JSON.stringify({ model: facts.modelId, requests, segment, failure }) }] }
     },
   })))
 }

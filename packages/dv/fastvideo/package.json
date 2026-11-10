@@ -14,6 +14,7 @@
     "@deepseek-ai/dsh-util-values": "workspace:*",
     "@dv/asset-pool": "workspace:*",
     "@dv/fastvideo-generation-client": "workspace:*",
+    "@dv/ffmpeg": "workspace:*",
     "@dv/models": "workspace:*",
     "@dv/project": "workspace:*"
   },
@@ -26,7 +27,6 @@
     "@deepseek-ai/cordis-plugin-include": "workspace:~",
     "@deepseek-ai/cordis-plugin-loader": "workspace:~",
     "@deepseek-ai/schemastery": "workspace:~",
-    "@dv/ffmpeg": "workspace:*",
     "@types/node": "^22.20.0"
   }
 }
