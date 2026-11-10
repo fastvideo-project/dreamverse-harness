@@ -155,8 +155,10 @@
   transition: box-shadow 120ms var(--dv-ease);
 }
 
-.card:hover .cardCover {
-  box-shadow: 0 0 0 1px var(--dv-line-strong), var(--dv-shadow-1);
+@media (hover: hover) {
+  .card:hover .cardCover {
+    box-shadow: 0 0 0 1px var(--dv-line-strong), var(--dv-shadow-1);
+  }
 }
 
 .cardText {
@@ -219,9 +221,11 @@
   transition: background-color 120ms var(--dv-ease), color 120ms var(--dv-ease);
 }
 
-.iconButton:hover {
-  background: var(--dv-surface-3);
-  color: var(--dv-text);
+@media (hover: hover) {
+  .iconButton:hover {
+    background: var(--dv-surface-3);
+    color: var(--dv-text);
+  }
 }
 
 /* The session switcher and its menu. */
@@ -250,9 +254,14 @@
   transition: background-color 120ms var(--dv-ease);
 }
 
-.switcher:hover,
 .switcher[aria-expanded='true'] {
   background: var(--dv-surface-3);
+}
+
+@media (hover: hover) {
+  .switcher:hover {
+    background: var(--dv-surface-3);
+  }
 }
 
 .switcherCover {
@@ -337,9 +346,14 @@
   transition: background-color 120ms var(--dv-ease);
 }
 
-.menuItem:hover,
 .menuItem[data-active] {
   background: var(--dv-surface-3);
+}
+
+@media (hover: hover) {
+  .menuItem:hover {
+    background: var(--dv-surface-3);
+  }
 }
 
 .menuItemQuiet {
@@ -424,8 +438,10 @@
   transition: background-color 120ms var(--dv-ease), color 120ms var(--dv-ease);
 }
 
-.toggleItem:hover {
-  color: var(--dv-text);
+@media (hover: hover) {
+  .toggleItem:hover {
+    color: var(--dv-text);
+  }
 }
 
 .toggleItem[data-active] {
@@ -467,6 +483,7 @@
   min-height: 0;
   padding: 4px 12px 8px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   font-size: 13px;
   line-height: 20px;
 }
@@ -491,8 +508,10 @@
   transition: background-color 120ms var(--dv-ease);
 }
 
-.navSecondary:hover {
-  background: var(--dv-surface-3);
+@media (hover: hover) {
+  .navSecondary:hover {
+    background: var(--dv-surface-3);
+  }
 }
 
 .navItem,
@@ -520,9 +539,11 @@
   padding-inline-start: 4px;
 }
 
-.navItem:hover,
-.treeRow:hover {
-  background: var(--dv-surface-3);
+@media (hover: hover) {
+  .navItem:hover,
+  .treeRow:hover {
+    background: var(--dv-surface-3);
+  }
 }
 
 .navItem[data-active],
@@ -576,9 +597,11 @@
   transition: color 120ms var(--dv-ease);
 }
 
-.treeAdd:hover,
-.rowMenuButton:hover {
-  color: var(--dv-text);
+@media (hover: hover) {
+  .treeAdd:hover,
+  .rowMenuButton:hover {
+    color: var(--dv-text);
+  }
 }
 
 /* The 20 px caret, add, and row-menu buttons keep their size; the pseudo-element lifts each target to 24 px. */
@@ -661,10 +684,22 @@
   opacity: 0;
 }
 
-.treeRow:hover .rowMenu,
 .treeRow:focus-within .rowMenu,
 .rowMenu[data-open] {
   opacity: 1;
+}
+
+@media (hover: hover) {
+  .treeRow:hover .rowMenu {
+    opacity: 1;
+  }
+}
+
+/* Without a hovering pointer nothing would reveal the menu button, so it stays visible. */
+@media (hover: none) {
+  .rowMenu {
+    opacity: 1;
+  }
 }
 
 .rowMenuButton {
@@ -710,8 +745,10 @@
   transition: background-color 120ms var(--dv-ease);
 }
 
-.rowMenuItem:hover {
-  background: var(--dv-surface-3);
+@media (hover: hover) {
+  .rowMenuItem:hover {
+    background: var(--dv-surface-3);
+  }
 }
 
 .rowMenuItem[data-danger] {
@@ -852,8 +889,10 @@
   transition: color 120ms var(--dv-ease), background-color 120ms var(--dv-ease), border-color 120ms var(--dv-ease);
 }
 
-.exploreTab:hover {
-  color: var(--dv-text);
+@media (hover: hover) {
+  .exploreTab:hover {
+    color: var(--dv-text);
+  }
 }
 
 .exploreTab[data-active] {

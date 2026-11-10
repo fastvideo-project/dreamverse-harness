@@ -98,17 +98,20 @@ const GRID = 20
 // outlines its frame alone, so the outline matches the frame's selection ring instead of also wrapping the caption.
 const CANVAS_CSS = `
 .dv-canvas-btn { background: transparent; transition: background-color 120ms var(--dv-ease); }
-.dv-canvas-btn:hover:not(:disabled) { background: var(--dv-surface-3); }
+@media (hover: hover) { .dv-canvas-btn:hover:not(:disabled) { background: var(--dv-surface-3); } }
 .dv-canvas-btn:focus-visible, .dv-canvas-soft:focus-visible, [data-node-id]:focus-visible > [data-node-frame] { outline: 2px solid var(--dv-accent); outline-offset: 2px; }
 [data-node-id]:focus-visible { outline: none; }
 .dv-canvas-title { background: transparent; transition: background-color 120ms var(--dv-ease); }
-.dv-canvas-title:hover, .dv-canvas-title:focus-visible { background: var(--dv-surface-3); }
+.dv-canvas-title:focus-visible { background: var(--dv-surface-3); }
+@media (hover: hover) { .dv-canvas-title:hover { background: var(--dv-surface-3); } }
 .dv-canvas-title:focus-visible { outline: 2px solid var(--dv-accent); outline-offset: 2px; }
 .dv-canvas-title > svg { opacity: 0; }
-.dv-canvas-title:hover > svg, .dv-canvas-title:focus-visible > svg { opacity: 1; }
+.dv-canvas-title:focus-visible > svg { opacity: 1; }
+@media (hover: hover) { .dv-canvas-title:hover > svg { opacity: 1; } }
+@media (hover: none) { .dv-canvas-title > svg { opacity: 1; } }
 .dv-canvas-soft { background: var(--dv-accent-soft); color: var(--dv-accent-text); }
 .dv-canvas-danger { color: var(--dv-text-2); }
-.dv-canvas-danger:hover:not(:disabled) { color: var(--dv-danger); }
+@media (hover: hover) { .dv-canvas-danger:hover:not(:disabled) { color: var(--dv-danger); } }
 @media (prefers-reduced-motion: reduce) { .dv-canvas-btn, .dv-canvas-title { transition: none; } }
 `
 

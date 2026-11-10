@@ -33,8 +33,10 @@
   transition: background-color 120ms var(--dv-ease);
 }
 
-.entry:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+@media (hover: hover) {
+  .entry:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
 }
 
 .entryTitle {

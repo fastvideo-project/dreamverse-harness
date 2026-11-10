@@ -31,6 +31,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   border-top: 1px solid var(--dv-line);
 }
 
@@ -70,8 +71,10 @@
   transition: background-color 120ms var(--dv-ease);
 }
 
-.button:hover:not(:disabled) {
-  background: var(--dv-surface-3);
+@media (hover: hover) {
+  .button:hover:not(:disabled) {
+    background: var(--dv-surface-3);
+  }
 }
 
 .button:disabled {
@@ -96,9 +99,11 @@
   transition: background-color 120ms var(--dv-ease), color 120ms var(--dv-ease);
 }
 
-.iconButton:hover:not(:disabled) {
-  background: var(--dv-surface-3);
-  color: var(--dv-text);
+@media (hover: hover) {
+  .iconButton:hover:not(:disabled) {
+    background: var(--dv-surface-3);
+    color: var(--dv-text);
+  }
 }
 
 .iconButton:disabled {
@@ -151,8 +156,10 @@
   transition: background-color 120ms var(--dv-ease);
 }
 
-.menuItem:hover {
-  background: var(--dv-surface-3);
+@media (hover: hover) {
+  .menuItem:hover {
+    background: var(--dv-surface-3);
+  }
 }
 
 .loadMore {
@@ -172,8 +179,10 @@
   cursor: pointer;
 }
 
-.link:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .link:hover {
+    text-decoration: underline;
+  }
 }
 
 /* The fold toggle lines up with the row text above it: approval rows have no thumbnail. */
@@ -199,8 +208,10 @@
   padding: 4px 8px 4px 24px;
 }
 
-.row:hover {
-  background: var(--dv-surface-3);
+@media (hover: hover) {
+  .row:hover {
+    background: var(--dv-surface-3);
+  }
 }
 
 .row[aria-selected='true'] {

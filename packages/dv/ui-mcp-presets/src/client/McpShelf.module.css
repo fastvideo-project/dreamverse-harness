@@ -72,8 +72,10 @@
   transition: background-color 120ms var(--dv-ease);
 }
 
-.noticeButton:hover:not(:disabled) {
-  background: var(--dv-surface-4);
+@media (hover: hover) {
+  .noticeButton:hover:not(:disabled) {
+    background: var(--dv-surface-4);
+  }
 }
 
 .noticeButton:disabled {
@@ -159,8 +161,10 @@
   filter: saturate(0.6);
 }
 
-.card:hover:not(:disabled) .tile {
-  box-shadow: 0 0 0 1px var(--dv-line-strong), var(--dv-shadow-1);
+@media (hover: hover) {
+  .card:hover:not(:disabled) .tile {
+    box-shadow: 0 0 0 1px var(--dv-line-strong), var(--dv-shadow-1);
+  }
 }
 
 .badge {

@@ -126,14 +126,15 @@ const palette = {
 // `.dv-tl-btn` element gets its transparent fill here, so its inline style must not set `background`.
 const EDITOR_CSS = `
 .dv-tl-editor .dv-tl-btn { background: transparent; transition: background-color 120ms var(--dv-ease); }
-.dv-tl-editor .dv-tl-btn:not(:disabled):hover { background: var(--dv-surface-3); }
+@media (hover: hover) { .dv-tl-editor .dv-tl-btn:not(:disabled):hover { background: var(--dv-surface-3); } }
 .dv-tl-editor :focus-visible { outline: 2px solid var(--dv-accent); outline-offset: 1px; }
 .dv-tl-editor .dv-tl-trim { background: var(--dv-line-strong); transition: background-color 120ms var(--dv-ease); }
-.dv-tl-editor .dv-tl-trim:hover { background: var(--dv-accent); }
+@media (hover: hover) { .dv-tl-editor .dv-tl-trim:hover { background: var(--dv-accent); } }
 .dv-tl-editor input[type="range"] { accent-color: var(--dv-accent); }
 .dv-tl-editor .dv-tl-resize { background: var(--dv-line); transition: background-color 120ms var(--dv-ease); }
 .dv-tl-editor .dv-tl-resize::before { content: ""; position: absolute; left: 0; right: 0; top: -4px; bottom: -4px; }
-.dv-tl-editor .dv-tl-resize:hover, .dv-tl-editor .dv-tl-resize[data-dragging="true"] { background: var(--dv-accent); }
+.dv-tl-editor .dv-tl-resize[data-dragging="true"] { background: var(--dv-accent); }
+@media (hover: hover) { .dv-tl-editor .dv-tl-resize:hover { background: var(--dv-accent); } }
 @media (prefers-reduced-motion: reduce) {
   .dv-tl-editor .dv-tl-btn, .dv-tl-editor .dv-tl-trim, .dv-tl-editor .dv-tl-resize { transition: none; }
 }

@@ -28,8 +28,10 @@ html body [data-dv-chat] [data-composer-card] button[class$='_add'] {
   transition: background-color 120ms var(--dv-ease);
 }
 
-html body [data-dv-chat] [data-composer-card] button[class$='_add']:hover:not(:disabled) {
-  background: var(--dv-surface-3);
+@media (hover: hover) {
+  html body [data-dv-chat] [data-composer-card] button[class$='_add']:hover:not(:disabled) {
+    background: var(--dv-surface-3);
+  }
 }
 
 /* Send (and stop while the agent runs): the one solid accent button of the screen. The arrow stays white on the
@@ -43,8 +45,10 @@ html body [data-dv-chat] [data-composer-card] button[class$='_primary'] {
   transition: background-color 120ms var(--dv-ease);
 }
 
-html body [data-dv-chat] [data-composer-card] button[class$='_primary']:hover:not(:disabled) {
-  background: var(--dv-accent-hover);
+@media (hover: hover) {
+  html body [data-dv-chat] [data-composer-card] button[class$='_primary']:hover:not(:disabled) {
+    background: var(--dv-accent-hover);
+  }
 }
 
 html body [data-dv-chat] [data-composer-card] button:focus-visible {
