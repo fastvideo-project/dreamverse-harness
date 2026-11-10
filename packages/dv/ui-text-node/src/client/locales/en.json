@@ -1,7 +1,7 @@
 {
   "node.label": "Text",
   "node.saving": "Saving…",
-  "node.saveFailed": "Save failed",
+  "node.saveFailed": "Not saved. Try again.",
   "mention.section": "Texts",
   "card.footer": "v{version} · {chars} chars",
   "editor.edit": "Edit",

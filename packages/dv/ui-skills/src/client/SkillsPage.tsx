@@ -71,7 +71,7 @@ export function SkillsShelf(props: InjectFace<SkillsInjected>): ReactNode {
   const t = useText()
   return (
     <div className={css.shelf} data-dv-skills-shelf="">
-      <p className={css.intro}>{t('点「使用」把 /技能名 放进对话框，补充需求后发送。', 'Use puts /name into the chat box; add what you want and send.')}</p>
+      <p className={css.intro}>{t('点「使用」把 /技能名 放进对话框，补充需求后发送。', 'Choose “Use” to put /name in the chat box, then add what you want and send.')}</p>
       <SkillList list={props.list} use={props.use} />
     </div>
   )
