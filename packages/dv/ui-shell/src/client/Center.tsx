@@ -254,7 +254,7 @@ function RecentProjects({ shell, renderFactorySlot }: Pick<ShellInjected, 'shell
         <h2 id="dv-recent-projects" className={css.recentTitle}>{t('最近项目', 'Recent projects')}</h2>
         {sorted.length > RECENT_COUNT && (
           <button type="button" className={css.textButton} onClick={() => { setShowAll(value => !value) }}>
-            {showAll ? t('收起', 'Show fewer') : t('全部项目', 'All projects')}
+            {showAll ? t('收起', 'Show less') : t('全部项目', 'All projects')}
           </button>
         )}
       </div>

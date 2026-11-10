@@ -347,7 +347,7 @@ describe('the entry page', () => {
 
     const recent = within(page.getByRole('region', { name: 'Recent projects' }))
     const cards = (): string[] => recent.getAllByRole('button').map(button => button.textContent ?? '')
-      .filter(text => text !== 'All projects' && text !== 'Show fewer')
+      .filter(text => text !== 'All projects' && text !== 'Show less')
     await waitFor(() => { expect(cards()[1]).toBe('Music videoYesterday') })
     expect(cards()[0]).toMatch(/^DramaToday \d\d:\d\d$/u)
     const drama = recent.getByRole('button', { name: /^Drama/u })
@@ -361,7 +361,7 @@ describe('the entry page', () => {
     expect(cards()).toHaveLength(3)
     expect(cards()[2]).toBe('Launch filmJan 5')
     expect(recent.getByRole('button', { name: /^Launch film/u }).querySelector('img, video')).toBeNull()
-    fireEvent.click(recent.getByRole('button', { name: 'Show fewer' }))
+    fireEvent.click(recent.getByRole('button', { name: 'Show less' }))
     expect(cards()).toHaveLength(2)
     fireEvent.click(recent.getAllByRole('button')[1] as HTMLElement)
     await waitFor(() => { expect(bench.stand.calls).toContain('openProject(p3)') })

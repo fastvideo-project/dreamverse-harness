@@ -109,5 +109,5 @@ export const en = {
   'history.renamed': 'Renamed to “{name}”',
   'picker.title': 'Add assets',
   'picker.cancel': 'Cancel',
-  'picker.confirm': 'Confirm ({count})',
+  'picker.confirm': 'Add {count} selected',
 } satisfies Record<DvCanvasKey, string>

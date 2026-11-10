@@ -86,7 +86,7 @@ export function Navigator(props: NavigatorProps): ReactNode {
         const PageIcon = PAGE_ICONS[page.id] ?? PluginsIcon
         return <Fragment key={page.id}>{nav(page.label, activePage === page.id, () => { shell.openPage(page.id) }, <PageIcon />)}</Fragment>
       })}
-      {sorted.length > SHOWN_PROJECTS && nav(showAll ? t('收起项目', 'Fewer projects') : t('全部项目', 'All projects'), false, () => { setShowAll(value => !value) })}
+      {sorted.length > SHOWN_PROJECTS && nav(showAll ? t('收起项目', 'Show less') : t('全部项目', 'All projects'), false, () => { setShowAll(value => !value) })}
       <div className={css.section}>{t('项目', 'Projects')}</div>
       {loaded && sorted.length === 0 && (
         <div className={css.navHint}>{t('还没有项目。点击「新建项目」，或在首页描述你想做的视频。', 'No projects yet. Click Create project, or describe the video you want on Home.')}</div>
