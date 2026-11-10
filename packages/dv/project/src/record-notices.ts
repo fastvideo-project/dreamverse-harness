@@ -20,18 +20,19 @@
  *   next-step inbox, and the next turn claims them, opened by the user's next message or by the next wake.
  *
  * Watches live in memory: a restart cancels every unfinished record (`Runner.recover`) while no agent turn is open. A
- * session without a registered agent when its record finishes gets no wake; the project update message shows the record
- * to the session's next step. A record that a write after an undo discarded gets no wake: it left the history list, so
- * no project update reports it. Removing a project drops the watches of its records, and closing the module (when the
- * service stops) drops every watch and delivers nothing afterwards. A delivery that throws is logged on the `dvProject`
- * logger and never fails the record write that finished the record.
+ * session without a registered agent when its record finishes, or whose agent is being disposed (its `ctx` fiber is no
+ * longer active), gets no wake; the project update message shows the record to the session's next step. A record that
+ * a write after an undo discarded gets no wake: it left the history list, so no project update reports it. Removing a
+ * project drops the watches of its records, and closing the module (when the service stops) drops every watch and
+ * delivers nothing afterwards. A delivery that throws is logged on the `dvProject` logger and never fails the record
+ * write that finished the record.
  *
  * Calls the `agents` registry, read at delivery time, and `dvProject.getRecord`. Called by the service: `watch` from the
  * operation tools, `recordFinished` from the record store's change callback.
  *
  * @module @dv/project/record-notices
  */
-import type { Context } from '@deepseek-ai/cordis'
+import { FiberState, type Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { SessionId as AgentSessionId, type Session } from '@deepseek-ai/dsh-session'
@@ -112,7 +113,8 @@ export class RecordNotices {
     // The caller is the record store's change callback: a failing delivery must not fail the write that finished the record.
     try {
       const agent = this.ctx.get('agents')?.get(AgentSessionId(watch.session))
-      if (agent === undefined) return
+      // An agent stays registered while its disposal unwinds its scope; a wake then would open a turn in it.
+      if (agent === undefined || agent.ctx.fiber.state !== FiberState.ACTIVE) return
       const message = wakeMessage([record.id])
       const othersPending = [...this.watches.values()].some(other => other.session === watch.session)
       if (agent.status === 'idle' && !othersPending && this.spendWake(agent)) agent.followup(message)

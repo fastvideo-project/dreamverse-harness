@@ -7,7 +7,7 @@
  */
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
-import { Context } from '@deepseek-ai/cordis'
+import { Context, FiberState } from '@deepseek-ai/cordis'
 import { agentEvents, type AgentEventDispatch } from '@deepseek-ai/dsh-agent'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { ToolCallId, createToolResultMessage, createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
@@ -42,6 +42,8 @@ const scheduler = (intent: string): RecordOrigin => ({ actor: 'system', surface:
 class FakeAgent {
   readonly id = SESSION
   readonly session = { id: SESSION }
+  /** The agent-scoped context; only its fiber state is read. */
+  readonly ctx = { fiber: { state: FiberState.ACTIVE } }
   status: 'idle' | 'running' = 'idle'
   /** The messages queued for the agent and not claimed yet. */
   readonly queued: UserMessage[] = []
