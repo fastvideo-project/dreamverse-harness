@@ -18,7 +18,7 @@ import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvProject, {
-  type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId, type RunRequest, type RunResult,
+  type OperationSpec, type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId, type RunRequest, type RunResult,
 } from '@dv/project'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { chatProject, provideChatServices } from '../../project/tests/workspaces.ts'
@@ -27,10 +27,11 @@ import DvTimeline from '../src/index.ts'
 /** The plugin classes the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
 const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, DvTimeline }
 
-/** The eleven operations in registration order: the ten edits, then the export. */
+/** The fifteen operations in registration order: the fourteen edits, then the export. */
 const OPERATIONS = [
   'timeline.create', 'timeline.update', 'timeline.rename', 'timeline.delete', 'timeline.clip_insert', 'timeline.clip_move', 'timeline.clip_remove',
-  'timeline.clip_split', 'timeline.clip_trim', 'timeline.clip_replace', 'timeline.export',
+  'timeline.clip_split', 'timeline.clip_trim', 'timeline.clip_replace', 'timeline.sound_add', 'timeline.sound_remove',
+  'timeline.sound_track_remove', 'timeline.sound_track_rename', 'timeline.export',
 ]
 
 interface Fixture {
@@ -116,7 +117,7 @@ function failure(result: ToolExecutionResult): string {
 }
 
 describe('dvTimeline', () => {
-  it('registers the eleven operations with their dv_timeline_* tools and removes them on disposal', async () => {
+  it('registers the fifteen operations with their dv_timeline_* tools and removes them on disposal', async () => {
     const fixture = await start()
     const specs = fixture.ctx.dvProject.listOperations().filter(spec => spec.component === 'timeline')
     expect(specs.map(spec => spec.name)).toEqual(OPERATIONS)
@@ -211,6 +212,96 @@ describe('dvTimeline', () => {
     await expect(fixture.run('timeline.update', { assets: [] })).rejects.toMatchObject({ code: 'invalid_params' })
     expect(failure(await fixture.call('dv_timeline_rename', { reason: 'no name', timeline: 't1' }))).toContain('name')
     expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before + cases.length + 1)
+  })
+
+  it('adds, removes and renames sounds and sound tracks from the agent\'s and the human\'s calls', async () => {
+    const fixture = await start()
+    await fixture.run('timeline.create', { assets: ['a1'] })
+    const song = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('song'), { mime: 'audio/mpeg', name: 'song.mp3' }, null)
+    const voice = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('voice'), { mime: 'audio/wav', name: 'voice.wav' }, null)
+    const added = value(await fixture.call('dv_timeline_sound_add', { reason: 'score', timeline: 't1', asset: song, start_sec: 1.5 }))
+    expect([added.summary, added.report]).toEqual(['t1 sound sd1 added at 1.5s', { sounds: ['sd1'] }])
+    const record = fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(added.record))
+    expect(record).toMatchObject({ actor: 'agent', operation: 'timeline.sound_add', operation_version: '1', status: 'done' })
+    expect(await fixture.run('timeline.sound_add', { timeline: 't1', asset: voice, start_sec: 0, track: 1 }))
+      .toMatchObject({ status: 'done', report: { sounds: ['sd2'] } })
+    const timeline = (): unknown => fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0]
+    expect(timeline()).toMatchObject({
+      sounds: [{ id: 'sd1', asset: song, start_sec: 1.5, track: 0 }, { id: 'sd2', asset: voice, start_sec: 0, track: 1 }],
+      sound_track_names: [],
+    })
+    expect(value(await fixture.call('dv_timeline_sound_track_rename', { reason: 'label', timeline: 't1', track: 1, name: 'Voice' })).summary)
+      .toBe('t1 sound track 1 renamed to Voice')
+    expect(value(await fixture.call('dv_timeline_sound_remove', { reason: 'too loud', sound: 'sd1' })).summary).toBe('sound sd1 removed')
+    expect(value(await fixture.call('dv_timeline_sound_track_remove', { reason: 'empty', timeline: 't1', track: 0 })).summary).toBe('t1 sound track 0 deleted')
+    expect(timeline()).toMatchObject({ sounds: [{ id: 'sd2', track: 0 }], sound_track_names: ['Voice'] })
+    // A summary of a record that has not stored its sound ID yet names no sound.
+    const spec = fixture.ctx.dvProject.listOperations().find(entry => entry.name === 'timeline.sound_add')
+    expect(spec?.summarize({ ...record, params: { timeline: 't1', start_sec: 2 }, report: {} })).toBe('t1 sound  added at 2s')
+  })
+
+  it('describes the sound operations to the agent: the tracks a sound may go on and where the sound IDs are listed', async () => {
+    const fixture = await start()
+    const spec = (name: string): OperationSpec | undefined => fixture.ctx.dvProject.listOperations().find(entry => entry.name === name)
+    expect(spec('timeline.sound_add')?.params['track']?.description)
+      .toBe('The sound track, 0 (default) for the first; an existing track or the one after the last (see `sound_tracks` in dv_proj_state).')
+    expect(spec('timeline.sound_remove')?.description).toBe('Remove a sound from its timeline. The audio asset stays in the project.')
+    expect(spec('timeline.sound_remove')?.params['sound']?.description)
+      .toBe('The sound ID, such as sd2 (see `sounds` of `timelines` in dv_proj_state).')
+    expect(spec('timeline.sound_track_rename')?.description)
+      .toBe('Name one sound track of a timeline: an existing track or the one after the last. An empty name clears the name.')
+  })
+
+  it('refuses a sound of an asset that is not audio, and a sound call that does not apply, before it changes the timeline', async () => {
+    const fixture = await start()
+    await fixture.run('timeline.create', { assets: ['a1'] })
+    const still = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('still'), { mime: 'image/png', name: 'still.png' }, null)
+    const song = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('song'), { mime: 'audio/mpeg', name: 'song.mp3' }, null)
+    const cases: Array<[string, Record<string, unknown>, string]> = [
+      ['timeline.sound_add', { timeline: 't1', asset: still, start_sec: 0 }, `Asset ${still} is not an audio file.`],
+      ['timeline.sound_add', { timeline: 't1', asset: song, start_sec: -2 }, 'start_sec -2 is not a time of 0 seconds or more.'],
+      ['timeline.sound_add', { timeline: 't1', asset: song, start_sec: 0, track: -1 }, 'track -1 is not a track number of 0 or more.'],
+      ['timeline.sound_add', { timeline: 't9', asset: song, start_sec: 0 }, 'Timeline t9 does not exist.'],
+      ['timeline.sound_remove', { sound: 'sd9' }, 'Sound sd9 does not exist.'],
+      ['timeline.sound_track_remove', { timeline: 't9', track: 0 }, 'Timeline t9 does not exist.'],
+      ['timeline.sound_track_rename', { timeline: 't1', track: -1, name: 'x' }, 'track -1 is not a track number of 0 or more.'],
+      // A timeline without sounds has no track to delete, and takes a new sound or a name on tracks 0 and 1.
+      ['timeline.sound_add', { timeline: 't1', asset: song, start_sec: 0, track: 2 }, 'Timeline t1 has no sound track 2; it has 0.'],
+      ['timeline.sound_track_remove', { timeline: 't1', track: 0 }, 'Timeline t1 has no sound track 0; it has 0.'],
+      ['timeline.sound_track_rename', { timeline: 't1', track: 2, name: 'x' }, 'Timeline t1 has no sound track 2; it has 0.'],
+    ]
+    for (const [operation, params, message] of cases) {
+      expect(await fixture.run(operation, params)).toMatchObject({ status: 'failed', error: { code: 'operation_failed', message } })
+    }
+    expect(fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0])
+      .toMatchObject({ sounds: [], sound_track_names: [] })
+    await expect(fixture.run('timeline.sound_add', { timeline: 't1', asset: song })).rejects.toMatchObject({ code: 'invalid_params' })
+    await expect(fixture.run('timeline.sound_track_rename', { timeline: 't1', track: 0 })).rejects.toMatchObject({ code: 'invalid_params' })
+    // A refused sound_add assigns no sound ID.
+    expect(await fixture.run('timeline.sound_add', { timeline: 't1', asset: song, start_sec: 0 })).toMatchObject({ report: { sounds: ['sd1'] } })
+  })
+
+  it('keeps sound IDs unique across an undo and across calls that run at the same time', async () => {
+    const fixture = await start()
+    await fixture.run('timeline.create', { assets: ['a1'] })
+    const song = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('song'), { mime: 'audio/mpeg', name: 'song.mp3' }, null)
+    expect(await fixture.run('timeline.sound_add', { timeline: 't1', asset: song, start_sec: 0 })).toMatchObject({ report: { sounds: ['sd1'] } })
+    await fixture.ctx.dvProject.undo(fixture.project)
+    // The undone record stays in the history, so its sound ID is never assigned again.
+    expect(await fixture.run('timeline.sound_add', { timeline: 't1', asset: song, start_sec: 1 })).toMatchObject({ report: { sounds: ['sd2'] } })
+    const both = await Promise.all([1, 2].map(start_sec => fixture.run('timeline.sound_add', { timeline: 't1', asset: song, start_sec })))
+    expect(both.map(entry => entry.report?.['sounds']).flat().sort()).toEqual(['sd3', 'sd4'])
+    const sounds = fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0]?.sounds.map(sound => sound.id)
+    expect(sounds?.sort()).toEqual(['sd2', 'sd3', 'sd4'])
+    // A stored ID that is not sd<n> or cl<n> does not change the numbering.
+    fixture.ctx.dvProject.registerOperation({
+      name: 'timeline.stand_in', component: 'timeline', version: '1', description: 'stand-in', params: {}, inputs: {}, outputs: [],
+      deterministic: false, resource: 'none', summarize: () => 'stand-in',
+      execute: () => Promise.resolve({ outputs: [], report: { clips: ['clip-9'], sounds: ['sound-9'] } }),
+    })
+    expect(await fixture.run('timeline.stand_in', {})).toMatchObject({ status: 'done', report: { sounds: ['sound-9'] } })
+    expect(await fixture.run('timeline.sound_add', { timeline: 't1', asset: song, start_sec: 0 })).toMatchObject({ report: { sounds: ['sd5'] } })
+    expect(await fixture.run('timeline.clip_insert', { at: 1, asset: 'a2' })).toMatchObject({ report: { clips: ['cl2'] } })
   })
 
   it('keeps clip IDs unique across an undo, and a discarded insert does not come back', async () => {

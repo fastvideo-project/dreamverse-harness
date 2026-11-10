@@ -433,6 +433,11 @@ describe('dvAssetPool', () => {
       const asset = fixture.ctx.dvAssetPool.get(imported.outputs[0] as AssetId)
       expect(asset).toMatchObject({ width: 160, height: 90 })
       expect(asset.duration_sec).toBeCloseTo(2, 1)
+      // The same bytes imported again keep the known size and duration without another probe.
+      const known = vi.spyOn(fixture.ctx.dvFfmpeg, 'probe')
+      const again = await fixture.run('asset.import', { base64: readFileSync(outputs[0] as string).toString('base64'), mime: 'video/mp4' })
+      expect([again.outputs, known.mock.calls]).toEqual([imported.outputs, []])
+      known.mockRestore()
       // A header without a duration (a WebM file a browser recorded) is measured by decoding the video stream.
       const probe = vi.spyOn(fixture.ctx.dvFfmpeg, 'probe').mockResolvedValue({
         durationSec: null, videoDurationSec: null, width: 160, height: 90, hasAudio: false, codec: 'h264',
@@ -445,6 +450,72 @@ describe('dvAssetPool', () => {
       expect(probe).toHaveBeenCalled()
       probe.mockRestore()
       expect(fixture.ctx.dvAssetPool.get(bare.outputs[0] as AssetId).duration_sec).toBeCloseTo(3, 1)
+    })
+
+    it('reads the duration of an imported audio file once, and stores no pixel size for it', async () => {
+      const fixture = await start()
+      const { outputs } = await fixture.ctx.dvFfmpeg.run({
+        argv: ['ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=d=1.5', '{{out:tone.wav}}'],
+        inputs: [], outputs: ['tone.wav'], dir: fixture.dir,
+      })
+      const imported = await fixture.run('asset.import', { path: outputs[0], mime: 'audio/wav' })
+      const asset = fixture.ctx.dvAssetPool.get(imported.outputs[0] as AssetId)
+      expect(asset).toMatchObject({ mime: 'audio/wav', width: null, height: null })
+      expect(asset.duration_sec).toBeCloseTo(1.5, 1)
+      // The same bytes imported again keep the known duration without another probe.
+      const probe = vi.spyOn(fixture.ctx.dvFfmpeg, 'probe')
+      const again = await fixture.run('asset.import', { base64: readFileSync(outputs[0] as string).toString('base64'), mime: 'audio/wav' })
+      expect(again.outputs).toEqual(imported.outputs)
+      expect(probe).not.toHaveBeenCalled()
+      probe.mockRestore()
+    })
+
+    it('stores no pixel size for an audio file with cover art, and decodes an audio file whose header has no duration', async () => {
+      const fixture = await start()
+      const run = (argv: string[], inputs: string[], output: string): Promise<string> => fixture.ctx.dvFfmpeg
+        .run({ argv: ['ffmpeg', '-y', '-loglevel', 'error', ...argv, `{{out:${output}}}`], inputs, outputs: [output], dir: fixture.dir })
+        .then(result => result.outputs[0] as string)
+      // An M4A file whose second stream is a 32×32 cover picture.
+      const cover = await run(['-f', 'lavfi', '-i', 'color=c=red:s=32x32', '-frames:v', '1'], [], 'cover.png')
+      const song = await run(
+        ['-f', 'lavfi', '-i', 'sine=d=2', '-i', '{{in:0}}', '-map', '0:a', '-map', '1:v', '-c:a', 'aac', '-c:v', 'png', '-disposition:v', 'attached_pic'],
+        [cover], 'song.m4a',
+      )
+      expect(await fixture.ctx.dvFfmpeg.probe(song)).toMatchObject({ width: 32, height: 32 })
+      const covered = await fixture.run('asset.import', { path: song, mime: 'audio/mp4' })
+      const stored = fixture.ctx.dvAssetPool.get(covered.outputs[0] as AssetId)
+      expect(stored).toMatchObject({ width: null, height: null })
+      expect(stored.duration_sec).toBeCloseTo(2, 1)
+      // A WebM file written as a live stream, the way a browser records one, has no duration in its header.
+      const live = await run(['-f', 'lavfi', '-i', 'sine=d=1.5', '-c:a', 'opus', '-strict', '-2', '-ac', '2', '-ar', '48000', '-live', '1'], [], 'voice.webm')
+      expect(await fixture.ctx.dvFfmpeg.probe(live)).toMatchObject({ durationSec: null, width: null })
+      const bare = await fixture.run('asset.import', { path: live, mime: 'audio/webm' })
+      const measured = fixture.ctx.dvAssetPool.get(bare.outputs[0] as AssetId)
+      expect(measured).toMatchObject({ width: null, height: null })
+      expect(measured.duration_sec).toBeCloseTo(1.5, 1)
+    })
+
+    it('leaves an audio file\'s duration unknown when decoding reports no time or a zero time, or when probing fails', async () => {
+      const fixture = await start()
+      const ffmpeg = fixture.ctx.dvFfmpeg
+      const probe = vi.spyOn(ffmpeg, 'probe').mockResolvedValue({
+        durationSec: null, videoDurationSec: null, width: null, height: null, hasAudio: true, codec: 'opus',
+      })
+      const decodes: string[][] = []
+      const progress = ['', 'out_time=00:00:00.000000\n']
+      vi.spyOn(ffmpeg, 'run').mockImplementation((request) => {
+        decodes.push([...request.argv])
+        return Promise.resolve({ stdout: progress.shift() ?? '', stderr: '', outputs: [], exitCode: 0 })
+      })
+      const imported = async (bytes: string): Promise<number | null> => {
+        const record = await fixture.run('asset.import', { base64: Buffer.from(bytes).toString('base64'), mime: 'audio/webm' })
+        return fixture.ctx.dvAssetPool.get(record.outputs[0] as AssetId).duration_sec
+      }
+      expect([await imported('silent'), await imported('zero')]).toEqual([null, null])
+      // The decode reads the first audio stream.
+      expect(decodes.map(argv => argv[argv.indexOf('-map') + 1])).toEqual(['0:a:0', '0:a:0'])
+      probe.mockRejectedValue('ffprobe crashed')
+      expect(await imported('broken')).toBeNull()
     })
 
     it('reads whether an asset holds sound, probing a video once and keeping the answer across a restart', async () => {

@@ -10,23 +10,27 @@ function text(value: unknown): string | null {
   return typeof value === 'string' && value !== '' ? value : null
 }
 
-/** @returns the clip IDs a finished record assigned (`report.clips`). */
-function reportedClips(record: ProjectRecord): string[] {
-  const clips = record.report?.['clips']
-  return Array.isArray(clips) ? clips.filter((clip): clip is string => typeof clip === 'string') : []
+/**
+ * @param record - a finished record.
+ * @param key - `clips` or `sounds`.
+ * @returns the clip or sound IDs the record assigned (`report.clips` or `report.sounds`).
+ */
+function reportedIds(record: ProjectRecord, key: 'clips' | 'sounds'): string[] {
+  const ids = record.report?.[key]
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []
 }
 
 /**
- * The timeline each clip belongs to: the timeline of the record that assigned the clip (`timeline.create`, `update`,
- * `clip_insert` name it by `params.timeline`, a create without one makes `t1`; `clip_split` adds to the timeline of the
- * split clip).
+ * The timeline each clip and sound belongs to: the timeline of the record that assigned the clip or sound
+ * (`timeline.create`, `update`, `clip_insert`, `sound_add` name it by `params.timeline`, a create without one makes
+ * `t1`; `clip_split` adds to the timeline of the split clip).
  * @param records - the records of the current state, oldest first.
- * @returns clip ID → timeline ID.
+ * @returns clip or sound ID → timeline ID.
  */
 export function clipTimelines(records: readonly ProjectRecord[]): Map<string, string> {
   const owner = new Map<string, string>()
   for (const record of records) {
-    const clips = reportedClips(record)
+    const clips = [...reportedIds(record, 'clips'), ...reportedIds(record, 'sounds')]
     if (clips.length === 0) continue
     const timeline = record.operation === 'timeline.clip_split'
       ? owner.get(text(record.params['clip']) ?? '') ?? null
@@ -38,16 +42,16 @@ export function clipTimelines(records: readonly ProjectRecord[]): Map<string, st
 }
 
 /**
- * The timeline a record works on: its `timeline` param, else the timeline of its `clip` param, else `t1` for a
- * `timeline.create` without a param.
+ * The timeline a record works on: its `timeline` param, else the timeline of its `clip` or `sound` param, else `t1`
+ * for a `timeline.create` without a param.
  * @param record - the record.
- * @param owner - clip ID → timeline ID, from {@link clipTimelines}.
+ * @param owner - clip or sound ID → timeline ID, from {@link clipTimelines}.
  * @returns the timeline ID, or null when the record names none.
  */
 function timelineOf(record: ProjectRecord, owner: ReadonlyMap<string, string>): string | null {
   const named = text(record.params['timeline'])
   if (named !== null) return named
-  const clip = text(record.params['clip'])
+  const clip = text(record.params['clip']) ?? text(record.params['sound'])
   if (clip !== null) return owner.get(clip) ?? null
   return record.operation === 'timeline.create' ? 't1' : null
 }
@@ -64,7 +68,7 @@ export const timelineHistoryRow: HistoryRow = {
   focus(record, records) {
     const timelineId = timelineOf(record, clipTimelines(records))
     if (timelineId === null) return null
-    const clipId = text(record.params['clip']) ?? reportedClips(record)[0] ?? null
+    const clipId = text(record.params['clip']) ?? reportedIds(record, 'clips')[0] ?? null
     return { view: 'timeline', target: { timeline: timelineId, clip: clipId } }
   },
 }
