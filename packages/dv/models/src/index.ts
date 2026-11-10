@@ -149,32 +149,42 @@ export default class DvModels extends Service {
   }
 
   /**
-   * Keep the prompt skill of each registered entry in the skill registry while the entry lives.
+   * Keep the prompt skill of each registered entry in the skill registry while the entry lives. Entries that share a
+   * skill name share one registration, which stays until the last of those entries is removed.
    * @param child - the context in which the DSH skill registry is mounted.
    * @returns a function that stops listening and removes the prompt skills; pass it to `ctx.effect`.
    */
   private registerPromptSkills(child: Context): () => void {
-    const registered = new Map<ModelEntry, () => void>()
-    // Each change removes the skills of removed entries and registers the skills of added entries.
+    const registered = new Map<ModelEntry, { name: string; entries: number; remove: () => void }>()
+    const byName = new Map<string, { name: string; entries: number; remove: () => void }>()
+    // Each change releases the skills of removed entries and registers the skills of added entries.
     const sync = (): void => {
       const live = new Set(this.entries.values())
-      for (const [entry, remove] of registered) {
+      for (const [entry, skill] of registered) {
         if (live.has(entry)) continue
-        remove()
         registered.delete(entry)
+        if (--skill.entries > 0) continue
+        skill.remove()
+        byName.delete(skill.name)
       }
       for (const entry of live) {
         if (entry.promptSkill === undefined || registered.has(entry)) continue
+        const name = entry.promptSkill.name
         // Like the selection skill, a prompt skill is for the agent only.
         const invocation = { modelInvocable: true, userInvocable: false }
-        registered.set(entry, child.skills.register({ ...entry.promptSkill, source: 'runtime', invocation }))
+        const skill = byName.get(name)
+          ?? { name, entries: 0, remove: child.skills.register({ ...entry.promptSkill, source: 'runtime', invocation }) }
+        skill.entries += 1
+        byName.set(name, skill)
+        registered.set(entry, skill)
       }
     }
     sync()
     const unlisten = this.onChanged(sync)
     return () => {
       unlisten()
-      for (const remove of registered.values()) remove()
+      for (const skill of byName.values()) skill.remove()
+      byName.clear()
       registered.clear()
     }
   }

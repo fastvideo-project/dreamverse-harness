@@ -278,6 +278,19 @@ describe('dvModels', () => {
     expect(await ctx.skills.get('gamma-prompting')).toBeUndefined()
   })
 
+  it('keeps a prompt skill that entries share registered once until the last of them is removed', async () => {
+    const ctx = await start()
+    const warnings: unknown[] = []
+    ctx.logger.exporter({ export: (message) => { if (message.type === 'warn') warnings.push(message.args[0]) } })
+    const removeT2v = ctx.dvModels.register({ ...entry('t2v', 'extra', 'gamma'), promptSkill: GAMMA_SKILL })
+    const removeRef2v = ctx.dvModels.register({ ...entry('ref2v', 'extra', 'gamma'), promptSkill: GAMMA_SKILL })
+    removeT2v()
+    expect((await ctx.skills.get('gamma-prompting'))?.content).toBe('# Gamma')
+    removeRef2v()
+    expect(await ctx.skills.get('gamma-prompting')).toBeUndefined()
+    expect(warnings).toEqual([])
+  })
+
   it('registers the prompt skills of the entries when the skill registry mounts after them', async () => {
     const ctx = await start()
     await unload(ctx, 'skills')
