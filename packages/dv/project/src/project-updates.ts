@@ -10,11 +10,10 @@
  *
  * The project update messages are the only messages that report a record's result. An update that lists a done record
  * of the session's own call shows that record's image outputs as image blocks after its text, as the call's tool result
- * would have shown them. When a record that the agent's own
- * call started in the background finishes, the record-notices module queues a wake (`wakeMessage`), which names the
- * record and carries no result. The `agent/pre-step` listener removes every wake from the step's messages, so a model
- * never receives one, and the project update message of that step lists the finish, unless an earlier message or tool
- * result already showed it.
+ * would have shown them. When a record that the agent's own call started in the background finishes, the record-notices
+ * module queues a wake (`wakeMessage`), which names the record and carries no result. The `agent/pre-step` listener
+ * removes every wake from the step's messages, so a model never receives one, and the project update message of that
+ * step lists the finish, unless an earlier message or tool result already showed it.
  *
  * What the agent saw is the `dvProjectSight` session projection, folded from the session's own log: the
  * {@link ProjectShown} in the source of each project message and in the `dv_seen` metadata of each DreamVerse tool
