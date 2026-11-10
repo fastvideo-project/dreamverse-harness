@@ -690,10 +690,33 @@ describe('dv-fastvideo', () => {
     await collect(task.render(request([], null, { lora: { id: REALISM, strength: 0.6 } })))
     await collect(task.render(request([], null, { lora: { id: REALISM } })))
     await collect(task.render(request([], null)))
-    expect(fake.requests.map(body => body['lora'])).toEqual([{ name: REALISM, scale: 0.6 }, { name: REALISM }, undefined])
+    expect(fake.requests.map(body => body['lora'])).toEqual([{ name: REALISM, scale: 0.6 }, { name: REALISM, scale: 0.8 }, undefined])
     expect(fake.requests[2]).not.toHaveProperty('lora')
     expect(() => task.render(request([], null, { lora: 'photoreal' })))
       .toThrow('extra.lora must be an object with a string id and an optional number strength.')
+    await expect(collect(task.render(request([], null, { lora: { id: 'nobody/none' } }))))
+      .rejects.toThrow('extra.lora names adapter "nobody/none", which fasth3 task t2v does not offer.')
+    expect(fake.requests).toHaveLength(3)
+  })
+
+  it.skipIf(!existsSync(FFMPEG))('applies the registry default strength, clamped into the narrowed range, when the shot names none', async () => {
+    // The server's default 1.5 lies outside the registry's range; the registry's default 0.9 lies outside the narrowed range 1 to 1.2.
+    const block = { ...LORA_BLOCK, adapters: [{ id: ORBIT, default_strength: 1.5, min_strength: 1, max_strength: 2 }] }
+    const fake = await startFakeServer(TEXT_FACTS, { video: await sampleVideo(false), lora: block })
+    const registry: LoraConfig = { adapters: [{ ...LORA_REGISTRY.adapters[1]!, defaultStrength: 0.9, minStrength: 0, maxStrength: 1.2, targets: [{ model: 'fasth3', tasks: ['t2v'] }] }] }
+    const ctx = await start({ t2v: fake.server }, 'fasth3', registry)
+    const task = fasth3(ctx, 't2v')
+    expect((await loraOffer(task))?.description).toContain(`${ORBIT} (default 1, from 1 to 1.2)`)
+    expect(await task.validateGenerationRequest(request([], null, { lora: { id: ORBIT } }))).toEqual([])
+    await collect(task.render(request([], null, { lora: { id: ORBIT } })))
+    expect(fake.requests.map(body => body['lora'])).toEqual([{ name: ORBIT, scale: 1 }])
+    // Inside the narrowed range, the registry's own default applies.
+    const wideBlock = { ...block, adapters: [{ ...block.adapters[0]!, min_strength: 0 }] }
+    const wide = await startFakeServer(TEXT_FACTS, { video: await sampleVideo(false), lora: wideBlock })
+    const mounted = fasth3(await start({ t2v: wide.server }, 'fasth3', registry), 't2v')
+    expect((await loraOffer(mounted))?.description).toContain(`${ORBIT} (default 0.9, from 0 to 1.2)`)
+    await collect(mounted.render(request([], null, { lora: { id: ORBIT } })))
+    expect(wide.requests.map(body => body['lora'])).toEqual([{ name: ORBIT, scale: 0.9 }])
   })
 
   it.skipIf(REAL_BACKEND === undefined || !existsSync(REAL_REFERENCE) || !existsSync(FFMPEG))('renders a real five-second shot from an image, a video with sound and an audio file against the running server', async () => {

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/dv/lora/README.md
-README.md: 342f017db909693c54e4553cc721d967d8fba6c4
-README.zh.md: 8c8f99a2c1e3e53f086141dbf45221d3b77daf9a
+README.md: 01f985021285ea73ef884eb8940f23ed7f720150
+README.zh.md: a5f25d72ca3c7822af318dcc7f7d7ee7a9b7d6a5

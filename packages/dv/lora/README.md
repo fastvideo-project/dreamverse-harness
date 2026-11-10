@@ -53,7 +53,7 @@ Mount this package once, before the video provider that reads it, with the adapt
 | `adapters[].displayName` | required | The name the agent and the user read |
 | `adapters[].description` | `''` | What the adapter changes in a shot, and what it was trained on |
 | `adapters[].triggerWords` | `[]` | The words the prompt must carry for the effect to show |
-| `adapters[].defaultStrength` | `0.8` | The strength a request uses when it names the adapter without one |
+| `adapters[].defaultStrength` | `0.8` | The strength a request uses when it names the adapter without one, clamped into the range that the server also serves |
 | `adapters[].minStrength` / `maxStrength` | `0` / `2` | The strength range this deployment serves |
 | `adapters[].targets` | required | The models, and the tasks of each, that the adapter is meant for |
 | `adapters[].license` | `''` | The licence of the adapter's weights |

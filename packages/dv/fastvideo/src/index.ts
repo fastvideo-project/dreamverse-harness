@@ -222,7 +222,8 @@ function requestProblems(
 /**
  * The adapters of a task's server that one render may name: none unless the task takes `extra.lora` and the server
  * serves an adapter. With the `dvLora` registry mounted, only the adapters it publishes for this model and task; the
- * strength range of each is the one the server reports, narrowed to the registry's.
+ * strength range of each is the one the server reports, narrowed to the registry's, and the default strength is the
+ * registry's, clamped into that range. Without the registry, each adapter keeps the server's range and default.
  * @param served - the task this plugin serves.
  * @param server - the adapters the server allows; empty when it supports no LoRA.
  * @param registry - the `dvLora` registry, when the deployment mounts it.
@@ -242,7 +243,7 @@ function usableAdapters(
     const minStrength = Math.max(adapter.minStrength, listed.minStrength)
     const maxStrength = Math.min(adapter.maxStrength, listed.maxStrength)
     if (minStrength > maxStrength) return []
-    const defaultStrength = Math.min(Math.max(adapter.defaultStrength, minStrength), maxStrength)
+    const defaultStrength = Math.min(Math.max(listed.defaultStrength, minStrength), maxStrength)
     return [{ ...adapter, defaultStrength, minStrength, maxStrength }]
   })
 }
@@ -428,6 +429,14 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
         if (request.frameWidth === undefined || request.frameHeight === undefined || request.numFrames === undefined) {
           throw new Error('FastVideo requires native frame dimensions and a frame count from its configured facts.')
         }
+        // The server gets an explicit scale, so it applies the default that schema() advertises, not its own.
+        let selected: LoraSelection | undefined
+        if (lora !== undefined) {
+          const usable = usableAdapters(served, (await client.lora()).adapters, registry(), model, task)
+          const adapter = usable.find(candidate => candidate.id === lora.id)
+          if (adapter === undefined) throw new Error(`extra.lora names adapter "${lora.id}", which ${model} task ${task} does not offer.`)
+          selected = { id: lora.id, strength: lora.strength ?? adapter.defaultStrength }
+        }
         // Video and audio references can be tens of megabytes each, so they are read concurrently off the event loop.
         const references = await Promise.all(assets.map(async id => ({
           mimeType: ctx.dvAssetPool.get(id).mime, bytes: await readFile(ctx.dvAssetPool.path(id)),
@@ -444,7 +453,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
           frameHeight: request.frameHeight,
           numFrames: request.numFrames,
           seed: request.seed,
-          ...lora === undefined ? {} : { lora },
+          ...selected === undefined ? {} : { lora: selected },
           ...signal === undefined ? {} : { signal },
         })
         const png = await ctx.dvFfmpeg.lastFrame(video)

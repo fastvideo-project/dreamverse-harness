@@ -53,7 +53,7 @@ kind: "package-reference"
 | `adapters[].displayName` | 必填 | agent 与用户读到的名称 |
 | `adapters[].description` | `''` | 适配器在镜头里改变什么，以及它训练所基于的模型 |
 | `adapters[].triggerWords` | `[]` | prompt 必须带上的、让效果显现的词 |
-| `adapters[].defaultStrength` | `0.8` | 请求只给 id 时使用的强度 |
+| `adapters[].defaultStrength` | `0.8` | 请求只给 id 时使用的强度，收敛到服务器也提供的范围内 |
 | `adapters[].minStrength` / `maxStrength` | `0` / `2` | 本部署提供的强度范围 |
 | `adapters[].targets` | 必填 | 适配器面向的模型，以及每个模型的任务 |
 | `adapters[].license` | `''` | 适配器权重的许可证 |

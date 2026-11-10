@@ -44,7 +44,10 @@ export interface LoraDefinition {
   description: string
   /** The words its author says to put in the prompt so the effect shows; empty when it needs none. */
   triggerWords: string[]
-  /** The strength its author recommends, which a request uses when it names the adapter without one. */
+  /**
+   * The strength its author recommends, which a request uses when it names the adapter without one, clamped into the
+   * range that the server also serves.
+   */
   defaultStrength: number
   /** The lowest strength the deployment serves; `0` is the model without the adapter. */
   minStrength: number
