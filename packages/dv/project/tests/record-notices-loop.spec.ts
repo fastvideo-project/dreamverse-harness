@@ -258,6 +258,21 @@ describe('record notices with the agent loop', () => {
     expect(fixture.agent.inbox.nextStep.map(message => message.source.kind === 'dv-project-wake' ? message.source.records : [])).toEqual([[first], [second]])
   })
 
+  it('opens no turn for a record that finishes after a Stop while the user\'s steer waits in the next-step inbox', async () => {
+    const fixture = await start()
+    await startHangingTurn(fixture)
+    fixture.agent.inject(userMessage('steer'))
+    fixture.agent.cancel({ kind: 'user' }, { keepInbox: true })
+    await settleIdle(fixture)
+    expect(fixture.agent.inbox.nextStep.map(message => textOf(message))).toEqual(['steer'])
+
+    const record = await fixture.render('dunk')
+    await fixture.finish('dunk', record)
+    await settleIdle(fixture)
+    expect(fixture.adapter.requests).toHaveLength(1)
+    expect(fixture.agent.inbox.nextStep.map(message => message.source.kind)).toEqual(['user', 'dv-project-wake'])
+  })
+
   it('sends no wake for a render that finishes after its session is archived with its work stopped', async () => {
     const fixture = await start()
     fixture.adapter.hangFirst = false

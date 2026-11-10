@@ -10,8 +10,9 @@
  *   inbox holds a message, so a record that finishes during the last step of a turn reaches that turn, or the next one
  *   when it finishes while that turn unwinds (the last rule below).
  * - An idle agent whose session watches no other unfinished record is woken: the wake opens a turn. An idle agent
- *   whose session still watches another record, or whose next-turn inbox holds a message from the user, gets the wake
- *   injected without waking it: the turn that the last record opens, or the user's next action, claims them together.
+ *   whose session still watches another record, or whose next-step or next-turn inbox holds a message from the user,
+ *   gets the wake injected without waking it: the turn that the last record opens, or the user's next action, claims
+ *   them together.
  * - With `maxConsecutiveWakes` set, an agent that has already opened that many turns by wakes since its last message
  *   from the user gets further wakes injected without waking it; the next message from the user claims them.
  * - An agent that goes idle with wakes still in its next-step inbox (they arrived while its last turn unwound, or that
@@ -175,12 +176,12 @@ export class RecordNotices {
   }
 
   /**
-   * Whether a wake may open a turn in an idle agent, taking one wake from its budget when it may: its next-turn inbox
-   * holds no message from the user (a turn would claim that held-back message with the wake), its session watches no
-   * other record, and the budget allows.
+   * Whether a wake may open a turn in an idle agent, taking one wake from its budget when it may: neither its next-step
+   * nor its next-turn inbox holds a message from the user (a turn would claim that held-back message with the wake),
+   * its session watches no other record, and the budget allows.
    */
   private mayOpenTurn(agent: Agent): boolean {
-    if (agent.inbox.nextTurn.some(message => message.source.kind === 'user')) return false
+    if ([...agent.inbox.nextStep, ...agent.inbox.nextTurn].some(message => message.source.kind === 'user')) return false
     const session = brandString<SessionId>(agent.id)
     return ![...this.watches.values()].some(watch => watch.session === session) && this.spendWake(agent)
   }
