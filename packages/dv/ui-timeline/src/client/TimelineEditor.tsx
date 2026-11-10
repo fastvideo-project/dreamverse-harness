@@ -185,7 +185,7 @@ const ICON_PATHS = {
  */
 function Icon({ name }: { name: keyof typeof ICON_PATHS }): ReactNode {
   return (
-    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.25} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d={ICON_PATHS[name]} />
     </svg>
   )

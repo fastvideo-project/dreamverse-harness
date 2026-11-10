@@ -33,10 +33,10 @@ const TOOLS: readonly McpTool[] = [
   },
 ]
 
-/** A plug glyph. */
+/** A plug glyph; the stroke attribute is 1.5 px times the 24-unit grid over the size, so it renders 1.5 px. */
 function PlugIcon({ size }: { size: number }): ReactNode {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={36 / size} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M9 3v4M15 3v4M6.5 7h11v4a5.5 5.5 0 0 1-11 0V7Z" /><path d="M12 16.5V21" />
     </svg>
   )

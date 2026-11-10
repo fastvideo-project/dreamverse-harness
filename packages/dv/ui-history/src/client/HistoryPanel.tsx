@@ -345,7 +345,7 @@ function Actions(props: { client: DvClient; projectId: string; canRedo: boolean 
             aria-label={t(move.label[0], move.label[1])} title={t(move.title[0], move.title[1])} className={css.iconButton}
             onClick={() => { run(() => move.key === 'undo' ? client.undo(projectId) : client.redo(projectId)) }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               {move.paths.map(path => <path key={path} d={path} />)}
             </svg>
           </button>

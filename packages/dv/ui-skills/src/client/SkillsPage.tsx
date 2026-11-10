@@ -33,7 +33,7 @@ type ListState =
 export function SkillsPanelIcon(): ReactNode {
   return (
     <svg
-      width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}
+      width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.25}
       strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"
     ><path d="M12 3.5l2.1 6.4 6.4 2.1-6.4 2.1L12 20.5l-2.1-6.4L3.5 12l6.4-2.1L12 3.5Z" /></svg>
   )
