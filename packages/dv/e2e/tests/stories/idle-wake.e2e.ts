@@ -130,18 +130,22 @@ describe('a render that finishes while the agent is idle wakes it', () => {
     await page.locator('[data-dv-chat]:visible').first().getByText(reply, { exact: false }).first().waitFor({ timeout: 90_000 })
   }
 
-  /**
-   * Wait until every named record of the project is done.
-   * @returns the session whose agent call started the first record.
-   */
-  async function done(ids: readonly string[]): Promise<string> {
-    return await waitFor(async () => {
+  /** Wait until every named record of the project is done. */
+  async function done(ids: readonly string[]): Promise<void> {
+    await waitFor(async () => {
       const history = await harness.api.post('/api/dv/history', { project: projectId, records: ids }) as {
-        entries: Array<{ record: { status: string; session: string | null } }>
+        entries: Array<{ record: { status: string } }>
       }
-      const finished = history.entries.length === ids.length && history.entries.every(entry => entry.record.status === 'done')
-      return finished && (history.entries[0]?.record.session ?? '')
+      return history.entries.length === ids.length && history.entries.every(entry => entry.record.status === 'done')
     }, 'the renders', 60_000)
+  }
+
+  /** The session whose agent call started a record. */
+  async function sessionOf(id: string): Promise<string> {
+    const history = await harness.api.post('/api/dv/history', { project: projectId, records: [id] }) as {
+      entries: Array<{ record: { session: string | null } }>
+    }
+    return history.entries[0]?.record.session ?? ''
   }
 
   /** Wait until the agent of a session has reported `count` idle statuses. */
@@ -158,10 +162,13 @@ describe('a render that finishes while the agent is idle wakes it', () => {
     const page = await openProject()
     harness.backend.hold()
     await chat(page, '渲染一个镜头', '已开始渲染一个镜头')
+    // The first turn has ended before the render finishes, so the wake reaches an idle agent.
+    const session = await sessionOf(records['one']?.[0] ?? '')
+    await idled(session, 1)
     const before = model.requests.length
     const insertedFrom = inserted.length
     harness.backend.releaseAll()
-    const session = await done(records['one'] ?? [])
+    await done(records['one'] ?? [])
     await page.locator('[data-dv-chat]:visible').first().getByText('一个镜头渲染好了', { exact: false }).first().waitFor({ timeout: 90_000 })
     // The woken turn, the session's second, has ended, and its wake was the only one, queued for the next turn.
     await idled(session, 2)
@@ -181,10 +188,13 @@ describe('a render that finishes while the agent is idle wakes it', () => {
     harness.backend.hold()
     await chat(page, '渲染两个镜头', '已开始渲染两个镜头')
     const [first = '', second = ''] = records['two'] ?? []
+    // The first turn has ended before either render finishes, so each wake reaches an idle agent.
+    const session = await sessionOf(first)
+    await idled(session, 1)
     const before = model.requests.length
     const insertedFrom = inserted.length
     harness.backend.release()
-    const session = await done([first])
+    await done([first])
     // The first finish waits for the second render, which still runs: its wake waits for the next step, opening no turn.
     await waitFor(() => Promise.resolve(inserted.length > insertedFrom), 'the first wake', 30_000)
     expect(inserted.slice(insertedFrom)).toEqual(['next-step'])
