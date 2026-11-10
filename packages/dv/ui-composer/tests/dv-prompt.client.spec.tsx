@@ -669,6 +669,23 @@ describe('the unsent draft of a take', () => {
     const button = await sendOf(again, 'Generate a new version')
     expect(button.disabled).toBe(false)
   })
+
+  it('checks a restored draft again before its send, and shows no failure from before the editor closed', async () => {
+    const mounted = await mount(STILL_CALL, { holdChecks: true, refuseSend: 'The GPU queue is full.' })
+    await waitFor(() => { expect(mounted.checks).toHaveLength(1) })
+    editSeed(mounted.take, '5')
+    await waitFor(() => { expect(mounted.checks).toHaveLength(2) })
+    act(() => { mounted.checks[1]?.answer({ problems: [] }) })
+    fireEvent.click(await sendOf(mounted.take, 'Generate a new version'))
+    await waitFor(() => { expect(within(mounted.take).getByRole('alert').textContent).toBe('Failed: The GPU queue is full.') })
+    const again = reopen(mounted)
+    expect(seedOf(again)).toBe('5')
+    expect(within(again).queryByRole('alert')).toBeNull()
+    expect(within(again).getByRole<HTMLButtonElement>('button', { name: 'Generate a new version' }).disabled).toBe(true)
+    await waitFor(() => { expect(mounted.checks).toHaveLength(3) })
+    act(() => { mounted.checks[2]?.answer({ problems: [] }) })
+    await sendOf(again, 'Generate a new version')
+  })
 })
 
 describe('the version kinds of the canvas', () => {
