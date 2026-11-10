@@ -16,7 +16,9 @@
  *
  * Watches live in memory: a restart cancels every unfinished record (`Runner.recover`) while no agent turn is open. A
  * session without a registered agent when its record finishes gets no wake; the project update message shows the record
- * to the session's next step.
+ * to the session's next step. Removing a project drops the watches of its records, and closing the module (when the
+ * service stops) drops every watch and delivers nothing afterwards. A delivery that throws is logged on the `dvProject`
+ * logger and never fails the record write that finished the record.
  *
  * Calls the `agents` registry, read at delivery time, and `dvProject.getRecord`. Called by the service: `watch` from the
  * operation tools, `recordFinished` from the record store's change callback.
@@ -42,6 +44,8 @@ export class RecordNotices {
   private readonly watches = new Map<RecordId, Watch>()
   /** Turns each agent opened by wakes since it last claimed a message from the user. */
   private readonly spentWakes = new WeakMap<Agent, number>()
+  /** False once {@link RecordNotices.close} ran: no watch is kept and no wake is delivered. */
+  private open = true
 
   /**
    * @param ctx - the service context; the `agents` registry is read from it at delivery time.
@@ -69,6 +73,7 @@ export class RecordNotices {
    * @param session - the session.
    */
   watch(project: ProjectId, record: RecordId, session: SessionId): void {
+    if (!this.open) return
     this.watches.set(record, { project, session })
     const current = this.project.getRecord(project, record)
     if (current.status === 'done' || current.status === 'failed' || current.status === 'cancelled') this.recordFinished(project, current)
@@ -82,14 +87,33 @@ export class RecordNotices {
    */
   recordFinished(project: ProjectId, record: ProjectRecord): void {
     const watch = this.watches.get(record.id)
-    if (watch?.project !== project) return
+    if (!this.open || watch?.project !== project) return
     this.watches.delete(record.id)
-    const agent = this.ctx.get('agents')?.get(AgentSessionId(watch.session))
-    if (agent === undefined) return
-    const message = wakeMessage([record.id])
-    const othersPending = [...this.watches.values()].some(other => other.session === watch.session)
-    if (agent.status === 'idle' && !othersPending && this.spendWake(agent)) agent.followup(message)
-    else agent.inject(message)
+    // The caller is the record store's change callback: a failing delivery must not fail the write that finished the record.
+    try {
+      const agent = this.ctx.get('agents')?.get(AgentSessionId(watch.session))
+      if (agent === undefined) return
+      const message = wakeMessage([record.id])
+      const othersPending = [...this.watches.values()].some(other => other.session === watch.session)
+      if (agent.status === 'idle' && !othersPending && this.spendWake(agent)) agent.followup(message)
+      else agent.inject(message)
+    } catch (error) {
+      this.ctx.logger('dvProject').warn('could not deliver the wake of record %s: %s', record.id, error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  /**
+   * Drop the watches of a project's records; their wakes are never delivered.
+   * @param project - the removed project.
+   */
+  forget(project: ProjectId): void {
+    for (const [record, watch] of this.watches) if (watch.project === project) this.watches.delete(record)
+  }
+
+  /** Drop every watch and deliver no wake afterwards; the service calls it when it stops. */
+  close(): void {
+    this.open = false
+    this.watches.clear()
   }
 
   /** Take one wake from the agent's budget; always true without a budget. */
