@@ -346,8 +346,8 @@ export function registerProjectUpdates(ctx: Context, project: DvProject, deps: P
     const seen = ctx.sessionProjections.stateOf(agent.session, SEEN_PROJECTION)
     const text = seen === undefined ? null : projectMessage(project, deps, session, seen)
     if (text === null) return woken ? { ...decision, messages: kept } : decision
+    // The agent loop checks the signal again after the waterfall, so a step aborted while the images save does not run.
     const message = await withOwnImages(ctx, project, deps, session, text)
-    if (signal.aborted) return decision
     const last = kept.findLastIndex(entry => messages.includes(entry))
     return { ...decision, messages: kept.toSpliced(last + 1, 0, message) }
   })

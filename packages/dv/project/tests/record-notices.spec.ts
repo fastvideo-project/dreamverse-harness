@@ -378,6 +378,7 @@ describe('record notices', () => {
       actor: 'user', surface: 'canvas', session: SESSION, turn: null, tool_call: null, intent: 'render',
       project: other, operation: 'shot.render', params: { prompt: 'other' }, inputs: [], after: [],
     })
+    if (started.record === null) throw new Error('the render wrote no record')
     fixture.project['notices'].watch(other, started.record.id, SESSION)
     await fixture.project.removeProject(fixture.projectId)
     fixture.release('other')

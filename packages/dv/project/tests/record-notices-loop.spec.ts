@@ -115,6 +115,7 @@ async function start(): Promise<Fixture> {
         actor: 'agent', surface: 'chat', session, turn: null, tool_call: null, intent: `render ${prompt}`,
         project: projectId, operation: 'shot.render', params: { prompt }, inputs: [], after: [],
       })
+      if (started.record === null) throw new Error('the render wrote no record')
       project['notices'].watch(projectId, started.record.id, session)
       return started.record.id
     },
