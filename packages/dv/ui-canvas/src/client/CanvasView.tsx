@@ -879,7 +879,7 @@ export function CanvasView(
     boxShadow: dragOver ? 'inset 0 0 0 2px var(--dv-accent)' : 'none',
   }
   const floating: CSSProperties = {
-    background: 'var(--dv-surface-2)', boxShadow: '0 0 0 1px var(--dv-line-strong), var(--dv-shadow-1)', zIndex: 5,
+    background: 'var(--dv-surface-2)', boxShadow: '0 0 0 1px var(--dv-line-strong), var(--dv-shadow-1)', outline: '1px solid transparent', zIndex: 5,
   }
   const toolButton: CSSProperties = {
     height: 28, minWidth: 28, border: 'none', borderRadius: 'var(--dv-radius-sm)', color: 'var(--dv-text-2)', padding: '0 6px', cursor: 'pointer',
