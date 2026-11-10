@@ -51,7 +51,7 @@ export function clearActionFailure(): void {
 export const runAction: ActionRunner = (work) => {
   const started = generation
   const seen = reports
-  work().then(() => { if (started === generation && failure !== null && failure.seq <= seen) publish(null) }, (error: unknown) => {
+  work().then(() => { if (failure !== null && failure.seq <= seen) publish(null) }, (error: unknown) => {
     console.warn('ui-shell: navigation failed', error)
     if (started !== generation) return
     reports += 1
