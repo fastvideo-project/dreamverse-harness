@@ -8,6 +8,7 @@ import { act, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import type { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { testRef } from '../../ui-canvas/tests/canvas-runtime.client.tsx'
+import { resetDrafts } from '../../ui-composer/src/client/drafts.ts'
 import { fixtureState, OPERATIONS, record, scriptedFetch, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
 import { nodeOfRecord } from '@dv/ui-kit/canvas-nodes.ts'
 import { addNode, CLIP_EXTEND, mountKit, nodeAt, recordingHost } from './take-kind.client.ts'
@@ -15,6 +16,8 @@ import { addNode, CLIP_EXTEND, mountKit, nodeAt, recordingHost } from './take-ki
 let runtime: SlotTestRuntime | undefined
 
 beforeEach(() => {
+  // The composer keeps unsent drafts per take for the page's life; a draft of an earlier test must not reach the next.
+  resetDrafts()
   vi.stubGlobal('fetch', scriptedFetch({ state: withTestRef(fixtureState()) }).fetch)
   // jsdom has no layout: the editor measures its selection.
   Range.prototype.getBoundingClientRect = () => new DOMRect()
