@@ -52,9 +52,11 @@ async function serve(status: number, body: string): Promise<string> {
 }
 
 describe('the shipped catalog', () => {
-  it('is valid and lists voice acting under @fastvideo at an exact version', () => {
+  it('is valid and lists voice acting and Blender under @fastvideo at exact versions', () => {
     const plugins = Catalog.parseCatalog(readFileSync(Catalog.SHIPPED_CATALOG, 'utf8'), 'shipped')
-    expect(plugins.map(plugin => [plugin.package, plugin.version])).toContainEqual(['@fastvideo/dreamverse-voice-acting', '0.1.0'])
+    expect(plugins.map(plugin => [plugin.package, plugin.version])).toEqual([
+      ['@fastvideo/dreamverse-voice-acting', '0.1.0'], ['@fastvideo/dreamverse-blender', '0.1.0'],
+    ])
   })
 })
 
@@ -115,7 +117,7 @@ describe('the plugin', () => {
     const route = connection.routes.get(Catalog.CATALOG_ROUTE)
     expect(route?.methods).toEqual(['GET'])
     const answer = await (await (route as ConnectionFetchRoute).fetch(new Request(`http://host${Catalog.CATALOG_ROUTE}`))).json() as CatalogAnswer
-    expect(answer.plugins.map(plugin => plugin.package)).toEqual(['@fastvideo/dreamverse-voice-acting', '@fastvideo/extra'])
+    expect(answer.plugins.map(plugin => plugin.package)).toEqual(['@fastvideo/dreamverse-voice-acting', '@fastvideo/dreamverse-blender', '@fastvideo/extra'])
     expect(answer.problems).toEqual([])
     await plugin.dispose()
     expect(connection.routes.has(Catalog.CATALOG_ROUTE)).toBe(false)

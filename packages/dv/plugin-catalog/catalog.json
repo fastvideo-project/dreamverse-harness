@@ -15,6 +15,22 @@
         "zh": "转换需要在有 NVIDIA GPU 的机器上运行 Seed-VC 服务器，并在 profile 补丁里打开 dv-seed-vc 和允许的音色；录音不需要服务器。",
         "en": "Converting needs the Seed-VC server running on a machine with an NVIDIA GPU, and dv-seed-vc switched on with the allowed voices in the profile patch; recording works without it."
       }
+    },
+    {
+      "package": "@fastvideo/dreamverse-blender",
+      "version": "0.1.0",
+      "title": {
+        "zh": "Blender",
+        "en": "Blender"
+      },
+      "description": {
+        "zh": "连接你自己的 Blender：在 Blender 标签和画布上实时查看它的视口，让智能体读取场景、在其中运行 Python、查看视口，并把静帧和动画渲染进项目。",
+        "en": "Connect your own Blender: watch its viewport live in a Blender tab and on the canvas, and let the agent read the scene, run Python in it, look at the viewport, and render stills and animations into the project."
+      },
+      "setup": {
+        "zh": "需要 Blender 4.2 或更高版本，并安装 Blender 标签提供下载的 DreamVerse 插件；Blender 可以在你的电脑上，也可以和 harness 在同一台机器上，不需要服务器。",
+        "en": "Needs Blender 4.2 or later with the DreamVerse add-on, which the Blender tab offers to download; Blender can run on your computer or on the harness's machine, and no server is needed."
+      }
     }
   ]
 }
