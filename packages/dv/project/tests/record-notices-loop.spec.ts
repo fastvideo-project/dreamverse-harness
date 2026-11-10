@@ -1,7 +1,8 @@
 /**
  * Record notices with the production agent loop: a wake that the record notices inject into a running turn stays queued
  * when a Stop that keeps the inbox aborts that turn before it claims the wake, and the next turn claims it; a wake that
- * a turn ending with an error leaves behind opens a turn. The model is a scripted adapter, and the `dvProject` service
+ * a turn ending with an error leaves behind opens a turn; a wake past `maxConsecutiveWakes` waits for the user's next
+ * message. The model is a scripted adapter, and the `dvProject` service
  * runs with the real session, projection, agent and tool services.
  */
 import { join } from 'node:path'
@@ -24,11 +25,12 @@ afterEach(async () => {
 
 /**
  * A model whose first request streams until it is aborted, or with `failFirst` until {@link HangThenText.fail} makes it
- * throw, and whose later requests answer `ok`.
+ * throw, and whose later requests answer `ok`; with `hangFirst` false, every request answers `ok`.
  */
 class HangThenText extends LlmAdapter {
   readonly requests: GenerateOptions[] = []
   failFirst = false
+  hangFirst = true
   private readonly failure = Promise.withResolvers<undefined>()
 
   /** Make the first request throw. */
@@ -42,7 +44,7 @@ class HangThenText extends LlmAdapter {
 
   async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     this.requests.push(options)
-    if (this.requests.length === 1) {
+    if (this.hangFirst && this.requests.length === 1) {
       yield { type: 'block-start', index: 0, blockType: 'text' }
       if (this.failFirst) {
         await this.failure.promise
@@ -85,16 +87,17 @@ interface Fixture {
 /**
  * Mount the agent loop services, `dvProject` with a gated GPU `shot.render`, the scripted model and one agent whose
  * session runs in the folder of a new project.
+ * @param maxConsecutiveWakes - the service's wake budget, or undefined for none.
  * @returns the fixture.
  */
-async function start(): Promise<Fixture> {
+async function start(maxConsecutiveWakes?: number): Promise<Fixture> {
   const context = new Context()
   contexts.push(context)
   await mountAgentLoopTestDependencies(context)
   context.provide('workspaceRegistry', new TestWorkspaces() as never)
   const root = tempRoot()
   await context.plugin(DvProject, {
-    projectsFolder: join(root, 'projects'), cpuConcurrency: 4, gpuConcurrency: 4, promptSectionOrder: 4900,
+    projectsFolder: join(root, 'projects'), cpuConcurrency: 4, gpuConcurrency: 4, promptSectionOrder: 4900, maxConsecutiveWakes,
   }).await()
   const project = context.dvProject
   project.registerAssetStore(new MemoryAssets())
@@ -359,5 +362,32 @@ describe('record notices with the agent loop', () => {
     const update = textOf(fixture.adapter.requests[1]?.messages.at(-1))
     expect(update).toContain(`- done ${first} (your call): shot one`)
     expect(update).toContain(`- done ${second} (your call): shot two`)
+  })
+  it('injects a wake past maxConsecutiveWakes until the user\'s message, claimed with it, refills the budget', async () => {
+    const fixture = await start(1)
+    fixture.adapter.hangFirst = false
+    const records = (source: UserMessage['source']): readonly RecordId[] => source.kind === 'dv-project-wake' ? source.records : []
+    const one = await fixture.render('one')
+    await fixture.finish('one', one)
+    await vi.waitFor(() => { expect(fixture.adapter.requests).toHaveLength(1) })
+    await settleIdle(fixture)
+
+    const two = await fixture.render('two')
+    await fixture.finish('two', two)
+    await settleIdle(fixture)
+    expect(fixture.adapter.requests).toHaveLength(1)
+    expect(fixture.agent.inbox.nextStep.map(message => records(message.source))).toEqual([[two]])
+
+    fixture.agent.followup(userMessage('more'))
+    await vi.waitFor(() => { expect(fixture.adapter.requests).toHaveLength(2) })
+    await settleIdle(fixture)
+    expect(fixture.claimed.slice(1).map(message => message.source.kind)).toEqual(['dv-project-wake', 'user'])
+    expect(textOf(fixture.adapter.requests[1]?.messages.at(-1))).toContain(`- done ${two} (your call): shot two`)
+
+    const three = await fixture.render('three')
+    await fixture.finish('three', three)
+    await vi.waitFor(() => { expect(fixture.adapter.requests).toHaveLength(3) })
+    await settleIdle(fixture)
+    expect(wakes(fixture).map(message => records(message.source))).toEqual([[one], [two], [three]])
   })
 })
