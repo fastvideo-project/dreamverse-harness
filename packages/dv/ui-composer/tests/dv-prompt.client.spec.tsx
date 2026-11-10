@@ -21,7 +21,7 @@ import { fixtureState, MODELS, OPERATIONS, scriptedFetch, withTestRef } from '..
 import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import { shotRenderBar } from '../../ui-shot-render/src/client/param-bar.ts'
 import type { DvPromptProps, PromptCall, PromptHost } from '../src/client/contract/index.ts'
-import { resetDrafts } from '../src/client/drafts.ts'
+import { draftKey, readDraft, resetDrafts } from '../src/client/drafts.ts'
 import { projectMentionSource } from '../src/client/mention.ts'
 import { composerStack } from './composer-stack.client.ts'
 
@@ -609,8 +609,20 @@ describe('the unsent draft of a take', () => {
     const mounted = await mount(STILL_CALL)
     await sendOf(mounted.take, 'Generate a new version')
     editSeed(mounted.take, '7')
+    expect(readDraft(draftKey('p1', JSON.stringify(STILL_CALL)))).toBeDefined()
     editSeed(mounted.take, '')
+    expect(readDraft(draftKey('p1', JSON.stringify(STILL_CALL)))).toBeUndefined()
     expect(seedOf(reopen(mounted))).toBe('')
+  })
+
+  it('drops the draft when a typed value is edited back to the lent call\'s value', async () => {
+    const seeded: PromptCall = { operation: STILL.name, params: { seed: 5, prompt: 'a lamp' }, inputs: [] }
+    const mounted = await mount(seeded)
+    await sendOf(mounted.take, 'Generate a new version')
+    editSeed(mounted.take, '6')
+    expect(readDraft(draftKey('p1', JSON.stringify(seeded)))).toBeDefined()
+    editSeed(mounted.take, '5')
+    expect(readDraft(draftKey('p1', JSON.stringify(seeded)))).toBeUndefined()
   })
 
   it('restores a draft that was mid-send as an ordinary draft, never as sending', async () => {

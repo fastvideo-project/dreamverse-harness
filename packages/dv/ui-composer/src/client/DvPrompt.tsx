@@ -25,8 +25,8 @@ import { errorMessage } from '@dv/ui-kit/api.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import type { WireModelEntry, WireOperation } from '@dv/ui-kit/types.ts'
 import type {} from '@dv/ui-media/contract'
-import type { CallInput, CandidateFilter, ParamBar, ParamChip, PromptCopy, PromptFaceContext, PromptHost, ReferenceView } from './contract/index.ts'
-import { draftOf, reduceDraft, startOf, type Draft } from './draft.ts'
+import type { CallInput, CandidateFilter, ParamBar, ParamChip, PromptCall, PromptCopy, PromptFaceContext, PromptHost, ReferenceView } from './contract/index.ts'
+import { draftOf, reduceDraft, startOf } from './draft.ts'
 import { clearDraft, draftKey, readDraft, writeDraft } from './drafts.ts'
 import { MENTION_SOURCE } from './mention.ts'
 import { paramChips, typedValue } from './param-chips.ts'
@@ -63,6 +63,12 @@ function modelOf(models: readonly WireModelEntry[], params: Readonly<Record<stri
  */
 export function DvPrompt(props: DvPromptComponentProps): ReactNode {
   return props.readOnly ? <DvPromptView {...props} /> : <DvPromptEditor key={props.projectId} {...props} />
+}
+
+/** A call as JSON with its params in key order, so that two calls that differ only in that order give one key. */
+function paramsKey(call: PromptCall): string {
+  const params = Object.entries(call.params).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+  return JSON.stringify([call.operation, params, call.inputs])
 }
 
 /** The faces of a document's chips, as its views resolve them. */
@@ -154,11 +160,15 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
   // An answer or a failure of another call does not count for the edited call.
   const checked = draft.checked?.key === editedKey ? draft.checked.answer : null
   const failure = draft.failure?.key === editedKey ? draft.failure.message : null
+  // A text chip whose text its param cannot take blocks the send, so the field never shows a value that the call lacks.
+  const typing = operation === null ? [] : Object.entries(draft.texts).flatMap(([key, text]) => {
+    const typed = typedValue(operation, key, text)
+    return 'problem' in typed ? [typed.problem] : []
+  })
   useEffect(() => {
     if (sentKey.current === editedKey) return
-    const base = draftOf(call)
-    const shape = (value: Draft): string => JSON.stringify([value.document, value.params, value.texts])
-    const unedited = shape(draft) === shape(base)
+    // A draft whose call is the lent call, with no chip text that its param cannot take, holds no edit.
+    const unedited = typing.length === 0 && paramsKey(edited) === paramsKey(callOf(draftOf(call).document, call))
     if (unedited) clearDraft(storeKey)
     else writeDraft(storeKey, draft)
     // The store follows the draft, which holds every edit; `call` is read only to tell an edited draft from its start.
@@ -178,11 +188,6 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
 
   const ctx: ResolveContext = { state, versions, inputs: null, filter: null }
   const views = documentViews(document, { ...ctx, filter })
-  // A text chip whose text its param cannot take blocks the send, so the field never shows a value that the call lacks.
-  const typing = operation === null ? [] : Object.entries(draft.texts).flatMap(([key, text]) => {
-    const typed = typedValue(operation, key, text)
-    return 'problem' in typed ? [typed.problem] : []
-  })
   const refused = failure === null ? [] : [pick(`失败：${failure}`, `Failed: ${failure}`)]
   const problems = typing.length > 0 ? typing : [...refused, ...checked?.problems ?? []]
   const blocked = typing.length > 0 || checked === null || checked.problems.length > 0
