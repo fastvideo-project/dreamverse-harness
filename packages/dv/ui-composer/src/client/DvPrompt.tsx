@@ -66,7 +66,7 @@ export function DvPrompt(props: DvPromptComponentProps): ReactNode {
 }
 
 /** A call as JSON with its params in key order, so that two calls that differ only in that order give one key. */
-function paramsKey(call: PromptCall): string {
+function sortedCallKey(call: PromptCall): string {
   const params = Object.entries(call.params).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
   return JSON.stringify([call.operation, params, call.inputs])
 }
@@ -168,7 +168,7 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
   useEffect(() => {
     if (sentKey.current === editedKey) return
     // A draft whose call is the lent call, with no chip text that its param cannot take, holds no edit.
-    const unedited = typing.length === 0 && paramsKey(edited) === paramsKey(callOf(draftOf(call).document, call))
+    const unedited = typing.length === 0 && sortedCallKey(edited) === sortedCallKey(callOf(draftOf(call).document, call))
     if (unedited) clearDraft(storeKey)
     else writeDraft(storeKey, draft)
     // The store follows the draft, which holds every edit; `call` is read only to tell an edited draft from its start.
