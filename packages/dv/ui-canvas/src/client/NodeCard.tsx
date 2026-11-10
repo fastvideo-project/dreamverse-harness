@@ -136,7 +136,11 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   const running = status?.running() ?? t('node.running')
   let marker: string | null = null
   if (flags.rendering) marker = running
-  else if (flags.failed) marker = status?.failed() ?? t('node.failed')
+  else if (flags.failed) {
+    const failedWords = status?.failed() ?? t('node.failed')
+    const reason = node.record.error?.message
+    marker = reason === undefined || reason === '' ? failedWords : t('node.failedReason', { status: failedWords, reason })
+  }
   const count = node.versions.length
   const meta = [count > 1 ? t('node.version', { n: String(count) }) : '', node.meta ?? ''].filter(part => part !== '').join(' · ')
   const caption = (

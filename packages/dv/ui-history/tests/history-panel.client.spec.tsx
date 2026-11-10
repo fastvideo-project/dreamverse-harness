@@ -364,6 +364,16 @@ describe('the History tab', () => {
     expect(within(row('f1')).queryByTestId('dv-history-preview')).toBeNull()
   })
 
+  it('shows the error message of a failed or cancelled step under its meta line, and no line without one', async () => {
+    const withError = (id: string, status: 'failed' | 'cancelled', message?: string): HistoryEntry => ({
+      record: record({ id, operation: 'shot.render', status, outputs: [], error: message === undefined ? undefined : { code: 'operation_failed', message } }), place: 'before',
+    })
+    const { row } = await mount([withError('f1', 'failed', 'GPU out of memory'), withError('c1', 'cancelled', 'Stopped by you'), withError('f2', 'failed'), ...ENTRIES])
+    await waitFor(() => { row('f1') })
+    const reasonOf = (id: string): HTMLElement | null => row(id).querySelector<HTMLElement>('[data-testid="dv-history-reason"]')
+    expect([reasonOf('f1')?.textContent, reasonOf('f1')?.title, reasonOf('c1')?.textContent, reasonOf('f2'), reasonOf('g1')]).toEqual(['GPU out of memory', 'GPU out of memory', 'Stopped by you', null, null])
+  })
+
   it('greys a render step after the current one with a faded, black-and-white thumbnail', async () => {
     const { row } = await mount(ENTRIES.map(entry => entry.record.id === 'g1' ? { ...entry, place: 'after' as const } : entry))
     const thumb = await waitFor(() => {

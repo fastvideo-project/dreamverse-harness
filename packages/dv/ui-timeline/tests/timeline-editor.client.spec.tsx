@@ -288,13 +288,28 @@ describe('TimelineView', () => {
     expect(view.container.querySelector('[data-clip="cl8"]')?.getAttribute('title')).toContain('渲染中…')
     expect(view.container.querySelector('[data-clip="cl9"]')?.getAttribute('title')).toContain('渲染失败')
     expect(view.container.querySelectorAll('[data-clip="cl8"] [data-trim]')).toHaveLength(0)
-    expect(view.getByTestId('dv-timeline-export-waiting').textContent).toBe('片段 3, 4 还没就绪，全部就绪后才能导出')
+    expect(view.getByTestId('dv-timeline-export-waiting').textContent).toBe('片段 3 还没就绪，全部就绪后才能导出')
+    expect(view.getByTestId('dv-timeline-export-failed').textContent).toBe('片段 4 渲染失败；重新渲染或移除后才能导出')
     expect((view.getByText('导出') as HTMLButtonElement).disabled).toBe(true)
     // Clip 3 plays from 7 s and clip 4 from 9 s.
     fireEvent.pointerDown(view.getByTestId('dv-timeline-ruler'), { clientX: 7.5 * 40 })
     expect(view.getByTestId('dv-timeline-viewer-placeholder').textContent).toBe('片段 3：渲染中…')
     fireEvent.pointerDown(view.getByTestId('dv-timeline-ruler'), { clientX: 9.5 * 40 })
     expect(view.getByTestId('dv-timeline-viewer-placeholder').textContent).toBe('片段 4：渲染失败')
+  })
+
+  it('names a failed clip apart from the clips still rendering, and holds export while only a failed clip remains', async () => {
+    const state = twoTimelines()
+    state.components.proj.records.push(record({ id: 'r9', operation: 'shot.render', status: 'failed', params: {} }))
+    state.components.timeline.timelines[0]?.clips.push(
+      { id: 'cl9' as ClipId, asset: null, source: { record: 'r9' as RecordId, output: 0 }, in_sec: null, out_sec: null },
+    )
+    const { fetch } = scriptedFetch({ state: () => state })
+    const view = render(centerView(booted, { client: new DvClient(fetch) }))
+    await view.findByRole('list', { name: '视频轨道' })
+    expect(view.queryByTestId('dv-timeline-export-waiting')).toBeNull()
+    expect(view.getByTestId('dv-timeline-export-failed').textContent).toBe('片段 3 渲染失败；重新渲染或移除后才能导出')
+    expect((view.getByText('导出') as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('shows English copy and default timeline names when the DSH language is English', async () => {

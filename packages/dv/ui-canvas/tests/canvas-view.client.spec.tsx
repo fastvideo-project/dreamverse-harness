@@ -1435,7 +1435,19 @@ describe('the node card', () => {
     await waitFor(() => { node('g1') })
     const frame = node('g1').querySelector<HTMLElement>('[data-node-frame]')
     expect(frame?.style.height).toBe('117px')
-    expect(frame?.textContent).toBe('生成失败重试')
+    expect(frame?.textContent).toBe('生成失败：GPU out of memory重试')
+    await runtime.dispose()
+  })
+
+  it('draws only the failed words of a failed take whose record carries no error', async () => {
+    const { runtime, node } = await mountCanvas({
+      edit: (state) => {
+        failG1(state)
+        state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g1' ? { ...entry, error: undefined } : entry)
+      },
+    })
+    await waitFor(() => { node('g1') })
+    expect(node('g1').querySelector<HTMLElement>('[data-node-frame]')?.textContent).toBe('生成失败重试')
     await runtime.dispose()
   })
 

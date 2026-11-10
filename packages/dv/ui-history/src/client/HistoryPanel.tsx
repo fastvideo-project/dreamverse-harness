@@ -493,6 +493,8 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
   // The intent the agent gave for its call; a call without one records the operation name, which the label already shows.
   // A human action's intent repeats its label, so it stays in the tooltip.
   const words = record.actor === 'agent' && record.intent !== record.operation ? record.intent : ''
+  // Only a record that ended without output carries a reason worth a line of its own.
+  const reason = (record.status === 'failed' || record.status === 'cancelled') && record.error?.message ? record.error.message : undefined
   const size = nested ? 28 : 40
   // A step after the current position is clearly greyed: faded text and a black-and-white thumbnail.
   const after = entry.place === 'after'
@@ -540,6 +542,9 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
               : null}
             {words === '' ? null : <span title={words} className={css.words}>“{words}”</span>}
           </div>
+          {reason === undefined
+            ? null
+            : <p data-testid="dv-history-reason" title={reason} className={record.status === 'failed' ? css.reasonFailed : css.reason}>{reason}</p>}
         </div>
         <StepActions onBack={entry.place === 'current' ? null : () => { props.onJump(record.id) }} />
       </div>
