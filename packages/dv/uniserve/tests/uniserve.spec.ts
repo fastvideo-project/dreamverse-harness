@@ -282,6 +282,8 @@ describe.skipIf(!HAS_FFMPEG)('dv-uniserve', () => {
     ])
     expect(await entry.validateGenerationRequest({ ...request([image], audios[0] ?? image), prompt: '@[first frame](dv:input/first_frame) smiles' }))
       .toEqual([`Its first_frame input takes assets of type image; asset ${String(audios[0])} is of type audio.`])
+    expect(await entry.validateGenerationRequest({ ...request([image], null), lastFrame: image }))
+      .toEqual(['It takes no last_frame input; this shot has 1.'])
   })
 
   it('renders through POST /v1/videos/sync with labeled citations and data URIs, and yields the last frame and timings', async () => {
