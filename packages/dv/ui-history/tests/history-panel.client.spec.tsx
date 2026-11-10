@@ -366,7 +366,7 @@ describe('the History tab', () => {
 
   it('shows the error message of a failed or cancelled step under its meta line, and no line without one', async () => {
     const withError = (id: string, status: 'failed' | 'cancelled', message?: string): HistoryEntry => ({
-      record: record({ id, operation: 'shot.render', status, outputs: [], error: message === undefined ? undefined : { code: 'operation_failed', message } }), place: 'before',
+      record: record({ id, operation: 'shot.render', status, outputs: [], ...message === undefined ? {} : { error: { code: 'operation_failed', message } } }), place: 'before',
     })
     const { row } = await mount([withError('f1', 'failed', 'GPU out of memory'), withError('c1', 'cancelled', 'Stopped by you'), withError('f2', 'failed'), ...ENTRIES])
     await waitFor(() => { row('f1') })

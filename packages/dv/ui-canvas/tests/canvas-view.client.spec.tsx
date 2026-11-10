@@ -1476,7 +1476,11 @@ describe('the node card', () => {
     const { runtime, node } = await mountCanvas({
       edit: (state) => {
         failG1(state)
-        state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g1' ? { ...entry, error: undefined } : entry)
+        state.components.proj.records = state.components.proj.records.map((entry) => {
+          if (entry.id !== 'g1') return entry
+          const { error: _error, ...withoutError } = entry
+          return withoutError
+        })
       },
     })
     await waitFor(() => { node('g1') })
