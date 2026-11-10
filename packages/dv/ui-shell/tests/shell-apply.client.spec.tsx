@@ -368,6 +368,21 @@ describe('the navigator', () => {
     expect(bench.store.getShell().projectId).toBe('p1')
   })
 
+  it('keeps a failure toast when an action that started before the failure succeeds', async () => {
+    const { bench, view } = await mountNavigator()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let open: (session: SessionId) => void = () => {}
+    bench.runtime.sessions.stubCreate(() => new Promise((resolve) => { open = resolve }))
+    fireEvent.click(view.getByRole('button', { name: 'New chat' }))
+    bench.runtime.sessions.stubCreate(() => Promise.reject(new Error('host offline')))
+    fireEvent.click(view.getByRole('button', { name: 'New chat' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toBe("Couldn't complete that: host offline")
+    await act(async () => { open('blank-p1' as SessionId); await Promise.resolve() })
+    await waitFor(() => { expect(bench.store.getShell().projectId).toBe('p1') })
+    expect(screen.getByRole('alert')).toBe(alert)
+  })
+
   it('removes the failure toast once it has faded', async () => {
     const { bench, view } = await mountNavigator()
     vi.spyOn(console, 'warn').mockImplementation(() => {})

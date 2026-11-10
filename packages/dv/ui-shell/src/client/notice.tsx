@@ -44,12 +44,14 @@ export function clearActionFailure(): void {
 
 /**
  * Start an asynchronous shell action. A rejection is logged with `console.warn` and shown in the toast; a success
- * clears a failure still on display. An action that settles after `clearActionFailure` changes no toast.
+ * clears a failure still on display that was reported before the action started. An action that settles after
+ * `clearActionFailure` changes no toast.
  * @param work - the action.
  */
 export const runAction: ActionRunner = (work) => {
   const started = generation
-  work().then(() => { if (started === generation && failure !== null) publish(null) }, (error: unknown) => {
+  const seen = reports
+  work().then(() => { if (started === generation && failure !== null && failure.seq <= seen) publish(null) }, (error: unknown) => {
     console.warn('ui-shell: navigation failed', error)
     if (started !== generation) return
     reports += 1
