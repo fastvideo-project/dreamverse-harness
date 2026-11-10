@@ -306,6 +306,7 @@
   box-sizing: border-box;
   padding: 6px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   border-radius: var(--dv-radius-xl);
   background: var(--dv-surface-1);
   box-shadow: 0 0 0 1px var(--dv-line-strong), var(--dv-shadow-2);
@@ -545,6 +546,7 @@
 }
 
 .treeCaret {
+  position: relative;
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -556,6 +558,7 @@
 }
 
 .treeAdd {
+  position: relative;
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -570,6 +573,15 @@
 .treeAdd:hover,
 .rowMenuButton:hover {
   color: var(--dv-text);
+}
+
+/* The 20 px caret, add, and row-menu buttons keep their size; the pseudo-element lifts each target to 24 px. */
+.treeCaret::after,
+.treeAdd::after,
+.rowMenuButton::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
 }
 
 /* The wordmark's 544 x 48 view box at 18 px tall. */
@@ -635,19 +647,22 @@
   font: inherit;
 }
 
-/* Row menu: hidden until the row is hovered or the menu is open. */
+/* Row menu: transparent until the row is hovered, holds focus, or the menu is open. It stays in the tab order, which
+   `visibility: hidden` would remove. */
 .rowMenu {
   position: relative;
   flex: none;
-  visibility: hidden;
+  opacity: 0;
 }
 
 .treeRow:hover .rowMenu,
+.treeRow:focus-within .rowMenu,
 .rowMenu[data-open] {
-  visibility: visible;
+  opacity: 1;
 }
 
 .rowMenuButton {
+  position: relative;
   display: inline-flex;
   align-items: center;
   padding: 2px;
@@ -730,6 +745,7 @@
 /* Focus and motion for the shell's own controls. */
 .navSecondary:focus-visible,
 .navItem:focus-visible,
+.treeRow:focus-visible,
 .treeCaret:focus-visible,
 .treeLabel:focus-visible,
 .treeAdd:focus-visible,
