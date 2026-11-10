@@ -162,5 +162,60 @@ export function timecode(seconds: number): string {
  * @returns the video assets.
  */
 export function videoAssets(state: WireState): Asset[] {
-  return state.assets.filter(asset => asset.mime.startsWith('video/')).sort((a, b) => b.created_at.localeCompare(a.created_at))
+  return assetsOfType(state, 'video/')
+}
+
+/**
+ * The audio assets of a state, newest first, for the 声音 row.
+ * @param state - the project state.
+ * @returns the audio assets.
+ */
+export function audioAssets(state: WireState): Asset[] {
+  return assetsOfType(state, 'audio/')
+}
+
+/**
+ * @param state - the project state.
+ * @param prefix - a MIME type prefix such as `video/`.
+ * @returns the assets whose MIME type starts with the prefix, newest first.
+ */
+function assetsOfType(state: WireState, prefix: string): Asset[] {
+  return state.assets.filter(asset => asset.mime.startsWith(prefix)).sort((a, b) => b.created_at.localeCompare(a.created_at))
+}
+
+/** One sound placed on the 声音 row. */
+export interface TrackSound {
+  /** The sound ID. */
+  sound: string
+  /** The audio asset. */
+  assetId: string
+  /** The asset's file name. */
+  name: string
+  /** The timeline time at which the sound starts. */
+  startSec: number
+  /** How long the sound plays. */
+  seconds: number
+  /** The sound track that holds it, 0 for the first. */
+  track: number
+}
+
+/**
+ * Place the sounds of a timeline. A sound plays its asset's `duration_sec`; while that is unknown, the length its
+ * `<audio>` element measured; else `FALLBACK_CLIP_SECONDS`.
+ * @param state - the project state.
+ * @param timeline - the shown timeline.
+ * @param measured - the lengths the sound elements measured, by asset.
+ * @returns the sounds and the timeline time at which the last one ends.
+ */
+export function placeSounds(
+  state: WireState, timeline: Timeline | null, measured: ReadonlyMap<string, number>,
+): { sounds: TrackSound[]; end: number } {
+  const assets = new Map(state.assets.map(asset => [asset.id, asset]))
+  const sounds = (timeline?.sounds ?? []).map((sound) => {
+    const asset = assets.get(sound.asset)
+    const seconds = asset?.duration_sec ?? measured.get(sound.asset) ?? FALLBACK_CLIP_SECONDS
+    const name = asset?.name ?? sound.asset
+    return { sound: sound.id, assetId: sound.asset, name, startSec: sound.start_sec, seconds, track: sound.track }
+  })
+  return { sounds, end: Math.max(0, ...sounds.map(sound => sound.startSec + sound.seconds)) }
 }

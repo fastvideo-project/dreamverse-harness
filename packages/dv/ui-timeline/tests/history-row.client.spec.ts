@@ -1,4 +1,4 @@
-/** The History row of timeline records: the timeline of each clip, the focus of a selected record, and its registration. */
+/** The History row of timeline records: the timeline of each clip and sound, the focus of a selected record, and its registration. */
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { DvHistory, HistoryRow } from '@dv/ui-history/contract'
@@ -44,6 +44,18 @@ describe('timelineHistoryRow', () => {
     expect(timelineHistoryRow.focus?.(lost, records)).toBeNull()
     const unnamed = record({ id: 'y', operation: 'timeline.export', params: {} })
     expect(timelineHistoryRow.focus?.(unnamed, records)).toBeNull()
+  })
+
+  it('assigns each sound to the timeline its sound_add names, and focuses a sound record\'s timeline without a clip', () => {
+    const added = record({ id: 'a', operation: 'timeline.sound_add', params: { timeline: 't2', asset: 'm.mp3', start_sec: 0 }, report: { sounds: ['sd1'] } })
+    const removed = record({ id: 'r', operation: 'timeline.sound_remove', params: { sound: 'sd1' } })
+    const sounded = [...records, added, removed]
+    expect(Object.fromEntries(clipTimelines(sounded))).toEqual({ cl1: 't1', cl2: 't1', cl3: 't2', cl4: 't1', sd1: 't2' })
+    // A sound_remove names only its sound, so the sound's timeline is the focus.
+    expect(timelineHistoryRow.focus?.(removed, sounded)).toEqual({ view: 'timeline', target: { timeline: 't2', clip: null } })
+    expect(timelineHistoryRow.focus?.(added, sounded)).toEqual({ view: 'timeline', target: { timeline: 't2', clip: null } })
+    const lost = record({ id: 'r2', operation: 'timeline.sound_remove', params: { sound: 'sd9' } })
+    expect(timelineHistoryRow.focus?.(lost, sounded)).toBeNull()
   })
 
   it('registers once dvHistory is present, and the plugin disposal removes it', async () => {

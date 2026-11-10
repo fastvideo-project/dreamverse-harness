@@ -1,5 +1,5 @@
 ---
-description: "作为右侧栏标签和中央视图的 DreamVerse 时间线编辑器：项目的每条时间线在一条轨道上，移动、裁剪、拆分、插入、移除手势变成 `timeline.*` 记录。"
+description: "作为右侧栏标签和中央视图的 DreamVerse 时间线编辑器：项目的每条时间线在一条视频轨道及其音轨上，片段和声音手势变成 `timeline.*` 记录。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包让 web 应用在对话旁边多一个时间线编辑器。编辑器为每条时间线显示一个标签，一个跨片段连续播放所选时间线的预览，以及一条视频轨道：每个片段的宽度就是它播放的时长，过期时有标记。你可以在轨道上移动、裁剪、拆分和移除片段，并把素材库里的素材拖到轨道上或用 ＋ 选择来插入。右侧栏的 `dv-timeline` 标签类型把编辑器包在项目栏下；`TimelineView` 是 shell 中间区域的 时间线 视图（`dv.center.view`）。两者都显示项目的当前状态，当前状态改变时跟着改变。
+使用本包让 web 应用在对话旁边多一个时间线编辑器。编辑器为每条时间线显示一个标签，一个播放所选时间线的预览，一条视频轨道（每个片段的宽度就是它播放的时长，过期时有标记），以及音轨。你可以移动、裁剪、拆分和移除片段，把素材库里的素材拖到轨道上或用 ＋ 选择来插入，并把音频加到音轨上。右侧栏的 `dv-timeline` 标签类型把编辑器包在项目栏下；`TimelineView` 是 shell 中间区域的 时间线 视图（`dv.center.view`）。两者都跟随项目的当前状态。
 
 ## 目录
 
@@ -28,6 +28,8 @@ kind: "package-reference"
 
 编辑器还有一条工具栏和一把标尺，每个片段带生产它的记录的最后一帧。拖动片段即移动，拖动片段边缘即裁剪，工具栏在播放头处拆分片段，其 撤销 和 重做 图标按钮把项目的当前位置往回或往前移一步（不论这一步是哪个视图做的），不写记录，当前位置是最后一步时 重做 不可用，Delete 键移除选中的片段。预览下方的控制栏左侧是时间码；中间是后退 5 秒、播放或暂停、前进 5 秒（编辑器获得焦点时，J、L、Shift+← 和 Shift+→ 也能跳 5 秒）；右侧是播放速度按钮和全屏按钮，播放速度按钮在 0.5×、1×、1.5×、2× 之间循环，并在浏览器标签页的会话内保持所选速度。原声轨道按每个片段的播放区间画出它的波形。拖动预览和工具栏之间的分隔线（或在分隔线上按 ArrowUp 和 ArrowDown）可改变轨道区的高度，浏览器把它记在 `localStorage` 键 `dv-timeline-track-height` 下；预览至少保留 160 px。
 
+音轨位于 原声 / Original audio 轨道下方。每条音轨的标题显示它的名称，没有名称时显示 声音 {n} / Sound {n}。双击标题，或在其右键菜单中选 重命名 / Rename，会打开名称输入框：按 Enter 或离开输入框时保存，按 Esc 取消；同一菜单中的 删除音轨 / Delete track 删除该音轨及其声音。最后一条音轨下方的 ＋ 添加音轨 / Add track 添加一条空音轨；显示着这样一条空音轨时，它不可用。每条音轨末尾的 ＋ 打开 添加声音 / Add sound 对话框，它显示新声音的开始位置，并列出 上传本地音频 / Upload local audio 和项目的音频素材（最新的在前）；上传会先把所选文件导入素材库，再添加它。新声音从该音轨上最后一个声音结束的地方开始；音轨为空时从播放头处开始。从添加开始到新声音显示出来之前，各个 ＋ 不可用。每个声音是一个与其播放时长等宽的块，波形上方的一条横栏显示文件名。点一个声音会选中它；按 Delete 或 Backspace、点工具栏的 删除声音 / Delete sound 按钮，或在其右键菜单中选 删除 / Delete，会移除它。预览播放时，每个声音按播放速度与画面同步播放。时间线有声音时，工具栏在 导出 旁边显示 导出暂不包含声音 / Export does not include sounds yet。
+
 ```yaml
 - id: dv-ui-timeline
   name: '@dv/ui-timeline'
@@ -43,12 +45,16 @@ Host 半边不注册任何东西。浏览器半边注册 `dv-timeline` 标签类
 | 对选中片段按 Delete | `timeline.clip_remove {clip}` |
 | 把素材拖到轨道上，或用 ＋ 选择 | `timeline.clip_insert {timeline, at, asset}` |
 | ＋ 新建、重命名、删除标签 | `timeline.create {timeline, assets: []}`（不带名称，标签显示 时间线 {n} / Timeline {n}）、`timeline.rename {timeline, name}`、`timeline.delete {timeline}` |
+| 在音轨上点 ＋，再选一个音频素材或 上传本地音频 / Upload local audio | `timeline.sound_add {timeline, asset, start_sec, track}`；上传时先通过 `/api/dv/assets/import`（`surface: asset_pool`）导入文件 |
+| 对选中的声音按 Delete 或 Backspace、点工具栏的 删除声音 / Delete sound，或在其右键菜单中选 删除 / Delete | `timeline.sound_remove {sound}`（`sound` 是声音 ID） |
+| 重命名音轨 | `timeline.sound_track_rename {timeline, track, name}`；名称为空或未改变时不发送 |
+| 删除音轨 / Delete track | `timeline.sound_track_remove {timeline, track}`；只在本视图中显示的空音轨直接消失，不写记录 |
 | 导出 | 一次 `timeline.export {timeline}` 调用；链接打开导出的视频 |
 | 对选中的过期片段点"仍然保留" | 对创建该片段素材的记录调用 `POST /api/dv/stale/accept`（`proj.stale_accept`） |
 
-每条记录都带 `surface: 'timeline'`、视图旁边的对话（存为记录的 `session`；记录是项目当前位置之后的一步），以及一句用 DSH 界面语言说明手势的意图。`TimelineView` 显示打开项目的中间区域字段 `timeline` 指定的时间线，否则显示第一条时间线；用户在那里选中或新建的时间线经所有者属性 `note` 设置该字段，因此 shell 把它写进 URL，会话切换器的封面也跟随它。标签主体为每个项目保留自己的所选时间线，不影响中间区域。`TimelineView` 通过 `@dv/ui-kit/locale.ts` 跟随 `<html lang>`；切换时间线标签会停止播放，并重置预览和播放头。点一个片段会选中它，不发送任何请求。＋ 的选择窗口打开时获得焦点。用关闭按钮、焦点在窗口里、在 ＋ 上或在包含窗口的元素上时按 Esc、点击窗口外面或用 Tab 移出窗口来关闭它时，不插入素材。素材没有时长时片段按五秒画。
+每条记录都带 `surface: 'timeline'`、视图旁边的对话（存为记录的 `session`；记录是项目当前位置之后的一步），以及一句用 DSH 界面语言说明手势的意图。`TimelineView` 显示打开项目的中间区域字段 `timeline` 指定的时间线，否则显示第一条时间线；用户在那里选中或新建的时间线经所有者属性 `note` 设置该字段，因此 shell 把它写进 URL，会话切换器的封面也跟随它。标签主体为每个项目保留自己的所选时间线，不影响中间区域。`TimelineView` 通过 `@dv/ui-kit/locale.ts` 跟随 `<html lang>`；切换时间线标签会停止播放，并重置预览和播放头。点一个片段会选中它，不发送任何请求。＋ 的选择窗口打开时获得焦点。用关闭按钮、焦点在窗口里、在 ＋ 上或在包含窗口的元素上时按 Esc、点击窗口外面或用 Tab 移出窗口来关闭它时，不插入素材。添加声音 / Add sound 对话框打开时同样获得焦点，用同样的方式关闭，不添加声音。素材没有时长时片段按五秒画；声音的素材没有时长时，按其 `<audio>` 元素测出的时长画，测不出时按五秒画。轨道延伸到最后一个片段或声音的结束处，取较晚者。
 
-DOM 带测试 ID `dv-timeline-body`、`dv-timeline-editor`、`dv-timeline-viewer`、`dv-timeline-viewer-empty`、`dv-timeline-time`、`dv-timeline-exported`、`dv-timeline-ruler` 和 `dv-timeline-playhead`；每个片段带 `data-clip`（片段 ID）、`data-clip-position` 和 `data-clip-stale`，每个标签带 `data-timeline`。
+DOM 带测试 ID `dv-timeline-body`、`dv-timeline-editor`、`dv-timeline-viewer`、`dv-timeline-viewer-empty`、`dv-timeline-time`、`dv-timeline-exported`、`dv-timeline-export-no-sounds`、`dv-timeline-ruler` 和 `dv-timeline-playhead`；每个片段带 `data-clip`（片段 ID）、`data-clip-position` 和 `data-clip-stale`，每个声音块及其 `<audio>` 元素带 `data-sound`（声音 ID），每条音轨带 `data-sound-track`，其标题带 `data-sound-track-head`（音轨编号），每个标签带 `data-timeline`。
 
 -----
 
@@ -58,7 +64,7 @@ DOM 带测试 ID `dv-timeline-body`、`dv-timeline-editor`、`dv-timeline-viewer
 <details>
 <summary>实现内部——点击展开</summary>
 
-`TimelineBody` 持有来自 `@dv/ui-kit/useView.ts` 的视图会话，在 `TimelineEditor` 上方画项目栏。`TimelineView` 自己读取项目的当前状态。`placeTimeline` 把状态里的一条时间线变成带坐标的片段；`useTimelinePlayer` 通过两个叠放的 `<video>` 元素播放它们。原声轨道的波形来自 `@dv/ui-kit/waveform.ts` 的 `clipPeaks` 和 `useAudioEnvelope`。每个手势都是一次 `DvClient.runOperation` 调用加一次状态重新拉取。
+`TimelineBody` 持有来自 `@dv/ui-kit/useView.ts` 的视图会话，在 `TimelineEditor` 上方画项目栏。`TimelineView` 自己读取项目的当前状态。`placeTimeline` 把状态里的一条时间线变成带坐标的片段；`useTimelinePlayer` 通过两个叠放的 `<video>` 元素播放它们。原声轨道和声音块的波形来自 `@dv/ui-kit/waveform.ts` 的 `clipPeaks` 和 `useAudioEnvelope`。`placeSounds` 摆放所显示时间线的声音；每个声音有一个隐藏的 `<audio>` 元素，播放器的位置、播放状态或速度改变时，`useSoundPlayback` 播放、暂停或定位每个元素，元素与播放头相差超过 0.25 秒时重新定位。每个手势都是一次 `DvClient.runOperation` 调用加一次状态重新拉取。
 
 | 文件 | 内容 |
 | --- | --- |
@@ -69,7 +75,8 @@ DOM 带测试 ID `dv-timeline-body`、`dv-timeline-editor`、`dv-timeline-viewer
 | [`src/client/TimelineView.tsx`](src/client/TimelineView.tsx) | 中央视图：状态、写入、中间区域字段 `timeline`，以及历史和 插入片段 的请求 |
 | [`src/client/selection.ts`](src/client/selection.ts) | 标签主体为每个项目所选的时间线，以及中央视图请求的读取 |
 | [`src/client/TimelineEditor.tsx`](src/client/TimelineEditor.tsx) | 编辑器：标签、预览、工具栏、标尺、轨道、手势 |
-| [`src/client/timelines.ts`](src/client/timelines.ts) | `timelinesOf(state)`（`timeline` 切片中的时间线，`@dv/timeline` 未加载时为 `[]`）、片段摆放、放下位置、时间码，以及 `videoAssets(state)`（＋ 提供的视频素材，最新的在前） |
+| [`src/client/timelines.ts`](src/client/timelines.ts) | `timelinesOf(state)`（`timeline` 切片中的时间线，`@dv/timeline` 未加载时为 `[]`）、片段和声音摆放、放下位置、时间码、`videoAssets(state)`（＋ 提供的视频素材，最新的在前），以及 `audioAssets(state)`（添加声音 / Add sound 对话框提供的音频素材，最新的在前） |
+| [`src/client/sound-playback.ts`](src/client/sound-playback.ts) | 声音与播放器同步的预览播放 |
 | [`src/client/records-in-use.ts`](src/client/records-in-use.ts) | 画布的 `RecordsInUse`：片段记录和裁剪标记 |
 | [`src/client/history-row.ts`](src/client/history-row.ts) | 时间线记录的 `HistoryRow`：每个片段所属的时间线和选中记录的定位 |
 | [`src/client/mention.ts`](src/client/mention.ts) | 对话输入框 `@` 菜单的片段提及类型 |
@@ -105,5 +112,9 @@ DOM 带测试 ID `dv-timeline-body`、`dv-timeline-editor`、`dv-timeline-viewer
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **只有一条视频轨道** — 原声轨道镜像视频片段，没有自己的编辑操作；字幕和配乐没有泳道。
-- **波形在浏览器里解码** — 原声轨道为每个片段画波形（`@dv/ui-kit/waveform.ts`）时，会下载片段的整个媒体文件，用 Web Audio API 解码其音频，一次解码一个素材，并在本次页面加载内按素材缓存在内存里；音频解码期间、解码失败时、媒体没有音轨时，片段保持纯色块。媒体文件取不到时（网络错误或 5xx 状态），结果不进缓存：片段在 2 秒、8 秒、30 秒后各重试一次，片段下次挂载时从头再试。
+- **只有一条视频轨道** — 原声轨道镜像视频片段，没有自己的编辑操作；字幕没有泳道。
+- **导出不含声音** — `@dv/timeline` 的 `timeline.export` 不包含任何声音；工具栏的提示说明了这一点。
+- **声音只随画面播放** — 声音只在预览播放片段时播放：没有就绪片段的时间线无法播放，超出最后一个片段的声音在片段结束处停止。
+- **新加的空音轨只留在打开的编辑器里** — ＋ 添加音轨 / Add track 不写记录，因此空音轨只在编辑器显示该时间线期间保留，直到它有了声音或名称。
+- **声音不能就地编辑** — 声音不能拖动、裁剪、移到另一条音轨，也不能调音量。
+- **波形在浏览器里解码** — 原声轨道为每个片段、声音块为其声音画波形（`@dv/ui-kit/waveform.ts`）时，会下载片段的整个媒体文件，用 Web Audio API 解码其音频，一次解码一个素材，并在本次页面加载内按素材缓存在内存里；音频解码期间、解码失败时、媒体没有音轨时，片段保持纯色块。媒体文件取不到时（网络错误或 5xx 状态），结果不进缓存：片段在 2 秒、8 秒、30 秒后各重试一次，片段下次挂载时从头再试。
