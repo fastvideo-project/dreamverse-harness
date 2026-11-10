@@ -45,7 +45,7 @@ DSH_PLAYWRIGHT_EXECUTABLE_PATH=/path/to/chrome-linux/chrome \
 | [`tests/stories/chat.e2e.ts`](tests/stories/chat.e2e.ts) | 对话及其输入框：跨轮次立即成为历史步骤的智能体修改、撤销之后智能体的修改丢弃被撤销的步骤、附上的图片、`@` 提及，以及模型请求收到的内容 |
 | [`tests/stories/navigation.e2e.ts`](tests/stories/navigation.e2e.ts) | 项目、对话、面板、重新加载、项目链接、浏览器历史和语言切换 |
 | [`tests/stories/project-updates.e2e.ts`](tests/stories/project-updates.e2e.ts) | 跨工具步骤、步骤之间的画布导入和两次后台渲染结束、两轮之间的撤销时的项目状态消息和项目更新消息：每个变化只报告一次，每次渲染附带其最后一帧图片；每个智能体请求都以相同的请求字段延伸上一个请求 |
-| [`tests/stories/late-wake.e2e.ts`](tests/stories/late-wake.e2e.ts) | 渲染在步骤闸门挡住下一轮第一步时结束：这一步的项目更新只报告一次结束，挡住期间到达的唤醒让这一轮不发模型请求就结束。状态为空闲的智能体也可能收到迟到的唤醒：压缩等维护任务运行时状态为空闲，此时排入的唤醒在收件箱中等待，维护期间到达的用户消息可以先开启下一轮，于是那一轮的项目更新在唤醒被认领之前就报告了该记录。本故事只覆盖正在运行的智能体 |
+| [`tests/stories/late-wake.e2e.ts`](tests/stories/late-wake.e2e.ts) | 渲染在步骤闸门挡住下一轮第一步时结束：这一步的项目更新只报告一次结束，挡住期间到达的唤醒让这一轮不发模型请求就结束 |
 | [`tests/stories/idle-wake.e2e.ts`](tests/stories/idle-wake.e2e.ts) | 渲染在智能体结束本轮之后才结束：唤醒开启一轮，其请求以项目更新结尾，每次渲染作为 `your call` 列出，没有请求带有唤醒；两次渲染时，第一次结束会等待仍在运行的第二次，由一次被唤醒的轮次报告两者 |
 
 -----
