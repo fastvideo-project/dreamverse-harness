@@ -8,7 +8,9 @@
  * one line when the current position moved. Records that the agent's own tool results showed are not repeated, and a
  * step with nothing new gets no message.
  *
- * The project update messages are the only messages that report a record's result. When a record that the agent's own
+ * The project update messages are the only messages that report a record's result. An update that lists a done record
+ * of the session's own call shows that record's image outputs as image blocks after its text, as the call's tool result
+ * would have shown them. When a record that the agent's own
  * call started in the background finishes, the record-notices module queues a wake (`wakeMessage`), which names the
  * record and carries no result. The `agent/pre-step` listener removes every wake from the step's messages, so a model
  * never receives one, and the project update message of that step lists the finish, unless an earlier message or tool
@@ -33,7 +35,7 @@ import { isReplacementSurfaceEvent, type SessionEvent } from '@deepseek-ai/dsh-s
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { z as zod } from 'zod'
-import { outputLine, outputsOf } from './agent-tools.ts'
+import { imagesOf, outputLine, outputsOf } from './agent-tools.ts'
 import type DvProject from './index.ts'
 import { projectSummary, specOf, summaryOf, type ProjToolDeps } from './proj-tools.ts'
 import { SEEN_META_KEY } from './shared.ts'
@@ -294,14 +296,40 @@ export function wakeMessage(records: readonly RecordId[]): UserMessage {
 }
 
 /**
+ * A project update message with the image outputs of each done record of the session's own calls that it lists, saved
+ * as attachments and appended after the text, as the operation tool result of that call would show them. A project
+ * state message, and an update that lists no such record, is returned unchanged.
+ * @param ctx - a context; the `attachments` service is read from it.
+ * @param project - the service.
+ * @param deps - the asset store.
+ * @param session - the agent's session ID.
+ * @param message - the message of {@link projectMessage}.
+ * @returns the message.
+ */
+async function withOwnImages(
+  ctx: Context, project: DvProject, deps: ProjToolDeps, session: SessionId, message: UserMessage,
+): Promise<UserMessage> {
+  if (message.source.kind !== PROJECT_MESSAGE_KIND || message.source.form !== 'notice') return message
+  const projectId = message.source.shown.project
+  const outputs = Object.entries(message.source.shown.records).flatMap(([id, status]) => {
+    if (status !== 'done') return []
+    const record = project.getRecord(projectId, brandString<RecordId>(id))
+    return record.actor === 'agent' && record.session === session ? record.outputs : []
+  })
+  const images = await imagesOf(ctx, deps.assets(), outputs)
+  if (images.length === 0) return message
+  return { ...message, content: [...message.content, ...images.map(attachment => ({ type: 'image' as const, attachment }))] }
+}
+
+/**
  * Register the `dvProjectSight` projection and the `agent/pre-step` listener under `ctx`. The listener awaits `next()`
  * and returns a reject decision and an aborted step unchanged. It removes every wake from the decision's messages. When
  * it removed none and none are left, a step that will not run (the first step of a turn, or a step whose claimed
- * messages a later listener removed) is returned unchanged. Otherwise it inserts {@link projectMessage}'s message right
- * after the last claimed message that is not a wake, so the user's own message precedes it, or returns the messages
- * without the wakes when there is no message. A step left without messages this way sends no model request unless tool
- * results keep its turn running: the agent loop ends the turn at a first step without messages, and at a later step
- * without messages after the model ended the turn.
+ * messages a later listener removed) is returned unchanged. Otherwise it inserts {@link projectMessage}'s message, with
+ * the images of {@link withOwnImages}, right after the last claimed message that is not a wake, so the user's own
+ * message precedes it, or returns the messages without the wakes when there is no message. A step left without
+ * messages this way sends no model request unless tool results keep its turn running: the agent loop ends the turn at a
+ * first step without messages, and at a later step without messages after the model ended the turn.
  * @param ctx - a context with the `sessionProjections` service; disposal removes both.
  * @param project - the service.
  * @param deps - the asset store and the reducers' summaries.
@@ -314,9 +342,12 @@ export function registerProjectUpdates(ctx: Context, project: DvProject, deps: P
     const kept = decision.messages.filter(entry => entry.source.kind !== WAKE_KIND)
     const woken = kept.length !== decision.messages.length
     if (!woken && kept.length === 0 && (step === 1 || messages.length > 0)) return decision
+    const session = brandString<SessionId>(agent.id)
     const seen = ctx.sessionProjections.stateOf(agent.session, SEEN_PROJECTION)
-    const message = seen === undefined ? null : projectMessage(project, deps, brandString<SessionId>(agent.id), seen)
-    if (message === null) return woken ? { ...decision, messages: kept } : decision
+    const text = seen === undefined ? null : projectMessage(project, deps, session, seen)
+    if (text === null) return woken ? { ...decision, messages: kept } : decision
+    const message = await withOwnImages(ctx, project, deps, session, text)
+    if (signal.aborted) return decision
     const last = kept.findLastIndex(entry => messages.includes(entry))
     return { ...decision, messages: kept.toSpliced(last + 1, 0, message) }
   })

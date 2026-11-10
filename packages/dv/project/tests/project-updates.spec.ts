@@ -126,6 +126,8 @@ interface Fixture {
   run(origin: RecordOrigin, operation: string, params: Record<string, unknown>, extra?: Partial<Parameters<DvProject['run']>[0]>): Promise<ProjectRecord>
   /** Let the render of `prompt` finish. */
   release(prompt: string): void
+  /** The name of each image saved through the `attachments` stand-in, in order. */
+  savedImages: string[]
 }
 
 /**
@@ -147,6 +149,13 @@ async function start(bound = true): Promise<Fixture> {
   } as never)
   context.provide('agents', { get: (id: string) => (id === SESSION ? agent : undefined) } as never)
   const services = provideChatServices(context)
+  const savedImages: string[] = []
+  context.provide('attachments', {
+    saveImage: (image: { mediaType: string; name: string }) => {
+      savedImages.push(image.name)
+      return Promise.resolve({ attachmentId: `att-${image.name}`, mediaType: image.mediaType })
+    },
+  } as never)
   await context.plugin(SystemPrompt, {}).await()
   await context.plugin(ToolRuntime).await()
   await context.plugin(DvProject, {
@@ -183,6 +192,15 @@ async function start(bound = true): Promise<Fixture> {
       return { outputs: [context.importAsset(Buffer.from(prompt), { mime: 'video/mp4', name: 'shot.mp4' })] }
     },
   } satisfies OperationSpec)
+  project.registerOperation({
+    ...base, name: 'shot.still', component: 'shot', params: { prompt: { type: 'string' } }, outputs: [{ role: 'still', type: 'image' }],
+    resource: 'gpu', summarize: record => `still ${String(record.params['prompt'])}`,
+    execute: async (context) => {
+      const prompt = String(context.params['prompt'])
+      await gate(prompt).promise
+      return { outputs: [context.importAsset(Buffer.from(prompt), { mime: 'image/png', name: `${prompt}.png` })] }
+    },
+  } satisfies OperationSpec)
   // An unbound session runs in a folder of its own, which dv_proj_create can make a project.
   if (!bound) services.chats.open(SESSION, await project.newProjectFolder('From chat'))
   const projectId = bound
@@ -193,7 +211,7 @@ async function start(bound = true): Promise<Fixture> {
   const log = new AgentLog(project, deps)
   holder.log = log
   return {
-    context, project, projectId, services, deps, log, agent, events: agentEvents(context, agent as never),
+    context, project, projectId, services, deps, log, agent, savedImages, events: agentEvents(context, agent as never),
     call(name, args) {
       calls += 1
       const agent = { id: SESSION, session: { id: SESSION } }
@@ -455,8 +473,8 @@ describe('finished records in the agent\'s messages', () => {
   }
 
   /** Start a render as the agent's call, log its pending result, and wait until it finished and its notice was queued. */
-  async function finishedRender(fixture: Fixture, prompt: string): Promise<RecordId> {
-    const result = await fixture.call('dv_shot_render', { reason: prompt, prompt })
+  async function finishedRender(fixture: Fixture, prompt: string, tool = 'dv_shot_render'): Promise<RecordId> {
+    const result = await fixture.call(tool, { reason: prompt, prompt })
     fixture.log.toolResult(result)
     const record = brandString<RecordId>((result.value as { record: string }).record)
     fixture.release(prompt)
@@ -516,12 +534,40 @@ describe('finished records in the agent\'s messages', () => {
     expect(fixture.log.events.some(event => event.type === 'user/message' && event.data.source.kind === 'dv-project-wake')).toBe(false)
   })
 
-  it('carries only text in every message a step gets, and no image', async () => {
+  it('carries only text for a finished call without an image output', async () => {
     const fixture = await start()
     fixture.log.step()
     await finishedRender(fixture, 'one')
     const messages = await runStep(fixture, fixture.agent.claim(), 1)
     expect(messages.flatMap(message => message.content.map(block => block.type))).toEqual(['text'])
+    expect(fixture.savedImages).toEqual([])
+  })
+
+  it('shows the image outputs of the agent\'s own finished call as images after the update text, and logs them', async () => {
+    const fixture = await start()
+    fixture.log.step()
+    const record = await finishedRender(fixture, 'frame', 'dv_shot_still')
+    const [message] = await runStep(fixture, fixture.agent.claim(), 1)
+    expect(message?.content).toEqual([
+      { type: 'text', text: update(`- done ${record} (your call): still frame`, `  - still: ${assetOf('frame')} (image/png) https://assets.example/${assetOf('frame')}`) },
+      { type: 'image', attachment: { attachmentId: 'att-frame.png', mediaType: 'image/png' } },
+    ])
+    expect(fixture.savedImages).toEqual(['frame.png'])
+    // Model-visible ⟺ logged: the logged project update carries the same image.
+    const logged = fixture.log.events.findLast(event => event.type === 'user/message')
+    expect(logged?.type === 'user/message' ? logged.data.content : []).toEqual(message?.content)
+  })
+
+  it('shows no image for a finished record that the user started', async () => {
+    const fixture = await start()
+    fixture.log.step()
+    const render = await fixture.run(user('still on the canvas'), 'shot.still', { prompt: 'canvas' }, { after: [] })
+    fixture.release('canvas')
+    await fixture.project.wait(fixture.projectId, [render.id])
+    const messages = await runStep(fixture, [], 2)
+    expect(messages.map(textOf)).toEqual([update(`- done ${render.id} (user on canvas): still canvas`, `  - still: ${assetOf('canvas')} (image/png) https://assets.example/${assetOf('canvas')}`)])
+    expect(messages.flatMap(message => message.content.map(block => block.type))).toEqual(['text'])
+    expect(fixture.savedImages).toEqual([])
   })
 
   it('removes a wake even when nothing is bound, and returns other steps unchanged', async () => {

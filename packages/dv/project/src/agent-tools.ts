@@ -323,6 +323,25 @@ export function formatToolResult(value: OperationToolValue, spec: Pick<Operation
 /** The line a `pending` result ends with. */
 export const PENDING_LINE = 'This call runs in the background. A DreamVerse project update reports its result when it finishes; until then, keep working or end your turn.'
 
+/**
+ * Save the image outputs of a record as attachments, so a message can show them to the model as images.
+ * @param ctx - a context; the `attachments` service is read from it.
+ * @param assets - the asset store.
+ * @param outputs - the record's outputs; outputs that are no image are skipped.
+ * @returns the attachment references, in output order; none when no attachment service is mounted.
+ */
+export async function imagesOf(ctx: Context, assets: AssetStore, outputs: readonly AssetId[]): Promise<ImageAttachmentRef[]> {
+  const attachments = ctx.get('attachments')
+  if (attachments === undefined) return []
+  const refs: ImageAttachmentRef[] = []
+  for (const id of outputs) {
+    const meta = assets.get(id)
+    if (!IMAGE_MEDIA_TYPES.has(meta.mime)) continue
+    refs.push(await attachments.saveImage({ data: assets.read(id), mediaType: meta.mime as ImageMediaType, name: meta.name }))
+  }
+  return refs
+}
+
 /** Whether a JSON value is an attachment reference. */
 function isImageRef(value: JsonValue): value is JsonValue & ImageAttachmentRef {
   return typeof value === 'object' && value !== null && !Array.isArray(value) && typeof value['attachmentId'] === 'string'
@@ -440,26 +459,12 @@ export class AgentTools {
     })
   }
 
-  /** Attachment references of the image outputs, when an attachment service is mounted. */
-  private async imagesOf(outputs: AssetId[]): Promise<ImageAttachmentRef[]> {
-    const attachments = this.ctx.get('attachments')
-    if (attachments === undefined) return []
-    const assets = this.deps.assets()
-    const refs: ImageAttachmentRef[] = []
-    for (const id of outputs) {
-      const meta = assets.get(id)
-      if (!IMAGE_MEDIA_TYPES.has(meta.mime)) continue
-      refs.push(await attachments.saveImage({ data: assets.read(id), mediaType: meta.mime as ImageMediaType, name: meta.name }))
-    }
-    return refs
-  }
-
   /** The result value of a record. */
   private async valueOf(
     spec: OperationSpec, project: ProjectId, record: ProjectRecord, scheduled: RecordId[],
   ): Promise<OperationToolValue> {
     const assets = this.deps.assets()
-    const images = record.status === 'done' ? await this.imagesOf(record.outputs) : []
+    const images = record.status === 'done' ? await imagesOf(this.ctx, assets, record.outputs) : []
     return {
       project,
       record: record.id,
