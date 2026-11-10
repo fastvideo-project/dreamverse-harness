@@ -82,8 +82,8 @@ function McpNotice(): ReactNode {
       </button>
       {failure !== null && (
         <p className={css.noticeError} role="alert" title={failure}>
-          {t('MCP 开启失败。请重试，或到', 'Could not turn on MCP. Try again, or check it in ')}
-          <button type="button" className={css.link} onClick={() => { openMcpPage('plugins') }}>{t('插件页', 'Plugins')}</button>
+          {t('MCP 开启失败。请重试，或到', 'Could not turn on MCP. Try again, or check the ')}
+          <button type="button" className={css.link} onClick={() => { openMcpPage('plugins') }}>{t('插件页', 'Plugins page')}</button>
           {t('查看。', '.')}
         </p>
       )}
