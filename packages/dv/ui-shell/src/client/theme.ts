@@ -33,7 +33,7 @@ html body {
   --dv-ok: #15803D;
   --dv-ok-soft: #E7F6EC;
   --dv-warn: #B45309;
-  --dv-danger: #DC2626;
+  --dv-danger: #D52525;
   --dv-danger-soft: #FDF0F0;
   --dv-node-1: #DB2777;
   --dv-node-2: #EA580C;

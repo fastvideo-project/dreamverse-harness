@@ -281,7 +281,7 @@ function Tile({ input, view, cited, renderFactorySlot, onOpen, onRemove, onPin }
         {view.label}
         {version === null ? null : <span style={{ color: 'var(--dv-text-2)' }}>{`v${String(version.sent)}`}</span>}
       </button>
-      {cited ? null : <span style={{ color: 'var(--dv-text-3)' }}>{pick('未引用', 'uncited')}</span>}
+      {cited ? null : <span style={{ color: 'var(--dv-text-2)' }}>{pick('未引用', 'uncited')}</span>}
       {onPin === undefined || version === null || version.newest === version.sent
         ? null
         : <button type="button" style={{ ...plain, color: 'var(--dv-accent-text)' }} onClick={() => { onPin(version.newest) }}>{pick(`用 v${String(version.newest)}`, `Use v${String(version.newest)}`)}</button>}

@@ -310,7 +310,7 @@ export function NodeMenu({ at, area, items, label, menuRef }: NodeMenuProps): Re
           onClick={item.run}
         >
           <span style={{ flex: 1 }}>{item.label}</span>
-          {item.shortcut === undefined ? null : <span aria-hidden="true" style={{ ...mono, fontSize: 12, color: 'var(--dv-text-3)' }}>{item.shortcut.glyph}</span>}
+          {item.shortcut === undefined ? null : <span aria-hidden="true" style={{ ...mono, fontSize: 12, color: 'var(--dv-text-2)' }}>{item.shortcut.glyph}</span>}
         </button>
       ))}
     </div>
