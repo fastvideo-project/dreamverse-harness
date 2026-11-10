@@ -341,6 +341,21 @@ describe('the navigator', () => {
     expect(bench.openSession).toHaveBeenLastCalledWith('c1')
   })
 
+  it('lists every project after All projects, and the button then reads Show less', async () => {
+    const bench = await mountShell()
+    bench.server.projects = Array.from({ length: 13 }, (_, i): WireProject => ({
+      id: `p${String(i + 1)}`, title: `Project ${String(i + 1)}`, created_at: `2026-01-${String(i + 1).padStart(2, '0')}T12:00:00Z`, path: `/dv/p${String(i + 1)}`,
+    }))
+    await act(async () => { await bench.runtime.workspaces.update((draft) => { draft.items = [...draft.items] }) })
+    await waitFor(() => { expect(bench.store.getShell().projects).toHaveLength(13) })
+    const { view } = bench.runtime.renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {} })
+    expect(view.queryByTitle('Project 1')).toBeNull()
+    fireEvent.click(view.getByRole('button', { name: 'All projects' }))
+    expect(view.getByTitle('Project 1')).toBeDefined()
+    fireEvent.click(view.getByRole('button', { name: 'Show less' }))
+    expect(view.queryByTitle('Project 1')).toBeNull()
+  })
+
   it('shows the reason a failed action gave, clears it when a later action succeeds, and lets the person dismiss it', async () => {
     const { bench, view } = await mountNavigator()
     vi.spyOn(console, 'warn').mockImplementation(() => {})

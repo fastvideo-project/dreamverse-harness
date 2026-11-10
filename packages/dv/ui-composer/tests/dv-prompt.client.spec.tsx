@@ -272,6 +272,7 @@ describe('dv.prompt on the real stack', () => {
     }
     const { take, sent } = await mount(stored)
     await waitFor(() => { expect(take.querySelector('[data-reference-tile="hero@1"]')?.getAttribute('data-cited')).toBe('false') })
+    expect(within(take.querySelector('[data-reference-tile="hero@1"]') as HTMLElement).getByText('Uncited')).toBeDefined()
     fireEvent.click(await sendOf(take, 'Render new version'))
     await waitFor(() => { expect(sent).toEqual([stored]) })
   })

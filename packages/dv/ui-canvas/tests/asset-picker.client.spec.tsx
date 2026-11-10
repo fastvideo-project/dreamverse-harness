@@ -11,7 +11,7 @@ import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import { fixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { AssetPicker } from '../src/client/AssetPicker.tsx'
 import type { CanvasTranslate } from '../src/client/NodeCard.tsx'
-import { zh } from '../src/client/locales.ts'
+import { en, zh } from '../src/client/locales.ts'
 
 /**
  * A version kind whose items all stand at version 1 with no reference asset.
@@ -75,5 +75,19 @@ describe('AssetPicker', () => {
     expect(onCancel).not.toHaveBeenCalled()
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('in English, names the confirm button by how many picks it adds', () => {
+    const kinds = [namedKind('character', 'Characters', { hero: 'Hero' })]
+    const t: CanvasTranslate = makeTranslate(en)
+    render(
+      <AssetPicker
+        state={fixtureState()} project="p1" session={null} t={t} kinds={kinds} chosen={[]} onConfirm={() => undefined} onCancel={() => undefined}
+        renderSlot={() => null} renderFactorySlot={() => null}
+      />,
+    )
+    const picker = within(document.body).getByTestId('dv-canvas-asset-picker')
+    fireEvent.click(within(picker).getByRole('button', { name: 'Hero' }))
+    expect(within(picker).getByRole('button', { name: 'Add 1 selected' }).hasAttribute('disabled')).toBe(false)
   })
 })
