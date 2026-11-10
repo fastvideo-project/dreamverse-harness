@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概要
 
-使用本包在 DreamVerse 中显示用户的 Blender。它注册右侧栏的 `dv-blender` 标签页类型。没有连接 Blender 时，标签页显示三个连接步骤：下载插件、安装插件、粘贴连接串。连接后，标签页实时显示它的视口，带有与视口节点编辑器相同的视口控件，以及 Blender 的版本和文件。它还画出类型为 `blender` 的画布节点，即 `blender.render` 和 `blender.animation_render` 的版本，以及类型为 `blender-viewport` 的 Blender 视口节点；这两种类型由桥接端注册到画布节点列表。它读取的路由属于 [`@fastvideo/dreamverse-blender-bridge`](../blender-bridge/README.zh.md)。
+使用本包在 DreamVerse 中显示用户的 Blender。它注册右侧栏的 `dv-blender` 标签页类型。没有连接 Blender 时，标签页显示三个连接步骤：下载插件、安装插件、粘贴连接串。连接后，标签页实时显示它的视口和视口控件，以及 Blender 的版本和文件。它还画出桥接端注册的两种画布节点：`blender`，即 `blender.render` 和 `blender.animation_render` 的版本；以及 `blender-viewport`，即 Blender 视口节点。它读取的路由属于 [`@fastvideo/dreamverse-blender-bridge`](../blender-bridge/README.zh.md)。
 
 ## 目录
 

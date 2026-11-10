@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to show the user's Blender in DreamVerse. It registers the `dv-blender` tab type of the right Sidebar. While no Blender is connected, the tab shows the three connection steps: download the add-on, install it, and paste the connection string. While one is connected, the tab shows its viewport live with the viewport controls, the same as the viewport node's editor, and Blender's version and file. It also draws the canvas nodes of kind `blender`, the takes of `blender.render` and `blender.animation_render`, and of kind `blender-viewport`, the Blender viewport node; the bridge registers both kinds with the canvas node list. The routes it reads belong to [`@fastvideo/dreamverse-blender-bridge`](../blender-bridge/README.md).
+Use this package to show the user's Blender in DreamVerse. It registers the `dv-blender` tab type of the right Sidebar. While no Blender is connected, the tab shows the three connection steps: download the add-on, install it, and paste the connection string. While one is connected, the tab shows its viewport live with the viewport controls, and Blender's version and file. It also draws two canvas node kinds that the bridge registers: `blender`, the takes of `blender.render` and `blender.animation_render`, and `blender-viewport`, the Blender viewport node. The routes it reads belong to [`@fastvideo/dreamverse-blender-bridge`](../blender-bridge/README.md).
 
 ## Table of Contents
 
