@@ -97,7 +97,8 @@ async function start(maxConsecutiveWakes?: number): Promise<Fixture> {
   context.provide('workspaceRegistry', new TestWorkspaces() as never)
   const root = tempRoot()
   await context.plugin(DvProject, {
-    projectsFolder: join(root, 'projects'), cpuConcurrency: 4, gpuConcurrency: 4, promptSectionOrder: 4900, maxConsecutiveWakes,
+    projectsFolder: join(root, 'projects'), cpuConcurrency: 4, gpuConcurrency: 4, promptSectionOrder: 4900,
+    ...maxConsecutiveWakes === undefined ? {} : { maxConsecutiveWakes },
   }).await()
   const project = context.dvProject
   project.registerAssetStore(new MemoryAssets())
