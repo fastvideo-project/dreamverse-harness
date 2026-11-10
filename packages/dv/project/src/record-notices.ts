@@ -21,7 +21,8 @@
  *
  * Watches live in memory: a restart cancels every unfinished record (`Runner.recover`) while no agent turn is open. A
  * session without a registered agent when its record finishes gets no wake; the project update message shows the record
- * to the session's next step. Removing a project drops the watches of its records, and closing the module (when the
+ * to the session's next step. A record that a write after an undo discarded gets no wake: it left the history list, so
+ * no project update reports it. Removing a project drops the watches of its records, and closing the module (when the
  * service stops) drops every watch and delivers nothing afterwards. A delivery that throws is logged on the `dvProject`
  * logger and never fails the record write that finished the record.
  *
@@ -98,7 +99,7 @@ export class RecordNotices {
 
   /**
    * Deliver the wake of a watched record that finished to the session's agent, if one is registered; other records are
-   * ignored.
+   * ignored. A record that a write after an undo discarded (`error.code` `discarded`) drops its watch without a wake.
    * @param project - the project.
    * @param record - the record in its final status.
    */
@@ -106,6 +107,8 @@ export class RecordNotices {
     const watch = this.watches.get(record.id)
     if (!this.open || watch?.project !== project) return
     this.watches.delete(record.id)
+    // A discarded record leaves the history list, so no project update reports it: its wake would open an empty turn.
+    if (record.error?.code === 'discarded') return
     // The caller is the record store's change callback: a failing delivery must not fail the write that finished the record.
     try {
       const agent = this.ctx.get('agents')?.get(AgentSessionId(watch.session))

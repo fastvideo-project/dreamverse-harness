@@ -122,7 +122,10 @@ async function start(config: { maxConsecutiveWakes?: number } = {}): Promise<Fix
     resource: 'gpu', summarize: record => `shot ${String(record.params['prompt'])}`,
     execute: async (context) => {
       const prompt = String(context.params['prompt'])
-      await gate(prompt).promise
+      await Promise.race([gate(prompt).promise, new Promise((_resolve, reject) => {
+        if (context.signal.aborted) reject(new Error('aborted'))
+        context.signal.addEventListener('abort', () => { reject(new Error('aborted')) }, { once: true })
+      })])
       if (prompt === 'broken') throw new Error('The backend refused the request.')
       return { outputs: [
         context.importAsset(Buffer.from(`video ${prompt}`), { mime: 'video/mp4', name: 'shot.mp4' }),
@@ -257,6 +260,26 @@ describe('record notices', () => {
     const agent = fixture.agents.get(SESSION)
     expect(agent?.hows).toEqual(['followup'])
     expect(textOf(agent?.got[0]?.message)).toBe(wakeText(note))
+  })
+
+  it('drops the watch of a record that a write after an undo discarded, without a wake', async () => {
+    const fixture = await start()
+    const agent = fixture.agents.get(SESSION)
+    const one = recordOf(await fixture.call('dv_shot_render', { reason: 'one', prompt: 'one' }))
+    const two = recordOf(await fixture.call('dv_shot_render', { reason: 'two', prompt: 'two' }))
+    await fixture.project.undo(fixture.projectId)
+    await fixture.project.run({
+      actor: 'user', surface: 'canvas', session: null, turn: null, tool_call: null, intent: 'import on the canvas',
+      project: fixture.projectId, operation: 'asset.import', params: { name: 'photo.png' }, inputs: [], after: [],
+    })
+    await fixture.project.wait(fixture.projectId, [two])
+    expect(fixture.project.getRecord(fixture.projectId, two)).toMatchObject({ status: 'cancelled', error: { code: 'discarded' } })
+    expect(agent?.got).toEqual([])
+    // The discarded record no longer counts as unfinished, so the last watched record wakes the idle agent.
+    fixture.release('one')
+    await fixture.settle()
+    expect(agent?.hows).toEqual(['followup'])
+    expect(textOf(agent?.got[0]?.message)).toBe(wakeText(one))
   })
 
   it('injects into a running agent', async () => {
