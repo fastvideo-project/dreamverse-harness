@@ -10,15 +10,15 @@
  *   inbox holds a message, so a record that finishes during the last step of a turn reaches that turn, or the next one
  *   when it finishes while that turn unwinds (the last rule below).
  * - An idle agent whose session watches no other unfinished record is woken: the wake opens a turn. An idle agent
- *   whose session still watches another record gets the wake injected without waking it, so the turn that the last of
- *   them opens claims them together.
+ *   whose session still watches another record, or whose next-turn inbox holds a message from the user, gets the wake
+ *   injected without waking it: the turn that the last record opens, or the user's next action, claims them together.
  * - With `maxConsecutiveWakes` set, an agent that has already opened that many turns by wakes since its last message
  *   from the user gets further wakes injected without waking it; the next message from the user claims them.
  * - An agent that goes idle with wakes still in its next-step inbox (they arrived while its last turn unwound, or that
  *   turn ended with an error) is woken under the same rules: those wakes leave the next-step inbox and one wake that
  *   names all their records opens a turn. An agent whose last turn a cancellation ended (a user Stop that keeps the
- *   inbox), or whose next-turn inbox holds a message from the user, is not woken this way: its wakes stay in the
- *   next-step inbox, and the next turn claims them, opened by the user's next message or by the next wake.
+ *   inbox) is not woken this way: its wakes stay in the next-step inbox, and the next turn claims them, opened by the
+ *   user's next message or by the next wake.
  *
  * Watches live in memory: a restart cancels every unfinished record (`Runner.recover`) while no agent turn is open. A
  * session without a registered agent when its record finishes, or whose agent is being disposed (its `ctx` fiber is no
@@ -126,8 +126,7 @@ export class RecordNotices {
         return
       }
       const message = wakeMessage([record.id])
-      const othersPending = [...this.watches.values()].some(other => other.session === watch.session)
-      if (agent.status === 'idle' && !othersPending && this.spendWake(agent)) agent.followup(message)
+      if (agent.status === 'idle' && this.mayOpenTurn(agent)) agent.followup(message)
       else agent.inject(message)
     } catch (error) {
       this.ctx.logger('dvProject').warn('could not deliver the wake of record %s: %s', record.id, error instanceof Error ? error.message : String(error))
@@ -151,8 +150,7 @@ export class RecordNotices {
   /**
    * Wake an idle agent whose next-step inbox still holds wakes: no step of a running turn will claim them. The wakes
    * leave the inbox and one wake naming all their records opens a turn, unless a cancellation ended the agent's last
-   * turn, its next-turn inbox holds a message from the user, the session still watches another record, or the wake
-   * budget is spent; then they stay for the turn that opens next.
+   * turn or {@link RecordNotices.mayOpenTurn} refuses; then they stay for the turn that opens next.
    * @param agent - an agent that has just become idle, or whose session's watch was just dropped without a wake.
    */
   private wakeStranded(agent: Agent): void {
@@ -162,14 +160,23 @@ export class RecordNotices {
         .flatMap(message => message.source.kind === WAKE_KIND ? [{ message, source: message.source }] : [])
       if (stranded.length === 0 || this.ctx.get('agents')?.get(agent.id) !== agent) return
       // A Stop leaves queued work queued: the user's next message, or the next wake, opens the turn that claims them.
-      if (this.cancelledTurns.has(agent.session) || agent.inbox.nextTurn.some(message => message.source.kind === 'user')) return
-      const session = brandString<SessionId>(agent.id)
-      if ([...this.watches.values()].some(watch => watch.session === session) || !this.spendWake(agent)) return
+      if (this.cancelledTurns.has(agent.session) || !this.mayOpenTurn(agent)) return
       for (const { message } of stranded) agent.inbox.remove(message.id)
       agent.followup(wakeMessage(stranded.flatMap(({ source }) => source.records)))
     } catch (error) {
       this.ctx.logger('dvProject').warn('could not wake agent %s: %s', agent.id, error instanceof Error ? error.message : String(error))
     }
+  }
+
+  /**
+   * Whether a wake may open a turn in an idle agent, taking one wake from its budget when it may: its next-turn inbox
+   * holds no message from the user (a turn would claim that held-back message with the wake), its session watches no
+   * other record, and the budget allows.
+   */
+  private mayOpenTurn(agent: Agent): boolean {
+    if (agent.inbox.nextTurn.some(message => message.source.kind === 'user')) return false
+    const session = brandString<SessionId>(agent.id)
+    return ![...this.watches.values()].some(watch => watch.session === session) && this.spendWake(agent)
   }
 
   /** Whether a record is on the project's history list at or before the current position. */

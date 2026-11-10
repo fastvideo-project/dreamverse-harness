@@ -237,6 +237,23 @@ describe('record notices with the agent loop', () => {
     expect(fixture.agent.inbox.nextStep.map(message => message.source.kind)).toEqual(['dv-project-wake'])
   })
 
+  it('opens no turn for a record that finishes after a Stop while the user\'s message waits in the next-turn inbox', async () => {
+    const fixture = await start()
+    const first = await fixture.render('one')
+    const second = await fixture.render('two')
+    await startHangingTurn(fixture)
+    fixture.agent.followup(userMessage('queued'))
+    await fixture.finish('one', first)
+    fixture.agent.cancel({ kind: 'user' }, { keepInbox: true })
+    await settleIdle(fixture)
+
+    await fixture.finish('two', second)
+    await settleIdle(fixture)
+    expect(fixture.adapter.requests).toHaveLength(1)
+    expect(fixture.agent.inbox.nextTurn.map(message => textOf(message))).toEqual(['queued'])
+    expect(fixture.agent.inbox.nextStep.map(message => message.source.kind === 'dv-project-wake' ? message.source.records : [])).toEqual([[first], [second]])
+  })
+
   it('delivers no wake to an agent whose disposal is unwinding its scope', async () => {
     const fixture = await start()
     const record = await fixture.render('dunk')
