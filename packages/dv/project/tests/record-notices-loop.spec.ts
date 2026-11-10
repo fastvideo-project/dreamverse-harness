@@ -110,7 +110,11 @@ async function start(): Promise<Fixture> {
     params: { prompt: { type: 'string' } }, outputs: [{ role: 'video', type: 'video' }], resource: 'gpu',
     summarize: record => `shot ${String(record.params['prompt'])}`,
     execute: async (run) => {
-      await gate(String(run.params['prompt'])).promise
+      // A discard aborts the render, which then ends `cancelled` / `discarded`.
+      await Promise.race([gate(String(run.params['prompt'])).promise, new Promise((_resolve, reject) => {
+        if (run.signal.aborted) reject(new Error('aborted'))
+        run.signal.addEventListener('abort', () => { reject(new Error('aborted')) }, { once: true })
+      })])
       return { outputs: [run.importAsset(Buffer.from(`video ${String(run.params['prompt'])}`), { mime: 'video/mp4', name: 'shot.mp4' })] }
     },
   } satisfies OperationSpec)
@@ -247,6 +251,32 @@ describe('record notices with the agent loop', () => {
     expect(inject).not.toHaveBeenCalled()
     expect(fixture.adapter.requests).toEqual([])
     await fixture.finish('dunk', record)
+  })
+
+  it('opens a turn for a wake injected into the idle agent when a discard drops the session\'s other watch', async () => {
+    const fixture = await start()
+    const first = await fixture.render('one')
+    await fixture.render('two')
+    // The idle agent's session still watches the second render, so the first one's wake waits without waking it.
+    await fixture.finish('one', first)
+    expect(fixture.adapter.requests).toEqual([])
+    expect(fixture.agent.inbox.nextStep.map(message => message.source.kind)).toEqual(['dv-project-wake'])
+    await fixture.project.undo(fixture.projectId)
+    const write = await fixture.project.run({
+      actor: 'user', surface: 'canvas', session: null, turn: null, tool_call: null, intent: 'render on the canvas',
+      project: fixture.projectId, operation: 'shot.render', params: { prompt: 'canvas' }, inputs: [], after: [],
+    })
+
+
+    await vi.waitFor(() => { expect(fixture.adapter.requests).toHaveLength(1) })
+    expect(wakes(fixture).map(message => message.source.kind === 'dv-project-wake' ? message.source.records : [])).toEqual([[first]])
+    expect(fixture.agent.inbox.nextStep).toEqual([])
+    // The session's first step gets the project state message, which shows the finished render.
+    expect(textOf(fixture.adapter.requests[0]?.messages.at(-1))).toContain(`"record": "${first}"`)
+    // The model's first request streams until the turn is aborted.
+    fixture.agent.cancel({ kind: 'user' })
+    await fixture.agent.whenIdle()
+    if (write.record !== null) await fixture.finish('canvas', write.record.id)
   })
 
   it('opens a turn for a wake that a turn ending with an error left behind', async () => {

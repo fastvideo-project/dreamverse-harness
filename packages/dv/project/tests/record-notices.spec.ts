@@ -35,6 +35,8 @@ class FakeAgent {
   readonly got: Array<{ how: 'followup' | 'inject'; message: UserMessage }> = []
   /** The agent-scoped context; only its fiber state is read. */
   readonly ctx = { fiber: { state: FiberState.ACTIVE } }
+  /** The inboxes, which stay empty: the record notices read them when a watch is dropped without a wake. */
+  readonly inbox = { nextStep: [] as UserMessage[], nextTurn: [] as UserMessage[] }
 
   constructor(readonly id: SessionId) {}
 
