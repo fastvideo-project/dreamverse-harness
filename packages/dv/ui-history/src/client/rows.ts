@@ -39,7 +39,7 @@ export function laterShotsOf(record: ProjectRecord, entries: readonly HistoryEnt
   const names = new Set([record.id])
   for (const { record: candidate } of [...entries].reverse()) {
     if (candidate.status !== 'failed' || candidate.error?.code !== 'input_failed') continue
-    if (candidate.inputs.some(input => 'record' in input.ref && names.has(input.ref.record))) names.add(candidate.id)
+    if (candidate.inputs.some(input => 'record' in input.ref && names.has(String(input.ref.record)))) names.add(candidate.id)
   }
   return names.size - 1
 }
