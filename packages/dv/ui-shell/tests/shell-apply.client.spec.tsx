@@ -263,8 +263,7 @@ describe('the navigator', () => {
     const bench = await mountShell()
     await bench.runtime.sessions.add({ id: 'c1', summary: { blank: false, displayTitle: 'Chat one', updatedAt: 1 } })
     await bench.runtime.workspaces.update((draft) => {
-      const item = draft.items.find(candidate => candidate.workspaceId === 'p1')
-      if (item !== undefined) item.sessionIds = ['c1' as SessionId]
+      draft.items = draft.items.map(item => item.workspaceId === 'p1' ? { ...item, sessionIds: ['c1' as SessionId] } : item)
     })
     const navigator = bench.runtime.renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {} })
     return { bench, view: navigator.view }
