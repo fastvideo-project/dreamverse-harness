@@ -18,7 +18,7 @@ import { createActions } from './actions.ts'
 import { CenterPanel, type ShellInjected } from './Center.tsx'
 import { applyChrome } from './chrome.tsx'
 import { BrandName, Navigator } from './Navigator.tsx'
-import { ActionFailureToast } from './notice.tsx'
+import { ActionFailureToast, clearActionFailure } from './notice.tsx'
 import { followPanelEntries } from './panels.ts'
 import { applyRightPanelWidth } from './right-panel.ts'
 import { followSlotTabs } from './slot-tabs.ts'
@@ -59,9 +59,13 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.slots.inject('sidebar.brand.name', () => ctx.slots.register(
     { name: 'sidebar.brand.name', priority: -1 }, BrandName,
   )), 'ui-shell: brand')
-  ctx.effect(() => ctx.slots.inject('shell.overlay', () => ctx.slots.register(
-    { name: 'shell.overlay', id: 'dv.shell.failure' }, ActionFailureToast,
-  )), 'ui-shell: navigation failure toast')
+  ctx.effect(() => {
+    const unregister = ctx.slots.inject('shell.overlay', () => ctx.slots.register(
+      { name: 'shell.overlay', id: 'dv.shell.failure' }, ActionFailureToast,
+    ))
+    // The failure lives in a module store, which outlives the plugin.
+    return () => { unregister(); clearActionFailure() }
+  }, 'ui-shell: navigation failure toast')
   applyChrome(ctx)
   followPanelEntries(ctx)
   followSlotTabs(ctx, 'dv.explore')

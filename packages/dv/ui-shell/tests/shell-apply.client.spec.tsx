@@ -381,4 +381,17 @@ describe('the navigator', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(1) })
     expect(screen.queryByRole('alert')).toBeNull()
   })
+
+  it('shows no failure toast from before a dispose once the plugin is applied again', async () => {
+    const { bench, view } = await mountNavigator()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    bench.runtime.sessions.stubCreate(() => Promise.reject(new Error('host offline')))
+    fireEvent.click(view.getByRole('button', { name: 'New chat' }))
+    expect((await screen.findByRole('alert')).textContent).toBe("Couldn't complete that: host offline")
+    await bench.shell.dispose()
+    const { apply, inject } = await import('../src/client/index.ts')
+    await bench.runtime.mount({ inject: [...inject], apply })
+    await waitFor(() => { expect(bench.runtime.slots.entries('shell.overlay')).toHaveLength(1) })
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
 })

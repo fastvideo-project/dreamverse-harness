@@ -31,6 +31,11 @@ function publish(next: typeof failure): void {
   for (const listener of listeners) listener()
 }
 
+/** Clear the failure on display, so that a shell applied again starts with no toast. */
+export function clearActionFailure(): void {
+  publish(null)
+}
+
 /**
  * Start an asynchronous shell action. A rejection is logged with `console.warn` and shown in the toast; a success
  * clears a failure still on display.
