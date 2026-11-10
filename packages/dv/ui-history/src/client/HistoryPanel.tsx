@@ -4,7 +4,8 @@
  * (修改分镜计划 p1 → v2, 渲染镜头 7), who did it (你, 智能体, 自动), how long ago, its status, the thumbnail that the registered
  * history row names, and for an agent action the intent the agent gave for the call. The records that a record started
  * (`started_by`) fold under its row. The step at the current position carries 当前; the steps after it, which redo brings
- * back, are greyed. Every other row's ⋮ menu offers 回到这一步, which moves the current position to that step. Selecting
+ * back, are greyed. Every other row's ⋮ menu offers 回到这一步, which moves the current position to that step; the ⋮ menu
+ * of a pending or running row also offers 取消, which cancels the record. Selecting
  * a row plays its output under the row and, for a step at or before the current position, moves the center
  * (`dvCenter.show`) where the registered history row's `focus` says, else to the record's canvas node. The header holds
  * undo and redo; moves write no record, and a new step after a move discards the greyed steps. Media is drawn through
@@ -248,6 +249,11 @@ export function HistoryPanel(props: HistoryPanelProps): ReactNode {
     })
   }
   const report = (failure: unknown): void => { setNotice(errorMessage(failure)) }
+  // 取消: end a pending or running record; a refusal shows in the notice.
+  const cancel = (record: string): void => {
+    setNotice(null)
+    client.cancelRecord(projectId, record).catch(report)
+  }
   // 回到这一步: move the current position to the step.
   const jump = (record: string): void => {
     setNotice(null)
@@ -268,7 +274,7 @@ export function HistoryPanel(props: HistoryPanelProps): ReactNode {
     const changes = loaded.entries.filter(entry => entry.record.operation !== 'proj.create')
     const stateAssets = current.value?.assets ?? []
     const shared: RowContext = {
-      now, selected, onChoose: choose, rowRef, onJump: jump, state: current.value, renderFactorySlot,
+      now, selected, onChoose: choose, rowRef, onJump: jump, onCancel: cancel, state: current.value, renderFactorySlot,
       labels: { operations: operations.value ?? [], rows: registered, records: recordsById },
       rowOf: record => matchingRow(record, registered),
       assetOf: id => loaded.assets.get(id) ?? stateAssets.find(item => item.id === id),
@@ -355,13 +361,20 @@ function Actions(props: { client: DvClient; projectId: string; canRedo: boolean 
   )
 }
 
+/** One entry of a row's ⋮ menu: the suffix of its test ID, its text and its gesture. */
+interface StepItem {
+  id: string
+  label: string
+  run: () => void
+}
+
 /**
- * The ⋮ button at the end of a row and its menu with 回到这一步. Escape or a click outside closes the menu; its clicks and
- * keys never reach the row. The row of the current position has no button.
- * @param props - the 回到这一步 gesture, or null when it does not apply.
- * @returns the button and, while open, the menu; null without a gesture.
+ * The ⋮ button at the end of a row and its menu. Escape or a click outside closes the menu; its clicks and keys never
+ * reach the row.
+ * @param props - the menu entries that apply to the row.
+ * @returns the button and, while open, the menu; null without entries.
  */
-function StepActions(props: { onBack: (() => void) | null }): ReactNode {
+function StepActions(props: { items: StepItem[] }): ReactNode {
   const t = useText()
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLSpanElement | null>(null)
@@ -371,8 +384,8 @@ function StepActions(props: { onBack: (() => void) | null }): ReactNode {
     document.addEventListener('pointerdown', outside)
     return () => { document.removeEventListener('pointerdown', outside) }
   }, [open])
-  const { onBack } = props
-  if (onBack === null) return null
+  const { items } = props
+  if (items.length === 0) return null
   return (
     <span
       ref={root} className={css.stepActions}
@@ -390,12 +403,14 @@ function StepActions(props: { onBack: (() => void) | null }): ReactNode {
       {open
         ? (
           <div role="menu" className={css.menu}>
-            <button
-              type="button" role="menuitem" data-testid="dv-history-step-back" className={css.menuItem}
-              onClick={() => { setOpen(false); onBack() }}
-            >
-              {t('回到这一步', 'Go back to this step')}
-            </button>
+            {items.map(item => (
+              <button
+                key={item.id} type="button" role="menuitem" data-testid={`dv-history-step-${item.id}`} className={css.menuItem}
+                onClick={() => { setOpen(false); item.run() }}
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
         )
         : null}
@@ -427,6 +442,8 @@ interface RowContext {
   rowRef: (record: string) => (element: HTMLElement | null) => void
   /** 回到这一步 on a row. */
   onJump: (record: string) => void
+  /** 取消 on a pending or running row. */
+  onCancel: (record: string) => void
   state: WireState | null
   renderFactorySlot: RenderFactorySlot
   /** What the row labels read: the operation declarations, the registered rows and the records. */
@@ -497,6 +514,12 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
   // A step after the current position is clearly greyed: faded text and a black-and-white thumbnail.
   const after = entry.place === 'after'
   const dim = after ? 0.3 : 1
+  // The ⋮ menu: 取消 while the record is unfinished, 回到这一步 on every step but the current one.
+  const stepItems: StepItem[] = []
+  if (record.status === 'pending' || record.status === 'running') {
+    stepItems.push({ id: 'cancel', label: t('取消', 'Cancel'), run: () => { props.onCancel(record.id) } })
+  }
+  if (entry.place !== 'current') stepItems.push({ id: 'back', label: t('回到这一步', 'Go back to this step'), run: () => { props.onJump(record.id) } })
   return (
     <div
       ref={props.rowRef(record.id)} role="option" tabIndex={0} aria-selected={selected} title={record.intent}
@@ -541,7 +564,7 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
             {words === '' ? null : <span title={words} className={css.words}>“{words}”</span>}
           </div>
         </div>
-        <StepActions onBack={entry.place === 'current' ? null : () => { props.onJump(record.id) }} />
+        <StepActions items={stepItems} />
       </div>
       {selected
         ? <Details record={record} media={props.assetOf(record.outputs[0] ?? '')} words={words} renderFactorySlot={props.renderFactorySlot} />

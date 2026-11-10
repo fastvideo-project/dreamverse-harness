@@ -14,7 +14,7 @@ import { projReducer, ReducerRegistry } from '../src/reducers.ts'
 import { Runner } from '../src/runner.ts'
 import { Scheduler } from '../src/scheduler.ts'
 import type {
-  AssetId, ProjectId, ProjectRecord, RecordOrigin, RunRequest,
+  AssetId, ProjectId, ProjectRecord, RecordId, RecordOrigin, RunRequest,
 } from '../src/types.ts'
 
 /**
@@ -423,5 +423,108 @@ describe('Runner', () => {
       })
     }
     expect(readLines(m.root, project).filter(line => line['status'] === 'cancelled')).toHaveLength(2)
+  })
+
+  describe('cancel', () => {
+    /** A render that ends only when its signal aborts; `started` lists the prompts that began executing. */
+    function slowRender(started: string[]): OperationSpec {
+      return operation({
+        name: 'shot.render', component: 'shot', resource: 'gpu',
+        execute: async (context) => {
+          started.push(String(context.params['prompt']))
+          await new Promise((_resolve, reject) => {
+            context.signal.addEventListener('abort', () => { reject(new Error('aborted')) }, { once: true })
+          })
+          return { outputs: [] }
+        },
+      })
+    }
+
+    it('aborts a running record and resolves with it cancelled', async () => {
+      const m = startModules()
+      const project = await createTestProject(m)
+      const started: string[] = []
+      m.runner.registerOperation(slowRender(started))
+      const running = m.runner.run(request(project, 'shot.render'))
+      await expect.poll(() => started).toEqual(['a red kite'])
+      const id = recordsOf(m, project, 'shot.render')[0]!.id
+
+      const cancelled = await m.runner.cancel(project, id)
+
+      expect(cancelled).toMatchObject({ id, status: 'cancelled', error: { code: 'cancelled', message: 'Cancelled before it finished.' } })
+      expect((await running).record).toMatchObject({ id, status: 'cancelled', error: { code: 'cancelled' } })
+    })
+
+    it('takes a queued record out of the queue so that it never executes', async () => {
+      const m = startModules({ cpu: 4, gpu: 1 })
+      const project = await createTestProject(m)
+      const started: string[] = []
+      m.runner.registerOperation(slowRender(started))
+      const first = (await m.runner.run(request(project, 'shot.render', userOrigin(), { after: [], params: { prompt: 'first' } }))).record!
+      const second = (await m.runner.run(request(project, 'shot.render', userOrigin(), { after: [], params: { prompt: 'second' } }))).record!
+      await expect.poll(() => started).toEqual(['first'])
+      expect(m.store.getRecord(project, second.id).status).toBe('pending')
+
+      const cancelled = await m.runner.cancel(project, second.id)
+      expect(cancelled).toMatchObject({ status: 'cancelled', error: { code: 'cancelled' } })
+
+      await m.runner.cancel(project, first.id)
+      await m.scheduler.wait(project)
+      expect(started).toEqual(['first'])
+      expect(m.store.getRecord(project, first.id)).toMatchObject({ status: 'cancelled', error: { code: 'cancelled' } })
+    })
+
+    it('ends a pending record that has not started executing as soon as it starts', async () => {
+      const m = startModules()
+      const project = await createTestProject(m)
+      const started: string[] = []
+      m.runner.registerOperation(slowRender(started))
+      const pending = await m.store.lock(project, () => m.store.append(project, {
+        parents: [m.store.line(project)!.at], kind: 'operation', component: 'shot', operation: 'shot.render', operation_version: '1',
+        ...userOrigin(), params: { prompt: 'late' }, inputs: [], outputs: [], based_on: null, supersedes: [], deterministic: false,
+        status: 'pending',
+      }))
+
+      const waiting = m.runner.cancel(project, pending.id)
+      // Let the cancel take the project lock and remember the record before the record starts.
+      await new Promise<void>((resolve) => { setTimeout(resolve, 0) })
+      const ended = await m.runner.execute(project, pending.id)
+      await waiting
+
+      expect(ended).toMatchObject({ status: 'cancelled', error: { code: 'cancelled' } })
+      expect(started).toEqual([])
+    })
+
+    it('fails a record that waits on the cancelled record through an input with input_failed', async () => {
+      const m = startModules()
+      const project = await createTestProject(m)
+      const started: string[] = []
+      m.runner.registerOperation(slowRender(started))
+      const a = (await m.runner.run(request(project, 'shot.render', userOrigin(), { after: [], params: { prompt: 'A' } }))).record!
+      await expect.poll(() => started).toEqual(['A'])
+      const dependent = await m.runner.run(request(project, 'shot.render', userOrigin(), {
+        after: [], params: { prompt: 'B' }, inputs: [{ role: 'reference', ref: { record: a.id, output: 0 } }],
+      }))
+
+      await m.runner.cancel(project, a.id)
+      await m.scheduler.wait(project)
+
+      expect(m.store.getRecord(project, dependent.record!.id)).toMatchObject({ status: 'failed', error: { code: 'input_failed' } })
+      expect(started).toEqual(['A'])
+    })
+
+    it('refuses a record that already ended, and an unknown record', async () => {
+      const m = startModules()
+      const project = await createTestProject(m)
+      m.runner.registerOperation(operation({ name: 'shot.render', component: 'shot' }))
+      const done = (await m.runner.run(request(project, 'shot.render'))).record!
+      expect(done.status).toBe('done')
+
+      await expect(m.runner.cancel(project, done.id)).rejects.toMatchObject({
+        code: 'not_running', message: `Record ${done.id} already ended done.`,
+      })
+      await expect(m.runner.cancel(project, brandString<RecordId>('missing'))).rejects.toMatchObject({ code: 'unknown_record' })
+      expect(m.store.getRecord(project, done.id).status).toBe('done')
+    })
   })
 })

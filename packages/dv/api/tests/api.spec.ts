@@ -342,7 +342,7 @@ describe('dvApi', () => {
     expect(Array.isArray(operations.json)).toBe(true)
     expect(await call(fixture, ROUTES.operation, { method: 'POST', body: { project: projectId, operation: 'no.such', surface: 'canvas' } }))
       .toMatchObject({ status: 404, json: { code: 'unknown_operation' } })
-    expect(Object.keys(ROUTES)).toEqual(['projects', 'untitled', 'projectSummaries', 'state', 'operations', 'tasks', 'operation', 'operationCheck', 'models', 'undo', 'redo', 'acceptStale', 'history'])
+    expect(Object.keys(ROUTES)).toEqual(['projects', 'untitled', 'projectSummaries', 'state', 'operations', 'tasks', 'operation', 'operationCheck', 'models', 'undo', 'redo', 'acceptStale', 'history', 'cancel'])
     for (const gone of ['/api/dv/branches/create', '/api/dv/branches/switch', '/api/dv/branches/rename']) {
       expect(fixture.connection.routes.has(gone)).toBe(false)
     }
@@ -359,6 +359,33 @@ describe('dvApi', () => {
     expect(await keep('nope')).toMatchObject({ status: 404, json: { code: 'unknown_record' } })
     const kept = await keep(importId)
     expect(kept).toMatchObject({ status: 200, json: { operation: 'proj.stale_accept', actor: 'user' } })
+  })
+
+  it('cancels a running record through the cancel route, refuses an ended or unknown record', async () => {
+    const fixture = await start()
+    const projectId = await fixture.newProject('demo')
+    const never: OperationSpec = {
+      name: SLOW, component: 'inspect', version: '1', description: 'Waits for its signal.', params: {}, inputs: {}, outputs: [],
+      deterministic: false, resource: 'none', summarize: () => 'slow',
+      execute: async (context) => {
+        await new Promise((_resolve, reject) => { context.signal.addEventListener('abort', () => { reject(new Error('aborted')) }, { once: true }) })
+        return { outputs: [] }
+      },
+    }
+    fixture.project.registerComponent('inspect')
+    fixture.project.registerOperation(never)
+    const running = fixture.handlers.runOperation({ project: projectId, operation: SLOW, surface: 'canvas' })
+    await new Promise(resolve => setTimeout(resolve, 50))
+    const target = fixture.handlers.getState(projectId).components.proj.records.find(record => record.operation === SLOW)!
+    expect(target.status).toBe('running')
+
+    const cancelled = await call(fixture, ROUTES.cancel, { method: 'POST', body: { project: projectId, record: target.id } })
+    expect(cancelled).toMatchObject({ status: 200, json: { id: target.id, status: 'cancelled', error: { code: 'cancelled' } } })
+    expect(await running).toMatchObject({ id: target.id, status: 'cancelled' })
+    expect(await call(fixture, ROUTES.cancel, { method: 'POST', body: { project: projectId, record: target.id } }))
+      .toMatchObject({ status: 409, json: { code: 'not_running' } })
+    expect(await call(fixture, ROUTES.cancel, { method: 'POST', body: { project: projectId, record: 'nope' } }))
+      .toMatchObject({ status: 404, json: { code: 'unknown_record' } })
   })
 
   it('serves the task labels of the model catalog, and no label while the catalog is not loaded', async () => {
@@ -437,7 +464,7 @@ describe('dvApi', () => {
     // Every route that names a project: GET routes read it from the query, POST routes from the body.
     const named: Array<{ path: string; method: 'GET' | 'POST' }> = [
       { path: ROUTES.state, method: 'GET' }, { path: ROUTES.operation, method: 'POST' }, { path: ROUTES.undo, method: 'POST' },
-      { path: ROUTES.acceptStale, method: 'POST' }, { path: ROUTES.history, method: 'POST' },
+      { path: ROUTES.acceptStale, method: 'POST' }, { path: ROUTES.history, method: 'POST' }, { path: ROUTES.cancel, method: 'POST' },
     ]
     for (const { path, method } of named) {
       const send = (project: string | undefined) => method === 'GET'

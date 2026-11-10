@@ -40,7 +40,7 @@ The runner and history call the record store; the runner calls the reducer regis
         |  createProject renameProject removeProject openProject listProjects  |
         |  newProjectFolder                                -> folders          |
         |  getRecord                                       -> record-store     |
-        |  run acceptStale registerOperation listOperations                    |
+        |  run acceptStale cancel registerOperation listOperations                    |
         |                                                  -> runner           |
         |  undo redo listHistory                            -> history          |
         |  getState registerReducer registerReferenceKind  -> reducers         |
@@ -197,9 +197,11 @@ Owner: agent B.
 2. An input with `resolved_asset: null` (a producer that did not finish `done`) whose role is not in `spec.pendingInputRoles` → `failed` / `input_failed`. Inputs of those roles reach `execute` with `resolved_asset: null`; the record's current form fills it once the producer is done.
 3. Deterministic reuse: when `spec.deterministic` and an earlier record has the same `operation` and `operation_version`, status `done`, `cost.reused` not true, equal params (canonical JSON with sorted keys) and the same sorted list of `resolved_asset` values: one update `{status: 'done', finished_at, outputs: <its outputs>, cost: {wall_seconds: 0, reused: true}}`.
 4. Otherwise update `{status: 'running', started_at}`; compute `state = reducers.stateAt(project, record.parents[0])`; create a scratch directory (`mkdtemp(join(tmpdir(), 'dv-operation-'))`); call `spec.execute(context)` with `importAsset` bound to `assets.importAsset(source, meta, record.id)`.
-5. Success → `{status: 'done', finished_at, outputs, cost: {wall_seconds: <measured, rounded to ms>, reused: false}, report}` (omit `report` when undefined). A throw while `signal` is aborted → `cancelled` / `stopped`, or `cancelled` / `discarded` when a discard aborted it; any other throw → `failed` / `operation_failed` with the error's message. Remove the scratch directory in every case.
+5. Success → `{status: 'done', finished_at, outputs, cost: {wall_seconds: <measured, rounded to ms>, reused: false}, report}` (omit `report` when undefined). A throw while `signal` is aborted → `cancelled` / `stopped`, `cancelled` / `discarded` when a discard aborted it, or `cancelled` / `cancelled` when `cancel` aborted it; any other throw → `failed` / `operation_failed` with the error's message. Remove the scratch directory in every case.
 
 **`acceptStale`.** Under the lock: the record must exist (`unknown_record`); append `proj.stale_accept` with `parents: [at]` by the discard rule.
+
+**`cancel`.** `cancel(project, record)` decides under the lock and waits outside it. The record must exist (`unknown_record`) and be `pending` or `running`, else `not_running` ("Record <id> already ended <status>."). An executing record is aborted with the reason `cancelled`; a queued scheduled record leaves the queue through `scheduler.cancel` and is updated at once; a pending record that has not started is remembered and `execute` ends it when it starts. Each ends `cancelled` with `error {code: 'cancelled', message: 'Cancelled before it finished.'}`. After an abort, `cancel` waits through `scheduler.wait(project, [record])` and resolves with the record in its final status (`done` when the operation finished despite the abort). A scheduled record that waits for the cancelled one through an input ends `failed` / `input_failed`, as for any dependency that did not finish `done`.
 
 **Discard.** Every record the runner appends goes after `at` and becomes `tip` and `at` (`appendStep`). The records of the history list that were after `at` leave the list. Each of them that is `pending` or `running` ends `cancelled` with `error {code: 'discarded'}`: an executing record is aborted; a queued scheduled record leaves the queue through `scheduler.cancel` and is updated at once; a record that has not started yet ends when `execute` starts it.
 
@@ -309,6 +311,7 @@ Each test file builds modules with `startModules()` and projects with `createTes
 - `refuses an operation whose name does not start with its component key`.
 - `lets other edits run while a render executes` (lock scope): an execute blocked on a promise; a second run on the same project finishes first.
 - `loads a stored log whose operations and reference kind have no owner, and refuses a new call with that version`: a log with `shot.render_ref2va`, `deliver.timeline_export` and an input `{character: 'c1', version: 1}` loads with only `proj` reduced and no stale mark; a new call with that input throws `invalid_inputs` and writes no record.
+- `cancel`: a running record aborts and ends `cancelled` / `cancelled`; a queued record never executes; a pending record that has not started ends when it starts; a record that waits on a cancelled one through an input ends `failed` / `input_failed`; an ended record throws `not_running` and an unknown one `unknown_record`.
 - `ends unfinished records at start`: a `pending` record from an earlier store → `cancelled` / `stopped` after `recover`.
 
 **`tests/scheduler.spec.ts` (B)**

@@ -320,6 +320,16 @@ export class DvClient {
   }
 
   /**
+   * Cancel a pending or running record. A running record is aborted; the call resolves once the record has ended.
+   * @param project - the project.
+   * @param record - the record to cancel.
+   * @returns the record in its final status. Rejects with a 409 `DvApiError` when the record already ended.
+   */
+  cancelRecord(project: string, record: string): Promise<ProjectRecord> {
+    return this.post('/api/dv/operation/cancel', { project, record })
+  }
+
+  /**
    * Put assets on the project's canvas (`asset.place`), or take them off it (`asset.unplace`);
    * the assets stay in the asset pool either way.
    * @param project - the project.

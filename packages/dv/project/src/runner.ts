@@ -54,6 +54,9 @@ export interface RunnerAssets {
 /** The failure of a record whose step a later write discarded before it finished. */
 const DISCARDED: RecordFailure = { code: 'discarded', message: 'A new step after an undo discarded this step before it finished.' }
 
+/** The failure of a record that its owner cancelled with {@link Runner.cancel} before it finished. */
+const CANCELLED: RecordFailure = { code: 'cancelled', message: 'Cancelled before it finished.' }
+
 /** The modules and services the runner calls. */
 export interface RunnerDeps {
   store: RecordStore
@@ -113,6 +116,8 @@ export class Runner {
   private readonly executing = new Map<RecordId, AbortController>()
   /** Records a write discarded before they started executing; `execute` ends them at once. */
   private readonly discarded = new Set<RecordId>()
+  /** Records cancelled with `cancel` before they started executing; `execute` ends them at once. */
+  private readonly cancelled = new Set<RecordId>()
 
   /**
    * @param deps - the modules and services the runner calls.
@@ -213,6 +218,7 @@ export class Runner {
   async execute(project: ProjectId, record: RecordId, signal?: AbortSignal): Promise<ProjectRecord> {
     const { store, reducers, assets } = this.deps
     if (this.discarded.delete(record)) return await this.finish(project, record, 'cancelled', DISCARDED)
+    if (this.cancelled.delete(record)) return await this.finish(project, record, 'cancelled', CANCELLED)
     const pending = store.getRecord(project, record)
     const spec = pending.operation === null ? undefined : this.operations.get(pending.operation)
     if (spec === undefined) {
@@ -262,6 +268,7 @@ export class Runner {
       })
     } catch (error: unknown) {
       if (controller.signal.reason === 'discarded') return await this.finish(project, record, 'cancelled', DISCARDED)
+      if (controller.signal.reason === 'cancelled') return await this.finish(project, record, 'cancelled', CANCELLED)
       if (controller.signal.aborted) {
         return await this.finish(project, record, 'cancelled', {
           code: 'stopped', message: `The turn was stopped while ${spec.name} ran: ${messageOf(error)}`,
@@ -293,6 +300,40 @@ export class Runner {
         deterministic: true, status: 'done',
       })
     })
+  }
+
+  /**
+   * Cancel a record that has not finished. An executing record is aborted and this call resolves when it has ended; a
+   * queued scheduled record leaves the queue and ends `cancelled` at once; a pending record that has not started ends
+   * when it starts. Every such record ends `cancelled` with `error {code: 'cancelled'}`. A scheduled record that waits
+   * for it through an input then ends `failed` / `input_failed`. The decision is taken under the project lock; the wait
+   * for an aborted record happens after the lock is released, because the record's final update needs the lock.
+   * @param project - the project.
+   * @param record - a record of the project.
+   * @returns the record in its final status (`done` when the operation finished despite the abort). Throws
+   *   `unknown_record`, or `not_running` for a record that already ended.
+   */
+  async cancel(project: ProjectId, record: RecordId): Promise<ProjectRecord> {
+    const { store, scheduler } = this.deps
+    const mustWait = await store.lock(project, () => {
+      const current = store.getRecord(project, record)
+      if (current.status !== 'pending' && current.status !== 'running') {
+        throw new ProjectError('not_running', `Record ${record} already ended ${current.status}.`)
+      }
+      const controller = this.executing.get(record)
+      if (controller !== undefined) {
+        controller.abort('cancelled')
+        return true
+      }
+      if (scheduler.cancel(project, record)) {
+        store.update(project, { update: record, status: 'cancelled', finished_at: new Date().toISOString(), error: CANCELLED })
+        return false
+      }
+      this.cancelled.add(record)
+      return true
+    })
+    if (mustWait) await scheduler.wait(project, [record])
+    return store.getRecord(project, record)
   }
 
   /**

@@ -21,6 +21,7 @@ describe('DvClient', () => {
     expect(await client.redo('p1')).toEqual({ tip: 'g3', at: 'g3' })
     await client.acceptStale('p1', 'g2', 'timeline', 's5')
     await client.acceptStale('p1', 'g2', 'canvas')
+    await client.cancelRecord('p1', 'g4')
     await client.renameProject('p1', 'Demo 3')
     await client.deleteProject('p1')
     await client.placeOnCanvas('p1', ['a1'], true, 's5')
@@ -28,7 +29,7 @@ describe('DvClient', () => {
     await client.untitledFolder('Untitled project')
     expect(writes.map(write => write.path)).toEqual([
       '/api/dv/projects', '/api/dv/operation', '/api/dv/undo', '/api/dv/undo', '/api/dv/redo', '/api/dv/stale/accept', '/api/dv/stale/accept',
-      '/api/dv/projects/rename', '/api/dv/projects/delete', '/api/dv/operation', '/api/dv/operation',
+      '/api/dv/operation/cancel', '/api/dv/projects/rename', '/api/dv/projects/delete', '/api/dv/operation', '/api/dv/operation',
       '/api/dv/projects/untitled',
     ])
     expect(writes[0]?.body).toEqual({ title: 'Demo 2', surface: 'canvas' })
@@ -37,9 +38,10 @@ describe('DvClient', () => {
     expect(writes[4]?.body).toEqual({ project: 'p1' })
     expect(writes[5]?.body).toEqual({ project: 'p1', record: 'g2', surface: 'timeline', session: 's5' })
     expect(writes[6]?.body).toEqual({ project: 'p1', record: 'g2', surface: 'canvas' })
-    expect(writes[9]?.body).toEqual({ project: 'p1', operation: 'asset.place', surface: 'canvas', inputs: [{ role: 'asset', ref: 'a1' }], session: 's5' })
-    expect(writes[10]?.body).toEqual({ project: 'p1', operation: 'asset.unplace', surface: 'canvas', inputs: [{ role: 'asset', ref: 'a1' }] })
-    expect(writes[11]?.body).toEqual({ name: 'Untitled project' })
+    expect(writes[7]?.body).toEqual({ project: 'p1', record: 'g4' })
+    expect(writes[10]?.body).toEqual({ project: 'p1', operation: 'asset.place', surface: 'canvas', inputs: [{ role: 'asset', ref: 'a1' }], session: 's5' })
+    expect(writes[11]?.body).toEqual({ project: 'p1', operation: 'asset.unplace', surface: 'canvas', inputs: [{ role: 'asset', ref: 'a1' }] })
+    expect(writes[12]?.body).toEqual({ name: 'Untitled project' })
     expect(assetUrl('a/b')).toBe('/dv/assets/a%2Fb')
   })
 

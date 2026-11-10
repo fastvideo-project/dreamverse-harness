@@ -437,6 +437,34 @@ describe('the History tab', () => {
     expect(shown).toEqual([{ view: 'canvas', target: { record: 'g1' } }])
   })
 
+  it('offers 取消 only on pending and running rows and cancels the chosen record', async () => {
+    const entry = (id: string, status: ProjectRecord['status'], place: HistoryEntry['place']): HistoryEntry => ({
+      record: record({ id, operation: 'shot.render', status }), place,
+    })
+    const { writes, row } = await mount([
+      entry('run1', 'running', 'current'), entry('pend1', 'pending', 'before'), entry('fail1', 'failed', 'before'), entry('done1', 'done', 'before'),
+    ])
+    await waitFor(() => { row('run1') })
+    // The current step has no 回到这一步, but its unfinished record can be cancelled.
+    expect(menuOf(row('run1'))).toEqual(['Cancel'])
+    expect(menuOf(row('pend1'))).toEqual(['Cancel', 'Go back to this step'])
+    expect(menuOf(row('fail1'))).toEqual(['Go back to this step'])
+    expect(menuOf(row('done1'))).toEqual(['Go back to this step'])
+    fireEvent.click(within(row('pend1')).getByTestId('dv-history-step-cancel'))
+    await waitFor(() => { expect(writes).toEqual([{ path: '/api/dv/operation/cancel', body: { project: 'p1', record: 'pend1' } }]) })
+  })
+
+  it('shows why a cancel was refused', async () => {
+    const running: HistoryEntry = { record: record({ id: 'run1', operation: 'shot.render', status: 'running' }), place: 'current' }
+    const { view, row } = await mount([running], () => {}, [], {
+      post: () => ({ status: 409, body: { error: 'Record run1 already ended done.', code: 'not_running' } }),
+    })
+    await waitFor(() => { row('run1') })
+    menuOf(row('run1'))
+    fireEvent.click(within(row('run1')).getByTestId('dv-history-step-cancel'))
+    await waitFor(() => { expect(view.getByText('Record run1 already ended done.')).toBeTruthy() })
+  })
+
   it('closes the ⋮ menu on Escape and on a press outside it, and keeps it open on other keys and presses inside it', async () => {
     const { row } = await mount()
     await waitFor(() => { row('g1') })
