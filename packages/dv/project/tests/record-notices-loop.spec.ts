@@ -2,8 +2,8 @@
  * Record notices with the production agent loop: a wake that the record notices inject into a running turn stays queued
  * when a Stop that keeps the inbox aborts that turn before it claims the wake, and the next turn claims it; a wake that
  * a turn ending with an error leaves behind opens a turn; a wake past `maxConsecutiveWakes` waits for the user's next
- * message. The model is a scripted adapter, and the `dvProject` service
- * runs with the real session, projection, agent and tool services.
+ * message; a session archived with its work stopped gets no wake. The model is a scripted adapter, and the `dvProject`
+ * service runs with the real session, projection, agent and tool services.
  */
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -255,6 +255,19 @@ describe('record notices with the agent loop', () => {
     expect(fixture.adapter.requests).toHaveLength(1)
     expect(fixture.agent.inbox.nextTurn.map(message => textOf(message))).toEqual(['queued'])
     expect(fixture.agent.inbox.nextStep.map(message => message.source.kind === 'dv-project-wake' ? message.source.records : [])).toEqual([[first], [second]])
+  })
+
+  it('sends no wake for a render that finishes after its session is archived with its work stopped', async () => {
+    const fixture = await start()
+    fixture.adapter.hangFirst = false
+    const record = await fixture.render('dunk')
+    await fixture.agent.ctx.parallel('workspace/session-stop', { sessionId: fixture.agent.id })
+    await fixture.finish('dunk', record)
+    await settleIdle(fixture)
+    expect(fixture.project.getRecord(fixture.projectId, record).status).toBe('done')
+    expect(fixture.adapter.requests).toEqual([])
+    expect(fixture.agent.inbox.nextStep).toEqual([])
+    expect(fixture.agent.inbox.nextTurn).toEqual([])
   })
 
   it('delivers no wake to an agent whose disposal is unwinding its scope', async () => {

@@ -27,9 +27,10 @@
  * wake: no project update reports it, until a redo brings an undone record back and the session's next step reports it.
  * When it was the last record that the session watched, the wakes that an idle agent holds for its other records open
  * a turn under the rules above. Removing a project drops the watches of its records and wakes no agent for the wakes
- * they held back: the sessions whose calls started those records have no project left to report. Closing the module
- * (when the service stops) drops every watch and delivers nothing afterwards. A delivery that throws is logged on the
- * `dvProject` logger and never fails the record write that finished the record.
+ * they held back: the sessions whose calls started those records have no project left to report. Archiving a session
+ * with its work stopped (`workspace/session-stop`) drops that session's watches; its records keep running and send no
+ * wake. Closing the module (when the service stops) drops every watch and delivers nothing afterwards. A delivery that
+ * throws is logged on the `dvProject` logger and never fails the record write that finished the record.
  *
  * Calls the `agents` registry, read at delivery time, `dvProject.getRecord` and `dvProject.listHistory`. Called by the
  * service: `watch` from the operation tools, `recordFinished` from the record store's change callback.
@@ -85,6 +86,11 @@ export class RecordNotices {
     // The `idle` status precedes the loop's own replay of a latched wake, so the check waits for that replay.
     ctx.on('agent/status', ({ agent, status }) => {
       if (status === 'idle') queueMicrotask(() => { this.wakeStranded(agent) })
+    })
+    // An archived session's gate blocks every turn, so a wake would open an empty blocked turn; its renders keep running.
+    ctx.on('workspace/session-stop', ({ sessionId }) => {
+      const session = brandString<SessionId>(sessionId)
+      for (const [record, watch] of this.watches) if (watch.session === session) this.watches.delete(record)
     })
   }
 
