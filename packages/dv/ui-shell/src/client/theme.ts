@@ -12,7 +12,8 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 /**
  * The `--dv-*` variables and the DSH alias mapping. `--dv-node-1` to `--dv-node-8` are a categorical palette that names
  * no kind: each canvas node type picks one slot for its type dot and its edges. `--dv-waveform` and `--dv-waveform-soft`
- * draw a waveform and the box behind it.
+ * draw a waveform and the box behind it. `--dv-radius-menu` is the radius of a menu that holds 6 px of padding around
+ * `--dv-radius-md` items: the item radius plus the padding.
  */
 const DV_THEME_CSS = `
 html body {
@@ -57,6 +58,7 @@ html body {
   --dv-radius-md: 8px;
   --dv-radius-lg: 12px;
   --dv-radius-xl: 16px;
+  --dv-radius-menu: 14px;
   --dv-ease: cubic-bezier(0.2, 0, 0, 1);
 }
 

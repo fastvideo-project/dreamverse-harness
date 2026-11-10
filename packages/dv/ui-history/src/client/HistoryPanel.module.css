@@ -129,9 +129,10 @@
   min-width: 140px;
   margin-top: 4px;
   padding: 6px;
-  border-radius: var(--dv-radius-xl);
+  border-radius: var(--dv-radius-menu);
   background: var(--dv-surface-1);
   box-shadow: 0 0 0 1px var(--dv-line-strong), var(--dv-shadow-2);
+  outline: 1px solid transparent;
 }
 
 .menuItem {
