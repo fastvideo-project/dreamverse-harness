@@ -35,7 +35,12 @@ export interface Draft {
 
 /** One change of a draft. */
 export type DraftAction =
-  | { readonly type: 'callLent'; readonly call: PromptCall }
+  | {
+    readonly type: 'callLent'
+    readonly call: PromptCall
+    /** The unsent draft stored for this call, which replaces the call's own draft; undefined when none is stored. */
+    readonly stored: Draft | undefined
+  }
   | {
     readonly type: 'editorChanged'
     readonly text: string
@@ -76,6 +81,18 @@ export function draftOf(call: PromptCall): Draft {
 }
 
 /**
+ * The draft to start an editor with.
+ * @param call - the call that the host lent.
+ * @param stored - the unsent draft kept for this call, or undefined when none is kept.
+ * @returns the kept draft with editor content rebuilt from its document, since the editor owns the text between
+ *   content revisions and the kept content may predate the typing; else the draft of the call.
+ */
+export function startOf(call: PromptCall, stored: Draft | undefined): Draft {
+  if (stored === undefined) return draftOf(call)
+  return { ...stored, content: contentOf(stored.document, stored.content.revision + 1, 'reset') }
+}
+
+/**
  * Apply one action to a draft.
  * @param draft - the draft.
  * @param action - the action.
@@ -86,7 +103,7 @@ export function reduceDraft(draft: Draft, action: DraftAction): Draft {
   switch (action.type) {
     case 'callLent': {
       // Another call starts the editor's history over, so an undo cannot bring back the call it replaced.
-      const next = draftOf(action.call)
+      const next = startOf(action.call, action.stored)
       return { ...next, content: { ...next.content, revision: draft.content.revision + 1 } }
     }
     case 'editorChanged': {

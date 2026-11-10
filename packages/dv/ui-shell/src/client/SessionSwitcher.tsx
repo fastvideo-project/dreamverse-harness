@@ -12,6 +12,7 @@ import { useText } from '@dv/ui-kit/locale.ts'
 import type { WireProject, WireProjectCover } from '@dv/ui-kit/types.ts'
 import type { ShellActions } from './actions.ts'
 import { CoverFrame } from './cover.tsx'
+import { useActionNotice } from './notice.tsx'
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon, HomeIcon, PlusIcon } from './icons.tsx'
 import { type SessionListHooks, useProjectSessions } from './sessions.ts'
 import { NO_PROJECTS, useShell } from './store.ts'
@@ -28,14 +29,6 @@ export interface SessionSwitcherProps extends SessionListHooks, PropsRenderFacto
 }
 
 /**
- * Run an action and log its failure; navigation failures leave the page as it was.
- * @param work - the action.
- */
-function run(work: () => Promise<void>): void {
-  work().catch((error: unknown) => { console.warn('ui-shell: navigation failed', error) })
-}
-
-/**
  * The switcher button and, while open, its menu. A click outside the menu or Escape closes it.
  * @param props - the switcher props.
  * @returns the button and the menu.
@@ -43,6 +36,7 @@ function run(work: () => Promise<void>): void {
 export function SessionSwitcher(props: SessionSwitcherProps): ReactNode {
   const { shell, project, cover, sessionTitle, renderFactorySlot } = props
   const t = useText()
+  const { run, notice } = useActionNotice(true)
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
   const button = useRef<HTMLButtonElement>(null)
@@ -85,6 +79,7 @@ export function SessionSwitcher(props: SessionSwitcherProps): ReactNode {
         <span className={css.switcherSession}>{sessionTitle ?? t('新对话', 'New chat')}</span>
         <span className={css.switcherChevron}><ChevronDownIcon /></span>
       </button>
+      {notice}
       {open && (
         <div className={css.menu} role="menu" aria-label={t('切换会话', 'Switch chat')}>
           <button type="button" role="menuitem" className={css.menuItem} onClick={choose(() => { run(() => shell.goHome()) })}>

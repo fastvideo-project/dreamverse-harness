@@ -21,6 +21,7 @@ import { fixtureState, MODELS, OPERATIONS, scriptedFetch, withTestRef } from '..
 import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import { shotRenderBar } from '../../ui-shot-render/src/client/param-bar.ts'
 import type { DvPromptProps, PromptCall, PromptHost } from '../src/client/contract/index.ts'
+import { resetDrafts } from '../src/client/drafts.ts'
 import { projectMentionSource } from '../src/client/mention.ts'
 import { composerStack } from './composer-stack.client.ts'
 
@@ -36,6 +37,7 @@ const STILL: WireOperation = {
 }
 
 beforeEach(() => {
+  resetDrafts()
   // jsdom has no layout: the menu scrolls its highlighted row into view, and the editor measures its selection.
   Element.prototype.scrollIntoView = vi.fn()
   // jsdom has no ClipboardEvent, which the editor's cut and copy read.
@@ -58,6 +60,8 @@ interface MountOptions {
   holdChecks?: boolean
   /** The model catalog waits until the test releases it. */
   holdModels?: boolean
+  /** The model catalog read fails while `down` is true. */
+  modelsDown?: { down: boolean }
   /** The host's send refuses with this message. */
   refuseSend?: string
   /** The host's import refuses with this message. */
@@ -102,6 +106,7 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
     const answer = scripted.fetch(input, init)
     requested.push(path)
     if (options.holdState === true && path === '/api/dv/state') return new Promise((resolve) => { heldStates.push(() => { resolve(answer) }) })
+    if (options.modelsDown?.down === true && path === '/api/dv/models') return Promise.resolve(new Response(JSON.stringify({ error: 'The model service is down.' }), { status: 503, headers: { 'content-type': 'application/json' } }))
     if (options.holdModels === true && path === '/api/dv/models') return new Promise((resolve) => { heldModels.push(() => { resolve(answer) }) })
     if (options.holdChecks === true && path === '/api/dv/operation/check') {
       return new Promise((resolve, reject) => { checks.push({ answer: (body) => { resolve(json(body)) }, fail: reject }) })
@@ -314,6 +319,29 @@ describe('references and the model catalog', () => {
   })
 })
 
+describe('the model list failure', () => {
+  const FAILED = '[data-testid="dv-composer-models-failed"]'
+
+  it('says the model list failed to load, and offers Try again, which shows the model control once the read succeeds', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const modelsDown = { down: true }
+    const { take } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] }, { modelsDown })
+    const alert = await found(take, FAILED)
+    expect(alert.textContent).toContain("Couldn't load the model list")
+    expect(within(take).queryByRole('button', { name: 'Add asset' })).toBeNull()
+    modelsDown.down = false
+    fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }))
+    await waitFor(() => { expect(take.querySelector(FAILED)).toBeNull() })
+    await waitFor(() => { expect(within(take).getByRole('button', { name: 'Add asset' })).toBeTruthy() })
+  })
+
+  it('never shows it when the first load succeeds', async () => {
+    const { take } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] })
+    await waitFor(() => { expect(within(take).getByRole('button', { name: 'Add asset' })).toBeTruthy() })
+    expect(take.querySelector(FAILED)).toBeNull()
+  })
+})
+
 describe('what the host lends', () => {
   it('draws the tray and the chips from the state that the host lends while the server holds its own state back', async () => {
     const stored: PromptCall = { operation: 'shot.render', params: { ...KEY, prompt: `${HERO} runs` }, inputs: [{ role: 'reference', ref: 'hero@1' }] }
@@ -520,6 +548,64 @@ describe('the failures of the host', () => {
     const { take } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] }, { refuseImport: 'The file is too large.' })
     fireEvent.change(await found(take, '[data-testid="dv-prompt-upload"]'), { target: { files: [new File(['a'], 'big.png', { type: 'image/png' })] } })
     await waitFor(() => { expect(within(take).getByRole('alert').textContent).toBe('Failed: The file is too large.') })
+  })
+})
+
+describe('the unsent draft of a take', () => {
+  const STILL_CALL: PromptCall = { operation: STILL.name, params: { prompt: 'a lamp' }, inputs: [] }
+  const seedOf = (take: HTMLElement): string => take.querySelector<HTMLInputElement>('[data-param-chip="seed"]')?.value ?? ''
+  const editSeed = (take: HTMLElement, value: string): void => { fireEvent.change(take.querySelector('[data-param-chip="seed"]')!, { target: { value } }) }
+  /** Close the editor and open it again on the same stack, as the canvas does for Escape and a click on empty canvas. */
+  const reopen = (mounted: Awaited<ReturnType<typeof mount>>): HTMLElement => {
+    mounted.view.unmount()
+    return mounted.runtime.renderRoot().getByTestId('take')
+  }
+
+  it('restores the typed prompt and parameters when the same take opens again, and starts another take clean', async () => {
+    const mounted = await mount(STILL_CALL)
+    await sendOf(mounted.take, 'Generate a new version')
+    editSeed(mounted.take, '5')
+    act(() => { box(mounted.take).focus() })
+    pasteText(mounted.take, ' on a desk')
+    await waitFor(() => { expect(box(mounted.take).textContent).toBe('a lamp on a desk') })
+    const again = reopen(mounted)
+    await waitFor(() => { expect(box(again).textContent).toBe('a lamp on a desk') })
+    expect(seedOf(again)).toBe('5')
+    mounted.setCall({ operation: STILL.name, params: { prompt: 'a chair' }, inputs: [] })
+    await waitFor(() => { expect(box(again).textContent).toBe('a chair') })
+    expect(seedOf(again)).toBe('')
+    mounted.setCall(STILL_CALL)
+    await waitFor(() => { expect(seedOf(again)).toBe('5') })
+  })
+
+  it('drops the draft once its send succeeds', async () => {
+    const mounted = await mount(STILL_CALL)
+    await sendOf(mounted.take, 'Generate a new version')
+    editSeed(mounted.take, '5')
+    fireEvent.click(await sendOf(mounted.take, 'Generate a new version'))
+    await waitFor(() => { expect(mounted.sent).toHaveLength(1) })
+    await waitFor(() => { expect(mounted.take.querySelector('button[disabled]')).toBeNull() })
+    expect(seedOf(reopen(mounted))).toBe('')
+  })
+
+  it('drops the draft when the edits are undone back to the lent call', async () => {
+    const mounted = await mount(STILL_CALL)
+    await sendOf(mounted.take, 'Generate a new version')
+    editSeed(mounted.take, '7')
+    editSeed(mounted.take, '')
+    expect(seedOf(reopen(mounted))).toBe('')
+  })
+
+  it('restores a draft that was mid-send as an ordinary draft, never as sending', async () => {
+    const mounted = await mount(STILL_CALL, { holdSend: true })
+    await sendOf(mounted.take, 'Generate a new version')
+    editSeed(mounted.take, '5')
+    fireEvent.click(await sendOf(mounted.take, 'Generate a new version'))
+    await waitFor(() => { expect(mounted.sent).toHaveLength(1) })
+    const again = reopen(mounted)
+    expect(seedOf(again)).toBe('5')
+    const button = await sendOf(again, 'Generate a new version')
+    expect(button.disabled).toBe(false)
   })
 })
 

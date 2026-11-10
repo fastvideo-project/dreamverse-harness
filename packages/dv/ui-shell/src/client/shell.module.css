@@ -718,6 +718,47 @@
   color: var(--dv-danger);
 }
 
+/* A failed navigation action: the reason, with a dismiss button. */
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 2px 10px 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dv-danger);
+  overflow-wrap: anywhere;
+}
+
+.noticeFloating {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 320px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--dv-radius-xl);
+  background: var(--dv-surface-1);
+  box-shadow: 0 0 0 1px var(--dv-line-strong), var(--dv-shadow-2);
+}
+
+.notice > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.noticeDismiss {
+  flex: none;
+  padding: 0 2px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
 /* Navigator hints: what to do when a list is empty. */
 .navHint {
   margin: 2px 10px 6px;

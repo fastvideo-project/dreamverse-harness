@@ -496,9 +496,10 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   }
 
   // Export is one `timeline.export` call: it trims the clips with an in or out point and joins all clips.
-  // It waits while any clip is a placeholder; the toolbar names those clips.
-  const waiting = clips.filter(clip => clip.status !== 'ready').map(clip => clip.position)
-  const exportId = exporting || clips.length === 0 || waiting.length > 0 ? null : timelineId
+  // It waits while any clip is a placeholder; the toolbar names the clips still rendering and, apart, the clips that failed.
+  const waiting = clips.filter(clip => clip.status === 'rendering').map(clip => clip.position)
+  const failedClips = clips.filter(clip => clip.status === 'failed').map(clip => clip.position)
+  const exportId = exporting || clips.length === 0 || waiting.length > 0 || failedClips.length > 0 ? null : timelineId
   const exportTimeline = (id: string): void => {
     setExporting(true)
     setExported(null)
@@ -805,6 +806,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
         : null}
       <span style={{ flex: 1 }} />
       {waiting.length > 0 ? <span data-testid="dv-timeline-export-waiting" style={{ color: palette.muted, fontSize: 12, lineHeight: '16px', marginRight: 6 }}>{t('tool.exportWaiting', { positions: waiting.join(', ') })}</span> : null}
+      {failedClips.length > 0 ? <span data-testid="dv-timeline-export-failed" style={{ color: palette.danger, fontSize: 12, lineHeight: '16px', marginRight: 6 }}>{t('tool.exportFailed', { positions: failedClips.join(', ') })}</span> : null}
       <button
         type="button" className="dv-tl-btn" style={buttonStyle(exportId === null)} disabled={exportId === null}
         onClick={exportId === null ? undefined : () => { exportTimeline(exportId) }}

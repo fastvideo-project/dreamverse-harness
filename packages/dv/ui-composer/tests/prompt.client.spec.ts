@@ -147,6 +147,24 @@ describe('the model catalog', () => {
   })
 })
 
+describe('the model catalog failure', () => {
+  it('records the message of a failed load, clears it when a reload succeeds, and records none for a load that succeeds', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const load = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce([{ modality: 'video' }])
+    const catalog = catalogSource(load)
+    expect(catalog.failure.getSnapshot()).toBeNull()
+    const seen = vi.fn()
+    catalog.failure.subscribe(seen)
+    catalog.subscribe(() => {})
+    await vi.waitFor(() => { expect(catalog.failure.getSnapshot()).toBe('offline') })
+    expect(catalog.getSnapshot()).toBeNull()
+    catalog.reload()
+    await vi.waitFor(() => { expect(catalog.getSnapshot()).toEqual([{ modality: 'video' }]) })
+    expect(catalog.failure.getSnapshot()).toBeNull()
+    expect(seen).toHaveBeenCalled()
+  })
+})
+
 describe('the parameter bars', () => {
   it('refuse a second bar of an operation, naming the package that holds it', async () => {
     const ctx = new Context()

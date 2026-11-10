@@ -14,7 +14,7 @@ import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@dv/ui-canvas/contract'
-import { DvClient } from '@dv/ui-kit/api.ts'
+import { DvClient, errorMessage } from '@dv/ui-kit/api.ts'
 import { DV_CURRENT_PROJECT_EVENT, getCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { createRegistry, type VersionKind } from '@dv/ui-kit/registries.ts'
 import type { WireModelEntry, WireState } from '@dv/ui-kit/types.ts'
@@ -83,29 +83,47 @@ export function projectStates(client: Pick<DvClient, 'getState' | 'subscribe'>):
   }
 }
 
+/** The model catalog source, with the message of its last failed load and a way to load it again. */
+export interface CatalogSource extends HostObservable<readonly WireModelEntry[] | null> {
+  /** The message of the last load when it failed; null before the first load answers and after a load succeeds. */
+  readonly failure: HostObservable<string | null>
+  /** Read the catalog again now, whether or not a consumer subscribes. */
+  readonly reload: () => void
+}
+
 /**
  * The model catalog: null until the first load answers, and loaded again each time a consumer subscribes while none
  * did, so an occurrence that opens reads the catalog as it is then, such as after a backend that was down comes back. A
- * failed load keeps the catalog it had.
+ * failed load keeps the catalog it had and records its message in `failure` until a load succeeds.
  * @param load - reads the catalog.
  * @returns the source.
  */
-export function catalogSource(load: () => Promise<readonly WireModelEntry[]>): HostObservable<readonly WireModelEntry[] | null> {
+export function catalogSource(load: () => Promise<readonly WireModelEntry[]>): CatalogSource {
   const store = createSnapshotStore<readonly WireModelEntry[] | null>(null)
+  const failure = createSnapshotStore<string | null>(null)
   let consumers = 0
+  const reload = (): void => {
+    load().then((catalog) => {
+      failure.set(null)
+      store.set(catalog)
+    }, (error: unknown) => {
+      console.error('[dv-composer] models failed:', error)
+      failure.set(errorMessage(error))
+    })
+  }
   return {
     getSnapshot: () => store.getSnapshot(),
     subscribe: (listener) => {
       const off = store.subscribe(listener)
       consumers += 1
-      if (consumers === 1) {
-        load().then((catalog) => { store.set(catalog) }, (failure: unknown) => { console.error('[dv-composer] models failed:', failure) })
-      }
+      if (consumers === 1) reload()
       return () => {
         off()
         consumers -= 1
       }
     },
+    failure: { getSnapshot: () => failure.getSnapshot(), subscribe: listener => failure.subscribe(listener) },
+    reload,
   }
 }
 
@@ -140,7 +158,8 @@ export function applyPrompt(ctx: ClientContext): void {
   }, 'dv-composer: open project')
   const injected: DvPromptInjected = {
     check: request => client.checkOperation(request),
-    hooks: { models, paramBars: composer.paramBars, versionKinds },
+    reloadModels: models.reload,
+    hooks: { models, modelsFailure: models.failure, paramBars: composer.paramBars, versionKinds },
   }
   ctx.effect(() => ctx.slots.registerFactory({ name: 'dv.prompt', scope: 'root', inject: () => injected }, DvPrompt), 'dv-composer: dv.prompt')
   const face: ReferenceFaceInjected = {

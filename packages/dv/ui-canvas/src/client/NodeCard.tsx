@@ -10,6 +10,7 @@
 import { useCallback, useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent, MutableRefObject, ReactNode } from 'react'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
+import { formatElapsed, useElapsedSeconds } from '@dv/ui-kit/elapsed.ts'
 import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
 import { InlineRename } from '@dv/ui-kit/InlineRename.tsx'
 import type { InlineRenameProps } from '@dv/ui-kit/InlineRename.tsx'
@@ -115,6 +116,7 @@ export interface NodeCardProps {
 export function NodeCard(props: NodeCardProps): ReactNode {
   const { node, view, box, selected, zoom, t } = props
   const { flags } = node
+  const elapsed = useElapsedSeconds(node.record.started_at, flags.rendering && node.record.status === 'running')
   const scale = textScaleAt(zoom)
   const size = (base: number): number => Math.round(base * scale)
   const text = (base: 12 | 13): CSSProperties => ({ fontSize: size(base), lineHeight: `${String(size({ 12: 16, 13: 20 }[base]))}px` })
@@ -134,9 +136,16 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   }
   const status = node.nodeType.status
   const running = status?.running() ?? t('node.running')
-  let marker: string | null = null
-  if (flags.rendering) marker = running
-  else if (flags.failed) marker = status?.failed() ?? t('node.failed')
+  let marker: ReactNode = null
+  if (flags.rendering) {
+    if (node.record.status === 'pending') marker = t('node.queued')
+    else if (elapsed === null) marker = running
+    else marker = <>{running} <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatElapsed(elapsed)}</span></>
+  } else if (flags.failed) {
+    const failedWords = status?.failed() ?? t('node.failed')
+    const reason = node.record.error?.message
+    marker = reason === undefined || reason === '' ? failedWords : t('node.failedReason', { status: failedWords, reason })
+  }
   const count = node.versions.length
   const meta = [count > 1 ? t('node.version', { n: String(count) }) : '', node.meta ?? ''].filter(part => part !== '').join(' · ')
   const caption = (
