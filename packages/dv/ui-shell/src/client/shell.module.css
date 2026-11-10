@@ -771,7 +771,7 @@
   position: absolute;
   z-index: 30;
   top: calc(100% + 6px);
-  left: 0;
+  inset-inline-start: 0;
   width: 320px;
   box-sizing: border-box;
   margin: 0;
@@ -787,13 +787,27 @@
 }
 
 .noticeDismiss {
+  display: inline-flex;
   flex: none;
-  padding: 0 2px;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-block: -4px;
+  margin-inline: 0 -6px;
+  padding: 0;
   border: none;
+  border-radius: var(--dv-radius-sm);
   background: none;
   color: inherit;
   font: inherit;
   cursor: pointer;
+}
+
+@media (hover: hover) {
+  .noticeDismiss:hover {
+    background: var(--dv-surface-3);
+  }
 }
 
 /* Navigator hints: what to do when a list is empty. */
@@ -846,7 +860,8 @@
 .textButton:focus-visible,
 .exploreTab:focus-visible,
 .card:focus-visible,
-.templateChip:focus-visible {
+.templateChip:focus-visible,
+.noticeDismiss:focus-visible {
   outline: 2px solid var(--dv-accent);
   outline-offset: 2px;
 }

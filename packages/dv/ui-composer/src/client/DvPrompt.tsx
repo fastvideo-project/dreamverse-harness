@@ -270,7 +270,7 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
       </div>
       {catalog === null && modelsFailure !== null
         ? (
-          <p role="alert" data-testid="dv-composer-models-failed" title={modelsFailure} style={{ margin: 0, fontSize: 12, color: 'var(--dv-danger)' }}>
+          <p role="alert" data-testid="dv-composer-models-failed" title={modelsFailure} style={{ margin: 0, fontSize: 12, lineHeight: '16px', color: 'var(--dv-danger)' }}>
             {pick('模型列表加载失败', "Couldn't load the model list")}
             {' '}
             <button type="button" className="dv-canvas-btn" style={{ ...plain, color: 'var(--dv-accent-text)' }} onClick={props.reloadModels}>{pick('重试', 'Try again')}</button>

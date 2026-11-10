@@ -137,6 +137,7 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   const status = node.nodeType.status
   const running = status?.running() ?? t('node.running')
   let marker: ReactNode = null
+  let failedText: string | undefined
   if (flags.rendering) {
     if (node.record.status === 'pending') marker = t('node.queued')
     else if (elapsed === null) marker = running
@@ -144,7 +145,8 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   } else if (flags.failed) {
     const failedWords = status?.failed() ?? t('node.failed')
     const reason = node.record.error?.message
-    marker = reason === undefined || reason === '' ? failedWords : t('node.failedReason', { status: failedWords, reason })
+    failedText = reason === undefined || reason === '' ? failedWords : t('node.failedReason', { status: failedWords, reason })
+    marker = failedText
   }
   const count = node.versions.length
   const meta = [count > 1 ? t('node.version', { n: String(count) }) : '', node.meta ?? ''].filter(part => part !== '').join(' · ')
@@ -169,7 +171,7 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   if (failed) {
     content = (
       <div style={{ ...CARD_SURFACE, display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px' }}>
-        <span style={{ ...text(12), flex: 1, minWidth: 0, color: 'var(--dv-danger)', ...ellipsis }}>{marker}</span>
+        <span title={failedText} style={{ ...text(12), flex: 1, minWidth: 0, color: 'var(--dv-danger)', ...ellipsis }}>{marker}</span>
         {props.failedActions.map(action => (
           <button
             key={action.id} type="button" className="dv-canvas-btn" disabled={view.rerunning}
