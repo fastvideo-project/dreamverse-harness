@@ -93,7 +93,8 @@ export interface DvPromptProps {
   readonly call: PromptCall
   /**
    * The identity of what the call belongs to, such as the record of a canvas take. An editable occurrence keeps its
-   * unsent draft under the project, this id, and the lent call, so two takes with equal calls keep separate drafts.
+   * unsent draft under the project, this id, and the lent call, so two takes with equal calls keep separate drafts. A
+   * host remounts the occurrence, such as with a React key, to switch to another draft id or project.
    */
   readonly draftId: string
   /** The project state that the host draws; the tray, the chips and the edits resolve every reference against it. */
