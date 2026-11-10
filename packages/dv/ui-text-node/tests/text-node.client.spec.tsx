@@ -12,10 +12,9 @@ import { projectMentionSource } from '@dv/ui-composer/mention'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { createRegistry, type MentionKind } from '@dv/ui-kit/registries.ts'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
-import { asset, canvasNode, record } from '../../ui-kit/tests/fixture.client.tsx'
+import { asset, canvasNode, record, type FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { forgetCanvasStorage, mountCanvas, type CanvasServer } from '../../ui-canvas/tests/canvas-runtime.client.tsx'
 import { apply, inject, textNodeType } from '../src/client/index.ts'
-import { en } from '../src/client/locales.ts'
 
 usePinnedBrowserLanguages('en-US')
 
@@ -56,9 +55,10 @@ const PREFIX: Record<string, string> = { [PATH]: 'tw', 'script.md': 'sc' }
  * `textnode.write` appends the next version of its path and announces the change; a body that contains `FAIL` gives a
  * failed record, a body that contains `SILENT` gives a failed record without an error, and a body that contains `REFUSE`
  * is refused. The asset pool serves each version's Markdown.
+ * @param edit - further changes to the fixture state, applied after the text node records and nodes.
  * @returns the mounted canvas and the versions of each path that the server holds.
  */
-async function mountTexts() {
+async function mountTexts(edit?: (state: FixtureState) => void) {
   const texts: Record<string, TextVersion[]> = { [PATH]: [version('tw', 1, V1), version('tw', 2, V2)], 'script.md': [version('sc', 1, SCRIPT)] }
   const all = (): TextVersion[] => Object.values(texts).flat()
   let server: CanvasServer | null = null
@@ -81,6 +81,7 @@ async function mountTexts() {
         state.components.canvas.order.push(first.created_by)
       }
       state.components.textnode = { texts: Object.fromEntries(Object.entries(texts).map(([path, versions]) => [path, [...versions]])) }
+      edit?.(state)
     },
     refuse: (path, body) => {
       const request = body as { operation?: string; params?: { path: string; body: string; base_version: number } }
@@ -149,10 +150,6 @@ describe('textNodeType', () => {
     expect([type.entry(input({ title: 'Beats' })).title, type.entry(input()).title]).toEqual(['Beats', 'beats.md'])
     expect([type.status?.running(), type.status?.failed()]).toEqual(['node.saving', 'node.saveFailed'])
   })
-
-  it('names the failed state of a card with the short status copy', () => {
-    expect(textNodeType(key => key === 'node.saveFailed' ? en[key] : key).status?.failed()).toBe('Save failed')
-  })
 })
 
 describe('text node', () => {
@@ -165,6 +162,14 @@ describe('text node', () => {
     expect(view.container.querySelector('[data-node-id="tw2"]')).toBeNull()
     // The default frame is 208 × 84: four opening lines with their padding.
     expect([node('tw1').style.width, card.querySelector<HTMLElement>('[data-node-frame]')?.style.height]).toEqual(['208px', '84px'])
+  })
+
+  it('names the failed state of a card with the short status copy', async () => {
+    const { node } = await mountTexts((state) => {
+      state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'sc1' ? { ...entry, status: 'failed' as const } : entry)
+    })
+    const card = await waitFor(() => node('sc1'))
+    await waitFor(() => { expect(card.textContent).toContain('Save failed') })
   })
 
   it('draws an edge from the node of a source version to the text built from it, and none between the versions of a node', async () => {
