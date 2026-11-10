@@ -1,8 +1,9 @@
 // Project updates: the shipped video-harness profile (`dsh web`, the llm-pi-ai openai-completions route, the fake video
 // backend) drives a scripted model through steps that change the project, including a canvas import, two renders that run
-// in the background and finish between steps of one turn, and an undo between turns. No record line reaches the agent
-// twice. Every agent request of the chat session extends the request before it token for token:
-// the same request fields, the same earlier messages, new messages only appended.
+// in the background and finish between steps of one turn, and an undo between turns. The steps between the changes call
+// `dv_models_list`, which shows nothing of the project, so the project updates are the only messages that report them:
+// each change once, and each render's last frame as an image. Every agent request of the chat session extends the
+// request before it token for token: the same request fields, the same earlier messages, new messages only appended.
 import type { Browser, Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { bootHarness, playwright, waitFor, type BootedHarness } from '../harness.ts'
@@ -30,8 +31,8 @@ describe('project updates reach the agent as appended messages', () => {
   let scheduled: string[] = []
 
   // The scripted agent: imports a product image and starts two renders with the backend held, then, between two steps,
-  // the user imports an image on the canvas and the first render finishes; the agent reads the project state, and reads it
-  // again after the second render finishes.
+  // the user imports an image on the canvas and the first render finishes, and between the next two the second render
+  // finishes; the agent lists the models at each of those steps.
   const rules: ScriptedRule[] = [
     { match: /只回复\S+/, steps: [view => ({ text: `收到${/只回复(\S+)/.exec(view.userText)?.[1] ?? ''}` })] },
     {
@@ -59,7 +60,7 @@ describe('project updates reach the agent as appended messages', () => {
             }
             return history.entries.some(entry => entry.record.operation === 'shot.render' && entry.record.status === 'done')
           }, 'the first render', 60_000)
-          return { calls: [{ name: 'dv_proj_state', args: {} }] }
+          return { calls: [{ name: 'dv_models_list', args: {} }] }
         },
         async () => {
           harness.backend.releaseAll()
@@ -69,7 +70,7 @@ describe('project updates reach the agent as appended messages', () => {
             }
             return history.entries.every(entry => entry.record.status === 'done')
           }, 'the second render', 60_000)
-          return { calls: [{ name: 'dv_proj_state', args: {} }] }
+          return { calls: [{ name: 'dv_models_list', args: {} }] }
         },
       ],
       endText: '两个镜头已渲染。',
@@ -130,13 +131,21 @@ describe('project updates reach the agent as appended messages', () => {
     const system = first.messages.filter(message => message.role === 'system').map(message => textOf(message.content)).join('\n')
     expect(system).toContain('DreamVerse project rules:')
     expect(system).not.toContain('"head"')
-    const userTexts = (requests.at(-1) as ChatRequest).messages.filter(message => message.role === 'user').map(message => textOf(message.content))
-    const updates = userTexts.filter(text => text.startsWith('DreamVerse project updates since your last step:'))
+    const updateMessages = (requests.at(-1) as ChatRequest).messages
+      .filter(message => message.role === 'user' && textOf(message.content).startsWith('DreamVerse project updates since your last step:'))
+    const updates = updateMessages.map(message => textOf(message.content))
     const text = updates.join('\n')
     // The agent's own import is never repeated.
     expect(text).not.toContain('imported product.png')
     // The step after the canvas import names it once.
     expect(text.match(/^- done \S+ \(user on canvas\): imported knife\.png$/gm)).toHaveLength(1)
+    // Each render's finish is reported once, in the update of the step after it finished, with its last frame as an image.
+    for (const [index, record] of scheduled.entries()) {
+      expect(text.match(new RegExp(`^- done ${record} \\(your call\\): `, 'gm')), `render ${String(index + 1)}`).toHaveLength(1)
+      const reporting = updateMessages.find(message => textOf(message.content).includes(`- done ${record} (your call): `))
+      const parts = Array.isArray(reporting?.content) ? reporting.content as Array<{ type?: string }> : []
+      expect(parts.filter(part => part.type === 'image_url'), `render ${String(index + 1)} image`).toHaveLength(1)
+    }
     // The undo between turns reaches the next turn as a move.
     expect(updates.at(-1)).toMatch(new RegExp(`^- history: the current step is ${beforeTip}; dv_proj_history_list shows which steps are undone or discarded\\.$`, 'm'))
     // No record line is sent twice.
