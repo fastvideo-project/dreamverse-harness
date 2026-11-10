@@ -15,6 +15,7 @@ import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { asset, canvasNode, record } from '../../ui-kit/tests/fixture.client.tsx'
 import { forgetCanvasStorage, mountCanvas, type CanvasServer } from '../../ui-canvas/tests/canvas-runtime.client.tsx'
 import { apply, inject, textNodeType } from '../src/client/index.ts'
+import { en } from '../src/client/locales.ts'
 
 usePinnedBrowserLanguages('en-US')
 
@@ -53,7 +54,8 @@ const PREFIX: Record<string, string> = { [PATH]: 'tw', 'script.md': 'sc' }
  * server whose `beats.md` holds v1 and v2 and whose `script.md` v1 was built from `beats.md` v2. Each path is one `text`
  * node, named by the record of its first version, whose versions are the records of the path's versions. An accepted
  * `textnode.write` appends the next version of its path and announces the change; a body that contains `FAIL` gives a
- * failed record, and a body that contains `REFUSE` is refused. The asset pool serves each version's Markdown.
+ * failed record, a body that contains `SILENT` gives a failed record without an error, and a body that contains `REFUSE`
+ * is refused. The asset pool serves each version's Markdown.
  * @returns the mounted canvas and the versions of each path that the server holds.
  */
 async function mountTexts() {
@@ -103,6 +105,10 @@ async function mountTexts() {
           const failed = record({ id: 'f1', operation: 'textnode.write', status: 'failed', error: { code: 'operation_failed', message: 'The disk is full.' } })
           return Promise.resolve(new Response(JSON.stringify(failed), { headers: { 'content-type': 'application/json' } }))
         }
+        if (input.endsWith('/api/dv/operation') && typeof init?.body === 'string' && init.body.includes('SILENT')) {
+          const failed = record({ id: 'f2', operation: 'textnode.write', status: 'failed' })
+          return Promise.resolve(new Response(JSON.stringify(failed), { headers: { 'content-type': 'application/json' } }))
+        }
         return served(input, init)
       })
       // The `@` source and its mention kinds, which the bundle's `@dv/ui-composer` provides.
@@ -142,6 +148,10 @@ describe('textNodeType', () => {
     })
     expect([type.entry(input({ title: 'Beats' })).title, type.entry(input()).title]).toEqual(['Beats', 'beats.md'])
     expect([type.status?.running(), type.status?.failed()]).toEqual(['node.saving', 'node.saveFailed'])
+  })
+
+  it('names the failed state of a card with the short status copy', () => {
+    expect(textNodeType(key => key === 'node.saveFailed' ? en[key] : key).status?.failed()).toBe('Save failed')
   })
 })
 
@@ -268,6 +278,7 @@ describe('text node', () => {
   it.each([
     ['refused', ' REFUSE', 'Text node script.md is too long.'],
     ['failed', ' FAIL', 'The disk is full.'],
+    ['failed without an error', ' SILENT', 'Not saved. Try again.'],
   ])('shows the error of a %s save and keeps the draft open', async (_case, text, message) => {
     const { open } = await mountTexts()
     const editor = await draft(open, 'sc1', text)
