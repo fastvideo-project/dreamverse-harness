@@ -47,6 +47,8 @@ class FakeAgent {
   status: 'idle' | 'running' = 'idle'
   /** The messages queued for the agent and not claimed yet. */
   readonly queued: UserMessage[] = []
+  /** The inboxes, which stay empty: the record notices read them before a wake opens a turn. */
+  readonly inbox = { nextStep: [] as UserMessage[], nextTurn: [] as UserMessage[] }
 
   followup(message: UserMessage): void {
     this.queued.push(message)
