@@ -85,7 +85,7 @@ export function projectStates(client: Pick<DvClient, 'getState' | 'subscribe'>):
 
 /** The model catalog source, with the message of its last failed load and a way to load it again. */
 export interface CatalogSource extends HostObservable<readonly WireModelEntry[] | null> {
-  /** The message of the last load when it failed; null before the first load answers and after a load succeeds. */
+  /** The message of the last load when it failed; null while a load is in flight and after a load succeeds. */
   readonly failure: HostObservable<string | null>
   /** Read the catalog again now, whether or not a consumer subscribes. */
   readonly reload: () => void
@@ -94,8 +94,8 @@ export interface CatalogSource extends HostObservable<readonly WireModelEntry[] 
 /**
  * The model catalog: null until the first load answers, and loaded again each time a consumer subscribes while none
  * did, so an occurrence that opens reads the catalog as it is then, such as after a backend that was down comes back. A
- * failed load keeps the catalog it had and records its message in `failure` until a load succeeds. Only the answer of
- * the latest load applies.
+ * failed load keeps the catalog it had and records its message in `failure` until the next load starts. Only the
+ * answer of the latest load applies.
  * @param load - reads the catalog.
  * @returns the source.
  */
@@ -108,6 +108,8 @@ export function catalogSource(load: () => Promise<readonly WireModelEntry[]>): C
     // Only the latest load answers, so a slower earlier load cannot replace a newer catalog or failure.
     loads += 1
     const loaded = loads
+    // Clearing the failure takes down the Try again alert while the load runs, so a failed retry shows the alert anew.
+    failure.set(null)
     load().then((catalog) => {
       if (loaded !== loads) return
       failure.set(null)

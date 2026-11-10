@@ -193,6 +193,18 @@ describe('the model catalog failure', () => {
     await new Promise((resolve) => { setTimeout(resolve, 0) })
     expect([catalog.failure.getSnapshot(), catalog.getSnapshot()]).toEqual(['offline', null])
   })
+
+  it('clears the message while a reload runs, and records the message of a reload that fails again', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const load = vi.fn().mockRejectedValueOnce(new Error('offline')).mockRejectedValueOnce(new Error('still offline'))
+    const catalog = catalogSource(load)
+    catalog.subscribe(() => {})
+    await vi.waitFor(() => { expect(catalog.failure.getSnapshot()).toBe('offline') })
+    catalog.reload()
+    expect(catalog.failure.getSnapshot()).toBeNull()
+    await vi.waitFor(() => { expect(catalog.failure.getSnapshot()).toBe('still offline') })
+    expect(load).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('the parameter bars', () => {

@@ -339,6 +339,15 @@ describe('the model list failure', () => {
     await waitFor(() => { expect(within(take).getByRole('button', { name: 'Add asset' })).toBeTruthy() })
   })
 
+  it('takes the alert down while Try again loads, and shows it again when the read fails again', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { take } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] }, { modelsDown: { down: true } })
+    const alert = await found(take, FAILED)
+    fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }))
+    expect(take.querySelector(FAILED)).toBeNull()
+    expect((await found(take, FAILED)).textContent).toContain("Couldn't load the model list")
+  })
+
   it('never shows it when the first load succeeds', async () => {
     const { take } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] })
     await waitFor(() => { expect(within(take).getByRole('button', { name: 'Add asset' })).toBeTruthy() })
