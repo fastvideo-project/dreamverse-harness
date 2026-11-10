@@ -20,6 +20,8 @@ const FAILURE_HOLD_MS = 6000
 /** The failure on display, with a per-report sequence that restarts the toast for a repeated message. */
 let failure: { seq: number; message: string } | null = null
 let reports = 0
+/** The shell application that actions report to; a clear starts the next one, so earlier actions report nothing. */
+let generation = 0
 const listeners = new Set<() => void>()
 
 /**
@@ -31,19 +33,25 @@ function publish(next: typeof failure): void {
   for (const listener of listeners) listener()
 }
 
-/** Clear the failure on display, so that a shell applied again starts with no toast. */
+/**
+ * Clear the failure on display, so that a shell applied again starts with no toast, and drop the outcome of every
+ * action still pending.
+ */
 export function clearActionFailure(): void {
+  generation += 1
   publish(null)
 }
 
 /**
  * Start an asynchronous shell action. A rejection is logged with `console.warn` and shown in the toast; a success
- * clears a failure still on display.
+ * clears a failure still on display. An action that settles after `clearActionFailure` changes no toast.
  * @param work - the action.
  */
 export const runAction: ActionRunner = (work) => {
-  work().then(() => { if (failure !== null) publish(null) }, (error: unknown) => {
+  const started = generation
+  work().then(() => { if (started === generation && failure !== null) publish(null) }, (error: unknown) => {
     console.warn('ui-shell: navigation failed', error)
+    if (started !== generation) return
     reports += 1
     publish({ seq: reports, message: errorMessage(error) })
   })

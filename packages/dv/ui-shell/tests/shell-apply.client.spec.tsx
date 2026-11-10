@@ -388,10 +388,16 @@ describe('the navigator', () => {
     bench.runtime.sessions.stubCreate(() => Promise.reject(new Error('host offline')))
     fireEvent.click(view.getByRole('button', { name: 'New chat' }))
     expect((await screen.findByRole('alert')).textContent).toBe("Couldn't complete that: host offline")
+    // An action still pending at the dispose rejects after the plugin is applied again.
+    let refuse: (error: Error) => void = () => {}
+    bench.runtime.sessions.stubCreate(() => new Promise((_resolve, reject) => { refuse = reject }))
+    fireEvent.click(view.getByRole('button', { name: 'New chat' }))
     await bench.shell.dispose()
     const { apply, inject } = await import('../src/client/index.ts')
     await bench.runtime.mount({ inject: [...inject], apply })
     await waitFor(() => { expect(bench.runtime.slots.entries('shell.overlay')).toHaveLength(1) })
+    expect(screen.queryByRole('alert')).toBeNull()
+    await act(async () => { refuse(new Error('host gone')); await Promise.resolve() })
     expect(screen.queryByRole('alert')).toBeNull()
   })
 })
