@@ -163,6 +163,36 @@ describe('the model catalog failure', () => {
     expect(catalog.failure.getSnapshot()).toBeNull()
     expect(seen).toHaveBeenCalled()
   })
+
+  it('applies only the answer of the latest load, so an earlier load that fails after it records no failure', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    let failFirst: (error: Error) => void = () => {}
+    const load = vi.fn()
+      .mockReturnValueOnce(new Promise((_resolve, reject) => { failFirst = reject }))
+      .mockResolvedValueOnce([{ modality: 'video' }])
+    const catalog = catalogSource(load)
+    catalog.subscribe(() => {})
+    catalog.reload()
+    await vi.waitFor(() => { expect(catalog.getSnapshot()).toEqual([{ modality: 'video' }]) })
+    failFirst(new Error('offline'))
+    await new Promise((resolve) => { setTimeout(resolve, 0) })
+    expect([catalog.failure.getSnapshot(), catalog.getSnapshot()]).toEqual([null, [{ modality: 'video' }]])
+  })
+
+  it('keeps the failure of the latest load when an earlier load answers after it', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    let answerFirst: (catalog: unknown[]) => void = () => {}
+    const load = vi.fn()
+      .mockReturnValueOnce(new Promise((resolve) => { answerFirst = resolve }))
+      .mockRejectedValueOnce(new Error('offline'))
+    const catalog = catalogSource(load)
+    catalog.subscribe(() => {})
+    catalog.reload()
+    await vi.waitFor(() => { expect(catalog.failure.getSnapshot()).toBe('offline') })
+    answerFirst([{ modality: 'audio' }])
+    await new Promise((resolve) => { setTimeout(resolve, 0) })
+    expect([catalog.failure.getSnapshot(), catalog.getSnapshot()]).toEqual(['offline', null])
+  })
 })
 
 describe('the parameter bars', () => {

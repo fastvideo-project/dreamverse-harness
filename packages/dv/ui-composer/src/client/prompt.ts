@@ -94,7 +94,8 @@ export interface CatalogSource extends HostObservable<readonly WireModelEntry[] 
 /**
  * The model catalog: null until the first load answers, and loaded again each time a consumer subscribes while none
  * did, so an occurrence that opens reads the catalog as it is then, such as after a backend that was down comes back. A
- * failed load keeps the catalog it had and records its message in `failure` until a load succeeds.
+ * failed load keeps the catalog it had and records its message in `failure` until a load succeeds. Only the answer of
+ * the latest load applies.
  * @param load - reads the catalog.
  * @returns the source.
  */
@@ -102,13 +103,18 @@ export function catalogSource(load: () => Promise<readonly WireModelEntry[]>): C
   const store = createSnapshotStore<readonly WireModelEntry[] | null>(null)
   const failure = createSnapshotStore<string | null>(null)
   let consumers = 0
+  let loads = 0
   const reload = (): void => {
+    // Only the latest load answers, so a slower earlier load cannot replace a newer catalog or failure.
+    loads += 1
+    const loaded = loads
     load().then((catalog) => {
+      if (loaded !== loads) return
       failure.set(null)
       store.set(catalog)
     }, (error: unknown) => {
       console.error('[dv-composer] models failed:', error)
-      failure.set(errorMessage(error))
+      if (loaded === loads) failure.set(errorMessage(error))
     })
   }
   return {
