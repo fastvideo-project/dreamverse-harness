@@ -11,7 +11,7 @@
  * the track; it cannot be trimmed or split, playback skips it, and export waits until every clip is ready.
  */
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, DragEvent, KeyboardEvent, PointerEvent, ReactNode } from 'react'
+import type { CSSProperties, DragEvent, FocusEvent, KeyboardEvent, PointerEvent, ReactNode, RefObject } from 'react'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import type { Timeline } from '@dv/timeline/types'
 import { assetUrl } from '@dv/ui-kit/api.ts'
@@ -206,6 +206,27 @@ function IconButton(
       <Icon name={icon} />
     </button>
   )
+}
+
+/**
+ * Close an open popover when a pointerdown lands outside all of the given elements. The listener runs in the capture
+ * phase, so a press on a clip, a trim handle, or another surface that stops the event's propagation still closes it.
+ * @param open - whether the popover is showing; false detaches the listener.
+ * @param inside - the elements where a press keeps the popover open.
+ * @param close - called on a press outside every element in `inside`; the listener keeps the `inside` and `close` of
+ * the render that opened the popover, so both use only refs and state setters.
+ */
+function useDismissOnOutsidePress(open: boolean, inside: ReadonlyArray<RefObject<HTMLElement | null>>, close: () => void): void {
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (event: globalThis.PointerEvent): void => {
+      const { target } = event
+      if (target instanceof Node && inside.some(ref => ref.current?.contains(target) === true)) return
+      close()
+    }
+    window.addEventListener('pointerdown', onPointerDown, true)
+    return () => { window.removeEventListener('pointerdown', onPointerDown, true) }
+  }, [open])
 }
 
 /**
@@ -422,35 +443,53 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     return () => { clearTimeout(timer) }
   }, [dropNotice])
 
-  // A click outside the tab menu or Escape closes it.
+  // A press outside the tab menu or Escape closes it.
+  useDismissOnOutsidePress(menu !== null, [menuRef], () => { setMenu(null) })
   useEffect(() => {
     if (menu === null) return
-    const close = (event: Event): void => {
-      if (event instanceof KeyboardEvent ? event.key === 'Escape' : !(event.target instanceof Node && menuRef.current?.contains(event.target) === true)) setMenu(null)
+    const close = (event: globalThis.KeyboardEvent): void => {
+      if (event.key === 'Escape' && !event.defaultPrevented) setMenu(null)
     }
-    window.addEventListener('pointerdown', close)
     window.addEventListener('keydown', close)
-    return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', close) }
+    return () => { window.removeEventListener('keydown', close) }
   }, [menu])
 
-  // Escape or a press outside the asset picker closes it without inserting; Escape returns focus to ＋. A press on ＋
-  // counts as inside, so its click toggles the picker closed instead of reopening it.
+  // Closing the asset picker from its close button or Escape returns focus to ＋.
+  const closePicker = (): void => {
+    setPicking(false)
+    addRef.current?.focus()
+  }
+  // ＋ counts as part of the picker for presses, focus, and Escape.
+  const inPicker = (node: Node): boolean => [pickerRef, addRef].some(ref => ref.current?.contains(node) === true)
+  // Focus that leaves the picker and ＋ closes the picker. A press on a part of the picker that cannot take focus moves
+  // focus to an element that contains the picker, which keeps it open.
+  const closeOnFocusOut = (event: FocusEvent<HTMLDivElement>): void => {
+    const next = event.relatedTarget
+    if (picking && next instanceof Node && !inPicker(next) && !next.contains(pickerRef.current)) setPicking(false)
+  }
+  // A press outside the asset picker closes it without inserting. A press on ＋ counts as inside, so its click toggles
+  // the picker closed instead of reopening it.
+  useDismissOnOutsidePress(picking, [pickerRef, addRef], () => { setPicking(false) })
+  // The open picker takes focus. Escape closes it only while focus is in the picker, on ＋, or on an element that
+  // contains the picker, such as the editor after a press on the picker's title, and never during IME composition. The
+  // capture-phase listener consumes that Escape, so the tab menu and outer dialogs stay open.
   useEffect(() => {
     if (!picking) return
-    const close = (event: Event): void => {
-      if (event instanceof KeyboardEvent) {
-        if (event.key !== 'Escape') return
-        setPicking(false)
-        addRef.current?.focus()
-        return
-      }
-      const { target } = event
-      const inside = target instanceof Node && [pickerRef.current, addRef.current].some(element => element?.contains(target) === true)
-      if (!inside) setPicking(false)
+    // The first button is the close button; focus the first asset when the picker lists one.
+    const buttons = pickerRef.current?.querySelectorAll('button')
+    const first = buttons?.[1] ?? buttons?.[0]
+    first?.focus()
+    const onKeyDown = (event: globalThis.KeyboardEvent): void => {
+      if (event.key !== 'Escape' || event.isComposing) return
+      const focused = document.activeElement
+      const owned = focused === null || inPicker(focused) || focused.contains(pickerRef.current)
+      if (!owned) return
+      event.preventDefault()
+      event.stopPropagation()
+      closePicker()
     }
-    window.addEventListener('pointerdown', close)
-    window.addEventListener('keydown', close)
-    return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', close) }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => { window.removeEventListener('keydown', onKeyDown, true) }
   }, [picking])
 
   // A timeline without a stored name shows the numbered default name of its ID in the interface language.
@@ -956,32 +995,38 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     </div>
   )
 
-  // The toolbar, the tracks, and the asset picker share one panel; the picker opens under the toolbar, outside the
-  // horizontally scrolling tracks, so the scroll area does not clip it. The picker ends 8 px above the panel's bottom,
-  // which sits on the window's bottom edge, and only its list scrolls, so its title and close button stay in view. A
+  // The toolbar, the tracks, and the asset picker share one panel; the picker opens in the area under the toolbar,
+  // outside the horizontally scrolling tracks, so the scroll area does not clip it and a wrapped toolbar does not cover
+  // it. The picker ends 8 px above the panel's bottom, which sits on the window's bottom edge, and only its list
+  // scrolls, so its title and close button stay in view. Focus that leaves the picker and ＋ closes it. A
   // resized panel gives its extra height to the scrolling track rows, which keep their own heights at the top.
   const editPanel = (
-    <div ref={panel} style={{ flex: 'none', ...trackHeight === null ? {} : { height: trackHeight }, display: 'flex', flexDirection: 'column', position: 'relative', background: palette.panel }}>
+    <div ref={panel} style={{ flex: 'none', ...trackHeight === null ? {} : { height: trackHeight }, display: 'flex', flexDirection: 'column', background: palette.panel }}>
       {toolbar}
-      {tracks}
-      {picking ? (
-        <div ref={pickerRef} role="dialog" aria-label={t('track.pick')} style={{ position: 'absolute', right: 12, top: 44, boxSizing: 'border-box', maxHeight: 'min(194px, calc(100% - 52px))', display: 'flex', flexDirection: 'column', background: palette.panel, border: `1px solid ${palette.line}`, borderRadius: 'var(--dv-radius-lg)', boxShadow: 'var(--dv-shadow-1)', padding: 6, zIndex: 5, minWidth: 180 }}>
-          <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <p style={{ flex: 1, margin: 0, color: palette.muted, fontSize: 12, lineHeight: '16px' }}>{t('track.pick')}</p>
-            <IconButton icon="close" label={t('track.pickClose')} onClick={() => { setPicking(false); addRef.current?.focus() }} />
+      <div onBlur={closeOnFocusOut} style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+        {tracks}
+        {picking ? (
+          <div
+            ref={pickerRef} role="dialog" aria-label={t('track.pick')}
+            style={{ position: 'absolute', right: 12, top: 8, boxSizing: 'border-box', maxHeight: 'min(194px, calc(100% - 16px))', display: 'flex', flexDirection: 'column', background: palette.panel, border: `1px solid ${palette.line}`, borderRadius: 'var(--dv-radius-lg)', boxShadow: 'var(--dv-shadow-1)', padding: 6, zIndex: 5, minWidth: 180 }}
+          >
+            <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <p style={{ flex: 1, margin: 0, color: palette.muted, fontSize: 12, lineHeight: '16px' }}>{t('track.pick')}</p>
+              <IconButton icon="close" label={t('track.pickClose')} onClick={closePicker} />
+            </div>
+            <div style={{ minHeight: 0, overflow: 'auto' }}>
+              {candidates.length === 0 ? <p style={{ margin: 0 }}>{t('track.noAssets')}</p> : candidates.map(entry => (
+                <button
+                  key={entry.id} type="button" className="dv-tl-btn" style={{ ...menuItem, marginTop: 4 }}
+                  onClick={() => { setPicking(false); insert(clips.length + 1, entry.id) }}
+                >
+                  {entry.name}
+                </button>
+              ))}
+            </div>
           </div>
-          <div style={{ minHeight: 0, overflow: 'auto' }}>
-            {candidates.length === 0 ? <p style={{ margin: 0 }}>{t('track.noAssets')}</p> : candidates.map(entry => (
-              <button
-                key={entry.id} type="button" className="dv-tl-btn" style={{ ...menuItem, marginTop: 4 }}
-                onClick={() => { setPicking(false); insert(clips.length + 1, entry.id) }}
-              >
-                {entry.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </div>
   )
 

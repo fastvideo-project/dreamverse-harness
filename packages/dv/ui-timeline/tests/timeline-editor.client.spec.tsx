@@ -473,6 +473,87 @@ describe('timeline editor gestures', () => {
     expect(requests()).toEqual([])
   })
 
+  it('closes the asset picker on a press on a clip or on a surface that stops the press from propagating', async () => {
+    const { view, clip, track } = mount()
+    await track()
+    const add = (): HTMLElement => view.getByLabelText('插入片段')
+    fireEvent.click(add())
+    fireEvent.pointerDown(clip(1), { clientX: 0 })
+    expect(view.queryByRole('dialog')).toBeNull()
+
+    const surface = document.body.appendChild(document.createElement('button'))
+    try {
+      surface.addEventListener('pointerdown', (event) => { event.stopPropagation() })
+      fireEvent.click(add())
+      fireEvent.pointerDown(surface)
+      expect(view.queryByRole('dialog')).toBeNull()
+    } finally {
+      surface.remove()
+    }
+  })
+
+  it('moves focus into the asset picker and closes it when focus leaves the picker and ＋', async () => {
+    const { view, track } = mount()
+    await track()
+    const add = (): HTMLElement => view.getByLabelText('插入片段')
+    const picker = (): HTMLElement | null => view.queryByRole('dialog')
+    const undo = (): HTMLElement => view.getByLabelText('撤销')
+    fireEvent.click(add())
+    const first = within(picker() as HTMLElement).getByText('shot1.mp4')
+    expect(document.activeElement).toBe(first)
+    fireEvent.blur(first, { relatedTarget: view.getByTestId('dv-timeline-editor') })
+    expect(picker()).not.toBeNull()
+    fireEvent.blur(first, { relatedTarget: add() })
+    expect(picker()).not.toBeNull()
+    fireEvent.blur(add(), { relatedTarget: undo() })
+    expect(picker()).toBeNull()
+
+    fireEvent.click(add())
+    fireEvent.blur(within(picker() as HTMLElement).getByText('shot1.mp4'), { relatedTarget: undo() })
+    expect(picker()).toBeNull()
+  })
+
+  it('closes the asset picker on Escape after a press on its title moves focus to the editor', async () => {
+    const { view, track } = mount()
+    await track()
+    const add = (): HTMLElement => view.getByLabelText('插入片段')
+    fireEvent.click(add())
+    view.getByTestId('dv-timeline-editor').focus()
+    expect(view.queryByRole('dialog')).not.toBeNull()
+    fireEvent.keyDown(document.activeElement as Element, { key: 'Escape' })
+    expect(view.queryByRole('dialog')).toBeNull()
+    expect(document.activeElement).toBe(add())
+  })
+
+  it('leaves Escape to the focused field outside the asset picker, and consumes the Escape it handles', async () => {
+    const { view, track } = mount()
+    await track()
+    const add = (): HTMLElement => view.getByLabelText('插入片段')
+    const picker = (): HTMLElement | null => view.queryByRole('dialog')
+    const composer = document.body.appendChild(document.createElement('textarea'))
+    const outer = vi.fn()
+    window.addEventListener('keydown', outer)
+    try {
+      fireEvent.click(add())
+      composer.focus()
+      fireEvent.keyDown(composer, { key: 'Escape' })
+      expect(picker()).not.toBeNull()
+      expect(document.activeElement).toBe(composer)
+      expect(outer).toHaveBeenCalledTimes(1)
+
+      within(picker() as HTMLElement).getByText('shot1.mp4').focus()
+      fireEvent.keyDown(document.activeElement as Element, { key: 'Escape', isComposing: true })
+      expect(picker()).not.toBeNull()
+      fireEvent.keyDown(document.activeElement as Element, { key: 'Escape' })
+      expect(picker()).toBeNull()
+      expect(document.activeElement).toBe(add())
+      expect(outer).toHaveBeenCalledTimes(2)
+    } finally {
+      window.removeEventListener('keydown', outer)
+      composer.remove()
+    }
+  })
+
   it('returns to the shown timeline when creating one fails, and keeps the selection when a removal or a move fails', async () => {
     const { view, clip, requests, track } = mount({ state: twoTimelines, post: () => ({ status: 500, body: { error: 'busy' } }) })
     await track()
