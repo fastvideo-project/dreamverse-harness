@@ -149,6 +149,10 @@ def render(params):
             if params.get("kind") == "animation":
                 start = int(params.get("frame_start", scene.frame_start))
                 end = int(params.get("frame_end", scene.frame_end))
+                if end < start:
+                    raise ValueError(f"frame_end must not come before frame_start: the range resolves to frames {start} to {end}, "
+                                     f"and a missing frame_start or frame_end comes from the scene's range "
+                                     f"{scene.frame_start} to {scene.frame_end}.")
                 scene.frame_start, scene.frame_end = start, end
                 if hasattr(image, "media_type"):
                     image.media_type = "VIDEO"
