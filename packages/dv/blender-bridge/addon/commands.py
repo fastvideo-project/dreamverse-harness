@@ -99,8 +99,10 @@ def _push_undo():
 def look(view, reply):
     """Capture the viewport or the camera view as an RGB PNG, at the next redraw of the main 3D view. The PNG has no
     alpha channel, because the harness sends an image with one to the model as WebP once it is re-encoded, and some
-    model providers reject WebP."""
-    if view == "camera" and bpy.context.scene.camera is None:
+    model providers reject WebP. The camera check reads the scene of the main 3D view's window, which the capture
+    draws."""
+    target = viewport.main_view()
+    if view == "camera" and target is not None and target[0].scene.camera is None:
         reply(None, error="The scene has no active camera; set one first, or look at the viewport.")
         return
 

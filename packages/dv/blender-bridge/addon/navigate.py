@@ -65,7 +65,7 @@ def apply(command):
     elif action == "preset":
         preset = command.get("preset")
         if preset == "camera":
-            if bpy.context.scene.camera is None:
+            if window.scene.camera is None:
                 return "The scene has no active camera."
             view.view_perspective = "CAMERA"
         elif preset in PRESETS:
