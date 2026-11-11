@@ -128,6 +128,8 @@ def render(params):
     image = render_settings.image_settings
     saved_render = {"filepath": render_settings.filepath, "use_file_extension": render_settings.use_file_extension}
     saved_image = {name: getattr(image, name) for name in ("media_type", "file_format", "color_mode") if hasattr(image, name)}
+    # In this order: setting the codec resets the quality, and setting the image format re-picks the container.
+    saved_ffmpeg = {name: getattr(render_settings.ffmpeg, name) for name in ("format", "codec", "constant_rate_factor")}
     saved_frames = (scene.frame_current, scene.frame_start, scene.frame_end)
     width = int(render_settings.resolution_x * render_settings.resolution_percentage / 100)
     height = int(render_settings.resolution_y * render_settings.resolution_percentage / 100)
@@ -171,6 +173,7 @@ def render(params):
             return ({"mime": "image/png", "width": width, "height": height, "frame": frame, "engine": render_settings.engine}, data)
         finally:
             _restore(image, saved_image)
+            _restore(render_settings.ffmpeg, saved_ffmpeg)
             _restore(render_settings, saved_render)
             scene.frame_start, scene.frame_end = saved_frames[1], saved_frames[2]
             scene.frame_set(saved_frames[0])
