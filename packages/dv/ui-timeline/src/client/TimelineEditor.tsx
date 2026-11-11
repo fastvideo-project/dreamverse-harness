@@ -30,7 +30,7 @@ import { useSoundPlayback } from './sound-playback.ts'
 import {
   audioAssets, clipIndexAt, dropPosition, nextTimelineId, placeSounds, placeTimeline, timecode, timelinesOf, videoAssets,
 } from './timelines.ts'
-import type { TrackClip } from './timelines.ts'
+import type { TrackClip, TrackSound } from './timelines.ts'
 import type { DvTimelineKey } from './locales.ts'
 
 /** The editor's inputs: the project it shows, the chat session it writes for, the state, and the write runner. */
@@ -407,18 +407,18 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   // accept a track up to the one after the last stored track.
   const [shownTracks, setShownTracks] = useState(1)
   const trackNames = timeline?.sound_track_names ?? []
-  const savedTracks = Math.max(trackNames.length, ...sounds.map(sound => sound.track + 1))
-  const storedTracks = Math.max(1, savedTracks)
+  const storedTracks = Math.max(trackNames.length, ...sounds.map(sound => sound.track + 1))
+  const baseTracks = Math.max(1, storedTracks)
   const trackName = (track: number): string => trackNames[track] || t('track.soundN', { n: track + 1 })
   const [renamingTrack, setRenamingTrack] = useState<{ track: number; name: string } | null>(null)
   // After the stored tracks shrink, the view still shows at most the one empty track that the operations accept.
-  const trackCount = Math.max(storedTracks, Math.min(shownTracks, storedTracks + 1))
+  const trackCount = Math.max(baseTracks, Math.min(shownTracks, baseTracks + 1))
   // The track the add dialog adds to, the selected sound, and the open sound or track menu.
   const [soundTrack, setSoundTrack] = useState(0)
   const [chosenSound, setChosenSound] = useState<string | null>(null)
   const selectedSound = sounds.find(sound => sound.sound === chosenSound)
   const [soundMenu, setSoundMenu] = useState<
-    { kind: 'sound'; sound: (typeof sounds)[number]; x: number; y: number } | { kind: 'track'; track: number; x: number; y: number } | null
+    { kind: 'sound'; sound: TrackSound; x: number; y: number } | { kind: 'track'; track: number; x: number; y: number } | null
   >(null)
   const soundMenuRef = useRef<HTMLDivElement | null>(null)
   const cycleRate = (): void => {
@@ -607,7 +607,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     const at = soundStart
     addingSound(run(() => writeSound(asset, at)))
   }
-  const removeSound = (sound: (typeof sounds)[number]): void => {
+  const removeSound = (sound: TrackSound): void => {
     setSoundMenu(null)
     void runOperation('timeline.sound_remove', { sound: sound.sound }, t('intent.soundRemove', { name: sound.name }))
       .then((ok) => { if (ok) setChosenSound(null) })
@@ -626,7 +626,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const removeTrack = (track: number): void => {
     setSoundMenu(null)
     setShownTracks(Math.max(1, trackCount - 1))
-    if (track < savedTracks) void runOperation('timeline.sound_track_remove', { track }, t('intent.trackRemove', { n: track + 1 }))
+    if (track < storedTracks) void runOperation('timeline.sound_track_remove', { track }, t('intent.trackRemove', { n: track + 1 }))
   }
   const uploadSound = (file: File): void => {
     setPickingSound(false)
@@ -1177,7 +1177,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
                   overflow: 'hidden', ...sound.sound === chosenSound ? { boxShadow: `0 0 0 2px ${palette.accent}`, zIndex: 1 } : {},
                 }}
               >
-                {/* As in common editors, the file name sits in its own strip above the waveform, cut with an ellipsis. */}
+                {/* The file name sits in its own strip above the waveform, cut with an ellipsis. */}
                 <span style={{ flex: 'none', height: SOUND_NAME_HEIGHT, padding: '0 4px', fontSize: 11, lineHeight: `${String(SOUND_NAME_HEIGHT)}px`, color: palette.fg, background: palette.panel, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {sound.name}
                 </span>
@@ -1195,7 +1195,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
           {timeline === null ? null : (
             <button
               type="button" className="dv-tl-btn" style={{ ...button, ...textButton, fontSize: 12, whiteSpace: 'nowrap' }}
-              disabled={trackCount > storedTracks} onClick={() => { setShownTracks(trackCount + 1) }}
+              disabled={trackCount > baseTracks} onClick={() => { setShownTracks(trackCount + 1) }}
             >
               <Icon name="add" />{t('track.addTrack')}
             </button>

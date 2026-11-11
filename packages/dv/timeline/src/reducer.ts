@@ -353,7 +353,6 @@ function applyCall(slice: Slice, call: TimelineCall): Timeline[] {
     case OPERATIONS.soundRemove:
       return timelines.map(timeline => ({ ...timeline, sounds: timeline.sounds.filter(sound => sound.id !== params['sound']) }))
     case OPERATIONS.soundTrackRemove: {
-      // The track's sounds go, and every later track moves up one.
       const track = Number(params['track'])
       const shifted = (sounds: Timeline['sounds']): Timeline['sounds'] => sounds
         .filter(sound => sound.track !== track).map(sound => sound.track > track ? { ...sound, track: sound.track - 1 } : sound)
