@@ -423,7 +423,7 @@ describe('sound tracks', () => {
 
   it('shows the error of a failed sound add record and enables the sound track ＋ again', async () => {
     const errors = [{ code: 'operation_failed', message: 'Asset theme.mp3 is not an audio file.' }, undefined]
-    const post: ScriptedRoutes['post'] = (path, body) => {
+    const post: ScriptedRoutes['post'] = (_path, body) => {
       const { operation, params = {} } = body as { operation: string; params?: Record<string, unknown> }
       const error = errors.shift()
       return { status: 200, body: record({ id: 'f1', operation, params, status: 'failed', ...error === undefined ? {} : { error } }) }
