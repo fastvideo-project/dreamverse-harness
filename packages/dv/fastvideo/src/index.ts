@@ -306,6 +306,9 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
       const assets = [...request.references, ...request.firstFrame === null ? [] : [request.firstFrame],
         ...request.lastFrame === null ? [] : [request.lastFrame]]
       return (async function* () {
+        if (request.frameWidth === undefined || request.frameHeight === undefined || request.numFrames === undefined) {
+          throw new Error('FastVideo requires native frame dimensions and a frame count from its configured facts.')
+        }
         // Video and audio references can be tens of megabytes each, so they are read concurrently off the event loop.
         const references = await Promise.all(assets.map(async id => ({
           mimeType: ctx.dvAssetPool.get(id).mime, bytes: await readFile(ctx.dvAssetPool.path(id)),

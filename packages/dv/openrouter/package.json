@@ -1,0 +1,32 @@
+{
+  "name": "@dv/openrouter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenRouter video catalog and asynchronous generation provider.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-credentials": "workspace:*",
+    "@dv/asset-pool": "workspace:*",
+    "@dv/ffmpeg": "workspace:*",
+    "@dv/models": "workspace:*",
+    "@dv/project": "workspace:*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/schemastery": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/schemastery": "workspace:~",
+    "@deepseek-ai/cordis-plugin-loader": "workspace:~",
+    "@deepseek-ai/cordis-plugin-include": "workspace:~",
+    "@deepseek-ai/dsh-client-connection": "workspace:*",
+    "@types/node": "^22.20.0",
+    "@dv/shot-render": "workspace:*"
+  }
+}

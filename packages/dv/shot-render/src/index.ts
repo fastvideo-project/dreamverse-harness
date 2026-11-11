@@ -189,7 +189,9 @@ function renderRequest(
   const geometry = shotGeometry(facts, params)
   return {
     prompt, references, firstFrame: firstFrames[0] ?? null, lastFrame: lastFrames[0] ?? null,
-    frameWidth: geometry.width, frameHeight: geometry.height, numFrames: geometry.numFrames,
+    ...geometry.width === undefined ? {} : { frameWidth: geometry.width, frameHeight: geometry.height },
+    ...geometry.numFrames === undefined ? { durationSec: geometry.durationSec, aspectRatio: geometry.aspectRatio,
+      resolution: geometry.resolution } : { numFrames: geometry.numFrames },
     seed, extra: (params['extra'] ?? {}) as Record<string, unknown>,
   }
 }
@@ -215,12 +217,14 @@ async function storeShot(
   const geometry = shotGeometry(facts, context.params)
   const streamed = await streamShot(ctx, context, record.id, stream)
   const shortId = record.id.slice(0, 8)
+  const dimensions = geometry.width === undefined || geometry.height === undefined ? {}
+    : { width: geometry.width, height: geometry.height }
   const video = context.importAsset({ path: streamed.videoPath }, {
     mime: baseMime(streamed.mime), name: `${shortId}.mp4`, durationSec: geometry.durationSec,
-    width: geometry.width, height: geometry.height,
+    ...dimensions,
   })
   const frame = context.importAsset(streamed.lastFrame, {
-    mime: 'image/png', name: `${shortId}-last.png`, width: geometry.width, height: geometry.height,
+    mime: 'image/png', name: `${shortId}-last.png`, ...dimensions,
   })
   // The record's params keep the prompt as written; the report adds the prompt that the model plugin received.
   const expanded = request.prompt === text(context.params['prompt']) ? {} : { expanded_prompt: request.prompt }
@@ -228,7 +232,10 @@ async function storeShot(
     outputs: [video, frame],
     report: {
       model_id: facts.modelId, aspect_ratio: geometry.aspectRatio, resolution: geometry.resolution,
-      duration_sec: geometry.durationSec, frame_width: geometry.width, frame_height: geometry.height, num_frames: geometry.numFrames,
+      duration_sec: geometry.durationSec,
+      ...geometry.width === undefined || geometry.height === undefined ? {}
+        : { frame_width: geometry.width, frame_height: geometry.height },
+      ...geometry.numFrames === undefined ? {} : { num_frames: geometry.numFrames },
       ...modelKey(context.params), ...expanded, timings: streamed.timings,
     },
   }

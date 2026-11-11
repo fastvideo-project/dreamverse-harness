@@ -99,6 +99,9 @@ class FakeLane {
   constructor(public facts: RenderModelFacts) {}
 
   async *render(request: RenderRequest): AsyncIterable<RenderStreamEvent> {
+    if (request.frameWidth === undefined || request.frameHeight === undefined || request.numFrames === undefined) {
+      throw new Error('This fixture renders native frame geometry only.')
+    }
     this.requests.push(request)
     if (this.failure !== null) throw this.failure
     if (this.hold !== null) await this.hold

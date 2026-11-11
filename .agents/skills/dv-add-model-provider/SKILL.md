@@ -39,9 +39,9 @@ A provider plugin can implement an entry only when the provider supplies the ite
 
 1. **Model limits.** The provider must give the limits of each model for each task:
    - The shortest and the longest shot duration, in whole seconds.
-   - The frame count for each whole-second duration in that range.
+   - The frame count for each supported duration, or exact `durationsSec` choices when the API accepts seconds without publishing frame counts. Do not invent frame rates.
    - The aspect ratios and the resolutions, with a default value for each.
-   - The frame size in pixels for each pair of aspect ratio and resolution.
+   - The frame size in pixels for each supported pair when published; duration-based APIs may omit unknown `frameSizes`. Do not invent pixel geometry.
    - The input limits: the minimum and maximum count of references and of first frames.
    - The media types that each input accepts, such as `image`, `video`, or `audio`, with a maximum count for each media type.
 2. **Access to the limits.** The provider must give the limits through an endpoint or in its documentation. When the provider has an endpoint for the limits, read the limits from that endpoint. Then `facts()` and `schema()` give the values that the running server uses. When the provider has no endpoint for the limits, put the documented limits in a validated config field of each server, such as `modelFacts` of `@dv/fastvideo`. Refuse a config whose limits are not consistent when the plugin loads.
@@ -59,7 +59,7 @@ A provider plugin can implement an entry only when the provider supplies the ite
 7. **Output.** The provider must return the video bytes and the media type of the video.
 8. **Last frame.** The provider must return the last frame of the video, or the plugin must have a way to extract it as PNG bytes.
 9. **Errors.** The provider must report a failed render as an error that the plugin can detect, with a message.
-10. **Cancellation.** The provider must stop a render when the client closes the request or calls a cancel endpoint.
+10. **Cancellation.** Use the documented remote cancellation contract. If the provider has none, explicitly expose monitoring-only cancellation in the schema, model description, UI, and documentation; do not invent a cancellation endpoint or claim that local abort stops provider billing.
 
 ## What the provider plugin must implement
 
@@ -76,7 +76,7 @@ Do these steps to add a provider.
 ### Put deployment values in `Config`
 
 1. Put each deployment value in the plugin `Config`. Use a validated `schemastery` schema.
-2. Make the `models` field a map from model name to a map from task to server settings, as `@dv/fastvideo` does.
+2. Configure the models to enable and their server location. Fixed-task servers can use the model/task map of `@dv/fastvideo`; catalog-driven providers can map local aliases to native model IDs and discover their supported tasks.
 3. For each model and task, give the server URL. When the provider has no endpoint for the limits, also give the limits of the served model, such as `modelFacts` of `@dv/fastvideo`.
 4. In `apply`, throw an error for a model or a task that the plugin does not serve. Name the value in the message.
 5. Do not put a server URL or the models to register in a code constant.
@@ -94,7 +94,7 @@ When you dispose the plugin, the effect removes the entry. `register` throws whe
 
 1. **`description`**: Write the strengths and the weaknesses of the model for this task. Name the inputs that the model needs. Write for an agent that chooses between similar models.
 2. **`facts()`**: Read the limits from the server, or from the config when the server has no endpoint for them. Return all `RenderModelFacts` fields. Put the default aspect ratio and the default resolution first.
-3. **`facts()`**: Give a frame count for each whole second from `minDurationSec` to `maxDurationSec`. Reject when the server cannot be reached.
+3. **`facts()`**: Give native frame counts or exact `durationsSec` choices. Duration-based requests use `durationSec`, `resolution`, and `aspectRatio`; unknown frame counts and pixel dimensions stay absent. Reject when the server cannot be reached.
 4. **`schema()`**: Return JSON with the limits, `inputs` and `extra`. Use the `dv_shot_render` input roles `reference` and `first_frame` as the keys of `inputs`. `@dv/models` does not check this JSON. `dv_models_get` returns this JSON to the agent and does not read `facts()`.
 5. **`schema()`**: Give the limits as `duration_sec` with `min` and `max`, `aspect_ratios`, and `resolutions`. Give each input its minimum count, its maximum count, and its media types with their limits.
 6. **`schema()`**: Describe each `extra` parameter with its type and range. Reject when the server cannot be reached.

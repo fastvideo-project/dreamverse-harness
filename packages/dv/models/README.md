@@ -190,6 +190,8 @@ While the DSH skill registry (`skills`) is mounted, the service registers the ru
 
 -----
 
+Duration-based cloud providers may omit `frameSizes` and `numFramesByDurationSec` when their API does not publish them. They supply exact `durationsSec`; consumers pass `durationSec`, `resolution`, and `aspectRatio` instead of inventing a frame count. Native providers continue to supply pixel geometry and frame counts.
+
 <a id="model-experience"></a>
 ## Model Experience
 

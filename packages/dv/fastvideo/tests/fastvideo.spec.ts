@@ -545,7 +545,7 @@ describe('dv-fastvideo', () => {
   it.skipIf(REAL_BACKEND === undefined || !existsSync(REAL_REFERENCE) || !existsSync(FFMPEG))('renders a real five-second shot from an image, a video with sound and an audio file against the running server', async () => {
     const ctx = await start({ ref2v: { baseUrl: REAL_BACKEND as string, modelFacts: REAL_FACTS } })
     const facts = await fasth3(ctx, 'ref2v').facts()
-    const [width, height] = facts.frameSizes[facts.aspectRatios[0] ?? '']?.[facts.resolutions[0] ?? ''] ?? [0, 0]
+    const [width, height] = facts.frameSizes?.[facts.aspectRatios[0] ?? '']?.[facts.resolutions[0] ?? ''] ?? [0, 0]
     const image = importAsset(ctx, readFileSync(REAL_REFERENCE), 'image/jpeg')
     const video = importAsset(ctx, await sampleVideo(true), 'video/mp4')
     const audio = importAsset(ctx, await sampleAudio(), 'audio/wav')
@@ -553,7 +553,7 @@ describe('dv-fastvideo', () => {
       prompt: `@[the man](dv:asset/${image}) speaks to the camera in a bright office with the framing of @[the clip](dv:asset/${video}), `
         + `slow push-in, natural light, @[the tone](dv:asset/${audio}) playing softly.`,
       references: [image, video, audio], firstFrame: null, lastFrame: null, frameWidth: width, frameHeight: height,
-      numFrames: facts.numFramesByDurationSec['5'] ?? 0, seed: 1, extra: {},
+      numFrames: facts.numFramesByDurationSec?.['5'] ?? 0, seed: 1, extra: {},
     }))
     expect(events.map(event => event.kind)).toEqual(expect.arrayContaining(['last_frame', 'video_start', 'chunk', 'done']))
   }, 600_000)

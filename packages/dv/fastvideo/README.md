@@ -79,6 +79,8 @@ The table `SERVED` in `src/index.ts` maps each model that the plugin can serve t
 
 -----
 
+Pika H3 Flex is registered as `pika-h3-flex` for `t2v`, `i2v`, `l2v`, `fl2v`, and `ref2v`. Endpoint tasks pass native task selectors and ordered first/last image inputs. The configured model facts must reserve enough image slots for both endpoints; Ref2VA uses its reference pipeline. Frame extraction uses the shared `dvFfmpeg` service.
+
 <a id="model-experience"></a>
 ## Model Experience
 
@@ -135,8 +137,6 @@ About 60 tokens for each entry's description in a `dv_models_list` result, and a
 #### KV Cache effect
 
 The entries reach the model only through tool results, which are appended to the session, so mounting or removing the plugin leaves the cached prefix intact apart from the skill catalog change described above.
-
-Pika H3 Flex is registered as `pika-h3-flex` for `t2v`, `i2v`, `l2v`, `fl2v`, and `ref2v`. Endpoint tasks pass native task selectors and ordered first/last image inputs. The configured model facts must reserve enough image slots for both endpoints; Ref2VA uses its reference pipeline. Frame extraction uses the shared `dvFfmpeg` service.
 
 ## Known Limitations and Deferred Work
 

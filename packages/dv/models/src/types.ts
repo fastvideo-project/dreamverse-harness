@@ -104,13 +104,15 @@ export interface RenderModelFacts {
   /** The resolutions the model renders, the default first. */
   resolutions: string[]
   /** `[width, height]` by aspect ratio and then by resolution, for every supported pair. */
-  frameSizes: Record<string, Record<string, [number, number]>>
+  frameSizes?: Record<string, Record<string, [number, number]>>
   /** The shortest shot in whole seconds. */
   minDurationSec: number
   /** The longest shot in whole seconds. */
   maxDurationSec: number
   /** The model's frame count by shot duration in whole seconds, for every duration from the minimum to the maximum. */
-  numFramesByDurationSec: Record<string, number>
+  numFramesByDurationSec?: Record<string, number>
+  /** Exact supported durations for APIs that accept seconds and do not publish frame counts. */
+  durationsSec?: number[]
 }
 
 /**
@@ -125,9 +127,14 @@ export interface RenderRequest {
   firstFrame: AssetId | null
   /** The asset the video ends at, or null. Separate from general reference media. */
   lastFrame: AssetId | null
-  frameWidth: number
-  frameHeight: number
-  numFrames: number
+  /** Pixel geometry and frame count are present only when the provider publishes them. */
+  frameWidth?: number
+  frameHeight?: number
+  numFrames?: number
+  /** Duration-based output selection, used when the provider does not expose frame counts. */
+  durationSec?: number
+  aspectRatio?: string
+  resolution?: string
   seed: number
   /** Values of the model's own parameters, which the entry's `schema()` describes. */
   extra: Record<string, unknown>

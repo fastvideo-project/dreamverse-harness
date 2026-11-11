@@ -99,6 +99,14 @@ API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/model_in
 
 -----
 
+可选 `task` 字段选择原生 FastVideo 任务（如 `fl2va`）；省略时使用服务端默认任务。
+
+### 原生模型目录控制
+
+仅当后端实现 `/v1/model_state`、`/v1/models/load` 和 `/v1/models/unload` 时启用 `managed: true`。`loadModel`、`unloadModel` 和 `modelStatus` 调用这些路由，不会生成视频。`task` 区分共用模型别名的参考与关键帧管线；`displayName` 命名聊天选项。提供方仅为受管理条目暴露这些控制。
+
+受管理条目或启用 `asyncJobs: true` 的条目提交一个 `/v1/videos` 任务，以 `pollIntervalMs`（默认 1000）轮询其 ID，再读取规范内容路由。轮询不会重新提交生成。中止会删除该任务；原生 CUDA 工作可能忙碌到当前调用结束。普通固定服务保留已合并的 `/v1/videos/sync` 传输与共享 ffmpeg 提取。
+
 <a id="model-experience"></a>
 ## 模型体验
 
@@ -115,14 +123,6 @@ API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/model_in
 #### KV Cache 影响
 
 每个片段是独立请求：后端在请求之间不保留状态，客户端也不发送任何会话或缓存标识。
-
-可选 `task` 字段选择原生 FastVideo 任务（如 `fl2va`）；省略时使用服务端默认任务。
-
-### 原生模型目录控制
-
-仅当后端实现 `/v1/model_state`、`/v1/models/load` 和 `/v1/models/unload` 时启用 `managed: true`。`loadModel`、`unloadModel` 和 `modelStatus` 调用这些路由，不会生成视频。`task` 区分共用模型别名的参考与关键帧管线；`displayName` 命名聊天选项。提供方仅为受管理条目暴露这些控制。
-
-受管理条目或启用 `asyncJobs: true` 的条目提交一个 `/v1/videos` 任务，以 `pollIntervalMs`（默认 1000）轮询其 ID，再读取规范内容路由。轮询不会重新提交生成。中止会删除该任务；原生 CUDA 工作可能忙碌到当前调用结束。普通固定服务保留已合并的 `/v1/videos/sync` 传输与共享 ffmpeg 提取。
 
 ## 已知限制与延期工作
 

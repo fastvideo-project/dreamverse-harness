@@ -401,11 +401,11 @@ describe.skipIf(!HAS_FFMPEG)('dv-uniserve', () => {
   it.skipIf(REAL_SERVER === undefined || !existsSync(REAL_REFERENCE))('renders a real five-second shot against the running server', async () => {
     const ctx = await start(REAL_SERVER as string)
     const facts = await fasth3(ctx).facts()
-    const [width, height] = facts.frameSizes['16:9']?.['768p'] ?? [0, 0]
+    const [width, height] = facts.frameSizes?.['16:9']?.['768p'] ?? [0, 0]
     const events = await collect(fasth3(ctx).render({
       prompt: 'The scene in <Picture 1> comes to life: the camera slowly pushes in while soft ambient sound plays.',
       references: [importAsset(ctx, readFileSync(REAL_REFERENCE), 'image/png')], firstFrame: null, lastFrame: null, frameWidth: width, frameHeight: height,
-      numFrames: facts.numFramesByDurationSec['5'] ?? 0, seed: 1, extra: {},
+      numFrames: facts.numFramesByDurationSec?.['5'] ?? 0, seed: 1, extra: {},
     }))
     expect(events.map(event => event.kind)).toEqual(['last_frame', 'video_start', 'chunk', 'done'])
   }, 600_000)

@@ -79,6 +79,8 @@ kind: "package-reference"
 
 -----
 
+Pika H3 Flex 以 `pika-h3-flex` 注册 `t2v`、`i2v`、`l2v`、`fl2v` 和 `ref2v`。端点任务传递原生任务选择器以及有序的首尾图像。模型事实配置必须为两个端点预留足够图像位置；Ref2VA 使用参考管线。尾帧提取复用共享 `dvFfmpeg` 服务。
+
 <a id="model-experience"></a>
 ## 模型体验
 
@@ -135,8 +137,6 @@ skill 注册表挂载且 `fasth3` 配置了任务 `t2v` 期间，skill 目录列
 #### KV Cache 影响
 
 条目只通过追加到会话的工具结果到达模型，所以挂载或移除本插件除上文所述的 skill 目录变化外，不改变缓存前缀。
-
-Pika H3 Flex 以 `pika-h3-flex` 注册 `t2v`、`i2v`、`l2v`、`fl2v` 和 `ref2v`。端点任务传递原生任务选择器以及有序的首尾图像。模型事实配置必须为两个端点预留足够图像位置；Ref2VA 使用参考管线。尾帧提取复用共享 `dvFfmpeg` 服务。
 
 ## 已知限制与延期工作
 

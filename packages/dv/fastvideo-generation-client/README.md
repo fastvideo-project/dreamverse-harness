@@ -99,6 +99,14 @@ The `tests/` directory runs the client against a local HTTP server that plays th
 
 -----
 
+The optional `task` field selects a native FastVideo task, such as `fl2va`; when omitted, the server uses its default task.
+
+### Native catalog controls
+
+Set `managed: true` only for a backend implementing `/v1/model_state`, `/v1/models/load`, and `/v1/models/unload`. `loadModel`, `unloadModel`, and `modelStatus` call those routes without generating. `task` distinguishes reference and keyframe pipelines that share one model alias; `displayName` names the chat choice. The provider exposes these controls only for managed entries.
+
+Managed entries and entries with `asyncJobs: true` submit one `/v1/videos` job, poll its ID at `pollIntervalMs` (default 1000), and retrieve its canonical content route. Polling never resubmits generation. Aborting deletes that job; native CUDA work can remain busy until its current call finishes. Ordinary fixed servers retain the merged `/v1/videos/sync` transport and shared ffmpeg extraction.
+
 <a id="model-experience"></a>
 ## Model Experience
 
@@ -115,14 +123,6 @@ Zero direct text tokens: the client adds no text to the caller's prompt.
 #### KV Cache effect
 
 Independent request per segment: the backend keeps no state between requests, and the client sends no session or cache identifier.
-
-The optional `task` field selects a native FastVideo task, such as `fl2va`; when omitted, the server uses its default task.
-
-### Native catalog controls
-
-Set `managed: true` only for a backend implementing `/v1/model_state`, `/v1/models/load`, and `/v1/models/unload`. `loadModel`, `unloadModel`, and `modelStatus` call those routes without generating. `task` distinguishes reference and keyframe pipelines that share one model alias; `displayName` names the chat choice. The provider exposes these controls only for managed entries.
-
-Managed entries and entries with `asyncJobs: true` submit one `/v1/videos` job, poll its ID at `pollIntervalMs` (default 1000), and retrieve its canonical content route. Polling never resubmits generation. Aborting deletes that job; native CUDA work can remain busy until its current call finishes. Ordinary fixed servers retain the merged `/v1/videos/sync` transport and shared ffmpeg extraction.
 
 ## Known Limitations and Deferred Work
 

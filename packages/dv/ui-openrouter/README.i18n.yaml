@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/dv/ui-openrouter/README.md
+README.md: b3f2a1ccc291b626e1c59a27596b7756db635f14
+README.zh.md: 797943cdd6b546c9d877d7cfcf357af671968656

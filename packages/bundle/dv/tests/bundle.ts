@@ -28,6 +28,8 @@ import DvTimeline from '@dv/timeline'
 import DvApi from '@dv/api'
 import DvChatReferences from '@dv/chat-references'
 import DvModels, { type ModelEntry } from '@dv/models'
+import * as OpenRouter from '@dv/openrouter'
+import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
 import DvImageGenerate from '@dv/image-generate'
 import * as SglangDiffusion from '@dv/sglang-diffusion'
 import * as SglangOmni from '@dv/sglang-omni'
@@ -73,6 +75,7 @@ const FakeUniserve = {
  * its config and registers a fake model.
  */
 const PLUGINS: Record<string, object> = {
+  '@dv/openrouter': OpenRouter, 'test-credentials': MemoryCredentials,
   '@deepseek-ai/dsh-system-prompt': SystemPrompt, '@deepseek-ai/dsh-tools': ToolRuntime, '@dv/project': DvProject,
   '@dv/ffmpeg': DvFfmpeg, '@dv/asset-pool': DvAssetPool, '@dv/canvas': DvCanvasNodes, '@dv/inspector': DvInspector,
   '@dv/character': DvCharacter, '@dv/location': DvLocation, '@dv/style': DvStyle,
@@ -125,6 +128,7 @@ export async function bootBundle(extra: Record<string, object> = {}): Promise<Bu
   globals.__dvComposition = { ...PLUGINS, ...extra }
   // Each row keeps its id and `!!js` config; its package name points at a module that re-exports the plugin class.
   const entries = [
+    { id: 'credentials', name: 'test-credentials' },
     { id: 'system-prompt', name: '@deepseek-ai/dsh-system-prompt' }, { id: 'tools', name: '@deepseek-ai/dsh-tools' },
     ...Object.keys(extra).map(id => ({ id, name: id })), ...bundleRows(),
   ].map((row) => {

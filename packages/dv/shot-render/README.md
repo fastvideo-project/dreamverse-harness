@@ -69,6 +69,8 @@ Before any record is written, for every caller, the `precondition` of `shot.rend
 
 -----
 
+Cloud APIs may publish discrete durations without frame counts or exact pixel dimensions. Shot render validates their duration choices and forwards seconds, aspect ratio, and resolution; unknown geometry stays absent from requests, asset hints, and reports. Native frame-based requests keep their existing fields.
+
 <a id="model-experience"></a>
 ## Model Experience
 

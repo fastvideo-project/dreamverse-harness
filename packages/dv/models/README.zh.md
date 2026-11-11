@@ -190,6 +190,8 @@ DSH skill 注册表（`skills`）挂载期间，本服务从 `skills/video-model
 
 -----
 
+按时长生成的云端提供方在 API 未公布时可省略 `frameSizes` 和 `numFramesByDurationSec`。它们提供精确 `durationsSec`；消费者传递 `durationSec`、`resolution` 和 `aspectRatio`，而不臆造帧数。原生提供方继续提供像素几何和帧数。
+
 <a id="model-experience"></a>
 ## 模型体验
 
