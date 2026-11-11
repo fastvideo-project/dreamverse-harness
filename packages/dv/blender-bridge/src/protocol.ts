@@ -3,7 +3,8 @@
  * binary framing of images and file chunks. Text messages are JSON objects with a `type`. A binary message is a 4-byte
  * big-endian header length, that many bytes of JSON header, then the payload bytes.
  *
- * Harness to Blender: `request` (`id`, `op`, `params`), `stream` (`on`), `frame_ack` (`seq`), and `view` (a
+ * Harness to Blender: `request` (`id`, `op`, `params`), `cancel` (`id`; from add-on 0.4.0 Blender skips that request
+ * when it has not started it, and answers nothing), `stream` (`on`), `frame_ack` (`seq`), and `view` (a
  * {@link ViewCommand}), which moves the view of the main 3D viewport and gets no answer.
  * Blender to harness: `hello` and `state` ({@link BlenderState} fields), `response` (`id`, `ok`, `result` or `error`),
  * binary `frame` headers (`seq`, `width`, `height`, `mime`, and from add-on 0.3.0 `timing`; a JPEG or PNG payload) and

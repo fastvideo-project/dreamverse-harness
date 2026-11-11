@@ -40,6 +40,7 @@ class FakeBlender {
   readonly streams: boolean[] = []
   readonly acks: number[] = []
   readonly views: Array<Record<string, unknown>> = []
+  readonly cancels: string[] = []
   closed: { code: number; reason: string } | null = null
   answer: (op: string, params: Record<string, unknown>) => Answer = () => ({ result: {} })
 
@@ -50,6 +51,7 @@ class FakeBlender {
       if (message['type'] === 'stream') this.streams.push(message['on'] === true)
       if (message['type'] === 'frame_ack') this.acks.push(message['seq'] as number)
       if (message['type'] === 'view') this.views.push(message)
+      if (message['type'] === 'cancel') this.cancels.push(message['id'] as string)
       if (message['type'] === 'request') this.respond(message['id'] as string, message['op'] as string, message['params'] as Record<string, unknown>)
     })
     socket.on('close', (code, reason) => { this.closed = { code, reason: reason.toString() } })
@@ -442,11 +444,26 @@ describe('dvBlender tools', () => {
     const fixture = await start(['requestTimeoutMs: 100'])
     const blender = await fixture.connect()
     blender.answer = () => 'silent'
-    expect(failure(await fixture.call('dv_blender_scene', {}))).toBe('Blender did not answer within 0.1 s; it may still be working.')
+    expect(failure(await fixture.call('dv_blender_scene', {}))).toBe('Blender did not answer within 0.1 s; it skips the request if it has not started it, and otherwise may still finish it.')
     const waiting = fixture.call('dv_blender_scene', {})
     await until(() => blender.requests.length === 2, 'the second request')
     blender.socket.close(1000, 'bye')
     expect(failure(await waiting)).toBe('Blender disconnected before it answered.')
+  })
+
+  it('cancels a request at Blender when its call times out or is stopped', async () => {
+    const fixture = await start(['requestTimeoutMs: 100'])
+    const blender = await fixture.connect()
+    blender.answer = () => 'silent'
+    expect(failure(await fixture.call('dv_blender_scene', {}))).toContain('did not answer within 0.1 s')
+    await until(() => blender.cancels.length === 1, 'the cancel after the timeout')
+    const stop = new AbortController()
+    const stopped = fixture.ctx.dvBlender.link.request('run', { code: 'pass' }, { timeoutMs: 60_000, signal: stop.signal })
+    await until(() => blender.requests.length === 2, 'the second request')
+    stop.abort()
+    await expect(stopped).rejects.toThrow('The call was stopped; Blender skips it if it has not started it, and otherwise may still finish it.')
+    await until(() => blender.cancels.length === 2, 'the cancel after the stop')
+    expect(blender.cancels).toEqual(blender.requests.map(request => request.id))
   })
 
   it('refuses a file over the byte limit', async () => {

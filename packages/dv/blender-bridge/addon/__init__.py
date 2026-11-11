@@ -17,7 +17,7 @@ from . import commands, navigate, viewport
 from .link import HandshakeError, Link
 from .protocol import ConnectionStringError, encode_binary, is_local_host, parse_connection
 
-ADDON_VERSION = "0.3.1"
+ADDON_VERSION = "0.4.0"
 CHUNK_BYTES = 1 << 20
 # Close codes after which reconnecting would only repeat the refusal.
 FINAL_CLOSE_CODES = {4000, 4001}
@@ -34,11 +34,21 @@ class _Controller:
         self.link = None
         self.status = "Not connected"
         self.inbox = queue.Queue()
+        # The ids of requests the harness cancelled, added on the reader thread as the cancel arrives, so a request
+        # still waiting in the inbox ahead of its cancel is skipped. Single set operations are atomic in CPython.
+        self.cancelled = set()
         self.connecting = False
         self.retry = False
 
     # Link callbacks, on the link's reader thread.
     def on_message(self, kind, data):
+        if kind == "text":
+            try:
+                message = json.loads(data)
+            except ValueError:
+                message = None
+            if isinstance(message, dict) and message.get("type") == "cancel":
+                self.cancelled.add(str(message.get("id")))
         self.inbox.put(("message", kind, data))
 
     def on_close(self, code, reason):
@@ -107,6 +117,7 @@ class _Controller:
             kind = event[0]
             if kind == "connected":
                 self.link, self.connecting = event[1], False
+                self.cancelled.clear()
                 self.status = "Connected"
                 _configure_stream(self.send_frame)
                 viewport.start()
@@ -146,6 +157,9 @@ class _Controller:
             viewport.ack(message.get("seq"))
         elif message.get("type") == "view":
             self._view(message)
+        elif message.get("type") == "cancel":
+            # The cancelled request came earlier in the inbox, so it has run or been skipped by now.
+            self.cancelled.discard(str(message.get("id")))
         elif message.get("type") == "request":
             self._request(str(message.get("id")), message.get("op"), message.get("params") or {})
 
@@ -162,6 +176,9 @@ class _Controller:
             print("DreamVerse: the view change %r did not apply: %s" % (message.get("action"), problem))
 
     def _request(self, request_id, op, params):
+        if request_id in self.cancelled:
+            # The harness gave up on the request before Blender started it, and expects no response.
+            return
         link = self.link
 
         def reply(result, file_bytes=None, error=None):

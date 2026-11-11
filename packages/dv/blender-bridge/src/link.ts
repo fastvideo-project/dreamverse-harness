@@ -2,7 +2,8 @@
  * The one Blender the harness talks to: the open link socket, the add-on's last reported state, the requests waiting
  * for an answer, and the viewers of its viewport. A second Blender that links replaces the first. Viewport frames reach
  * the viewers; the add-on streams only while at least one viewer listens, and sends its next frame only after the
- * harness acknowledges the previous one.
+ * harness acknowledges the previous one. A request the harness stops or times out is cancelled: the add-on skips it when
+ * it has not started it, and a started one runs to its end because Blender's main thread cannot be interrupted.
  *
  * @module @fastvideo/dreamverse-blender-bridge/link
  */
@@ -112,7 +113,7 @@ export class BlenderLink {
    * @param options - the time limit and the caller's stop signal.
    * @returns the result fields and the file the add-on sent.
    * @throws Error with {@link NOT_LINKED} while no Blender is linked, or the add-on's error, a timeout, a stop, a file
-   *   over the cap, or the link closing first.
+   *   over the cap, or the link closing first. A timeout or a stop sends the add-on `cancel` with the request's `id`.
    */
   request(op: BlenderOp, params: Record<string, unknown>, options: { timeoutMs: number; signal: AbortSignal }): Promise<BlenderReply> {
     const socket = this.socket
@@ -126,13 +127,15 @@ export class BlenderLink {
         options.signal.removeEventListener('abort', stop)
         this.pending.delete(id)
       }
-      const stop = (): void => {
+      // Giving up tells the add-on to skip the request if it has not started it; a started one runs to its end.
+      const cancel = (message: string): void => {
         finish()
-        reject(new Error('The call was stopped; Blender may still finish the work it started.'))
+        socket.send(JSON.stringify({ type: 'cancel', id }))
+        reject(new Error(message))
       }
+      const stop = (): void => { cancel('The call was stopped; Blender skips it if it has not started it, and otherwise may still finish it.') }
       const timer = setTimeout(() => {
-        finish()
-        reject(new Error(`Blender did not answer within ${String(options.timeoutMs / 1000)} s; it may still be working.`))
+        cancel(`Blender did not answer within ${String(options.timeoutMs / 1000)} s; it skips the request if it has not started it, and otherwise may still finish it.`)
       }, options.timeoutMs)
       options.signal.addEventListener('abort', stop, { once: true })
       this.pending.set(id, {
