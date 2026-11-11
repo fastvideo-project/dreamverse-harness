@@ -140,7 +140,8 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   if (flags.rendering) {
     if (node.record.status === 'pending') marker = t('node.queued')
     else if (elapsed === null) marker = running
-    else marker = <>{running} <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatElapsed(elapsed)}</span></>
+    // One span, because the overlay is a flex box that drops a whitespace-only text node between its items.
+    else marker = <span>{running} <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatElapsed(elapsed)}</span></span>
   } else if (flags.failed) {
     const failedWords = status?.failed() ?? t('node.failed')
     const reason = node.record.error?.message

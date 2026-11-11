@@ -1477,6 +1477,9 @@ describe('the node card', () => {
     await mountDescriptors(runtime, { nodeType: PAINT })
     const timeOf = (): string | undefined => node('pa').querySelector<HTMLElement>('span[style*="tabular-nums"]')?.textContent
     await waitFor(() => { expect(timeOf()).toMatch(/^1:1[2-4]$/) })
+    // The overlay is a flex box, so the running words and the time stay one child element to keep the space between them.
+    const overlay = [...node('pa').querySelectorAll<HTMLElement>('span')].find(span => span.style.display === 'flex' && span.textContent.includes('渲染中'))
+    expect([overlay?.childNodes.length, overlay?.firstElementChild?.textContent]).toEqual([1, expect.stringMatching(/^渲染中 1:1[2-4]$/)])
     const first = timeOf()
     await waitFor(() => { expect(timeOf()).not.toBe(first) }, { timeout: 3000 })
     expect(node('pa').textContent).toContain('渲染中')
