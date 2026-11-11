@@ -58,7 +58,7 @@ export function VideoModelPicker({ sessionId, state, models, reloadModels, save 
       portal side="top" compact autoFocus items={[
         { id: '', label: pick('自动 · 由智能体选择', 'Auto · let the operator choose') },
         ...choices.map(choice => ({ id: JSON.stringify([choice.provider, choice.model]),
-          label: choice.display_name ?? choice.model, disabled: choice.runtime?.installed === false })),
+          label: choice.display_name ?? choice.model })),
       ]} anchor={<button type="button" className="dv-video-model-trigger" aria-haspopup="menu" aria-expanded={open}
         aria-label={pick(`视频模型：${label}`, `Video model: ${label}`)}
         title={pick('后续生成使用此模型，需要时加载；已生成的视频不变。', 'Used for future generations; loads when needed. Existing videos keep their model.')}
