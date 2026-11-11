@@ -46,7 +46,7 @@ See the [OpenRouter video API guide](https://openrouter.ai/docs/guides/overview/
 
 #### What the model sees
 
-The browser contributes no operator prompt. Enabled API entries appear through the provider's existing model catalog and chat model picker.
+The browser contributes no operator prompt. Enabled API entries appear through `dv_models_list` and the chat video picker; `models.select` records the conversation choice.
 
 #### Token effect
 
