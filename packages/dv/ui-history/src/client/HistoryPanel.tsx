@@ -498,7 +498,7 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
   // A render that ran for at least a second shows how long it took; a reused result took no time of its own.
   const tookSeconds = record.status === 'done' && record.cost !== undefined && !record.cost.reused && record.cost.wall_seconds >= 1 ? record.cost.wall_seconds : null
   // Only a record that ended without output carries a reason worth a line of its own.
-  const reason = (record.status === 'failed' || record.status === 'cancelled') && record.error?.message ? record.error.message : undefined
+  const reason = (record.status === 'failed' || record.status === 'cancelled') && record.error?.message ? record.error.message : null
   const size = nested ? 28 : 40
   // A step after the current position is clearly greyed: faded text and a black-and-white thumbnail.
   const after = entry.place === 'after'
@@ -550,7 +550,7 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
               : null}
             {words === '' ? null : <span title={words} className={css.words}>“{words}”</span>}
           </div>
-          {reason === undefined
+          {reason === null
             ? null
             : <p data-testid="dv-history-reason" title={reason} className={record.status === 'failed' ? css.reasonFailed : css.reason}>{reason}</p>}
         </div>
