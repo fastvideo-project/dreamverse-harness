@@ -12,8 +12,13 @@ const PACKAGE = fileURLToPath(new URL('..', import.meta.url))
 const FIXTURE = fileURLToPath(new URL('fixtures/render-restores-settings.py', import.meta.url))
 
 describe.skipIf(!HAS_BLENDER)('render in a real Blender (skipped: no Blender binary runs)', () => {
-  it('leaves the scene\'s render, FFmpeg and image settings as they were after an animation render', () => {
-    const run = spawnSync(BLENDER, ['-b', '--factory-startup', '--python-exit-code', '1', '--python', FIXTURE, '--', PACKAGE], { encoding: 'utf8' })
+  it.each([
+    ['png16', 'animation'],
+    ['exr32', 'still'],
+    ['jpeg', 'animation'],
+    ['qtrle', 'animation'],
+  ])('leaves the scene\'s render, FFmpeg and image settings as they were, for a %s output and a %s render', (output, kind) => {
+    const run = spawnSync(BLENDER, ['-b', '--factory-startup', '--python-exit-code', '1', '--python', FIXTURE, '--', PACKAGE, output, kind], { encoding: 'utf8' })
     expect(run.status, run.stderr).toBe(0)
     const line = run.stdout.split('\n').find(text => text.startsWith('CHANGED '))
     expect(JSON.parse(line?.slice('CHANGED '.length) ?? 'null')).toEqual({})

@@ -119,6 +119,16 @@ def _restore(target, saved):
             pass
 
 
+def _settings(target, first=()):
+    """Return every writable plain setting of `target`, the names in `first` ahead: setting those resets others."""
+    values = {}
+    for prop in sorted(target.bl_rna.properties, key=lambda prop: (first + (prop.identifier,)).index(prop.identifier)):
+        if not prop.is_readonly and prop.type not in ("POINTER", "COLLECTION"):
+            value = getattr(target, prop.identifier)
+            values[prop.identifier] = tuple(value) if getattr(prop, "is_array", False) else value
+    return values
+
+
 def render(params):
     """Render a still (PNG) or an animation (MP4) with the scene camera; returns (result, file bytes)."""
     scene = bpy.context.scene
@@ -127,9 +137,10 @@ def render(params):
     render_settings = scene.render
     image = render_settings.image_settings
     saved_render = {"filepath": render_settings.filepath, "use_file_extension": render_settings.use_file_extension}
-    saved_image = {name: getattr(image, name) for name in ("media_type", "file_format", "color_mode") if hasattr(image, name)}
-    # In this order: setting the codec resets the quality, and setting the image format re-picks the container.
-    saved_ffmpeg = {name: getattr(render_settings.ffmpeg, name) for name in ("format", "codec", "constant_rate_factor")}
+    # In this order: setting the image format resets the color depth and re-picks the FFmpeg container, and setting
+    # the container or codec resets the bitrates and quality.
+    saved_image = _settings(image, ("media_type", "file_format"))
+    saved_ffmpeg = _settings(render_settings.ffmpeg, ("format", "codec"))
     saved_frames = (scene.frame_current, scene.frame_start, scene.frame_end)
     width = int(render_settings.resolution_x * render_settings.resolution_percentage / 100)
     height = int(render_settings.resolution_y * render_settings.resolution_percentage / 100)
