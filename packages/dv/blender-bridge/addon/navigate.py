@@ -48,7 +48,7 @@ def apply(command):
     if target is None:
         return "Blender has no 3D viewport open."
     window, area, region = target
-    view = area.spaces.active.region_3d
+    view = region.data
     action = command.get("action")
     if action == "orbit":
         _leave_camera(view)

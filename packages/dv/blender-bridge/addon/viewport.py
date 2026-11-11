@@ -136,16 +136,19 @@ def capture_once(view, max_width, done, fail):
 
 
 def main_view():
-    """The main 3D view as (window, area, region): the largest 3D viewport region across all windows of the window
-    manager, the first in window and area order on a tie, or None. It does not depend on the context's window, so the
-    draw handler of every window, the captures and the view changes all pick the same view."""
+    """The main 3D view as (window, area, region): the largest user region across the 3D viewports of all windows of
+    the window manager, the first in window and area order on a tie, or None. A 3D viewport's user region is its
+    ``WINDOW`` region whose ``region.data`` is the space's ``region_3d``: the whole area, or in Quad View the user
+    perspective quadrant. It does not depend on the context's window, so the draw handler of every window, the
+    captures and the view changes all pick the same region."""
     best = None
     for window in bpy.context.window_manager.windows:
         for area in window.screen.areas:
             if area.type != "VIEW_3D":
                 continue
             for region in area.regions:
-                if region.type == "WINDOW" and (best is None or region.width * region.height > best[2].width * best[2].height):
+                if (region.type == "WINDOW" and region.data == area.spaces.active.region_3d
+                        and (best is None or region.width * region.height > best[2].width * best[2].height)):
                     best = (window, area, region)
     return best
 
