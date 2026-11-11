@@ -14,7 +14,7 @@ Write each stage with `dv_textnode_write` (`path`, `title`, `body`, `base_versio
 
 1. `story/theme.md`: the premise, the characters, the location and the look, in a few lines.
 2. `story/beats.md` with `from: [story/theme.md]`: the story as numbered beats, one line each.
-3. `story/storyboard.md` with `from: [story/beats.md]`: a table of the shots (shot, model and task, duration, continues from the previous shot or not, one line of action, camera), and under it each shot's model key (`modality`, `task`, `provider`, `model`), its prompt and its `duration_sec`.
+3. `story/storyboard.md` with `from: [story/beats.md]`: a table of the shots (shot, model and task, duration, continuity: independent, intentional cut or continues previous, one line of action, camera), and under it each shot's model key (`modality`, `task`, `provider`, `model`), its storyboard objective, planned prompt, references, `continue_from` intent and `duration_sec`.
 
 If `dv_models_get` is in your tool list, call it for the model and task, and use only the durations and aspect ratios it lists. When the project already has a story, use another folder, such as `story-2/`.
 
@@ -30,10 +30,19 @@ When shots share a character, a location or a look, load the skill of that refer
 
 ## 4. Render each shot
 
-1. Call `dv_shot_render` once per shot, in story order, with `modality`, `task`, `provider`, `model`, `prompt` and `duration_sec`; for task `ref2v` also `inputs.reference`, with each reference cited in the prompt. When a call is refused, fix the named value and call again.
-2. A shot that continues the previous shot passes `continue_from` = the record ID of the previous shot's render. Call it right after that render; the project waits for the previous take's last frame before the shot starts.
-3. Call `dv_proj_wait`, then `dv_proj_state`. Report each finished shot with its last frame (you receive it as an image) and its link.
-4. If `dv_canvas_node_rename` is in your tool list, after rendering each new shot, find its canvas node ID in `dv_proj_state` and call `dv_canvas_node_rename` with `name: "<shot number> · <short shot description>"`, using the storyboard's shot number. Keep the short description to 4 words maximum. Use that name when discussing the shot. Preserve existing names on retakes and names chosen by the user.
+Render in story order. Independent shots can use the agreed prompt directly. For a shot that continues the previous shot, do not treat the agreed prompt as final until the previous shot has finished and you have inspected its actual ending.
+
+1. Call `dv_shot_render` for the next independent shot, or for the first shot of a continuity chain, with `modality`, `task`, `provider`, `model`, `prompt` and `duration_sec`; for task `ref2v` also `inputs.reference`, with each reference cited in the prompt. When a call is refused, fix the named value and call again.
+2. Call `dv_proj_wait` for that render, then `dv_proj_state`. Read the finished render's video output and last frame.
+3. When the next storyboard row is continuity-linked, inspect the finished render before calling `dv_shot_render` for the next shot.
+4. If `dv_inspect_asset` is in your tool list, inspect the video output to get its duration.
+5. If `dv_asset_grab_still` is in your tool list, grab three ordered stills from the ending window: about 1.0 s before the end, about 0.5 s before the end and `last`; for short clips, use `first`, the middle second and `last`.
+6. If `dv_inspect_image` is in your tool list, inspect those stills in timestamp order for character motion, action phase, body orientation, movement direction and speed; camera motion and direction; scene, lighting, color palette, prop ownership and unfinished actions.
+7. Write a compact continuity state with fields for characters, camera, scene, props, pending actions and frame references. Use `unknown` for uncertain facts.
+8. Finalize the next shot's prompt from three inputs: the storyboard objective, the previous shot's continuity state and the intended narrative beat. Add a visible continuity passage inside the prompt that says how the shot begins from the actual ending, continues unfinished motion, preserves hard constraints and then transitions into the planned beat. Do not carry these constraints across rows marked intentional cut, new scene or time jump.
+9. A shot that continues the previous shot passes `continue_from` = the record ID of the previous shot's render. Call it only after steps 2 to 8, so the project can use the previous take's last frame and the prompt can describe that actual state.
+10. Repeat this loop until every shot is rendered. Report each finished shot with its link and, for continuity-linked shots, a one-line continuity state summary.
+11. If `dv_canvas_node_rename` is in your tool list, after rendering each new shot, find its canvas node ID in `dv_proj_state` and call `dv_canvas_node_rename` with `name: "<shot number> · <short shot description>"`, using the storyboard's shot number. Keep the short description to 4 words maximum. Use that name when discussing the shot. Preserve existing names on retakes and names chosen by the user.
 
 ## 5. Lay the takes on a timeline
 
