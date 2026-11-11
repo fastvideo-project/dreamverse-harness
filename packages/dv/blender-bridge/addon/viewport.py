@@ -1,4 +1,4 @@
-"""The viewport stream and one-shot captures of the main 3D view (the largest 3D viewport of the active screen).
+"""The viewport stream and one-shot captures of the main 3D view (the largest 3D viewport across all Blender windows).
 
 A POST_PIXEL draw handler on that region draws its view again into an offscreen buffer, at the stream width, with the
 region's view and projection matrices, shading, overlays and color management: the framebuffer active in the handler
@@ -136,24 +136,24 @@ def capture_once(view, max_width, done, fail):
 
 
 def main_view():
-    """The main 3D view as (area, region): the largest 3D viewport region of the active window, or None."""
-    window = bpy.context.window or (bpy.context.window_manager.windows[0] if bpy.context.window_manager.windows else None)
-    if window is None:
-        return None
+    """The main 3D view as (window, area, region): the largest 3D viewport region across all windows of the window
+    manager, the first in window and area order on a tie, or None. It does not depend on the context's window, so the
+    draw handler of every window, the captures and the view changes all pick the same view."""
     best = None
-    for area in window.screen.areas:
-        if area.type != "VIEW_3D":
-            continue
-        for region in area.regions:
-            if region.type == "WINDOW" and (best is None or region.width * region.height > best[1].width * best[1].height):
-                best = (area, region)
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type != "VIEW_3D":
+                continue
+            for region in area.regions:
+                if region.type == "WINDOW" and (best is None or region.width * region.height > best[2].width * best[2].height):
+                    best = (window, area, region)
     return best
 
 
 def _redraw():
     target = main_view()
     if target is not None:
-        target[0].tag_redraw()
+        target[1].tag_redraw()
 
 
 def _queue_redraw(delay):
@@ -230,7 +230,7 @@ def _draw():
     if _drawing["offscreen"]:
         return
     target = main_view()
-    if target is None or context.region != target[1]:
+    if target is None or context.area != target[1] or context.region != target[2]:
         return
     region = context.region
     if _captures:

@@ -1,7 +1,7 @@
-"""View changes that a viewer of the harness sends for the main 3D view (the largest 3D viewport of the active screen):
-orbit, pan, zoom, the standard views and framing. They move only the view, never the scene, and run on Blender's main
-thread. ``orbit`` and ``pan`` take the drag as fractions of the shown picture's width (``dx``, rightward) and height
-(``dy``, downward).
+"""View changes that a viewer of the harness sends for the main 3D view (the largest 3D viewport across all Blender
+windows): orbit, pan, zoom, the standard views and framing. They move only the view, never the scene, and run on
+Blender's main thread. ``orbit`` and ``pan`` take the drag as fractions of the shown picture's width (``dx``, rightward)
+and height (``dy``, downward).
 """
 
 import math
@@ -47,7 +47,7 @@ def apply(command):
     target = viewport.main_view()
     if target is None:
         return "Blender has no 3D viewport open."
-    area, region = target
+    window, area, region = target
     view = area.spaces.active.region_3d
     action = command.get("action")
     if action == "orbit":
@@ -74,7 +74,6 @@ def apply(command):
         else:
             return "Unknown view %r." % preset
     elif action == "frame":
-        window = bpy.context.window or bpy.context.window_manager.windows[0]
         with bpy.context.temp_override(window=window, area=area, region=region):
             if command.get("target") == "selected":
                 bpy.ops.view3d.view_selected()
