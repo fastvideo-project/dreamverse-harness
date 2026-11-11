@@ -1439,6 +1439,17 @@ describe('the node card', () => {
     await runtime.dispose()
   })
 
+  it('draws the failed words and reason of a failed take on lines of their own, clamped to 3, above a row of its actions', async () => {
+    const { runtime, node } = await mountCanvas({ edit: failG1 })
+    await waitFor(() => { node('g1') })
+    const reason = [...node('g1').querySelectorAll<HTMLElement>('[data-node-frame] span')].find(span => span.textContent === '生成失败：GPU out of memory')
+    expect(reason?.parentElement?.style.flexDirection).toBe('column')
+    expect(reason?.querySelector('button')).toBeNull()
+    expect(reason?.nextElementSibling?.querySelectorAll('button').length).toBe(1)
+    expect([reason?.style.whiteSpace, reason?.style.getPropertyValue('-webkit-line-clamp')]).toEqual(['', '3'])
+    await runtime.dispose()
+  })
+
   it('reads Queued… on a pending node and the running words on a running node that has no start time, neither with a time', async () => {
     const { runtime, node } = await mountCanvas({
       edit: (state) => {
