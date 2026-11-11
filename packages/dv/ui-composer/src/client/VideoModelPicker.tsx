@@ -24,11 +24,13 @@ export interface VideoModelPickerProps {
   sessionId: string
   state: HostObservable<WireState | null>
   models: HostObservable<readonly WireModelEntry[] | null>
+  /** Load the catalog again; the picker calls it each time the user opens the menu. */
+  reloadModels(): void
   save(selection: Selection | null): Promise<unknown>
 }
 
 /** Save a conversation default without changing the draft or any previous render. */
-export function VideoModelPicker({ sessionId, state, models, save }: VideoModelPickerProps) {
+export function VideoModelPicker({ sessionId, state, models, reloadModels, save }: VideoModelPickerProps) {
   const pick = useText()
   const project = useSyncExternalStore(state.subscribe, state.getSnapshot)
   const catalog = useSyncExternalStore(models.subscribe, models.getSnapshot)
@@ -60,8 +62,8 @@ export function VideoModelPicker({ sessionId, state, models, save }: VideoModelP
       ]} anchor={<button type="button" className="dv-video-model-trigger" aria-haspopup="menu" aria-expanded={open}
         aria-label={pick(`视频模型：${label}`, `Video model: ${label}`)}
         title={pick('后续生成使用此模型，需要时加载；已生成的视频不变。', 'Used for future generations; loads when needed. Existing videos keep their model.')}
-        disabled={saving || project === null || catalog === null}
-        onClick={() => { setOpen(value => !value) }}>
+        disabled={saving || project === null}
+        onClick={() => { if (!open) reloadModels(); setOpen(value => !value) }}>
         <span className="dv-video-model-kind">{pick('视频', 'Video')}</span>
         <span className="dv-video-model-name">{saving ? pick('保存中…', 'Saving…') : label}</span>
         <IconChevronDownOutlineRegular size={14} />

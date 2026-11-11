@@ -85,29 +85,36 @@ export function projectStates(client: Pick<DvClient, 'getState' | 'subscribe'>):
   }
 }
 
+/** The model catalog, with a reload that a consumer requests, such as when the user opens a menu that lists it. */
+export interface CatalogSource extends HostObservable<readonly WireModelEntry[] | null> {
+  /** Load the catalog again unless a load is in flight. */
+  reload: () => void
+}
+
 /**
- * The model catalog: null until the first load answers, and loaded again each time a consumer subscribes while none
- * did, so an occurrence that opens reads the catalog as it is then, such as after a backend that was down comes back. A
- * failed load keeps the catalog it had.
+ * The model catalog: null until the first load answers. Each subscription and each `reload()` starts a load unless one
+ * is in flight, so an occurrence that opens reads the catalog as it is then, such as after a backend that was down comes
+ * back, even while another consumer stays subscribed. A failed load keeps the catalog it had.
  * @param load - reads the catalog.
  * @returns the source.
  */
-export function catalogSource(load: () => Promise<readonly WireModelEntry[]>): HostObservable<readonly WireModelEntry[] | null> {
+export function catalogSource(load: () => Promise<readonly WireModelEntry[]>): CatalogSource {
   const store = createSnapshotStore<readonly WireModelEntry[] | null>(null)
-  let consumers = 0
+  let loading = false
+  const reload = (): void => {
+    if (loading) return
+    loading = true
+    load().then((catalog) => { store.set(catalog) }, (failure: unknown) => { console.error('[dv-composer] models failed:', failure) })
+      .finally(() => { loading = false })
+  }
   return {
     getSnapshot: () => store.getSnapshot(),
     subscribe: (listener) => {
       const off = store.subscribe(listener)
-      consumers += 1
-      if (consumers === 1) {
-        load().then((catalog) => { store.set(catalog) }, (failure: unknown) => { console.error('[dv-composer] models failed:', failure) })
-      }
-      return () => {
-        off()
-        consumers -= 1
-      }
+      reload()
+      return off
     },
+    reload,
   }
 }
 
@@ -143,7 +150,7 @@ export function applyPrompt(ctx: ClientContext): void {
   function ConversationVideoModel({ sessionId }: { sessionId: string }) {
     const projectId = useSyncExternalStore(currentProject.subscribe, currentProject.getSnapshot)
     return createElement(VideoModelPicker, {
-      key: `${projectId ?? ''}:${sessionId}`, sessionId, state: states(projectId ?? ''), models,
+      key: `${projectId ?? ''}:${sessionId}`, sessionId, state: states(projectId ?? ''), models, reloadModels: models.reload,
       save: selection => projectId === null ? Promise.reject(new Error('Open a project to choose its video model.'))
         : client.runOperation({ project: projectId, session: sessionId, surface: 'chat',
           operation: 'models.select', params: selection === null ? { provider: '', model: '' } : { ...selection } }),

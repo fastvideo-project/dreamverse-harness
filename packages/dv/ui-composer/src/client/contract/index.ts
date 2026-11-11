@@ -195,7 +195,7 @@ export interface RemovedInput {
 export interface DvPromptInjected {
   readonly check: (request: OperationRequest) => Promise<OperationCheck>
   readonly hooks: {
-    /** The model catalog; null until it loads, and loaded again when an occurrence opens while none is open. */
+    /** The model catalog; null until it loads, and loaded again when an occurrence opens unless a load is in flight. */
     readonly models: HostObservable<readonly WireModelEntry[] | null>
     /** The parameter bars that plugins registered, `dvComposer.paramBars`. */
     readonly paramBars: HostObservable<readonly ParamBar[]>
