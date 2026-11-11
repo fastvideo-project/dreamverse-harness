@@ -6,6 +6,7 @@
  * @module @dv/ui-plugin-catalog/CatalogPage
  */
 import { useState, type ReactNode } from 'react'
+import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { CatalogEntry } from '@dv/plugin-catalog/types'
 import { useText } from '@dv/ui-kit/locale.ts'
 import {
@@ -14,15 +15,18 @@ import {
 import css from './CatalogPage.module.css'
 
 /**
- * The navigator entry's icon: a shopping bag.
+ * The navigator entry's icon: a storefront, an awning with a scalloped edge over the shop and its door.
+ * @param props - the sidebar's icon share: the requested edge.
  * @returns the icon element.
  */
-export function MarketplacePanelIcon(): ReactNode {
+export function MarketplacePanelIcon({ size }: PropsRuntime<'sidebar.panellist'>): ReactNode {
   return (
-    <svg
-      width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}
-      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"
-    ><path d="M5 8h14l-1 12H6L5 8Z" /><path d="M9 8V6a3 3 0 0 1 6 0v2" /></svg>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+      <path
+        d="M3.5 9.5 5 4.5h14l1.5 5a2.125 2.125 0 0 1-4.25 0 2.125 2.125 0 0 1-4.25 0 2.125 2.125 0 0 1-4.25 0 2.125 2.125 0 0 1-4.25 0ZM5.5 12v7.5h13V12M10 19.5V15.5h4v4"
+        stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
+      />
+    </svg>
   )
 }
 
