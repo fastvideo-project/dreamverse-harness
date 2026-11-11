@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/dv/blender-bridge/README.md
-README.md: 0bf5601c4d65e29a4552d2e37568d16f5322e43b
-README.zh.md: 20e694b27077c07d221ec995432e04dd8d8d831a
+README.md: 00140331ecbdd4bb32528c842f8b01ffed4cc7cc
+README.zh.md: ba641c5afd11ef6398cc6a9b0230a24a61af69f3

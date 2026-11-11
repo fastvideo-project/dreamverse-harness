@@ -108,7 +108,7 @@ The add-on keeps every `bpy` call on Blender's main thread: a timer drains the l
 
 #### What the model sees
 
-Three plain tools while the tool registry is mounted (`dv_blender_look` also needs the attachment store), and the three operation tools while `dvProject` is mounted, in the format `@dv/project` gives every operation tool. `dv_blender_run` takes `code`; `dv_blender_look` takes `view` (`viewport` or `camera`); `dv_blender_viewport` takes `on`.
+Three plain tools while the tool registry is mounted (`dv_blender_look` also needs the attachment store), and the three operation tools while `dvProject` is mounted, in the format `@dv/project` gives every operation tool. `dv_blender_run` takes `code`; `dv_blender_look` takes `view` (`viewport` or `camera`); `dv_blender_viewport` takes no parameters.
 
 ##### Verbatim tool descriptions
 

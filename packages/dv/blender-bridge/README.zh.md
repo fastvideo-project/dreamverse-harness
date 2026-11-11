@@ -108,7 +108,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-工具注册表挂载期间有三个普通工具（`dv_blender_look` 还需要附件存储），`dvProject` 挂载期间还有三个操作工具，格式与 `@dv/project` 给所有操作工具的格式相同。`dv_blender_run` 接受 `code`；`dv_blender_look` 接受 `view`（`viewport` 或 `camera`）；`dv_blender_viewport` 接受 `on`。
+工具注册表挂载期间有三个普通工具（`dv_blender_look` 还需要附件存储），`dvProject` 挂载期间还有三个操作工具，格式与 `@dv/project` 给所有操作工具的格式相同。`dv_blender_run` 接受 `code`；`dv_blender_look` 接受 `view`（`viewport` 或 `camera`）；`dv_blender_viewport` 不接受参数。
 
 ##### 工具描述原文
 
