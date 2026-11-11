@@ -56,8 +56,9 @@ Model metadata appears in catalog tool results; no hidden prompt prefix is added
 
 Catalog results append to the conversation. Each cloud video request is independent.
 
-<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
 
 - Catalog discovery is not a paid generation or proof that an account has credit. Real generation requires a valid key, available model, and provider credit.
 

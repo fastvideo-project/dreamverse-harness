@@ -60,8 +60,9 @@ DreamVerse 套件默认挂载 `dv-openrouter`，不配置任何模型。在“�
 
 目录结果追加到对话。每个云端视频请求相互独立。
 
-<a id="known-limitations-and-deferred-work"></a>
 ## 已知限制与延期工作
+
+<a id="known-limitations-and-deferred-work"></a>
 
 - OpenRouter 未记录远端视频取消路由。中止仅停止本地监控，不取消付费任务。提交状态不明确时不会自动重试。
 

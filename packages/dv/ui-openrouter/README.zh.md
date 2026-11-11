@@ -56,8 +56,9 @@ DreamVerse 套件将此浏览器组件与 `@dv/openrouter` 一同挂载。打开
 
 目录结果追加到对话。每个云端视频请求相互独立。
 
-<a id="known-limitations-and-deferred-work"></a>
 ## 已知限制与延期工作
+
+<a id="known-limitations-and-deferred-work"></a>
 
 - 读取目录不等于付费生成，也不能证明账户有余额。真实生成需要有效密钥、可用模型和服务商余额。
 

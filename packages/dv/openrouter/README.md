@@ -60,8 +60,9 @@ Model metadata appears in catalog tool results; no hidden prompt prefix is added
 
 Catalog results append to the conversation. Each cloud video request is independent.
 
-<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
 
 - OpenRouter documents no remote video cancellation route. Aborting stops local monitoring; it does not cancel the paid job. Ambiguous submissions are never automatically retried.
 
