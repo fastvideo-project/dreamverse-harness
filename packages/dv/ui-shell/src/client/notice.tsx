@@ -1,5 +1,5 @@
 /**
- * The failure notice of the shell's navigation actions: a runner that logs a rejected action and keeps its message,
+ * The failure notice of the shell's actions: a runner that logs a rejected action and keeps its message,
  * and the alert that shows it until it is dismissed or the next action succeeds.
  *
  * @module @dv/ui-shell/notice

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** The failure notice of the shell's navigation actions, rendered by a component that runs the actions a test gives. */
+/** The failure notice of the shell's actions, rendered by a component that runs the actions a test gives. */
 import { act, fireEvent, render } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
