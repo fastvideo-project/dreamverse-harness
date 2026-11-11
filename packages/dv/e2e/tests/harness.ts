@@ -1,5 +1,5 @@
 /**
- * Boot the shipped `video-harness` profile for a browser test: a fake streaming_v2 backend and a scripted model server
+ * Boot the shipped `video-harness` profile for a browser test: a fake FastVideo backend and a scripted model server
  * started in this process, an isolated harness home with the profile manifest, and `dsh web` on a free port. The
  * returned handle carries the token URL, a cookie-aware JSON client for `/api/dv/*`, and the teardown.
  */
@@ -24,12 +24,10 @@ export const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmp
 /** Playwright, a dev dependency of this package; the stories launch Chromium through it. */
 export * as playwright from 'playwright'
 
-/** The capabilities the fake backend reports: tiny frames so a video renders in well under a second. */
-const CAPABILITIES_BODY = {
-  model_id: 'fake-ref2va', name: 'Fake Ref2AV', min_segment_duration_sec: 1, max_segment_duration_sec: 2,
-  max_references: 3, reference_media_types: { image: { max_count: 3 }, video: { max_count: 3 }, audio: { max_count: 3 } },
-  max_reference_aspect_ratio: 4.0,
-  frame_sizes: { '16:9': { '720p': [192, 112] } }, num_frames_by_duration_sec: { 1: 25, 2: 49 },
+/** The model facts of the fake backend in the profile patch: tiny frames so a video renders in well under a second. */
+const MODEL_FACTS = {
+  modelId: 'fake-ref2va', frameSizes: { '16:9': { '720p': [192, 112] } }, numFramesByDurationSec: { 1: 25, 2: 49 },
+  maxReferences: 3, referenceMediaTypes: { image: { maxCount: 3 }, video: { maxCount: 3 }, audio: { maxCount: 3 } },
 }
 
 /** A running fake backend. */
@@ -54,7 +52,7 @@ export interface FakeBackend {
  * @param height - frame height.
  * @param numFrames - frames at 24 fps.
  * @param prompt - the request prompt.
- * @returns the video bytes and its last frame as PNG.
+ * @returns the video bytes.
  */
 async function encodePlayableVideo(
   dir: string,
@@ -62,26 +60,24 @@ async function encodePlayableVideo(
   height: number,
   numFrames: number,
   prompt: string,
-): Promise<{ video: Buffer; lastFrame: Buffer }> {
+): Promise<{ video: Buffer }> {
   const work = mkdtempSync(join(dir, 'clip-'))
   const color = createHash('sha1').update(prompt).digest('hex').slice(0, 6)
   const video = join(work, 'clip.mp4')
-  const frame = join(work, 'last.png')
   const ffmpeg = (args: string[]): Promise<void> => new Promise((resolve, reject) => {
     const child = spawn(FFMPEG, ['-y', '-loglevel', 'error', ...args], { stdio: 'ignore' })
     child.once('error', reject)
     child.once('exit', (code) => { if (code === 0) resolve(); else reject(new Error(`ffmpeg exited with ${String(code)}`)) })
   })
   await ffmpeg(['-f', 'lavfi', '-i', `color=c=0x${color}:s=${String(width)}x${String(height)}:d=${(numFrames / 24).toFixed(3)}:r=24`, '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', video])
-  await ffmpeg(['-sseof', '-0.05', '-i', video, '-frames:v', '1', frame])
-  const rendered = { video: readFileSync(video), lastFrame: readFileSync(frame) }
+  const rendered = { video: readFileSync(video) }
   rmSync(work, { recursive: true, force: true })
   return rendered
 }
 
 /**
- * Start a fake streaming_v2 backend: capabilities and health answer statically, and every render request streams
- * one solid-color video encoded with ffmpeg.
+ * Start a fake FastVideo backend: `GET /v1/model_info` names the served model of `MODEL_FACTS`, and every
+ * `POST /v1/videos/sync` answers with one solid-color MP4 encoded with ffmpeg.
  * @param dir - a scratch directory for the rendered files.
  * @returns the backend handle.
  */
@@ -108,8 +104,8 @@ export async function startFakeBackend(
   const server: Server = createServer((request: IncomingMessage, response: ServerResponse) => {
     const path = request.url ?? ''
     if (request.method !== 'POST') {
-      response.writeHead(200, { 'content-type': 'application/json', connection: 'close' })
-      response.end(JSON.stringify(path.endsWith('/health') ? { status: 'ready' } : CAPABILITIES_BODY))
+      response.writeHead(path === '/v1/model_info' ? 200 : 404, { 'content-type': 'application/json', connection: 'close' })
+      response.end(JSON.stringify({ model_path: '/weights', served_model_name: MODEL_FACTS.modelId, lora: null }))
       return
     }
     const parts: Buffer[] = []
@@ -122,15 +118,9 @@ export async function startFakeBackend(
         const rendered = options.playable === true
           ? await encodePlayableVideo(dir, Number(body['width']), Number(body['height']), Number(body['num_frames']), String(body['prompt'] ?? ''))
           : await encodeClip(dir, Number(body['width']), Number(body['height']), Number(body['num_frames']))
-        response.writeHead(200, { 'content-type': 'text/event-stream', connection: 'close' })
-        const events: Array<[string, object]> = [
-          ['last_frame', { data: rendered.lastFrame.toString('base64') }],
-          ['video_start', { mime: options.playable === true ? 'video/mp4; codecs="vp09.00.10.08"' : 'video/mp4; codecs="avc1.64001f"' }],
-          ['video_chunk', { data: rendered.video.toString('base64') }],
-          ['done', { timings: { total_s: 0.4 } }],
-        ]
-        for (const [event, data] of events) response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-        response.end()
+        const mime = options.playable === true ? 'video/mp4; codecs="vp09.00.10.08"' : 'video/mp4; codecs="avc1.64001f"'
+        response.writeHead(200, { 'content-type': mime, 'x-inference-time-s': '0.4', connection: 'close' })
+        response.end(rendered.video)
       })()
     })
   })
@@ -242,7 +232,7 @@ export async function bootHarness(
   }))
   writeFileSync(join(profileDir, 'cordis.patch.yml'), [
     '- id: dv-fastvideo', '  disabled: false', '  config:', '    models:', '      fasth3:', '        ref2v:',
-    `          baseUrl: ${backend.url}`, '- id: dv-uniserve', '  disabled: true', '',
+    `          baseUrl: ${backend.url}`, `          modelFacts: ${JSON.stringify(MODEL_FACTS)}`, '- id: dv-uniserve', '  disabled: true', '',
   ].join('\n'))
   symlinkSync(join(REPO_ROOT, 'packages/bundle/dv'), join(profileDir, 'node_modules', '@dv', 'bundle'))
   const port = await freePort()

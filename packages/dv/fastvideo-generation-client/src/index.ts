@@ -1,18 +1,22 @@
 /**
- * `dvFastvideoGeneration`: the harness client for FastVideo generation. The default transport uses streaming_v2
- * capabilities and SSE generation. An explicit `openai` deployment uses model_info and videos/sync, buffers the
- * complete MP4, and extracts its last frame locally when requested.
+ * `dvFastvideoGeneration`: the harness client for FastVideo generation. `model()` checks the served alias with
+ * `GET /v1/model_info` and returns the configured facts; `generateSegment` sends one `POST /v1/videos/sync` with each
+ * reference as a base64 `data:` URL and returns the whole MP4.
  *
  * @module @dv/fastvideo-generation-client
  */
 import { Service, type Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { renderTimings } from '@dv/models'
+import { fetch, getGlobalDispatcher, type Dispatcher, type Response } from 'undici'
 import { GenerationSegmentError } from './errors.ts'
-import { generateSegment } from './generation-stream.ts'
-import { checkedResponse, generateOpenAI, OpenAIConfig } from './openai.ts'
-import type { ModelFacts, SegmentOutput, SegmentRequest } from './types.ts'
+import { deriveModelFacts, modelFactsConfig, type ModelFactsConfig } from './model-facts.ts'
+import { REFERENCE_FIELDS, referenceMediaType } from './references.ts'
+import type { ModelFacts, SegmentRequest, SegmentVideo } from './types.ts'
 
 export * from './errors.ts'
+export * from './model-facts.ts'
+export * from './references.ts'
 export type * from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -22,106 +26,150 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** Generation backend location and optional OpenAI deployment. */
+/** Generation backend location and the facts of the model it serves. */
 export interface Config {
   /** HTTP base URL of the generation backend, such as `http://127.0.0.1:8029`. */
   baseUrl: string
-  /** Select the current OpenAI API with explicit deployment facts; omitted, use streaming_v2. */
-  openai?: OpenAIConfig | null
+  /** Optional task selector understood by the native FastVideo API. */
+  task?: string | null
+  /** The facts of the served model, which FastVideo does not publish. */
+  modelFacts: ModelFactsConfig
 }
 
-/** `GET /v1/streamv2/capabilities` response fields: the served model's facts. */
-interface CapabilitiesBody {
-  model_id: string
-  min_segment_duration_sec: number
-  max_segment_duration_sec: number
-  max_references: number
-  reference_media_types: Record<string, { max_count: number }>
-  frame_sizes: Record<string, Record<string, [number, number]>>
-  num_frames_by_duration_sec: Record<string, number>
+/**
+ * The text of a backend failure: `error.message` of an `application/json` body, else the body; a Python traceback
+ * becomes its final exception line, and text longer than 2,048 characters is truncated.
+ * @param response - the failed response.
+ * @returns the text.
+ */
+async function backendErrorText(response: Response): Promise<string> {
+  const body = await response.text()
+  let value: unknown = null
+  if (response.headers.get('content-type')?.startsWith('application/json') === true) {
+    try {
+      value = JSON.parse(body)
+    } catch { /* SyntaxError: an `application/json` body that is not JSON is reported as sent, beside its HTTP status. */ }
+  }
+  let message = typeof value === 'object' && value !== null && 'error' in value
+    && typeof value.error === 'object' && value.error !== null && 'message' in value.error
+    && typeof value.error.message === 'string' ? value.error.message : body
+  if (message.includes('Traceback (most recent call last)')) {
+    // The trimmed traceback ends with its exception line.
+    message = (message.trim().split('\n').at(-1) as string).trim()
+  }
+  const limit = 2048
+  return message.length <= limit ? message : `${message.slice(0, limit)}… [truncated; see FastVideo server logs]`
 }
 
-/** Reads deployment model facts and emits segment media events. */
+/**
+ * The installed global dispatcher with its headers timeout turned off for each request. `/v1/videos/sync` sends its
+ * headers only after the whole video is generated, which can take longer than undici's 300-second default.
+ * @returns the dispatcher; it shares the global dispatcher's connections and proxy routing, and is never closed.
+ */
+function untimedDispatcher(): Dispatcher {
+  // FastVideo answers with a FileResponse of the finished MP4, so the body keeps the global body timeout.
+  return getGlobalDispatcher().compose(dispatch => (options, handler) => dispatch({ ...options, headersTimeout: 0 }, handler))
+}
+
+/** Checks the served model and generates segments with the configured facts. */
 export class DvFastvideoGeneration extends Service {
   static Config: z<Config> = z.object({
     baseUrl: z.string().required(),
-    openai: z.union([z.const(null), OpenAIConfig]).default(null),
+    task: z.union([z.const(null), z.string()]).default(null),
+    modelFacts: modelFactsConfig.required(),
   })
 
   private readonly baseUrl: URL
-  /** The first successfully checked model facts; the served model stays fixed for the backend's lifetime. */
-  private modelFacts: ModelFacts | null = null
+  /** The facts derived from `modelFacts` when the client is built. */
+  readonly facts: ModelFacts
+  /** Whether a `GET /v1/model_info` confirmed the served alias; the served model stays fixed for the backend's lifetime. */
+  private checked = false
 
   /**
    * @param ctx - owning plugin context.
-   * @param config - validated generation backend location.
+   * @param config - generation backend location and model facts.
+   * @throws Error naming the inconsistency of the configured facts.
    */
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'dvFastvideoGeneration')
     this.baseUrl = new URL(config.baseUrl)
+    this.facts = deriveModelFacts(config.modelFacts)
   }
 
   /**
-   * Read capabilities, or verify the OpenAI served alias and use configured facts; cache the first success.
+   * Check once that the backend serves the configured model.
    * @returns the model facts.
-   * @throws Error naming the route for a status other than 200, or the `fetch` error when the backend is unreachable.
+   * @throws Error naming the route and the HTTP status for a status other than 200, Error naming the route for a body
+   *   that is not JSON, Error naming the served alias when it is missing or differs from `modelFacts.modelId`, or the
+   *   `fetch` error when the backend is unreachable.
    */
   async model(): Promise<ModelFacts> {
-    if (this.modelFacts !== null) return this.modelFacts
-    if (this.config.openai != null) {
-      const response = await checkedResponse(await fetch(new URL('/v1/model_info', this.baseUrl)))
-      const body = await response.json() as { served_model_name: string }
-      if (body.served_model_name !== this.config.openai.modelFacts.modelId) {
-        throw new Error(`FastVideo serves ${body.served_model_name}, expected ${this.config.openai.modelFacts.modelId}`)
-      }
-      this.modelFacts = this.config.openai.modelFacts
-      return this.modelFacts
+    if (this.checked) return this.facts
+    const route = 'GET /v1/model_info'
+    const response = await fetch(new URL('/v1/model_info', this.baseUrl))
+    if (response.status !== 200) {
+      throw new Error(`FastVideo ${route} returned HTTP ${response.status}: ${await backendErrorText(response)}`)
     }
-    const route = '/v1/streamv2/capabilities'
-    const body = await readBody<CapabilitiesBody>(await fetch(new URL(route, this.baseUrl)), `GET ${route}`)
-    const referenceMediaTypes = Object.fromEntries(Object.entries(body.reference_media_types)
-      .map(([mediaType, limit]) => [mediaType, { maxCount: limit.max_count }]))
-    this.modelFacts = {
-      modelId: body.model_id,
-      aspectRatios: Object.keys(body.frame_sizes),
-      resolutions: [...new Set(Object.values(body.frame_sizes).flatMap(sizes => Object.keys(sizes)))],
-      minSegmentDurationSec: body.min_segment_duration_sec,
-      maxSegmentDurationSec: body.max_segment_duration_sec,
-      maxReferences: body.max_references,
-      referenceMediaTypes,
-      frameSizes: body.frame_sizes,
-      numFramesByDurationSec: body.num_frames_by_duration_sec,
+    const text = await response.text()
+    let info: { served_model_name?: unknown } | null
+    try {
+      info = JSON.parse(text) as { served_model_name?: unknown } | null
+    } catch (error) {
+      throw new Error(`FastVideo ${route} answered no JSON: ${(error as SyntaxError).message}`, { cause: error })
     }
-    return this.modelFacts
+    const served = info?.served_model_name
+    if (typeof served !== 'string') throw new Error(`FastVideo ${route} reports no served_model_name; expected ${this.facts.modelId}.`)
+    if (served !== this.facts.modelId) throw new Error(`FastVideo serves ${served}; modelFacts.modelId is ${this.facts.modelId}.`)
+    this.checked = true
+    return this.facts
   }
 
   /**
-   * Generate one segment with its own HTTP request. OpenAI emits media after its full MP4 arrives; streaming_v2
-   * forwards SSE events as they arrive. Request errors reject with `GenerationSegmentError`; aborts reject with
-   * `signal.reason`. Local OpenAI frame extraction exits and removes its temporary files before cancellation settles.
+   * Generate one segment with one `POST /v1/videos/sync`. The backend sends no response before the whole video is
+   * generated; the request has no client-side headers timeout.
    * @param request - the segment inputs and an optional abort signal.
-   * @returns last frame when requested, video start, video bytes and completion timings.
-   * @throws GenerationSegmentError when a native task selector is used without OpenAI transport.
+   * @returns the MP4 bytes, their content type and the backend timings.
+   * @throws GenerationSegmentError for a reference of another media type, or for HTTP 400;
+   *   Error for another HTTP failure or a response that is not `video/*`; `signal.reason` on abort.
    */
-  generateSegment(request: SegmentRequest): AsyncIterable<SegmentOutput> {
-    if (this.config.openai != null) return generateOpenAI(this.baseUrl, this.config.openai, request)
-    if (request.task !== undefined) throw new GenerationSegmentError('A native task selector requires the OpenAI transport', 'invalid_request')
-    return generateSegment(new URL('/v1/streamv2/generate', this.baseUrl), request)
+  async generateSegment(request: SegmentRequest): Promise<SegmentVideo> {
+    const { signal } = request
+    signal?.throwIfAborted()
+    const unsupported = request.references.find(reference => referenceMediaType(reference.mimeType) === undefined)
+    if (unsupported !== undefined) throw new GenerationSegmentError(`FastVideo takes no reference of type ${unsupported.mimeType}.`)
+    // One list per media type, in the caller's order within the type.
+    const references = Object.fromEntries(Object.entries(REFERENCE_FIELDS).flatMap(([type, { field, urlKey }]) => {
+      const urls = request.references.filter(reference => referenceMediaType(reference.mimeType) === type)
+        .map(reference => ({ [urlKey]: `data:${reference.mimeType};base64,${reference.bytes.toString('base64')}` }))
+      return urls.length === 0 ? [] : [[field, urls]]
+    }))
+    const body = {
+      model: this.facts.modelId, ...this.config.task == null ? {} : { task: this.config.task },
+      prompt: request.prompt, width: request.frameWidth, height: request.frameHeight,
+      num_frames: request.numFrames, ...request.seed === undefined ? {} : { seed: request.seed }, ...references,
+    }
+    try {
+      const response = await fetch(new URL('/v1/videos/sync', this.baseUrl), {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+        // proxy-exempt: the installed global dispatcher, composed to turn off only its headers timeout.
+        dispatcher: untimedDispatcher(), ...signal === undefined ? {} : { signal },
+      })
+      if (response.status !== 200) {
+        const text = await backendErrorText(response)
+        if (response.status === 400) throw new GenerationSegmentError(text)
+        throw new Error(`FastVideo POST /v1/videos/sync returned HTTP ${response.status}: ${text}`)
+      }
+      const mime = response.headers.get('content-type') ?? ''
+      if (!mime.startsWith('video/')) {
+        throw new Error(`FastVideo POST /v1/videos/sync answered ${mime || 'no content type'}, not video: ${await backendErrorText(response)}`)
+      }
+      const video = Buffer.from(await response.arrayBuffer())
+      return { video, mime, timings: renderTimings(response.headers) }
+    } catch (error) {
+      if (signal?.aborted === true) throw signal.reason
+      throw error
+    }
   }
-}
-
-/**
- * Parse a successful JSON response.
- * @param response - the backend response.
- * @param route - method and path for the failure message.
- * @returns the parsed body.
- * @throws Error naming the route, status, and body for any status other than 200.
- */
-async function readBody<T>(response: Response, route: string): Promise<T> {
-  if (response.status !== 200) {
-    throw new Error(`FastVideo generation backend ${route} returned HTTP ${response.status}: ${await response.text()}`)
-  }
-  return await response.json() as T
 }
 
 export default DvFastvideoGeneration

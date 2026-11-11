@@ -3,10 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "DreamVerse client for FastVideo OpenAI and streaming_v2 generation APIs.",
+  "description": "DreamVerse client for the FastVideo POST /v1/videos/sync generation API.",
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@dv/models": "workspace:*",
+    "undici": "^8.10.0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",

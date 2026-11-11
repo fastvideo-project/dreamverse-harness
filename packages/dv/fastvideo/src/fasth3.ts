@@ -13,7 +13,8 @@ import type { ServedTask } from './types.ts'
  * Assign the MiniMax H3 labels: the k-th image is `<Picture k>`, the k-th video is `<Video k>`, and the k-th audio file is
  * `<Audio n>`, counting in the order that the model receives the media, so the first frame is the image after the
  * reference images. MiniMax H3 also gives the sound of a video its own `<Audio N>` in the same sequence as the audio
- * files, so a video with sound takes an audio number before the audio files after it.
+ * files; the model receives every video before every audio file, so each video with sound takes an audio number before
+ * every audio file.
  */
 export const assignFasth3ReferenceLabels: AssignReferenceLabels = (media) => {
   let pictures = 0
@@ -40,6 +41,22 @@ export function fasth3PromptProblems(request: RenderRequest): string[] {
   return cited ? [] : ['Its prompt does not cite the first frame; write "@[first frame](dv:input/first_frame) is the first frame of [Shot 1]".']
 }
 
+/**
+ * The MiniMax H3 rules for task `ref2v`: the first-frame prompt rule of `fasth3PromptProblems`, and the FastVideo rule
+ * that audio references need an image or a video beside them; the first frame counts as an image.
+ * @param request - the render request.
+ * @param mediaTypeOf - the media type of an asset, such as `audio`.
+ * @returns one sentence per problem; empty when the request follows both rules.
+ */
+export function fasth3Ref2vProblems(request: RenderRequest, mediaTypeOf: (asset: RenderRequest['references'][number]) => string): string[] {
+  const media = request.firstFrame === null ? request.references : [...request.references, request.firstFrame]
+  const audioOnly = media.length > 0 && media.every(asset => mediaTypeOf(asset) === 'audio')
+  return [
+    ...fasth3PromptProblems(request),
+    ...audioOnly ? ['Its audio references need at least one image or video reference or a first frame beside them; this shot has only audio.'] : [],
+  ]
+}
+
 /** The tasks this plugin serves `fasth3` for. */
 export const FASTH3: { [T in TaskId]?: ServedTask } = {
   ref2v: {
@@ -50,7 +67,7 @@ export const FASTH3: { [T in TaskId]?: ServedTask } = {
     inputs: { reference: { min: 1, mediaTypes: ['image', 'video', 'audio'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
     extra: {},
     assignReferenceLabels: assignFasth3ReferenceLabels,
-    promptProblems: fasth3PromptProblems,
+    modelProblems: fasth3Ref2vProblems,
     skill: {
       name: 'fasth3-reference-prompting',
       description: 'Model limits and prompt rules for model fasth3 for task ref2v: reference images, videos and audio, '

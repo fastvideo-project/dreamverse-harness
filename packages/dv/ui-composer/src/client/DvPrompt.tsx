@@ -305,7 +305,7 @@ function Tile({ input, view, cited, renderFactorySlot, onOpen, onRemove, onPin }
       </button>
       {input.role === 'first_frame' || input.role === 'last_frame'
         ? <span>{input.role === 'first_frame' ? pick('首帧', 'First frame') : pick('尾帧', 'Last frame')}</span> : null}
-      {cited ? null : <span style={{ color: 'var(--dv-text-3)' }}>{pick('未引用', 'uncited')}</span>}
+      {cited ? null : <span style={{ color: 'var(--dv-text-2)' }}>{pick('未引用', 'uncited')}</span>}
       {onPin === undefined || version === null || version.newest === version.sent
         ? null
         : <button type="button" style={{ ...plain, color: 'var(--dv-accent-text)' }} onClick={() => { onPin(version.newest) }}>{pick(`用 v${String(version.newest)}`, `Use v${String(version.newest)}`)}</button>}

@@ -30,6 +30,9 @@
       "path": "../asset-pool"
     },
     {
+      "path": "../ffmpeg"
+    },
+    {
       "path": "../models"
     },
     {

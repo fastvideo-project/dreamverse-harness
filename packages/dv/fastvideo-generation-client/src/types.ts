@@ -1,13 +1,13 @@
 /**
- * Shared inputs and outputs of the streaming_v2 and OpenAI generation transports. TypeScript fields use camelCase;
- * nested maps keep the backend's values, such as `16:9` or `720p`.
+ * Inputs and outputs of the FastVideo `POST /v1/videos/sync` transport. TypeScript fields use camelCase; nested maps
+ * keep the backend's values, such as `16:9` or `720p`.
  *
  * @module @dv/fastvideo-generation-client/types
  */
 
 /**
- * The served model's facts from streaming capabilities or explicit OpenAI deployment configuration.
- * `aspectRatios` and `resolutions` list the keys of `frameSizes`.
+ * The served model's facts, derived from the deployment's configured `ModelFactsConfig`. `aspectRatios` and
+ * `resolutions` list the keys of `frameSizes`; the duration range lists the keys of `numFramesByDurationSec`.
  */
 export interface ModelFacts {
   /** Exact model alias served by the generation backend. */
@@ -17,9 +17,9 @@ export interface ModelFacts {
   /** Supported resolution names, matching the inner keys of `frameSizes`. */
   resolutions: string[]
   /** Shortest segment duration in whole seconds, inclusive. */
-  minSegmentDurationSec: number
+  minDurationSec: number
   /** Longest segment duration in whole seconds, inclusive. */
-  maxSegmentDurationSec: number
+  maxDurationSec: number
   /** The most references that one segment request can carry across media types. */
   maxReferences: number
   /** The accepted reference media types, such as `image` or `video`, and the most references of each per request. */
@@ -33,36 +33,33 @@ export interface ModelFacts {
   numFramesByDurationSec: Record<string, number>
 }
 
-/** One reference of a segment request: its media type and its bytes, in model order. */
+/** One reference of a segment request: its bytes and their MIME type, whose top-level type is the media type. */
 export interface SegmentReference {
-  /** The top-level type of the file's MIME type, such as `image` or `video`; the backend decodes the bytes by it. */
-  mediaType: string
-  /** MIME type of the source bytes for the OpenAI transport; its top-level type must match `mediaType`. */
-  mimeType?: string
+  /** MIME type of the bytes, such as `image/jpeg`; its top-level type must be `image`, `video` or `audio`. */
+  mimeType: string
   bytes: Buffer
 }
 
 /** The inputs of one segment generation request. */
 export interface SegmentRequest {
-  /** Native MiniMax-H3/Pika task selector for OpenAI servers; omit for inferred-task servers. */
-  task?: 't2va' | 'i2va' | 'l2va' | 'fl2va' | 'ref2va'
   prompt: string
   frameWidth: number
   frameHeight: number
   numFrames: number
-  /** References in caller order. OpenAI groups them by media type and validates types; streaming_v2 preserves order. */
+  /** References in caller order; the request groups them by media type and keeps the caller order within each type. */
   references: SegmentReference[]
   /** The generation seed; omitted, the backend uses its default seed. */
   seed?: number
-  /** Whether to emit the last decoded frame as PNG bytes before the video; OpenAI extracts it locally. */
-  returnLastFrame: boolean
-  /** Aborting cancels the HTTP request and rejects the iteration with `signal.reason`. */
+  /** Aborting cancels the HTTP request and rejects with `signal.reason`. */
   signal?: AbortSignal
 }
 
-/** One client output of a segment request. */
-export type SegmentOutput =
-  | { kind: 'last_frame'; png: Buffer }
-  | { kind: 'video_start'; mime: string }
-  | { kind: 'chunk'; bytes: Buffer }
-  | { kind: 'done'; timings: Record<string, number> }
+/** The whole generated segment. */
+export interface SegmentVideo {
+  /** The MP4 bytes. */
+  video: Buffer
+  /** The answer's `video/*` content type. */
+  mime: string
+  /** Backend timings in seconds: `inference_s` and one `<stage>_s` per stage of `X-Stage-Durations`. */
+  timings: Record<string, number>
+}

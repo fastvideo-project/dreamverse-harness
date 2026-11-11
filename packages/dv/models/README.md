@@ -102,6 +102,8 @@ A provider plugin implements one `ModelEntry` for each key. `ModelEntry<T>` take
 | `chunk` | `bytes`: the next part of the video bytes. |
 | `done` | `timings`: the backend's timings. Keys that end in `_ms` are milliseconds. Other keys are seconds. |
 
+`renderTimings(headers)` reads the `done` timings from the headers of a FastVideo or UniServe answer: `inference_s` from `x-inference-time-s`, and one `<stage>_s` per stage of the JSON object in `x-stage-durations`. An absent header, an `x-stage-durations` that is not JSON, and a value that is not a finite number add no timing, so the provider still yields the finished video.
+
 ### The `dvModels` service
 
 A provider plugin calls `register`. A consumer calls the other methods.
@@ -165,7 +167,7 @@ While the DSH skill registry (`skills`) is mounted, the service registers the ru
 
 | File | Content |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `Config`, `formatModelKey`, `modelKey`, `servesTask`, the `DvModels` service, and the two tools |
+| [`src/index.ts`](src/index.ts) | `Config`, `formatModelKey`, `modelKey`, `servesTask`, `renderTimings`, the `DvModels` service, and the two tools |
 | [`src/types.ts`](src/types.ts) | `PrimitiveTypes`, `PrimitiveId`, `TaskMap`, `ModalityId`, `TaskOfPrimitive`, `ModelKey`, `RenderModelFacts`, `RenderRequest`, `RenderStreamEvent`, `ModelEntry`, `ModelFilter` |
 | [`skills/video-model-selection.md`](skills/video-model-selection.md) | The model selection skill |
 | [`tests/models.spec.ts`](tests/models.spec.ts) | The catalog, the tools, the skill, and the system prompt in a Loader composition |
