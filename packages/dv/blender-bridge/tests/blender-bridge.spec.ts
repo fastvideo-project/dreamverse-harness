@@ -65,6 +65,7 @@ class FakeBlender {
     this.socket.send(encodeBinary({ kind: 'frame', seq, width: 4, height: 3, mime: 'image/jpeg', ...extra }, bytes))
   }
 
+  /** Record a request and answer it as `answer` says: nothing, an error, or a result after an optional two-chunk file. */
   private respond(id: string, op: string, params: Record<string, unknown>): void {
     this.requests.push({ id, op, params })
     const answer = this.answer(op, params)
@@ -98,6 +99,7 @@ interface Fixture {
   port: number
   attachments: MemoryAttachments
   project: ProjectId
+  /** Link a {@link FakeBlender} (with the current token unless `token` is set) and wait for its `hello` unless `hello` is false. */
   connect(options?: { token?: string; origin?: string; hello?: boolean }): Promise<FakeBlender>
   call(name: string, args: Record<string, unknown>, session?: string): Promise<ToolExecutionResult>
   route(path: string, method?: 'GET' | 'POST'): (request?: Request) => Promise<Response>

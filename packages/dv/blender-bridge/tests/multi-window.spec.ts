@@ -1,18 +1,12 @@
 /**
- * The add-on's viewport stream, view changes and camera checks in a real Blender with two windows, and with one 3D view in
- * Quad View
- * (`DV_BLENDER`, else `blender` on `PATH`, under `xvfb-run`); the suite skips when `xvfb-run` or Blender does not run.
+ * The add-on's viewport stream, view changes and camera checks in a real Blender ({@link BLENDER}, under `xvfb-run`)
+ * with two windows, and with one 3D view in Quad View; the suite skips when `xvfb-run` or Blender does not run.
  */
 import { spawnSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { BLENDER, fixtureArgs, HAS_BLENDER } from './real-blender.ts'
 
-const BLENDER = process.env['DV_BLENDER'] ?? 'blender'
-const HAS_BLENDER = spawnSync(BLENDER, ['--version'], { stdio: 'ignore' }).status === 0
 const HAS_XVFB = spawnSync('xvfb-run', ['--help'], { stdio: 'ignore' }).status === 0
-const PACKAGE = fileURLToPath(new URL('..', import.meta.url))
-const FIXTURE = fileURLToPath(new URL('fixtures/multi-window-stream.py', import.meta.url))
-const SCENE_FIXTURE = fileURLToPath(new URL('fixtures/main-view-scene.py', import.meta.url))
 
 /** The fixture's `RESULT` JSON: pointers of the 3D view areas and regions that frames came from and that the orbit moved. */
 interface Result {
@@ -25,8 +19,8 @@ interface Result {
 }
 
 /** Run `fixture` in a real Blender under `xvfb-run` with the extra fixture arguments `extra` and return its `RESULT` JSON text. */
-function runFixture(extra: string[], fixture = FIXTURE): string {
-  const run = spawnSync('xvfb-run', ['-a', '-s', '-screen 0 1920x1080x24', BLENDER, '--factory-startup', '--python-exit-code', '1', '--python', fixture, '--', PACKAGE, ...extra], { encoding: 'utf8', timeout: 90_000 })
+function runFixture(extra: string[], fixture = 'multi-window-stream.py'): string {
+  const run = spawnSync('xvfb-run', ['-a', '-s', '-screen 0 1920x1080x24', BLENDER, ...fixtureArgs(fixture, extra)], { encoding: 'utf8', timeout: 90_000 })
   const line = run.stdout.split('\n').find(text => text.startsWith('RESULT ') || text.startsWith('ERROR '))
   expect(line, run.stdout + run.stderr).toMatch(/^RESULT /)
   return line?.slice('RESULT '.length) ?? 'null'
@@ -49,7 +43,7 @@ describe.skipIf(!HAS_BLENDER || !HAS_XVFB)('the main 3D view in a real Blender (
   }, 120_000)
 
   it('checks the camera of the scene that the main 3D view shows', () => {
-    const result = JSON.parse(runFixture([], SCENE_FIXTURE)) as { look: string | null; preset: string | null }
+    const result = JSON.parse(runFixture([], 'main-view-scene.py')) as { look: string | null; preset: string | null }
     expect(result.look).toBe('The scene has no active camera; set one first, or look at the viewport.')
     expect(result.preset).toBe('The scene has no active camera.')
   }, 120_000)

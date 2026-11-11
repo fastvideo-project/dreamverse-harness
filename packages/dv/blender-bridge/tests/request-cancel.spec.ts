@@ -1,19 +1,14 @@
 /**
- * Cancelled requests at the add-on in a real Blender (`DV_BLENDER`, else `blender` on `PATH`), linked to a
- * {@link BlenderLink} on a test-owned port; the suite skips when no Blender runs.
+ * Cancelled requests at the add-on in a real Blender ({@link BLENDER}), linked to a {@link BlenderLink} on a
+ * test-owned port; the suite skips when no Blender runs.
  */
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import type { AddressInfo } from 'node:net'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { WebSocketServer } from 'ws'
 import { BlenderLink } from '../src/link.ts'
-
-const BLENDER = process.env['DV_BLENDER'] ?? 'blender'
-const HAS_BLENDER = spawnSync(BLENDER, ['--version'], { stdio: 'ignore' }).status === 0
-const PACKAGE = fileURLToPath(new URL('..', import.meta.url))
-const FIXTURE = fileURLToPath(new URL('fixtures/drive-link.py', import.meta.url))
+import { BLENDER, fixtureArgs, HAS_BLENDER } from './real-blender.ts'
 const WAIT = { timeoutMs: 30_000, signal: new AbortController().signal }
 
 describe.skipIf(!HAS_BLENDER)('requests in a real Blender (skipped: no Blender binary runs)', () => {
@@ -23,7 +18,7 @@ describe.skipIf(!HAS_BLENDER)('requests in a real Blender (skipped: no Blender b
     server.on('connection', (socket) => { link.attach(socket) })
     await once(server, 'listening')
     const { port } = server.address() as AddressInfo
-    const blender = spawn(BLENDER, ['-b', '--factory-startup', '--python-exit-code', '1', '--python', FIXTURE, '--', PACKAGE, `http://127.0.0.1:${String(port)}#token`], { stdio: ['ignore', 'pipe', 'pipe'] })
+    const blender = spawn(BLENDER, ['-b', ...fixtureArgs('drive-link.py', [`http://127.0.0.1:${String(port)}#token`])], { stdio: ['ignore', 'pipe', 'pipe'] })
     let output = ''
     blender.stdout.on('data', (data: Buffer) => { output += data.toString() })
     blender.stderr.on('data', (data: Buffer) => { output += data.toString() })
