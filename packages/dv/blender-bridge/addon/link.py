@@ -127,6 +127,7 @@ class Link:
         return self._sock is not None and not self._closed.is_set()
 
     def _finish(self, code, reason):
+        """End the connection and call ``on_close`` once, on whichever thread sees the end first."""
         with self._close_lock:
             if self._close_reported:
                 return
@@ -140,6 +141,8 @@ class Link:
         self.on_close(code, reason)
 
     def _write(self):
+        """Send queued frames on the writer thread until the close; a requested close first waits up to 2 s for the
+        harness's close frame."""
         while True:
             frame = self._outbox.get()
             if frame is None or self._closed.is_set():
@@ -155,6 +158,8 @@ class Link:
                 return
 
     def _read(self, pending):
+        """Read frames on the reader thread, starting with the handshake's leftover bytes ``pending``: answer pings and
+        the close frame, and pass each whole text or binary message to ``on_message``."""
         buffer = bytearray(pending)
         message_op, parts = None, []
 

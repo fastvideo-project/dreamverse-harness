@@ -147,6 +147,7 @@ export function ViewportControls(props: {
     return () => { element.removeEventListener('wheel', onWheel) }
   }, [])
 
+  /** Start an orbit drag with the left button, or a pan drag with the right button or Shift, while the view can move. */
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
     if (!navigable || (event.button !== 0 && event.button !== 2)) return
     event.preventDefault()
@@ -158,6 +159,7 @@ export function ViewportControls(props: {
       void error
     }
   }
+  /** Add the drag's movement, as fractions of the shown picture, to the gathered view change and queue its sending. */
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
     const current = drag.current
     const element = view.current

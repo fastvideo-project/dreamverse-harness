@@ -55,6 +55,8 @@ class _Controller:
         self.inbox.put(("closed", code, reason))
 
     def connect(self):
+        """Start linking to the connection string in the preferences on a new thread, unless a link is open or opening;
+        the result reaches the inbox, and a bad string or missing Online Access only sets the status."""
         if self.link is not None or self.connecting:
             return
         prefs = _prefs()
@@ -145,6 +147,7 @@ class _Controller:
         return 0.02 if viewport.streaming() else 0.05
 
     def _handle(self, kind, data):
+        """Act on one text message from the harness; binary and unreadable messages are ignored."""
         if kind != "text":
             return
         try:
@@ -164,8 +167,8 @@ class _Controller:
             self._request(str(message.get("id")), message.get("op"), message.get("params") or {})
 
     def _view(self, message):
-        # A view change gets no answer; a failure only shows in Blender's console. A drag or the wheel streams the
-        # smaller moving frames until it stops; a standard view or a framing is one jump.
+        """Apply one view change. It gets no answer; a failure only shows in Blender's console. A drag or the wheel
+        streams the smaller moving frames until it stops; a standard view or a framing is one jump."""
         if message.get("action") in ("orbit", "pan", "zoom"):
             viewport.note_move()
         try:
@@ -176,6 +179,8 @@ class _Controller:
             print("DreamVerse: the view change %r did not apply: %s" % (message.get("action"), problem))
 
     def _request(self, request_id, op, params):
+        """Run one request and send its response, unless the harness cancelled it; a ``look`` responds at a later
+        redraw."""
         if request_id in self.cancelled:
             # The harness gave up on the request before Blender started it, and expects no response.
             return
@@ -267,6 +272,7 @@ class DreamVersePreferences(bpy.types.AddonPreferences):
         description="The JPEG quality while the harness moves the view")
 
     def draw(self, _context):
+        """Draw the add-on preferences: the connection, code access and the viewport stream limits."""
         layout = self.layout
         layout.prop(self, "connection")
         layout.prop(self, "auto_connect")
@@ -308,6 +314,7 @@ class DREAMVERSE_PT_panel(bpy.types.Panel):
     bl_category = "DreamVerse"
 
     def draw(self, _context):
+        """Draw the sidebar panel: the link status, the connection string and the connect or disconnect button."""
         layout = self.layout
         prefs = _prefs()
         layout.label(text=controller.status, icon="LINKED" if controller.link else "UNLINKED")

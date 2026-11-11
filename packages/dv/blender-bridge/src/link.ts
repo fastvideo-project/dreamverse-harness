@@ -127,7 +127,6 @@ export class BlenderLink {
         options.signal.removeEventListener('abort', stop)
         this.pending.delete(id)
       }
-      // Giving up tells the add-on to skip the request if it has not started it; a started one runs to its end.
       const cancel = (message: string): void => {
         finish()
         socket.send(JSON.stringify({ type: 'cancel', id }))
@@ -194,6 +193,7 @@ export class BlenderLink {
     for (const viewer of [...this.viewers]) viewer(event)
   }
 
+  /** Handle one message from the add-on: a `hello` or `state` updates the state, and a `response` settles its request. */
   private receive(data: RawData, isBinary: boolean): void {
     if (isBinary) {
       this.receiveBinary(bytesOf(data))
@@ -218,6 +218,7 @@ export class BlenderLink {
     else waiting.resolve({ result: message.result, file: waiting.chunks.length === 0 ? null : Buffer.concat(waiting.chunks) })
   }
 
+  /** Relay and acknowledge a viewport frame, or add a file chunk to its request up to the file cap. */
   private receiveBinary(data: Uint8Array): void {
     const message = parseBlenderBinary(data)
     if (message === null) {

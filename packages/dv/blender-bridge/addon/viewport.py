@@ -160,6 +160,7 @@ def _redraw():
 
 
 def _queue_redraw(delay):
+    """Redraw the main 3D view after ``delay`` seconds, unless a queued redraw is already waiting."""
     if _stream["redraw_queued"]:
         return
     _stream["redraw_queued"] = True
@@ -202,8 +203,6 @@ def _scaled(full_w, full_h, max_width):
 
 
 def _read_view(region, max_width):
-    # The framebuffer active in a POST_PIXEL handler holds only overlays and UI; Blender composites the shaded scene
-    # into the window after the handlers run, so the view is drawn again offscreen with the region's own matrices.
     view = bpy.context.region_data
     width, height = _scaled(region.width, region.height, max_width)
     return _read_offscreen(region, width, height, view.view_matrix, view.window_matrix)
@@ -229,6 +228,8 @@ def _shrink(pixels, max_width):
 
 
 def _draw():
+    """The POST_PIXEL draw handler: in the main 3D view's region only, take the waiting captures, then copy one stream
+    frame when the stream limits allow it and leave its encoding to a timer."""
     context = bpy.context
     if _drawing["offscreen"]:
         return
@@ -272,6 +273,7 @@ def _draw():
 
 
 def _send_frame(seq, pixels, quality, draw_ms):
+    """Encode frame ``seq`` as JPEG, or PNG when the JPEG save fails, and send it with its timing while streaming."""
     send = _settings["send"]
     if send is None or not _stream["on"]:
         return None
@@ -289,6 +291,7 @@ def _send_frame(seq, pixels, quality, draw_ms):
 
 
 def _jpeg(pixels, quality):
+    """Encode top-down RGBA ``pixels`` as JPEG through Blender's image data block and a temporary file."""
     height, width = pixels.shape[0], pixels.shape[1]
     image = bpy.data.images.get(FRAME_IMAGE)
     if image is None:

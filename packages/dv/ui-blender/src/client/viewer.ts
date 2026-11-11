@@ -169,6 +169,10 @@ export class SharedViewer {
     if (move && this.moveSentAt === null) this.moveSentAt = performance.now()
   }
 
+  /**
+   * Open the viewport socket: each `frame` header names the binary message after it, and a close clears the status
+   * and the frame and reopens the socket after 2 s while listeners remain.
+   */
   private open(): void {
     const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const socket = new WebSocket(`${scheme}://${window.location.host}${VIEW_PATH}`)
