@@ -101,7 +101,11 @@ function mount(routes: ScriptedRoutes = { state: soundState }) {
   const dialog = (): HTMLElement | null => view.queryByRole('dialog', { name: '添加声音' })
   const requests = (): Array<Record<string, unknown>> =>
     scripted.writes.filter(write => write.path === '/api/dv/operation').map(write => write.body as Record<string, unknown>)
-  const ready = async (): Promise<void> => { await view.findByRole('list', { name: '视频轨道' }) }
+  // The editor's mount effects, such as its per-timeline reset, run before the test's first gesture.
+  const ready = async (): Promise<void> => {
+    await view.findByRole('list', { name: '视频轨道' })
+    await act(async () => { await Promise.resolve() })
+  }
   const fetches = (): number => stateFetches
   const disabled = (): boolean[] => within(view.getByTestId('dv-timeline-editor')).getAllByRole('button', { name: '添加声音' })
     .map(button => (button as HTMLButtonElement).disabled)
@@ -415,6 +419,55 @@ describe('sound tracks', () => {
     expect(disabled()).toEqual([true, true])
     await waitFor(() => { expect(disabled()).toEqual([false, false]) })
     expect([imports.length, requests().length]).toEqual([1, 2])
+  })
+
+  it('shows the error of a failed sound add record and enables the sound track ＋ again', async () => {
+    const errors = [{ code: 'operation_failed', message: 'Asset theme.mp3 is not an audio file.' }, undefined]
+    const post: ScriptedRoutes['post'] = (path, body) => {
+      const { operation, params = {} } = body as { operation: string; params?: Record<string, unknown> }
+      const error = errors.shift()
+      return { status: 200, body: record({ id: 'f1', operation, params, status: 'failed', ...error === undefined ? {} : { error } }) }
+    }
+    const { view, plus, dialog, requests, imports, ready, disabled } = mount({ state: soundState, post })
+    await ready()
+    fireEvent.click(plus(0))
+    fireEvent.click(within(dialog() as HTMLElement).getByText('theme.mp3'))
+    expect(disabled()).toEqual([true, true])
+    await waitFor(() => { expect(disabled()).toEqual([false, false]) })
+    expect([requests().length, view.getByRole('alert').textContent]).toEqual([1, '失败：Asset theme.mp3 is not an audio file.'])
+
+    // A failed record without an error shows its status.
+    fireEvent.click(plus(0))
+    const input = view.container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File(['x'], 'song.mp3', { type: 'audio/mpeg' })] } })
+    expect(disabled()).toEqual([true, true])
+    await waitFor(() => { expect(disabled()).toEqual([false, false]) })
+    expect([imports.length, requests().length, view.getByRole('alert').textContent]).toEqual([1, 2, '失败：failed'])
+  })
+
+  it('keeps one empty track after the last stored track when the stored tracks shrink', async () => {
+    let removed = false
+    const post: ScriptedRoutes['post'] = (path, body) => {
+      const { operation, params = {} } = body as { operation: string; params?: Record<string, unknown> }
+      if (operation === 'timeline.sound_remove') removed = true
+      return { status: 200, body: path === '/api/dv/operation' ? record({ id: 'r1', operation, params }) : { problems: [] } }
+    }
+    // Once sd2 is removed, t1 stores no track names and one sound track.
+    const state = (): FixtureState => {
+      const fixture = soundState()
+      const [t1] = fixture.components.timeline.timelines
+      if (removed && t1 !== undefined) Object.assign(t1, { sounds: t1.sounds.filter(sound => sound.id !== 'sd2'), sound_track_names: [] })
+      return fixture
+    }
+    const { view, sound, lanes, ready, addTrack } = mount({ state, post })
+    await ready()
+    fireEvent.click(addTrack())
+    expect(lanes()).toBe(3)
+    fireEvent.click(sound('sd2'))
+    fireEvent.keyDown(view.getByTestId('dv-timeline-editor'), { key: 'Delete' })
+    await waitFor(() => { expect(view.container.querySelector('div[data-sound="sd2"]')).toBeNull() })
+    // The timeline operations accept tracks 0 and 1 now.
+    expect([lanes(), addTrack().disabled]).toEqual([2, true])
   })
 
   it('closes the sound and track menu on Escape or a press outside it', async () => {

@@ -411,7 +411,8 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const storedTracks = Math.max(1, savedTracks)
   const trackName = (track: number): string => trackNames[track] || t('track.soundN', { n: track + 1 })
   const [renamingTrack, setRenamingTrack] = useState<{ track: number; name: string } | null>(null)
-  const trackCount = Math.max(storedTracks, shownTracks)
+  // After the stored tracks shrink, the view still shows at most the one empty track that the operations accept.
+  const trackCount = Math.max(storedTracks, Math.min(shownTracks, storedTracks + 1))
   // The track the add dialog adds to, the selected sound, and the open sound or track menu.
   const [soundTrack, setSoundTrack] = useState(0)
   const [chosenSound, setChosenSound] = useState<string | null>(null)
@@ -578,7 +579,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const shownName = timeline === null ? '' : nameOf(timeline)
   // An insert names the shown timeline; the other clip operations name the clip by its clip ID, which names its timeline.
   const runOperation = (operation: string, params: Record<string, unknown>, intent: string): Promise<boolean> => {
-    const named = ['timeline.clip_insert', 'timeline.sound_add', 'timeline.sound_track_remove', 'timeline.sound_track_rename'].includes(operation)
+    const named = ['timeline.clip_insert', 'timeline.sound_track_remove', 'timeline.sound_track_rename'].includes(operation)
     const scoped = timeline === null || !named ? params : { timeline: timeline.id, ...params }
     return run(() => client.runOperation(request(project, session, { operation, params: scoped, intent })))
   }
@@ -594,10 +595,17 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     setAddingAt(sounds.length)
     void work.then((ok) => { if (!ok) setAddingAt(null) })
   }
+  // A sound add whose record failed, such as one naming an asset that is not audio, throws the record's error, so the
+  // view shows it as its notice and the ＋ buttons are enabled again.
+  const writeSound = async (asset: string, at: number): Promise<void> => {
+    const params = { timeline: timelineId, asset, start_sec: at, track: soundTrack }
+    const record = await client.runOperation(request(project, session, { operation: 'timeline.sound_add', params, intent: t('intent.soundAdd', { at: timecode(at) }) }))
+    if (record.status === 'failed') throw new Error(record.error?.message ?? record.status)
+  }
   const addSound = (asset: string): void => {
     setPickingSound(false)
     const at = soundStart
-    addingSound(runOperation('timeline.sound_add', { asset, start_sec: at, track: soundTrack }, t('intent.soundAdd', { at: timecode(at) })))
+    addingSound(run(() => writeSound(asset, at)))
   }
   const removeSound = (sound: (typeof sounds)[number]): void => {
     setSoundMenu(null)
@@ -625,8 +633,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     const at = soundStart
     addingSound(run(async () => {
       const { asset } = await client.importAsset(project, file, 'asset_pool', session)
-      const params = { timeline: timelineId, asset, start_sec: at, track: soundTrack }
-      await client.runOperation(request(project, session, { operation: 'timeline.sound_add', params, intent: t('intent.soundAdd', { at: timecode(at) }) }))
+      await writeSound(asset, at)
     }))
   }
 
