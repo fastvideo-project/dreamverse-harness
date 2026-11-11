@@ -1,255 +1,319 @@
-/** The generation client maps the streaming_v2 HTTP routes and the per-request event streams of a fake backend. */
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
-import type { AddressInfo } from 'node:net'
+/** The generation client against a fake FastVideo server that answers `GET /v1/model_info` and `POST /v1/videos/sync`. */
 import { once } from 'node:events'
+import { createServer, type Server, type ServerResponse } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { Context } from '@deepseek-ai/cordis'
+import { Agent, fetch, getGlobalDispatcher, setGlobalDispatcher } from 'undici'
 import { afterEach, describe, expect, it } from 'vitest'
-import DvFastvideoGeneration, { GenerationSegmentError, type SegmentOutput, type SegmentRequest } from '../src/index.ts'
+import DvFastvideoGeneration, {
+  backendOrder, deriveModelFacts, GenerationSegmentError, type ModelFactsConfig, type SegmentRequest,
+} from '../src/index.ts'
 
 /** A port in the owned test range on which nothing listens. */
 const UNREACHABLE_PORT = 18502
 
-const CAPABILITIES_BODY = {
-  model_id: 'h3-ref2va', min_segment_duration_sec: 5, max_segment_duration_sec: 15,
-  max_references: 4, reference_media_types: { image: { max_count: 3 }, video: { max_count: 2 } },
-  frame_sizes: { '16:9': { '720p': [1344, 768], '480p': [896, 512] }, '9:16': { '720p': [768, 1344] } },
-  num_frames_by_duration_sec: { 5: 124, 6: 158 },
+const FACTS: ModelFactsConfig = {
+  modelId: 'fasth3-nvfp4',
+  frameSizes: { '16:9': { '480p': [832, 480], '720p': [1344, 768] }, '9:16': { '480p': [480, 832], '720p': [768, 1344] } },
+  numFramesByDurationSec: { 5: 124, 6: 158 },
+  maxReferences: 12,
+  referenceMediaTypes: { image: { maxCount: 9 }, video: { maxCount: 3 }, audio: { maxCount: 3 } },
 }
 
-interface Reply { status: number; body: unknown }
-/** Answers one HTTP request; `request` is the parsed JSON body of a POST. */
-type Route = (path: string, request: Record<string, unknown> | null, response: ServerResponse) => void
-
-interface FakeBackend {
-  /** The ephemeral port that the fake listens on, so no pooled connection of an earlier test can reach it. */
-  port: number
-  paths: string[]
-  requests: Record<string, unknown>[]
-  /** Settles when the client closes the connection of each POST, in arrival order. */
-  closed: Promise<void>[]
-}
-
-const servers: Server[] = []
 const roots: Context[] = []
+const servers: Server[] = []
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map(root => root.fiber.dispose()))
   await Promise.all(servers.splice(0).map(async (server) => {
     server.closeAllConnections()
-    await new Promise(resolve => server.close(resolve))
+    await new Promise<void>((resolve) => { server.close(() => { resolve() }) })
   }))
 })
 
-/** Start a fake backend whose requests the route answers. */
-async function startFakeBackend(route: Route): Promise<FakeBackend> {
-  const fake: FakeBackend = { port: 0, paths: [], requests: [], closed: [] }
-  const server = createServer((request: IncomingMessage, response: ServerResponse) => {
-    const path = request.url ?? ''
-    fake.paths.push(path)
-    if (request.method !== 'POST') {
-      route(path, null, response)
-      return
-    }
-    fake.closed.push(new Promise((resolve) => { response.once('close', () => { resolve() }) }))
-    const parts: Buffer[] = []
-    request.on('data', (part: Buffer) => { parts.push(part) })
-    request.on('end', () => {
-      const body = JSON.parse(Buffer.concat(parts).toString('utf8')) as Record<string, unknown>
-      fake.requests.push(body)
-      route(path, body, response)
+/**
+ * Start a fake backend that records each request and answers it with `reply`.
+ * @param reply - answers one request by its path.
+ * @returns the client of the backend, the backend URL and the recorded requests.
+ */
+async function backend(reply: (path: string, response: ServerResponse) => void) {
+  const requests: Array<{ path: string; body: Record<string, unknown> | null }> = []
+  const server = createServer((request, response) => {
+    const chunks: Buffer[] = []
+    request.on('data', (chunk: Buffer) => { chunks.push(chunk) })
+    request.once('end', () => {
+      const path = request.url ?? ''
+      requests.push({ path, body: chunks.length === 0 ? null : JSON.parse(Buffer.concat(chunks).toString()) as Record<string, unknown> })
+      reply(path, response)
     })
   })
   servers.push(server)
   server.listen(0, '127.0.0.1')
   await once(server, 'listening')
-  fake.port = (server.address() as AddressInfo).port
-  return fake
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  return { client: client(url), url, requests }
 }
 
-/** Answer with one JSON body and close the connection. */
-function sendJson(response: ServerResponse, reply: Reply): void {
-  response.writeHead(reply.status, { 'content-type': 'application/json', connection: 'close' })
-  response.end(JSON.stringify(reply.body))
-}
-
-/** Start an event-stream response and write the given events. */
-function sendEvents(response: ServerResponse, events: Array<[string, object]>, end = true): void {
-  response.writeHead(200, { 'content-type': 'text/event-stream', connection: 'close' })
-  for (const [event, data] of events) response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-  if (end) response.end()
-}
-
-function client(port: number): DvFastvideoGeneration {
+/** A client of `baseUrl` with the given facts. */
+function client(baseUrl: string, facts: ModelFactsConfig = FACTS): DvFastvideoGeneration {
   const root = new Context()
   roots.push(root)
-  return new DvFastvideoGeneration(root, { baseUrl: `http://127.0.0.1:${port}` })
+  return new DvFastvideoGeneration(root, { baseUrl, modelFacts: facts })
 }
 
-async function collect(outputs: AsyncIterable<SegmentOutput>): Promise<SegmentOutput[]> {
-  const received: SegmentOutput[] = []
-  for await (const output of outputs) received.push(output)
-  return received
+/** Answer with an MP4 body and the given headers. */
+function sendVideo(response: ServerResponse, headers: Record<string, string> = {}): void {
+  response.writeHead(200, { 'content-type': 'video/mp4', ...headers })
+  response.end('VIDEO')
 }
 
-function segmentRequest(fields: Partial<SegmentRequest> = {}): SegmentRequest {
-  return { prompt: 'A lake', frameWidth: 1344, frameHeight: 768, numFrames: 124, references: [], returnLastFrame: false, ...fields }
+/** A segment request with the given fields. */
+function segment(updates: Partial<SegmentRequest> = {}): SegmentRequest {
+  return { prompt: 'A lake', frameWidth: 832, frameHeight: 480, numFrames: 124, references: [], ...updates }
 }
 
-describe('HTTP routes', () => {
-  it('builds model facts from the capabilities and reuses the first successful response', async () => {
-    const replies: Reply[] = [{ status: 503, body: { detail: 'warming' } }, { status: 200, body: CAPABILITIES_BODY }]
-    const fake = await startFakeBackend((_path, _request, response) => { sendJson(response, replies.shift()!) })
-    const generation = client(fake.port)
-    await expect(generation.model()).rejects.toThrow(
-      'FastVideo generation backend GET /v1/streamv2/capabilities returned HTTP 503: {"detail":"warming"}')
-    const facts = await generation.model()
-    expect(facts).toEqual({
-      modelId: 'h3-ref2va', aspectRatios: ['16:9', '9:16'], resolutions: ['720p', '480p'],
-      minSegmentDurationSec: 5, maxSegmentDurationSec: 15, maxReferences: 4,
-      referenceMediaTypes: { image: { maxCount: 3 }, video: { maxCount: 2 } },
-      frameSizes: { '16:9': { '720p': [1344, 768], '480p': [896, 512] }, '9:16': { '720p': [768, 1344] } },
-      numFramesByDurationSec: { 5: 124, 6: 158 },
+describe('model facts', () => {
+  it('derives the catalog choices and duration range from the configured maps', async () => {
+    const { client: generation, requests } = await backend((_path, response) => {
+      response.end(JSON.stringify({ model_path: '/weights', served_model_name: FACTS.modelId, lora: null }))
     })
-    expect(await generation.model()).toBe(facts)
-    expect(fake.paths).toEqual(['/v1/streamv2/capabilities', '/v1/streamv2/capabilities'])
+    expect(await generation.model()).toEqual({
+      ...FACTS, aspectRatios: ['16:9', '9:16'], resolutions: ['480p', '720p'], minDurationSec: 5, maxDurationSec: 6,
+    })
+    await generation.model()
+    expect(requests.map(request => request.path)).toEqual(['/v1/model_info'])
   })
 
-  it('rejects model facts with the fetch error when the backend is unreachable', async () => {
-    const failure = await client(UNREACHABLE_PORT).model().catch((error: unknown) => error)
-    expect(failure).toBeInstanceOf(Error)
+  it('refuses a served alias that is missing or differs from modelFacts.modelId, and retries after a failure', async () => {
+    let served: unknown = 'another-model'
+    const { client: generation, requests } = await backend((_path, response) => {
+      response.end(JSON.stringify({ served_model_name: served }))
+    })
+    await expect(generation.model()).rejects.toThrow('FastVideo serves another-model; modelFacts.modelId is fasth3-nvfp4.')
+    served = undefined
+    await expect(generation.model()).rejects.toThrow('FastVideo GET /v1/model_info reports no served_model_name; expected fasth3-nvfp4.')
+    served = FACTS.modelId
+    expect(await generation.model()).toMatchObject({ modelId: FACTS.modelId })
+    expect(requests).toHaveLength(3)
+  })
+
+  it('names the route and the HTTP status of a failed model_info, and rejects when the backend is unreachable', async () => {
+    const { client: generation } = await backend((_path, response) => { response.writeHead(503); response.end('starting') })
+    await expect(generation.model()).rejects.toThrow('FastVideo GET /v1/model_info returned HTTP 503: starting')
+    await expect(client(`http://127.0.0.1:${UNREACHABLE_PORT}`).model()).rejects.toThrow('fetch failed')
+  })
+
+  it('names the route of a model_info answer that is not JSON', async () => {
+    const { client: generation } = await backend((_path, response) => { response.end('<html>starting</html>') })
+    const error: unknown = await generation.model().catch((cause: unknown) => cause)
+    if (!(error instanceof Error)) throw new Error('Expected a model_info error')
+    expect(error.message).toMatch(/^FastVideo GET \/v1\/model_info answered no JSON: /)
+    expect(error.cause).toBeInstanceOf(SyntaxError)
+  })
+
+  it.each([
+    ['a gap in the durations', { numFramesByDurationSec: { 5: 124, 7: 190 } }, 'numFramesByDurationSec has a gap; it needs every duration from 5 to 7.'],
+    ['no duration', { numFramesByDurationSec: {} }, 'numFramesByDurationSec lists no duration.'],
+    ['a fractional duration', { numFramesByDurationSec: { '5.5': 140 } }, 'numFramesByDurationSec has duration "5.5"'],
+    ['frame counts that shrink', { numFramesByDurationSec: { 5: 124, 6: 100 } }, 'a frame count that does not grow with the duration'],
+    ['no frame size', { frameSizes: {} }, 'frameSizes lists no frame size.'],
+    ['aspect ratios with different resolutions', { frameSizes: { '16:9': { '480p': [832, 480] }, '9:16': { '720p': [768, 1344] } } },
+      'frameSizes of 9:16 lists 720p; every aspect ratio lists 480p.'],
+    ['an aspect ratio without a resolution', { frameSizes: { '16:9': { '480p': [832, 480] }, '9:16': {} } },
+      'frameSizes of 9:16 lists no resolution; every aspect ratio lists 480p.'],
+    ['a media type limit above maxReferences', { maxReferences: 2 }, 'referenceMediaTypes.image.maxCount 9 exceeds maxReferences 2.'],
+  ] as const)('refuses facts with %s when the client is built', (_case, update, message) => {
+    expect(() => client('http://127.0.0.1:1', { ...FACTS, ...update } as ModelFactsConfig)).toThrow(message)
+  })
+
+  it('accepts aspect ratios that list the same resolutions in another order', () => {
+    const frameSizes: ModelFactsConfig['frameSizes'] = {
+      '16:9': { '480p': [832, 480], '720p': [1344, 768] }, '9:16': { '720p': [768, 1344], '480p': [480, 832] },
+    }
+    expect(deriveModelFacts({ ...FACTS, frameSizes })).toMatchObject({ aspectRatios: ['16:9', '9:16'], resolutions: ['480p', '720p'], frameSizes })
+  })
+
+  it('refuses a reference media type that FastVideo does not accept at config validation', () => {
+    const text: Record<string, { maxCount: number }> = { text: { maxCount: 1 } }
+    expect(() => DvFastvideoGeneration.Config({ baseUrl: 'http://127.0.0.1:1', modelFacts: { ...FACTS, referenceMediaTypes: text } })).toThrow()
+    expect(DvFastvideoGeneration.Config({ baseUrl: 'http://127.0.0.1:1', modelFacts: FACTS }).modelFacts).toEqual(FACTS)
   })
 })
 
 describe('segment generation', () => {
-  it('refuses a native task selector on streaming_v2 before sending a request', async () => {
-    const fake = await startFakeBackend((_path, _request, response) => { response.end() })
-    const generation = client(fake.port)
-    expect(() => generation.generateSegment({
-      prompt: 'Frames', task: 'fl2va', frameWidth: 64, frameHeight: 64, numFrames: 24, references: [], returnLastFrame: false,
-    })).toThrow('requires the OpenAI transport')
-    expect(fake.paths).toEqual([])
+  it('sends one list per media type in the caller order within each type, and returns the video with its timings', async () => {
+    const { client: generation, requests } = await backend((_path, response) => {
+      sendVideo(response, { 'x-inference-time-s': '41.5', 'x-stage-durations': '{"denoise": 38.25, "decode": 3, "note": "text"}' })
+    })
+    const references = [
+      { mimeType: 'audio/mpeg', bytes: Buffer.from('song') }, { mimeType: 'image/jpeg', bytes: Buffer.from('face') },
+      { mimeType: 'video/mp4', bytes: Buffer.from('walk') }, { mimeType: 'image/png', bytes: Buffer.from('room') },
+      { mimeType: 'audio/wav', bytes: Buffer.from('voice') },
+    ]
+    const result = await generation.generateSegment(segment({ seed: 42, references }))
+    const url = (mime: string, text: string) => `data:${mime};base64,${Buffer.from(text).toString('base64')}`
+    expect(requests).toEqual([{ path: '/v1/videos/sync', body: {
+      model: FACTS.modelId, prompt: 'A lake', width: 832, height: 480, num_frames: 124, seed: 42,
+      image_reference: [{ image_url: url('image/jpeg', 'face') }, { image_url: url('image/png', 'room') }],
+      video_reference: [{ video_url: url('video/mp4', 'walk') }],
+      audio_reference: [{ audio_url: url('audio/mpeg', 'song') }, { audio_url: url('audio/wav', 'voice') }],
+    } }])
+    expect(result).toEqual({ video: Buffer.from('VIDEO'), mime: 'video/mp4', timings: { inference_s: 41.5, denoise_s: 38.25, decode_s: 3 } })
   })
 
-  it('posts one request per segment and yields the event stream in arrival order', async () => {
-    const fake = await startFakeBackend((_path, request, response) => {
-      const lastFrame = request!['return_last_frame'] === true
-        ? [['last_frame', { data: Buffer.from('frame').toString('base64') }] as [string, object]]
-        : []
-      sendEvents(response, [
-        ...lastFrame,
-        ['video_start', { mime: 'video/mp4; codecs="avc1.640028, mp4a.40.2"' }],
-        ['video_chunk', { data: Buffer.from([1, 2]).toString('base64') }],
-        ['video_chunk', { data: Buffer.from([3]).toString('base64') }],
-        ['done', { timings: { generation_ms: 10, e2e_latency_ms: 12.5 } }],
-      ])
-    })
-    const generation = client(fake.port)
-    const references = [{ mediaType: 'video', bytes: Buffer.from('dance clip') }, { mediaType: 'image', bytes: Buffer.from([0, 255]) }]
-    expect(await collect(generation.generateSegment(segmentRequest({ references, returnLastFrame: true, seed: 7 }))))
-      .toEqual([
-        { kind: 'last_frame', png: Buffer.from('frame') },
-        { kind: 'video_start', mime: 'video/mp4; codecs="avc1.640028, mp4a.40.2"' },
-        { kind: 'chunk', bytes: Buffer.from([1, 2]) },
-        { kind: 'chunk', bytes: Buffer.from([3]) },
-        { kind: 'done', timings: { generation_ms: 10, e2e_latency_ms: 12.5 } },
-      ])
-    expect((await collect(generation.generateSegment(segmentRequest()))).map(output => output.kind))
-      .toEqual(['video_start', 'chunk', 'chunk', 'done'])
-    expect(fake.paths).toEqual(['/v1/streamv2/generate', '/v1/streamv2/generate'])
-    expect(fake.requests).toEqual([
-      {
-        prompt: 'A lake',
-        references: [{ media_type: 'video', data: Buffer.from('dance clip').toString('base64') }, { media_type: 'image', data: 'AP8=' }],
-        width: 1344, height: 768, num_frames: 124, seed: 7, return_last_frame: true,
-      },
-      { prompt: 'A lake', references: [], width: 1344, height: 768, num_frames: 124, return_last_frame: false },
-    ])
+  it('orders items as images, then videos, then audio, each in caller order', () => {
+    const items = [['audio', 'song'], ['image', 'face'], ['video', 'walk'], ['image', 'room'], ['audio', 'voice']] as const
+    expect(backendOrder(items, ([type]) => type).map(([, name]) => name)).toEqual(['face', 'room', 'walk', 'song', 'voice'])
   })
 
-  it('parses events split across reads, carriage returns, comments, and multi-line data', async () => {
-    const fake = await startFakeBackend((_path, _request, response) => {
-      response.writeHead(200, { 'content-type': 'text/event-stream', connection: 'close' })
-      response.write(': keep-alive\r\nevent: video_start\r\nda')
-      response.write('ta: {"mime":\r\ndata: "video/mp4"}\r\n\r\nevent: done\ndata: {"timings": {}}\n\n')
-      response.end()
-    })
-    expect(await collect(client(fake.port).generateSegment(segmentRequest()))).toEqual([
-      { kind: 'video_start', mime: 'video/mp4' }, { kind: 'done', timings: {} },
-    ])
+  it('omits the seed and the empty reference lists, and returns no timing without timing headers', async () => {
+    const { client: generation, requests } = await backend((_path, response) => { sendVideo(response) })
+    expect((await generation.generateSegment(segment())).timings).toEqual({})
+    expect(requests[0]?.body).toEqual({ model: FACTS.modelId, prompt: 'A lake', width: 832, height: 480, num_frames: 124 })
   })
 
-  it('rejects HTTP 400 and error events with the backend error code', async () => {
-    const fake = await startFakeBackend((_path, request, response) => {
-      if (request!['prompt'] === 'bad body') {
-        sendJson(response, { status: 400, body: { code: 'invalid_request', message: 'num_frames is required' } })
-      } else {
-        const code = request!['prompt'] === 'bad reference' ? 'invalid_request' : 'generation_failed'
-        sendEvents(response, [['video_start', { mime: 'video/mp4' }], ['error', { code, message: `${code} message` }]])
-      }
-    })
-    const generation = client(fake.port)
-    const results = await Promise.all(['bad body', 'bad reference', 'worker lost'].map(async prompt =>
-      await collect(generation.generateSegment(segmentRequest({ prompt }))).catch((error: unknown) => error)))
-    expect(results.map(result =>
-      result instanceof GenerationSegmentError ? [result.message, result.errorType] : result))
-      .toEqual([
-        ['num_frames is required', 'invalid_request'],
-        ['invalid_request message', 'invalid_request'],
-        ['generation_failed message', 'generation_failed'],
-      ])
+  it('refuses a reference of another media type without sending a request', async () => {
+    const { client: generation, requests } = await backend((_path, response) => { sendVideo(response) })
+    const refused = generation.generateSegment(segment({ references: [{ mimeType: 'application/json', bytes: Buffer.from('{}') }] }))
+    await expect(refused).rejects.toThrow(new GenerationSegmentError('FastVideo takes no reference of type application/json.'))
+    await expect(refused).rejects.toBeInstanceOf(GenerationSegmentError)
+    expect(requests).toEqual([])
   })
 
-  it('rejects other statuses, unknown events, and streams that end before done with a plain error', async () => {
-    const fake = await startFakeBackend((_path, request, response) => {
-      if (request!['prompt'] === 'status') sendJson(response, { status: 500, body: { detail: 'boom' } })
-      else if (request!['prompt'] === 'unknown') sendEvents(response, [['progress', { step: 1 }]])
-      else sendEvents(response, [['video_start', { mime: 'video/mp4' }]])
-    })
-    const generation = client(fake.port)
-    const results = await Promise.all(['status', 'unknown', 'truncated'].map(async prompt =>
-      await collect(generation.generateSegment(segmentRequest({ prompt }))).catch((error: unknown) => error)))
-    for (const result of results) expect(result).not.toBeInstanceOf(GenerationSegmentError)
-    expect(results.map(result => (result as Error).message)).toEqual([
-      'FastVideo generation backend POST /v1/streamv2/generate returned HTTP 500: {"detail":"boom"}',
-      'Unexpected FastVideo generation event: progress',
-      'FastVideo generation stream ended before its done event.',
-    ])
+  it('refuses an answer without a content type', async () => {
+    const { client: generation } = await backend((_path, response) => { response.end('queue full') })
+    await expect(generation.generateSegment(segment())).rejects.toThrow('FastVideo POST /v1/videos/sync answered no content type, not video: queue full')
   })
 
-  it('cancels the request and rejects with the abort reason without waiting for the backend', async () => {
-    const fake = await startFakeBackend((_path, _request, response) => {
-      sendEvents(response, [['video_start', { mime: 'video/mp4' }]], false)
+  it('keeps the video and its valid timings when x-stage-durations is not JSON', async () => {
+    const { client: generation } = await backend((_path, response) => {
+      sendVideo(response, { 'x-inference-time-s': '41.5', 'x-stage-durations': '{denoise: 38' })
     })
+    expect(await generation.generateSegment(segment())).toEqual({ video: Buffer.from('VIDEO'), mime: 'video/mp4', timings: { inference_s: 41.5 } })
+  })
+
+  it('refuses an answer that is not video with its body text', async () => {
+    const { client: generation } = await backend((_path, response) => {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ error: { message: 'queue full' } }))
+    })
+    await expect(generation.generateSegment(segment())).rejects.toThrow('FastVideo POST /v1/videos/sync answered application/json, not video: queue full')
+  })
+
+  it('maps HTTP 400 to GenerationSegmentError', async () => {
+    const { client: generation } = await backend((_path, response) => {
+      response.writeHead(400, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ error: { message: 'num_frames must be 124' } }))
+    })
+    const error: unknown = await generation.generateSegment(segment()).catch((cause: unknown) => cause)
+    expect(error).toBeInstanceOf(GenerationSegmentError)
+    expect(error).toMatchObject({ message: 'num_frames must be 124' })
+  })
+
+  it('reports HTTP 422 as a plain Error with its status', async () => {
+    const { client: generation } = await backend((_path, response) => {
+      response.writeHead(422, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ error: { message: 'unprocessable' } }))
+    })
+    const error: unknown = await generation.generateSegment(segment()).catch((cause: unknown) => cause)
+    expect(error).not.toBeInstanceOf(GenerationSegmentError)
+    expect(error).toMatchObject({ message: 'FastVideo POST /v1/videos/sync returned HTTP 422: unprocessable' })
+  })
+
+  it('reports the HTTP status with the body text of a failure whose application/json body is not JSON', async () => {
+    const { client: generation } = await backend((_path, response) => {
+      response.writeHead(502, { 'content-type': 'application/json' })
+      response.end('<html>Bad Gateway</html>')
+    })
+    await expect(generation.generateSegment(segment())).rejects.toThrow('FastVideo POST /v1/videos/sync returned HTTP 502: <html>Bad Gateway</html>')
+  })
+
+  it('reduces a Python traceback to its final exception and truncates oversized errors', async () => {
+    const trace = `Traceback (most recent call last):\n${'  internal stack frame\n'.repeat(5000)}RuntimeError: ninja is required`
+    const { client: generation } = await backend((_path, response) => {
+      response.writeHead(500, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ error: { message: trace } }))
+    })
+    const failure: unknown = await generation.generateSegment(segment()).catch((cause: unknown) => cause)
+    expect(failure).not.toBeInstanceOf(GenerationSegmentError)
+    expect(failure).toMatchObject({ message: 'FastVideo POST /v1/videos/sync returned HTTP 500: RuntimeError: ninja is required' })
+    const oversized = await backend((_path, response) => { response.writeHead(500); response.end('x'.repeat(20_000)) })
+    const error: unknown = await oversized.client.generateSegment(segment()).catch((cause: unknown) => cause)
+    if (!(error instanceof Error)) throw new Error('Expected a backend error')
+    expect(error.message.length).toBeLessThan(2200)
+    expect(error.message).toContain('truncated; see FastVideo server logs')
+  })
+
+  it('rejects with the abort reason while waiting for the video and closes the HTTP connection', async () => {
+    let begun!: () => void
+    let closed!: () => void
+    const started = new Promise<void>((resolve) => { begun = resolve })
+    const disconnected = new Promise<void>((resolve) => { closed = resolve })
+    const { client: generation } = await backend((_path, response) => { response.once('close', closed); begun() })
     const controller = new AbortController()
-    const outputs: SegmentOutput[] = []
-    const streaming = (async () => {
-      for await (const output of client(fake.port).generateSegment(segmentRequest({ signal: controller.signal }))) {
-        outputs.push(output)
-        controller.abort(new Error('project closed'))
-      }
-    })()
-    await expect(streaming).rejects.toThrow(/^project closed$/)
-    expect(outputs).toEqual([{ kind: 'video_start', mime: 'video/mp4' }])
-    await fake.closed[0]
-  })
-
-  it('cancels the request when the reader leaves the iteration early', async () => {
-    const fake = await startFakeBackend((_path, _request, response) => {
-      sendEvents(response, [['video_start', { mime: 'video/mp4' }]], false)
-    })
-    for await (const output of client(fake.port).generateSegment(segmentRequest())) {
-      expect(output).toEqual({ kind: 'video_start', mime: 'video/mp4' })
-      break
-    }
-    await fake.closed[0]
+    const reason = new Error('Cancelled by user')
+    const result = expect(generation.generateSegment(segment({ signal: controller.signal }))).rejects.toBe(reason)
+    await started
+    controller.abort(reason)
+    await result
+    await disconnected
   })
 
   it('rejects an already aborted request without sending it', async () => {
-    const fake = await startFakeBackend((_path, _request, response) => { sendJson(response, { status: 404, body: {} }) })
-    const controller = new AbortController()
-    controller.abort(new Error('project closed'))
-    await expect(collect(client(fake.port).generateSegment(segmentRequest({ signal: controller.signal }))))
-      .rejects.toThrow(/^project closed$/)
-    expect(fake.paths).toEqual([])
+    const { client: generation, requests } = await backend((_path, response) => { sendVideo(response) })
+    const reason = new Error('Cancelled before start')
+    await expect(generation.generateSegment(segment({ signal: AbortSignal.abort(reason) }))).rejects.toBe(reason)
+    expect(requests).toEqual([])
+  })
+
+  it('waits past the global dispatcher headers timeout for a video whose headers come only when it is generated', async () => {
+    const { client: generation, url } = await backend((_path, response) => { setTimeout(() => { sendVideo(response) }, 1500) })
+    const previous = getGlobalDispatcher()
+    // A 300 ms headers timeout stands in for undici's 300-second default; undici timers have coarse resolution.
+    // proxy-exempt: a loopback test dispatcher, installed globally to lower its timeouts.
+    const short = new Agent({ headersTimeout: 300, bodyTimeout: 300 })
+    setGlobalDispatcher(short)
+    try {
+      const plain: unknown = await fetch(`${url}/v1/videos/sync`, { method: 'POST', body: '{}' }).catch((cause: unknown) => cause)
+      expect(plain).toMatchObject({ cause: { code: 'UND_ERR_HEADERS_TIMEOUT' } })
+      expect((await generation.generateSegment(segment())).video).toEqual(Buffer.from('VIDEO'))
+    } finally {
+      setGlobalDispatcher(previous)
+      await short.close()
+    }
+  })
+
+  it('keeps the global dispatcher body timeout for a video body that stalls after its headers', async () => {
+    const { client: generation } = await backend((_path, response) => {
+      response.writeHead(200, { 'content-type': 'video/mp4' })
+      response.write('VID')
+    })
+    const previous = getGlobalDispatcher()
+    // proxy-exempt: a loopback test dispatcher, installed globally to lower its body timeout.
+    const short = new Agent({ bodyTimeout: 300 })
+    setGlobalDispatcher(short)
+    try {
+      const stalled: unknown = await generation.generateSegment(segment()).catch((cause: unknown) => cause)
+      expect(stalled).toMatchObject({ cause: { code: 'UND_ERR_BODY_TIMEOUT' } })
+    } finally {
+      setGlobalDispatcher(previous)
+      await short.close()
+    }
+  })
+
+  it('sends the render through the installed global dispatcher, such as a proxy that routes it', async () => {
+    const { url, requests } = await backend((_path, response) => { sendVideo(response) })
+    const previous = getGlobalDispatcher()
+    // proxy-exempt: a loopback test dispatcher that, like a proxy, routes every request to the fake backend.
+    const agent = new Agent()
+    setGlobalDispatcher(agent.compose(dispatch => (options, handler) => dispatch({ ...options, origin: url }, handler)))
+    try {
+      const routed = client(`http://127.0.0.1:${UNREACHABLE_PORT}`)
+      expect((await routed.generateSegment(segment())).video).toEqual(Buffer.from('VIDEO'))
+      expect(requests.map(request => request.path)).toEqual(['/v1/videos/sync'])
+    } finally {
+      setGlobalDispatcher(previous)
+      await agent.close()
+    }
   })
 })

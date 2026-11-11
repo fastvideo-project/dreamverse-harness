@@ -64,11 +64,11 @@ describe('AssetsPanel', () => {
     expect(await view.findByText('Failed to load: unknown project p1')).toBeTruthy()
   })
 
-  it('shows None yet for a project without assets, and leaves out the sections that have no assets', async () => {
+  it('shows the empty-state guidance for a project without assets, and leaves out the sections that have no assets', async () => {
     const empty = fixtureState()
     empty.assets = []
     const { view } = renderPanel(scriptedFetch({ state: empty }).fetch)
-    expect(await view.findByText('None yet')).toBeTruthy()
+    expect(await view.findByText('No images or videos yet. Import files above, or generate them in the chat.')).toBeTruthy()
     cleanup()
 
     const imagesOnly = fixtureState()
@@ -98,7 +98,7 @@ describe('the import drop zone', () => {
     const { view, zone } = renderPanel(server.fetch)
     const dropped = [file('a.png', 'image/png'), file('b.mp4', 'video/mp4'), file('notes.txt', 'text/plain')]
     fireEvent.drop(zone, { dataTransfer: { types: ['Files'], files: dropped } })
-    expect(view.getByText('"notes.txt" is not an image or a video, so it was not imported.')).toBeTruthy()
+    expect(view.getByText('“notes.txt” is not an image or a video, so it was not imported.')).toBeTruthy()
     expect(server.imports.map(held => new URLSearchParams(held.query).toString())).toEqual([
       'project=p1&name=a.png&mime=image%2Fpng&surface=asset_pool&session=s5',
       'project=p1&name=b.mp4&mime=video%2Fmp4&surface=asset_pool&session=s5',
@@ -114,7 +114,7 @@ describe('the import drop zone', () => {
     server.imports[0]?.answer(200, { asset: 'a.png', record: record({ id: 'i1', operation: 'asset.import' }) })
     await waitFor(() => { expect(zone.textContent).toMatch(/^Importing \(1\)…/) })
     server.imports[1]?.answer(507, { error: 'disk full' })
-    expect(await view.findByText('Failed to import "b.mp4": DvApiError: disk full')).toBeTruthy()
+    expect(await view.findByText('Failed to import “b.mp4”: DvApiError: disk full')).toBeTruthy()
     expect(zone.textContent).toMatch(/^Drop images or videos here to import, or click to choose files/)
 
     fireEvent.drop(zone, transfer(file('c.png', 'image/png')))

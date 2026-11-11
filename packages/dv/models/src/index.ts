@@ -88,6 +88,25 @@ export function servesTask<E extends Pick<ModelEntry, 'task'>, T extends TaskId>
   return (tasks as readonly TaskId[]).includes(entry.task)
 }
 
+/**
+ * The `done` timings of a rendered video from the timing headers of a FastVideo or UniServe answer, in seconds:
+ * `inference_s` from `x-inference-time-s`, and one `<stage>_s` per stage of the JSON object in `x-stage-durations`. An
+ * absent header, an `x-stage-durations` that is not JSON, and a value that is not a finite number add no timing, so a
+ * finished video is never lost to its timings.
+ * @param headers - the answer's headers.
+ * @returns the timings.
+ */
+export function renderTimings(headers: { get(name: string): string | null }): Record<string, number> {
+  let stages: Record<string, unknown> = {}
+  try {
+    stages = JSON.parse(headers.get('x-stage-durations') ?? '{}') as Record<string, unknown>
+  } catch { /* SyntaxError: a malformed x-stage-durations loses only the stage timings of a finished video. */ }
+  const values = { inference: Number(headers.get('x-inference-time-s') ?? Number.NaN), ...stages }
+  return Object.fromEntries(Object.entries(values)
+    .filter((value): value is [string, number] => typeof value[1] === 'number' && Number.isFinite(value[1]))
+    .map(([name, seconds]) => [`${name}_s`, seconds]))
+}
+
 /** Convert an entry to its key and its description, as `dv_models_list` and `dv_models_get` return them. */
 function toModelListItem(entry: ModelEntry): Record<string, JsonValue> {
   return { modality: entry.modality, task: entry.task, provider: entry.provider, model: entry.model, description: entry.description,

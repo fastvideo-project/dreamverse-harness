@@ -1,5 +1,5 @@
 ---
-description: "Browser half of the DreamVerse text node: the canvas node type text, whose nodes hold every textnode.write and textnode.edit version of one path, a card with the opening lines and the version, an editor whose Markdown shows citations as chips and saves the next version with base_version, the @ mention kind of text nodes, and the History row of text node records."
+description: "Browser half of the DreamVerse text node: the canvas node type text, whose nodes hold every textnode.write and textnode.edit version of one path, a card with the opening lines, an editor whose Markdown shows citations as chips and saves the next version with base_version, the @ mention kind of text nodes, and the History row of text node records."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to show and edit the text nodes of [`@dv/text-node`](../text-node/README.md) on the canvas. Each text node is one canvas node with all its versions; its caption shows the title and the version count, and its card shows the opening lines as plain text and a footer such as `v3 · 1,240 chars`. Its editor shows the Markdown with each citation as a chip, and Save writes the next version with `textnode.write` and the draft's `base_version`. The package also lists text nodes in the `@` menu and names the path and version of each `textnode.` record in History.
+Use this package to show and edit the text nodes of [`@dv/text-node`](../text-node/README.md) on the canvas. Each text node is one canvas node with all its versions; its caption shows the title and the version count, and its card shows the opening lines as plain text. Its editor shows the Markdown with each citation as a chip, and Save writes the next version with `textnode.write` and the draft's `base_version`. The package also lists text nodes in the `@` menu and names the path and version of each `textnode.` record in History.
 
 ## Table of Contents
 
@@ -33,8 +33,8 @@ Mount the plugin in a profile that stacks `dsh-web-app`, `@dv/api`, `@dv/text-no
 
 | Descriptor | Registry | Value |
 | --- | --- | --- |
-| `textNodeType` | `dvCanvas.nodeTypes` | `id: '@dv/ui-text-node'`, `type: 'text'` (the kind that `@dv/text-node` registers for the first `textnode.write` of a path), label `Text`, color `var(--dv-node-5)`; for a version, the title is the report's `title` (else the path), and `sizing` a window node 208 × 106 by default (four opening lines and the footer) and at least 104 × 58 (one opening line and the footer); a larger frame shows more of the opening text |
-| `TextCard` | the `dv.canvas.card` slot | key `text`; the opening lines of the version's Markdown, read from `/dv/assets/<asset>` once per asset, as plain text with each citation as its label, and the footer with the version and the code points of the body |
+| `textNodeType` | `dvCanvas.nodeTypes` | `id: '@dv/ui-text-node'`, `type: 'text'` (the kind that `@dv/text-node` registers for the first `textnode.write` of a path), label `Text`, color `var(--dv-node-5)`; for a version, the title is the report's `title` (else the path), and `sizing` a window node 208 × 84 by default (four opening lines) and at least 104 × 36 (one opening line); a larger frame shows more of the opening text |
+| `TextCard` | the `dv.canvas.card` slot | key `text`; the opening lines of the version's Markdown, read from `/dv/assets/<asset>` once per asset, as plain text with each citation as its label |
 | `TextEditor` | the `dv.canvas.editor` slot | key `text`; for the version that the canvas's version strip selects, the footer, and the body, read from the version's asset as the card reads it, rendered as Markdown with each citation as a chip of the `@` source `dv-project` of `@dv/ui-composer`; on the newest version Edit opens a `conversation.prompt` editor with the same chips and the `@` picker, whose menu opens below the editor, and an older version is read only |
 | `textMentionKind` | `dvMentions.kinds` | `id: '@dv/ui-text-node'`, `kind: 'textnode'`, order 4, section `Texts`; one item per text node: URI `dv:textnode/<path>`, label the title, and description the first 40 characters of the first line |
 | `textHistoryRow` | `dvHistory.rows` | `match: 'textnode.'`; the subject is ` <path> v<version>`, else ` <path>` |
@@ -53,7 +53,7 @@ Every UI string comes from the `dv-text-node` dictionary, which `apply` register
 | File | Content |
 | --- | --- |
 | [`src/client/index.ts`](src/client/index.ts) | The node type, the mention kind, the History row and `apply` |
-| [`src/client/TextCard.tsx`](src/client/TextCard.tsx) | The card body, the Markdown read and the footer |
+| [`src/client/TextCard.tsx`](src/client/TextCard.tsx) | The card body, the Markdown read and the version label of the editor |
 | [`src/client/TextEditor.tsx`](src/client/TextEditor.tsx) | The editor and its save |
 | [`src/client/texts.ts`](src/client/texts.ts) | The `textnode` slice and record readers |
 | [`src/client/locales.ts`](src/client/locales.ts) | The `dv-text-node` dictionary namespace over `locales/en.json` and `locales/zh.json` |

@@ -102,6 +102,8 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 | `chunk` | `bytes`：视频字节的下一部分。 |
 | `done` | `timings`：后端的耗时。以 `_ms` 结尾的键是毫秒。其他键是秒。 |
 
+`renderTimings(headers)` 从 FastVideo 或 UniServe 应答的头部读取 `done` 的耗时：`inference_s` 来自 `x-inference-time-s`，`x-stage-durations` 的 JSON 对象中每个阶段对应一个 `<stage>_s`。缺少的头部、不是 JSON 的 `x-stage-durations` 和不是有限数的值不添加耗时，所以提供方仍然产出已完成的视频。
+
 ### `dvModels` 服务
 
 提供方插件调用 `register`。消费方调用其他方法。
@@ -169,7 +171,7 @@ DSH skill 注册表（`skills`）挂载期间，本服务从 `skills/video-model
 
 | 文件 | 内容 |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `Config`、`formatModelKey`、`modelKey`、`servesTask`、`DvModels` 服务和两个工具 |
+| [`src/index.ts`](src/index.ts) | `Config`、`formatModelKey`、`modelKey`、`servesTask`、`renderTimings`、`DvModels` 服务和两个工具 |
 | [`src/types.ts`](src/types.ts) | `PrimitiveTypes`、`PrimitiveId`、`TaskMap`、`ModalityId`、`TaskOfPrimitive`、`ModelKey`、`RenderModelFacts`、`RenderRequest`、`RenderStreamEvent`、`ModelEntry`、`ModelFilter` |
 | [`skills/video-model-selection.md`](skills/video-model-selection.md) | 模型选择 skill |
 | [`tests/models.spec.ts`](tests/models.spec.ts) | Loader 组合中的模型目录、工具、skill 和系统提示词 |

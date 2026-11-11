@@ -38,7 +38,7 @@ html body [data-dv-chat] [data-composer-card] button[class$='_primary'] {
   width: 32px;
   height: 32px;
   background: var(--dv-accent);
-  color: #fff;
+  color: var(--dsw-alias-label-primary-foreground);
   transform: none;
   transition: background-color 120ms var(--dv-ease);
 }

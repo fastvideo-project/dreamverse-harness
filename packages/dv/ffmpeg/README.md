@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to run ffmpeg or ffprobe from a component operation. `dvFfmpeg.run` executes one command with input file paths and declared output names, writes the outputs into a directory the caller gives (usually `OperationContext.scratchDir`), and returns their paths; the operation then imports them into the asset pool with `context.importAsset`, so every file it creates is traced to its record. `dvFfmpeg.probe` reads the duration, frame size, codec, and audio presence of a file. The runner never touches the asset pool or a project.
+Use this package to run ffmpeg or ffprobe from a component operation. `dvFfmpeg.run` executes one command with input file paths and declared output names, writes the outputs into a directory the caller gives (usually `OperationContext.scratchDir`), and returns their paths; the operation then imports them into the asset pool with `context.importAsset`, so every file it creates is traced to its record. `dvFfmpeg.probe` reads the duration, frame size, codec, and audio presence of a file. `dvFfmpeg.lastFrame` returns the last frame of MP4 bytes as PNG bytes. The runner never touches the asset pool or a project.
 
 ## Table of Contents
 
@@ -44,6 +44,7 @@ Mount the plugin with both binaries; components inject `dvFfmpeg`.
 | --- | --- |
 | `run({argv, inputs, outputs, dir, files?, timeoutMs?})` | Runs one command in `dir`; `{{in:<n>}}` expands to the n-th input path and `{{out:<name>}}` to `dir/<name>`; `ffmpeg` and `ffprobe` as `argv[0]` map to the configured binaries; returns the output paths in declaration order and the captured streams |
 | `probe(path)` | Duration, video stream duration, width, height, audio presence, and video codec; null where ffprobe reports nothing |
+| `lastFrame(video)` | The last frame of the MP4 bytes `video` as PNG bytes |
 
 A failed command, an unknown placeholder, or a declared output the command did not write throws `FfmpegError` with the command's stderr.
 
@@ -52,11 +53,11 @@ A failed command, an unknown placeholder, or a declared output the command did n
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-`run` expands placeholders in the arguments and in any declared text files, writes those files into `dir`, resolves the program, and executes it with a timeout (ten minutes by default). With `ctx.subprocess` mounted the command runs in the harness's managed process range with collected stdout and stderr; otherwise `child_process.execFile` runs it. After exit, `run` checks that every declared output exists in `dir`. `probe` runs ffprobe with JSON output and reads the format and the first video stream.
+`run` expands placeholders in the arguments and in any declared text files, writes those files into `dir`, resolves the program, and executes it with a timeout (ten minutes by default). With `ctx.subprocess` mounted the command runs in the harness's managed process range with collected stdout and stderr; otherwise `child_process.execFile` runs it. After exit, `run` checks that every declared output exists in `dir`. `probe` runs ffprobe with JSON output and reads the format and the first video stream. `lastFrame` writes the video into a new temporary directory, runs `run` with `-sseof -1` and `-update 1` so that ffmpeg seeks into the final second and keeps only the last decoded frame, reads the PNG, and removes the directory whether the command succeeds or fails.
 
 | File | Content |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `dvFfmpeg`: `run`, `probe`, `FfmpegError` |
+| [`src/index.ts`](src/index.ts) | `dvFfmpeg`: `run`, `probe`, `lastFrame`, `FfmpegError` |
 
 -----
 

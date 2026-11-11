@@ -7,6 +7,8 @@
 import { readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import { Config as FastVideoConfig } from '@dv/fastvideo'
+import { deriveModelFacts } from '@dv/fastvideo-generation-client'
 import type { AssetId, OperationToolValue, ProjectId, RecordId } from '@dv/project'
 import { formatModelKey } from '@dv/models'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -82,15 +84,22 @@ describe('DreamVerse bundle composition', () => {
     expect(ctx.get('tools')?.get('dv_models_list')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_models_get')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_image_generate')).toBeDefined()
-    // The FastVideo row is disabled and keeps one server per task of fasth3 for a deployment that mounts it.
+    // The FastVideo row is disabled and keeps one server per task of fasth3, with valid model facts, for a deployment
+    // that mounts it.
     expect(fastVideo.mounted).toBe(false)
-    expect(rows.find(row => row.id === 'dv-fastvideo')).toMatchObject({
+    const fastVideoRow = rows.find(row => row.id === 'dv-fastvideo')
+    expect(fastVideoRow).toMatchObject({
       disabled: true,
       config: { models: { fasth3: {
-        ref2v: { baseUrl: 'http://10.244.19.118:8029' },
-        t2v: { baseUrl: 'http://10.244.16.130:8031' },
+        ref2v: { baseUrl: 'http://127.0.0.1:8029', modelFacts: { modelId: 'fasth3', maxReferences: 12 } },
+        t2v: { baseUrl: 'http://127.0.0.1:8031', modelFacts: { modelId: 'fasth3', maxReferences: 0 } },
       } } },
     })
+    const fastVideoTasks = Object.values(FastVideoConfig(fastVideoRow?.config as FastVideoConfig).models['fasth3'] ?? {})
+    expect(fastVideoTasks.map(task => deriveModelFacts(task.modelFacts))).toMatchObject([
+      { aspectRatios: ['16:9', '9:16', '1:1'], resolutions: ['768p'], minDurationSec: 5, maxDurationSec: 15 },
+      { aspectRatios: ['16:9', '9:16', '1:1'], resolutions: ['768p'], minDurationSec: 5, maxDurationSec: 15 },
+    ])
     // The UniServe row names the server of fasth3 for task ref2v.
     expect(uniserve.config).toEqual({ baseUrl: 'http://10.244.8.35:8000' })
     expect(rows.find(row => row.id === 'dv-sglang-diffusion')?.config).toEqual({

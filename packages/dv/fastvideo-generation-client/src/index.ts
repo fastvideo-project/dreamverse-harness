@@ -1,19 +1,23 @@
 /**
- * `dvFastvideoGeneration`: the harness client for FastVideo generation. The default transport uses streaming_v2
- * capabilities and SSE generation. An explicit `openai` deployment uses model_info and videos/sync, buffers the
- * complete MP4, and extracts its last frame locally when requested.
+ * `dvFastvideoGeneration`: the harness client for FastVideo generation. `model()` checks the served alias with
+ * `GET /v1/model_info` and returns the configured facts; `generateSegment` sends one `POST /v1/videos/sync` with each
+ * reference as a base64 `data:` URL and returns the whole MP4.
  *
  * @module @dv/fastvideo-generation-client
  */
 import { Service, type Context } from '@deepseek-ai/cordis'
-import { readFileSync } from 'node:fs'
 import z from '@deepseek-ai/schemastery'
-import { GenerationSegmentError } from './errors.ts'
-import { generateSegment } from './generation-stream.ts'
-import { checkedResponse, generateOpenAI, OpenAIConfig } from './openai.ts'
-import type { ModelFacts, SegmentOutput, SegmentRequest } from './types.ts'
+import { renderTimings } from '@dv/models'
+import { fetch, getGlobalDispatcher, type Dispatcher, type Response } from 'undici'
+import { backendErrorText, GenerationSegmentError } from './errors.ts'
+import { followVideoJob, type NativeRequestInit } from './native-jobs.ts'
+import { deriveModelFacts, modelFactsConfig, type ModelFactsConfig } from './model-facts.ts'
+import { REFERENCE_FIELDS, referenceMediaType } from './references.ts'
+import type { ModelFacts, SegmentRequest, SegmentVideo } from './types.ts'
 
 export * from './errors.ts'
+export * from './model-facts.ts'
+export * from './references.ts'
 export type * from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -23,151 +27,189 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** Generation backend location and optional OpenAI deployment. */
+/** Generation backend location and the facts of the model it serves. */
 export interface Config {
   /** HTTP base URL of the generation backend, such as `http://127.0.0.1:8029`. */
   baseUrl: string
-  /** Owner-only bearer credential file for an authenticated worker. Never put its contents in config. */
-  apiKeyFile?: string | null
-  /** Select the current OpenAI API with explicit deployment facts; omitted, use streaming_v2. */
-  openai?: OpenAIConfig | null
-}
-
-/** `GET /v1/streamv2/capabilities` response fields: the served model's facts. */
-interface CapabilitiesBody {
-  model_id: string
-  min_segment_duration_sec: number
-  max_segment_duration_sec: number
-  max_references: number
-  reference_media_types: Record<string, { max_count: number }>
-  frame_sizes: Record<string, Record<string, [number, number]>>
-  num_frames_by_duration_sec: Record<string, number>
-}
-
-/** Reads deployment model facts and emits segment media events. */
-export class DvFastvideoGeneration extends Service {
-  static Config: z<Config> = z.object({
-    baseUrl: z.string().required(),
-    apiKeyFile: z.union([z.const(null), z.string()]).default(null),
-    openai: z.union([z.const(null), OpenAIConfig]).default(null),
-  })
-
-  private readonly baseUrl: URL
-  private readonly headers: Record<string, string>
-  /** The first successfully checked model facts; the served model stays fixed for the backend's lifetime. */
-  private modelFacts: ModelFacts | null = null
-
-  /**
-   * @param ctx - owning plugin context.
-   * @param config - validated generation backend location.
-   */
-  constructor(ctx: Context, private readonly config: Config, private readonly fetchImpl: typeof fetch = globalThis.fetch) {
-    super(ctx, 'dvFastvideoGeneration')
-    this.baseUrl = new URL(config.baseUrl)
-    const key = config.apiKeyFile == null ? null : readFileSync(config.apiKeyFile, 'utf8').trim()
-    if (key !== null && !/^[\x21-\x7e]+$/.test(key)) throw new Error('Worker API key must contain printable non-space ASCII characters.')
-    this.headers = key === null ? {} : { authorization: `Bearer ${key}` }
-  }
-
-  /**
-   * Read capabilities, or verify the OpenAI served alias and use configured facts; cache the first success.
-   * @returns the model facts.
-   * @throws Error naming the route for a status other than 200, or the `fetch` error when the backend is unreachable.
-   */
-  async model(signal?: AbortSignal): Promise<ModelFacts> {
-    if (this.modelFacts !== null) return this.modelFacts
-    if (this.config.openai != null) {
-      const infoUrl = new URL('/v1/model_info', this.baseUrl)
-      if (this.config.openai.managed === true) {
-        infoUrl.searchParams.set('model', this.config.openai.modelFacts.modelId)
-        if (this.config.openai.task != null) infoUrl.searchParams.set('task', this.config.openai.task)
-      }
-      const response = await checkedResponse(await this.fetchImpl(infoUrl, {
-        headers: this.headers, ...signal === undefined ? {} : { signal },
-      }))
-      const body = await response.json() as { served_model_name: string }
-      if (body.served_model_name !== this.config.openai.modelFacts.modelId) {
-        throw new Error(`FastVideo serves ${body.served_model_name}, expected ${this.config.openai.modelFacts.modelId}`)
-      }
-      this.modelFacts = this.config.openai.modelFacts
-      return this.modelFacts
-    }
-    const route = '/v1/streamv2/capabilities'
-    const body = await readBody<CapabilitiesBody>(await this.fetchImpl(new URL(route, this.baseUrl), { headers: this.headers, ...signal === undefined ? {} : { signal } }), `GET ${route}`)
-    const referenceMediaTypes = Object.fromEntries(Object.entries(body.reference_media_types)
-      .map(([mediaType, limit]) => [mediaType, { maxCount: limit.max_count }]))
-    this.modelFacts = {
-      modelId: body.model_id,
-      aspectRatios: Object.keys(body.frame_sizes),
-      resolutions: [...new Set(Object.values(body.frame_sizes).flatMap(sizes => Object.keys(sizes)))],
-      minSegmentDurationSec: body.min_segment_duration_sec,
-      maxSegmentDurationSec: body.max_segment_duration_sec,
-      maxReferences: body.max_references,
-      referenceMediaTypes,
-      frameSizes: body.frame_sizes,
-      numFramesByDurationSec: body.num_frames_by_duration_sec,
-    }
-    return this.modelFacts
-  }
-
-  /**
-   * Generate one segment with its own HTTP request. OpenAI emits media after its full MP4 arrives; streaming_v2
-   * forwards SSE events as they arrive. Request errors reject with `GenerationSegmentError`; aborts reject with
-   * `signal.reason`. Local OpenAI frame extraction exits and removes its temporary files before cancellation settles.
-   * @param request - the segment inputs and an optional abort signal.
-   * @returns last frame when requested, video start, video bytes and completion timings.
-   * @throws GenerationSegmentError when a native task selector is used without OpenAI transport.
-   */
-  generateSegment(request: SegmentRequest): AsyncIterable<SegmentOutput> {
-    if (this.config.openai != null) return generateOpenAI(this.baseUrl, this.config.openai, request, this.headers, this.fetchImpl)
-    if (request.task !== undefined) throw new GenerationSegmentError('A native task selector requires the OpenAI transport', 'invalid_request')
-    return generateSegment(new URL('/v1/streamv2/generate', this.baseUrl), request, this.headers, this.fetchImpl)
-  }
-
-  /** Read native residency without loading a model or changing generation state. */
-  async modelStatus(signal?: AbortSignal): Promise<{ installed: boolean; loaded: boolean; loading: boolean; busy: boolean }> {
-    const config = this.config.openai
-    if (config?.managed !== true) throw new Error('This endpoint has no managed model catalog')
-    const url = new URL('/v1/model_state', this.baseUrl)
-    url.searchParams.set('model', config.modelFacts.modelId)
-    const response = await checkedResponse(await this.fetchImpl(url, { headers: this.headers, ...signal === undefined ? {} : { signal } }))
-    const state: unknown = await response.json()
-    if (typeof state !== 'object' || state === null || !('loaded_model' in state) || !('busy' in state) || typeof state.busy !== 'boolean'
-      || !('installed' in state) || typeof state.installed !== 'boolean') {
-      throw new Error('Invalid FastVideo model state')
-    }
-    return { installed: state.installed, loaded: state.loaded_model === config.modelFacts.modelId,
-      loading: 'loading_model' in state && state.loading_model === config.modelFacts.modelId, busy: state.busy }
-  }
-
-  /** Load an installed model through the native single-device manager. */
-  async loadModel(signal?: AbortSignal): Promise<void> { await this.modelAction('load', signal) }
-
-  /** Release the model's GPU residency while retaining downloaded weights. */
-  async unloadModel(signal?: AbortSignal): Promise<void> { await this.modelAction('unload', signal) }
-
-  private async modelAction(action: 'load' | 'unload', signal?: AbortSignal): Promise<void> {
-    const config = this.config.openai
-    if (config?.managed !== true) throw new Error('This endpoint has no managed model catalog')
-    await checkedResponse(await this.fetchImpl(new URL(`/v1/models/${action}`, this.baseUrl), {
-      method: 'POST', headers: { ...this.headers, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: config.modelFacts.modelId, task: config.task }), ...signal === undefined ? {} : { signal },
-    }))
-  }
+  /** The facts of the served model, which FastVideo does not publish. */
+  modelFacts: ModelFactsConfig
+  /** Native managed catalog and model residency support; off for ordinary fixed servers. */
+  managed?: boolean
+  /** Use tracked asynchronous native video jobs. */
+  asyncJobs?: boolean
+  /** Native task selector for this model entry. */
+  task?: string | null
+  /** Optional creator-facing name. */
+  displayName?: string | null
+  /** Interval between native asynchronous job-state reads. */
+  pollIntervalMs?: number
 }
 
 /**
- * Parse a successful JSON response.
- * @param response - the backend response.
- * @param route - method and path for the failure message.
- * @returns the parsed body.
- * @throws Error naming the route, status, and body for any status other than 200.
+ * The installed global dispatcher with its headers timeout turned off for each request. `/v1/videos/sync` sends its
+ * headers only after the whole video is generated, which can take longer than undici's 300-second default.
+ * @returns the dispatcher; it shares the global dispatcher's connections and proxy routing, and is never closed.
  */
-async function readBody<T>(response: Response, route: string): Promise<T> {
-  if (response.status !== 200) {
-    throw new Error(`FastVideo generation backend ${route} returned HTTP ${response.status}: ${await response.text()}`)
+function untimedDispatcher(): Dispatcher {
+  // FastVideo answers with a FileResponse of the finished MP4, so the body keeps the global body timeout.
+  return getGlobalDispatcher().compose(dispatch => (options, handler) => dispatch({ ...options, headersTimeout: 0 }, handler))
+}
+
+/** Checks the served model and generates segments with the configured facts. */
+export class DvFastvideoGeneration extends Service {
+  static Config: z<Config> = z.object({
+    baseUrl: z.string().required(),
+    modelFacts: modelFactsConfig.required(),
+    managed: z.boolean().default(false), asyncJobs: z.boolean().default(false),
+    task: z.union([z.const(null), z.string()]).default(null),
+    displayName: z.union([z.const(null), z.string()]).default(null),
+    pollIntervalMs: z.natural().min(1).default(1000),
+  })
+
+  private readonly baseUrl: URL
+  /** The facts derived from `modelFacts` when the client is built. */
+  readonly facts: ModelFacts
+  /** Whether a `GET /v1/model_info` confirmed the served alias; the served model stays fixed for the backend's lifetime. */
+  private checked = false
+
+  /**
+   * @param ctx - owning plugin context.
+   * @param config - generation backend location and model facts.
+   * @throws Error naming the inconsistency of the configured facts.
+   */
+  constructor(ctx: Context, private readonly config: Config,
+    private readonly fetchImpl?: typeof globalThis.fetch) {
+    super(ctx, 'dvFastvideoGeneration')
+    this.baseUrl = new URL(config.baseUrl)
+    this.facts = deriveModelFacts(config.modelFacts)
   }
-  return await response.json() as T
+
+  /**
+   * Check once that the backend serves the configured model.
+   * @returns the model facts.
+   * @throws Error naming the route and the HTTP status for a status other than 200, Error naming the route for a body
+   *   that is not JSON, Error naming the served alias when it is missing or differs from `modelFacts.modelId`, or the
+   *   `fetch` error when the backend is unreachable.
+   */
+  async model(signal?: AbortSignal): Promise<ModelFacts> {
+    if (this.checked) return this.facts
+    const route = 'GET /v1/model_info'
+    const url = new URL('/v1/model_info', this.baseUrl)
+    if (this.config.managed) {
+      url.searchParams.set('model', this.facts.modelId)
+      if (this.config.task != null) url.searchParams.set('task', this.config.task)
+    }
+    const response = await this.request(url, { ...signal === undefined ? {} : { signal } })
+    if (response.status !== 200) {
+      throw new Error(`FastVideo ${route} returned HTTP ${response.status}: ${await backendErrorText(response)}`)
+    }
+    const text = await response.text()
+    let info: { served_model_name?: unknown } | null
+    try {
+      info = JSON.parse(text) as { served_model_name?: unknown } | null
+    } catch (error) {
+      throw new Error(`FastVideo ${route} answered no JSON: ${(error as SyntaxError).message}`, { cause: error })
+    }
+    const served = info?.served_model_name
+    if (typeof served !== 'string') throw new Error(`FastVideo ${route} reports no served_model_name; expected ${this.facts.modelId}.`)
+    if (served !== this.facts.modelId) throw new Error(`FastVideo serves ${served}; modelFacts.modelId is ${this.facts.modelId}.`)
+    this.checked = true
+    return this.facts
+  }
+
+  /**
+   * Generate one segment with one `POST /v1/videos/sync`. The backend sends no response before the whole video is
+   * generated; the request has no client-side headers timeout.
+   * @param request - the segment inputs and an optional abort signal.
+   * @returns the MP4 bytes, their content type and the backend timings.
+   * @throws GenerationSegmentError for a reference of another media type, or for HTTP 400;
+   *   Error for another HTTP failure or a response that is not `video/*`; `signal.reason` on abort.
+   */
+  async generateSegment(request: SegmentRequest): Promise<SegmentVideo> {
+    const { signal } = request
+    signal?.throwIfAborted()
+    const unsupported = request.references.find(reference => referenceMediaType(reference.mimeType) === undefined)
+    if (unsupported !== undefined) throw new GenerationSegmentError(`FastVideo takes no reference of type ${unsupported.mimeType}.`)
+    // One list per media type, in the caller's order within the type.
+    const references = Object.fromEntries(Object.entries(REFERENCE_FIELDS).flatMap(([type, { field, urlKey }]) => {
+      const urls = request.references.filter(reference => referenceMediaType(reference.mimeType) === type)
+        .map(reference => ({ [urlKey]: `data:${reference.mimeType};base64,${reference.bytes.toString('base64')}` }))
+      return urls.length === 0 ? [] : [[field, urls]]
+    }))
+    const body = {
+      model: this.facts.modelId, ...request.task == null && this.config.task == null ? {} : { task: request.task ?? this.config.task },
+      prompt: request.prompt, width: request.frameWidth, height: request.frameHeight,
+      num_frames: request.numFrames, ...request.seed === undefined ? {} : { seed: request.seed }, ...references,
+    }
+    try {
+      const response = this.config.managed || this.config.asyncJobs
+        ? await followVideoJob(this.baseUrl, body, this.config.pollIntervalMs ?? 1000,
+          (url, init) => this.request(url, init), signal)
+        : await this.request(new URL('/v1/videos/sync', this.baseUrl), {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+          ...signal === undefined ? {} : { signal },
+        })
+      if (response.status !== 200) {
+        const text = await backendErrorText(response)
+        if (response.status === 400) throw new GenerationSegmentError(text)
+        throw new Error(`FastVideo POST /v1/videos/sync returned HTTP ${response.status}: ${text}`)
+      }
+      const mime = response.headers.get('content-type') ?? ''
+      if (!mime.startsWith('video/')) {
+        throw new Error(`FastVideo POST /v1/videos/sync answered ${mime || 'no content type'}, not video: ${await backendErrorText(response)}`)
+      }
+      const video = Buffer.from(await response.arrayBuffer())
+      return { video, mime, timings: renderTimings(response.headers) }
+    } catch (error) {
+      if (signal?.aborted === true) throw signal.reason
+      throw error
+    }
+  }
+  private async request(url: URL, init: NativeRequestInit = {}): Promise<Response | globalThis.Response> {
+    if (this.fetchImpl !== undefined) return this.fetchImpl(url, init)
+    return fetch(url, { ...init, dispatcher: untimedDispatcher() })
+  }
+
+  /** Read native model residency without loading or downloading weights. */
+  async modelStatus(signal?: AbortSignal): Promise<{
+    installed: boolean
+    loaded: boolean
+    loading: boolean
+    busy: boolean
+    managed: boolean
+  }> {
+    if (!this.config.managed) throw new Error('This endpoint has no managed model catalog')
+    const url = new URL('/v1/model_state', this.baseUrl)
+    url.searchParams.set('model', this.facts.modelId)
+    const response = await this.request(url, { ...signal === undefined ? {} : { signal } })
+    if (!response.ok) throw new Error(`FastVideo model status refused (HTTP ${response.status})`)
+    const state: unknown = await response.json()
+    if (typeof state !== 'object' || state === null || !('busy' in state) || typeof state.busy !== 'boolean'
+      || !('installed' in state) || typeof state.installed !== 'boolean' || !('loaded_model' in state)) throw new Error('Invalid native model state')
+    const taskMatches = this.config.task == null || !('loaded_task' in state) || state.loaded_task === this.config.task
+    return { installed: state.installed, loaded: state.loaded_model === this.facts.modelId && taskMatches,
+      loading: 'loading_model' in state && state.loading_model === this.facts.modelId, busy: state.busy,
+      managed: !('managed' in state) || state.managed !== false }
+  }
+
+  /** Load the configured installed model and task without rendering. */
+  async loadModel(signal?: AbortSignal): Promise<void> { await this.modelAction('load', signal) }
+
+  /** Release the model while retaining its downloaded files. */
+  async unloadModel(signal?: AbortSignal): Promise<void> { await this.modelAction('unload', signal) }
+
+  private async modelAction(action: 'load' | 'unload', signal?: AbortSignal): Promise<void> {
+    const state = await this.modelStatus(signal)
+    if (!state.managed && action === 'load') {
+      if (state.loaded) return
+      throw new Error('This fixed distributed endpoint does not serve the selected model.')
+    }
+    const url = new URL(state.managed ? `/v1/models/${action}` : '/v1/runtime/release', this.baseUrl)
+    const response = await this.request(url, { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: this.facts.modelId, task: this.config.task }), ...signal === undefined ? {} : { signal } })
+    if (!response.ok) throw new Error(`FastVideo model ${action} refused (HTTP ${response.status}): ${await backendErrorText(response)}`)
+  }
+
 }
 
 export default DvFastvideoGeneration

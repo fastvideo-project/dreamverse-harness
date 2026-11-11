@@ -2,7 +2,7 @@
 /**
  * The shell plugin in a slot test runtime with stand-ins for the DSH layout, right panel and navigation services.
  */
-import { act, waitFor } from '@testing-library/react'
+import { act, fireEvent, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -15,6 +15,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type { WireProject } from '@dv/ui-kit/types.ts'
 import { DV_TRAJECTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
+import type { ShellActions } from '../src/client/actions.ts'
 
 const PROJECTS: WireProject[] = [{ id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z', path: '/dv/p1' }]
 
@@ -147,6 +148,54 @@ describe('the shell plugin', () => {
     await bench.shell.dispose()
     expect(bench.runtime.slots.entries('main.conversation')).toEqual([])
     expect(bench.runtime.slots.entries('sidebar.right.pane.tab')).toEqual([])
+  })
+
+  it('opens a navigator chat of another project with that project, also one older than its latest chat, and a chat of the open project without reopening it', async () => {
+    // Record the shell's openProject calls, so the test can tell a project switch from a chat switch in the open project.
+    const openProject = vi.fn<ShellActions['openProject']>()
+    vi.doMock('../src/client/actions.ts', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('../src/client/actions.ts')>()
+      return {
+        ...actual,
+        createActions: (...args: Parameters<typeof actual.createActions>) => {
+          const actions = actual.createActions(...args)
+          openProject.mockImplementation((projectId, sessionId) => actions.openProject(projectId, sessionId))
+          return { ...actions, openProject }
+        },
+      }
+    })
+    try {
+      const bench = await mountShell()
+      const project: WireProject = { id: 'p2', title: 'Music video', created_at: '2026-02-05T12:00:00Z', path: '/dv/p2' }
+      bench.server.projects = [...PROJECTS, project]
+      await bench.runtime.sessions.add({ id: 's2', summary: { displayTitle: 'Chorus', updatedAt: 2 } })
+      await bench.runtime.sessions.add({ id: 's3', summary: { displayTitle: 'Finale', updatedAt: 3 } })
+      await bench.runtime.workspaces.update((draft) => {
+        draft.phase = 'ready'
+        draft.items = [...draft.items, { workspaceId: 'p2' as WorkspaceId, path: '/dv/p2', title: 'Music video', sessionIds: ['s2' as SessionId, 's3' as SessionId], createdAt: '', updatedAt: '' }]
+      })
+      act(() => { bench.store.setShell({ projectId: 'p1' }) })
+      const navigator = bench.runtime.renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {} })
+      await waitFor(() => { expect(navigator.view.getByText('Music video')).toBeDefined() })
+
+      fireEvent.click(navigator.view.getByRole('button', { name: 'Show chats' }))
+      fireEvent.click(navigator.view.getByText('Chorus'))
+      await waitFor(() => { expect(bench.openSession).toHaveBeenLastCalledWith('s2') })
+      expect(openProject).toHaveBeenCalledTimes(1)
+      expect(openProject).toHaveBeenCalledWith('p2', 's2')
+      expect(bench.store.getShell().projectId).toBe('p2')
+
+      // A chat of the open project switches only the chat: openSession, and no openProject once pending work settles.
+      bench.openSession.mockClear()
+      openProject.mockClear()
+      fireEvent.click(navigator.view.getByText('Finale'))
+      await waitFor(() => { expect(bench.openSession).toHaveBeenCalledWith('s3') })
+      await act(async () => { await new Promise((resolve) => { setTimeout(resolve, 0) }) })
+      expect(openProject).not.toHaveBeenCalled()
+      expect(bench.store.getShell().projectId).toBe('p2')
+    } finally {
+      vi.doUnmock('../src/client/actions.ts')
+    }
   })
 
   it('starts DSH\'s New Session in the open project, as the entry page\'s blank chat in a fresh folder without one, and logs a failed start', async () => {
