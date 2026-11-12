@@ -112,6 +112,22 @@ describe('ui-plugin-catalog', () => {
     await runtime.dispose()
   })
 
+  it('offers to allow the install scripts an install left pending and installs the same spec again with them allowed', async () => {
+    const { runtime, view, manager } = await mountPage([])
+    manager.installBundle
+      .mockResolvedValueOnce({ ok: true as const, value: change({ application: 'failed', pendingBuilds: ['esbuild'] }) })
+      .mockResolvedValueOnce({ ok: true as const, value: change({ application: 'applied' }) })
+    fireEvent.click(view.getAllByRole('button', { name: 'Install' })[0] as HTMLElement)
+    await act(async () => { await runtime.flush() })
+    expect(view.getByText('These packages need their install scripts approved: esbuild.')).toBeTruthy()
+    fireEvent.click(view.getByRole('button', { name: 'Allow these scripts and retry' }))
+    await act(async () => { await runtime.flush() })
+    expect(manager.installBundle).toHaveBeenCalledTimes(2)
+    expect(manager.installBundle).toHaveBeenLastCalledWith(`${VOICE}@0.1.0`, expect.objectContaining({ enabled: true, approvedBuilds: ['esbuild'] }))
+    expect(view.getByText('Installed and turned on.')).toBeTruthy()
+    await runtime.dispose()
+  })
+
   it('removes a plugin only after the confirmation, and turns on a switched-off one', async () => {
     const { runtime, view, manager } = await mountPage([bundle(VOICE, true), bundle(OTHER, false)])
     const voice = card(view, VOICE)

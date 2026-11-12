@@ -39,7 +39,7 @@ Host 半边不注册任何东西。浏览器端在 `main` 槽位以面板 id `ma
 | 对已安装但关闭的插件点 开启 | `pluginManager.setBundleEnabled(<package>, true)`。卡片显示 已开启。；profile 在下次启动时才应用变更时显示 已开启。重启 harness 后生效。 |
 | 移除，然后 确认移除 | `pluginManager.removeBundle(<package>)`；取消 会保留插件。只对 `listBundles()` 标为 `removable` 的 bundle 提供 |
 
-失败的请求会在卡片下显示原因：插件管理器的错误码，或 pnpm 失败类型及 pnpm 日志路径。因包脚本未获允许而被 pnpm 阻止的安装会列出这些包，并链接到能审批脚本的 DSH 插件 页面。
+失败的请求会在卡片下显示原因：插件管理器的错误码，或 pnpm 失败类型及 pnpm 日志路径。因包脚本未获允许而被 pnpm 阻止的安装会列出这些包，并提供 允许这些脚本并重试 / Allow these scripts and retry：它允许这些包的脚本，再次安装同一个 `<package>@<version>`；插件管理器会在 pnpm 运行前为该 profile 保存这项授权。
 
 -----
 
@@ -49,7 +49,7 @@ Host 半边不注册任何东西。浏览器端在 `main` 槽位以面板 id `ma
 <details>
 <summary>实现细节 — 点击展开</summary>
 
-`followCatalog` 每次挂载时读取一次 `GET /api/dv/plugins/catalog`，通过 `ctx.inject(['remote', 'remote.pluginManager'])` 绑定插件管理器调用，所以按钮只在其 Remote 挂载时出现，并通过 `layout` 服务选中 DSH 的 插件 页面，供介绍行的链接和脚本审批链接使用。每个包同一时间只运行一个请求；`outcomeOf` 把插件管理器的 `ChangeResult` 变成卡片下的那一行。目录类型来自 `@dv/plugin-catalog/types`，插槽类型来自 `@deepseek-ai/dsh-client-ui-layout` 和 `@deepseek-ai/dsh-client-ui-sidebar`，全部只导入类型。
+`followCatalog` 每次挂载时读取一次 `GET /api/dv/plugins/catalog`，通过 `ctx.inject(['remote', 'remote.pluginManager'])` 绑定插件管理器调用，所以按钮只在其 Remote 挂载时出现，并通过 `layout` 服务选中 DSH 的 插件 页面，供介绍行的链接使用。每个包同一时间只运行一个请求；`outcomeOf` 把插件管理器的 `ChangeResult` 变成卡片下的那一行。目录类型来自 `@dv/plugin-catalog/types`，插槽类型来自 `@deepseek-ai/dsh-client-ui-layout` 和 `@deepseek-ai/dsh-client-ui-sidebar`，全部只导入类型。
 
 | 文件 | 内容 |
 | --- | --- |

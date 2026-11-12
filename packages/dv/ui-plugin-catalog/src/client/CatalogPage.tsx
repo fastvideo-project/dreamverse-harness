@@ -10,7 +10,8 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { CatalogEntry } from '@dv/plugin-catalog/types'
 import { useText } from '@dv/ui-kit/locale.ts'
 import {
-  enablePlugin, installPlugin, openPluginsPage, pluginState, removePlugin, useCatalog, type PluginOutcome, type PluginState,
+  approveScriptsAndInstall, enablePlugin, installPlugin, openPluginsPage, pluginState, removePlugin, useCatalog, type PluginOutcome,
+  type PluginState,
 } from './catalog.ts'
 import css from './CatalogPage.module.css'
 
@@ -148,17 +149,18 @@ function PluginCard(props: {
           )}
         </div>
       )}
-      {outcome === undefined ? null : <Outcome outcome={outcome} />}
+      {outcome === undefined ? null : <Outcome entry={entry} outcome={outcome} />}
     </article>
   )
 }
 
 /**
- * The last request's outcome under a card.
- * @param props - the outcome.
+ * The last request's outcome under a card; pending install scripts come with the button that allows them and installs
+ * the plugin again.
+ * @param props - the plugin's catalog entry and the outcome.
  * @returns the line.
  */
-function Outcome({ outcome }: { outcome: PluginOutcome }): ReactNode {
+function Outcome({ entry, outcome }: { entry: CatalogEntry; outcome: PluginOutcome }): ReactNode {
   const t = useText()
   switch (outcome.kind) {
     case 'installed': return <p className={css.done} role="status">{t('已安装并开启。', 'Installed and turned on.')}</p>
@@ -172,11 +174,16 @@ function Outcome({ outcome }: { outcome: PluginOutcome }): ReactNode {
       return <p className={css.done} role="status">{t('已移除。重启 harness 后生效。', 'Removed. Restart the harness to unload it.')}</p>
     case 'scripts':
       return (
-        <p className={css.error} role="alert">
-          {t(`需要允许这些包的安装脚本：${outcome.packages.join(', ')}。请到`, `These packages need their install scripts approved: ${outcome.packages.join(', ')}. Finish in `)}
-          <button type="button" className={css.inlineLink} onClick={openPluginsPage}>{t('插件页', 'Plugins')}</button>
-          {t('完成。', '.')}
-        </p>
+        <>
+          <p className={css.error} role="alert">
+            {t(`需要允许这些包的安装脚本：${outcome.packages.join(', ')}。`, `These packages need their install scripts approved: ${outcome.packages.join(', ')}.`)}
+          </p>
+          <div className={css.actions}>
+            <button type="button" className={css.primary} onClick={() => { approveScriptsAndInstall(entry, outcome.packages) }}>
+              {t('允许这些脚本并重试', 'Allow these scripts and retry')}
+            </button>
+          </div>
+        </>
       )
     case 'failed': return <p className={css.error} role="alert">{t(`失败：${outcome.message}`, `Failed: ${outcome.message}`)}</p>
   }

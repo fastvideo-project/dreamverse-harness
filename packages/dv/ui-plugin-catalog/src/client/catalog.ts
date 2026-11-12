@@ -43,7 +43,7 @@ export interface CatalogView {
 
 /** The plugin manager calls, bound while its Remote is mounted. */
 interface ManagerActions {
-  install(spec: string): Promise<ChangeResult>
+  install(spec: string, approvedBuilds?: readonly string[]): Promise<ChangeResult>
   remove(pkg: string): Promise<ChangeResult>
   enable(pkg: string): Promise<ChangeResult>
 }
@@ -147,6 +147,16 @@ export function installPlugin(entry: Pick<CatalogEntry, 'package' | 'version'>):
 }
 
 /**
+ * Allow the install scripts that an install of a catalog plugin left pending and install it again at the same version.
+ * @param entry - the plugin's catalog entry.
+ * @param packages - the packages whose install scripts the person allowed; the Host saves that permission for this
+ * profile before pnpm runs.
+ */
+export function approveScriptsAndInstall(entry: Pick<CatalogEntry, 'package' | 'version'>, packages: readonly string[]): void {
+  track(entry.package, 'installing', actions => actions.install(`${entry.package}@${entry.version}`, packages), 'installed', 'installed-restart')
+}
+
+/**
  * Remove an installed catalog plugin.
  * @param pkg - the plugin's package name.
  */
@@ -162,7 +172,7 @@ export function enablePlugin(pkg: string): void {
   track(pkg, 'enabling', actions => actions.enable(pkg), 'enabled', 'enabled-restart')
 }
 
-/** Open DSH's Plugins page, which approves package scripts and lists every bundle. */
+/** Open DSH's Plugins page, which lists every bundle. */
 export function openPluginsPage(): void {
   openPanel('plugins' as MainPanelId)
 }
@@ -218,8 +228,9 @@ export function followCatalog(ctx: Context): void {
     }
     scope.effect(() => {
       manager = {
-        install: spec => unwrap(scope.remote.pluginManager.installBundle(spec, {
+        install: (spec, approvedBuilds) => unwrap(scope.remote.pluginManager.installBundle(spec, {
           enabled: true, requestId: randomUUID() as PluginInstallRequestId,
+          ...approvedBuilds === undefined ? {} : { approvedBuilds: [...approvedBuilds] },
         })),
         remove: pkg => unwrap(scope.remote.pluginManager.removeBundle(pkg)),
         enable: pkg => unwrap(scope.remote.pluginManager.setBundleEnabled(pkg, true)),

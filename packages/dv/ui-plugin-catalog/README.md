@@ -39,7 +39,7 @@ The Host half registers nothing. The browser half registers the page in the `mai
 | 开启 / Turn on, on an installed plugin that is off | `pluginManager.setBundleEnabled(<package>, true)`. The card shows 已开启。 / Turned on., or 已开启。重启 harness 后生效。 / Turned on. Restart the harness to load it. when the profile applies the change at its next start |
 | 移除 / Remove, then 确认移除 / Confirm remove | `pluginManager.removeBundle(<package>)`; 取消 / Cancel keeps the plugin. Offered only for a bundle that `listBundles()` marks `removable` |
 
-A failed request shows its reason under the card: the plugin manager's error code, or the pnpm failure kind with the path of the pnpm log. An install that pnpm blocked for unapproved package scripts names those packages and links to DSH's Plugins page, which approves scripts.
+A failed request shows its reason under the card: the plugin manager's error code, or the pnpm failure kind with the path of the pnpm log. An install that pnpm blocked for unapproved package scripts names those packages and offers 允许这些脚本并重试 / Allow these scripts and retry, which installs the same `<package>@<version>` again with those packages' scripts allowed; the plugin manager saves that permission for the profile before pnpm runs.
 
 -----
 
@@ -49,7 +49,7 @@ A failed request shows its reason under the card: the plugin manager's error cod
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`followCatalog` reads `GET /api/dv/plugins/catalog` once per mount, binds the plugin manager calls through `ctx.inject(['remote', 'remote.pluginManager'])` so the buttons appear only while its Remote is mounted, and selects DSH's Plugins page through the `layout` service for the intro line's link and the script-approval link. One request per package runs at a time; `outcomeOf` turns the plugin manager's `ChangeResult` into the line under the card. The catalog types come from `@dv/plugin-catalog/types` and the slot types from `@deepseek-ai/dsh-client-ui-layout` and `@deepseek-ai/dsh-client-ui-sidebar`, all type-only imports.
+`followCatalog` reads `GET /api/dv/plugins/catalog` once per mount, binds the plugin manager calls through `ctx.inject(['remote', 'remote.pluginManager'])` so the buttons appear only while its Remote is mounted, and selects DSH's Plugins page through the `layout` service for the intro line's link. One request per package runs at a time; `outcomeOf` turns the plugin manager's `ChangeResult` into the line under the card. The catalog types come from `@dv/plugin-catalog/types` and the slot types from `@deepseek-ai/dsh-client-ui-layout` and `@deepseek-ai/dsh-client-ui-sidebar`, all type-only imports.
 
 | File | Content |
 | --- | --- |
