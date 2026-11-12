@@ -147,8 +147,8 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
     if (options.refuseSend !== undefined) return Promise.reject(new Error(options.refuseSend))
     return options.holdSend === true ? new Promise<void>((resolve) => { answers.push(resolve) }) : Promise.resolve()
   }
-  const props = (shown: PromptCall, state: WireState): DvPromptProps => ({
-    projectId: 'p1', call: shown, state, operations: [...OPERATIONS, STILL], readOnly: options.readOnly === true, host,
+  const props = (shown: PromptCall, state: WireState, projectId: string): DvPromptProps => ({
+    projectId, call: shown, state, operations: [...OPERATIONS, STILL], readOnly: options.readOnly === true, host,
     surface: options.surface ?? 'canvas',
     ...options.noSend === true || options.readOnly === true ? {} : { onSubmit },
   })
@@ -159,14 +159,17 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
   }
   let setCall: (next: PromptCall) => void = () => {}
   let setLent: (next: WireState) => void = () => {}
+  let setProject: (next: string) => void = () => {}
   await runtime.root.declare({}, ({ renderFactorySlot }: PropsRuntime<'root'> & PropsRenderFactories): ReactNode => {
     const [shown, update] = useState(call)
     const [state, lend] = useState<WireState>(lent)
+    const [project, chooseProject] = useState('p1')
+    setProject = chooseProject
     setCall = update
     setLent = lend
     return (
       <>
-        <section data-testid="take">{renderFactorySlot('dv.prompt', props(shown, state))}</section>
+        <section data-testid="take">{renderFactorySlot('dv.prompt', props(shown, state, project))}</section>
         <section data-testid="bare">{renderFactorySlot('conversation.prompt', { model: bare })}</section>
       </>
     )
@@ -178,6 +181,7 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
     releaseState: () => { act(() => { heldStates.splice(0).forEach((release) => { release() }) }) },
     releaseModels: () => { act(() => { heldModels.splice(0).forEach((release) => { release() }) }) },
     setCall: (next: PromptCall) => { act(() => { setCall(next) }) },
+    setProject: (next: string) => { act(() => { setProject(next) }) },
     /** Lend a new state object of the same project, as the host's next fetch does. */
     relend: () => { act(() => { setLent(structuredClone(lent)) }) },
   }
@@ -576,6 +580,19 @@ describe('the unsent draft of a take', () => {
     expect(seedOf(again)).toBe('')
     mounted.setCall(STILL_CALL)
     await waitFor(() => { expect(seedOf(again)).toBe('5') })
+  })
+
+  it('keeps identical calls in different projects in separate editor drafts', async () => {
+    const mounted = await mount(STILL_CALL)
+    await sendOf(mounted.take, 'Generate a new version')
+    editSeed(mounted.take, '5')
+    mounted.setProject('p2')
+    await waitFor(() => { expect(seedOf(mounted.take)).toBe('') })
+    editSeed(mounted.take, '7')
+    mounted.setProject('p1')
+    await waitFor(() => { expect(seedOf(mounted.take)).toBe('5') })
+    mounted.setProject('p2')
+    await waitFor(() => { expect(seedOf(mounted.take)).toBe('7') })
   })
 
   it('drops the draft once its send succeeds', async () => {
