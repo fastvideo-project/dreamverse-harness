@@ -17,7 +17,7 @@ Write each stage with `dv_textnode_write` (`path`, `title`, `body`, `base_versio
 
 1. `story/theme.md`: the premise, the characters, the location and the look, in a few lines.
 2. `story/beats.md` with `from: [story/theme.md]`: the story as numbered beats, one line each.
-3. `story/storyboard.md` with `from: [story/beats.md]`: a table of the shots (shot, model and task, duration, continuity: independent, intentional cut or continues previous, one line of action, camera), and under it each shot's model key (`modality`, `task`, `provider`, `model`), its storyboard objective, planned prompt, references, `continue_from` intent and `duration_sec`.
+3. `story/storyboard.md` with `from: [story/beats.md]`: a table of the shots (shot, model and task, duration, continuity: independent, intentional cut or continues previous, one line of action, camera), a compact cinematic profile for the whole story, and under it each shot's model key (`modality`, `task`, `provider`, `model`), its storyboard objective, planned prompt, references, `continue_from` intent and `duration_sec`.
 
 If `dv_models_get` is in your tool list, call it for the model and task, and use only the durations and aspect ratios it lists. When the project already has a story, use another folder, such as `story-2/`.
 
@@ -42,10 +42,14 @@ Render in story order. Independent shots can use the agreed prompt directly. For
 5. If `dv_asset_grab_still` is in your tool list, grab three ordered stills from the ending window: about 1.0 s before the end, about 0.5 s before the end and `last`; for short clips, use `first`, the middle second and `last`.
 6. If `dv_inspect_image` is in your tool list, inspect those stills in timestamp order for character motion, action phase, body orientation, movement direction and speed; camera motion and direction; scene, lighting, color palette, prop ownership and unfinished actions.
 7. Write a compact continuity state with fields for characters, camera, scene, props, pending actions and frame references. Use `unknown` for uncertain facts.
-8. Finalize the next shot's prompt from three inputs: the storyboard objective, the previous shot's continuity state and the intended narrative beat. Add a visible continuity passage inside the prompt that says how the shot begins from the actual ending, continues unfinished motion, preserves hard constraints and then transitions into the planned beat. Do not carry these constraints across rows marked intentional cut, new scene or time jump.
+8. Finalize the next shot's prompt from four inputs: the storyboard objective, the previous shot's continuity state, the intended narrative beat and the cinematic profile. Add a visible continuity passage inside the prompt that says how the shot begins from the actual ending, continues unfinished motion, preserves hard constraints and then transitions into the planned beat. Restate the relevant lighting, color, camera and style constraints. Do not carry motion constraints across rows marked intentional cut, new scene or time jump.
 9. A shot that continues the previous shot passes `continue_from` = the record ID of the previous shot's render. Call it only after steps 2 to 8, so the project can use the previous take's last frame and the prompt can describe that actual state.
-10. Repeat this loop until every shot is rendered. Report each finished shot with its link and, for continuity-linked shots, a one-line continuity state summary.
-11. If `dv_canvas_node_rename` is in your tool list, after rendering each new shot, find its canvas node ID in `dv_proj_state` and call `dv_canvas_node_rename` with `name: "<shot number> · <short shot description>"`, using the storyboard's shot number. Keep the short description to 4 words maximum. Use that name when discussing the shot. Preserve existing names on retakes and names chosen by the user.
+10. After a continuity-linked shot finishes, review the boundary from the previous shot into it before moving on.
+11. If `dv_asset_grab_still` is in your tool list, grab the previous shot's late ending stills and the new shot's first or early stills.
+12. If `dv_inspect_image` is in your tool list, compare the boundary stills for character identity, pose and action phase, movement direction, camera movement, spatial position, props, lighting and palette.
+13. Write a boundary review with `status: pass | minor_issue | fail`, `severity`, `issue_types`, evidence and whether the issue was intentional. For `fail`, propose one repair such as a revised prompt, different reference frames, a retake of the new shot, a short bridge when supported or an intentional cut, then wait for the user before another render.
+14. Repeat this loop until every shot is rendered. Report each finished shot with its link and, for continuity-linked shots, a one-line continuity state and boundary review summary.
+15. If `dv_canvas_node_rename` is in your tool list, after rendering each new shot, find its canvas node ID in `dv_proj_state` and call `dv_canvas_node_rename` with `name: "<shot number> · <short shot description>"`, using the storyboard's shot number. Keep the short description to 4 words maximum. Use that name when discussing the shot. Preserve existing names on retakes and names chosen by the user.
 
 ## 5. Lay the takes on a timeline
 
