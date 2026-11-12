@@ -71,8 +71,8 @@ function inputAudio(context: Pick<OperationContext, 'inputs'>): AssetId {
 }
 
 /**
- * The pauses that ffmpeg's `silencedetect` printed, as start and end times. A pause that runs to the end of the audio
- * ends at the audio's decoded length.
+ * The pauses that ffmpeg's `silencedetect` printed, as start and end times in seconds to the microsecond. A pause that runs
+ * to the end of the audio ends at the audio's decoded length, which `silencedetect` and ffprobe can round 1 µs apart.
  * @param stderr - the filter's log.
  * @returns the pauses in time order.
  */
@@ -81,8 +81,8 @@ function pausesOf(stderr: string): Array<[number, number]> {
 }
 
 /**
- * The cut times at the middle of the longest pauses between sounds. A pause that starts at 0 or ends at `durationSec`
- * is not between sounds and is left out.
+ * The cut times at the middle of the longest pauses between sounds. A pause that starts at 0, or ends less than 1 ms
+ * before `durationSec` or later, is not between sounds and is left out.
  * @param pauses - the pauses of the audio.
  * @param durationSec - the audio's decoded length.
  * @param count - how many cuts to make.
@@ -90,7 +90,7 @@ function pausesOf(stderr: string): Array<[number, number]> {
  * @throws Error when the audio has fewer pauses between sounds than `count`.
  */
 function cutsAtPauses(pauses: Array<[number, number]>, durationSec: number, count: number): number[] {
-  const inside = pauses.filter(([start, end]) => start > 0 && end < durationSec)
+  const inside = pauses.filter(([start, end]) => start > 0 && end < durationSec - 0.001)
   if (inside.length < count) {
     throw new Error(`The audio has ${String(inside.length)} pauses between sounds, too few for ${String(count + 1)} pieces; `
       + 'pass "at" with the cut times instead.')
@@ -146,8 +146,9 @@ export default class DvAudioEdit extends Service {
   }
 
   /**
-   * Cut an audio asset into WAV pieces that together cover the whole audio. It measures, searches, and cuts the
-   * decoded audio, so a pause at the end ends at the last sample and each reported piece length is the written length.
+   * Cut an audio asset into WAV pieces that together cover the audio up to its decoded length rounded to milliseconds.
+   * It measures, searches, and cuts the decoded audio, so a pause at the end ends at the last sample. The reported times
+   * are rounded to milliseconds, and each written piece's length is its reported length to within 1 ms.
    * @param audio - an audio asset.
    * @param cut - the cut times in seconds, in time order, or the number of pieces to cut at the longest pauses.
    * @param dir - the directory the pieces are written into.

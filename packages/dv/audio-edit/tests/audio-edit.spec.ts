@@ -265,6 +265,22 @@ describe('dvAudioEdit', () => {
     expect(await fixture.run('audioedit.split', { at: [1] }, voice)).toMatchObject({ status: 'done' })
   })
 
+  it('leaves out a pause at the end whose end silencedetect and ffprobe round to different microseconds', async () => {
+    const fixture = await start()
+    // A 1 s tone, a 0.5 s pause, a 1 s tone, and a pause at the end: 63461 samples at 16 kHz, 3.9663125 s, which ffprobe
+    // prints as 3.966313 and silencedetect prints as silence_end 3.966312.
+    const file = join(fixture.dir, 'speech.wav')
+    execFileSync(FFMPEG, [
+      '-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=f=440:d=1:r=16000', '-f', 'lavfi', '-i', 'anullsrc=r=16000:cl=mono',
+      '-filter_complex', '[1]atrim=0:0.5[s1];[1]atrim=0:5[s2];[0]asplit[a][b];[a][s1][b][s2]concat=n=4:v=0:a=1,atrim=end_sample=63461', file,
+    ])
+    const audio = fixture.put(readFileSync(file), 'audio/wav', 'speech.wav')
+    const split = await fixture.ctx.dvAudioEdit.split(audio, { pieces: 2 }, fixture.dir)
+    expect(split.map(({ piece }) => piece)).toEqual([
+      { start_sec: 0, end_sec: 1.25, duration_sec: 1.25 }, { start_sec: 1.25, end_sec: 3.966, duration_sec: 2.716 },
+    ])
+  })
+
   it('refuses invalid arguments from a direct caller of the service methods', async () => {
     const fixture = await start()
     const audio = fixture.put(speech(fixture.dir), 'audio/wav', 'speech.wav')
