@@ -13,7 +13,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { MarkdownElement, MarkdownTableElement } from '@deepseek-ai/dsh-client-ui-primitives'
-import { MarkdownDelegateProvider } from '@deepseek-ai/dsh-client-ui-primitives'
+import { MarkdownDelegateProvider, parseFileLink } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { HostObservable, InjectFace, PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { createElement, type ReactNode } from 'react'
@@ -127,10 +127,11 @@ export function selectAssetReference(element: MarkdownElement): AssetReference |
   switch (element.kind) {
     case 'link': {
       const asset = assetIdOf(element.href)
-      if (asset === undefined && !/^(?:[a-z][\w+.-]*:|[/\\#])/iu.test(element.href)) {
-        return { kind: 'text', path: element.href.replace(/^(?:\.\/)+/u, '').split('#')[0] ?? '' }
-      }
-      return asset === undefined ? null : { kind: 'link', asset }
+      if (asset !== undefined) return { kind: 'link', asset }
+      // The default element's file link and its decoded path; an absolute path keeps the outer file opener.
+      const path = parseFileLink(element.href)?.path
+      if (path === undefined || /^(?:[a-z]:)?[/\\]/iu.test(path)) return null
+      return { kind: 'text', path: path.replace(/^(?:\.\/)+/u, '') }
     }
     case 'image': {
       const asset = assetIdOf(element.src)

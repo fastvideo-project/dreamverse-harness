@@ -93,6 +93,7 @@ export { CodeBlock } from './markdown/CodeBlock.tsx'
 export type { CodeBlockProps } from './markdown/CodeBlock.tsx'
 export { JsonBlock } from './markdown/JsonBlock.tsx'
 export { MarkdownDelegateProvider } from './markdown/MarkdownDelegate.tsx'
+export { parseFileLink } from './markdown/file-link.ts'
 export type {
   MarkdownDelegate, MarkdownDelegateProviderProps, MarkdownElement, MarkdownElementRenderer, MarkdownExternalLinkHandler,
   MarkdownImageElement, MarkdownLinkElement, MarkdownTableCell, MarkdownTableElement, MarkdownTableLink,
