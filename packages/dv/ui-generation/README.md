@@ -11,6 +11,8 @@ English | [中文](README.zh.md)
 
 Use this package to give a generation primitive, such as shot rendering, its whole browser presence from one declaration. The plugin that `defineGenerationUi` returns draws each record of the primitive's operations as a take on the canvas, opens a take editor that reruns the take with an edited prompt, references, and parameters, adds 重试 / Retry to failed takes, draws the chat card of each operation's agent tool call, and shows each record in History with a thumbnail. `@dv/ui-shot-render` is one such declaration.
 
+Chat cards follow the open project's generation records by session and tool-call ID. Each card shows its completed media or failure as soon as that record changes, even while other calls in the same batch are running. Queued and running cards show an indeterminate progress bar; this indicator does not estimate backend completion percentages. A card without a matching record uses its tool result.
+
 ## Table of Contents
 
 - [Use this package](#use-this-package)

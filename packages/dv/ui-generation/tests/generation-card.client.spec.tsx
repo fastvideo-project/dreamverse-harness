@@ -7,7 +7,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, waitFor } from '@testing-library/react'
 import type { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { DV_HISTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
-import { OPERATIONS, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
+import { fixtureState, record, OPERATIONS, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import type { WireState } from '@dv/ui-kit/types.ts'
 import { mountKit } from './take-kind.client.ts'
 
 let runtime: SlotTestRuntime | undefined
@@ -21,6 +23,7 @@ afterEach(async () => {
   cleanup()
   vi.unstubAllGlobals()
   document.documentElement.lang = ''
+  publishCurrentProject(null)
 })
 
 const LABELLED = [{ ...OPERATIONS[0]!, label: { zh: '渲染镜头', en: 'Render shot' } }]
@@ -31,8 +34,8 @@ const LABELLED = [{ ...OPERATIONS[0]!, label: { zh: '渲染镜头', en: 'Render 
  * @param block - the call block.
  * @returns the card's view, whose `show` re-renders the call at another phase.
  */
-async function renderCall(phase: 'start' | 'result', block: object) {
-  vi.stubGlobal('fetch', scriptedFetch({ operations: LABELLED }).fetch)
+async function renderCall(phase: 'start' | 'result', block: object, state?: WireState) {
+  vi.stubGlobal('fetch', scriptedFetch({ operations: LABELLED, ...state === undefined ? {} : { state } }).fetch)
   const mounted = await mountKit({
     'tool.call.toolview': { kind: 'keyed', scope: 'session', inject: { hooks: { toolCallArgumentsPartial: () => () => '' } } },
   })
@@ -53,6 +56,55 @@ async function renderCall(phase: 'start' | 'result', block: object) {
 const ARGS = JSON.stringify({ modality: 'video', task: 't2v', provider: 'fastvideo', model: 'fasth3', prompt: 'a lighthouse at dusk' })
 
 describe('the chat card of a generation call', () => {
+  it('plays its completed record while the surrounding batch tool result is still pending', async () => {
+    document.documentElement.lang = 'en'
+    const state = fixtureState()
+    state.components.proj.records.push(record({ id: 'finished', operation: 'shot.render', session: 's1',
+      tool_call: 'call-2', outputs: ['shot1.mp4', 'shot1-last.png'], status: 'done' }))
+    publishCurrentProject('p1')
+    const { container, view } = await renderCall('start', { argsRaw: ARGS }, state)
+    await waitFor(() => { expect(container.textContent).toContain('Generated') })
+    expect(container.querySelector('video')?.getAttribute('src')).toBe('/dv/assets/shot1.mp4')
+    expect(view.queryByRole('progressbar')).toBeNull()
+    expect(view.getByRole('button', { name: 'Show in history' })).toBeTruthy()
+  })
+
+  it('shows queued progress, then follows a record event to its own failure without waiting for the batch', async () => {
+    document.documentElement.lang = 'en'
+    const listeners = new Map<string, EventListener>()
+    class FakeEventSource {
+      constructor(readonly url: string) {}
+      addEventListener(type: string, listener: EventListener): void { listeners.set(type, listener) }
+      removeEventListener(type: string): void { listeners.delete(type) }
+      close(): void {}
+    }
+    vi.stubGlobal('EventSource', FakeEventSource)
+    const state = fixtureState()
+    const pending = record({ id: 'pending', operation: 'shot.render', session: 's1', tool_call: 'call-2', status: 'pending' })
+    state.components.proj.records.push(pending)
+    publishCurrentProject('p1')
+    const { container, view } = await renderCall('start', { argsRaw: ARGS }, state)
+    await waitFor(() => { expect(view.getByRole('progressbar').getAttribute('aria-label')).toBe('Queued') })
+    expect(view.getByRole('progressbar').hasAttribute('value')).toBe(false)
+    pending.status = 'failed'
+    listeners.get('record')?.(new MessageEvent('record', { data: 'changed' }))
+    await waitFor(() => { expect(container.textContent).toContain('Not generated') })
+    expect(view.queryByRole('progressbar')).toBeNull()
+    expect(container.querySelector('video')).toBeNull()
+  })
+
+  it('does not mistake another session’s record for this call', async () => {
+    document.documentElement.lang = 'en'
+    const state = fixtureState()
+    state.components.proj.records.push(record({ id: 'other', operation: 'shot.render', session: 'another',
+      tool_call: 'call-2', outputs: ['shot1.mp4'], status: 'done' }))
+    publishCurrentProject('p1')
+    const { container, view } = await renderCall('start', { argsRaw: ARGS }, state)
+    await waitFor(() => { expect(container.textContent).toContain('Render shot') })
+    expect(view.getByRole('progressbar')).toBeTruthy()
+    expect(container.querySelector('video')).toBeNull()
+  })
+
   it('names the call and its task by their names until GET /api/dv/operations and GET /api/dv/tasks answer, then by their labels', async () => {
     document.documentElement.lang = 'en'
     const { container, view } = await renderCall('start', { argsRaw: ARGS })

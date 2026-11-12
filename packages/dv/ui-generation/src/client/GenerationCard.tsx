@@ -41,6 +41,9 @@ export function GenerationCard(props: GenerationCardProps): ReactNode {
   const t = useText()
   const operations = props.useOperations(value => value)
   const taskLabels = props.useTaskLabels(value => value)
+  const live = props.useChatAssets(value => value)
+  const record = Object.values(live.records).find(row => row.session === props.sessionId
+    && row.tool_call === props.callId && row.operation === props.operation)
   const block = props.block
   const raw = 'argsRaw' in block && typeof block.argsRaw === 'string' ? block.argsRaw
     : 'call' in block && typeof block.call === 'object' && block.call !== null && 'argsRaw' in block.call ? block.call.argsRaw : ''
@@ -49,26 +52,43 @@ export function GenerationCard(props: GenerationCardProps): ReactNode {
   const model = typeof args['model'] === 'string' ? args['model'] : ''
   const task = typeof args['task'] === 'string' ? t(...taskLabel(args['task'], taskLabels)) : ''
   const modelLine = [model, task].filter(part => part !== '').join(' · ')
-  const failed = 'isError' in block && block.isError
-  const outputs = outputsOf(block).map(({ id, mime }): MediaAsset => ({ id, mime }))
+  const failed = record === undefined ? 'isError' in block && block.isError
+    : record.status === 'failed' || record.status === 'cancelled'
+  const settled = record === undefined ? props.phase === 'result'
+    : record.status === 'done' || failed
+  const recordedOutputs = record?.outputs.flatMap((id) => {
+    const asset = live.assets[id]
+    return asset === undefined ? [] : [{ id: asset.id, mime: asset.mime }]
+  })
+  const outputs: MediaAsset[] = recordedOutputs !== undefined && recordedOutputs.length > 0
+    ? recordedOutputs : outputsOf(block).map(({ id, mime }): MediaAsset => ({ id, mime }))
   const played = outputs[0]
   const poster = props.preview(outputs)
   let status = t(...props.status.running)
-  if (props.phase === 'result') status = failed ? t(...props.status.failed) : t(...props.status.done)
+  if (record?.status === 'pending') status = t('排队中', 'Queued')
+  if (settled) status = failed ? t(...props.status.failed) : t(...props.status.done)
+  if (record?.status === 'cancelled') status = t('已取消', 'Cancelled')
   return (
     <div className={css.card} data-tool={props.toolName}>
       <div className={css.cardHeader}>
         <span className={css.title}>{t(...operationLabel(props.operation, operations))}</span>
-        <span className={css.status} data-failed={props.phase === 'result' && failed ? '' : undefined}>{status}</span>
+        <span className={css.status} role="status" data-failed={settled && failed ? '' : undefined}>
+          {status}
+        </span>
       </div>
       {modelLine !== '' && <div className={css.model} data-testid="dv-composer-render-model">{modelLine}</div>}
       {prompt !== '' && <div className={css.prompt}>{prompt}</div>}
+      {!settled && <progress className={css.progress} aria-label={status} />}
       {played !== undefined && (
         <div className={css.media}>
           {props.renderFactorySlot('dv.media', { asset: played, purpose: 'loop', ...poster === undefined ? {} : { poster } })}
         </div>
       )}
-      {props.phase === 'result' && <div className={css.cardFooter}><HistoryLink sessionId={props.sessionId} callId={props.callId} className={css.textButton} /></div>}
+      {settled && (
+        <div className={css.cardFooter}>
+          <HistoryLink sessionId={props.sessionId} callId={props.callId} className={css.textButton} />
+        </div>
+      )}
     </div>
   )
 }
