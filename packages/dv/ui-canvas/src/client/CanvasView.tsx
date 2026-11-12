@@ -474,6 +474,7 @@ export function CanvasView(
    * @param resized - whether the size changed too.
    */
   const writePosition = useCallback((node: CanvasNode, box: NodePosition, resized: boolean) => {
+    answered.current.delete(node.id)
     positionsRef.current = { ...positionsRef.current, [node.id]: box }
     setPositions(all => ({ ...all, [node.id]: box }))
     setNotice(null)
@@ -483,7 +484,9 @@ export function CanvasView(
       project: projectId, operation: NODE_POSITION, surface: 'canvas', ...session === null ? {} : { session },
       params: resized ? { ...corner, width: box.width, height: box.height } : corner,
       intent: `${resized ? 'resize' : 'move'} ${node.title} on the canvas`,
-    }).then(() => { answered.current.set(node.id, graphRef.current?.state) }, (error: unknown) => {
+    }).then(() => {
+      if (positionsRef.current[node.id] === box) answered.current.set(node.id, graphRef.current?.state)
+    }, (error: unknown) => {
       setPositions(all => all[node.id] === box ? withoutProperties(all, [node.id]) : all)
       setNotice(t('error', { message: errorMessage(error) }))
     })
@@ -895,7 +898,7 @@ export function CanvasView(
     const touchesSelected = (edge: CanvasEdge): boolean => selected !== null && (edge.from === selected || edge.to === selected)
     const links = [...graph.links.filter(link => !touchesSelected(link.edge)), ...graph.links.filter(link => touchesSelected(link.edge))]
     const textScale = textScaleAt(viewport.zoom)
-    const anchorOf = (node: CanvasNode): number => edgeAnchorY(boxOf(node), textScale)
+    const anchorOf = (node: CanvasNode): number => edgeAnchorY(boxOf(node), viewport.zoom)
     const hosts = hostsOf(() => { setEditing(null) })
     content = (
       <div style={{ position: 'absolute', left: 0, top: 0, transform: `translate(${String(viewport.x)}px, ${String(viewport.y)}px) scale(${String(viewport.zoom)})`, transformOrigin: '0 0' }}>

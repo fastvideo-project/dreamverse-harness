@@ -20,8 +20,7 @@ export interface ReferenceMedia {
 
 /**
  * Assign a model's labels to the media of one render request.
- * @param media - the media in the order that the model receives them: the references in input order, then the first
- *   frame when the request has one.
+ * @param media - the media in the order that the model receives them.
  * @returns the label of each medium, at the same position; null for a medium that the model does not name.
  */
 export type AssignReferenceLabels = (media: readonly ReferenceMedia[]) => ReadonlyArray<string | null>
@@ -31,8 +30,8 @@ export type AssignReferenceLabels = (media: readonly ReferenceMedia[]) => Readon
  * model's label of that medium. A citation of anything else, or of a medium that the model has no label for, becomes its
  * label.
  * @param request - the render request.
- * @param assignReferenceLabels - assigns the model's label to each reference.
- * @param media - the media of the request in the order that the model receives them: the references, then the first frame.
+ * @param assignReferenceLabels - assigns the model's label to each medium at its position in `media`.
+ * @param media - the media of the request: the references in input order, then the first frame.
  * @returns the prompt.
  */
 export function modelPrompt(

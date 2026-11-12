@@ -12,7 +12,7 @@ import { projectMentionSource } from '@dv/ui-composer/mention'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { createRegistry, type MentionKind } from '@dv/ui-kit/registries.ts'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
-import { asset, canvasNode, record } from '../../ui-kit/tests/fixture.client.tsx'
+import { asset, canvasNode, record, type FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { forgetCanvasStorage, mountCanvas, type CanvasServer } from '../../ui-canvas/tests/canvas-runtime.client.tsx'
 import { apply, inject, textNodeType } from '../src/client/index.ts'
 
@@ -53,10 +53,12 @@ const PREFIX: Record<string, string> = { [PATH]: 'tw', 'script.md': 'sc' }
  * server whose `beats.md` holds v1 and v2 and whose `script.md` v1 was built from `beats.md` v2. Each path is one `text`
  * node, named by the record of its first version, whose versions are the records of the path's versions. An accepted
  * `textnode.write` appends the next version of its path and announces the change; a body that contains `FAIL` gives a
- * failed record, and a body that contains `REFUSE` is refused. The asset pool serves each version's Markdown.
+ * failed record, a body that contains `SILENT` gives a failed record without an error, and a body that contains `REFUSE`
+ * is refused. The asset pool serves each version's Markdown.
+ * @param edit - further changes to the fixture state, applied after the text node records and nodes.
  * @returns the mounted canvas and the versions of each path that the server holds.
  */
-async function mountTexts() {
+async function mountTexts(edit?: (state: FixtureState) => void) {
   const texts: Record<string, TextVersion[]> = { [PATH]: [version('tw', 1, V1), version('tw', 2, V2)], 'script.md': [version('sc', 1, SCRIPT)] }
   const all = (): TextVersion[] => Object.values(texts).flat()
   let server: CanvasServer | null = null
@@ -79,6 +81,7 @@ async function mountTexts() {
         state.components.canvas.order.push(first.created_by)
       }
       state.components.textnode = { texts: Object.fromEntries(Object.entries(texts).map(([path, versions]) => [path, [...versions]])) }
+      edit?.(state)
     },
     refuse: (path, body) => {
       const request = body as { operation?: string; params?: { path: string; body: string; base_version: number } }
@@ -101,6 +104,10 @@ async function mountTexts() {
         if (found !== undefined) return Promise.resolve(new Response(found.body))
         if (input.endsWith('/api/dv/operation') && typeof init?.body === 'string' && init.body.includes('FAIL')) {
           const failed = record({ id: 'f1', operation: 'textnode.write', status: 'failed', error: { code: 'operation_failed', message: 'The disk is full.' } })
+          return Promise.resolve(new Response(JSON.stringify(failed), { headers: { 'content-type': 'application/json' } }))
+        }
+        if (input.endsWith('/api/dv/operation') && typeof init?.body === 'string' && init.body.includes('SILENT')) {
+          const failed = record({ id: 'f2', operation: 'textnode.write', status: 'failed' })
           return Promise.resolve(new Response(JSON.stringify(failed), { headers: { 'content-type': 'application/json' } }))
         }
         return served(input, init)
@@ -146,16 +153,23 @@ describe('textNodeType', () => {
 })
 
 describe('text node', () => {
-  it('draws one card per path at its newest version with its title, version, and opening lines with each citation as its label', async () => {
+  it('draws one card per path at its newest version with its title and opening lines with each citation as its label', async () => {
     const { node, view } = await mountTexts()
     const card = await waitFor(() => node('tw1'))
     expect(card.textContent).toContain('Beats')
     await waitFor(() => { expect(within(card).getByTestId('dv-text-excerpt').textContent).toContain('Hero opens the door.') })
     expect(within(card).getByTestId('dv-text-excerpt').textContent).not.toContain('@')
-    expect(card.textContent).toContain(`v2 · ${String(Array.from(V2).length)} chars`)
     expect(view.container.querySelector('[data-node-id="tw2"]')).toBeNull()
-    // The default frame is 208 × 106: four opening lines with their padding, and the footer.
-    expect([node('tw1').style.width, card.querySelector<HTMLElement>('[data-node-frame]')?.style.height]).toEqual(['208px', '106px'])
+    // The default frame is 208 × 84: four opening lines with their padding.
+    expect([node('tw1').style.width, card.querySelector<HTMLElement>('[data-node-frame]')?.style.height]).toEqual(['208px', '84px'])
+  })
+
+  it('names the failed state of a card with the short status copy', async () => {
+    const { node } = await mountTexts((state) => {
+      state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'sc1' ? { ...entry, status: 'failed' as const } : entry)
+    })
+    const card = await waitFor(() => node('sc1'))
+    await waitFor(() => { expect(card.textContent).toContain('Save failed') })
   })
 
   it('draws an edge from the node of a source version to the text built from it, and none between the versions of a node', async () => {
@@ -240,7 +254,7 @@ describe('text node', () => {
     const { open, server, texts, node } = await mountTexts()
     texts[PATH]?.push(version('tw', 3, '# Beats\n\nThe agent rewrote this.'))
     server.notify()
-    await waitFor(() => { expect(node('tw1').textContent).toContain('v3 · ') })
+    await waitFor(() => { expect(node('tw1').textContent).toContain('The agent rewrote this.') })
     const editor = await draft(open, 'sc1', ' EXT.')
     fireEvent.click(within(editor).getByRole('button', { name: 'Save' }))
     await waitFor(() => { expect(textWrites(server)).toHaveLength(1) })
@@ -250,7 +264,7 @@ describe('text node', () => {
     expect(write?.inputs).toEqual([{ role: 'source', ref: 'tw3#0' }])
     expect(write?.based_on).toBe('sc1')
     await waitFor(() => { expect(editor.isConnected).toBe(false) })
-    await waitFor(() => { expect(node('sc1').textContent).toContain('v2 · ') })
+    await waitFor(() => { expect(node('sc1').textContent).toContain(' EXT.') })
   })
 
   it('names the newest version and the draft\'s version when a newer version arrives, and saves the draft on top of it', async () => {
@@ -263,12 +277,13 @@ describe('text node', () => {
     fireEvent.click(within(editor).getByRole('button', { name: 'Save on top of v3' }))
     await waitFor(() => { expect(editor.isConnected).toBe(false) })
     expect(textWrites(server).map(write => (write as Write).params.base_version)).toEqual([3])
-    await waitFor(() => { expect(node('tw1').textContent).toContain('v4 · ') })
+    await waitFor(() => { expect(node('tw1').textContent).toContain('Mine.') })
   })
 
   it.each([
     ['refused', ' REFUSE', 'Text node script.md is too long.'],
     ['failed', ' FAIL', 'The disk is full.'],
+    ['failed without an error', ' SILENT', 'Not saved. Try again.'],
   ])('shows the error of a %s save and keeps the draft open', async (_case, text, message) => {
     const { open } = await mountTexts()
     const editor = await draft(open, 'sc1', text)

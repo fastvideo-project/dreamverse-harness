@@ -1141,6 +1141,23 @@ describe('refused position writes', () => {
     await runtime.dispose()
   })
 
+  it('keeps the box of a later move while the state shows only the earlier move that the server answered', async () => {
+    const { runtime, node, server, canvasOf } = await mountCanvas({ holdOperations: true })
+    await waitFor(() => { node('g2') })
+    for (const pointerId of [1, 2]) {
+      fireEvent.pointerDown(node('g2'), { button: 0, clientX: 0, clientY: 0, pointerId })
+      fireEvent.pointerMove(canvasOf(), { clientX: 50, clientY: 0, pointerId })
+      fireEvent.pointerUp(canvasOf(), { pointerId })
+    }
+    server.releaseOperations(1)
+    await settle()
+    expect(node('g2').style.left).toBe('580px')
+    server.releaseOperations()
+    await settle()
+    expect(node('g2').style.left).toBe('580px')
+    await runtime.dispose()
+  })
+
   it('draws a resized node back at its stored size when the server refuses the resize', async () => {
     const { runtime, view, node, open, canvasOf } = await mountCanvas({ refuse: refuseOperation('canvas.node_position', 'read-only project') })
     await open('g2')
@@ -1437,6 +1454,26 @@ describe('the node card', () => {
     expect([x1, y1]).toEqual([Number.parseFloat(node('e1').style.left) + 208, top('e1') + 20 + frameHeight('e1') / 2])
     expect([x2, y2]).toEqual([Number.parseFloat(node('g1').style.left), top('g1') + 20 + 117 / 2])
     await runtime.dispose()
+  })
+
+  it('grows a caption at most 1.4 times on a zoomed-out canvas, with the frame and edges below it, and hides it below 8 px on screen', async () => {
+    const at = async (zoom: number): Promise<{ font: string; height: string; visibility: string; edgeY: number | undefined }> => {
+      const { runtime, view, node } = await mountCanvas({ layout: { viewport: { x: 0, y: 0, zoom } } })
+      const edge = await waitFor(() => {
+        const found = view.container.querySelector('path[data-edge="e1>g1"]')
+        if (found === null) throw new Error('no edge into g1')
+        return found
+      })
+      const caption = node('g1').firstElementChild as HTMLElement
+      const y = (edge.getAttribute('d') ?? '').match(/-?[\d.]+/g)?.map(Number).at(-1)
+      const result = { font: caption.style.fontSize, height: caption.style.height, visibility: caption.style.visibility, edgeY: y === undefined ? undefined : y - Number.parseFloat(node('g1').style.top) }
+      await runtime.dispose()
+      return result
+    }
+    // At 50% zoom the body text grows 1.6 times; the caption stops at 1.4 times: a 17 px font in a 28-unit caption.
+    expect(await at(0.5)).toEqual({ font: '17px', height: '28px', visibility: '', edgeY: 28 + 117 / 2 })
+    // At 40% zoom a 1.4-times caption is 6.7 px on screen, so the node hides it and keeps its frame in place.
+    expect(await at(0.4)).toEqual({ font: '17px', height: '28px', visibility: 'hidden', edgeY: 28 + 117 / 2 })
   })
 })
 

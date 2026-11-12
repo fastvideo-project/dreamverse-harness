@@ -21,10 +21,10 @@ const EDITOR_PROMPT = '[data-testid="dv-canvas-node-editor"] [data-dv-prompt] [c
 const RENDER_OPERATION = 'shot.render'
 
 /**
- * The minimum frame height of each window node type that the resize story puts on the canvas: a text card's one line
- * and footer, and a reference card of one reference at 4:3 of its 104-unit minimum width above its footer.
+ * The minimum frame height of each window node type that the resize story puts on the canvas: a text card's one line,
+ * and a reference card of one reference at 4:3 of its 104-unit minimum width.
  */
-const WINDOW_MIN_HEIGHTS: Readonly<Record<string, number>> = { character: 110, location: 110, style: 110, text: 58 }
+const WINDOW_MIN_HEIGHTS: Readonly<Record<string, number>> = { character: 78, location: 78, style: 78, text: 36 }
 
 /** A seeded project: its ID, the rendered take assets in shot order (the clips of timeline t1), and the shot records. */
 interface Seeded { id: string; clipAssets: string[]; shots: string[] }

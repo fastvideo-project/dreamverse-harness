@@ -5,6 +5,7 @@
   border-radius: var(--dv-radius-lg);
   background: var(--dv-surface-2);
   box-shadow: 0 0 0 1px var(--dv-line);
+  outline: 1px solid transparent;
   color: var(--dv-text);
   font-size: 13px;
   line-height: 20px;
@@ -36,11 +37,14 @@
   color: var(--dv-text-2);
   font-size: 12px;
   line-height: 16px;
+  overflow-wrap: break-word;
 }
 
 .prompt {
   margin-top: 4px;
   color: var(--dv-text-2);
+  overflow-wrap: break-word;
+  text-wrap: pretty;
 }
 
 .media {

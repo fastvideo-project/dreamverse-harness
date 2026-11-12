@@ -5,24 +5,23 @@
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { extractMarkdownPlainText } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { PropsLocale, PropsRuntime, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsRuntime, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { parsePromptCitations } from '@dv/project/grammar'
 import type { NodeSizing } from '@dv/ui-canvas/contract'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
 import type { NS } from './locales.ts'
-import { reportedVersion, withLabels } from './texts.ts'
+import { withLabels } from './texts.ts'
 
 /** The opening lines that a text card of the default size shows at text scale 1. */
 const EXCERPT_LINES = 4
 const LINE_HEIGHT = 16
-const FOOTER_HEIGHT = 28
-/** The frame height of a text card that shows a number of opening lines: the lines with their padding, and the footer. */
-const heightFor = (lines: number): number => 10 + lines * LINE_HEIGHT + 4 + FOOTER_HEIGHT
+/** The frame height of a text card that shows a number of opening lines with their padding. */
+const heightFor = (lines: number): number => 10 + lines * LINE_HEIGHT + 10
 
 /**
- * The sizing of a text card, a window node: 208 × 106 by default (four opening lines and the footer), and at least
- * 104 units wide and one opening line and the footer tall.
+ * The sizing of a text card, a window node: 208 × 84 by default (four opening lines), and at least 104 units wide and
+ * one opening line tall.
  */
 export const TEXT_CARD_SIZING: NodeSizing = {
   kind: 'window', defaultSize: { width: 208, height: heightFor(EXCERPT_LINES) }, minSize: { width: 104, height: heightFor(1) },
@@ -62,11 +61,11 @@ export function useBody(asset: string | undefined): string | null {
 }
 
 /**
- * The footer of a text card, such as `v3 · 1,240 chars`.
+ * The version label of a text node, such as `v3 · 1,240 chars`, which the editor shows.
  * @param version - the 1-based version.
  * @param chars - the Unicode code points of the body.
  * @param t - translates a key of the text node dictionary.
- * @returns the footer text.
+ * @returns the label.
  */
 export function footerText(version: number, chars: number, t: TranslateNS<typeof NS>): string {
   return t('card.footer', { version: String(version), chars: chars.toLocaleString('en-US') })
@@ -74,31 +73,25 @@ export function footerText(version: number, chars: number, t: TranslateNS<typeof
 
 /**
  * The card body of a text node version on the card surface, filling the frame the canvas sizes: the opening lines of
- * its Markdown as plain text with each citation as its label, taking the height above the footer, and a footer with
- * its version and size. The canvas caption above it shows the title.
- * @param props - the node, the text scale, and the translate function.
+ * its Markdown as plain text with each citation as its label. The canvas caption above it shows the title.
+ * @param props - the node and the text scale.
  * @returns the element.
  */
-export function TextCard({ node, textScale, t }: PropsRuntime<'dv.canvas.card'> & PropsLocale<typeof NS>): ReactNode {
+export function TextCard({ node, textScale }: PropsRuntime<'dv.canvas.card'>): ReactNode {
   const body = useBody(node.assets[0])
   const excerpt = useMemo(() => body === null ? '' : extractMarkdownPlainText(withLabels(body, parsePromptCitations(body))), [body])
-  const version = node.record === null ? null : reportedVersion(node.record)
-  const chars = node.record?.report?.['chars']
   const size = (base: number): number => Math.round(base * textScale)
   return (
     <div style={{ ...CARD_SURFACE, display: 'flex', flexDirection: 'column' }}>
       <p
         data-testid="dv-text-excerpt"
         style={{
-          margin: '10px 12px 4px', flex: 1, minHeight: 0, overflow: 'hidden', whiteSpace: 'pre-line', overflowWrap: 'anywhere',
+          margin: '10px 12px', flex: 1, minHeight: 0, overflow: 'hidden', whiteSpace: 'pre-line', overflowWrap: 'anywhere',
           fontSize: size(12), lineHeight: `${String(size(LINE_HEIGHT))}px`, color: 'var(--dv-text)',
         }}
       >
         {excerpt}
       </p>
-      <div style={{ flex: 'none', display: 'flex', alignItems: 'center', height: FOOTER_HEIGHT, padding: '0 12px', fontFamily: 'var(--dv-font-mono)', fontSize: size(11), lineHeight: 1, color: 'var(--dv-text-2)' }}>
-        {version === null || typeof chars !== 'number' ? null : footerText(version, chars, t)}
-      </div>
     </div>
   )
 }

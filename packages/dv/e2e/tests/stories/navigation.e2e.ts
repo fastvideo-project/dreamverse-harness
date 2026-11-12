@@ -545,6 +545,41 @@ describe('navigation, projects, sessions, and panels', () => {
     expect(errors).toEqual([])
   })
 
+  it('a navigator chat of a project that is not open opens with its project, and Back returns to the previous project', async () => {
+    const a = await createProject('NAV 侧栏甲')
+    const b = await createProject('NAV 侧栏乙')
+    const { page, errors } = await openPage()
+    await openProject(page, 'NAV 侧栏乙')
+    await send(page, '乙')
+    await rowMenu(page, activeSessionRow(page), '重命名')
+    await typeRename(page, '乙的对话')
+    await waitFor(async () => (await crumbs(page))?.[1] === '乙的对话', 'the chat of 乙 renamed', 10_000)
+    const chatOfB = locationOf(page).session
+    // A newer chat in 乙, so opening 乙 without the picked chat would land on that one instead.
+    await showNavigator(page)
+    await projectRow(page, 'NAV 侧栏乙').getByRole('button', { name: '新对话', exact: true }).click()
+    await waitFor(() => Promise.resolve(locationOf(page).session !== chatOfB), 'a newer chat of 乙', 20_000)
+    await send(page, '乙新')
+    await openProject(page, 'NAV 侧栏甲')
+    await send(page, '甲')
+    const chatOfA = locationOf(page).session
+    // Show the chats of 乙, which is not the open project, and pick its chat in the navigator.
+    await showNavigator(page)
+    const toggle = projectRow(page, 'NAV 侧栏乙').locator('span[role="button"][aria-expanded]')
+    if (await toggle.getAttribute('aria-expanded') === 'false') await toggle.click()
+    await sessionRows(page).filter({ hasText: '乙的对话' }).click()
+    await waitFor(async () => locationOf(page).session === chatOfB && (await crumbs(page))?.[0] === 'NAV 侧栏乙' && (await crumbs(page))?.[1] === '乙的对话', 'project 乙 open on its picked chat', 20_000)
+    await expectProjectShown(page, b)
+    await waitFor(async () => (await userMessages(page)).includes('只回复乙'), 'the chat of 乙', 10_000)
+    expect(await userMessages(page)).not.toContain('只回复甲')
+    expect(await userMessages(page)).not.toContain('只回复乙新')
+    await page.goBack({ waitUntil: 'load' })
+    await waitProject(page, 'NAV 侧栏甲')
+    await expectProjectShown(page, a)
+    await waitFor(() => Promise.resolve(locationOf(page).session === chatOfA), 'the chat of 甲 after Back', 10_000)
+    expect(errors).toEqual([])
+  })
+
   /** Reload `page` and expect the same location and breadcrumb as before. */
   async function expectReloadKeeps(page: Page, label: string): Promise<void> {
     // Let the location settle (the entry page adds its chat session to the URL) before taking the reference.

@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-在组件操作里运行 ffmpeg 或 ffprobe 时使用本包。`dvFfmpeg.run` 用输入文件路径和声明的输出文件名执行一条命令，把输出写进调用方给出的目录（通常是 `OperationContext.scratchDir`），并返回它们的路径；随后操作用 `context.importAsset` 把它们导入素材库，所以它创建的每个文件都能追溯到它的记录。`dvFfmpeg.probe` 读取一个文件的时长、画面尺寸、编码和是否有音频。执行器从不访问素材库或项目。
+在组件操作里运行 ffmpeg 或 ffprobe 时使用本包。`dvFfmpeg.run` 用输入文件路径和声明的输出文件名执行一条命令，把输出写进调用方给出的目录（通常是 `OperationContext.scratchDir`），并返回它们的路径；随后操作用 `context.importAsset` 把它们导入素材库，所以它创建的每个文件都能追溯到它的记录。`dvFfmpeg.probe` 读取一个文件的时长、画面尺寸、编码和是否有音频。`dvFfmpeg.lastFrame` 以 PNG 字节返回 MP4 字节的最后一帧。执行器从不访问素材库或项目。
 
 ## 目录
 
@@ -44,6 +44,7 @@ kind: "package-reference"
 | --- | --- |
 | `run({argv, inputs, outputs, dir, files?, timeoutMs?})` | 在 `dir` 中运行一条命令；`{{in:<n>}}` 展开为第 n 个输入路径，`{{out:<name>}}` 展开为 `dir/<name>`；`argv[0]` 为 `ffmpeg` 和 `ffprobe` 时映射到配置的可执行文件；按声明顺序返回输出路径和捕获的输出流 |
 | `probe(path)` | 时长、视频流时长、宽、高、是否有音频和视频编码；ffprobe 没有报告的字段为 null |
+| `lastFrame(video)` | MP4 字节 `video` 的最后一帧，为 PNG 字节 |
 
 命令失败、占位符未知，或命令没有写出某个声明的输出时，抛出带命令 stderr 的 `FfmpegError`。
 
@@ -52,11 +53,11 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`run` 展开参数和声明的文本文件里的占位符，把这些文件写进 `dir`，解析程序，并带超时（默认十分钟）执行它。挂载了 `ctx.subprocess` 时命令在 harness 的受管进程范围内运行并收集 stdout 和 stderr；否则由 `child_process.execFile` 运行。退出后，`run` 检查每个声明的输出都在 `dir` 中。`probe` 以 JSON 输出运行 ffprobe，读取格式和第一个视频流。
+`run` 展开参数和声明的文本文件里的占位符，把这些文件写进 `dir`，解析程序，并带超时（默认十分钟）执行它。挂载了 `ctx.subprocess` 时命令在 harness 的受管进程范围内运行并收集 stdout 和 stderr；否则由 `child_process.execFile` 运行。退出后，`run` 检查每个声明的输出都在 `dir` 中。`probe` 以 JSON 输出运行 ffprobe，读取格式和第一个视频流。`lastFrame` 把视频写进一个新的临时目录，用 `-sseof -1` 和 `-update 1` 调用 `run`，让 ffmpeg 定位到最后一秒并只保留最后解码的一帧，读取 PNG，无论命令成功还是失败都删除该目录。
 
 | 文件 | 内容 |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `dvFfmpeg`：`run`、`probe`、`FfmpegError` |
+| [`src/index.ts`](src/index.ts) | `dvFfmpeg`：`run`、`probe`、`lastFrame`、`FfmpegError` |
 
 -----
 

@@ -335,6 +335,18 @@ describe.skipIf(!HAS_FFMPEG)('dv-uniserve', () => {
     ])
   })
 
+  it('keeps the video and its valid timings when x-stage-durations is not JSON', async () => {
+    const rendered = await sampleVideo(false)
+    const fake = await startFakeServer(rendered)
+    const ctx = await start(fake.url)
+    const image = importAsset(ctx, Buffer.from('IMG1'), 'image/png')
+    fake.video = { status: 200, headers: { 'content-type': 'video/mp4', 'x-inference-time-s': '6.282', 'x-stage-durations': '{denoising: 4' }, body: rendered }
+    const events = await collect(fasth3(ctx).render(request([image], null)))
+    expect(events.slice(1)).toEqual([
+      { kind: 'video_start', mime: 'video/mp4' }, { kind: 'chunk', bytes: rendered }, { kind: 'done', timings: { inference_s: 6.282 } },
+    ])
+  })
+
   it('rejects a render with the server error, a frame size or count the server does not render, or an abort', async () => {
     const fake = await startFakeServer(await sampleVideo(false))
     const ctx = await start(fake.url)

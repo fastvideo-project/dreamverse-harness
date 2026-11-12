@@ -232,7 +232,7 @@ describe('the plugin of a reference noun', () => {
     await runtime.dispose()
   })
 
-  it('draws a noun card as its first reference at 4:3 under its label, three thumbnails and a count of the rest, and a footer with the count and version', async () => {
+  it('draws a noun card as its first reference at 4:3 under its label, and three thumbnails and a count of the rest', async () => {
     document.documentElement.lang = 'zh-CN'
     const { runtime } = await mountKit()
     const references = ['ref.png', 'r2.png', 'r3.png', 'r4.png', 'r5.png', 'r6.png']
@@ -240,12 +240,12 @@ describe('the plugin of a reference noun', () => {
     state.assets.push(...references.slice(1).map(id => asset(id, 'image/png', 'u1')))
     const node = nodeOf(runtime, state, 'e1')
     const { container, view } = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'test_ref' })
-    // 4:3 of the width above the 52-unit row and the 32-unit footer; the picture box takes that height itself.
-    expect(node.sizing).toEqual({ kind: 'window', defaultSize: { width: 208, height: 240 }, minSize: { width: 104, height: 162 } })
+    // 4:3 of the width above the 52-unit row; the picture box takes that height itself.
+    expect(node.sizing).toEqual({ kind: 'window', defaultSize: { width: 208, height: 208 }, minSize: { width: 104, height: 130 } })
     expect((container.firstElementChild?.firstElementChild as HTMLElement).style.height).toBe('')
     expect([...container.querySelectorAll('img')].map(image => image.getAttribute('src')))
       .toEqual(['ref.png', 'ref.png', 'r2.png', 'r3.png'].map(assetUrl))
-    expect([view.getByText('参考'), view.getByText('+3'), view.getByText('6 张参考图 · 第 1 版')]).toHaveLength(3)
+    expect([view.getByText('参考'), view.getByText('+3')]).toHaveLength(2)
     expect((container.firstElementChild as HTMLElement).style.background).toBe(CARD_SURFACE.background)
     await runtime.dispose()
   })
@@ -256,9 +256,9 @@ describe('the plugin of a reference noun', () => {
     const state = heroWith([])
     const node = nodeOf(runtime, state, 'e1')
     const { container } = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'test_ref' })
-    expect(node.sizing).toEqual({ kind: 'window', defaultSize: { width: 208, height: 188 }, minSize: { width: 104, height: 110 } })
+    expect(node.sizing).toEqual({ kind: 'window', defaultSize: { width: 208, height: 156 }, minSize: { width: 104, height: 78 } })
     expect(container.querySelector('img, video, [data-dv-media]')).toBeNull()
-    expect(container.textContent).toBe('Reference0 references · v1')
+    expect(container.textContent).toBe('Reference')
     await runtime.dispose()
   })
 
@@ -268,25 +268,21 @@ describe('the plugin of a reference noun', () => {
     const single = heroWith(['ref.png'])
     const one = nodeOf(runtime, single, 'e1')
     const card = runtime.renderSlot('dv.canvas.card', { node: one, assets: assetsOf(single, one), textScale: 1, host: cardHost() }, { entryKey: 'test_ref' })
-    expect([one.sizing?.defaultSize.height, card.container.querySelectorAll('img').length, card.view.getByText(/^1 reference · v/).textContent !== null]).toEqual([188, 1, true])
+    expect([one.sizing?.defaultSize.height, card.container.querySelectorAll('img').length]).toEqual([156, 1])
     const state = heroWith(['shot1.mp4', 'ref.png'])
     const node = nodeOf(runtime, state, 'e1')
     const { container } = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'test_ref' })
     expect(container.querySelector('video')?.getAttribute('src')).toBe(`${assetUrl('shot1.mp4')}#t=0.1`)
-    expect(container.textContent).toContain('2 references')
     await runtime.dispose()
   })
 
-  it('counts a reference whose asset the state lacks without drawing it, and names the version count of the node', async () => {
+  it('draws no picture for a reference whose asset the state lacks', async () => {
     document.documentElement.lang = 'en'
     const { runtime } = await mountKit()
     const state = heroWith(['ref.png', 'gone.png'])
     const node = nodeOf(runtime, state, 'e1')
     const { container } = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'test_ref' })
     expect([...container.querySelectorAll('img')].map(image => image.getAttribute('src'))).toEqual(['ref.png', 'ref.png'].map(assetUrl))
-    expect(container.textContent).toBe('Reference2 references · v1')
-    const later = runtime.renderSlot('dv.canvas.card', { node: { ...node, versions: ['e1', 'e2', 'e5'] }, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'test_ref' })
-    expect(later.container.textContent).toBe('Reference2 references · v3')
     await runtime.dispose()
   })
 })

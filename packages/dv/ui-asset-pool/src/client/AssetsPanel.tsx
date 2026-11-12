@@ -60,7 +60,7 @@ export function AssetsPanel(props: AssetsPanelProps): ReactNode {
   let body: ReactNode
   if (library === null) body = <p className={css.note}>{state.error === null ? t('正在读取…', 'Loading…') : t(`读取失败：${state.error}`, `Failed to load: ${state.error}`)}</p>
   else if (library.images.length + library.videos.length + library.extracted.length === 0) {
-    body = <p className={css.note}>{t('暂无', 'None yet')}</p>
+    body = <p className={css.note}>{t('还没有素材。在上方导入，或在对话里生成。', 'No images or videos yet. Import files above, or generate them in the chat.')}</p>
   } else {
     body = (
       <>
@@ -101,7 +101,7 @@ function ImportZone(props: { client: DvClient; projectId: string; session: strin
     for (const file of accepted) {
       setPending(count => count + 1)
       props.client.importAsset(props.projectId, file, 'asset_pool', props.session)
-        .then(() => { setError(null) }, (failure: unknown) => { setError(t(`「${file.name}」导入失败：${String(failure)}`, `Failed to import "${file.name}": ${String(failure)}`)) })
+        .then(() => { setError(null) }, (failure: unknown) => { setError(t(`「${file.name}」导入失败：${String(failure)}`, `Failed to import “${file.name}”: ${String(failure)}`)) })
         .finally(() => { setPending(count => count - 1) })
     }
   }, [props.client, props.projectId, props.session, t])
@@ -121,7 +121,7 @@ function ImportZone(props: { client: DvClient; projectId: string; session: strin
       {error === null ? null : <div className={css.error}>{error}</div>}
       {refused.map(name => (
         <div key={name} className={css.error}>
-          {t(`「${name}」不是图片或视频，没有导入。`, `"${name}" is not an image or a video, so it was not imported.`)}
+          {t(`「${name}」不是图片或视频，没有导入。`, `“${name}” is not an image or a video, so it was not imported.`)}
         </div>
       ))}
       <input ref={input} type="file" accept="image/*,video/*" multiple hidden onChange={(event) => { importFiles(event.currentTarget.files); event.currentTarget.value = '' }} />

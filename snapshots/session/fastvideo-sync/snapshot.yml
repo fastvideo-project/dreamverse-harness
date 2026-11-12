@@ -1,0 +1,9 @@
+version: 1
+scenario: fastvideo-sync
+profile: headless
+composition: fastvideo-sync
+recording: authored
+header:
+  class: fastvideo-sync
+  pin: true
+  systemPromptSource: text-turn

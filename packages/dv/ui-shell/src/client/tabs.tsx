@@ -82,7 +82,7 @@ export function ChatTab({ sessionId, useSession, useConversation, useSessions, r
     <div className={css.tab} data-dv-chat="">
       {!active && !settling && (
         <p className={`${css.tabHint} ${css.chatHint}`}>
-          {t('告诉智能体你想做什么视频，比如“做一支 15 秒的咖啡广告”。用 @ 引用项目里的片段、角色或素材。', 'Tell the agent what video to make, such as "a 15-second coffee ad". Type @ to reference clips, characters, or assets in the project.')}
+          {t('告诉智能体你想做什么视频，比如“做一支 15 秒的咖啡广告”。用 @ 引用项目里的片段、角色或素材。', 'Tell the agent what video to make, such as “a 15-second coffee ad”. Type @ to reference clips, characters, or assets in the project.')}
         </p>
       )}
       <Fragment key={remounts}>
