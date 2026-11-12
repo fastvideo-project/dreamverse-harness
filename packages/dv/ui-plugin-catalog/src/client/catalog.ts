@@ -16,8 +16,11 @@ import type { CatalogAnswer, CatalogEntry } from '@dv/plugin-catalog/types'
 /** The route of `@dv/plugin-catalog` that answers the catalog. */
 export const CATALOG_ROUTE = '/api/dv/plugins/catalog'
 
+/** A plugin manager request in flight for one plugin. */
+type PluginRequest = 'installing' | 'removing' | 'enabling'
+
 /** Where a catalog plugin stands in the profile. */
-export type PluginState = 'unknown' | 'absent' | 'on' | 'off' | 'error' | 'installing' | 'removing' | 'enabling'
+export type PluginState = 'unknown' | 'absent' | 'on' | 'off' | 'error' | PluginRequest
 
 /** What the last request for one plugin ended with. */
 export type PluginOutcome =
@@ -36,7 +39,7 @@ export interface CatalogView {
   /** The profile's bundles by package name, null until listed. */
   readonly bundles: ReadonlyMap<string, BundleInfo> | null
   /** The requests in flight by package name. */
-  readonly busy: ReadonlyMap<string, 'installing' | 'removing' | 'enabling'>
+  readonly busy: ReadonlyMap<string, PluginRequest>
   /** The last outcome by package name. */
   readonly outcomes: ReadonlyMap<string, PluginOutcome>
 }
@@ -51,7 +54,7 @@ interface ManagerActions {
 let catalog: CatalogAnswer | null = null
 let catalogError: string | null = null
 let bundles: Map<string, BundleInfo> | null = null
-const busy = new Map<string, 'installing' | 'removing' | 'enabling'>()
+const busy = new Map<string, PluginRequest>()
 const outcomes = new Map<string, PluginOutcome>()
 let manager: ManagerActions | null = null
 let view: CatalogView = { catalog: null, catalogError: null, manageable: false, bundles: null, busy: new Map(), outcomes: new Map() }
@@ -125,7 +128,7 @@ export function outcomeOf(change: ChangeResult, done: PluginOutcome['kind'], res
  * @param restart - the outcome of a change that takes effect at the next start.
  */
 function track(
-  pkg: string, request: 'installing' | 'removing' | 'enabling', run: (actions: ManagerActions) => Promise<ChangeResult>,
+  pkg: string, request: PluginRequest, run: (actions: ManagerActions) => Promise<ChangeResult>,
   done: PluginOutcome['kind'], restart: PluginOutcome['kind'],
 ): void {
   const actions = manager

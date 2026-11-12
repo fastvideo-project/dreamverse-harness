@@ -114,5 +114,5 @@ No direct effect.
 <a id="known-limitations-and-deferred-work"></a>
 
 - **Catalog updates need a harness update** — the shipped catalog is read from the checkout at load, so a newly listed plugin appears after `git pull` and a restart; a hosted catalog in `sources` would show new entries at once.
-- **No update in the tab** — an entry pins one version and 安装 / Install requests it, but the tab does not upgrade an installed plugin to a newer catalog version; the card notes the difference, and removing and installing again, then restarting, upgrades it.
+- **No update on the Marketplace page** — an entry pins one version and 安装 / Install requests it, but the page does not upgrade an installed plugin to a newer catalog version; the card notes the difference, and removing and installing again, then restarting, upgrades it.
 - **No minimum harness version** — an entry does not say which harness versions the plugin needs; the plugin manager's compatibility check refuses a version that declares an incompatible DSH peer.

@@ -337,7 +337,7 @@
               env: { COMFYUI_URL: http://127.0.0.1:8188 }
 
 # The reviewed plugin catalog: packages/dv/plugin-catalog/catalog.json, answered at GET /api/dv/plugins/catalog for the
-# 插件市场 / Marketplace page of the left navigator. `sources` adds catalogs (absolute paths or https URLs) after it.
+# 插件市场 / Marketplace page of the left navigator. `sources` adds catalogs (absolute paths, https URLs, or loopback http URLs) after it.
 - insert:
     - id: dv-plugin-catalog
       name: '@dv/plugin-catalog'

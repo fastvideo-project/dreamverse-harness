@@ -134,7 +134,7 @@ describe('the plugin', () => {
     expect(connection.routes.has(Catalog.CATALOG_ROUTE)).toBe(false)
   })
 
-  it('fails at load for a source that is neither an absolute path nor an https URL', () => {
+  it('fails at load for a source that is neither an absolute path, an https URL, nor a loopback http URL', () => {
     const ctx = new Context()
     cleanups.push(() => ctx.root.fiber.dispose())
     expect(() => { Catalog.apply(ctx, { sources: ['relative/catalog.json'], sourceTimeoutMs: 1000 }) })

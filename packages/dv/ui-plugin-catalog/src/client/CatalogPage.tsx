@@ -107,6 +107,7 @@ function PluginCard(props: {
   const { entry, state, manageable, removable, installedVersion, outcome } = props
   const t = useText()
   const [confirming, setConfirming] = useState(false)
+  const canRemove = removable && (state === 'on' || state === 'off' || state === 'error')
   const status: Record<PluginState, string> = {
     unknown: '',
     absent: t('未安装', 'Not installed'),
@@ -138,10 +139,10 @@ function PluginCard(props: {
         <div className={css.actions}>
           {state === 'absent' && <button type="button" className={css.primary} onClick={() => { installPlugin(entry) }}>{t('安装', 'Install')}</button>}
           {state === 'off' && <button type="button" className={css.primary} onClick={() => { enablePlugin(entry.package) }}>{t('开启', 'Turn on')}</button>}
-          {removable && (state === 'on' || state === 'off' || state === 'error') && !confirming && (
+          {canRemove && !confirming && (
             <button type="button" className={css.secondary} onClick={() => { setConfirming(true) }}>{t('移除', 'Remove')}</button>
           )}
-          {removable && (state === 'on' || state === 'off' || state === 'error') && confirming && (
+          {canRemove && confirming && (
             <>
               <button type="button" className={css.danger} onClick={() => { setConfirming(false); removePlugin(entry.package) }}>{t('确认移除', 'Confirm remove')}</button>
               <button type="button" className={css.secondary} onClick={() => { setConfirming(false) }}>{t('取消', 'Cancel')}</button>
