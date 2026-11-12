@@ -10,6 +10,7 @@ import z from '@deepseek-ai/schemastery'
 import { renderTimings } from '@dv/models'
 import { fetch, getGlobalDispatcher, type Dispatcher, type Response } from 'undici'
 import { backendErrorText, GenerationSegmentError } from './errors.ts'
+import { outputFacts } from './output-capabilities.ts'
 import { followVideoJob, type NativeRequestInit } from './native-jobs.ts'
 import { deriveModelFacts, modelFactsConfig, type ModelFactsConfig } from './model-facts.ts'
 import { REFERENCE_FIELDS, referenceMediaType } from './references.ts'
@@ -33,6 +34,8 @@ export interface Config {
   baseUrl: string
   /** The facts of the served model, which FastVideo does not publish. */
   modelFacts: ModelFactsConfig
+  /** Discover native output metadata when available; reference limits remain configured. */
+  discoverOutputCapabilities?: boolean
   /** Native managed catalog and model residency support; off for ordinary fixed servers. */
   managed?: boolean
   /** Use tracked asynchronous native video jobs. */
@@ -60,6 +63,7 @@ export class DvFastvideoGeneration extends Service {
   static Config: z<Config> = z.object({
     baseUrl: z.string().required(),
     modelFacts: modelFactsConfig.required(),
+    discoverOutputCapabilities: z.boolean().default(true),
     managed: z.boolean().default(false), asyncJobs: z.boolean().default(false),
     task: z.union([z.const(null), z.string()]).default(null),
     displayName: z.union([z.const(null), z.string()]).default(null),
@@ -68,7 +72,7 @@ export class DvFastvideoGeneration extends Service {
 
   private readonly baseUrl: URL
   /** The facts derived from `modelFacts` when the client is built. */
-  readonly facts: ModelFacts
+  facts: ModelFacts
   /** Whether a `GET /v1/model_info` confirmed the served alias; the served model stays fixed for the backend's lifetime. */
   private checked = false
 
@@ -105,15 +109,16 @@ export class DvFastvideoGeneration extends Service {
       throw new Error(`FastVideo ${route} returned HTTP ${response.status}: ${await backendErrorText(response)}`)
     }
     const text = await response.text()
-    let info: { served_model_name?: unknown } | null
+    let info: { served_model_name?: unknown; video_output_capabilities?: unknown } | null
     try {
-      info = JSON.parse(text) as { served_model_name?: unknown } | null
+      info = JSON.parse(text) as { served_model_name?: unknown; video_output_capabilities?: unknown } | null
     } catch (error) {
       throw new Error(`FastVideo ${route} answered no JSON: ${(error as SyntaxError).message}`, { cause: error })
     }
     const served = info?.served_model_name
     if (typeof served !== 'string') throw new Error(`FastVideo ${route} reports no served_model_name; expected ${this.facts.modelId}.`)
     if (served !== this.facts.modelId) throw new Error(`FastVideo serves ${served}; modelFacts.modelId is ${this.facts.modelId}.`)
+    if (this.config.discoverOutputCapabilities !== false) this.facts = outputFacts(this.facts, info?.video_output_capabilities)
     this.checked = true
     return this.facts
   }

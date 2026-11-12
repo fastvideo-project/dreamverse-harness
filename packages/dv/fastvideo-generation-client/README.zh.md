@@ -11,6 +11,8 @@ kind: "package-reference"
 
 使用本包通过 FastVideo 生成视频片段。客户端用 `GET /v1/model_info` 检查服务的模型，每个片段发送一个内联所有参考的 `POST /v1/videos/sync`，并返回完整 MP4 和后端耗时。取消会关闭 HTTP 请求，但后端可能继续完成已经开始的生成。
 
+原生服务器可以在 `GET /v1/model_info` 中发布 `video_output_capabilities`。`discoverOutputCapabilities` 默认开启，客户端会验证这些元数据并发现输出尺寸和整数时长，同时保留配置的模型 ID 和参考素材限制。旧服务器不发布元数据时仍使用配置；无效元数据会明确报错。将该选项设为 `false` 可以保留配置的输出选项。
+
 ## 目录
 
 - [使用本包](#use-this-package)

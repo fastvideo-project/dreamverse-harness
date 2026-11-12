@@ -11,6 +11,8 @@ English | [中文](README.zh.md)
 
 Use this package to generate a video segment with FastVideo. The client checks the served model with `GET /v1/model_info`, sends one `POST /v1/videos/sync` per segment with every reference inline, and returns the whole MP4 with the backend timings. Cancellation closes the HTTP request, although the backend may finish an already running generation.
 
+Native servers may publish `video_output_capabilities` on `GET /v1/model_info`. With `discoverOutputCapabilities` enabled (the default), the client validates that metadata and discovers output dimensions and integer durations while preserving the configured model ID and reference limits. Older servers without metadata retain configured facts; malformed metadata fails explicitly. Set the option to `false` to retain configured output choices.
+
 ## Table of Contents
 
 - [Use this package](#use-this-package)
