@@ -79,6 +79,7 @@ function CatalogList(): ReactNode {
             {state.catalog.plugins.map(entry => (
               <PluginCard
                 key={entry.package} entry={entry} state={pluginState(state, entry.package)} manageable={state.manageable}
+                removable={state.bundles?.get(entry.package)?.removable === true}
                 installedVersion={state.bundles?.get(entry.package)?.version} outcome={state.outcomes.get(entry.package)}
               />
             ))}
@@ -90,17 +91,19 @@ function CatalogList(): ReactNode {
 
 /**
  * One catalog plugin.
- * @param props - the entry, its state, whether the plugin manager is reachable, the installed version, and the last outcome.
+ * @param props - the entry, its state, whether the plugin manager is reachable, whether the plugin manager can remove its
+ * bundle, the installed version, and the last outcome.
  * @returns the card.
  */
 function PluginCard(props: {
   entry: CatalogEntry
   state: PluginState
   manageable: boolean
+  removable: boolean
   installedVersion: string | undefined
   outcome: PluginOutcome | undefined
 }): ReactNode {
-  const { entry, state, manageable, installedVersion, outcome } = props
+  const { entry, state, manageable, removable, installedVersion, outcome } = props
   const t = useText()
   const [confirming, setConfirming] = useState(false)
   const status: Record<PluginState, string> = {
@@ -108,6 +111,7 @@ function PluginCard(props: {
     absent: t('未安装', 'Not installed'),
     on: t('已安装 · 已开启', 'Installed · On'),
     off: t('已安装 · 已关闭', 'Installed · Off'),
+    error: t('已安装 · 未加载', 'Installed · Not loaded'),
     installing: t('安装中…', 'Installing…'),
     removing: t('移除中…', 'Removing…'),
     enabling: t('开启中…', 'Turning on…'),
@@ -133,10 +137,10 @@ function PluginCard(props: {
         <div className={css.actions}>
           {state === 'absent' && <button type="button" className={css.primary} onClick={() => { installPlugin(entry) }}>{t('安装', 'Install')}</button>}
           {state === 'off' && <button type="button" className={css.primary} onClick={() => { enablePlugin(entry.package) }}>{t('开启', 'Turn on')}</button>}
-          {(state === 'on' || state === 'off') && !confirming && (
+          {removable && (state === 'on' || state === 'off' || state === 'error') && !confirming && (
             <button type="button" className={css.secondary} onClick={() => { setConfirming(true) }}>{t('移除', 'Remove')}</button>
           )}
-          {(state === 'on' || state === 'off') && confirming && (
+          {removable && (state === 'on' || state === 'off' || state === 'error') && confirming && (
             <>
               <button type="button" className={css.danger} onClick={() => { setConfirming(false); removePlugin(entry.package) }}>{t('确认移除', 'Confirm remove')}</button>
               <button type="button" className={css.secondary} onClick={() => { setConfirming(false) }}>{t('取消', 'Cancel')}</button>

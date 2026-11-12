@@ -31,13 +31,13 @@ Mount the plugin in a profile that stacks `dsh-web-app`, beside `@dv/plugin-cata
   name: '@dv/ui-plugin-catalog'
 ```
 
-The Host half registers nothing. The browser half registers the page in the `main` slot under the panel id `marketplace` and the navigator entry in `sidebar.panellist` with order 0.5, between 插件 / Plugins (order 0) and MCP (order 1); `@dv/ui-shell` lists it with the other sidebar pages. The page's intro line links to DSH's Plugins page, where installed plugins are managed. A card's state comes from `pluginManager.listBundles()` by package name: 未安装 / Not installed, 已安装 · 已开启 / Installed · On, or 已安装 · 已关闭 / Installed · Off; the list is read again after every `plugin-manager/changed` event. A card shows the package with the catalog's version, and notes when the installed version differs from it. A profile without the plugin manager lists the catalog and says that plugins cannot be installed there.
+The Host half registers nothing. The browser half registers the page in the `main` slot under the panel id `marketplace` and the navigator entry in `sidebar.panellist` with order 0.5, between 插件 / Plugins (order 0) and MCP (order 1); `@dv/ui-shell` lists it with the other sidebar pages. The page's intro line links to DSH's Plugins page, where installed plugins are managed. A card's state comes from `pluginManager.listBundles()` by package name: 未安装 / Not installed, 已安装 · 已开启 / Installed · On, 已安装 · 已关闭 / Installed · Off, or 已安装 · 未加载 / Installed · Not loaded for a bundle with a load error, whose layer the profile skipped; the list is read again after every `plugin-manager/changed` event. A card shows the package with the catalog's version, and notes when the installed version differs from it. A profile without the plugin manager lists the catalog and says that plugins cannot be installed there.
 
 | Gesture | Request |
 | --- | --- |
 | 安装 / Install | `pluginManager.installBundle(<package>@<version>, { enabled: true, requestId })` with the exact version of the catalog entry, from the registry the plugin manager is configured with. The card shows 安装中… / Installing…, then 已安装并开启。 / Installed and turned on., or 已安装。重启 harness 后生效。 / Installed. Restart the harness to load it. when the profile applies the change at its next start |
 | 开启 / Turn on, on an installed plugin that is off | `pluginManager.setBundleEnabled(<package>, true)` |
-| 移除 / Remove, then 确认移除 / Confirm remove | `pluginManager.removeBundle(<package>)`; 取消 / Cancel keeps the plugin |
+| 移除 / Remove, then 确认移除 / Confirm remove | `pluginManager.removeBundle(<package>)`; 取消 / Cancel keeps the plugin. Offered only for a bundle that `listBundles()` marks `removable` |
 
 A failed request shows its reason under the card: the plugin manager's error code, or the pnpm failure kind with the path of the pnpm log. An install that pnpm blocked for unapproved package scripts names those packages and links to DSH's Plugins page, which approves scripts.
 

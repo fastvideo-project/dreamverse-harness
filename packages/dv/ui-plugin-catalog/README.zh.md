@@ -31,13 +31,13 @@ kind: "package-reference"
   name: '@dv/ui-plugin-catalog'
 ```
 
-Host 半边不注册任何东西。浏览器端在 `main` 槽位以面板 id `marketplace` 注册页面，在 `sidebar.panellist` 以顺序 0.5 注册导航入口，位于 插件 / Plugins（顺序 0）和 MCP（顺序 1）之间；`@dv/ui-shell` 把它和其他侧栏页面一起列出。页面的介绍行链接到 DSH 的 插件 页面，已安装的插件在那里管理。卡片的状态按包名取自 `pluginManager.listBundles()`：未安装、已安装 · 已开启 或 已安装 · 已关闭；每次 `plugin-manager/changed` 事件后都会重新读取列表。卡片显示包名和目录中的版本，已安装版本与之不同时会注明。没有插件管理器的 profile 会列出目录，并说明这里无法安装插件。
+Host 半边不注册任何东西。浏览器端在 `main` 槽位以面板 id `marketplace` 注册页面，在 `sidebar.panellist` 以顺序 0.5 注册导航入口，位于 插件 / Plugins（顺序 0）和 MCP（顺序 1）之间；`@dv/ui-shell` 把它和其他侧栏页面一起列出。页面的介绍行链接到 DSH 的 插件 页面，已安装的插件在那里管理。卡片的状态按包名取自 `pluginManager.listBundles()`：未安装、已安装 · 已开启、已安装 · 已关闭，或对有加载错误、其层被 profile 跳过的 bundle 显示 已安装 · 未加载；每次 `plugin-manager/changed` 事件后都会重新读取列表。卡片显示包名和目录中的版本，已安装版本与之不同时会注明。没有插件管理器的 profile 会列出目录，并说明这里无法安装插件。
 
 | 手势 | 请求 |
 | --- | --- |
 | 安装 | `pluginManager.installBundle(<package>@<version>, { enabled: true, requestId })`，使用目录条目的确切版本，从插件管理器配置的 registry 安装。卡片显示 安装中…，然后显示 已安装并开启。；profile 在下次启动时才应用变更时显示 已安装。重启 harness 后生效。 |
 | 对已安装但关闭的插件点 开启 | `pluginManager.setBundleEnabled(<package>, true)` |
-| 移除，然后 确认移除 | `pluginManager.removeBundle(<package>)`；取消 会保留插件 |
+| 移除，然后 确认移除 | `pluginManager.removeBundle(<package>)`；取消 会保留插件。只对 `listBundles()` 标为 `removable` 的 bundle 提供 |
 
 失败的请求会在卡片下显示原因：插件管理器的错误码，或 pnpm 失败类型及 pnpm 日志路径。因包脚本未获允许而被 pnpm 阻止的安装会列出这些包，并链接到能审批脚本的 DSH 插件 页面。
 

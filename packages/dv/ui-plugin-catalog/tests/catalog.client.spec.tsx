@@ -126,6 +126,17 @@ describe('ui-plugin-catalog', () => {
     expect(manager.setBundleEnabled).toHaveBeenCalledWith(OTHER, true)
     await runtime.dispose()
   })
+
+  it('shows a bundle whose layer did not load as not loaded, and offers no Remove for a bundle the manager cannot remove', async () => {
+    const { runtime, view } = await mountPage([
+      { ...bundle(VOICE, true), error: { code: 'incompatible-version' } }, { ...bundle(OTHER, true), removable: false },
+    ])
+    expect(card(view, VOICE).getAttribute('data-state')).toBe('error')
+    expect(view.getByText('Installed · Not loaded')).toBeTruthy()
+    expect(card(view, OTHER).getAttribute('data-state')).toBe('on')
+    expect(card(view, OTHER).querySelector('button')).toBeNull()
+    await runtime.dispose()
+  })
 })
 
 describe('the Plugins page link', () => {

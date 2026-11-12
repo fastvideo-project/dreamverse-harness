@@ -17,7 +17,7 @@ import type { CatalogAnswer, CatalogEntry } from '@dv/plugin-catalog/types'
 export const CATALOG_ROUTE = '/api/dv/plugins/catalog'
 
 /** Where a catalog plugin stands in the profile. */
-export type PluginState = 'unknown' | 'absent' | 'on' | 'off' | 'installing' | 'removing' | 'enabling'
+export type PluginState = 'unknown' | 'absent' | 'on' | 'off' | 'error' | 'installing' | 'removing' | 'enabling'
 
 /** What the last request for one plugin ended with. */
 export type PluginOutcome =
@@ -84,7 +84,7 @@ export function useCatalog(): CatalogView {
 }
 
 /**
- * Where one catalog plugin stands.
+ * Where one catalog plugin stands; `error` is a listed bundle with a load error, whose layer the profile skipped.
  * @param state - the page's state.
  * @param pkg - the plugin's package name.
  * @returns its state.
@@ -95,6 +95,7 @@ export function pluginState(state: CatalogView, pkg: string): PluginState {
   if (state.bundles === null) return 'unknown'
   const bundle = state.bundles.get(pkg)
   if (bundle === undefined) return 'absent'
+  if (bundle.error !== undefined) return 'error'
   return bundle.enabled ? 'on' : 'off'
 }
 
