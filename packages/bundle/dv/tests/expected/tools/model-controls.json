@@ -58,6 +58,10 @@
           "type": "string",
           "description": "The model from dv_models_list."
         },
+        "worker": {
+          "type": "string",
+          "description": "Exact worker ID from dv_hardware_list. Omit for provider-wide status or automatic load placement. Specify worker to unload only that device."
+        },
         "reason": {
           "type": "string",
           "description": "Why you call this, in the user's words or your own summary; recorded as the intent of the record."
@@ -105,6 +109,10 @@
           "type": "string",
           "description": "The model from dv_models_list."
         },
+        "worker": {
+          "type": "string",
+          "description": "Exact worker ID from dv_hardware_list. Omit for provider-wide status or automatic load placement. Specify worker to unload only that device."
+        },
         "reason": {
           "type": "string",
           "description": "Why you call this, in the user's words or your own summary; recorded as the intent of the record."
@@ -151,6 +159,10 @@
         "model": {
           "type": "string",
           "description": "The model from dv_models_list."
+        },
+        "worker": {
+          "type": "string",
+          "description": "Exact worker ID from dv_hardware_list. Omit for provider-wide status or automatic load placement. Specify worker to unload only that device."
         },
         "reason": {
           "type": "string",

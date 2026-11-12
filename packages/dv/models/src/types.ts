@@ -22,19 +22,31 @@ declare module '@dv/project/types' {
   }
 }
 
+/** An explicit configured worker for a generation or model lifecycle operation. */
+export interface ModelExecutionTarget { worker: string }
+
 /** Provider-reported installation and GPU residency. */
 export interface ModelRuntimeState {
   installed: boolean
   loaded: boolean
   loading: boolean
   busy: boolean
+  workers?: Array<{
+    id: string
+    label: string
+    available: boolean
+    installed: boolean
+    loaded: boolean
+    loading: boolean
+    busy: boolean
+  }>
 }
 
 /** Optional provider controls over an installed model's GPU residency. */
 export interface ModelRuntime {
-  status(signal?: AbortSignal): Promise<ModelRuntimeState>
-  load(signal?: AbortSignal): Promise<void>
-  unload(signal?: AbortSignal): Promise<void>
+  status(signal?: AbortSignal, target?: ModelExecutionTarget): Promise<ModelRuntimeState>
+  load(signal?: AbortSignal, target?: ModelExecutionTarget): Promise<void>
+  unload(signal?: AbortSignal, target?: ModelExecutionTarget): Promise<void>
 }
 
 /**
@@ -149,7 +161,7 @@ export type RenderStreamEvent =
   | { kind: 'last_frame'; png: Buffer }
   | { kind: 'video_start'; mime: string }
   | { kind: 'chunk'; bytes: Buffer }
-  | { kind: 'done'; timings: Record<string, number> }
+  | { kind: 'done'; timings: Record<string, number>; worker?: { id: string; label: string } }
 
 /**
  * One catalog entry, which a provider plugin implements and registers: one model of the provider serving one task. A
@@ -166,6 +178,10 @@ export type RenderStreamEvent =
  *   rejects for any backend failure. Aborting `signal` cancels the render and rejects with its reason.
  */
 export type ModelEntry<T extends TaskId = TaskId> = ModelKey<T> & PrimitiveTypes[TaskMap[T]]['entry'] & {
+  /** The provider reserves independent workers safely for overlapping render calls. */
+  concurrentRenders?: boolean
+  /** Whether this provider honors explicit worker targets without fallback. */
+  workerRouting?: boolean
   /** Creator-facing variant name; absent, use the model key. */
   displayName?: string
   /** Present when the provider supports native model loading and unloading. */
@@ -177,7 +193,7 @@ export type ModelEntry<T extends TaskId = TaskId> = ModelKey<T> & PrimitiveTypes
    * @returns the facts.
    * @throws Error when the backend cannot be reached.
    */
-  facts(): Promise<PrimitiveTypes[TaskMap[T]]['facts']>
+  facts(target?: ModelExecutionTarget): Promise<PrimitiveTypes[TaskMap[T]]['facts']>
   /**
    * Read the model's own description of the requests it accepts: the limits that the agent needs, such as durations,
    * aspect ratios and resolutions; the inputs it takes with their media types and counts; and the parameters it
@@ -192,14 +208,14 @@ export type ModelEntry<T extends TaskId = TaskId> = ModelKey<T> & PrimitiveTypes
    * @returns the problems, each one agent-facing sentence; empty when the model renders the request.
    * @throws Error when the backend cannot be reached.
    */
-  validateGenerationRequest(request: PrimitiveTypes[TaskMap[T]]['request']): Promise<string[]>
+  validateGenerationRequest(request: PrimitiveTypes[TaskMap[T]]['request'], target?: ModelExecutionTarget): Promise<string[]>
   /**
    * Render one request, such as one shot of a `video` entry.
    * @param request - the request of the task's primitive, such as a `RenderRequest`.
    * @param signal - cancels the render.
    * @returns the result of the task's primitive, such as the render stream of a `video` entry.
    */
-  render(request: PrimitiveTypes[TaskMap[T]]['request'], signal?: AbortSignal): PrimitiveTypes[TaskMap[T]]['result']
+  render(request: PrimitiveTypes[TaskMap[T]]['request'], signal?: AbortSignal, target?: ModelExecutionTarget): PrimitiveTypes[TaskMap[T]]['result']
   /**
    * The prompt skill of this model and task, when the model has its own prompt rules: the skill name, a description
    * that names the model and the task and no tool, and the skill body. While the entry is registered and the DSH skill

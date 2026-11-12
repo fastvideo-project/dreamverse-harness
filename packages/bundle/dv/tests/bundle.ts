@@ -28,6 +28,7 @@ import DvTextNode from '@dv/text-node'
 import DvTimeline from '@dv/timeline'
 import DvApi from '@dv/api'
 import DvChatReferences from '@dv/chat-references'
+import DvHardware from '@dv/hardware'
 import DvModels, { type ModelEntry } from '@dv/models'
 import * as OpenRouter from '@dv/openrouter'
 import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
@@ -83,6 +84,7 @@ const PLUGINS: Record<string, object> = {
   '@dv/character': DvCharacter, '@dv/location': DvLocation, '@dv/style': DvStyle,
   '@dv/shot-render': DvShotRender, '@dv/text-node': DvTextNode, '@dv/timeline': DvTimeline,
   '@dv/api': DvApi, '@dv/chat-references': DvChatReferences,
+  '@dv/hardware': DvHardware, '@deepseek-ai/dsh-credentials-memory': MemoryCredentials,
   '@dv/models': DvModels, '@dv/fastvideo': FakeFastVideo, '@dv/uniserve': FakeUniserve, '@dv/workflow-story': WorkflowStory,
   '@dv/sglang-diffusion': SglangDiffusion, '@dv/image-generate': DvImageGenerate,
   '@dv/sglang-omni': SglangOmni, '@dv/audio-generate': DvAudioGenerate,

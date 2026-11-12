@@ -24,6 +24,8 @@ import DvFfmpeg from '@dv/ffmpeg'
 import type { ModelFactsConfig } from '@dv/fastvideo-generation-client'
 import DvModels, { type ModelEntry, type RenderStreamEvent, type TaskOfPrimitive } from '@dv/models'
 import DvProject from '@dv/project'
+import DvHardware, { type WorkerConfig } from '@dv/hardware'
+import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { provideChatServices } from '../../project/tests/workspaces.ts'
 import * as FastVideo from '../src/index.ts'
@@ -183,7 +185,7 @@ async function startFakeServer(facts: ModelFactsConfig, options: {
 
 /** The plugins the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
 const PLUGINS = {
-  SkillRegistry, DvProject, DvFfmpeg, DvAssetPool, DvModels,
+  SkillRegistry, DvProject, DvFfmpeg, DvAssetPool, DvModels, DvHardware, MemoryCredentials,
   FastVideo: { name: FastVideo.name, inject: FastVideo.inject, Config: FastVideo.Config, apply: FastVideo.apply },
 }
 
@@ -193,14 +195,16 @@ const PLUGINS = {
  * @param model - the served model that `tasks` configures.
  * @returns the root context.
  */
-async function start(tasks: Partial<Record<VideoTask, FastVideo.TaskServer>>, model = 'fasth3'): Promise<Context> {
+async function start(tasks: Partial<Record<VideoTask, FastVideo.TaskServer>>, model = 'fasth3', hardware?: Record<string, WorkerConfig>): Promise<Context> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-fastvideo-'))
   const globals = globalThis as typeof globalThis & { __dvFastVideo?: typeof PLUGINS }
   globals.__dvFastVideo = PLUGINS
-  const config = [`models: ${JSON.stringify({ [model]: tasks })}`]
+  const config = [`models: ${JSON.stringify({ [model]: tasks })}`, `useHardware: ${hardware !== undefined}`]
   const rows: string[] = []
   const plugins = [
     ['skills', 'SkillRegistry', []],
+    ['credentials', 'MemoryCredentials', []],
+    ['hardware', 'DvHardware', [`workers: ${JSON.stringify(hardware ?? {})}`]],
     ['dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`]],
     ['dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, 'ffprobePath: ffprobe']],
     ['dv-asset-pool', 'DvAssetPool', []],
@@ -617,6 +621,73 @@ describe('dv-fastvideo', () => {
       .toThrow('dv-fastvideo serves model "fasth3" for no task "reference"; its tasks: ref2v, t2v.')
     expect(() => { FastVideo.apply(ctx, { models: { fasth3: {} } }) }).toThrow('dv-fastvideo: model "fasth3" names no task.')
     expect(ctx.dvModels.list().map(entry => entry.task)).toEqual(['ref2v'])
+  })
+
+  it('runs independent managed generations on two configured workers through the real provider', async () => {
+    const video = await sampleVideo(false)
+    let finish = false
+    let submitted = 0
+    let bothSubmitted!: () => void
+    const overlap = new Promise<void>((resolve) => { bothSubmitted = resolve })
+    const counts = [0, 0]
+    const lifecycle: Array<{ worker: number; action: string }> = []
+    let offline = -1
+    const urls: string[] = []
+    for (const index of [0, 1]) {
+      const server = createServer((incoming, response) => {
+        response.setHeader('content-type', 'application/json')
+        const path = incoming.url ?? ''
+        if (path.startsWith('/v1/model_info')) return void response.end(JSON.stringify({ served_model_name: 'parallel-test' }))
+        if (path.startsWith('/v1/model_state') && offline === index) { response.statusCode = 503; return void response.end('{}') }
+        if (path.startsWith('/v1/models/')) { lifecycle.push({ worker: index, action: path }); return void response.end('{}') }
+        if (path.startsWith('/v1/model_state')) return void response.end(JSON.stringify({ installed: true, loaded_model: 'parallel-test', loading_model: null, busy: false }))
+        if (path === '/v1/videos' && incoming.method === 'POST') {
+          incoming.resume()
+          counts[index]! += 1; submitted += 1
+          if (submitted === 2) bothSubmitted()
+          return void response.end(JSON.stringify({ id: 'job-' + index, status: 'queued' }))
+        }
+        if (path.endsWith('/content')) { response.setHeader('content-type', 'video/mp4'); return void response.end(video) }
+        response.end(JSON.stringify({ status: finish ? 'completed' : 'in_progress' }))
+      })
+      server.listen(0, '127.0.0.1'); await once(server, 'listening')
+      cleanups.push(async () => { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) })
+      urls.push(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)
+    }
+    const facts: ModelFactsConfig = { modelId: 'parallel-test', maxReferences: 0, referenceMediaTypes: {},
+      frameSizes: { '16:9': { '480p': [832, 480] } }, numFramesByDurationSec: { 5: 124 } }
+    const hardware = Object.fromEntries(urls.map((baseUrl, index) => ['gpu-' + index, { baseUrl, label: 'GPU ' + index,
+      provider: 'fastvideo', enabled: true, transport: 'api' as const, credentialRef: '', sshHost: '', remoteHost: '127.0.0.1', remotePort: 18000 }]))
+    const ctx = await start({ t2v: { baseUrl: urls[0]!, managed: true, pollIntervalMs: 10, modelFacts: facts } }, 'fasth3', hardware)
+    const entry = fasth3(ctx, 't2v')
+    const controller = new AbortController()
+    const deadline = setTimeout(() => { controller.abort(new Error('Parallel workers did not both accept a job')) }, 10000)
+    const renders = [1, 2].map(seed => collect(entry.render({ ...request([], null), seed, prompt: 'A lake.', frameWidth: 832, frameHeight: 480 }, controller.signal)))
+    try {
+      await Promise.race([overlap, Promise.all(renders).then(() => { throw new Error('Both workers must accept before either finishes') })])
+      expect(counts).toEqual([1, 1])
+      expect((await ctx.dvHardware.check()).map(worker => worker.busy)).toEqual([true, true])
+      finish = true
+      const events = await Promise.all(renders)
+      expect(events.map(outputs => outputs.find(event => event.kind === 'done'))).toEqual(expect.arrayContaining([
+        expect.objectContaining({ worker: { id: 'gpu-0', label: 'GPU 0' } }),
+        expect.objectContaining({ worker: { id: 'gpu-1', label: 'GPU 1' } }),
+      ]))
+      expect(ctx.dvHardware.list().map(worker => ctx.dvHardware.isReserved(worker.id))).toEqual([false, false])
+      const pinned = await collect(entry.render({ ...request([], null), prompt: 'A lake.', frameWidth: 832, frameHeight: 480 }, undefined, { worker: 'gpu-1' }))
+      expect(pinned.find(output => output.kind === 'done')).toMatchObject({ worker: { id: 'gpu-1' } })
+      expect(counts).toEqual([1, 2])
+      await entry.runtime!.load(undefined, { worker: 'gpu-1' })
+      await entry.runtime!.unload(undefined, { worker: 'gpu-1' })
+      expect(lifecycle).toEqual([{ worker: 1, action: '/v1/models/load' }, { worker: 1, action: '/v1/models/unload' }])
+      const status = await entry.runtime!.status(undefined, { worker: 'gpu-1' })
+      expect(status.workers?.map(worker => worker.id)).toEqual(['gpu-1'])
+      await expect(entry.facts({ worker: 'missing' })).rejects.toThrow('is not enabled')
+      offline = 1
+      await expect(collect(entry.render({ ...request([], null), prompt: 'A lake.' }, undefined, { worker: 'gpu-1' }))).rejects.toThrow('No reachable worker')
+      expect(counts).toEqual([1, 2])
+
+    } finally { clearTimeout(deadline); finish = true; controller.abort(); await Promise.allSettled(renders) }
   })
 
   it.skipIf(REAL_BACKEND === undefined || !existsSync(REAL_REFERENCE) || !existsSync(FFMPEG))('renders a real five-second shot from an image, a video with sound and an audio file against the running server', async () => {

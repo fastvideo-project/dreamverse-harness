@@ -340,6 +340,7 @@ export class AgentTools {
       name,
       description: [spec.description, ...hints].join(' '),
       parameters,
+      isConcurrencySafe: args => spec.isConcurrencySafe?.(args) === true,
       output: {
         schema: RESULT_SCHEMA,
         render: (_args, value) => formatToolResult(value, spec),

@@ -18,16 +18,62 @@ const disposers: Array<() => Promise<void> | void> = []
 
 afterEach(async () => {
   for (const dispose of disposers.splice(0).reverse()) await dispose()
+  renderer.requests.splice(0)
 })
 
 describe('DreamVerse bundle composition', () => {
+  it('carries an explicit worker through tool admission and execution and refuses unsupported placement', async () => {
+    const { ctx, services, dispose } = await bootBundle()
+    disposers.push(dispose)
+    const targets: unknown[] = []
+    ctx.dvModels.register(Object.create(fasth3, {
+      model: { value: 'targeted' }, workerRouting: { value: true },
+      facts: { value: (target: unknown) => { targets.push(target); return fasth3.facts() } },
+      validateGenerationRequest: { value: async (_request: unknown, target: unknown) => { targets.push(target); return [] } },
+      render: { value: (request: Parameters<typeof fasth3.render>[0], signal: AbortSignal, target: unknown) => {
+        targets.push(target)
+        return fasth3.render(request, signal)
+      } },
+    }))
+    services.chats.open('anonymous', await ctx.dvProject.newProjectFolder('worker-target'))
+    const call = (name: string, args: Record<string, unknown>) => ctx.tools.execute({
+      callId: ToolCallId(name), name, arguments: args, signal: AbortSignal.timeout(10000),
+    })
+    await call('dv_proj_create', { title: 'worker-target' })
+    const params = { modality: 'video', task: 'ref2v', provider: 'uniserve', model: 'targeted', worker: 'gpu-2',
+      prompt: 'A lake', duration_sec: 1, reason: 'Render on the selected worker' }
+    const result = await call('dv_shot_render', params)
+    expect(result.isError).toBeFalsy()
+    expect((result.value as OperationToolValue).params).toMatchObject({ worker: 'gpu-2' })
+    expect(targets.length).toBeGreaterThanOrEqual(3)
+    expect(targets.every(target => JSON.stringify(target) === JSON.stringify({ worker: 'gpu-2' }))).toBe(true)
+    const unsupported = await call('dv_shot_render', { ...params, model: 'fasth3' })
+    expect(unsupported.isError && unsupported.error.message).toContain('does not support explicit worker placement')
+  })
+
+  it('allows parallel tool batches only for a provider that reserves independent workers', async () => {
+    const { ctx, dispose } = await bootBundle()
+    disposers.push(dispose)
+    ctx.dvModels.register(Object.create(fasth3, { model: { value: 'parallel' }, concurrentRenders: { value: true } }))
+    const tool = ctx.tools.get('dv_shot_render')!
+    const args = { modality: 'video', task: 'ref2v', provider: 'uniserve', model: 'parallel',
+      prompt: 'A lake', duration_sec: 1, reason: 'Render an independent shot' }
+    expect(tool.isConcurrencySafe?.(args)).toBe(true)
+    expect(tool.isConcurrencySafe?.({ ...args, model: 'fasth3' })).toBe(false)
+    expect(ctx.tools.get('dv_models_unload')?.isConcurrencySafe?.(args) ?? false).toBe(false)
+  })
+
   it('persists a conversation video choice, exposes lifecycle tools, and prevents a different agent render', async () => {
     const { ctx, services, dispose } = await bootBundle()
     disposers.push(dispose)
     let loaded = false
-    const runtime = { status: async () => ({ installed: true, loaded, loading: false, busy: false }),
-      load: async () => { loaded = true }, unload: async () => { loaded = false } }
-    ctx.dvModels.register(Object.create(fasth3, { model: { value: 'pika' }, provider: { value: 'fastvideo' }, runtime: { value: runtime } }))
+    const lifecycleTargets: unknown[] = []
+    const runtime = { status: async (_signal?: AbortSignal, target?: { worker: string }) => {
+      lifecycleTargets.push(target)
+      return { installed: true, loaded, loading: false, busy: false }
+    },
+    load: async () => { loaded = true }, unload: async () => { loaded = false } }
+    ctx.dvModels.register(Object.create(fasth3, { model: { value: 'pika' }, provider: { value: 'fastvideo' }, runtime: { value: runtime }, workerRouting: { value: true } }))
     services.chats.open('anonymous', await ctx.dvProject.newProjectFolder('model-controls'))
     const call = async (name: string, args: Record<string, unknown>) => ctx.tools.execute({
       callId: ToolCallId(name), name, arguments: args, signal: new AbortController().signal,
@@ -42,7 +88,8 @@ describe('DreamVerse bundle composition', () => {
       prompt: 'A lake', duration_sec: 1, reason: 'Render' })
     expect(wrong.isError && wrong.error.message).toContain("This conversation's video model is fastvideo/pika")
     const key = { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'pika', reason: 'Preload for next shot' }
-    expect((await call('dv_models_load', key)).isError).toBeFalsy()
+    expect((await call('dv_models_load', { ...key, worker: 'gpu-2' })).isError).toBeFalsy()
+    expect(lifecycleTargets.at(-1)).toEqual({ worker: 'gpu-2' })
     expect(loaded).toBe(true)
     expect((await call('dv_models_unload', key)).isError).toBeFalsy()
     expect(loaded).toBe(false)
@@ -95,7 +142,7 @@ describe('DreamVerse bundle composition', () => {
         t2v: { baseUrl: 'http://127.0.0.1:8031', modelFacts: { modelId: 'fasth3', maxReferences: 0 } },
       } } },
     })
-    const fastVideoTasks = Object.values(FastVideoConfig(fastVideoRow?.config as FastVideoConfig).models['fasth3'] ?? {})
+    const fastVideoTasks = Object.values(FastVideoConfig(fastVideoRow?.config as Parameters<typeof FastVideoConfig>[0]).models['fasth3'] ?? {})
     expect(fastVideoTasks.map(task => deriveModelFacts(task.modelFacts))).toMatchObject([
       { aspectRatios: ['16:9', '9:16', '1:1'], resolutions: ['768p'], minDurationSec: 5, maxDurationSec: 15 },
       { aspectRatios: ['16:9', '9:16', '1:1'], resolutions: ['768p'], minDurationSec: 5, maxDurationSec: 15 },

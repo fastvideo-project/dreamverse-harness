@@ -16,7 +16,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context, Volatile } from '@deepseek-ai/cordis'
 import { validateArgs, type ParameterSchemaSpec } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
@@ -25,7 +25,9 @@ import {
 } from '@dv/fastvideo-generation-client'
 import type {} from '@dv/asset-pool'
 import type {} from '@dv/ffmpeg'
-import type { ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent, TaskId } from '@dv/models'
+import type { WorkerConnection } from '@dv/hardware'
+import { WorkerPool, type WorkerClient } from './worker-pool.ts'
+import type { ModelEntry, ModelExecutionTarget, RenderModelFacts, RenderRequest, RenderStreamEvent, TaskId } from '@dv/models'
 import { FASTH3 } from './fasth3.ts'
 import { PIKA_H3_FLEX } from './pika-h3-flex.ts'
 import { modelPrompt } from './reference-labels.ts'
@@ -39,11 +41,14 @@ export type TaskServer = GenerationConfig
 export interface Config {
   /** The models to register, by model name, and for each the tasks to serve it for, by task ID, with their servers. */
   models: Record<string, Record<string, TaskServer>>
+  /** Route managed generations through the saved hardware inventory. */
+  useHardware?: Volatile<boolean>
 }
 
 /** Loader validation. */
-export const Config: z<Config> = z.object({
+export const Config = z.object({
   models: z.dict(z.dict(DvFastvideoGeneration.Config)).required(),
+  useHardware: z.boolean().default(false).volatile(),
 })
 
 /** The provider name of every entry this plugin registers. */
@@ -309,42 +314,93 @@ function backendOrderLabels(assign: AssignReferenceLabels): AssignReferenceLabel
  * @returns the entry.
  * @throws Error when the server's facts leave the task's inputs no room.
  */
-function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServer): ModelEntry {
+function modelEntry(
+  ctx: Context, model: string, task: TaskId, server: TaskServer, useHardware: () => boolean, pool: WorkerPool,
+): ModelEntry {
   const served = SERVED[model]?.[task]
   /* v8 ignore next -- checkConfig refuses unknown models and tasks before any entry is built. */
   if (served === undefined) throw new Error(`dv-fastvideo serves no model "${model}" for task "${task}".`)
   const { inputs, extra, assignReferenceLabels, skill } = served
   const labels = backendOrderLabels(assignReferenceLabels)
-  const client = new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), {
-    ...server, task: served.nativeTask ?? server.task ?? null,
-  })
+  const clientConfig = { ...server, task: served.nativeTask ?? server.task ?? null }
+  const client = new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), clientConfig)
   // A task that the config leaves unset is sent without `task`; the server's defaults map it as the harness task does.
   const nativeTask = served.nativeTask ?? server.task ?? NATIVE_TASKS[task]
+  const hardwareClients = new WeakMap<WorkerConnection, WorkerClient>()
+  const targetWorkers = (target?: ModelExecutionTarget): WorkerClient[] => {
+    if (!useHardware()) {
+      if (target !== undefined) throw new Error('Configure hardware workers before selecting a device.')
+      return []
+    }
+    const hardware = ctx.get('dvHardware')
+    if (hardware === undefined) throw new Error('Hardware configuration is unavailable.')
+    if (server.managed !== true) throw new Error('Hardware workers require a managed native FastVideo catalog.')
+    const workers = hardware.workers(PROVIDER).map((connection) => {
+      const existing = hardwareClients.get(connection)
+      if (existing !== undefined) return existing
+      const worker: WorkerClient = { id: connection.id, label: connection.label,
+        eligible: () => hardware.eligible(connection), isReserved: () => hardware.isReserved(connection.id),
+        reserve: () => hardware.eligible(connection) ? hardware.reserve(connection.id) : null,
+        client: new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'),
+          { ...clientConfig, baseUrl: connection.baseUrl }, connection.fetch) }
+      hardwareClients.set(connection, worker)
+      return worker
+    })
+    if (target === undefined) return workers
+    const selected = workers.find(worker => worker.id === target.worker)
+    if (selected === undefined) throw new Error(`Worker "${target.worker}" is not enabled for FastVideo. Call dv_hardware_list and select an enabled worker.`)
+    return [selected]
+  }
+  const modelFacts = (target?: ModelExecutionTarget): Promise<ModelFacts> => {
+    const workers = targetWorkers(target)
+    if (!useHardware()) return client.model()
+    if (workers.length === 0) throw new Error('No enabled FastVideo workers. Add or enable hardware before generating.')
+    return Promise.any(workers.map(worker => worker.client.model(AbortSignal.timeout(5000))))
+  }
   const limits = deriveInputLimits(`${model} ${task}`, inputs, client.facts)
   return {
     modality: 'video',
     task,
     provider: PROVIDER,
     model,
+    get concurrentRenders() { return useHardware() },
+    get workerRouting() { return useHardware() },
     ...server.displayName == null ? {} : { displayName: server.displayName },
     ...server.managed !== true ? {} : { runtime: {
-      status: (signal?: AbortSignal) => client.modelStatus(signal),
-      load: (signal?: AbortSignal) => client.loadModel(signal),
-      unload: (signal?: AbortSignal) => client.unloadModel(signal),
+      status: async (signal?: AbortSignal, target?: ModelExecutionTarget) => {
+        const workers = targetWorkers(target)
+        if (!useHardware()) return client.modelStatus(signal)
+        const states = await pool.states(workers, signal)
+        const installed = states.filter(state => state.available && state.installed)
+        return { installed: installed.length > 0, loaded: states.some(state => state.loaded),
+          loading: states.some(state => state.loading),
+          busy: installed.length > 0 && installed.every(state => state.busy || state.loading), workers: states }
+      },
+      load: async (signal?: AbortSignal, target?: ModelExecutionTarget) => {
+        const workers = targetWorkers(target)
+        if (!useHardware()) return client.loadModel(signal)
+        const lease = await pool.acquire(workers, signal)
+        try { await lease.worker.client.loadModel(signal) } finally { lease.release() }
+      },
+      unload: async (signal?: AbortSignal, target?: ModelExecutionTarget) => {
+        const workers = targetWorkers(target)
+        if (!useHardware()) return client.unloadModel(signal)
+        await pool.unload(workers, signal)
+      },
     } },
     description: served.description,
     promptSkill: {
       name: skill.name, description: skill.description,
       content: readFileSync(new URL(`../skills/${skill.file}`, import.meta.url), 'utf8'),
     },
-    async facts(): Promise<RenderModelFacts> {
+    async facts(target?: ModelExecutionTarget): Promise<RenderModelFacts> {
       const {
         modelId, aspectRatios, resolutions, frameSizes, minDurationSec, maxDurationSec, numFramesByDurationSec,
-      } = await client.model()
+      } = await modelFacts(target)
       return { modelId, aspectRatios, resolutions, frameSizes, minDurationSec, maxDurationSec, numFramesByDurationSec }
     },
     async schema(): Promise<JsonValue> {
-      const facts = await client.model()
+      const facts = await modelFacts()
       return {
         duration_sec: { min: facts.minDurationSec, max: facts.maxDurationSec },
         aspect_ratios: facts.aspectRatios,
@@ -354,8 +410,8 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
         ...facts.tasks === undefined ? {} : { server_tasks: facts.tasks.map(({ task: served }) => served) },
       }
     },
-    async validateGenerationRequest(request: RenderRequest): Promise<string[]> {
-      const facts = await client.model()
+    async validateGenerationRequest(request: RenderRequest, target?: ModelExecutionTarget): Promise<string[]> {
+      const facts = await modelFacts(target)
       const mediaTypeOf = (asset: RenderRequest['references'][number]) => ctx.dvAssetPool.mediaType(asset)
       return [
         ...servedProblems(`${model} ${task}`, nativeTask, facts, request, mediaTypeOf),
@@ -364,7 +420,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
         ...served.modelProblems?.(request, mediaTypeOf) ?? [],
       ]
     },
-    render(request: RenderRequest, signal?: AbortSignal): AsyncIterable<RenderStreamEvent> {
+    render(request: RenderRequest, signal?: AbortSignal, target?: ModelExecutionTarget): AsyncIterable<RenderStreamEvent> {
       const assets = [...request.references, ...request.firstFrame === null ? [] : [request.firstFrame],
         ...request.lastFrame === null ? [] : [request.lastFrame]]
       return (async function* () {
@@ -380,22 +436,26 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
         const media = await Promise.all(assets.map(async asset => ({
           asset, mediaType: ctx.dvAssetPool.mediaType(asset), hasAudio: audio && await ctx.dvAssetPool.hasAudio(asset),
         })))
-        const { video, mime, timings } = await client.generateSegment({
-          prompt: modelPrompt(request, labels, media),
-          references,
-          frameWidth: request.frameWidth,
-          frameHeight: request.frameHeight,
-          numFrames: request.numFrames,
-          seed: request.seed,
-          ...signal === undefined ? {} : { signal },
-        })
-        const png = await ctx.dvFfmpeg.lastFrame(video)
-        // ffmpeg runs to completion; an abort during it rejects here.
-        signal?.throwIfAborted()
-        yield { kind: 'last_frame', png }
-        yield { kind: 'video_start', mime }
-        yield { kind: 'chunk', bytes: video }
-        yield { kind: 'done', timings }
+        const workers = targetWorkers(target)
+        const lease = useHardware() ? await pool.acquire(workers, signal) : null
+        try {
+          const { video, mime, timings } = await (lease?.worker.client ?? client).generateSegment({
+            prompt: modelPrompt(request, labels, media),
+            references,
+            frameWidth: request.frameWidth,
+            frameHeight: request.frameHeight,
+            numFrames: request.numFrames,
+            seed: request.seed,
+            ...signal === undefined ? {} : { signal },
+          })
+          const png = await ctx.dvFfmpeg.lastFrame(video)
+          // ffmpeg runs to completion; an abort during it rejects here.
+          signal?.throwIfAborted()
+          yield { kind: 'last_frame', png }
+          yield { kind: 'video_start', mime }
+          yield { kind: 'chunk', bytes: video }
+          yield { kind: 'done', timings, ...lease === null ? {} : { worker: { id: lease.worker.id, label: lease.worker.label } } }
+        } finally { lease?.release() }
       })()
     },
   }
@@ -409,10 +469,22 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
  */
 export function apply(ctx: Context, config: Config): void {
   checkConfig(config)
-  const configured = Object.entries(config.models).flatMap(([model, tasks]) =>
-    Object.entries(tasks).map(([task, server]) => ({ model, task: task as TaskId, server })))
-  for (const { model, task, server } of configured) {
-    const entry = modelEntry(ctx, model, task, server)
-    ctx.effect(() => ctx.dvModels.register(entry), `dvModels ${model} ${task}`)
+  const pool = new WorkerPool()
+  const entries = Object.entries(config.models).flatMap(([model, tasks]) =>
+    Object.entries(tasks).map(([task, server]) =>
+      modelEntry(ctx, model, task as TaskId, server, () => config.useHardware?.get() ?? false, pool)))
+  ctx.inject(['dvHardware'], scope => scope.effect(() => scope.dvHardware.registerInspector(PROVIDER, async (connection, signal) => {
+    const response = await connection.fetch(new URL('/v1/model_state', connection.baseUrl), { signal })
+    if (!response.ok) throw new Error('Worker inspection failed')
+    const state: unknown = await response.json()
+    if (typeof state !== 'object' || state === null || !('busy' in state) || typeof state.busy !== 'boolean'
+      || !('loaded_model' in state) || !(state.loaded_model === null || typeof state.loaded_model === 'string')
+      || !('loading_model' in state) || !(state.loading_model === null || typeof state.loading_model === 'string')) {
+      throw new Error('Invalid worker model state')
+    }
+    return { reachable: true, busy: state.busy, loadedModel: state.loaded_model, loadingModel: state.loading_model }
+  }), 'FastVideo hardware inspection'))
+  for (const entry of entries) {
+    ctx.effect(() => ctx.dvModels.register(entry), `dvModels ${entry.model} ${entry.task}`)
   }
 }

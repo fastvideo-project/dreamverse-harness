@@ -10,7 +10,8 @@ import { randomInt } from 'node:crypto'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type {} from '@dv/canvas'
 import {
-  assertVideoSelection, formatModelKey, type ModelEntry, type PrimitiveId, type PrimitiveTypes, type TaskOfPrimitive,
+  assertVideoSelection, formatModelKey, type ModelEntry, type ModelExecutionTarget,
+  type PrimitiveId, type PrimitiveTypes, type TaskOfPrimitive,
 } from '@dv/models'
 import type {
   AssetId, OperationContext, OperationInput, OperationOutput, OperationResult, OperationSpec, OperationToolCall, ProjectId,
@@ -157,6 +158,14 @@ class Unavailable extends Error {
   }
 }
 
+/** Resolve explicit placement before reading capabilities or admitting a generation. */
+function executionTarget(entry: ModelEntry, params: Record<string, unknown>): ModelExecutionTarget | undefined {
+  if (params['worker'] === undefined) return undefined
+  if (typeof params['worker'] !== 'string' || params['worker'].trim() === '') throw new Error('Choose a worker ID from dv_hardware_list or omit worker for automatic placement.')
+  if (entry.workerRouting !== true) throw new Error('This provider does not support explicit worker placement.')
+  return { worker: params['worker'] }
+}
+
 /** The reason for the problems that a model finds in a request. */
 function modelReason(entry: ModelEntry, problems: readonly string[]): string {
   return `Model ${formatModelKey(entry)} cannot generate this: ${problems.join(' ')}`
@@ -240,7 +249,8 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
       try {
         const entry = this.ctx.dvModels.resolve(tasks, call.params)
         const unavailable = (error: unknown): never => { throw new Unavailable(entry, error) }
-        const facts = await entry.facts().catch(unavailable)
+        const target = executionTarget(entry, call.params)
+        const facts = await entry.facts(target).catch(unavailable)
         const inputs: RequestInput[] = [
           ...call.inputs.flatMap(({ role, ref }) =>
             this.assetsOf(call.project, state, ref).map(asset => ({ role, ref, resolved_asset: asset }))),
@@ -250,7 +260,7 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
         // An input without an asset yet (its producer has not finished, or the role is chained): execute checks the
         // full request before the model runs.
         if (inputs.some(input => input.resolved_asset === null)) return { reasons: [], end: REFUSAL_END }
-        const problems = await entry.validateGenerationRequest(request).catch(unavailable)
+        const problems = await entry.validateGenerationRequest(request, target).catch(unavailable)
         return { reasons: problems.length === 0 ? [] : [modelReason(entry, problems)], end: REFUSAL_END }
       } catch (error) {
         return { reasons: [messageOf(error)], end: error instanceof Unavailable ? UNAVAILABLE_END : REFUSAL_END }
@@ -280,11 +290,12 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
      */
     private async execute(run: OperationContext): Promise<OperationResult> {
       const entry = this.ctx.dvModels.resolve(tasks, run.params)
-      const facts = await entry.facts()
+      const target = executionTarget(entry, run.params)
+      const facts = await entry.facts(target)
       const { request, seed } = requestOf(spec, facts, run.params, run.inputs)
-      const problems = await entry.validateGenerationRequest(request)
+      const problems = await entry.validateGenerationRequest(request, target)
       if (problems.length > 0) throw new Error(`${modelReason(entry, problems)} ${REFUSAL_END}`)
-      const result = await spec.toOutputs(this.ctx, run, entry.render(request, run.signal), facts, request)
+      const result = await spec.toOutputs(this.ctx, run, entry.render(request, run.signal, target), facts, request)
       return seed === null ? result : { ...result, report: { seed, ...result.report } }
     }
 
@@ -296,6 +307,9 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
         params: operationParams,
         inputs: spec.inputs, outputs: spec.outputs, ...toolParams === undefined ? {} : { toolParams },
         deterministic: false, resource: 'gpu',
+        isConcurrencySafe: params => this.ctx.dvModels.list().some(entry => entry.concurrentRenders === true
+          && entry.modality === params['modality'] && entry.task === params['task']
+          && entry.provider === params['provider'] && entry.model === params['model']),
         summarize: record => spec.summarize(record),
         prepareToolCall: async (call) => {
           spec.prepareToolCall?.(call)

@@ -88,6 +88,7 @@ export function installModelControls(ctx: Context, models: DvModels): void {
           task: { type: 'string', required: true, description: 'The task from dv_models_list.' },
           provider: { type: 'string', required: true, description: 'The provider from dv_models_list.' },
           model: { type: 'string', required: true, description: 'The model from dv_models_list.' },
+          worker: { type: 'string', description: 'Exact worker ID from dv_hardware_list. Omit for provider-wide status or automatic load placement. Specify worker to unload only that device.' },
         },
         inputs: {}, outputs: [], deterministic: false, resource: action === 'status' ? 'none' : 'gpu',
         ...action === 'status' ? { readOnly: true } : { outsideHistory: true },
@@ -95,8 +96,13 @@ export function installModelControls(ctx: Context, models: DvModels): void {
         execute: async (run) => {
           const entry = models.get(modelKey(run.params))
           if (entry?.runtime === undefined) throw new Error('This provider does not expose GPU lifecycle controls.')
-          if (action !== 'status') await entry.runtime[action](run.signal)
-          return { outputs: [], report: { ...(await entry.runtime.status(run.signal)) } }
+          const worker = run.params['worker']
+          const target = typeof worker === 'string' && worker !== '' ? { worker } : undefined
+          if (worker !== undefined && target === undefined) throw new Error('Choose a worker ID or omit worker.')
+          if (target !== undefined && entry.workerRouting !== true) throw new Error('This provider does not support explicit worker placement.')
+          if (action !== 'status') await entry.runtime[action](run.signal, target)
+          return { outputs: [], report: { ...(await entry.runtime.status(run.signal, target)),
+            ...target === undefined ? {} : { worker: target.worker } } }
         },
       }
       scope.effect(() => scope.dvProject.registerOperation(operation), `model ${action} operation`)
