@@ -44,14 +44,14 @@ kind: "package-reference"
 | `audioedit.split` | `dv_audioedit_split` | 输入 `audio`；`pieces`（2 或更多，在最长的停顿处切）与 `at`（切点时间，单位秒，大于 0、递增、相邻至少隔 1 毫秒）二选一 | `{pieces: [{start_sec, end_sec, duration_sec}]}` |
 | `audioedit.speed` | `dv_audioedit_speed` | 输入 `audio`；`speed`（0.5 到 100）与 `duration_sec`（大于 0；算出的倍数也须在同一范围内）二选一 | `{speed, duration_sec}` |
 
-两个参数都没给或都给了、或取值超出范围的调用，会在写任何记录之前以 `invalid_params` 被拒绝。音频无法满足的调用会把其记录标为失败，代码为 `operation_failed`：停顿不够切成 `pieces` 段、切点在结尾或结尾之后、输入不是音频、ffprobe 读不出音频时长，或 ffmpeg 出错。第一段输出的角色是 `piece`，之后各段的角色依次是 `output_1`、`output_2` 等。`audioedit.speed` 是确定性的，所以输入和参数相同的重复调用会复用之前的输出；`audioedit.split` 不是，因为它在停顿处的切点还取决于 `pauseDb` 和 `minPauseSec`。服务方法 `split(audio, cut, dir)` 和 `speed(audio, change, dir)` 为其他调用方做同样的检查。
+两个参数都没给或都给了、或取值超出范围的调用，会在写任何记录之前以 `invalid_params` 被拒绝。音频无法满足的调用会把其记录标为失败，代码为 `operation_failed`：停顿不够切成 `pieces` 段、切点在结尾或结尾之后、输入不是音频、音频解码后没有样本，或 ffmpeg 出错。第一段输出的角色是 `piece`，之后各段的角色依次是 `output_1`、`output_2` 等。`audioedit.speed` 是确定性的，所以输入和参数相同的重复调用会复用之前的输出；`audioedit.split` 不是，因为它在停顿处的切点还取决于 `pauseDb` 和 `minPauseSec`。服务方法 `split(audio, cut, dir)` 和 `speed(audio, change, dir)` 为其他调用方做同样的检查。
 
 -----
 
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`split` 用 ffprobe 读取时长。给了 `pieces` 时，它在第一条音频流上运行 ffmpeg 的 `silencedetect` 滤镜，保留开始于 0 之后、结束于结尾之前的停顿，取其中最长的 `pieces − 1` 个，在它们的正中间下刀。所有时间都四舍五入到毫秒。随后一条 ffmpeg 命令从第一条音频流写出每一段，格式为 16 位 PCM WAV。`speed` 在给了 `duration_sec` 时由输入的时长算出倍数，应用保持音调的 ffmpeg `atempo` 滤镜，再用 ffprobe 读取结果的时长写入报告。
+`split` 先把第一条音频流解码成 16 位 PCM WAV 文件，再用 ffprobe 读取它的时长；对 MP3 文件，这个解码后的长度比容器报告的时长短。给了 `pieces` 时，它在这个 WAV 文件上运行 ffmpeg 的 `silencedetect` 滤镜，保留开始于 0 之后、结束于结尾之前的停顿，因此音频结尾处的停顿不计入，取其中最长的 `pieces − 1` 个，在它们的正中间下刀。所有时间都四舍五入到毫秒。随后一条 ffmpeg 命令从这个 WAV 文件切出每一段，格式为 16 位 PCM WAV，因此报告的每段长度就是写出的长度。`speed` 以同样方式解码输入，在给了 `duration_sec` 时由解码后的长度算出倍数，应用保持音调的 ffmpeg `atempo` 滤镜，再用 ffprobe 读取结果的时长写入报告。
 
 | 文件 | 内容 |
 | --- | --- |
