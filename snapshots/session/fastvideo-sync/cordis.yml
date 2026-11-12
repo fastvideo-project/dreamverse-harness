@@ -1,0 +1,3 @@
+# The shipped headless profile and default composition own startup.
+- insert:
+    - name: ./fixture.mjs

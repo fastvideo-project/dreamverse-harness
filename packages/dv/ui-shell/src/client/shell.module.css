@@ -613,6 +613,15 @@
   inset: -2px;
 }
 
+/* The 20 px caret, add, and row-menu buttons keep their size; the pseudo-element extends each hit target to 24 px. */
+.treeCaret::after,
+.treeAdd::after,
+.rowMenuButton::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+}
+
 /* The wordmark's 544 x 48 view box at 18 px tall. */
 .brand {
   display: block;
@@ -682,16 +691,19 @@
   position: relative;
   flex: none;
   opacity: 0;
+  pointer-events: none;
 }
 
 .treeRow:focus-within .rowMenu,
 .rowMenu[data-open] {
   opacity: 1;
+  pointer-events: auto;
 }
 
 @media (hover: hover) {
   .treeRow:hover .rowMenu {
     opacity: 1;
+    pointer-events: auto;
   }
 }
 
@@ -699,6 +711,7 @@
 @media (hover: none) {
   .rowMenu {
     opacity: 1;
+    pointer-events: auto;
   }
 }
 

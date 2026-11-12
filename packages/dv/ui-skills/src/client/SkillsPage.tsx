@@ -52,8 +52,8 @@ export function SkillsPage(props: InjectFace<SkillsInjected>): ReactNode {
         <h1 className={css.title}>{t('技能', 'Skills')}</h1>
         <p className={css.intro}>
           {t(
-            '技能是写好的影视生成流程。点「使用」会把 /技能名 放进对话框，补充你的需求后发送；智能体也会在合适的时候自己选用技能。',
-            'A skill is a ready-made video-making procedure. Use puts /name into the chat box; add what you want and send. The agent also picks a skill on its own when one fits.',
+            '技能是写好的影视生成流程。点「使用」把 /技能名 放进对话框，补充需求后发送；智能体也会在合适的时候自己选用技能。',
+            'A skill is a ready-made video-making procedure. Choose “Use” to put /name in the chat box, then add what you want and send. The agent also picks a skill on its own when one fits.',
           )}
         </p>
       </header>

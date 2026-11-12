@@ -8,6 +8,7 @@
   "editor.cancel": "Cancel",
   "editor.save": "Save",
   "editor.saving": "Saving…",
+  "editor.saveFailed": "Not saved. Try again.",
   "editor.markdown": "Markdown text",
   "editor.newerVersion": "Someone saved version {newest} first. Your draft is based on version {base}.",
   "editor.saveOnTop": "Save on top of v{version}",
