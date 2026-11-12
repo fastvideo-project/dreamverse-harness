@@ -1,9 +1,9 @@
 /**
  * The project asset pool panel: an import drop zone, every asset of the project once in thumbnail grids grouped by media
- * type (图片 · 视频 · 从生成中截取的帧), drag sources that carry the asset ID as `application/x-dv-asset`, and the
- * `dvMedia` preview on click, which grows out of the clicked tile and shrinks back into it on close. The
- * panel lists every asset of the project, including the assets of steps that an undo went back past: the asset pool
- * only grows.
+ * type (图片 · 视频 · 从生成中截取的帧 · 音频), drag sources that carry the asset ID as `application/x-dv-asset` and its
+ * MIME type as `application/x-dv-asset-mime`, and the `dvMedia` preview on click, which grows out of the clicked tile
+ * and shrinks back into it on close. The panel lists every asset of the project, including the assets of steps that an
+ * undo went back past: the asset pool only grows.
  *
  * @module @dv/ui-asset-pool/AssetsPanel
  */
@@ -15,9 +15,10 @@ import type { PropsRenderFactories, PropsRuntime, RenderFactorySlot } from '@dee
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import type { Asset } from '@dv/ui-kit/types.ts'
 import { useCurrentProject } from '@dv/ui-kit/current-project.ts'
+import { mediaTypeOf } from '@dv/ui-kit/media-type.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import { useProjectState } from '@dv/ui-kit/useProject.ts'
-import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
+import { DV_ASSET_DRAG_TYPE, DV_ASSET_MIME_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import type {} from '@dv/ui-media/contract'
 import { assetLibrary } from './library.ts'
 import css from './AssetsPanel.module.css'
@@ -59,8 +60,8 @@ export function AssetsPanel(props: AssetsPanelProps): ReactNode {
 
   let body: ReactNode
   if (library === null) body = <p className={css.note}>{state.error === null ? t('正在读取…', 'Loading…') : t(`读取失败：${state.error}`, `Failed to load: ${state.error}`)}</p>
-  else if (library.images.length + library.videos.length + library.extracted.length === 0) {
-    body = <p className={css.note}>{t('还没有素材。在上方导入，或在对话里生成。', 'No images or videos yet. Import files above, or generate them in the chat.')}</p>
+  else if (library.images.length + library.videos.length + library.extracted.length + library.audio.length === 0) {
+    body = <p className={css.note}>{t('还没有素材。在上方导入，或在对话里生成。', 'No images, videos or audio yet. Import files above, or generate them in the chat.')}</p>
   } else {
     body = (
       <>
@@ -70,6 +71,7 @@ export function AssetsPanel(props: AssetsPanelProps): ReactNode {
           title={t('从生成中截取的帧', 'Extracted from generation')} assets={library.extracted} onOpen={onOpen}
           renderFactorySlot={props.renderFactorySlot}
         />
+        <Section title={t('音频', 'Audio')} assets={library.audio} onOpen={onOpen} renderFactorySlot={props.renderFactorySlot} />
       </>
     )
   }
@@ -82,7 +84,7 @@ export function AssetsPanel(props: AssetsPanelProps): ReactNode {
 }
 
 /**
- * The drop zone that imports image and video files through `POST /api/dv/assets/import`, and names each other file it
+ * The drop zone that imports image, video and audio files through `POST /api/dv/assets/import`, and names each other file it
  * refuses; also opens a file chooser on click.
  * @param props - the API client, the project, and the chat session the panel sits beside.
  * @returns the zone.
@@ -96,7 +98,7 @@ function ImportZone(props: { client: DvClient; projectId: string; session: strin
   const t = useText()
   const importFiles = useCallback((files: Iterable<File> | null) => {
     const chosen = [...new Set(files)]
-    const accepted = chosen.filter(file => file.type.startsWith('image/') || file.type.startsWith('video/'))
+    const accepted = chosen.filter(file => ['image', 'video', 'audio'].includes(mediaTypeOf(file.type)))
     setRefused(chosen.filter(file => !accepted.includes(file)).map(file => file.name))
     for (const file of accepted) {
       setPending(count => count + 1)
@@ -120,14 +122,14 @@ function ImportZone(props: { client: DvClient; projectId: string; session: strin
     >
       {pending > 0
         ? t(`导入中（${String(pending)}）…`, `Importing (${String(pending)})…`)
-        : t('拖入图片或视频导入，或点击选择文件', 'Drop images or videos here to import, or click to choose files')}
+        : t('拖入图片、视频或音频导入，或点击选择文件', 'Drop images, videos or audio here to import, or click to choose files')}
       {error === null ? null : <div className={css.error}>{error}</div>}
       {refused.map(name => (
         <div key={name} className={css.error}>
-          {t(`「${name}」不是图片或视频，没有导入。`, `“${name}” is not an image or a video, so it was not imported.`)}
+          {t(`「${name}」不是图片、视频或音频，没有导入。`, `“${name}” is not an image, a video or audio, so it was not imported.`)}
         </div>
       ))}
-      <input ref={input} type="file" accept="image/*,video/*" multiple hidden onChange={(event) => { importFiles(event.currentTarget.files); event.currentTarget.value = '' }} />
+      <input ref={input} type="file" accept="image/*,video/*,audio/*" multiple hidden onChange={(event) => { importFiles(event.currentTarget.files); event.currentTarget.value = '' }} />
     </div>
   )
 }
@@ -165,24 +167,28 @@ function thumbBox(asset: Asset): CSSProperties {
 }
 
 /**
- * One draggable thumbnail, its asset drawn through `dv.media` at purpose 'thumb'; dragging it carries the asset ID,
- * clicking it opens the preview.
+ * One draggable thumbnail, its asset drawn through `dv.media` at purpose 'thumb', with the length of a video or an audio
+ * file to one decimal place; dragging it carries the asset ID and its MIME type, clicking it opens the preview.
  * @param props - the asset, the preview callback, and the `dv.media` renderer.
  * @returns the thumbnail.
  */
 function Thumb(props: ThumbProps & { asset: Asset }): ReactNode {
   const { asset } = props
-  const video = asset.mime.startsWith('video/')
+  const timed = ['video', 'audio'].includes(mediaTypeOf(asset.mime))
   return (
     <button
       type="button" draggable title={asset.name} aria-label={asset.name} data-asset-id={asset.id}
-      onDragStart={(event) => { event.dataTransfer.setData(DV_ASSET_DRAG_TYPE, asset.id); event.dataTransfer.effectAllowed = 'copy' }}
+      onDragStart={(event) => {
+        event.dataTransfer.setData(DV_ASSET_DRAG_TYPE, asset.id)
+        event.dataTransfer.setData(DV_ASSET_MIME_DRAG_TYPE, asset.mime)
+        event.dataTransfer.effectAllowed = 'copy'
+      }}
       onClick={(event) => { props.onOpen(asset, event.currentTarget) }}
       className={css.thumb}
     >
       <span className={css.thumbMedia} style={thumbBox(asset)}>{props.renderFactorySlot('dv.media', { asset, purpose: 'thumb' })}</span>
-      {video && asset.duration_sec !== null
-        ? <span className={css.duration}>{asset.duration_sec.toFixed(0)}s</span>
+      {timed && asset.duration_sec !== null
+        ? <span className={css.duration}>{asset.duration_sec.toFixed(1)}s</span>
         : null}
     </button>
   )

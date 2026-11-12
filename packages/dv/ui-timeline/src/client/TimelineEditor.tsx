@@ -17,12 +17,13 @@ import type { CSSProperties, DragEvent, FocusEvent, KeyboardEvent, PointerEvent,
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import type { Timeline } from '@dv/timeline/types'
 import { assetUrl } from '@dv/ui-kit/api.ts'
+import { mediaTypeOf } from '@dv/ui-kit/media-type.ts'
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { timelineName } from '@dv/ui-kit/timeline.ts'
 import { assetIndex } from '@dv/ui-kit/state.ts'
 import type { OperationRequest, WireState } from '@dv/ui-kit/types.ts'
-import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
+import { DV_ASSET_DRAG_TYPE, DV_ASSET_MIME_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { useFirstFrames } from './first-frame.ts'
 import { useTimelinePlayer } from './player.ts'
 import { clipPeaks, useAudioEnvelope } from '@dv/ui-kit/waveform.ts'
@@ -438,7 +439,9 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null)
   const [menu, setMenu] = useState<{ entry: Timeline; x: number; y: number } | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
-  const [dropNotice, setDropNotice] = useState(false)
+  // The notice of the latest drop the editor refused: a file, a non-video asset on the video track, or a non-audio asset
+  // on a sound track. Each refusal sets a new object, so a repeated refusal restarts the notice's timer.
+  const [dropNotice, setDropNotice] = useState<{ text: 'track.fileDrop' | 'track.videoDrop' | 'track.soundDrop' } | null>(null)
   const [drag, setDrag] = useState<ClipDrag | null>(null)
   const [picking, setPicking] = useState(false)
   const pickerRef = useRef<HTMLDivElement | null>(null)
@@ -483,10 +486,10 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     setChosenClip(selected === null ? null : { ...chosenClip, position: selected })
   }, [chosenClip, selected])
 
-  // The file-drop notice disappears after a few seconds.
+  // The drop notice disappears after a few seconds.
   useEffect(() => {
-    if (!dropNotice) return
-    const timer = setTimeout(() => { setDropNotice(false) }, 4000)
+    if (dropNotice === null) return
+    const timer = setTimeout(() => { setDropNotice(null) }, 4000)
     return () => { clearTimeout(timer) }
   }, [dropNotice])
 
@@ -610,8 +613,8 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   // A sound add whose record failed, such as one naming an asset that is not audio, throws the record's error, so the
   // view shows it as its notice and the ＋ buttons are enabled again. A finished record names the new sound ID first in
   // its `report.sounds`.
-  const writeSound = async (asset: string, at: number): Promise<string | null> => {
-    const params = { timeline: timelineId, asset, start_sec: at, track: soundTrack }
+  const writeSound = async (asset: string, at: number, track: number): Promise<string | null> => {
+    const params = { timeline: timelineId, asset, start_sec: at, track }
     const record = await client.runOperation(request(project, session, { operation: 'timeline.sound_add', params, intent: t('intent.soundAdd', { at: timecode(at) }) }))
     if (record.status === 'failed') throw new Error(record.error?.message ?? record.status)
     const reported = record.report?.['sounds']
@@ -621,7 +624,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const addSound = (asset: string): void => {
     setPickingSound(false)
     const at = soundStart
-    addingSound(() => writeSound(asset, at))
+    addingSound(() => writeSound(asset, at, soundTrack))
   }
   const removeSound = (sound: TrackSound): void => {
     setSoundMenu(null)
@@ -644,12 +647,34 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     setShownTracks(Math.max(1, trackCount - 1))
     if (track < storedTracks) void runOperation('timeline.sound_track_remove', { track }, t('intent.trackRemove', { n: track + 1 }))
   }
+  // The asset that an asset tile drop carries and its media type, read from the drag data; the drop then belongs to the
+  // track it landed on. Null for a drop that carries no asset, which the editor root handles.
+  const takeDrop = (event: DragEvent<HTMLDivElement>): { id: string; type: string } | null => {
+    const id = event.dataTransfer.getData(DV_ASSET_DRAG_TYPE)
+    if (id.length === 0) return null
+    event.preventDefault()
+    event.stopPropagation()
+    return { id, type: mediaTypeOf(event.dataTransfer.getData(DV_ASSET_MIME_DRAG_TYPE)) }
+  }
+  // An audio tile dropped on a sound track adds its audio to that track where it was dropped. While another sound add
+  // runs, the drop adds nothing, as the disabled ＋ of the tracks does.
+  const dropSound = (event: DragEvent<HTMLDivElement>, track: number): void => {
+    const dropped = takeDrop(event)
+    if (dropped === null) return
+    if (dropped.type !== 'audio') {
+      setDropNotice({ text: 'track.soundDrop' })
+      return
+    }
+    if (timeline === null || pendingSound !== null) return
+    const at = round(Math.max(0, (event.clientX - event.currentTarget.getBoundingClientRect().left) / px))
+    addingSound(() => writeSound(dropped.id, at, track))
+  }
   const uploadSound = (file: File): void => {
     setPickingSound(false)
     const at = soundStart
     addingSound(async () => {
       const { asset } = await client.importAsset(project, file, 'asset_pool', session)
-      return writeSound(asset, at)
+      return writeSound(asset, at, soundTrack)
     })
   }
 
@@ -1068,12 +1093,14 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
           role="list" aria-label={t('track.aria')} style={{ position: 'relative' }}
           onDragOver={(event) => { if (event.dataTransfer.types.includes(DV_ASSET_DRAG_TYPE)) event.preventDefault() }}
           onDrop={(event) => {
-            const asset = event.dataTransfer.getData(DV_ASSET_DRAG_TYPE)
-            if (asset.length === 0) return
-            event.preventDefault()
-            event.stopPropagation()
+            const dropped = takeDrop(event)
+            if (dropped === null) return
+            if (dropped.type !== 'video') {
+              setDropNotice({ text: 'track.videoDrop' })
+              return
+            }
             const box = (lane.current as HTMLDivElement).getBoundingClientRect()
-            insert(dropPosition(clips, (event.clientX - box.left) / px, null), asset)
+            insert(dropPosition(clips, (event.clientX - box.left) / px, null), dropped.id)
           }}
         >
           {clips.map((clip) => {
@@ -1167,7 +1194,10 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
               />
             ) : trackHeader(palette.sound, trackName(track))}
           </span>,
-          <div key={`lane-${String(track)}`} role="group" aria-label={t('track.soundN', { n: track + 1 })} data-sound-track={track} style={{ position: 'relative' }}>
+          <div
+            key={`lane-${String(track)}`} role="group" aria-label={t('track.soundN', { n: track + 1 })} data-sound-track={track} style={{ position: 'relative' }}
+            onDrop={(event) => { dropSound(event, track) }}
+          >
             {timeline === null ? null : (
               <button
                 type="button" className="dv-tl-btn" aria-label={t('track.addSound')} title={t('track.addSound')} disabled={pendingSound !== null}
@@ -1327,7 +1357,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     if (!ownsDrag(event)) return
     event.preventDefault()
     event.stopPropagation()
-    if (event.dataTransfer.types.includes('Files') && !event.dataTransfer.types.includes(DV_ASSET_DRAG_TYPE)) setDropNotice(true)
+    if (event.dataTransfer.types.includes('Files') && !event.dataTransfer.types.includes(DV_ASSET_DRAG_TYPE)) setDropNotice({ text: 'track.fileDrop' })
   }
 
   return (
@@ -1338,7 +1368,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     >
       <style>{EDITOR_CSS}</style>
       {tabs}
-      {dropNotice ? <p role="status" style={{ margin: 0, padding: '4px 12px', color: palette.muted, fontSize: 12, lineHeight: '16px' }}>{t('track.fileDrop')}</p> : null}
+      {dropNotice !== null ? <p role="status" style={{ margin: 0, padding: '4px 12px', color: palette.muted, fontSize: 12, lineHeight: '16px' }}>{t(dropNotice.text)}</p> : null}
       {viewer}
       {resizeHandle}
       {editPanel}

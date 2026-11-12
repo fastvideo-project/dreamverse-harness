@@ -51,7 +51,7 @@ import { DV_HISTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 | `useView.ts` | `useViewSession(client, surface, session?)`：项目选择、项目的当前状态、操作、最近一次失败和项目栏回调；视图打开外壳已打开的项目（`useCurrentProject`），否则打开最新的项目 |
 | `InlineRename.tsx` | `InlineRename`：重命名时替换标题的文本框，用于 `@dv/ui-shell` 的项目和对话，以及 `@dv/ui-canvas` 的节点名称。它选中标题，按回车或失去焦点时保存改过并去掉首尾空白的标题，按 Esc 取消；`check` 拒绝的改过的标题让文本框保持打开，显示危险色边框，并在下方显示消息。它不把按键和指针事件传给外围元素，所以 Esc 不会关闭对话框，按下也不会开始拖动 |
 | `ProjectBar.tsx` | 侧栏的栏（测试 ID `dv-kit-project-bar`）：项目选择器、新建项目按钮和撤销，用 `--dv-*` 主题变量画成 28 px 的次要控件；文案以 `labels` 传入，由所属插件先本地化 |
-| `compose.ts`、`workspace-events.ts` | 窗口事件 `dv:compose`、`dv:history-focus`、`dv:trajectory-focus`（`DV_*_EVENT`）和素材拖拽类型 `application/x-dv-asset` |
+| `compose.ts`、`workspace-events.ts` | 窗口事件 `dv:compose`、`dv:history-focus`、`dv:trajectory-focus`（`DV_*_EVENT`）和素材拖拽类型 `application/x-dv-asset`（素材 ID）与 `application/x-dv-asset-mime`（其 MIME 类型） |
 | `tool-labels.ts` | `DV_TOOL_LABELS`：每个 `dv_proj_*`、`dv_asset_*` 和 `dv_models_*` 工具的中英文标签，这些工具所在的包不声明操作标签；`operationLabel`：操作的中英文名称（它在 `/api/dv/operations` 里的 `label`，没有时用它的工具在 `DV_TOOL_LABELS` 里的条目，再没有时用操作名）；`toolNameOf`：操作的工具名。输入框的工具行和历史面板显示这些名称。`taskLabel`：生成任务的中英文名称（它在 `WireTaskLabels`，即模型目录在 `GET /api/dv/tasks` 提供的标签里的标签，没有时用任务名），`@dv/ui-generation` 的版本编辑器和对话卡片显示它 |
 | `tool-rows.tsx` | 工具调用在对话里的行的共用部分：`argsOf(raw)`（解析后的调用参数，流式到达时为 `{}`）、`wroteRecord(block)`（结果元数据是否写明了写出的记录）、`outputsOf(block)`（每个产出素材的角色、素材 ID、URL 和 MIME 类型），以及 `HistoryLink`（在历史中查看 / Show in history，测试 ID `dv-composer-open-history`，派发 `dv:history-focus`；每个调用方传入自己 CSS 模块里的按钮类名） |
 | `current-project.ts` | 打开的项目，存在 `window.__dvCurrentProject` 上，用 `dv:current-project` 通知 |

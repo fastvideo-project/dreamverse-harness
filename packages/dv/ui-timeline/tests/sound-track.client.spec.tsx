@@ -7,6 +7,7 @@ import type { Sound, SoundId, TimelineId } from '@dv/timeline/types'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import type { ProjectRecord } from '@dv/ui-kit/types.ts'
 import { FALLBACK_CLIP_SECONDS } from '@dv/ui-kit/timeline.ts'
+import { DV_ASSET_DRAG_TYPE, DV_ASSET_MIME_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { asset, fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState, ScriptedRoutes } from '../../ui-kit/tests/fixture.client.tsx'
 import { timecode } from '../src/client/timelines.ts'
@@ -20,6 +21,16 @@ beforeEach(async () => {
   booted = await bootTimeline()
 })
 afterEach(async () => { cleanup(); vi.restoreAllMocks(); await booted.fiber.dispose() })
+
+/**
+ * The drag data of an asset pool tile.
+ * @param id - the asset ID.
+ * @param mime - the asset's MIME type.
+ * @returns the `dataTransfer` of the drag.
+ */
+const assetDrag = (id: string, mime: string) => ({
+  types: [DV_ASSET_DRAG_TYPE, DV_ASSET_MIME_DRAG_TYPE], getData: (type: string) => ({ [DV_ASSET_DRAG_TYPE]: id, [DV_ASSET_MIME_DRAG_TYPE]: mime })[type] ?? '',
+})
 
 /**
  * The shared fixture with two audio assets and two stored sound tracks on t1: track 1 (no stored name) holds theme.mp3
@@ -199,6 +210,49 @@ describe('sound tracks', () => {
     expect(requests()[1]).toMatchObject({
       operation: 'timeline.sound_add', params: { timeline: 't1', asset: 'voice.wav', start_sec: 1.5, track: 2 },
     })
+  })
+
+  it('adds an audio tile dropped on a sound track where it lands, adds no second sound while the first add runs, and refuses other assets there and audio on the video track', async () => {
+    const { view, lane, requests, ready } = mount(growingState(() => false))
+    await ready()
+    // jsdom has no DragEvent, so the drop is a mouse event that carries the pointer position.
+    const dropAt = (target: HTMLElement, id: string, mime: string, clientX: number): boolean => {
+      const drop = new MouseEvent('drop', { bubbles: true, cancelable: true, clientX })
+      Object.defineProperty(drop, 'dataTransfer', { value: assetDrag(id, mime) })
+      return fireEvent(target, drop)
+    }
+    expect(fireEvent.dragOver(lane(1), { dataTransfer: assetDrag('theme.mp3', 'audio/mpeg') })).toBe(false)
+    expect(fireEvent.dragOver(lane(1), { dataTransfer: { types: ['text/plain'], getData: () => '' } })).toBe(true)
+    expect(fireEvent.drop(lane(1), { dataTransfer: { types: ['text/plain'], getData: () => '' } })).toBe(true)
+    // At 40 px a second, a drop 100 px into the track lands at 2.5 s, over voice.wav, which the new sound overlaps.
+    expect(dropAt(lane(1), 'theme.mp3', 'audio/mpeg', 100)).toBe(false)
+    await waitFor(() => { expect(requests()).toHaveLength(1) })
+    expect(requests()[0]).toMatchObject({
+      operation: 'timeline.sound_add', params: { timeline: 't1', asset: 'theme.mp3', start_sec: 2.5, track: 1 }, intent: '在 00:02.50 添加声音',
+    })
+
+    // The served state never shows the added sound, so the add stays running.
+    expect(dropAt(lane(0), 'voice.wav', 'audio/wav', 40)).toBe(false)
+    expect(dropAt(lane(0), 'shot2.mp4', 'video/mp4', 40)).toBe(false)
+    expect(view.getByRole('status').textContent).toBe('声音轨道只接受音频。')
+    expect(dropAt(view.getByRole('list', { name: '视频轨道' }), 'voice.wav', 'audio/wav', 40)).toBe(false)
+    expect(view.getByRole('status').textContent).toBe('视频轨道只接受视频。音频请拖到声音轨道上。')
+    expect(requests()).toHaveLength(1)
+  })
+
+  it('adds nothing for an audio tile dropped on the sound track of a project without timelines, and refuses a video tile there', async () => {
+    const withoutTimelines = (): FixtureState => {
+      const state = soundState()
+      state.components.timeline.timelines = []
+      return state
+    }
+    const { view, lane, requests, ready } = mount({ state: withoutTimelines })
+    await ready()
+    fireEvent.drop(lane(0), { dataTransfer: assetDrag('theme.mp3', 'audio/mpeg') })
+    expect(view.queryByRole('status')).toBeNull()
+    fireEvent.drop(lane(0), { dataTransfer: assetDrag('shot2.mp4', 'video/mp4') })
+    expect(view.getByRole('status').textContent).toBe('声音轨道只接受音频。')
+    expect(requests()).toEqual([])
   })
 
   it('uploads a picked local file into the asset pool and adds it to the track, and adds nothing when no file is picked', async () => {

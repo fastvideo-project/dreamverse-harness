@@ -6,7 +6,7 @@ import type { AssetId, RecordId } from '@dv/project/types'
 import type { ClipId, TimelineId } from '@dv/timeline/types'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
-import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
+import { DV_ASSET_DRAG_TYPE, DV_ASSET_MIME_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { asset, fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState, ScriptedRoutes } from '../../ui-kit/tests/fixture.client.tsx'
 import { FALLBACK_CLIP_SECONDS } from '@dv/ui-kit/timeline.ts'
@@ -266,7 +266,7 @@ describe('TimelineView', () => {
     document.removeEventListener('drop', seen)
     expect(seen).not.toHaveBeenCalled()
     expect(requests()).toHaveLength(0)
-    expect(view.getByRole('status').textContent).toBe('时间线轨道只接受素材库里的视频。请先在对话里导入文件，再从素材库拖到轨道上。')
+    expect(view.getByRole('status').textContent).toBe('时间线只接受素材库里的素材。请先把文件导入素材库，再从素材库拖到轨道上。')
   })
 
   it('places a placeholder clip at its render length, marks it rendering or failed, and holds export until it is ready', async () => {
@@ -384,10 +384,12 @@ describe('timeline editor gestures', () => {
     expect((view.getByRole('button', { name: '删除片段' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('inserts an asset tile dropped on the track where it lands, and keeps file and asset drags elsewhere in the editor from the page', async () => {
+  it('inserts a video tile dropped on the track where it lands, refuses other media there, and keeps file and asset drags elsewhere in the editor from the page', async () => {
     const { view, requests, track } = mount()
     const list = await track()
-    const assetDrag = (data: string) => ({ types: [DV_ASSET_DRAG_TYPE], getData: () => data })
+    const assetDrag = (id: string, mime = 'video/mp4') => ({
+      types: [DV_ASSET_DRAG_TYPE, DV_ASSET_MIME_DRAG_TYPE], getData: (type: string) => ({ [DV_ASSET_DRAG_TYPE]: id, [DV_ASSET_MIME_DRAG_TYPE]: mime })[type] ?? '',
+    })
     const otherDrag = { types: ['text/plain'], getData: () => '' }
     expect(fireEvent.dragOver(list, { dataTransfer: assetDrag('shot2.mp4') })).toBe(false)
     expect(fireEvent.dragOver(list, { dataTransfer: otherDrag })).toBe(true)
@@ -398,18 +400,22 @@ describe('timeline editor gestures', () => {
     expect(fireEvent(list, drop)).toBe(false)
     await waitFor(() => { expect(requests()).toHaveLength(1) })
     expect(requests()[0]).toMatchObject({ operation: 'timeline.clip_insert', params: { timeline: 't1', at: 2, asset: 'shot2.mp4' } })
+    expect(fireEvent.drop(list, { dataTransfer: assetDrag('ref.png', 'image/png') })).toBe(false)
+    expect(view.getByRole('status').textContent).toBe('视频轨道只接受视频。音频请拖到声音轨道上。')
+    expect(requests()).toHaveLength(1)
     const editor = view.getByTestId('dv-timeline-editor')
     const viewer = view.getByTestId('dv-timeline-viewer')
     expect(fireEvent.dragEnter(editor, { dataTransfer: { types: ['Files'], getData: () => '' } })).toBe(false)
     expect(fireEvent.dragOver(editor, { dataTransfer: otherDrag })).toBe(true)
     expect(fireEvent.drop(viewer, { dataTransfer: otherDrag })).toBe(true)
     expect(fireEvent.drop(viewer, { dataTransfer: assetDrag('shot2.mp4') })).toBe(false)
-    expect(view.queryByRole('status')).toBeNull()
     expect(requests()).toHaveLength(1)
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     try {
+      // A repeated refusal shows its notice for the full four seconds after the latest drop.
       fireEvent.drop(viewer, { dataTransfer: { types: ['Files'], getData: () => '' } })
-      expect(view.getByRole('status')).toBeTruthy()
+      act(() => { vi.advanceTimersByTime(3500) })
+      fireEvent.drop(viewer, { dataTransfer: { types: ['Files'], getData: () => '' } })
       act(() => { vi.advanceTimersByTime(3999) })
       expect(view.getByRole('status')).toBeTruthy()
       act(() => { vi.advanceTimersByTime(1) })

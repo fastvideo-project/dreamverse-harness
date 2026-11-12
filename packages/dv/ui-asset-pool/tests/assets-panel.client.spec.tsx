@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
 import { DvClient } from '@dv/ui-kit/api.ts'
-import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
+import { DV_ASSET_DRAG_TYPE, DV_ASSET_MIME_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { asset, fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { AssetsPanel } from '../src/client/AssetsPanel.tsx'
 
@@ -36,7 +36,7 @@ function importServer(): { fetch: typeof fetch; imports: HeldImport[] } {
 
 function renderPanel(fetch: typeof globalThis.fetch) {
   const view = render(<AssetsPanel projectId="p1" session="s5" client={new DvClient(fetch)} preview={() => {}} renderFactorySlot={() => null} />)
-  return { view, zone: view.getByRole('button', { name: /^Drop images or videos here/ }) }
+  return { view, zone: view.getByRole('button', { name: /^Drop images, videos or audio here/ }) }
 }
 
 const file = (name: string, type: string): File => new File(['x'], name, { type })
@@ -46,6 +46,8 @@ describe('AssetsPanel', () => {
     // An undo went back past g9: the state lists its assets, each with the operation that made it, but not its record.
     const state = fixtureState()
     state.assets.push(asset('wide.mp4', 'video/mp4', 'g9', 5, 'shot.render'), asset('wide-last.png', 'image/png', 'g9', null, 'shot.render'))
+    // The pieces that dv_audioedit_split wrote are listed under audio with their length.
+    state.assets.push(asset('piece-1.wav', 'audio/wav', 'a1', 2.4, 'audioedit.split'), asset('piece-2.wav', 'audio/wav', 'a1', 0.4, 'audioedit.split'))
     const posts: string[] = []
     const { fetch } = scriptedFetch({ state, post: (path) => { posts.push(path); return { status: 404, body: { error: path } } } })
     const view = render(<AssetsPanel projectId="p1" session="s5" client={new DvClient(fetch)} preview={() => {}} renderFactorySlot={() => null} />)
@@ -53,6 +55,9 @@ describe('AssetsPanel', () => {
     await waitFor(() => { expect(view.container.querySelector('[data-asset-id="shot1.mp4"]')).not.toBeNull() })
     expect(view.container.querySelector('[data-asset-id="wide.mp4"]')).not.toBeNull()
     expect(panel.getByText('Extracted from generation · 3')).toBeTruthy()
+    expect(panel.getByText('Audio · 2')).toBeTruthy()
+    expect(view.container.querySelector('[data-asset-id="piece-1.wav"]')?.textContent).toBe('2.4s')
+    expect(view.container.querySelector('[data-asset-id="piece-2.wav"]')?.textContent).toBe('0.4s')
     // The panel reads no history list.
     expect(posts).toEqual([])
   })
@@ -68,7 +73,7 @@ describe('AssetsPanel', () => {
     const empty = fixtureState()
     empty.assets = []
     const { view } = renderPanel(scriptedFetch({ state: empty }).fetch)
-    expect(await view.findByText('No images or videos yet. Import files above, or generate them in the chat.')).toBeTruthy()
+    expect(await view.findByText('No images, videos or audio yet. Import files above, or generate them in the chat.')).toBeTruthy()
     cleanup()
 
     const imagesOnly = fixtureState()
@@ -78,7 +83,7 @@ describe('AssetsPanel', () => {
     expect(images.container.querySelectorAll('h3')).toHaveLength(1)
   })
 
-  it('carries the asset ID in the drag of a thumbnail', async () => {
+  it('carries the asset ID and its MIME type in the drag of a thumbnail', async () => {
     const { view } = renderPanel(scriptedFetch().fetch)
     const tile = await waitFor(() => {
       const found = view.container.querySelector('[data-asset-id="ref.png"]')
@@ -88,22 +93,23 @@ describe('AssetsPanel', () => {
     const carried: Record<string, string> = {}
     const dataTransfer = { effectAllowed: 'all', setData: (type: string, value: string) => { carried[type] = value } }
     fireEvent.dragStart(tile, { dataTransfer })
-    expect([carried, dataTransfer.effectAllowed]).toEqual([{ [DV_ASSET_DRAG_TYPE]: 'ref.png' }, 'copy'])
+    expect([carried, dataTransfer.effectAllowed]).toEqual([{ [DV_ASSET_DRAG_TYPE]: 'ref.png', [DV_ASSET_MIME_DRAG_TYPE]: 'image/png' }, 'copy'])
   })
 })
 
 describe('the import drop zone', () => {
-  it('imports the dropped images and videos into the asset pool beside the chat session, and names each refused file', async () => {
+  it('imports the dropped images, videos and audio into the asset pool beside the chat session, and names each refused file', async () => {
     const server = importServer()
     const { view, zone } = renderPanel(server.fetch)
-    const dropped = [file('a.png', 'image/png'), file('b.mp4', 'video/mp4'), file('notes.txt', 'text/plain')]
+    const dropped = [file('a.png', 'image/png'), file('b.mp4', 'video/mp4'), file('c.wav', 'audio/wav'), file('notes.txt', 'text/plain')]
     fireEvent.drop(zone, { dataTransfer: { types: ['Files'], files: dropped } })
-    expect(view.getByText('“notes.txt” is not an image or a video, so it was not imported.')).toBeTruthy()
+    expect(view.getByText('“notes.txt” is not an image, a video or audio, so it was not imported.')).toBeTruthy()
     expect(server.imports.map(held => new URLSearchParams(held.query).toString())).toEqual([
       'project=p1&name=a.png&mime=image%2Fpng&surface=asset_pool&session=s5',
       'project=p1&name=b.mp4&mime=video%2Fmp4&surface=asset_pool&session=s5',
+      'project=p1&name=c.wav&mime=audio%2Fwav&surface=asset_pool&session=s5',
     ])
-    expect(zone.textContent).toMatch(/^Importing \(2\)…/)
+    expect(zone.textContent).toMatch(/^Importing \(3\)…/)
   })
 
   it('counts the imports in flight, names a failed import, and clears the failure once an import succeeds', async () => {
@@ -115,7 +121,7 @@ describe('the import drop zone', () => {
     await waitFor(() => { expect(zone.textContent).toMatch(/^Importing \(1\)…/) })
     server.imports[1]?.answer(507, { error: 'disk full' })
     expect(await view.findByText('Failed to import “b.mp4”: DvApiError: disk full')).toBeTruthy()
-    expect(zone.textContent).toMatch(/^Drop images or videos here to import, or click to choose files/)
+    expect(zone.textContent).toMatch(/^Drop images, videos or audio here to import, or click to choose files/)
 
     fireEvent.drop(zone, transfer(file('c.png', 'image/png')))
     server.imports[2]?.answer(200, { asset: 'c.png', record: record({ id: 'i2', operation: 'asset.import' }) })

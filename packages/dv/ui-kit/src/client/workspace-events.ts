@@ -9,6 +9,12 @@
 /** The `DataTransfer` type whose value is an asset ID, set by asset drag sources. */
 export const DV_ASSET_DRAG_TYPE = 'application/x-dv-asset'
 
+/**
+ * The `DataTransfer` type whose value is the MIME type of the asset that `DV_ASSET_DRAG_TYPE` names, set by the same drag
+ * sources, so a drop target can tell audio from video without the project state having the asset yet.
+ */
+export const DV_ASSET_MIME_DRAG_TYPE = 'application/x-dv-asset-mime'
+
 /** The event that opens the History panel and selects the record a tool call of the agent wrote. */
 export const DV_HISTORY_FOCUS_EVENT = 'dv:history-focus'
 
