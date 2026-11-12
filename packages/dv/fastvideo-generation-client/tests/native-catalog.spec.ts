@@ -70,6 +70,23 @@ describe('native catalog and job controls', () => {
     expect(submissions).toBe(1)
   })
 
+  it('preserves a completed job if cancellation interrupts its content download', async () => {
+    const controller = new AbortController()
+    const reason = new Error('Stop downloading')
+    const methods: string[] = []
+    const generation = client(async (input, init) => {
+      methods.push(init?.method ?? 'GET')
+      if (init?.method === 'POST') return json({ id: 'completed-job' }, 202)
+      if (String(input).endsWith('/content')) {
+        controller.abort(reason)
+        throw reason
+      }
+      return json({ status: 'completed' })
+    })
+    await expect(generation.generateSegment({ ...segment, signal: controller.signal })).rejects.toBe(reason)
+    expect(methods).toEqual(['POST', 'GET', 'GET'])
+  })
+
   it('retains typed input failures for native HTTP 422', async () => {
     const generation = client(async () => json({ error: { message: 'Bad frame count' } }, 422))
     await expect(generation.generateSegment(segment)).rejects.toBeInstanceOf(GenerationSegmentError)

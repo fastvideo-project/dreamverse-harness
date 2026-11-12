@@ -42,12 +42,16 @@ export async function followVideoJob(base: URL, body: Record<string, unknown>, p
   }
   const route = new URL(`/v1/videos/${encodeURIComponent(value.id)}`, base)
   const options = signal === undefined ? {} : { signal }
+  let completed = false
   try {
     for (;;) {
       const response = await checked(await request(route, options))
       const state: unknown = await response.json()
       if (typeof state !== 'object' || state === null || !('status' in state)) throw new Error('Invalid FastVideo job state')
-      if (state.status === 'completed') return await checked(await request(new URL(route.href + '/content'), options))
+      if (state.status === 'completed') {
+        completed = true
+        return await checked(await request(new URL(route.href + '/content'), options))
+      }
       if (state.status === 'failed') {
         const error = 'error' in state ? state.error : null
         const message = typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string'
@@ -60,7 +64,7 @@ export async function followVideoJob(base: URL, body: Record<string, unknown>, p
   } catch (error) {
     if (signal?.aborted) {
       // The backend owns CUDA cancellation and retains its generation lock until quiescent.
-      await request(route, { method: 'DELETE', signal: AbortSignal.timeout(10_000) }).catch(() => undefined)
+      if (!completed) await request(route, { method: 'DELETE', signal: AbortSignal.timeout(10_000) }).catch(() => undefined)
       throw signal.reason
     }
     throw error

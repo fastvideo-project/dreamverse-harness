@@ -54,7 +54,7 @@ export function OpenRouterPage({ form, storeKey, discover, enableOperator }: Ope
       const alias = model.id.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 120)
       if (existing === undefined && configured[alias] !== undefined) throw new Error('Alias collision')
       const next = existing === undefined ? { ...configured, [alias]: model.id }
-        : Object.fromEntries(Object.entries(configured).filter(([name]) => name !== existing))
+        : Object.fromEntries(Object.entries(configured).filter(([, id]) => id !== model.id))
       if (!await form.mutate([{ op: 'set', path: ['models'], value: next }], state.revision)) throw new Error('Refused settings')
       setModels(await discover())
       setNotice(existing === undefined ? text('模型已添加到聊天选择器。', 'Model added to the chat picker.')

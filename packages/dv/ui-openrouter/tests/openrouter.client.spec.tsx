@@ -66,3 +66,15 @@ it('enables the existing operator adapter with a credential reference instead of
   expect(enable).toHaveBeenCalledWith('OPENROUTER_API_KEY')
   expect(screen.getByRole('status').textContent).toContain('Choose an LLM in chat')
 })
+
+
+it('removes every alias of the chosen model while preserving other models', async () => {
+  const form = new Form()
+  await form.mutate([{ op: 'set', path: ['models'], value: { a: model.id, b: model.id, other: 'other/video' } }])
+  render(<OpenRouterPage enableOperator={async () => {}} form={form} storeKey={async () => {}} discover={async () => [model]} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Save key and load video models' }))
+  await act(async () => {})
+  fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
+  await act(async () => {})
+  expect(form.getSnapshot().value?.models).toEqual({ other: 'other/video' })
+})
