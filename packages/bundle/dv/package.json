@@ -16,6 +16,7 @@
   "dependencies": {
     "@dv/api": "workspace:*",
     "@dv/asset-pool": "workspace:*",
+    "@dv/audio-edit": "workspace:*",
     "@dv/canvas": "workspace:*",
     "@dv/audio-generate": "workspace:*",
     "@dv/character": "workspace:*",

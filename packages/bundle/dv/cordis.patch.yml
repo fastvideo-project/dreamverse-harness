@@ -61,6 +61,9 @@
       config:
         imageInput: !!js process.env.DV_AGENT_VISION !== '0'
 
+    - id: dv-audio-edit
+      name: '@dv/audio-edit'
+
     - id: dv-shot-render
       name: '@dv/shot-render'
 
