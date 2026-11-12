@@ -101,6 +101,17 @@ describe('loadCatalog', () => {
     expect(answer.problems.map(problem => problem.source)).toEqual([broken, join(dir, 'missing.json')])
     expect(answer.problems[0]?.message).toBe('the server answered HTTP 500')
   })
+
+  it('reports a URL source that redirects and merges nothing from it', async () => {
+    const target = await serve(200, JSON.stringify({ plugins: [entry('@fastvideo/e', 'E')] }))
+    const server: Server = createServer((_request, response) => { response.writeHead(302, { location: target }).end() })
+    await new Promise<void>((resolve) => { server.listen(0, '127.0.0.1', resolve) })
+    cleanups.push(() => new Promise<void>((resolve) => { server.close(() => { resolve() }) }))
+    const source = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}/catalog.json`
+    const answer = await Catalog.loadCatalog([], { sources: [source], sourceTimeoutMs: 5000 })
+    expect(answer.plugins).toEqual([])
+    expect(answer.problems.map(problem => problem.source)).toEqual([source])
+  })
 })
 
 describe('the plugin', () => {

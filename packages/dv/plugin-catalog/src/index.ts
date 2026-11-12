@@ -138,11 +138,12 @@ export function parseCatalog(text: string, source: string): CatalogEntry[] {
  * @param source - an absolute path or a URL that {@link isUrlSource} accepts.
  * @param timeoutMs - the bound on a URL request.
  * @returns the text.
- * @throws {Error} when the file cannot be read, the request fails or times out, or the server answers an error status.
+ * @throws {Error} when the file cannot be read, the request fails, times out or is redirected, or the server answers an
+ * error status.
  */
 async function readSource(source: string, timeoutMs: number): Promise<string> {
   if (!isUrlSource(source)) return readFile(source, 'utf8')
-  const response = await fetch(source, { signal: AbortSignal.timeout(timeoutMs) })
+  const response = await fetch(source, { redirect: 'error', signal: AbortSignal.timeout(timeoutMs) })
   if (!response.ok) throw new Error(`the server answered HTTP ${String(response.status)}`)
   return response.text()
 }
