@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包把 DSH web 应用变成 DreamVerse。没有打开项目时，中间区域显示首页：对话输入框、模板标签、最近项目和 探索。探索 为其他插件在 `dv.explore` 插槽（由中间区域声明）里注册的每一项显示一个标签，标签名和顺序由该项决定，例如 `@dv/ui-mcp-presets` 的 MCP 标签和 `@dv/ui-skills` 的 技能 标签，并显示选中标签的内容；它默认展开，点 收起 折叠，没有插件注册内容时不显示。打开项目后，它显示项目的一个视图，左侧栏默认收起。视图是其他插件在 `dv.center.view` 插槽（由中间区域声明）里注册的条目，每项是视图切换中的一个标签，标签名和顺序由该项决定：`@dv/ui-canvas` 的 画布 和 `@dv/ui-timeline` 的 时间线。左侧栏显示导航：新建项目、首页、DSH 侧栏页面（插件、MCP、技能，以及其他任何 `sidebar.panellist` 入口），以及 项目 → 对话 树。首页 打开本浏览器标签页的空白首页对话，在没有打开项目和侧栏页面时高亮。外壳的每次导航都会关闭打开的侧栏页面，所以 首页 能离开插件页或 MCP 页。右侧面板多出 对话 和 轨迹 标签。外壳还注入 DreamVerse 主题：所有 DreamVerse 包使用的 `--dv-*` 变量，以及指向同一套配色的 DSH 别名变量。在文本框以外，Ctrl+Z（macOS 上用 Cmd+Z）把所打开项目往回移一步，Shift+Ctrl+Z（Shift+Cmd+Z）往前移一步；这些按键移动历史列表的当前位置，不写记录。
+使用本包把 DSH web 应用变成 DreamVerse。没有打开项目时，中间区域显示首页：对话输入框、模板标签（可聚焦，带 `aria-disabled`，由 Coming soon 标记说明，且不会执行动作）、最近项目和 探索。探索 为其他插件在 `dv.explore` 插槽（由中间区域声明）里注册的每一项显示一个标签，标签名和顺序由该项决定，例如 `@dv/ui-mcp-presets` 的 MCP 标签和 `@dv/ui-skills` 的 技能 标签，并显示选中标签的内容；它默认展开，点 收起 折叠，没有插件注册内容时不显示。打开项目后，它显示项目的一个视图，左侧栏默认收起。视图是其他插件在 `dv.center.view` 插槽（由中间区域声明）里注册的条目，每项是视图切换中的一个标签，标签名和顺序由该项决定：`@dv/ui-canvas` 的 画布 和 `@dv/ui-timeline` 的 时间线。左侧栏显示导航：新建项目、首页、DSH 侧栏页面（插件、MCP、技能，以及其他任何 `sidebar.panellist` 入口），以及 项目 → 对话 树。首页 打开本浏览器标签页的空白首页对话，在没有打开项目和侧栏页面时高亮。外壳的每次导航都会关闭打开的侧栏页面，所以 首页 能离开插件页或 MCP 页。右侧面板多出 对话 和 轨迹 标签。外壳还注入 DreamVerse 主题：所有 DreamVerse 包使用的 `--dv-*` 变量，以及指向同一套配色的 DSH 别名变量。在文本框以外，Ctrl+Z（macOS 上用 Cmd+Z）把所打开项目往回移一步，Shift+Ctrl+Z（Shift+Cmd+Z）往前移一步；这些按键移动历史列表的当前位置，不写记录。
 
 ## 目录
 
@@ -72,6 +72,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCente
 | [`src/client/actions.ts`](src/client/actions.ts) | `ShellActions`：新建、打开、重命名和删除项目与对话，首页，以及右侧面板标签 |
 | [`src/client/store.ts`](src/client/store.ts) | 共享状态（打开的项目、视图、中间区域字段、所显示视图的请求、主会话、项目列表）、`dvCenter.show` 和视图的 `note`、URL hash 同步，以及会话 → 项目查找 |
 | [`src/client/Center.tsx`](src/client/Center.tsx) | 中间区域：URL 恢复、首页、模板标签、最近项目、工作区顶栏、所显示的中间区域视图及其请求和中间区域字段，以及后退、前进和 hash 修改的监听 |
+| [`src/client/notice.tsx`](src/client/notice.tsx) | `useActionNotice`：运行外壳动作，记录被拒绝的错误，并用可关闭的提示（`dv-shell-notice`）显示错误信息；下一个成功动作清除提示，导航、会话切换器和最近项目都使用它 |
 | [`src/client/SessionSwitcher.tsx`](src/client/SessionSwitcher.tsx) | 工作区顶栏的会话切换按钮和菜单 |
 | [`src/client/cover.tsx`](src/client/cover.tsx) | 从 `/api/dv/projects/summary` 读取的项目封面和最后编辑时间；通过 `dv.media` 绘制的封面素材 |
 | [`src/client/sessions.ts`](src/client/sessions.ts) | 一个项目的对话，导航和会话切换器共用 |
@@ -79,7 +80,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCente
 | [`src/client/right-panel.ts`](src/client/right-panel.ts) | 右侧面板 448 px 的默认宽度 |
 | [`src/client/theme.ts`](src/client/theme.ts) | DreamVerse 主题样式表：`--dv-*` 变量（其中有每个画布节点类型各取一个位置的节点色板 `--dv-node-1` 到 `--dv-node-8`，以及波形颜色）和 DSH 别名映射 |
 | [`src/client/icons.tsx`](src/client/icons.tsx) | 外壳的 16 px 线条图标 |
-| [`src/client/Navigator.tsx`](src/client/Navigator.tsx) | 左侧导航和品牌名 |
+| [`src/client/Navigator.tsx`](src/client/Navigator.tsx) | 左侧导航和品牌名；树中的折叠箭头、项目标题和对话行也响应 Enter 和 Space |
 | [`src/client/panels.ts`](src/client/panels.ts) | DSH 侧栏页面入口，为导航镜像一份 |
 | [`src/client/slot-tabs.ts`](src/client/slot-tabs.ts) | 从 `dv.explore` 和 `dv.center.view` 条目同步的 探索 标签和视图切换标签 |
 | [`src/client/tabs.tsx`](src/client/tabs.tsx) | 对话 和 轨迹 的标签类型与主体 |
