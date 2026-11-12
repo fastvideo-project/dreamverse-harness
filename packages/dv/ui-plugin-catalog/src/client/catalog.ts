@@ -21,7 +21,7 @@ export type PluginState = 'unknown' | 'absent' | 'on' | 'off' | 'error' | 'insta
 
 /** What the last request for one plugin ended with. */
 export type PluginOutcome =
-  | { readonly kind: 'installed' | 'installed-restart' | 'removed' | 'removed-restart' | 'enabled' }
+  | { readonly kind: 'installed' | 'installed-restart' | 'removed' | 'removed-restart' | 'enabled' | 'enabled-restart' }
   | { readonly kind: 'scripts'; readonly packages: readonly string[] }
   | { readonly kind: 'failed'; readonly message: string }
 
@@ -159,7 +159,7 @@ export function removePlugin(pkg: string): void {
  * @param pkg - the plugin's package name.
  */
 export function enablePlugin(pkg: string): void {
-  track(pkg, 'enabling', actions => actions.enable(pkg), 'enabled', 'installed-restart')
+  track(pkg, 'enabling', actions => actions.enable(pkg), 'enabled', 'enabled-restart')
 }
 
 /** Open DSH's Plugins page, which approves package scripts and lists every bundle. */

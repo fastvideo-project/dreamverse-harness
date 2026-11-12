@@ -36,7 +36,7 @@ The Host half registers nothing. The browser half registers the page in the `mai
 | Gesture | Request |
 | --- | --- |
 | 安装 / Install | `pluginManager.installBundle(<package>@<version>, { enabled: true, requestId })` with the exact version of the catalog entry, from the registry the plugin manager is configured with. The card shows 安装中… / Installing…, then 已安装并开启。 / Installed and turned on., or 已安装。重启 harness 后生效。 / Installed. Restart the harness to load it. when the profile applies the change at its next start |
-| 开启 / Turn on, on an installed plugin that is off | `pluginManager.setBundleEnabled(<package>, true)` |
+| 开启 / Turn on, on an installed plugin that is off | `pluginManager.setBundleEnabled(<package>, true)`. The card shows 已开启。 / Turned on., or 已开启。重启 harness 后生效。 / Turned on. Restart the harness to load it. when the profile applies the change at its next start |
 | 移除 / Remove, then 确认移除 / Confirm remove | `pluginManager.removeBundle(<package>)`; 取消 / Cancel keeps the plugin. Offered only for a bundle that `listBundles()` marks `removable` |
 
 A failed request shows its reason under the card: the plugin manager's error code, or the pnpm failure kind with the path of the pnpm log. An install that pnpm blocked for unapproved package scripts names those packages and links to DSH's Plugins page, which approves scripts.

@@ -166,6 +166,8 @@ function Outcome({ outcome }: { outcome: PluginOutcome }): ReactNode {
     case 'removed': return <p className={css.done} role="status">{t('已移除。', 'Removed.')}</p>
     case 'installed-restart':
       return <p className={css.done} role="status">{t('已安装。重启 harness 后生效。', 'Installed. Restart the harness to load it.')}</p>
+    case 'enabled-restart':
+      return <p className={css.done} role="status">{t('已开启。重启 harness 后生效。', 'Turned on. Restart the harness to load it.')}</p>
     case 'removed-restart':
       return <p className={css.done} role="status">{t('已移除。重启 harness 后生效。', 'Removed. Restart the harness to unload it.')}</p>
     case 'scripts':

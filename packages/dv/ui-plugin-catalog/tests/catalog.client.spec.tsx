@@ -127,6 +127,16 @@ describe('ui-plugin-catalog', () => {
     await runtime.dispose()
   })
 
+  it('says a turned-on plugin loads after a restart when the profile applies the change at its next start', async () => {
+    const { runtime, view, manager } = await mountPage([bundle(OTHER, false)])
+    manager.setBundleEnabled.mockResolvedValueOnce({ ok: true as const, value: change({ stage: 'enable', application: 'restart-required' }) })
+    fireEvent.click(view.getByRole('button', { name: 'Turn on' }))
+    await act(async () => { await runtime.flush() })
+    expect(manager.setBundleEnabled).toHaveBeenCalledWith(OTHER, true)
+    expect(view.getByText('Turned on. Restart the harness to load it.')).toBeTruthy()
+    await runtime.dispose()
+  })
+
   it('shows a bundle whose layer did not load as not loaded, and offers no Remove for a bundle the manager cannot remove', async () => {
     const { runtime, view } = await mountPage([
       { ...bundle(VOICE, true), error: { code: 'incompatible-version' } }, { ...bundle(OTHER, true), removable: false },
