@@ -62,7 +62,7 @@ function modelOf(models: readonly WireModelEntry[], params: Readonly<Record<stri
  * @returns the composer.
  */
 export function DvPrompt(props: DvPromptComponentProps): ReactNode {
-  return props.readOnly ? <DvPromptView {...props} /> : <DvPromptEditor {...props} />
+  return props.readOnly ? <DvPromptView {...props} /> : <DvPromptEditor key={props.projectId} {...props} />
 }
 
 /** The faces of a document's chips, as its views resolve them. */
