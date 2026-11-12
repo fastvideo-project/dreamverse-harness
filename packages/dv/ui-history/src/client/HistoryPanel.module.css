@@ -24,7 +24,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 
 .list {
@@ -38,7 +38,8 @@
   margin: 8px 0;
   color: var(--dv-text-2);
   font-size: 12px;
-  line-height: 16px;
+  line-height: 18px;
+  text-wrap: pretty;
 }
 
 .notice {
@@ -122,15 +123,16 @@
   position: absolute;
   z-index: 20;
   top: 100%;
-  right: 0;
+  inset-inline-end: 0;
   display: flex;
   flex-direction: column;
   min-width: 140px;
   margin-top: 4px;
   padding: 6px;
-  border-radius: var(--dv-radius-xl);
+  border-radius: var(--dv-radius-menu);
   background: var(--dv-surface-1);
   box-shadow: 0 0 0 1px var(--dv-line-strong), var(--dv-shadow-2);
+  outline: 1px solid transparent;
 }
 
 .menuItem {
@@ -143,7 +145,7 @@
   font: inherit;
   font-size: 13px;
   line-height: 20px;
-  text-align: left;
+  text-align: start;
   white-space: nowrap;
   cursor: pointer;
   transition: background-color 120ms var(--dv-ease);
@@ -237,8 +239,9 @@
   flex: none;
   color: var(--dv-text-2);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
   line-height: 16px;
-  text-align: right;
+  text-align: end;
   white-space: nowrap;
 }
 
@@ -327,7 +330,7 @@
 .detailWords {
   color: var(--dv-text-2);
   font-size: 12px;
-  line-height: 16px;
+  line-height: 18px;
   white-space: pre-wrap;
 }
 

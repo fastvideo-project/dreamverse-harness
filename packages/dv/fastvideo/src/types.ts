@@ -38,7 +38,10 @@ export interface ServedTask {
   extra: ParameterSchemaSpec
   /** How the model names the references in its prompt; a citation of a reference becomes its label. */
   assignReferenceLabels: AssignReferenceLabels
-  /** The problems of a request's prompt under the model's own prompt rules, one sentence each; absent when it has none. */
-  promptProblems?: (request: RenderRequest) => string[]
+  /**
+   * The problems of a request under the model's own rules for its prompt and media, one sentence each; absent when it
+   * has none. `mediaTypeOf` reads the media type of an asset, such as `audio`.
+   */
+  modelProblems?: (request: RenderRequest, mediaTypeOf: (asset: RenderRequest['references'][number]) => string) => string[]
   skill: { name: string; description: string; file: string }
 }

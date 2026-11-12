@@ -307,7 +307,7 @@ export function NodeMenu({ at, area, items, label, menuRef }: NodeMenuProps): Re
   return (
     <div
       ref={attach} role="menu" aria-label={label} data-testid="dv-canvas-node-menu"
-      style={{ position: 'absolute', left, top, zIndex: 12, minWidth: 180, padding: 6, boxSizing: 'border-box', background: 'var(--dv-surface-1)', boxShadow: '0 0 0 1px var(--dv-line-strong), var(--dv-shadow-2)', borderRadius: 'var(--dv-radius-xl)' }}
+      style={{ position: 'absolute', left, top, zIndex: 12, minWidth: 180, padding: 6, boxSizing: 'border-box', background: 'var(--dv-surface-1)', boxShadow: '0 0 0 1px var(--dv-line-strong), var(--dv-shadow-2)', borderRadius: 'var(--dv-radius-menu)' }}
       onPointerDown={(event) => { event.stopPropagation() }}
       onContextMenu={(event) => { event.preventDefault() }}
     >
@@ -319,7 +319,7 @@ export function NodeMenu({ at, area, items, label, menuRef }: NodeMenuProps): Re
           onClick={item.run}
         >
           <span style={{ flex: 1 }}>{item.label}</span>
-          {item.shortcut === undefined ? null : <span aria-hidden="true" style={{ ...mono, fontSize: 12, color: 'var(--dv-text-3)' }}>{item.shortcut.glyph}</span>}
+          {item.shortcut === undefined ? null : <span aria-hidden="true" style={{ ...mono, fontSize: 12, color: 'var(--dv-text-2)' }}>{item.shortcut.glyph}</span>}
         </button>
       ))}
     </div>

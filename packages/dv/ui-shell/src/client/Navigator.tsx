@@ -163,7 +163,10 @@ function ProjectTree(props: NavigatorProps & { project: WireProject; open: boole
       {isOpen && sessions.map(summary => (
         <SessionRow
           key={summary.id} summary={summary} active={summary.id === current} shell={shell} run={run}
-          open={() => { shell.openSession(summary.id) }}
+          open={() => {
+            if (open) shell.openSession(summary.id)
+            else run(() => shell.openProject(project.id, summary.id))
+          }}
         />
       ))}
     </>

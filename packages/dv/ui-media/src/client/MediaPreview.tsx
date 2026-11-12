@@ -42,8 +42,8 @@ function factsOf(asset: Asset, loaded: Size | null, pick: (zh: string, en: strin
   const height = asset.height ?? loaded?.height ?? null
   return [
     width !== null && height !== null ? `${String(width)}×${String(height)}` : null,
-    asset.duration_sec === null ? null : pick(`${asset.duration_sec.toFixed(1)} 秒`, `${asset.duration_sec.toFixed(1)} s`),
-    asset.size_bytes < 1024 * 1024 ? `${(asset.size_bytes / 1024).toFixed(1)} KB` : `${(asset.size_bytes / 1024 / 1024).toFixed(1)} MB`,
+    asset.duration_sec === null ? null : pick(`${asset.duration_sec.toFixed(1)} 秒`, `${asset.duration_sec.toFixed(1)}\u00A0s`),
+    asset.size_bytes < 1024 * 1024 ? `${(asset.size_bytes / 1024).toFixed(1)}\u00A0KB` : `${(asset.size_bytes / 1024 / 1024).toFixed(1)}\u00A0MB`,
   ].filter((fact): fact is string => fact !== null)
 }
 

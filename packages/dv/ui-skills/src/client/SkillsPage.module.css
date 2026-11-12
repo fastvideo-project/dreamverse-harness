@@ -35,6 +35,7 @@
   color: var(--dv-text-2);
   font-size: 13px;
   line-height: 20px;
+  text-wrap: pretty;
 }
 
 .textButton {
@@ -83,6 +84,7 @@
   color: var(--dv-text-2);
   font-size: 13px;
   line-height: 20px;
+  text-wrap: pretty;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
 }
@@ -118,13 +120,21 @@
   font-size: 13px;
   line-height: 20px;
   cursor: pointer;
+  transition: background-color 120ms var(--dv-ease);
 }
 
 .useButton:hover {
   background: var(--dv-surface-4);
 }
 
+.textButton:focus-visible,
 .useButton:focus-visible {
   outline: 2px solid var(--dv-accent);
   outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .useButton {
+    transition: none;
+  }
 }

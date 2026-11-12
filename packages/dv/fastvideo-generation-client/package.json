@@ -3,10 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The FastVideo streaming_v2 client of DreamVerse: reads the served model's facts and streams one generated segment per request.",
+  "description": "DreamVerse client for the FastVideo POST /v1/videos/sync generation API.",
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@dv/models": "workspace:*",
+    "undici": "^8.10.0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",

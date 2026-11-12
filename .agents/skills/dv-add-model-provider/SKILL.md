@@ -17,7 +17,7 @@ This skill uses these terms:
 - **Entry**: one `ModelEntry`. An entry is one model of one provider for one task.
 - **Key**: the four entry fields `modality`, `task`, `provider` and `model`.
 
-The example is the provider plugin `@dv/fastvideo` in `packages/dv/fastvideo/`. Use its files as the example. Do not copy its model data.
+The example is the provider plugin `@dv/fastvideo` in `packages/dv/fastvideo/`. Use its files as the example. Do not copy its model data. FastVideo publishes no limits endpoint, so `@dv/fastvideo` reads the limits of each server from the validated `modelFacts` config of that server. `@dv/uniserve` in `packages/dv/uniserve/` reads the limits from its server.
 
 ## No compatibility code
 
@@ -44,7 +44,7 @@ A provider plugin can implement an entry only when the provider supplies the ite
    - The frame size in pixels for each pair of aspect ratio and resolution.
    - The input limits: the minimum and maximum count of references and of first frames.
    - The media types that each input accepts, such as `image`, `video`, or `audio`, with a maximum count for each media type.
-2. **Access to the limits.** The provider must give the limits through an endpoint or in its documentation. When the provider has an endpoint for the limits, read the limits from that endpoint. Then `facts()` and `schema()` give the values that the running server uses.
+2. **Access to the limits.** The provider must give the limits through an endpoint or in its documentation. When the provider has an endpoint for the limits, read the limits from that endpoint. Then `facts()` and `schema()` give the values that the running server uses. When the provider has no endpoint for the limits, put the documented limits in a validated config field of each server, such as `modelFacts` of `@dv/fastvideo`. Refuse a config whose limits are not consistent when the plugin loads.
 3. **Model parameters.** The provider must document the name, the type, and the range of each model parameter. These parameters go into `extra`.
 4. **Model ID.** The provider must give a stable ID for each served model. `facts()` returns this ID as `modelId`.
 5. **Render endpoint.** The provider must accept one request with these values, or values that the plugin can translate into them:
@@ -77,7 +77,7 @@ Do these steps to add a provider.
 
 1. Put each deployment value in the plugin `Config`. Use a validated `schemastery` schema.
 2. Make the `models` field a map from model name to a map from task to server settings, as `@dv/fastvideo` does.
-3. For each model and task, give the server URL.
+3. For each model and task, give the server URL. When the provider has no endpoint for the limits, also give the limits of the served model, such as `modelFacts` of `@dv/fastvideo`.
 4. In `apply`, throw an error for a model or a task that the plugin does not serve. Name the value in the message.
 5. Do not put a server URL or the models to register in a code constant.
 
@@ -93,7 +93,7 @@ When you dispose the plugin, the effect removes the entry. `register` throws whe
 ### Implement each member
 
 1. **`description`**: Write the strengths and the weaknesses of the model for this task. Name the inputs that the model needs. Write for an agent that chooses between similar models.
-2. **`facts()`**: Read the limits from the server. Return all `RenderModelFacts` fields. Put the default aspect ratio and the default resolution first.
+2. **`facts()`**: Read the limits from the server, or from the config when the server has no endpoint for them. Return all `RenderModelFacts` fields. Put the default aspect ratio and the default resolution first.
 3. **`facts()`**: Give a frame count for each whole second from `minDurationSec` to `maxDurationSec`. Reject when the server cannot be reached.
 4. **`schema()`**: Return JSON with the limits, `inputs` and `extra`. Use the `dv_shot_render` input roles `reference` and `first_frame` as the keys of `inputs`. `@dv/models` does not check this JSON. `dv_models_get` returns this JSON to the agent and does not read `facts()`.
 5. **`schema()`**: Give the limits as `duration_sec` with `min` and `max`, `aspect_ratios`, and `resolutions`. Give each input its minimum count, its maximum count, and its media types with their limits.
@@ -104,7 +104,7 @@ When you dispose the plugin, the effect removes the entry. `register` throws whe
 10. **`validateGenerationRequest(request)`**: For an invalid request, resolve with the problems. Reject only when the server cannot be reached.
 11. **`render(request, signal)`**: Read the bytes of each asset from the file at `ctx.dvAssetPool.path(id)`. Read the media type of each asset with `ctx.dvAssetPool.mediaType(id)`.
 12. **`render(request, signal)`**: Translate each asset ID into the format of the provider. The server cannot read asset IDs.
-13. **`render(request, signal)`**: Send the references in input order. Send the first frame as the provider requires.
+13. **`render(request, signal)`**: Send the references in the order that the provider reads them. For example, FastVideo reads the images, then the videos, then the audio files, each in input order. Send the first frame as the provider requires. Give each reference the prompt label that the model gives it in that order.
 14. **`render(request, signal)`**: Yield one `video_start` event, then the `chunk` events, then one `done` event.
 15. **`render(request, signal)`**: Yield exactly one `last_frame` event before `video_start` or after the last `chunk`. Give `done` the timings of the server, or an empty object.
 16. **`render(request, signal)`**: Reject for each server failure. Do not yield `done` after a failure.
@@ -148,9 +148,9 @@ When you dispose the plugin, the effect removes the entry. `register` throws whe
 ## Add a server
 
 1. Find the row of the provider plugin in the composition, such as `packages/bundle/dv/cordis.patch.yml`.
-2. In the `config` of the row, add or change the server URL of the model and task.
+2. In the `config` of the row, add or change the server URL of the model and task. When the plugin reads the limits from the config, such as `modelFacts` of `@dv/fastvideo`, also give the limits of the served model.
 3. Do not change the plugin code.
-4. If you can start the composition, call `dv_models_get` for the key. Make sure that the limits in the schema come from the server.
+4. If you can start the composition, call `dv_models_get` for the key. Make sure that the limits in the schema agree with the served model.
 
 ## Verify
 
@@ -159,7 +159,7 @@ Add the tests to `packages/dv/<provider>/tests/<provider>.spec.ts`. Boot a test-
 1. Test registration. Make sure that `ctx.dvModels.list({ provider })` returns one entry for each configured model and task. Make sure that each entry has the correct key.
 2. Test disposal. Dispose the plugin fiber. Make sure that `ctx.dvModels.list({ provider })` returns an empty list.
 3. Test the config. Make sure that an unsupported model or task fails the load with the error message.
-4. Test `facts()` and `schema()`. Make sure that the values come from the fake server. Make sure that both reject when the server cannot be reached.
+4. Test `facts()` and `schema()`. Make sure that the values come from the fake server, or from the config when the plugin reads the limits from the config. Make sure that both reject when the server cannot be reached.
 5. Test `validateGenerationRequest` with one case for each refusal sentence. Include a missing input, too many inputs, and a wrong media type.
 6. Test `validateGenerationRequest` with an unknown `extra` name, an invalid `extra` value, and a valid request.
 7. Test `render`. Make sure that the events come in the contract order. Make sure that the fake server receives the translated request.
