@@ -1,5 +1,5 @@
 ---
-description: "DreamVerse 插件目录：首页提供安装的、经过审核的 npm 插件列表，由 GET /api/dv/plugins/catalog 返回。"
+description: "DreamVerse 插件目录：插件市场 页面提供安装的、经过审核的 npm 插件列表，由 GET /api/dv/plugins/catalog 返回。"
 kind: "package-reference"
 ---
 

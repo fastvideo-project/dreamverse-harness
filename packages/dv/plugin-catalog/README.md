@@ -1,5 +1,5 @@
 ---
-description: "The DreamVerse plugin catalog: the curated list of npm plugins the start page offers to install, answered at GET /api/dv/plugins/catalog."
+description: "The DreamVerse plugin catalog: the curated list of npm plugins the Marketplace page offers to install, answered at GET /api/dv/plugins/catalog."
 kind: "package-reference"
 ---
 

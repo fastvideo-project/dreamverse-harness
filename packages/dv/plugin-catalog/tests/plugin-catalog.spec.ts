@@ -138,6 +138,6 @@ describe('the plugin', () => {
     const ctx = new Context()
     cleanups.push(() => ctx.root.fiber.dispose())
     expect(() => { Catalog.apply(ctx, { sources: ['relative/catalog.json'], sourceTimeoutMs: 1000 }) })
-      .toThrow('dv-plugin-catalog: source "relative/catalog.json" is neither an absolute path nor an https URL')
+      .toThrow('dv-plugin-catalog: source "relative/catalog.json" is neither an absolute path, an https URL, nor an http URL on the loopback host')
   })
 })
