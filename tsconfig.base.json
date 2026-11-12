@@ -344,6 +344,7 @@
       "@dv/ffmpeg": ["./packages/dv/ffmpeg/src/index.ts"],
       "@dv/generation": ["./packages/dv/generation/src/index.ts"],
       "@dv/image-generate": ["./packages/dv/image-generate/src/index.ts"],
+      "@dv/audio-edit": ["./packages/dv/audio-edit/src/index.ts"],
       "@dv/inspector": ["./packages/dv/inspector/src/index.ts"],
       "@dv/location": ["./packages/dv/location/src/index.ts"],
       "@dv/location/types": ["./packages/dv/location/src/types.ts"],

@@ -461,6 +461,7 @@
     { "path": "./packages/dv/asset-pool" },
     { "path": "./packages/dv/canvas" },
     { "path": "./packages/dv/inspector" },
+    { "path": "./packages/dv/audio-edit" },
     { "path": "./packages/dv/mcp-presets" },
     { "path": "./packages/dv/shot-render" },
     { "path": "./packages/dv/models" },

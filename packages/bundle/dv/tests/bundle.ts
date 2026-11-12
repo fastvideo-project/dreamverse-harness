@@ -15,6 +15,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
 import DvCanvasNodes from '@dv/canvas'
+import DvAudioEdit from '@dv/audio-edit'
 import DvAudioGenerate from '@dv/audio-generate'
 import DvCharacter from '@dv/character'
 import DvFfmpeg from '@dv/ffmpeg'
@@ -74,6 +75,7 @@ const FakeUniserve = {
  */
 const PLUGINS: Record<string, object> = {
   '@deepseek-ai/dsh-system-prompt': SystemPrompt, '@deepseek-ai/dsh-tools': ToolRuntime, '@dv/project': DvProject,
+  '@dv/audio-edit': DvAudioEdit,
   '@dv/ffmpeg': DvFfmpeg, '@dv/asset-pool': DvAssetPool, '@dv/canvas': DvCanvasNodes, '@dv/inspector': DvInspector,
   '@dv/character': DvCharacter, '@dv/location': DvLocation, '@dv/style': DvStyle,
   '@dv/shot-render': DvShotRender, '@dv/text-node': DvTextNode, '@dv/timeline': DvTimeline,
