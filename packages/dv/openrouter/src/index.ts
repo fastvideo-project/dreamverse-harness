@@ -120,24 +120,33 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     const stamp = JSON.stringify(config.models.get())
     if (current === stamp) return
     const version = ++revision
-    const configured = Object.entries(config.models.get())
-    const catalog = configured.length === 0 ? [] : await client.catalog(lifetime.signal)
-    const next = configured.flatMap(([alias, id]) => {
-      if (!/^[a-z0-9][a-z0-9-]{0,119}$/.test(alias)) throw new Error('Choose a model alias using lowercase letters, numbers, and hyphens.')
-      const caps = catalog.find(row => row.id === id)
-      if (caps === undefined) throw new Error(`OpenRouter video model ${id} is unavailable or lacks supported output choices.`)
-      return tasks(caps).map(task => entry(alias, caps, task))
-    })
-    if (disposed || version !== revision) return
-    for (const candidate of next) {
-      const existing = ctx.dvModels.get(candidate)
-      if (existing !== undefined && !registered.includes(existing)) throw new Error('Another plugin already registered this OpenRouter model.')
+    try {
+      const configured = Object.entries(config.models.get())
+      const catalog = configured.length === 0 ? [] : await client.catalog(lifetime.signal)
+      const next = configured.flatMap(([alias, id]) => {
+        if (!/^[a-z0-9][a-z0-9-]{0,119}$/.test(alias)) throw new Error('Choose a model alias using lowercase letters, numbers, and hyphens.')
+        const caps = catalog.find(row => row.id === id)
+        if (caps === undefined) throw new Error(`OpenRouter video model ${id} is unavailable or lacks supported output choices.`)
+        return tasks(caps).map(task => entry(alias, caps, task))
+      })
+      if (disposed || version !== revision) return
+      for (const candidate of next) {
+        const existing = ctx.dvModels.get(candidate)
+        if (existing !== undefined && !registered.includes(existing)) throw new Error('Another plugin already registered this OpenRouter model.')
+      }
+      for (const remove of removers) remove()
+      removers = next.map(candidate => ctx.dvModels.register(candidate))
+      registered = next
+      current = stamp
+      registrationError = null
+    } catch (error) {
+      if (!disposed && version === revision) {
+        for (const remove of removers) remove()
+        removers = []; registered = []; current = ''
+        registrationError = 'Could not register OpenRouter models. Check the saved key and catalog.'
+      }
+      throw error
     }
-    for (const remove of removers) remove()
-    removers = next.map(candidate => ctx.dvModels.register(candidate))
-    registered = next
-    current = stamp
-    registrationError = null
   }
   ctx.effect(() => async () => {
     disposed = true; revision++; lifetime.abort()
@@ -145,7 +154,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     for (const remove of removers) remove()
   }, 'OpenRouter models')
   const update = (): void => {
-    const work = sync().catch(() => { registrationError = 'Could not register OpenRouter models. Check the saved key and catalog.' })
+    const work = sync().catch(() => undefined)
     pending.add(work)
     void work.finally(() => { pending.delete(work) })
   }

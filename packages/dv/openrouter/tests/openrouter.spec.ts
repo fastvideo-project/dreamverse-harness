@@ -16,7 +16,7 @@ import DvShotRender from '@dv/shot-render'
 import DvProject from '@dv/project'
 import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
 import { provideChatServices } from '../../project/tests/workspaces.ts'
 import { shotGeometry } from '../../shot-render/src/render.ts'
@@ -127,4 +127,16 @@ describe('OpenRouter video provider composition', () => {
     expect(requests.filter(request => request.method === 'POST')).toHaveLength(1)
   })
 
+})
+
+
+it('withdraws removed cloud choices when replacement settings cannot register, and recovers', async () => {
+  const { ctx } = await fixture()
+  const provider = [...ctx.loader.entries()].find(entry => entry.options.id === 'provider')
+  if (provider === undefined) throw new Error('Missing provider fixture')
+  const original = provider.options.config
+  await provider.update({ config: { ...original, models: { 'invalid alias': 'fixture/video' } } })
+  await vi.waitFor(() => { expect(ctx.dvModels.list()).toEqual([]) })
+  await provider.update({ config: original })
+  await vi.waitFor(() => { expect(ctx.dvModels.list().map(entry => entry.model)).toEqual(['cloud', 'cloud', 'cloud']) })
 })
