@@ -91,11 +91,11 @@ Nothing is appended to the conversation, so the cached prefix stays intact.
 
 #### What the model sees
 
-The skill catalog lists each workflow skill with its description. When the agent loads `story-directing`, it reads the order of calls: `dv_textnode_write` for the text nodes `story/theme.md`, `story/beats.md` and `story/storyboard.md`, each built from the text that `dv_textnode_read` returns for the stage before it and naming that stage in `from`; a summary and one question in bold, and no generation before the user agrees; then `dv_shot_render` per shot (with `continue_from` for a shot that continues the previous one), `dv_proj_wait` and `dv_timeline_create`. It also tells the agent how to extend, shorten or change a story on a timeline.
+The skill catalog lists each workflow skill with its description. When the agent loads `story-directing`, it reads the order of calls: `dv_textnode_write` for the text nodes `story/theme.md`, `story/beats.md` and `story/storyboard.md`, each built from the text that `dv_textnode_read` returns for the stage before it and naming that stage in `from`; a summary and one question in bold, and no generation before the user agrees; then, for each shot in story order, `dv_shot_render` and `dv_proj_wait`, where before a shot that continues the previous one the agent inspects the previous shot's ending with `dv_asset_grab_still` (and `dv_inspect_asset` and `dv_inspect_image` when they are in its tool list) and renders the shot with `continue_from`, and after that shot it reviews the boundary between the two shots and, for a failed boundary, proposes one repair and waits for the user; then `dv_timeline_create`. It also tells the agent how to extend, shorten or change a story on a timeline.
 
 #### Token effect
 
-One line in the skill catalog per workflow skill while the plugin is mounted, at most 400 code points (about 60 tokens for `story-directing`); each load adds the body of the skill, under 8192 code points (about 600 tokens for `story-directing`). [`skills.spec.ts`](../../bundle/dv/tests/skills.spec.ts) of `@dv/bundle` checks both limits.
+One line in the skill catalog per workflow skill while the plugin is mounted, at most 400 code points (about 60 tokens for `story-directing`); each load adds the body of the skill, under 8192 code points (about 1800 tokens for `story-directing`). [`skills.spec.ts`](../../bundle/dv/tests/skills.spec.ts) of `@dv/bundle` checks both limits.
 
 #### KV Cache effect
 
