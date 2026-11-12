@@ -49,6 +49,8 @@ Host 半边不注册任何东西。浏览器半边在 `apply` 顶层提供 `dvMe
 
 在已结束的对话 Markdown 里，路径为 `/dv/assets/<id>` 且所打开项目持有该素材的链接变成一张 160 px 宽的 16:9 卡片，通过 `@dv/ui-media` 的 `dv.media` 组件工厂以用途 `thumb` 绘制该素材，下方是说明文字：历史把创建该素材的记录画成媒体（例如镜头渲染）时，为 `@dv/ui-history` 的 `dvHistory.describe` 给该记录的名称，否则为素材名称，例如导入文件的文件名。说明跟随 `dvHistory` 及其行，所以已绘制的卡片在一条历史行注册时会重新读取说明。每个表体行都链接这类素材的表格变成三列卡片网格，每张卡片的说明是该行其他单元格用 ` · ` 连接的文字（例如 `1 · 直播间开场「来一把吧」`）。这类素材的 Markdown 图片变成最宽 240 px 的缩略图；素材有尺寸时使用素材自身的宽度和宽高比，否则为 240 px 宽的 16:9。点击卡片或缩略图会通过 `dvMedia.preview` 打开从被点击元素放大出来的素材预览；`dvMedia` 不存在时什么也不打开。媒体类型没有 `dv.media.view` 条目的素材画成 `@dv/ui-media` 的文件卡片。素材和创建它们的记录来自所打开项目的当前状态，每次项目事件后重新获取。其他链接、图片和表格保持 DSH 的渲染。
 
+对话中的相对链接（例如 `story/theme.md`）通过 `dvCenter` 在画布编辑器里打开对应文本节点的最新版本。它们使用对话媒体已获取的记录；没有对应文本节点的路径保持原有的文件导航。
+
 ### `dv.prompt` 输入框
 
 浏览器半边还提供 `dvComposer`，它的类型在只含类型的入口 `@dv/ui-composer/contract`（[`src/client/contract/index.ts`](src/client/contract/index.ts)）中：`paramBars`，一个以 `operation` 为键的 `Registry<ParamBar>`，拥有某个操作的插件的 UI 半边在 `ctx.inject(['dvComposer'], …)` 中填充它，`@dv/ui-generation` 的生成套件就为一个类型的每个操作这样做。同一个操作的第二个参数栏会抛错，并给出持有者的 `owner`。`ParamBar` 提供 `chips({schema, params, operation})`，即调用在某个模型的 `schema()` 下的参数标签，每个标签有参数键、名称，以及一个菜单（显示的值和以参数补丁表示的选项）、一个文本框或一个复选框；`candidates(schema)`，即该模型的 `@` 过滤条件，含它的 `reference` 输入的媒体类型和数量 `maxReferences`；以及可选的 `copy`，含 `placeholder`、`send` 和 `sending` 文字。`chips` 和 `candidates` 也是可选的，`candidates` 回答 null 表示没有过滤条件，例如对于目录不知道的 schema。可编辑的实例把未发送的草稿（文档、参数和标签中输入的文字）保存在内存中，键为其项目、`draftId`（版本编辑器传入版本的记录）和宿主提供的调用，所以关闭编辑器（例如按 Escape 或点击画布空白处）后再次打开同一个版本会恢复草稿，而调用相同的另一个版本从空白开始；发送成功或改回宿主提供的调用会丢弃草稿，恢复的草稿在发送前重新检查，不显示编辑器关闭前的失败，也从不处于发送中状态，重新加载页面会清除所有草稿。

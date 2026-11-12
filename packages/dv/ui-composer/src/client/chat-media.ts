@@ -6,13 +6,14 @@
  * `select` finds asset references by their `/dv/assets/<id>` paths alone; the component reads the open project's assets
  * through the `useChatAssets` hook and renders DSH's default element while the project does not hold a referenced
  * asset. The entry stays registered for the whole declaration of the chain, so a change of the project re-renders the
- * cards without remounting them.
+ * cards without remounting them. Relative text-node links open their newest record in the canvas editor.
  *
  * @module @dv/ui-composer/chat-media
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { MarkdownElement, MarkdownTableElement } from '@deepseek-ai/dsh-client-ui-primitives'
+import { MarkdownDelegateProvider } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { HostObservable, InjectFace, PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { createElement, type ReactNode } from 'react'
@@ -38,9 +39,10 @@ export interface AssetRow {
   readonly texts: readonly string[]
 }
 
-/** The asset references that the entry's `select` finds in one Markdown element, before the project's assets are known. */
+/** Asset references and relative text-node paths, before the project's records and assets are known. */
 export type AssetReference =
   | { readonly kind: 'link'; readonly asset: string }
+  | { readonly kind: 'text'; readonly path: string }
   | { readonly kind: 'image'; readonly asset: string; readonly alt: string }
   | { readonly kind: 'table'; readonly rows: readonly AssetRow[] }
 
@@ -67,6 +69,8 @@ export interface ChatMediaInjected {
   hooks: { chatAssets: HostObservable<ChatAssets>; historyLabels: HostObservable<DescribeRecord> }
   /** Open the asset preview of `dvMedia` for an asset of a project, growing out of `opener`; nothing while `dvMedia` is absent. */
   preview: (projectId: string, asset: Asset, opener: Element | null) => void
+  /** Open the record's text node in the canvas editor. */
+  openText: (record: string) => void
 }
 
 /** The path of an asset's file under the host, as `@dv/asset-pool` serves it. */
@@ -115,7 +119,7 @@ function assetRows(table: MarkdownTableElement): AssetReference | null {
 }
 
 /**
- * Find the asset references of one settled Markdown element by their paths alone; the chain entry's `select`.
+ * Find asset references and relative text-node paths; the chain entry's `select`.
  * @param element - the parsed element.
  * @returns the references, or null to keep DSH's default rendering.
  */
@@ -123,6 +127,9 @@ export function selectAssetReference(element: MarkdownElement): AssetReference |
   switch (element.kind) {
     case 'link': {
       const asset = assetIdOf(element.href)
+      if (asset === undefined && !/^(?:[a-z][\w+.-]*:|[/\\#])/iu.test(element.href)) {
+        return { kind: 'text', path: element.href.replace(/^(?:\.\/)+/u, '').split('#')[0] ?? '' }
+      }
       return asset === undefined ? null : { kind: 'link', asset }
     }
     case 'image': {
@@ -148,16 +155,21 @@ function gridCard(row: AssetRow, held: ChatAssets): GridCard | undefined {
 }
 
 /**
- * Resolve an element's asset references against the open project's assets.
+ * Resolve asset references and text-node paths against the open project's assets and records.
  * @param reference - the references that {@link selectAssetReference} found.
  * @param held - the open project's assets.
  * @param describe - History's label of a record.
- * @returns what the entry draws, or null while the project does not hold a referenced asset.
+ * @returns the media or text-node record, or null when the project holds no match.
  */
-export function resolveChatMedia(reference: AssetReference, held: ChatAssets, describe: DescribeRecord): ChatMedia | null {
+export function resolveChatMedia(reference: AssetReference, held: ChatAssets, describe: DescribeRecord): ChatMedia | { kind: 'text'; record: string } | null {
   const { project } = held
   if (project === null) return null
   switch (reference.kind) {
+    case 'text': {
+      const record = Object.values(held.records).findLast(each => each.status === 'done' && each.params['path'] === reference.path
+        && (each.operation === 'textnode.write' || each.operation === 'textnode.edit'))
+      return record === undefined ? null : { kind: 'text', record: record.id }
+    }
     case 'link': {
       const asset = held.assets[reference.asset]
       if (asset === undefined) return null
@@ -190,12 +202,15 @@ export type ChatMediaEntryProps = PropsRuntime<'conversation.chat.markdown'> & P
  * not hold a referenced asset. A change of the project re-renders a card in place, so its state survives.
  * @param props - the matched references, the default element, the asset and label hooks, the preview, and the Factory
  *   renderer.
- * @returns the card, the thumbnail, the grid, or the default element.
+ * @returns the card, thumbnail, grid, text-node link, or default element.
  */
 export function ChatMediaEntry(props: ChatMediaEntryProps): ReactNode {
-  const { matched, fallback, useChatAssets, useHistoryLabels, preview, renderFactorySlot } = props
+  const { matched, fallback, useChatAssets, useHistoryLabels, preview, openText, renderFactorySlot } = props
   const describe = useHistoryLabels(value => value)
   const media = useChatAssets(held => resolveChatMedia(matched, held, describe), sameChatMedia)
+  if (media?.kind === 'text') return createElement(MarkdownDelegateProvider, {
+    openFile: () => { openText(media.record) }, children: fallback,
+  })
   return media === null ? fallback : createElement(ChatMediaView, { media, preview, renderFactorySlot })
 }
 
@@ -204,7 +219,7 @@ export function ChatMediaEntry(props: ChatMediaEntryProps): ReactNode {
  * @param b - another resolved form.
  * @returns whether both draw the same cards.
  */
-function sameChatMedia(a: ChatMedia | null, b: ChatMedia | null): boolean {
+function sameChatMedia(a: ReturnType<typeof resolveChatMedia>, b: ReturnType<typeof resolveChatMedia>): boolean {
   return JSON.stringify(a) === JSON.stringify(b)
 }
 
@@ -242,6 +257,7 @@ export function registerChatMedia(ctx: Context): void {
     const injected: ChatMediaInjected = {
       hooks: { chatAssets, historyLabels: labels },
       preview: (projectId, asset, opener) => { ctx.get('dvMedia')?.preview(projectId, asset, opener) },
+      openText: (record) => { ctx.get('dvCenter')?.show({ view: 'canvas', target: { record } }) },
     }
     const unregister = ctx.slots.register({
       name: 'conversation.chat.markdown',
