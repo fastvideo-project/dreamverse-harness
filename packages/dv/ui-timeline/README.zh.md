@@ -43,9 +43,10 @@ Host 半边不注册任何东西。浏览器半边注册 `dv-timeline` 标签类
 | 拖动片段 | `timeline.clip_move {clip, to}`（`to` 是从 1 开始的位置） |
 | 拆分 | 对播放头下的片段做 `timeline.clip_split {clip, at_sec}` |
 | 对选中片段按 Delete | `timeline.clip_remove {clip}` |
-| 把素材拖到轨道上，或用 ＋ 选择 | `timeline.clip_insert {timeline, at, asset}` |
+| 把素材拖到轨道上，或用 ＋ 选择 | `timeline.clip_insert {timeline, at, asset}`；拖到这里的非视频素材不发送任何东西，并显示 视频轨道只接受视频。音频请拖到声音轨道上。 / The video track takes videos only. Drag audio onto a sound track. |
 | ＋ 新建、重命名、删除标签 | `timeline.create {timeline, assets: []}`（不带名称，标签显示 时间线 {n} / Timeline {n}）、`timeline.rename {timeline, name}`、`timeline.delete {timeline}` |
 | 在音轨上点 ＋，再选一个音频素材或 上传本地音频 / Upload local audio | `timeline.sound_add {timeline, asset, start_sec, track}`；上传时先通过 `/api/dv/assets/import`（`surface: asset_pool`）导入文件 |
+| 把素材库里的音频素材拖到音轨上 | `timeline.sound_add {timeline, asset, start_sec, track}`，`start_sec` 为放下的位置；另一次添加声音还在进行时，或项目没有时间线时，这次拖放不发送任何东西；非音频素材不发送任何东西，并显示 声音轨道只接受音频。 / A sound track takes audio only. 编辑器从拖动数据的 `application/x-dv-asset-mime` 值读取媒体类型。 |
 | 对选中的声音按 Delete 或 Backspace、点工具栏的 删除声音 / Delete sound，或在其右键菜单中选 删除 / Delete | `timeline.sound_remove {sound}`（`sound` 是声音 ID） |
 | 重命名音轨 | `timeline.sound_track_rename {timeline, track, name}`；名称为空或未改变时不发送 |
 | 删除音轨 / Delete track | `timeline.sound_track_remove {timeline, track}`；只在本视图中显示的空音轨直接消失，不写记录 |

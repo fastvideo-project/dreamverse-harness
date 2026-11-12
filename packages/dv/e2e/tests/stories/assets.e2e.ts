@@ -34,6 +34,30 @@ function solidPng(rgb: [number, number, number]): Buffer {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', deflateSync(pixels)), chunk('IEND', Buffer.alloc(0))])
 }
 
+/**
+ * A mono 16-bit PCM WAV file of silence.
+ * @param seconds - the length.
+ * @returns the file's bytes.
+ */
+function silentWav(seconds: number): Buffer {
+  const rate = 8000
+  const data = Buffer.alloc(rate * seconds * 2)
+  const header = Buffer.alloc(44)
+  header.write('RIFF', 0)
+  header.writeUInt32LE(36 + data.length, 4)
+  header.write('WAVEfmt ', 8)
+  header.writeUInt32LE(16, 16)
+  header.writeUInt16LE(1, 20)
+  header.writeUInt16LE(1, 22)
+  header.writeUInt32LE(rate, 24)
+  header.writeUInt32LE(rate * 2, 28)
+  header.writeUInt16LE(2, 32)
+  header.writeUInt16LE(16, 34)
+  header.write('data', 36)
+  header.writeUInt32LE(data.length, 40)
+  return Buffer.concat([header, data])
+}
+
 let colorSeed = 1
 /** A PNG whose bytes no other test imports. */
 function freshPng(): Buffer {
@@ -214,7 +238,7 @@ describe('The asset pool panel', () => {
       await openProject(page, empty.title)
       await openAssets(page)
       await expect.poll(() => assetsPanel(page).locator('[data-asset-id]').count()).toBe(0)
-      expect(await assetsPanel(page).innerText()).toContain('拖入图片或视频导入，或点击选择文件')
+      expect(await assetsPanel(page).innerText()).toContain('拖入图片、视频或音频导入，或点击选择文件')
       expect(errors).toEqual([])
     })
 
@@ -244,7 +268,7 @@ describe('The asset pool panel', () => {
         zone?.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }))
         zone?.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }))
       })
-      await expect.poll(() => assetsPanel(page).innerText()).toContain('「notes.txt」不是图片或视频，没有导入。')
+      await expect.poll(() => assetsPanel(page).innerText()).toContain('「notes.txt」不是图片、视频或音频，没有导入。')
       await page.waitForTimeout(1000)
       expect(await assetsPanel(page).locator('[data-asset-id]').count()).toBe(2)
       expect(errors).toEqual([])
@@ -423,6 +447,29 @@ describe('The asset pool panel', () => {
         return event.defaultPrevented
       })
       expect(accepted).toBe(true)
+      expect(errors).toEqual([])
+    })
+
+    it('imports a WAV file under 音频 with its length, adds its tile dragged onto a sound track, and refuses it on the video track', async () => {
+      const { page, errors } = await openPage()
+      const project = await createProject()
+      await harness.api.post('/api/dv/operation', { project: project.id, operation: 'timeline.create', params: { timeline: 't1', assets: [] }, inputs: [], surface: 'timeline', intent: 'seed' })
+      await openProject(page, project.title)
+      await page.getByRole('tab', { name: '时间线', exact: true }).click()
+      await openAssets(page)
+      await assetsPanel(page).locator('input[type="file"]').setInputFiles({ name: 'voice.wav', mimeType: 'audio/wav', buffer: silentWav(2) })
+      const tile = sectionThumbs(page, '音频').first()
+      await expect.poll(() => tile.innerText(), { timeout: 10_000 }).toBe('2.0s')
+      const asset = await tile.getAttribute('data-asset-id')
+      await tile.dragTo(page.locator('[data-sound-track="0"]'))
+      const sounds = async (): Promise<Array<{ asset: string; track: number }>> => {
+        const added = (await stateOf(project.id)).components.timeline.timelines[0]?.sounds ?? []
+        return added.map(sound => ({ asset: sound.asset, track: sound.track }))
+      }
+      await expect.poll(sounds, { timeout: 10_000 }).toEqual([{ asset, track: 0 }])
+      await tile.dragTo(page.locator('[role="list"]').first())
+      await expect.poll(() => page.getByRole('status').filter({ hasText: '视频轨道只接受视频。音频请拖到声音轨道上。' }).count()).toBe(1)
+      expect((await stateOf(project.id)).components.timeline.timelines[0]?.clips).toEqual([])
       expect(errors).toEqual([])
     })
   })

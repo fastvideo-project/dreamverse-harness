@@ -43,9 +43,10 @@ The Host half registers nothing. The browser half registers the `dv-timeline` ta
 | Drag a clip | `timeline.clip_move {clip, to}` (`to` is the 1-based position) |
 | Split | `timeline.clip_split {clip, at_sec}` for the clip under the playhead |
 | Delete key on the selected clip | `timeline.clip_remove {clip}` |
-| Drop an asset on the track, or pick one with ＋ | `timeline.clip_insert {timeline, at, asset}` |
+| Drop an asset on the track, or pick one with ＋ | `timeline.clip_insert {timeline, at, asset}`; an asset other than a video dropped there sends nothing and shows 视频轨道只接受视频。音频请拖到声音轨道上。 / The video track takes videos only. Drag audio onto a sound track. |
 | ＋ New, rename, delete a tab | `timeline.create {timeline, assets: []}` (no name, so the tab shows 时间线 {n} / Timeline {n}), `timeline.rename {timeline, name}`, `timeline.delete {timeline}` |
 | ＋ on a sound track, then an audio asset or 上传本地音频 / Upload local audio | `timeline.sound_add {timeline, asset, start_sec, track}`; an upload first imports the file through `/api/dv/assets/import` with `surface: asset_pool` |
+| Drop an audio asset from the asset pool on a sound track | `timeline.sound_add {timeline, asset, start_sec, track}` with `start_sec` at the drop point; while another sound add runs, or in a project without timelines, the drop sends nothing; an asset other than audio sends nothing and shows 声音轨道只接受音频。 / A sound track takes audio only. The editor reads the media type from the drag's `application/x-dv-asset-mime` value. |
 | Delete or Backspace on the selected sound, the toolbar's 删除声音 / Delete sound, or 删除 / Delete in its right-click menu | `timeline.sound_remove {sound}` (`sound` is the sound ID) |
 | Rename a sound track | `timeline.sound_track_rename {timeline, track, name}`; a blank or unchanged name sends nothing |
 | 删除音轨 / Delete track | `timeline.sound_track_remove {timeline, track}`; an empty track that only this view shows goes without a record |
