@@ -71,8 +71,7 @@ function inputAudio(context: Pick<OperationContext, 'inputs'>): AssetId {
 }
 
 /**
- * The pauses that ffmpeg's `silencedetect` printed, as start and end times in seconds to the microsecond. A pause that runs
- * to the end of the audio ends at the audio's decoded length, which `silencedetect` and ffprobe can round 1 µs apart.
+ * The pauses that ffmpeg's `silencedetect` printed, as start and end times in seconds to the microsecond.
  * @param stderr - the filter's log.
  * @returns the pauses in time order.
  */
@@ -82,7 +81,8 @@ function pausesOf(stderr: string): Array<[number, number]> {
 
 /**
  * The cut times at the middle of the longest pauses between sounds. A pause that starts at 0, or ends less than 1 ms
- * before `durationSec` or later, is not between sounds and is left out.
+ * before `durationSec` or later, is not between sounds and is left out; the 1 ms margin covers a pause at the end of
+ * the audio, whose end `silencedetect` and ffprobe can round 1 µs apart.
  * @param pauses - the pauses of the audio.
  * @param durationSec - the audio's decoded length.
  * @param count - how many cuts to make.
@@ -236,7 +236,7 @@ export default class DvAudioEdit extends Service {
 
   /**
    * Decode the first audio stream of a file into a 16-bit PCM WAV file, whose length is the decoded audio's length; a
-   * container such as MP3 can report a longer duration than it decodes to.
+   * container such as MP3 can report a duration that differs from it.
    * @param path - the file.
    * @param dir - the directory the WAV file is written into.
    * @returns the WAV file and its length in seconds.

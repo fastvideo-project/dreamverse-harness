@@ -51,7 +51,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`split` 先把第一条音频流解码成 16 位 PCM WAV 文件，再用 ffprobe 读取它的时长；对 MP3 文件，这个解码后的长度比容器报告的时长短。给了 `pieces` 时，它在这个 WAV 文件上运行 ffmpeg 的 `silencedetect` 滤镜，保留开始于 0 之后、结束于结尾前至少 1 毫秒的停顿，因此即使 `silencedetect` 和 ffprobe 对其结束时间的舍入相差 1 微秒，音频结尾处的停顿也不计入，取其中最长的 `pieces − 1` 个，在它们的正中间下刀。所有时间都四舍五入到毫秒。随后一条 ffmpeg 命令从这个 WAV 文件切出每一段，格式为 16 位 PCM WAV，因此各段覆盖音频直到其四舍五入到毫秒的长度，每段写出的长度与报告的长度相差不到 1 毫秒。给了 `duration_sec` 时，`speed` 以同样方式解码输入，由解码后的长度算出倍数；给了 `speed` 时，它直接读取输入。随后它应用保持音调的 ffmpeg `atempo` 滤镜，再用 ffprobe 读取结果的时长写入报告。
+`split` 先把第一条音频流解码成 16 位 PCM WAV 文件，再用 ffprobe 读取它的时长；对 MP3 文件，这个解码后的长度可能与容器报告的时长不同。给了 `pieces` 时，它在这个 WAV 文件上运行 ffmpeg 的 `silencedetect` 滤镜，保留开始于 0 之后、结束于结尾前至少 1 毫秒的停顿，取其中最长的 `pieces − 1` 个，在它们的正中间下刀。这 1 毫秒的余量使音频结尾处的停顿不计入，即使 `silencedetect` 和 ffprobe 对其结束时间的舍入相差 1 微秒。所有时间都四舍五入到毫秒。随后一条 ffmpeg 命令从这个 WAV 文件切出每一段，格式为 16 位 PCM WAV，因此各段覆盖音频直到其四舍五入到毫秒的长度，每段写出的长度与报告的长度相差不到 1 毫秒。给了 `duration_sec` 时，`speed` 以同样方式解码输入，由解码后的长度算出倍数；给了 `speed` 时，它直接读取输入。随后它应用保持音调的 ffmpeg `atempo` 滤镜，再用 ffprobe 读取结果的时长写入报告。
 
 | 文件 | 内容 |
 | --- | --- |
