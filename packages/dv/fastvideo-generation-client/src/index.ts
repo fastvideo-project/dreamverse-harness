@@ -63,7 +63,7 @@ export class DvFastvideoGeneration extends Service {
   static Config: z<Config> = z.object({
     baseUrl: z.string().required(),
     modelFacts: modelFactsConfig.required(),
-    discoverOutputCapabilities: z.boolean().default(true),
+    discoverOutputCapabilities: z.boolean().default(false),
     managed: z.boolean().default(false), asyncJobs: z.boolean().default(false),
     task: z.union([z.const(null), z.string()]).default(null),
     displayName: z.union([z.const(null), z.string()]).default(null),
@@ -118,7 +118,7 @@ export class DvFastvideoGeneration extends Service {
     const served = info?.served_model_name
     if (typeof served !== 'string') throw new Error(`FastVideo ${route} reports no served_model_name; expected ${this.facts.modelId}.`)
     if (served !== this.facts.modelId) throw new Error(`FastVideo serves ${served}; modelFacts.modelId is ${this.facts.modelId}.`)
-    if (this.config.discoverOutputCapabilities !== false) this.facts = outputFacts(this.facts, info?.video_output_capabilities)
+    if (this.config.discoverOutputCapabilities === true) this.facts = outputFacts(this.facts, info?.video_output_capabilities)
     this.checked = true
     return this.facts
   }

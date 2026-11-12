@@ -123,10 +123,16 @@ it('discovers a managed alias’s output metadata without changing its reference
     schema_version: 1, fps: 24, duration_seconds: { min: 5, max: 6 },
     num_frames_by_duration_seconds: { 5: 124, 6: 158 },
     recommended_frame_sizes: { '16:9': { '480p': [832, 480], '768p': [1344, 768] } },
-  } }))
+  } }), { discoverOutputCapabilities: true })
   const discovered = await generation.model()
   expect(discovered).toMatchObject({ minDurationSec: 5, maxDurationSec: 6,
     resolutions: ['480p', '768p'], maxReferences: 2, referenceMediaTypes: facts.referenceMediaTypes })
   expect(discovered.numFramesByDurationSec).toEqual({ 5: 124, 6: 158 })
   expect(await generation.model()).toBe(discovered)
+})
+
+
+it('keeps configured output choices when metadata discovery was not enabled', async () => {
+  const generation = client(async () => json({ served_model_name: 'pika', video_output_capabilities: { schema_version: 2 } }))
+  expect(await generation.model()).toMatchObject({ modelId: 'pika', minDurationSec: 5, maxDurationSec: 5, resolutions: ['480p'] })
 })
