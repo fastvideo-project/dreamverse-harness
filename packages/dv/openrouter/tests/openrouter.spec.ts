@@ -20,6 +20,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
 import { provideChatServices } from '../../project/tests/workspaces.ts'
 import { shotGeometry } from '../../shot-render/src/render.ts'
+import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import * as OpenRouter from '../src/index.ts'
 
 const cleanup: Array<() => Promise<unknown>> = []
@@ -30,13 +31,14 @@ const CATALOG = { data: [{ id: 'fixture/video', name: 'Fixture Video', supported
 function isVideoEntry(entry: ModelEntry): entry is ModelEntry<TaskOfPrimitive<'video'>> { return entry.modality === 'video' }
 const ffmpeg = process.env['DV_FFMPEG'] ?? 'ffmpeg'
 
-async function fixture() {
+async function fixture(options: { failCatalog?: boolean; models?: Record<string, string> } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'dv-openrouter-'))
   cleanup.push(async () => { rmSync(dir, { recursive: true, force: true }) })
   const videoPath = join(dir, 'fixture.mp4')
   await promisify(execFile)(ffmpeg, ['-y', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=64x64:d=1:r=8',
     '-pix_fmt', 'yuv420p', videoPath])
   const clip = readFileSync(videoPath)
+  const remote = { failCatalog: options.failCatalog ?? false }
   const requests: Array<{ path: string; method: string; body: Record<string, unknown> | null; key: string | undefined }> = []
   const server: Server = createServer(async (request, response) => {
     const parts: Buffer[] = []
@@ -45,7 +47,8 @@ async function fixture() {
     requests.push({ path, method: request.method ?? 'GET', body: parts.length === 0 ? null
       : JSON.parse(Buffer.concat(parts).toString()), key: request.headers.authorization })
     response.setHeader('content-type', 'application/json')
-    if (path === '/api/v1/videos/models') response.end(JSON.stringify(CATALOG))
+    if (path === '/api/v1/videos/models' && remote.failCatalog) { response.statusCode = 503; response.end('{}') }
+    else if (path === '/api/v1/videos/models') response.end(JSON.stringify(CATALOG))
     else if (request.method === 'POST') { response.statusCode = 202; response.end(JSON.stringify({ id: 'job1' })) }
     else if (path.endsWith('content?index=0')) { response.setHeader('content-type', 'video/mp4'); response.end(clip) }
     else response.end(JSON.stringify({ status: 'completed' }))
@@ -55,6 +58,11 @@ async function fixture() {
   const ctx = new Context()
   cleanup.push(() => ctx.fiber.dispose())
   provideChatServices(ctx)
+  const routes = new Map<string, ConnectionFetchRoute>()
+  ctx.provide('connection', { fetch: { register: (route: ConnectionFetchRoute) => {
+    routes.set(route.path, route)
+    return () => { routes.delete(route.path); return Promise.resolve() }
+  } } } as never)
   await ctx.plugin(Loader)
   Object.assign(ctx.loader.builtins, { include: Include, credentials: MemoryCredentials,
     project: DvProject, assetPool: DvAssetPool, ffmpeg: DvFfmpeg, models: DvModels, openrouter: OpenRouter, shotRender: DvShotRender })
@@ -64,7 +72,7 @@ async function fixture() {
     { id: 'ffmpeg', name: 'cordis:ffmpeg', config: { ffmpegPath: ffmpeg, ffprobePath: 'ffprobe' } },
     { id: 'assets', name: 'cordis:assetPool' }, { id: 'models', name: 'cordis:models' },
     { id: 'provider', name: 'cordis:openrouter', config: {
-      baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/`, models: { cloud: 'fixture/video' }, pollIntervalMs: 1,
+      baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/`, models: options.models ?? { cloud: 'fixture/video' }, pollIntervalMs: 1,
     } },
     { id: 'shot-render', name: 'cordis:shotRender' },
   ]
@@ -72,7 +80,7 @@ async function fixture() {
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(path).href } }); await ctx.loader.await()
   const origin = { actor: 'user', surface: 'api', session: null, turn: null, tool_call: null, intent: 'create' } as const
   const project = await ctx.dvProject.createProject(await ctx.dvProject.newProjectFolder('cloud'), 'cloud', origin)
-  return { ctx, requests, clip, project }
+  return { ctx, requests, clip, project, remote, routes }
 }
 
 describe('OpenRouter video provider composition', () => {
@@ -139,4 +147,30 @@ it('withdraws removed cloud choices when replacement settings cannot register, a
   await vi.waitFor(() => { expect(ctx.dvModels.list()).toEqual([]) })
   await provider.update({ config: original })
   await vi.waitFor(() => { expect(ctx.dvModels.list().map(entry => entry.model)).toEqual(['cloud', 'cloud', 'cloud']) })
+})
+
+it('keeps catalog discovery available after a failed boot catalog sync, and registers models once it recovers', async () => {
+  const { ctx, remote, routes } = await fixture({ failCatalog: true })
+  expect(ctx.dvModels.list()).toEqual([])
+  const route = routes.get('/api/dv/openrouter/catalog')
+  if (route === undefined) throw new Error('Missing OpenRouter catalog route')
+  remote.failCatalog = false
+  const response = await route.fetch(new Request('http://dsh.local/api/dv/openrouter/catalog'))
+  expect(await response.json()).toMatchObject({ data: [{ id: 'fixture/video' }], error: null })
+  expect(ctx.dvModels.list().map(entry => entry.task)).toEqual(['t2v', 'i2v', 'fl2v'])
+})
+
+it('fails at load for a configured alias that breaks the alias rule', async () => {
+  const { ctx } = await fixture({ models: { Bad: 'fixture/video' } })
+  expect([...ctx.loader.entries()].find(entry => entry.options.id === 'provider')?.fiber?.state).toBe(3)
+  expect(ctx.dvModels.list()).toEqual([])
+})
+
+it('applies saved model settings after a failed boot catalog sync', async () => {
+  const { ctx, remote } = await fixture({ failCatalog: true })
+  const provider = [...ctx.loader.entries()].find(entry => entry.options.id === 'provider')
+  if (provider === undefined) throw new Error('Missing provider fixture')
+  remote.failCatalog = false
+  await provider.update({ config: { ...provider.options.config, models: { renamed: 'fixture/video' } } })
+  await vi.waitFor(() => { expect(ctx.dvModels.list().map(entry => entry.model)).toEqual(['renamed', 'renamed', 'renamed']) })
 })

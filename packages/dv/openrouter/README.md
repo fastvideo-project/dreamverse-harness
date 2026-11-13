@@ -35,7 +35,7 @@ Only configured models appear in the picker. T2V is available for compatible cat
 
 The provider reads `videos/models`, validates discrete durations and endpoint inputs, submits once to `videos`, and polls the returned job ID. It downloads from the canonical authenticated content route and extracts the last frame through the shared ffmpeg service. Returned signed URLs are ignored.
 
-Duration-based requests omit unknown pixel dimensions and frame counts. Native FastVideo and UniServe retain their configured frame geometry. Empty configuration makes no provider request; volatile model changes update the existing catalog.
+Duration-based requests omit unknown pixel dimensions and frame counts. Native FastVideo and UniServe retain their configured frame geometry. Empty configuration makes no provider request; volatile model changes update the existing catalog. A configured alias that is not lowercase letters, digits and hyphens fails the load. If the catalog request or model registration fails at startup, the plugin logs a warning and keeps its catalog route and settings listener; the next Video APIs discovery or model change retries registration.
 
 
 <a id="further-exploration"></a>

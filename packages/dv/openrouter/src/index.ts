@@ -32,6 +32,11 @@ function tasks(model: VideoModel): TaskId[] {
     ...model.frames.includes('first_frame') && model.frames.includes('last_frame') ? ['fl2v' as const] : []]
 }
 
+/** Throw for an alias that is not 1-120 lowercase letters, digits and hyphens, starting with a letter or digit. */
+function checkAlias(alias: string): void {
+  if (!/^[a-z0-9][a-z0-9-]{0,119}$/.test(alias)) throw new Error('Choose a model alias using lowercase letters, numbers, and hyphens.')
+}
+
 /** Register only explicitly configured models. A dormant installation makes no network call. */
 export async function apply(ctx: Context, config: Config): Promise<void> {
   const client = new OpenRouterVideos(config.baseUrl, async () => {
@@ -124,7 +129,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       const configured = Object.entries(config.models.get())
       const catalog = configured.length === 0 ? [] : await client.catalog(lifetime.signal)
       const next = configured.flatMap(([alias, id]) => {
-        if (!/^[a-z0-9][a-z0-9-]{0,119}$/.test(alias)) throw new Error('Choose a model alias using lowercase letters, numbers, and hyphens.')
+        checkAlias(alias)
         const caps = catalog.find(row => row.id === id)
         if (caps === undefined) throw new Error(`OpenRouter video model ${id} is unavailable or lacks supported output choices.`)
         return tasks(caps).map(task => entry(alias, caps, task))
@@ -158,7 +163,6 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     pending.add(work)
     void work.finally(() => { pending.delete(work) })
   }
-  await sync()
   ctx.on('loader/volatile-update', update)
   ctx.inject(['connection'], scope => scope.effect(() => scope.connection.fetch.register({
     path: '/api/dv/openrouter/catalog', methods: ['GET'], requestBody: 'buffered',
@@ -167,4 +171,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       catch { return Response.json({ error: 'Could not load OpenRouter video models. Check the saved API key and connection.' }, { status: 502 }) }
     },
   }), 'OpenRouter video discovery'))
+  // A configured alias is checked without the network, so a bad alias in cordis.yml fails the load.
+  for (const alias of Object.keys(config.models.get())) checkAlias(alias)
+  // A failed boot catalog sync keeps discovery and settings updates registered so a saved key or catalog recovers it.
+  await sync().catch((error: unknown) => {
+    ctx.logger('dvOpenRouter').warn('could not register OpenRouter models: %s', error instanceof Error ? error.message : String(error))
+  })
 }
