@@ -20,7 +20,7 @@ import DvFfmpeg, { FfmpegError } from '@dv/ffmpeg'
 import DvProject, { type AssetId, type OperationToolValue, type ProjectId, type RecordId, type RunResult } from '@dv/project'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { chatProject, provideChatServices } from '../../project/tests/workspaces.ts'
-import DvTimeline from '../src/index.ts'
+import DvTimeline, { type Timeline } from '../src/index.ts'
 
 const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmpeg-native/bin/ffmpeg'
 const FFPROBE = process.env['DV_FFPROBE'] ?? 'ffprobe'
@@ -166,6 +166,22 @@ describe('timeline.export', () => {
     await expect(fixture.ctx.dvTimeline.exportTimeline(timeline, fixture.dir)).rejects.toThrow('Clips 2, 3 of timeline t1')
     release()
     await Promise.all(renders)
+  })
+
+  it('joins the clips without their audio while the timeline\'s video audio is muted, and with it otherwise', async () => {
+    const fixture = await start()
+    const clip = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('clip'), { mime: 'video/mp4', name: 'clip.mp4' }, null)
+    await fixture.run('timeline.create', { timeline: 't1', assets: [clip] })
+    const argvs: Array<readonly string[]> = []
+    vi.spyOn(fixture.ctx.dvFfmpeg, 'run').mockImplementation((request) => {
+      argvs.push(request.argv)
+      return Promise.resolve({ outputs: [], stdout: '', stderr: '', exitCode: 0 })
+    })
+    const timeline = (): Timeline => fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0] as Timeline
+    await fixture.ctx.dvTimeline.exportTimeline(timeline(), fixture.dir)
+    await fixture.run('timeline.mute', { timeline: 't1', target: 'video', muted: true })
+    await fixture.ctx.dvTimeline.exportTimeline(timeline(), fixture.dir)
+    expect(argvs.map(argv => argv.includes('-an'))).toEqual([false, true])
   })
 
   it.skipIf(!existsSync(FFMPEG))('exports a timeline for the agent, trimming a clip with an in and out point to its range', async () => {

@@ -28,7 +28,7 @@ describe('placeSounds', () => {
     const sound = (id: string, file: string, start: number, track: number): Timeline['sounds'][number] =>
       ({ id: id as SoundId, asset: file as AssetId, start_sec: start, track })
     const timeline: Timeline = {
-      id: 't1' as TimelineId, name: '', clips: [], sound_track_names: [],
+      id: 't1' as TimelineId, name: '', clips: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [],
       sounds: [sound('sd1', 'a.mp3', 1, 0), sound('sd2', 'b.mp3', 0, 1), sound('sd3', 'c.mp3', 4, 0), sound('sd4', 'lost.mp3', 0, 2)],
     }
     const { sounds, end } = placeSounds(state, timeline, new Map([['b.mp3', 3.5]]))

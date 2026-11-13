@@ -61,8 +61,8 @@ export interface Sound {
 export type ClipStatus = 'ready' | 'rendering' | 'failed'
 
 /**
- * One edited video of a project: its clips in playback order, the sounds of its 声音 row, and its name; an empty name
- * shows as 时间线 {n} for ID t<n>.
+ * One edited video of a project: its clips in playback order, the sounds of its 声音 row, its name, and which of its audio
+ * is muted; an empty name shows as 时间线 {n} for ID t<n>.
  */
 export interface Timeline {
   id: TimelineId
@@ -72,6 +72,10 @@ export interface Timeline {
   sounds: Sound[]
   /** The names of the sound tracks by track number; a missing or empty name shows as 声音 {n}. */
   sound_track_names: string[]
+  /** Whether the clips' own audio is muted: the preview plays the clips silent, and export leaves their audio out. */
+  video_muted: boolean
+  /** The numbers of the muted sound tracks, ascending: the preview plays their sounds silent. */
+  muted_sound_tracks: number[]
 }
 
 /** The Timeline component's slice: every timeline of the project, in creation order. */

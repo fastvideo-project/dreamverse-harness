@@ -1,16 +1,17 @@
 /**
  * The Timeline component of DreamVerse as the `dvTimeline` Cordis service: the timelines of a project (each one edited
  * video, shown by its name, or as 时间线 {n} for a timeline t<n> without one) and their clips (an asset with in and out
- * points) and sounds (an audio asset on a numbered sound track, from a start time). It owns fourteen edit operations,
+ * points) and sounds (an audio asset on a numbered sound track, from a start time). It owns fifteen edit operations,
  * which change only records and never create a file:
  * - `timeline.create`, `timeline.update`, `timeline.rename`, `timeline.delete` act on a whole timeline;
  * - `timeline.clip_insert`, `timeline.clip_move`, `timeline.clip_remove`, `timeline.clip_split`, `timeline.clip_trim`,
  *   `timeline.clip_replace` edit its clips, each named by its ID (`cl1`, `cl2`, …) in the `clip` param;
  * - `timeline.sound_add`, `timeline.sound_remove` add and remove its sounds, each named by its ID (`sd1`, `sd2`, …) in
- *   the `sound` param, and `timeline.sound_track_remove`, `timeline.sound_track_rename` act on one sound track.
+ *   the `sound` param, and `timeline.sound_track_remove`, `timeline.sound_track_rename` act on one sound track;
+ * - `timeline.mute` mutes or unmutes the clips' own audio or one sound track.
  *
- * Its fifteenth operation, `timeline.export`, writes a timeline to one video file with `dvFfmpeg` and imports the file
- * into the asset pool (see `export.ts`); the video leaves out the sounds.
+ * Its sixteenth operation, `timeline.export`, writes a timeline to one video file with `dvFfmpeg` and imports the file
+ * into the asset pool (see `export.ts`); the video leaves out the sounds, and the clips' own audio while it is muted.
  *
  * The operations that add clips assign the new clip IDs and store them in the record's `report.clips`, and
  * `timeline.sound_add` stores the new sound ID in `report.sounds`; the `timeline` reducer folds the records into the
@@ -126,7 +127,7 @@ function edit(
   }
 }
 
-/** The Timeline service: the reducer, the fourteen edit operations and the export operation. */
+/** The Timeline service: the reducer, the fifteen edit operations and the export operation. */
 export default class DvTimeline extends Service {
   static inject = ['dvProject', 'dvAssetPool', 'dvFfmpeg']
   static Config = Config
@@ -220,7 +221,7 @@ export default class DvTimeline extends Service {
     return Promise.resolve(adds ? { outputs: [], report: { clips: this.assignClipIds(context.project, count) } } : { outputs: [] })
   }
 
-  /** The fourteen edit operations, in the order the agent's tool list shows them. */
+  /** The fifteen edit operations, in the order the agent's tool list shows them. */
   private operations(): OperationSpec[] {
     const execute = (context: OperationContext): Promise<OperationResult> => this.execute(context)
     return [
@@ -373,6 +374,25 @@ export default class DvTimeline extends Service {
           name: { type: 'string', required: true, description: 'The name, such as Narration.' },
         },
         summarize: record => `${prefix(record)}sound track ${shown(record.params['track'])} renamed to ${shown(record.params['name'])}`,
+      }, execute),
+      edit({
+        name: OPERATIONS.mute,
+        label: { zh: '静音', en: 'Mute' },
+        version: '1',
+        description: 'Mute or unmute audio of a timeline. Target `video` is the clips\' own audio: the preview plays the clips silent '
+          + 'and the exported video leaves their audio out. Target `sound` is one sound track: the preview plays its sounds silent '
+          + '(the exported video does not include sounds yet).',
+        params: {
+          timeline: { type: 'string', required: true, description: 'The timeline, such as t1.' },
+          target: { type: 'string', enum: ['video', 'sound'], required: true, description: '`video` for the clips\' own audio, `sound` for one sound track.' },
+          track: {
+            type: 'integer',
+            description: 'For target `sound`: the sound track, 0 for the first; an existing track or the one after the last (see `sound_tracks` in dv_proj_state).',
+          },
+          muted: { type: 'boolean', required: true, description: 'true mutes, false unmutes.' },
+        },
+        summarize: record => `${prefix(record)}${record.params['target'] === 'video' ? 'video audio' : `sound track ${shown(record.params['track'])}`} `
+          + (record.params['muted'] === true ? 'muted' : 'unmuted'),
       }, execute),
     ]
   }

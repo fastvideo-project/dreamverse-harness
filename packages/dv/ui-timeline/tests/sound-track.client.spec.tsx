@@ -46,7 +46,17 @@ function soundState(): FixtureState {
     { id: 'sd2' as SoundId, asset: 'voice.wav' as AssetId, start_sec: 0, track: 1 },
   ]
   t1.sound_track_names = ['', '旁白']
-  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], clips: [] })
+  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], clips: [] })
+  return state
+}
+
+/**
+ * {@link soundState} with no timelines.
+ * @returns the state.
+ */
+function withoutTimelines(): FixtureState {
+  const state = soundState()
+  state.components.timeline.timelines = []
   return state
 }
 
@@ -225,11 +235,6 @@ describe('sound tracks', () => {
   })
 
   it('adds nothing for an audio tile dropped on the sound track of a project without timelines, and refuses a video tile there', async () => {
-    const withoutTimelines = (): FixtureState => {
-      const state = soundState()
-      state.components.timeline.timelines = []
-      return state
-    }
     const { view, lane, requests, ready } = mount({ state: withoutTimelines })
     await ready()
     fireEvent.drop(lane(0), { dataTransfer: assetDrag('theme.mp3', 'audio/mpeg') })
@@ -392,6 +397,79 @@ describe('sound tracks', () => {
     expect([heads(), addTrack().disabled]).toEqual([['声音 1'], false])
     await act(async () => { await Promise.resolve() })
     expect(requests()).toEqual([])
+  })
+
+  it('writes timeline.mute from the video header and from a sound track header, and plays muted audio silent', async () => {
+    // The served state applies each timeline.mute the editor writes.
+    const muted = { video: false, tracks: [] as number[] }
+    const routes: ScriptedRoutes = {
+      state: () => {
+        const state = soundState()
+        const [t1] = state.components.timeline.timelines
+        if (t1 !== undefined) Object.assign(t1, { video_muted: muted.video, muted_sound_tracks: [...muted.tracks] })
+        return state
+      },
+      post: (_path, body) => {
+        const { operation, params = {} } = body as { operation: string; params?: Record<string, unknown> }
+        const on = params['muted'] === true
+        if (params['target'] === 'video') muted.video = on
+        else muted.tracks = [...muted.tracks.filter(track => track !== params['track']), ...on ? [Number(params['track'])] : []]
+        return { status: 200, body: record({ id: 'm1', operation, params }) }
+      },
+    }
+    const { view, head, sound, requests, ready } = mount(routes)
+    await ready()
+    const videos = [...view.getByTestId('dv-timeline-viewer').querySelectorAll('video')]
+    const audio = (id: string): HTMLAudioElement => view.container.querySelector(`audio[data-sound="${id}"]`) as HTMLAudioElement
+    const pressed = (button: HTMLElement): string | null => button.getAttribute('aria-pressed')
+    const videoMute = (): HTMLElement => view.getByRole('button', { name: '静音 视频' })
+    const trackMute = (): HTMLElement => within(head(1)).getByRole('button', { name: '静音 旁白' })
+    expect([pressed(videoMute()), videos.map(video => video.muted)]).toEqual(['false', [false, false]])
+
+    fireEvent.click(videoMute())
+    await waitFor(() => { expect([pressed(videoMute()), videos.map(video => video.muted)]).toEqual(['true', [true, true]]) })
+    expect(requests()[0]).toMatchObject({ operation: 'timeline.mute', params: { timeline: 't1', target: 'video', muted: true }, intent: '把视频原声静音' })
+
+    fireEvent.click(trackMute())
+    await waitFor(() => { expect([pressed(trackMute()), audio('sd1').muted, audio('sd2').muted]).toEqual(['true', false, true]) })
+    expect(requests()[1]).toMatchObject({ params: { timeline: 't1', target: 'sound', track: 1, muted: true }, intent: '把 旁白 静音' })
+    expect([sound('sd1').style.opacity, sound('sd2').style.opacity]).toEqual(['', '0.45'])
+    // A double click on the button does not open the track's rename box.
+    fireEvent.doubleClick(trackMute())
+    expect(view.queryByRole('textbox', { name: '音轨名称' })).toBeNull()
+
+    // Another timeline has its own mutes.
+    fireEvent.click(view.getAllByRole('tab')[1] as HTMLElement)
+    expect(videos.map(video => video.muted)).toEqual([false, false])
+    fireEvent.click(view.getAllByRole('tab')[0] as HTMLElement)
+
+    fireEvent.click(trackMute())
+    await waitFor(() => { expect(audio('sd2').muted).toBe(false) })
+    fireEvent.click(videoMute())
+    await waitFor(() => { expect(videos.map(video => video.muted)).toEqual([false, false]) })
+    expect(requests().slice(2).map(each => each['intent'])).toEqual(['取消 旁白 的静音', '取消视频原声的静音'])
+  })
+
+  it('shows a track that only a mute stores, deletes a track from its header, and disables the speakers without a timeline', async () => {
+    const mutedThird = (): FixtureState => {
+      const state = soundState()
+      const [t1] = state.components.timeline.timelines
+      if (t1 !== undefined) t1.muted_sound_tracks = [2]
+      return state
+    }
+    const { head, heads, requests, ready } = mount({ state: mutedThird })
+    await ready()
+    expect(heads()).toEqual(['声音 1', '旁白', '声音 3'])
+    expect(within(head(2)).getByRole('button', { name: '静音 声音 3' }).getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(within(head(1)).getByRole('button', { name: '删除音轨 旁白' }))
+    await waitFor(() => { expect(requests()).toHaveLength(1) })
+    expect(requests()[0]).toMatchObject({ operation: 'timeline.sound_track_remove', params: { timeline: 't1', track: 1 } })
+    cleanup()
+
+    const empty = mount({ state: withoutTimelines })
+    await empty.ready()
+    const speakers = [empty.view.getByRole('button', { name: '静音 视频' }), within(empty.head(0)).getByRole('button', { name: '静音 声音 1' })]
+    expect(speakers.map(button => (button as HTMLButtonElement).disabled)).toEqual([true, true])
   })
 
   it('keeps the typed track name on a double-click inside the name box, and leaves its right-click to the text menu', async () => {
@@ -596,6 +674,7 @@ describe('sound tracks', () => {
     await view.findByRole('list', { name: 'Video track' })
     expect(heads()).toEqual(['Sound 1', '旁白'])
     expect(view.getByRole('button', { name: 'Add track' })).toBeTruthy()
+    expect([view.getByRole('button', { name: 'Mute Video' }), view.getByRole('button', { name: 'Delete track Sound 1' })]).toHaveLength(2)
     expect(view.getByTestId('dv-timeline-export-no-sounds').textContent).toBe('Export does not include sounds yet')
     fireEvent.click(plus(0, 'Add sound'))
     expect(within(view.getByRole('dialog', { name: 'Add sound' })).getByText('Starts at 00:03.00')).toBeTruthy()
