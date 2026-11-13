@@ -483,7 +483,9 @@ describe('dv-fastvideo', () => {
       'dv-fastvideo: pika-h3-flex l2v takes a last frame of type image, so modelFacts.referenceMediaTypes.image.maxCount must be at least 1.'],
     ['fl2v', 'one image slot', { referenceMediaTypes: { image: { maxCount: 1 } } },
       'dv-fastvideo: pika-h3-flex fl2v takes 2 frame inputs of type image, so modelFacts.referenceMediaTypes.image.maxCount must be at least 2.'],
-  ] as const)('refuses Pika %s model facts with %s for its frames when the plugin is applied', async (task, _case, update, message) => {
+    ['ref2v', 'no reference slot', { maxReferences: 0, referenceMediaTypes: {} },
+      'dv-fastvideo: pika-h3-flex ref2v takes at least 1 reference, so modelFacts.maxReferences must be at least 1; it is 0.'],
+  ] as const)('refuses Pika %s model facts with %s for its inputs when the plugin is applied', async (task, _case, update, message) => {
     const [reference, text] = await Promise.all([startFakeServer(REFERENCE_FACTS), startFakeServer(TEXT_FACTS)])
     const ctx = await start({ t2v: text.server }, 'pika-h3-flex')
     const server = { ...reference.server, modelFacts: { ...REFERENCE_FACTS, ...update } }

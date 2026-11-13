@@ -30,7 +30,7 @@ import { FASTH3 } from './fasth3.ts'
 import { PIKA_H3_FLEX } from './pika-h3-flex.ts'
 import { modelPrompt } from './reference-labels.ts'
 import type { AssignReferenceLabels } from './reference-labels.ts'
-import type { InputRole, MediaType, ServedTask, TaskInputs } from './types.ts'
+import type { InputDeclaration, InputRole, MediaType, ServedTask, TaskInputs } from './types.ts'
 
 /** One task of one model: the generation server that renders it and the facts of its served model. */
 export type TaskServer = GenerationConfig
@@ -94,6 +94,15 @@ function checkConfig(config: Config): void {
 }
 
 /**
+ * The name of a frame input in a load refusal.
+ * @param role - the frame input.
+ * @returns `a first frame` or `a last frame`.
+ */
+function frameName(role: 'first_frame' | 'last_frame'): string {
+  return `a ${role === 'first_frame' ? 'first' : 'last'} frame`
+}
+
+/**
  * The count limits of a task's inputs, from the server's reference limits. The server counts frame inputs among its
  * references, so each declared frame input (`first_frame`, `last_frame`) takes one slot of the server's total and one
  * slot of each media type it accepts, and the `reference` input keeps the rest. A media type that the `reference` input
@@ -116,7 +125,7 @@ function deriveInputLimits(name: string, inputs: TaskInputs, facts: ModelFacts):
     for (const type of frame.mediaTypes) {
       const count = frames.filter(other => other.frame.mediaTypes.includes(type)).length
       if ((facts.referenceMediaTypes[type]?.maxCount ?? 0) < count) {
-        const label = frames.length === 1 ? `a ${role === 'first_frame' ? 'first' : 'last'} frame` : `${count} frame inputs`
+        const label = frames.length === 1 ? frameName(role) : `${count} frame inputs`
         throw new Error(`dv-fastvideo: ${name} takes ${label} of type ${type}, so modelFacts.referenceMediaTypes.${type}.maxCount must be at least ${count}.`)
       }
     }
@@ -124,8 +133,9 @@ function deriveInputLimits(name: string, inputs: TaskInputs, facts: ModelFacts):
   }
   const minimum = frames.length + (reference?.min ?? 0)
   if (facts.maxReferences < minimum) {
-    const detail = frames.length === 1 && frames[0]?.role === 'first_frame' && reference !== undefined
-      ? `at least ${reference.min} reference and a first frame` : `at least ${minimum} input assets`
+    // Only a task with a `reference` input gets here: every served frame input takes only `image`, the check above
+    // gives `image` a maxCount of at least the frame count, and deriveModelFacts caps each maxCount at maxReferences.
+    const detail = [`at least ${(reference as InputDeclaration).min} reference`, ...frames.map(({ role }) => frameName(role))].join(' and ')
     throw new Error(`dv-fastvideo: ${name} takes ${detail}, so modelFacts.maxReferences must be at least ${minimum}; it is ${facts.maxReferences}.`)
   }
   if (reference !== undefined) {
