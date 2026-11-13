@@ -28,7 +28,13 @@ describe('native output capability discovery', () => {
   it.each([{}, [], { ...metadata, schema_version: 2 }, { ...metadata, duration_seconds: { min: 5, max: 4 } },
     { ...metadata, num_frames_by_duration_seconds: { 5: 124 } },
     { ...metadata, recommended_frame_sizes: { '16:9': { '768p': [NaN, 768] } } },
-    { ...metadata, recommended_frame_sizes: { '16:9': { '768p': [1344, 768] }, '9:16': { '480p': [480, 832] } } }])('rejects malformed metadata: %j', (value) => {
+    { ...metadata, recommended_frame_sizes: { '16:9': { '768p': [1344, 768] }, '9:16': { '480p': [480, 832] } } },
+    { ...metadata, recommended_frame_sizes: {} },
+    { ...metadata, recommended_frame_sizes: Object.fromEntries(Array.from({ length: 65 }, (_, index) => [`${index + 1}:1`, { '480p': [480, 480] }])) },
+    { ...metadata, recommended_frame_sizes: { '0:9': { '480p': [480, 832] } } },
+    { ...metadata, recommended_frame_sizes: { wide: { '480p': [832, 480] } } },
+    { ...metadata, recommended_frame_sizes: { '16:9': {} } },
+    { ...metadata, recommended_frame_sizes: { '16:9': Object.fromEntries(Array.from({ length: 17 }, (_, index) => [`${index}p`, [832, 480]])) } }])('rejects malformed metadata: %j', (value) => {
     expect(() => outputFacts(base, value)).toThrow('invalid video output capabilities')
   })
 })

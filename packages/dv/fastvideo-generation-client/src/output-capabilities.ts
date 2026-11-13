@@ -23,7 +23,8 @@ export function outputFacts(base: ModelFacts, value: unknown): ModelFacts {
     numFramesByDurationSec[String(seconds)] = frames
   }
   const sizes = Object.entries(object(data['recommended_frame_sizes']))
-  if (sizes.length === 0 || sizes.length > 64) return fail()
+  const first = sizes[0]
+  if (first === undefined || sizes.length > 64) return fail()
   const frameSizes = Object.fromEntries(sizes.map(([aspect, tiers]) => {
     if (!/^\d+:\d+$/.test(aspect) || aspect.split(':').some(part => Number(part) <= 0)) return fail()
     const entries = Object.entries(object(tiers))
@@ -33,9 +34,7 @@ export function outputFacts(base: ModelFacts, value: unknown): ModelFacts {
       return [resolution, [size[0], size[1]] as [number, number]]
     }))]
   }))
-  const first = Object.values(frameSizes)[0]
-  if (first === undefined) return fail()
-  const resolutions = Object.keys(first)
+  const resolutions = Object.keys(object(first[1]))
   const inconsistent = Object.values(frameSizes).some(tiers => Object.keys(tiers).length !== resolutions.length
     || resolutions.some(key => !(key in tiers)))
   if (inconsistent) return fail()
