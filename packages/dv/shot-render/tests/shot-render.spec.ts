@@ -261,7 +261,9 @@ async function start(options: { tasks?: VideoTask[]; live?: FakeLiveStream } = {
   ctx.loader.builtins.include = Include
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
   await ctx.loader.await()
-  const lanes: Record<VideoTask, FakeLane> = { ref2v: reference, t2v: text, fl2v: reference, i2v: reference, l2v: reference }
+  const lanes: Record<VideoTask, FakeLane> = {
+    ref2v: reference, t2v: text, fl2v: reference, i2v: reference, l2v: reference, v2v: reference,
+  }
   for (const task of tasks) ctx.effect(() => ctx.dvModels.register(fakeEntry(task, lanes[task])))
   disposers.push(async () => {
     await ctx.fiber.dispose()
@@ -372,6 +374,21 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     await expect(fixture.record('shot.render', params, [first, { role: 'last_frame', ref: { asset: 'missing-image' as AssetId } }])).rejects.toThrow("Input 'last_frame' names an unknown asset missing-image.")
     await expect(fixture.record('shot.render', params, [first, last, last])).rejects.toThrow('takes one last_frame')
     await expect(fixture.record('shot.render', params, [first, last, { role: 'reference', ref: { asset: image } }])).rejects.toThrow('no reference input')
+    expect(count()).toBe(before)
+    expect(fixture.reference.requests).toEqual([])
+  })
+
+  it('refuses a v2v call that is not exactly one reference input before recording', async () => {
+    const fixture = await start({ tasks: ['v2v'] })
+    const take = fixture.put(Buffer.from('TAKE'), 'video/mp4', 'take.mp4')
+    const params = { ...TXT, task: 'v2v', prompt: 'A door opens' }
+    const reference = { role: 'reference', ref: { asset: take } }
+    const count = () => fixture.ctx.dvProject.getState(fixture.project).components.proj.records.length
+    const before = count()
+    await expect(fixture.record('shot.render', params, [])).rejects.toThrow('Task v2v regenerates one reference video')
+    await expect(fixture.record('shot.render', params, [reference, reference])).rejects.toThrow('one reference input')
+    await expect(fixture.record('shot.render', params, [reference, { role: 'first_frame', ref: { asset: take } }]))
+      .rejects.toThrow('with no first_frame or last_frame')
     expect(count()).toBe(before)
     expect(fixture.reference.requests).toEqual([])
   })

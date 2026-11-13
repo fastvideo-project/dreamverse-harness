@@ -50,7 +50,7 @@ A provider is a video generation system, such as FastVideo, fal, or SGLang. A se
 | Field | Meaning | Values in this package |
 | --- | --- | --- |
 | `modality` | The output that the task produces: the `modality` of the primitive that the task runs on. | `video` |
-| `task` | The generation task. `TaskMap` declares each task name and maps it to the primitive that it runs on. | `t2v`: a video from the prompt only. `ref2v`: a video from reference media and the prompt, with an optional first frame. `i2v`: a video beginning at one image. `l2v`: a video ending at one image. `fl2v`: a video between first and last images. These endpoint tasks use a prompt and no reference media. |
+| `task` | The generation task. `TaskMap` declares each task name and maps it to the primitive that it runs on. | `t2v`: a video from the prompt only. `ref2v`: a video from reference media and the prompt, with an optional first frame. `i2v`: a video beginning at one image. `l2v`: a video ending at one image. `fl2v`: a video between first and last images. These endpoint tasks use a prompt and no reference media. `v2v`: the same video regenerated from one reference video, such as a draft upscaled to 2K. |
 | `provider` | The name of the provider. The provider plugin sets this name. | Each provider plugin sets its own name, such as `fastvideo`. |
 | `model` | The name that the provider gives to the model. | Each provider plugin sets its own names, such as `fasth3`. |
 

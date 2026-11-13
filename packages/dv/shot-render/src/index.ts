@@ -161,7 +161,8 @@ function expandElements(prompt: string, inputs: readonly RequestInput[]): string
  * @param seed - the call's `seed`, else the random seed that `defineGeneration` drew.
  * @returns the request.
  * @throws Error for a missing prompt, a citation that names no `reference` asset, params outside the facts, or more than
- *   one input of either frame role, or missing frames or forbidden reference media for task `fl2v`.
+ *   one input of either frame role, missing frames or forbidden reference media for task `fl2v`, or a `v2v` call that is
+ *   not one reference input.
  */
 function renderRequest(
   facts: RenderModelFacts, params: Record<string, unknown>, inputs: readonly RequestInput[], seed: number,
@@ -183,6 +184,10 @@ function renderRequest(
     throw new Error('Task l2v takes one last_frame, with no reference or first_frame input.')
   }
   if (params['task'] === 'fl2v' && inputs.some(input => input.role === 'reference')) throw new Error('Task fl2v takes first_frame and last_frame, with no reference input.')
+  if (params['task'] === 'v2v' && (inputs.some(input => input.role !== 'reference')
+    || inputs.filter(input => input.role === 'reference').length !== 1)) {
+    throw new Error('Task v2v regenerates one reference video: one reference input, with no first_frame or last_frame.')
+  }
   const problems = citationProblems(prompt, references, new Set(inputs.map(input => input.role)))
   if (problems.length > 0) throw new Error(`${problems.join(' ')} Cite only the assets of inputs.reference and the inputs of the call.`)
   const firstFrames = inputAssets(inputs, 'first_frame')
@@ -330,7 +335,7 @@ const RENDER_DECLARATION: GenerationSpec<'video'> = {
   operation: 'shot.render',
   node: { kind: 'shot', column: 2 },
   primitive: 'video',
-  tasks: { t2v: { zh: '文字生成', en: 'From text' }, ref2v: { zh: '参考图生成', en: 'From references' }, fl2v: { zh: '首尾帧生成', en: 'From first and last frames' }, i2v: { zh: '首帧生成', en: 'From first frame' }, l2v: { zh: '尾帧生成', en: 'From last frame' } },
+  tasks: { t2v: { zh: '文字生成', en: 'From text' }, ref2v: { zh: '参考图生成', en: 'From references' }, fl2v: { zh: '首尾帧生成', en: 'From first and last frames' }, i2v: { zh: '首帧生成', en: 'From first frame' }, l2v: { zh: '尾帧生成', en: 'From last frame' }, v2v: { zh: '视频重生成（如 2K 超分）', en: 'Regenerate a video (e.g. 2K)' } },
   label: { zh: '渲染镜头', en: 'Render shot' },
   description: 'Render one take of a shot with a model from dv_models_list; modality, task, provider and model name it and are '
     + 'required. Task ref2v renders from reference media through the reference input: imported assets, or versions '
@@ -339,6 +344,8 @@ const RENDER_DECLARATION: GenerationSpec<'video'> = {
     + 'Task i2v renders from one first_frame image, with no reference or last_frame input. '
     + 'Task l2v renders toward one last_frame image, with no reference or first_frame input. '
     + 'Task fl2v renders between image inputs first_frame and last_frame; both are required, with no reference input. '
+    + 'Task v2v regenerates one existing take, passed as its one reference input (<id>@<version>), with no frame input, '
+    + 'such as upscaling a draft to 2K; reuse that take\'s prompt unchanged. '
     + 'Pass continue_from to start from the last still of an earlier shot when the model takes a first frame. '
     + 'The model\'s own parameters go in extra (see dv_models_get). ' + TAKE_RULE,
   params: RENDER_PARAMS,

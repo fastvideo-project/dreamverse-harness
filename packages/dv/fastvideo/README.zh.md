@@ -83,6 +83,8 @@ Pika H3 Flex 以 `pika-h3-flex` 注册 `t2v`、`i2v`、`l2v`、`fl2v` 和 `ref2v
 
 Pika H3 Flex 以 `pika-h3-flex` 注册 `t2v`、`i2v`、`l2v`、`fl2v` 和 `ref2v`。端点任务传递原生任务选择器以及有序的首尾图像。模型事实配置必须为两个端点预留足够图像位置；Ref2VA 使用参考管线。尾帧提取复用共享 `dvFfmpeg` 服务。
 
+Open-H3-Regenerate-2K 以 `open-h3-regenerate-2k` 注册 `v2v`：输入一个草稿视频，输出以 2560x1440 重新生成的同一片段，由运行 2K 管线的 FastVideo 服务渲染（通常是起草设备旁的第二块 GPU 或第二台 DGX Spark）。草稿是唯一的 `reference` 输入，作为视频参考发送；提示词沿用草稿自己的提示词，不引用任何素材。其模型事实配置单一的 `1440p` 帧尺寸、草稿的帧数和一个视频参考。
+
 <a id="model-experience"></a>
 ## 模型体验
 
