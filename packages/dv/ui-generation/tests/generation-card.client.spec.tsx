@@ -8,6 +8,8 @@ import { cleanup, fireEvent, waitFor } from '@testing-library/react'
 import type { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { DV_HISTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
+import { DvClient } from '@dv/ui-kit/api.ts'
+import { labelSources } from '../src/client/loaded.ts'
 import { fixtureState, record, OPERATIONS, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import type { WireState } from '@dv/ui-kit/types.ts'
 import { mountKit } from './take-kind.client.ts'
@@ -93,10 +95,45 @@ describe('the chat card of a generation call', () => {
     expect(container.querySelector('video')).toBeNull()
   })
 
+  it('keeps queued progress for a non-error tool result while its record is pending', async () => {
+    document.documentElement.lang = 'en'
+    const state = fixtureState()
+    state.components.proj.records.push(record({ id: 'pending', operation: 'shot.render', session: 's1', tool_call: 'call-2', status: 'pending' }))
+    publishCurrentProject('p1')
+    const { container, view } = await renderCall('result', { argsRaw: ARGS }, state)
+    await waitFor(() => { expect(view.getByRole('progressbar').getAttribute('aria-label')).toBe('Queued') })
+    expect(container.textContent).toContain('Queued')
+    expect(view.queryByRole('button', { name: 'Show in history' })).toBeNull()
+  })
+
   it('does not mistake another session’s record for this call', async () => {
     document.documentElement.lang = 'en'
     const state = fixtureState()
     state.components.proj.records.push(record({ id: 'other', operation: 'shot.render', session: 'another',
+      tool_call: 'call-2', outputs: ['shot1.mp4'], status: 'done' }))
+    publishCurrentProject('p1')
+    const { container, view } = await renderCall('start', { argsRaw: ARGS }, state)
+    await waitFor(() => { expect(container.textContent).toContain('Render shot') })
+    expect(view.getByRole('progressbar')).toBeTruthy()
+    expect(container.querySelector('video')).toBeNull()
+  })
+
+  it('does not mistake another tool call’s record in this session for this call', async () => {
+    document.documentElement.lang = 'en'
+    const state = fixtureState()
+    state.components.proj.records.push(record({ id: 'other', operation: 'shot.render', session: 's1',
+      tool_call: 'call-9', outputs: ['shot1.mp4'], status: 'done' }))
+    publishCurrentProject('p1')
+    const { container, view } = await renderCall('start', { argsRaw: ARGS }, state)
+    await waitFor(() => { expect(container.textContent).toContain('Render shot') })
+    expect(view.getByRole('progressbar')).toBeTruthy()
+    expect(container.querySelector('video')).toBeNull()
+  })
+
+  it('does not mistake another operation’s record of this call for this call', async () => {
+    document.documentElement.lang = 'en'
+    const state = fixtureState()
+    state.components.proj.records.push(record({ id: 'other', operation: 'timeline.create', session: 's1',
       tool_call: 'call-2', outputs: ['shot1.mp4'], status: 'done' }))
     publishCurrentProject('p1')
     const { container, view } = await renderCall('start', { argsRaw: ARGS }, state)
@@ -154,6 +191,29 @@ describe('the chat card of a generation call', () => {
     expect(view.getByRole('button', { name: 'Show in history' })).toBeTruthy()
   })
 
+  it('plays the tool result\'s outputs when its done record names outputs that the project does not hold', async () => {
+    document.documentElement.lang = 'en'
+    const state = fixtureState()
+    state.components.proj.records.push(record({ id: 'finished', operation: 'shot.render', session: 's1',
+      tool_call: 'call-2', outputs: ['missing.mp4'], status: 'done' }))
+    publishCurrentProject('p1')
+    const { container } = await renderCall('result',
+      { call: { argsRaw: ARGS }, meta: { outputs: [{ role: 'video', asset_id: 'v1.mp4', mime: 'video/mp4' }] } }, state)
+    await waitFor(() => { expect(container.textContent).toContain('Generated') })
+    expect(container.querySelector('video')?.getAttribute('src')).toBe('/dv/assets/v1.mp4')
+  })
+
+  it('reads Cancelled without progress for a cancelled record', async () => {
+    document.documentElement.lang = 'en'
+    const state = fixtureState()
+    state.components.proj.records.push(record({ id: 'cancelled', operation: 'shot.render', session: 's1', tool_call: 'call-2', status: 'cancelled' }))
+    publishCurrentProject('p1')
+    const { container, view } = await renderCall('start', { argsRaw: ARGS }, state)
+    await waitFor(() => { expect(container.textContent).toContain('Cancelled') })
+    expect(view.queryByRole('progressbar')).toBeNull()
+    expect(view.getByRole('button', { name: 'Show in history' })).toBeTruthy()
+  })
+
   it('shows only the name and the status while the call has no readable model, task or prompt', async () => {
     document.documentElement.lang = 'en'
     const { container, view, show } = await renderCall('start', {})
@@ -163,5 +223,53 @@ describe('the chat card of a generation call', () => {
       expect(container.textContent).toBe('Render shotGenerating…')
       expect(view.queryByTestId('dv-composer-render-model')).toBeNull()
     }
+  })
+})
+
+describe('the chat assets source of the kit', () => {
+  it('shares one project stream between listeners and keeps updating the listener that remains', async () => {
+    const opened: string[] = []
+    let closed = 0
+    class FakeEventSource {
+      constructor(readonly url: string) { opened.push(url) }
+      addEventListener(): void {}
+      removeEventListener(): void {}
+      close(): void { closed += 1 }
+    }
+    vi.stubGlobal('EventSource', FakeEventSource)
+    const state = fixtureState()
+    publishCurrentProject('p1')
+    const { chatAssets } = labelSources(new DvClient(scriptedFetch({ state }).fetch)).hooks
+    const first = chatAssets.subscribe(() => {})
+    let updates = 0
+    const second = chatAssets.subscribe(() => { updates += 1 })
+    await waitFor(() => { expect(chatAssets.getSnapshot().project).toBe('p1') })
+    expect(opened).toEqual(['/dv/events?project=p1'])
+    first()
+    expect(closed).toBe(0)
+    const seen = updates
+    publishCurrentProject(null)
+    expect(chatAssets.getSnapshot().project).toBeNull()
+    expect(updates).toBe(seen + 1)
+    second()
+    expect(closed).toBe(1)
+  })
+
+  it('stops following once when a listener unsubscribes twice', async () => {
+    let closed = 0
+    class FakeEventSource {
+      constructor(readonly url: string) {}
+      addEventListener(): void {}
+      removeEventListener(): void {}
+      close(): void { closed += 1 }
+    }
+    vi.stubGlobal('EventSource', FakeEventSource)
+    publishCurrentProject('p1')
+    const { chatAssets } = labelSources(new DvClient(scriptedFetch({ state: fixtureState() }).fetch)).hooks
+    const unsubscribe = chatAssets.subscribe(() => {})
+    await waitFor(() => { expect(chatAssets.getSnapshot().project).toBe('p1') })
+    unsubscribe()
+    unsubscribe()
+    expect(closed).toBe(1)
   })
 })
