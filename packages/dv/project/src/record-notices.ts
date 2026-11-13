@@ -27,11 +27,8 @@
  * finishes off the history list up to the current position (undone, or discarded by a write after an undo) gets no
  * wake: no project update reports it, until a redo brings an undone record back and the session's next step reports it.
  * When it was the last record that the session watched, the wakes that an idle agent holds for its other records open
- * a turn under the rules above. Removing a project drops the watches of its records and wakes no agent for the wakes
- * they held back: the sessions whose calls started those records have no project left to report. Archiving a session
- * with its work stopped (`workspace/session-stop`) drops that session's watches; its records keep running and send no
- * wake. Closing the module (when the service stops) drops every watch and delivers nothing afterwards. A delivery that
- * throws is logged on the `dvProject` logger and never fails the record write that finished the record.
+ * a turn under the rules above. Archiving a session with its work stopped (`workspace/session-stop`) drops that
+ * session's watches; its records keep running and send no wake.
  *
  * Calls the `agents` registry, read at delivery time, `dvProject.getRecord` and `dvProject.listHistory`. Called by the
  * service: `watch` from the operation tools, `recordFinished` from the record store's change callback.
@@ -59,8 +56,6 @@ export class RecordNotices {
   private readonly spentWakes = new WeakMap<Agent, number>()
   /** Sessions whose last logged turn a cancellation ended (`turn/end` reason `aborted`). */
   private readonly cancelledTurns = new WeakSet<Session>()
-  /** False once {@link RecordNotices.close} ran: no watch is kept and no wake is delivered. */
-  private open = true
 
   /**
    * @param ctx - the service context; the `agents` registry is read from it at delivery time.
@@ -103,7 +98,6 @@ export class RecordNotices {
    * @param session - the session.
    */
   watch(project: ProjectId, record: RecordId, session: SessionId): void {
-    if (!this.open) return
     this.watches.set(record, { project, session })
     const current = this.project.getRecord(project, record)
     if (current.status === 'done' || current.status === 'failed' || current.status === 'cancelled') this.recordFinished(project, current)
@@ -119,39 +113,20 @@ export class RecordNotices {
    */
   recordFinished(project: ProjectId, record: ProjectRecord): void {
     const watch = this.watches.get(record.id)
-    if (!this.open || watch?.project !== project) return
+    if (watch?.project !== project) return
     this.watches.delete(record.id)
-    // The caller is the record store's change callback: a failing delivery must not fail the write that finished the record.
-    try {
-      const agent = this.ctx.get('agents')?.get(AgentSessionId(watch.session))
-      // An agent stays registered while its disposal unwinds its scope; a wake then would open a turn in it.
-      if (agent === undefined || agent.ctx.fiber.state !== FiberState.ACTIVE) return
-      // A project update lists only records of the history list up to the current position: the wake of an undone or
-      // discarded record would open a turn that reports nothing of it. The wakes that this watch held back still need one.
-      if (!this.onHistory(project, record.id)) {
-        this.wakeStranded(agent)
-        return
-      }
-      const message = wakeMessage([record.id])
-      if (agent.status === 'idle' && this.mayOpenTurn(agent)) agent.followup(message)
-      else agent.inject(message)
-    } catch (error) {
-      this.ctx.logger('dvProject').warn('could not deliver the wake of record %s: %s', record.id, error instanceof Error ? error.message : String(error))
+    const agent = this.ctx.get('agents')?.get(AgentSessionId(watch.session))
+    // An agent stays registered while its disposal unwinds its scope; a wake then would open a turn in it.
+    if (agent === undefined || agent.ctx.fiber.state !== FiberState.ACTIVE) return
+    // A project update lists only records of the history list up to the current position: the wake of an undone or
+    // discarded record would open a turn that reports nothing of it. The wakes that this watch held back still need one.
+    if (!this.onHistory(project, record.id)) {
+      this.wakeStranded(agent)
+      return
     }
-  }
-
-  /**
-   * Drop the watches of a project's records; their wakes are never delivered.
-   * @param project - the removed project.
-   */
-  forget(project: ProjectId): void {
-    for (const [record, watch] of this.watches) if (watch.project === project) this.watches.delete(record)
-  }
-
-  /** Drop every watch and deliver no wake afterwards; the service calls it when it stops. */
-  close(): void {
-    this.open = false
-    this.watches.clear()
+    const message = wakeMessage([record.id])
+    if (agent.status === 'idle' && this.mayOpenTurn(agent)) agent.followup(message)
+    else agent.inject(message)
   }
 
   /**
@@ -161,7 +136,7 @@ export class RecordNotices {
    * @param agent - an agent that has just become idle, or whose session's watch was just dropped without a wake.
    */
   private wakeStranded(agent: Agent): void {
-    if (!this.open || agent.status !== 'idle') return
+    if (agent.status !== 'idle') return
     try {
       const stranded = agent.inbox.nextStep
         .flatMap(message => message.source.kind === WAKE_KIND ? [{ message, source: message.source }] : [])

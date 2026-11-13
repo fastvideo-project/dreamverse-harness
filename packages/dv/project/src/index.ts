@@ -232,8 +232,6 @@ export default class DvProject extends Service {
     })
     ctx.inject(['sessionProjections'], (child) => { registerProjectUpdates(child, this, projToolDeps) })
     ctx.effect(() => () => { this.scheduler.dispose() }, 'dvProject stop scheduling')
-    // Registered after the scheduler, so disposal closes the notices first and a record that finishes during teardown wakes no agent.
-    ctx.effect(() => () => { this.notices.close() }, 'dvProject close record notices')
     this.runner.recover().catch((error: unknown) => {
       ctx.logger('dvProject').warn('could not end unfinished records: %s', error instanceof Error ? error.message : String(error))
     })
@@ -313,14 +311,13 @@ export default class DvProject extends Service {
   }
 
   /**
-   * Remove a project: unregister its Workspace, forget its records in memory and drop the record notices of its
-   * unfinished records. The folder, its `.dreamverse/` directory and the chat logs stay on disk. Writes no record.
+   * Remove a project: unregister its Workspace and forget its records in memory. The folder, its `.dreamverse/`
+   * directory and the chat logs stay on disk. Writes no record.
    * @param project - the project.
    */
   async removeProject(project: ProjectId): Promise<void> {
     await this.folders.remove(project)
     await this.store.lock(project, () => { this.store.forget(project) })
-    this.notices.forget(project)
   }
 
   /**

@@ -10,7 +10,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import { ToolCallId, createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { PENDING_LINE } from '../src/agent-tools.ts'
 import DvProject, { type OperationSpec, type ProjectId, type RecordId, type SessionId } from '../src/index.ts'
 import { RecordNotices } from '../src/record-notices.ts'
@@ -61,9 +61,6 @@ class FakeAgent {
 interface Fixture {
   context: Context
   project: DvProject
-  /** Stops the `dvProject` service. */
-  stopProject(): Promise<void>
-  services: ReturnType<typeof provideChatServices>
   projectId: ProjectId
   agents: Map<string, FakeAgent>
   /** The names of the images saved through the stand-in attachment service. */
@@ -101,11 +98,10 @@ async function start(config: { maxConsecutiveWakes?: number } = {}): Promise<Fix
   } as never)
   await context.plugin(SystemPrompt, {}).await()
   await context.plugin(ToolRuntime).await()
-  const projectFiber = context.plugin(DvProject, {
+  await context.plugin(DvProject, {
     projectsFolder: join(root, 'projects'), cpuConcurrency: 4, gpuConcurrency: 4, promptSectionOrder: 4900,
     ...config,
-  })
-  await projectFiber.await()
+  }).await()
   const project = context.dvProject
   const assets = new MemoryAssets()
   project.registerAssetStore(assets)
@@ -154,10 +150,7 @@ async function start(config: { maxConsecutiveWakes?: number } = {}): Promise<Fix
   services.chats.open(ANONYMOUS, folder)
   let calls = 0
   return {
-    context, project, projectId, agents, savedImages, services,
-    async stopProject() {
-      await projectFiber.dispose()
-    },
+    context, project, projectId, agents, savedImages,
     call(name, args, session = SESSION) {
       calls += 1
       const agent = session === ANONYMOUS ? undefined : { id: session, session: { id: session } }
@@ -373,50 +366,5 @@ describe('record notices', () => {
     notices.recordFinished(fixture.projectId, record)
     await fixture.settle()
     expect(fixture.agents.get(SESSION)?.hows).toEqual(['followup'])
-  })
-
-  it('logs a delivery that throws and still finishes the record', async () => {
-    const fixture = await start()
-    const logged: unknown[][] = []
-    // Level 2 (WARN): an exporter without levels drops warnings.
-    fixture.context.logger.exporter({ levels: { default: 2 }, export: (message) => { if (message.name === 'dvProject') logged.push(message.args) } })
-    const broken = new FakeAgent(SESSION)
-    broken.followup = () => { throw new Error('the session is gone') }
-    fixture.agents.set(SESSION, broken)
-    const record = recordOf(await fixture.call('dv_shot_render', { reason: 'dunk', prompt: 'dunk' }))
-    fixture.release('dunk')
-    await fixture.settle()
-    expect(fixture.project.getRecord(fixture.projectId, record).status).toBe('done')
-    expect(logged).toEqual([['could not deliver the wake of record %s: %s', record, 'the session is gone']])
-  })
-
-  it('delivers no wake after the service stopped', async () => {
-    const fixture = await start()
-    const agent = fixture.agents.get(SESSION)
-    const record = recordOf(await fixture.call('dv_shot_render', { reason: 'dunk', prompt: 'dunk' }))
-    await fixture.stopProject()
-    fixture.release('dunk')
-    await vi.waitFor(() => { expect(fixture.project.getRecord(fixture.projectId, record).status).toBe('done') })
-    expect(agent?.got).toEqual([])
-  })
-
-  it('drops the watches of a removed project, so the last watched record of the session wakes it', async () => {
-    const fixture = await start()
-    const agent = fixture.agents.get(SESSION)
-    await fixture.call('dv_shot_render', { reason: 'dunk', prompt: 'dunk' })
-    const other = await chatProject(fixture.project, fixture.services, 'Other', {
-      actor: 'user', surface: 'canvas', session: null, turn: null, tool_call: null, intent: 'create',
-    }, 's3')
-    const started = await fixture.project.run({
-      actor: 'user', surface: 'canvas', session: SESSION, turn: null, tool_call: null, intent: 'render',
-      project: other, operation: 'shot.render', params: { prompt: 'other' }, inputs: [], after: [],
-    })
-    if (started.record === null) throw new Error('the render wrote no record')
-    fixture.project['notices'].watch(other, started.record.id, SESSION)
-    await fixture.project.removeProject(fixture.projectId)
-    fixture.release('other')
-    await fixture.project.wait(other)
-    expect(agent?.hows).toEqual(['followup'])
-    fixture.release('dunk')
   })
 })
