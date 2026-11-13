@@ -32,7 +32,7 @@ const shownTabs = (view: { getAllByRole: (role: string) => HTMLElement[] }): Arr
 function twoTimelines(): FixtureState {
   const state = fixtureState()
   state.assets.push(asset('imported.mp4', 'video/mp4', null, 3))
-  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], clips: [{ id: 'cl3' as ClipId, asset: 'imported.mp4' as AssetId, source: null, in_sec: null, out_sec: null }] })
+  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], clips: [{ id: 'cl3' as ClipId, asset: 'imported.mp4' as AssetId, source: null, in_sec: null, out_sec: null }] })
   return state
 }
 
@@ -124,7 +124,7 @@ describe('TimelineView', () => {
     const { fetch } = scriptedFetch({
       state: () => {
         const state = twoTimelines()
-        state.components.timeline.timelines.push({ id: 't3' as TimelineId, name: '', sounds: [], sound_track_names: [], clips: [] })
+        state.components.timeline.timelines.push({ id: 't3' as TimelineId, name: '', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], clips: [] })
         return state
       },
     })
@@ -598,7 +598,7 @@ describe('timeline editor gestures', () => {
     const { view, track } = mount({
       state: () => {
         const state = twoTimelines()
-        if (created) state.components.timeline.timelines.push({ id: 't3' as TimelineId, name: '', sounds: [], sound_track_names: [], clips: [] })
+        if (created) state.components.timeline.timelines.push({ id: 't3' as TimelineId, name: '', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], clips: [] })
         return state
       },
       post: () => { created = true; return { status: 200, body: record({ id: 'n1', operation: 'timeline.create' }) } },
@@ -615,7 +615,7 @@ describe('timeline editor gestures', () => {
     expect(empty.view.queryByLabelText('插入片段')).toBeNull()
     empty.view.unmount()
     const state = fixtureState()
-    state.components.timeline.timelines = [{ id: 't2' as TimelineId, name: '', sounds: [], sound_track_names: [], clips: [] }]
+    state.components.timeline.timelines = [{ id: 't2' as TimelineId, name: '', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], clips: [] }]
     const { view, requests } = mount({ state })
     await waitFor(() => { expect(view.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['时间线 2']) })
     fireEvent.click(view.getByText('＋ 新建'))
@@ -814,11 +814,11 @@ describe('timeline editor layout', () => {
       observe(): void {}
       disconnect(): void {}
     })
-    // 1000 px of track width less the 96 px header and 60 px of room fits the 7 s timeline at 844 / 7 ≈ 121 px per second.
+    // 1000 px of track width less the 144 px header and 60 px of room fits the 7 s timeline at 796 / 7 ≈ 114 px per second.
     layOut({ top: 0, bottom: 0, offsetHeight: 0, clientHeight: 0, clientWidth: 1000 })
     const { view, clip, track } = mount()
     await track()
-    expect(clip(1).style.width).toBe(`${String(4 * 121)}px`)
+    expect(clip(1).style.width).toBe(`${String(4 * 114)}px`)
     fireEvent.change(view.getByRole('slider'), { target: { value: '5' } })
     expect(clip(1).style.width).toBe('20px')
     // At 5 px per second the 200 px lane spans 40 s: a tick every 5 s and a label every 10 s.
@@ -829,12 +829,12 @@ describe('timeline editor layout', () => {
     width.mockReturnValue(700)
     act(() => { for (const resize of resizes) resize() })
     expect(clip(1).style.width).toBe('20px')
-    // 700 - 96 - 60 = 544 px fits the timeline at 544 / 7 ≈ 78 px per second.
+    // 700 - 144 - 60 = 496 px fits the timeline at 496 / 7 ≈ 71 px per second.
     fireEvent.click(view.getByRole('button', { name: '适配' }))
-    expect(clip(1).style.width).toBe(`${String(4 * 78)}px`)
+    expect(clip(1).style.width).toBe(`${String(4 * 71)}px`)
     width.mockReturnValue(1000)
     act(() => { for (const resize of resizes) resize() })
-    expect(clip(1).style.width).toBe(`${String(4 * 121)}px`)
+    expect(clip(1).style.width).toBe(`${String(4 * 114)}px`)
   })
 })
 

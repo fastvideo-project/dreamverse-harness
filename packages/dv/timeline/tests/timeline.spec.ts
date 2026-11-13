@@ -27,11 +27,11 @@ import DvTimeline from '../src/index.ts'
 /** The plugin classes the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
 const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, DvTimeline }
 
-/** The fifteen operations in registration order: the fourteen edits, then the export. */
+/** The sixteen operations in registration order: the fifteen edits, then the export. */
 const OPERATIONS = [
   'timeline.create', 'timeline.update', 'timeline.rename', 'timeline.delete', 'timeline.clip_insert', 'timeline.clip_move', 'timeline.clip_remove',
   'timeline.clip_split', 'timeline.clip_trim', 'timeline.clip_replace', 'timeline.sound_add', 'timeline.sound_remove',
-  'timeline.sound_track_remove', 'timeline.sound_track_rename', 'timeline.export',
+  'timeline.sound_track_remove', 'timeline.sound_track_rename', 'timeline.mute', 'timeline.export',
 ]
 
 interface Fixture {
@@ -117,7 +117,7 @@ function failure(result: ToolExecutionResult): string {
 }
 
 describe('dvTimeline', () => {
-  it('registers the fifteen operations with their dv_timeline_* tools and removes them on disposal', async () => {
+  it('registers the sixteen operations with their dv_timeline_* tools and removes them on disposal', async () => {
     const fixture = await start()
     const specs = fixture.ctx.dvProject.listOperations().filter(spec => spec.component === 'timeline')
     expect(specs.map(spec => spec.name)).toEqual(OPERATIONS)
@@ -228,7 +228,7 @@ describe('dvTimeline', () => {
     const timeline = (): unknown => fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0]
     expect(timeline()).toMatchObject({
       sounds: [{ id: 'sd1', asset: song, start_sec: 1.5, track: 0 }, { id: 'sd2', asset: voice, start_sec: 0, track: 1 }],
-      sound_track_names: [],
+      sound_track_names: [], video_muted: false, muted_sound_tracks: [],
     })
     expect(value(await fixture.call('dv_timeline_sound_track_rename', { reason: 'label', timeline: 't1', track: 1, name: 'Voice' })).summary)
       .toBe('t1 sound track 1 renamed to Voice')
@@ -238,6 +238,30 @@ describe('dvTimeline', () => {
     // A summary of a record that has not stored its sound ID yet names no sound.
     const spec = fixture.ctx.dvProject.listOperations().find(entry => entry.name === 'timeline.sound_add')
     expect(spec?.summarize({ ...record, params: { timeline: 't1', start_sec: 2 }, report: {} })).toBe('t1 sound  added at 2s')
+  })
+
+  it('mutes and unmutes the clips\' own audio and a sound track from the agent\'s calls, and refuses a mute that does not apply', async () => {
+    const fixture = await start()
+    await fixture.run('timeline.create', { assets: ['a1'] })
+    const mute = async (args: Record<string, unknown>): Promise<string> =>
+      value(await fixture.call('dv_timeline_mute', { reason: 'replace the music', timeline: 't1', ...args })).summary
+    expect(await mute({ target: 'video', muted: true })).toBe('t1 video audio muted')
+    expect(await mute({ target: 'sound', track: 1, muted: true })).toBe('t1 sound track 1 muted')
+    const timeline = (): unknown => fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0]
+    expect(timeline()).toMatchObject({ video_muted: true, muted_sound_tracks: [1] })
+    expect(await mute({ target: 'sound', track: 1, muted: false })).toBe('t1 sound track 1 unmuted')
+    expect(await mute({ target: 'video', muted: false })).toBe('t1 video audio unmuted')
+    expect(timeline()).toMatchObject({ video_muted: false, muted_sound_tracks: [] })
+    const cases: Array<[Record<string, unknown>, string]> = [
+      [{ timeline: 't1', target: 'sound', track: 2, muted: true }, 'Timeline t1 has no sound track 2; it has 0.'],
+      [{ timeline: 't1', target: 'sound', muted: true }, 'track undefined is not a track number of 0 or more.'],
+      [{ timeline: 't9', target: 'video', muted: true }, 'Timeline t9 does not exist.'],
+    ]
+    for (const [params, message] of cases) {
+      expect(await fixture.run('timeline.mute', params)).toMatchObject({ status: 'failed', error: { code: 'operation_failed', message } })
+    }
+    await expect(fixture.run('timeline.mute', { timeline: 't1', target: 'audio', muted: true })).rejects.toMatchObject({ code: 'invalid_params' })
+    await expect(fixture.run('timeline.mute', { timeline: 't1', target: 'video' })).rejects.toMatchObject({ code: 'invalid_params' })
   })
 
   it('describes the sound operations to the agent: the tracks a sound may go on and where the sound IDs are listed', async () => {

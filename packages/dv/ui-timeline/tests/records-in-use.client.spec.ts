@@ -18,7 +18,7 @@ describe('timelineRecordsInUse', () => {
   it('uses the record behind each clip: the render a placeholder clip waits for, else the producer of the clip asset, else none', () => {
     const state = fixtureState()
     state.components.timeline.timelines.push({
-      id: 't2' as TimelineId, name: '', sounds: [], sound_track_names: [], clips: [
+      id: 't2' as TimelineId, name: '', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], clips: [
         { id: 'cl3' as ClipId, asset: null, source: { record: 'g3' as RecordId, output: 0 }, in_sec: null, out_sec: null },
         { id: 'cl4' as ClipId, asset: 'unknown.mp4' as AssetId, source: null, in_sec: null, out_sec: null },
         { id: 'cl5' as ClipId, asset: null, source: null, in_sec: null, out_sec: null },
@@ -32,7 +32,7 @@ describe('timelineRecordsInUse', () => {
   it('puts the trim label on the asset of each clip with an in or out point', () => {
     const state = fixtureState()
     state.components.timeline.timelines.push({
-      id: 't2' as TimelineId, name: '', sounds: [], sound_track_names: [], clips: [
+      id: 't2' as TimelineId, name: '', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], clips: [
         { id: 'cl3' as ClipId, asset: 'shot1.mp4' as AssetId, source: null, in_sec: null, out_sec: 2 },
         { id: 'cl4' as ClipId, asset: null, source: { record: 'g3' as RecordId, output: 0 }, in_sec: 1, out_sec: null },
       ],

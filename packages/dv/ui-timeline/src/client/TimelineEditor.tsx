@@ -3,14 +3,16 @@
  * selected timeline across its clips (with skip, play, playback-speed, and full-screen controls under it), a toolbar, a
  * ruler, the 视频 track with filmstrip clips sized by duration, and a display-only 原声 track with one block per clip that
  * shows the waveform of the clip's own audio once it decodes, and under it the sound tracks, whose sound blocks play in
- * step with the preview (`sound-playback.ts`). A drag handle above the track area sets the track area's height, which
- * each browser remembers. Every edit is one `/api/dv/operation` call of a `timeline.*` operation with
- * `surface: 'timeline'`; the clip operations name the clip by its clip ID, the sound operations name the sound by its
- * sound ID or the sound track by its number, and every edit goes after the current position of the project's history,
- * the state the editor shows. A selected stale clip offers "仍然保留", which keeps the record that made its asset
- * (`proj.stale_accept`). A placeholder clip, whose render is still running (渲染中…) or failed (渲染失败), keeps its place and
- * its planned length on the track; it cannot be trimmed or split, playback skips it, and export waits until every clip
- * is ready.
+ * step with the preview (`sound-playback.ts`). The 视频 track header's speaker button mutes the clips' own audio, and each
+ * sound track header's speaker button mutes that track, through `timeline.mute`; the preview plays muted audio silent.
+ * Each sound track header also has a delete button. A drag handle
+ * above the track area sets the track area's height, which each browser remembers. Every edit is one
+ * `/api/dv/operation` call of a `timeline.*` operation with `surface: 'timeline'`; the clip operations name the clip by
+ * its clip ID, the sound operations name the sound by its sound ID or the sound track by its number, and every edit
+ * goes after the current position of the project's history, the state the editor shows. A selected stale clip offers
+ * "仍然保留", which keeps the record that made its asset (`proj.stale_accept`). A placeholder clip, whose render is still
+ * running (渲染中…) or failed (渲染失败), keeps its place and its planned length on the track; it cannot be trimmed or split,
+ * playback skips it, and export waits until every clip is ready.
  */
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, DragEvent, FocusEvent, KeyboardEvent, PointerEvent, ReactNode, RefObject } from 'react'
@@ -80,13 +82,18 @@ interface ClipDrag {
   dx: number
 }
 
-/** Width of the track-header column, in pixels. */
-const GUTTER = 96
+/** Width of the track-header column, in pixels; it holds a track's name and, under it, the track's buttons. */
+const GUTTER = 144
 /** Default zoom, in pixels per second. */
 const DEFAULT_PX = 40
-/** Row heights of the track area, in pixels: the ruler, the video track, and the audio track. */
+/** Height of the ruler, in pixels. */
 const RULER_HEIGHT = 26
-const VIDEO_HEIGHT = 56
+/**
+ * Height of the 视频 track and of each sound track, in pixels; their headers hold the track's name with its buttons on a
+ * second line under it.
+ */
+const ROW_HEIGHT = 56
+/** Height of the 原声 track, which has no buttons, in pixels. */
 const AUDIO_HEIGHT = 36
 /** Height of the row under the sound tracks that holds 添加音轨 / Add track, in pixels. */
 const ADD_TRACK_HEIGHT = 28
@@ -190,6 +197,31 @@ const ICON_PATHS = {
   export: 'M12 3v12M7 10l5 5 5-5M5 21h14',
   add: 'M12 5v14M5 12h14',
   close: 'M6 6l12 12M18 6 6 18',
+  sound: 'M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14',
+  soundOff: 'M11 5 6 9H2v6h4l5 4zM22 9l-6 6M16 9l6 6',
+}
+
+/** The opacity of the blocks of a muted track. */
+const MUTED_OPACITY = 0.45
+
+/**
+ * A 24 px icon button of a track header. A double click on it does not reach the header, which opens the rename box.
+ * @param props - the icon, the label, whether a toggle is on (omitted for a plain button), and the click handler; a null
+ * handler disables the button.
+ * @returns the element.
+ */
+function TrackButton(
+  { icon, label, pressed, onClick }: { icon: keyof typeof ICON_PATHS; label: string; pressed?: boolean; onClick: (() => void) | null },
+): ReactNode {
+  return (
+    <button
+      type="button" className="dv-tl-btn" aria-label={label} title={label} aria-pressed={pressed} disabled={onClick === null}
+      onClick={onClick ?? undefined} onDoubleClick={(event) => { event.stopPropagation() }}
+      style={{ ...buttonStyle(onClick === null, iconButton), flex: 'none', width: 24, height: 24, ...pressed === true ? { color: palette.fg } : {} }}
+    >
+      <Icon name={icon} />
+    </button>
+  )
 }
 
 /**
@@ -404,12 +436,14 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const soundPickerRef = useRef<HTMLDivElement | null>(null)
   // The sound track ＋ that opened the sound dialog; each track has its own ＋.
   const soundAddRef = useRef<HTMLButtonElement | null>(null)
-  // Sound tracks: the tracks the timeline stores (up to the last track with a sound or a name), at least one, and at
-  // most one more empty track that lives only in this view until it gets a sound or a name; the timeline operations
+  // Sound tracks: the tracks the timeline stores (up to the last track with a sound, a name, or a mute), at least one,
+  // and at most one more empty track that lives only in this view until it gets a sound, a name, or a mute; the timeline operations
   // accept a track up to the one after the last stored track.
   const [shownTracks, setShownTracks] = useState(1)
   const trackNames = timeline?.sound_track_names ?? []
-  const storedTracks = Math.max(trackNames.length, ...sounds.map(sound => sound.track + 1))
+  const mutedTracks = timeline?.muted_sound_tracks ?? []
+  const videoMuted = timeline?.video_muted ?? false
+  const storedTracks = Math.max(trackNames.length, ...sounds.map(sound => sound.track + 1), ...mutedTracks.map(track => track + 1))
   const baseTracks = Math.max(1, storedTracks)
   const trackName = (track: number): string => trackNames[track] || t('track.soundN', { n: track + 1 })
   const [renamingTrack, setRenamingTrack] = useState<{ track: number; name: string } | null>(null)
@@ -584,7 +618,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const shownName = timeline === null ? '' : nameOf(timeline)
   // An insert names the shown timeline; the other clip operations name the clip by its clip ID, which names its timeline.
   const runOperation = (operation: string, params: Record<string, unknown>, intent: string): Promise<boolean> => {
-    const named = ['timeline.clip_insert', 'timeline.sound_track_remove', 'timeline.sound_track_rename'].includes(operation)
+    const named = ['timeline.clip_insert', 'timeline.sound_track_remove', 'timeline.sound_track_rename', 'timeline.mute'].includes(operation)
     const scoped = timeline === null || !named ? params : { timeline: timeline.id, ...params }
     return run(() => client.runOperation(request(project, session, { operation, params: scoped, intent })))
   }
@@ -641,11 +675,21 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     if (name === '' || name === trackName(edit.track)) return
     void runOperation('timeline.sound_track_rename', { track: edit.track, name }, t('intent.trackRename', { name }))
   }
-  // A stored track is deleted with its sounds and the later tracks move up; an empty track added in this view just goes.
+  // A stored track is deleted with its sounds and its mute, and the later tracks move up with their mutes; an empty track
+  // added in this view just goes.
   const removeTrack = (track: number): void => {
     setSoundMenu(null)
     setShownTracks(Math.max(1, trackCount - 1))
     if (track < storedTracks) void runOperation('timeline.sound_track_remove', { track }, t('intent.trackRemove', { n: track + 1 }))
+  }
+  // A speaker button writes one `timeline.mute`; the button shows the new state once the refreshed state has it.
+  const toggleVideoMute = (): void => {
+    void runOperation('timeline.mute', { target: 'video', muted: !videoMuted }, t(videoMuted ? 'intent.unmuteVideo' : 'intent.muteVideo'))
+  }
+  const toggleTrackMute = (track: number): void => {
+    const muted = !mutedTracks.includes(track)
+    const name = trackName(track)
+    void runOperation('timeline.mute', { target: 'sound', track, muted }, t(muted ? 'intent.muteTrack' : 'intent.unmuteTrack', { name }))
   }
   // The asset that an asset tile drop carries and its media type, read from the drag data; the drop then belongs to the
   // track it landed on. Null for a drop that carries no asset, which the editor root handles.
@@ -992,7 +1036,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
         >
           {[0, 1].map(which => (
             <video
-              key={which} ref={player.elements[which as 0 | 1]} muted={false} playsInline preload="auto"
+              key={which} ref={player.elements[which as 0 | 1]} muted={videoMuted} playsInline preload="auto"
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', visibility: player.front === which && playheadClip?.status === 'ready' ? 'visible' : 'hidden' }}
             />
           ))}
@@ -1068,17 +1112,26 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   )
 
   const playheadLeft = player.position * px
-  // The playhead spans the ruler and both tracks.
-  const playheadHeight = RULER_HEIGHT + ROW_GAP + VIDEO_HEIGHT + ROW_GAP + AUDIO_HEIGHT + trackCount * (ROW_GAP + AUDIO_HEIGHT)
-  const trackHeader = (color: string, name: string): ReactNode => (
-    <span style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 14, fontSize: 12, lineHeight: '16px' }}>
-      <span style={{ width: 8, height: 8, borderRadius: 2, background: color }} />
-      {name}
+  // The playhead spans the ruler and every track row.
+  const playheadHeight = RULER_HEIGHT + ROW_GAP + AUDIO_HEIGHT + (1 + trackCount) * (ROW_GAP + ROW_HEIGHT)
+  // A track header: the track's color and its name, cut with an ellipsis, on the first line, and its buttons on a second
+  // line under the name, so the buttons never cover the name.
+  const trackHeader = (color: string, name: string, buttons: ReactNode = null): ReactNode => (
+    <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4, padding: '0 6px 0 14px', fontSize: 12, lineHeight: '16px' }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <span style={{ flex: 'none', width: 8, height: 8, borderRadius: 2, background: color }} />
+        <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+      </span>
+      {/* The icons' left edge lines up with the color mark: each 16 px icon sits 4 px inside its 24 px button. */}
+      {buttons === null ? null : <span style={{ display: 'flex', gap: 4, marginLeft: -4 }}>{buttons}</span>}
     </span>
+  )
+  const muteButton = (muted: boolean, name: string, toggle: (() => void) | null): ReactNode => (
+    <TrackButton icon={muted ? 'soundOff' : 'sound'} label={t('track.mute', { name })} pressed={muted} onClick={toggle} />
   )
   const tracks = (
     <div ref={scroller} style={{ flex: '1 1 auto', minHeight: 0, overflowX: 'auto', overflowY: 'hidden', position: 'relative', paddingBottom: TRACK_PADDING }}>
-      <div ref={rows} style={{ display: 'grid', gridTemplateColumns: `${String(GUTTER)}px ${String(laneWidth)}px`, gridTemplateRows: [RULER_HEIGHT, VIDEO_HEIGHT, AUDIO_HEIGHT, ...Array.from({ length: trackCount }, () => AUDIO_HEIGHT), ADD_TRACK_HEIGHT].map(height => `${String(height)}px`).join(' '), rowGap: ROW_GAP, minWidth: GUTTER + laneWidth }}>
+      <div ref={rows} style={{ display: 'grid', gridTemplateColumns: `${String(GUTTER)}px ${String(laneWidth)}px`, gridTemplateRows: [RULER_HEIGHT, ROW_HEIGHT, AUDIO_HEIGHT, ...Array.from({ length: trackCount }, () => ROW_HEIGHT), ADD_TRACK_HEIGHT].map(height => `${String(height)}px`).join(' '), rowGap: ROW_GAP, minWidth: GUTTER + laneWidth }}>
         <span />
         <div
           ref={lane} data-testid="dv-timeline-ruler" style={{ position: 'relative', borderBottom: `1px solid ${palette.line}`, cursor: 'ew-resize' }}
@@ -1088,7 +1141,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
         >
           {rulerMarks}
         </div>
-        {trackHeader(palette.take, t('track.video'))}
+        {trackHeader(palette.take, t('track.video'), muteButton(videoMuted, t('track.video'), timeline === null ? null : toggleVideoMute))}
         <div
           role="list" aria-label={t('track.aria')} style={{ position: 'relative' }}
           onDragOver={(event) => { if (event.dataTransfer.types.includes(DV_ASSET_DRAG_TYPE)) event.preventDefault() }}
@@ -1148,14 +1201,14 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
           {timeline === null ? null : (
             <button
               ref={addRef} type="button" className="dv-tl-btn" aria-label={t('track.add')} title={t('track.add')} aria-expanded={picking} onClick={() => { setPickingSound(false); setPicking(!picking) }}
-              style={{ ...button, position: 'absolute', left: total * px + 8, top: (VIDEO_HEIGHT - 32) / 2, width: 32, height: 32, padding: 0, justifyContent: 'center', color: palette.muted }}
+              style={{ ...button, position: 'absolute', left: total * px + 8, top: (ROW_HEIGHT - 32) / 2, width: 32, height: 32, padding: 0, justifyContent: 'center', color: palette.muted }}
             >
               <Icon name="add" />
             </button>
           )}
         </div>
         {trackHeader(palette.audio, t('track.audio'))}
-        <div style={{ position: 'relative' }} aria-hidden>
+        <div style={{ position: 'relative', ...videoMuted ? { opacity: MUTED_OPACITY } : {} }} aria-hidden>
           {clips.map(clip => (
             <div
               key={clip.clip}
@@ -1192,7 +1245,12 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
                 onContextMenu={(event) => { event.stopPropagation() }}
                 style={{ ...button, width: GUTTER - 16, marginLeft: 8, padding: '0 4px', background: palette.panel, cursor: 'text', fontSize: 12 }}
               />
-            ) : trackHeader(palette.sound, trackName(track))}
+            ) : trackHeader(palette.sound, trackName(track), (
+              <>
+                {muteButton(mutedTracks.includes(track), trackName(track), timeline === null ? null : () => { toggleTrackMute(track) })}
+                <TrackButton icon="delete" label={t('track.deleteNamed', { name: trackName(track) })} onClick={() => { removeTrack(track) }} />
+              </>
+            ))}
           </span>,
           <div
             key={`lane-${String(track)}`} role="group" aria-label={t('track.soundN', { n: track + 1 })} data-sound-track={track} style={{ position: 'relative' }}
@@ -1206,7 +1264,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
                   setPicking(false); setSoundTrack(track); setPickingSound(!pickingSound || soundTrack !== track)
                 }}
                 aria-expanded={pickingSound && soundTrack === track}
-                style={{ ...button, position: 'absolute', left: span * px + 8, top: (AUDIO_HEIGHT - 32) / 2, width: 32, height: 32, padding: 0, justifyContent: 'center', color: palette.muted, zIndex: 1 }}
+                style={{ ...button, position: 'absolute', left: span * px + 8, top: (ROW_HEIGHT - 32) / 2, width: 32, height: 32, padding: 0, justifyContent: 'center', color: palette.muted, zIndex: 1 }}
               >
                 <Icon name="add" />
               </button>
@@ -1223,6 +1281,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
                   position: 'absolute', top: 0, bottom: 0, left: sound.startSec * px, width: sound.seconds * px, boxSizing: 'border-box', cursor: 'pointer',
                   display: 'flex', flexDirection: 'column', borderRadius: 'var(--dv-radius-sm)', border: `1px solid ${palette.sound}`, background: palette.audioSoft,
                   overflow: 'hidden', ...sound.sound === chosenSound ? { boxShadow: `0 0 0 2px ${palette.accent}`, zIndex: 1 } : {},
+                  ...mutedTracks.includes(track) ? { opacity: MUTED_OPACITY } : {},
                 }}
               >
                 {/* The file name sits in its own strip above the waveform, cut with an ellipsis. */}
@@ -1232,7 +1291,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
                 <span style={{ position: 'relative', flex: 1, minHeight: 0 }}>
                   <AudioWaveform
                     assetId={sound.assetId} inSec={0} outSec={sound.seconds} width={sound.seconds * px}
-                    height={AUDIO_HEIGHT - 2 - SOUND_NAME_HEIGHT}
+                    height={ROW_HEIGHT - 2 - SOUND_NAME_HEIGHT}
                   />
                 </span>
               </div>
@@ -1320,7 +1379,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       <div ref={soundBox} hidden>
         {sounds.map(sound => (
           <audio
-            key={sound.sound} data-sound={sound.sound} src={assetUrl(sound.assetId)} preload="metadata"
+            key={sound.sound} data-sound={sound.sound} src={assetUrl(sound.assetId)} preload="metadata" muted={mutedTracks.includes(sound.track)}
             onLoadedMetadata={(event) => {
               const seconds = event.currentTarget.duration
               if (Number.isFinite(seconds) && seconds > 0) setMeasured(current => new Map(current).set(sound.assetId, seconds))

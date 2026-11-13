@@ -61,13 +61,13 @@ describe('timeline reducer', () => {
     expect(reduceAll([adding('timeline.create', { assets: ['d'] }, ['cl4'])], slice)).toBe(slice)
     expect(clipsOf(reduceAll([adding('timeline.update', { timeline: 't1', assets: ['d'] }, ['cl4'])], slice))).toEqual(['cl4 d null-null'])
     expect(reduceAll([adding('timeline.update', { timeline: 't2', assets: [] }, [])], slice).timelines[1]).toEqual({
-      id: 't2', name: 'B side', clips: [], sounds: [], sound_track_names: [],
+      id: 't2', name: 'B side', clips: [], sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [],
     })
     const renamed = reduceAll([edit('timeline.rename', { timeline: 't2', name: '片尾' })], slice)
     expect(renamed.timelines.map(timeline => timeline.name)).toEqual(['', '片尾'])
     expect(reduceAll([edit('timeline.delete', { timeline: 't1' })], slice).timelines.map(timeline => timeline.id)).toEqual(['t2'])
     expect(reduceAll([adding('timeline.create', { timeline: 't3' }, [])], slice).timelines[2]).toEqual({
-      id: 't3', name: '', clips: [], sounds: [], sound_track_names: [],
+      id: 't3', name: '', clips: [], sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [],
     })
   })
 
@@ -124,7 +124,7 @@ describe('timeline reducer', () => {
     expect(reduceAll([adding('timeline.clip_insert', { at: 1, asset: 'a' }, ['cl1'])]).timelines).toEqual([
       {
         id: FIRST_TIMELINE_ID, name: '', clips: [{ id: 'cl1', asset: 'a', source: null, in_sec: null, out_sec: null }],
-        sounds: [], sound_track_names: [],
+        sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [],
       },
     ])
     expect(clipsOf(reduceAll([adding('timeline.clip_insert', { timeline: 't9', at: 1, asset: 'c' }, ['cl3'])], slice), 't9')).toEqual(['cl3 c null-null'])
@@ -281,6 +281,31 @@ describe('timeline reducer', () => {
     expect(reduceAll([soundAdd({ asset: 'm', start_sec: 0, track: 2 }, ['sd1'])], empty)).toBe(empty)
   })
 
+  it('mutes and unmutes the clips\' own audio and sound tracks, and moves the mutes up with their tracks on a track removal', () => {
+    const slice = base()
+    const mute = (params: Record<string, unknown>): ProjectRecord => edit('timeline.mute', { timeline: 't1', ...params })
+    const muted = reduceAll([
+      adding('timeline.create', { timeline: 't2' }, []), mute({ target: 'video', muted: true }), mute({ target: 'sound', track: 1, muted: true }),
+      mute({ target: 'sound', track: 0, muted: true }), mute({ target: 'sound', track: 2, muted: true }),
+      // Muting a muted track again keeps one entry.
+      mute({ target: 'sound', track: 1, muted: true }),
+    ], slice)
+    const fields = (current: ComponentStates['timeline'], id = 't1'): unknown => {
+      const timeline = current.timelines.find(candidate => candidate.id === id)
+      return [timeline?.video_muted, timeline?.muted_sound_tracks]
+    }
+    expect([fields(muted), fields(muted, 't2')]).toEqual([[true, [0, 1, 2]], [false, []]])
+    const removed = reduceAll([edit('timeline.sound_track_remove', { timeline: 't1', track: 1 })], muted)
+    expect(fields(removed)).toEqual([true, [0, 1]])
+    const unmuted = reduceAll([mute({ target: 'video', muted: false }), mute({ target: 'sound', track: 0, muted: false })], removed)
+    expect(fields(unmuted)).toEqual([false, [1]])
+    // A mute of the clips' own audio names no track; a bad target, muted value or track is refused.
+    expect(problem(muted, mute({ target: 'video', muted: false, track: 9 }))).toBeNull()
+    expect(problem(muted, mute({ target: 'audio', muted: true }))).toBe('target audio is not video or sound.')
+    expect(problem(muted, mute({ target: 'sound', track: 0, muted: 'yes' }))).toBe('muted must be true or false.')
+    expect(problem(muted, mute({ target: 'sound', track: 4, muted: true }))).toBe('Timeline t1 has no sound track 4; it has 3.')
+  })
+
   it('lists every timeline with its clips by clip ID, their URLs, the status of placeholder clips, and its sounds in the agent summary', () => {
     const running = edit('shot.render', {}, { status: 'running' })
     const failed = edit('shot.render', {}, { status: 'failed' })
@@ -290,6 +315,7 @@ describe('timeline reducer', () => {
       adding('timeline.create', { timeline: 't2' }, ['cl3', 'cl4'], { inputs }),
       soundAdd({ timeline: 't2', asset: 'm', start_sec: 2, track: 1 }, ['sd1']),
       edit('timeline.sound_track_rename', { timeline: 't2', track: 0, name: 'Music' }),
+      edit('timeline.mute', { timeline: 't2', target: 'video', muted: true }), edit('timeline.mute', { timeline: 't2', target: 'sound', track: 1, muted: true }),
       adding('timeline.create', { timeline: 't3' }, []), edit('timeline.sound_track_rename', { timeline: 't3', track: 0, name: 'Voice' }),
     ])
     // The summary reads only the records of the state, for the status of each placeholder's render.
@@ -303,12 +329,13 @@ describe('timeline reducer', () => {
           { clip: 'cl2', asset: 'b', url: '/dv/assets/b', in_sec: 1, out_sec: 2 },
         ],
       }, {
-        id: 't2', name: '', clips: [
+        // A mute shows only while it is on.
+        id: 't2', name: '', video_muted: true, clips: [
           { clip: 'cl3', asset: null, status: 'rendering', record: running.id, in_sec: null, out_sec: null },
           { clip: 'cl4', asset: null, status: 'failed', record: failed.id, in_sec: null, out_sec: null },
         ],
         // Every track up to the last one that holds a sound or a name, with '' for an unnamed track.
-        sound_tracks: [{ track: 0, name: 'Music' }, { track: 1, name: '' }],
+        sound_tracks: [{ track: 0, name: 'Music' }, { track: 1, name: '', muted: true }],
         sounds: [{ sound: 'sd1', asset: 'm', url: '/dv/assets/m', start_sec: 2, track: 1 }],
       }, {
         // A named track without sounds is listed; the timeline lists no sounds.

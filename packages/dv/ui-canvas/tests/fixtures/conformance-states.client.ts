@@ -57,7 +57,7 @@ export function fixtureProject(): WireState {
       },
       timeline: {
         timelines: [{
-          id: 't1' as TimelineId, name: '', sounds: [], sound_track_names: [], clips: [
+          id: 't1' as TimelineId, name: '', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], clips: [
             { id: 'cl1' as ClipId, asset: 'shot1.mp4' as AssetId, source: null, in_sec: null, out_sec: null },
             { id: 'cl2' as ClipId, asset: 'shot2.mp4' as AssetId, source: null, in_sec: 1, out_sec: 4 },
           ],
