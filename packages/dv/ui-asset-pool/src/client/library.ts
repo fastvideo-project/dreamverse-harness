@@ -22,8 +22,7 @@ export interface AssetLibrary {
 }
 
 /**
- * Group a project's images, videos and audio, with the images of video generations apart; assets of other media types are left
- * out.
+ * Group a project's images, videos and audio, with the images of video generations apart; assets of other media types are left out.
  * @param current - the project's current state.
  * @returns the groups.
  */
