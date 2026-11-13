@@ -1296,7 +1296,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
         ))}
       </div>
       {soundMenu !== null ? (
-        <div ref={soundMenuRef} role="menu" style={{ position: 'fixed', left: soundMenu.x, top: soundMenu.y, zIndex: 20, background: palette.panel, border: `1px solid ${palette.line}`, borderRadius: 'var(--dv-radius-xl)', padding: 6, boxShadow: 'var(--dv-shadow-2)', minWidth: 140 }}>
+        <div ref={soundMenuRef} role="menu" style={{ position: 'fixed', left: soundMenu.x, top: soundMenu.y, zIndex: 20, background: palette.panel, border: `1px solid ${palette.line}`, borderRadius: 'var(--dv-radius-menu)', padding: 6, boxShadow: 'var(--dv-shadow-2)', minWidth: 140 }}>
           {soundMenu.kind === 'sound'
             ? <button type="button" role="menuitem" className="dv-tl-btn" onClick={() => { removeSound(soundMenu.sound) }} style={{ ...menuItem, color: palette.danger }}>{t('menu.delete')}</button>
             : (
