@@ -401,7 +401,7 @@ describe('timeline editor gestures', () => {
     await waitFor(() => { expect(requests()).toHaveLength(1) })
     expect(requests()[0]).toMatchObject({ operation: 'timeline.clip_insert', params: { timeline: 't1', at: 2, asset: 'shot2.mp4' } })
     expect(fireEvent.drop(list, { dataTransfer: assetDrag('ref.png', 'image/png') })).toBe(false)
-    expect(view.getByRole('status').textContent).toBe('视频轨道只接受视频。音频请拖到声音轨道上。')
+    expect(view.getByRole('status').textContent).toBe('视频轨道只接受视频。')
     expect(requests()).toHaveLength(1)
     const editor = view.getByTestId('dv-timeline-editor')
     const viewer = view.getByTestId('dv-timeline-viewer')

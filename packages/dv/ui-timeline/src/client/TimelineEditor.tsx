@@ -441,7 +441,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const menuRef = useRef<HTMLDivElement | null>(null)
   // The notice of the latest drop the editor refused: a file, a non-video asset on the video track, or a non-audio asset
   // on a sound track. Each refusal sets a new object, so a repeated refusal restarts the notice's timer.
-  const [dropNotice, setDropNotice] = useState<{ text: 'track.fileDrop' | 'track.videoDrop' | 'track.soundDrop' } | null>(null)
+  const [dropNotice, setDropNotice] = useState<{ text: 'track.fileDrop' | 'track.videoDrop' | 'track.videoOnly' | 'track.soundDrop' } | null>(null)
   const [drag, setDrag] = useState<ClipDrag | null>(null)
   const [picking, setPicking] = useState(false)
   const pickerRef = useRef<HTMLDivElement | null>(null)
@@ -1096,7 +1096,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
             const dropped = takeDrop(event)
             if (dropped === null) return
             if (dropped.type !== 'video') {
-              setDropNotice({ text: 'track.videoDrop' })
+              setDropNotice({ text: dropped.type === 'audio' ? 'track.videoDrop' : 'track.videoOnly' })
               return
             }
             const box = (lane.current as HTMLDivElement).getBoundingClientRect()
