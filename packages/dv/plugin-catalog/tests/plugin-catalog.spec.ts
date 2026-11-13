@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Catalog from '../src/index.ts'
 import type { CatalogAnswer } from '../src/types.ts'
 
@@ -134,8 +134,19 @@ describe('loadCatalog', () => {
     expect(answer.plugins).toEqual([])
     expect(answer.problems).toEqual([{
       source,
-      message: 'the server redirected to http://127.0.0.2/catalog.json, which is neither an https URL nor an http URL on the loopback host',
+      message: 'the server redirected to http://127.0.0.2/catalog.json, which this source may not redirect to',
     }])
+  })
+
+  it('reports an https URL source that redirects to a loopback http URL and does not request that URL', async () => {
+    const target = await serve(200, JSON.stringify({ plugins: [entry('@fastvideo/f', 'F')] }))
+    const source = 'https://catalog.example/catalog.json'
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 302, headers: { location: target } }))
+    cleanups.push(() => { fetch.mockRestore() })
+    const answer = await Catalog.loadCatalog([], { sources: [source], sourceTimeoutMs: 5000 })
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([source])
+    expect(answer.plugins).toEqual([])
+    expect(answer.problems).toEqual([{ source, message: `the server redirected to ${target}, which this source may not redirect to` }])
   })
 })
 

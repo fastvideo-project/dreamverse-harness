@@ -36,7 +36,7 @@ The DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.md) mounts the plugi
 
 | Config | Default | Meaning |
 | --- | --- | --- |
-| `sources` | `[]` | Further catalogs, read on every request after the shipped one: absolute paths, or https URLs (http only on `127.0.0.1`, `localhost` or `[::1]`). An entry whose package an earlier catalog lists replaces it. A source that is neither fails the plugin at load. A URL source follows a redirect only to an https URL or a loopback http URL; a redirect elsewhere is reported as a problem and the source lists nothing. |
+| `sources` | `[]` | Further catalogs, read on every request after the shipped one: absolute paths, or https URLs (http only on `127.0.0.1`, `localhost` or `[::1]`). An entry whose package an earlier catalog lists replaces it. A source that is neither fails the plugin at load. A URL source follows a redirect to an https URL, or from a loopback http URL to another loopback http URL; any other redirect is reported as a problem and the source lists nothing. |
 | `sourceTimeoutMs` | `10000` | How long one URL source may take, in milliseconds. |
 
 `GET /api/dv/plugins/catalog` answers `{ plugins, problems }`: `plugins` holds the shipped catalog's entries in file order, then the entries the sources add, each with the `source` that listed it; `problems` holds one `{ source, message }` for each source that could not be read or is malformed, which the Marketplace page shows and the Host logs. A malformed shipped catalog fails the plugin at load.

@@ -36,7 +36,7 @@ DreamVerse 套件 [`@dv/bundle`](../../bundle/dv/README.zh.md) 挂载本插件�
 
 | 配置 | 默认值 | 含义 |
 | --- | --- | --- |
-| `sources` | `[]` | 在随包目录之后、每次请求都读取的其他目录：绝对路径，或 https URL（http 只限 `127.0.0.1`、`localhost` 或 `[::1]`）。较早目录已列出的包会被后来的条目替换。两者都不是的来源会让插件在加载时失败。URL 来源只跟随指向 https URL 或回环 http URL 的重定向；指向其他地址的重定向会被报告为问题，该来源不列出任何条目。 |
+| `sources` | `[]` | 在随包目录之后、每次请求都读取的其他目录：绝对路径，或 https URL（http 只限 `127.0.0.1`、`localhost` 或 `[::1]`）。较早目录已列出的包会被后来的条目替换。两者都不是的来源会让插件在加载时失败。URL 来源跟随指向 https URL 的重定向，或从回环 http URL 指向另一个回环 http URL 的重定向；其他任何重定向都会被报告为问题，该来源不列出任何条目。 |
 | `sourceTimeoutMs` | `10000` | 一个 URL 来源最多等待的毫秒数。 |
 
 `GET /api/dv/plugins/catalog` 返回 `{ plugins, problems }`：`plugins` 先按文件顺序列出随包目录的条目，再列出各来源新增的条目，每条带有列出它的 `source`；`problems` 为每个无法读取或格式错误的来源给出一个 `{ source, message }`，插件市场 页面会显示它，Host 会记录日志。随包目录格式错误时插件在加载时失败。

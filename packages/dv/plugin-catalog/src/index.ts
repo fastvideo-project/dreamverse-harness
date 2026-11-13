@@ -141,9 +141,10 @@ export function parseCatalog(text: string, source: string): CatalogEntry[] {
  * @param source - an absolute path or a URL that {@link isUrlSource} accepts.
  * @param timeoutMs - the bound on a URL request.
  * @returns the text.
- * @throws {Error} when the file cannot be read, the request fails or times out, a redirect leads to a URL that
- * {@link isUrlSource} refuses, more than {@link MAX_REDIRECTS} redirects follow one another, or the server answers an
- * error status.
+ * A redirect is followed to an https URL, or from a loopback http URL to another loopback http URL, so that only the
+ * operator can name a loopback http URL.
+ * @throws {Error} when the file cannot be read, the request fails or times out, a redirect leads to any other URL, more
+ * than {@link MAX_REDIRECTS} redirects follow one another, or the server answers an error status.
  */
 async function readSource(source: string, timeoutMs: number): Promise<string> {
   if (!isUrlSource(source)) return readFile(source, 'utf8')
@@ -156,10 +157,11 @@ async function readSource(source: string, timeoutMs: number): Promise<string> {
       if (!response.ok) throw new Error(`the server answered HTTP ${String(response.status)}`)
       return response.text()
     }
+    await response.body?.cancel()
     if (hops === MAX_REDIRECTS) throw new Error(`the server redirected more than ${String(MAX_REDIRECTS)} times`)
     const next = new URL(location, url).href
-    if (!isUrlSource(next)) {
-      throw new Error(`the server redirected to ${next}, which is neither an https URL nor an http URL on the loopback host`)
+    if (!next.startsWith('https://') && (url.startsWith('https://') || !isUrlSource(next))) {
+      throw new Error(`the server redirected to ${next}, which this source may not redirect to`)
     }
     url = next
   }
