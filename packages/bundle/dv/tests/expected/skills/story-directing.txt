@@ -60,7 +60,10 @@ Call `dv_timeline_create` with `inputs.clip` = output #0 of each shot's render, 
 One story is one timeline and one storyboard. The user asks for this about a timeline with words such as "make the story longer", "add a few more shots" or "change the story".
 
 1. Change `story/storyboard.md` with `dv_textnode_edit`, show the new or changed shots, and wait for the user to agree as in step 2. A shot added after six shots is shot 7.
-2. Render only the new or changed shots with `dv_shot_render`; a changed shot passes `based_on` = its earlier render, and a shot that continues a changed shot renders again with `continue_from` = the new render.
+2. Render only the new or changed shots with `dv_shot_render`, in story order; a changed shot passes `based_on` = its earlier render. Each shot that continues a new render (the changed shot, or a shot this step renders again) renders again, with these calls:
+   1. Before its render, call `dv_asset_grab_still` on the new previous render three times: at its duration minus 1.0 s, minus 0.5 s (4 and 4.5 for a 5 s shot) and `last`. Do this even when you already saw its last frame or other stills. Rewrite the shot's prompt from those stills (section 4 steps 7 and 8).
+   2. Render it with `continue_from` = the new previous render.
+   3. After its render, call `dv_asset_grab_still` on it at 0.5 s and 1.0 s, compare them with the previous ending stills, and write `Boundary <N-1>→<N>: pass | minor_issue | fail` and one reason in your reply.
 3. Wait with `dv_proj_wait`, then call `dv_timeline_update` with `timeline` = the story's timeline and every clip in order, the unchanged clips as their earlier takes.
 </skill_instructions>
 </skill_content>
