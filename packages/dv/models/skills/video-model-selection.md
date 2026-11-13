@@ -1,6 +1,6 @@
 # Video model selection
 
-Each shot renders with one video model. Each video model has a key of four fields: `modality`, `task`, `provider` and `model`. The chat input's video choice applies to subsequent generations in that conversation. Read `video_model_choices` in project state: a named model is the default; null (Auto) lets you choose. Do not ask the user to pick again for each generation. When they request a switch, call `dv_models_select` with the new provider and model before rendering. Existing renders retain their recorded model.
+Each shot renders with one video model. Each video model has a key of four fields: `modality`, `task`, `provider` and `model`. The chat input's video choice applies to subsequent generations in that conversation. Read `video_model` in project state, this conversation's choice: a named provider and model is the default; null (Auto) lets you choose. Do not ask the user to pick again for each generation. When they request a switch, call `dv_models_select` with the new provider and model before rendering. Existing renders retain their recorded model.
 
 Providers may expose `dv_models_status`, `dv_models_load` and `dv_models_unload`. These operate on installed weights and GPU memory; they never download weights. Generation loads its requested model automatically, serializes switching with inference, and retains compatible shared components when supported. Do not unload a running generation. Do this procedure for each shot.
 

@@ -184,7 +184,7 @@ export default class DvProject extends Service {
     // The project summary that the `dv_proj_*` tools return and the project state message shows.
     const projToolDeps: ProjToolDeps = {
       assets: () => this.requireAssetStore(),
-      agentSummaries: (state: ProjectState) => this.reducers.agentSummaries(state, this.requireAssetStore()),
+      agentSummaries: (state: ProjectState, session) => this.reducers.agentSummaries(state, this.requireAssetStore(), session),
       turnOf: exec => turnOf(ctx, exec),
       chatFolder: session => this.chatFolder(session),
     }

@@ -150,10 +150,10 @@ export function seenProjection(): Omit<ProjectionDefinition<'dvProjectSight'>, '
   return { key: SEEN_PROJECTION, stateVersion: 1, stateSchema: seenSchema, init: () => UNSEEN, apply: foldSeen }
 }
 
-/** Who a record line names: the user's surface, `your call`, `another chat`, or `scheduled`. */
+/** Who a record line names: the user's surface (`user in another chat` for another chat), `your call`, `another chat`, or `scheduled`. */
 function whoOf(record: ProjectRecord, session: SessionId): string {
   switch (record.actor) {
-    case 'user': return USER_SURFACE[record.surface]
+    case 'user': return record.surface === 'chat' && record.session !== null && record.session !== session ? 'user in another chat' : USER_SURFACE[record.surface]
     case 'agent': return record.session === session ? 'your call' : 'another chat'
     case 'system': return 'scheduled'
     default: return assertNever(record.actor)
@@ -182,10 +182,11 @@ function recordLines(project: DvProject, deps: ProjToolDeps, record: ProjectReco
  * @param project - the service.
  * @param deps - the asset store and the reducers' summaries.
  * @param id - the project.
+ * @param session - the session whose agent reads the message.
  * @returns the text.
  */
-export function renderState(project: DvProject, deps: ProjToolDeps, id: ProjectId): string {
-  const summary = projectSummary(project, deps, id, project.getState(id), { written: null, reports: false })
+export function renderState(project: DvProject, deps: ProjToolDeps, id: ProjectId, session: SessionId): string {
+  const summary = projectSummary(project, deps, id, project.getState(id), { written: null, reports: false, session })
   const info = project.openProject(id)
   return [
     `${STATE_HEAD} This conversation belongs to the project "${info.title}" in the folder ${info.path}: do all work in it `
@@ -230,7 +231,7 @@ export function projectMessage(project: DvProject, deps: ProjToolDeps, session: 
   const records = project.listRecords(id)
   const { at } = project.line(id)
   if (seen.from === null || seen.project !== id) {
-    const text = renderState(project, deps, id)
+    const text = renderState(project, deps, id, session)
     const open = Object.fromEntries(records.filter(record => !finished(record.status)).map(record => [record.id, record.status]))
     return createUserMessage({
       content: [{ type: 'text', text }],

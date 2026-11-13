@@ -17,7 +17,7 @@ import { versionRefOf } from './grammar.ts'
 import { ProjectError } from './shared.ts'
 import type {
   AssetId, AssetStore, ComponentStates, ProjectId, ProjectInfo, ProjectRecord, ProjectState, RecordId, RecordInput, RecordInputRef,
-  Reducer, ReferenceKindSpec,
+  Reducer, ReferenceKindSpec, SessionId,
 } from './types.ts'
 
 /** The `proj` slice. */
@@ -280,13 +280,14 @@ export class ReducerRegistry {
    * other components in the alphabetical order of their keys, so the order never depends on which plugin mounted first.
    * @param state - a project state.
    * @param assets - the asset store, for asset URLs.
+   * @param session - the session whose agent reads the summary.
    * @returns one field object per such reducer.
    */
-  agentSummaries(state: ProjectState, assets: Pick<AssetStore, 'url'>): Array<Record<string, JsonValue>> {
+  agentSummaries(state: ProjectState, assets: Pick<AssetStore, 'url'>, session: SessionId): Array<Record<string, JsonValue>> {
     const sortKey = (key: string): string => (key === 'proj' ? '' : key)
     return [...this.reducers].sort(([a], [b]) => sortKey(a).localeCompare(sortKey(b)))
       .flatMap(([key, reducer]) => (
-        reducer.agentSummary === undefined ? [] : [reducer.agentSummary(sliceOf(state, key, reducer), assets, state)]))
+        reducer.agentSummary === undefined ? [] : [reducer.agentSummary(sliceOf(state, key, reducer), assets, state, session)]))
   }
 
   /**

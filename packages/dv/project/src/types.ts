@@ -328,9 +328,12 @@ export interface Reducer<K extends ComponentKey = ComponentKey> {
    * @param slice - the slice of the current state.
    * @param assets - the asset store, for the URLs of the assets the slice names.
    * @param state - the whole current state, for the records the slice refers to.
+   * @param session - the session whose agent reads the summary, for fields that differ per conversation.
    * @returns the fields by name.
    */
-  agentSummary?(slice: ComponentStates[K], assets: Pick<AssetStore, 'url'>, state: ProjectState): Record<string, JsonValue>
+  agentSummary?(
+    slice: ComponentStates[K], assets: Pick<AssetStore, 'url'>, state: ProjectState, session: SessionId,
+  ): Record<string, JsonValue>
 }
 
 /** The state of a project at one record: the result of the chain that ends there. */

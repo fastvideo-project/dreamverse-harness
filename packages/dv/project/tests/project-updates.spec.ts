@@ -210,6 +210,14 @@ describe('project state message', () => {
     })
   })
 
+  it('gives the component summaries the session that receives the state message', async () => {
+    const fixture = await start()
+    const deps: ProjToolDeps = { ...fixture.deps, agentSummaries: (_state, session) => [{ viewer: session }] }
+    const message = projectMessage(fixture.project, deps, SESSION, fixture.log.seen)
+    const [, ...json] = (message === null ? '' : textOf(message)).split('\n')
+    expect(JSON.parse(json.join('\n'))).toMatchObject({ viewer: SESSION })
+  })
+
   it('sends nothing for a session without a project, and a state message when the session saw another project', async () => {
     const fixture = await start()
     expect(projectMessage(fixture.project, fixture.deps, brandString<SessionId>('unbound'), fixture.log.seen)).toBeNull()
@@ -346,6 +354,20 @@ describe('project update message', () => {
     expect(fixture.log.step()).toBe(update(
       `- done ${other.id} (another chat): imported other.png`, `  - asset: ${assetOf('other.png')} (image/png) https://assets.example/${assetOf('other.png')}`,
       `- done ${stopped.id} (your call): imported stopped.png`, `  - asset: ${assetOf('stopped.png')} (image/png) https://assets.example/${assetOf('stopped.png')}`,
+    ))
+  })
+
+  it('names a user edit made in another chat apart from one made in this chat', async () => {
+    const fixture = await start()
+    fixture.log.step()
+    const human = (session: string): RecordOrigin => ({
+      actor: 'user', surface: 'chat', session: brandString<SessionId>(session), turn: null, tool_call: null, intent: 'user import',
+    })
+    const other = await fixture.run(human('s2'), 'asset.import', { name: 'other.png' })
+    const here = await fixture.run(human(SESSION), 'asset.import', { name: 'here.png' })
+    expect(fixture.log.step()).toBe(update(
+      `- done ${other.id} (user in another chat): imported other.png`, `  - asset: ${assetOf('other.png')} (image/png) https://assets.example/${assetOf('other.png')}`,
+      `- done ${here.id} (user in chat): imported here.png`, `  - asset: ${assetOf('here.png')} (image/png) https://assets.example/${assetOf('here.png')}`,
     ))
   })
 

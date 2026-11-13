@@ -168,7 +168,7 @@ describe('timeline reducer', () => {
     ])
     // The summary reads only the records of the state, for the status of each placeholder's render.
     const state = { components: { proj: { records: [running, failed] } } } as unknown as ProjectState
-    expect(timelineReducer.agentSummary?.(slice, { url: asset => `/dv/assets/${asset}` }, state)).toEqual({
+    expect(timelineReducer.agentSummary?.(slice, { url: asset => `/dv/assets/${asset}` }, state, 's1' as never)).toEqual({
       timelines: [{
         id: FIRST_TIMELINE_ID, name: '', clips: [
           { clip: 'cl1', asset: 'a', url: '/dv/assets/a', in_sec: null, out_sec: null },

@@ -29,8 +29,11 @@ export const selectionReducer: Reducer<'models'> = {
     const model = String(record.params['model'])
     return { conversations: { ...slice?.conversations, [record.session]: model === '' ? null : { provider, model } } }
   },
-  agentSummary: slice => ({ video_model_choices: Object.fromEntries(Object.entries(slice?.conversations ?? {})
-    .map(([session, selection]) => [session, selection === null ? null : { ...selection }])) }),
+  // Each agent reads only its own conversation's choice: no model-visible input names a session ID.
+  agentSummary: (slice, _assets, _state, session) => {
+    const selected = slice?.conversations[session] ?? null
+    return { video_model: selected === null ? null : { ...selected } }
+  },
 }
 
 /** Mount conversation selection and lifecycle operations with the project service. */
@@ -49,7 +52,7 @@ export function installModelControls(ctx: Context, models: DvModels): void {
         model: { type: 'string', required: true, description: 'The video model from dv_models_list, or empty for Auto.' },
       },
       inputs: {}, outputs: [], deterministic: false, resource: 'none',
-      summarize: record => String(record.params['model']) || 'Auto',
+      summarize: record => `video model ${String(record.params['model']) || 'Auto'}, for the conversation that chose it only`,
       precondition: async (request) => {
         if (request.session === null || scope.dvProject.sessionProject(request.session) !== request.project) {
           throw new Error('Choose a video model from a conversation in this project.')
