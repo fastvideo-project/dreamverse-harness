@@ -3,7 +3,7 @@
  * and the catalog route registered while a Connection service is mounted and removed when the plugin unloads.
  */
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer, type Server } from 'node:http'
+import { createServer, type OutgoingHttpHeaders, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -39,25 +39,14 @@ function tempDir(): string {
 }
 
 /**
- * Serve one body on the loopback host.
+ * Serve one response on the loopback host.
  * @param status - the response status.
  * @param body - the response body.
+ * @param headers - the response headers.
  * @returns the URL.
  */
-async function serve(status: number, body: string): Promise<string> {
-  const server: Server = createServer((_request, response) => { response.writeHead(status).end(body) })
-  await new Promise<void>((resolve) => { server.listen(0, '127.0.0.1', resolve) })
-  cleanups.push(() => new Promise<void>((resolve) => { server.close(() => { resolve() }) }))
-  return `http://127.0.0.1:${String((server.address() as AddressInfo).port)}/catalog.json`
-}
-
-/**
- * Serve a redirect on the loopback host.
- * @param location - the redirect target.
- * @returns the URL.
- */
-async function serveRedirect(location: string): Promise<string> {
-  const server: Server = createServer((_request, response) => { response.writeHead(302, { location }).end() })
+async function serve(status: number, body: string, headers: OutgoingHttpHeaders = {}): Promise<string> {
+  const server: Server = createServer((_request, response) => { response.writeHead(status, headers).end(body) })
   await new Promise<void>((resolve) => { server.listen(0, '127.0.0.1', resolve) })
   cleanups.push(() => new Promise<void>((resolve) => { server.close(() => { resolve() }) }))
   return `http://127.0.0.1:${String((server.address() as AddressInfo).port)}/catalog.json`
@@ -116,20 +105,20 @@ describe('loadCatalog', () => {
 
   it('follows a redirect to another loopback http URL and merges its entries', async () => {
     const target = await serve(200, JSON.stringify({ plugins: [entry('@fastvideo/e', 'E')] }))
-    const source = await serveRedirect(target)
+    const source = await serve(302, '', { location: target })
     const answer = await Catalog.loadCatalog([], { sources: [source], sourceTimeoutMs: 5000 })
     expect(answer.plugins.map(plugin => [plugin.package, plugin.source])).toEqual([['@fastvideo/e', source]])
     expect(answer.problems).toEqual([])
   })
 
   it('reports a URL source whose redirects exceed the hop limit', async () => {
-    const source = await serveRedirect('/catalog.json')
+    const source = await serve(302, '', { location: '/catalog.json' })
     const answer = await Catalog.loadCatalog([], { sources: [source], sourceTimeoutMs: 5000 })
     expect(answer.problems).toEqual([{ source, message: 'the server redirected more than 20 times' }])
   })
 
   it('reports a URL source that redirects to a non-loopback http URL and merges nothing from it', async () => {
-    const source = await serveRedirect('http://127.0.0.2/catalog.json')
+    const source = await serve(302, '', { location: 'http://127.0.0.2/catalog.json' })
     const answer = await Catalog.loadCatalog([], { sources: [source], sourceTimeoutMs: 5000 })
     expect(answer.plugins).toEqual([])
     expect(answer.problems).toEqual([{

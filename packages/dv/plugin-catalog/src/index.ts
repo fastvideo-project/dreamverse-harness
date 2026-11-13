@@ -138,11 +138,11 @@ export function parseCatalog(text: string, source: string): CatalogEntry[] {
 
 /**
  * Read a configured source's text.
+ * A redirect is followed to an https URL, or from a loopback http URL to another loopback http URL, so that only the
+ * operator can name a loopback http URL.
  * @param source - an absolute path or a URL that {@link isUrlSource} accepts.
  * @param timeoutMs - the bound on a URL request.
  * @returns the text.
- * A redirect is followed to an https URL, or from a loopback http URL to another loopback http URL, so that only the
- * operator can name a loopback http URL.
  * @throws {Error} when the file cannot be read, the request fails or times out, a redirect leads to any other URL, more
  * than {@link MAX_REDIRECTS} redirects follow one another, or the server answers an error status.
  */
