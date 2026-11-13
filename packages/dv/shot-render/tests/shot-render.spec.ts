@@ -647,9 +647,9 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
       expect(probe.hasAudio).toBe(false)
       expect(probe.videoDurationSec).toBeCloseTo(25 / 24, 1)
       expect(rendered.inputs[0]?.resolved_asset).toBe(fixture.ctx.dvProject.getRecord(fixture.project, source.id).outputs[0])
-      expect(fixture.ctx.dvProject.getRecord(fixture.project, duplicate.id)).toMatchObject({
-        status: 'failed', error: { message: expect.stringContaining('The continuation video is also in inputs.reference.') },
-      })
+      const refused = fixture.ctx.dvProject.getRecord(fixture.project, duplicate.id)
+      expect(refused.status).toBe('failed')
+      expect(refused.error?.message).toContain('The continuation video is also in inputs.reference.')
       expect(fixture.reference.requests).toHaveLength(1)
     } finally {
       release()
