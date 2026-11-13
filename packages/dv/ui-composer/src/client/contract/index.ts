@@ -205,7 +205,7 @@ export interface DvPromptInjected {
   readonly hooks: {
     /** The model catalog; null until it loads, and loaded again when an occurrence opens while none is open. */
     readonly models: HostObservable<readonly WireModelEntry[] | null>
-    /** The message of the catalog's last failed load; null before the first load answers and after a load succeeds. */
+    /** The message of the catalog's last failed load; null while a load is in flight and after a load succeeds. */
     readonly modelsFailure: HostObservable<string | null>
     /** The parameter bars that plugins registered, `dvComposer.paramBars`. */
     readonly paramBars: HostObservable<readonly ParamBar[]>
