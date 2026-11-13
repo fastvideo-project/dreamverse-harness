@@ -1,5 +1,5 @@
 /** Saved generation connections over existing settings, credentials, and authenticated browser routes. */
-import { Service, type Context, type Volatile } from '@deepseek-ai/cordis'
+import { Service, type Context, type Fiber, type Volatile } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-client-connection'
@@ -40,6 +40,8 @@ export function validateWorkers(workers: Record<string, WorkerConfig>): boolean 
   return true
 }
 
+const invalidInventory = 'Worker configuration contains invalid or duplicate endpoints. Edit Hardware settings before generating.'
+
 /** Loader schema; only worker coordinates are live-editable. */
 export const Config = z.object({
   workers: z.dict(z.object({
@@ -72,16 +74,23 @@ export default class DvHardware extends Service {
 
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'dvHardware')
-    this.savedWorkers()
+    // Refuse a saved or reloaded inventory before it replaces this live one; a stored invalid inventory still boots.
+    ctx.on('internal/config', function (this: Fiber, _raw, next) {
+      const raw: unknown = next()
+      const current: unknown = this.config
+      if (typeof current !== 'object' || current === null || Reflect.get(current, 'workers') !== config.workers) return raw
+      if (!validateWorkers(Config(raw as Parameters<typeof Config>[0]).workers.get())) throw new Error(invalidInventory)
+      return raw
+    })
     ctx.inject(['systemPrompt'], scope => scope.effect(() => scope.systemPrompt.section({
       name: 'dv:hardware', order: config.promptSectionOrder, interpolate: false,
       text: () => [
         'Generation hardware:',
         'When the user asks whether a device is connected, available, busy, or loaded, call dv_hardware_list immediately and report its result. Do not ask permission for this read-only inspection or claim no visibility before checking.',
         'The configured worker IDs below are routing targets, not evidence of current connectivity. Read dv_hardware_list for live state.',
-        JSON.stringify(this.list().map(worker => ({
+        validateWorkers(this.config.workers.get()) ? JSON.stringify(this.list().map(worker => ({
           id: worker.id, label: worker.label, provider: worker.provider, enabled: worker.enabled,
-        }))),
+        }))) : invalidInventory,
         'For explicit placement, pass worker to dv_shot_render, dv_models_status, dv_models_load, or dv_models_unload. Use the exact enabled worker ID. A pinned operation never falls back to another device. Omit worker to let the provider place independent jobs automatically.',
         'Check model status per worker before switching models. Loading retains compatible common components when supported. Never unload or replace a busy worker. Submit independent clips together; wait only for clips whose inputs depend on an earlier output.',
         'Only configured workers may be used. Do not infer distributed single-video support from multiple available workers, start Ray, change device connections, or access credentials from generation tools.',
@@ -168,7 +177,7 @@ export default class DvHardware extends Service {
 
   private savedWorkers(): Readonly<Record<string, WorkerConfig>> {
     const workers = this.config.workers.get()
-    if (!validateWorkers(workers)) throw new Error('Worker configuration contains invalid or duplicate endpoints. Edit Hardware settings before generating.')
+    if (!validateWorkers(workers)) throw new Error(invalidInventory)
     return workers
   }
 

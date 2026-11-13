@@ -9,6 +9,8 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import Schema from '@deepseek-ai/schemastery'
 import { volatileForm } from '../../../settings/settings/src/schema.ts'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
+import { configurationFixture } from '../../../settings/settings/tests/configuration-fixture.ts'
+import { liveConfig } from '../../../settings/settings/tests/live-config.ts'
 
 const cleanup: Array<() => Promise<unknown>> = []
 afterEach(async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose() })
@@ -118,6 +120,52 @@ describe('generation hardware', () => {
     expect((await ctx.dvHardware.check())[0]).toMatchObject({ loadedModel: 'my-model', status: 'ready' })
     dispose()
   })
+
+  it('refuses an invalid inventory at settings save time', async () => {
+    const { ctx } = await configurationFixture({
+      hmr: false,
+      schema: Schema.object({ ...DvHardware.Config.dict, ordinary: Schema.string() }),
+      apply: (probe, config) => {
+        if ((config as { ordinary: string }).ordinary !== 'fixed') return
+        probe.plugin(MemoryCredentials)
+        probe.inject(['credentials'], (scope) => { new DvHardware(scope, config as DvHardware['config']) })
+      },
+    })
+    const save = async (id: string, value: object) => {
+      const revision = ctx.settings.describe().find(row => row.ns === 'first')!.revision
+      await ctx.settings.mutate('first', [{ op: 'set', path: ['workers', id], value }], revision)
+    }
+    await save('a', { label: 'Local' })
+    await expect(save('b', { label: 'Local 2' })).rejects.toThrow('invalid or duplicate endpoints')
+    await expect(save('remote', { label: 'Remote', transport: 'ssh', sshHost: '' })).rejects.toThrow('invalid or duplicate endpoints')
+    expect(Object.keys((ctx.settings.describe().find(row => row.ns === 'first')!.value as { workers: object }).workers)).toEqual(['a'])
+  })
+
+  it('keeps the inventory and prompt when a live edit would duplicate an endpoint', async () => {
+    const ctx = new Context()
+    await ctx.plugin(MemoryCredentials)
+    await ctx.plugin(SystemPrompt)
+    cleanup.push(async () => { await ctx.fiber.dispose() })
+    const a = worker('http://127.0.0.1:18000')
+    const live = await liveConfig(ctx, DvHardware, { workers: { a }, connectionTimeoutMs: 1000 })
+    await expect(live.update({ workers: { a, b: { ...a, label: 'Copy' } } })).rejects.toThrow('invalid or duplicate endpoints')
+    expect(ctx.dvHardware.list().map(value => value.id)).toEqual(['a'])
+    expect(renderPrompt(await ctx.systemPrompt.assemble())).toContain('"id":"a"')
+  })
+
+  for (const [name, workers] of [
+    ['duplicate endpoints', { a: worker('http://127.0.0.1:18000'), b: { ...worker('http://127.0.0.1:18000'), label: 'Copy' } }],
+    ['an empty SSH host', { remote: { ...worker('http://127.0.0.1:18000'), transport: 'ssh' as const } }],
+  ] as const) {
+    it(`boots with a stored inventory containing ${name} and refuses admission`, async () => {
+      const ctx = await boot(workers)
+      const prompt = ctx.plugin(SystemPrompt)
+      await prompt
+      cleanup.push(async () => { await prompt.dispose() })
+      expect(renderPrompt(await ctx.systemPrompt.assemble())).toContain('Worker configuration contains invalid or duplicate endpoints.')
+      expect(() => ctx.dvHardware.workers('fastvideo')).toThrow('invalid or duplicate endpoints')
+    })
+  }
 
   it.skipIf(!process.env['DV_HARDWARE_SSH_TEST_HOST'])('reads a real worker through the configured key-only SSH alias', async () => {
     const ctx = await boot({ remote: { ...worker('http://unused.invalid'), transport: 'ssh',

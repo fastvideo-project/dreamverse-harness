@@ -20,6 +20,8 @@ Mount this plugin with the existing Harness credential provider. Its live `worke
 | `workers.<id>.remotePort` | `18000` | API port reached from the SSH server |
 | `connectionTimeoutMs` | `10000` | Connection-check deadline |
 
+Settings refuse a save or reload whose inventory has an invalid ID, label, provider, credential reference, SSH coordinate, or URL, or two workers with the same endpoint. An invalid inventory already stored in the profile still starts the service: the operator prompt reports the error, and inventory, checks, and admission refuse until the inventory is edited.
+
 SSH uses the Harness host's OpenSSH client and existing authorized identity. It never accepts or transfers private-key contents, asks for a password, or trusts a new host key automatically. The alias must already work with batch authentication and a trusted host key. SSH forwarding currently requires macOS or Linux; direct APIs also work on Windows.
 
 ## Generation admission
