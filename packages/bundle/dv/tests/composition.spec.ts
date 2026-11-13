@@ -34,7 +34,7 @@ describe('DreamVerse bundle composition', () => {
         targets.push(target)
         return fasth3.render(request, signal)
       } },
-    }))
+    }) as typeof fasth3)
     services.chats.open('anonymous', await ctx.dvProject.newProjectFolder('worker-target'))
     const call = (name: string, args: Record<string, unknown>) => ctx.tools.execute({
       callId: ToolCallId(name), name, arguments: args, signal: AbortSignal.timeout(10000),
@@ -54,7 +54,7 @@ describe('DreamVerse bundle composition', () => {
   it('allows parallel tool batches only for a provider that reserves independent workers', async () => {
     const { ctx, dispose } = await bootBundle()
     disposers.push(dispose)
-    ctx.dvModels.register(Object.create(fasth3, { model: { value: 'parallel' }, concurrentRenders: { value: true } }))
+    ctx.dvModels.register(Object.create(fasth3, { model: { value: 'parallel' }, concurrentRenders: { value: true } }) as typeof fasth3)
     const tool = ctx.tools.get('dv_shot_render')!
     const args = { modality: 'video', task: 'ref2v', provider: 'uniserve', model: 'parallel',
       prompt: 'A lake', duration_sec: 1, reason: 'Render an independent shot' }
@@ -73,7 +73,7 @@ describe('DreamVerse bundle composition', () => {
       return { installed: true, loaded, loading: false, busy: false }
     },
     load: async () => { loaded = true }, unload: async () => { loaded = false } }
-    ctx.dvModels.register(Object.create(fasth3, { model: { value: 'pika' }, provider: { value: 'fastvideo' }, runtime: { value: runtime }, workerRouting: { value: true } }))
+    ctx.dvModels.register(Object.create(fasth3, { model: { value: 'pika' }, provider: { value: 'fastvideo' }, runtime: { value: runtime }, workerRouting: { value: true } }) as typeof fasth3)
     services.chats.open('anonymous', await ctx.dvProject.newProjectFolder('model-controls'))
     const call = async (name: string, args: Record<string, unknown>) => ctx.tools.execute({
       callId: ToolCallId(name), name, arguments: args, signal: new AbortController().signal,

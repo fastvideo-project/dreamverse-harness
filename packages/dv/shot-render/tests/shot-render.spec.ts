@@ -381,10 +381,10 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(renderSpec(fixture)).toMatchObject({
       component: 'shot', label: { zh: '渲染镜头', en: 'Render shot' }, resource: 'gpu', deterministic: false,
     })
-    // The key and the prompt, the shot's geometry, then `seed` and `extra`; a render carries no plan params.
+    // The key, the prompt and the optional worker, the shot's geometry, then `seed` and `extra`; a render carries no plan params.
     const params = renderSpec(fixture)?.params ?? {}
     expect(Object.keys(params)).toEqual([
-      'modality', 'task', 'provider', 'model', 'prompt', 'duration_sec', 'aspect_ratio', 'resolution', 'seed', 'extra',
+      'modality', 'task', 'provider', 'model', 'prompt', 'worker', 'duration_sec', 'aspect_ratio', 'resolution', 'seed', 'extra',
     ])
     // The key fields are free strings: dv_models_list lists their values and the precondition refuses an unknown key.
     for (const field of ['modality', 'task', 'provider', 'model']) {

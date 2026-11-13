@@ -32,7 +32,9 @@ export class SshTunnel {
     child.once('error', () => { failed = true })
     this.closed = new Promise((resolve) => { child.once('close', () => { failed = true; resolve() }) })
     const deadline = Date.now() + this.timeoutMs
-    while (!failed && !this.stopped && Date.now() < deadline) {
+    // Read the flags through a closure: child events and dispose() change them during the wait.
+    const waiting = (): boolean => !failed && !this.stopped && Date.now() < deadline
+    while (waiting()) {
       if (await stat(socket).then(value => value.isSocket(), () => false)) return socket
       await delay(25)
     }
@@ -46,7 +48,7 @@ export class SshTunnel {
     this.opening ??= this.open()
     let cancel: (() => void) | undefined
     const interrupted = new Promise<never>((_resolve, reject) => {
-      cancel = () => { reject(init.signal?.reason) }
+      cancel = () => { reject(init.signal?.reason as Error) }
       init.signal?.addEventListener('abort', cancel, { once: true })
     })
     let socketPath: string

@@ -25,7 +25,7 @@ async function endpoint() {
   await new Promise<void>((resolve) => { server.listen(0, '127.0.0.1', resolve) })
   cleanup.push(async () => {
     server.closeAllConnections()
-    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
+    await new Promise<void>((resolve, reject) => server.close((error) => { if (error) reject(error); else resolve() }))
   })
   return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, authorizations }
 }
@@ -58,7 +58,7 @@ describe('generation hardware', () => {
 
   it('round-trips the editable worker schema through the actual settings projection', () => {
     const schema = volatileForm(DvHardware.Config)!
-    const wire = JSON.parse(JSON.stringify(schema.toJSON()))
+    const wire = JSON.parse(JSON.stringify(schema.toJSON())) as Partial<Schema>
     const restored = new Schema(wire)
     expect(restored({ workers: { gpu: worker('https://gpu.example') } })).toMatchObject({ workers: { gpu: { label: 'GPU worker' } } })
   })

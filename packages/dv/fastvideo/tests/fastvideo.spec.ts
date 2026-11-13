@@ -645,18 +645,20 @@ describe('dv-fastvideo', () => {
           incoming.resume()
           counts[index]! += 1; submitted += 1
           if (submitted === 2) bothSubmitted()
-          return void response.end(JSON.stringify({ id: 'job-' + index, status: 'queued' }))
+          return void response.end(JSON.stringify({ id: `job-${index}`, status: 'queued' }))
         }
         if (path.endsWith('/content')) { response.setHeader('content-type', 'video/mp4'); return void response.end(video) }
         response.end(JSON.stringify({ status: finish ? 'completed' : 'in_progress' }))
       })
       server.listen(0, '127.0.0.1'); await once(server, 'listening')
-      cleanups.push(async () => { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) })
+      cleanups.push(async () => {
+        server.closeAllConnections(); await new Promise<void>((resolve) => { server.close(() => { resolve() }) })
+      })
       urls.push(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)
     }
     const facts: ModelFactsConfig = { modelId: 'parallel-test', maxReferences: 0, referenceMediaTypes: {},
       frameSizes: { '16:9': { '480p': [832, 480] } }, numFramesByDurationSec: { 5: 124 } }
-    const hardware = Object.fromEntries(urls.map((baseUrl, index) => ['gpu-' + index, { baseUrl, label: 'GPU ' + index,
+    const hardware = Object.fromEntries(urls.map((baseUrl, index) => [`gpu-${index}`, { baseUrl, label: `GPU ${index}`,
       provider: 'fastvideo', enabled: true, transport: 'api' as const, credentialRef: '', sshHost: '', remoteHost: '127.0.0.1', remotePort: 18000 }]))
     const ctx = await start({ t2v: { baseUrl: urls[0]!, managed: true, pollIntervalMs: 10, modelFacts: facts } }, 'fasth3', hardware)
     const entry = fasth3(ctx, 't2v')
