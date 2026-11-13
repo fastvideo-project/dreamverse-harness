@@ -171,6 +171,6 @@ it('applies saved model settings after a failed boot catalog sync', async () => 
   const provider = [...ctx.loader.entries()].find(entry => entry.options.id === 'provider')
   if (provider === undefined) throw new Error('Missing provider fixture')
   remote.failCatalog = false
-  await provider.update({ config: { ...provider.options.config, models: { renamed: 'fixture/video' } } })
+  await provider.update({ config: { ...provider.options.config as Record<string, unknown>, models: { renamed: 'fixture/video' } } })
   await vi.waitFor(() => { expect(ctx.dvModels.list().map(entry => entry.model)).toEqual(['renamed', 'renamed', 'renamed']) })
 })

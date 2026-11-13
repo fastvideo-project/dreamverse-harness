@@ -25,7 +25,7 @@ export interface VideoModelPickerProps {
   state: HostObservable<WireState | null>
   models: HostObservable<readonly WireModelEntry[] | null>
   /** Load the catalog again; the picker calls it each time the user opens the menu. */
-  reloadModels(): void
+  reloadModels: () => void
   save(selection: Selection | null): Promise<unknown>
 }
 
