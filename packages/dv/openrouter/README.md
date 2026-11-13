@@ -33,7 +33,7 @@ Only configured models appear in the pickers. T2V is available for compatible ca
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The provider reads `videos/models`, validates discrete durations and endpoint inputs, submits once to `videos`, and polls the returned job ID. It downloads from the canonical authenticated content route and extracts the last frame through the shared ffmpeg service. Returned signed URLs are ignored.
+The provider reads `videos/models`, validates discrete durations and endpoint inputs, submits once to `videos`, and polls the returned job ID. It downloads from the canonical authenticated content route and extracts the last frame through the shared ffmpeg service. Returned signed URLs are ignored. A job that ends `failed`, `cancelled` or `expired` fails the render with that status and the job's `error` text, when OpenRouter gives one.
 
 The image provider reads `images/models` and keeps rows whose output modalities include `image` and whose `output_format` choices, when listed, include PNG, JPEG or WebP. An image call takes no `size`: OpenRouter derives pixel sizes per provider, so the entry's schema lists the model's enum choices of `aspect_ratio`, `resolution`, `quality` and `background` as `extra`, and a call with a `size`, an unlisted `extra` key or an unlisted value is refused before submission. The provider submits one `POST images` with `n: 1`, the seed where the catalog lists `seed`, and `output_format: png` where the model offers PNG; it stores `data[0].b64_json` as PNG, converting another raster format with the shared ffmpeg service, and reads the pixel size from the PNG.
 

@@ -91,7 +91,12 @@ export class OpenRouterApi {
           if (!mime.startsWith('video/')) { await response.body?.cancel(); throw new Error('OpenRouter returned no video content.') }
           return { video: Buffer.from(await response.arrayBuffer()), mime }
         }
-        if (state.status === 'failed') throw new Error('OpenRouter video generation failed. Check the provider job before retrying.')
+        if (state.status === 'failed' || state.status === 'cancelled' || state.status === 'expired') {
+          // OpenRouter reports the reason as a top-level `error` string; it can be absent or null.
+          const reason = 'error' in state && typeof state.error === 'string' && state.error.trim() !== '' ? state.error.trim().slice(0, 500) : null
+          throw new Error(`OpenRouter video generation ${state.status}${reason === null ? '' : `: ${reason}`}. `
+            + 'Check the provider job before retrying.')
+        }
         if (state.status !== 'pending' && state.status !== 'in_progress') throw new Error('Unknown OpenRouter video job status.')
         await delay(this.pollMs, undefined, options)
       }

@@ -33,7 +33,7 @@ DreamVerse 套件默认挂载 `dv-openrouter`，不配置任何模型。在“�
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-提供方读取 `videos/models`，校验离散时长和端点输入，向 `videos` 提交一次并轮询返回的任务 ID。它从规范认证内容路由下载视频，并通过共享 ffmpeg 服务提取尾帧。返回的签名 URL 不会被使用。
+提供方读取 `videos/models`，校验离散时长和端点输入，向 `videos` 提交一次并轮询返回的任务 ID。它从规范认证内容路由下载视频，并通过共享 ffmpeg 服务提取尾帧。返回的签名 URL 不会被使用。任务以 `failed`、`cancelled` 或 `expired` 结束时，渲染失败并带上该状态以及 OpenRouter 给出的任务 `error` 文本。
 
 图片提供方读取 `images/models`，保留输出模态包含 `image`、且列出 `output_format` 选项时其中包含 PNG、JPEG 或 WebP 的条目。图片调用不接受 `size`：OpenRouter 按服务商推导像素尺寸，因此条目的 schema 把模型的 `aspect_ratio`、`resolution`、`quality` 和 `background` 枚举选项列为 `extra`；带 `size`、未列出的 `extra` 键或未列出取值的调用在提交前被拒绝。提供方以 `n: 1` 提交一次 `POST images`，目录列出 `seed` 时带上种子，模型提供 PNG 时带上 `output_format: png`；它把 `data[0].b64_json` 存为 PNG，其他光栅格式通过共享 ffmpeg 服务转换，并从 PNG 读取像素尺寸。
 
