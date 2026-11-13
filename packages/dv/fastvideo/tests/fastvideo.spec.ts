@@ -477,6 +477,20 @@ describe('dv-fastvideo', () => {
   })
 
   it.each([
+    ['i2v', 'no image slot', { referenceMediaTypes: { video: { maxCount: 2 } } },
+      'dv-fastvideo: pika-h3-flex i2v takes a first frame of type image, so modelFacts.referenceMediaTypes.image.maxCount must be at least 1.'],
+    ['l2v', 'no image slot', { referenceMediaTypes: { video: { maxCount: 2 } } },
+      'dv-fastvideo: pika-h3-flex l2v takes a last frame of type image, so modelFacts.referenceMediaTypes.image.maxCount must be at least 1.'],
+    ['fl2v', 'one image slot', { referenceMediaTypes: { image: { maxCount: 1 } } },
+      'dv-fastvideo: pika-h3-flex fl2v takes 2 frame inputs of type image, so modelFacts.referenceMediaTypes.image.maxCount must be at least 2.'],
+  ] as const)('refuses Pika %s model facts with %s for its frames when the plugin is applied', async (task, _case, update, message) => {
+    const [reference, text] = await Promise.all([startFakeServer(REFERENCE_FACTS), startFakeServer(TEXT_FACTS)])
+    const ctx = await start({ t2v: text.server }, 'pika-h3-flex')
+    const server = { ...reference.server, modelFacts: { ...REFERENCE_FACTS, ...update } }
+    expect(() => { FastVideo.apply(ctx, { models: { 'pika-h3-flex': { [task]: server } } }) }).toThrow(message)
+  })
+
+  it.each([
     [400, 'MiniMax-H3 accepts at most 9 image references.', { name: 'GenerationSegmentError', message: 'MiniMax-H3 accepts at most 9 image references.' }],
     [500, 'Video generation failed: CUDA out of memory', { message: 'FastVideo POST /v1/videos/sync returned HTTP 500: Video generation failed: CUDA out of memory' }],
   ] as const)('rejects a render that the server answers with HTTP %s with the server message', async (status, message, error) => {

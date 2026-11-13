@@ -94,16 +94,16 @@ function checkConfig(config: Config): void {
 }
 
 /**
- * The count limits of a task's inputs, from the server's reference limits. The server counts the first frame among its
- * references, so the first frame takes one slot of the server's total and one slot of each media type that the
- * `first_frame` input accepts, and the `reference` input keeps the rest. A media type that the `reference` input
+ * The count limits of a task's inputs, from the server's reference limits. The server counts frame inputs among its
+ * references, so each declared frame input (`first_frame`, `last_frame`) takes one slot of the server's total and one
+ * slot of each media type it accepts, and the `reference` input keeps the rest. A media type that the `reference` input
  * declares and the server does not accept has a limit of 0.
  * @param name - the model and task, such as `fasth3 ref2v`, for the error message.
- * @param inputs - the inputs the task declares; `SERVED` declares `reference` and `first_frame` together or neither.
+ * @param inputs - the inputs the task declares.
  * @param facts - the server's facts.
- * @returns the limits by declared input; empty for a task without references.
- * @throws Error when the facts leave no slot for the first frame in a media type it takes, or fewer slots than the
- *   `reference` input's `min` beside the first frame.
+ * @returns the limits by declared input; empty for a task without inputs.
+ * @throws Error when the facts leave a frame input no slot in a media type it takes, or fewer slots than the frame
+ *   inputs and the `reference` input's `min` together.
  */
 function deriveInputLimits(name: string, inputs: TaskInputs, facts: ModelFacts): TaskInputLimits {
   const frames = (['first_frame', 'last_frame'] as const).flatMap((role) => {
@@ -116,7 +116,7 @@ function deriveInputLimits(name: string, inputs: TaskInputs, facts: ModelFacts):
     for (const type of frame.mediaTypes) {
       const count = frames.filter(other => other.frame.mediaTypes.includes(type)).length
       if ((facts.referenceMediaTypes[type]?.maxCount ?? 0) < count) {
-        const label = frames.length === 1 && role === 'first_frame' ? 'a first frame' : `${count} frame inputs`
+        const label = frames.length === 1 ? `a ${role === 'first_frame' ? 'first' : 'last'} frame` : `${count} frame inputs`
         throw new Error(`dv-fastvideo: ${name} takes ${label} of type ${type}, so modelFacts.referenceMediaTypes.${type}.maxCount must be at least ${count}.`)
       }
     }
