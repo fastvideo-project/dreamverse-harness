@@ -229,6 +229,13 @@ function fasth3(ctx: Context, task: VideoTask): ModelEntry<VideoTask> {
   return entry
 }
 
+/** The registered `pika-h3-flex` entry for a task. */
+function pika(ctx: Context, task: VideoTask): ModelEntry<VideoTask> {
+  const entry = ctx.dvModels.get({ modality: 'video', provider: 'fastvideo', model: 'pika-h3-flex', task })
+  if (entry === undefined || !isVideoEntry(entry)) throw new Error(`Missing Pika ${task}`)
+  return entry
+}
+
 /** Collect a render stream. */
 async function collect(stream: AsyncIterable<RenderStreamEvent>): Promise<RenderStreamEvent[]> {
   const events: RenderStreamEvent[] = []
@@ -580,23 +587,18 @@ describe('Pika endpoint tasks on the current native API', () => {
   it('keeps reference and first/last-frame capabilities distinct in a real Loader composition', async () => {
     const backend = await startFakeServer(REFERENCE_FACTS)
     const ctx = await start({ ref2v: backend.server, fl2v: backend.server, i2v: backend.server, l2v: backend.server }, 'pika-h3-flex')
-    const entry = (task: VideoTask) => {
-      const value = ctx.dvModels.get({ modality: 'video', provider: 'fastvideo', model: 'pika-h3-flex', task })
-      if (value === undefined || !isVideoEntry(value)) throw new Error(`Missing Pika ${task}`)
-      return value
-    }
     const first = importAsset(ctx, Buffer.from('FIRST'), 'image/png')
     const last = importAsset(ctx, Buffer.from('LAST'), 'image/png')
     const audio = importAsset(ctx, Buffer.from('AUDIO'), 'audio/mpeg')
     const both = { ...request([], first), lastFrame: last }
-    expect(await entry('fl2v').validateGenerationRequest(both)).toEqual([])
-    expect(await entry('fl2v').validateGenerationRequest(request([], first))).toContain(
+    expect(await pika(ctx, 'fl2v').validateGenerationRequest(both)).toEqual([])
+    expect(await pika(ctx, 'fl2v').validateGenerationRequest(request([], first))).toContain(
       'Its last_frame input needs at least 1 of type image; this shot has 0.')
-    expect(await entry('i2v').validateGenerationRequest(both)).toContain('It takes no last_frame input; this shot has 1.')
-    expect(await entry('l2v').validateGenerationRequest({ ...request([], null), lastFrame: last })).toEqual([])
-    expect(await entry('ref2v').validateGenerationRequest(request([audio], null))).toContain(
+    expect(await pika(ctx, 'i2v').validateGenerationRequest(both)).toContain('It takes no last_frame input; this shot has 1.')
+    expect(await pika(ctx, 'l2v').validateGenerationRequest({ ...request([], null), lastFrame: last })).toEqual([])
+    expect(await pika(ctx, 'ref2v').validateGenerationRequest(request([audio], null))).toContain(
       'Its reference input needs at least one image or video; audio alone is insufficient.')
-    expect(await entry('ref2v').schema()).toMatchObject({ inputs: { reference: { max: 4 } } })
+    expect(await pika(ctx, 'ref2v').schema()).toMatchObject({ inputs: { reference: { max: 4 } } })
   })
 
   it.skipIf(!existsSync(FFMPEG))('sends FL2VA task and ordered endpoints while sharing the upstream last-frame extractor', async () => {
@@ -614,5 +616,18 @@ describe('Pika endpoint tasks on the current native API', () => {
       image_reference: [{ image_url: dataUrl('image/jpeg', 'FIRST') }, { image_url: dataUrl('image/png', 'LAST') }],
     }])
     expect(events.map(event => event.kind)).toEqual(['last_frame', 'video_start', 'chunk', 'done'])
+  })
+
+  it.skipIf(!existsSync(FFMPEG))('sends I2VA and L2VA with the sole frame as Picture 1', async () => {
+    const backend = await startFakeServer(REFERENCE_FACTS, { video: await redThenBlueVideo() })
+    const ctx = await start({ i2v: backend.server, l2v: backend.server }, 'pika-h3-flex')
+    const first = importAsset(ctx, Buffer.from('FIRST'), 'image/png')
+    const last = importAsset(ctx, Buffer.from('LAST'), 'image/jpeg')
+    await collect(pika(ctx, 'i2v').render({ ...request([], first), prompt: '@[start](dv:input/first_frame) opens the shot' }))
+    await collect(pika(ctx, 'l2v').render({ ...request([], null), lastFrame: last, prompt: '@[end](dv:input/last_frame) closes the shot' }))
+    expect(backend.requests).toMatchObject([
+      { task: 'i2va', prompt: '<Picture 1> opens the shot', image_reference: [{ image_url: dataUrl('image/png', 'FIRST') }] },
+      { task: 'l2va', prompt: '<Picture 1> closes the shot', image_reference: [{ image_url: dataUrl('image/jpeg', 'LAST') }] },
+    ])
   })
 })
