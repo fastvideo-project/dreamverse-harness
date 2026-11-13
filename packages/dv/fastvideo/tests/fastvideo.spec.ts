@@ -598,6 +598,7 @@ describe('dv-fastvideo pika-h3-flex', () => {
     expect(await pika(ctx, 'l2v').validateGenerationRequest({ ...request([], null), lastFrame: last })).toEqual([])
     expect(await pika(ctx, 'ref2v').validateGenerationRequest(request([audio], null))).toContain(
       'Its reference input needs at least one image or video; audio alone is insufficient.')
+    expect(await pika(ctx, 'ref2v').validateGenerationRequest(request([first], null))).toEqual([])
     expect(await pika(ctx, 'ref2v').schema()).toMatchObject({ inputs: { reference: { max: 4 } } })
   })
 
