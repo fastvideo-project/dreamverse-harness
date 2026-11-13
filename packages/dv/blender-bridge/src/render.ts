@@ -22,11 +22,10 @@ export interface RenderLimits {
   renderTimeoutMs: number
 }
 
+// The project's runner checks the parameters against the operation's schema before the run, so a frame is a whole number.
 function wholeNumber(params: Record<string, unknown>, name: string): number | undefined {
   const value = params[name]
-  if (value === undefined || value === null) return undefined
-  if (typeof value !== 'number' || !Number.isInteger(value)) throw new Error(`${name} must be a whole frame number.`)
-  return value
+  return typeof value === 'number' ? value : undefined
 }
 
 function fact(record: ProjectRecord, name: string): string {

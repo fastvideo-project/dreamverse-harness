@@ -44,7 +44,12 @@ export interface LinkLimits {
 export const NOT_LINKED = 'No Blender is connected to the harness. Ask the user to open the Blender tab on the right panel '
   + 'and connect Blender with the DreamVerse add-on, then try again.'
 
-function bytesOf(data: RawData): Uint8Array {
+/**
+ * Read a WebSocket message as bytes, whether it arrived as one buffer, as fragments, or as an `ArrayBuffer`.
+ * @param data - the message as the socket delivered it.
+ * @returns the message bytes.
+ */
+export function bytesOf(data: RawData): Uint8Array {
   if (Array.isArray(data)) return Buffer.concat(data)
   return data instanceof ArrayBuffer ? new Uint8Array(data) : data
 }
@@ -57,7 +62,7 @@ export class BlenderLink {
   private readonly viewers = new Set<(event: ViewEvent) => void>()
   private latest: Extract<ViewEvent, { type: 'frame' }> | null = null
   private nextId = 0
-  private pings: ReturnType<typeof setInterval> | null = null
+  private pings: ReturnType<typeof setInterval> | undefined = undefined
 
   constructor(private readonly limits: LinkLimits, private readonly warn: (message: string) => void) {}
 
@@ -176,8 +181,8 @@ export class BlenderLink {
   }
 
   private detach(reason: string): void {
-    if (this.pings !== null) clearInterval(this.pings)
-    this.pings = null
+    clearInterval(this.pings)
+    this.pings = undefined
     this.socket = null
     this.current = null
     this.latest = null

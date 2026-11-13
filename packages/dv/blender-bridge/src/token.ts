@@ -43,10 +43,14 @@ export class PairingToken {
       this.cached = generated()
       return this.cached
     }
-    const record = await store.modifyRecord(KEY, current => Promise.resolve(
-      tokenOf(current) === null ? { kind: 'grant', payload: { version: PAYLOAD_VERSION, token: generated() } } : undefined,
-    ))
-    this.cached = tokenOf(record) ?? generated()
+    // Keep the stored token when it is valid; otherwise store a new one. The update decides which token is current.
+    const fresh = generated()
+    let token = fresh
+    await store.modifyRecord(KEY, (current) => {
+      token = tokenOf(current) ?? fresh
+      return Promise.resolve(token === fresh ? { kind: 'grant', payload: { version: PAYLOAD_VERSION, token: fresh } } : undefined)
+    })
+    this.cached = token
     return this.cached
   }
 

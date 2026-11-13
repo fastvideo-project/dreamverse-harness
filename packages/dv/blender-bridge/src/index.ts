@@ -35,7 +35,7 @@ import z from '@deepseek-ai/schemastery'
 import type {} from '@dv/canvas'
 import type {} from '@dv/project'
 import WebSocket, { WebSocketServer } from 'ws'
-import { BlenderLink, type ViewEvent } from './link.ts'
+import { BlenderLink, bytesOf, type ViewEvent } from './link.ts'
 import { parseViewCommand, type ViewCommand } from './protocol.ts'
 import { ANIMATION_OPERATION, animationOperation, STILL_OPERATION, stillOperation } from './render.ts'
 import { bridgeRoutes, LINK_PATH, VIEW_PATH } from './routes.ts'
@@ -209,7 +209,7 @@ export default class DvBlender extends Service {
         this.viewers.delete(viewer)
       })
       viewer.on('message', (data, isBinary) => {
-        const text = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data instanceof ArrayBuffer ? new Uint8Array(data) : data)
+        const text = Buffer.from(bytesOf(data))
         const command: ViewCommand | null = isBinary ? null : parseViewCommand(text.toString())
         if (command !== null) this.link.navigate(command)
       })
