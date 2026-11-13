@@ -112,7 +112,6 @@ export function catalogSource(load: () => Promise<readonly WireModelEntry[]>): C
     failure.set(null)
     load().then((catalog) => {
       if (loaded !== loads) return
-      failure.set(null)
       store.set(catalog)
     }, (error: unknown) => {
       console.error('[dv-composer] models failed:', error)
