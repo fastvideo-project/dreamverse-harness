@@ -29,7 +29,7 @@ kind: "package-reference"
 
 适配器接受 LLM 服务的[仅供请求使用的 user 输入](../llm/README.zh.md#use-this-package)，并可将其与持久历史混用。user 身份与来源不会进入 pi-ai 内容；assistant 回放元数据和工具调用关联仍由持久消息携带。
 
-对于 OpenAI 兼容的 completions，如果 pi-ai 的上下文估算会将较大的请求输出预算降为一个 token，适配器会在发送请求前返回 `CONTEXT_BUDGET_EXHAUSTED`。请压缩对话或更正模型配置的上下文窗口。显式请求一个输出 token 仍受支持。该估算并非服务端 token 计数。
+如果 pi-ai 的上下文估算会将较大的请求输出预算降为一个 token，适配器会在发送请求前返回 `CONTEXT_WINDOW_EXCEEDED`，以便自动压缩精简对话并重试。若重试仍失败，请压缩对话或更正模型配置的上下文窗口。显式请求一个输出 token 仍受支持。该估算并非服务端 token 计数。
 
 ### 何时选择
 

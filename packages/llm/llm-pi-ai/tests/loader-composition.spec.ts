@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader, { type ModuleLoaderV2 } from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
-import LlmRuntime, { createMessage, createUserMessage, userAgent } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { CONTEXT_WINDOW_EXCEEDED_CODE, createMessage, createUserMessage, userAgent } from '@deepseek-ai/dsh-llm'
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
 import { profileComposition } from '../../../settings/settings/tests/profile-composition.ts'
 import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
@@ -100,7 +100,9 @@ describe('llm-pi-ai real dormant composition', () => {
       '            maxTokens: 128',
       '',
     ].join('\n'))
-    await vi.waitFor(() => expect(ctx.llm.listProviders().map(provider => provider.id)).toContain('deepseek'), { timeout: 5000 })
+    await vi.waitFor(() => {
+      expect(ctx.llm.listProviders().map(provider => provider.id)).toContain('deepseek')
+    }, { timeout: 5000 })
     const result = await assemble(ctx, {
       model: 'budget-test',
       messages: [createUserMessage({
@@ -108,7 +110,7 @@ describe('llm-pi-ai real dormant composition', () => {
         source: { kind: 'model', provider: 'deepseek', model: 'budget-test' },
       })],
     })
-    expect(result.finish).toMatchObject({ kind: 'error', failure: { code: 'CONTEXT_BUDGET_EXHAUSTED' } })
+    expect(result.finish).toMatchObject({ kind: 'error', failure: { code: CONTEXT_WINDOW_EXCEEDED_CODE } })
     expect(server.requests).toHaveLength(0)
   }, 10_000)
 

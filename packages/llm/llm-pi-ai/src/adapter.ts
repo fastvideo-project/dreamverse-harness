@@ -40,6 +40,7 @@ import type {
 import { clampMaxTokensToContext } from '@earendil-works/pi-ai/api/simple-options'
 import {
   attributionHeaders,
+  CONTEXT_WINDOW_EXCEEDED_CODE,
   contentHasImage,
   LlmAdapter,
   LlmError,
@@ -379,11 +380,10 @@ export class PiAiAdapter extends LlmAdapter {
           },
         }, onReplayDegrade)
       const requestedMaxTokens = options.maxTokens ?? model.maxTokens
-      if (model.api === 'openai-completions' && requestedMaxTokens > 1
-        && clampMaxTokensToContext(model, context, requestedMaxTokens) === 1) {
+      if (requestedMaxTokens > 1 && clampMaxTokensToContext(model, context, requestedMaxTokens) === 1) {
         throw new LlmError(
           `pi-ai estimated that the request leaves only one output token in the configured ${model.contextWindow}-token context window for "${model.provider}/${model.id}"; compact the conversation or check the model's contextWindow configuration`,
-          'CONTEXT_BUDGET_EXHAUSTED',
+          CONTEXT_WINDOW_EXCEEDED_CODE,
         )
       }
       const events = snapshot.models.streamSimple(model, context, {
