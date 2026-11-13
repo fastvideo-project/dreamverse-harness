@@ -8,3 +8,4 @@
 .model > div { min-width: 0; overflow-wrap: anywhere; }
 .model p { font-size: 12px; }
 @media (max-width: 480px) { .model { align-items: flex-start; flex-direction: column; } }
+.group { margin: 8px 0 0; font-size: 14px; }

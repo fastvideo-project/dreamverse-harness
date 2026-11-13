@@ -7759,6 +7759,9 @@ importers:
       '@dv/ffmpeg':
         specifier: workspace:*
         version: link:../ffmpeg
+      '@dv/image-generate':
+        specifier: workspace:*
+        version: link:../image-generate
       '@dv/models':
         specifier: workspace:*
         version: link:../models

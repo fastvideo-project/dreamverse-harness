@@ -19,7 +19,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
 import type { ModalityId, ModelEntry, ModelFilter, ModelKey, TaskId } from './types.ts'
 import { installModelControls } from './selection.ts'
-export { assertVideoSelection, videoSelection } from './selection.ts'
+export { assertModelSelection, modelSelection } from './selection.ts'
 
 export type * from './types.ts'
 

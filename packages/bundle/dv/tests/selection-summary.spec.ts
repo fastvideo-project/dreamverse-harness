@@ -37,8 +37,8 @@ describe('conversation video model in the project summary', () => {
     expect(ctx.dvProject.sessionProject(chatB as never)).toBe((created.value as { project_id: ProjectId }).project_id)
     const autoForA = await call(chatA, 'dv_proj_state', {})
     expect(JSON.parse(autoForA.text)).toMatchObject({ video_model: null })
-    await call(chatB, 'dv_models_select', { provider: 'fastvideo', model: 'pika', reason: 'Chat B wants Pika' })
-    await call(chatA, 'dv_models_select', { provider: 'fastvideo', model: 'wan', reason: 'Chat A wants Wan' })
+    await call(chatB, 'dv_models_select', { modality: 'video', provider: 'fastvideo', model: 'pika', reason: 'Chat B wants Pika' })
+    await call(chatA, 'dv_models_select', { modality: 'video', provider: 'fastvideo', model: 'wan', reason: 'Chat A wants Wan' })
 
     const seenByA = await call(chatA, 'dv_proj_state', {})
     expect(JSON.parse(seenByA.text)).toMatchObject({ video_model: { provider: 'fastvideo', model: 'wan' } })

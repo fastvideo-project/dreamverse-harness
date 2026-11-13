@@ -30,6 +30,9 @@
       "path": "../ffmpeg"
     },
     {
+      "path": "../image-generate"
+    },
+    {
       "path": "../models"
     },
     {

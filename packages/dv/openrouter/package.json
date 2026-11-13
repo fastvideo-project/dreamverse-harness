@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "OpenRouter video catalog and asynchronous generation provider.",
+  "description": "OpenRouter provider of DreamVerse: video models through the asynchronous video API and image models through the image API, registered in the model catalog.",
   "exports": {
     ".": "./src/index.ts",
     "./types": "./src/types.ts",
@@ -13,6 +13,7 @@
     "@deepseek-ai/dsh-credentials": "workspace:*",
     "@dv/asset-pool": "workspace:*",
     "@dv/ffmpeg": "workspace:*",
+    "@dv/image-generate": "workspace:*",
     "@dv/models": "workspace:*",
     "@dv/project": "workspace:*"
   },

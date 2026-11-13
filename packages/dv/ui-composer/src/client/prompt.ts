@@ -23,7 +23,7 @@ import type { DvComposer, DvPromptInjected, ParamBar, ReferenceFaceInjected } fr
 import { DvPrompt } from './DvPrompt.tsx'
 import { MENTION_SOURCE } from './mention.ts'
 import { ReferenceFace } from './ReferenceFace.tsx'
-import { VideoModelPicker } from './VideoModelPicker.tsx'
+import { ModelPickers } from './ModelPicker.tsx'
 
 const REFETCH_DELAY_MS = 150
 
@@ -159,18 +159,18 @@ export function applyPrompt(ctx: ClientContext): void {
     window.addEventListener(DV_CURRENT_PROJECT_EVENT, follow)
     return () => { window.removeEventListener(DV_CURRENT_PROJECT_EVENT, follow) }
   }, 'dv-composer: open project')
-  function ConversationVideoModel({ sessionId }: { sessionId: string }) {
+  function ConversationModels({ sessionId }: { sessionId: string }) {
     const projectId = useSyncExternalStore(currentProject.subscribe, currentProject.getSnapshot)
-    return createElement(VideoModelPicker, {
+    return createElement(ModelPickers, {
       key: `${projectId ?? ''}:${sessionId}`, sessionId, state: states(projectId ?? ''), models, reloadModels: models.reload,
-      save: selection => projectId === null ? Promise.reject(new Error('Open a project to choose its video model.'))
-        : client.runOperation({ project: projectId, session: sessionId, surface: 'chat',
-          operation: 'models.select', params: selection === null ? { provider: '', model: '' } : { ...selection } }),
+      save: (modality, selection) => projectId === null ? Promise.reject(new Error('Open a project to choose its models.'))
+        : client.runOperation({ project: projectId, session: sessionId, surface: 'chat', operation: 'models.select',
+          params: { modality, ...selection === null ? { provider: '', model: '' } : selection } }),
     })
   }
   ctx.effect(() => ctx.slots.inject('conversation.input.left', () => ctx.slots.register(
-    { name: 'conversation.input.left', id: 'dv-video-model', order: 40 }, ConversationVideoModel,
-  )), 'dv-composer: video model choice')
+    { name: 'conversation.input.left', id: 'dv-model-choices', order: 40 }, ConversationModels,
+  )), 'dv-composer: model choices')
   const injected: DvPromptInjected = {
     check: request => client.checkOperation(request),
     reloadModels: models.reload,

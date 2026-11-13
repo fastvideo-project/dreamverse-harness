@@ -62,8 +62,9 @@ html body [data-dv-chat] [data-composer-card] button:focus-visible {
   }
 }
 
-.dv-video-model { position: relative; display: inline-flex; min-width: 0; }
-.dv-video-model-trigger {
+.dv-model-choices { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
+.dv-model-choice { position: relative; display: inline-flex; min-width: 0; }
+.dv-model-choice-trigger {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -78,11 +79,11 @@ html body [data-dv-chat] [data-composer-card] button:focus-visible {
   font-size: 12px;
   cursor: pointer;
 }
-.dv-video-model-trigger:hover:not(:disabled) { background: var(--dv-surface-3); }
-.dv-video-model-trigger:disabled { opacity: .6; cursor: default; }
-.dv-video-model-kind { color: var(--dv-text-3); }
-.dv-video-model-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.dv-video-model-error {
+.dv-model-choice-trigger:hover:not(:disabled) { background: var(--dv-surface-3); }
+.dv-model-choice-trigger:disabled { opacity: .6; cursor: default; }
+.dv-model-choice-kind { color: var(--dv-text-3); }
+.dv-model-choice-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.dv-model-choice-error {
   position: absolute;
   bottom: 100%;
   left: 0;

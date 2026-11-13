@@ -1,17 +1,21 @@
 [
   {
     "name": "dv_models_select",
-    "description": "Choose the video model for subsequent generations in this conversation. Pass empty provider and model strings to let the operator choose. Existing renders keep their model. Selecting does not download weights; the model loads when generation starts. The choice is not a project history step: dv_proj_undo and dv_proj_redo do not change it; to go back, select the earlier model again.",
+    "description": "Choose the model of one modality (video, image or audio) for subsequent generations in this conversation. Pass empty provider and model strings to let the operator choose. Existing generations keep their model. Selecting does not download weights; the model loads when generation starts. The choice is not a project history step: dv_proj_undo and dv_proj_redo do not change it; to go back, select the earlier model again.",
     "parameters": {
       "type": "object",
       "properties": {
+        "modality": {
+          "type": "string",
+          "description": "The modality from dv_models_list, such as video or image."
+        },
         "provider": {
           "type": "string",
           "description": "The provider from dv_models_list, or empty for Auto."
         },
         "model": {
           "type": "string",
-          "description": "The video model from dv_models_list, or empty for Auto."
+          "description": "The model from dv_models_list, or empty for Auto."
         },
         "reason": {
           "type": "string",
@@ -30,6 +34,7 @@
         }
       },
       "required": [
+        "modality",
         "provider",
         "model",
         "reason"

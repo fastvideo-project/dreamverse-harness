@@ -1,9 +1,9 @@
-/** OpenRouter video setup in the existing Settings shell. */
+/** OpenRouter video and image setup in the existing Settings shell. */
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
-import type { OpenRouterSettings, VideoModel } from '@dv/openrouter/types'
+import type { ImageModel, OpenRouterCatalog, OpenRouterSettings, VideoModel } from '@dv/openrouter/types'
 import { currentLanguage } from '@dv/ui-kit/locale.ts'
 import { OpenRouterPage } from './OpenRouterPage.tsx'
 
@@ -11,7 +11,7 @@ export const inject = ['slots', 'configForms', 'remote', 'remote.credentials']
 export function apply(ctx: Context): void {
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section', id: 'dv-video-apis', order: 13,
-    label: () => currentLanguage() === 'zh' ? '视频 API' : 'Video APIs',
+    label: () => currentLanguage() === 'zh' ? '视频和图片 API' : 'Video & image APIs',
     inject: () => ({
       form: ctx.configForms.get<OpenRouterSettings>('dv-openrouter'),
       enableOperator: async (ref: string) => {
@@ -25,12 +25,12 @@ export function apply(ctx: Context): void {
       storeKey: async (ref: string, key: string) => {
         if (!(await ctx.remote.credentials.set(ref, key)).ok) throw new Error('Could not store the API key.')
       },
-      discover: async (): Promise<VideoModel[]> => {
+      discover: async (): Promise<OpenRouterCatalog> => {
         const response = await fetch('/api/dv/openrouter/catalog')
-        if (!response.ok) throw new Error('OpenRouter video discovery failed.')
-        const value: { data: VideoModel[]; error: string | null } = await response.json()
+        if (!response.ok) throw new Error('OpenRouter model discovery failed.')
+        const value: { data: VideoModel[]; images: ImageModel[]; error: string | null } = await response.json()
         if (value.error !== null) throw new Error(value.error)
-        return value.data
+        return { videos: value.data, images: value.images }
       },
     }),
   }, OpenRouterPage))

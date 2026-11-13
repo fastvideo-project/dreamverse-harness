@@ -1,5 +1,10 @@
-/** Register configured OpenRouter video models through the existing catalog and shot-render workflow. */
-import { readFile } from 'node:fs/promises'
+/**
+ * Register configured OpenRouter models in the model catalog: video models (tasks `t2v`, `i2v`, `fl2v`) for the
+ * shot-render workflow, and image models (task `t2i`) for `image.generate`.
+ */
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { Context, Volatile } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
@@ -8,26 +13,29 @@ import type {} from '@deepseek-ai/cordis-plugin-loader'
 import { replacePromptCitations } from '@dv/project'
 import type {} from '@dv/asset-pool'
 import type {} from '@dv/ffmpeg'
-import type { ModelEntry, RenderRequest, TaskId } from '@dv/models'
-import { OpenRouterVideos } from './client.ts'
-import type { VideoModel } from './types.ts'
+import type { ModelEntry, RenderRequest, TaskOfPrimitive } from '@dv/models'
+import type { GeneratedImage, ImageRequest } from '@dv/image-generate'
+import { OpenRouterApi } from './client.ts'
+import type { ImageModel, VideoModel } from './types.ts'
 
 export interface Config {
   baseUrl: string
   models: Volatile<Record<string, string>>
+  imageModels: Volatile<Record<string, string>>
   credentialRef: Volatile<string>
   pollIntervalMs: number
 }
 export const Config = z.object({
   baseUrl: z.string().default('https://openrouter.ai/api/v1/'),
   models: z.dict(z.string().required()).default({}).volatile(),
+  imageModels: z.dict(z.string().required()).default({}).volatile(),
   credentialRef: z.string().default('OPENROUTER_API_KEY').volatile(),
   pollIntervalMs: z.natural().min(1).default(5000),
 })
 export const name = 'dv-openrouter'
 export const inject = ['dvModels', 'dvAssetPool', 'dvFfmpeg', 'credentials']
 
-function tasks(model: VideoModel): TaskId[] {
+function tasks(model: VideoModel): Array<TaskOfPrimitive<'video'>> {
   return ['t2v', ...model.frames.includes('first_frame') ? ['i2v' as const] : [],
     ...model.frames.includes('first_frame') && model.frames.includes('last_frame') ? ['fl2v' as const] : []]
 }
@@ -37,9 +45,18 @@ function checkAlias(alias: string): void {
   if (!/^[a-z0-9][a-z0-9-]{0,119}$/.test(alias)) throw new Error('Choose a model alias using lowercase letters, numbers, and hyphens.')
 }
 
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+const IMAGE_PARAMETER_TEXT: Record<string, string> = {
+  aspect_ratio: 'The aspect ratio of the image.',
+  resolution: 'The resolution tier; the provider chooses the pixel size from it and the aspect ratio.',
+  quality: 'The rendering quality.',
+  background: 'The background; transparent keeps an alpha channel.',
+}
+
 /** Register only explicitly configured models. A dormant installation makes no network call. */
 export async function apply(ctx: Context, config: Config): Promise<void> {
-  const client = new OpenRouterVideos(config.baseUrl, async () => {
+  const client = new OpenRouterApi(config.baseUrl, async () => {
     const ref = config.credentialRef.get()
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(ref)) throw new Error('Invalid OpenRouter credential reference.')
     const credential = await ctx.credentials.resolve(credentialRef(ref))
@@ -54,12 +71,12 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   let removers: Array<() => void> = []
   let registered: ModelEntry[] = []
   let registrationError: string | null = null
-  const model = async (id: string, task: TaskId): Promise<VideoModel> => {
+  const model = async (id: string, task: TaskOfPrimitive<'video'>): Promise<VideoModel> => {
     const found = (await client.catalog()).find(row => row.id === id)
     if (found === undefined || !tasks(found).includes(task)) throw new Error('The selected OpenRouter model no longer supports this task.')
     return found
   }
-  const entry = (alias: string, selected: VideoModel, task: TaskId): ModelEntry => ({
+  const entry = (alias: string, selected: VideoModel, task: TaskOfPrimitive<'video'>): ModelEntry<TaskOfPrimitive<'video'>> => ({
     modality: 'video', provider: 'openrouter', model: alias, task, displayName: selected.name,
     description: `OpenRouter: ${selected.name}, task ${task}. Cloud generation billed by the provider. `
       + 'Uses provider-published durations and output choices. Stopping local monitoring does not cancel the paid cloud job.',
@@ -121,19 +138,90 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       yield { kind: 'done', timings: {} } as const
     })(),
   })
+  const imageModel = async (id: string): Promise<ImageModel> => {
+    const found = (await client.imageCatalog()).find(row => row.id === id)
+    if (found === undefined) throw new Error('The selected OpenRouter image model is no longer in the image catalog.')
+    return found
+  }
+  /** The PNG bytes and pixel size of a generated image; other raster formats go through ffmpeg. */
+  const asPng = async (bytes: Buffer): Promise<GeneratedImage> => {
+    let png = bytes
+    if (!bytes.subarray(0, 8).equals(PNG_SIGNATURE)) {
+      const dir = await mkdtemp(join(tmpdir(), 'dv-openrouter-'))
+      try {
+        const input = join(dir, 'image')
+        await writeFile(input, bytes)
+        const argv = ['ffmpeg', '-y', '-loglevel', 'error', '-i', '{{in:0}}', '-frames:v', '1', '{{out:image.png}}']
+        const [output] = (await ctx.dvFfmpeg.run({ argv, inputs: [input], outputs: ['image.png'], dir })).outputs
+        png = await readFile(output as string)
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    }
+    if (png.length < 24 || !png.subarray(0, 8).equals(PNG_SIGNATURE)) throw new Error('OpenRouter returned an image that is not a raster image.')
+    return { bytes: png, mime: 'image/png', width: png.readUInt32BE(16), height: png.readUInt32BE(20) }
+  }
+  const imageEntry = (alias: string, selected: ImageModel): ModelEntry<'t2i'> => ({
+    modality: 'image', provider: 'openrouter', model: alias, task: 't2i', displayName: selected.name,
+    description: `OpenRouter: ${selected.name}, an image from text. Cloud generation billed by the provider. The provider `
+      + 'chooses the pixel size from extra.aspect_ratio and extra.resolution where the model offers them; size is not accepted.',
+    facts: async () => ({ modelId: (await imageModel(selected.id)).id }),
+    schema: async () => {
+      const caps = await imageModel(selected.id)
+      return {
+        size: { rule: 'not accepted; omit size and choose extra.aspect_ratio and extra.resolution where listed' },
+        extra: Object.fromEntries(Object.entries(caps.parameters).map(([key, values]) => [key,
+          { type: 'string', values, description: IMAGE_PARAMETER_TEXT[key] ?? key }])),
+        seed_supported: caps.seed,
+      }
+    },
+    validateGenerationRequest: async (request: ImageRequest) => {
+      const caps = await imageModel(selected.id)
+      const problems: string[] = []
+      if (request.size !== null) {
+        problems.push('OpenRouter image models take no size; omit it and choose extra.aspect_ratio and extra.resolution from dv_models_get.')
+      }
+      for (const [key, value] of Object.entries(request.extra)) {
+        const values = caps.parameters[key]
+        if (values === undefined) problems.push(`OpenRouter model ${selected.name} takes no extra parameter ${key}.`)
+        else if (!values.some(choice => String(choice) === String(value))) problems.push(`Choose extra.${key} from ${values.join(', ')}.`)
+      }
+      return problems
+    },
+    render: async (request: ImageRequest, signal?: AbortSignal) => {
+      const caps = await imageModel(selected.id)
+      const extra = Object.fromEntries(Object.entries(request.extra).map(([key, value]) => [key,
+        caps.parameters[key]?.find(choice => String(choice) === String(value)) ?? value]))
+      const { bytes } = await client.generateImage({ model: selected.id,
+        prompt: replacePromptCitations(request.prompt, citation => citation.label), n: 1,
+        ...caps.seed ? { seed: request.seed } : {}, ...caps.outputFormats.includes('png') ? { output_format: 'png' } : {},
+        ...extra,
+      }, signal)
+      signal?.throwIfAborted()
+      return await asPng(bytes)
+    },
+  })
   const sync = async (): Promise<void> => {
-    const stamp = JSON.stringify(config.models.get())
+    const stamp = JSON.stringify([config.models.get(), config.imageModels.get()])
     if (current === stamp) return
     const version = ++revision
     try {
       const configured = Object.entries(config.models.get())
-      const catalog = configured.length === 0 ? [] : await client.catalog(lifetime.signal)
-      const next = configured.flatMap(([alias, id]) => {
-        checkAlias(alias)
+      const configuredImages = Object.entries(config.imageModels.get())
+      for (const [alias] of [...configured, ...configuredImages]) checkAlias(alias)
+      const [catalog, images] = await Promise.all([
+        configured.length === 0 ? [] : client.catalog(lifetime.signal),
+        configuredImages.length === 0 ? [] : client.imageCatalog(lifetime.signal),
+      ])
+      const next: ModelEntry[] = [...configured.flatMap(([alias, id]) => {
         const caps = catalog.find(row => row.id === id)
         if (caps === undefined) throw new Error(`OpenRouter video model ${id} is unavailable or lacks supported output choices.`)
         return tasks(caps).map(task => entry(alias, caps, task))
-      })
+      }), ...configuredImages.map(([alias, id]) => {
+        const caps = images.find(row => row.id === id)
+        if (caps === undefined) throw new Error(`OpenRouter image model ${id} is unavailable or offers no raster output.`)
+        return imageEntry(alias, caps)
+      })]
       if (disposed || version !== revision) return
       for (const candidate of next) {
         const existing = ctx.dvModels.get(candidate)
@@ -167,12 +255,15 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   ctx.inject(['connection'], scope => scope.effect(() => scope.connection.fetch.register({
     path: '/api/dv/openrouter/catalog', methods: ['GET'], requestBody: 'buffered',
     fetch: async (request) => {
-      try { const data = await client.catalog(request.signal); await sync(); return Response.json({ data, error: registrationError }) }
-      catch { return Response.json({ error: 'Could not load OpenRouter video models. Check the saved API key and connection.' }, { status: 502 }) }
+      try {
+        const [data, images] = await Promise.all([client.catalog(request.signal), client.imageCatalog(request.signal)])
+        await sync()
+        return Response.json({ data, images, error: registrationError })
+      } catch { return Response.json({ error: 'Could not load OpenRouter models. Check the saved API key and connection.' }, { status: 502 }) }
     },
-  }), 'OpenRouter video discovery'))
+  }), 'OpenRouter model discovery'))
   // A configured alias is checked without the network, so a bad alias in cordis.yml fails the load.
-  for (const alias of Object.keys(config.models.get())) checkAlias(alias)
+  for (const alias of [...Object.keys(config.models.get()), ...Object.keys(config.imageModels.get())]) checkAlias(alias)
   // A failed boot catalog sync keeps discovery and settings updates registered so a saved key or catalog recovers it.
   await sync().catch((error: unknown) => {
     ctx.logger('dvOpenRouter').warn('could not register OpenRouter models: %s', error instanceof Error ? error.message : String(error))

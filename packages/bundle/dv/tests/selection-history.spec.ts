@@ -40,7 +40,7 @@ function controls(bundle: Bundle) {
   }
   // The composer's video-model picker call (`packages/dv/ui-composer/src/client/prompt.ts`).
   const pick = (project: ProjectId, provider: string, model: string) => ctx.dvApi.api.runOperation({
-    project, session: 'anonymous', surface: 'chat', operation: 'models.select', params: { provider, model },
+    project, session: 'anonymous', surface: 'chat', operation: 'models.select', params: { modality: 'video', provider, model },
   })
   const operations = (project: ProjectId) => ctx.dvProject.listHistory({ project }).map(({ record }) => record.operation)
   return { call, pick, operations }
@@ -86,16 +86,16 @@ describe('model controls outside the undo history', () => {
     expect(ctx.dvProject.listRecords(project).find(record => record.operation === 'shot.render')?.status).toBe('running')
     expect(operations(project)).not.toContain('models.select')
     await ctx.dvProject.redo(project)
-    expect(ctx.dvProject.getState(project).components.models).toEqual({ conversations: { anonymous: { provider: 'fastvideo', model: 'pika' } } })
+    expect(ctx.dvProject.getState(project).components.models).toEqual({ conversations: { anonymous: { video: { provider: 'fastvideo', model: 'pika' } } } })
     stop.abort()
     await rendering
   })
 
   it('keeps the video model choice across undo and redo', async () => {
     const { ctx, project, call } = await setup()
-    await call('dv_models_select', { provider: 'fastvideo', model: 'pika', reason: 'A' })
+    await call('dv_models_select', { modality: 'video', provider: 'fastvideo', model: 'pika', reason: 'A' })
     await call('dv_textnode_write', { path: 'beats.md', body: '# Beats', base_version: 0, reason: 'content step' })
-    await call('dv_models_select', { provider: 'fastvideo', model: 'wan', reason: 'B' })
+    await call('dv_models_select', { modality: 'video', provider: 'fastvideo', model: 'wan', reason: 'B' })
 
     const undone = await call('dv_proj_undo', {})
     expect(JSON.parse(undone.text)).toMatchObject({ video_model: { provider: 'fastvideo', model: 'wan' } })
@@ -104,7 +104,7 @@ describe('model controls outside the undo history', () => {
       .toEqual(['after textnode.write', 'current proj.create'])
     const redone = await call('dv_proj_redo', {})
     expect(JSON.parse(redone.text)).toMatchObject({ video_model: { provider: 'fastvideo', model: 'wan' } })
-    expect(ctx.dvProject.getState(project).components.models).toEqual({ conversations: { anonymous: { provider: 'fastvideo', model: 'wan' } } })
+    expect(ctx.dvProject.getState(project).components.models).toEqual({ conversations: { anonymous: { video: { provider: 'fastvideo', model: 'wan' } } } })
   })
 
   it('keeps the redo step when the agent loads or unloads a model after an undo', async () => {
@@ -130,7 +130,7 @@ describe('model controls outside the undo history', () => {
     const second = await bootBundle({}, first)
     disposers.push(second.dispose)
     const { call } = controls(second)
-    expect(second.ctx.dvProject.getState(first.project).components.models).toEqual({ conversations: { anonymous: { provider: 'fastvideo', model: 'wan' } } })
+    expect(second.ctx.dvProject.getState(first.project).components.models).toEqual({ conversations: { anonymous: { video: { provider: 'fastvideo', model: 'wan' } } } })
     expect(JSON.parse((await call('dv_proj_state', {})).text)).toMatchObject({ video_model: { provider: 'fastvideo', model: 'wan' } })
   })
 })
