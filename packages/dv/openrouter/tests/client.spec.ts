@@ -46,6 +46,15 @@ describe('OpenRouter video API', () => {
     expect(methods).toEqual(['POST', 'GET'])
   })
 
+  it('reports the reason OpenRouter gives for a failed, cancelled or expired job', async () => {
+    const job = (state: Record<string, unknown>) => new OpenRouterApi('https://openrouter.ai/api/v1/', async () => 'fixture-key', 1,
+      async (_input, init) => init?.method === 'POST' ? Response.json({ id: 'job1' }) : Response.json(state))
+    await expect(job({ status: 'failed', error: 'Content policy violation' }).generate({}))
+      .rejects.toThrow('OpenRouter video generation failed: Content policy violation. Check the provider job before retrying.')
+    await expect(job({ status: 'failed', error: null }).generate({})).rejects.toThrow('OpenRouter video generation failed. Check')
+    await expect(job({ status: 'expired' }).generate({})).rejects.toThrow('OpenRouter video generation expired. Check')
+  })
+
   it('does not retry an ambiguous paid submission or expose a key in an HTTP failure', async () => {
     let calls = 0
     const client = new OpenRouterApi('https://openrouter.ai/api/v1/', async () => 'fixture-key', 1, async () => {
