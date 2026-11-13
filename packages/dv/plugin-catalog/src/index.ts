@@ -90,6 +90,9 @@ const PACKAGE_NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/
 /** An exact semantic version, with an optional prerelease and build: no range, tag or `v` prefix. */
 const EXACT_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
 
+/** The most redirects one URL source read follows: the redirect limit of the Fetch standard, a protocol constant. */
+const MAX_REDIRECTS = 20
+
 /** Whether a source is a URL the plugin fetches: https anywhere, http only on the loopback host. */
 function isUrlSource(source: string): boolean {
   if (source.startsWith('https://')) return true
@@ -138,14 +141,28 @@ export function parseCatalog(text: string, source: string): CatalogEntry[] {
  * @param source - an absolute path or a URL that {@link isUrlSource} accepts.
  * @param timeoutMs - the bound on a URL request.
  * @returns the text.
- * @throws {Error} when the file cannot be read, the request fails, times out or is redirected, or the server answers an
+ * @throws {Error} when the file cannot be read, the request fails or times out, a redirect leads to a URL that
+ * {@link isUrlSource} refuses, more than {@link MAX_REDIRECTS} redirects follow one another, or the server answers an
  * error status.
  */
 async function readSource(source: string, timeoutMs: number): Promise<string> {
   if (!isUrlSource(source)) return readFile(source, 'utf8')
-  const response = await fetch(source, { redirect: 'error', signal: AbortSignal.timeout(timeoutMs) })
-  if (!response.ok) throw new Error(`the server answered HTTP ${String(response.status)}`)
-  return response.text()
+  const signal = AbortSignal.timeout(timeoutMs)
+  let url = source
+  for (let hops = 0; ; hops++) {
+    const response = await fetch(url, { redirect: 'manual', signal })
+    const location = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null
+    if (location === null) {
+      if (!response.ok) throw new Error(`the server answered HTTP ${String(response.status)}`)
+      return response.text()
+    }
+    if (hops === MAX_REDIRECTS) throw new Error(`the server redirected more than ${String(MAX_REDIRECTS)} times`)
+    const next = new URL(location, url).href
+    if (!isUrlSource(next)) {
+      throw new Error(`the server redirected to ${next}, which is neither an https URL nor an http URL on the loopback host`)
+    }
+    url = next
+  }
 }
 
 /**

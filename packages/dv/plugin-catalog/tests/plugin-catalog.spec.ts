@@ -51,6 +51,18 @@ async function serve(status: number, body: string): Promise<string> {
   return `http://127.0.0.1:${String((server.address() as AddressInfo).port)}/catalog.json`
 }
 
+/**
+ * Serve a redirect on the loopback host.
+ * @param location - the redirect target.
+ * @returns the URL.
+ */
+async function serveRedirect(location: string): Promise<string> {
+  const server: Server = createServer((_request, response) => { response.writeHead(302, { location }).end() })
+  await new Promise<void>((resolve) => { server.listen(0, '127.0.0.1', resolve) })
+  cleanups.push(() => new Promise<void>((resolve) => { server.close(() => { resolve() }) }))
+  return `http://127.0.0.1:${String((server.address() as AddressInfo).port)}/catalog.json`
+}
+
 describe('the shipped catalog', () => {
   it('is valid and lists voice acting and Blender under @fastvideo at exact versions', () => {
     const plugins = Catalog.parseCatalog(readFileSync(Catalog.SHIPPED_CATALOG, 'utf8'), 'shipped')
@@ -102,15 +114,28 @@ describe('loadCatalog', () => {
     expect(answer.problems[0]?.message).toBe('the server answered HTTP 500')
   })
 
-  it('reports a URL source that redirects and merges nothing from it', async () => {
+  it('follows a redirect to another loopback http URL and merges its entries', async () => {
     const target = await serve(200, JSON.stringify({ plugins: [entry('@fastvideo/e', 'E')] }))
-    const server: Server = createServer((_request, response) => { response.writeHead(302, { location: target }).end() })
-    await new Promise<void>((resolve) => { server.listen(0, '127.0.0.1', resolve) })
-    cleanups.push(() => new Promise<void>((resolve) => { server.close(() => { resolve() }) }))
-    const source = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}/catalog.json`
+    const source = await serveRedirect(target)
+    const answer = await Catalog.loadCatalog([], { sources: [source], sourceTimeoutMs: 5000 })
+    expect(answer.plugins.map(plugin => [plugin.package, plugin.source])).toEqual([['@fastvideo/e', source]])
+    expect(answer.problems).toEqual([])
+  })
+
+  it('reports a URL source whose redirects exceed the hop limit', async () => {
+    const source = await serveRedirect('/catalog.json')
+    const answer = await Catalog.loadCatalog([], { sources: [source], sourceTimeoutMs: 5000 })
+    expect(answer.problems).toEqual([{ source, message: 'the server redirected more than 20 times' }])
+  })
+
+  it('reports a URL source that redirects to a non-loopback http URL and merges nothing from it', async () => {
+    const source = await serveRedirect('http://127.0.0.2/catalog.json')
     const answer = await Catalog.loadCatalog([], { sources: [source], sourceTimeoutMs: 5000 })
     expect(answer.plugins).toEqual([])
-    expect(answer.problems.map(problem => problem.source)).toEqual([source])
+    expect(answer.problems).toEqual([{
+      source,
+      message: 'the server redirected to http://127.0.0.2/catalog.json, which is neither an https URL nor an http URL on the loopback host',
+    }])
   })
 })
 
