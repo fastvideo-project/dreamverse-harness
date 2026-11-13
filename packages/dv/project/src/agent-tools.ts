@@ -328,19 +328,15 @@ export const PENDING_LINE = 'This call runs in the background. A DreamVerse proj
  * @param ctx - a context; the `attachments` service is read from it.
  * @param assets - the asset store.
  * @param outputs - the record's outputs; outputs that are no image are skipped.
- * @param signal - once it is aborted, no further image is saved.
  * @returns the attachment references, in output order; none when no attachment service is mounted.
  */
-export async function imagesOf(
-  ctx: Context, assets: AssetStore, outputs: readonly AssetId[], signal?: AbortSignal,
-): Promise<ImageAttachmentRef[]> {
+export async function imagesOf(ctx: Context, assets: AssetStore, outputs: readonly AssetId[]): Promise<ImageAttachmentRef[]> {
   const attachments = ctx.get('attachments')
   if (attachments === undefined) return []
   const refs: ImageAttachmentRef[] = []
   for (const id of outputs) {
     const meta = assets.get(id)
     if (!IMAGE_MEDIA_TYPES.has(meta.mime)) continue
-    if (signal?.aborted === true) break
     refs.push(await attachments.saveImage({ data: assets.read(id), mediaType: meta.mime as ImageMediaType, name: meta.name }))
   }
   return refs

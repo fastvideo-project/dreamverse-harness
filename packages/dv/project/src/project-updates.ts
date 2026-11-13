@@ -28,7 +28,6 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { PreStepDecision } from '@deepseek-ai/dsh-agent'
-import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { boundContextSummary, createUserMessage, type ContextFormed, type UserMessage } from '@deepseek-ai/dsh-llm'
 import { isReplacementSurfaceEvent, type SessionEvent } from '@deepseek-ai/dsh-session'
@@ -298,36 +297,26 @@ export function wakeMessage(records: readonly RecordId[]): UserMessage {
 /**
  * A project update message with the image outputs of each done record of the session's own calls that it lists, saved
  * as attachments and appended after the text, as the operation tool result of that call would show them. A project
- * state message, and an update that lists no such record, is returned unchanged. A record whose images cannot be read
- * or saved adds none, and a warning on the `dvProject` logger names it; once `signal` is aborted, no further images are
- * saved and the message is returned without images.
+ * state message, and an update that lists no such record, is returned unchanged.
  * @param ctx - a context; the `attachments` service is read from it.
  * @param project - the service.
  * @param deps - the asset store.
  * @param session - the agent's session ID.
  * @param message - the message of {@link projectMessage}.
- * @param signal - the step's signal.
  * @returns the message.
  */
 async function withOwnImages(
-  ctx: Context, project: DvProject, deps: ProjToolDeps, session: SessionId, message: UserMessage, signal: AbortSignal,
+  ctx: Context, project: DvProject, deps: ProjToolDeps, session: SessionId, message: UserMessage,
 ): Promise<UserMessage> {
   if (message.source.kind !== PROJECT_MESSAGE_KIND || message.source.form !== 'notice') return message
   const projectId = message.source.shown.project
-  const images: ImageAttachmentRef[] = []
-  for (const [id, status] of Object.entries(message.source.shown.records)) {
-    if (status !== 'done') continue
+  const outputs = Object.entries(message.source.shown.records).flatMap(([id, status]) => {
+    if (status !== 'done') return []
     const record = project.getRecord(projectId, brandString<RecordId>(id))
-    if (record.actor !== 'agent' || record.session !== session) continue
-    try {
-      images.push(...await imagesOf(ctx, deps.assets(), record.outputs, signal))
-    } catch (error: unknown) {
-      // The listener runs at every step: a failing read or save keeps that record's update text-only instead of failing the step.
-      ctx.logger('dvProject').warn('could not attach the images of record %s: %s', record.id, error instanceof Error ? error.message : String(error))
-    }
-  }
-  // An aborted step never runs, so the images it would carry are not saved.
-  if (images.length === 0 || signal.aborted) return message
+    return record.actor === 'agent' && record.session === session ? record.outputs : []
+  })
+  const images = await imagesOf(ctx, deps.assets(), outputs)
+  if (images.length === 0) return message
   return { ...message, content: [...message.content, ...images.map(attachment => ({ type: 'image' as const, attachment }))] }
 }
 
@@ -357,7 +346,7 @@ export function registerProjectUpdates(ctx: Context, project: DvProject, deps: P
     const text = seen === undefined ? null : projectMessage(project, deps, session, seen)
     if (text === null) return woken ? { ...decision, messages: kept } : decision
     // The agent loop checks the signal again after the waterfall, so a step aborted while the images save does not run.
-    const message = await withOwnImages(ctx, project, deps, session, text, signal)
+    const message = await withOwnImages(ctx, project, deps, session, text)
     const last = kept.findLastIndex(entry => messages.includes(entry))
     return { ...decision, messages: kept.toSpliced(last + 1, 0, message) }
   })
