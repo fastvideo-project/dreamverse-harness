@@ -2,7 +2,7 @@
  * Project's own `dv_proj_*` tools through the `dvProject` service with the real DSH tool registry: making the chat's
  * folder a project, projects as Workspaces (create, re-add, remove), tools that work only on the conversation's project,
  * renaming the session's project, the project summary with the reducers' `agentSummary` fields, the history list, undo
- * and redo, moves to a step, and stale acceptance.
+ * and redo, moves to a step, stale acceptance, and waiting for named records.
  */
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
