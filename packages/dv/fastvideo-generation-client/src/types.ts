@@ -43,8 +43,6 @@ export interface SegmentReference {
 /** The inputs of one segment generation request. */
 export interface SegmentRequest {
   prompt: string
-  /** Optional native task selector. */
-  task?: string
   frameWidth: number
   frameHeight: number
   numFrames: number

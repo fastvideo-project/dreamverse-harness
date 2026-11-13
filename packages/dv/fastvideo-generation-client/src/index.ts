@@ -86,6 +86,7 @@ export class DvFastvideoGeneration extends Service {
 
   /**
    * Check once that the backend serves the configured model.
+   * @param signal - aborts the read.
    * @returns the model facts.
    * @throws Error naming the route and the HTTP status for a status other than 200, Error naming the route for a body
    *   that is not JSON, Error naming the served alias when it is missing or differs from `modelFacts.modelId`, or the
@@ -137,7 +138,7 @@ export class DvFastvideoGeneration extends Service {
       return urls.length === 0 ? [] : [[field, urls]]
     }))
     const body = {
-      model: this.facts.modelId, ...request.task == null && this.config.task == null ? {} : { task: request.task ?? this.config.task },
+      model: this.facts.modelId, ...this.config.task == null ? {} : { task: this.config.task },
       prompt: request.prompt, width: request.frameWidth, height: request.frameHeight,
       num_frames: request.numFrames, ...request.seed === undefined ? {} : { seed: request.seed }, ...references,
     }
@@ -170,7 +171,13 @@ export class DvFastvideoGeneration extends Service {
     return fetch(url, { ...init, dispatcher: untimedDispatcher() })
   }
 
-  /** Read native model residency without loading or downloading weights. */
+  /**
+   * Read native model residency without loading or downloading weights.
+   * @param signal - aborts the read.
+   * @returns whether the configured model is installed, loaded with the configured task, or loading; whether the
+   *   server is busy; and whether it manages its model catalog.
+   * @throws Error when `managed` is off, for a status other than 2xx, or for an invalid state body.
+   */
   async modelStatus(signal?: AbortSignal): Promise<{
     installed: boolean
     loaded: boolean
@@ -192,10 +199,16 @@ export class DvFastvideoGeneration extends Service {
       managed: !('managed' in state) || state.managed !== false }
   }
 
-  /** Load the configured installed model and task without rendering. */
+  /**
+   * Load the configured installed model and task without rendering.
+   * @param signal - aborts the status read and the load request.
+   */
   async loadModel(signal?: AbortSignal): Promise<void> { await this.modelAction('load', signal) }
 
-  /** Release the model while retaining its downloaded files. */
+  /**
+   * Release the model while retaining its downloaded files.
+   * @param signal - aborts the status read and the release request.
+   */
   async unloadModel(signal?: AbortSignal): Promise<void> { await this.modelAction('unload', signal) }
 
   private async modelAction(action: 'load' | 'unload', signal?: AbortSignal): Promise<void> {
