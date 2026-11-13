@@ -675,6 +675,24 @@ describe('the modes of an occurrence', () => {
     expect(within(take).queryByRole('button', { name: 'Add asset' })).toBeNull()
   })
 
+  it('keeps the frames on an empty frame pick, and a pick replaces every input of that frame role', async () => {
+    const key = { modality: 'video', task: 'l2v', provider: 'another-provider', model: 'keyframe-model' }
+    const lastFrame = { min: 1, max: 1, media_types: { image: {} } }
+    const model: WireModelEntry = { ...MODELS[0]!, ...key, schema: { inputs: { last_frame: lastFrame } } }
+    const stored = { operation: 'shot.render', params: { ...key, prompt: 'A door closes' }, inputs: [
+      { role: 'last_frame', ref: 'shot1-last.png' }, { role: 'last_frame', ref: 'ref.png' },
+    ] }
+    const { take, host, sent } = await mount(stored, { models: [model] })
+    fireEvent.click(await waitFor(() => within(take).getByRole('button', { name: 'Choose last frame' })))
+    expect(within(take).queryByRole('button', { name: 'Choose first frame' })).toBeNull()
+    act(() => { host.pickAssets?.mock.calls.at(-1)?.[1]([]) })
+    fireEvent.click(within(take).getByRole('button', { name: 'Choose last frame' }))
+    expect(host.pickAssets?.mock.calls.at(-1)?.[0]).toEqual(['shot1-last.png', 'ref.png'])
+    act(() => { host.pickAssets?.mock.calls.at(-1)?.[1](['export-last.png']) })
+    fireEvent.click(await sendOf(take, 'Render new version'))
+    await waitFor(() => { expect(sent).toEqual([{ ...stored, inputs: [{ role: 'last_frame', ref: 'export-last.png' }] }]) })
+  })
+
   it('imports uploaded files through the host and sends each as a reference in file order; a change without files imports nothing', async () => {
     const { take, host, sent } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] })
     const upload = await found(take, '[data-testid="dv-prompt-upload"]')
