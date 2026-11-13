@@ -30,6 +30,11 @@ const HERO = '@[Hero](dv:test_ref/hero)'
 const SHOT_BAR = { ...shotRenderBar, operation: 'shot.render', owner: '@dv/ui-shot-render', copy: { ...shotRenderBar.copy, sending: ['渲染中…', 'Rendering…'] as const } }
 const KEY = { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }
 
+/** The fixture's operations, with the `first_frame` and `last_frame` inputs of `shot.render` that the host lends. */
+const LENT_OPERATIONS: WireOperation[] = OPERATIONS.map(operation => operation.name !== 'shot.render' ? operation : {
+  ...operation, inputs: { ...operation.inputs, first_frame: { type: 'image', description: 'First frame' }, last_frame: { type: 'image', description: 'Last frame' } },
+})
+
 const STILL: WireOperation = {
   ...OPERATIONS[0]!, name: 'test_still.generate', label: { zh: '生成静帧', en: 'Generate still' },
   params: { prompt: { type: 'string', required: true, description: 'What to make.' }, seed: { type: 'integer', description: 'Seed.' } },
@@ -143,7 +148,7 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
     return options.holdSend === true ? new Promise<void>((resolve) => { answers.push(resolve) }) : Promise.resolve()
   }
   const props = (shown: PromptCall, state: WireState): DvPromptProps => ({
-    projectId: 'p1', call: shown, state, operations: [...OPERATIONS.map(operation => operation.name !== 'shot.render' ? operation : { ...operation, inputs: { ...operation.inputs, first_frame: { type: 'image', description: 'First frame' }, last_frame: { type: 'image', description: 'Last frame' } } }), STILL], readOnly: options.readOnly === true, host,
+    projectId: 'p1', call: shown, state, operations: [...LENT_OPERATIONS, STILL], readOnly: options.readOnly === true, host,
     surface: options.surface ?? 'canvas',
     ...options.noSend === true || options.readOnly === true ? {} : { onSubmit },
   })
