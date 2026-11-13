@@ -137,6 +137,9 @@ describe('dvLora', () => {
     const unknown = await call(ctx, 'dv_lora_get', { id: 'nobody/none' })
     expect(unknown.isError && unknown.error.message)
       .toContain('dv-lora serves no adapter "nobody/none"; it serves: fal/MiniMax-H3-Realism-People-LoRA, pablodawson/MiniMax-H3-360-Orbit-LoRA. Call dv_lora_list.')
+    const empty = await start({ adapters: [] })
+    const none = await call(empty, 'dv_lora_get', { id: 'nobody/none' })
+    expect(none.isError && none.error.message).toContain('dv-lora serves no adapter "nobody/none"; it serves: none. Call dv_lora_list.')
   })
 
   it('registers the community-lora skill for the agent, and removes it with the plugin', async () => {
@@ -152,7 +155,7 @@ describe('dvLora', () => {
     expect(ctx.get('dvLora')).toBeUndefined()
   })
 
-  it('refuses a registry that repeats an id, an unknown task, or an unordered strength range', () => {
+  it('refuses a registry that repeats an id, an unknown task, an unordered strength range, or an empty id', () => {
     const refused = (config: Config) => () => new DvLora(new Context(), config)
     expect(refused({ adapters: [REGISTRY[0]!, REGISTRY[0]!] }))
       .toThrow('dv-lora: adapter "fal/MiniMax-H3-Realism-People-LoRA" is configured twice.')
@@ -160,5 +163,6 @@ describe('dvLora', () => {
       .toThrow('dv-lora: adapter "fal/MiniMax-H3-Realism-People-LoRA" names unknown task "v2v".')
     expect(refused({ adapters: [{ ...REGISTRY[0]!, defaultStrength: 2, maxStrength: 1 }] }))
       .toThrow('dv-lora: adapter "fal/MiniMax-H3-Realism-People-LoRA" needs minStrength <= defaultStrength <= maxStrength.')
+    expect(refused({ adapters: [{ ...REGISTRY[0]!, id: ' ' }] })).toThrow('dv-lora: an adapter has an empty id.')
   })
 })

@@ -299,7 +299,7 @@ function loraProblems(
   if (selection === undefined) return []
   const { id, strength } = selection
   if (!server.some(candidate => candidate.id === id)) {
-    return [`Its extra.lora id "${id}" is not an adapter of this server; the server serves: ${server.map(candidate => candidate.id).join(', ') || 'none'}.`]
+    return [`Its extra.lora id "${id}" is not an adapter of this server; the server serves: ${server.map(candidate => candidate.id).join(', ')}.`]
   }
   const adapter = adapters.find(candidate => candidate.id === id)
   if (adapter === undefined) {
@@ -331,7 +331,7 @@ function extraProblems(model: string, task: TaskId, schema: ParameterSchemaSpec,
     return [`${model} has no extra parameter ${unknown.map(name => `\`${name}\``).join(', ')} for task ${task}; `
       + `its extra parameters: ${known.join(', ') || 'none'}.`]
   }
-  return validateArgs(schema, extra).map(message => `extra${message.startsWith('.') ? '' : '.'}${message}`)
+  return validateArgs(schema, extra).map(message => `extra.${message}`)
 }
 
 /**

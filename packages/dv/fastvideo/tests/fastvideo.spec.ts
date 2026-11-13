@@ -655,6 +655,12 @@ describe('dv-fastvideo', () => {
       .toEqual([`Its extra.lora strength 1.4 is outside ${REALISM}'s range of 0 to 1.2.`])
     expect((await narrowed.validateGenerationRequest(request([], null, { lora: { id: ORBIT } })))[0])
       .toContain('360 Orbit serves fasth3 ref2v')
+    // A registry range that does not overlap the server's leaves the adapter unoffered.
+    const high = { ...LORA_REGISTRY.adapters[0]!, defaultStrength: 1.8, minStrength: 1.6, maxStrength: 2 }
+    const disjoint = await start({ t2v: server }, 'fasth3', { adapters: [high] })
+    expect(await loraOffer(fasth3(disjoint, 't2v'))).toBeUndefined()
+    expect(await fasth3(disjoint, 't2v').validateGenerationRequest(request([], null, { lora: { id: REALISM } })))
+      .toEqual(['fasth3 has no extra parameter `lora` for task t2v; its extra parameters: none.'])
     const unlisted = await start({ t2v: server }, 'fasth3', { adapters: [LORA_REGISTRY.adapters[0] as LoraConfig['adapters'][number]] })
     expect(await fasth3(unlisted, 't2v').validateGenerationRequest(request([], null, { lora: { id: ORBIT } })))
       .toEqual([`Its extra.lora id "${ORBIT}" is not one this deployment publishes for model fasth3 task t2v; call dv_lora_list for the adapters you can use.`])
