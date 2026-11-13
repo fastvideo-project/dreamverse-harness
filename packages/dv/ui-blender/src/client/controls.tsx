@@ -7,7 +7,7 @@
  *
  * @module @fastvideo/dreamverse-ui-blender/controls
  */
-import { useEffect, useRef } from 'react'
+import { useCallback, useRef } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { useText } from '@dv/ui-kit/locale.ts'
 import css from './controls.module.css'
@@ -100,7 +100,7 @@ export function ViewportControls(props: {
 }): ReactNode {
   const { live, source } = props
   const t = useText()
-  const view = useRef<HTMLDivElement>(null)
+  const view = useRef<HTMLDivElement | null>(null)
   const drag = useRef<{ mode: 'orbit' | 'pan'; x: number; y: number } | null>(null)
   const gathered = useRef<Gathered>({ orbit: [0, 0], pan: [0, 0], zoom: 0 })
   const queued = useRef(false)
@@ -132,9 +132,13 @@ export function ViewportControls(props: {
   navigableRef.current = navigable
 
   // React registers `onWheel` as passive, so the wheel listener is native to stop the page from scrolling. Like a drag,
-  // the wheel moves the view only while it can move; otherwise it scrolls the page as usual.
-  useEffect(() => {
-    const element = view.current
+  // the wheel moves the view only while it can move; otherwise it scrolls the page as usual. The surface's callback ref
+  // adds the listener on mount and removes it on unmount.
+  const removeWheel = useRef<(() => void) | null>(null)
+  const attachView = useCallback((element: HTMLDivElement | null): void => {
+    view.current = element
+    removeWheel.current?.()
+    removeWheel.current = null
     if (element === null) return
     const onWheel = (event: WheelEvent): void => {
       if (!navigableRef.current) return
@@ -144,7 +148,7 @@ export function ViewportControls(props: {
       queueRef.current()
     }
     element.addEventListener('wheel', onWheel, { passive: false })
-    return () => { element.removeEventListener('wheel', onWheel) }
+    removeWheel.current = () => { element.removeEventListener('wheel', onWheel) }
   }, [])
 
   /** Start an orbit drag with the left button, or a pan drag with the right button or Shift, while the view can move. */
@@ -197,7 +201,7 @@ export function ViewportControls(props: {
       </div>
       {/* The surface sizes itself at 16:9, because its parent, such as the canvas editor's body, is as tall as its content. */}
       <div
-        ref={view} data-testid={props.surfaceTestId} className={css.surface} data-navigable={navigable ? '' : undefined}
+        ref={attachView} data-testid={props.surfaceTestId} className={css.surface} data-navigable={navigable ? '' : undefined}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
         onContextMenu={(event) => { event.preventDefault() }}
       >

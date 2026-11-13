@@ -79,8 +79,7 @@ export function useLiveView(source: BlenderSource, draw: FrameDrawer = drawFrame
   }, [])
 
   // Draw a frame, or keep it as the newest waiting one while another is drawn or the canvas is not mounted yet.
-  const paint = useRef<(next: ViewFrame) => void>(() => {})
-  paint.current = (next: ViewFrame): void => {
+  const paintFrame = (next: ViewFrame): void => {
     const target = canvas.current
     if (drawing.current.busy || target === null) {
       drawing.current.next = next
@@ -93,6 +92,8 @@ export function useLiveView(source: BlenderSource, draw: FrameDrawer = drawFrame
       if (queued !== null) paint.current(queued)
     })
   }
+  const paint = useRef(paintFrame)
+  paint.current = paintFrame
 
   useEffect(() => {
     if (!visible) return

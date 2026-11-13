@@ -218,9 +218,10 @@ export class SharedViewer {
       this.moveSentAt = null
       for (const listener of this.listeners) listener.status(false, null)
       if (this.listeners.size > 0) {
+        // The last listener's removal clears this timer, so listeners remain when it fires.
         this.retry = setTimeout(() => {
           this.retry = null
-          if (this.listeners.size > 0) this.open()
+          this.open()
         }, 2000)
       }
     })
