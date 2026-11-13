@@ -71,7 +71,7 @@ export function AssetsPanel(props: AssetsPanelProps): ReactNode {
           title={t('从生成中截取的帧', 'Extracted from generation')} assets={library.extracted} onOpen={onOpen}
           renderFactorySlot={props.renderFactorySlot}
         />
-        <Section title={t('音频', 'Audio')} assets={library.audio} onOpen={onOpen} renderFactorySlot={props.renderFactorySlot} />
+        <Section title={t('音频', 'Audios')} assets={library.audio} onOpen={onOpen} renderFactorySlot={props.renderFactorySlot} />
       </>
     )
   }
@@ -168,29 +168,34 @@ function thumbBox(asset: Asset): CSSProperties {
 
 /**
  * One draggable thumbnail, its asset drawn through `dv.media` at purpose 'thumb', with the length of a video or an audio
- * file to one decimal place; dragging it carries the asset ID and its MIME type, clicking it opens the preview.
+ * file to one decimal place, and the asset's name under it, cut with an ellipsis at the thumbnail's width; dragging the
+ * thumbnail carries the asset ID and its MIME type, clicking it opens the preview.
  * @param props - the asset, the preview callback, and the `dv.media` renderer.
- * @returns the thumbnail.
+ * @returns the thumbnail and its name.
  */
 function Thumb(props: ThumbProps & { asset: Asset }): ReactNode {
   const { asset } = props
   const timed = ['video', 'audio'].includes(mediaTypeOf(asset.mime))
   return (
-    <button
-      type="button" draggable title={asset.name} aria-label={asset.name} data-asset-id={asset.id}
-      onDragStart={(event) => {
-        event.dataTransfer.setData(DV_ASSET_DRAG_TYPE, asset.id)
-        event.dataTransfer.setData(DV_ASSET_MIME_DRAG_TYPE, asset.mime)
-        event.dataTransfer.effectAllowed = 'copy'
-      }}
-      onClick={(event) => { props.onOpen(asset, event.currentTarget) }}
-      className={css.thumb}
-    >
-      <span className={css.thumbMedia} style={thumbBox(asset)}>{props.renderFactorySlot('dv.media', { asset, purpose: 'thumb' })}</span>
-      {timed && asset.duration_sec !== null
-        ? <span className={css.duration}>{asset.duration_sec.toFixed(1)}s</span>
-        : null}
-    </button>
+    <div className={css.item}>
+      <button
+        type="button" draggable title={asset.name} aria-label={asset.name} data-asset-id={asset.id}
+        onDragStart={(event) => {
+          event.dataTransfer.setData(DV_ASSET_DRAG_TYPE, asset.id)
+          event.dataTransfer.setData(DV_ASSET_MIME_DRAG_TYPE, asset.mime)
+          event.dataTransfer.effectAllowed = 'copy'
+        }}
+        onClick={(event) => { props.onOpen(asset, event.currentTarget) }}
+        className={css.thumb}
+      >
+        <span className={css.thumbMedia} style={thumbBox(asset)}>{props.renderFactorySlot('dv.media', { asset, purpose: 'thumb' })}</span>
+        {timed && asset.duration_sec !== null
+          ? <span className={css.duration}>{asset.duration_sec.toFixed(1)}s</span>
+          : null}
+      </button>
+      {/* The button's label already names the asset, so the visible name is hidden from screen readers. */}
+      <span className={css.name} aria-hidden="true">{asset.name}</span>
+    </div>
   )
 }
 

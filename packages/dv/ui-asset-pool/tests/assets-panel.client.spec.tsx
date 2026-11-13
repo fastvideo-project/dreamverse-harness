@@ -42,7 +42,7 @@ function renderPanel(fetch: typeof globalThis.fetch) {
 const file = (name: string, type: string): File => new File(['x'], name, { type })
 
 describe('AssetsPanel', () => {
-  it('lists every asset of the project from the state alone, with render stills under extracted frames', async () => {
+  it('lists every asset of the project from the state alone, each with its name under it, with render stills under extracted frames', async () => {
     // An undo went back past g9: the state lists its assets, each with the operation that made it, but not its record.
     const state = fixtureState()
     state.assets.push(asset('wide.mp4', 'video/mp4', 'g9', 5, 'shot.render'), asset('wide-last.png', 'image/png', 'g9', null, 'shot.render'))
@@ -55,7 +55,10 @@ describe('AssetsPanel', () => {
     await waitFor(() => { expect(view.container.querySelector('[data-asset-id="shot1.mp4"]')).not.toBeNull() })
     expect(view.container.querySelector('[data-asset-id="wide.mp4"]')).not.toBeNull()
     expect(panel.getByText('Extracted from generation · 3')).toBeTruthy()
-    expect(panel.getByText('Audio · 2')).toBeTruthy()
+    expect(panel.getByText('Audios · 2')).toBeTruthy()
+    // Each thumbnail has its asset's name under it, outside the thumbnail button.
+    const names = panel.getByText('Audios · 2').closest('section')?.querySelectorAll('[aria-hidden="true"]') ?? []
+    expect([...names].map(name => name.textContent).sort()).toEqual(['piece-1.wav', 'piece-2.wav'])
     expect(view.container.querySelector('[data-asset-id="piece-1.wav"]')?.textContent).toBe('2.4s')
     expect(view.container.querySelector('[data-asset-id="piece-2.wav"]')?.textContent).toBe('0.4s')
     // The panel reads no history list.

@@ -76,6 +76,24 @@
   gap: 8px;
 }
 
+/* One grid cell: the square thumbnail with the asset's name under it. */
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The name is as wide as the thumbnail and ends in an ellipsis when it is longer. */
+.name {
+  overflow: hidden;
+  color: var(--dv-text);
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .thumb {
   position: relative;
   display: flex;
