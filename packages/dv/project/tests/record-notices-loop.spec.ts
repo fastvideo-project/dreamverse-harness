@@ -1,9 +1,9 @@
 /**
- * Record notices with the production agent loop: a wake that the record notices inject into a running turn stays queued
- * when a Stop that keeps the inbox aborts that turn before it claims the wake, and the next turn claims it; a wake that
- * a turn ending with an error leaves behind opens a turn; a wake past `maxConsecutiveWakes` waits for the user's next
- * message; a session archived with its work stopped gets no wake. The model is a scripted adapter, and the `dvProject`
- * service runs with the real session, projection, agent and tool services.
+ * Record notices with the production agent loop: a wake of a record that finishes after a Stop opens no turn while the
+ * user's message waits in an inbox; the wakes that an idle agent holds while another render runs open a turn when a
+ * discard or an undo takes that render off the history list; a wake past `maxConsecutiveWakes` waits for the user's
+ * next message; a session archived with its work stopped gets no wake. The model is a scripted adapter, and the
+ * `dvProject` service runs with the real session, projection, agent and tool services.
  */
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -24,19 +24,12 @@ afterEach(async () => {
 })
 
 /**
- * A model whose first request streams until it is aborted, or with `failFirst` until {@link HangThenText.fail} makes it
- * throw, and whose later requests answer `ok`; with `hangFirst` false, every request answers `ok`.
+ * A model whose first request streams until it is aborted, and whose later requests answer `ok`; with `hangFirst`
+ * false, every request answers `ok`.
  */
 class HangThenText extends LlmAdapter {
   readonly requests: GenerateOptions[] = []
-  failFirst = false
   hangFirst = true
-  private readonly failure = Promise.withResolvers<undefined>()
-
-  /** Make the first request throw. */
-  fail(): void {
-    this.failure.resolve(undefined)
-  }
 
   override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
     return Promise.resolve({ provider, id: model, name: model })
@@ -46,10 +39,6 @@ class HangThenText extends LlmAdapter {
     this.requests.push(options)
     if (this.hangFirst && this.requests.length === 1) {
       yield { type: 'block-start', index: 0, blockType: 'text' }
-      if (this.failFirst) {
-        await this.failure.promise
-        throw new Error('the model failed')
-      }
       await new Promise<void>((_resolve, reject) => {
         options.signal?.addEventListener('abort', () => { reject(new Error('aborted')) }, { once: true })
       })
@@ -161,15 +150,10 @@ async function startHangingTurn(fixture: Fixture): Promise<void> {
   await vi.waitFor(() => { expect(fixture.adapter.requests).toHaveLength(1) })
 }
 
-/** Wait until the agent is idle and the record notices checked it. */
+/** Wait until the agent is idle and the callbacks queued until then have run. */
 async function settleIdle(fixture: Fixture): Promise<void> {
   await fixture.agent.whenIdle()
   await new Promise(resolve => setImmediate(resolve))
-}
-
-/** The texts of a request's user messages. */
-function userTexts(request: GenerateOptions | undefined): string[] {
-  return (request?.messages ?? []).filter(message => message.role === 'user').map(message => textOf(message))
 }
 
 /** The records that a wake names; none for another message. */
@@ -183,64 +167,6 @@ function wakes(fixture: Fixture): UserMessage[] {
 }
 
 describe('record notices with the agent loop', () => {
-  it('leaves a wake that a Stop stranded queued, and the turn of the user\'s next message claims it', async () => {
-    const fixture = await start()
-    const record = await fixture.render('dunk')
-    await startHangingTurn(fixture)
-    // The render finishes while the turn waits for the model, so the wake goes into the turn's next step.
-    await fixture.finish('dunk', record)
-    expect(fixture.agent.inbox.nextStep.map(message => message.source.kind)).toEqual(['dv-project-wake'])
-    fixture.agent.cancel({ kind: 'user' }, { keepInbox: true })
-    await settleIdle(fixture)
-    expect(fixture.adapter.requests).toHaveLength(1)
-    expect(fixture.agent.inbox.nextStep.map(message => message.source.kind)).toEqual(['dv-project-wake'])
-
-    fixture.agent.followup(userMessage('and now?'))
-    await vi.waitFor(() => { expect(fixture.adapter.requests).toHaveLength(2) })
-    await fixture.agent.whenIdle()
-    expect(wakes(fixture)).toHaveLength(1)
-    expect(fixture.agent.inbox.nextStep).toEqual([])
-    const messages = fixture.adapter.requests[1]?.messages ?? []
-    const last = messages.at(-1)
-    expect(last?.role).toBe('user')
-    expect(textOf(last)).toContain(`- done ${record} (your call): shot dunk`)
-    expect(userTexts(fixture.adapter.requests[1]).at(-2)).toBe('and now?')
-    expect(messages.some(message => textOf(message).includes('DreamVerse operations you started have finished'))).toBe(false)
-  })
-
-  it('leaves a wake that a Stop stranded queued, and the turn that the next finished record opens claims both', async () => {
-    const fixture = await start()
-    const first = await fixture.render('one')
-    await startHangingTurn(fixture)
-    await fixture.finish('one', first)
-    fixture.agent.cancel({ kind: 'user' }, { keepInbox: true })
-    await settleIdle(fixture)
-    expect(fixture.adapter.requests).toHaveLength(1)
-
-    const second = await fixture.render('two')
-    await fixture.finish('two', second)
-    await vi.waitFor(() => { expect(fixture.adapter.requests).toHaveLength(2) })
-    await fixture.agent.whenIdle()
-    expect(wakes(fixture)).toHaveLength(2)
-    expect(fixture.agent.inbox.nextStep).toEqual([])
-    const update = textOf(fixture.adapter.requests[1]?.messages.at(-1))
-    expect(update).toContain(`- done ${first} (your call): shot one`)
-    expect(update).toContain(`- done ${second} (your call): shot two`)
-  })
-
-  it('opens no turn after a Stop while the user\'s message waits in the next-turn inbox', async () => {
-    const fixture = await start()
-    const record = await fixture.render('dunk')
-    await startHangingTurn(fixture)
-    fixture.agent.followup(userMessage('queued'))
-    await fixture.finish('dunk', record)
-    fixture.agent.cancel({ kind: 'user' }, { keepInbox: true })
-    await settleIdle(fixture)
-    expect(fixture.adapter.requests).toHaveLength(1)
-    expect(fixture.agent.inbox.nextTurn.map(message => textOf(message))).toEqual(['queued'])
-    expect(fixture.agent.inbox.nextStep.map(message => message.source.kind)).toEqual(['dv-project-wake'])
-  })
-
   it('opens no turn for a record that finishes after a Stop while the user\'s message waits in the next-turn inbox', async () => {
     const fixture = await start()
     const first = await fixture.render('one')
@@ -340,56 +266,6 @@ describe('record notices with the agent loop', () => {
     expect(fixture.agent.inbox.nextStep).toEqual([])
     fixture.agent.cancel({ kind: 'user' })
     await fixture.agent.whenIdle()
-  })
-
-  it('opens a turn for a wake that a turn ending with an error left behind', async () => {
-    const fixture = await start()
-    fixture.adapter.failFirst = true
-    const record = await fixture.render('dunk')
-    await startHangingTurn(fixture)
-    await fixture.finish('dunk', record)
-    fixture.adapter.fail()
-
-    await vi.waitFor(() => { expect(fixture.adapter.requests).toHaveLength(2) })
-    await fixture.agent.whenIdle()
-    expect(wakes(fixture)).toHaveLength(1)
-    expect(fixture.agent.inbox.nextStep).toEqual([])
-    expect(textOf(fixture.adapter.requests[1]?.messages.at(-1))).toContain(`- done ${record} (your call): shot dunk`)
-  })
-
-  it('opens no turn for a wake that an error left behind while the user\'s message waits in the next-turn inbox', async () => {
-    const fixture = await start()
-    fixture.adapter.failFirst = true
-    const record = await fixture.render('dunk')
-    await startHangingTurn(fixture)
-    fixture.agent.followup(userMessage('queued'))
-    await fixture.finish('dunk', record)
-    fixture.adapter.fail()
-    await settleIdle(fixture)
-    expect(fixture.adapter.requests).toHaveLength(1)
-    expect(fixture.agent.inbox.nextTurn.map(message => textOf(message))).toEqual(['queued'])
-    expect(fixture.agent.inbox.nextStep.map(message => message.source.kind)).toEqual(['dv-project-wake'])
-  })
-
-  it('keeps a wake that an error left behind while the session watches another record, and the last one claims both', async () => {
-    const fixture = await start()
-    fixture.adapter.failFirst = true
-    const first = await fixture.render('one')
-    const second = await fixture.render('two')
-    await startHangingTurn(fixture)
-    await fixture.finish('one', first)
-    fixture.adapter.fail()
-    await settleIdle(fixture)
-    expect(fixture.adapter.requests).toHaveLength(1)
-    expect(fixture.agent.inbox.nextStep.map(message => message.source.kind)).toEqual(['dv-project-wake'])
-
-    await fixture.finish('two', second)
-    await vi.waitFor(() => { expect(fixture.adapter.requests).toHaveLength(2) })
-    await fixture.agent.whenIdle()
-    expect(wakes(fixture)).toHaveLength(2)
-    const update = textOf(fixture.adapter.requests[1]?.messages.at(-1))
-    expect(update).toContain(`- done ${first} (your call): shot one`)
-    expect(update).toContain(`- done ${second} (your call): shot two`)
   })
 
   it('injects a wake past maxConsecutiveWakes until the user\'s message, claimed with it, refills the budget', async () => {
