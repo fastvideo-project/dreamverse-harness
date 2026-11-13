@@ -36,7 +36,7 @@ The Host half registers nothing. The browser half registers the `dv-asset-pool` 
 | Gesture | Request or event |
 | --- | --- |
 | Open the panel, any project change | `GET /api/dv/state` for the project's current state, refetched on every `/dv/events` event |
-| Drop images or videos on the drop zone, or click it (or press Enter or Space on it) to choose files | `POST /api/dv/assets/import` once per image or video file with `surface=asset_pool` and the tab's chat session; the `asset.import` record is a step after the project's current position. The zone imports no other file and shows 「<name>」不是图片或视频，没有导入。 / "<name>" is not an image or a video, so it was not imported. for each one |
+| Drop images or videos on the drop zone, or click it (or press Enter or Space on it) to choose files | `POST /api/dv/assets/import` once per image or video file with `surface=asset_pool` and the tab's chat session; the `asset.import` record is a step after the project's current position. The zone imports no other file and shows 「<name>」不是图片或视频，没有导入。 / “<name>” is not an image or a video, so it was not imported. for each one |
 | Drag a thumbnail | a drag that carries the asset ID as `application/x-dv-asset`; the canvas moves the asset's node to the drop point, the timeline inserts a clip at the drop position |
 | Click a thumbnail in the tab | `dvMedia.preview` with the project, the asset and the thumbnail: the asset preview of `@dv/ui-media` with the `dv.media.preview.action` buttons, such as 插入片段 / Insert clip of `@dv/ui-timeline` and 让智能体使用 / Ask the agent to use it of `@dv/ui-composer`; nothing opens while `dvMedia` is absent |
 | Click a thumbnail in the canvas's picker | The picker's `onOpen` toggles the asset in the picker; no preview opens |

@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/dv/ui-composer/README.md
 README.md: ae888c72ea8294b746854f6ab61aa27319d2858e
-README.zh.md: 405ca55212de50ab70a6322b8665b0015ca32dcd
+README.zh.md: 2d547e90d3a2a3e87cf27e109cc25fe169e45125
