@@ -52,7 +52,8 @@ export function installModelControls(ctx: Context, models: DvModels): void {
       label: { zh: '选择视频模型', en: 'Select video model' },
       description: 'Choose the video model for subsequent generations in this conversation. '
         + 'Pass empty provider and model strings to let the operator choose. Existing renders keep their model. '
-        + 'Selecting does not download weights; the model loads when generation starts.',
+        + 'Selecting does not download weights; the model loads when generation starts. '
+        + 'The choice is not a project history step: dv_proj_undo and dv_proj_redo do not change it; to go back, select the earlier model again.',
       params: {
         provider: { type: 'string', required: true, description: 'The provider from dv_models_list, or empty for Auto.' },
         model: { type: 'string', required: true, description: 'The video model from dv_models_list, or empty for Auto.' },
@@ -77,8 +78,10 @@ export function installModelControls(ctx: Context, models: DvModels): void {
         name: `models.${action}`, component: 'models', version: '1',
         label: { zh: ({ load: '加载模型', unload: '卸载模型', status: '查看模型状态' })[action],
           en: ({ load: 'Load model', unload: 'Unload model', status: 'Inspect model state' })[action] },
-        description: action === 'load' ? 'Load an installed model into GPU memory without generating. Never downloads weights.'
-          : action === 'unload' ? 'Release a model from GPU memory, keeping downloaded files and compatible shared components.'
+        description: action === 'load' ? 'Load an installed model into GPU memory without generating. Never downloads weights. '
+          + 'Not a project history step: dv_proj_undo does not reverse it; call dv_models_unload instead.'
+          : action === 'unload' ? 'Release a model from GPU memory, keeping downloaded files and compatible shared components. '
+            + 'Not a project history step: dv_proj_undo does not reverse it; call dv_models_load instead.'
             : 'Inspect whether a model is installed, loaded, loading, or busy with generation.',
         params: {
           modality: { type: 'string', required: true, description: 'The modality from dv_models_list.' },
