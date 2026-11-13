@@ -155,8 +155,10 @@ export default class DvModels extends Service {
    * @returns a function that stops listening and removes the prompt skills; pass it to `ctx.effect`.
    */
   private registerPromptSkills(child: Context): () => void {
-    const registered = new Map<ModelEntry, { name: string; entries: number; remove: () => void }>()
-    const byName = new Map<string, { name: string; entries: number; remove: () => void }>()
+    // One registration per skill name, with the count of live entries that carry it.
+    type SharedSkill = { name: string; entries: number; remove: () => void }
+    const registered = new Map<ModelEntry, SharedSkill>()
+    const byName = new Map<string, SharedSkill>()
     // Each change releases the skills of removed entries and registers the skills of added entries.
     const sync = (): void => {
       const live = new Set(this.entries.values())
