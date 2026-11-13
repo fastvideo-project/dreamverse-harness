@@ -180,7 +180,8 @@ const PLUGINS = {
 
 /**
  * Boot the skill registry, Project, ffmpeg, the asset pool, the catalog and the plugin from a test-only `cordis.yml`.
- * @param tasks - the server URL of each task of `fasth3` to configure.
+ * @param tasks - the server of each task of `model` to configure.
+ * @param model - the served model that `tasks` configures.
  * @returns the root context.
  */
 async function start(tasks: Partial<Record<VideoTask, FastVideo.TaskServer>>, model = 'fasth3'): Promise<Context> {
@@ -582,9 +583,8 @@ describe('dv-fastvideo', () => {
   }, 600_000)
 })
 
-
-describe('Pika endpoint tasks on the current native API', () => {
-  it('keeps reference and first/last-frame capabilities distinct in a real Loader composition', async () => {
+describe('dv-fastvideo pika-h3-flex', () => {
+  it('registers its five tasks and validates the reference and frame inputs of each', async () => {
     const backend = await startFakeServer(REFERENCE_FACTS)
     const ctx = await start({ ref2v: backend.server, fl2v: backend.server, i2v: backend.server, l2v: backend.server }, 'pika-h3-flex')
     const first = importAsset(ctx, Buffer.from('FIRST'), 'image/png')
@@ -601,14 +601,12 @@ describe('Pika endpoint tasks on the current native API', () => {
     expect(await pika(ctx, 'ref2v').schema()).toMatchObject({ inputs: { reference: { max: 4 } } })
   })
 
-  it.skipIf(!existsSync(FFMPEG))('sends FL2VA task and ordered endpoints while sharing the upstream last-frame extractor', async () => {
+  it.skipIf(!existsSync(FFMPEG))('sends task fl2va with the first frame, then the last frame, and yields the last frame of the video', async () => {
     const backend = await startFakeServer(REFERENCE_FACTS, { video: await redThenBlueVideo() })
     const ctx = await start({ fl2v: backend.server }, 'pika-h3-flex')
-    const entry = ctx.dvModels.get({ modality: 'video', provider: 'fastvideo', model: 'pika-h3-flex', task: 'fl2v' })
-    if (entry === undefined || !isVideoEntry(entry)) throw new Error('Missing Pika FL2VA')
     const first = importAsset(ctx, Buffer.from('FIRST'), 'image/jpeg')
     const last = importAsset(ctx, Buffer.from('LAST'), 'image/png')
-    const events = await collect(entry.render({ ...request([], first), lastFrame: last,
+    const events = await collect(pika(ctx, 'fl2v').render({ ...request([], first), lastFrame: last,
       prompt: '@[start](dv:input/first_frame) to @[end](dv:input/last_frame)' }))
     expect(backend.requests).toEqual([{
       model: REFERENCE_FACTS.modelId, task: 'fl2va', prompt: '<Picture 1> to <Picture 2>',
@@ -618,16 +616,21 @@ describe('Pika endpoint tasks on the current native API', () => {
     expect(events.map(event => event.kind)).toEqual(['last_frame', 'video_start', 'chunk', 'done'])
   })
 
-  it.skipIf(!existsSync(FFMPEG))('sends I2VA and L2VA with the sole frame as Picture 1', async () => {
+  it.skipIf(!existsSync(FFMPEG))('sends each task\'s native selector, with the sole frame of i2v and l2v as Picture 1', async () => {
     const backend = await startFakeServer(REFERENCE_FACTS, { video: await redThenBlueVideo() })
-    const ctx = await start({ i2v: backend.server, l2v: backend.server }, 'pika-h3-flex')
+    const ctx = await start({ t2v: backend.server, i2v: backend.server, l2v: backend.server, ref2v: backend.server }, 'pika-h3-flex')
     const first = importAsset(ctx, Buffer.from('FIRST'), 'image/png')
     const last = importAsset(ctx, Buffer.from('LAST'), 'image/jpeg')
+    const style = importAsset(ctx, Buffer.from('STYLE'), 'image/png')
+    await collect(pika(ctx, 't2v').render({ ...request([], null), prompt: 'A door opens' }))
     await collect(pika(ctx, 'i2v').render({ ...request([], first), prompt: '@[start](dv:input/first_frame) opens the shot' }))
     await collect(pika(ctx, 'l2v').render({ ...request([], null), lastFrame: last, prompt: '@[end](dv:input/last_frame) closes the shot' }))
+    await collect(pika(ctx, 'ref2v').render({ ...request([style], null), prompt: `A door in @[style](dv:asset/${style})` }))
     expect(backend.requests).toMatchObject([
+      { task: 't2va', prompt: 'A door opens' },
       { task: 'i2va', prompt: '<Picture 1> opens the shot', image_reference: [{ image_url: dataUrl('image/png', 'FIRST') }] },
       { task: 'l2va', prompt: '<Picture 1> closes the shot', image_reference: [{ image_url: dataUrl('image/jpeg', 'LAST') }] },
+      { task: 'ref2va', prompt: 'A door in <Picture 1>', image_reference: [{ image_url: dataUrl('image/png', 'STYLE') }] },
     ])
   })
 })
