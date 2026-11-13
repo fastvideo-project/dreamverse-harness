@@ -283,6 +283,17 @@ describe('record notices', () => {
     expect(agent?.got).toEqual([])
   })
 
+  it('sends a running agent nothing for a record that finished while an undo left it after the current position', async () => {
+    const fixture = await start()
+    const agent = fixture.agents.get(SESSION)
+    await fixture.call('dv_shot_render', { reason: 'dunk', prompt: 'dunk' })
+    if (agent !== undefined) agent.status = 'running'
+    await fixture.project.undo(fixture.projectId)
+    fixture.release('dunk')
+    await fixture.settle()
+    expect(agent?.got).toEqual([])
+  })
+
   it('injects into a running agent', async () => {
     const fixture = await start()
     const agent = fixture.agents.get(SESSION)

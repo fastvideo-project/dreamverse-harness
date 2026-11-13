@@ -233,6 +233,20 @@ describe('record notices with the agent loop', () => {
     await fixture.agent.whenIdle()
   })
 
+  it('opens no turn for a held-back wake while the user\'s steer waits beside it in the next-step inbox', async () => {
+    const fixture = await start()
+    const first = await fixture.render('one')
+    const second = await fixture.render('two')
+    await fixture.finish('one', first)
+    fixture.agent.inject(userMessage('steer'))
+    await fixture.project.undo(fixture.projectId)
+    await fixture.finish('two', second)
+    await settleIdle(fixture)
+
+    expect(fixture.adapter.requests).toEqual([])
+    expect(fixture.agent.inbox.nextStep.map(message => message.source.kind)).toEqual(['dv-project-wake', 'user'])
+  })
+
   it('injects a wake past maxConsecutiveWakes until the user\'s message, claimed with it, refills the budget', async () => {
     const fixture = await start(1)
     fixture.adapter.hangFirst = false
