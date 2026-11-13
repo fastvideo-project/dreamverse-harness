@@ -698,7 +698,7 @@
   }
 }
 
-/* Without a hovering pointer nothing would reveal the menu button, so it stays visible. */
+/* A touch pointer cannot hover, so the menu button stays visible. */
 @media (hover: none) {
   .rowMenu {
     opacity: 1;
