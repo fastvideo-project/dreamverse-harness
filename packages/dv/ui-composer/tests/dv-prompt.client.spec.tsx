@@ -670,6 +670,20 @@ describe('the unsent draft of a take', () => {
     expect(button.disabled).toBe(false)
   })
 
+  it('keeps the edits of a reopened editor when a send from the closed editor succeeds later', async () => {
+    const mounted = await mount(STILL_CALL, { holdSend: true })
+    await sendOf(mounted.take, 'Generate a new version')
+    editSeed(mounted.take, '5')
+    fireEvent.click(await sendOf(mounted.take, 'Generate a new version'))
+    await waitFor(() => { expect(mounted.sent).toHaveLength(1) })
+    mounted.view.unmount()
+    const again = mounted.runtime.renderRoot()
+    editSeed(again.getByTestId('take'), '7')
+    await act(async () => { mounted.answers.splice(0).forEach((answer) => { answer() }) })
+    again.unmount()
+    expect(seedOf(mounted.runtime.renderRoot().getByTestId('take'))).toBe('7')
+  })
+
   it('checks a restored draft again before its send, and shows no failure from before the editor closed', async () => {
     const mounted = await mount(STILL_CALL, { holdChecks: true, refuseSend: 'The GPU queue is full.' })
     await waitFor(() => { expect(mounted.checks).toHaveLength(1) })

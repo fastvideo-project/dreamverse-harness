@@ -196,7 +196,10 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
     dispatch({ type: 'sending' })
     onSubmit(edited).then(() => {
       sentKey.current = editedKey
-      clearDraft(storeKey)
+      // An editor reopened while the send ran may have stored newer edits, so only a stored draft of the sent call goes.
+      const stored = readDraft(storeKey)
+      const storedKey = stored === undefined ? null : JSON.stringify(callOf(stored.document, { ...call, params: stored.params }))
+      if (storedKey === editedKey) clearDraft(storeKey)
       dispatch({ type: 'sent', key: editedKey, failure: null })
     }, (error: unknown) => {
       dispatch({ type: 'sent', key: editedKey, failure: errorMessage(error) })
