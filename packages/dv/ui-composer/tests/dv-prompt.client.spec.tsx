@@ -578,7 +578,7 @@ describe('the unsent draft of a take', () => {
     return mounted.runtime.renderRoot().getByTestId('take')
   }
 
-  it('restores the typed prompt and parameters when the same take opens again, and starts another take clean', async () => {
+  it('restores the typed prompt and parameters when the same take opens again, starts another lent call clean, and restores the draft when the host lends the call again', async () => {
     const mounted = await mount(STILL_CALL)
     await sendOf(mounted.take, 'Generate a new version')
     editSeed(mounted.take, '5')
@@ -631,7 +631,7 @@ describe('the unsent draft of a take', () => {
     expect(seedOf(reopen(mounted))).toBe('')
   })
 
-  it('drops the draft when the edits are undone back to the lent call', async () => {
+  it('drops the draft when the edits go back to the lent call', async () => {
     const mounted = await mount(STILL_CALL)
     await sendOf(mounted.take, 'Generate a new version')
     editSeed(mounted.take, '7')
@@ -642,6 +642,8 @@ describe('the unsent draft of a take', () => {
   })
 
   it('drops the draft when a typed value is edited back to the lent call\'s value', async () => {
+    // A typed seed moves to the end of the edited params, so the edited call back at seed 5 differs from this lent call
+    // only in the order of its param keys.
     const seeded: PromptCall = { operation: STILL.name, params: { seed: 5, prompt: 'a lamp' }, inputs: [] }
     const mounted = await mount(seeded)
     await sendOf(mounted.take, 'Generate a new version')
