@@ -44,9 +44,7 @@ describe('conversation video model in the project summary', () => {
     expect(JSON.parse(seenByA.text)).toMatchObject({ video_model: { provider: 'fastvideo', model: 'wan' } })
     const seenByB = await call(chatB, 'dv_proj_state', {})
     expect(JSON.parse(seenByB.text)).toMatchObject({ video_model: { provider: 'fastvideo', model: 'pika' } })
-    // The other chat's records stay listed under `recent`, but no session ID reaches either agent.
+    // No session ID reaches either agent.
     for (const text of [seenByA.text, seenByB.text]) for (const session of [chatA, chatB]) expect(text).not.toContain(session)
-    // A choice listed under `recent` says that it belongs to the conversation that made it.
-    expect(seenByA.text).toContain('video model pika, for the conversation that chose it only')
   })
 })

@@ -37,7 +37,7 @@ import * as WorkflowStory from '@dv/workflow-story'
 import * as yaml from 'js-yaml'
 import { vi } from 'vitest'
 import { FakeModel, FFMPEG, FFPROBE } from '../../../dv/api/tests/support.ts'
-import { provideChatServices, type TestChatServices } from '../../../dv/project/tests/workspaces.ts'
+import { TestChats, TestWorkspaces, type TestChatServices } from '../../../dv/project/tests/workspaces.ts'
 
 /** Whether the stand-in FastVideo plugin was mounted. */
 export const fastVideo: { mounted: boolean } = { mounted: false }
@@ -109,6 +109,9 @@ export interface Bundle {
   ctx: Context
   dir: string
   services: TestChatServices
+  /** Stop the composition and restore the environment; the directory stays for a later boot over it. */
+  stop: () => Promise<void>
+  /** Stop the composition and remove the directory. */
   dispose: () => Promise<void>
 }
 
@@ -116,10 +119,12 @@ export interface Bundle {
  * Boot the DSH system prompt and tool registry, the rows of `extra`, then the bundle rows through the Loader, with the
  * DreamVerse folder in a new temporary directory.
  * @param extra - the plugin of each row a spec adds, by row id.
+ * @param earlier - the directory and the stand-in services of a stopped composition, for a boot that plays a server
+ *   restart over the same DreamVerse folder; omitted, the boot uses a new directory and new services.
  * @returns the composition; `dispose` stops it, restores the environment and removes the directory.
  */
-export async function bootBundle(extra: Record<string, object> = {}): Promise<Bundle> {
-  const dir = mkdtempSync(join(tmpdir(), 'dv-composition-'))
+export async function bootBundle(extra: Record<string, object> = {}, earlier?: Pick<Bundle, 'dir' | 'services'>): Promise<Bundle> {
+  const dir = earlier?.dir ?? mkdtempSync(join(tmpdir(), 'dv-composition-'))
   // The environment the bundle's `!!js` configuration reads.
   vi.stubEnv('DV_PROJECTS_FOLDER', join(dir, 'projects'))
   vi.stubEnv('DV_FFMPEG', FFMPEG)
@@ -140,17 +145,22 @@ export async function bootBundle(extra: Record<string, object> = {}): Promise<Bu
   writeFileSync(join(dir, 'cordis.yml'), yaml.dump(entries, { schema: entryListSchema }))
 
   const ctx = new Context()
-  const services = provideChatServices(ctx)
+  const services = earlier?.services ?? { workspaces: new TestWorkspaces(), chats: new TestChats() }
+  ctx.provide('workspaceRegistry', services.workspaces as never)
+  ctx.provide('sessions', services.chats as never)
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
   await ctx.loader.await()
+  const stop = async (): Promise<void> => {
+    await ctx.fiber.dispose()
+    delete globals.__dvComposition
+    vi.unstubAllEnvs()
+  }
   return {
-    ctx, dir, services,
+    ctx, dir, services, stop,
     dispose: async () => {
-      await ctx.fiber.dispose()
-      delete globals.__dvComposition
-      vi.unstubAllEnvs()
+      await stop()
       rmSync(dir, { recursive: true, force: true })
     },
   }

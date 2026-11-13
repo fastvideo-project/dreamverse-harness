@@ -313,8 +313,8 @@ export interface Reducer<K extends ComponentKey = ComponentKey> {
    */
   initial(): ComponentStates[K]
   /**
-   * Apply one record. The reducer receives every record of the chain, of every component, in order, and
-   * ignores the records it does not interpret.
+   * Apply one record. The reducer receives every record of the chain, of every component, in order, then every record
+   * of its own component's `outsideHistory` operations in write order, and ignores the records it does not interpret.
    * @param slice - the slice before the record.
    * @param record - the record in its current form.
    * @returns the slice after the record.

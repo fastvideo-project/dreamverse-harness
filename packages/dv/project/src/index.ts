@@ -153,7 +153,8 @@ export default class DvProject extends Service {
       this.subscriptions.emit(project, event)
       if (event.kind === 'update' && ['done', 'failed', 'cancelled'].includes(event.record.status)) this.scheduler.recordFinished(project)
     })
-    this.reducers = new ReducerRegistry(this.store)
+    // The runner, created below, knows which operations are settings outside the history; it is read at call time.
+    this.reducers = new ReducerRegistry(this.store, record => this.runner.isOutsideHistory(record))
     this.history = new History(this.store)
     // The scheduler runs ready records through the runner, which is created next; the callback reads it at call time.
     this.scheduler = new Scheduler(this.store, (project, record) => this.runner.execute(project, record), {

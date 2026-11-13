@@ -20,7 +20,10 @@ export function assertVideoSelection(request: Pick<RunRequest, 'actor' | 'sessio
   }
 }
 
-/** Rebuild conversation choices from successful selection operations. */
+/**
+ * Rebuild conversation choices from successful selection operations. `models.select` is outside the undo history, so
+ * the choices are those of every such record in write order, whatever the current position.
+ */
 export const selectionReducer: Reducer<'models'> = {
   initial: () => ({ conversations: {} }),
   reduce(slice, record) {
@@ -36,7 +39,10 @@ export const selectionReducer: Reducer<'models'> = {
   },
 }
 
-/** Mount conversation selection and lifecycle operations with the project service. */
+/**
+ * Mount conversation selection and lifecycle operations with the project service. Selection, load and unload are
+ * settings outside the undo history: they discard no step and undo never changes them.
+ */
 export function installModelControls(ctx: Context, models: DvModels): void {
   ctx.inject(['dvProject'], (scope) => {
     scope.effect(() => scope.dvProject.registerComponent('models'), 'model conversation component')
@@ -51,7 +57,7 @@ export function installModelControls(ctx: Context, models: DvModels): void {
         provider: { type: 'string', required: true, description: 'The provider from dv_models_list, or empty for Auto.' },
         model: { type: 'string', required: true, description: 'The video model from dv_models_list, or empty for Auto.' },
       },
-      inputs: {}, outputs: [], deterministic: false, resource: 'none',
+      inputs: {}, outputs: [], deterministic: false, resource: 'none', outsideHistory: true,
       summarize: record => `video model ${String(record.params['model']) || 'Auto'}, for the conversation that chose it only`,
       precondition: async (request) => {
         if (request.session === null || scope.dvProject.sessionProject(request.session) !== request.project) {
@@ -81,7 +87,7 @@ export function installModelControls(ctx: Context, models: DvModels): void {
           model: { type: 'string', required: true, description: 'The model from dv_models_list.' },
         },
         inputs: {}, outputs: [], deterministic: false, resource: action === 'status' ? 'none' : 'gpu',
-        ...action === 'status' ? { readOnly: true } : {},
+        ...action === 'status' ? { readOnly: true } : { outsideHistory: true },
         summarize: record => String(record.params['model']),
         execute: async (run) => {
           const entry = models.get(modelKey(run.params))

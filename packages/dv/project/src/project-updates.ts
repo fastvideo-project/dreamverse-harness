@@ -203,7 +203,8 @@ export function renderState(project: DvProject, deps: ProjToolDeps, id: ProjectI
  * - No project state message in the state, or one of another project: the project state message, whose source shows
  *   every record written so far (`base`), the unfinished ones in their status, and the current position.
  * - Otherwise the project update message, or null when it would be empty. It lists, in write order, each record of the
- *   history list up to the current position that the session never saw, or saw unfinished and is finished now. Before
+ *   history list up to the current position, and each record outside the history (`OperationSpec.outsideHistory`), that
+ *   the session never saw, or saw unfinished and is finished now. Before
  *   them, when the current position changed and the listed records do not explain it (the new position is a record the
  *   session saw, or the old one left the history list), it says
  *   `- history: the current step is <at>; dv_proj_history_list shows which steps are undone or discarded.`
@@ -242,10 +243,12 @@ export function projectMessage(project: DvProject, deps: ProjToolDeps, session: 
     })
   }
   const chain = ancestry(new Map(records.map(record => [record.id, record])), at)
+  const outside = new Set(project.listOperations().filter(spec => spec.outsideHistory === true).map(spec => spec.name))
   const shown = new Map(records.map((record, index) => [record.id, seen.records[record.id] ?? (index < seen.base ? 'done' : undefined)]))
   const listed = records.filter((record) => {
     const status = shown.get(record.id)
-    return chain.has(record.id) && (status === undefined || (!finished(status) && finished(record.status)))
+    const current = chain.has(record.id) || outside.has(String(record.operation))
+    return current && (status === undefined || (!finished(status) && finished(record.status)))
   })
   const moved = at !== seen.at && (shown.get(at) !== undefined || !chain.has(seen.at))
   if (listed.length === 0 && !moved) return null

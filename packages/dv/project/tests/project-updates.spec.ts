@@ -371,6 +371,26 @@ describe('project update message', () => {
     ))
   })
 
+  it('reports a user setting outside the history after an undo, and no move for the agent\'s own setting', async () => {
+    const fixture = await start()
+    fixture.project.registerOperation({
+      version: '1', description: 'A setting outside the history.', inputs: {}, deterministic: false, outputs: [], resource: 'none',
+      name: 'shot.choose', component: 'shot', params: { model: { type: 'string' } }, outsideHistory: true,
+      summarize: record => `chose ${String(record.params['model'])}`, execute: () => Promise.resolve({ outputs: [] }),
+    } satisfies OperationSpec)
+    await fixture.run(user('a'), 'asset.import', { name: 'a.png' })
+    fixture.log.step()
+    await fixture.project.undo(fixture.projectId)
+    const head = fixture.project.line(fixture.projectId).at
+    const chosen = await fixture.run(user('choose'), 'shot.choose', { model: 'pika' })
+    expect(fixture.log.step()).toBe(update(
+      `- history: the current step is ${head}; dv_proj_history_list shows which steps are undone or discarded.`,
+      `- done ${chosen.id} (user on canvas): chose pika`,
+    ))
+    fixture.log.toolResult(await fixture.call('dv_shot_choose', { reason: 'own choice', model: 'wan' }))
+    expect(fixture.log.step()).toBeNull()
+  })
+
   it('nets out an undo followed by a redo', async () => {
     const fixture = await start()
     await fixture.run(user('a'), 'asset.import', { name: 'a.png' })

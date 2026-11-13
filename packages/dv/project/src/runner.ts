@@ -162,6 +162,14 @@ export class Runner {
   }
 
   /**
+   * @param record - a record.
+   * @returns whether the record's operation is registered with `outsideHistory`.
+   */
+  isOutsideHistory(record: ProjectRecord): boolean {
+    return record.operation !== null && this.operations.get(record.operation)?.outsideHistory === true
+  }
+
+  /**
    * Run one operation call. The steps are listed in `CONTRACTS.md` ("Runner: run"). Rejects with `ProjectError` only
    * before a record exists (unknown operation, invalid params or inputs, input not ready, unknown project), or with the
    * error of the operation's `precondition`. Once the record is written, resolves with it in its final status (`done`,
@@ -185,13 +193,14 @@ export class Runner {
       // The operation names the records it replaces itself; the caller may name more.
       const supersedes = [...new Set([...request.supersedes ?? [], ...spec.supersedes?.(request.params, state) ?? []])]
       const origin = originOf(request)
-      return this.appendStep(request.project, {
+      const line: RecordLineInput = {
         parents: [this.headOf(request.project)], kind: 'operation', component: spec.component, operation: spec.name,
         operation_version: spec.version, ...origin, params: request.params, inputs, outputs: [],
         based_on: request.based_on ?? spec.basedOn?.(request.params, state) ?? null,
         supersedes, deterministic: spec.deterministic, status: 'pending',
         ...request.started_by === undefined ? {} : { started_by: request.started_by },
-      })
+      }
+      return spec.outsideHistory === true ? store.appendOutsideHistory(request.project, line) : this.appendStep(request.project, line)
     })
 
     if (request.after !== undefined) {
