@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-libra
 import type { AssetId } from '@dv/project/types'
 import type { Sound, SoundId, TimelineId } from '@dv/timeline/types'
 import { DvClient } from '@dv/ui-kit/api.ts'
+import type { ProjectRecord } from '@dv/ui-kit/types.ts'
 import { FALLBACK_CLIP_SECONDS } from '@dv/ui-kit/timeline.ts'
 import { asset, fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState, ScriptedRoutes } from '../../ui-kit/tests/fixture.client.tsx'
@@ -41,6 +42,7 @@ function soundState(): FixtureState {
 
 /**
  * {@link soundState} that gains each sound a `timeline.sound_add` writes, as `sd3`, `sd4`, …, once `shows()` is true.
+ * The record of each `timeline.sound_add` names its sound ID in `report.sounds`, as `@dv/timeline` stores it.
  * @param shows - whether the served state shows the added sounds yet; while false, a refetch serves the state before them.
  * @returns the routes.
  */
@@ -55,14 +57,24 @@ function growingState(shows: () => boolean = () => true): ScriptedRoutes {
     post: (path, body) => {
       if (path !== '/api/dv/operation') return { status: 200, body: { problems: [] } }
       const { operation, params = {} } = body as { operation: string; params?: Record<string, unknown> }
-      if (operation === 'timeline.sound_add') {
-        added.push({
-          id: `sd${String(added.length + 3)}` as SoundId, asset: String(params['asset']) as AssetId, start_sec: Number(params['start_sec']),
-          track: Number(params['track']),
-        })
-      }
-      return { status: 200, body: record({ id: `new-${String(added.length)}`, operation, params }) }
+      if (operation !== 'timeline.sound_add') return { status: 200, body: record({ id: `new-${String(added.length)}`, operation, params }) }
+      const id = `sd${String(added.length + 3)}` as SoundId
+      added.push({ id, asset: String(params['asset']) as AssetId, start_sec: Number(params['start_sec']), track: Number(params['track']) })
+      return { status: 200, body: record({ id: `new-${String(added.length)}`, operation, params, report: { sounds: [id] } }) }
     },
+  }
+}
+
+/**
+ * A post route that answers each operation with a done record and reports each `timeline.sound_remove`.
+ * @param onRemove - called for each `timeline.sound_remove`.
+ * @returns the route.
+ */
+function removingPost(onRemove: () => void): NonNullable<ScriptedRoutes['post']> {
+  return (path, body) => {
+    const { operation, params = {} } = body as { operation: string; params?: Record<string, unknown> }
+    if (operation === 'timeline.sound_remove') onRemove()
+    return { status: 200, body: path === '/api/dv/operation' ? record({ id: 'r1', operation, params }) : { problems: [] } }
   }
 }
 
@@ -445,13 +457,103 @@ describe('sound tracks', () => {
     expect([imports.length, requests().length, view.getByRole('alert').textContent]).toEqual([1, 2, '失败：failed'])
   })
 
-  it('keeps one empty track after the last stored track when the stored tracks shrink', async () => {
-    let removed = false
+  it('enables the sound track ＋ on another timeline that the user switches to while a sound add runs', async () => {
+    // t2 holds as many sounds as t1, so the switch leaves the shown sound count unchanged.
+    const state = (): FixtureState => {
+      const fixture = soundState()
+      const [t1, t2] = fixture.components.timeline.timelines
+      if (t1 !== undefined && t2 !== undefined) t2.sounds = t1.sounds.map(sound => ({ ...sound, id: `t2-${sound.id}` as SoundId }))
+      return fixture
+    }
+    let finish: (added: ProjectRecord) => void = () => undefined
+    vi.spyOn(DvClient.prototype, 'runOperation').mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+    const { view, plus, dialog, ready, disabled } = mount({ state })
+    await ready()
+    fireEvent.click(plus(0))
+    fireEvent.click(within(dialog() as HTMLElement).getByText('theme.mp3'))
+    expect(disabled()).toEqual([true, true])
+    fireEvent.click(view.getByRole('tab', { name: '片尾' }))
+    await waitFor(() => { expect(disabled()).toEqual([false, false]) })
+    expect(view.container.querySelector('div[data-sound="t2-sd1"]')).not.toBeNull()
+    // The add on t1 ends with a sound that t2 never shows; t2 keeps its ＋ enabled.
+    await act(async () => { finish(record({ id: 'a1', operation: 'timeline.sound_add', report: { sounds: ['sd3'] } })) })
+    expect(disabled()).toEqual([false, false])
+  })
+
+  it('enables the sound track ＋ once a done sound add record\'s sound shows, or at once when it names none, also when the sound count stays', async () => {
+    // Each add replaces sd1, as when another edit removes a sound at the same time; the first record names sd3, the second no sound.
+    const reports: Array<Record<string, unknown> | undefined> = [{ sounds: ['sd3'] }, undefined]
+    let added = 0
+    let shown = false
+    const state = (): FixtureState => {
+      const fixture = soundState()
+      const [t1] = fixture.components.timeline.timelines
+      if (t1 !== undefined && added > 0 && shown) {
+        t1.sounds = [...t1.sounds.filter(sound => sound.id !== 'sd1'), { id: 'sd3' as SoundId, asset: 'theme.mp3' as AssetId, start_sec: 5, track: 0 }]
+      }
+      return fixture
+    }
     const post: ScriptedRoutes['post'] = (path, body) => {
       const { operation, params = {} } = body as { operation: string; params?: Record<string, unknown> }
-      if (operation === 'timeline.sound_remove') removed = true
-      return { status: 200, body: path === '/api/dv/operation' ? record({ id: 'r1', operation, params }) : { problems: [] } }
+      if (operation === 'timeline.sound_add') added += 1
+      const report = operation === 'timeline.sound_add' ? reports.shift() : undefined
+      return { status: 200, body: path === '/api/dv/operation' ? record({ id: 'd1', operation, params, ...report === undefined ? {} : { report } }) : { problems: [] } }
     }
+    const { view, head, plus, dialog, requests, ready, fetches, disabled } = mount({ state, post })
+    await ready()
+    fireEvent.click(plus(0))
+    fireEvent.click(within(dialog() as HTMLElement).getByText('theme.mp3'))
+    await waitFor(() => { expect(fetches()).toBeGreaterThanOrEqual(2) })
+    await act(async () => { await Promise.resolve() })
+    expect(disabled()).toEqual([true, true])
+    // A rename refetches the state, which now shows sd3 in place of sd1.
+    shown = true
+    fireEvent.doubleClick(head(0))
+    fireEvent.change(view.getByRole('textbox', { name: '音轨名称' }), { target: { value: '音乐' } })
+    fireEvent.keyDown(view.getByRole('textbox', { name: '音轨名称' }), { key: 'Enter' })
+    await waitFor(() => { expect(disabled()).toEqual([false, false]) })
+    expect([...view.container.querySelectorAll('div[data-sound]')].map(entry => entry.getAttribute('data-sound'))).toEqual(['sd3', 'sd2'])
+
+    fireEvent.click(plus(0))
+    fireEvent.click(within(dialog() as HTMLElement).getByText('theme.mp3'))
+    expect(disabled()).toEqual([true, true])
+    await waitFor(() => { expect(disabled()).toEqual([false, false]) })
+    expect(requests().filter(write => write['operation'] === 'timeline.sound_add')).toHaveLength(2)
+  })
+
+  it('keeps the sound track ＋ disabled when another edit changes the sound count during a sound add, until the add\'s sound shows', async () => {
+    let removed = false
+    let finished = false
+    const state = (): FixtureState => {
+      const fixture = soundState()
+      const [t1] = fixture.components.timeline.timelines
+      if (t1 === undefined) return fixture
+      if (removed) t1.sounds = t1.sounds.filter(sound => sound.id !== 'sd2')
+      if (finished) t1.sounds.push({ id: 'sd3' as SoundId, asset: 'theme.mp3' as AssetId, start_sec: 3, track: 0 })
+      return fixture
+    }
+    const post = removingPost(() => { removed = true })
+    let finish: (added: ProjectRecord) => void = () => undefined
+    vi.spyOn(DvClient.prototype, 'runOperation').mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+    const { view, sound, plus, dialog, ready, disabled } = mount({ state, post })
+    await ready()
+    fireEvent.click(plus(0))
+    fireEvent.click(within(dialog() as HTMLElement).getByText('theme.mp3'))
+    expect(disabled()).toEqual([true, true])
+    // Another edit removes sd2 while the add runs.
+    fireEvent.click(sound('sd2'))
+    fireEvent.keyDown(view.getByTestId('dv-timeline-editor'), { key: 'Delete' })
+    await waitFor(() => { expect(view.container.querySelector('div[data-sound="sd2"]')).toBeNull() })
+    expect(disabled()).toEqual([true, true])
+    finished = true
+    await act(async () => { finish(record({ id: 'a1', operation: 'timeline.sound_add', report: { sounds: ['sd3'] } })) })
+    await waitFor(() => { expect(disabled()).toEqual([false, false]) })
+    expect(view.container.querySelector('div[data-sound="sd3"]')).not.toBeNull()
+  })
+
+  it('keeps one empty track after the last stored track when the stored tracks shrink', async () => {
+    let removed = false
+    const post = removingPost(() => { removed = true })
     // Once sd2 is removed, t1 stores no track names and one sound track.
     const state = (): FixtureState => {
       const fixture = soundState()

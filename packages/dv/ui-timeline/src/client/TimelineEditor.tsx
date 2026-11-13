@@ -463,6 +463,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   useEffect(() => {
     setChosenClip(null); setPicking(false); setPickingSound(false); setExported(null); setMenu(null); setRenaming(null)
     setChosenSound(null); setSoundMenu(null); setShownTracks(1); setRenamingTrack(null)
+    soundAdds.current += 1; setPendingSound(null)
   }, [timelineId])
 
   useEffect(() => {
@@ -587,25 +588,39 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   // imported first and then added the same way.
   const trackEnd = Math.max(0, ...sounds.filter(sound => sound.track === soundTrack).map(sound => sound.startSec + sound.seconds))
   const soundStart = round(sounds.some(sound => sound.track === soundTrack) ? trackEnd : player.position)
-  // While a sound add runs, and until the refreshed state shows its sound, every ＋ of the sound tracks is disabled, so
-  // the next add starts after it instead of at the same time. A failed add enables them again.
-  const [addingAt, setAddingAt] = useState<number | null>(null)
-  useEffect(() => { if (addingAt !== null && sounds.length !== addingAt) setAddingAt(null) }, [sounds.length])
-  const addingSound = (work: Promise<boolean>): void => {
-    setAddingAt(sounds.length)
-    void work.then((ok) => { if (!ok) setAddingAt(null) })
+  // Every ＋ of the sound tracks is disabled while a sound add runs, and then until the shown sounds include the sound ID
+  // that its record names, so the next add starts after that sound instead of at the same time. A failed add, a record
+  // that names no sound ID, and a switch to another timeline enable them at once. `pendingSound` is `true` while the add
+  // runs, then the awaited sound ID; `soundAdds` counts the adds and timeline switches, so an add that ends after a
+  // switch to another timeline leaves `pendingSound` alone.
+  const [pendingSound, setPendingSound] = useState<true | string | null>(null)
+  const soundAdds = useRef(0)
+  useEffect(() => {
+    if (sounds.some(sound => sound.sound === pendingSound)) setPendingSound(null)
+  }, [pendingSound, sounds])
+  const addingSound = (work: () => Promise<string | null>): void => {
+    const add = ++soundAdds.current
+    setPendingSound(true)
+    let added: string | null = null
+    void run(async () => { added = await work() }).then((ok) => {
+      if (soundAdds.current === add) setPendingSound(ok ? added : null)
+    })
   }
   // A sound add whose record failed, such as one naming an asset that is not audio, throws the record's error, so the
-  // view shows it as its notice and the ＋ buttons are enabled again.
-  const writeSound = async (asset: string, at: number): Promise<void> => {
+  // view shows it as its notice and the ＋ buttons are enabled again. A finished record names the new sound ID first in
+  // its `report.sounds`.
+  const writeSound = async (asset: string, at: number): Promise<string | null> => {
     const params = { timeline: timelineId, asset, start_sec: at, track: soundTrack }
     const record = await client.runOperation(request(project, session, { operation: 'timeline.sound_add', params, intent: t('intent.soundAdd', { at: timecode(at) }) }))
     if (record.status === 'failed') throw new Error(record.error?.message ?? record.status)
+    const reported = record.report?.['sounds']
+    const sound: unknown = Array.isArray(reported) ? reported[0] : undefined
+    return typeof sound === 'string' ? sound : null
   }
   const addSound = (asset: string): void => {
     setPickingSound(false)
     const at = soundStart
-    addingSound(run(() => writeSound(asset, at)))
+    addingSound(() => writeSound(asset, at))
   }
   const removeSound = (sound: TrackSound): void => {
     setSoundMenu(null)
@@ -631,10 +646,10 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const uploadSound = (file: File): void => {
     setPickingSound(false)
     const at = soundStart
-    addingSound(run(async () => {
+    addingSound(async () => {
       const { asset } = await client.importAsset(project, file, 'asset_pool', session)
-      await writeSound(asset, at)
-    }))
+      return writeSound(asset, at)
+    })
   }
 
   // A created timeline stores no name; `nameOf` shows the numbered default name of its ID.
@@ -1152,7 +1167,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
           <div key={`lane-${String(track)}`} role="group" aria-label={t('track.soundN', { n: track + 1 })} data-sound-track={track} style={{ position: 'relative' }}>
             {timeline === null ? null : (
               <button
-                type="button" className="dv-tl-btn" aria-label={t('track.addSound')} title={t('track.addSound')} disabled={addingAt !== null}
+                type="button" className="dv-tl-btn" aria-label={t('track.addSound')} title={t('track.addSound')} disabled={pendingSound !== null}
                 onClick={(event) => {
                   soundAddRef.current = event.currentTarget
                   setPicking(false); setSoundTrack(track); setPickingSound(!pickingSound || soundTrack !== track)
