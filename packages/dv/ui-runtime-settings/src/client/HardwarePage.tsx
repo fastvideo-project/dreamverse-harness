@@ -20,6 +20,9 @@ export interface HardwareProps {
 const blank: WorkerConfig = { label: '', provider: 'fastvideo', enabled: true, transport: 'api',
   baseUrl: 'http://127.0.0.1:18000', credentialRef: '', sshHost: '', remoteHost: '127.0.0.1', remotePort: 18000 }
 
+/** Whether an API worker URL names a loopback server, which the editor presents as a local placement. */
+const isLoopback = (baseUrl: string): boolean => /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(baseUrl)
+
 /** Save worker coordinates without exposing saved keys or accepting private keys. */
 export function HardwarePage({ form, routing, check, storeCredential, removeCredential, runpodPods }: HardwareProps) {
   const t = useCopy()
@@ -57,7 +60,7 @@ export function HardwarePage({ form, routing, check, storeCredential, removeCred
     setKey(''); setAccountKey(''); setPods([]); setFailure(null); setNotice(''); setRemoving(null)
     const worker = id === null ? blank : workers[id]
     if (worker === undefined) return
-    setPlacement(worker.transport === 'ssh' ? 'ssh' : worker.baseUrl.endsWith('.proxy.runpod.net') ? 'runpod' : /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(worker.baseUrl) ? 'local' : 'api')
+    setPlacement(worker.transport === 'ssh' ? 'ssh' : worker.baseUrl.endsWith('.proxy.runpod.net') ? 'runpod' : isLoopback(worker.baseUrl) ? 'local' : 'api')
     setEditor({ id: id ?? '', original: id, value: { ...worker }, revision: snapshot.revision })
   }
   const suggestedId = (name: string): string => {
@@ -139,7 +142,7 @@ export function HardwarePage({ form, routing, check, storeCredential, removeCred
         const held = view?.busy === true || view?.loadingModel != null
         return <li key={id} className={css.device}>
           <div className={css.row}><div className={css.identity}><strong>{worker.label}</strong>
-            <span className={css.meta}>{worker.transport === 'ssh' ? t.ssh : worker.baseUrl.endsWith('.proxy.runpod.net') ? t.runpod : /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(worker.baseUrl) ? t.local : t.api}</span></div>
+            <span className={css.meta}>{worker.transport === 'ssh' ? t.ssh : worker.baseUrl.endsWith('.proxy.runpod.net') ? t.runpod : isLoopback(worker.baseUrl) ? t.local : t.api}</span></div>
           <span className={css.badge} data-status={status}>{t[status]}</span></div>
           <p>{view?.loadingModel != null ? `${t.loading}: ${view.loadingModel}` : `${t.resident}: ${view?.loadedModel ?? t.none}`}</p>
           <details className={css.details}><summary>{t.connectionDetails}</summary>

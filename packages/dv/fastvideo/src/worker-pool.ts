@@ -2,14 +2,22 @@
 import type { DvFastvideoGeneration } from '@dv/fastvideo-generation-client'
 import type { ModelRuntimeState } from '@dv/models'
 
+/** One schedulable worker; `dvHardware` workers supply the optional hooks, and a worker without them is always eligible and unreserved. */
 export interface WorkerClient {
   id: string
   label: string
   client: Pick<DvFastvideoGeneration, 'modelStatus' | 'loadModel' | 'unloadModel' | 'generateSegment' | 'model'>
+  /**
+   * Take the cross-provider hardware reservation.
+   * @returns its release, or `null` when another operation holds it, the worker is ineligible, or hardware has shut down.
+   */
   reserve?: () => (() => void) | null
+  /** Whether the connection snapshot still names its enabled saved worker. */
   eligible?: () => boolean
+  /** Whether another hardware operation holds this worker. */
   isReserved?: () => boolean
 }
+/** One worker's model state, plus whether its status request succeeded. */
 export interface WorkerState extends ModelRuntimeState { id: string; label: string; available: boolean }
 
 /** Own worker leases until generation, cancellation, or explicit lifecycle work settles. */
@@ -17,24 +25,25 @@ export class WorkerPool {
   private readonly held = new Set<string>()
   private readonly waiters = new Set<() => void>()
 
+  /** Read each worker's model state within one deadline; an unreachable worker is reported unavailable, and only `signal` rejects. */
   async states(workers: readonly WorkerClient[], signal?: AbortSignal): Promise<WorkerState[]> {
     const deadline = AbortSignal.timeout(5000)
     const bounded = signal === undefined ? deadline : AbortSignal.any([signal, deadline])
-    const states = await Promise.all(workers.map(async (worker) => {
+    return await Promise.all(workers.map(async (worker) => {
       try {
         if (worker.eligible?.() === false) throw new Error('Worker configuration changed before admission.')
         const state = await worker.client.modelStatus(bounded)
         return { id: worker.id, label: worker.label, available: true, ...state,
           busy: state.busy || this.held.has(worker.id) || worker.isReserved?.() === true }
-      } catch {
+      } catch (_statusFailure) {
         signal?.throwIfAborted()
         return { id: worker.id, label: worker.label, available: false, installed: false, loaded: false,
           loading: false, busy: this.held.has(worker.id) }
       }
     }))
-    return states
   }
 
+  /** Lease an idle worker with the model installed, preferring a resident model; wait while every installed worker is busy. */
   async acquire(workers: readonly WorkerClient[], signal?: AbortSignal): Promise<{ worker: WorkerClient; release(): void }> {
     for (;;) {
       signal?.throwIfAborted()
@@ -78,11 +87,12 @@ export class WorkerPool {
     const states = await this.states(workers, signal)
     signal?.throwIfAborted()
     if (states.some(state => !state.available)) throw new Error('A worker is unreachable; its model residency cannot be confirmed.')
-    const loaded = states.filter(state => state.available && state.loaded)
+    const loaded = states.filter(state => state.loaded)
     if (loaded.some(state => state.busy || state.loading || this.held.has(state.id))) {
       throw new Error('This model is in use on a worker. Unload it after generation finishes.')
     }
     const releases: Array<() => void> = []
+    const targets: WorkerClient[] = []
     try {
       for (const state of loaded) {
         const worker = workers.find(candidate => candidate.id === state.id)
@@ -91,12 +101,9 @@ export class WorkerPool {
         if (release === null) throw new Error('This model is in use on a worker. Unload it after generation finishes.')
         if (release !== undefined) releases.push(release)
         this.held.add(state.id)
+        targets.push(worker)
       }
-      await Promise.all(loaded.map((state) => {
-        const worker = workers.find(candidate => candidate.id === state.id)
-        if (worker === undefined) throw new Error('Worker disappeared before model unload.')
-        return worker.client.unloadModel(signal)
-      }))
+      await Promise.all(targets.map(worker => worker.client.unloadModel(signal)))
     } finally {
       for (const release of releases) release()
       for (const state of loaded) this.held.delete(state.id)
@@ -104,6 +111,7 @@ export class WorkerPool {
     }
   }
 
+  /** Resolve on the next release or after one second; reject when `signal` aborts. */
   private wait(signal?: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
       const cleanup = (): void => { clearTimeout(timer); this.waiters.delete(wake); signal?.removeEventListener('abort', abort) }

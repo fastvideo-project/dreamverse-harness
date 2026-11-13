@@ -31,6 +31,7 @@ export interface ModelRuntimeState {
   loaded: boolean
   loading: boolean
   busy: boolean
+  /** Per-worker state when the provider schedules across workers; the fields above aggregate these rows. */
   workers?: Array<{
     id: string
     label: string

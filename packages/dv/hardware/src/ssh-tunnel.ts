@@ -18,6 +18,7 @@ export class SshTunnel {
 
   constructor(private readonly config: WorkerConfig, private readonly timeoutMs: number) {}
 
+  /** Start OpenSSH and resolve its socket path once it listens; on child exit, `dispose()`, or deadline, dispose and reject. */
   private async open(): Promise<string> {
     if (process.platform === 'win32') throw new Error('SSH worker forwarding currently requires a macOS or Linux harness host.')
     if (this.stopped) throw new Error('The SSH worker connection is closed. Reconnect it from Hardware settings.')

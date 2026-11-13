@@ -12,8 +12,11 @@ export type * from './types.ts'
 
 /** Live worker inventory; existing requests retain their admitted connection. */
 export interface Config {
+  /** Saved workers keyed by stable worker ID; settings refuse a saved or reloaded inventory that fails `validateWorkers`. */
   workers: Volatile<Record<string, WorkerConfig>>
+  /** Deadline in milliseconds for each worker inspection, model-catalog read, and SSH forward start. */
   connectionTimeoutMs: number
+  /** Order of the `dv:hardware` system prompt section. */
   promptSectionOrder: number
 }
 
@@ -30,7 +33,7 @@ export function validateWorkers(workers: Record<string, WorkerConfig>): boolean 
       address = `ssh:${worker.sshHost}:${worker.remoteHost}:${worker.remotePort}`
     } else {
       let url: URL
-      try { url = new URL(worker.baseUrl) } catch { return false }
+      try { url = new URL(worker.baseUrl) } catch (_invalidUrl) { return false }
       if (!['http:', 'https:'].includes(url.protocol) || url.username !== '' || url.password !== '' || url.search !== '' || url.hash !== '') return false
       address = url.href.replace(/\/$/, '')
     }
@@ -160,7 +163,8 @@ export default class DvHardware extends Service {
               return response.ok ? Response.json({ done: true })
                 : Response.json({ error: 'The worker refused the model action. Check whether a generation is running.' }, { status: response.status })
             } finally { release() }
-          } catch {
+          } catch (_workerFailure) {
+            // Worker, transport, and credential errors stay on the Host; the browser receives one fixed message.
             return Response.json({ error: 'The worker could not be reached. Check its connection before retrying.' }, { status: 502 })
           }
         },
@@ -221,7 +225,8 @@ export default class DvHardware extends Service {
           await response.body?.cancel()
           value = { reachable: response.ok, busy: false, loadedModel: null, loadingModel: null }
         } else value = await inspector(connection, AbortSignal.timeout(this.config.connectionTimeoutMs))
-      } catch {
+      } catch (_inspectionFailure) {
+        // Any transport, credential, or inspector failure reports the worker unreachable.
         value = { reachable: false, busy: false, loadedModel: null, loadingModel: null }
       }
       this.checks.set(id, { fingerprint, value })
@@ -252,6 +257,7 @@ export default class DvHardware extends Service {
     return () => { if (!released) { released = true; this.held.delete(id) } }
   }
 
+  /** Return this saved config's snapshot; a new one's fetch pins the endpoint, adds the credential, and uses the forward. */
   private connection(id: string, config: WorkerConfig): WorkerConnection {
     const fingerprint = JSON.stringify([id, config])
     const known = this.connections.get(fingerprint)

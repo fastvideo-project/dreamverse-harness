@@ -2,14 +2,23 @@
 
 /** A saved API connection. SSH uses the host's existing OpenSSH configuration. */
 export interface WorkerConfig {
+  /** Display name in Hardware settings and the operator prompt. */
   label: string
+  /** Model provider whose inspector and generation adapter use this connection, such as `fastvideo`. */
   provider: string
+  /** Whether checks and new admissions use this worker; an admitted operation keeps its reservation. */
   enabled: boolean
+  /** `api` sends requests to `baseUrl`; `ssh` forwards them to `remoteHost:remotePort` through `sshHost`. */
   transport: 'api' | 'ssh'
+  /** API origin and optional reverse-proxy path prefix for the `api` transport. */
   baseUrl: string
+  /** Credential-service reference sent as a Bearer token on each request; empty sends no authorization. */
   credentialRef: string
+  /** Existing OpenSSH host alias on the Harness host for the `ssh` transport. */
   sshHost: string
+  /** Worker API host as reached from the SSH server. */
   remoteHost: string
+  /** Worker API port as reached from the SSH server. */
   remotePort: number
 }
 

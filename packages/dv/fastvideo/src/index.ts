@@ -311,6 +311,8 @@ function backendOrderLabels(assign: AssignReferenceLabels): AssignReferenceLabel
  * @param model - the model name.
  * @param task - the task.
  * @param server - the task's configured server.
+ * @param useHardware - reads the live `useHardware` setting at each call.
+ * @param pool - the provider-wide pool over `dvHardware` workers.
  * @returns the entry.
  * @throws Error when the server's facts leave the task's inputs no room.
  */
