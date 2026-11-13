@@ -2,14 +2,19 @@
  * The Blender component in a REAL composition booted through the Loader from a test-only `cordis.yml`, with the DSH web
  * server on a test-owned port; Blender is the only fake: a WebSocket client that speaks the add-on's side of the link.
  */
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
+import { once } from 'node:events'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { connect, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Logger, type Exporter } from '@deepseek-ai/cordis'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import { brandString } from '@deepseek-ai/dsh-brand'
+import * as Connection from '@deepseek-ai/dsh-client-connection'
+import { credentialKey } from '@deepseek-ai/dsh-credentials'
 import { WebServer } from '@deepseek-ai/dsh-host-webserver'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -21,14 +26,17 @@ import DvProject, { type AssetId, type OperationToolValue, type ProjectId, type 
 import { unzipSync } from 'fflate'
 import { afterEach, describe, expect, it } from 'vitest'
 import WebSocket from 'ws'
+import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
 import { chatProject, provideChatServices } from '../../project/tests/workspaces.ts'
 import DvBlender, {
   ADDON_ROUTE, LINK_PATH, NOT_LINKED, STATUS_ROUTE, TOKEN_ROUTE, VIEW_PATH, VIEWER_BACKLOG_BYTES, bridgeRoutes, encodeBinary,
-  parseViewCommand, relayView, type BlenderStatus,
+  parseViewCommand, relayView, zipAddon, type BlenderStatus,
 } from '../src/index.ts'
 
 /** The plugin classes the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
-const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvCanvasNodes, DvFfmpeg, DvAssetPool, WebServer, DvBlender }
+const PLUGINS = {
+  SystemPrompt, ToolRuntime, DvProject, DvCanvasNodes, DvFfmpeg, DvAssetPool, WebServer, DvBlender, MemoryCredentials, Connection,
+}
 
 const HELLO = { blender_version: '5.3.0', addon_version: '0.1.0', file: 'shot.blend', allow_code: true }
 
@@ -87,6 +95,8 @@ class FakeBlender {
 /** A stand-in attachment store that keeps saved images in memory. */
 class MemoryAttachments {
   readonly saved: Array<{ data: Uint8Array; mediaType: string; name?: string }> = []
+  /** The aggregate image limit, which the Connection checks its request body limit against. */
+  readonly imageLimits = { maxMessageImageBytes: 1024 }
 
   saveImage(input: { data: Uint8Array; mediaType: string; name?: string }): Promise<Record<string, unknown>> {
     this.saved.push(input)
@@ -94,14 +104,36 @@ class MemoryAttachments {
   }
 }
 
+/** A stand-in model catalog: the image-input models are the ones `imageModels` names. */
+class StandInLlm {
+  readonly asked: Array<[string, string]> = []
+
+  constructor(private readonly imageModels: string[]) {}
+
+  resolveModelInfo(provider: string, model: string): Promise<Record<string, unknown>> {
+    this.asked.push([provider, model])
+    return Promise.resolve(this.imageModels.includes(model) ? { inputModalities: ['text', 'image'] } : {})
+  }
+}
+
+/** Opt-in parts of the composition: the credential store, the real Connection over it, and a stand-in model catalog. */
+interface Extras {
+  credentials?: boolean
+  connection?: boolean
+  llm?: StandInLlm
+}
+
 interface Fixture {
   ctx: Context
   port: number
   attachments: MemoryAttachments
   project: ProjectId
+  /** The `dvBlender` warnings logged since the boot, formatted. */
+  warnings: string[]
   /** Link a {@link FakeBlender} (with the current token unless `token` is set) and wait for its `hello` unless `hello` is false. */
   connect(options?: { token?: string; origin?: string; hello?: boolean }): Promise<FakeBlender>
-  call(name: string, args: Record<string, unknown>, session?: string): Promise<ToolExecutionResult>
+  /** Execute a tool; `agent` adds fields to the calling agent, whose `id` is `session`. */
+  call(name: string, args: Record<string, unknown>, session?: string, agent?: Record<string, unknown>): Promise<ToolExecutionResult>
   route(path: string, method?: 'GET' | 'POST'): (request?: Request) => Promise<Response>
 }
 
@@ -122,9 +154,10 @@ const until = async (check: () => boolean, label: string): Promise<void> => {
 /**
  * Boot the composition from a test-only `cordis.yml`.
  * @param config - extra `dv-blender` config lines.
+ * @param extras - the opt-in parts of the composition.
  * @returns the fixture, with a project whose folder chat session `s1` runs in.
  */
-async function start(config: string[] = []): Promise<Fixture> {
+async function start(config: string[] = [], extras: Extras = {}): Promise<Fixture> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-blender-'))
   const globals = globalThis as typeof globalThis & { __dvBlenderComposition?: typeof PLUGINS }
   globals.__dvBlenderComposition = PLUGINS
@@ -133,6 +166,8 @@ async function start(config: string[] = []): Promise<Fixture> {
     writeFileSync(join(dir, `${id}.mjs`), `export default globalThis.__dvBlenderComposition.${key}\n`)
     rows.push(`- id: ${id}`, `  name: ${pathToFileURL(join(dir, `${id}.mjs`)).href}`, ...lines.length === 0 ? [] : ['  config:', ...lines.map(line => `    ${line}`)])
   }
+  if (extras.credentials === true || extras.connection === true) row('credentials', 'MemoryCredentials', [])
+  if (extras.connection === true) row('connection', 'Connection', [])
   row('system-prompt', 'SystemPrompt', [])
   row('tools', 'ToolRuntime', [])
   row('dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`])
@@ -147,6 +182,14 @@ async function start(config: string[] = []): Promise<Fixture> {
   const services = provideChatServices(ctx)
   const attachments = new MemoryAttachments()
   ctx.provide('attachments', attachments as never)
+  if (extras.llm !== undefined) ctx.provide('llm', extras.llm as never)
+  const warnings: string[] = []
+  // Level 2 is `LoggerLevel.WARN`; an exporter receives only `info` and above unless it names a level.
+  const exporter: Exporter = {
+    colors: false, levels: { dvBlender: 2 },
+    export: (message) => { if (message.name === 'dvBlender' && message.type === 'warn') warnings.push(Logger.format(exporter, message)) },
+  }
+  ctx.logger.exporter(exporter)
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
@@ -160,7 +203,7 @@ async function start(config: string[] = []): Promise<Fixture> {
   const port = ctx.webServer.port
   let calls = 0
   return {
-    ctx, port, attachments, project,
+    ctx, port, attachments, project, warnings,
     async connect(options = {}) {
       const token = options.token ?? await ctx.dvBlender.token.current()
       const socket = new WebSocket(`ws://127.0.0.1:${String(port)}${LINK_PATH}`, {
@@ -179,11 +222,11 @@ async function start(config: string[] = []): Promise<Fixture> {
       }
       return blender
     },
-    call(name, args, session) {
+    call(name, args, session, agent) {
       calls += 1
       return ctx.tools.execute({
         callId: ToolCallId(`call-${String(calls)}`), name, arguments: args, signal: new AbortController().signal,
-        ...session === undefined ? {} : { agent: { id: session } as never },
+        ...session === undefined && agent === undefined ? {} : { agent: { id: session, ...agent } as never },
       })
     },
     route(path, method = 'GET') {
@@ -204,9 +247,12 @@ function failure(result: ToolExecutionResult): string {
   return result.isError ? result.error.message : ''
 }
 
-/** A browser viewer on the viewport route: its messages in arrival order, a binary message as `bytes:<base64>`. */
-async function openViewer(port: number): Promise<{ socket: WebSocket; messages: unknown[] }> {
-  const socket = new WebSocket(`ws://127.0.0.1:${String(port)}${VIEW_PATH}`)
+/**
+ * A browser viewer on the viewport route with the request headers `headers`: its messages in arrival order, a binary
+ * message as `bytes:<base64>`.
+ */
+async function openViewer(port: number, headers: Record<string, string> = {}): Promise<{ socket: WebSocket; messages: unknown[] }> {
+  const socket = new WebSocket(`ws://127.0.0.1:${String(port)}${VIEW_PATH}`, { headers })
   cleanups.push(() => { socket.terminate() })
   const messages: unknown[] = []
   socket.on('message', (data, isBinary) => {
@@ -550,5 +596,236 @@ describe('dvBlender disposal', () => {
     expect(fixture.ctx.dvProject.listOperations().map(spec => spec.name).filter(name => name.startsWith('blender.'))).toEqual([])
     // The web server drops an upgrade that no route claims.
     await expect(fixture.connect({ token })).rejects.toThrow('socket hang up')
+  })
+})
+
+/**
+ * Upgrade a plain TCP socket to a WebSocket on `path` without the ws library, so the test can then write bytes that
+ * break the WebSocket framing.
+ * @param port - the web server's port.
+ * @param path - the upgrade route.
+ * @param headers - extra request header lines.
+ * @returns the socket and the server's response head.
+ */
+async function rawUpgrade(port: number, path: string, headers: string[] = []): Promise<{ socket: Socket; head: string }> {
+  const socket = connect(port, '127.0.0.1')
+  cleanups.push(() => { socket.destroy() })
+  await once(socket, 'connect')
+  socket.write([
+    `GET ${path} HTTP/1.1`, `Host: 127.0.0.1:${String(port)}`, 'Upgrade: websocket', 'Connection: Upgrade',
+    `Sec-WebSocket-Key: ${randomBytes(16).toString('base64')}`, 'Sec-WebSocket-Version: 13', ...headers, '', '',
+  ].join('\r\n'))
+  let head = ''
+  while (!head.includes('\r\n\r\n')) head += String(((await once(socket, 'data')) as [Buffer])[0])
+  return { socket, head }
+}
+
+/**
+ * The status line of the server's answer to an upgrade request on `path`.
+ * @param port - the web server's port.
+ * @param path - the upgrade route.
+ * @param headers - extra request header lines.
+ * @returns the first line of the response.
+ */
+async function upgradeStatus(port: number, path: string, headers: string[] = []): Promise<string> {
+  return (await rawUpgrade(port, path, headers)).head.split('\r\n')[0] ?? ''
+}
+
+/** An unmasked text frame `hi`, which a WebSocket server must refuse from a client. */
+const UNMASKED_FRAME = Buffer.from([0x81, 0x02, 0x68, 0x69])
+
+/**
+ * The cookie the real Connection sets when a browser opens the launch URL with the process token.
+ * @param fixture - a fixture booted with the Connection.
+ * @returns the `Cookie` header value.
+ */
+function browserCookie(fixture: Fixture): string {
+  const host = `127.0.0.1:${String(fixture.port)}`
+  const connection = fixture.ctx.get('connection')
+  if (connection === undefined) throw new Error('The fixture has no Connection.')
+  const url = new URL(connection.authenticatedUrl(`http://${host}/`))
+  let cookie = ''
+  connection.authorizeIndex({ method: 'GET', url: `${url.pathname}${url.search}`, headers: { host } }, {
+    writeHead: (_status, headers) => { cookie = headers?.['set-cookie']?.split(';')[0] ?? '' },
+    end: () => undefined,
+  })
+  expect(cookie).not.toBe('')
+  return cookie
+}
+
+describe('dvBlender link and viewer sockets', () => {
+  it('refuses a link request without an Authorization header', async () => {
+    const fixture = await start()
+    expect(await upgradeStatus(fixture.port, LINK_PATH)).toBe('HTTP/1.1 401 Unauthorized')
+    expect(fixture.ctx.dvBlender.link.linked).toBe(false)
+  })
+
+  it('logs a broken frame on the link and on a viewer as a warning', async () => {
+    const fixture = await start()
+    const token = await fixture.ctx.dvBlender.token.current()
+    const link = await rawUpgrade(fixture.port, LINK_PATH, [`Authorization: Bearer ${token}`])
+    expect(link.head).toMatch(/^HTTP\/1\.1 101 /u)
+    link.socket.write(UNMASKED_FRAME)
+    await until(() => fixture.warnings.some(text => text.startsWith('blender link error: ')), 'the link warning')
+    const viewer = await rawUpgrade(fixture.port, VIEW_PATH)
+    await until(() => fixture.ctx.dvBlender.link.viewerCount === 1, 'the viewer')
+    viewer.socket.write(UNMASKED_FRAME)
+    await until(() => fixture.warnings.some(text => text.startsWith('blender viewer error: ')), 'the viewer warning')
+    expect(fixture.warnings).toEqual([
+      'blender link error: Invalid WebSocket frame: MASK must be set',
+      'blender viewer error: Invalid WebSocket frame: MASK must be set',
+    ])
+    await until(() => fixture.ctx.dvBlender.link.viewerCount === 0, 'the viewer to leave')
+  })
+
+  it('logs a text message from the add-on that does not parse, and ignores it', async () => {
+    const fixture = await start()
+    const blender = await fixture.connect()
+    blender.socket.send('not json')
+    blender.socket.send(new Uint8Array([0, 0]))
+    await until(() => fixture.warnings.length === 2, 'two warnings')
+    expect(fixture.warnings).toEqual([
+      'blender link: an unreadable text message from the add-on was ignored',
+      'blender link: an unreadable binary message from the add-on was ignored',
+    ])
+    expect(fixture.ctx.dvBlender.link.state).toEqual(HELLO)
+  })
+
+  it('pings the link and every viewer at the configured interval', async () => {
+    const fixture = await start(['pingMs: 20'])
+    const blender = await fixture.connect()
+    const viewer = await openViewer(fixture.port)
+    await Promise.all([once(blender.socket, 'ping'), once(viewer.socket, 'ping')])
+  })
+
+  it('sends a later viewer the last frame at once', async () => {
+    const fixture = await start()
+    const blender = await fixture.connect()
+    await openViewer(fixture.port)
+    blender.frame(7)
+    await until(() => blender.acks.includes(7), 'the frame ack')
+    const later = await openViewer(fixture.port)
+    await until(() => later.messages.length === 3, 'the status and the last frame')
+    expect(later.messages).toEqual([
+      { type: 'status', linked: true, state: HELLO },
+      { type: 'frame', seq: 7, width: 4, height: 3, mime: 'image/jpeg' },
+      `bytes:${Buffer.from([0xff, 0xd8, 7]).toString('base64')}`,
+    ])
+  })
+})
+
+describe('dvBlender behind the Connection', () => {
+  it('admits a viewer with the browser cookie and refuses one without it or from another origin', async () => {
+    const fixture = await start([], { connection: true })
+    expect(await upgradeStatus(fixture.port, VIEW_PATH)).toBe('HTTP/1.1 401 Unauthorized')
+    expect(await upgradeStatus(fixture.port, VIEW_PATH, ['Origin: http://evil.example'])).toBe('HTTP/1.1 403 Forbidden')
+    expect(fixture.ctx.dvBlender.link.viewerCount).toBe(0)
+    const viewer = await openViewer(fixture.port, { cookie: browserCookie(fixture) })
+    await until(() => viewer.messages.length === 1, 'the status')
+    expect(viewer.messages).toEqual([{ type: 'status', linked: false, state: null }])
+  })
+
+  it('serves the status route under /api, and removes it when its fiber is disposed', async () => {
+    const fixture = await start([], { connection: true })
+    const cookie = browserCookie(fixture)
+    const url = `http://127.0.0.1:${String(fixture.port)}${STATUS_ROUTE}`
+    const response = await fetch(url, { headers: { cookie } })
+    expect(response.status).toBe(200)
+    const status = await response.json() as BlenderStatus
+    const token = await fixture.ctx.dvBlender.token.current()
+    expect(status).toEqual({ linked: false, state: null, token, link_path: LINK_PATH, viewers: 0 })
+    const entry = [...fixture.ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-blender.mjs'))
+    await entry?.fiber?.dispose()
+    expect((await fetch(url, { headers: { cookie } })).status).toBe(404)
+  })
+
+  it('keeps the pairing token in the credential store and replaces it there', async () => {
+    const fixture = await start([], { credentials: true })
+    const key = credentialKey('dv-blender', 'pairing-token')
+    const token = await fixture.ctx.dvBlender.token.current()
+    expect(await fixture.ctx.credentials.readRecord(key)).toEqual({ kind: 'grant', payload: { version: 1, token } })
+    const renewed = await (await fixture.route(TOKEN_ROUTE, 'POST')()).json() as BlenderStatus
+    expect(renewed.token).not.toBe(token)
+    expect(await fixture.ctx.credentials.readRecord(key)).toEqual({ kind: 'grant', payload: { version: 1, token: renewed.token } })
+  })
+})
+
+describe('dvBlender look and its model check', () => {
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47])
+
+  it('returns a viewport look, and fails a look that Blender answers without a picture', async () => {
+    const fixture = await start()
+    const blender = await fixture.connect()
+    blender.answer = () => ({ result: { view: 'viewport' }, file: png })
+    const result = await fixture.call('dv_blender_look', {})
+    expect(result.isError ? [] : result.content[0]).toEqual({ type: 'text', text: 'A picture of the Blender viewport as the user sees it, 4x3 px.' })
+    blender.answer = () => ({ result: { view: 'viewport' } })
+    expect(failure(await fixture.call('dv_blender_look', {}))).toBe('Blender answered the look without a picture.')
+  })
+
+  it('refuses a look for a model without image input before asking Blender, and asks the routed model first', async () => {
+    const llm = new StandInLlm(['eyes'])
+    const fixture = await start([], { llm })
+    const blender = await fixture.connect()
+    blender.answer = () => ({ result: { view: 'viewport' }, file: png })
+    const routed = (config: Record<string, unknown> | undefined) => ({
+      session: { requestHeader: () => config === undefined ? undefined : { config } },
+    })
+    expect(failure(await fixture.call('dv_blender_look', {}, undefined, { ...routed(undefined), options: { provider: 'p', model: 'blind' } })))
+      .toBe('The model "blind" does not take images, so it cannot look at Blender. Read the scene with dv_blender_scene instead.')
+    expect(blender.requests).toEqual([])
+    value(await fixture.call('dv_blender_look', {}, undefined, { ...routed({ provider: 'q', model: 'eyes' }), options: { provider: 'p', model: 'blind' } }))
+    // An agent that names no model is not checked.
+    value(await fixture.call('dv_blender_look', {}, undefined, { ...routed(undefined), options: { provider: 'p' } }))
+    expect(llm.asked).toEqual([['p', 'blind'], ['q', 'eyes']])
+    expect(blender.requests).toHaveLength(2)
+  })
+
+  it('looks without a model check while no model catalog is mounted', async () => {
+    const fixture = await start()
+    const blender = await fixture.connect()
+    blender.answer = () => ({ result: { view: 'viewport' }, file: png })
+    value(await fixture.call('dv_blender_look', {}, undefined, { session: { requestHeader: () => undefined }, options: { provider: 'p', model: 'blind' } }))
+    expect(blender.requests).toHaveLength(1)
+  })
+})
+
+describe('dvBlender render defaults and summaries', () => {
+  it('renders with the scene\'s own frame and range when the call names none, and summarizes missing facts as ?', async () => {
+    const fixture = await start()
+    const blender = await fixture.connect()
+    blender.answer = (_op, params) => params['kind'] === 'still'
+      ? { result: { mime: 'image/png', width: 8, height: 6 }, file: new Uint8Array([0x89, 0x50]) }
+      : { result: { mime: 'video/mp4', width: 8, height: 6 }, file: new Uint8Array([0, 0, 0, 0x18]) }
+    const still = value(await fixture.call('dv_blender_render', { reason: 'still' }, 's1')) as OperationToolValue
+    expect(still.summary).toBe('Blender frame ? (8x6)')
+    const clip = value(await fixture.call('dv_blender_animation_render', { reason: 'clip' }, 's1')) as OperationToolValue
+    expect(clip.summary).toBe('Blender frames ?–? (8x6, ?s)')
+    const start1 = value(await fixture.call('dv_blender_animation_render', { reason: 'from 3', frame_start: 3 }, 's1')) as OperationToolValue
+    const end9 = value(await fixture.call('dv_blender_animation_render', { reason: 'to 9', frame_end: 9 }, 's1')) as OperationToolValue
+    expect([start1.status, end9.status]).toEqual(['done', 'done'])
+    expect(blender.requests.map(request => request.params)).toEqual([
+      { kind: 'still' }, { kind: 'animation' }, { kind: 'animation', frame_start: 3 }, { kind: 'animation', frame_end: 9 },
+    ])
+  })
+
+  it('summarizes a record without a size as ?', async () => {
+    const fixture = await start()
+    const spec = fixture.ctx.dvProject.listOperations().find(candidate => candidate.name === 'blender.render')
+    expect(spec?.summarize({ report: { frame: 2, width: 8 } } as never)).toBe('Blender frame 2 (?)')
+    expect(spec?.summarize({} as never)).toBe('Blender frame ? (?)')
+  })
+})
+
+describe('dvBlender add-on zip', () => {
+  it('zips nested folders with forward-slash paths and leaves out Python caches', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dv-blender-addon-'))
+    cleanups.push(() => { rmSync(dir, { recursive: true, force: true }) })
+    mkdirSync(join(dir, 'icons', '__pycache__'), { recursive: true })
+    writeFileSync(join(dir, 'blender_manifest.toml'), 'id = "x"\n')
+    writeFileSync(join(dir, 'icons', 'eye.svg'), '<svg/>')
+    writeFileSync(join(dir, 'icons', 'old.pyc'), '')
+    writeFileSync(join(dir, 'icons', '__pycache__', 'eye.cpython.pyc'), '')
+    expect(Object.keys(unzipSync(zipAddon(dir))).sort()).toEqual(['blender_manifest.toml', 'icons/eye.svg'])
   })
 })
