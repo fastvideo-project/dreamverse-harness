@@ -7925,6 +7925,9 @@ importers:
       '@dv/asset-pool':
         specifier: workspace:*
         version: link:../asset-pool
+      '@dv/ffmpeg':
+        specifier: workspace:*
+        version: link:../ffmpeg
       '@types/node':
         specifier: ^22.20.0
         version: 22.20.0

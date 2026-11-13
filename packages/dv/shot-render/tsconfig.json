@@ -28,6 +28,12 @@
     },
     {
       "path": "../generation"
+    },
+    {
+      "path": "../asset-pool"
+    },
+    {
+      "path": "../ffmpeg"
     }
   ]
 }

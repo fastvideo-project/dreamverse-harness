@@ -32,6 +32,7 @@ kind: "package-reference"
 | `primitive`、`tasks`、`label`、`description` | 原语、该原语的每个任务及其中英文标签、操作标签，以及工具描述                               |
 | `params`、`inputs`、`outputs`                | 共享参数以外的参数、输入角色，以及输出；声明可以重述 `prompt` 以描述它                     |
 | `seed`、`toolParams`、`prepareToolCall`      | 对没有种子的模型设为 `false`；仅工具参数，以及检查前对 agent 调用的修改                    |
+| `prepareInputs`                             | 可选的异步输入准备：依赖完成后、构建请求前在执行阶段处理已解析输入；检查从不调用它 |
 | `toRequest`、`toOutputs`                     | 由事实、参数和 `RequestInput` 构建模型请求，有种子的声明还由种子构建；把模型结果导入为输出 |
 | `summarize`                                  | 一行记录摘要                                                                               |
 | `node`                                       | 记录的画布节点：`kind`，即浏览器绘制它们所用的节点类型键，以及布局列 `column`              |

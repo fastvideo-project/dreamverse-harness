@@ -66,6 +66,8 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 
 `shot.render` 的 precondition 对每个调用方都拒绝：不在模型目录中的模型键、缺少提示词、超出条目事实的参数、多于一个的首帧，以及条目拒绝的渲染请求。每个条目的 `validateGenerationRequest(request)` 负责模型的请求规则，例如输入接受的媒体类型和数量（`fasth3` 在生成任务 `ref2v` 下至少一个参考素材）、模型不接受的首帧，以及无效的 `extra` 值；`shot.render` 组装请求，在写入记录前和真正渲染前各调用一次，自己不检查任何模型规则。
 
+生成声明可使用 [`@dv/generation`](../../packages/dv/generation/README.zh.md) 的 `GenerationSpec.prepareInputs`，在依赖完成后、构建请求前于执行阶段准备已解析输入；检查从不调用它。[`@dv/shot-render`](../../packages/dv/shot-render/README.zh.md) 用它处理 `continue_video_from`：先前渲染的带音频片尾成为一个普通视频参考素材，与使用最后静帧的快捷参数 `continue_from` 不同。
+
 ## 操作记录
 
 项目的每次变化都是项目 `records.jsonl` 文件中的一条记录，只有 `@dv/project` 读写这个文件。每条记录的 `kind` 都是 `'operation'`：它是一次操作调用。一条记录包含：谁（`actor`：`user`、`agent` 或 `system`）、来源（`surface`：`chat`、`canvas`、`timeline`、`asset_pool`、`history` 或 `api`）、原因（`intent`：智能体的 `reason` 参数，或对人的手势的简短描述）、所属组件（`component`）和操作（`operation`）及其版本、参数、各输入及其解析到的素材（`resolved_asset`）、输出、状态、父记录，以及两个链接：`based_on`（本记录带修改地重复那条记录，例如改了提示词的新版本）和 `supersedes`（本记录替代那些记录的输出）。字段 `session`、`turn` 和 `tool_call` 把记录链接到产生它的对话的 DSH 会话日志：对话 ID、该会话的 DSH 轮次编号和工具调用 ID；对话本身留在会话日志中。记录只追加不改写；状态变化、成本和报告以更新行追加。每条记录的父记录是写入它时项目的当前位置（[历史规则](#history-rules)）。项目组件自己的动作也是记录（`proj.create`、`proj.stale_accept`），而撤销、重做、移到某一步，以及 `dv_proj_state`、`dv_proj_history_list` 和 `inspect.*` 操作这类读取都不写记录。

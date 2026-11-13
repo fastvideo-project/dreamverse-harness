@@ -1,0 +1,8 @@
+version: 1
+scenario: shot-video-continuation
+profile: headless
+composition: shot-video-continuation
+recording: authored
+header:
+  class: shot-video-continuation
+  pin: true

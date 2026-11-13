@@ -81,6 +81,8 @@ interface GenerationSpecFields<P extends PrimitiveId> {
   toolParams?: OperationSpec['params']
   /** Change an agent call before the check, such as a tool-only argument that becomes an input. */
   prepareToolCall?(call: OperationToolCall): void
+  /** Prepare resolved inputs at execution time, after dependencies finish; checks never run this hook. */
+  prepareInputs?(ctx: Context, run: OperationContext): Promise<readonly RequestInput[]>
   /** Import the model's result as the record's outputs. */
   toOutputs(ctx: Context, run: OperationContext, result: PrimitiveTypes[P]['result'],
     facts: PrimitiveTypes[P]['facts'], request: PrimitiveTypes[P]['request']): Promise<OperationResult>
@@ -281,7 +283,8 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
     private async execute(run: OperationContext): Promise<OperationResult> {
       const entry = this.ctx.dvModels.resolve(tasks, run.params)
       const facts = await entry.facts()
-      const { request, seed } = requestOf(spec, facts, run.params, run.inputs)
+      const inputs = spec.prepareInputs === undefined ? run.inputs : await spec.prepareInputs(this.ctx, run)
+      const { request, seed } = requestOf(spec, facts, run.params, inputs)
       const problems = await entry.validateGenerationRequest(request)
       if (problems.length > 0) throw new Error(`${modelReason(entry, problems)} ${REFUSAL_END}`)
       const result = await spec.toOutputs(this.ctx, run, entry.render(request, run.signal), facts, request)

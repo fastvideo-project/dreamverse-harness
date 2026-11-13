@@ -32,6 +32,7 @@ A primitive package declares its row of `PrimitiveTypes` and its tasks in `TaskM
 | `primitive`, `tasks`, `label`, `description` | The primitive, every task of the primitive with its label in Chinese and English, the operation label, and the tool description |
 | `params`, `inputs`, `outputs`                | The params besides the shared ones, the input roles, and the outputs; a declaration may restate `prompt` to describe it         |
 | `seed`, `toolParams`, `prepareToolCall`      | `false` for a model without a seed; tool-only arguments, and the change of an agent call before the check                       |
+| `prepareInputs`                             | Optional asynchronous preparation of resolved inputs during execution, after dependencies finish and before request construction; checks never call it |
 | `toRequest`, `toOutputs`                     | Build the model request from facts, params and `RequestInput`s, and from the seed for a seeded declaration; import the model result as outputs |
 | `summarize`                                  | The one-line record summary                                                                                                     |
 | `node`                                       | The canvas nodes of the records: `kind`, the node type key that the browser draws them with, and the layout `column`            |
