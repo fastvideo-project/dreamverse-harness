@@ -5,7 +5,7 @@
  * `agents` registry is a stand-in whose agents record the messages they get.
  */
 import { join } from 'node:path'
-import { Context, FiberState } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { ToolCallId, createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -33,8 +33,6 @@ afterEach(async () => {
 class FakeAgent {
   status: 'idle' | 'running' = 'idle'
   readonly got: Array<{ how: 'followup' | 'inject'; message: UserMessage }> = []
-  /** The agent-scoped context; only its fiber state is read. */
-  readonly ctx = { fiber: { state: FiberState.ACTIVE } }
   /** The inboxes, which stay empty: the record notices read them before a wake opens a turn. */
   readonly inbox = { nextStep: [] as UserMessage[], nextTurn: [] as UserMessage[] }
 

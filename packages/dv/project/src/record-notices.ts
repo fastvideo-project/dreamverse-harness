@@ -16,20 +16,19 @@
  *   from the user gets further wakes injected without waking it; the next message from the user claims them.
  *
  * Watches live in memory: a restart cancels every unfinished record (`Runner.recover`) while no agent turn is open. A
- * session without a registered agent when its record finishes, or whose agent is being disposed (its `ctx` fiber is no
- * longer active), gets no wake; the project update message shows the record to the session's next step. A record that
- * finishes off the history list up to the current position (undone, or discarded by a write after an undo) gets no
- * wake: no project update reports it, until a redo brings an undone record back and the session's next step reports it.
- * When it was the last record that the session watched, the wakes that an idle agent holds for its other records open
- * a turn under the rules above. Archiving a session with its work stopped (`workspace/session-stop`) drops that
- * session's watches; its records keep running and send no wake.
+ * session without a registered agent when its record finishes gets no wake; the project update message shows the record
+ * to the session's next step. A record that finishes off the history list up to the current position (undone, or
+ * discarded by a write after an undo) gets no wake: no project update reports it, until a redo brings an undone record
+ * back and the session's next step reports it. When it was the last record that the session watched, the wakes that an
+ * idle agent holds for its other records open a turn under the rules above. Archiving a session with its work stopped
+ * (`workspace/session-stop`) drops that session's watches; its records keep running and send no wake.
  *
  * Calls the `agents` registry, read at delivery time, `dvProject.getRecord` and `dvProject.listHistory`. Called by the
  * service: `watch` from the operation tools, `recordFinished` from the record store's change callback.
  *
  * @module @dv/project/record-notices
  */
-import { FiberState, type Context } from '@deepseek-ai/cordis'
+import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { SessionId as AgentSessionId } from '@deepseek-ai/dsh-session'
@@ -98,8 +97,7 @@ export class RecordNotices {
     if (watch?.project !== project) return
     this.watches.delete(record.id)
     const agent = this.ctx.get('agents')?.get(AgentSessionId(watch.session))
-    // An agent stays registered while its disposal unwinds its scope; a wake then would open a turn in it.
-    if (agent === undefined || agent.ctx.fiber.state !== FiberState.ACTIVE) return
+    if (agent === undefined) return
     // A project update lists only records of the history list up to the current position: the wake of an undone or
     // discarded record would open a turn that reports nothing of it. The wakes that this watch held back still need one.
     if (!this.onHistory(project, record.id)) {

@@ -64,8 +64,6 @@ interface Fixture {
   render(prompt: string): Promise<RecordId>
   /** Let the render of `prompt` finish and wait until its record finished. */
   finish(prompt: string, record: RecordId): Promise<void>
-  /** Dispose the agent. */
-  dispose(): Promise<void>
 }
 
 /**
@@ -106,17 +104,14 @@ async function start(maxConsecutiveWakes?: number): Promise<Fixture> {
       return { outputs: [run.importAsset(Buffer.from(`video ${String(run.params['prompt'])}`), { mime: 'video/mp4', name: 'shot.mp4' })] }
     },
   } satisfies OperationSpec)
-  await mountAgentLoopTestHarness(context)
+  const loop = await mountAgentLoopTestHarness(context)
   const adapter = new HangThenText()
   context.llm.registerAdapter(['mock'], adapter)
   const folder = await project.newProjectFolder('Dunk')
   const projectId = (await project.createProject(folder, 'Dunk', {
     actor: 'user', surface: 'canvas', session: null, turn: null, tool_call: null, intent: 'create',
   })).id
-  const handle = await context.agentLoop.createAgent(context, {
-    sessionId: AgentSessionId('s1'), agentOptions: { provider: 'mock', model: 'mock' }, meta: { cwd: folder },
-  })
-  const { agent } = handle
+  const agent = await loop.create(AgentSessionId('s1'), { provider: 'mock', model: 'mock' }, { cwd: folder })
   const session = brandString<SessionId>(agent.id)
   const claimed: UserMessage[] = []
   context.on('agent/inbox/claimed', ({ message }) => { claimed.push(message) })
@@ -135,7 +130,6 @@ async function start(maxConsecutiveWakes?: number): Promise<Fixture> {
       gate(prompt).resolve(undefined)
       await project.wait(projectId, [record])
     },
-    dispose: () => handle.dispose(),
   }
 }
 
@@ -210,22 +204,6 @@ describe('record notices with the agent loop', () => {
     expect(fixture.adapter.requests).toEqual([])
     expect(fixture.agent.inbox.nextStep).toEqual([])
     expect(fixture.agent.inbox.nextTurn).toEqual([])
-  })
-
-  it('delivers no wake to an agent whose disposal is unwinding its scope', async () => {
-    const fixture = await start()
-    const record = await fixture.render('dunk')
-    const followup = vi.spyOn(fixture.agent, 'followup')
-    const inject = vi.spyOn(fixture.agent, 'inject')
-    // The agent stays registered until its scope has unwound; the record finishes in that window.
-    fixture.agent.ctx.effect(() => () => {
-      fixture.project['notices'].recordFinished(fixture.projectId, { ...fixture.project.getRecord(fixture.projectId, record), status: 'done' })
-    }, 'finish the render while the agent is disposed')
-    await fixture.dispose()
-    expect(followup).not.toHaveBeenCalled()
-    expect(inject).not.toHaveBeenCalled()
-    expect(fixture.adapter.requests).toEqual([])
-    await fixture.finish('dunk', record)
   })
 
   it('opens a turn for a wake injected into the idle agent when a discard drops the session\'s other watch', async () => {
