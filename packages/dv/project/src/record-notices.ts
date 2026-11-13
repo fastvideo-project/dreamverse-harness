@@ -20,8 +20,7 @@
  * to the session's next step. A record that finishes off the history list up to the current position (undone, or
  * discarded by a write after an undo) gets no wake: no project update reports it, until a redo brings an undone record
  * back and the session's next step reports it. When it was the last record that the session watched, the wakes that an
- * idle agent holds for its other records open a turn under the rules above. Archiving a session with its work stopped
- * (`workspace/session-stop`) drops that session's watches; its records keep running and send no wake.
+ * idle agent holds for its other records open a turn under the rules above.
  *
  * Calls the `agents` registry, read at delivery time, `dvProject.getRecord` and `dvProject.listHistory`. Called by the
  * service: `watch` from the operation tools, `recordFinished` from the record store's change callback.
@@ -64,11 +63,6 @@ export class RecordNotices {
         if (message.source.kind === 'user') this.spentWakes.delete(agent)
       })
     }
-    // An archived session's gate blocks every turn, so a wake would open an empty blocked turn; its renders keep running.
-    ctx.on('workspace/session-stop', ({ sessionId }) => {
-      const session = brandString<SessionId>(sessionId)
-      for (const [record, watch] of this.watches) if (watch.session === session) this.watches.delete(record)
-    })
   }
 
   /**
