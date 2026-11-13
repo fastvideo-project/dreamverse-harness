@@ -10,7 +10,7 @@ import { randomInt } from 'node:crypto'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type {} from '@dv/canvas'
 import {
-  assertVideoSelection, formatModelKey, type ModelEntry, type PrimitiveId, type PrimitiveTypes, type TaskOfPrimitive,
+  assertModelSelection, formatModelKey, type ModelEntry, type PrimitiveId, type PrimitiveTypes, type TaskOfPrimitive,
 } from '@dv/models'
 import type {
   AssetId, OperationContext, OperationInput, OperationOutput, OperationResult, OperationSpec, OperationToolCall, ProjectId,
@@ -302,11 +302,11 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
         summarize: record => spec.summarize(record),
         prepareToolCall: async (call) => {
           spec.prepareToolCall?.(call)
-          assertVideoSelection(call.request, call.state)
+          assertModelSelection(call.request, call.state)
           await this.refuse(call.request, call.state)
         },
         precondition: (request, state) => {
-          assertVideoSelection(request, state)
+          assertModelSelection(request, state)
           return this.refuse(request, state)
         },
         execute: run => this.execute(run),

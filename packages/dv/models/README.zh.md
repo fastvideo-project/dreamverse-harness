@@ -122,7 +122,7 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 
 本服务还为 agent 注册工具 `dv_models_list` 和 `dv_models_get`、skill `video-model-selection`，以及每个条目的提示词 skill。它不向系统提示词添加任何内容。
 
-当 `dvProject` 存在时，`dv_models_select` 通过项目操作 `models.select` 保存当前对话的视频模型默认值。provider 和 model 都为空字符串时选择 Auto。此后的 agent 生成必须使用该 provider/model，直到用户或 agent 更改选择；已有生成保留其记录中的模型和任务。输入框在操作员 LLM 选择器旁显示此默认值，因此用户无需每次生成都重新选择。可选的 `models` 状态从成功操作中重建选择；旧项目从 Auto 开始。
+当 `dvProject` 存在时，`dv_models_select` 通过项目操作 `models.select`（版本 2）保存当前对话某一模态（`modality`，例如 `video`、`image` 或 `audio`）的默认模型。provider 和 model 都为空字符串时，该模态选择 Auto；为没有已配置模型的模态做选择会被拒绝。此后该模态的 agent 生成必须使用该 provider/model，直到用户或 agent 更改选择（`assertModelSelection`，每个 `@dv/generation` 操作都会调用）；其他模态的生成和用户调用不受检查，已有生成保留其记录中的模型和任务。输入框在操作员 LLM 选择器旁显示这些默认值，因此用户无需每次生成都重新选择。可选的 `models` 状态按对话和模态从成功操作中重建选择；版本 1 的记录没有 `modality`，视为视频选择，旧项目从 Auto 开始。agent 在项目摘要中以 `model_choices` 读取它们。
 
 条目可以提供 `runtime.status`、`runtime.load` 和 `runtime.unload`。对应的操作工具为 `dv_models_status`、`dv_models_load` 和 `dv_models_unload`，参数为条目的四个键字段。这些工具管理已安装权重的 GPU 驻留，不下载权重。托管 FastVideo 后端在生成时加载所请求的配置，将模型切换与生成串行执行，并且仅保留文件和加载设置匹配的共享组件。未提供生命周期控制的 provider 保持原有生成行为，并在显式调用生命周期工具时报告该功能不可用。
 

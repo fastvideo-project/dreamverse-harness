@@ -1,9 +1,15 @@
-/** OpenRouter asynchronous video API. It never resubmits a job or follows provider-returned URLs. */
+/**
+ * OpenRouter's asynchronous video API and its image API. It never resubmits a paid request or follows provider-returned
+ * URLs.
+ */
 import { setTimeout as delay } from 'node:timers/promises'
-import { videoCatalog } from './catalog.ts'
-import type { VideoModel } from './types.ts'
+import { imageCatalog, videoCatalog } from './catalog.ts'
+import type { ImageModel, VideoModel } from './types.ts'
 
-export class OpenRouterVideos {
+/** One generated image as OpenRouter returns it. */
+export interface OpenRouterImage { bytes: Buffer; mime: string }
+
+export class OpenRouterApi {
   private readonly base: URL
   constructor(baseUrl: string, private readonly resolveKey: () => Promise<string>, private readonly pollMs: number,
     private readonly fetcher: typeof globalThis.fetch = globalThis.fetch) {
@@ -20,7 +26,7 @@ export class OpenRouterVideos {
     const response = await this.fetcher(new URL(path, this.base), { ...init, headers, redirect: 'error' })
     if (!response.ok) {
       await response.body?.cancel()
-      throw new Error(`OpenRouter video API returned HTTP ${response.status}. Check the key, credit balance, and selected model.`)
+      throw new Error(`OpenRouter API returned HTTP ${response.status}. Check the key, credit balance, and selected model.`)
     }
     return response
   }
@@ -31,6 +37,38 @@ export class OpenRouterVideos {
     return videoCatalog(await (await this.call('videos/models', {
       signal: signal === undefined ? deadline : AbortSignal.any([signal, deadline]),
     })).json())
+  }
+
+  /** Read current image choices, bounded like the video catalog. */
+  async imageCatalog(signal?: AbortSignal): Promise<ImageModel[]> {
+    const deadline = AbortSignal.timeout(10_000)
+    return imageCatalog(await (await this.call('images/models', {
+      signal: signal === undefined ? deadline : AbortSignal.any([signal, deadline]),
+    })).json())
+  }
+
+  /**
+   * Generate one image with `POST /images`, submitted once. The answer's first `data` row carries the image as raw
+   * base64 in `b64_json` and its type in `media_type`.
+   * @param body - the request body.
+   * @param signal - aborts the request.
+   * @returns the image bytes and media type.
+   * @throws Error for an HTTP failure or an answer without an image; the signal's reason on abort.
+   */
+  async generateImage(body: Record<string, unknown>, signal?: AbortSignal): Promise<OpenRouterImage> {
+    signal?.throwIfAborted()
+    const answer: unknown = await (await this.call('images', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body), ...signal === undefined ? {} : { signal } })).json()
+    const rows = typeof answer === 'object' && answer !== null && 'data' in answer && Array.isArray(answer.data) ? answer.data : []
+    const first: unknown = rows[0]
+    const b64 = typeof first === 'object' && first !== null && 'b64_json' in first ? first.b64_json : undefined
+    const mime = typeof first === 'object' && first !== null && 'media_type' in first && typeof first.media_type === 'string'
+      ? first.media_type : 'image/png'
+    const bytes = typeof b64 === 'string' ? Buffer.from(b64, 'base64') : Buffer.alloc(0)
+    if (bytes.length === 0 || !mime.startsWith('image/')) {
+      throw new Error('OpenRouter returned no image; do not automatically resubmit this paid request.')
+    }
+    return { bytes, mime }
   }
 
   /** Submit once and monitor to completion. An abort stops monitoring; OpenRouter documents no cancellation route. */

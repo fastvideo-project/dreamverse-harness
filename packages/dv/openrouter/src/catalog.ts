@@ -1,5 +1,5 @@
-/** Read provider-published video choices without manufacturing frame rates or pixel geometry. */
-import type { VideoModel } from './types.ts'
+/** Read provider-published video and image choices without manufacturing frame rates or pixel geometry. */
+import type { ImageModel, ImageParameterChoices, VideoModel } from './types.ts'
 
 function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item !== '') : []
@@ -27,5 +27,53 @@ export function videoCatalog(value: unknown): VideoModel[] {
     const name = fields.get('name')
     return [{ id, name: typeof name === 'string' ? name : id, durations: seconds, resolutions, aspectRatios,
       frames, audio: fields.get('generate_audio') === true, seed: fields.get('seed') === true }]
+  })
+}
+
+/** The enum parameters an image call may set through `extra`; the provider chooses pixel sizes from them. */
+export const IMAGE_EXTRA_PARAMETERS = ['aspect_ratio', 'resolution', 'quality', 'background'] as const
+
+/** The output formats the harness can store as PNG; vector and animated outputs are not images it can use. */
+const RASTER_FORMATS = ['png', 'jpeg', 'webp']
+
+function enumValues(descriptor: unknown): ImageParameterChoices | null {
+  if (typeof descriptor !== 'object' || descriptor === null || !('type' in descriptor) || descriptor.type !== 'enum'
+    || !('values' in descriptor) || !Array.isArray(descriptor.values)) return null
+  const listed: unknown[] = descriptor.values
+  const values = listed.filter((value): value is string | number => (typeof value === 'string' && value !== '')
+    || (typeof value === 'number' && Number.isFinite(value)))
+  return values.length === 0 ? null : values
+}
+
+/**
+ * Parse `GET /images/models`. A row needs an id, `image` among its output modalities and a `supported_parameters`
+ * object; a row whose `output_format` offers no PNG, JPEG or WebP (an SVG or GIF model) is left out.
+ * @param value - the response JSON.
+ * @returns the usable image models.
+ * @throws Error when the response has no `data` array.
+ */
+export function imageCatalog(value: unknown): ImageModel[] {
+  if (typeof value !== 'object' || value === null || !('data' in value) || !Array.isArray(value.data)) {
+    throw new Error('OpenRouter returned an invalid image catalog.')
+  }
+  return value.data.flatMap((row: unknown) => {
+    if (typeof row !== 'object' || row === null) return []
+    const fields = new Map<string, unknown>(Object.entries(row))
+    const id = fields.get('id')
+    const architecture = fields.get('architecture')
+    const outputs = typeof architecture === 'object' && architecture !== null
+      ? strings(new Map<string, unknown>(Object.entries(architecture)).get('output_modalities')) : []
+    const supported = fields.get('supported_parameters')
+    if (typeof id !== 'string' || id === '' || !outputs.includes('image') || typeof supported !== 'object' || supported === null) return []
+    const descriptors = new Map<string, unknown>(Object.entries(supported))
+    const formats = (enumValues(descriptors.get('output_format')) ?? []).map(String)
+    if (formats.length > 0 && !formats.some(format => RASTER_FORMATS.includes(format))) return []
+    const parameters: Record<string, ImageParameterChoices> = {}
+    for (const key of IMAGE_EXTRA_PARAMETERS) {
+      const values = enumValues(descriptors.get(key))
+      if (values !== null) parameters[key] = values
+    }
+    const name = fields.get('name')
+    return [{ id, name: typeof name === 'string' ? name : id, parameters, outputFormats: formats, seed: descriptors.has('seed') }]
   })
 }

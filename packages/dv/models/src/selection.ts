@@ -1,23 +1,44 @@
-/** Conversation video-model defaults and provider lifecycle operations. */
+/** Conversation model defaults, one per modality, and provider lifecycle operations. */
 import type { Context } from '@deepseek-ai/cordis'
 import type { OperationSpec, ProjectState, Reducer, RunRequest, SessionId } from '@dv/project'
 import type DvModels from './index.ts'
 import { modelKey } from './index.ts'
-import type { VideoModelSelection } from './types.ts'
+import type { ModelSelection, ModelSelections } from './types.ts'
 
-/** Read a conversation's explicit video default; null delegates to the operator. */
-export function videoSelection(state: ProjectState, session: SessionId | null): VideoModelSelection | null {
-  return session === null ? null : state.components.models?.conversations[session] ?? null
+/**
+ * Read a conversation's explicit default for one modality.
+ * @param state - the project state.
+ * @param session - the conversation, or null for a call from outside one.
+ * @param modality - the modality, such as `video` or `image`.
+ * @returns the chosen model, or null when the operator chooses (Auto).
+ */
+export function modelSelection(state: ProjectState, session: SessionId | null, modality: string): ModelSelection | null {
+  if (session === null) return null
+  // The slice is absent from a project state while the model controls are not mounted.
+  const slice: ModelSelections | undefined = state.components.models
+  const choices: Partial<Record<string, ModelSelection>> = slice?.conversations[session] ?? {}
+  return choices[modality] ?? null
 }
 
-/** Enforce the conversation default before an agent render is recorded. */
-export function assertVideoSelection(request: Pick<RunRequest, 'actor' | 'session' | 'params'>, state: ProjectState): void {
-  if (request.actor !== 'agent' || request.params['modality'] !== 'video') return
-  const selected = videoSelection(state, request.session)
+/**
+ * Enforce the conversation default of the request's modality before an agent generation is recorded.
+ * @param request - the run request; only agent calls are checked.
+ * @param state - the project state the request is checked against.
+ * @throws Error naming the chosen model when the request names another model of that modality.
+ */
+export function assertModelSelection(request: Pick<RunRequest, 'actor' | 'session' | 'params'>, state: ProjectState): void {
+  const modality = request.params['modality']
+  if (request.actor !== 'agent' || typeof modality !== 'string') return
+  const selected = modelSelection(state, request.session, modality)
   if (selected !== null && (request.params['provider'] !== selected.provider || request.params['model'] !== selected.model)) {
-    throw new Error(`This conversation's video model is ${selected.provider}/${selected.model}. `
-      + 'Use that model and its prompt skill, or change the conversation choice with dv_models_select before rendering.')
+    throw new Error(`This conversation's ${modality} model is ${selected.provider}/${selected.model}. `
+      + 'Use that model and its prompt skill, or change the conversation choice with dv_models_select before generating.')
   }
+}
+
+/** The modality of a models.select record; version 1 records chose only video models and carry no modality. */
+function selectedModality(params: Record<string, unknown>): string {
+  return typeof params['modality'] === 'string' ? params['modality'] : 'video'
 }
 
 /** Rebuild conversation choices from successful selection operations. */
@@ -25,12 +46,16 @@ export const selectionReducer: Reducer<'models'> = {
   initial: () => ({ conversations: {} }),
   reduce(slice, record) {
     if (record.operation !== 'models.select' || record.status !== 'done' || record.session === null) return slice
+    const modality = selectedModality(record.params)
     const provider = String(record.params['provider'])
     const model = String(record.params['model'])
-    return { conversations: { ...slice?.conversations, [record.session]: model === '' ? null : { provider, model } } }
+    const { [modality]: _previous, ...others }: Partial<Record<string, ModelSelection>> = slice.conversations[record.session] ?? {}
+    const choices = model === '' ? others : { ...others, [modality]: { provider, model } }
+    return { conversations: { ...slice.conversations, [record.session]: choices } }
   },
-  agentSummary: slice => ({ video_model_choices: Object.fromEntries(Object.entries(slice?.conversations ?? {})
-    .map(([session, selection]) => [session, selection === null ? null : { ...selection }])) }),
+  agentSummary: slice => ({ model_choices: Object.fromEntries(Object.entries(slice.conversations)
+    .map(([session, choices]) => [session, Object.fromEntries(Object.entries(choices)
+      .map(([modality, selection]) => [modality, { ...selection }]))])) }),
 }
 
 /** Mount conversation selection and lifecycle operations with the project service. */
@@ -39,28 +64,30 @@ export function installModelControls(ctx: Context, models: DvModels): void {
     scope.effect(() => scope.dvProject.registerComponent('models'), 'model conversation component')
     scope.effect(() => scope.dvProject.registerReducer('models', selectionReducer), 'model conversation choices')
     const select: OperationSpec = {
-      name: 'models.select', component: 'models', version: '1',
-      label: { zh: '选择视频模型', en: 'Select video model' },
-      description: 'Choose the video model for subsequent generations in this conversation. '
-        + 'Pass empty provider and model strings to let the operator choose. Existing renders keep their model. '
+      name: 'models.select', component: 'models', version: '2',
+      label: { zh: '选择模型', en: 'Select model' },
+      description: 'Choose the model of one modality (video, image or audio) for subsequent generations in this conversation. '
+        + 'Pass empty provider and model strings to let the operator choose. Existing generations keep their model. '
         + 'Selecting does not download weights; the model loads when generation starts.',
       params: {
+        modality: { type: 'string', required: true, description: 'The modality from dv_models_list, such as video or image.' },
         provider: { type: 'string', required: true, description: 'The provider from dv_models_list, or empty for Auto.' },
-        model: { type: 'string', required: true, description: 'The video model from dv_models_list, or empty for Auto.' },
+        model: { type: 'string', required: true, description: 'The model from dv_models_list, or empty for Auto.' },
       },
       inputs: {}, outputs: [], deterministic: false, resource: 'none',
-      summarize: record => String(record.params['model']) || 'Auto',
+      summarize: record => `${selectedModality(record.params)}: ${String(record.params['model']) || 'Auto'}`,
       precondition: async (request) => {
         if (request.session === null || scope.dvProject.sessionProject(request.session) !== request.project) {
-          throw new Error('Choose a video model from a conversation in this project.')
+          throw new Error('Choose a model from a conversation in this project.')
         }
-        const { provider, model } = request.params
+        const { modality, provider, model } = request.params
         if ((provider === '') !== (model === '')) throw new Error('Provider and model must both be empty for Auto.')
-        if (model !== '' && !models.list().some(entry => entry.modality === 'video' && entry.provider === provider && entry.model === model)) {
-          throw new Error(`Video model ${String(provider)}/${String(model)} is not configured.`)
+        if (!models.list().some(entry => entry.modality === modality)) throw new Error(`No ${String(modality)} model is configured.`)
+        if (model !== '' && !models.list().some(entry => entry.modality === modality && entry.provider === provider && entry.model === model)) {
+          throw new Error(`${String(modality)} model ${String(provider)}/${String(model)} is not configured.`)
         }
       },
-      execute: async run => ({ outputs: [], report: { provider: run.params['provider'], model: run.params['model'] } }),
+      execute: async run => ({ outputs: [], report: { modality: run.params['modality'], provider: run.params['provider'], model: run.params['model'] } }),
     }
     scope.effect(() => scope.dvProject.registerOperation(select), 'model selection operation')
     for (const action of ['load', 'unload', 'status'] as const) {

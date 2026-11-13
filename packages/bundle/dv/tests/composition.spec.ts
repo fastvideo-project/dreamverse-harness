@@ -21,13 +21,18 @@ afterEach(async () => {
 })
 
 describe('DreamVerse bundle composition', () => {
-  it('persists a conversation video choice, exposes lifecycle tools, and prevents a different agent render', async () => {
+  it('persists a conversation choice per modality, exposes lifecycle tools, and prevents a different agent generation', async () => {
     const { ctx, services, dispose } = await bootBundle()
     disposers.push(dispose)
     let loaded = false
     const runtime = { status: async () => ({ installed: true, loaded, loading: false, busy: false }),
       load: async () => { loaded = true }, unload: async () => { loaded = false } }
     ctx.dvModels.register(Object.create(fasth3, { model: { value: 'pika' }, provider: { value: 'fastvideo' }, runtime: { value: runtime } }))
+    const image = (model: string) => ({ modality: 'image', task: 't2i', provider: 'openrouter', model, description: model,
+      facts: async () => ({ modelId: model }), schema: async () => ({}), validateGenerationRequest: async () => [],
+      render: async () => { throw new Error('not rendered in this test') } }) as Parameters<typeof ctx.dvModels.register>[0]
+    ctx.dvModels.register(image('flux'))
+    ctx.dvModels.register(image('seedream'))
     services.chats.open('anonymous', await ctx.dvProject.newProjectFolder('model-controls'))
     const call = async (name: string, args: Record<string, unknown>) => ctx.tools.execute({
       callId: ToolCallId(name), name, arguments: args, signal: new AbortController().signal,
@@ -35,9 +40,17 @@ describe('DreamVerse bundle composition', () => {
     const created = await call('dv_proj_create', { title: 'model-controls' })
     if (created.isError) throw new Error(created.error.message)
     const project = (created.value as { project_id: ProjectId }).project_id
-    const select = await call('dv_models_select', { provider: 'fastvideo', model: 'pika', reason: 'Use Pika in this chat' })
+    const select = await call('dv_models_select', { modality: 'video', provider: 'fastvideo', model: 'pika', reason: 'Use Pika in this chat' })
     expect(select.isError).toBeFalsy()
-    expect(ctx.dvProject.getState(project).components.models).toEqual({ conversations: { anonymous: { provider: 'fastvideo', model: 'pika' } } })
+    expect(ctx.dvProject.getState(project).components.models).toEqual({ conversations: { anonymous: { video: { provider: 'fastvideo', model: 'pika' } } } })
+    expect((await call('dv_models_select', { modality: 'image', provider: 'openrouter', model: 'flux', reason: 'Use FLUX' })).isError).toBeFalsy()
+    expect(ctx.dvProject.getState(project).components.models).toEqual({ conversations: { anonymous: {
+      video: { provider: 'fastvideo', model: 'pika' }, image: { provider: 'openrouter', model: 'flux' } } } })
+    const wrongImage = await call('dv_image_generate', { modality: 'image', task: 't2i', provider: 'openrouter', model: 'seedream',
+      prompt: 'A lake', reason: 'Image' })
+    expect(wrongImage.isError && wrongImage.error.message).toContain("This conversation's image model is openrouter/flux")
+    const missing = await call('dv_models_select', { modality: 'image', provider: 'openrouter', model: 'pika', reason: 'Wrong modality' })
+    expect(missing.isError && missing.error.message).toContain('image model openrouter/pika is not configured.')
     const wrong = await call('dv_shot_render', { modality: 'video', task: 'ref2v', provider: 'uniserve', model: 'fasth3',
       prompt: 'A lake', duration_sec: 1, reason: 'Render' })
     expect(wrong.isError && wrong.error.message).toContain("This conversation's video model is fastvideo/pika")
@@ -46,8 +59,8 @@ describe('DreamVerse bundle composition', () => {
     expect(loaded).toBe(true)
     expect((await call('dv_models_unload', key)).isError).toBeFalsy()
     expect(loaded).toBe(false)
-    expect((await call('dv_models_select', { provider: '', model: '', reason: 'Let the operator choose' })).isError).toBeFalsy()
-    expect(ctx.dvProject.getState(project).components.models).toEqual({ conversations: { anonymous: null } })
+    expect((await call('dv_models_select', { modality: 'video', provider: '', model: '', reason: 'Let the operator choose' })).isError).toBeFalsy()
+    expect(ctx.dvProject.getState(project).components.models).toEqual({ conversations: { anonymous: { image: { provider: 'openrouter', model: 'flux' } } } })
     const definitions = ctx.tools.schemas().filter(tool => ['dv_models_select', 'dv_models_load', 'dv_models_unload', 'dv_models_status'].includes(tool.name))
     await expect(`${JSON.stringify(definitions, null, 2)}\n`).toMatchFileSnapshot('./expected/tools/model-controls.json')
   })

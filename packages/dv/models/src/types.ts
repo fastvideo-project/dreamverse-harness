@@ -9,11 +9,14 @@
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { AssetId, SessionId } from '@dv/project/types'
 
-/** A conversation's explicit video-model default. */
-export interface VideoModelSelection { provider: string; model: string }
+/** A conversation's explicit model default for one modality. */
+export interface ModelSelection { provider: string; model: string }
 
-/** Conversation defaults derived from models.select records. */
-export interface ModelSelections { conversations: Record<SessionId, VideoModelSelection | null> }
+/**
+ * Conversation defaults derived from models.select records: per conversation, the chosen model of each modality. A
+ * modality without an entry is Auto: the operator chooses.
+ */
+export interface ModelSelections { conversations: Record<SessionId, Partial<Record<ModalityId, ModelSelection>>> }
 
 declare module '@dv/project/types' {
   interface ComponentStates {

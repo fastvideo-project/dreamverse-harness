@@ -16,11 +16,13 @@ import DvShotRender from '@dv/shot-render'
 import DvProject from '@dv/project'
 import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
+import DvImageGenerate from '@dv/image-generate'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
 import { provideChatServices } from '../../project/tests/workspaces.ts'
 import { shotGeometry } from '../../shot-render/src/render.ts'
 import * as OpenRouter from '../src/index.ts'
+import { imageRows } from './client.spec.ts'
 
 const cleanup: Array<() => Promise<unknown>> = []
 afterEach(async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose() })
@@ -30,13 +32,16 @@ const CATALOG = { data: [{ id: 'fixture/video', name: 'Fixture Video', supported
 function isVideoEntry(entry: ModelEntry): entry is ModelEntry<TaskOfPrimitive<'video'>> { return entry.modality === 'video' }
 const ffmpeg = process.env['DV_FFMPEG'] ?? 'ffmpeg'
 
-async function fixture() {
+async function fixture(options: { images?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'dv-openrouter-'))
   cleanup.push(async () => { rmSync(dir, { recursive: true, force: true }) })
   const videoPath = join(dir, 'fixture.mp4')
   await promisify(execFile)(ffmpeg, ['-y', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=64x64:d=1:r=8',
     '-pix_fmt', 'yuv420p', videoPath])
   const clip = readFileSync(videoPath)
+  const jpegPath = join(dir, 'fixture.jpg')
+  await promisify(execFile)(ffmpeg, ['-y', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=64x36', '-frames:v', '1', jpegPath])
+  const jpeg = readFileSync(jpegPath)
   const requests: Array<{ path: string; method: string; body: Record<string, unknown> | null; key: string | undefined }> = []
   const server: Server = createServer(async (request, response) => {
     const parts: Buffer[] = []
@@ -46,6 +51,10 @@ async function fixture() {
       : JSON.parse(Buffer.concat(parts).toString()), key: request.headers.authorization })
     response.setHeader('content-type', 'application/json')
     if (path === '/api/v1/videos/models') response.end(JSON.stringify(CATALOG))
+    else if (path === '/api/v1/images/models') response.end(JSON.stringify(imageRows))
+    else if (path === '/api/v1/images') {
+      response.end(JSON.stringify({ data: [{ b64_json: jpeg.toString('base64'), media_type: 'image/jpeg' }] }))
+    }
     else if (request.method === 'POST') { response.statusCode = 202; response.end(JSON.stringify({ id: 'job1' })) }
     else if (path.endsWith('content?index=0')) { response.setHeader('content-type', 'video/mp4'); response.end(clip) }
     else response.end(JSON.stringify({ status: 'completed' }))
@@ -57,7 +66,8 @@ async function fixture() {
   provideChatServices(ctx)
   await ctx.plugin(Loader)
   Object.assign(ctx.loader.builtins, { include: Include, credentials: MemoryCredentials,
-    project: DvProject, assetPool: DvAssetPool, ffmpeg: DvFfmpeg, models: DvModels, openrouter: OpenRouter, shotRender: DvShotRender })
+    project: DvProject, assetPool: DvAssetPool, ffmpeg: DvFfmpeg, models: DvModels, openrouter: OpenRouter, shotRender: DvShotRender,
+    imageGenerate: DvImageGenerate })
   const rows = [
     { id: 'credentials', name: 'cordis:credentials', config: { OPENROUTER_API_KEY: 'fixture-key' } },
     { id: 'project', name: 'cordis:project', config: { projectsFolder: join(dir, 'projects') } },
@@ -65,8 +75,9 @@ async function fixture() {
     { id: 'assets', name: 'cordis:assetPool' }, { id: 'models', name: 'cordis:models' },
     { id: 'provider', name: 'cordis:openrouter', config: {
       baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/`, models: { cloud: 'fixture/video' }, pollIntervalMs: 1,
+      ...options.images === true ? { imageModels: { flux: 'fixture/image' } } : {},
     } },
-    { id: 'shot-render', name: 'cordis:shotRender' },
+    { id: 'shot-render', name: 'cordis:shotRender' }, { id: 'image', name: 'cordis:imageGenerate' },
   ]
   const path = join(dir, 'cordis.yml'); writeFileSync(path, JSON.stringify(rows))
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(path).href } }); await ctx.loader.await()
@@ -139,4 +150,35 @@ it('withdraws removed cloud choices when replacement settings cannot register, a
   await vi.waitFor(() => { expect(ctx.dvModels.list()).toEqual([]) })
   await provider.update({ config: original })
   await vi.waitFor(() => { expect(ctx.dvModels.list().map(entry => entry.model)).toEqual(['cloud', 'cloud', 'cloud']) })
+})
+
+describe('OpenRouter image provider composition', () => {
+  it('registers a configured image model as t2i, refuses size and unlisted extra choices, and stores a PNG of a JPEG answer', async () => {
+    const { ctx, requests, project } = await fixture({ images: true })
+    const image = ctx.dvModels.list().find(entry => entry.task === 't2i')
+    expect(image).toMatchObject({ modality: 'image', provider: 'openrouter', model: 'flux', displayName: 'Fixture Image' })
+    expect(await image?.schema()).toEqual({
+      size: { rule: 'not accepted; omit size and choose extra.aspect_ratio and extra.resolution where listed' },
+      extra: { aspect_ratio: { type: 'string', values: ['1:1', '16:9'], description: 'The aspect ratio of the image.' },
+        resolution: { type: 'string', values: ['1K', '2K'], description: 'The resolution tier; the provider chooses the pixel size from it and the aspect ratio.' } },
+      seed_supported: true,
+    })
+    const run = (params: Record<string, unknown>) => ctx.dvProject.run({ project: project.id, operation: 'image.generate', actor: 'user',
+      surface: 'api', session: null, turn: null, tool_call: null, intent: 'image', inputs: [],
+      params: { modality: 'image', task: 't2i', provider: 'openrouter', model: 'flux', prompt: 'A lake', ...params } })
+    await expect(run({ size: '1024x576' })).rejects.toThrow('OpenRouter image models take no size')
+    await expect(run({ extra: { aspect_ratio: '3:2' } })).rejects.toThrow('Choose extra.aspect_ratio from 1:1, 16:9.')
+    await expect(run({ extra: { quality: 'high' } })).rejects.toThrow('takes no extra parameter quality')
+    expect(requests.filter(request => request.path === '/api/v1/images')).toHaveLength(0)
+    const result = await run({ extra: { aspect_ratio: '16:9', resolution: '1K' }, seed: 5 })
+    expect(result.record?.status).toBe('done')
+    const [output] = result.record?.outputs ?? []
+    if (output === undefined) throw new Error('Missing image output')
+    expect(ctx.dvAssetPool.get(output)).toMatchObject({ mime: 'image/png', width: 64, height: 36 })
+    expect(result.record?.report).toMatchObject({ model_id: 'fixture/image', size: '64x36' })
+    expect(requests.filter(request => request.path === '/api/v1/images').map(request => request.body)).toEqual([{ model: 'fixture/image',
+      prompt: 'A lake', n: 1, seed: 5, output_format: 'png', aspect_ratio: '16:9', resolution: '1K' }])
+    await [...ctx.loader.entries()].find(row => row.options.id === 'provider')?.fiber?.dispose()
+    expect(ctx.dvModels.list()).toEqual([])
+  })
 })
