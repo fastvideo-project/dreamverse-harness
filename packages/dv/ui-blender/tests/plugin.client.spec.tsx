@@ -18,9 +18,9 @@ import type { EditorHost, NodeView } from '@dv/ui-canvas/contract'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
 import {
-  BLENDER_ID, BlenderPanel, VIEWPORT_SIZING, VIEWPORT_TYPE, ViewportCard, ViewportEditor, addonNavigates, applyWith,
-  blenderDefinition, inject, shownSize, viewportNode, viewportNodeType, type BlenderSource, type BlenderState, type BlenderStatus,
-  type ViewCommand, type ViewFrame,
+  BLENDER_ID, BlenderPanel, VIEWPORT_SIZING, VIEWPORT_TYPE, ViewportCard, ViewportEditor, addonNavigates, apply, applyWith,
+  blenderDefinition, drawFrame, httpBlenderSource, inject, shownSize, viewportNode, viewportNodeType, type BlenderSource,
+  type BlenderState, type BlenderStatus, type ViewCommand, type ViewFrame,
 } from '../src/client/index.ts'
 import { statsText } from '../src/client/controls.tsx'
 import { SharedViewer } from '../src/client/viewer.ts'
@@ -101,8 +101,11 @@ afterEach(async () => {
   publishCurrentProject(null)
 })
 
-/** Mount the plugin with the canvas and the tab registry, and draw its tab body in chat session s5. */
-async function mount(source: BlenderSource) {
+/**
+ * Mount the plugin with the canvas and the tab registry, and draw its tab body in chat session s5, and, when `canvas` is
+ * set, the viewport node's card and editor.
+ */
+async function mount(body: ReturnType<typeof applyWith>, canvas = false) {
   const runtime = await SlotTestRuntime.create()
   runtimes.push(runtime)
   const tabs = new SidebarRightTabRegistry(runtime.ctx)
@@ -115,15 +118,25 @@ async function mount(source: BlenderSource) {
       : (
         <SessionProvider session={reference.current}>
           <div data-testid="tab">{renderSlot('sidebar.right.pane.tab', {}, { entryKey: BLENDER_ID, hookContext: {} as never })}</div>
+          {canvas
+            ? (
+              <>
+                <div data-testid="card">{renderSlot('dv.canvas.card', { node: nodeView, assets: {}, textScale: 1, host: CARD_HOST }, { entryKey: VIEWPORT_TYPE })}</div>
+                <div data-testid="editor">
+                  {renderSlot('dv.canvas.editor', { node: nodeView, state: stateWith(true), operations: [], host: EDITOR_HOST }, { entryKey: VIEWPORT_TYPE })}
+                </div>
+              </>
+            )
+            : null}
         </SessionProvider>
       )
   ))
-  const handle = await runtime.mount({ inject: [...inject], apply: applyWith(source) })
+  const handle = await runtime.mount({ inject: [...inject], apply: body })
   const retained = runtime.sessions.retain(await runtime.sessions.add({ id: 's5' }))
   sessions.push(retained)
   reference.current = retained
   const view = runtime.renderRoot()
-  return { runtime, handle, tabs, tab: () => within(view.getByTestId('tab')) }
+  return { runtime, handle, tabs, view, tab: () => within(view.getByTestId('tab')) }
 }
 
 describe('@fastvideo/dreamverse-ui-blender', () => {
@@ -136,7 +149,7 @@ describe('@fastvideo/dreamverse-ui-blender', () => {
 
   it('registers the blender take node type, draws the Blender panel, and removes both with the plugin', async () => {
     const source = new FakeSource()
-    const { runtime, handle, tab } = await mount(source)
+    const { runtime, handle, tab } = await mount(applyWith(source))
     const blenderType = () => runtime.ctx.dvCanvas.nodeTypes.getSnapshot().find(type => type.type === 'blender')
     expect(blenderType()?.id).toBe(BLENDER_ID)
     const viewportType = () => runtime.ctx.dvCanvas.nodeTypes.getSnapshot().find(type => type.type === VIEWPORT_TYPE)
@@ -242,6 +255,10 @@ const noDraw = (): Promise<void> => Promise.resolve()
 // The slot runtime's standard hooks, which the viewport card and editor never call.
 const STANDARD = {} as GlobalStandardProps
 const nodeView = { id: 'r1', type: VIEWPORT_TYPE } as unknown as NodeView
+// The canvas's hosts of a card and an editor, which the viewport card and editor never call.
+const CARD_HOST = { run: vi.fn(), rerun: vi.fn() }
+const editorHost = (): EditorHost => ({ run: vi.fn(), close: vi.fn() }) as unknown as EditorHost
+const EDITOR_HOST = editorHost()
 
 describe('ViewportCard', () => {
   it('shows the live viewport and leaves every pointer press to the canvas', () => {
@@ -270,7 +287,7 @@ describe('ViewportEditor', () => {
     vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(320)
     vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(180)
     const frames: Array<() => void> = []
-    const host = { run: vi.fn(), close: vi.fn() } as unknown as EditorHost
+    const host = editorHost()
     render(
       <ViewportEditor
         node={nodeView} state={stateWith(true)} operations={[]} host={host} source={source} draw={noDraw}
@@ -345,6 +362,46 @@ describe('ViewportEditor', () => {
     expect(screen.getByText<HTMLButtonElement>('Top').disabled).toBe(true)
     expect(source.sent).toEqual([])
   })
+
+  it('zooms by whole wheel lines, and keeps the context menu off the surface', () => {
+    const source = new FakeSource()
+    const { runFrame, surface } = mountEditor(source)
+    source.link(STATE)
+    fireEvent.wheel(surface, { deltaY: 3, deltaMode: 1 })
+    runFrame()
+    expect(source.sent).toEqual([{ action: 'zoom', steps: 3 }])
+    expect(fireEvent.contextMenu(surface)).toBe(false)
+  })
+
+  it('counts a drag on a surface with no layout size as whole pictures, within the command limit', () => {
+    const source = new FakeSource()
+    const { runFrame, surface } = mountEditor(source)
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(0)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(0)
+    source.link(STATE)
+    fireEvent.pointerDown(surface, { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
+    fireEvent.pointerMove(surface, { clientX: 3, clientY: -40, pointerId: 1 })
+    runFrame()
+    expect(source.sent).toEqual([{ action: 'orbit', dx: 3, dy: -10 }])
+  })
+
+  it('measures a drag against the newest frame\'s size', () => {
+    const source = new FakeSource()
+    const { runFrame, surface } = mountEditor(source)
+    source.link(STATE)
+    source.frame(frame(640, 360))
+    // A square frame of the same width shows as 180 × 180 in the 320 × 180 surface.
+    source.frame(frame(640, 640))
+    source.frame(frame(640, 640))
+    fireEvent.pointerDown(surface, { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
+    fireEvent.pointerMove(surface, { clientX: 18, clientY: 0, pointerId: 1 })
+    runFrame()
+    expect(source.sent).toEqual([{ action: 'orbit', dx: 0.1, dy: 0 }])
+  })
+
+  it('shows a picture in a box of no size as one pixel', () => {
+    expect(shownSize({ width: 0, height: 0 }, { width: 640, height: 360 })).toEqual({ width: 1, height: 1 })
+  })
 })
 
 describe('BlenderPanel viewport controls', () => {
@@ -391,19 +448,21 @@ describe('BlenderPanel placing', () => {
   })
 })
 
-/** A WebSocket stand-in for the shared viewport socket: the test delivers its messages. */
+/** A WebSocket stand-in for the shared viewport socket: the test delivers its messages and reads what it sent. */
 class FakeSocket {
   static readonly OPEN = 1
   static readonly opened: FakeSocket[] = []
   readyState = FakeSocket.OPEN
   binaryType = 'blob'
+  readonly sent: string[] = []
+  closed = false
   private readonly handlers = new Map<string, Array<(event: { data?: unknown }) => void>>()
   constructor(readonly url: string) { FakeSocket.opened.push(this) }
   addEventListener(type: string, handler: (event: { data?: unknown }) => void): void {
     this.handlers.set(type, [...this.handlers.get(type) ?? [], handler])
   }
-  send(): void {}
-  close(): void {}
+  send(data: string): void { this.sent.push(data) }
+  close(): void { this.closed = true }
   deliver(type: string, data?: unknown): void {
     for (const handler of this.handlers.get(type) ?? []) handler({ data })
   }
@@ -492,5 +551,345 @@ describe('viewport stream measurements', () => {
     expect(screen.queryByTestId('dv-blender-stats')).toBeNull()
     source.frame({ ...frame(640), stats: { fps: 12, responseMs: 90, drawMs: 4, encodeMs: 20 } })
     expect(screen.getByTestId('dv-blender-stats').textContent).toBe('12 fps · response 90 ms · Blender draw 4 ms, encode 20 ms')
+  })
+})
+
+describe('BlenderPanel failures and defaults', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    Reflect.deleteProperty(navigator, 'clipboard')
+  })
+
+  it('saves the add-on through a temporary link, and revokes the link\'s address a minute later', async () => {
+    const source = new FakeSource()
+    const created = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:addon')
+    const revoked = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    const clicked: Array<{ href: string; download: string; attached: boolean }> = []
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      clicked.push({ href: this.href, download: this.download, attached: this.isConnected })
+    })
+    render(<BlenderPanel source={source} />)
+    await screen.findByTestId('dv-blender-connection')
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByText('Download dreamverse_blender.zip'))
+    await act(async () => {})
+    expect(clicked).toEqual([{ href: 'blob:addon', download: 'dreamverse_blender.zip', attached: true }])
+    expect(created).toHaveBeenCalledWith(expect.any(Blob))
+    expect(document.querySelector('a[download]')).toBeNull()
+    vi.advanceTimersByTime(59_999)
+    expect(revoked).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(revoked).toHaveBeenCalledWith('blob:addon')
+  })
+
+  it('says why the status, a new pairing token, or the add-on did not load, for Error and non-Error reasons', async () => {
+    const failing = new FakeSource()
+    failing.status = () => Promise.reject(new Error('HTTP 503'))
+    render(<BlenderPanel source={failing} />)
+    expect(await screen.findByText('Failed to load: HTTP 503')).toBeTruthy()
+    expect(screen.getByText('Loading…')).toBeTruthy()
+    cleanup()
+    const offline = new FakeSource()
+    offline.status = async () => { throw 'offline' }
+    render(<BlenderPanel source={offline} />)
+    expect(await screen.findByText('Failed to load: offline')).toBeTruthy()
+    cleanup()
+    const source = new FakeSource()
+    render(<BlenderPanel source={source} save={vi.fn()} />)
+    await screen.findByTestId('dv-blender-connection')
+    source.regenerate = () => Promise.reject(new Error('HTTP 500'))
+    fireEvent.click(screen.getByText('Replace the pairing token'))
+    expect(await screen.findByText('Failed to load: HTTP 500')).toBeTruthy()
+    source.regenerate = async () => { throw 'gone' }
+    fireEvent.click(screen.getByText('Replace the pairing token'))
+    expect(await screen.findByText('Failed to load: gone')).toBeTruthy()
+    expect(screen.getByTestId('dv-blender-connection').textContent).toBe('http://127.0.0.1:18094#tok-1')
+    source.addon = async () => { throw 'network down' }
+    fireEvent.click(screen.getByText('Download dreamverse_blender.zip'))
+    expect(await screen.findByText('The download failed: network down')).toBeTruthy()
+  })
+
+  it('keeps the answer of the panel\'s current host half when an earlier one answers late', async () => {
+    const early = new FakeSource()
+    const answer = Promise.withResolvers<BlenderStatus>()
+    early.status = () => answer.promise
+    const later = new FakeSource()
+    later.token = 'tok-later'
+    const view = render(<BlenderPanel source={early} />)
+    view.rerender(<BlenderPanel source={later} />)
+    await screen.findByTestId('dv-blender-connection')
+    await act(async () => { answer.resolve({ linked: false, state: null, token: 'tok-early', link_path: '/dv/blender/ws', viewers: 0 }) })
+    expect(screen.getByTestId('dv-blender-connection').textContent).toBe('http://127.0.0.1:18094#tok-later')
+    const refused = new FakeSource()
+    const refusal = Promise.withResolvers<BlenderStatus>()
+    refused.status = () => refusal.promise
+    view.rerender(<BlenderPanel source={refused} />)
+    view.rerender(<BlenderPanel source={later} />)
+    await act(async () => { refusal.reject(new Error('HTTP 401')) })
+    expect(screen.queryByText('Failed to load: HTTP 401')).toBeNull()
+  })
+
+  it('copies through the page\'s clipboard, and offers the copy again after a refused one', async () => {
+    const writeText = vi.fn((_text: string) => Promise.resolve())
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    render(<BlenderPanel source={new FakeSource()} />)
+    await screen.findByTestId('dv-blender-connection')
+    fireEvent.click(screen.getByText('Copy the connection string'))
+    expect(await screen.findByText('Copied')).toBeTruthy()
+    expect(writeText).toHaveBeenCalledWith('http://127.0.0.1:18094#tok-1')
+    writeText.mockImplementation(async () => { throw new Error('denied') })
+    fireEvent.click(screen.getByText('Copied'))
+    expect(await screen.findByText('Copy the connection string')).toBeTruthy()
+  })
+
+  it('names an unsaved Blender file', async () => {
+    const source = new FakeSource()
+    render(<BlenderPanel source={source} draw={noDraw} />)
+    await screen.findByTestId('dv-blender-connection')
+    source.link({ ...STATE, file: '' })
+    expect(screen.getByText('Unsaved file')).toBeTruthy()
+  })
+})
+
+describe('the plugin over the page\'s bridge', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('draws the tab body over the bridge routes and the viewport node\'s card and editor over the shared socket', async () => {
+    vi.stubGlobal('WebSocket', FakeSocket)
+    FakeSocket.opened.length = 0
+    const fetched: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+      fetched.push(input)
+      return new Response(JSON.stringify({ linked: false, state: null, token: 'tok-h', link_path: '/dv/blender/ws', viewers: 0 }))
+    }))
+    const { view, tab } = await mount(apply, true)
+    expect((await tab().findByTestId('dv-blender-connection')).textContent).toBe(`${window.location.origin}#tok-h`)
+    expect(fetched).toEqual(['/api/dv/blender/status'])
+    expect(within(view.getByTestId('card')).getByText('Blender is not connected')).toBeTruthy()
+    expect(within(view.getByTestId('editor')).getByTestId('dv-blender-node-surface')).toBeTruthy()
+    // The tab body, the card and the editor share one socket.
+    expect(FakeSocket.opened.map(socket => socket.url)).toEqual([`ws://${window.location.host}/dv/blender/view`])
+    act(() => { FakeSocket.opened[0]?.deliver('message', JSON.stringify({ type: 'status', linked: true, state: STATE })) })
+    expect(within(view.getByTestId('card')).getByText('Waiting for the viewport…')).toBeTruthy()
+    expect(within(view.getByTestId('editor')).getByText<HTMLButtonElement>('Top').disabled).toBe(false)
+  })
+
+  it('names the viewport node type', () => {
+    expect(viewportNodeType(BLENDER_ID).label()).toBe('Blender viewport')
+  })
+})
+
+describe('httpBlenderSource', () => {
+  const href = window.location.href
+  // The page address, set through the jsdom instance that vitest exposes.
+  const navigateTo = (url: string): void => {
+    (globalThis as typeof globalThis & { jsdom: { reconfigure(settings: { url: string }): void } }).jsdom.reconfigure({ url })
+  }
+  afterEach(() => { navigateTo(href) })
+
+  it('reads the status, makes a pairing token, downloads the add-on, and names HTTP failures', async () => {
+    const requests: Array<{ url: string; method: string }> = []
+    const answers: Response[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      requests.push({ url, method: init?.method ?? 'GET' })
+      return answers.shift() ?? new Response(null, { status: 500 })
+    }))
+    const status = { linked: false, state: null, token: 'tok-h', link_path: '/dv/blender/ws', viewers: 1 }
+    answers.push(new Response(JSON.stringify(status)), new Response(JSON.stringify({ ...status, token: 'tok-new' })), new Response('zip'))
+    expect(await httpBlenderSource.status()).toEqual(status)
+    expect((await httpBlenderSource.regenerate()).token).toBe('tok-new')
+    expect(await (await httpBlenderSource.addon()).text()).toBe('zip')
+    answers.push(new Response(null, { status: 503 }), new Response(null, { status: 404 }))
+    await expect(httpBlenderSource.status()).rejects.toThrow('HTTP 503')
+    await expect(httpBlenderSource.addon()).rejects.toThrow('HTTP 404')
+    expect(requests).toEqual([
+      { url: '/api/dv/blender/status', method: 'GET' }, { url: '/api/dv/blender/token', method: 'POST' },
+      { url: '/api/dv/blender/addon.zip', method: 'GET' }, { url: '/api/dv/blender/status', method: 'GET' },
+      { url: '/api/dv/blender/addon.zip', method: 'GET' },
+    ])
+    expect(httpBlenderSource.origin).toBe(window.location.origin)
+  })
+
+  it('puts the viewport on the open project\'s canvas through the blender.viewport operation, and needs an open project', async () => {
+    const bodies: unknown[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const body: unknown = JSON.parse(init?.body as string)
+      bodies.push({ url, body })
+      return new Response(JSON.stringify({ id: 'r1' }))
+    }))
+    await expect(httpBlenderSource.place()).rejects.toThrow('no project is open')
+    publishCurrentProject('p1')
+    await httpBlenderSource.place()
+    expect(bodies).toEqual([{ url: '/api/dv/operation', body: { project: 'p1', operation: 'blender.viewport', params: {}, surface: 'canvas' } }])
+  })
+
+  it('sends view changes over the page\'s secure viewport socket', () => {
+    vi.stubGlobal('WebSocket', FakeSocket)
+    FakeSocket.opened.length = 0
+    navigateTo('https://dv.test/app')
+    const stop = httpBlenderSource.watch({ status: () => {}, frame: () => {} })
+    httpBlenderSource.navigate({ action: 'zoom', steps: 1 })
+    stop()
+    expect(FakeSocket.opened.map(socket => ({ url: socket.url, sent: socket.sent, closed: socket.closed }))).toEqual([
+      { url: 'wss://dv.test/dv/blender/view', sent: ['{"type":"view","action":"zoom","steps":1}'], closed: true },
+    ])
+  })
+})
+
+describe('SharedViewer socket lifecycle', () => {
+  afterEach(() => { vi.useRealTimers() })
+
+  /** A shared viewer over fake sockets, with a listener that records the link statuses it receives. */
+  function openViewer() {
+    vi.stubGlobal('WebSocket', FakeSocket)
+    FakeSocket.opened.length = 0
+    const viewer = new SharedViewer()
+    const statuses: boolean[] = []
+    const listener = { status: (linked: boolean) => { statuses.push(linked) }, frame: () => {} }
+    return { viewer, statuses, listener }
+  }
+
+  it('closes the socket after the last listener leaves, ignores that socket\'s later close, and opens a new one for the next listener', () => {
+    vi.useFakeTimers()
+    const { viewer, statuses, listener } = openViewer()
+    const stop = viewer.watch(listener)
+    stop()
+    const [first] = FakeSocket.opened
+    expect(first?.closed).toBe(true)
+    const next = viewer.watch(listener)
+    first?.deliver('close')
+    vi.advanceTimersByTime(2000)
+    expect(statuses).toEqual([])
+    expect(FakeSocket.opened).toHaveLength(2)
+    next()
+  })
+
+  it('tells listeners of a dropped socket that Blender is gone, and reopens it two seconds later while one remains', () => {
+    vi.useFakeTimers()
+    const { viewer, statuses, listener } = openViewer()
+    viewer.watch(listener)
+    FakeSocket.opened[0]?.deliver('close')
+    expect(statuses).toEqual([false])
+    // A listener that joins while the reopen waits shares the coming socket.
+    const joined = viewer.watch({ status: () => {}, frame: () => {} })
+    vi.advanceTimersByTime(1999)
+    expect(FakeSocket.opened).toHaveLength(1)
+    vi.advanceTimersByTime(1)
+    expect(FakeSocket.opened).toHaveLength(2)
+    joined()
+  })
+
+  it('reopens nothing after the last listener leaves while the reopen waits, or leaves on the disconnect itself', () => {
+    vi.useFakeTimers()
+    const { viewer, listener } = openViewer()
+    const stop = viewer.watch(listener)
+    FakeSocket.opened[0]?.deliver('close')
+    stop()
+    vi.advanceTimersByTime(2000)
+    expect(FakeSocket.opened).toHaveLength(1)
+    let stopOnDisconnect = (): void => {}
+    stopOnDisconnect = viewer.watch({ status: (linked) => { if (!linked) stopOnDisconnect() }, frame: () => {} })
+    FakeSocket.opened[1]?.deliver('close')
+    vi.advanceTimersByTime(2000)
+    expect(FakeSocket.opened).toHaveLength(2)
+  })
+
+  it('drops a picture without a frame header and view changes while the socket is not open, and reads a bare frame header as an empty JPEG', () => {
+    const { viewer } = openViewer()
+    const frames: ViewFrame[] = []
+    const stop = viewer.watch({ status: () => {}, frame: (next) => { frames.push(next) } })
+    const [socket] = FakeSocket.opened
+    socket?.deliver('message', new Blob(['jpeg']))
+    socket?.deliver('message', JSON.stringify({ type: 'unknown' }))
+    socket?.deliver('message', new Blob(['jpeg']))
+    expect(frames).toEqual([])
+    socket?.deliver('message', JSON.stringify({ type: 'frame' }))
+    socket?.deliver('message', new Blob(['jpeg']))
+    expect(frames.map(next => ({ width: next.width, height: next.height, type: next.image.type }))).toEqual([{ width: 0, height: 0, type: 'image/jpeg' }])
+    socket!.readyState = 0
+    viewer.send({ action: 'zoom', steps: 1 })
+    stop()
+    viewer.send({ action: 'zoom', steps: 1 })
+    expect(socket?.sent).toEqual([])
+  })
+})
+
+describe('drawFrame', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('sizes the canvas to the decoded frame, draws it, and frees the decoded frame even when drawing fails', async () => {
+    const closed: number[] = []
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 64, height: 36, close: () => { closed.push(64) } })))
+    const drawImage = vi.fn()
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage } as never)
+    const canvas = document.createElement('canvas')
+    await drawFrame(canvas, frame(64, 36))
+    await drawFrame(canvas, frame(64, 36))
+    expect({ width: canvas.width, height: canvas.height, draws: drawImage.mock.calls.length, closed })
+      .toEqual({ width: 64, height: 36, draws: 2, closed: [64, 64] })
+    drawImage.mockImplementation(() => { throw new Error('lost context') })
+    await expect(drawFrame(canvas, frame(64, 36))).rejects.toThrow('lost context')
+    expect(closed).toHaveLength(3)
+  })
+})
+
+describe('useLiveView', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('stops watching while the page is hidden or the view is off screen, and watches again when it shows', () => {
+    const source = new FakeSource()
+    let visibility: DocumentVisibilityState = 'visible'
+    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility)
+    vi.spyOn(HTMLElement.prototype, 'getClientRects').mockReturnValue([{}] as never)
+    const observers: Array<(entries: Array<{ isIntersecting: boolean }>) => void> = []
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(callback: (entries: Array<{ isIntersecting: boolean }>) => void) { observers.push(callback) }
+      observe(): void {}
+      disconnect(): void {}
+    })
+    render(<ViewportCard node={nodeView} assets={{}} textScale={1} host={CARD_HOST} source={source} draw={noDraw} {...STANDARD} />)
+    expect(source.watchers).toBe(1)
+    visibility = 'hidden'
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    expect(source.watchers).toBe(0)
+    visibility = 'visible'
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    expect(source.watchers).toBe(1)
+    act(() => { observers[0]?.([{ isIntersecting: false }]) })
+    expect(source.watchers).toBe(0)
+    act(() => { observers[0]?.([{ isIntersecting: true }]) })
+    expect(source.watchers).toBe(1)
+  })
+
+  it('draws the next frame after a draw fails', async () => {
+    const source = new FakeSource()
+    const drawn: number[] = []
+    const draw = async (_canvas: HTMLCanvasElement, next: ViewFrame): Promise<void> => {
+      drawn.push(next.width)
+      if (next.width === 640) throw new Error('decode failed')
+    }
+    render(<ViewportCard node={nodeView} assets={{}} textScale={1} host={CARD_HOST} source={source} draw={draw} {...STANDARD} />)
+    source.link(STATE)
+    source.frame(frame(640))
+    await act(async () => {})
+    source.frame(frame(641))
+    expect(drawn).toEqual([640, 641])
+  })
+
+  it('draws a frame that arrives before the view\'s canvas mounts once the canvas mounts', async () => {
+    /** A host half that, like the shared socket a view joins while Blender is connected, gives the status and the newest frame at once. */
+    class ConnectedSource extends FakeSource {
+      override watch(listener: Parameters<BlenderSource['watch']>[0]): () => void {
+        const stop = super.watch(listener)
+        listener.status(true, STATE)
+        listener.frame(frame(640))
+        return stop
+      }
+    }
+    const drawn: number[] = []
+    render(<BlenderPanel source={new ConnectedSource()} draw={async (_canvas, next) => { drawn.push(next.width) }} />)
+    await screen.findByText('Connected to Blender 5.3.0')
+    expect(drawn).toEqual([640])
   })
 })
