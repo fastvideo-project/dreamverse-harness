@@ -13,17 +13,18 @@ import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import DvModels, { type ModelEntry, type TaskOfPrimitive } from '@dv/models'
 import DvShotRender from '@dv/shot-render'
-import DvProject from '@dv/project'
+import DvProject, { type ProjectId } from '@dv/project'
 import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvImageGenerate from '@dv/image-generate'
+import DvAudioGenerate from '@dv/audio-generate'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
 import { provideChatServices } from '../../project/tests/workspaces.ts'
 import { shotGeometry } from '../../shot-render/src/render.ts'
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import * as OpenRouter from '../src/index.ts'
-import { imageRows } from './client.spec.ts'
+import { imageRows, speechRows } from './client.spec.ts'
 
 const cleanup: Array<() => Promise<unknown>> = []
 afterEach(async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose() })
@@ -32,8 +33,9 @@ const CATALOG = { data: [{ id: 'fixture/video', name: 'Fixture Video', supported
   generate_audio: true, seed: true }] }
 function isVideoEntry(entry: ModelEntry): entry is ModelEntry<TaskOfPrimitive<'video'>> { return entry.modality === 'video' }
 const ffmpeg = process.env['DV_FFMPEG'] ?? 'ffmpeg'
+const ffprobe = process.env['DV_FFPROBE'] ?? 'ffprobe'
 
-async function fixture(options: { failCatalog?: boolean; models?: Record<string, string>; images?: boolean } = {}) {
+async function fixture(options: { failCatalog?: boolean; models?: Record<string, string>; images?: boolean; speech?: 'mp3' | 'pcm' } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'dv-openrouter-'))
   cleanup.push(async () => { rmSync(dir, { recursive: true, force: true }) })
   const videoPath = join(dir, 'fixture.mp4')
@@ -44,6 +46,11 @@ async function fixture(options: { failCatalog?: boolean; models?: Record<string,
   const jpegPath = join(dir, 'fixture.jpg')
   await promisify(execFile)(ffmpeg, ['-y', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=64x36', '-frames:v', '1', jpegPath])
   const jpeg = readFileSync(jpegPath)
+  const mp3Path = join(dir, 'fixture.mp3')
+  await promisify(execFile)(ffmpeg, ['-y', '-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', '-c:a', 'libmp3lame', mp3Path])
+  // Half a second of 24 kHz mono 16-bit PCM, as a PCM-only provider sends it.
+  const speech = options.speech === 'pcm' ? { mime: 'audio/pcm', bytes: Buffer.alloc(24_000) }
+    : { mime: 'audio/mpeg', bytes: readFileSync(mp3Path) }
   const requests: Array<{ path: string; method: string; body: Record<string, unknown> | null; key: string | undefined }> = []
   const server: Server = createServer(async (request, response) => {
     const parts: Buffer[] = []
@@ -55,6 +62,8 @@ async function fixture(options: { failCatalog?: boolean; models?: Record<string,
     if (path === '/api/v1/videos/models' && remote.failCatalog) { response.statusCode = 503; response.end('{}') }
     else if (path === '/api/v1/videos/models') response.end(JSON.stringify(CATALOG))
     else if (path === '/api/v1/images/models') response.end(JSON.stringify(imageRows))
+    else if (path === '/api/v1/models?output_modalities=speech') response.end(JSON.stringify(speechRows))
+    else if (path === '/api/v1/audio/speech') { response.setHeader('content-type', speech.mime); response.end(speech.bytes) }
     else if (path === '/api/v1/images') {
       response.end(JSON.stringify({ data: [{ b64_json: jpeg.toString('base64'), media_type: 'image/jpeg' }] }))
     }
@@ -75,17 +84,19 @@ async function fixture(options: { failCatalog?: boolean; models?: Record<string,
   await ctx.plugin(Loader)
   Object.assign(ctx.loader.builtins, { include: Include, credentials: MemoryCredentials,
     project: DvProject, assetPool: DvAssetPool, ffmpeg: DvFfmpeg, models: DvModels, openrouter: OpenRouter, shotRender: DvShotRender,
-    imageGenerate: DvImageGenerate })
+    imageGenerate: DvImageGenerate, audioGenerate: DvAudioGenerate })
   const rows = [
     { id: 'credentials', name: 'cordis:credentials', config: { OPENROUTER_API_KEY: 'fixture-key' } },
     { id: 'project', name: 'cordis:project', config: { projectsFolder: join(dir, 'projects') } },
-    { id: 'ffmpeg', name: 'cordis:ffmpeg', config: { ffmpegPath: ffmpeg, ffprobePath: 'ffprobe' } },
+    { id: 'ffmpeg', name: 'cordis:ffmpeg', config: { ffmpegPath: ffmpeg, ffprobePath: ffprobe } },
     { id: 'assets', name: 'cordis:assetPool' }, { id: 'models', name: 'cordis:models' },
     { id: 'provider', name: 'cordis:openrouter', config: {
       baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/`, models: options.models ?? { cloud: 'fixture/video' }, pollIntervalMs: 1,
       ...options.images === true ? { imageModels: { flux: 'fixture/image' } } : {},
+      ...options.speech === undefined ? {} : { audioModels: { narrator: 'fixture/speech', cloner: 'heygen/fixture-voice' } },
     } },
     { id: 'shot-render', name: 'cordis:shotRender' }, { id: 'image', name: 'cordis:imageGenerate' },
+    { id: 'audio', name: 'cordis:audioGenerate' },
   ]
   const path = join(dir, 'cordis.yml'); writeFileSync(path, JSON.stringify(rows))
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(path).href } }); await ctx.loader.await()
@@ -214,5 +225,47 @@ describe('OpenRouter image provider composition', () => {
       prompt: 'A lake', n: 1, seed: 5, output_format: 'png', aspect_ratio: '16:9', resolution: '1K' }])
     await [...ctx.loader.entries()].find(row => row.options.id === 'provider')?.fiber?.dispose()
     expect(ctx.dvModels.list()).toEqual([])
+  })
+})
+
+describe('OpenRouter speech provider composition', () => {
+  const speak = (ctx: Context, project: ProjectId, model: string, params: Record<string, unknown>) => ctx.dvProject.run({
+    project, operation: 'audio.generate', actor: 'user', surface: 'api', session: null, turn: null, tool_call: null,
+    intent: 'audio', inputs: [], params: { modality: 'audio', task: 't2a', provider: 'openrouter', model, prompt: 'Hello there', ...params } })
+
+  it('registers configured speech models as t2a, refuses unlisted voices and extras before paying, and stores a WAV of an MP3 answer', async () => {
+    const { ctx, requests, project } = await fixture({ speech: 'mp3' })
+    const narrator = ctx.dvModels.list().find(entry => entry.task === 't2a' && entry.model === 'narrator')
+    expect(narrator).toMatchObject({ modality: 'audio', provider: 'openrouter', displayName: 'Fixture Speech' })
+    expect(await narrator?.schema()).toEqual({ extra: {
+      voice: { type: 'string', values: ['alloy', 'nova'], required: true, description: 'The voice that speaks the text.' },
+      instructions: { type: 'string', description: expect.stringContaining('How to deliver the text') as unknown },
+    } })
+    await expect(speak(ctx, project.id, 'narrator', {})).rejects.toThrow('Choose extra.voice from alloy, nova.')
+    await expect(speak(ctx, project.id, 'narrator', { extra: { voice: 'echo' } })).rejects.toThrow('Choose extra.voice from alloy, nova.')
+    await expect(speak(ctx, project.id, 'narrator', { extra: { voice: 'nova', speed: 2 } })).rejects.toThrow('takes no extra parameter speed')
+    expect(requests.filter(request => request.path === '/api/v1/audio/speech')).toHaveLength(0)
+    const result = await speak(ctx, project.id, 'narrator', { extra: { voice: 'nova', instructions: 'Warm and slow.' } })
+    expect(result.record?.status).toBe('done')
+    const [output] = result.record?.outputs ?? []
+    if (output === undefined) throw new Error('Missing audio output')
+    expect(ctx.dvAssetPool.get(output)).toMatchObject({ mime: 'audio/wav' })
+    expect(readFileSync(ctx.dvAssetPool.path(output)).subarray(0, 4).toString()).toBe('RIFF')
+    const duration = result.record?.report?.['duration_sec']
+    expect(typeof duration === 'number' && Math.abs(duration - 1) < 0.1).toBe(true)
+    expect(result.record?.report).toMatchObject({ model_id: 'fixture/speech' })
+    expect(requests.filter(request => request.path === '/api/v1/audio/speech').map(request => request.body)).toEqual([{
+      model: 'fixture/speech', input: 'Hello there', response_format: 'mp3', voice: 'nova', instructions: 'Warm and slow.' }])
+    await [...ctx.loader.entries()].find(row => row.options.id === 'provider')?.fiber?.dispose()
+    expect(ctx.dvModels.list()).toEqual([])
+  })
+
+  it('reads a raw PCM answer as 24 kHz mono and lets a model without listed voices use the provider default', async () => {
+    const { ctx, requests, project } = await fixture({ speech: 'pcm' })
+    const result = await speak(ctx, project.id, 'cloner', {})
+    expect(result.record?.status).toBe('done')
+    expect(result.record?.report).toMatchObject({ model_id: 'heygen/fixture-voice', duration_sec: 0.5 })
+    expect(requests.filter(request => request.path === '/api/v1/audio/speech').map(request => request.body)).toEqual([{
+      model: 'heygen/fixture-voice', input: 'Hello there', response_format: 'pcm' }])
   })
 })

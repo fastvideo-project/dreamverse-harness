@@ -12,6 +12,7 @@
   "dependencies": {
     "@deepseek-ai/dsh-credentials": "workspace:*",
     "@dv/asset-pool": "workspace:*",
+    "@dv/audio-generate": "workspace:*",
     "@dv/ffmpeg": "workspace:*",
     "@dv/image-generate": "workspace:*",
     "@dv/models": "workspace:*",

@@ -1,8 +1,8 @@
-/** Configure cloud video and image models through existing settings and credential services. */
+/** Configure cloud video, image and speech models through existing settings and credential services. */
 import { useCallback, useState, useSyncExternalStore } from 'react'
 import { Button, Input } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
-import type { ImageModel, OpenRouterCatalog, OpenRouterSettings, VideoModel } from '@dv/openrouter/types'
+import type { ImageModel, OpenRouterCatalog, OpenRouterSettings, SpeechModel, VideoModel } from '@dv/openrouter/types'
 import { useText } from '@dv/ui-kit/locale.ts'
 import css from './openrouter.module.css'
 
@@ -14,9 +14,9 @@ export interface OpenRouterPageProps {
 }
 
 /** The settings field each catalog's choices live in. */
-type Field = 'models' | 'imageModels'
+type Field = 'models' | 'imageModels' | 'audioModels'
 
-const EMPTY: OpenRouterCatalog = { videos: [], images: [] }
+const EMPTY: OpenRouterCatalog = { videos: [], images: [], speech: [] }
 
 /** Installing a cloud model means enabling its API entry, never downloading weights. */
 export function OpenRouterPage({ form, storeKey, discover, enableOperator }: OpenRouterPageProps) {
@@ -36,7 +36,7 @@ export function OpenRouterPage({ form, storeKey, discover, enableOperator }: Ope
     try {
       if (key !== '') { await storeKey(state.value?.credentialRef ?? 'OPENROUTER_API_KEY', key.trim()); setKey('') }
       setCatalog(await discover())
-      setNotice(text('已读取视频和图片目录。', 'Video and image catalogs loaded.'))
+      setNotice(text('已读取视频、图片和语音目录。', 'Video, image and speech catalogs loaded.'))
     } catch { setError(text('无法读取模型。请检查已保存的密钥和连接。', 'Could not load models. Check the saved key and connection.')) }
     finally { setPending(false) }
   }
@@ -69,16 +69,16 @@ export function OpenRouterPage({ form, storeKey, discover, enableOperator }: Ope
     finally { setPending(false) }
   }
   const matches = (model: { id: string; name: string }): boolean => `${model.id} ${model.name}`.toLowerCase().includes(query.toLowerCase())
-  const row = (field: Field, model: VideoModel | ImageModel, details: string[]) => {
+  const row = (field: Field, model: VideoModel | ImageModel | SpeechModel, details: string[]) => {
     const added = Object.values(configured(field)).includes(model.id)
     return <li key={model.id} className={css.model}><div><strong>{model.name}</strong><p>{model.id}</p>
       {details.map(line => <p key={line}>{line}</p>)}</div>
     <Button variant="outline" disabled={!writable || pending} onClick={() => { void choose(field, model.id) }}>
       {added ? text('移除', 'Remove') : text('添加到聊天', 'Add to chat')}</Button></li>
   }
-  return <section className={css.page} aria-label={text('OpenRouter 视频和图片 API', 'OpenRouter video and image APIs')}>
-    <header><h2>{text('视频和图片 API', 'Video & image APIs')}</h2>
-      <p>{text('通过 OpenRouter 连接云端视频和图片模型。', 'Connect cloud video and image models through OpenRouter.')}</p></header>
+  return <section className={css.page} aria-label={text('OpenRouter 视频、图片和音频 API', 'OpenRouter video, image and audio APIs')}>
+    <header><h2>{text('视频、图片和音频 API', 'Video, image & audio APIs')}</h2>
+      <p>{text('通过 OpenRouter 连接云端视频、图片和语音模型。', 'Connect cloud video, image and speech models through OpenRouter.')}</p></header>
     <p>{text('操作员 LLM 使用现有“模型”设置页：添加 OpenRouter，然后在聊天框中选择 LLM。',
       'For the operator LLM, add OpenRouter on the existing Models settings page, then choose that LLM in chat.')}</p>
     <fieldset disabled={!writable || pending} className={css.fields}>
@@ -93,7 +93,7 @@ export function OpenRouterPage({ form, storeKey, discover, enableOperator }: Ope
     </fieldset>
     {error === null ? null : <p role="alert">{error}</p>}
     <p role="status">{notice}</p>
-    {!writable ? <p>{text('当前连接无法编辑视频和图片 API 设置。', 'Video and image API settings are unavailable in this connection.')}</p> : null}
+    {!writable ? <p>{text('当前连接无法编辑视频、图片和音频 API 设置。', 'Video, image and audio API settings are unavailable in this connection.')}</p> : null}
     <label>{text('搜索模型', 'Search models')}<Input type="search" value={query}
       onChange={(event) => { setQuery(event.target.value) }} /></label>
     {catalog.videos.length === 0 ? null : <h3 className={css.group}>{text('视频模型', 'Video models')}</h3>}
@@ -106,6 +106,12 @@ export function OpenRouterPage({ form, storeKey, discover, enableOperator }: Ope
       [model.parameters['aspect_ratio']?.join(', '), model.parameters['resolution']?.join(', ')]
         .filter((part): part is string => part !== undefined).join(' · ') || text('服务商默认尺寸', 'Provider default size'),
       'T2I',
+    ]))}</ul>
+    {catalog.speech.length === 0 ? null : <h3 className={css.group}>{text('音频模型', 'Audio models')}</h3>}
+    <ul className={css.models} aria-label={text('音频模型', 'Audio models')}>{catalog.speech.filter(matches).map(model => row('audioModels', model, [
+      model.voices.length === 0 ? text('无预设声音', 'No listed voices')
+        : text(`${model.voices.length} 种声音`, `${model.voices.length} voice${model.voices.length === 1 ? '' : 's'}`),
+      'T2A',
     ]))}</ul>
     <p>{text('云端生成按服务商定价收费。停止本地监控不会取消云端任务；不要自动重试付费提交。',
       'Cloud generations use provider pricing. Stopping local monitoring does not cancel the cloud job; paid submissions are never automatically retried.')}</p>

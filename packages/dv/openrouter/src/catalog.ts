@@ -1,5 +1,5 @@
-/** Read provider-published video and image choices without manufacturing frame rates or pixel geometry. */
-import type { ImageModel, ImageParameterChoices, VideoModel } from './types.ts'
+/** Read provider-published video, image and speech choices without manufacturing frame rates or pixel geometry. */
+import type { ImageModel, ImageParameterChoices, SpeechModel, VideoModel } from './types.ts'
 
 function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item !== '') : []
@@ -75,5 +75,34 @@ export function imageCatalog(value: unknown): ImageModel[] {
     }
     const name = fields.get('name')
     return [{ id, name: typeof name === 'string' ? name : id, parameters, outputFormats: formats, seed: descriptors.has('seed') }]
+  })
+}
+
+/** The route a speech row must list among its `endpoints`, when it lists any. */
+const SPEECH_ENDPOINT = '/api/v1/audio/speech'
+
+/**
+ * Parse `GET /models?output_modalities=speech`. A row needs an id and `speech` among its output modalities; a row whose
+ * `endpoints` list leaves out `/api/v1/audio/speech` is left out.
+ * @param value - the response JSON.
+ * @returns the usable speech models, with the voices each lists in `supported_voices`.
+ * @throws Error when the response has no `data` array.
+ */
+export function speechCatalog(value: unknown): SpeechModel[] {
+  if (typeof value !== 'object' || value === null || !('data' in value) || !Array.isArray(value.data)) {
+    throw new Error('OpenRouter returned an invalid speech catalog.')
+  }
+  return value.data.flatMap((row: unknown) => {
+    if (typeof row !== 'object' || row === null) return []
+    const fields = new Map<string, unknown>(Object.entries(row))
+    const id = fields.get('id')
+    const architecture = fields.get('architecture')
+    const outputs = typeof architecture === 'object' && architecture !== null
+      ? strings(new Map<string, unknown>(Object.entries(architecture)).get('output_modalities')) : []
+    const endpoints = fields.get('endpoints')
+    if (typeof id !== 'string' || id === '' || !outputs.includes('speech')
+      || (Array.isArray(endpoints) && !strings(endpoints).includes(SPEECH_ENDPOINT))) return []
+    const name = fields.get('name')
+    return [{ id, name: typeof name === 'string' ? name : id, voices: [...new Set(strings(fields.get('supported_voices')))] }]
   })
 }

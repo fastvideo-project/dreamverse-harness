@@ -1,5 +1,5 @@
 ---
-description: "Set up OpenRouter video and image models in the existing DreamVerse Settings shell. Use this page for credential storage, catalog discovery, and chat-picker model choices."
+description: "Set up OpenRouter video, image and speech models in the existing DreamVerse Settings shell. Use this page for credential storage, catalog discovery, and chat-picker model choices."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Set up OpenRouter video and image models in the existing DreamVerse Settings shell. Use this page for credential storage, catalog discovery, and chat-picker model choices.
+Set up OpenRouter video, image and speech models in the existing DreamVerse Settings shell. Use this page for credential storage, catalog discovery, and chat-picker model choices.
 
 ## Table of Contents
 
@@ -23,9 +23,9 @@ Set up OpenRouter video and image models in the existing DreamVerse Settings she
 <a id="use-this-package"></a>
 ## Use this package
 
-The DreamVerse bundle mounts this browser contribution beside `@dv/openrouter`. Open Settings → Video & image APIs, save the key, load the catalogs, and choose Add to chat for a video or an image model; the page lists the two catalogs separately and writes video choices to `models` and image choices to `imageModels`. Enable OpenRouter for operator LLM reuses the existing pi-ai adapter and saved key reference; choose the operator model in chat. The existing Models settings page still manages its routes.
+The DreamVerse bundle mounts this browser contribution beside `@dv/openrouter`. Open Settings → Video, image & audio APIs, save the key, load the catalogs, and choose Add to chat for a video, image or speech model; the page lists the three catalogs separately and writes video choices to `models`, image choices to `imageModels` and speech choices to `audioModels`. Enable OpenRouter for operator LLM reuses the existing pi-ai adapter and saved key reference; choose the operator model in chat. The existing Models settings page still manages its routes.
 
-A blank key keeps the saved credential. Model enable/disable writes only aliases and model IDs through revision-fenced settings; keys use the existing credential service. Removing a model affects future choices and does not remove completed videos or images.
+A blank key keeps the saved credential. Model enable/disable writes only aliases and model IDs through revision-fenced settings; keys use the existing credential service. Removing a model affects future choices and does not remove completed videos, images or audio.
 
 
 <a id="understand-the-implementation"></a>
@@ -37,7 +37,7 @@ The page uses the existing settings slot, config form, credential remote, shared
 <a id="further-exploration"></a>
 ## Further Exploration
 
-See the [OpenRouter video API guide](https://openrouter.ai/docs/guides/overview/multimodal/video-generation) and the [image generation guide](https://openrouter.ai/docs/guides/overview/multimodal/image-generation).
+See the [OpenRouter video API guide](https://openrouter.ai/docs/guides/overview/multimodal/video-generation), the [image generation guide](https://openrouter.ai/docs/guides/overview/multimodal/image-generation) and the [text-to-speech guide](https://openrouter.ai/docs/features/multimodal/tts).
 
 <a id="model-experience"></a>
 ## Model Experience
@@ -46,7 +46,7 @@ See the [OpenRouter video API guide](https://openrouter.ai/docs/guides/overview/
 
 #### What the model sees
 
-The browser contributes no operator prompt. Enabled API entries appear through `dv_models_list` and the chat video and image pickers; `models.select` records the conversation choice per modality.
+The browser contributes no operator prompt. Enabled API entries appear through `dv_models_list` and the chat video, image and audio pickers; `models.select` records the conversation choice per modality.
 
 #### Token effect
 
@@ -54,7 +54,7 @@ Model metadata appears in catalog tool results; no hidden prompt prefix is added
 
 #### KV Cache effect
 
-Catalog results append to the conversation. Each cloud video or image request is independent.
+Catalog results append to the conversation. Each cloud video, image or speech request is independent.
 
 ## Known Limitations and Deferred Work
 

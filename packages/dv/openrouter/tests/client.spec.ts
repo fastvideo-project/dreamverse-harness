@@ -1,6 +1,6 @@
-/** Keyless contract tests for the documented OpenRouter video and image APIs. */
+/** Keyless contract tests for the documented OpenRouter video, image and speech APIs. */
 import { describe, expect, it } from 'vitest'
-import { imageCatalog, videoCatalog } from '../src/catalog.ts'
+import { imageCatalog, speechCatalog, videoCatalog } from '../src/catalog.ts'
 import { OpenRouterApi } from '../src/client.ts'
 
 export const catalog = { data: [{ id: 'fixture/video', name: 'Fixture Video', supported_durations: [4, 6, 8],
@@ -66,6 +66,13 @@ describe('OpenRouter video API', () => {
       async () => Response.json({ polling_url: 'https://untrusted.invalid' }))
     await expect(malformed.generate({})).rejects.toThrow('do not automatically resubmit')
   })
+
+  it('quotes the message OpenRouter gives for a rejected request, without the key', async () => {
+    const client = new OpenRouterApi('https://openrouter.ai/api/v1/', async () => 'fixture-key', 1, async () =>
+      Response.json({ error: { code: 400, message: 'HeyGen Voice only returns pcm.\nKey fixture-key.' } }, { status: 400 }))
+    await expect(client.speak({})).rejects.toThrow(
+      'OpenRouter API returned HTTP 400: HeyGen Voice only returns pcm. Key [key]. Check the key, credit balance, and selected model.')
+  })
 })
 
 export const imageRows = { data: [
@@ -99,5 +106,45 @@ describe('OpenRouter image API', () => {
     expect(calls).toEqual([{ url: 'https://openrouter.ai/api/v1/images', body: '{"model":"fixture/image","prompt":"A lake"}' }])
     const empty = new OpenRouterApi('https://openrouter.ai/api/v1/', async () => 'fixture-key', 1, async () => Response.json({ data: [] }))
     await expect(empty.generateImage({})).rejects.toThrow('OpenRouter returned no image; do not automatically resubmit')
+  })
+})
+
+export const speechRows = { data: [
+  { id: 'fixture/speech', name: 'Fixture Speech', architecture: { input_modalities: ['text'], output_modalities: ['speech'] },
+    supported_voices: ['alloy', 'nova', 'alloy'], endpoints: ['/api/v1/audio/speech'] },
+  { id: 'heygen/fixture-voice', architecture: { output_modalities: ['speech'] }, supported_voices: null },
+  { id: 'fixture/elsewhere', architecture: { output_modalities: ['speech'] }, endpoints: ['/api/v1/chat/completions'] },
+  { id: 'fixture/chat', architecture: { output_modalities: ['text'] }, endpoints: ['/api/v1/audio/speech'] },
+] }
+
+describe('OpenRouter speech API', () => {
+  it('keeps speech models that serve /audio/speech with their distinct voices, and leaves out the rest', () => {
+    expect(speechCatalog(speechRows)).toEqual([
+      { id: 'fixture/speech', name: 'Fixture Speech', voices: ['alloy', 'nova'] },
+      { id: 'heygen/fixture-voice', name: 'heygen/fixture-voice', voices: [] },
+    ])
+    expect(() => speechCatalog({})).toThrow('invalid speech catalog')
+  })
+
+  it('reads the speech catalog through the models route filtered to speech output', async () => {
+    const urls: string[] = []
+    const client = new OpenRouterApi('https://openrouter.ai/api/v1/', async () => 'fixture-key', 1, async (input) => {
+      urls.push(input instanceof Request ? input.url : input.toString())
+      return Response.json(speechRows)
+    })
+    expect((await client.speechCatalog()).map(model => model.id)).toEqual(['fixture/speech', 'heygen/fixture-voice'])
+    expect(urls).toEqual(['https://openrouter.ai/api/v1/models?output_modalities=speech'])
+  })
+
+  it('submits one speech request and returns the audio bytes with their type, refusing an answer that is not audio', async () => {
+    const calls: Array<{ url: string; body: string }> = []
+    const client = new OpenRouterApi('https://openrouter.ai/api/v1/', async () => 'fixture-key', 1, async (input, init) => {
+      calls.push({ url: input instanceof Request ? input.url : input.toString(), body: typeof init?.body === 'string' ? init.body : '' })
+      return new Response(Buffer.from('MP3'), { headers: { 'content-type': 'audio/mpeg; charset=binary' } })
+    })
+    expect(await client.speak({ model: 'fixture/speech', input: 'Hello' })).toEqual({ bytes: Buffer.from('MP3'), mime: 'audio/mpeg' })
+    expect(calls).toEqual([{ url: 'https://openrouter.ai/api/v1/audio/speech', body: '{"model":"fixture/speech","input":"Hello"}' }])
+    const json = new OpenRouterApi('https://openrouter.ai/api/v1/', async () => 'fixture-key', 1, async () => Response.json({ ok: true }))
+    await expect(json.speak({})).rejects.toThrow('OpenRouter returned no audio; do not automatically resubmit')
   })
 })

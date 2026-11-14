@@ -7756,6 +7756,9 @@ importers:
       '@dv/asset-pool':
         specifier: workspace:*
         version: link:../asset-pool
+      '@dv/audio-generate':
+        specifier: workspace:*
+        version: link:../audio-generate
       '@dv/ffmpeg':
         specifier: workspace:*
         version: link:../ffmpeg
