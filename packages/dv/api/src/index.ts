@@ -174,6 +174,8 @@ export default class DvApi extends Service {
     }
     serveEventStream(projectId, request, response, {
       subscribe: (id, listener) => this.ctx.dvProject.subscribe(id, listener),
+      // The model catalog is optional; a stream opened without it carries no `models` event.
+      subscribeModels: listener => this.ctx.get('dvModels')?.onChanged(listener) ?? (() => {}),
       keepaliveMs: this.config.keepaliveMs,
     })
   }

@@ -41,7 +41,7 @@ Host 半边不注册任何东西。浏览器半边在 `apply` 顶层提供 `dvMe
 | 画布节点上的 问 agent | `dv:compose`，草稿为 修改 {title}：，带一个引用，指向节点的 `ref`，否则指向其记录，否则指向节点本身，以节点的预览或第一个素材显示；编辑器关闭 |
 | 素材预览里的 让智能体使用 | `dv:compose`，草稿为 使用这个素材：，带一个指向该素材的引用；预览关闭 |
 | 来自其他视图的 `dv:compose` | 最新挂载的输入框用其文字替换草稿，并为每个引用追加一个标签；不发送任何内容 |
-| 打开一个 `dv.prompt` 实例 | 在没有其他实例打开时打开一个实例，就请求 `GET /api/dv/models`；读取失败时保留原有的目录；编辑器没有目录时显示 模型列表加载失败 / Couldn't load the model list 和 重试 / Try again，点击后重新读取目录；重新读取期间提示（`dv-composer-models-failed`）隐藏，读取再次失败时重新显示 |
+| 打开一个 `dv.prompt` 实例 | 在没有其他实例打开时打开一个实例，就请求 `GET /api/dv/models`；有实例打开时，打开项目的 `/dv/events` 流每出现一阵 `models` 事件就再请求一次，因此在设置中添加的模型会出现在选择器中；读取失败时保留原有的目录；编辑器没有目录时显示 模型列表加载失败 / Couldn't load the model list 和 重试 / Try again，点击后重新读取目录；重新读取期间提示（`dv-composer-models-failed`）隐藏，读取再次失败时重新显示 |
 | 在聊天输入框里显示一个标签 | 所打开项目的 `GET /api/dv/state`，在有聊天标签显示期间，在该项目的每一阵项目事件后 150 ms 重新获取 |
 | 在可编辑的 `dv.prompt` 实例里编辑调用，或给它新的状态 | 最后一次改变后 250 ms，带改过的调用和宿主的 `surface` 请求 `POST /api/dv/operation/check`；该路由不写任何内容 |
 

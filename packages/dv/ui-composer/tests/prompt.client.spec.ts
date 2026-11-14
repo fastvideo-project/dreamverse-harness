@@ -145,6 +145,45 @@ describe('the model catalog', () => {
     await vi.waitFor(() => { expect(error).toHaveBeenCalledWith('[dv-composer] models failed:', new Error('offline')) })
     expect(catalog.getSnapshot()).toEqual([{ modality: 'video' }])
   })
+
+  it('loads again once after a burst of catalog changes while it has a consumer, and stops following after the last leaves', async () => {
+    const answers = [[{ modality: 'video' }], [{ modality: 'audio' }]]
+    const load = vi.fn(() => Promise.resolve(answers.shift() as never))
+    let changed: (() => void) | null = null
+    const stop = vi.fn()
+    const catalog = catalogSource(load, (onChange) => { changed = onChange; return stop })
+    const off = catalog.subscribe(() => {})
+    await vi.waitFor(() => { expect(catalog.getSnapshot()).toEqual([{ modality: 'video' }]) })
+    changed!(); changed!(); changed!()
+    await vi.waitFor(() => { expect(catalog.getSnapshot()).toEqual([{ modality: 'audio' }]) })
+    expect(load).toHaveBeenCalledTimes(2)
+    off()
+    expect(stop).toHaveBeenCalledTimes(1)
+  })
+
+  it('loads once more after a load during which the catalog changed, and drops a pending change when the last consumer leaves', async () => {
+    vi.useFakeTimers()
+    try {
+      let answer: ((catalog: never) => void) | null = null
+      const load = vi.fn(() => new Promise<never>((resolve) => { answer = resolve }))
+      let changed: (() => void) | null = null
+      const catalog = catalogSource(load, (onChange) => { changed = onChange; return () => {} })
+      const off = catalog.subscribe(() => {})
+      changed!()
+      await vi.advanceTimersByTimeAsync(150)
+      expect(load).toHaveBeenCalledTimes(1)
+      answer!([{ modality: 'video' }] as never)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(load).toHaveBeenCalledTimes(2)
+      answer!([{ modality: 'audio' }] as never)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(catalog.getSnapshot()).toEqual([{ modality: 'audio' }])
+      changed!()
+      off()
+      await vi.advanceTimersByTimeAsync(150)
+      expect(load).toHaveBeenCalledTimes(2)
+    } finally { vi.useRealTimers() }
+  })
 })
 
 describe('the model catalog failure', () => {
