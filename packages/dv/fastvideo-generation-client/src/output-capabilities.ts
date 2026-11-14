@@ -1,6 +1,11 @@
 /** Validate native FastVideo output geometry before advertising it to a caller. */
 import type { ModelFacts } from './types.ts'
 
+/** Put the configured default first when the server offers it; keep the server's order otherwise. */
+function moveToFront(keys: string[], first: string | undefined): string[] {
+  return keys.filter(key => key === first).concat(keys.filter(key => key !== first))
+}
+
 /** Preserve reference limits and model identity while discovering native output choices. */
 export function outputFacts(base: ModelFacts, value: unknown): ModelFacts {
   if (value === undefined || value === null) return base
@@ -38,6 +43,8 @@ export function outputFacts(base: ModelFacts, value: unknown): ModelFacts {
   const inconsistent = Object.values(frameSizes).some(tiers => Object.keys(tiers).length !== resolutions.length
     || resolutions.some(key => !(key in tiers)))
   if (inconsistent) return fail()
-  return { ...base, aspectRatios: sizes.map(([aspect]) => aspect), resolutions, frameSizes,
+  // Shot rendering defaults to the first aspect ratio and resolution, so the configured defaults stay first.
+  return { ...base, aspectRatios: moveToFront(sizes.map(([aspect]) => aspect), base.aspectRatios[0]),
+    resolutions: moveToFront(resolutions, base.resolutions[0]), frameSizes,
     minDurationSec: min, maxDurationSec: max, numFramesByDurationSec }
 }
