@@ -30,10 +30,11 @@ import { SessionSwitcher } from './SessionSwitcher.tsx'
 import { useSlotTabs } from './slot-tabs.ts'
 import type { ShellLocation } from './store.ts'
 import {
-  applyingLocation, formatLocation, getShell, locationOf, NO_PROJECTS, noteInCenter, parseLocation, projectOfWorkspace,
+  applyingLocation, formatLocation, getShell, initialLocation, locationOf, NO_PROJECTS, noteInCenter, parseLocation, projectOfWorkspace,
   setShell, shellClient, showLocation, startUrlMirror, useShell,
 } from './store.ts'
 import css from './shell.module.css'
+import { MiniMaxChoice, NewProjectDialog, miniMaxLabel } from './MiniMaxChoice.tsx'
 
 /** What the shell's DSH UI slot registrations inject. */
 export interface ShellInjected {
@@ -126,7 +127,9 @@ export function CenterPanel(props: CenterProps): ReactNode {
     restored = true
     previousProject.current = sessionProject
     startUrlMirror()
-    applyLocation(shell, projects, parseLocation(window.location.hash), true)
+    const current = getShell()
+    const target = current.projectId !== initialLocation.projectId ? locationOf(current) : parseLocation(window.location.hash)
+    applyLocation(shell, projects, target, true)
   }, [projects, workspacesReady, sessionsReady, sessionId, sessionProject, shell, restoreTimedOut])
   useEffect(() => {
     const timer = setTimeout(() => { setRestoreTimedOut(true) }, DSH_RESTORE_WAIT_MS)
@@ -160,9 +163,9 @@ export function CenterPanel(props: CenterProps): ReactNode {
     setShell({ projectId: sessionProject })
   }, [sessionProject])
   const projectSession = sessionProject === projectId ? sessionId : undefined
-  return projectId === null
+  return <><NewProjectDialog shell={shell} />{projectId === null
     ? <EntryPage {...props} />
-    : <WorkspacePage key={projectId} {...props} projectId={projectId} projectSession={projectSession} />
+    : <WorkspacePage key={projectId} {...props} projectId={projectId} projectSession={projectSession} />}</>
 }
 
 /**
@@ -210,6 +213,7 @@ function EntryPage(props: CenterProps): ReactNode {
           slots: { views: ChatOnlyView, widthControls: NoWidthControls },
         })}
       </div>
+      {blank && <MiniMaxChoice />}
       {blank && <TemplateChips />}
       {blank && <RecentProjects shell={shell} renderFactorySlot={renderFactorySlot} />}
       {blank && <Explore renderSlot={props.renderSlot} />}
@@ -354,6 +358,7 @@ function WorkspacePage(props: CenterProps & { projectId: string; projectSession:
   })
   // The project's current state, which the switcher's cover follows.
   const state = useProjectState(client, projectId)
+  const creation = state.value?.components.proj?.records.find(record => record.operation === 'proj.create')
   // The chat session the workspace sits beside, recorded as the `session` of the views' edits; none until the main
   // session belongs to this project.
   const session = projectSession ?? null
@@ -422,6 +427,11 @@ function WorkspacePage(props: CenterProps & { projectId: string; projectSession:
             shell={shell} project={project} cover={cover} sessionTitle={sessionTitle ?? null}
             useSessions={useSessions} useWorkspaces={props.useWorkspaces} renderFactorySlot={props.renderFactorySlot}
           />
+          {creation !== undefined && 'minimax_skill' in creation.params && (
+            <span className={css.skillStatus} title={typeof creation.params['minimax_skill'] === 'string' ? creation.params['minimax_skill'] : ''}>
+              {miniMaxLabel(creation.params['minimax_skill'], t)}
+            </span>
+          )}
         </div>
         <div className={css.toggle} role="tablist" aria-label={t('视图', 'View')}>
           {views.map(tab => (

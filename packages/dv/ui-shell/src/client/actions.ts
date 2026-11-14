@@ -36,7 +36,7 @@ const UNTITLED_KEY = 'untitled'
 /** The actions the shell components receive through their DSH UI slot registrations. */
 export interface ShellActions {
   /** Create a project (the host registers its Workspace), then open a chat session in it. */
-  newProject(): Promise<void>
+  newProject(minimaxSkill?: string | null): Promise<void>
   /**
    * Open a project and move the main session into it: `sessionId` when it belongs to the project, else the main session
    * when it is a non-blank session of the project, else the project's latest non-blank chat session, else a blank one.
@@ -76,9 +76,9 @@ export interface ShellActions {
   /** Expand DSH's left sidebar when the shell collapsed it and the user has not folded or unfolded it from DSH's rail since. */
   restoreSidebar(): void
   /** The session whose right-panel seat is mounted, observed by the center. */
-  mountedSeat: { getSnapshot(): SessionId | undefined; subscribe(fn: () => void): () => void }
+  mountedSeat: { getSnapshot(this: void): SessionId | undefined; subscribe(this: void, fn: () => void): () => void }
   /** Whether the right panel is expanded, observed by the center to show its open button only while it is hidden. */
-  panelExpanded: { getSnapshot(): boolean; subscribe(fn: () => void): () => void }
+  panelExpanded: { getSnapshot(this: void): boolean; subscribe(this: void, fn: () => void): () => void }
 }
 
 /**
@@ -218,8 +218,8 @@ export function createActions(ctx: ClientContext): ShellActions {
     const folder = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
     const attached = ctx.workspaces.list.getSnapshot().items.some(item => item.sessionIds.includes(sessionId))
     if (sessionId !== tabBlanks.get(UNTITLED_KEY) || folder === undefined || attached) return Promise.resolve()
-    const creating = chatProjects.get(sessionId) ?? shellClient.createChatProject(folder, sessionId).then(
-      () => undefined,
+    const creating = chatProjects.get(sessionId) ?? shellClient.createChatProject(folder, sessionId, getShell().minimaxSkill ?? null).then(
+      () => { setShell({ minimaxSkill: null }) },
       (error: unknown) => {
         chatProjects.delete(sessionId)
         const reason = error instanceof Error ? error.message : String(error)
@@ -266,11 +266,15 @@ export function createActions(ctx: ClientContext): ShellActions {
   }
 
   return {
-    async newProject() {
+    async newProject(minimaxSkill) {
+      if (minimaxSkill === undefined) {
+        setShell({ createProjectOpen: true, minimaxSkill: null })
+        return
+      }
       leavePage()
-      const created = await shellClient.createProject(pickText('未命名项目', 'Untitled project'), 'canvas')
+      const created = await shellClient.createProject(pickText('未命名项目', 'Untitled project'), 'canvas', minimaxSkill)
       await refreshProjects()
-      setShell({ projectId: created.id, view: 'canvas' })
+      setShell({ projectId: created.id, view: 'canvas', createProjectOpen: false, minimaxSkill: null })
       await openBlank(created.id as WorkspaceId, () => getShell().projectId === created.id)
     },
     openProject,

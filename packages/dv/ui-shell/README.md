@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # @dv/ui-shell
 
+New projects choose a video type on Home or in the Create project dialog. The default explicitly disables MiniMax Skills; eight video styles and H3 prompt writing select one official skill. The choice is saved at creation and shown in the workspace header; later chats inherit it, and changing styles requires a new project. Project choices override startup MiniMax environment variables. Creation errors leave the dialog and choice available for retry.
+
 English | [中文](README.zh.md)
 
 ## Summary
