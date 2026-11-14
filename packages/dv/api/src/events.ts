@@ -1,7 +1,7 @@
 /**
  * A project's changes as a server-sent event stream: one event per Project change, named by its kind (`record` for an
- * appended record, `update` for a record update), and a
- * comment line every keep-alive interval so proxies keep the response open.
+ * appended record, `update` for a record update), a `models` event with an empty object each time the model catalog
+ * changes, and a comment line every keep-alive interval so proxies keep the response open.
  *
  * @module @dv/api/events
  */
@@ -11,6 +11,8 @@ import type { ProjectEvent, ProjectId } from '@dv/project'
 /** What the stream needs from its owner. */
 export interface EventStreamSources {
   subscribe(projectId: ProjectId, listener: (event: ProjectEvent) => void): () => void
+  /** Listen to changes of the model catalog; returns the function that stops listening. */
+  subscribeModels(listener: () => void): () => void
   /** Milliseconds between keep-alive comments. */
   keepaliveMs: number
 }
@@ -47,10 +49,12 @@ export function serveEventStream(
   // A named event (comments are invisible to EventSource) lets the browser tell a live stream from a buffered one.
   response.write('event: ready\ndata: {}\n\n')
   const unsubscribe = sources.subscribe(projectId, (event) => { response.write(frameOf(event)) })
+  const unsubscribeModels = sources.subscribeModels(() => { response.write('event: models\ndata: {}\n\n') })
   const keepalive = setInterval(() => { response.write(': keepalive\n\n') }, sources.keepaliveMs)
   const end = (): void => {
     clearInterval(keepalive)
     unsubscribe()
+    unsubscribeModels()
     response.end()
   }
   request.on('close', end)

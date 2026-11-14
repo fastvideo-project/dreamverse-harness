@@ -145,6 +145,21 @@ describe('the model catalog', () => {
     await vi.waitFor(() => { expect(error).toHaveBeenCalledWith('[dv-composer] models failed:', new Error('offline')) })
     expect(catalog.getSnapshot()).toEqual([{ modality: 'video' }])
   })
+
+  it('loads again once after a burst of catalog changes while it has a consumer, and stops following after the last leaves', async () => {
+    const answers = [[{ modality: 'video' }], [{ modality: 'audio' }]]
+    const load = vi.fn(() => Promise.resolve(answers.shift() as never))
+    let changed: (() => void) | null = null
+    const stop = vi.fn()
+    const catalog = catalogSource(load, (onChange) => { changed = onChange; return stop })
+    const off = catalog.subscribe(() => {})
+    await vi.waitFor(() => { expect(catalog.getSnapshot()).toEqual([{ modality: 'video' }]) })
+    changed!(); changed!(); changed!()
+    await vi.waitFor(() => { expect(catalog.getSnapshot()).toEqual([{ modality: 'audio' }]) })
+    expect(load).toHaveBeenCalledTimes(2)
+    off()
+    expect(stop).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('the parameter bars', () => {

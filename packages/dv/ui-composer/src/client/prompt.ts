@@ -87,25 +87,50 @@ export function projectStates(client: Pick<DvClient, 'getState' | 'subscribe'>):
 
 /**
  * The model catalog: null until the first load answers, and loaded again each time a consumer subscribes while none
- * did, so an occurrence that opens reads the catalog as it is then, such as after a backend that was down comes back. A
- * failed load keeps the catalog it had.
+ * did, so an occurrence that opens reads the catalog as it is then, such as after a backend that was down comes back.
+ * While it has a consumer, it also loads again after each burst of changes that `follow` reports, such as a model added
+ * in Settings. Only the answer of the newest load is kept, and a failed load keeps the catalog it had.
  * @param load - reads the catalog.
+ * @param follow - calls its argument after each change of the catalog and returns the function that stops; omitted, the
+ *   catalog loads only when a consumer arrives.
  * @returns the source.
  */
-export function catalogSource(load: () => Promise<readonly WireModelEntry[]>): HostObservable<readonly WireModelEntry[] | null> {
+export function catalogSource(
+  load: () => Promise<readonly WireModelEntry[]>,
+  follow?: (onChange: () => void) => () => void,
+): HostObservable<readonly WireModelEntry[] | null> {
   const store = createSnapshotStore<readonly WireModelEntry[] | null>(null)
   let consumers = 0
+  let loads = 0
+  let stop: (() => void) | null = null
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const reload = (): void => {
+    loads += 1
+    const loaded = loads
+    load().then((catalog) => { if (loaded === loads) store.set(catalog) }, (failure: unknown) => {
+      console.error('[dv-composer] models failed:', failure)
+    })
+  }
   return {
     getSnapshot: () => store.getSnapshot(),
     subscribe: (listener) => {
       const off = store.subscribe(listener)
       consumers += 1
       if (consumers === 1) {
-        load().then((catalog) => { store.set(catalog) }, (failure: unknown) => { console.error('[dv-composer] models failed:', failure) })
+        reload()
+        stop = follow?.(() => {
+          if (timer !== null) clearTimeout(timer)
+          timer = setTimeout(() => { timer = null; reload() }, REFETCH_DELAY_MS)
+        }) ?? null
       }
       return () => {
         off()
         consumers -= 1
+        if (consumers > 0) return
+        stop?.()
+        stop = null
+        if (timer !== null) clearTimeout(timer)
+        timer = null
       }
     },
   }
@@ -119,9 +144,23 @@ export function applyPrompt(ctx: ClientContext): void {
   const composer: DvComposer = { paramBars: createRegistry<ParamBar>(bar => [bar.operation], bar => bar.owner) }
   ctx.reflect.provide('dvComposer', composer)
   const client = new DvClient()
-  const models = catalogSource(() => client.listModels())
-  const states = projectStates(client)
   const currentProject = createSnapshotStore<string | null>(getCurrentProject())
+  // The catalog's changes arrive on the open project's event stream, so following them opens no other connection.
+  const models = catalogSource(() => client.listModels(), (onChange) => {
+    let leave = (): void => {}
+    const join = (): void => {
+      leave()
+      const project = currentProject.getSnapshot()
+      leave = project === null ? () => {} : client.subscribeModels(project, onChange)
+    }
+    join()
+    const off = currentProject.subscribe(join)
+    return () => {
+      off()
+      leave()
+    }
+  })
+  const states = projectStates(client)
   // The version kinds that the canvas holds, which the components read through their hooks; null without the canvas.
   const versionKinds = createSnapshotStore<readonly VersionKind[] | null>(null)
   ctx.inject(['dvCanvas'], (scope) => {

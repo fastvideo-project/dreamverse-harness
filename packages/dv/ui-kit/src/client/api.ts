@@ -388,6 +388,27 @@ export class DvClient {
     return () => { clearInterval(timer) }
   }
 
+  /**
+   * Follow changes of the model catalog through the page's shared `EventSource` of a project; without `EventSource`,
+   * or behind a proxy that buffers the stream, `onChange` is never called.
+   * @param project - the project whose stream carries the `models` events.
+   * @param onChange - called after each change of the catalog.
+   * @returns a function that stops following.
+   */
+  subscribeModels(project: string, onChange: () => void): () => void {
+    if (typeof EventSource !== 'function') return () => {}
+    const handler = (): void => { onChange() }
+    const shared = acquireEventSource(project)
+    shared.source.addEventListener('models', handler)
+    let stopped = false
+    return () => {
+      if (stopped) return
+      stopped = true
+      shared.source.removeEventListener('models', handler)
+      releaseEventSource(project, shared)
+    }
+  }
+
   private async get<T>(path: string, query: Record<string, string>, signal?: AbortSignal): Promise<T> {
     const search = new URLSearchParams(query).toString()
     const response = await this.fetchImpl(search.length === 0 ? path : `${path}?${search}`, { signal: signal ?? null })
