@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # @dv/project
 
+项目创建时可在首条 `proj.create` 记录的 `params.minimax_skill` 保存官方技能名称，或用 `null` 明确关闭。选择在后续会话及撤销／重做时保持不变，`miniMaxSkill(project)` 读取该首条记录。缺少字段表示旧项目或未传该参数的 API 项目，沿用启动配置。现有记录文件无需格式变更即可读取。
+
 [English](README.md) | 中文
 
 ## 概述

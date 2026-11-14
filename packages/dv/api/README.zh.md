@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # @dv/api
 
+`POST /api/dv/projects` 的标题创建与聊天文件夹创建均接受可选 `minimax_skill`：官方完整名称选择一个技能，`null` 明确关闭，省略则沿用启动配置。无效名称在创建目录前返回 400。选择只写入首次 `proj.create`，对已有文件夹重复创建不会改变选择。
+
 [English](README.md) | 中文
 
 ## 概述

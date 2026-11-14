@@ -181,10 +181,11 @@ export class DvClient {
    * Create a project.
    * @param title - the project title; the host adds the smallest free number from 2 when another project has it.
    * @param surface - where the gesture came from.
+   * @param minimaxSkill - immutable project choice; null explicitly disables MiniMax, omission uses startup configuration.
    * @returns the project's identity.
    */
-  createProject(title: string, surface: ViewSurface): Promise<ProjectInfo> {
-    return this.post('/api/dv/projects', { title, surface })
+  createProject(title: string, surface: ViewSurface, minimaxSkill?: string | null): Promise<ProjectInfo> {
+    return this.post('/api/dv/projects', { title, surface, ...(minimaxSkill === undefined ? {} : { minimax_skill: minimaxSkill }) })
   }
 
   /**
@@ -346,10 +347,11 @@ export class DvClient {
    * Make a chat session's folder a project, titled after the folder's name; a folder that is a project already stays as it is.
    * @param folder - the session's working directory.
    * @param session - the chat session.
+   * @param minimaxSkill - immutable project choice; null explicitly disables MiniMax.
    * @returns the project's identity.
    */
-  createChatProject(folder: string, session: string): Promise<ProjectInfo> {
-    return this.post('/api/dv/projects', { folder, session })
+  createChatProject(folder: string, session: string, minimaxSkill?: string | null): Promise<ProjectInfo> {
+    return this.post('/api/dv/projects', { folder, session, ...(minimaxSkill === undefined ? {} : { minimax_skill: minimaxSkill }) })
   }
 
   /**

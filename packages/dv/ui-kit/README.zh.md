@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # @dv/ui-kit
 
+`DvClient.createProject` 和 `createChatProject` 的可选第三个参数保存项目固定的 MiniMax 选择：官方完整名称、明确关闭的 `null`，或省略以使用启动默认值。共享 `minimax.ts` 导出可用于浏览器的官方名称目录。
+
 [English](README.md) | 中文
 
 ## 概述
