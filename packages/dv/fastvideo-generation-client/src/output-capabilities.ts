@@ -1,5 +1,5 @@
 /** Validate native FastVideo output geometry before advertising it to a caller. */
-import type { ModelFacts } from './types.ts'
+import type { ModelFacts, ReferenceLimitFacts, ServedTaskFacts } from './types.ts'
 
 /** Put the configured default first when the server offers it; keep the server's order otherwise. */
 function moveToFront(keys: string[], first: string | undefined): string[] {
@@ -43,8 +43,38 @@ export function outputFacts(base: ModelFacts, value: unknown): ModelFacts {
   const inconsistent = Object.values(frameSizes).some(tiers => Object.keys(tiers).length !== resolutions.length
     || resolutions.some(key => !(key in tiers)))
   if (inconsistent) return fail()
+  const tasks = data['tasks'] === undefined ? undefined : servedTasks(data['tasks'], fail, object)
+  const referenceLimits = data['reference_limits'] == null ? undefined : limitFacts(object(data['reference_limits']), fail)
   // Shot rendering defaults to the first aspect ratio and resolution, so the configured defaults stay first.
   return { ...base, aspectRatios: moveToFront(sizes.map(([aspect]) => aspect), base.aspectRatios[0]),
     resolutions: moveToFront(resolutions, base.resolutions[0]), frameSizes,
-    minDurationSec: min, maxDurationSec: max, numFramesByDurationSec }
+    minDurationSec: min, maxDurationSec: max, numFramesByDurationSec,
+    ...tasks === undefined ? {} : { tasks }, ...referenceLimits === undefined ? {} : { referenceLimits } }
+}
+
+const ANCHORS: ReadonlyArray<string> = ['first', 'last']
+
+function servedTasks(value: unknown, fail: () => never, object: (entry: unknown) => Record<string, unknown>): ServedTaskFacts[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 16) return fail()
+  return value.map((entry): ServedTaskFacts => {
+    const task = object(entry)
+    const name = task['task']; const images = task['image_references']; const anchors = task['anchors']
+    if (typeof name !== 'string' || !/^[a-z0-9]+$/.test(name)) return fail()
+    if (images !== undefined && !(typeof images === 'number' && Number.isSafeInteger(images) && images >= 0)) return fail()
+    if (anchors !== undefined && !(Array.isArray(anchors) && anchors.every(anchor => ANCHORS.includes(anchor as string)))) return fail()
+    return { task: name, ...images === undefined ? {} : { imageReferences: images },
+      ...anchors === undefined ? {} : { anchors: anchors as Array<'first' | 'last'> } }
+  })
+}
+
+function limitFacts(value: Record<string, unknown>, fail: () => never): ReferenceLimitFacts {
+  const count = (key: string): number => {
+    const entry = value[key]
+    return typeof entry === 'number' && Number.isSafeInteger(entry) && entry >= 0 ? entry : fail()
+  }
+  const limits = { images: count('images'), videos: count('videos'), audios: count('audios'), total: count('total') }
+  const continuation = value['continuation_video']
+  if (typeof continuation !== 'boolean') return fail()
+  if (Math.max(limits.images, limits.videos, limits.audios) > limits.total) return fail()
+  return { ...limits, continuationVideo: continuation }
 }

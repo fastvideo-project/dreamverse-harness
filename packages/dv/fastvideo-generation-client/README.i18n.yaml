@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/dv/fastvideo-generation-client/README.md
-README.md: 432f00ff00d6bf74ce810d9e0771b85c253259e6
-README.zh.md: bbb85b728c543be3bbc6808271304fadc4459bfd
+README.md: 3a6c5a8879e783f5a9a771b836d7871ab234b303
+README.zh.md: 3ed603b99fb9a822f63c5b2789d478d903ffd39d

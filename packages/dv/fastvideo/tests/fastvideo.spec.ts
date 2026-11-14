@@ -333,6 +333,36 @@ describe('dv-fastvideo', () => {
     expect(await check(textTask, [image], video)).toEqual(['It takes no reference input; this shot has 1.', 'It takes no first_frame input; this shot has 1.'])
   })
 
+  it('checks the tasks and reference limits that the server publishes', async () => {
+    const capabilities = (extra: Record<string, unknown>) => ({ ...CAPABILITIES, ...extra })
+    const [reference, text] = await Promise.all([
+      startFakeServer(REFERENCE_FACTS, { capabilities: capabilities({
+        tasks: [{ task: 't2va' }, { task: 'fl2va', image_references: 2, anchors: ['first', 'last'] }],
+        reference_limits: { images: 1, videos: 2, audios: 2, total: 2, continuation_video: true },
+      }) }),
+      startFakeServer(TEXT_FACTS, { capabilities: capabilities({ tasks: [{ task: 't2v' }] }) }),
+    ])
+    const ctx = await start({ ref2v: reference.server, t2v: text.server })
+    const asset = (bytes: string, mime: string) => importAsset(ctx, Buffer.from(bytes), mime)
+    const [video, image, otherImage] = [asset('VID1', 'video/mp4'), asset('IMG1', 'image/png'), asset('IMG2', 'image/png')]
+    // The configured facts allow the media; the server publishes tighter limits, counting the frames, and no ref2va.
+    expect(await fasth3(ctx, 'ref2v').validateGenerationRequest({ ...request([video], image),
+      lastFrame: otherImage, prompt: '@[first frame](dv:input/first_frame) smiles' })).toEqual([
+      'The server for fasth3 ref2v serves t2va, fl2va; it does not serve ref2va.',
+      'The server takes at most 2 references; this shot has 3.',
+      'The server takes at most 1 of type image; this shot has 2.',
+      'It takes no last_frame input; this shot has 1.',
+    ])
+    expect(await fasth3(ctx, 'ref2v').validateGenerationRequest(request([video, image, otherImage], null))).toEqual([
+      'The server for fasth3 ref2v serves t2va, fl2va; it does not serve ref2va.',
+      'The server takes at most 2 references; this shot has 3.',
+      'The server takes at most 1 of type image; this shot has 2.',
+    ])
+    // The server's t2v alias is its t2va task.
+    expect(await fasth3(ctx, 't2v').validateGenerationRequest(request([], null))).toEqual([])
+    expect(await fasth3(ctx, 't2v').schema()).toMatchObject({ server_tasks: ['t2v'] })
+  })
+
   it('refuses a shot whose only media are audio, because FastVideo pairs audio with an image or a video', async () => {
     const referenceMediaTypes = { ...REFERENCE_FACTS.referenceMediaTypes, audio: { maxCount: 2 } }
     const reference = await startFakeServer({ ...REFERENCE_FACTS, referenceMediaTypes })

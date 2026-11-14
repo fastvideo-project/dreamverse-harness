@@ -216,6 +216,43 @@ function requestProblems(
   return problems
 }
 
+/** The native task of each harness task, for a server configured without one. */
+const NATIVE_TASKS: Readonly<Record<TaskId, string>> = { t2v: 't2va', i2v: 'i2va', l2v: 'l2va', fl2v: 'fl2va', ref2v: 'ref2va' }
+/** Native aliases a server may publish. */
+const NATIVE_ALIASES: Readonly<Record<string, string>> = { t2v: 't2va', i2v: 'i2va' }
+
+/**
+ * The problems of one render request against what the server publishes: a native task the server does not list, or
+ * more media than a Ref2VA server's reference limits allow. Facts without `tasks` or `referenceLimits` add none.
+ * @param name - the model and task, such as `fasth3 ref2v`, for the message.
+ * @param nativeTask - the native task the entry sends.
+ * @param facts - the server's facts from `model()`.
+ * @param request - the render request.
+ * @param mediaTypeOf - the media type of an asset, read from the asset pool.
+ * @returns the problems, each one sentence.
+ */
+function servedProblems(
+  name: string, nativeTask: string, facts: ModelFacts, request: RenderRequest,
+  mediaTypeOf: (asset: RenderRequest['references'][number]) => string,
+): string[] {
+  const problems: string[] = []
+  const served = facts.tasks?.map(({ task }) => NATIVE_ALIASES[task] ?? task)
+  if (served !== undefined && !served.includes(nativeTask)) {
+    problems.push(`The server for ${name} serves ${served.join(', ')}; it does not serve ${nativeTask}.`)
+  }
+  const limits = facts.referenceLimits
+  if (limits === undefined) return problems
+  const assets = [...request.references, ...request.firstFrame === null ? [] : [request.firstFrame],
+    ...request.lastFrame === null ? [] : [request.lastFrame]]
+  if (assets.length > limits.total) problems.push(`The server takes at most ${limits.total} references; this shot has ${assets.length}.`)
+  const maxByType: Record<string, number> = { image: limits.images, video: limits.videos, audio: limits.audios }
+  for (const [type, max] of Object.entries(maxByType)) {
+    const count = assets.filter(asset => mediaTypeOf(asset) === type).length
+    if (count > max) problems.push(`The server takes at most ${max} of type ${type}; this shot has ${count}.`)
+  }
+  return problems
+}
+
 /**
  * The problems of a request's `extra` values for a task: names the task does not take are refused in one sentence that
  * lists its parameters, and the values of known names are checked against their schema.
@@ -270,6 +307,8 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
   const client = new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), {
     ...server, task: served.nativeTask ?? server.task ?? null,
   })
+  // A task that the config leaves unset is sent without `task`; the server's defaults map it as the harness task does.
+  const nativeTask = served.nativeTask ?? server.task ?? NATIVE_TASKS[task]
   const limits = deriveInputLimits(`${model} ${task}`, inputs, client.facts)
   return {
     modality: 'video',
@@ -301,12 +340,14 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
         resolutions: facts.resolutions,
         inputs: describeInputs(inputs, limits),
         extra: JSON.parse(JSON.stringify(extra)) as JsonValue,
+        ...facts.tasks === undefined ? {} : { server_tasks: facts.tasks.map(({ task: served }) => served) },
       }
     },
     async validateGenerationRequest(request: RenderRequest): Promise<string[]> {
-      await client.model()
+      const facts = await client.model()
       const mediaTypeOf = (asset: RenderRequest['references'][number]) => ctx.dvAssetPool.mediaType(asset)
       return [
+        ...servedProblems(`${model} ${task}`, nativeTask, facts, request, mediaTypeOf),
         ...requestProblems(inputs, limits, request, mediaTypeOf),
         ...extraProblems(model, task, extra, request.extra),
         ...served.modelProblems?.(request, mediaTypeOf) ?? [],

@@ -31,6 +31,34 @@ export interface ModelFacts {
   frameSizes: Record<string, Record<string, [number, number]>>
   /** Native frame count by segment duration in seconds, for every duration from the minimum to the maximum. */
   numFramesByDurationSec: Record<string, number>
+  /** The native tasks the server accepts, when it publishes them. */
+  tasks?: ServedTaskFacts[]
+  /** The server's reference limits, when it is a Ref2VA server that publishes them. */
+  referenceLimits?: ReferenceLimitFacts
+}
+
+/** One native task that a FastVideo server accepts, from `video_output_capabilities.tasks`. */
+export interface ServedTaskFacts {
+  /** Native task ID, such as `t2va`, `i2va`, `l2va`, `fl2va` or `ref2va`. */
+  task: string
+  /** How many image references the task takes as frames; absent for `ref2va`. */
+  imageReferences?: number
+  /** The frames those images anchor, in order. */
+  anchors?: Array<'first' | 'last'>
+}
+
+/** A Ref2VA server's reference limits, from `video_output_capabilities.reference_limits`. */
+export interface ReferenceLimitFacts {
+  /** Most image references in one request. */
+  images: number
+  /** Most video references in one request. */
+  videos: number
+  /** Most audio references in one request. */
+  audios: number
+  /** Most references in one request across media types. */
+  total: number
+  /** Whether the server accepts a continuation clip. */
+  continuationVideo: boolean
 }
 
 /** One reference of a segment request: its bytes and their MIME type, whose top-level type is the media type. */

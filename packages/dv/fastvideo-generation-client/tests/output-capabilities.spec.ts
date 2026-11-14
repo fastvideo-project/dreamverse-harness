@@ -32,7 +32,20 @@ describe('native output capability discovery', () => {
     expect(outputFacts(base, undefined)).toBe(base)
     expect(outputFacts(base, null)).toBe(base)
   })
-  it.each([{}, [], { ...metadata, schema_version: 2 }, { ...metadata, duration_seconds: { min: 5, max: 4 } },
+  it('reads the served tasks and a Ref2VA server\'s reference limits', () => {
+    const tasks = [{ task: 't2va', image_references: 0 }, { task: 'i2va', image_references: 1, anchors: ['first'] },
+      { task: 'fl2va', image_references: 2, anchors: ['first', 'last'] }, { task: 'ref2va' }]
+    const limits = { images: 9, videos: 3, audios: 3, total: 12, continuation_video: true }
+    expect(outputFacts(base, { ...metadata, tasks, reference_limits: limits })).toMatchObject({
+      tasks: [{ task: 't2va', imageReferences: 0 }, { task: 'i2va', imageReferences: 1, anchors: ['first'] },
+        { task: 'fl2va', imageReferences: 2, anchors: ['first', 'last'] }, { task: 'ref2va' }],
+      referenceLimits: { images: 9, videos: 3, audios: 3, total: 12, continuationVideo: true },
+    })
+    const plain = outputFacts(base, { ...metadata, reference_limits: null })
+    expect(plain).not.toHaveProperty('tasks')
+    expect(plain).not.toHaveProperty('referenceLimits')
+  })
+  it.each([{}, [], 'metadata', { ...metadata, schema_version: 2 }, { ...metadata, duration_seconds: { min: 5, max: 4 } },
     { ...metadata, num_frames_by_duration_seconds: { 5: 124 } },
     { ...metadata, recommended_frame_sizes: { '16:9': { '768p': [NaN, 768] } } },
     { ...metadata, recommended_frame_sizes: { '16:9': { '768p': [1344, 768] }, '9:16': { '480p': [480, 832] } } },
@@ -41,7 +54,12 @@ describe('native output capability discovery', () => {
     { ...metadata, recommended_frame_sizes: { '0:9': { '480p': [480, 832] } } },
     { ...metadata, recommended_frame_sizes: { wide: { '480p': [832, 480] } } },
     { ...metadata, recommended_frame_sizes: { '16:9': {} } },
-    { ...metadata, recommended_frame_sizes: { '16:9': Object.fromEntries(Array.from({ length: 17 }, (_, index) => [`${index}p`, [832, 480]])) } }])('rejects malformed metadata: %j', (value) => {
-    expect(() => outputFacts(base, value)).toThrow('invalid video output capabilities')
+    { ...metadata, recommended_frame_sizes: { '16:9': Object.fromEntries(Array.from({ length: 17 }, (_, index) => [`${index}p`, [832, 480]])) } },
+    { ...metadata, tasks: [] }, { ...metadata, tasks: [{ task: 'T2VA' }] }, { ...metadata, tasks: [{ task: 'i2va', image_references: -1 }] },
+    { ...metadata, tasks: [{ task: 'i2va', anchors: ['middle'] }] },
+    { ...metadata, reference_limits: { images: 9, videos: 3, audios: 3, total: 2, continuation_video: true } },
+    { ...metadata, reference_limits: { images: 9, videos: 3, audios: 3, total: 12 } },
+    { ...metadata, reference_limits: { images: 1.5, videos: 3, audios: 3, total: 12, continuation_video: false } }])('rejects malformed metadata: %j', (value) => {
+    expect(() => outputFacts(base, value)).toThrow('FastVideo returned invalid video output capabilities.')
   })
 })
