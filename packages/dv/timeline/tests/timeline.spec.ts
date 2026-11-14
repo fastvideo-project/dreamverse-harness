@@ -274,6 +274,12 @@ describe('dvTimeline', () => {
       .toBe('The sound ID, such as sd2 (see `sounds` of `timelines` in dv_proj_state).')
     expect(spec('timeline.sound_track_rename')?.description)
       .toBe('Name one sound track of a timeline: an existing track or the one after the last. An empty name clears the name.')
+    expect(spec('timeline.mute')?.description).toBe(
+      'Mute or unmute audio of a timeline. Target `video` is the clips\' own audio: while it is muted, the user hears the clips silent '
+      + 'when playing the timeline, and the exported video has no audio. Target `sound` is one sound track: while it is muted, the user '
+      + 'does not hear its sounds when playing the timeline (the exported video does not include sounds yet).',
+    )
+    expect(spec('timeline.mute')?.label).toEqual({ zh: '静音或取消静音', en: 'Mute or unmute' })
   })
 
   it('refuses a sound of an asset that is not audio, and a sound call that does not apply, before it changes the timeline', async () => {

@@ -54,7 +54,7 @@ export const Config: z<Config> = z.object({})
 const TIMELINE_EDITING_SKILL = {
   name: 'timeline-editing',
   description: 'Cheat sheet from the user\'s editing phrasings to the exact dv_* calls and their required arguments: trims, retakes, '
-    + 'reference and style changes, reordering, deletion, going back to an earlier take, and export.',
+    + 'reference and style changes, reordering, deletion, going back to an earlier take, muting, and export.',
   whenToUse: 'The user asks for a change to an existing shot or timeline in a DreamVerse project and you need the exact tool call.',
   content: readFileSync(new URL('../skills/timeline-editing/SKILL.md', import.meta.url), 'utf8'),
   source: 'runtime',
@@ -151,7 +151,7 @@ export default class DvTimeline extends Service {
 
   /**
    * Export a timeline to one MP4 file: trim each clip with an in or out point to that range, then join all clips in
-   * playback order.
+   * playback order; a timeline whose clips' own audio is muted gives a file without audio.
    * @param timeline - the timeline with at least one clip, each of which has an asset.
    * @param dir - an existing directory for the trimmed clips and the joined file, usually the operation's `scratchDir`.
    * @returns the path of the joined file inside `dir`.
@@ -377,11 +377,12 @@ export default class DvTimeline extends Service {
       }, execute),
       edit({
         name: OPERATIONS.mute,
-        label: { zh: '静音', en: 'Mute' },
+        label: { zh: '静音或取消静音', en: 'Mute or unmute' },
         version: '1',
-        description: 'Mute or unmute audio of a timeline. Target `video` is the clips\' own audio: the preview plays the clips silent '
-          + 'and the exported video leaves their audio out. Target `sound` is one sound track: the preview plays its sounds silent '
-          + '(the exported video does not include sounds yet).',
+        description: 'Mute or unmute audio of a timeline. Target `video` is the clips\' own audio: while it is muted, the user hears '
+          + 'the clips silent when playing the timeline, and the exported video has no audio. Target `sound` is one sound track: '
+          + 'while it is muted, the user does not hear its sounds when playing the timeline (the exported video does not include '
+          + 'sounds yet).',
         params: {
           timeline: { type: 'string', required: true, description: 'The timeline, such as t1.' },
           target: { type: 'string', enum: ['video', 'sound'], required: true, description: '`video` for the clips\' own audio, `sound` for one sound track.' },

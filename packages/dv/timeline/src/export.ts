@@ -62,7 +62,7 @@ export async function exportTimeline(ctx: Context, timeline: Timeline, dir: stri
   if (reason !== null) throw new Error(reason)
   const paths: string[] = []
   for (const [index, { asset, ...clip }] of timeline.clips.entries()) {
-    if (asset !== null) paths.push(await clipFile(ctx, { ...clip, asset }, index, dir))
+    if (asset !== null) paths.push(await clipFile(ctx, { ...clip, asset }, index, dir, timeline.video_muted))
   }
   return await joinClips(ctx, paths, dir, timeline.video_muted)
 }
@@ -74,9 +74,10 @@ export async function exportTimeline(ctx: Context, timeline: Timeline, dir: stri
  * @param clip - a clip with an asset.
  * @param index - the clip's index in the timeline, which names the trimmed file.
  * @param dir - the directory for the trimmed file.
+ * @param muted - whether to leave the clip's audio out of the trimmed file, because the export leaves it out anyway.
  * @returns the file path.
  */
-async function clipFile(ctx: Context, clip: Clip & { asset: AssetId }, index: number, dir: string): Promise<string> {
+async function clipFile(ctx: Context, clip: Clip & { asset: AssetId }, index: number, dir: string, muted: boolean): Promise<string> {
   const path = ctx.dvAssetPool.path(clip.asset)
   if (clip.in_sec === null && clip.out_sec === null) return path
   const name = `clip-${index + 1}.mp4`
@@ -84,7 +85,7 @@ async function clipFile(ctx: Context, clip: Clip & { asset: AssetId }, index: nu
   // The seek comes after `-i` so the decoder reads the frames before the trim and the trim lands on the exact frame.
   await ctx.dvFfmpeg.run({
     argv: [
-      'ffmpeg', '-y', '-loglevel', 'error', '-i', '{{in:0}}', '-ss', String(clip.in_sec ?? 0), ...end, ...ENCODE_ARGS, '-c:a', 'aac',
+      'ffmpeg', '-y', '-loglevel', 'error', '-i', '{{in:0}}', '-ss', String(clip.in_sec ?? 0), ...end, ...ENCODE_ARGS, ...muted ? ['-an'] : ['-c:a', 'aac'],
       '-movflags', '+faststart', `{{out:${name}}}`,
     ],
     inputs: [path], outputs: [name], dir,

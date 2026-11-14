@@ -57,6 +57,9 @@ describe('timeline reducer', () => {
     const slice = reduceAll([first, second])
     expect(slice.timelines.map(timeline => [timeline.id, timeline.name])).toEqual([[FIRST_TIMELINE_ID, ''], ['t2', 'B side']])
     expect(clipsOf(slice)).toEqual(['cl1 a null-null', 'cl2 b null-null'])
+    const [one, two] = slice.timelines
+    const shared = [one?.sounds === two?.sounds, one?.sound_track_names === two?.sound_track_names]
+    expect([...shared, one?.muted_sound_tracks === two?.muted_sound_tracks]).toEqual([false, false, false])
     // create only creates: a create of an existing ID changes nothing; update replaces the clips and keeps the name.
     expect(reduceAll([adding('timeline.create', { assets: ['d'] }, ['cl4'])], slice)).toBe(slice)
     expect(clipsOf(reduceAll([adding('timeline.update', { timeline: 't1', assets: ['d'] }, ['cl4'])], slice))).toEqual(['cl4 d null-null'])
