@@ -43,6 +43,17 @@ async function start(): Promise<Context> {
 }
 
 describe('dv-workflow-story', () => {
+  it('defaults MiniMax to off and rejects invalid modes and missing manual names', () => {
+    expect(WorkflowStory.Config({}).minimaxSkillsMode).toBe('off')
+    const invalidMode: Record<string, unknown> = { minimaxSkillsMode: 'invalid' }
+    expect(() => WorkflowStory.Config(invalidMode)).toThrow()
+    for (const minimaxSkill of [undefined, '', 'auto', 'not-a-skill']) {
+      const ctx = new Context()
+      expect(() => {
+        WorkflowStory.apply(ctx, { minimaxSkillsMode: 'manual', ...(minimaxSkill === undefined ? {} : { minimaxSkill }) })
+      }).toThrow('DV_MINIMAX_SKILL')
+    }
+  })
   it('serves exactly the SKILL.md files of its skills folder while it is mounted, and removes them on disposal', async () => {
     const home = mkdtempSync(join(tmpdir(), 'dv-workflow-story-home-'))
     onTestFinished(() => { rmSync(home, { recursive: true, force: true }) })
