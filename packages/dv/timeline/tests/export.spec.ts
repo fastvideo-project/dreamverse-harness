@@ -111,7 +111,10 @@ describe('timeline.export', () => {
     const fixture = await start()
     const specs = fixture.ctx.dvProject.listOperations().filter(spec => spec.name === 'timeline.export')
     expect(specs.map(spec => [spec.component, spec.deterministic, spec.resource])).toEqual([['timeline', false, 'cpu']])
-    expect(fixture.ctx.tools.schemas().find(tool => tool.name === 'dv_timeline_export')?.description).toContain('Export a timeline')
+    expect(fixture.ctx.tools.schemas().find(tool => tool.name === 'dv_timeline_export')?.description).toBe(
+      'Export a timeline to one video: each clip with an in or out point is trimmed to that range, and all clips are joined in timeline '
+      + 'order. While the timeline\'s video audio is muted (dv_timeline_mute), the video has no audio. Runs on the CPU.',
+    )
     const entry = [...fixture.ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-timeline.mjs'))
     await entry?.fiber?.dispose()
     expect(fixture.ctx.dvProject.listOperations().filter(spec => spec.name === 'timeline.export')).toEqual([])
@@ -168,10 +171,11 @@ describe('timeline.export', () => {
     await Promise.all(renders)
   })
 
-  it('joins the clips without their audio while the timeline\'s video audio is muted, and with it otherwise', async () => {
+  it('trims and joins the clips without their audio while the timeline\'s video audio is muted, and with it otherwise', async () => {
     const fixture = await start()
     const clip = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('clip'), { mime: 'video/mp4', name: 'clip.mp4' }, null)
     await fixture.run('timeline.create', { timeline: 't1', assets: [clip] })
+    await fixture.run('timeline.clip_trim', { clip: 'cl1', in_sec: 0.5, out_sec: 1 })
     const argvs: Array<readonly string[]> = []
     vi.spyOn(fixture.ctx.dvFfmpeg, 'run').mockImplementation((request) => {
       argvs.push(request.argv)
@@ -181,7 +185,30 @@ describe('timeline.export', () => {
     await fixture.ctx.dvTimeline.exportTimeline(timeline(), fixture.dir)
     await fixture.run('timeline.mute', { timeline: 't1', target: 'video', muted: true })
     await fixture.ctx.dvTimeline.exportTimeline(timeline(), fixture.dir)
-    expect(argvs.map(argv => argv.includes('-an'))).toEqual([false, true])
+    // Each export trims the clip and then joins it: whether each command leaves the audio out and whether it encodes AAC.
+    expect(argvs.map(argv => [argv.includes('-an'), argv.includes('aac')])).toEqual([[false, true], [false, false], [true, false], [true, false]])
+  })
+
+  it.skipIf(!existsSync(FFMPEG))('exports a file with the clips\' audio, and a file without audio while the video audio is muted', async () => {
+    const fixture = await start()
+    const name = 'tone.mp4'
+    await fixture.ctx.dvFfmpeg.run({
+      argv: [
+        'ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=160x90:d=2:r=10', '-f', 'lavfi', '-i', 'sine=d=2',
+        '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', `{{out:${name}}}`,
+      ],
+      inputs: [], outputs: [name], dir: fixture.dir,
+    })
+    const tone = fixture.ctx.dvAssetPool.importAsset(fixture.project, { path: join(fixture.dir, name) }, { mime: 'video/mp4', name }, null)
+    await fixture.run('timeline.create', { timeline: 't1', assets: [tone, tone] })
+    await fixture.run('timeline.clip_trim', { clip: 'cl2', in_sec: 0.5, out_sec: 1.5 })
+    const hasAudio = async (): Promise<boolean> => {
+      const exported = await fixture.run('timeline.export', { timeline: 't1' })
+      return (await fixture.ctx.dvFfmpeg.probe(fixture.ctx.dvAssetPool.path(exported.outputs[0] as AssetId))).hasAudio
+    }
+    expect(await hasAudio()).toBe(true)
+    await fixture.run('timeline.mute', { timeline: 't1', target: 'video', muted: true })
+    expect(await hasAudio()).toBe(false)
   })
 
   it.skipIf(!existsSync(FFMPEG))('exports a timeline for the agent, trimming a clip with an in and out point to its range', async () => {

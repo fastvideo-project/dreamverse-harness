@@ -446,7 +446,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const storedTracks = Math.max(1, savedTracks)
   const trackName = (track: number): string => trackNames[track] || t('track.soundN', { n: track + 1 })
   const [renamingTrack, setRenamingTrack] = useState<{ track: number; name: string } | null>(null)
-  const trackCount = Math.max(storedTracks, shownTracks)
+  const trackCount = Math.max(storedTracks, Math.min(shownTracks, storedTracks + 1))
   // The track the add dialog adds to, the selected sound, and the open sound or track menu.
   const [soundTrack, setSoundTrack] = useState(0)
   const [chosenSound, setChosenSound] = useState<string | null>(null)
@@ -652,21 +652,34 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     if (name === '' || name === trackName(edit.track)) return
     void runOperation('timeline.sound_track_rename', { track: edit.track, name }, t('intent.trackRename', { name }))
   }
+  // While a track delete or a mute runs, and until the refreshed state replaces the timeline it was computed from, the
+  // speaker and delete buttons are disabled: a second click would compute from the same state, so a double click would
+  // delete the track that moved up into the deleted one's place, or send the same mute twice. A failed write enables
+  // them again.
+  const [headerWriteOf, setHeaderWriteOf] = useState<Timeline | null>(null)
+  const headerBusy = headerWriteOf !== null && headerWriteOf === timeline
+  const headerWrite = (work: Promise<boolean>): void => {
+    setHeaderWriteOf(timeline)
+    void work.then((ok) => { if (!ok) setHeaderWriteOf(null) })
+  }
   // A stored track is deleted with its sounds and its mute, and the later tracks move up with their mutes; an empty track
   // added in this view just goes.
   const removeTrack = (track: number): void => {
     setSoundMenu(null)
+    if (headerBusy) return
     setShownTracks(Math.max(1, trackCount - 1))
-    if (track < savedTracks) void runOperation('timeline.sound_track_remove', { track }, t('intent.trackRemove', { n: track + 1 }))
+    if (track < savedTracks) headerWrite(runOperation('timeline.sound_track_remove', { track }, t('intent.trackRemove', { n: track + 1 })))
   }
-  // A speaker button writes one `timeline.mute`; the button shows the new state once the refreshed state has it.
+  // A speaker button writes one `timeline.mute`; the button shows the new state once the refreshed state has it. A track
+  // that held only its mute stays shown after an unmute, as the empty track of this view.
   const toggleVideoMute = (): void => {
-    void runOperation('timeline.mute', { target: 'video', muted: !videoMuted }, t(videoMuted ? 'intent.unmuteVideo' : 'intent.muteVideo'))
+    headerWrite(runOperation('timeline.mute', { target: 'video', muted: !videoMuted }, t(videoMuted ? 'intent.unmuteVideo' : 'intent.muteVideo')))
   }
   const toggleTrackMute = (track: number): void => {
     const muted = !mutedTracks.includes(track)
     const name = trackName(track)
-    void runOperation('timeline.mute', { target: 'sound', track, muted }, t(muted ? 'intent.muteTrack' : 'intent.unmuteTrack', { name }))
+    setShownTracks(trackCount)
+    headerWrite(runOperation('timeline.mute', { target: 'sound', track, muted }, t(muted ? 'intent.muteTrack' : 'intent.unmuteTrack', { name })))
   }
   // The asset that an asset tile drop carries and its media type, read from the drag data; the drop then belongs to the
   // track it landed on. Null for a drop that carries no asset, which the editor root handles.
@@ -1117,7 +1130,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
         >
           {rulerMarks}
         </div>
-        {trackHeader(palette.take, t('track.video'), muteButton(videoMuted, t('track.video'), timeline === null ? null : toggleVideoMute))}
+        {trackHeader(palette.take, t('track.video'), muteButton(videoMuted, t('track.video'), timeline === null || headerBusy ? null : toggleVideoMute))}
         <div
           role="list" aria-label={t('track.aria')} style={{ position: 'relative' }}
           onDragOver={(event) => { if (event.dataTransfer.types.includes(DV_ASSET_DRAG_TYPE)) event.preventDefault() }}
@@ -1223,8 +1236,10 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
               />
             ) : trackHeader(palette.sound, trackName(track), (
               <>
-                {muteButton(mutedTracks.includes(track), trackName(track), timeline === null ? null : () => { toggleTrackMute(track) })}
-                <TrackButton icon="delete" label={t('track.deleteNamed', { name: trackName(track) })} onClick={() => { removeTrack(track) }} />
+                {muteButton(
+                  mutedTracks.includes(track), trackName(track), timeline === null || headerBusy ? null : () => { toggleTrackMute(track) },
+                )}
+                <TrackButton icon="delete" label={t('track.deleteNamed', { name: trackName(track) })} onClick={headerBusy ? null : () => { removeTrack(track) }} />
               </>
             ))}
           </span>,

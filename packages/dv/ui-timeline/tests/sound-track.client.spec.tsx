@@ -472,6 +472,63 @@ describe('sound tracks', () => {
     expect(speakers.map(button => (button as HTMLButtonElement).disabled)).toEqual([true, true])
   })
 
+  it('sends one write for repeated clicks on a header button until the refreshed state arrives, and keeps an unmuted track shown', async () => {
+    // The served state applies each timeline.mute; a write fails while `fail` is set.
+    const muted = { video: false, tracks: [2] }
+    let fail = false
+    const routes: ScriptedRoutes = {
+      state: () => {
+        const state = soundState()
+        const [t1] = state.components.timeline.timelines
+        if (t1 !== undefined) Object.assign(t1, { video_muted: muted.video, muted_sound_tracks: [...muted.tracks] })
+        return state
+      },
+      post: (_path, body) => {
+        if (fail) return { status: 500, body: { error: 'busy' } }
+        const { operation, params = {} } = body as { operation: string; params?: Record<string, unknown> }
+        if (operation === 'timeline.mute' && params['target'] === 'video') muted.video = params['muted'] === true
+        if (operation === 'timeline.mute' && params['target'] === 'sound') muted.tracks = params['muted'] === true ? [Number(params['track'])] : []
+        return { status: 200, body: record({ id: 'w1', operation, params }) }
+      },
+    }
+    const { view, head, heads, requests, ready } = mount(routes)
+    await ready()
+    const videoMute = (): HTMLButtonElement => view.getByRole('button', { name: '静音 视频' }) as HTMLButtonElement
+    const remove = (track: number, name: string): HTMLButtonElement => within(head(track)).getByRole('button', { name: `删除音轨 ${name}` }) as HTMLButtonElement
+
+    // A double click on the speaker mutes once; the buttons stay disabled until the refreshed state shows the mute, and
+    // the track menu deletes nothing meanwhile.
+    fireEvent.click(videoMute())
+    fireEvent.click(videoMute())
+    expect([videoMute().disabled, remove(1, '旁白').disabled]).toEqual([true, true])
+    fireEvent.contextMenu(head(1))
+    fireEvent.click(view.getByRole('menuitem', { name: '删除音轨' }))
+    await waitFor(() => { expect(videoMute().getAttribute('aria-pressed')).toBe('true') })
+    expect(requests().map(each => each['operation'])).toEqual(['timeline.mute'])
+    expect(videoMute().disabled).toBe(false)
+
+    // Unmuting the track that only its mute stored keeps it shown, as the empty track of this view.
+    expect(heads()).toEqual(['声音 1', '旁白', '声音 3'])
+    fireEvent.click(within(head(2)).getByRole('button', { name: '静音 声音 3' }))
+    await waitFor(() => { expect(within(head(2)).getByRole('button', { name: '静音 声音 3' }).getAttribute('aria-pressed')).toBe('false') })
+    expect(heads()).toEqual(['声音 1', '旁白', '声音 3'])
+
+    // A double click on the delete button deletes one track.
+    fireEvent.click(remove(1, '旁白'))
+    fireEvent.click(remove(1, '旁白'))
+    await waitFor(() => { expect(requests()).toHaveLength(3) })
+    await act(async () => { await Promise.resolve() })
+    expect(requests().map(each => each['operation'])).toEqual(['timeline.mute', 'timeline.mute', 'timeline.sound_track_remove'])
+
+    // A failed write enables the buttons again.
+    await waitFor(() => { expect(videoMute().disabled).toBe(false) })
+    fail = true
+    fireEvent.click(videoMute())
+    expect(videoMute().disabled).toBe(true)
+    await waitFor(() => { expect(videoMute().disabled).toBe(false) })
+    expect(requests()).toHaveLength(4)
+  })
+
   it('keeps the typed track name on a double-click inside the name box, and leaves its right-click to the text menu', async () => {
     const { view, head, ready } = mount()
     await ready()
@@ -674,7 +731,8 @@ describe('sound tracks', () => {
     await view.findByRole('list', { name: 'Video track' })
     expect(heads()).toEqual(['Sound 1', '旁白'])
     expect(view.getByRole('button', { name: 'Add track' })).toBeTruthy()
-    expect([view.getByRole('button', { name: 'Mute Video' }), view.getByRole('button', { name: 'Delete track Sound 1' })]).toHaveLength(2)
+    expect([view.getByRole('button', { name: 'Mute Video' }), view.getByRole('button', { name: 'Delete track Sound 1' })]
+      .map(button => button.getAttribute('aria-label'))).toEqual(['Mute Video', 'Delete track Sound 1'])
     expect(view.getByTestId('dv-timeline-export-no-sounds').textContent).toBe('Export does not include sounds yet')
     fireEvent.click(plus(0, 'Add sound'))
     expect(within(view.getByRole('dialog', { name: 'Add sound' })).getByText('Starts at 00:03.00')).toBeTruthy()

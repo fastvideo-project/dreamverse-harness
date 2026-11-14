@@ -49,8 +49,13 @@ function text(value: unknown): string | null {
   return typeof value === 'string' && value !== '' ? value : null
 }
 
-/** A new timeline's fields besides its ID, name and clips: no sounds, no track names, and nothing muted. */
-const NO_SOUNDS = { sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [] } as const satisfies Partial<Timeline>
+/**
+ * A new timeline's fields besides its ID, name and clips: no sounds, no track names, and nothing muted.
+ * @returns new empty arrays on every call, so no two timelines share one.
+ */
+function noSounds(): Pick<Timeline, 'sounds' | 'sound_track_names' | 'video_muted' | 'muted_sound_tracks'> {
+  return { sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [] }
+}
 
 /** A params field as a finite number, or null. */
 function number(value: unknown): number | null {
@@ -196,7 +201,7 @@ function timelineProblem(slice: Slice, call: TimelineCall): string | null {
   const id = targetOf(slice, params)
   const timeline = slice.timelines.find(candidate => candidate.id === id)
   if (call.operation === OPERATIONS.insert) {
-    const into = timeline ?? { id: id ?? FIRST_TIMELINE_ID, name: '', clips: [], ...NO_SOUNDS }
+    const into = timeline ?? { id: id ?? FIRST_TIMELINE_ID, name: '', clips: [], ...noSounds() }
     return positionProblem(into, number(params['at']), into.clips.length + 1)
   }
   if (timeline === undefined) return id === null ? 'The project has no timeline.' : `Timeline ${id} does not exist.`
@@ -351,7 +356,7 @@ function applyCall(slice: Slice, call: TimelineCall): Timeline[] {
   const id = call.operation === OPERATIONS.create ? createdTimeline(params) : targetOf(slice, params) ?? FIRST_TIMELINE_ID
   switch (call.operation) {
     case OPERATIONS.create:
-      return [...timelines, { id, name: text(params['name']) ?? '', clips: laidOut(), ...NO_SOUNDS }]
+      return [...timelines, { id, name: text(params['name']) ?? '', clips: laidOut(), ...noSounds() }]
     case OPERATIONS.update:
       return timelines.map(timeline => timeline.id === id ? { ...timeline, clips: laidOut() } : timeline)
     case OPERATIONS.rename:
@@ -362,7 +367,7 @@ function applyCall(slice: Slice, call: TimelineCall): Timeline[] {
       const clip = wholeClip(added[0] as ClipId, brandString<AssetId>(String(params['asset'])))
       const at = Number(params['at']) - 1
       if (!timelines.some(timeline => timeline.id === id)) {
-        return [...timelines, { id, name: '', clips: [clip], ...NO_SOUNDS }]
+        return [...timelines, { id, name: '', clips: [clip], ...noSounds() }]
       }
       return timelines.map(timeline => timeline.id === id ? { ...timeline, clips: timeline.clips.toSpliced(at, 0, clip) } : timeline)
     }
