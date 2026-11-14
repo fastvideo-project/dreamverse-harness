@@ -24,15 +24,24 @@ export interface ImageModel {
   seed: boolean
 }
 
+/** Public OpenRouter speech metadata, from the models catalog filtered to speech output; contains no keys. */
+export interface SpeechModel {
+  id: string
+  name: string
+  /** The voice names the catalog lists for the model; empty when it lists none (a model that clones or designs voices). */
+  voices: string[]
+}
+
 /**
- * Editable deployment settings. `models` maps an alias to an id in OpenRouter's video catalog, and `imageModels` maps
- * an alias to an id in its image catalog.
+ * Editable deployment settings. `models` maps an alias to an id in OpenRouter's video catalog, `imageModels` maps an
+ * alias to an id in its image catalog, and `audioModels` maps an alias to an id among its speech models.
  */
 export interface OpenRouterSettings {
   models: Record<string, string>
   imageModels: Record<string, string>
+  audioModels: Record<string, string>
   credentialRef: string
 }
 
-/** What the settings page's discovery route answers: both catalogs. */
-export interface OpenRouterCatalog { videos: VideoModel[]; images: ImageModel[] }
+/** What the settings page's discovery route answers: the three catalogs. */
+export interface OpenRouterCatalog { videos: VideoModel[]; images: ImageModel[]; speech: SpeechModel[] }

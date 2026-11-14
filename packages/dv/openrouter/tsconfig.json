@@ -33,6 +33,9 @@
       "path": "../image-generate"
     },
     {
+      "path": "../audio-generate"
+    },
+    {
       "path": "../models"
     },
     {

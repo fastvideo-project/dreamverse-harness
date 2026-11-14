@@ -1,13 +1,32 @@
 /**
- * OpenRouter's asynchronous video API and its image API. It never resubmits a paid request or follows provider-returned
- * URLs.
+ * OpenRouter's asynchronous video API, its image API and its speech API. It never resubmits a paid request or follows
+ * provider-returned URLs.
  */
 import { setTimeout as delay } from 'node:timers/promises'
-import { imageCatalog, videoCatalog } from './catalog.ts'
-import type { ImageModel, VideoModel } from './types.ts'
+import { imageCatalog, speechCatalog, videoCatalog } from './catalog.ts'
+import type { ImageModel, SpeechModel, VideoModel } from './types.ts'
 
 /** One generated image as OpenRouter returns it. */
 export interface OpenRouterImage { bytes: Buffer; mime: string }
+
+/** One spoken clip as OpenRouter returns it: MP3 (`audio/mpeg`) or raw PCM (`audio/pcm`). */
+export interface OpenRouterSpeech { bytes: Buffer; mime: string }
+
+/** Characters of OpenRouter's error message an HTTP failure quotes. */
+const REASON_LIMIT = 300
+
+/**
+ * The `error.message` of a failed response's JSON body, single-line, without the API key, cut to `REASON_LIMIT`
+ * characters; null when the body is not that JSON.
+ */
+async function errorReason(response: Response, key: string): Promise<string | null> {
+  let body: { error?: { message?: unknown } } | null
+  try { body = await response.json() as { error?: { message?: unknown } } | null } catch { return null } // not JSON: no reason to quote
+  const message = body?.error?.message
+  if (typeof message !== 'string' || message.trim() === '') return null
+  const text = message.split(key).join('[key]').replace(/\s+/g, ' ').trim().replace(/\.$/, '')
+  return text.length > REASON_LIMIT ? `${text.slice(0, REASON_LIMIT)}…` : text
+}
 
 export class OpenRouterApi {
   private readonly base: URL
@@ -25,8 +44,9 @@ export class OpenRouterApi {
     headers.set('authorization', `Bearer ${key}`)
     const response = await this.fetcher(new URL(path, this.base), { ...init, headers, redirect: 'error' })
     if (!response.ok) {
-      await response.body?.cancel()
-      throw new Error(`OpenRouter API returned HTTP ${response.status}. Check the key, credit balance, and selected model.`)
+      const reason = await errorReason(response, key)
+      throw new Error(`OpenRouter API returned HTTP ${response.status}${reason === null ? '' : `: ${reason}`}. `
+        + 'Check the key, credit balance, and selected model.')
     }
     return response
   }
@@ -45,6 +65,33 @@ export class OpenRouterApi {
     return imageCatalog(await (await this.call('images/models', {
       signal: signal === undefined ? deadline : AbortSignal.any([signal, deadline]),
     })).json())
+  }
+
+  /** Read current speech choices from the models catalog filtered to speech output, bounded like the video catalog. */
+  async speechCatalog(signal?: AbortSignal): Promise<SpeechModel[]> {
+    const deadline = AbortSignal.timeout(10_000)
+    return speechCatalog(await (await this.call('models?output_modalities=speech', {
+      signal: signal === undefined ? deadline : AbortSignal.any([signal, deadline]),
+    })).json())
+  }
+
+  /**
+   * Speak once with `POST /audio/speech`, submitted once. The answer is the audio itself, typed by its content type.
+   * @param body - the request body.
+   * @param signal - aborts the request.
+   * @returns the audio bytes and media type.
+   * @throws Error for an HTTP failure or an answer that is not audio; the signal's reason on abort.
+   */
+  async speak(body: Record<string, unknown>, signal?: AbortSignal): Promise<OpenRouterSpeech> {
+    signal?.throwIfAborted()
+    const response = await this.call('audio/speech', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body), ...signal === undefined ? {} : { signal } })
+    const mime = (response.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase() ?? ''
+    const bytes = Buffer.from(await response.arrayBuffer())
+    if (bytes.length === 0 || !mime.startsWith('audio/')) {
+      throw new Error('OpenRouter returned no audio; do not automatically resubmit this paid request.')
+    }
+    return { bytes, mime }
   }
 
   /**

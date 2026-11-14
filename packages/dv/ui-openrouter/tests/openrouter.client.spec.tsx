@@ -3,7 +3,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { ConfigForm, ConfigFormSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
-import type { ImageModel, OpenRouterCatalog, OpenRouterSettings, VideoModel } from '@dv/openrouter/types'
+import type { ImageModel, OpenRouterCatalog, OpenRouterSettings, SpeechModel, VideoModel } from '@dv/openrouter/types'
 import { OpenRouterPage } from '../src/client/OpenRouterPage.tsx'
 
 let language: string
@@ -13,18 +13,19 @@ const model: VideoModel = { id: 'google/veo-3.1', name: 'Google Veo 3.1', durati
   aspectRatios: ['16:9'], frames: ['first_frame', 'last_frame'], audio: true, seed: true }
 const image: ImageModel = { id: 'black-forest-labs/flux-3-image', name: 'FLUX 3',
   parameters: { aspect_ratio: ['1:1', '16:9'], resolution: ['1K', '2K'] }, outputFormats: ['png', 'jpeg'], seed: true }
-const both: OpenRouterCatalog = { videos: [model], images: [image] }
-const videosOnly = async (): Promise<OpenRouterCatalog> => ({ videos: [model], images: [] })
+const speech: SpeechModel = { id: 'openai/gpt-4o-mini-tts', name: 'GPT-4o mini TTS', voices: ['alloy', 'nova'] }
+const both: OpenRouterCatalog = { videos: [model], images: [image], speech: [speech] }
+const videosOnly = async (): Promise<OpenRouterCatalog> => ({ videos: [model], images: [], speech: [] })
 class Form implements ConfigForm<OpenRouterSettings> {
   private listeners = new Set<() => void>()
   private snapshot: ConfigFormSnapshot<OpenRouterSettings> = { status: 'ready', writable: true, mode: 'host', revision: 1,
-    value: { models: {}, imageModels: {}, credentialRef: 'OPENROUTER_API_KEY' }, base: {}, user: {} }
+    value: { models: {}, imageModels: {}, audioModels: {}, credentialRef: 'OPENROUTER_API_KEY' }, base: {}, user: {} }
   getSnapshot(): ConfigFormSnapshot<OpenRouterSettings> { return this.snapshot }
   subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
   mutate = vi.fn(async (ops: Parameters<ConfigForm<OpenRouterSettings>['mutate']>[0]) => {
     const op = ops[0]
     const field = op?.op === 'set' ? String(op.path[0]) : 'models'
-    const current = this.snapshot.value ?? { models: {}, imageModels: {}, credentialRef: 'OPENROUTER_API_KEY' }
+    const current = this.snapshot.value ?? { models: {}, imageModels: {}, audioModels: {}, credentialRef: 'OPENROUTER_API_KEY' }
     this.snapshot = { ...this.snapshot, revision: 2, value: { ...current, [field]: (op?.op === 'set' ? op.value : {}) as Record<string, string> } }
     for (const listener of this.listeners) listener()
     return true
@@ -36,7 +37,7 @@ class Form implements ConfigForm<OpenRouterSettings> {
 it('saves only the key reference, enables a cloud model in chat, and removes it again', async () => {
   const form = new Form()
   const store = vi.fn(async () => {})
-  const discover = vi.fn(async () => ({ videos: [model], images: [] }))
+  const discover = vi.fn(async () => ({ videos: [model], images: [], speech: [] }))
   render(<OpenRouterPage enableOperator={async () => {}} form={form} storeKey={store} discover={discover} />)
   fireEvent.change(screen.getByLabelText('OpenRouter API key'), { target: { value: 'fixture-key' } })
   fireEvent.click(screen.getByRole('button', { name: 'Save key and load models' }))
@@ -98,4 +99,17 @@ it('adds an image model to the image choices without touching the video choices'
   expect(form.getSnapshot().value).toMatchObject({ models: {},
     imageModels: { 'black-forest-labs-flux-3-image': 'black-forest-labs/flux-3-image' } })
   expect(within(screen.getByRole('list', { name: 'Video models' })).getByRole('button', { name: 'Add to chat' })).toBeTruthy()
+})
+
+it('adds a speech model to the audio choices with its voice count', async () => {
+  const form = new Form()
+  render(<OpenRouterPage enableOperator={async () => {}} form={form} storeKey={async () => {}} discover={async () => both} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Save key and load models' }))
+  await act(async () => {})
+  const audio = screen.getByRole('list', { name: 'Audio models' })
+  expect(within(audio).getByText('2 voices')).toBeTruthy()
+  fireEvent.click(within(audio).getByRole('button', { name: 'Add to chat' }))
+  await act(async () => {})
+  expect(form.getSnapshot().value).toMatchObject({ models: {}, imageModels: {},
+    audioModels: { 'openai-gpt-4o-mini-tts': 'openai/gpt-4o-mini-tts' } })
 })

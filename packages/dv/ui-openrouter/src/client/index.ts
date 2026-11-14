@@ -3,7 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
-import type { ImageModel, OpenRouterCatalog, OpenRouterSettings, VideoModel } from '@dv/openrouter/types'
+import type { ImageModel, OpenRouterCatalog, OpenRouterSettings, SpeechModel, VideoModel } from '@dv/openrouter/types'
 import { currentLanguage } from '@dv/ui-kit/locale.ts'
 import { OpenRouterPage } from './OpenRouterPage.tsx'
 
@@ -11,7 +11,7 @@ export const inject = ['slots', 'configForms', 'remote', 'remote.credentials']
 export function apply(ctx: Context): void {
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section', id: 'dv-video-apis', order: 13,
-    label: () => currentLanguage() === 'zh' ? '视频和图片 API' : 'Video & image APIs',
+    label: () => currentLanguage() === 'zh' ? '视频、图片和音频 API' : 'Video, image & audio APIs',
     inject: () => ({
       form: ctx.configForms.get<OpenRouterSettings>('dv-openrouter'),
       enableOperator: async (ref: string) => {
@@ -28,9 +28,9 @@ export function apply(ctx: Context): void {
       discover: async (): Promise<OpenRouterCatalog> => {
         const response = await fetch('/api/dv/openrouter/catalog')
         if (!response.ok) throw new Error('OpenRouter model discovery failed.')
-        const value: { data: VideoModel[]; images: ImageModel[]; error: string | null } = await response.json()
+        const value = await response.json() as { data: VideoModel[]; images: ImageModel[]; speech: SpeechModel[]; error: string | null }
         if (value.error !== null) throw new Error(value.error)
-        return { videos: value.data, images: value.images }
+        return { videos: value.data, images: value.images, speech: value.speech }
       },
     }),
   }, OpenRouterPage))

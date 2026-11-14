@@ -1,6 +1,7 @@
 /**
  * Register configured OpenRouter models in the model catalog: video models (tasks `t2v`, `i2v`, `fl2v`) for the
- * shot-render workflow, and image models (task `t2i`) for `image.generate`.
+ * shot-render workflow, image models (task `t2i`) for `image.generate`, and speech models (task `t2a`) for
+ * `audio.generate`.
  */
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -15,13 +16,15 @@ import type {} from '@dv/asset-pool'
 import type {} from '@dv/ffmpeg'
 import type { ModelEntry, RenderRequest, TaskOfPrimitive } from '@dv/models'
 import type { GeneratedImage, ImageRequest } from '@dv/image-generate'
+import type { AudioRequest, GeneratedAudio } from '@dv/audio-generate'
 import { OpenRouterApi } from './client.ts'
-import type { ImageModel, VideoModel } from './types.ts'
+import type { ImageModel, SpeechModel, VideoModel } from './types.ts'
 
 export interface Config {
   baseUrl: string
   models: Volatile<Record<string, string>>
   imageModels: Volatile<Record<string, string>>
+  audioModels: Volatile<Record<string, string>>
   credentialRef: Volatile<string>
   pollIntervalMs: number
 }
@@ -29,6 +32,7 @@ export const Config = z.object({
   baseUrl: z.string().default('https://openrouter.ai/api/v1/'),
   models: z.dict(z.string().required()).default({}).volatile(),
   imageModels: z.dict(z.string().required()).default({}).volatile(),
+  audioModels: z.dict(z.string().required()).default({}).volatile(),
   credentialRef: z.string().default('OPENROUTER_API_KEY').volatile(),
   pollIntervalMs: z.natural().min(1).default(5000),
 })
@@ -48,6 +52,26 @@ const IMAGE_PARAMETER_TEXT: Record<string, string> = {
   quality: 'The rendering quality.',
   background: 'The background; transparent keeps an alpha channel.',
 }
+
+/**
+ * The sample rate of raw PCM speech. OpenRouter documents `audio/pcm` as 16-bit little-endian without a rate; Gemini
+ * TTS and MAI-Voice send 24 kHz mono, so the harness reads all PCM at that rate.
+ */
+const PCM_SAMPLE_RATE = 24_000
+
+/**
+ * Model vendors whose speech OpenRouter returns only as PCM; it answers HTTP 400 when they are asked for MP3, and the
+ * models API names no output formats. Other vendors are asked for MP3, which MiniMax requires.
+ * https://openrouter.ai/docs/guides/overview/multimodal/tts
+ */
+const PCM_ONLY_VENDORS: readonly string[] = ['google', 'heygen']
+
+/** Voices an error message names before it points at dv_models_get for the rest. */
+const VOICES_NAMED = 30
+
+/** The speech options the harness passes through `extra`, besides `voice`. */
+const SPEECH_INSTRUCTIONS = 'How to deliver the text: tone, pace, emotion or accent. Only some models use it (OpenAI '
+  + 'gpt-4o-mini-tts, Gemini TTS, Fish Audio); others ignore it.'
 
 const ALIAS = /^[a-z0-9][a-z0-9-]{0,119}$/
 
@@ -198,19 +222,90 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       return await asPng(bytes)
     },
   })
+  const speechModel = async (id: string): Promise<SpeechModel> => {
+    const found = (await client.speechCatalog()).find(row => row.id === id)
+    if (found === undefined) throw new Error('The selected OpenRouter speech model is no longer in the speech catalog.')
+    return found
+  }
+  /** A WAV file and its duration from OpenRouter's MP3 or raw PCM answer, through ffmpeg. */
+  const asWav = async (bytes: Buffer, mime: string): Promise<GeneratedAudio> => {
+    const dir = await mkdtemp(join(tmpdir(), 'dv-openrouter-'))
+    try {
+      const input = join(dir, 'speech')
+      await writeFile(input, bytes)
+      const raw = mime === 'audio/pcm' || mime === 'audio/l16'
+      const argv = ['ffmpeg', '-y', '-loglevel', 'error',
+        ...raw ? ['-f', 's16le', '-ar', String(PCM_SAMPLE_RATE), '-ac', '1'] : [],
+        '-i', '{{in:0}}', '-vn', '-c:a', 'pcm_s16le', '{{out:speech.wav}}']
+      const [output] = (await ctx.dvFfmpeg.run({ argv, inputs: [input], outputs: ['speech.wav'], dir })).outputs
+      const durationSec = (await ctx.dvFfmpeg.probe(output as string)).durationSec
+      if (durationSec === null || durationSec <= 0) throw new Error('OpenRouter returned an empty audio clip.')
+      return { bytes: await readFile(output as string), mime: 'audio/wav', durationSec }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  }
+  const speechEntry = (alias: string, selected: SpeechModel): ModelEntry<'t2a'> => ({
+    modality: 'audio', provider: 'openrouter', model: alias, task: 't2a', displayName: selected.name,
+    description: `OpenRouter: ${selected.name}, speech from text. Cloud generation billed by the provider. The prompt is `
+      + 'the plain text to speak, without markup; extra.voice chooses the voice.',
+    facts: async () => ({ modelId: (await speechModel(selected.id)).id }),
+    schema: async () => {
+      const caps = await speechModel(selected.id)
+      return {
+        extra: {
+          voice: caps.voices.length === 0
+            ? { type: 'string', description: 'The provider\'s voice name. The catalog lists none for this model; omit it for the provider default.' }
+            : { type: 'string', values: caps.voices, required: true, description: 'The voice that speaks the text.' },
+          instructions: { type: 'string', description: SPEECH_INSTRUCTIONS },
+        },
+      }
+    },
+    validateGenerationRequest: async (request: AudioRequest) => {
+      const caps = await speechModel(selected.id)
+      const problems: string[] = []
+      const voice = request.extra['voice']
+      const named = caps.voices.length > VOICES_NAMED
+        ? `${caps.voices.slice(0, VOICES_NAMED).join(', ')} (dv_models_get lists all ${caps.voices.length})` : caps.voices.join(', ')
+      if (voice === undefined) {
+        if (caps.voices.length > 0) problems.push(`Choose extra.voice from ${named}.`)
+      } else if (typeof voice !== 'string' || voice.trim() === '') problems.push('extra.voice must be a voice name.')
+      else if (caps.voices.length > 0 && !caps.voices.includes(voice)) problems.push(`Choose extra.voice from ${named}.`)
+      const instructions = request.extra['instructions']
+      if (instructions !== undefined && typeof instructions !== 'string') problems.push('extra.instructions must be text.')
+      for (const key of Object.keys(request.extra)) {
+        if (key !== 'voice' && key !== 'instructions') problems.push(`OpenRouter model ${selected.name} takes no extra parameter ${key}.`)
+      }
+      return problems
+    },
+    render: async (request: AudioRequest, signal?: AbortSignal) => {
+      await speechModel(selected.id)
+      const { voice, instructions } = request.extra
+      const { bytes, mime } = await client.speak({ model: selected.id,
+        input: replacePromptCitations(request.prompt, citation => citation.label),
+        response_format: PCM_ONLY_VENDORS.includes(selected.id.split('/')[0] ?? '') ? 'pcm' : 'mp3',
+        ...typeof voice === 'string' ? { voice } : {},
+        ...typeof instructions === 'string' && instructions.trim() !== '' ? { instructions } : {},
+      }, signal)
+      signal?.throwIfAborted()
+      return await asWav(bytes, mime)
+    },
+  })
   const sync = async (): Promise<void> => {
-    const stamp = JSON.stringify([config.models.get(), config.imageModels.get()])
+    const stamp = JSON.stringify([config.models.get(), config.imageModels.get(), config.audioModels.get()])
     if (current === stamp) return
     const version = ++revision
     try {
       const configured = Object.entries(config.models.get())
       const configuredImages = Object.entries(config.imageModels.get())
-      for (const [alias] of [...configured, ...configuredImages]) {
+      const configuredSpeech = Object.entries(config.audioModels.get())
+      for (const [alias] of [...configured, ...configuredImages, ...configuredSpeech]) {
         if (!ALIAS.test(alias)) throw new Error('Choose a model alias using lowercase letters, numbers, and hyphens.')
       }
-      const [catalog, images] = await Promise.all([
+      const [catalog, images, speech] = await Promise.all([
         configured.length === 0 ? [] : client.catalog(lifetime.signal),
         configuredImages.length === 0 ? [] : client.imageCatalog(lifetime.signal),
+        configuredSpeech.length === 0 ? [] : client.speechCatalog(lifetime.signal),
       ])
       const next: ModelEntry[] = [...configured.flatMap(([alias, id]) => {
         const caps = catalog.find(row => row.id === id)
@@ -220,6 +315,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
         const caps = images.find(row => row.id === id)
         if (caps === undefined) throw new Error(`OpenRouter image model ${id} is unavailable or offers no raster output.`)
         return imageEntry(alias, caps)
+      }), ...configuredSpeech.map(([alias, id]) => {
+        const caps = speech.find(row => row.id === id)
+        if (caps === undefined) throw new Error(`OpenRouter speech model ${id} is unavailable or offers no speech endpoint.`)
+        return speechEntry(alias, caps)
       })]
       if (disposed || version !== revision) return
       for (const candidate of next) {
@@ -256,9 +355,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     path: '/api/dv/openrouter/catalog', methods: ['GET'], requestBody: 'buffered',
     fetch: async (request) => {
       try {
-        const [data, images] = await Promise.all([client.catalog(request.signal), client.imageCatalog(request.signal)])
+        const [data, images, speech] = await Promise.all([client.catalog(request.signal), client.imageCatalog(request.signal),
+          client.speechCatalog(request.signal)])
         await sync()
-        return Response.json({ data, images, error: registrationError })
+        return Response.json({ data, images, speech, error: registrationError })
       } catch { return Response.json({ error: 'Could not load OpenRouter models. Check the saved API key and connection.' }, { status: 502 }) }
     },
   }), 'OpenRouter model discovery'))
