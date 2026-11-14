@@ -48,6 +48,7 @@ FastVideo serves no capabilities route, so the operator writes the facts of the 
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `baseUrl` | required | HTTP base URL of the generation backend |
+| `task` | `null` | Native FastVideo task selector that `generateSegment` sends as the request's `task`, such as `fl2va`; `null` sends no `task` |
 | `modelFacts.modelId` | required | Exact served model alias; `model()` compares it with `served_model_name` |
 | `modelFacts.frameSizes` | required | Aspect ratio to resolution to `[width, height]`; every aspect ratio lists the same resolutions |
 | `modelFacts.numFramesByDurationSec` | required | Whole-second duration to frame count, for every duration from the shortest to the longest, growing with the duration |
@@ -64,7 +65,7 @@ Constructing the client throws an `Error` that names the inconsistency of facts 
 
 ### Backend API
 
-FastVideo owns the API; the client uses two routes. `GET /v1/model_info` answers `{"model_path", "served_model_name", "lora"}`. `POST /v1/videos/sync` takes `model`, `prompt`, `width`, `height`, `num_frames`, optional `seed`, and the lists `image_reference`, `video_reference` and `audio_reference`, each of `{"<type>_url": "data:<mime>;base64,..."}`. The Ref2VA pipeline reads the images, then the videos, then the audio, each list in its own order; `REFERENCE_FIELDS` records that order, and `backendOrder(items, mediaTypeOf)` returns items in it. A reference's media type is the top-level type of its `mimeType`; another type rejects with `GenerationSegmentError` before HTTP.
+FastVideo owns the API; the client uses two routes. `GET /v1/model_info` answers `{"model_path", "served_model_name", "lora"}`. `POST /v1/videos/sync` takes `model`, optional `task`, `prompt`, `width`, `height`, `num_frames`, optional `seed`, and the lists `image_reference`, `video_reference` and `audio_reference`, each of `{"<type>_url": "data:<mime>;base64,..."}`. The Ref2VA pipeline reads the images, then the videos, then the audio, each list in its own order; `REFERENCE_FIELDS` records that order, and `backendOrder(items, mediaTypeOf)` returns items in it. A reference's media type is the top-level type of its `mimeType`; another type rejects with `GenerationSegmentError` before HTTP.
 
 The answer must have a `video/*` content type; another content type rejects with an `Error` that carries the body text. `renderTimings` of `@dv/models` reads the timings: `X-Inference-Time-S` becomes `timings.inference_s`, and each stage of the JSON object in `X-Stage-Durations` becomes `timings.<stage>_s`; an `X-Stage-Durations` that is not JSON adds no stage timing, and the video is kept. HTTP 400 becomes `GenerationSegmentError`; other HTTP failures keep the status and a bounded backend message. The message is `error.message` of an `application/json` body, else the body text. A Python traceback becomes its final exception line; a message longer than 2,048 characters is truncated, with full details left in the server logs.
 

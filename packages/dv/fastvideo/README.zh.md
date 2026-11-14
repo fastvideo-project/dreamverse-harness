@@ -50,6 +50,8 @@ kind: "package-reference"
 
 `models` 列出 `fasth3` 以外的模型、模型不提供的任务（`fasth3`：`ref2v`、`t2v`）、没有任何任务的模型，或不一致的模型事实时，加载失败。本插件挂载期间，模型目录为每个配置的任务持有一个 provider 为 `fastvideo`、模型为 `fasth3` 的条目，如 `video/ref2v/fastvideo/fasth3`。同时挂载 DSH skill 注册表（`@deepseek-ai/dsh-skill`），智能体才能加载提示词 skill。
 
+Pika H3 Flex 以 `pika-h3-flex` 注册 `t2v`、`i2v`、`l2v`、`fl2v` 和 `ref2v`。端点任务传递原生任务选择器以及有序的首尾图像。模型事实配置必须为两个端点预留足够图像位置；Ref2VA 使用参考管线。尾帧提取复用共享 `dvFfmpeg` 服务。
+
 -----
 
 <a id="understand-the-implementation"></a>

@@ -369,7 +369,7 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     const before = count()
     await expect(fixture.record('shot.render', params, [last])).rejects.toThrow('fl2v needs one first_frame')
     await expect(fixture.record('shot.render', params, [first])).rejects.toThrow('fl2v needs one last_frame')
-    await expect(fixture.record('shot.render', params, [first, { role: 'last_frame', ref: { asset: 'missing-image' as AssetId } }])).rejects.toThrow()
+    await expect(fixture.record('shot.render', params, [first, { role: 'last_frame', ref: { asset: 'missing-image' as AssetId } }])).rejects.toThrow("Input 'last_frame' names an unknown asset missing-image.")
     await expect(fixture.record('shot.render', params, [first, last, last])).rejects.toThrow('takes one last_frame')
     await expect(fixture.record('shot.render', params, [first, last, { role: 'reference', ref: { asset: image } }])).rejects.toThrow('no reference input')
     expect(count()).toBe(before)

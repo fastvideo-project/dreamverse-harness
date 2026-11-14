@@ -165,7 +165,7 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 
 DSH 工具注册表（`tools`）挂载期间，本服务以 effect 注册 `dv_models_list` 和 `dv_models_get`。`dv_models_list` 用其参数筛选条目，返回每个条目的键和描述；条目有提示词 skill 时，还返回 `prompt_skill`，即该 skill 的名称。`dv_models_get` 用全部四个键字段查找条目，返回它的键、描述和 `schema()` 的 JSON。它不读取 `facts()`。`@dv/shot-render` 读取 facts 构建请求。
 
-DSH skill 注册表（`skills`）挂载期间，本服务从 `skills/video-model-selection.md` 注册运行时 skill `video-model-selection`。agent 可以加载该 skill。用户不能从输入框调用它。在同一个注册表中，本服务按同样的调用规则注册每个条目的 `promptSkill`。条目或注册表到达时它注册该 skill，条目或注册表离开时它移除该 skill。
+DSH skill 注册表（`skills`）挂载期间，本服务从 `skills/video-model-selection.md` 注册运行时 skill `video-model-selection`。agent 可以加载该 skill。用户不能从输入框调用它。在同一个注册表中，本服务按同样的调用规则注册每个条目的 `promptSkill`。条目或注册表到达时它注册该 skill，条目或注册表离开时它移除该 skill。多个条目共用同一 skill 名称时共用一次注册，该注册保留到这些条目中的最后一个离开为止。
 
 [`@dv/shot-render`](../shot-render/README.zh.md) 用 `whileServing(['t2v', 'ref2v'], ...)` 注册 `shot.render`，并用 `resolve(['t2v', 'ref2v'], params)` 获取 `dv_shot_render` 调用所指定的条目。它用条目的 facts 构建 `RenderRequest`。它用 `validateGenerationRequest` 检查请求，然后渲染该请求。
 

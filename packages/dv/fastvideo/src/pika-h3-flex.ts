@@ -7,24 +7,29 @@ import type { TaskId } from '@dv/models'
 import { assignFasth3ReferenceLabels } from './fasth3.ts'
 import type { ServedTask } from './types.ts'
 
+/** The prompt skill of the text and first/last frame tasks. */
+const KEYFRAME_SKILL: ServedTask['skill'] = {
+  name: 'pika-h3-flex-keyframe-prompting', description: 'Pika H3 Flex text and first/last frame prompts.', file: 'pika-h3-flex-keyframe-prompting.md',
+}
+
 /** Tasks enabled for Pika H3 Flex. Backend precision and generation limits belong to deployment configuration. */
 export const PIKA_H3_FLEX: { [T in TaskId]?: ServedTask } = {
   t2v: {
     description: 'Pika H3 Flex: video with sound from text, through the text/keyframe pipeline.',
     inputs: {}, extra: {}, nativeTask: 't2va', assignReferenceLabels: assignFasth3ReferenceLabels,
-    skill: { name: 'pika-h3-flex-keyframe-prompting', description: 'Pika H3 Flex text and first/last frame prompts.', file: 'pika-h3-flex-keyframe-prompting.md' },
+    skill: KEYFRAME_SKILL,
   },
   i2v: {
     description: 'Pika H3 Flex: video with sound beginning at a first image.',
     inputs: { first_frame: { min: 1, mediaTypes: ['image'] } },
     extra: {}, nativeTask: 'i2va', assignReferenceLabels: assignFasth3ReferenceLabels,
-    skill: { name: 'pika-h3-flex-keyframe-prompting', description: 'Pika H3 Flex text and first/last frame prompts.', file: 'pika-h3-flex-keyframe-prompting.md' },
+    skill: KEYFRAME_SKILL,
   },
   l2v: {
     description: 'Pika H3 Flex: video with sound ending at a last image. Requires native last-frame task selection on the server.',
     inputs: { last_frame: { min: 1, mediaTypes: ['image'] } },
     extra: {}, nativeTask: 'l2va', assignReferenceLabels: assignFasth3ReferenceLabels,
-    skill: { name: 'pika-h3-flex-keyframe-prompting', description: 'Pika H3 Flex text and first/last frame prompts.', file: 'pika-h3-flex-keyframe-prompting.md' },
+    skill: KEYFRAME_SKILL,
   },
   ref2v: {
     description: 'Pika H3 Flex: video with sound from reference media on a reference pipeline. Needs an image or video reference.',
@@ -38,6 +43,6 @@ export const PIKA_H3_FLEX: { [T in TaskId]?: ServedTask } = {
     description: 'Pika H3 Flex: video with sound between a first image and a last image. Both images are required.',
     inputs: { first_frame: { min: 1, mediaTypes: ['image'] }, last_frame: { min: 1, mediaTypes: ['image'] } },
     extra: {}, nativeTask: 'fl2va', assignReferenceLabels: assignFasth3ReferenceLabels,
-    skill: { name: 'pika-h3-flex-keyframe-prompting', description: 'Pika H3 Flex text and first/last frame prompts.', file: 'pika-h3-flex-keyframe-prompting.md' },
+    skill: KEYFRAME_SKILL,
   },
 }

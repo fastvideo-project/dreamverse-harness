@@ -173,7 +173,7 @@ function renderRequest(
     const count = inputs.filter(input => input.role === role).length
     if (count > 1) throw new Error(`shot.render takes one ${role} input; this call has ${count}.`)
     if ((params['task'] === 'fl2v' || (params['task'] === 'i2v' && role === 'first_frame')
-      || (params['task'] === 'l2v' && role === 'last_frame')) && count !== 1) throw new Error(`Task ${String(params['task'])} needs one ${role} input.`)
+      || (params['task'] === 'l2v' && role === 'last_frame')) && count !== 1) throw new Error(`Task ${params['task']} needs one ${role} input.`)
   }
   if (params['task'] === 'i2v' && inputs.some(input => input.role !== 'first_frame')) {
     throw new Error('Task i2v takes one first_frame, with no reference or last_frame input.')

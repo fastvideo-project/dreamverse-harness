@@ -48,6 +48,7 @@ FastVideo 不提供能力路由，因此操作者写出所服务模型的事实�
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `baseUrl` | 必填 | 生成后端的 HTTP 基础 URL |
+| `task` | `null` | `generateSegment` 作为请求的 `task` 发送的原生 FastVideo 任务选择器，如 `fl2va`；`null` 时不发送 `task` |
 | `modelFacts.modelId` | 必填 | 精确的服务模型别名；`model()` 将它与 `served_model_name` 比较 |
 | `modelFacts.frameSizes` | 必填 | 宽高比到分辨率到 `[width, height]` 的映射；每个宽高比列出相同的分辨率 |
 | `modelFacts.numFramesByDurationSec` | 必填 | 整数秒时长到帧数的映射，覆盖从最短到最长的每个时长，帧数随时长增长 |
@@ -64,7 +65,7 @@ FastVideo 不提供能力路由，因此操作者写出所服务模型的事实�
 
 ### 后端 API
 
-API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/model_info` 返回 `{"model_path", "served_model_name", "lora"}`。`POST /v1/videos/sync` 接受 `model`、`prompt`、`width`、`height`、`num_frames`、可选的 `seed`，以及列表 `image_reference`、`video_reference` 和 `audio_reference`，每项为 `{"<type>_url": "data:<mime>;base64,..."}`。Ref2VA 流水线先读图片，再读视频，最后读音频，每个列表按其自身顺序；`REFERENCE_FIELDS` 记录这一顺序，`backendOrder(items, mediaTypeOf)` 按该顺序返回各项。参考的媒体类型是其 `mimeType` 的顶层类型；其他类型在发送 HTTP 前以 `GenerationSegmentError` 拒绝。
+API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/model_info` 返回 `{"model_path", "served_model_name", "lora"}`。`POST /v1/videos/sync` 接受 `model`、可选的 `task`、`prompt`、`width`、`height`、`num_frames`、可选的 `seed`，以及列表 `image_reference`、`video_reference` 和 `audio_reference`，每项为 `{"<type>_url": "data:<mime>;base64,..."}`。Ref2VA 流水线先读图片，再读视频，最后读音频，每个列表按其自身顺序；`REFERENCE_FIELDS` 记录这一顺序，`backendOrder(items, mediaTypeOf)` 按该顺序返回各项。参考的媒体类型是其 `mimeType` 的顶层类型；其他类型在发送 HTTP 前以 `GenerationSegmentError` 拒绝。
 
 回答必须带 `video/*` 内容类型；其他内容类型以携带响应体文本的 `Error` 拒绝。`@dv/models` 的 `renderTimings` 读取耗时：`X-Inference-Time-S` 变为 `timings.inference_s`，`X-Stage-Durations` 中 JSON 对象的每个阶段变为 `timings.<stage>_s`；不是 JSON 的 `X-Stage-Durations` 不添加阶段耗时，视频仍保留。HTTP 400 变为 `GenerationSegmentError`；其他 HTTP 失败保留状态和受限长度的后端消息。消息取 `application/json` 响应体的 `error.message`，否则取响应体文本。Python traceback 仅保留最后的异常行；超过 2,048 字符的消息会截断，完整详情留在服务器日志中。
 
