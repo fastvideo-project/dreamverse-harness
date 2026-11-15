@@ -179,7 +179,8 @@ function renderRequest(
   if (text(params['prompt']) === '') throw new Error('shot.render needs a `prompt`.')
   let prompt = expandElements(text(params['prompt']), inputs)
   const video = continuationAsset(inputs)
-  const references = [...inputAssets(inputs, 'reference'), ...video === null ? [] : [video]]
+  const cited = inputAssets(inputs, 'reference')
+  const references = [...cited, ...video === null ? [] : [video]]
   // An output of a record that has not finished counts here although it has no asset yet.
   for (const role of ['first_frame', 'last_frame']) {
     const count = inputs.filter(input => input.role === role).length
@@ -204,7 +205,7 @@ function renderRequest(
   }
   if (seconds !== undefined && continuationCount === 0) throw new Error('continuation_seconds needs a continuation_video input or continue_video_from.')
   // The continuation video is cited only as its input: execution replaces the source asset with its cropped tail.
-  const problems = citationProblems(prompt, inputAssets(inputs, 'reference'), new Set(inputs.map(input => input.role)))
+  const problems = citationProblems(prompt, cited, new Set(inputs.map(input => input.role)))
   if (problems.length > 0) throw new Error(`${problems.join(' ')} Cite only the assets of inputs.reference and the inputs of the call.`)
   if (video !== null) {
     prompt = replacePromptCitations(prompt, citation => citedInput(citation.uri) === 'continuation_video'
@@ -254,9 +255,9 @@ async function storeShot(
   })
   // The record's params keep the prompt as written; the report adds the prompt that the model plugin received.
   const expanded = request.prompt === text(context.params['prompt']) ? {} : { expanded_prompt: request.prompt }
-  const continuationAsset = context.inputs.some(input => input.role === 'continuation_video') ? request.references.at(-1) : undefined
-  const continuation = continuationAsset === undefined ? {} : {
-    continuation_video_asset: continuationAsset, continuation_seconds: ctx.get('dvAssetPool')?.get(continuationAsset).duration_sec,
+  const tailAsset = context.inputs.some(input => input.role === 'continuation_video') ? request.references.at(-1) : undefined
+  const continuation = tailAsset === undefined ? {} : {
+    continuation_video_asset: tailAsset, continuation_seconds: ctx.get('dvAssetPool')?.get(tailAsset).duration_sec,
   }
   return {
     outputs: [video, frame],
@@ -367,7 +368,7 @@ const RENDER_DECLARATION: GenerationSpec<'video'> = {
   inputs: RENDER_INPUTS,
   outputs: [{ role: 'video', type: 'video' }, { role: 'last_still', type: 'image' }],
   toolParams: CONTINUATION_PARAMS,
-  // Source record references keep the existing scheduler's dependency handling for both continuation modes.
+  // Both shortcuts become inputs that name a source record output, which the runner resolves like any record-output input.
   prepareToolCall({ args, request }) {
     const continueFrom = text(args['continue_from'])
     if (continueFrom !== '') request.inputs.push({ role: 'first_frame', ref: { record: brandString<RecordId>(continueFrom), output: 1 } })
