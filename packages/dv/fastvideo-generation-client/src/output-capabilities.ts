@@ -53,6 +53,7 @@ export function outputFacts(base: ModelFacts, value: unknown): ModelFacts {
 }
 
 const ANCHORS: ReadonlyArray<string> = ['first', 'last']
+const count = (entry: unknown): entry is number => typeof entry === 'number' && Number.isSafeInteger(entry) && entry >= 0
 
 function servedTasks(value: unknown, fail: () => never, object: (entry: unknown) => Record<string, unknown>): ServedTaskFacts[] {
   if (!Array.isArray(value) || value.length === 0 || value.length > 16) return fail()
@@ -60,7 +61,7 @@ function servedTasks(value: unknown, fail: () => never, object: (entry: unknown)
     const task = object(entry)
     const name = task['task']; const images = task['image_references']; const anchors = task['anchors']
     if (typeof name !== 'string' || !/^[a-z0-9]+$/.test(name)) return fail()
-    if (images !== undefined && !(typeof images === 'number' && Number.isSafeInteger(images) && images >= 0)) return fail()
+    if (images !== undefined && !count(images)) return fail()
     if (anchors !== undefined && !(Array.isArray(anchors) && anchors.every(anchor => ANCHORS.includes(anchor as string)))) return fail()
     return { task: name, ...images === undefined ? {} : { imageReferences: images },
       ...anchors === undefined ? {} : { anchors: anchors as Array<'first' | 'last'> } }
@@ -68,11 +69,11 @@ function servedTasks(value: unknown, fail: () => never, object: (entry: unknown)
 }
 
 function limitFacts(value: Record<string, unknown>, fail: () => never): ReferenceLimitFacts {
-  const count = (key: string): number => {
+  const limit = (key: string): number => {
     const entry = value[key]
-    return typeof entry === 'number' && Number.isSafeInteger(entry) && entry >= 0 ? entry : fail()
+    return count(entry) ? entry : fail()
   }
-  const limits = { images: count('images'), videos: count('videos'), audios: count('audios'), total: count('total') }
+  const limits = { images: limit('images'), videos: limit('videos'), audios: limit('audios'), total: limit('total') }
   const continuation = value['continuation_video']
   if (typeof continuation !== 'boolean') return fail()
   if (Math.max(limits.images, limits.videos, limits.audios) > limits.total) return fail()
