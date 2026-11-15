@@ -57,7 +57,7 @@ describe('AssetsPanel', () => {
     expect(panel.getByText('Extracted from generation · 3')).toBeTruthy()
     expect(panel.getByText('Audios · 2')).toBeTruthy()
     // Each thumbnail has its asset's name under it, outside the thumbnail button.
-    const names = panel.getByText('Audios · 2').closest('section')?.querySelectorAll('[aria-hidden="true"]') ?? []
+    const names = panel.getByText('Audios · 2').closest('section')?.querySelectorAll('[data-asset-id] + [aria-hidden="true"]') ?? []
     expect([...names].map(name => name.textContent).sort()).toEqual(['piece-1.wav', 'piece-2.wav'])
     expect(view.container.querySelector('[data-asset-id="piece-1.wav"]')?.textContent).toBe('2.4s')
     expect(view.container.querySelector('[data-asset-id="piece-2.wav"]')?.textContent).toBe('0.4s')
