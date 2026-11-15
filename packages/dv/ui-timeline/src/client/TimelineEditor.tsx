@@ -53,8 +53,11 @@ export interface TimelineEditorProps {
    * while the selection names none or a timeline that the project lost.
    */
   selected: string | null
-  /** Select the timeline that the user picked or created, or the one shown before a create that failed. */
-  select: (timelineId: string | null) => void
+  /**
+   * Select the timeline that the user picked or created, or the one shown before a create that failed. Absent in a card,
+   * whose editor shows no timeline tabs.
+   */
+  select?: (timelineId: string | null) => void
   /** The clip that the editor selects and seeks to once it shows the clip's timeline, or null. */
   clipFocus?: { timelineId: string; clipId: string } | null
   /** Drop {@link TimelineEditorProps.clipFocus} once the editor took it. */
@@ -779,11 +782,11 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const createTimeline = (): void => {
     const id = nextTimelineId(timelines)
     const name = timelineName({ id, name: '' }, numbered)
-    select(id)
+    select?.(id)
     void run(() => client.runOperation(request(project, session, { operation: 'timeline.create', params: { timeline: id, assets: [] }, intent: t('intent.create', { name }) })))
       .then((ok) => {
         if (ok) return
-        select(timelineId)
+        select?.(timelineId)
       })
   }
   const startRename = (entry: Timeline): void => {
@@ -1053,7 +1056,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       ) : (
         <button
           key={entry.id} type="button" role="tab" aria-selected={entry === timeline} data-timeline={entry.id}
-          onClick={() => { select(entry.id) }}
+          onClick={() => { select?.(entry.id) }}
           onDoubleClick={() => { startRename(entry) }}
           onContextMenu={(event) => {
             event.preventDefault()

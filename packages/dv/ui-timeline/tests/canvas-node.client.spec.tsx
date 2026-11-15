@@ -14,7 +14,6 @@ import { zh as canvasZh } from '../../ui-canvas/src/client/locales.ts'
 import { forgetCanvasStorage, mountCanvas } from '../../ui-canvas/tests/canvas-runtime.client.tsx'
 import { canvasNode, record } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
-import { keepSelection } from '../src/client/canvas-node.tsx'
 import { apply, inject } from '../src/client/index.ts'
 import { zh } from '../src/client/locales.ts'
 
@@ -159,10 +158,17 @@ describe('a timeline node on the canvas', () => {
     expect([preview.classList.contains('dv-tl-editor'), speed.classList.contains('dv-tl-btn')]).toEqual([true, true])
   })
 
-  it('keeps the card\'s editor on its timeline when the editor selects another, which writes nothing', async () => {
-    const { node, server } = await mountTimelineCanvas((state) => { placeTimeline(state, 'k1', 't1') })
+  it('keeps the card\'s editor on its timeline, with no control that selects or creates another, which writes nothing', async () => {
+    const { node, server } = await mountTimelineCanvas((state) => {
+      const [timeline] = state.components.timeline.timelines
+      if (timeline === undefined) return
+      state.components.timeline.timelines.push({ ...timeline, id: 't2' as TimelineId, name: '片尾', clips: [] })
+      placeTimeline(state, 'k1', 't1')
+    })
     await waitFor(() => { expect(node('k1').querySelector('[data-timeline-card="t1"]')).not.toBeNull() })
-    keepSelection()
+    const editor = within(node('k1').querySelector('[data-timeline-card="t1"]') as HTMLElement).getByTestId('dv-timeline-editor')
+    expect([within(editor).queryByRole('tablist'), within(editor).queryByRole('tab'), within(editor).queryByRole('button', { name: zh['tabs.new'] })]).toEqual([null, null, null])
+    act(() => { server.notify() })
     await act(() => Promise.resolve())
     expect(node('k1').querySelector('[data-timeline-card="t1"]')).not.toBeNull()
     expect(operationsOf(server.writes)).toEqual([])

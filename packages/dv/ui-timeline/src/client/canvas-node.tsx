@@ -215,16 +215,13 @@ function CardEditor(
       <div style={{ flex: 1, minHeight: 0 }}>
         <TimelineEditor
           client={client} t={t} project={state.project.id} session={session} state={state} run={run}
-          selected={timeline.id} select={keepSelection}
+          selected={timeline.id}
           card={{ viewer: above, open: () => { show(timeline.id) }, scale, ...previewWidth === undefined ? {} : { previewWidth } }}
         />
       </div>
     </div>
   )
 }
-
-/** The `select` of the card's editor: the card shows one timeline, so the editor's selection never changes. */
-export function keepSelection(): void {}
 
 /**
  * The `dv.canvas.card` entry of timeline nodes: {@link TimelineCard} with the plugin's services, which slot entries do
