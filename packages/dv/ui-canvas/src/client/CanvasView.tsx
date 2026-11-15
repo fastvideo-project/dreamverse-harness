@@ -1031,8 +1031,8 @@ export function CanvasView(
               onPointerDown={onNodeDown(node)}
               onResizeDown={onResizeDown(node)}
               body={renderSlot('dv.canvas.card', {
-                node: view, state: graph.state, session, selected: node.id === selected, above: node.id === selected ? above : null,
-                assets, textScale, host: hosts.card,
+                node: view, state: graph.state, session, selected: node.id === selected && node.id !== editing,
+                above: node.id === selected ? above : null, assets, textScale, host: hosts.card,
               }, {
                 entryKey: node.type, fallback: <TypeLabelBody label={node.nodeType.label()} textScale={textScale} />,
               })}

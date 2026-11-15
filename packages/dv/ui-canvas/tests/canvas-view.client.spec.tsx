@@ -259,6 +259,34 @@ describe('the canvas over the real kinds', () => {
     await runtime.dispose()
   })
 
+  it('plays the video of a selected node\'s card, pauses it while the node\'s editor is open, and plays it again once the editor closes', async () => {
+    const calls: string[] = []
+    // Each play or pause of a card video, as `<node> play` or `<node> pause`.
+    const log = (video: HTMLMediaElement, action: string): void => {
+      const card = video.closest('[data-node-id]')
+      if (card !== null && video.closest('[data-testid="dv-canvas-node-editor"]') === null) calls.push(`${card.getAttribute('data-node-id') ?? ''} ${action}`)
+    }
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(function (this: HTMLMediaElement) {
+      log(this, 'play')
+      return Promise.resolve()
+    })
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(function (this: HTMLMediaElement) { log(this, 'pause') })
+    const { runtime, view, open } = await mountCanvas({
+      edit: (state) => {
+        state.assets.push(asset('clip.mp4', 'video/mp4', 'u2', 4, 'asset.import'))
+        state.components.proj.records.push(record({ id: 'u2', operation: 'asset.import', params: { name: 'clip.mp4' }, outputs: ['clip.mp4'] }))
+        state.components.proj.created_by['clip.mp4'] = 'u2'
+        addNode(state, 'u2', canvasNode('asset', ['u2'], 0, 400, { asset: 'clip.mp4' }))
+        state.components.canvas.assets['clip.mp4'] = 'u2'
+      },
+    })
+    await open('u2')
+    expect(calls).toEqual(['u2 pause', 'u2 play', 'u2 pause'])
+    fireEvent.click(view.getByRole('button', { name: zh['editor.close'] }))
+    expect(calls.at(-1)).toBe('u2 play')
+    await runtime.dispose()
+  })
+
   it('渲染新版本 runs the edited take based on it, reads 渲染中… until the new version appears, then closes the editor and selects the node', async () => {
     let started = false
     const { runtime, view, node, open, server } = await mountCanvas({
