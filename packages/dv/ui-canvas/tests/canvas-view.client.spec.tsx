@@ -490,20 +490,44 @@ describe('the canvas over the real kinds', () => {
     await runtime.dispose()
   })
 
-  it('a wheel over the open editor leaves the canvas viewport alone; a wheel over empty canvas zooms it', async () => {
+  it('a wheel over the open editor, a ctrl or meta wheel too, leaves the canvas viewport alone; a wheel over empty canvas zooms it', async () => {
     const { runtime, open, canvasOf } = await mountCanvas()
     const editor = await open('g1')
     const canvas = canvasOf()
     const transform = (): string => (canvas.querySelector('div[style*="transform"]') as HTMLElement).style.transform
     const before = transform()
-    const overEditor = new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true })
-    act(() => { (editor.querySelector('li') ?? editor).dispatchEvent(overEditor) })
-    expect(overEditor.defaultPrevented).toBe(false)
-    expect(transform()).toBe(before)
+    for (const modifier of [{}, { ctrlKey: true }, { metaKey: true }]) {
+      const overEditor = new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true, ...modifier })
+      act(() => { (editor.querySelector('li') ?? editor).dispatchEvent(overEditor) })
+      expect(overEditor.defaultPrevented).toBe(false)
+      expect(transform()).toBe(before)
+    }
     const overCanvas = new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true })
     act(() => { canvas.dispatchEvent(overCanvas) })
     expect(overCanvas.defaultPrevented).toBe(true)
     expect(transform()).not.toBe(before)
+    await runtime.dispose()
+  })
+
+  it('a ctrl or meta wheel inside a scroll island, such as a touchpad pinch over a card\'s track area, zooms the canvas', async () => {
+    const { runtime, node, canvasOf } = await mountCanvas()
+    await waitFor(() => { node('g1') })
+    const canvas = canvasOf()
+    const transform = (): string => (canvas.querySelector('div[style*="transform"]') as HTMLElement).style.transform
+    const island = document.createElement('div')
+    island.setAttribute('data-dv-scroll-island', '')
+    node('g1').append(island)
+    const before = transform()
+    const plain = new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true })
+    act(() => { island.dispatchEvent(plain) })
+    expect([plain.defaultPrevented, transform()]).toEqual([false, before])
+    for (const modifier of [{ ctrlKey: true }, { metaKey: true }]) {
+      const zoomed = transform()
+      const pinch = new WheelEvent('wheel', { deltaY: 10, bubbles: true, cancelable: true, ...modifier })
+      act(() => { island.dispatchEvent(pinch) })
+      expect(pinch.defaultPrevented).toBe(true)
+      expect(transform()).not.toBe(zoomed)
+    }
     await runtime.dispose()
   })
 

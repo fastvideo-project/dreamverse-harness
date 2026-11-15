@@ -412,7 +412,10 @@ export function CanvasView(
     })
     observer.observe(element)
     const onWheel = (event: WheelEvent): void => {
-      if (event.target instanceof Element && event.target.closest('[data-dv-scroll-island]') !== null) return
+      // A scroll island keeps its wheel, except that a ctrl or meta wheel, such as a touchpad pinch, over an island inside
+      // a node card zooms the canvas; the open editor's panel keeps every wheel. A wheel targets an element in the canvas.
+      const island = (event.target as Element).closest('[data-dv-scroll-island]')
+      if (island !== null && !((event.ctrlKey || event.metaKey) && island.closest('[data-node-id]') !== null)) return
       event.preventDefault()
       const rect = element.getBoundingClientRect()
       const px = event.clientX - rect.left
