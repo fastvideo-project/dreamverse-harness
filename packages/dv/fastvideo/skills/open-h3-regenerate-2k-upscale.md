@@ -8,5 +8,7 @@ does not change the content.
   record ID. Use no first or last frame.
 - Use the draft's own prompt, unchanged. Do not add style or detail instructions; the 2K model is conditioned on the
   same description the draft was made from. Do not cite the reference in the prompt.
-- Duration and frame count follow the draft (5 seconds, 124 frames at 24 fps); the output is always 2560x1440.
+- The output is 2560x1440 and has no audio track. Its length comes from the durations that `dv_models_get` lists for
+  this model, not from the draft: a draft longer than the longest duration becomes a shorter clip, so tell the user
+  before you render.
 - A 2K regeneration takes minutes, longer than the draft. Upscale the takes the user keeps, not every take.
