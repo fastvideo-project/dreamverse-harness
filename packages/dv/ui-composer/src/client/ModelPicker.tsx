@@ -8,6 +8,9 @@ import type { WireModelEntry, WireState } from '@dv/ui-kit/types.ts'
 
 interface Selection { provider: string; model: string }
 
+/** The menu row id of a provider and model. */
+const choiceId = (choice: Selection): string => JSON.stringify([choice.provider, choice.model])
+
 /** The modalities the composer offers a choice for, in the order their pickers show. */
 export const PICKER_MODALITIES = ['video', 'image', 'audio'] as const
 
@@ -23,7 +26,7 @@ export type PickerModality = typeof PICKER_MODALITIES[number]
  */
 export function modelChoices(models: readonly WireModelEntry[], modality: PickerModality): WireModelEntry[] {
   return [...new Map(models.filter(entry => entry.modality === modality && entry.runtime?.installed !== false)
-    .map(entry => [JSON.stringify([entry.provider, entry.model]), entry])).values()]
+    .map(entry => [choiceId(entry), entry])).values()]
 }
 
 /**
@@ -67,11 +70,11 @@ export function ModelPicker({ sessionId, modality, state, models, reloadModels, 
   } as const)[modality]
   const choices = modelChoices(catalog ?? [], modality)
   const selected = selectedModel(project, sessionId, modality)
-  const selectedId = selected === null ? '' : JSON.stringify([selected.provider, selected.model])
-  const entry = choices.find(choice => JSON.stringify([choice.provider, choice.model]) === selectedId)
+  const selectedId = selected === null ? '' : choiceId(selected)
+  const entry = choices.find(choice => choiceId(choice) === selectedId)
   const label = selected === null ? pick('自动', 'Auto') : entry?.display_name ?? selected.model
   const choose = (id: string): void => {
-    const next = choices.find(choice => JSON.stringify([choice.provider, choice.model]) === id)
+    const next = choices.find(choice => choiceId(choice) === id)
     if (id !== '' && next === undefined) return
     setOpen(false)
     setSaving(true)
@@ -84,7 +87,7 @@ export function ModelPicker({ sessionId, modality, state, models, reloadModels, 
     <Menu open={open} onClose={() => { setOpen(false) }} onSelect={choose} selectedId={selectedId}
       portal side="top" compact autoFocus items={[
         { id: '', label: pick('自动 · 由智能体选择', 'Auto · let the operator choose') },
-        ...choices.map(choice => ({ id: JSON.stringify([choice.provider, choice.model]),
+        ...choices.map(choice => ({ id: choiceId(choice),
           label: choice.display_name ?? choice.model })),
       ]} anchor={<button type="button" className="dv-model-choice-trigger" aria-haspopup="menu" aria-expanded={open}
         aria-label={`${kind.long}${pick('：', ': ')}${label}`}

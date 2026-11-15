@@ -51,28 +51,25 @@ export class OpenRouterApi {
     return response
   }
 
-  /** Read current choices. Metadata lookups are bounded; generation follows the operation lifetime. */
+  /** The JSON of a catalog route. Metadata lookups are bounded to 10 seconds; generation follows the operation lifetime. */
+  private async catalogJson(path: string, signal?: AbortSignal): Promise<unknown> {
+    const deadline = AbortSignal.timeout(10_000)
+    return (await this.call(path, { signal: signal === undefined ? deadline : AbortSignal.any([signal, deadline]) })).json()
+  }
+
+  /** Read current choices. */
   async catalog(signal?: AbortSignal): Promise<VideoModel[]> {
-    const deadline = AbortSignal.timeout(10_000)
-    return videoCatalog(await (await this.call('videos/models', {
-      signal: signal === undefined ? deadline : AbortSignal.any([signal, deadline]),
-    })).json())
+    return videoCatalog(await this.catalogJson('videos/models', signal))
   }
 
-  /** Read current image choices, bounded like the video catalog. */
+  /** Read current image choices. */
   async imageCatalog(signal?: AbortSignal): Promise<ImageModel[]> {
-    const deadline = AbortSignal.timeout(10_000)
-    return imageCatalog(await (await this.call('images/models', {
-      signal: signal === undefined ? deadline : AbortSignal.any([signal, deadline]),
-    })).json())
+    return imageCatalog(await this.catalogJson('images/models', signal))
   }
 
-  /** Read current speech choices from the models catalog filtered to speech output, bounded like the video catalog. */
+  /** Read current speech choices from the models catalog filtered to speech output. */
   async speechCatalog(signal?: AbortSignal): Promise<SpeechModel[]> {
-    const deadline = AbortSignal.timeout(10_000)
-    return speechCatalog(await (await this.call('models?output_modalities=speech', {
-      signal: signal === undefined ? deadline : AbortSignal.any([signal, deadline]),
-    })).json())
+    return speechCatalog(await this.catalogJson('models?output_modalities=speech', signal))
   }
 
   /**

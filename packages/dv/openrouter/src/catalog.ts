@@ -30,6 +30,12 @@ export function videoCatalog(value: unknown): VideoModel[] {
   })
 }
 
+/** The `output_modalities` of a catalog row's `architecture` object; empty when it lists none. */
+function outputModalities(architecture: unknown): string[] {
+  return typeof architecture === 'object' && architecture !== null
+    ? strings(new Map<string, unknown>(Object.entries(architecture)).get('output_modalities')) : []
+}
+
 /** The enum parameters an image call may set through `extra`; the provider chooses pixel sizes from them. */
 export const IMAGE_EXTRA_PARAMETERS = ['aspect_ratio', 'resolution', 'quality', 'background'] as const
 
@@ -60,9 +66,7 @@ export function imageCatalog(value: unknown): ImageModel[] {
     if (typeof row !== 'object' || row === null) return []
     const fields = new Map<string, unknown>(Object.entries(row))
     const id = fields.get('id')
-    const architecture = fields.get('architecture')
-    const outputs = typeof architecture === 'object' && architecture !== null
-      ? strings(new Map<string, unknown>(Object.entries(architecture)).get('output_modalities')) : []
+    const outputs = outputModalities(fields.get('architecture'))
     const supported = fields.get('supported_parameters')
     if (typeof id !== 'string' || id === '' || !outputs.includes('image') || typeof supported !== 'object' || supported === null) return []
     const descriptors = new Map<string, unknown>(Object.entries(supported))
@@ -96,9 +100,7 @@ export function speechCatalog(value: unknown): SpeechModel[] {
     if (typeof row !== 'object' || row === null) return []
     const fields = new Map<string, unknown>(Object.entries(row))
     const id = fields.get('id')
-    const architecture = fields.get('architecture')
-    const outputs = typeof architecture === 'object' && architecture !== null
-      ? strings(new Map<string, unknown>(Object.entries(architecture)).get('output_modalities')) : []
+    const outputs = outputModalities(fields.get('architecture'))
     const endpoints = fields.get('endpoints')
     if (typeof id !== 'string' || id === '' || !outputs.includes('speech')
       || (Array.isArray(endpoints) && !strings(endpoints).includes(SPEECH_ENDPOINT))) return []
