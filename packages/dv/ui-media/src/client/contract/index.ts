@@ -64,6 +64,12 @@ export interface MediaOwner {
   playBadge?: true
   /** Receives the pixel size of the loaded media, for an asset whose stored size is unknown. */
   onSize?: (size: { width: number; height: number }) => void
+  /**
+   * At purpose 'card', a playable card, such as the video of a selected canvas node: when it turns true the media plays
+   * with sound from where it stopped, with its controls along the bottom; when it turns false it pauses and shows no
+   * controls. Absent draws the still.
+   */
+  play?: boolean
 }
 
 /** Owner props of each `dv.media.view` entry: the occurrence's props, and the call that reports a failed draw. */

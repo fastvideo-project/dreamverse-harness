@@ -25,7 +25,7 @@ export type CanvasNode = NodeEntry & {
 export interface CanvasEdge {
   from: string
   to: string
-  /** The input role, such as 'reference' or 'first_frame'. */
+  /** The input role, such as 'reference' or 'first_frame', or 'uses' for an edge from the target's `TypeEntry.uses`. */
   role: string
 }
 
@@ -44,6 +44,8 @@ export interface CanvasGraph {
   links: EdgeLink[]
   /** The node that shows each asset: the node that owns it, else the nearest drawn record up its producer chain. */
   assetNodes: Record<string, string>
+  /** The nodes that each node's `TypeEntry.uses` names, by node ID; a node without `uses` has no entry. */
+  usedNodes: Record<string, readonly string[]>
   /**
    * The node at one of its versions, as the editor's version strip shows it.
    * @param node - a drawn node.
@@ -132,7 +134,7 @@ export function boxOf(node: Pick<CanvasNode, 'node' | 'sizing'>): NodePosition {
 /**
  * The canvas graph of a project state. A node owns the assets of its entry, then the outputs of its earlier versions.
  * A node draws one edge per input of its newest version: from the node of the versioned item it names, else from the
- * node of the asset.
+ * node of the asset. A node whose entry declares `uses` also draws one edge from the node of each used asset or record.
  * @param state - a project state.
  * @param operations - the operation declarations.
  * @param language - the interface language.
@@ -202,6 +204,22 @@ export function buildCanvasGraph(
       links.push({ source, target, edge: { from: source.id, to: target.id, role: input.role } })
     }
   }
+  const usedNodes: Record<string, readonly string[]> = {}
+  for (const target of nodes) {
+    if (target.uses === undefined) continue
+    const { assets, records: usedRecords } = target.uses
+    const named = [...assets.map(asset => nodeOfAsset(asset)), ...usedRecords.map(record => recordNode.get(record) ?? null)]
+    const sources = [...new Set(named)].flatMap((id) => {
+      const source = id === null || id === target.id ? undefined : byId.get(id)
+      return source === undefined ? [] : [source]
+    })
+    usedNodes[target.id] = sources.map(source => source.id)
+    for (const source of sources) {
+      if (seen.has(`${source.id}>${target.id}`)) continue
+      seen.add(`${source.id}>${target.id}`)
+      links.push({ source, target, edge: { from: source.id, to: target.id, role: 'uses' } })
+    }
+  }
   for (const { asset, label } of recordsInUse.flatMap(descriptor => descriptor.badges?.(state) ?? [])) {
     const badged = byId.get(nodeOfAsset(asset) ?? '')
     if (badged !== undefined && !badged.badges.includes(label)) badged.badges.push(label)
@@ -216,7 +234,7 @@ export function buildCanvasGraph(
     if (version === undefined || version.id === entry.record.id) return entry
     return { ...drawn(entry.id, entry.node, version), badges: entry.badges }
   }
-  return { nodes, edges: links.map(link => link.edge), links, assetNodes, atVersion }
+  return { nodes, edges: links.map(link => link.edge), links, assetNodes, usedNodes, atVersion }
 }
 
 /**

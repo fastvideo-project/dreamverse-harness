@@ -217,6 +217,67 @@ describe('the audio card', () => {
   })
 })
 
+describe('a video card that plays', () => {
+  const playing = (assets: ReadonlyArray<[Asset, boolean]>) => ({ renderFactorySlot }: FrameProps) => assets.map(([each, play]) => (
+    <div key={`${each.id}:${String(play)}`} data-testid={`${each.id}:${String(play)}`}>{renderFactorySlot('dv.media', { asset: each, purpose: 'card', play })}</div>
+  ))
+
+  it('plays with sound while play is true, with a play button, a progress bar and the time, and shows the still without controls while it is false', async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.reject(new Error('NotAllowedError')))
+    const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
+    const { runtime } = await mountAssetPool(playing([[CLIP, false], [CLIP, true]]))
+    const view = runtime.renderRoot()
+    const still = view.getByTestId('clip.mp4:false')
+    expect([still.querySelector('[data-video-card-controls]'), still.querySelector('video')?.muted]).toEqual([null, false])
+    const card = view.getByTestId('clip.mp4:true')
+    const video = card.querySelector('video') as HTMLVideoElement
+    expect([video.getAttribute('src'), play.mock.calls.length, pause.mock.calls.length]).toEqual(['/dv/assets/clip.mp4#t=0.1', 1, 1])
+    const button = (): HTMLElement => within(card).getByRole('button')
+    const time = (): string | null | undefined => card.querySelector('[data-video-card-controls] > span:last-child')?.textContent
+    expect([button().getAttribute('aria-label'), time()]).toEqual(['Play', '0:00 / 0:03'])
+    fireEvent.play(video)
+    expect(button().getAttribute('aria-label')).toBe('Pause')
+    Object.defineProperty(video, 'paused', { value: false, configurable: true })
+    fireEvent.click(button())
+    expect(pause).toHaveBeenCalledTimes(2)
+    fireEvent.pause(video)
+    Object.defineProperty(video, 'paused', { value: true, configurable: true })
+    fireEvent.click(button())
+    await Promise.resolve()
+    expect(play).toHaveBeenCalledTimes(2)
+    fireEvent.play(video)
+    fireEvent.ended(video)
+    expect(button().getAttribute('aria-label')).toBe('Play')
+    // The time follows the video; a press on the progress bar moves the video there and stays off the surface beneath.
+    Object.defineProperty(video, 'currentTime', { value: 1, configurable: true, writable: true })
+    Object.defineProperty(video, 'duration', { value: 4, configurable: true })
+    fireEvent.timeUpdate(video)
+    expect(time()).toBe('0:01 / 0:04')
+    const bar = card.querySelector('[data-video-card-progress]') as HTMLElement
+    vi.spyOn(bar, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 100, height: 14, right: 100, bottom: 14, x: 0, y: 0, toJSON: () => ({}) })
+    const beneath = vi.fn()
+    document.addEventListener('pointerdown', beneath)
+    fireEvent.pointerDown(bar, { clientX: 75 })
+    fireEvent.pointerDown(button())
+    document.removeEventListener('pointerdown', beneath)
+    expect([video.currentTime, time(), bar.getAttribute('aria-valuenow'), beneath.mock.calls.length]).toEqual([3, '0:03 / 0:04', '3', 0])
+    // While the browser reports no length, the card keeps the length it shows.
+    Object.defineProperty(video, 'duration', { value: Number.NaN, configurable: true })
+    fireEvent.loadedMetadata(video)
+    expect(time()).toBe('0:03 / 0:04')
+    play.mockRestore()
+    pause.mockRestore()
+  })
+
+  it('draws an empty progress bar for a video of unknown length', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve())
+    const { runtime } = await mountAssetPool(playing([[{ ...CLIP, duration_sec: null }, true]]))
+    const bar = runtime.renderRoot().getByTestId('clip.mp4:true').querySelector('[data-video-card-progress]') as HTMLElement
+    expect((bar.lastElementChild as HTMLElement).style.width).toBe('0%')
+    vi.restoreAllMocks()
+  })
+})
+
 describe('the media types', () => {
   it('registers image, video and audio into dvMedia.types with their icons and their views under the same keys, an image its own poster and a video its producer\'s image output', async () => {
     const { runtime } = await mountAssetPool(() => null)

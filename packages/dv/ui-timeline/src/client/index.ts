@@ -1,9 +1,9 @@
 /**
  * Browser half: registers `dv-timeline` as a right-Sidebar tab type with its dictionaries and body, and, while each
  * service is present, its contributions to `dvCenter` (the 时间线 view `TimelineView` and the 插入片段 preview action),
- * `dvCanvas` (the records that timelines use), `dvHistory` (the row of timeline records), and `dvMentions` (the clip
- * mention kind). The tab body keeps its own timeline selection of each project; the center view keeps its selection in
- * the open project's center fields.
+ * `dvCanvas` (the records that timelines use, the `timeline` node type with its card, and the 时间线 section of the add
+ * menu), `dvHistory` (the row of timeline records), and `dvMentions` (the clip mention kind). The tab body keeps its
+ * own timeline selection of each project; the center view keeps its selection in the open project's center fields.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -15,6 +15,7 @@ import { DvClient } from '@dv/ui-kit/api.ts'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import { DV_CURRENT_PROJECT_EVENT, getCurrentProject } from '@dv/ui-kit/current-project.ts'
 import type {} from '@dv/ui-shell/contract'
+import { TIMELINE_NODE_KIND, timelineAddSection, timelineCard, timelineNodeType } from './canvas-node.tsx'
 import { TIMELINE_ID, timelineDefinition } from './definition.ts'
 import { timelineHistoryRow } from './history-row.ts'
 import { InsertClipAction } from './InsertClipAction.tsx'
@@ -70,8 +71,17 @@ export function apply(ctx: ClientContext): void {
       { name: 'dv.media.preview.action', id: 'dv.timeline.insert', locale: NS, inject: () => action }, InsertClipAction,
     )), 'ui-timeline: 插入片段 preview action')
   })
+  // A double click on a timeline node, and its card's 打开编辑器, show the timeline in the workspace center while `dvCenter` is loaded.
+  const show = (timeline: string): void => { ctx.get('dvCenter')?.show({ view: 'timeline', target: { timeline, clip: null } }) }
   ctx.inject(['dvCanvas'], (scope) => {
     scope.effect(() => scope.dvCanvas.recordsInUse.register(timelineRecordsInUse(t)), 'ui-timeline: records in use')
+    scope.effect(() => scope.dvCanvas.nodeTypes.register(timelineNodeType(t, show)), 'ui-timeline: canvas node type')
+    scope.effect(() => scope.dvCanvas.addMenu.register(timelineAddSection(t)), 'ui-timeline: canvas add menu')
+  })
+  ctx.inject(['slots'], (scope) => {
+    scope.effect(() => scope.slots.inject('dv.canvas.card', () => scope.slots.register(
+      { name: 'dv.canvas.card', key: TIMELINE_NODE_KIND, locale: NS }, timelineCard({ client, t, show }),
+    )), 'ui-timeline: canvas card')
   })
   ctx.inject(['dvHistory'], (scope) => {
     scope.effect(() => scope.dvHistory.rows.register(timelineHistoryRow), 'ui-timeline: history row')

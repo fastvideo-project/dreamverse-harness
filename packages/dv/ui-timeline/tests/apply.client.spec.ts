@@ -5,6 +5,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { createRegistry, type DvMentions, type MentionKind } from '@dv/ui-kit/registries.ts'
+import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
 import { TIMELINE_ID, TIMELINE_KIND } from '../src/client/definition.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { en, zh } from '../src/client/locales.ts'
@@ -68,6 +69,7 @@ describe('ui-timeline apply', () => {
     expect(dictionaries.get('dvTimeline')).toEqual({ zh, en })
     expect(registered.map(entry => [entry.name, entry.key ?? entry.id, entry.locale, entry.component])).toEqual([
       ['sidebar.right.pane.tab', TIMELINE_ID, 'dvTimeline', TimelineBody],
+      ['dv.canvas.card', 'timeline', 'dvTimeline', expect.any(Function)],
     ])
     expect(registered[0]?.inject().client).toBeInstanceOf(DvClient)
     expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort())
@@ -78,17 +80,18 @@ describe('ui-timeline apply', () => {
   it('registers the center view and 插入片段 once dvCenter is present, with the tab body\'s API client, and both leave with dvCenter', async () => {
     const { ctx, registered } = await boot()
     const dispose = ctx.provide('dvCenter', { show: () => {} })
-    await vi.waitFor(() => { expect(registered).toHaveLength(3) })
+    await vi.waitFor(() => { expect(registered).toHaveLength(4) })
     expect(registered.map(entry => [entry.name, entry.key ?? entry.id, entry.locale, entry.component])).toEqual([
       ['sidebar.right.pane.tab', TIMELINE_ID, 'dvTimeline', TimelineBody],
+      ['dv.canvas.card', 'timeline', 'dvTimeline', expect.any(Function)],
       ['dv.center.view', 'timeline', undefined, TimelineView],
       ['dv.media.preview.action', 'dv.timeline.insert', 'dvTimeline', InsertClipAction],
     ])
     // The center view comes after the canvas in the workspace's view control, under the tab type's label.
-    expect([registered[1]?.order, registered[1]?.label?.()]).toEqual([1, 'type.label'])
-    expect(registered[1]?.inject().client).toBe(registered[0]?.inject().client)
+    expect([registered[2]?.order, registered[2]?.label?.()]).toEqual([1, 'type.label'])
+    expect(registered[2]?.inject().client).toBe(registered[0]?.inject().client)
     dispose()
-    await vi.waitFor(() => { expect(registered.map(entry => entry.name)).toEqual(['sidebar.right.pane.tab']) })
+    await vi.waitFor(() => { expect(registered.map(entry => entry.name)).toEqual(['sidebar.right.pane.tab', 'dv.canvas.card']) })
   })
 
   it('registers the clip mention kind once dvMentions is present, and the plugin disposal removes it', async () => {
@@ -98,6 +101,28 @@ describe('ui-timeline apply', () => {
     await vi.waitFor(() => { expect(mentions.kinds.getSnapshot()).toEqual([clipMentionKind]) })
     await fiber.dispose()
     expect(mentions.kinds.getSnapshot()).toEqual([])
+  })
+
+  it('registers the timeline node type and the add menu section once dvCanvas is present; a double click shows the timeline while dvCenter is present', async () => {
+    const { ctx, fiber } = await boot()
+    const canvas = createDvCanvas()
+    ctx.provide('dvCanvas', canvas)
+    await vi.waitFor(() => { expect(canvas.nodeTypes.getSnapshot().map(type => type.type)).toEqual(['timeline']) })
+    expect(canvas.addMenu.getSnapshot().map(section => [section.id, section.order, section.label()])).toEqual([[TIMELINE_ID, 1, 'canvas.addSection']])
+    const show = vi.fn()
+    const open = (): void => {
+      canvas.nodeTypes.getSnapshot()[0]?.open?.({ record: { params: { timeline: 't2' } } } as never)
+    }
+    open()
+    expect(show).not.toHaveBeenCalled()
+    const withoutTimeline = (): void => { canvas.nodeTypes.getSnapshot()[0]?.open?.({ record: { params: {} } } as never) }
+    ctx.provide('dvCenter', { show })
+    await vi.waitFor(() => { open(); expect(show).toHaveBeenCalledWith({ view: 'timeline', target: { timeline: 't2', clip: null } }) })
+    show.mockClear()
+    withoutTimeline()
+    expect(show).not.toHaveBeenCalled()
+    await fiber.dispose()
+    expect([canvas.nodeTypes.getSnapshot(), canvas.addMenu.getSnapshot(), canvas.recordsInUse.getSnapshot()]).toEqual([[], [], []])
   })
 
   it('removes everything when the plugin is disposed', async () => {

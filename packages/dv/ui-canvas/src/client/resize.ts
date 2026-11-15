@@ -1,13 +1,14 @@
 /**
- * The box of a canvas node after a drag of one of its corner handles, computed from the node type's sizing.
+ * The box of a canvas node after a drag of one of its resize handles, at a corner or along an edge, computed from the
+ * node type's sizing.
  *
  * @module @dv/ui-canvas/client/resize
  */
 import type { NodePosition } from '../canvas-layout.ts'
 import type { NodeSizing, Size } from './contract/index.ts'
 
-/** A corner handle of the selected node: north or south, west or east. */
-export type ResizeCorner = 'nw' | 'ne' | 'sw' | 'se'
+/** A resize handle of the selected node: a corner (north or south, west or east) or one edge. */
+export type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w'
 
 /**
  * The frame size of a media node that the pointer asks for: the width that the axis with the larger movement asks
@@ -26,24 +27,29 @@ function mediaSize(sizing: Extract<NodeSizing, { kind: 'media' }>, width: number
 }
 
 /**
- * The box of a node after a corner drag. A window node takes the width and the height that the pointer asks for, each
- * at least its side of `minSize`; a media node keeps height = width / ratio + fixedHeight. A west corner moves the left
- * edge and a north corner the top edge, so the opposite corner stays in place.
+ * The box of a node after a handle drag. A corner changes the width and the height, an east or west edge the width
+ * only, and a north or south edge the height only. A window node takes the size that the pointer asks for, each side at
+ * least its side of `minSize`; a media node keeps height = width / ratio + fixedHeight, following the edge's axis or,
+ * at a corner, the axis with the larger movement. A west handle moves the left edge and a north handle the top edge, so
+ * the opposite side stays in place.
  * @param sizing - the node type's sizing of the node.
  * @param origin - the node's box when the drag started.
- * @param corner - the dragged corner.
+ * @param corner - the dragged handle.
  * @param dx - the pointer's horizontal movement in canvas units.
  * @param dy - the pointer's vertical movement in canvas units.
  * @returns the box.
  */
-export function resizedBox(sizing: NodeSizing, origin: NodePosition, corner: ResizeCorner, dx: number, dy: number): NodePosition {
+export function resizedBox(sizing: NodeSizing, origin: NodePosition, corner: ResizeHandle, dx: number, dy: number): NodePosition {
   const west = corner.endsWith('w')
   const north = corner.startsWith('n')
-  const width = origin.width + (west ? -dx : dx)
-  const height = origin.height + (north ? -dy : dy)
+  const across = west || corner.endsWith('e')
+  const along = north || corner.startsWith('s')
+  const width = across ? origin.width + (west ? -dx : dx) : origin.width
+  const height = along ? origin.height + (north ? -dy : dy) : origin.height
+  const horizontal = across && (!along || Math.abs(dx) >= Math.abs(dy) * (sizing.kind === 'media' ? sizing.aspectRatio.ratio : 1))
   const size = sizing.kind === 'window'
     ? { width: Math.max(sizing.minSize.width, width), height: Math.max(sizing.minSize.height, height) }
-    : mediaSize(sizing, width, height, Math.abs(dx) >= Math.abs(dy) * sizing.aspectRatio.ratio)
+    : mediaSize(sizing, width, height, horizontal)
   return {
     x: west ? origin.x + origin.width - size.width : origin.x,
     y: north ? origin.y + origin.height - size.height : origin.y,

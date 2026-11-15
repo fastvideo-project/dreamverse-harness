@@ -58,6 +58,24 @@ function graphOf(
 }
 
 describe('buildCanvasGraph', () => {
+  it('draws one uses edge from the node of each asset and record that a node uses, without itself, and lists those nodes', () => {
+    const state = fixtureState()
+    // The record's own input from shot1.mp4 already draws the edge from g1, so the use of shot1.mp4 adds none.
+    state.components.proj.records.push(record({ id: 'k1', operation: 'test.place', inputs: [{ role: 'clip', ref: { asset: 'shot1.mp4' }, resolved_asset: 'shot1.mp4' }] }))
+    state.components.canvas.nodes['k1'] = canvasNode('cut', ['k1'], 900, 0)
+    state.components.canvas.order.push('k1')
+    const cut: NodeType = {
+      id: '@dv/ui-test-cut', type: 'cut', label: () => 'Cut', color: '',
+      entry: () => ({
+        title: 'Cut', sizing: { kind: 'window', defaultSize: { width: 208, height: 117 }, minSize: { width: 104, height: 59 } },
+        uses: { assets: ['shot1.mp4', 'shot1-last.png', 'nowhere.mp4'], records: ['g2', 'k1', 'missing'] },
+      }),
+    }
+    const graph = graphOf(state, { ...allKinds(), nodeTypes: [...allKinds().nodeTypes, cut] })
+    expect(graph.usedNodes).toEqual({ k1: ['g1', 'g2'] })
+    expect(graph.edges.filter(edge => edge.to === 'k1')).toEqual([{ from: 'g1', to: 'k1', role: 'clip' }, { from: 'g2', to: 'k1', role: 'uses' }])
+  })
+
   it('draws each node of the node list in creation order with the type of its kind, at its newest version', () => {
     const graph = graphOf(withTestRef(fixtureState()))
     expect(graph.nodes.map(node => [node.id, node.type, node.record.id, node.versions])).toEqual([

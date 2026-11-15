@@ -43,7 +43,7 @@ kind: "package-reference"
 
 | 方法 | 注册 | 使用者 |
 | --- | --- | --- |
-| `registerMaker({operations, kind, column, makes?})` | `operations` 的记录在布局列 `column`（最左为 0）产生 `kind` 节点；`makes(record)` 收到记录的 `params` 和 `status`，返回 false 时跳过该记录 | `@dv/generation` 的 `defineGeneration`（`shot`、`image`、`audio`，第 2 列），`@dv/reference-kit` 的 `defineReference`（`<k>.create`，kind `<k>`，第 0 列），`@dv/text-node`（`textnode.write`，kind `text`，第 0 列），`@dv/asset-pool`（已完成且带 `place: true` 的 `asset.import`，kind `asset`，第 0 列） |
+| `registerMaker({operations, kind, column, makes?})` | `operations` 的记录在布局列 `column`（最左为 0）产生 `kind` 节点；`makes(record)` 收到记录的 `params` 和 `status`，返回 false 时跳过该记录 | `@dv/generation` 的 `defineGeneration`（`shot`、`image`、`audio`，第 2 列），`@dv/reference-kit` 的 `defineReference`（`<k>.create`，kind `<k>`，第 0 列），`@dv/text-node`（`textnode.write`，kind `text`，第 0 列），`@dv/asset-pool`（已完成且带 `place: true` 的 `asset.import`，kind `asset`，第 0 列），`@dv/timeline`（已完成的 `timeline.place`，kind `timeline`，第 3 列） |
 | `registerPlacement({place, kind, column})` | 已完成的 `place` 记录为每个还没有节点显示的输入素材添加一个 `kind` 节点；`canvas.node_remove` 像移除其他节点一样移除这样的节点 | `@dv/asset-pool`（`asset.place`，kind `asset`，第 0 列） |
 
 每个方法返回其注册的注销函数。某个 maker 或 placement 已指名的操作会抛出 `invalid_params`。`kind` 是浏览器半边绘制该节点所用的节点类型键：UI 插件注册一个 `type` 为同一字符串的 `@dv/ui-canvas/contract` `NodeType`，没有对应类型的 kind 画成普通卡片。

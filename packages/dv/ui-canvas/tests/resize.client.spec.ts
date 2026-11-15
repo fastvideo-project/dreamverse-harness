@@ -1,4 +1,4 @@
-/** The box of a canvas node after a corner drag. */
+/** The box of a canvas node after a drag of a corner or an edge handle. */
 import { describe, expect, it } from 'vitest'
 import type { NodeSizing } from '../src/client/contract/index.ts'
 import { resizedBox } from '../src/client/resize.ts'
@@ -20,6 +20,17 @@ describe('resizedBox', () => {
     expect(resizedBox(WINDOW, origin, 'nw', -50, -40)).toEqual({ x: 50, y: 160, width: 258, height: 146 })
     expect(resizedBox(WINDOW, origin, 'ne', 50, -40)).toEqual({ x: 100, y: 160, width: 258, height: 146 })
     expect(resizedBox(WINDOW, origin, 'sw', -50, 40)).toEqual({ x: 50, y: 200, width: 258, height: 146 })
+  })
+
+  it('changes only the width from an east or west edge and only the height from a north or south edge, keeping the opposite edge', () => {
+    expect(resizedBox(WINDOW, origin, 'e', 50, 30)).toEqual({ x: 100, y: 200, width: 258, height: 106 })
+    expect(resizedBox(WINDOW, origin, 'w', -50, 30)).toEqual({ x: 50, y: 200, width: 258, height: 106 })
+    expect(resizedBox(WINDOW, origin, 's', 50, 40)).toEqual({ x: 100, y: 200, width: 208, height: 146 })
+    expect(resizedBox(WINDOW, origin, 'n', 50, -40)).toEqual({ x: 100, y: 160, width: 208, height: 146 })
+    // A media node follows the edge's axis whatever the other movement: an east edge asks by width, a south edge by height.
+    const start = { x: 0, y: 0, width: 208, height: 147 }
+    expect(resizedBox(MEDIA, start, 'e', 160, 500)).toEqual({ x: 0, y: 0, width: 368, height: 237 })
+    expect(resizedBox(MEDIA, start, 's', 500, 90)).toEqual({ x: 0, y: 0, width: 368, height: 237 })
   })
 
   it('stops a window node at each side of its minimum size', () => {

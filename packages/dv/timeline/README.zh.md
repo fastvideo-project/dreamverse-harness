@@ -58,6 +58,8 @@ kind: "package-reference"
 
 `timeline.export` 不是确定性的，因为它的输出取决于项目状态中时间线的片段，而参数并不指明这些片段；每次调用都重新导出。它在 `cpu` 资源类别中运行。时间线未知、项目没有时间线或时间线没有片段时，调用让记录失败。时间线中有占位片段时，调用在写下记录之前被拒绝，并列出片段位置，例如 "Clips 3, 5 of timeline t1 are not ready yet."；`exportTimeline` 抛出同样的错误。服务方法 `exportTimeline(timeline, dir)` 为其他调用方把拼好的文件写入 `dir` 并返回其路径。
 
+加载 `@dv/canvas` 时，插件还注册 `timeline.place`（工具 `dv_timeline_place`，标签 把时间线放到画布上 / Place timeline on canvas，必填参数 `timeline`），并通过 `dvCanvasNodes` 的 `registerMaker` 登记它：每条完成的记录在布局第 3 列生成一个 `timeline` 类型的画布节点。它的前置检查在写入任何记录之前拒绝不存在的时间线（"Timeline t9 does not exist."）和已有 `timeline` 节点显示的时间线（"Timeline t1 is already on the canvas as node <id>."）；节点被 `canvas.node_remove` 移除后，这条时间线可以再次作为新节点放到画布上。时间线被删除后，节点仍留在原处。[`@dv/ui-timeline`](../ui-timeline/README.zh.md) 绘制这个节点，并从画布的添加菜单把时间线放到画布上。
+
 工作流技能（例如 `@dv/workflow-skills` 的 `story-directing`）用智能体工具 `dv_timeline_create` 和 `dv_timeline_update` 排布渲染结果：每个 `clip` 输入指明一个渲染输出 `<record>#<output>`，渲染尚未完成的片段在完成前是占位片段。
 
 -----
@@ -79,6 +81,7 @@ kind: "package-reference"
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `dvTimeline`：十五个编辑操作 spec、全部十六个操作的注册、以及片段 ID 和声音 ID 的分配 |
 | [`src/export.ts`](src/export.ts) | `timeline.export` 操作 spec 和 `exportTimeline` |
+| [`src/place.ts`](src/place.ts) | `timeline.place` 操作 spec 和 `timeline` 节点的节点生成登记 |
 | [`src/reducer.ts`](src/reducer.ts) | `timeline` 归约函数及其与操作共用的片段和声音检查 |
 | [`src/types.ts`](src/types.ts) | `Timeline`、`Clip`、`ClipId`、`Sound`、`SoundId`、`TimelineId` 以及 `timeline` 切片声明 |
 | [`skills/timeline-editing/SKILL.md`](skills/timeline-editing/SKILL.md) | `timeline-editing` 技能的正文 |
@@ -101,11 +104,11 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-十六个工具 `dv_timeline_create`、`dv_timeline_update`、`dv_timeline_rename`、`dv_timeline_delete`、`dv_timeline_clip_insert`、`dv_timeline_clip_move`、`dv_timeline_clip_remove`、`dv_timeline_clip_split`、`dv_timeline_clip_trim`、`dv_timeline_clip_replace`、`dv_timeline_sound_add`、`dv_timeline_sound_remove`、`dv_timeline_sound_track_remove`、`dv_timeline_sound_track_rename`、`dv_timeline_mute` 和 `dv_timeline_export`，格式与 `@dv/project` 为每个操作工具提供的格式相同。编辑工具用 `timeline` 指定时间线（例如 `t1`；默认第一条时间线），用 `clip` 指定片段（例如 `cl3`），参数描述让智能体去 `dv_proj_state` 的 `timelines` 及其 `clips` 里查找；`dv_timeline_sound_remove` 用 `sound`（例如 `sd2`）指定 `timelines` 的 `sounds` 中的声音。`dv_timeline_sound_add` 的描述以 "The exported video does not include sounds yet." 结尾。`dv_timeline_export` 的描述是 "Export a timeline to one video: each clip with an in or out point is trimmed to that range, and all clips are joined in timeline order. While the timeline's video audio is muted (dv_timeline_mute), the video has no audio. Runs on the CPU."，它自己只有一个参数 `timeline`。
+十六个工具 `dv_timeline_create`、`dv_timeline_update`、`dv_timeline_rename`、`dv_timeline_delete`、`dv_timeline_clip_insert`、`dv_timeline_clip_move`、`dv_timeline_clip_remove`、`dv_timeline_clip_split`、`dv_timeline_clip_trim`、`dv_timeline_clip_replace`、`dv_timeline_sound_add`、`dv_timeline_sound_remove`、`dv_timeline_sound_track_remove`、`dv_timeline_sound_track_rename`、`dv_timeline_mute` 和 `dv_timeline_export`，格式与 `@dv/project` 为每个操作工具提供的格式相同。编辑工具用 `timeline` 指定时间线（例如 `t1`；默认第一条时间线），用 `clip` 指定片段（例如 `cl3`），参数描述让智能体去 `dv_proj_state` 的 `timelines` 及其 `clips` 里查找；`dv_timeline_sound_remove` 用 `sound`（例如 `sd2`）指定 `timelines` 的 `sounds` 中的声音。`dv_timeline_sound_add` 的描述以 "The exported video does not include sounds yet." 结尾。`dv_timeline_export` 的描述是 "Export a timeline to one video: each clip with an in or out point is trimmed to that range, and all clips are joined in timeline order. While the timeline's video audio is muted (dv_timeline_mute), the video has no audio. Runs on the CPU."，它自己只有一个参数 `timeline`。 加载 `@dv/canvas` 时还有第十七个工具 `dv_timeline_place`，描述为 "Put a timeline on the canvas as one node. The node shows the timeline's picture and tracks in small, with a line from each node whose output the timeline plays; selecting the node outlines those nodes. A timeline goes on the canvas once, and its node stays until dv_canvas_node_remove takes it off. Works whether or not the user has a canvas open. The change is a step of the project history, so dv_proj_undo reverts it."，唯一的自有参数是 `timeline`。
 
 #### Token 影响
 
-挂载本插件时，十六个定义固定约 4,000 个 token；`@dv/project` 的共享参数给每个定义最多增加约 200 个 token。
+挂载本插件时，十六个定义固定约 4,000 个 token，加载 `@dv/canvas` 时 `dv_timeline_place` 再多约 300 个；`@dv/project` 的共享参数给每个定义最多增加约 200 个 token。
 
 #### KV Cache 影响
 
@@ -115,7 +118,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-一次调用返回一个文本块，包含记录状态和一行摘要，例如 `clip cl3 moved to 1`；添加片段的调用还在 `report.clips` 中返回这些片段的 ID，`dv_timeline_sound_add` 返回 `t1 sound sd2 added at 3s`，并在 `report.sounds` 中返回声音 ID；不适用于时间线的调用返回带失败记录原因的工具错误。`dv_timeline_export` 返回 `done <record>: exported timeline t1`（没有 `timeline` 时为 `exported the first timeline`）、一行 `- video: <AssetId> (video/mp4) <url>`，以及参数；视频不发送图片块。`dv_proj_state` 按片段 ID（字段 `clip`）列出每条时间线及其片段，智能体的项目块也列出它们，并附上每个片段的产生记录；占位片段不显示素材，而显示其状态（`rendering` 或 `failed`）和它等待的渲染记录。有音轨的时间线还以 `{track, name}` 列出每条音轨的 `sound_tracks`，没有名称的音轨为 `''`，静音的音轨带 `muted: true`；片段自身音频被静音的时间线显示 `video_muted: true`；有声音的时间线以 `{sound, asset, url, start_sec, track}` 列出 `sounds`；没有这些内容的时间线不带对应字段。
+一次调用返回一个文本块，包含记录状态和一行摘要，例如 `clip cl3 moved to 1`；添加片段的调用还在 `report.clips` 中返回这些片段的 ID，`dv_timeline_sound_add` 返回 `t1 sound sd2 added at 3s`，并在 `report.sounds` 中返回声音 ID；不适用于时间线的调用返回带失败记录原因的工具错误。`dv_timeline_export` 返回 `done <record>: exported timeline t1`（没有 `timeline` 时为 `exported the first timeline`）、一行 `- video: <AssetId> (video/mp4) <url>`，以及参数；视频不发送图片块。`dv_proj_state` 按片段 ID（字段 `clip`）列出每条时间线及其片段，智能体的项目块也列出它们，并附上每个片段的产生记录；占位片段不显示素材，而显示其状态（`rendering` 或 `failed`）和它等待的渲染记录。有音轨的时间线还以 `{track, name}` 列出每条音轨的 `sound_tracks`，没有名称的音轨为 `''`，静音的音轨带 `muted: true`；片段自身音频被静音的时间线显示 `video_muted: true`；有声音的时间线以 `{sound, asset, url, start_sec, track}` 列出 `sounds`；没有这些内容的时间线不带对应字段。 `dv_timeline_place` 返回 `done <record>: t1 placed on the canvas` 和参数，被拒绝时返回带前置检查消息的工具错误；新节点以 `timeline` 类型出现在 `dv_proj_state` 的 `canvas` 字段中。
 
 #### Token 影响
 

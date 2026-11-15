@@ -24,6 +24,9 @@
       "path": "../asset-pool"
     },
     {
+      "path": "../canvas"
+    },
+    {
       "path": "../ffmpeg"
     },
     {

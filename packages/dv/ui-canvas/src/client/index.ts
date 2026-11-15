@@ -48,7 +48,7 @@ export function apply(ctx: ClientContext): void {
     preview: (projectId, asset, opener) => { ctx.get('dvMedia')?.preview(projectId, asset, opener) },
     hooks: {
       nodeTypes: canvas.nodeTypes, recordsInUse: canvas.recordsInUse,
-      versionKinds: canvas.versionKinds, actions: canvas.actions,
+      versionKinds: canvas.versionKinds, actions: canvas.actions, addMenu: canvas.addMenu,
     },
   }
   ctx.effect(() => ctx.slots.registerFactory(

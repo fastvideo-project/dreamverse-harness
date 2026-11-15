@@ -36,15 +36,16 @@ const frame: CSSProperties = { display: 'flex', width: '100%', height: '100%', o
 const player: CSSProperties = { display: 'flex', borderRadius: 'var(--dv-radius-lg)', overflow: 'hidden', background: 'var(--dv-media-bg)' }
 
 /**
- * The card body of an asset node: the asset through `dv.media`, filling the frame. An image or a video of known size
- * shows bare; any other asset, such as an audio waveform or a file card, and a missing asset sit on the card surface.
- * @param props - the node, its assets, and the Factory renderer.
+ * The card body of an asset node: the asset through `dv.media`, filling the frame, playing while the node is selected
+ * when it is a video. An image or a video of known size shows bare; any other asset, such as an audio waveform or a
+ * file card, and a missing asset sit on the card surface.
+ * @param props - the node, its assets, whether it is selected, and the Factory renderer.
  * @returns the element.
  */
-export function AssetCard({ node, assets, renderFactorySlot }: PropsRuntime<'dv.canvas.card'> & PropsRenderFactories): ReactNode {
+export function AssetCard({ node, assets, selected, renderFactorySlot }: PropsRuntime<'dv.canvas.card'> & PropsRenderFactories): ReactNode {
   const asset = node.assets.map(id => assets[id]).find(each => each !== undefined)
   const bare = asset !== undefined && asset.width !== null && asset.height !== null
-  return <div style={{ ...bare ? {} : CARD_SURFACE, ...frame }}>{asset === undefined ? null : renderFactorySlot('dv.media', { asset, purpose: 'card' })}</div>
+  return <div style={{ ...bare ? {} : CARD_SURFACE, ...frame }}>{asset === undefined ? null : renderFactorySlot('dv.media', { asset, purpose: 'card', play: selected })}</div>
 }
 
 /**

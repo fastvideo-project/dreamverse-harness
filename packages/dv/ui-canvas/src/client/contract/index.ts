@@ -31,6 +31,11 @@ export interface NodeType {
   status?: NodeStatusText
   /** The parts of one node that vary by type, from the node and one of its versions; a pending version has no outputs. */
   entry(node: NodeInput): TypeEntry
+  /**
+   * What a double click on a node of this type does in place of opening the floating editor, such as showing the
+   * timeline view of a timeline node; absent opens the editor.
+   */
+  open?(node: NodeView): void
 }
 
 /** What a type supplies for one node at one version. */
@@ -47,6 +52,12 @@ export interface TypeEntry {
   sizing: NodeSizing
   /** The kernel reference that this node stands for in a prompt, when it is not its record. */
   ref?: { kind: string; id: string }
+  /**
+   * What the node uses without owning it, such as the clips and sounds of a timeline: assets, and records whose outputs
+   * it waits for. The canvas draws an edge from the node of each to this node, and while this node is selected it
+   * outlines those nodes.
+   */
+  uses?: { assets: readonly string[]; records: readonly string[] }
 }
 
 /** The status words of a type's nodes in the interface language. */
@@ -169,6 +180,32 @@ export interface RecordsInUse {
 }
 
 /**
+ * One section of the canvas's 添加 / Add menu: what a plugin can put on the canvas, such as the project's timelines.
+ * Registry `dvCanvas.addMenu`, keyed by `id`.
+ */
+export interface AddMenuSection {
+  /** The registering package; a refused key names it. */
+  id: string
+  /** Sections show in ascending order. */
+  order: number
+  /** The section heading in the interface language. */
+  label(): string
+  /** The items of one project state, top first; an empty list shows the section with the canvas's empty words. */
+  items(state: WireState): AddMenuItem[]
+}
+
+/** One item of an {@link AddMenuSection}. */
+export interface AddMenuItem {
+  /** Unique within its section. */
+  key: string
+  label: string
+  /** The node that already shows the item, which the canvas selects and centers instead of writing; null for none. */
+  node: string | null
+  /** The write that puts the item on the canvas; the canvas selects and centers the node of its record once it appears. */
+  request: CanvasRequest
+}
+
+/**
  * One command on a node, drawn by the canvas in the editor header and inside the frame of a node whose newest version failed.
  * `shows` alone decides where it applies, and it narrows the node that `run` receives to `N`.
  */
@@ -193,17 +230,34 @@ export interface DvCanvas {
   versionKinds: Registry<VersionKind>
   /** Keyed by `id`. */
   actions: Registry<NodeAction>
+  /** Keyed by `id`. */
+  addMenu: Registry<AddMenuSection>
 }
 
 /**
  * Owner props of a card body, which owns the inside of the node's frame and paints its own fill: a card-like body
- * paints `CARD_SURFACE` of `@dv/ui-kit/frame.ts`, and a body that shows a picture paints only the picture. The canvas
- * draws the caption above the frame (`title`, unseen dot, stale tag, `meta`), the frame outline and selection ring,
- * the status words over the body, the failed words with the actions that show on them in place of the body, and the
- * badges.
+ * paints `CARD_SURFACE` of `@dv/ui-kit/frame.ts`, and a body that shows a picture paints only the picture. A press on a
+ * control of the body (a button, an input, a select, a text area, a link, a slider, a menu, a dialog, or an element
+ * marked `data-node-interactive`) selects the node without moving it and leaves the gesture to the body; a press
+ * anywhere else in the body moves the node as on its caption. The canvas ignores a key from inside an element marked
+ * `data-node-keys` and a key or right click whose default the body prevented; any other right click on the node opens
+ * the node's menu. The canvas draws the caption above the frame (`title`, unseen dot, stale tag, `meta`), the frame
+ * outline and selection ring, the status words over the body, the failed words with the actions that show on them in
+ * place of the body, and the badges.
  */
 export interface CardOwner {
   node: NodeView
+  /** The project state the canvas draws, for a body that shows more than the node's assets. */
+  state: WireState
+  /** The chat session the canvas sits beside, for a body that writes on its own; null for none. */
+  session: string | null
+  /** Whether the node is selected; a video body plays while it is. */
+  selected: boolean
+  /**
+   * While the node is selected, an empty element above its caption, as wide as its frame and in canvas units, into which
+   * the body may render with a portal, such as a timeline's video; null otherwise.
+   */
+  above: HTMLElement | null
   /** The wire asset of each of the node's assets, so the body can draw them through `dv.media`. */
   assets: Readonly<Record<string, Asset>>
   /** The text enlargement at low zoom, so a body's text matches the caption's. */

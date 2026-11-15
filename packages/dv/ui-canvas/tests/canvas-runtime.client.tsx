@@ -13,7 +13,7 @@ import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { FeatureHandle } from '@deepseek-ai/dsh-client-test-runtime'
-import type { NodeAction, NodeType, RecordsInUse } from '../src/client/contract/index.ts'
+import type { AddMenuSection, NodeAction, NodeType, RecordsInUse } from '../src/client/contract/index.ts'
 import type { OperationRequest, WireOperation, WireProject } from '@dv/ui-kit/types.ts'
 import type { CanvasLayout, CanvasViewport } from '../src/canvas-layout.ts'
 import { asset, canvasNode, fixtureState, OPERATIONS, PROJECT, record, scriptedFetch, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
@@ -365,19 +365,20 @@ export async function mountCanvas(options: MountOptions = {}): Promise<MountedCa
 /**
  * Mount a plugin that registers canvas descriptors from its own fiber, as a workflow plugin does.
  * @param runtime - the runtime.
- * @param descriptors - records in use, a node type and node actions to register.
+ * @param descriptors - records in use, a node type, node actions and an add menu section to register.
  * @returns the plugin's fiber.
  */
 export function mountDescriptors(
   runtime: SlotTestRuntime,
-  descriptors: { inUse?: RecordsInUse; nodeType?: NodeType; actions?: readonly NodeAction[] },
+  descriptors: { inUse?: RecordsInUse; nodeType?: NodeType; actions?: readonly NodeAction[]; addMenu?: AddMenuSection },
 ): Promise<FeatureHandle> {
   return runtime.mount({
     inject: ['dvCanvas'],
     apply: (ctx: Context) => {
-      const { inUse, nodeType, actions = [] } = descriptors
+      const { inUse, nodeType, actions = [], addMenu } = descriptors
       if (inUse !== undefined) ctx.effect(() => ctx.dvCanvas.recordsInUse.register(inUse), 'test: records in use')
       if (nodeType !== undefined) ctx.effect(() => ctx.dvCanvas.nodeTypes.register(nodeType), 'test: node type')
+      if (addMenu !== undefined) ctx.effect(() => ctx.dvCanvas.addMenu.register(addMenu), 'test: add menu')
       for (const action of actions) ctx.effect(() => ctx.dvCanvas.actions.register(action), 'test: node action')
     },
   })

@@ -3,9 +3,11 @@
  * the title, or the name field while the node is renamed, the unseen dot, the stale tag, the version count of a node
  * with several versions, and `meta`. The frame is a rounded outline that wears the selection ring and holds the
  * `dv.canvas.card` body, which paints its own fill, or, for a node whose newest version failed, the failed words and
- * actions on the card surface. A node with several versions has two offset frames behind its frame. The selected node
- * has a resize handle at each corner of its frame. {@link NodeMenu} draws a node's right-click menu. The chrome names
- * no node type.
+ * actions on the card surface. While the selected node uses other nodes, each of them has an accent outline with a glow
+ * and every other node fades. A node with several versions has two offset frames behind its frame. The selected node is
+ * drawn above the others, has a resize handle at each corner and an invisible one along each edge of its frame, above
+ * the body's layers, and has an empty element above its caption for its body. {@link NodeMenu} draws a node's
+ * right-click menu. The chrome names no node type.
  */
 import { useCallback, useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent, MutableRefObject, ReactNode } from 'react'
@@ -18,7 +20,7 @@ import type { NodePosition } from '../canvas-layout.ts'
 import type { NodeAction, NodeView, Size } from './contract/index.ts'
 import type { CanvasNode } from './graph.ts'
 import type {} from './locales.ts'
-import type { ResizeCorner } from './resize.ts'
+import type { ResizeHandle } from './resize.ts'
 
 /** The canvas namespace translate. */
 export type CanvasTranslate = TranslateNS<'dvCanvas'>
@@ -42,7 +44,14 @@ export function edgeAnchorY(frame: Pick<Size, 'height'>, zoom: number): number {
   return Math.round(CAPTION_HEIGHT * captionScaleAt(zoom)) + frame.height / 2
 }
 
-const CORNERS: readonly ResizeCorner[] = ['nw', 'ne', 'sw', 'se']
+const CORNERS: readonly ResizeHandle[] = ['nw', 'ne', 'sw', 'se']
+const EDGES: readonly ResizeHandle[] = ['n', 's', 'e', 'w']
+/** The thickness of the invisible strip along each edge that resizes the node, in canvas units. */
+const EDGE_GRIP = 8
+/** The outline of a node that the selected node uses: the accent line with a soft accent glow. */
+const USED_RING = '0 0 0 2px var(--dv-accent), 0 0 16px 3px color-mix(in srgb, var(--dv-accent) 45%, transparent)'
+/** The opacity of a node and an edge outside the selected node's uses while that node uses other nodes. */
+export const DIMMED_OPACITY = 0.3
 /** How far each frame behind a node with several versions sits up and right of the one in front, in canvas units. */
 const VERSION_OFFSET = 4
 /** The side of a handle square that overhangs the frame's corner, in canvas units. */
@@ -90,12 +99,16 @@ export interface NodeCardProps {
   /** The node's stored position and frame size. */
   box: NodePosition
   selected: boolean
+  /** Whether the selected node uses this node (`TypeEntry.uses`), which outlines its frame in the accent color with a glow. */
+  used: boolean
+  /** Whether the selected node uses other nodes and not this one, which fades the node. */
+  dimmed: boolean
   /** The canvas zoom; text grows in canvas units below {@link READABLE_ZOOM} so it stays legible on screen. */
   zoom: number
   t: CanvasTranslate
   onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
-  /** A press on one of the selected node's corner handles, which the card keeps from `onPointerDown`. */
-  onResizeDown: (corner: ResizeCorner, event: ReactPointerEvent<HTMLElement>) => void
+  /** A press on one of the selected node's resize handles, which the card keeps from `onPointerDown`. */
+  onResizeDown: (corner: ResizeHandle, event: ReactPointerEvent<HTMLElement>) => void
   /** The body: the `dv.canvas.card` entry of the node's type. */
   body: ReactNode
   /** For a node whose newest version failed, the actions that show on it; empty when the canvas is read-only. */
@@ -105,6 +118,8 @@ export interface NodeCardProps {
   onAction: (action: NodeAction) => void
   /** The name field that replaces the title while the node is renamed on the canvas; null for none. */
   rename: Omit<InlineRenameProps, 'value'> | null
+  /** Receives the element above the selected node's caption (`CardOwner.above`), and null when it goes. */
+  aboveRef: (element: HTMLElement | null) => void
 }
 
 /**
@@ -122,15 +137,16 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   const captionSize = (base: number): number => Math.round(base * captionScale)
   const captionText: CSSProperties = { fontSize: captionSize(12), lineHeight: `${String(captionSize(16))}px` }
   const failed = flags.failed
-  // A selected frame wears the accent ring; a stale frame a danger outline; a failed frame the soft outline; any other
-  // frame the plain outline.
+  // A selected frame wears the accent ring; a frame that the selected node uses the accent outline with a glow; a stale
+  // frame a danger outline; a failed frame the soft outline; any other frame the plain outline.
   let ring = '0 0 0 1px var(--dv-line-strong)'
   if (selected) ring = '0 0 0 2px var(--dv-accent), 0 0 0 6px var(--dv-accent-soft)'
+  else if (props.used) ring = USED_RING
   else if (flags.stale) ring = '0 0 0 1px var(--dv-danger)'
   else if (failed) ring = '0 0 0 1px var(--dv-line)'
   const style: CSSProperties = {
     position: 'absolute', left: box.x, top: box.y, width: box.width, boxSizing: 'border-box', color: 'var(--dv-text)', cursor: 'grab', userSelect: 'none',
-    opacity: flags.superseded ? 0.55 : 1, touchAction: 'none',
+    opacity: props.dimmed ? DIMMED_OPACITY : flags.superseded ? 0.55 : 1, touchAction: 'none', ...selected ? { zIndex: 2 } : {},
   }
   const status = node.nodeType.status
   const running = status?.running() ?? t('node.running')
@@ -199,6 +215,8 @@ export function NodeCard(props: NodeCardProps): ReactNode {
       data-node-type={node.type}
       data-node-stale={String(flags.stale)}
       data-node-selected={selected ? 'true' : undefined}
+      data-node-used={props.used ? 'true' : undefined}
+      data-node-dimmed={props.dimmed ? 'true' : undefined}
       data-node-unseen={view.unseen ? 'true' : undefined}
       onPointerDown={props.onPointerDown}
       role="button"
@@ -206,6 +224,9 @@ export function NodeCard(props: NodeCardProps): ReactNode {
       aria-label={node.title}
       title={failed ? node.record.error?.message : undefined}
     >
+      {selected
+        ? <div ref={props.aboveRef} data-node-above="" style={{ position: 'absolute', left: 0, bottom: '100%', width: '100%' }} />
+        : null}
       {caption}
       {count > 1
         ? [2, 1].map(step => (
@@ -215,9 +236,28 @@ export function NodeCard(props: NodeCardProps): ReactNode {
           />
         ))
         : null}
-      <div data-node-frame="" style={{ position: 'relative', height: box.height, overflow: 'hidden', borderRadius: 'var(--dv-radius-lg)', boxShadow: ring }}>
+      {/* The frame isolates the body's stacking, so a body's own layers never cover the resize handles. */}
+      <div data-node-frame="" style={{ position: 'relative', isolation: 'isolate', height: box.height, overflow: 'hidden', borderRadius: 'var(--dv-radius-lg)', boxShadow: ring }}>
         {content}
       </div>
+      {selected
+        ? EDGES.map((edge) => {
+          const top = captionSize(CAPTION_HEIGHT)
+          const vertical = edge === 'e' || edge === 'w'
+          return (
+            <span
+              key={edge} aria-hidden="true" data-node-handle={edge}
+              style={{
+                position: 'absolute', zIndex: 10, touchAction: 'none', cursor: vertical ? 'ew-resize' : 'ns-resize',
+                ...vertical
+                  ? { top: top + HANDLE_SIZE / 2, bottom: HANDLE_SIZE / 2, width: EDGE_GRIP, [edge === 'w' ? 'left' : 'right']: -EDGE_GRIP / 2 }
+                  : { left: HANDLE_SIZE / 2, right: HANDLE_SIZE / 2, height: EDGE_GRIP, ...edge === 'n' ? { top: top - EDGE_GRIP / 2 } : { bottom: -EDGE_GRIP / 2 } },
+              }}
+              onPointerDown={(event) => { event.stopPropagation(); props.onResizeDown(edge, event) }}
+            />
+          )
+        })
+        : null}
       {selected
         ? CORNERS.map(corner => (
           <span
@@ -227,7 +267,7 @@ export function NodeCard(props: NodeCardProps): ReactNode {
             title={t('node.resize')}
             data-node-handle={corner}
             style={{
-              position: 'absolute', width: HANDLE_SIZE, height: HANDLE_SIZE, boxSizing: 'border-box', borderRadius: 2,
+              position: 'absolute', zIndex: 11, width: HANDLE_SIZE, height: HANDLE_SIZE, boxSizing: 'border-box', borderRadius: 2,
               background: 'var(--dv-surface-1)', border: '2px solid var(--dv-accent)', touchAction: 'none',
               cursor: corner === 'nw' || corner === 'se' ? 'nwse-resize' : 'nesw-resize',
               ...corner.startsWith('n') ? { top: captionSize(CAPTION_HEIGHT) - HANDLE_SIZE / 2 } : { bottom: -HANDLE_SIZE / 2 },

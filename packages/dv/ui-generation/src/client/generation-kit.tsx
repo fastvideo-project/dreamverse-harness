@@ -77,16 +77,16 @@ const frame: CSSProperties = { display: 'flex', width: '100%', height: '100%', o
 /**
  * The card body of a take: its shown asset (its preview, else its first output) through `dv.media`, filling the frame
  * the canvas sizes. A picture of known size fills the frame bare; any other asset, such as an audio waveform, and a take
- * without outputs sit on the card surface.
- * @param props - the node, its assets, and the Factory renderer.
+ * without outputs sit on the card surface. A video plays while the node is selected.
+ * @param props - the node, its assets, whether it is selected, and the Factory renderer.
  * @returns the element.
  */
-function TakeCard({ node, assets, renderFactorySlot }: PropsRuntime<'dv.canvas.card'> & PropsRenderFactories): ReactNode {
+function TakeCard({ node, assets, selected, renderFactorySlot }: PropsRuntime<'dv.canvas.card'> & PropsRenderFactories): ReactNode {
   const shown = assets[node.preview ?? node.assets[0] ?? '']
   const bare = shown !== undefined && shown.width !== null && shown.height !== null
   return (
     <div style={{ ...bare ? {} : CARD_SURFACE, ...frame }}>
-      {shown === undefined ? null : renderFactorySlot('dv.media', { asset: shown, purpose: 'card' })}
+      {shown === undefined ? null : renderFactorySlot('dv.media', { asset: shown, purpose: 'card', play: selected })}
     </div>
   )
 }

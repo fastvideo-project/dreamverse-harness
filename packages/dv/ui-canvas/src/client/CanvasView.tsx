@@ -1,17 +1,20 @@
 /**
- * The project canvas: a pan-and-zoom surface that draws the nodes of the registered node types in the canvas chrome
- * (a caption above a frame) around each type's `dv.canvas.card` body; a click selects a node, and a double click opens
- * its editor panel, which grows out of the node and shrinks back into it (`@dv/ui-kit/zoom.ts`). Every node sits at the
+ * The project canvas: a pan-and-zoom surface that draws the nodes of the registered node types in the canvas chrome (a
+ * caption above a frame) around each type's `dv.canvas.card` body; a click selects a node, and a double click opens its
+ * editor panel, which grows out of the node and shrinks back into it (`@dv/ui-kit/zoom.ts`). Every node sits at the
  * position of the canvas's node list, with its type's default size where the stored size is null. The end of a drag or
- * of a resize from a corner handle of the selected node writes one `canvas.node_position` record, so undo reverts it; the
- * canvas draws the new box at once and drops it again when the write is refused. A node's right-click menu, the trash
- * button of its editor, and Delete or Backspace on the selected node remove it from the canvas with one
+ * of a resize from a corner handle of the selected node writes one `canvas.node_position` record, so undo reverts it;
+ * the canvas draws the new box at once and drops it again when the write is refused. A node's right-click menu, the
+ * trash button of its editor, and Delete or Backspace on the selected node remove it from the canvas with one
  * `canvas.node_remove` record after the user confirms. F2 on the selected node, its menu's Rename item, or a click on
- * the editor's title renames the node with one `canvas.node_rename` record, drawn at once the same way. The viewport
- * is view state, stored
- * per project through `/api/dv/canvas/layout`. The opened versions are kept per project in `localStorage` for the unseen
- * dot. Colors come from the `--dv-*` theme variables that `@dv/ui-shell`
- * defines and from each type's `color`. The canvas names no node type.
+ * the editor's title renames the node with one `canvas.node_rename` record, drawn at once the same way. A double click
+ * on a node whose type has `open` runs it instead of opening the editor, and while a node whose entry declares `uses`
+ * is selected, the nodes it uses wear an accent outline with a glow and the other nodes and edges fade. The toolbar's
+ * add button opens the menu of the registered `AddMenuSection`s, whose picked item selects the node that shows it or
+ * writes the item's request and selects the new node. The viewport is view state, stored per project through
+ * `/api/dv/canvas/layout`. The opened versions are kept per project in `localStorage` for the unseen dot. Colors come
+ * from the `--dv-*` theme variables that `@dv/ui-shell` defines and from each type's `color`. The canvas names no node
+ * type.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
@@ -26,22 +29,24 @@ import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { useOperations, useProjectState } from '@dv/ui-kit/useProject.ts'
 import { useZoomPresence } from '@dv/ui-kit/zoom.ts'
 import type { CanvasViewport, NodePosition, NodeSpot } from '../canvas-layout.ts'
+import { AddMenu } from './AddMenu.tsx'
 import { cardsOf } from './agent-canvas.ts'
 import type { CanvasViews } from './agent-canvas.ts'
-import type { CanvasRequest, EditorHost, NodeAction, NodeHost, NodeView, RerunRequest } from './contract/index.ts'
+import type { AddMenuItem, AddMenuSection, CanvasRequest, EditorHost, NodeAction, NodeHost, NodeView, RerunRequest } from './contract/index.ts'
 import { boxOf as storedBox, buildCanvasGraph, isFinished, previewOf, withNames } from './graph.ts'
 import type { CanvasEdge, CanvasNode, CanvasRegistrations } from './graph.ts'
-import { cardHeight, edgeAnchorY, NodeCard, NodeMenu, textScaleAt, TypeLabelBody } from './NodeCard.tsx'
+import { cardHeight, DIMMED_OPACITY, edgeAnchorY, NodeCard, NodeMenu, textScaleAt, TypeLabelBody } from './NodeCard.tsx'
 import type { CanvasTranslate, NodeMenuItem } from './NodeCard.tsx'
 import { readLayout, writeLayout } from './layout-client.ts'
 import { NodeEditor } from './NodeEditor.tsx'
 import type { EditorArea, RenderCanvasSlot, SurfaceHosts } from './NodeEditor.tsx'
 import { resizedBox } from './resize.ts'
-import type { ResizeCorner } from './resize.ts'
+import type { ResizeHandle } from './resize.ts'
 
 /** The registered descriptors that the canvas draws with. */
 export interface CanvasDescriptors extends CanvasRegistrations {
   actions: readonly NodeAction[]
+  addMenu: readonly AddMenuSection[]
 }
 
 /** Props of {@link CanvasView}. */
@@ -203,6 +208,22 @@ interface Renaming {
   place: 'caption' | 'editor'
 }
 
+/**
+ * The controls inside a card body whose presses the body handles: native controls, sliders, menus and dialogs, and an
+ * element marked `data-node-interactive` with everything inside it.
+ */
+const CARD_CONTROLS = 'button, input, select, textarea, a[href], [role="slider"], [role="menu"], [role="dialog"], [data-node-interactive]'
+
+/** Whether a press lands on a control that a card body owns ({@link CARD_CONTROLS}). */
+function inInteractive(target: EventTarget): boolean {
+  return target instanceof Element && target.closest(CARD_CONTROLS) !== null
+}
+
+/** Whether a key comes from inside a card body that takes its own keys (`data-node-keys`). */
+function inCardKeys(target: EventTarget): boolean {
+  return target instanceof Element && target.closest('[data-node-keys]') !== null
+}
+
 /** Whether a key event comes from a field that takes text, where F2 belongs to the field. */
 function inTextField(target: EventTarget): boolean {
   return target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
@@ -212,7 +233,7 @@ function inTextField(target: EventTarget): boolean {
 type Gesture =
   | { kind: 'pan'; startX: number; startY: number; origin: CanvasViewport; moved: boolean }
   | { kind: 'node'; id: string; startX: number; startY: number; origin: NodePosition; at: NodePosition; moved: boolean }
-  | { kind: 'resize'; node: CanvasNode; corner: ResizeCorner; startX: number; startY: number; origin: NodePosition; at: NodePosition; moved: boolean }
+  | { kind: 'resize'; node: CanvasNode; corner: ResizeHandle; startX: number; startY: number; origin: NodePosition; at: NodePosition; moved: boolean }
 
 /**
  * @param boxes - the boxes of the gestures and writes in flight, by node ID.
@@ -273,6 +294,8 @@ export function CanvasView(
   const [layoutReady, setLayoutReady] = useState(false)
   // The node with the accent ring, and the node whose editor is open; closing the editor keeps the ring.
   const [selected, setSelected] = useState<string | null>(null)
+  // The element above the selected node's caption, which its card body may render into.
+  const [above, setAbove] = useState<HTMLElement | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
   const [renaming, setRenaming] = useState<Renaming | null>(null)
   // The editor a reference chip opened over the `editing` one; it closes first, and with the editor beneath it.
@@ -286,6 +309,11 @@ export function CanvasView(
   // The node whose right-click menu is open, at the click point in px from the canvas's top-left corner.
   const [menu, setMenu] = useState<{ node: string; x: number; y: number } | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  // The add menu above the toolbar, and the record of an added item whose node the canvas selects once it appears.
+  const [adding, setAdding] = useState(false)
+  const addRef = useRef<HTMLDivElement | null>(null)
+  const addButton = useRef<HTMLButtonElement | null>(null)
+  const [revealing, setRevealing] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const container = useRef<HTMLDivElement | null>(null)
   const gesture = useRef<Gesture | null>(null)
@@ -423,6 +451,19 @@ export function CanvasView(
     return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', close) }
   }, [menu])
   useEffect(() => { setMenu(null) }, [viewport])
+  // A press outside the add menu and its button, Escape, and a pan or zoom close the add menu.
+  useEffect(() => {
+    if (!adding) return
+    const inside = (target: EventTarget | null): boolean =>
+      target instanceof Node && (addRef.current?.contains(target) === true || addButton.current?.contains(target) === true)
+    const close = (event: Event): void => {
+      if (event instanceof KeyboardEvent ? event.key === 'Escape' : !inside(event.target)) setAdding(false)
+    }
+    window.addEventListener('pointerdown', close)
+    window.addEventListener('keydown', close)
+    return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', close) }
+  }, [adding])
+  useEffect(() => { setAdding(false) }, [viewport])
 
   // A node that leaves the list, such as after a removal, takes its selection, editor and menu with it.
   useEffect(() => {
@@ -446,6 +487,15 @@ export function CanvasView(
       y: height / 2 - (box.y + cardHeight(box) / 2) * current.zoom,
     }))
   }, [])
+
+  // An added item's node is selected and centered once it appears; its selection outlines the nodes it uses.
+  useEffect(() => {
+    const node = revealing === null ? undefined : graph?.nodes.find(candidate => candidate.id === revealing)
+    if (node === undefined) return
+    setRevealing(null)
+    setSelected(node.id)
+    centerOn(node)
+  }, [revealing, graph, centerOn])
 
   // A focus request waits while no drawn node matches it, so a node type that registers later still opens its node;
   // only opening the node takes the request.
@@ -648,12 +698,17 @@ export function CanvasView(
   const onNodeDown = (node: CanvasNode) => (event: ReactPointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0) return
     event.stopPropagation()
+    // A press on a control that the card body owns selects the node and leaves the gesture to the body.
+    if (inInteractive(event.target)) {
+      setSelected(node.id)
+      return
+    }
     const origin = boxOf(node)
     gesture.current = { kind: 'node', id: node.id, startX: event.clientX, startY: event.clientY, origin, at: origin, moved: false }
     capture(event)
   }
   // The handle stops the press before the card's `onNodeDown`, so a resize starts no move and opens no editor.
-  const onResizeDown = (node: CanvasNode) => (corner: ResizeCorner, event: ReactPointerEvent<HTMLElement>): void => {
+  const onResizeDown = (node: CanvasNode) => (corner: ResizeHandle, event: ReactPointerEvent<HTMLElement>): void => {
     if (event.button !== 0) return
     const origin = boxOf(node)
     gesture.current = { kind: 'resize', node, corner, startX: event.clientX, startY: event.clientY, origin, at: origin, moved: false }
@@ -695,7 +750,9 @@ export function CanvasView(
       lastClick.current = { id: current.id, at }
       if (previous !== null && previous.id === current.id && at - previous.at <= DOUBLE_CLICK_MS) {
         lastClick.current = null
-        setEditing(current.id)
+        const node = graph?.nodes.find(candidate => candidate.id === current.id)
+        if (node?.nodeType.open === undefined) setEditing(current.id)
+        else node.nodeType.open(viewFor(node))
       }
       return
     }
@@ -759,11 +816,27 @@ export function CanvasView(
     void run(() => client.runOperation(canvasRequest({ operation: NODE_REMOVE, params: { nodes: [node.id] }, intent: `remove ${node.title} from the canvas` })))
   }
   /**
+   * Put an item of the add menu on the canvas. An item that a node already shows selects and centers that node; any
+   * other item runs its write, and the canvas selects and centers the node of its record once the node appears.
+   * @param item - the picked item.
+   */
+  const addItem = (item: AddMenuItem): void => {
+    setAdding(false)
+    const shown = item.node === null ? undefined : graph?.nodes.find(node => node.id === item.node)
+    if (shown !== undefined) {
+      setSelected(shown.id)
+      centerOn(shown)
+      return
+    }
+    void run(async () => { setRevealing((await client.runOperation(canvasRequest(item.request))).id) })
+  }
+  /**
    * F2 renames the selected node ({@link renameKey}). Delete or Backspace removes the selected node while no editor, asset
    * picker or media preview is open and the key does not go to a text field.
    * @param event - the key press inside the canvas.
    */
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (event.defaultPrevented || inCardKeys(event.target)) return
     renameKey(event)
     if (event.key !== 'Delete' && event.key !== 'Backspace') return
     const target = event.target as HTMLElement
@@ -779,6 +852,8 @@ export function CanvasView(
    * @param event - the right click inside the canvas.
    */
   const onContextMenu = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    // A right click that the card body handled, such as the timeline editor's track menu, stays with the body.
+    if (event.defaultPrevented) return
     const card = (event.target as Element).closest('[data-node-id]')
     const node = graph?.nodes.find(candidate => candidate.id === card?.getAttribute('data-node-id'))
     if (node === undefined) return
@@ -898,6 +973,10 @@ export function CanvasView(
     const touchesSelected = (edge: CanvasEdge): boolean => selected !== null && (edge.from === selected || edge.to === selected)
     const links = [...graph.links.filter(link => !touchesSelected(link.edge)), ...graph.links.filter(link => touchesSelected(link.edge))]
     const textScale = textScaleAt(viewport.zoom)
+    // While the selected node uses other nodes, they glow and every other node and edge fades.
+    const usedList = selected === null ? undefined : graph.usedNodes[selected]
+    const used = new Set(usedList)
+    const fading = usedList !== undefined
     const anchorOf = (node: CanvasNode): number => edgeAnchorY(boxOf(node), viewport.zoom)
     const hosts = hostsOf(() => { setEditing(null) })
     content = (
@@ -917,7 +996,10 @@ export function CanvasView(
                 key={`${edge.from}>${edge.to}`}
                 d={`M ${String(x1)} ${String(y1)} C ${String(x1 + bend)} ${String(y1)}, ${String(x2 - bend)} ${String(y2)}, ${String(x2)} ${String(y2)}`}
                 fill="none"
-                style={{ stroke: highlighted ? 'var(--dv-accent)' : from.nodeType.color, strokeOpacity: highlighted ? 0.9 : 0.6 }}
+                style={{
+                  stroke: highlighted ? 'var(--dv-accent)' : from.nodeType.color,
+                  strokeOpacity: highlighted ? 0.9 : fading ? 0.6 * DIMMED_OPACITY : 0.6,
+                }}
                 strokeWidth={highlighted ? 2 : 1.5}
                 vectorEffect="non-scaling-stroke"
                 data-edge={`${edge.from}>${edge.to}`}
@@ -939,17 +1021,23 @@ export function CanvasView(
               view={view}
               box={boxOf(node)}
               selected={node.id === selected}
+              used={used.has(node.id)}
+              dimmed={fading && node.id !== selected && !used.has(node.id)}
               zoom={viewport.zoom}
               t={t}
               onPointerDown={onNodeDown(node)}
               onResizeDown={onResizeDown(node)}
-              body={renderSlot('dv.canvas.card', { node: view, assets, textScale, host: hosts.card }, {
+              body={renderSlot('dv.canvas.card', {
+                node: view, state: graph.state, session, selected: node.id === selected, above: node.id === selected ? above : null,
+                assets, textScale, host: hosts.card,
+              }, {
                 entryKey: node.type, fallback: <TypeLabelBody label={node.nodeType.label()} textScale={textScale} />,
               })}
               failedActions={node.flags.failed ? actionsFor(view) : []}
               rerunningAction={view.rerunning ? rerunning?.action ?? null : null}
               onAction={(action) => { action.run(view, hosts.action(action.id)) }}
               rename={renaming?.place === 'caption' && renaming.node === node.id ? renameField(node) : null}
+              aboveRef={setAbove}
             />
           )
         })}
@@ -1050,7 +1138,24 @@ export function CanvasView(
         ? <NodeMenu key={`${menu.node}@${String(menu.x)},${String(menu.y)}`} at={menu} area={area} items={menuItems(menuNode)} label={t('menu.label')} menuRef={menuRef} />
         : null}
       {notice !== null ? <p role="alert" style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', margin: 0, padding: '6px 10px', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-1)', border: '1px solid var(--dv-danger)', color: 'var(--dv-danger)', fontSize: 13, lineHeight: '20px', zIndex: 12 }}>{notice}</p> : null}
+      {adding && graph !== null
+        ? (
+          <AddMenu
+            sections={descriptors.addMenu.toSorted((a, b) => a.order - b.order)
+              .map(section => ({ section, items: section.items(graph.state) }))}
+            label={t('add.label')} empty={t('add.empty')} placed={t('add.placed')} onPick={addItem} menuRef={addRef}
+          />
+        )
+        : null}
       <div role="toolbar" aria-label={t('canvas.zoom')} style={{ ...floating, position: 'absolute', left: 16, bottom: 16, display: 'flex', alignItems: 'center', gap: 2, padding: 4, borderRadius: 10 }} onPointerDown={(event) => { event.stopPropagation() }}>
+        <button
+          ref={addButton} type="button" className="dv-canvas-btn" aria-haspopup="menu" aria-expanded={adding} disabled={graph === null}
+          style={{ ...toolButton, gap: 4, padding: '0 8px' }} onClick={() => { setAdding(open => !open) }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          {t('add.button')}
+        </button>
+        <span aria-hidden="true" style={{ width: 1, height: 16, margin: '0 2px', background: 'var(--dv-line)' }} />
         <button type="button" className="dv-canvas-btn" aria-label={t('canvas.zoomOut')} title={t('canvas.zoomOut')} style={toolButton} onClick={() => { zoomBy(1 / 1.2) }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" aria-hidden="true"><path d="M5 12h14" /></svg>
         </button>

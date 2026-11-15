@@ -10,7 +10,7 @@ import type { DvClient } from '@dv/ui-kit/api.ts'
 import type { Asset } from '@dv/ui-kit/types.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import type { CanvasViews } from './agent-canvas.ts'
-import type { NodeAction, NodeType, RecordsInUse } from './contract/index.ts'
+import type { AddMenuSection, NodeAction, NodeType, RecordsInUse } from './contract/index.ts'
 import { CanvasView } from './CanvasView.tsx'
 import type { CanvasFocus } from './CanvasView.tsx'
 import type {} from './locales.ts'
@@ -27,6 +27,7 @@ export interface CanvasFactoryInjected {
     recordsInUse: HostObservable<readonly RecordsInUse[]>
     versionKinds: HostObservable<readonly VersionKind[]>
     actions: HostObservable<readonly NodeAction[]>
+    addMenu: HostObservable<readonly AddMenuSection[]>
   }
 }
 
@@ -57,9 +58,10 @@ export function CanvasFactory(props: FactoryComponentPropsOf<'dv.canvas'>): Reac
   const recordsInUse = props.useRecordsInUse(value => value)
   const versionKinds = props.useVersionKinds(value => value)
   const actions = props.useActions(value => value)
+  const addMenu = props.useAddMenu(value => value)
   const descriptors = useMemo(
-    () => ({ nodeTypes, recordsInUse, versionKinds, actions }),
-    [nodeTypes, recordsInUse, versionKinds, actions],
+    () => ({ nodeTypes, recordsInUse, versionKinds, actions, addMenu }),
+    [nodeTypes, recordsInUse, versionKinds, actions, addMenu],
   )
   return (
     <CanvasView

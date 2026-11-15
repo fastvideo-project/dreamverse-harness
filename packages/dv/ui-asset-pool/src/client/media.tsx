@@ -5,12 +5,13 @@
  *
  * @module @dv/ui-asset-pool/media
  */
-import { useRef, useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode, SyntheticEvent } from 'react'
 import { IconMicrophoneOutlineRegular, IconPaperclipOutlineRegular, IconPlayOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
+import { clockText } from '@dv/ui-kit/timeline.ts'
 import type { Asset, WireState } from '@dv/ui-kit/types.ts'
 import { clipPeaks, useAudioEnvelope } from '@dv/ui-kit/waveform.ts'
 import type { MediaType } from '@dv/ui-media/contract'
@@ -73,14 +74,16 @@ function PlayIcon(): ReactNode {
 }
 
 /**
- * A video: its first frame, muted and decorative, as a still, with a play badge when the surface asks for one; with
- * controls and sound as a player; with controls, muted and looping, behind the poster, at purpose 'loop'. A playable
- * form reports its loaded size. A video that the browser cannot decode, such as HEVC in a browser without the codec,
- * reports that it cannot draw.
- * @param props - the asset, the purpose, the poster, the play badge, the size callback and the failure report.
+ * A video: its first frame, muted and decorative, as a still, with a play badge when the surface asks for one; at
+ * purpose 'card' with `play`, a card that plays it ({@link VideoCard}); with controls and sound as a player; with
+ * controls, muted and looping, behind the poster, at purpose 'loop'. A playable form reports its loaded size. A video
+ * that the browser cannot decode, such as HEVC in a browser without the codec, reports that it cannot draw.
+ * @param props - the asset, the purpose, the poster, the play badge, the size callback, the card's play flag and the
+ *   failure report.
  * @returns the element.
  */
-export function VideoView({ asset, purpose, poster, playBadge: badge, onSize, unsupported }: PropsRuntime<'dv.media.view'>): ReactNode {
+export function VideoView({ asset, purpose, poster, playBadge: badge, onSize, play, unsupported }: PropsRuntime<'dv.media.view'>): ReactNode {
+  if (purpose === 'card' && play !== undefined) return <VideoCard asset={asset} play={play} unsupported={unsupported} />
   if (purpose === 'thumb' || purpose === 'card') {
     // `#t=0.1` asks the browser to decode a frame past the first keyframe's black lead-in.
     const still = <video src={`${assetUrl(asset.id)}#t=0.1`} muted preload="metadata" playsInline aria-hidden style={fill} onError={unsupported} />
@@ -96,6 +99,98 @@ export function VideoView({ asset, purpose, poster, playBadge: badge, onSize, un
     />
   )
 }
+
+/**
+ * A video card that plays: the video fills the card and, when `play` turns true, plays with sound from where it stopped;
+ * along its bottom a play button, a progress bar and the time `0:03 / 0:06` show while `play` is true, sized by the
+ * card's width. A press on the
+ * progress bar moves the video there. When `play` turns false the video pauses and the controls go. Presses on the
+ * controls stop at the card, so a canvas node neither moves nor loses its selection.
+ * @param props - the asset, whether it plays, and the failure report.
+ * @returns the element.
+ */
+function VideoCard(
+  { asset, play, unsupported }: { asset: PropsRuntime<'dv.media.view'>['asset']; play: boolean; unsupported: () => void },
+): ReactNode {
+  const pick = useText()
+  const video = useRef<HTMLVideoElement | null>(null)
+  const [playing, setPlaying] = useState(false)
+  const [time, setTime] = useState({ at: 0, length: asset.duration_sec ?? 0 })
+  useEffect(() => {
+    const element = video.current as HTMLVideoElement
+    if (play) void Promise.resolve(element.play()).catch((error: unknown) => { void error })
+    else element.pause()
+  }, [play])
+  const toggle = (): void => {
+    const element = video.current as HTMLVideoElement
+    if (element.paused) void Promise.resolve(element.play()).catch((error: unknown) => { void error })
+    else element.pause()
+  }
+  const seek = (event: ReactPointerEvent<HTMLElement>): void => {
+    event.stopPropagation()
+    const element = video.current as HTMLVideoElement
+    const box = event.currentTarget.getBoundingClientRect()
+    const at = Math.min(1, Math.max(0, (event.clientX - box.left) / Math.max(box.width, 1))) * time.length
+    element.currentTime = at
+    setTime({ ...time, at })
+  }
+  const keep = (event: ReactPointerEvent<HTMLElement>): void => { event.stopPropagation() }
+  // The time follows the video; while the browser reports no length, the card keeps the length it shows.
+  const follow = (event: SyntheticEvent<HTMLVideoElement>): void => {
+    setTime({ at: event.currentTarget.currentTime, length: event.currentTarget.duration || time.length })
+  }
+  const progress = time.length > 0 ? Math.min(1, time.at / time.length) : 0
+  return (
+    // The card is a size container, so its controls grow with it: `cqw` is one hundredth of the card's width.
+    <span style={{ position: 'relative', display: 'block', width: '100%', height: '100%', background: 'var(--dv-media-bg)', containerType: 'inline-size' }}>
+      <video
+        ref={video} src={`${assetUrl(asset.id)}#t=0.1`} preload="metadata" playsInline style={{ ...fill, objectFit: 'contain' }} onError={unsupported}
+        onPlay={() => { setPlaying(true) }} onPause={() => { setPlaying(false) }} onEnded={() => { setPlaying(false) }}
+        onTimeUpdate={follow} onLoadedMetadata={follow}
+      />
+      {play
+        ? (
+          <span
+            data-video-card-controls=""
+            style={{
+              position: 'absolute', left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', gap: CONTROL_GAP, padding: CONTROL_PADDING,
+              background: 'linear-gradient(transparent, rgba(0, 0, 0, 0.6))', color: '#fff',
+            }}
+          >
+            <button
+              type="button" aria-label={playing ? pick('暂停', 'Pause') : pick('播放', 'Play')} aria-pressed={playing} onPointerDown={keep} onClick={toggle}
+              style={{ flex: 'none', width: PLAY_SIZE, height: PLAY_SIZE, padding: 0, border: 'none', borderRadius: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255, 255, 255, 0.9)', color: '#0A0B0D', cursor: 'pointer' }}
+            >
+              <svg width="50%" height="50%" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d={playing ? 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z' : 'M7 5.5v13a1 1 0 0 0 1.5.9l10.4-6.5a1 1 0 0 0 0-1.8L8.5 4.6A1 1 0 0 0 7 5.5z'} />
+              </svg>
+            </button>
+            <span
+              role="slider" aria-label={pick('播放进度', 'Playback position')} aria-valuemin={0} aria-valuemax={Math.round(time.length)} aria-valuenow={Math.round(time.at)}
+              data-video-card-progress="" onPointerDown={seek}
+              style={{ position: 'relative', flex: 1, height: BAR_HIT, display: 'flex', alignItems: 'center', cursor: 'pointer' }}
+            >
+              <span style={{ position: 'absolute', left: 0, right: 0, height: BAR_THICKNESS, borderRadius: 9999, background: 'rgba(255, 255, 255, 0.35)' }} />
+              <span style={{ position: 'absolute', left: 0, width: `${String(progress * 100)}%`, height: BAR_THICKNESS, borderRadius: 9999, background: '#fff' }} />
+            </span>
+            <span style={{ flex: 'none', fontFamily: 'var(--dv-font-mono)', fontSize: TIME_SIZE, lineHeight: 1.3, fontVariantNumeric: 'tabular-nums' }}>
+              {`${clockText(time.at)} / ${clockText(time.length)}`}
+            </span>
+          </span>
+        )
+        : null}
+    </span>
+  )
+}
+
+// The video card's controls in container units of the card's width, each between a size that stays clickable and one
+// that stays in proportion on a large card.
+const PLAY_SIZE = 'clamp(28px, 15cqw, 64px)'
+const BAR_HIT = 'clamp(16px, 7cqw, 32px)'
+const BAR_THICKNESS = 'clamp(4px, 2cqw, 10px)'
+const TIME_SIZE = 'clamp(11px, 5.5cqw, 22px)'
+const CONTROL_GAP = 'clamp(6px, 3cqw, 16px)'
+const CONTROL_PADDING = 'clamp(14px, 7cqw, 32px) clamp(8px, 3cqw, 16px) clamp(6px, 3cqw, 14px)'
 
 const BARS = 48
 const BAR = 3

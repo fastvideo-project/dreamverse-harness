@@ -108,7 +108,7 @@ describe('the asset card and editor', () => {
     const host = recordingHost([])
     const { runtime } = await mountAssetPool(({ renderSlot }) => nodes.map(node => (
       <section key={node.id}>
-        <div data-testid={`${node.id}:card`}>{renderSlot('dv.canvas.card', { node, assets: byId(state.assets), textScale: 1, host }, { entryKey: node.type })}</div>
+        <div data-testid={`${node.id}:card`}>{renderSlot('dv.canvas.card', { node, state, session: null, selected: false, above: null, assets: byId(state.assets), textScale: 1, host }, { entryKey: node.type })}</div>
         <div data-testid={`${node.id}:editor`}>{renderSlot('dv.canvas.editor', { node, state, operations: OPERATIONS, host }, { entryKey: node.type })}</div>
       </section>
     )))
@@ -124,7 +124,9 @@ describe('the asset card and editor', () => {
     expect(within(view.getByTestId('u2:editor')).getByRole('img', { name: '海报' }).getAttribute('src')).toBe('/dv/assets/poster.png')
 
     const clipCard = view.getByTestId('u3:card').querySelector('video')
-    expect([clipCard?.getAttribute('src'), clipCard?.muted, clipCard?.controls]).toEqual(['/dv/assets/clip.mp4#t=0.1', true, false])
+    // The card's video shows its still until the node is selected, and plays with sound then.
+    expect([clipCard?.getAttribute('src'), clipCard?.muted, clipCard?.controls]).toEqual(['/dv/assets/clip.mp4#t=0.1', false, false])
+    expect(view.getByTestId('u3:card').querySelector('[data-video-card-controls]')).toBeNull()
     const clipEditor = view.getByTestId('u3:editor').querySelector('video')
     expect([clipEditor?.getAttribute('src'), clipEditor?.controls]).toEqual(['/dv/assets/clip.mp4', true])
   })
@@ -152,7 +154,7 @@ describe('the asset card and editor', () => {
     const host = recordingHost([])
     const { runtime } = await mountAssetPool(({ renderSlot }) => nodes.map(node => (
       <section key={node.id}>
-        <div data-testid="card">{renderSlot('dv.canvas.card', { node, assets: byId(state.assets), textScale: 1, host }, { entryKey: node.type })}</div>
+        <div data-testid="card">{renderSlot('dv.canvas.card', { node, state, session: null, selected: false, above: null, assets: byId(state.assets), textScale: 1, host }, { entryKey: node.type })}</div>
         <div data-testid="editor">{renderSlot('dv.canvas.editor', { node, state, operations: OPERATIONS, host }, { entryKey: node.type })}</div>
       </section>
     )))
@@ -191,7 +193,7 @@ describe('disposal of the canvas registrations', () => {
       <>
         {nodes.map(node => (
           <section key={node.id}>
-            <div data-testid="card">{renderSlot('dv.canvas.card', { node, assets: byId(state.assets), textScale: 1, host }, { entryKey: node.type })}</div>
+            <div data-testid="card">{renderSlot('dv.canvas.card', { node, state, session: null, selected: false, above: null, assets: byId(state.assets), textScale: 1, host }, { entryKey: node.type })}</div>
             <div data-testid="editor">{renderSlot('dv.canvas.editor', { node, state, operations: OPERATIONS, host }, { entryKey: node.type })}</div>
           </section>
         ))}

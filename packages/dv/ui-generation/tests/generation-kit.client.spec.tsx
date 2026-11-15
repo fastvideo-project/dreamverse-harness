@@ -146,7 +146,9 @@ describe('the card body of a take', () => {
     state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g2' ? { ...entry, outputs: ['shot2.mp4'] } : entry)
     const nodes = nodesOf(canvas, state, OPERATIONS, 'en')
     const assets = Object.fromEntries(state.assets.map(entry => [entry.id, entry]))
-    const owner = (node: NodeView) => ({ node, assets, textScale: 1, host: recordingHost() })
+    const owner = (node: NodeView) => ({
+      node, state, session: null, selected: false, above: null, assets, textScale: 1, host: recordingHost(),
+    })
     const card = runtime.renderSlot('dv.canvas.card', owner(nodeAt(canvas, state, OPERATIONS, 'g1', 'g1')), { entryKey: 'test_take' })
     const media = () => [card.container.querySelector('img')?.getAttribute('src'), card.container.querySelector('video')?.getAttribute('src')]
     // A picture of known size fills the frame bare; an asset of unknown size and an empty take sit on the card surface.
@@ -172,7 +174,7 @@ describe('the card body of a take', () => {
     addNode(state, 'a9', 'test_low')
     const node = nodesOf(canvas, state, OPERATIONS, 'en').get('a9')
     if (node === undefined) throw new Error('no node a9')
-    const card = runtime.renderSlot('dv.canvas.card', { node, assets: {}, textScale: 1, host: recordingHost() }, { entryKey: 'test_low' })
+    const card = runtime.renderSlot('dv.canvas.card', { node, state, session: null, selected: false, above: null, assets: {}, textScale: 1, host: recordingHost() }, { entryKey: 'test_low' })
     const frame = card.container.firstElementChild
     expect([node.sizing?.defaultSize, node.sizing?.kind === 'media' ? node.sizing.aspectRatio.ratio : null, frame instanceof HTMLElement ? frame.style.height : null])
       .toEqual([{ width: 208, height: 72 }, 26 / 9, '100%'])

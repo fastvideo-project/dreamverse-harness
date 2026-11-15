@@ -7965,6 +7965,9 @@ importers:
       '@dv/asset-pool':
         specifier: workspace:*
         version: link:../asset-pool
+      '@dv/canvas':
+        specifier: workspace:*
+        version: link:../canvas
       '@dv/ffmpeg':
         specifier: workspace:*
         version: link:../ffmpeg

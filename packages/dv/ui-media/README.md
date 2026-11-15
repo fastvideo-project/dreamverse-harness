@@ -60,7 +60,7 @@ ctx.inject(['dvMedia'], (scope) => {
 ctx.effect(() => ctx.slots.inject('dv.media.view', () => ctx.slots.register({ name: 'dv.media.view', key: 'image' }, ImageView)), 'my-plugin: image view')
 ```
 
-The Factory keys the view by `mediaTypeOf(asset.mime)` of `@dv/ui-kit/media-type.ts`: the top-level type in lower case, without spaces or parameters. The file card shows the asset's name and MIME type; at purpose `thumb`, and for an asset whose name the surface does not know, it shows the MIME type alone, with the name as its tooltip. The `@` menu of `@dv/ui-composer` reads `MediaType.icon` and `MediaType.poster`.
+At purpose `card`, a surface may pass `play` for a card that plays, such as the video of a selected canvas node: the media plays with sound while `play` is true, with its controls along the bottom, and pauses without controls while it is false; without `play` the card shows the still. The Factory keys the view by `mediaTypeOf(asset.mime)` of `@dv/ui-kit/media-type.ts`: the top-level type in lower case, without spaces or parameters. The file card shows the asset's name and MIME type; at purpose `thumb`, and for an asset whose name the surface does not know, it shows the MIME type alone, with the name as its tooltip. The `@` menu of `@dv/ui-composer` reads `MediaType.icon` and `MediaType.poster`.
 
 ### Open the asset preview
 

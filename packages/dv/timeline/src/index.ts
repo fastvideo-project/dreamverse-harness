@@ -12,6 +12,8 @@
  *
  * Its sixteenth operation, `timeline.export`, writes a timeline to one video file with `dvFfmpeg` and imports the file
  * into the asset pool (see `export.ts`); the video leaves out the sounds, and the clips' own audio while it is muted.
+ * While `@dv/canvas` is loaded, `timeline.place` puts one timeline on the canvas as a node of kind `timeline` (see
+ * `place.ts`).
  *
  * The operations that add clips assign the new clip IDs and store them in the record's `report.clips`, and
  * `timeline.sound_add` stores the new sound ID in `report.sounds`; the `timeline` reducer folds the records into the
@@ -30,6 +32,7 @@ import z from '@deepseek-ai/schemastery'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { AssetId, OperationContext, OperationResult, OperationSpec, ProjectId, ProjectRecord } from '@dv/project'
 import { exportOperation, exportTimeline } from './export.ts'
+import { placeOperation, TIMELINE_NODE_MAKER } from './place.ts'
 import {
   addedClipCount, clipProblem, namedTimeline, OPERATIONS, reportedClips, reportedSounds, timelineReducer,
 } from './reducer.ts'
@@ -146,6 +149,11 @@ export default class DvTimeline extends Service {
     }
     ctx.inject(['skills'], (child) => {
       child.effect(() => child.skills.register(TIMELINE_EDITING_SKILL), `dvTimeline ${TIMELINE_EDITING_SKILL.name}`)
+    })
+    // A timeline goes on the canvas as a node of the canvas's node list, so the placement exists while the canvas is loaded.
+    ctx.inject(['dvCanvasNodes'], (canvas) => {
+      canvas.effect(() => canvas.dvCanvasNodes.registerMaker(TIMELINE_NODE_MAKER), 'dvTimeline canvas nodes')
+      canvas.effect(() => canvas.dvProject.registerOperation(placeOperation()), 'dvTimeline timeline.place')
     })
   }
 

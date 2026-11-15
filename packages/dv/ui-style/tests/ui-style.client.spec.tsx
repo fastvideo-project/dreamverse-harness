@@ -115,7 +115,7 @@ describe('the style plugin', () => {
     const node = nodeOf(runtime, state, 'n1')
     if (node === undefined) throw new Error('no node n1')
     expect([node.type, node.title, node.assets]).toEqual(['style', '胶片', ['shot1-last.png', 'ref.png']])
-    const card = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'style' })
+    const card = runtime.renderSlot('dv.canvas.card', { node, state, session: null, selected: false, above: null, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'style' })
     expect([card.view.getByText('风格'), card.view.getByText('2 张参考图 · 第 2 版')]).toHaveLength(2)
     expect(runtime.ctx.dvCanvas.versionKinds.getSnapshot().map(kind => [kind.kind, kind.label(), kind.node(state, 's1')])).toEqual([['style', '风格', 'n1']])
 
@@ -182,7 +182,7 @@ describe('the style plugin', () => {
     const state = nounState()
     const node = nodeOf(runtime, state, 'n1')
     if (node === undefined) throw new Error('no node n1')
-    const { container } = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'style' })
+    const { container } = runtime.renderSlot('dv.canvas.card', { node, state, session: null, selected: false, above: null, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'style' })
     expect(container.textContent).toContain('风格')
 
     await plugin.dispose()

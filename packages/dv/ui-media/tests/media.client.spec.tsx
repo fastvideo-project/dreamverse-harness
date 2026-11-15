@@ -19,7 +19,7 @@ import { assetUrl } from '@dv/ui-kit/api.ts'
 import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
 import type { Asset } from '@dv/ui-kit/types.ts'
 import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
-import { record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply as shotRenderApply, inject as shotRenderInject } from '../../ui-shot-render/src/client/index.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
@@ -278,7 +278,8 @@ describe('one dv.media Factory under parents of both scopes', () => {
       rerunning: false,
     }
     const card = runtime.renderSlot('dv.canvas.card', {
-      node, assets: { 'v1.mp4': asset('v1.mp4', 'video/mp4') }, textScale: 1, host: { run: () => undefined, rerun: () => undefined },
+      node, state: fixtureState(), session: null, selected: false, above: null, assets: { 'v1.mp4': asset('v1.mp4', 'video/mp4') }, textScale: 1,
+      host: { run: () => undefined, rerun: () => undefined },
     }, { entryKey: 'asset' })
     expect(runtime.slots.snapshot('factory:dv.media')).toHaveLength(1)
     expect(chat.container.querySelector('video')?.getAttribute('src')).toBe(assetUrl('v1.mp4'))

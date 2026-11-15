@@ -28,18 +28,18 @@ export function FileCard({ asset, purpose }: MediaOwner): ReactNode {
 
 /**
  * One asset by its media type.
- * @param props - the asset, the purpose, the poster, the play badge, the size callback, and the renderer of the
- *   `dv.media.view` entries.
+ * @param props - the asset, the purpose, the poster, the play badge, the size callback, the card's play flag, and the
+ *   renderer of the `dv.media.view` entries.
  * @returns the view of the asset's media type, or the file card when no view is registered or the view cannot draw it.
  */
-export function MediaView({ asset, purpose, poster, playBadge, onSize, renderSlot }: FactoryComponentPropsOf<'dv.media'>): ReactNode {
+export function MediaView({ asset, purpose, poster, playBadge, onSize, play, renderSlot }: FactoryComponentPropsOf<'dv.media'>): ReactNode {
   const [unsupportedId, setUnsupportedId] = useState<string | null>(null)
   const unsupported = useCallback(() => { setUnsupportedId(asset.id) }, [asset.id])
   const card = <FileCard asset={asset} purpose={purpose} />
   if (unsupportedId === asset.id) return card
   const owner = {
     asset, purpose, unsupported, ...poster === undefined ? {} : { poster }, ...playBadge === undefined ? {} : { playBadge },
-    ...onSize === undefined ? {} : { onSize },
+    ...onSize === undefined ? {} : { onSize }, ...play === undefined ? {} : { play },
   }
   return renderSlot('dv.media.view', owner, { entryKey: mediaTypeOf(asset.mime), fallback: card })
 }

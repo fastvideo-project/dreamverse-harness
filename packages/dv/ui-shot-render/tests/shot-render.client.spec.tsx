@@ -163,7 +163,7 @@ describe('the shot render takes', () => {
     const state = fixtureState()
     const node = shotsOf(canvas, state).get('g1')!
     const assets = Object.fromEntries(state.assets.map(entry => [entry.id, entry]))
-    const card = mounted.renderSlot('dv.canvas.card', { node, assets, textScale: 1, host: host() }, { entryKey: 'shot' })
+    const card = mounted.renderSlot('dv.canvas.card', { node, state, session: null, selected: false, above: null, assets, textScale: 1, host: host() }, { entryKey: 'shot' })
     expect(card.container.querySelector('img')?.getAttribute('src')).toBe('/dv/assets/shot1-last.png')
     expect(card.container.querySelector('video')).toBeNull()
   })

@@ -60,7 +60,7 @@ ctx.inject(['dvMedia'], (scope) => {
 ctx.effect(() => ctx.slots.inject('dv.media.view', () => ctx.slots.register({ name: 'dv.media.view', key: 'image' }, ImageView)), 'my-plugin: image view')
 ```
 
-组件工厂按 `@dv/ui-kit/media-type.ts` 的 `mediaTypeOf(asset.mime)` 为视图选键：小写、去掉空格和参数的顶层类型。文件卡片显示素材的名称和 MIME 类型；用途为 `thumb` 时，以及界面不知道素材名称时，只显示 MIME 类型，名称作为提示文字。`@dv/ui-composer` 的 `@` 菜单读取 `MediaType.icon` 和 `MediaType.poster`。
+用途 `card` 时，界面可以传 `play` 得到能播放的卡片，例如被选中的画布节点里的视频：`play` 为 true 时媒体带声音播放，底部显示控件；为 false 时暂停并收起控件；不传 `play` 时卡片显示静帧。组件工厂按 `@dv/ui-kit/media-type.ts` 的 `mediaTypeOf(asset.mime)` 为视图选键：小写、去掉空格和参数的顶层类型。文件卡片显示素材的名称和 MIME 类型；用途为 `thumb` 时，以及界面不知道素材名称时，只显示 MIME 类型，名称作为提示文字。`@dv/ui-composer` 的 `@` 菜单读取 `MediaType.icon` 和 `MediaType.poster`。
 
 ### 打开素材预览
 

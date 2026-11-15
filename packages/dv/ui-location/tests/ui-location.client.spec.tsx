@@ -115,7 +115,7 @@ describe('the location plugin', () => {
     const node = nodeOf(runtime, state, 'n1')
     if (node === undefined) throw new Error('no node n1')
     expect([node.type, node.title, node.assets]).toEqual(['location', '小巷', ['shot1-last.png', 'ref.png']])
-    const card = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'location' })
+    const card = runtime.renderSlot('dv.canvas.card', { node, state, session: null, selected: false, above: null, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'location' })
     expect([card.view.getByText('场景'), card.view.getByText('2 张参考图 · 第 2 版')]).toHaveLength(2)
     expect(runtime.ctx.dvCanvas.versionKinds.getSnapshot().map(kind => [kind.kind, kind.label(), kind.node(state, 'l1')])).toEqual([['location', '场景', 'n1']])
 
@@ -182,7 +182,7 @@ describe('the location plugin', () => {
     const state = nounState()
     const node = nodeOf(runtime, state, 'n1')
     if (node === undefined) throw new Error('no node n1')
-    const { container } = runtime.renderSlot('dv.canvas.card', { node, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'location' })
+    const { container } = runtime.renderSlot('dv.canvas.card', { node, state, session: null, selected: false, above: null, assets: assetsOf(state, node), textScale: 1, host: cardHost() }, { entryKey: 'location' })
     expect(container.textContent).toContain('场景')
 
     await plugin.dispose()

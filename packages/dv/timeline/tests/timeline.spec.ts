@@ -16,6 +16,7 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
+import DvCanvasNodes from '@dv/canvas'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvProject, {
   type OperationSpec, type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId, type RunRequest, type RunResult,
@@ -25,7 +26,7 @@ import { chatProject, provideChatServices } from '../../project/tests/workspaces
 import DvTimeline from '../src/index.ts'
 
 /** The plugin classes the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
-const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, DvTimeline }
+const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, DvCanvasNodes, DvTimeline }
 
 /** The sixteen operations in registration order: the fifteen edits, then the export. */
 const OPERATIONS = [
@@ -51,9 +52,10 @@ afterEach(async () => {
 
 /**
  * Boot the composition from a test-only `cordis.yml`.
+ * @param options - `canvas: true` mounts `@dv/canvas` before the timeline.
  * @returns the fixture, with a project whose folder chat session `s1` runs in.
  */
-async function start(): Promise<Fixture> {
+async function start(options: { canvas?: boolean } = {}): Promise<Fixture> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-timeline-'))
   const globals = globalThis as typeof globalThis & { __dvTimelineComposition?: typeof PLUGINS }
   globals.__dvTimelineComposition = PLUGINS
@@ -68,6 +70,7 @@ async function start(): Promise<Fixture> {
   // The agent tools describe outputs through the asset pool, so the pool and its ffmpeg runner are mounted too.
   row('dv-ffmpeg', 'DvFfmpeg', ['ffmpegPath: ffmpeg', 'ffprobePath: ffprobe'])
   row('dv-asset-pool', 'DvAssetPool', [])
+  if (options.canvas === true) row('dv-canvas', 'DvCanvasNodes', [])
   row('dv-timeline', 'DvTimeline', [])
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
 
@@ -262,6 +265,45 @@ describe('dvTimeline', () => {
     }
     await expect(fixture.run('timeline.mute', { timeline: 't1', target: 'audio', muted: true })).rejects.toMatchObject({ code: 'invalid_params' })
     await expect(fixture.run('timeline.mute', { timeline: 't1', target: 'video' })).rejects.toMatchObject({ code: 'invalid_params' })
+  })
+
+  it('puts a timeline on the canvas once with dv_timeline_place while the canvas is loaded, and an undo takes the node off', async () => {
+    expect((await start()).ctx.tools.get('dv_timeline_place')).toBeUndefined()
+    const fixture = await start({ canvas: true })
+    await fixture.run('timeline.create', { assets: ['a1'] })
+    await fixture.run('timeline.create', { timeline: 't2', assets: [] })
+    const placed = value(await fixture.call('dv_timeline_place', { reason: 'show the cut', timeline: 't1' }))
+    expect(placed.summary).toBe('t1 placed on the canvas')
+    const canvas = (): unknown => fixture.ctx.dvProject.getState(fixture.project).components.canvas
+    expect(canvas()).toMatchObject({
+      order: [placed.record], nodes: { [placed.record]: { kind: 'timeline', versions: [placed.record], position: { x: 720, y: 0 } } },
+    })
+    const cases: Array<[Record<string, unknown>, string]> = [
+      [{ timeline: 't1' }, `Timeline t1 is already on the canvas as node ${placed.record}.`],
+      [{ timeline: 't9' }, 'Timeline t9 does not exist.'],
+    ]
+    for (const [params, message] of cases) {
+      await expect(fixture.run('timeline.place', params)).rejects.toMatchObject({ code: 'invalid_params', message })
+    }
+    const second = await fixture.run('timeline.place', { timeline: 't2' })
+    expect(fixture.ctx.dvProject.getState(fixture.project).components.canvas.order).toEqual([placed.record, second.id])
+    await fixture.ctx.dvProject.undo(fixture.project)
+    expect(fixture.ctx.dvProject.getState(fixture.project).components.canvas.order).toEqual([placed.record])
+    // A timeline whose node was removed goes on the canvas again as a new node.
+    await fixture.run('canvas.node_remove', { nodes: [placed.record] })
+    const again = await fixture.run('timeline.place', { timeline: 't1' })
+    expect(fixture.ctx.dvProject.getState(fixture.project).components.canvas.order).toEqual([again.id])
+  })
+
+  it('describes timeline.place to the agent', async () => {
+    const fixture = await start({ canvas: true })
+    const spec = fixture.ctx.dvProject.listOperations().find(entry => entry.name === 'timeline.place')
+    expect(spec?.label).toEqual({ zh: '把时间线放到画布上', en: 'Place timeline on canvas' })
+    expect(spec?.description).toBe('Put a timeline on the canvas as one node. The node shows the timeline\'s picture and tracks in '
+      + 'small, with a line from each node whose output the timeline plays; selecting the node outlines those nodes. A timeline goes '
+      + 'on the canvas once, and its node stays until dv_canvas_node_remove takes it off. Works whether or not the user has a canvas '
+      + 'open. The change is a step of the project history, so dv_proj_undo reverts it.')
+    expect(spec?.params['timeline']?.description).toBe('The timeline, such as t1 (see `timelines` in dv_proj_state).')
   })
 
   it('describes the sound operations to the agent: the tracks a sound may go on and where the sound IDs are listed', async () => {
