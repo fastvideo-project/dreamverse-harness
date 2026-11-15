@@ -1,18 +1,39 @@
 /** Keyless contract tests for the documented OpenRouter video, image and speech APIs. */
 import { describe, expect, it } from 'vitest'
-import { imageCatalog, speechCatalog, videoCatalog } from '../src/catalog.ts'
+import { imageCatalog, speechCatalog, videoCatalog, videoReferences } from '../src/catalog.ts'
 import { OpenRouterApi } from '../src/client.ts'
 
 export const catalog = { data: [{ id: 'fixture/video', name: 'Fixture Video', supported_durations: [4, 6, 8],
   supported_resolutions: ['720p'], supported_aspect_ratios: ['16:9'], supported_frame_images: ['first_frame', 'last_frame'],
   generate_audio: true, seed: true }] }
 
+export const videoRows = { data: [
+  { id: 'fixture/video', architecture: { input_modalities: ['text', 'audio', 'image'], output_modalities: ['video'] } },
+  { id: 'fixture/text-only', architecture: { input_modalities: ['text'], output_modalities: ['video'] } },
+  { id: 'fixture/bare' },
+] }
+
 describe('OpenRouter video API', () => {
   it('uses published discrete durations and never invents frame counts or dimensions', () => {
-    expect(videoCatalog(catalog)).toEqual([{ id: 'fixture/video', name: 'Fixture Video', durations: [4, 6, 8],
-      resolutions: ['720p'], aspectRatios: ['16:9'], frames: ['first_frame', 'last_frame'], audio: true, seed: true }])
-    expect(videoCatalog({ data: [{ id: 'unknown' }, { ...catalog.data[0], upscale_factor: 2 }] })).toEqual([])
-    expect(() => videoCatalog([])).toThrow('invalid video catalog')
+    expect(videoCatalog(catalog, new Map())).toEqual([{ id: 'fixture/video', name: 'Fixture Video', durations: [4, 6, 8],
+      resolutions: ['720p'], aspectRatios: ['16:9'], frames: ['first_frame', 'last_frame'], references: [], audio: true, seed: true }])
+    expect(videoCatalog({ data: [{ id: 'unknown' }, { ...catalog.data[0], upscale_factor: 2 }] }, new Map())).toEqual([])
+    expect(() => videoCatalog([], new Map())).toThrow('invalid video catalog')
+  })
+
+  it('reads reference media from the image, video and audio input modalities, and leaves out models that list none', () => {
+    expect(videoReferences(videoRows)).toEqual(new Map([['fixture/video', ['image', 'audio']]]))
+    expect(() => videoReferences({})).toThrow('invalid video model list')
+  })
+
+  it('joins the reference media of the models catalog to the video catalog, and keeps the video catalog when it fails', async () => {
+    const answer = (fail: boolean) => new OpenRouterApi('https://openrouter.ai/api/v1/', async () => 'fixture-key', 1, async (input) => {
+      const url = new Request(input).url
+      if (url.endsWith('/models?output_modalities=video')) return fail ? new Response('down', { status: 503 }) : Response.json(videoRows)
+      return Response.json(catalog)
+    })
+    expect((await answer(false).videoCatalog()).map(model => model.references)).toEqual([['image', 'audio']])
+    expect((await answer(true).videoCatalog()).map(model => model.references)).toEqual([[]])
   })
 
   it('submits once and uses canonical authenticated content routes, ignoring response-provided URLs', async () => {

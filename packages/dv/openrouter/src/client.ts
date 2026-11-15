@@ -3,8 +3,8 @@
  * provider-returned URLs.
  */
 import { setTimeout as delay } from 'node:timers/promises'
-import { imageCatalog, speechCatalog, videoCatalog } from './catalog.ts'
-import type { ImageModel, SpeechModel, VideoModel } from './types.ts'
+import { imageCatalog, speechCatalog, videoCatalog, videoReferences } from './catalog.ts'
+import type { ImageModel, ReferenceMedia, SpeechModel, VideoModel } from './types.ts'
 
 /** One generated image as OpenRouter returns it. */
 export interface OpenRouterImage { bytes: Buffer; mime: string }
@@ -51,12 +51,26 @@ export class OpenRouterApi {
     return response
   }
 
-  /** Read current choices. Metadata lookups are bounded; generation follows the operation lifetime. */
-  async catalog(signal?: AbortSignal): Promise<VideoModel[]> {
+  /**
+   * Read current video choices from `videos/models`, with each model's reference media from the models catalog filtered
+   * to video output. Metadata lookups are bounded; generation follows the operation lifetime.
+   * @param signal - aborts both requests.
+   * @returns the usable video models; every model has no reference media when only the models catalog fails.
+   * @throws Error when `videos/models` fails or answers an invalid catalog; the signal's reason on abort.
+   */
+  async videoCatalog(signal?: AbortSignal): Promise<VideoModel[]> {
     const deadline = AbortSignal.timeout(10_000)
-    return videoCatalog(await (await this.call('videos/models', {
-      signal: signal === undefined ? deadline : AbortSignal.any([signal, deadline]),
-    })).json())
+    const bounded = signal === undefined ? deadline : AbortSignal.any([signal, deadline])
+    const [models, references] = await Promise.all([
+      this.call('videos/models', { signal: bounded }).then(async (response): Promise<unknown> => response.json()),
+      this.call('models?output_modalities=video', { signal: bounded }).then(response => response.json()).then(videoReferences)
+        .catch((error: unknown) => {
+          // A failed models catalog removes only task ref2v; the generation choices come from videos/models.
+          if (bounded.aborted) throw error
+          return new Map<string, ReferenceMedia[]>()
+        }),
+    ])
+    return videoCatalog(models, references)
   }
 
   /** Read current image choices, bounded like the video catalog. */

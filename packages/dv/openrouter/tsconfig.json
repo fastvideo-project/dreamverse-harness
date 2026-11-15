@@ -21,6 +21,9 @@
       "path": "../../credentials/credentials"
     },
     {
+      "path": "../../subprocess/subprocess"
+    },
+    {
       "path": "../../client/connection/tsconfig.host.json"
     },
     {

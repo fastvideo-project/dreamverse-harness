@@ -1,7 +1,7 @@
 /** Real Loader composition with a fake OpenRouter HTTP API and real shared video extraction. */
 import { execFile } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -23,7 +23,12 @@ import { MemoryCredentials } from '../../../credentials/credentials/tests/memory
 import { provideChatServices } from '../../project/tests/workspaces.ts'
 import { shotGeometry } from '../../shot-render/src/render.ts'
 import * as OpenRouter from '../src/index.ts'
-import { imageRows, speechRows } from './client.spec.ts'
+
+// The fake tunnel's name is never published in DNS; every other part of the reference host runs for real.
+vi.mock('../src/reference-host.ts', async original => ({
+  ...await original<typeof import('../src/reference-host.ts')>(), publishedByAuthority: () => Promise.resolve(true),
+}))
+import { imageRows, speechRows, videoRows } from './client.spec.ts'
 
 const cleanup: Array<() => Promise<unknown>> = []
 afterEach(async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose() })
@@ -34,7 +39,25 @@ function isVideoEntry(entry: ModelEntry): entry is ModelEntry<TaskOfPrimitive<'v
 const ffmpeg = process.env['DV_FFMPEG'] ?? 'ffmpeg'
 const ffprobe = process.env['DV_FFPROBE'] ?? 'ffprobe'
 
-async function fixture(options: { images?: boolean; speech?: 'mp3' | 'pcm' } = {}) {
+/** The address the fake cloudflared prints; requests to it reach the fake tunnel's target, which it writes to `target`. */
+const TUNNEL = 'https://fixture-tunnel.trycloudflare.com'
+
+/** A cloudflared stand-in that records its `--url` target, prints the tunnel address and runs until stopped. */
+function fakeCloudflared(dir: string): { program: string; reach: (url: string) => string } {
+  const target = join(dir, 'tunnel-target')
+  const script = join(dir, 'cloudflared.mjs')
+  writeFileSync(script, `import { writeFileSync } from 'node:fs'
+writeFileSync(${JSON.stringify(target)}, process.argv[process.argv.indexOf('--url') + 1])
+process.stderr.write('INF |  ${TUNNEL}  |\\n')
+setInterval(() => {}, 1000)
+`)
+  const program = join(dir, 'cloudflared')
+  writeFileSync(program, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(script)} "$@"\n`)
+  chmodSync(program, 0o755)
+  return { program, reach: url => url.replace(TUNNEL, readFileSync(target, 'utf8')) }
+}
+
+async function fixture(options: { images?: boolean; speech?: 'mp3' | 'pcm'; hosting?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'dv-openrouter-'))
   cleanup.push(async () => { rmSync(dir, { recursive: true, force: true }) })
   const videoPath = join(dir, 'fixture.mp4')
@@ -50,6 +73,9 @@ async function fixture(options: { images?: boolean; speech?: 'mp3' | 'pcm' } = {
   const speech = options.speech === 'pcm' ? { mime: 'audio/pcm', bytes: Buffer.alloc(24_000) }
     : { mime: 'audio/mpeg', bytes: readFileSync(mp3Path) }
   const requests: Array<{ path: string; method: string; body: Record<string, unknown> | null; key: string | undefined }> = []
+  const cloudflared = fakeCloudflared(dir)
+  /** What the fake OpenRouter downloaded from each hosted reference URL while the job ran. */
+  const downloads: Array<{ url: string; status: number; mime: string | null; bytes: string }> = []
   const server: Server = createServer(async (request, response) => {
     const parts: Buffer[] = []
     for await (const part of request) parts.push(Buffer.from(part))
@@ -60,11 +86,21 @@ async function fixture(options: { images?: boolean; speech?: 'mp3' | 'pcm' } = {
     if (path === '/api/v1/videos/models') response.end(JSON.stringify(CATALOG))
     else if (path === '/api/v1/images/models') response.end(JSON.stringify(imageRows))
     else if (path === '/api/v1/models?output_modalities=speech') response.end(JSON.stringify(speechRows))
+    else if (path === '/api/v1/models?output_modalities=video') response.end(JSON.stringify(videoRows))
     else if (path === '/api/v1/audio/speech') { response.setHeader('content-type', speech.mime); response.end(speech.bytes) }
     else if (path === '/api/v1/images') {
       response.end(JSON.stringify({ data: [{ b64_json: jpeg.toString('base64'), media_type: 'image/jpeg' }] }))
     }
-    else if (request.method === 'POST') { response.statusCode = 202; response.end(JSON.stringify({ id: 'job1' })) }
+    else if (request.method === 'POST') {
+      const references = (requests.at(-1)?.body?.['input_references'] ?? []) as Array<{ audio_url?: { url: string }; video_url?: { url: string } }>
+      for (const reference of references) {
+        const part = reference.audio_url ?? reference.video_url
+        if (part === undefined || !part.url.startsWith(TUNNEL)) continue
+        const answer = await fetch(cloudflared.reach(part.url))
+        downloads.push({ url: part.url, status: answer.status, mime: answer.headers.get('content-type'), bytes: await answer.text() })
+      }
+      response.statusCode = 202; response.end(JSON.stringify({ id: 'job1' }))
+    }
     else if (path.endsWith('content?index=0')) { response.setHeader('content-type', 'video/mp4'); response.end(clip) }
     else response.end(JSON.stringify({ status: 'completed' }))
   })
@@ -86,6 +122,7 @@ async function fixture(options: { images?: boolean; speech?: 'mp3' | 'pcm' } = {
       baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/`, models: { cloud: 'fixture/video' }, pollIntervalMs: 1,
       ...options.images === true ? { imageModels: { flux: 'fixture/image' } } : {},
       ...options.speech === undefined ? {} : { audioModels: { narrator: 'fixture/speech', cloner: 'heygen/fixture-voice' } },
+      ...options.hosting === true ? { referenceHosting: 'cloudflare-quick-tunnel', cloudflaredPath: cloudflared.program, tunnelStartTimeoutMs: 10_000 } : {},
     } },
     { id: 'shot-render', name: 'cordis:shotRender' }, { id: 'image', name: 'cordis:imageGenerate' },
     { id: 'audio', name: 'cordis:audioGenerate' },
@@ -94,13 +131,13 @@ async function fixture(options: { images?: boolean; speech?: 'mp3' | 'pcm' } = {
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(path).href } }); await ctx.loader.await()
   const origin = { actor: 'user', surface: 'api', session: null, turn: null, tool_call: null, intent: 'create' } as const
   const project = await ctx.dvProject.createProject(await ctx.dvProject.newProjectFolder('cloud'), 'cloud', origin)
-  return { ctx, requests, clip, project }
+  return { ctx, requests, clip, project, downloads, reach: cloudflared.reach }
 }
 
 describe('OpenRouter video provider composition', () => {
   it('registers only selected cloud models, publishes exact duration choices, and removes entries on disposal', async () => {
     const { ctx } = await fixture()
-    expect(ctx.dvModels.list().map(entry => entry.task)).toEqual(['t2v', 'i2v', 'fl2v'])
+    expect(ctx.dvModels.list().map(entry => entry.task)).toEqual(['t2v', 'ref2v', 'i2v', 'fl2v'])
     const entry = ctx.dvModels.list().filter(isVideoEntry)[0]
     if (entry === undefined || !isVideoEntry(entry)) throw new Error('Missing video entry')
     const facts = await entry.facts()
@@ -136,6 +173,62 @@ describe('OpenRouter video provider composition', () => {
     expect(requests.every(request => request.key === 'Bearer fixture-key')).toBe(true)
   })
 
+  it('offers only image references for ref2v while reference hosting is off, and sends them as data URLs', async () => {
+    const { ctx, requests, project } = await fixture()
+    const entry = ctx.dvModels.list().find(row => row.task === 'ref2v')
+    if (entry === undefined || !isVideoEntry(entry)) throw new Error('Missing REF2V entry')
+    expect(await entry.schema()).toMatchObject({ inputs: { reference: { min: 1, media_types: { image: {} } } } })
+    expect(await entry.schema()).not.toHaveProperty('inputs.reference.media_types.audio')
+    const face = ctx.dvAssetPool.importAsset(project.id, Buffer.from('FACE'), { name: 'face.png', mime: 'image/png' }, null)
+    const voice = ctx.dvAssetPool.importAsset(project.id, Buffer.from('VOICE'), { name: 'voice.mp3', mime: 'audio/mpeg' }, null)
+    const input = { prompt: `@[her](dv:asset/${face}) floats`, references: [face], firstFrame: null, lastFrame: null,
+      durationSec: 6, aspectRatio: '16:9', resolution: '720p', seed: 7, extra: {} }
+    expect(await entry.validateGenerationRequest(input)).toEqual([])
+    expect(await entry.validateGenerationRequest({ ...input, references: [] })).toEqual(['Its reference input requires at least one asset.'])
+    expect(await entry.validateGenerationRequest({ ...input, references: [face, voice] })).toEqual(['Its reference input accepts only '
+      + `image; asset ${voice} is audio. OpenRouter takes audio references only as public HTTPS links, and reference hosting is off `
+      + 'in the OpenRouter provider settings.'])
+    expect(await entry.validateGenerationRequest({ ...input, firstFrame: face })).toEqual(['This task takes no first_frame input.'])
+    const t2v = ctx.dvModels.list().find(row => row.task === 't2v')
+    if (t2v === undefined || !isVideoEntry(t2v)) throw new Error('Missing T2V entry')
+    expect(await t2v.validateGenerationRequest(input))
+      .toContain('This OpenRouter task accepts endpoint images, not general reference media. Use task ref2v for reference media.')
+    for await (const event of entry.render(input)) void event
+    expect(requests.find(request => request.method === 'POST')?.body).toEqual({ model: 'fixture/video', prompt: 'her floats',
+      duration: 6, aspect_ratio: '16:9', resolution: '720p', seed: 7,
+      input_references: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,RkFDRQ==' } }] })
+  })
+
+  it('serves audio references through a quick tunnel while the job runs when reference hosting is on, then closes it', async () => {
+    const { ctx, requests, project, downloads, reach } = await fixture({ hosting: true })
+    const entry = ctx.dvModels.list().find(row => row.task === 'ref2v')
+    if (entry === undefined || !isVideoEntry(entry)) throw new Error('Missing REF2V entry')
+    expect(await entry.schema()).toMatchObject({ inputs: { reference: { media_types: { image: {}, audio: {} } } } })
+    const face = ctx.dvAssetPool.importAsset(project.id, Buffer.from('FACE'), { name: 'face.png', mime: 'image/png' }, null)
+    const voice = ctx.dvAssetPool.importAsset(project.id, Buffer.from('VOICE'), { name: 'voice.mp3', mime: 'audio/mpeg' }, null)
+    const clip = ctx.dvAssetPool.importAsset(project.id, Buffer.from('CLIP'), { name: 'clip.mp4', mime: 'video/mp4' }, null)
+    const input = { prompt: `@[her](dv:asset/${face}) sings with @[this voice](dv:asset/${voice})`, references: [face, voice],
+      firstFrame: null, lastFrame: null, durationSec: 6, aspectRatio: '16:9', resolution: '720p', seed: 7, extra: {} }
+    expect(await entry.validateGenerationRequest(input)).toEqual([])
+    expect(await entry.validateGenerationRequest({ ...input, references: [face, clip] }))
+      .toEqual([`Its reference input accepts only image, audio; asset ${clip} is video.`])
+    const fetchThroughTunnel = globalThis.fetch
+    vi.stubGlobal('fetch', (url: string | URL | Request, init?: RequestInit): Promise<Response> =>
+      fetchThroughTunnel(reach(new Request(url).url), init))
+    try {
+      for await (const event of entry.render(input)) void event
+    } finally {
+      vi.unstubAllGlobals()
+    }
+    const body = requests.find(request => request.method === 'POST')?.body
+    const audio = (body?.['input_references'] as Array<{ audio_url?: { url: string } }>)[1]?.audio_url?.url ?? ''
+    expect(audio).toMatch(/^https:\/\/fixture-tunnel\.trycloudflare\.com\/[\w-]{32}\/0\.mp3$/)
+    expect(body?.['input_references']).toEqual([{ type: 'image_url', image_url: { url: 'data:image/png;base64,RkFDRQ==' } },
+      { type: 'audio_url', audio_url: { url: audio } }])
+    expect(downloads).toEqual([{ url: audio, status: 200, mime: 'audio/mpeg', bytes: 'VOICE' }])
+    await expect(fetchThroughTunnel(reach(audio))).rejects.toThrow()
+  })
+
   it('stores a completed cloud video through the ordinary shot workflow without invented frame geometry', async () => {
     const { ctx, project, requests } = await fixture()
     const result = await ctx.dvProject.run({ project: project.id, operation: 'shot.render', actor: 'user', surface: 'api',
@@ -160,7 +253,7 @@ it('withdraws removed cloud choices when replacement settings cannot register, a
   await provider.update({ config: { ...original, models: { 'invalid alias': 'fixture/video' } } })
   await vi.waitFor(() => { expect(ctx.dvModels.list()).toEqual([]) })
   await provider.update({ config: original })
-  await vi.waitFor(() => { expect(ctx.dvModels.list().map(entry => entry.model)).toEqual(['cloud', 'cloud', 'cloud']) })
+  await vi.waitFor(() => { expect(ctx.dvModels.list().map(entry => entry.model)).toEqual(['cloud', 'cloud', 'cloud', 'cloud']) })
 })
 
 describe('OpenRouter image provider composition', () => {

@@ -1,12 +1,19 @@
 /** Read provider-published video, image and speech choices without manufacturing frame rates or pixel geometry. */
-import type { ImageModel, ImageParameterChoices, SpeechModel, VideoModel } from './types.ts'
+import type { ImageModel, ImageParameterChoices, ReferenceMedia, SpeechModel, VideoModel } from './types.ts'
 
 function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item !== '') : []
 }
 
-/** Models missing supported durations or output choices cannot serve the harness video contract. */
-export function videoCatalog(value: unknown): VideoModel[] {
+/**
+ * Parse `GET /videos/models`. Models missing supported durations or output choices cannot serve the harness video
+ * contract and are left out.
+ * @param value - the response JSON.
+ * @param references - the reference media of each model ID, from `videoReferences`; a model it leaves out takes none.
+ * @returns the usable video models.
+ * @throws Error when the response has no `data` array.
+ */
+export function videoCatalog(value: unknown, references: ReadonlyMap<string, ReferenceMedia[]>): VideoModel[] {
   if (typeof value !== 'object' || value === null || !('data' in value) || !Array.isArray(value.data)) {
     throw new Error('OpenRouter returned an invalid video catalog.')
   }
@@ -26,8 +33,34 @@ export function videoCatalog(value: unknown): VideoModel[] {
       .filter((frame): frame is 'first_frame' | 'last_frame' => frame === 'first_frame' || frame === 'last_frame')
     const name = fields.get('name')
     return [{ id, name: typeof name === 'string' ? name : id, durations: seconds, resolutions, aspectRatios,
-      frames, audio: fields.get('generate_audio') === true, seed: fields.get('seed') === true }]
+      frames, references: references.get(id) ?? [], audio: fields.get('generate_audio') === true, seed: fields.get('seed') === true }]
   })
+}
+
+/** The input modalities that `input_references` carries, in the order a schema lists them. */
+const REFERENCE_MEDIA: readonly ReferenceMedia[] = ['image', 'video', 'audio']
+
+/**
+ * Parse `GET /models?output_modalities=video`: the reference media of each model, which are the image, video and audio
+ * entries of its `architecture.input_modalities`. `GET /videos/models` lists no input modalities.
+ * @param value - the response JSON.
+ * @returns the reference media by model ID; a model whose row lists none is left out.
+ * @throws Error when the response has no `data` array.
+ */
+export function videoReferences(value: unknown): Map<string, ReferenceMedia[]> {
+  if (typeof value !== 'object' || value === null || !('data' in value) || !Array.isArray(value.data)) {
+    throw new Error('OpenRouter returned an invalid video model list.')
+  }
+  return new Map(value.data.flatMap((row: unknown): Array<[string, ReferenceMedia[]]> => {
+    if (typeof row !== 'object' || row === null) return []
+    const fields = new Map<string, unknown>(Object.entries(row))
+    const id = fields.get('id')
+    const architecture = fields.get('architecture')
+    const inputs = typeof architecture === 'object' && architecture !== null
+      ? strings(new Map<string, unknown>(Object.entries(architecture)).get('input_modalities')) : []
+    const media = REFERENCE_MEDIA.filter(kind => inputs.includes(kind))
+    return typeof id !== 'string' || id === '' || media.length === 0 ? [] : [[id, media]]
+  }))
 }
 
 /** The enum parameters an image call may set through `extra`; the provider chooses pixel sizes from them. */

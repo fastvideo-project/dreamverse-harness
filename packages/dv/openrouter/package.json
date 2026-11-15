@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@deepseek-ai/dsh-credentials": "workspace:*",
+    "@deepseek-ai/dsh-subprocess": "workspace:*",
     "@dv/asset-pool": "workspace:*",
     "@dv/audio-generate": "workspace:*",
     "@dv/ffmpeg": "workspace:*",

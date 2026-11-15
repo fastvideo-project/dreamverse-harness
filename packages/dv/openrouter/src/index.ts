@@ -1,8 +1,10 @@
 /**
- * Register configured OpenRouter models in the model catalog: video models (tasks `t2v`, `i2v`, `fl2v`) for the
- * shot-render workflow, image models (task `t2i`) for `image.generate`, and speech models (task `t2a`) for
+ * Register configured OpenRouter models in the model catalog: video models (tasks `t2v`, `ref2v`, `i2v`, `fl2v`) for
+ * the shot-render workflow, image models (task `t2i`) for `image.generate`, and speech models (task `t2a`) for
  * `audio.generate`.
  */
+import { spawn } from 'node:child_process'
+import { once } from 'node:events'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -11,14 +13,16 @@ import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
-import { replacePromptCitations } from '@dv/project'
+import type {} from '@deepseek-ai/dsh-subprocess'
+import { replacePromptCitations, type AssetId } from '@dv/project'
 import type {} from '@dv/asset-pool'
 import type {} from '@dv/ffmpeg'
 import type { ModelEntry, RenderRequest, TaskOfPrimitive } from '@dv/models'
 import type { GeneratedImage, ImageRequest } from '@dv/image-generate'
 import type { AudioRequest, GeneratedAudio } from '@dv/audio-generate'
 import { OpenRouterApi } from './client.ts'
-import type { ImageModel, SpeechModel, VideoModel } from './types.ts'
+import { openReferenceHost, publishedByAuthority, type TunnelProcess } from './reference-host.ts'
+import type { ImageModel, ReferenceMedia, SpeechModel, VideoModel } from './types.ts'
 
 export interface Config {
   baseUrl: string
@@ -27,6 +31,9 @@ export interface Config {
   audioModels: Volatile<Record<string, string>>
   credentialRef: Volatile<string>
   pollIntervalMs: number
+  referenceHosting: 'none' | 'cloudflare-quick-tunnel'
+  cloudflaredPath: string
+  tunnelStartTimeoutMs: number
 }
 export const Config = z.object({
   baseUrl: z.string().default('https://openrouter.ai/api/v1/'),
@@ -35,13 +42,43 @@ export const Config = z.object({
   audioModels: z.dict(z.string().required()).default({}).volatile(),
   credentialRef: z.string().default('OPENROUTER_API_KEY').volatile(),
   pollIntervalMs: z.natural().min(1).default(5000),
+  referenceHosting: z.union([z.const('none'), z.const('cloudflare-quick-tunnel')]).default('none')
+    .description('How audio and video references reach OpenRouter, which takes them only as public HTTPS links. '
+      + '`none` refuses them; `cloudflare-quick-tunnel` serves each render\'s references through a temporary Cloudflare quick tunnel.'),
+  cloudflaredPath: z.string().default('cloudflared').description('The cloudflared program that `cloudflare-quick-tunnel` runs.'),
+  tunnelStartTimeoutMs: z.natural().min(1).default(60_000)
+    .description('How long a quick tunnel may take to print its address and serve the first reference.'),
 })
 export const name = 'dv-openrouter'
 export const inject = ['dvModels', 'dvAssetPool', 'dvFfmpeg', 'credentials']
 
-function tasks(model: VideoModel): Array<TaskOfPrimitive<'video'>> {
-  return ['t2v', ...model.frames.includes('first_frame') ? ['i2v' as const] : [],
+/**
+ * The video tasks a model serves: `ref2v` when it takes reference media the provider can send, `i2v` and `fl2v` from its
+ * frame images.
+ */
+function tasks(model: VideoModel, references: readonly ReferenceMedia[]): Array<TaskOfPrimitive<'video'>> {
+  return ['t2v', ...references.length > 0 ? ['ref2v' as const] : [],
+    ...model.frames.includes('first_frame') ? ['i2v' as const] : [],
     ...model.frames.includes('first_frame') && model.frames.includes('last_frame') ? ['fl2v' as const] : []]
+}
+
+/** One input of a task as `schema()` describes it: its count and the media types it takes. */
+type TaskInput = { min: number; max?: number; media_types: Record<string, { max?: number }> }
+
+/**
+ * The inputs of one task for `schema()`: none for `t2v`; one or more references of the given media for `ref2v`, with no
+ * count limit because OpenRouter publishes none; frame images for `i2v` and `fl2v`.
+ */
+function taskInputs(task: TaskOfPrimitive<'video'>, references: readonly ReferenceMedia[]): Record<string, TaskInput> {
+  if (task === 't2v') return {}
+  if (task === 'ref2v') return { reference: { min: 1, media_types: Object.fromEntries(references.map(kind => [kind, {}])) } }
+  const frame = { min: 1, max: 1, media_types: { image: { max: 1 } } }
+  return task === 'fl2v' ? { first_frame: frame, last_frame: frame } : { first_frame: frame }
+}
+
+/** The `input_references` part type of each reference medium. */
+const REFERENCE_PART: Record<ReferenceMedia, 'image_url' | 'video_url' | 'audio_url'> = {
+  image: 'image_url', video: 'video_url', audio: 'audio_url',
 }
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
@@ -92,14 +129,32 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   let removers: Array<() => void> = []
   let registered: ModelEntry[] = []
   let registrationError: string | null = null
+  /** The reference media of a model the provider can send: images as `data:` URLs, audio and video only through a host. */
+  const sendable = (selected: VideoModel): ReferenceMedia[] =>
+    config.referenceHosting === 'none' ? selected.references.filter(kind => kind === 'image') : selected.references
   const model = async (id: string, task: TaskOfPrimitive<'video'>): Promise<VideoModel> => {
-    const found = (await client.catalog()).find(row => row.id === id)
-    if (found === undefined || !tasks(found).includes(task)) throw new Error('The selected OpenRouter model no longer supports this task.')
+    const found = (await client.videoCatalog()).find(row => row.id === id)
+    if (found === undefined || !tasks(found, sendable(found)).includes(task)) {
+      throw new Error('The selected OpenRouter model no longer supports this task.')
+    }
     return found
+  }
+  const spawnTunnel = (target: string): TunnelProcess => {
+    const argv = [config.cloudflaredPath, 'tunnel', '--no-autoupdate', '--url', target]
+    const subprocess = ctx.get('subprocess')
+    if (subprocess !== undefined) {
+      const handle = subprocess.spawn({ argv, cwd: tmpdir(), graceMs: 5_000,
+        stdio: { stdin: 'ignore', stdout: { maxBytes: 4_096 }, stderr: 'pipe' } })
+      if (handle.stderr === undefined) { handle.terminate(); throw new Error('cloudflared started without a stderr pipe.') }
+      return { stderr: handle.stderr, done: handle.done, terminate: () => { handle.terminate() } }
+    }
+    const child = spawn(config.cloudflaredPath, argv.slice(1), { stdio: ['ignore', 'ignore', 'pipe'] })
+    return { stderr: child.stderr, done: once(child, 'close'), terminate: () => { child.kill() } }
   }
   const entry = (alias: string, selected: VideoModel, task: TaskOfPrimitive<'video'>): ModelEntry<TaskOfPrimitive<'video'>> => ({
     modality: 'video', provider: 'openrouter', model: alias, task, displayName: selected.name,
     description: `OpenRouter: ${selected.name}, task ${task}. Cloud generation billed by the provider. `
+      + (task === 'ref2v' ? `Takes reference ${sendable(selected).join(', ')} with no first or last frame. ` : '')
       + 'Uses provider-published durations and output choices. Stopping local monitoring does not cancel the paid cloud job.',
     facts: async () => {
       const caps = await model(selected.id, task)
@@ -110,8 +165,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       const caps = await model(selected.id, task)
       return { duration_sec: { min: Math.min(...caps.durations), max: Math.max(...caps.durations), values: caps.durations },
         aspect_ratios: caps.aspectRatios, resolutions: caps.resolutions,
-        inputs: task === 't2v' ? {} : { first_frame: { min: 1, max: 1, media_types: { image: { max: 1 } } },
-          ...task === 'fl2v' ? { last_frame: { min: 1, max: 1, media_types: { image: { max: 1 } } } } : {} },
+        inputs: taskInputs(task, sendable(caps)),
         extra: caps.audio ? { generate_audio: { type: 'boolean', description: 'Generate synchronized audio.' } } : {},
         seed_supported: caps.seed, cancellation: 'monitoring_only' }
     },
@@ -123,9 +177,23 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       }
       if (!caps.aspectRatios.includes(request.aspectRatio ?? '')) problems.push(`Choose an aspect ratio from ${caps.aspectRatios.join(', ')}.`)
       if (!caps.resolutions.includes(request.resolution ?? '')) problems.push(`Choose a resolution from ${caps.resolutions.join(', ')}.`)
-      if (request.references.length > 0) problems.push('This OpenRouter task accepts endpoint images, not general reference media.')
+      if (task !== 'ref2v' && request.references.length > 0) {
+        problems.push('This OpenRouter task accepts endpoint images, not general reference media.'
+          + (sendable(caps).length > 0 ? ' Use task ref2v for reference media.' : ''))
+      }
+      if (task === 'ref2v') {
+        if (request.references.length === 0) problems.push('Its reference input requires at least one asset.')
+        for (const asset of request.references) {
+          const kind = ctx.dvAssetPool.mediaType(asset)
+          if (!sendable(caps).some(accepted => accepted === kind)) {
+            problems.push(`Its reference input accepts only ${sendable(caps).join(', ')}; asset ${asset} is ${kind}.`
+              + (caps.references.some(accepted => accepted === kind) ? ` OpenRouter takes ${kind} references only as public `
+                + 'HTTPS links, and reference hosting is off in the OpenRouter provider settings.' : ''))
+          }
+        }
+      }
       for (const [role, asset, required] of [
-        ['first_frame', request.firstFrame, task !== 't2v'], ['last_frame', request.lastFrame, task === 'fl2v'],
+        ['first_frame', request.firstFrame, task !== 't2v' && task !== 'ref2v'], ['last_frame', request.lastFrame, task === 'fl2v'],
       ] as const) {
         if (required && asset === null) problems.push(`Its ${role} input requires one image.`)
         if (!required && asset !== null) problems.push(`This task takes no ${role} input.`)
@@ -139,18 +207,44 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     },
     render: (request: RenderRequest, signal?: AbortSignal) => (async function* () {
       const caps = await model(selected.id, task)
-      const images = await Promise.all(([
-        ['first_frame', request.firstFrame], ['last_frame', request.lastFrame],
-      ] as const).flatMap(([frame_type, asset]) => asset === null ? [] : [(async () => ({ type: 'image_url', frame_type,
-        image_url: { url: 'data:' + ctx.dvAssetPool.get(asset).mime + ';base64,'
-          + (await readFile(ctx.dvAssetPool.path(asset))).toString('base64') },
-      }))()]))
-      const { video, mime } = await client.generate({ model: selected.id,
-        prompt: replacePromptCitations(request.prompt, citation => citation.label),
-        duration: request.durationSec, aspect_ratio: request.aspectRatio, resolution: request.resolution,
-        ...caps.seed ? { seed: request.seed } : {}, ...request.extra,
-        ...images.length === 0 ? {} : { frame_images: images },
-      }, signal)
+      const dataUrl = async (asset: AssetId): Promise<string> => 'data:' + ctx.dvAssetPool.get(asset).mime + ';base64,'
+        + (await readFile(ctx.dvAssetPool.path(asset))).toString('base64')
+      const kinds = request.references.map((asset) => {
+        const kind = ctx.dvAssetPool.mediaType(asset)
+        const part = sendable(caps).find(accepted => accepted === kind)
+        if (part === undefined) throw new Error(`OpenRouter model ${selected.name} takes no ${kind} reference here.`)
+        return part
+      })
+      // Audio and video go through a temporary public host, which stays open until the job ends, because the provider
+      // may download them after submission.
+      const hosted = request.references.filter((_, index) => kinds[index] !== 'image')
+      const host = hosted.length === 0 ? null : await openReferenceHost(hosted.map(asset => ({ path: ctx.dvAssetPool.path(asset),
+        mime: ctx.dvAssetPool.get(asset).mime, name: ctx.dvAssetPool.get(asset).name })),
+      { spawn: spawnTunnel, startTimeoutMs: config.tunnelStartTimeoutMs, published: publishedByAuthority,
+        fetcher: globalThis.fetch, signal })
+      let result: { video: Buffer; mime: string }
+      try {
+        const references = await Promise.all(request.references.map(async (asset, index) => {
+          const part = REFERENCE_PART[kinds[index] ?? 'image']
+          const url = host === null || kinds[index] === 'image' ? await dataUrl(asset) : host.urls[hosted.indexOf(asset)]
+          return { type: part, [part]: { url } }
+        }))
+        const images = await Promise.all(([
+          ['first_frame', request.firstFrame], ['last_frame', request.lastFrame],
+        ] as const).flatMap(([frame_type, asset]) => asset === null ? [] : [(async () => ({ type: 'image_url', frame_type,
+          image_url: { url: await dataUrl(asset) },
+        }))()]))
+        result = await client.generate({ model: selected.id,
+          prompt: replacePromptCitations(request.prompt, citation => citation.label),
+          duration: request.durationSec, aspect_ratio: request.aspectRatio, resolution: request.resolution,
+          ...caps.seed ? { seed: request.seed } : {}, ...request.extra,
+          ...images.length === 0 ? {} : { frame_images: images },
+          ...references.length === 0 ? {} : { input_references: references },
+        }, signal)
+      } finally {
+        await host?.close()
+      }
+      const { video, mime } = result
       const png = await ctx.dvFfmpeg.lastFrame(video)
       signal?.throwIfAborted()
       yield { kind: 'last_frame', png } as const
@@ -296,21 +390,21 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     if (current === stamp) return
     const version = ++revision
     try {
-      const configured = Object.entries(config.models.get())
+      const configuredVideos = Object.entries(config.models.get())
       const configuredImages = Object.entries(config.imageModels.get())
       const configuredSpeech = Object.entries(config.audioModels.get())
-      for (const [alias] of [...configured, ...configuredImages, ...configuredSpeech]) {
+      for (const [alias] of [...configuredVideos, ...configuredImages, ...configuredSpeech]) {
         if (!ALIAS.test(alias)) throw new Error('Choose a model alias using lowercase letters, numbers, and hyphens.')
       }
-      const [catalog, images, speech] = await Promise.all([
-        configured.length === 0 ? [] : client.catalog(lifetime.signal),
+      const [videos, images, speech] = await Promise.all([
+        configuredVideos.length === 0 ? [] : client.videoCatalog(lifetime.signal),
         configuredImages.length === 0 ? [] : client.imageCatalog(lifetime.signal),
         configuredSpeech.length === 0 ? [] : client.speechCatalog(lifetime.signal),
       ])
-      const next: ModelEntry[] = [...configured.flatMap(([alias, id]) => {
-        const caps = catalog.find(row => row.id === id)
+      const next: ModelEntry[] = [...configuredVideos.flatMap(([alias, id]) => {
+        const caps = videos.find(row => row.id === id)
         if (caps === undefined) throw new Error(`OpenRouter video model ${id} is unavailable or lacks supported output choices.`)
-        return tasks(caps).map(task => entry(alias, caps, task))
+        return tasks(caps, sendable(caps)).map(task => entry(alias, caps, task))
       }), ...configuredImages.map(([alias, id]) => {
         const caps = images.find(row => row.id === id)
         if (caps === undefined) throw new Error(`OpenRouter image model ${id} is unavailable or offers no raster output.`)
@@ -355,7 +449,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     path: '/api/dv/openrouter/catalog', methods: ['GET'], requestBody: 'buffered',
     fetch: async (request) => {
       try {
-        const [data, images, speech] = await Promise.all([client.catalog(request.signal), client.imageCatalog(request.signal),
+        const [data, images, speech] = await Promise.all([client.videoCatalog(request.signal), client.imageCatalog(request.signal),
           client.speechCatalog(request.signal)])
         await sync()
         return Response.json({ data, images, speech, error: registrationError })
