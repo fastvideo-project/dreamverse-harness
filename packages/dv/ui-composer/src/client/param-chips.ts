@@ -3,7 +3,7 @@
  * chip, other than the prompt and the four params of the model key, which the editor and the model chip edit: a menu
  * for a param with choices, a checkbox for a boolean, and a text field otherwise, such as the seed or the model's own
  * params in `extra` as JSON. A registered bar's chip replaces the chip of its key, and adds the chip of a param that the
- * operation does not declare.
+ * operation does not declare, and hides the declared chips that it names for the call.
  *
  * @module @dv/ui-composer/param-chips
  */
@@ -41,11 +41,14 @@ function declaredChip(field: FormField): ParamChip {
  * @param operation - the call's operation declaration.
  * @param params - the call's params.
  * @param own - the chips that the operation's registered bar gives under the selected model.
- * @returns one chip per declared param in declaration order, each replaced by the bar's chip of its key, then the bar's
- *   chips of undeclared params.
+ * @param hidden - the declared params whose chips the operation's registered bar hides for the call.
+ * @returns one chip per declared param in declaration order other than the hidden ones, each replaced by the bar's chip
+ *   of its key, then the bar's chips of undeclared params.
  */
-export function paramChips(operation: WireOperation, params: Readonly<Record<string, unknown>>, own: readonly ParamChip[]): ParamChip[] {
-  const declared = fieldsOf(operation.params, { ...params }).filter(field => !NOT_CHIPS.has(field.key))
+export function paramChips(
+  operation: WireOperation, params: Readonly<Record<string, unknown>>, own: readonly ParamChip[], hidden: readonly string[],
+): ParamChip[] {
+  const declared = fieldsOf(operation.params, { ...params }).filter(field => !NOT_CHIPS.has(field.key) && !hidden.includes(field.key))
   const chips = declared.map(field => own.find(chip => chip.key === field.key) ?? declaredChip(field))
   return [...chips, ...own.filter(chip => !declared.some(field => field.key === chip.key))]
 }
