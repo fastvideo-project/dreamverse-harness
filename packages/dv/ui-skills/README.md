@@ -11,6 +11,8 @@ English | [中文](README.zh.md)
 
 Use this package to show creators the skills of DreamVerse, the written procedures the agent follows. The package adds 技能 / Skills to the left navigator below 首页 / Home; the page lists every skill a creator can start with `/name`, one card each, and the 技能 / Skills tab of 探索 / Explore on the entry page shows the same cards. 使用 / Use closes the page and puts `/name` into the chat composer. Skills that the agent uses only for itself (such as `fasth3-text-prompting`) declare that users cannot invoke them, so the page does not list them.
 
+The composer’s Skills button opens the library; the sidebar Skills entry remains available. The Skills page and Explore shelf open on **My Skills**, with a separate **Available skills** list and search by name or description. Upload a Markdown file with YAML `name` and `description` frontmatter and nonempty instructions, or a ZIP containing exactly one `SKILL.md` and its resources in the same folder. Uploads are saved on the server under `$DSH_HOME/dreamverse-skills` (default `~/.dsh/dreamverse-skills`), survive restarts, and are available before any chat exists. Use prefills `/name` as before. Names already registered by the host or saved in this library are refused without replacing the existing skill. This library belongs to the current Harness installation; it is not a separate account or browser-local store. The file picker button and empty-selection text follow the page language; the selected filename is displayed unchanged.
+
 ## Table of Contents
 
 - [Use this package](#use-this-package)
@@ -86,4 +88,4 @@ None; the page sends nothing to a model.
 <a id="known-limitations-and-deferred-work"></a>
 
 - **English descriptions** — the cards show each skill's `description` as its file writes it; skill files carry one description, which the model also reads, so the page has no Chinese text for them.
-- **No list before a chat session** — the `skills` Remote is addressed by a session; before any session exists the page shows the empty note.
+- **Built-in list requires a session** — Available skills uses the session-addressed Remote; My Skills and uploads do not require one. Bundled resources are stored unchanged; uploading a script does not add tools or execute it.

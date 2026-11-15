@@ -28,6 +28,8 @@ kind: "package-reference"
 
 这些 Fetch 路由列出、新建、重命名、删除和汇总项目，把项目的当前状态读成 JSON，列出操作声明，读取任务标签，以人的身份运行一个操作，把文件导入素材库，撤销和重做，接受一条过期记录，以及列出历史。事件流用同一个 Connection cookie 放行浏览器。
 
+用户技能通过认证的 `GET /api/dv/skills` 读取已保存列表，通过 `POST /api/dv/skills/upload?filename=...` 上传 Markdown 或 ZIP 原始请求体。技能库目录为 `$DSH_HOME/dreamverse-skills`，默认 `~/.dsh/dreamverse-skills`。安装前校验 UTF-8 指令、元数据、归档路径和解压限制，保留附带文件，并原子发布完整目录。重名返回 `409 skill_exists`；无效上传返回 `400 invalid_skill`，不影响已有技能。配置 `skillUploadBytes`、`skillExtractedBytes`、`skillArchiveFiles` 分别默认为 8388608、33554432、256。DreamVerse 预设会扫描该目录；使用其他预设时需将它加入文件系统技能提供方的扫描目录。
+
 ```yaml
 - id: dv-api
   name: '@dv/api'

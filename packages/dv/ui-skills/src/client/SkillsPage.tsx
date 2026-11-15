@@ -6,7 +6,8 @@
  * @module @dv/ui-skills/SkillsPage
  */
 import type { ReactNode } from 'react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { UserSkillEntry } from '@dv/ui-kit/api.ts'
 import type { SkillEntry } from '@deepseek-ai/dsh-api-remotes/client'
 import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import { useText } from '@dv/ui-kit/locale.ts'
@@ -16,6 +17,10 @@ import css from './SkillsPage.module.css'
 export interface SkillsInjected {
   /** Read the skills a creator can start with `/name`; an empty list before any chat session exists. */
   list: () => Promise<readonly SkillEntry[]>
+  /** List persistent user uploads, independently of the current chat. */
+  listMine?: () => Promise<readonly UserSkillEntry[]>
+  /** Validate and save a Markdown file or ZIP bundle on the server. */
+  upload?: (file: File) => Promise<UserSkillEntry>
   /** Close the page and put `/name` into the chat composer. */
   use: (name: string) => void
 }
@@ -39,6 +44,14 @@ export function SkillsPanelIcon(): ReactNode {
   )
 }
 
+/** @param props - opens the persistent skill library from the chat composer.
+ * @returns the composer's Skills shortcut.
+ */
+export function SkillsLauncher({ open }: { open: () => void }): ReactNode {
+  const t = useText()
+  return <button type="button" className={css.launcher} onClick={open}><SkillsPanelIcon />{t('技能', 'Skills')}</button>
+}
+
 /**
  * The Skills page: a heading and an introduction, then the skill list.
  * @param props - the injected list read and use action.
@@ -57,7 +70,7 @@ export function SkillsPage(props: InjectFace<SkillsInjected>): ReactNode {
           )}
         </p>
       </header>
-      <SkillList list={props.list} use={props.use} />
+      <SkillList {...props} />
     </section>
   )
 }
@@ -72,7 +85,7 @@ export function SkillsShelf(props: InjectFace<SkillsInjected>): ReactNode {
   return (
     <div className={css.shelf} data-dv-skills-shelf="">
       <p className={css.intro}>{t('点「使用」把 /技能名 放进对话框，补充需求后发送。', 'Choose “Use” to put /name in the chat box, then add what you want and send.')}</p>
-      <SkillList list={props.list} use={props.use} />
+      <SkillList {...props} />
     </div>
   )
 }
@@ -83,19 +96,80 @@ export function SkillsShelf(props: InjectFace<SkillsInjected>): ReactNode {
  * @returns the list element.
  */
 function SkillList(props: SkillsInjected): ReactNode {
-  const { list, use } = props
+  const { list, listMine, upload, use } = props
   const t = useText()
+  const [mine, setMine] = useState(listMine !== undefined)
+  const [query, setQuery] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+  const [saved, setSaved] = useState('')
+  const [filename, setFilename] = useState('')
+  const fileInput = useRef<HTMLInputElement>(null)
+  const generation = useRef(0)
   const [state, setState] = useState<ListState>({ phase: 'loading' })
   const load = useCallback(() => {
     setState({ phase: 'loading' })
-    list().then(
-      (skills) => { setState({ phase: 'ready', skills: [...skills].sort((a, b) => a.name.localeCompare(b.name)) }) },
-      (error: unknown) => { setState({ phase: 'failed', message: error instanceof Error ? error.message : String(error) }) },
+    const current = ++generation.current
+    const read = mine && listMine !== undefined ? listMine : list
+    read().then(
+      (skills) => { if (current === generation.current) setState({ phase: 'ready', skills: [...skills].sort((a, b) => a.name.localeCompare(b.name)) }) },
+      (error: unknown) => { if (current === generation.current) setState({ phase: 'failed', message: error instanceof Error ? error.message : String(error) }) },
     )
-  }, [list])
-  useEffect(load, [load])
+  }, [list, listMine, mine])
+  useEffect(() => { load(); return () => { generation.current += 1 } }, [load])
+  const sendFile = async (file: File): Promise<void> => {
+    if (upload === undefined) return
+    setBusy(true)
+    setFilename(file.name)
+    setUploadError('')
+    setSaved('')
+    try {
+      const skill = await upload(file)
+      setSaved(skill.name)
+      setQuery('')
+      load()
+    } catch (error) { setUploadError(error instanceof Error ? error.message : String(error)) }
+    finally {
+      setBusy(false)
+      if (fileInput.current !== null) fileInput.current.value = ''
+    }
+  }
+  const filtered = state.phase === 'ready' ? state.skills.filter(skill =>
+    `${skill.name} ${skill.description}`.toLocaleLowerCase().includes(query.toLocaleLowerCase().trim())) : []
   return (
     <>
+      <div className={css.toolbar}>
+        {listMine !== undefined && <div className={css.tabs} aria-label={t('技能来源', 'Skill library')}>
+          <button type="button" className={css.tab} aria-pressed={mine} disabled={busy}
+            onClick={() => { setMine(true); setQuery('') }}>{t('我的 Skills', 'My Skills')}</button>
+          <button type="button" className={css.tab} aria-pressed={!mine} disabled={busy}
+            onClick={() => { setMine(false); setQuery('') }}>{t('可用技能', 'Available skills')}</button>
+        </div>}
+        <input type="search" className={css.search} value={query} aria-label={t('搜索技能', 'Search skills')}
+          placeholder={t('搜索 Skill', 'Search skills')} onChange={(event) => { setQuery(event.target.value) }} />
+      </div>
+      {mine && upload !== undefined && <div className={css.upload}>
+        <div className={css.uploadLabel}>
+          <span>{t('上传 Skill', 'Upload skill')}</span>
+          <button type="button" className={css.useButton} disabled={busy}
+            onClick={() => { fileInput.current?.click() }}>{t('选择文件', 'Choose file')}</button>
+          <span className={css.filename} title={filename} aria-live="polite">
+            {filename || t('未选择任何文件', 'No file selected')}
+          </span>
+          <input ref={fileInput} type="file" accept=".md,.zip" hidden disabled={busy}
+            aria-label={t('上传 Skill 文件', 'Upload skill file')}
+            onChange={(event) => { const file = event.target.files?.[0]; if (file !== undefined) void sendFile(file) }} />
+        </div>
+        <p className={css.note}>{t('支持 Markdown 或含 SKILL.md 的 ZIP 技能包，保存后可在后续对话中使用。', 'Upload Markdown or a ZIP bundle containing SKILL.md. Saved skills stay available for later chats.')}</p>
+        <details className={css.format}>
+          <summary>{t('查看技能文件格式', 'Skill file format')}</summary>
+          <pre>{t('---\nname: my-video-skill\ndescription: 描述什么时候使用这个技能\n---\n在这里填写智能体应遵循的步骤。', '---\nname: my-video-skill\ndescription: Describe when to use this skill\n---\nWrite the instructions for the agent here.')}</pre>
+          <p className={css.note}>{t('如需附带 references、scripts 或其他素材，请将它们与 SKILL.md 放在同一文件夹内打包。', 'Bundle references, scripts and other resources in the same folder as SKILL.md.')}</p>
+        </details>
+        {busy && <p className={css.note} role="status">{t('正在保存技能…', 'Saving skill…')}</p>}
+        {saved !== '' && <p className={css.note} role="status">{t(`已保存 /${saved}`, `Saved /${saved}`)}</p>}
+        {uploadError !== '' && <p className={css.note} role="alert">{uploadError}</p>}
+      </div>}
       {state.phase === 'loading' && <p className={css.note}>{t('正在读取技能…', 'Loading skills…')}</p>}
       {state.phase === 'failed' && (
         <p className={css.note} role="alert">
@@ -105,11 +179,12 @@ function SkillList(props: SkillsInjected): ReactNode {
         </p>
       )}
       {state.phase === 'ready' && state.skills.length === 0 && (
-        <p className={css.note}>{t('还没有可用的技能。', 'No skills are available yet.')}</p>
+        <p className={css.note}>{mine ? t('还没有保存的技能，上传你的第一个 Skill。', 'Upload your first skill to start your library.') : t('还没有可用的技能。', 'No skills are available yet.')}</p>
       )}
-      {state.phase === 'ready' && state.skills.length > 0 && (
+      {state.phase === 'ready' && state.skills.length > 0 && filtered.length === 0 && <p className={css.note}>{t('没有匹配的技能', 'No matching skills')}</p>}
+      {state.phase === 'ready' && filtered.length > 0 && (
         <ul className={css.grid}>
-          {state.skills.map(skill => (
+          {filtered.map(skill => (
             <li key={skill.name} className={css.card}>
               <span className={css.name} title={skill.name}>{skill.name}</span>
               <span className={css.description} title={skill.description}>{skill.description}</span>

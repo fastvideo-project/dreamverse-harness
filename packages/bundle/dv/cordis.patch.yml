@@ -249,6 +249,8 @@
             config:
               includeDefaultRoots: false
               customSkillDirs:
+                - !!js >-
+                  (() => { const p = process.getBuiltinModule('node:path'); const h = process.getBuiltinModule('node:os').homedir(); const d = process.env.DSH_HOME?.trim() ? process.env.DSH_HOME : p.join(h, '.dsh'); return p.join(p.resolve(d === '~' ? h : d.startsWith('~/') ? p.join(h, d.slice(2)) : d), 'dreamverse-skills'); })()
                 - !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@dv/bundle/package.json')), 'skills')
           - id: tool-skill
             name: '@deepseek-ai/dsh-tool-skill'

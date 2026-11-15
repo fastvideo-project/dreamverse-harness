@@ -8,6 +8,9 @@
  * @module @dv/api
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { join } from 'node:path'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+import type {} from '@deepseek-ai/dsh-skill'
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
@@ -19,6 +22,7 @@ import { answer, ApiHandlers, ApiRequestError, type ApiServices, requireProject 
 import { assetImportRoutes } from './asset-import.ts'
 import { serveEventStream } from './events.ts'
 import { projectAdminRoutes } from './projects-admin.ts'
+import { UserSkillStore, userSkillRoutes } from './user-skills.ts'
 
 export { answer, ApiHandlers, ApiRequestError, messageOf, type ApiServices, type OperationRequest, type WireProject } from './api.ts'
 export { ASSET_IMPORT_ROUTE } from './asset-import.ts'
@@ -40,11 +44,20 @@ declare module '@deepseek-ai/cordis' {
 export interface Config {
   /** Milliseconds between keep-alive comments on the event stream. */
   keepaliveMs: number
+  /** Maximum compressed user skill upload bytes. */
+  skillUploadBytes?: number
+  /** Maximum uncompressed user skill bundle bytes. */
+  skillExtractedBytes?: number
+  /** Maximum entries per uploaded skill archive. */
+  skillArchiveFiles?: number
 }
 
 /** Runtime schema of {@link Config}. */
-export const Config: z<Config> = z.object({
+export const Config: z<Config, Required<Config>> = z.object({
   keepaliveMs: z.number().default(15_000),
+  skillUploadBytes: z.natural().min(1).default(8 * 1024 * 1024),
+  skillExtractedBytes: z.natural().min(1).default(32 * 1024 * 1024),
+  skillArchiveFiles: z.natural().min(1).default(256),
 })
 
 /** The path below the web root where the event stream is served. */
@@ -89,8 +102,11 @@ export default class DvApi extends Service {
   /** The transport-independent route handlers. */
   readonly api: ApiHandlers
 
-  constructor(ctx: Context, private readonly config: Config) {
+  private readonly config: Required<Config>
+
+  constructor(ctx: Context, config: Config) {
     super(ctx, 'dvApi')
+    this.config = Config(config)
     const services: ApiServices = { project: ctx.dvProject, assets: ctx.dvAssetPool }
     this.api = new ApiHandlers(services)
     ctx.inject(['connection'], (connected) => {
@@ -117,6 +133,16 @@ export default class DvApi extends Service {
       return answer(() => run(body))
     }
     return [
+      ...userSkillRoutes(new UserSkillStore(join(resolveDshHome(), 'dreamverse-skills'), {
+        uploadBytes: this.config.skillUploadBytes,
+        extractedBytes: this.config.skillExtractedBytes,
+        files: this.config.skillArchiveFiles,
+      }, async (name) => {
+        const registered = await this.ctx.get('skills')?.list()
+        if (registered?.some(skill => skill.name === name) === true) {
+          throw new ApiRequestError(409, 'A skill already uses this name; choose a different name', 'skill_exists')
+        }
+      })),
       {
         path: ROUTES.projects, methods: ['GET', 'POST'], requestBody: 'buffered',
         fetch: request => request.method === 'GET'

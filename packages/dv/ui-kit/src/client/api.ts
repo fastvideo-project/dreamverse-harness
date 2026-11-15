@@ -147,9 +147,31 @@ function isProjectSummary(value: unknown): value is WireProjectSummary {
     && isStringOrNull(fields['edited_at'])
 }
 
+/** Metadata of a skill saved in the user's persistent library. */
+export interface UserSkillEntry {
+  name: string
+  description: string
+  modelInvocable: boolean
+}
+
 /** Every `/api/dv` call of the browser: projects, project state, operations, task labels, history, undo and redo, and asset imports. */
 export class DvClient {
   constructor(private readonly fetchImpl: typeof fetch = (input, init) => fetch(input, init)) {}
+
+  /** @returns the saved user skill library, including before the first chat exists. */
+  listUserSkills(): Promise<UserSkillEntry[]> {
+    return this.get('/api/dv/skills', {})
+  }
+
+  /** @param file - Markdown instructions or a ZIP bundle with one SKILL.md.
+   * @returns installed metadata after the server commits the bundle.
+   */
+  async uploadUserSkill(file: File): Promise<UserSkillEntry> {
+    const response = await this.fetchImpl(`/api/dv/skills/upload?${new URLSearchParams({ filename: file.name })}`, {
+      method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: file,
+    })
+    return decode<UserSkillEntry>(response)
+  }
 
   /**
    * @param signal - cancels the request.

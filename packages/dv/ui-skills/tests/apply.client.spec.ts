@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { DV_COMPOSE_EVENT, type DvComposeDetail } from '@dv/ui-kit/compose.ts'
 import type { SkillsInjected } from '../src/client/SkillsPage.tsx'
-import { SkillsPage, SkillsPanelIcon, SkillsShelf } from '../src/client/SkillsPage.tsx'
+import { SkillsLauncher, SkillsPage, SkillsPanelIcon, SkillsShelf } from '../src/client/SkillsPage.tsx'
 import { apply, inject, SKILLS_PANEL_ID } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
 
@@ -80,12 +80,13 @@ describe('ui-skills apply', () => {
     expect(registered.map(entry => [entry.name, entry.key ?? entry.id, entry.component])).toEqual([
       ['main', SKILLS_PANEL_ID, SkillsPage],
       ['sidebar.panellist', SKILLS_PANEL_ID, SkillsPanelIcon],
+      ['conversation.input.left', 'dv.skills.library', SkillsLauncher],
       ['dv.explore', 'skills', SkillsShelf],
     ])
     expect(registered[1]?.order).toBe(2)
     expect(registered[1]?.label?.()).toMatch(/^(技能|Skills)$/)
-    expect(registered[2]?.order).toBe(1)
-    expect(registered[2]?.label?.()).toMatch(/^(技能|Skills)$/)
+    expect(registered[3]?.order).toBe(1)
+    expect(registered[3]?.label?.()).toMatch(/^(技能|Skills)$/)
   })
 
   it('lists the skills of the chat session, else of the newest session', async () => {
@@ -121,7 +122,7 @@ describe('ui-skills apply', () => {
     const composed: DvComposeDetail[] = []
     const listen = (event: Event): void => { composed.push((event as CustomEvent<DvComposeDetail>).detail) }
     window.addEventListener(DV_COMPOSE_EVENT, listen)
-    registered[2]?.inject?.().use('storyboard')
+    registered[3]?.inject?.().use('storyboard')
     window.removeEventListener(DV_COMPOSE_EVENT, listen)
     expect(inputs).toEqual(['session s1', 'draft /storyboard ', 'focus'])
     expect(selected).toEqual([])
@@ -131,7 +132,7 @@ describe('ui-skills apply', () => {
   it('writes no draft on 使用 in the 探索 tab while the right panel shows no session or a session without a scope', async () => {
     for (const mounted of [undefined, 'closed']) {
       const { registered, inputs } = await boot(mounted)
-      registered[2]?.inject?.().use('storyboard')
+      registered[3]?.inject?.().use('storyboard')
       expect(inputs).toEqual([])
     }
   })

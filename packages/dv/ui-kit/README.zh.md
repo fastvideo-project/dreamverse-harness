@@ -7,6 +7,8 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
+`DvClient.listUserSkills()` 无需会话即可读取持久保存的用户技能库。`uploadUserSkill(file)` 将 Markdown 文件或 ZIP 技能包作为原始请求体发送到 `/api/dv/skills/upload?filename=...`，返回保存后的元数据；校验失败和重名错误通过现有 API 错误解析器拒绝。
+
 ## 概述
 
 在 DreamVerse 的浏览器插件里使用本包与 `@dv/api` 通信，并读取它发来的状态。`DvClient` 封装每条 `/api/dv` 路由并跟随 `/dv/events`；`fieldsOf` 和 `paramsOf` 把操作的参数 schema 变成表单字段再变回参数；`useViewSession` 让视图的项目、项目的当前状态和操作与宿主同步；`ProjectBar` 是侧栏视图的项目和撤销栏；事件模块拥有各面板之间交换的 `dv:*` 窗口事件和页面全局变量；`registries.ts` 存放 `createRegistry`、`VersionKind` 和 `@` 菜单的描述符，以及 `UiPlugin`。本包是一个库：它不注册任何东西，会被打进每个消费者的 bundle。

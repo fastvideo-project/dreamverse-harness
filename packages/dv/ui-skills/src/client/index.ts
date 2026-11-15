@@ -16,10 +16,11 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { DvClient } from '@dv/ui-kit/api.ts'
 import { dispatchCompose } from '@dv/ui-kit/compose.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
 import type {} from '@dv/ui-shell/contract'
-import { SkillsPage, SkillsPanelIcon, SkillsShelf, type SkillsInjected } from './SkillsPage.tsx'
+import { SkillsLauncher, SkillsPage, SkillsPanelIcon, SkillsShelf, type SkillsInjected } from './SkillsPage.tsx'
 
 export { SkillsPage, SkillsShelf, type SkillsInjected } from './SkillsPage.tsx'
 
@@ -54,8 +55,13 @@ export function apply(ctx: ClientContext): void {
     if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
     return result.value.skills
   }
+  const api = new DvClient()
+  const library = {
+    listMine: () => api.listUserSkills(),
+    upload: (file: File) => api.uploadUserSkill(file),
+  }
   const injected: SkillsInjected = {
-    list,
+    list, ...library,
     use: (name) => {
       // Close the page first: the composer that takes `dv:compose` is the one the center or the right panel shows.
       ctx.get('layout')?.selectPanel(null)
@@ -65,7 +71,7 @@ export function apply(ctx: ClientContext): void {
   // The 探索 tab shows only on the entry page, whose center composer edits the draft of the session in the right
   // panel's seat. `dv:compose` there would open the right panel's 对话 tab, so the tab writes the draft directly.
   const shelfInjected: SkillsInjected = {
-    list,
+    list, ...library,
     use: (name) => {
       const sessionId = ctx.sidebarRight.mounted.getSnapshot()
       if (sessionId === undefined) return
@@ -82,6 +88,10 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.slots.inject('sidebar.panellist', () => ctx.slots.register(
     { name: 'sidebar.panellist', id: SKILLS_PANEL_ID, order: 2, label: () => pickText('技能', 'Skills') }, SkillsPanelIcon,
   )), 'ui-skills: navigator entry')
+  ctx.effect(() => ctx.slots.inject('conversation.input.left', () => ctx.slots.register(
+    { name: 'conversation.input.left', id: 'dv.skills.library',
+      inject: () => ({ open: () => { ctx.get('layout')?.selectPanel(SKILLS_PANEL_ID) } }) }, SkillsLauncher,
+  )), 'ui-skills: composer shortcut')
   // The 探索 tab waits for `@dv/ui-shell` to declare `dv.explore`; MCP (order 0) stays before it.
   ctx.effect(() => ctx.slots.inject('dv.explore', () => ctx.slots.register(
     { name: 'dv.explore', id: 'skills', order: 1, label: () => pickText('技能', 'Skills'), inject: () => shelfInjected }, SkillsShelf,

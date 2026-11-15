@@ -7,6 +7,8 @@ kind: "package-bundle"
 
 [English](README.md) | 中文
 
+DreamVerse 预设还会扫描 `$DSH_HOME/dreamverse-skills`（默认 `~/.dsh/dreamverse-skills`），这是技能页面和 `@dv/api` 管理的持久上传目录。预设保留原有目录隔离，并在内置 video-directing 目录前加入此目录。
+
 ## 概要
 
 用这个 bundle 把 DreamVerse 作为一个 `dsh` profile 运行。它插入模型目录 `@dv/models`、提供方插件 `@dv/fastvideo` 和 `@dv/uniserve`（`fasth3`）、`@dv/sglang-diffusion`（`qwen-image-2.1-turbo`，生成任务 `t2i`）与 `@dv/sglang-omni`（`fish-audio-drama-3`，生成任务 `t2a`）、DreamVerse 各组件及 `@dv/ffmpeg`、故事工作流 `@dv/workflow-story`、对话引用、API 和 `@dv/ui-*` 界面插件；为两处 `skill-filesystem` 行提供 `video-directing` skill；把 `deepseek-local` 路由到集群 SGLang 服务器；并从环境变量选择智能体模型。`scripts/video-harness/setup-profile.sh` 把它叠在 `dsh-base` 加 `dsh-web-app` 上成为 profile `video-harness`，叠在 `dsh-base` 加 `dsh-headless` 上成为 `video-harness-headless`；`scripts/video-harness/launch.sh web|headless` 从源码运行二者之一。

@@ -26,7 +26,7 @@
   margin: 0 0 8px;
   font-size: 20px;
   line-height: 28px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .intro,
@@ -49,7 +49,7 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
   gap: 16px;
   margin: 0;
   padding: 0;
@@ -140,3 +140,70 @@
     transition: none;
   }
 }
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.tabs { display: flex; gap: 4px; }
+.tab {
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--dv-radius-md);
+  background: transparent;
+  color: var(--dv-text-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.tab[aria-pressed='true'] { background: var(--dv-accent-soft); color: var(--dv-accent-text); }
+.search {
+  flex: 1;
+  min-width: 160px;
+  padding: 8px 12px;
+  border: 1px solid var(--dv-line);
+  border-radius: var(--dv-radius-md);
+  background: var(--dv-surface-2);
+  color: var(--dv-text);
+  font: inherit;
+  font-size: 13px;
+}
+.upload {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 16px;
+  border: 1px dashed var(--dv-line);
+  border-radius: var(--dv-radius-md);
+  background: var(--dv-surface-2);
+}
+.uploadLabel { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 13px; }
+.filename { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dv-text-2); }
+.uploadLabel button:disabled { cursor: wait; opacity: 0.6; }
+.format { color: var(--dv-text-2); font-size: 13px; }
+.format summary { cursor: pointer; }
+.format pre { overflow-x: auto; padding: 12px; background: var(--dv-surface-3); border-radius: var(--dv-radius-md); }
+.tab:focus-visible,
+.search:focus-visible,
+.uploadLabel input:focus-visible { outline: 2px solid var(--dv-accent); outline-offset: 2px; }
+.tab:disabled { cursor: wait; }
+
+.launcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--dv-radius-md);
+  background: transparent;
+  color: var(--dv-text-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.launcher:hover { background: var(--dv-surface-3); }
+.launcher:focus-visible { outline: 2px solid var(--dv-accent); outline-offset: 2px; }
