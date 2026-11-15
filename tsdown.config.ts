@@ -34,6 +34,8 @@ export default defineConfig(({ env }) => {
         'packages/dv/ui-generation/**',
         'packages/video-harness/stream/**',
         'packages/bundle/dv/**',
+        // The Blender bundle ships a patch and no TypeScript.
+        'packages/dv/blender/**',
         // The DreamVerse browser stories are tests only and have no build output.
         'packages/dv/e2e/**',
       ],

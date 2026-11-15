@@ -1,0 +1,263 @@
+/**
+ * The page's link to the Blender bridge: the status and token routes, the add-on download, the `blender.viewport` run
+ * that puts the viewport on the open project's canvas, and the page's one viewport socket. The viewport arrives over
+ * the WebSocket route `/dv/blender/view`, one socket per page however many views are mounted, because a long-lived HTTP
+ * stream would hold one of the browser's few HTTP/1.1 connections to the harness and stall the page's other requests.
+ * The same socket carries the view changes a view sends to Blender.
+ *
+ * @module @fastvideo/dreamverse-ui-blender/viewer
+ */
+import { DvClient } from '@dv/ui-kit/api.ts'
+import { getCurrentProject } from '@dv/ui-kit/current-project.ts'
+
+/** What the add-on reports about the connected Blender. */
+export interface BlenderState {
+  blender_version: string
+  addon_version: string
+  file: string
+  allow_code: boolean
+}
+
+/** The answer of `GET /api/dv/blender/status`. */
+export interface BlenderStatus {
+  linked: boolean
+  state: BlenderState | null
+  token: string
+  link_path: string
+  viewers: number
+}
+
+/** One viewport frame: its JPEG or PNG and its pixel size. */
+export interface ViewFrame {
+  image: Blob
+  width: number
+  height: number
+  /** How the stream performs, as of this frame; absent on frames that a test builds. */
+  stats?: FrameStats
+}
+
+/** How the viewport stream performs, measured by the page and reported by the add-on. */
+export interface FrameStats {
+  /** Frames received in the last second. */
+  fps: number
+  /** Milliseconds from the first orbit, pan or zoom sent after the previous frame to this frame; null without one. */
+  responseMs: number | null
+  /** Milliseconds the add-on took to draw and read the view, and to encode the image; null before add-on 0.3.0. */
+  drawMs: number | null
+  encodeMs: number | null
+}
+
+/** The standard views a view can switch Blender's viewport to; `camera` looks through the scene camera. */
+export type ViewPreset = 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'camera'
+
+/**
+ * A change to the view of Blender's main 3D viewport, as the bridge accepts it: `orbit` and `pan` take the drag as
+ * fractions of the shown picture's width (`dx`, rightward) and height (`dy`, downward), `zoom` takes wheel steps
+ * (positive away from the scene), and each number stays within ±{@link VIEW_COMMAND_LIMIT}.
+ */
+export type ViewCommand =
+  | { action: 'orbit' | 'pan'; dx: number; dy: number }
+  | { action: 'zoom'; steps: number }
+  | { action: 'preset'; preset: ViewPreset }
+  | { action: 'frame'; target: 'all' | 'selected' }
+
+/** The bound of each number of a {@link ViewCommand}; the bridge drops a command beyond it. */
+export const VIEW_COMMAND_LIMIT = 10
+
+/** The operation that puts the viewport on the canvas or takes it off. */
+export const VIEWPORT_OPERATION = 'blender.viewport'
+
+/** The page's link to the bridge; {@link httpBlenderSource} in the page. */
+export interface BlenderSource {
+  status(): Promise<BlenderStatus>
+  regenerate(): Promise<BlenderStatus>
+  /** @returns the close of the stream. */
+  watch(listener: ViewListener): () => void
+  /** Send one view change to Blender; it is dropped while the socket is not open. */
+  navigate(command: ViewCommand): void
+  /** Put the viewport on the open project's canvas; rejects with the refusal, or when no project is open. */
+  place(): Promise<void>
+  /** The add-on zip; a failed request rejects with its HTTP status. */
+  addon(): Promise<Blob>
+  /** The origin Blender must connect to. */
+  origin: string
+}
+
+/** What a watcher of the viewport receives. */
+export interface ViewListener {
+  status(linked: boolean, state: BlenderState | null): void
+  frame(frame: ViewFrame): void
+}
+
+const STATUS_ROUTE = '/api/dv/blender/status'
+const TOKEN_ROUTE = '/api/dv/blender/token'
+const VIEW_PATH = '/dv/blender/view'
+const ADDON_ROUTE = '/api/dv/blender/addon.zip'
+
+async function json(response: Response): Promise<BlenderStatus> {
+  if (!response.ok) throw new Error(`HTTP ${String(response.status)}`)
+  return await response.json() as BlenderStatus
+}
+
+/** A text message of the viewport socket. */
+interface ViewMessage {
+  type: string
+  linked?: boolean
+  state?: BlenderState | null
+  width?: number
+  height?: number
+  mime?: string
+  timing?: { draw_ms?: number; encode_ms?: number }
+}
+
+/** The span over which {@link FrameStats.fps} counts frames, in milliseconds. */
+const FPS_WINDOW_MS = 1000
+
+/**
+ * The page's one viewport socket, shared by every mounted view: opened for the first listener, reopened two seconds
+ * after it drops while a listener remains, and closed after the last one leaves. A frame message names the size and
+ * format of the binary message that follows it. The bridge sends the link status only when the socket opens and when
+ * it changes, and Blender sends a frame only when its view redraws, so a listener that joins an open socket receives
+ * the last status and the newest frame at once.
+ */
+export class SharedViewer {
+  private readonly listeners = new Set<ViewListener>()
+  private socket: WebSocket | null = null
+  private retry: ReturnType<typeof setTimeout> | null = null
+  private pending: { width: number; height: number; mime: string; drawMs: number | null; encodeMs: number | null } | null = null
+  /** When the first move since the last frame was sent, and when the frames of the last second arrived. */
+  private moveSentAt: number | null = null
+  private arrivals: number[] = []
+  private status: { linked: boolean; state: BlenderState | null } | null = null
+  private latest: ViewFrame | null = null
+
+  /**
+   * Add a listener, opening the socket for the first one; a listener that joins an open socket receives the last status
+   * and the newest frame at once.
+   * @param listener - the listener.
+   * @returns the removal of the listener, which closes the socket after the last one leaves.
+   */
+  watch(listener: ViewListener): () => void {
+    this.listeners.add(listener)
+    if (this.socket === null && this.retry === null) this.open()
+    if (this.status !== null) listener.status(this.status.linked, this.status.state)
+    if (this.latest !== null) listener.frame(this.latest)
+    return () => {
+      this.listeners.delete(listener)
+      if (this.listeners.size > 0) return
+      if (this.retry !== null) clearTimeout(this.retry)
+      this.retry = null
+      const socket = this.socket
+      this.socket = null
+      this.pending = null
+      this.status = null
+      this.latest = null
+      this.arrivals = []
+      this.moveSentAt = null
+      socket?.close()
+    }
+  }
+
+  /**
+   * Send one view change to Blender; it is dropped while the socket is not open.
+   * @param command - the view change.
+   */
+  send(command: ViewCommand): void {
+    if (this.socket?.readyState !== WebSocket.OPEN) return
+    this.socket.send(JSON.stringify({ type: 'view', ...command }))
+    const move = command.action === 'orbit' || command.action === 'pan' || command.action === 'zoom'
+    if (move && this.moveSentAt === null) this.moveSentAt = performance.now()
+  }
+
+  /**
+   * Open the viewport socket: each `frame` header names the binary message after it, and a close clears the status
+   * and the frame and reopens the socket after 2 s while listeners remain.
+   */
+  private open(): void {
+    const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    const socket = new WebSocket(`${scheme}://${window.location.host}${VIEW_PATH}`)
+    socket.binaryType = 'blob'
+    this.socket = socket
+    socket.addEventListener('message', (event: MessageEvent<string | Blob>) => {
+      if (typeof event.data !== 'string') {
+        const meta = this.pending
+        this.pending = null
+        if (meta === null) return
+        const now = performance.now()
+        this.arrivals = [...this.arrivals.filter(at => now - at < FPS_WINDOW_MS), now]
+        const stats: FrameStats = {
+          fps: this.arrivals.length, responseMs: this.moveSentAt === null ? null : Math.round(now - this.moveSentAt),
+          drawMs: meta.drawMs, encodeMs: meta.encodeMs,
+        }
+        this.moveSentAt = null
+        const frame = { image: new Blob([event.data], { type: meta.mime }), width: meta.width, height: meta.height, stats }
+        this.latest = frame
+        for (const listener of this.listeners) listener.frame(frame)
+        return
+      }
+      const message = JSON.parse(event.data) as ViewMessage
+      if (message.type === 'status') {
+        const status = { linked: message.linked === true, state: message.state ?? null }
+        this.status = status
+        if (!status.linked) this.latest = null
+        for (const listener of this.listeners) listener.status(status.linked, status.state)
+      } else if (message.type === 'frame') {
+        this.pending = {
+          width: message.width ?? 0, height: message.height ?? 0, mime: message.mime ?? 'image/jpeg',
+          drawMs: message.timing?.draw_ms ?? null, encodeMs: message.timing?.encode_ms ?? null,
+        }
+      }
+    })
+    socket.addEventListener('close', () => {
+      if (this.socket !== socket) return
+      this.socket = null
+      this.pending = null
+      this.status = null
+      this.latest = null
+      this.arrivals = []
+      this.moveSentAt = null
+      for (const listener of this.listeners) listener.status(false, null)
+      if (this.listeners.size > 0) {
+        // The last listener's removal clears this timer, so listeners remain when it fires.
+        this.retry = setTimeout(() => {
+          this.retry = null
+          this.open()
+        }, 2000)
+      }
+    })
+  }
+}
+
+const viewer = new SharedViewer()
+const client = new DvClient()
+
+/** The bridge over same-origin `fetch` with the session cookie, and the page's shared viewport socket. */
+export const httpBlenderSource: BlenderSource = {
+  status: async () => json(await fetch(STATUS_ROUTE)),
+  regenerate: async () => json(await fetch(TOKEN_ROUTE, { method: 'POST' })),
+  watch: listener => viewer.watch(listener),
+  navigate: (command) => { viewer.send(command) },
+  place: async () => {
+    const project = getCurrentProject()
+    if (project === null) throw new Error('no project is open')
+    await client.runOperation({ project, operation: VIEWPORT_OPERATION, params: {}, surface: 'canvas' })
+  },
+  addon: async () => {
+    const response = await fetch(ADDON_ROUTE)
+    if (!response.ok) throw new Error(`HTTP ${String(response.status)}`)
+    return await response.blob()
+  },
+  get origin() {
+    return window.location.origin
+  },
+}
+
+/**
+ * Whether an add-on version moves the view on request: 0.2.0 and later.
+ * @param version - the add-on's reported version, such as `0.2.0`.
+ * @returns whether it accepts view changes.
+ */
+export function addonNavigates(version: string): boolean {
+  const [major = 0, minor = 0] = version.split('.').map(part => Number.parseInt(part, 10) || 0)
+  return major > 0 || minor >= 2
+}

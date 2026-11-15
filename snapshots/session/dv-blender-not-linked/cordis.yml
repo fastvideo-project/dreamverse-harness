@@ -1,0 +1,20 @@
+# Blender-bridge composition for the dv-blender-not-linked snapshot scenario.
+# The bridge registers dv_blender_scene, dv_blender_run and dv_blender_look; no
+# Blender connects to the run, so each call fails with the bridge's fixed
+# not-connected error. Thinking is off because the SGLang Messages endpoint
+# that recorded this scenario requires thinking.budget_tokens, which
+# dsh-llm-deepseek does not send.
+- id: llm-deepseek
+  name: '@deepseek-ai/dsh-llm-deepseek'
+  config:
+    thinking: disabled
+    reasoningEffort: 'off'
+    models:
+      - id: deepseek-v4-flash
+      - id: deepseek-v4-pro
+      - id: deepseek-v4-flash-vision-exp
+        inputModalities: [text, image]
+
+- insert:
+    - id: dv-blender
+      name: '@fastvideo/dreamverse-blender-bridge'
