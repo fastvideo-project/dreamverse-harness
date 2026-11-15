@@ -425,7 +425,7 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(tool?.description).toContain('Uses the GPU.')
     expect(JSON.stringify(tool?.parameters)).toContain('continue_from')
     // The catalog serves the labels of both tasks while the service lives.
-    const labels = { t2v: { zh: '文字生成', en: 'From text' }, ref2v: { zh: '参考图生成', en: 'From references' }, fl2v: { zh: '首尾帧生成', en: 'From first and last frames' }, i2v: { zh: '首帧生成', en: 'From first frame' }, l2v: { zh: '尾帧生成', en: 'From last frame' } }
+    const labels = { t2v: { zh: '文字生成', en: 'From text' }, ref2v: { zh: '参考图生成', en: 'From references' }, fl2v: { zh: '首尾帧生成', en: 'From first and last frames' }, i2v: { zh: '首帧生成', en: 'From first frame' }, l2v: { zh: '尾帧生成', en: 'From last frame' }, v2v: { zh: '视频重生成（如 2K 超分）', en: 'Regenerate a video (e.g. 2K)' } }
     expect(fixture.ctx.dvModels.taskLabels()).toEqual(labels)
     const entry = [...fixture.ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-shot-render.mjs'))
     await entry?.fiber?.dispose()
