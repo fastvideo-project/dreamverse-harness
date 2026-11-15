@@ -3,7 +3,7 @@
  * caption above a frame) around each type's `dv.canvas.card` body; a click selects a node, and a double click opens its
  * editor panel, which grows out of the node and shrinks back into it (`@dv/ui-kit/zoom.ts`). Every node sits at the
  * position of the canvas's node list, with its type's default size where the stored size is null. The end of a drag or
- * of a resize from a corner handle of the selected node writes one `canvas.node_position` record, so undo reverts it;
+ * of a resize from a resize handle of the selected node writes one `canvas.node_position` record, so undo reverts it;
  * the canvas draws the new box at once and drops it again when the write is refused. A node's right-click menu, the
  * trash button of its editor, and Delete or Backspace on the selected node remove it from the canvas with one
  * `canvas.node_remove` record after the user confirms. F2 on the selected node, its menu's Rename item, or a click on
@@ -232,11 +232,11 @@ function inTextField(target: EventTarget): boolean {
   return target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
 }
 
-/** An in-progress pointer gesture. A resize drags one corner of the selected node ({@link resizedBox}). */
+/** An in-progress pointer gesture. A resize drags one corner or edge of the selected node ({@link resizedBox}). */
 type Gesture =
   | { kind: 'pan'; startX: number; startY: number; origin: CanvasViewport; moved: boolean }
   | { kind: 'node'; id: string; startX: number; startY: number; origin: NodePosition; at: NodePosition; moved: boolean }
-  | { kind: 'resize'; node: CanvasNode; corner: ResizeHandle; startX: number; startY: number; origin: NodePosition; at: NodePosition; moved: boolean }
+  | { kind: 'resize'; node: CanvasNode; handle: ResizeHandle; startX: number; startY: number; origin: NodePosition; at: NodePosition; moved: boolean }
 
 /**
  * @param boxes - the boxes of the gestures and writes in flight, by node ID.
@@ -714,10 +714,10 @@ export function CanvasView(
     capture(event)
   }
   // The handle stops the press before the card's `onNodeDown`, so a resize starts no move and opens no editor.
-  const onResizeDown = (node: CanvasNode) => (corner: ResizeHandle, event: ReactPointerEvent<HTMLElement>): void => {
+  const onResizeDown = (node: CanvasNode) => (handle: ResizeHandle, event: ReactPointerEvent<HTMLElement>): void => {
     if (event.button !== 0) return
     const origin = boxOf(node)
-    gesture.current = { kind: 'resize', node, corner, startX: event.clientX, startY: event.clientY, origin, at: origin, moved: false }
+    gesture.current = { kind: 'resize', node, handle, startX: event.clientX, startY: event.clientY, origin, at: origin, moved: false }
     capture(event)
   }
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -735,7 +735,7 @@ export function CanvasView(
     }
     const zoom = viewportRef.current.zoom
     if (current.kind === 'resize') {
-      const at = resizedBox(current.node.sizing, current.origin, current.corner, dx / zoom, dy / zoom)
+      const at = resizedBox(current.node.sizing, current.origin, current.handle, dx / zoom, dy / zoom)
       current.at = at
       setPositions(all => ({ ...all, [current.node.id]: at }))
       return

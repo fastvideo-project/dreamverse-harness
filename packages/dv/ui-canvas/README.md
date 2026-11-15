@@ -90,7 +90,7 @@ The canvas draws every node in one chrome: a caption above a frame. The caption 
 | [`src/client/CanvasCenter.tsx`](src/client/CanvasCenter.tsx) | The center view: a `dv.canvas` occurrence that opens the node of the request's record |
 | [`src/client/CanvasView.tsx`](src/client/CanvasView.tsx) | The surface: pan, zoom, drag, drop, the `canvas.node_position`, `canvas.node_remove` and `canvas.node_rename` writes, the node menu's items, F2, focus, rerun, the node hosts |
 | [`src/client/graph.ts`](src/client/graph.ts) | Nodes from the node list, edges, and the entry of each version |
-| [`src/client/resize.ts`](src/client/resize.ts) | `resizedBox`: a node's box after a corner drag, within its type's sizing |
+| [`src/client/resize.ts`](src/client/resize.ts) | `resizedBox`: a node's box after a drag of a corner or an edge, within its type's sizing |
 | [`src/client/NodeCard.tsx`](src/client/NodeCard.tsx), [`src/client/NodeEditor.tsx`](src/client/NodeEditor.tsx) | The node chrome with its version frames, caption name field and the node menu, and the floating editor shell with its title name field, version strip and trash button |
 | [`src/client/AddMenu.tsx`](src/client/AddMenu.tsx) | The add menu above the toolbar's add button, with the items of the registered `AddMenuSection`s |
 | [`src/client/AssetPicker.tsx`](src/client/AssetPicker.tsx) | The asset picker, which renders the version kinds' items and the `dv.canvas.picker` entry |

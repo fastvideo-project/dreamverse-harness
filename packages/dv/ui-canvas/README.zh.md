@@ -90,7 +90,7 @@ Host 半边还注册 agent 的工具 `dv_canvas_read`，它拒绝由另一个 ag
 | [`src/client/CanvasCenter.tsx`](src/client/CanvasCenter.tsx) | 中间区域视图：打开请求记录节点的 `dv.canvas` 实例 |
 | [`src/client/CanvasView.tsx`](src/client/CanvasView.tsx) | 画布：平移、缩放、拖动、拖放、`canvas.node_position`、`canvas.node_remove` 和 `canvas.node_rename` 写入、节点菜单的条目、F2、焦点、重跑、节点宿主 |
 | [`src/client/graph.ts`](src/client/graph.ts) | 来自节点列表的节点、边，以及每个版本的条目 |
-| [`src/client/resize.ts`](src/client/resize.ts) | `resizedBox`：角拖动后节点的范围，不超出其类型的尺寸声明 |
+| [`src/client/resize.ts`](src/client/resize.ts) | `resizedBox`：拖动角或边后节点的范围，不超出其类型的尺寸声明 |
 | [`src/client/NodeCard.tsx`](src/client/NodeCard.tsx)、[`src/client/NodeEditor.tsx`](src/client/NodeEditor.tsx) | 带版本画框和标题行名称输入框的节点外框和节点菜单，以及带标题名称输入框、版本条和垃圾桶按钮的浮动编辑器外壳 |
 | [`src/client/AddMenu.tsx`](src/client/AddMenu.tsx) | 工具栏添加按钮上方的添加菜单，列出已注册 `AddMenuSection` 的条目 |
 | [`src/client/AssetPicker.tsx`](src/client/AssetPicker.tsx) | 素材选择窗口，渲染版本种类的条目和 `dv.canvas.picker` 条目 |

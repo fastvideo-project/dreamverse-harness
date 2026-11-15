@@ -109,7 +109,7 @@ export interface NodeCardProps {
   t: CanvasTranslate
   onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
   /** A press on one of the selected node's resize handles, which the card keeps from `onPointerDown`. */
-  onResizeDown: (corner: ResizeHandle, event: ReactPointerEvent<HTMLElement>) => void
+  onResizeDown: (handle: ResizeHandle, event: ReactPointerEvent<HTMLElement>) => void
   /** The body: the `dv.canvas.card` entry of the node's type. */
   body: ReactNode
   /** For a node whose newest version failed, the actions that show on it; empty when the canvas is read-only. */
@@ -124,7 +124,7 @@ export interface NodeCardProps {
 }
 
 /**
- * The node: the caption above the frame, and on the selected node a handle at each corner of the frame.
+ * The node: the caption above the frame, and on the selected node a resize handle at each corner and edge of the frame.
  * @param props - the node, its position and frame size, the canvas zoom, the body, and the gesture and action callbacks.
  * @returns the element.
  */
