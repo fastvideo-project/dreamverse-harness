@@ -91,11 +91,11 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-技能目录列出每个工作流技能及其描述。智能体加载 `story-directing` 时，读到调用顺序：用 `dv_textnode_write` 写文本节点 `story/theme.md`、`story/beats.md` 和 `story/storyboard.md`，每个阶段都基于 `dv_textnode_read` 为上一阶段返回的文本，并在 `from` 中写明上一阶段；给出摘要并以粗体提一个问题，用户同意前不做任何生成；然后每个镜头调用一次 `dv_shot_render`（接续上一镜头的镜头传 `continue_from`），再调用 `dv_proj_wait` 和 `dv_timeline_create`。它还告诉智能体如何延长、缩短或修改时间线上的故事。
+技能目录列出每个工作流技能及其描述。智能体加载 `story-directing` 时，读到调用顺序：用 `dv_textnode_write` 写文本节点 `story/theme.md`、`story/beats.md` 和 `story/storyboard.md`，每个阶段都基于 `dv_textnode_read` 为上一阶段返回的文本，并在 `from` 中写明上一阶段；给出摘要并以粗体提一个问题，用户同意前不做任何生成；然后按故事顺序为每个镜头调用 `dv_shot_render` 和 `dv_proj_wait`，其中渲染接续上一镜头的镜头之前，智能体先用 `dv_asset_grab_still`（以及工具列表中有的 `dv_inspect_asset` 和 `dv_inspect_image`）检查上一镜头的结尾，再传 `continue_from` 渲染该镜头，渲染后检查两个镜头之间的衔接，衔接失败时提出一种修复方案并等待用户；最后调用 `dv_timeline_create`。它还告诉智能体如何延长、缩短或修改时间线上的故事。
 
 #### Token 影响
 
-挂载插件期间，每个工作流技能在技能目录中占一行，最多 400 个码点（`story-directing` 约 60 个 token）；每次加载加入技能正文，少于 8192 个码点（`story-directing` 约 600 个 token）。`@dv/bundle` 的 [`skills.spec.ts`](../../bundle/dv/tests/skills.spec.ts) 检查这两个上限。
+挂载插件期间，每个工作流技能在技能目录中占一行，最多 400 个码点（`story-directing` 约 60 个 token）；每次加载加入技能正文，少于 8192 个码点（`story-directing` 约 1800 个 token）。`@dv/bundle` 的 [`skills.spec.ts`](../../bundle/dv/tests/skills.spec.ts) 检查这两个上限。
 
 #### KV Cache 影响
 
