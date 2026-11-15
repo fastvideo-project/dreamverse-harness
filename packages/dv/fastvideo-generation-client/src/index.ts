@@ -9,7 +9,8 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { renderTimings } from '@dv/models'
 import { fetch, getGlobalDispatcher, type Dispatcher, type Response } from 'undici'
-import { GenerationSegmentError } from './errors.ts'
+import { backendErrorText, GenerationSegmentError } from './errors.ts'
+import { followVideoJob, type NativeRequestInit } from './native-jobs.ts'
 import { deriveModelFacts, modelFactsConfig, type ModelFactsConfig } from './model-facts.ts'
 import { REFERENCE_FIELDS, referenceMediaType } from './references.ts'
 import type { ModelFacts, SegmentRequest, SegmentVideo } from './types.ts'
@@ -32,31 +33,16 @@ export interface Config {
   baseUrl: string
   /** The facts of the served model, which FastVideo does not publish. */
   modelFacts: ModelFactsConfig
-}
-
-/**
- * The text of a backend failure: `error.message` of an `application/json` body, else the body; a Python traceback
- * becomes its final exception line, and text longer than 2,048 characters is truncated.
- * @param response - the failed response.
- * @returns the text.
- */
-async function backendErrorText(response: Response): Promise<string> {
-  const body = await response.text()
-  let value: unknown = null
-  if (response.headers.get('content-type')?.startsWith('application/json') === true) {
-    try {
-      value = JSON.parse(body)
-    } catch { /* SyntaxError: an `application/json` body that is not JSON is reported as sent, beside its HTTP status. */ }
-  }
-  let message = typeof value === 'object' && value !== null && 'error' in value
-    && typeof value.error === 'object' && value.error !== null && 'message' in value.error
-    && typeof value.error.message === 'string' ? value.error.message : body
-  if (message.includes('Traceback (most recent call last)')) {
-    // The trimmed traceback ends with its exception line.
-    message = (message.trim().split('\n').at(-1) as string).trim()
-  }
-  const limit = 2048
-  return message.length <= limit ? message : `${message.slice(0, limit)}… [truncated; see FastVideo server logs]`
+  /** Native managed catalog and model residency support; off for ordinary fixed servers. */
+  managed?: boolean
+  /** Use tracked asynchronous native video jobs. */
+  asyncJobs?: boolean
+  /** Native task selector for this model entry. */
+  task?: string | null
+  /** Optional creator-facing name. */
+  displayName?: string | null
+  /** Interval between native asynchronous job-state reads. */
+  pollIntervalMs?: number
 }
 
 /**
@@ -74,6 +60,10 @@ export class DvFastvideoGeneration extends Service {
   static Config: z<Config> = z.object({
     baseUrl: z.string().required(),
     modelFacts: modelFactsConfig.required(),
+    managed: z.boolean().default(false), asyncJobs: z.boolean().default(false),
+    task: z.union([z.const(null), z.string()]).default(null),
+    displayName: z.union([z.const(null), z.string()]).default(null),
+    pollIntervalMs: z.natural().min(1).default(1000),
   })
 
   private readonly baseUrl: URL
@@ -87,7 +77,8 @@ export class DvFastvideoGeneration extends Service {
    * @param config - generation backend location and model facts.
    * @throws Error naming the inconsistency of the configured facts.
    */
-  constructor(ctx: Context, config: Config) {
+  constructor(ctx: Context, private readonly config: Config,
+    private readonly fetchImpl?: typeof globalThis.fetch) {
     super(ctx, 'dvFastvideoGeneration')
     this.baseUrl = new URL(config.baseUrl)
     this.facts = deriveModelFacts(config.modelFacts)
@@ -95,15 +86,21 @@ export class DvFastvideoGeneration extends Service {
 
   /**
    * Check once that the backend serves the configured model.
+   * @param signal - aborts the read.
    * @returns the model facts.
    * @throws Error naming the route and the HTTP status for a status other than 200, Error naming the route for a body
    *   that is not JSON, Error naming the served alias when it is missing or differs from `modelFacts.modelId`, or the
    *   `fetch` error when the backend is unreachable.
    */
-  async model(): Promise<ModelFacts> {
+  async model(signal?: AbortSignal): Promise<ModelFacts> {
     if (this.checked) return this.facts
     const route = 'GET /v1/model_info'
-    const response = await fetch(new URL('/v1/model_info', this.baseUrl))
+    const url = new URL('/v1/model_info', this.baseUrl)
+    if (this.config.managed) {
+      url.searchParams.set('model', this.facts.modelId)
+      if (this.config.task != null) url.searchParams.set('task', this.config.task)
+    }
+    const response = await this.request(url, { ...signal === undefined ? {} : { signal } })
     if (response.status !== 200) {
       throw new Error(`FastVideo ${route} returned HTTP ${response.status}: ${await backendErrorText(response)}`)
     }
@@ -141,15 +138,18 @@ export class DvFastvideoGeneration extends Service {
       return urls.length === 0 ? [] : [[field, urls]]
     }))
     const body = {
-      model: this.facts.modelId, prompt: request.prompt, width: request.frameWidth, height: request.frameHeight,
+      model: this.facts.modelId, ...this.config.task == null ? {} : { task: this.config.task },
+      prompt: request.prompt, width: request.frameWidth, height: request.frameHeight,
       num_frames: request.numFrames, ...request.seed === undefined ? {} : { seed: request.seed }, ...references,
     }
     try {
-      const response = await fetch(new URL('/v1/videos/sync', this.baseUrl), {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
-        // proxy-exempt: the installed global dispatcher, composed to turn off only its headers timeout.
-        dispatcher: untimedDispatcher(), ...signal === undefined ? {} : { signal },
-      })
+      const response = this.config.managed || this.config.asyncJobs
+        ? await followVideoJob(this.baseUrl, body, this.config.pollIntervalMs ?? 1000,
+          (url, init) => this.request(url, init), signal)
+        : await this.request(new URL('/v1/videos/sync', this.baseUrl), {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+          ...signal === undefined ? {} : { signal },
+        })
       if (response.status !== 200) {
         const text = await backendErrorText(response)
         if (response.status === 400) throw new GenerationSegmentError(text)
@@ -166,6 +166,63 @@ export class DvFastvideoGeneration extends Service {
       throw error
     }
   }
+  private async request(url: URL, init: NativeRequestInit = {}): Promise<Response | globalThis.Response> {
+    if (this.fetchImpl !== undefined) return this.fetchImpl(url, init)
+    return fetch(url, { ...init, dispatcher: untimedDispatcher() })
+  }
+
+  /**
+   * Read native model residency without loading or downloading weights.
+   * @param signal - aborts the read.
+   * @returns whether the configured model is installed, loaded with the configured task, or loading; whether the
+   *   server is busy; and whether it manages its model catalog.
+   * @throws Error when `managed` is off, for a status other than 2xx, or for an invalid state body.
+   */
+  async modelStatus(signal?: AbortSignal): Promise<{
+    installed: boolean
+    loaded: boolean
+    loading: boolean
+    busy: boolean
+    managed: boolean
+  }> {
+    if (!this.config.managed) throw new Error('This endpoint has no managed model catalog')
+    const url = new URL('/v1/model_state', this.baseUrl)
+    url.searchParams.set('model', this.facts.modelId)
+    const response = await this.request(url, { ...signal === undefined ? {} : { signal } })
+    if (!response.ok) throw new Error(`FastVideo model status refused (HTTP ${response.status})`)
+    const state: unknown = await response.json()
+    if (typeof state !== 'object' || state === null || !('busy' in state) || typeof state.busy !== 'boolean'
+      || !('installed' in state) || typeof state.installed !== 'boolean' || !('loaded_model' in state)) throw new Error('Invalid native model state')
+    const taskMatches = this.config.task == null || !('loaded_task' in state) || state.loaded_task === this.config.task
+    return { installed: state.installed, loaded: state.loaded_model === this.facts.modelId && taskMatches,
+      loading: 'loading_model' in state && state.loading_model === this.facts.modelId, busy: state.busy,
+      managed: !('managed' in state) || state.managed !== false }
+  }
+
+  /**
+   * Load the configured installed model and task without rendering.
+   * @param signal - aborts the status read and the load request.
+   */
+  async loadModel(signal?: AbortSignal): Promise<void> { await this.modelAction('load', signal) }
+
+  /**
+   * Release the model while retaining its downloaded files.
+   * @param signal - aborts the status read and the release request.
+   */
+  async unloadModel(signal?: AbortSignal): Promise<void> { await this.modelAction('unload', signal) }
+
+  private async modelAction(action: 'load' | 'unload', signal?: AbortSignal): Promise<void> {
+    const state = await this.modelStatus(signal)
+    if (!state.managed && action === 'load') {
+      if (state.loaded) return
+      throw new Error('This fixed distributed endpoint does not serve the selected model.')
+    }
+    const url = new URL(state.managed ? `/v1/models/${action}` : '/v1/runtime/release', this.baseUrl)
+    const response = await this.request(url, { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: this.facts.modelId, task: this.config.task }), ...signal === undefined ? {} : { signal } })
+    if (!response.ok) throw new Error(`FastVideo model ${action} refused (HTTP ${response.status}): ${await backendErrorText(response)}`)
+  }
+
 }
 
 export default DvFastvideoGeneration

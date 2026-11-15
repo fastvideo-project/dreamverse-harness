@@ -203,7 +203,7 @@ export interface DvPromptInjected {
   /** Read the model catalog again, for the retry of a failed load. */
   readonly reloadModels: () => void
   readonly hooks: {
-    /** The model catalog; null until it loads, and loaded again when an occurrence opens while none is open. */
+    /** The model catalog; null until it loads, and loaded again when an occurrence opens unless a load is in flight. */
     readonly models: HostObservable<readonly WireModelEntry[] | null>
     /** The message of the catalog's last failed load; null while a load is in flight and after a load succeeds. */
     readonly modelsFailure: HostObservable<string | null>

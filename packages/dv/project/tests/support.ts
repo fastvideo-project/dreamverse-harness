@@ -242,7 +242,7 @@ export function startModules(limits = { cpu: 4, gpu: 1 }): ProjectModules {
     subscriptions.emit(project, event)
     if (event.kind === 'update' && ['done', 'failed', 'cancelled'].includes(event.record.status)) holder.scheduler?.recordFinished(project)
   })
-  const reducers = new ReducerRegistry(store)
+  const reducers = new ReducerRegistry(store, record => holder.runner?.isOutsideHistory(record) ?? false)
   const history = new History(store)
   const assets = new FakeAssets()
   const scheduler = new Scheduler(store, (project, record) => {

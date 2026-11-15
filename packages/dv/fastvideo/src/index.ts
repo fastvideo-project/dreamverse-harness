@@ -27,9 +27,10 @@ import type {} from '@dv/asset-pool'
 import type {} from '@dv/ffmpeg'
 import type { ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent, TaskId } from '@dv/models'
 import { FASTH3 } from './fasth3.ts'
+import { PIKA_H3_FLEX } from './pika-h3-flex.ts'
 import { modelPrompt } from './reference-labels.ts'
 import type { AssignReferenceLabels } from './reference-labels.ts'
-import type { InputRole, MediaType, ServedTask, TaskInputs } from './types.ts'
+import type { InputDeclaration, InputRole, MediaType, ServedTask, TaskInputs } from './types.ts'
 
 /** One task of one model: the generation server that renders it and the facts of its served model. */
 export type TaskServer = GenerationConfig
@@ -62,6 +63,7 @@ type TaskInputLimits = Partial<Record<InputRole, InputLimits>>
 /** The models this plugin can serve, with the tasks it can serve each for. */
 const SERVED: Record<string, { [T in TaskId]?: ServedTask }> = {
   fasth3: FASTH3,
+  'pika-h3-flex': PIKA_H3_FLEX,
 }
 
 /** Plugin name. */
@@ -92,37 +94,60 @@ function checkConfig(config: Config): void {
 }
 
 /**
- * The count limits of a task's inputs, from the server's reference limits. The server counts the first frame among its
- * references, so the first frame takes one slot of the server's total and one slot of each media type that the
- * `first_frame` input accepts, and the `reference` input keeps the rest. A media type that the `reference` input
+ * The name of a frame input in a load refusal.
+ * @param role - the frame input.
+ * @returns `a first frame` or `a last frame`.
+ */
+function frameName(role: 'first_frame' | 'last_frame'): string {
+  return `a ${role === 'first_frame' ? 'first' : 'last'} frame`
+}
+
+/**
+ * The count limits of a task's inputs, from the server's reference limits. The server counts frame inputs among its
+ * references, so each declared frame input (`first_frame`, `last_frame`) takes one slot of the server's total and one
+ * slot of each media type it accepts, and the `reference` input keeps the rest. A media type that the `reference` input
  * declares and the server does not accept has a limit of 0.
  * @param name - the model and task, such as `fasth3 ref2v`, for the error message.
- * @param inputs - the inputs the task declares; `SERVED` declares `reference` and `first_frame` together or neither.
+ * @param inputs - the inputs the task declares.
  * @param facts - the server's facts.
- * @returns the limits by declared input; empty for a task without references.
- * @throws Error when the facts leave no slot for the first frame in a media type it takes, or fewer slots than the
- *   `reference` input's `min` beside the first frame.
+ * @returns the limits by declared input; empty for a task without inputs.
+ * @throws Error when the facts leave a frame input no slot in a media type it takes, or fewer slots than the frame
+ *   inputs and the `reference` input's `min` together.
  */
 function deriveInputLimits(name: string, inputs: TaskInputs, facts: ModelFacts): TaskInputLimits {
-  const { reference, first_frame: firstFrame } = inputs
-  if (reference === undefined || firstFrame === undefined) return {}
-  const firstFrameTypes = new Set(firstFrame.mediaTypes)
-  for (const type of firstFrameTypes) {
-    if ((facts.referenceMediaTypes[type]?.maxCount ?? 0) < 1) {
-      throw new Error(`dv-fastvideo: ${name} takes a first frame of type ${type}, so modelFacts.referenceMediaTypes.${type}.maxCount must be at least 1.`)
+  const frames = (['first_frame', 'last_frame'] as const).flatMap((role) => {
+    const frame = inputs[role]
+    return frame === undefined ? [] : [{ role, frame }]
+  })
+  const reference = inputs.reference
+  const limits: TaskInputLimits = {}
+  for (const { role, frame } of frames) {
+    for (const type of frame.mediaTypes) {
+      const count = frames.filter(other => other.frame.mediaTypes.includes(type)).length
+      if ((facts.referenceMediaTypes[type]?.maxCount ?? 0) < count) {
+        const label = frames.length === 1 ? frameName(role) : `${count} frame inputs`
+        throw new Error(`dv-fastvideo: ${name} takes ${label} of type ${type}, so modelFacts.referenceMediaTypes.${type}.maxCount must be at least ${count}.`)
+      }
+    }
+    limits[role] = { maxCount: 1, maxCountByMediaType: {} }
+  }
+  const minimum = frames.length + (reference?.min ?? 0)
+  if (facts.maxReferences < minimum) {
+    // Only a task with a `reference` input gets here: every served frame input takes only `image`, the check above
+    // gives `image` a maxCount of at least the frame count, and deriveModelFacts caps each maxCount at maxReferences.
+    const detail = [`at least ${(reference as InputDeclaration).min} reference`, ...frames.map(({ role }) => frameName(role))].join(' and ')
+    throw new Error(`dv-fastvideo: ${name} takes ${detail}, so modelFacts.maxReferences must be at least ${minimum}; it is ${facts.maxReferences}.`)
+  }
+  if (reference !== undefined) {
+    limits.reference = {
+      maxCount: facts.maxReferences - frames.length,
+      maxCountByMediaType: Object.fromEntries(reference.mediaTypes.map(type => [type,
+        Math.max(0, (facts.referenceMediaTypes[type]?.maxCount ?? 0)
+          - frames.filter(({ frame }) => frame.mediaTypes.includes(type)).length),
+      ])),
     }
   }
-  if (facts.maxReferences - 1 < reference.min) {
-    throw new Error(`dv-fastvideo: ${name} takes at least ${reference.min} reference and a first frame, so modelFacts.maxReferences `
-      + `must be at least ${reference.min + 1}; it is ${facts.maxReferences}.`)
-  }
-  const maxCountByMediaType = Object.fromEntries(reference.mediaTypes.map(mediaType => [
-    mediaType, (facts.referenceMediaTypes[mediaType]?.maxCount ?? 0) - (firstFrameTypes.has(mediaType) ? 1 : 0),
-  ]))
-  return {
-    reference: { maxCount: facts.maxReferences - 1, maxCountByMediaType },
-    first_frame: { maxCount: 1, maxCountByMediaType: {} },
-  }
+  return limits
 }
 
 /**
@@ -161,6 +186,7 @@ function requestProblems(
   const problems: string[] = []
   const roles: Array<[InputRole, RenderRequest['references']]> = [
     ['reference', request.references], ['first_frame', request.firstFrame === null ? [] : [request.firstFrame]],
+    ['last_frame', request.lastFrame === null ? [] : [request.lastFrame]],
   ]
   for (const [role, assets] of roles) {
     const declared = inputs[role]
@@ -241,13 +267,21 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
   if (served === undefined) throw new Error(`dv-fastvideo serves no model "${model}" for task "${task}".`)
   const { inputs, extra, assignReferenceLabels, skill } = served
   const labels = backendOrderLabels(assignReferenceLabels)
-  const client = new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), server)
+  const client = new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), {
+    ...server, task: served.nativeTask ?? server.task ?? null,
+  })
   const limits = deriveInputLimits(`${model} ${task}`, inputs, client.facts)
   return {
     modality: 'video',
     task,
     provider: PROVIDER,
     model,
+    ...server.displayName == null ? {} : { displayName: server.displayName },
+    ...server.managed !== true ? {} : { runtime: {
+      status: (signal?: AbortSignal) => client.modelStatus(signal),
+      load: (signal?: AbortSignal) => client.loadModel(signal),
+      unload: (signal?: AbortSignal) => client.unloadModel(signal),
+    } },
     description: served.description,
     promptSkill: {
       name: skill.name, description: skill.description,
@@ -279,8 +313,12 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
       ]
     },
     render(request: RenderRequest, signal?: AbortSignal): AsyncIterable<RenderStreamEvent> {
-      const assets = request.firstFrame === null ? request.references : [...request.references, request.firstFrame]
+      const assets = [...request.references, ...request.firstFrame === null ? [] : [request.firstFrame],
+        ...request.lastFrame === null ? [] : [request.lastFrame]]
       return (async function* () {
+        if (request.frameWidth === undefined || request.frameHeight === undefined || request.numFrames === undefined) {
+          throw new Error('FastVideo requires native frame dimensions and a frame count from its configured facts.')
+        }
         // Video and audio references can be tens of megabytes each, so they are read concurrently off the event loop.
         const references = await Promise.all(assets.map(async id => ({
           mimeType: ctx.dvAssetPool.get(id).mime, bytes: await readFile(ctx.dvAssetPool.path(id)),

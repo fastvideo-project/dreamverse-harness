@@ -48,6 +48,7 @@ FastVideo serves no capabilities route, so the operator writes the facts of the 
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `baseUrl` | required | HTTP base URL of the generation backend |
+| `task` | `null` | Native FastVideo task selector that `generateSegment` sends as the request's `task`, such as `fl2va`; `null` sends no `task` |
 | `modelFacts.modelId` | required | Exact served model alias; `model()` compares it with `served_model_name` |
 | `modelFacts.frameSizes` | required | Aspect ratio to resolution to `[width, height]`; every aspect ratio lists the same resolutions |
 | `modelFacts.numFramesByDurationSec` | required | Whole-second duration to frame count, for every duration from the shortest to the longest, growing with the duration |
@@ -64,7 +65,7 @@ Constructing the client throws an `Error` that names the inconsistency of facts 
 
 ### Backend API
 
-FastVideo owns the API; the client uses two routes. `GET /v1/model_info` answers `{"model_path", "served_model_name", "lora"}`. `POST /v1/videos/sync` takes `model`, `prompt`, `width`, `height`, `num_frames`, optional `seed`, and the lists `image_reference`, `video_reference` and `audio_reference`, each of `{"<type>_url": "data:<mime>;base64,..."}`. The Ref2VA pipeline reads the images, then the videos, then the audio, each list in its own order; `REFERENCE_FIELDS` records that order, and `backendOrder(items, mediaTypeOf)` returns items in it. A reference's media type is the top-level type of its `mimeType`; another type rejects with `GenerationSegmentError` before HTTP.
+FastVideo owns the API; the client uses two routes. `GET /v1/model_info` answers `{"model_path", "served_model_name", "lora"}`. `POST /v1/videos/sync` takes `model`, optional `task`, `prompt`, `width`, `height`, `num_frames`, optional `seed`, and the lists `image_reference`, `video_reference` and `audio_reference`, each of `{"<type>_url": "data:<mime>;base64,..."}`. The Ref2VA pipeline reads the images, then the videos, then the audio, each list in its own order; `REFERENCE_FIELDS` records that order, and `backendOrder(items, mediaTypeOf)` returns items in it. A reference's media type is the top-level type of its `mimeType`; another type rejects with `GenerationSegmentError` before HTTP.
 
 The answer must have a `video/*` content type; another content type rejects with an `Error` that carries the body text. `renderTimings` of `@dv/models` reads the timings: `X-Inference-Time-S` becomes `timings.inference_s`, and each stage of the JSON object in `X-Stage-Durations` becomes `timings.<stage>_s`; an `X-Stage-Durations` that is not JSON adds no stage timing, and the video is kept. HTTP 400 becomes `GenerationSegmentError`; other HTTP failures keep the status and a bounded backend message. The message is `error.message` of an `application/json` body, else the body text. A Python traceback becomes its final exception line; a message longer than 2,048 characters is truncated, with full details left in the server logs.
 
@@ -99,6 +100,14 @@ The `tests/` directory runs the client against a local HTTP server that plays th
 
 -----
 
+The optional `task` field selects a native FastVideo task, such as `fl2va`; when omitted, the server uses its default task.
+
+### Native catalog controls
+
+Set `managed: true` only for a backend implementing `/v1/model_state`, `/v1/models/load`, and `/v1/models/unload`. `loadModel`, `unloadModel`, and `modelStatus` call those routes without generating. `task` distinguishes reference and keyframe pipelines that share one model alias; `displayName` names the chat choice. The provider exposes these controls only for managed entries.
+
+Managed entries and entries with `asyncJobs: true` submit one `/v1/videos` job, poll its ID at `pollIntervalMs` (default 1000), and retrieve its canonical content route. Polling never resubmits generation. Aborting deletes that job; native CUDA work can remain busy until its current call finishes. Ordinary fixed servers retain the merged `/v1/videos/sync` transport and shared ffmpeg extraction.
+
 <a id="model-experience"></a>
 ## Model Experience
 
@@ -123,7 +132,7 @@ Independent request per segment: the backend keeps no state between requests, an
 - **Model facts never refresh** — `model()` checks the served alias once for the plugin's lifetime. A backend that restarts with another model keeps the configured facts in the harness until the plugin reloads.
 - **Configured model facts** — FastVideo serves no capabilities route. The operator must keep the configured facts consistent with the deployed weights and sampling setup.
 - **Whole-response output** — there is no progressive preview; the complete MP4 is held in memory.
-- **No request deadline** — `GET /v1/model_info` keeps the timeouts of the global dispatcher and takes no abort signal. Only the wait for the headers of `POST /v1/videos/sync` has no deadline; a backend that never answers holds that request until the caller aborts it.
+- **No default request deadline** — calls accept an optional abort signal. The default native transport disables the response-header timeout for long generation and model-loading requests; callers own the operation deadline.
 
 <a id="dev-note"></a>
 ### Dev Note

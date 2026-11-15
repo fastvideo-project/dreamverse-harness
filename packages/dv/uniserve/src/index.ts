@@ -164,11 +164,11 @@ async function readServerFacts(baseUrl: string): Promise<ServerFacts> {
 function renderTarget(
   facts: RenderModelFacts, request: RenderRequest,
 ): { short_edge: number; aspect_ratio: string; duration_seconds: number } {
-  const canvas = Object.entries(facts.frameSizes).flatMap(([ratio, sizes]) => Object.entries(sizes)
+  const canvas = Object.entries(facts.frameSizes ?? {}).flatMap(([ratio, sizes]) => Object.entries(sizes)
     .filter(([, [width, height]]) => width === request.frameWidth && height === request.frameHeight)
     .map(([resolution]) => ({ short_edge: Number.parseInt(resolution, 10), aspect_ratio: ratio })))[0]
   if (canvas === undefined) throw new Error(`UniServe renders no ${String(request.frameWidth)}x${String(request.frameHeight)} canvas.`)
-  const duration = Object.entries(facts.numFramesByDurationSec).find(([, frames]) => frames === request.numFrames)?.[0]
+  const duration = Object.entries(facts.numFramesByDurationSec ?? {}).find(([, frames]) => frames === request.numFrames)?.[0]
   if (duration === undefined) throw new Error(`UniServe renders no video of ${String(request.numFrames)} frames.`)
   return { ...canvas, duration_seconds: Number(duration) }
 }
@@ -206,7 +206,10 @@ function modelEntry(ctx: Context, config: Config): ModelEntry {
     },
     async validateGenerationRequest(request: RenderRequest): Promise<string[]> {
       const { conditions } = await readFacts()
-      return fasth3OmniProblems(conditions, request, asset => ctx.dvAssetPool.mediaType(asset))
+      return [
+        ...request.lastFrame === null ? [] : ['It takes no last_frame input; this shot has 1.'],
+        ...fasth3OmniProblems(conditions, request, asset => ctx.dvAssetPool.mediaType(asset)),
+      ]
     },
     render(request: RenderRequest, signal?: AbortSignal): AsyncIterable<RenderStreamEvent> {
       // The server receives the references in input order, then the first frame.

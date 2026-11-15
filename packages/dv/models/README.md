@@ -50,7 +50,7 @@ A provider is a video generation system, such as FastVideo, fal, or SGLang. A se
 | Field | Meaning | Values in this package |
 | --- | --- | --- |
 | `modality` | The output that the task produces: the `modality` of the primitive that the task runs on. | `video` |
-| `task` | The generation task. `TaskMap` declares each task name and maps it to the primitive that it runs on. | `t2v`: a video from the prompt only. `ref2v`: a video from reference media and the prompt, with an optional first frame. |
+| `task` | The generation task. `TaskMap` declares each task name and maps it to the primitive that it runs on. | `t2v`: a video from the prompt only. `ref2v`: a video from reference media and the prompt, with an optional first frame. `i2v`: a video beginning at one image. `l2v`: a video ending at one image. `fl2v`: a video between first and last images. These endpoint tasks use a prompt and no reference media. |
 | `provider` | The name of the provider. The provider plugin sets this name. | Each provider plugin sets its own name, such as `fastvideo`. |
 | `model` | The name that the provider gives to the model. | Each provider plugin sets its own names, such as `fasth3`. |
 
@@ -78,12 +78,13 @@ A provider plugin implements one `ModelEntry` for each key. `ModelEntry<T>` take
 | `prompt` | The text prompt. |
 | `references` | The reference assets as asset IDs, in input order. The list is empty for a task without references. |
 | `firstFrame` | The asset ID of the image that the video starts from, or `null`. |
+| `lastFrame` | The asset ID of the image that the video ends at, or `null`. |
 | `frameWidth`, `frameHeight` | The frame size in pixels. A consumer takes it from `frameSizes` in the facts. |
 | `numFrames` | The frame count. A consumer takes it from `numFramesByDurationSec` in the facts. |
 | `seed` | The random seed. |
 | `extra` | The values of the model's own parameters. `schema()` describes them, and `validateGenerationRequest` checks them. |
 
-`references` and `firstFrame` carry the `reference` and `first_frame` inputs of `dv_shot_render`.
+`references`, `firstFrame` and `lastFrame` carry the distinct `reference`, `first_frame` and `last_frame` inputs of `dv_shot_render`. Providers opt into `fl2v` by registering a catalog entry for that task and validating both image endpoints. Existing records without a last-frame input resolve to `lastFrame: null`. The task does not require audio; sound depends on the selected model.
 
 | `RenderModelFacts` field | Meaning |
 | --- | --- |
@@ -120,6 +121,10 @@ A provider plugin calls `register`. A consumer calls the other methods.
 | `catalog()` | `Promise<Record<string, JsonValue>[]>` | Every entry as `dv_models_get` returns it, in registration order: the key, the description and the `schema()`. An entry whose `schema()` rejects, or does not answer within the `Config` field `catalogSchemaTimeoutMs` (default 5000 ms), has schema null. [`@dv/api`](../api/README.md) serves it at `GET /api/dv/models`, so the browser and the agent read one catalog. |
 
 The service also registers the tools `dv_models_list` and `dv_models_get`, the skill `video-model-selection`, and the prompt skill of each entry for the agent. It adds nothing to the system prompt.
+
+When `dvProject` is present, `dv_models_select` saves the conversation's video-model default as a `models.select` project operation. `models.select`, `models.load` and `models.unload` are outside the undo history (`OperationSpec.outsideHistory`): the History panel does not list them, undo and redo never change the choice, and a call after an undo keeps the steps that redo restores and their renders. Empty provider and model strings choose Auto. Subsequent agent generations must use that provider/model until the user or agent changes it; existing renders keep their recorded model and task. The composer exposes this default beside the operator LLM selector, so users do not need to choose again for each generation. The optional `models` slice rebuilds choices from every successful `models.select` record of the project in write order, whatever the current position, so a choice survives a restart; older projects start in Auto. The project summary gives each agent its own conversation's choice as `video_model`: `{provider, model}`, or null for Auto; other conversations' choices are left out. A `models.select` record reads "video model <model>, for the conversation that chose it only" in project updates, so another conversation's agent does not take the choice as its own.
+
+Entries may provide `runtime.status`, `runtime.load`, and `runtime.unload`. Their operation tools are `dv_models_status`, `dv_models_load`, and `dv_models_unload`, with the entry's four key fields. These manage installed weights in GPU memory and never download weights. A managed FastVideo backend loads the requested profile when rendering, serializes model changes with generation, and retains only shared components whose files and loader settings match. Providers without lifecycle support keep their existing rendering behavior and report that explicit lifecycle controls are unavailable.
 
 ### What a provider plugin owns
 
@@ -160,7 +165,7 @@ The service keeps the entries in a `Map` by the formatted key. `register` refuse
 
 While the DSH tool registry (`tools`) is mounted, the service registers `dv_models_list` and `dv_models_get` as effects. `dv_models_list` filters the entries with its arguments and returns the key and the description of each entry, and `prompt_skill`, the name of its prompt skill, for an entry that has one. `dv_models_get` finds the entry with all four key fields and returns its key, its description and the JSON of its `schema()`. It does not read `facts()`. `@dv/shot-render` reads the facts to build the request.
 
-While the DSH skill registry (`skills`) is mounted, the service registers the runtime skill `video-model-selection` from `skills/video-model-selection.md`. The agent can load the skill. Users cannot call it from the composer. In the same registry, the service registers the `promptSkill` of each entry with the same invocation rule. It registers the skill when the entry or the registry arrives, and removes it when the entry or the registry leaves.
+While the DSH skill registry (`skills`) is mounted, the service registers the runtime skill `video-model-selection` from `skills/video-model-selection.md`. The agent can load the skill. Users cannot call it from the composer. In the same registry, the service registers the `promptSkill` of each entry with the same invocation rule. It registers the skill when the entry or the registry arrives, and removes it when the entry or the registry leaves. Entries that share a skill name share one registration, which stays until the last of those entries leaves.
 
 [`@dv/shot-render`](../shot-render/README.md) registers `shot.render` with `whileServing(['t2v', 'ref2v'], ...)` and gets the entry that a `dv_shot_render` call names with `resolve(['t2v', 'ref2v'], params)`. It builds a `RenderRequest` from the facts of the entry. It checks the request with `validateGenerationRequest`, and then renders the request.
 
@@ -184,6 +189,8 @@ While the DSH skill registry (`skills`) is mounted, the service registers the ru
 - [`@dv/bundle`](../../bundle/dv/README.md): the rows `dv-models` and `dv-fastvideo`.
 
 -----
+
+Duration-based cloud providers may omit `frameSizes` and `numFramesByDurationSec` when their API does not publish them. They supply exact `durationsSec`; consumers pass `durationSec`, `resolution`, and `aspectRatio` instead of inventing a frame count. Native providers continue to supply pixel geometry and frame counts.
 
 <a id="model-experience"></a>
 ## Model Experience

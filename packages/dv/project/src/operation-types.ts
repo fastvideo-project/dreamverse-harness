@@ -60,6 +60,13 @@ export interface OperationSpec {
   /** A read: the runner writes no record and takes no lock. */
   readOnly?: boolean
   /**
+   * A durable setting outside the undo history, such as a conversation's video model: the runner writes the record
+   * after the current position without making it a step, so the call discards no step and cancels no record, and
+   * undo, redo and moves never change its effect. The owning reducer receives every such record of the project, in
+   * write order, after the history list up to the current position.
+   */
+  outsideHistory?: boolean
+  /**
    * The records a call of this operation replaces; the runner adds them to the record's `supersedes`.
    * @param params - the call's parameters.
    * @param state - the project's current state, which the call writes after.

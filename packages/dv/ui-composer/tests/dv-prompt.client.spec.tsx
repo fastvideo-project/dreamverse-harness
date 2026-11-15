@@ -31,6 +31,11 @@ const HERO = '@[Hero](dv:test_ref/hero)'
 const SHOT_BAR = { ...shotRenderBar, operation: 'shot.render', owner: '@dv/ui-shot-render', copy: { ...shotRenderBar.copy, sending: ['渲染中…', 'Rendering…'] as const } }
 const KEY = { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }
 
+/** The fixture's operations, with the `first_frame` and `last_frame` inputs of `shot.render` that the host lends. */
+const LENT_OPERATIONS: WireOperation[] = OPERATIONS.map(operation => operation.name !== 'shot.render' ? operation : {
+  ...operation, inputs: { ...operation.inputs, first_frame: { type: 'image', description: 'First frame' }, last_frame: { type: 'image', description: 'Last frame' } },
+})
+
 const STILL: WireOperation = {
   ...OPERATIONS[0]!, name: 'test_still.generate', label: { zh: '生成静帧', en: 'Generate still' },
   params: { prompt: { type: 'string', required: true, description: 'What to make.' }, seed: { type: 'integer', description: 'Seed.' } },
@@ -150,7 +155,7 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
   // The record the host lends the call from; a test changes it to open another take with an equal call.
   let draftId = 'r1'
   const props = (shown: PromptCall, state: WireState, projectId: string): DvPromptProps => ({
-    projectId, draftId, call: shown, state, operations: [...OPERATIONS, STILL], readOnly: options.readOnly === true, host,
+    projectId, draftId, call: shown, state, operations: [...LENT_OPERATIONS, STILL], readOnly: options.readOnly === true, host,
     surface: options.surface ?? 'canvas',
     ...options.noSend === true || options.readOnly === true ? {} : { onSubmit },
   })
@@ -829,6 +834,49 @@ describe('the modes of an occurrence', () => {
     await sendOf(take, 'Render new version')
     expect([within(take).queryByRole('button', { name: 'Add asset' }), within(take).queryByTestId('dv-prompt-upload')]).toEqual([null, null])
     expect(box(take).getAttribute('contenteditable')).toBe('true')
+  })
+
+  it('picks and replaces distinct first/last roles for any catalog provider without changing the prompt or references', async () => {
+    const key = { modality: 'video', task: 'fl2v', provider: 'another-provider', model: 'keyframe-model' }
+    const model: WireModelEntry = { ...MODELS[0]!, ...key, schema: { inputs: {
+      first_frame: { min: 1, max: 1, media_types: { image: {} } }, last_frame: { min: 1, max: 1, media_types: { image: {} } },
+    } } }
+    const stored = { operation: 'shot.render', params: { ...key, prompt: 'A door opens' }, inputs: [{ role: 'reference', ref: 'ref.png' }] }
+    const { take, host, sent } = await mount(stored, { models: [model] })
+    fireEvent.click(await waitFor(() => within(take).getByRole('button', { name: 'Choose last frame' })))
+    act(() => { host.pickAssets?.mock.calls.at(-1)?.[1](['shot1-last.png', 'export-last.png']) })
+    await waitFor(() => { expect(within(take).getByRole('alert').textContent).toContain('Choose one endpoint image.') })
+    expect(take.querySelector('[data-reference-tile="shot1-last.png"]')).toBeNull()
+    act(() => { host.pickAssets?.mock.calls.at(-1)?.[1](['shot1-last.png']) })
+    fireEvent.click(within(take).getByRole('button', { name: 'Choose first frame' }))
+    act(() => { host.pickAssets?.mock.calls.at(-1)?.[1](['ref.png']) })
+    fireEvent.click(within(take).getByRole('button', { name: 'Choose last frame' }))
+    expect(host.pickAssets?.mock.calls.at(-1)?.[0]).toEqual(['shot1-last.png'])
+    act(() => { host.pickAssets?.mock.calls.at(-1)?.[1](['export-last.png']) })
+    await waitFor(() => { expect(take.querySelector('[data-reference-tile="export-last.png"]')?.textContent).toContain('Last frame') })
+    fireEvent.click(await sendOf(take, 'Render new version'))
+    await waitFor(() => { expect(sent).toEqual([{ ...stored, inputs: [
+      ...stored.inputs, { role: 'last_frame', ref: 'export-last.png' }, { role: 'first_frame', ref: 'ref.png' },
+    ] }]) })
+    expect(within(take).queryByRole('button', { name: 'Add asset' })).toBeNull()
+  })
+
+  it('keeps the frames on an empty frame pick, and a pick replaces every input of that frame role', async () => {
+    const key = { modality: 'video', task: 'l2v', provider: 'another-provider', model: 'keyframe-model' }
+    const lastFrame = { min: 1, max: 1, media_types: { image: {} } }
+    const model: WireModelEntry = { ...MODELS[0]!, ...key, schema: { inputs: { last_frame: lastFrame } } }
+    const stored = { operation: 'shot.render', params: { ...key, prompt: 'A door closes' }, inputs: [
+      { role: 'last_frame', ref: 'shot1-last.png' }, { role: 'last_frame', ref: 'ref.png' },
+    ] }
+    const { take, host, sent } = await mount(stored, { models: [model] })
+    fireEvent.click(await waitFor(() => within(take).getByRole('button', { name: 'Choose last frame' })))
+    expect(within(take).queryByRole('button', { name: 'Choose first frame' })).toBeNull()
+    act(() => { host.pickAssets?.mock.calls.at(-1)?.[1]([]) })
+    fireEvent.click(within(take).getByRole('button', { name: 'Choose last frame' }))
+    expect(host.pickAssets?.mock.calls.at(-1)?.[0]).toEqual(['shot1-last.png', 'ref.png'])
+    act(() => { host.pickAssets?.mock.calls.at(-1)?.[1](['export-last.png']) })
+    fireEvent.click(await sendOf(take, 'Render new version'))
+    await waitFor(() => { expect(sent).toEqual([{ ...stored, inputs: [{ role: 'last_frame', ref: 'export-last.png' }] }]) })
   })
 
   it('imports uploaded files through the host and sends each as a reference in file order; a change without files imports nothing', async () => {

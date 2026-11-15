@@ -29,6 +29,8 @@ scripts/video-harness/launch.sh headless "给我一个这个人跳舞的视频" 
 
 Environment the patch reads: `DV_PROJECTS_FOLDER` (the DreamVerse folder that holds the folders of new chats and projects; unset, `@dv/project` uses `<Documents>/deepseek-harness/DreamVerse` and fails to start on a host without a Documents folder), `DV_FFMPEG`, `DV_FFPROBE`, `DV_PUBLIC_URL` (origin for asset links in chat cards), `DV_AGENT_PROVIDER` and `DV_AGENT_MODEL` (default `deepseek-local` / `deepseek-v4.1`; fallback `groq` / `qwen/qwen3.8-27b`), `DV_AGENT_REASONING` (default `low`), `DV_DEEPSEEK_BASE_URL` (the OpenAI-compatible SGLang endpoint; the launch script defaults it to `http://10.244.6.153:30000/v1`), `DV_DEEPSEEK_API_KEY` (the launch script exports `none` for the keyless server, because pi-ai's OpenAI route insists on a bearer token), `DV_AGENT_VISION` (`0` makes `inspect.image` report that images are unsupported instead of calling the model), and the fallback key `GROQ_API_KEY`, which the launch script sources from `DV_ENV_FILE`.
 
+The chat composer exposes the operator model and reasoning-effort picker from [`ui-model-selection`](../../client/ui-model-selection/README.md). `agent-default-model` sets the initial route; a session selection applies to its next request without changing an in-flight request. This control selects the operator LLM. Generation models remain selected separately through the DreamVerse model catalog.
+
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 

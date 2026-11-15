@@ -51,6 +51,7 @@ export type DraftAction =
   }
   | { readonly type: 'tileRemoved'; readonly index: number; readonly ctx: ResolveContext }
   | { readonly type: 'picked'; readonly refs: readonly string[] }
+  | { readonly type: 'framePicked'; readonly role: 'first_frame' | 'last_frame'; readonly ref: string }
   | { readonly type: 'imported'; readonly assets: readonly string[] }
   | { readonly type: 'pinned'; readonly index: number; readonly version: number }
   | { readonly type: 'patched'; readonly patch: Readonly<Record<string, unknown>> }
@@ -120,6 +121,13 @@ export function reduceDraft(draft: Draft, action: DraftAction): Draft {
       // removal leaves the editor as it is.
       const content = next.removed.length === 0 ? draft.content : contentOf(next.document, draft.content.revision + 1, 'step')
       return { ...draft, document: next.document, removed: [...draft.removed, ...next.removed], content }
+    }
+    case 'framePicked': {
+      const existing = document.inputs.findIndex(input => input.role === action.role)
+      const input = { role: action.role, ref: action.ref }
+      const inputs = existing < 0 ? [...document.inputs, input]
+        : document.inputs.flatMap((item, index) => item.role !== action.role ? [item] : index === existing ? [input] : [])
+      return { ...draft, document: { ...document, inputs } }
     }
     case 'picked': {
       const added = action.refs.filter(ref => !document.inputs.some(input => input.ref === ref)).map(ref => ({ role: 'reference', ref }))

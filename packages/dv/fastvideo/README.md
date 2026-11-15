@@ -50,6 +50,8 @@ Mount the plugin after `@dv/models`, `@dv/asset-pool` and `@dv/ffmpeg`, with one
 
 Loading fails when `models` names a model other than `fasth3`, a task the model is not served for (`fasth3`: `ref2v`, `t2v`), a model with no task, or model facts that are inconsistent. While the plugin is mounted, the catalog holds one entry per configured task with provider `fastvideo` and model `fasth3`, such as `video/ref2v/fastvideo/fasth3`. Mount the DSH skill registry (`@deepseek-ai/dsh-skill`) as well so that the agent can load the prompt skills.
 
+Pika H3 Flex is registered as `pika-h3-flex` for `t2v`, `i2v`, `l2v`, `fl2v`, and `ref2v`. Endpoint tasks pass native task selectors and ordered first/last image inputs. The configured model facts must reserve enough image slots for both endpoints; Ref2VA uses its reference pipeline. Frame extraction uses the shared `dvFfmpeg` service.
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -78,6 +80,8 @@ The table `SERVED` in `src/index.ts` maps each model that the plugin can serve t
 - [`dsh-tool-skill`](../../skill/tool-skill/README.md): how the agent sees the skill catalog and loads a skill.
 
 -----
+
+Pika H3 Flex is registered as `pika-h3-flex` for `t2v`, `i2v`, `l2v`, `fl2v`, and `ref2v`. Endpoint tasks pass native task selectors and ordered first/last image inputs. The configured model facts must reserve enough image slots for both endpoints; Ref2VA uses its reference pipeline. Frame extraction uses the shared `dvFfmpeg` service.
 
 <a id="model-experience"></a>
 ## Model Experience

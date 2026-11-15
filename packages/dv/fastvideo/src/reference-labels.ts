@@ -41,9 +41,11 @@ export function modelPrompt(
   return replacePromptCitations(request.prompt, (citation) => {
     const asset = citedAsset(citation.uri)
     // The first frame follows the references; a reference cited by its asset takes the label of its first position.
-    const position = citedInput(citation.uri) === 'first_frame' && request.firstFrame !== null
-      ? request.references.length
-      : asset === null ? -1 : request.references.indexOf(asset)
+    const position = citedInput(citation.uri) === 'last_frame' && request.lastFrame !== null
+      ? request.references.length + (request.firstFrame === null ? 0 : 1)
+      : citedInput(citation.uri) === 'first_frame' && request.firstFrame !== null
+        ? request.references.length
+        : asset === null ? -1 : request.references.indexOf(asset)
     return labels[position] ?? citation.label
   })
 }
