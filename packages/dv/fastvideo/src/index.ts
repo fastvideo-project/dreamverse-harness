@@ -218,8 +218,18 @@ function requestProblems(
 
 /** The native task of each harness task, for a server configured without one. */
 const NATIVE_TASKS: Readonly<Record<TaskId, string>> = { t2v: 't2va', i2v: 'i2va', l2v: 'l2va', fl2v: 'fl2va', ref2v: 'ref2va' }
-/** Native aliases a server may publish. */
+/** Native task aliases that a FastVideo server accepts in a request, after it lowercases the task. */
 const NATIVE_ALIASES: Readonly<Record<string, string>> = { t2v: 't2va', i2v: 'i2va' }
+
+/**
+ * The canonical native task of a task id, read the way a FastVideo server reads a request's `task`.
+ * @param task - a native task id or alias, in any case.
+ * @returns the lowercased task with `NATIVE_ALIASES` applied.
+ */
+function canonicalTask(task: string): string {
+  const lower = task.toLowerCase()
+  return NATIVE_ALIASES[lower] ?? lower
+}
 
 /**
  * The problems of one render request against what the server publishes: a native task the server does not list, or
@@ -236,9 +246,10 @@ function servedProblems(
   mediaTypeOf: (asset: RenderRequest['references'][number]) => string,
 ): string[] {
   const problems: string[] = []
-  const served = facts.tasks?.map(({ task }) => NATIVE_ALIASES[task] ?? task)
-  if (served !== undefined && !served.includes(nativeTask)) {
-    problems.push(`The server for ${name} serves ${served.join(', ')}; it does not serve ${nativeTask}.`)
+  const served = facts.tasks?.map(({ task }) => canonicalTask(task))
+  const sent = canonicalTask(nativeTask)
+  if (served !== undefined && !served.includes(sent)) {
+    problems.push(`The server for ${name} serves ${served.join(', ')}; it does not serve ${sent}.`)
   }
   const limits = facts.referenceLimits
   if (limits === undefined) return problems

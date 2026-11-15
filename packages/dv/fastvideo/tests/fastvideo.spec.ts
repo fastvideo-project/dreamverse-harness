@@ -361,6 +361,14 @@ describe('dv-fastvideo', () => {
     // The server's t2v alias is its t2va task.
     expect(await fasth3(ctx, 't2v').validateGenerationRequest(request([], null))).toEqual([])
     expect(await fasth3(ctx, 't2v').schema()).toMatchObject({ server_tasks: ['t2v'] })
+    // The server reads a configured task in any case and with its aliases, and publishes only canonical tasks.
+    const published = capabilities({ tasks: [{ task: 't2va' }, { task: 'ref2va' }] })
+    const [alias, upper] = await Promise.all([startFakeServer(TEXT_FACTS, { capabilities: published }),
+      startFakeServer(TEXT_FACTS, { capabilities: published })])
+    const aliasCtx = await start({ t2v: { ...alias.server, task: 't2v' } })
+    const upperCtx = await start({ t2v: { ...upper.server, task: 'T2VA' } })
+    expect(await fasth3(aliasCtx, 't2v').validateGenerationRequest(request([], null))).toEqual([])
+    expect(await fasth3(upperCtx, 't2v').validateGenerationRequest(request([], null))).toEqual([])
   })
 
   it('refuses a shot whose only media are audio, because FastVideo pairs audio with an image or a video', async () => {
