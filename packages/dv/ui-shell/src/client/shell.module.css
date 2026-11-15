@@ -126,16 +126,16 @@
 .templateGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
-  gap: 8px;
+  gap: 12px;
 }
 
 .templateChip {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) 16px;
-  align-items: center;
-  gap: 10px;
-  min-height: 52px;
-  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
   border: 1px solid var(--dv-line);
   border-radius: 6px;
   background: var(--dv-surface-2);
@@ -146,6 +146,26 @@
   text-align: start;
   overflow-wrap: anywhere;
   cursor: pointer;
+}
+
+.templateHeading {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 14px;
+  box-sizing: border-box;
+}
+
+.templatePreview {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: #111;
 }
 
 .templateChip:hover { background: var(--dv-surface-3); border-color: var(--dv-line-strong); }

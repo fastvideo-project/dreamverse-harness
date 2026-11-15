@@ -24,6 +24,10 @@ describe('project MiniMax choice', () => {
     render(<MiniMaxTemplates />)
     const section = screen.getByRole('region', { name: 'Start from a template' })
     await expect(section.outerHTML + '\n').toMatchFileSnapshot('./expected/minimax-templates.html')
+    const previews = [...section.querySelectorAll('img')]
+    expect(previews).toHaveLength(9)
+    expect(new Set(previews.map(image => image.getAttribute('src'))).size).toBe(9)
+    expect(previews.every(image => image.loading === 'lazy' || image.getAttribute('loading') === 'lazy')).toBe(true)
     expect(screen.getAllByRole('button', { pressed: false })).toHaveLength(9)
     fireEvent.click(screen.getByRole('button', { name: '3D animated short' }))
     expect(getShell().minimaxSkill).toBe('3d-animation-short-generator')

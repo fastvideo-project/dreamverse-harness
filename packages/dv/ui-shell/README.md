@@ -5,7 +5,7 @@ kind: "package-reference"
 
 # @dv/ui-shell
 
-Home's Start from a template section offers nine selectable Skill buttons, without media previews or a Coming soon badge. No initial selection disables MiniMax; pressing the active button again clears it. The Create project dialog also offers a video type menu. The choice is saved at creation and shown in the workspace header; later chats inherit it, and changing styles requires a new project. Project choices override startup MiniMax environment variables. Creation errors leave the dialog and choice available for retry.
+Home's Start from a template section offers nine selectable Skill buttons, with a matching GIF preview below each label. The local files in `apps/web/public/minimax-previews/` use lazy loading and a 16:9 area that preserves the full image. No initial selection disables MiniMax; pressing the active button again clears it. The Create project dialog also offers a video type menu. The choice is saved at creation and shown in the workspace header; later chats inherit it, and changing styles requires a new project. Project choices override startup MiniMax environment variables. Creation errors leave the dialog and choice available for retry.
 
 English | [中文](README.zh.md)
 

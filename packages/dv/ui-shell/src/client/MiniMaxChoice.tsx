@@ -20,6 +20,18 @@ const LABELS: Record<MiniMaxSkill, readonly [string, string]> = {
   'h3-prompt-writing': ['H3 提示词编写', 'H3 prompt writing'],
 }
 
+const PREVIEWS: Record<MiniMaxSkill, string> = {
+  '3d-animation-short-generator': 'representative_3d_animation_compact.gif',
+  'minimalist-product-ad-generator': 'minimalist_product_ad_with_text.gif',
+  'brand-promo-video-generator': 'brand_promo_velocity_showcase.gif',
+  'handdrawn-live-video-generator': 'hand_drawn_live_action_showcase.gif',
+  'music-video-subtitle-generator': 'music_video_lyrics_showcase.gif',
+  'papercraft-stop-motion-explainer': 'papercraft_stop_motion_showcase.gif',
+  'paper-collage-explainer-generator': 'paper_collage_explainer_showcase.gif',
+  'co-op-game-intro-generator': 'co_op_game_intro_showcase.gif',
+  'h3-prompt-writing': 'h3_prompt_writing_showcase.gif',
+}
+
 /**
  * @param value - saved skill name or null for the original workflow.
  * @param t - active language picker.
@@ -63,9 +75,13 @@ export function MiniMaxTemplates(): ReactNode {
         {MINIMAX_SKILLS.map(name => (
           <button key={name} type="button" className={css.templateChip} aria-pressed={selected === name}
             onClick={() => { setShell({ minimaxSkill: selected === name ? null : name }) }}>
-            <SkillsIcon />
-            <span>{t(...LABELS[name])}</span>
-            <span className={css.templateCheck}>{selected === name && <CheckIcon />}</span>
+            <span className={css.templateHeading}>
+              <SkillsIcon />
+              <span>{t(...LABELS[name])}</span>
+              <span className={css.templateCheck}>{selected === name && <CheckIcon />}</span>
+            </span>
+            <img className={css.templatePreview} src={`/minimax-previews/${PREVIEWS[name]}`}
+              alt="" loading="lazy" decoding="async" width={480} height={270} />
           </button>
         ))}
       </div>
