@@ -223,8 +223,8 @@ function CardEditor(
   )
 }
 
-/** The card shows one timeline, so the editor's selection never changes. */
-function keepSelection(): void {}
+/** The `select` of the card's editor: the card shows one timeline, so the editor's selection never changes. */
+export function keepSelection(): void {}
 
 /**
  * The `dv.canvas.card` entry of timeline nodes: {@link TimelineCard} with the plugin's services, which slot entries do

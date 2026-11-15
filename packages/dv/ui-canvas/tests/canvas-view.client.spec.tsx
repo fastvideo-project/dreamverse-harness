@@ -146,6 +146,13 @@ const halfNode = (position: { x: number; y: number; width: number | null; height
   canvas.order.unshift('h1')
 }
 
+/**
+ * @param card - a node's card.
+ * @returns its left, top, width and frame height as drawn.
+ */
+const boxOfCard = (card: HTMLElement): string[] =>
+  [card.style.left, card.style.top, card.style.width, card.querySelector<HTMLElement>('[data-node-frame]')?.style.height ?? '']
+
 describe('the canvas over the real kinds', () => {
   it('draws each node at its stored position, shows a reported badge, and writes one canvas.node_position per drag end', async () => {
     const { runtime, node, server, canvasOf } = await mountCanvas()
@@ -1570,9 +1577,7 @@ describe('the node card', () => {
       if (found === null) throw new Error('no north-west handle')
       return found
     }
-    const box = (): string[] => [
-      node('h1').style.left, node('h1').style.top, node('h1').style.width, node('h1').querySelector<HTMLElement>('[data-node-frame]')?.style.height ?? '',
-    ]
+    const box = (): string[] => boxOfCard(node('h1'))
     const drag = (dx: number, dy: number, pointerId: number, button = 0): void => {
       fireEvent.pointerDown(handle(), { button, clientX: 0, clientY: 0, pointerId })
       fireEvent.pointerMove(canvasOf(), { clientX: dx, clientY: dy, pointerId })
@@ -1589,6 +1594,31 @@ describe('the node card', () => {
     expect([node('h1').getAttribute('data-node-selected'), view.queryAllByTestId('dv-canvas-node-editor')]).toEqual(['true', []])
     drag(-300, 0, 5, 2)
     expect(box()).toEqual(['188px', '144px', '120px', '60px'])
+    await runtime.dispose()
+  })
+
+  it('an east edge resizes a window node in width only, and a north edge in height only with its bottom edge in place', async () => {
+    const { runtime, node, canvasOf, server } = await mountCanvas({ edit: halfNode({ x: 100, y: 100, width: 208, height: 104 }) })
+    await mountDescriptors(runtime, { nodeType: halfType({ width: 208, height: 104, minWidth: 120, minHeight: 60 }) })
+    await waitFor(() => { expect(node('h1').getAttribute('aria-label')).toBe('Half') })
+    fireEvent.pointerDown(node('h1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
+    await waitFor(() => { expect(node('h1').getAttribute('data-node-selected')).toBe('true') })
+    const box = (): string[] => boxOfCard(node('h1'))
+    const drag = (edge: string, dx: number, dy: number, pointerId: number): void => {
+      fireEvent.pointerDown(node('h1').querySelector(`[data-node-handle="${edge}"]`) as Element, { button: 0, clientX: 0, clientY: 0, pointerId })
+      fireEvent.pointerMove(canvasOf(), { clientX: dx, clientY: dy, pointerId })
+      fireEvent.pointerUp(canvasOf(), { pointerId })
+    }
+    drag('e', 50, 30, 2)
+    expect(box()).toEqual(['100px', '100px', '258px', '104px'])
+    drag('n', 40, -20, 3)
+    expect(box()).toEqual(['100px', '80px', '258px', '124px'])
+    await waitFor(() => {
+      expect(server.positionWrites).toEqual([
+        { node: 'h1', x: 100, y: 100, width: 258, height: 104 }, { node: 'h1', x: 100, y: 80, width: 258, height: 124 },
+      ])
+    })
     await runtime.dispose()
   })
 

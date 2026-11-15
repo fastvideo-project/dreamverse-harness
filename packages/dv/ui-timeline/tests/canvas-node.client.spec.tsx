@@ -14,6 +14,7 @@ import { zh as canvasZh } from '../../ui-canvas/src/client/locales.ts'
 import { forgetCanvasStorage, mountCanvas } from '../../ui-canvas/tests/canvas-runtime.client.tsx'
 import { canvasNode, record } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
+import { keepSelection } from '../src/client/canvas-node.tsx'
 import { apply, inject } from '../src/client/index.ts'
 import { zh } from '../src/client/locales.ts'
 
@@ -156,6 +157,15 @@ describe('a timeline node on the canvas', () => {
     expect(operationsOf(server.writes)).toEqual([])
     // The preview sits outside the editor's root, so it carries the editor's class for its button styles itself.
     expect([preview.classList.contains('dv-tl-editor'), speed.classList.contains('dv-tl-btn')]).toEqual([true, true])
+  })
+
+  it('keeps the card\'s editor on its timeline when the editor selects another, which writes nothing', async () => {
+    const { node, server } = await mountTimelineCanvas((state) => { placeTimeline(state, 'k1', 't1') })
+    await waitFor(() => { expect(node('k1').querySelector('[data-timeline-card="t1"]')).not.toBeNull() })
+    keepSelection()
+    await act(() => Promise.resolve())
+    expect(node('k1').querySelector('[data-timeline-card="t1"]')).not.toBeNull()
+    expect(operationsOf(server.writes)).toEqual([])
   })
 
   it('shows a deleted timeline, an empty one, and opens the timeline view on a double click on the caption', async () => {
