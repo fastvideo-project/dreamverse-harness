@@ -203,7 +203,8 @@ function renderRequest(
     throw new Error('continuation_seconds must be a positive finite number.')
   }
   if (seconds !== undefined && continuationCount === 0) throw new Error('continuation_seconds needs a continuation_video input or continue_video_from.')
-  const problems = citationProblems(prompt, references, new Set(inputs.map(input => input.role)))
+  // The continuation video is cited only as its input: execution replaces the source asset with its cropped tail.
+  const problems = citationProblems(prompt, inputAssets(inputs, 'reference'), new Set(inputs.map(input => input.role)))
   if (problems.length > 0) throw new Error(`${problems.join(' ')} Cite only the assets of inputs.reference and the inputs of the call.`)
   if (video !== null) {
     prompt = replacePromptCitations(prompt, citation => citedInput(citation.uri) === 'continuation_video'

@@ -624,6 +624,17 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(fixture.reference.requests).toHaveLength(0)
   })
 
+  it('refuses a prompt that cites the continuation source by asset before recording', async () => {
+    const fixture = await start()
+    const source = await fixture.record('shot.render', { ...TXT, prompt: 'A street' })
+    const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
+    expect(failure(await fixture.call('dv_shot_render', {
+      ...REF, reason: 'continue', prompt: `Continue @[previous clip](dv:asset/${source.outputs[0]!})`, continue_video_from: source.id,
+    }))).toContain(`The prompt cites asset ${source.outputs[0]!}, which is not in the reference input.`)
+    expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
+    expect(fixture.reference.requests).toHaveLength(0)
+  })
+
   it('waits for the source render before cropping its tail, including a silent clip shorter than the default', async () => {
     const fixture = await start()
     let release = (): void => {}
