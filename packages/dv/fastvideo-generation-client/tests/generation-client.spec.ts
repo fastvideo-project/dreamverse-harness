@@ -330,3 +330,61 @@ describe('segment generation', () => {
     }
   })
 })
+
+describe('lora selection', () => {
+  it('sends the adapter as lora {name, scale}, and leaves scale out without a strength', async () => {
+    const { client: generation, requests } = await backend((_path, response) => { sendVideo(response) })
+    await generation.generateSegment(segment({ lora: { id: 'org/adapter', strength: 0.7 } }))
+    await generation.generateSegment(segment({ lora: { id: 'org/adapter' } }))
+    await generation.generateSegment(segment())
+    expect(requests.map(request => request.body?.['lora'])).toEqual([{ name: 'org/adapter', scale: 0.7 }, { name: 'org/adapter' }, undefined])
+  })
+
+  it('reads the lora block from the one model_info that model() reads', async () => {
+    const { client: generation, requests } = await backend((_path, response) => {
+      response.end(JSON.stringify({ served_model_name: FACTS.modelId, lora: {
+        supported: true, runtime_switching: false, base_strength: 0,
+        adapters: [
+          { id: 'org/a', default_strength: 1, min_strength: 0, max_strength: 1.5, description: 'Skin' },
+          { id: 'org/b', default_strength: 0.9, min_strength: 0, max_strength: 1.2 },
+          { id: 7, default_strength: 1, min_strength: 0, max_strength: 1 },
+        ],
+      } }))
+    })
+    const facts = await generation.lora()
+    expect(await generation.lora()).toBe(facts)
+    await generation.model()
+    expect(facts).toEqual({ supported: true, adapters: [
+      { id: 'org/a', defaultStrength: 1, minStrength: 0, maxStrength: 1.5, description: 'Skin' },
+      { id: 'org/b', defaultStrength: 0.9, minStrength: 0, maxStrength: 1.2 },
+    ] })
+    expect(requests.map(request => request.path)).toEqual(['/v1/model_info'])
+  })
+
+  it.each([
+    ['no block', undefined],
+    ['a null block', null],
+    ['an unsupported block', { supported: false, adapters: [] }],
+    ['a block without adapters', { supported: true }],
+    ['the single startup adapter of a server without per-request LoRA', { name: 'a', path: '/weights/a', scale: 1 }],
+  ])('treats %s as no LoRA', async (_name, lora) => {
+    const { client: generation } = await backend((_path, response) => {
+      response.end(JSON.stringify({ served_model_name: FACTS.modelId, lora }))
+    })
+    expect(await generation.lora()).toEqual({ supported: false, adapters: [] })
+  })
+
+  it('rejects with the model() error and asks again after a failure', async () => {
+    let calls = 0
+    const { client: generation } = await backend((_path, response) => {
+      if (++calls === 1) {
+        response.writeHead(503)
+        response.end('starting')
+        return
+      }
+      response.end(JSON.stringify({ served_model_name: FACTS.modelId, lora: { supported: true, adapters: [] } }))
+    })
+    await expect(generation.lora()).rejects.toThrow('FastVideo GET /v1/model_info returned HTTP 503: starting')
+    expect(await generation.lora()).toEqual({ supported: true, adapters: [] })
+  })
+})

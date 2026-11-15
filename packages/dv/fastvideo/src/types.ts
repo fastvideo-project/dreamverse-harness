@@ -38,6 +38,11 @@ export interface ServedTask {
   extra: ParameterSchemaSpec
   /** Task selector understood by the native FastVideo API. */
   nativeTask?: string
+  /**
+   * Whether the task takes `extra.lora`. The entry declares it in `schema()` only while the task's server reports an
+   * adapter, so a deployment without LoRA advertises no parameter and refuses one.
+   */
+  lora?: true
   /** How the model names the references in its prompt; a citation of a reference becomes its label. */
   assignReferenceLabels: AssignReferenceLabels
   /**

@@ -61,11 +61,12 @@ FastVideo 不提供能力路由，因此操作者写出所服务模型的事实�
 
 - `facts` 从构造起持有推导出的事实，不发送请求；`model()` 在后端确认所服务的别名后返回同一组事实。
 - `model()` 发送 `GET /v1/model_info`，在第一次 `served_model_name` 等于 `modelFacts.modelId` 的回答之后返回推导出的事实。状态不是 200 时抛出指明路由和状态的 `Error`；响应体不是 JSON 时抛出指明路由的 `Error`；`served_model_name` 缺失或不同时抛出指明两个别名的 `Error`。
+- `lora()` 从 `model()` 读取一次的同一个 `GET /v1/model_info` 响应的 `lora` 块返回服务器的 LoRA 支持：服务器是否支持 LoRA 及其适配器，每个适配器带 id、默认强度、强度范围和可选的描述。它抛出 `model()` 的错误。没有该块的响应，或者没有 `supported: true` 和 `adapters` 数组的块，视为不支持任何适配器；缺少字符串 id 或数值型默认、最小和最大强度的适配器条目会被丢弃。
 - `generateSegment(request)` 发送一个 `POST /v1/videos/sync`，以完整 MP4 解析为 `{video, mime, timings}`。该请求没有客户端的响应头超时，因为后端在整个视频生成后才发送响应头。响应体保留全局 dispatcher 的响应体超时，因为后端从已完成的 MP4 文件发送响应体。中止 `request.signal` 会取消 HTTP 请求，并以 `signal.reason` 拒绝。
 
 ### 后端 API
 
-API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/model_info` 返回 `{"model_path", "served_model_name", "lora"}`。`POST /v1/videos/sync` 接受 `model`、可选的 `task`、`prompt`、`width`、`height`、`num_frames`、可选的 `seed`，以及列表 `image_reference`、`video_reference` 和 `audio_reference`，每项为 `{"<type>_url": "data:<mime>;base64,..."}`。Ref2VA 流水线先读图片，再读视频，最后读音频，每个列表按其自身顺序；`REFERENCE_FIELDS` 记录这一顺序，`backendOrder(items, mediaTypeOf)` 按该顺序返回各项。参考的媒体类型是其 `mimeType` 的顶层类型；其他类型在发送 HTTP 前以 `GenerationSegmentError` 拒绝。
+API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/model_info` 返回 `{"model_path", "served_model_name", "lora"}`。`POST /v1/videos/sync` 接受 `model`、可选的 `task`、`prompt`、`width`、`height`、`num_frames`、可选的 `seed`、可选的 `lora`，以及列表 `image_reference`、`video_reference` 和 `audio_reference`，每项为 `{"<type>_url": "data:<mime>;base64,..."}`。Ref2VA 流水线先读图片，再读视频，最后读音频，每个列表按其自身顺序；`REFERENCE_FIELDS` 记录这一顺序，`backendOrder(items, mediaTypeOf)` 按该顺序返回各项。参考的媒体类型是其 `mimeType` 的顶层类型；其他类型在发送 HTTP 前以 `GenerationSegmentError` 拒绝。选择适配器的请求发送 `"lora": {"name": "<适配器 id>", "scale": <强度>}`，请求没有指定强度时省略 `scale`，由适配器的默认强度生效；没有适配器的请求渲染基础模型。`GET /v1/model_info` 的 `lora` 块为 `{"supported", "adapters": [{"id", "default_strength", "min_strength", "max_strength", "description"?}]}`。
 
 回答必须带 `video/*` 内容类型；其他内容类型以携带响应体文本的 `Error` 拒绝。`@dv/models` 的 `renderTimings` 读取耗时：`X-Inference-Time-S` 变为 `timings.inference_s`，`X-Stage-Durations` 中 JSON 对象的每个阶段变为 `timings.<stage>_s`；不是 JSON 的 `X-Stage-Durations` 不添加阶段耗时，视频仍保留。HTTP 400 变为 `GenerationSegmentError`；其他 HTTP 失败保留状态和受限长度的后端消息。消息取 `application/json` 响应体的 `error.message`，否则取响应体文本。Python traceback 仅保留最后的异常行；超过 2,048 字符的消息会截断，完整详情留在服务器日志中。
 
@@ -115,7 +116,7 @@ API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/model_in
 
 #### 模型看到什么
 
-视频模型收到 `generateSegment` 构建的请求体：保持不变的 `prompt`、配置的服务模型别名、`width`、`height`、`num_frames`、仅在调用方设置时才发送的 `seed`，以及每种媒体类型一个列表，每种类型内保持调用方顺序。模型按读取顺序为参考编号：先图片，再视频，最后音频。调用方的提示词使用该编号指称这些参考，例如第一张图片为 `Picture 1`；`@dv/fastvideo` 按 `backendOrder` 分配标签。本客户端不添加任何参考或首帧标签。
+视频模型收到 `generateSegment` 构建的请求体：保持不变的 `prompt`、配置的服务模型别名、`width`、`height`、`num_frames`、仅在调用方设置时才发送的 `seed`、仅在调用方选择适配器时才发送的 `lora`，以及每种媒体类型一个列表，每种类型内保持调用方顺序。模型按读取顺序为参考编号：先图片，再视频，最后音频。调用方的提示词使用该编号指称这些参考，例如第一张图片为 `Picture 1`；`@dv/fastvideo` 按 `backendOrder` 分配标签。本客户端不添加任何参考或首帧标签。
 
 #### Token 影响
 

@@ -22,6 +22,7 @@ import SkillRegistry from '@deepseek-ai/dsh-skill'
 import DvAssetPool, { type AssetId } from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
 import type { ModelFactsConfig } from '@dv/fastvideo-generation-client'
+import DvLora, { type Config as LoraConfig } from '@dv/lora'
 import DvModels, { type ModelEntry, type RenderStreamEvent, type TaskOfPrimitive } from '@dv/models'
 import DvProject from '@dv/project'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -30,6 +31,11 @@ import * as FastVideo from '../src/index.ts'
 
 /** A task of the video entries that fasth3 serves. */
 type VideoTask = TaskOfPrimitive<'video'>
+
+/** The `extra` of a `schema()` result, with the `extra.lora` entry that it reports while the server serves an adapter. */
+interface LoraSchema {
+  extra: Record<string, { type?: string; description?: string; properties?: Record<string, unknown> }>
+}
 
 /** The reference image of the opt-in run against a running server. */
 const REAL_REFERENCE = '/mnt/lustre/vlm-d1su/codes/dsh-dv-hub/elon-musk.jpg'
@@ -104,6 +110,29 @@ const TEXT_FACTS: ModelFactsConfig = {
   maxReferences: 0, referenceMediaTypes: {},
 }
 
+/** The `lora` block of a server's `GET /v1/model_info` that allow-lists two adapters. */
+const LORA_BLOCK = {
+  supported: true, runtime_switching: true, base_strength: 0,
+  adapters: [
+    { id: 'fal/MiniMax-H3-Realism-People-LoRA', default_strength: 0.8, min_strength: 0, max_strength: 1.5, description: 'Photoreal skin and faces.' },
+    { id: 'pablodawson/MiniMax-H3-360-Orbit-LoRA', default_strength: 1, min_strength: 0.2, max_strength: 2 },
+  ],
+}
+
+/** The DreamVerse registry the deployment mounts in these tests: one adapter for t2v, one for ref2v. */
+const LORA_REGISTRY: LoraConfig = {
+  adapters: [
+    { id: 'fal/MiniMax-H3-Realism-People-LoRA', displayName: 'Realism People', description: 'Photoreal people.',
+      triggerWords: ['photoreal skin'], defaultStrength: 0.8, minStrength: 0, maxStrength: 1.2,
+      targets: [{ model: 'fasth3', tasks: ['t2v'] }], license: 'Apache-2.0',
+      sourceUrl: 'https://huggingface.co/fal/MiniMax-H3-Realism-People-LoRA' },
+    { id: 'pablodawson/MiniMax-H3-360-Orbit-LoRA', displayName: '360 Orbit', description: 'A camera that circles.',
+      triggerWords: [], defaultStrength: 1, minStrength: 0.2, maxStrength: 2,
+      targets: [{ model: 'fasth3', tasks: ['ref2v'] }], license: 'MIT',
+      sourceUrl: 'https://huggingface.co/pablodawson/MiniMax-H3-360-Orbit-LoRA' },
+  ],
+}
+
 const cleanups: Array<() => Promise<void>> = []
 
 afterEach(async () => {
@@ -126,7 +155,8 @@ interface FakeServer {
  * `POST /v1/videos/sync` with `video`.
  * @param facts - the facts of the served model.
  * @param options - `video` is the MP4 it answers with; `hold` holds each render answer until it is released; `failure`
- *   answers each render with that HTTP status and an OpenAI error envelope instead; `port` is the port to listen on.
+ *   answers each render with that HTTP status and an OpenAI error envelope instead; `port` is the port to listen on;
+ *   `lora` is the `lora` block of `GET /v1/model_info`, null when absent.
  * @returns the task config of the server and the render request bodies.
  */
 async function startFakeServer(facts: ModelFactsConfig, options: {
@@ -134,6 +164,7 @@ async function startFakeServer(facts: ModelFactsConfig, options: {
   hold?: boolean
   failure?: { status: number; message: string }
   port?: number
+  lora?: object
 } = {}): Promise<FakeServer> {
   const requests: Record<string, unknown>[] = []
   let arrived!: (value: { release: () => void; closed: Promise<void> }) => void
@@ -141,7 +172,7 @@ async function startFakeServer(facts: ModelFactsConfig, options: {
   const server: Server = createServer((request: IncomingMessage, response: ServerResponse) => {
     if (request.method !== 'POST') {
       response.writeHead(200, { 'content-type': 'application/json', connection: 'close' })
-      response.end(JSON.stringify({ model_path: '/weights', served_model_name: facts.modelId, lora: null }))
+      response.end(JSON.stringify({ model_path: '/weights', served_model_name: facts.modelId, lora: options.lora ?? null }))
       return
     }
     const parts: Buffer[] = []
@@ -174,7 +205,7 @@ async function startFakeServer(facts: ModelFactsConfig, options: {
 
 /** The plugins the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
 const PLUGINS = {
-  SkillRegistry, DvProject, DvFfmpeg, DvAssetPool, DvModels,
+  SkillRegistry, DvProject, DvFfmpeg, DvAssetPool, DvModels, DvLora,
   FastVideo: { name: FastVideo.name, inject: FastVideo.inject, Config: FastVideo.Config, apply: FastVideo.apply },
 }
 
@@ -182,9 +213,10 @@ const PLUGINS = {
  * Boot the skill registry, Project, ffmpeg, the asset pool, the catalog and the plugin from a test-only `cordis.yml`.
  * @param tasks - the server of each task of `model` to configure.
  * @param model - the served model that `tasks` configures.
+ * @param registry - the config of a `dv-lora` row mounted before the plugin; absent, the composition has no registry.
  * @returns the root context.
  */
-async function start(tasks: Partial<Record<VideoTask, FastVideo.TaskServer>>, model = 'fasth3'): Promise<Context> {
+async function start(tasks: Partial<Record<VideoTask, FastVideo.TaskServer>>, model = 'fasth3', registry?: LoraConfig): Promise<Context> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-fastvideo-'))
   const globals = globalThis as typeof globalThis & { __dvFastVideo?: typeof PLUGINS }
   globals.__dvFastVideo = PLUGINS
@@ -196,6 +228,7 @@ async function start(tasks: Partial<Record<VideoTask, FastVideo.TaskServer>>, mo
     ['dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, 'ffprobePath: ffprobe']],
     ['dv-asset-pool', 'DvAssetPool', []],
     ['dv-models', 'DvModels', []],
+    ...registry === undefined ? [] : [['dv-lora', 'DvLora', [`adapters: ${JSON.stringify(registry.adapters)}`]] as const],
     ['dv-fastvideo', 'FastVideo', config],
   ] as const
   for (const [id, key, lines] of plugins) {
@@ -564,6 +597,126 @@ describe('dv-fastvideo', () => {
       .toThrow('dv-fastvideo serves model "fasth3" for no task "reference"; its tasks: ref2v, t2v.')
     expect(() => { FastVideo.apply(ctx, { models: { fasth3: {} } }) }).toThrow('dv-fastvideo: model "fasth3" names no task.')
     expect(ctx.dvModels.list().map(entry => entry.task)).toEqual(['ref2v'])
+  })
+
+  const REALISM = 'fal/MiniMax-H3-Realism-People-LoRA'
+  const ORBIT = 'pablodawson/MiniMax-H3-360-Orbit-LoRA'
+  const loraOffer = async (entry: ModelEntry<VideoTask>) => ((await entry.schema()) as LoraSchema | null)?.extra['lora']
+
+  it('offers extra.lora only for a server with a lora block, listing each default and range', async () => {
+    const [served, plain, bare] = await Promise.all([
+      startFakeServer(TEXT_FACTS, { lora: LORA_BLOCK }),
+      startFakeServer(REFERENCE_FACTS, { lora: { supported: false, adapters: [] } }),
+      startFakeServer(TEXT_FACTS),
+    ])
+    const ctx = await start({ t2v: served.server, ref2v: plain.server })
+    const lora = await loraOffer(fasth3(ctx, 't2v'))
+    expect(lora?.type).toBe('object')
+    expect(lora?.description).toContain(`${REALISM} (default 0.8, from 0 to 1.5: Photoreal skin and faces.)`)
+    expect(lora?.description).toContain(`${ORBIT} (default 1, from 0.2 to 2)`)
+    expect(lora?.properties).toMatchObject({ id: { type: 'string', required: true }, strength: { type: 'number' } })
+    expect(await loraOffer(fasth3(ctx, 'ref2v'))).toBeUndefined()
+    // A server whose model_info has no lora block renders normally and offers no adapter.
+    const none = await start({ t2v: bare.server })
+    expect(await loraOffer(fasth3(none, 't2v'))).toBeUndefined()
+    expect(await fasth3(none, 't2v').validateGenerationRequest(request([], null))).toEqual([])
+  })
+
+  it('offers only the adapters that both the server and the mounted registry allow, with the narrower range', async () => {
+    const [text, reference] = await Promise.all([
+      startFakeServer(TEXT_FACTS, { lora: LORA_BLOCK }), startFakeServer(REFERENCE_FACTS, { lora: LORA_BLOCK }),
+    ])
+    const ctx = await start({ t2v: text.server, ref2v: reference.server }, 'fasth3', LORA_REGISTRY)
+    const t2v = (await loraOffer(fasth3(ctx, 't2v')))?.description
+    expect(t2v).toContain(`${REALISM} (default 0.8, from 0 to 1.2: Photoreal skin and faces.)`)
+    expect(t2v).not.toContain('pablodawson')
+    expect((await loraOffer(fasth3(ctx, 'ref2v')))?.description).toContain(`${ORBIT} (default 1, from 0.2 to 2)`)
+    // An adapter in the registry that the server does not serve is not offered.
+    const narrow = await startFakeServer(TEXT_FACTS, { lora: { ...LORA_BLOCK, adapters: [LORA_BLOCK.adapters[1]] } })
+    const other = await start({ t2v: narrow.server }, 'fasth3', LORA_REGISTRY)
+    expect(await loraOffer(fasth3(other, 't2v'))).toBeUndefined()
+  })
+
+  it('validates extra.lora against the server allow-list, the registry and the adapter range', async () => {
+    const { server } = await startFakeServer(TEXT_FACTS, { lora: LORA_BLOCK })
+    const ctx = await start({ t2v: server })
+    const task = fasth3(ctx, 't2v')
+    const check = (lora: unknown) => task.validateGenerationRequest(request([], null, { lora }))
+    expect(await check({ id: REALISM, strength: 0.8 })).toEqual([])
+    expect(await check({ id: REALISM })).toEqual([])
+    expect(await check({ id: 'nobody/none' })).toEqual([`Its extra.lora id "nobody/none" is not an adapter of this server; the server serves: ${REALISM}, ${ORBIT}.`])
+    expect(await check({ id: REALISM, strength: 2 })).toEqual([`Its extra.lora strength 2 is outside ${REALISM}'s range of 0 to 1.5.`])
+    expect((await check({ id: REALISM, strength: 'high' }))[0]).toContain('must be a number')
+    expect((await check({ strength: 0.8 }))[0]).toContain('lora')
+    // With the registry mounted, the range narrows and an adapter meant for another task is refused.
+    const mounted = await start({ t2v: server }, 'fasth3', LORA_REGISTRY)
+    const narrowed = fasth3(mounted, 't2v')
+    expect(await narrowed.validateGenerationRequest(request([], null, { lora: { id: REALISM, strength: 1.4 } })))
+      .toEqual([`Its extra.lora strength 1.4 is outside ${REALISM}'s range of 0 to 1.2.`])
+    expect((await narrowed.validateGenerationRequest(request([], null, { lora: { id: ORBIT } })))[0])
+      .toContain('360 Orbit serves fasth3 ref2v')
+    // A registry range that does not overlap the server's leaves the adapter unoffered.
+    const high = { ...LORA_REGISTRY.adapters[0]!, defaultStrength: 1.8, minStrength: 1.6, maxStrength: 2 }
+    const disjoint = await start({ t2v: server }, 'fasth3', { adapters: [high] })
+    expect(await loraOffer(fasth3(disjoint, 't2v'))).toBeUndefined()
+    expect(await fasth3(disjoint, 't2v').validateGenerationRequest(request([], null, { lora: { id: REALISM } })))
+      .toEqual(['fasth3 has no extra parameter `lora` for task t2v; its extra parameters: none.'])
+    const unlisted = await start({ t2v: server }, 'fasth3', { adapters: [LORA_REGISTRY.adapters[0] as LoraConfig['adapters'][number]] })
+    expect(await fasth3(unlisted, 't2v').validateGenerationRequest(request([], null, { lora: { id: ORBIT } })))
+      .toEqual([`Its extra.lora id "${ORBIT}" is not one this deployment publishes for model fasth3 task t2v; call dv_lora_list for the adapters you can use.`])
+    // A server without a lora block advertises no such parameter, so the name is refused with the other unknown names.
+    const plain = await startFakeServer(TEXT_FACTS)
+    const none = await start({ t2v: plain.server })
+    expect(await fasth3(none, 't2v').validateGenerationRequest(request([], null, { lora: { id: REALISM } })))
+      .toEqual(['fasth3 has no extra parameter `lora` for task t2v; its extra parameters: none.'])
+  })
+
+  it('picks up a dvLora mounted after the plugin and drops it when it is removed', async () => {
+    const { server } = await startFakeServer(TEXT_FACTS, { lora: LORA_BLOCK })
+    const ctx = await start({ t2v: server })
+    const task = fasth3(ctx, 't2v')
+    const offered = async () => (await loraOffer(task))?.description
+    expect(await offered()).toContain('pablodawson')
+    const registry = await ctx.plugin(DvLora, LORA_REGISTRY)
+    expect(await offered()).not.toContain('pablodawson')
+    await registry.dispose()
+    expect(await offered()).toContain('pablodawson')
+  })
+
+  it.skipIf(!existsSync(FFMPEG))('sends the selected adapter as lora {name, scale}, and nothing when the shot names none', async () => {
+    const fake = await startFakeServer(TEXT_FACTS, { video: await sampleVideo(false), lora: LORA_BLOCK })
+    const ctx = await start({ t2v: fake.server })
+    const task = fasth3(ctx, 't2v')
+    await collect(task.render(request([], null, { lora: { id: REALISM, strength: 0.6 } })))
+    await collect(task.render(request([], null, { lora: { id: REALISM } })))
+    await collect(task.render(request([], null)))
+    expect(fake.requests.map(body => body['lora'])).toEqual([{ name: REALISM, scale: 0.6 }, { name: REALISM, scale: 0.8 }, undefined])
+    expect(fake.requests[2]).not.toHaveProperty('lora')
+    expect(() => task.render(request([], null, { lora: 'photoreal' })))
+      .toThrow('extra.lora must be an object with a string id and an optional number strength.')
+    await expect(collect(task.render(request([], null, { lora: { id: 'nobody/none' } }))))
+      .rejects.toThrow('extra.lora names adapter "nobody/none", which fasth3 task t2v does not offer.')
+    expect(fake.requests).toHaveLength(3)
+  })
+
+  it.skipIf(!existsSync(FFMPEG))('applies the registry default strength, clamped into the narrowed range, when the shot names none', async () => {
+    // The server's default 1.5 lies outside the registry's range; the registry's default 0.9 lies outside the narrowed range 1 to 1.2.
+    const block = { ...LORA_BLOCK, adapters: [{ id: ORBIT, default_strength: 1.5, min_strength: 1, max_strength: 2 }] }
+    const fake = await startFakeServer(TEXT_FACTS, { video: await sampleVideo(false), lora: block })
+    const registry: LoraConfig = { adapters: [{ ...LORA_REGISTRY.adapters[1]!, defaultStrength: 0.9, minStrength: 0, maxStrength: 1.2, targets: [{ model: 'fasth3', tasks: ['t2v'] }] }] }
+    const ctx = await start({ t2v: fake.server }, 'fasth3', registry)
+    const task = fasth3(ctx, 't2v')
+    expect((await loraOffer(task))?.description).toContain(`${ORBIT} (default 1, from 1 to 1.2)`)
+    expect(await task.validateGenerationRequest(request([], null, { lora: { id: ORBIT } }))).toEqual([])
+    await collect(task.render(request([], null, { lora: { id: ORBIT } })))
+    expect(fake.requests.map(body => body['lora'])).toEqual([{ name: ORBIT, scale: 1 }])
+    // Inside the narrowed range, the registry's own default applies.
+    const wideBlock = { ...block, adapters: [{ ...block.adapters[0]!, min_strength: 0 }] }
+    const wide = await startFakeServer(TEXT_FACTS, { video: await sampleVideo(false), lora: wideBlock })
+    const mounted = fasth3(await start({ t2v: wide.server }, 'fasth3', registry), 't2v')
+    expect((await loraOffer(mounted))?.description).toContain(`${ORBIT} (default 0.9, from 0 to 1.2)`)
+    await collect(mounted.render(request([], null, { lora: { id: ORBIT } })))
+    expect(wide.requests.map(body => body['lora'])).toEqual([{ name: ORBIT, scale: 0.9 }])
   })
 
   it.skipIf(REAL_BACKEND === undefined || !existsSync(REAL_REFERENCE) || !existsSync(FFMPEG))('renders a real five-second shot from an image, a video with sound and an audio file against the running server', async () => {

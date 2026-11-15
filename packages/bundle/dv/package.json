@@ -26,6 +26,7 @@
     "@dv/image-generate": "workspace:*",
     "@dv/inspector": "workspace:*",
     "@dv/location": "workspace:*",
+    "@dv/lora": "workspace:*",
     "@dv/mcp-presets": "workspace:*",
     "@dv/models": "workspace:*",
     "@dv/project": "workspace:*",

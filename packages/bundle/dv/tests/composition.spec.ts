@@ -6,9 +6,11 @@
  */
 import { readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { Context } from '@deepseek-ai/cordis'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { Config as FastVideoConfig } from '@dv/fastvideo'
 import { deriveModelFacts } from '@dv/fastvideo-generation-client'
+import DvLora, { type Config as LoraConfig } from '@dv/lora'
 import type { AssetId, OperationToolValue, ProjectId, RecordId } from '@dv/project'
 import { formatModelKey } from '@dv/models'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -64,10 +66,21 @@ describe('DreamVerse bundle composition', () => {
     await expect(`${JSON.stringify(tools, null, 2)}\n`).toMatchFileSnapshot('./expected/tools/text-node.json')
   })
 
+  it('keeps a valid LoRA registry, each adapter for model fasth3, in the disabled dv-lora row', async () => {
+    const row = bundleRows().find(candidate => candidate.id === 'dv-lora')
+    const ctx = new Context()
+    await ctx.plugin(DvLora, DvLora.Config(row?.config as LoraConfig))
+    disposers.push(() => ctx.fiber.dispose())
+    expect(ctx.dvLora.list().length).toBeGreaterThan(0)
+    expect(ctx.dvLora.list().every(adapter => adapter.targets.every(target => target.model === 'fasth3'))).toBe(true)
+    expect(ctx.dvLora.list({ model: 'fasth3', task: 'ref2v' }).map(adapter => adapter.id))
+      .toEqual(['fal/MiniMax-H3-Realism-People-LoRA'])
+  })
+
   it('boots the bundle rows through the Loader and turns a model tool call into a durable record', async () => {
     const rows = bundleRows()
     expect(rows.map(row => row.id)).toEqual(expect.arrayContaining([
-      'dv-openrouter', 'dv-models', 'dv-fastvideo', 'dv-uniserve', 'dv-project', 'dv-text-node', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
+      'dv-openrouter', 'dv-models', 'dv-lora', 'dv-fastvideo', 'dv-uniserve', 'dv-project', 'dv-text-node', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
       'dv-sglang-diffusion', 'dv-image-generate', 'dv-sglang-omni', 'dv-audio-generate',
     ]))
     const { ctx, dir, services, dispose } = await bootBundle()
@@ -84,6 +97,11 @@ describe('DreamVerse bundle composition', () => {
     expect(ctx.get('tools')?.get('dv_models_list')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_models_get')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_image_generate')).toBeDefined()
+    // The LoRA registry row is disabled with the FastVideo row, the only provider of `extra.lora`, so the agent sees
+    // no LoRA tools.
+    expect(rows.find(row => row.id === 'dv-lora')?.disabled).toBe(true)
+    expect(ctx.get('tools')?.get('dv_lora_list')).toBeUndefined()
+    expect(ctx.get('tools')?.get('dv_lora_get')).toBeUndefined()
     // The FastVideo row is disabled and keeps one server per task of fasth3, with valid model facts, for a deployment
     // that mounts it.
     expect(fastVideo.mounted).toBe(false)
