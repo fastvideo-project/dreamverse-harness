@@ -14,6 +14,7 @@
     "./mention": "./src/client/mention.ts",
     "./reference-face": "./src/client/ReferenceFace.tsx",
     "./reference-model": "./src/client/reference-model.ts",
+    "./chat-assets": "./src/client/chat-assets.ts",
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },

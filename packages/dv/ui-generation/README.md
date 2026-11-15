@@ -57,6 +57,8 @@ The plugin registers its canvas parts (the node type, 重试, the card and the t
 - **The chat card**, one `tool.call.toolview` entry per operation, keyed by the operation's tool name, such as `dv_shot_render` for `shot.render`. It shows the operation's label, the status words of the call's phase, the model and task line, the prompt, the first output through `dv.media` at purpose `loop`, muted behind the output that `preview` picks as the poster, and 在历史中查看 / Show in history once the call settled.
 - **The History rows**, one `dvHistory.rows` entry per operation. Each gives `spec.subject` as the subject and marks a media row whose thumbnail is `spec.preview`, else the first output.
 
+Chat cards follow the open project's generation records by session and tool-call ID. Each card shows its completed media or failure as soon as that record changes, even while other calls in the same batch are running. Queued and running cards show an indeterminate progress bar; this indicator does not estimate backend completion percentages. A card without a matching record uses its tool result.
+
 The chat card and the take editor read the operation labels and the task labels through the inject `hooks` of [`src/client/loaded.ts`](src/client/loaded.ts): two sources that load `GET /api/dv/operations` and `GET /api/dv/tasks` on the first subscription and stay empty after a failed load, so every reader falls back to names until the next subscription loads again. The take editor reads only the task labels; it reads the declarations from its `operations` owner prop.
 
 -----

@@ -57,6 +57,8 @@ export const { inject, apply } = defineGenerationUi({
 - **对话卡片**，每个操作一个 `tool.call.toolview` 条目，以操作的工具名为键，例如 `shot.render` 的 `dv_shot_render`。它显示操作标签、调用所处阶段的状态文字、模型和任务行、提示词、通过 `dv.media` 以用途 `loop` 静音绘制的第一个输出（以 `preview` 选出的输出为封面），以及调用结束后的 在历史中查看 / Show in history。
 - **历史行**，每个操作一个 `dvHistory.rows` 条目。每行以 `spec.subject` 为主题，并标为媒体行，以 `spec.preview`（没有时为第一个输出）为缩略图。
 
+对话卡片按会话和工具调用 ID 跟踪当前项目的生成记录。每张卡片在对应记录变化后立即显示已生成的媒体或失败状态，即使同一批次的其他调用仍在运行。排队和运行中的卡片显示不定进度条，不估算后端完成百分比。找不到对应记录时，卡片使用工具返回结果。
+
 对话卡片和版本编辑器通过 [`src/client/loaded.ts`](src/client/loaded.ts) 的注入 `hooks` 读取操作标签和任务标签：两个源在第一次订阅时各加载 `GET /api/dv/operations` 和 `GET /api/dv/tasks`，加载失败时保持为空，所以每个读取方都退回到名称，直到下一次订阅再加载。版本编辑器只读取任务标签；它从 `operations` 所有者属性读取声明。
 
 -----

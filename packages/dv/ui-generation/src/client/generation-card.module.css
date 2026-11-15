@@ -43,6 +43,18 @@
   color: var(--dv-text-2);
 }
 
+.progress {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 8px;
+  accent-color: var(--dv-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress { animation: none; }
+}
+
 .media {
   display: flex;
   overflow: hidden;
