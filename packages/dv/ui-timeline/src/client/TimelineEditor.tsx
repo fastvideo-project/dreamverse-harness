@@ -63,16 +63,16 @@ export interface TimelineEditorProps {
   /** Drop {@link TimelineEditorProps.clipFocus} once the editor took it. */
   takeClipFocus?: () => void
   /**
-   * Draw the editor inside a canvas card instead of a panel: no timeline tabs and no track-area resize, the track area
-   * fills the editor, the preview renders into `viewer` (none while it is null), centered on it and `previewWidth` wide
-   * (default: as wide as `viewer`), with the first ready clip's aspect ratio and a progress bar that a press moves the
-   * playhead along, the editor and the preview draw everything `scale` times larger (default 1) while still filling
-   * their boxes, so their text grows with the node, the menus open inside the editor, and
-   * pointer positions are divided by the canvas zoom that scales the editor; the toolbar ends with 打开编辑器 / Open
-   * editor, which calls `open`. The editor marks its root and the preview `data-node-keys`, its ruler, clips, sounds and sound track
-   * headers `data-node-interactive`, so the canvas leaves their keys and presses to it and moves the node on a press
-   * anywhere else; the track area scrolls both ways without a scrollbar, by wheel or touchpad. Absent for the panel of the 时间线 tab and
-   * center view.
+   * Draw the editor inside a canvas card instead of a panel; absent for the panel of the 时间线 tab and center view. A
+   * card has no timeline tabs and no track-area resize, and its track area fills the editor and scrolls both ways
+   * without a scrollbar, by wheel or touchpad. The preview renders into `viewer` (none while it is null), centered on
+   * it and `previewWidth` wide (default: as wide as `viewer`), with the first ready clip's aspect ratio and a progress
+   * bar that a press moves the playhead along. The editor and the preview draw everything `scale` times larger
+   * (default 1) while still filling their boxes, so their text grows with the node. The menus open inside the editor,
+   * pointer positions are divided by the canvas zoom that scales the editor, and the toolbar ends with 打开编辑器 /
+   * Open editor, which calls `open`. The editor marks its root and the preview `data-node-keys`, and its ruler, clips,
+   * sounds and sound track headers `data-node-interactive`, so the canvas leaves their keys and presses to it and
+   * moves the node on a press anywhere else.
    */
   card?: { viewer: HTMLElement | null; open: () => void; previewWidth?: number; scale?: number }
 }
