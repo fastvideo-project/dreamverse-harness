@@ -99,6 +99,21 @@ describe('conversation model choices', () => {
     expect(save).toHaveBeenCalledWith('image', { provider: 'openrouter', model: 'flux' })
   })
 
+  it('keeps its catalog subscriptions across re-renders, so a re-render loads no catalog', async () => {
+    const load = vi.fn(async () => [model('pika')])
+    const models = catalogSource(load)
+    const state = createSnapshotStore(fixtureState())
+    const props = { sessionId: 's1', state, models, reloadModels: models.reload, save: async () => {} }
+    const view = render(<ModelPickers {...props} />)
+    await act(async () => {})
+    const loads = load.mock.calls.length
+    for (let index = 0; index < 5; index += 1) {
+      view.rerender(<ModelPickers {...props} />)
+      await act(async () => {})
+    }
+    expect(load).toHaveBeenCalledTimes(loads)
+  })
+
   it('lists only the models of its modality', () => {
     expect(modelChoices([{ ...model('text'), modality: 'text' }, model('pika'), image('flux')], 'video')).toEqual([model('pika')])
     expect(modelChoices([model('pika'), image('flux')], 'image')).toEqual([image('flux')])

@@ -105,7 +105,7 @@ export interface ModelPickersProps extends Omit<ModelPickerProps, 'modality' | '
 
 /** The pickers of every modality that `pickerModalities` names, side by side. */
 export function ModelPickers({ sessionId, state, models, reloadModels, save }: ModelPickersProps) {
-  const catalog = useSyncExternalStore(listener => models.subscribe(listener), () => models.getSnapshot())
+  const catalog = useSyncExternalStore(models.subscribe, models.getSnapshot)
   return <span className="dv-model-choices">
     {pickerModalities(catalog ?? []).map(modality => <ModelPicker key={modality} modality={modality} sessionId={sessionId}
       state={state} models={models} reloadModels={reloadModels} save={selection => save(modality, selection)} />)}
