@@ -223,7 +223,7 @@ describe('canvasReducer', () => {
     const first = record('shot.render')
     const rerun = record('shot.render', { based_on: first.id })
     const slice = reduceAll([first, rerun])
-    expect(reducer.agentSummary?.(slice, { url: id => id }, {} as never)).toEqual({
+    expect(reducer.agentSummary?.(slice, { url: id => id }, {} as never, 's1' as never)).toEqual({
       canvas: [{ node: first.id, kind: 'shot', name: null, shown: rerun.id, x: 2 * COLUMN, y: 0, width: null, height: null }],
     })
   })

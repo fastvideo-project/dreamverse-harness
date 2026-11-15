@@ -41,7 +41,7 @@ Host 半边不注册任何东西。浏览器半边在 `apply` 顶层提供 `dvMe
 | 画布节点上的 问 agent | `dv:compose`，草稿为 修改 {title}：，带一个引用，指向节点的 `ref`，否则指向其记录，否则指向节点本身，以节点的预览或第一个素材显示；编辑器关闭 |
 | 素材预览里的 让智能体使用 | `dv:compose`，草稿为 使用这个素材：，带一个指向该素材的引用；预览关闭 |
 | 来自其他视图的 `dv:compose` | 最新挂载的输入框用其文字替换草稿，并为每个引用追加一个标签；不发送任何内容 |
-| 打开一个 `dv.prompt` 实例 | 在没有其他实例打开时打开一个实例，就请求 `GET /api/dv/models`；读取失败时保留原有的目录；编辑器没有目录时显示 模型列表加载失败 / Couldn't load the model list 和 重试 / Try again，点击后重新读取目录（`dv-composer-models-failed`） |
+| 打开一个 `dv.prompt` 实例 | 在没有其他实例打开时打开一个实例，就请求 `GET /api/dv/models`；读取失败时保留原有的目录；编辑器没有目录时显示 模型列表加载失败 / Couldn't load the model list 和 重试 / Try again，点击后重新读取目录；重新读取期间提示（`dv-composer-models-failed`）隐藏，读取再次失败时重新显示 |
 | 在聊天输入框里显示一个标签 | 所打开项目的 `GET /api/dv/state`，在有聊天标签显示期间，在该项目的每一阵项目事件后 150 ms 重新获取 |
 | 在可编辑的 `dv.prompt` 实例里编辑调用，或给它新的状态 | 最后一次改变后 250 ms，带改过的调用和宿主的 `surface` 请求 `POST /api/dv/operation/check`；该路由不写任何内容 |
 
@@ -51,9 +51,9 @@ Host 半边不注册任何东西。浏览器半边在 `apply` 顶层提供 `dvMe
 
 ### `dv.prompt` 输入框
 
-浏览器半边还提供 `dvComposer`，它的类型在只含类型的入口 `@dv/ui-composer/contract`（[`src/client/contract/index.ts`](src/client/contract/index.ts)）中：`paramBars`，一个以 `operation` 为键的 `Registry<ParamBar>`，拥有某个操作的插件的 UI 半边在 `ctx.inject(['dvComposer'], …)` 中填充它，`@dv/ui-generation` 的生成套件就为一个类型的每个操作这样做。同一个操作的第二个参数栏会抛错，并给出持有者的 `owner`。`ParamBar` 提供 `chips({schema, params, operation})`，即调用在某个模型的 `schema()` 下的参数标签，每个标签有参数键、名称，以及一个菜单（显示的值和以参数补丁表示的选项）、一个文本框或一个复选框；`candidates(schema)`，即该模型的 `@` 过滤条件，含它的 `reference` 输入的媒体类型和数量 `maxReferences`；以及可选的 `copy`，含 `placeholder`、`send` 和 `sending` 文字。`chips` 和 `candidates` 也是可选的，`candidates` 回答 null 表示没有过滤条件，例如对于目录不知道的 schema。可编辑实例按项目和宿主传入的调用，把未发送草稿（文档、参数和标签中的输入文字）保存在内存中；关闭编辑器（例如按 Escape 或点击空白画布）后重新打开同一版本，会恢复草稿。发送成功或编辑回原调用时删除草稿；恢复的草稿从不处于发送状态，刷新页面会清除全部草稿。
+浏览器半边还提供 `dvComposer`，它的类型在只含类型的入口 `@dv/ui-composer/contract`（[`src/client/contract/index.ts`](src/client/contract/index.ts)）中：`paramBars`，一个以 `operation` 为键的 `Registry<ParamBar>`，拥有某个操作的插件的 UI 半边在 `ctx.inject(['dvComposer'], …)` 中填充它，`@dv/ui-generation` 的生成套件就为一个类型的每个操作这样做。同一个操作的第二个参数栏会抛错，并给出持有者的 `owner`。`ParamBar` 提供 `chips({schema, params, operation})`，即调用在某个模型的 `schema()` 下的参数标签，每个标签有参数键、名称，以及一个菜单（显示的值和以参数补丁表示的选项）、一个文本框或一个复选框；`candidates(schema)`，即该模型的 `@` 过滤条件，含它的 `reference` 输入的媒体类型和数量 `maxReferences`；以及可选的 `copy`，含 `placeholder`、`send` 和 `sending` 文字。`chips` 和 `candidates` 也是可选的，`candidates` 回答 null 表示没有过滤条件，例如对于目录不知道的 schema。可编辑的实例把未发送的草稿（文档、参数和标签中输入的文字）保存在内存中，键为其项目、`draftId`（版本编辑器传入版本的记录）和宿主提供的调用，所以关闭编辑器（例如按 Escape 或点击画布空白处）后再次打开同一个版本会恢复草稿，而调用相同的另一个版本从空白开始；发送成功或改回宿主提供的调用会丢弃草稿，恢复的草稿在发送前重新检查，不显示编辑器关闭前的失败，也从不处于发送中状态，重新加载页面会清除所有草稿。
 
-浏览器半边注册根作用域组件工厂 `dv.prompt`，即单个生成调用的输入框；插件用一个空的 `import type {} from '@dv/ui-composer/contract'` 获得它，并用 `renderFactorySlot('dv.prompt', props)` 绘制它。它的属性是 `projectId`、`call`（一个 `PromptCall`：`operation`，`params`，其中 `prompt` 是带引用的提示词，以及 `{role, ref}` 形式的请求输入 `inputs`）、`state` 和 `operations`（宿主绘制的项目状态和操作声明，输入框据此解析每个引用并找到调用的操作）、`readOnly`、`surface`（用户编辑调用的位置，例如 `canvas`，检查会写出它）、`host` 和可选的 `onSubmit(call)`，后者接收改过的调用，并决定发送做什么。宿主是一个 `PromptHost`：可选的 `pickAssets(chosen, done)` 打开宿主的素材选择窗口，可选的 `importFiles(files)` 把本地文件导入项目，并按文件顺序给出它们的素材 ID，`preview(asset, opener)` 打开素材的预览，`openNode(nodeId)` 打开画布节点的编辑器。宿主传入另一个 `call` 时，该实例在这个调用上重新开始，撤销历史为空，所以撤销不能带回被替换的调用。[`@dv/ui-generation`](../ui-generation/README.zh.md) 的版本编辑器在版本的调用上绘制它。
+浏览器半边注册根作用域组件工厂 `dv.prompt`，即单个生成调用的输入框；插件用一个空的 `import type {} from '@dv/ui-composer/contract'` 获得它，并用 `renderFactorySlot('dv.prompt', props)` 绘制它。它的属性是 `projectId`、`draftId`（调用所属对象的标识，例如版本的记录；可编辑的实例在它之下保存未发送的草稿）、`call`（一个 `PromptCall`：`operation`，`params`，其中 `prompt` 是带引用的提示词，以及 `{role, ref}` 形式的请求输入 `inputs`）、`state` 和 `operations`（宿主绘制的项目状态和操作声明，输入框据此解析每个引用并找到调用的操作）、`readOnly`、`surface`（用户编辑调用的位置，例如 `canvas`，检查会写出它）、`host` 和可选的 `onSubmit(call)`，后者接收改过的调用，并决定发送做什么。宿主是一个 `PromptHost`：可选的 `pickAssets(chosen, done)` 打开宿主的素材选择窗口，可选的 `importFiles(files)` 把本地文件导入项目，并按文件顺序给出它们的素材 ID，`preview(asset, opener)` 打开素材的预览，`openNode(nodeId)` 打开画布节点的编辑器。宿主传入另一个 `call` 时，该实例在这个调用上重新开始，撤销历史为空，所以撤销不能带回被替换的调用。要换到另一个 `draftId` 或 `projectId`，宿主重新挂载该实例，例如用 React key。[`@dv/ui-generation`](../ui-generation/README.zh.md) 的版本编辑器在版本的调用上绘制它。
 
 任何文本框都可以提供同样的 `@` 选择器和标签。三个入口导出对话框和 `dv.prompt` 使用的代码：`@dv/ui-composer/mention` 提供 `MENTION_SOURCE`（源名称 `dv-project`）和 `projectMentionSource`，`@dv/ui-composer/reference-face` 提供标签外观 `ReferenceFace`，`@dv/ui-composer/reference-model` 提供 `editorContent`，它把文本中的每个引用 `@[label](dv:…)` 变成一个标签。文本框用 `sources: [MENTION_SOURCE]` 和来源为 `MENTION_SOURCE` 的标签绘制 `renderFactorySlot('conversation.prompt', { model })`；本插件为该来源注册的外观绘制每个标签，`faceContext` 为 null 时外观读取已打开项目的状态，与对话标签相同。
 
@@ -68,6 +68,8 @@ Host 半边不注册任何东西。浏览器半边在 `apply` 顶层提供 `dvMe
 标签引用一个素材（`dv:asset/<id>`）或一个元素，例如角色（`dv:<kind>/<id>`）。输入框用内核的解析器读取编辑器文字中的引用，所以凡是内核读出引用的地方它都读出引用：粘贴或输入写成文字的引用，例如剪切或复制后粘贴回来的标签，会在同一步撤销中变成标签。`reference` 输入代表某个素材时满足该素材的标签，是某个元素至少有一个素材的版本 `<id>@<n>` 时满足该元素的标签。输入框让输入与标签保持一致：没有输入满足的新标签追加它需要的输入，即该素材或该元素的最新版本（R1）；移除一个参考项会把只由该输入满足的每个标签变成它的名称，作为编辑器的一步撤销（R2）；删除一个标签会移除满足它、且没有剩余标签引用的每个 `reference` 输入，没有标签引用过的输入和其他角色的输入（例如首帧）保留（R3′）；没有输入满足的标签以失败样式绘制（R4）。用 vN / Use vN 把输入改写为该版本，该元素的每个标签都跟着改变。编辑器的历史是唯一的撤销：撤销或重做带回被删除的标签时，也把该编辑为它们移除的每个输入带回存储时的位置，而编辑带回的标签，例如新的 `@` 选择或粘贴，按 R1 追加它的输入；不改变提示词的参考栏编辑，例如从选择窗口添加、固定版本或移除没有标签引用的参考项，不在这个历史中。[`src/client/DvPrompt.tsx`](src/client/DvPrompt.tsx) 和 [`src/client/reference-model.ts`](src/client/reference-model.ts) 的模块注释拥有这些规则。
 
 标签外观是键为 `dv-project` 的 `conversation.prompt.reference` 条目和 `conversation.input.reference` 条目，所以它在每个提示词编辑器里和聊天输入框里绘制 `dv-project` 来源的每个标签：通过 `dv.media` 以用途 `thumb` 绘制的预览、名称，以及在 `dv.prompt` 实例中调用发送的版本。在 `dv.prompt` 实例中，标签外观绘制该实例对照宿主提供的状态解析出的结果，所以它不获取状态。聊天标签读取所打开项目的实时状态，并绘制其元素的最新版本。在 `dv.prompt` 实例中点击标签会打开条目的节点或素材的预览。`@` 来源 `dv-project` 还为会话之外的实例提供 `prompt` 面，它列出同样的条目，并去掉素材的媒体类型不被该实例的模型接受的条目，以及没有版本类型读取的类型的条目，例如时间线片段，调用的任何输入都不能满足它。
+
+所选目录模型和操作均声明 `first_frame` 或 `last_frame` 时，编辑器通过宿主素材选择器提供“选择首帧”/“选择尾帧”。每次选择只替换对应角色，保留提示词、参考输入和另一端点。素材栏标明各端点角色。操作检查校验所选素材类型；无效媒体不能作为有效调用提交。
 
 -----
 
@@ -90,7 +92,7 @@ Host 半边不注册任何东西。浏览器半边在 `apply` 顶层提供 `dvMe
 | [`src/client/DvPrompt.tsx`](src/client/DvPrompt.tsx) | 输入框：参考栏、编辑器、参数栏、检查和发送 |
 | [`src/client/param-chips.ts`](src/client/param-chips.ts) | 调用的参数栏标签，以及文本标签文字的类型解析 |
 | [`src/client/draft.ts`](src/client/draft.ts) | 实例的草稿：文档、参数、编辑器的内容、检查和发送，每次改变是一个动作 |
-| [`src/client/drafts.ts`](src/client/drafts.ts) | 内存中的未发送草稿存储，按项目和宿主传入的调用索引，保留最近写入的 20 份 |
+| [`src/client/drafts.ts`](src/client/drafts.ts) | 内存中的未发送草稿存储，按项目、草稿 ID 和宿主传入的调用索引，保留最近写入的 20 份 |
 | [`src/client/reference-model.ts`](src/client/reference-model.ts) | 调用的文档、满足引用的输入、编辑 R1 到 R3′ 和版本固定，以及标签和参考项的视图 |
 | [`src/client/ReferenceFace.tsx`](src/client/ReferenceFace.tsx) | 标签外观 |
 | [`src/client/chat-assets.ts`](src/client/chat-assets.ts) | 所打开项目的素材、创建每个素材的记录和操作声明，每次项目事件后重新获取 |

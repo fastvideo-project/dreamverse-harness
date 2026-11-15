@@ -1,0 +1,75 @@
+---
+description: "Set up OpenRouter video models in the existing DreamVerse Settings shell. Use this page for credential storage, catalog discovery, and chat-picker model choices."
+kind: "package-reference"
+---
+
+# @dv/ui-openrouter
+
+English | [中文](README.zh.md)
+
+## Summary
+
+Set up OpenRouter video models in the existing DreamVerse Settings shell. Use this page for credential storage, catalog discovery, and chat-picker model choices.
+
+## Table of Contents
+
+- [Use this package](#use-this-package)
+- [Understand the implementation](#understand-the-implementation)
+- [Further Exploration](#further-exploration)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
+<a id="use-this-package"></a>
+## Use this package
+
+The DreamVerse bundle mounts this browser contribution beside `@dv/openrouter`. Open Settings → Video APIs, save the key, load the catalog, and choose Add to chat for a model. Enable OpenRouter for operator LLM reuses the existing pi-ai adapter and saved key reference; choose the operator model in chat. The existing Models settings page still manages its routes.
+
+A blank key keeps the saved credential. Model enable/disable writes only aliases and model IDs through revision-fenced settings; keys use the existing credential service. Removing a model affects future choices and does not remove completed videos.
+
+
+<a id="understand-the-implementation"></a>
+## Understand the implementation
+
+The page uses the existing settings slot, config form, credential remote, shared input/button primitives, and locale service. Discovery is a same-origin authenticated request; the browser never calls OpenRouter with a saved key.
+
+
+<a id="further-exploration"></a>
+## Further Exploration
+
+See the [OpenRouter video API guide](https://openrouter.ai/docs/guides/overview/multimodal/video-generation).
+
+<a id="model-experience"></a>
+## Model Experience
+
+### Request context and condition
+
+#### What the model sees
+
+The browser contributes no operator prompt. Enabled API entries appear through `dv_models_list` and the chat video picker; `models.select` records the conversation choice.
+
+#### Token effect
+
+Model metadata appears in catalog tool results; no hidden prompt prefix is added.
+
+#### KV Cache effect
+
+Catalog results append to the conversation. Each cloud video request is independent.
+
+## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
+
+- Catalog discovery is not a paid generation or proof that an account has credit. Real generation requires a valid key, available model, and provider credit.
+
+- This page does not add another LLM adapter, provision cloud GPUs, or download model weights.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Maintainer context</summary>
+
+Contract tests use a fake provider and real media extraction. A paid OpenRouter generation has not been verified in this setup.
+
+</details>

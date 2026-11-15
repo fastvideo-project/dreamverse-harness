@@ -13,6 +13,12 @@
 - insert:
     # The model catalog: the models dv_shot_render and plans can name, which the agent reads through dv_models_list and
     # dv_models_get.
+    - id: dv-openrouter
+      name: '@dv/openrouter'
+
+    - id: dv-ui-openrouter
+      name: '@dv/ui-openrouter'
+
     - id: dv-models
       name: '@dv/models'
 
@@ -290,9 +296,9 @@
 - id: ui-reference
   disabled: true
 
-# The model is fixed by agent-default-model; the composer shows no model picker and no /model command.
+# agent-default-model initializes each session; the operator picker changes its route for the next request.
 - id: ui-model-selection
-  disabled: true
+  disabled: false
 
 # Completed turns show no token-usage pill; the composer statistics are hidden by @dv/ui-shell.
 - id: ui-chat

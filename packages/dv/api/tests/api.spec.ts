@@ -564,6 +564,20 @@ describe('dvApi', () => {
     expect(mentionedAssets(fixture.project.getState(projectId), imports())).toEqual([...imported.outputs, ...later.outputs])
   })
 
+  it('lists every asset that a timeline\'s clips and sounds play', async () => {
+    const fixture = await start()
+    const projectId = await fixture.newProject('demo')
+    // Assets stored outside any record, so only the timeline mentions them.
+    const shot = fixture.assets.importAsset(projectId, Buffer.from('shot'), { mime: 'video/mp4', name: 'shot.mp4' }, null)
+    const song = fixture.assets.importAsset(projectId, Buffer.from('song'), { mime: 'audio/mpeg', name: 'song.mp3' }, null)
+    await fixture.handlers.runOperation({ project: projectId, operation: 'timeline.create', surface: 'timeline', params: { assets: [shot] } })
+    const added = await fixture.handlers.runOperation({
+      project: projectId, operation: 'timeline.sound_add', surface: 'timeline', params: { timeline: 't1', asset: song, start_sec: 0 },
+    })
+    expect(added.status).toBe('done')
+    expect(mentionedAssets(fixture.project.getState(projectId), new Map())).toEqual([shot, song])
+  })
+
   it('parses the input c1@3 to { character: c1, version: 3 }, and resolves a version input to its references', async () => {
     const fixture = await start()
     const projectId = await fixture.newProject('demo')

@@ -163,6 +163,32 @@ describe('the model catalog failure', () => {
     expect(catalog.failure.getSnapshot()).toBeNull()
     expect(seen).toHaveBeenCalled()
   })
+
+  it('starts no second load while a load is in flight, so no older answer can replace a newer one', async () => {
+    let answer: (catalog: unknown[]) => void = () => {}
+    const load = vi.fn().mockReturnValueOnce(new Promise((resolve) => { answer = resolve })).mockResolvedValueOnce([{ modality: 'video' }])
+    const catalog = catalogSource(load)
+    catalog.subscribe(() => {})
+    catalog.reload()
+    expect(load).toHaveBeenCalledTimes(1)
+    answer([{ modality: 'audio' }])
+    await vi.waitFor(() => { expect(catalog.getSnapshot()).toEqual([{ modality: 'audio' }]) })
+    catalog.reload()
+    await vi.waitFor(() => { expect(catalog.getSnapshot()).toEqual([{ modality: 'video' }]) })
+    expect(load).toHaveBeenCalledTimes(2)
+  })
+
+  it('clears the message while a reload runs, and records the message of a reload that fails again', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const load = vi.fn().mockRejectedValueOnce(new Error('offline')).mockRejectedValueOnce(new Error('still offline'))
+    const catalog = catalogSource(load)
+    catalog.subscribe(() => {})
+    await vi.waitFor(() => { expect(catalog.failure.getSnapshot()).toBe('offline') })
+    catalog.reload()
+    expect(catalog.failure.getSnapshot()).toBeNull()
+    await vi.waitFor(() => { expect(catalog.failure.getSnapshot()).toBe('still offline') })
+    expect(load).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('the parameter bars', () => {

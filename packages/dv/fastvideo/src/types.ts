@@ -14,7 +14,7 @@ import type { AssignReferenceLabels } from './reference-labels.ts'
 export type MediaType = string
 
 /** An input of a render request: `reference` (the reference assets in input order) or `first_frame`. */
-export type InputRole = 'reference' | 'first_frame'
+export type InputRole = 'reference' | 'first_frame' | 'last_frame'
 
 /** One input that a task of a model accepts. */
 export interface InputDeclaration {
@@ -36,6 +36,8 @@ export interface ServedTask {
   inputs: TaskInputs
   /** The model's own parameters for this task, passed in the request's `extra`; empty when it has none. */
   extra: ParameterSchemaSpec
+  /** Task selector understood by the native FastVideo API. */
+  nativeTask?: string
   /** How the model names the references in its prompt; a citation of a reference becomes its label. */
   assignReferenceLabels: AssignReferenceLabels
   /**

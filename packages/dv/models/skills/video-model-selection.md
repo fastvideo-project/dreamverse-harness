@@ -1,13 +1,17 @@
 # Video model selection
 
-Each shot renders with one video model. Each video model has a key of four fields: `modality`, `task`, `provider` and `model`. Do this procedure for each shot.
+Each shot renders with one video model. Each video model has a key of four fields: `modality`, `task`, `provider` and `model`. The chat input's video choice applies to subsequent generations in that conversation. Read `video_model` in project state, this conversation's choice: a named provider and model is the default; null (Auto) lets you choose. Do not ask the user to pick again for each generation. When they request a switch, call `dv_models_select` with the new provider and model before rendering. Existing renders retain their recorded model.
+
+Providers may expose `dv_models_status`, `dv_models_load` and `dv_models_unload`. These operate on installed weights and GPU memory; they never download weights. Generation loads its requested model automatically, serializes switching with inference, and retains compatible shared components when supported. Do not unload a running generation. Do this procedure for each shot.
 
 ## Procedure
 
 1. Find the task of the shot.
-   - Use `t2v` when the shot has only a prompt.
+   - Use `i2v` when the shot begins at one first-frame image, or `l2v` when it ends at one last-frame image. Neither accepts reference media.
+   - Use `fl2v` when the shot must connect explicit first and last images. Both endpoint image inputs are required; general reference media are not accepted.
+   - Use `t2v` when the shot has only a prompt. A model registered only for `ref2v` can also serve a prompt-only shot if its schema permits zero references; check that entry before rejecting the conversation's selected model.
    - Use `ref2v` when the shot has reference media and a prompt. A `ref2v` shot can also have a first frame.
-2. If the user named a model, call `dv_models_list` with the task of the shot. Use the entry of that model. If that model has no entry for the task, tell the user. Go to step 9.
+2. If the user named a model or this conversation has a video default, call `dv_models_list` with the task of the shot. Use the entry of that model. If that model has no entry for the task, tell the user and offer a model switch. Go to step 9.
 3. Call `dv_models_list` with the task of the shot. Each model that `dv_models_list` returns is a candidate.
 4. Call `dv_models_get` for each candidate.
 5. Remove each candidate that cannot render the shot. Compare the shot with the schema of the candidate:

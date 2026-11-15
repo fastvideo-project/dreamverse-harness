@@ -10,6 +10,7 @@
  * @module @dv/ui-composer/prompt
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import { createElement, useSyncExternalStore } from 'react'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
@@ -22,6 +23,7 @@ import type { DvComposer, DvPromptInjected, ParamBar, ReferenceFaceInjected } fr
 import { DvPrompt } from './DvPrompt.tsx'
 import { MENTION_SOURCE } from './mention.ts'
 import { ReferenceFace } from './ReferenceFace.tsx'
+import { VideoModelPicker } from './VideoModelPicker.tsx'
 
 const REFETCH_DELAY_MS = 150
 
@@ -83,44 +85,45 @@ export function projectStates(client: Pick<DvClient, 'getState' | 'subscribe'>):
   }
 }
 
-/** The model catalog source, with the message of its last failed load and a way to load it again. */
+/**
+ * The model catalog, with the message of its last failed load and a reload that a consumer requests, such as when the
+ * user opens a menu that lists it or presses Try again.
+ */
 export interface CatalogSource extends HostObservable<readonly WireModelEntry[] | null> {
-  /** The message of the last load when it failed; null before the first load answers and after a load succeeds. */
+  /** The message of the last load when it failed; null while a load is in flight and after a load succeeds. */
   readonly failure: HostObservable<string | null>
-  /** Read the catalog again now, whether or not a consumer subscribes. */
+  /** Load the catalog again unless a load is in flight. */
   readonly reload: () => void
 }
 
 /**
- * The model catalog: null until the first load answers, and loaded again each time a consumer subscribes while none
- * did, so an occurrence that opens reads the catalog as it is then, such as after a backend that was down comes back. A
- * failed load keeps the catalog it had and records its message in `failure` until a load succeeds.
+ * The model catalog: null until the first load answers. Each subscription and each `reload()` starts a load unless one
+ * is in flight, so an occurrence that opens reads the catalog as it is then, such as after a backend that was down comes
+ * back, even while another consumer stays subscribed. A failed load keeps the catalog it had and records its message in
+ * `failure` until the next load starts.
  * @param load - reads the catalog.
  * @returns the source.
  */
 export function catalogSource(load: () => Promise<readonly WireModelEntry[]>): CatalogSource {
   const store = createSnapshotStore<readonly WireModelEntry[] | null>(null)
   const failure = createSnapshotStore<string | null>(null)
-  let consumers = 0
+  let loading = false
   const reload = (): void => {
-    load().then((catalog) => {
-      failure.set(null)
-      store.set(catalog)
-    }, (error: unknown) => {
+    if (loading) return
+    loading = true
+    // Clearing the failure takes down the Try again alert while the load runs, so a failed retry shows the alert anew.
+    failure.set(null)
+    load().then((catalog) => { store.set(catalog) }, (error: unknown) => {
       console.error('[dv-composer] models failed:', error)
       failure.set(errorMessage(error))
-    })
+    }).finally(() => { loading = false })
   }
   return {
     getSnapshot: () => store.getSnapshot(),
     subscribe: (listener) => {
       const off = store.subscribe(listener)
-      consumers += 1
-      if (consumers === 1) reload()
-      return () => {
-        off()
-        consumers -= 1
-      }
+      reload()
+      return off
     },
     failure: { getSnapshot: () => failure.getSnapshot(), subscribe: listener => failure.subscribe(listener) },
     reload,
@@ -156,6 +159,18 @@ export function applyPrompt(ctx: ClientContext): void {
     window.addEventListener(DV_CURRENT_PROJECT_EVENT, follow)
     return () => { window.removeEventListener(DV_CURRENT_PROJECT_EVENT, follow) }
   }, 'dv-composer: open project')
+  function ConversationVideoModel({ sessionId }: { sessionId: string }) {
+    const projectId = useSyncExternalStore(currentProject.subscribe, currentProject.getSnapshot)
+    return createElement(VideoModelPicker, {
+      key: `${projectId ?? ''}:${sessionId}`, sessionId, state: states(projectId ?? ''), models, reloadModels: models.reload,
+      save: selection => projectId === null ? Promise.reject(new Error('Open a project to choose its video model.'))
+        : client.runOperation({ project: projectId, session: sessionId, surface: 'chat',
+          operation: 'models.select', params: selection === null ? { provider: '', model: '' } : { ...selection } }),
+    })
+  }
+  ctx.effect(() => ctx.slots.inject('conversation.input.left', () => ctx.slots.register(
+    { name: 'conversation.input.left', id: 'dv-video-model', order: 40 }, ConversationVideoModel,
+  )), 'dv-composer: video model choice')
   const injected: DvPromptInjected = {
     check: request => client.checkOperation(request),
     reloadModels: models.reload,

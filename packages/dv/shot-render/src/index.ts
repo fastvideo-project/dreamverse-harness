@@ -7,7 +7,7 @@
  * inputs and which values of the model's own parameters (`extra`) it renders, and the entry's schema describes them to
  * the agent. The model receives asset IDs and reads each asset from the asset pool.
  *
- * The operation exists while the catalog holds a model of task `t2v` or `ref2v`. The model's facts decide the frame size
+ * The operation exists while the catalog holds a model of task `t2v`, `ref2v` or `fl2v`. The model's facts decide the frame size
  * and frame count. Every render stores the video and its last still as two outputs (`video`, `last_still`), so a later shot
  * can start from output `#1`. While the optional live stream service is mounted, the video bytes also go to browsers as
  * the model produces them.
@@ -89,6 +89,7 @@ const RENDER_INPUTS: Record<string, OperationInput> = {
       + 'assets the shot carries; the model accepts the media types dv_models_get lists. Task ref2v only.',
   },
   first_frame: { type: 'image', description: 'The frame the shot starts from, usually output #1 of the previous shot.' },
+  last_frame: { type: 'image', description: 'The frame the shot ends at. Task fl2v needs both first_frame and last_frame.' },
 }
 
 /** The sentence the render description ends with. */
@@ -151,7 +152,7 @@ function expandElements(prompt: string, inputs: readonly RequestInput[]): string
 
 /**
  * The render request of a call: its prompt with each element citation expanded (see `expandElements`), its
- * `reference` assets in input order, its `first_frame` asset, the frame size and frame count from the model's facts, the
+ * `reference` assets in input order, its `first_frame` and `last_frame` assets, the frame size and frame count from the model's facts, the
  * seed, and the model's own parameters.
  * @param facts - the model's facts.
  * @param params - the call's params.
@@ -159,7 +160,7 @@ function expandElements(prompt: string, inputs: readonly RequestInput[]): string
  * @param seed - the call's `seed`, else the random seed that `defineGeneration` drew.
  * @returns the request.
  * @throws Error for a missing prompt, a citation that names no `reference` asset, params outside the facts, or more than
- *   one `first_frame` input.
+ *   one input of either frame role, or missing frames or forbidden reference media for task `fl2v`.
  */
 function renderRequest(
   facts: RenderModelFacts, params: Record<string, unknown>, inputs: readonly RequestInput[], seed: number,
@@ -168,15 +169,29 @@ function renderRequest(
   const prompt = expandElements(text(params['prompt']), inputs)
   const references = inputAssets(inputs, 'reference')
   // An output of a record that has not finished counts here although it has no asset yet.
-  const firstFrameCount = inputs.filter(input => input.role === 'first_frame').length
+  for (const role of ['first_frame', 'last_frame']) {
+    const count = inputs.filter(input => input.role === role).length
+    if (count > 1) throw new Error(`shot.render takes one ${role} input; this call has ${count}.`)
+    if ((params['task'] === 'fl2v' || (params['task'] === 'i2v' && role === 'first_frame')
+      || (params['task'] === 'l2v' && role === 'last_frame')) && count !== 1) throw new Error(`Task ${params['task']} needs one ${role} input.`)
+  }
+  if (params['task'] === 'i2v' && inputs.some(input => input.role !== 'first_frame')) {
+    throw new Error('Task i2v takes one first_frame, with no reference or last_frame input.')
+  }
+  if (params['task'] === 'l2v' && inputs.some(input => input.role !== 'last_frame')) {
+    throw new Error('Task l2v takes one last_frame, with no reference or first_frame input.')
+  }
+  if (params['task'] === 'fl2v' && inputs.some(input => input.role === 'reference')) throw new Error('Task fl2v takes first_frame and last_frame, with no reference input.')
   const problems = citationProblems(prompt, references, new Set(inputs.map(input => input.role)))
   if (problems.length > 0) throw new Error(`${problems.join(' ')} Cite only the assets of inputs.reference and the inputs of the call.`)
-  if (firstFrameCount > 1) throw new Error(`shot.render takes one first_frame input; this call has ${firstFrameCount}.`)
   const firstFrames = inputAssets(inputs, 'first_frame')
+  const lastFrames = inputAssets(inputs, 'last_frame')
   const geometry = shotGeometry(facts, params)
   return {
-    prompt, references, firstFrame: firstFrames[0] ?? null,
-    frameWidth: geometry.width, frameHeight: geometry.height, numFrames: geometry.numFrames,
+    prompt, references, firstFrame: firstFrames[0] ?? null, lastFrame: lastFrames[0] ?? null,
+    ...geometry.width === undefined ? {} : { frameWidth: geometry.width, frameHeight: geometry.height },
+    ...geometry.numFrames === undefined ? { durationSec: geometry.durationSec, aspectRatio: geometry.aspectRatio,
+      resolution: geometry.resolution } : { numFrames: geometry.numFrames },
     seed, extra: (params['extra'] ?? {}) as Record<string, unknown>,
   }
 }
@@ -202,12 +217,14 @@ async function storeShot(
   const geometry = shotGeometry(facts, context.params)
   const streamed = await streamShot(ctx, context, record.id, stream)
   const shortId = record.id.slice(0, 8)
+  const dimensions = geometry.width === undefined || geometry.height === undefined ? {}
+    : { width: geometry.width, height: geometry.height }
   const video = context.importAsset({ path: streamed.videoPath }, {
     mime: baseMime(streamed.mime), name: `${shortId}.mp4`, durationSec: geometry.durationSec,
-    width: geometry.width, height: geometry.height,
+    ...dimensions,
   })
   const frame = context.importAsset(streamed.lastFrame, {
-    mime: 'image/png', name: `${shortId}-last.png`, width: geometry.width, height: geometry.height,
+    mime: 'image/png', name: `${shortId}-last.png`, ...dimensions,
   })
   // The record's params keep the prompt as written; the report adds the prompt that the model plugin received.
   const expanded = request.prompt === text(context.params['prompt']) ? {} : { expanded_prompt: request.prompt }
@@ -215,7 +232,10 @@ async function storeShot(
     outputs: [video, frame],
     report: {
       model_id: facts.modelId, aspect_ratio: geometry.aspectRatio, resolution: geometry.resolution,
-      duration_sec: geometry.durationSec, frame_width: geometry.width, frame_height: geometry.height, num_frames: geometry.numFrames,
+      duration_sec: geometry.durationSec,
+      ...geometry.width === undefined || geometry.height === undefined ? {}
+        : { frame_width: geometry.width, frame_height: geometry.height },
+      ...geometry.numFrames === undefined ? {} : { num_frames: geometry.numFrames },
       ...modelKey(context.params), ...expanded, timings: streamed.timings,
     },
   }
@@ -300,12 +320,15 @@ const RENDER_DECLARATION: GenerationSpec<'video'> = {
   operation: 'shot.render',
   node: { kind: 'shot', column: 2 },
   primitive: 'video',
-  tasks: { t2v: { zh: '文字生成', en: 'From text' }, ref2v: { zh: '参考图生成', en: 'From references' } },
+  tasks: { t2v: { zh: '文字生成', en: 'From text' }, ref2v: { zh: '参考图生成', en: 'From references' }, fl2v: { zh: '首尾帧生成', en: 'From first and last frames' }, i2v: { zh: '首帧生成', en: 'From first frame' }, l2v: { zh: '尾帧生成', en: 'From last frame' } },
   label: { zh: '渲染镜头', en: 'Render shot' },
   description: 'Render one take of a shot with a model from dv_models_list; modality, task, provider and model name it and are '
     + 'required. Task ref2v renders from reference media through the reference input: imported assets, or versions '
     + 'with reference assets (<id>@<version>, such as c1@1); the prompt cites each reference image as '
     + '@[<label>](dv:asset/<asset ID>). dv_models_get lists the inputs, media types and counts each model accepts. '
+    + 'Task i2v renders from one first_frame image, with no reference or last_frame input. '
+    + 'Task l2v renders toward one last_frame image, with no reference or first_frame input. '
+    + 'Task fl2v renders between image inputs first_frame and last_frame; both are required, with no reference input. '
     + 'Pass continue_from to start from the last still of an earlier shot when the model takes a first frame. '
     + 'The model\'s own parameters go in extra (see dv_models_get). ' + TAKE_RULE,
   params: RENDER_PARAMS,

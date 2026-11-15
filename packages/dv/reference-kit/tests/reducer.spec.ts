@@ -49,7 +49,7 @@ describe('referenceReducer', () => {
       record('r1', 'test_ref.create', { test_ref: 'a', name: 'Lead' }, [FACE]),
       record('r2', 'test_ref.update', { test_ref: 'a', description: 'blue', traits: ['tall'] }),
     ].reduce((current, entry) => reducer.reduce(current, entry), reducer.initial())
-    const summary = reducer.agentSummary?.(slice, { url: asset => `https://assets.example/${asset}` }, {} as ProjectState)
+    const summary = reducer.agentSummary?.(slice, { url: asset => `https://assets.example/${asset}` }, {} as ProjectState, 's1' as never)
     expect(summary).toEqual({ test_refs: [{ id: 'a', version: 2, name: 'Lead', description: 'blue', references: [FACE], traits: ['tall'] }] })
   })
 
@@ -57,7 +57,7 @@ describe('referenceReducer', () => {
     expect(reducer.reduce(undefined, record('r1', 'test_ref.create', { test_ref: 'a', name: 'Lead' }))).toEqual({
       a: [{ id: 'a', version: 1, name: 'Lead', description: '', references: [], traits: [], created_by: 'r1' }],
     })
-    expect(reducer.agentSummary?.(undefined, { url: asset => `https://assets.example/${asset}` }, {} as ProjectState)).toEqual({ test_refs: [] })
+    expect(reducer.agentSummary?.(undefined, { url: asset => `https://assets.example/${asset}` }, {} as ProjectState, 's1' as never)).toEqual({ test_refs: [] })
   })
 
   it('ignores a record that names no operation', () => {
@@ -79,7 +79,7 @@ describe('referenceReducer', () => {
       ...TEST_REF, fields: { traits: { param: { type: 'array', items: { type: 'string' }, description: 'Traits of the item.' }, initial: null } },
     })
     const slice = nullable.reduce(nullable.initial(), record('r1', 'test_ref.create', { test_ref: 'a', name: 'Lead' }))
-    const summary = nullable.agentSummary?.(slice, { url: asset => `https://assets.example/${asset}` }, {} as ProjectState)
+    const summary = nullable.agentSummary?.(slice, { url: asset => `https://assets.example/${asset}` }, {} as ProjectState, 's1' as never)
     expect(summary).toEqual({ test_refs: [{ id: 'a', version: 1, name: 'Lead', description: '', references: [], traits: null }] })
   })
 })

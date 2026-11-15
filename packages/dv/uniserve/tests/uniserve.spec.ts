@@ -225,7 +225,7 @@ function importAsset(ctx: Context, bytes: Buffer, mime: string): AssetId {
 
 /** A five-second 16:9 768p render request with the given input assets and `extra` values. */
 function request(references: AssetId[], firstFrame: AssetId | null, extra: Record<string, unknown> = {}): RenderRequest {
-  return { prompt: '<Picture 1> smiles', references, firstFrame, frameWidth: 1344, frameHeight: 768, numFrames: 124, seed: 7, extra }
+  return { prompt: '<Picture 1> smiles', references, firstFrame, lastFrame: null, frameWidth: 1344, frameHeight: 768, numFrames: 124, seed: 7, extra }
 }
 
 /** The `data:` URI of bytes under a MIME type. */
@@ -282,6 +282,8 @@ describe.skipIf(!HAS_FFMPEG)('dv-uniserve', () => {
     ])
     expect(await entry.validateGenerationRequest({ ...request([image], audios[0] ?? image), prompt: '@[first frame](dv:input/first_frame) smiles' }))
       .toEqual([`Its first_frame input takes assets of type image; asset ${String(audios[0])} is of type audio.`])
+    expect(await entry.validateGenerationRequest({ ...request([image], null), lastFrame: image }))
+      .toEqual(['It takes no last_frame input; this shot has 1.'])
   })
 
   it('renders through POST /v1/videos/sync with labeled citations and data URIs, and yields the last frame and timings', async () => {
@@ -401,11 +403,11 @@ describe.skipIf(!HAS_FFMPEG)('dv-uniserve', () => {
   it.skipIf(REAL_SERVER === undefined || !existsSync(REAL_REFERENCE))('renders a real five-second shot against the running server', async () => {
     const ctx = await start(REAL_SERVER as string)
     const facts = await fasth3(ctx).facts()
-    const [width, height] = facts.frameSizes['16:9']?.['768p'] ?? [0, 0]
+    const [width, height] = facts.frameSizes?.['16:9']?.['768p'] ?? [0, 0]
     const events = await collect(fasth3(ctx).render({
       prompt: 'The scene in <Picture 1> comes to life: the camera slowly pushes in while soft ambient sound plays.',
-      references: [importAsset(ctx, readFileSync(REAL_REFERENCE), 'image/png')], firstFrame: null, frameWidth: width, frameHeight: height,
-      numFrames: facts.numFramesByDurationSec['5'] ?? 0, seed: 1, extra: {},
+      references: [importAsset(ctx, readFileSync(REAL_REFERENCE), 'image/png')], firstFrame: null, lastFrame: null, frameWidth: width, frameHeight: height,
+      numFrames: facts.numFramesByDurationSec?.['5'] ?? 0, seed: 1, extra: {},
     }))
     expect(events.map(event => event.kind)).toEqual(['last_frame', 'video_start', 'chunk', 'done'])
   }, 600_000)

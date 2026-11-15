@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to add a generation primitive, such as image generation, as a short declaration. `defineGeneration(spec)` returns a Cordis service class. The service registers the component key and the task labels of the declaration and, while the model catalog serves one of its tasks, one operation. Each call of the operation is one model call and one record, with the model key, the prompt, the seed and `extra` in its params. Every agent call is GPU-gated. The service also implements `GenerationApi` for workflows. The helper names no primitive.
+Use this package to add a generation primitive, such as image generation, as a short declaration. `defineGeneration(spec)` returns a Cordis service class. The service registers the component key and the task labels of the declaration and, while the model catalog serves one of its tasks, one operation. Each call of the operation is one model call and one record, with the model key, the prompt, the seed and `extra` in its params. Every agent call is GPU-gated. The service also implements `GenerationApi` for workflows. The helper names no primitive. A declaration lists only the tasks it supports; adding another task to a primitive does not require unrelated declarations to serve it.
 
 ## Table of Contents
 

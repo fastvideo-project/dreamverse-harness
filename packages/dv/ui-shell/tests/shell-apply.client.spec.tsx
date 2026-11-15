@@ -2,7 +2,7 @@
 /**
  * The shell plugin in a slot test runtime with stand-ins for the DSH layout, right panel and navigation services.
  */
-import { act, fireEvent, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -23,6 +23,7 @@ const runtimes: SlotTestRuntime[] = []
 
 afterEach(async () => {
   for (const runtime of runtimes.splice(0)) await runtime.dispose()
+  vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   vi.resetModules()
@@ -85,6 +86,7 @@ async function mountShell() {
     'sidebar.workspaces': { kind: 'single', scope: 'root' },
     'sidebar.brand.name': { kind: 'single', scope: 'root' },
     'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: tabInfoFactory } } },
+    'shell.overlay': { kind: 'list', scope: 'root' },
   })
   const shell = await runtime.mount({ inject: [...inject], apply })
   await waitFor(() => { expect(store.getShell().projects).toEqual(PROJECTS) })
@@ -315,7 +317,8 @@ describe('the navigator', () => {
       draft.items = draft.items.map(item => item.workspaceId === 'p1' ? { ...item, sessionIds: ['c1' as SessionId] } : item)
     })
     const navigator = bench.runtime.renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {} })
-    return { bench, view: navigator.view }
+    bench.runtime.renderSlot('shell.overlay', {})
+    return { bench, navigator, view: navigator.view }
   }
 
   it('toggles, opens and selects with Enter and Space on the caret, the project title and the chat row, and leaves keys typed inside the row alone', async () => {
@@ -356,8 +359,8 @@ describe('the navigator', () => {
     expect(view.queryByTitle('Project 1')).toBeNull()
   })
 
-  it('shows the reason a failed action gave, clears it when a later action succeeds, and lets the person dismiss it', async () => {
-    const { bench, view } = await mountNavigator()
+  it('shows the reason a failed action gave in the overlay toast, which outlives the navigator, until a later action succeeds', async () => {
+    const { bench, navigator, view } = await mountNavigator()
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const serverFetch = globalThis.fetch
     vi.stubGlobal('fetch', ((input, init) => {
@@ -365,17 +368,66 @@ describe('the navigator', () => {
       return serverFetch(input, init)
     }) satisfies typeof fetch)
     fireEvent.click(view.getByRole('button', { name: 'Create project' }))
-    const alert = await view.findByRole('alert')
+    const alert = await screen.findByRole('alert')
     expect(alert.textContent).toContain("Couldn't complete that: ")
     expect(alert.textContent).toContain('disk full')
-    fireEvent.click(within(alert).getByRole('button', { name: 'Dismiss' }))
-    expect(view.queryByRole('alert')).toBeNull()
+    expect(navigator.container.querySelector('[role="alert"]')).toBeNull()
+    navigator.update({ wide: false, expandSidebar: () => {} })
+    expect(navigator.container.textContent).toBe('')
+    expect(screen.getByRole('alert')).toBe(alert)
 
-    fireEvent.click(view.getByRole('button', { name: 'Create project' }))
-    await view.findByRole('alert')
+    navigator.update({ wide: true, expandSidebar: () => {} })
     bench.runtime.sessions.stubCreate(() => Promise.resolve('blank-p1' as SessionId))
     fireEvent.click(view.getByRole('button', { name: 'New chat' }))
-    await waitFor(() => { expect(view.queryByRole('alert')).toBeNull() })
+    await waitFor(() => { expect(screen.queryByRole('alert')).toBeNull() })
     expect(bench.store.getShell().projectId).toBe('p1')
+  })
+
+  it('keeps a failure toast when an action that started before the failure succeeds', async () => {
+    const { bench, view } = await mountNavigator()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let open: (session: SessionId) => void = () => {}
+    bench.runtime.sessions.stubCreate(() => new Promise((resolve) => { open = resolve }))
+    fireEvent.click(view.getByRole('button', { name: 'New chat' }))
+    bench.runtime.sessions.stubCreate(() => Promise.reject(new Error('host offline')))
+    fireEvent.click(view.getByRole('button', { name: 'New chat' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toBe("Couldn't complete that: host offline")
+    await act(async () => { open('blank-p1' as SessionId); await Promise.resolve() })
+    await waitFor(() => { expect(bench.store.getShell().projectId).toBe('p1') })
+    expect(screen.getByRole('alert')).toBe(alert)
+  })
+
+  it('removes the failure toast once it has faded', async () => {
+    const { bench, view } = await mountNavigator()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.useFakeTimers()
+    bench.runtime.sessions.stubCreate(() => Promise.reject(new Error('host offline')))
+    fireEvent.click(view.getByRole('button', { name: 'New chat' }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(screen.getByRole('alert').textContent).toBe("Couldn't complete that: host offline")
+    await act(async () => { await vi.advanceTimersByTimeAsync(6999) })
+    expect(screen.queryByRole('alert')).not.toBeNull()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('shows no failure toast from before a dispose once the plugin is applied again', async () => {
+    const { bench, view } = await mountNavigator()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    bench.runtime.sessions.stubCreate(() => Promise.reject(new Error('host offline')))
+    fireEvent.click(view.getByRole('button', { name: 'New chat' }))
+    expect((await screen.findByRole('alert')).textContent).toBe("Couldn't complete that: host offline")
+    // An action still pending at the dispose rejects after the plugin is applied again.
+    let refuse: (error: Error) => void = () => {}
+    bench.runtime.sessions.stubCreate(() => new Promise((_resolve, reject) => { refuse = reject }))
+    fireEvent.click(view.getByRole('button', { name: 'New chat' }))
+    await bench.shell.dispose()
+    const { apply, inject } = await import('../src/client/index.ts')
+    await bench.runtime.mount({ inject: [...inject], apply })
+    await waitFor(() => { expect(bench.runtime.slots.entries('shell.overlay')).toHaveLength(1) })
+    expect(screen.queryByRole('alert')).toBeNull()
+    await act(async () => { refuse(new Error('host gone')); await Promise.resolve() })
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })

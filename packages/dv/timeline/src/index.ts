@@ -1,16 +1,20 @@
 /**
  * The Timeline component of DreamVerse as the `dvTimeline` Cordis service: the timelines of a project (each one edited
  * video, shown by its name, or as 时间线 {n} for a timeline t<n> without one) and their clips (an asset with in and out
- * points). It owns ten edit operations, which change only records and never create a file:
+ * points) and sounds (an audio asset on a numbered sound track, from a start time). It owns fourteen edit operations,
+ * which change only records and never create a file:
  * - `timeline.create`, `timeline.update`, `timeline.rename`, `timeline.delete` act on a whole timeline;
  * - `timeline.clip_insert`, `timeline.clip_move`, `timeline.clip_remove`, `timeline.clip_split`, `timeline.clip_trim`,
- *   `timeline.clip_replace` edit its clips, each named by its ID (`cl1`, `cl2`, …) in the `clip` param.
+ *   `timeline.clip_replace` edit its clips, each named by its ID (`cl1`, `cl2`, …) in the `clip` param;
+ * - `timeline.sound_add`, `timeline.sound_remove` add and remove its sounds, each named by its ID (`sd1`, `sd2`, …) in
+ *   the `sound` param, and `timeline.sound_track_remove`, `timeline.sound_track_rename` act on one sound track.
  *
- * Its eleventh operation, `timeline.export`, writes a timeline to one video file with `dvFfmpeg` and imports the file
- * into the asset pool (see `export.ts`).
+ * Its fifteenth operation, `timeline.export`, writes a timeline to one video file with `dvFfmpeg` and imports the file
+ * into the asset pool (see `export.ts`); the video leaves out the sounds.
  *
- * The operations that add clips assign the new clip IDs and store them in the record's `report.clips`; the `timeline`
- * reducer folds the records into the `timeline` slice. `timeline.create` and `timeline.update` declare the `clip` input
+ * The operations that add clips assign the new clip IDs and store them in the record's `report.clips`, and
+ * `timeline.sound_add` stores the new sound ID in `report.sounds`; the `timeline` reducer folds the records into the
+ * `timeline` slice. `timeline.create` and `timeline.update` declare the `clip` input
  * role in `pendingInputRoles`: a clip input may name a render that is not done, and the clip is a placeholder until
  * the render is done. `dvProject` turns each operation into its agent tool
  * (`dv_timeline_create`, `dv_timeline_clip_move`, `dv_timeline_export`, ...). While the DSH skill registry is mounted,
@@ -23,14 +27,14 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-skill'
 import z from '@deepseek-ai/schemastery'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { OperationContext, OperationResult, OperationSpec, ProjectId, ProjectRecord } from '@dv/project'
+import type { AssetId, OperationContext, OperationResult, OperationSpec, ProjectId, ProjectRecord } from '@dv/project'
 import { exportOperation, exportTimeline } from './export.ts'
 import {
-  addedClipCount, clipProblem, namedTimeline, OPERATIONS, reportedClips, timelineReducer,
+  addedClipCount, clipProblem, namedTimeline, OPERATIONS, reportedClips, reportedSounds, timelineReducer,
 } from './reducer.ts'
-import type { ClipId, Timeline } from './types.ts'
+import type { ClipId, SoundId, Timeline } from './types.ts'
 
-export type { Clip, ClipId, ClipStatus, Timeline, TimelineId, TimelineState } from './types.ts'
+export type { Clip, ClipId, ClipStatus, Sound, SoundId, Timeline, TimelineId, TimelineState } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -122,13 +126,15 @@ function edit(
   }
 }
 
-/** The Timeline service: the reducer, the ten edit operations and the export operation. */
+/** The Timeline service: the reducer, the fourteen edit operations and the export operation. */
 export default class DvTimeline extends Service {
   static inject = ['dvProject', 'dvAssetPool', 'dvFfmpeg']
   static Config = Config
 
   /** The highest clip number this service assigned per project, for calls whose records have not finished yet. */
   private readonly assigned = new Map<ProjectId, number>()
+  /** The highest sound number this service assigned per project, for calls whose records have not finished yet. */
+  private readonly assignedSounds = new Map<ProjectId, number>()
 
   constructor(ctx: Context) {
     super(ctx, 'dvTimeline')
@@ -175,22 +181,46 @@ export default class DvTimeline extends Service {
   }
 
   /**
-   * Check a call against the timeline it edits, and assign the IDs of the clips it adds; the record fails with the
-   * reason when the call cannot apply. The edit itself is the record: the reducer applies it.
+   * Assign a new sound ID in a project: `sd` and one more than the highest number of any sound ID that a Timeline record
+   * of the project stored in `report.sounds`, or that this service assigned to a call still running.
+   * @param project - the project.
+   * @returns the ID.
+   */
+  private assignSoundId(project: ProjectId): SoundId {
+    let highest = this.assignedSounds.get(project) ?? 0
+    for (const entry of this.ctx.dvProject.listHistory({ project, component: 'timeline' })) {
+      for (const id of reportedSounds(entry.record)) highest = Math.max(highest, Number(/^sd(\d+)$/.exec(id)?.[1] ?? 0))
+    }
+    this.assignedSounds.set(project, highest + 1)
+    return brandString<SoundId>(`sd${String(highest + 1)}`)
+  }
+
+  /**
+   * Check a call against the timeline it edits, and assign the IDs of the clips or the sound it adds; the record fails
+   * with the reason when the call cannot apply, or when the asset of `timeline.sound_add` is not an audio file. The
+   * edit itself is the record: the reducer applies it.
    * @param context - the running call.
-   * @returns no outputs; `report.clips` holds the assigned clip IDs of a call that adds clips.
+   * @returns no outputs; `report.clips` holds the assigned clip IDs of a call that adds clips, and `report.sounds` the
+   *   assigned sound ID of `timeline.sound_add`.
    * @throws Error with the reason a call cannot apply.
    */
   private execute(context: OperationContext): Promise<OperationResult> {
     const call = { operation: context.record?.operation ?? null, params: context.params, inputs: context.inputs }
     const problem = clipProblem(context.state.components.timeline, call)
     if (problem !== null) return Promise.reject(new Error(problem))
+    if (call.operation === OPERATIONS.soundAdd) {
+      const asset = String(call.params['asset'])
+      if (this.ctx.dvAssetPool.mediaType(brandString<AssetId>(asset)) !== 'audio') {
+        return Promise.reject(new Error(`Asset ${asset} is not an audio file.`))
+      }
+      return Promise.resolve({ outputs: [], report: { sounds: [this.assignSoundId(context.project)] } })
+    }
     const count = addedClipCount(call)
     const adds = [OPERATIONS.create, OPERATIONS.update, OPERATIONS.insert, OPERATIONS.split].includes(call.operation as never)
     return Promise.resolve(adds ? { outputs: [], report: { clips: this.assignClipIds(context.project, count) } } : { outputs: [] })
   }
 
-  /** The ten edit operations, in the order the agent's tool list shows them. */
+  /** The fourteen edit operations, in the order the agent's tool list shows them. */
   private operations(): OperationSpec[] {
     const execute = (context: OperationContext): Promise<OperationResult> => this.execute(context)
     return [
@@ -295,6 +325,54 @@ export default class DvTimeline extends Service {
         description: 'Put a different asset in a clip; the clip keeps its ID and its in and out points reset.',
         params: { ...CLIP_PARAM, asset: { type: 'string', required: true, description: 'The asset ID.' } },
         summarize: record => `clip ${shown(record.params['clip'])} replaced`,
+      }, execute),
+      edit({
+        name: OPERATIONS.soundAdd,
+        label: { zh: '添加声音', en: 'Add sound' },
+        version: '1',
+        description: 'Add an audio asset to a sound track of a timeline, starting start_sec seconds after the timeline\'s start. '
+          + 'It may overlap clips and other sounds and gets a new sound ID. The exported video does not include sounds yet.',
+        params: {
+          timeline: { type: 'string', required: true, description: 'The timeline, such as t1.' },
+          asset: { type: 'string', required: true, description: 'The audio asset ID.' },
+          start_sec: { type: 'number', required: true, description: 'Seconds from the timeline\'s start; 0 or more.' },
+          track: {
+            type: 'integer',
+            description: 'The sound track, 0 (default) for the first; an existing track or the one after the last (see `sound_tracks` in dv_proj_state).',
+          },
+        },
+        summarize: record => `${prefix(record)}sound ${reportedSounds(record)[0] ?? ''} added at ${shown(record.params['start_sec'])}s`,
+      }, execute),
+      edit({
+        name: OPERATIONS.soundRemove,
+        label: { zh: '删除声音', en: 'Remove sound' },
+        version: '1',
+        description: 'Remove a sound from its timeline. The audio asset stays in the project.',
+        params: { sound: { type: 'string', required: true, description: 'The sound ID, such as sd2 (see `sounds` of `timelines` in dv_proj_state).' } },
+        summarize: record => `sound ${shown(record.params['sound'])} removed`,
+      }, execute),
+      edit({
+        name: OPERATIONS.soundTrackRemove,
+        label: { zh: '删除音轨', en: 'Delete sound track' },
+        version: '1',
+        description: 'Delete one sound track of a timeline with all its sounds; every later track moves up one. The audio assets stay.',
+        params: {
+          timeline: { type: 'string', required: true, description: 'The timeline, such as t1.' },
+          track: { type: 'integer', required: true, description: 'The sound track, 0 for the first.' },
+        },
+        summarize: record => `${prefix(record)}sound track ${shown(record.params['track'])} deleted`,
+      }, execute),
+      edit({
+        name: OPERATIONS.soundTrackRename,
+        label: { zh: '重命名音轨', en: 'Rename sound track' },
+        version: '1',
+        description: 'Name one sound track of a timeline: an existing track or the one after the last. An empty name clears the name.',
+        params: {
+          timeline: { type: 'string', required: true, description: 'The timeline, such as t1.' },
+          track: { type: 'integer', required: true, description: 'The sound track, 0 for the first.' },
+          name: { type: 'string', required: true, description: 'The name, such as Narration.' },
+        },
+        summarize: record => `${prefix(record)}sound track ${shown(record.params['track'])} renamed to ${shown(record.params['name'])}`,
       }, execute),
     ]
   }

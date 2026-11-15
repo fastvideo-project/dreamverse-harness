@@ -55,10 +55,10 @@ async function backend(reply: (path: string, response: ServerResponse) => void) 
 }
 
 /** A client of `baseUrl` with the given facts. */
-function client(baseUrl: string, facts: ModelFactsConfig = FACTS): DvFastvideoGeneration {
+function client(baseUrl: string, facts: ModelFactsConfig = FACTS, task: string | null = null): DvFastvideoGeneration {
   const root = new Context()
   roots.push(root)
-  return new DvFastvideoGeneration(root, { baseUrl, modelFacts: facts })
+  return new DvFastvideoGeneration(root, { baseUrl, modelFacts: facts, task })
 }
 
 /** Answer with an MP4 body and the given headers. */
@@ -141,6 +141,19 @@ describe('model facts', () => {
 })
 
 describe('segment generation', () => {
+  it('sends an explicitly configured native task with endpoints in caller order', async () => {
+    const { url, requests } = await backend((_path, response) => { sendVideo(response) })
+    const generation = client(url, FACTS, 'fl2va')
+    await generation.generateSegment(segment({ references: [
+      { mimeType: 'image/jpeg', bytes: Buffer.from('FIRST') },
+      { mimeType: 'image/png', bytes: Buffer.from('LAST') },
+    ] }))
+    expect(requests[0]?.body).toMatchObject({ task: 'fl2va', image_reference: [
+      { image_url: `data:image/jpeg;base64,${Buffer.from('FIRST').toString('base64')}` },
+      { image_url: `data:image/png;base64,${Buffer.from('LAST').toString('base64')}` },
+    ] })
+  })
+
   it('sends one list per media type in the caller order within each type, and returns the video with its timings', async () => {
     const { client: generation, requests } = await backend((_path, response) => {
       sendVideo(response, { 'x-inference-time-s': '41.5', 'x-stage-durations': '{"denoise": 38.25, "decode": 3, "note": "text"}' })

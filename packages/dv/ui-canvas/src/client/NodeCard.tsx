@@ -141,7 +141,8 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   if (flags.rendering) {
     if (node.record.status === 'pending') marker = t('node.queued')
     else if (elapsed === null) marker = running
-    else marker = <>{running} <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatElapsed(elapsed)}</span></>
+    // One span, because the overlay is a flex box that drops a whitespace-only text node between its items.
+    else marker = <span>{running} <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatElapsed(elapsed)}</span></span>
   } else if (flags.failed) {
     const failedWords = status?.failed() ?? t('node.failed')
     const reason = node.record.error?.message
@@ -170,18 +171,25 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   let content: ReactNode
   if (failed) {
     content = (
-      <div style={{ ...CARD_SURFACE, display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px' }}>
-        <span title={failedText} style={{ ...text(12), flex: 1, minWidth: 0, color: 'var(--dv-danger)', ...ellipsis }}>{marker}</span>
-        {props.failedActions.map(action => (
-          <button
-            key={action.id} type="button" className="dv-canvas-btn" disabled={view.rerunning}
-            style={{ fontFamily: 'inherit', ...text(12), flex: 'none', height: 20, padding: '0 6px', border: '1px solid var(--dv-line-strong)', borderRadius: 'var(--dv-radius-sm)', color: 'var(--dv-text)', cursor: view.rerunning ? 'default' : 'pointer', opacity: view.rerunning ? 0.6 : 1 }}
-            onPointerDown={(event) => { event.stopPropagation() }}
-            onClick={() => { props.onAction(action) }}
-          >
-            {action.id === props.rerunningAction ? running : action.label()}
-          </button>
-        ))}
+      <div style={{ ...CARD_SURFACE, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-start', gap: 6, padding: '0 10px' }}>
+        {/* oxlint-disable-next-line typescript/no-deprecated -- Browsers clamp lines only on a vertical -webkit-box. */}
+        <span title={failedText} style={{ ...text(12), display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 3, overflow: 'hidden', overflowWrap: 'anywhere', color: 'var(--dv-danger)' }}>{marker}</span>
+        {props.failedActions.length === 0
+          ? null
+          : (
+            <div style={{ display: 'flex', gap: 6 }}>
+              {props.failedActions.map(action => (
+                <button
+                  key={action.id} type="button" className="dv-canvas-btn" disabled={view.rerunning}
+                  style={{ fontFamily: 'inherit', ...text(12), flex: 'none', height: 20, padding: '0 6px', border: '1px solid var(--dv-line-strong)', borderRadius: 'var(--dv-radius-sm)', color: 'var(--dv-text)', cursor: view.rerunning ? 'default' : 'pointer', opacity: view.rerunning ? 0.6 : 1 }}
+                  onPointerDown={(event) => { event.stopPropagation() }}
+                  onClick={() => { props.onAction(action) }}
+                >
+                  {action.id === props.rerunningAction ? running : action.label()}
+                </button>
+              ))}
+            </div>
+          )}
       </div>
     )
   } else {

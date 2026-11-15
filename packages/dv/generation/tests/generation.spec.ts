@@ -63,7 +63,7 @@ const DvProbeGenerate = defineGeneration({
     const assets = (role: string) =>
       inputs.flatMap(input => input.role === role && input.resolved_asset !== null ? [input.resolved_asset] : [])
     return {
-      prompt, references: assets('reference'), firstFrame: assets('first_frame')[0] ?? null,
+      prompt, references: assets('reference'), firstFrame: assets('first_frame')[0] ?? null, lastFrame: null,
       frameWidth: 16, frameHeight: 16, numFrames: durationSec * 24, seed, extra: {},
     }
   },
@@ -88,7 +88,7 @@ const DvPlainGenerate = defineGeneration({
   toRequest(_facts, params, inputs): RenderRequest {
     seen.push(inputs)
     if (params['prompt'] === 'boom') throw 'The prompt is a bomb.'
-    return { prompt: String(params['prompt']), references: [], firstFrame: null, frameWidth: 16, frameHeight: 16, numFrames: 24, seed: 0, extra: {} }
+    return { prompt: String(params['prompt']), references: [], firstFrame: null, lastFrame: null, frameWidth: 16, frameHeight: 16, numFrames: 24, seed: 0, extra: {} }
   },
   toOutputs: async (_ctx, run, _result, _facts, request) => ({
     outputs: [importOne(run, { bytes: Buffer.from(`plain ${request.prompt}`), mime: 'text/plain' })],

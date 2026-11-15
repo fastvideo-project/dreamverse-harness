@@ -180,14 +180,15 @@ const PLUGINS = {
 
 /**
  * Boot the skill registry, Project, ffmpeg, the asset pool, the catalog and the plugin from a test-only `cordis.yml`.
- * @param tasks - the server URL of each task of `fasth3` to configure.
+ * @param tasks - the server of each task of `model` to configure.
+ * @param model - the served model that `tasks` configures.
  * @returns the root context.
  */
-async function start(tasks: { ref2v?: FastVideo.TaskServer; t2v?: FastVideo.TaskServer }): Promise<Context> {
+async function start(tasks: Partial<Record<VideoTask, FastVideo.TaskServer>>, model = 'fasth3'): Promise<Context> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-fastvideo-'))
   const globals = globalThis as typeof globalThis & { __dvFastVideo?: typeof PLUGINS }
   globals.__dvFastVideo = PLUGINS
-  const config = [`models: ${JSON.stringify({ fasth3: tasks })}`]
+  const config = [`models: ${JSON.stringify({ [model]: tasks })}`]
   const rows: string[] = []
   const plugins = [
     ['skills', 'SkillRegistry', []],
@@ -229,6 +230,13 @@ function fasth3(ctx: Context, task: VideoTask): ModelEntry<VideoTask> {
   return entry
 }
 
+/** The registered `pika-h3-flex` entry for a task. */
+function pika(ctx: Context, task: VideoTask): ModelEntry<VideoTask> {
+  const entry = ctx.dvModels.get({ modality: 'video', provider: 'fastvideo', model: 'pika-h3-flex', task })
+  if (entry === undefined || !isVideoEntry(entry)) throw new Error(`Missing Pika ${task}`)
+  return entry
+}
+
 /** Collect a render stream. */
 async function collect(stream: AsyncIterable<RenderStreamEvent>): Promise<RenderStreamEvent[]> {
   const events: RenderStreamEvent[] = []
@@ -245,7 +253,7 @@ function importAsset(ctx: Context, bytes: Buffer, mime: string): AssetId {
 
 /** A render request with the given input assets and `extra` values. */
 function request(references: AssetId[], firstFrame: AssetId | null, extra: Record<string, unknown> = {}) {
-  return { prompt: '<Picture 1> smiles', references, firstFrame, frameWidth: 1344, frameHeight: 768, numFrames: 124, seed: 7, extra }
+  return { prompt: '<Picture 1> smiles', references, firstFrame, lastFrame: null, frameWidth: 1344, frameHeight: 768, numFrames: 124, seed: 7, extra }
 }
 
 /** The `data:` URL of one reference. */
@@ -477,6 +485,22 @@ describe('dv-fastvideo', () => {
   })
 
   it.each([
+    ['i2v', 'no image slot', { referenceMediaTypes: { video: { maxCount: 2 } } },
+      'dv-fastvideo: pika-h3-flex i2v takes a first frame of type image, so modelFacts.referenceMediaTypes.image.maxCount must be at least 1.'],
+    ['l2v', 'no image slot', { referenceMediaTypes: { video: { maxCount: 2 } } },
+      'dv-fastvideo: pika-h3-flex l2v takes a last frame of type image, so modelFacts.referenceMediaTypes.image.maxCount must be at least 1.'],
+    ['fl2v', 'one image slot', { referenceMediaTypes: { image: { maxCount: 1 } } },
+      'dv-fastvideo: pika-h3-flex fl2v takes 2 frame inputs of type image, so modelFacts.referenceMediaTypes.image.maxCount must be at least 2.'],
+    ['ref2v', 'no reference slot', { maxReferences: 0, referenceMediaTypes: {} },
+      'dv-fastvideo: pika-h3-flex ref2v takes at least 1 reference, so modelFacts.maxReferences must be at least 1; it is 0.'],
+  ] as const)('refuses Pika %s model facts with %s for its inputs when the plugin is applied', async (task, _case, update, message) => {
+    const [reference, text] = await Promise.all([startFakeServer(REFERENCE_FACTS), startFakeServer(TEXT_FACTS)])
+    const ctx = await start({ t2v: text.server }, 'pika-h3-flex')
+    const server = { ...reference.server, modelFacts: { ...REFERENCE_FACTS, ...update } }
+    expect(() => { FastVideo.apply(ctx, { models: { 'pika-h3-flex': { [task]: server } } }) }).toThrow(message)
+  })
+
+  it.each([
     [400, 'MiniMax-H3 accepts at most 9 image references.', { name: 'GenerationSegmentError', message: 'MiniMax-H3 accepts at most 9 image references.' }],
     [500, 'Video generation failed: CUDA out of memory', { message: 'FastVideo POST /v1/videos/sync returned HTTP 500: Video generation failed: CUDA out of memory' }],
   ] as const)('rejects a render that the server answers with HTTP %s with the server message', async (status, message, error) => {
@@ -535,7 +559,7 @@ describe('dv-fastvideo', () => {
     const reference = await startFakeServer(REFERENCE_FACTS)
     const ctx = await start({ ref2v: reference.server })
     const { server } = reference
-    expect(() => { FastVideo.apply(ctx, { models: { wan: { t2v: server } } }) }).toThrow('dv-fastvideo serves no model "wan"; it serves: fasth3.')
+    expect(() => { FastVideo.apply(ctx, { models: { wan: { t2v: server } } }) }).toThrow('dv-fastvideo serves no model "wan"; it serves: fasth3, pika-h3-flex.')
     expect(() => { FastVideo.apply(ctx, { models: { fasth3: { reference: server } } }) })
       .toThrow('dv-fastvideo serves model "fasth3" for no task "reference"; its tasks: ref2v, t2v.')
     expect(() => { FastVideo.apply(ctx, { models: { fasth3: {} } }) }).toThrow('dv-fastvideo: model "fasth3" names no task.')
@@ -545,16 +569,69 @@ describe('dv-fastvideo', () => {
   it.skipIf(REAL_BACKEND === undefined || !existsSync(REAL_REFERENCE) || !existsSync(FFMPEG))('renders a real five-second shot from an image, a video with sound and an audio file against the running server', async () => {
     const ctx = await start({ ref2v: { baseUrl: REAL_BACKEND as string, modelFacts: REAL_FACTS } })
     const facts = await fasth3(ctx, 'ref2v').facts()
-    const [width, height] = facts.frameSizes[facts.aspectRatios[0] ?? '']?.[facts.resolutions[0] ?? ''] ?? [0, 0]
+    const [width, height] = facts.frameSizes?.[facts.aspectRatios[0] ?? '']?.[facts.resolutions[0] ?? ''] ?? [0, 0]
     const image = importAsset(ctx, readFileSync(REAL_REFERENCE), 'image/jpeg')
     const video = importAsset(ctx, await sampleVideo(true), 'video/mp4')
     const audio = importAsset(ctx, await sampleAudio(), 'audio/wav')
     const events = await collect(fasth3(ctx, 'ref2v').render({
       prompt: `@[the man](dv:asset/${image}) speaks to the camera in a bright office with the framing of @[the clip](dv:asset/${video}), `
         + `slow push-in, natural light, @[the tone](dv:asset/${audio}) playing softly.`,
-      references: [image, video, audio], firstFrame: null, frameWidth: width, frameHeight: height,
-      numFrames: facts.numFramesByDurationSec['5'] ?? 0, seed: 1, extra: {},
+      references: [image, video, audio], firstFrame: null, lastFrame: null, frameWidth: width, frameHeight: height,
+      numFrames: facts.numFramesByDurationSec?.['5'] ?? 0, seed: 1, extra: {},
     }))
     expect(events.map(event => event.kind)).toEqual(expect.arrayContaining(['last_frame', 'video_start', 'chunk', 'done']))
   }, 600_000)
+})
+
+describe('dv-fastvideo pika-h3-flex', () => {
+  it('registers its five tasks and validates the reference and frame inputs of each', async () => {
+    const backend = await startFakeServer(REFERENCE_FACTS)
+    const ctx = await start({ ref2v: backend.server, fl2v: backend.server, i2v: backend.server, l2v: backend.server }, 'pika-h3-flex')
+    const first = importAsset(ctx, Buffer.from('FIRST'), 'image/png')
+    const last = importAsset(ctx, Buffer.from('LAST'), 'image/png')
+    const audio = importAsset(ctx, Buffer.from('AUDIO'), 'audio/mpeg')
+    const both = { ...request([], first), lastFrame: last }
+    expect(await pika(ctx, 'fl2v').validateGenerationRequest(both)).toEqual([])
+    expect(await pika(ctx, 'fl2v').validateGenerationRequest(request([], first))).toContain(
+      'Its last_frame input needs at least 1 of type image; this shot has 0.')
+    expect(await pika(ctx, 'i2v').validateGenerationRequest(both)).toContain('It takes no last_frame input; this shot has 1.')
+    expect(await pika(ctx, 'l2v').validateGenerationRequest({ ...request([], null), lastFrame: last })).toEqual([])
+    expect(await pika(ctx, 'ref2v').validateGenerationRequest(request([audio], null))).toContain(
+      'Its reference input needs at least one image or video; audio alone is insufficient.')
+    expect(await pika(ctx, 'ref2v').validateGenerationRequest(request([first], null))).toEqual([])
+    expect(await pika(ctx, 'ref2v').schema()).toMatchObject({ inputs: { reference: { max: 4 } } })
+  })
+
+  it.skipIf(!existsSync(FFMPEG))('sends task fl2va with the first frame, then the last frame, and yields the last frame of the video', async () => {
+    const backend = await startFakeServer(REFERENCE_FACTS, { video: await redThenBlueVideo() })
+    const ctx = await start({ fl2v: backend.server }, 'pika-h3-flex')
+    const first = importAsset(ctx, Buffer.from('FIRST'), 'image/jpeg')
+    const last = importAsset(ctx, Buffer.from('LAST'), 'image/png')
+    const events = await collect(pika(ctx, 'fl2v').render({ ...request([], first), lastFrame: last,
+      prompt: '@[start](dv:input/first_frame) to @[end](dv:input/last_frame)' }))
+    expect(backend.requests).toEqual([{
+      model: REFERENCE_FACTS.modelId, task: 'fl2va', prompt: '<Picture 1> to <Picture 2>',
+      width: 1344, height: 768, num_frames: 124, seed: 7,
+      image_reference: [{ image_url: dataUrl('image/jpeg', 'FIRST') }, { image_url: dataUrl('image/png', 'LAST') }],
+    }])
+    expect(events.map(event => event.kind)).toEqual(['last_frame', 'video_start', 'chunk', 'done'])
+  })
+
+  it.skipIf(!existsSync(FFMPEG))('sends each task\'s native selector, with the sole frame of i2v and l2v as Picture 1', async () => {
+    const backend = await startFakeServer(REFERENCE_FACTS, { video: await redThenBlueVideo() })
+    const ctx = await start({ t2v: backend.server, i2v: backend.server, l2v: backend.server, ref2v: backend.server }, 'pika-h3-flex')
+    const first = importAsset(ctx, Buffer.from('FIRST'), 'image/png')
+    const last = importAsset(ctx, Buffer.from('LAST'), 'image/jpeg')
+    const style = importAsset(ctx, Buffer.from('STYLE'), 'image/png')
+    await collect(pika(ctx, 't2v').render({ ...request([], null), prompt: 'A door opens' }))
+    await collect(pika(ctx, 'i2v').render({ ...request([], first), prompt: '@[start](dv:input/first_frame) opens the shot' }))
+    await collect(pika(ctx, 'l2v').render({ ...request([], null), lastFrame: last, prompt: '@[end](dv:input/last_frame) closes the shot' }))
+    await collect(pika(ctx, 'ref2v').render({ ...request([style], null), prompt: `A door in @[style](dv:asset/${style})` }))
+    expect(backend.requests).toMatchObject([
+      { task: 't2va', prompt: 'A door opens' },
+      { task: 'i2va', prompt: '<Picture 1> opens the shot', image_reference: [{ image_url: dataUrl('image/png', 'FIRST') }] },
+      { task: 'l2va', prompt: '<Picture 1> closes the shot', image_reference: [{ image_url: dataUrl('image/jpeg', 'LAST') }] },
+      { task: 'ref2va', prompt: 'A door in <Picture 1>', image_reference: [{ image_url: dataUrl('image/png', 'STYLE') }] },
+    ])
+  })
 })

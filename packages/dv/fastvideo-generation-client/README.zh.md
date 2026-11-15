@@ -48,6 +48,7 @@ FastVideo 不提供能力路由，因此操作者写出所服务模型的事实�
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `baseUrl` | 必填 | 生成后端的 HTTP 基础 URL |
+| `task` | `null` | `generateSegment` 作为请求的 `task` 发送的原生 FastVideo 任务选择器，如 `fl2va`；`null` 时不发送 `task` |
 | `modelFacts.modelId` | 必填 | 精确的服务模型别名；`model()` 将它与 `served_model_name` 比较 |
 | `modelFacts.frameSizes` | 必填 | 宽高比到分辨率到 `[width, height]` 的映射；每个宽高比列出相同的分辨率 |
 | `modelFacts.numFramesByDurationSec` | 必填 | 整数秒时长到帧数的映射，覆盖从最短到最长的每个时长，帧数随时长增长 |
@@ -64,7 +65,7 @@ FastVideo 不提供能力路由，因此操作者写出所服务模型的事实�
 
 ### 后端 API
 
-API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/model_info` 返回 `{"model_path", "served_model_name", "lora"}`。`POST /v1/videos/sync` 接受 `model`、`prompt`、`width`、`height`、`num_frames`、可选的 `seed`，以及列表 `image_reference`、`video_reference` 和 `audio_reference`，每项为 `{"<type>_url": "data:<mime>;base64,..."}`。Ref2VA 流水线先读图片，再读视频，最后读音频，每个列表按其自身顺序；`REFERENCE_FIELDS` 记录这一顺序，`backendOrder(items, mediaTypeOf)` 按该顺序返回各项。参考的媒体类型是其 `mimeType` 的顶层类型；其他类型在发送 HTTP 前以 `GenerationSegmentError` 拒绝。
+API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/model_info` 返回 `{"model_path", "served_model_name", "lora"}`。`POST /v1/videos/sync` 接受 `model`、可选的 `task`、`prompt`、`width`、`height`、`num_frames`、可选的 `seed`，以及列表 `image_reference`、`video_reference` 和 `audio_reference`，每项为 `{"<type>_url": "data:<mime>;base64,..."}`。Ref2VA 流水线先读图片，再读视频，最后读音频，每个列表按其自身顺序；`REFERENCE_FIELDS` 记录这一顺序，`backendOrder(items, mediaTypeOf)` 按该顺序返回各项。参考的媒体类型是其 `mimeType` 的顶层类型；其他类型在发送 HTTP 前以 `GenerationSegmentError` 拒绝。
 
 回答必须带 `video/*` 内容类型；其他内容类型以携带响应体文本的 `Error` 拒绝。`@dv/models` 的 `renderTimings` 读取耗时：`X-Inference-Time-S` 变为 `timings.inference_s`，`X-Stage-Durations` 中 JSON 对象的每个阶段变为 `timings.<stage>_s`；不是 JSON 的 `X-Stage-Durations` 不添加阶段耗时，视频仍保留。HTTP 400 变为 `GenerationSegmentError`；其他 HTTP 失败保留状态和受限长度的后端消息。消息取 `application/json` 响应体的 `error.message`，否则取响应体文本。Python traceback 仅保留最后的异常行；超过 2,048 字符的消息会截断，完整详情留在服务器日志中。
 
@@ -99,6 +100,14 @@ API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/model_in
 
 -----
 
+可选 `task` 字段选择原生 FastVideo 任务（如 `fl2va`）；省略时使用服务端默认任务。
+
+### 原生模型目录控制
+
+仅当后端实现 `/v1/model_state`、`/v1/models/load` 和 `/v1/models/unload` 时启用 `managed: true`。`loadModel`、`unloadModel` 和 `modelStatus` 调用这些路由，不会生成视频。`task` 区分共用模型别名的参考与关键帧管线；`displayName` 命名聊天选项。提供方仅为受管理条目暴露这些控制。
+
+受管理条目或启用 `asyncJobs: true` 的条目提交一个 `/v1/videos` 任务，以 `pollIntervalMs`（默认 1000）轮询其 ID，再读取规范内容路由。轮询不会重新提交生成。中止会删除该任务；原生 CUDA 工作可能忙碌到当前调用结束。普通固定服务保留已合并的 `/v1/videos/sync` 传输与共享 ffmpeg 提取。
+
 <a id="model-experience"></a>
 ## 模型体验
 
@@ -123,7 +132,7 @@ API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/model_in
 - **模型事实从不刷新**——`model()` 在插件生命周期内只检查一次服务别名。若后端以另一个模型重启，harness 会一直保留配置的事实，直到插件重新加载。
 - **配置的模型事实**——FastVideo 不提供能力路由。操作者必须让配置的事实与部署的权重及采样设置一致。
 - **完整响应输出**——没有逐步预览；完整 MP4 保留在内存中。
-- **没有请求截止时间**——`GET /v1/model_info` 保留全局 dispatcher 的超时，且不接受中止信号。只有等待 `POST /v1/videos/sync` 的响应头没有截止时间；从不回答的后端会一直占用该请求，直到调用方中止它。
+- **无默认请求期限** — 调用接受可选中止信号。默认原生传输关闭长时间生成及模型加载请求的响应头超时；调用者负责操作期限。
 
 <a id="dev-note"></a>
 ### 开发备注

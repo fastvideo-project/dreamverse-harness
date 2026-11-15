@@ -25,8 +25,8 @@ import { errorMessage } from '@dv/ui-kit/api.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import type { WireModelEntry, WireOperation } from '@dv/ui-kit/types.ts'
 import type {} from '@dv/ui-media/contract'
-import type { CallInput, CandidateFilter, ParamBar, ParamChip, PromptCopy, PromptFaceContext, PromptHost, ReferenceView } from './contract/index.ts'
-import { draftOf, reduceDraft, startOf, type Draft } from './draft.ts'
+import type { CallInput, CandidateFilter, ParamBar, ParamChip, PromptCall, PromptCopy, PromptFaceContext, PromptHost, ReferenceView } from './contract/index.ts'
+import { draftOf, reduceDraft, startOf } from './draft.ts'
 import { clearDraft, draftKey, readDraft, writeDraft } from './drafts.ts'
 import { MENTION_SOURCE } from './mention.ts'
 import { paramChips, typedValue } from './param-chips.ts'
@@ -63,6 +63,12 @@ function modelOf(models: readonly WireModelEntry[], params: Readonly<Record<stri
  */
 export function DvPrompt(props: DvPromptComponentProps): ReactNode {
   return props.readOnly ? <DvPromptView {...props} /> : <DvPromptEditor key={props.projectId} {...props} />
+}
+
+/** A call as JSON with its params in key order, so that two calls that differ only in that order give one key. */
+function sortedCallKey(call: PromptCall): string {
+  const params = Object.entries(call.params).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+  return JSON.stringify([call.operation, params, call.inputs])
 }
 
 /** The faces of a document's chips, as its views resolve them. */
@@ -124,7 +130,7 @@ function DvPromptView({ call, state, host, renderFactorySlot, useVersionKinds }:
  * @returns the editor.
  */
 function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
-  const { projectId, call, state, host, onSubmit, surface, renderFactorySlot } = props
+  const { projectId, draftId, call, state, host, onSubmit, surface, renderFactorySlot } = props
   const pick = useText()
   // Null until the composer knows the canvas's version kinds; until then the editor is read-only, because the inputs
   // follow its edits by the kinds' rules.
@@ -137,8 +143,8 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
   const bar = props.useParamBars(bars => bars.find(candidate => candidate.operation === call.operation) ?? null)
   const operation = props.operations.find(candidate => candidate.name === call.operation) ?? null
   const callKey = JSON.stringify(call)
-  // An unsent draft of this project and call, kept when the editor last closed, replaces the call's own draft.
-  const storeKey = draftKey(projectId, callKey)
+  // An unsent draft of this project, draft id and call, kept when the editor last closed, replaces the call's own draft.
+  const storeKey = draftKey(projectId, draftId, callKey)
   const [draft, dispatch] = useReducer(reduceDraft, call, lent => startOf(lent, readDraft(storeKey)))
   if (draft.callKey !== callKey) dispatch({ type: 'callLent', call, stored: readDraft(storeKey) })
   const { document, params, sending } = draft
@@ -149,16 +155,27 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
   const entry = modelOf(models, params)
   const copy = { ...NEUTRAL_COPY, ...bar?.copy }
   const filter: CandidateFilter | null = entry === undefined ? null : bar?.candidates?.(entry.schema) ?? null
+  const frameRoles = (['first_frame', 'last_frame'] as const).filter((role) => {
+    const schema = entry?.schema
+    if (schema === null || typeof schema !== 'object' || Array.isArray(schema)) return false
+    const inputs: unknown = new Map(Object.entries(schema)).get('inputs')
+    return operation?.inputs[role] !== undefined && inputs !== null && typeof inputs === 'object'
+      && !Array.isArray(inputs) && Object.hasOwn(inputs, role)
+  })
   const offersReferences = catalog !== null && operation?.inputs['reference'] !== undefined && filter?.mediaTypes.length !== 0
   const editedKey = JSON.stringify(edited)
   // An answer or a failure of another call does not count for the edited call.
   const checked = draft.checked?.key === editedKey ? draft.checked.answer : null
   const failure = draft.failure?.key === editedKey ? draft.failure.message : null
+  // A text chip whose text its param cannot take blocks the send, so the field never shows a value that the call lacks.
+  const typing = operation === null ? [] : Object.entries(draft.texts).flatMap(([key, text]) => {
+    const typed = typedValue(operation, key, text)
+    return 'problem' in typed ? [typed.problem] : []
+  })
   useEffect(() => {
     if (sentKey.current === editedKey) return
-    const base = draftOf(call)
-    const shape = (value: Draft): string => JSON.stringify([value.document, value.params, value.texts])
-    const unedited = shape(draft) === shape(base)
+    // A draft whose call is the lent call, with no chip text that its param cannot take, holds no edit.
+    const unedited = typing.length === 0 && sortedCallKey(edited) === sortedCallKey(callOf(draftOf(call).document, call))
     if (unedited) clearDraft(storeKey)
     else writeDraft(storeKey, draft)
     // The store follows the draft, which holds every edit; `call` is read only to tell an edited draft from its start.
@@ -178,11 +195,6 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
 
   const ctx: ResolveContext = { state, versions, inputs: null, filter: null }
   const views = documentViews(document, { ...ctx, filter })
-  // A text chip whose text its param cannot take blocks the send, so the field never shows a value that the call lacks.
-  const typing = operation === null ? [] : Object.entries(draft.texts).flatMap(([key, text]) => {
-    const typed = typedValue(operation, key, text)
-    return 'problem' in typed ? [typed.problem] : []
-  })
   const refused = failure === null ? [] : [pick(`失败：${failure}`, `Failed: ${failure}`)]
   const problems = typing.length > 0 ? typing : [...refused, ...checked?.problems ?? []]
   const blocked = typing.length > 0 || checked === null || checked.problems.length > 0
@@ -191,7 +203,10 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
     dispatch({ type: 'sending' })
     onSubmit(edited).then(() => {
       sentKey.current = editedKey
-      clearDraft(storeKey)
+      // An editor reopened while the send ran may have stored newer edits, so only a stored draft of the sent call goes.
+      const stored = readDraft(storeKey)
+      const storedKey = stored === undefined ? null : JSON.stringify(callOf(stored.document, { ...call, params: stored.params }))
+      if (storedKey === editedKey) clearDraft(storeKey)
       dispatch({ type: 'sent', key: editedKey, failure: null })
     }, (error: unknown) => {
       dispatch({ type: 'sent', key: editedKey, failure: errorMessage(error) })
@@ -253,6 +268,21 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
           )
           : null}
       </div>}
+      {frameRoles.length === 0 || picker === undefined ? null : <div style={row}>
+        {frameRoles.map(role => <button
+          key={role} type="button" className="dv-canvas-btn" style={select}
+          onClick={() => {
+            picker(document.inputs.filter(input => input.role === role).map(input => input.ref), (refs) => {
+              if (refs.length > 1) {
+                dispatch({ type: 'failed', key: editedKey, message: pick('请选择一张端点图像。', 'Choose one endpoint image.') })
+                return
+              }
+              const ref = refs[0]
+              if (ref !== undefined) dispatch({ type: 'framePicked', role, ref })
+            })
+          }}
+        >{role === 'first_frame' ? pick('选择首帧', 'Choose first frame') : pick('选择尾帧', 'Choose last frame')}</button>)}
+      </div>}
       {renderFactorySlot('conversation.prompt', { model })}
       <div style={{ ...row, justifyContent: 'space-between' }}>
         <span style={row}>
@@ -309,6 +339,8 @@ function Tile({ input, view, cited, renderFactorySlot, onOpen, onRemove, onPin }
         {view.label}
         {version === null ? null : <span style={{ color: 'var(--dv-text-2)' }}>{`v${String(version.sent)}`}</span>}
       </button>
+      {input.role === 'first_frame' || input.role === 'last_frame'
+        ? <span>{input.role === 'first_frame' ? pick('首帧', 'First frame') : pick('尾帧', 'Last frame')}</span> : null}
       {cited ? null : <span style={{ color: 'var(--dv-text-2)' }}>{pick('未引用', 'Uncited')}</span>}
       {onPin === undefined || version === null || version.newest === version.sent
         ? null

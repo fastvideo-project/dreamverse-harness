@@ -313,8 +313,8 @@ export interface Reducer<K extends ComponentKey = ComponentKey> {
    */
   initial(): ComponentStates[K]
   /**
-   * Apply one record. The reducer receives every record of the chain, of every component, in order, and
-   * ignores the records it does not interpret.
+   * Apply one record. The reducer receives every record of the chain, of every component, in order, then every record
+   * of its own component's `outsideHistory` operations in write order, and ignores the records it does not interpret.
    * @param slice - the slice before the record.
    * @param record - the record in its current form.
    * @returns the slice after the record.
@@ -328,9 +328,12 @@ export interface Reducer<K extends ComponentKey = ComponentKey> {
    * @param slice - the slice of the current state.
    * @param assets - the asset store, for the URLs of the assets the slice names.
    * @param state - the whole current state, for the records the slice refers to.
+   * @param session - the session whose agent reads the summary, for fields that differ per conversation.
    * @returns the fields by name.
    */
-  agentSummary?(slice: ComponentStates[K], assets: Pick<AssetStore, 'url'>, state: ProjectState): Record<string, JsonValue>
+  agentSummary?(
+    slice: ComponentStates[K], assets: Pick<AssetStore, 'url'>, state: ProjectState, session: SessionId,
+  ): Record<string, JsonValue>
 }
 
 /** The state of a project at one record: the result of the chain that ends there. */

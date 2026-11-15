@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The DreamVerse timeline editor as a right-Sidebar tab: each timeline of the project on one track, with move, trim, split, insert, and remove gestures that become timeline and clip records.",
+  "description": "The DreamVerse timeline editor as a right-Sidebar tab: each timeline of the project on one video track and its sound tracks, with clip and sound gestures that become timeline records.",
   "exports": {
     ".": "./src/index.ts",
     "./client": {

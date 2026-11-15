@@ -375,7 +375,9 @@ describe('the History tab', () => {
   })
 
   it('counts the time a running step has rendered, and shows how long a finished render took unless it was reused or took under a second', async () => {
-    const startedAt = new Date(Date.now() - 65_000).toISOString()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-09T10:01:05Z'))
+    const startedAt = '2026-11-09T10:00:00Z'
     const step = (id: string, extra: Partial<ProjectRecord>): HistoryEntry => ({
       record: record({ id, operation: 'shot.render', outputs: [], ...extra }), place: 'before',
     })
@@ -389,7 +391,7 @@ describe('the History tab', () => {
     ])
     await waitFor(() => { row('u1') })
     const durationOf = (id: string): string | undefined => row(id).querySelector('[data-testid="dv-history-duration"]')?.textContent ?? undefined
-    expect(row('u1').querySelector('[class*="status"]')?.textContent).toMatch(/1:0[5-7]$/)
+    expect(row('u1').querySelector('[class*="status"]')?.textContent).toBe('Running1:05')
     expect([durationOf('u1'), durationOf('d1'), durationOf('d2'), durationOf('d3'), durationOf('d4')]).toEqual([undefined, 'took 2:05', undefined, undefined, undefined])
   })
 

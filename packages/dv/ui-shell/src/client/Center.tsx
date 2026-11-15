@@ -25,7 +25,7 @@ import type { WireProject, WireProjectSummary } from '@dv/ui-kit/types.ts'
 import type { ShellActions } from './actions.ts'
 import { CoverFrame, editedText, useProjectSummaries } from './cover.tsx'
 import { SidebarRightIcon } from './icons.tsx'
-import { type ActionRunner, useActionNotice } from './notice.tsx'
+import { runAction } from './notice.tsx'
 import { SessionSwitcher } from './SessionSwitcher.tsx'
 import { useSlotTabs } from './slot-tabs.ts'
 import type { ShellLocation } from './store.ts'
@@ -246,7 +246,6 @@ function RecentProjects({ shell, renderFactorySlot }: Pick<ShellInjected, 'shell
   const sorted = useMemo(() => [...projects].sort((a, b) => b.created_at.localeCompare(a.created_at)), [projects])
   // One summaries read for every card; a project added to the list reads them again.
   const summaries = useProjectSummaries(null, sorted.map(project => project.id).join(' '))
-  const { run: runAction, notice } = useActionNotice()
   if (sorted.length === 0) return null
   const shown = showAll ? sorted : sorted.slice(0, RECENT_COUNT)
   return (
@@ -259,11 +258,10 @@ function RecentProjects({ shell, renderFactorySlot }: Pick<ShellInjected, 'shell
           </button>
         )}
       </div>
-      {notice}
       <div className={css.cards}>
         {shown.map(project => (
           <ProjectCard
-            key={project.id} shell={shell} run={runAction} projectId={project.id} title={project.title} createdAt={project.created_at}
+            key={project.id} shell={shell} projectId={project.id} title={project.title} createdAt={project.created_at}
             summary={summaries?.get(project.id) ?? null} renderFactorySlot={renderFactorySlot}
           />
         ))}
@@ -314,13 +312,12 @@ function Explore({ renderSlot }: Pick<CenterProps, 'renderSlot'>): ReactNode {
 
 /**
  * One recent project: its 16:9 cover, its title, and its last edit time.
- * @param props - the shell actions, the runner of their asynchronous ones, the Factory renderer, the project, and its
- *   summary (null while the summaries load).
+ * @param props - the shell actions, the Factory renderer, the project, and its summary (null while the summaries load).
  * @returns the card.
  */
 function ProjectCard(
-  { shell, run: runAction, projectId, title, createdAt, summary, renderFactorySlot }: Pick<ShellInjected, 'shell'> & PropsRenderFactories
-    & { run: ActionRunner; projectId: string; title: string; createdAt: string; summary: WireProjectSummary | null },
+  { shell, projectId, title, createdAt, summary, renderFactorySlot }: Pick<ShellInjected, 'shell'> & PropsRenderFactories
+    & { projectId: string; title: string; createdAt: string; summary: WireProjectSummary | null },
 ): ReactNode {
   const t = useText()
   const meta = editedText(summary?.edited_at ?? createdAt, t)

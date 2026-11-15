@@ -61,3 +61,37 @@ html body [data-dv-chat] [data-composer-card] button:focus-visible {
     transition: none;
   }
 }
+
+.dv-video-model { position: relative; display: inline-flex; min-width: 0; }
+.dv-video-model-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--dv-radius-md, 8px);
+  background: transparent;
+  color: var(--dv-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.dv-video-model-trigger:hover:not(:disabled) { background: var(--dv-surface-3); }
+.dv-video-model-trigger:disabled { opacity: .6; cursor: default; }
+.dv-video-model-kind { color: var(--dv-text-3); }
+.dv-video-model-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.dv-video-model-error {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  width: min(320px, 70vw);
+  padding: 8px;
+  border: 1px solid var(--dv-line-strong);
+  border-radius: var(--dv-radius-md, 8px);
+  background: var(--dv-surface-2);
+  color: var(--dv-text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}

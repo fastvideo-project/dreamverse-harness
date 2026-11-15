@@ -51,7 +51,9 @@
     "@dv/ui-style": "workspace:*",
     "@dv/ui-text-node": "workspace:*",
     "@dv/ui-timeline": "workspace:*",
-    "@dv/workflow-story": "workspace:*"
+    "@dv/workflow-story": "workspace:*",
+    "@dv/openrouter": "workspace:*",
+    "@dv/ui-openrouter": "workspace:*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
