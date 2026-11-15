@@ -184,8 +184,7 @@ function renderRequest(
     throw new Error('Task l2v takes one last_frame, with no reference or first_frame input.')
   }
   if (params['task'] === 'fl2v' && inputs.some(input => input.role === 'reference')) throw new Error('Task fl2v takes first_frame and last_frame, with no reference input.')
-  if (params['task'] === 'v2v' && (inputs.some(input => input.role !== 'reference')
-    || inputs.filter(input => input.role === 'reference').length !== 1)) {
+  if (params['task'] === 'v2v' && (inputs.length !== 1 || inputs.some(input => input.role !== 'reference'))) {
     throw new Error('Task v2v regenerates one reference video: one reference input, with no first_frame or last_frame.')
   }
   const problems = citationProblems(prompt, references, new Set(inputs.map(input => input.role)))

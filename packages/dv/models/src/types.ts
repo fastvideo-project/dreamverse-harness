@@ -76,7 +76,7 @@ export type PrimitiveId = keyof PrimitiveTypes
  * from reference media and the prompt, optionally from a first frame; `fl2v`: a video between first and last images.
  * `i2v`: a video beginning at one image; `l2v`: a video ending at one image. `v2v`: the same video regenerated from one
  * reference video, such as a draft upscaled to 2K. A plugin adds a task through declaration merging:
- * `declare module '@dv/models' { interface TaskMap { v2v: 'video' } }`.
+ * `declare module '@dv/models' { interface TaskMap { a2v: 'video' } }`.
  */
 export interface TaskMap {
   t2v: 'video'
