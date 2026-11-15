@@ -395,6 +395,31 @@ export default class DvProject extends Service {
   }
 
   /**
+   * Cancel a record that is queued, pending or running: it ends `cancelled` with `error {code: 'cancelled'}`. A running
+   * record is aborted, and the call resolves once it has ended. Scheduled records that wait for it through an input end
+   * `failed` / `input_failed`.
+   * @param project - the project.
+   * @param record - the record to cancel.
+   * @returns the record in its final status. Throws `unknown_record`, or `not_running` when it already ended.
+   */
+  cancel(project: ProjectId, record: RecordId): Promise<ProjectRecord> {
+    return this.runner.cancel(project, record)
+  }
+
+  /**
+   * Run a failed or cancelled record again with the records that ended `failed` / `input_failed` only because of it;
+   * each is re-run as a scheduled call that reads the new record of its re-run producers.
+   * @param project - the project.
+   * @param record - a `failed` or `cancelled` record.
+   * @param origin - who retries.
+   * @returns the new records, the retried record's first. Throws `unknown_record`, or `not_failed` for a record that did
+   *   not fail.
+   */
+  retry(project: ProjectId, record: RecordId, origin: RecordOrigin): Promise<ProjectRecord[]> {
+    return this.runner.retry(project, record, origin)
+  }
+
+  /**
    * The project's current state: one slice per registered reducer, computed at the current position.
    * @param project - the project.
    * @returns the state. Throws `unknown_project`.

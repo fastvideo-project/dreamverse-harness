@@ -65,6 +65,8 @@ export const ROUTES = {
   redo: '/api/dv/redo',
   acceptStale: '/api/dv/stale/accept',
   history: '/api/dv/history',
+  cancel: '/api/dv/operation/cancel',
+  retry: '/api/dv/operation/retry',
 } as const
 
 /**
@@ -142,6 +144,8 @@ export default class DvApi extends Service {
       { path: ROUTES.redo, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.redo(body)) },
       { path: ROUTES.acceptStale, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.acceptStale(body)) },
       { path: ROUTES.history, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.listHistory(body)) },
+      { path: ROUTES.cancel, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.cancelRecord(body)) },
+      { path: ROUTES.retry, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.retryRecord(body)) },
       ...projectAdminRoutes(this.ctx.dvProject),
       ...assetImportRoutes({ project: this.ctx.dvProject, assets: this.ctx.dvAssetPool }),
     ]

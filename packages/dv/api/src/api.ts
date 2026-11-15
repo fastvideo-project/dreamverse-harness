@@ -125,7 +125,7 @@ export interface ApiServices {
 /** The HTTP status of each refused Project call that a browser request can cause. */
 const STATUS_OF: Partial<Record<ProjectError['code'], 400 | 404 | 409>> = {
   unknown_project: 404, unknown_record: 404, unknown_operation: 404, unknown_asset: 404,
-  invalid_params: 400, invalid_inputs: 400, input_not_ready: 400,
+  invalid_params: 400, invalid_inputs: 400, input_not_ready: 400, not_running: 409, not_failed: 409,
 }
 
 /**
@@ -439,6 +439,34 @@ export class ApiHandlers {
     const projectId = this.requireProject(body['project'])
     const target = brandString<RecordId>(stringOf(body['record'], 'record'))
     return await refused(() => this.services.project.acceptStale(projectId, target, humanOrigin(body, `accept ${target}`)))
+  }
+
+  /**
+   * Cancel a record that is pending or running; a running record is aborted and the call resolves once it has ended.
+   * @param raw - `{project, record}`.
+   * @returns the record in its final status.
+   * @throws ApiRequestError (404, code `unknown_record`) when the record does not exist; (409, code `not_running`) when
+   *   it already ended.
+   */
+  async cancelRecord(raw: unknown): Promise<ProjectRecord> {
+    const body = objectOf(raw)
+    const projectId = this.requireProject(body['project'])
+    const target = brandString<RecordId>(stringOf(body['record'], 'record'))
+    return await refused(() => this.services.project.cancel(projectId, target))
+  }
+
+  /**
+   * Run a failed or cancelled record again with the records that failed only because of it (`input_failed`).
+   * @param raw - `{project, record, surface, session?}`.
+   * @returns the new records, the retried record's first; they are pending, scheduled.
+   * @throws ApiRequestError (404, code `unknown_record`) when the record does not exist; (409, code `not_failed`) when it
+   *   did not fail or get cancelled.
+   */
+  async retryRecord(raw: unknown): Promise<ProjectRecord[]> {
+    const body = objectOf(raw)
+    const projectId = this.requireProject(body['project'])
+    const target = brandString<RecordId>(stringOf(body['record'], 'record'))
+    return await refused(() => this.services.project.retry(projectId, target, humanOrigin(body, `retry ${target}`)))
   }
 
   /**
