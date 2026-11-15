@@ -1,5 +1,5 @@
 /** Conversation-level model choices, one per generation modality, beside the operator LLM in the chat composer. */
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { IconChevronDownOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import { errorMessage } from '@dv/ui-kit/api.ts'
@@ -105,7 +105,8 @@ export interface ModelPickersProps extends Omit<ModelPickerProps, 'modality' | '
 
 /** The pickers of every modality that `pickerModalities` names, side by side. */
 export function ModelPickers({ sessionId, state, models, reloadModels, save }: ModelPickersProps) {
-  const catalog = useSyncExternalStore(models.subscribe, models.getSnapshot)
+  const catalog = useSyncExternalStore(useCallback((listener: () => void) => models.subscribe(listener), [models]),
+    useCallback(() => models.getSnapshot(), [models]))
   return <span className="dv-model-choices">
     {pickerModalities(catalog ?? []).map(modality => <ModelPicker key={modality} modality={modality} sessionId={sessionId}
       state={state} models={models} reloadModels={reloadModels} save={selection => save(modality, selection)} />)}
