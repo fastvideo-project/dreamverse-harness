@@ -43,5 +43,8 @@ export interface OpenRouterSettings {
   credentialRef: string
 }
 
-/** What the settings page's discovery route answers: the three catalogs. */
-export interface OpenRouterCatalog { videos: VideoModel[]; images: ImageModel[]; speech: SpeechModel[] }
+/**
+ * What the settings page's discovery route answers: the three catalogs, and the message of the configured models that
+ * could not register, such as an id that its catalog no longer offers; null when every configured model registered.
+ */
+export interface OpenRouterCatalog { videos: VideoModel[]; images: ImageModel[]; speech: SpeechModel[]; error: string | null }

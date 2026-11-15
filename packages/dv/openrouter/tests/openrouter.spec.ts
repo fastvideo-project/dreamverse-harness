@@ -35,7 +35,7 @@ function isVideoEntry(entry: ModelEntry): entry is ModelEntry<TaskOfPrimitive<'v
 const ffmpeg = process.env['DV_FFMPEG'] ?? 'ffmpeg'
 const ffprobe = process.env['DV_FFPROBE'] ?? 'ffprobe'
 
-async function fixture(options: { failCatalog?: boolean; models?: Record<string, string>; images?: boolean; speech?: 'mp3' | 'pcm' } = {}) {
+async function fixture(options: { failCatalog?: boolean; models?: Record<string, string>; images?: boolean | Record<string, string>; speech?: 'mp3' | 'pcm' } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'dv-openrouter-'))
   cleanup.push(async () => { rmSync(dir, { recursive: true, force: true }) })
   const videoPath = join(dir, 'fixture.mp4')
@@ -92,7 +92,7 @@ async function fixture(options: { failCatalog?: boolean; models?: Record<string,
     { id: 'assets', name: 'cordis:assetPool' }, { id: 'models', name: 'cordis:models' },
     { id: 'provider', name: 'cordis:openrouter', config: {
       baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/`, models: options.models ?? { cloud: 'fixture/video' }, pollIntervalMs: 1,
-      ...options.images === true ? { imageModels: { flux: 'fixture/image' } } : {},
+      ...options.images === true ? { imageModels: { flux: 'fixture/image' } } : typeof options.images === 'object' ? { imageModels: options.images } : {},
       ...options.speech === undefined ? {} : { audioModels: { narrator: 'fixture/speech', cloner: 'heygen/fixture-voice' } },
     } },
     { id: 'shot-render', name: 'cordis:shotRender' }, { id: 'image', name: 'cordis:imageGenerate' },
@@ -160,13 +160,17 @@ describe('OpenRouter video provider composition', () => {
 })
 
 
-it('withdraws removed cloud choices when replacement settings cannot register, and recovers', async () => {
-  const { ctx } = await fixture()
+it('withdraws removed cloud choices when replacement settings cannot register, still lists the catalogs, and recovers', async () => {
+  const { ctx, routes } = await fixture()
   const provider = [...ctx.loader.entries()].find(entry => entry.options.id === 'provider')
   if (provider === undefined) throw new Error('Missing provider fixture')
   const original = provider.options.config
   await provider.update({ config: { ...original, models: { 'invalid alias': 'fixture/video' } } })
   await vi.waitFor(() => { expect(ctx.dvModels.list()).toEqual([]) })
+  const response = await routes.get('/api/dv/openrouter/catalog')?.fetch(new Request('http://dsh.local/api/dv/openrouter/catalog'))
+  expect(response?.status).toBe(200)
+  expect(await response?.json()).toMatchObject({ data: [{ id: 'fixture/video' }],
+    error: 'Could not register OpenRouter models. Check the saved key and catalog.' })
   await provider.update({ config: original })
   await vi.waitFor(() => { expect(ctx.dvModels.list().map(entry => entry.model)).toEqual(['cloud', 'cloud', 'cloud']) })
 })
@@ -180,6 +184,32 @@ it('keeps catalog discovery available after a failed boot catalog sync, and regi
   const response = await route.fetch(new Request('http://dsh.local/api/dv/openrouter/catalog'))
   expect(await response.json()).toMatchObject({ data: [{ id: 'fixture/video' }], error: null })
   expect(ctx.dvModels.list().map(entry => entry.task)).toEqual(['t2v', 'i2v', 'fl2v'])
+})
+
+it('registers the configured models that their catalogs offer and names each unavailable one in the catalog answer', async () => {
+  const { ctx, routes } = await fixture({ models: { cloud: 'fixture/video', gone: 'example/retired-video' },
+    images: { flux: 'fixture/image', retired: 'example/retired-image-model' } })
+  expect(ctx.dvModels.list().map(entry => [entry.model, entry.task])).toEqual([['cloud', 't2v'], ['cloud', 'i2v'], ['cloud', 'fl2v'], ['flux', 't2i']])
+  const route = routes.get('/api/dv/openrouter/catalog')
+  if (route === undefined) throw new Error('Missing OpenRouter catalog route')
+  const answer = async () => {
+    const response = await route.fetch(new Request('http://dsh.local/api/dv/openrouter/catalog'))
+    return { status: response.status, body: await response.json() as { data: unknown[]; images: unknown[]; error: string | null } }
+  }
+  const partial = await answer()
+  expect(partial.status).toBe(200)
+  expect(partial.body).toMatchObject({ data: [{ id: 'fixture/video' }], images: expect.arrayContaining([expect.objectContaining({ id: 'fixture/image' })]) as unknown })
+  expect(partial.body.error).toContain('OpenRouter video model example/retired-video is unavailable')
+  expect(partial.body.error).toContain('OpenRouter image model example/retired-image-model is unavailable')
+  const provider = [...ctx.loader.entries()].find(entry => entry.options.id === 'provider')
+  if (provider === undefined) throw new Error('Missing provider fixture')
+  const original = provider.options.config as Record<string, unknown>
+  await provider.update({ config: { ...original, models: { cloud: 'fixture/video' }, imageModels: { flux: 'fixture/image' },
+    audioModels: { gone: 'example/retired-speech' } } })
+  await vi.waitFor(async () => { expect((await answer()).body.error).toContain('OpenRouter speech model example/retired-speech is unavailable') })
+  await provider.update({ config: { ...original, models: { cloud: 'fixture/video' }, imageModels: { flux: 'fixture/image' } } })
+  await vi.waitFor(async () => { expect(await answer()).toMatchObject({ status: 200, body: { error: null } }) })
+  expect(ctx.dvModels.list().map(entry => entry.model)).toEqual(['cloud', 'cloud', 'cloud', 'flux'])
 })
 
 it('fails at load for a configured alias that breaks the alias rule', async () => {

@@ -16,7 +16,7 @@ export interface OpenRouterPageProps {
 /** The settings field each catalog's choices live in. */
 type Field = 'models' | 'imageModels' | 'audioModels'
 
-const EMPTY: OpenRouterCatalog = { videos: [], images: [], speech: [] }
+const EMPTY: OpenRouterCatalog = { videos: [], images: [], speech: [], error: null }
 
 /** Installing a cloud model means enabling its API entry, never downloading weights. */
 export function OpenRouterPage({ form, storeKey, discover, enableOperator }: OpenRouterPageProps) {
@@ -35,8 +35,10 @@ export function OpenRouterPage({ form, storeKey, discover, enableOperator }: Ope
     setPending(true); setError(null); setNotice('')
     try {
       if (key !== '') { await storeKey(state.value?.credentialRef ?? 'OPENROUTER_API_KEY', key.trim()); setKey('') }
-      setCatalog(await discover())
-      setNotice(text('已读取视频、图片和语音目录。', 'Video, image and speech catalogs loaded.'))
+      const refreshed = await discover()
+      setCatalog(refreshed)
+      if (refreshed.error === null) setNotice(text('已读取视频、图片和语音目录。', 'Video, image and speech catalogs loaded.'))
+      else setError(refreshed.error)
     } catch { setError(text('无法读取模型。请检查已保存的密钥和连接。', 'Could not load models. Check the saved key and connection.')) }
     finally { setPending(false) }
   }
@@ -62,7 +64,9 @@ export function OpenRouterPage({ form, storeKey, discover, enableOperator }: Ope
       const next = existing === undefined ? { ...current, [alias]: id }
         : Object.fromEntries(Object.entries(current).filter(([, value]) => value !== id))
       if (!await form.mutate([{ op: 'set', path: [field], value: next }], state.revision)) throw new Error('Refused settings')
-      setCatalog(await discover())
+      const refreshed = await discover()
+      setCatalog(refreshed)
+      setError(refreshed.error)
       setNotice(existing === undefined ? text('模型已添加到聊天选择器。', 'Model added to the chat picker.')
         : text('模型已从后续生成选项中移除。', 'Model removed from future generation choices.'))
     } catch { setError(text('无法保存模型选择。请刷新设置后重试。', 'Could not save the model choice. Refresh settings and try again.')) }

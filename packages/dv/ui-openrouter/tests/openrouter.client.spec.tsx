@@ -14,8 +14,8 @@ const model: VideoModel = { id: 'google/veo-3.1', name: 'Google Veo 3.1', durati
 const image: ImageModel = { id: 'black-forest-labs/flux-3-image', name: 'FLUX 3',
   parameters: { aspect_ratio: ['1:1', '16:9'], resolution: ['1K', '2K'] }, outputFormats: ['png', 'jpeg'], seed: true }
 const speech: SpeechModel = { id: 'openai/gpt-4o-mini-tts', name: 'GPT-4o mini TTS', voices: ['alloy', 'nova'] }
-const both: OpenRouterCatalog = { videos: [model], images: [image], speech: [speech] }
-const videosOnly = async (): Promise<OpenRouterCatalog> => ({ videos: [model], images: [], speech: [] })
+const both: OpenRouterCatalog = { videos: [model], images: [image], speech: [speech], error: null }
+const videosOnly = async (): Promise<OpenRouterCatalog> => ({ videos: [model], images: [], speech: [], error: null })
 class Form implements ConfigForm<OpenRouterSettings> {
   private listeners = new Set<() => void>()
   private snapshot: ConfigFormSnapshot<OpenRouterSettings> = { status: 'ready', writable: true, mode: 'host', revision: 1,
@@ -37,7 +37,7 @@ class Form implements ConfigForm<OpenRouterSettings> {
 it('saves only the key reference, enables a cloud model in chat, and removes it again', async () => {
   const form = new Form()
   const store = vi.fn(async () => {})
-  const discover = vi.fn(async () => ({ videos: [model], images: [], speech: [] }))
+  const discover = vi.fn(async () => ({ videos: [model], images: [], speech: [], error: null }))
   render(<OpenRouterPage enableOperator={async () => {}} form={form} storeKey={store} discover={discover} />)
   fireEvent.change(screen.getByLabelText('OpenRouter API key'), { target: { value: 'fixture-key' } })
   fireEvent.click(screen.getByRole('button', { name: 'Save key and load models' }))
@@ -112,4 +112,19 @@ it('adds a speech model to the audio choices with its voice count', async () => 
   await act(async () => {})
   expect(form.getSnapshot().value).toMatchObject({ models: {}, imageModels: {},
     audioModels: { 'openai-gpt-4o-mini-tts': 'openai/gpt-4o-mini-tts' } })
+})
+
+it('lists the catalogs beside the message of a configured model that could not register, and clears it when a later answer names none', async () => {
+  const form = new Form()
+  await form.mutate([{ op: 'set', path: ['imageModels'], value: { retired: 'example/retired-image-model' } }])
+  const message = 'OpenRouter image model example/retired-image-model is unavailable or offers no raster output.'
+  const discover = vi.fn<() => Promise<OpenRouterCatalog>>().mockResolvedValueOnce({ ...both, error: message }).mockResolvedValue(both)
+  render(<OpenRouterPage enableOperator={async () => {}} form={form} storeKey={async () => {}} discover={discover} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Save key and load models' }))
+  await act(async () => {})
+  expect(screen.getByRole('alert').textContent).toBe(message)
+  expect(within(screen.getByRole('list', { name: 'Video models' })).getByText('Google Veo 3.1')).toBeTruthy()
+  fireEvent.click(within(screen.getByRole('list', { name: 'Image models' })).getByRole('button', { name: 'Add to chat' }))
+  await act(async () => {})
+  expect(screen.queryByRole('alert')).toBeNull()
 })

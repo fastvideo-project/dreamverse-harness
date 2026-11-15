@@ -308,18 +308,20 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
         configuredImages.length === 0 ? [] : client.imageCatalog(lifetime.signal),
         configuredSpeech.length === 0 ? [] : client.speechCatalog(lifetime.signal),
       ])
+      // A configured id that its catalog lacks is skipped and named in `registrationError`; the others register.
+      const unavailable: string[] = []
       const next: ModelEntry[] = [...configured.flatMap(([alias, id]) => {
         const caps = catalog.find(row => row.id === id)
-        if (caps === undefined) throw new Error(`OpenRouter video model ${id} is unavailable or lacks supported output choices.`)
+        if (caps === undefined) { unavailable.push(`OpenRouter video model ${id} is unavailable or lacks supported output choices.`); return [] }
         return tasks(caps).map(task => entry(alias, caps, task))
-      }), ...configuredImages.map(([alias, id]) => {
+      }), ...configuredImages.flatMap(([alias, id]) => {
         const caps = images.find(row => row.id === id)
-        if (caps === undefined) throw new Error(`OpenRouter image model ${id} is unavailable or offers no raster output.`)
-        return imageEntry(alias, caps)
-      }), ...configuredSpeech.map(([alias, id]) => {
+        if (caps === undefined) { unavailable.push(`OpenRouter image model ${id} is unavailable or offers no raster output.`); return [] }
+        return [imageEntry(alias, caps)]
+      }), ...configuredSpeech.flatMap(([alias, id]) => {
         const caps = speech.find(row => row.id === id)
-        if (caps === undefined) throw new Error(`OpenRouter speech model ${id} is unavailable or offers no speech endpoint.`)
-        return speechEntry(alias, caps)
+        if (caps === undefined) { unavailable.push(`OpenRouter speech model ${id} is unavailable or offers no speech endpoint.`); return [] }
+        return [speechEntry(alias, caps)]
       })]
       if (disposed || version !== revision) return
       for (const candidate of next) {
@@ -329,8 +331,9 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       for (const remove of removers) remove()
       removers = next.map(candidate => ctx.dvModels.register(candidate))
       registered = next
-      current = stamp
-      registrationError = null
+      // Leaving `current` unset while an id is unavailable lets the next sync register it once its catalog offers it.
+      current = unavailable.length === 0 ? stamp : ''
+      registrationError = unavailable.length === 0 ? null : `${unavailable.join(' ')} Remove unavailable models in Video, image & audio APIs settings.`
     } catch (error) {
       if (!disposed && version === revision) {
         for (const remove of removers) remove()
@@ -357,7 +360,8 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       try {
         const [data, images, speech] = await Promise.all([client.catalog(request.signal), client.imageCatalog(request.signal),
           client.speechCatalog(request.signal)])
-        await sync()
+        // A failed registration answers through `error`, so Settings still lists the catalogs to change the choices.
+        await sync().catch(() => undefined)
         return Response.json({ data, images, speech, error: registrationError })
       } catch { return Response.json({ error: 'Could not load OpenRouter models. Check the saved API key and connection.' }, { status: 502 }) }
     },

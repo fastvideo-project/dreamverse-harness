@@ -29,8 +29,7 @@ export function apply(ctx: Context): void {
         const response = await fetch('/api/dv/openrouter/catalog')
         if (!response.ok) throw new Error('OpenRouter model discovery failed.')
         const value = await response.json() as { data: VideoModel[]; images: ImageModel[]; speech: SpeechModel[]; error: string | null }
-        if (value.error !== null) throw new Error(value.error)
-        return { videos: value.data, images: value.images, speech: value.speech }
+        return { videos: value.data, images: value.images, speech: value.speech, error: value.error }
       },
     }),
   }, OpenRouterPage))
