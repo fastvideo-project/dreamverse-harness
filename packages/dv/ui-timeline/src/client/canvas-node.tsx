@@ -25,7 +25,7 @@ import { placeTimeline, timelinesOf } from './timelines.ts'
 /** The node type key of a placed timeline, the kind that `@dv/timeline` registers `timeline.place` under. */
 export const TIMELINE_NODE_KIND = 'timeline'
 
-/** The default frame size of a timeline node, in canvas units. */
+/** The default frame size of a timeline node, in canvas units, the `size` of `@dv/timeline`'s node maker. */
 const CARD_SIZE = { width: 640, height: 390 }
 
 /**

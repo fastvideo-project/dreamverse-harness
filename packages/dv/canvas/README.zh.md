@@ -43,7 +43,7 @@ kind: "package-reference"
 
 | 方法 | 注册 | 使用者 |
 | --- | --- | --- |
-| `registerMaker({operations, kind, column, makes?})` | `operations` 的记录在布局列 `column`（最左为 0）产生 `kind` 节点；`makes(record)` 收到记录的 `params` 和 `status`，返回 false 时跳过该记录 | `@dv/generation` 的 `defineGeneration`（`shot`、`image`、`audio`，第 2 列），`@dv/reference-kit` 的 `defineReference`（`<k>.create`，kind `<k>`，第 0 列），`@dv/text-node`（`textnode.write`，kind `text`，第 0 列），`@dv/asset-pool`（已完成且带 `place: true` 的 `asset.import`，kind `asset`，第 0 列），`@dv/timeline`（已完成的 `timeline.place`，kind `timeline`，第 3 列） |
+| `registerMaker({operations, kind, column, size?, makes?})` | `operations` 的记录在布局列 `column`（最左为 0）产生 `kind` 节点；`size` 是浏览器绘制未设尺寸的 `kind` 节点所用的 `{width, height}` 画框，空闲行避开这个框；`makes(record)` 收到记录的 `params` 和 `status`，返回 false 时跳过该记录 | `@dv/generation` 的 `defineGeneration`（`shot`、`image`、`audio`，第 2 列），`@dv/reference-kit` 的 `defineReference`（`<k>.create`，kind `<k>`，第 0 列），`@dv/text-node`（`textnode.write`，kind `text`，第 0 列），`@dv/asset-pool`（已完成且带 `place: true` 的 `asset.import`，kind `asset`，第 0 列），`@dv/timeline`（已完成的 `timeline.place`，kind `timeline`，第 3 列，尺寸 640 × 390） |
 | `registerPlacement({place, kind, column})` | 已完成的 `place` 记录为每个还没有节点显示的输入素材添加一个 `kind` 节点；`canvas.node_remove` 像移除其他节点一样移除这样的节点 | `@dv/asset-pool`（`asset.place`，kind `asset`，第 0 列） |
 
 每个方法返回其注册的注销函数。某个 maker 或 placement 已指名的操作会抛出 `invalid_params`。`kind` 是浏览器半边绘制该节点所用的节点类型键：UI 插件注册一个 `type` 为同一字符串的 `@dv/ui-canvas/contract` `NodeType`，没有对应类型的 kind 画成普通卡片。
@@ -62,7 +62,7 @@ kind: "package-reference"
 
 生产者无需画布字段即可设置 `based_on`。编辑器的提示词修改、重跑和重试以被重跑的版本作为 `based_on`。调用方没有给出 `based_on` 时，`@dv/project` 的 `OperationSpec.basedOn` 填写它：`@dv/reference-kit` 的 `<k>.update` 以及 `@dv/text-node` 的 `textnode.write` 和 `textnode.edit` 指名该条目最新版本的记录，所以角色、场景、风格或文本路径的每个版本都加入同一个节点。`based_on` 指名的记录不在任何节点中时，例如被移除节点的某个版本，该记录落到规则 2 并产生一个新节点。
 
-新节点取其列中第一个没有节点覆盖其格子的行：一列宽 240 单位、一行高 200 单位，默认尺寸的节点在其角上覆盖一个格子，因为只有浏览器知道节点类型的默认尺寸。切片在每次读取时从记录计算，所以它跟随该次读取时已加载的注册。
+新节点取其列中第一个其框不与任何节点的框重叠的行：一列宽 240 单位、一行高 200 单位，默认尺寸的节点的框是其 kind 的 maker 声明的 `size` 加上 20 单位的标题，否则是其角上的一个格子，因为只有浏览器知道其他节点类型的默认尺寸。切片在每次读取时从记录计算，所以它跟随该次读取时已加载的注册。
 
 | 文件 | 内容 |
 | --- | --- |
@@ -230,7 +230,7 @@ Rename one canvas node: the name replaces the title on its card, in dv_canvas_re
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **新节点可能与高卡片重叠**：宿主按名义上 240 × 200 的格子放置新节点，因为只有浏览器知道每种节点类型的默认尺寸，所以高于一行的默认卡片可能与下一行放置的节点重叠，直到用户或智能体移动它。
+- **新节点可能与高卡片重叠**：对 maker 未声明 `size` 的 kind，宿主按名义上 240 × 200 的格子放置新节点，因为只有浏览器知道该节点类型的默认尺寸，所以高于一行的默认卡片可能与下一行放置的节点重叠，直到用户或智能体移动它。
 - **移动不检查重叠**：`canvas.node_position` 接受覆盖另一个节点的位置，因为宿主只有在调整大小之后才知道节点的尺寸。
 - **含 `asset.unplace` 记录的项目**：该操作已删除，所以归约函数跳过旧版本写下的这种记录，它移除过的素材节点会重新显示，直到用户或智能体用 `canvas.node_remove` 移除它。
 - **节点跟随已加载的生产者**：某个生产者未加载时，它的记录不产生节点，这些节点的移动也不起作用，直到它再次加载。

@@ -18,10 +18,10 @@ export const TIMELINE_NODE_KIND = 'timeline'
 
 /**
  * The node maker of `timeline.place`: each finished record makes one `timeline` node in layout column 3, right of the
- * renders in column 2.
+ * renders in column 2, clear of the 640 × 390 frame that the browser's node type draws by default.
  */
 export const TIMELINE_NODE_MAKER: NodeMaker = {
-  operations: [PLACE], kind: TIMELINE_NODE_KIND, column: 3, makes: record => record.status === 'done',
+  operations: [PLACE], kind: TIMELINE_NODE_KIND, column: 3, size: { width: 640, height: 390 }, makes: record => record.status === 'done',
 }
 
 /**
