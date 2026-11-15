@@ -614,7 +614,7 @@
     },
     {
       "name": "dv_timeline_export",
-      "description": "Export a timeline to one video: each clip with an in or out point is trimmed to that range, and all clips are joined in timeline order. Runs on the CPU.",
+      "description": "Export a timeline to one video: each clip with an in or out point is trimmed to that range, and all clips are joined in timeline order. While the timeline's video audio is muted (dv_timeline_mute), the video has no audio. Runs on the CPU.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -639,6 +639,56 @@
           }
         },
         "required": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "dv_timeline_mute",
+      "description": "Mute or unmute audio of a timeline. Target `video` is the clips' own audio: while it is muted, the user hears the clips silent when playing the timeline, and the exported video has no audio. Target `sound` is one sound track: while it is muted, the user does not hear its sounds when playing the timeline (the exported video does not include sounds yet).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "timeline": {
+            "type": "string",
+            "description": "The timeline, such as t1."
+          },
+          "target": {
+            "type": "string",
+            "description": "`video` for the clips' own audio, `sound` for one sound track.",
+            "enum": [
+              "video",
+              "sound"
+            ]
+          },
+          "track": {
+            "type": "integer",
+            "description": "For target `sound`: the sound track, 0 for the first; an existing track or the one after the last (see `sound_tracks` in dv_proj_state)."
+          },
+          "muted": {
+            "type": "boolean",
+            "description": "true mutes, false unmutes."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why you call this, in the user's words or your own summary; recorded as the intent of the record."
+          },
+          "supersedes": {
+            "type": "array",
+            "description": "Records whose outputs this call replaces, such as an earlier take; their consumers become stale.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "based_on": {
+            "type": "string",
+            "description": "The record this call is a changed copy of; the takes of one original share it."
+          }
+        },
+        "required": [
+          "timeline",
+          "target",
+          "muted",
           "reason"
         ]
       }
