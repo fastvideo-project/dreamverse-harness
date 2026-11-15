@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import { MINIMAX_SKILLS, isMiniMaxSkill, type MiniMaxSkill } from '@dv/ui-kit/minimax.ts'
 import { useText, type PickText } from '@dv/ui-kit/locale.ts'
 import type { ShellActions } from './actions.ts'
-import { SkillsIcon } from './icons.tsx'
+import { CheckIcon, SkillsIcon } from './icons.tsx'
 import { setShell, useShell } from './store.ts'
 import css from './shell.module.css'
 
@@ -49,6 +49,27 @@ export function MiniMaxChoice(): ReactNode {
         </optgroup>
       </select>
     </label>
+  )
+}
+
+/** @returns the Home template buttons; pressing the active skill again restores the default workflow. */
+export function MiniMaxTemplates(): ReactNode {
+  const t = useText()
+  const selected = useShell(s => s.minimaxSkill ?? null)
+  return (
+    <section className={css.templates} aria-label={t('从模板开始', 'Start from a template')}>
+      <h2 className={css.templatesLabel}>{t('从模板开始', 'Start from a template')}</h2>
+      <div className={css.templateGrid}>
+        {MINIMAX_SKILLS.map(name => (
+          <button key={name} type="button" className={css.templateChip} aria-pressed={selected === name}
+            onClick={() => { setShell({ minimaxSkill: selected === name ? null : name }) }}>
+            <SkillsIcon />
+            <span>{t(...LABELS[name])}</span>
+            <span className={css.templateCheck}>{selected === name && <CheckIcon />}</span>
+          </button>
+        ))}
+      </div>
+    </section>
   )
 }
 

@@ -6,7 +6,7 @@ This integration uses the existing DreamVerse Web chat, Agent, skill registry an
 
 ## Startup
 
-Web users choose Video type on Home or in the Create project dialog, without environment variables. The default disables MiniMax Skills. Selecting a type saves one skill with the project; its first message loads it. Reloads and new chats retain the choice, shown in the workspace header; use a new project to switch skills. A project choice overrides the environment settings below, including explicit off even when startup mode is manual/auto. These startup settings supply defaults only for older/API-created projects without a saved choice.
+Web users choose a Skill button under Start from a template on Home, or use the Video type menu in the Create project dialog, without environment variables. The default disables MiniMax Skills. Selecting a type saves one skill with the project; its first message loads it. Reloads and new chats retain the choice, shown in the workspace header; use a new project to switch skills. A project choice overrides the environment settings below, including explicit off even when startup mode is manual/auto. These startup settings supply defaults only for older/API-created projects without a saved choice.
 
 Run from the repository root:
 

@@ -13,7 +13,7 @@
  * @module @dv/ui-shell/Center
  */
 import type { ReactNode } from 'react'
-import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
@@ -34,7 +34,7 @@ import {
   setShell, shellClient, showLocation, startUrlMirror, useShell,
 } from './store.ts'
 import css from './shell.module.css'
-import { MiniMaxChoice, NewProjectDialog, miniMaxLabel } from './MiniMaxChoice.tsx'
+import { MiniMaxTemplates, NewProjectDialog, miniMaxLabel } from './MiniMaxChoice.tsx'
 
 /** What the shell's DSH UI slot registrations inject. */
 export interface ShellInjected {
@@ -213,27 +213,9 @@ function EntryPage(props: CenterProps): ReactNode {
           slots: { views: ChatOnlyView, widthControls: NoWidthControls },
         })}
       </div>
-      {blank && <MiniMaxChoice />}
-      {blank && <TemplateChips />}
+      {blank && <MiniMaxTemplates />}
       {blank && <RecentProjects shell={shell} renderFactorySlot={renderFactorySlot} />}
       {blank && <Explore renderSlot={props.renderSlot} />}
-    </div>
-  )
-}
-
-/** The 从模板开始 row: four template chips, inert until templates exist; `aria-disabled` keeps them focusable and described by the tag. */
-function TemplateChips(): ReactNode {
-  const t = useText()
-  const templates = [t('直播高光', 'Stream highlight'), t('产品发布会', 'Product launch'), t('角色短剧', 'Character drama'), t('音乐 MV', 'Music video')]
-  const soon = t('即将推出', 'Coming soon')
-  const soonId = useId()
-  return (
-    <div className={css.templates}>
-      <span className={css.templatesLabel}>{t('从模板开始', 'Start from a template')}</span>
-      <span id={soonId} className={css.soonTag}>{soon}</span>
-      {templates.map(name => (
-        <button key={name} type="button" className={css.templateChip} aria-disabled="true" aria-describedby={soonId} title={soon}>{name}</button>
-      ))}
     </div>
   )
 }

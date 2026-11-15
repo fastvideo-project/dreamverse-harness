@@ -345,11 +345,13 @@ describe('the entry page', () => {
     expect(page.queryByTestId('width-handles')).toBeNull()
     expect(bench.stand.calls).toContain('restoreSidebar()')
 
-    const chips = page.getAllByRole('button', { name: /Stream highlight|Product launch|Character drama|Music video$/u })
-      .filter(chip => chip.title === 'Coming soon')
-    expect(chips.map(chip => [chip.textContent, chip.getAttribute('aria-disabled'), chip.getAttribute('aria-describedby') === page.getByText('Coming soon', { selector: 'span' }).id]))
-      .toEqual([['Stream highlight', 'true', true], ['Product launch', 'true', true], ['Character drama', 'true', true], ['Music video', 'true', true]])
-    expect(chips.every(chip => !(chip as HTMLButtonElement).disabled)).toBe(true)
+    const templates = within(page.getByRole('region', { name: 'Start from a template' }))
+    expect(templates.getAllByRole('button')).toHaveLength(9)
+    expect(templates.getAllByRole('button', { pressed: false })).toHaveLength(9)
+    fireEvent.click(templates.getByRole('button', { name: '3D animated short' }))
+    expect(templates.getByRole('button', { name: '3D animated short', pressed: true })).toBeDefined()
+    expect(page.queryByRole('combobox', { name: 'Video type' })).toBeNull()
+    expect(page.queryByText('Coming soon')).toBeNull()
 
     const recent = within(page.getByRole('region', { name: 'Recent projects' }))
     const cards = (): string[] => recent.getAllByRole('button').map(button => button.textContent ?? '')
@@ -422,9 +424,11 @@ describe('the entry page', () => {
 
   it('has no recent projects or explore section without projects and entries', async () => {
     const bench = await mountCenter({ main: 's0', entries: false, projects: [] })
-    expect(bench.view.view.queryByRole('region')).toBeNull()
+    expect(bench.view.view.queryByRole('region', { name: 'Recent projects' })).toBeNull()
+    expect(bench.view.view.queryByRole('region', { name: 'Explore' })).toBeNull()
     await bench.refreshProjects()
-    expect(bench.view.view.queryByRole('region')).toBeNull()
+    expect(bench.view.view.queryByRole('region', { name: 'Recent projects' })).toBeNull()
+    expect(bench.view.view.queryByRole('region', { name: 'Explore' })).toBeNull()
     expect(bench.view.view.getByRole('heading', { level: 1 })).toBeDefined()
   })
 
