@@ -39,7 +39,7 @@ kind: "package-reference"
 
 该操作使用 GPU，不是确定性的。省略的参数取模型的第一个画面比例和分辨率以及最短时长；调用未给出种子时抽取一个。`based_on` 更早渲染记录的调用是该镜头的新版本，不论每个版本用的是哪个模型。工作流在 `dvShotRender` 上调用 [`@dv/generation`](../generation/README.zh.md) 的 `GenerationApi` 方法：`render`、`check` 和 `parseInputs`。
 
-任务 `i2v` 要求一张 `first_frame`；任务 `l2v` 要求一张 `last_frame`。两者均不接受另一端点或参考媒体。任务 `fl2v` 必须恰有一个 `first_frame` 和一个 `last_frame`，不接受 `reference` 输入。每帧以独立角色存入记录，并在 `RenderRequest` 中分别传递，不受输入顺序影响。提供方校验图像媒体并把角色映射为原生端点条件。`continue_from` 可以提供首帧；尾帧仍需明确给出。 任务 `v2v` 恰好接受一个 `reference` 输入，即要重新生成的较早镜头（例如把草稿超分到 2K），不接受首尾帧输入。
+任务 `i2v` 要求一张 `first_frame`；任务 `l2v` 要求一张 `last_frame`。两者均不接受另一端点或参考媒体。任务 `fl2v` 必须恰有一个 `first_frame` 和一个 `last_frame`，不接受 `reference` 输入。每帧以独立角色存入记录，并在 `RenderRequest` 中分别传递，不受输入顺序影响。提供方校验图像媒体并把角色映射为原生端点条件。`continue_from` 可以提供首帧；尾帧仍需明确给出。 任务 `v2v` 恰好接受一个 `reference` 输入，即要重新生成的较早镜头的视频输出 `<record>#0`（例如把草稿超分到 2K），不接受首尾帧输入。
 
 -----
 

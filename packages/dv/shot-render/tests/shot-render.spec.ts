@@ -393,6 +393,18 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(fixture.reference.requests).toEqual([])
   })
 
+  it('regenerates a take in task v2v from the take reference that the tool description names', async () => {
+    const fixture = await start({ tasks: ['t2v', 'v2v'] })
+    const description = fixture.ctx.tools.schemas().find(schema => schema.name === 'dv_shot_render')?.description ?? ''
+    expect(description).toContain('Task v2v regenerates one existing take, passed as its one reference input (<record>#0, ')
+    const take = value(await fixture.call('dv_shot_render', { ...TXT, reason: 'draft', prompt: 'A door opens', duration_sec: 1 }))
+    const upscaled = value(await fixture.call('dv_shot_render', {
+      ...TXT, task: 'v2v', reason: 'upscale', prompt: 'A door opens', inputs: { reference: `${take.record}#0` },
+    }))
+    expect(upscaled.status).toBe('done')
+    expect(fixture.reference.requests.map(request => request.references)).toEqual([[take.outputs[0]?.asset_id]])
+  })
+
   it('registers shot.render while the catalog holds a model, and removes it on disposal', async () => {
     const fixture = await start()
     expect(renderSpec(fixture)).toMatchObject({

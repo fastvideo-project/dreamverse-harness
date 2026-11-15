@@ -4,7 +4,8 @@ Use task `v2v` of model `open-h3-regenerate-2k` (provider `fastvideo`) to regene
 a FastH3 480p or 768p render, at 2560x1440. It keeps the draft's scene, framing, motion and timing and adds detail; it
 does not change the content.
 
-- Pass the draft as the one `reference` input: the take's version, such as `s3@2`. Use no first or last frame.
+- Pass the draft as the one `reference` input: the take's video output `<record>#0`, where `<record>` is the take's
+  record ID. Use no first or last frame.
 - Use the draft's own prompt, unchanged. Do not add style or detail instructions; the 2K model is conditioned on the
   same description the draft was made from. Do not cite the reference in the prompt.
 - Duration and frame count follow the draft (5 seconds, 124 frames at 24 fps); the output is always 2560x1440.

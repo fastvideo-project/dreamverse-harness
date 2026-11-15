@@ -87,7 +87,7 @@ const RENDER_INPUTS: Record<string, OperationInput> = {
   reference: {
     type: 'any', many: true, versioned: true,
     description: 'Reference media in prompt order: imported assets, or versions (<id>@<version>) whose reference '
-      + 'assets the shot carries; the model accepts the media types dv_models_get lists. Task ref2v only.',
+      + 'assets the shot carries; the model accepts the media types dv_models_get lists. Tasks ref2v and v2v only.',
   },
   first_frame: { type: 'image', description: 'The frame the shot starts from, usually output #1 of the previous shot.' },
   last_frame: { type: 'image', description: 'The frame the shot ends at. Task fl2v needs both first_frame and last_frame.' },
@@ -344,7 +344,7 @@ const RENDER_DECLARATION: GenerationSpec<'video'> = {
     + 'Task i2v renders from one first_frame image, with no reference or last_frame input. '
     + 'Task l2v renders toward one last_frame image, with no reference or first_frame input. '
     + 'Task fl2v renders between image inputs first_frame and last_frame; both are required, with no reference input. '
-    + 'Task v2v regenerates one existing take, passed as its one reference input (<id>@<version>), with no frame input, '
+    + 'Task v2v regenerates one existing take, passed as its one reference input (<record>#0, the take\'s video output), with no frame input, '
     + 'such as upscaling a draft to 2K; reuse that take\'s prompt unchanged. '
     + 'Pass continue_from to start from the last still of an earlier shot when the model takes a first frame. '
     + 'The model\'s own parameters go in extra (see dv_models_get). ' + TAKE_RULE,
