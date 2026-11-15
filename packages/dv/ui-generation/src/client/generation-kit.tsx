@@ -65,7 +65,7 @@ export interface GenerationUiSpec {
 }
 
 /** The parameter bar that a generation kind declares; the kit adds the operation, the owner and the running words. */
-export interface GenerationBar extends Pick<ParamBar, 'chips' | 'candidates'> {
+export interface GenerationBar extends Pick<ParamBar, 'chips' | 'hidden' | 'candidates'> {
   readonly copy?: Pick<PromptCopy, 'placeholder' | 'send'>
 }
 

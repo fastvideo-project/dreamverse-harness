@@ -287,7 +287,7 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
       <div style={{ ...row, justifyContent: 'space-between' }}>
         <span style={row}>
           <ModelChip models={models} entry={entry} params={params} onPatch={patch} />
-          {operation === null ? null : chipsFor(bar, entry, params, operation).map(chip => (
+          {operation === null ? null : chipsFor(bar, entry, edited, operation).map(chip => (
             <Chip
               key={chip.key} chip={chip} typed={draft.texts[chip.key]} onPatch={patch}
               onText={(text) => { dispatch({ type: 'typed', operation, key: chip.key, text }) }}
@@ -374,12 +374,16 @@ function ModelChip({ models, entry, params, onPatch }: {
   )
 }
 
-/** The chips of a call: one per declared param, with the registered bar's chips under the selected model. */
+/**
+ * The chips of a call: one per declared param that the registered bar does not hide, with the bar's chips under the
+ * selected model.
+ */
 function chipsFor(
-  bar: ParamBar | null, entry: WireModelEntry | undefined, params: Readonly<Record<string, unknown>>, operation: WireOperation,
+  bar: ParamBar | null, entry: WireModelEntry | undefined, call: Pick<PromptCall, 'params' | 'inputs'>, operation: WireOperation,
 ): ParamChip[] {
+  const { params } = call
   const own = entry === undefined ? [] : bar?.chips?.({ schema: entry.schema, params, operation }) ?? []
-  return paramChips(operation, params, own)
+  return paramChips(operation, params, own, bar?.hidden?.(call) ?? [])
 }
 
 /**

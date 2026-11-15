@@ -9,6 +9,7 @@ import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { HistoryRow } from '@dv/ui-history/contract'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
+import type { WireOperation } from '@dv/ui-kit/types.ts'
 import type { EditorHost, NodeView } from '../../ui-canvas/src/client/contract/index.ts'
 import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
 import { buildCanvasGraph } from '../../ui-canvas/src/client/graph.ts'
@@ -156,6 +157,30 @@ describe('the shot render takes', () => {
     await waitFor(() => { expect(editor.view.getByTestId('dv-canvas-render-mode').textContent).toBe('fastt2v · 文字生成') })
     expect(editor.view.queryByRole('button', { name: '添加素材' })).toBeNull()
     expect(editor.view.getByRole('button', { name: '渲染新版本' })).toBeTruthy()
+  })
+
+  it('show the continuation_seconds chip only for a take that continues a video, with its value', async () => {
+    const { runtime: mounted, canvas } = await mountShotRender()
+    const render = OPERATIONS[0]!
+    const operations: WireOperation[] = [{
+      ...render,
+      inputs: { ...render.inputs, continuation_video: { type: 'video', description: 'Previous shot video.' } },
+      params: { ...render.params, continuation_seconds: { type: 'number', description: 'Tail seconds.' } },
+    }, ...OPERATIONS.slice(1)]
+    const state = fixtureState()
+    const continuation = { role: 'continuation_video', ref: { record: 'g1', output: 0 }, resolved_asset: 'shot1.mp4' }
+    state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g2'
+      ? { ...entry, inputs: [continuation], params: { ...entry.params, continuation_seconds: 3 } }
+      : entry)
+    const takes = shotsOf(canvas, state)
+    const chipsOf = (container: HTMLElement): (string | null)[] => [...container.querySelectorAll('[data-param-chip]')]
+      .map(chip => chip.getAttribute('data-param-chip'))
+    const editor = mounted.renderSlot('dv.canvas.editor', { node: takes.get('g1')!, state, operations, host: host() }, { entryKey: 'shot' })
+    await waitFor(() => { expect(chipsOf(editor.container)).toContain('duration_sec') })
+    expect(chipsOf(editor.container)).not.toContain('continuation_seconds')
+    editor.update({ node: takes.get('g2')!, state, operations, host: host() }, { entryKey: 'shot' })
+    await waitFor(() => { expect(chipsOf(editor.container)).toContain('continuation_seconds') })
+    expect(editor.container.querySelector<HTMLInputElement>('input[data-param-chip="continuation_seconds"]')?.value).toBe('3')
   })
 
   it('draw the still output on the take card in place of the video', async () => {

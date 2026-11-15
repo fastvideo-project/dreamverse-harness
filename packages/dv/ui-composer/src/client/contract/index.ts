@@ -166,6 +166,11 @@ export interface ParamBar {
     readonly params: Readonly<Record<string, unknown>>
     readonly operation: WireOperation
   }): ParamChip[]
+  /**
+   * The declared params whose chips a call does not show, such as a param that only an input the call lacks uses.
+   * Absent, every declared param shows its chip.
+   */
+  hidden?(call: Pick<PromptCall, 'params' | 'inputs'>): readonly string[]
   /** The `@` filter of a model, read from the same schema; null, or absent, for no filter, such as an unknown schema. */
   candidates?(schema: unknown): CandidateFilter | null
   readonly copy?: PromptCopy

@@ -43,7 +43,7 @@ Render in story order. Independent shots can use the agreed prompt directly. For
 6. If `dv_inspect_image` is in your tool list, inspect those stills in timestamp order for character motion, action phase, body orientation, movement direction and speed; camera motion and direction; scene, lighting, color palette, prop ownership and unfinished actions.
 7. Write a compact continuity state with fields for characters, camera, scene, props, pending actions and frame references. Use `unknown` for uncertain facts.
 8. Finalize the next shot's prompt from four inputs: the storyboard objective, the previous shot's continuity state, the intended narrative beat and the cinematic profile. Add a visible continuity passage inside the prompt that says how the shot begins from the actual ending, continues unfinished motion, preserves hard constraints and then transitions into the planned beat. Restate the relevant lighting, color, camera and style constraints. Do not carry motion constraints across rows marked intentional cut, new scene or time jump.
-9. A shot that continues the previous shot passes `continue_from` = the record ID of the previous shot's render. Call it only after steps 2 to 8, so the project can use the previous take's last frame and the prompt can describe that actual state.
+9. A shot that continues the previous shot passes `continue_video_from` (ongoing motion, sound) or `continue_from` = the previous shot's render record. Call it only after steps 2 to 8, so the prompt can describe that actual state.
 10. After a continuity-linked shot finishes, review the boundary from the previous shot into it before moving on.
 11. If `dv_asset_grab_still` is in your tool list, grab the previous shot's late ending stills and the new shot's first or early stills.
 12. If `dv_inspect_image` is in your tool list, compare the boundary stills for character identity, pose and action phase, movement direction, camera movement, spatial position, props, lighting and palette.
@@ -62,7 +62,7 @@ One story is one timeline and one storyboard. The user asks for this about a tim
 1. Change `story/storyboard.md` with `dv_textnode_edit`, show the new or changed shots, and wait for the user to agree as in step 2. A shot added after six shots is shot 7.
 2. Render only the new or changed shots with `dv_shot_render`, in story order; a changed shot passes `based_on` = its earlier render. Each shot that continues a new render (the changed shot, or a shot this step renders again) renders again, with these calls:
    1. Before its render, call `dv_asset_grab_still` on the new previous render three times: at its duration minus 1.0 s, minus 0.5 s (4 and 4.5 for a 5 s shot) and `last`. Do this even when you already saw its last frame or other stills. Rewrite the shot's prompt from those stills (section 4 steps 7 and 8).
-   2. Render it with `continue_from` = the new previous render.
+   2. Render it with the same continuation param = the new previous render.
    3. After its render, call `dv_asset_grab_still` on it at 0.5 s and 1.0 s, compare them with the previous ending stills, and write `Boundary <N-1>→<N>: pass | minor_issue | fail` and one reason in your reply.
 3. Wait with `dv_proj_wait`, then call `dv_timeline_update` with `timeline` = the story's timeline and every clip in order, the unchanged clips as their earlier takes.
 </skill_instructions>

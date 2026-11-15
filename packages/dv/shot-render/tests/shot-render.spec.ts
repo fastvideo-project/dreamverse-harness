@@ -77,6 +77,7 @@ async function renderClip(dir: string, width: number, height: number, numFrames:
 /** One task of the fake model: it renders a solid-color clip for every request and remembers the requests. */
 class FakeLane {
   readonly requests: RenderRequest[] = []
+  readonly videos: Buffer[] = []
   /** When set, `render` rejects with this error before streaming. */
   failure: Error | null = null
   unreachable: Error | null = null
@@ -108,6 +109,7 @@ class FakeLane {
     const dir = mkdtempSync(join(tmpdir(), 'dv-fake-render-'))
     try {
       const rendered = await renderClip(dir, request.frameWidth, request.frameHeight, request.numFrames)
+      this.videos.push(rendered.video)
       if (this.omit !== 'last_frame') yield { kind: 'last_frame', png: rendered.lastFrame }
       yield { kind: 'video_start', mime: 'video/mp4; codecs="avc1.64001f"' }
       const half = Math.floor(rendered.video.length / 2)
@@ -384,7 +386,7 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     // The key and the prompt, the shot's geometry, then `seed` and `extra`; a render carries no plan params.
     const params = renderSpec(fixture)?.params ?? {}
     expect(Object.keys(params)).toEqual([
-      'modality', 'task', 'provider', 'model', 'prompt', 'duration_sec', 'aspect_ratio', 'resolution', 'seed', 'extra',
+      'modality', 'task', 'provider', 'model', 'prompt', 'duration_sec', 'aspect_ratio', 'resolution', 'continuation_seconds', 'seed', 'extra',
     ])
     // The key fields are free strings: dv_models_list lists their values and the precondition refuses an unknown key.
     for (const field of ['modality', 'task', 'provider', 'model']) {
@@ -544,6 +546,196 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     await expect(fixture.record('shot.render', { ...REF, prompt: 'a cat' }, [c2], { started_by: { record: created.id, slot: 2 } }))
       .rejects.toThrow(/Nothing was generated; change the inputs or params, then call again\.$/)
     expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
+    expect(fixture.reference.requests).toHaveLength(0)
+  })
+
+  it('passes an audio-bearing tail as a cited video reference without trimming the generated output', async () => {
+    const fixture = await start()
+    const pool = fixture.ctx.dvAssetPool
+    const file = join(fixture.dir, 'source.mp4')
+    await run(FFMPEG, ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=192x112:r=24:d=3',
+      '-f', 'lavfi', '-i', 'sine=frequency=440:duration=3', '-c:v', 'libx264', '-c:a', 'aac', file])
+    const source = fixture.put(readFileSync(file), 'video/mp4', 'source.mp4')
+    // A producer with a real video output uses the same dependency path as a rendered shot.
+    const sourceSpec: OperationSpec = {
+      name: 'bible.video', component: 'bible', version: '1', description: 'Source clip.', params: {}, inputs: {},
+      outputs: [{ role: 'video', type: 'video' }], deterministic: true, resource: 'none', summarize: () => 'source',
+      execute: () => Promise.resolve({ outputs: [source] }),
+    }
+    fixture.ctx.effect(() => fixture.ctx.dvProject.registerOperation(sourceSpec))
+    const clip = await fixture.record('bible.video', {})
+    const image = await withCharacter(fixture)
+    const args = { ...REF, reason: 'continue motion', prompt: 'Continue @[previous clip](dv:input/continuation_video).',
+      duration_sec: 1, seed: 42, continue_video_from: clip.id, inputs: { reference: 'c1@1' } }
+    const rendered = value(await fixture.call('dv_shot_render', args))
+    const record = fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(rendered.record))
+    expect(record.inputs).toContainEqual({ role: 'continuation_video', ref: { record: clip.id, output: 0 }, resolved_asset: source })
+    const request = fixture.reference.requests[0]!
+    const tail = request.references[1]!
+    expect(request.references).toEqual([image, tail])
+    expect(tail).not.toBe(source)
+    expect(request).toMatchObject({ prompt: `Continue @[previous clip](dv:asset/${tail}).`, firstFrame: null, seed: 42, numFrames: 25 })
+    const probe = await fixture.ctx.dvFfmpeg.probe(pool.path(tail))
+    expect(probe).toMatchObject({ hasAudio: true, width: 192, height: 112 })
+    expect(probe.videoDurationSec).toBeCloseTo(2, 1)
+    expect(record.report).toMatchObject({ continuation_video_asset: tail, continuation_seconds: probe.videoDurationSec, duration_sec: 1 })
+    expect((await fixture.ctx.dvFfmpeg.probe(pool.path(record.outputs[0]!))).videoDurationSec).toBeCloseTo(25 / 24, 1)
+    expect(readFileSync(pool.path(record.outputs[0]!))).toEqual(fixture.reference.videos[0])
+    expect(record.params).not.toHaveProperty('continue_video_from')
+    const shorter = value(await fixture.call('dv_shot_render', { ...args, continuation_seconds: 0.5 }))
+    expect(fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(shorter.record)).report?.['continuation_seconds']).toBeCloseTo(0.5, 1)
+    const whole = value(await fixture.call('dv_shot_render', { ...args, continuation_seconds: 10 }))
+    expect(fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(whole.record)).report?.['continuation_seconds']).toBeCloseTo(3, 1)
+  })
+
+  it('refuses conflicting continuation inputs and applies the model video-reference and count limits', async () => {
+    const fixture = await start()
+    const source = await fixture.record('shot.render', { ...TXT, prompt: 'A street' })
+    const args = { ...REF, reason: 'continue', prompt: 'Keep moving', continue_video_from: source.id }
+    const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
+    expect(failure(await fixture.call('dv_shot_render', { ...args, continue_from: source.id }))).toContain('cannot combine')
+    expect(failure(await fixture.call('dv_shot_render', { ...args, inputs: { first_frame: `${source.id}#1` } }))).toContain('cannot combine')
+    for (const seconds of [0, -1, '2']) {
+      expect(failure(await fixture.call('dv_shot_render', { ...args, continuation_seconds: seconds }))).not.toBe('')
+    }
+    fixture.reference.check = request => request.references.some(asset => fixture.ctx.dvAssetPool.mediaType(asset) === 'video')
+      ? ['Video references are not supported.'] : []
+    expect(failure(await fixture.call('dv_shot_render', args))).toContain('Video references are not supported.')
+    fixture.reference.check = request => request.references.length > 1 ? ['At most one reference.'] : []
+    const image = fixture.put(Buffer.from('PNG-OTHER'), 'image/png', 'other.png')
+    expect(failure(await fixture.call('dv_shot_render', { ...args, inputs: { reference: image } }))).toContain('At most one reference.')
+    expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
+    fixture.reference.check = () => []
+    expect(failure(await fixture.call('dv_shot_render', { ...REF, reason: 'invalid source', prompt: 'Keep moving',
+      inputs: { continuation_video: `${source.id}#1` } }))).toContain('continuation_video needs a video asset.')
+    expect(fixture.reference.requests).toHaveLength(0)
+  })
+
+  it('refuses the full source video alongside its continuation tail before recording or calling the provider', async () => {
+    const fixture = await start()
+    const source = await fixture.record('shot.render', { ...TXT, prompt: 'A street' })
+    const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
+    for (const reference of [`${source.id}#0`, source.outputs[0]!]) {
+      expect(failure(await fixture.call('dv_shot_render', {
+        ...REF, reason: 'continue', prompt: 'Keep moving', continue_video_from: source.id, inputs: { reference },
+      }))).toContain('The continuation video is also in inputs.reference. Remove it from inputs.reference; continue_video_from already supplies its tail.')
+    }
+    expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
+    expect(fixture.reference.requests).toHaveLength(0)
+  })
+
+  it('refuses a prompt that cites the continuation source by asset before recording', async () => {
+    const fixture = await start()
+    const source = await fixture.record('shot.render', { ...TXT, prompt: 'A street' })
+    const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
+    expect(failure(await fixture.call('dv_shot_render', {
+      ...REF, reason: 'continue', prompt: `Continue @[previous clip](dv:asset/${source.outputs[0]!})`, continue_video_from: source.id,
+    }))).toContain(`The prompt cites asset ${source.outputs[0]!}, which is not in the reference input.`)
+    expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
+    expect(fixture.reference.requests).toHaveLength(0)
+  })
+
+  it('waits for the source render before cropping its tail, including a silent clip shorter than the default', async () => {
+    const fixture = await start()
+    let release = (): void => {}
+    fixture.text.hold = new Promise<void>((resolve) => { release = resolve })
+    try {
+      const source = await fixture.record('shot.render', { ...TXT, prompt: 'A street' }, [], { after: [] })
+      const next = await fixture.record('shot.render', { ...REF, prompt: 'Keep moving' }, [
+        { role: 'continuation_video', ref: { record: source.id, output: 0 } },
+      ], { after: [source.id] })
+      const duplicate = await fixture.record('shot.render', { ...REF, prompt: 'Keep moving' }, [
+        { role: 'continuation_video', ref: { record: source.id, output: 0 } },
+        { role: 'reference', ref: { record: source.id, output: 0 } },
+      ], { after: [source.id] })
+      expect(fixture.reference.requests).toHaveLength(0)
+      release()
+      await fixture.ctx.dvProject.wait(fixture.project, [source.id, next.id, duplicate.id])
+      const rendered = fixture.ctx.dvProject.getRecord(fixture.project, next.id)
+      expect(rendered.status).toBe('done')
+      const tail = fixture.reference.requests[0]!.references[0]!
+      const probe = await fixture.ctx.dvFfmpeg.probe(fixture.ctx.dvAssetPool.path(tail))
+      expect(probe.hasAudio).toBe(false)
+      expect(probe.videoDurationSec).toBeCloseTo(25 / 24, 1)
+      expect(rendered.inputs[0]?.resolved_asset).toBe(fixture.ctx.dvProject.getRecord(fixture.project, source.id).outputs[0])
+      const refused = fixture.ctx.dvProject.getRecord(fixture.project, duplicate.id)
+      expect(refused.status).toBe('failed')
+      expect(refused.error?.message).toContain('The continuation video is also in inputs.reference.')
+      expect(fixture.reference.requests).toHaveLength(1)
+    } finally {
+      release()
+    }
+  })
+
+  it('refuses two continuation_video inputs, and continuation_seconds without a continuation, before recording', async () => {
+    const fixture = await start()
+    const source = await fixture.record('shot.render', { ...TXT, prompt: 'A street' })
+    const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
+    expect(failure(await fixture.call('dv_shot_render', { ...REF, reason: 'continue', prompt: 'Keep moving',
+      continue_video_from: source.id, inputs: { continuation_video: `${source.id}#0` } }))).toContain('shot.render takes one continuation_video input.')
+    expect(failure(await fixture.call('dv_shot_render', { ...REF, reason: 'tail', prompt: 'Keep moving', continuation_seconds: 1 })))
+      .toContain('continuation_seconds needs a continuation_video input or continue_video_from.')
+    expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
+    expect(fixture.reference.requests).toHaveLength(0)
+  })
+
+  it('rewrites only the continuation citation of a prompt that also cites a reference asset', async () => {
+    const fixture = await start()
+    const source = await fixture.record('shot.render', { ...TXT, prompt: 'A street' })
+    const image = fixture.put(Buffer.from('PNG-OTHER'), 'image/png', 'other.png')
+    value(await fixture.call('dv_shot_render', { ...REF, reason: 'continue', continue_video_from: source.id, inputs: { reference: image },
+      prompt: `Continue @[previous clip](dv:input/continuation_video) with @[face](dv:asset/${image}).` }))
+    const request = fixture.reference.requests[0]!
+    const tail = request.references[1]!
+    expect(request.references).toEqual([image, tail])
+    expect(request.prompt).toBe(`Continue @[previous clip](dv:asset/${tail}) with @[face](dv:asset/${image}).`)
+  })
+
+  it('crops a source whose container alone records the duration, and refuses a source without a duration', async () => {
+    const fixture = await start()
+    const file = join(fixture.dir, 'source.mkv')
+    await run(FFMPEG, ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=192x112:r=24:d=3', '-c:v', 'libx264', file])
+    const mkv = fixture.put(readFileSync(file), 'video/x-matroska', 'source.mkv')
+    const args = { ...REF, reason: 'continue', prompt: 'Keep moving' }
+    const rendered = value(await fixture.call('dv_shot_render', { ...args, inputs: { continuation_video: mkv } }))
+    const report = fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(rendered.record)).report
+    expect(report?.['continuation_seconds']).toBeCloseTo(2, 1)
+    const still = join(fixture.dir, 'still.png')
+    await run(FFMPEG, ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=64x64', '-frames:v', '1', still])
+    const timeless = fixture.put(readFileSync(still), 'video/mp4', 'still.mp4')
+    expect(failure(await fixture.call('dv_shot_render', { ...args, inputs: { continuation_video: timeless } })))
+      .toContain('Cannot determine the continuation video duration.')
+    expect(fixture.reference.requests).toHaveLength(1)
+  })
+
+  it('takes the tail duration from its container when the stream records none, and refuses a tail without dimensions', async () => {
+    const fixture = await start()
+    const source = await fixture.record('shot.render', { ...TXT, prompt: 'A street' })
+    const ffmpeg = fixture.ctx.dvFfmpeg
+    const probe = ffmpeg.probe.bind(ffmpeg)
+    let width: number | null = 192
+    // ffprobe stands in for a tail whose stream metadata lacks a duration, then also dimensions.
+    ffmpeg.probe = async (path) => {
+      const result = await probe(path)
+      return path.endsWith('continuation.mp4') ? { ...result, videoDurationSec: null, width } : result
+    }
+    const args = { ...REF, reason: 'continue', prompt: 'Keep moving', continue_video_from: source.id }
+    const rendered = value(await fixture.call('dv_shot_render', args))
+    const tail = fixture.reference.requests[0]!.references[0]!
+    expect(fixture.ctx.dvAssetPool.get(tail).duration_sec).toBeCloseTo(25 / 24, 1)
+    expect(fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(rendered.record)).report?.['continuation_seconds']).toBeCloseTo(25 / 24, 1)
+    width = null
+    expect(failure(await fixture.call('dv_shot_render', args))).toContain('Cannot read extracted continuation video metadata.')
+    expect(fixture.reference.requests).toHaveLength(1)
+  })
+
+  it('refuses video continuation once FFmpeg and the asset pool leave the composition', async () => {
+    const fixture = await start()
+    const source = await fixture.record('shot.render', { ...TXT, prompt: 'A street' })
+    const include = Object.keys(fixture.ctx.loader.store)[0]!
+    await fixture.ctx.loader.update(`${include}:dv-ffmpeg`, { disabled: true })
+    expect(failure(await fixture.call('dv_shot_render', { ...REF, reason: 'continue', prompt: 'Keep moving', continue_video_from: source.id })))
+      .toContain('Video continuation needs dvAssetPool and dvFfmpeg.')
     expect(fixture.reference.requests).toHaveLength(0)
   })
 

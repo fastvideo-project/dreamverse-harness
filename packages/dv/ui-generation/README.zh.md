@@ -43,7 +43,7 @@ export const { inject, apply } = defineGenerationUi({
 | 符号 | 含义 |
 | --- | --- |
 | `defineGenerationUi(spec)` | 返回一个生成原语的 `UiPlugin`（`{ inject: [], apply }`） |
-| `GenerationUiSpec` | 声明。必填：`id`（注册它的包）、`type`（节点类型键，例如 `'audio'`，即宿主原语的 `node` 声明的 kind）、`operations`（该种类的生成操作，用于对话卡片、历史行和参数栏）、`label`（中英文类型标签）、`color`（主题颜色，例如 `var(--dv-node-3)`）和 `status`（`StatusWords`）。可选：`fallbackRatio`（所显示素材宽或高未知的节点（例如音频节点）的画框宽高比，即宽 ÷ 高；默认 16:9）、`subject(record)`（历史主题；默认无）、`bar`（该类型的输入框参数栏：`placeholder` 和 `send` 文字、`chips(…)` 和 `candidates(schema)`；`@dv/ui-composer` 已加载时，套件为每个操作在 `dvComposer.paramBars` 中注册它，所有者为 `id`，发送进行中的文字为 `status.running`，所以没有 `bar` 的类型也显示它的进行中文字）和 `preview(outputs)`（不是第一个输出时，在小视图中代表节点、并由编辑器和对话卡片的播放器在播放前显示的输出；它读取该版本的输出及其 MIME 类型） |
+| `GenerationUiSpec` | 声明。必填：`id`（注册它的包）、`type`（节点类型键，例如 `'audio'`，即宿主原语的 `node` 声明的 kind）、`operations`（该种类的生成操作，用于对话卡片、历史行和参数栏）、`label`（中英文类型标签）、`color`（主题颜色，例如 `var(--dv-node-3)`）和 `status`（`StatusWords`）。可选：`fallbackRatio`（所显示素材宽或高未知的节点（例如音频节点）的画框宽高比，即宽 ÷ 高；默认 16:9）、`subject(record)`（历史主题；默认无）、`bar`（该类型的输入框参数栏：`placeholder` 和 `send` 文字、`chips(…)`、`hidden(call)` 和 `candidates(schema)`；`@dv/ui-composer` 已加载时，套件为每个操作在 `dvComposer.paramBars` 中注册它，所有者为 `id`，发送进行中的文字为 `status.running`，所以没有 `bar` 的类型也显示它的进行中文字）和 `preview(outputs)`（不是第一个输出时，在小视图中代表节点、并由编辑器和对话卡片的播放器在播放前显示的输出；它读取该版本的输出及其 MIME 类型） |
 | `StatusWords` | 中英文文本对 `running`、`failed` 和 `done` |
 
 ### 插件注册的内容

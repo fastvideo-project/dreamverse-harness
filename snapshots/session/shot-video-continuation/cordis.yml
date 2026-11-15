@@ -1,0 +1,15 @@
+- insert:
+    - id: workspace
+      name: '../../../packages/workspace/workspace/src/index.ts'
+    - id: dv-project
+      name: '../../../packages/dv/project/src/index.ts'
+      config:
+        projectsFolder: !!js process.cwd()
+    - id: dv-models
+      name: '../../../packages/dv/models/src/index.ts'
+    - id: dv-shot-render
+      name: '../../../packages/dv/shot-render/src/index.ts'
+    - id: continuation-catalog
+      name: './catalog.mjs'
+    - id: dv-workflow-story
+      name: '../../../packages/dv/workflow-story/src/index.ts'

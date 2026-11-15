@@ -1,7 +1,8 @@
 /**
  * The parameter bar of `shot.render` in the composer: the aspect ratio, the resolution and the duration that the
  * selected video model's `schema()` offers, the `@` filter of its `reference` input, and the words of a shot's take
- * editor. A schema that the catalog does not know gives no chip and no filter, so the declared params' chips show and
+ * editor. A call without a `continuation_video` input or a `continuation_seconds` value hides the `continuation_seconds`
+ * chip. A schema that the catalog does not know gives no chip and no filter, so the declared params' chips show and
  * `@` offers every media type.
  *
  * @module @dv/ui-shot-render/param-bar
@@ -50,6 +51,11 @@ export const shotRenderBar = {
       menu('resolution', ['清晰度', 'Resolution'], params['resolution'], strings(fields.get('resolutions'))),
       menu('duration_sec', ['时长', 'Duration'], params['duration_sec'], seconds),
     ]
+  },
+  // Only a continuation video uses the tail length; a set value stays visible so that the user can clear it.
+  hidden({ params, inputs }) {
+    const continues = inputs.some(input => input.role === 'continuation_video') || params['continuation_seconds'] !== undefined
+    return continues ? [] : ['continuation_seconds']
   },
   candidates(schema) {
     if (!known(schema)) return null

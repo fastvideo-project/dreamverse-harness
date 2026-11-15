@@ -3,7 +3,8 @@
  * `@dv/models`. It owns one operation, `shot.render` (tool `dv_shot_render`): one take of a shot rendered by the catalog
  * entry whose key the call names in the required params `modality`, `task`, `provider` and `model`. Task `ref2v` takes
  * reference media (imported assets, or the assets of the characters, locations and styles it names) and optionally a
- * first frame, usually the last still of the shot it continues. The entry's `validateGenerationRequest` decides which
+ * first frame, usually the last still of the shot it continues. Video continuation extracts the previous video's tail
+ * with audio as one ordinary reference, requiring video-reference support. The entry's `validateGenerationRequest` decides which
  * inputs and which values of the model's own parameters (`extra`) it renders, and the entry's schema describes them to
  * the agent. The model receives asset IDs and reads each asset from the asset pool.
  *
@@ -34,6 +35,7 @@ import {
   type StartedBy,
 } from '@dv/project'
 import { baseMime, shotGeometry, text } from './render.ts'
+import { continuationAsset, prepareContinuation } from './continuation.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -63,11 +65,17 @@ interface LiveShotSink {
 /** The live stream of one shot, or null while no sink is mounted. */
 type LiveShot = ReturnType<LiveShotSink['openSegment']> | null
 
-/** The tool-only argument of `dv_shot_render` that names the take whose last still the new shot starts from. */
-const CONTINUE_FROM_PARAM: ParameterSchemaSpec = {
+/** Tool shortcuts for the source take of still or video continuation. */
+const CONTINUATION_PARAMS: ParameterSchemaSpec = {
   continue_from: {
     type: 'string',
     description: 'A render record whose last_still (output #1) this shot starts from; only when the model takes a first frame.',
+  },
+  continue_video_from: {
+    type: 'string',
+    description: 'A render record whose video tail (output #0) guides continuing motion or audio. Requires video-reference support; '
+      + 'uses continuation_seconds (default 2). This supplies a video reference; do not also put its source in inputs.reference. '
+      + 'Cannot combine with continue_from or first_frame. No output overlap is trimmed.',
   },
 }
 
@@ -79,6 +87,7 @@ const RENDER_PARAMS: OperationSpec['params'] = {
   duration_sec: { type: 'integer', description: 'Whole seconds within the model range; default the model minimum.' },
   aspect_ratio: { type: 'string', description: 'One of the model aspect ratios; default the first.' },
   resolution: { type: 'string', description: 'One of the model resolutions; default the first.' },
+  continuation_seconds: { type: 'number', description: 'Positive tail duration for video continuation; default 2 seconds, capped at the source duration.' },
 }
 
 /** The inputs of `shot.render`; a model accepts the subset its schema lists. */
@@ -90,6 +99,7 @@ const RENDER_INPUTS: Record<string, OperationInput> = {
   },
   first_frame: { type: 'image', description: 'The frame the shot starts from, usually output #1 of the previous shot.' },
   last_frame: { type: 'image', description: 'The frame the shot ends at. Task fl2v needs both first_frame and last_frame.' },
+  continuation_video: { type: 'video', description: 'Previous shot video (output #0); its tail becomes one ordinary video reference.' },
 }
 
 /** The sentence the render description ends with. */
@@ -160,14 +170,17 @@ function expandElements(prompt: string, inputs: readonly RequestInput[]): string
  * @param seed - the call's `seed`, else the random seed that `defineGeneration` drew.
  * @returns the request.
  * @throws Error for a missing prompt, a citation that names no `reference` asset, params outside the facts, or more than
- *   one input of either frame role, or missing frames or forbidden reference media for task `fl2v`.
+ *   one input of either frame role or of `continuation_video`, missing frames or forbidden reference media for task
+ *   `fl2v`, conflicting continuation modes, or invalid continuation duration.
  */
 function renderRequest(
   facts: RenderModelFacts, params: Record<string, unknown>, inputs: readonly RequestInput[], seed: number,
 ): RenderRequest {
   if (text(params['prompt']) === '') throw new Error('shot.render needs a `prompt`.')
-  const prompt = expandElements(text(params['prompt']), inputs)
-  const references = inputAssets(inputs, 'reference')
+  let prompt = expandElements(text(params['prompt']), inputs)
+  const video = continuationAsset(inputs)
+  const cited = inputAssets(inputs, 'reference')
+  const references = [...cited, ...video === null ? [] : [video]]
   // An output of a record that has not finished counts here although it has no asset yet.
   for (const role of ['first_frame', 'last_frame']) {
     const count = inputs.filter(input => input.role === role).length
@@ -182,8 +195,22 @@ function renderRequest(
     throw new Error('Task l2v takes one last_frame, with no reference or first_frame input.')
   }
   if (params['task'] === 'fl2v' && inputs.some(input => input.role === 'reference')) throw new Error('Task fl2v takes first_frame and last_frame, with no reference input.')
-  const problems = citationProblems(prompt, references, new Set(inputs.map(input => input.role)))
+  const firstFrameCount = inputs.filter(input => input.role === 'first_frame').length
+  const continuationCount = inputs.filter(input => input.role === 'continuation_video').length
+  if (continuationCount > 1) throw new Error('shot.render takes one continuation_video input.')
+  if (continuationCount > 0 && firstFrameCount > 0) throw new Error('Video continuation cannot combine with continue_from or first_frame.')
+  const seconds = params['continuation_seconds']
+  if (seconds !== undefined && (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0)) {
+    throw new Error('continuation_seconds must be a positive finite number.')
+  }
+  if (seconds !== undefined && continuationCount === 0) throw new Error('continuation_seconds needs a continuation_video input or continue_video_from.')
+  // The continuation video is cited only as its input: execution replaces the source asset with its cropped tail.
+  const problems = citationProblems(prompt, cited, new Set(inputs.map(input => input.role)))
   if (problems.length > 0) throw new Error(`${problems.join(' ')} Cite only the assets of inputs.reference and the inputs of the call.`)
+  if (video !== null) {
+    prompt = replacePromptCitations(prompt, citation => citedInput(citation.uri) === 'continuation_video'
+      ? formatCitation(citation.label, 'asset', video) : prompt.slice(citation.start, citation.end))
+  }
   const firstFrames = inputAssets(inputs, 'first_frame')
   const lastFrames = inputAssets(inputs, 'last_frame')
   const geometry = shotGeometry(facts, params)
@@ -228,6 +255,10 @@ async function storeShot(
   })
   // The record's params keep the prompt as written; the report adds the prompt that the model plugin received.
   const expanded = request.prompt === text(context.params['prompt']) ? {} : { expanded_prompt: request.prompt }
+  const tailAsset = context.inputs.some(input => input.role === 'continuation_video') ? request.references.at(-1) : undefined
+  const continuation = tailAsset === undefined ? {} : {
+    continuation_video_asset: tailAsset, continuation_seconds: ctx.get('dvAssetPool')?.get(tailAsset).duration_sec,
+  }
   return {
     outputs: [video, frame],
     report: {
@@ -236,7 +267,7 @@ async function storeShot(
       ...geometry.width === undefined || geometry.height === undefined ? {}
         : { frame_width: geometry.width, frame_height: geometry.height },
       ...geometry.numFrames === undefined ? {} : { num_frames: geometry.numFrames },
-      ...modelKey(context.params), ...expanded, timings: streamed.timings,
+      ...modelKey(context.params), ...expanded, ...continuation, timings: streamed.timings,
     },
   }
 }
@@ -330,16 +361,21 @@ const RENDER_DECLARATION: GenerationSpec<'video'> = {
     + 'Task l2v renders toward one last_frame image, with no reference or first_frame input. '
     + 'Task fl2v renders between image inputs first_frame and last_frame; both are required, with no reference input. '
     + 'Pass continue_from to start from the last still of an earlier shot when the model takes a first frame. '
+    + 'Pass continue_video_from to guide ongoing motion or audio with a previous shot\'s tail as a video reference; '
+    + 'cite it as @[previous clip](dv:input/continuation_video). Audio continuity depends on the model\'s audio conditioning. '
     + 'The model\'s own parameters go in extra (see dv_models_get). ' + TAKE_RULE,
   params: RENDER_PARAMS,
   inputs: RENDER_INPUTS,
   outputs: [{ role: 'video', type: 'video' }, { role: 'last_still', type: 'image' }],
-  toolParams: CONTINUE_FROM_PARAM,
-  // `continue_from` becomes the `first_frame` input; the model's `validateGenerationRequest` decides whether it takes it.
+  toolParams: CONTINUATION_PARAMS,
+  // Both shortcuts become inputs that name a source record output, which the runner resolves like any record-output input.
   prepareToolCall({ args, request }) {
     const continueFrom = text(args['continue_from'])
     if (continueFrom !== '') request.inputs.push({ role: 'first_frame', ref: { record: brandString<RecordId>(continueFrom), output: 1 } })
+    const continueVideoFrom = text(args['continue_video_from'])
+    if (continueVideoFrom !== '') request.inputs.push({ role: 'continuation_video', ref: { record: brandString<RecordId>(continueVideoFrom), output: 0 } })
   },
+  prepareInputs: prepareContinuation,
   toRequest: renderRequest,
   toOutputs: storeShot,
   summarize: record => `${shotName(record.started_by)} "${text(record.params['prompt']).slice(0, 60)}" `

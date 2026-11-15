@@ -19,7 +19,7 @@ Providers may expose `dv_models_status`, `dv_models_load` and `dv_models_unload`
    - aspect ratio;
    - resolution;
    - number of references and media type of each reference;
-   - a first frame, when the shot continues the previous shot.
+   - first-frame support for `continue_from`, or video-reference support for `continue_video_from` (its tail counts as one reference); audio continuity also requires audio conditioning.
 6. If one candidate remains, use it. Go to step 9.
 7. If more than one candidate remains, compare their descriptions. If the choice depends on a preference of the user, ask the user. Show the provider, the model and the description of each option.
 8. Else, choose the candidate that fits the shot best.
