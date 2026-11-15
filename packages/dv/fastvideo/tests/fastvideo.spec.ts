@@ -780,6 +780,8 @@ describe('Open-H3-Regenerate-2K v2v', () => {
     expect(await entry.validateGenerationRequest(request([draft], null))).toEqual([])
     expect(await entry.validateGenerationRequest(request([], null))).toContain(
       'Its reference input needs at least 1 of type video; this shot has 0.')
+    expect(await entry.validateGenerationRequest(request([draft, draft], null))).toContain(
+      'It regenerates exactly one draft video; this shot has 2 references.')
     expect(await entry.validateGenerationRequest(request([still], null))).toContain(
       `Its reference input takes assets of type video; asset ${still} is of type image.`)
     expect(await entry.validateGenerationRequest(request([draft], still))).toContain('It takes no first_frame input; this shot has 1.')
