@@ -66,7 +66,7 @@ export interface TimelineEditorProps {
    * playhead along, the editor and the preview draw everything `scale` times larger (default 1) while still filling
    * their boxes, so their text grows with the node, the menus open inside the editor, and
    * pointer positions are divided by the canvas zoom that scales the editor; the toolbar ends with 打开编辑器 / Open
-   * editor, which calls `open`. The editor marks its root `data-node-keys`, its ruler, clips, sounds and sound track
+   * editor, which calls `open`. The editor marks its root and the preview `data-node-keys`, its ruler, clips, sounds and sound track
    * headers `data-node-interactive`, so the canvas leaves their keys and presses to it and moves the node on a press
    * anywhere else; the track area scrolls both ways without a scrollbar, by wheel or touchpad. Absent for the panel of the 时间线 tab and
    * center view.
@@ -1099,7 +1099,11 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     }
   const frameStyle: CSSProperties = card === undefined ? { height: '100%', maxWidth: '100%', aspectRatio: '16 / 9' } : { width: '100%', aspectRatio: cardRatio }
   const viewer = (
-    <section ref={viewerBox} aria-label={t('viewer.aria')} data-testid="dv-timeline-preview" style={viewerStyle}>
+    <section
+      ref={viewerBox} aria-label={t('viewer.aria')} data-testid="dv-timeline-preview" style={viewerStyle}
+      // The portaled preview of a card sits outside the editor's root, so it carries the class and the key mark itself.
+      {...card === undefined ? {} : { className: 'dv-tl-editor', 'data-node-keys': '' }}
+    >
       <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div
           ref={frame} data-testid="dv-timeline-viewer"

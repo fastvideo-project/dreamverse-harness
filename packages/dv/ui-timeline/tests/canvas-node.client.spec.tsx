@@ -142,6 +142,22 @@ describe('a timeline node on the canvas', () => {
     expect([clipClick.defaultPrevented, canvasOf().querySelector('[data-testid="dv-canvas-node-menu"]') !== null]).toEqual([true, true])
   })
 
+  it('styles the preview above the node as the editor, and keeps the keys of its buttons from the canvas', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { node, canvasOf, server } = await mountTimelineCanvas((state) => { placeTimeline(state, 'k1', 't1') })
+    await waitFor(() => { node('k1') })
+    fireEvent.pointerDown(node('k1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
+    const preview = await waitFor(() => node('k1').querySelector('[data-node-above] [data-testid="dv-timeline-preview"]') as HTMLElement)
+    const speed = within(preview).getByTestId('dv-timeline-speed')
+    fireEvent.keyDown(speed, { key: 'Delete' })
+    fireEvent.keyDown(speed, { key: 'Backspace' })
+    expect(confirm).not.toHaveBeenCalled()
+    expect(operationsOf(server.writes)).toEqual([])
+    // The preview sits outside the editor's root, so it carries the editor's class for its button styles itself.
+    expect([preview.classList.contains('dv-tl-editor'), speed.classList.contains('dv-tl-btn')]).toEqual([true, true])
+  })
+
   it('shows a deleted timeline, an empty one, and opens the timeline view on a double click on the caption', async () => {
     const { node, canvasOf, show } = await mountTimelineCanvas((state) => {
       const [timeline] = state.components.timeline.timelines
