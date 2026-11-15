@@ -66,7 +66,7 @@ function placedTimeline(state: WireState, record: Pick<ProjectRecord, 'params'>)
  * @param timeline - the timeline ID.
  * @returns the node ID, or null when no node shows the timeline.
  */
-export function timelineNodeOf(state: WireState, timeline: string): string | null {
+function timelineNodeOf(state: WireState, timeline: string): string | null {
   const records = new Map(state.components.proj.records.map(record => [record.id, record]))
   const canvas = state.components.canvas
   return canvas.order.find((id) => {
@@ -149,7 +149,7 @@ export function timelineAddSection(t: TimelineTranslate): AddMenuSection {
  *   client, the timeline dictionary's translate, and the call that shows the timeline in the 时间线 view.
  * @returns the element.
  */
-export function TimelineCard(props: PropsRuntime<'dv.canvas.card'> & CardServices): ReactNode {
+function TimelineCard(props: PropsRuntime<'dv.canvas.card'> & CardServices): ReactNode {
   const { node, state, textScale, t } = props
   const timeline = placedTimeline(state, node.record)
   if (timeline === null) {
