@@ -10,9 +10,9 @@ export function videoSelection(state: ProjectState, session: SessionId | null): 
   return session === null ? null : state.components.models?.conversations[session] ?? null
 }
 
-/** Enforce the conversation default before an agent render is recorded. */
+/** Enforce the conversation default before an agent render is recorded; any model may serve `v2v`, which regenerates a take. */
 export function assertVideoSelection(request: Pick<RunRequest, 'actor' | 'session' | 'params'>, state: ProjectState): void {
-  if (request.actor !== 'agent' || request.params['modality'] !== 'video') return
+  if (request.actor !== 'agent' || request.params['modality'] !== 'video' || request.params['task'] === 'v2v') return
   const selected = videoSelection(state, request.session)
   if (selected !== null && (request.params['provider'] !== selected.provider || request.params['model'] !== selected.model)) {
     throw new Error(`This conversation's video model is ${selected.provider}/${selected.model}. `

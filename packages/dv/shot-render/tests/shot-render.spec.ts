@@ -405,6 +405,19 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(fixture.reference.requests.map(request => request.references)).toEqual([[take.outputs[0]?.asset_id]])
   })
 
+  it('lets an agent v2v render use a model other than the conversation choice and refuses other tasks', async () => {
+    const fixture = await start({ tasks: ['t2v'] })
+    fixture.ctx.effect(() => fixture.ctx.dvModels.register(fakeEntry('v2v', fixture.reference, 'upscaler')))
+    value(await fixture.call('dv_models_select', { provider: 'test', model: 'fake', reason: 'Draft with fake' }))
+    const take = value(await fixture.call('dv_shot_render', { ...TXT, reason: 'draft', prompt: 'A door opens', duration_sec: 1 }))
+    const upscaled = value(await fixture.call('dv_shot_render', {
+      ...TXT, task: 'v2v', model: 'upscaler', reason: 'upscale', prompt: 'A door opens', inputs: { reference: `${take.record}#0` },
+    }))
+    expect(upscaled.status).toBe('done')
+    expect(failure(await fixture.call('dv_shot_render', { ...TXT, model: 'upscaler', reason: 'draft', prompt: 'A door opens', duration_sec: 1 })))
+      .toContain("This conversation's video model is test/fake.")
+  })
+
   it('registers shot.render while the catalog holds a model, and removes it on disposal', async () => {
     const fixture = await start()
     expect(renderSpec(fixture)).toMatchObject({
