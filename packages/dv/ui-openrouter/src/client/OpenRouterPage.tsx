@@ -2,7 +2,7 @@
 import { useCallback, useState, useSyncExternalStore } from 'react'
 import { Button, Input } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
-import type { ImageModel, OpenRouterCatalog, OpenRouterSettings, SpeechModel, VideoModel } from '@dv/openrouter/types'
+import type { OpenRouterCatalog, OpenRouterSettings } from '@dv/openrouter/types'
 import { useText } from '@dv/ui-kit/locale.ts'
 import css from './openrouter.module.css'
 
@@ -73,13 +73,22 @@ export function OpenRouterPage({ form, storeKey, discover, enableOperator }: Ope
     finally { setPending(false) }
   }
   const matches = (model: { id: string; name: string }): boolean => `${model.id} ${model.name}`.toLowerCase().includes(query.toLowerCase())
-  const row = (field: Field, model: VideoModel | ImageModel | SpeechModel, details: string[]) => {
+  const row = (field: Field, model: { id: string; name: string }, details: string[]) => {
     const added = Object.values(configured(field)).includes(model.id)
     return <li key={model.id} className={css.model}><div><strong>{model.name}</strong><p>{model.id}</p>
       {details.map(line => <p key={line}>{line}</p>)}</div>
     <Button variant="outline" disabled={!writable || pending} onClick={() => { void choose(field, model.id) }}>
       {added ? text('移除', 'Remove') : text('添加到聊天', 'Add to chat')}</Button></li>
   }
+  /** The configured ids of `field` that its catalog lacks; none until a catalog answer replaces `EMPTY`. */
+  const missing = (field: Field, models: ReadonlyArray<{ id: string }>): string[] => catalog === EMPTY ? []
+    : [...new Set(Object.values(configured(field)))].filter(id => !models.some(model => model.id === id))
+  /** Rows of configured ids that the catalog no longer offers, so their Remove action stays reachable. */
+  const unavailableRows = (field: Field, ids: string[]) => ids.filter(id => matches({ id, name: id })).map(id => row(field,
+    { id, name: id }, [text('不可用：目录中已没有此模型。', 'Unavailable: the catalog no longer offers this model.')]))
+  const missingVideos = missing('models', catalog.videos)
+  const missingImages = missing('imageModels', catalog.images)
+  const missingSpeech = missing('audioModels', catalog.speech)
   return <section className={css.page} aria-label={text('OpenRouter 视频、图片和音频 API', 'OpenRouter video, image and audio APIs')}>
     <header><h2>{text('视频、图片和音频 API', 'Video, image & audio APIs')}</h2>
       <p>{text('通过 OpenRouter 连接云端视频、图片和语音模型。', 'Connect cloud video, image and speech models through OpenRouter.')}</p></header>
@@ -100,23 +109,23 @@ export function OpenRouterPage({ form, storeKey, discover, enableOperator }: Ope
     {!writable ? <p>{text('当前连接无法编辑视频、图片和音频 API 设置。', 'Video, image and audio API settings are unavailable in this connection.')}</p> : null}
     <label>{text('搜索模型', 'Search models')}<Input type="search" value={query}
       onChange={(event) => { setQuery(event.target.value) }} /></label>
-    {catalog.videos.length === 0 ? null : <h3 className={css.group}>{text('视频模型', 'Video models')}</h3>}
+    {catalog.videos.length + missingVideos.length === 0 ? null : <h3 className={css.group}>{text('视频模型', 'Video models')}</h3>}
     <ul className={css.models} aria-label={text('视频模型', 'Video models')}>{catalog.videos.filter(matches).map(model => row('models', model, [
       `${model.durations.join(', ')}s · ${model.resolutions.join(', ')} · ${model.aspectRatios.join(', ')}`,
       model.frames.includes('first_frame') ? model.frames.includes('last_frame') ? 'T2V · I2V · FL2V' : 'T2V · I2V' : 'T2V',
-    ]))}</ul>
-    {catalog.images.length === 0 ? null : <h3 className={css.group}>{text('图片模型', 'Image models')}</h3>}
+    ]))}{unavailableRows('models', missingVideos)}</ul>
+    {catalog.images.length + missingImages.length === 0 ? null : <h3 className={css.group}>{text('图片模型', 'Image models')}</h3>}
     <ul className={css.models} aria-label={text('图片模型', 'Image models')}>{catalog.images.filter(matches).map(model => row('imageModels', model, [
       [model.parameters['aspect_ratio']?.join(', '), model.parameters['resolution']?.join(', ')]
         .filter((part): part is string => part !== undefined).join(' · ') || text('服务商默认尺寸', 'Provider default size'),
       'T2I',
-    ]))}</ul>
-    {catalog.speech.length === 0 ? null : <h3 className={css.group}>{text('音频模型', 'Audio models')}</h3>}
+    ]))}{unavailableRows('imageModels', missingImages)}</ul>
+    {catalog.speech.length + missingSpeech.length === 0 ? null : <h3 className={css.group}>{text('音频模型', 'Audio models')}</h3>}
     <ul className={css.models} aria-label={text('音频模型', 'Audio models')}>{catalog.speech.filter(matches).map(model => row('audioModels', model, [
       model.voices.length === 0 ? text('无预设声音', 'No listed voices')
         : text(`${model.voices.length} 种声音`, `${model.voices.length} voice${model.voices.length === 1 ? '' : 's'}`),
       'T2A',
-    ]))}</ul>
+    ]))}{unavailableRows('audioModels', missingSpeech)}</ul>
     <p>{text('云端生成按服务商定价收费。停止本地监控不会取消云端任务；不要自动重试付费提交。',
       'Cloud generations use provider pricing. Stopping local monitoring does not cancel the cloud job; paid submissions are never automatically retried.')}</p>
   </section>

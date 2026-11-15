@@ -201,8 +201,7 @@ it('registers the configured models that their catalogs offer and names each una
   expect(partial.body).toMatchObject({ data: [{ id: 'fixture/video' }], images: expect.arrayContaining([expect.objectContaining({ id: 'fixture/image' })]) as unknown })
   expect(partial.body.error).toContain('OpenRouter video model example/retired-video is unavailable')
   expect(partial.body.error).toContain('OpenRouter image model example/retired-image-model is unavailable')
-  expect(partial.body.error).toMatch(
-    /Remove them from models, imageModels or audioModels of the dv-openrouter entry; Settings > Open configuration file opens it\.$/)
+  expect(partial.body.error).toMatch(/Remove unavailable models in Video, image & audio APIs settings\.$/)
   const provider = [...ctx.loader.entries()].find(entry => entry.options.id === 'provider')
   if (provider === undefined) throw new Error('Missing provider fixture')
   const original = provider.options.config as Record<string, unknown>
