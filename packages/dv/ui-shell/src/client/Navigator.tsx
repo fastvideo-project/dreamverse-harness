@@ -15,7 +15,7 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { InlineRename } from '@dv/ui-kit/InlineRename.tsx'
 import { pickText, useText } from '@dv/ui-kit/locale.ts'
 import type { ShellInjected } from './Center.tsx'
-import { ChevronDownIcon, ChevronRightIcon, HomeIcon, PlugIcon, PluginsIcon, PlusIcon, SkillsIcon } from './icons.tsx'
+import { ChevronDownIcon, ChevronRightIcon, HomeIcon, PlugIcon, PluginsIcon, PlusIcon, SkillsIcon, StoreIcon } from './icons.tsx'
 import { DREAMVERSE_WORDMARK } from './logo.ts'
 import { runAction } from './notice.tsx'
 import { RowMenu } from './RowMenu.tsx'
@@ -29,7 +29,9 @@ import css from './shell.module.css'
 export type NavigatorProps = PropsRuntime<'sidebar.workspaces'> & ShellInjected
 
 /** Icons of the DSH sidebar pages the shell knows; any other page shows the Plugins icon. */
-const PAGE_ICONS: Readonly<Record<string, () => ReactNode>> = { plugins: PluginsIcon, mcp: PlugIcon, skills: SkillsIcon }
+const PAGE_ICONS: Readonly<Record<string, () => ReactNode>> = {
+  plugins: PluginsIcon, marketplace: StoreIcon, mcp: PlugIcon, skills: SkillsIcon,
+}
 
 /** How many projects the tree lists before 项目 expands it to all. */
 const SHOWN_PROJECTS = 12

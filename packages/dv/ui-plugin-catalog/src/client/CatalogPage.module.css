@@ -1,0 +1,165 @@
+/* The Marketplace page in the main column: a centered column of the page's width, then a grid of plugin cards. */
+.page {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 960px;
+  height: 100%;
+  margin-inline: auto;
+  padding: 48px 32px;
+  overflow-y: auto;
+  color: var(--dv-text);
+  font-family: var(--dv-font-sans);
+}
+
+.head {
+  margin-bottom: 24px;
+}
+
+.heading {
+  margin: 0 0 8px;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.intro {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dv-text-2);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 1px solid var(--dv-line);
+  border-radius: var(--dv-radius-lg);
+  background: var(--dv-surface-1);
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 8px;
+  row-gap: 4px;
+}
+
+.title {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--dv-text);
+}
+
+.package {
+  font-size: 12px;
+  color: var(--dv-text-2);
+}
+
+.status {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--dv-text-2);
+}
+
+.status[data-state='on'] {
+  color: var(--dv-ok);
+}
+
+.description,
+.setup {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dv-text-2);
+}
+
+.setupLabel {
+  margin-right: 6px;
+  font-weight: 500;
+  color: var(--dv-text);
+}
+
+.link,
+.inlineLink {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: inherit;
+  color: var(--dv-accent-text);
+  cursor: pointer;
+}
+
+.link {
+  font-size: 12px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.primary,
+.secondary,
+.danger {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--dv-radius-md);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.primary {
+  border: 1px solid var(--dv-accent);
+  background: var(--dv-accent);
+  color: #fff;
+}
+
+.secondary {
+  border: 1px solid var(--dv-line-strong);
+  background: var(--dv-surface-3);
+  color: var(--dv-text);
+}
+
+.secondary:hover {
+  background: var(--dv-surface-4);
+}
+
+.danger {
+  border: 1px solid var(--dv-danger);
+  background: var(--dv-danger-soft);
+  color: var(--dv-danger);
+}
+
+.done {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dv-ok);
+}
+
+.error {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: var(--dv-radius-md);
+  background: var(--dv-danger-soft);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dv-danger);
+}

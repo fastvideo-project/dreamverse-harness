@@ -74,6 +74,16 @@ export function PlugIcon({ size = 16 }: { size?: number } = {}): ReactNode {
   return <Icon size={size}><path d="M9 3v4M15 3v4M6.5 7h11v4a5.5 5.5 0 0 1-11 0V7Z" /><path d="M12 16.5V21" /></Icon>
 }
 
+/** A storefront, an awning with a scalloped edge over the shop and its door: the Marketplace page. */
+export function StoreIcon(): ReactNode {
+  return (
+    <Icon>
+      <path d="M3.5 9.5 5 4.5h14l1.5 5a2.125 2.125 0 0 1-4.25 0 2.125 2.125 0 0 1-4.25 0 2.125 2.125 0 0 1-4.25 0 2.125 2.125 0 0 1-4.25 0Z" />
+      <path d="M5.5 12v7.5h13V12M10 19.5V15.5h4v4" />
+    </Icon>
+  )
+}
+
 /** A four-point spark: the Skills page. */
 export function SkillsIcon(): ReactNode {
   return <Icon><path d="M12 3.5l2.1 6.4 6.4 2.1-6.4 2.1L12 20.5l-2.1-6.4L3.5 12l6.4-2.1L12 3.5Z" /></Icon>

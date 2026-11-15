@@ -2298,6 +2298,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       'client-ui-conversation ConversationPanel key \'conversation\'',
       'client-ui-mcp-servers McpPanelPage',
       'client-ui-plugin-manager PluginManagerPage',
+      '@dv/ui-plugin-catalog CatalogPage',
       '@dv/ui-skills SkillsPage',
     ],
     replaceRisk: 'shadows-shipped-ui',
@@ -3578,6 +3579,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     occupants: [
       'client-ui-mcp-servers McpPanelIcon',
       'client-ui-plugin-manager PluginsPanelIcon',
+      '@dv/ui-plugin-catalog MarketplacePanelIcon',
       '@dv/ui-skills SkillsPanelIcon',
     ],
     replaceRisk: 'none',
