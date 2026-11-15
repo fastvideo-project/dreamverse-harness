@@ -39,7 +39,7 @@ DreamVerse 套件默认挂载 `dv-openrouter`，不配置任何模型。在“�
 
 语音提供方读取 `models?output_modalities=speech`，保留输出模态包含 `speech`、且列出 `endpoints` 时其中包含 `/api/v1/audio/speech` 的条目，并读取 `supported_voices` 中的声音。语音调用的提示词是要朗读的纯文本。其 `extra` 接受 `voice` 和 `instructions`：目录列出声音时 `voice` 必填且必须是其中之一；未列出时可省略，由服务商使用默认声音。其他 `extra` 键在提交前被拒绝。提供方提交一次 `POST audio/speech`：`google/` 和 `heygen/` 模型在 OpenRouter 上只提供 PCM，用 `response_format: pcm`，其他模型用 `mp3`（MiniMax 只提供 MP3），并通过共享 ffmpeg 服务把回答转换为 WAV 片段，原始 `audio/pcm` 按 24 kHz 单声道 16 位读取；片段时长由 ffprobe 读取。
 
-基于时长的请求省略未知像素尺寸和帧数。原生 FastVideo 和 UniServe 保留其配置的帧几何。空配置不请求服务商；实时模型配置变更更新现有目录。配置的别名不是小写字母、数字和连字符时，加载失败。启动时目录请求或模型注册失败，插件记录警告并保留目录路由和设置监听；下一次目录发现或模型变更会重试注册。目录中不提供的已配置模型 id 会被跳过，其余已配置模型照常注册；目录路由仍返回各目录，并在 `error` 字段中列出每个被跳过的 id，设置页在目录旁显示该信息；下一次目录发现或模型变更会重试被跳过的 id。
+基于时长的请求省略未知像素尺寸和帧数。原生 FastVideo 和 UniServe 保留其配置的帧几何。空配置不请求服务商；实时模型配置变更更新现有目录。配置的别名不是小写字母、数字和连字符时，加载失败。启动时目录请求或模型注册失败，插件记录警告并保留目录路由和设置监听；下一次目录发现或模型变更会重试注册。目录中不提供的已配置模型 id 会被跳过，其余已配置模型照常注册；目录路由仍返回各目录，并在 `error` 字段中列出每个被跳过的 id，设置页在目录旁显示该信息，并提示通过“设置 > 打开配置文件”从 `dv-openrouter` 条目的 `models`、`imageModels` 或 `audioModels` 中删除它们；下一次目录发现或模型变更会重试被跳过的 id。
 
 
 <a id="further-exploration"></a>

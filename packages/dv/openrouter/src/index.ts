@@ -333,7 +333,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       registered = next
       // Leaving `current` unset while an id is unavailable lets the next sync register it once its catalog offers it.
       current = unavailable.length === 0 ? stamp : ''
-      registrationError = unavailable.length === 0 ? null : `${unavailable.join(' ')} Remove unavailable models in Video, image & audio APIs settings.`
+      registrationError = unavailable.length === 0 ? null : `${unavailable.join(' ')} Remove them from models, imageModels or audioModels of the dv-openrouter entry; Settings > Open configuration file opens it.`
     } catch (error) {
       if (!disposed && version === revision) {
         for (const remove of removers) remove()
