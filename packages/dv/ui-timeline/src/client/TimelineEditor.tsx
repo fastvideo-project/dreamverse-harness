@@ -1,14 +1,16 @@
 /**
  * The timeline editor: one tab per timeline of the project, a 16:9 preview that fills the free height and plays the
- * selected timeline across its clips (with skip, play, playback-speed, and full-screen controls under it), a toolbar,
- * a ruler, the 视频 track with filmstrip clips sized by duration, and a display-only 原声 track with one block per clip
- * that shows the waveform of the clip's own audio once it decodes. A drag handle above the track area sets the track
- * area's height, which each browser remembers. Every edit
- * is one `/api/dv/operation` call of a `timeline.*` operation with `surface: 'timeline'`; the clip operations name the
- * clip by its clip ID, and every edit goes after the current position of the project's history, the state the editor
- * shows. A selected stale clip offers "仍然保留", which keeps the record that made its asset (`proj.stale_accept`). A
- * placeholder clip, whose render is still running (渲染中…) or failed (渲染失败), keeps its place and its planned length on
- * the track; it cannot be trimmed or split, playback skips it, and export waits until every clip is ready.
+ * selected timeline across its clips (with skip, play, playback-speed, and full-screen controls under it), a toolbar, a
+ * ruler, the 视频 track with filmstrip clips sized by duration, and a display-only 原声 track with one block per clip that
+ * shows the waveform of the clip's own audio once it decodes, and under it the sound tracks, whose sound blocks play in
+ * step with the preview (`sound-playback.ts`). A drag handle above the track area sets the track area's height, which
+ * each browser remembers. Every edit is one `/api/dv/operation` call of a `timeline.*` operation with
+ * `surface: 'timeline'`; the clip operations name the clip by its clip ID, the sound operations name the sound by its
+ * sound ID or the sound track by its number, and every edit goes after the current position of the project's history,
+ * the state the editor shows. A selected stale clip offers "仍然保留", which keeps the record that made its asset
+ * (`proj.stale_accept`). A placeholder clip, whose render is still running (渲染中…) or failed (渲染失败), keeps its place and
+ * its planned length on the track; it cannot be trimmed or split, playback skips it, and export waits until every clip
+ * is ready.
  */
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, DragEvent, FocusEvent, KeyboardEvent, PointerEvent, ReactNode, RefObject } from 'react'
@@ -24,8 +26,11 @@ import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { useFirstFrames } from './first-frame.ts'
 import { useTimelinePlayer } from './player.ts'
 import { clipPeaks, useAudioEnvelope } from '@dv/ui-kit/waveform.ts'
-import { clipIndexAt, dropPosition, nextTimelineId, placeTimeline, timecode, timelinesOf, videoAssets } from './timelines.ts'
-import type { TrackClip } from './timelines.ts'
+import { useSoundPlayback } from './sound-playback.ts'
+import {
+  audioAssets, clipIndexAt, dropPosition, nextTimelineId, placeSounds, placeTimeline, timecode, timelinesOf, videoAssets,
+} from './timelines.ts'
+import type { TrackClip, TrackSound } from './timelines.ts'
 import type { DvTimelineKey } from './locales.ts'
 
 /** The editor's inputs: the project it shows, the chat session it writes for, the state, and the write runner. */
@@ -82,6 +87,10 @@ const DEFAULT_PX = 40
 const RULER_HEIGHT = 26
 const VIDEO_HEIGHT = 56
 const AUDIO_HEIGHT = 36
+/** Height of the row under the sound tracks that holds 添加音轨 / Add track, in pixels. */
+const ADD_TRACK_HEIGHT = 28
+/** Height of the file-name strip at the top of a sound block, in pixels. */
+const SOUND_NAME_HEIGHT = 14
 /** Vertical gap between the rows of the track area, in pixels. */
 const ROW_GAP = 6
 /** Bottom padding of the scrolling track rows, in pixels; it keeps the horizontal scrollbar off the audio track. */
@@ -118,6 +127,8 @@ const palette = {
   take: 'var(--dv-node-3)',
   audio: 'var(--dv-waveform)',
   audioSoft: 'var(--dv-waveform-soft)',
+  /** The 声音 row's dot and block top bar: the canvas audio color. */
+  sound: 'var(--dv-node-8)',
   media: 'var(--dv-media-bg)',
   mono: 'var(--dv-font-mono)',
 }
@@ -376,9 +387,40 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const unstilled = clips.flatMap(clip => clip.thumbnail === null && clip.assetId !== null ? [assetUrl(clip.assetId)] : [])
   const frames = useFirstFrames(unstilled)
   const candidates = useMemo(() => videoAssets(state), [state])
+  const audioCandidates = useMemo(() => audioAssets(state), [state])
+  // The lengths that the sound elements measured, for audio assets whose length the state does not know.
+  const [measured, setMeasured] = useState<ReadonlyMap<string, number>>(new Map())
+  const { sounds, end: soundsEnd } = useMemo(() => placeSounds(state, timeline, measured), [state, timeline, measured])
+  const span = Math.max(total, soundsEnd)
   const timelineId = timeline?.id ?? null
   const [playbackRate, setPlaybackRate] = useState(readPlaybackRate)
   const player = useTimelinePlayer(timelineId, clips, total, playbackRate)
+  const soundBox = useRef<HTMLDivElement | null>(null)
+  useSoundPlayback(soundBox, sounds, player.position, player.playing, playbackRate)
+  const [pickingSound, setPickingSound] = useState(false)
+  const upload = useRef<HTMLInputElement | null>(null)
+  const soundPickerRef = useRef<HTMLDivElement | null>(null)
+  // The sound track ＋ that opened the sound dialog; each track has its own ＋.
+  const soundAddRef = useRef<HTMLButtonElement | null>(null)
+  // Sound tracks: the tracks the timeline stores (up to the last track with a sound or a name), at least one, and at
+  // most one more empty track that lives only in this view until it gets a sound or a name; the timeline operations
+  // accept a track up to the one after the last stored track.
+  const [shownTracks, setShownTracks] = useState(1)
+  const trackNames = timeline?.sound_track_names ?? []
+  const storedTracks = Math.max(trackNames.length, ...sounds.map(sound => sound.track + 1))
+  const baseTracks = Math.max(1, storedTracks)
+  const trackName = (track: number): string => trackNames[track] || t('track.soundN', { n: track + 1 })
+  const [renamingTrack, setRenamingTrack] = useState<{ track: number; name: string } | null>(null)
+  // After the stored tracks shrink, the view still shows at most the one empty track that the operations accept.
+  const trackCount = Math.max(baseTracks, Math.min(shownTracks, baseTracks + 1))
+  // The track the add dialog adds to, the selected sound, and the open sound or track menu.
+  const [soundTrack, setSoundTrack] = useState(0)
+  const [chosenSound, setChosenSound] = useState<string | null>(null)
+  const selectedSound = sounds.find(sound => sound.sound === chosenSound)
+  const [soundMenu, setSoundMenu] = useState<
+    { kind: 'sound'; sound: TrackSound; x: number; y: number } | { kind: 'track'; track: number; x: number; y: number } | null
+  >(null)
+  const soundMenuRef = useRef<HTMLDivElement | null>(null)
   const cycleRate = (): void => {
     const next = PLAYBACK_RATES.find(rate => rate > playbackRate) ?? PLAYBACK_RATES[0]
     setPlaybackRate(next)
@@ -388,6 +430,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const [chosenClip, setChosenClip] = useState<SelectedClip | null>(null)
   const selected = resolveSelection(clips, timelineId, chosenClip)
   const setSelected = (position: number | null): void => {
+    if (position !== null) setChosenSound(null)
     const clip = clips.find(placed => placed.position === position)
     setChosenClip(position === null || clip === undefined ? null : { timelineId, position, clip: clip.clip })
   }
@@ -418,7 +461,9 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
 
   // The clip selection, the asset picker, the tab menu, the rename box, and the export link belong to one timeline.
   useEffect(() => {
-    setChosenClip(null); setPicking(false); setExported(null); setMenu(null); setRenaming(null)
+    setChosenClip(null); setPicking(false); setPickingSound(false); setExported(null); setMenu(null); setRenaming(null)
+    setChosenSound(null); setSoundMenu(null); setShownTracks(1); setRenamingTrack(null)
+    soundAdds.current += 1; setPendingSound(null)
   }, [timelineId])
 
   useEffect(() => {
@@ -426,6 +471,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     takeClipFocus?.()
     const clip = clips.find(placed => placed.clip === clipFocus.clipId)
     if (clip === undefined) return
+    setChosenSound(null)
     setChosenClip({ timelineId, position: clip.position, clip: clip.clip })
     player.seek(clip.startSec)
   }, [clipFocus, timelineId, clips])
@@ -453,6 +499,17 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     window.addEventListener('keydown', close)
     return () => { window.removeEventListener('keydown', close) }
   }, [menu])
+  // The same for the sound and track menu.
+  useEffect(() => {
+    if (soundMenu === null) return
+    const close = (event: Event): void => {
+      const inside = event.target instanceof Node && soundMenuRef.current?.contains(event.target) === true
+      if (event instanceof KeyboardEvent ? event.key === 'Escape' : !inside) setSoundMenu(null)
+    }
+    window.addEventListener('pointerdown', close)
+    window.addEventListener('keydown', close)
+    return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', close) }
+  }, [soundMenu])
 
   // Closing the asset picker from its close button or Escape returns focus to ＋.
   const closePicker = (): void => {
@@ -466,6 +523,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const closeOnFocusOut = (event: FocusEvent<HTMLDivElement>): void => {
     const next = event.relatedTarget
     if (picking && next instanceof Node && !inPicker(next) && !next.contains(pickerRef.current)) setPicking(false)
+    if (pickingSound && next instanceof Node && !inSoundPicker(next) && !next.contains(soundPickerRef.current)) setPickingSound(false)
   }
   // A press outside the asset picker closes it without inserting. A press on ＋ counts as inside, so its click toggles
   // the picker closed instead of reopening it.
@@ -492,14 +550,106 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     return () => { window.removeEventListener('keydown', onKeyDown, true) }
   }, [picking])
 
+  // The sound dialog closes the same way as the asset picker: its close button, Escape, a press outside it, or focus
+  // that leaves it and its ＋. Closing it from the close button or Escape returns focus to that ＋.
+  const closeSoundPicker = (): void => {
+    setPickingSound(false)
+    soundAddRef.current?.focus()
+  }
+  const inSoundPicker = (node: Node): boolean => [soundPickerRef, soundAddRef].some(ref => ref.current?.contains(node) === true)
+  useDismissOnOutsidePress(pickingSound, [soundPickerRef, soundAddRef], () => { setPickingSound(false) })
+  useEffect(() => {
+    if (!pickingSound) return
+    soundPickerRef.current?.querySelectorAll('button')[1]?.focus()
+    const onKeyDown = (event: globalThis.KeyboardEvent): void => {
+      if (event.key !== 'Escape' || event.isComposing) return
+      const focused = document.activeElement
+      const owned = focused === null || inSoundPicker(focused) || focused.contains(soundPickerRef.current)
+      if (!owned) return
+      event.preventDefault()
+      event.stopPropagation()
+      closeSoundPicker()
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => { window.removeEventListener('keydown', onKeyDown, true) }
+  }, [pickingSound])
+
   // A timeline without a stored name shows the numbered default name of its ID in the interface language.
   const numbered = (n: number): string => t('tabs.defaultTitle', { n })
   const nameOf = (entry: Timeline): string => timelineName(entry, numbered)
   const shownName = timeline === null ? '' : nameOf(timeline)
   // An insert names the shown timeline; the other clip operations name the clip by its clip ID, which names its timeline.
   const runOperation = (operation: string, params: Record<string, unknown>, intent: string): Promise<boolean> => {
-    const scoped = timeline === null || operation !== 'timeline.clip_insert' ? params : { timeline: timeline.id, ...params }
+    const named = ['timeline.clip_insert', 'timeline.sound_track_remove', 'timeline.sound_track_rename'].includes(operation)
+    const scoped = timeline === null || !named ? params : { timeline: timeline.id, ...params }
     return run(() => client.runOperation(request(project, session, { operation, params: scoped, intent })))
+  }
+  // A new sound goes right after the last sound of its track, or at the playhead on an empty track; an uploaded file is
+  // imported first and then added the same way.
+  const trackEnd = Math.max(0, ...sounds.filter(sound => sound.track === soundTrack).map(sound => sound.startSec + sound.seconds))
+  const soundStart = round(sounds.some(sound => sound.track === soundTrack) ? trackEnd : player.position)
+  // Every ＋ of the sound tracks is disabled while a sound add runs, and then until the shown sounds include the sound ID
+  // that its record names, so the next add starts after that sound instead of at the same time. A failed add, a record
+  // that names no sound ID, and a switch to another timeline enable them at once. `pendingSound` is `true` while the add
+  // runs, then the awaited sound ID; `soundAdds` counts the adds and timeline switches, so an add that ends after a
+  // switch to another timeline leaves `pendingSound` alone.
+  const [pendingSound, setPendingSound] = useState<true | string | null>(null)
+  const soundAdds = useRef(0)
+  useEffect(() => {
+    if (sounds.some(sound => sound.sound === pendingSound)) setPendingSound(null)
+  }, [pendingSound, sounds])
+  const addingSound = (work: () => Promise<string | null>): void => {
+    const add = ++soundAdds.current
+    setPendingSound(true)
+    let added: string | null = null
+    void run(async () => { added = await work() }).then((ok) => {
+      if (soundAdds.current === add) setPendingSound(ok ? added : null)
+    })
+  }
+  // A sound add whose record failed, such as one naming an asset that is not audio, throws the record's error, so the
+  // view shows it as its notice and the ＋ buttons are enabled again. A finished record names the new sound ID first in
+  // its `report.sounds`.
+  const writeSound = async (asset: string, at: number): Promise<string | null> => {
+    const params = { timeline: timelineId, asset, start_sec: at, track: soundTrack }
+    const record = await client.runOperation(request(project, session, { operation: 'timeline.sound_add', params, intent: t('intent.soundAdd', { at: timecode(at) }) }))
+    if (record.status === 'failed') throw new Error(record.error?.message ?? record.status)
+    const reported = record.report?.['sounds']
+    const sound: unknown = Array.isArray(reported) ? reported[0] : undefined
+    return typeof sound === 'string' ? sound : null
+  }
+  const addSound = (asset: string): void => {
+    setPickingSound(false)
+    const at = soundStart
+    addingSound(() => writeSound(asset, at))
+  }
+  const removeSound = (sound: TrackSound): void => {
+    setSoundMenu(null)
+    void runOperation('timeline.sound_remove', { sound: sound.sound }, t('intent.soundRemove', { name: sound.name }))
+      .then((ok) => { if (ok) setChosenSound(null) })
+  }
+  const startTrackRename = (track: number): void => {
+    setSoundMenu(null)
+    setRenamingTrack({ track, name: trackName(track) })
+  }
+  const commitTrackRename = (edit: { track: number; name: string }): void => {
+    setRenamingTrack(null)
+    const name = edit.name.trim()
+    if (name === '' || name === trackName(edit.track)) return
+    void runOperation('timeline.sound_track_rename', { track: edit.track, name }, t('intent.trackRename', { name }))
+  }
+  // A stored track is deleted with its sounds and the later tracks move up; an empty track added in this view just goes.
+  const removeTrack = (track: number): void => {
+    setSoundMenu(null)
+    setShownTracks(Math.max(1, trackCount - 1))
+    if (track < storedTracks) void runOperation('timeline.sound_track_remove', { track }, t('intent.trackRemove', { n: track + 1 }))
+  }
+  const uploadSound = (file: File): void => {
+    setPickingSound(false)
+    const at = soundStart
+    addingSound(async () => {
+      const { asset } = await client.importAsset(project, file, 'asset_pool', session)
+      return writeSound(asset, at)
+    })
   }
 
   // A created timeline stores no name; `nameOf` shows the numbered default name of its ID.
@@ -591,7 +741,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       const to = dropPosition(clips, clip.startSec + clip.seconds / 2 + deltaSec, clip.position)
       if (to !== clip.position) {
         void runOperation('timeline.clip_move', { clip: clip.clip, to }, t('intent.move', { from: clip.position, to }))
-          .then((ok) => { if (ok) setChosenClip({ timelineId, position: to, clip: clip.clip }) })
+          .then((ok) => { if (ok) { setChosenSound(null); setChosenClip({ timelineId, position: to, clip: clip.clip }) } })
       }
       return
     }
@@ -621,7 +771,10 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   })
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if ((event.key === 'Delete' || event.key === 'Backspace') && selectedClip !== undefined) {
+    if ((event.key === 'Delete' || event.key === 'Backspace') && selectedSound !== undefined) {
+      event.preventDefault()
+      removeSound(selectedSound)
+    } else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedClip !== undefined) {
       event.preventDefault()
       remove(selectedClip)
     } else if (event.key === ' ' && event.target === event.currentTarget) {
@@ -636,7 +789,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
 
   const fit = (): void => {
     const width = (scroller.current as HTMLDivElement).clientWidth - GUTTER - 60
-    if (width > 0 && total > 0) setPx(Math.round(Math.max(5, Math.min(200, width / total))))
+    if (width > 0 && span > 0) setPx(Math.round(Math.max(5, Math.min(200, width / span))))
   }
   // Each timeline opens fitted to the track width once it has clips, and stays fitted while the panel resizes until the
   // user picks a zoom with the slider.
@@ -724,7 +877,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     void change.catch((error: unknown) => { void error })
   }
 
-  const laneWidth = Math.max(total * px + 80, 200)
+  const laneWidth = Math.max(span * px + 80, 200)
   // The ruler's ticks and labels depend only on the zoom and the lane width, so playback, which re-renders the editor
   // on every animation frame, reuses them.
   const rulerMarks = useMemo(() => {
@@ -862,7 +1015,9 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       <IconButton icon="redo" label={t('tool.redo')} onClick={canRedo ? redo : null} />
       <span style={{ width: 1, height: 18, background: palette.lineStrong, margin: '0 6px' }} />
       <IconButton icon="split" label={t('tool.split')} onClick={splitClip === undefined ? null : () => { splitAtPlayhead(splitClip) }} />
-      <IconButton icon="delete" label={t('tool.delete')} onClick={selectedClip === undefined ? null : () => { remove(selectedClip) }} />
+      {selectedSound !== undefined
+        ? <IconButton icon="delete" label={t('tool.deleteSound')} onClick={() => { removeSound(selectedSound) }} />
+        : <IconButton icon="delete" label={t('tool.delete')} onClick={selectedClip === undefined ? null : () => { remove(selectedClip) }} />}
       {staleRecord !== undefined
         ? <button type="button" className="dv-tl-btn" style={{ ...button, marginLeft: 6, color: palette.danger }} onClick={() => { keepStale(staleRecord) }}>{t('tool.keepAnyway')}</button>
         : null}
@@ -875,6 +1030,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       >
         <Icon name="export" />{exporting ? t('tool.exporting') : t('tool.export')}
       </button>
+      {sounds.length > 0 ? <span data-testid="dv-timeline-export-no-sounds" style={{ color: palette.muted, fontSize: 12, lineHeight: '16px', marginLeft: 6 }}>{t('tool.exportNoSounds')}</span> : null}
       {exported !== null ? <a href={assetUrl(exported)} target="_blank" rel="noreferrer" data-testid="dv-timeline-exported" style={{ color: palette.accentFg, marginLeft: 6 }}>{t('tool.exported')}</a> : null}
       <span style={{ width: 1, height: 18, background: palette.lineStrong, margin: '0 6px' }} />
       <label style={{ display: 'flex', gap: 8, alignItems: 'center', color: palette.muted, fontSize: 12, lineHeight: '16px' }}>
@@ -887,7 +1043,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
 
   const playheadLeft = player.position * px
   // The playhead spans the ruler and both tracks.
-  const playheadHeight = RULER_HEIGHT + ROW_GAP + VIDEO_HEIGHT + ROW_GAP + AUDIO_HEIGHT
+  const playheadHeight = RULER_HEIGHT + ROW_GAP + VIDEO_HEIGHT + ROW_GAP + AUDIO_HEIGHT + trackCount * (ROW_GAP + AUDIO_HEIGHT)
   const trackHeader = (color: string, name: string): ReactNode => (
     <span style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 14, fontSize: 12, lineHeight: '16px' }}>
       <span style={{ width: 8, height: 8, borderRadius: 2, background: color }} />
@@ -896,7 +1052,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   )
   const tracks = (
     <div ref={scroller} style={{ flex: '1 1 auto', minHeight: 0, overflowX: 'auto', overflowY: 'hidden', position: 'relative', paddingBottom: TRACK_PADDING }}>
-      <div ref={rows} style={{ display: 'grid', gridTemplateColumns: `${String(GUTTER)}px ${String(laneWidth)}px`, gridTemplateRows: `${String(RULER_HEIGHT)}px ${String(VIDEO_HEIGHT)}px ${String(AUDIO_HEIGHT)}px`, rowGap: ROW_GAP, minWidth: GUTTER + laneWidth }}>
+      <div ref={rows} style={{ display: 'grid', gridTemplateColumns: `${String(GUTTER)}px ${String(laneWidth)}px`, gridTemplateRows: [RULER_HEIGHT, VIDEO_HEIGHT, AUDIO_HEIGHT, ...Array.from({ length: trackCount }, () => AUDIO_HEIGHT), ADD_TRACK_HEIGHT].map(height => `${String(height)}px`).join(' '), rowGap: ROW_GAP, minWidth: GUTTER + laneWidth }}>
         <span />
         <div
           ref={lane} data-testid="dv-timeline-ruler" style={{ position: 'relative', borderBottom: `1px solid ${palette.line}`, cursor: 'ew-resize' }}
@@ -963,7 +1119,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
           })}
           {timeline === null ? null : (
             <button
-              ref={addRef} type="button" className="dv-tl-btn" aria-label={t('track.add')} title={t('track.add')} aria-expanded={picking} onClick={() => { setPicking(!picking) }}
+              ref={addRef} type="button" className="dv-tl-btn" aria-label={t('track.add')} title={t('track.add')} aria-expanded={picking} onClick={() => { setPickingSound(false); setPicking(!picking) }}
               style={{ ...button, position: 'absolute', left: total * px + 8, top: (VIDEO_HEIGHT - 32) / 2, width: 32, height: 32, padding: 0, justifyContent: 'center', color: palette.muted }}
             >
               <Icon name="add" />
@@ -987,6 +1143,82 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
             </div>
           ))}
         </div>
+        {Array.from({ length: trackCount }, (_, track) => [
+          <span
+            key={`head-${String(track)}`} data-sound-track-head={track} style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}
+            onDoubleClick={() => { startTrackRename(track) }}
+            onContextMenu={(event) => { event.preventDefault(); setSoundMenu({ kind: 'track', track, x: event.clientX, y: event.clientY }) }}
+          >
+            {renamingTrack?.track === track ? (
+              <input
+                autoFocus value={renamingTrack.name} aria-label={t('track.renameAria')}
+                onChange={(event) => { setRenamingTrack({ track, name: event.target.value }) }}
+                onKeyDown={(event) => {
+                  event.stopPropagation()
+                  if (event.key === 'Enter') commitTrackRename(renamingTrack)
+                  if (event.key === 'Escape') setRenamingTrack(null)
+                }}
+                onBlur={() => { commitTrackRename(renamingTrack) }}
+                // A double click selects a word and a right click opens the text menu; neither reaches the track header.
+                onDoubleClick={(event) => { event.stopPropagation() }}
+                onContextMenu={(event) => { event.stopPropagation() }}
+                style={{ ...button, width: GUTTER - 16, marginLeft: 8, padding: '0 4px', background: palette.panel, cursor: 'text', fontSize: 12 }}
+              />
+            ) : trackHeader(palette.sound, trackName(track))}
+          </span>,
+          <div key={`lane-${String(track)}`} role="group" aria-label={t('track.soundN', { n: track + 1 })} data-sound-track={track} style={{ position: 'relative' }}>
+            {timeline === null ? null : (
+              <button
+                type="button" className="dv-tl-btn" aria-label={t('track.addSound')} title={t('track.addSound')} disabled={pendingSound !== null}
+                onClick={(event) => {
+                  soundAddRef.current = event.currentTarget
+                  setPicking(false); setSoundTrack(track); setPickingSound(!pickingSound || soundTrack !== track)
+                }}
+                aria-expanded={pickingSound && soundTrack === track}
+                style={{ ...button, position: 'absolute', left: span * px + 8, top: (AUDIO_HEIGHT - 32) / 2, width: 32, height: 32, padding: 0, justifyContent: 'center', color: palette.muted, zIndex: 1 }}
+              >
+                <Icon name="add" />
+              </button>
+            )}
+            {sounds.filter(sound => sound.track === track).map(sound => (
+              <div
+                key={sound.sound} data-sound={sound.sound} title={t('track.soundItem', { name: sound.name })} aria-pressed={sound.sound === chosenSound}
+                onClick={(event) => { event.stopPropagation(); setChosenClip(null); setChosenSound(sound.sound); root.current?.focus() }}
+                onContextMenu={(event) => {
+                  event.preventDefault(); setChosenClip(null); setChosenSound(sound.sound)
+                  setSoundMenu({ kind: 'sound', sound, x: event.clientX, y: event.clientY })
+                }}
+                style={{
+                  position: 'absolute', top: 0, bottom: 0, left: sound.startSec * px, width: sound.seconds * px, boxSizing: 'border-box', cursor: 'pointer',
+                  display: 'flex', flexDirection: 'column', borderRadius: 'var(--dv-radius-sm)', border: `1px solid ${palette.sound}`, background: palette.audioSoft,
+                  overflow: 'hidden', ...sound.sound === chosenSound ? { boxShadow: `0 0 0 2px ${palette.accent}`, zIndex: 1 } : {},
+                }}
+              >
+                {/* The file name sits in its own strip above the waveform, cut with an ellipsis. */}
+                <span style={{ flex: 'none', height: SOUND_NAME_HEIGHT, padding: '0 4px', fontSize: 11, lineHeight: `${String(SOUND_NAME_HEIGHT)}px`, color: palette.fg, background: palette.panel, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {sound.name}
+                </span>
+                <span style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+                  <AudioWaveform
+                    assetId={sound.assetId} inSec={0} outSec={sound.seconds} width={sound.seconds * px}
+                    height={AUDIO_HEIGHT - 2 - SOUND_NAME_HEIGHT}
+                  />
+                </span>
+              </div>
+            ))}
+          </div>,
+        ])}
+        <span style={{ display: 'flex', alignItems: 'center', paddingLeft: 8 }}>
+          {timeline === null ? null : (
+            <button
+              type="button" className="dv-tl-btn" style={{ ...button, ...textButton, fontSize: 12, whiteSpace: 'nowrap' }}
+              disabled={trackCount > baseTracks} onClick={() => { setShownTracks(trackCount + 1) }}
+            >
+              <Icon name="add" />{t('track.addTrack')}
+            </button>
+          )}
+        </span>
+        <span />
       </div>
       <div
         aria-label={t('track.playhead')} data-testid="dv-timeline-playhead"
@@ -1007,6 +1239,31 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       {toolbar}
       <div onBlur={closeOnFocusOut} style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
         {tracks}
+        {pickingSound ? (
+          <div
+            ref={soundPickerRef} role="dialog" aria-label={t('track.addSound')}
+            style={{ position: 'absolute', right: 12, top: 8, boxSizing: 'border-box', maxHeight: 'min(234px, calc(100% - 16px))', display: 'flex', flexDirection: 'column', background: palette.panel, border: `1px solid ${palette.line}`, borderRadius: 'var(--dv-radius-lg)', boxShadow: 'var(--dv-shadow-1)', padding: 6, zIndex: 5, minWidth: 200 }}
+          >
+            <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <p style={{ flex: 1, margin: 0, color: palette.muted, fontSize: 12, lineHeight: '16px' }}>{t('track.soundStart', { at: timecode(soundStart) })}</p>
+              <IconButton icon="close" label={t('track.pickClose')} onClick={closeSoundPicker} />
+            </div>
+            <div style={{ minHeight: 0, overflow: 'auto' }}>
+              <button type="button" className="dv-tl-btn" style={{ ...menuItem, marginTop: 4 }} onClick={() => { upload.current?.click() }}>
+                {t('track.uploadAudio')}
+              </button>
+              <input
+                ref={upload} type="file" accept="audio/*" hidden aria-label={t('track.uploadAudio')}
+                onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file !== undefined) uploadSound(file) }}
+              />
+              {audioCandidates.length === 0 ? <p style={{ margin: '4px 0 0' }}>{t('track.noAudio')}</p> : audioCandidates.map(entry => (
+                <button key={entry.id} type="button" className="dv-tl-btn" style={{ ...menuItem, marginTop: 4 }} onClick={() => { addSound(entry.id) }}>
+                  {entry.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {picking ? (
           <div
             ref={pickerRef} role="dialog" aria-label={t('track.pick')}
@@ -1029,6 +1286,31 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
           </div>
         ) : null}
       </div>
+      <div ref={soundBox} hidden>
+        {sounds.map(sound => (
+          <audio
+            key={sound.sound} data-sound={sound.sound} src={assetUrl(sound.assetId)} preload="metadata"
+            onLoadedMetadata={(event) => {
+              const seconds = event.currentTarget.duration
+              if (Number.isFinite(seconds) && seconds > 0) setMeasured(current => new Map(current).set(sound.assetId, seconds))
+            }}
+          />
+        ))}
+      </div>
+      {soundMenu !== null ? (
+        <div ref={soundMenuRef} role="menu" style={{ position: 'fixed', left: soundMenu.x, top: soundMenu.y, zIndex: 20, background: palette.panel, border: `1px solid ${palette.line}`, borderRadius: 'var(--dv-radius-menu)', padding: 6, boxShadow: 'var(--dv-shadow-2)', minWidth: 140 }}>
+          {soundMenu.kind === 'sound'
+            ? <button type="button" role="menuitem" className="dv-tl-btn" onClick={() => { removeSound(soundMenu.sound) }} style={{ ...menuItem, color: palette.danger }}>{t('menu.delete')}</button>
+            : (
+              <>
+                <button type="button" role="menuitem" className="dv-tl-btn" onClick={() => { startTrackRename(soundMenu.track) }} style={menuItem}>
+                  {t('menu.renameTrack')}
+                </button>
+                <button type="button" role="menuitem" className="dv-tl-btn" onClick={() => { removeTrack(soundMenu.track) }} style={{ ...menuItem, color: palette.danger }}>{t('menu.deleteTrack')}</button>
+              </>
+            )}
+        </div>
+      ) : null}
     </div>
   )
 

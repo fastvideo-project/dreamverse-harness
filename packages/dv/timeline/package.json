@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Timeline component of DreamVerse: the timelines of a project and their clips (assets with in and out points), edited by the ten timeline.* edit operations, each clip named by its clip ID; editing a clip never creates a file, and timeline.export writes a timeline to one video with ffmpeg.",
+  "description": "Timeline component of DreamVerse: the timelines of a project, their clips (assets with in and out points) and their sounds (audio assets on sound tracks), edited by the fourteen timeline.* edit operations, each clip named by its clip ID and each sound by its sound ID; editing a clip never creates a file, and timeline.export writes a timeline to one video with ffmpeg.",
   "exports": {
     ".": "./src/index.ts",
     "./types": "./src/types.ts",

@@ -466,21 +466,27 @@ export default class DvAssetPool extends Service {
   }
 
   /**
-   * Read the pixel size and duration of an image or video that a project folder's entry does not know yet, and store
-   * them with {@link DvAssetPool.describe}. ffprobe reads the header; a video whose header has no duration (a WebM file
-   * that a browser recorded) is decoded to measure it. A failure leaves the facts unknown and does not fail the import.
+   * Read the pixel size and duration of an image or video, or the duration of an audio file, that a project folder's
+   * entry does not know yet, and store them with {@link DvAssetPool.describe}. ffprobe reads the header; a video whose
+   * header has no duration (a WebM file that a browser recorded) is decoded to measure it, and so is an audio file whose
+   * header has none. An audio file's size stays unknown. A failure leaves the facts unknown and does not fail the import.
    * @param dir - the `.dreamverse/assets/` directory of the importing project.
    * @param id - an asset that the directory holds.
    */
   private async probeMedia(dir: string, id: AssetId): Promise<void> {
     const asset = this.folder(dir).get(id) as Asset
     const mediaType = asset.mime.split('/')[0]
-    if (mediaType !== 'video' && mediaType !== 'image') return
-    if (asset.width !== null && asset.height !== null && (mediaType !== 'video' || asset.duration_sec !== null)) return
+    if (mediaType !== 'video' && mediaType !== 'image' && mediaType !== 'audio') return
+    if (mediaType === 'audio' ? asset.duration_sec !== null : asset.width !== null && asset.height !== null && (mediaType !== 'video' || asset.duration_sec !== null)) return
     try {
       const file = join(dir, OBJECTS_DIR, id)
       const probed = await this.ctx.dvFfmpeg.probe(file)
-      const durationSec = mediaType === 'video' ? probed.videoDurationSec ?? probed.durationSec ?? await this.decodedDuration(file) : null
+      if (mediaType === 'audio') {
+        // An audio file's video stream is its cover picture, so its size is not stored.
+        this.describe(dir, asset, { width: null, height: null, durationSec: probed.durationSec ?? await this.decodedDuration(file, '0:a:0') })
+        return
+      }
+      const durationSec = mediaType === 'video' ? probed.videoDurationSec ?? probed.durationSec ?? await this.decodedDuration(file, '0:v:0') : null
       this.describe(dir, asset, { width: probed.width, height: probed.height, durationSec })
     } catch (error) {
       this.ctx.logger('dvAssetPool').warn('could not read the media facts of asset %s: %s', id, error instanceof Error ? error.message : String(error))
@@ -488,13 +494,15 @@ export default class DvAssetPool extends Service {
   }
 
   /**
-   * Decode a video's first video stream and read the last progress time ffmpeg reports.
-   * @param file - a video file.
+   * Decode one stream of a media file and read the last progress time ffmpeg reports.
+   * @param file - a video or audio file.
+   * @param stream - the ffmpeg stream specifier to decode: `0:v:0` for a video's first video stream, `0:a:0` for an audio
+   * file's first audio stream.
    * @returns the duration in seconds, or null when ffmpeg reports none.
    */
-  private async decodedDuration(file: string): Promise<number | null> {
+  private async decodedDuration(file: string, stream: '0:v:0' | '0:a:0'): Promise<number | null> {
     const result = await this.ctx.dvFfmpeg.run({
-      argv: ['ffmpeg', '-v', 'error', '-i', '{{in:0}}', '-map', '0:v:0', '-f', 'null', '-progress', 'pipe:1', '-'],
+      argv: ['ffmpeg', '-v', 'error', '-i', '{{in:0}}', '-map', stream, '-f', 'null', '-progress', 'pipe:1', '-'],
       inputs: [file], outputs: [], dir: tmpdir(),
     })
     const times = [...result.stdout.matchAll(/^out_time=(\d+):(\d+):(\d+(?:\.\d+)?)$/gm)]

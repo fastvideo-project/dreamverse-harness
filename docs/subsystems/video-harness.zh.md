@@ -55,9 +55,9 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 | 视图     | UI 核心（`@dv/ui-kit`、`@dv/ui-canvas`、`@dv/ui-history`、`@dv/ui-shell`、`@dv/ui-composer`）和 UI 插件 `@dv/ui-<name>`                 | DSH Web 客户端的右侧栏标签类型和中央视图；`@dv/ui-kit` 是它们共用的库。                                                                                                          |
 | bundle | [`@dv/bundle`](../../packages/bundle/dv/README.zh.md)                                                                        | profile 层：把每一行组成 `video-harness` 和 `video-harness-headless` 两个 profile，并附带 `video-directing` skill。                                                     |
 
-组件用 `dvProject.registerOperation` 注册操作，用 `dvProject.registerReducer` 注册归约函数。每个操作同时是智能体工具 `dv_<操作名，点换成下划线>`，一次调用成为一条记录。素材库的 `dv_asset_import`、`dv_asset_grab_still` 和 `dv_asset_cut_segment` 添加素材，`dv_asset_place` 把素材放到画布上；画布组件的 `dv_canvas_node_position` 移动节点列表中的一个画布节点或调整其大小，`dv_canvas_node_remove` 把节点从画布移除，`dv_canvas_node_rename` 为一个节点命名；角色、场景和风格组件的 `dv_character_*`、`dv_location_*` 和 `dv_style_*` 工具创建和更新各自的版本；镜头渲染的 `dv_shot_render` 按调用指定的[模型](#model-catalog)渲染镜头的一个版本，`duration_sec` 是该模型范围内的整秒数（默认为模型的最小值）；音频的 `dv_audio_generate` 用调用指定的模型说出一个片段；时间线的 `dv_timeline_*` 工具创建、更新、重命名和删除时间线，并插入、移动、移除、拆分、裁剪和替换片段，不创建文件，它的 `dv_timeline_export` 把一条时间线写成一个视频；检查器的 `dv_inspect_image` 和 `dv_inspect_asset` 读取素材，不写记录。[`@dv/ui-canvas`](../../packages/dv/ui-canvas/README.zh.md) 的工具 `dv_canvas_read` 不是操作，也不写记录：它返回打开的画布画出的每个节点，带节点 ID、类型、标题、版本数（`versions`）、所显示的记录（`shown`）和卡片框。项目组件自己的 `dv_proj_*` 工具创建、打开和重命名项目、读取状态和历史、撤销、接受过期记录，以及等待排定的记录。操作声明资源类别（`none`、`cpu`、`gpu`）；项目组件的调度器按类别并发上限运行排定的记录。
+组件用 `dvProject.registerOperation` 注册操作，用 `dvProject.registerReducer` 注册归约函数。每个操作同时是智能体工具 `dv_<操作名，点换成下划线>`，一次调用成为一条记录。素材库的 `dv_asset_import`、`dv_asset_grab_still` 和 `dv_asset_cut_segment` 添加素材，`dv_asset_place` 把素材放到画布上；画布组件的 `dv_canvas_node_position` 移动节点列表中的一个画布节点或调整其大小，`dv_canvas_node_remove` 把节点从画布移除，`dv_canvas_node_rename` 为一个节点命名；角色、场景和风格组件的 `dv_character_*`、`dv_location_*` 和 `dv_style_*` 工具创建和更新各自的版本；镜头渲染的 `dv_shot_render` 按调用指定的[模型](#model-catalog)渲染镜头的一个版本，`duration_sec` 是该模型范围内的整秒数（默认为模型的最小值）；音频的 `dv_audio_generate` 用调用指定的模型说出一个片段；时间线的 `dv_timeline_*` 工具创建、更新、重命名和删除时间线，插入、移动、移除、拆分、裁剪和替换片段，添加和移除声音，以及移除和重命名音轨，不创建文件，它的 `dv_timeline_export` 把一条时间线写成一个视频；检查器的 `dv_inspect_image` 和 `dv_inspect_asset` 读取素材，不写记录。[`@dv/ui-canvas`](../../packages/dv/ui-canvas/README.zh.md) 的工具 `dv_canvas_read` 不是操作，也不写记录：它返回打开的画布画出的每个节点，带节点 ID、类型、标题、版本数（`versions`）、所显示的记录（`shown`）和卡片框。项目组件自己的 `dv_proj_*` 工具创建、打开和重命名项目、读取状态和历史、撤销、接受过期记录，以及等待排定的记录。操作声明资源类别（`none`、`cpu`、`gpu`）；项目组件的调度器按类别并发上限运行排定的记录。
 
-片段有一个 `ClipId`（`cl1`、`cl2`、…），由插入它的时间线操作分配并存入记录的 `report.clips`；该 ID 在项目内唯一、从不复用，每个片段操作都用 `clip` 参数按它指定片段。
+片段有一个 `ClipId`（`cl1`、`cl2`、…），由插入它的时间线操作分配并存入记录的 `report.clips`；该 ID 在项目内唯一、从不复用，每个片段操作都用 `clip` 参数按它指定片段。声音有一个 `SoundId`（`sd1`、`sd2`、…），由 `timeline.sound_add` 分配并存入记录的 `report.sounds`；该 ID 同样在项目内唯一、从不复用，`timeline.sound_remove` 用 `sound` 参数按它指定声音。
 
 <a id="model-catalog"></a>
 ## 模型目录
@@ -254,6 +254,8 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 | take      | `Take`               | `TakeId`                          | 镜头渲染 | 版本 / Take                                         |
 | timeline  | `Timeline`           | `TimelineId`（`t1`、`t2`、…）         | 时间线  | 时间线 / Timeline；没有名字的时间线显示为 时间线 {n} / Timeline {n} |
 | clip      | `Clip`               | `ClipId`（`cl1`、`cl2`、…）           | 时间线  | 片段 / Clip                                         |
+| sound     | `Sound`              | `SoundId`（`sd1`、`sd2`、…）          | 时间线  | 声音 / Sound                                        |
+| sound track | —                  | 音轨编号（`0`、`1`、…）               | 时间线  | 音轨 / Track；没有名字的音轨显示为 声音 {n} / Sound {n} |
 
 记录类型叫 `ProjectRecord`，因为 `Record` 是 TypeScript 内置类型。智能体把引用写成 `<asset>`、`<record>#<output>` 或 `<id>@<version>`。
 
@@ -270,7 +272,7 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 | Shot render 镜头渲染     | `shot`     | `@dv/shot-render`    | `dvShotRender` | `shot.render`（模型目录中有 `t2v` 或 `ref2v` 条目时）                                                                                                                                                                                       |
 | Image 图片               | `image`    | `@dv/image-generate` | `dvImageGenerate` | `image.generate`（模型目录中有 `t2i` 条目时） |
 | Audio 音频             | `audio`    | `@dv/audio-generate` | `dvAudioGenerate` | `audio.generate`（模型目录中有 `t2a` 条目时）                                                                                                                                                                                              |
-| Timeline 时间线         | `timeline` | `@dv/timeline`       | `dvTimeline`   | `timeline.create` `timeline.update` `timeline.rename` `timeline.delete` `timeline.clip_insert` `timeline.clip_move` `timeline.clip_remove` `timeline.clip_split` `timeline.clip_trim` `timeline.clip_replace` `timeline.export` |
+| Timeline 时间线         | `timeline` | `@dv/timeline`       | `dvTimeline`   | `timeline.create` `timeline.update` `timeline.rename` `timeline.delete` `timeline.clip_insert` `timeline.clip_move` `timeline.clip_remove` `timeline.clip_split` `timeline.clip_trim` `timeline.clip_replace` `timeline.sound_add` `timeline.sound_remove` `timeline.sound_track_remove` `timeline.sound_track_rename` `timeline.export` |
 | Inspector 检查器        | `inspect`  | `@dv/inspector`      | `dvInspector`  | 读取 `inspect.image` `inspect.asset`                                                                                                                                                                                              |
 
 操作名为 `<key>.<verb>` 或 `<key>.<object>_<verb>`，它的智能体工具名是 `dv_` 加上把 `.` 换成 `_` 的操作名（`timeline.clip_move` → `dv_timeline_clip_move`）。模型读到的文字写工具名，从不写操作名。其他包是模型目录 `@dv/models`（`dvModels`）和提供方插件 `@dv/fastvideo`、`@dv/sglang-diffusion` 与 `@dv/sglang-omni`、对话引用 `@dv/chat-references`（`dvChatReferences`）、API 接口（`@dv/api`，`dvApi`）、库 `@dv/generation` 和 `@dv/reference-kit`、工作流 skill `@dv/workflow-story`、bundle（`@dv/bundle`）和界面（`@dv/ui-shell`、`@dv/ui-canvas`、`@dv/ui-timeline`、`@dv/ui-asset-pool`、`@dv/ui-composer`、`@dv/ui-history`、库 `@dv/ui-kit`，以及 `@dv/ui-character`、`@dv/ui-location`、`@dv/ui-style` 和 `@dv/ui-shot-render`）。以产品命名的名称用 `dv`：路由 `/api/dv/…` 和 `/dv/events`、窗口事件 `dv:…`、页面全局变量 `__dv…`、测试 ID `dv-<area>-<thing>`。
@@ -281,13 +283,14 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 
 | 动词                                                | 含义                                                  |
 | ------------------------------------------------- | --------------------------------------------------- |
-| `create` `update` `delete` `rename`               | 项目、角色、场景、风格、时间线和画布节点。                               |
+| `create` `update` `delete` `rename`               | 项目、角色、场景、风格、时间线和画布节点；`rename` 也为音轨命名。 |
 | `import`                                          | 把文件导入素材库。                                           |
 | `grab`                                            | 从视频截取静帧。                                            |
 | `cut`                                             | 把视频中两个时间点之间的部分取为一个新视频。                              |
 | `render`                                          | 把镜头变成版本。                                            |
 | `export`                                          | 把时间线变成一个视频素材。                                       |
-| `insert` `move` `remove` `split` `trim` `replace` | 片段；`remove` 也把画布节点从画布移除。                            |
+| `insert` `move` `remove` `split` `trim` `replace` | 片段；`remove` 也把画布节点从画布移除，把声音和音轨从时间线移除。 |
+| `add`                                             | 把音频素材作为声音放到时间线的一条音轨上。                         |
 | `accept`                                          | 过期记录（`proj.stale_accept`）。                          |
 | `undo` `redo`                                     | 把当前位置往回或往前移一步，或移到某一步。                               |
 | `inspect`                                         | 对图片或素材的只读分析。                                        |
@@ -307,6 +310,7 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 | 风格                               | Styles                                                         | `@` 菜单中 场景 / Locations 之后的部分。                                  |
 | 新建时间线 / 修改时间线                    | Create timeline / Update timeline                              | 添加时间线或替换其片段的时间线操作。                                             |
 | 插入片段 / 移动片段 / 移除片段 / 拆分片段 / 裁剪片段 | Insert clip / Move clip / Remove clip / Split clip / Trim clip | 片段操作；文案中片段显示为 片段 N / Clip N。                                   |
+| 添加声音 / 删除声音 / 删除音轨 / 重命名音轨 | Add sound / Remove sound / Delete sound track / Rename sound track | 声音操作。                                                                     |
 | 仍然保留                             | Keep anyway                                                    | `proj.stale_accept` 唯一的标签。                                     |
 | 你 / 智能体 / 自动                     | You / Agent / Automatic                                        | 历史面板中的发起者。                                                     |
 | 当前                               | Current                                                        | 历史面板中当前位置的标记。                                                  |

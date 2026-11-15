@@ -1,6 +1,6 @@
 /**
- * Types of the Timeline component: the timeline and clip shapes of its state slice, and the slice declaration that
- * adds `timeline` to the project state of `@dv/project`.
+ * Types of the Timeline component: the timeline, clip and sound shapes of its state slice, and the slice declaration
+ * that adds `timeline` to the project state of `@dv/project`.
  *
  * The slice fields use snake_case because the project state goes to the browser views and the agent.
  *
@@ -35,16 +35,43 @@ export interface Clip {
 }
 
 /**
+ * The ID of a sound, such as `sd2`: unique within the project and never reused. `timeline.sound_add` assigns it and
+ * stores it in the record's `report.sounds`.
+ */
+export type SoundId = Branded<'DvSoundId'>
+
+/**
+ * One sound of a timeline's 声音 (Sound) row: an audio asset that plays from its own start, `start_sec` seconds after the
+ * timeline's start, to its own end. Sounds may overlap each other and the clips; the clips' own audio plays under them.
+ */
+export interface Sound {
+  id: SoundId
+  /** The audio asset the sound plays. */
+  asset: AssetId
+  /** The timeline time at which the sound starts, in seconds; 0 or more. */
+  start_sec: number
+  /** The sound track that holds the sound: 0 for the first track under 原声, 1 for the next one, and so on. */
+  track: number
+}
+
+/**
  * The status of a clip, derived from its source record and never stored: `ready` when the clip has an asset, `rendering`
  * while the source record is pending or running, `failed` when it ended without the output.
  */
 export type ClipStatus = 'ready' | 'rendering' | 'failed'
 
-/** One edited video of a project: its clips in playback order and its name; an empty name shows as 时间线 {n} for ID t<n>. */
+/**
+ * One edited video of a project: its clips in playback order, the sounds of its 声音 row, and its name; an empty name
+ * shows as 时间线 {n} for ID t<n>.
+ */
 export interface Timeline {
   id: TimelineId
   name: string
   clips: Clip[]
+  /** The sounds of the sound tracks, in the order they were added. */
+  sounds: Sound[]
+  /** The names of the sound tracks by track number; a missing or empty name shows as 声音 {n}. */
+  sound_track_names: string[]
 }
 
 /** The Timeline component's slice: every timeline of the project, in creation order. */

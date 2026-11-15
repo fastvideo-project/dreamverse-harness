@@ -1,5 +1,5 @@
 ---
-description: "Timeline component of DreamVerse: the dvTimeline service, the timelines of a project and their clips, the ten timeline.* edit operations and the timeline.export operation with their agent tools, and the timeline reducer."
+description: "Timeline component of DreamVerse: the dvTimeline service, the timelines of a project with their clips and sounds, the fourteen timeline.* edit operations and the timeline.export operation with their agent tools, and the timeline reducer."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to keep the timelines of a project: each timeline is one edited video that holds clips in playback order, and a clip is an asset with in and out points and a clip ID such as `cl3`. The package registers eleven operations, which become the agent tools `dv_timeline_*`: ten edits that never create a file, and `timeline.export`, which writes a timeline to one video through `dvFfmpeg`. Its `timeline` reducer folds the edit records into the `timeline` slice. With the DSH skill registry mounted, it also registers the `timeline-editing` skill, which maps editing phrasings to exact `dv_*` calls. Each operation declares the label that the interface shows in place of its tool name, such as 移动片段 / Move clip for `timeline.clip_move` and 导出时间线 / Export timeline for `timeline.export`.
+Use this package to keep the timelines of a project: each timeline is one edited video that holds clips in playback order, and a clip is an asset with in and out points and a clip ID such as `cl3`. A timeline also holds sounds, audio assets on sound tracks. The package registers fifteen operations, the agent tools `dv_timeline_*`: fourteen edits that never create a file, and `timeline.export`, which writes a timeline to one video through `dvFfmpeg`. Its `timeline` reducer folds the edit records into the `timeline` slice. With the DSH skill registry mounted, it also registers the `timeline-editing` skill.
 
 ## Table of Contents
 
@@ -31,7 +31,9 @@ Mount the plugin after `@dv/project`, `@dv/ffmpeg`, and the asset pool `@dv/asse
   name: '@dv/timeline'
 ```
 
-The whole-timeline operations, `timeline.clip_insert` and `timeline.export` name a timeline in the param `timeline` (a timeline ID such as `t1`): it is required for `timeline.update`, `timeline.rename` and `timeline.delete`; `timeline.create` defaults it to `t1`, and `timeline.clip_insert` and `timeline.export` to the first timeline. The other clip operations name the clip by its clip ID in the param `clip`, which also names the timeline that holds it.
+Each operation declares the label that the interface shows in place of its tool name, such as 移动片段 / Move clip for `timeline.clip_move` and 导出时间线 / Export timeline for `timeline.export`.
+
+The whole-timeline operations, `timeline.clip_insert` and `timeline.export` name a timeline in the param `timeline` (a timeline ID such as `t1`): it is required for `timeline.update`, `timeline.rename` and `timeline.delete`; `timeline.create` defaults it to `t1`, and `timeline.clip_insert` and `timeline.export` to the first timeline. The other clip operations name the clip by its clip ID in the param `clip`, which also names the timeline that holds it. `timeline.sound_add`, `timeline.sound_track_remove` and `timeline.sound_track_rename` require `timeline`; `timeline.sound_remove` names the sound by its sound ID in the param `sound`. A sound track is a number: `0` is the first track under the clips' own audio, `1` the next, and so on.
 
 | Operation | Tool | Params | Effect |
 | --- | --- | --- | --- |
@@ -45,9 +47,13 @@ The whole-timeline operations, `timeline.clip_insert` and `timeline.export` name
 | `timeline.clip_split` | `dv_timeline_clip_split` | `clip`, `at_sec` | Splits a clip at a time inside its asset into two clips of the same asset; the second part gets a new clip ID |
 | `timeline.clip_trim` | `dv_timeline_clip_trim` | `clip`, `in_sec`, `out_sec` | Sets the in and out points; an omitted point plays from the asset's start or to its end |
 | `timeline.clip_replace` | `dv_timeline_clip_replace` | `clip`, `asset` | Puts another asset in the clip, keeps its clip ID and resets its points |
+| `timeline.sound_add` | `dv_timeline_sound_add` | `timeline`, `asset`, `start_sec`, `track` (default `0`) | Places an audio asset as a sound that starts `start_sec` seconds after the timeline's start; it may overlap clips and other sounds and gets a new sound ID. Fails with "Asset <id> is not an audio file." for an asset of another media type |
+| `timeline.sound_remove` | `dv_timeline_sound_remove` | `sound` | Removes a sound; its asset stays in the project |
+| `timeline.sound_track_remove` | `dv_timeline_sound_track_remove` | `timeline`, `track` | Removes a sound track with all its sounds and its name; every later track moves up one |
+| `timeline.sound_track_rename` | `dv_timeline_sound_track_rename` | `timeline`, `track`, `name` | Sets the track's name, trimmed; an empty name shows the numbered default name |
 | `timeline.export` | `dv_timeline_export` | `timeline` | Writes the timeline to one MP4 file, the record's output `video`; changes no timeline |
 
-The `timeline` slice is `{timelines: Timeline[]}`; a `Timeline` is `{id, name, clips}` and a `Clip` is `{id, asset, source, in_sec, out_sec}`, where `id` is the clip ID, `source` is the render output `{record, output}` the clip was laid out from (null for a clip of an existing asset), and null points mean the asset's start and end. A clip is ready when `asset` is not null; a clip whose `asset` is null is a placeholder for a render that is not done. Its `ClipStatus` is derived from the source record and never stored: `ready`, `rendering` while the source record is pending or running, else `failed`. The package exports the types `Timeline`, `Clip`, `ClipId`, `ClipStatus`, `TimelineId`, and `TimelineState` (the slice).
+The `timeline` slice is `{timelines: Timeline[]}`; a `Timeline` is `{id, name, clips, sounds, sound_track_names}` and a `Clip` is `{id, asset, source, in_sec, out_sec}`, where `id` is the clip ID, `source` is the render output `{record, output}` the clip was laid out from (null for a clip of an existing asset), and null points mean the asset's start and end. A clip is ready when `asset` is not null; a clip whose `asset` is null is a placeholder for a render that is not done. Its `ClipStatus` is derived from the source record and never stored: `ready`, `rendering` while the source record is pending or running, else `failed`. A `Sound` is `{id, asset, start_sec, track}`, where `id` is the sound ID: it plays its whole asset from `start_sec`, and the clips' own audio plays under it. `sounds` is in the order the sounds were added, and `sound_track_names` holds the track names by track number, where a missing or empty name shows as 声音 {n}. The package exports the types `Timeline`, `Clip`, `ClipId`, `ClipStatus`, `Sound`, `SoundId`, `TimelineId`, and `TimelineState` (the slice).
 
 `timeline.export` is not deterministic, because its output depends on the timeline's clips in the project state, which the params do not name; every call exports again. It runs in the `cpu` resource class. A call fails its record for an unknown timeline, for a project without timelines, and for a timeline without clips. While a clip of the timeline is a placeholder, the call is refused before its record with the clip positions, such as "Clips 3, 5 of timeline t1 are not ready yet."; `exportTimeline` throws the same error. The service method `exportTimeline(timeline, dir)` writes the joined file into `dir` for other callers and returns its path.
 
@@ -58,20 +64,22 @@ A workflow skill, such as `story-directing` of `@dv/workflow-skills`, lays rende
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The edit operations write only their records. Each one's `execute` checks the call against the state at the record's parent and fails the record with a reason when a created timeline exists, another named timeline or the named clip does not exist, a position is outside the timeline, a split or trim names a placeholder clip ("Clip cl3 is still rendering."), a split time is outside the clip, or a trim range is empty. The operations are not `deterministic`, so the runner runs that check on every call instead of reusing an earlier record. The reducer applies each finished record and ignores records that do not apply.
+The edit operations write only their records. Each one's `execute` checks the call against the state at the record's parent and fails the record with a reason when a created timeline exists, another named timeline or the named clip does not exist, a position is outside the timeline, a split or trim names a placeholder clip ("Clip cl3 is still rendering."), a split time is outside the clip, a trim range is empty, a named sound does not exist, `start_sec` is negative, `track` is not a whole number of 0 or more, `timeline.sound_track_remove` names a track the timeline does not have, `timeline.sound_add` or `timeline.sound_track_rename` names a track past the one after the last track (a timeline without sound tracks takes tracks 0 and 1), a track name is not a string, or the asset of `timeline.sound_add` is not an audio file. The operations are not `deterministic`, so the runner runs that check on every call instead of reusing an earlier record. The reducer applies each finished record and ignores records that do not apply.
 
 **Placeholder clips.** `timeline.create` and `timeline.update` declare the `clip` input role in `OperationSpec.pendingInputRoles`, so a `clip` input may name the output of a render that is not done: the call runs at once and its record is done while the render runs. The reducer lays out each `clip` input as a clip with that `source`; the input's `resolved_asset`, and so the clip's `asset`, is null until the render is done, when the record's current form fills it. A failed render leaves the clip a placeholder. Move, remove and replace work on a placeholder; replace puts an asset in it and clears its `source`. The agent summary lists a placeholder clip as `{clip, asset: null, status, record, in_sec, out_sec}`, where `record` is the render it waits for.
 
 **Clip IDs.** The operations that add clips assign their clip IDs in `execute` and store them in the record's `report.clips`, in clip order: one per clip for `timeline.create` and `timeline.update`, one for `timeline.clip_insert`, and one for the second part of `timeline.clip_split` (the first part keeps the clip's ID). The number after `cl` is one more than the highest number in the `report.clips` of any Timeline record anywhere in the project's history list, including the steps after the current position, and than any number assigned to a call still running, so no two clips of the history list share an ID, whichever state they were added in. The reducer reads clip IDs only from `report.clips`. A finished record whose `report.clips` does not match the clips it adds, or names an ID already in use, applies nothing.
 
-**Export.** `exportTimeline` takes the file of each clip from the asset pool. A clip whose `in_sec` and `out_sec` are both null plays the whole asset and uses the asset's file as it is. Any other clip is trimmed into a new file in the operation's `scratchDir` with the seek after `-i` and re-encoding (H.264 in yuv420p, AAC audio), so the trim lands on the exact frame. The clip files are then joined with the concat demuxer and stream copy. When ffmpeg rejects the stream copy, for example because the files disagree on codec, the concat filter re-encodes the video of every file at the first file's frame size, scaled and padded. The operation probes the joined file and imports it with its duration and frame size, named after the timeline's name. The reducer ignores export records.
+**Sound IDs.** `timeline.sound_add` assigns one sound ID such as `sd2` in `execute` and stores it in the record's `report.sounds`. The number after `sd` follows the clip ID rule over the `report.sounds` of the history list and the calls still running, so sound IDs are also unique within the project and never reused. A finished record whose `report.sounds` does not hold exactly one ID for `timeline.sound_add` and none for any other operation, or names an ID already in use, applies nothing.
+
+**Export.** `exportTimeline` takes the file of each clip from the asset pool. A clip whose `in_sec` and `out_sec` are both null plays the whole asset and uses the asset's file as it is. Any other clip is trimmed into a new file in the operation's `scratchDir` with the seek after `-i` and re-encoding (H.264 in yuv420p, AAC audio), so the trim lands on the exact frame. The clip files are then joined with the concat demuxer and stream copy. When ffmpeg rejects the stream copy, for example because the files disagree on codec, the concat filter re-encodes the video of every file at the first file's frame size, scaled and padded. The operation probes the joined file and imports it with its duration and frame size, named after the timeline's name. The export leaves out the timeline's sounds. The reducer ignores export records.
 
 | File | Content |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `dvTimeline`: the ten edit operation specs, the registration of all eleven operations, and clip ID assignment |
+| [`src/index.ts`](src/index.ts) | `dvTimeline`: the fourteen edit operation specs, the registration of all fifteen operations, and clip and sound ID assignment |
 | [`src/export.ts`](src/export.ts) | The `timeline.export` operation spec and `exportTimeline` |
-| [`src/reducer.ts`](src/reducer.ts) | The `timeline` reducer and the clip checks it shares with the operations |
-| [`src/types.ts`](src/types.ts) | `Timeline`, `Clip`, `ClipId`, `TimelineId`, and the `timeline` slice declaration |
+| [`src/reducer.ts`](src/reducer.ts) | The `timeline` reducer and the clip and sound checks it shares with the operations |
+| [`src/types.ts`](src/types.ts) | `Timeline`, `Clip`, `ClipId`, `Sound`, `SoundId`, `TimelineId`, and the `timeline` slice declaration |
 | [`skills/timeline-editing/SKILL.md`](skills/timeline-editing/SKILL.md) | The body of the `timeline-editing` skill |
 
 -----
@@ -92,11 +100,11 @@ The edit operations write only their records. Each one's `execute` checks the ca
 
 #### What the model sees
 
-Eleven tools, `dv_timeline_create`, `dv_timeline_update`, `dv_timeline_rename`, `dv_timeline_delete`, `dv_timeline_clip_insert`, `dv_timeline_clip_move`, `dv_timeline_clip_remove`, `dv_timeline_clip_split`, `dv_timeline_clip_trim`, `dv_timeline_clip_replace` and `dv_timeline_export`, in the format `@dv/project` gives every operation tool. The edit tools name a timeline by `timeline` (such as `t1`; default the first timeline) and a clip by `clip` (such as `cl3`), and their parameter descriptions point the agent to `timelines` and their `clips` in `dv_proj_state`. The description of `dv_timeline_export` says "Export a timeline to one video: each clip with an in or out point is trimmed to that range, and all clips are joined in timeline order. Runs on the CPU.", and its only own param is `timeline`.
+Fifteen tools, `dv_timeline_create`, `dv_timeline_update`, `dv_timeline_rename`, `dv_timeline_delete`, `dv_timeline_clip_insert`, `dv_timeline_clip_move`, `dv_timeline_clip_remove`, `dv_timeline_clip_split`, `dv_timeline_clip_trim`, `dv_timeline_clip_replace`, `dv_timeline_sound_add`, `dv_timeline_sound_remove`, `dv_timeline_sound_track_remove`, `dv_timeline_sound_track_rename` and `dv_timeline_export`, in the format `@dv/project` gives every operation tool. The edit tools name a timeline by `timeline` (such as `t1`; default the first timeline) and a clip by `clip` (such as `cl3`), and their parameter descriptions point the agent to `timelines` and their `clips` in `dv_proj_state`; `dv_timeline_sound_remove` names a sound by `sound` (such as `sd2`) from the `sounds` of `timelines`. The description of `dv_timeline_sound_add` ends with "The exported video does not include sounds yet.". The description of `dv_timeline_export` says "Export a timeline to one video: each clip with an in or out point is trimmed to that range, and all clips are joined in timeline order. Runs on the CPU.", and its only own param is `timeline`.
 
 #### Token effect
 
-About 2,750 tokens for the eleven definitions, fixed while the plugin is mounted; the shared arguments of `@dv/project` add up to about 200 tokens to each definition.
+About 3,800 tokens for the fifteen definitions, fixed while the plugin is mounted; the shared arguments of `@dv/project` add up to about 200 tokens to each definition.
 
 #### KV Cache effect
 
@@ -106,7 +114,7 @@ The definitions sit in the stable tool section of every agent request; mounting 
 
 #### What the model sees
 
-A call returns one text block with the record's status and a one-line summary such as `clip cl3 moved to 1`; a call that adds clips also returns their clip IDs in `report.clips`, and a call that does not fit the timeline returns a tool error with the failed record's reason. `dv_timeline_export` returns `done <record>: exported timeline t1` (`exported the first timeline` without `timeline`), the line `- video: <AssetId> (video/mp4) <url>`, and the params; the video sends no image block. `dv_proj_state` lists every timeline with its clips by clip ID (field `clip`), and the agent's project block lists them with each clip's producing record; a placeholder clip shows its status (`rendering` or `failed`) and the render record it waits for instead of an asset.
+A call returns one text block with the record's status and a one-line summary such as `clip cl3 moved to 1`; a call that adds clips also returns their clip IDs in `report.clips`, and `dv_timeline_sound_add` returns `t1 sound sd2 added at 3s` with the sound ID in `report.sounds`; and a call that does not fit the timeline returns a tool error with the failed record's reason. `dv_timeline_export` returns `done <record>: exported timeline t1` (`exported the first timeline` without `timeline`), the line `- video: <AssetId> (video/mp4) <url>`, and the params; the video sends no image block. `dv_proj_state` lists every timeline with its clips by clip ID (field `clip`), and the agent's project block lists them with each clip's producing record; a placeholder clip shows its status (`rendering` or `failed`) and the render record it waits for instead of an asset. A timeline with sound tracks also lists `sound_tracks` as `{track, name}` for each track, with `''` for an unnamed track, and a timeline with sounds lists `sounds` as `{sound, asset, url, start_sec, track}`; a timeline without them leaves the fields out.
 
 #### Token effect
 
@@ -138,3 +146,6 @@ The catalog entry sits in the stable skill section; mounting or removing the plu
 - **Video-only join fallback**: when stream copy fails, the re-encoding fallback of `timeline.export` drops audio, so the exported video has no sound.
 - **Stream copy accepts some mismatched files**: ffmpeg copies clips of different frame sizes without an error, and players then show the later clips at the wrong size; only a rejected copy falls back to re-encoding.
 - **No GPU encoders**: export trims and the fallback join re-encode with `libx264` on the CPU.
+- **Export has no sounds**: `timeline.export` writes only the clips and their own audio, so the exported video leaves out every sound.
+- **Sounds play whole and at full volume**: no operation moves a sound, changes its track, trims it, or sets its volume; a change takes `timeline.sound_remove` and a new `timeline.sound_add`.
+- **The skill does not cover sounds**: the `timeline-editing` skill maps no phrasing to the sound tools.
