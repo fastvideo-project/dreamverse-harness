@@ -4,20 +4,48 @@
  *
  * A clip is named by its ID (`cl1`, `cl2`, …). The operations that add clips (`timeline.create`, `timeline.update`,
  * `timeline.clip_insert`, `timeline.clip_split`) store the IDs they assigned in the record's `report.clips`, and the
- * reducer reads them only from there. A sound is named by its ID (`sd1`, `sd2`, …), which `timeline.sound_add` stores
- * in `report.sounds` the same way. The operations check a call against the state before they record anything.
+ * reducer reads them only from there. A sound is named by its ID (`sd1`, `sd2`, …), which `timeline.sound_add` and
+ * `timeline.sound_split` store in `report.sounds` the same way. `timeline.sound_split` splits a sound in two at a time
+ * inside its asset: the first part keeps the ID and ends there, and the second part starts there, at the timeline time
+ * where it played before. `timeline.sound_move` sets a sound's start and sound track, and `timeline.sound_trim` its in and
+ * out points; a trim of its in point moves its start by the same amount, so the rest of the sound stays where it played.
+ * The operations check a call against the state before they record anything.
  *
  * A `clip` input of `timeline.create` or `timeline.update` that names a render output (`{record, output}`) becomes a
  * clip with that `source`; while the render is not done, its `resolved_asset` is null and the clip is a placeholder that
  * keeps its ID. Trim and split refuse a placeholder; move, remove and replace work on it.
  *
+ * The clips of the video tracks under the 视频 track (`track_clips`) come from `timeline.track_clip_add` and move with
+ * `timeline.track_clip_move`; remove, split, trim and replace name them by clip ID like the clips of the 视频 track. A
+ * trim of a track clip's in point moves its start by the same amount, so the rest of the clip stays where it played.
+ * `timeline.clip_move` of a track clip puts it into the 视频 track at a position, and `timeline.track_clip_move` of a ready
+ * 视频 track clip with a `track` puts it on that video track at a start time; the clip keeps its ID and in and out points.
+ *
+ * `timeline.video_track_move` moves a video track under the 视频 track to another number, which sets which track covers
+ * which: the tracks between the two numbers move one number toward the track's old one, and each track keeps its clips
+ * and its mute. `track_order` stays as it was, so the track's clips show in the row of its new number.
+ *
+ * `timeline.main_track_remove` deletes the 视频 track's clips, and video track 0 takes its place: its clips become the
+ * 视频 track's clips in the order of their start times, without the gaps between them, and keep their IDs and in and out
+ * points; its mute becomes the mute of the 视频 track's own audio, and every other video track moves up one number. A
+ * timeline without video tracks keeps an empty 视频 track.
+ *
+ * `timeline.main_track_swap` swaps the 视频 track with video track 0: the 视频 track's clips go onto video track 0 at the
+ * times they played, which the call stores in `report.starts` because they depend on the asset lengths, and video track
+ * 0's clips become the 视频 track's clips as `timeline.main_track_remove` makes them; the two mutes swap too.
+ *
+ * `track_order` follows the stored tracks after every call: `timeline.track_add` and a call that names the track after
+ * the last add a track at the bottom, and a track removal drops its entry. A track stays stored while `track_order` lists
+ * it, empty or not, so the empty sound track 0 of a new timeline, a track added empty, and a track whose last clip or
+ * sound went stay until a removal deletes them.
+ *
  * @module @dv/timeline/reducer
  */
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { AssetId, ProjectRecord, Reducer } from '@dv/project'
-import type { Clip, ClipId, ClipStatus, SoundId, Timeline, TimelineId, TimelineState } from './types.ts'
+import type { Clip, ClipId, ClipStatus, Sound, SoundId, Timeline, TimelineId, TimelineState, TrackClip, TrackKind } from './types.ts'
 
-/** The fifteen Timeline edit operations by verb. */
+/** The twenty-five Timeline edit operations by verb. */
 export const OPERATIONS = {
   create: 'timeline.create',
   update: 'timeline.update',
@@ -31,9 +59,19 @@ export const OPERATIONS = {
   replace: 'timeline.clip_replace',
   soundAdd: 'timeline.sound_add',
   soundRemove: 'timeline.sound_remove',
+  soundSplit: 'timeline.sound_split',
+  soundMove: 'timeline.sound_move',
+  soundTrim: 'timeline.sound_trim',
   soundTrackRemove: 'timeline.sound_track_remove',
   soundTrackRename: 'timeline.sound_track_rename',
   mute: 'timeline.mute',
+  trackClipAdd: 'timeline.track_clip_add',
+  trackClipMove: 'timeline.track_clip_move',
+  videoTrackRemove: 'timeline.video_track_remove',
+  trackAdd: 'timeline.track_add',
+  videoTrackMove: 'timeline.video_track_move',
+  mainTrackRemove: 'timeline.main_track_remove',
+  mainTrackSwap: 'timeline.main_track_swap',
 } as const
 
 /** The ID a `timeline.create` without a `timeline` param creates, and the timeline an insert into an empty project adds. */
@@ -50,11 +88,15 @@ function text(value: unknown): string | null {
 }
 
 /**
- * A new timeline's fields besides its ID, name and clips: no sounds, no track names, and nothing muted.
- * @returns new empty arrays on every call, so no two timelines share one.
+ * A new timeline's fields besides its ID, name and clips: no track clips, no sounds, no track names, nothing muted, and
+ * an empty sound track 0 as its only track under the 视频 track.
+ * @returns new arrays on every call, so no two timelines share one.
  */
-function noSounds(): Pick<Timeline, 'sounds' | 'sound_track_names' | 'video_muted' | 'muted_sound_tracks'> {
-  return { sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [] }
+function noSounds(): Omit<Timeline, 'id' | 'name' | 'clips'> {
+  return {
+    track_clips: [], muted_video_tracks: [], track_order: ['sound'], sounds: [], sound_track_names: [], video_muted: false,
+    muted_sound_tracks: [],
+  }
 }
 
 /** A params field as a finite number, or null. */
@@ -104,13 +146,43 @@ function laidOutClips(call: TimelineCall): Array<Pick<Clip, 'asset' | 'source'>>
  */
 export function addedClipCount(call: TimelineCall): number {
   if (call.operation === OPERATIONS.create || call.operation === OPERATIONS.update) return laidOutClips(call).length
-  return call.operation === OPERATIONS.insert || call.operation === OPERATIONS.split ? 1 : 0
+  return [OPERATIONS.insert, OPERATIONS.split, OPERATIONS.trackClipAdd].includes(call.operation as never) ? 1 : 0
 }
 
 /** The clip IDs a finished record assigned (its `report.clips`), or an empty list when it stored none. */
 export function reportedClips(record: Pick<ProjectRecord, 'report'>): ClipId[] {
   const clips = record.report?.['clips']
   return Array.isArray(clips) ? clips.filter((id): id is string => typeof id === 'string').map(id => brandString<ClipId>(id)) : []
+}
+
+/**
+ * The start times a `timeline.main_track_swap` stored in `report.starts`, one per 视频 track clip in play order.
+ * @param record - a finished or running Timeline record.
+ * @returns the numbers among them.
+ */
+export function reportedStarts(record: Pick<ProjectRecord, 'report'>): number[] {
+  const starts = record.report?.['starts']
+  return Array.isArray(starts) ? starts.filter((start): start is number => typeof start === 'number') : []
+}
+
+/**
+ * The timeline times at which the 视频 track's clips play, for `timeline.main_track_swap` to place them on video track 0:
+ * each clip starts where the one before it ends.
+ * @param timeline - the timeline.
+ * @param durationOf - the duration of an asset in seconds, or null when it is unknown.
+ * @returns the start times in play order, or the reason when a clip's length is not known.
+ */
+export function mainClipStarts(timeline: Timeline, durationOf: (asset: AssetId) => number | null): number[] | string {
+  const starts: number[] = []
+  let cursor = 0
+  for (const clip of timeline.clips) {
+    // `clipProblem` refuses a swap while a clip is a placeholder, so each clip has its asset.
+    const out = clip.out_sec ?? durationOf(clip.asset as AssetId)
+    if (out === null) return `The length of asset ${String(clip.asset)} is not known yet, so clip ${clip.id} cannot go on a video track.`
+    starts.push(Math.round(cursor * 1000) / 1000)
+    cursor += out - (clip.in_sec ?? 0)
+  }
+  return starts
 }
 
 /** The sound IDs a finished record assigned (its `report.sounds`), or an empty list when it stored none. */
@@ -137,11 +209,18 @@ function clipStatusOf(clip: Clip, records: ProjectRecord[]): ClipStatus {
   return status === 'pending' || status === 'running' ? 'rendering' : 'failed'
 }
 
-/** The timeline that holds a clip and the clip's index in it, or null when no timeline holds it. */
-function findClip(slice: Slice, id: string | null): { timeline: Timeline; index: number } | null {
+/**
+ * The timeline that holds a clip, the clip, and its index in the clips of the 视频 track (`onTrack` false) or in the
+ * track clips (`onTrack` true); null when no timeline holds it.
+ */
+function findClip(
+  slice: Slice, id: string | null,
+): { timeline: Timeline; index: number; clip: Clip | TrackClip; onTrack: boolean } | null {
   for (const timeline of slice.timelines) {
     const index = timeline.clips.findIndex(clip => clip.id === id)
-    if (index !== -1) return { timeline, index }
+    if (index !== -1) return { timeline, index, clip: timeline.clips[index] as Clip, onTrack: false }
+    const tracked = timeline.track_clips.findIndex(clip => clip.id === id)
+    if (tracked !== -1) return { timeline, index: tracked, clip: timeline.track_clips[tracked] as TrackClip, onTrack: true }
   }
   return null
 }
@@ -160,32 +239,83 @@ function positionProblem(timeline: Timeline, position: number | null, last: numb
 }
 
 /**
- * The number of sound tracks a timeline stores: one past the highest track that holds a sound, a name, or a mute.
+ * The number of sound tracks a timeline stores: one past the highest track that holds a sound, a name, or a mute, and at
+ * least the number of `sound` entries of `track_order`, which keep empty tracks.
  * @param timeline - the timeline to count.
- * @returns the track count, 0 for a timeline without sounds, track names, or muted tracks.
+ * @returns the track count, 0 once every sound track was removed.
  */
 function soundTrackCount(timeline: Timeline): number {
   const tracks = [...timeline.sounds.map(sound => sound.track), ...timeline.muted_sound_tracks]
-  return Math.max(timeline.sound_track_names.length, ...tracks.map(track => track + 1))
+  return Math.max(
+    timeline.sound_track_names.length, ...tracks.map(track => track + 1), timeline.track_order.filter(kind => kind === 'sound').length,
+  )
 }
 
 /**
- * Why a `timeline.mute` call cannot apply besides its track: a `target` other than `video` or `sound`, or a `muted`
- * that is not a boolean.
+ * The number of video tracks under the 视频 track that a timeline stores: one past the highest track that holds a clip
+ * or a mute, and at least the number of `video` entries of `track_order`, which keep empty tracks.
+ * @param timeline - the timeline to count.
+ * @returns the track count, 0 for a timeline without video tracks under the 视频 track.
+ */
+export function videoTrackCount(timeline: Pick<Timeline, 'track_clips' | 'muted_video_tracks' | 'track_order'>): number {
+  return Math.max(
+    timeline.track_order.filter(kind => kind === 'video').length,
+    ...timeline.track_clips.map(clip => clip.track + 1), ...timeline.muted_video_tracks.map(track => track + 1),
+  )
+}
+
+/** The `kind` values of `timeline.track_add`. */
+const TRACK_KINDS: readonly TrackKind[] = ['video', 'sound']
+
+/**
+ * @param value - a param that names a track.
+ * @returns the whole number of 0 or more it names, or null.
+ */
+function trackNumber(value: unknown): number | null {
+  const track = number(value)
+  return track !== null && Number.isInteger(track) && track >= 0 ? track : null
+}
+
+/**
+ * Why a video track number is not a track that a call may name: not a whole number of 0 or more, or past the track after
+ * the last stored track (`remove` names only a stored track).
+ * @param timeline - the timeline.
+ * @param value - the call's `track` param, or another param that names a video track.
+ * @param remove - whether the call needs a stored track, as a removal or a move does.
+ * @param param - the param's name in the reason.
+ * @returns the reason, or null.
+ */
+function videoTrackProblem(timeline: Timeline, value: unknown, remove: boolean, param = 'track'): string | null {
+  const track = trackNumber(value)
+  if (track === null) return `${param} ${String(value)} is not a track number of 0 or more.`
+  const count = videoTrackCount(timeline)
+  return (remove ? track >= count : track > count)
+    ? `Timeline ${timeline.id} has no video track ${String(track)}; it has ${String(count)} under the main video track.`
+    : null
+}
+
+/** The `target` values of `timeline.mute`. */
+const MUTE_TARGETS = ['video', 'video_track', 'sound']
+
+/**
+ * Why a `timeline.mute` call cannot apply besides its track: a `target` other than `video`, `video_track` or `sound`, or
+ * a `muted` that is not a boolean.
  * @param params - the call's params.
  * @returns the reason, or null.
  */
 function muteProblem(params: Record<string, unknown>): string | null {
-  if (params['target'] !== 'video' && params['target'] !== 'sound') return `target ${String(params['target'])} is not video or sound.`
+  if (!MUTE_TARGETS.includes(params['target'] as never)) return `target ${String(params['target'])} is not video, video_track or sound.`
   return typeof params['muted'] === 'boolean' ? null : 'muted must be true or false.'
 }
 
 /**
  * Why a call that names a whole timeline cannot apply: `timeline.create` of an ID that exists, another call of a
  * timeline that does not exist, a `start_sec` of `timeline.sound_add` below 0, a sound track that is not a whole number
- * of 0 or more or that the timeline does not have, a track name that is not a string, or a bad `target` or `muted` of
- * `timeline.mute`. An insert into a timeline that
- * does not exist creates it, so the only valid position is 1.
+ * of 0 or more or that the timeline does not have, a track name that is not a string, a bad `target` or `muted` of
+ * `timeline.mute`, a video track that the timeline does not store in `track` or `to` of `timeline.video_track_move`,
+ * a `timeline.main_track_remove` of a timeline with neither a 视频 track clip nor a video track, or a
+ * `timeline.main_track_swap` of a timeline without a video track or with a 视频 track clip still rendering.
+ * An insert into a timeline that does not exist creates it, so the only valid position is 1.
  * @param slice - the slice the call applies to.
  * @param call - a whole-timeline call, an insert, or a sound call that names a timeline.
  * @returns the reason, or null when the call applies.
@@ -210,20 +340,86 @@ function timelineProblem(slice: Slice, call: TimelineCall): string | null {
     if (start === null || start < 0) return `start_sec ${String(params['start_sec'])} is not a time of 0 seconds or more.`
   }
   if (call.operation === OPERATIONS.soundTrackRename && typeof params['name'] !== 'string') return 'name must be a string.'
+  if (call.operation === OPERATIONS.trackAdd && !TRACK_KINDS.includes(params['kind'] as never)) {
+    return `kind ${String(params['kind'])} is not video or sound.`
+  }
+  if (call.operation === OPERATIONS.trackClipAdd) {
+    const start = number(params['start_sec'])
+    if (start === null || start < 0) return `start_sec ${String(params['start_sec'])} is not a time of 0 seconds or more.`
+  }
+  if (call.operation === OPERATIONS.trackClipAdd || call.operation === OPERATIONS.videoTrackRemove) {
+    return videoTrackProblem(timeline, params['track'], call.operation === OPERATIONS.videoTrackRemove)
+  }
+  if (call.operation === OPERATIONS.videoTrackMove) {
+    return videoTrackProblem(timeline, params['track'], true) ?? videoTrackProblem(timeline, params['to'], true, 'to')
+  }
+  if (call.operation === OPERATIONS.mainTrackRemove && timeline.clips.length === 0 && videoTrackCount(timeline) === 0) {
+    return `Timeline ${timeline.id} has no clip on the main video track and no video track under it.`
+  }
+  if (call.operation === OPERATIONS.mainTrackSwap) {
+    if (videoTrackCount(timeline) === 0) return `Timeline ${timeline.id} has no video track under the main video track to swap with.`
+    const pending = timeline.clips.find(clip => clip.asset === null)
+    if (pending !== undefined) return `Clip ${pending.id} is still rendering; it cannot leave the main video track yet.`
+  }
   if (call.operation === OPERATIONS.mute) {
     const problem = muteProblem(params)
-    // Muting the clips' own audio names no sound track.
+    // Muting the 视频 track's own audio names no track.
     if (problem !== null || params['target'] === 'video') return problem
+    if (params['target'] === 'video_track') return videoTrackProblem(timeline, params['track'], false)
   }
   if ([OPERATIONS.soundAdd, OPERATIONS.soundTrackRemove, OPERATIONS.soundTrackRename, OPERATIONS.mute].includes(call.operation as never)) {
-    const track = params['track'] === undefined && call.operation === OPERATIONS.soundAdd ? 0 : number(params['track'])
-    if (track === null || !Number.isInteger(track) || track < 0) return `track ${String(params['track'])} is not a track number of 0 or more.`
-    // Tracks run from 0 to the last track that holds a sound, a name, or a mute; an add, a rename, or a mute may also name
-    // the track after it, and track 0 always counts, so a timeline without sounds takes tracks 0 and 1.
-    const count = soundTrackCount(timeline)
-    if (call.operation === OPERATIONS.soundTrackRemove ? track >= count : track > Math.max(1, count)) {
-      return `Timeline ${timeline.id} has no sound track ${String(track)}; it has ${String(count)}.`
-    }
+    const track = params['track'] === undefined && call.operation === OPERATIONS.soundAdd ? 0 : params['track']
+    return soundTrackProblem(timeline, track, call.operation === OPERATIONS.soundTrackRemove)
+  }
+  return null
+}
+
+/**
+ * Why a sound track number is not a track that a call may name: not a whole number of 0 or more, or past the track after
+ * the last stored track (`remove` names only a stored track); an add, a rename, a mute or a sound move may also name the
+ * track after the last, and track 1 on a timeline without sound tracks, which earlier builds recorded.
+ * @param timeline - the timeline.
+ * @param value - the call's `track` param.
+ * @param remove - whether the call needs a stored track.
+ * @returns the reason, or null.
+ */
+function soundTrackProblem(timeline: Timeline, value: unknown, remove: boolean): string | null {
+  const track = trackNumber(value)
+  if (track === null) return `track ${String(value)} is not a track number of 0 or more.`
+  const count = soundTrackCount(timeline)
+  return (remove ? track >= count : track > Math.max(1, count))
+    ? `Timeline ${timeline.id} has no sound track ${String(track)}; it has ${String(count)}.`
+    : null
+}
+
+/**
+ * Why a call that names a sound cannot apply to it: a split time outside the sound, a move to a start before 0 or to a
+ * sound track the timeline cannot take, or a trim with an in point before the asset's start, an out point not after the
+ * in point, or an in point that would start the sound before the timeline's start.
+ * @param timeline - the timeline that holds the sound.
+ * @param sound - the named sound.
+ * @param call - a `timeline.sound_*` call that names a sound.
+ * @returns the reason, or null when the call applies.
+ */
+function soundProblem(timeline: Timeline, sound: Sound, call: TimelineCall): string | null {
+  const params = call.params
+  if (call.operation === OPERATIONS.soundSplit) {
+    const at = number(params['at_sec'])
+    const inside = at !== null && at > (sound.in_sec ?? 0) && (sound.out_sec === null || at < sound.out_sec)
+    return inside ? null : `Sound ${sound.id} does not play ${String(params['at_sec'])}s of its asset; split inside its in and out points.`
+  }
+  if (call.operation === OPERATIONS.soundMove) {
+    const start = number(params['start_sec'])
+    if (start === null || start < 0) return `start_sec ${String(params['start_sec'])} is not a time of 0 seconds or more.`
+    return params['track'] === undefined ? null : soundTrackProblem(timeline, params['track'], false)
+  }
+  if (call.operation === OPERATIONS.soundTrim) {
+    const inSec = number(params['in_sec'])
+    const outSec = number(params['out_sec'])
+    if ((inSec ?? 0) < 0) return `The in point ${String(inSec)}s is before the asset's start.`
+    if (outSec !== null && outSec <= (inSec ?? 0)) return `The out point ${String(outSec)}s is not after the in point ${String(inSec ?? 0)}s.`
+    const start = sound.start_sec + (inSec ?? 0) - (sound.in_sec ?? 0)
+    if (start < 0) return `The in point ${String(inSec)}s would start sound ${sound.id} before the timeline's start.`
   }
   return null
 }
@@ -231,8 +427,10 @@ function timelineProblem(slice: Slice, call: TimelineCall): string | null {
 /**
  * Why a `timeline.*` call cannot apply to a slice: a timeline that a create finds or another call misses, an insert
  * position outside the timeline, a clip ID that no timeline holds, a move position outside the clip's timeline, a split
- * time outside the clip, an empty trim range, a sound ID that no timeline holds, or a bad sound start, sound track, or
- * track name. The operations throw it before they record.
+ * time outside the clip, an empty trim range, a sound ID that no timeline holds, a sound split, move or trim that does
+ * not fit the sound (`soundProblem`), a bad sound start, sound track, or
+ * track name, or a `timeline.track_clip_move` of a 视频 track clip that is still rendering or names no `track`. The
+ * operations throw it before they record.
  * @param slice - the slice the call applies to.
  * @param call - the call's operation and params.
  * @returns the reason a creator can read, or null when the call applies.
@@ -242,23 +440,34 @@ export function clipProblem(slice: Slice, call: TimelineCall): string | null {
   if (!isTimelineCall(call)) return null
   const whole = [
     OPERATIONS.create, OPERATIONS.update, OPERATIONS.rename, OPERATIONS.delete, OPERATIONS.insert, OPERATIONS.soundAdd,
-    OPERATIONS.soundTrackRemove, OPERATIONS.soundTrackRename, OPERATIONS.mute,
+    OPERATIONS.soundTrackRemove, OPERATIONS.soundTrackRename, OPERATIONS.mute, OPERATIONS.trackClipAdd, OPERATIONS.videoTrackRemove,
+    OPERATIONS.trackAdd, OPERATIONS.videoTrackMove, OPERATIONS.mainTrackRemove, OPERATIONS.mainTrackSwap,
   ]
   if (whole.includes(operation as never)) {
     return timelineProblem(slice, call)
   }
   const params = call.params
-  if (operation === OPERATIONS.soundRemove) {
-    const sound = text(params['sound'])
-    const held = slice.timelines.some(timeline => timeline.sounds.some(entry => entry.id === sound))
-    return held ? null : `Sound ${String(sound)} does not exist.`
+  if ([OPERATIONS.soundRemove, OPERATIONS.soundSplit, OPERATIONS.soundMove, OPERATIONS.soundTrim].includes(operation as never)) {
+    const id = text(params['sound'])
+    const holder = slice.timelines.find(timeline => timeline.sounds.some(entry => entry.id === id))
+    const sound = holder?.sounds.find(entry => entry.id === id)
+    return holder === undefined || sound === undefined ? `Sound ${String(id)} does not exist.` : soundProblem(holder, sound, call)
   }
   const id = text(params['clip'])
   const found = findClip(slice, id)
   if (found === null) return `Clip ${String(id)} does not exist.`
-  const { timeline, index } = found
-  if (operation === OPERATIONS.move) return positionProblem(timeline, number(params['to']), timeline.clips.length)
-  const clip = timeline.clips[index] as Clip
+  const { timeline, clip, onTrack } = found
+  if (operation === OPERATIONS.move) {
+    // A track clip moves into the 视频 track, which then has one more position.
+    return positionProblem(timeline, number(params['to']), timeline.clips.length + (onTrack ? 1 : 0))
+  }
+  if (operation === OPERATIONS.trackClipMove) {
+    if (!onTrack && clip.asset === null) return `Clip ${clip.id} is still rendering.`
+    if (!onTrack && params['track'] === undefined) return `Clip ${clip.id} is on the main video track; give track to move it to a video track.`
+    const start = number(params['start_sec'])
+    if (start === null || start < 0) return `start_sec ${String(params['start_sec'])} is not a time of 0 seconds or more.`
+    return params['track'] === undefined ? null : videoTrackProblem(timeline, params['track'], false)
+  }
   if ((operation === OPERATIONS.split || operation === OPERATIONS.trim) && clip.asset === null) return `Clip ${clip.id} is still rendering.`
   if (operation === OPERATIONS.split) {
     const at = number(params['at_sec'])
@@ -276,8 +485,9 @@ export function clipProblem(slice: Slice, call: TimelineCall): string | null {
 
 /**
  * Why the clip or sound IDs of a finished record cannot apply: the record stored fewer or more IDs than the clips it
- * adds (a record written before clips had IDs), a sound ID count other than one for `timeline.sound_add` and zero for
- * any other operation, or an ID that a clip or sound of the slice already has.
+ * adds (a record written before clips had IDs), a sound ID count other than one for `timeline.sound_add` and
+ * `timeline.sound_split` and zero for any other operation, a `timeline.main_track_swap` without one start time per
+ * 视频 track clip, or an ID that a clip or sound of the slice already has.
  * @param slice - the slice the record applies to.
  * @param record - a finished Timeline record.
  * @returns the reason, or null when the IDs apply.
@@ -286,13 +496,19 @@ function clipIdProblem(slice: Slice, record: TimelineCall & Pick<ProjectRecord, 
   const ids = reportedClips(record)
   const count = addedClipCount(record)
   if (ids.length !== count) return `The record stored ${String(ids.length)} clip IDs for the ${String(count)} clips it adds.`
-  const taken = new Set(slice.timelines.flatMap(timeline => timeline.clips.map(clip => clip.id)))
+  const taken = new Set(slice.timelines.flatMap(timeline => [...timeline.clips, ...timeline.track_clips].map(clip => clip.id)))
   for (const id of ids) {
     if (taken.has(id)) return `Clip ${id} already exists.`
     taken.add(id)
   }
   const sounds = reportedSounds(record)
-  if (sounds.length !== (record.operation === OPERATIONS.soundAdd ? 1 : 0)) return `The record stored ${String(sounds.length)} sound IDs.`
+  if (record.operation === OPERATIONS.mainTrackSwap) {
+    const clips = slice.timelines.find(timeline => timeline.id === targetOf(slice, record.params))?.clips.length
+    const starts = reportedStarts(record)
+    if (starts.length !== clips) return `The record stored ${String(starts.length)} start times for ${String(clips)} clips.`
+  }
+  const addsSound = record.operation === OPERATIONS.soundAdd || record.operation === OPERATIONS.soundSplit
+  if (sounds.length !== (addsSound ? 1 : 0)) return `The record stored ${String(sounds.length)} sound IDs.`
   const soundTaken = slice.timelines.some(timeline => timeline.sounds.some(sound => sound.id === sounds[0]))
   return soundTaken ? `Sound ${String(sounds[0])} already exists.` : null
 }
@@ -337,17 +553,102 @@ function editClips(clips: Clip[], call: TimelineCall, added: ClipId[]): Clip[] {
 }
 
 /**
+ * Apply one clip edit to the track clips of the timeline that holds the clip. The call has passed `clipProblem`. A trim
+ * moves the clip's start by the change of its in point; the second part of a split starts where the first part ends.
+ * @param clips - the track clips before the call.
+ * @param call - a track clip move, or a remove, split, trim or replace call.
+ * @param added - the IDs the call assigned (the second part of a split).
+ * @returns the track clips after it.
+ */
+function editTrackClips(clips: TrackClip[], call: TimelineCall, added: ClipId[]): TrackClip[] {
+  const params = call.params
+  const index = clips.findIndex(clip => clip.id === params['clip'])
+  const clip = clips[index] as TrackClip
+  switch (call.operation) {
+    case OPERATIONS.trackClipMove:
+      return clips.with(index, { ...clip, start_sec: Number(params['start_sec']), track: number(params['track']) ?? clip.track })
+    case OPERATIONS.remove:
+      return clips.toSpliced(index, 1)
+    case OPERATIONS.split: {
+      const at = Number(params['at_sec'])
+      const second = { ...clip, id: added[0] as ClipId, in_sec: at, start_sec: clip.start_sec + at - (clip.in_sec ?? 0) }
+      return clips.toSpliced(index, 1, { ...clip, out_sec: at }, second)
+    }
+    case OPERATIONS.trim: {
+      const inSec = number(params['in_sec'])
+      const start = clip.start_sec + (inSec ?? 0) - (clip.in_sec ?? 0)
+      return clips.with(index, { ...clip, in_sec: inSec, out_sec: number(params['out_sec']), start_sec: start })
+    }
+    case OPERATIONS.replace:
+      return clips.with(index, { ...clip, asset: brandString<AssetId>(String(params['asset'])), in_sec: null, out_sec: null })
+    /* v8 ignore next 2 -- `applyCall` passes only the clip operations that name a track clip. */
+    default:
+      return clips
+  }
+}
+
+/**
  * Apply one finished `timeline.*` call to the timelines. `timeline.create` adds a timeline, `timeline.update` replaces
  * the clips of the timeline it names, and `timeline.clip_insert` into a timeline that does not exist adds it. Rename,
  * delete, insert and the sound track operations act on the timeline their `timeline` param names, else the first
  * timeline; `timeline.sound_remove` acts on the timeline that holds the sound, and the other clip operations on the
  * timeline that holds the clip. Removing a sound track drops its sounds, its name and its mute, and every later track
- * moves up with its mute.
+ * moves up with its mute; removing a video track does the same with its clips and its mute.
  * @param slice - the slice before the call.
  * @param call - a valid finished call.
  * @returns the timelines after it.
  */
 function applyCall(slice: Slice, call: TimelineCall): Timeline[] {
+  return editTimelines(slice, call).map(timeline => slice.timelines.includes(timeline) ? timeline : orderTracks(timeline, call))
+}
+
+/**
+ * A changed timeline with its `track_order` brought in line with its stored tracks: a removed track's entry goes, as
+ * does the entry of the video track that `timeline.main_track_remove` makes the 视频 track, and tracks that a call stored
+ * by naming the track after the last go at the bottom.
+ * @param timeline - the timeline after the call, with the order from before it.
+ * @param call - the call that changed it.
+ * @returns the timeline with its new order.
+ */
+function orderTracks(timeline: Timeline, call: TimelineCall): Timeline {
+  const removed: TrackKind | null = [OPERATIONS.videoTrackRemove, OPERATIONS.mainTrackRemove].includes(call.operation as never) ? 'video'
+    : call.operation === OPERATIONS.soundTrackRemove ? 'sound' : null
+  const track = call.operation === OPERATIONS.mainTrackRemove ? 0 : Number(call.params['track'])
+  let order = removed === null ? timeline.track_order : withoutEntry(timeline.track_order, removed, track)
+  order = withCount(order, 'video', videoTrackCount({ ...timeline, track_order: order }))
+  order = withCount(order, 'sound', soundTrackCount({ ...timeline, track_order: order }))
+  return { ...timeline, track_order: order }
+}
+
+/**
+ * @param order - a track order.
+ * @param kind - the kind of the removed track.
+ * @param track - the removed track's number.
+ * @returns the order without the entry of that track.
+ */
+function withoutEntry(order: readonly TrackKind[], kind: TrackKind, track: number): TrackKind[] {
+  let seen = -1
+  return order.filter(each => each !== kind || ++seen !== track)
+}
+
+/**
+ * @param order - a track order.
+ * @param kind - a track kind.
+ * @param count - how many tracks of that kind the timeline stores, at least the entries of that kind in `order`.
+ * @returns the order with the missing entries of that kind added at the bottom.
+ */
+function withCount(order: readonly TrackKind[], kind: TrackKind, count: number): TrackKind[] {
+  const have = order.filter(each => each === kind).length
+  return [...order, ...Array.from({ length: count - have }, (): TrackKind => kind)]
+}
+
+/**
+ * The timelines after one call, before `orderTracks` brings their track orders in line.
+ * @param slice - the slice before the call.
+ * @param call - a valid finished call.
+ * @returns the timelines after it.
+ */
+function editTimelines(slice: Slice, call: TimelineCall): Timeline[] {
   const { timelines } = slice
   const params = call.params
   const added = reportedClips(call)
@@ -372,14 +673,39 @@ function applyCall(slice: Slice, call: TimelineCall): Timeline[] {
       return timelines.map(timeline => timeline.id === id ? { ...timeline, clips: timeline.clips.toSpliced(at, 0, clip) } : timeline)
     }
     case OPERATIONS.soundAdd: {
-      const sound = {
-        id: reportedSounds(call)[0] as SoundId, asset: brandString<AssetId>(String(params['asset'])), start_sec: Number(params['start_sec']),
-        track: number(params['track']) ?? 0,
+      const sound: Sound = {
+        id: reportedSounds(call)[0] as SoundId, asset: brandString<AssetId>(String(params['asset'])), in_sec: null, out_sec: null,
+        start_sec: Number(params['start_sec']), track: number(params['track']) ?? 0,
       }
       return timelines.map(timeline => timeline.id === id ? { ...timeline, sounds: [...timeline.sounds, sound] } : timeline)
     }
     case OPERATIONS.soundRemove:
       return timelines.map(timeline => ({ ...timeline, sounds: timeline.sounds.filter(sound => sound.id !== params['sound']) }))
+    case OPERATIONS.soundMove:
+    case OPERATIONS.soundTrim: {
+      const edited = (sound: Sound): Sound => {
+        if (call.operation === OPERATIONS.soundMove) {
+          return { ...sound, start_sec: Number(params['start_sec']), track: number(params['track']) ?? sound.track }
+        }
+        const inSec = number(params['in_sec'])
+        const start = round(sound.start_sec + (inSec ?? 0) - (sound.in_sec ?? 0))
+        return { ...sound, in_sec: inSec, out_sec: number(params['out_sec']), start_sec: start }
+      }
+      return timelines.map(timeline => timeline.sounds.some(sound => sound.id === params['sound'])
+        ? { ...timeline, sounds: timeline.sounds.map(sound => sound.id === params['sound'] ? edited(sound) : sound) }
+        : timeline)
+    }
+    case OPERATIONS.soundSplit: {
+      // The second part goes right after the first and starts where its in point played before.
+      const at = Number(params['at_sec'])
+      const split = (sound: Sound): Sound[] => sound.id !== params['sound'] ? [sound] : [
+        { ...sound, out_sec: at },
+        { ...sound, id: reportedSounds(call)[0] as SoundId, in_sec: at, start_sec: round(sound.start_sec + at - (sound.in_sec ?? 0)) },
+      ]
+      return timelines.map(timeline => timeline.sounds.some(sound => sound.id === params['sound'])
+        ? { ...timeline, sounds: timeline.sounds.flatMap(split) }
+        : timeline)
+    }
     case OPERATIONS.soundTrackRemove: {
       // The track's sounds go, and every later track moves up one.
       const track = Number(params['track'])
@@ -407,15 +733,206 @@ function applyCall(slice: Slice, call: TimelineCall): Timeline[] {
       const track = Number(params['track'])
       const tracks = (current: number[]): number[] => [...current.filter(each => each !== track), ...muted ? [track] : []]
         .sort((a, b) => a - b)
-      return timelines.map(timeline => timeline.id !== id ? timeline : params['target'] === 'video'
+      const target = params['target']
+      return timelines.map(timeline => timeline.id !== id ? timeline : target === 'video'
         ? { ...timeline, video_muted: muted }
-        : { ...timeline, muted_sound_tracks: tracks(timeline.muted_sound_tracks) })
+        : target === 'video_track'
+          ? { ...timeline, muted_video_tracks: tracks(timeline.muted_video_tracks) }
+          : { ...timeline, muted_sound_tracks: tracks(timeline.muted_sound_tracks) })
+    }
+    case OPERATIONS.trackClipAdd: {
+      const clip: TrackClip = {
+        id: added[0] as ClipId, asset: brandString<AssetId>(String(params['asset'])), in_sec: null, out_sec: null,
+        start_sec: Number(params['start_sec']), track: Number(params['track']),
+      }
+      return timelines.map(timeline => timeline.id === id ? { ...timeline, track_clips: [...timeline.track_clips, clip] } : timeline)
+    }
+    case OPERATIONS.trackAdd:
+      return timelines.map(timeline => timeline.id === id
+        ? { ...timeline, track_order: [...timeline.track_order, params['kind'] as TrackKind] }
+        : timeline)
+    case OPERATIONS.videoTrackRemove: {
+      // The track's clips go, and every track with a higher number moves up one.
+      const track = Number(params['track'])
+      const mutes = (muted: number[]): number[] => muted.filter(each => each !== track).map(each => each > track ? each - 1 : each)
+      return timelines.map(timeline => timeline.id === id
+        ? {
+          ...timeline,
+          track_clips: timeline.track_clips.filter(clip => clip.track !== track)
+            .map(clip => clip.track > track ? { ...clip, track: clip.track - 1 } : clip),
+          muted_video_tracks: mutes(timeline.muted_video_tracks),
+        }
+        : timeline)
+    }
+    case OPERATIONS.videoTrackMove: {
+      const moved = movedTrack(Number(params['track']), Number(params['to']))
+      return timelines.map(timeline => timeline.id === id
+        ? {
+          ...timeline,
+          track_clips: timeline.track_clips.map(clip => ({ ...clip, track: moved(clip.track) })),
+          muted_video_tracks: timeline.muted_video_tracks.map(moved).sort((a, b) => a - b),
+        }
+        : timeline)
+    }
+    case OPERATIONS.mainTrackRemove:
+      return timelines.map(timeline => timeline.id === id ? withoutMainTrack(timeline) : timeline)
+    case OPERATIONS.mainTrackSwap: {
+      // The 视频 track's clips go onto video track 0 at the stored times; `clipProblem` refuses a placeholder among them.
+      const starts = reportedStarts(call)
+      return timelines.map((timeline) => {
+        if (timeline.id !== id) return timeline
+        const lowered = timeline.clips.map(({ id: clip, asset, in_sec, out_sec }, index): TrackClip => ({
+          id: clip, asset: asset as AssetId, in_sec, out_sec, start_sec: starts[index] as number, track: 0,
+        }))
+        const raised = withoutMainTrack(timeline)
+        return {
+          ...raised,
+          track_clips: [...timeline.track_clips.filter(clip => clip.track !== 0), ...lowered],
+          muted_video_tracks: [...timeline.video_muted ? [0] : [], ...timeline.muted_video_tracks.filter(track => track !== 0)],
+        }
+      })
     }
     default: {
-      const holder = findClip(slice, text(params['clip']))?.timeline.id
-      return timelines.map(timeline => timeline.id === holder ? { ...timeline, clips: editClips(timeline.clips, call, added) } : timeline)
+      const found = findClip(slice, text(params['clip']))
+      const crosses = found !== null && (found.onTrack ? call.operation === OPERATIONS.move : call.operation === OPERATIONS.trackClipMove)
+      if (crosses) {
+        return timelines.map(timeline => timeline.id === found.timeline.id ? betweenTracks(timeline, found.clip, params) : timeline)
+      }
+      return timelines.map(timeline => timeline.id !== found?.timeline.id ? timeline : found.onTrack
+        ? { ...timeline, track_clips: editTrackClips(timeline.track_clips, call, added) }
+        : { ...timeline, clips: editClips(timeline.clips, call, added) })
     }
   }
+}
+
+/**
+ * A timeline after a clip moved between the 视频 track and a video track under it: `timeline.clip_move` of a track clip
+ * puts it at position `to` of the 视频 track, and `timeline.track_clip_move` of a 视频 track clip puts it on `track` at
+ * `start_sec`. The clip keeps its ID, asset, and in and out points; a 视频 track clip leaves its render `source` behind.
+ * @param timeline - the timeline that holds the clip.
+ * @param clip - the moved clip.
+ * @param params - the call's params.
+ * @returns the timeline after the move.
+ */
+function betweenTracks(timeline: Timeline, clip: Clip | TrackClip, params: Record<string, unknown>): Timeline {
+  const { id, asset, in_sec, out_sec } = clip
+  if ('track' in clip) {
+    return {
+      ...timeline,
+      track_clips: timeline.track_clips.filter(each => each.id !== id),
+      clips: timeline.clips.toSpliced(Number(params['to']) - 1, 0, { id, asset, source: null, in_sec, out_sec }),
+    }
+  }
+  // `clipProblem` refuses to move a placeholder, so the clip's asset is set.
+  const placed: TrackClip = { id, asset: asset as AssetId, in_sec, out_sec, start_sec: Number(params['start_sec']), track: Number(params['track']) }
+  return { ...timeline, clips: timeline.clips.filter(each => each.id !== id), track_clips: [...timeline.track_clips, placed] }
+}
+
+/**
+ * A timeline after `timeline.main_track_remove`: video track 0's clips, in the order of their start times, replace the
+ * 视频 track's clips, its mute replaces the mute of the 视频 track's own audio, and the other video tracks move up one.
+ * @param timeline - the timeline before the call.
+ * @returns the timeline after it, with the order from before it.
+ */
+function withoutMainTrack(timeline: Timeline): Timeline {
+  const promoted = timeline.track_clips.filter(clip => clip.track === 0).sort((a, b) => a.start_sec - b.start_sec)
+  return {
+    ...timeline,
+    clips: promoted.map(({ id, asset, in_sec, out_sec }): Clip => ({ id, asset, source: null, in_sec, out_sec })),
+    track_clips: timeline.track_clips.filter(clip => clip.track !== 0).map(clip => ({ ...clip, track: clip.track - 1 })),
+    video_muted: timeline.muted_video_tracks.includes(0),
+    muted_video_tracks: timeline.muted_video_tracks.filter(track => track !== 0).map(track => track - 1),
+  }
+}
+
+/**
+ * The number of each video track after `timeline.video_track_move` moves track `from` to number `to`: the tracks between
+ * the two move one number toward `from`.
+ * @param from - the moved track's number before the call.
+ * @param to - its number after the call.
+ * @returns the new number of a track by its old number.
+ */
+function movedTrack(from: number, to: number): (track: number) => number {
+  return (track) => {
+    if (track === from) return to
+    if (from < to && track > from && track <= to) return track - 1
+    if (from > to && track >= to && track < from) return track + 1
+    return track
+  }
+}
+
+/**
+ * The timelines after a call that passed `clipProblem`, for the checks that need more than the slice, such as the
+ * lengths of the assets of the track clips.
+ * @param slice - the slice before the call.
+ * @param call - the call, with the IDs it will store in `report`.
+ * @returns the slice after it.
+ */
+export function afterCall(slice: Slice, call: TimelineCall): Slice {
+  return { timelines: applyCall(slice, call) }
+}
+
+/**
+ * Why a `timeline.sound_split` or `timeline.sound_trim` does not fit its sound's asset, whose length only the asset pool
+ * knows: a split at or past the asset's end, or a trim whose in point is not before that end or whose out point is past it.
+ * @param slice - the slice the call applies to, which holds the named sound.
+ * @param call - a sound split or trim that passed `clipProblem`.
+ * @param durationOf - the duration of an asset in seconds, or null when it is unknown.
+ * @returns the reason, or null when the call fits or the asset's length is not known.
+ */
+export function soundLengthProblem(slice: Slice, call: TimelineCall, durationOf: (asset: AssetId) => number | null): string | null {
+  const params = call.params
+  const sound = slice.timelines.flatMap(timeline => timeline.sounds).find(entry => entry.id === params['sound']) as Sound
+  const length = durationOf(sound.asset)
+  if (length === null) return null
+  if (call.operation === OPERATIONS.soundSplit) {
+    const at = Number(params['at_sec'])
+    return at < length ? null : `Sound ${sound.id} does not play ${String(at)}s of its asset; split inside its in and out points.`
+  }
+  const inSec = number(params['in_sec']) ?? 0
+  const outSec = number(params['out_sec'])
+  if (inSec >= length) return `The in point ${String(inSec)}s is not before the end of asset ${sound.asset} (${String(length)}s).`
+  return outSec !== null && outSec > length ? `The out point ${String(outSec)}s is past the end of asset ${sound.asset} (${String(length)}s).` : null
+}
+
+/** The stand-in ID of the clip a `timeline.track_clip_add` adds, before the call applies and the clip gets its ID. */
+export const NEW_CLIP = brandString<ClipId>('new')
+
+/**
+ * Why the track clips of a timeline cannot play: a clip whose length is unknown (an asset without a known duration and
+ * no out point), a clip that starts before the timeline's start, or two clips of one track that overlap. A reason names
+ * a clip by its ID, and the clip with ID `NEW_CLIP` as "the new clip".
+ * @param timeline - the timeline.
+ * @param durationOf - the duration of an asset in seconds, or null when it is unknown.
+ * @param changed - the clip the call added or changed, which an overlap reason names first; null when the call names none.
+ * @returns the reason, or null.
+ */
+export function trackClipProblem(
+  timeline: Timeline, durationOf: (asset: AssetId) => number | null, changed: ClipId | null = null,
+): string | null {
+  const named = (clip: TrackClip, capital: boolean): string => clip.id === NEW_CLIP ? `${capital ? 'The' : 'the'} new clip` : `${capital ? 'Clip' : 'clip'} ${clip.id}`
+  const spans: Array<{ clip: TrackClip; start: number; end: number }> = []
+  for (const clip of timeline.track_clips) {
+    const out = clip.out_sec ?? durationOf(clip.asset)
+    if (out === null) return `The length of asset ${clip.asset} is not known yet, so ${named(clip, false)} cannot go on a video track.`
+    if (clip.start_sec < 0) return `${named(clip, true)} would start ${String(round(-clip.start_sec))}s before the timeline's start.`
+    spans.push({ clip, start: clip.start_sec, end: clip.start_sec + out - (clip.in_sec ?? 0) })
+  }
+  for (const [index, span] of spans.entries()) {
+    // Two clips that only touch, one ending where the next starts, do not overlap.
+    const other = spans.find((each, at) => at !== index && each.clip.track === span.clip.track
+      && each.start < span.end - 0.005 && span.start < each.end - 0.005)
+    if (other === undefined) continue
+    const [moved, kept] = other.clip.id === changed ? [other, span] : [span, other]
+    return `${named(moved.clip, true)} would overlap ${named(kept.clip, false)} on video track ${String(span.clip.track)} `
+      + `(${String(round(kept.start))}s to ${String(round(kept.end))}s); pick another start_sec or track.`
+  }
+  return null
+}
+
+/** A time in seconds rounded to hundredths, for reasons. */
+function round(seconds: number): number {
+  return Math.round(seconds * 100) / 100
 }
 
 /** Whether a record is a call of a Timeline operation. */
@@ -437,7 +954,8 @@ export const timelineReducer: Reducer<'timeline'> = {
   },
   agentSummary(slice, assets, state) {
     // Clips are named by their ID, the way the `clip` param of the timeline operations names them; a placeholder clip
-    // shows its status and the render record it waits for instead of an asset. A timeline with sound tracks lists each
+    // shows its status and the render record it waits for instead of an asset. The video tracks under the main one list
+    // their clips by start time, track 0 first, and show `muted` only while it is on. A timeline with sound tracks lists each
     // track number with its name ('' when unnamed), so a request that names a track maps to its number. A mute shows
     // only while it is on: `video_muted` on the timeline and `muted` on a sound track.
     return {
@@ -449,6 +967,15 @@ export const timelineReducer: Reducer<'timeline'> = {
             in_sec: clip.in_sec, out_sec: clip.out_sec,
           }
           : { clip: clip.id, asset: clip.asset, url: assets.url(clip.asset), in_sec: clip.in_sec, out_sec: clip.out_sec }),
+        ...videoTrackCount(entry) === 0 ? {} : {
+          video_tracks: Array.from({ length: videoTrackCount(entry) }, (_, track) => ({
+            track, ...entry.muted_video_tracks.includes(track) ? { muted: true } : {},
+            clips: entry.track_clips.filter(clip => clip.track === track).toSorted((a, b) => a.start_sec - b.start_sec).map(clip => ({
+              clip: clip.id, asset: clip.asset, url: assets.url(clip.asset), start_sec: clip.start_sec, in_sec: clip.in_sec,
+              out_sec: clip.out_sec,
+            })),
+          })),
+        },
         ...soundTrackCount(entry) === 0 ? {} : {
           sound_tracks: Array.from({ length: soundTrackCount(entry) }, (_, track) => ({
             track, name: entry.sound_track_names[track] ?? '', ...entry.muted_sound_tracks.includes(track) ? { muted: true } : {},
@@ -456,7 +983,8 @@ export const timelineReducer: Reducer<'timeline'> = {
         },
         ...entry.sounds.length === 0 ? {} : {
           sounds: entry.sounds.map(sound => ({
-            sound: sound.id, asset: sound.asset, url: assets.url(sound.asset), start_sec: sound.start_sec, track: sound.track,
+            sound: sound.id, asset: sound.asset, url: assets.url(sound.asset), start_sec: sound.start_sec, in_sec: sound.in_sec,
+            out_sec: sound.out_sec, track: sound.track,
           })),
         },
       })),

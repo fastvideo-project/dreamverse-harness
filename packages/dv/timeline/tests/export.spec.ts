@@ -4,7 +4,7 @@
  * timeline; the agent's `dv_timeline_export` call and a direct `dvProject.run` call both write a `timeline.export`
  * record whose output is the joined video.
  */
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -32,7 +32,7 @@ interface Fixture {
   ctx: Context
   dir: string
   project: ProjectId
-  /** Write a solid-color test video with ffmpeg and import it into the asset pool. */
+  /** Write a solid-color test video with ffmpeg and import it into the asset pool with its duration. */
   clip(color: string, size: string, seconds: number): Promise<AssetId>
   /** Run one operation as the user on the timeline surface. */
   run(operation: string, params: Record<string, unknown>): Promise<RunResult>
@@ -90,7 +90,7 @@ async function start(): Promise<Fixture> {
         argv: ['ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi', '-i', `color=c=${color}:s=${size}:d=${seconds}:r=10`, '-pix_fmt', 'yuv420p', `{{out:${name}}}`],
         inputs: [], outputs: [name], dir,
       })
-      return ctx.dvAssetPool.importAsset(project, { path: join(dir, name) }, { mime: 'video/mp4', name }, null)
+      return ctx.dvAssetPool.importAsset(project, { path: join(dir, name) }, { mime: 'video/mp4', name, durationSec: seconds }, null)
     },
     run: (operation, params) => ctx.dvProject.run({ project, operation, params, inputs: [], ...origin, intent: operation }),
     call(name, args) {
@@ -112,8 +112,9 @@ describe('timeline.export', () => {
     const specs = fixture.ctx.dvProject.listOperations().filter(spec => spec.name === 'timeline.export')
     expect(specs.map(spec => [spec.component, spec.deterministic, spec.resource])).toEqual([['timeline', false, 'cpu']])
     expect(fixture.ctx.tools.schemas().find(tool => tool.name === 'dv_timeline_export')?.description).toBe(
-      'Export a timeline to one video: each clip with an in or out point is trimmed to that range, and all clips are joined in timeline '
-      + 'order. While the timeline\'s video audio is muted (dv_timeline_mute), the video has no audio. Runs on the CPU.',
+      'Export a timeline to one video: each clip with an in or out point is trimmed to that range, the clips of the main video track '
+      + 'are joined in timeline order, and the clips of the video tracks under it play after its end, a track with a lower number '
+      + 'covering those with higher numbers, picture and audio. Muted audio (dv_timeline_mute) is left out. The sound tracks are not included yet. Runs on the CPU.',
     )
     const entry = [...fixture.ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-timeline.mjs'))
     await entry?.fiber?.dispose()
@@ -249,5 +250,118 @@ describe('timeline.export', () => {
     const probe = await fixture.ctx.dvFfmpeg.probe(fixture.ctx.dvAssetPool.path(exported.outputs[0] as AssetId))
     expect(probe).toMatchObject({ width: 160, height: 90 })
     expect(probe.durationSec ?? 0).toBeCloseTo(2, 0)
+  })
+
+  it.skipIf(!existsSync(FFMPEG))('keeps the main track on top, shows the video track with the lowest number after its end, and extends the video for a later clip', async () => {
+    const fixture = await start()
+    const tone = async (name: string, color: string): Promise<AssetId> => {
+      await fixture.ctx.dvFfmpeg.run({
+        argv: [
+          'ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi', '-i', `color=c=${color}:s=160x90:d=2:r=10`, '-f', 'lavfi', '-i', 'sine=d=2',
+          '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', `{{out:${name}}}`,
+        ],
+        inputs: [], outputs: [name], dir: fixture.dir,
+      })
+      return fixture.ctx.dvAssetPool.importAsset(fixture.project, { path: join(fixture.dir, name) }, { mime: 'video/mp4', name, durationSec: 2 }, null)
+    }
+    const red = await tone('red.mp4', 'red')
+    const green = await tone('green.mp4', 'lime')
+    const blue = await fixture.clip('blue', '80x60', 1)
+    const yellow = await fixture.clip('yellow', '160x90', 3)
+    await fixture.run('timeline.create', { timeline: 't1', assets: [red] })
+    // The main track plays red to 2 s. Track 0 holds blue from 1.5 s to 2.5 s; track 1 holds yellow from 0 s to 3 s and
+    // green, which the trim of its in point moves to 3.5 s to 4.5 s.
+    for (const params of [
+      { asset: blue, track: 0, start_sec: 1.5 }, { asset: yellow, track: 1, start_sec: 0 }, { asset: green, track: 1, start_sec: 3 },
+    ]) {
+      expect((await fixture.run('timeline.track_clip_add', { timeline: 't1', ...params })).record?.status).toBe('done')
+    }
+    await fixture.run('timeline.clip_trim', { clip: 'cl4', in_sec: 0.5, out_sec: 1.5 })
+    const colorAt = async (path: string, seconds: number): Promise<number[]> => {
+      const name = `pixel-${String(seconds)}.rgb`
+      await fixture.ctx.dvFfmpeg.run({
+        argv: [
+          'ffmpeg', '-y', '-loglevel', 'error', '-i', '{{in:0}}', '-ss', String(seconds), '-frames:v', '1', '-vf', 'crop=2:2:79:44',
+          '-f', 'rawvideo', '-pix_fmt', 'rgb24', `{{out:${name}}}`,
+        ],
+        inputs: [path], outputs: [name], dir: fixture.dir,
+      })
+      return [...readFileSync(join(fixture.dir, name)).subarray(0, 3)].map(channel => Math.round(channel / 255))
+    }
+    const exported = await fixture.run('timeline.export', { timeline: 't1' })
+    expect(exported.record).toMatchObject({ status: 'done' })
+    const path = fixture.ctx.dvAssetPool.path(exported.outputs[0] as AssetId)
+    const probe = await fixture.ctx.dvFfmpeg.probe(path)
+    expect(probe).toMatchObject({ width: 160, height: 90, hasAudio: true })
+    expect(probe.durationSec ?? 0).toBeCloseTo(4.5, 0)
+    // Red covers both tracks to 2 s; then blue on track 0 covers yellow on track 1; after yellow ends, no track plays
+    // until green does.
+    expect(await colorAt(path, 0.2)).toEqual([1, 0, 0])
+    expect(await colorAt(path, 1.7)).toEqual([1, 0, 0])
+    expect(await colorAt(path, 2.2)).toEqual([0, 0, 1])
+    expect(await colorAt(path, 2.7)).toEqual([1, 1, 0])
+    expect(await colorAt(path, 3.2)).toEqual([0, 0, 0])
+    expect(await colorAt(path, 4)).toEqual([0, 1, 0])
+    // With every audio muted, the export has no audio.
+    await fixture.run('timeline.mute', { timeline: 't1', target: 'video', muted: true })
+    await fixture.run('timeline.mute', { timeline: 't1', target: 'video_track', track: 1, muted: true })
+    const silent = await fixture.run('timeline.export', { timeline: 't1' })
+    expect((await fixture.ctx.dvFfmpeg.probe(fixture.ctx.dvAssetPool.path(silent.outputs[0] as AssetId))).hasAudio).toBe(false)
+  })
+
+  it('draws only the track clips that end after the main track, from its end, and silences the audio the picture hides', async () => {
+    const fixture = await start()
+    const pool = fixture.ctx.dvAssetPool
+    const main = pool.importAsset(fixture.project, Buffer.from('main'), { mime: 'video/mp4', name: 'main.mp4', durationSec: 2 }, null)
+    const top = pool.importAsset(fixture.project, Buffer.from('top'), { mime: 'video/mp4', name: 'top.mp4', durationSec: 2 }, null)
+    const low = pool.importAsset(fixture.project, Buffer.from('low'), { mime: 'video/mp4', name: 'low.mp4', durationSec: 3 }, null)
+    const hidden = pool.importAsset(fixture.project, Buffer.from('hidden'), { mime: 'video/mp4', name: 'hidden.mp4', durationSec: 1 }, null)
+    await fixture.run('timeline.create', { timeline: 't1', assets: [main] })
+    await fixture.run('timeline.track_clip_add', { timeline: 't1', asset: top, track: 0, start_sec: 1.5 })
+    await fixture.run('timeline.track_clip_add', { timeline: 't1', asset: low, track: 1, start_sec: 1 })
+    await fixture.run('timeline.track_clip_add', { timeline: 't1', asset: hidden, track: 2, start_sec: 0 })
+    const filters: string[] = []
+    const run = vi.spyOn(fixture.ctx.dvFfmpeg, 'run').mockImplementation((request) => {
+      const at = request.argv.indexOf('-filter_complex')
+      if (at !== -1) filters.push(String(request.argv[at + 1]))
+      return Promise.resolve({ outputs: [], stdout: '', stderr: '', exitCode: 0 })
+    })
+    const seconds: Record<string, number> = { [pool.path(top)]: 2, [pool.path(low)]: 3, [pool.path(hidden)]: 1 }
+    const probe = vi.spyOn(fixture.ctx.dvFfmpeg, 'probe').mockImplementation(file => Promise.resolve({
+      durationSec: seconds[file] ?? 2, videoDurationSec: null, width: 160, height: 90, hasAudio: true, codec: 'h264',
+    }))
+    const timeline = fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0] as Timeline
+    expect(await fixture.ctx.dvTimeline.exportTimeline(timeline, fixture.dir)).toBe(join(fixture.dir, 'tracks.mp4'))
+    // The hidden clip ends at 1 s, under the main track, so it is neither probed nor drawn.
+    expect(probe.mock.calls.map(([file]) => file)).not.toContain(pool.path(hidden))
+    expect(filters).toEqual([[
+      '[0:v:0]setsar=1,tpad=stop_mode=add:stop_duration=2:color=black[b0]',
+      '[1:v:0]scale=160:90:force_original_aspect_ratio=decrease,pad=160:90:(ow-iw)/2:(oh-ih)/2,setsar=1,setpts=PTS-STARTPTS+1/TB[c0]',
+      "[b0][c0]overlay=enable='between(t,2,4)':eof_action=pass[b1]",
+      '[2:v:0]scale=160:90:force_original_aspect_ratio=decrease,pad=160:90:(ow-iw)/2:(oh-ih)/2,setsar=1,setpts=PTS-STARTPTS+1.5/TB[c1]',
+      "[b1][c1]overlay=enable='between(t,2,3.5)':eof_action=pass[b2]",
+      '[0:a:0]asetpts=PTS-STARTPTS[a0]',
+      "[1:a:0]asetpts=PTS-STARTPTS,adelay=delays=1000:all=1,volume=0:enable='between(t,0,2)+between(t,1.5,3.5)'[a1]",
+      "[2:a:0]asetpts=PTS-STARTPTS,adelay=delays=1500:all=1,volume=0:enable='between(t,0,2)'[a2]",
+      '[a0][a1][a2]amix=inputs=3:duration=longest:normalize=0[a]',
+    ].join(';')])
+    // A main track that lasts past every track clip covers them all, so the joined video is the export, and no track
+    // clip's file is read.
+    seconds[join(fixture.dir, 'timeline.mp4')] = 9
+    probe.mockClear()
+    expect(await fixture.ctx.dvTimeline.exportTimeline(timeline, fixture.dir)).toBe(join(fixture.dir, 'timeline.mp4'))
+    expect(probe.mock.calls.map(([file]) => file)).toEqual([join(fixture.dir, 'timeline.mp4')])
+    // Files without a known length show for no time, and a joined video without a frame size cannot take the tracks.
+    const argv: Array<readonly string[]> = []
+    run.mockImplementation((request) => {
+      argv.push(request.argv)
+      return Promise.resolve({ outputs: [], stdout: '', stderr: '', exitCode: 0 })
+    })
+    probe.mockResolvedValue({ durationSec: null, videoDurationSec: null, width: 160, height: 90, hasAudio: false, codec: 'h264' })
+    await fixture.ctx.dvTimeline.exportTimeline(timeline, fixture.dir)
+    expect(argv.at(-1)?.slice(argv.at(-1)?.indexOf('-t') ?? 0, (argv.at(-1)?.indexOf('-t') ?? 0) + 2)).toEqual(['-t', '1.5'])
+    expect(argv.at(-1)).toContain('-an')
+    probe.mockResolvedValue({ durationSec: 4, videoDurationSec: 4, width: null, height: null, hasAudio: false, codec: null })
+    await expect(fixture.ctx.dvTimeline.exportTimeline(timeline, fixture.dir)).rejects.toThrow('The joined clips have no video frame size to draw the video tracks at.')
   })
 })

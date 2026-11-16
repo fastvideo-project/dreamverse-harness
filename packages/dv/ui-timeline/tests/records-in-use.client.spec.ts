@@ -17,8 +17,10 @@ const t = makeTranslate(zh)
 describe('timelineRecordsInUse', () => {
   it('uses the record behind each clip: the render a placeholder clip waits for, else the producer of the clip asset, else none', () => {
     const state = fixtureState()
+    // The clip of the video track above plays the export c1 made.
+    const tracked = [{ id: 'cl6' as ClipId, asset: 'export.mp4' as AssetId, in_sec: 1, out_sec: null, start_sec: 0, track: 0 }]
     state.components.timeline.timelines.push({
-      id: 't2' as TimelineId, name: '', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], clips: [
+      id: 't2' as TimelineId, name: '', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], track_clips: tracked, muted_video_tracks: [], track_order: ['sound'], clips: [
         { id: 'cl3' as ClipId, asset: null, source: { record: 'g3' as RecordId, output: 0 }, in_sec: null, out_sec: null },
         { id: 'cl4' as ClipId, asset: 'unknown.mp4' as AssetId, source: null, in_sec: null, out_sec: null },
         { id: 'cl5' as ClipId, asset: null, source: null, in_sec: null, out_sec: null },
@@ -26,13 +28,14 @@ describe('timelineRecordsInUse', () => {
     })
     const descriptor = timelineRecordsInUse(t)
     expect(descriptor.id).toBe(TIMELINE_ID)
-    expect(descriptor.uses(state)).toEqual(['g1', 'g2', 'g3'])
+    expect(descriptor.uses(state)).toEqual(['g1', 'g2', 'g3', 'c1'])
+    expect(descriptor.badges?.(state)).toEqual([{ asset: 'shot2.mp4', label: '已裁剪' }, { asset: 'export.mp4', label: '已裁剪' }])
   })
 
   it('puts the trim label on the asset of each clip with an in or out point', () => {
     const state = fixtureState()
     state.components.timeline.timelines.push({
-      id: 't2' as TimelineId, name: '', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], clips: [
+      id: 't2' as TimelineId, name: '', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], track_clips: [], muted_video_tracks: [], track_order: ['sound'], clips: [
         { id: 'cl3' as ClipId, asset: 'shot1.mp4' as AssetId, source: null, in_sec: null, out_sec: 2 },
         { id: 'cl4' as ClipId, asset: null, source: { record: 'g3' as RecordId, output: 0 }, in_sec: 1, out_sec: null },
       ],

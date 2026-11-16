@@ -20,7 +20,7 @@ import type { ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
 import { TIMELINE_ID } from './definition.ts'
 import type {} from './locales.ts'
 import { TimelineEditor } from './TimelineEditor.tsx'
-import { placeTimeline, timelinesOf } from './timelines.ts'
+import { placeTimeline, placeTrackClips, timelinesOf } from './timelines.ts'
 
 /** The node type key of a placed timeline, the kind that `@dv/timeline` registers `timeline.place` under. */
 export const TIMELINE_NODE_KIND = 'timeline'
@@ -102,12 +102,13 @@ export function timelineNodeType(t: TimelineTranslate, show: (timeline: string) 
       const sizing = { kind: 'window' as const, defaultSize: CARD_SIZE, minSize: { width: 420, height: 220 } }
       const timeline = placedTimeline(state, record)
       if (timeline === null) return { title: t('node.deleted'), sizing }
-      const { total } = placeTimeline(state, timeline)
+      const length = Math.max(placeTimeline(state, timeline).total, placeTrackClips(state, timeline).end)
       return {
-        title: nameOf(timeline, t), meta: `${total.toFixed(1)}s`, sizing,
+        title: nameOf(timeline, t), meta: `${length.toFixed(1)}s`, sizing,
         uses: {
           assets: [
-            ...timeline.clips.flatMap(clip => clip.asset === null ? [] : [clip.asset]), ...timeline.sounds.map(sound => sound.asset),
+            ...timeline.clips.flatMap(clip => clip.asset === null ? [] : [clip.asset]), ...timeline.track_clips.map(clip => clip.asset),
+            ...timeline.sounds.map(sound => sound.asset),
           ],
           records: timeline.clips.flatMap(clip => clip.asset === null && clip.source !== null ? [clip.source.record] : []),
         },

@@ -1,7 +1,7 @@
 /**
  * The timeline plugin booted over recording services, for specs that render its components directly with the values
  * that the plugin injects. A stand-in for the shell's center of project p1 keeps the center fields that the view notes
- * and the request that a test hands it.
+ * and the request that a test hands it. A scripted API can add the tracks that the editor's 添加轨道 menu writes.
  */
 import { useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
@@ -9,7 +9,10 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Fiber } from '@deepseek-ai/cordis'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { CenterFields, CenterRequest, JsonFields } from '@dv/ui-shell/contract'
+import type { TrackKind } from '@dv/timeline/types'
 import type { DvClient } from '@dv/ui-kit/api.ts'
+import { record } from '../../ui-kit/tests/fixture.client.tsx'
+import type { FixtureState, ScriptedRoutes } from '../../ui-kit/tests/fixture.client.tsx'
 import type { TimelineInjected } from '../src/client/TimelineBody.tsx'
 import { TimelineView } from '../src/client/TimelineView.tsx'
 import type { TimelineCenterInjected, TimelineViewProps } from '../src/client/TimelineView.tsx'
@@ -141,4 +144,26 @@ function CenterFrame({ booted, options }: { booted: BootedTimeline; options: Cen
  */
 export function centerView(booted: BootedTimeline, options: CenterViewOptions): ReactNode {
   return <CenterFrame booted={booted} options={options} />
+}
+
+/**
+ * Scripted routes whose state adds a track to the first timeline for each `timeline.track_add` the editor writes; every
+ * other write is answered and left out of the state.
+ * @param base - the state before the writes.
+ * @returns the routes.
+ */
+export function addingTracks(base: () => FixtureState): ScriptedRoutes {
+  const added: TrackKind[] = []
+  return {
+    state: () => {
+      const state = base()
+      state.components.timeline.timelines[0]?.track_order.push(...added)
+      return state
+    },
+    post: (_path, body) => {
+      const { operation, params = {} } = body as { operation: string; params?: Record<string, unknown> }
+      if (operation === 'timeline.track_add') added.push(params['kind'] as TrackKind)
+      return { status: 200, body: record({ id: `w${String(added.length)}`, operation, params }) }
+    },
+  }
 }

@@ -135,11 +135,16 @@ describe('a timeline node on the canvas', () => {
     const trackMenu = within(editor).getByRole('menu')
     expect([trackMenu.style.position, trackMenu.style.left, trackMenu.style.top]).toEqual(['absolute', '80px', '120px'])
     expect(canvasOf().querySelector('[data-testid="dv-canvas-node-menu"]')).toBeNull()
-    // A right click where the editor has no menu of its own, such as on a clip, opens the node's menu, not the browser's.
+    // A right click on a clip opens the editor's clip menu and no node menu.
     fireEvent.keyDown(window, { key: 'Escape' })
-    const clipClick = createEvent.contextMenu(editor.querySelector('[data-clip="cl2"]') as HTMLElement, { clientX: 20, clientY: 20 })
-    fireEvent(editor.querySelector('[data-clip="cl2"]') as HTMLElement, clipClick)
-    expect([clipClick.defaultPrevented, canvasOf().querySelector('[data-testid="dv-canvas-node-menu"]') !== null]).toEqual([true, true])
+    fireEvent.contextMenu(editor.querySelector('[data-clip="cl2"]') as HTMLElement, { clientX: 20, clientY: 20 })
+    expect(within(within(editor).getByRole('menu')).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['在播放头处拆分', '删除'])
+    expect(canvasOf().querySelector('[data-testid="dv-canvas-node-menu"]')).toBeNull()
+    // A right click where the editor has no menu of its own, such as on the ruler, opens the node's menu, not the browser's.
+    fireEvent.keyDown(window, { key: 'Escape' })
+    const rulerClick = createEvent.contextMenu(ruler, { clientX: 20, clientY: 5 })
+    fireEvent(ruler, rulerClick)
+    expect([rulerClick.defaultPrevented, canvasOf().querySelector('[data-testid="dv-canvas-node-menu"]') !== null]).toEqual([true, true])
   })
 
   it('shows a deleted timeline, an empty one, and opens the timeline view on a double click on the caption', async () => {
@@ -174,8 +179,10 @@ describe('a timeline node on the canvas', () => {
       const clip = { id: 'cl9' as ClipId, asset: 'export.mp4' as AssetId, source: null, in_sec: null, out_sec: null }
       // cl8 waits for the render g2, and the sound plays ref.png's import.
       const pending = { id: 'cl8' as ClipId, asset: null, source: { record: 'g2' as RecordId, output: 0 }, in_sec: null, out_sec: null }
-      const sounds = [{ id: 'sd1' as SoundId, asset: 'ref.png' as AssetId, start_sec: 0, track: 0 }]
-      state.components.timeline.timelines.push({ ...timeline, id: 't2' as TimelineId, clips: [clip, pending], sounds })
+      const sounds = [{ id: 'sd1' as SoundId, asset: 'ref.png' as AssetId, in_sec: null, out_sec: null, start_sec: 0, track: 0 }]
+      // cl7 on the video track above plays g1's shot.
+      const tracked = [{ id: 'cl7' as ClipId, asset: 'shot1.mp4' as AssetId, in_sec: null, out_sec: null, start_sec: 0, track: 0 }]
+      state.components.timeline.timelines.push({ ...timeline, id: 't2' as TimelineId, clips: [clip, pending], track_clips: tracked, sounds })
       placeTimeline(state, 'k1', 't1')
       placeTimeline(state, 'k2', 't2')
     }, (_path, body) => (body as { operation?: string }).operation === 'timeline.clip_remove' ? '片段被锁定' : null)
@@ -189,9 +196,9 @@ describe('a timeline node on the canvas', () => {
     expect(ratio('k1')).toBe('1280 / 720')
     select('k2')
     expect(ratio('k2')).toBe('16 / 9')
-    // The node uses its clips' assets, the render its placeholder clip waits for, and its sounds' assets.
-    expect([...canvasOf().querySelectorAll('[data-edge$=">k2"]')].map(edge => edge.getAttribute('data-edge'))).toEqual(['g2>k2'])
-    expect([...canvasOf().querySelectorAll('[data-node-used="true"]')].map(card => card.getAttribute('data-node-id'))).toEqual(['g2'])
+    // The node uses its clips' assets on every video track, the render its placeholder clip waits for, and its sounds' assets.
+    expect([...canvasOf().querySelectorAll('[data-edge$=">k2"]')].map(edge => edge.getAttribute('data-edge')).sort()).toEqual(['g1>k2', 'g2>k2'])
+    expect([...canvasOf().querySelectorAll('[data-node-used="true"]')].map(card => card.getAttribute('data-node-id')).sort()).toEqual(['g1', 'g2'])
     const editor = node('k1').querySelector('[data-testid="dv-timeline-editor"]') as HTMLElement
     const clip = editor.querySelector('[data-clip="cl1"]') as HTMLElement
     fireEvent.pointerDown(clip, { button: 0, clientX: 10, pointerId: 2 })

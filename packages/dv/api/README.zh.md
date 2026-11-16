@@ -80,7 +80,7 @@ kind: "package-reference"
 <details>
 <summary>实现内部——点击展开</summary>
 
-`DvApi` 在 `dvProject` 和 `dvAssetPool` 之上构造一个 `ApiHandlers`；操作列表和一次运行的操作来自 `dvProject.listOperations()`，运行的 `inputs` 由 `dvProject.parseInputs` 解析，工作区路由列出 `dvProject.listProjects()`。任务路由在每次请求时用 `ctx.get` 读取可选的 `dvModels`。在 `ctx.inject(['connection'])` 里它用 `connection.fetch.register` 注册各条 Fetch 路由，包括素材导入、工作区和项目管理路由在内的每条路由都经过 `src/api.ts` 中同一个 `answer` 包装，把 `ApiRequestError` 或 `ProjectError` 映射成它的状态码和错误码，其他错误映射成 500 `internal_error`；同一文件中的 `requireProject` 检查每条路由指定的项目。`/dv/events` 写出同样的错误体。在 `ctx.inject(['webServer'])` 里它注册 `/dv/events` 前缀路由，通过 `requestRejection` 询问 Connection 请求是否带有效 cookie，再把响应交给 `serveEventStream`；后者订阅 `dvProject.subscribe(projectId)`，每次变化写一帧 `event:`/`data:`，直到请求关闭。`toWireState` 原样发送 `ProjectState` 及其 `components`，再加上素材列表：已创建的素材、整个历史中每条记录的输出和已解析输入、每个角色、场景和风格版本的参考图，以及每个时间线片段的并集。
+`DvApi` 在 `dvProject` 和 `dvAssetPool` 之上构造一个 `ApiHandlers`；操作列表和一次运行的操作来自 `dvProject.listOperations()`，运行的 `inputs` 由 `dvProject.parseInputs` 解析，工作区路由列出 `dvProject.listProjects()`。任务路由在每次请求时用 `ctx.get` 读取可选的 `dvModels`。在 `ctx.inject(['connection'])` 里它用 `connection.fetch.register` 注册各条 Fetch 路由，包括素材导入、工作区和项目管理路由在内的每条路由都经过 `src/api.ts` 中同一个 `answer` 包装，把 `ApiRequestError` 或 `ProjectError` 映射成它的状态码和错误码，其他错误映射成 500 `internal_error`；同一文件中的 `requireProject` 检查每条路由指定的项目。`/dv/events` 写出同样的错误体。在 `ctx.inject(['webServer'])` 里它注册 `/dv/events` 前缀路由，通过 `requestRejection` 询问 Connection 请求是否带有效 cookie，再把响应交给 `serveEventStream`；后者订阅 `dvProject.subscribe(projectId)`，每次变化写一帧 `event:`/`data:`，直到请求关闭。`toWireState` 原样发送 `ProjectState` 及其 `components`，再加上素材列表：已创建的素材、整个历史中每条记录的输出和已解析输入、每个角色、场景和风格版本的参考图，以及每条时间线所有视频轨上的片段和声音的素材的并集。
 
 | 文件 | 内容 |
 | --- | --- |

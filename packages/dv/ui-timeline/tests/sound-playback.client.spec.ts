@@ -7,7 +7,7 @@ import type { TrackSound } from '../src/client/timelines.ts'
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
-const SOUND: TrackSound = { sound: 'sd1', assetId: 'theme.mp3', name: 'theme.mp3', startSec: 2, seconds: 3, track: 0 }
+const SOUND: TrackSound = { sound: 'sd1', assetId: 'theme.mp3', name: 'theme.mp3', startSec: 2, rawIn: null, rawOut: null, inSec: 0, seconds: 3, assetSeconds: 3, track: 0 }
 
 /**
  * An `<audio>` element whose playing state and time the test sets, with recorded `play` and `pause` calls.
@@ -46,6 +46,16 @@ describe('syncSound', () => {
     expect(sound.element.currentTime).toBe(0.5)
     expect(sound.element.playbackRate).toBe(1.5)
     expect(sound.play).toHaveBeenCalledTimes(1)
+  })
+
+  it('plays the second part of a split sound from its in point, and pauses it at its out point', () => {
+    const second = { ...SOUND, inSec: 1.5, seconds: 1 }
+    const sound = soundElement({ paused: true })
+    syncSound(sound.element, second, 2.5, true, 1)
+    expect([sound.element.currentTime, sound.play.mock.calls.length]).toEqual([2, 1])
+    const ended = soundElement({ paused: false, currentTime: 2.5 })
+    syncSound(ended.element, second, 3, true, 1)
+    expect(ended.pause).toHaveBeenCalledTimes(1)
   })
 
   it('seeks a playing sound only when it drifts more than 0.25 s from the playhead, and does not restart it', () => {

@@ -9,7 +9,7 @@ const DRIFT_SECONDS = 0.25
 
 /**
  * Bring one sound element in step: paused while the player is paused, the playhead is outside the sound, or the
- * file has reached its end; else playing at the playhead's time inside the sound.
+ * file has reached its end; else playing at the playhead's time inside the sound, counted from the sound's in point.
  * @param element - the sound's `<audio>` element.
  * @param sound - the placed sound.
  * @param position - the playhead's timeline time.
@@ -17,11 +17,12 @@ const DRIFT_SECONDS = 0.25
  * @param rate - the playback rate.
  */
 export function syncSound(element: HTMLMediaElement, sound: TrackSound, position: number, playing: boolean, rate: number): void {
-  const local = position - sound.startSec
+  const played = position - sound.startSec
+  const local = sound.inSec + played
   // A file shorter than the placed length, or one that ran up to DRIFT_SECONDS ahead of the playhead and ended, stays
   // paused at its end instead of being seeked back and replayed.
   const fileEnd = Number.isFinite(element.duration) ? element.duration - (element.ended ? DRIFT_SECONDS : 0) : Infinity
-  if (!playing || local < 0 || local >= sound.seconds || local >= fileEnd) {
+  if (!playing || played < 0 || played >= sound.seconds || local >= fileEnd) {
     if (!element.paused) element.pause()
     return
   }

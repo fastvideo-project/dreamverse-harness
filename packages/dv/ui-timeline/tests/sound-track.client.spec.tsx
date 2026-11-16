@@ -3,14 +3,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
 import type { AssetId } from '@dv/project/types'
-import type { Sound, SoundId, TimelineId } from '@dv/timeline/types'
+import type { Sound, SoundId, TimelineId, TrackKind } from '@dv/timeline/types'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { FALLBACK_CLIP_SECONDS } from '@dv/ui-kit/timeline.ts'
 import { DV_ASSET_DRAG_TYPE, DV_ASSET_MIME_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { asset, fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState, ScriptedRoutes } from '../../ui-kit/tests/fixture.client.tsx'
 import { timecode } from '../src/client/timelines.ts'
-import { bootTimeline, centerView } from './center.client.tsx'
+import { addingTracks, bootTimeline, centerView } from './center.client.tsx'
 import type { BootedTimeline } from './center.client.tsx'
 
 let booted: BootedTimeline
@@ -42,11 +42,12 @@ function soundState(): FixtureState {
   const [t1] = state.components.timeline.timelines
   if (t1 === undefined) throw new Error('no t1')
   t1.sounds = [
-    { id: 'sd1' as SoundId, asset: 'theme.mp3' as AssetId, start_sec: 1, track: 0 },
-    { id: 'sd2' as SoundId, asset: 'voice.wav' as AssetId, start_sec: 0, track: 1 },
+    { id: 'sd1' as SoundId, asset: 'theme.mp3' as AssetId, in_sec: null, out_sec: null, start_sec: 1, track: 0 },
+    { id: 'sd2' as SoundId, asset: 'voice.wav' as AssetId, in_sec: null, out_sec: null, start_sec: 0, track: 1 },
   ]
   t1.sound_track_names = ['', '旁白']
-  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], clips: [] })
+  t1.track_order = ['sound', 'sound']
+  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], track_clips: [], muted_video_tracks: [], track_order: ['sound'], clips: [] })
   return state
 }
 
@@ -61,25 +62,29 @@ function withoutTimelines(): FixtureState {
 }
 
 /**
- * {@link soundState} that gains each sound a `timeline.sound_add` writes, as `sd3`, `sd4`, …, once `shows()` is true.
+ * {@link soundState} that gains each sound a `timeline.sound_add` writes, as `sd3`, `sd4`, …, once `shows()` is true, and
+ * each track a `timeline.track_add` writes.
  * @param shows - whether the served state shows the added sounds yet; while false, a refetch serves the state before them.
  * @returns the routes.
  */
 function growingState(shows: () => boolean = () => true): ScriptedRoutes {
   const added: Sound[] = []
+  const tracks: TrackKind[] = []
   return {
     state: () => {
       const state = soundState()
       state.components.timeline.timelines[0]?.sounds.push(...shows() ? added : [])
+      state.components.timeline.timelines[0]?.track_order.push(...tracks)
       return state
     },
     post: (path, body) => {
       if (path !== '/api/dv/operation') return { status: 200, body: { problems: [] } }
       const { operation, params = {} } = body as { operation: string; params?: Record<string, unknown> }
+      if (operation === 'timeline.track_add') tracks.push(params['kind'] as TrackKind)
       if (operation === 'timeline.sound_add') {
         added.push({
-          id: `sd${String(added.length + 3)}` as SoundId, asset: String(params['asset']) as AssetId, start_sec: Number(params['start_sec']),
-          track: Number(params['track']),
+          id: `sd${String(added.length + 3)}` as SoundId, asset: String(params['asset']) as AssetId, in_sec: null, out_sec: null,
+          start_sec: Number(params['start_sec']), track: Number(params['track']),
         })
       }
       return { status: 200, body: record({ id: `new-${String(added.length)}`, operation, params }) }
@@ -118,7 +123,8 @@ function mount(routes: ScriptedRoutes = { state: soundState }) {
   }
   const lanes = (): number => view.container.querySelectorAll('[data-sound-track]').length
   const heads = (): Array<string | null> => [...view.container.querySelectorAll('[data-sound-track-head]')].map(entry => entry.textContent)
-  const plus = (track: number, label = '添加声音'): HTMLElement => within(lane(track)).getByRole('button', { name: label })
+  // Each sound track's ＋ sits in its header, right of the delete button.
+  const plus = (track: number, label = '添加声音'): HTMLElement => within(head(track)).getByRole('button', { name: label })
   const dialog = (): HTMLElement | null => view.queryByRole('dialog', { name: '添加声音' })
   const requests = (): Array<Record<string, unknown>> =>
     scripted.writes.filter(write => write.path === '/api/dv/operation').map(write => write.body as Record<string, unknown>)
@@ -126,14 +132,18 @@ function mount(routes: ScriptedRoutes = { state: soundState }) {
   const fetches = (): number => stateFetches
   const disabled = (): boolean[] => within(view.getByTestId('dv-timeline-editor')).getAllByRole('button', { name: '添加声音' })
     .map(button => (button as HTMLButtonElement).disabled)
-  const addTrack = (): HTMLButtonElement => view.getByRole('button', { name: '添加音轨' }) as HTMLButtonElement
+  // 音轨 in the toolbar's 添加轨道 menu, opening the menu when it is closed.
+  const addTrack = (): HTMLButtonElement => {
+    if (view.queryByRole('menu', { name: '添加轨道' }) === null) fireEvent.click(view.getByRole('button', { name: '添加轨道' }))
+    return view.getByRole('menuitem', { name: '音轨' }) as HTMLButtonElement
+  }
   return { view, lane, head, sound, lanes, heads, plus, dialog, requests, imports, ready, fetches, disabled, addTrack }
 }
 
 describe('sound tracks', () => {
-  // A track added with 添加音轨 is empty and belongs to the shown timeline; another timeline shows its own tracks.
+  // A track added with 音轨 in the 添加轨道 menu is empty and belongs to the shown timeline; another timeline shows its own tracks.
   it('draws each track under 原声 by its stored or numbered name, with its sounds at their start and length', async () => {
-    const { view, lane, sound, lanes, heads, ready } = mount()
+    const { view, lane, sound, lanes, heads, ready, addTrack } = mount(addingTracks(soundState))
     await ready()
     expect(heads()).toEqual(['声音 1', '旁白'])
     expect(lane(0).getAttribute('aria-label')).toBe('声音 1')
@@ -148,8 +158,8 @@ describe('sound tracks', () => {
     expect(audio?.getAttribute('preload')).toBe('metadata')
     expect(view.getByTestId('dv-timeline-export-no-sounds').textContent).toBe('导出暂不包含声音')
 
-    fireEvent.click(view.getByRole('button', { name: '添加音轨' }))
-    expect(lanes()).toBe(3)
+    fireEvent.click(addTrack())
+    await waitFor(() => { expect(lanes()).toBe(3) })
     expect(heads()).toEqual(['声音 1', '旁白', '声音 3'])
     fireEvent.click(view.getAllByRole('tab')[1] as HTMLElement)
     expect(heads()).toEqual(['声音 1'])
@@ -174,7 +184,7 @@ describe('sound tracks', () => {
   })
 
   it('adds a project audio asset after the last sound of its track, or at the playhead on an empty track', async () => {
-    const { view, sound, plus, dialog, requests, ready, disabled } = mount(growingState())
+    const { view, lane, sound, plus, dialog, requests, ready, disabled, addTrack } = mount(growingState())
     await ready()
     fireEvent.click(plus(0))
     expect([plus(0), plus(1)].map(button => button.getAttribute('aria-expanded'))).toEqual(['true', 'false'])
@@ -194,14 +204,16 @@ describe('sound tracks', () => {
     expect(within(dialog() as HTMLElement).getByText('从 00:05.00 开始')).toBeTruthy()
     fireEvent.click(plus(0))
 
-    fireEvent.click(view.getByRole('button', { name: '添加音轨' }))
+    fireEvent.click(addTrack())
+    await waitFor(() => { expect(lane(2)).toBeTruthy() })
     fireEvent.pointerDown(view.getByTestId('dv-timeline-ruler'), { clientX: 60 })
     fireEvent.pointerUp(view.getByTestId('dv-timeline-ruler'), { clientX: 60 })
     fireEvent.click(plus(2))
     expect(within(dialog() as HTMLElement).getByText('从 00:01.50 开始')).toBeTruthy()
     fireEvent.click(within(dialog() as HTMLElement).getByText('voice.wav'))
-    await waitFor(() => { expect(requests()).toHaveLength(2) })
-    expect(requests()[1]).toMatchObject({
+    await waitFor(() => { expect(requests()).toHaveLength(3) })
+    expect(requests()[1]).toMatchObject({ operation: 'timeline.track_add', params: { timeline: 't1', kind: 'sound' } })
+    expect(requests()[2]).toMatchObject({
       operation: 'timeline.sound_add', params: { timeline: 't1', asset: 'voice.wav', start_sec: 1.5, track: 2 },
     })
   })
@@ -310,6 +322,79 @@ describe('sound tracks', () => {
     expect(requests()[2]).toMatchObject({ operation: 'timeline.sound_remove', params: { sound: 'sd1' } })
   })
 
+  it('splits a selected sound at the playhead from its menu or the toolbar, and offers no split while the playhead is outside it', async () => {
+    const { view, sound, requests, ready } = mount()
+    await ready()
+    const split = (): HTMLButtonElement => view.getByRole('button', { name: '拆分' }) as HTMLButtonElement
+    const menuSplit = (): HTMLButtonElement => within(view.getByRole('menu')).getByRole('menuitem', { name: '在播放头处拆分' }) as HTMLButtonElement
+    // At 0 s the playhead is before sd1, which plays from 1 s to 3 s, and a selected sound keeps the split off the clip under it.
+    fireEvent.contextMenu(sound('sd1'))
+    expect(menuSplit().disabled).toBe(true)
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(split().disabled).toBe(true)
+    fireEvent.pointerDown(view.getByTestId('dv-timeline-ruler'), { clientX: 80 })
+    fireEvent.pointerUp(view.getByTestId('dv-timeline-ruler'), { clientX: 80 })
+    fireEvent.contextMenu(sound('sd1'))
+    fireEvent.click(menuSplit())
+    await waitFor(() => { expect(requests()).toHaveLength(1) })
+    expect(requests()[0]).toMatchObject({ operation: 'timeline.sound_split', params: { sound: 'sd1', at_sec: 1 }, intent: '在 00:02.00 拆分声音 theme.mp3' })
+    fireEvent.click(split())
+    await waitFor(() => { expect(requests()).toHaveLength(2) })
+    expect(requests()[1]).toMatchObject({ operation: 'timeline.sound_split', params: { sound: 'sd1', at_sec: 1 } })
+  })
+
+  it('moves a sound in time and to another sound track by a drag, trims it by its edges, and leaves a press without a move to the click', async () => {
+    const { sound, requests, ready } = mount()
+    await ready()
+    // Each gesture starts at (100, 100); `dx` and `dy` are the pixels it moved from there.
+    const at = (dx: number, dy: number): { clientX: number; clientY: number } => ({ clientX: 100 + dx, clientY: 100 + dy })
+    const press = (element: HTMLElement, button = 0): void => { fireEvent.pointerDown(element, { button, ...at(0, 0) }) }
+    const moveTo = (element: HTMLElement, dx: number, dy = 0): void => { fireEvent.pointerMove(element, at(dx, dy)) }
+    const release = (element: HTMLElement, dx: number, dy = 0): void => { fireEvent.pointerUp(element, at(dx, dy)) }
+    const drag = (element: HTMLElement, dx: number, dy = 0): void => { press(element); moveTo(element, dx, dy); release(element, dx, dy) }
+    const edge = (id: string, side: 'start' | 'end'): HTMLElement => sound(id).querySelector(`[data-trim="${side}"]`) as HTMLElement
+    const sent = async (count: number): Promise<Record<string, unknown> | undefined> => {
+      await waitFor(() => { expect(requests()).toHaveLength(count) })
+      return requests()[count - 1]
+    }
+    // sd1 plays theme.mp3 (2 s) from 1 s on 声音 1; a drag 40 px right moves it one second later on its own track.
+    press(sound('sd1'))
+    moveTo(sound('sd1'), 40)
+    expect(sound('sd1').style.transform).toBe('translate(40px, 0px)')
+    release(sound('sd1'), 40)
+    expect(await sent(1)).toMatchObject({ operation: 'timeline.sound_move', params: { sound: 'sd1', start_sec: 2 }, intent: '把声音 theme.mp3 移到 声音 1 的 00:02.00' })
+    expect(requests()[0]?.['params']).toEqual({ sound: 'sd1', start_sec: 2 })
+    // Half a row down, the track in the drag's direction wins; a drag up and left stops at the timeline's start.
+    drag(sound('sd1'), 0, 31)
+    expect(await sent(2)).toMatchObject({ params: { sound: 'sd1', start_sec: 1, track: 1 }, intent: '把声音 theme.mp3 移到 旁白 的 00:01.00' })
+    drag(sound('sd2'), -80, -62)
+    expect(await sent(3)).toMatchObject({ params: { sound: 'sd2', start_sec: 0, track: 0 } })
+    // The edges trim: the start trim moves the start along and stops at the timeline's start, the end trim at the asset's end.
+    press(edge('sd1', 'start'))
+    moveTo(edge('sd1', 'start'), 20)
+    expect([sound('sd1').style.left, sound('sd1').style.width]).toEqual(['60px', '60px'])
+    release(edge('sd1', 'start'), 20)
+    expect(await sent(4)).toMatchObject({ operation: 'timeline.sound_trim', params: { sound: 'sd1', in_sec: 0.5 }, intent: '裁剪声音 theme.mp3' })
+    drag(edge('sd1', 'start'), -200)
+    expect(await sent(5)).toMatchObject({ params: { sound: 'sd1', in_sec: 0 } })
+    press(edge('sd1', 'end'))
+    moveTo(edge('sd1', 'end'), -40)
+    expect(sound('sd1').style.width).toBe('40px')
+    release(edge('sd1', 'end'), -40)
+    expect((await sent(6))?.['params']).toEqual({ sound: 'sd1', out_sec: 1 })
+    drag(edge('sd1', 'end'), 400)
+    expect((await sent(7))?.['params']).toEqual({ sound: 'sd1', out_sec: 2 })
+    // A press without a move, a drag back to where it started, and a right press send nothing; the click selects.
+    drag(sound('sd1'), 2)
+    drag(sound('sd1'), 0, 10)
+    press(sound('sd1'), 2)
+    moveTo(sound('sd1'), 80)
+    release(sound('sd1'), 80)
+    fireEvent.click(sound('sd1'))
+    await act(async () => { await Promise.resolve() })
+    expect([requests().length, sound('sd1').getAttribute('aria-pressed')]).toEqual([7, 'true'])
+  })
+
   it('keeps the sound selected when its removal fails', async () => {
     const { view, sound, requests, ready } = mount({ state: soundState, post: () => ({ status: 500, body: { error: 'busy' } }) })
     await ready()
@@ -357,46 +442,55 @@ describe('sound tracks', () => {
     expect(heads()).toEqual(['声音 1', '旁白'])
   })
 
-  it('deletes a stored track through timeline.sound_track_remove, and an empty track added in this view without a write', async () => {
-    const { view, head, lanes, requests, ready, addTrack } = mount()
+  it('adds an empty track through timeline.track_add, one write per menu click, and deletes a track through timeline.sound_track_remove', async () => {
+    const { view, head, lanes, requests, ready, addTrack } = mount(addingTracks(soundState))
     await ready()
     expect(addTrack().disabled).toBe(false)
     fireEvent.click(addTrack())
-    expect(lanes()).toBe(3)
-    // One empty track at a time: the operations accept a track up to the one after the last stored track.
+    // Until the refreshed state shows the new track, the menu adds no other.
     expect(addTrack().disabled).toBe(true)
-    fireEvent.click(addTrack())
-    expect(lanes()).toBe(3)
-    fireEvent.contextMenu(head(2))
-    fireEvent.click(view.getByRole('menuitem', { name: '删除音轨' }))
-    expect(lanes()).toBe(2)
-    expect(addTrack().disabled).toBe(false)
-    await act(async () => { await Promise.resolve() })
-    expect(requests()).toEqual([])
+    await waitFor(() => { expect(lanes()).toBe(3) })
+    expect(requests()).toEqual([expect.objectContaining({ operation: 'timeline.track_add', params: { timeline: 't1', kind: 'sound' }, intent: '添加音轨' })])
+    await waitFor(() => { expect(addTrack().disabled).toBe(false) })
+    fireEvent.keyDown(window, { key: 'Escape' })
 
     fireEvent.contextMenu(head(1))
     fireEvent.click(view.getByRole('menuitem', { name: '删除音轨' }))
-    await waitFor(() => { expect(requests()).toHaveLength(1) })
-    expect(requests()[0]).toMatchObject({
+    await waitFor(() => { expect(requests()).toHaveLength(2) })
+    expect(requests()[1]).toMatchObject({
       operation: 'timeline.sound_track_remove', params: { timeline: 't1', track: 1 }, intent: '删除音轨 2',
     })
   })
 
-  it('deletes the first track of a timeline that stores no track without a write, and offers 添加音轨 again after it', async () => {
-    const { view, head, heads, requests, ready, addTrack } = mount()
+  it('deletes the empty first track of a new timeline through timeline.sound_track_remove, leaving no sound track, and adds one again', async () => {
+    // The served state drops t2's empty sound track once the editor writes its removal.
+    let removed = false
+    const routes: ScriptedRoutes = {
+      state: () => {
+        const state = soundState()
+        const t2 = state.components.timeline.timelines[1]
+        if (removed && t2 !== undefined) t2.track_order = []
+        return state
+      },
+      post: (_path, body) => {
+        const { operation, params = {} } = body as { operation: string; params?: Record<string, unknown> }
+        removed = operation === 'timeline.sound_track_remove'
+        return { status: 200, body: record({ id: 'r1', operation, params }) }
+      },
+    }
+    const { view, head, heads, lanes, requests, ready, addTrack } = mount(routes)
     await ready()
     fireEvent.click(view.getAllByRole('tab')[1] as HTMLElement)
-    expect([heads(), addTrack().disabled]).toEqual([['声音 1'], false])
+    expect(heads()).toEqual(['声音 1'])
+    fireEvent.contextMenu(head(0))
+    fireEvent.click(view.getByRole('menuitem', { name: '删除音轨' }))
+    await waitFor(() => { expect(lanes()).toBe(0) })
+    expect(requests()).toHaveLength(1)
+    expect(requests()[0]).toMatchObject({ operation: 'timeline.sound_track_remove', params: { timeline: 't2', track: 0 }, intent: '删除音轨 1' })
+    await waitFor(() => { expect(addTrack().disabled).toBe(false) })
     fireEvent.click(addTrack())
-    expect([heads(), addTrack().disabled]).toEqual([['声音 1', '声音 2'], true])
-    for (const track of [1, 0]) {
-      fireEvent.contextMenu(head(track))
-      fireEvent.click(view.getByRole('menuitem', { name: '删除音轨' }))
-    }
-    // The view always shows one track.
-    expect([heads(), addTrack().disabled]).toEqual([['声音 1'], false])
-    await act(async () => { await Promise.resolve() })
-    expect(requests()).toEqual([])
+    await waitFor(() => { expect(requests()).toHaveLength(2) })
+    expect(requests()[1]).toMatchObject({ operation: 'timeline.track_add', params: { timeline: 't2', kind: 'sound' } })
   })
 
   it('writes timeline.mute from the video header and from a sound track header, and plays muted audio silent', async () => {
@@ -450,7 +544,7 @@ describe('sound tracks', () => {
     expect(requests().slice(2).map(each => each['intent'])).toEqual(['取消 旁白 的静音', '取消视频原声的静音'])
   })
 
-  it('shows a track that only a mute stores, deletes a track from its header, and disables the speakers without a timeline', async () => {
+  it('shows a track that only a mute stores, deletes a track from its header, and disables the speakers and delete without a timeline', async () => {
     const mutedThird = (): FixtureState => {
       const state = soundState()
       const [t1] = state.components.timeline.timelines
@@ -470,17 +564,21 @@ describe('sound tracks', () => {
     await empty.ready()
     const speakers = [empty.view.getByRole('button', { name: '静音 视频' }), within(empty.head(0)).getByRole('button', { name: '静音 声音 1' })]
     expect(speakers.map(button => (button as HTMLButtonElement).disabled)).toEqual([true, true])
+    // The track the editor shows without a timeline is not stored, so it cannot be deleted either.
+    expect(within(empty.head(0)).getByRole('button', { name: '删除音轨 声音 1' })).toHaveProperty('disabled', true)
+    fireEvent.contextMenu(empty.head(0))
+    expect((empty.view.getByRole('menuitem', { name: '删除音轨' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('sends one write for repeated clicks on a header button until the refreshed state arrives, and keeps an unmuted track shown', async () => {
-    // The served state applies each timeline.mute; a write fails while `fail` is set.
+  it('sends one write for repeated clicks on a header button until the refreshed state arrives, and keeps an unmuted empty track', async () => {
+    // The served state applies each timeline.mute to t1, which stores an empty third track; a write fails while `fail` is set.
     const muted = { video: false, tracks: [2] }
     let fail = false
     const routes: ScriptedRoutes = {
       state: () => {
         const state = soundState()
         const [t1] = state.components.timeline.timelines
-        if (t1 !== undefined) Object.assign(t1, { video_muted: muted.video, muted_sound_tracks: [...muted.tracks] })
+        if (t1 !== undefined) Object.assign(t1, { video_muted: muted.video, muted_sound_tracks: [...muted.tracks], track_order: ['sound', 'sound', 'sound'] })
         return state
       },
       post: (_path, body) => {
@@ -507,7 +605,7 @@ describe('sound tracks', () => {
     expect(requests().map(each => each['operation'])).toEqual(['timeline.mute'])
     expect(videoMute().disabled).toBe(false)
 
-    // Unmuting the track that only its mute stored keeps it shown, as the empty track of this view.
+    // Unmuting the empty track keeps it.
     expect(heads()).toEqual(['声音 1', '旁白', '声音 3'])
     fireEvent.click(within(head(2)).getByRole('button', { name: '静音 声音 3' }))
     await waitFor(() => { expect(within(head(2)).getByRole('button', { name: '静音 声音 3' }).getAttribute('aria-pressed')).toBe('false') })
@@ -604,6 +702,37 @@ describe('sound tracks', () => {
     expect(disabled()).toEqual([true, true])
     await waitFor(() => { expect(disabled()).toEqual([false, false]) })
     expect([imports.length, requests().length]).toEqual([1, 2])
+  })
+
+  it('adds a sound where a free spot of a sound track was right-clicked, disables that item while a sound add runs, and opens no lane menu without a timeline', async () => {
+    const { view, lane, dialog, requests, ready } = mount(growingState(() => false))
+    await ready()
+    const items = (): string[] => within(view.getByRole('menu')).getAllByRole('menuitem')
+      .map(item => `${item.textContent}${(item as HTMLButtonElement).disabled ? ' (off)' : ''}`)
+    // Escape closes a dialog that a menu opened and leaves focus on the editor.
+    fireEvent.contextMenu(lane(1), { clientX: 40 })
+    fireEvent.click(view.getByRole('menuitem', { name: '在这里添加声音' }))
+    fireEvent.keyDown(dialog() as HTMLElement, { key: 'Escape' })
+    expect([dialog(), document.activeElement]).toEqual([null, view.getByTestId('dv-timeline-editor')])
+    fireEvent.contextMenu(lane(0), { clientX: 160 })
+    expect(items()).toEqual(['在这里添加声音', '添加视频轨', '添加音轨'])
+    fireEvent.click(view.getByRole('menuitem', { name: '在这里添加声音' }))
+    expect(within(dialog() as HTMLElement).getByText('从 00:04.00 开始')).toBeTruthy()
+    fireEvent.click(within(dialog() as HTMLElement).getByText('theme.mp3'))
+    await waitFor(() => { expect(requests()).toHaveLength(1) })
+    expect(requests()[0]).toMatchObject({ operation: 'timeline.sound_add', params: { timeline: 't1', asset: 'theme.mp3', start_sec: 4, track: 0 } })
+    // The refreshed state does not show the sound yet, so the add still runs.
+    fireEvent.contextMenu(lane(1), { clientX: 40 })
+    expect(items()[0]).toBe('在这里添加声音 (off)')
+    cleanup()
+
+    const empty = mount({ state: withoutTimelines })
+    await empty.ready()
+    for (const target of [empty.lane(0), empty.view.getByRole('list', { name: '视频轨道' })]) {
+      expect(fireEvent.contextMenu(target)).toBe(true)
+    }
+    fireEvent.contextMenu(empty.view.container.querySelector('[data-main-track-head]') as HTMLElement)
+    expect(within(empty.view.getByRole('menu')).getAllByRole('menuitem').map(item => (item as HTMLButtonElement).disabled)).toEqual([true, true, true, true])
   })
 
   it('closes the sound and track menu on Escape or a press outside it', async () => {

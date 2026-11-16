@@ -1,23 +1,35 @@
 /**
  * The Timeline component of DreamVerse as the `dvTimeline` Cordis service: the timelines of a project (each one edited
  * video, shown by its name, or as 时间线 {n} for a timeline t<n> without one) and their clips (an asset with in and out
- * points) and sounds (an audio asset on a numbered sound track, from a start time). It owns fifteen edit operations,
- * which change only records and never create a file:
+ * points) and sounds (an audio asset on a numbered sound track, from a start time). The clips of the 视频 track play one
+ * after another and cover every other video track; the video tracks under it hold clips at their own start times, which
+ * show after the 视频 track's end, and a clip of a track with a lower number hides the picture and audio of the tracks with
+ * higher numbers. Every track the user or the agent adds goes at the bottom of the editor. It owns twenty-five edit
+ * operations, which change only records and never create a file:
  * - `timeline.create`, `timeline.update`, `timeline.rename`, `timeline.delete` act on a whole timeline;
  * - `timeline.clip_insert`, `timeline.clip_move`, `timeline.clip_remove`, `timeline.clip_split`, `timeline.clip_trim`,
  *   `timeline.clip_replace` edit its clips, each named by its ID (`cl1`, `cl2`, …) in the `clip` param;
- * - `timeline.sound_add`, `timeline.sound_remove` add and remove its sounds, each named by its ID (`sd1`, `sd2`, …) in
- *   the `sound` param, and `timeline.sound_track_remove`, `timeline.sound_track_rename` act on one sound track;
- * - `timeline.mute` mutes or unmutes the clips' own audio or one sound track.
+ * - `timeline.sound_add`, `timeline.sound_remove`, `timeline.sound_split`, `timeline.sound_move`, `timeline.sound_trim`
+ *   add, remove, split, move and trim its sounds, each named by its ID (`sd1`, `sd2`, …) in the `sound` param, and
+ *   `timeline.sound_track_remove`, `timeline.sound_track_rename` act on one sound track;
+ * - `timeline.track_clip_add`, `timeline.track_clip_move` put a video asset on a video track under the 视频 track and
+ *   move it, `timeline.video_track_move` moves one of those tracks to another number, which sets which track covers
+ *   which, and `timeline.video_track_remove` deletes one; remove, split, trim and replace also work on their clips;
+ * - `timeline.main_track_remove` deletes the 视频 track's clips and makes the first video track under it the 视频 track,
+ *   and `timeline.main_track_swap` swaps the 视频 track with that video track;
+ * - `timeline.track_add` adds an empty video track or sound track;
+ * - `timeline.mute` mutes or unmutes the own audio of the 视频 track's clips, of one video track under it, or one sound
+ *   track.
  *
- * Its sixteenth operation, `timeline.export`, writes a timeline to one video file with `dvFfmpeg` and imports the file
- * into the asset pool (see `export.ts`); the video leaves out the sounds, and the clips' own audio while it is muted.
+ * Its twenty-sixth operation, `timeline.export`, writes a timeline to one video file with `dvFfmpeg` and imports the file
+ * into the asset pool (see `export.ts`): the video tracks under the 视频 track after its end, without the sounds and
+ * without the audio of muted video tracks.
  * While `@dv/canvas` is loaded, `timeline.place` puts one timeline on the canvas as a node of kind `timeline` (see
  * `place.ts`).
  *
  * The operations that add clips assign the new clip IDs and store them in the record's `report.clips`, and
- * `timeline.sound_add` stores the new sound ID in `report.sounds`; the `timeline` reducer folds the records into the
- * `timeline` slice. `timeline.create` and `timeline.update` declare the `clip` input
+ * `timeline.sound_add` and `timeline.sound_split` store the new sound ID in `report.sounds`; the `timeline` reducer
+ * folds the records into the `timeline` slice. `timeline.create` and `timeline.update` declare the `clip` input
  * role in `pendingInputRoles`: a clip input may name a render that is not done, and the clip is a placeholder until
  * the render is done. `dvProject` turns each operation into its agent tool
  * (`dv_timeline_create`, `dv_timeline_clip_move`, `dv_timeline_export`, ...). While the DSH skill registry is mounted,
@@ -34,11 +46,12 @@ import type { AssetId, OperationContext, OperationResult, OperationSpec, Project
 import { exportOperation, exportTimeline } from './export.ts'
 import { placeOperation, TIMELINE_NODE_MAKER } from './place.ts'
 import {
-  addedClipCount, clipProblem, namedTimeline, OPERATIONS, reportedClips, reportedSounds, timelineReducer,
+  addedClipCount, afterCall, clipProblem, mainClipStarts, namedTimeline, NEW_CLIP, OPERATIONS, reportedClips, reportedSounds,
+  soundLengthProblem, timelineReducer, trackClipProblem,
 } from './reducer.ts'
 import type { ClipId, SoundId, Timeline } from './types.ts'
 
-export type { Clip, ClipId, ClipStatus, Sound, SoundId, Timeline, TimelineId, TimelineState } from './types.ts'
+export type { Clip, ClipId, ClipStatus, Sound, SoundId, Timeline, TimelineId, TimelineState, TrackClip, TrackKind } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -66,6 +79,11 @@ const TIMELINE_EDITING_SKILL = {
 /** The `timeline` param of `timeline.clip_insert`, which may omit it. */
 const TIMELINE_PARAM = {
   timeline: { type: 'string', description: 'The timeline to edit, such as t1 (see `timelines` in dv_proj_state). Defaults to the first timeline.' },
+} as const
+
+/** The `sound` param: the sound's ID, which also names the timeline that holds it. */
+const SOUND_PARAM = {
+  sound: { type: 'string', required: true, description: 'The sound ID, such as sd2 (see `sounds` of `timelines` in dv_proj_state).' },
 } as const
 
 /** The `clip` param: the clip's ID, which also names the timeline that holds it. */
@@ -107,6 +125,12 @@ function clipOf(record: ProjectRecord): string {
   return id === undefined ? '' : `${id} `
 }
 
+/** What a `timeline.mute` record mutes, for its summary: `video audio`, `video track 1` or `sound track 0`. */
+function muteTarget(record: ProjectRecord): string {
+  if (record.params['target'] === 'video') return 'video audio'
+  return `${record.params['target'] === 'video_track' ? 'video' : 'sound'} track ${shown(record.params['track'])}`
+}
+
 /** A params field as display text. */
 function shown(value: unknown): string {
   return typeof value === 'number' || typeof value === 'string' ? String(value) : '?'
@@ -130,7 +154,19 @@ function edit(
   }
 }
 
-/** The Timeline service: the reducer, the fifteen edit operations and the export operation. */
+/** The operations that can change where the track clips play, so their result is checked for overlaps. */
+const TRACK_CLIP_EDITS: readonly string[] = [
+  OPERATIONS.trackClipAdd, OPERATIONS.trackClipMove, OPERATIONS.trim, OPERATIONS.replace,
+]
+
+/** The `track` param of the operations that name a video track under the 视频 track. */
+const VIDEO_TRACK_PARAM = {
+  type: 'integer',
+  description: 'The video track under the main video track: 0 for the first one; an existing track or the one after the last '
+    + '(see `video_tracks` in dv_proj_state).',
+} as const
+
+/** The Timeline service: the reducer, the twenty-five edit operations and the export operation. */
 export default class DvTimeline extends Service {
   static inject = ['dvProject', 'dvAssetPool', 'dvFfmpeg']
   static Config = Config
@@ -206,30 +242,66 @@ export default class DvTimeline extends Service {
 
   /**
    * Check a call against the timeline it edits, and assign the IDs of the clips or the sound it adds; the record fails
-   * with the reason when the call cannot apply, or when the asset of `timeline.sound_add` is not an audio file. The
-   * edit itself is the record: the reducer applies it.
+   * with the reason when the call cannot apply, when the asset of `timeline.sound_add` is not an audio file or the asset
+   * of `timeline.track_clip_add`, or of `timeline.clip_replace` of a video track's clip, not a video, when a sound split or
+   * trim does not fit the sound's asset, or when the call would leave a track clip overlapping another clip of its
+   * track, starting before the timeline's start, or with an unknown length. The edit itself is the record: the reducer
+   * applies it.
    * @param context - the running call.
-   * @returns no outputs; `report.clips` holds the assigned clip IDs of a call that adds clips, and `report.sounds` the
-   *   assigned sound ID of `timeline.sound_add`.
+   * @returns no outputs; `report.clips` holds the assigned clip IDs of a call that adds clips, `report.sounds` the
+   *   assigned sound ID of `timeline.sound_add` or of the second part of `timeline.sound_split`, and `report.starts` the
+   *   times at which `timeline.main_track_swap` puts the 视频 track's clips on video track 0.
    * @throws Error with the reason a call cannot apply.
    */
   private execute(context: OperationContext): Promise<OperationResult> {
     const call = { operation: context.record?.operation ?? null, params: context.params, inputs: context.inputs }
     const problem = clipProblem(context.state.components.timeline, call)
     if (problem !== null) return Promise.reject(new Error(problem))
+    const durationOf = (asset: AssetId): number | null => this.ctx.dvAssetPool.get(asset).duration_sec
+    if (call.operation === OPERATIONS.soundSplit || call.operation === OPERATIONS.soundTrim) {
+      const misfit = soundLengthProblem(context.state.components.timeline, call, durationOf)
+      if (misfit !== null) return Promise.reject(new Error(misfit))
+    }
     if (call.operation === OPERATIONS.soundAdd) {
       const asset = String(call.params['asset'])
       if (this.ctx.dvAssetPool.mediaType(brandString<AssetId>(asset)) !== 'audio') {
         return Promise.reject(new Error(`Asset ${asset} is not an audio file.`))
       }
+    }
+    if (call.operation === OPERATIONS.soundAdd || call.operation === OPERATIONS.soundSplit) {
       return Promise.resolve({ outputs: [], report: { sounds: [this.assignSoundId(context.project)] } })
     }
+    // A clip of a video track plays only a video: one that an add puts there, or one that replaces a track clip's asset.
+    const replacesTrackClip = call.operation === OPERATIONS.replace
+      && context.state.components.timeline.timelines.some(timeline => timeline.track_clips.some(clip => clip.id === call.params['clip']))
+    const asset = brandString<AssetId>(String(call.params['asset']))
+    if ((call.operation === OPERATIONS.trackClipAdd || replacesTrackClip) && this.ctx.dvAssetPool.mediaType(asset) !== 'video') {
+      return Promise.reject(new Error(`Asset ${asset} is not a video.`))
+    }
+    if (call.operation === OPERATIONS.mainTrackSwap) {
+      // `clipProblem` found the named timeline.
+      const timeline = context.state.components.timeline.timelines.find(entry => entry.id === namedTimeline(call.params)) as Timeline
+      const starts = mainClipStarts(timeline, durationOf)
+      return typeof starts === 'string' ? Promise.reject(new Error(starts)) : Promise.resolve({ outputs: [], report: { starts } })
+    }
+    if (TRACK_CLIP_EDITS.includes(String(call.operation))) {
+      const before = context.state.components.timeline
+      // The new clip of an add gets its ID only once the call applies, so the check names it by a stand-in ID.
+      const after = afterCall(before, { ...call, operation: String(call.operation), report: { clips: [NEW_CLIP] } })
+      const changed = call.operation === OPERATIONS.trackClipAdd ? NEW_CLIP : brandString<ClipId>(String(call.params['clip']))
+      for (const timeline of after.timelines) {
+        if (before.timelines.some(entry => entry.track_clips === timeline.track_clips)) continue
+        const problem = trackClipProblem(timeline, durationOf, changed)
+        if (problem !== null) return Promise.reject(new Error(problem))
+      }
+    }
     const count = addedClipCount(call)
-    const adds = [OPERATIONS.create, OPERATIONS.update, OPERATIONS.insert, OPERATIONS.split].includes(call.operation as never)
+    const adds = [OPERATIONS.create, OPERATIONS.update, OPERATIONS.insert, OPERATIONS.split, OPERATIONS.trackClipAdd]
+      .includes(call.operation as never)
     return Promise.resolve(adds ? { outputs: [], report: { clips: this.assignClipIds(context.project, count) } } : { outputs: [] })
   }
 
-  /** The fifteen edit operations, in the order the agent's tool list shows them. */
+  /** The twenty-five edit operations, in the order the agent's tool list shows them. */
   private operations(): OperationSpec[] {
     const execute = (context: OperationContext): Promise<OperationResult> => this.execute(context)
     return [
@@ -293,8 +365,9 @@ export default class DvTimeline extends Service {
       edit({
         name: OPERATIONS.move,
         label: { zh: '移动片段', en: 'Move clip' },
-        description: 'Move a clip to another position on its timeline (1 = first); the other clips shift.',
-        params: { ...CLIP_PARAM, to: { type: 'integer', required: true, description: 'The position the clip takes.' } },
+        description: 'Move a clip to another position of the main video track (1 = first); the other clips shift. A clip of a video '
+          + 'track under it moves into the main video track at that position.',
+        params: { ...CLIP_PARAM, to: { type: 'integer', required: true, description: 'The position the clip takes on the main video track.' } },
         summarize: record => `clip ${shown(record.params['clip'])} moved to ${shown(record.params['to'])}`,
       }, execute),
       edit({
@@ -357,8 +430,48 @@ export default class DvTimeline extends Service {
         label: { zh: '删除声音', en: 'Remove sound' },
         version: '1',
         description: 'Remove a sound from its timeline. The audio asset stays in the project.',
-        params: { sound: { type: 'string', required: true, description: 'The sound ID, such as sd2 (see `sounds` of `timelines` in dv_proj_state).' } },
+        params: SOUND_PARAM,
         summarize: record => `sound ${shown(record.params['sound'])} removed`,
+      }, execute),
+      edit({
+        name: OPERATIONS.soundSplit,
+        label: { zh: '拆分声音', en: 'Split sound' },
+        version: '1',
+        description: 'Split one sound in two at a time inside its audio asset (seconds from the asset\'s start, not from the timeline\'s '
+          + 'start). Both parts play the same asset where the sound played: the first keeps the sound ID and ends at at_sec, the '
+          + 'second gets a new sound ID and starts there. No file is created.',
+        params: {
+          ...SOUND_PARAM,
+          at_sec: { type: 'number', required: true, description: 'Seconds inside the sound\'s asset, between its in and out points.' },
+        },
+        summarize: record => `sound ${shown(record.params['sound'])} split at ${shown(record.params['at_sec'])}s`,
+      }, execute),
+      edit({
+        name: OPERATIONS.soundMove,
+        label: { zh: '移动声音', en: 'Move sound' },
+        version: '1',
+        description: 'Move one sound to another start time, and with track to another sound track: an existing track or the one after '
+          + 'the last. Sounds may overlap.',
+        params: {
+          ...SOUND_PARAM,
+          start_sec: { type: 'number', required: true, description: 'The timeline time at which the sound starts, in seconds; 0 or more.' },
+          track: { type: 'integer', description: 'The sound track, 0 for the first (see `sound_tracks` in dv_proj_state); omit to keep it.' },
+        },
+        summarize: record => `sound ${shown(record.params['sound'])} moved to ${shown(record.params['start_sec'])}s`
+          + (record.params['track'] === undefined ? '' : ` on sound track ${shown(record.params['track'])}`),
+      }, execute),
+      edit({
+        name: OPERATIONS.soundTrim,
+        label: { zh: '裁剪声音', en: 'Trim sound' },
+        version: '1',
+        description: 'Set the in and out points of a sound (seconds inside its audio asset); no file is created. A missing point means '
+          + 'the asset\'s start or end. Moving the in point moves the sound\'s start by the same amount, so the rest plays where it did.',
+        params: {
+          ...SOUND_PARAM,
+          in_sec: { type: 'number', description: 'Where the sound starts inside its asset; omit for the asset\'s start.' },
+          out_sec: { type: 'number', description: 'Where the sound ends inside its asset; omit for the asset\'s end.' },
+        },
+        summarize: record => `sound ${shown(record.params['sound'])} trimmed`,
       }, execute),
       edit({
         name: OPERATIONS.soundTrackRemove,
@@ -386,22 +499,120 @@ export default class DvTimeline extends Service {
       edit({
         name: OPERATIONS.mute,
         label: { zh: '静音或取消静音', en: 'Mute or unmute' },
-        version: '1',
-        description: 'Mute or unmute audio of a timeline. Target `video` is the clips\' own audio: while it is muted, the user hears '
-          + 'the clips silent when playing the timeline, and the exported video has no audio. Target `sound` is one sound track: '
-          + 'while it is muted, the user does not hear its sounds when playing the timeline (the exported video does not include '
-          + 'sounds yet).',
+        version: '2',
+        description: 'Mute or unmute audio of a timeline. Target `video` is the own audio of the main video track\'s clips, and '
+          + 'target `video_track` that of one video track under it: while it is muted, the user hears those clips silent when '
+          + 'playing the timeline, and the exported video leaves their audio out. Target `sound` is one sound track: while it is '
+          + 'muted, the user does not hear its sounds when playing the timeline (the exported video does not include sounds yet).',
         params: {
           timeline: { type: 'string', required: true, description: 'The timeline, such as t1.' },
-          target: { type: 'string', enum: ['video', 'sound'], required: true, description: '`video` for the clips\' own audio, `sound` for one sound track.' },
+          target: {
+            type: 'string', enum: ['video', 'video_track', 'sound'], required: true,
+            description: '`video` for the main video track\'s clips, `video_track` for one video track under it, `sound` for one sound track.',
+          },
           track: {
             type: 'integer',
-            description: 'For target `sound`: the sound track, 0 for the first; an existing track or the one after the last (see `sound_tracks` in dv_proj_state).',
+            description: 'For target `video_track`: the video track, 0 for the first one (see `video_tracks` in dv_proj_state). For '
+              + 'target `sound`: the sound track, 0 for the first; an existing track or the one after the last (see `sound_tracks`).',
           },
           muted: { type: 'boolean', required: true, description: 'true mutes, false unmutes.' },
         },
-        summarize: record => `${prefix(record)}${record.params['target'] === 'video' ? 'video audio' : `sound track ${shown(record.params['track'])}`} `
-          + (record.params['muted'] === true ? 'muted' : 'unmuted'),
+        summarize: record => `${prefix(record)}${muteTarget(record)} ${record.params['muted'] === true ? 'muted' : 'unmuted'}`,
+      }, execute),
+      edit({
+        name: OPERATIONS.trackClipAdd,
+        label: { zh: '添加到视频轨', en: 'Add clip to a video track' },
+        version: '1',
+        description: 'Put a video asset on a video track under the main video track, starting start_sec seconds after the timeline\'s '
+          + 'start. The main video track covers it while the main track has a clip, so the user sees and hears it only after the main '
+          + 'track\'s last clip ends, and only where no track with a lower number has a clip; track 0 is the first track under the '
+          + 'main one. It must not overlap another clip of its track. It gets a new clip ID; dv_timeline_clip_trim, '
+          + 'dv_timeline_clip_split, dv_timeline_clip_replace and dv_timeline_clip_remove work on it.',
+        params: {
+          timeline: { type: 'string', required: true, description: 'The timeline, such as t1.' },
+          asset: { type: 'string', required: true, description: 'The video asset ID.' },
+          start_sec: { type: 'number', required: true, description: 'Seconds from the timeline\'s start; 0 or more.' },
+          track: { ...VIDEO_TRACK_PARAM, required: true },
+        },
+        summarize: record => `${prefix(record)}clip ${clipOf(record)}added to video track ${shown(record.params['track'])} at ${shown(record.params['start_sec'])}s`,
+      }, execute),
+      edit({
+        name: OPERATIONS.trackClipMove,
+        label: { zh: '移动视频轨片段', en: 'Move clip on video tracks' },
+        version: '1',
+        description: 'Move a clip of a video track under the main video track to another start time, and to another of those tracks '
+          + 'when `track` is given. A clip of the main video track moves out of it onto `track`, which it then needs. It must not '
+          + 'overlap another clip of the track it lands on.',
+        params: {
+          ...CLIP_PARAM,
+          start_sec: { type: 'number', required: true, description: 'Seconds from the timeline\'s start; 0 or more.' },
+          track: { ...VIDEO_TRACK_PARAM, description: `${VIDEO_TRACK_PARAM.description} Defaults to the clip's own track.` },
+        },
+        summarize: record => `clip ${shown(record.params['clip'])} moved to ${shown(record.params['start_sec'])}s`
+          + (record.params['track'] === undefined ? '' : ` on video track ${shown(record.params['track'])}`),
+      }, execute),
+      edit({
+        name: OPERATIONS.videoTrackRemove,
+        label: { zh: '删除视频轨', en: 'Delete video track' },
+        version: '1',
+        description: 'Delete one video track under the main video track with all its clips; every one of those tracks with a higher '
+          + 'number moves up one. The assets stay.',
+        params: {
+          timeline: { type: 'string', required: true, description: 'The timeline, such as t1.' },
+          track: { ...VIDEO_TRACK_PARAM, required: true, description: 'The video track under the main video track, 0 for the first one.' },
+        },
+        summarize: record => `${prefix(record)}video track ${shown(record.params['track'])} deleted`,
+      }, execute),
+      edit({
+        name: OPERATIONS.videoTrackMove,
+        label: { zh: '移动视频轨', en: 'Move video track' },
+        version: '1',
+        description: 'Move one video track under the main video track to another number, with its clips and its mute. A track with a '
+          + 'lower number covers the tracks with higher numbers after the main track ends; the tracks between the two numbers move '
+          + 'one number toward the old one. The main video track covers them all; dv_timeline_main_track_swap swaps it with track 0.',
+        params: {
+          timeline: { type: 'string', required: true, description: 'The timeline, such as t1.' },
+          track: { ...VIDEO_TRACK_PARAM, required: true, description: 'The video track to move, 0 for the first one.' },
+          to: { ...VIDEO_TRACK_PARAM, required: true, description: 'Its new number: an existing video track, 0 to cover all the others.' },
+        },
+        summarize: record => `${prefix(record)}video track ${shown(record.params['track'])} moved to ${shown(record.params['to'])}`,
+      }, execute),
+      edit({
+        name: OPERATIONS.mainTrackRemove,
+        label: { zh: '删除主视频轨', en: 'Delete main video track' },
+        version: '1',
+        description: 'Delete all clips of the main video track; video track 0 under it then becomes the main video track. Its clips '
+          + 'play one after another in the order of their start times, without the gaps between them, and keep their clip IDs; its '
+          + 'mute becomes the mute of the main track\'s own audio, and every other video track moves up one number. Without video '
+          + 'tracks, the main video track stays empty. The assets stay.',
+        params: { timeline: { type: 'string', required: true, description: 'The timeline, such as t1.' } },
+        summarize: record => `${prefix(record)}main video track deleted`,
+      }, execute),
+      edit({
+        name: OPERATIONS.mainTrackSwap,
+        label: { zh: '对调主视频轨', en: 'Swap main video track' },
+        version: '1',
+        description: 'Swap the main video track with video track 0 under it, so the other one covers. The main track\'s clips go onto '
+          + 'video track 0 at the times they play now; the clips of video track 0 become the main track\'s clips, one after another '
+          + 'in the order of their start times, without the gaps between them. Both keep their clip IDs, and the two mutes swap. '
+          + 'Refused while a clip of the main track is still rendering.',
+        params: { timeline: { type: 'string', required: true, description: 'The timeline, such as t1.' } },
+        summarize: record => `${prefix(record)}main video track swapped with video track 0`,
+      }, execute),
+      edit({
+        name: OPERATIONS.trackAdd,
+        label: { zh: '添加轨道', en: 'Add track' },
+        version: '1',
+        description: 'Add an empty video track or sound track to a timeline, under all its tracks. Adding a clip or a sound to the '
+          + 'track after the last also adds a track, so call this only for an empty track.',
+        params: {
+          timeline: { type: 'string', required: true, description: 'The timeline, such as t1.' },
+          kind: {
+            type: 'string', required: true, enum: ['video', 'sound'],
+            description: 'video for a video track under the main video track, sound for a sound track.',
+          },
+        },
+        summarize: record => `${prefix(record)}${shown(record.params['kind'])} track added`,
       }, execute),
     ]
   }

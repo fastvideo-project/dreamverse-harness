@@ -32,7 +32,7 @@ const shownTabs = (view: { getAllByRole: (role: string) => HTMLElement[] }): Arr
 function twoTimelines(): FixtureState {
   const state = fixtureState()
   state.assets.push(asset('imported.mp4', 'video/mp4', null, 3))
-  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], clips: [{ id: 'cl3' as ClipId, asset: 'imported.mp4' as AssetId, source: null, in_sec: null, out_sec: null }] })
+  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], track_clips: [], muted_video_tracks: [], track_order: ['sound'], clips: [{ id: 'cl3' as ClipId, asset: 'imported.mp4' as AssetId, source: null, in_sec: null, out_sec: null }] })
   return state
 }
 
@@ -124,7 +124,7 @@ describe('TimelineView', () => {
     const { fetch } = scriptedFetch({
       state: () => {
         const state = twoTimelines()
-        state.components.timeline.timelines.push({ id: 't3' as TimelineId, name: '', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], clips: [] })
+        state.components.timeline.timelines.push({ id: 't3' as TimelineId, name: '', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], track_clips: [], muted_video_tracks: [], track_order: ['sound'], clips: [] })
         return state
       },
     })
@@ -288,6 +288,12 @@ describe('TimelineView', () => {
     expect(view.container.querySelector('[data-clip="cl8"]')?.getAttribute('title')).toContain('渲染中…')
     expect(view.container.querySelector('[data-clip="cl9"]')?.getAttribute('title')).toContain('渲染失败')
     expect(view.container.querySelectorAll('[data-clip="cl8"] [data-trim]')).toHaveLength(0)
+    // A placeholder follows a drag only sideways: it cannot go on a video track until it is rendered.
+    const placeholder = view.container.querySelector('[data-clip="cl8"]') as HTMLElement
+    fireEvent.pointerDown(placeholder, { clientX: 0, clientY: 0 })
+    fireEvent.pointerMove(placeholder, { clientX: 80, clientY: 200 })
+    expect(placeholder.style.transform).toBe('translate(80px, 0px)')
+    fireEvent.pointerUp(placeholder, { clientX: 80, clientY: 200 })
     expect(view.getByTestId('dv-timeline-export-waiting').textContent).toBe('片段 3, 4 还没就绪，全部就绪后才能导出')
     expect((view.getByText('导出') as HTMLButtonElement).disabled).toBe(true)
     // Clip 3 plays from 7 s and clip 4 from 9 s.
@@ -583,7 +589,7 @@ describe('timeline editor gestures', () => {
     const { view, track } = mount({
       state: () => {
         const state = twoTimelines()
-        if (created) state.components.timeline.timelines.push({ id: 't3' as TimelineId, name: '', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], clips: [] })
+        if (created) state.components.timeline.timelines.push({ id: 't3' as TimelineId, name: '', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], track_clips: [], muted_video_tracks: [], track_order: ['sound'], clips: [] })
         return state
       },
       post: () => { created = true; return { status: 200, body: record({ id: 'n1', operation: 'timeline.create' }) } },
@@ -597,10 +603,10 @@ describe('timeline editor gestures', () => {
   it('tells a project without timelines to create one, and names a created timeline after the first free ID', async () => {
     const empty = mount({ state: withoutTimelineSlice })
     await waitFor(() => { expect(empty.view.getByTestId('dv-timeline-viewer-empty').textContent).toBe('项目还没有时间线。点上方的 ＋ 新建 创建一条。') })
-    expect(empty.view.queryByLabelText('插入片段')).toBeNull()
+    expect((empty.view.getByRole('button', { name: '插入片段' }) as HTMLButtonElement).disabled).toBe(true)
     empty.view.unmount()
     const state = fixtureState()
-    state.components.timeline.timelines = [{ id: 't2' as TimelineId, name: '', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], clips: [] }]
+    state.components.timeline.timelines = [{ id: 't2' as TimelineId, name: '', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], track_clips: [], muted_video_tracks: [], track_order: ['sound'], clips: [] }]
     const { view, requests } = mount({ state })
     await waitFor(() => { expect(view.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['时间线 2']) })
     fireEvent.click(view.getByText('＋ 新建'))
@@ -751,7 +757,8 @@ describe('timeline editor layout', () => {
 
   it('resizes the track area by drag and by ArrowUp and ArrowDown within its bounds, and remembers the height for the browser', async () => {
     // The preview and the track area share 800 - 100 - 1 = 699 px, so the track area takes at most 699 - 160 = 539 px;
-    // its toolbar and rows need 300 - 400 + 300 + 14 = 214 px.
+    // its toolbar needs 300 - 400 = -100 px, and the ruler and the 视频 track, which the 300 px rows hold, 26 + 6 + 56 = 88
+    // px with the 14 px padding, so it takes at least 2 px; the rows under them scroll.
     layOut({ top: 100, bottom: 800, offsetHeight: 300, clientHeight: 400, clientWidth: 0 })
     const { view, track } = mount()
     await track()
@@ -776,7 +783,7 @@ describe('timeline editor layout', () => {
     fireEvent.pointerDown(handle(), { clientY: 100 })
     fireEvent.pointerMove(handle(), { clientY: 700 })
     fireEvent.pointerCancel(handle())
-    expect([height(), stored()]).toEqual(['214', '214'])
+    expect([height(), stored()]).toEqual(['2', '2'])
     view.unmount()
 
     // A remembered height is clamped again in a shorter editor: 600 - 100 - 1 - 160 = 339 px at most.

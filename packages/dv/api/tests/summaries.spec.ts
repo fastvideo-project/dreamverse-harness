@@ -77,11 +77,11 @@ function state(): SummarySource {
         timelines: [
           {
             id: brandString<TimelineId>('t1'), name: '', clips: [clip('c0', null), clip('c1', 'shot1.mp4'), clip('c2', 'shot2.mp4')],
-            sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [],
+            sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], track_clips: [], muted_video_tracks: [], track_order: ['sound'],
           },
           {
             id: brandString<TimelineId>('t2'), name: '', clips: [clip('c4', 'notes.txt'), clip('c3', 'shot2.mp4')],
-            sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [],
+            sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], track_clips: [], muted_video_tracks: [], track_order: ['sound'],
           },
         ],
       },

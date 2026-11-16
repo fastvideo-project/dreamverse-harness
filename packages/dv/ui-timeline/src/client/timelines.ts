@@ -1,8 +1,9 @@
 /**
  * Geometry of one timeline in the timeline editor: which timelines a state holds, how long each clip plays after its in
- * and out points, where it starts on the track, and which clip plays at a given time.
+ * and out points, where it starts on its track, which clip plays at a given time, on the 视频 track and on the video
+ * tracks under it, and the order of the track rows.
  */
-import type { Timeline, TimelineState } from '@dv/timeline/types'
+import type { Timeline, TimelineState, TrackKind } from '@dv/timeline/types'
 import { FALLBACK_CLIP_SECONDS } from '@dv/ui-kit/timeline.ts'
 import type { Asset, WireState } from '@dv/ui-kit/types.ts'
 
@@ -99,6 +100,104 @@ export function placeTimeline(state: WireState, timeline: Timeline | null): { cl
   return { clips, total: cursor }
 }
 
+/** One clip placed on a video track under the 视频 track, with its in and out points resolved to numbers. */
+export interface PlacedTrackClip {
+  /** The clip ID, which the clip operations take in their `clip` param. */
+  clip: string
+  /** The video asset the clip plays. */
+  assetId: string
+  /** The video track that holds the clip: 0 for the top track. */
+  track: number
+  /** The recorded in point, or null when the clip starts at the asset's start. */
+  rawIn: number | null
+  /** The recorded out point, or null when the clip ends at the asset's end. */
+  rawOut: number | null
+  /** Asset time where the clip starts playing. */
+  inSec: number
+  /** Asset time where the clip stops playing. */
+  outSec: number
+  /** Length of the whole asset. */
+  assetSeconds: number
+  /** Seconds the clip plays: `outSec - inSec`. */
+  seconds: number
+  /** Timeline time where the clip starts. */
+  startSec: number
+  /** The image the producing record left beside the clip, used as the track thumbnail. */
+  thumbnail: string | null
+  stale: boolean
+}
+
+/**
+ * Place the clips of the video tracks under the 视频 track. A clip whose asset length the state does not know plays
+ * `FALLBACK_CLIP_SECONDS` of it.
+ * @param state - the project state, for asset durations, thumbnails, and stale marks.
+ * @param timeline - the timeline, or null when the project has none.
+ * @returns the clips in the order the timeline stores them, the number of tracks (one past the highest track that holds
+ *   a clip or a mute, and at least the `video` entries of `track_order`, which keep empty tracks), and the timeline time
+ *   at which the last clip ends.
+ */
+export function placeTrackClips(state: WireState, timeline: Timeline | null): { clips: PlacedTrackClip[]; tracks: number; end: number } {
+  const assets = new Map(state.assets.map(asset => [asset.id, asset]))
+  const proj = state.components.proj
+  const records = new Map(proj.records.map(record => [record.id, record]))
+  const clips = (timeline?.track_clips ?? []).map((clip): PlacedTrackClip => {
+    const assetSeconds = assets.get(clip.asset)?.duration_sec ?? FALLBACK_CLIP_SECONDS
+    const inSec = clip.in_sec ?? 0
+    const outSec = clip.out_sec ?? assetSeconds
+    const producerId = proj.created_by[clip.asset] ?? null
+    const producer = producerId === null ? undefined : records.get(producerId)
+    return {
+      clip: clip.id, assetId: clip.asset, track: clip.track, rawIn: clip.in_sec, rawOut: clip.out_sec, inSec, outSec, assetSeconds,
+      seconds: Math.max(0.1, outSec - inSec), startSec: clip.start_sec,
+      thumbnail: producer?.outputs.find(id => assets.get(id)?.mime.startsWith('image/')) ?? null,
+      stale: producerId !== null && producerId in proj.stale,
+    }
+  })
+  // The same count as the reducer's `videoTrackCount`, which a browser package cannot import.
+  const tracks = Math.max(
+    (timeline?.track_order ?? []).filter(kind => kind === 'video').length,
+    ...clips.map(clip => clip.track + 1), ...(timeline?.muted_video_tracks ?? []).map(track => track + 1),
+  )
+  return { clips, tracks, end: Math.max(0, ...clips.map(clip => clip.startSec + clip.seconds)) }
+}
+
+/**
+ * The clip of the video tracks under the 视频 track that the user sees at a timeline time: none while the 视频 track has a
+ * clip there, else the clip of the track with the lowest number that plays then.
+ * @param clips - the placed track clips.
+ * @param position - timeline time in seconds.
+ * @param mainEnd - the time at which the 视频 track's last clip ends.
+ * @returns the clip, or undefined when the 视频 track covers the time or no track clip plays then.
+ */
+export function topTrackClipAt(clips: readonly PlacedTrackClip[], position: number, mainEnd: number): PlacedTrackClip | undefined {
+  if (position < mainEnd) return undefined
+  return clips.filter(clip => position >= clip.startSec && position < clip.startSec + clip.seconds)
+    .reduce<PlacedTrackClip | undefined>((top, clip) => top === undefined || clip.track < top.track ? clip : top, undefined)
+}
+
+/** One row of the editor under the 视频 track and its 原声 row: a video track or a sound track by its number. */
+export interface TrackRow {
+  kind: TrackKind
+  track: number
+}
+
+/**
+ * The rows of the video tracks and sound tracks under the 原声 row, top to bottom: the stored tracks in the timeline's
+ * `track_order`, then, at the bottom, any counted track the order does not list, such as the one sound track the editor
+ * shows while the project has no timeline.
+ * @param order - the timeline's `track_order`.
+ * @param videoTracks - how many video tracks the editor shows.
+ * @param soundTracks - how many sound tracks the editor shows, at least as many as the order lists.
+ * @returns the rows.
+ */
+export function trackRows(order: readonly TrackKind[], videoTracks: number, soundTracks: number): TrackRow[] {
+  const next: Record<TrackKind, number> = { video: 0, sound: 0 }
+  const rows = order.map((kind): TrackRow => ({ kind, track: next[kind]++ }))
+  const rest = (kind: TrackKind, count: number): TrackRow[] =>
+    Array.from({ length: Math.max(0, count - next[kind]) }, (_, index) => ({ kind, track: next[kind] + index }))
+  return [...rows, ...rest('video', videoTracks), ...rest('sound', soundTracks)]
+}
+
 /**
  * The clip that plays at a timeline time. A time at or past the end resolves to the last clip.
  * @param clips - the placed clips.
@@ -193,15 +292,23 @@ export interface TrackSound {
   name: string
   /** The timeline time at which the sound starts. */
   startSec: number
+  /** The recorded in point, or null when the sound starts at the asset's start. */
+  rawIn: number | null
+  /** The recorded out point, or null when the sound ends at the asset's end. */
+  rawOut: number | null
+  /** Where the sound starts inside its asset, in seconds. */
+  inSec: number
   /** How long the sound plays. */
   seconds: number
+  /** Length of the whole asset. */
+  assetSeconds: number
   /** The sound track that holds it, 0 for the first. */
   track: number
 }
 
 /**
- * Place the sounds of a timeline. A sound plays its asset's `duration_sec`; while that is unknown, the length its
- * `<audio>` element measured; else `FALLBACK_CLIP_SECONDS`.
+ * Place the sounds of a timeline. A sound plays its asset from its in point to its out point; an unset out point is the
+ * asset's `duration_sec`, while that is unknown the length its `<audio>` element measured, else `FALLBACK_CLIP_SECONDS`.
  * @param state - the project state.
  * @param timeline - the shown timeline.
  * @param measured - the lengths the sound elements measured, by asset.
@@ -213,9 +320,14 @@ export function placeSounds(
   const assets = new Map(state.assets.map(asset => [asset.id, asset]))
   const sounds = (timeline?.sounds ?? []).map((sound) => {
     const asset = assets.get(sound.asset)
-    const seconds = asset?.duration_sec ?? measured.get(sound.asset) ?? FALLBACK_CLIP_SECONDS
+    const assetSeconds = asset?.duration_sec ?? measured.get(sound.asset) ?? FALLBACK_CLIP_SECONDS
+    const inSec = sound.in_sec ?? 0
+    const outSec = sound.out_sec ?? assetSeconds
     const name = asset?.name ?? sound.asset
-    return { sound: sound.id, assetId: sound.asset, name, startSec: sound.start_sec, seconds, track: sound.track }
+    return {
+      sound: sound.id, assetId: sound.asset, name, startSec: sound.start_sec, rawIn: sound.in_sec, rawOut: sound.out_sec, inSec,
+      seconds: Math.max(0.1, outSec - inSec), assetSeconds, track: sound.track,
+    }
   })
   return { sounds, end: Math.max(0, ...sounds.map(sound => sound.startSec + sound.seconds)) }
 }
