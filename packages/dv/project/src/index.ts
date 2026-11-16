@@ -63,7 +63,6 @@ import { projReducer, ReducerRegistry } from './reducers.ts'
 import { Runner } from './runner.ts'
 import { Scheduler } from './scheduler.ts'
 import { ProjectError } from './shared.ts'
-import { isMiniMaxSkill, type MiniMaxSkill } from './minimax.ts'
 import { Sessions } from './sessions.ts'
 import { Subscriptions } from './subscriptions.ts'
 import type {
@@ -256,16 +255,14 @@ export default class DvProject extends Service {
    * @param folder - an existing folder.
    * @param title - the project title.
    * @param origin - who creates it, from where.
-   * @param minimaxSkill - immutable selected workflow, null for off, omitted for startup configuration.
    * @returns the project's metadata.
    */
-  createProject(folder: string, title: string, origin: RecordOrigin, minimaxSkill?: MiniMaxSkill | null): Promise<ProjectInfo> {
+  createProject(folder: string, title: string, origin: RecordOrigin): Promise<ProjectInfo> {
     return this.folders.create(folder, title, (project, dir) => this.store.lock(project, () => {
       this.store.createProject(project, dir)
       this.store.append(project, {
         parents: [], kind: 'operation', component: 'proj', operation: 'proj.create', operation_version: '1',
-        ...origin, params: { title, ...(minimaxSkill === undefined ? {} : { minimax_skill: minimaxSkill }) },
-        inputs: [], outputs: [], based_on: null, supersedes: [], deterministic: true, status: 'done',
+        ...origin, params: { title }, inputs: [], outputs: [], based_on: null, supersedes: [], deterministic: true, status: 'done',
       })
     }))
   }
@@ -278,18 +275,6 @@ export default class DvProject extends Service {
    */
   openProject(project: ProjectId): ProjectInfo {
     return this.store.getProject(project)
-  }
-
-  /**
-   * Read the immutable workflow choice from the project's creation record.
-   * @param project - the project.
-   * @returns the skill, null for explicitly off, or undefined for a legacy project using startup configuration.
-   */
-  miniMaxSkill(project: ProjectId): MiniMaxSkill | null | undefined {
-    const value = this.store.listRecords(project).find(record => record.operation === 'proj.create')?.params['minimax_skill']
-    if (value === undefined || value === null) return value
-    if (typeof value !== 'string' || !isMiniMaxSkill(value)) throw new ProjectError('invalid_params', 'Invalid stored MiniMax skill.')
-    return value
   }
 
   /** @returns every project's metadata, oldest first. */

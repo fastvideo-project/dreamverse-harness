@@ -248,15 +248,11 @@ describe('the shell plugin', () => {
     const send = (sessionId: string): Promise<void> => bench.runtime.ctx.serial('conversation/before-send', sessionId as SessionId)
 
     await expect(send('entry-chat')).rejects.toThrow('The project could not be created, so the message was not sent: disk full')
-    act(() => { bench.store.setShell({ minimaxSkill: 'h3-prompt-writing' }) })
     refuse = false
     await Promise.all([send('entry-chat'), send('entry-chat')])
     await send('entry-chat')
     await send('other-chat')
-    expect(creates).toEqual([
-      { folder, session: 'entry-chat', minimax_skill: null },
-      { folder, session: 'entry-chat', minimax_skill: 'h3-prompt-writing' },
-    ])
+    expect(creates).toEqual([{ folder, session: 'entry-chat' }, { folder, session: 'entry-chat' }])
   })
 
   it('opens the entry page\'s blank chat for DSH\'s first-use start, in one folder when 首页 runs at the same time, and creates no Workspace while it is loaded', async () => {

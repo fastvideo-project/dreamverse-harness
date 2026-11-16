@@ -34,7 +34,6 @@ import {
   setShell, shellClient, showLocation, startUrlMirror, useShell,
 } from './store.ts'
 import css from './shell.module.css'
-import { MiniMaxTemplates, NewProjectDialog, miniMaxLabel } from './MiniMaxChoice.tsx'
 
 /** What the shell's DSH UI slot registrations inject. */
 export interface ShellInjected {
@@ -42,7 +41,7 @@ export interface ShellInjected {
 }
 
 /** Props of the center entry. */
-export type CenterProps = PropsRuntime<'main.conversation'> & PropsRenderFactories & PropsRenderSlots<'dv.explore' | 'dv.center.view'>
+export type CenterProps = PropsRuntime<'main.conversation'> & PropsRenderFactories & PropsRenderSlots<'dv.templates' | 'dv.explore' | 'dv.center.view'>
   & ShellInjected
 
 /** The one client the shell's own reads share. */
@@ -163,9 +162,9 @@ export function CenterPanel(props: CenterProps): ReactNode {
     setShell({ projectId: sessionProject })
   }, [sessionProject])
   const projectSession = sessionProject === projectId ? sessionId : undefined
-  return <><NewProjectDialog shell={shell} />{projectId === null
+  return projectId === null
     ? <EntryPage {...props} />
-    : <WorkspacePage key={projectId} {...props} projectId={projectId} projectSession={projectSession} />}</>
+    : <WorkspacePage key={projectId} {...props} projectId={projectId} projectSession={projectSession} />
 }
 
 /**
@@ -213,7 +212,7 @@ function EntryPage(props: CenterProps): ReactNode {
           slots: { views: ChatOnlyView, widthControls: NoWidthControls },
         })}
       </div>
-      {blank && <MiniMaxTemplates />}
+      {blank && <div className={css.templates}>{props.renderSlot('dv.templates', {})}</div>}
       {blank && <RecentProjects shell={shell} renderFactorySlot={renderFactorySlot} />}
       {blank && <Explore renderSlot={props.renderSlot} />}
     </div>
@@ -340,7 +339,6 @@ function WorkspacePage(props: CenterProps & { projectId: string; projectSession:
   })
   // The project's current state, which the switcher's cover follows.
   const state = useProjectState(client, projectId)
-  const creation = state.value?.components.proj?.records.find(record => record.operation === 'proj.create')
   // The chat session the workspace sits beside, recorded as the `session` of the views' edits; none until the main
   // session belongs to this project.
   const session = projectSession ?? null
@@ -409,11 +407,6 @@ function WorkspacePage(props: CenterProps & { projectId: string; projectSession:
             shell={shell} project={project} cover={cover} sessionTitle={sessionTitle ?? null}
             useSessions={useSessions} useWorkspaces={props.useWorkspaces} renderFactorySlot={props.renderFactorySlot}
           />
-          {creation !== undefined && 'minimax_skill' in creation.params && (
-            <span className={css.skillStatus} title={typeof creation.params['minimax_skill'] === 'string' ? creation.params['minimax_skill'] : ''}>
-              {miniMaxLabel(creation.params['minimax_skill'], t)}
-            </span>
-          )}
         </div>
         <div className={css.toggle} role="tablist" aria-label={t('视图', 'View')}>
           {views.map(tab => (

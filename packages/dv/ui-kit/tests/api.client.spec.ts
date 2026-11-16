@@ -6,14 +6,6 @@ import { fixtureState, PROJECT, scriptedFetch, TASK_LABELS } from './fixture.cli
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe('DvClient', () => {
-  it('sends explicit project workflow choices on both creation paths', async () => {
-    const { fetch, writes } = scriptedFetch()
-    const client = new DvClient(fetch)
-    await client.createProject('3D', 'canvas', '3d-animation-short-generator')
-    await client.createChatProject('/projects/off', 's1', null)
-    expect(writes[0]?.body).toEqual({ title: '3D', surface: 'canvas', minimax_skill: '3d-animation-short-generator' })
-    expect(writes[1]?.body).toEqual({ folder: '/projects/off', session: 's1', minimax_skill: null })
-  })
   it('reads the routes with query strings and posts JSON bodies', async () => {
     const { fetch, writes } = scriptedFetch()
     const client = new DvClient(fetch)

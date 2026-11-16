@@ -1,61 +1,4 @@
 /* DreamVerse shell: center workspace, entry page, left navigator, and right-panel tab bodies. */
-.skillChoice {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  max-width: 880px;
-  box-sizing: border-box;
-  margin: 16px auto;
-  color: var(--dv-text-2);
-  font-size: 13px;
-}
-.skillChoice > span { display: inline-flex; align-items: center; gap: 6px; }
-.skillChoice select {
-  min-width: 0;
-  max-width: 100%;
-  min-height: 36px;
-  flex: 1 1 240px;
-  padding: 6px 10px;
-  border: 1px solid var(--dv-line);
-  border-radius: 6px;
-  background: var(--dv-surface-2);
-  color: var(--dv-text);
-  font: inherit;
-}
-.skillStatus { flex: 0 1 auto; min-width: 0; font-size: 12px; color: var(--dv-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.projectDialog {
-  width: min(480px, calc(100vw - 32px));
-  box-sizing: border-box;
-  max-height: calc(100dvh - 32px);
-  overflow-y: auto;
-  padding: 24px;
-  border: 1px solid var(--dv-line);
-  border-radius: 8px;
-  background: var(--dv-bg);
-  color: var(--dv-text);
-  font-family: var(--dv-font-sans);
-}
-.projectDialog::backdrop { background: rgb(0 0 0 / 45%); }
-.projectDialog h2 { margin: 0 0 20px; font-size: 18px; font-weight: 600; }
-.projectDialog fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
-.projectDialog .skillChoice { margin: 0; }
-.projectDialogActions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
-.projectDialogActions button {
-  min-height: 34px;
-  padding: 6px 14px;
-  border: 1px solid var(--dv-line);
-  border-radius: 6px;
-  background: var(--dv-surface-2);
-  color: var(--dv-text);
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-.projectDialogActions button:last-child { background: var(--dv-text); color: var(--dv-bg); }
-.projectDialogActions button:disabled { opacity: .55; cursor: wait; }
-.projectError { color: #dc4545; font-size: 13px; overflow-wrap: anywhere; }
 .center {
   container-type: inline-size;
   display: flex;
@@ -110,68 +53,12 @@
   text-wrap: balance;
 }
 
+.templates:empty { display: none; }
+
 .templates {
   flex: none;
   margin-top: 24px;
 }
-
-.templatesLabel {
-  margin: 0 0 12px;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 20px;
-  color: var(--dv-text-2);
-}
-
-.templateGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
-  gap: 12px;
-}
-
-.templateChip {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  min-width: 0;
-  padding: 0;
-  overflow: hidden;
-  border: 1px solid var(--dv-line);
-  border-radius: 6px;
-  background: var(--dv-surface-2);
-  color: var(--dv-text);
-  font: inherit;
-  font-size: 13px;
-  line-height: 20px;
-  text-align: start;
-  overflow-wrap: anywhere;
-  cursor: pointer;
-}
-
-.templateHeading {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) 16px;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 52px;
-  padding: 10px 14px;
-  box-sizing: border-box;
-}
-
-.templatePreview {
-  display: block;
-  width: 100%;
-  height: auto;
-  aspect-ratio: 16 / 9;
-  object-fit: contain;
-  background: #111;
-}
-
-.templateChip:hover { background: var(--dv-surface-3); border-color: var(--dv-line-strong); }
-.templateChip[aria-pressed='true'] { border-color: var(--dv-accent); background: var(--dv-surface-3); }
-.templateChip:focus-visible { outline: 2px solid var(--dv-accent); outline-offset: 2px; }
-.templateCheck { display: flex; width: 16px; height: 16px; color: var(--dv-accent-text); }
 
 .recent {
   flex: none;
@@ -295,7 +182,6 @@
   }
   .barStart { grid-column: 1; grid-row: 1; flex-wrap: wrap; }
   .barStart .switcherRoot { flex: 1 1 100%; max-width: 100%; }
-  .skillStatus { flex-basis: 100%; padding-inline-start: 6px; }
   .topbar .toggle { grid-column: 1 / -1; grid-row: 2; justify-self: center; }
   .topbar .barEnd { grid-column: 2; grid-row: 1; align-self: start; }
 }

@@ -24,10 +24,6 @@ export const NO_PROJECTS: WireProject[] = []
 
 /** What the shell components share. */
 export interface ShellState {
-  /** Draft choice for the next project; null explicitly disables MiniMax. */
-  minimaxSkill?: string | null
-  /** Whether the project creation dialog is open. */
-  createProjectOpen?: boolean
   /** The main session, as the center panel last saw it. */
   sessionId: string | undefined
   /** The project open in the center, or null on the entry page. The main session follows it. */

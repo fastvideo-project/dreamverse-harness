@@ -18,7 +18,6 @@ import type {
   RunRequest, SessionId, Surface,
 } from '@dv/project'
 import { summarizeProject, type WireProjectSummary } from './summaries.ts'
-import { isMiniMaxSkill } from '@dv/project/minimax'
 import {
   projectIdOf, toWireOperation, toWireState, type WireHistory, type WireOperation, type WireState,
 } from './wire.ts'
@@ -290,18 +289,14 @@ export class ApiHandlers {
    */
   async createProject(raw: unknown): Promise<ProjectInfo> {
     const body = objectOf(raw)
-    const skill = body['minimax_skill']
-    if (skill !== undefined && skill !== null && (typeof skill !== 'string' || !isMiniMaxSkill(skill))) {
-      throw new ApiRequestError(400, 'Unknown MiniMax skill.', 'invalid_params')
-    }
     if (body['folder'] !== undefined) {
       const folder = stringOf(body['folder'], 'folder')
       const title = this.freeTitle(basename(folder))
-      return this.services.project.createProject(folder, title, { ...humanOrigin(body, `create project ${title}`), surface: 'chat' }, skill)
+      return this.services.project.createProject(folder, title, { ...humanOrigin(body, `create project ${title}`), surface: 'chat' })
     }
     const title = this.freeTitle(stringOf(body['title'], 'title'))
     const folder = await this.services.project.newProjectFolder(title)
-    return this.services.project.createProject(folder, title, { ...humanOrigin(body, `create project ${title}`), session: null }, skill)
+    return this.services.project.createProject(folder, title, { ...humanOrigin(body, `create project ${title}`), session: null })
   }
 
   /**

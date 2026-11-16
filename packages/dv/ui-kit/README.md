@@ -5,8 +5,6 @@ kind: "package-reference"
 
 # @dv/ui-kit
 
-`DvClient.createProject` and `createChatProject` accept an optional third argument for the immutable project MiniMax choice: an exact skill name, `null` for off, or omission for startup defaults. The shared `minimax.ts` export exposes the client-safe official name catalog.
-
 English | [中文](README.zh.md)
 
 ## Summary

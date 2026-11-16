@@ -9,7 +9,6 @@
     "./types": "./src/types.ts",
     "./grammar": "./src/grammar.ts",
     "./folder": "./src/folder.ts",
-    "./minimax": "./src/minimax.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {

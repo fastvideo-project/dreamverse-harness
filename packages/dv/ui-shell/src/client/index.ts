@@ -50,7 +50,7 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.slots.inject('main.conversation', () => ctx.slots.register(
     {
       name: 'main.conversation', priority: -1, inject: () => injected,
-      children: { 'dv.explore': { kind: 'list', scope: 'root' }, 'dv.center.view': { kind: 'list', scope: 'root' } },
+      children: { 'dv.templates': { kind: 'list', scope: 'root' }, 'dv.explore': { kind: 'list', scope: 'root' }, 'dv.center.view': { kind: 'list', scope: 'root' } },
     }, CenterPanel,
   )), 'ui-shell: center')
   ctx.effect(() => ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register(

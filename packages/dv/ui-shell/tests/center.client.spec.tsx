@@ -240,10 +240,13 @@ async function mountCenter(options: MountOptions = {}): Promise<Bench> {
       )), 'test: chat')
       ctx.effect(() => ctx.slots.register({
         name: 'main.conversation', priority: -1, inject: () => ({ shell: stand.shell }),
-        children: { 'dv.explore': { kind: 'list', scope: 'root' }, 'dv.center.view': { kind: 'list', scope: 'root' } },
+        children: { 'dv.templates': { kind: 'list', scope: 'root' }, 'dv.explore': { kind: 'list', scope: 'root' }, 'dv.center.view': { kind: 'list', scope: 'root' } },
       }, CenterPanel), 'test: center')
       ctx.effect(() => ctx.slots.register({ name: 'shell.overlay', id: 'dv.shell.failure' }, ActionFailureToast), 'test: failure toast')
       if (options.entries !== false) {
+        ctx.effect(() => ctx.slots.inject('dv.templates', () => ctx.slots.register(
+          { name: 'dv.templates', id: 'third-party' }, () => <button type="button">plugin template</button>,
+        )), 'test: plugin templates')
         ctx.effect(() => ctx.slots.inject('dv.center.view', function* () {
           yield ctx.slots.register({ name: 'dv.center.view', id: 'canvas', order: 0, label: () => 'Canvas' }, CenterViewStandIn)
           yield ctx.slots.register({ name: 'dv.center.view', id: 'timeline', order: 1, label: () => 'Timeline' }, CenterViewStandIn)
@@ -345,12 +348,7 @@ describe('the entry page', () => {
     expect(page.queryByTestId('width-handles')).toBeNull()
     expect(bench.stand.calls).toContain('restoreSidebar()')
 
-    const templates = within(page.getByRole('region', { name: 'Start from a template' }))
-    expect(templates.getAllByRole('button')).toHaveLength(9)
-    expect(templates.getAllByRole('button', { pressed: false })).toHaveLength(9)
-    fireEvent.click(templates.getByRole('button', { name: '3D animated short' }))
-    expect(templates.getByRole('button', { name: '3D animated short', pressed: true })).toBeDefined()
-    expect(page.queryByRole('combobox', { name: 'Video type' })).toBeNull()
+    expect(page.getByRole('button', { name: 'plugin template' })).toBeTruthy()
     expect(page.queryByText('Coming soon')).toBeNull()
 
     const recent = within(page.getByRole('region', { name: 'Recent projects' }))

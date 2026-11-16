@@ -5,8 +5,6 @@ kind: "package-reference"
 
 # @dv/project
 
-Project creation optionally records `params.minimax_skill` in the first `proj.create` record: an official skill name, or `null` for explicitly off. The choice is immutable across chats and undo/redo; `miniMaxSkill(project)` reads that first record. An absent field denotes a legacy/API-created project that uses startup workflow configuration. Existing record files remain readable without a format change.
-
 English | [中文](README.zh.md)
 
 ## Summary

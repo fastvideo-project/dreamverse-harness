@@ -5,8 +5,6 @@ kind: "package-reference"
 
 # @dv/api
 
-`POST /api/dv/projects` accepts optional `minimax_skill` on both title-based and chat-folder creation: an official name selects a skill, `null` explicitly disables it, and omission leaves startup configuration in effect. Unknown names return 400 before allocating a project folder. The choice is written once in `proj.create`; repeating creation for an existing folder cannot change it.
-
 English | [中文](README.zh.md)
 
 ## Summary

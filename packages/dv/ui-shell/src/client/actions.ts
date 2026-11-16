@@ -36,7 +36,7 @@ const UNTITLED_KEY = 'untitled'
 /** The actions the shell components receive through their DSH UI slot registrations. */
 export interface ShellActions {
   /** Create a project (the host registers its Workspace), then open a chat session in it. */
-  newProject(minimaxSkill?: string | null): Promise<void>
+  newProject(): Promise<void>
   /**
    * Open a project and move the main session into it: `sessionId` when it belongs to the project, else the main session
    * when it is a non-blank session of the project, else the project's latest non-blank chat session, else a blank one.
@@ -218,8 +218,8 @@ export function createActions(ctx: ClientContext): ShellActions {
     const folder = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
     const attached = ctx.workspaces.list.getSnapshot().items.some(item => item.sessionIds.includes(sessionId))
     if (sessionId !== tabBlanks.get(UNTITLED_KEY) || folder === undefined || attached) return Promise.resolve()
-    const creating = chatProjects.get(sessionId) ?? shellClient.createChatProject(folder, sessionId, getShell().minimaxSkill ?? null).then(
-      () => { setShell({ minimaxSkill: null }) },
+    const creating = chatProjects.get(sessionId) ?? shellClient.createChatProject(folder, sessionId).then(
+      () => undefined,
       (error: unknown) => {
         chatProjects.delete(sessionId)
         const reason = error instanceof Error ? error.message : String(error)
@@ -266,15 +266,11 @@ export function createActions(ctx: ClientContext): ShellActions {
   }
 
   return {
-    async newProject(minimaxSkill) {
-      if (minimaxSkill === undefined) {
-        setShell({ createProjectOpen: true, minimaxSkill: null })
-        return
-      }
+    async newProject() {
       leavePage()
-      const created = await shellClient.createProject(pickText('未命名项目', 'Untitled project'), 'canvas', minimaxSkill)
+      const created = await shellClient.createProject(pickText('未命名项目', 'Untitled project'), 'canvas')
       await refreshProjects()
-      setShell({ projectId: created.id, view: 'canvas', createProjectOpen: false, minimaxSkill: null })
+      setShell({ projectId: created.id, view: 'canvas' })
       await openBlank(created.id as WorkspaceId, () => getShell().projectId === created.id)
     },
     openProject,

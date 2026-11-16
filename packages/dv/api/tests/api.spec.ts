@@ -148,19 +148,6 @@ async function checkCall(fixture: Fixture, edited: ComposerCall, project: string
 }
 
 describe('dvApi', () => {
-  it('persists an immutable project skill choice, including explicit off, and rejects unknown names', async () => {
-    const fixture = await start()
-    const on = await fixture.handlers.createProject({ title: 'skill-on', minimax_skill: '3d-animation-short-generator' })
-    expect(fixture.project.miniMaxSkill(on.id)).toBe('3d-animation-short-generator')
-    expect(fixture.handlers.getState(on.id).components.proj.records[0]?.params['minimax_skill']).toBe('3d-animation-short-generator')
-    const off = await fixture.handlers.createProject({ title: 'skill-off', minimax_skill: null })
-    expect(fixture.project.miniMaxSkill(off.id)).toBeNull()
-    const legacy = await fixture.handlers.createProject({ title: 'legacy' })
-    expect(fixture.project.miniMaxSkill(legacy.id)).toBeUndefined()
-    await fixture.handlers.createProject({ folder: on.path, minimax_skill: null })
-    expect(fixture.project.miniMaxSkill(on.id)).toBe('3d-animation-short-generator')
-    await expect(fixture.handlers.createProject({ title: 'invalid', minimax_skill: 'missing-skill' })).rejects.toThrow('Unknown MiniMax skill')
-  })
   it('lists projects, reads the project state with its assets, and lists operation declarations', async () => {
     const fixture = await start()
     const projectId = await fixture.newProject('demo')
