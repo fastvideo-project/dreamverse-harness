@@ -1,0 +1,3 @@
+- insert:
+    - id: minimax-skills
+      name: '@dv/minimax-skills'

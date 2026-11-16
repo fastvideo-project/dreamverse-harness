@@ -45,6 +45,8 @@ declare module '@deepseek-ai/cordis' {
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
+    /** Optional, plugin-owned template cards on the blank Home page; the shell owns no template catalog. */
+    'dv.templates': { kind: 'list'; scope: 'root' }
     /**
      * One tab of the entry page's 探索 section, such as MCP tools, workflows, or skills: `label` names the tab, `order`
      * places it, and the component is the tab's body. The shell draws the tab row and renders only the selected tab;

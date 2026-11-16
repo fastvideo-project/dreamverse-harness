@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to give the DreamVerse agent its workflows. Each workflow is one skill file `skills/<name>/SKILL.md` that holds the order of calls of the workflow, such as `story-directing` (a story rendered shot by shot onto a timeline) and `ad-making` (a short product ad). The default registers no operation or tool; the optional MiniMax integration adds a restricted reference-document reader.
+Use this package to give the DreamVerse agent its workflows. Each workflow is one skill file `skills/<name>/SKILL.md` that holds the order of calls of the workflow, such as `story-directing` (a story rendered shot by shot onto a timeline) and `ad-making` (a short product ad). The package registers no operation and no tool.
 
 ## Table of Contents
 
@@ -24,7 +24,7 @@ Use this package to give the DreamVerse agent its workflows. Each workflow is on
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin in a composition with the skill registry `skills` of `@deepseek-ai/dsh-skill`. By default, the plugin serves every `<name>/SKILL.md` of its [`skills/`](skills/) folder through one `FileSystemSkillProvider` named `workflow-story`; that provider reads no other folder. The Web project creation menu selects one MiniMax skill or explicitly off; this immutable project choice takes precedence. Optional `minimaxSkillsMode` (`off`, `manual`, `auto`; default `off`) and `minimaxSkill` supply defaults for projects without a saved choice, from `DV_MINIMAX_SKILLS_MODE` and `DV_MINIMAX_SKILL`. See the [MiniMax integration](minimax/README.md).
+Mount the plugin in a composition with the skill registry `skills` of `@deepseek-ai/dsh-skill`. It has no configuration. While `skills` is mounted, the plugin serves every `<name>/SKILL.md` of its [`skills/`](skills/) folder as a skill through one `FileSystemSkillProvider` of `@deepseek-ai/dsh-skill-filesystem`, named `workflow-story`; the provider reads no other folder.
 
 ```yaml
 - id: dv-workflow-story
@@ -63,29 +63,29 @@ To add a workflow, add `skills/<name>/SKILL.md` with the frontmatter fields `nam
 
 #### What the model sees
 
-By default the tool list is unchanged. Enabling MiniMax adds `dv_minimax_read_reference`; execution requires a selected skill and is limited to that Agent's selected skill documents.
+The package registers no tool, so the tool list is unchanged.
 
 #### Token effect
 
-No tokens by default; enabling MiniMax adds one reference-reader tool definition.
+No tokens: the tool list is unchanged.
 
 #### KV Cache effect
 
-The tool section is unchanged by default. Enabling MiniMax changes it once; routing does not change the tool definitions.
+The tool section is unchanged, so the cached prefix stays intact.
 
 ### Tool results
 
 #### What the model sees
 
-By default no tool result comes from this package. The optional reference reader returns the requested original document as text.
+The package registers no tool, so no tool result comes from it.
 
 #### Token effect
 
-No tokens by default; reference reads append the document's text when requested.
+No tokens: no tool result.
 
 #### KV Cache effect
 
-Optional reference results append to the conversation without changing earlier history.
+Nothing is appended to the conversation, so the cached prefix stays intact.
 
 ### Skill
 
@@ -100,8 +100,6 @@ One line in the skill catalog per workflow skill while the plugin is mounted, at
 #### KV Cache effect
 
 The catalog entry sits in the stable skill section; mounting or removing the plugin changes the catalog. A loaded skill is appended to the conversation as a tool result; the cached prefix stays intact.
-
-When MiniMax is enabled for a project, routing adds only the selected official skill to the Agent's catalog and appends its original instructions with separate compatibility notes as a logged context message. Confirmations retain it. Off projects receive neither MiniMax skill instructions nor the scoped reference reader. See the [selection and compatibility rules](minimax/README.md).
 
 ## Known Limitations and Deferred Work
 

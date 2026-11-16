@@ -124,9 +124,6 @@
     # The workflow skills, such as story-directing, which hold the order of calls of each workflow.
     - id: dv-workflow-story
       name: '@dv/workflow-story'
-      config:
-        minimaxSkillsMode: !!js process.env.DV_MINIMAX_SKILLS_MODE || 'off'
-        minimaxSkill: !!js process.env.DV_MINIMAX_SKILL
 
     # dv: mentions in chat messages and chat image import.
     - id: dv-chat-references

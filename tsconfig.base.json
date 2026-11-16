@@ -383,6 +383,7 @@
       "@dv/ui-shell": ["./packages/dv/ui-shell/src/index.ts"],
       "@dv/ui-shot-render": ["./packages/dv/ui-shot-render/src/index.ts"],
       "@dv/ui-timeline": ["./packages/dv/ui-timeline/src/index.ts"],
+      "@dv/minimax-skills": ["./packages/dv/minimax-skills/src/index.ts"],
       "@dv/workflow-story": ["./packages/dv/workflow-story/src/index.ts"],
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@deepseek-ai/dsh-acp": ["./packages/acp/acp/src"],

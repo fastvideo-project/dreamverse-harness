@@ -18,10 +18,6 @@ fork_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 surface="${1:-web}"
 shift || true
 
-# Explicit MiniMax switches take precedence over values in DV_ENV_FILE.
-minimax_mode="${DV_MINIMAX_SKILLS_MODE-}"
-minimax_skill="${DV_MINIMAX_SKILL-}"
-
 env_file="${DV_ENV_FILE:-/mnt/lustre/vlm-d1su/codes/fv-hub/.env}"
 if [[ -r "$env_file" ]]; then
   set -a
@@ -29,9 +25,6 @@ if [[ -r "$env_file" ]]; then
   source "$env_file"
   set +a
 fi
-
-export DV_MINIMAX_SKILLS_MODE="${minimax_mode:-${DV_MINIMAX_SKILLS_MODE:-off}}"
-export DV_MINIMAX_SKILL="${minimax_skill:-${DV_MINIMAX_SKILL:-}}"
 
 export DSH_HOME="${DSH_HOME:-$HOME/.local/state/dsh-video-harness}"
 export DV_DEEPSEEK_BASE_URL="${DV_DEEPSEEK_BASE_URL:-http://10.244.6.153:30000/v1}"
