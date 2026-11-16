@@ -1,5 +1,7 @@
 # @dv/hardware
 
+English | [中文](README.zh.md)
+
 Connect generation workers through HTTP APIs or key-only OpenSSH forwards. Model providers inspect their own worker state and reuse these connections when admitting generation work. The service has no NVIDIA, Spark, or model-family requirement.
 
 ## Configuration
@@ -36,10 +38,6 @@ Authenticated browser routes expose `GET /api/dv/hardware/status`, `POST /api/dv
 
 The agent tool `dv_hardware_list` reports names, availability, model residency, and busy state. It never returns endpoint credentials. Provider inspectors register through `registerInspector`; the fallback only checks `/health` and cannot assert physical GPU inventory or model residency.
 
-## Model experience
-
-The operator inspects hardware availability and can submit independent render calls together. It cannot add hardware, read credentials, start SSH sessions, or launch Ray through the hardware tool. Render reports record the selected worker.
-
 ## Runtime invariants
 
 No standalone invariant is published: reservation ownership is private to this service and has no independent projection to compare. Behavior tests cover reservation exclusivity and release, credential rotation, endpoint validation, settings-schema serialization, and an opt-in real SSH worker check.
@@ -49,3 +47,59 @@ No standalone invariant is published: reservation ownership is private to this s
 Hardware settings can discover running GPU Pods through `POST /api/dv/hardware/runpod/pods`, using a saved account credential reference. Discovery makes one authenticated `GET` to RunPod's Pod-list API and returns only Pod IDs, names, status, and exposed HTTP ports. Pod environments and account credentials are not returned to the browser.
 
 Choose the HTTP port already serving FastVideo. The saved worker uses the existing API transport and RunPod HTTPS proxy; its optional FastVideo bearer key is separate from `DV_RUNPOD_API_KEY`. Discovery does not create, start, stop, or modify Pods. A Pod being running does not establish that FastVideo is ready; use the normal connection check after saving. Real-account validation remains opt-in and is not covered by fake-provider tests.
+
+## Model Experience
+
+### `dv:hardware` system-prompt section
+
+#### What the model sees
+
+While the DSH system-prompt service is mounted, every request carries the section `dv:hardware` below, at order `promptSectionOrder` (default `4870`). `<inventory>` is one line: a JSON array with `id`, `label`, `provider` and `enabled` for each saved worker. When the saved inventory is invalid, that line is `Worker configuration contains invalid or duplicate endpoints. Edit Hardware settings before generating.` instead. The section never contains endpoints, credentials or live state.
+
+##### dv:hardware text
+
+```markdown
+Generation hardware:
+When the user asks whether a device is connected, available, busy, or loaded, call dv_hardware_list immediately and report its result. Do not ask permission for this read-only inspection or claim no visibility before checking.
+The configured worker IDs below are routing targets, not evidence of current connectivity. Read dv_hardware_list for live state.
+<inventory>
+For explicit placement, pass worker to dv_shot_render, dv_models_status, dv_models_load, or dv_models_unload. Use the exact enabled worker ID. A pinned operation never falls back to another device. Omit worker to let the provider place independent jobs automatically.
+Check model status per worker before switching models. Loading retains compatible common components when supported. Never unload or replace a busy worker. Submit independent clips together; wait only for clips whose inputs depend on an earlier output.
+Only configured workers may be used. Do not infer distributed single-video support from multiple available workers, start Ray, change device connections, or access credentials from generation tools.
+```
+
+#### Token effect
+
+About 230 tokens of fixed text, plus about 20 tokens for each saved worker, in every request while this package is mounted.
+
+#### KV Cache effect
+
+The fixed lines do not change. A saved edit of a worker ID, label, provider or enabled flag, or a change between a valid and an invalid inventory, changes the `<inventory>` line and invalidates the cached prefix from this section on. A connection check, a reservation or a change of worker state does not change the section.
+
+### `dv_hardware_list` tool definition and results
+
+#### What the model sees
+
+While the DSH tool registry is mounted, the agent sees the tool `dv_hardware_list` with the description below and no arguments. The generated tool catalog does not list DreamVerse tools, so this section quotes the description. A call checks each enabled worker once and returns one text block with JSON: an array with `id`, `label`, `provider`, `transport`, `enabled`, `reachable`, `busy`, `loadedModel`, `loadingModel` and `status` for each saved worker. An invalid saved inventory fails the call with the error text of the `<inventory>` line above.
+
+##### dv_hardware_list description
+
+```markdown
+Inspect enabled generation workers, connectivity, busy state, and resident models. Call this immediately when asked about connected devices or worker status; no confirmation is needed. Returned IDs can target render, model status, load, and unload calls. This does not configure hardware or start Ray.
+```
+
+#### Token effect
+
+About 75 tokens for the definition, in every request while the tool registry is mounted. A result costs about 45 tokens for each saved worker.
+
+#### KV Cache effect
+
+The definition is fixed text in the stable tool section. Mounting or removing this package changes the tool list and invalidates the cached prefix from the tool section on. The conversation gets each result after its call. The cached prefix before the result does not change.
+
+## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
+
+- **One video cannot span workers**: a worker group for one video needs a separate distributed backend and an atomic reservation of every group member.
+- **No model downloads**: the model route supports only the native FastVideo catalog and explicit load and unload actions.
+- **SSH forwarding needs macOS or Linux**: a Windows Harness host can use only direct APIs.
