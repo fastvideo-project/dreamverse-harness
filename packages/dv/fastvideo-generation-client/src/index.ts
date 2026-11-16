@@ -60,7 +60,7 @@ function untimedDispatcher(): Dispatcher {
 
 /** Checks the served model, reads its output facts and generates segments. */
 export class DvFastvideoGeneration extends Service {
-  static Config: z<Config> = closedObject<Config>('FastVideo server config', {
+  static Config: z<Config> = closedObject('FastVideo server config', {
     baseUrl: z.string().required(),
     modelFacts: modelFactsConfig.required(),
     managed: z.boolean().default(false), asyncJobs: z.boolean().default(false),

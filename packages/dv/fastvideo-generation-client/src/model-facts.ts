@@ -26,11 +26,11 @@ export interface ModelFactsConfig {
 const mediaType = z.union(Object.keys(REFERENCE_FIELDS) as ReferenceMediaType[])
 
 /** Loader validation of the configured facts; `deriveConfiguredFacts` checks the relations between the fields. */
-export const modelFactsConfig: z<ModelFactsConfig> = closedObject<ModelFactsConfig>('modelFacts', {
+export const modelFactsConfig: z<ModelFactsConfig> = closedObject('modelFacts', {
   modelId: z.string().required(),
   maxReferences: z.natural().required(),
   referenceMediaTypes: z.dict(z.object({ maxCount: z.natural().required() }), mediaType).required(),
-})
+}) as z<ModelFactsConfig>
 
 /**
  * The configured facts of a configuration.

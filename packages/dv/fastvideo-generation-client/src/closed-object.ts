@@ -9,10 +9,12 @@ import z from '@deepseek-ai/schemastery'
  * @returns the schema.
  * @throws Error naming the undeclared key and the declared fields, at validation.
  */
-export function closedObject<T>(name: string, dict: Record<string, z>): z<T> {
-  return z.transform(z.object(dict), (value: Record<string, unknown>) => {
+export function closedObject<X extends Record<string, z>>(name: string, dict: X): ReturnType<typeof z.object<X>> {
+  const schema = z.object(dict)
+  // The transform keeps the `z.object` value; the cast keeps its inferred type, so callers stay type-checked.
+  return z.transform(schema, (value: Record<string, unknown>) => {
     const unknown = Object.keys(value).find(key => !Object.hasOwn(dict, key))
     if (unknown !== undefined) throw new Error(`${name} has no field ${unknown}; its fields: ${Object.keys(dict).join(', ')}.`)
     return value
-  }) as z<T>
+  }) as typeof schema
 }
