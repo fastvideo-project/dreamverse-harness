@@ -15,7 +15,7 @@ describe('existing RunPod discovery', () => {
   it('uses only an authenticated GET to the RunPod control origin and refuses redirects', async () => {
     const calls: Array<{ url: string; init: RequestInit | undefined }> = []
     await listRunPodPods('fixture-account-key', AbortSignal.timeout(1000), async (input, init) => {
-      calls.push({ url: String(input), init })
+      calls.push({ url: input instanceof Request ? input.url : input.toString(), init })
       return Response.json([])
     })
     expect(calls).toHaveLength(1)
