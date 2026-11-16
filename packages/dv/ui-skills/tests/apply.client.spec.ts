@@ -3,12 +3,15 @@
  * The plugin's page, navigator entry, and 探索 tab, the skill list read through the chat session, 使用, and removal on
  * dispose.
  */
+import { createElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { DV_COMPOSE_EVENT, type DvComposeDetail } from '@dv/ui-kit/compose.ts'
 import type { SkillsInjected } from '../src/client/SkillsPage.tsx'
 import { SkillsLauncher, SkillsPage, SkillsPanelIcon, SkillsShelf } from '../src/client/SkillsPage.tsx'
 import { apply, inject, SKILLS_PANEL_ID } from '../src/client/index.ts'
+import { SessionInputShell } from '../../../client/ui-conversation/src/client/input/facade.ts'
+import { render, fireEvent, screen, waitFor } from '@testing-library/react'
 import { apply as hostApply } from '../src/index.ts'
 
 interface Recorded {
@@ -17,7 +20,7 @@ interface Recorded {
   id?: string
   order?: number
   label?: () => string
-  inject?: () => SkillsInjected
+  inject?: (sessionId?: string) => SkillsInjected
   component: unknown
 }
 
@@ -33,13 +36,16 @@ const SESSIONS: Record<string, { id: string; updatedAt: number }> = { s0: { id: 
  * @param failure - the error the `skills` Remote answers, or undefined for the skill list.
  * @returns the registered entries, the Remote calls, the selected panels, the input calls, and the plugin fiber.
  */
-async function boot(mounted: string | undefined, byId = SESSIONS, failure?: { code: string; message: string }) {
+async function boot(
+  mounted: string | undefined, byId = SESSIONS, failure?: { code: string; message: string },
+  resident?: Pick<SessionInputShell, 'setDraft' | 'focus'>,
+) {
   const ctx = new Context()
   const registered: Recorded[] = []
   const calls: unknown[] = []
   const selected: unknown[] = []
   const inputs: string[] = []
-  const input = { setDraft: (draft: string) => { inputs.push(`draft ${draft}`) }, focus: () => { inputs.push('focus') } }
+  const input = resident ?? { setDraft: (draft: string) => { inputs.push(`draft ${draft}`) }, focus: () => { inputs.push('focus') } }
   const slots = {
     inject: vi.fn((_name: string, register: () => () => void) => register()),
     register: vi.fn((options: Omit<Recorded, 'component'>, component: unknown) => {
@@ -106,15 +112,77 @@ describe('ui-skills apply', () => {
     await expect(failing.registered[0]?.inject?.().list()).rejects.toThrow('NOT_FOUND: no preset')
   })
 
-  it('closes the page and prefills /name on 使用', async () => {
-    const { registered, selected } = await boot('s1')
+  it('writes the current session draft before closing without broadcasting to another editor', async () => {
+    const { registered, selected, inputs } = await boot('s1')
     const composed: DvComposeDetail[] = []
     const listen = (event: Event): void => { composed.push((event as CustomEvent<DvComposeDetail>).detail) }
     window.addEventListener(DV_COMPOSE_EVENT, listen)
     registered[0]?.inject?.().use('storyboard')
     window.removeEventListener(DV_COMPOSE_EVENT, listen)
     expect(selected).toEqual([null])
+    expect(composed).toEqual([])
+    expect(inputs).toEqual(['session s1', 'draft /storyboard ', 'focus'])
+  })
+
+  it.each([undefined, 'other-session'])('returns the selected skill to the launching composer when the right seat is %s', async (seat) => {
+    const { registered, selected, inputs, fiber } = await boot(seat)
+    const launcher = registered[2]?.inject?.('prompt-session') as unknown as { open: () => void }
+    const view = render(createElement(SkillsLauncher, launcher))
+    fireEvent.click(screen.getByRole('button', { name: 'Skills' }))
+    view.unmount()
+    registered[0]?.inject?.().use('my-trailer')
+    expect(selected).toEqual([SKILLS_PANEL_ID, null])
+    expect(inputs).toEqual(['session prompt-session', 'draft /my-trailer ', 'focus'])
+    // A later visit through the sidebar must not reuse the previous launching session.
+    inputs.length = 0
+    if (seat !== undefined) {
+      registered[0]?.inject?.().use('storyboard')
+      expect(inputs).toEqual([`session ${seat}`, 'draft /storyboard ', 'focus'])
+    }
+    await fiber.dispose()
+  })
+
+  it('keeps the uploaded skill invocation visible when the conversation editor mounts after closing Skills', async () => {
+    const actx = new Context()
+    const input = new SessionInputShell({ actx, defaultSink: vi.fn(), commandAttachments: {
+      serialize: async () => [], release: () => {}, unsupportedNotice: () => '',
+    } })
+    const editor = document.createElement('div')
+    document.body.append(editor)
+    try {
+      const { registered, fiber } = await boot(undefined, SESSIONS, undefined, input)
+      const launcher = registered[2]?.inject?.('prompt-session') as unknown as { open: () => void }
+      const shortcut = render(createElement(SkillsLauncher, launcher))
+      fireEvent.click(screen.getByRole('button', { name: 'Skills' }))
+      shortcut.unmount()
+      const use = registered[0]?.inject?.().use
+      if (use === undefined) throw new Error('Missing skill action')
+      const uploaded = { name: 'my-trailer', description: 'My trailer', modelInvocable: true }
+      const view = render(createElement(SkillsPage, { list: () => Promise.resolve([]), listMine: () => Promise.resolve([uploaded]), use }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Use my-trailer' }))
+      view.unmount()
+      input.editor.setRootElement(editor)
+      await waitFor(() => { expect(editor.textContent).toBe('/my-trailer ') })
+      expect(input.state.getSnapshot().draft).toBe('/my-trailer ')
+      await fiber.dispose()
+    } finally {
+      input.editor.setRootElement(null)
+      input.dispose()
+      editor.remove()
+      await actx.fiber.dispose()
+    }
+  })
+
+  it('uses the existing compose event when no session input is ready yet', async () => {
+    const { registered, selected, fiber } = await boot(undefined, {})
+    const composed: DvComposeDetail[] = []
+    const listen = (event: Event): void => { composed.push((event as CustomEvent<DvComposeDetail>).detail) }
+    window.addEventListener(DV_COMPOSE_EVENT, listen)
+    try { registered[0]?.inject?.().use('storyboard') }
+    finally { window.removeEventListener(DV_COMPOSE_EVENT, listen) }
+    expect(selected).toEqual([null])
     expect(composed).toEqual([{ text: '/storyboard', refs: [] }])
+    await fiber.dispose()
   })
 
   it('writes /name into the entry page session on 使用 in the 探索 tab, without dv:compose', async () => {

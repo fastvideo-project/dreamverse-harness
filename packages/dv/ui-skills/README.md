@@ -38,7 +38,7 @@ The Host half registers nothing. The browser half registers the page in the `mai
 | Gesture | Request or event |
 | --- | --- |
 | Open 技能 / Skills, or the 技能 tab of 探索 | `skills/list` Remote with the chat session; the list is read each time the page or the tab opens |
-| 使用 / Use on a card | the layout's main panel goes back to the center, then `dv:compose` `{text: '/name', refs: []}` prefills the chat composer |
+| 使用 / Use on a card | writes `/name ` into the launching composer’s session draft (or the right-panel session when opened from the sidebar) before closing the page, then focuses the input; if no session input is ready, falls back to `dv:compose` `{text: '/name', refs: []}` |
 | 使用 / Use in the 技能 tab of 探索 | the draft of the session in the right panel's seat, which the entry page's composer edits, becomes `/name ` through the session's input; no `dv:compose`, so the right panel stays closed |
 | 重试 / Retry after a failed read | `skills/list` again |
 

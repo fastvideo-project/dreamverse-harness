@@ -2,8 +2,8 @@
  * Browser half of the Skills page: the 技能 / Skills entry in the left navigator (a DSH `sidebar.panellist` entry that
  * `@dv/ui-shell` lists below 首页), the page it opens in the main column, and the 技能 / Skills tab of the entry page's
  * 探索 / Explore section (a `dv.explore` entry). The page and the tab read the skills a creator can start with `/name`
- * through DSH's `skills` Remote. 使用 / Use on the page closes the page and puts `/name` into the chat composer through
- * the `dv:compose` event; 使用 in the tab writes `/name` into the draft of the session that the entry page shows.
+ * through DSH's `skills` Remote. 使用 / Use writes `/name` into the current session's resident draft before closing
+ * the page; without a ready session input, the existing `dv:compose` queue handles the first composer mount.
  *
  * @module @dv/ui-skills/client
  */
@@ -55,6 +55,7 @@ export function apply(ctx: ClientContext): void {
     if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
     return result.value.skills
   }
+  let sourceSession: SessionId | undefined
   const api = new DvClient()
   const library = {
     listMine: () => api.listUserSkills(),
@@ -63,9 +64,16 @@ export function apply(ctx: ClientContext): void {
   const injected: SkillsInjected = {
     list, ...library,
     use: (name) => {
-      // Close the page first: the composer that takes `dv:compose` is the one the center or the right panel shows.
+      // The launcher belongs to a session-scoped composer, which need not be the right panel.
+      const sessionId = sourceSession ?? ctx.sidebarRight.mounted.getSnapshot()
+      sourceSession = undefined
+      const scope = sessionId === undefined ? undefined : ctx.sessions.scope(sessionId)
+      const input = scope?.get('conversation')?.input.for(scope)
+      // Persist before navigation: mounted editors can change while the Skills page closes.
+      if (input !== undefined) input.setDraft(`/${name} `)
       ctx.get('layout')?.selectPanel(null)
-      dispatchCompose({ text: `/${name}`, refs: [] })
+      if (input !== undefined) input.focus()
+      else dispatchCompose({ text: `/${name}`, refs: [] })
     },
   }
   // The 探索 tab shows only on the entry page, whose center composer edits the draft of the session in the right
@@ -90,7 +98,10 @@ export function apply(ctx: ClientContext): void {
   )), 'ui-skills: navigator entry')
   ctx.effect(() => ctx.slots.inject('conversation.input.left', () => ctx.slots.register(
     { name: 'conversation.input.left', id: 'dv.skills.library',
-      inject: () => ({ open: () => { ctx.get('layout')?.selectPanel(SKILLS_PANEL_ID) } }) }, SkillsLauncher,
+      inject: sessionId => ({ open: () => {
+        sourceSession = sessionId
+        ctx.get('layout')?.selectPanel(SKILLS_PANEL_ID)
+      } }) }, SkillsLauncher,
   )), 'ui-skills: composer shortcut')
   // The 探索 tab waits for `@dv/ui-shell` to declare `dv.explore`; MCP (order 0) stays before it.
   ctx.effect(() => ctx.slots.inject('dv.explore', () => ctx.slots.register(
