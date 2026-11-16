@@ -1,14 +1,14 @@
 /**
  * Provider plugin `fastvideo` of DreamVerse for models served by local FastVideo servers. It registers into
  * `ctx.dvModels` one entry per model that its `models` config names and per task the config gives a server for; a model
- * or task the config leaves out is not registered. Each task of a model is served by its own server, whose model facts
- * the config gives. `@dv/fastvideo-generation-client` sends each render as one `POST /v1/videos/sync` with the
- * references and an optional first frame as `data:` URLs read from `dvAssetPool`, with each citation of a reference in
- * the prompt replaced by the label that the served model gives the reference in the backend's reading order. The
- * server answers with the whole MP4; the entry reads its last frame with `dvFfmpeg`. Each entry describes
- * in `schema()` the durations, aspect ratios and resolutions of its server and the inputs and `extra` parameters it
- * accepts, and checks the inputs and `extra` in `validateGenerationRequest`. Each entry carries the prompt skill of its
- * model and task, which the catalog registers.
+ * or task the config leaves out is not registered. Each task of a model is served by its own server, whose served alias
+ * and reference limits the config gives and whose output choices the server publishes on `GET /v1/model_info`.
+ * `@dv/fastvideo-generation-client` sends each render as one `POST /v1/videos/sync` with the references and an optional
+ * first frame as `data:` URLs read from `dvAssetPool`, with each citation of a reference in the prompt replaced by the
+ * label that the served model gives the reference in the backend's reading order. The server answers with the whole
+ * MP4; the entry reads its last frame with `dvFfmpeg`. Each entry describes in `schema()` the durations, aspect ratios
+ * and resolutions of its server and the inputs and `extra` parameters it accepts, and checks the inputs and `extra` in
+ * `validateGenerationRequest`. Each entry carries the prompt skill of its model and task, which the catalog registers.
  *
  * Served models: `fasth3` (MiniMax H3 as FastH3), for task `ref2v` (FastH3 Ref2VA) and task `t2v` (FastH3 8-Step V2).
  *
@@ -21,7 +21,7 @@ import { validateArgs, type ParameterSchemaSpec } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
 import {
-  backendOrder, DvFastvideoGeneration, type Config as GenerationConfig, type ModelFacts,
+  backendOrder, DvFastvideoGeneration, type Config as GenerationConfig, type ConfiguredFacts,
 } from '@dv/fastvideo-generation-client'
 import type {} from '@dv/asset-pool'
 import type {} from '@dv/ffmpeg'
@@ -32,7 +32,7 @@ import { modelPrompt } from './reference-labels.ts'
 import type { AssignReferenceLabels } from './reference-labels.ts'
 import type { InputDeclaration, InputRole, MediaType, ServedTask, TaskInputs } from './types.ts'
 
-/** One task of one model: the generation server that renders it and the facts of its served model. */
+/** One task of one model: the generation server that renders it and the configured facts of its served model. */
 export type TaskServer = GenerationConfig
 
 /** `dv-fastvideo` configuration. */
@@ -49,7 +49,7 @@ export const Config: z<Config> = z.object({
 /** The provider name of every entry this plugin registers. */
 const PROVIDER = 'fastvideo'
 
-/** The count limits of one input, from the configured facts of its server. */
+/** The count limits of one input, from the configured reference limits of its server. */
 interface InputLimits {
   /** The most assets in the input across all media types. */
   maxCount: number
@@ -109,12 +109,12 @@ function frameName(role: 'first_frame' | 'last_frame'): string {
  * declares and the server does not accept has a limit of 0.
  * @param name - the model and task, such as `fasth3 ref2v`, for the error message.
  * @param inputs - the inputs the task declares.
- * @param facts - the server's facts.
+ * @param facts - the server's configured facts.
  * @returns the limits by declared input; empty for a task without inputs.
  * @throws Error when the facts leave a frame input no slot in a media type it takes, or fewer slots than the frame
  *   inputs and the `reference` input's `min` together.
  */
-function deriveInputLimits(name: string, inputs: TaskInputs, facts: ModelFacts): TaskInputLimits {
+function deriveInputLimits(name: string, inputs: TaskInputs, facts: ConfiguredFacts): TaskInputLimits {
   const frames = (['first_frame', 'last_frame'] as const).flatMap((role) => {
     const frame = inputs[role]
     return frame === undefined ? [] : [{ role, frame }]
@@ -134,7 +134,7 @@ function deriveInputLimits(name: string, inputs: TaskInputs, facts: ModelFacts):
   const minimum = frames.length + (reference?.min ?? 0)
   if (facts.maxReferences < minimum) {
     // Only a task with a `reference` input gets here: every served frame input takes only `image`, the check above
-    // gives `image` a maxCount of at least the frame count, and deriveModelFacts caps each maxCount at maxReferences.
+    // gives `image` a maxCount of at least the frame count, and deriveConfiguredFacts caps each maxCount at maxReferences.
     const detail = [`at least ${(reference as InputDeclaration).min} reference`, ...frames.map(({ role }) => frameName(role))].join(' and ')
     throw new Error(`dv-fastvideo: ${name} takes ${detail}, so modelFacts.maxReferences must be at least ${minimum}; it is ${facts.maxReferences}.`)
   }
@@ -270,7 +270,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
   const client = new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), {
     ...server, task: served.nativeTask ?? server.task ?? null,
   })
-  const limits = deriveInputLimits(`${model} ${task}`, inputs, client.facts)
+  const limits = deriveInputLimits(`${model} ${task}`, inputs, client.configuredFacts)
   return {
     modality: 'video',
     task,
@@ -317,7 +317,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
         ...request.lastFrame === null ? [] : [request.lastFrame]]
       return (async function* () {
         if (request.frameWidth === undefined || request.frameHeight === undefined || request.numFrames === undefined) {
-          throw new Error('FastVideo requires native frame dimensions and a frame count from its configured facts.')
+          throw new Error('FastVideo requires native frame dimensions and a frame count from its model facts.')
         }
         // Video and audio references can be tens of megabytes each, so they are read concurrently off the event loop.
         const references = await Promise.all(assets.map(async id => ({

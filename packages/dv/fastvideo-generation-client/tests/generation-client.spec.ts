@@ -6,7 +6,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { Agent, fetch, getGlobalDispatcher, setGlobalDispatcher } from 'undici'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvFastvideoGeneration, {
-  backendOrder, deriveModelFacts, GenerationSegmentError, type ModelFactsConfig, type SegmentRequest,
+  backendOrder, GenerationSegmentError, type ModelFactsConfig, type SegmentRequest,
 } from '../src/index.ts'
 
 /** A port in the owned test range on which nothing listens. */
@@ -14,10 +14,14 @@ const UNREACHABLE_PORT = 18502
 
 const FACTS: ModelFactsConfig = {
   modelId: 'fasth3-nvfp4',
-  frameSizes: { '16:9': { '480p': [832, 480], '720p': [1344, 768] }, '9:16': { '480p': [480, 832], '720p': [768, 1344] } },
-  numFramesByDurationSec: { 5: 124, 6: 158 },
   maxReferences: 12,
   referenceMediaTypes: { image: { maxCount: 9 }, video: { maxCount: 3 }, audio: { maxCount: 3 } },
+}
+
+/** The `video_output_capabilities` that the fake backend publishes on `GET /v1/model_info`. */
+const CAPABILITIES = {
+  schema_version: 1, fps: 24, duration_seconds: { min: 5, max: 6 }, num_frames_by_duration_seconds: { 5: 124, 6: 158 },
+  recommended_frame_sizes: { '9:16': { '720p': [768, 1344], '480p': [480, 832] }, '16:9': { '480p': [832, 480], '720p': [1344, 768] } },
 }
 
 const roots: Context[] = []
@@ -73,12 +77,16 @@ function segment(updates: Partial<SegmentRequest> = {}): SegmentRequest {
 }
 
 describe('model facts', () => {
-  it('derives the catalog choices and duration range from the configured maps', async () => {
+  it('reads the output facts from video_output_capabilities in the server order, and reads model_info once', async () => {
     const { client: generation, requests } = await backend((_path, response) => {
-      response.end(JSON.stringify({ model_path: '/weights', served_model_name: FACTS.modelId, lora: null }))
+      response.end(JSON.stringify({ model_path: '/weights', served_model_name: FACTS.modelId, lora: null, video_output_capabilities: CAPABILITIES }))
     })
+    expect(generation.configuredFacts).toEqual(FACTS)
+    // The server's first aspect ratio and the resolution order of that aspect ratio come first; 16:9 lists the same
+    // resolutions in another order.
     expect(await generation.model()).toEqual({
-      ...FACTS, aspectRatios: ['16:9', '9:16'], resolutions: ['480p', '720p'], minDurationSec: 5, maxDurationSec: 6,
+      ...FACTS, aspectRatios: ['9:16', '16:9'], resolutions: ['720p', '480p'], minDurationSec: 5, maxDurationSec: 6,
+      frameSizes: CAPABILITIES.recommended_frame_sizes, numFramesByDurationSec: { 5: 124, 6: 158 },
     })
     await generation.model()
     expect(requests.map(request => request.path)).toEqual(['/v1/model_info'])
@@ -87,13 +95,26 @@ describe('model facts', () => {
   it('refuses a served alias that is missing or differs from modelFacts.modelId, and retries after a failure', async () => {
     let served: unknown = 'another-model'
     const { client: generation, requests } = await backend((_path, response) => {
-      response.end(JSON.stringify({ served_model_name: served }))
+      response.end(JSON.stringify({ served_model_name: served, video_output_capabilities: CAPABILITIES }))
     })
     await expect(generation.model()).rejects.toThrow('FastVideo serves another-model; modelFacts.modelId is fasth3-nvfp4.')
     served = undefined
     await expect(generation.model()).rejects.toThrow('FastVideo GET /v1/model_info reports no served_model_name; expected fasth3-nvfp4.')
     served = FACTS.modelId
     expect(await generation.model()).toMatchObject({ modelId: FACTS.modelId })
+    expect(requests).toHaveLength(3)
+  })
+
+  it('refuses a model_info without video_output_capabilities or with null, and reads it again on the next call', async () => {
+    let info: Record<string, unknown> = { served_model_name: FACTS.modelId }
+    const { client: generation, requests } = await backend((_path, response) => { response.end(JSON.stringify(info)) })
+    const message = 'FastVideo GET /v1/model_info for fasth3-nvfp4 reports no video_output_capabilities; FastVideo must '
+      + 'publish the output durations and frame sizes of the served model there (FastVideo #2085).'
+    await expect(generation.model()).rejects.toThrow(message)
+    info = { ...info, video_output_capabilities: null }
+    await expect(generation.model()).rejects.toThrow(message)
+    info = { ...info, video_output_capabilities: CAPABILITIES }
+    expect(await generation.model()).toMatchObject({ minDurationSec: 5, maxDurationSec: 6 })
     expect(requests).toHaveLength(3)
   })
 
@@ -111,32 +132,26 @@ describe('model facts', () => {
     expect(error.cause).toBeInstanceOf(SyntaxError)
   })
 
-  it.each([
-    ['a gap in the durations', { numFramesByDurationSec: { 5: 124, 7: 190 } }, 'numFramesByDurationSec has a gap; it needs every duration from 5 to 7.'],
-    ['no duration', { numFramesByDurationSec: {} }, 'numFramesByDurationSec lists no duration.'],
-    ['a fractional duration', { numFramesByDurationSec: { '5.5': 140 } }, 'numFramesByDurationSec has duration "5.5"'],
-    ['frame counts that shrink', { numFramesByDurationSec: { 5: 124, 6: 100 } }, 'a frame count that does not grow with the duration'],
-    ['no frame size', { frameSizes: {} }, 'frameSizes lists no frame size.'],
-    ['aspect ratios with different resolutions', { frameSizes: { '16:9': { '480p': [832, 480] }, '9:16': { '720p': [768, 1344] } } },
-      'frameSizes of 9:16 lists 720p; every aspect ratio lists 480p.'],
-    ['an aspect ratio without a resolution', { frameSizes: { '16:9': { '480p': [832, 480] }, '9:16': {} } },
-      'frameSizes of 9:16 lists no resolution; every aspect ratio lists 480p.'],
-    ['a media type limit above maxReferences', { maxReferences: 2 }, 'referenceMediaTypes.image.maxCount 9 exceeds maxReferences 2.'],
-  ] as const)('refuses facts with %s when the client is built', (_case, update, message) => {
-    expect(() => client('http://127.0.0.1:1', { ...FACTS, ...update } as ModelFactsConfig)).toThrow(message)
-  })
-
-  it('accepts aspect ratios that list the same resolutions in another order', () => {
-    const frameSizes: ModelFactsConfig['frameSizes'] = {
-      '16:9': { '480p': [832, 480], '720p': [1344, 768] }, '9:16': { '720p': [768, 1344], '480p': [480, 832] },
-    }
-    expect(deriveModelFacts({ ...FACTS, frameSizes })).toMatchObject({ aspectRatios: ['16:9', '9:16'], resolutions: ['480p', '720p'], frameSizes })
+  it('refuses a media type limit above maxReferences when the client is built', () => {
+    expect(() => client('http://127.0.0.1:1', { ...FACTS, maxReferences: 2 }))
+      .toThrow('FastVideo modelFacts of fasth3-nvfp4: referenceMediaTypes.image.maxCount 9 exceeds maxReferences 2.')
   })
 
   it('refuses a reference media type that FastVideo does not accept at config validation', () => {
     const text: Record<string, { maxCount: number }> = { text: { maxCount: 1 } }
     expect(() => DvFastvideoGeneration.Config({ baseUrl: 'http://127.0.0.1:1', modelFacts: { ...FACTS, referenceMediaTypes: text } })).toThrow()
     expect(DvFastvideoGeneration.Config({ baseUrl: 'http://127.0.0.1:1', modelFacts: FACTS }).modelFacts).toEqual(FACTS)
+  })
+
+  it.each([
+    ['modelFacts.frameSizes', { modelFacts: { ...FACTS, frameSizes: { '16:9': { '480p': [832, 480] } } } },
+      'modelFacts has no field frameSizes; its fields: modelId, maxReferences, referenceMediaTypes.'],
+    ['modelFacts.numFramesByDurationSec', { modelFacts: { ...FACTS, numFramesByDurationSec: { 5: 124 } } },
+      'modelFacts has no field numFramesByDurationSec; its fields: modelId, maxReferences, referenceMediaTypes.'],
+    ['discoverOutputCapabilities', { modelFacts: FACTS, discoverOutputCapabilities: true },
+      'FastVideo server config has no field discoverOutputCapabilities; its fields: baseUrl, modelFacts, managed, asyncJobs, task, displayName, pollIntervalMs.'],
+  ])('refuses the removed field %s at config validation', (_field, update, message) => {
+    expect(() => DvFastvideoGeneration.Config({ baseUrl: 'http://127.0.0.1:1', ...update })).toThrow(message)
   })
 })
 

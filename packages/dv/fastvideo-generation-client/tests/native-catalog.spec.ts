@@ -6,9 +6,10 @@ import DvFastvideoGeneration, { GenerationSegmentError, type Config, type Segmen
 const roots: Context[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => root.fiber.dispose())) })
 
-const facts = {
-  modelId: 'pika', frameSizes: { '16:9': { '480p': [832, 480] as [number, number] } },
-  numFramesByDurationSec: { 5: 124 }, maxReferences: 2, referenceMediaTypes: { image: { maxCount: 2 } },
+const facts = { modelId: 'pika', maxReferences: 2, referenceMediaTypes: { image: { maxCount: 2 } } }
+const capabilities = {
+  schema_version: 1, fps: 24, duration_seconds: { min: 5, max: 6 }, num_frames_by_duration_seconds: { 5: 124, 6: 158 },
+  recommended_frame_sizes: { '16:9': { '480p': [832, 480], '768p': [1344, 768] } },
 }
 const segment: SegmentRequest = { prompt: 'A lake', references: [], frameWidth: 832, frameHeight: 480, numFrames: 124 }
 function json(value: unknown, status = 200): Response { return Response.json(value, { status }) }
@@ -97,7 +98,7 @@ describe('native catalog and job controls', () => {
     const generation = client(async (input, init) => {
       const url = String(input)
       calls.push({ url, body: init?.body == null ? null : JSON.parse(String(init.body)) })
-      if (url.includes('model_info')) return json({ served_model_name: 'pika' })
+      if (url.includes('model_info')) return json({ served_model_name: 'pika', video_output_capabilities: capabilities })
       return json({ installed: true, loaded_model: 'pika', loaded_task: 't2va', busy: false, managed: true })
     })
     await generation.model()
@@ -116,12 +117,8 @@ describe('native catalog and job controls', () => {
     await expect(generation.loadModel()).rejects.toThrow('fixed distributed endpoint')
   })
 
-  it('discovers a managed alias’s output metadata without changing its reference capabilities', async () => {
-    const generation = client(async () => json({ served_model_name: 'pika', video_output_capabilities: {
-      schema_version: 1, fps: 24, duration_seconds: { min: 5, max: 6 },
-      num_frames_by_duration_seconds: { 5: 124, 6: 158 },
-      recommended_frame_sizes: { '16:9': { '480p': [832, 480], '768p': [1344, 768] } },
-    } }), { discoverOutputCapabilities: true })
+  it('reads a managed alias’s output metadata without changing its reference capabilities', async () => {
+    const generation = client(async () => json({ served_model_name: 'pika', video_output_capabilities: capabilities }))
     const discovered = await generation.model()
     expect(discovered).toMatchObject({ minDurationSec: 5, maxDurationSec: 6,
       resolutions: ['480p', '768p'], maxReferences: 2, referenceMediaTypes: facts.referenceMediaTypes })
@@ -129,22 +126,12 @@ describe('native catalog and job controls', () => {
     expect(await generation.model()).toBe(discovered)
   })
 
-  it('keeps configured output choices when metadata discovery was not enabled', async () => {
-    const generation = client(async () => json({ served_model_name: 'pika', video_output_capabilities: { schema_version: 2 } }))
-    expect(await generation.model()).toMatchObject({ modelId: 'pika', minDurationSec: 5, maxDurationSec: 5, resolutions: ['480p'] })
-  })
-
-  it('keeps configured output choices when enabled discovery reads no metadata', async () => {
-    const generation = client(async () => json({ served_model_name: 'pika' }), { discoverOutputCapabilities: true })
-    expect(await generation.model()).toMatchObject({ modelId: 'pika', minDurationSec: 5, maxDurationSec: 5, resolutions: ['480p'] })
-  })
-
   it('rejects malformed output metadata without caching it, so the next model() call fetches again', async () => {
     let fetches = 0
     const generation = client(async () => {
       fetches++
       return json({ served_model_name: 'pika', video_output_capabilities: { schema_version: 2 } })
-    }, { discoverOutputCapabilities: true })
+    })
     await expect(generation.model()).rejects.toThrow('invalid video output capabilities')
     await expect(generation.model()).rejects.toThrow('invalid video output capabilities')
     expect(fetches).toBe(2)

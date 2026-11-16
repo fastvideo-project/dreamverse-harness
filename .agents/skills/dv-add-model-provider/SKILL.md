@@ -17,7 +17,7 @@ This skill uses these terms:
 - **Entry**: one `ModelEntry`. An entry is one model of one provider for one task.
 - **Key**: the four entry fields `modality`, `task`, `provider` and `model`.
 
-The example is the provider plugin `@dv/fastvideo` in `packages/dv/fastvideo/`. Use its files as the example. Do not copy its model data. FastVideo publishes no limits endpoint, so `@dv/fastvideo` reads the limits of each server from the validated `modelFacts` config of that server. `@dv/uniserve` in `packages/dv/uniserve/` reads the limits from its server.
+The example is the provider plugin `@dv/fastvideo` in `packages/dv/fastvideo/`. Use its files as the example. Do not copy its model data. FastVideo publishes the durations, frame counts and frame sizes of each server as `video_output_capabilities` on `GET /v1/model_info`, so `@dv/fastvideo` reads them from the server; it reads the served alias and the reference limits of each server from the validated `modelFacts` config of that server. `@dv/uniserve` in `packages/dv/uniserve/` reads the limits from its server.
 
 ## No compatibility code
 
@@ -77,7 +77,7 @@ Do these steps to add a provider.
 
 1. Put each deployment value in the plugin `Config`. Use a validated `schemastery` schema.
 2. Configure the models to enable and their server location. Fixed-task servers can use the model/task map of `@dv/fastvideo`; catalog-driven providers can map local aliases to native model IDs and discover their supported tasks.
-3. For each model and task, give the server URL. When the provider has no endpoint for the limits, also give the limits of the served model, such as `modelFacts` of `@dv/fastvideo`.
+3. For each model and task, give the server URL. When the provider has no endpoint for some limits, also give those limits of the served model, such as the reference limits in `modelFacts` of `@dv/fastvideo`.
 4. In `apply`, throw an error for a model or a task that the plugin does not serve. Name the value in the message.
 5. Do not put a server URL or the models to register in a code constant.
 
@@ -148,7 +148,7 @@ When you dispose the plugin, the effect removes the entry. `register` throws whe
 ## Add a server
 
 1. Find the row of the provider plugin in the composition, such as `packages/bundle/dv/cordis.patch.yml`.
-2. In the `config` of the row, add or change the server URL of the model and task. When the plugin reads the limits from the config, such as `modelFacts` of `@dv/fastvideo`, also give the limits of the served model.
+2. In the `config` of the row, add or change the server URL of the model and task. When the plugin reads limits from the config, such as the reference limits in `modelFacts` of `@dv/fastvideo`, also give those limits of the served model.
 3. Do not change the plugin code.
 4. If you can start the composition, call `dv_models_get` for the key. Make sure that the limits in the schema agree with the served model.
 

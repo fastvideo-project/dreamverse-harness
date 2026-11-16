@@ -1,6 +1,7 @@
 /**
  * `dvFastvideoGeneration`: the harness client for FastVideo generation. `model()` checks the served alias with
- * `GET /v1/model_info` and returns the configured facts; `generateSegment` sends one `POST /v1/videos/sync` with each
+ * `GET /v1/model_info` and returns the configured facts with the output facts that the server publishes there as
+ * `video_output_capabilities`; `generateSegment` sends one `POST /v1/videos/sync` with each
  * reference as a base64 `data:` URL and returns the whole MP4.
  *
  * @module @dv/fastvideo-generation-client
@@ -12,9 +13,10 @@ import { fetch, getGlobalDispatcher, type Dispatcher, type Response } from 'undi
 import { backendErrorText, GenerationSegmentError } from './errors.ts'
 import { outputFacts } from './output-capabilities.ts'
 import { followVideoJob, type NativeRequestInit } from './native-jobs.ts'
-import { deriveModelFacts, modelFactsConfig, type ModelFactsConfig } from './model-facts.ts'
+import { closedObject } from './closed-object.ts'
+import { deriveConfiguredFacts, modelFactsConfig, type ModelFactsConfig } from './model-facts.ts'
 import { REFERENCE_FIELDS, referenceMediaType } from './references.ts'
-import type { ModelFacts, SegmentRequest, SegmentVideo } from './types.ts'
+import type { ConfiguredFacts, ModelFacts, SegmentRequest, SegmentVideo } from './types.ts'
 
 export * from './errors.ts'
 export * from './model-facts.ts'
@@ -28,14 +30,12 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** Generation backend location and the facts of the model it serves. */
+/** Generation backend location and the configured facts of the model it serves. */
 export interface Config {
   /** HTTP base URL of the generation backend, such as `http://127.0.0.1:8029`. */
   baseUrl: string
-  /** The facts of the served model, which FastVideo does not publish. */
+  /** The served alias and the reference limits of the served model, which FastVideo does not publish. */
   modelFacts: ModelFactsConfig
-  /** Discover native output metadata when available; reference limits remain configured. */
-  discoverOutputCapabilities?: boolean
   /** Native managed catalog and model residency support; off for ordinary fixed servers. */
   managed?: boolean
   /** Use tracked asynchronous native video jobs. */
@@ -58,12 +58,11 @@ function untimedDispatcher(): Dispatcher {
   return getGlobalDispatcher().compose(dispatch => (options, handler) => dispatch({ ...options, headersTimeout: 0 }, handler))
 }
 
-/** Checks the served model and generates segments with the configured facts. */
+/** Checks the served model, reads its output facts and generates segments. */
 export class DvFastvideoGeneration extends Service {
-  static Config: z<Config> = z.object({
+  static Config: z<Config> = closedObject<Config>('FastVideo server config', {
     baseUrl: z.string().required(),
     modelFacts: modelFactsConfig.required(),
-    discoverOutputCapabilities: z.boolean().default(false),
     managed: z.boolean().default(false), asyncJobs: z.boolean().default(false),
     task: z.union([z.const(null), z.string()]).default(null),
     displayName: z.union([z.const(null), z.string()]).default(null),
@@ -71,37 +70,40 @@ export class DvFastvideoGeneration extends Service {
   })
 
   private readonly baseUrl: URL
-  /** The facts derived from `modelFacts` when the client is built. */
-  facts: ModelFacts
-  /** Whether a `GET /v1/model_info` confirmed the served alias; the served model stays fixed for the backend's lifetime. */
-  private checked = false
+  /** The served alias and reference limits from `modelFacts`, derived when the client is built. */
+  readonly configuredFacts: ConfiguredFacts
+  /** The facts of the first successful `model()`; the served model stays fixed for the backend's lifetime. */
+  private discovered: ModelFacts | undefined
 
   /**
    * @param ctx - owning plugin context.
-   * @param config - generation backend location and model facts.
-   * @throws Error naming the inconsistency of the configured facts.
+   * @param config - generation backend location and configured model facts.
+   * @throws Error naming a reference media type limit above `modelFacts.maxReferences`.
    */
   constructor(ctx: Context, private readonly config: Config,
     private readonly fetchImpl?: typeof globalThis.fetch) {
     super(ctx, 'dvFastvideoGeneration')
     this.baseUrl = new URL(config.baseUrl)
-    this.facts = deriveModelFacts(config.modelFacts)
+    this.configuredFacts = deriveConfiguredFacts(config.modelFacts)
   }
 
   /**
-   * Check once that the backend serves the configured model.
+   * Check once that the backend serves the configured model, and read the output facts it publishes. A failure is not
+   * cached: the next call reads `GET /v1/model_info` again.
    * @param signal - aborts the read.
-   * @returns the model facts.
+   * @returns the configured facts with the output facts of `video_output_capabilities`, in the server's order.
    * @throws Error naming the route and the HTTP status for a status other than 200, Error naming the route for a body
-   *   that is not JSON, Error naming the served alias when it is missing or differs from `modelFacts.modelId`, or the
-   *   `fetch` error when the backend is unreachable.
+   *   that is not JSON, Error naming the served alias when it is missing or differs from `modelFacts.modelId`, Error
+   *   naming the route, the served model and the field when `video_output_capabilities` is missing or null, Error for
+   *   invalid `video_output_capabilities`, or the `fetch` error when the backend is unreachable.
    */
   async model(signal?: AbortSignal): Promise<ModelFacts> {
-    if (this.checked) return this.facts
+    if (this.discovered !== undefined) return this.discovered
+    const { modelId } = this.configuredFacts
     const route = 'GET /v1/model_info'
     const url = new URL('/v1/model_info', this.baseUrl)
     if (this.config.managed) {
-      url.searchParams.set('model', this.facts.modelId)
+      url.searchParams.set('model', modelId)
       if (this.config.task != null) url.searchParams.set('task', this.config.task)
     }
     const response = await this.request(url, { ...signal === undefined ? {} : { signal } })
@@ -116,11 +118,15 @@ export class DvFastvideoGeneration extends Service {
       throw new Error(`FastVideo ${route} answered no JSON: ${(error as SyntaxError).message}`, { cause: error })
     }
     const served = info?.served_model_name
-    if (typeof served !== 'string') throw new Error(`FastVideo ${route} reports no served_model_name; expected ${this.facts.modelId}.`)
-    if (served !== this.facts.modelId) throw new Error(`FastVideo serves ${served}; modelFacts.modelId is ${this.facts.modelId}.`)
-    if (this.config.discoverOutputCapabilities === true) this.facts = outputFacts(this.facts, info?.video_output_capabilities)
-    this.checked = true
-    return this.facts
+    if (typeof served !== 'string') throw new Error(`FastVideo ${route} reports no served_model_name; expected ${modelId}.`)
+    if (served !== modelId) throw new Error(`FastVideo serves ${served}; modelFacts.modelId is ${modelId}.`)
+    const capabilities = info?.video_output_capabilities
+    if (capabilities === undefined || capabilities === null) {
+      throw new Error(`FastVideo ${route} for ${served} reports no video_output_capabilities; FastVideo must publish the `
+        + 'output durations and frame sizes of the served model there (FastVideo #2085).')
+    }
+    this.discovered = { ...this.configuredFacts, ...outputFacts(capabilities) }
+    return this.discovered
   }
 
   /**
@@ -143,7 +149,7 @@ export class DvFastvideoGeneration extends Service {
       return urls.length === 0 ? [] : [[field, urls]]
     }))
     const body = {
-      model: this.facts.modelId, ...this.config.task == null ? {} : { task: this.config.task },
+      model: this.configuredFacts.modelId, ...this.config.task == null ? {} : { task: this.config.task },
       prompt: request.prompt, width: request.frameWidth, height: request.frameHeight,
       num_frames: request.numFrames, ...request.seed === undefined ? {} : { seed: request.seed }, ...references,
     }
@@ -192,15 +198,15 @@ export class DvFastvideoGeneration extends Service {
   }> {
     if (!this.config.managed) throw new Error('This endpoint has no managed model catalog')
     const url = new URL('/v1/model_state', this.baseUrl)
-    url.searchParams.set('model', this.facts.modelId)
+    url.searchParams.set('model', this.configuredFacts.modelId)
     const response = await this.request(url, { ...signal === undefined ? {} : { signal } })
     if (!response.ok) throw new Error(`FastVideo model status refused (HTTP ${response.status})`)
     const state: unknown = await response.json()
     if (typeof state !== 'object' || state === null || !('busy' in state) || typeof state.busy !== 'boolean'
       || !('installed' in state) || typeof state.installed !== 'boolean' || !('loaded_model' in state)) throw new Error('Invalid native model state')
     const taskMatches = this.config.task == null || !('loaded_task' in state) || state.loaded_task === this.config.task
-    return { installed: state.installed, loaded: state.loaded_model === this.facts.modelId && taskMatches,
-      loading: 'loading_model' in state && state.loading_model === this.facts.modelId, busy: state.busy,
+    return { installed: state.installed, loaded: state.loaded_model === this.configuredFacts.modelId && taskMatches,
+      loading: 'loading_model' in state && state.loading_model === this.configuredFacts.modelId, busy: state.busy,
       managed: !('managed' in state) || state.managed !== false }
   }
 
@@ -224,7 +230,7 @@ export class DvFastvideoGeneration extends Service {
     }
     const url = new URL(state.managed ? `/v1/models/${action}` : '/v1/runtime/release', this.baseUrl)
     const response = await this.request(url, { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model: this.facts.modelId, task: this.config.task }), ...signal === undefined ? {} : { signal } })
+      body: JSON.stringify({ model: this.configuredFacts.modelId, task: this.config.task }), ...signal === undefined ? {} : { signal } })
     if (!response.ok) throw new Error(`FastVideo model ${action} refused (HTTP ${response.status}): ${await backendErrorText(response)}`)
   }
 

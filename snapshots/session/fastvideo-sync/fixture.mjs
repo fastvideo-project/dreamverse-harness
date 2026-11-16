@@ -8,9 +8,21 @@ export const inject = ['tools', 'attachments']
 
 /** Own the backend listener and register one deterministic adapter probe. */
 export async function apply(ctx) {
-  const modelFacts = {
-    modelId: 'snapshot-video', frameSizes: { '16:9': { '480p': [832, 480] } }, numFramesByDurationSec: { 5: 124 },
-    maxReferences: 0, referenceMediaTypes: {},
+  const modelFacts = { modelId: 'snapshot-video', maxReferences: 0, referenceMediaTypes: {} }
+  // The video_output_capabilities that a FastVideo main server publishes for FastH3 on GET /v1/model_info.
+  const videoOutputCapabilities = {
+    schema_version: 1, fps: 24, duration_seconds: { min: 5, max: 15 },
+    num_frames_by_duration_seconds: { 5: 124, 6: 158, 7: 175, 8: 192, 9: 226, 10: 243, 11: 277, 12: 294, 13: 328, 14: 345, 15: 362 },
+    recommended_frame_sizes: {
+      '16:9': { '480p': [832, 480], '768p': [1344, 768] }, '21:9': { '480p': [960, 416], '768p': [1536, 672] },
+      '3:2': { '480p': [704, 480], '768p': [1152, 768] }, '4:3': { '480p': [640, 480], '768p': [1024, 768] },
+      '5:4': { '480p': [608, 480], '768p': [960, 768] }, '1:1': { '480p': [480, 480], '768p': [768, 768] },
+      '4:5': { '480p': [480, 608], '768p': [768, 960] }, '3:4': { '480p': [480, 640], '768p': [768, 1024] },
+      '2:3': { '480p': [480, 704], '768p': [768, 1152] }, '9:16': { '480p': [480, 832], '768p': [768, 1344] },
+      '9:21': { '480p': [416, 960], '768p': [672, 1536] },
+    },
+    canvas_multiple: 32, tasks: [{ task: 't2va', image_references: 0 }, { task: 'ref2va' }],
+    reference_limits: { images: 9, videos: 3, audios: 3, total: 12, continuation_video: true }, hardware_capacity_verified: false,
   }
   const requests = []
   const server = createServer(async (request, response) => {
@@ -20,7 +32,7 @@ export async function apply(ctx) {
     requests.push({ path: request.url, body })
     if (request.url === '/v1/model_info') {
       response.writeHead(200, { 'content-type': 'application/json' })
-      response.end(JSON.stringify({ served_model_name: modelFacts.modelId }))
+      response.end(JSON.stringify({ served_model_name: modelFacts.modelId, video_output_capabilities: videoOutputCapabilities }))
     } else if (request.url === '/v1/videos/sync') {
       if (body.prompt === 'Failure') {
         response.writeHead(500, { 'content-type': 'application/json' })

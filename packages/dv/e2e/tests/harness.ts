@@ -24,10 +24,19 @@ export const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmp
 /** Playwright, a dev dependency of this package; the stories launch Chromium through it. */
 export * as playwright from 'playwright'
 
-/** The model facts of the fake backend in the profile patch: tiny frames so a video renders in well under a second. */
+/** The model facts of the fake backend in the profile patch: its served alias and reference limits. */
 const MODEL_FACTS = {
-  modelId: 'fake-ref2va', frameSizes: { '16:9': { '720p': [192, 112] } }, numFramesByDurationSec: { 1: 25, 2: 49 },
+  modelId: 'fake-ref2va',
   maxReferences: 3, referenceMediaTypes: { image: { maxCount: 3 }, video: { maxCount: 3 }, audio: { maxCount: 3 } },
+}
+
+/**
+ * The `video_output_capabilities` that the fake backend publishes on `GET /v1/model_info`: tiny frames so a video
+ * renders in well under a second.
+ */
+const OUTPUT_CAPABILITIES = {
+  schema_version: 1, fps: 24, duration_seconds: { min: 1, max: 2 }, num_frames_by_duration_seconds: { 1: 25, 2: 49 },
+  recommended_frame_sizes: { '16:9': { '720p': [192, 112] } },
 }
 
 /** A running fake backend. */
@@ -76,8 +85,8 @@ async function encodePlayableVideo(
 }
 
 /**
- * Start a fake FastVideo backend: `GET /v1/model_info` names the served model of `MODEL_FACTS`, and every
- * `POST /v1/videos/sync` answers with one solid-color MP4 encoded with ffmpeg.
+ * Start a fake FastVideo backend: `GET /v1/model_info` names the served model of `MODEL_FACTS` and publishes
+ * `OUTPUT_CAPABILITIES`, and every `POST /v1/videos/sync` answers with one solid-color MP4 encoded with ffmpeg.
  * @param dir - a scratch directory for the rendered files.
  * @returns the backend handle.
  */
@@ -105,7 +114,9 @@ export async function startFakeBackend(
     const path = request.url ?? ''
     if (request.method !== 'POST') {
       response.writeHead(path === '/v1/model_info' ? 200 : 404, { 'content-type': 'application/json', connection: 'close' })
-      response.end(JSON.stringify({ model_path: '/weights', served_model_name: MODEL_FACTS.modelId, lora: null }))
+      response.end(JSON.stringify({
+        model_path: '/weights', served_model_name: MODEL_FACTS.modelId, lora: null, video_output_capabilities: OUTPUT_CAPABILITIES,
+      }))
       return
     }
     const parts: Buffer[] = []

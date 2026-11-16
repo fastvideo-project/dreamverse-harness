@@ -1,7 +1,8 @@
 /**
  * The FastVideo provider plugin in a REAL composition: a test-only `cordis.yml` boots the DSH skill registry, Project,
  * ffmpeg, the asset pool, the model catalog and the plugin through the Loader. The FastVideo servers are the only fakes:
- * one HTTP server per task that answers `GET /v1/model_info` and answers every `POST /v1/videos/sync` with one MP4. An
+ * one HTTP server per task that answers `GET /v1/model_info` with the served alias and `video_output_capabilities`, and
+ * answers every `POST /v1/videos/sync` with one MP4. An
  * opt-in test renders an image, a video with sound and an audio file against a running server named by
  * `DV_FASTVIDEO_TEST_URL`, with the facts of `REAL_FACTS` and the served alias named by `DV_FASTVIDEO_TEST_MODEL`.
  */
@@ -88,8 +89,7 @@ async function redThenBlueVideo(): Promise<Buffer> {
  * the first frame among its references.
  */
 const REFERENCE_FACTS: ModelFactsConfig = {
-  modelId: 'fake-ref2va', frameSizes: { '16:9': { '720p': [1344, 768] } }, numFramesByDurationSec: { 5: 124, 6: 158 },
-  maxReferences: 4, referenceMediaTypes: { image: { maxCount: 3 }, video: { maxCount: 2 } },
+  modelId: 'fake-ref2va', maxReferences: 4, referenceMediaTypes: { image: { maxCount: 3 }, video: { maxCount: 2 } },
 }
 
 /** The facts of the opt-in running server: FastH3 Ref2VA, which takes images, videos and audio. */
@@ -100,8 +100,13 @@ const REAL_FACTS: ModelFactsConfig = {
 
 /** The facts of the fake text server. */
 const TEXT_FACTS: ModelFactsConfig = {
-  modelId: 'fake-t2va', frameSizes: { '16:9': { '720p': [1344, 768] } }, numFramesByDurationSec: { 5: 124, 6: 158 },
-  maxReferences: 0, referenceMediaTypes: {},
+  modelId: 'fake-t2va', maxReferences: 0, referenceMediaTypes: {},
+}
+
+/** The `video_output_capabilities` that every fake server publishes on `GET /v1/model_info`. */
+const CAPABILITIES = {
+  schema_version: 1, fps: 24, duration_seconds: { min: 5, max: 6 }, num_frames_by_duration_seconds: { 5: 124, 6: 158 },
+  recommended_frame_sizes: { '16:9': { '720p': [1344, 768] } },
 }
 
 const cleanups: Array<() => Promise<void>> = []
@@ -122,11 +127,12 @@ interface FakeServer {
 }
 
 /**
- * Start a fake FastVideo server that answers `GET /v1/model_info` with the facts' alias and every
+ * Start a fake FastVideo server that answers `GET /v1/model_info` with the facts' alias and `CAPABILITIES`, and every
  * `POST /v1/videos/sync` with `video`.
- * @param facts - the facts of the served model.
+ * @param facts - the configured facts of the served model.
  * @param options - `video` is the MP4 it answers with; `hold` holds each render answer until it is released; `failure`
- *   answers each render with that HTTP status and an OpenAI error envelope instead; `port` is the port to listen on.
+ *   answers each render with that HTTP status and an OpenAI error envelope instead; `port` is the port to listen on;
+ *   `capabilities` replaces the published `video_output_capabilities`, and `undefined` leaves them out.
  * @returns the task config of the server and the render request bodies.
  */
 async function startFakeServer(facts: ModelFactsConfig, options: {
@@ -134,6 +140,7 @@ async function startFakeServer(facts: ModelFactsConfig, options: {
   hold?: boolean
   failure?: { status: number; message: string }
   port?: number
+  capabilities?: unknown
 } = {}): Promise<FakeServer> {
   const requests: Record<string, unknown>[] = []
   let arrived!: (value: { release: () => void; closed: Promise<void> }) => void
@@ -141,7 +148,8 @@ async function startFakeServer(facts: ModelFactsConfig, options: {
   const server: Server = createServer((request: IncomingMessage, response: ServerResponse) => {
     if (request.method !== 'POST') {
       response.writeHead(200, { 'content-type': 'application/json', connection: 'close' })
-      response.end(JSON.stringify({ model_path: '/weights', served_model_name: facts.modelId, lora: null }))
+      const capabilities = 'capabilities' in options ? options.capabilities : CAPABILITIES
+      response.end(JSON.stringify({ model_path: '/weights', served_model_name: facts.modelId, lora: null, video_output_capabilities: capabilities }))
       return
     }
     const parts: Buffer[] = []
@@ -475,8 +483,8 @@ describe('dv-fastvideo', () => {
       'dv-fastvideo: fasth3 ref2v takes a first frame of type image, so modelFacts.referenceMediaTypes.image.maxCount must be at least 1.'],
     ['one reference slot', { maxReferences: 1, referenceMediaTypes: { image: { maxCount: 1 } } },
       'dv-fastvideo: fasth3 ref2v takes at least 1 reference and a first frame, so modelFacts.maxReferences must be at least 2; it is 1.'],
-    ['a gap in the durations', { numFramesByDurationSec: { 5: 124, 7: 190 } },
-      'FastVideo modelFacts of fake-ref2va: numFramesByDurationSec has a gap; it needs every duration from 5 to 7.'],
+    ['a media type limit above maxReferences', { referenceMediaTypes: { image: { maxCount: 5 } } },
+      'FastVideo modelFacts of fake-ref2va: referenceMediaTypes.image.maxCount 5 exceeds maxReferences 4.'],
   ] as const)('refuses ref2v model facts with %s when the plugin is applied', async (_case, update, message) => {
     const [reference, text] = await Promise.all([startFakeServer(REFERENCE_FACTS), startFakeServer(TEXT_FACTS)])
     const ctx = await start({ t2v: text.server })
@@ -512,6 +520,15 @@ describe('dv-fastvideo', () => {
     })().catch((cause: unknown) => cause)
     expect(failure).toMatchObject(error)
     expect(events).toEqual([])
+  })
+
+  it('rejects a render without native frame dimensions or a frame count, without sending it', async () => {
+    const reference = await startFakeServer(REFERENCE_FACTS)
+    const ctx = await start({ ref2v: reference.server })
+    const { frameWidth: _width, ...withoutWidth } = request([importAsset(ctx, Buffer.from('IMG1'), 'image/png')], null)
+    await expect(collect(fasth3(ctx, 'ref2v').render(withoutWidth)))
+      .rejects.toThrow('FastVideo requires native frame dimensions and a frame count from its model facts.')
+    expect(reference.requests).toEqual([])
   })
 
   it('rejects a render of a reference whose media type FastVideo does not take, without sending it', async () => {
@@ -553,6 +570,25 @@ describe('dv-fastvideo', () => {
     await startFakeServer(REFERENCE_FACTS, { port: UNREACHABLE_PORT })
     expect(await entry.facts()).toMatchObject({ modelId: 'fake-ref2va', minDurationSec: 5, maxDurationSec: 6 })
     expect(await entry.schema()).toMatchObject({ duration_sec: { min: 5, max: 6 }, inputs: { reference: { max: 3 } } })
+  })
+
+  it('derives the input limits from the configured reference limits when the plugin is applied, before any server answers', async () => {
+    const baseUrl = `http://127.0.0.1:${UNREACHABLE_PORT}`
+    const ctx = await start({ ref2v: { baseUrl, modelFacts: REFERENCE_FACTS } })
+    const narrow = { ...REFERENCE_FACTS, maxReferences: 1, referenceMediaTypes: { image: { maxCount: 1 } } }
+    expect(() => { FastVideo.apply(ctx, { models: { fasth3: { ref2v: { baseUrl, modelFacts: narrow } } } }) })
+      .toThrow('dv-fastvideo: fasth3 ref2v takes at least 1 reference and a first frame, so modelFacts.maxReferences must be at least 2; it is 1.')
+    await expect(fasth3(ctx, 'ref2v').facts()).rejects.toThrow('fetch failed')
+  })
+
+  it('refuses facts, schema and request validation while the server publishes no video_output_capabilities', async () => {
+    const reference = await startFakeServer(REFERENCE_FACTS, { capabilities: undefined })
+    const ctx = await start({ ref2v: reference.server })
+    const entry = fasth3(ctx, 'ref2v')
+    const message = 'FastVideo GET /v1/model_info for fake-ref2va reports no video_output_capabilities; FastVideo must publish'
+    await expect(entry.facts()).rejects.toThrow(message)
+    await expect(entry.schema()).rejects.toThrow(message)
+    await expect(entry.validateGenerationRequest(request([importAsset(ctx, Buffer.from('IMG1'), 'image/png')], null))).rejects.toThrow(message)
   })
 
   it('refuses a config that names a model or task it does not serve', async () => {
