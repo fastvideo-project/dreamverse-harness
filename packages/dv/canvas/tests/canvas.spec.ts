@@ -205,6 +205,21 @@ describe('dvCanvasNodes', () => {
     expect(name()).toBeNull()
   })
 
+  it('refuses a name for a node of a kind whose maker names a rename operation, and names that tool', async () => {
+    const fixture = await start()
+    const { ctx, project } = fixture
+    ctx.effect(() => ctx.dvProject.registerOperation({ ...MAKE, name: 'demo.album' }))
+    ctx.effect(() => ctx.dvCanvasNodes.registerMaker({ operations: ['demo.album'], kind: 'album', column: 2, renameOperation: 'demo.album_rename' }))
+    const origin = { actor: 'user' as const, surface: 'canvas' as const, session: null, turn: null, tool_call: null, intent: 'make' }
+    const made = (await ctx.dvProject.run({ ...origin, project, operation: 'demo.album', params: {}, inputs: [], based_on: null })).record as ProjectRecord
+    const before = ctx.dvProject.listRecords(project).length
+    expect(failure(await fixture.call('dv_canvas_node_rename', { node: made.id, name: 'Holiday' })))
+      .toContain(`Node ${made.id} shows the name of its album; rename the album with dv_demo_album_rename.`)
+    expect(failure(await fixture.call('dv_canvas_node_rename', { node: made.id, name: null }))).toContain('The node has no name to clear.')
+    expect(ctx.dvProject.listRecords(project).length).toBe(before)
+    expect(ctx.dvProject.getState(project).components.canvas.nodes[brandString<NodeId>(made.id)]?.name).toBeNull()
+  })
+
   it('refuses an unknown node, a name over 80 characters, and the current name before any record', async () => {
     const fixture = await start()
     expect(failure(await fixture.call('dv_canvas_node_rename', { node: 'n0', name: 'x' }))).toContain('The canvas has no node n0. Its nodes are: none.')

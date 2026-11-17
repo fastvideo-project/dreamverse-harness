@@ -63,6 +63,12 @@ export interface NodeMaker {
   column: number
   /** Whether a record of the operations makes a node; absent means every record does. */
   makes?(record: { params: Record<string, unknown>; status: RecordStatus }): boolean
+  /**
+   * The operation that renames the item that a node of this kind shows, such as `timeline.rename` for a timeline. A
+   * node of such a kind has no name of its own, so its card always shows the item's name: `canvas.node_rename` refuses
+   * a name for it and names this operation, and the reducer leaves the node's name null.
+   */
+  renameOperation?: string
 }
 
 /**

@@ -18,10 +18,12 @@ export const TIMELINE_NODE_KIND = 'timeline'
 
 /**
  * The node maker of `timeline.place`: each finished record makes one `timeline` node in layout column 3, right of the
- * renders in column 2.
+ * renders in column 2. The node shows its timeline's name, which `timeline.rename` changes, and takes no name of its
+ * own.
  */
 export const TIMELINE_NODE_MAKER: NodeMaker = {
   operations: [PLACE], kind: TIMELINE_NODE_KIND, column: 3, makes: record => record.status === 'done',
+  renameOperation: 'timeline.rename',
 }
 
 /**

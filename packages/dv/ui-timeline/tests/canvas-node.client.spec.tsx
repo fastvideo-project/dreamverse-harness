@@ -41,10 +41,11 @@ function placeTimeline(state: FixtureState, id: string, timeline: string): void 
  * Mount the canvas with the shot kind and the ui-timeline plugin, and `dvCenter` with a recording `show`.
  * @param edit - changes to the served state.
  * @param refuse - the error the server answers a write with, by path and body; null accepts it.
+ * @param zoom - the stored zoom of the canvas; 100% by default.
  * @returns the mounted canvas and the recording `show`.
  */
-async function mountTimelineCanvas(edit: (state: FixtureState) => void, refuse?: (path: string, body: unknown) => string | null) {
-  const mounted = await mountCanvas({ kinds: ['takes'], edit, ...refuse === undefined ? {} : { refuse } })
+async function mountTimelineCanvas(edit: (state: FixtureState) => void, refuse?: (path: string, body: unknown) => string | null, zoom = 1) {
+  const mounted = await mountCanvas({ kinds: ['takes'], edit, layout: { viewport: { x: 0, y: 0, zoom } }, ...refuse === undefined ? {} : { refuse } })
   const show = vi.fn()
   mounted.runtime.ctx.provide('dvCenter', { show } as never)
   await mounted.runtime.mount({ inject: [...inject], apply })
@@ -166,6 +167,77 @@ describe('a timeline node on the canvas', () => {
     }
     expect(show).toHaveBeenCalledWith({ view: 'timeline', target: { timeline: 't2', clip: null } })
     expect(node('k3').querySelector('[data-node-above]')?.textContent).toContain(zh['viewer.empty'])
+  })
+
+  /**
+   * Select a timeline node by a press on its toolbar, then press F2 on the canvas.
+   * @param mounted - the mounted canvas.
+   * @param id - the node.
+   */
+  const pressRename = (mounted: { node: (id: string) => HTMLElement; canvasOf: () => HTMLElement }, id: string): void => {
+    const toolbar = mounted.node(id).querySelector('[data-testid="dv-timeline-editor"] [role="toolbar"]') as HTMLElement
+    fireEvent.pointerDown(toolbar, { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerUp(mounted.canvasOf(), { pointerId: 1 })
+    fireEvent.keyDown(mounted.canvasOf(), { key: 'F2' })
+  }
+
+  it('renames the timeline from its node with one timeline.rename, and the node follows a later rename of the timeline', async () => {
+    let name = ''
+    const mounted = await mountTimelineCanvas((state) => {
+      const [timeline] = state.components.timeline.timelines
+      if (timeline !== undefined) timeline.name = name
+      placeTimeline(state, 'k1', 't1')
+    })
+    const { node, canvasOf, server } = mounted
+    await waitFor(() => { expect(node('k1').querySelector('[role="toolbar"]')).not.toBeNull() })
+    pressRename(mounted, 'k1')
+    const field = within(canvasOf()).getByRole('textbox', { name: canvasZh['node.renameAria'] })
+    expect((field as HTMLInputElement).value).toBe('时间线 1')
+    fireEvent.change(field, { target: { value: ' 粗剪 ' } })
+    fireEvent.keyDown(field, { key: 'Enter' })
+    await waitFor(() => { expect(operationsOf(server.writes)).toEqual(['timeline.rename']) })
+    expect(server.writes.find(write => write.path === '/api/dv/operation')?.body).toMatchObject({
+      operation: 'timeline.rename', params: { timeline: 't1', name: '粗剪' }, intent: zh['intent.rename'].replace('{name}', '粗剪'), surface: 'canvas',
+    })
+    // The node shows the new name at once, and keeps it when the state has it.
+    expect(node('k1').getAttribute('aria-label')).toBe('粗剪')
+    name = '粗剪'
+    act(() => { server.notify() })
+    await waitFor(() => { expect(node('k1').getAttribute('aria-label')).toBe('粗剪') })
+    // A rename of the timeline anywhere else, such as on its tab in the 时间线 view, shows on the node.
+    name = '终剪'
+    act(() => { server.notify() })
+    await waitFor(() => { expect(node('k1').getAttribute('aria-label')).toBe('终剪') })
+    // An empty name writes nothing.
+    pressRename(mounted, 'k1')
+    const again = within(canvasOf()).getByRole('textbox', { name: canvasZh['node.renameAria'] })
+    fireEvent.change(again, { target: { value: ' ' } })
+    fireEvent.keyDown(again, { key: 'Enter' })
+    expect(operationsOf(server.writes)).toEqual(['timeline.rename'])
+    expect(node('k1').getAttribute('aria-label')).toBe('终剪')
+  })
+
+  it('renames in a small panel with the name alone where the caption is too small to type in, and closes the panel with the field', async () => {
+    const mounted = await mountTimelineCanvas((state) => { placeTimeline(state, 'k1', 't1') }, undefined, 0.4)
+    const { node, view, server } = mounted
+    await waitFor(() => { expect(node('k1').querySelector('[role="toolbar"]')).not.toBeNull() })
+    pressRename(mounted, 'k1')
+    const panel = await waitFor(() => view.getByTestId('dv-canvas-node-editor'))
+    expect([panel.hasAttribute('data-name-panel'), panel.getAttribute('aria-label')]).toEqual([true, '时间线 1'])
+    expect(panel.textContent).toContain(`${zh['type.label']} · ${canvasZh['node.rename']}`)
+    expect(panel.textContent).toContain(canvasZh['node.renameHint'])
+    // The panel holds the name field and the close button, and nothing else to press.
+    expect(within(panel).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual([canvasZh['editor.close']])
+    const field = within(panel).getByRole('textbox', { name: canvasZh['node.renameAria'] })
+    fireEvent.change(field, { target: { value: '粗剪' } })
+    fireEvent.keyDown(field, { key: 'Enter' })
+    await waitFor(() => { expect(operationsOf(server.writes)).toEqual(['timeline.rename']) })
+    await waitFor(() => { expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull() })
+    // Escape in the field closes the panel and writes nothing.
+    pressRename(mounted, 'k1')
+    fireEvent.keyDown(within(await waitFor(() => view.getByTestId('dv-canvas-node-editor'))).getByRole('textbox'), { key: 'Escape' })
+    await waitFor(() => { expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull() })
+    expect(operationsOf(server.writes)).toEqual(['timeline.rename'])
   })
 
   it('sizes the preview by the first clip\'s picture, and shows a refused write of the editor above it', async () => {

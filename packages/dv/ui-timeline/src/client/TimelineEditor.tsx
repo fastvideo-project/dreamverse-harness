@@ -3,7 +3,8 @@
  * selected timeline (with skip, play, playback-speed, and full-screen controls under it), a toolbar, a ruler, the video
  * tracks with filmstrip clips sized by duration at their start times, and the sound tracks, whose sound blocks play in
  * step with the preview (`sound-playback.ts`). A video clip's own audio has no row of its own: it plays with the clip,
- * and the clip's track header mutes it.
+ * and the clip's track header mutes it. A clip, a sound and the asset lists show an asset under the name the user gave
+ * its canvas node, else under the asset's own name.
  *
  * Every video track works the same way. With one video track it is 视频; with more, they are 视频 1, 视频 2, … from the
  * top. Where a track has a clip, it covers every track under it; a gap shows the track under it, and the preview shows
@@ -34,6 +35,7 @@ import type { CSSProperties, DragEvent, FocusEvent, KeyboardEvent, MouseEvent, P
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import type { Timeline, TrackKind } from '@dv/timeline/types'
 import { assetUrl } from '@dv/ui-kit/api.ts'
+import { assetLabel } from '@dv/ui-kit/canvas-nodes.ts'
 import { mediaTypeOf } from '@dv/ui-kit/media-type.ts'
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
@@ -469,6 +471,10 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const { clips, end: videoSpan } = placed
   const covered = useMemo(() => coveredClips(clips), [clips])
   const assets = useMemo(() => assetIndex(state), [state])
+  // The name each asset shows: the name of its canvas node when the user gave one, else the asset's own name. An
+  // asset that the project no longer has shows its ID.
+  const labels = useMemo(() => new Map(state.assets.map(asset => [asset.id, assetLabel(state, asset)])), [state])
+  const labelOf = (id: string): string => labels.get(id) ?? id
   // Every ready clip shows its video's frames across its width once they are read (`clipPicture`).
   const videoUrls = [...new Set(clips.flatMap(clip => clip.assetId === null ? [] : [assetUrl(clip.assetId)]))]
   const strips = useFilmstrips(videoUrls)
@@ -1546,7 +1552,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
                 const name = videoTrackName(track)
                 const ids = clips.filter(clip => clip.track === track).sort((a, b) => a.startSec - b.startSec).map(clip => clip.assetId)
                   .filter((id): id is string => id !== null)
-                const contents = [...new Set(ids)].map(id => assets.get(id)?.name ?? id).join(t('track.layerJoin'))
+                const contents = [...new Set(ids)].map(labelOf).join(t('track.layerJoin'))
                 return (
                   <li key={name} data-layer={name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 4px 6px 8px', fontSize: 13, lineHeight: '20px', color: palette.fg }}>
                     <Icon name="film" />
@@ -1640,7 +1646,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
         {onTrack.map((clip) => {
           const ready = clip.assetId !== null
           const statusText = clip.status === 'failed' ? t('track.renderFailed') : t('track.rendering')
-          const assetName = clip.assetId === null ? statusText : assets.get(clip.assetId)?.name ?? clip.assetId
+          const assetName = clip.assetId === null ? statusText : labelOf(clip.assetId)
           // Trim handles take at most a quarter of the clip each, so a short clip keeps a body to select and drag.
           const handle = Math.max(2, Math.min(7, Math.floor(clip.seconds * px / 4)))
           const isSelected = clip.clip === selectedClip?.clip
@@ -1847,7 +1853,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
               />
               {audioCandidates.length === 0 ? <p style={{ margin: '4px 0 0' }}>{t('track.noAudio')}</p> : audioCandidates.map(entry => (
                 <button key={entry.id} type="button" className="dv-tl-btn" style={{ ...menuItem, marginTop: 4 }} onClick={() => { addSound(entry.id) }}>
-                  {entry.name}
+                  {labelOf(entry.id)}
                 </button>
               ))}
             </div>
@@ -1871,7 +1877,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
                     addClip(entry.id, pickTrack, pickAt ?? trackEndOf(pickTrack) ?? player.position)
                   }}
                 >
-                  {entry.name}
+                  {labelOf(entry.id)}
                 </button>
               ))}
             </div>

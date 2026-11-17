@@ -37,6 +37,8 @@ const LAYOUT_SIZE = { width: 480, height: 290 }
 
 /** The operation that puts a timeline on the canvas. */
 const PLACE = 'timeline.place'
+/** The operation that changes a timeline's name, which a rename of its node writes. */
+const RENAME = 'timeline.rename'
 
 /** The timeline dictionary's translate. */
 type TimelineTranslate = TranslateNS<'dvTimeline'>
@@ -87,7 +89,8 @@ function nameOf(timeline: Pick<Timeline, 'id' | 'name'>, t: TimelineTranslate): 
 /**
  * The node type of placed timelines. A node's title is the timeline's name, its meta the timeline's length, and its
  * `uses` the assets of the clips and sounds and the renders of the placeholder clips. A double click shows the timeline
- * in the workspace center's 时间线 view through `show`.
+ * in the workspace center's 时间线 view through `show`. A rename of the node writes `timeline.rename`, so the node and
+ * the timeline's tab show one name; an empty name changes nothing.
  * @param t - the timeline dictionary's translate.
  * @param show - show a timeline in the 时间线 view.
  * @returns the node type.
@@ -117,6 +120,9 @@ export function timelineNodeType(t: TimelineTranslate, show: (timeline: string) 
     open(node: NodeView) {
       const id = placedId(node.record)
       if (id !== null) show(id)
+    },
+    rename(node: NodeView, name: string) {
+      return name === '' ? null : { operation: RENAME, params: { timeline: placedId(node.record), name }, intent: t('intent.rename', { name }) }
     },
   }
 }

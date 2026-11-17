@@ -2018,4 +2018,120 @@ describe('renaming a node', () => {
     expect(field(editor)).toBeTruthy()
     await runtime.dispose()
   })
+
+  /**
+   * Mount the canvas at 40% zoom with one node of a test type that has `open` and `rename`, whose title is `title()`.
+   * @param title - the title that the type computes.
+   * @param request - a center request to open with, if any.
+   * @returns the mounted canvas, and a wait for the name panel.
+   */
+  const mountAlbum = async (title: () => string, request?: { value: { record: string }; take: () => void }) => {
+    // jsdom has no layout; a 1200 × 800 canvas area puts the 360 × 108 name panel at 420, 346.
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1200)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(800)
+    const albums: NodeType = {
+      id: '@dv/ui-test-album', type: 'album', label: () => '相册', color: 'var(--dv-node-2)',
+      entry: () => ({ title: title(), sizing: { kind: 'window', defaultSize: { width: 200, height: 100 }, minSize: { width: 100, height: 50 } } }),
+      open: () => {},
+      rename: (shown, name) => name === '' ? null : { operation: 'test.album_rename', params: { album: shown.id, name }, intent: `rename the album to ${name}` },
+    }
+    const mounted = await mountCanvas({
+      holdOperations: true, layout: { viewport: { x: 0, y: 0, zoom: 0.4 } }, ...request === undefined ? {} : { request },
+      edit: (state) => {
+        state.components.proj.records.push(record({ id: 'm1', operation: 'test.album' }))
+        state.components.canvas.nodes['m1'] = canvasNode('album', ['m1'], 900, 0)
+        state.components.canvas.order.push('m1')
+      },
+    })
+    await mountDescriptors(mounted.runtime, { nodeType: albums })
+    const panel = (): Promise<HTMLElement> => waitFor(() => {
+      const shown = mounted.view.getByTestId('dv-canvas-node-editor')
+      expect(shown.hasAttribute('data-name-panel')).toBe(true)
+      return shown
+    })
+    return { ...mounted, panel }
+  }
+
+  it('opens the name panel for a node whose type has open: the type, the name as a button and the close button, in the middle of the canvas', async () => {
+    const { runtime, view, server, panel } = await mountAlbum(() => '旅行', { value: { record: 'm1' }, take: vi.fn() })
+    const shown = await panel()
+    expect([shown.style.left, shown.style.top, shown.style.width, shown.style.height]).toEqual(['420px', '346px', '360px', ''])
+    expect(shown.textContent).toBe(`相册 · ${zh['node.rename']}旅行`)
+    expect(within(shown).getAllByRole('button').map(button => button.getAttribute('aria-label') ?? button.textContent)).toEqual(['旅行', zh['editor.close']])
+    // A press on the panel stays with the panel: the canvas keeps it open.
+    fireEvent.pointerDown(shown, { button: 0, clientX: 600, clientY: 400, pointerId: 3 })
+    fireEvent.pointerUp(shown, { pointerId: 3 })
+    expect(view.getByTestId('dv-canvas-node-editor')).toBe(shown)
+    // A click on the name turns it into the field, and Escape there closes the panel and writes nothing.
+    fireEvent.click(within(shown).getByTestId('dv-canvas-editor-title'))
+    expect([field(shown).value, within(shown).getByText(zh['node.renameHint']) !== null]).toEqual(['旅行', true])
+    fireEvent.keyDown(field(shown), { key: 'Escape' })
+    expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
+    expect(operationsOf(server.writes)).toEqual([])
+    await runtime.dispose()
+  })
+
+  it('renames a node whose type has rename with the type\'s write, closes the name panel with its field, and follows the item\'s title', async () => {
+    let name = '旅行'
+    const { runtime, view, node, server, canvasOf, panel } = await mountAlbum(() => name)
+    await waitFor(() => { expect(node('m1').getAttribute('aria-label')).toBe('旅行') })
+    select(node('m1'), canvasOf())
+    fireEvent.keyDown(node('m1'), { key: 'F2' })
+    let shown = await panel()
+    expect(document.activeElement).toBe(field(shown))
+    fireEvent.change(field(shown), { target: { value: '海边' } })
+    fireEvent.keyDown(field(shown), { key: 'Enter' })
+    expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
+    expect(operationsOf(server.writes)).toEqual([expect.objectContaining({
+      operation: 'test.album_rename', params: { album: 'm1', name: '海边' }, intent: 'rename the album to 海边', surface: 'canvas',
+    })])
+    expect(node('m1').getAttribute('aria-label')).toBe('海边')
+    // The state shows the new title before the server answers; a later rename of the item then shows on the node.
+    name = '海边'
+    act(() => { server.notify() })
+    await settle()
+    name = '山里'
+    act(() => { server.notify() })
+    await waitFor(() => { expect(node('m1').getAttribute('aria-label')).toBe('山里') })
+    server.releaseOperations()
+    await settle()
+    expect(node('m1').getAttribute('aria-label')).toBe('山里')
+    // The close button closes the panel, and an empty name writes nothing.
+    fireEvent.keyDown(node('m1'), { key: 'F2' })
+    shown = await panel()
+    fireEvent.click(within(shown).getByRole('button', { name: zh['editor.close'] }))
+    expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
+    fireEvent.keyDown(node('m1'), { key: 'F2' })
+    shown = await panel()
+    fireEvent.change(field(shown), { target: { value: ' ' } })
+    fireEvent.keyDown(field(shown), { key: 'Enter' })
+    expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
+    expect(operationsOf(server.writes)).toHaveLength(1)
+    await runtime.dispose()
+  })
+
+  it('keeps drawing a typed name that equals the title of the node\'s type until the state shows the name', async () => {
+    let named: string | null = null
+    const { runtime, view, node, server, open } = await mountCanvas({
+      holdOperations: true,
+      edit: (state) => {
+        const shot = state.components.canvas.nodes['g2']
+        if (shot !== undefined) shot.name = named
+      },
+    })
+    await open('g2')
+    const computed = node('g2').getAttribute('aria-label') ?? ''
+    named = '港口黎明'
+    act(() => { server.notify() })
+    await waitFor(() => { expect(node('g2').getAttribute('aria-label')).toBe('港口黎明') })
+    // The user names the node as its type titles it; the state still has the old name while the write is on its way.
+    const editor = view.getByTestId('dv-canvas-node-editor')
+    fireEvent.click(within(editor).getByTestId('dv-canvas-editor-title'))
+    fireEvent.change(field(editor), { target: { value: computed } })
+    fireEvent.keyDown(field(editor), { key: 'Enter' })
+    await settle()
+    expect(node('g2').getAttribute('aria-label')).toBe(computed)
+    expect(renameWrites(server)).toEqual([{ node: 'g2', name: computed }])
+    await runtime.dispose()
+  })
 })

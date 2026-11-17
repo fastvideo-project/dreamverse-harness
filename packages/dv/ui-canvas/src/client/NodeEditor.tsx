@@ -4,7 +4,9 @@
  * the node's type in `dv.canvas.editor`; a type without an entry shows only the header. A node with several versions
  * shows a version strip above the body: selecting a version shows it in the editor, and the card keeps the newest. The
  * header shows the node's type and newest version above its title; a click on the title, or F2 on the canvas, turns the
- * title into the name field. The header's trash button removes the node from the canvas.
+ * title into the name field. The header's trash button removes the node from the canvas. A node whose type has `open`
+ * has no editor body, so its editor is the name panel: a small fixed panel with the node's type, its name and a close
+ * button, which closes when the name field does.
  */
 import { useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
@@ -337,11 +339,79 @@ interface Picking {
 }
 
 /**
- * The editor.
+ * The editor of a node: the name panel for a node whose type has `open`, which has no editor body, else the editor
+ * panel.
  * @param props - the node, the state it came from, its actions, the canvas host and the slot renderers.
  * @returns the element.
  */
 export function NodeEditor(props: NodeEditorProps): ReactNode {
+  return props.node.nodeType.open === undefined ? <EditorPanel {...props} /> : <NamePanel {...props} />
+}
+
+/** The width of the name panel, in px; a narrower canvas area leaves the 24 px margins. */
+const NAME_PANEL_WIDTH = 360
+/** The height of the name panel with the hint line under its field, in px, which centers the panel in the canvas area. */
+const NAME_PANEL_HEIGHT = 108
+/** The box that the name field and the title it replaces share, so both sit at the same place and size. */
+const nameBox: CSSProperties = {
+  flex: 1, minWidth: 0, height: 32, boxSizing: 'border-box', padding: '0 5px', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-1)',
+  fontFamily: 'inherit', fontSize: 14, lineHeight: '20px', fontWeight: 500, color: 'var(--dv-text)',
+}
+
+/**
+ * The name panel: a small fixed panel in the middle of the canvas area with the node's type, its name, and a close
+ * button. The name is a field while the node is renamed, and the panel closes when the field does; otherwise a click
+ * on the name turns it into the field. The type line, the name and the hint under the field start at the same left
+ * edge.
+ * @param props - the node, its view, the name field, and the close callback.
+ * @returns the element.
+ */
+function NamePanel({ node, view, t, area, rename, onRename, onClose, zoomRef }: NodeEditorProps): ReactNode {
+  const width = Math.max(0, Math.min(NAME_PANEL_WIDTH, area.width - 2 * EDITOR_MARGIN))
+  const place: CSSProperties = {
+    left: Math.round((area.width - width) / 2), top: Math.max(0, Math.round((area.height - NAME_PANEL_HEIGHT) / 2)), width,
+    // The hint line sits under the field, inside the panel.
+    padding: rename === null ? 16 : '16px 16px 36px', gap: 8,
+  }
+  return (
+    <section
+      ref={zoomRef} style={{ ...panel, ...place }} role="dialog" aria-label={view.title} data-testid="dv-canvas-node-editor" data-name-panel=""
+      data-dv-scroll-island="" onPointerDown={(event) => { event.stopPropagation() }}
+    >
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }}>
+        <span style={{ width: 6, height: 6, borderRadius: 9999, background: node.nodeType.color }} />
+        {`${node.nodeType.label()} · ${t('node.rename')}`}
+      </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {rename === null
+          ? (
+            <button
+              type="button" className="dv-canvas-title" title={t('node.rename')} data-testid="dv-canvas-editor-title" onClick={onRename}
+              style={{ ...nameBox, border: '1px solid var(--dv-line-strong)', textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'text' }}
+            >
+              {view.title}
+            </button>
+          )
+          : (
+            <InlineRename
+              {...rename} value={view.title} onClose={() => { rename.onClose(); onClose() }}
+              style={{ ...nameBox, border: '1px solid var(--dv-accent)', outline: 'none' }}
+            />
+          )}
+        <button type="button" className="dv-canvas-btn" aria-label={t('editor.close')} title={t('editor.close')} style={{ ...button, flex: 'none', width: 32, padding: 0, color: 'var(--dv-text-2)' }} onClick={onClose}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        </button>
+      </div>
+    </section>
+  )
+}
+
+/**
+ * The editor panel.
+ * @param props - the node, the state it came from, its actions, the canvas host and the slot renderers.
+ * @returns the element.
+ */
+function EditorPanel(props: NodeEditorProps): ReactNode {
   const { node, t, onClose } = props
   const [chosen, setChosen] = useState(node.record.id)
   // A version that leaves the node, such as after an undo, gives way to the newest.

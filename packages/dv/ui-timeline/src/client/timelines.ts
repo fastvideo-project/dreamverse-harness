@@ -4,6 +4,7 @@
  * track rows.
  */
 import type { Timeline, TimelineState, TrackKind } from '@dv/timeline/types'
+import { assetLabel } from '@dv/ui-kit/canvas-nodes.ts'
 import { FALLBACK_CLIP_SECONDS } from '@dv/ui-kit/timeline.ts'
 import type { Asset, WireState } from '@dv/ui-kit/types.ts'
 
@@ -271,7 +272,7 @@ export function placeSounds(
     const assetSeconds = asset?.duration_sec ?? measured.get(sound.asset) ?? FALLBACK_CLIP_SECONDS
     const inSec = sound.in_sec ?? 0
     const outSec = sound.out_sec ?? assetSeconds
-    const name = asset?.name ?? sound.asset
+    const name = asset === undefined ? sound.asset : assetLabel(state, asset)
     return {
       sound: sound.id, assetId: sound.asset, name, startSec: sound.start_sec, rawIn: sound.in_sec, rawOut: sound.out_sec, inSec,
       seconds: Math.max(0.1, outSec - inSec), assetSeconds, track: sound.track,

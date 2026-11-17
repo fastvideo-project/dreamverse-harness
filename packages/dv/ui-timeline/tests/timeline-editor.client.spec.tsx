@@ -64,6 +64,23 @@ describe('TimelineView', () => {
     expect(view.container.querySelectorAll('[data-clip]')).toHaveLength(1)
   })
 
+  it('shows a clip and the asset list under the name the user gave the asset\'s canvas node', async () => {
+    const { view, clip, track } = mount({
+      state: () => {
+        const state = twoTimelines()
+        const shot = state.components.canvas.nodes['g1']
+        if (shot !== undefined) shot.name = '雨夜'
+        return state
+      },
+    })
+    await track()
+    expect([clip(1).getAttribute('title'), clip(2).getAttribute('title')]).toEqual(['雨夜 · 4.0s', expect.stringContaining('shot2.mp4 · 3.0s')])
+    expect(within(clip(1)).getByLabelText('拖动裁剪 雨夜 的开头')).toBeTruthy()
+    fireEvent.click(view.getByLabelText('添加片段到 视频'))
+    const picker = within(view.getByRole('dialog'))
+    expect([picker.queryByText('雨夜') !== null, picker.queryByText('shot2.mp4') !== null, picker.queryByText('shot1.mp4')]).toEqual([true, true, null])
+  })
+
   it('offers 仍然保留 for a selected stale clip, which accepts the record behind its asset', async () => {
     const { view, clip, writes, track } = mount()
     await track()

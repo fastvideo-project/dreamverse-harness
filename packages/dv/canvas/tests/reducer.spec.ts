@@ -11,11 +11,13 @@ const makers: NodeMaker[] = [
   { operations: ['shot.render'], kind: 'shot', column: 2 },
   { operations: ['character.create'], kind: 'character', column: 0 },
   { operations: ['asset.import'], kind: 'asset', column: 0, makes: record => record.params['place'] === true },
+  { operations: ['timeline.place'], kind: 'timeline', column: 3, renameOperation: 'timeline.rename' },
 ]
 const placement: AssetPlacement = { place: 'asset.place', kind: 'asset', column: 0 }
 const reducer = canvasReducer({
   maker: operation => makers.find(maker => maker.operations.includes(operation)),
   placement: operation => operation === placement.place ? placement : undefined,
+  renameOperation: kind => makers.find(maker => maker.kind === kind)?.renameOperation,
 })
 
 let counter = 0
@@ -191,6 +193,14 @@ describe('canvasReducer', () => {
       expect(cleared.nodes[brandString<NodeId>(shot.id)]?.name).toBeNull()
     }
     expect(reduceAll([shot]).nodes[brandString<NodeId>(shot.id)]?.name).toBeNull()
+  })
+
+  it('gives no name to a node of a kind whose maker names a rename operation', () => {
+    const placed = record('timeline.place', { params: { timeline: 't1' } })
+    const rename = record('canvas.node_rename', { params: { node: placed.id, name: 'Rough cut' } })
+    const clear = record('canvas.node_rename', { params: { node: placed.id, name: null } })
+    expect(reduceAll([placed, rename, clear]).nodes[brandString<NodeId>(placed.id)]).toMatchObject({ kind: 'timeline', name: null })
+    expect(reduceAll([placed, rename]).nodes[brandString<NodeId>(placed.id)]?.name).toBeNull()
   })
 
   it('renames a node for a rename record based on its version, without a version', () => {

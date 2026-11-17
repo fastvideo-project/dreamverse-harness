@@ -54,6 +54,21 @@ describe('placeSounds', () => {
     expect(end).toBe(Math.max(8, 4 + FALLBACK_CLIP_SECONDS))
   })
 
+  it('names a sound by the name the user gave the canvas node of its asset', () => {
+    const state = fixtureState()
+    // The canvas node g2 shows a.mp3 as the first output of its only version.
+    state.assets.push(asset('a.mp3', 'audio/mpeg', 'g2', 2))
+    state.components.proj.records.find(record => record.id === 'g2')?.outputs.unshift('a.mp3')
+    const imported = state.components.canvas.nodes['g2']
+    const timeline: Timeline = {
+      id: 't1' as TimelineId, name: '', clips: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'],
+      sounds: [{ id: 'sd1' as SoundId, asset: 'a.mp3' as AssetId, in_sec: null, out_sec: null, start_sec: 0, track: 0 }],
+    }
+    expect(placeSounds(state, timeline, new Map()).sounds.map(sound => sound.name)).toEqual(['a.mp3'])
+    if (imported !== undefined) imported.name = '雨声'
+    expect(placeSounds(state, timeline, new Map()).sounds.map(sound => sound.name)).toEqual(['雨声'])
+  })
+
   it('places no sounds without a timeline, ending at 0', () => {
     expect(placeSounds(fixtureState(), null, new Map())).toEqual({ sounds: [], end: 0 })
   })

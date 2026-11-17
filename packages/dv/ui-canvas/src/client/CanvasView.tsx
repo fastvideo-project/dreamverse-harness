@@ -7,7 +7,8 @@
  * the canvas draws the new box at once and drops it again when the write is refused. A node's right-click menu, the
  * trash button of its editor, and Delete or Backspace on the selected node remove it from the canvas with one
  * `canvas.node_remove` record after the user confirms. F2 on the selected node, its menu's Rename item, or a click on
- * the editor's title renames the node with one `canvas.node_rename` record, drawn at once the same way. A double click
+ * the editor's title renames the node with one `canvas.node_rename` record, drawn at once the same way; a node whose
+ * type has `rename` writes that type's request instead, which renames the item the node shows. A double click
  * on a node whose type has `open` runs it instead of opening the editor, and while a node whose entry declares `uses`
  * is selected, the nodes it uses wear an accent outline with a glow and the other nodes and edges fade. The toolbar's
  * add button opens the menu of the registered `AddMenuSection`s, whose picked item selects the node that shows it or
@@ -33,7 +34,7 @@ import { AddMenu } from './AddMenu.tsx'
 import { cardsOf } from './agent-canvas.ts'
 import type { CanvasViews } from './agent-canvas.ts'
 import type { AddMenuItem, AddMenuSection, CanvasRequest, EditorHost, NodeAction, NodeHost, NodeView, RerunRequest } from './contract/index.ts'
-import { boxOf as storedBox, buildCanvasGraph, isFinished, previewOf, withNames } from './graph.ts'
+import { boxOf as storedBox, buildCanvasGraph, isFinished, nodeTitle, previewOf, withNames } from './graph.ts'
 import type { CanvasEdge, CanvasNode, CanvasRegistrations } from './graph.ts'
 import { cardHeight, DIMMED_OPACITY, edgeAnchorY, NodeCard, NodeMenu, textScaleAt, TypeLabelBody } from './NodeCard.tsx'
 import type { CanvasTranslate, NodeMenuItem } from './NodeCard.tsx'
@@ -268,6 +269,8 @@ export function CanvasView(
   const language = useLanguage()
   const base = useProjectState(client, projectId)
   const operations = useOperations(client)
+  // The operation declarations, none until they load.
+  const declared = useMemo(() => operations.value ?? [], [operations.value])
   /**
    * Put an asset on the project's canvas through an `asset.place` record.
    * @param assetId - the asset.
@@ -284,8 +287,8 @@ export function CanvasView(
   const graph = useMemo(() => {
     if (base.value === null || base.value.project.id !== projectId) return null
     const state = Object.keys(names).length === 0 ? base.value : withNames(base.value, names)
-    return { state, ...buildCanvasGraph(state, operations.value ?? [], language, descriptors) }
-  }, [base.value, names, projectId, operations.value, language, descriptors])
+    return { state, ...buildCanvasGraph(state, declared, language, descriptors) }
+  }, [base.value, names, projectId, declared, language, descriptors])
   const assetById = useMemo(() => new Map<string, Asset>((graph?.state.assets ?? []).map(asset => [asset.id, asset])), [graph])
 
   // The boxes of a gesture and of a `canvas.node_position` write until the project state shows them, by node ID.
@@ -561,18 +564,23 @@ export function CanvasView(
 
   const renamedAt = useRef(new Map<string, unknown>())
   /**
-   * Write a node's new name as one `canvas.node_rename` record. The canvas draws the name until the project state shows
-   * it, or until the first state after the server answered, and drops it again when the write is refused.
+   * Write a node's new name as one record: `canvas.node_rename`, or the write that the node's type gives for the item
+   * it shows (`NodeType.rename`). The canvas draws the name until the project state shows it, or until the first state
+   * after the server answered, and drops it again when the write is refused.
    * @param node - the node.
-   * @param title - the trimmed name; empty clears it.
+   * @param title - the trimmed name; empty clears the name of a node that has its own.
    */
   const renameNode = (node: CanvasNode, title: string): void => {
     const name = title === '' ? null : title
-    if (name === node.node.name) return
+    const { nodeType } = node
+    const write = nodeType.rename === undefined
+      ? { operation: NODE_RENAME, params: { node: node.id, name }, intent: `rename ${node.title} on the canvas` }
+      : nodeType.rename(viewFor(node), title)
+    if (write === null || (nodeType.rename === undefined && name === node.node.name)) return
     setNames(all => ({ ...all, [node.id]: name }))
     renamedAt.current.delete(node.id)
     setNotice(null)
-    client.runOperation(canvasRequest({ operation: NODE_RENAME, params: { node: node.id, name }, intent: `rename ${node.title} on the canvas` }))
+    client.runOperation(canvasRequest(write))
       .then(() => { if (namesRef.current[node.id] === name) renamedAt.current.set(node.id, baseRef.current) }, (error: unknown) => {
         setNames(all => all[node.id] === name ? withoutProperties(all, [node.id]) : all)
         setNotice(t('error', { message: errorMessage(error) }))
@@ -581,11 +589,16 @@ export function CanvasView(
   useEffect(() => {
     const state = base.value
     if (state === null) return
-    const shown = Object.keys(names).filter(id => state.components.canvas.nodes[id]?.name === names[id]
+    // A node whose type renames its item reads the new name from the title that its type computes. The name of any
+    // other node waits for the node's own name, since its type's title can equal the typed name before the write lands.
+    const renamesItem = (id: string): boolean =>
+      descriptors.nodeTypes.find(type => type.type === state.components.canvas.nodes[id]?.kind)?.rename !== undefined
+    const titled = (id: string): boolean => renamesItem(id) && nodeTitle(state, declared, language, descriptors.nodeTypes, id) === names[id]
+    const shown = Object.keys(names).filter(id => state.components.canvas.nodes[id]?.name === names[id] || titled(id)
       || (renamedAt.current.has(id) && renamedAt.current.get(id) !== state))
     for (const id of shown) renamedAt.current.delete(id)
     if (shown.length > 0) setNames(all => withoutProperties(all, shown))
-  }, [base.value, names])
+  }, [base.value, names, declared, language, descriptors])
   /** The name field of a node, which saves through {@link renameNode} and refuses a name over {@link NAME_MAX}. */
   const renameField = (node: CanvasNode): Omit<InlineRenameProps, 'value'> => ({
     label: t('node.renameAria'),
@@ -1105,7 +1118,7 @@ export function CanvasView(
     const view = viewFor(node)
     return {
       node, view, viewAt: (record: string) => viewFor(shown.atVersion(node, record)),
-      operations: operations.value ?? [], versionKinds: descriptors.versionKinds,
+      operations: declared, versionKinds: descriptors.versionKinds,
       actions: actionsFor(view), project: projectId, session, t, hosts: hostsOf(close), area, renderSlot, renderFactorySlot,
       onAcceptStale: (record: string) => { void run(() => client.acceptStale(projectId, record, 'canvas', session)) },
       onRemove: () => { removeNode(node) },

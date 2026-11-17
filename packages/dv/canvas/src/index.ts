@@ -15,7 +15,7 @@
 import { Service, type Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import z from '@deepseek-ai/schemastery'
-import { ProjectError, type OperationResult, type OperationSpec, type ProjectState } from '@dv/project'
+import { ProjectError, toolNameOf, type OperationResult, type OperationSpec, type ProjectState } from '@dv/project'
 import { canvasReducer, NAME_MAX, NODE_POSITION, NODE_REMOVE, NODE_RENAME, nodeName } from './reducer.ts'
 import type { AssetPlacement, NodeId, NodeMaker } from './types.ts'
 
@@ -51,18 +51,21 @@ export default class DvCanvasNodes extends Service {
     const registered = {
       maker: (operation: string) => this.makers.get(operation),
       placement: (operation: string) => this.placements.get(operation),
+      renameOperation: (kind: string) =>
+        [...this.makers.values()].find(maker => maker.kind === kind && maker.renameOperation !== undefined)?.renameOperation,
     }
     ctx.effect(() => ctx.dvProject.registerComponent('canvas'), 'dvCanvasNodes component')
     ctx.effect(() => ctx.dvProject.registerReducer('canvas', canvasReducer(registered)), 'dvCanvasNodes reducer')
     ctx.effect(() => ctx.dvProject.registerOperation(positionOperation()), `dvCanvasNodes ${NODE_POSITION}`)
     ctx.effect(() => ctx.dvProject.registerOperation(removeOperation()), `dvCanvasNodes ${NODE_REMOVE}`)
-    ctx.effect(() => ctx.dvProject.registerOperation(renameOperation()), `dvCanvasNodes ${NODE_RENAME}`)
+    ctx.effect(() => ctx.dvProject.registerOperation(renameOperation(registered.renameOperation)), `dvCanvasNodes ${NODE_RENAME}`)
   }
 
   /**
    * Name operations whose records make nodes of one kind. One registration per operation: an operation that a maker or
    * a placement already names throws `invalid_params`.
-   * @param maker - the operations, the kind, the column, and the optional filter of records.
+   * @param maker - the operations, the kind, the column, the optional filter of records, and the optional operation
+   *   that renames what the nodes show.
    * @returns a function that removes the registration.
    */
   registerMaker(maker: NodeMaker): () => void {
@@ -192,10 +195,11 @@ function knownNodes(state: ProjectState): string {
 
 /**
  * `canvas.node_rename`: set the name that one node's card shows. It refuses an unknown node, a name longer than
- * {@link NAME_MAX} characters, and the node's current name, before any record.
+ * {@link NAME_MAX} characters, the node's current name, and a name for a node whose kind takes none, before any record.
+ * @param renamedBy - the operation that renames what the nodes of a kind show, or undefined for a kind that takes names.
  * @returns the operation.
  */
-function renameOperation(): OperationSpec {
+function renameOperation(renamedBy: (kind: string) => string | undefined): OperationSpec {
   return {
     name: NODE_RENAME,
     component: 'canvas',
@@ -205,6 +209,8 @@ function renameOperation(): OperationSpec {
       + `The name is trimmed, line breaks become spaces, and it has at most ${String(NAME_MAX)} characters; an empty or null `
       + 'name clears it, so the card shows the title its type computes again. The name is only the canvas label: the node '
       + 'keeps its id, versions, assets, files, text path and character, location or style name, and nothing becomes stale. '
+      + 'A node that shows an item with a name of its own, such as a timeline, takes no name here: the call is refused and '
+      + 'names the tool that renames the item. '
       + 'Names need not be unique. Works whether or not the user has a canvas open. The change is a step of the project '
       + 'history, so dv_proj_undo reverts it.',
     params: {
@@ -227,6 +233,10 @@ function renameOperation(): OperationSpec {
       const length = name?.length ?? 0
       if (length > NAME_MAX) {
         throw new ProjectError('invalid_params', `The name can have at most ${String(NAME_MAX)} characters; this one has ${String(length)}.`)
+      }
+      const owner = name === null ? undefined : renamedBy(node.kind)
+      if (owner !== undefined) {
+        throw new ProjectError('invalid_params', `Node ${id} shows the name of its ${node.kind}; rename the ${node.kind} with ${toolNameOf({ name: owner })}.`)
       }
       if (name === node.name) {
         throw new ProjectError('invalid_params', name === null ? 'The node has no name to clear.' : `The node is already named "${name}".`)

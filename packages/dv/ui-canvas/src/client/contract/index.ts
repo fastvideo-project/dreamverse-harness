@@ -33,9 +33,19 @@ export interface NodeType {
   entry(node: NodeInput): TypeEntry
   /**
    * What a double click on a node of this type does in place of opening the floating editor, such as showing the
-   * timeline view of a timeline node; absent opens the editor.
+   * timeline view of a timeline node; absent opens the editor. The floating editor of such a type is a small panel
+   * with the node's name alone, which opens to rename the node where the caption is too small to type in.
    */
   open?(node: NodeView): void
+  /**
+   * The write that renames the item that a node of this type shows, such as `timeline.rename` for a timeline node,
+   * for a type whose title is that item's name. The canvas sends it in place of `canvas.node_rename`, which the host
+   * refuses for a kind whose maker names a rename operation; absent names the node itself.
+   * @param node - the node.
+   * @param name - the trimmed name from the name field; it can be empty.
+   * @returns the request, or null for a name that changes nothing.
+   */
+  rename?(node: NodeView, name: string): CanvasRequest | null
 }
 
 /** What a type supplies for one node at one version. */

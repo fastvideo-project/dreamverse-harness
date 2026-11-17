@@ -9,7 +9,8 @@
  * 3. a finished `place` record of an {@link AssetPlacement} creates a node for each input asset that no node shows;
  * 4. a finished `canvas.node_remove` record deletes the nodes that its params name;
  * 5. a finished `canvas.node_position` record sets the fields of the node's position that its params give;
- * 6. a finished `canvas.node_rename` record sets the node's name, and an empty or null name clears it;
+ * 6. a finished `canvas.node_rename` record sets the node's name, and an empty or null name clears it; a node of a kind
+ *    whose maker names a rename operation ({@link NodeMaker.renameOperation}) takes no name;
  * 7. every other record leaves the slice as it is.
  * Rules 1 and 2 take records in any status, so a running or failed version shows its state. The slice follows the
  * records of the chain, so an undo of a move or a resize restores the earlier position, and an undo of a removal
@@ -57,6 +58,8 @@ const CAPTION = 20
 export interface CanvasRegistrations {
   maker(operation: string): NodeMaker | undefined
   placement(operation: string): AssetPlacement | undefined
+  /** The operation that renames what the nodes of a kind show ({@link NodeMaker.renameOperation}), or undefined. */
+  renameOperation(kind: string): string | undefined
 }
 
 /**
@@ -164,14 +167,15 @@ function position(slice: CanvasState, record: ProjectRecord): CanvasState {
 }
 
 /**
- * Rule 6: set the name of a node the slice has.
+ * Rule 6: set the name of a node the slice has, unless the node's kind takes no name.
  * @returns the slice after the record.
  */
-function rename(slice: CanvasState, record: ProjectRecord): CanvasState {
+function rename(slice: CanvasState, record: ProjectRecord, registered: CanvasRegistrations): CanvasState {
   const id = brandString<NodeId>(String(record.params['node']))
   const node = slice.nodes[id]
-  if (node === undefined) return slice
-  return { ...slice, nodes: { ...slice.nodes, [id]: { ...node, name: nodeName(record.params['name']) } } }
+  const name = nodeName(record.params['name'])
+  if (node === undefined || (name !== null && registered.renameOperation(node.kind) !== undefined)) return slice
+  return { ...slice, nodes: { ...slice.nodes, [id]: { ...node, name } } }
 }
 
 /**
@@ -200,7 +204,7 @@ export function canvasReducer(registered: CanvasRegistrations): Reducer<'canvas'
       if (record.status !== 'done') return slice
       if (placement !== undefined) return place(slice, record, placement)
       if (operation === NODE_REMOVE) return remove(slice, record)
-      if (operation === NODE_RENAME) return rename(slice, record)
+      if (operation === NODE_RENAME) return rename(slice, record, registered)
       return operation === NODE_POSITION ? position(slice, record) : slice
     },
     agentSummary: slice => ({
